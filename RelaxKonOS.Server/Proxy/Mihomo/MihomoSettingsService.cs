@@ -15,10 +15,11 @@ public sealed class MihomoSettingsService(
     IProxyControllerSecretStore controllerSecrets,
     MihomoControllerOptions controllerOptions,
     Platform.IHostSystemProxyService systemProxyService,
+    MihomoPublicationStore publication,
     ILogger<MihomoSettingsService>? logger = null) : IProxySettingsService, IProxyTunRuntimeController
 {
     private static readonly HashSet<string> LogLevels = new(StringComparer.OrdinalIgnoreCase) { "silent", "error", "warning", "info", "debug" };
-    private readonly SemaphoreSlim _gate = new(1, 1);
+    private SemaphoreSlim _gate => publication.Gate;
 
     public async Task<ProxySettingsDto> GetAsync(CancellationToken cancellationToken) =>
         await ReadAsync(cancellationToken) ?? Defaults;
@@ -42,6 +43,7 @@ public sealed class MihomoSettingsService(
         await _gate.WaitAsync(cancellationToken);
         try
         {
+            if (await publication.UncoordinatedWriteProblemAsync(cancellationToken) is { } publicationProblem) return publicationProblem;
             var previous = await ReadAsync(cancellationToken) ?? Defaults;
             var directory = paths.GetProtectedConfigurationDirectory();
             var active = Path.Combine(directory, "active.yaml");
@@ -121,6 +123,7 @@ public sealed class MihomoSettingsService(
         await _gate.WaitAsync(cancellationToken);
         try
         {
+            if (await publication.UncoordinatedWriteProblemAsync(cancellationToken) is { } publicationProblem) return publicationProblem;
             var settings = await ReadAsync(cancellationToken) ?? Defaults;
             var guarded = settings.SystemProxyEnabled && settings.SystemProxy?.GuardEnabled == true;
             if (!startup && !guarded) return null;
@@ -134,6 +137,7 @@ public sealed class MihomoSettingsService(
         await _gate.WaitAsync(cancellationToken);
         try
         {
+            if (await publication.UncoordinatedWriteProblemAsync(cancellationToken) is { } publicationProblem) return publicationProblem;
             var active = Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml");
             if (!File.Exists(active)) return ProxyProblemCodes.RuntimeNotInstalled;
             var settings = await ReadAsync(cancellationToken) ?? Defaults;
@@ -228,6 +232,7 @@ public sealed class MihomoSettingsService(
         }
         catch (JsonException) { return null; }
     }
+
 
     private async Task WriteAsync(ProxySettingsDto settings, CancellationToken cancellationToken)
     {

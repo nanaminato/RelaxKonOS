@@ -26,11 +26,12 @@ public sealed class RuntimeAuthorizationServer<T> : IAsyncDisposable where T : c
     }
 
     private NamedPipeServerStream CreatePipe() => new(RuntimeAuthorizationWire.Name(Channel.ChannelId),
-        PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+        PipeDirection.InOut, 2, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
 
     private async Task ServeAsync(NamedPipeServerStream first, Func<CancellationToken, Task<T>> read)
     {
         NamedPipeServerStream? next = first;
+        Task? connection = null;
         var acceptedNonces = new HashSet<string>(StringComparer.Ordinal);
         try
         {
@@ -39,7 +40,12 @@ public sealed class RuntimeAuthorizationServer<T> : IAsyncDisposable where T : c
                 await using (var pipe = next ?? throw new InvalidOperationException("Missing authorization listener."))
                 {
                     next = null;
-                    await pipe.WaitForConnectionAsync(stopped.Token);
+                    await (connection ?? pipe.WaitForConnectionAsync(stopped.Token));
+                    // Arm the next listener before replying. Otherwise a fast client can reconnect to
+                    // the Unix pipe listener being disposed after its previous response and lose a valid
+                    // authenticated challenge. Providers remain strictly serialized below.
+                    next = CreatePipe();
+                    connection = next.WaitForConnectionAsync(stopped.Token);
                     using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stopped.Token);
                     deadline.CancelAfter(TimeSpan.FromSeconds(10));
                     try
@@ -61,7 +67,6 @@ public sealed class RuntimeAuthorizationServer<T> : IAsyncDisposable where T : c
                     catch (Exception ex) when (ex is IOException or JsonException or RuntimePolicyException or OperationCanceledException)
                     { /* An unauthenticated, incomplete or timed-out connection cannot disclose material. */ }
                 }
-                if (!stopped.IsCancellationRequested) next = CreatePipe();
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or OperationCanceledException)
@@ -111,6 +116,12 @@ public static class RuntimeAuthorizationClient
                 if (configuration.OperationId == Guid.Empty) throw new RuntimePolicyException("runtime.authorization_unavailable");
                 if (configuration.Previous is { } previous) MihomoRuntimeMaterial.Validate(previous);
                 if (configuration.Candidate is { } candidate) MihomoRuntimeMaterial.Validate(candidate);
+            }
+            if (grant is MihomoInstallationAuthorization installation)
+            {
+                if (installation.OperationId == Guid.Empty || installation.PlanIdentity is not { Length: 64 }
+                    || !installation.PlanIdentity.All(Uri.IsHexDigit)) throw new RuntimePolicyException("runtime.authorization_unavailable");
+                if (installation.Candidate is { } candidate) MihomoRuntimeMaterial.Validate(candidate);
             }
             return grant;
         }

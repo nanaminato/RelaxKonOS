@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Security.Cryptography;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 
 namespace RelaxKonOS.ManagedRuntimes;
@@ -7,6 +8,12 @@ namespace RelaxKonOS.ManagedRuntimes;
 /// <summary>Shape and bounds of local published-state material. Does not parse YAML or authorize paths.</summary>
 public static class MihomoRuntimeMaterial
 {
+    public static string InstallationPlanIdentity(RuntimeChangePlan plan)
+    {
+        if (plan is null || plan.RuntimeId != "mihomo" || plan.Request is null || plan.Request.Change != RuntimeChange.Install || plan.Release is null)
+            throw new RuntimePolicyException("runtime.request_invalid");
+        return Convert.ToHexString(SHA256.HashData(RuntimeJson.Serialize(plan)));
+    }
     public static void Validate(MihomoPublishedRuntime published)
     {
         if (published.Yaml is not { Length: > 0 and <= 4 * 1024 * 1024 } yaml

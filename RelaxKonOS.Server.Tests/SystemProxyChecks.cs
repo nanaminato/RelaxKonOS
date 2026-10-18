@@ -60,7 +60,19 @@ internal static class SystemProxyChecks
             await fixture.Service.ReconcileSystemProxyAsync(true, default);
             TestAssert.Assert(!fixture.Host.Calls[^1].Settings.SystemProxyEnabled, "Startup did not attempt root-side cleanup while disabled.");
         }
-        Console.WriteLine("System proxy capability, PAC gating, apply/persist rollback and concurrent guard checks passed.");
+        using (var fixture = new Fixture())
+        {
+            var current = await fixture.Service.GetAsync(default);
+            var original = await File.ReadAllTextAsync(fixture.Active);
+            await fixture.Publication.BeginAsync(Guid.NewGuid(), 0,
+                new RelaxKonOS.Protocol.ManagedRuntimes.MihomoPublishedRuntime("# pending publication\n", [], 9090,
+                    "pending-controller-secret", [new("127.0.0.1", 7890)]), default);
+            TestAssert.Assert(await fixture.Service.UpdateAsync(Request(current with { MixedPort = 8123 }), default) == ProxyProblemCodes.RecoveryRequired
+                && await fixture.Service.ReconcileSystemProxyAsync(true, default) == ProxyProblemCodes.RecoveryRequired
+                && await File.ReadAllTextAsync(fixture.Active) == original && fixture.Host.Calls.Count == 0,
+                "Settings or the system-proxy guard bypassed a pending managed publication.");
+        }
+        Console.WriteLine("System proxy capability, PAC gating, apply/persist rollback, concurrent guard and pending publication checks passed.");
     }
     private static UpdateProxySettingsRequest Request(ProxySettingsDto settings) => new(settings.SystemProxyEnabled, settings.AllowLan,
         settings.DnsEnabled, settings.Ipv6Enabled, settings.UnifiedDelay, settings.LogLevel, settings.MixedPort,
@@ -71,6 +83,7 @@ internal static class SystemProxyChecks
         public TestProxyPaths Paths { get; }
         public HostWriter Host { get; } = new();
         public MihomoSettingsService Service { get; }
+        public MihomoPublicationStore Publication { get; }
         public string Active => Path.Combine(Paths.GetProtectedConfigurationDirectory(), "active.yaml");
         public Fixture()
         {
@@ -78,7 +91,8 @@ internal static class SystemProxyChecks
             Directory.CreateDirectory(Paths.GetProtectedConfigurationDirectory());
             Directory.CreateDirectory(Paths.GetStateDirectory());
             File.WriteAllText(Active, "mixed-port: 7890\nmode: rule\nproxies: []\nproxy-groups: []\nrules: []\n");
-            Service = new(Paths, new HealthyMihomoController(), new StaticProxySecretStore(), new MihomoControllerOptions(), Host);
+            Publication = new(Paths, new EphemeralDataProtectionProvider());
+            Service = new(Paths, new HealthyMihomoController(), new StaticProxySecretStore(), new MihomoControllerOptions(), Host, Publication);
         }
         public void Dispose() => Directory.Delete(root, recursive: true);
     }

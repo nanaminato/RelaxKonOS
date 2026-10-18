@@ -51,7 +51,8 @@ internal static async Task VerifyProxyConfigurationTransactionAsync(string root)
     var profile = await profiles.UpsertAsync(null, "Transaction", MihomoEngine.Id, null, CancellationToken.None);
     var engine = new TransactionTestEngine();
     var paths = new TestProxyPaths(Path.Combine(root, "proxy-configuration-files"));
-    var service = new ProxyConfigurationTransactionService(paths, new ProxyEngineRegistry([engine]), profiles, new StaticProxySecretStore(), new MihomoControllerOptions());
+    var publication = new MihomoPublicationStore(paths, new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider());
+    var service = new ProxyConfigurationTransactionService(paths, new ProxyEngineRegistry([engine]), profiles, new StaticProxySecretStore(), new MihomoControllerOptions(), publication);
     TestAssert.Assert(await service.ApplyAsync(profile.Id, "mode: rule\ngeodata-mode: true\ngeo-auto-update: true\ngeox-url:\n  geoip: https://untrusted.example/geoip.dat\n\"external-controller\": 192.0.2.4:9090\n\"secret\": stale-secret\n", CancellationToken.None) is null,
         "Valid Proxy YAML was not applied.");
     TestAssert.Assert(engine.ValidatedConfigurations.FirstOrDefault() is { } validated
@@ -86,6 +87,14 @@ internal static async Task VerifyProxyConfigurationTransactionAsync(string root)
         && (await profiles.GetAsync(second.Id, CancellationToken.None))!.IsActive
         && !(await profiles.GetAsync(profile.Id, CancellationToken.None))!.IsActive,
         "Stored profile activation did not switch both runtime YAML and active metadata.");
+    var beforePending = await File.ReadAllTextAsync(Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml"));
+    var pendingMaterial = new RelaxKonOS.Protocol.ManagedRuntimes.MihomoPublishedRuntime("# pending publication\n", [], 9090,
+        "pending-controller-secret", [new("127.0.0.1", 7890)]);
+    await publication.BeginAsync(Guid.NewGuid(), 0, pendingMaterial, default);
+    TestAssert.Assert(await service.StoreAsync(second.Id, "mode: direct\n", default) == ProxyProblemCodes.RecoveryRequired
+        && await service.ActivateStoredAsync(profile.Id, default) == ProxyProblemCodes.RecoveryRequired
+        && await File.ReadAllTextAsync(Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml")) == beforePending,
+        "Direct profile writes bypassed a pending managed publication.");
 }
 
 internal static async Task VerifyProxyTunSafetyAsync(string root)

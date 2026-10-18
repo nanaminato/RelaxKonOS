@@ -15,6 +15,8 @@ internal sealed record MihomoServiceObservation(bool Exists, bool Owned, bool Ru
 internal interface IMihomoArchiveHost
 {
     Task<MihomoServiceObservation> ObserveAsync(CancellationToken ct);
+    /// <summary>Fixed-unit ownership and stopped-state proof only; does not claim program/configuration health.</summary>
+    Task<RuntimeServiceObservation> ObserveRegistrationAsync(CancellationToken ct);
     Task StopAsync(CancellationToken ct);
     Task ConfigureAsync(string verifiedBinary, string protectedDataDirectory, string protectedConfiguration,
         string configurationIdentity, bool bootEnabled, CancellationToken ct);
@@ -189,9 +191,9 @@ internal sealed class MihomoArchiveAdapter(string protectedRoot, RuntimeArchiveS
 
     public async Task ValidateRestoreAsync(RuntimePendingSwitch pending, CancellationToken ct)
     {
-        var current = await CurrentAsync(ct);
         if (pending.Snapshot!.ConfigurationIdentity is { } oldIdentity)
         {
+            var current = await CurrentAsync(ct);
             var previous = await ReadConfigurationAsync(Path.Combine(Operation(pending.OperationId), "previous.yaml"), ct);
             if (Hash(previous) != oldIdentity || Hash(Encoding.UTF8.GetBytes(current.Yaml)) != oldIdentity)
                 throw new RuntimePolicyException("runtime.authorization_changed");
@@ -236,10 +238,10 @@ internal sealed class MihomoArchiveAdapter(string protectedRoot, RuntimeArchiveS
         var native = pending.Previous is null ? null : await ValidateNativeAsync(Binary(pending.Previous), Configuration,
             pending.Previous.Release, Data(pending.Previous.RevisionId), ct);
         var hash = File.Exists(Configuration) ? Hash(await ReadConfigurationAsync(Configuration, ct)) : null;
-        var current = await CurrentAsync(ct);
+        var current = actual.Running ? await CurrentAsync(ct) : null;
         var healthy = actual.Exists == registration.Exists && (!actual.Exists || actual.Owned && actual.BootEnabled.HasValue && pending.Previous is not null
             && SamePath(actual.Executable, Binary(pending.Previous)) && SamePath(actual.DataDirectory, Data(pending.Previous.RevisionId)))
-            && (!actual.Running || actual.AppliedConfigurationIdentity == hash && await host.ListenersHealthyAsync(current, ct));
+            && (!actual.Running || actual.AppliedConfigurationIdentity == hash && await host.ListenersHealthyAsync(current!, ct));
         return new(native?.Version, hash, actual.Running, actual.BootEnabled ?? false, healthy, healthy);
     }
 
@@ -305,6 +307,7 @@ internal sealed class MihomoArchiveAdapter(string protectedRoot, RuntimeArchiveS
         {
             var path = Path.Combine(Revision(revision.RevisionId), file.Path.Replace('/', Path.DirectorySeparatorChar));
             RuntimeSourceStore.RequireNoLinks(path);
+            await MihomoRuntimeData.RequireRegularFileAsync(path, "runtime.installed_file_drift", ct);
             await using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             if (input.Length != file.Length || !Convert.ToHexString(await SHA256.HashDataAsync(input, ct)).Equals(file.Sha256, StringComparison.OrdinalIgnoreCase))
                 throw new RuntimePolicyException("runtime.installed_file_drift");
@@ -365,6 +368,7 @@ internal sealed class MihomoArchiveAdapter(string protectedRoot, RuntimeArchiveS
     internal static async Task<byte[]> ReadConfigurationAsync(string path, CancellationToken ct)
     {
         RuntimeSourceStore.RequireNoLinks(path);
+        await MihomoRuntimeData.RequireRegularFileAsync(path, "runtime.native_configuration_invalid", ct);
         await using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
         if (input.Length > 4 * 1024 * 1024) throw new RuntimePolicyException("runtime.native_configuration_invalid");
         var bytes = new byte[checked((int)input.Length)]; await input.ReadExactlyAsync(bytes, ct); return bytes;

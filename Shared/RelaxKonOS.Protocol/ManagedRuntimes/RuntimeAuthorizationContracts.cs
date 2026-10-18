@@ -47,6 +47,17 @@ public sealed record MihomoConfigurationAuthorization([property: JsonRequired] G
     public override string ToString() => $"MihomoConfigurationAuthorization {{ OperationId = {OperationId}, protected material }}";
 }
 
+/// <summary>Candidate authority for one frozen install only. It is not a confirmed publication and
+/// cannot authorize updates, configuration publication or an unrelated installation/recovery.</summary>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed record MihomoInstallationAuthorization([property: JsonRequired] Guid OperationId,
+    [property: JsonRequired] DateTimeOffset ValidUntil, [property: JsonRequired] string PlanIdentity,
+    [property: JsonRequired] MihomoPublishedRuntime? Candidate) : IRuntimeAuthorizationGrant
+{
+    public static string RuntimeId => "mihomo";
+    public override string ToString() => $"MihomoInstallationAuthorization {{ OperationId = {OperationId}, protected material }}";
+}
+
 /// <summary>One operation's ephemeral local channel. No address, path, user, or executable is selectable.</summary>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record RuntimeAuthorizationChannel(Guid ChannelId, Guid OperationId, string RuntimeId, string Secret)

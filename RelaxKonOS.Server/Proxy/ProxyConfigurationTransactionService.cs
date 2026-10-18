@@ -18,11 +18,12 @@ public sealed class ProxyConfigurationTransactionService(
     IProxyProfileRepository profiles,
     IProxyControllerSecretStore controllerSecrets,
     MihomoControllerOptions controllerOptions,
+    MihomoPublicationStore publication,
     IProxyGeoDataService? geoData = null,
     IProxySettingsService? settingsService = null,
     ILogger<ProxyConfigurationTransactionService>? logger = null) : IProxyConfigurationTransactionService
 {
-    private readonly SemaphoreSlim _gate = new(1, 1);
+    private SemaphoreSlim _gate => publication.Gate;
     public async Task<string?> ApplyAsync(Guid profileId, string yaml, CancellationToken cancellationToken)
     {
         var stored = await StoreAsync(profileId, yaml, cancellationToken);
@@ -43,6 +44,7 @@ public sealed class ProxyConfigurationTransactionService(
         await _gate.WaitAsync(cancellationToken);
         try
         {
+            if (await publication.UncoordinatedWriteProblemAsync(cancellationToken) is { } publicationProblem) return publicationProblem;
             var directory = GetProfilesDirectory();
             var temporary = Path.Combine(directory, ".validate-" + Guid.NewGuid().ToString("N"));
             try
@@ -93,6 +95,7 @@ public sealed class ProxyConfigurationTransactionService(
         await _gate.WaitAsync(cancellationToken);
         try
         {
+            if (await publication.UncoordinatedWriteProblemAsync(cancellationToken) is { } publicationProblem) return publicationProblem;
             var yaml = await File.ReadAllTextAsync(storedPath, cancellationToken);
             var directory = paths.GetProtectedConfigurationDirectory(); Directory.CreateDirectory(directory); SetPrivateDirectory(directory);
             var active = Path.Combine(directory, "active.yaml");

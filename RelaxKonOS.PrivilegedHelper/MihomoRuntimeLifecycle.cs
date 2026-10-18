@@ -25,12 +25,15 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
     {
         var state = await EnsureStateAsync(ct);
         var receipt = state.Receipts.FirstOrDefault(r => r.OperationId == receiptOperationId);
-        return new(state.Installation, state.Active?.MeasuredVersion, state.Active?.RevisionId, state.ConfigurationIdentity,
+        var observation = HasPending(state) ? (state.Installation, (string?)null)
+            : await ObserveInstallationAsync(state, ct);
+        var verified = observation.Item1.Ownership == RuntimeOwnership.Managed;
+        return new(observation.Item1, verified ? state.Active?.MeasuredVersion : null, verified ? state.Active?.RevisionId : null, state.ConfigurationIdentity,
             state.Pending?.OperationId ?? state.Removal?.OperationId ?? state.Configuration?.OperationId,
             state.Pending?.Stage ?? state.Removal?.Stage ?? state.Configuration?.Stage,
             state.Pending?.RecoveryProblemCode ?? state.Pending?.ProblemCode
                 ?? state.Removal?.RecoveryProblemCode ?? state.Removal?.ProblemCode
-                ?? state.Configuration?.RecoveryProblemCode ?? state.Configuration?.ProblemCode,
+                ?? state.Configuration?.RecoveryProblemCode ?? state.Configuration?.ProblemCode ?? observation.Item2,
             receipt is null ? null : new(receipt.OperationId, receipt.Outcome, receipt.ProblemCode),
             state.Revisions.Select(r => new RuntimeInstalledRelease(r.RevisionId, r.Release.ReleaseId, r.MeasuredVersion)).ToArray(),
             // Read-only environment facts, so a refusal can be explained before anyone presses install.
@@ -41,7 +44,71 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
     {
         await EnsureStateAsync(ct);
         using var session = states.Acquire();
-        return Plan(sourceId, request, session.State!);
+        var state = session.State!;
+        if (HasPending(state)) return new(null, ["runtime.recovery_required"]);
+        var observation = await ObserveInstallationAsync(state, ct);
+        // Non-managed ownership can change outside RelaxKonOS. Reconcile only proven service absence or
+        // external ownership under the instance lock, never adopt files or a service as managed. Advancing
+        // the revision invalidates any plan made against the previous observation.
+        if (state.Active is null && observation.Installation.Ownership is RuntimeOwnership.Absent or RuntimeOwnership.External
+            && state.Installation.Ownership != observation.Installation.Ownership)
+        {
+            session.Save(state with { Installation = observation.Installation with
+                { StateRevision = checked(state.Installation.StateRevision + 1) } });
+            state = session.State!;
+        }
+        if (observation.Problem is { } problem) return new(null, [problem]);
+        return Plan(sourceId, request, state);
+    }
+
+    private static bool HasPending(RuntimeArchiveState state) => state.Pending is not null || state.Removal is not null
+        || state.Configuration is not null || state.Installation.RecoveryRequired;
+
+    private async Task<(RuntimeInstallation Installation, string? Problem)> ObserveInstallationAsync(RuntimeArchiveState state, CancellationToken ct)
+    {
+        try
+        {
+            var service = await host.ObserveAsync(ct);
+            if (state.Active is null)
+            {
+                if (service.Exists) return (state.Installation with { Ownership = RuntimeOwnership.External }, "runtime.external_installation");
+                // Retained published configuration is owned data, not an unknown flat installation.
+                if (state.ConfigurationIdentity is null && (File.Exists(Path.Combine(root, "active.yaml"))
+                    || File.Exists(Path.Combine(root, "mihomo")) || File.Exists(Path.Combine(root, "installed.json"))))
+                    return (state.Installation with { Ownership = RuntimeOwnership.Unknown }, "runtime.state_unknown");
+                return (state.Installation with { Ownership = RuntimeOwnership.Absent }, null);
+            }
+            var active = state.Active;
+            var binary = Path.Combine(root, "versions", active.RevisionId.ToString("N"), active.Release.Artifact.EntryPoint);
+            var data = Path.Combine(root, "data", active.RevisionId.ToString("N"));
+            if (!service.Owned) return (state.Installation with { Ownership = RuntimeOwnership.External }, "runtime.external_installation");
+            if (!service.Exists || service.BootEnabled is null || !MihomoArchiveAdapter.SamePath(service.Executable, binary)
+                || !MihomoArchiveAdapter.SamePath(service.DataDirectory, data))
+                return (state.Installation with { Ownership = RuntimeOwnership.Unknown }, "runtime.state_unknown");
+            RuntimeSourceStore.RequireNoLinks(data);
+            if (!Directory.Exists(data)) throw new RuntimePolicyException("runtime.data_snapshot_missing");
+            foreach (var file in active.Release.Artifact.Layout.Files)
+            {
+                var path = Path.Combine(root, "versions", active.RevisionId.ToString("N"), file.Path);
+                RuntimeSourceStore.RequireNoLinks(path);
+                await MihomoRuntimeData.RequireRegularFileAsync(path, "runtime.installed_file_drift", ct);
+                if (OperatingSystem.IsLinux() && file.Executable && (File.GetUnixFileMode(path) & UnixFileMode.UserExecute) == 0)
+                    throw new RuntimePolicyException("runtime.installed_file_drift");
+                await using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+                if (input.Length != file.Length || !Convert.ToHexString(await SHA256.HashDataAsync(input, ct)).Equals(file.Sha256, StringComparison.OrdinalIgnoreCase))
+                    throw new RuntimePolicyException("runtime.installed_file_drift");
+            }
+            var identity = MihomoArchiveAdapter.Hash(await MihomoArchiveAdapter.ReadConfigurationAsync(Path.Combine(root, "active.yaml"), ct));
+            if (identity != state.ConfigurationIdentity || service.Running && service.AppliedConfigurationIdentity != identity)
+                throw new RuntimePolicyException("runtime.configuration_drift");
+            return (state.Installation, null);
+        }
+        catch (RuntimePolicyException ex)
+        {
+            return (state.Installation with { Ownership = ex.ProblemCode == "runtime.external_installation" ? RuntimeOwnership.External : RuntimeOwnership.Unknown }, ex.ProblemCode);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        { return (state.Installation with { Ownership = RuntimeOwnership.Unknown }, "runtime.state_unknown"); }
     }
 
     private RuntimePlanResult Plan(string sourceId, RuntimePlanRequest request, RuntimeArchiveState state)
@@ -80,7 +147,7 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
         // Removal never reads published credentials, so it does not depend on a live authorization channel.
         return plan.Request.Change == RuntimeChange.Uninstall
             ? await Removal(channel, progress).ExecuteAsync(operationId, plan, cancellation.Token)
-            : await Switch(channel, progress).ExecuteAsync(operationId, plan, cancellation.Token);
+            : await Switch(channel, progress, plan.Request.Change == RuntimeChange.Install ? plan : null).ExecuteAsync(operationId, plan, cancellation.Token);
     }
 
     /// <summary>
@@ -114,7 +181,8 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
             return await Configuration(channel, progress).RecoverAsync(operationId, ct);
         return states.Read()?.Removal is not null
             ? await Removal(channel, progress).RecoverAsync(operationId, ct)
-            : await Switch(channel, progress).RecoverAsync(operationId, ct);
+            : await Switch(channel, progress, states.Read()?.Pending is { Plan.Request.Change: RuntimeChange.Install } installation
+                ? installation.Plan : null).RecoverAsync(operationId, ct);
     }
 
     /// <summary>
@@ -130,10 +198,20 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
             var observed = await host.ObserveAsync(ct);
             return snapshot with { Service = new(observed.Exists, observed.Running, observed.BootEnabled) };
         }
-        catch (RuntimePolicyException ex) { return snapshot with { ServiceProblem = ex.ProblemCode }; }
+        catch (RuntimePolicyException ex)
+        {
+            return await RecoveryObservationFailureAsync(snapshot, ex.ProblemCode, ct);
+        }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException
             or System.ComponentModel.Win32Exception)
-        { return snapshot with { ServiceProblem = "runtime.service_observation_failed" }; }
+        { return await RecoveryObservationFailureAsync(snapshot, "runtime.service_observation_failed", ct); }
+    }
+
+    private async Task<RuntimeRecoverySnapshot> RecoveryObservationFailureAsync(RuntimeRecoverySnapshot snapshot, string problem, CancellationToken ct)
+    {
+        try { return snapshot with { Service = await host.ObserveRegistrationAsync(ct), ServiceProblem = problem }; }
+        catch (Exception observation) when (observation is RuntimePolicyException or IOException or UnauthorizedAccessException or InvalidOperationException
+            or System.ComponentModel.Win32Exception) { return snapshot with { ServiceProblem = problem }; }
     }
 
     /// <summary>
@@ -144,23 +222,23 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
     {
         var snapshot = RuntimeArchiveRecovery.Require(RuntimeArchiveRecovery.Describe(await EnsureStateAsync(ct)), operationId);
         // A unit this installation does not own must not be stopped by its emergency entry.
-        var observed = await host.ObserveAsync(ct);
+        var observed = await host.ObserveRegistrationAsync(ct);
         if (observed.Exists)
         {
             await host.StopAsync(CancellationToken.None);
             try { await host.SetBootAsync(false, CancellationToken.None); }
             catch (RuntimePolicyException ex) when (ex.ProblemCode == "runtime.state_unknown") { }
-            observed = await host.ObserveAsync(ct);
+            observed = await host.ObserveRegistrationAsync(ct);
         }
         if (observed.Running) throw new RuntimePolicyException("runtime.recovery_stop_failed");
-        return snapshot with { Service = new(observed.Exists, observed.Running, observed.BootEnabled) };
+        return snapshot with { Service = observed };
     }
 
     /// <summary>Closes an unrecoverable transaction. The stop is re-observed here instead of trusted from an earlier call.</summary>
     internal async Task<RuntimeSwitchResult> CloseAsync(Guid operationId, CancellationToken ct)
     {
         await EnsureStateAsync(ct);
-        var observed = await host.ObserveAsync(ct);
+        var observed = await host.ObserveRegistrationAsync(ct);
         using var session = states.Acquire();
         return RuntimeArchiveRecovery.Close(session, operationId, confirmed: true,
             new(observed.Exists, observed.Running, observed.BootEnabled));
@@ -178,8 +256,10 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
             RuntimeAuthorizationClient.ReadAsync<MihomoConfigurationAuthorization>(channel, channel.OperationId, ct);
     }
 
-    private RuntimeArchiveSwitch Switch(RuntimeAuthorizationChannel channel, RuntimeStageReporter? progress) => new(states,
-        new MihomoArchiveAdapter(root, states, sources, transport ?? new RuntimeArchiveTransport(), host, new Authorization(channel), protect, progress, environment), progress);
+    private RuntimeArchiveSwitch Switch(RuntimeAuthorizationChannel channel, RuntimeStageReporter? progress, RuntimeChangePlan? installationPlan) => new(states,
+        new MihomoArchiveAdapter(root, states, sources, transport ?? new RuntimeArchiveTransport(), host,
+            installationPlan is null ? new Authorization(channel) : new MihomoInstallationAuthorizationReader(states, installationPlan,
+                ct => RuntimeAuthorizationClient.ReadAsync<MihomoInstallationAuthorization>(channel, channel.OperationId, ct)), protect, progress, environment), progress);
 
     private async Task<RuntimeArchiveState> EnsureStateAsync(CancellationToken ct)
     {

@@ -21,6 +21,28 @@ internal static class MihomoAuthorizationChecks
         var material = new MihomoPublishedRuntime("mixed-port: 17890\n", ["with_gvisor"], 9090,
             "private-controller-credential", [new("127.0.0.1", 17890)]);
         var current = new MihomoCurrentAuthorization(DateTimeOffset.UtcNow.AddSeconds(30), material);
+        var publicationId = Guid.NewGuid();
+        var configurationGrant = new MihomoConfigurationAuthorization(publicationId, DateTimeOffset.UtcNow.AddSeconds(30), material, material);
+        await using (var configuration = new RuntimeAuthorizationServer<MihomoConfigurationAuthorization>(Guid.NewGuid(),
+            _ => Task.FromResult(configurationGrant)))
+        {
+            Check((await RuntimeAuthorizationClient.ReadAsync<MihomoConfigurationAuthorization>(configuration.Channel,
+                configuration.Channel.OperationId, default)).OperationId == publicationId,
+                "A recovery channel carries the explicitly named original publication");
+            Check(!configurationGrant.ToString().Contains(material.ControllerSecret, StringComparison.Ordinal), "Configuration grant diagnostics redact both materials");
+            await Denied(async () => await RuntimeAuthorizationClient.ReadAsync<MihomoCurrentAuthorization>(configuration.Channel,
+                configuration.Channel.OperationId, default));
+            configurationGrant = configurationGrant with { Candidate = null };
+            Check((await RuntimeAuthorizationClient.ReadAsync<MihomoConfigurationAuthorization>(configuration.Channel,
+                configuration.Channel.OperationId, default)) is { Previous: not null, Candidate: null },
+                "Revoked candidate does not prevent independently authorized compensation");
+            configurationGrant = configurationGrant with { OperationId = Guid.Empty };
+            await Denied(async () => await RuntimeAuthorizationClient.ReadAsync<MihomoConfigurationAuthorization>(configuration.Channel,
+                configuration.Channel.OperationId, default));
+        }
+        await using (var ordinary = new RuntimeAuthorizationServer<MihomoCurrentAuthorization>(Guid.NewGuid(), _ => Task.FromResult(current)))
+            await Denied(async () => await RuntimeAuthorizationClient.ReadAsync<MihomoConfigurationAuthorization>(ordinary.Channel,
+                ordinary.Channel.OperationId, default));
         var reads = 0;
         await using (var server = new RuntimeAuthorizationServer<MihomoCurrentAuthorization>(Guid.NewGuid(), _ =>
         { reads++; return Task.FromResult(current); }))
@@ -34,6 +56,10 @@ internal static class MihomoAuthorizationChecks
             Check(received.Published!.Yaml == material.Yaml && received.Published.ControllerSecret == material.ControllerSecret
                 && received.Published.RequiredBuildTags.SequenceEqual(material.RequiredBuildTags)
                 && received.Published.Listeners.SequenceEqual(material.Listeners), "Protected Mihomo material round-trips through the authenticated pipe");
+            for (var attempt = 0; attempt < 64; attempt++)
+                await RuntimeAuthorizationClient.ReadAsync<MihomoCurrentAuthorization>(server.Channel, server.Channel.OperationId, default);
+            Check(reads == 65, "Immediate successive authenticated challenges always have a live next listener");
+            reads = 1;
             current = current with { Published = material with { Yaml = "mixed-port: 17891\n", Listeners = [new("127.0.0.1", 17891)] } };
             Check((await RuntimeAuthorizationClient.ReadAsync<MihomoCurrentAuthorization>(server.Channel, server.Channel.OperationId, default))
                 .Published!.Yaml == current.Published.Yaml && reads == 2, "Each challenge reads the fresh published state");

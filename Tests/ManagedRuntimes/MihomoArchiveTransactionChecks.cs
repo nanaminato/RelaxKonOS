@@ -218,6 +218,9 @@ internal static class MihomoArchiveTransactionChecks
         internal int Stops;
         internal Action? BeforeStop, AfterStart, BeforeRemove;
         public Task<MihomoServiceObservation> ObserveAsync(CancellationToken ct) => Task.FromResult(Observation);
+        public Task<RuntimeServiceObservation> ObserveRegistrationAsync(CancellationToken ct) => Observation.Owned
+            ? Task.FromResult(new RuntimeServiceObservation(Observation.Exists, Observation.Running, Observation.BootEnabled))
+            : throw new RuntimePolicyException("runtime.external_installation");
         public Task StopAsync(CancellationToken ct)
         {
             Stops++;

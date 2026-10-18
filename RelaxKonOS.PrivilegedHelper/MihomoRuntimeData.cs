@@ -12,6 +12,19 @@ internal static class MihomoRuntimeData
     internal const long MaximumBytes = 1024L * 1024 * 1024;
     private const int MaximumEntries = 4096;
 
+    internal static async Task RequireRegularFileAsync(string path, string problemCode, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        RuntimeSourceStore.RequireNoLinks(path);
+        if (OperatingSystem.IsLinux())
+        {
+            var kind = (await NativeRuntimeProcess.RunAsync("/usr/bin/stat", ["-c", "%F", "--", path], 128)).Trim();
+            if (kind is not ("regular file" or "regular empty file")) throw new RuntimePolicyException(problemCode);
+        }
+        else if ((File.GetAttributes(path) & FileAttributes.Device) != 0) throw new RuntimePolicyException(problemCode);
+        ct.ThrowIfCancellationRequested();
+    }
+
     internal static async Task RetainAsync(string root, RuntimeStoredRevision active, CancellationToken ct)
     {
         var path = Path.Combine(root, "retained-data.json");
@@ -82,14 +95,7 @@ internal static class MihomoRuntimeData
                     await CopyDirectoryAsync(entry, target, depth + 1);
                     continue;
                 }
-                if (OperatingSystem.IsLinux())
-                {
-                    var kind = (await NativeRuntimeProcess.RunAsync("/usr/bin/stat", ["-c", "%F", "--", entry], 128)).Trim();
-                    if (kind is not ("regular file" or "regular empty file"))
-                        throw new RuntimePolicyException("runtime.data_file_unsupported");
-                }
-                else if ((File.GetAttributes(entry) & FileAttributes.Device) != 0)
-                    throw new RuntimePolicyException("runtime.data_file_unsupported");
+                await RequireRegularFileAsync(entry, "runtime.data_file_unsupported", ct);
                 await using var input = new FileStream(entry, FileMode.Open, FileAccess.Read, FileShare.Read);
                 if (input.Length > MaximumBytes - total) throw new RuntimePolicyException("runtime.data_snapshot_too_large");
                 var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None };

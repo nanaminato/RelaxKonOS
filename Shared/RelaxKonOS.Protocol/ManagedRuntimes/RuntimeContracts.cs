@@ -77,6 +77,8 @@ public static class RuntimeRoutes
     public const string Refresh = Sources + "/{sourceId}/refresh";
     public const string SingBoxInstallation = Root + "/sing-box/installation";
     public const string SingBoxPlan = Root + "/sing-box/plan";
+    public const string MihomoInstallation = Root + "/mihomo/installation";
+    public const string MihomoPlan = Root + "/mihomo/plan";
     /// <summary>Read-only ledger and live service facts for an unfinished transaction.</summary>
     public const string SingBoxRecovery = Root + "/sing-box/recovery";
     /// <summary>Retries the Host's own compensation; never prepares a new revision.</summary>

@@ -76,8 +76,8 @@ internal static class MihomoPublicationChecks
             var next = await store.BeginAsync(nextOperation, confirmed.Revision, material with { Yaml = material.Yaml + "# draft\n" }, default);
             Check(next.Published!.Yaml == material.Yaml, "Staging a draft retains the old published snapshot");
             await Denied(async () => await provider.ReadAsync(default), "runtime.publication_unconfirmed");
-            await Denied(async () => await store.AbortAsync(nextOperation, new string('0', 64), default), "runtime.publication_unconfirmed");
-            var restored = await store.AbortAsync(nextOperation, identity, default);
+            await Denied(async () => await store.AbortAsync(nextOperation, new string('0', 64), false, default), "runtime.publication_unconfirmed");
+            var restored = await store.AbortAsync(nextOperation, identity, false, default);
             Check((await provider.ReadAsync(default)).Published!.Yaml == material.Yaml, "Verified compensation restores authorization without publishing the draft");
             await Denied(async () => await store.BeginAsync(Guid.NewGuid(), confirmed.Revision, material, default), "runtime.state_revision_conflict");
             Check(secrets.Creates == 0, "Authorization never generates a new controller secret");
@@ -104,12 +104,21 @@ internal static class MihomoPublicationChecks
                 Check(fresh.Published!.Yaml == material.Yaml && channel.RuntimeId == "mihomo", "Server composition supplies a fresh runtime-bound callback");
                 return new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new RuntimeSwitchResult(operationId, RuntimeSwitchOutcome.Succeeded, null))));
             }), store, provider, new TestMode(ServerMode.System));
-            Check((await service.ExecuteAsync(operationId, plan, default)).Outcome == RuntimeSwitchOutcome.Succeeded && store.Gate.CurrentCount == 1,
+            await Denied(() => service.ExecuteAsync(operationId, plan, default), "runtime.removal_publication_required");
+            await store.Gate.WaitAsync();
+            RuntimeSwitchResult removal;
+            try
+            {
+                await store.BeginRemovalAsync(operationId, restored.Revision, plan, default);
+                removal = await service.RemoveUnderGateAsync(operationId, plan, default);
+            }
+            finally { store.Gate.Release(); }
+            Check(removal.Outcome == RuntimeSwitchOutcome.Succeeded && store.Gate.CurrentCount == 1,
                 "The Server returns the Helper receipt and releases its publication gate");
             Check(channel is not null && !JsonSerializer.Serialize(plan).Contains(channel.Secret, StringComparison.Ordinal),
                 "Ephemeral channel credentials never enter the frozen installation plan");
             var user = new MihomoRuntimeService(new Transport((_, _) => throw new Exception("User mode reached Helper")), store, provider, new TestMode(ServerMode.User));
-            await Denied(async () => await user.ExecuteAsync(Guid.NewGuid(), plan, default), "runtime.platform_unsupported");
+            await Denied(async () => await user.RemoveUnderGateAsync(operationId, plan, default), "runtime.platform_unsupported");
             Check(helperCalls == 1 && store.Gate.CurrentCount == 1, "Refused host modes leave the gate available");
 
             var secretStore = new DataProtectionProxyControllerSecretStore(new HostEnvironment(root), protection);

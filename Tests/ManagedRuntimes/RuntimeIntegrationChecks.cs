@@ -104,9 +104,11 @@ internal static class RuntimeIntegrationChecks
             await using var app = builder.Build();
             app.MapRuntimeCatalogEndpoints();
             var endpoints = ((IEndpointRouteBuilder)app).DataSources.SelectMany(s => s.Endpoints).OfType<RouteEndpoint>().ToArray();
-            Check(endpoints.Length == 9 && endpoints.Any(e => e.RoutePattern.RawText == RuntimeRoutes.SingBoxInstallation)
-                && endpoints.Any(e => e.RoutePattern.RawText == RuntimeRoutes.SingBoxPlan),
-                "Source/catalog, sing-box installation observation and frozen planning are exposed without a second execution ledger");
+            Check(endpoints.Length == 11 && endpoints.Any(e => e.RoutePattern.RawText == RuntimeRoutes.SingBoxInstallation)
+                && endpoints.Any(e => e.RoutePattern.RawText == RuntimeRoutes.SingBoxPlan)
+                && endpoints.Any(e => e.RoutePattern.RawText == RuntimeRoutes.MihomoInstallation)
+                && endpoints.Any(e => e.RoutePattern.RawText == RuntimeRoutes.MihomoPlan),
+                "Source/catalog, both runtime observations and frozen planning are exposed without a second execution ledger");
             foreach (var route in new[] { RuntimeRoutes.SingBoxInstallation, RuntimeRoutes.SingBoxRecovery })
                 Check(endpoints.Count(e => e.RoutePattern.RawText == route) == 1, "Recovery observation route is readable exactly once: " + route);
             foreach (var route in new[] { RuntimeRoutes.SingBoxRecoveryRetry, RuntimeRoutes.SingBoxRecoveryStop, RuntimeRoutes.SingBoxRecoveryClose })

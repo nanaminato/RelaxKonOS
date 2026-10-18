@@ -30,10 +30,9 @@ internal static class MihomoSystemdAcceptance
         const string secret = "systemd-mihomo-acceptance-secret";
         var older = catalog.Releases.Single(r => r.SortVersion == "1.19.10");
         var newer = catalog.Releases.Single(r => r.SortVersion == "1.19.30");
-        var yaml = MihomoManagedConfiguration.WithRuntimeSettings(
-            MihomoManagedConfiguration.WithServerControllerSettings("rules:\n  - MATCH,DIRECT\n",
-                new() { Endpoint = new($"http://127.0.0.1:{controllerPort}/") }, secret),
-            new ProxySettingsDto(false, false, false, false, false, "info", mixedPort));
+        var yaml = MihomoInstallationBootstrapService.CreateMaterial(
+            new ProxySettingsDto(false, false, true, false, false, "info", mixedPort),
+            new() { Endpoint = new($"http://127.0.0.1:{controllerPort}/") }, secret).Yaml;
         var published = new MihomoPublishedRuntime(yaml, ["with_gvisor"],
             ControllerPort: controllerPort, ControllerSecret: secret,
             Listeners: [new("127.0.0.1", mixedPort)]);
@@ -43,6 +42,8 @@ internal static class MihomoSystemdAcceptance
             transport: new Transport(older.ReleaseId, olderArchive, newerArchive));
         var stages = new List<InstallationStage>();
         Action<InstallationStage>? configurationStage = null;
+        var revokeInstallationCandidate = false;
+        var mismatchInstallationBinding = false;
         async Task<T> HelperAsync<T>(PrivilegedOperationRequest request)
         {
             var result = await MihomoRuntimeOperations.ExecuteAsync(request, () => lifecycle, frame =>
@@ -59,6 +60,14 @@ internal static class MihomoSystemdAcceptance
                 OperationId: Guid.NewGuid(), RuntimeLifecycle: new(SourceId: plan.Release?.SourceId ?? "removal", Plan: plan.Request)));
             if (planned.Plan is null) throw new Exception("Mihomo plan refusal: " + string.Join(',', planned.Problems));
             var operationId = Guid.NewGuid();
+            if (plan.Request.Change == RuntimeChange.Install)
+            {
+                await using var installationCallback = new RuntimeAuthorizationServer<MihomoInstallationAuthorization>(operationId, async ct =>
+                    new(operationId, DateTimeOffset.UtcNow.AddSeconds(30), mismatchInstallationBinding ? new string('0', 64)
+                        : MihomoRuntimeMaterial.InstallationPlanIdentity(planned.Plan), revokeInstallationCandidate ? null : (await grant.ReadAsync(ct)).Published));
+                return await HelperAsync<RuntimeSwitchResult>(new(PrivilegedOperationKind.MihomoRuntimeExecute, OperationId: operationId,
+                    RuntimeLifecycle: new(Authorization: installationCallback.Channel, FrozenPlan: planned.Plan)));
+            }
             await using var callback = new RuntimeAuthorizationServer<MihomoCurrentAuthorization>(operationId, grant.ReadAsync);
             return await HelperAsync<RuntimeSwitchResult>(new(PrivilegedOperationKind.MihomoRuntimeExecute, OperationId: operationId,
                 RuntimeLifecycle: new(Authorization: callback.Channel, FrozenPlan: planned.Plan)));
@@ -74,20 +83,40 @@ internal static class MihomoSystemdAcceptance
         {
             var initial = await HelperAsync<RuntimeInstallationSnapshot>(new(PrivilegedOperationKind.MihomoRuntimeQuery, OperationId: Guid.NewGuid()));
             Check(initial.Installation.Ownership == RuntimeOwnership.Absent, "Helper initializes the real host-bound absent installation");
-            var install = await ExecuteAsync(Plan(RuntimeChange.Install, older, "systemd-install"));
+            mismatchInstallationBinding = true;
+            var refusedBootstrap = await ExecuteAsync(Plan(RuntimeChange.Install, older, "systemd-mismatched-bootstrap"));
+            Check(refusedBootstrap.Outcome == RuntimeSwitchOutcome.Failed && !(await host.ObserveAsync(default)).Exists
+                && states.Read()!.Installation.Ownership == RuntimeOwnership.Absent,
+                "A candidate grant for a different frozen installation is refused without creating a service");
+            mismatchInstallationBinding = false;
+            var installation = await MihomoServerInstallationAcceptance.RunAsync(lifecycle, Plan(RuntimeChange.Install, older, "systemd-install"), published,
+                frame => { if (frame.Stage is { } stage) stages.Add(stage); });
+            count += installation.Checks;
+            var install = installation.Receipt;
             Check(install.Outcome == RuntimeSwitchOutcome.Succeeded, "Real systemd install: " + install.ProblemCode);
-            Check(grant.Reads > 0 && stages.Contains(InstallationStage.Downloading) && stages.Contains(InstallationStage.HealthChecking),
-                "Real Helper transaction reads the operation-scoped typed callback and reports measured stages");
+            Check(stages.Contains(InstallationStage.Downloading) && stages.Contains(InstallationStage.HealthChecking),
+                "Real Server/Helper installation reports measured preparation and health stages");
             var snapshot = await HelperAsync<RuntimeInstallationSnapshot>(new(PrivilegedOperationKind.MihomoRuntimeQuery, OperationId: install.OperationId));
             Check(snapshot.Receipt is { Outcome: RuntimeSwitchOutcome.Succeeded } && !JsonSerializer.Serialize(snapshot).Contains(secret, StringComparison.Ordinal),
                 "Public Helper observation has the operation receipt without protected controller material");
             var observed = await host.ObserveAsync(default);
             Check(observed.Exists && !observed.Running && observed.BootEnabled == false, "Real registration starts neither service nor boot enablement");
+            var observedBinary = Path.Combine(root, "versions", states.Read()!.Active!.RevisionId.ToString("N"), "mihomo");
+            var observedMode = File.GetUnixFileMode(observedBinary);
+            try
+            {
+                File.SetUnixFileMode(observedBinary, observedMode | UnixFileMode.GroupWrite);
+                Check((await lifecycle.QueryAsync(default)) is { Installation.Ownership: RuntimeOwnership.Unknown, MeasuredVersion: null,
+                    ProblemCode: "runtime.service_scope_invalid" }, "Stopped real registration cannot mask writable program protection drift");
+            }
+            finally { File.SetUnixFileMode(observedBinary, observedMode); }
             await host.StartAsync(default);
             Check(await HealthyAsync(host, published), "Real old release owns listener and authenticated version controller");
             Check(await ProbeAsync(mixedPort), "Old release forwards real HTTP through its mixed listener");
             await host.SetBootAsync(true, default);
             Check((await host.ObserveAsync(default)) is { Running: true, BootEnabled: true }, "Boot enablement does not stop a running service");
+
+            count += await MihomoServerPublicationAcceptance.RunAsync(lifecycle, published, mixedPort, ProbeAsync);
 
             var configurationBefore = states.Read()!;
             var configurationRevision = configurationBefore.Active!.RevisionId;
@@ -108,8 +137,11 @@ internal static class MihomoSystemdAcceptance
                 await using var callback = new RuntimeAuthorizationServer<MihomoConfigurationAuthorization>(operation, _ =>
                     Task.FromResult(new MihomoConfigurationAuthorization(operation, DateTimeOffset.UtcNow.AddSeconds(30),
                         denyPrevious ? null : previous, denyCandidate ? null : next)));
-                return await HelperAsync<RuntimeSwitchResult>(new(PrivilegedOperationKind.MihomoRuntimeConfigure,
+                var result = await HelperAsync<RuntimeSwitchResult>(new(PrivilegedOperationKind.MihomoRuntimeConfigure,
                     OperationId: operation, RuntimeLifecycle: new(Authorization: callback.Channel, ConfigurationPlan: plan)));
+                if (result.Outcome != RuntimeSwitchOutcome.Succeeded)
+                    Console.Error.WriteLine($"Configuration acceptance {key}: {result.Outcome}, {result.ProblemCode}, recovery={states.Read()?.Configuration?.RecoveryProblemCode}");
+                return result;
             }
             var configured = await ConfigureAsync(published, candidate, "configuration-change");
             Check(configured.Outcome == RuntimeSwitchOutcome.Succeeded && await HealthyAsync(host, candidate)
@@ -122,6 +154,20 @@ internal static class MihomoSystemdAcceptance
                 "Quiescent data backup remains identified by the publication receipt");
             Check((await ConfigureAsync(candidate, published, "configuration-back")).Outcome == RuntimeSwitchOutcome.Succeeded
                 && await ProbeAsync(mixedPort), "A second explicit publication restores the original listener");
+
+            var snapshotFifo = Path.Combine(Path.GetDirectoryName(configurationMarker)!, "snapshot-refusal");
+            await NativeRuntimeProcess.RunAsync("/usr/bin/mkfifo", [snapshotFifo], 128);
+            try
+            {
+                var snapshotRejected = await ConfigureAsync(published, candidate, "configuration-partial-snapshot");
+                Check(snapshotRejected.Outcome == RuntimeSwitchOutcome.Failed && snapshotRejected.ProblemCode == "runtime.data_file_unsupported"
+                    && await HealthyAsync(host, published) && await ProbeAsync(mixedPort),
+                    "A partial quiescent data snapshot failure restores the real old service without consuming the incomplete backup");
+                Check(await File.ReadAllTextAsync(configurationMarker) == "confirmed-data"
+                    && !Directory.Exists(Path.Combine(root, "operations", snapshotRejected.OperationId.ToString("N"), "data-backup")),
+                    "Incomplete snapshot never becomes a committed backup or replaces live data");
+            }
+            finally { File.Delete(snapshotFifo); }
 
             configurationStage = stage =>
             {
@@ -147,6 +193,19 @@ internal static class MihomoSystemdAcceptance
             configurationStage = null;
             Check(interrupted.Outcome == RuntimeSwitchOutcome.RecoveryRequired && states.Read()!.Configuration is not null
                 && !(await host.ObserveAsync(default)).Running, "Revoked old authorization leaves the real service stopped and transaction pending");
+            var recoveryMode = File.GetUnixFileMode(observedBinary);
+            try
+            {
+                File.SetUnixFileMode(observedBinary, recoveryMode | UnixFileMode.GroupWrite);
+                var unhealthy = await HelperAsync<RuntimeRecoverySnapshot>(new(PrivilegedOperationKind.MihomoRuntimeRecoveryQuery, OperationId: Guid.NewGuid()));
+                Check(unhealthy is { Service.Running: false, ServiceProblem: "runtime.service_scope_invalid" },
+                    "Real recovery reports stopped unit scope while retaining the program protection failure");
+                var stopped = await HelperAsync<RuntimeRecoverySnapshot>(new(PrivilegedOperationKind.MihomoRuntimeRecoveryStop,
+                    OperationId: Guid.NewGuid(), RuntimeLifecycle: new(RecoveryOperationId: interrupted.OperationId)));
+                Check(stopped is { Service.Running: false, Service.BootEnabled: false }
+                    && states.Read()!.Configuration is not null, "Real emergency stop remains available with untrusted program permissions and no credential channel");
+            }
+            finally { File.SetUnixFileMode(observedBinary, recoveryMode); }
             var configurationRecovery = await HelperAsync<RuntimeRecoverySnapshot>(new(PrivilegedOperationKind.MihomoRuntimeRecoveryQuery, OperationId: Guid.NewGuid()));
             Check(configurationRecovery.Change == RuntimeChange.Configure && configurationRecovery.OperationId == interrupted.OperationId
                 && configurationRecovery.NeedsOperatorDecision, "Helper recovery query identifies the real pending publication");
@@ -166,8 +225,9 @@ internal static class MihomoSystemdAcceptance
             Check((await ConfigureAsync(published, candidate, "configuration-stopped")).Outcome == RuntimeSwitchOutcome.Succeeded
                 && (await host.ObserveAsync(default)) is { Running: false, BootEnabled: true },
                 "Publishing to a stopped service preserves independent boot enablement without starting it");
-            Check((await ConfigureAsync(candidate, published, "configuration-stopped-back")).Outcome == RuntimeSwitchOutcome.Succeeded,
-                "Stopped configuration returns to the publication used by later version transactions");
+            var stoppedBack = await ConfigureAsync(candidate, published, "configuration-stopped-back");
+            Check(stoppedBack.Outcome == RuntimeSwitchOutcome.Succeeded,
+                "Stopped configuration returns to the publication used by later version transactions: " + stoppedBack.ProblemCode);
             await host.StartAsync(default);
             Check(await HealthyAsync(host, published), "Explicit start uses the newly confirmed stopped configuration");
 
@@ -208,19 +268,25 @@ internal static class MihomoSystemdAcceptance
                     current.Installation.StateRevision, 0, 0, null, key, KeepData: keepData), "mihomo", null,
                     current.Active!.Release.ReleaseId);
             }
-            Check((await ExecuteAsync(RemovePlan("systemd-retain", true))).Outcome == RuntimeSwitchOutcome.Succeeded
-                && !(await host.ObserveAsync(default)).Exists, "Retention uninstall removes only the owned real registration");
-            Check(File.Exists(Path.Combine(root, "retained-data.json")) && File.Exists(Path.Combine(root, "active.yaml")),
-                "Real retention uninstall keeps configuration and data provenance");
-            var reinstall = await ExecuteAsync(Plan(RuntimeChange.Install, older, "systemd-reinstall"));
-            Check(reinstall.Outcome == RuntimeSwitchOutcome.Succeeded && await File.ReadAllTextAsync(Path.Combine(root, "data",
+            count += await MihomoServerRemovalAcceptance.RunAsync(lifecycle, RemovePlan("systemd-retain", true), published,
+                () => Plan(RuntimeChange.Install, older, "systemd-reinstall"));
+            Check((await host.ObserveAsync(default)) is { Exists: true, Running: false, BootEnabled: false },
+                "Retained reinstall restores the registration without starting or enabling boot");
+            Check(File.Exists(Path.Combine(root, "active.yaml")), "Real retained reinstall keeps configuration");
+            Check(await File.ReadAllTextAsync(Path.Combine(root, "data",
                 states.Read()!.Active!.RevisionId.ToString("N"), "acceptance-selection")) == "old-data",
                 "Real service reinstalls the retained old data");
             await host.StartAsync(default);
             Check(await HealthyAsync(host, published) && await ProbeAsync(mixedPort), "Reinstalled service authenticates and forwards traffic");
-            Check((await ExecuteAsync(RemovePlan("systemd-delete", false))).Outcome == RuntimeSwitchOutcome.Succeeded
-                && !(await host.ObserveAsync(default)).Exists && !Directory.Exists(Path.Combine(root, "data"))
+            count += await MihomoServerRemovalAcceptance.RunAsync(lifecycle, RemovePlan("systemd-delete", false), published);
+            Check(!(await host.ObserveAsync(default)).Exists && !Directory.Exists(Path.Combine(root, "data"))
                 && !File.Exists(Path.Combine(root, "active.yaml")), "Explicit real uninstall removes owned data and service");
+            configurationStage = stage => { if (stage == InstallationStage.HealthChecking) revokeInstallationCandidate = true; };
+            var revokedBootstrap = await ExecuteAsync(Plan(RuntimeChange.Install, older, "systemd-revoked-bootstrap"));
+            configurationStage = null;
+            Check(revokedBootstrap.Outcome == RuntimeSwitchOutcome.Failed && !(await host.ObserveAsync(default)).Exists
+                && !states.Read()!.Installation.RecoveryRequired && states.Read()!.ConfigurationIdentity is null,
+                "Revoked first-install candidate can still compensate to verified absence without restarting any revoked configuration");
         }
         finally
         {

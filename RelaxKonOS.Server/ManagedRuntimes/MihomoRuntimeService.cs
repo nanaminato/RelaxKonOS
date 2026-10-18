@@ -25,9 +25,11 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
         await store.Gate.WaitAsync(ct);
         try
         {
+            if ((await store.ReadAsync(ct)).Pending is not null) return new(null, ["runtime.publication_unconfirmed"]);
             return await CallAsync<RuntimePlanResult>(new(PrivilegedOperationKind.MihomoRuntimePlan,
                 RuntimeLifecycle: new(SourceId: id, Plan: request)), ct);
         }
+        catch (RuntimePolicyException ex) { throw new RuntimeLifecycleException(ex.ProblemCode); }
         finally { store.Gate.Release(); }
     }
 
@@ -35,9 +37,12 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
     {
         if (operationId == Guid.Empty || plan is null || plan.Request is null || plan.RuntimeId != "mihomo")
             throw new RuntimeLifecycleException("runtime.request_invalid");
-        // Removal carries no release target; every other change must name the exact frozen artifact.
-        var removal = plan.Request.Change == RuntimeChange.Uninstall;
-        if (removal ? plan.Release is not null || plan.Request.ReleaseId is not null : plan.Release is null)
+        if (plan.Request.Change == RuntimeChange.Install)
+            throw new RuntimeLifecycleException("runtime.installation_publication_required");
+        if (plan.Request.Change == RuntimeChange.Uninstall)
+            throw new RuntimeLifecycleException("runtime.removal_publication_required");
+        // Install/removal have separate publication coordinators; program changes name an exact artifact.
+        if (plan.Release is null)
             throw new RuntimeLifecycleException("runtime.request_invalid");
         await store.Gate.WaitAsync(ct);
         try
@@ -63,6 +68,72 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
                 OperationId: requestOperationId, RuntimeLifecycle: new(Authorization: callback.Channel, RecoveryOperationId: recoveryOperationId)), CancellationToken.None, allowNull: true);
         }
         finally { store.Gate.Release(); }
+    }
+
+    /// <summary>The configuration publication coordinator already owns Gate, including confirmation.</summary>
+    internal async Task<RuntimeSwitchResult> ConfigureUnderGateAsync(Guid operationId, RuntimeConfigurationPlan plan,
+        CancellationToken ct)
+    {
+        await using var callback = new RuntimeAuthorizationServer<MihomoConfigurationAuthorization>(operationId,
+            token => authorization.ReadConfigurationAsync(operationId, token));
+        var result = await CallAsync<RuntimeSwitchResult>(new(PrivilegedOperationKind.MihomoRuntimeConfigure,
+            OperationId: operationId, RuntimeLifecycle: new(Authorization: callback.Channel, ConfigurationPlan: plan)), ct);
+        if (result.OperationId != operationId) throw new RuntimeLifecycleException("runtime.operation_id_conflict");
+        return result;
+    }
+
+    internal async Task<RuntimeSwitchResult> InstallUnderGateAsync(Guid operationId, RuntimeChangePlan plan, CancellationToken ct)
+    {
+        _ = MihomoRuntimeMaterial.InstallationPlanIdentity(plan);
+        await using var callback = new RuntimeAuthorizationServer<MihomoInstallationAuthorization>(operationId,
+            token => authorization.ReadInstallationAsync(operationId, token));
+        var result = await CallAsync<RuntimeSwitchResult>(new(PrivilegedOperationKind.MihomoRuntimeExecute,
+            OperationId: operationId, RuntimeLifecycle: new(Authorization: callback.Channel, FrozenPlan: plan)), ct);
+        if (result.OperationId != operationId) throw new RuntimeLifecycleException("runtime.operation_id_conflict");
+        return result;
+    }
+
+    internal async Task<RuntimeSwitchResult> RemoveUnderGateAsync(Guid operationId, RuntimeChangePlan plan, CancellationToken ct)
+    {
+        await using var callback = new RuntimeAuthorizationServer<MihomoCurrentAuthorization>(operationId,
+            token => authorization.ReadRemovalAsync(operationId, token));
+        var result = await CallAsync<RuntimeSwitchResult>(new(PrivilegedOperationKind.MihomoRuntimeExecute,
+            OperationId: operationId, RuntimeLifecycle: new(Authorization: callback.Channel, FrozenPlan: plan)), ct);
+        if (result.OperationId != operationId) throw new RuntimeLifecycleException("runtime.operation_id_conflict");
+        return result;
+    }
+
+    internal async Task<RuntimeSwitchResult?> RecoverRemovalUnderGateAsync(Guid operationId, CancellationToken ct)
+    {
+        var requestId = Guid.NewGuid();
+        await using var callback = new RuntimeAuthorizationServer<MihomoCurrentAuthorization>(requestId,
+            token => authorization.ReadRemovalAsync(operationId, token));
+        var result = await CallAsync<RuntimeSwitchResult?>(new(PrivilegedOperationKind.MihomoRuntimeRecover,
+            OperationId: requestId, RuntimeLifecycle: new(Authorization: callback.Channel, RecoveryOperationId: operationId)), ct, allowNull: true);
+        if (result is not null && result.OperationId != operationId) throw new RuntimeLifecycleException("runtime.operation_id_conflict");
+        return result;
+    }
+
+    internal async Task<RuntimeSwitchResult?> RecoverInstallationUnderGateAsync(Guid operationId, CancellationToken ct)
+    {
+        var requestId = Guid.NewGuid();
+        await using var callback = new RuntimeAuthorizationServer<MihomoInstallationAuthorization>(requestId,
+            token => authorization.ReadInstallationAsync(operationId, token));
+        var result = await CallAsync<RuntimeSwitchResult?>(new(PrivilegedOperationKind.MihomoRuntimeRecover,
+            OperationId: requestId, RuntimeLifecycle: new(Authorization: callback.Channel, RecoveryOperationId: operationId)), ct, allowNull: true);
+        if (result is not null && result.OperationId != operationId) throw new RuntimeLifecycleException("runtime.operation_id_conflict");
+        return result;
+    }
+
+    internal async Task<RuntimeSwitchResult?> RecoverConfigurationUnderGateAsync(Guid operationId, CancellationToken ct)
+    {
+        var requestId = Guid.NewGuid();
+        await using var callback = new RuntimeAuthorizationServer<MihomoConfigurationAuthorization>(requestId,
+            token => authorization.ReadConfigurationAsync(operationId, token));
+        var result = await CallAsync<RuntimeSwitchResult?>(new(PrivilegedOperationKind.MihomoRuntimeRecover,
+            OperationId: requestId, RuntimeLifecycle: new(Authorization: callback.Channel, RecoveryOperationId: operationId)), ct, allowNull: true);
+        if (result is not null && result.OperationId != operationId) throw new RuntimeLifecycleException("runtime.operation_id_conflict");
+        return result;
     }
 
     /// <summary>Read-only recovery facts. It observes the service but changes neither the ledger nor the service.</summary>

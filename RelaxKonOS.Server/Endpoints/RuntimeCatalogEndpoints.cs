@@ -39,6 +39,18 @@ public static class RuntimeCatalogEndpoints
                 : !RuntimeValidation.Identifier(request.SourceId)) return Results.BadRequest();
             return await RespondAsync(async () => Results.Ok(await service.PlanAsync(request.SourceId, request.Request, ct)));
         }).RequireAuthorization(ManagePolicy);
+        group.MapGet(RuntimeRoutes.MihomoInstallation, async ([FromServices] MihomoRuntimeService service, CancellationToken ct) =>
+            await RespondAsync(async () => Results.Ok(await service.QueryAsync(ct))))
+            .RequireAuthorization(ReadPolicy);
+        group.MapPost(RuntimeRoutes.MihomoPlan, async (RuntimePlanSelection request, HttpContext http,
+            [FromServices] MihomoRuntimeService service, CancellationToken ct) =>
+        {
+            if (!InstallationEndpoints.CanInstall(http.User, InstallationServiceId.Mihomo)) return Results.Forbid();
+            if (request.Request is null || (string.IsNullOrWhiteSpace(request.SourceId)
+                ? request.Request.Change != RuntimeChange.Uninstall : !RuntimeValidation.Identifier(request.SourceId)))
+                return Results.BadRequest();
+            return await RespondAsync(async () => Results.Ok(await service.PlanAsync(request.SourceId, request.Request, ct)));
+        }).RequireAuthorization(ManagePolicy);
         group.MapGet(RuntimeRoutes.SingBoxRecovery, async ([FromServices] SingBoxRuntimeService service, CancellationToken ct) =>
             await RespondAsync(async () => Results.Ok(await service.RecoveryAsync(ct))))
             .RequireAuthorization(ReadPolicy);

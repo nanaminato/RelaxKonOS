@@ -70,7 +70,7 @@ internal sealed class LinuxMihomoArchiveHost : IMihomoArchiveHost
     {
         ct.ThrowIfCancellationRequested();
         var output = await RunAsync("/usr/bin/systemctl", ["show", Unit,
-            "--property=LoadState,ActiveState,SubState,MainPID,UnitFileState,FragmentPath,DropInPaths,NeedDaemonReload"]);
+            "--property=LoadState,ActiveState,SubState,MainPID,UnitFileState,FragmentPath,DropInPaths,NeedDaemonReload,Result"]);
         var state = output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Select(line => line.Split('=', 2)).ToDictionary(parts => parts[0], parts => parts.Length == 2 ? parts[1] : "");
         if (state.GetValueOrDefault("LoadState") != "loaded" || state.GetValueOrDefault("FragmentPath") != UnitPath
@@ -116,9 +116,28 @@ internal sealed class LinuxMihomoArchiveHost : IMihomoArchiveHost
             return new(false, true, false, false, null, null, null);
         }
         var state = await StateAsync(ct);
+        // Stopped services have no process proof. Their program, configuration and writable data scope
+        // still need the same ownership/write protection checked before start.
+        await RequireProtectedAsync(registration.Binary);
+        await RequireProtectedAsync(Root + "/active.yaml");
+        await RequireProtectedAsync(registration.Data);
         bool? boot = state.GetValueOrDefault("UnitFileState") switch { "enabled" => true, "disabled" => false, _ => null };
         var process = await VerifyProcessAsync(registration, state, ct);
         return new(true, true, process is not null, boot, registration.Binary, process?.Identity, registration.Data);
+    }
+
+    public async Task<RuntimeServiceObservation> ObserveRegistrationAsync(CancellationToken ct)
+    {
+        if (await ReadRegistrationAsync(ct) is null)
+        {
+            var absent = await ObserveAsync(ct); // Reject an external unit even without our registration.
+            return new(absent.Exists, absent.Running, absent.BootEnabled);
+        }
+        var state = await StateAsync(ct);
+        bool? boot = state.GetValueOrDefault("UnitFileState") switch { "enabled" => true, "disabled" => false, _ => null };
+        // Anything except a settled zero-PID unit is not proven stopped. No process/image proof is claimed.
+        var running = state.GetValueOrDefault("MainPID") != "0" || state.GetValueOrDefault("ActiveState") is not ("inactive" or "failed");
+        return new(true, running, boot);
     }
 
     public async Task ConfigureAsync(string verifiedBinary, string protectedDataDirectory, string protectedConfiguration,
@@ -139,6 +158,9 @@ internal sealed class LinuxMihomoArchiveHost : IMihomoArchiveHost
         await WriteAsync(RegistrationPath, JsonSerializer.Serialize(registration), UnixFileMode.UserRead | UnixFileMode.UserWrite, ct);
         await WriteAsync(UnitPath, UnitText(registration), UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead, ct);
         await CommandAsync("daemon-reload", ct, false);
+        // A removed/re-created stopped unit can retain systemd's previous failed state. Registration is
+        // verified and MainPID is zero here; do not inherit a failure latch from the previous registration.
+        if ((await StateAsync(ct)).GetValueOrDefault("ActiveState") == "failed") await CommandAsync("reset-failed", ct);
         await CommandAsync(bootEnabled ? "enable" : "disable", ct);
     }
 
@@ -168,6 +190,13 @@ internal sealed class LinuxMihomoArchiveHost : IMihomoArchiveHost
             // systemctl returns while the unit may still be deactivating; the next observation must not
             // mistake that transient state for an unknown one.
             await WaitAsync(state => state.GetValueOrDefault("ActiveState") is "inactive" or "failed", ct);
+            // Stopping a failed owned unit leaves systemd's failure latch set. Clear that latch only after
+            // the owned process has settled, so recovery can observe an intentionally stopped service.
+            if ((await StateAsync(ct)).GetValueOrDefault("ActiveState") == "failed")
+            {
+                await CommandAsync("reset-failed", ct);
+                await WaitAsync(state => state.GetValueOrDefault("ActiveState") == "inactive", ct);
+            }
         }
         else await ObserveAsync(ct);
     }
@@ -178,7 +207,18 @@ internal sealed class LinuxMihomoArchiveHost : IMihomoArchiveHost
         await RequireProtectedAsync(registration.Data);
         if (!string.Equals(await DigestAsync(registration.Binary, ct), registration.BinaryHash, StringComparison.OrdinalIgnoreCase)
             || !string.Equals(await DigestAsync(Root + "/active.yaml", ct), registration.ConfigurationHash, StringComparison.OrdinalIgnoreCase)) Fail("configuration_drift");
-        await CommandAsync("start", ct);
+        // This is an explicit, verified management start, including compensation. Clear a prior failed
+        // owned unit, and retry exactly once only for systemd's measured start-limit-hit result. Inactive
+        // disabled units can be garbage-collected, so reset-failed must not be sent unconditionally.
+        if ((await StateAsync(ct)).GetValueOrDefault("ActiveState") == "failed") await CommandAsync("reset-failed", ct);
+        try { await CommandAsync("start", ct); }
+        catch (InvalidOperationException)
+        {
+            var failed = await StateAsync(ct);
+            if (failed.GetValueOrDefault("ActiveState") != "failed" || failed.GetValueOrDefault("Result") != "start-limit-hit") throw;
+            await CommandAsync("reset-failed", ct);
+            await CommandAsync("start", ct);
+        }
         // A simple unit is briefly "activating" after systemctl start returns. Observing that window would
         // report state_unknown for a service that is starting exactly as configured.
         await WaitAsync(state => state.GetValueOrDefault("ActiveState") is "inactive" or "failed"
