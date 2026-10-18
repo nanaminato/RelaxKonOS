@@ -32,7 +32,11 @@ internal data class WebsiteServerState(
     val sites: ApiResult<List<WebServerSite>>,
 )
 
+internal class WebsitePublicationReview(val owner: SessionState.Active, val pending: PendingWebsitePublication)
+
 internal data class WebsitesState(
+    val pendingPublication: WebsitePublicationReview? = null,
+    val publicationStorageFailed: Boolean = false,
     val loading: Boolean = false,
     val servers: ApiResult<List<WebsiteServerState>>? = null,
     val certificates: ApiResult<List<ManagedCertificate>>? = null,
@@ -50,7 +54,9 @@ internal data class WebsitesState(
 
 internal class WebsitesViewModel(private val session: AuthSession, private val webPublishing: WebPublishingRepository,
     private val deployments: DeploymentRepository, private val certificates: CertificateRepository,
-    private val elevationAnswers: ElevationAnswerProvider) : ViewModel() {
+    private val elevationAnswers: ElevationAnswerProvider, publicationJournal: WebsitePublicationJournal) : ViewModel() {
+    private val publicationRequests = WebsitePublicationRequests(session, webPublishing, publicationJournal)
+
     suspend fun observePublication(operation: WebsitePublicationOperation, canObserve: () -> Boolean) {
         val owner = session.state.value as? SessionState.Active ?: return
         val request = publicationReadGeneration
@@ -77,7 +83,8 @@ internal class WebsitesViewModel(private val session: AuthSession, private val w
 
     fun refresh() {
         val owner = (session.state.value as? SessionState.Active) ?: return
-        if (state.loading) return
+        if (state.loading || state.publishing) return
+        refreshPendingPublication(owner)
         state = state.copy(loading = true)
         viewModelScope.launch {
             try {
@@ -119,13 +126,29 @@ internal class WebsitesViewModel(private val session: AuthSession, private val w
         }
     }
 
+    private fun refreshPendingPublication(owner: SessionState.Active, storageFailed: Boolean = false): Boolean {
+        return try {
+            val pending = publicationRequests.pending(owner)
+            state = state.copy(pendingPublication = pending?.let { WebsitePublicationReview(owner, it) }, publicationStorageFailed = storageFailed)
+            true
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) {
+            if (session.state.value === owner) state = state.copy(publicationStorageFailed = true)
+            false
+        }
+    }
+
     private fun refreshFailed(owner: SessionState.Active) {
         if (session.state.value === owner) state = state.copy(servers = ApiResult.Transport(null),
             certificates = null, applications = null)
     }
 
-    fun selectServer(serverId: String) { state = state.copy(selectedServerId = serverId) }
+    fun selectServer(serverId: String) {
+        if (state.publishing || state.loading) return
+        state = state.copy(selectedServerId = serverId)
+    }
     fun selectApplication(applicationId: String) {
+        if (state.publishing) return
         changeApplication(applicationId)
     }
 
@@ -144,7 +167,8 @@ internal class WebsitesViewModel(private val session: AuthSession, private val w
         if ((state.applications as? ApiResult.Success)?.value?.none {
                 it.id == applicationId && it.actualState.equals("running", true)
             } != false) return
-        if (state.publishing) return
+        if (state.publishing || state.loading) return
+        if (!refreshPendingPublication(owner)) return
         publicationReadGeneration++
         state = state.copy(publishing = true, publication = null, publicationLookupId = null, publicationLoading = false)
         viewModelScope.launch {
@@ -156,22 +180,56 @@ internal class WebsitesViewModel(private val session: AuthSession, private val w
                         state = state.copy(publishing = false, publication = ApiResult.Problem(409, "webserver.site_certificate_unverified", null)); return@launch
                     }
                 }
-                val result = webPublishing.publish(WebsitePublishRequest(
+                val outcome = publicationRequests.submit(owner, WebsitePublishRequest(
                     applicationId = applicationId, webServerId = serverId, domain = domain,
                     certificateId = certificateId, contactEmail = contactEmail, acceptedTerms = acceptedTerms,
                     publicReachabilityConfirmed = publiclyReachable, confirmed = true,
                 ), elevationAnswers)
                 if ((session.state.value as? SessionState.Active) !== owner) return@launch
+                val result = outcome.result
                 state = state.copy(publishing = false, publication = result,
                     publicationLookupId = (result as? ApiResult.Success)?.value?.operationId)
+                refreshPendingPublication(owner, outcome.storageFailed)
                 if (result is ApiResult.Success) loadHistory(result.value.applicationId)
             } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: WebsitePublicationStorageException) {
+                if (session.state.value === owner) state = state.copy(publicationStorageFailed = true)
+            }
             catch (_: Exception) { if ((session.state.value as? SessionState.Active) === owner) state = state.copy(publication = ApiResult.Transport(null)) }
-            finally { if ((session.state.value as? SessionState.Active) === owner) state = state.copy(publishing = false) }
+            finally {
+                if (session.state.value === owner) {
+                    state = state.copy(publishing = false)
+                    refreshPendingPublication(owner, state.publicationStorageFailed)
+                }
+            }
+        }
+    }
+
+    fun recoverPendingPublication(review: WebsitePublicationReview, id: String) {
+        val owner = session.state.value as? SessionState.Active ?: return
+        if (state.publishing || state.loading || state.pendingPublication !== review || review.owner !== owner || id.isBlank()) return
+        publicationReadGeneration++
+        state = state.copy(publishing = true, publicationLoading = false, publication = null, publicationLookupId = id.trim())
+        viewModelScope.launch {
+            try {
+                val outcome = publicationRequests.recover(owner, review.pending, id.trim(), identified = true)
+                if (session.state.value !== owner) return@launch
+                state = state.copy(publication = outcome.result,
+                    publicationLookupId = (outcome.result as? ApiResult.Success)?.value?.operationId ?: id.trim())
+                refreshPendingPublication(owner, outcome.storageFailed)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { if (session.state.value === owner) state = state.copy(publication = ApiResult.Transport(null)) }
+            finally {
+                if (session.state.value === owner) {
+                    state = state.copy(publishing = false)
+                    refreshPendingPublication(owner, state.publicationStorageFailed)
+                }
+            }
         }
     }
 
     fun refreshPublication(operationId: String) {
+        if (state.publishing) return
         val owner = (session.state.value as? SessionState.Active) ?: return
         val request = ++publicationReadGeneration
         state = state.copy(publicationLookupId = operationId, publicationLoading = true)
@@ -216,7 +274,7 @@ internal class WebsitesViewModel(private val session: AuthSession, private val w
     }
 
     fun refreshHistory() {
-        if (!state.historyLoading) state.selectedApplicationId?.let(::loadHistory)
+        if (!state.historyLoading && !state.publishing) state.selectedApplicationId?.let(::loadHistory)
     }
 
 }

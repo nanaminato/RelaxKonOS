@@ -100,4 +100,9 @@
     <string name="websites_tls_disabled">このサイトでは TLS が有効になっていません。</string>
     <string name="websites_use_existing_certificate">一致する管理対象証明書を使用</string>
     <string name="websites_version_unknown">バージョン不明</string>
+    <string name="websites_pending_publication">未確認の公開</string>
+    <string name="websites_pending_publication_help">%1$s / %2$s の元の公開を確認してください。同じ元の入力で明示的に再試行するか、履歴を確認して元の操作 ID を入力してください。</string>
+    <string name="websites_original_operation">元の操作 ID</string>
+    <string name="websites_publication_storage_failed">ローカルの復元記録を読み取りまたは保存できませんでした。受信した操作 ID を保持し、確認を再試行してください。ホストの結果は変わりません。</string>
+    <string name="websites_operation_id">操作 ID: %1$s</string>
 </resources>

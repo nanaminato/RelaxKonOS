@@ -166,4 +166,7 @@
     <string name="docker_volume_unused">No container references this volume.</string>
     <string name="docker_volume_used_by">Referenced by: %1$s</string>
     <string name="docker_volumes">Volumes</string>
+    <string name="docker_control_refresh_failed">The host accepted the Docker change, but current facts could not be verified. The submitted draft is closed. Read and explicitly accept current facts before another change.</string>
+    <string name="docker_control_recovery_storage_failed">The host result was received, but its local recovery record could not be read or cleared. Read and explicitly accept current facts before another change.</string>
+    <string name="docker_control_installation_refresh_failed">The installation task result is verified, but current Docker engine facts could not be read. The task result remains available in records. Refresh current facts before managing Docker.</string>
 </resources>

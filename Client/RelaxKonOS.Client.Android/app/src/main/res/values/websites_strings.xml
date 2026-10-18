@@ -100,4 +100,9 @@
     <string name="websites_tls_disabled">TLS is not enabled for this site.</string>
     <string name="websites_use_existing_certificate">Use the matching managed certificate</string>
     <string name="websites_version_unknown">version unknown</string>
+    <string name="websites_pending_publication">Unverified publication</string>
+    <string name="websites_pending_publication_help">Verify the original publication for %1$s / %2$s. Retry using the exact original fields, or check history and enter the original operation ID.</string>
+    <string name="websites_original_operation">Original operation ID</string>
+    <string name="websites_publication_storage_failed">The local recovery record could not be read or saved. Keep any received operation ID and retry verification. This does not change the host result.</string>
+    <string name="websites_operation_id">Operation ID: %1$s</string>
 </resources>

@@ -18,6 +18,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -71,6 +72,11 @@ internal fun AccountSecurityContent(controller: AccountSecurityActions, session:
     active: Boolean, modifier: Modifier = Modifier) {
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     val resumed = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
+    val currentActive by rememberUpdatedState(active)
+    val currentController by rememberUpdatedState(controller)
+    val currentSession by rememberUpdatedState(session)
+    var attached by remember { mutableStateOf(false) }
+    var confirmationToken by remember { mutableStateOf<Any?>(null) }
 
     var revision by remember { mutableStateOf(0) }
     var memoryCleared by remember(session) { mutableStateOf(false) }
@@ -79,9 +85,11 @@ internal fun AccountSecurityContent(controller: AccountSecurityActions, session:
     var deleteTarget by remember(active, resumed, session) { mutableStateOf<DeletionTarget?>(null) }
     var mutationFailed by remember(active, resumed, session, confirmDisable, confirmClearAll, deleteTarget) { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner, active, resumed, session) {
+    DisposableEffect(controller, lifecycleOwner, active, resumed, session) {
+        attached = true
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE) {
+                confirmationToken = null
                 confirmDisable = false
                 confirmClearAll = false
                 deleteTarget = null
@@ -89,13 +97,41 @@ internal fun AccountSecurityContent(controller: AccountSecurityActions, session:
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        onDispose {
+            attached = false
+            confirmationToken = null
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+    fun canMutate() = attached && currentActive && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
+        currentController === controller && currentSession === session && controller.isCurrentSession(session)
+    fun dismissConfirmation() {
+        confirmationToken = null
+        confirmDisable = false
+        confirmClearAll = false
+        deleteTarget = null
+        mutationFailed = false
+    }
+    fun openConfirmation(open: () -> Unit) {
+        if (!canMutate()) return
+        dismissConfirmation()
+        confirmationToken = Any()
+        open()
     }
     fun mutate(action: () -> Unit, completed: () -> Unit = {}) {
+        if (!canMutate()) return
         mutationFailed = false
         try { action(); completed(); revision++ }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { mutationFailed = true; revision++ }
+    }
+    fun confirm(token: Any?, action: () -> Unit, completed: () -> Unit) {
+        if (token == null || confirmationToken !== token) return
+        if (!canMutate()) { confirmationToken = null; return }
+        confirmationToken = null
+        mutate(action, completed)
+        // Partial failures retain the intent, but retry requires the newly rendered confirmation.
+        if (confirmDisable || confirmClearAll || deleteTarget != null) confirmationToken = Any()
     }
     if (!confirmDisable && !confirmClearAll && deleteTarget == null && mutationFailed) {
         OperationMessageDialog(stringResource(R.string.account_security_mutation_failed), eventKey = revision)
@@ -127,7 +163,7 @@ internal fun AccountSecurityContent(controller: AccountSecurityActions, session:
             contentSpacing = Spacing.xs,
         ) {
             SwitchOption(controller.fingerprintEnabled, stringResource(R.string.account_security_fingerprint_subtitle)) { enabled ->
-                if (enabled) mutate(controller::enableFingerprint) else confirmDisable = true
+                if (enabled) mutate(controller::enableFingerprint) else openConfirmation { confirmDisable = true }
             }
         }
 
@@ -170,7 +206,7 @@ internal fun AccountSecurityContent(controller: AccountSecurityActions, session:
                     RecordActionRow(
                         leading = { ServerPlatformBadge(record.serviceId) },
                         actions = {
-                            TextButton(onClick = { deleteTarget = DeletionTarget.Vault(record) }) {
+                            TextButton(onClick = { openConfirmation { deleteTarget = DeletionTarget.Vault(record) } }) {
                                 ActionLabel(R.string.common_delete)
                             }
                         },
@@ -188,7 +224,7 @@ internal fun AccountSecurityContent(controller: AccountSecurityActions, session:
                     RecordActionRow(
                         leading = { ServerPlatformBadge(record.serviceId) },
                         actions = {
-                            TextButton(onClick = { deleteTarget = DeletionTarget.DebugStore(record) }) {
+                            TextButton(onClick = { openConfirmation { deleteTarget = DeletionTarget.DebugStore(record) } }) {
                                 ActionLabel(R.string.common_delete)
                             }
                         },
@@ -217,7 +253,7 @@ internal fun AccountSecurityContent(controller: AccountSecurityActions, session:
                     RecordActionRow(
                         leading = { ServerPlatformBadge(record.serviceId) },
                         actions = {
-                            TextButton(onClick = { deleteTarget = DeletionTarget.Vault(record) }) {
+                            TextButton(onClick = { openConfirmation { deleteTarget = DeletionTarget.Vault(record) } }) {
                                 ActionLabel(R.string.common_delete)
                             }
                         },
@@ -249,7 +285,7 @@ internal fun AccountSecurityContent(controller: AccountSecurityActions, session:
         }
 
         TextButton(
-            onClick = { confirmClearAll = true },
+            onClick = { openConfirmation { confirmClearAll = true } },
             enabled = connectionRecords.isNotEmpty() || elevationRecords.isNotEmpty() || debugRecord != null,
         ) { Text(stringResource(R.string.account_security_clear_all)) }
 
@@ -274,32 +310,35 @@ internal fun AccountSecurityContent(controller: AccountSecurityActions, session:
     }
 
     if (confirmDisable) {
+        val token = confirmationToken
         ConfirmDangerousDialog(
             title = stringResource(R.string.account_security_disable_title),
             message = stringResource(R.string.account_security_disable_message),
             confirmLabel = stringResource(R.string.account_security_disable_confirm),
             extraContent = { if (mutationFailed) Text(stringResource(R.string.account_security_mutation_failed), color = MaterialTheme.colorScheme.error) },
             onConfirm = {
-                mutate(controller::disableFingerprint) { confirmDisable = false }
+                confirm(token, controller::disableFingerprint) { confirmDisable = false }
             },
-            onDismiss = { confirmDisable = false },
+            onDismiss = ::dismissConfirmation,
         )
     }
 
     if (confirmClearAll) {
+        val token = confirmationToken
         ConfirmDangerousDialog(
             title = stringResource(R.string.account_security_clear_all_title),
             message = stringResource(R.string.account_security_clear_all_message),
             confirmLabel = stringResource(R.string.account_security_clear_all),
             extraContent = { if (mutationFailed) Text(stringResource(R.string.account_security_mutation_failed), color = MaterialTheme.colorScheme.error) },
             onConfirm = {
-                mutate(controller::clearCredentials) { confirmClearAll = false }
+                confirm(token, controller::clearCredentials) { confirmClearAll = false }
             },
-            onDismiss = { confirmClearAll = false },
+            onDismiss = ::dismissConfirmation,
         )
     }
 
     deleteTarget?.let { target ->
+        val token = confirmationToken
         // Both cases are "the saved password for this identity on this server", so they share the
         // sentence; only what is removed differs.
         val (identifier, serviceId, remove) = when (target) {
@@ -321,9 +360,9 @@ internal fun AccountSecurityContent(controller: AccountSecurityActions, session:
             confirmLabel = stringResource(R.string.common_delete),
             extraContent = { if (mutationFailed) Text(stringResource(R.string.account_security_mutation_failed), color = MaterialTheme.colorScheme.error) },
             onConfirm = {
-                mutate(remove) { deleteTarget = null }
+                confirm(token, remove) { deleteTarget = null }
             },
-            onDismiss = { deleteTarget = null },
+            onDismiss = ::dismissConfirmation,
         )
     }
 }

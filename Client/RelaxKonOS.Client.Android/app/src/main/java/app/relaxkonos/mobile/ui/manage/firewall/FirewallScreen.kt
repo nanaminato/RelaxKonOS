@@ -76,7 +76,8 @@ import java.util.Date
             TextButton(enabled = !state.busy, onClick = { navigate { draft = null; defaults = null; model.refresh() } }) { ActionLabel(R.string.common_refresh) }
         })
         RefreshProgressIndicator(visible = visible && state.busy)
-        OperationMessageDialog(state.problem?.takeIf { visible && !state.busy && !editing }?.let { firewallProblem(it) })
+        OperationMessageDialog(state.problem?.takeIf { visible && !state.busy && !editing }?.let { firewallProblem(it) },
+            eventKey = owner to state.feedbackVersion)
         if (visible && section != "records" && state.pending.isNotEmpty()) TextButton(onClick = { navigate { draft = null; defaults = null; section = "records" } }) { Text(stringResource(R.string.workspace_records_attention)) }
         if (visible && section == "records") state.pending.forEach { pending ->
             ManagementCard {
@@ -231,6 +232,8 @@ import java.util.Date
     "any" -> stringResource(R.string.firewall_any); "tcp" -> "TCP"; "udp" -> "UDP"; else -> stringResource(R.string.firewall_unknown_value)
 }
 @Composable private fun firewallProblem(code: String) = stringResource(when (code) {
+    "firewall.refresh_failed" -> R.string.firewall_refresh_failed
+    "firewall.recovery_storage_failed" -> R.string.firewall_recovery_storage_failed
     "firewall.facts_changed" -> R.string.firewall_conflict
     "firewall.ufw_not_installed", "firewall.not_supported", "firewall.unsupported_platform" -> R.string.firewall_unavailable
     "elevation-required", "firewall.elevation_required", "firewall.permission_denied", "firewall.privileged_proxy_required" -> R.string.firewall_permission

@@ -1,6 +1,7 @@
 package app.relaxkonos.mobile.ui.more
 
 import app.relaxkonos.mobile.AppContainer
+import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.data.ReminderKind
 import app.relaxkonos.mobile.security.VaultKind
 import app.relaxkonos.mobile.security.VaultRecord
@@ -17,6 +18,7 @@ internal interface AccountSecurityActions {
     val connectionMode: VaultUnlockMode?
     val elevationMode: VaultUnlockMode?
     val silenced: List<ReminderKind>
+    fun isCurrentSession(expected: SessionState.Active?): Boolean
     suspend fun resolvePlatforms()
     fun enableFingerprint()
     fun disableFingerprint()
@@ -37,6 +39,8 @@ internal class AccountSecurityController(private val container: AppContainer) : 
     override val connectionMode get() = container.unlockMode(VaultKind.Connection)
     override val elevationMode get() = container.unlockMode(VaultKind.Elevation)
     override val silenced get() = container.notices.silenced()
+
+    override fun isCurrentSession(expected: SessionState.Active?) = container.activeSession === expected
 
     override suspend fun resolvePlatforms() {
         container.hostOperatingSystems.resolve(

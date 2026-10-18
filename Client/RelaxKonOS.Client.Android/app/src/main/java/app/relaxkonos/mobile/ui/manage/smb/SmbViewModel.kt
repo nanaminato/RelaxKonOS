@@ -11,7 +11,7 @@ import kotlinx.coroutines.*
 
 internal data class SmbState(val owner: SessionState.Active? = null, val busy: Boolean = false, val facts: SmbFacts? = null,
     val pending: List<PendingSmbMutation> = emptyList(), val installation: InstallationOperation? = null, val installationVerified: Boolean = false,
-    val pendingInstallation: Boolean = false, val receipt: SmbReceipt? = null, val problem: String? = null, val checkedAtMillis: Long? = null, val saved: Int = 0)
+    val pendingInstallation: Boolean = false, val receipt: SmbReceipt? = null, val problem: String? = null, val checkedAtMillis: Long? = null, val saved: Int = 0, val feedbackVersion: Long = 0)
 internal class SmbChangeReview(val owner: SessionState.Active, val confirmation: SmbConfirmation)
 internal class SmbInstallationCancellation(val owner: SessionState.Active, val operation: InstallationOperation)
 internal class SmbViewModel(private val session: AuthSession, private val smb: SmbRepository,
@@ -81,13 +81,24 @@ internal class SmbViewModel(private val session: AuthSession, private val smb: S
         if (state.busy || session.state.value !== review.owner || state.owner !== review.owner ||
             state.facts != review.confirmation.expected || ServerCapabilities.FILE_SERVICES !in review.owner.capabilities) { password?.fill('\u0000'); return }
         val expected = review.confirmation.expected; val change = review.confirmation.change
+        state = state.copy(receipt = null)
         work { owner ->
             try {
-                val result = smb.change(owner, expected, change, password, elevationAnswers); verify(owner)
+                val outcome = smb.change(owner, expected, change, password, elevationAnswers); verify(owner)
+                val result = outcome.result
                 val problem = resultProblem(result)
                 val success = result is ApiResult.Success && result.value.succeeded
-                load(owner)
-                state = state.copy(receipt = (result as? ApiResult.Success)?.value, problem = problem ?: state.problem, saved = state.saved + if (success) 1 else 0)
+                // A known receipt closes the submitted draft before local recovery reads can fail.
+                state = state.copy(receipt = (result as? ApiResult.Success)?.value, saved = state.saved + if (success) 1 else 0)
+                showFacts(owner, outcome.facts)
+                val verificationFailed = outcome.facts !is ApiResult.Success || !outcome.facts.value.capabilities.supported ||
+                    !outcome.facts.value.status.state.manageable
+                state = state.copy(problem = when {
+                    outcome.storageFailed -> "file-services.smb.recovery_storage_failed"
+                    problem != null -> problem
+                    success && verificationFailed -> "file-services.smb.refresh_failed"
+                    else -> state.problem
+                })
             } finally { password?.fill('\u0000') }
         }
         job?.invokeOnCompletion { password?.fill('\u0000') }
@@ -116,30 +127,62 @@ internal class SmbViewModel(private val session: AuthSession, private val smb: S
     }
     private suspend fun installResult(owner: SessionState.Active, result: ApiResult<InstallationOperation>) {
         verify(owner)
-        state = state.copy(pendingInstallation = installations.pending(owner).any { it.service == InstallationService.Smb })
         if (result is ApiResult.Success && result.value.service == InstallationService.Smb && result.value.kind == InstallationKind.Install) {
-            state = state.copy(installation = result.value, installationVerified = true, problem = result.value.problemCode)
-            if (!result.value.state.active) load(owner)
+            val operationProblem = result.value.problemCode?.takeIf(String::isNotBlank)
+            state = state.copy(installation = result.value, installationVerified = true, problem = operationProblem)
+            try {
+                state = state.copy(pendingInstallation = installations.pending(owner).any { it.service == InstallationService.Smb })
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                state = state.copy(facts = null, pendingInstallation = true, problem = "file-services.smb.recovery_storage_failed")
+                return
+            }
+            if (!result.value.state.active) {
+                val facts = try { smb.facts(owner) }
+                catch (cancelled: CancellationException) {
+                    currentCoroutineContext().ensureActive()
+                    verify(owner)
+                    ApiResult.Transport(null)
+                } catch (_: Exception) { verify(owner); ApiResult.Transport(null) }
+                verify(owner)
+                showFacts(owner, facts)
+                state = state.copy(problem = when {
+                    state.problem == "file-services.smb.recovery_storage_failed" -> state.problem
+                    facts !is ApiResult.Success -> "file-services.smb.installation_refresh_failed"
+                    else -> operationProblem ?: state.problem
+                })
+            }
         } else state = state.copy(installationVerified = false, problem = resultProblem(result) ?: "file-services.smb.unverified")
     }
+
     private suspend fun load(owner: SessionState.Active) {
         val result = smb.facts(owner); verify(owner)
         showFacts(owner, result)
     }
     private fun showFacts(owner: SessionState.Active, result: ApiResult<SmbFacts>) {
+        val pending: List<PendingSmbMutation>
+        val pendingInstallation: Boolean
+        try {
+            pending = smb.pending(owner)
+            pendingInstallation = installations.pending(owner).any { it.service == InstallationService.Smb }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) {
+            state = state.copy(facts = null, checkedAtMillis = null, problem = "file-services.smb.recovery_storage_failed")
+            return
+        }
         state = state.copy(facts = (result as? ApiResult.Success)?.value, problem = resultProblem(result) ?: (result as? ApiResult.Success)?.value?.status?.healthProblemCode,
-            checkedAtMillis = System.currentTimeMillis(), pending = smb.pending(owner), pendingInstallation = installations.pending(owner).any { it.service == InstallationService.Smb })
+            checkedAtMillis = System.currentTimeMillis(), pending = pending, pendingInstallation = pendingInstallation)
     }
     private fun resultProblem(result: ApiResult<*>): String? = when (result) {
         is ApiResult.Problem -> result.code; is ApiResult.Transport -> "file-services.smb.unverified"
-        is ApiResult.Success -> (result.value as? SmbReceipt)?.problemCode
+        is ApiResult.Success -> (result.value as? SmbReceipt)?.problemCode?.takeIf(String::isNotBlank)
     }
     private fun work(block: suspend (SessionState.Active) -> Unit) {
         dismissConfirmation()
         dismissInstallationCancellation()
         val owner = state.owner ?: return
         if (state.busy || ServerCapabilities.FILE_SERVICES !in owner.capabilities) return
-        val request = ++generation; state = state.copy(busy = true, problem = null)
+        val request = ++generation; state = state.copy(busy = true, problem = null, feedbackVersion = state.feedbackVersion + 1)
         job = viewModelScope.launch {
             try { verify(owner); block(owner) }
             catch (cancelled: CancellationException) {

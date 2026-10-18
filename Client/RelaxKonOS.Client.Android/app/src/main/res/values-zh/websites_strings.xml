@@ -100,4 +100,9 @@
     <string name="websites_tls_disabled">此站点未启用 TLS。</string>
     <string name="websites_use_existing_certificate">使用匹配的 RelaxKonOS 管理的证书</string>
     <string name="websites_version_unknown">版本未知</string>
+    <string name="websites_pending_publication">待核实的发布</string>
+    <string name="websites_pending_publication_help">请核实 %1$s / %2$s 的原发布。使用完全相同的原参数显式重试，或检查历史后输入原任务 ID。</string>
+    <string name="websites_original_operation">原任务 ID</string>
+    <string name="websites_publication_storage_failed">本地恢复记录读取或保存失败。请保留已收到的任务 ID 并重试核实；本地存储失败不改变宿主返回的结果。</string>
+    <string name="websites_operation_id">任务 ID：%1$s</string>
 </resources>

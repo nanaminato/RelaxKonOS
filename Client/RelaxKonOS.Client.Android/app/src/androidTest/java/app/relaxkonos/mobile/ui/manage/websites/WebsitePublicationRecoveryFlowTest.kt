@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.websites
 
+import androidx.compose.foundation.verticalScroll
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.Lifecycle
@@ -36,6 +37,10 @@ class WebsitePublicationRecoveryFlowTest {
     private var history = listOf(operation)
     private var applications = emptyList<DeploymentApplication>()
     private var recordsPage = false
+    private var seedPending = false
+    private var failPublicationStorage = false
+    private lateinit var publicationStorage: Storage
+    private lateinit var publicationJournal: WebsitePublicationJournal
     private val stoppedApplication = DeploymentApplication("application-b", "Stopped history target", "image", "web", "stopped", "stopped", "http",
         1, null, 80, null, "127.0.0.1", null, null, null, null, null, "/", DeploymentLimits(null, null, null), emptyList(), emptyList(), "2026-10-01T00:00:00Z")
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
@@ -43,7 +48,8 @@ class WebsitePublicationRecoveryFlowTest {
     private class Storage : InstallationRequestStorage {
         private var bytes: ByteArray? = null
         override fun read() = bytes
-        override fun write(bytes: ByteArray) { this.bytes = bytes.copyOf() }
+        var failWrites = false
+        override fun write(bytes: ByteArray) { check(!failWrites) { "private storage failure" }; this.bytes = bytes.copyOf() }
     }
     private fun show() {
         val app = context.applicationContext as RelaxKonApplication
@@ -57,6 +63,7 @@ class WebsitePublicationRecoveryFlowTest {
             }
             override suspend fun websitePublication(serverUrl: String, accessToken: String, operationId: String): ApiResult<WebsitePublicationOperation> {
                 operationIds += operationId
+                if (failPublicationStorage) publicationStorage.failWrites = true
                 failure?.let { throw it }
                 return ApiResult.Success(if (keepRunning || repeatedState && operationIds.size < 4) operation.copy(state = "running", stage = "verifying") else operation)
             }
@@ -75,12 +82,17 @@ class WebsitePublicationRecoveryFlowTest {
             override fun read() = bytes
             override fun write(bytes: ByteArray) { this.bytes = bytes.copyOf() }
         })
+        publicationStorage = Storage()
+        publicationJournal = WebsitePublicationJournal(publicationStorage)
+        if (seedPending) publicationJournal.begin(session.state.value as SessionState.Active,
+            WebsitePublishRequest(operation.applicationId, operation.webServerId, operation.domain, confirmed = true))
         rule.runOnUiThread {
             model = WebsitesViewModel(session, WebPublishingRepository(gateway, session, elevation, index),
-                DeploymentRepository(gateway, session), CertificateRepository(gateway, session, index, CertificateRequestJournal(Storage()), elevation), ElevationAnswerProvider.Declines)
+                DeploymentRepository(gateway, session), CertificateRepository(gateway, session, index, CertificateRequestJournal(Storage()), elevation), ElevationAnswerProvider.Declines, publicationJournal)
             store.put("websites", model)
         }
-        rule.setContent { MaterialTheme { androidx.compose.foundation.layout.Column {
+        rule.setContent { MaterialTheme { androidx.compose.foundation.layout.Column(
+            androidx.compose.ui.Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
             WorkspaceSection(visible.value) {
                 if (recordsPage) WebsitePublicationRecords(model.state, model, active = visible.value)
                 else PublicationResult(model.state, model, active = visible.value)
@@ -166,7 +178,7 @@ class WebsitePublicationRecoveryFlowTest {
         show()
         rule.runOnIdle { history = (1..4).map { operation.copy(domain = "site-$it.example.test") }; model.selectApplication("application-a") }
         rule.waitUntil(5_000) { !model.state.historyLoading && model.state.publicationHistory is ApiResult.Success }
-        rule.onNodeWithText(context.getString(R.string.websites_operation_history, "site-4.example.test", operation.state, operation.stage)).assertIsDisplayed()
+        rule.onNodeWithText(context.getString(R.string.websites_operation_history, "site-4.example.test", operation.state, operation.stage)).performScrollTo().assertIsDisplayed()
     }
     @Test fun stoppedApplicationHistoryCanBeSelectedWithoutWebServer() {
         recordsPage = true
@@ -196,4 +208,44 @@ class WebsitePublicationRecoveryFlowTest {
         rule.onNodeWithText(context.getString(R.string.websites_operation_history, operation.domain, operation.state, operation.stage)).assertIsDisplayed()
         rule.runOnIdle { assertEquals(2, historyReads); assertTrue(operationIds.isEmpty()) }
     }
+    @Test fun pendingPublicationCanBeVerifiedByOriginalIdWithoutPublishing() {
+        seedPending = true
+        show()
+        rule.runOnIdle { model.refresh() }
+        rule.waitUntil(5_000) { model.state.pendingPublication != null }
+        rule.onNodeWithText(text(R.string.websites_pending_publication)).assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.websites_original_operation)).performTextInput(operation.operationId)
+        rule.onAllNodesWithText(text(R.string.common_refresh)).onFirst().performClick()
+        rule.waitUntil(5_000) { !model.state.publishing && model.state.pendingPublication == null }
+        assertEquals(listOf(operation.operationId), operationIds)
+        rule.onNodeWithText(text(R.string.websites_pending_publication)).assertDoesNotExist()
+    }
+
+    @Test fun historyEntryOpensOriginalOperationWithSelectableId() {
+        show()
+        rule.runOnIdle { model.selectApplication(operation.applicationId) }
+        rule.waitUntil(5_000) { !model.state.historyLoading && model.state.publicationHistory is ApiResult.Success }
+        rule.onNodeWithText(context.getString(R.string.websites_operation_history, operation.domain, operation.state, operation.stage))
+            .performScrollTo().performClick()
+        rule.waitUntil(5_000) { !model.state.publicationLoading && model.state.publication is ApiResult.Success }
+        rule.onNodeWithText(context.getString(R.string.websites_operation_id, operation.operationId)).performScrollTo().assertIsDisplayed()
+        assertEquals(listOf(operation.operationId), operationIds)
+    }
+    @Test fun localStorageFailureKeepsReceiptVisibleAndAllowsVerificationRetry() {
+        seedPending = true
+        failPublicationStorage = true
+        show()
+        rule.onNodeWithText(text(R.string.websites_original_operation)).performTextInput(operation.operationId)
+        rule.onAllNodesWithText(text(R.string.common_refresh)).onFirst().performClick()
+        rule.waitUntil(5_000) { !model.state.publishing && model.state.publication is ApiResult.Success }
+        rule.onNodeWithText(text(R.string.websites_publication_storage_failed)).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(context.getString(R.string.websites_operation_id, operation.operationId)).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.websites_publish_transport_failed)).assertDoesNotExist()
+        rule.runOnIdle { failPublicationStorage = false; publicationStorage.failWrites = false }
+        rule.onAllNodesWithText(text(R.string.common_refresh)).onFirst().performScrollTo().performClick()
+        rule.waitUntil(5_000) { !model.state.publishing && model.state.pendingPublication == null }
+        rule.onNodeWithText(text(R.string.websites_publication_storage_failed)).assertDoesNotExist()
+        assertEquals(listOf(operation.operationId, operation.operationId), operationIds)
+    }
+
 }

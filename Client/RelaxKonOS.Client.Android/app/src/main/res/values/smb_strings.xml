@@ -93,4 +93,7 @@
     <string name="smb_windows_address">Windows address</string>
     <string name="smb_windows_note">Windows shares use host ACLs. External shares and shares with configuration drift are view only.</string>
     <string name="smb_write_help">Accounts with write permission can add, change and delete files.</string>
+    <string name="smb_refresh_failed">The host accepted the SMB change, but current facts could not be verified. The submitted draft is closed. Read and explicitly accept current facts before another change.</string>
+    <string name="smb_recovery_storage_failed">The host result was received, but its local recovery record could not be saved or cleared. Keep the receipt ID and explicitly verify current facts before another change.</string>
+    <string name="smb_installation_refresh_failed">The installation task result is verified, but current SMB facts could not be read. The task result remains available in records. Refresh current facts before managing SMB.</string>
 </resources>

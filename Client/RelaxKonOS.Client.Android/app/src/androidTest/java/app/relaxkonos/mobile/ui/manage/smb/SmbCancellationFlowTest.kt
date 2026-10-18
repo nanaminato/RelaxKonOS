@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.Lifecycle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.test.espresso.Espresso
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
 import app.relaxkonos.mobile.R
@@ -26,6 +28,13 @@ class SmbCancellationFlowTest {
     private lateinit var model: SmbViewModel
     private var cancelRead = false
     private var writes = 0
+    private var successfulWrite = false
+    private var failVerification = false
+    private var failFactsAfterInstallation = false
+    private var readFailure: Exception? = null
+    private var capabilityReads = 0
+    private var currentShares = emptyList<SmbShare>()
+    private val receipt = SmbReceipt("33333333-3333-3333-3333-333333333333", true, null)
     private val task = InstallationOperation("11111111-1111-1111-1111-111111111111", InstallationService.Smb,
         InstallationKind.Install, InstallationState.Running, InstallationStage.Installing, null, null, 1, 1, null, true)
     private val tasks = mutableMapOf(task.operationId to task)
@@ -47,17 +56,21 @@ class SmbCancellationFlowTest {
                 LoginSession("review", "review", ServerDescriptor("linux", setOf(ServerCapabilities.FILE_SERVICES), true),
                     AuthTokens("test-access", "test-refresh", null, null), workspaceId = "11111111-1111-1111-1111-111111111111"))
             override suspend fun smbCapabilities(serverUrl: String, accessToken: String): ApiResult<SmbCapabilities> {
+                capabilityReads++
+                readFailure?.let { throw it }
                 if (cancelRead) throw CancellationException("private cancelled read")
                 return ApiResult.Success(facts.capabilities)
             }
             override suspend fun smbStatus(serverUrl: String, accessToken: String) = ApiResult.Success(facts.status)
             override suspend fun smbConnection(serverUrl: String, accessToken: String) = ApiResult.Success(facts.connection)
-            override suspend fun smbShares(serverUrl: String, accessToken: String): ApiResult<List<SmbShare>> = ApiResult.Success(emptyList())
+            override suspend fun smbShares(serverUrl: String, accessToken: String): ApiResult<List<SmbShare>> = ApiResult.Success(currentShares)
             override suspend fun smbUsers(serverUrl: String, accessToken: String): ApiResult<List<SmbUser>> =
                 ApiResult.Success(if (includeUser) listOf(SmbUser("review-user", true, true)) else emptyList())
             override suspend fun activeInstallation(serverUrl: String, accessToken: String, service: InstallationService): ApiResult<InstallationOperation?> = ApiResult.Success(null)
-            override suspend fun installation(serverUrl: String, accessToken: String, operationId: String): ApiResult<InstallationOperation> =
-                tasks[operationId]?.let { ApiResult.Success(it) } ?: ApiResult.Problem(404, "installation.missing", null)
+            override suspend fun installation(serverUrl: String, accessToken: String, operationId: String): ApiResult<InstallationOperation> {
+                if (failFactsAfterInstallation) readFailure = IllegalStateException("private post-installation facts failure")
+                return tasks[operationId]?.let { ApiResult.Success(it) } ?: ApiResult.Problem(404, "installation.missing", null)
+            }
             override suspend fun cancelInstallation(serverUrl: String, accessToken: String, operationId: String, idempotencyKey: String): ApiResult<InstallationOperation> {
                 cancellations += operationId
                 val cancelled = requireNotNull(tasks[operationId]).copy(state = InstallationState.Cancelled, stage = InstallationStage.Cancelled, completedAtMillis = 2)
@@ -65,7 +78,14 @@ class SmbCancellationFlowTest {
                 return ApiResult.Success(cancelled)
             }
             override suspend fun smbChange(serverUrl: String, accessToken: String, change: SmbChange, password: CharArray?): ApiResult<SmbReceipt> {
-                writes++; throw CancellationException("private cancelled write")
+                writes++
+                if (!successfulWrite) throw CancellationException("private cancelled write")
+                change.share?.let { share ->
+                    currentShares = listOf(SmbShare("opaque", share.name, share.path, share.description, share.readOnly,
+                        share.enabled, share.guestAllowed, share.permissions, true, false))
+                }
+                if (failVerification) readFailure = IllegalStateException("private verification failure")
+                return ApiResult.Success(receipt)
             }
         }
         val session = AuthSession(gateway)
@@ -160,4 +180,83 @@ class SmbCancellationFlowTest {
         rule.onNodeWithText(text(R.string.smb_stop)).performScrollTo().assertIsNotEnabled()
         rule.runOnIdle { assertEquals(1, writes); assertEquals(1, model.state.pending.size) }
     }
+    private fun submitNewShare() {
+        rule.onNodeWithText(text(R.string.workspace_shares)).performClick()
+        rule.onNodeWithText(text(R.string.smb_create)).performScrollTo().performClick()
+        rule.onNode(hasSetTextAction() and hasText(text(R.string.smb_name))).performScrollTo().performTextInput("review-share")
+        rule.onNode(hasSetTextAction() and hasText(text(R.string.smb_path))).performScrollTo()
+            .performTextInput("/srv/relaxkonos-shares/review-share")
+        Espresso.closeSoftKeyboard()
+        rule.onNodeWithText(text(R.string.common_save)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.smb_submit)).performClick()
+    }
+    @Test fun successfulShareCreationClosesDraftWithOneVerification() {
+        show(); successfulWrite = true
+        val before = capabilityReads
+        submitNewShare()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.saved == 1 }
+        rule.onNodeWithText(text(R.string.common_save)).assertDoesNotExist()
+        rule.onNodeWithText("review-share").performScrollTo().assertIsDisplayed()
+        rule.runOnIdle {
+            assertEquals(3, capabilityReads - before); assertEquals(1, writes)
+            assertEquals(receipt, model.state.receipt); assertNull(model.state.problem); assertTrue(model.state.pending.isEmpty())
+        }
+    }
+    @Test fun verifiedReceiptSurvivesReadFailureAndSubmittedShareCannotBeReplayed() {
+        show(); successfulWrite = true; failVerification = true
+        submitNewShare()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.saved == 1 }
+        rule.onNodeWithText(text(R.string.smb_refresh_failed)).assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.common_save)).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.common_dismiss)).performClick()
+        rule.onNodeWithText(text(R.string.smb_records_attention)).performScrollTo().performClick()
+        rule.onAllNodesWithText(context.getString(R.string.smb_receipt_id, receipt.operationId)).onFirst().performScrollTo().assertIsDisplayed()
+        rule.runOnIdle { readFailure = null }
+        rule.onNodeWithText(text(R.string.smb_accept_facts)).performScrollTo().performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.pending.isEmpty() }
+        rule.onNodeWithText(text(R.string.workspace_shares)).performClick()
+        rule.onNodeWithText("review-share").performScrollTo().assertIsDisplayed()
+        rule.runOnIdle { assertEquals(1, writes); assertEquals(receipt, model.state.receipt) }
+    }
+    @Test fun repeatedImmediateReadFailureReopensDismissedFeedback() {
+        show()
+        rule.runOnIdle { cancelRead = true; model.refresh() }
+        rule.onNode(isDialog()).assertExists()
+        val dismiss = rule.onNodeWithText(text(R.string.common_dismiss)).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        rule.runOnIdle { dismiss(); model.refresh() }
+        rule.onNode(isDialog()).assertExists()
+        rule.onNodeWithText(text(R.string.common_dismiss)).assertIsDisplayed()
+        rule.runOnIdle { assertNull(model.state.facts); assertFalse(model.state.busy); assertEquals(0, writes) }
+    }
+
+    @Test fun terminalInstallationRemainsVisibleWhenSharingFactsFailAndRefreshRecoversFacts() {
+        show()
+        val terminal = task.copy(state = InstallationState.Succeeded, stage = InstallationStage.Completed, completedAtMillis = 2, cancellable = false)
+        rule.runOnIdle { tasks[task.operationId] = terminal; failFactsAfterInstallation = true; model.recoverInstall(task.operationId, false) }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.installation == terminal }
+        rule.onNodeWithText(text(R.string.smb_installation_refresh_failed)).assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.common_dismiss)).performClick()
+        rule.onAllNodesWithText(text(R.string.smb_records)).filter(hasClickAction()).onFirst().performClick()
+        rule.onNodeWithText(task.operationId).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.installation_state_succeeded)).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.operations_request_cancel)).assertDoesNotExist()
+        rule.runOnIdle { assertTrue(model.state.installationVerified); assertNull(model.state.facts); failFactsAfterInstallation = false; readFailure = null }
+        refresh()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.facts != null }
+        rule.runOnIdle { assertTrue(model.state.installationVerified); assertEquals(terminal, model.state.installation); assertEquals(0, writes); assertTrue(cancellations.isEmpty()) }
+    }
+    @Test fun failedInstallationKeepsItsActualReasonAfterSharingRefresh() {
+        show()
+        val failed = task.copy(state = InstallationState.Failed, stage = InstallationStage.Failed,
+            problemCode = InstallationProblemCodes.FAILED, completedAtMillis = 2, cancellable = false)
+        rule.runOnIdle { tasks[task.operationId] = failed; model.recoverInstall(task.operationId, false) }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.installation == failed }
+        rule.onNodeWithText(text(R.string.installation_problem_failed)).assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.common_dismiss)).performClick()
+        rule.onAllNodesWithText(text(R.string.smb_records)).filter(hasClickAction()).onFirst().performClick()
+        rule.onNodeWithText(text(R.string.installation_state_failed)).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.installation_problem_failed)).performScrollTo().assertIsDisplayed()
+        rule.runOnIdle { assertTrue(model.state.installationVerified); assertEquals(failed.problemCode, model.state.problem); assertEquals(0, writes) }
+    }
+
 }

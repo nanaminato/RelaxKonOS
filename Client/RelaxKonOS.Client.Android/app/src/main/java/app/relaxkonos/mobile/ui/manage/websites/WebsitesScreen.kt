@@ -39,7 +39,7 @@ fun WebsitesScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initial
     val dependencies = appContainer()
     val viewModel: WebsitesViewModel = viewModel(factory = viewModelFactory {
         initializer { WebsitesViewModel(dependencies.session, dependencies.webPublishing, dependencies.deployments,
-            dependencies.certificates, dependencies.elevationAnswers) }
+            dependencies.certificates, dependencies.elevationAnswers, dependencies.websitePublicationJournal) }
     })
     val state = viewModel.state
     val container = app.relaxkonos.mobile.ui.common.appContainer()
@@ -162,6 +162,20 @@ internal fun WebsitePublicationRecords(state: WebsitesState, viewModel: Websites
 
 @Composable
 internal fun PublicationResult(state: WebsitesState, viewModel: WebsitesViewModel, active: Boolean) {
+    if (state.publicationStorageFailed) {
+        Text(stringResource(R.string.websites_publication_storage_failed), color = MaterialTheme.colorScheme.error)
+    }
+    state.pendingPublication?.let { review ->
+        val pending = review.pending
+        var originalId by remember(pending.key) { mutableStateOf(pending.operationId.orEmpty()) }
+        SectionCard(stringResource(R.string.websites_pending_publication)) {
+            Text(stringResource(R.string.websites_pending_publication_help, pending.applicationId, pending.serverId))
+            OutlinedTextField(value = originalId, onValueChange = { originalId = it }, enabled = !state.publishing && !state.loading,
+                label = { Text(stringResource(R.string.websites_original_operation)) }, modifier = Modifier.fillMaxWidth())
+            TextButton(enabled = originalId.isNotBlank() && !state.publishing && !state.loading,
+                onClick = { viewModel.recoverPendingPublication(review, originalId) }) { ActionLabel(R.string.common_refresh) }
+        }
+    }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val lifecycleState by lifecycle.currentStateAsState()
     if (state.selectedApplicationId == null && state.publication == null && !state.publicationLoading && !state.publishing) {
@@ -170,6 +184,9 @@ internal fun PublicationResult(state: WebsitesState, viewModel: WebsitesViewMode
     val result = state.publication
     if (result is ApiResult.Success) {
         val operation = result.value
+        androidx.compose.foundation.text.selection.SelectionContainer {
+            Text(stringResource(R.string.websites_operation_id, operation.operationId), style = MaterialTheme.typography.bodySmall)
+        }
         Text(stringResource(R.string.websites_operation, operation.state, operation.stage), style = MaterialTheme.typography.bodyMedium)
         if (operation.problemCode.isNotBlank()) Text(operation.problemCode, color = MaterialTheme.colorScheme.error)
         operation.checks.forEach { check -> Text(stringResource(R.string.websites_check, check.name, check.observer, check.state, check.problemCode.ifBlank { "—" }), style = MaterialTheme.typography.bodySmall) }
@@ -192,14 +209,17 @@ internal fun PublicationResult(state: WebsitesState, viewModel: WebsitesViewMode
     RefreshProgressIndicator(visible = state.historyLoading)
     if (state.publicationHistory is ApiResult.Transport || state.publicationHistory is ApiResult.Problem) {
         Text(stringResource(R.string.websites_history_failed), color = MaterialTheme.colorScheme.error)
-        TextButton(enabled = !state.historyLoading, onClick = viewModel::refreshHistory) {
+        TextButton(enabled = !state.historyLoading && !state.publishing, onClick = viewModel::refreshHistory) {
             ActionLabel(R.string.common_retry)
         }
     }
     val history = (state.publicationHistory as? ApiResult.Success)?.value
     if (history?.isEmpty() == true) Text(stringResource(R.string.websites_history_empty), style = MaterialTheme.typography.bodySmall)
     history?.forEach { history ->
-        Text(stringResource(R.string.websites_operation_history, history.domain, history.state, history.stage), style = MaterialTheme.typography.bodySmall)
+        TextButton(enabled = !state.publicationLoading && !state.publishing,
+            onClick = { viewModel.refreshPublication(history.operationId) }) {
+            Text(stringResource(R.string.websites_operation_history, history.domain, history.state, history.stage), style = MaterialTheme.typography.bodySmall)
+        }
     }
 }
 

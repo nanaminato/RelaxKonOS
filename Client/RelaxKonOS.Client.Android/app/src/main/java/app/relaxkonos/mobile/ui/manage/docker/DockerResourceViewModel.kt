@@ -13,7 +13,7 @@ import kotlinx.coroutines.*
 internal data class DockerResourceState(val owner: SessionState.Active? = null, val busy: Boolean = false,
     val facts: DockerResourceFacts? = null, val target: DockerResourceTarget? = null, val stats: DockerContainerStats? = null,
     val logs: DockerLogs? = null, val result: DockerOperation? = null, val pending: List<PendingDockerResource> = emptyList(),
-    val blocked: String? = null, val problem: String? = null, val saved: Int = 0)
+    val blocked: String? = null, val problem: String? = null, val saved: Int = 0, val feedbackVersion: Long = 0)
 internal class ResourceConfirmation(val owner: SessionState.Active, val facts: DockerResourceFacts,
     val target: DockerResourceTarget?, val change: DockerResourceChange)
 internal class DockerResourceViewModel(private val session: AuthSession, private val resources: DockerResourceRepository, private val gate: DockerMutationGate) : ViewModel() {
@@ -64,7 +64,7 @@ internal class DockerResourceViewModel(private val session: AuthSession, private
         if (next !== state.owner) { dismissConfirmation(); job?.cancel(); generation++; state = DockerResourceState(owner = next as? SessionState.Active) }
     } } }
     fun stop() { dismissConfirmation(); job?.cancel(); generation++; state = DockerResourceState(owner = state.owner) }
-    fun refresh() = work { owner -> load(owner); state = state.copy(target = null, stats = null, logs = null, result = null) }
+    fun refresh() = work { owner -> load(owner); state = state.copy(target = null, stats = null, logs = null) }
     fun select(kind: DockerResourceKind, id: String) = work { owner ->
         state = state.copy(target = null, stats = null, logs = null, result = null)
         val result = resources.target(owner, kind, id); verify(owner)
@@ -82,17 +82,25 @@ internal class DockerResourceViewModel(private val session: AuthSession, private
         dismissConfirmation()
         if (session.state.value !== review.owner || state.owner !== review.owner || state.facts != review.facts ||
             review.target != null && state.target != review.target) return
+        state = state.copy(result = null)
         work { owner ->
-            val result = resources.change(owner, review.facts, review.target, review.change); verify(owner)
-            load(owner)
+            val outcome = resources.change(owner, review.facts, review.target, review.change); verify(owner)
+            val result = outcome.result
+            val success = result is ApiResult.Success && result.value.success
             state = state.copy(target = null, stats = null, logs = null, result = (result as? ApiResult.Success)?.value,
-                problem = problem(result) ?: state.problem,
-                saved = state.saved + if (result is ApiResult.Success && result.value.success && state.pending.isEmpty()) 1 else 0)
+                saved = state.saved + if (success) 1 else 0)
+            showFacts(owner, outcome.facts)
+            state = state.copy(problem = when {
+                outcome.storageFailed -> "docker.control.recovery_storage_failed"
+                problem(result) != null -> problem(result)
+                success && (outcome.facts !is ApiResult.Success || !outcome.facts.value.status.available) -> "docker.control.refresh_failed"
+                else -> state.problem
+            })
         }
     }
     fun accept(marker: PendingDockerResource) = work { owner ->
         val result = resources.acceptFacts(owner, marker); verify(owner); showFacts(owner, result)
-        state = state.copy(target = null, stats = null, logs = null, result = null, problem = problem(result) ?: state.problem)
+        state = state.copy(target = null, stats = null, logs = null, problem = problem(result) ?: state.problem)
     }
     private suspend fun readStats(owner: SessionState.Active, id: String) {
         val result = resources.stats(owner, id); verify(owner)
@@ -103,8 +111,17 @@ internal class DockerResourceViewModel(private val session: AuthSession, private
         showFacts(owner, result)
     }
     private suspend fun showFacts(owner: SessionState.Active, result: ApiResult<DockerResourceFacts>) {
-        val gateResult = if (owner.privilegedOperations) gate.check(owner) else ApiResult.Success(Unit); verify(owner)
-        state = state.copy(facts = (result as? ApiResult.Success)?.value, pending = resources.pending(owner),
+        val gateResult = try { if (owner.privilegedOperations) gate.check(owner) else ApiResult.Success(Unit) }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { ApiResult.Transport(null) }
+        verify(owner)
+        val pending = try { resources.pending(owner) }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) {
+            state = state.copy(facts = null, blocked = "docker.control.recovery_storage_failed", problem = "docker.control.recovery_storage_failed")
+            return
+        }
+        state = state.copy(facts = (result as? ApiResult.Success)?.value, pending = pending,
             blocked = problem(gateResult), problem = problem(result))
     }
     private fun problem(result: ApiResult<*>): String? = when (result) {
@@ -114,12 +131,12 @@ internal class DockerResourceViewModel(private val session: AuthSession, private
         dismissConfirmation()
         val owner = state.owner ?: return
         if (state.busy || ServerCapabilities.DOCKER !in owner.capabilities) return
-        val request = ++generation; state = state.copy(busy = true, problem = null)
+        val request = ++generation; state = state.copy(busy = true, problem = null, feedbackVersion = state.feedbackVersion + 1)
         job = viewModelScope.launch {
             try { block(owner) }
             catch (cancelled: CancellationException) {
                 if (current(owner, request)) state = state.copy(facts = null, target = null, stats = null, logs = null,
-                    result = null, problem = "docker.control.unverified")
+                    problem = "docker.control.unverified")
                 throw cancelled
             }
             catch (_: Exception) { if (current(owner, request)) state = state.copy(facts = null, target = null, stats = null, logs = null, problem = "docker.control.unverified") }

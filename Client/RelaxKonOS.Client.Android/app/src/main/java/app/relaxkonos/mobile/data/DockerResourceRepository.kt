@@ -3,7 +3,11 @@ package app.relaxkonos.mobile.data
 import app.relaxkonos.mobile.core.auth.*
 import app.relaxkonos.mobile.core.net.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.withLock
+
+data class DockerResourceOutcome(val result: ApiResult<DockerOperation>, val facts: ApiResult<DockerResourceFacts>, val storageFailed: Boolean = false)
 
 class DockerResourceRepository(private val gateway: RelaxKonGateway, private val session: AuthSession,
     private val journal: DockerResourceJournal, private val gate: DockerMutationGate) {
@@ -32,11 +36,11 @@ class DockerResourceRepository(private val gateway: RelaxKonGateway, private val
     suspend fun stats(owner: SessionState.Active, id: String): ApiResult<DockerContainerStats> =
         read(owner) { url, token -> gateway.dockerContainerStats(url, token, id) }.map { require(DockerResourceValidation.identity(it.containerId, id) || DockerResourceValidation.identity(id, it.containerId)); it }
     suspend fun logs(owner: SessionState.Active, id: String): ApiResult<DockerLogs> = read(owner) { url, token -> gateway.dockerContainerLogs(url, token, id, 200) }
-    suspend fun change(owner: SessionState.Active, expected: DockerResourceFacts, target: DockerResourceTarget?, change: DockerResourceChange): ApiResult<DockerOperation> = gate.mutex.withLock {
+    suspend fun change(owner: SessionState.Active, expected: DockerResourceFacts, target: DockerResourceTarget?, change: DockerResourceChange): DockerResourceOutcome = gate.mutex.withLock {
         verify(owner)
-        val available = gate.check(owner); if (available !is ApiResult.Success) return@withLock failure(available)
+        val available = gate.check(owner); if (available !is ApiResult.Success) return@withLock DockerResourceOutcome(failure(available), ApiResult.Transport(null))
         validate(expected, target, change)
-        val before = approved(owner, expected, target); if (before !is ApiResult.Success) return@withLock failure(before)
+        val before = approved(owner, expected, target); if (before !is ApiResult.Success) return@withLock DockerResourceOutcome(failure(before), ApiResult.Transport(null))
         val marker = journal.begin(owner, change)
         val result = session.authenticated { url, token ->
             verify(owner)
@@ -44,11 +48,16 @@ class DockerResourceRepository(private val gateway: RelaxKonGateway, private val
             gateway.dockerResourceChange(url, token, change)
         }
         verify(owner)
-        if (result is ApiResult.Success && result.value.success) {
-            val current = facts(owner)
-            if (current is ApiResult.Success && current.value.status.available) journal.complete(marker)
-        }
-        result
+        val current = try { facts(owner) }
+        catch (cancelled: CancellationException) {
+            currentCoroutineContext().ensureActive()
+            verify(owner)
+            ApiResult.Transport(null)
+        } catch (_: Exception) { verify(owner); ApiResult.Transport(null) }
+        val storageFailed = if (result is ApiResult.Success && result.value.success && current is ApiResult.Success && current.value.status.available) {
+            try { journal.complete(marker); false } catch (_: Exception) { true }
+        } else false
+        DockerResourceOutcome(result, current, storageFailed)
     }
     suspend fun acceptFacts(owner: SessionState.Active, marker: PendingDockerResource): ApiResult<DockerResourceFacts> = gate.mutex.withLock {
         verify(owner); require(marker in journal.pending(owner))

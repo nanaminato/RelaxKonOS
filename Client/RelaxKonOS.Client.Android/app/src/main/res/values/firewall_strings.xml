@@ -46,4 +46,6 @@
     <string name="firewall_unverified">Firewall facts or change result are unverified. Refresh before continuing.</string>
     <string name="firewall_windows_ready">Windows Firewall ready</string>
     <string name="firewall_windows_scope">Changes apply to Domain, Private and Public profiles. Only rules managed by this app are listed.</string>
+    <string name="firewall_refresh_failed">The host accepted the change, but current firewall facts could not be verified. The submitted draft is closed. Read and explicitly accept current facts before another change.</string>
+    <string name="firewall_recovery_storage_failed">The host result was received, but its local recovery record could not be cleared. Read and explicitly accept current facts before another change.</string>
 </resources>

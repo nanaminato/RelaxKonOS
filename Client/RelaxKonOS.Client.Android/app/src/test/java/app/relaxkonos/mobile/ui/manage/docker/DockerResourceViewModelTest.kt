@@ -181,4 +181,40 @@ class DockerResourceViewModelTest {
         assertEquals(2, reads)
         timer.cancelAndJoin()
     }
+    private val successfulReceipt = DockerOperation(true, "", listOf("created"), false)
+    private fun submitVolume() {
+        model.requestChange(requireNotNull(model.state.owner), facts, null, change)
+        model.change(requireNotNull(model.confirmation))
+    }
+    @Test fun `resource success uses one verification and keeps receipt`() = runTest {
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        var reads = 0
+        gateway.onDockerStatus = { reads++; check(reads <= 3) { "redundant read" }; ApiResult.Success(facts.status) }
+        gateway.onDockerResourceChange = { ApiResult.Success(successfulReceipt) }
+        submitVolume(); advanceUntilIdle()
+        assertEquals(3, reads); assertEquals(successfulReceipt, model.state.result)
+        assertEquals(1, model.state.saved); assertEquals(facts, model.state.facts); assertNull(model.state.problem)
+    }
+    @Test fun `failed resource verification retains successful receipt and closes submitted editor`() = runTest {
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        gateway.onDockerResourceChange = { gateway.onDockerStatus = { error("private verification error") }; ApiResult.Success(successfulReceipt) }
+        submitVolume(); advanceUntilIdle()
+        assertEquals(successfulReceipt, model.state.result); assertEquals(1, model.state.saved)
+        assertNull(model.state.facts); assertEquals(1, model.state.pending.size)
+        assertEquals("docker.control.refresh_failed", model.state.problem)
+    }
+
+    @Test fun `read refresh and explicit adoption keep known receipt without replaying write`() = runTest {
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        var sends = 0
+        gateway.onDockerResourceChange = { sends++; gateway.onDockerStatus = { ApiResult.Transport(null) }; ApiResult.Success(successfulReceipt) }
+        submitVolume(); advanceUntilIdle()
+        assertEquals(successfulReceipt, model.state.result)
+        gateway.onDockerStatus = { ApiResult.Success(facts.status) }
+        model.refresh(); advanceUntilIdle()
+        assertEquals(successfulReceipt, model.state.result); assertEquals(1, model.state.pending.size)
+        model.accept(model.state.pending.single()); advanceUntilIdle()
+        assertEquals(successfulReceipt, model.state.result); assertTrue(model.state.pending.isEmpty()); assertEquals(1, sends)
+    }
+
 }

@@ -7,6 +7,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+class WebsitePublicationStorageException(cause: Exception) : IllegalStateException("Website publication recovery storage is unavailable", cause)
+
 data class WebsitePublicationOutcome(val result: ApiResult<WebsitePublicationOperation>, val storageFailed: Boolean = false)
 
 class WebsitePublicationRequests(private val session: AuthSession, private val repository: WebPublishingRepository,
@@ -15,7 +17,8 @@ class WebsitePublicationRequests(private val session: AuthSession, private val r
     fun pending(owner: SessionState.Active): PendingWebsitePublication? { verify(owner); return journal.pending(owner) }
     suspend fun submit(owner: SessionState.Active, request: WebsitePublishRequest, provider: ElevationAnswerProvider): WebsitePublicationOutcome = mutations.withLock {
         verify(owner)
-        val existing = journal.pending(owner)
+        val existing = try { journal.pending(owner) }
+        catch (failed: Exception) { throw WebsitePublicationStorageException(failed) }
         if (existing != null && !journal.matches(existing, request)) return@withLock WebsitePublicationOutcome(ApiResult.Problem(409, "website.original_request_pending", null))
         if (existing?.operationId != null) return@withLock recoverOriginal(owner, existing, existing.operationId, false)
         if (existing?.attempted == true) {
@@ -26,12 +29,16 @@ class WebsitePublicationRequests(private val session: AuthSession, private val r
                 else -> ApiResult.Transport(null)
             })
         }
-        val pending = journal.begin(owner, request).copy(attempted = true)
-        journal.update(pending)
+        val pending = try {
+            journal.begin(owner, request).copy(attempted = true).also(journal::update)
+        } catch (failed: Exception) { throw WebsitePublicationStorageException(failed) }
         val result = repository.publish(owner, request, pending.key, provider); verify(owner)
         if (result is ApiResult.Success) return@withLock accepted(owner, pending, result.value)
         // A rejection after an earlier unknown attempt cannot prove that earlier attempt was never accepted.
-        if (existing?.attempted != true && result is ApiResult.Problem && result.status in setOf(400, 401, 403, 404, 409, 422)) journal.complete(pending)
+        if (existing?.attempted != true && result is ApiResult.Problem && result.status in setOf(400, 401, 403, 404, 409, 422)) {
+            try { journal.complete(pending) }
+            catch (_: Exception) { return@withLock WebsitePublicationOutcome(result, storageFailed = true) }
+        }
         WebsitePublicationOutcome(result)
     }
     suspend fun recover(owner: SessionState.Active, pending: PendingWebsitePublication, id: String, identified: Boolean): WebsitePublicationOutcome = mutations.withLock {
@@ -54,7 +61,8 @@ class WebsitePublicationRequests(private val session: AuthSession, private val r
             repository.remember(owner, operation)
             journal.complete(recorded)
             WebsitePublicationOutcome(ApiResult.Success(operation))
-        } catch (_: Exception) { WebsitePublicationOutcome(ApiResult.Success(operation), storageFailed = true) }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { WebsitePublicationOutcome(ApiResult.Success(operation), storageFailed = true) }
     }
     private fun verify(owner: SessionState.Active) { if (session.state.value !== owner) throw CancellationException("Website publication session changed") }
 }

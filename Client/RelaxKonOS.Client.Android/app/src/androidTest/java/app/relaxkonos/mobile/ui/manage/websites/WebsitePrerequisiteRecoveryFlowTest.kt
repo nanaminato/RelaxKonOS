@@ -51,7 +51,7 @@ class WebsitePrerequisiteRecoveryFlowTest {
         })
         rule.runOnUiThread {
             model = WebsitesViewModel(session, WebPublishingRepository(gateway, session, elevation, index),
-                DeploymentRepository(gateway, session), CertificateRepository(gateway, session, index, CertificateRequestJournal(Storage()), elevation), ElevationAnswerProvider.Declines)
+                DeploymentRepository(gateway, session), CertificateRepository(gateway, session, index, CertificateRequestJournal(Storage()), elevation), ElevationAnswerProvider.Declines, WebsitePublicationJournal(Storage()))
             store.put("websites", model)
         }
         rule.setContent { MaterialTheme { WebsitePublisher(model.state, model, {}) } }

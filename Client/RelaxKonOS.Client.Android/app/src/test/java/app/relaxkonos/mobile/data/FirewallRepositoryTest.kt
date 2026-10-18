@@ -18,8 +18,9 @@ import org.junit.Test
 class FirewallRepositoryTest {
     private class Storage : InstallationRequestStorage {
         var bytes: ByteArray? = null
+        var failWrites = false
         override fun read() = bytes
-        override fun write(bytes: ByteArray) { this.bytes = bytes.copyOf() }
+        override fun write(bytes: ByteArray) { check(!failWrites); this.bytes = bytes.copyOf() }
     }
     private val gateway = FakeGateway(); private val session = AuthSession(gateway); private val storage = Storage()
     private val journal = FirewallMutationJournal(storage)
@@ -37,7 +38,7 @@ class FirewallRepositoryTest {
     @Test fun `lost mutation persists no secrets forbids replay and facts need explicit adoption`() = runTest {
         val owner = signIn(); var calls = 0
         gateway.onChangeFirewall = { _ -> calls++; ApiResult.Transport(null) }
-        assertTrue(repository.change(owner, facts, change, ElevationAnswerProvider.Declines) is ApiResult.Transport)
+        assertTrue(repository.change(owner, facts, change, ElevationAnswerProvider.Declines).result is ApiResult.Transport)
         assertFalse(storage.bytes!!.decodeToString().contains("password"))
         repository.facts(owner); val pending = FirewallMutationJournal(storage).pending(owner).single()
         assertTrue(runCatching { repository.change(owner, facts, change, ElevationAnswerProvider.Declines) }.isFailure)
@@ -46,7 +47,7 @@ class FirewallRepositoryTest {
     }
     @Test fun `changed rule numbering or policy refuses mutation before authorization`() = runTest {
         val owner = signIn(); gateway.onFirewallStatus = { ApiResult.Success(status.copy(isEnabled = true)) }
-        val result = repository.change(owner, facts, change, ElevationAnswerProvider.Declines)
+        val result = repository.change(owner, facts, change, ElevationAnswerProvider.Declines).result
         assertEquals("firewall.facts_changed", (result as ApiResult.Problem).code)
         assertTrue(repository.pending(owner).isEmpty())
     }
@@ -61,14 +62,14 @@ class FirewallRepositoryTest {
             assertEquals("alice", account); assertEquals("admin-secret", String(password!!))
             ApiResult.Success(ElevationGrant(true, null))
         }
-        assertTrue(repository.change(owner, facts, change, ElevationAnswerProvider { _, _ -> ElevationAnswer("alice", admin) }) is ApiResult.Success)
+        assertTrue(repository.change(owner, facts, change, ElevationAnswerProvider { _, _ -> ElevationAnswer("alice", admin) }).result is ApiResult.Success)
         assertEquals(2, count); assertTrue(admin.all { it == '\u0000' }); assertTrue(repository.pending(owner).isEmpty())
     }
     @Test fun `snapshot is reread after elevation prompt before numbered writes`() = runTest {
         val owner = signIn(); var calls = 0
         gateway.onChangeFirewall = { _ -> calls++; ApiResult.Success(FirewallResult(false, "firewall.elevation_required")) }
         gateway.onElevation = { _, _, _, _, _, _ -> gateway.onFirewallStatus = { ApiResult.Success(status.copy(isEnabled = true)) }; ApiResult.Success(ElevationGrant(true, null)) }
-        val result = repository.change(owner, facts, change, ElevationAnswerProvider { _, _ -> ElevationAnswer("alice", "pw".toCharArray()) })
+        val result = repository.change(owner, facts, change, ElevationAnswerProvider { _, _ -> ElevationAnswer("alice", "pw".toCharArray()) }).result
         assertEquals("firewall.facts_changed", (result as ApiResult.Problem).code); assertEquals(1, calls)
     }
     @Test fun `unavailable backend does not invent empty verified rules and observers cannot mutate`() = runTest {
@@ -95,4 +96,32 @@ class FirewallRepositoryTest {
         first.cancelAndJoin()
         assertEquals(1, repository.pending(owner).size)
     }
+    @Test fun `success receipt survives failed post-write verification and retains original marker`() = runTest {
+        val owner = signIn(); var writes = 0
+        gateway.onChangeFirewall = { writes++; gateway.onFirewallStatus = { error("private verification failure") }; ApiResult.Success(FirewallResult(true, "")) }
+        val outcome = repository.change(owner, facts, change, ElevationAnswerProvider.Declines)
+        assertEquals(ApiResult.Success(FirewallResult(true, "")), outcome.result)
+        assertEquals(ApiResult.Transport(null), outcome.facts)
+        assertEquals(1, repository.pending(owner).size)
+        assertEquals(1, writes)
+    }
+    @Test fun `cancelled verification preserves known receipt while active and never replays`() = runTest {
+        val owner = signIn(); var writes = 0
+        gateway.onChangeFirewall = { writes++; gateway.onFirewallStatus = { throw CancellationException("private cancelled verification") }; ApiResult.Success(FirewallResult(true, "")) }
+        val outcome = repository.change(owner, facts, change, ElevationAnswerProvider.Declines)
+        assertEquals(ApiResult.Success(FirewallResult(true, "")), outcome.result)
+        assertEquals(ApiResult.Transport(null), outcome.facts)
+        assertEquals(1, repository.pending(owner).size)
+        assertEquals(1, writes)
+    }
+    @Test fun `known receipt and verified facts survive local marker cleanup failure`() = runTest {
+        val owner = signIn()
+        gateway.onChangeFirewall = { storage.failWrites = true; ApiResult.Success(FirewallResult(true, "")) }
+        val outcome = repository.change(owner, facts, change, ElevationAnswerProvider.Declines)
+        assertEquals(ApiResult.Success(FirewallResult(true, "")), outcome.result)
+        assertEquals(ApiResult.Success(facts), outcome.facts)
+        assertTrue(outcome.storageFailed)
+        assertEquals(1, repository.pending(owner).size)
+    }
+
 }

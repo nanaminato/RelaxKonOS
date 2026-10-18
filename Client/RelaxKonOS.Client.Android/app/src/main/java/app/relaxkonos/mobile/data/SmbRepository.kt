@@ -3,8 +3,13 @@ package app.relaxkonos.mobile.data
 import app.relaxkonos.mobile.core.auth.*
 import app.relaxkonos.mobile.core.net.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+
+data class SmbChangeOutcome(val result: ApiResult<SmbReceipt>, val facts: ApiResult<SmbFacts>,
+    val storageFailed: Boolean = false)
 
 class SmbRepository(private val gateway: RelaxKonGateway, private val session: AuthSession,
     private val elevations: ElevationRepository, private val journal: SmbMutationJournal) {
@@ -22,12 +27,12 @@ class SmbRepository(private val gateway: RelaxKonGateway, private val session: A
         verify(owner)
         return ApiResult.Success(SmbFacts(caps.value, status.value, shares?.value, users?.value, connection.value))
     }
-    suspend fun change(owner: SessionState.Active, expected: SmbFacts, change: SmbChange, password: CharArray?, provider: ElevationAnswerProvider): ApiResult<SmbReceipt> = try {
+    suspend fun change(owner: SessionState.Active, expected: SmbFacts, change: SmbChange, password: CharArray?, provider: ElevationAnswerProvider): SmbChangeOutcome = try {
         mutations.withLock {
             verify(owner); require(owner.privilegedOperations && expected.capabilities.supported && expected.status.state.manageable)
             require(journal.pending(owner).isEmpty()); validate(expected, change, password)
-            val before = facts(owner); if (before !is ApiResult.Success) return@withLock failure(before)
-            if (before.value != expected) return@withLock ApiResult.Problem(409, "file-services.smb.facts_changed", null)
+            val before = facts(owner); if (before !is ApiResult.Success) return@withLock SmbChangeOutcome(failure(before), before)
+            if (before.value != expected) return@withLock SmbChangeOutcome(ApiResult.Problem(409, "file-services.smb.facts_changed", null), before)
             val pending = journal.begin(owner, change)
             val result = elevations.withElevation("smbManage", "smb:managed", provider) { url, token ->
                 verify(owner)
@@ -39,15 +44,26 @@ class SmbRepository(private val gateway: RelaxKonGateway, private val session: A
                 }
             }
             verify(owner)
-            if (result is ApiResult.Problem && result.code in setOf(ProblemCodes.ELEVATION_REQUIRED, ProblemCodes.UNAUTHORIZED)) journal.complete(pending)
+            // Preserve the host receipt independently of local persistence and the single read-back.
+            var storageFailed = false
             if (result is ApiResult.Success) {
-                journal.receipt(pending, result.value.operationId)
-                if (result.value.succeeded) {
-                    val current = facts(owner)
-                    if (current is ApiResult.Success && current.value.capabilities.supported && current.value.status.state.manageable) journal.complete(pending)
-                }
+                try { journal.receipt(pending, result.value.operationId) }
+                catch (_: Exception) { storageFailed = true }
             }
-            result
+            val current = try { facts(owner) }
+            catch (cancelled: CancellationException) {
+                currentCoroutineContext().ensureActive()
+                verify(owner)
+                ApiResult.Transport(null)
+            } catch (_: Exception) { verify(owner); ApiResult.Transport(null) }
+            val refused = result is ApiResult.Problem && result.code in setOf(ProblemCodes.ELEVATION_REQUIRED, ProblemCodes.UNAUTHORIZED)
+            val confirmed = result is ApiResult.Success && result.value.succeeded && current is ApiResult.Success &&
+                current.value.capabilities.supported && current.value.status.state.manageable
+            if (!storageFailed && (refused || confirmed)) {
+                try { journal.complete(pending) }
+                catch (_: Exception) { storageFailed = true }
+            }
+            SmbChangeOutcome(result, current, storageFailed)
         }
     } finally { password?.fill('\u0000') }
     suspend fun acceptFacts(owner: SessionState.Active, pending: PendingSmbMutation): ApiResult<SmbFacts> = mutations.withLock {

@@ -93,4 +93,7 @@
     <string name="smb_windows_address">Windows アドレス</string>
     <string name="smb_windows_note">Windows 共有にはホストの ACL を使用します。外部共有と設定が変化した共有は表示のみです。</string>
     <string name="smb_write_help">書き込み権限のあるアカウントは追加、変更、削除ができます。</string>
+    <string name="smb_refresh_failed">ホストは SMB の変更を受け付けましたが、現在の情報を確認できません。送信済みの下書きを閉じました。次の変更前に現在の情報を読み取り、明示的に採用してください。</string>
+    <string name="smb_recovery_storage_failed">ホストの結果を受信しましたが、ローカルの復元記録を保存または削除できませんでした。受領 ID を保持し、次の変更前に現在の情報を明示的に確認してください。</string>
+    <string name="smb_installation_refresh_failed">インストールタスクの結果は確認済みですが、現在の SMB 情報を読み取れません。記録でタスクの結果を確認できます。SMB の管理前に現在の情報を更新してください。</string>
 </resources>

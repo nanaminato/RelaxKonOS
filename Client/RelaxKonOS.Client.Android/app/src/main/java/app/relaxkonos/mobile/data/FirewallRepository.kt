@@ -3,8 +3,13 @@ package app.relaxkonos.mobile.data
 import app.relaxkonos.mobile.core.auth.*
 import app.relaxkonos.mobile.core.net.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+
+data class FirewallChangeOutcome(val result: ApiResult<FirewallResult>, val facts: ApiResult<FirewallFacts>,
+    val storageFailed: Boolean = false)
 
 class FirewallRepository(private val gateway: RelaxKonGateway, private val session: AuthSession,
     private val elevations: ElevationRepository, private val journal: FirewallMutationJournal) {
@@ -18,13 +23,13 @@ class FirewallRepository(private val gateway: RelaxKonGateway, private val sessi
         return if (rules is ApiResult.Success) ApiResult.Success(FirewallFacts(status.value, rules.value)) else failure(rules)
     }
     suspend fun change(owner: SessionState.Active, expected: FirewallFacts, change: FirewallChange,
-        provider: ElevationAnswerProvider): ApiResult<FirewallResult> =
+        provider: ElevationAnswerProvider): FirewallChangeOutcome =
         mutations.withLock {
             verify(owner); require(owner.privilegedOperations && expected.status.isAvailable)
             change.validate(); require(journal.pending(owner).isEmpty())
             val current = facts(owner)
-            if (current !is ApiResult.Success) return@withLock failure(current)
-            if (current.value != expected) return@withLock ApiResult.Problem(409, "firewall.facts_changed", null)
+            if (current !is ApiResult.Success) return@withLock FirewallChangeOutcome(failure(current), current)
+            if (current.value != expected) return@withLock FirewallChangeOutcome(ApiResult.Problem(409, "firewall.facts_changed", null), current)
             val pending = journal.begin(owner, change.kind, change.number)
             val result = elevations.withElevation("firewallChange", "host/firewall", provider) { url, token ->
                 verify(owner)
@@ -39,12 +44,20 @@ class FirewallRepository(private val gateway: RelaxKonGateway, private val sessi
             verify(owner)
             // Only explicit pre-mutation authorization refusals prove that no host change occurred.
             val refused = result is ApiResult.Problem && result.code in setOf(ProblemCodes.ELEVATION_REQUIRED, ProblemCodes.UNAUTHORIZED)
-            if (refused) journal.complete(pending)
-            else if (result is ApiResult.Success && result.value.success) {
-                val confirmed = facts(owner)
-                if (confirmed is ApiResult.Success && confirmed.value.status.isAvailable) journal.complete(pending)
-            }
-            result
+            // The write receipt and its one follow-up read are independent evidence.
+            // A failed verification must not erase a known successful write or trigger another read.
+            val confirmed = try { facts(owner) }
+            catch (cancelled: CancellationException) {
+                currentCoroutineContext().ensureActive()
+                verify(owner)
+                ApiResult.Transport(null)
+            } catch (_: Exception) { verify(owner); ApiResult.Transport(null) }
+            val complete = refused || result is ApiResult.Success && result.value.success &&
+                confirmed is ApiResult.Success && confirmed.value.status.isAvailable
+            val storageFailed = if (complete) {
+                try { journal.complete(pending); false } catch (_: Exception) { true }
+            } else false
+            FirewallChangeOutcome(result, confirmed, storageFailed)
         }
     suspend fun acceptFacts(owner: SessionState.Active, pending: PendingFirewallChange): ApiResult<FirewallFacts> = mutations.withLock {
         verify(owner); require(pending in journal.pending(owner))

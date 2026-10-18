@@ -12,8 +12,9 @@ import org.junit.Test
 class DockerResourceRepositoryTest {
     private class Storage : InstallationRequestStorage {
         var bytes: ByteArray? = null
+        var failWrites = false
         override fun read() = bytes
-        override fun write(bytes: ByteArray) { this.bytes = bytes.copyOf() }
+        override fun write(bytes: ByteArray) { check(!failWrites); this.bytes = bytes.copyOf() }
     }
     private val gateway = FakeGateway(); private val session = AuthSession(gateway); private val storage = Storage()
     private val journal = DockerResourceJournal(storage); private val control = DockerControlJournal(Storage())
@@ -40,10 +41,10 @@ class DockerResourceRepositoryTest {
         val owner = signIn(); var calls = 0
         val change = DockerResourceChange(DockerResourceAction.CreateContainer, container = DockerContainerCreate("PrivateName", "nginx", listOf("PrivateCommand"), environment = listOf("TOKEN=PrivateSecret")))
         gateway.onDockerResourceChange = { calls++; ApiResult.Transport(null) }
-        assertTrue(repository.change(owner, facts, null, change) is ApiResult.Transport)
+        assertTrue(repository.change(owner, facts, null, change).result is ApiResult.Transport)
         listOf("PrivateName", "PrivateCommand", "PrivateSecret").forEach { assertFalse(storage.bytes!!.decodeToString().contains(it)) }
         val marker = DockerResourceJournal(storage).pending(owner).single(); repository.facts(owner)
-        assertTrue(repository.change(owner, facts, null, change) is ApiResult.Problem); assertEquals(1, calls)
+        assertTrue(repository.change(owner, facts, null, change).result is ApiResult.Problem); assertEquals(1, calls)
         assertTrue(repository.acceptFacts(owner, marker) is ApiResult.Success); assertTrue(repository.pending(owner).isEmpty()); assertEquals(1, calls)
     }
     @Test fun `all collection failures stay unknown and unavailable engine cannot adopt resource result`() = runTest {
@@ -56,7 +57,7 @@ class DockerResourceRepositoryTest {
     }
     @Test fun `changed details refuse before writing even when summary lists are unchanged`() = runTest {
         val owner = signIn(); gateway.onDockerContainerDetails = { ApiResult.Success(detail.copy(labels = mapOf("com.docker.compose.project" to "stack"))) }
-        val result = repository.change(owner, facts, target, DockerResourceChange(DockerResourceAction.DeleteContainer, target.id))
+        val result = repository.change(owner, facts, target, DockerResourceChange(DockerResourceAction.DeleteContainer, target.id)).result
         assertEquals("docker.resources.facts_changed", (result as ApiResult.Problem).code); assertTrue(repository.pending(owner).isEmpty())
     }
     @Test fun `relative container and image ages do not block an unchanged creation`() = runTest {
@@ -65,39 +66,39 @@ class DockerResourceRepositoryTest {
         gateway.onDockerImages = { ApiResult.Success(facts.images!!.map { it.copy(createdSince = "2 hours ago") }) }
         gateway.onDockerResourceChange = { calls++; ApiResult.Success(DockerOperation(true, "", emptyList(), false)) }
         val change = DockerResourceChange(DockerResourceAction.CreateVolume, value = "test-data", driver = "local")
-        assertTrue(repository.change(owner, facts, null, change) is ApiResult.Success)
+        assertTrue(repository.change(owner, facts, null, change).result is ApiResult.Success)
         assertEquals(1, calls); assertTrue(repository.pending(owner).isEmpty())
     }
     @Test fun `real container state changes still block creation before writing`() = runTest {
         val owner = signIn(); var calls = 0
         gateway.onDockerContainers = { ApiResult.Success(facts.containers!!.map { it.copy(state = "exited", status = "Exited (0) 1 minute ago") }) }
         gateway.onDockerResourceChange = { calls++; ApiResult.Success(DockerOperation(true, "", emptyList(), false)) }
-        val result = repository.change(owner, facts, null, DockerResourceChange(DockerResourceAction.CreateVolume, value = "test-data", driver = "local"))
+        val result = repository.change(owner, facts, null, DockerResourceChange(DockerResourceAction.CreateVolume, value = "test-data", driver = "local")).result
         assertEquals("docker.resources.facts_changed", (result as ApiResult.Problem).code)
         assertEquals(0, calls); assertTrue(repository.pending(owner).isEmpty())
     }
     @Test fun `managed resource and occupied or builtin network and stopped volume references refuse mutations`() = runTest {
         val owner = signIn()
         val managed = target.copy(container = detail.copy(labels = mapOf("relaxkonos.owner" to "application-deployment")))
-        assertTrue(runCatching { repository.change(owner, facts, managed, DockerResourceChange(DockerResourceAction.Stop, target.id)) }.isFailure)
+        assertTrue(runCatching { repository.change(owner, facts, managed, DockerResourceChange(DockerResourceAction.Stop, target.id)).result }.isFailure)
         for (n in listOf(network.copy(containers = listOf("stopped")), network.copy(name = "bridge"))) {
-            assertTrue(runCatching { repository.change(owner, facts, DockerResourceTarget(DockerResourceKind.Networks, n.id, network = n), DockerResourceChange(DockerResourceAction.DeleteNetwork, n.id)) }.isFailure)
+            assertTrue(runCatching { repository.change(owner, facts, DockerResourceTarget(DockerResourceKind.Networks, n.id, network = n), DockerResourceChange(DockerResourceAction.DeleteNetwork, n.id)).result }.isFailure)
         }
-        assertTrue(runCatching { repository.change(owner, facts, DockerResourceTarget(DockerResourceKind.Volumes, "data", volume = volume.copy(usedBy = listOf("stopped"))), DockerResourceChange(DockerResourceAction.DeleteVolume, "data")) }.isFailure)
+        assertTrue(runCatching { repository.change(owner, facts, DockerResourceTarget(DockerResourceKind.Volumes, "data", volume = volume.copy(usedBy = listOf("stopped"))), DockerResourceChange(DockerResourceAction.DeleteVolume, "data")).result }.isFailure)
         assertTrue(repository.pending(owner).isEmpty())
     }
     @Test fun `control unknown and active or unverified installation block standalone and Compose writes`() = runTest {
         val owner = signIn(); val marker = control.begin(owner, DockerControlChange(DockerControlKind.EngineRestart))
         val change = DockerResourceChange(DockerResourceAction.Start, target.id)
-        assertTrue(repository.change(owner, facts, target, change) is ApiResult.Problem)
+        assertTrue(repository.change(owner, facts, target, change).result is ApiResult.Problem)
         val index = OperationIndex(object : OperationIndexStorage { override fun read(): ByteArray? = null; override fun write(bytes: ByteArray) = Unit })
         assertTrue(DockerRepository(gateway, session, index, gate).stackAction(owner, "stack", "start", true) is ApiResult.Problem)
         control.complete(marker); installation = ApiResult.Transport(null)
-        assertTrue(repository.change(owner, facts, target, change) is ApiResult.Transport); assertTrue(repository.pending(owner).isEmpty())
+        assertTrue(repository.change(owner, facts, target, change).result is ApiResult.Transport); assertTrue(repository.pending(owner).isEmpty())
     }
     @Test fun `resource unknown blocks engine writes through same gate`() = runTest {
         val owner = signIn(); journal.begin(owner, DockerResourceChange(DockerResourceAction.DeleteContainer, target.id))
-        assertTrue(DockerControlRepository(gateway, session, control, gate).change(owner, DockerControlFacts(status, emptyList()), DockerControlChange(DockerControlKind.EngineStop)) is ApiResult.Problem)
+        assertTrue(DockerControlRepository(gateway, session, control, gate).change(owner, DockerControlFacts(status, emptyList()), DockerControlChange(DockerControlKind.EngineStop)).result is ApiResult.Problem)
     }
     @Test fun `successful mutation rereads actual facts before clearing original marker`() = runTest {
         val owner = signIn(); gateway.onDockerResourceChange = { change ->
@@ -105,21 +106,21 @@ class DockerResourceRepositoryTest {
             gateway.onDockerContainers = { ApiResult.Success(facts.containers!!.map { it.copy(names = "new-name") }) }
             ApiResult.Success(DockerOperation(true, "", listOf("done"), false))
         }
-        assertTrue(repository.change(owner, facts, target, DockerResourceChange(DockerResourceAction.RenameContainer, target.id, "new-name")) is ApiResult.Success)
+        assertTrue(repository.change(owner, facts, target, DockerResourceChange(DockerResourceAction.RenameContainer, target.id, "new-name")).result is ApiResult.Success)
         assertTrue(repository.pending(owner).isEmpty())
     }
     @Test fun `success with lost postread or explicit failed operation remains uncertain`() = runTest {
         val owner = signIn(); gateway.onDockerResourceChange = { gateway.onDockerVolumes = { ApiResult.Transport(null) }; ApiResult.Success(DockerOperation(true, "", emptyList(), false)) }
-        repository.change(owner, facts, target, DockerResourceChange(DockerResourceAction.Start, target.id)); assertEquals(1, repository.pending(owner).size)
+        repository.change(owner, facts, target, DockerResourceChange(DockerResourceAction.Start, target.id)).result; assertEquals(1, repository.pending(owner).size)
         gateway.onDockerVolumes = { ApiResult.Success(facts.volumes!!) }; repository.acceptFacts(owner, repository.pending(owner).single())
         gateway.onDockerResourceChange = { ApiResult.Success(DockerOperation(false, "docker.operation_failed", emptyList(), false)) }
-        repository.change(owner, facts, target, DockerResourceChange(DockerResourceAction.Start, target.id)); assertEquals(1, repository.pending(owner).size)
+        repository.change(owner, facts, target, DockerResourceChange(DockerResourceAction.Start, target.id)).result; assertEquals(1, repository.pending(owner).size)
     }
     @Test fun `401 retry rereads detail ownership before resending rejected write`() = runTest {
         val owner = signIn(); var calls = 0
         gateway.onDockerResourceChange = { calls++; ApiResult.Problem(401, ProblemCodes.UNAUTHORIZED, null) }
         gateway.onRefresh = { _, _ -> gateway.onDockerContainerDetails = { ApiResult.Success(detail.copy(state = "exited")) }; ApiResult.Success(AuthTokens("fresh", "refresh-2", null, null)) }
-        assertEquals("docker.resources.facts_changed", (repository.change(owner, facts, target, DockerResourceChange(DockerResourceAction.Start, target.id)) as ApiResult.Problem).code)
+        assertEquals("docker.resources.facts_changed", (repository.change(owner, facts, target, DockerResourceChange(DockerResourceAction.Start, target.id)).result as ApiResult.Problem).code)
         assertEquals(1, calls); assertEquals(1, repository.pending(owner).size)
     }
     @Test fun `read identities must match selected resource including full container id prefix`() = runTest {
@@ -129,15 +130,30 @@ class DockerResourceRepositoryTest {
         gateway.onDockerVolumeDetails = { ApiResult.Success(volume.copy(name = "other")) }; assertTrue(repository.target(owner, DockerResourceKind.Volumes, "data") is ApiResult.Transport)
     }
     @Test fun `observer switched session and corrupt journal cannot write or erase another owner marker`() = runTest {
-        val observer = signIn(false); assertTrue(runCatching { repository.change(observer, facts, target, DockerResourceChange(DockerResourceAction.Start, target.id)) }.isFailure)
+        val observer = signIn(false); assertTrue(runCatching { repository.change(observer, facts, target, DockerResourceChange(DockerResourceAction.Start, target.id)).result }.isFailure)
         val owner = signIn(); val marker = journal.begin(owner, DockerResourceChange(DockerResourceAction.Start, target.id)); val bob = signIn(account = "bob")
         assertTrue(repository.pending(bob).isEmpty()); assertTrue(runCatching { repository.acceptFacts(bob, marker) }.isFailure)
         assertTrue(runCatching { repository.facts(owner) }.exceptionOrNull() is CancellationException)
-        storage.bytes = byteArrayOf(1, 2); assertTrue(runCatching { repository.change(bob, facts, target, DockerResourceChange(DockerResourceAction.Start, target.id)) }.isFailure)
+        storage.bytes = byteArrayOf(1, 2); assertTrue(runCatching { repository.change(bob, facts, target, DockerResourceChange(DockerResourceAction.Start, target.id)).result }.isFailure)
     }
     @Test fun `cancelled write waiting for shared gate starts no local marker or host request`() = runTest {
         val owner = signIn(); gate.mutex.lock()
-        val job = launch(start = CoroutineStart.UNDISPATCHED) { repository.change(owner, facts, target, DockerResourceChange(DockerResourceAction.Start, target.id)) }
+        val job = launch(start = CoroutineStart.UNDISPATCHED) { repository.change(owner, facts, target, DockerResourceChange(DockerResourceAction.Start, target.id)).result }
         job.cancelAndJoin(); gate.mutex.unlock(); assertTrue(repository.pending(owner).isEmpty())
     }
+    @Test fun `known resource receipt and logs survive verification exception`() = runTest {
+        val owner = signIn(); val receipt = DockerOperation(true, "", listOf("received"), false)
+        gateway.onDockerResourceChange = { gateway.onDockerStatus = { error("private verification error") }; ApiResult.Success(receipt) }
+        val outcome = repository.change(owner, facts, null, DockerResourceChange(DockerResourceAction.CreateVolume, value = "new-data", driver = "local"))
+        assertEquals(ApiResult.Success(receipt), outcome.result); assertEquals(ApiResult.Transport(null), outcome.facts)
+        assertEquals(1, repository.pending(owner).size)
+    }
+    @Test fun `local resource marker cleanup cannot erase known successful receipt`() = runTest {
+        val owner = signIn(); val receipt = DockerOperation(true, "", emptyList(), false)
+        gateway.onDockerResourceChange = { storage.failWrites = true; ApiResult.Success(receipt) }
+        val outcome = repository.change(owner, facts, null, DockerResourceChange(DockerResourceAction.CreateVolume, value = "new-data", driver = "local"))
+        assertEquals(ApiResult.Success(receipt), outcome.result); assertEquals(ApiResult.Success(facts), outcome.facts)
+        assertTrue(outcome.storageFailed); assertEquals(1, repository.pending(owner).size)
+    }
+
 }

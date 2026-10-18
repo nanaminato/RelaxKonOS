@@ -89,7 +89,8 @@ internal fun SmbContent(model: SmbViewModel, owner: SessionState.Active?, onBack
             TextButton(enabled = !state.busy, onClick = { navigate { draft = null; model.refresh() } }) { ActionLabel(R.string.common_refresh) }
         })
         RefreshProgressIndicator(visible = visible && state.busy)
-        OperationMessageDialog(state.problem?.takeIf { visible && !state.busy }?.let { smbProblem(it) })
+        OperationMessageDialog(state.problem?.takeIf { visible && !state.busy }?.let { smbProblem(it) },
+            eventKey = owner to state.feedbackVersion)
         if (visible && section != "records" && (state.pending.isNotEmpty() || state.pendingInstallation || state.installation != null && !state.installationVerified)) {
             TextButton(onClick = { navigate { draft = null; section = "records" } }) { Text(stringResource(R.string.smb_records_attention)) }
         }

@@ -13,6 +13,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import app.relaxkonos.mobile.ui.common.WorkspaceSection
 import app.relaxkonos.mobile.ui.common.LocalAppContainer
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.test.espresso.Espresso
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
 import app.relaxkonos.mobile.R
@@ -34,10 +36,16 @@ class DockerControlCancellationFlowTest {
     private lateinit var model: DockerControlViewModel
     private var cancelRead = false
     private var writes = 0
+    private var statusReads = 0
+    private var failAfterMirrorCreate = false
+    private var successfulEngineAction = false
+    private var readFailure: Exception? = null
+    private var mirrors = emptyList<DockerImageMirror>()
     private val section = mutableStateOf("overview")
     private var pendingRead: CompletableDeferred<ApiResult<DockerStatus>>? = null
     private val operationReads = java.util.concurrent.atomic.AtomicInteger()
     private var terminalOperation = false
+    private var failFactsAfterInstallation = false
     private val operation = InstallationOperation("11111111-1111-1111-1111-111111111111", InstallationService.Docker,
         InstallationKind.Install, InstallationState.Running, InstallationStage.Installing, null, null, 1, 1, null, true)
     private val tasks = mutableMapOf(operation.operationId to operation)
@@ -57,6 +65,8 @@ class DockerControlCancellationFlowTest {
                 LoginSession("review", "review", ServerDescriptor("linux", setOf(ServerCapabilities.DOCKER), true),
                     AuthTokens("test-access", "test-refresh", null, null), workspaceId = "11111111-1111-1111-1111-111111111111"))
             override suspend fun dockerStatus(serverUrl: String, accessToken: String): ApiResult<DockerStatus> {
+                statusReads++
+                readFailure?.let { throw it }
                 pendingRead?.let { return it.await() }
                 if (cancelRead) throw CancellationException("private cancelled read")
                 return ApiResult.Success(facts.status)
@@ -64,6 +74,7 @@ class DockerControlCancellationFlowTest {
             override suspend fun activeInstallation(serverUrl: String, accessToken: String, service: InstallationService): ApiResult<InstallationOperation?> = ApiResult.Success(null)
             override suspend fun installation(serverUrl: String, accessToken: String, operationId: String): ApiResult<InstallationOperation> {
                 operationReads.incrementAndGet()
+                if (failFactsAfterInstallation) readFailure = IllegalStateException("private post-installation failure")
                 val task = tasks[operationId] ?: return ApiResult.Problem(404, "installation.missing", null)
                 return ApiResult.Success(if (terminalOperation) task.copy(state = InstallationState.Succeeded, stage = InstallationStage.Completed, completedAtMillis = 2) else task)
             }
@@ -71,9 +82,18 @@ class DockerControlCancellationFlowTest {
                 cancellations += operationId
                 return ApiResult.Success(requireNotNull(tasks[operationId]).copy(state = InstallationState.Cancelled, stage = InstallationStage.Cancelled, completedAtMillis = 2))
             }
-            override suspend fun dockerMirrors(serverUrl: String, accessToken: String): ApiResult<List<DockerImageMirror>> = ApiResult.Success(emptyList())
+            override suspend fun dockerMirrors(serverUrl: String, accessToken: String): ApiResult<List<DockerImageMirror>> = ApiResult.Success(mirrors)
+            override suspend fun dockerCreateMirror(serverUrl: String, accessToken: String, request: DockerMirrorRequest): ApiResult<DockerImageMirror> {
+                writes++
+                val created = DockerImageMirror("33333333-3333-3333-3333-333333333333", request.name, request.endpoint, false)
+                mirrors = listOf(created)
+                if (failAfterMirrorCreate) readFailure = IllegalStateException("private verification failure")
+                return ApiResult.Success(created)
+            }
             override suspend fun dockerEngineAction(serverUrl: String, accessToken: String, action: DockerEngineAction, confirmed: Boolean): ApiResult<DockerEngineResult> {
-                writes++; throw CancellationException("private cancelled write")
+                writes++
+                if (successfulEngineAction) return ApiResult.Success(DockerEngineResult(true, "", facts.status))
+                throw CancellationException("private cancelled write")
             }
         }
         val session = AuthSession(gateway)
@@ -270,5 +290,143 @@ class DockerControlCancellationFlowTest {
         rule.onNodeWithText(text(R.string.docker_control_engine_restart)).performScrollTo().assertIsNotEnabled()
         rule.runOnIdle { assertEquals(1, writes); assertEquals(1, model.state.pending.size) }
     }
+    private fun openInstallationCancellation() {
+        rule.onNodeWithText(text(R.string.operations_request_cancel)).performScrollTo().performClick()
+        rule.onNode(isDialog()).assertExists()
+    }
+    @Test fun cancellationReviewPausesObservationAndHidingRevokesOldCallback() {
+        show(includeRecords = true)
+        rule.runOnIdle { section.value = "records"; model.recoverInstall(operation.operationId, false) }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.installationVerified }
+        openInstallationCancellation()
+        val old = requireNotNull(model.installationCancellation)
+        val before = operationReads.get()
+        Thread.sleep(1800)
+        rule.runOnIdle { assertEquals(before, operationReads.get()); section.value = "other" }
+        rule.onNodeWithText("Other Docker resources").assertIsDisplayed()
+        rule.runOnIdle { assertNull(model.installationCancellation); model.cancelInstall(old); assertTrue(cancellations.isEmpty()); section.value = "records" }
+        openInstallationCancellation()
+        rule.onNode(hasText(text(R.string.common_cancel)) and hasAnyAncestor(isDialog())).performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.installation?.state == InstallationState.Cancelled }
+        rule.runOnIdle { assertEquals(listOf(operation.operationId), cancellations); assertEquals(0, writes) }
+    }
+    @Test fun pauseAndSameTaskRefreshRevokeReviewsAndFreshButtonCancelsOnce() {
+        show(includeRecords = true)
+        rule.runOnIdle { section.value = "records"; model.recoverInstall(operation.operationId, false) }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.installationVerified }
+        openInstallationCancellation()
+        val paused = requireNotNull(model.installationCancellation)
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+            rule.runOnUiThread { assertNull(model.installationCancellation); model.cancelInstall(paused) }
+            rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        } finally { rule.mainClock.autoAdvance = true }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        openInstallationCancellation()
+        val refreshed = requireNotNull(model.installationCancellation)
+        rule.runOnIdle { model.pollInstall() }
+        rule.waitUntil(5_000) { !model.state.busy }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.runOnIdle { model.cancelInstall(refreshed); assertTrue(cancellations.isEmpty()) }
+        openInstallationCancellation()
+        val fresh = requireNotNull(model.installationCancellation)
+        rule.onNode(hasText(text(R.string.common_cancel)) and hasAnyAncestor(isDialog())).performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.installation?.state == InstallationState.Cancelled }
+        rule.runOnIdle { model.cancelInstall(fresh); assertEquals(listOf(operation.operationId), cancellations); assertEquals(0, writes) }
+    }
+
+    private fun createMirror() {
+        rule.onNodeWithText(text(R.string.docker_control_add_mirror)).performScrollTo().performClick()
+        rule.onNode(hasSetTextAction() and hasText(text(R.string.docker_control_mirror_name))).performScrollTo().performTextInput("Review mirror")
+        rule.onNode(hasSetTextAction() and hasText(text(R.string.docker_control_mirror_endpoint))).performScrollTo().performTextInput("mirror.review.invalid")
+        Espresso.closeSoftKeyboard()
+        rule.onNodeWithText(text(R.string.common_save)).performScrollTo().performClick()
+        rule.onNode(hasText(text(R.string.docker_control_confirm)) and hasAnyAncestor(isDialog())).performClick()
+    }
+    @Test fun mirrorCreationClosesSubmittedDraftAndReusesOneVerification() {
+        show(includeMirrors = true)
+        rule.runOnIdle { section.value = "mirrors" }
+        val before = statusReads
+        createMirror()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.saved == 1 }
+        rule.onNodeWithText(text(R.string.common_save)).assertDoesNotExist()
+        rule.onNodeWithText("Review mirror").performScrollTo().assertIsDisplayed()
+        rule.runOnIdle { assertEquals(3, statusReads - before); assertEquals(1, writes); assertTrue(model.state.pending.isEmpty()); assertNull(model.state.problem) }
+    }
+    @Test fun mirrorCreationReceiptSurvivesVerificationFailureAndExplicitAdoptionNeverReplays() {
+        show(includeMirrors = true, includeRecords = true)
+        rule.runOnIdle { section.value = "mirrors"; failAfterMirrorCreate = true }
+        createMirror()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.saved == 1 }
+        rule.onNodeWithText(text(R.string.docker_control_refresh_failed)).assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.common_save)).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.common_dismiss)).performClick()
+        rule.runOnIdle { section.value = "records"; readFailure = null }
+        rule.onNodeWithText(text(R.string.docker_control_accept)).performScrollTo().performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.pending.isEmpty() }
+        rule.runOnIdle { section.value = "mirrors" }
+        rule.onNodeWithText("Review mirror").performScrollTo().assertIsDisplayed()
+        rule.runOnIdle { assertEquals(1, writes) }
+    }
+    @Test fun repeatedImmediateReadFailureReopensDismissedFeedback() {
+        show()
+        rule.runOnIdle { cancelRead = true; model.refresh() }
+        rule.onNode(isDialog()).assertExists()
+        val dismiss = rule.onNodeWithText(text(R.string.common_dismiss)).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        rule.runOnIdle { dismiss(); model.refresh() }
+        rule.onNode(isDialog()).assertExists()
+        rule.runOnIdle { assertNull(model.state.facts); assertFalse(model.state.busy); assertEquals(0, writes) }
+    }
+
+    @Test fun engineSuccessDoesNotCloseUnsubmittedMirrorDraftInHiddenColumn() {
+        show(includeMirrors = true)
+        rule.runOnIdle { section.value = "mirrors" }
+        rule.onNodeWithText(text(R.string.docker_control_add_mirror)).performScrollTo().performClick()
+        rule.onNode(hasSetTextAction() and hasText(text(R.string.docker_control_mirror_name))).performScrollTo().performTextInput("Unsubmitted mirror")
+        rule.onNode(hasSetTextAction() and hasText(text(R.string.docker_control_mirror_endpoint))).performScrollTo().performTextInput("draft.review.invalid")
+        Espresso.closeSoftKeyboard()
+        rule.runOnIdle { section.value = "overview"; successfulEngineAction = true }
+        rule.onNodeWithText(text(R.string.docker_control_engine_restart)).performScrollTo().performClick()
+        rule.onNode(hasText(text(R.string.docker_control_confirm)) and hasAnyAncestor(isDialog())).performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.saved == 1 }
+        rule.runOnIdle { section.value = "mirrors" }
+        rule.onNode(hasSetTextAction() and hasText(text(R.string.docker_control_mirror_name))).performScrollTo()
+            .assertTextContains("Unsubmitted mirror")
+        rule.onNode(hasSetTextAction() and hasText(text(R.string.docker_control_mirror_endpoint))).performScrollTo()
+            .assertTextContains("draft.review.invalid")
+        rule.runOnIdle { assertEquals(1, writes); assertTrue(mirrors.isEmpty()) }
+    }
+
+    @Test fun terminalInstallationRemainsVerifiedWhenEngineFactsFailAndRefreshRecovers() {
+        show(includeRecords = true)
+        val terminal = operation.copy(state = InstallationState.Succeeded, stage = InstallationStage.Completed,
+            completedAtMillis = 2, cancellable = false)
+        rule.runOnIdle { tasks[operation.operationId] = terminal; section.value = "records"; failFactsAfterInstallation = true; model.recoverInstall(operation.operationId, false) }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.installation == terminal }
+        rule.onNodeWithText(text(R.string.docker_control_installation_refresh_failed)).assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.common_dismiss)).performClick()
+        rule.onNodeWithText(operation.operationId).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.installation_state_succeeded)).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.operations_request_cancel)).assertDoesNotExist()
+        rule.runOnIdle { assertTrue(model.state.installationVerified); assertNull(model.state.facts); failFactsAfterInstallation = false; readFailure = null }
+        refresh()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.facts != null }
+        rule.runOnIdle { assertEquals(terminal, model.state.installation); assertTrue(model.state.installationVerified); assertEquals(0, writes); assertTrue(cancellations.isEmpty()); section.value = "overview" }
+        rule.onNodeWithText(text(R.string.docker_control_engine_restart)).performScrollTo().assertIsEnabled()
+    }
+    @Test fun failedInstallationRetainsActualReasonAfterEngineRefresh() {
+        show(includeRecords = true)
+        val failed = operation.copy(state = InstallationState.Failed, stage = InstallationStage.Failed,
+            problemCode = InstallationProblemCodes.FAILED, completedAtMillis = 2, cancellable = false)
+        rule.runOnIdle { tasks[operation.operationId] = failed; section.value = "records"; model.recoverInstall(operation.operationId, false) }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.installation == failed }
+        rule.onNode(hasText(text(R.string.installation_problem_failed)) and hasAnyAncestor(isDialog())).assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.common_dismiss)).performClick()
+        rule.onNodeWithText(text(R.string.installation_state_failed)).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.installation_problem_failed)).performScrollTo().assertIsDisplayed()
+        rule.runOnIdle { assertEquals(failed.problemCode, model.state.problem); assertTrue(model.state.installationVerified); assertEquals(0, writes) }
+    }
+
 }
 

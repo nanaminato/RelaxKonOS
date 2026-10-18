@@ -166,4 +166,7 @@
     <string name="docker_volume_unused">このボリュームを参照しているコンテナはありません。</string>
     <string name="docker_volume_used_by">参照元: %1$s</string>
     <string name="docker_volumes">ボリューム</string>
+    <string name="docker_control_refresh_failed">ホストは Docker の変更を受け付けましたが、現在の情報を確認できません。送信済みの下書きを閉じました。次の変更前に現在の情報を読み取り、明示的に採用してください。</string>
+    <string name="docker_control_recovery_storage_failed">ホストの結果を受信しましたが、ローカルの復元記録を読み取りまたは削除できませんでした。次の変更前に現在の情報を読み取り、明示的に採用してください。</string>
+    <string name="docker_control_installation_refresh_failed">インストールタスクの結果は確認済みですが、現在の Docker エンジン情報を読み取れません。記録でタスクの結果を確認できます。Docker の管理前に現在の情報を更新してください。</string>
 </resources>

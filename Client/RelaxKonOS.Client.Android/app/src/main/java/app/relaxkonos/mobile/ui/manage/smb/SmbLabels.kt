@@ -3,6 +3,7 @@ package app.relaxkonos.mobile.ui.manage.smb
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import app.relaxkonos.mobile.R
+import app.relaxkonos.mobile.ui.manage.operations.installationProblemLabel
 import app.relaxkonos.mobile.core.net.*
 
 @Composable internal fun smbStateLabel(state: SmbRuntimeState) = stringResource(when (state) {
@@ -16,7 +17,10 @@ import app.relaxkonos.mobile.core.net.*
     SmbChangeKind.EnableUser -> R.string.smb_user_enable; SmbChangeKind.DisableUser -> R.string.smb_user_disable; SmbChangeKind.Password -> R.string.smb_password
 })
 @Composable internal fun smbAccessLabel(access: SmbAccess) = stringResource(if (access == SmbAccess.Read) R.string.smb_access_read else R.string.smb_access_write)
-@Composable internal fun smbProblem(code: String) = stringResource(when (code) {
+@Composable internal fun smbProblem(code: String) = if (code.startsWith("installation.")) installationProblemLabel(code) else stringResource(when (code) {
+    "file-services.smb.installation_refresh_failed" -> R.string.smb_installation_refresh_failed
+    "file-services.smb.refresh_failed" -> R.string.smb_refresh_failed
+    "file-services.smb.recovery_storage_failed" -> R.string.smb_recovery_storage_failed
     "file-services.platform_unsupported", "file-services.smb.windows_server_required" -> R.string.smb_unsupported
     "file-services.smb.not_installed" -> R.string.smb_not_installed
     "file-services.smb.facts_changed", "file-services.smb.share_conflict", "file-services.smb.reconciliation_required", "file-services.smb.configuration_unmanaged" -> R.string.smb_conflict

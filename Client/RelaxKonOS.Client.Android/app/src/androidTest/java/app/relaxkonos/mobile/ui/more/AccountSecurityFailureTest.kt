@@ -6,6 +6,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
 import app.relaxkonos.mobile.RelaxKonApplication
+import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.data.ReminderKind
 import app.relaxkonos.mobile.security.*
@@ -32,6 +33,7 @@ class AccountSecurityFailureTest {
         var attempts = 0
         var memoryAttempts = 0
         val deleted = mutableListOf<DebugCredentialRecord>()
+        override fun isCurrentSession(expected: SessionState.Active?) = expected == null
         override suspend fun resolvePlatforms() {}
         override fun enableFingerprint() { fingerprintEnabled = true }
         private fun attempt() {

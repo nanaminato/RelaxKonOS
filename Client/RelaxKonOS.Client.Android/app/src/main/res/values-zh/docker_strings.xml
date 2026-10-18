@@ -166,4 +166,7 @@
     <string name="docker_volume_unused">没有容器引用此卷。</string>
     <string name="docker_volume_used_by">引用它的容器：%1$s</string>
     <string name="docker_volumes">卷</string>
+    <string name="docker_control_refresh_failed">宿主已接受 Docker 变更，但无法核实当前事实。已关闭提交的草稿。再次变更前，请读取并明确采用当前事实。</string>
+    <string name="docker_control_recovery_storage_failed">已收到宿主结果，但本地恢复记录读取或清理失败。再次变更前，请读取并明确采用当前事实。</string>
+    <string name="docker_control_installation_refresh_failed">安装任务结果已核实，但无法读取当前 Docker 引擎事实。操作记录仍保留任务结果；管理 Docker 前请刷新当前事实。</string>
 </resources>

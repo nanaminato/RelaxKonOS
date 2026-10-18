@@ -129,4 +129,27 @@ class FirewallViewModelTest {
         assertFalse(model.state.busy)
         assertNull(model.state.problem)
     }
+    @Test fun `successful change reuses repository verification without another read`() = runTest {
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        var reads = 0; var writes = 0
+        gateway.onFirewallStatus = { reads++; check(reads <= 3) { "redundant read" }; ApiResult.Success(status) }
+        gateway.onChangeFirewall = { writes++; ApiResult.Success(FirewallResult(true, "")) }
+        model.requestChange(requireNotNull(model.state.owner), facts, change)
+        model.change(requireNotNull(model.confirmation)); advanceUntilIdle()
+        assertEquals(3, reads); assertEquals(1, writes)
+        assertEquals(facts, model.state.facts); assertNull(model.state.problem)
+        assertEquals(1, model.state.saved); assertTrue(model.state.pending.isEmpty())
+    }
+    @Test fun `known successful change with failed verification closes submitted draft and retains gate`() = runTest {
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        var writes = 0
+        gateway.onChangeFirewall = { writes++; gateway.onFirewallStatus = { error("private post-write verification failure") }; ApiResult.Success(FirewallResult(true, "")) }
+        model.requestChange(requireNotNull(model.state.owner), facts, change)
+        model.change(requireNotNull(model.confirmation)); advanceUntilIdle()
+        assertEquals(1, model.state.saved); assertNull(model.state.facts)
+        assertEquals("firewall.refresh_failed", model.state.problem)
+        assertEquals(1, model.state.pending.size); assertEquals(1, writes)
+        assertFalse(model.state.busy)
+    }
+
 }

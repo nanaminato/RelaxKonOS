@@ -14,8 +14,9 @@ import org.junit.Test
 class SmbRepositoryTest {
     private class Storage : InstallationRequestStorage {
         var bytes: ByteArray? = null
+        var failWrites = false
         override fun read() = bytes
-        override fun write(bytes: ByteArray) { this.bytes = bytes.copyOf() }
+        override fun write(bytes: ByteArray) { check(!failWrites); this.bytes = bytes.copyOf() }
     }
     private val gateway = FakeGateway(); private val session = AuthSession(gateway); private val storage = Storage()
     private val journal = SmbMutationJournal(storage)
@@ -39,7 +40,7 @@ class SmbRepositoryTest {
     @Test fun `lost write persists no body or secret and requires explicit adoption without replay`() = runTest {
         val owner = signIn(); var calls = 0; val secret = "private-secret".toCharArray()
         gateway.onSmbChange = { _, password -> calls++; assertEquals("private-secret", String(password!!)); ApiResult.Transport(null) }
-        assertTrue(repository.change(owner, facts, change, secret, ElevationAnswerProvider.Declines) is ApiResult.Transport)
+        assertTrue(repository.change(owner, facts, change, secret, ElevationAnswerProvider.Declines).result is ApiResult.Transport)
         assertTrue(secret.all { it == '\u0000' }); assertFalse(storage.bytes!!.decodeToString().contains("private-secret"))
         repository.facts(owner); val pending = SmbMutationJournal(storage).pending(owner).single()
         assertTrue(runCatching { repository.change(owner, facts, change, "private-secret".toCharArray(), ElevationAnswerProvider.Declines) }.isFailure)
@@ -48,7 +49,7 @@ class SmbRepositoryTest {
     @Test fun `changed share facts refuse write before journaling or exposing password`() = runTest {
         val owner = signIn(); gateway.onSmbShares = { ApiResult.Success(facts.shares!!.map { it.copy(drifted = true) }) }
         val password = "private-secret".toCharArray()
-        assertEquals("file-services.smb.facts_changed", (repository.change(owner, facts, change, password, ElevationAnswerProvider.Declines) as ApiResult.Problem).code)
+        assertEquals("file-services.smb.facts_changed", (repository.change(owner, facts, change, password, ElevationAnswerProvider.Declines).result as ApiResult.Problem).code)
         assertTrue(password.all { it == '\u0000' }); assertTrue(repository.pending(owner).isEmpty())
     }
     @Test fun `SMB elevation uses exact capability target and rereads after authorization`() = runTest {
@@ -58,14 +59,14 @@ class SmbRepositoryTest {
             assertEquals("smbManage", capability); assertEquals("smb:managed", target)
             gateway.onSmbUsers = { ApiResult.Success(listOf(SmbUser("alice", false, true))) }; ApiResult.Success(ElevationGrant(true, null))
         }
-        val result = repository.change(owner, facts, change, "private-secret".toCharArray(), ElevationAnswerProvider { _, _ -> ElevationAnswer("root", admin) })
+        val result = repository.change(owner, facts, change, "private-secret".toCharArray(), ElevationAnswerProvider { _, _ -> ElevationAnswer("root", admin) }).result
         assertEquals("file-services.smb.facts_changed", (result as ApiResult.Problem).code); assertEquals(1, calls)
         assertTrue(admin.all { it == '\u0000' }); assertEquals(1, repository.pending(owner).size)
     }
     @Test fun `receipt stays unknown if post write facts fail and can later be adopted`() = runTest {
         val owner = signIn()
         gateway.onSmbChange = { _, _ -> gateway.onSmbShares = { ApiResult.Transport(null) }; ApiResult.Success(receipt) }
-        assertTrue(repository.change(owner, facts, SmbChange(SmbChangeKind.Stop), null, ElevationAnswerProvider.Declines) is ApiResult.Success)
+        assertTrue(repository.change(owner, facts, SmbChange(SmbChangeKind.Stop), null, ElevationAnswerProvider.Declines).result is ApiResult.Success)
         val pending = repository.pending(owner).single(); assertEquals(receipt.operationId, pending.receiptId)
         assertTrue(repository.acceptFacts(owner, pending) is ApiResult.Transport); assertEquals(1, repository.pending(owner).size)
         gateway.onSmbShares = { ApiResult.Success(emptyList()) }
@@ -104,7 +105,34 @@ class SmbRepositoryTest {
     }
     @Test fun `successful synchronous receipt and reread clear marker without inventing remote task`() = runTest {
         val owner = signIn(); gateway.onSmbChange = { _, _ -> ApiResult.Success(receipt) }
-        assertEquals(receipt, (repository.change(owner, facts, SmbChange(SmbChangeKind.Stop), null, ElevationAnswerProvider.Declines) as ApiResult.Success).value)
+        assertEquals(receipt, (repository.change(owner, facts, SmbChange(SmbChangeKind.Stop), null, ElevationAnswerProvider.Declines).result as ApiResult.Success).value)
         assertTrue(repository.pending(owner).isEmpty())
     }
+    @Test fun `known receipt survives verification exception without replay and clears password`() = runTest {
+        val owner = signIn(); val secret = "private-secret".toCharArray(); var writes = 0
+        gateway.onSmbChange = { _, _ -> writes++; gateway.onSmbCapabilities = { error("private verification failure") }; ApiResult.Success(receipt) }
+        val outcome = repository.change(owner, facts, change, secret, ElevationAnswerProvider.Declines)
+        assertEquals(ApiResult.Success(receipt), outcome.result)
+        assertEquals(ApiResult.Transport(null), outcome.facts)
+        assertEquals(receipt.operationId, repository.pending(owner).single().receiptId)
+        assertEquals(1, writes); assertTrue(secret.all { it == '\u0000' })
+    }
+    @Test fun `cancelled readback in active coroutine retains authoritative receipt`() = runTest {
+        val owner = signIn()
+        gateway.onSmbChange = { _, _ -> gateway.onSmbCapabilities = { throw CancellationException("verification cancelled") }; ApiResult.Success(receipt) }
+        val outcome = repository.change(owner, facts, SmbChange(SmbChangeKind.Stop), null, ElevationAnswerProvider.Declines)
+        assertEquals(ApiResult.Success(receipt), outcome.result)
+        assertEquals(ApiResult.Transport(null), outcome.facts)
+        assertEquals(receipt.operationId, repository.pending(owner).single().receiptId)
+    }
+    @Test fun `local receipt persistence failure retains host result and original marker`() = runTest {
+        val owner = signIn(); val secret = "private-secret".toCharArray()
+        gateway.onSmbChange = { _, _ -> storage.failWrites = true; ApiResult.Success(receipt) }
+        val outcome = repository.change(owner, facts, change, secret, ElevationAnswerProvider.Declines)
+        assertEquals(ApiResult.Success(receipt), outcome.result)
+        assertEquals(ApiResult.Success(facts), outcome.facts)
+        assertTrue(outcome.storageFailed); assertNotNull(repository.pending(owner).single())
+        assertTrue(secret.all { it == '\u0000' })
+    }
+
 }

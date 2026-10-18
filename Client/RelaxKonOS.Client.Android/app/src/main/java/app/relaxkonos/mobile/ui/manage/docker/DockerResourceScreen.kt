@@ -78,7 +78,8 @@ import java.util.UUID
             TextButton(enabled = !state.busy, onClick = { navigate { draft = null; model.refresh() } }) { ActionLabel(R.string.common_refresh) }
         })
         RefreshProgressIndicator(visible = visible && state.busy)
-        if (active) OperationMessageDialog(state.problem?.takeIf { visible && !state.busy }?.let { controlProblem(it) })
+        if (active) OperationMessageDialog(state.problem?.takeIf { visible && !state.busy }?.let { controlProblem(it) },
+            eventKey = owner to state.feedbackVersion)
         if (visible && state.blocked != null) Text(controlProblem(state.blocked), color = MaterialTheme.colorScheme.error)
         if (visible && (state.pending.isNotEmpty() || state.result != null)) TextButton(onClick = { navigate(onOpenControl) }) { Text(stringResource(R.string.workspace_records)) }
         if (facts == null) Text(stringResource(R.string.docker_control_unverified))

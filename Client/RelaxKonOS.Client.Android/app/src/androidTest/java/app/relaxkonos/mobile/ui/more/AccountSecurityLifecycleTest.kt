@@ -7,10 +7,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import app.relaxkonos.mobile.RelaxKonApplication
+import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.data.ReminderKind
 import app.relaxkonos.mobile.security.*
@@ -24,6 +26,7 @@ class AccountSecurityLifecycleTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
     private val active = mutableStateOf(true)
     private var mutations = 0
+    private var sessionMatches = true
     @Volatile private var foreground = true
     private val record = DebugCredentialRecord("https://lifecycle-review.invalid", "review")
     private val actions = object : AccountSecurityActions {
@@ -35,6 +38,7 @@ class AccountSecurityLifecycleTest {
         override val connectionMode: VaultUnlockMode? = null
         override val elevationMode: VaultUnlockMode? = null
         override val silenced = emptyList<ReminderKind>()
+        override fun isCurrentSession(expected: SessionState.Active?) = sessionMatches && expected == null
         override suspend fun resolvePlatforms() {}
         override fun enableFingerprint() { mutations++ }
         override fun disableFingerprint() { mutations++ }
@@ -107,4 +111,61 @@ class AccountSecurityLifecycleTest {
     @Test fun pausedSecurityPageWithdrawsClearAllConfirmation() = verifyWithdrawal("clear", true)
     @Test fun hiddenSecurityPageWithdrawsSingleDeleteConfirmation() = verifyWithdrawal("delete", false)
     @Test fun pausedSecurityPageWithdrawsSingleDeleteConfirmation() = verifyWithdrawal("delete", true)
+    private fun confirmCallback(kind: String): () -> Boolean {
+        val label = when (kind) {
+            "disable" -> R.string.account_security_disable_confirm
+            "clear" -> R.string.account_security_clear_all
+            else -> R.string.common_delete
+        }
+        return requireNotNull(rule.onNode(hasText(text(label)) and hasClickAction() and hasAnyAncestor(isDialog()))
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action)
+    }
+    private fun verifyStaleCallback(kind: String, background: Boolean) {
+        show(); openConfirmation(kind)
+        val old = confirmCallback(kind)
+        if (background) {
+            rule.mainClock.autoAdvance = false
+            try {
+                rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+                rule.runOnUiThread { old(); assertEquals(0, mutations) }
+                rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+            } finally { rule.mainClock.autoAdvance = true }
+        } else {
+            rule.runOnIdle { active.value = false }
+            rule.onNodeWithText("Other settings").assertIsDisplayed()
+            rule.runOnIdle { old(); assertEquals(0, mutations); active.value = true }
+        }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        openConfirmation(kind)
+        rule.runOnIdle { old(); assertEquals(0, mutations) }
+        rule.onNode(isDialog()).assertExists()
+        val fresh = confirmCallback(kind)
+        rule.runOnIdle { fresh(); fresh(); assertEquals(1, mutations) }
+        rule.onNode(isDialog()).assertDoesNotExist()
+    }
+    @Test fun hiddenDisableRejectsOldCallbackAndFreshConfirmationIsConsumedOnce() = verifyStaleCallback("disable", false)
+    @Test fun pausedDisableRejectsOldCallbackAndFreshConfirmationIsConsumedOnce() = verifyStaleCallback("disable", true)
+    @Test fun hiddenClearAllRejectsOldCallbackAndFreshConfirmationIsConsumedOnce() = verifyStaleCallback("clear", false)
+    @Test fun pausedClearAllRejectsOldCallbackAndFreshConfirmationIsConsumedOnce() = verifyStaleCallback("clear", true)
+    @Test fun hiddenDeleteRejectsOldCallbackAndFreshConfirmationIsConsumedOnce() = verifyStaleCallback("delete", false)
+    @Test fun pausedDeleteRejectsOldCallbackAndFreshConfirmationIsConsumedOnce() = verifyStaleCallback("delete", true)
+
+    private fun verifyImmediateSessionChange(kind: String) {
+        show(); openConfirmation(kind)
+        val old = confirmCallback(kind)
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.runOnUiThread { sessionMatches = false; old(); assertEquals(0, mutations) }
+        } finally { rule.mainClock.autoAdvance = true }
+        rule.runOnIdle { sessionMatches = true }
+        rule.onNodeWithText(text(R.string.common_cancel)).performClick()
+        openConfirmation(kind)
+        rule.runOnIdle { old(); assertEquals(0, mutations) }
+        val fresh = confirmCallback(kind)
+        rule.runOnIdle { fresh(); fresh(); assertEquals(1, mutations) }
+    }
+    @Test fun sessionChangeBeforeRecompositionRejectsDisableCallback() = verifyImmediateSessionChange("disable")
+    @Test fun sessionChangeBeforeRecompositionRejectsClearAllCallback() = verifyImmediateSessionChange("clear")
+    @Test fun sessionChangeBeforeRecompositionRejectsSingleDeleteCallback() = verifyImmediateSessionChange("delete")
+
 }

@@ -15,7 +15,7 @@ internal data class DockerControlState(val owner: SessionState.Active? = null, v
     val facts: DockerControlFacts? = null, val pending: List<PendingDockerControl> = emptyList(),
     val installation: InstallationOperation? = null, val installationVerified: Boolean = false, val pendingInstallation: Boolean = false,
     val resourcePending: Boolean = false, val checkedAtMillis: Long? = null, val problem: String? = null, val saved: Int = 0,
-    val installationLookupId: String? = null, val installationLookupMissing: Boolean = false, val installationLookupFailed: Boolean = false)
+    val savedChange: DockerControlChange? = null, val feedbackVersion: Long = 0, val installationLookupId: String? = null, val installationLookupMissing: Boolean = false, val installationLookupFailed: Boolean = false)
 /** A missing historical receipt must not invalidate the independently verified engine facts. */
 internal fun DockerControlState.installationLookupFailure(id: String?, result: ApiResult<*>): DockerControlState = copy(
     installationVerified = false,
@@ -24,11 +24,17 @@ internal fun DockerControlState.installationLookupFailure(id: String?, result: A
     installationLookupFailed = true,
 )
 
+internal class DockerInstallationCancellation(val owner: SessionState.Active, val operation: InstallationOperation)
 internal class ControlConfirmation(val owner: SessionState.Active, val facts: DockerControlFacts, val change: DockerControlChange)
 internal class DockerControlViewModel(private val session: AuthSession, private val control: DockerControlRepository,
     private val resources: DockerResourceRepository, private val installations: InstallationRepository,
     private val operationIndex: OperationIndex, private val mutationGate: DockerMutationGate,
     private val elevationAnswers: ElevationAnswerProvider) : ViewModel() {
+    var installationCancellation by mutableStateOf<DockerInstallationCancellation?>(null); private set
+    fun dismissInstallationCancellation() { installationCancellation = null }
+    fun requestInstallationCancellation(owner: SessionState.Active, operation: InstallationOperation) {
+        if (!state.busy && canCancelInstallation(owner, operation)) installationCancellation = DockerInstallationCancellation(owner, operation)
+    }
     var confirmation by mutableStateOf<ControlConfirmation?>(null); private set
     fun dismissConfirmation() { confirmation = null }
     fun requestChange(owner: SessionState.Active, facts: DockerControlFacts, change: DockerControlChange) {
@@ -42,7 +48,7 @@ internal class DockerControlViewModel(private val session: AuthSession, private 
         val owner = state.owner ?: return
         val id = state.installation?.operationId ?: return
         var observedGeneration = generation
-        fun eligible() = canObserve() && state.owner === owner && session.state.value === owner && state.problem == null &&
+        fun eligible() = canObserve() && installationCancellation == null && confirmation == null && state.owner === owner && session.state.value === owner && state.problem == null &&
             state.installationVerified && state.installation?.let { it.operationId == id && it.state.active } == true
         while (eligible()) {
             if (state.busy) {
@@ -71,9 +77,9 @@ internal class DockerControlViewModel(private val session: AuthSession, private 
     private var intent: InstallationSubmission? = null
     var state by mutableStateOf(DockerControlState()); private set
     init { viewModelScope.launch { session.state.collect { next ->
-        if (next !== state.owner) { dismissConfirmation(); job?.cancel(); generation++; intent = null; state = DockerControlState(owner = next as? SessionState.Active) }
+        if (next !== state.owner) { dismissConfirmation(); dismissInstallationCancellation(); job?.cancel(); generation++; intent = null; state = DockerControlState(owner = next as? SessionState.Active) }
     } } }
-    fun stop() { dismissConfirmation(); job?.cancel(); generation++; state = state.copy(busy = false, facts = null, installationVerified = false) }
+    fun stop() { dismissConfirmation(); dismissInstallationCancellation(); job?.cancel(); generation++; state = state.copy(busy = false, facts = null, installationVerified = false) }
     fun refresh() = work { owner ->
         load(owner)
         if (owner.privilegedOperations) {
@@ -104,9 +110,16 @@ internal class DockerControlViewModel(private val session: AuthSession, private 
         val expected = review.facts; val change = review.change
         work { owner ->
             require(!state.pendingInstallation && state.installation?.state?.active != true && (state.installation == null || state.installationVerified))
-            val result = control.change(owner, expected, change); verify(owner)
-            load(owner)
-            state = state.copy(problem = problem(result) ?: state.problem, saved = state.saved + if (result is ApiResult.Success) 1 else 0)
+            val outcome = control.change(owner, expected, change); verify(owner)
+            val result = outcome.result
+            if (result is ApiResult.Success) state = state.copy(saved = state.saved + 1, savedChange = change)
+            showFacts(owner, outcome.facts)
+            state = state.copy(problem = when {
+                outcome.storageFailed -> "docker.control.recovery_storage_failed"
+                problem(result) != null -> problem(result)
+                result is ApiResult.Success && outcome.facts !is ApiResult.Success -> "docker.control.refresh_failed"
+                else -> state.problem
+            })
         }
     }
     fun accept(pending: PendingDockerControl) = work { owner ->
@@ -124,14 +137,16 @@ internal class DockerControlViewModel(private val session: AuthSession, private 
         if (result is ApiResult.Success || result is ApiResult.Problem && !state.pendingInstallation) intent = null
     }
     fun pollInstall() = work { owner -> state.installation?.operationId?.let { installResult(owner, installations.operation(owner, it)) } }
-    private fun canCancelInstallation(expectedOwner: SessionState.Active, operationId: String): Boolean =
+    private fun canCancelInstallation(expectedOwner: SessionState.Active, operation: InstallationOperation): Boolean =
         state.owner === expectedOwner && session.state.value === expectedOwner && expectedOwner.privilegedOperations &&
-            state.installationVerified && state.installation?.let { it.operationId == operationId && it.state.active && it.cancellable } == true
-    fun cancelInstall(expectedOwner: SessionState.Active, operationId: String) {
-        if (state.busy || !canCancelInstallation(expectedOwner, operationId)) return
+            state.installationVerified && state.installation == operation && operation.state.active && operation.cancellable
+    fun cancelInstall(review: DockerInstallationCancellation) {
+        if (installationCancellation !== review) return
+        dismissInstallationCancellation()
+        if (state.busy || !canCancelInstallation(review.owner, review.operation)) return
         work { owner ->
-            if (!canCancelInstallation(expectedOwner, operationId)) return@work
-            installResult(owner, installations.cancel(owner, operationId))
+            if (!canCancelInstallation(review.owner, review.operation)) return@work
+            installResult(owner, installations.cancel(owner, review.operation.operationId))
         }
     }
     fun recoverInstall(id: String, identified: Boolean) = work { owner ->
@@ -144,12 +159,33 @@ internal class DockerControlViewModel(private val session: AuthSession, private 
     }
     private suspend fun installResult(owner: SessionState.Active, result: ApiResult<InstallationOperation>, observing: Boolean = false) {
         verify(owner)
-        state = state.copy(pendingInstallation = installations.pending(owner).any { it.service == InstallationService.Docker })
         if (result is ApiResult.Success && result.value.service == InstallationService.Docker && result.value.kind == InstallationKind.Install) {
+            val operationProblem = result.value.problemCode?.takeIf(String::isNotBlank)
             state = state.copy(installation = result.value, installationVerified = true,
                 installationLookupId = result.value.operationId, installationLookupMissing = false, installationLookupFailed = false,
-                problem = if (observing) state.problem else result.value.problemCode)
-            if (!observing && !result.value.state.active) load(owner)
+                problem = if (observing) state.problem ?: operationProblem else operationProblem)
+            try {
+                state = state.copy(pendingInstallation = installations.pending(owner).any { it.service == InstallationService.Docker })
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                state = state.copy(facts = null, pendingInstallation = true, problem = "docker.control.recovery_storage_failed")
+                return
+            }
+            if (!observing && !result.value.state.active) {
+                val facts = try { control.facts(owner) }
+                catch (cancelled: CancellationException) {
+                    currentCoroutineContext().ensureActive()
+                    verify(owner)
+                    ApiResult.Transport(null)
+                } catch (_: Exception) { verify(owner); ApiResult.Transport(null) }
+                verify(owner)
+                showFacts(owner, facts)
+                state = state.copy(problem = when {
+                    state.problem == "docker.control.recovery_storage_failed" -> state.problem
+                    facts !is ApiResult.Success -> "docker.control.installation_refresh_failed"
+                    else -> operationProblem ?: state.problem
+                })
+            }
         } else state = state.copy(installationVerified = false, problem = problem(result) ?: "docker.control.unverified")
     }
     private suspend fun load(owner: SessionState.Active) {
@@ -157,17 +193,30 @@ internal class DockerControlViewModel(private val session: AuthSession, private 
         showFacts(owner, result)
     }
     private fun showFacts(owner: SessionState.Active, result: ApiResult<DockerControlFacts>) {
+        val resourcePending: Boolean
+        val pending: List<PendingDockerControl>
+        val pendingInstallation: Boolean
+        try {
+            resourcePending = resources.pending(owner).isNotEmpty()
+            pending = control.pending(owner)
+            pendingInstallation = installations.pending(owner).any { it.service == InstallationService.Docker }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) {
+            state = state.copy(facts = null, checkedAtMillis = null, problem = "docker.control.recovery_storage_failed")
+            return
+        }
         state = state.copy(facts = (result as? ApiResult.Success)?.value, problem = problem(result), checkedAtMillis = System.currentTimeMillis(),
-            resourcePending = resources.pending(owner).isNotEmpty(), pending = control.pending(owner), pendingInstallation = installations.pending(owner).any { it.service == InstallationService.Docker })
+            resourcePending = resourcePending, pending = pending, pendingInstallation = pendingInstallation)
     }
     private fun problem(result: ApiResult<*>): String? = when (result) {
         is ApiResult.Problem -> result.code; is ApiResult.Transport -> "docker.control.unverified"; is ApiResult.Success -> null
     }
     private fun work(block: suspend (SessionState.Active) -> Unit) {
         dismissConfirmation()
+        dismissInstallationCancellation()
         val owner = state.owner ?: return
         if (state.busy || ServerCapabilities.DOCKER !in owner.capabilities) return
-        val request = ++generation; state = state.copy(busy = true, problem = null)
+        val request = ++generation; state = state.copy(busy = true, problem = null, feedbackVersion = state.feedbackVersion + 1)
         job = viewModelScope.launch {
             try { block(owner) }
             catch (cancelled: CancellationException) {

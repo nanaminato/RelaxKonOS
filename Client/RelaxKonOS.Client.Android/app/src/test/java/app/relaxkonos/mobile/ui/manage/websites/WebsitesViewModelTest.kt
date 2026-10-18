@@ -17,8 +17,10 @@ import org.junit.Assert.*
 class WebsitesViewModelTest {
     private class Storage : InstallationRequestStorage {
         private var bytes: ByteArray? = null
-        override fun read() = bytes
-        override fun write(bytes: ByteArray) { this.bytes = bytes.copyOf() }
+        var readFailure = false
+        var writeFailure = false
+        override fun read(): ByteArray? { check(!readFailure) { "private storage failure" }; return bytes }
+        override fun write(bytes: ByteArray) { check(!writeFailure); this.bytes = bytes.copyOf() }
     }
     private val delegate = FakeGateway()
     private var failure: Exception? = null
@@ -41,12 +43,14 @@ class WebsitesViewModelTest {
         override fun read() = bytes
         override fun write(bytes: ByteArray) { this.bytes = bytes.copyOf() }
     })
+    private val publicationStorage = Storage()
+    private val journal = WebsitePublicationJournal(publicationStorage)
     private val store = ViewModelStore()
     private lateinit var model: WebsitesViewModel
     @Before fun setup() {
         Dispatchers.setMain(StandardTestDispatcher())
         model = WebsitesViewModel(session, WebPublishingRepository(gateway, session, elevation, index),
-            DeploymentRepository(gateway, session), CertificateRepository(gateway, session, index, CertificateRequestJournal(Storage()), elevation), ElevationAnswerProvider.Declines)
+            DeploymentRepository(gateway, session), CertificateRepository(gateway, session, index, CertificateRequestJournal(Storage()), elevation), ElevationAnswerProvider.Declines, journal)
         store.put("websites", model)
     }
     @After fun cleanup() { store.clear(); Dispatchers.resetMain() }
@@ -206,4 +210,55 @@ class WebsitesViewModelTest {
         assertNull(model.state.publicationLookupId)
         assertNull(model.state.publication)
     }
+    private val original = WebsitePublicationOperation("original-id", "application-a", "server", "example.test",
+        null, null, null, "succeeded", "complete", "", null, emptyList(), null, null, null)
+    private suspend fun TestScope.seedPending(): WebsitePublicationReview {
+        login(); runCurrent()
+        journal.begin(session.state.value as SessionState.Active,
+            WebsitePublishRequest(original.applicationId, original.webServerId, original.domain, confirmed = true))
+        model.refresh(); advanceUntilIdle()
+        return requireNotNull(model.state.pendingPublication)
+    }
+    @Test fun `offline prerequisite failure still exposes durable pending publication`() = runTest {
+        login(); runCurrent()
+        journal.begin(session.state.value as SessionState.Active,
+            WebsitePublishRequest(original.applicationId, original.webServerId, original.domain, confirmed = true))
+        failure = IllegalStateException("offline")
+        model.refresh(); advanceUntilIdle()
+        assertNotNull(model.state.pendingPublication)
+        assertEquals(ApiResult.Transport(null), model.state.servers)
+    }
+    @Test fun `known recovery receipt survives local read failure`() = runTest {
+        val pending = seedPending()
+        publicationRead = { publicationStorage.readFailure = true; ApiResult.Success(original) }
+        model.recoverPendingPublication(pending, original.operationId); advanceUntilIdle()
+        assertEquals(ApiResult.Success(original), model.state.publication)
+        assertEquals(original.operationId, model.state.publicationLookupId)
+        assertTrue(model.state.publicationStorageFailed)
+        assertNotNull(model.state.pendingPublication)
+        assertFalse(model.state.publishing)
+    }
+    @Test fun `local write failure is visible alongside authoritative receipt and explicit recovery clears it`() = runTest {
+        val pending = seedPending()
+        publicationRead = { ApiResult.Success(original) }
+        publicationStorage.writeFailure = true
+        model.recoverPendingPublication(pending, original.operationId); advanceUntilIdle()
+        assertEquals(ApiResult.Success(original), model.state.publication)
+        assertTrue(model.state.publicationStorageFailed)
+        publicationStorage.writeFailure = false
+        model.recoverPendingPublication(requireNotNull(model.state.pendingPublication), original.operationId); advanceUntilIdle()
+        assertEquals(ApiResult.Success(original), model.state.publication)
+        assertFalse(model.state.publicationStorageFailed)
+        assertNull(model.state.pendingPublication)
+    }
+    @Test fun `old pending recovery callback cannot consume refreshed pending snapshot`() = runTest {
+        val pending = seedPending()
+        model.refresh(); advanceUntilIdle()
+        var queries = 0
+        publicationRead = { queries++; ApiResult.Success(original) }
+        model.recoverPendingPublication(pending, original.operationId); advanceUntilIdle()
+        assertEquals(0, queries)
+        assertNotNull(model.state.pendingPublication)
+    }
+
 }

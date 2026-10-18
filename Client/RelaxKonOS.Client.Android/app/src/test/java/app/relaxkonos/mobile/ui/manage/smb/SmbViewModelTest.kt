@@ -181,4 +181,65 @@ class SmbViewModelTest {
         assertTrue(model.state.pending.isEmpty()); assertEquals(1, reads)
         assertEquals(0, sends); assertFalse(model.state.busy)
     }
+    private val receipt = SmbReceipt("11111111-1111-1111-1111-111111111111", true, null)
+    private fun submitStop() {
+        model.requestChange(requireNotNull(model.state.owner), facts, SmbChange(SmbChangeKind.Stop))
+        model.change(requireNotNull(model.changeReview))
+    }
+    @Test fun `successful change uses one verification and preserves receipt`() = runTest {
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        var reads = 0
+        gateway.onSmbCapabilities = { reads++; check(reads <= 3) { "redundant read" }; ApiResult.Success(facts.capabilities) }
+        gateway.onSmbChange = { _, _ -> sends++; ApiResult.Success(receipt) }
+        submitStop(); advanceUntilIdle()
+        assertEquals(3, reads); assertEquals(1, sends)
+        assertEquals(receipt, model.state.receipt); assertEquals(1, model.state.saved)
+        assertEquals(facts, model.state.facts); assertNull(model.state.problem); assertTrue(model.state.pending.isEmpty())
+    }
+    @Test fun `failed verification cannot erase known receipt or keep submitted draft open`() = runTest {
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        gateway.onSmbChange = { _, _ -> sends++; gateway.onSmbCapabilities = { error("private verification failure") }; ApiResult.Success(receipt) }
+        submitStop(); advanceUntilIdle()
+        assertEquals(receipt, model.state.receipt); assertEquals(1, model.state.saved)
+        assertNull(model.state.facts); assertEquals("file-services.smb.refresh_failed", model.state.problem)
+        assertEquals(receipt.operationId, model.state.pending.single().receiptId); assertEquals(1, sends)
+    }
+    @Test fun `a later unknown change cannot keep the earlier successful receipt`() = runTest {
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        gateway.onSmbChange = { _, _ -> sends++; ApiResult.Success(receipt) }
+        submitStop(); advanceUntilIdle()
+        gateway.onSmbChange = { _, _ -> sends++; throw CancellationException("private lost write") }
+        submitStop(); advanceUntilIdle()
+        assertNull(model.state.receipt); assertEquals(1, model.state.saved)
+        assertEquals(1, model.state.pending.size); assertEquals(2, sends)
+    }
+
+    private val terminalInstallation = InstallationOperation("44444444-4444-4444-4444-444444444444", InstallationService.Smb,
+        InstallationKind.Install, InstallationState.Succeeded, InstallationStage.Completed, null, null, 1, 1, 2, false)
+    @Test fun `terminal installation remains verified when sharing facts throw`() = runTest {
+        login(); runCurrent()
+        gateway.onInstallation = { ApiResult.Success(terminalInstallation) }
+        gateway.onSmbCapabilities = { error("private sharing facts failure") }
+        model.recoverInstall(terminalInstallation.operationId, false); advanceUntilIdle()
+        assertEquals(terminalInstallation, model.state.installation); assertTrue(model.state.installationVerified)
+        assertNull(model.state.facts); assertEquals("file-services.smb.installation_refresh_failed", model.state.problem)
+        assertFalse(model.state.busy); assertEquals(0, sends)
+    }
+    @Test fun `failed installation retains its reason after successful sharing refresh`() = runTest {
+        login(); runCurrent()
+        val failed = terminalInstallation.copy(state = InstallationState.Failed, stage = InstallationStage.Failed, problemCode = InstallationProblemCodes.FAILED)
+        gateway.onInstallation = { ApiResult.Success(failed) }
+        model.recoverInstall(failed.operationId, false); advanceUntilIdle()
+        assertEquals(failed, model.state.installation); assertTrue(model.state.installationVerified)
+        assertEquals(facts, model.state.facts); assertEquals(failed.problemCode, model.state.problem)
+    }
+    @Test fun `cancelled sharing read in active coroutine does not revoke terminal installation receipt`() = runTest {
+        login(); runCurrent()
+        gateway.onInstallation = { ApiResult.Success(terminalInstallation) }
+        gateway.onSmbCapabilities = { throw CancellationException("cancelled post-result sharing read") }
+        model.recoverInstall(terminalInstallation.operationId, false); advanceUntilIdle()
+        assertEquals(terminalInstallation, model.state.installation); assertTrue(model.state.installationVerified)
+        assertEquals("file-services.smb.installation_refresh_failed", model.state.problem); assertFalse(model.state.busy)
+    }
+
 }

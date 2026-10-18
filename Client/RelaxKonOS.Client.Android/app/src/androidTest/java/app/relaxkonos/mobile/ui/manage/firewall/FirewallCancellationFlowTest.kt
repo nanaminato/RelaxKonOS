@@ -7,6 +7,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
 import app.relaxkonos.mobile.R
@@ -28,6 +29,10 @@ class FirewallCancellationFlowTest {
     private lateinit var model: FirewallViewModel
     private var cancelRead = false
     private var writes = 0
+    private var successfulWrite = false
+    private var failVerification = false
+    private var readFailure: Exception? = null
+    private var statusReads = 0
     private val visible = mutableStateOf(true)
     private var delayRules = false
     private var pendingRules: kotlin.coroutines.Continuation<ApiResult<List<FirewallRule>>>? = null
@@ -47,6 +52,8 @@ class FirewallCancellationFlowTest {
                 LoginSession("review", "review", ServerDescriptor("linux", setOf(ServerCapabilities.FIREWALL), true),
                     AuthTokens("test-access", "test-refresh", null, null), workspaceId = "11111111-1111-1111-1111-111111111111"))
             override suspend fun firewallStatus(serverUrl: String, accessToken: String): ApiResult<FirewallStatus> {
+                statusReads++
+                readFailure?.let { throw it }
                 if (cancelRead) throw CancellationException("private cancelled read")
                 return ApiResult.Success(currentStatus)
             }
@@ -54,7 +61,12 @@ class FirewallCancellationFlowTest {
                 if (delayRules) kotlin.coroutines.suspendCoroutine { pendingRules = it }
                 else ApiResult.Success(emptyList())
             override suspend fun changeFirewall(serverUrl: String, accessToken: String, change: FirewallChange): ApiResult<FirewallResult> {
-                writes++; throw CancellationException("private cancelled write")
+                writes++
+                if (!successfulWrite) throw CancellationException("private cancelled write")
+                currentStatus = currentStatus.copy(defaultIncomingPolicy = change.incoming ?: currentStatus.defaultIncomingPolicy,
+                    defaultOutgoingPolicy = change.outgoing ?: currentStatus.defaultOutgoingPolicy)
+                if (failVerification) readFailure = IllegalStateException("private verification failure")
+                return ApiResult.Success(FirewallResult(true, ""))
             }
         }
         val session = AuthSession(gateway)
@@ -141,5 +153,53 @@ class FirewallCancellationFlowTest {
         rule.onNodeWithText(text(R.string.firewall_enable)).performScrollTo().assertIsNotEnabled()
         rule.runOnIdle { assertEquals(1, writes); assertEquals(1, model.state.pending.size) }
     }
+    private fun submitChangedDefaults() {
+        rule.onNodeWithText(text(R.string.firewall_defaults)).performScrollTo().performClick()
+        rule.onAllNodesWithText(text(R.string.firewall_reject)).onFirst().performClick()
+        rule.onNodeWithText(text(R.string.common_save)).performClick()
+        rule.onNodeWithText(text(R.string.firewall_submit)).performClick()
+    }
+    @Test fun successfulDefaultsCloseEditorUsingTheSingleVerification() {
+        show()
+        val initialReads = statusReads
+        successfulWrite = true
+        submitChangedDefaults()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.saved == 1 }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.firewall_defaults)).performScrollTo().assertIsEnabled()
+        rule.runOnIdle {
+            assertEquals(3, statusReads - initialReads)
+            assertEquals("reject", model.state.facts?.status?.defaultIncomingPolicy)
+            assertNull(model.state.problem)
+            assertTrue(model.state.pending.isEmpty()); assertEquals(1, writes)
+        }
+    }
+    @Test fun knownSuccessWithFailedVerificationClosesDraftAndRequiresExplicitAdoption() {
+        show()
+        successfulWrite = true; failVerification = true
+        submitChangedDefaults()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.saved == 1 }
+        rule.onNodeWithText(text(R.string.firewall_refresh_failed)).assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.common_save)).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.common_dismiss)).performClick()
+        rule.onNodeWithText(text(R.string.workspace_records_attention)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.firewall_accept_facts)).performScrollTo().assertIsEnabled()
+        rule.runOnIdle { readFailure = null }
+        rule.onNodeWithText(text(R.string.firewall_accept_facts)).performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.pending.isEmpty() }
+        rule.onNodeWithText(text(R.string.workspace_records_empty)).assertIsDisplayed()
+        rule.runOnIdle { assertEquals(1, writes); assertEquals("reject", model.state.facts?.status?.defaultIncomingPolicy) }
+    }
+    @Test fun repeatedImmediateReadFailureReopensDismissedFeedback() {
+        show()
+        rule.runOnIdle { cancelRead = true; model.refresh() }
+        rule.onNode(isDialog()).assertExists()
+        val dismiss = rule.onNodeWithText(text(R.string.common_dismiss)).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        rule.runOnIdle { dismiss(); model.refresh() }
+        rule.onNode(isDialog()).assertExists()
+        rule.onNodeWithText(text(R.string.common_dismiss)).assertIsDisplayed()
+        rule.runOnIdle { assertNull(model.state.facts); assertFalse(model.state.busy); assertEquals(0, writes) }
+    }
+
 }
 

@@ -11,6 +11,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableStateOf
 import app.relaxkonos.mobile.ui.common.WorkspaceSection
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.test.espresso.Espresso
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
 import app.relaxkonos.mobile.R
@@ -31,6 +33,12 @@ class DockerResourceCancellationFlowTest {
     private lateinit var model: DockerResourceViewModel
     private var cancelRead = false
     private var writes = 0
+    private var successWrite = false
+    private var failAfterWrite = false
+    private var readFailure: Exception? = null
+    private var statusReads = 0
+    private val createdVolumes = mutableListOf<DockerVolume>()
+    private val receipt = DockerOperation(true, "", listOf("created"), false)
     private val active = mutableStateOf(true)
     private var pendingRead: CompletableDeferred<ApiResult<DockerStatus>>? = null
     private val containerId = "a".repeat(64)
@@ -49,6 +57,8 @@ class DockerResourceCancellationFlowTest {
                 LoginSession("review", "review", ServerDescriptor("linux", setOf(ServerCapabilities.DOCKER), true),
                     AuthTokens("test-access", "test-refresh", null, null), workspaceId = "11111111-1111-1111-1111-111111111111"))
             override suspend fun dockerStatus(serverUrl: String, accessToken: String): ApiResult<DockerStatus> {
+                statusReads++
+                readFailure?.let { throw it }
                 pendingRead?.let { return it.await() }
                 if (cancelRead) throw CancellationException("private cancelled read")
                 return ApiResult.Success(DockerStatus(true, "", "28", "linux", "amd64"))
@@ -65,11 +75,15 @@ class DockerResourceCancellationFlowTest {
             override suspend fun dockerImages(serverUrl: String, accessToken: String): ApiResult<List<DockerImage>> = ApiResult.Success(emptyList())
             override suspend fun dockerNetworks(serverUrl: String, accessToken: String): ApiResult<List<DockerNetwork>> = ApiResult.Success(emptyList())
             override suspend fun dockerVolumes(serverUrl: String, accessToken: String): ApiResult<List<DockerVolume>> = ApiResult.Success(
-                if (includeVolume) listOf(DockerVolume("review-volume", "local", "/review-volume")) else emptyList())
+                (if (includeVolume) listOf(DockerVolume("review-volume", "local", "/review-volume")) else emptyList()) + createdVolumes)
             override suspend fun dockerVolumeDetails(serverUrl: String, accessToken: String, name: String): ApiResult<DockerVolumeDetails> =
                 ApiResult.Success(DockerVolumeDetails(name, "local", "/review-volume", emptyList(), mapOf("review-label" to "private-review-value")))
             override suspend fun dockerResourceChange(serverUrl: String, accessToken: String, change: DockerResourceChange): ApiResult<DockerOperation> {
-                writes++; throw CancellationException("private cancelled write")
+                writes++
+                if (!successWrite) throw CancellationException("private cancelled write")
+                if (change.action == DockerResourceAction.CreateVolume) createdVolumes += DockerVolume(requireNotNull(change.value), "local", "/review-created")
+                if (failAfterWrite) readFailure = IllegalStateException("private verification failure")
+                return ApiResult.Success(receipt)
             }
         }
         val session = AuthSession(gateway)
@@ -229,4 +243,43 @@ class DockerResourceCancellationFlowTest {
         rule.onNodeWithText(text(R.string.docker_resources_create_volume)).performScrollTo().assertIsNotEnabled()
         rule.runOnIdle { assertEquals(1, writes); assertEquals(1, model.state.pending.size) }
     }
+    private fun createVolume() {
+        rule.onNodeWithText(text(R.string.docker_resources_create_volume)).performScrollTo().performClick()
+        rule.onNode(hasSetTextAction() and hasText(text(R.string.docker_resources_name))).performScrollTo().performTextInput("created-data")
+        Espresso.closeSoftKeyboard()
+        rule.onNodeWithText(text(R.string.docker_resources_review)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.docker_resources_apply)).performClick()
+    }
+    @Test fun resourceCreationClosesSubmittedDraftAndUsesOneVerification() {
+        show(); successWrite = true
+        val before = statusReads
+        createVolume()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.saved == 1 }
+        rule.onNodeWithText(text(R.string.docker_resources_review)).assertDoesNotExist()
+        rule.onNodeWithText("created-data").performScrollTo().assertIsDisplayed()
+        rule.runOnIdle { assertEquals(3, statusReads - before); assertEquals(receipt, model.state.result); assertEquals(1, writes); assertTrue(model.state.pending.isEmpty()) }
+    }
+    @Test fun resourceReceiptSurvivesVerificationFailureAndRefreshCannotReplayCreation() {
+        show(); successWrite = true; failAfterWrite = true
+        createVolume()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.saved == 1 }
+        rule.onNodeWithText(text(R.string.docker_control_refresh_failed)).assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.docker_resources_review)).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.common_dismiss)).performClick()
+        rule.runOnIdle { readFailure = null }
+        refresh()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.facts != null }
+        rule.onNodeWithText(text(R.string.docker_resources_create_volume)).performScrollTo().assertIsNotEnabled()
+        rule.runOnIdle { assertEquals(receipt, model.state.result); assertEquals(1, model.state.pending.size); assertEquals(1, writes) }
+    }
+    @Test fun repeatedImmediateReadFailureReopensResourceFeedback() {
+        show()
+        rule.runOnIdle { cancelRead = true; model.refresh() }
+        rule.onNode(isDialog()).assertExists()
+        val dismiss = rule.onNodeWithText(text(R.string.common_dismiss)).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        rule.runOnIdle { dismiss(); model.refresh() }
+        rule.onNode(isDialog()).assertExists()
+        rule.runOnIdle { assertNull(model.state.facts); assertFalse(model.state.busy); assertEquals(0, writes) }
+    }
+
 }

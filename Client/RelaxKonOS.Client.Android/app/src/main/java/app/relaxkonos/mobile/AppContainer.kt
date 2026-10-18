@@ -338,6 +338,8 @@ class AppContainer(context: Context) {
             is app.relaxkonos.mobile.core.net.ApiResult.Transport -> result
         }
     }
+    val websitePublicationJournal = app.relaxkonos.mobile.data.WebsitePublicationJournal(
+        app.relaxkonos.mobile.data.FileWebsitePublicationStorage(appContext.noBackupFilesDir))
     val webPublishing = app.relaxkonos.mobile.data.WebPublishingRepository(gateway, session, elevations, operationIndex)
     val scriptTasks = ScriptTaskRepository(gateway, session, operationIndex)
     val scriptRequests = app.relaxkonos.mobile.data.ScriptRequestJournal(

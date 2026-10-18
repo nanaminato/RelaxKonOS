@@ -3,8 +3,12 @@ package app.relaxkonos.mobile.data
 import app.relaxkonos.mobile.core.auth.*
 import app.relaxkonos.mobile.core.net.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+
+data class DockerControlOutcome(val result: ApiResult<Unit>, val facts: ApiResult<DockerControlFacts>, val storageFailed: Boolean = false)
 
 class DockerControlRepository(private val gateway: RelaxKonGateway, private val session: AuthSession, private val journal: DockerControlJournal, private val gate: DockerMutationGate) {
     fun pending(owner: SessionState.Active) = journal.pending(owner.also(::verify))
@@ -13,12 +17,12 @@ class DockerControlRepository(private val gateway: RelaxKonGateway, private val 
         val mirrors = read(owner, gateway::dockerMirrors); if (mirrors !is ApiResult.Success) return failure(mirrors)
         return ApiResult.Success(DockerControlFacts(status.value, mirrors.value))
     }
-    suspend fun change(owner: SessionState.Active, expected: DockerControlFacts, change: DockerControlChange): ApiResult<Unit> = gate.mutex.withLock {
+    suspend fun change(owner: SessionState.Active, expected: DockerControlFacts, change: DockerControlChange): DockerControlOutcome = gate.mutex.withLock {
         verify(owner)
-        val allowed = gate.check(owner); if (allowed !is ApiResult.Success) return@withLock failure(allowed)
+        val allowed = gate.check(owner); if (allowed !is ApiResult.Success) return@withLock DockerControlOutcome(failure(allowed), ApiResult.Transport(null))
         validate(expected, change)
-        val before = facts(owner); if (before !is ApiResult.Success) return@withLock failure(before)
-        if (before.value != expected) return@withLock ApiResult.Problem(409, "docker.control.facts_changed", null)
+        val before = facts(owner); if (before !is ApiResult.Success) return@withLock DockerControlOutcome(failure(before), before)
+        if (before.value != expected) return@withLock DockerControlOutcome(ApiResult.Problem(409, "docker.control.facts_changed", null), before)
         val marker = journal.begin(owner, change)
         val result = session.authenticated { url, token ->
             verify(owner)
@@ -38,9 +42,17 @@ class DockerControlRepository(private val gateway: RelaxKonGateway, private val 
             }
         }
         verify(owner)
-        if (result is ApiResult.Success && facts(owner) is ApiResult.Success) journal.complete(marker)
-        // A transport failure, HTTP problem, or missing post-write facts cannot prove no side effects.
-        result
+        val verifiedFacts = try { facts(owner) }
+        catch (cancelled: CancellationException) {
+            currentCoroutineContext().ensureActive()
+            verify(owner)
+            ApiResult.Transport(null)
+        } catch (_: Exception) { verify(owner); ApiResult.Transport(null) }
+        val storageFailed = if (result is ApiResult.Success && verifiedFacts is ApiResult.Success) {
+            try { journal.complete(marker); false } catch (_: Exception) { true }
+        } else false
+        // Keep the write receipt separate from the one follow-up read and local marker cleanup.
+        DockerControlOutcome(result, verifiedFacts, storageFailed)
     }
     suspend fun acceptFacts(owner: SessionState.Active, marker: PendingDockerControl): ApiResult<DockerControlFacts> = gate.mutex.withLock {
         verify(owner); require(marker in journal.pending(owner))
