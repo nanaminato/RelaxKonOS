@@ -152,14 +152,37 @@ internal sealed class LinuxSingBoxArchiveHost : ISingBoxArchiveHost
     }
 
     public async Task StopAsync(CancellationToken ct)
-    { if (await ReadRegistrationAsync(ct) is not null) { await StateAsync(ct); await CommandAsync("stop", ct); } else await ObserveAsync(ct); }
+    {
+        if (await ReadRegistrationAsync(ct) is not null)
+        {
+            await StateAsync(ct); await CommandAsync("stop", ct);
+            // systemctl returns while the unit may still be deactivating; the next observation must not
+            // mistake that transient state for an unknown one.
+            await WaitAsync(state => state.GetValueOrDefault("ActiveState") is "inactive" or "failed", ct);
+        }
+        else await ObserveAsync(ct);
+    }
     public async Task StartAsync(CancellationToken ct)
     {
         var registration = await ReadRegistrationAsync(ct) ?? throw new RuntimePolicyException("runtime.state_unknown");
         await StateAsync(ct); await RequireProtectedAsync(registration.Binary); await RequireProtectedAsync(Root + "/config.json");
         if (!string.Equals(await DigestAsync(registration.Binary, ct), registration.BinaryHash, StringComparison.OrdinalIgnoreCase)
             || !string.Equals(await DigestAsync(Root + "/config.json", ct), registration.ConfigurationHash, StringComparison.OrdinalIgnoreCase)) Fail("configuration_drift");
-        await CommandAsync("start", ct); await ObserveAsync(ct);
+        await CommandAsync("start", ct);
+        // A simple unit is briefly "activating" after systemctl start returns. Observing that window would
+        // report state_unknown for a service that is starting exactly as configured.
+        await WaitAsync(state => state.GetValueOrDefault("ActiveState") is "inactive" or "failed"
+            || state.GetValueOrDefault("ActiveState") == "active" && state.GetValueOrDefault("SubState") == "running", ct);
+        await ObserveAsync(ct);
+    }
+
+    private static async Task WaitAsync(Func<Dictionary<string, string>, bool> settled, CancellationToken ct)
+    {
+        for (var attempt = 0; attempt < 100; attempt++)
+        {
+            if (settled(await StateAsync(ct))) return;
+            await Task.Delay(100, ct);
+        }
     }
     public async Task RemoveOwnedRegistrationAsync(CancellationToken ct)
     {

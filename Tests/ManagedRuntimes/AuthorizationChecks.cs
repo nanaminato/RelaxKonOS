@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Buffers.Binary;
 using System.IO.Pipes;
@@ -138,7 +138,7 @@ internal static class AuthorizationChecks
             var artifact = new RuntimeArtifact("fixture", new string('a', 64), 1024, "zip", "sing-box", "key", new(1024, 8, [new("sing-box", 4, new string('b', 64), true)]));
             var target = new RuntimeTarget("linux", "amd64", null, null, RuntimeInstallMode.Archive, "systemd");
             var release = new RuntimeRelease("fixture", "sing-box", "v1.14.3", "1.14.3", RuntimeChannel.Stable, "fixture", target,
-                artifact, "sing-box-1.14.3", true, RuntimeTrust.Confirmed, RuntimeEvidence.Unverified, null);
+                artifact, SingBoxRuntimeSupport.Capability, true, RuntimeTrust.Confirmed, RuntimeEvidence.Unverified, null);
             var plan = new RuntimeChangePlan(new(Guid.NewGuid(), "host", RuntimeChange.Install, 0, 1, 1, "fixture", "fixture"), "sing-box", release, null);
             Check((await runtime.ExecuteAsync(serviceOperation, plan, default)).Outcome == RuntimeSwitchOutcome.Succeeded && store.Gate.CurrentCount == 1,
                 "Server composition returns Helper evidence and releases the domain gate");

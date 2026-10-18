@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.PrivilegedHelper;
@@ -158,7 +158,7 @@ internal static class RemovalChecks
             var artifact = new RuntimeArtifact("fixture-artifact", new string('c', 64), 4096, "tar.gz", "sing-box",
                 "fixture-key", new(1024 * 1024, 8, [entry]));
             Release = new RuntimeRelease("fixture-release", "sing-box", "v1.14.3", "1.14.3", RuntimeChannel.Stable,
-                "fixture-source", Target, artifact, "sing-box-1.14.3", true, RuntimeTrust.Confirmed,
+                "fixture-source", Target, artifact, SingBoxRuntimeSupport.Capability, true, RuntimeTrust.Confirmed,
                 RuntimeEvidence.Unverified, DateTimeOffset.UtcNow);
             var revision = new RuntimeStoredRevision(RevisionId, Release, "1.14.3", Identity, 1, 1);
             var initial = States.Initialize(new(Guid.NewGuid(), "fixture-host", "sing-box", 0, RuntimeOwnership.Absent,

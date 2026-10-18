@@ -43,14 +43,16 @@ internal static class RuntimeSourceOperations
         { return new(false, 1, ProblemCode: PrivilegedProblemCode.AccessDenied, Error: "runtime.source_store_unavailable"); }
     }
 
-    // Discovery is safe before lifecycle adapters are connected. Catalog publishers cannot enable support.
+    // Discovery is safe before lifecycle adapters are connected. Catalog publishers cannot enable support:
+    // the capability comes from this build's measured native-format range, never from the signed manifest.
     internal static RuntimeConfigurationSupport ConfigurationSupport(ManifestRelease release)
     {
         if (release.RuntimeId != "sing-box" || !SingBoxNativeValidation.TryTag(release.OriginalVersion, out var version))
             return new("", "", false);
         if (version.IsPrerelease != (release.Channel == RuntimeChannel.Prerelease))
             throw new RuntimePolicyException("runtime.release_channel_invalid");
-        return new(version.Normalized, "", false);
+        var capability = SingBoxRuntimeSupport.CapabilityFor(version.Normalized);
+        return new(version.Normalized, capability ?? "", capability is not null);
     }
 
     internal static RuntimeCatalogSnapshot Snapshot(StoredRuntimeSource stored, string? problem)

@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 
 if (args is ["-n", var helperFixture] && Path.GetFileName(helperFixture) == InstallationChecks.FixtureFile)
@@ -76,6 +76,12 @@ if (args is ["linux-listeners-only"])
 if (args is ["native-sing-box-archive", var nativeArchive])
 {
     Console.WriteLine($"Real sing-box archive adapter checks passed: {await SingBoxArchiveChecks.RunAsync(nativeArchive)}");
+    return;
+}
+
+if (args is ["native-sing-box-runtime", var olderRuntime, var currentRuntime] && OperatingSystem.IsLinux())
+{
+    Console.WriteLine($"Real sing-box runtime acceptance checks passed: {await SingBoxRuntimeAcceptance.RunAsync(olderRuntime, currentRuntime)}");
     return;
 }
 

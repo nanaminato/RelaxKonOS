@@ -1,4 +1,4 @@
-using System.IO.Compression;
+﻿using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -46,7 +46,7 @@ internal static class SingBoxArchiveChecks
                     HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation))));
             var sources = new RuntimeSourceStore(Path.Combine(root, "trust"), path => Directory.CreateDirectory(path));
             sources.Confirm(source, 0, source.ConfirmationFingerprint, "native-test", now);
-            var catalog = sources.Accept(source.SourceId, 1, envelope, now, _ => new("1.14.3", "sing-box-1.14.3", true));
+            var catalog = sources.Accept(source.SourceId, 1, envelope, now, RuntimeSourceOperations.ConfigurationSupport);
             var runtimeRoot = Path.Combine(root, "runtime");
             var states = new RuntimeArchiveStateStore(Path.Combine(runtimeRoot, "state"), path => Directory.CreateDirectory(path));
             states.Initialize(new(Guid.NewGuid(), "native-fixture-host", "sing-box", 0, RuntimeOwnership.Absent, target, null, false), null);

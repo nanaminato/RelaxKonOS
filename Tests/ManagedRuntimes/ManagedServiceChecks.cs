@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using RelaxKonOS.ManagedRuntimes;
@@ -31,7 +31,7 @@ internal static class ManagedServiceChecks
                 "fixture-key", new(1024 * 1024, 8, [entry]));
             var now = DateTimeOffset.UtcNow;
             var release = new RuntimeRelease("fixture-release", "sing-box", "v1.14.3", "1.14.3", RuntimeChannel.Stable,
-                "fixture-source", target, artifact, "sing-box-1.14.3", true, RuntimeTrust.Confirmed, RuntimeEvidence.Unverified, now);
+                "fixture-source", target, artifact, SingBoxRuntimeSupport.Capability, true, RuntimeTrust.Confirmed, RuntimeEvidence.Unverified, now);
             var revisionId = Guid.NewGuid();
             var directory = Path.Combine(root, "versions", revisionId.ToString("N"));
             Directory.CreateDirectory(directory);

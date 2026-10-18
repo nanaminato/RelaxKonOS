@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
@@ -60,7 +60,7 @@ internal static class InstallationChecks
             var installation = new RuntimeInstallation(Guid.NewGuid(), "fixture-host", "sing-box", 0, RuntimeOwnership.Absent, target, null, false);
             var artifact = new RuntimeArtifact("fixture", new string('a', 64), 1024, "zip", "sing-box", "key", new(1024, 8, [new("sing-box", 4, new string('b', 64), true)]));
             var release = new RuntimeRelease("fixture-release", "sing-box", "v1.14.3", "1.14.3", RuntimeChannel.Stable, "fixture-source", target,
-                artifact, "sing-box-1.14.3", true, RuntimeTrust.Confirmed, RuntimeEvidence.Unverified, null);
+                artifact, SingBoxRuntimeSupport.Capability, true, RuntimeTrust.Confirmed, RuntimeEvidence.Unverified, null);
             var plan = new RuntimeChangePlan(new(installation.InstallationId, installation.HostId, RuntimeChange.Install, 0, 1, 1, release.ReleaseId, "install-fixture"), "sing-box", release, null);
             var input = new ManagedRuntimeInstallationRequest(true, plan);
             var entered = new TaskCompletionSource<Guid>(TaskCreationOptions.RunContinuationsAsynchronously);

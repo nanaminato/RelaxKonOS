@@ -44,3 +44,32 @@ dotnet run --project Tests/ProxyServer/RelaxKonOS.ProxyServer.Tests.csproj -- <�
 测试服务器保留本次 Server/Helper 构建及可回退的旧版本。测试入站、使用者和凭据已清理，代理内核已停止且禁用开机启动；运行时保留安装。测试监听只绑定回环地址，没有新增防火墙开放规则。
 
 构建存在原有 NuGet 依赖安全告警及审计源不可用警告；本次未升级无关依赖。
+
+## 受管归档安装的跨版本与协议验收（2026-10-18）
+
+日期：2026-10-18。范围：受管运行时框架下的归档安装，不经过编译期固定版本路径。主机：Debian 13 x64 测试机（192.168.1.7，root），systemd 作为 PID 1。
+
+命令（两个归档为上游发布页原始文件，开始前核对摘要）：
+
+```text
+dotnet run --project Tests/ManagedRuntimes/RelaxKonOS.ManagedRuntimes.Tests.csproj -- \
+  native-sing-box-runtime <sing-box-1.13.21-linux-amd64.tar.gz> <sing-box-1.14.3-linux-amd64.tar.gz>
+```
+
+| 验证 | 结果 |
+| --- | --- |
+| 归档身份 | 1.13.21 `24f9ef8e…f72cd`、1.14.3 `e2bdf179…feee`，与发布页及源码固定清单一致 |
+| 受管能力范围 | 目录把两条稳定发布标为可安装；伪造的 1.12.0 发布在下载前被拒（`runtime.configuration_unsupported`） |
+| 安装 | 1.13.21 归档事务成功，提交的二进制摘要等于上游摘要，单元已注册但未启动 |
+| 配置发布 | 由已安装二进制生成 REALITY 密钥，激活后运行进程的配置身份与实际加载凭据一致 |
+| 真实监听 | 由进程 socket inode 证明 127.0.0.1 入站监听 |
+| 协议互通（1.13.21） | 1.13.21 客户端经 SOCKS5 走 VLESS + REALITY + Vision，取回 `http://example.com/` 200 且正文匹配 |
+| 跨版本更新 | 1.13.21 → 1.14.3 成功，配置身份不变，服务继续监听；老版本修订保留 |
+| 协议互通（1.14.3 / 混合） | 1.14.3↔1.14.3、1.13.21 客户端 ↔ 1.14.3 服务均取回同一正文 |
+| 流量确实过服务 | 停止受管服务后同一客户端无法取回正文，重启后恢复 |
+| 回退 | 回退到保留的 1.13.21 修订后仍监听并可互通，再更新回 1.14.3 |
+| 卸载 | 保留数据卸载成功：单元与程序目录消失、发布配置保留、所有权回到未安装 |
+
+期间发现并修复一处真实竞态：`systemctl start` 返回时简单单元可能仍在 `activating`，直接观察会把刚启动的服务报成 `state_unknown`；`LinuxSingBoxArchiveHost` 的启停改为等待 systemd 报告 settled 状态（有上限）后再观察。
+
+仍未覆盖：Windows SCM 端到端、Hysteria2/Trojan/VLESS WebSocket 的互通、Android 与第三方图形客户端矩阵、真实 NAT/防火墙与断电场景。

@@ -62,7 +62,7 @@ payload 的 `RuntimeManifest` 字段为 `schemaVersion: 1`、`sourceId`、单调
 - `artifact.layout`：`maximumExpandedBytes`（解压文件总量，最多 2 GiB）、`maximumEntries`（含目录，最多 4096）、`files`。每个文件明确 `path`、`length`、`sha256`、`executable`；入口必须恰好匹配一个声明的可执行文件。允许目录仅由这些文件的祖先目录推导。当前契约要求 layout，缺少时直接拒绝，不提供旧格式回退。
 - `downloadUri`：必须落在受信任 downloadPrefixes 内，不能凭签名自行扩大来源权限。
 
-清单不接受配置能力、已验证互通、安装许可或依赖声明。这些结论属于本机运行时适配器：依赖要求由适配器从已验证制品与将要发布的配置推导，宿主实测后才进入计划（见[宿主依赖预检](RelaxKonOS.ManagedRuntimes.Transactions.md#宿主依赖预检)）。当前生命周期适配器尚未开放目录安装，目录条目一律为配置不支持、无验证证据。sing-box 的明确 SemVer 标签（可带一个官方 v 前缀）取得排序版本；其他运行时或未知名称保留原始版本，不猜测其排序。版本可排序不代表能安装或配置兼容。
+清单不接受配置能力、已验证互通、安装许可或依赖声明。这些结论属于本机运行时适配器：依赖要求由适配器从已验证制品与将要发布的配置推导，宿主实测后才进入计划（见[宿主依赖预检](RelaxKonOS.ManagedRuntimes.Transactions.md#宿主依赖预检)）。目录条目是否可安装由本机生命周期适配器决定：sing-box 目前把 `1.13.0 ≤ v < 1.15.0` 的稳定版（能力 `sing-box-v1`）标为配置支持，其余（更旧、`1.15` 及以后、预发布）仍为配置不支持。清单里的 `evidence` 只是发布者自述，不改变这条判定。sing-box 的明确 SemVer 标签（可带一个官方 v 前缀）取得排序版本；其他运行时或未知名称保留原始版本，不猜测其排序。版本可排序不代表能安装或配置兼容。
 
 sing-box 目录按数值/预发布标识比较后降序返回，构建元数据保留但不参与优先级，超大数值使用任意精度；默认仍隐藏预发布版。已识别版本的预发布属性与清单 channel 不一致时拒绝接受该目录。规则依据 [SemVer 2.0.0](https://semver.org/spec/v2.0.0.html)，不用于系统包发行版修订或其他未声明使用 SemVer 的运行时。
 
@@ -74,7 +74,7 @@ ZIP 在创建 ZipArchive 条目集合前先限制中央目录条目数和各元�
 
 `RuntimeArtifactPreparer` 从受保护账本解析 sourceId/releaseId、平台及预期修订，要求来源启用、目录有效、制品未撤销/冲突、配置能力已由本机适配器允许，预发布还须显式选择。使用同一 HTTPS/DNS/重定向策略将归档流式写入随机私有文件，正文总时限四分钟，写入层也独立限制最大字节；之后由归档校验器再次核对内容。完成后重新授权同一明确目标和修订；来源禁用、过期、撤销或修订变化会拒绝本次准备，不改选其他版本。
 
-下载临时文件在完成/失败/取消时删除，解包失败只清理本次随机子目录；已有调用方文件保留。解包成功由调用方持有 `VerifiedRuntimeArchive`，可在同一暂存根中显式 Discard。另已实现 [持久归档事务组件](RelaxKonOS.ManagedRuntimes.Transactions.md) 的活动指针、幂等和补偿框架；保护暂存根、恢复时寻找本次准备、原生版本/配置检查和真实服务健康仍由待接入的 Helper 运行时适配器负责。生产目录目前仍将所有版本标为配置不支持，因此没有通过新接口开放任何真实运行时安装。
+下载临时文件在完成/失败/取消时删除，解包失败只清理本次随机子目录；已有调用方文件保留。解包成功由调用方持有 `VerifiedRuntimeArchive`，可在同一暂存根中显式 Discard。另已实现 [持久归档事务组件](RelaxKonOS.ManagedRuntimes.Transactions.md) 的活动指针、幂等和补偿框架；保护暂存根、恢复时寻找本次准备、原生版本/配置检查和真实服务健康仍由待接入的 Helper 运行时适配器负责。生产目录只对声明范围内版本标为配置支持（见[真实跨版本与协议验收](RelaxKonOS.ManagedRuntimes.Transactions.md#真实-sing-box-跨版本与协议验收)），范围外仍为不支持。
 
 相同 releaseId 或原始 tag/target 的制品身份改变会持久化冲突，保留原始身份并阻止新旧相关条目；换 releaseId 不绕过隔离。撤销记录同时保留已知制品摘要，换标签或 releaseId 不能重新开放同一已知撤销制品。普通刷新和重新确认来源不清除冲突或撤销；管理员审查解除流程尚未实现。
 
@@ -104,10 +104,10 @@ RuntimeRead 允许 controller/observer；RuntimeManage 仅允许 controller，�
 
 Server 和 Helper 编译通过，代理服务端既有测试通过。通用 Server 测试在 Windows 的证书 PEM 私钥导入处失败（`CertificateBindingChecks` / CNG），未完成整套通过，不能作为本次生命周期验收证据。Linux 的文件所有权检查及真实 TLS 镜像、跨平台安装/更新/恢复仍需平台验收。
 
-另有 [sing-box 归档适配器可选检查](RelaxKonOS.ManagedRuntimes.Transactions.md)：Windows x64 上以固定摘要的 1.14.3 缓存实际执行 version/REALITY 生成/check，通过 12 项；平台服务仍被模拟。该适配器尚未接入生产路由，公共目录的配置支持标记仍全部为 false，没有因此开放版本安装或扩展兼容范围。
+另有 [sing-box 归档适配器可选检查](RelaxKonOS.ManagedRuntimes.Transactions.md)：Windows x64 上以固定摘要的 1.14.3 缓存实际执行 version/REALITY 生成/check，通过 12 项；平台服务仍被模拟。该适配器已接入生产路由；公共目录的配置支持标记只对 `sing-box-v1` 范围内的稳定版为 true，没有因此扩展平台或协议兼容范围。
 
 2026-10-18 已补充 Helper 固定生命周期组合、本机 Query/Plan/Execute/Recover 操作、Server 新鲜授权提供者/组合服务与每操作认证通道；固定版配置路径已与归档事务使用同一实例锁；受管活动修订上的已发布配置发布、启停、开机启动与配置回滚已接通；卸载按保留/删除数据走独立归档移除事务；补偿失败后的重试/紧急停止/关账三条人工恢复入口与对应客户端面板已接通；准备阶段的下载取消（台账取消 + 特权取消请求 + 客户端取消按钮）已接通；宿主依赖预检（平台/服务宿主/磁盘/受管目录/IPv6）在计划与前置检查两处生效，读权限接口随安装快照返回宿主环境事实；客户端版本计划页与宿主环境面板已接入。Debian 13 x64 通过 608 项常规检查及 12 项真实 systemd 测试程序检查，范围见[事务证据](RelaxKonOS.ManagedRuntimes.Transactions.md#linux-固定宿主与进程证明)。这没有开放目录安装或扩大受支持版本，当前公开目录的配置支持仍全部为 false。
 
-已接通既有 Server 安装台账及冻结计划入口，并接通受管修订上的已发布配置发布/服务控制、卸载/数据保留、人工恢复入口与宿主依赖预检；下一阶段须实现真实 sing-box 跨版本更新与协议验收，再接其余运行时适配器。此文不替代 [整体设计及任务表](RelaxKonOS.ManagedRuntimes.Design.md)。
+已接通既有 Server 安装台账及冻结计划入口，并接通受管修订上的已发布配置发布/服务控制、卸载/数据保留、人工恢复入口与宿主依赖预检；真实 sing-box 跨版本更新与 VLESS/REALITY 协议互通已在 Linux x64 上验收（见[事务证据](RelaxKonOS.ManagedRuntimes.Transactions.md#真实-sing-box-跨版本与协议验收)），下一阶段接其余运行时适配器。此文不替代 [整体设计及任务表](RelaxKonOS.ManagedRuntimes.Design.md)。
 
 执行复用 `/api/v1.0/installations/SingBox/{Install|Upgrade|Repair|Rollback}`，提交严格 `ManagedRuntimeInstallationRequest`；提权目标为 `singbox`。不另建安装台账。公共目录配置支持仍为 false，新增路由不开放未经验证的版本。

@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
 using RelaxKonOS.ManagedRuntimes;
+using RelaxKonOS.PrivilegedHelper;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 
 internal static class CatalogChecks
@@ -48,6 +49,22 @@ internal static class CatalogChecks
         Check(first.Catalog.SignatureVerified && first.History.HighWater == 1, "Valid exact-byte signature");
         Check(!first.Catalog.Releases.Single().ConfigurationSupported, "Publisher cannot grant configuration compatibility");
         Check(first.Catalog.Releases.Single().Evidence == RuntimeEvidence.Unverified, "No inferred runtime evidence");
+
+        // Installation permission is computed by this build from its measured native-format range; the
+        // publisher only ever supplies the version tag.
+        ManifestRelease Tagged(string tag, RuntimeChannel channel = RuntimeChannel.Stable) =>
+            release with { OriginalVersion = tag, Channel = channel };
+        var currentSupport = RuntimeSourceOperations.ConfigurationSupport(Tagged("v1.14.3"));
+        Check(currentSupport is { Supported: true, SortVersion: "1.14.3" } && currentSupport.Capability == SingBoxRuntimeSupport.Capability,
+            "The pinned release is inside the measured native-format range");
+        Check(RuntimeSourceOperations.ConfigurationSupport(Tagged("v1.13.21")).Supported
+            && !RuntimeSourceOperations.ConfigurationSupport(Tagged("v1.12.9")).Supported
+            && !RuntimeSourceOperations.ConfigurationSupport(Tagged("v1.15.0")).Supported
+            && !RuntimeSourceOperations.ConfigurationSupport(Tagged("v1.15.0-alpha.12", RuntimeChannel.Prerelease)).Supported,
+            "Releases below, above or ahead of the measured range stay discoverable but uninstallable");
+        Reject("release_channel_invalid", () => RuntimeSourceOperations.ConfigurationSupport(Tagged("v1.14.3", RuntimeChannel.Prerelease)));
+        Check(RuntimeSourceOperations.ConfigurationSupport(release with { RuntimeId = "nginx" }) is { Supported: false, Capability: "" },
+            "No other runtime inherits the sing-box capability");
         Check(Verify(history: first.History).PayloadHash == first.PayloadHash, "Same revision and bytes may refresh");
         Check(Verify(manifest with { Revision = 2, Releases = [release with { Artifact = artifact with { Sha256 = artifact.Sha256.ToUpperInvariant() } }] },
             first.History).Catalog.Releases.Single().Trust == RuntimeTrust.Confirmed, "Digest casing is not a changed artifact");

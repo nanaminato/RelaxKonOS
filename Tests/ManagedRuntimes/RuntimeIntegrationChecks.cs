@@ -71,9 +71,13 @@ internal static class RuntimeIntegrationChecks
             Check(downloads == 1 && refreshed.Fresh && refreshed.ProblemCode is null, "Helper verifies and persists refreshed catalog");
             Check(refreshed.Catalog!.Releases.Count == 1 && refreshed.Catalog.Releases.Single().Channel == RuntimeChannel.Stable,
                 "REST service hides prerelease by default");
-            Check(!refreshed.Catalog.Releases.Single().ConfigurationSupported, "Discovery does not enable unsupported lifecycle adapter");
-            Check((await service.CatalogAsync(source.SourceId, false, true, default)).Catalog!.Releases.Count == 2,
-                "Explicit prerelease view includes both channels");
+            Check(refreshed.Catalog.Releases.Single().ConfigurationSupported
+                && refreshed.Catalog.Releases.Single().ConfigurationCapability == SingBoxRuntimeSupport.Capability,
+                "Discovery grants support only through this build's measured native-format range");
+            var previewView = await service.CatalogAsync(source.SourceId, false, true, default);
+            Check(previewView.Catalog!.Releases.Count == 2, "Explicit prerelease view includes both channels");
+            Check(!previewView.Catalog.Releases.Single(r => r.Channel == RuntimeChannel.Prerelease).ConfigurationSupported,
+                "A prerelease ahead of the measured range stays discoverable but uninstallable");
             Check((await service.CatalogAsync(source.SourceId, false, true, default)).Catalog!.Releases.First().ReleaseId == preview.ReleaseId,
                 "sing-box catalog is ordered by numeric version precedence rather than publisher list order");
             failDownload = true;

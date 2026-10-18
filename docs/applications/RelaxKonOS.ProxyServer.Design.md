@@ -7,12 +7,12 @@
 > 目标宿主：Windows / Windows Server、Linux；能力按实际发行版、架构和服务管理方式开放。
 > 上游资料核对日期：2026-10-17。
 
-> 生命周期补齐：当前固定版本实现尚不具备通用多版本更新。安装、卸载、版本选择、发布源管理和实际跨版本升级按 [受管运行时统一规范](../platform/RelaxKonOS.ManagedRuntimes.Design.md) 的 MR-02 追踪；该目标取代下文编译期唯一版本清单的长期设计约束，当前实现边界仍以 §13 为准。
-> 宿主及接线进展（2026-10-18）：新增固定 systemd 宿主、实际配置凭据证明、进程 socket inode 监听核对、Helper 固定生命周期组合、Server 新鲜发布授权和每操作认证通道。固定配置路径与生命周期已共锁，启动前再次核对授权，完整冻结记录不得伪造制品布局或验证证据。安装操作台账/API 和实际阶段进度已接通，支持目标绑定的启动恢复；受管活动修订上的已发布配置发布、启停、开机启动与配置回滚已接通，归档安装的卸载（保留或删除数据）与客户端版本计划页也已接通；公共目录仍不允许安装。Debian 检查的范围和数字见[事务证据](../platform/RelaxKonOS.ManagedRuntimes.Transactions.md#linux-固定宿主与进程证明)，systemd 测试程序不构成 sing-box 跨版本或协议验收。
-> MR-01/MR-02 进度（2026-10-17）：公共契约、可信目录、制品准备、持久事务及 Windows 固定服务宿主代码已落地，385 项常规检查通过。状态现核对进程启动时的配置证明，不能给旧进程套用新注册元数据；监听归属使用原生 PID 表。实际生命周期、当前授权、配置共锁和 UI 尚未接入新框架，SCM 与跨版本端到端仍待验收，详见 [事务组件](../platform/RelaxKonOS.ManagedRuntimes.Transactions.md)。
+> 生命周期补齐：安装、卸载、版本选择、发布源管理和跨版本升级按 [受管运行时统一规范](../platform/RelaxKonOS.ManagedRuntimes.Design.md) 的 MR-02 追踪，并已取代下文编译期唯一版本清单的长期设计约束：受管归档安装开放 `1.13.0 ≤ v < 1.15.0` 的稳定版（能力 `sing-box-v1`），编译期固定清单仍是默认下载与状态兜底。当前实现边界以 §13 为准。
+> 宿主及接线进展（2026-10-18）：新增固定 systemd 宿主、实际配置凭据证明、进程 socket inode 监听核对、Helper 固定生命周期组合、Server 新鲜发布授权和每操作认证通道。固定配置路径与生命周期已共锁，启动前再次核对授权，完整冻结记录不得伪造制品布局或验证证据。安装操作台账/API 和实际阶段进度已接通，支持目标绑定的启动恢复；受管活动修订上的已发布配置发布、启停、开机启动与配置回滚已接通，归档安装的卸载（保留或删除数据）与客户端版本计划页也已接通；公共目录只对 `sing-box-v1` 范围（1.13.0 ≤ v < 1.15.0 稳定版）标为可安装。Debian 检查的范围和数字见[事务证据](../platform/RelaxKonOS.ManagedRuntimes.Transactions.md#linux-固定宿主与进程证明)，systemd 测试程序不构成 sing-box 跨版本或协议验收。
+> MR-01/MR-02 进度（2026-10-18）：公共契约、可信目录、制品准备、持久事务、两平台固定服务宿主、实际生命周期、当前授权、配置共锁与 UI 均已接入；Debian 13 x64 常规 614 项通过，另有真实 1.13.21/1.14.3 的 24 项跨版本与 VLESS/REALITY 互通验收。Windows SCM 端到端与其他协议互通矩阵仍未验收，详见 [事务组件](../platform/RelaxKonOS.ManagedRuntimes.Transactions.md)。
 
 > 原生探测依据：[上游 1.14.3 的 version 输出](https://github.com/SagerNet/sing-box/blob/v1.14.3/cmd/sing-box/cmd_version.go)。REALITY 服务端要求 `with_utls`，Hysteria2 要求 `with_quic`，分别由 [REALITY 实现](https://github.com/SagerNet/sing-box/blob/v1.14.3/common/tls/reality_server.go) 和 [QUIC 注册实现](https://github.com/SagerNet/sing-box/blob/v1.14.3/include/quic.go) 的构建门禁核对。Helper 仍须执行目标二进制的原生 check；标签不是配置生效或协议互通的替代证据。常规测试覆盖解析器及可信子进程边界，真实归档验证见下一项，不扩大版本/平台验收范围。
-> 原生归档接入进展：`SingBoxArchiveAdapter` 以固定摘要的 Windows x64 1.14.3 通过 12 项真实归档检查，包含程序 version、REALITY 密钥生成及配置 check、同版本修复和授权中断恢复；这些测试的服务仍是测试宿主。Windows 宿主另有实际 PID 表检查，但未操作 SCM。Linux 宿主已补充受控测试程序的 systemd 验证（见上）；生产生命周期/授权提供者及配置共锁待接通，不构成 sing-box 跨版本或系统服务验收。
+> 原生归档接入进展：`SingBoxArchiveAdapter` 以固定摘要的 Windows x64 1.14.3 通过 12 项真实归档检查，包含程序 version、REALITY 密钥生成及配置 check、同版本修复和授权中断恢复；这些测试的服务仍是测试宿主。Windows 宿主另有实际 PID 表检查，但未操作 SCM。Linux 宿主已补充受控测试程序的 systemd 验证（见上）；生产生命周期/授权提供者及配置共锁已接通，跨版本与协议验收改由 [真实 sing-box 验收](../platform/RelaxKonOS.ManagedRuntimes.Transactions.md#真实-sing-box-跨版本与协议验收) 提供（1.13.21/1.14.3、VLESS/REALITY 双向互通、回退与卸载）。
 
 ## 1. 产品定位与边界
 

@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.Installations;
@@ -207,7 +207,7 @@ internal static class RecoveryChecks
                 new(1024 * 1024, 8, [new("sing-box", 16, new string('b', 64), true)]));
             Previous = new RuntimeStoredRevision(Guid.NewGuid(),
                 new RuntimeRelease("fixture-release-1", "sing-box", "v1.14.3", "1.14.3", RuntimeChannel.Stable, "fixture-source",
-                    Target, artifact, "sing-box-1.14.3", true, RuntimeTrust.Confirmed, RuntimeEvidence.Unverified, DateTimeOffset.UtcNow),
+                    Target, artifact, SingBoxRuntimeSupport.Capability, true, RuntimeTrust.Confirmed, RuntimeEvidence.Unverified, DateTimeOffset.UtcNow),
                 "1.14.3", Identity, 1, 1);
             Release = new RuntimeRelease("fixture-release-2", "sing-box", "v1.15.0", "1.15.0", RuntimeChannel.Stable, "fixture-source",
                 Target, artifact, "sing-box-1.15.0", true, RuntimeTrust.Confirmed, RuntimeEvidence.Unverified, DateTimeOffset.UtcNow);

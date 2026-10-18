@@ -50,9 +50,11 @@ internal sealed class SingBoxArchiveAdapter(string protectedRoot, RuntimeArchive
     public async Task PreflightAsync(RuntimeChangePlan plan, RuntimeArchiveState current, CancellationToken ct)
     {
         var release = plan.Release!;
-        // Only the actually reviewed generator target is enabled here; version discovery is broader.
+        // Only the measured native-format range is enabled here; discovery is broader and the catalog
+        // publisher cannot choose the capability string.
         if (release.RuntimeId != "sing-box" || !SingBoxNativeValidation.TryTag(release.OriginalVersion, out var version)
-            || version.Normalized != SingBoxManifest.Version || release.ConfigurationCapability != "sing-box-1.14.3"
+            || SingBoxRuntimeSupport.CapabilityFor(version.Normalized) is not { } capability
+            || release.ConfigurationCapability != capability
             || release.Target.Os != SingBoxManifest.PlatformName || release.Target.Architecture != SingBoxManifest.ArchitectureName
             || release.Target.InstallMode != RuntimeInstallMode.Archive
             || release.Target.ServiceHost != (OperatingSystem.IsWindows() ? "scm" : "systemd")

@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text;
 using RelaxKonOS.ManagedRuntimes;
@@ -74,7 +74,7 @@ internal static class LifecycleChecks
             var signed = RuntimeJson.Serialize(new SignedRuntimeCatalog(1, source.KeyId, Convert.ToBase64String(bytes),
                 Convert.ToBase64String(key.SignData(RuntimeCatalogVerifier.SignatureContext.ToArray().Concat(bytes).ToArray(),
                     HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation))));
-            sources.Accept(source.SourceId, 1, signed, now, _ => new("1.14.3", "sing-box-1.14.3", true));
+            sources.Accept(source.SourceId, 1, signed, now, _ => new("1.14.3", SingBoxRuntimeSupport.Capability, true));
             var request = new RuntimePlanRequest(snapshot.Installation.InstallationId, snapshot.Installation.HostId,
                 RuntimeChange.Install, snapshot.Installation.StateRevision, 1, 1, release.ReleaseId, "lifecycle-test");
             var allowed = await lifecycle.PlanAsync(source.SourceId, request, default);

@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using System.Reflection;
 using Avalonia;
@@ -97,7 +97,7 @@ static RuntimeArtifact RuntimeArtifactFixture() => new("artifact-" + Guid.NewGui
         [new RuntimeArchiveFile("sing-box", 4096, new string('b', 64), true)]));
 static RuntimeRelease RuntimeReleaseFixture(string id, string version, bool supported) => new(id, "sing-box", version, version,
     RuntimeChannel.Stable, "singbox", new RuntimeTarget("linux", "x64", null, null, RuntimeInstallMode.Archive, "systemd"),
-    RuntimeArtifactFixture(), "sing-box-1.14.3", supported, RuntimeTrust.Confirmed, RuntimeEvidence.NativeConfiguration,
+    RuntimeArtifactFixture(), "sing-box-v1", supported, RuntimeTrust.Confirmed, RuntimeEvidence.NativeConfiguration,
     new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero));
 var runtimeCatalog = new RuntimeCatalog("singbox", 12, 7, DateTimeOffset.UtcNow.AddDays(1), true,
 [

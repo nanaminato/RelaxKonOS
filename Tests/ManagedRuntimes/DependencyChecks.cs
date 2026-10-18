@@ -1,4 +1,4 @@
-using RelaxKonOS.PrivilegedHelper;
+﻿using RelaxKonOS.PrivilegedHelper;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.ProxyServer;
 
@@ -35,7 +35,7 @@ internal static class DependencyChecks
         var artifact = new RuntimeArtifact("immutable-2", new string('a', 64), 64L * 1024 * 1024, "tar.gz", "sing-box",
             "signed-manifest:key-1", new(256L * 1024 * 1024, 8, [new("sing-box", 4, new string('b', 64), true)]));
         var release = new RuntimeRelease("opaque-2", "sing-box", "v2.0.0", "2.0.0", RuntimeChannel.Stable,
-            "sing-box-official", target, artifact, "sing-box-1.14.3", true, RuntimeTrust.Confirmed,
+            "sing-box-official", target, artifact, "sing-box-v1", true, RuntimeTrust.Confirmed,
             RuntimeEvidence.Unverified, now);
         var environment = new Host();
         const string root = "/var/lib/relaxkonos/sing-box";

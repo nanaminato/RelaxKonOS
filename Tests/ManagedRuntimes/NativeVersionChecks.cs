@@ -68,7 +68,11 @@ internal static class NativeVersionChecks
             new("a-1", new string('a', 64), 1024, "tar.gz", "sing-box", "key-1",
                 new(1024, 4, [new("sing-box", 4, new string('b', 64), true)])), "https://example.com/runtime.tar.gz", null);
         var support = RuntimeSourceOperations.ConfigurationSupport(release);
-        Check(support.SortVersion == "1.14.3" && !support.Supported, "Sortable versions do not imply lifecycle support");
+        Check(support.SortVersion == "1.14.3" && support.Supported && support.Capability == SingBoxRuntimeSupport.Capability,
+            "Sortable versions only imply lifecycle support inside the measured native-format range");
+        var outside = RuntimeSourceOperations.ConfigurationSupport(release with { OriginalVersion = "v1.12.9" });
+        Check(outside.SortVersion == "1.12.9" && !outside.Supported && outside.Capability == "",
+            "An older stable release stays sortable but outside the measured range");
         Check(RuntimeSourceOperations.ConfigurationSupport(release with { RuntimeId = "other-runtime" }).SortVersion == "", "Other runtime version schemes are not parsed as sing-box");
         Check(RuntimeSourceOperations.ConfigurationSupport(release with { OriginalVersion = "nightly-20261017" }).SortVersion == "", "Unknown sing-box names remain unsupported");
         Reject("release_channel_invalid", () => RuntimeSourceOperations.ConfigurationSupport(release with { OriginalVersion = "v1.15.0-alpha.1" }));
