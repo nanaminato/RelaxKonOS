@@ -102,8 +102,8 @@ Server 和 Helper 编译通过，代理服务端既有测试通过。通用 Serv
 
 另有 [sing-box 归档适配器可选检查](RelaxKonOS.ManagedRuntimes.Transactions.md)：Windows x64 上以固定摘要的 1.14.3 缓存实际执行 version/REALITY 生成/check，通过 12 项；平台服务仍被模拟。该适配器尚未接入生产路由，公共目录的配置支持标记仍全部为 false，没有因此开放版本安装或扩展兼容范围。
 
-2026-10-18 已补充 Helper 固定生命周期组合、本机 Query/Plan/Execute/Recover 操作、Server 新鲜授权提供者/组合服务与每操作认证通道；固定版配置路径已与归档事务使用同一实例锁。Debian 13 x64 通过 498 项常规检查及 10 项真实 systemd 测试程序检查，范围见[事务证据](RelaxKonOS.ManagedRuntimes.Transactions.md#linux-固定宿主与进程证明)。这没有开放目录安装或扩大受支持版本，当前公开目录的配置支持仍全部为 false。
+2026-10-18 已补充 Helper 固定生命周期组合、本机 Query/Plan/Execute/Recover 操作、Server 新鲜授权提供者/组合服务与每操作认证通道；固定版配置路径已与归档事务使用同一实例锁；受管活动修订上的已发布配置发布、启停、开机启动与配置回滚已接通。Debian 13 x64 通过 516 项常规检查及 12 项真实 systemd 测试程序检查，范围见[事务证据](RelaxKonOS.ManagedRuntimes.Transactions.md#linux-固定宿主与进程证明)。这没有开放目录安装或扩大受支持版本，当前公开目录的配置支持仍全部为 false。
 
-已接通既有 Server 安装台账及冻结计划入口；下一阶段须实现归档配置发布/服务控制、下载取消和真实 sing-box 恢复，再接通 UI 及其余运行时适配器。此文不替代 [整体设计及任务表](RelaxKonOS.ManagedRuntimes.Design.md)。
+已接通既有 Server 安装台账及冻结计划入口，并接通受管修订上的已发布配置发布/服务控制；下一阶段须实现卸载/保留、下载取消和真实 sing-box 恢复与跨版本更新，再接通版本选择 UI 及其余运行时适配器。此文不替代 [整体设计及任务表](RelaxKonOS.ManagedRuntimes.Design.md)。
 
 执行复用 `/api/v1.0/installations/SingBox/{Install|Upgrade|Repair|Rollback}`，提交严格 `ManagedRuntimeInstallationRequest`；提权目标为 `singbox`。不另建安装台账。公共目录配置支持仍为 false，新增路由不开放未经验证的版本。

@@ -182,6 +182,7 @@ internal static class LifecycleChecks
         public Task StopAsync(CancellationToken ct) { Stops++; if (!IgnoreStop) observation = observation with { Running = false, AppliedConfigurationIdentity = null }; return Task.CompletedTask; }
         public Task StartAsync(CancellationToken ct) => throw new Exception("Stop cannot start a service");
         public Task ConfigureAsync(string binary, string configuration, string identity, bool bootEnabled, CancellationToken ct) => throw new Exception("Stop cannot change registration");
+        public Task SetBootAsync(bool enabled, CancellationToken ct) => throw new Exception("Stop cannot change startup");
         public Task RemoveOwnedRegistrationAsync(CancellationToken ct) => throw new Exception("Stop cannot remove registration");
         public Task<bool> ListenersHealthyAsync(ProxyServerConfiguration published, CancellationToken ct) => throw new Exception("Stop cannot use listener health as ownership");
     }
@@ -198,6 +199,7 @@ internal static class LifecycleChecks
         public Task StopAsync(CancellationToken ct) { Stops++; return Task.CompletedTask; }
         public Task StartAsync(CancellationToken ct) { Starts++; return Task.CompletedTask; }
         public Task ConfigureAsync(string binary, string configuration, string identity, bool bootEnabled, CancellationToken ct) { afterConfigure(); return Task.CompletedTask; }
+        public Task SetBootAsync(bool enabled, CancellationToken ct) => throw new Exception("No startup change expected");
         public Task<SingBoxServiceObservation> ObserveAsync(CancellationToken ct) => throw new Exception("No post-start observation expected");
         public Task RemoveOwnedRegistrationAsync(CancellationToken ct) => throw new Exception("No registration removal expected");
         public Task<bool> ListenersHealthyAsync(ProxyServerConfiguration published, CancellationToken ct) => throw new Exception("No health check expected");
@@ -210,6 +212,7 @@ internal static class LifecycleChecks
         public Task StartAsync(CancellationToken ct) => throw new Exception("No service mutation expected");
         public Task RemoveOwnedRegistrationAsync(CancellationToken ct) => throw new Exception("No service mutation expected");
         public Task ConfigureAsync(string binary, string configuration, string identity, bool bootEnabled, CancellationToken ct) => throw new Exception("No service mutation expected");
+        public Task SetBootAsync(bool enabled, CancellationToken ct) => throw new Exception("No service mutation expected");
         public Task<bool> ListenersHealthyAsync(ProxyServerConfiguration published, CancellationToken ct) => throw new Exception("No service mutation expected");
     }
 }

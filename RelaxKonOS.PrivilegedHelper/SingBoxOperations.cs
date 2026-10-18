@@ -50,10 +50,11 @@ internal static class SingBoxOperations
             using var gate = new RuntimeArchiveStateStore(Path.Combine(Root, "state"), RuntimeSourceProtection.Protect).Acquire();
             if (gate.State is { } managed && (managed.Active is not null || managed.Pending is not null))
             {
+                var host = CreateArchiveHost();
                 if (request.Operation == PrivilegedOperationKind.ProxyServerAction
                     && request.ProxyServer is { Action: ProxyServerAction.Stop, Material: null })
-                    return Json(await SingBoxManagedStop.ExecuteAsync(Root, managed, CreateArchiveHost(), default));
-                return Failure("proxy_server.managed_runtime_required");
+                    return Json(await SingBoxManagedStop.ExecuteAsync(Root, managed, host, default));
+                return await SingBoxManagedRuntime.ExecuteAsync(request, Root, gate, host, default);
             }
             if (request.Operation == PrivilegedOperationKind.ProxyServerStatus) return Json(await StatusAsync());
             if (request.Operation == PrivilegedOperationKind.ProxyServerAction)

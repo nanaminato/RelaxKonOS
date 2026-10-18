@@ -159,6 +159,7 @@ internal static class SingBoxArchiveChecks
             return Task.CompletedTask;
         }
         public Task StartAsync(CancellationToken ct) { Observation = Observation with { Running = true }; return Task.CompletedTask; }
+        public Task SetBootAsync(bool enabled, CancellationToken ct) { Observation = Observation with { BootEnabled = enabled }; return Task.CompletedTask; }
         public Task RemoveOwnedRegistrationAsync(CancellationToken ct) { Observation = new(false, true, false, false, null, null); return Task.CompletedTask; }
         // Deliberately a service-boundary mock; no inbound service or network listener is started.
         public Task<bool> ListenersHealthyAsync(ProxyServerConfiguration published, CancellationToken ct) => Task.FromResult(true);

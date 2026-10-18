@@ -17,6 +17,8 @@ internal interface ISingBoxArchiveHost
     Task<SingBoxServiceObservation> ObserveAsync(CancellationToken ct);
     Task StopAsync(CancellationToken ct);
     Task ConfigureAsync(string verifiedBinary, string protectedConfiguration, string configurationIdentity, bool bootEnabled, CancellationToken ct);
+    /// <summary>Changes only the start-on-boot registration of the already registered service; never starts it.</summary>
+    Task SetBootAsync(bool enabled, CancellationToken ct);
     Task StartAsync(CancellationToken ct);
     Task RemoveOwnedRegistrationAsync(CancellationToken ct);
     Task<bool> ListenersHealthyAsync(ProxyServerConfiguration published, CancellationToken ct);

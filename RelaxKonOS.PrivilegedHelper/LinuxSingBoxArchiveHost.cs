@@ -133,6 +133,16 @@ internal sealed class LinuxSingBoxArchiveHost : ISingBoxArchiveHost
         await CommandAsync(bootEnabled ? "enable" : "disable", ct);
     }
 
+    public async Task SetBootAsync(bool enabled, CancellationToken ct)
+    {
+        if (await ReadRegistrationAsync(ct) is null) throw new RuntimePolicyException("runtime.state_unknown");
+        await StateAsync(ct);
+        await CommandAsync(enabled ? "enable" : "disable", ct);
+        var actual = (await StateAsync(ct)).GetValueOrDefault("UnitFileState") switch
+        { "enabled" => true, "disabled" => false, _ => (bool?)null };
+        if (actual != enabled) Fail("state_unknown");
+    }
+
     private static async Task WriteAsync(string path, string text, UnixFileMode mode, CancellationToken ct)
     {
         RuntimeSourceStore.RequireNoLinks(path); RuntimeSourceStore.RequireNoLinks(path + ".new");

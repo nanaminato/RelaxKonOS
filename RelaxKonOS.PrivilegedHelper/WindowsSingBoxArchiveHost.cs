@@ -39,6 +39,11 @@ internal sealed class WindowsSingBoxArchiveHost(string protectedRoot) : ISingBox
 
     public Task StopAsync(CancellationToken ct)
     { ct.ThrowIfCancellationRequested(); return WindowsComponentService.StopAsync(ComponentKind.SingBox, root); }
+    public Task SetBootAsync(bool enabled, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        return WindowsComponentService.SetStartupAsync(ComponentKind.SingBox, root, enabled);
+    }
     public Task StartAsync(CancellationToken ct)
     { ct.ThrowIfCancellationRequested(); return WindowsComponentService.StartAsync(ComponentKind.SingBox, root); }
     public Task RemoveOwnedRegistrationAsync(CancellationToken ct)

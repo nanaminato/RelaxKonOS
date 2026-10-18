@@ -25,6 +25,12 @@ if (args is ["runtime-lifecycle-only"])
     return;
 }
 
+if (args is ["runtime-managed-service-only"])
+{
+    Console.WriteLine($"Managed runtime service checks passed: {await ManagedServiceChecks.RunAsync()}");
+    return;
+}
+
 if (args is ["run", "-c", var fixtureConfiguration])
 {
     await LinuxSystemdHostChecks.RunFixtureAsync(fixtureConfiguration);
@@ -134,3 +140,4 @@ Console.WriteLine($"Linux listener checks passed: {LinuxListenerChecks.Run()}");
 Console.WriteLine($"Runtime current authorization checks passed: {await AuthorizationChecks.RunAsync()}");
 Console.WriteLine($"Runtime lifecycle boundary checks passed: {await LifecycleChecks.RunAsync()}");
 Console.WriteLine($"Runtime installation coordinator checks passed: {await InstallationChecks.RunAsync()}");
+Console.WriteLine($"Managed runtime service checks passed: {await ManagedServiceChecks.RunAsync()}");

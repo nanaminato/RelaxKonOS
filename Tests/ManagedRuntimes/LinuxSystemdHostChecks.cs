@@ -47,6 +47,11 @@ internal static class LinuxSystemdHostChecks
             await host.ConfigureAsync(binary, configuration, identity, false, default);
             var stopped = await host.ObserveAsync(default);
             Check(stopped is { Owned: true, Running: false, BootEnabled: false });
+            // Start-on-boot is a registration change, never a start or a stop of the published service.
+            await host.SetBootAsync(true, default);
+            Check((await host.ObserveAsync(default)) is { BootEnabled: true, Running: false });
+            await host.SetBootAsync(false, default);
+            Check((await host.ObserveAsync(default)).BootEnabled == false);
             await host.StartAsync(default);
             SingBoxServiceObservation? running = null;
             for (var attempt = 0; attempt < 20; attempt++)
