@@ -10,10 +10,11 @@ namespace RelaxKonOS.Protocol.ManagedRuntimes;
 public sealed record RuntimeInstalledRelease(Guid RevisionId, string ReleaseId, string MeasuredVersion);
 
 /// <summary>Public immutable observation. Program and current published configuration identities are distinct.</summary>
+/// <param name="Environment">What the Host measured about itself; it names capabilities and byte counts only.</param>
 public sealed record RuntimeInstallationSnapshot(RuntimeInstallation Installation, string? MeasuredVersion,
     Guid? ActiveRevisionId, string? ConfigurationIdentity, Guid? PendingOperationId,
     InstallationStage? PendingStage, string? ProblemCode, RuntimeSwitchResult? Receipt = null,
-    IReadOnlyList<RuntimeInstalledRelease>? InstalledReleases = null);
+    IReadOnlyList<RuntimeInstalledRelease>? InstalledReleases = null, RuntimeDependencyReport? Environment = null);
 
 [JsonConverter(typeof(JsonStringEnumConverter<RuntimeSwitchOutcome>))]
 public enum RuntimeSwitchOutcome { Succeeded, Failed, Cancelled, Interrupted, RecoveryRequired }

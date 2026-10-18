@@ -2,13 +2,14 @@ namespace RelaxKonOS.Protocol.ManagedRuntimes;
 
 /// <summary>
 /// Pure, fail-closed admission checks. Call only with host-owned snapshots under the instance lock.
-/// Dependencies, native validation, authorization and rollback recoverability remain adapter gates.
+/// <paramref name="dependencies"/> is the Host's own measurement for the requested release; native
+/// validation, authorization and rollback recoverability remain adapter gates.
 /// </summary>
 public static class RuntimePlanning
 {
     public static RuntimePlanResult Create(RuntimePlanRequest request, RuntimeInstallation installation,
         RuntimeSourceIdentity source, RuntimeCatalog catalog, long acceptedCatalogRevision,
-        DateTimeOffset now)
+        DateTimeOffset now, RuntimeDependencyReport? dependencies)
     {
         var problems = new List<string>();
         void Reject(bool condition, string code) { if (condition) problems.Add("runtime." + code); }
@@ -58,10 +59,13 @@ public static class RuntimePlanning
         Reject(request.Change == RuntimeChange.Repair && release.ReleaseId != installation.ActiveReleaseId, "repair_target_mismatch");
         Reject(request.Change is RuntimeChange.Update or RuntimeChange.Rollback && release.ReleaseId == installation.ActiveReleaseId,
             "target_unchanged");
+        // Only the Host can measure its own platform, service host, free space and kernel features. A missing
+        // report is not "probably fine": it means nothing was measured for this release.
+        Reject(dependencies is null || !dependencies.Satisfies(RuntimeArchiveDependencies.For(release)), "dependencies_unsatisfied");
         return Result(release);
 
         RuntimePlanResult Result(RuntimeRelease? release) => problems.Count == 0
-            ? new(new(request, installation.RuntimeId, release, installation.ActiveReleaseId), [])
-            : new(null, problems.ToArray());
+            ? new(new(request, installation.RuntimeId, release, installation.ActiveReleaseId), [], dependencies)
+            : new(null, problems.ToArray(), dependencies);
     }
 }

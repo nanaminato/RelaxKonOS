@@ -54,7 +54,13 @@ public sealed record RuntimePlanRequest(Guid InstallationId, string HostId, Runt
 public sealed record RuntimeChangePlan(RuntimePlanRequest Request, string RuntimeId,
     RuntimeRelease? Release, string? PreviousReleaseId);
 
-public sealed record RuntimePlanResult(RuntimeChangePlan? Plan, IReadOnlyList<string> Problems)
+/// <summary>
+/// A frozen proposal, not permission to execute. Helper independently revalidates trust.
+/// <paramref name="Dependencies"/> is the Host's measurement for the requested release, returned even when
+/// the request is refused so the refusal can name the fact that failed.
+/// </summary>
+public sealed record RuntimePlanResult(RuntimeChangePlan? Plan, IReadOnlyList<string> Problems,
+    RuntimeDependencyReport? Dependencies = null)
 {
     public bool Allowed => Plan is not null && Problems.Count == 0;
 }

@@ -115,6 +115,13 @@ var runtimeRefreshFails = true;
 var runtimeNeedsRecovery = false;
 var runtimePendingId = Guid.NewGuid();
 var runtimeRecoveryBody = "";
+// The Host measures itself: capability names and byte counts, never a path or a command.
+var runtimeEnvironment = new RuntimeDependencyReport([
+    new(RuntimeDependencyKind.Platform, "linux/amd64", RuntimeDependencyState.Satisfied, Measured: "linux/amd64"),
+    new(RuntimeDependencyKind.ServiceHost, "systemd", RuntimeDependencyState.Satisfied, Measured: "systemd"),
+    new(RuntimeDependencyKind.DiskSpace, "protected-root", RuntimeDependencyState.Satisfied, 4L << 30),
+    new(RuntimeDependencyKind.FileSystem, "protected-root", RuntimeDependencyState.Satisfied),
+    new(RuntimeDependencyKind.KernelFeature, "ipv6", RuntimeDependencyState.Satisfied)]);
 var runtimeElevations = 0;
 var runtimePrompts = 0;
 var runtimeElevationRequired = true;
@@ -139,7 +146,7 @@ using (var runtimeHttp = new HttpClient(new Handler(request =>
     if (path.EndsWith("/sing-box/installation", StringComparison.Ordinal))
         return Json(HttpStatusCode.OK, new RuntimeInstallationSnapshot(
             runtimeNeedsRecovery ? runtimeInstallation with { RecoveryRequired = true } : runtimeInstallation, "1.14.3",
-            Guid.NewGuid(), new string('c', 64), null, null, null, null, runtimeInstalled));
+            Guid.NewGuid(), new string('c', 64), null, null, null, null, runtimeInstalled, runtimeEnvironment));
     if (path.EndsWith("/sing-box/plan", StringComparison.Ordinal))
     {
         runtimePlanBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
@@ -204,6 +211,16 @@ using (var runtimeHttp = new HttpClient(new Handler(request =>
     Check(runtimeVm.SelectedRelease?.Release.ReleaseId == "rel-1143"
         && runtimeVm.ActionText.Resolve() == LocalizedText.Get("proxy_server.runtime.action.Repair"),
         "The active release is preselected as a same-version repair");
+    Check(runtimeVm.HasEnvironment && runtimeVm.EnvironmentPlatformText.Resolve() == "linux/amd64"
+        && runtimeVm.EnvironmentServiceHostText.Resolve() == "systemd"
+        && runtimeVm.EnvironmentDiskSpaceText.Resolve() == "4 GiB"
+        && runtimeVm.EnvironmentFileSystemText.Resolve() == LocalizedText.Get("proxy_server.runtime.environment.state.Satisfied")
+        && runtimeVm.EnvironmentKernelText.Resolve() == LocalizedText.Get("proxy_server.runtime.environment.ipv6.Satisfied")
+        && !runtimeVm.HasEnvironmentWarning,
+        "The page shows what the host measured, in capability names and sizes only");
+    Check(!runtimeVm.EnvironmentPlatformText.Resolve().Contains("/var/", StringComparison.Ordinal)
+        && !runtimeVm.EnvironmentDiskSpaceText.Resolve().Contains("root", StringComparison.Ordinal),
+        "The environment panel never renders a filesystem path");
     Check(!runtimeVm.CanAct, "Without host management permission the runtime page offers no action");
     runtimeVm.CanManage = true;
     runtimeVm.SelectedRelease = runtimeVm.Releases.Single(option => option.Release.ReleaseId == "rel-1160");
@@ -226,6 +243,15 @@ using (var runtimeHttp = new HttpClient(new Handler(request =>
         && runtimeVm.PlanText.Resolve() == LocalizedText.Get("proxy_server.runtime_problem.target_unchanged")
         && runtimeVm.OutcomeText.Resolve() == LocalizedText.Get("proxy_server.runtime.plan_blocked"),
         "A rejected plan shows the host problem and never starts an installation");
+    // The refused plan carries the measurement, so the page names the fact instead of only a code.
+    runtimePlan = new RuntimePlanResult(null, ["runtime.dependencies_unsatisfied"], new RuntimeDependencyReport([
+        new(RuntimeDependencyKind.DiskSpace, "protected-root", RuntimeDependencyState.Missing, 64L << 20,
+            RequiredBytes: 320L << 20)]));
+    await runtimeVm.ActCommand.ExecuteAsync(null);
+    Check(runtimeVm.HasDependencyBlock && runtimeVm.DependencyText.Resolve() == string.Format(
+            LocalizedText.Get("proxy_server.runtime.dependency.disk_space"), "64 MiB", "320 MiB")
+        && runtimeVm.PlanText.Resolve() == LocalizedText.Get("proxy_server.runtime_problem.dependencies_unsatisfied"),
+        "A refused plan names the unmet prerequisite and both sides of the size comparison");
     // Removal drops the default retention only after an explicit confirmation and names no release.
     runtimePlan = new RuntimePlanResult(new RuntimeChangePlan(new RuntimePlanRequest(runtimeInstallation.InstallationId,
         runtimeInstallation.HostId, RuntimeChange.Uninstall, runtimeInstallation.StateRevision, 0, 0, null, "idem", false, false),

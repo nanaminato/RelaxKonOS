@@ -49,6 +49,12 @@ if (args is ["runtime-cancel-only"])
     return;
 }
 
+if (args is ["runtime-dependency-only"])
+{
+    Console.WriteLine($"Runtime dependency checks passed: {DependencyChecks.Run()}");
+    return;
+}
+
 if (args is ["run", "-c", var fixtureConfiguration])
 {
     await LinuxSystemdHostChecks.RunFixtureAsync(fixtureConfiguration);
@@ -98,9 +104,14 @@ var installation = new RuntimeInstallation(Guid.NewGuid(), "host-1", "sing-box",
 var request = new RuntimePlanRequest(installation.InstallationId, installation.HostId, RuntimeChange.Update,
     5, 7, 3, release.ReleaseId, "operation-1");
 var count = 0;
+// Planning now demands a Host measurement for the requested release; the admission checks below are about
+// trust, ownership and revisions, so they hand it a report where every declared requirement is satisfied.
+RuntimeDependencyReport Measured(RuntimeRelease? candidate = null) =>
+    new([.. RuntimeArchiveDependencies.For(candidate ?? release).Select(x =>
+        new RuntimeDependencyObservation(x.Kind, x.Identity, RuntimeDependencyState.Satisfied, x.MinimumBytes))]);
 RuntimePlanResult Plan(RuntimePlanRequest? r = null, RuntimeInstallation? i = null,
-    RuntimeSourceIdentity? s = null, RuntimeCatalog? c = null, long highWater = 7) =>
-    RuntimePlanning.Create(r ?? request, i ?? installation, s ?? source, c ?? catalog, highWater, now);
+    RuntimeSourceIdentity? s = null, RuntimeCatalog? c = null, long highWater = 7, RuntimeDependencyReport? d = null) =>
+    RuntimePlanning.Create(r ?? request, i ?? installation, s ?? source, c ?? catalog, highWater, now, d ?? Measured());
 void Check(bool value, string name) { if (!value) throw new Exception(name); count++; }
 void Denied(string code, RuntimePlanResult result) => Check(!result.Allowed && result.Plan is null
     && result.Problems.Contains("runtime." + code), code);
@@ -162,3 +173,4 @@ Console.WriteLine($"Managed runtime service checks passed: {await ManagedService
 Console.WriteLine($"Runtime archive removal checks passed: {await RemovalChecks.RunAsync()}");
 Console.WriteLine($"Runtime recovery entry checks passed: {await RecoveryChecks.RunAsync()}");
 Console.WriteLine($"Runtime cancellation checks passed: {await CancellationChecks.RunAsync()}");
+Console.WriteLine($"Runtime dependency checks passed: {DependencyChecks.Run()}");

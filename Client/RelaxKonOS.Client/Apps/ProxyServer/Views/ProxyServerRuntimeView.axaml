@@ -54,6 +54,36 @@
       </StackPanel>
     </Border>
 
+    <Border Classes="app-panel" Padding="18" IsVisible="{Binding HasEnvironment}">
+      <StackPanel Spacing="10">
+        <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.runtime.environment_title}" />
+        <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.environment_hint}" TextWrapping="Wrap" />
+        <StackPanel Spacing="0">
+          <Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.environment.fact.platform}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding EnvironmentPlatformText}" />
+          </Grid>
+          <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.environment.fact.service_host}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding EnvironmentServiceHostText}" />
+          </Grid></Border>
+          <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.environment.fact.disk_space}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding EnvironmentDiskSpaceText}" />
+          </Grid></Border>
+          <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.environment.fact.file_system}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding EnvironmentFileSystemText}" />
+          </Grid></Border>
+          <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.environment.fact.kernel}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding EnvironmentKernelText}" />
+          </Grid></Border>
+        </StackPanel>
+        <TextBlock Classes="problem" Text="{Binding EnvironmentWarning}" IsVisible="{Binding HasEnvironmentWarning}" />
+      </StackPanel>
+    </Border>
+
     <Border Classes="app-panel" Padding="18" IsVisible="{Binding NeedsRecovery}">
       <StackPanel Spacing="10">
         <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.runtime.recovery_title}" />
@@ -173,6 +203,7 @@
         </WrapPanel>
         <TextBlock Classes="section-hint" Text="{Binding OperationText}" TextWrapping="Wrap" IsVisible="{Binding IsBusy}" />
         <TextBlock Classes="section-hint" Text="{Binding PlanText}" TextWrapping="Wrap" IsVisible="{Binding HasPlanText}" />
+        <TextBlock Classes="problem" Text="{Binding DependencyText}" TextWrapping="Wrap" IsVisible="{Binding HasDependencyBlock}" />
         <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.hint}" TextWrapping="Wrap" />
         <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" />
         <StackPanel Spacing="6">

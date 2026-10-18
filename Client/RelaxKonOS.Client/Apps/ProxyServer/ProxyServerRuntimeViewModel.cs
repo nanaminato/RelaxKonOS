@@ -41,6 +41,8 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
     /// <summary>The submitted operation and whether the Host still allows abandoning it.</summary>
     private Guid? _cancelTarget;
     private bool _operationCancellable;
+    /// <summary>The measurement behind a refused plan, so the page can name the fact that failed.</summary>
+    private RuntimeDependencyReport? _blockedDependencies;
 
     private static readonly string[] DerivedProperties =
     [
@@ -51,7 +53,10 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
         nameof(ReleaseCountText), nameof(HasRuntimeProblem), nameof(CanUninstall), nameof(NeedsRecovery), nameof(RecoveryText),
         nameof(RecoveryOperationText), nameof(RecoveryChangeText), nameof(RecoveryStageText), nameof(RecoveryOriginalProblem),
         nameof(RecoveryProblem), nameof(RecoveryServiceText), nameof(HasRecoveryServiceProblem),
-        nameof(CanRetryRecovery), nameof(CanEmergencyStop), nameof(CanCloseRecovery), nameof(CanCancelDownload)
+        nameof(CanRetryRecovery), nameof(CanEmergencyStop), nameof(CanCloseRecovery), nameof(CanCancelDownload),
+        nameof(HasEnvironment), nameof(EnvironmentPlatformText), nameof(EnvironmentServiceHostText),
+        nameof(EnvironmentDiskSpaceText), nameof(EnvironmentFileSystemText), nameof(EnvironmentKernelText),
+        nameof(HasEnvironmentWarning), nameof(EnvironmentWarning), nameof(DependencyText), nameof(HasDependencyBlock)
     ];
 
     private void NotifyDerived() { foreach (var name in DerivedProperties) OnPropertyChanged(name); }
@@ -118,6 +123,58 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
     /// a button the transaction would silently ignore after its switch checkpoint.
     /// </summary>
     public bool CanCancelDownload => !_invalidated && _cancelTarget is not null && _operationCancellable;
+
+    /// <summary>What the Host measured about itself; there is nothing to show until it has answered once.</summary>
+    public bool HasEnvironment => _installation?.Environment is not null;
+    private RuntimeDependencyObservation? Fact(RuntimeDependencyKind kind) =>
+        _installation?.Environment?.Observations.FirstOrDefault(o => o.Kind == kind);
+    public LocalizedStatus EnvironmentPlatformText => LocalizedStatus.Literal(Fact(RuntimeDependencyKind.Platform)
+        is { } platform ? platform.Measured ?? platform.Identity : "—");
+    public LocalizedStatus EnvironmentServiceHostText => LocalizedStatus.Literal(Fact(RuntimeDependencyKind.ServiceHost)
+        is { } service ? service.Measured ?? service.Identity : "—");
+    public LocalizedStatus EnvironmentDiskSpaceText => Fact(RuntimeDependencyKind.DiskSpace)
+        is { AvailableBytes: { } bytes } ? LocalizedStatus.Literal(Size(bytes)) : LocalizedStatus.Literal("—");
+    public LocalizedStatus EnvironmentFileSystemText => Fact(RuntimeDependencyKind.FileSystem) is { } directory
+        ? LocalizedStatus.Key("proxy_server.runtime.environment.state." + directory.State, directory.State.ToString())
+        : LocalizedStatus.Literal("—");
+    public LocalizedStatus EnvironmentKernelText => Fact(RuntimeDependencyKind.KernelFeature) is { } feature
+        ? LocalizedStatus.Key("proxy_server.runtime.environment.ipv6." + feature.State, feature.State.ToString())
+        : LocalizedStatus.Literal("—");
+    /// <summary>
+    /// Only the facts that would make an install impossible are called out. An absent IPv6 stack is not one of
+    /// them: it only matters for a configuration that binds an IPv6 address, which the plan measures separately.
+    /// </summary>
+    public bool HasEnvironmentWarning => _installation?.Environment?.Observations.Any(o => o.Kind is
+        RuntimeDependencyKind.Platform or RuntimeDependencyKind.ServiceHost or RuntimeDependencyKind.FileSystem
+        && o.State != RuntimeDependencyState.Satisfied) == true;
+    public LocalizedStatus EnvironmentWarning => LocalizedStatus.Join("\n",
+        (_installation?.Environment?.Observations ?? []).Where(o => o.Kind is RuntimeDependencyKind.Platform
+            or RuntimeDependencyKind.ServiceHost or RuntimeDependencyKind.FileSystem
+            && o.State != RuntimeDependencyState.Satisfied)
+        .Select(o => LocalizedStatus.Key("proxy_server.runtime.environment.warning." + o.Kind, o.Kind.ToString())));
+
+    /// <summary>One line per unmet requirement of the refused plan, not a single opaque code.</summary>
+    public bool HasDependencyBlock => _blockedDependencies is { Unmet.Count: > 0 };
+    public LocalizedStatus DependencyText => LocalizedStatus.Join("\n",
+        (_blockedDependencies?.Unmet ?? []).Select(Describe));
+
+    private static LocalizedStatus Describe(RuntimeDependencyObservation observation) => observation switch
+    {
+        { State: RuntimeDependencyState.Unknown } => LocalizedStatus.Format(
+            "proxy_server.runtime.dependency.unknown", observation.Kind.ToString()),
+        { Kind: RuntimeDependencyKind.DiskSpace } => LocalizedStatus.Format("proxy_server.runtime.dependency.disk_space",
+            Size(observation.AvailableBytes ?? 0), Size(observation.RequiredBytes ?? 0)),
+        { Kind: RuntimeDependencyKind.Platform } => LocalizedStatus.Format("proxy_server.runtime.dependency.platform",
+            observation.Identity, observation.Measured ?? "—"),
+        { Kind: RuntimeDependencyKind.ServiceHost } => LocalizedStatus.Format("proxy_server.runtime.dependency.service_host",
+            observation.Identity),
+        { Kind: RuntimeDependencyKind.FileSystem } => LocalizedStatus.Key("proxy_server.runtime.dependency.file_system"),
+        _ => LocalizedStatus.Format("proxy_server.runtime.dependency.kernel_feature", observation.Identity)
+    };
+
+    private static string Size(long bytes) => bytes >= 1L << 30 ? (bytes / (double)(1L << 30)).ToString("0.#") + " GiB"
+        : bytes >= 1L << 20 ? (bytes / (double)(1L << 20)).ToString("0.#") + " MiB"
+        : (bytes / 1024d).ToString("0.#") + " KiB";
 
     public LocalizedStatus OwnershipText => _installation is null
         ? LocalizedStatus.Key("proxy_server.runtime.ownership.unknown")
@@ -266,6 +323,8 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
             change, _installation.Installation.StateRevision, catalogRevision, trustRevision,
             release?.ReleaseId, Guid.NewGuid().ToString("N"), IncludePrerelease, keepData);
         var plan = await client.PlanAsync(_catalog?.Source.Identity.SourceId, request, _lifetime.Token);
+        _blockedDependencies = plan.Plan is null ? plan.Dependencies : null;
+        NotifyDerived();
         if (plan.Plan is null)
         {
             PlanText = LocalizedStatus.Join("\n", plan.Problems.Select(ProblemText));

@@ -36,8 +36,10 @@ internal interface ISingBoxArchiveAuthorization
 /// </summary>
 internal sealed class SingBoxArchiveAdapter(string protectedRoot, RuntimeArchiveStateStore stateStore, RuntimeSourceStore sources,
     IRuntimeArchiveTransport transport, ISingBoxArchiveHost host, ISingBoxArchiveAuthorization authorization,
-    Action<string> protectDirectory, RuntimeStageReporter? progress = null) : IRuntimeArchiveSwitchAdapter
+    Action<string> protectDirectory, RuntimeStageReporter? progress = null, IRuntimeDependencyEnvironment? environment = null)
+    : IRuntimeArchiveSwitchAdapter
 {
+    private readonly IRuntimeDependencyEnvironment environment = environment ?? new HostDependencyEnvironment();
     private readonly string root = ValidateRoot(protectedRoot);
     private string Configuration => Path.Combine(root, "config.json");
     private string Operations => Path.Combine(root, "operations");
@@ -66,7 +68,13 @@ internal sealed class SingBoxArchiveAdapter(string protectedRoot, RuntimeArchive
             throw new RuntimePolicyException("runtime.external_installation");
         if (service.Exists && service.BootEnabled is null) throw new RuntimePolicyException("runtime.state_unknown");
         if (current.Active is not null) await VerifyFilesAsync(current.Active, ct);
-        await CurrentAsync(ct);
+        var published = await CurrentAsync(ct);
+        // The design checks dependencies and the published configuration together before anything is
+        // downloaded: a missing IPv6 stack or a nearly full disk must fail here, not during activation.
+        var requirements = RuntimeArchiveDependencies.For(release)
+            .Concat(RuntimeArchiveDependencies.ForConfiguration(published.Configuration)).ToArray();
+        var report = RuntimeDependencyProbe.For(requirements, environment, root);
+        if (!report.Satisfies(requirements)) throw new RuntimePolicyException("runtime.dependencies_unsatisfied");
     }
 
     public async Task<RuntimeServiceSnapshot> CaptureAsync(Guid operationId, RuntimeArchiveState current, CancellationToken ct)

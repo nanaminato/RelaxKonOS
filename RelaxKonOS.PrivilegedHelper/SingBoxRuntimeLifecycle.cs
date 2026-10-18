@@ -9,8 +9,11 @@ namespace RelaxKonOS.PrivilegedHelper;
 
 /// <summary>Production composition for the one Helper-owned sing-box installation.</summary>
 internal sealed class SingBoxRuntimeLifecycle(string root, RuntimeArchiveStateStore states, RuntimeSourceStore sources,
-    ISingBoxArchiveHost host, Action<string> protect)
+    ISingBoxArchiveHost host, Action<string> protect, IRuntimeDependencyEnvironment? environment = null)
 {
+    // Requirements are measured by the Host, never declared by the catalog publisher.
+    private readonly IRuntimeDependencyEnvironment environment = environment ?? new HostDependencyEnvironment();
+
     internal static SingBoxRuntimeLifecycle Create() => new(SingBoxOperations.Root,
         new(Path.Combine(SingBoxOperations.Root, "state"), RuntimeSourceProtection.Protect),
         RuntimeSourceProtection.Store(), SingBoxOperations.CreateArchiveHost(), RuntimeSourceProtection.Protect);
@@ -25,7 +28,9 @@ internal sealed class SingBoxRuntimeLifecycle(string root, RuntimeArchiveStateSt
             state.Pending?.RecoveryProblemCode ?? state.Pending?.ProblemCode
                 ?? state.Removal?.RecoveryProblemCode ?? state.Removal?.ProblemCode,
             receipt is null ? null : new(receipt.OperationId, receipt.Outcome, receipt.ProblemCode),
-            state.Revisions.Select(r => new RuntimeInstalledRelease(r.RevisionId, r.Release.ReleaseId, r.MeasuredVersion)).ToArray());
+            state.Revisions.Select(r => new RuntimeInstalledRelease(r.RevisionId, r.Release.ReleaseId, r.MeasuredVersion)).ToArray(),
+            // Read-only environment facts, so a refusal can be explained before anyone presses install.
+            RuntimeDependencyProbe.Environment(environment, root));
     }
 
     internal async Task<RuntimePlanResult> PlanAsync(string sourceId, RuntimePlanRequest request, CancellationToken ct)
@@ -41,16 +46,20 @@ internal sealed class SingBoxRuntimeLifecycle(string root, RuntimeArchiveStateSt
         if (request.Change == RuntimeChange.Uninstall)
             return RuntimePlanning.Create(request, state.Installation,
                 new(sourceId, string.Empty, false, RuntimeTrust.Unconfirmed, 0),
-                new(sourceId, 0, 0, DateTimeOffset.MaxValue, true, []), 0, DateTimeOffset.UtcNow);
+                new(sourceId, 0, 0, DateTimeOffset.MaxValue, true, []), 0, DateTimeOffset.UtcNow, dependencies: null);
         var source = sources.Read(sourceId) ?? throw new RuntimePolicyException("runtime.source_not_found");
         if (source.Source.RuntimeId != "sing-box") throw new RuntimePolicyException("runtime.source_invalid");
         var catalog = source.Cached?.Catalog ?? throw new RuntimePolicyException("runtime.catalog_missing");
+        // Measure the requested release itself; an unresolved release id must not silently skip the probe.
+        var requested = catalog.Releases.SingleOrDefault(r => r.ReleaseId == request.ReleaseId);
+        var dependencies = requested is null ? null
+            : RuntimeDependencyProbe.For(RuntimeArchiveDependencies.For(requested), environment, root);
         var result = RuntimePlanning.Create(request, state.Installation,
             new(source.Source.SourceId, source.Source.Publisher, source.Source.Enabled, RuntimeTrust.Confirmed, source.Source.TrustRevision),
-            catalog, source.History.HighWater, DateTimeOffset.UtcNow);
+            catalog, source.History.HighWater, DateTimeOffset.UtcNow, dependencies);
         if (result.Plan?.Release is { } release && request.Change == RuntimeChange.Update && state.Active is { } current
             && SingBoxNativeValidation.UpdateProblem(current.MeasuredVersion, release.OriginalVersion) is { } problem)
-            return new(null, [problem]);
+            return new(null, [problem], dependencies);
         return result;
     }
 
@@ -143,7 +152,7 @@ internal sealed class SingBoxRuntimeLifecycle(string root, RuntimeArchiveStateSt
         new(states, new SingBoxRemovalAdapter(root, host, protect), progress);
 
     private RuntimeArchiveSwitch Switch(RuntimeAuthorizationChannel channel, RuntimeStageReporter? progress) => new(states,
-        new SingBoxArchiveAdapter(root, states, sources, new RuntimeArchiveTransport(), host, new Authorization(channel), protect, progress), progress);
+        new SingBoxArchiveAdapter(root, states, sources, new RuntimeArchiveTransport(), host, new Authorization(channel), protect, progress, environment), progress);
 
     private async Task<RuntimeArchiveState> EnsureStateAsync(CancellationToken ct)
     {
