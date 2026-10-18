@@ -23,7 +23,8 @@ public sealed record RuntimePendingSwitch(Guid OperationId, string RequestHash, 
     RuntimeServiceSnapshot? Snapshot, RuntimePreparedSwitch? Prepared, bool SwitchStarted, string? ProblemCode,
     string? RecoveryProblemCode);
 public sealed record RuntimeArchiveState(RuntimeInstallation Installation, RuntimeStoredRevision? Active, string? ConfigurationIdentity,
-    RuntimeStoredRevision[] Revisions, RuntimePendingSwitch? Pending, RuntimeSwitchReceipt[] Receipts);
+    RuntimeStoredRevision[] Revisions, RuntimePendingSwitch? Pending, RuntimeSwitchReceipt[] Receipts,
+    RuntimePendingRemoval? Removal = null);
 
 /// <summary>
 /// Closed runtime-specific implementation, never supplied by a client. Backups and preparation must be

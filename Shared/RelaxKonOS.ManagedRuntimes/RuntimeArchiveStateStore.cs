@@ -117,7 +117,8 @@ public sealed class RuntimeArchiveStateStore(string directory, Action<string> pr
             || state.Receipts.Any(r => r is null || r.OperationId == Guid.Empty || !Digest(r.RequestHash) || !Digest(r.IdempotencyHash)
                 || !Enum.IsDefined(r.Outcome) || r.Outcome == RuntimeSwitchOutcome.RecoveryRequired)
             || state.Receipts.Select(r => r.OperationId).Distinct().Count() != state.Receipts.Length
-            || state.Receipts.Select(r => r.IdempotencyHash).Distinct().Count() != state.Receipts.Length)
+            || state.Receipts.Select(r => r.IdempotencyHash).Distinct().Count() != state.Receipts.Length
+            || state.Pending is not null && state.Removal is not null)
             throw new RuntimePolicyException("runtime.transaction_state_invalid");
         if (state.Pending is { } pending)
         {
@@ -147,6 +148,28 @@ public sealed class RuntimeArchiveStateStore(string directory, Action<string> pr
                 || pending.SwitchStarted && Same(state.Active, pending.Prepared!.Revision)
                     && state.ConfigurationIdentity != pending.Prepared.Revision.ConfigurationIdentity
                 || state.Receipts.Any(r => r.OperationId == pending.OperationId || r.IdempotencyHash == pending.IdempotencyHash))
+                throw new RuntimePolicyException("runtime.transaction_state_invalid");
+        }
+        else if (state.Removal is { } removal)
+        {
+            if (removal.OperationId == Guid.Empty || !Digest(removal.RequestHash) || !Digest(removal.IdempotencyHash)
+                || removal.Plan is null || removal.Plan.Request.Change != Protocol.ManagedRuntimes.RuntimeChange.Uninstall
+                || removal.Plan.Release is not null || removal.Plan.Request.ReleaseId is not null
+                || removal.Plan.Request.InstallationId != installation.InstallationId
+                || removal.Plan.Request.HostId != installation.HostId || removal.Plan.RuntimeId != installation.RuntimeId
+                || removal.Plan.PreviousReleaseId != state.Active?.Release.ReleaseId
+                || state.Active is null || installation.Ownership != RuntimeOwnership.Managed
+                || removal.Plan.Request.ExpectedStateRevision < 0 || removal.Plan.Request.ExpectedStateRevision >= installation.StateRevision
+                || removal.Plan.Request.ExpectedTrustRevision < 0 || removal.Plan.Request.ExpectedCatalogRevision < 0
+                || removal.Stage is not (Protocol.Installations.InstallationStage.Preflight
+                    or Protocol.Installations.InstallationStage.Activating or Protocol.Installations.InstallationStage.Verifying
+                    or Protocol.Installations.InstallationStage.RollingBack or Protocol.Installations.InstallationStage.Interrupted)
+                || removal.CleanupStarted && !removal.RemovalStarted
+                || removal.Snapshot is { } snapshot && ((snapshot.ConfigurationIdentity is null) != (snapshot.ConfigurationSnapshotId is null)
+                    || snapshot.ConfigurationIdentity is not null && !Digest(snapshot.ConfigurationIdentity))
+                || removal.Snapshot is not null && removal.Snapshot.ConfigurationIdentity != state.ConfigurationIdentity
+                || state.Receipts.Any(r => r.OperationId == removal.OperationId || r.IdempotencyHash == removal.IdempotencyHash)
+                || !removal.RemovalStarted && removal.Stage == Protocol.Installations.InstallationStage.Verifying)
                 throw new RuntimePolicyException("runtime.transaction_state_invalid");
         }
         else if (installation.RecoveryRequired) throw new RuntimePolicyException("runtime.transaction_state_invalid");

@@ -20,8 +20,12 @@ internal sealed class SingBoxRuntimeLifecycle(string root, RuntimeArchiveStateSt
         var state = await EnsureStateAsync(ct);
         var receipt = state.Receipts.FirstOrDefault(r => r.OperationId == receiptOperationId);
         return new(state.Installation, state.Active?.MeasuredVersion, state.Active?.RevisionId, state.ConfigurationIdentity,
-            state.Pending?.OperationId, state.Pending?.Stage, state.Pending?.RecoveryProblemCode ?? state.Pending?.ProblemCode,
-            receipt is null ? null : new(receipt.OperationId, receipt.Outcome, receipt.ProblemCode));
+            state.Pending?.OperationId ?? state.Removal?.OperationId,
+            state.Pending?.Stage ?? state.Removal?.Stage,
+            state.Pending?.RecoveryProblemCode ?? state.Pending?.ProblemCode
+                ?? state.Removal?.RecoveryProblemCode ?? state.Removal?.ProblemCode,
+            receipt is null ? null : new(receipt.OperationId, receipt.Outcome, receipt.ProblemCode),
+            state.Revisions.Select(r => new RuntimeInstalledRelease(r.RevisionId, r.Release.ReleaseId, r.MeasuredVersion)).ToArray());
     }
 
     internal async Task<RuntimePlanResult> PlanAsync(string sourceId, RuntimePlanRequest request, CancellationToken ct)
@@ -33,7 +37,11 @@ internal sealed class SingBoxRuntimeLifecycle(string root, RuntimeArchiveStateSt
 
     private RuntimePlanResult Plan(string sourceId, RuntimePlanRequest request, RuntimeArchiveState state)
     {
-        if (request.Change == RuntimeChange.Uninstall) return new(null, ["runtime.change_unsupported"]);
+        // Removal must stay possible when the source has expired or been revoked: it needs no release.
+        if (request.Change == RuntimeChange.Uninstall)
+            return RuntimePlanning.Create(request, state.Installation,
+                new(sourceId, string.Empty, false, RuntimeTrust.Unconfirmed, 0),
+                new(sourceId, 0, 0, DateTimeOffset.MaxValue, true, []), 0, DateTimeOffset.UtcNow);
         var source = sources.Read(sourceId) ?? throw new RuntimePolicyException("runtime.source_not_found");
         if (source.Source.RuntimeId != "sing-box") throw new RuntimePolicyException("runtime.source_invalid");
         var catalog = source.Cached?.Catalog ?? throw new RuntimePolicyException("runtime.catalog_missing");
@@ -52,16 +60,23 @@ internal sealed class SingBoxRuntimeLifecycle(string root, RuntimeArchiveStateSt
         // The channel descriptor never enters a frozen plan, durable journal, or idempotency hash.
         if (channel.OperationId != operationId) throw new RuntimePolicyException("runtime.authorization_unavailable");
         await EnsureStateAsync(ct);
-        if (plan.Request.Change == RuntimeChange.Uninstall) throw new RuntimePolicyException("runtime.change_unsupported");
-        return await Switch(channel, progress).ExecuteAsync(operationId, plan, ct);
+        // Removal never reads published credentials, so it does not depend on a live authorization channel.
+        return plan.Request.Change == RuntimeChange.Uninstall
+            ? await Removal(progress).ExecuteAsync(operationId, plan, ct)
+            : await Switch(channel, progress).ExecuteAsync(operationId, plan, ct);
     }
 
     internal async Task<RuntimeSwitchResult?> RecoverAsync(RuntimeAuthorizationChannel channel, Guid operationId, CancellationToken ct,
         Func<InstallationStage, Task>? progress = null)
     {
         await EnsureStateAsync(ct);
-        return await Switch(channel, progress).RecoverAsync(operationId, ct);
+        return states.Read()?.Removal is not null
+            ? await Removal(progress).RecoverAsync(operationId, ct)
+            : await Switch(channel, progress).RecoverAsync(operationId, ct);
     }
+
+    private RuntimeArchiveRemoval Removal(Func<InstallationStage, Task>? progress) =>
+        new(states, new SingBoxRemovalAdapter(root, host, protect), progress);
 
     private RuntimeArchiveSwitch Switch(RuntimeAuthorizationChannel channel, Func<InstallationStage, Task>? progress) => new(states,
         new SingBoxArchiveAdapter(root, states, sources, new RuntimeArchiveTransport(), host, new Authorization(channel), protect, progress), progress);

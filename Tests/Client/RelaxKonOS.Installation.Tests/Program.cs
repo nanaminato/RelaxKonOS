@@ -4,6 +4,8 @@ using System.Reflection;
 using Avalonia;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Client;
+using RelaxKonOS.Client.Apps.ProxyServer;
+using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.AppSettings;
 using RelaxKonOS.Client.Services.Auth;
@@ -12,6 +14,7 @@ using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Protocol.AppSettings;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Installations;
+using RelaxKonOS.Protocol.ManagedRuntimes;
 
 const string helperCode = "proxy.privileged_operation_unavailable";
 AppBuilder.Configure<Application>().UsePlatformDetect().SetupWithoutStarting();
@@ -83,6 +86,146 @@ using (var vm = new InstallationTaskViewModel(new InstallationClient(http, sessi
         "Cancelled transfer clears active state and retains feedback");
 }
 
+// Managed runtime page: display admission, closed source routes, and plan-first execution.
+var runtimeTarget = new RuntimeTarget("linux", "x64", null, null, RuntimeInstallMode.Archive, "systemd");
+var runtimeSource = new RuntimeSourceView(
+    new RuntimeSourceIdentity("singbox", "RelaxKon", true, RuntimeTrust.Confirmed, 7), "sing-box",
+    RuntimeSourceKind.HttpsManifest, "https://runtime.example.test/", "FINGERPRINT", 3);
+static RuntimeArtifact RuntimeArtifactFixture() => new("artifact-" + Guid.NewGuid().ToString("N"), new string('a', 64), 4096,
+    "zip", "sing-box", "release-key", new RuntimeArchiveLayout(8192, 4,
+        [new RuntimeArchiveFile("sing-box", 4096, new string('b', 64), true)]));
+static RuntimeRelease RuntimeReleaseFixture(string id, string version, bool supported) => new(id, "sing-box", version, version,
+    RuntimeChannel.Stable, "singbox", new RuntimeTarget("linux", "x64", null, null, RuntimeInstallMode.Archive, "systemd"),
+    RuntimeArtifactFixture(), "sing-box-1.14.3", supported, RuntimeTrust.Confirmed, RuntimeEvidence.NativeConfiguration,
+    new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero));
+var runtimeCatalog = new RuntimeCatalog("singbox", 12, 7, DateTimeOffset.UtcNow.AddDays(1), true,
+[
+    RuntimeReleaseFixture("rel-1160", "1.16.0", true),
+    RuntimeReleaseFixture("rel-1143", "1.14.3", true),
+    RuntimeReleaseFixture("rel-rc", "1.17.0-rc.1", false)
+]);
+var runtimeInstallation = new RuntimeInstallation(Guid.NewGuid(), "host-test", "sing-box", 4, RuntimeOwnership.Managed,
+    runtimeTarget, "rel-1143", false);
+var runtimeInstalled = new[] { new RuntimeInstalledRelease(Guid.NewGuid(), "rel-1143", "1.14.3") };
+var runtimeOperationId = Guid.NewGuid();
+var runtimeCalls = new List<string>();
+var runtimePlanBody = "";
+var runtimeRefreshFails = true;
+var runtimeNeedsRecovery = false;
+RuntimePlanResult runtimePlan = new(new RuntimeChangePlan(new RuntimePlanRequest(runtimeInstallation.InstallationId,
+    runtimeInstallation.HostId, RuntimeChange.Update, runtimeInstallation.StateRevision, runtimeCatalog.Revision, 7,
+    "rel-1160", "idem", false), "sing-box", runtimeCatalog.Releases[0], "rel-1143"), []);
+using (var runtimeHttp = new HttpClient(new Handler(request =>
+{
+    var path = request.RequestUri!.AbsolutePath;
+    runtimeCalls.Add(request.Method.Method + " " + path);
+    if (path.EndsWith("/managed-runtimes/sources", StringComparison.Ordinal))
+        return Json(HttpStatusCode.OK, new[] { runtimeSource });
+    if (path.EndsWith("/catalog", StringComparison.Ordinal))
+        return Json(HttpStatusCode.OK, new RuntimeCatalogSnapshot(runtimeSource, runtimeCatalog, true, null));
+    if (path.EndsWith("/refresh", StringComparison.Ordinal))
+        return runtimeRefreshFails
+            ? Json(HttpStatusCode.BadGateway, new { code = "runtime.catalog_missing" })
+            : Json(HttpStatusCode.OK, new RuntimeCatalogSnapshot(runtimeSource, runtimeCatalog, true, null));
+    if (path.EndsWith("/sing-box/installation", StringComparison.Ordinal))
+        return Json(HttpStatusCode.OK, new RuntimeInstallationSnapshot(
+            runtimeNeedsRecovery ? runtimeInstallation with { RecoveryRequired = true } : runtimeInstallation, "1.14.3",
+            Guid.NewGuid(), new string('c', 64), null, null, null, null, runtimeInstalled));
+    if (path.EndsWith("/sing-box/plan", StringComparison.Ordinal))
+    {
+        runtimePlanBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+        return Json(HttpStatusCode.OK, runtimePlan);
+    }
+    if (path.Contains("/installations/", StringComparison.Ordinal)
+        && (request.Method == HttpMethod.Post || request.Method == HttpMethod.Put))
+        return Json(HttpStatusCode.OK, new InstallationOperationDto(runtimeOperationId, InstallationServiceId.SingBox,
+            InstallationOperationKind.Upgrade, InstallationOperationState.Queued, InstallationStage.Queued, null, null,
+            DateTimeOffset.UtcNow, null, null, false));
+    if (path.Contains("/installations/", StringComparison.Ordinal))
+        return Json(HttpStatusCode.OK, new InstallationOperationDto(runtimeOperationId, InstallationServiceId.SingBox,
+            InstallationOperationKind.Upgrade, InstallationOperationState.Succeeded, InstallationStage.Completed, 100, null,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, false));
+    return Json(HttpStatusCode.NotFound, new { code = "runtime.source_not_found" });
+})))
+{
+    var catalogClient = new RemoteRuntimeCatalogClient(runtimeHttp, session);
+    var rejected = false;
+    try { await catalogClient.CatalogAsync("../escape", false, default); }
+    catch (ArgumentException) { rejected = true; }
+    Check(rejected && runtimeCalls.Count == 0, "Runtime client rejects an invalid source id before any request");
+
+    using var runtimeVm = new ProxyServerRuntimeViewModel(catalogClient);
+    await runtimeVm.LoadAsync();
+    Check(runtimeVm.HasSources && runtimeVm.Releases.Count == 3,
+        "Runtime page lists the registered source and every catalog release");
+    var blocked = runtimeVm.Releases.Single(option => option.Release.ReleaseId == "rel-rc");
+    Check(blocked.HasBlocked && blocked.Blocked.Resolve() == LocalizedText.Get("proxy_server.runtime_problem.configuration_unsupported"),
+        "A release without declared configuration support shows its block reason");
+    Check(runtimeVm.SelectedRelease?.Release.ReleaseId == "rel-1143"
+        && runtimeVm.ActionText.Resolve() == LocalizedText.Get("proxy_server.runtime.action.Repair"),
+        "The active release is preselected as a same-version repair");
+    Check(!runtimeVm.CanAct, "Without host management permission the runtime page offers no action");
+    runtimeVm.CanManage = true;
+    runtimeVm.SelectedRelease = runtimeVm.Releases.Single(option => option.Release.ReleaseId == "rel-1160");
+    Check(runtimeVm.CanAct && runtimeVm.ActionText.Resolve() == LocalizedText.Get("proxy_server.runtime.action.Update"),
+        "A newer supported release is offered as an update");
+    await runtimeVm.ActCommand.ExecuteAsync(null);
+    Check(runtimeCalls.Any(call => call.Equals("POST /api/v1.0/installations/SingBox/Upgrade", StringComparison.OrdinalIgnoreCase))
+        && runtimePlanBody.Contains("rel-1160", StringComparison.Ordinal)
+        && runtimePlanBody.Contains("\"change\":\"update\"", StringComparison.Ordinal),
+        "Executing selects the exact release and hands the plan to the installation ledger as an upgrade");
+    Check(!runtimePlanBody.Contains("http", StringComparison.OrdinalIgnoreCase) && runtimeVm.OutcomeText.Resolve()
+        == LocalizedText.Get("proxy_server.runtime.action_done"),
+        "The plan carries no URL or executable path and reports completion after the ledger succeeds");
+
+    var startsBefore = runtimeCalls.Count(call => call.StartsWith("POST /api/v1.0/installations/", StringComparison.Ordinal));
+    runtimePlan = new RuntimePlanResult(null, ["runtime.target_unchanged"]);
+    runtimeVm.SelectedRelease = runtimeVm.Releases.Single(option => option.Release.ReleaseId == "rel-1143");
+    await runtimeVm.ActCommand.ExecuteAsync(null);
+    Check(runtimeCalls.Count(call => call.StartsWith("POST /api/v1.0/installations/", StringComparison.Ordinal)) == startsBefore
+        && runtimeVm.PlanText.Resolve() == LocalizedText.Get("proxy_server.runtime_problem.target_unchanged")
+        && runtimeVm.OutcomeText.Resolve() == LocalizedText.Get("proxy_server.runtime.plan_blocked"),
+        "A rejected plan shows the host problem and never starts an installation");
+    // Removal drops the default retention only after an explicit confirmation and names no release.
+    runtimePlan = new RuntimePlanResult(new RuntimeChangePlan(new RuntimePlanRequest(runtimeInstallation.InstallationId,
+        runtimeInstallation.HostId, RuntimeChange.Uninstall, runtimeInstallation.StateRevision, 0, 0, null, "idem", false, false),
+        "sing-box", null, "rel-1143"), []);
+    var confirmations = new List<string>();
+    runtimeVm.ConfirmAsync = (title, message) => { confirmations.Add(title.Resolve()); return Task.FromResult(true); };
+    await runtimeVm.UninstallDeleteDataCommand.ExecuteAsync(null);
+    Check(confirmations.Count == 1 && runtimePlanBody.Contains("\"change\":\"uninstall\"", StringComparison.Ordinal)
+        && runtimePlanBody.Contains("\"keepData\":false", StringComparison.Ordinal)
+        && runtimePlanBody.Contains("\"releaseId\":null", StringComparison.Ordinal)
+        && runtimeCalls.Any(call => call.Equals("POST /api/v1.0/installations/SingBox/Uninstall", StringComparison.OrdinalIgnoreCase))
+        && runtimeVm.OutcomeText.Resolve() == LocalizedText.Get("proxy_server.runtime.uninstalled"),
+        "Uninstall confirms first, plans without a release and starts a removal operation");
+
+    var removalsBefore = runtimeCalls.Count(call => call.Contains("/Uninstall", StringComparison.OrdinalIgnoreCase));
+    runtimeVm.ConfirmAsync = null;
+    await runtimeVm.UninstallKeepDataCommand.ExecuteAsync(null);
+    Check(runtimeCalls.Count(call => call.Contains("/Uninstall", StringComparison.OrdinalIgnoreCase)) == removalsBefore,
+        "A missing confirmation host never turns into a silent removal");
+
+    // A refresh that fails keeps the cached list and says it failed; it never reads as "already the newest".
+    var releasesBefore = runtimeVm.Releases.Count;
+    await runtimeVm.RefreshCatalogCommand.ExecuteAsync(null);
+    Check(runtimeVm.Releases.Count == releasesBefore
+        && runtimeVm.CatalogProblem.Resolve() == LocalizedText.Get("proxy_server.runtime.refresh_failed")
+        && runtimeVm.OutcomeText.Resolve() == LocalizedText.Get("proxy_server.runtime_problem.catalog_missing"),
+        "A failed catalog refresh keeps the cached list and never reports the catalog as current");
+    runtimeRefreshFails = false;
+    await runtimeVm.RefreshCatalogCommand.ExecuteAsync(null);
+    Check(runtimeVm.CatalogProblem.Resolve() == LocalizedText.Get("proxy_server.runtime.catalog_fresh_hint"),
+        "A successful refresh clears the failure hint");
+
+    // An interrupted transaction is a recovery state: the page states it and stops offering lifecycle actions.
+    runtimeNeedsRecovery = true;
+    await runtimeVm.LoadAsync();
+    Check(runtimeVm.NeedsRecovery && !runtimeVm.CanAct && !runtimeVm.CanUninstall
+        && runtimeVm.RecoveryText.Resolve() == LocalizedText.Get("proxy_server.runtime.recovery_required"),
+        "A pending recovery is shown as its own state and blocks install, update and removal");
+}
+
 sealed class BlockingTransferHandler : HttpMessageHandler
 {
     public TaskCompletionSource Started { get; } = new();
@@ -103,11 +246,15 @@ sealed class Handler(Func<HttpRequestMessage, HttpResponseMessage> respond) : Ht
 }
 public class SessionStub : DispatchProxy
 {
+    private static readonly RelaxKonOS.Protocol.Workspace.SessionDto SessionToken = new(Guid.NewGuid(), Guid.NewGuid(),
+        Guid.NewGuid(), DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, RelaxKonOS.Protocol.Workspace.SessionStatus.Active,
+        Guid.NewGuid(), "password", DateTimeOffset.UtcNow);
     protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
     {
         "get_State" => AuthSessionState.Authenticated,
         "get_ServiceId" => "http://localhost",
         "get_EffectiveBaseUrl" => "http://localhost/",
+        "get_CurrentSession" => SessionToken,
         "GetAccessTokenAsync" => Task.FromResult<string?>("test"),
         _ => throw new NotSupportedException(method?.Name)
     };

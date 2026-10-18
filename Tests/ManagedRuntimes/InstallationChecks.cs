@@ -96,7 +96,8 @@ internal static class InstallationChecks
             Reject(InstallationProblemCodes.ConfirmationRequired, () => coordinator.Start(domain.Id, InstallationOperationKind.Install, Options(input with { Confirmed = false }), "actor", "install-fixture"));
             Reject(InstallationProblemCodes.IdempotencyConflict, () => coordinator.Start(domain.Id, InstallationOperationKind.Install, Options(input), "actor", "different-key"));
             Reject(InstallationProblemCodes.InvalidRequest, () => coordinator.Start(domain.Id, InstallationOperationKind.Rollback, Options(input), "actor", "install-fixture"));
-            Reject(InstallationProblemCodes.NotSupported, () => coordinator.Start(domain.Id, InstallationOperationKind.Uninstall, Options(input), "actor", "install-fixture"));
+            // Removal is supported, but it is the one change that names no release; a release-bearing removal is not a removal.
+            Reject(InstallationProblemCodes.InvalidRequest, () => coordinator.Start(domain.Id, InstallationOperationKind.Uninstall, Options(input), "actor", "install-fixture"));
             Reject(InstallationProblemCodes.InvalidRequest, () => coordinator.Start(domain.Id, InstallationOperationKind.Install,
                 JsonSerializer.SerializeToElement(new { confirmed = true, plan, shell = "forbidden" }), "actor", "install-fixture"));
             Check(operations.Read().Length == 0 && executeCalls == 0, "Invalid submissions never create a ledger job or call Helper");
@@ -149,6 +150,11 @@ internal static class InstallationChecks
             var rollback = input with { Plan = plan with { Request = plan.Request with { Change = RuntimeChange.Rollback, IdempotencyKey = "rollback-fixture" } } };
             Check(domain.Validate(InstallationOperationKind.Rollback, Options(rollback), "rollback-fixture") is ManagedRuntimeInstallationRequest,
                 "Rollback retains its own installation operation kind");
+            var removal = input with { Plan = plan with { Release = null, Request = plan.Request with { Change = RuntimeChange.Uninstall, ReleaseId = null, IdempotencyKey = "removal-fixture" } } };
+            Check(domain.Validate(InstallationOperationKind.Uninstall, Options(removal), "removal-fixture") is ManagedRuntimeInstallationRequest,
+                "Removal is a first-class ledger kind that carries no release");
+            Reject(InstallationProblemCodes.InvalidRequest, () => domain.Validate(InstallationOperationKind.Uninstall,
+                Options(removal with { Plan = removal.Plan with { Request = removal.Plan.Request with { ReleaseId = release.ReleaseId } } }), "removal-fixture"));
 
             foreach (var stage in Enum.GetValues<InstallationStage>())
             {

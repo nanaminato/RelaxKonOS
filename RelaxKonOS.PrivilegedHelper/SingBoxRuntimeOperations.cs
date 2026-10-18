@@ -19,7 +19,8 @@ internal static class SingBoxRuntimeOperations
             PrivilegedOperationKind.SingBoxRuntimeQuery => input is null,
             PrivilegedOperationKind.SingBoxRuntimePlan => input is { Plan: not null, Authorization: null, FrozenPlan: null, RecoveryOperationId: null }
                 && RuntimeValidation.Identifier(input.SourceId),
-            PrivilegedOperationKind.SingBoxRuntimeExecute => input is { SourceId: null, Plan: null, Authorization: not null, FrozenPlan: { Request: not null, Release: not null }, RecoveryOperationId: null },
+            PrivilegedOperationKind.SingBoxRuntimeExecute => input is { SourceId: null, Plan: null, Authorization: not null, FrozenPlan: { Request: not null }, RecoveryOperationId: null }
+                && (input.FrozenPlan.Release is not null || input.FrozenPlan.Request.Change == RuntimeChange.Uninstall),
             PrivilegedOperationKind.SingBoxRuntimeRecover => input is { SourceId: null, Plan: null, Authorization: not null, FrozenPlan: null, RecoveryOperationId: { } target }
                 && target != Guid.Empty,
             _ => false

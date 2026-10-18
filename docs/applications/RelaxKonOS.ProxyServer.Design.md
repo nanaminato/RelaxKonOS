@@ -8,7 +8,7 @@
 > 上游资料核对日期：2026-10-17。
 
 > 生命周期补齐：当前固定版本实现尚不具备通用多版本更新。安装、卸载、版本选择、发布源管理和实际跨版本升级按 [受管运行时统一规范](../platform/RelaxKonOS.ManagedRuntimes.Design.md) 的 MR-02 追踪；该目标取代下文编译期唯一版本清单的长期设计约束，当前实现边界仍以 §13 为准。
-> 宿主及接线进展（2026-10-18）：新增固定 systemd 宿主、实际配置凭据证明、进程 socket inode 监听核对、Helper 固定生命周期组合、Server 新鲜发布授权和每操作认证通道。固定配置路径与生命周期已共锁，启动前再次核对授权，完整冻结记录不得伪造制品布局或验证证据。安装操作台账/API 和实际阶段进度已接通，支持目标绑定的启动恢复；受管活动修订上的已发布配置发布、启停、开机启动与配置回滚已接通，归档安装的卸载与版本选择 UI 尚待接通；公共目录仍不允许安装。Debian 检查的范围和数字见[事务证据](../platform/RelaxKonOS.ManagedRuntimes.Transactions.md#linux-固定宿主与进程证明)，systemd 测试程序不构成 sing-box 跨版本或协议验收。
+> 宿主及接线进展（2026-10-18）：新增固定 systemd 宿主、实际配置凭据证明、进程 socket inode 监听核对、Helper 固定生命周期组合、Server 新鲜发布授权和每操作认证通道。固定配置路径与生命周期已共锁，启动前再次核对授权，完整冻结记录不得伪造制品布局或验证证据。安装操作台账/API 和实际阶段进度已接通，支持目标绑定的启动恢复；受管活动修订上的已发布配置发布、启停、开机启动与配置回滚已接通，归档安装的卸载（保留或删除数据）与客户端版本计划页也已接通；公共目录仍不允许安装。Debian 检查的范围和数字见[事务证据](../platform/RelaxKonOS.ManagedRuntimes.Transactions.md#linux-固定宿主与进程证明)，systemd 测试程序不构成 sing-box 跨版本或协议验收。
 > MR-01/MR-02 进度（2026-10-17）：公共契约、可信目录、制品准备、持久事务及 Windows 固定服务宿主代码已落地，385 项常规检查通过。状态现核对进程启动时的配置证明，不能给旧进程套用新注册元数据；监听归属使用原生 PID 表。实际生命周期、当前授权、配置共锁和 UI 尚未接入新框架，SCM 与跨版本端到端仍待验收，详见 [事务组件](../platform/RelaxKonOS.ManagedRuntimes.Transactions.md)。
 
 > 原生探测依据：[上游 1.14.3 的 version 输出](https://github.com/SagerNet/sing-box/blob/v1.14.3/cmd/sing-box/cmd_version.go)。REALITY 服务端要求 `with_utls`，Hysteria2 要求 `with_quic`，分别由 [REALITY 实现](https://github.com/SagerNet/sing-box/blob/v1.14.3/common/tls/reality_server.go) 和 [QUIC 注册实现](https://github.com/SagerNet/sing-box/blob/v1.14.3/include/quic.go) 的构建门禁核对。Helper 仍须执行目标二进制的原生 check；标签不是配置生效或协议互通的替代证据。常规测试覆盖解析器及可信子进程边界，真实归档验证见下一项，不扩大版本/平台验收范围。
@@ -184,6 +184,8 @@ UI 先选择目标：VLESS/Trojan/Hysteria2 分享 URI、sing-box 配置、Mihom
 | `POST /credentials/{id}/rotate` | 轮换并触发受控发布 |
 | `POST /credentials/{id}/export` | 单次授权获取敏感连接配置 |
 | `GET /subscriptions`、`POST /subscriptions`、`DELETE /subscriptions/{id}` | 无 token 列表、签发与撤销 |
+
+已实施的受管运行时契约与上表不同，按 [受管运行时规范](../platform/RelaxKonOS.ManagedRuntimes.Design.md) 收敛为两组固定路由：`/api/v1.0/managed-runtimes`（`sources`、`sources/{sourceId}/catalog`、`sources/{sourceId}/refresh`、`sing-box/installation`、`sing-box/plan`）与既有安装台账 `/api/v1.0/installations/SingBox/{kind}`（`Install`/`Upgrade`/`Repair`/`Rollback`/`Uninstall`）。卸载没有独立的 `/runtime/uninstall` 路由，而是台账的 `Uninstall` 操作；请求只带冻结计划与导出回执操作 ID，不带 URL、可执行路径或原生参数。
 | `GET /traffic`、`GET /logs`、`GET /operations/{id}` | 有界分页观测与持久化操作查询 |
 
 公开订阅读取路由拟定为 `GET /api/v1.0/proxy-subscriptions/{token}/{format}`，与管理权限和数据投影隔离。入站增删改由配置草稿统一处理；凭据变更发布前也必须验证其绑定入站存在及协议兼容。
@@ -242,3 +244,5 @@ UI 先选择目标：VLESS/Trojan/Hysteria2 分享 URI、sing-box 配置、Mihom
 受限联网的 Linux/Windows 宿主可由管理员在 Helper 的固定受保护运行目录放置 `runtime.archive`。安装仍验证当前平台固定版本清单中的大小限制、SHA-256、归档条目和原生版本；缓存不提供自定义下载源或二进制路径。在线下载的四分钟总期限覆盖响应正文。删除数据卸载同时删除该缓存。
 
 2026-10-17 的 Linux systemd、REALITY/Vision 实际连接、轮换/停用/到期、端口冲突补偿及原生配置检查结果见 [验收记录](../testing/RelaxKonOS.ProxyServer.Acceptance.md)。该记录单独列出未验收的平台与协议组合，不扩大运行时已验证协议清单。
+
+2026-10-18 起桌面端「运行时」页直接读取签名目录：每个版本分别显示来源可信度、目标支持、配置能力与验证证据，阻止原因就地显示；安装/更新/修复/回退先向宿主申请冻结计划再写入安装台账，卸载分「保留数据」「删除数据」两种确认语义。刷新失败保留上次目录并提示失败，待恢复状态下不提供变更操作。UI 本身不提交 URL、可执行路径或原生参数，也不因目录出现新版本就开放安装。事务与检查数字见[事务证据](../platform/RelaxKonOS.ManagedRuntimes.Transactions.md)。

@@ -3,6 +3,7 @@
              xmlns:common="clr-namespace:RelaxKonOS.Client.Controls"
              xmlns:loc="using:RelaxKonOS.Client.Localization"
              xmlns:vm="using:RelaxKonOS.Client.Apps.ProxyServer"
+             xmlns:views="using:RelaxKonOS.Client.Apps.ProxyServer.Views"
              xmlns:protocol="clr-namespace:RelaxKonOS.Protocol.ProxyServer;assembly=RelaxKonOS.Protocol"
              x:Class="RelaxKonOS.Client.Apps.ProxyServer.Views.ProxyServerWorkspace"
              x:DataType="vm:ProxyServerViewModel"
@@ -59,6 +60,7 @@
           <Button x:Name="PageButton2" Classes="workspace-nav" Tag="2" Click="NavigationButton_Click" Content="{loc:Loc proxy_server.section.access}" HorizontalContentAlignment="Left" Padding="10,8" />
           <Button x:Name="PageButton3" Classes="workspace-nav" Tag="3" Click="NavigationButton_Click" Content="{loc:Loc proxy_server.section.connect}" HorizontalContentAlignment="Left" Padding="10,8" />
           <Button x:Name="PageButton4" Classes="workspace-nav" Tag="4" Click="NavigationButton_Click" Content="{loc:Loc proxy_server.section.subscriptions}" HorizontalContentAlignment="Left" Padding="10,8" />
+          <Button x:Name="PageButton5" Classes="workspace-nav" Tag="5" Click="NavigationButton_Click" Content="{loc:Loc proxy_server.section.runtime}" HorizontalContentAlignment="Left" Padding="10,8" />
         </StackPanel>
       </Border>
 
@@ -345,6 +347,10 @@
                         IsEnabled="{Binding CanEdit}" HorizontalAlignment="Left" />
               </StackPanel>
             </Border>
+          </StackPanel>
+
+          <StackPanel x:Name="Page5" Spacing="16" IsVisible="False">
+            <views:ProxyServerRuntimeView x:Name="RuntimeView" />
           </StackPanel>
         </StackPanel>
       </ScrollViewer>

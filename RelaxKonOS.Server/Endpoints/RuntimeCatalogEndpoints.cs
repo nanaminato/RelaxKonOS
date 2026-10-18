@@ -1,3 +1,4 @@
+using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.ManagedRuntimes;
@@ -30,7 +31,11 @@ public static class RuntimeCatalogEndpoints
             [FromServices] SingBoxRuntimeService service, CancellationToken ct) =>
         {
             if (!InstallationEndpoints.CanInstall(http.User, InstallationServiceId.SingBox)) return Results.Forbid();
-            if (request.Request is null || string.IsNullOrWhiteSpace(request.SourceId)) return Results.BadRequest();
+            if (request.Request is null) return Results.BadRequest();
+            // Only removal may omit the source; it must still be a valid identifier when one is given.
+            if (string.IsNullOrWhiteSpace(request.SourceId)
+                ? request.Request.Change != RuntimeChange.Uninstall
+                : !RuntimeValidation.Identifier(request.SourceId)) return Results.BadRequest();
             return await RespondAsync(async () => Results.Ok(await service.PlanAsync(request.SourceId, request.Request, ct)));
         }).RequireAuthorization(ManagePolicy);
         return app;

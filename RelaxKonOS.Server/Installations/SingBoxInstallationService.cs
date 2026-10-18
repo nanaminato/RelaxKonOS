@@ -11,12 +11,13 @@ public sealed class SingBoxInstallationService(SingBoxRuntimeService runtime) : 
     public override IReadOnlyList<string> Resources => ["service:SingBox", "runtime:sing-box"];
     protected override bool Confirmed(ManagedRuntimeInstallationRequest request) => request.Confirmed;
     protected override bool Supports(InstallationOperationKind kind) => kind is InstallationOperationKind.Install
-        or InstallationOperationKind.Upgrade or InstallationOperationKind.Repair or InstallationOperationKind.Rollback;
+        or InstallationOperationKind.Upgrade or InstallationOperationKind.Repair or InstallationOperationKind.Rollback
+        or InstallationOperationKind.Uninstall;
 
     protected override void ValidateRequest(InstallationOperationKind kind, ManagedRuntimeInstallationRequest request, string idempotencyKey)
     {
         var plan = request.Plan;
-        if (plan is not { RuntimeId: "sing-box", Request: not null, Release: not null })
+        if (plan is not { RuntimeId: "sing-box", Request: not null })
             throw new InstallationException(InstallationProblemCodes.InvalidRequest, 400);
         var change = kind switch
         {
@@ -24,10 +25,18 @@ public sealed class SingBoxInstallationService(SingBoxRuntimeService runtime) : 
             InstallationOperationKind.Upgrade => RuntimeChange.Update,
             InstallationOperationKind.Repair => RuntimeChange.Repair,
             InstallationOperationKind.Rollback => RuntimeChange.Rollback,
+            InstallationOperationKind.Uninstall => RuntimeChange.Uninstall,
             _ => throw new InstallationException(InstallationProblemCodes.NotSupported, 400)
         };
-        if (plan.Request.Change != change || plan.Request.InstallationId == Guid.Empty || plan.Release.RuntimeId != "sing-box"
-            || plan.Request.ReleaseId != plan.Release.ReleaseId)
+        // Removal is the only change that carries no release; a retained-data default is the request's own field.
+        if (change == RuntimeChange.Uninstall)
+        {
+            if (plan.Release is not null || plan.Request.ReleaseId is not null)
+                throw new InstallationException(InstallationProblemCodes.InvalidRequest, 400);
+        }
+        else if (plan.Release is not { RuntimeId: "sing-box" } release || plan.Request.ReleaseId != release.ReleaseId)
+            throw new InstallationException(InstallationProblemCodes.InvalidRequest, 400);
+        if (plan.Request.Change != change || plan.Request.InstallationId == Guid.Empty)
             throw new InstallationException(InstallationProblemCodes.InvalidRequest, 400);
         Check(plan.Request.IdempotencyKey == idempotencyKey, InstallationProblemCodes.IdempotencyConflict);
     }

@@ -21,21 +21,27 @@ public sealed class SingBoxRuntimeService(IPrivilegedOperationTransport helper, 
     public Task<RuntimeInstallationSnapshot> QueryAsync(CancellationToken ct, Guid? receiptOperationId = null) =>
         CallAsync<RuntimeInstallationSnapshot>(new(PrivilegedOperationKind.SingBoxRuntimeQuery, OperationId: receiptOperationId), ct);
 
-    public async Task<RuntimePlanResult> PlanAsync(string sourceId, RuntimePlanRequest request, CancellationToken ct)
+    public async Task<RuntimePlanResult> PlanAsync(string? sourceId, RuntimePlanRequest request, CancellationToken ct)
     {
-        if (!RuntimeValidation.Identifier(sourceId)) throw new RuntimeLifecycleException("runtime.source_invalid");
+        // Removal must stay admissible when the source has expired, been revoked, or is gone.
+        var id = request.Change == RuntimeChange.Uninstall && string.IsNullOrWhiteSpace(sourceId) ? "removal" : sourceId;
+        if (!RuntimeValidation.Identifier(id)) throw new RuntimeLifecycleException("runtime.source_invalid");
         await store.Gate.WaitAsync(ct);
         try
         {
             return await CallAsync<RuntimePlanResult>(new(PrivilegedOperationKind.SingBoxRuntimePlan,
-                RuntimeLifecycle: new(SourceId: sourceId, Plan: request)), ct);
+                RuntimeLifecycle: new(SourceId: id, Plan: request)), ct);
         }
         finally { store.Gate.Release(); }
     }
 
     public async Task<RuntimeSwitchResult> ExecuteAsync(Guid operationId, RuntimeChangePlan plan, CancellationToken ct)
     {
-        if (operationId == Guid.Empty || plan is null || plan.RuntimeId != "sing-box" || plan.Release is null)
+        if (operationId == Guid.Empty || plan is null || plan.Request is null || plan.RuntimeId != "sing-box")
+            throw new RuntimeLifecycleException("runtime.request_invalid");
+        // Removal carries no release target; every other change must name the exact frozen artifact.
+        var removal = plan.Request.Change == RuntimeChange.Uninstall;
+        if (removal ? plan.Release is not null || plan.Request.ReleaseId is not null : plan.Release is null)
             throw new RuntimeLifecycleException("runtime.request_invalid");
         await store.Gate.WaitAsync(ct);
         try

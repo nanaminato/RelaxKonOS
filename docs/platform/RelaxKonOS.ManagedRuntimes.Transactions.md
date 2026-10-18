@@ -1,12 +1,12 @@
 # 受管归档运行时的 Helper 事务组件
 
-> 2026-10-18，MR-01/MR-02 实现中。公共事务、固定平台宿主、Helper 生命周期组合和 Server 新鲜授权服务已有代码；安装操作台账/API 已接通；受管安装的已发布配置发布、启停、开机启动与配置回滚已接通；卸载/保留及 UI 尚待接通。公共目录仍不允许安装。本文不表示 sing-box 或其他应用已经完成跨版本更新。
+> 2026-10-18，MR-01/MR-02 实现中。公共事务、固定平台宿主、Helper 生命周期组合和 Server 新鲜授权服务已有代码；安装操作台账/API 已接通；受管安装的已发布配置发布、启停、开机启动与配置回滚已接通；卸载/数据保留与客户端版本计划页已接通。公共目录仍不允许安装。本文不表示 sing-box 或其他应用已经完成跨版本更新。
 
 ## 与安装操作台账的关系
 
 `RuntimeArchiveSwitch` 接收既有 Server 安装操作的 operationId，复用 `InstallationStage` 阶段，不新增一套用户可见操作记录或安装端点。Server 的 `InstallationCoordinator` 继续负责后台任务、用户权限、操作查询和取消；Helper 事务状态保存特权侧必须独立持有的切换检查点、活动指针和去重回执。
 
-当前组件支持归档运行时的 Install / Update / Repair / Rollback 事务框架以及受管安装的配置发布与服务控制；不支持 Uninstall、包管理器、业务数据删除或第一方宿主组件更新。这些操作仍需按各自生命周期实现，不能将归档切换包装成通用卸载/软件包事务。sing-box 已通过既有安装台账调用该框架并可在受管活动修订上发布配置，公共目录仍将新来源版本标为配置不支持。
+当前组件支持归档运行时的 Install / Update / Repair / Rollback 事务框架、受管安装的配置发布与服务控制，以及只针对自有受管安装的 Uninstall（保留或删除数据）；不支持包管理器、业务数据以外的删除或第一方宿主组件更新。这些操作仍需按各自生命周期实现，不能将归档切换包装成通用卸载/软件包事务。sing-box 已通过既有安装台账调用该框架并可在受管活动修订上发布配置，公共目录仍将新来源版本标为配置不支持。
 
 ## 受保护的实例状态
 
@@ -61,15 +61,37 @@
 
 未取得新鲜授权的配置发布不会进行；配置发布的身份与运行时事务使用同一 `ConfigurationIdentity`，因此事务进行中不能发布配置，发布配置后旧冻结计划的状态修订即冲突。原生检查通过 `ISingBoxNativeChecks` 固定宿主实现执行，测试可替换为记录型实现而不执行第三方程序。
 
+## 卸载与数据保留
+
+`RuntimeArchiveRemoval` 是独立的归档移除事务，复用同一 operationId、阶段词汇和幂等回执，不改写 `RuntimeArchiveSwitch` 的切换语义。它只接受自有受管安装：`Ownership` 必须是 `Managed` 且存在活动修订，`ReleaseId` 必须为空，`PreviousReleaseId` 必须等于当前活动发布，请求不得携带预发布或保留数据以外的安装选项。
+
+| 检查点 | 特权侧持久证据与行为 |
+| --- | --- |
+| Preflight | 记录 `Removal`（操作身份、请求与幂等摘要、冻结计划）后才调用适配器；适配器核对修订逐文件摘要、服务登记归属与配置身份 |
+| Activating | 保存捕获的服务/配置快照；`RemovalStarted` 写入后普通取消不再生效，只能成功或补偿 |
+| Verifying | 适配器确认登记与活动修订已移除；未移除报 `runtime.removal_incomplete` 并走补偿 |
+| CleanupStarted | 不可逆边界：之后删除 `versions/`、`staging/`、`operations/`（`versions` 空时删除目录），`KeepData=false` 时再删 `config.json`、`config.json.previous`、`candidate.json`；此阶段失败只上报 `runtime.removal_cleanup_failed`，不回滚也不假装原状返回 |
+| Completed | `Ownership=Absent`、`Active=null`、`Revisions=[]`；`KeepData=true` 保留 `ConfigurationIdentity`，删除数据时清空 |
+
+`RuntimeArchiveStateStore` 校验 `Pending` 与 `Removal` 互斥，并核对检查点一致性：未记录 `RemovalStarted` 不得进入 Verifying，`ExpectedTrust/CatalogRevision` 只拒绝负值。启动恢复按 `CleanupStarted` 分流——之前重新核对当前程序与配置后恢复原登记，之后只关账并返回 `runtime.removal_cleanup_interrupted`，因为程序或数据可能已部分删除。
+
+`SingBoxRemovalAdapter` 是卸载的固定宿主实现：只删除受保护实例根内由本安装记录的文件，拒绝外部安装、配置漂移和程序文件被改写；不调用包管理器、不删除证书私钥、接口与防火墙规则（本运行时没有自有规则），也不移除代理服务端应用入口。
+
+Server 侧 `SingBoxRuntimeService.PlanAsync` 允许卸载不带来源（内部用 `"removal"` 占位），`RuntimeCatalogEndpoints` 只在卸载时可省略 `SourceId`，`SingBoxInstallationService` 以 `InstallationOperationKind.Uninstall` 受理并校验“无发布、无 releaseId”；其余变更仍必须有 release 且 runtimeId 与 releaseId 一致。
+
+客户端版本计划页在这条链路上只做三件事：显示四维状态与阻止原因、先取计划再入台账、卸载必须经二次确认并在确认宿主缺失时什么都不做。它不提交 URL、可执行路径或原生参数；刷新失败保留上次目录并明确显示失败，待恢复状态禁用安装/更新/卸载。
+
 ## 验证证据与剩余工作
 
 `Tests/ManagedRuntimes/SwitchChecks.cs` 有 96 项检查，覆盖真实磁盘状态、共享互斥锁、幂等回执、跨版本目标、同版本修复、保留版本回退、配置漂移、当前发布配置恢复、切换取消边界、独立版本/配置/运行/启动/原生健康失败、撤销恢复及待恢复阻断。
 
 其中四组测试启动独立子进程，分别在捕获、准备、激活、健康检查中 `Environment.Exit`，由父进程重新读取磁盘并恢复。服务和二进制使用文件适配器模拟，没有执行第三方运行时、操作真实服务或更改系统启动设置；不能据此宣称 Windows/Linux 生命周期验收通过。
 
-仍需将组件接入 Helper 的实际运行时路径及 Server 安装服务，开放冻结计划/操作查询，实施原生配置与监听/互通验证、卸载及数据保留，并完成各声明平台的故障与重启验收。总体进度继续以 [任务表](RelaxKonOS.ManagedRuntimes.Design.md) 为准。
+仍需将组件接入 Helper 的实际运行时路径及 Server 安装服务，开放冻结计划/操作查询，实施原生配置与监听/互通验证、下载取消与人工恢复入口，并完成各声明平台的故障与重启验收。总体进度继续以 [任务表](RelaxKonOS.ManagedRuntimes.Design.md) 为准。
 
 `ManagedServiceChecks` 另有 13 项检查，覆盖受管安装的状态上报、只校验不发布、首次发布与身份递增、运行中再发布保留运行状态、仅改开机启动不重启、配置回滚、磁盘漂移拒绝覆盖、登记失败后的补偿与运行状态恢复、程序文件漂移拒绝执行、以及 Install/Uninstall 的边界；其原生检查使用记录型实现，不执行第三方程序。
+
+`RemovalChecks` 有 15 项检查，覆盖保留数据的卸载、程序/暂存/备份目录清理、实例根外文件不受影响、单回执与幂等重放、重复卸载被拒、删除发布配置与保留副本、移除登记失败后的补偿、清理开始前恢复、清理开始后中断关账、外部安装拒绝与程序漂移拒绝。测试使用文件适配器模拟服务，不操作真实 SCM/systemd。
 
 ## sing-box 真实文件与原生命令适配器
 
@@ -83,7 +105,7 @@
 
 `ISingBoxArchiveHost` 必须由 Helper 内置的 Windows/systemd 实现提供，不能从客户端注入；它负责固定服务所有权、实际进程路径、实际加载配置身份和监听检查。`ISingBoxArchiveAuthorization` 必须由 Server 当前已发布状态及凭据/证书授权提供，不能将输入草稿或长时间缓存当作授权；无法取得新鲜证据时拒绝。授权租期最多五分钟，切换/恢复多次重新读取，不在元数据回执中保存秘密。
 
-当前已实现 Windows 与 Linux 固定服务宿主代码、Helper 本机生命周期组合、Server 当前授权提供者和既有配置路径共锁；Server 安装操作台账/API 及受管修订上的已发布配置发布与服务控制已接通；卸载与保留策略尚未接通。公共目录仍全部标为配置不支持，不能当作已开放的安装功能。保留的操作备份也仍需接入最终卸载和保留策略。
+当前已实现 Windows 与 Linux 固定服务宿主代码、Helper 本机生命周期组合、Server 当前授权提供者和既有配置路径共锁；Server 安装操作台账/API 及受管修订上的已发布配置发布与服务控制已接通；卸载与数据保留走独立归档移除事务。公共目录仍全部标为配置不支持，不能当作已开放的安装功能。保留的操作备份也仍需接入最终卸载和保留策略。
 
 可选真实二进制检查：
 
@@ -105,7 +127,7 @@ dotnet run --project Tests/ManagedRuntimes/RelaxKonOS.ManagedRuntimes.Tests.cspr
 
 Helper 的 `SingBoxRuntimeQuery/Plan/Execute/Recover` 是唯一当前本机操作形状，所有混用字段被拒绝。`SingBoxRuntimeLifecycle.Create` 仅组合固定根、保护状态/信任账本、固定 OS 宿主和内置下载器；不接受客户端选择路径、服务或程序。首次状态初始化观察外部/未知所有权，宿主身份来自本机身份的摘要。计划在实例锁内从保护目录生成，执行使用冻结计划以保留幂等请求身份；适配器将冻结的完整版本记录与保护账本返回的记录逐字节比较，包含制品布局和主机赋予的配置/验证元数据。回执重放先返回原结果，不能因后来的状态或信任修订变化再次执行。查询可按既有 operationId 返回特权侧准确回执，不能用当前进程存活推断某次操作成功。
 
-本机新操作已接入 Server 安装操作台账，客户端版本计划表单尚未实现。卸载计划明确返回不支持；全部公共目录仍不允许安装，不能通过提交自行构造的冻结计划开放版本。受管修订上的配置发布与服务控制已接通，后续仍须实现卸载/保留、下载取消和人工恢复入口。
+本机新操作已接入 Server 安装操作台账，客户端版本计划页已实现：只显示目录与阻止原因，先取冻结计划再写入台账，卸载需二次确认且不带发布。全部公共目录仍不允许安装，不能通过提交自行构造的冻结计划开放版本。受管修订上的配置发布与服务控制、卸载/数据保留已接通，后续仍须实现下载取消和人工恢复入口。
 
 ## Linux 固定宿主与进程证明
 
@@ -115,7 +137,7 @@ Helper 的 `SingBoxRuntimeQuery/Plan/Execute/Recover` 是唯一当前本机操�
 
 `LinuxOwnedListeners` 有界解析 IPv4/IPv6 TCP/UDP 表，显式处理原生 32 位字序，只接受 TCP LISTEN 和未连接 UDP 绑定。网络命名空间的表本身不代表进程所有权；读取前后将 inode 与目标进程描述符关联，并核对启动时间。健康检查还在监听读取后重新核对完整进程与配置身份。
 
-Debian 13 x64 测试机上通过 516 项常规检查：33 项准入、68 项签名目录、19 项集成、68 项归档、24 项制品准备、96 项事务、68 项版本/原生输出、4 项子进程、18 项 Linux 监听、31 项新鲜授权、30 项生命周期边界、44 项安装台账及 13 项受管服务检查。包含独立模拟 Helper 进程的 NDJSON 进度及宿主停止后结果保留；模拟 Helper 与服务不构成真实 sing-box 验收。Android 当前契约的 23 项 JVM 检查也在该测试机通过，含安装枚举及发布请求调用验证；没有执行 Android 设备界面验收。
+Debian 13 x64 测试机上通过 533 项常规检查：33 项准入、68 项签名目录、19 项集成、68 项归档、24 项制品准备、96 项事务、68 项版本/原生输出、4 项子进程、18 项 Linux 监听、31 项新鲜授权、30 项生命周期边界、46 项安装台账、13 项受管服务及 15 项归档卸载检查。包含独立模拟 Helper 进程的 NDJSON 进度及宿主停止后结果保留；模拟 Helper 与服务不构成真实 sing-box 验收。Android 当前契约的 23 项 JVM 检查也在该测试机通过，含安装枚举及发布请求调用验证；没有执行 Android 设备界面验收。
 
 Linux 监听检查包括双字节序与双地址族解析、畸形表拒绝、真实 TCP/UDP inode 归属及错误进程启动时间拒绝。显式命令 `RelaxKonOS.ManagedRuntimes.Tests linux-systemd-host` 另通过 12 项真实 systemd 检查：安装时不启动、不启用开机启动、开机启动变更只改登记而启停不变、启停、实际配置身份、真实监听健康与错误端口拒绝、磁盘配置变化不改写运行身份、启动前配置漂移拒绝、可写程序拒绝、自有注册移除及固定配置路径使用同一实例锁。测试机 root 的 umask 为 0002，锁文件仍明确创建为 0600；没有通过放宽保护检查取得通过。此专项要求固定服务及根目录均不存在，仅在授权测试机执行；退出后清理本次服务及测试文件。
 
