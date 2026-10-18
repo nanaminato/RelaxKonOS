@@ -41,6 +41,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.Tab
 import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.runtime.key
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -73,18 +74,23 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 fun SshWorkspaceScreen(hostId: String, onClose: () -> Unit) {
     var page by rememberSaveable(hostId) { mutableIntStateOf(0) }
     var managementPage by rememberSaveable(hostId) { mutableIntStateOf(0) }
+    var pageVisit by remember(hostId) { mutableIntStateOf(0) }
+    fun selectPage(next: Int) { if (next != page) { pageVisit++; page = next } }
     val host = (LocalContext.current.applicationContext as RelaxKonApplication)
         .container.serverCenter.hosts().firstOrNull { it.hostId == hostId }
     val terminalTyping = page == 1 && WindowInsets.ime.getBottom(LocalDensity.current) > 0
     androidx.activity.compose.BackHandler {
-        if (page != 3) { page = 3; managementPage = 0 }
+        if (page != 3) { selectPage(3); managementPage = 0 }
         else if (managementPage != 0) managementPage = 0
         else onClose()
     }
     val content: @Composable (Modifier) -> Unit = { contentModifier ->
         when (page) {
             0 -> SshFilesScreen(hostId, contentModifier)
-            1 -> SshTerminalScreen(hostId, onClose, contentModifier)
+            1 -> {
+                val visit = pageVisit
+                key(visit) { SshTerminalScreen(hostId, onClose, isPageCurrent = { page == 1 && pageVisit == visit }, modifier = contentModifier) }
+            }
             2 -> ServerMaintenanceScreen(host, contentModifier)
             3 -> Column(contentModifier) {
                 SshManagementTabs(managementPage, { managementPage = it })
@@ -98,7 +104,7 @@ fun SshWorkspaceScreen(hostId: String, onClose: () -> Unit) {
             }
         }
     }
-    SshWorkspaceLayout(page, { page = it }, terminalTyping, content = content)
+    SshWorkspaceLayout(page, ::selectPage, terminalTyping, content = content)
 }
 
 @Composable

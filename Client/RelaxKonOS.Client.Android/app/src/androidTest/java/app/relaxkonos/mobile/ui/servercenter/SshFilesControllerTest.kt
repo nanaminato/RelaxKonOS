@@ -16,7 +16,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.Lifecycle
 import org.junit.Rule
 import androidx.test.platform.app.InstrumentationRegistry
-import app.relaxkonos.mobile.RelaxKonApplication
+import android.app.Application
 import app.relaxkonos.mobile.servercenter.*
 import kotlinx.coroutines.*
 import org.junit.Assert.*
@@ -29,8 +29,8 @@ class SshFilesControllerTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
     private class QueueDispatcher : CoroutineDispatcher() {
         private val queue = ArrayDeque<Runnable>()
-        override fun dispatch(context: CoroutineContext, block: Runnable) { queue.addLast(block) }
-        fun drain() { while (queue.isNotEmpty()) queue.removeFirst().run() }
+        override fun dispatch(context: CoroutineContext, block: Runnable) { synchronized(queue) { queue.addLast(block) } }
+        fun drain() { while (true) { val task = synchronized(queue) { queue.removeFirstOrNull() } ?: return; task.run() } }
     }
     private val dispatcher = QueueDispatcher()
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
@@ -52,7 +52,7 @@ class SshFilesControllerTest {
     private val secrets = mutableListOf<CharArray>()
     private val target = ServerHostTargetRules.create("isolated.invalid", 22, "review", null, 0)
     private val model by lazy {
-        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as RelaxKonApplication
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
         SshFilesController(app, { host }, { revision }, { "secret".toCharArray().also { secrets += it } }, { _, _ ->
             connects++
             connectFailure?.let { throw it }
@@ -69,6 +69,13 @@ class SshFilesControllerTest {
                     }
                     "fileInfo" -> { if (failFactRead) error("private fact read failure"); files[args!![0] as String] }
                     "download" -> { (args!![1] as java.io.OutputStream).write(requireNotNull(contents[args[0] as String])); Unit }
+                    "uploadNew" -> {
+                        val path = args!![2] as String; val bytes = (args[0] as java.io.InputStream).readBytes()
+                        check(path !in files)
+                        writes++; contents[path] = bytes
+                        files[path] = SshFileEntry(path, path.substringAfterLast('/'), false, false, bytes.size.toLong())
+                        Unit
+                    }
                     "upload" -> {
                         val path = args!![2] as String; val bytes = (args[0] as java.io.InputStream).readBytes()
                         writes++; contents[path] = bytes
@@ -147,7 +154,7 @@ class SshFilesControllerTest {
         val before = connects
         model.delete(old); dispatcher.drain()
         assertEquals(before, connects); assertSame(current, model.state.value.deleteEntries)
-        model.dismissDelete(); model.delete(current); dispatcher.drain()
+        model.dismissDelete(current); model.delete(current); dispatcher.drain()
         assertEquals(before, connects); assertCleared()
     }
 
@@ -175,7 +182,7 @@ class SshFilesControllerTest {
     @Test fun disposedPickerKeepsCleanupResponsibilityForAnotherController() {
         failClose = true; model.resume("isolated-host"); dispatcher.drain(); model.close(); dispatcher.drain()
         assertFalse(cleanupSessions.isEmpty()); assertCleared()
-        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as RelaxKonApplication
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
         val nextScope = CoroutineScope(SupervisorJob() + dispatcher)
         val next = SshFilesController(app, { host }, { revision }, { "next".toCharArray() },
             { _, _ -> connects++; error("isolated connection refused") }, cleanupSessions, {}, nextScope)
@@ -378,7 +385,7 @@ class SshFilesControllerTest {
         val before = connects
         model.requestPaste(); model.reload(); model.askDelete(source); model.requestDownload(source); dispatcher.drain()
         assertNull(model.state.value.pasteIntent); assertTrue(model.state.value.deleteEntries.isEmpty())
-        assertTrue(model.state.value.downloadEntries.isEmpty()); assertEquals(before, connects)
+        assertNull(model.state.value.downloadIntent); assertEquals(before, connects)
         model.resume("isolated-host"); dispatcher.drain(); model.requestPaste()
         assertNotNull(model.state.value.pasteIntent); assertEquals(1, writes); assertCleared()
     }
@@ -492,6 +499,119 @@ class SshFilesControllerTest {
         rule.runOnIdle { oldSave(); oldDiscard(); assertEquals(0, writes); assertEquals("/second.txt", model.state.value.detailEntry?.path) }
         rule.onNodeWithText(rule.activity.getString(R.string.ssh_files_save)).performScrollTo().performClick()
         rule.runOnIdle { dispatcher.drain(); assertEquals(1, writes); assertEquals("second draft", contents["/second.txt"]!!.toString(Charsets.UTF_8)) }
+    }
+
+    @Test fun lateDownloadResultCannotConsumeReplacementIntent() {
+        model.resume("isolated-host"); dispatcher.drain()
+        val first = SshFileEntry("/first", "first", false, false, 1)
+        model.requestDownload(first); val old = requireNotNull(model.state.value.downloadIntent)
+        model.downloadLaunchHandled(old)
+        model.requestDownload(first.copy(path = "/second", name = "second"))
+        val current = requireNotNull(model.state.value.downloadIntent); val before = connects
+        model.downloadLaunchHandled(old); model.downloadTo(null, old)
+        model.downloadTo(android.net.Uri.parse("content://unused/old"), old); dispatcher.drain()
+        assertSame(current, model.state.value.downloadIntent); assertTrue(model.state.value.downloadLaunchPending)
+        assertEquals(before, connects)
+        model.downloadTo(null, current); assertNull(model.state.value.downloadIntent)
+    }
+    @Test fun downloadIntentSurvivesPickerPauseButNotDirectoryOrWorkspaceChange() {
+        model.resume("isolated-host"); dispatcher.drain()
+        val entry = SshFileEntry("/first", "first", false, false, 1)
+        model.requestDownload(entry); val paused = requireNotNull(model.state.value.downloadIntent)
+        model.detach(); model.downloadTo(null, paused); assertSame(paused, model.state.value.downloadIntent)
+        model.resume("isolated-host"); dispatcher.drain()
+        model.downloadTo(null, paused); assertNull(model.state.value.downloadIntent)
+        model.requestDownload(entry); val old = requireNotNull(model.state.value.downloadIntent)
+        model.navigate("/other"); dispatcher.drain()
+        model.downloadTo(android.net.Uri.parse("content://unused/old"), old); assertNull(model.state.value.downloadIntent)
+        model.requestDownload(entry); revision++; model.resume("isolated-host"); dispatcher.drain()
+        assertNull(model.state.value.downloadIntent); assertCleared()
+    }
+
+    @Test fun lateUploadSelectionOrCancellationCannotConsumeReplacementIntent() {
+        model.resume("isolated-host"); dispatcher.drain()
+        val old = requireNotNull(model.requestUpload(folder = false))
+        val current = requireNotNull(model.requestUpload(folder = false)); val before = connects
+        model.upload(old); model.upload(old, listOf(android.net.Uri.parse("content://unused/old")))
+        dispatcher.drain(); assertSame(current, model.state.value.uploadIntent); assertEquals(before, connects)
+        model.upload(current); assertNull(model.state.value.uploadIntent); assertEquals(before, connects)
+    }
+    @Test fun uploadSelectionKeepsPickerPauseAndRejectsChangedDirectoryOrWorkspace() {
+        model.resume("isolated-host"); dispatcher.drain()
+        val expected = requireNotNull(model.requestUpload(folder = true))
+        val before = connects
+        model.upload(expected, listOf(android.net.Uri.parse("content://unused/wrong-mode")))
+        assertSame(expected, model.state.value.uploadIntent); assertEquals(before, connects)
+        model.detach(); model.upload(expected); assertSame(expected, model.state.value.uploadIntent)
+        assertNull(model.requestUpload(folder = false))
+        model.resume("isolated-host"); dispatcher.drain(); model.upload(expected)
+        assertNull(model.state.value.uploadIntent)
+        val old = requireNotNull(model.requestUpload(folder = false))
+        model.navigate("/other"); dispatcher.drain(); val afterNavigation = connects
+        model.upload(old, listOf(android.net.Uri.parse("content://unused/old"))); dispatcher.drain()
+        assertNull(model.state.value.uploadIntent); assertEquals(afterNavigation, connects)
+        val obsolete = requireNotNull(model.requestUpload(folder = true))
+        revision++; model.resume("isolated-host"); dispatcher.drain(); val afterWorkspace = connects
+        model.upload(obsolete, tree = android.net.Uri.parse("content://unused/tree/old")); dispatcher.drain()
+        assertNull(model.state.value.uploadIntent); assertEquals(afterWorkspace, connects); assertCleared()
+    }
+    @Test fun uploadCannotReplaceDirtyTextOrStartBehindNameEditor() {
+        val detail = prepareText(); model.updateText("retained", detail)
+        assertNull(model.requestUpload(folder = false)); assertNull(model.requestUpload(folder = true))
+        assertEquals("retained", (model.state.value.preview as SshPreview.Text).content)
+        model.closeDetail(detail); model.discardDetail(requireNotNull(model.state.value.discardIntent))
+        model.beginCreateDirectory(); assertNull(model.requestUpload(folder = false))
+        assertEquals(0, writes); assertNull(model.state.value.uploadIntent)
+    }
+    @Test fun realDocumentUploadUsesCapturedDirectoryAndConsumesResultOnce() {
+        val resolver = InstrumentationRegistry.getInstrumentation().targetContext.contentResolver
+        val name = "relaxkon-upload-" + java.util.UUID.randomUUID() + ".txt"
+        val values = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name)
+            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+            put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "Download/RelaxKonReview")
+        }
+        val uri = requireNotNull(resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values))
+        try {
+            val bytes = "upload body \u4e2d\u6587\n".toByteArray(Charsets.UTF_8)
+            requireNotNull(resolver.openOutputStream(uri)).use { it.write(bytes) }
+            model.resume("isolated-host"); dispatcher.drain(); model.navigate("/upload-review"); dispatcher.drain()
+            val expected = requireNotNull(model.requestUpload(folder = false))
+            model.detach(); model.resume("isolated-host"); dispatcher.drain()
+            model.upload(expected, listOf(uri)); model.upload(expected, listOf(uri))
+            rule.waitUntil(timeoutMillis = 15_000) { dispatcher.drain(); !model.state.value.busy }
+            assertNull(model.state.value.problem); assertFalse(model.state.value.unknown)
+            assertEquals(1, writes); assertEquals(1, transferStarts)
+            assertArrayEquals(bytes, contents["/upload-review/" + name]); assertNull(model.state.value.uploadIntent)
+            val before = connects; model.upload(expected, listOf(uri)); dispatcher.drain()
+            assertEquals(before, connects); assertEquals(1, writes); assertCleared()
+        } finally { resolver.delete(uri, null, null) }
+    }
+
+    @Test fun staleDeleteCancellationCannotDismissReplacementOrReopenedIdenticalTarget() {
+        model.resume("isolated-host"); dispatcher.drain()
+        val first = SshFileEntry("/first/shared.txt", "shared.txt", false, false, 1)
+        val second = first.copy(path = "/second/shared.txt")
+        model.askDelete(first); val old = model.state.value.deleteEntries
+        rule.setContent { MaterialTheme {
+            val state by model.state.collectAsState()
+            if (state.deleteEntries.isNotEmpty()) SshFileDeleteConfirmation(state.deleteEntries, state.busy, model::delete, model::dismissDelete)
+        } }
+        val oldCancel = requireNotNull(rule.onNodeWithText(rule.activity.getString(R.string.common_cancel))
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action)
+        rule.runOnIdle { model.askDelete(second) }
+        rule.onNodeWithText(second.path).assertIsDisplayed()
+        rule.runOnIdle {
+            val current = model.state.value.deleteEntries
+            oldCancel(); model.dismissDelete(old); assertSame(current, model.state.value.deleteEntries)
+            model.dismissDelete(current); assertTrue(model.state.value.deleteEntries.isEmpty())
+            model.askDelete(first); val reopened = model.state.value.deleteEntries
+            oldCancel(); model.dismissDelete(old); assertSame(reopened, model.state.value.deleteEntries)
+            assertEquals(0, writes)
+        }
+        rule.onNodeWithText(first.path).assertIsDisplayed()
+        rule.onNodeWithText(rule.activity.getString(R.string.common_cancel)).performClick()
+        rule.runOnIdle { assertTrue(model.state.value.deleteEntries.isEmpty()) }
     }
 
 }

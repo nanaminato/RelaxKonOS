@@ -3,7 +3,7 @@ package app.relaxkonos.mobile.ui.servercenter
 import app.relaxkonos.mobile.data.FileListSnapshots
 import android.graphics.BitmapFactory
 import android.net.Uri
-import app.relaxkonos.mobile.RelaxKonApplication
+import android.app.Application
 import app.relaxkonos.mobile.servercenter.*
 import app.relaxkonos.mobile.ui.common.TransferProgress
 import java.io.ByteArrayInputStream
@@ -18,6 +18,10 @@ data class SshClipboard(val hostId: String, val entries: List<SshFileEntry>, val
 class SshPasteIntent(val clipboard: SshClipboard, val directory: String)
 class SshAdoptIntent(val checks: List<SshFileCheck>)
 
+class SshUploadIntent(val directory: String, val folder: Boolean)
+
+class SshDownloadIntent(val entries: List<SshFileEntry>, val zip: Boolean, val directory: String)
+
 class SshDetailIntent
 class SshDiscardIntent(val detail: SshDetailIntent, val preview: SshPreview.Text)
 
@@ -26,7 +30,7 @@ class SshNameIntent
 data class SshFileCheck(val path: String, val exists: Boolean?)
 
 class SshFilesController(
-    private val app: RelaxKonApplication,
+    private val app: Application,
     private val workspaceHost: () -> String?,
     private val workspaceVersion: () -> Int,
     private val passwordCopy: (String) -> CharArray?,
@@ -62,7 +66,7 @@ class SshFilesController(
     }
     fun stop() { activeRequest?.takeIf { it.sent && it.targets != null }?.let(::markUnknown); active = false; foreground = false; generation++; job?.cancel(); connection?.let { releaseSession(it) }; connection = null; pendingCleanup.toList().forEach { releaseSession(it) }; mutable.update { it.copy(busy = false, connected = false, transfer = null, deleteTarget = null, deleteEntries = emptyList(), nameIntent = null, detailIntent = null, discardIntent = null, pasteIntent = null, adoptIntent = null, checked = emptyList()) } }
     fun cancelTransfer() { val wasForeground = foreground; stop(); active = true; foreground = wasForeground }
-    fun detach() { foreground = false; dismissDelete(); mutable.update { it.copy(nameIntent = null, detailIntent = null, discardIntent = null, pasteIntent = null, adoptIntent = null, checked = emptyList()) }; if (!transferring) stop() }
+    fun detach() { foreground = false; clearDelete(); mutable.update { it.copy(nameIntent = null, detailIntent = null, discardIntent = null, pasteIntent = null, adoptIntent = null, checked = emptyList()) }; if (!transferring) stop() }
     fun close() { try { stop() } finally { scope.cancel() } }
     fun keeperStopped(lease: Int) { if (lease == generation && transferring) cancelTransfer() }
     fun toggleFileListCache() {
@@ -99,7 +103,7 @@ class SshFilesController(
             normalized.split('/').any { it in setOf(".", "..") }) { problem("invalid-name"); return }
         mutable.update { old ->
             val history = if (historyIndex == null) (old.history.take(old.historyIndex + 1) + normalized).takeLast(64) else old.history
-            old.copy(path = normalized, entries = emptyList(), connected = false, detailEntry = null, selected = null, preview = SshPreview.None,
+            old.copy(uploadIntent = null, downloadIntent = null, downloadLaunchPending = false, path = normalized, entries = emptyList(), connected = false, detailEntry = null, selected = null, preview = SshPreview.None,
                 selectedPaths = emptySet(), history = history, historyIndex = historyIndex ?: history.lastIndex, pasteIntent = null, adoptIntent = null, detailIntent = null, discardIntent = null)
         }; reload(force = false)
     }
@@ -192,12 +196,15 @@ class SshFilesController(
         val entries = entry?.let(::listOf) ?: selected()
         if (entries.isNotEmpty()) mutable.update { it.copy(deleteTarget = entries.first(), deleteEntries = entries) }
     }
-    fun dismissDelete() = mutable.update { it.copy(deleteTarget = null, deleteEntries = emptyList()) }
+    fun dismissDelete(expected: List<SshFileEntry>) {
+        if (currentWorkspace() && !state.value.busy && state.value.deleteEntries === expected) clearDelete()
+    }
+    private fun clearDelete() = mutable.update { it.copy(deleteTarget = null, deleteEntries = emptyList()) }
     fun delete(expected: List<SshFileEntry>) {
         val snapshot = state.value; val roots = snapshot.deleteEntries
         if (roots !== expected || !currentWorkspace() || snapshot.busy || snapshot.unknown || hasUnsavedText() || cleanupBlocked()) return
         if (roots.isEmpty()) return
-        dismissDelete()
+        clearDelete()
         execute(roots.map(SshFileEntry::path)) { transport, dispatch ->
             val plan = SshFileTransfers(transport).plan(roots, allowLinks = true)
             plan.items.asReversed().forEach { item ->
@@ -233,8 +240,21 @@ class SshFilesController(
             return@execute { old -> result(old).copy(renameTarget = null, renameName = "", nameIntent = null) }
         }
     }
-    fun upload(uris: List<Uri>, tree: Uri? = null) {
-        val directory = state.value.path
+    fun requestUpload(folder: Boolean): SshUploadIntent? {
+        if (!currentWorkspace() || state.value.busy || state.value.unknown || hasUnsavedText() ||
+            state.value.nameIntent != null || state.value.deleteEntries.isNotEmpty() ||
+            state.value.pasteIntent != null || state.value.adoptIntent != null) return null
+        return SshUploadIntent(state.value.path, folder).also { expected -> mutable.update { it.copy(uploadIntent = expected) } }
+    }
+    fun upload(expected: SshUploadIntent, uris: List<Uri> = emptyList(), tree: Uri? = null) {
+        val snapshot = state.value
+        if (!currentWorkspace() || snapshot.busy || snapshot.unknown || snapshot.uploadIntent !== expected ||
+            snapshot.path != expected.directory || hasUnsavedText() || snapshot.nameIntent != null ||
+            snapshot.deleteEntries.isNotEmpty() || snapshot.pasteIntent != null || snapshot.adoptIntent != null) return
+        if (expected.folder && uris.isNotEmpty() || !expected.folder && tree != null) return
+        mutable.update { it.copy(uploadIntent = null) }
+        if (uris.isEmpty() && tree == null) return
+        val directory = expected.directory
         val targets = mutableListOf<String>()
         execute(targets, transfer = TransferProgress(""), uploading = true) { transport, dispatch ->
             val items = if (tree == null) documents.files(uris) else documents.tree(tree)
@@ -264,12 +284,16 @@ class SshFilesController(
         if (!currentWorkspace() || state.value.busy) return
         val entries = entry?.let(::listOf) ?: selected()
         if (entries.isEmpty() || entries.any { it.isSymbolicLink }) { problem("symlink-transfer"); return }
-        mutable.update { it.copy(downloadEntries = entries, downloadTarget = entries.first(), downloadZip = entries.size > 1 || entries.first().isDirectory, downloadLaunchPending = true) }
+        mutable.update { it.copy(downloadIntent = SshDownloadIntent(entries.toList(), entries.size > 1 || entries.first().isDirectory, it.path), downloadLaunchPending = true) }
     }
-    fun downloadLaunchHandled() = mutable.update { it.copy(downloadLaunchPending = false) }
-    fun downloadTo(destination: Uri?) {
-        val snapshot = state.value; val entries = snapshot.downloadEntries
-        mutable.update { it.copy(downloadTarget = null, downloadEntries = emptyList(), downloadLaunchPending = false) }
+    fun downloadLaunchHandled(expected: SshDownloadIntent) {
+        if (state.value.downloadIntent === expected) mutable.update { it.copy(downloadLaunchPending = false) }
+    }
+    fun downloadTo(destination: Uri?, expected: SshDownloadIntent) {
+        val snapshot = state.value
+        if (!currentWorkspace() || snapshot.busy || snapshot.downloadIntent !== expected || snapshot.path != expected.directory) return
+        val entries = expected.entries
+        mutable.update { it.copy(downloadIntent = null, downloadLaunchPending = false) }
         if (destination == null || entries.isEmpty()) return
         execute(transfer = TransferProgress(entries.first().name)) { transport, _ ->
             val plan = SshFileTransfers(transport).plan(entries)
@@ -277,7 +301,7 @@ class SshFilesController(
             transferProgress(epoch, entries.first().name, 0, plan.totalBytes)
             withContext(Dispatchers.IO) {
                 val output = app.contentResolver.openOutputStream(destination) ?: error("source-changed")
-                output.use { if (snapshot.downloadZip) SshFileTransfers(transport).exportZip(entries, it) { name, bytes, total ->
+                output.use { if (expected.zip) SshFileTransfers(transport).exportZip(entries, it) { name, bytes, total ->
                         transferProgress(epoch, name, bytes, total)
                     }
                     else {

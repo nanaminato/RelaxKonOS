@@ -55,7 +55,7 @@ class SshTerminalKeyboardLayoutTest {
         var state by remember { mutableStateOf(initial.copy(sessionId = "first")) }
         SshTerminalContent(hostId, label, state, reconnect, send, resize, close,
             { state = state.copy(draft = it) }, { state = state.copy(concealInput = it) },
-            { state = state.copy(fontSize = it) }, emptyList(), true, {}, {}, {}, modifier, imeInsets)
+            { state = state.copy(fontSize = it) }, emptyList(), true, {}, {}, {}, readState = { state }, modifier = modifier, imeInsets = imeInsets)
     }
 
     private fun show(width: Dp, height: Dp, keyboard: Dp, consumed: Dp = 0.dp, scale: Float = 1f) {
@@ -127,7 +127,10 @@ class SshTerminalKeyboardLayoutTest {
     }
 
     @Test fun systemKeyboardKeepsInputVisibleAndImeSendUsesTheSameTerminal() {
-        rule.runOnUiThread { rule.activity.window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE) }
+        rule.runOnUiThread {
+            androidx.core.view.WindowCompat.setDecorFitsSystemWindows(rule.activity.window, false)
+            rule.activity.window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        }
         val keyboardBottom = AtomicInteger()
         rule.setContent {
             val bottom = WindowInsets.ime.getBottom(LocalDensity.current)
@@ -138,10 +141,34 @@ class SshTerminalKeyboardLayoutTest {
                 }
             }
         }
+        rule.waitUntil(15_000) {
+            var focused = false
+            rule.runOnUiThread { focused = rule.activity.window.decorView.hasWindowFocus() }
+            focused
+        }
         val editor = rule.onNode(hasSetTextAction())
         editor.performClick()
-        rule.waitUntil(10_000) { keyboardBottom.get() > 0 }
+        fun captureKeyboardEvidence() {
+            val instrumentation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+            val bitmap = instrumentation.uiAutomation.takeScreenshot() ?: return
+            val evidence = java.io.File(instrumentation.targetContext.getExternalFilesDir(null), "ssh-terminal-real-keyboard.png")
+            evidence.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
+        }
+        try { rule.waitUntil(30_000) { keyboardBottom.get() > 0 } }
+        catch (error: Throwable) {
+            captureKeyboardEvidence()
+            var platformIme = -1
+            var platformVisible = false
+            rule.runOnUiThread {
+                val insets = androidx.core.view.ViewCompat.getRootWindowInsets(rule.activity.window.decorView)
+                platformIme = insets?.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime())?.bottom ?: -1
+                platformVisible = insets?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) == true
+            }
+            throw AssertionError("IME not visible in time: Compose=${keyboardBottom.get()}, platform=$platformIme, visible=$platformVisible", error)
+        }
         editor.performTextInput("echo 手机输入")
+        captureKeyboardEvidence()
         rule.onNodeWithText("echo 手机输入").assertIsDisplayed()
         editor.assertIsDisplayed().assertHeightIsAtLeast(56.dp)
         val window = rule.onRoot().fetchSemanticsNode().boundsInRoot

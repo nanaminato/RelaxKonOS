@@ -5,6 +5,9 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val componentReview = providers.gradleProperty("relaxkonComponentReview")
+    .map { it.toBooleanStrict() }.getOrElse(false)
+
 val releaseSigningPropertiesPath = providers.gradleProperty("relaxkonSigningProperties").orNull
 val releaseSigningProperties = releaseSigningPropertiesPath?.let { path ->
     val file = file(path)
@@ -57,7 +60,8 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.2.0-v1a"
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = if (componentReview) "app.relaxkonos.mobile.testing.ComponentReviewRunner"
+            else "androidx.test.runner.AndroidJUnitRunner"
     }
 
     androidResources {

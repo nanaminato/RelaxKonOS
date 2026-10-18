@@ -36,6 +36,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
@@ -70,7 +76,7 @@ import app.relaxkonos.mobile.ui.theme.TerminalType
 import app.relaxkonos.mobile.ui.terminal.NativeTerminal
 
 @Composable
-fun SshTerminalScreen(hostId: String, onClose: () -> Unit, modifier: Modifier = Modifier) {
+fun SshTerminalScreen(hostId: String, onClose: () -> Unit, isPageCurrent: () -> Boolean, modifier: Modifier = Modifier) {
     val container = (LocalContext.current.applicationContext as RelaxKonApplication).container
     val target = container.serverCenter.hosts().firstOrNull { it.hostId == hostId }
     val model = container.sshTerminals
@@ -78,12 +84,18 @@ fun SshTerminalScreen(hostId: String, onClose: () -> Unit, modifier: Modifier = 
     LaunchedEffect(hostId) { model.enter(hostId) }
     val state = all.selectedForHost(hostId) ?: SshTerminalUiState(hostId = hostId)
     val sessions = all.sessions.filter { it.hostId == hostId }
+    val workspaceRevision = container.serverCenter.workspaceRevision
+    key(hostId, workspaceRevision) {
     SshTerminalContent(hostId, target?.let { "${it.sshUserName}@${it.sshHost}:${it.sshPort}" },
         state, { model.reconnect(state.sessionId) }, { model.send(state.sessionId, it) },
         { columns, rows -> model.resize(state.sessionId, columns, rows) }, onClose,
         { model.updateDraft(state.sessionId, it) }, { model.concealInput(state.sessionId, it) },
         { model.fontSize(state.sessionId, it) }, sessions, all.sessions.size < SshTerminalSessions.MAX_SESSIONS, model::select,
-        { model.create(hostId) }, model::end, modifier, terminalType = container.appearance.terminalType)
+        { model.create(hostId) }, model::end,
+        readState = { if (isPageCurrent() && container.serverCenter.sshFilesHostId == hostId && container.serverCenter.workspaceRevision == workspaceRevision)
+            model.state.value.selectedForHost(hostId) else null },
+        modifier = modifier, terminalType = container.appearance.terminalType)
+    }
 }
 
 @Composable
@@ -103,48 +115,86 @@ internal fun SshTerminalContent(
     onSelect: (String) -> Unit,
     onNew: () -> Unit,
     onEnd: (String) -> Unit,
+    readState: () -> SshTerminalUiState?,
     modifier: Modifier = Modifier,
     imeInsets: WindowInsets = WindowInsets.ime,
     terminalType: TerminalType = TerminalType.Xterm,
 ) {
     val input = state.draft
     val concealInput = state.concealInput
-    var pasteReview by remember(hostId, state.sessionId) { mutableStateOf<String?>(null) }
+    var pasteReview by remember(hostId, state.sessionId) { mutableStateOf<SshPasteReview?>(null) }
     var ctrlNext by remember(hostId, state.sessionId) { mutableStateOf(false) }
     var altNext by remember(hostId, state.sessionId) { mutableStateOf(false) }
     val fontSize = state.fontSize
-    var menuOpen by remember { mutableStateOf(false) }
-    var endReview by remember { mutableStateOf<String?>(null) }
+    var menuOpen by remember(hostId, state.sessionId) { mutableStateOf(false) }
+    var endReview by remember(hostId, state.sessionId) { mutableStateOf<SshEndReview?>(null) }
     val fontScale = LocalDensity.current.fontScale
+    val liveState by rememberUpdatedState(readState)
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var foreground by remember(lifecycle) { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
+    fun withdraw() { pasteReview = null; endReview = null; menuOpen = false; ctrlNext = false; altNext = false }
+    fun current(owner: SshTerminalReviewOwner, connected: Boolean = false): Boolean {
+        val latest = liveState()
+        return foreground && owner.matches(latest) && (!connected || latest?.connected == true)
+    }
+    DisposableEffect(lifecycle, hostId, state.sessionId) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> foreground = true
+                Lifecycle.Event.ON_PAUSE -> { foreground = false; withdraw() }
+                else -> Unit
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer); foreground = false; withdraw() }
+    }
+    LaunchedEffect(state.sessionId, state.hostId, state.inputRevision, state.draft, state.connected) {
+        pasteReview?.let { if (!current(it.owner, connected = true)) pasteReview = null }
+        endReview?.let { if (!current(it.owner)) endReview = null }
+    }
+
+    fun closePage() { foreground = false; withdraw(); onClose() }
 
     fun sendLine() {
-        if (!state.connected) return
-        if (input.contains('\n') && !ctrlNext && !altNext) pasteReview = input + "\r"
+        val owner = SshTerminalReviewOwner(state)
+        if (!current(owner, connected = true) || pasteReview != null || endReview != null) return
+        val value = sshTerminalLinePayload(input, ctrlNext, altNext)
+        if (sshTerminalNeedsReview(input)) pasteReview = SshPasteReview(owner, value)
         else {
-            val value = if (ctrlNext && input.length == 1) ((input[0].uppercaseChar().code) and 0x1f).toChar().toString()
-                else if (ctrlNext || altNext) input else input + "\r"
-            onSend(if (altNext) "\u001b$value" else value)
+            onSend(value)
             onDraftChange("")
-            ctrlNext = false
-            altNext = false
+            ctrlNext = false; altNext = false
         }
     }
 
-    if (pasteReview != null) AlertDialog(
-        onDismissRequest = { pasteReview = null },
+    pasteReview?.let { expected -> AlertDialog(
+        onDismissRequest = { if (pasteReview === expected) pasteReview = null },
         title = { Text(stringResource(R.string.terminal_paste_title)) },
-        text = { SelectionContainer { Text(pasteReview.orEmpty().take(2000)) } },
-        confirmButton = { TextButton(enabled = state.connected, onClick = { onSend(pasteReview.orEmpty()); onDraftChange(""); pasteReview = null }) {
-            Text(stringResource(R.string.terminal_send)) } },
-        dismissButton = { TextButton(onClick = { pasteReview = null }) { Text(stringResource(R.string.common_cancel)) } },
-    )
+        text = { Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
+            SelectionContainer { Text(expected.payload) }
+        } },
+        confirmButton = { TextButton(enabled = state.connected, onClick = {
+            if (pasteReview === expected && current(expected.owner, connected = true)) {
+                pasteReview = null
+                ctrlNext = false; altNext = false
+                onSend(expected.payload); onDraftChange("")
+            }
+        }) { Text(stringResource(R.string.terminal_send)) } },
+        dismissButton = { TextButton(onClick = { if (pasteReview === expected) pasteReview = null }) { Text(stringResource(R.string.common_cancel)) } },
+    ) }
 
-    endReview?.let { id -> AlertDialog(
-        onDismissRequest = { endReview = null },
+    endReview?.let { expected -> AlertDialog(
+        onDismissRequest = { if (endReview === expected) endReview = null },
         title = { Text(stringResource(R.string.terminal_close)) },
-        text = { Text(stringResource(R.string.terminal_close_confirm, stringResource(R.string.terminal_session_name, sessions.indexOfFirst { it.sessionId == id } + 1))) },
-        confirmButton = { TextButton(onClick = { onEnd(id); endReview = null }) { Text(stringResource(R.string.terminal_close)) } },
-        dismissButton = { TextButton(onClick = { endReview = null }) { Text(stringResource(R.string.common_cancel)) } },
+        text = { Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
+            Text(stringResource(R.string.terminal_close_confirm, stringResource(R.string.terminal_session_name, expected.number)))
+            Text(expected.hostLabel)
+            Text(expected.owner.sessionId)
+        } },
+        confirmButton = { TextButton(onClick = {
+            if (endReview === expected && current(expected.owner)) { endReview = null; onEnd(expected.owner.sessionId) }
+        }) { Text(stringResource(R.string.terminal_close)) } },
+        dismissButton = { TextButton(onClick = { if (endReview === expected) endReview = null }) { Text(stringResource(R.string.common_cancel)) } },
     ) }
 
     val actions: @Composable () -> Unit = {
@@ -161,14 +211,19 @@ internal fun SshTerminalContent(
                         onClick = { menuOpen = false; onSelect(session.sessionId) })
                 }
                 if (state.sessionId.isNotEmpty()) DropdownMenuItem(text = { Text(stringResource(R.string.terminal_close)) },
-                    onClick = { menuOpen = false; endReview = state.sessionId })
+                    onClick = {
+                        menuOpen = false
+                        val owner = SshTerminalReviewOwner(state)
+                        if (current(owner) && endReview == null && pasteReview == null)
+                            endReview = SshEndReview(owner, sessions.indexOfFirst { it.sessionId == state.sessionId } + 1, hostLabel ?: hostId)
+                    })
             }
         }
     }
 
     TerminalScreenLayout(modifier = modifier, imeInsets = imeInsets, header = { compact, wide ->
         if (compact) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onClose) {
+            IconButton(onClick = ::closePage) {
                 DesktopIcon(DesktopIcons.back, size = 22.dp, contentDescription = stringResource(R.string.common_back))
             }
             Text(hostLabel ?: stringResource(R.string.ssh_terminal_title), modifier = Modifier.weight(1f),
@@ -177,7 +232,7 @@ internal fun SshTerminalContent(
         } else ScreenHeader(
             title = stringResource(R.string.ssh_terminal_title),
             subtitle = hostLabel,
-            onBack = onClose,
+            onBack = ::closePage,
         )
         if (!compact || !state.connected) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Text(

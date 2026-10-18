@@ -454,3 +454,32 @@ SFTP 名称编辑的 `SshFilesControllerTest` 还须检查连接失败保留新�
 SFTP 确认归属的 `SshFilesControllerTest` 检查复制/移动只执行一次且使用确认目录、重复制相同条目或切换目录后原确认/取消失效、相同内容的新核实列表必须重新确认、暂停后须重新读取，以及不完整核实不能采用事实。生产 `SshFileApprovals` 通过实际确认按钮检查来源路径可见，重开确认后投递原确认/取消节点不影响新目标或新核实列表。后台传输完成后，隐藏页的原按钮也不得新开读取或粘贴；恢复前台后才允许新的确认。传输保活用隔离回调记录，不能据此判定真实前台服务与复制移动、权限、网络中断、进程回收整链路已通过。
 
 SFTP 文本详情的 `SshFilesControllerTest` 检查源文件预检失败保留正文及一次显式重试、BOM/换行字节保存、未保存正文不被文件/目录/文件变更操作覆盖、暂停和另一详情打开后的旧输入/保存/返回失效、放弃确认冻结及一次消费。非法 UTF-8 和短读不得出现编辑正文；保存后核验失败保留只读草稿且不重发。生产 `SshFileDetailPane` 与 `SshFileDiscardConfirmation` 实际捕获保存/放弃/取消节点，重开确认和切换文件后旧节点不得写入或关闭新正文；未知状态下实际字段和保存均禁用。隔离文件字节与回调不能替代真实 SFTP 写入、编码来源、网络未知、图片、旋转与全视觉矩阵验收。
+
+SFTP 下载归属回归须验证旧取消和旧 URI 不消费新意图、旧已发起回调不撤下新待启动标记、选择器暂停后恢复可取消、切目录和切工作区使旧意图失效。控制器隔离回归不能代替真实系统选择器、旋转、云盘目标及远端下载完整验证。
+
+SFTP 上传归属检查覆盖旧 URI/取消不消费新意图、文件与文件夹类型不串用、暂停恢复、目录/工作区变化以及未保存正文和编辑期间的门禁。真实文档读取回归在设备 MediaStore 中创建独立临时文件，通过生产 ContentResolver 查询与读取，核对冻结目录、字节内容和一次消费，并清理临时文件；SSH 传输在该回归中为隔离实现，不能作为真实 SSH 写入、系统选择器或前台服务验收。
+
+冷启动验收须区分未人为预编译的安装后首次启动、普通进程重启和热启动，记录到可交互首帧的时间并核对启动 ANR。为运行功能回归而预编译调试 APK，不证明冷启动性能通过。真实输入事件与键盘动画期间须核对最终文本完整性，不能用直接设置语义文本代替快速输入、粘贴或键盘返回场景。
+
+SSH 终端确认检查覆盖 CR、LF、CRLF 与 Ctrl/Alt 组合、完整长文本滚动、确认一次消费、旧确认/取消节点、同帧草稿或会话变化、断线重连、切走再切回和冻结 Compose 后暂停/恢复。普通终端输出不得撤销确认。生产内容组件的隔离输入/关闭回调只证明页面门禁，不证明真实 SSH 终端、PTY 写入与网络故障恢复通过。
+
+真实 IME 组件验收须等待 Activity 窗口取得焦点，并让 Compose 接收完整窗口 Insets；不能把系统已提前消费的边距与 Compose 的布局预算混用。带硬件键盘的模拟器需显式允许软键盘显示，并在验收后恢复原系统设置。等待键盘首帧须有界，同时核对真实屏幕、平台可见性/高度及 Compose 边距，只有编辑区可见且 IME 发送仍归属原会话才能通过。
+
+设备测试使用 `tools/Run-Instrumentation.ps1` 运行已安装的测试 APK。脚本必须同时看到正数 JUnit 完成数量、`OK` 和正常 instrumentation 终态，且实际数量与 `-ExpectedTests` 一致；失败、崩溃、忽略/假设跳过、零用例或不完整输出均返回失败。ADB 退出码 0 本身不代表测试通过。脚本不安装或编译 APK，运行前须单独核对最终构建与安装版本。
+
+```powershell
+pwsh -NoProfile -File tools/Run-Instrumentation.ps1 `
+  -Classes app.relaxkonos.mobile.ui.servercenter.SshTerminalReviewFlowTest `
+  -ExpectedTests 5
+pwsh -NoProfile -File tools/Run-Instrumentation.ps1 `
+  -Classes app.relaxkonos.mobile.ui.terminal.SshTerminalKeyboardLayoutTest#systemKeyboardKeepsInputVisibleAndImeSendUsesTheSameTerminal `
+  -ExpectedTests 1 -ShowSoftwareKeyboard
+```
+
+`-Device` 指定 ADB 序列号，`-AdbPath` 指定可执行文件。`-ShowSoftwareKeyboard` 在成功和失败后均恢复并回读原设置，恢复不成功同样失败；这不替代键盘可见性、窗口焦点与实际布局检查。需要字节码预验证或 AOT 时须检查命令正文的 `Success`，不能仅依赖 ADB 退出码，更不能把预编译视为冷启动验收。
+
+SFTP 删除确认须覆盖同名不同路径、长路径与多项完整展示，以及捕获旧取消后换目标/重开相同目标不能撤下新确认。`SshFilesControllerTest.staleDeleteCancellationCannotDismissReplacementOrReopenedIdenticalTarget` 使用生产删除组件核对控制器归属门禁；`SshFileDeleteConfirmationTest` 检查完整路径、滚动和暂停回调。新增用例编译成功不等于设备验收通过。
+
+已隔离网络/服务依赖的模型与 Compose 组件回归可使用显式组件宿主构建：`gradle :app:assembleDebugAndroidTest -PrelaxkonComponentReview=true`，安装匹配的当前应用与测试 APK，再给运行脚本传入 `-Runner app.relaxkonos.mobile.testing.ComponentReviewRunner`。该 runner 使用标准 Android `Application`，不初始化全局 `AppContainer`；依赖容器、认证、前台服务、生产入口或真实远端链路的场景须使用默认完整应用宿主。组件宿主不能证明应用冷启动或完整业务通过，也不能通过它运行要求生产容器的页面。
+
+默认不传 `relaxkonComponentReview`（或显式 `false`）生成 `androidx.test.runner.AndroidJUnitRunner` 的完整应用测试 APK；构建后须检查实际生成的 instrumentation 清单再选择 `-Runner`。切换宿主须重建并安装对应测试 APK，脚本不会自动改选 runner。

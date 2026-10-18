@@ -41,4 +41,16 @@ class SshFileDeleteConfirmationTest {
             rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
         } finally { rule.mainClock.autoAdvance = true }
     }
+    @Test fun everyFullPathIsAvailableEvenWhenNamesMatchAndPathsAreLong() {
+        val prefix = "/long-directory".repeat(30)
+        val paths = listOf("$prefix/first/shared.txt", "$prefix/second/shared.txt")
+        pending.value = paths.map { SshFileEntry(it, "shared.txt", false, false, 1) }
+        show()
+        paths.forEach { rule.onNodeWithText(it).assertExists() }
+        val scroll = rule.onNode(hasScrollAction() and hasAnyAncestor(isDialog()))
+        scroll.performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, 100_000f) }
+        val range = scroll.fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange]
+        rule.runOnIdle { assertTrue(range.maxValue() > 0f); assertEquals(range.maxValue(), range.value(), 1f); assertTrue(sent.isEmpty()) }
+    }
+
 }

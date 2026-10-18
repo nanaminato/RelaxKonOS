@@ -74,7 +74,7 @@ class SshTerminalSessionsLayoutTest {
                                 { c, r -> manager.resize(state.sessionId, c, r) }, {},
                                 { manager.updateDraft(state.sessionId, it) }, { manager.concealInput(state.sessionId, it) },
                                 { manager.fontSize(state.sessionId, it) }, all.sessions, true, manager::select,
-                                { manager.create("host") }, manager::end, imeInsets = WindowInsets(0, 0, 0, 0))
+                                { manager.create("host") }, manager::end, readState = { manager.state.value.selectedForHost("host") }, imeInsets = WindowInsets(0, 0, 0, 0))
                         }
                     }
                 }
@@ -102,7 +102,7 @@ class SshTerminalSessionsLayoutTest {
                 assertTrue(shells.first().writes.isEmpty())
                 assertEquals(listOf("second command\r"), shells.last().writes)
             }
-            rule.onNodeWithText(first.take(8), substring = true).performClick()
+            rule.onNodeWithText(context.getString(R.string.terminal_session_name, 1), substring = true).performClick()
             rule.onNodeWithText("first draft").assertIsDisplayed()
             rule.onNodeWithContentDescription(context.getString(R.string.terminal_session_actions)).performClick()
             val end = context.getString(R.string.terminal_close)

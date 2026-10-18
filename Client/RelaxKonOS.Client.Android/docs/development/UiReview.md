@@ -45,7 +45,7 @@
 | 界面入口 | 状态 |
 | --- | --- |
 | connect/ConnectionListScreen.kt | 已深审确认生命周期、最新身份与凭据校验及重复提交并修复，13项模拟器确认/失败重试/长列表与长名称回归通过；真实凭据存储/视觉全矩阵待验收 |
-| connect/LoginScreen.kt | 源码初审完成，待完整场景验收 |
+| connect/LoginScreen.kt | 生产入口复用测试账号保存凭据登录通过；冷启动性能、输入事件及完整场景待验收 |
 | connect/OwnerDevicePairingScreen.kt | 邀请确认冻结/一次消费、暂停和返回门禁、扫描归属已修复；3项扫描模型及6项生产页面内容模拟器回归通过，中文浅色生产入口与布局已核对；真实扫码/图片权限/Windows配对和完整视觉矩阵待验收 |
 | files/FilesScreen.kt | 目录系统返回已修复，组件及真实 /home 返回真机通过，完整场景待验收 |
 | home/HomeScreen.kt | 会话归属/取消忙碌/失败旧样本已修复，四项模型与三项完整页面设备回归通过，视觉及完整场景待验收 |
@@ -81,10 +81,10 @@
 | more/ServerInformationScreen.kt | 源码初审完成，待完整场景验收 |
 | servercenter/ServerCenterScreen.kt | 已修复；登录、SSH 读取及会话复用真机通过，错误矩阵待验收 |
 | servercenter/ServerMaintenanceScreen.kt | 源码初审完成，待完整场景验收 |
-| servercenter/SshFilesScreen.kt | 已修复工作区请求前校验、取消/关闭异常收尾、跨控制器清理责任、暂停/删除目标绑定、名称/文本草稿恢复、详情/放弃身份、严格UTF-8与完整读取、粘贴/采用事实一次确认与前台资格；37项隔离控制器/生产编辑与确认组件模拟器回归通过；真实SFTP传输/故障及完整视觉矩阵待验收 |
+| servercenter/SshFilesScreen.kt | 已修复工作区请求前校验、取消/关闭异常收尾、跨控制器清理责任、暂停/删除目标绑定、名称/文本草稿恢复、详情/放弃身份、严格UTF-8与完整读取、粘贴/采用事实一次确认与前台资格、上传/下载选择器意图归属；上传下载6项定向回归（含真实文档URI读取）通过，既有39项隔离控制器/生产编辑与确认组件模拟器回归通过；真实文件选择器取消、临时目录创建/上传/下载回读SHA-256一致及删除清理通过；文件夹选择器/故障/后台传输与完整视觉矩阵待验收 |
 | servercenter/SshForwardsScreen.kt | 测试请求前归属/断线门禁、执行前取消忙碌、编辑入口绑定与实时草稿门禁已修复；17项转发模型及11项编辑/生命周期/清理提示模拟器回归通过；真实监听/前台服务/网络故障及完整视觉矩阵待验收 |
 | servercenter/SshSystemScreen.kt | 主机切换忙碌门禁、指纹确认及失败恢复组件真机通过，完整场景待验收 |
-| servercenter/SshTerminalScreen.kt | 源码初审完成，待完整场景验收 |
+| servercenter/SshTerminalScreen.kt | 多行输入/关闭确认冻结、一次消费、即时会话与输入修订校验、暂停/离页/新工作区隔离及完整滚动预览已实现；相关模型回归与5项确认组件模拟器回归通过；最终APK组合复测、真实IME/PTY/故障、原始VT输出容量及完整视觉矩阵待验收 |
 | servercenter/SshWorkspaceScreen.kt | 源码初审完成，待完整场景验收 |
 | terminal/ServerTerminalScreen.kt | 源码初审完成，待完整场景验收 |
 

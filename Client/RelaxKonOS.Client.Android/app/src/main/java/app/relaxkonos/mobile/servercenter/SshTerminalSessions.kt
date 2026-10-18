@@ -26,6 +26,7 @@ data class SshTerminalUiState(
     val draft: String = "",
     val concealInput: Boolean = false,
     val fontSize: Int = 13,
+    val inputRevision: Long = 0,
 )
 
 data class SshTerminalSessionsState(
@@ -90,10 +91,13 @@ class SshTerminalSessions(
 
     fun select(id: String) {
         val session = find(id) ?: return
-        mutableState.value = mutableState.value.copy(selected = mutableState.value.selected + (session.hostId to id))
+        val previous = mutableState.value
+        if (previous.selected[session.hostId] == id) return
+        mutableState.value = previous.copy(selected = previous.selected + (session.hostId to id),
+            sessions = previous.sessions.map { if (it.sessionId == id) it.copy(inputRevision = it.inputRevision + 1) else it })
     }
 
-    fun updateDraft(id: String, value: String) { update(id) { it.copy(draft = value) } }
+    fun updateDraft(id: String, value: String) { update(id) { if (it.draft == value) it else it.copy(draft = value, inputRevision = it.inputRevision + 1) } }
     fun concealInput(id: String, value: Boolean) { update(id) { it.copy(concealInput = value) } }
     fun fontSize(id: String, value: Int) { update(id) { it.copy(fontSize = value.coerceIn(9, 24)) } }
 
@@ -103,7 +107,7 @@ class SshTerminalSessions(
         stopRuntime(id)
         val runtime = Runtime(scope)
         runtimes[id] = runtime
-        update(id) { it.copy(connecting = true, connected = false, problem = false, output = "", transcript = "") }
+        update(id) { it.copy(connecting = true, connected = false, problem = false, output = "", transcript = "", inputRevision = it.inputRevision + 1) }
         runtime.scope.launch {
             try {
                 val connection = connector.connect(session.hostId)
@@ -159,11 +163,14 @@ class SshTerminalSessions(
         val session = find(id) ?: return
         stopRuntime(id)
         val previous = mutableState.value
-        val remaining = previous.sessions.filterNot { it.sessionId == id }
+        var remaining = previous.sessions.filterNot { it.sessionId == id }
         val selected = previous.selected.toMutableMap()
         if (selected[session.hostId] == id) {
             val next = remaining.firstOrNull { it.hostId == session.hostId }
-            if (next == null) selected.remove(session.hostId) else selected[session.hostId] = next.sessionId
+            if (next == null) selected.remove(session.hostId) else {
+                selected[session.hostId] = next.sessionId
+                remaining = remaining.map { if (it.sessionId == next.sessionId) it.copy(inputRevision = it.inputRevision + 1) else it }
+            }
         }
         mutableState.value = previous.copy(sessions = remaining, selected = selected)
     }

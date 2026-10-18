@@ -108,10 +108,9 @@ data class SshFilesUiState(
     val deleteEntries: List<SshFileEntry> = emptyList(),
     val renameTarget: SshFileEntry? = null,
     val renameName: String = "",
-    val downloadTarget: SshFileEntry? = null,
+    val uploadIntent: SshUploadIntent? = null,
+    val downloadIntent: SshDownloadIntent? = null,
     val downloadLaunchPending: Boolean = false,
-    val downloadEntries: List<SshFileEntry> = emptyList(),
-    val downloadZip: Boolean = false,
     val selecting: Boolean = false,
     val selectedPaths: Set<String> = emptySet(),
     val clipboard: SshClipboard? = null,
@@ -137,6 +136,8 @@ data class SshFilesUiState(
             .sortedWith(compareByDescending<SshFileEntry> { it.isDirectory && !it.isSymbolicLink }.then(if (descending) comparator.reversed() else comparator))
     }
 }
+private data class SshUploadSelection(val intent: SshUploadIntent, val uris: List<Uri> = emptyList(), val tree: Uri? = null)
+
 enum class SshFileSort { Name, Modified, Type, Size }
 
 sealed interface SshPreview {
@@ -167,9 +168,10 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
     val state by model.state.collectAsStateWithLifecycle()
     val detailIntent = state.detailIntent
     BackHandler(enabled = state.detailEntry != null) { detailIntent?.let(model::closeDetail) }
-    var pendingUpload by remember(hostId, workspaceRevision) { mutableStateOf<List<Uri>>(emptyList()) }
-    var pendingTree by remember(hostId, workspaceRevision) { mutableStateOf<Uri?>(null) }
-    var pendingDownload by remember(hostId, workspaceRevision) { mutableStateOf<Pair<Boolean, Uri?>?>(null) }
+    var pendingUpload by remember(hostId, workspaceRevision) { mutableStateOf<SshUploadSelection?>(null) }
+    var launchedUpload by remember(hostId, workspaceRevision) { mutableStateOf<SshUploadIntent?>(null) }
+    var pendingDownload by remember(hostId, workspaceRevision) { mutableStateOf<Pair<SshDownloadIntent, Uri?>?>(null) }
+    var launchedDownload by remember(hostId, workspaceRevision) { mutableStateOf<SshDownloadIntent?>(null) }
     var showTransferHelp by remember(hostId) { mutableStateOf(false) }
     var editAddress by remember(hostId) { mutableStateOf(false) }
     val fileListState = rememberLazyListState()
@@ -177,21 +179,26 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
     var showSearch by remember(hostId) { mutableStateOf(false) }
     var showSort by remember(hostId) { mutableStateOf(false) }
     var fileActions by remember(hostId) { mutableStateOf(false) }
-    val pickUpload = rememberLauncherForActivityResult(rememberUsageOpenMultipleDocuments("SshFilesScreen.upload-files.$hostId")) { uris -> pendingUpload = uris }
-    val pickTree = rememberLauncherForActivityResult(rememberUsageOpenDocumentTree("SshFilesScreen.upload-folder.$hostId")) { uri -> pendingTree = uri }
-    val saveDownload = rememberLauncherForActivityResult(rememberUsageCreateDocument("application/octet-stream", "SshFilesScreen.download.$hostId")) { uri -> pendingDownload = true to uri }
-    LaunchedEffect(resumed, pendingUpload, pendingTree, pendingDownload, state.busy, state.hostId) {
+    val pickUpload = rememberLauncherForActivityResult(rememberUsageOpenMultipleDocuments("SshFilesScreen.upload-files.$hostId")) { uris ->
+        launchedUpload?.takeUnless { it.folder }?.let { pendingUpload = SshUploadSelection(it, uris); launchedUpload = null }
+    }
+    val pickTree = rememberLauncherForActivityResult(rememberUsageOpenDocumentTree("SshFilesScreen.upload-folder.$hostId")) { uri ->
+        launchedUpload?.takeIf { it.folder }?.let { pendingUpload = SshUploadSelection(it, tree = uri); launchedUpload = null }
+    }
+    val saveDownload = rememberLauncherForActivityResult(rememberUsageCreateDocument("application/octet-stream", "SshFilesScreen.download.$hostId")) { uri -> launchedDownload?.let { pendingDownload = it to uri }; launchedDownload = null }
+    LaunchedEffect(resumed, pendingUpload, pendingDownload, state.busy, state.hostId) {
         if (resumed && !model.state.value.busy && state.hostId == hostId && container.serverCenter.sshFilesHostId == hostId) {
-            if (pendingUpload.isNotEmpty()) { model.upload(pendingUpload); pendingUpload = emptyList() }
-            pendingTree?.let { model.upload(emptyList(), it); pendingTree = null }
-            pendingDownload?.let { model.downloadTo(it.second); pendingDownload = null }
+            pendingUpload?.let { model.upload(it.intent, it.uris, it.tree); pendingUpload = null }
+            pendingDownload?.let { model.downloadTo(it.second, it.first); pendingDownload = null }
         }
     }
-    LaunchedEffect(state.downloadLaunchPending) {
-        val target = state.downloadTarget
-        if (state.downloadLaunchPending && target != null) {
-            model.downloadLaunchHandled()
-            saveDownload.launch(if (state.downloadZip) target.name + ".zip" else target.name)
+    LaunchedEffect(resumed, state.downloadLaunchPending, state.downloadIntent, launchedDownload, pendingDownload) {
+        val expected = state.downloadIntent
+        if (resumed && state.downloadLaunchPending && expected != null && launchedDownload == null && pendingDownload == null) {
+            launchedDownload = expected
+            model.downloadLaunchHandled(expected)
+            val target = expected.entries.first()
+            saveDownload.launch(if (expected.zip) target.name + ".zip" else target.name)
         }
     }
     Column(modifier.fillMaxSize()
@@ -275,8 +282,13 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
                     androidx.compose.foundation.layout.Box {
                         TextButton(onClick = { fileActions = true }, enabled = !state.busy) { Text(stringResource(R.string.files_actions)) }
                         DropdownMenu(expanded = fileActions, onDismissRequest = { fileActions = false }) {
-                            DropdownMenuItem(text = { Text(stringResource(R.string.ssh_files_upload)) }, enabled = !state.unknown,
-                                onClick = { fileActions = false; pickUpload.launch(arrayOf("*/*")) })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.ssh_files_upload)) }, enabled = !state.unknown && launchedUpload == null && pendingUpload == null,
+                                onClick = {
+                                    fileActions = false
+                                    if (launchedUpload == null && pendingUpload == null) model.requestUpload(folder = false)?.let {
+                                        launchedUpload = it; pickUpload.launch(arrayOf("*/*"))
+                                    }
+                                })
                             DropdownMenuItem(text = { Text(stringResource(R.string.files_cache_enabled) + if (state.cacheEnabled) " ✓" else "") },
                                 onClick = { model.toggleFileListCache(); fileActions = false })
                             DropdownMenuItem(text = { Text(stringResource(R.string.ssh_files_sort)) },
@@ -287,8 +299,13 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
                                 onClick = { fileActions = false; model.forwardDirectory() })
                             DropdownMenuItem(text = { Text(stringResource(R.string.ssh_files_new_folder)) }, enabled = !state.unknown,
                                 onClick = { fileActions = false; model.beginCreateDirectory() })
-                            DropdownMenuItem(text = { Text(stringResource(R.string.ssh_files_upload_folder)) }, enabled = !state.unknown,
-                                onClick = { fileActions = false; pickTree.launch(null) })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.ssh_files_upload_folder)) }, enabled = !state.unknown && launchedUpload == null && pendingUpload == null,
+                                onClick = {
+                                    fileActions = false
+                                    if (launchedUpload == null && pendingUpload == null) model.requestUpload(folder = true)?.let {
+                                        launchedUpload = it; pickTree.launch(null)
+                                    }
+                                })
                         }
                     }
                 }
@@ -472,14 +489,16 @@ private class SshDeleteConfirmationIdentity(private val entries: List<SshFileEnt
 
 @Composable
 internal fun SshFileDeleteConfirmation(entries: List<SshFileEntry>, busy: Boolean,
-    onDelete: (List<SshFileEntry>) -> Unit, onDismiss: () -> Unit) {
+    onDelete: (List<SshFileEntry>) -> Unit, onDismiss: (List<SshFileEntry>) -> Unit) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     key(SshDeleteConfirmationIdentity(entries)) {
     ConfirmDangerousDialog(stringResource(R.string.ssh_files_delete),
         if (entries.size == 1) stringResource(R.string.ssh_files_delete_note, entries.single().name)
         else stringResource(R.string.ssh_files_delete_many_note, entries.size),
         stringResource(R.string.ssh_files_delete),
-        { if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) onDelete(entries) }, onDismiss, busy)
+        { if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) onDelete(entries) },
+        { if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) onDismiss(entries) }, busy,
+        extraContent = { entries.forEach { Text(it.path) } })
     }
 }
 

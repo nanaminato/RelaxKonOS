@@ -181,4 +181,24 @@ class SshTerminalSessionsTest {
         assertTrue(manager.state.value.sessions.isEmpty())
     }
 
+    @Test fun `input revision invalidates review after edit switch and reconnect even with identical draft`() = runTest {
+        val h = Harness(this)
+        val first = h.manager.create("host-a")!!; runCurrent()
+        h.manager.updateDraft(first, "same\ncommand")
+        val initial = h.manager.state.value.selectedForHost("host-a")!!
+        h.manager.updateDraft(first, "changed"); h.manager.updateDraft(first, initial.draft)
+        val edited = h.manager.state.value.selectedForHost("host-a")!!
+        assertEquals(initial.draft, edited.draft); assertTrue(edited.inputRevision > initial.inputRevision)
+        val second = h.manager.create("host-a")!!; runCurrent()
+        h.manager.select(first)
+        val returned = h.manager.state.value.selectedForHost("host-a")!!
+        assertTrue(returned.inputRevision > edited.inputRevision)
+        h.shells.first().second.output.close(); runCurrent()
+        h.manager.reconnect(first); runCurrent()
+        val connected = h.manager.state.value.selectedForHost("host-a")!!
+        assertTrue(connected.connected); assertTrue(connected.inputRevision > returned.inputRevision)
+        h.manager.select(second); h.manager.end(second)
+        assertTrue(h.manager.state.value.selectedForHost("host-a")!!.inputRevision > connected.inputRevision)
+    }
+
 }
