@@ -318,7 +318,7 @@
     "proxy_server.runtime.uninstall_title": "卸载运行时",
     "proxy_server.runtime.uninstall_keep": "卸载并保留数据",
     "proxy_server.runtime.uninstall_delete": "卸载并删除数据",
-    "proxy_server.runtime.uninstall_scope": "卸载会停止并移除本机已登记的服务与程序文件；默认保留已发布配置与凭据，重新安装后可继续使用。选择删除数据会同时删除配置及其保留副本，此操作不可恢复。本运行时未创建自有防火墙规则。",
+    "proxy_server.runtime.uninstall_scope": "卸载会停止并移除本机已登记的服务与程序文件；默认保留已发布配置与凭据，重新安装后可继续使用。选择删除数据会同时删除配置及其保留副本，此操作不可恢复。证书与私钥由服务器中心的证书库维护，本运行时根目录只保存已发布配置，卸载不会删除证书或私钥。本运行时未创建自有防火墙规则。",
     "proxy_server.runtime.uninstall_title_confirm": "卸载运行时",
     "proxy_server.runtime.uninstall_warning": "服务将停止，程序文件会被删除；配置与凭据保留，可重新安装继续使用。确定继续？",
     "proxy_server.runtime.uninstall_delete_title": "卸载并删除数据",

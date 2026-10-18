@@ -318,7 +318,7 @@
     "proxy_server.runtime.uninstall_title": "Uninstall the runtime",
     "proxy_server.runtime.uninstall_keep": "Uninstall and keep data",
     "proxy_server.runtime.uninstall_delete": "Uninstall and delete data",
-    "proxy_server.runtime.uninstall_scope": "Uninstalling stops and removes the service registration and program files this host owns. The published configuration and credentials are kept by default and remain usable after a reinstall. Deleting data also removes the configuration and its retained copy; that cannot be undone. This runtime creates no firewall rules of its own.",
+    "proxy_server.runtime.uninstall_scope": "Uninstalling stops and removes the service registration and program files this host owns. The published configuration and credentials are kept by default and remain usable after a reinstall. Deleting data also removes the configuration and its retained copy; that cannot be undone. Certificates and private keys belong to the server-center certificate store and the runtime root only holds the published configuration, so removal never deletes them. This runtime creates no firewall rules of its own.",
     "proxy_server.runtime.uninstall_title_confirm": "Uninstall the runtime",
     "proxy_server.runtime.uninstall_warning": "The service stops and program files are deleted. Configuration and credentials are kept for a later reinstall. Continue?",
     "proxy_server.runtime.uninstall_delete_title": "Uninstall and delete data",

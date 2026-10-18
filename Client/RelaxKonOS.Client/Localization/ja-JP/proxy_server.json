@@ -318,7 +318,7 @@
     "proxy_server.runtime.uninstall_title": "ランタイムをアンインストール",
     "proxy_server.runtime.uninstall_keep": "アンインストールしてデータを保持",
     "proxy_server.runtime.uninstall_delete": "アンインストールしてデータを削除",
-    "proxy_server.runtime.uninstall_scope": "アンインストールはホストが所有するサービスの登録とプログラムを停止・削除します。公開済み設定と認証情報は既定で保持され、再インストール後に利用できます。データ削除を選ぶと設定と保持コピーも削除され、元に戻せません。このランタイムは独自のファイアウォール規則を作成しません。",
+    "proxy_server.runtime.uninstall_scope": "アンインストールすると、このホストが所有するサービス登録とプログラムファイルを停止・削除します。公開済み構成と認証情報は既定で保持され、再インストール後も使用できます。データ削除を選ぶと構成とその保持コピーも削除され、元に戻せません。証明書と秘密鍵はサーバーセンターの証明書ストアで管理され、ランタイムのルートには公開済み構成のみを保存するため、アンインストールで削除されることはありません。このランタイムは独自のファイアウォール規則を作成しません。",
     "proxy_server.runtime.uninstall_title_confirm": "ランタイムをアンインストール",
     "proxy_server.runtime.uninstall_warning": "サービスは停止し、プログラムは削除されます。設定と認証情報は保持され、再インストールで利用できます。続行しますか。",
     "proxy_server.runtime.uninstall_delete_title": "アンインストールしてデータを削除",
