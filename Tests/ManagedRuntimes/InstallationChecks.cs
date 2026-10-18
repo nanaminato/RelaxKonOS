@@ -45,6 +45,11 @@ internal static class InstallationChecks
             try { action(); throw new Exception("Installation unexpectedly accepted: " + code); }
             catch (InstallationException ex) when (ex.ProblemCode == code) { count++; }
         }
+        async Task RejectAsync(string code, Func<Task> action)
+        {
+            try { await action(); throw new Exception("Installation unexpectedly accepted: " + code); }
+            catch (InstallationException ex) when (ex.ProblemCode == code) { count++; }
+        }
         var root = Path.Combine(Path.GetTempPath(), "relaxkonos-runtime-installation-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         try
@@ -62,6 +67,7 @@ internal static class InstallationChecks
             var finish = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var executeCalls = 0;
             var recoveryCalls = 0;
+            var cancelRequests = 0;
             var busy = 0;
             RuntimeAuthorizationChannel? observedChannel = null;
             var snapshot = new RuntimeInstallationSnapshot(installation, null, null, null, null, null, null);
@@ -78,6 +84,9 @@ internal static class InstallationChecks
                         entered.TrySetResult(request.OperationId!.Value);
                         await finish.Task;
                         return Json(new RuntimeSwitchResult(request.OperationId!.Value, RuntimeSwitchOutcome.Succeeded, null));
+                    case PrivilegedOperationKind.SingBoxRuntimeCancel:
+                        cancelRequests++;
+                        return Json(new RuntimeCancelRequestResult(request.RuntimeLifecycle!.CancelOperationId!.Value, true));
                     case PrivilegedOperationKind.SingBoxRuntimeQuery: return Json(snapshot);
                     case PrivilegedOperationKind.SingBoxRuntimeRecover:
                         recoveryCalls++;
@@ -108,7 +117,14 @@ internal static class InstallationChecks
             Reject(InstallationProblemCodes.IdempotencyConflict, () => coordinator.Start(domain.Id, InstallationOperationKind.Install,
                 Options(input with { Plan = plan with { Release = release with { Artifact = artifact with { Sha256 = new string('c', 64) } } } }), "actor", "install-fixture"));
             Reject(InstallationProblemCodes.ResourceConflict, () => coordinator.Start(domain.Id, InstallationOperationKind.Install, Options(input), "another-actor", "install-fixture"));
-            Reject(InstallationProblemCodes.NotCancellable, () => coordinator.Cancel(job.OperationId));
+            // The root transaction outlives the worker token, so the coordinator records the request instead of
+            // publishing a cancellation the Host never performed.
+            var accepted = await coordinator.CancelAsync(job.OperationId, default);
+            Check(!accepted.Cancellable && cancelRequests == 1,
+                "A runtime cancellation is delivered to the Host instead of aborting the local worker");
+            Check(coordinator.Get(job.OperationId)!.Operation.State == InstallationOperationState.Running,
+                "Only the root transaction may acknowledge a cancellation, so the ledger stays Running");
+            await RejectAsync(InstallationProblemCodes.NotCancellable, () => coordinator.CancelAsync(job.OperationId, default));
             finish.SetResult();
             await UntilAsync(() => !InstallationOperationStore.Active(coordinator.Get(job.OperationId)!.Operation));
             Check(coordinator.Get(job.OperationId)!.Operation.State == InstallationOperationState.Succeeded, "Job success requires a matching Helper receipt");
@@ -136,6 +152,28 @@ internal static class InstallationChecks
             busy = 2;
             Check((await domain.RecoverAsync(coordinator.Get(job.OperationId)!.Operation, default)).State == InstallationOperationState.Interrupted
                 && recoveryCalls == 3 && executeCalls == 1, "An OS-held instance lock is waited out without restarting the original worker");
+            // A cancellation the Host actually performed is an outcome of its own, not a failure.
+            var cancelTransport = new Transport((request, ct) => Task.FromResult(request.Operation switch
+            {
+                PrivilegedOperationKind.SingBoxRuntimeExecute => Json(new RuntimeSwitchResult(request.OperationId!.Value,
+                    RuntimeSwitchOutcome.Cancelled, "runtime.operation_cancelled")),
+                PrivilegedOperationKind.SingBoxRuntimeCancel => Json(new RuntimeCancelRequestResult(
+                    request.RuntimeLifecycle!.CancelOperationId!.Value, true)),
+                _ => throw new Exception("Unexpected fixture operation")
+            }));
+            var cancelledDomain = new SingBoxInstallationService(new SingBoxRuntimeService(cancelTransport, store, authorization, new TestMode()));
+            var cancelledCoordinator = new InstallationCoordinator(new InstallationOperationStore(new Environment(root)), [cancelledDomain], lifetime);
+            await cancelledCoordinator.StartAsync(default);
+            var cancelledJob = cancelledCoordinator.Start(cancelledDomain.Id, InstallationOperationKind.Install,
+                Options(input with { Plan = plan with { Request = plan.Request with { IdempotencyKey = "cancel-fixture" } } }),
+                "actor", "cancel-fixture");
+            await UntilAsync(() => !InstallationOperationStore.Active(cancelledCoordinator.Get(cancelledJob.OperationId)!.Operation));
+            var cancelledEntry = cancelledCoordinator.Get(cancelledJob.OperationId)!.Operation;
+            Check(cancelledEntry.State == InstallationOperationState.Cancelled && cancelledEntry.Stage == InstallationStage.Cancelled
+                && cancelledEntry.ProblemCode == "runtime.operation_cancelled",
+                "A cancellation the Host performed is recorded as Cancelled, never as a failed installation");
+            await cancelledCoordinator.StopAsync(default);
+
             await coordinator.StopAsync(default);
 
             var interrupted = operations.Create(domain.Id, InstallationOperationKind.Upgrade, "actor", "startup-recovery", new string('d', 64), domain.Resources, out _);

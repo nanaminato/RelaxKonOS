@@ -75,13 +75,15 @@ public static class InstallationEndpoints
             var entry = coordinator.Get(operationId);
             return entry is null || !CanObserve(http.User, entry) ? Results.NotFound() : Results.Ok(entry.Operation);
         }));
-        group.MapPost(InstallationApiRoutes.CancelPattern, (Guid operationId, HttpContext http, InstallationCoordinator coordinator) => Handle(() =>
+        group.MapPost(InstallationApiRoutes.CancelPattern, async (Guid operationId, HttpContext http, InstallationCoordinator coordinator) =>
         {
             var key = http.Request.Headers["Idempotency-Key"].ToString();
             if (string.IsNullOrWhiteSpace(key) || key.Length > 128) return Problem(InstallationProblemCodes.IdempotencyRequired, 400);
             var entry = coordinator.Get(operationId);
-            return entry is null || !CanObserve(http.User, entry) ? Results.NotFound() : Results.Ok(coordinator.Cancel(operationId));
-        }));
+            if (entry is null || !CanObserve(http.User, entry)) return Results.NotFound();
+            try { return Results.Ok(await coordinator.CancelAsync(operationId, http.RequestAborted)); }
+            catch (InstallationException error) { return Problem(error.ProblemCode, error.StatusCode); }
+        });
         return app;
     }
 

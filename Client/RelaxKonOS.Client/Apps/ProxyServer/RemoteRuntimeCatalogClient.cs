@@ -23,6 +23,8 @@ public interface IRuntimeCatalogClient
     Task<InstallationOperationDto?> StartAsync(InstallationOperationKind kind, ManagedRuntimeInstallationRequest request,
         string key, CancellationToken ct);
     Task<InstallationOperationDto?> OperationAsync(Guid id, CancellationToken ct);
+    /// <summary>Records a cancellation request; only the operation's own result says whether it was early enough.</summary>
+    Task<InstallationOperationDto?> CancelAsync(Guid id, string key, CancellationToken ct);
     Task<RuntimeRecoverySnapshot> RecoveryAsync(CancellationToken ct);
     Task<RuntimeSwitchResult> RetryRecoveryAsync(Guid operationId, CancellationToken ct);
     Task<RuntimeRecoverySnapshot> StopRecoveryAsync(Guid operationId, CancellationToken ct);
@@ -58,6 +60,9 @@ public sealed class RemoteRuntimeCatalogClient(HttpClient http, IAuthSession ses
 
     public Task<InstallationOperationDto?> OperationAsync(Guid id, CancellationToken ct) =>
         SendAsync<InstallationOperationDto?>(HttpMethod.Get, InstallationApiRoutes.Operation(id), null, null, ct);
+
+    public Task<InstallationOperationDto?> CancelAsync(Guid id, string key, CancellationToken ct) =>
+        SendAsync<InstallationOperationDto?>(HttpMethod.Post, InstallationApiRoutes.Cancel(id), new { }, key, ct);
 
     public Task<RuntimeRecoverySnapshot> RecoveryAsync(CancellationToken ct) =>
         SendAsync<RuntimeRecoverySnapshot>(HttpMethod.Get, RuntimeRoutes.SingBoxRecovery, null, null, ct);

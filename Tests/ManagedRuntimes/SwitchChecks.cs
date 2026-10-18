@@ -68,10 +68,12 @@ internal static class SwitchChecks
         using (var f = new Fixture())
         {
             var stages = new List<InstallationStage>();
-            var observed = new RuntimeArchiveSwitch(f.Store, f.Adapter, stage =>
+            var cancellable = new List<bool>();
+            var observed = new RuntimeArchiveSwitch(f.Store, f.Adapter, (stage, stillCancellable) =>
             {
                 Check(f.Store.Read()!.Pending!.Stage == stage, "Progress follows its durable checkpoint: " + stage);
                 stages.Add(stage);
+                cancellable.Add(stillCancellable);
                 if (stage == InstallationStage.Activating) throw new IOException("Fixture progress reader disconnected");
                 return Task.CompletedTask;
             });
@@ -80,6 +82,8 @@ internal static class SwitchChecks
                 "Losing a progress reader does not undo an accepted activation");
             Check(stages.SequenceEqual(new[] { InstallationStage.Preflight, InstallationStage.Preparing, InstallationStage.Verifying,
                 InstallationStage.Activating, InstallationStage.HealthChecking }), "Checkpoint notifications preserve actual phase order");
+            Check(cancellable.SequenceEqual(new[] { true, true, true, false, false }),
+                "Only the stages before the durable switch checkpoint are advertised as cancellable");
             await observed.ExecuteAsync(id, plan, default);
             Check(stages.Count == 5, "Idempotent receipt replay does not fabricate new progress events");
         }

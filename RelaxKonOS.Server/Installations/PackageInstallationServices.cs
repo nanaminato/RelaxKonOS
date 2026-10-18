@@ -30,6 +30,10 @@ public abstract class InstallationService<T> : IInstallationService where T : cl
     protected abstract Task ExecuteAsync(InstallationOperationKind kind, T options, string actor, IInstallationProgress progress, CancellationToken ct);
     public abstract Task<InstallationRecovery> RecoverAsync(InstallationOperationDto operation, CancellationToken ct);
     public bool Cancel(InstallationOperationDto operation) => operation.Cancellable;
+    // Package and file installers abort through their own worker token; only a root runtime transaction
+    // outlives that token and therefore needs a request delivered to the Host.
+    public virtual bool CooperativeCancel => false;
+    public virtual Task RequestCancelAsync(InstallationOperationDto operation, CancellationToken ct) => Task.CompletedTask;
     protected static InstallationRecovery Recovery(bool healthy) => healthy
         ? new(InstallationOperationState.Succeeded)
         : new(InstallationOperationState.Interrupted, InstallationProblemCodes.Interrupted);

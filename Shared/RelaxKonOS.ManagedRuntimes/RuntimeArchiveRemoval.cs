@@ -35,7 +35,7 @@ public interface IRuntimeArchiveRemovalAdapter
 /// ledger stays single, and deletes data only when the request explicitly dropped the default retention.
 /// </summary>
 public sealed class RuntimeArchiveRemoval(RuntimeArchiveStateStore store, IRuntimeArchiveRemovalAdapter adapter,
-    Func<InstallationStage, Task>? progress = null)
+    RuntimeStageReporter? progress = null)
 {
     public async Task<RuntimeSwitchResult> ExecuteAsync(Guid operationId, RuntimeChangePlan plan, CancellationToken ct)
     {
@@ -67,20 +67,20 @@ public sealed class RuntimeArchiveRemoval(RuntimeArchiveStateStore store, IRunti
         });
         try
         {
-            await NotifyAsync(InstallationStage.Preflight);
+            await NotifyAsync(InstallationStage.Preflight, cancellable: true);
             await adapter.PreflightAsync(plan, session.State!, ct);
             var snapshot = await adapter.CaptureAsync(operationId, session.State!, ct);
             if ((snapshot.ConfigurationIdentity is null) != (snapshot.ConfigurationSnapshotId is null)
                 || snapshot.ConfigurationIdentity is { } identity && (identity.Length != 64 || !identity.All(Uri.IsHexDigit)))
                 throw new RuntimePolicyException("runtime.snapshot_invalid");
             UpdateRemoval(session, r => r with { Snapshot = snapshot, Stage = InstallationStage.Activating });
-            await NotifyAsync(InstallationStage.Activating);
+            await NotifyAsync(InstallationStage.Activating, cancellable: true);
             // Last cancellation boundary: once removal starts the operation must finish or restore.
             ct.ThrowIfCancellationRequested();
             Save(session, session.State! with { Removal = session.State.Removal! with { RemovalStarted = true } });
             await adapter.RemoveAsync(session.State!, snapshot, CancellationToken.None);
             UpdateRemoval(session, r => r with { Stage = InstallationStage.Verifying });
-            await NotifyAsync(InstallationStage.Verifying);
+            await NotifyAsync(InstallationStage.Verifying, cancellable: false);
             if (!await adapter.VerifyRemovedAsync(CancellationToken.None))
                 throw new RuntimePolicyException("runtime.removal_incomplete");
             // Everything below is irreversible; a failure is reported, never compensated with a fake restore.
@@ -127,7 +127,7 @@ public sealed class RuntimeArchiveRemoval(RuntimeArchiveStateStore store, IRunti
         try
         {
             UpdateRemoval(session, r => r with { Stage = InstallationStage.RollingBack, ProblemCode = problem });
-            await NotifyAsync(InstallationStage.RollingBack);
+            await NotifyAsync(InstallationStage.RollingBack, cancellable: false);
             var pending = session.State!.Removal!;
             if (pending.RemovalStarted && !await adapter.RestoreAsync(session.State!, pending.Snapshot!, CancellationToken.None))
                 throw new RuntimePolicyException("runtime.compensation_health_failed");
@@ -204,10 +204,10 @@ public sealed class RuntimeArchiveRemoval(RuntimeArchiveStateStore store, IRunti
     private static void Save(RuntimeArchiveStateStore.Session session, RuntimeArchiveState state) =>
         session.Save(state with { Installation = state.Installation with { StateRevision = checked(session.State!.Installation.StateRevision + 1) } });
 
-    private async Task NotifyAsync(InstallationStage stage)
+    private async Task NotifyAsync(InstallationStage stage, bool cancellable)
     {
         if (progress is null) return;
-        try { await progress(stage); }
+        try { await progress(stage, cancellable); }
         catch (IOException) { /* A lost progress reader does not cancel an accepted removal. */ }
         catch (ObjectDisposedException) { }
     }

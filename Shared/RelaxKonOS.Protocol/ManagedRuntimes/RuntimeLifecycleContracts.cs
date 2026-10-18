@@ -21,10 +21,19 @@ public sealed record RuntimeSwitchResult(Guid OperationId, RuntimeSwitchOutcome 
 
 /// <summary>Helper-local request. The ephemeral authorization channel never belongs in public options or receipts.</summary>
 /// <param name="Confirmed">Operator acknowledgement of an irreversible close; no other lifecycle verb sets it.</param>
+/// <param name="CancelOperationId">The running transaction a cancellation request is addressed to; only
+/// <see cref="Privileged.PrivilegedOperationKind.SingBoxRuntimeCancel"/> sets it.</param>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record RuntimeLifecycleRequest(string? SourceId = null, RuntimePlanRequest? Plan = null,
     RuntimeAuthorizationChannel? Authorization = null, RuntimeChangePlan? FrozenPlan = null, Guid? RecoveryOperationId = null,
-    bool Confirmed = false);
+    bool Confirmed = false, Guid? CancelOperationId = null);
+
+/// <summary>
+/// Whether a cancellation request was recorded for one transaction. It says nothing about the outcome:
+/// a request that arrives after the durable switch checkpoint is still recorded but no longer honored,
+/// and the operation's own receipt remains the only authority on what happened.
+/// </summary>
+public sealed record RuntimeCancelRequestResult(Guid OperationId, bool Requested);
 
 /// <summary>A removal names no release and may name no source; every other plan must name both.</summary>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]

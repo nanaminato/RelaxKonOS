@@ -304,6 +304,64 @@ using (var runtimeHttp = new HttpClient(new Handler(request =>
         && runtimeRecoveryBody.Contains(runtimePendingId.ToString("D"), StringComparison.Ordinal)
         && runtimeVm.OutcomeText.Resolve() == LocalizedText.Get("proxy_server.runtime.recovery_closed"),
         "Closing confirms first and carries the transaction and the acknowledgement to the Server");
+
+    // Cancellation is a request, not an assumption: the page offers it only while the Host still allows the
+    // transaction to be abandoned, keeps polling, and reports the Host's own Cancelled outcome.
+    runtimePlan = new RuntimePlanResult(new RuntimeChangePlan(new RuntimePlanRequest(runtimeInstallation.InstallationId,
+        runtimeInstallation.HostId, RuntimeChange.Update, runtimeInstallation.StateRevision, runtimeCatalog.Revision, 7,
+        "rel-1160", "idem", false), "sing-box", runtimeCatalog.Releases[0], "rel-1143"), []);
+    var downloadOperation = Guid.NewGuid();
+    var downloadState = InstallationOperationState.Running;
+    var downloadCancellable = true;
+    var cancelKey = "";
+    using (var cancelHttp = new HttpClient(new Handler(request =>
+    {
+        var path = request.RequestUri!.AbsolutePath;
+        if (path.EndsWith("/managed-runtimes/sources", StringComparison.Ordinal))
+            return Json(HttpStatusCode.OK, new[] { runtimeSource });
+        if (path.EndsWith("/catalog", StringComparison.Ordinal))
+            return Json(HttpStatusCode.OK, new RuntimeCatalogSnapshot(runtimeSource, runtimeCatalog, true, null));
+        if (path.EndsWith("/sing-box/installation", StringComparison.Ordinal))
+            return Json(HttpStatusCode.OK, new RuntimeInstallationSnapshot(runtimeInstallation, "1.14.3", null, null, null, null, null, null, runtimeInstalled));
+        if (path.EndsWith("/sing-box/plan", StringComparison.Ordinal))
+            return Json(HttpStatusCode.OK, runtimePlan);
+        if (path.EndsWith("/sing-box/recovery", StringComparison.Ordinal))
+            return Json(HttpStatusCode.OK, new RuntimeRecoverySnapshot(false, null, null, null, false, null, null, null, null));
+        if (path.EndsWith("/cancel", StringComparison.Ordinal))
+        {
+            cancelKey = request.Headers.TryGetValues("Idempotency-Key", out var keys) ? string.Join("", keys) : "";
+            downloadState = InstallationOperationState.Cancelled;
+            downloadCancellable = false;
+            return Json(HttpStatusCode.OK, Operation(InstallationOperationState.Running, true, null));
+        }
+        if (!path.Contains("/installations/", StringComparison.Ordinal))
+            return Json(HttpStatusCode.NotFound, new { code = "runtime.source_not_found" });
+        if (request.Method == HttpMethod.Post) return Json(HttpStatusCode.OK, Operation(InstallationOperationState.Queued, true, null));
+        return Json(HttpStatusCode.OK, Operation(downloadState, downloadCancellable,
+            downloadState == InstallationOperationState.Cancelled ? "runtime.operation_cancelled" : null));
+
+        InstallationOperationDto Operation(InstallationOperationState state, bool cancellable, string? problem) =>
+            new(downloadOperation, InstallationServiceId.SingBox, InstallationOperationKind.Upgrade, state,
+                state == InstallationOperationState.Cancelled ? InstallationStage.Cancelled : InstallationStage.Preparing,
+                null, problem, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, cancellable);
+    })))
+    {
+        var cancelClient = new RemoteRuntimeCatalogClient(cancelHttp, session);
+        using var cancelVm = new ProxyServerRuntimeViewModel(cancelClient);
+        await cancelVm.LoadAsync();
+        cancelVm.CanManage = true;
+        cancelVm.SelectedRelease = cancelVm.Releases.FirstOrDefault(option => option.Available);
+        var running = cancelVm.ActCommand.ExecuteAsync(null);
+        for (var attempt = 0; attempt < 200 && !cancelVm.CanCancelDownload; attempt++) await Task.Delay(10);
+        Check(cancelVm.CanCancelDownload,
+            "The page offers cancellation only while the Host reports the running operation as cancellable");
+        await cancelVm.CancelDownloadCommand.ExecuteAsync(null);
+        Check(cancelKey.Length > 0 && !cancelVm.CanCancelDownload,
+            "Cancelling names the exact operation with an idempotency key and withdraws the offer at once");
+        await running;
+        Check(cancelVm.OutcomeText.Resolve() == LocalizedText.Get("proxy_server.runtime.operation_cancelled"),
+            "A cancellation the Host performed reads as cancelled, never as a failed installation");
+    }
 }
 
 sealed class BlockingTransferHandler : HttpMessageHandler

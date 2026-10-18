@@ -105,17 +105,37 @@ Server 侧 `SingBoxRuntimeService.PlanAsync` 允许卸载不带来源（内部�
 
 客户端 `ProxyServerRuntimeViewModel` 把这三条路径做成显式决策而不是静默失败：待恢复面板列出事务、变更、阶段、原始失败、补偿失败与实测服务；运行中只提供"重试"与"紧急停止"，只有实测停止后才出现"关账"并在关账前要求确认；`elevation-required` 弹出密码框并重试一次，操作员取消即失败而不重试；缺少确认宿主时关账什么都不做。
 
+## 下载取消
+
+取消是**请求**，不是中断连接。Server 从不因为客户端断开或请求取消就杀掉 Helper：一次安装是独立的一次特权进程，`Execute` 调用固定用 `CancellationToken.None`，所以连接断了后台事务照常走完。要真正中止准备阶段，请求必须落到那个已经在跑的事务上。
+
+| 环节 | 机制与规则 |
+| --- | --- |
+| 请求通道 | 事务全程持有 `state/instance.lock`，因此请求不能走同一把锁。它是 `state/cancel.request` 单文件：内容为**该事务自己的 operationId**，先写临时文件再原子覆盖 |
+| 送达 | 特权操作 `SingBoxRuntimeCancel` 只写这个标记，不读台账、不取实例锁，所以在事务运行中也能立即返回；它回答的是“请求已记录”，不是“已取消” |
+| 生效 | 运行中的事务启动一个 200 ms 轮询监视器，标记内容与自己匹配才取消内部令牌；该令牌贯穿 Preflight、捕获、准备与 Verifying，`PrepareAsync` 原样把它传进下载与解包 |
+| 边界 | 与切换检查点同一条线：写 `SwitchStarted` 之后激活与健康检查用不可取消令牌，取消不再生效。到达太晚的请求照样被记录，但结果由事务回执决定，界面按“已完成”呈现 |
+| 收尾 | 事务结束（成功、失败、补偿、取消）时删除标记；标记只匹配自己的 operationId，因此残留文件永远不会误伤下一条事务，内容不合法时按“未请求”处理 |
+
+台账一侧用同一套边界说话：`RuntimeArchiveSwitch` 与 `RuntimeArchiveRemoval` 每个阶段都向上报“此刻还能不能取消”（切换：Preflight/Preparing/Verifying 可以，Activating/HealthChecking/RollingBack 不可以；卸载：Preflight/Activating 可以，Verifying 之后不可以），特权帧携带该标志，`POST /api/v1.0/installations/{id}/cancel` 记进 `Cancellable`。所以界面不会出现“点了却没反应”的取消按钮。
+
+`InstallationCoordinator` 因此区分两种取消语义：`CooperativeCancel = false` 的安装器（apt、git、文件引用等）沿用原有做法，取消本地工作令牌即可；sing-box 是 `true`，协调器只记录请求并把它转给主机，**不**取消自己的等待——主事务还在跑的时候就把台账写成 `Cancelled` 是谎报。主事务真正取消后回执是 `RuntimeSwitchOutcome.Cancelled`（`runtime.operation_cancelled`），服务端据此把台账落成 `Cancelled` 而不是 `Failed`。请求送不到主机时，协调器把 `Cancellable` 恢复成可用并上报错误，不留下“看似取消过”的状态。
+
+客户端 `ProxyServerRuntimeViewModel` 在轮询操作时读同一个 `Cancellable` 决定是否显示「取消下载」，点击只发请求并立刻撤下按钮；循环继续等待回执，收到 `Cancelled` 就按“已取消、未改变任何内容”收尾，而不是报成失败。
+
 ## 验证证据与剩余工作
 
 `Tests/ManagedRuntimes/SwitchChecks.cs` 有 96 项检查，覆盖真实磁盘状态、共享互斥锁、幂等回执、跨版本目标、同版本修复、保留版本回退、配置漂移、当前发布配置恢复、切换取消边界、独立版本/配置/运行/启动/原生健康失败、撤销恢复及待恢复阻断。
 
 其中四组测试启动独立子进程，分别在捕获、准备、激活、健康检查中 `Environment.Exit`，由父进程重新读取磁盘并恢复。服务和二进制使用文件适配器模拟，没有执行第三方运行时、操作真实服务或更改系统启动设置；不能据此宣称 Windows/Linux 生命周期验收通过。
 
-仍需将组件接入各声明平台的原生配置与监听/互通验收、下载取消与依赖预检，并完成真实服务的故障与重启验收。总体进度继续以 [任务表](RelaxKonOS.ManagedRuntimes.Design.md) 为准。
+仍需将组件接入各声明平台的原生配置与监听/互通验收、依赖预检，并完成真实服务的故障与重启验收。总体进度继续以 [任务表](RelaxKonOS.ManagedRuntimes.Design.md) 为准。
 
 `ManagedServiceChecks` 另有 13 项检查，覆盖受管安装的状态上报、只校验不发布、首次发布与身份递增、运行中再发布保留运行状态、仅改开机启动不重启、配置回滚、磁盘漂移拒绝覆盖、登记失败后的补偿与运行状态恢复、程序文件漂移拒绝执行、以及 Install/Uninstall 的边界；其原生检查使用记录型实现，不执行第三方程序。
 
 `RemovalChecks` 有 15 项检查，覆盖保留数据的卸载、程序/暂存/备份目录清理、实例根外文件不受影响、单回执与幂等重放、重复卸载被拒、删除发布配置与保留副本、移除登记失败后的补偿、清理开始前恢复、清理开始后中断关账、外部安装拒绝与程序漂移拒绝。测试使用文件适配器模拟服务，不操作真实 SCM/systemd。
+
+`CancellationChecks` 有 16 项检查，覆盖请求只被自己的事务认领、残留与畸形标记不会中止无关事务、单标记下新请求覆盖旧请求、Helper 在运行中登记请求而完全不动台账、取消字段不被其他生命周期动词接受、空操作 ID 被拒、准备中登记的请求确实取消运行令牌、结束即清标记、以及调用方令牌仍能结束监视。事务侧的取消边界由事务夹具体另行证明：切换点之前取消得到 `Cancelled` 且不激活，切换点之后取消不打断已提交的切换。
 
 `RecoveryChecks` 有 16 项检查，覆盖无待恢复时快照为空、事实描述与双问题码、目标事务不符被拒、未确认/未停/目标错三种拒绝对状态无影响、未进入待恢复不可关账、跨过切换点关账保留活动修订、切换前关账保留旧修订且候选不入回退、重复关账被拒、卸载未开始关账保持受管、卸载已开始关账转移所有权、删除数据关账不留配置身份，以及卸载词汇与发布字段。关账一律返回 `runtime.recovery_closed_by_operator`，检查不执行第三方服务。
 

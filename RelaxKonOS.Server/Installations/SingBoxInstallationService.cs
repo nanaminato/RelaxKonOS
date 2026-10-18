@@ -44,12 +44,29 @@ public sealed class SingBoxInstallationService(SingBoxRuntimeService runtime) : 
     protected override async Task ExecuteAsync(InstallationOperationKind kind, ManagedRuntimeInstallationRequest options,
         string actor, IInstallationProgress progress, CancellationToken ct)
     {
-        await progress.ReportAsync(new(InstallationStage.Preflight, Cancellable: false), ct);
+        // The Host decides which stages can still be abandoned; it reports that with each stage frame, and
+        // this initial one matches its own Preflight.
+        await progress.ReportAsync(new(InstallationStage.Preflight, Cancellable: true), ct);
         try
         {
             var result = await runtime.ExecuteAsync(progress.OperationId, options.Plan, ct);
+            // A cancellation the Host actually performed is its own outcome, not a failure.
+            if (result.Outcome == RuntimeSwitchOutcome.Cancelled)
+                throw new InstallationCancelledException(result.ProblemCode ?? "runtime.operation_cancelled");
             Check(result.Outcome == RuntimeSwitchOutcome.Succeeded, result.ProblemCode ?? "runtime.operation_failed");
         }
+        catch (RuntimeLifecycleException ex) { throw new InstallationException(ex.ProblemCode); }
+    }
+
+    /// <summary>
+    /// The root transaction survives this worker's token, so a cancellation is delivered to the Host instead.
+    /// The worker keeps waiting for the Host's receipt, which is what makes the ledger truthful.
+    /// </summary>
+    public override bool CooperativeCancel => true;
+
+    public override async Task RequestCancelAsync(InstallationOperationDto operation, CancellationToken ct)
+    {
+        try { await runtime.RequestCancelAsync(operation.OperationId, ct); }
         catch (RuntimeLifecycleException ex) { throw new InstallationException(ex.ProblemCode); }
     }
 

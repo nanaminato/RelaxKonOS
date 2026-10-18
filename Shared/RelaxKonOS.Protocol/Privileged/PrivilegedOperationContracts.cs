@@ -29,6 +29,10 @@ public enum PrivilegedOperationKind
     SingBoxRuntimePlan,
     SingBoxRuntimeExecute,
     SingBoxRuntimeRecover,
+    /// <summary>Records a cancellation request for one running transaction. It only writes the request
+    /// marker, so it never blocks behind the instance lock the transaction itself holds; the running
+    /// transaction decides whether it is still before the switch checkpoint.</summary>
+    SingBoxRuntimeCancel,
     /// <summary>Reads the unfinished transaction and the fixed host's live service observation.</summary>
     SingBoxRuntimeRecoveryQuery,
     /// <summary>Stops the managed service and disables its start-on-boot registration. The ledger is not touched.</summary>

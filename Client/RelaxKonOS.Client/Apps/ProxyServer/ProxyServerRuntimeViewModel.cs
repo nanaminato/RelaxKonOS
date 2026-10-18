@@ -38,6 +38,9 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
     private bool _invalidated;
     private bool _loading;
     private bool _refreshFailed;
+    /// <summary>The submitted operation and whether the Host still allows abandoning it.</summary>
+    private Guid? _cancelTarget;
+    private bool _operationCancellable;
 
     private static readonly string[] DerivedProperties =
     [
@@ -48,7 +51,7 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
         nameof(ReleaseCountText), nameof(HasRuntimeProblem), nameof(CanUninstall), nameof(NeedsRecovery), nameof(RecoveryText),
         nameof(RecoveryOperationText), nameof(RecoveryChangeText), nameof(RecoveryStageText), nameof(RecoveryOriginalProblem),
         nameof(RecoveryProblem), nameof(RecoveryServiceText), nameof(HasRecoveryServiceProblem),
-        nameof(CanRetryRecovery), nameof(CanEmergencyStop), nameof(CanCloseRecovery)
+        nameof(CanRetryRecovery), nameof(CanEmergencyStop), nameof(CanCloseRecovery), nameof(CanCancelDownload)
     ];
 
     private void NotifyDerived() { foreach (var name in DerivedProperties) OnPropertyChanged(name); }
@@ -109,6 +112,12 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
     public bool CanEmergencyStop => CanRetryRecovery && _recovery?.Service is { Running: true };
     /// <summary>Closing is only offered once the Host proves nothing runs and its own compensation already failed.</summary>
     public bool CanCloseRecovery => CanRetryRecovery && _recovery is { NeedsOperatorDecision: true, Service.Running: false };
+
+    /// <summary>
+    /// Offered only while the Host itself reports the running operation as cancellable, so the page never shows
+    /// a button the transaction would silently ignore after its switch checkpoint.
+    /// </summary>
+    public bool CanCancelDownload => !_invalidated && _cancelTarget is not null && _operationCancellable;
 
     public LocalizedStatus OwnershipText => _installation is null
         ? LocalizedStatus.Key("proxy_server.runtime.ownership.unknown")
@@ -231,6 +240,24 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
             _catalog?.Source.Identity.TrustRevision ?? 0, keepData);
     });
 
+    /// <summary>
+    /// A cancellation request, never an assumption. The Server records it and the Host decides whether the
+    /// transaction was still before its switch checkpoint; the poll loop keeps waiting either way.
+    /// </summary>
+    [RelayCommand] private async Task CancelDownloadAsync()
+    {
+        if (!CanCancelDownload || _cancelTarget is not { } id) return;
+        try
+        {
+            await client.CancelAsync(id, Guid.NewGuid().ToString("N"), _lifetime.Token);
+            _operationCancellable = false;
+            OperationText = LocalizedStatus.Key("proxy_server.runtime.cancel_requested");
+            NotifyDerived();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or InvalidDataException or FormatException)
+        { OutcomeText = ProblemText(ex.Message); }
+    }
+
     private async Task ExecuteAsync(RuntimeChange change, RuntimeRelease? release, long catalogRevision, long trustRevision,
         bool keepData)
     {
@@ -255,20 +282,34 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
         });
         var operation = submitted ?? throw new InvalidOperationException("runtime.operation_failed");
         OperationText = LocalizedStatus.Format("proxy_server.operation_pending", operation.OperationId.ToString("D"));
-        for (var attempt = 0; ; attempt++)
+        _cancelTarget = operation.OperationId;
+        try
         {
-            var current = await client.OperationAsync(operation.OperationId, _lifetime.Token)
-                ?? throw new InvalidOperationException("runtime.operation_failed");
-            OperationText = LocalizedStatus.Format("proxy_server.operation_state",
-                current.OperationId.ToString("D"), current.State, current.Stage);
-            if (current.State is InstallationOperationState.Failed or InstallationOperationState.Cancelled
-                or InstallationOperationState.Interrupted)
-                throw new InvalidOperationException(string.IsNullOrEmpty(current.ProblemCode)
-                    ? "runtime.operation_failed" : current.ProblemCode);
-            if (current.State is InstallationOperationState.Succeeded) break;
-            if (attempt >= 300) throw new InvalidOperationException("runtime.operation_pending");
-            await Task.Delay(1000, _lifetime.Token);
+            for (var attempt = 0; ; attempt++)
+            {
+                var current = await client.OperationAsync(operation.OperationId, _lifetime.Token)
+                    ?? throw new InvalidOperationException("runtime.operation_failed");
+                OperationText = LocalizedStatus.Format("proxy_server.operation_state",
+                    current.OperationId.ToString("D"), current.State, current.Stage);
+                _operationCancellable = current.Cancellable;
+                NotifyDerived();
+                // A cancellation the Host performed is an outcome, not a failure: say so and stop quietly.
+                if (current.State == InstallationOperationState.Cancelled)
+                {
+                    await ReloadStateAsync();
+                    PlanText = LocalizedStatus.Literal("");
+                    OutcomeText = LocalizedStatus.Key("proxy_server.runtime.operation_cancelled");
+                    return;
+                }
+                if (current.State is InstallationOperationState.Failed or InstallationOperationState.Interrupted)
+                    throw new InvalidOperationException(string.IsNullOrEmpty(current.ProblemCode)
+                        ? "runtime.operation_failed" : current.ProblemCode);
+                if (current.State is InstallationOperationState.Succeeded) break;
+                if (attempt >= 300) throw new InvalidOperationException("runtime.operation_pending");
+                await Task.Delay(1000, _lifetime.Token);
+            }
         }
+        finally { _cancelTarget = null; _operationCancellable = false; NotifyDerived(); }
         await ReloadStateAsync();
         PlanText = LocalizedStatus.Literal("");
         OutcomeText = LocalizedStatus.Key(change == RuntimeChange.Uninstall

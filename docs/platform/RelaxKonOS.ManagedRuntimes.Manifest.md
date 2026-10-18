@@ -92,7 +92,7 @@ ZIP 在创建 ZipArchive 条目集合前先限制中央目录条目数和各元�
 | `GET /api/v1.0/managed-runtimes/sources/{sourceId}/catalog` | RuntimeRead；返回缓存，不触发网络请求 |
 | `POST /api/v1.0/managed-runtimes/sources/{sourceId}/refresh` | RuntimeManage；Helper 以自身保护的策略下载、验证并原子接受目录，不安装软件 |
 
-RuntimeRead 允许 controller/observer；RuntimeManage 仅允许 controller，均要求宿主支持 PrivilegedOperations。目录查询/刷新默认隐藏预发布版，显式 `?includePrerelease=true` 才显示。当前没有远端新增/修改信任路由。三条恢复写路由另有该操作员的新鲜提权要求，缺失时返回 `elevation-required`；关账还必须同时满足补偿已失败、请求体 `"confirmed":true` 和实测服务未运行，详见[人工恢复入口](RelaxKonOS.ManagedRuntimes.Transactions.md#人工恢复入口)。
+RuntimeRead 允许 controller/observer；RuntimeManage 仅允许 controller，均要求宿主支持 PrivilegedOperations。目录查询/刷新默认隐藏预发布版，显式 `?includePrerelease=true` 才显示。当前没有远端新增/修改信任路由。三条恢复写路由另有该操作员的新鲜提权要求，缺失时返回 `elevation-required`；关账还必须同时满足补偿已失败、请求体 `"confirmed":true` 和实测服务未运行，详见[人工恢复入口](RelaxKonOS.ManagedRuntimes.Transactions.md#人工恢复入口)。取消下载**没有**新的运行时路由：它复用台账既有的 `POST /api/v1.0/installations/{operationId}/cancel`，只有主机把准备阶段报为可取消时台账才接受，并把它转成一次 `SingBoxRuntimeCancel` 请求，详见[下载取消](RelaxKonOS.ManagedRuntimes.Transactions.md#下载取消)。
 
 快照分别报告 `catalog`、`fresh` 和 `problemCode`：未取得目录返回 `runtime.catalog_missing`；过期缓存仍可显示；刷新失败保留最后已接受目录，并附带失败码，即使缓存尚未过期也不得报告“已是最新版”。新信任修订必须刷新目录后才能恢复新鲜状态。
 
@@ -106,8 +106,8 @@ Server 和 Helper 编译通过，代理服务端既有测试通过。通用 Serv
 
 另有 [sing-box 归档适配器可选检查](RelaxKonOS.ManagedRuntimes.Transactions.md)：Windows x64 上以固定摘要的 1.14.3 缓存实际执行 version/REALITY 生成/check，通过 12 项；平台服务仍被模拟。该适配器尚未接入生产路由，公共目录的配置支持标记仍全部为 false，没有因此开放版本安装或扩展兼容范围。
 
-2026-10-18 已补充 Helper 固定生命周期组合、本机 Query/Plan/Execute/Recover 操作、Server 新鲜授权提供者/组合服务与每操作认证通道；固定版配置路径已与归档事务使用同一实例锁；受管活动修订上的已发布配置发布、启停、开机启动与配置回滚已接通；卸载按保留/删除数据走独立归档移除事务；补偿失败后的重试/紧急停止/关账三条人工恢复入口与对应客户端面板已接通；客户端版本计划页已接入。Debian 13 x64 通过 558 项常规检查及 12 项真实 systemd 测试程序检查，范围见[事务证据](RelaxKonOS.ManagedRuntimes.Transactions.md#linux-固定宿主与进程证明)。这没有开放目录安装或扩大受支持版本，当前公开目录的配置支持仍全部为 false。
+2026-10-18 已补充 Helper 固定生命周期组合、本机 Query/Plan/Execute/Recover 操作、Server 新鲜授权提供者/组合服务与每操作认证通道；固定版配置路径已与归档事务使用同一实例锁；受管活动修订上的已发布配置发布、启停、开机启动与配置回滚已接通；卸载按保留/删除数据走独立归档移除事务；补偿失败后的重试/紧急停止/关账三条人工恢复入口与对应客户端面板已接通；准备阶段的下载取消（台账取消 + 特权取消请求 + 客户端取消按钮）已接通；客户端版本计划页已接入。Debian 13 x64 通过 578 项常规检查及 12 项真实 systemd 测试程序检查，范围见[事务证据](RelaxKonOS.ManagedRuntimes.Transactions.md#linux-固定宿主与进程证明)。这没有开放目录安装或扩大受支持版本，当前公开目录的配置支持仍全部为 false。
 
-已接通既有 Server 安装台账及冻结计划入口，并接通受管修订上的已发布配置发布/服务控制、卸载/数据保留及人工恢复入口；下一阶段须实现下载取消、依赖预检和真实 sing-box 跨版本更新与协议验收，再接其余运行时适配器。此文不替代 [整体设计及任务表](RelaxKonOS.ManagedRuntimes.Design.md)。
+已接通既有 Server 安装台账及冻结计划入口，并接通受管修订上的已发布配置发布/服务控制、卸载/数据保留及人工恢复入口；下一阶段须实现依赖预检、真实 sing-box 跨版本更新与协议验收，再接其余运行时适配器。此文不替代 [整体设计及任务表](RelaxKonOS.ManagedRuntimes.Design.md)。
 
 执行复用 `/api/v1.0/installations/SingBox/{Install|Upgrade|Repair|Rollback}`，提交严格 `ManagedRuntimeInstallationRequest`；提权目标为 `singbox`。不另建安装台账。公共目录配置支持仍为 false，新增路由不开放未经验证的版本。

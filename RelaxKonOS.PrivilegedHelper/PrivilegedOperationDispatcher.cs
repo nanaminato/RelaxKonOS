@@ -23,6 +23,7 @@ public static partial class PrivilegedOperationExecutor
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "valid correlation metadata is required");
         if (request.Operation is PrivilegedOperationKind.SingBoxRuntimeQuery or PrivilegedOperationKind.SingBoxRuntimePlan
             or PrivilegedOperationKind.SingBoxRuntimeExecute or PrivilegedOperationKind.SingBoxRuntimeRecover
+            or PrivilegedOperationKind.SingBoxRuntimeCancel
             or PrivilegedOperationKind.SingBoxRuntimeRecoveryQuery or PrivilegedOperationKind.SingBoxRuntimeRecoveryStop
             or PrivilegedOperationKind.SingBoxRuntimeRecoveryClose)
             return await SingBoxRuntimeOperations.ExecuteAsync(request, report: progress);

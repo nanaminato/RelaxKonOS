@@ -48,19 +48,35 @@ public sealed class InstallationCoordinator(InstallationOperationStore store, IE
             && (administrator || x.ActorReference == InstallationOperationStore.Reference(actor)))
         .OrderByDescending(x => x.Operation.CreatedAt).FirstOrDefault();
 
-    public InstallationOperationDto Cancel(Guid id)
+    /// <summary>
+    /// Accepts a cancellation request. Aborting services lose their worker token here; a cooperative service
+    /// only gets the request recorded, because its root transaction owns the outcome and is still running.
+    /// </summary>
+    public async Task<InstallationOperationDto> CancelAsync(Guid id, CancellationToken ct)
     {
+        InstallationOperationDto operation;
+        CancellationTokenSource source;
+        IInstallationService domain;
         lock (gate)
         {
-            var operation = Get(id)?.Operation ?? throw new InstallationException("installation.not_found", 404);
+            operation = Get(id)?.Operation ?? throw new InstallationException("installation.not_found", 404);
             if (!InstallationOperationStore.Active(operation)) return operation;
-            if (!operation.Cancellable || !registry[operation.Service].Cancel(operation) || !cancellations.TryGetValue(id, out var source))
+            domain = registry[operation.Service];
+            if (!operation.Cancellable || !domain.Cancel(operation) || !cancellations.TryGetValue(id, out var active))
                 throw new InstallationException(InstallationProblemCodes.NotCancellable);
-            // Only the worker may acknowledge cancellation and release resources.
-            var result = operationStore.Update(id, x => x with { Cancellable = false }, "cancel-requested");
-            source.Cancel();
-            return result;
+            source = active;
+            // Withdraw the offer first so a second request cannot race the delivery below.
+            operation = operationStore.Update(id, x => x with { Cancellable = false }, "cancel-requested");
         }
+        if (!domain.CooperativeCancel) { source.Cancel(); return operation; }
+        try { await domain.RequestCancelAsync(operation, ct); }
+        catch (InstallationException)
+        {
+            // The request never reached the transaction, so the offer stays open instead of silently vanishing.
+            lock (gate) { operationStore.Update(id, x => x with { Cancellable = true }, "cancel-undelivered"); }
+            throw;
+        }
+        return operation;
     }
 
     private async Task RunAsync(InstallationOperationDto operation, IInstallationService domain, object request, string actor, CancellationTokenSource cancellation)
@@ -80,6 +96,7 @@ public sealed class InstallationCoordinator(InstallationOperationStore store, IE
             Complete(id, lifetime.ApplicationStopping.IsCancellationRequested ? InstallationOperationState.Interrupted : InstallationOperationState.Cancelled,
                 lifetime.ApplicationStopping.IsCancellationRequested ? InstallationProblemCodes.Interrupted : InstallationProblemCodes.Cancelled);
         }
+        catch (InstallationCancelledException error) { Complete(id, InstallationOperationState.Cancelled, error.ProblemCode); }
         catch (InstallationException error) { Complete(id, InstallationOperationState.Failed, error.ProblemCode); }
         catch { Complete(id, InstallationOperationState.Failed, InstallationProblemCodes.Failed); }
         finally

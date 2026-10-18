@@ -73,6 +73,18 @@ public sealed class SingBoxRuntimeService(IPrivilegedOperationTransport helper, 
     public Task<RuntimeRecoverySnapshot> RecoveryAsync(CancellationToken ct) =>
         CallAsync<RuntimeRecoverySnapshot>(new(PrivilegedOperationKind.SingBoxRuntimeRecoveryQuery), ct);
 
+    /// <summary>
+    /// Records a cancellation request for one running transaction. It takes no shared gate on purpose: the
+    /// running transaction holds it for its whole life, and the request must reach the Host anyway. The
+    /// operation's own receipt stays the only authority on whether the request was early enough.
+    /// </summary>
+    public Task<RuntimeCancelRequestResult> RequestCancelAsync(Guid operationId, CancellationToken ct)
+    {
+        if (operationId == Guid.Empty) throw new RuntimeLifecycleException("runtime.operation_id_invalid");
+        return CallAsync<RuntimeCancelRequestResult>(new(PrivilegedOperationKind.SingBoxRuntimeCancel,
+            RuntimeLifecycle: new(CancelOperationId: operationId)), ct);
+    }
+
     /// <summary>Emergency stop. It deliberately needs no published-credential authorization channel.</summary>
     public async Task<RuntimeRecoverySnapshot> StopRecoveryAsync(Guid operationId, CancellationToken ct)
     {

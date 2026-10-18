@@ -166,8 +166,12 @@
         <WrapPanel>
           <Button Classes="primary" Content="{Binding ActionText}" Command="{Binding ActCommand}" IsEnabled="{Binding CanAct}" Margin="0,0,8,0"
                   ToolTip.Tip="{loc:Loc proxy_server.runtime.action_tooltip}" />
+          <Button Content="{loc:Loc proxy_server.runtime.cancel_download}" Command="{Binding CancelDownloadCommand}"
+                  IsEnabled="{Binding CanCancelDownload}" IsVisible="{Binding CanCancelDownload}" Margin="0,0,8,0"
+                  ToolTip.Tip="{loc:Loc proxy_server.runtime.cancel_hint}" />
           <ProgressBar IsIndeterminate="True" Width="90" Height="3" VerticalAlignment="Center" IsVisible="{Binding IsBusy}" />
         </WrapPanel>
+        <TextBlock Classes="section-hint" Text="{Binding OperationText}" TextWrapping="Wrap" IsVisible="{Binding IsBusy}" />
         <TextBlock Classes="section-hint" Text="{Binding PlanText}" TextWrapping="Wrap" IsVisible="{Binding HasPlanText}" />
         <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.hint}" TextWrapping="Wrap" />
         <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" />

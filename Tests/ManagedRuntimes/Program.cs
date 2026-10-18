@@ -43,6 +43,12 @@ if (args is ["runtime-recovery-only"])
     return;
 }
 
+if (args is ["runtime-cancel-only"])
+{
+    Console.WriteLine($"Runtime cancellation checks passed: {await CancellationChecks.RunAsync()}");
+    return;
+}
+
 if (args is ["run", "-c", var fixtureConfiguration])
 {
     await LinuxSystemdHostChecks.RunFixtureAsync(fixtureConfiguration);
@@ -155,3 +161,4 @@ Console.WriteLine($"Runtime installation coordinator checks passed: {await Insta
 Console.WriteLine($"Managed runtime service checks passed: {await ManagedServiceChecks.RunAsync()}");
 Console.WriteLine($"Runtime archive removal checks passed: {await RemovalChecks.RunAsync()}");
 Console.WriteLine($"Runtime recovery entry checks passed: {await RecoveryChecks.RunAsync()}");
+Console.WriteLine($"Runtime cancellation checks passed: {await CancellationChecks.RunAsync()}");

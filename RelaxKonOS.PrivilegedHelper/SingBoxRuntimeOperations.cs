@@ -17,16 +17,18 @@ internal static class SingBoxRuntimeOperations
         var valid = request.Operation switch
         {
             PrivilegedOperationKind.SingBoxRuntimeQuery => input is null,
-            PrivilegedOperationKind.SingBoxRuntimePlan => input is { Plan: not null, Authorization: null, FrozenPlan: null, RecoveryOperationId: null }
+            PrivilegedOperationKind.SingBoxRuntimePlan => input is { Plan: not null, Authorization: null, FrozenPlan: null, RecoveryOperationId: null, CancelOperationId: null }
                 && RuntimeValidation.Identifier(input.SourceId),
-            PrivilegedOperationKind.SingBoxRuntimeExecute => input is { SourceId: null, Plan: null, Authorization: not null, FrozenPlan: { Request: not null }, RecoveryOperationId: null }
+            PrivilegedOperationKind.SingBoxRuntimeExecute => input is { SourceId: null, Plan: null, Authorization: not null, FrozenPlan: { Request: not null }, RecoveryOperationId: null, CancelOperationId: null }
                 && (input.FrozenPlan.Release is not null || input.FrozenPlan.Request.Change == RuntimeChange.Uninstall),
-            PrivilegedOperationKind.SingBoxRuntimeRecover => input is { SourceId: null, Plan: null, Authorization: not null, FrozenPlan: null, RecoveryOperationId: { } target }
+            PrivilegedOperationKind.SingBoxRuntimeRecover => input is { SourceId: null, Plan: null, Authorization: not null, FrozenPlan: null, RecoveryOperationId: { } target, CancelOperationId: null }
                 && target != Guid.Empty,
+            PrivilegedOperationKind.SingBoxRuntimeCancel => input is { SourceId: null, Plan: null, Authorization: null, FrozenPlan: null, Confirmed: false, RecoveryOperationId: null, CancelOperationId: { } cancelTarget }
+                && cancelTarget != Guid.Empty,
             PrivilegedOperationKind.SingBoxRuntimeRecoveryQuery => input is null,
-            PrivilegedOperationKind.SingBoxRuntimeRecoveryStop => input is { SourceId: null, Plan: null, Authorization: null, FrozenPlan: null, Confirmed: false, RecoveryOperationId: { } stopTarget }
+            PrivilegedOperationKind.SingBoxRuntimeRecoveryStop => input is { SourceId: null, Plan: null, Authorization: null, FrozenPlan: null, Confirmed: false, RecoveryOperationId: { } stopTarget, CancelOperationId: null }
                 && stopTarget != Guid.Empty,
-            PrivilegedOperationKind.SingBoxRuntimeRecoveryClose => input is { SourceId: null, Plan: null, Authorization: null, FrozenPlan: null, Confirmed: true, RecoveryOperationId: { } closeTarget }
+            PrivilegedOperationKind.SingBoxRuntimeRecoveryClose => input is { SourceId: null, Plan: null, Authorization: null, FrozenPlan: null, Confirmed: true, RecoveryOperationId: { } closeTarget, CancelOperationId: null }
                 && closeTarget != Guid.Empty,
             _ => false
         };
@@ -39,13 +41,14 @@ internal static class SingBoxRuntimeOperations
         try
         {
             var lifecycle = (create ?? SingBoxRuntimeLifecycle.Create)();
-            Func<InstallationStage, Task>? progress = report is null ? null : stage => report(PrivilegedOperationFrame.Report(stage));
+            RuntimeStageReporter? progress = report is null ? null : (stage, cancellable) => report(PrivilegedOperationFrame.Report(stage, cancellable: cancellable));
             return request.Operation switch
             {
                 PrivilegedOperationKind.SingBoxRuntimeQuery => Json(await lifecycle.QueryAsync(default, id)),
                 PrivilegedOperationKind.SingBoxRuntimePlan => Json(await lifecycle.PlanAsync(input!.SourceId!, input.Plan!, default)),
                 PrivilegedOperationKind.SingBoxRuntimeExecute => Json(await lifecycle.ExecuteAsync(id, input!.FrozenPlan!, input.Authorization!, default, progress)),
                 PrivilegedOperationKind.SingBoxRuntimeRecover => Json(await lifecycle.RecoverAsync(input!.Authorization!, input.RecoveryOperationId!.Value, default, progress)),
+                PrivilegedOperationKind.SingBoxRuntimeCancel => Json(lifecycle.CancelRequest(input!.CancelOperationId!.Value)),
                 PrivilegedOperationKind.SingBoxRuntimeRecoveryQuery => Json(await lifecycle.RecoveryAsync(default)),
                 PrivilegedOperationKind.SingBoxRuntimeRecoveryStop => Json(await lifecycle.StopAsync(input!.RecoveryOperationId!.Value, default)),
                 _ => Json(await lifecycle.CloseAsync(input!.RecoveryOperationId!.Value, default))

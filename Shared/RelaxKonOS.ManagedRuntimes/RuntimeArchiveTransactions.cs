@@ -4,6 +4,12 @@ using RelaxKonOS.Protocol.ManagedRuntimes;
 
 namespace RelaxKonOS.ManagedRuntimes;
 
+/// <summary>
+/// Reports one lifecycle stage together with whether a cancellation request can still change the outcome.
+/// The transaction owns that answer because only it knows where its durable switch or removal checkpoint lies.
+/// </summary>
+public delegate Task RuntimeStageReporter(InstallationStage stage, bool cancellable);
+
 public sealed record RuntimeStoredRevision(Guid RevisionId, RuntimeRelease Release, string MeasuredVersion,
     string ConfigurationIdentity, long CatalogRevision, long TrustRevision);
 public sealed record RuntimeServiceSnapshot(bool Running, bool BootEnabled, string? ConfigurationIdentity, Guid? ConfigurationSnapshotId,

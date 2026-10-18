@@ -55,19 +55,34 @@ internal sealed class SingBoxRuntimeLifecycle(string root, RuntimeArchiveStateSt
     }
 
     internal async Task<RuntimeSwitchResult> ExecuteAsync(Guid operationId, RuntimeChangePlan plan,
-        RuntimeAuthorizationChannel channel, CancellationToken ct, Func<InstallationStage, Task>? progress = null)
+        RuntimeAuthorizationChannel channel, CancellationToken ct, RuntimeStageReporter? progress = null)
     {
         // The channel descriptor never enters a frozen plan, durable journal, or idempotency hash.
         if (channel.OperationId != operationId) throw new RuntimePolicyException("runtime.authorization_unavailable");
         await EnsureStateAsync(ct);
+        // A cancellation request arrives through a second Helper process and is carried into preparation by
+        // this token. The transaction itself decides when it is too late to honour it.
+        using var cancellation = SingBoxRuntimeCancellation.Watch(root, operationId, ct);
         // Removal never reads published credentials, so it does not depend on a live authorization channel.
         return plan.Request.Change == RuntimeChange.Uninstall
-            ? await Removal(progress).ExecuteAsync(operationId, plan, ct)
-            : await Switch(channel, progress).ExecuteAsync(operationId, plan, ct);
+            ? await Removal(progress).ExecuteAsync(operationId, plan, cancellation.Token)
+            : await Switch(channel, progress).ExecuteAsync(operationId, plan, cancellation.Token);
+    }
+
+    /// <summary>
+    /// Records a cancellation request for one transaction. It reads no state and takes no instance lock, so it
+    /// still works while the transaction owns both; the operation's own receipt stays the only authority on
+    /// whether the request was early enough to change the outcome.
+    /// </summary>
+    internal RuntimeCancelRequestResult CancelRequest(Guid operationId)
+    {
+        if (operationId == Guid.Empty) throw new RuntimePolicyException("runtime.operation_id_invalid");
+        SingBoxRuntimeCancelChannel.Request(root, operationId);
+        return new(operationId, true);
     }
 
     internal async Task<RuntimeSwitchResult?> RecoverAsync(RuntimeAuthorizationChannel channel, Guid operationId, CancellationToken ct,
-        Func<InstallationStage, Task>? progress = null)
+        RuntimeStageReporter? progress = null)
     {
         await EnsureStateAsync(ct);
         return states.Read()?.Removal is not null
@@ -124,10 +139,10 @@ internal sealed class SingBoxRuntimeLifecycle(string root, RuntimeArchiveStateSt
             new(observed.Exists, observed.Running, observed.BootEnabled));
     }
 
-    private RuntimeArchiveRemoval Removal(Func<InstallationStage, Task>? progress) =>
+    private RuntimeArchiveRemoval Removal(RuntimeStageReporter? progress) =>
         new(states, new SingBoxRemovalAdapter(root, host, protect), progress);
 
-    private RuntimeArchiveSwitch Switch(RuntimeAuthorizationChannel channel, Func<InstallationStage, Task>? progress) => new(states,
+    private RuntimeArchiveSwitch Switch(RuntimeAuthorizationChannel channel, RuntimeStageReporter? progress) => new(states,
         new SingBoxArchiveAdapter(root, states, sources, new RuntimeArchiveTransport(), host, new Authorization(channel), protect, progress), progress);
 
     private async Task<RuntimeArchiveState> EnsureStateAsync(CancellationToken ct)

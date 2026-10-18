@@ -36,7 +36,7 @@ internal interface ISingBoxArchiveAuthorization
 /// </summary>
 internal sealed class SingBoxArchiveAdapter(string protectedRoot, RuntimeArchiveStateStore stateStore, RuntimeSourceStore sources,
     IRuntimeArchiveTransport transport, ISingBoxArchiveHost host, ISingBoxArchiveAuthorization authorization,
-    Action<string> protectDirectory, Func<InstallationStage, Task>? progress = null) : IRuntimeArchiveSwitchAdapter
+    Action<string> protectDirectory, RuntimeStageReporter? progress = null) : IRuntimeArchiveSwitchAdapter
 {
     private readonly string root = ValidateRoot(protectedRoot);
     private string Configuration => Path.Combine(root, "config.json");
@@ -90,7 +90,7 @@ internal sealed class SingBoxArchiveAdapter(string protectedRoot, RuntimeArchive
     {
         var current = await CurrentAsync(ct);
         var operationStaging = Path.Combine(Staging, operationId.ToString("N")); Protect(operationStaging);
-        var prepared = await new RuntimeArtifactPreparer(sources, transport, progress).PrepareAsync(plan.Release!.SourceId, plan.Release.ReleaseId,
+        var prepared = await new RuntimeArtifactPreparer(sources, transport, progress is null ? null : stage => progress(stage, cancellable: true)).PrepareAsync(plan.Release!.SourceId, plan.Release.ReleaseId,
             plan.Request.ExpectedCatalogRevision, plan.Request.ExpectedTrustRevision, plan.Release.Target,
             plan.Request.AllowPrerelease, operationStaging, ct);
         var revisionDirectory = Revision(operationId);

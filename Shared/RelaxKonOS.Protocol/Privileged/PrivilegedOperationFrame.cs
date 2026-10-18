@@ -4,14 +4,17 @@ using RelaxKonOS.Protocol.Installations;
 namespace RelaxKonOS.Protocol.Privileged;
 
 /// <summary>NDJSON on stdout; each Windows pipe frame authenticates exactly one serialized frame.</summary>
+/// <param name="Cancellable">Whether the reporting transaction can still abandon this stage. The Host owns
+/// the durable switch checkpoint, so the ledger must not advertise a cancellation it would ignore.</param>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record PrivilegedOperationFrame(string Type, string Version,
-    InstallationStage? Stage = null, int? Progress = null, PrivilegedOperationResult? Result = null)
+    InstallationStage? Stage = null, int? Progress = null, PrivilegedOperationResult? Result = null, bool Cancellable = false)
 {
     public const int MaximumProgressFrameBytes = 1024;
     public const int MaximumFrames = 20000;
     public static PrivilegedOperationFrame Completed(PrivilegedOperationResult result) => new("result", PrivilegedOperationProtocol.Version, Result: result);
-    public static PrivilegedOperationFrame Report(InstallationStage stage, int? progress = null) => new("progress", PrivilegedOperationProtocol.Version, stage, progress);
+    public static PrivilegedOperationFrame Report(InstallationStage stage, int? progress = null, bool cancellable = false) =>
+        new("progress", PrivilegedOperationProtocol.Version, stage, progress, Cancellable: cancellable);
     public bool IsValid() => Version == PrivilegedOperationProtocol.Version && (Type switch
     {
         "progress" => Result is null && Stage is InstallationStage.Preflight or InstallationStage.Preparing
