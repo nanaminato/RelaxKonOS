@@ -185,4 +185,6 @@
     <string name="ssh_workspace_system_subtitle">%1$s 的资源状态</string>
     <string name="ssh_workspace_system_unavailable">无法读取主机资源，请检查连接和主机命令权限后刷新。</string>
     <string name="ssh_workspace_title">SSH 工作区</string>
+    <string name="ssh_files_cleanup_failed">SSH 连接未能完全关闭。请刷新以重试清理，再执行其他操作。</string>
+    <string name="ssh_files_text_unreadable">此文件不是有效的 UTF-8 文本。请下载文件以检查原始内容。</string>
 </resources>

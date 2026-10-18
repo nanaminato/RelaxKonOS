@@ -185,4 +185,6 @@
     <string name="ssh_workspace_system_subtitle">%1$s のリソース状態</string>
     <string name="ssh_workspace_system_unavailable">このホストは Linux リソーススナップショットを提供しませんでした。</string>
     <string name="ssh_workspace_title">SSH ワークスペース</string>
+    <string name="ssh_files_cleanup_failed">SSH 接続を完全に閉じられませんでした。更新して終了処理を再試行してから、次の操作を行ってください。</string>
+    <string name="ssh_files_text_unreadable">このファイルは有効な UTF-8 テキストではありません。元の内容を確認するにはダウンロードしてください。</string>
 </resources>

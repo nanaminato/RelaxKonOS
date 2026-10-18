@@ -200,7 +200,17 @@ class AppContainer(context: Context) {
         { lease -> app.relaxkonos.mobile.service.SshForwardForegroundService.start(appContext, lease) },
         { appContext.stopService(android.content.Intent(appContext, app.relaxkonos.mobile.service.SshForwardForegroundService::class.java)) },
     )
-    val sshFiles by lazy { app.relaxkonos.mobile.ui.servercenter.SshFilesController(context.applicationContext as RelaxKonApplication) }
+    private val sshFilesPendingCleanup = mutableSetOf<app.relaxkonos.mobile.servercenter.ServerCenterHostSession>()
+    fun createSshFilesController() = app.relaxkonos.mobile.ui.servercenter.SshFilesController(
+        appContext as RelaxKonApplication, { serverCenter.sshFilesHostId },
+        { serverCenter.workspaceRevision }, serverCenter::verifiedPasswordCopy,
+        { hostId, secret -> serverCenterConnections.connect(hostId,
+            app.relaxkonos.mobile.servercenter.SshCredential(app.relaxkonos.mobile.servercenter.SshCredentialKind.Password, secret, null), System.currentTimeMillis()) },
+        sshFilesPendingCleanup,
+        { lease -> app.relaxkonos.mobile.service.SshTransferForegroundService.start(appContext, lease) },
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate),
+    )
+    val sshFiles by lazy { createSshFilesController() }
     init { serverCenter.onWorkspaceClosed = {
         try { sshForwards.clearWorkspace() }
         finally { sshFiles.stop() }

@@ -42,21 +42,12 @@ internal fun SshBundlePicker(hostId: String, onDismiss: () -> Unit, onSelect: (S
     val remembered = remember(memory) { memory.directory(purpose, true) }
     var restoreStarted by remember(hostId) { mutableStateOf(false) }
     var restoring by remember(hostId) { mutableStateOf(false) }
-    val model = remember(app, hostId) { SshFilesController(app) }
+    val model = remember(app, hostId) { app.container.createSshFilesController() }
     DisposableEffect(model) { onDispose { model.close() } }
     SshBundlePickerSessionGuard(session, memory, model::stop, onDismiss)
     val state by model.state.collectAsStateWithLifecycle()
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val revision = (LocalContext.current.applicationContext as RelaxKonApplication).container.serverCenter.workspaceRevision
-    var resumed by remember(lifecycle) { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
-    DisposableEffect(lifecycle, model) {
-        val observer = LifecycleEventObserver { _, _ -> resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
-        lifecycle.addObserver(observer)
-        onDispose { lifecycle.removeObserver(observer); model.stop() }
-    }
-    LaunchedEffect(hostId, revision, resumed, session) {
-        if (resumed && memory.isCurrent) model.resume(hostId) else model.stop()
-    }
+    val revision = container.serverCenter.workspaceRevision
+    rememberSshFilesResumed(model, hostId, revision) { memory.isCurrent }
     LaunchedEffect(state.connected, state.busy, state.problem, remembered) {
         if (!memory.isCurrent) { onDismiss(); return@LaunchedEffect }
         if (!restoreStarted && state.connected && !state.busy) {

@@ -25,6 +25,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -81,33 +86,86 @@ fun ConnectionListScreen(
     onDeleteLogin: (SavedLogin) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val currentOwnerDeviceServiceIds by rememberUpdatedState(ownerDeviceServiceIds)
+    val currentLogins by rememberUpdatedState(logins)
+    val currentCredentialStatus by rememberUpdatedState(credentialStatus)
+    val currentForget by rememberUpdatedState(onForgetPassword)
+    val currentDelete by rememberUpdatedState(onDeleteLogin)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var attached by remember { mutableStateOf(false) }
+    var closed by remember { mutableStateOf(false) }
+    var confirmationToken by remember { mutableStateOf<Any?>(null) }
     var forgetTarget by remember { mutableStateOf<SavedLogin?>(null) }
     var deleteTarget by remember { mutableStateOf<SavedLogin?>(null) }
     var actionTarget by remember { mutableStateOf<SavedLogin?>(null) }
     var mutationFailed by remember(forgetTarget, deleteTarget) { mutableStateOf(false) }
 
-    fun mutate(action: () -> Unit, completed: () -> Unit) {
+    fun dismissActions() {
+        confirmationToken = null
+        actionTarget = null
+        forgetTarget = null
+        deleteTarget = null
+        mutationFailed = false
+    }
+    DisposableEffect(lifecycleOwner) {
+        attached = true
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) dismissActions()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            attached = false
+            confirmationToken = null
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+    fun canAct() = attached && !closed && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+    fun currentRecord(target: SavedLogin?) = target?.let { selected ->
+        currentLogins.firstOrNull { it.serviceId == selected.serviceId && it.identifier == selected.identifier }
+    }
+    fun leave(action: () -> Unit) {
+        if (!canAct()) return
+        closed = true
+        dismissActions()
+        action()
+    }
+    fun openConfirmation(login: SavedLogin, forgetting: Boolean) {
+        if (!canAct()) return
+        val current = currentRecord(login) ?: return
+        dismissActions()
+        confirmationToken = Any()
+        if (forgetting) forgetTarget = current else deleteTarget = current
+    }
+    fun confirm(token: Any?, login: SavedLogin, forgetting: Boolean) {
+        if (token == null || confirmationToken !== token) return
+        if (!canAct()) { confirmationToken = null; return }
+        val current = currentRecord(login)
+        if (current == null) { dismissActions(); return }
+        if (forgetting && currentCredentialStatus(current) == CredentialStatus.None) {
+            confirmationToken = null
+            return
+        }
+        confirmationToken = null
+        mutationFailed = false
         try {
-            action()
-            completed()
+            if (forgetting) currentForget(current) else currentDelete(current)
+            dismissActions()
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
             mutationFailed = true
+            confirmationToken = Any()
         }
     }
 
-    fun currentRecord(target: SavedLogin?) = target?.let { selected ->
-        logins.firstOrNull { it.serviceId == selected.serviceId && it.identifier == selected.identifier }
-    }
     LaunchedEffect(logins) {
         if (currentRecord(actionTarget) == null) actionTarget = null
-        if (currentRecord(forgetTarget) == null) forgetTarget = null
-        if (currentRecord(deleteTarget) == null) deleteTarget = null
+        if (forgetTarget != null && currentRecord(forgetTarget) == null) dismissActions()
+        if (deleteTarget != null && currentRecord(deleteTarget) == null) dismissActions()
     }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { leave(onDismiss) },
         title = { Text(stringResource(R.string.connections_title)) },
         text = {
             if (logins.isEmpty() && ownerDeviceServiceIds.isEmpty()) {
@@ -119,20 +177,20 @@ fun ConnectionListScreen(
                 ) {
                     PlatformTrademarkLegend()
                     ownerDeviceServiceIds.forEach { serviceId ->
-                        OwnerDeviceEntry(serviceId = serviceId, onSelect = { onOwnerDeviceSelected(serviceId) })
+                        OwnerDeviceEntry(serviceId = serviceId, onSelect = { if (serviceId in currentOwnerDeviceServiceIds) leave { onOwnerDeviceSelected(serviceId) } })
                     }
                     logins.forEach { login ->
                         SwipeableSavedLoginEntry(
                             login = login,
                             statusLabel = credentialStatusLabel(credentialStatus(login)),
-                            onSelect = { onSelected(login) },
-                            onManage = { actionTarget = login },
+                            onSelect = { currentRecord(login)?.let { current -> leave { onSelected(current) } } },
+                            onManage = { if (canAct()) { dismissActions(); actionTarget = currentRecord(login) } },
                         )
                     }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
+        confirmButton = { TextButton(onClick = { leave(onDismiss) }) { Text(stringResource(R.string.common_close)) } },
     )
 
     currentRecord(actionTarget)?.let { login ->
@@ -145,11 +203,11 @@ fun ConnectionListScreen(
                     Text(login.identifier, style = MaterialTheme.typography.bodyMedium)
                     OutlinedButton(
                         enabled = credentialStatus(login) != CredentialStatus.None,
-                        onClick = { actionTarget = null; forgetTarget = login },
+                        onClick = { openConfirmation(login, true) },
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text(stringResource(R.string.connections_forget_password)) }
                     Button(
-                        onClick = { actionTarget = null; deleteTarget = login },
+                        onClick = { openConfirmation(login, false) },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     ) { ActionLabel(R.string.common_delete) }
@@ -160,6 +218,7 @@ fun ConnectionListScreen(
     }
 
     currentRecord(forgetTarget)?.let { login ->
+        val token = confirmationToken
         ConfirmDangerousDialog(
             title = stringResource(R.string.connections_forget_title),
             message = stringResource(R.string.connections_forget_message, login.serviceId, login.identifier),
@@ -168,18 +227,13 @@ fun ConnectionListScreen(
             extraContent = {
                 if (mutationFailed) Text(stringResource(R.string.connections_mutation_failed), color = MaterialTheme.colorScheme.error)
             },
-            onConfirm = {
-                currentRecord(login)?.let { current ->
-                    if (credentialStatus(current) != CredentialStatus.None) {
-                        mutate({ onForgetPassword(current) }, { forgetTarget = null })
-                    }
-                }
-            },
-            onDismiss = { forgetTarget = null },
+            onConfirm = { confirm(token, login, true) },
+            onDismiss = ::dismissActions,
         )
     }
 
     currentRecord(deleteTarget)?.let { login ->
+        val token = confirmationToken
         ConfirmDangerousDialog(
             title = stringResource(R.string.connections_delete_title),
             message = stringResource(R.string.connections_delete_message, login.serviceId, login.identifier),
@@ -187,12 +241,8 @@ fun ConnectionListScreen(
             extraContent = {
                 if (mutationFailed) Text(stringResource(R.string.connections_mutation_failed), color = MaterialTheme.colorScheme.error)
             },
-            onConfirm = {
-                currentRecord(login)?.let { current ->
-                    mutate({ onDeleteLogin(current) }, { deleteTarget = null })
-                }
-            },
-            onDismiss = { deleteTarget = null },
+            onConfirm = { confirm(token, login, false) },
+            onDismiss = ::dismissActions,
         )
     }
 }

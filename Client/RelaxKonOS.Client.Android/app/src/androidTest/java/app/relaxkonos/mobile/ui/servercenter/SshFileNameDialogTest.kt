@@ -21,7 +21,7 @@ class SshFileNameDialogTest {
         var submitted = 0
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         rule.setContent { MaterialTheme {
-            NameDialog("Review name", value.value, { value.value = it }, { submitted++ }, { closed++ }, busy.value, unknown.value)
+            NameDialog("Review name", value.value, { value.value = it }, { submitted++ }, { closed++ }, busy.value, unknown.value, null)
         } }
         val save = rule.onNodeWithText(context.getString(R.string.common_save))
         save.assertIsNotEnabled()
@@ -29,7 +29,7 @@ class SshFileNameDialogTest {
         Espresso.pressBackUnconditionally()
         rule.runOnIdle { assertEquals(0, closed); busy.value = false; unknown.value = true }
         save.assertIsNotEnabled()
-        rule.onNodeWithText("review").assertExists()
+        rule.onNodeWithText("review").assertExists().assertIsNotEnabled()
         rule.onNodeWithText(context.getString(R.string.common_cancel)).assertIsEnabled()
         rule.runOnIdle { unknown.value = false }
         rule.onNode(hasSetTextAction()).performTextReplacement("../invalid")

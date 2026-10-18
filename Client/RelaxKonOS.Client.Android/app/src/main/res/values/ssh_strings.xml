@@ -185,4 +185,6 @@
     <string name="ssh_workspace_system_subtitle">Resource status for %1$s</string>
     <string name="ssh_workspace_system_unavailable">Unable to read host resources. Check the connection and host command permissions, then refresh.</string>
     <string name="ssh_workspace_title">SSH workspace</string>
+    <string name="ssh_files_cleanup_failed">The SSH connection could not be fully closed. Refresh to retry cleanup before another operation.</string>
+    <string name="ssh_files_text_unreadable">This file is not valid UTF-8 text. Download it to inspect its original bytes.</string>
 </resources>

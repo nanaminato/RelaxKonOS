@@ -220,6 +220,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun changeOwnerDevicePairingCode(value: String) {
+        if (isLoggingIn || container.activeSession != null) return
         ownerDevicePairingCode = value
         message = null
     }
@@ -470,9 +471,8 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
      * offer the trust decision. Nothing is sent — neither the invitation token nor the new public key
      * — until the user has answered.
      */
-    fun pairOwnerDevice(activity: FragmentActivity) {
-        if (isLoggingIn) return
-        val payload = ownerDevicePairingCode
+    fun pairOwnerDevice(activity: FragmentActivity, payload: String) {
+        if (isLoggingIn || container.activeSession != null) return
         if (payload.isBlank()) {
             message = UiMessage(R.string.owner_device_pairing_code_required)
             return
@@ -503,6 +503,8 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                     is ApiResult.Problem -> message = loginProblemMessage(paired)
                     is ApiResult.Transport -> message = loginTransportMessage(paired)
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: IllegalArgumentException) {
                 message = UiMessage(R.string.owner_device_pairing_invalid)
             } catch (error: Exception) {

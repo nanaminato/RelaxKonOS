@@ -20,6 +20,10 @@ Android must accept this exact payload from a live QR scan, a user-selected loca
 
 To sign in, a controller requests a 32-byte, two-minute nonce and returns an ECDSA SHA-256 signature over the raw nonce bytes (never over the base64url text). The signature is the ASN.1 DER SEQUENCE of RFC 3279 / X9.62: that is what Android Keystore (`SHA256withECDSA`), any JVM and OpenSSL emit natively, and the encoding both the mobile client and the desktop client must send. It is deliberately not the fixed-field IEEE P1363 `r‖s` concatenation, which is merely .NET's `ECDsa.SignData`/`VerifyData` default and is accepted by no other platform. The Server consumes each nonce once, then issues the usual short-lived access and refresh tokens with `amr=owner-device-key`.
 
+The Android confirmation freezes the exact payload whose origin and expiry are displayed. It is consumed once, rechecks expiry before submission, and becomes invalid when the input changes, the Activity pauses, or the page closes. A new confirmation is required after returning. Enrollment locks input, scanner launches, header back, and system back until the result is known. The model rejects pairing while another login is active and keeps coroutine cancellation distinct from a pairing error.
+
+A camera or image request owns one scan slot. Cancelling releases it without an error; failure releases it with public feedback. Late results cannot replace edited input, consume a newer scan, or change the form after leaving the page or starting enrollment. External scanner and image-picker transitions may pause the Activity; that pause does not itself discard the intended scan result. Image scanners are closed on completion and page disposal.
+
 ## Host elevation
 
 Only an active owner-device-key session on the supported Windows workstation platform may obtain an elevation grant without a Windows administrator password. Grants retain the existing capability, target, token-JTI, expiry, and audit boundaries. Pairing never gives a generic LocalSystem shell or an unrestricted administrator token.

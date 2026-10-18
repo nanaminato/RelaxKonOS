@@ -4,6 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
@@ -20,8 +21,8 @@ class SshForwardEditorTest {
         var cleanups = 0
         var request: SshLocalForwardRequest? = null
         rule.setContent { MaterialTheme {
-            SshForwardEditor(SshLocalForwardRequest(5000, 18080), false, true, {}, { request = it },
-                problem.value, allowStart.value, {
+            SshForwardEditor(SshLocalForwardRequest(5000, 18080), false, { true }, {}, { request = it },
+                problem.value, { allowStart.value }, {
                     cleanups++; problem.value = null; allowStart.value = true
                 })
         } }
@@ -41,7 +42,7 @@ class SshForwardEditorTest {
         val problem = mutableStateOf<String?>(null)
         val requests = mutableListOf<SshLocalForwardRequest>()
         rule.setContent { MaterialTheme {
-            SshForwardEditor(SshLocalForwardRequest(8080), false, ready.value, {}, {
+            SshForwardEditor(SshLocalForwardRequest(8080), false, { ready.value }, {}, {
                 requests += it; ready.value = false
             }, problem.value)
         } }
@@ -64,7 +65,7 @@ class SshForwardEditorTest {
         val closed = mutableStateOf(false)
         var sends = 0
         rule.setContent { MaterialTheme {
-            if (!closed.value) SshForwardEditor(SshLocalForwardRequest(8080), false, ready.value, { closed.value = true }, { sends++ })
+            if (!closed.value) SshForwardEditor(SshLocalForwardRequest(8080), false, { ready.value }, { closed.value = true }, { sends++ })
             else Text("Parent page")
         } }
         rule.onNodeWithText(text(R.string.ssh_forward_remote_port)).performTextReplacement("5000")
@@ -93,7 +94,7 @@ class SshForwardEditorTest {
     @Test fun invalidPortsAndPathCanBeCorrectedBeforeSubmittingExactRequest() {
         var request: SshLocalForwardRequest? = null
         rule.setContent { MaterialTheme {
-            SshForwardEditor(SshLocalForwardRequest(8080), false, true, {}, { request = it })
+            SshForwardEditor(SshLocalForwardRequest(8080), false, { true }, {}, { request = it })
         } }
         rule.onNodeWithText(text(R.string.ssh_forward_remote_port)).performTextReplacement("0")
         rule.onNodeWithText(text(R.string.ssh_forward_start)).assertIsNotEnabled()
@@ -109,4 +110,51 @@ class SshForwardEditorTest {
         rule.onNodeWithText(text(R.string.ssh_forward_start)).assertIsEnabled().performClick()
         rule.runOnIdle { assertEquals(SshLocalForwardRequest(5000, 18080, "https", "/status?x=1"), request) }
     }
+    @Test fun sameFrameBusyChangeRejectsCapturedStartAndCancelCallbacks() {
+        val ready = mutableStateOf(true)
+        var sends = 0; var closes = 0
+        rule.setContent { MaterialTheme {
+            SshForwardEditor(SshLocalForwardRequest(8080), false, { ready.value }, { closes++ }, { sends++; ready.value = false })
+        } }
+        val start = requireNotNull(rule.onNodeWithText(text(R.string.ssh_forward_start))
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action)
+        val cancel = requireNotNull(rule.onNodeWithText(text(R.string.common_cancel))
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action)
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.runOnUiThread { start(); start(); cancel(); assertEquals(1, sends); assertEquals(0, closes) }
+        } finally { rule.mainClock.autoAdvance = true }
+        rule.onNodeWithText(text(R.string.ssh_forward_start)).assertIsNotEnabled()
+        rule.runOnIdle { ready.value = true }
+        rule.onNodeWithText(text(R.string.common_cancel)).performClick()
+        rule.runOnIdle { assertEquals(1, closes) }
+    }
+    @Test fun cleanupGateIsCheckedWhenCapturedStartIsDelivered() {
+        val canStart = mutableStateOf(true)
+        var sends = 0
+        rule.setContent { MaterialTheme {
+            SshForwardEditor(SshLocalForwardRequest(8080), false, { true }, {}, { sends++ }, canStart = { canStart.value })
+        } }
+        val start = requireNotNull(rule.onNodeWithText(text(R.string.ssh_forward_start))
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action)
+        rule.mainClock.autoAdvance = false
+        try { rule.runOnUiThread { canStart.value = false; start(); assertEquals(0, sends) } }
+        finally { rule.mainClock.autoAdvance = true }
+        rule.onNodeWithText(text(R.string.ssh_forward_start)).assertIsNotEnabled()
+    }
+
+    @Test fun resolvedCleanupRejectsCapturedRecoveryCallback() {
+        val canStart = mutableStateOf(false)
+        var cleanups = 0
+        rule.setContent { MaterialTheme {
+            SshForwardEditor(SshLocalForwardRequest(8080), false, { true }, {}, {},
+                problem = "cleanup", canStart = { canStart.value }, onRetryCleanup = { cleanups++ })
+        } }
+        val retry = requireNotNull(rule.onNodeWithText(text(R.string.ssh_forward_stop_all))
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action)
+        rule.mainClock.autoAdvance = false
+        try { rule.runOnUiThread { canStart.value = true; retry(); assertEquals(0, cleanups) } }
+        finally { rule.mainClock.autoAdvance = true }
+    }
+
 }

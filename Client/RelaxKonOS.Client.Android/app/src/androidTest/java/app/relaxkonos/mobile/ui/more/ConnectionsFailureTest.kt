@@ -24,6 +24,7 @@ class ConnectionsFailureTest {
         val records = mutableListOf(login)
         val targets = mutableListOf<SavedLogin>()
         val controller = object : ConnectionsActions {
+            override fun isCurrentSession(expected: app.relaxkonos.mobile.core.auth.SessionState.Active?) = expected == null
             override val logins get() = records.toList()
             override suspend fun resolvePlatforms() = 0
             override fun status(login: SavedLogin) = CredentialStatus.None

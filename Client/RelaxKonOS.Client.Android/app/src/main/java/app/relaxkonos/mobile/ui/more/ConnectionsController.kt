@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.more
 
+import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.AppContainer
 import app.relaxkonos.mobile.core.auth.credentialState
 import app.relaxkonos.mobile.core.auth.credentialStatus
@@ -10,6 +11,7 @@ import app.relaxkonos.mobile.security.model.SavedLogin
 /** Keeps login records and their stored credentials consistent after a confirmed action. */
 internal interface ConnectionsActions {
     val logins: List<SavedLogin>
+    fun isCurrentSession(expected: SessionState.Active?): Boolean
     suspend fun resolvePlatforms(): Int
     fun status(login: SavedLogin): CredentialStatus
     fun forgetPassword(login: SavedLogin)
@@ -17,6 +19,8 @@ internal interface ConnectionsActions {
 }
 
 internal class ConnectionsController(private val container: AppContainer) : ConnectionsActions {
+    override fun isCurrentSession(expected: SessionState.Active?) = container.activeSession === expected
+
     override val logins get() = container.profiles.all()
 
     override suspend fun resolvePlatforms() = container.hostOperatingSystems.resolve(

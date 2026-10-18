@@ -123,18 +123,29 @@ class SshLocalForwardManager(
     fun keeperFailed(lease: Int) { if (lease == keeperLease) { stopAll(); if (!mutable.value.cleanupUncertain) mutable.update { it.copy(problem = "service") } } }
     fun clearWorkspace() { stopAll(); if (!mutable.value.cleanupUncertain) mutable.value = SshForwardState() }
     fun test(id: String) {
-        if (mutable.value.busy) return
+        if (mutable.value.busy || mutable.value.cleanupUncertain) return
         val row = mutable.value.items.firstOrNull { it.id == id && it.status == SshForwardStatus.Running } ?: return
-        val handle = handles[id] ?: return; val epoch = ++version
+        if (workspaceHost() != row.hostId || mutable.value.hostId != row.hostId) return
+        val handle = handles[id] ?: return
+        if (!handle.session.sshTransport.isConnected) {
+            closeRow(id, SshForwardStatus.Disconnected)
+            if (handles.isEmpty()) { observer?.cancel(); observer = null; stopKeeper() }
+            return
+        }
+        val epoch = ++version
         mutable.update { it.copy(busy = true, problem = null) }
         job = scope.launch {
             try {
+                if (!current(row.hostId, epoch) || handles[id] !== handle) return@launch
                 val reachable = handle.session.sshTransport.testLoopbackPort(row.request.remotePort)
                 if (current(row.hostId, epoch)) mutable.update { it.copy(items = it.items.map { item -> if (item.id == id) item.copy(reachable = reachable, testedAtMillis = System.currentTimeMillis()) else item }) }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { if (current(row.hostId, epoch)) mutable.update { it.copy(problem = "test") } }
             finally { if (version == epoch) mutable.update { it.copy(busy = false) } }
-        }
+        }.also { it.invokeOnCompletion {
+            // Cancellation before the coroutine body runs does not execute its finally block.
+            if (version == epoch) mutable.update { state -> state.copy(busy = false) }
+        } }
     }
     private fun closeRow(id: String, status: SshForwardStatus) {
         val released = handles[id]?.let { closeHandle(it) } ?: true

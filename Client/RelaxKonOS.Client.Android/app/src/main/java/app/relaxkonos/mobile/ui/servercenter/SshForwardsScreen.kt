@@ -1,5 +1,7 @@
 package app.relaxkonos.mobile.ui.servercenter
 
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.relaxkonos.mobile.ui.common.ActionLabel
 import app.relaxkonos.mobile.ui.common.ActivityIndicator
@@ -37,6 +39,7 @@ internal fun SshForwardsScreen(hostId: String, modifier: Modifier = Modifier) {
     var editorProblem by remember(hostId) { mutableStateOf<String?>(null) }
     var submitting by remember(hostId) { mutableStateOf(false) }
     val editorLease = remember(hostId) { mutableStateOf<Any?>(null) }
+    DisposableEffect(hostId) { onDispose { editorLease.value = null } }
     fun openEditor(value: Pair<String?, SshLocalForwardRequest>) {
         editor = value
         editorLease.value = Any()
@@ -82,10 +85,15 @@ internal fun SshForwardsScreen(hostId: String, modifier: Modifier = Modifier) {
         if (items.any { it.status == SshForwardStatus.Running } || state.busy || state.cleanupUncertain) TextButton(onClick = manager::stopAll) { Text(stringResource(R.string.ssh_forward_stop_all)) }
     }
     editor?.let { (id, initial) ->
-        SshForwardEditor(initial, id != null, !state.busy && !submitting, onDismiss = {
-            editor = null; editorLease.value = null; editorProblem = null
-        }, onSubmit = { request ->
+        val shownLease = editorLease.value
+        key(shownLease) {
+        SshForwardEditor(initial, id != null, { !manager.state.value.busy && !submitting }, onDismiss = {
+            if (editorLease.value === shownLease) {
+                editor = null; editorLease.value = null; editorProblem = null
+            }
+        }, onSubmit = submit@{ request ->
             val lease = editorLease.value
+            if (lease == null || lease !== shownLease || editor == null || submitting || manager.state.value.busy) return@submit
             submitting = true
             editorProblem = null
             manager.start(hostId, request, id) { success ->
@@ -95,49 +103,62 @@ internal fun SshForwardsScreen(hostId: String, modifier: Modifier = Modifier) {
                     else editorProblem = manager.state.value.problem ?: "connect"
                 }
             }
-        }, problem = editorProblem, canStart = !state.cleanupUncertain, onRetryCleanup = {
+        }, problem = editorProblem, canStart = { !manager.state.value.cleanupUncertain }, onRetryCleanup = cleanup@{
+            if (shownLease == null || editorLease.value !== shownLease || editor == null || !manager.state.value.cleanupUncertain) return@cleanup
             manager.stopAll()
             if (!manager.state.value.cleanupUncertain) editorProblem = null
         })
+        }
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun SshForwardEditor(initial: SshLocalForwardRequest, editing: Boolean, ready: Boolean, onDismiss: () -> Unit,
-    onSubmit: (SshLocalForwardRequest) -> Unit, problem: String? = null, canStart: Boolean = true, onRetryCleanup: (() -> Unit)? = null) {
+internal fun SshForwardEditor(initial: SshLocalForwardRequest, editing: Boolean, ready: () -> Boolean, onDismiss: () -> Unit,
+    onSubmit: (SshLocalForwardRequest) -> Unit, problem: String? = null, canStart: () -> Boolean = { true }, onRetryCleanup: (() -> Unit)? = null) {
+    val currentReady by rememberUpdatedState(ready)
+    val currentCanStart by rememberUpdatedState(canStart)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var attached by remember { mutableStateOf(false) }
+    DisposableEffect(lifecycleOwner) {
+        attached = true
+        onDispose { attached = false }
+    }
+    fun canInteract() = attached && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && currentReady()
     var remote by remember(initial) { mutableStateOf(initial.remotePort.toString()) }
     var local by remember(initial) { mutableStateOf(initial.preferredLocalPort?.toString().orEmpty()) }
     var scheme by remember(initial) { mutableStateOf(initial.scheme) }
     var path by remember(initial) { mutableStateOf(initial.pathAndQuery) }
     val scroll = rememberScrollState()
     val focus = androidx.compose.ui.platform.LocalFocusManager.current
-    LaunchedEffect(problem, ready) { if (problem != null && ready) scroll.animateScrollTo(0) }
-    val request = remote.toIntOrNull()?.let { port ->
+    LaunchedEffect(problem, ready()) { if (problem != null && ready()) scroll.animateScrollTo(0) }
+    fun currentRequest() = remote.toIntOrNull()?.let { port ->
         val localPort = if (local.isBlank()) null else local.toIntOrNull() ?: return@let null
         SshLocalForwardRequest(port, localPort, scheme, path).takeIf { it.valid() }
     }
+    val request = currentRequest()
     val dirty = remote != initial.remotePort.toString() || local != initial.preferredLocalPort?.toString().orEmpty() ||
         scheme != initial.scheme || path != initial.pathAndQuery
     val remoteValid = remote.toIntOrNull()?.let { it in 1..65535 } == true
     val localValid = local.isBlank() || local.toIntOrNull()?.let { it in 1024..65535 } == true
-    DraftCloseGuard(enabled = ready, dirty = dirty, onClose = onDismiss) { requestClose ->
-    androidx.activity.compose.BackHandler { requestClose() }
-    AlertDialog(modifier = Modifier.imePadding(), onDismissRequest = requestClose, title = { Text(stringResource(if (editing) R.string.ssh_forward_edit else R.string.ssh_forward_add)) }, text = {
+    DraftCloseGuard(enabled = ready(), dirty = dirty, onClose = { if (canInteract()) onDismiss() }) { requestClose ->
+    val close = { if (canInteract()) requestClose() }
+    androidx.activity.compose.BackHandler { close() }
+    AlertDialog(modifier = Modifier.imePadding(), onDismissRequest = close, title = { Text(stringResource(if (editing) R.string.ssh_forward_edit else R.string.ssh_forward_add)) }, text = {
         Column(Modifier.heightIn(max = 460.dp).verticalScroll(scroll), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             problem?.let { Text(stringResource(forwardProblemMessage(it)), color = MaterialTheme.colorScheme.error) }
-            if (problem == "cleanup" && onRetryCleanup != null) OutlinedButton(enabled = ready, onClick = onRetryCleanup) {
+            if (problem == "cleanup" && onRetryCleanup != null) OutlinedButton(enabled = ready(), onClick = { if (canInteract() && !currentCanStart()) onRetryCleanup() }) {
                 Text(stringResource(R.string.ssh_forward_stop_all))
             }
             if (editing) Text(stringResource(R.string.ssh_forward_edit_note))
-            OutlinedTextField(value = remote, onValueChange = { if (it.length <= 5) remote = it }, enabled = ready, isError = !remoteValid, singleLine = true, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ssh_forward_remote_port)) })
-            OutlinedTextField(value = local, onValueChange = { if (it.length <= 5) local = it }, enabled = ready, isError = !localValid, singleLine = true, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ssh_forward_local_port)) })
-            FlowRow { listOf("http", "https").forEach { value -> FilterChip(selected = scheme == value, enabled = ready, onClick = { scheme = value }, label = { Text(value.uppercase()) }) } }
-            OutlinedTextField(value = path, onValueChange = { if (it.length <= 2048) path = it }, enabled = ready, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ssh_forward_path)) })
+            OutlinedTextField(value = remote, onValueChange = { if (canInteract() && it.length <= 5) remote = it }, enabled = ready(), isError = !remoteValid, singleLine = true, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ssh_forward_remote_port)) })
+            OutlinedTextField(value = local, onValueChange = { if (canInteract() && it.length <= 5) local = it }, enabled = ready(), isError = !localValid, singleLine = true, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ssh_forward_local_port)) })
+            FlowRow { listOf("http", "https").forEach { value -> FilterChip(selected = scheme == value, enabled = ready(), onClick = { if (canInteract()) scheme = value }, label = { Text(value.uppercase()) }) } }
+            OutlinedTextField(value = path, onValueChange = { if (canInteract() && it.length <= 2048) path = it }, enabled = ready(), modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ssh_forward_path)) })
             if (request == null) Text(stringResource(R.string.ssh_forward_invalid), color = MaterialTheme.colorScheme.error)
         }
-    }, confirmButton = { TextButton(enabled = ready && canStart && request != null, onClick = { focus.clearFocus(); request?.let(onSubmit) }) { Text(stringResource(R.string.ssh_forward_start)) } },
-        dismissButton = { TextButton(enabled = ready, onClick = requestClose) { Text(stringResource(R.string.common_cancel)) } })
+    }, confirmButton = { TextButton(enabled = ready() && canStart() && request != null, onClick = { if (canInteract() && currentCanStart()) { focus.clearFocus(); currentRequest()?.let(onSubmit) } }) { Text(stringResource(R.string.ssh_forward_start)) } },
+        dismissButton = { TextButton(enabled = ready(), onClick = close) { Text(stringResource(R.string.common_cancel)) } })
     }
 }
 

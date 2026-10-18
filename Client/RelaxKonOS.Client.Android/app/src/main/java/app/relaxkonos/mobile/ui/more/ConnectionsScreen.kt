@@ -18,6 +18,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -66,6 +67,11 @@ fun ConnectionsScreen(
 @Composable
 internal fun ConnectionsContent(controller: ConnectionsActions, session: SessionState.Active?, onBack: (() -> Unit)?,
     onSwitchLogin: (SavedLogin) -> Unit, onOpenServerCenter: () -> Unit, active: Boolean, modifier: Modifier = Modifier) {
+    val currentActive by rememberUpdatedState(active)
+    val currentController by rememberUpdatedState(controller)
+    val currentSession by rememberUpdatedState(session)
+    var attached by remember { mutableStateOf(false) }
+    var confirmationToken by remember { mutableStateOf<Any?>(null) }
     var revision by remember { mutableStateOf(0) }
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     val resumed = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
@@ -73,24 +79,53 @@ internal fun ConnectionsContent(controller: ConnectionsActions, session: Session
     var deleteTarget by remember(active, resumed, session) { mutableStateOf<SavedLogin?>(null) }
     var mutationFailed by remember(forgetTarget, deleteTarget) { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner, active, resumed, session) {
+    DisposableEffect(controller, lifecycleOwner, active, resumed, session) {
+        attached = true
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE) {
+                confirmationToken = null
                 forgetTarget = null
                 deleteTarget = null
                 mutationFailed = false
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        onDispose {
+            attached = false
+            confirmationToken = null
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+    fun canMutate() = attached && currentActive && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
+        currentController === controller && currentSession === session && controller.isCurrentSession(session)
+    fun dismissConfirmation() {
+        confirmationToken = null
+        forgetTarget = null
+        deleteTarget = null
+        mutationFailed = false
+    }
+    fun openConfirmation(open: () -> Unit) {
+        if (!canMutate()) return
+        dismissConfirmation()
+        confirmationToken = Any()
+        open()
     }
     fun mutate(action: () -> Unit, completed: () -> Unit) {
+        mutationFailed = false
         try { action(); completed() }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { mutationFailed = true; revision++ }
     }
 
-    val logins = remember(revision, active, resumed) { controller.logins }
+    fun confirm(token: Any?, action: () -> Unit, completed: () -> Unit) {
+        if (token == null || confirmationToken !== token) return
+        if (!canMutate()) { confirmationToken = null; return }
+        confirmationToken = null
+        mutate(action, completed)
+        if (forgetTarget != null || deleteTarget != null) confirmationToken = Any()
+    }
+
+    val logins = remember(controller, revision, active, resumed, session) { controller.logins }
     LaunchedEffect(controller, active, resumed) { if (active && resumed) controller.resolvePlatforms() }
 
     Column(
@@ -112,13 +147,13 @@ internal fun ConnectionsContent(controller: ConnectionsActions, session: Session
                         leading = { ServerPlatformBadge(login.serviceId) },
                         actions = {
                             Column {
-                                TextButton(onClick = { onSwitchLogin(login) }) {
+                                TextButton(onClick = { if (canMutate()) { dismissConfirmation(); onSwitchLogin(login) } }) {
                                     Text(stringResource(R.string.more_switch_login))
                                 }
-                                TextButton(onClick = { forgetTarget = login }) {
+                                TextButton(onClick = { openConfirmation { forgetTarget = login } }) {
                                     Text(stringResource(R.string.connections_forget_password))
                                 }
-                                TextButton(onClick = { deleteTarget = login }) {
+                                TextButton(onClick = { openConfirmation { deleteTarget = login } }) {
                                     ActionLabel(R.string.common_delete)
                                 }
                             }
@@ -159,7 +194,7 @@ internal fun ConnectionsContent(controller: ConnectionsActions, session: Session
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
             )
-            OutlinedButton(onClick = onOpenServerCenter, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = { if (canMutate()) { dismissConfirmation(); onOpenServerCenter() } }, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.server_center_open))
             }
         }
@@ -172,28 +207,30 @@ internal fun ConnectionsContent(controller: ConnectionsActions, session: Session
     }
 
     forgetTarget?.let { login ->
+        val token = confirmationToken
         ConfirmDangerousDialog(
             title = stringResource(R.string.connections_forget_title),
             message = stringResource(R.string.connections_forget_message, login.serviceId, login.identifier),
             confirmLabel = stringResource(R.string.connections_forget_password),
             extraContent = { if (mutationFailed) Text(stringResource(R.string.connections_mutation_failed), color = MaterialTheme.colorScheme.error) },
             onConfirm = {
-                mutate({ controller.forgetPassword(login) }) { forgetTarget = null; revision++ }
+                confirm(token, { controller.forgetPassword(login) }) { forgetTarget = null; revision++ }
             },
-            onDismiss = { forgetTarget = null },
+            onDismiss = ::dismissConfirmation,
         )
     }
 
     deleteTarget?.let { login ->
+        val token = confirmationToken
         ConfirmDangerousDialog(
             title = stringResource(R.string.connections_delete_title),
             message = stringResource(R.string.connections_delete_message, login.serviceId, login.identifier),
             confirmLabel = stringResource(R.string.common_delete),
             extraContent = { if (mutationFailed) Text(stringResource(R.string.connections_mutation_failed), color = MaterialTheme.colorScheme.error) },
             onConfirm = {
-                mutate({ controller.delete(login) }) { deleteTarget = null; revision++ }
+                confirm(token, { controller.delete(login) }) { deleteTarget = null; revision++ }
             },
-            onDismiss = { deleteTarget = null },
+            onDismiss = ::dismissConfirmation,
         )
     }
 }

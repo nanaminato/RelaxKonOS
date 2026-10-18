@@ -149,6 +149,44 @@ class SshLocalForwardsTest {
             base.copy(pathAndQuery = "//evil.test/"), base.copy(pathAndQuery = "https://evil.test/"),
             base.copy(pathAndQuery = "/#fragment"), base.copy(pathAndQuery = "/\\evil"), base.copy(pathAndQuery = "/\n")).forEach { assertFalse(it.valid()) }
     }
+    @Test fun `test rejects previous workspace before scheduling network IO`() = runTest {
+        val h = Harness(backgroundScope)
+        h.manager.start(h.target.hostId, SshLocalForwardRequest(8080)); h.manager.state.first { !it.busy }
+        val row = h.manager.state.value.items.single()
+        h.workspace = "another-host"
+        h.manager.test(row.id); runCurrent()
+        assertNull(h.transports.single().testedPort); assertFalse(h.manager.state.value.busy)
+        assertNull(h.manager.state.value.items.single().testedAtMillis)
+        h.manager.clearWorkspace()
+    }
+    @Test fun `workspace change before queued test starts sends no probe`() = runTest {
+        val h = Harness(backgroundScope)
+        h.manager.start(h.target.hostId, SshLocalForwardRequest(8080)); h.manager.state.first { !it.busy }
+        h.manager.test(h.manager.state.value.items.single().id)
+        assertTrue(h.manager.state.value.busy)
+        h.workspace = "another-host"; runCurrent()
+        assertNull(h.transports.single().testedPort); assertFalse(h.manager.state.value.busy)
+        h.manager.clearWorkspace()
+    }
+    @Test fun `scope cancellation before queued test starts releases busy without a failure`() = runTest {
+        val owner = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val h = Harness(owner)
+        h.manager.start(h.target.hostId, SshLocalForwardRequest(8080)); h.manager.state.first { !it.busy }
+        h.manager.test(h.manager.state.value.items.single().id)
+        assertTrue(h.manager.state.value.busy)
+        owner.cancel(); runCurrent()
+        assertNull(h.transports.single().testedPort); assertFalse(h.manager.state.value.busy)
+        assertNull(h.manager.state.value.problem); h.manager.clearWorkspace()
+    }
+    @Test fun `disconnected transport is cleaned up instead of probed`() = runTest {
+        val h = Harness(backgroundScope)
+        h.manager.start(h.target.hostId, SshLocalForwardRequest(8080)); h.manager.state.first { !it.busy }
+        h.transports.single().connected = false
+        h.manager.test(h.manager.state.value.items.single().id); runCurrent()
+        assertNull(h.transports.single().testedPort); assertFalse(h.manager.state.value.busy)
+        assertEquals(SshForwardStatus.Disconnected, h.manager.state.value.items.single().status)
+        h.manager.clearWorkspace()
+    }
     private class Harness(scope: CoroutineScope, trusted: Boolean = true) {
         val targets = ServerHostTargetStore(InMemoryHostTargetStorage())
         val target = targets.upsert(ServerHostTargetRules.create("example.test", 22, "alice", null, 0))

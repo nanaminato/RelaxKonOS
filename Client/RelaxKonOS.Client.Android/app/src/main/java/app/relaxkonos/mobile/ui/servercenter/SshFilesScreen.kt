@@ -43,6 +43,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.runtime.DisposableEffect
@@ -100,6 +101,9 @@ data class SshFilesUiState(
     val detailEntry: SshFileEntry? = null,
     val preview: SshPreview = SshPreview.None,
     val newDirectory: String? = null,
+    val nameIntent: SshNameIntent? = null,
+    val pasteIntent: SshPasteIntent? = null,
+    val adoptIntent: SshAdoptIntent? = null,
     val deleteTarget: SshFileEntry? = null,
     val deleteEntries: List<SshFileEntry> = emptyList(),
     val renameTarget: SshFileEntry? = null,
@@ -113,7 +117,8 @@ data class SshFilesUiState(
     val clipboard: SshClipboard? = null,
     val unknown: Boolean = false,
     val checked: List<SshFileCheck> = emptyList(),
-    val discardRequested: Boolean = false,
+    val detailIntent: SshDetailIntent? = null,
+    val discardIntent: SshDiscardIntent? = null,
     val writesSettling: Boolean = false,
     val search: String = "",
     val sort: SshFileSort = SshFileSort.Name,
@@ -158,21 +163,13 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
     val container = (LocalContext.current.applicationContext as RelaxKonApplication).container
     val model = container.sshFiles
     val workspaceRevision = container.serverCenter.workspaceRevision
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
-    var resumed by remember(lifecycle) { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
-    DisposableEffect(lifecycle, model) {
-        val observer = LifecycleEventObserver { _, _ -> resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
-        lifecycle.addObserver(observer)
-        onDispose { lifecycle.removeObserver(observer); model.detach() }
-    }
-    LaunchedEffect(hostId, workspaceRevision, resumed) { if (resumed) model.resume(hostId) else model.detach() }
+    val resumed = rememberSshFilesResumed(model, hostId, workspaceRevision) { true }
     val state by model.state.collectAsStateWithLifecycle()
-    BackHandler(enabled = state.detailEntry != null) { model.closeDetail() }
+    val detailIntent = state.detailIntent
+    BackHandler(enabled = state.detailEntry != null) { detailIntent?.let(model::closeDetail) }
     var pendingUpload by remember(hostId, workspaceRevision) { mutableStateOf<List<Uri>>(emptyList()) }
     var pendingTree by remember(hostId, workspaceRevision) { mutableStateOf<Uri?>(null) }
     var pendingDownload by remember(hostId, workspaceRevision) { mutableStateOf<Pair<Boolean, Uri?>?>(null) }
-    var pasteConfirm by remember(hostId, workspaceRevision) { mutableStateOf<Pair<SshClipboard, String>?>(null) }
-    var adoptConfirm by remember(hostId, workspaceRevision) { mutableStateOf<List<SshFileCheck>?>(null) }
     var showTransferHelp by remember(hostId) { mutableStateOf(false) }
     var editAddress by remember(hostId) { mutableStateOf(false) }
     val fileListState = rememberLazyListState()
@@ -214,26 +211,16 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
                 true -> R.string.ssh_files_exists; false -> R.string.ssh_files_missing; null -> R.string.ssh_files_check_failed
             })), style = MaterialTheme.typography.bodySmall) }
             }
-            TextButton(onClick = { adoptConfirm = state.checked }, enabled = !state.busy && !state.writesSettling && state.checked.isNotEmpty() && state.checked.all { it.exists != null }) { Text(stringResource(R.string.ssh_files_adopt_facts)) }
+            TextButton(onClick = model::requestAdopt, enabled = !state.busy && !state.writesSettling && state.checked.isNotEmpty() && state.checked.all { it.exists != null }) { Text(stringResource(R.string.ssh_files_adopt_facts)) }
         }
-        OperationMessageDialog(state.problem?.takeUnless { state.busy }?.let { problemText(it) })
+        OperationMessageDialog(state.problem?.takeUnless { state.busy || state.newDirectory != null || state.renameTarget != null }?.let { problemText(it) })
         if (!state.connected) {
             if (state.busy) CircularProgressIndicator()
             else OutlinedButton(model::reload, modifier = Modifier.fillMaxWidth()) { ActionLabel(R.string.common_retry) }
         } else {
             val detail = state.detailEntry
             if (detail != null) {
-                SshFileDetail(
-                    entry = detail,
-                    preview = state.preview,
-                    busy = state.busy || state.unknown,
-                    onBack = model::closeDetail,
-                    onDownload = { model.requestDownload(detail) },
-                    onRename = { model.beginRename(detail) },
-                    onDelete = { model.askDelete(detail) },
-                    onTextChanged = model::updateText,
-                    onSaveText = model::saveText,
-                )
+                SshFileDetailPane(state, model)
             } else {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.ssh_files_title), modifier = Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall)
@@ -317,7 +304,7 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
                 state.clipboard?.let { clipboard ->
                     Text(stringResource(R.string.ssh_files_clipboard, clipboard.entries.size, stringResource(if (clipboard.cut) R.string.ssh_files_cut else R.string.ssh_files_copy)))
                     FlowRow {
-                        TextButton({ pasteConfirm = clipboard to state.path }, enabled = !state.busy && !state.unknown) { Text(stringResource(R.string.ssh_files_paste)) }
+                        TextButton(model::requestPaste, enabled = !state.busy && !state.unknown) { Text(stringResource(R.string.ssh_files_paste)) }
                         TextButton(model::clearClipboard, enabled = !state.busy) { Text(stringResource(R.string.common_cancel)) }
                     }
                 }
@@ -344,7 +331,8 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
                                     TextButton({ model.beginRename(selected) }, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_rename)) }
                                     TextButton({ model.askDelete(selected) }, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_delete)) }
                                 }
-                                Preview(state.preview, model::updateText, model::saveText, state.busy)
+                                key(detailIntent) { Preview(state.preview, { value -> detailIntent?.let { model.updateText(value, it) } },
+                                    { detailIntent?.let(model::saveText) }, state.busy || state.unknown || detailIntent == null || state.discardIntent != null) }
                             }
                         }
                     }
@@ -356,21 +344,10 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
         title = { Text(stringResource(R.string.ssh_files_transfer_help)) },
         text = { Text(stringResource(R.string.ssh_files_transfer_note)) },
         confirmButton = { TextButton(onClick = { showTransferHelp = false }) { Text(stringResource(R.string.common_close)) } })
-    if (state.discardRequested) AlertDialog(onDismissRequest = model::cancelDiscard,
-        title = { Text(stringResource(R.string.ssh_files_discard_title)) }, text = { Text(stringResource(R.string.ssh_files_discard_note)) },
-        confirmButton = { TextButton(model::discardDetail) { Text(stringResource(R.string.ssh_files_discard)) } },
-        dismissButton = { TextButton(model::cancelDiscard) { Text(stringResource(R.string.common_cancel)) } })
-    pasteConfirm?.let { (clipboard, path) -> AlertDialog(onDismissRequest = { pasteConfirm = null }, title = { Text(stringResource(R.string.ssh_files_paste)) },
-        text = { Text(stringResource(R.string.ssh_files_paste_confirm, clipboard.entries.size, path)) },
-        confirmButton = { TextButton(enabled = !state.busy && !state.unknown && state.clipboard == clipboard && state.path == path, onClick = { model.paste(); pasteConfirm = null }) { Text(stringResource(R.string.ssh_files_paste)) } },
-        dismissButton = { TextButton({ pasteConfirm = null }) { Text(stringResource(R.string.common_cancel)) } }) }
-    adoptConfirm?.let { checks -> AlertDialog(onDismissRequest = { adoptConfirm = null }, title = { Text(stringResource(R.string.ssh_files_adopt_facts)) },
-        text = { Text(stringResource(R.string.ssh_files_adopt_note)) },
-        confirmButton = { TextButton(enabled = !state.busy && !state.writesSettling && state.checked == checks && checks.isNotEmpty() && checks.all { it.exists != null }, onClick = { model.adoptFacts(); adoptConfirm = null }) { Text(stringResource(R.string.ssh_files_adopt_facts)) } },
-        dismissButton = { TextButton({ adoptConfirm = null }) { Text(stringResource(R.string.common_cancel)) } }) }
-    state.newDirectory?.let { value -> NameDialog(stringResource(R.string.ssh_files_new_folder), value, model::setNewDirectory, model::createDirectory, model::cancelCreateDirectory, state.busy, state.unknown) }
-    state.renameTarget?.let { NameDialog(stringResource(R.string.ssh_files_rename), state.renameName, model::setRename, model::rename, model::cancelRename, state.busy, state.unknown) }
-    state.deleteTarget?.let { entry -> ConfirmDangerousDialog(stringResource(R.string.ssh_files_delete), if (state.deleteEntries.size == 1) stringResource(R.string.ssh_files_delete_note, entry.name) else stringResource(R.string.ssh_files_delete_many_note, state.deleteEntries.size), stringResource(R.string.ssh_files_delete), model::delete, model::dismissDelete, state.busy) }
+    SshFileDiscardConfirmation(state, model)
+    SshFileApprovals(state, model)
+    SshFileNameEditor(state, model)
+    if (state.deleteEntries.isNotEmpty()) SshFileDeleteConfirmation(state.deleteEntries, state.busy, model::delete, model::dismissDelete)
 }
 
 @Composable
@@ -403,6 +380,7 @@ private fun SshFileDetail(
     entry: SshFileEntry,
     preview: SshPreview,
     busy: Boolean,
+    unknown: Boolean,
     onBack: () -> Unit,
     onDownload: () -> Unit,
     onRename: () -> Unit,
@@ -425,12 +403,12 @@ private fun SshFileDetail(
         SectionCard(title = stringResource(R.string.ssh_files_actions)) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 OutlinedButton(onDownload, enabled = !busy) { Text(stringResource(R.string.ssh_files_download)) }
-                TextButton(onRename, enabled = !busy) { Text(stringResource(R.string.ssh_files_rename)) }
-                TextButton(onDelete, enabled = !busy) { Text(stringResource(R.string.ssh_files_delete)) }
+                TextButton(onRename, enabled = !busy && !unknown && (preview as? SshPreview.Text)?.changed != true) { Text(stringResource(R.string.ssh_files_rename)) }
+                TextButton(onDelete, enabled = !busy && !unknown && (preview as? SshPreview.Text)?.changed != true) { Text(stringResource(R.string.ssh_files_delete)) }
             }
         }
         SectionCard(title = stringResource(R.string.ssh_files_preview)) {
-            Preview(preview, onTextChanged, onSaveText, busy)
+            Preview(preview, onTextChanged, onSaveText, busy || unknown)
         }
     }
 }
@@ -444,13 +422,38 @@ private fun SshFileDetail(
     }
 }
 
+@Composable
+internal fun SshFileNameEditor(state: SshFilesUiState, model: SshFilesController) {
+    val nameIntent = state.nameIntent
+    key(nameIntent) {
+        state.newDirectory?.let { value -> NameDialog(stringResource(R.string.ssh_files_new_folder), value,
+            { text -> nameIntent?.let { model.setNewDirectory(text, it) } },
+            { nameIntent?.let(model::createDirectory) }, { nameIntent?.let(model::cancelCreateDirectory) },
+            state.busy || nameIntent == null, state.unknown, state.problem) }
+        state.renameTarget?.let { NameDialog(stringResource(R.string.ssh_files_rename), state.renameName,
+            { text -> nameIntent?.let { model.setRename(text, it) } },
+            { nameIntent?.let(model::rename) }, { nameIntent?.let(model::cancelRename) },
+            state.busy || nameIntent == null, state.unknown, state.problem) }
+    }
+}
+
 @Composable internal fun NameDialog(title: String, value: String, onValue: (String) -> Unit, onConfirm: () -> Unit, onDismiss: () -> Unit,
-    busy: Boolean, unknown: Boolean) = AlertDialog(
-    onDismissRequest = { if (!busy) onDismiss() }, title = { Text(title) }, text = { OutlinedTextField(value, onValue, label = { Text(title) }, singleLine = true, enabled = !busy) },
-    confirmButton = { TextButton(onConfirm, enabled = !busy && !unknown && SshFileTransferRules.safeName(value.trim())) { ActionLabel(R.string.common_save) } }, dismissButton = { TextButton(onDismiss, enabled = !busy) { Text(stringResource(R.string.common_cancel)) } },
+    busy: Boolean, unknown: Boolean, problem: String?) = AlertDialog(
+    modifier = Modifier.imePadding(),
+    onDismissRequest = { if (!busy) onDismiss() }, title = { Text(title) }, text = {
+        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            problem?.let { Text(problemText(it), color = MaterialTheme.colorScheme.error) }
+            if (unknown) Text(stringResource(R.string.ssh_files_unknown), color = MaterialTheme.colorScheme.error)
+            OutlinedTextField(value, onValue, label = { Text(title) }, singleLine = true, enabled = !busy && !unknown)
+        }
+    },
+    confirmButton = { TextButton(onConfirm, enabled = !busy && !unknown && SshFileTransferRules.safeName(value.trim())) { ActionLabel(R.string.common_save) } },
+    dismissButton = { TextButton(onDismiss, enabled = !busy) { Text(stringResource(R.string.common_cancel)) } },
 )
 
 @Composable private fun problemText(problem: String): String = stringResource(when (problem) {
+    "text-unreadable" -> R.string.ssh_files_text_unreadable
+    "cleanup-failed" -> R.string.ssh_files_cleanup_failed
     "text-too-large" -> R.string.ssh_files_text_too_large
     "image-unreadable" -> R.string.ssh_files_image_unreadable
     "invalid-name" -> R.string.ssh_files_invalid_name
@@ -461,3 +464,76 @@ private fun SshFileDetail(
     "destination-exists" -> R.string.ssh_files_destination_exists
     else -> R.string.ssh_files_connection_failed
 })
+
+private class SshDeleteConfirmationIdentity(private val entries: List<SshFileEntry>) {
+    override fun equals(other: Any?) = other is SshDeleteConfirmationIdentity && other.entries === entries
+    override fun hashCode() = System.identityHashCode(entries)
+}
+
+@Composable
+internal fun SshFileDeleteConfirmation(entries: List<SshFileEntry>, busy: Boolean,
+    onDelete: (List<SshFileEntry>) -> Unit, onDismiss: () -> Unit) {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    key(SshDeleteConfirmationIdentity(entries)) {
+    ConfirmDangerousDialog(stringResource(R.string.ssh_files_delete),
+        if (entries.size == 1) stringResource(R.string.ssh_files_delete_note, entries.single().name)
+        else stringResource(R.string.ssh_files_delete_many_note, entries.size),
+        stringResource(R.string.ssh_files_delete),
+        { if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) onDelete(entries) }, onDismiss, busy)
+    }
+}
+
+@Composable
+internal fun SshFileApprovals(state: SshFilesUiState, model: SshFilesController) {
+    state.pasteIntent?.let { expected -> key(expected) {
+        AlertDialog(onDismissRequest = { model.cancelPaste(expected) }, title = { Text(stringResource(R.string.ssh_files_paste)) },
+            text = { Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                Text(stringResource(if (expected.clipboard.cut) R.string.ssh_files_cut else R.string.ssh_files_copy))
+                Text(stringResource(R.string.ssh_files_paste_confirm, expected.clipboard.entries.size, expected.directory))
+                expected.clipboard.entries.forEach { Text(it.path, style = MaterialTheme.typography.bodySmall) }
+            } },
+            confirmButton = { TextButton(enabled = !state.busy && !state.unknown && state.clipboard === expected.clipboard && state.path == expected.directory,
+                onClick = { model.paste(expected) }) { Text(stringResource(R.string.ssh_files_paste)) } },
+            dismissButton = { TextButton({ model.cancelPaste(expected) }) { Text(stringResource(R.string.common_cancel)) } })
+    } }
+    state.adoptIntent?.let { expected -> key(expected) {
+        AlertDialog(onDismissRequest = { model.cancelAdopt(expected) }, title = { Text(stringResource(R.string.ssh_files_adopt_facts)) },
+            text = { Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                Text(stringResource(R.string.ssh_files_adopt_note))
+                expected.checks.forEach { check -> Text(stringResource(R.string.ssh_files_check_result, check.path,
+                    stringResource(when (check.exists) {
+                        true -> R.string.ssh_files_exists; false -> R.string.ssh_files_missing; null -> R.string.ssh_files_check_failed
+                    })), style = MaterialTheme.typography.bodySmall) }
+            } },
+            confirmButton = { TextButton(enabled = !state.busy && !state.writesSettling && state.checked === expected.checks &&
+                expected.checks.isNotEmpty() && expected.checks.all { it.exists != null }, onClick = { model.adoptFacts(expected) }) {
+                Text(stringResource(R.string.ssh_files_adopt_facts)) } },
+            dismissButton = { TextButton({ model.cancelAdopt(expected) }) { Text(stringResource(R.string.common_cancel)) } })
+    } }
+}
+
+@Composable
+internal fun SshFileDetailPane(state: SshFilesUiState, model: SshFilesController) {
+    val entry = state.detailEntry ?: return
+    val expected = state.detailIntent
+    key(expected) {
+        SshFileDetail(entry, state.preview, state.busy || expected == null || state.discardIntent != null, state.unknown,
+            onBack = { expected?.let(model::closeDetail) },
+            onDownload = { if (expected != null && model.state.value.detailIntent === expected) model.requestDownload(entry) },
+            onRename = { if (expected != null && model.state.value.detailIntent === expected) model.beginRename(entry) },
+            onDelete = { if (expected != null && model.state.value.detailIntent === expected) model.askDelete(entry) },
+            onTextChanged = { value -> expected?.let { model.updateText(value, it) } },
+            onSaveText = { expected?.let(model::saveText) })
+    }
+}
+
+@Composable
+internal fun SshFileDiscardConfirmation(state: SshFilesUiState, model: SshFilesController) {
+    state.discardIntent?.let { expected -> key(expected) {
+        AlertDialog(onDismissRequest = { model.cancelDiscard(expected) },
+            title = { Text(stringResource(R.string.ssh_files_discard_title)) },
+            text = { Text(stringResource(R.string.ssh_files_discard_note)) },
+            confirmButton = { TextButton({ model.discardDetail(expected) }, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_discard)) } },
+            dismissButton = { TextButton({ model.cancelDiscard(expected) }, enabled = !state.busy) { Text(stringResource(R.string.common_cancel)) } })
+    } }
+}
