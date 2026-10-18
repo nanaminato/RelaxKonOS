@@ -14,7 +14,7 @@ namespace RelaxKonOS.PrivilegedHelper;
 /// <summary>Fixed paths, pinned archive, closed generator, no caller-supplied executable or native config.</summary>
 internal static class SingBoxOperations
 {
-    private static string Root => OperatingSystem.IsWindows()
+    internal static string Root => OperatingSystem.IsWindows()
         ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "RelaxKonOS-Components", "sing-box")
         : "/var/lib/relaxkonos/proxy-server";
     private static string Binary => Path.Combine(Root, OperatingSystem.IsWindows() ? "sing-box.exe" : "sing-box");
@@ -28,7 +28,8 @@ internal static class SingBoxOperations
     private sealed record Installed(string Version, string BinaryHash);
     private static readonly SemaphoreSlim Gate = new(1);
     internal static ISingBoxArchiveHost CreateArchiveHost() => OperatingSystem.IsWindows()
-        ? new WindowsSingBoxArchiveHost(Root) : throw new RuntimePolicyException("runtime.platform_unsupported");
+        ? new WindowsSingBoxArchiveHost(Root) : OperatingSystem.IsLinux()
+            ? new LinuxSingBoxArchiveHost() : throw new RuntimePolicyException("runtime.platform_unsupported");
 
     public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request)
     {
@@ -45,8 +46,15 @@ internal static class SingBoxOperations
             if (request.Operation == PrivilegedOperationKind.ProxyServerStatus && !Directory.Exists(Root))
                 return Json(new ProxyServerStatus(true, false, false, false, null, null, false, null));
             PrepareRoot();
-            // Also serializes Linux one-shot Helper processes.
-            using var gate = new FileStream(Path.Combine(Root, "operation.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            // Configuration, service control and archive lifecycle all share the same cross-process instance lock.
+            using var gate = new RuntimeArchiveStateStore(Path.Combine(Root, "state"), RuntimeSourceProtection.Protect).Acquire();
+            if (gate.State is { } managed && (managed.Active is not null || managed.Pending is not null))
+            {
+                if (request.Operation == PrivilegedOperationKind.ProxyServerAction
+                    && request.ProxyServer is { Action: ProxyServerAction.Stop, Material: null })
+                    return Json(await SingBoxManagedStop.ExecuteAsync(Root, managed, CreateArchiveHost(), default));
+                return Failure("proxy_server.managed_runtime_required");
+            }
             if (request.Operation == PrivilegedOperationKind.ProxyServerStatus) return Json(await StatusAsync());
             if (request.Operation == PrivilegedOperationKind.ProxyServerAction)
             {

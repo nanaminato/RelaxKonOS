@@ -13,6 +13,7 @@ internal fun installationServiceLabel(value: InstallationService): String = stri
     InstallationService.Mihomo -> R.string.installation_service_mihomo
     InstallationService.Docker -> R.string.installation_service_docker
     InstallationService.Git -> R.string.installation_service_git
+    InstallationService.SingBox -> R.string.installation_service_singbox
 })
 
 @Composable
@@ -21,6 +22,7 @@ internal fun installationKindLabel(value: InstallationKind): String = stringReso
     InstallationKind.Upgrade -> R.string.installation_kind_upgrade
     InstallationKind.Repair -> R.string.installation_kind_repair
     InstallationKind.Uninstall -> R.string.installation_kind_uninstall
+    InstallationKind.Rollback -> R.string.installation_kind_rollback
 })
 
 @Composable

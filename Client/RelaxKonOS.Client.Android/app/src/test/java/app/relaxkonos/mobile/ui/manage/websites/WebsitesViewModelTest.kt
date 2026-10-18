@@ -45,7 +45,8 @@ class WebsitesViewModelTest {
     private lateinit var model: WebsitesViewModel
     @Before fun setup() {
         Dispatchers.setMain(StandardTestDispatcher())
-        model = WebsitesViewModel(session, WebPublishingRepository(gateway, session, elevation, index),
+        val publishing = WebPublishingRepository(gateway, session, elevation, index)
+        model = WebsitesViewModel(session, publishing, WebsitePublicationRequests(session, publishing, WebsitePublicationJournal(Storage())),
             DeploymentRepository(gateway, session), CertificateRepository(gateway, session, index, CertificateRequestJournal(Storage()), elevation), ElevationAnswerProvider.Declines)
         store.put("websites", model)
     }

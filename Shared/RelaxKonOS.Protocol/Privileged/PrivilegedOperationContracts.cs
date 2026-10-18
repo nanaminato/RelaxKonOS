@@ -25,6 +25,10 @@ public enum PrivilegedOperationKind
     RuntimeSources,
     RuntimeCatalogGet,
     RuntimeCatalogRefresh,
+    SingBoxRuntimeQuery,
+    SingBoxRuntimePlan,
+    SingBoxRuntimeExecute,
+    SingBoxRuntimeRecover,
     ProxyServerStatus,
     ProxyServerAction,
     ProxyServerValidate,
@@ -308,7 +312,8 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("squidServiceAction")] RelaxKonOS.Protocol.GatewayProxy.SquidServiceAction? SquidServiceAction = null,
     [property: JsonPropertyName("squidAccount")] RelaxKonOS.Protocol.GatewayProxy.SquidAccountMutation? SquidAccount = null,
     [property: JsonPropertyName("proxyServer")] RelaxKonOS.Protocol.ProxyServer.ProxyServerHelperRequest? ProxyServer = null,
-    [property: JsonPropertyName("runtimeSourceId")] string? RuntimeSourceId = null);
+    [property: JsonPropertyName("runtimeSourceId")] string? RuntimeSourceId = null,
+    [property: JsonPropertyName("runtimeLifecycle")] RelaxKonOS.Protocol.ManagedRuntimes.RuntimeLifecycleRequest? RuntimeLifecycle = null);
 
 /// <summary>Versioned structured result returned by the local Helper.</summary>
 public sealed record PrivilegedOperationResult(

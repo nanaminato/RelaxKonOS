@@ -13,7 +13,7 @@ internal sealed class NginxInstallationService(NginxWebServerManager manager, In
 {
     public override InstallationServiceId Id => InstallationServiceId.Nginx;
     protected override bool Confirmed(NginxInstallationRequest request) => request.Confirmed;
-    protected override bool Supports(InstallationOperationKind kind) => Enum.IsDefined(kind);
+    protected override bool Supports(InstallationOperationKind kind) => kind is InstallationOperationKind.Install or InstallationOperationKind.Upgrade or InstallationOperationKind.Repair or InstallationOperationKind.Uninstall;
     protected override async Task ExecuteAsync(InstallationOperationKind kind, NginxInstallationRequest options, string actor, IInstallationProgress progress, CancellationToken ct)
     {
         Check(string.IsNullOrWhiteSpace(options.FileReferenceId) || kind == InstallationOperationKind.Install, InstallationProblemCodes.InvalidRequest);
@@ -35,7 +35,7 @@ public sealed class FrpInstallationService(IRuntimeManager runtime, ITunnelProvi
     public override InstallationServiceId Id => InstallationServiceId.Frp;
     public override IReadOnlyList<string> Resources => ["service:Frp", "runtime:frp"];
     protected override bool Confirmed(FrpInstallationRequest request) => request.Confirmed;
-    protected override bool Supports(InstallationOperationKind kind) => Enum.IsDefined(kind);
+    protected override bool Supports(InstallationOperationKind kind) => kind is InstallationOperationKind.Install or InstallationOperationKind.Upgrade or InstallationOperationKind.Repair or InstallationOperationKind.Uninstall;
     protected override async Task ExecuteAsync(InstallationOperationKind kind, FrpInstallationRequest options, string actor, IInstallationProgress progress, CancellationToken ct)
     {
         Check(!options.Rollback || kind == InstallationOperationKind.Repair, InstallationProblemCodes.InvalidRequest);
@@ -80,7 +80,7 @@ public sealed class MihomoInstallationService(IProxyRuntimeManager runtime, IMih
     public override InstallationServiceId Id => InstallationServiceId.Mihomo;
     public override IReadOnlyList<string> Resources => ["service:Mihomo", "runtime:mihomo"];
     protected override bool Confirmed(MihomoInstallationRequest request) => request.Confirmed;
-    protected override bool Supports(InstallationOperationKind kind) => Enum.IsDefined(kind);
+    protected override bool Supports(InstallationOperationKind kind) => kind is InstallationOperationKind.Install or InstallationOperationKind.Upgrade or InstallationOperationKind.Repair or InstallationOperationKind.Uninstall;
     protected override async Task ExecuteAsync(InstallationOperationKind kind, MihomoInstallationRequest options, string actor, IInstallationProgress progress, CancellationToken ct)
     {
         Check(!options.Rollback || kind == InstallationOperationKind.Repair, InstallationProblemCodes.InvalidRequest);

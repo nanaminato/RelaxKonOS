@@ -4,6 +4,7 @@ using System.Text.Json;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.ProxyServer;
+using RelaxKonOS.Protocol.Installations;
 
 namespace RelaxKonOS.PrivilegedHelper;
 
@@ -21,7 +22,6 @@ internal interface ISingBoxArchiveHost
     Task<bool> ListenersHealthyAsync(ProxyServerConfiguration published, CancellationToken ct);
 }
 
-internal sealed record SingBoxCurrentAuthorization(ProxyServerMaterial? Published, DateTimeOffset ValidUntil);
 internal interface ISingBoxArchiveAuthorization
 {
     /// <summary>Current Server-owned published state after credential/certificate authorization. No drafts or stale cached grant.</summary>
@@ -34,7 +34,7 @@ internal interface ISingBoxArchiveAuthorization
 /// </summary>
 internal sealed class SingBoxArchiveAdapter(string protectedRoot, RuntimeArchiveStateStore stateStore, RuntimeSourceStore sources,
     IRuntimeArchiveTransport transport, ISingBoxArchiveHost host, ISingBoxArchiveAuthorization authorization,
-    Action<string> protectDirectory) : IRuntimeArchiveSwitchAdapter
+    Action<string> protectDirectory, Func<InstallationStage, Task>? progress = null) : IRuntimeArchiveSwitchAdapter
 {
     private readonly string root = ValidateRoot(protectedRoot);
     private string Configuration => Path.Combine(root, "config.json");
@@ -54,6 +54,9 @@ internal sealed class SingBoxArchiveAdapter(string protectedRoot, RuntimeArchive
             || release.Target.ServiceHost != (OperatingSystem.IsWindows() ? "scm" : "systemd")
             || Path.GetFileName(release.Artifact.EntryPoint) != (OperatingSystem.IsWindows() ? "sing-box.exe" : "sing-box"))
             throw new RuntimePolicyException("runtime.configuration_unsupported");
+        if (plan.Request.Change == RuntimeChange.Update && current.Active is { } active
+            && SingBoxNativeValidation.UpdateProblem(active.MeasuredVersion, release.OriginalVersion) is { } problem)
+            throw new RuntimePolicyException(problem);
         Authorize(plan);
         foreach (var directory in new[] { root, Operations, Versions, Staging }) Protect(directory);
         var service = await host.ObserveAsync(ct);
@@ -85,7 +88,7 @@ internal sealed class SingBoxArchiveAdapter(string protectedRoot, RuntimeArchive
     {
         var current = await CurrentAsync(ct);
         var operationStaging = Path.Combine(Staging, operationId.ToString("N")); Protect(operationStaging);
-        var prepared = await new RuntimeArtifactPreparer(sources, transport).PrepareAsync(plan.Release!.SourceId, plan.Release.ReleaseId,
+        var prepared = await new RuntimeArtifactPreparer(sources, transport, progress).PrepareAsync(plan.Release!.SourceId, plan.Release.ReleaseId,
             plan.Request.ExpectedCatalogRevision, plan.Request.ExpectedTrustRevision, plan.Release.Target,
             plan.Request.AllowPrerelease, operationStaging, ct);
         var revisionDirectory = Revision(operationId);
@@ -120,6 +123,7 @@ internal sealed class SingBoxArchiveAdapter(string protectedRoot, RuntimeArchive
 
     public async Task ActivateAsync(RuntimePendingSwitch pending, CancellationToken ct)
     {
+        await RequireCurrentConfigurationAsync(pending.Prepared!.Revision.ConfigurationIdentity, ct);
         await host.StopAsync(ct);
         var candidate = await ReadConfigurationAsync(Path.Combine(Operation(pending.OperationId), "candidate.json"), ct);
         if (Hash(candidate) != pending.Prepared!.Revision.ConfigurationIdentity) throw new RuntimePolicyException("runtime.configuration_drift");
@@ -127,7 +131,12 @@ internal sealed class SingBoxArchiveAdapter(string protectedRoot, RuntimeArchive
         PrepareProgramReadAccess(pending.Prepared.Revision);
         await host.ConfigureAsync(Binary(pending.Prepared.Revision), Configuration, pending.Prepared.Revision.ConfigurationIdentity,
             pending.Prepared.BootEnabledAfterSwitch, ct);
-        if (pending.Prepared.RunAfterSwitch) await host.StartAsync(ct);
+        if (pending.Prepared.RunAfterSwitch)
+        {
+            // Native checks or service registration may outlive the earlier authorization lease.
+            await RequireCurrentConfigurationAsync(pending.Prepared.Revision.ConfigurationIdentity, ct);
+            await host.StartAsync(ct);
+        }
     }
 
     public async Task<RuntimeActivationEvidence> VerifyAsync(RuntimePendingSwitch pending, CancellationToken ct)
@@ -171,6 +180,7 @@ internal sealed class SingBoxArchiveAdapter(string protectedRoot, RuntimeArchive
     public async Task<RuntimeRestorationEvidence> RestoreAsync(RuntimePendingSwitch pending, CancellationToken ct)
     {
         var snapshot = pending.Snapshot!;
+        if (snapshot.ConfigurationIdentity is { } oldIdentity) await RequireCurrentConfigurationAsync(oldIdentity, ct);
         var registration = JsonSerializer.Deserialize<SingBoxServiceObservation>(await File.ReadAllBytesAsync(Path.Combine(Operation(pending.OperationId), "service.json"), ct))
             ?? throw new RuntimePolicyException("runtime.snapshot_invalid");
         if (snapshot.ConfigurationIdentity is null) { RuntimeSourceStore.RequireNoLinks(Configuration); File.Delete(Configuration); }
@@ -180,7 +190,11 @@ internal sealed class SingBoxArchiveAdapter(string protectedRoot, RuntimeArchive
         {
             if (pending.Previous is null) throw new RuntimePolicyException("runtime.snapshot_invalid");
             await host.ConfigureAsync(Binary(pending.Previous), Configuration, snapshot.ConfigurationIdentity!, snapshot.BootEnabled, ct);
-            if (snapshot.Running) await host.StartAsync(ct);
+            if (snapshot.Running)
+            {
+                await RequireCurrentConfigurationAsync(snapshot.ConfigurationIdentity!, ct);
+                await host.StartAsync(ct);
+            }
         }
         var actual = await host.ObserveAsync(ct);
         var native = pending.Previous is null ? null : await ValidateNativeAsync(Binary(pending.Previous), Configuration, pending.Previous.Release, ct);
@@ -203,9 +217,16 @@ internal sealed class SingBoxArchiveAdapter(string protectedRoot, RuntimeArchive
         return Task.CompletedTask;
     }
 
-    private AuthorizedRuntimeRelease Authorize(RuntimeChangePlan plan) => sources.AuthorizeRelease(plan.Release!.SourceId,
-        plan.Release.ReleaseId, plan.Request.ExpectedCatalogRevision, plan.Request.ExpectedTrustRevision,
-        plan.Release.Target, plan.Request.AllowPrerelease, DateTimeOffset.UtcNow);
+    private AuthorizedRuntimeRelease Authorize(RuntimeChangePlan plan)
+    {
+        var release = plan.Release!;
+        var authorized = sources.AuthorizeRelease(release.SourceId, release.ReleaseId,
+            plan.Request.ExpectedCatalogRevision, plan.Request.ExpectedTrustRevision,
+            release.Target, plan.Request.AllowPrerelease, DateTimeOffset.UtcNow);
+        if (!RuntimeJson.Serialize(release).AsSpan().SequenceEqual(RuntimeJson.Serialize(authorized.CatalogRelease)))
+            throw new RuntimePolicyException("runtime.release_untrusted");
+        return authorized;
+    }
 
     private async Task<ProxyServerMaterial> CurrentAsync(CancellationToken ct)
     {
@@ -213,6 +234,13 @@ internal sealed class SingBoxArchiveAdapter(string protectedRoot, RuntimeArchive
         if (grant.ValidUntil <= DateTimeOffset.UtcNow || grant.ValidUntil > DateTimeOffset.UtcNow.AddMinutes(5))
             throw new RuntimePolicyException("runtime.authorization_unavailable");
         return grant.Published ?? Empty;
+    }
+
+    private async Task RequireCurrentConfigurationAsync(string identity, CancellationToken ct)
+    {
+        var current = await CurrentAsync(ct);
+        if (Hash(Encoding.UTF8.GetBytes(SingBoxConfiguration.Render(current))) != identity)
+            throw new RuntimePolicyException("runtime.authorization_changed");
     }
 
     private async Task<SingBoxBuildEvidence> ValidateNativeAsync(string binary, string configuration, RuntimeRelease release, CancellationToken ct)

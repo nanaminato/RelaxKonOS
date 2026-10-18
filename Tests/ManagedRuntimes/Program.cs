@@ -1,6 +1,48 @@
 using System.Text.Json;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 
+if (args is ["-n", var helperFixture] && Path.GetFileName(helperFixture) == InstallationChecks.FixtureFile)
+{
+    await InstallationChecks.RunHelperFixtureAsync();
+    return;
+}
+
+if (args is ["runtime-installation-only"])
+{
+    Console.WriteLine($"Runtime installation coordinator checks passed: {await InstallationChecks.RunAsync()}");
+    return;
+}
+
+if (args is ["runtime-authorization-only"])
+{
+    Console.WriteLine($"Runtime current authorization checks passed: {await AuthorizationChecks.RunAsync()}");
+    return;
+}
+
+if (args is ["runtime-lifecycle-only"])
+{
+    Console.WriteLine($"Runtime lifecycle boundary checks passed: {await LifecycleChecks.RunAsync()}");
+    return;
+}
+
+if (args is ["run", "-c", var fixtureConfiguration])
+{
+    await LinuxSystemdHostChecks.RunFixtureAsync(fixtureConfiguration);
+    return;
+}
+
+if (args is ["linux-systemd-host"] && OperatingSystem.IsLinux())
+{
+    Console.WriteLine($"Linux systemd host checks passed: {await LinuxSystemdHostChecks.RunAsync()}");
+    return;
+}
+
+if (args is ["linux-listeners-only"])
+{
+    Console.WriteLine($"Linux listener checks passed: {LinuxListenerChecks.Run()}");
+    return;
+}
+
 if (args is ["native-sing-box-archive", var nativeArchive])
 {
     Console.WriteLine($"Real sing-box archive adapter checks passed: {await SingBoxArchiveChecks.RunAsync(nativeArchive)}");
@@ -88,3 +130,7 @@ Console.WriteLine($"Runtime archive transaction checks passed: {await SwitchChec
 Console.WriteLine($"Runtime version/native build checks passed: {NativeVersionChecks.Run()}");
 Console.WriteLine($"Native child process checks passed: {await NativeProcessChecks.RunAsync()}");
 Console.WriteLine($"Windows native host/policy checks passed: {await WindowsHostChecks.RunAsync()}");
+Console.WriteLine($"Linux listener checks passed: {LinuxListenerChecks.Run()}");
+Console.WriteLine($"Runtime current authorization checks passed: {await AuthorizationChecks.RunAsync()}");
+Console.WriteLine($"Runtime lifecycle boundary checks passed: {await LifecycleChecks.RunAsync()}");
+Console.WriteLine($"Runtime installation coordinator checks passed: {await InstallationChecks.RunAsync()}");

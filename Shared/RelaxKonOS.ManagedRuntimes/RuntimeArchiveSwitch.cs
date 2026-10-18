@@ -10,7 +10,8 @@ namespace RelaxKonOS.ManagedRuntimes;
 /// The instance lock is also required for configuration publication and other lifecycle verbs.
 /// Package transactions and data-removing uninstalls must use their own adapters, never this switch.
 /// </summary>
-public sealed class RuntimeArchiveSwitch(RuntimeArchiveStateStore store, IRuntimeArchiveSwitchAdapter adapter)
+public sealed class RuntimeArchiveSwitch(RuntimeArchiveStateStore store, IRuntimeArchiveSwitchAdapter adapter,
+    Func<InstallationStage, Task>? progress = null)
 {
     public async Task<RuntimeSwitchResult> ExecuteAsync(Guid operationId, RuntimeChangePlan plan, CancellationToken ct)
     {
@@ -43,6 +44,7 @@ public sealed class RuntimeArchiveSwitch(RuntimeArchiveStateStore store, IRuntim
         });
         try
         {
+            await NotifyAsync(InstallationStage.Preflight);
             await adapter.PreflightAsync(plan, session.State!, ct);
             var snapshot = await adapter.CaptureAsync(operationId, session.State!, ct);
             if (snapshot.ConfigurationIdentity != session.State!.ConfigurationIdentity)
@@ -52,6 +54,7 @@ public sealed class RuntimeArchiveSwitch(RuntimeArchiveStateStore store, IRuntim
                 || plan.Request.Change == RuntimeChange.Install && (snapshot.Running || snapshot.BootEnabled))
                 throw new RuntimePolicyException("runtime.snapshot_invalid");
             UpdatePending(session, p => p with { Snapshot = snapshot, Stage = InstallationStage.Preparing });
+            await NotifyAsync(InstallationStage.Preparing);
             var prepared = await adapter.PrepareAsync(operationId, plan, snapshot, ct);
             ValidatePrepared(plan, snapshot, prepared, session.State!);
             Save(session, session.State! with
@@ -59,6 +62,7 @@ public sealed class RuntimeArchiveSwitch(RuntimeArchiveStateStore store, IRuntim
                 Revisions = [.. session.State!.Revisions, prepared.Revision],
                 Pending = session.State.Pending! with { Prepared = prepared, Stage = InstallationStage.Verifying }
             });
+            await NotifyAsync(InstallationStage.Verifying);
             await adapter.ValidateSwitchAsync(session.State!.Pending!, ct);
             ct.ThrowIfCancellationRequested();
             // This durable checkpoint is the cancellation boundary. Active pointer and journal change together.
@@ -70,8 +74,10 @@ public sealed class RuntimeArchiveSwitch(RuntimeArchiveStateStore store, IRuntim
                 { Ownership = RuntimeOwnership.Managed, ActiveReleaseId = prepared.Revision.Release.ReleaseId },
                 Pending = session.State.Pending! with { SwitchStarted = true, Stage = InstallationStage.Activating }
             });
+            await NotifyAsync(InstallationStage.Activating);
             await adapter.ActivateAsync(session.State!.Pending!, CancellationToken.None);
             UpdatePending(session, p => p with { Stage = InstallationStage.HealthChecking });
+            await NotifyAsync(InstallationStage.HealthChecking);
             var evidence = await adapter.VerifyAsync(session.State!.Pending!, CancellationToken.None);
             if (!Matches(prepared, evidence)) throw new RuntimePolicyException("runtime.health_check_failed");
             // Backups remain identified by the receipt. Retention/deletion is an owned-resource operation.
@@ -87,10 +93,12 @@ public sealed class RuntimeArchiveSwitch(RuntimeArchiveStateStore store, IRuntim
     }
 
     /// <summary>Startup reconciles a persisted operation; it never re-runs preparation or creates new credentials.</summary>
-    public async Task<RuntimeSwitchResult?> RecoverAsync(CancellationToken ct)
+    public async Task<RuntimeSwitchResult?> RecoverAsync(Guid operationId, CancellationToken ct)
     {
+        if (operationId == Guid.Empty) throw new RuntimePolicyException("runtime.operation_id_invalid");
         using var session = store.Acquire();
         if (session.State?.Pending is not { } pending) return null;
+        if (pending.OperationId != operationId) throw new RuntimePolicyException("runtime.recovery_target_conflict");
         ct.ThrowIfCancellationRequested();
         return await CompensateAsync(session, pending.ProblemCode ?? "runtime.operation_interrupted", RuntimeSwitchOutcome.Interrupted);
     }
@@ -101,6 +109,7 @@ public sealed class RuntimeArchiveSwitch(RuntimeArchiveStateStore store, IRuntim
         try
         {
             UpdatePending(session, p => p with { Stage = InstallationStage.RollingBack, ProblemCode = problem });
+            await NotifyAsync(InstallationStage.RollingBack);
             var pending = session.State!.Pending!;
             if (pending.SwitchStarted)
             {
@@ -143,6 +152,14 @@ public sealed class RuntimeArchiveSwitch(RuntimeArchiveStateStore store, IRuntim
             catch (Exception saveError) when (saveError is IOException or UnauthorizedAccessException or RuntimePolicyException) { }
             return new(session.State!.Pending!.OperationId, RuntimeSwitchOutcome.RecoveryRequired, "runtime.recovery_required");
         }
+    }
+
+    private async Task NotifyAsync(InstallationStage stage)
+    {
+        if (progress is null) return;
+        try { await progress(stage); }
+        catch (IOException) { /* Losing a progress reader does not cancel an accepted root transaction. */ }
+        catch (ObjectDisposedException) { }
     }
 
     private static RuntimeSwitchResult Complete(RuntimeArchiveStateStore.Session session, RuntimeSwitchOutcome outcome, string? problem)
@@ -196,6 +213,8 @@ public sealed class RuntimeArchiveSwitch(RuntimeArchiveStateStore store, IRuntim
             throw new RuntimePolicyException("runtime.repair_target_mismatch");
         if (request.Change is RuntimeChange.Update or RuntimeChange.Rollback && release.ReleaseId == state.Active?.Release.ReleaseId)
             throw new RuntimePolicyException("runtime.target_unchanged");
+        if (request.Change == RuntimeChange.Update && release.OriginalVersion == state.Active?.Release.OriginalVersion)
+            throw new RuntimePolicyException("runtime.version_unchanged");
         if (request.Change == RuntimeChange.Rollback && !state.Revisions.Any(r => r.Release.ReleaseId == release.ReleaseId
             && r.Release.Artifact.Sha256.Equals(release.Artifact.Sha256, StringComparison.OrdinalIgnoreCase)))
             throw new RuntimePolicyException("runtime.rollback_unavailable");

@@ -1,4 +1,5 @@
 using RelaxKonOS.Protocol.ManagedRuntimes;
+using RelaxKonOS.Protocol.Installations;
 
 namespace RelaxKonOS.ManagedRuntimes;
 
@@ -17,7 +18,8 @@ public sealed class RuntimeArchiveTransport : IRuntimeArchiveTransport
 public sealed record PreparedRuntimeArtifact(AuthorizedRuntimeRelease Authorization, VerifiedRuntimeArchive Archive);
 
 /// <summary>Helper preparation gate. Does not execute a binary or imply a successful installation.</summary>
-public sealed class RuntimeArtifactPreparer(RuntimeSourceStore sources, IRuntimeArchiveTransport transport)
+public sealed class RuntimeArtifactPreparer(RuntimeSourceStore sources, IRuntimeArchiveTransport transport,
+    Func<InstallationStage, Task>? progress = null)
 {
     public async Task<PreparedRuntimeArtifact> PrepareAsync(string sourceId, string releaseId,
         long expectedCatalogRevision, long expectedTrustRevision, RuntimeTarget target,
@@ -36,10 +38,12 @@ public sealed class RuntimeArtifactPreparer(RuntimeSourceStore sources, IRuntime
         {
             await using (var archive = new FileStream(temporary, options))
             {
+                await NotifyAsync(InstallationStage.Downloading);
                 // A transport is not an authorization authority: the Helper rechecks size, digest and contents.
                 await transport.CopyAsync(authorization.Source, authorization.Release,
                     new BoundedDestination(archive, authorization.Release.Artifact.MaximumBytes), ct);
                 archive.Flush(true);
+                await NotifyAsync(InstallationStage.Extracting);
                 extracted = await RuntimeArchiveExtractor.ExtractAsync(archive, authorization.Release.Artifact, root, ct);
             }
             ct.ThrowIfCancellationRequested();
@@ -52,6 +56,14 @@ public sealed class RuntimeArtifactPreparer(RuntimeSourceStore sources, IRuntime
             throw;
         }
         finally { RuntimeSourceStore.RequireNoLinks(temporary); File.Delete(temporary); }
+    }
+
+    private async Task NotifyAsync(InstallationStage stage)
+    {
+        if (progress is null) return;
+        try { await progress(stage); }
+        catch (IOException) { }
+        catch (ObjectDisposedException) { }
     }
 
     private sealed class BoundedDestination(Stream output, long limit) : Stream

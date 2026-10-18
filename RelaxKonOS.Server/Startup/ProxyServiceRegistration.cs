@@ -7,6 +7,8 @@ internal static class ProxyServiceRegistration
     public static void AddProxyServices(this WebApplicationBuilder builder)
     {
         builder.Services.AddSingleton<RelaxKonOS.Server.ProxyServer.ProxyServerStore>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.ProxyServer.ProxyServerRuntimeAuthorizationProvider>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.ManagedRuntimes.SingBoxRuntimeService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.ProxyServer.IProxyServerCertificateSource, RelaxKonOS.Server.ProxyServer.ProxyServerCertificateSource>();
         builder.Services.AddSingleton<RelaxKonOS.Server.ProxyServer.ProxyServerService>();
         builder.Services.AddHostedService<RelaxKonOS.Server.ProxyServer.ProxyServerExpiryService>();

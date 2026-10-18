@@ -38,7 +38,7 @@ import app.relaxkonos.mobile.ui.common.SectionCard
 fun WebsitesScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialApplicationId: String? = null) {
     val dependencies = appContainer()
     val viewModel: WebsitesViewModel = viewModel(factory = viewModelFactory {
-        initializer { WebsitesViewModel(dependencies.session, dependencies.webPublishing, dependencies.deployments,
+        initializer { WebsitesViewModel(dependencies.session, dependencies.webPublishing, dependencies.websitePublicationRequests, dependencies.deployments,
             dependencies.certificates, dependencies.elevationAnswers) }
     })
     val state = viewModel.state

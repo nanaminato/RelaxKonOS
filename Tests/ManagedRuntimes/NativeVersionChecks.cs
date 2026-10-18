@@ -31,6 +31,11 @@ internal static class NativeVersionChecks
         Check(huge.CompareTo(versions[^1]) > 0, "Core components do not overflow machine integers");
         Check(SingBoxNativeValidation.TryTag("v1.14.3", out var tag) && tag.Normalized == "1.14.3", "sing-box explicitly handles its v tag prefix");
         Check(!SingBoxNativeValidation.TryTag("vv1.14.3", out _), "Multiple tag prefixes not stripped");
+        Check(SingBoxNativeValidation.UpdateProblem("1.14.3", "v1.14.4") is null, "Version policy distinguishes a newer version without granting configuration support");
+        Check(SingBoxNativeValidation.UpdateProblem("1.14.3", "v1.14.3") == "runtime.version_unchanged", "Another release ID for the same version cannot be called an upgrade");
+        Check(SingBoxNativeValidation.UpdateProblem("1.14.3", "v1.14.3+rebuilt") == "runtime.version_unchanged", "Build metadata is not a version upgrade");
+        Check(SingBoxNativeValidation.UpdateProblem("1.14.3", "v1.14.2") == "runtime.update_target_not_newer", "Downgrade requires the explicit rollback action");
+        Check(SingBoxNativeValidation.UpdateProblem("unknown", "v1.14.4") == "runtime.native_version_invalid", "Unknown current version is not guessed");
         var baseline = "sing-box version 1.14.3\n\nEnvironment: go1.26.0 linux/arm64\nTags: with_quic,with_utls\nRevision: abcdef1234567890\nCGO: disabled\n";
         SingBoxBuildEvidence Parse(string output) => SingBoxNativeValidation.Parse(output, "v1.14.3", "linux", "arm64");
         var evidence = Parse(baseline);

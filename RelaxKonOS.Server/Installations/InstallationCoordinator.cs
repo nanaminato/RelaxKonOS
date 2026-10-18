@@ -20,7 +20,7 @@ public sealed class InstallationCoordinator(InstallationOperationStore store, IE
             throw new InstallationException(InstallationProblemCodes.IdempotencyRequired, 400);
         if (!registry.TryGetValue(service, out var domain)) throw new InstallationException(InstallationProblemCodes.NotSupported, 400);
         object request;
-        try { request = domain.Validate(kind, options); }
+        try { request = domain.Validate(kind, options, key); }
         catch (Exception error) when (error is JsonException or InvalidOperationException or NotSupportedException)
         {
             throw new InstallationException(InstallationProblemCodes.InvalidRequest, 400);
@@ -121,6 +121,7 @@ public sealed class InstallationCoordinator(InstallationOperationStore store, IE
                         ? await domain.RecoverAsync(entry.Operation, cancellationToken)
                         : new(InstallationOperationState.Failed, InstallationProblemCodes.RecoveryUnknown);
                 }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
                 catch { recovery = new(InstallationOperationState.Failed, InstallationProblemCodes.RecoveryUnknown); }
             }
             if (recovery.State is not (InstallationOperationState.Succeeded or InstallationOperationState.Interrupted or InstallationOperationState.Failed))
@@ -139,13 +140,14 @@ public sealed class InstallationCoordinator(InstallationOperationStore store, IE
 
     private sealed class Reporter(InstallationCoordinator owner, Guid id, CancellationToken workerToken) : IInstallationProgress
     {
+        public Guid OperationId => id;
         public Task ReportAsync(InstallationProgress progress, CancellationToken cancellationToken = default)
         {
             lock (owner.gate)
             {
-                workerToken.ThrowIfCancellationRequested();
                 cancellationToken.ThrowIfCancellationRequested();
-                owner.operationStore.Update(id, x => x with { Stage = progress.Stage, Progress = progress.Progress, Cancellable = progress.Cancellable }, "stage");
+                owner.operationStore.Update(id, x => x with { Stage = progress.Stage, Progress = progress.Progress,
+                    Cancellable = progress.Cancellable && !workerToken.IsCancellationRequested }, "stage");
             }
             return Task.CompletedTask;
         }

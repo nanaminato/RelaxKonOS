@@ -38,7 +38,9 @@ public sealed class RuntimeArchiveStateStore(string directory, Action<string> pr
         var path = Path.Combine(directory, "instance.lock");
         RuntimeSourceStore.RequireNoLinks(path);
         FileStream gate;
-        try { gate = new(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
+        var options = new FileStreamOptions { Mode = FileMode.OpenOrCreate, Access = FileAccess.ReadWrite, Share = FileShare.None };
+        if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        try { gate = new(path, options); }
         catch (IOException) { throw new RuntimePolicyException("runtime.instance_busy"); }
         try { return new(this, gate, ReadCore()); }
         catch { gate.Dispose(); throw; }

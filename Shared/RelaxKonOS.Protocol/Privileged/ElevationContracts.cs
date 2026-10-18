@@ -32,6 +32,7 @@ public enum HostElevationCapability
     FrpInstall,
     FrpLifecycle,
     MihomoInstall,
+    SingBoxInstall,
     DockerInstall,
     HostTimeChange,
     HostNetworkChange,

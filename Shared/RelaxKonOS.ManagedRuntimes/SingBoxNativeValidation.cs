@@ -10,6 +10,14 @@ public static class SingBoxNativeValidation
     public static bool TryTag(string? tag, out RuntimeSemanticVersion version) =>
         RuntimeSemanticVersion.TryParse(tag is { Length: > 0 } && tag[0] == 'v' ? tag[1..] : tag, out version);
 
+    public static string? UpdateProblem(string currentMeasuredVersion, string targetTag)
+    {
+        if (!RuntimeSemanticVersion.TryParse(currentMeasuredVersion, out var current) || !TryTag(targetTag, out var target))
+            return "runtime.native_version_invalid";
+        var comparison = target.CompareTo(current);
+        return comparison > 0 ? null : comparison == 0 ? "runtime.version_unchanged" : "runtime.update_target_not_newer";
+    }
+
     public static SingBoxBuildEvidence Parse(string output, string expectedTag, string expectedOs, string expectedArchitecture)
     {
         if (output.Length > 8192 || output.Any(c => char.IsControl(c) && c is not ('\r' or '\n'))

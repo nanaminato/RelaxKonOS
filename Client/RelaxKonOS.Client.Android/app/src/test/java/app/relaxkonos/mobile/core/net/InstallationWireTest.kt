@@ -62,4 +62,14 @@ class InstallationWireTest {
         assertFalse(reference.expired(reference.expiresAtMillis - 1))
         assertTrue(reference.expired(reference.expiresAtMillis))
     }
+
+    @Test fun `sing-box rollback records are current observations without enabling a submit form`() {
+        val parsed = InstallationWire.operation(operation.replace("\"nginx\"", "\"singBox\"").replace("\"install\"", "\"rollback\""))
+        assertEquals(InstallationService.SingBox, parsed.service)
+        assertEquals(InstallationKind.Rollback, parsed.kind)
+        assertTrue(InstallationService.SingBox.kinds.isEmpty())
+        assertEquals("singbox", InstallationService.SingBox.elevationTarget)
+        assertTrue(runCatching { InstallationWire.request(FrpInstallationRequest(true), InstallationKind.Rollback) }.isFailure)
+        assertTrue(runCatching { InstallationWire.request(MihomoInstallationRequest(true), InstallationKind.Rollback) }.isFailure)
+    }
 }

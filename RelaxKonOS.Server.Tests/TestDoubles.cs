@@ -279,6 +279,7 @@ sealed class TestHostEnvironment(string contentRoot) : IHostEnvironment
 
 sealed class SilentInstallationProgress : IInstallationProgress
 {
+    public Guid OperationId { get; } = Guid.NewGuid();
     public Task ReportAsync(InstallationProgress progress, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }
 

@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.ManagedRuntimes;
+using RelaxKonOS.Protocol.Installations;
 
 internal static class PreparationChecks
 {
@@ -34,6 +35,21 @@ internal static class PreparationChecks
         {
             f.Transport.Bytes = new byte[f.Archive.Length];
             await Reject("archive_digest_mismatch", f);
+        }
+        using (var f = new Fixture())
+        {
+            var stages = new List<InstallationStage>();
+            var preparer = new RuntimeArtifactPreparer(f.Store, f.Transport, stage =>
+            {
+                stages.Add(stage);
+                if (stage == InstallationStage.Downloading) throw new IOException("Fixture progress reader disconnected");
+                return Task.CompletedTask;
+            });
+            var prepared = await preparer.PrepareAsync(f.Source.SourceId, f.Release.ReleaseId, 1, 1, f.Release.Target, false, f.Stage, default);
+            Check(File.ReadAllBytes(prepared.Archive.EntryPoint).SequenceEqual(f.Binary), "Progress reader loss cannot skip artifact verification");
+            Check(stages.SequenceEqual(new[] { InstallationStage.Downloading, InstallationStage.Extracting }), "Transfer and extraction report their actual stages");
+            RuntimeArchiveExtractor.Discard(prepared.Archive, f.Stage);
+            Check(!Directory.EnumerateFileSystemEntries(f.Stage).Any(), "Progress-enabled preparation preserves owned cleanup");
         }
         using (var f = new Fixture())
         {

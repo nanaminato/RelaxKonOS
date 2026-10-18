@@ -16,13 +16,15 @@ public abstract class InstallationService<T> : IInstallationService where T : cl
         ? [$"service:{Id}", "linux:apt-dpkg"] : [$"service:{Id}"];
     protected abstract bool Confirmed(T request);
     protected virtual bool Supports(InstallationOperationKind kind) => kind == InstallationOperationKind.Install;
-    public object Validate(InstallationOperationKind kind, JsonElement options)
+    public object Validate(InstallationOperationKind kind, JsonElement options, string idempotencyKey)
     {
         if (!Supports(kind)) throw new InstallationException(InstallationProblemCodes.NotSupported, 400);
         var request = options.Deserialize<T>(Json) ?? throw new InstallationException(InstallationProblemCodes.InvalidRequest, 400);
         if (!Confirmed(request)) throw new InstallationException(InstallationProblemCodes.ConfirmationRequired, 400);
+        ValidateRequest(kind, request, idempotencyKey);
         return request;
     }
+    protected virtual void ValidateRequest(InstallationOperationKind kind, T request, string idempotencyKey) { }
     public Task StartAsync(InstallationOperationKind kind, object options, string actor, IInstallationProgress progress, CancellationToken ct)
         => ExecuteAsync(kind, (T)options, actor, progress, ct);
     protected abstract Task ExecuteAsync(InstallationOperationKind kind, T options, string actor, IInstallationProgress progress, CancellationToken ct);

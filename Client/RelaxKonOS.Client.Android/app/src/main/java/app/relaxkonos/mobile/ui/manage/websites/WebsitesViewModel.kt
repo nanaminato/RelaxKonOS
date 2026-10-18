@@ -49,6 +49,7 @@ internal data class WebsitesState(
 )
 
 internal class WebsitesViewModel(private val session: AuthSession, private val webPublishing: WebPublishingRepository,
+    private val publicationRequests: WebsitePublicationRequests,
     private val deployments: DeploymentRepository, private val certificates: CertificateRepository,
     private val elevationAnswers: ElevationAnswerProvider) : ViewModel() {
     suspend fun observePublication(operation: WebsitePublicationOperation, canObserve: () -> Boolean) {
@@ -156,11 +157,11 @@ internal class WebsitesViewModel(private val session: AuthSession, private val w
                         state = state.copy(publishing = false, publication = ApiResult.Problem(409, "webserver.site_certificate_unverified", null)); return@launch
                     }
                 }
-                val result = webPublishing.publish(WebsitePublishRequest(
+                val result = publicationRequests.submit(owner, WebsitePublishRequest(
                     applicationId = applicationId, webServerId = serverId, domain = domain,
                     certificateId = certificateId, contactEmail = contactEmail, acceptedTerms = acceptedTerms,
                     publicReachabilityConfirmed = publiclyReachable, confirmed = true,
-                ), elevationAnswers)
+                ), elevationAnswers).result
                 if ((session.state.value as? SessionState.Active) !== owner) return@launch
                 state = state.copy(publishing = false, publication = result,
                     publicationLookupId = (result as? ApiResult.Success)?.value?.operationId)

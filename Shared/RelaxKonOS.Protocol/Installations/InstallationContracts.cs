@@ -4,9 +4,9 @@ using RelaxKonOS.Protocol.Common;
 namespace RelaxKonOS.Protocol.Installations;
 
 [JsonConverter(typeof(JsonStringEnumConverter<InstallationServiceId>))]
-public enum InstallationServiceId { Smb, Nginx, Frp, Mihomo, Docker, Git }
+public enum InstallationServiceId { Smb, Nginx, Frp, Mihomo, Docker, Git, SingBox }
 [JsonConverter(typeof(JsonStringEnumConverter<InstallationOperationKind>))]
-public enum InstallationOperationKind { Install, Upgrade, Repair, Uninstall }
+public enum InstallationOperationKind { Install, Upgrade, Repair, Uninstall, Rollback }
 [JsonConverter(typeof(JsonStringEnumConverter<InstallationOperationState>))]
 public enum InstallationOperationState { Queued, Running, Succeeded, Failed, Cancelled, Interrupted }
 [JsonConverter(typeof(JsonStringEnumConverter<InstallationStage>))]
@@ -59,6 +59,8 @@ public sealed record FrpInstallationRequest(bool Confirmed, string? Version = nu
 public sealed record MihomoInstallationRequest(bool Confirmed, string? Version = null, bool Rollback = false, string? FileReferenceId = null);
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record DockerInstallationRequest(bool Confirmed);
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed record ManagedRuntimeInstallationRequest(bool Confirmed, ManagedRuntimes.RuntimeChangePlan Plan);
 
 public static class InstallationProblemCodes
 {

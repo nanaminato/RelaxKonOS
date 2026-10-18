@@ -5,7 +5,8 @@ namespace RelaxKonOS.ManagedRuntimes;
 public sealed record RuntimeSourceAudit(long TrustRevision, string Actor, DateTimeOffset At, string Fingerprint);
 public sealed record StoredRuntimeSource(RuntimeSource Source, CatalogHistory History,
     VerifiedRuntimeCatalog? Cached, RuntimeSourceAudit[] Audit);
-public sealed record AuthorizedRuntimeRelease(RuntimeSource Source, ManifestRelease Release, long CatalogRevision);
+public sealed record AuthorizedRuntimeRelease(RuntimeSource Source, ManifestRelease Release, long CatalogRevision,
+    RuntimeRelease CatalogRelease);
 
 /// <summary>
 /// Host-owned disk ledger. The host MUST provide OS protection before any access; a Server-writable
@@ -98,7 +99,7 @@ public sealed class RuntimeSourceStore(string directory, Action<string> protectD
             || !RuntimeArchiveRules.Valid(release.Artifact)
             || !RuntimeJson.Serialize(release.Artifact).AsSpan().SequenceEqual(RuntimeJson.Serialize(artifacts[0].Artifact)))
             throw new RuntimePolicyException("runtime.source_state_invalid");
-        return new(state.Source, artifacts[0], cached.Catalog.Revision);
+        return new(state.Source, artifacts[0], cached.Catalog.Revision, release);
     }
 
     private FileStream Lock()
@@ -108,7 +109,9 @@ public sealed class RuntimeSourceStore(string directory, Action<string> protectD
         RequireNoLinks(directory);
         var path = Path.Combine(directory, "registry.lock");
         RequireNoLinks(path);
-        try { return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
+        var options = new FileStreamOptions { Mode = FileMode.OpenOrCreate, Access = FileAccess.ReadWrite, Share = FileShare.None };
+        if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        try { return new FileStream(path, options); }
         catch (IOException) { throw new RuntimePolicyException("runtime.source_store_busy"); }
     }
 

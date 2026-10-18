@@ -100,7 +100,9 @@ internal static class RuntimeIntegrationChecks
             await using var app = builder.Build();
             app.MapRuntimeCatalogEndpoints();
             var endpoints = ((IEndpointRouteBuilder)app).DataSources.SelectMany(s => s.Endpoints).OfType<RouteEndpoint>().ToArray();
-            Check(endpoints.Length == 3, "Only source/catalog/read-refresh routes exposed");
+            Check(endpoints.Length == 5 && endpoints.Any(e => e.RoutePattern.RawText == RuntimeRoutes.SingBoxInstallation)
+                && endpoints.Any(e => e.RoutePattern.RawText == RuntimeRoutes.SingBoxPlan),
+                "Source/catalog, sing-box installation observation and frozen planning are exposed without a second execution ledger");
             foreach (var endpoint in endpoints)
             {
                 var isPost = endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()!.HttpMethods.Contains("POST");

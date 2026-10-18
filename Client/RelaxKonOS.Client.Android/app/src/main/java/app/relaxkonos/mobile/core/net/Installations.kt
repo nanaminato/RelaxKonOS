@@ -10,18 +10,21 @@ enum class InstallationService(val wire: String, val capability: String, val ele
     Frp("frp", ServerCapabilities.TUNNELS, "frpInstall"),
     Mihomo("mihomo", ServerCapabilities.PROXY, "mihomoInstall"),
     Docker("docker", ServerCapabilities.DOCKER, "dockerInstall"),
-    Git("git", ServerCapabilities.GIT, "gitPackageInstall");
+    Git("git", ServerCapabilities.GIT, "gitPackageInstall"),
+    SingBox("singBox", ServerCapabilities.PROXY_SERVER, "singBoxInstall");
 
     val kinds: Set<InstallationKind> get() = when (this) {
         Smb, Docker, Git -> setOf(InstallationKind.Install)
-        else -> InstallationKind.entries.toSet()
+        Nginx, Frp, Mihomo -> setOf(InstallationKind.Install, InstallationKind.Upgrade, InstallationKind.Repair, InstallationKind.Uninstall)
+        SingBox -> emptySet() // Current Android support observes these records; frozen-plan submission has no form.
     }
+    val elevationTarget: String get() = name.lowercase(java.util.Locale.ROOT)
     val acceptsPackage: Boolean get() = this == Nginx || this == Frp || this == Mihomo
     val supportsRollback: Boolean get() = this == Frp || this == Mihomo
 }
 
 enum class InstallationKind(val wire: String) {
-    Install("install"), Upgrade("upgrade"), Repair("repair"), Uninstall("uninstall")
+    Install("install"), Upgrade("upgrade"), Repair("repair"), Uninstall("uninstall"), Rollback("rollback")
 }
 
 enum class InstallationState(val wire: String) {

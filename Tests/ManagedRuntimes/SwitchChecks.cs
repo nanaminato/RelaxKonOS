@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.ManagedRuntimes;
+using RelaxKonOS.Protocol.Installations;
 
 internal static class SwitchChecks
 {
@@ -55,7 +56,7 @@ internal static class SwitchChecks
             await Reject("action_unsupported", () => f.Switch.ExecuteAsync(Guid.NewGuid(),
                 f.Plan(RuntimeChange.Update, "release-3", "uninstall") with
                 { Request = f.Plan(RuntimeChange.Update, "release-3", "uninstall").Request with { Change = RuntimeChange.Uninstall } }, default));
-            Check(await f.Switch.RecoverAsync(default) is null, "No recovery work after committed transactions");
+            Check(await f.Switch.RecoverAsync(Guid.NewGuid(), default) is null, "No recovery work after committed transactions");
         }
         foreach (var ownership in new[] { RuntimeOwnership.External, RuntimeOwnership.Unknown })
         {
@@ -66,10 +67,35 @@ internal static class SwitchChecks
         }
         using (var f = new Fixture())
         {
+            var stages = new List<InstallationStage>();
+            var observed = new RuntimeArchiveSwitch(f.Store, f.Adapter, stage =>
+            {
+                Check(f.Store.Read()!.Pending!.Stage == stage, "Progress follows its durable checkpoint: " + stage);
+                stages.Add(stage);
+                if (stage == InstallationStage.Activating) throw new IOException("Fixture progress reader disconnected");
+                return Task.CompletedTask;
+            });
+            var id = Guid.NewGuid(); var plan = f.Plan(RuntimeChange.Install, "release-1", "progress");
+            Check((await observed.ExecuteAsync(id, plan, default)).Outcome == RuntimeSwitchOutcome.Succeeded,
+                "Losing a progress reader does not undo an accepted activation");
+            Check(stages.SequenceEqual(new[] { InstallationStage.Preflight, InstallationStage.Preparing, InstallationStage.Verifying,
+                InstallationStage.Activating, InstallationStage.HealthChecking }), "Checkpoint notifications preserve actual phase order");
+            await observed.ExecuteAsync(id, plan, default);
+            Check(stages.Count == 5, "Idempotent receipt replay does not fabricate new progress events");
+        }
+        using (var f = new Fixture())
+        {
             f.Adapter.RejectPreflight = true;
             var result = await f.Switch.ExecuteAsync(Guid.NewGuid(), f.Plan(RuntimeChange.Install, "release-1", "denied"), default);
             Check(result.Outcome == RuntimeSwitchOutcome.Failed && result.ProblemCode == "runtime.source_disabled"
                 && f.Adapter.Captures == 0 && f.Store.Read()!.Active is null, "Preflight rejection cannot change active runtime");
+        }
+        using (var f = new Fixture())
+        {
+            await f.InstallAsync();
+            var sameVersion = f.Plan(RuntimeChange.Update, "release-2", "same-version");
+            await Reject("version_unchanged", () => f.Switch.ExecuteAsync(Guid.NewGuid(), sameVersion with
+                { Release = sameVersion.Release! with { OriginalVersion = f.Store.Read()!.Active!.Release.OriginalVersion } }, default));
         }
         using (var f = new Fixture())
         {
@@ -114,7 +140,8 @@ internal static class SwitchChecks
                 if (failure == "restore-authorization") Check(!f.Service().Running && f.Adapter.Restores == 0
                     && f.Store.Read()!.Pending!.RecoveryProblemCode == "runtime.credentials_revoked", "Revoked restore is stopped, diagnosed, and never restarted");
                 f.Adapter.Failure = null;
-                Check((await f.Switch.RecoverAsync(default))!.Outcome == RuntimeSwitchOutcome.Interrupted, "Explicit recovery can finish compensation: " + failure);
+                await Reject("recovery_target_conflict", () => f.Switch.RecoverAsync(Guid.NewGuid(), default));
+                Check((await f.Switch.RecoverAsync(f.Store.Read()!.Pending!.OperationId, default))!.Outcome == RuntimeSwitchOutcome.Interrupted, "Explicit recovery can finish compensation: " + failure);
             }
             Check(f.Store.Read()!.Active!.RevisionId == previous.RevisionId && f.Service().Version == previous.MeasuredVersion
                 && f.Service().Running && f.Service().BootEnabled && f.Store.Read()!.Pending is null,
@@ -138,7 +165,7 @@ internal static class SwitchChecks
             Check(child.ExitCode == 197, "Worker actually terminated at durable checkpoint: " + phase + " " + await errors + await output);
             Check(f.Store.Read()!.Pending!.OperationId == operationId, "Pending journal survives worker termination: " + phase);
             var capturesBefore = f.Adapter.Captures;
-            Check((await f.Switch.RecoverAsync(default))!.Outcome == RuntimeSwitchOutcome.Interrupted, "Interrupted transaction reconciles: " + phase);
+            Check((await f.Switch.RecoverAsync(operationId, default))!.Outcome == RuntimeSwitchOutcome.Interrupted, "Interrupted transaction reconciles: " + phase);
             Check(f.Store.Read()!.Active!.RevisionId == old.RevisionId && f.Service().Version == old.MeasuredVersion
                 && f.Service().Running && !f.Service().BootEnabled && f.Adapter.Captures == capturesBefore,
                 "Recovery restores old effect without new capture/preparation: " + phase);

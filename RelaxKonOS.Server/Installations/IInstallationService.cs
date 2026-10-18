@@ -12,6 +12,7 @@ public sealed class InstallationException(string problemCode, int statusCode = 4
 public sealed record InstallationProgress(InstallationStage Stage, int? Progress = null, bool Cancellable = false);
 public interface IInstallationProgress
 {
+    Guid OperationId { get; }
     Task ReportAsync(InstallationProgress progress, CancellationToken cancellationToken = default);
 }
 public sealed record InstallationRecovery(InstallationOperationState State, string? ProblemCode = null);
@@ -21,7 +22,7 @@ public interface IInstallationService
 {
     InstallationServiceId Id { get; }
     IReadOnlyList<string> Resources { get; }
-    object Validate(InstallationOperationKind kind, JsonElement options);
+    object Validate(InstallationOperationKind kind, JsonElement options, string idempotencyKey);
     Task StartAsync(InstallationOperationKind kind, object options, string actor, IInstallationProgress progress, CancellationToken ct);
     Task<InstallationRecovery> RecoverAsync(InstallationOperationDto operation, CancellationToken ct);
     bool Cancel(InstallationOperationDto operation);

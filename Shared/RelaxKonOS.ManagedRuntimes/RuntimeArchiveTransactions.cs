@@ -14,14 +14,10 @@ public sealed record RuntimeActivationEvidence(string MeasuredVersion, string Co
 public sealed record RuntimeRestorationEvidence(string? MeasuredVersion, string? ConfigurationIdentity,
     bool Running, bool BootEnabled, bool OwnedResourcesRestored, bool Healthy);
 
-[JsonConverter(typeof(JsonStringEnumConverter<RuntimeSwitchOutcome>))]
-public enum RuntimeSwitchOutcome { Succeeded, Failed, Cancelled, Interrupted, RecoveryRequired }
-
 /// <summary>Helper receipt for an existing installation operation, not a second user-facing operation ledger.</summary>
 public sealed record RuntimeSwitchReceipt(Guid OperationId, string RequestHash, string IdempotencyHash,
     RuntimeSwitchOutcome Outcome, Guid? ActiveRevisionId, string? ProblemCode, DateTimeOffset CompletedAt,
     RuntimeServiceSnapshot? RetainedSnapshot);
-public sealed record RuntimeSwitchResult(Guid OperationId, RuntimeSwitchOutcome Outcome, string? ProblemCode);
 public sealed record RuntimePendingSwitch(Guid OperationId, string RequestHash, string IdempotencyHash,
     RuntimeChangePlan Plan, InstallationStage Stage, RuntimeStoredRevision? Previous,
     RuntimeServiceSnapshot? Snapshot, RuntimePreparedSwitch? Prepared, bool SwitchStarted, string? ProblemCode,

@@ -69,4 +69,6 @@ public static class RuntimeRoutes
     public const string Sources = Root + "/sources";
     public const string Catalog = Sources + "/{sourceId}/catalog";
     public const string Refresh = Sources + "/{sourceId}/refresh";
+    public const string SingBoxInstallation = Root + "/sing-box/installation";
+    public const string SingBoxPlan = Root + "/sing-box/plan";
 }

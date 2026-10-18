@@ -101,6 +101,7 @@ public static class InstallationEndpoints
         InstallationServiceId.Nginx => HostElevationCapability.NginxInstall,
         InstallationServiceId.Frp => HostElevationCapability.FrpInstall,
         InstallationServiceId.Mihomo => HostElevationCapability.MihomoInstall,
+        InstallationServiceId.SingBox => HostElevationCapability.SingBoxInstall,
         InstallationServiceId.Docker => HostElevationCapability.DockerInstall,
         InstallationServiceId.Git => HostElevationCapability.GitPackageInstall,
         _ => throw new ArgumentOutOfRangeException(nameof(service))

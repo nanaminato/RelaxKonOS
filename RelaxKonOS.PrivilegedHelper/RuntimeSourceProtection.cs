@@ -21,7 +21,7 @@ internal static class RuntimeSourceProtection
         return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
     }
 
-    private static void Protect(string directory)
+    internal static void Protect(string directory)
     {
         if (!IsAdministrator()) throw new UnauthorizedAccessException();
         RuntimeSourceStore.RequireNoLinks(directory);

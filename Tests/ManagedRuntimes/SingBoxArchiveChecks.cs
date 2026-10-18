@@ -114,7 +114,7 @@ internal static class SingBoxArchiveChecks
                 && !host.Observation.Running && host.StopCalls >= stopsBeforeRevocation + 2,
                 "Unavailable fresh authority stops the simulated running candidate and prevents restoring credentials after the switch");
             host.AfterConfigure = null; authorization.Unavailable = false;
-            var recovered = await lifecycle.RecoverAsync(default);
+            var recovered = await lifecycle.RecoverAsync(states.Read()!.Pending!.OperationId, default);
             Check(recovered!.Outcome == RuntimeSwitchOutcome.Interrupted && states.Read()!.Active!.RevisionId == beforeRevocation.RevisionId,
                 "Recovery rechecks the actual old binary/config only after current authority becomes available");
             Check(!Directory.EnumerateFileSystemEntries(Path.Combine(runtimeRoot, "staging")).Any(), "Operation-addressable staging leaves no successful preparation residue");

@@ -63,7 +63,7 @@ class InstallationRepository(
             }
             answer
         }
-        val result = elevations.withElevation(intent.request.service.elevation, intent.request.service.wire, guardedProvider) { url, token ->
+        val result = elevations.withElevation(intent.request.service.elevation, intent.request.service.elevationTarget, guardedProvider) { url, token ->
             verify(owner)
             gateway.startInstallation(url, token, intent.kind, intent.request, intent.pending.key)
         }

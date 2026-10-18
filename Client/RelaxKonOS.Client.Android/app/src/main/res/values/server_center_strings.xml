@@ -12,6 +12,7 @@
     <string name="installation_kind_install">Install</string>
     <string name="installation_kind_repair">Repair</string>
     <string name="installation_kind_uninstall">Uninstall</string>
+    <string name="installation_kind_rollback">Rollback</string>
     <string name="installation_kind_upgrade">Upgrade</string>
     <string name="installation_operation_id">Operation ID</string>
     <string name="installation_package_source">Package source</string>
@@ -37,6 +38,7 @@
     <string name="installation_service_docker">Docker</string>
     <string name="installation_service_frp">FRP</string>
     <string name="installation_service_git">Git</string>
+    <string name="installation_service_singbox">sing-box</string>
     <string name="installation_service_mihomo">Mihomo</string>
     <string name="installation_service_nginx">Nginx</string>
     <string name="installation_service_smb">SMB / Samba</string>
