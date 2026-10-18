@@ -18,6 +18,8 @@ public static class RuntimePlanning
             || string.IsNullOrWhiteSpace(request.HostId) || request.HostId != installation.HostId, "installation_mismatch");
         Reject(string.IsNullOrWhiteSpace(request.IdempotencyKey) || request.IdempotencyKey.Length > 128, "idempotency_key_invalid");
         Reject(!Enum.IsDefined(request.Change), "action_invalid");
+        // Configuration publication has its own frozen identity plan, never a release selection.
+        Reject(request.Change == RuntimeChange.Configure, "action_unsupported");
         Reject(request.ExpectedStateRevision != installation.StateRevision, "state_revision_conflict");
         Reject(installation.Ownership == RuntimeOwnership.Unknown || !Enum.IsDefined(installation.Ownership), "state_unknown");
         Reject(installation.Ownership == RuntimeOwnership.External, "external_installation");

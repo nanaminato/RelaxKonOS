@@ -112,6 +112,7 @@ public sealed class MihomoSettingsService(
         }
         catch (IOException) { return ProxyProblemCodes.ConfigApplyFailed; }
         catch (UnauthorizedAccessException) { return ProxyProblemCodes.PrivilegedOperationUnavailable; }
+        catch (ArgumentException) { return ProxyProblemCodes.ConfigInvalid; }
         finally { _gate.Release(); }
     }
 
@@ -196,6 +197,7 @@ public sealed class MihomoSettingsService(
             logger?.LogWarning(exception, "Mihomo TUN configuration transition was denied access to its protected configuration.");
             return ProxyProblemCodes.PrivilegedOperationUnavailable;
         }
+        catch (ArgumentException) { return ProxyProblemCodes.ConfigInvalid; }
         finally { _gate.Release(); }
     }
 

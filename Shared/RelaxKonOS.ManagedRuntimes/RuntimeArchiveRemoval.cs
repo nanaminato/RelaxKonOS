@@ -57,7 +57,7 @@ public sealed class RuntimeArchiveRemoval(RuntimeArchiveStateStore store, IRunti
         if (current.Removal is { } pending && (pending.OperationId == operationId || pending.IdempotencyHash == keyHash)
             && (pending.RequestHash != requestHash || pending.IdempotencyHash != keyHash))
             throw new RuntimePolicyException("runtime.idempotency_conflict");
-        if (current.Pending is not null || current.Removal is not null || current.Installation.RecoveryRequired)
+        if (current.Pending is not null || current.Removal is not null || current.Configuration is not null || current.Installation.RecoveryRequired)
             throw new RuntimePolicyException("runtime.recovery_required");
         ValidatePlan(plan, current);
         ct.ThrowIfCancellationRequested();

@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
@@ -25,7 +25,7 @@ internal static class InstallationChecks
         var request = await JsonSerializer.DeserializeAsync<PrivilegedOperationRequest>(Console.OpenStandardInput())
             ?? throw new Exception("Missing fixture request");
         var channel = request.RuntimeLifecycle!.Authorization!;
-        await RuntimeAuthorizationClient.ReadAsync(channel, request.OperationId!.Value, default);
+        await RuntimeAuthorizationClient.ReadAsync<SingBoxCurrentAuthorization>(channel, request.OperationId!.Value, default);
         foreach (var stage in new[] { InstallationStage.Downloading, InstallationStage.Extracting,
             InstallationStage.Verifying, InstallationStage.Activating, InstallationStage.HealthChecking })
         {
@@ -80,7 +80,7 @@ internal static class InstallationChecks
                         observedChannel = request.RuntimeLifecycle!.Authorization!;
                         Check(request.OperationId == observedChannel.OperationId && request.RuntimeLifecycle.FrozenPlan!.Request.IdempotencyKey == "install-fixture",
                             "Coordinator operation identity and frozen key reach the Helper composition");
-                        await RuntimeAuthorizationClient.ReadAsync(observedChannel, request.OperationId!.Value, ct);
+                        await RuntimeAuthorizationClient.ReadAsync<SingBoxCurrentAuthorization>(observedChannel, request.OperationId!.Value, ct);
                         entered.TrySetResult(request.OperationId!.Value);
                         await finish.Task;
                         return Json(new RuntimeSwitchResult(request.OperationId!.Value, RuntimeSwitchOutcome.Succeeded, null));

@@ -110,6 +110,31 @@ internal static class NativeVersionChecks
         Check(RuntimeSourceOperations.ConfigurationSupport(mihomoRelease with { OriginalVersion = "Prerelease-Alpha" }) is { SortVersion: "", Supported: false },
             "The upstream Mihomo alpha channel is discoverable but never installable");
         Reject("release_channel_invalid", () => RuntimeSourceOperations.ConfigurationSupport(mihomoRelease with { OriginalVersion = "v1.20.0-alpha.1" }));
+        var nativeRelease = new RuntimeRelease("mihomo-native", "mihomo", "v1.19.30", "1.19.30",
+            RuntimeChannel.Stable, "source", new(MihomoNativeValidation.PlatformName,
+                MihomoNativeValidation.ArchitectureName, null, null, RuntimeInstallMode.Archive,
+                OperatingSystem.IsWindows() ? "scm" : "systemd"),
+            new("mihomo-native", new string('a', 64), 1024, OperatingSystem.IsWindows() ? "zip" : "gz",
+                MihomoNativeValidation.BinaryName, "key", new(1024, 1,
+                    [new(MihomoNativeValidation.BinaryName, 1024, new string('b', 64), true)])),
+            MihomoRuntimeSupport.Capability, true, RuntimeTrust.Confirmed, RuntimeEvidence.NativeConfiguration, DateTimeOffset.UtcNow);
+        MihomoRuntimePreparation.RequireSupportedRelease(nativeRelease);
+        Check(true, "Mihomo preparation accepts the exact host and measured native format");
+        foreach (var invalid in new[]
+        {
+            nativeRelease with { RuntimeId = "sing-box" },
+            nativeRelease with { OriginalVersion = "v1.20.0", SortVersion = "1.20.0" },
+            nativeRelease with { OriginalVersion = "Prerelease-Alpha" },
+            nativeRelease with { SortVersion = "1.19.29" },
+            nativeRelease with { ConfigurationCapability = SingBoxRuntimeSupport.Capability },
+            nativeRelease with { ConfigurationSupported = false },
+            nativeRelease with { Target = nativeRelease.Target with { Os = "unknown" } },
+            nativeRelease with { Target = nativeRelease.Target with { Architecture = "unknown" } },
+            nativeRelease with { Target = nativeRelease.Target with { ServiceHost = "unknown" } },
+            nativeRelease with { Artifact = nativeRelease.Artifact with { EntryPoint = "other/mihomo" } },
+            nativeRelease with { Channel = RuntimeChannel.Prerelease },
+        })
+            Reject("configuration_unsupported", () => MihomoRuntimePreparation.RequireSupportedRelease(invalid));
         return count;
     }
 }

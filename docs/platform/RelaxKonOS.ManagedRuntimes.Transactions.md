@@ -46,6 +46,16 @@
 
 ## 受管安装的配置发布与服务控制
 
+### 配置专属持久事务核心
+
+`RuntimeArchiveConfiguration` 提供独立于程序安装的共享事务：冻结安装/宿主/运行时、活动程序修订、旧/候选配置摘要、预期状态修订和幂等键，使用同一个 `RuntimeArchiveStateStore` 实例锁、状态修订和回执。当前账本必须显式携带 `configuration`（无事务时为 null），不读取缺该字段的旧格式；`RuntimeChange.Configure` 只标识配置恢复，普通制品计划拒绝此动作，配置发布使用自己的身份计划。程序修订及其安装时配置证据保持不变。
+
+准备期允许取消且不能修改活动配置/数据；切换检查后原子保存候选身份和切换标记，此后使用不可取消令牌完成或补偿。资源适配器必须停止自有服务后持久快照可变数据，再应用新配置，保留服务运行及开机启动状态。配置/数据快照由保护操作目录保存，账本只保留不透明引用。补偿先停止候选并重新核对旧配置授权，恢复后核对版本、配置身份、运行/开机启动、自有资源与健康，全部通过才提交旧身份。恢复只补偿，不重做准备或生成秘密；暂存清理不得删除回执所保留的恢复快照。
+
+补偿不完整保留命名事务及原问题/恢复问题，阻止新的配置、程序切换及移除。人工恢复描述为 Configure；关账要求已发生补偿失败、明确确认和服务实测停止，保留最近提交的身份并记录失败，不把无法证明的恢复视为成功。普通程序切换现也显式拒绝尚未结束的移除事务。
+
+该核心于 2026-10-18 在指定 Debian 13 x64 测试机通过 90 项检查：使用真实状态文件、共享锁和模拟资源适配器，含逐阶段错误、幂等、取消、授权撤销、失败补偿恢复、跨动作阻塞、损坏状态拒绝与关账；独立子进程在持久切换点直接退出，父进程只执行补偿恢复。该证据**不包含实际 Mihomo 配置/数据快照适配器或生产发布接线**，这些仍由 MR-03 追踪；现有生命周期入口遇到此类状态会明确拒绝不支持的恢复方式，不能报告为没有待恢复事务。
+
 `SingBoxManagedRuntime` 在同一个实例锁内处理受管活动修订上的 `ProxyServerStatus/Validate/Apply/GenerateKeys/Action`。程序只能来自 `versions/{revisionId}/` 中已记录且逐文件摘要仍匹配的不可变制品；本类不下载程序、不改活动修订、不建立信任。
 
 | 操作 | 规则 |
@@ -104,6 +114,12 @@ Server 侧 `SingBoxRuntimeService.PlanAsync` 允许卸载不带来源（内部�
 关账回执的 `ClosedProblemCode` 固定为 `runtime.recovery_closed_by_operator`，因此后续任何读取都能区分"恢复成功"与"由人放弃恢复"。三条写路由都要求 `CanInstall` 与该操作员的新鲜提权（缺失返回 `elevation-required`），查询只要读权限；Helper 侧对应 `SingBoxRuntimeRecoveryQuery/Stop/Close` 三种特权操作，Stop 要求 `Confirmed=false`、Close 要求 `Confirmed=true`，形状不符在下载与执行前即被拒。
 
 客户端 `ProxyServerRuntimeViewModel` 把这三条路径做成显式决策而不是静默失败：待恢复面板列出事务、变更、阶段、原始失败、补偿失败与实测服务；运行中只提供"重试"与"紧急停止"，只有实测停止后才出现"关账"并在关账前要求确认；`elevation-required` 弹出密码框并重试一次，操作员取消即失败而不重试；缺少确认宿主时关账什么都不做。
+
+## 运行时绑定的新鲜授权通道
+
+Server 与 Helper 的本机回调使用唯一当前 `RuntimeAuthorizationChannel(ChannelId, OperationId, RuntimeId, Secret)` 契约。`RuntimeAuthorizationServer<T>` 从当前授权类型确定运行时身份，Helper 使用 `RuntimeAuthorizationClient.ReadAsync<T>` 明确选择该运行时的材料类型；HMAC v2 上下文包含运行时、通道、操作、client/server 角色和 nonce。改写 RuntimeId 不能复用原证明；过期/过长租期、重复 nonce、非法字段或签名拒绝。sing-box 与 Mihomo 均已改用当前格式，不保留 v1 上下文或旧描述符解析。材料与通道密钥不写入冻结计划、持久回执或普通状态。
+
+Mihomo 的材料还要求有界 YAML、唯一构建标签、合法精确监听、本机控制器端口和凭据。Server 的加密发布状态区分待发布/已确认/已补偿，未确认候选、active.yaml 字节漂移和现有凭据撤销不能授权运行时切换；授权读取不创建秘密。`MihomoRuntimeService` 已有域门锁与逐操作回调组合，Helper 的 Linux 固定入口已登记；默认代理管理器仍待将配置/设置写入接入该门锁与确认流程，再统一安装台账和客户端。实现与准确证据见 [MR-03 应用进度](../applications/RelaxKonOS.ProxyManager.Design.md#受管运行时公共目录接入进度mr-032026-10-18)，不能将本机组合验收称为生产 HTTP 接线完成。
 
 ## 下载取消
 

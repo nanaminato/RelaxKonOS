@@ -33,7 +33,7 @@ public sealed class RuntimeArchiveSwitch(RuntimeArchiveStateStore store, IRuntim
         if (current.Pending is { } pendingRequest && (pendingRequest.OperationId == operationId || pendingRequest.IdempotencyHash == keyHash)
             && (pendingRequest.RequestHash != requestHash || pendingRequest.IdempotencyHash != keyHash))
             throw new RuntimePolicyException("runtime.idempotency_conflict");
-        if (current.Pending is not null || current.Installation.RecoveryRequired)
+        if (current.Pending is not null || current.Removal is not null || current.Configuration is not null || current.Installation.RecoveryRequired)
             throw new RuntimePolicyException("runtime.recovery_required");
         ValidatePlan(plan, current);
         ct.ThrowIfCancellationRequested();

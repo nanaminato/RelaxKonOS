@@ -152,6 +152,7 @@ public sealed class ProxyConfigurationTransactionService(
             catch (ArgumentException) { return ProxyProblemCodes.ConfigInvalid; }
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
         }
+        catch (ArgumentException) { return ProxyProblemCodes.ConfigInvalid; }
         finally { _gate.Release(); }
     }
 

@@ -23,10 +23,11 @@ internal sealed class SingBoxRuntimeLifecycle(string root, RuntimeArchiveStateSt
         var state = await EnsureStateAsync(ct);
         var receipt = state.Receipts.FirstOrDefault(r => r.OperationId == receiptOperationId);
         return new(state.Installation, state.Active?.MeasuredVersion, state.Active?.RevisionId, state.ConfigurationIdentity,
-            state.Pending?.OperationId ?? state.Removal?.OperationId,
-            state.Pending?.Stage ?? state.Removal?.Stage,
+            state.Pending?.OperationId ?? state.Removal?.OperationId ?? state.Configuration?.OperationId,
+            state.Pending?.Stage ?? state.Removal?.Stage ?? state.Configuration?.Stage,
             state.Pending?.RecoveryProblemCode ?? state.Pending?.ProblemCode
-                ?? state.Removal?.RecoveryProblemCode ?? state.Removal?.ProblemCode,
+                ?? state.Removal?.RecoveryProblemCode ?? state.Removal?.ProblemCode
+                ?? state.Configuration?.RecoveryProblemCode ?? state.Configuration?.ProblemCode,
             receipt is null ? null : new(receipt.OperationId, receipt.Outcome, receipt.ProblemCode),
             state.Revisions.Select(r => new RuntimeInstalledRelease(r.RevisionId, r.Release.ReleaseId, r.MeasuredVersion)).ToArray(),
             // Read-only environment facts, so a refusal can be explained before anyone presses install.
@@ -67,11 +68,12 @@ internal sealed class SingBoxRuntimeLifecycle(string root, RuntimeArchiveStateSt
         RuntimeAuthorizationChannel channel, CancellationToken ct, RuntimeStageReporter? progress = null)
     {
         // The channel descriptor never enters a frozen plan, durable journal, or idempotency hash.
-        if (channel.OperationId != operationId) throw new RuntimePolicyException("runtime.authorization_unavailable");
+        if (channel.OperationId != operationId || channel.RuntimeId != "sing-box")
+            throw new RuntimePolicyException("runtime.authorization_unavailable");
         await EnsureStateAsync(ct);
         // A cancellation request arrives through a second Helper process and is carried into preparation by
         // this token. The transaction itself decides when it is too late to honour it.
-        using var cancellation = SingBoxRuntimeCancellation.Watch(root, operationId, ct);
+        using var cancellation = RuntimeCancellation.Watch(root, operationId, ct);
         // Removal never reads published credentials, so it does not depend on a live authorization channel.
         return plan.Request.Change == RuntimeChange.Uninstall
             ? await Removal(progress).ExecuteAsync(operationId, plan, cancellation.Token)
@@ -86,14 +88,16 @@ internal sealed class SingBoxRuntimeLifecycle(string root, RuntimeArchiveStateSt
     internal RuntimeCancelRequestResult CancelRequest(Guid operationId)
     {
         if (operationId == Guid.Empty) throw new RuntimePolicyException("runtime.operation_id_invalid");
-        SingBoxRuntimeCancelChannel.Request(root, operationId);
+        RuntimeCancelChannel.Request(root, operationId);
         return new(operationId, true);
     }
 
     internal async Task<RuntimeSwitchResult?> RecoverAsync(RuntimeAuthorizationChannel channel, Guid operationId, CancellationToken ct,
         RuntimeStageReporter? progress = null)
     {
+        if (channel.RuntimeId != "sing-box") throw new RuntimePolicyException("runtime.authorization_unavailable");
         await EnsureStateAsync(ct);
+        if (states.Read()?.Configuration is not null) throw new RuntimePolicyException("runtime.action_unsupported");
         return states.Read()?.Removal is not null
             ? await Removal(progress).RecoverAsync(operationId, ct)
             : await Switch(channel, progress).RecoverAsync(operationId, ct);
@@ -194,6 +198,6 @@ internal sealed class SingBoxRuntimeLifecycle(string root, RuntimeArchiveStateSt
 
     private sealed class Authorization(RuntimeAuthorizationChannel channel) : ISingBoxArchiveAuthorization
     {
-        public Task<SingBoxCurrentAuthorization> ReadAsync(CancellationToken ct) => RuntimeAuthorizationClient.ReadAsync(channel, channel.OperationId, ct);
+        public Task<SingBoxCurrentAuthorization> ReadAsync(CancellationToken ct) => RuntimeAuthorizationClient.ReadAsync<SingBoxCurrentAuthorization>(channel, channel.OperationId, ct);
     }
 }

@@ -1,4 +1,4 @@
-﻿using System.Security.Cryptography;
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Buffers.Binary;
 using System.IO.Pipes;
@@ -80,19 +80,19 @@ internal static class AuthorizationChecks
 
             // Real OS pipe round trips; every challenge rereads Server state, never a cached grant.
             var reads = 0;
-            await using (var server = new RuntimeAuthorizationServer(Guid.NewGuid(), async ct => { reads++; return await provider.ReadAsync(ct); }))
+            await using (var server = new RuntimeAuthorizationServer<SingBoxCurrentAuthorization>(Guid.NewGuid(), async ct => { reads++; return await provider.ReadAsync(ct); }))
             {
-                var received = await RuntimeAuthorizationClient.ReadAsync(server.Channel, server.Channel.OperationId, default);
+                var received = await RuntimeAuthorizationClient.ReadAsync<SingBoxCurrentAuthorization>(server.Channel, server.Channel.OperationId, default);
                 Check(received.Published!.Configuration.Revision == 3 && received.Published.Credentials.Single().Value == credential.Value,
                     "Authenticated local channel delivers actual protected material");
                 await store.WriteAsync(state with { Credentials = [] }, default);
-                await Denied("runtime.credentials_revoked", async () => await RuntimeAuthorizationClient.ReadAsync(server.Channel, server.Channel.OperationId, default));
+                await Denied("runtime.credentials_revoked", async () => await RuntimeAuthorizationClient.ReadAsync<SingBoxCurrentAuthorization>(server.Channel, server.Channel.OperationId, default));
                 Check(reads == 2, "Helper second read observes revocation after the first challenge");
-                await Denied("runtime.authorization_unavailable", async () => await RuntimeAuthorizationClient.ReadAsync(server.Channel, Guid.NewGuid(), default));
-                await Denied("runtime.authorization_unavailable", async () => await RuntimeAuthorizationClient.ReadAsync(server.Channel with { Secret = new string('0', 64) }, server.Channel.OperationId, default));
+                await Denied("runtime.authorization_unavailable", async () => await RuntimeAuthorizationClient.ReadAsync<SingBoxCurrentAuthorization>(server.Channel, Guid.NewGuid(), default));
+                await Denied("runtime.authorization_unavailable", async () => await RuntimeAuthorizationClient.ReadAsync<SingBoxCurrentAuthorization>(server.Channel with { Secret = new string('0', 64) }, server.Channel.OperationId, default));
                 Check(reads == 2, "Wrong operation or secret cannot invoke the protected provider");
                 await store.WriteAsync(state, default);
-                Check((await RuntimeAuthorizationClient.ReadAsync(server.Channel, server.Channel.OperationId, default)).Published is not null,
+                Check((await RuntimeAuthorizationClient.ReadAsync<SingBoxCurrentAuthorization>(server.Channel, server.Channel.OperationId, default)).Published is not null,
                     "Rejected channel clients do not poison the next authenticated request");
                 var nonce = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
                 var beforeReplay = reads;
@@ -101,14 +101,14 @@ internal static class AuthorizationChecks
                 catch (EndOfStreamException) { count++; }
                 Check(reads == beforeReplay + 1, "Authenticated nonce replay cannot reread protected material");
             }
-            await using (var server = new RuntimeAuthorizationServer(Guid.NewGuid(), _ => Task.FromException<SingBoxCurrentAuthorization>(new Exception("private-diagnostic"))))
-                await Denied("runtime.authorization_unavailable", async () => await RuntimeAuthorizationClient.ReadAsync(server.Channel, server.Channel.OperationId, default));
-            await using (var server = new RuntimeAuthorizationServer(Guid.NewGuid(), _ => Task.FromResult(new SingBoxCurrentAuthorization(null, DateTimeOffset.UtcNow.AddMinutes(-1)))))
-                await Denied("runtime.authorization_unavailable", async () => await RuntimeAuthorizationClient.ReadAsync(server.Channel, server.Channel.OperationId, default));
-            await using (var server = new RuntimeAuthorizationServer(Guid.NewGuid(), _ => Task.FromResult(new SingBoxCurrentAuthorization(null, DateTimeOffset.UtcNow.AddMinutes(6)))))
-                await Denied("runtime.authorization_unavailable", async () => await RuntimeAuthorizationClient.ReadAsync(server.Channel, server.Channel.OperationId, default));
+            await using (var server = new RuntimeAuthorizationServer<SingBoxCurrentAuthorization>(Guid.NewGuid(), _ => Task.FromException<SingBoxCurrentAuthorization>(new Exception("private-diagnostic"))))
+                await Denied("runtime.authorization_unavailable", async () => await RuntimeAuthorizationClient.ReadAsync<SingBoxCurrentAuthorization>(server.Channel, server.Channel.OperationId, default));
+            await using (var server = new RuntimeAuthorizationServer<SingBoxCurrentAuthorization>(Guid.NewGuid(), _ => Task.FromResult(new SingBoxCurrentAuthorization(null, DateTimeOffset.UtcNow.AddMinutes(-1)))))
+                await Denied("runtime.authorization_unavailable", async () => await RuntimeAuthorizationClient.ReadAsync<SingBoxCurrentAuthorization>(server.Channel, server.Channel.OperationId, default));
+            await using (var server = new RuntimeAuthorizationServer<SingBoxCurrentAuthorization>(Guid.NewGuid(), _ => Task.FromResult(new SingBoxCurrentAuthorization(null, DateTimeOffset.UtcNow.AddMinutes(6)))))
+                await Denied("runtime.authorization_unavailable", async () => await RuntimeAuthorizationClient.ReadAsync<SingBoxCurrentAuthorization>(server.Channel, server.Channel.OperationId, default));
 
-            var forgedChannel = new RuntimeAuthorizationChannel(Guid.NewGuid(), Guid.NewGuid(), Convert.ToHexString(RandomNumberGenerator.GetBytes(32)));
+            var forgedChannel = new RuntimeAuthorizationChannel(Guid.NewGuid(), Guid.NewGuid(), "sing-box", Convert.ToHexString(RandomNumberGenerator.GetBytes(32)));
             await using (var fake = new NamedPipeServerStream("RelaxKonOS.RuntimeAuthorization." + forgedChannel.ChannelId.ToString("N"),
                 PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous))
             {
@@ -119,7 +119,7 @@ internal static class AuthorizationChecks
                     await WriteFrameAsync(fake, new { Content = Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new
                         { Grant = new SingBoxCurrentAuthorization(null, DateTimeOffset.UtcNow.AddSeconds(30)), ProblemCode = (string?)null })), Proof = new string('0', 64) });
                 });
-                await Denied("runtime.authorization_unavailable", async () => await RuntimeAuthorizationClient.ReadAsync(forgedChannel, forgedChannel.OperationId, default));
+                await Denied("runtime.authorization_unavailable", async () => await RuntimeAuthorizationClient.ReadAsync<SingBoxCurrentAuthorization>(forgedChannel, forgedChannel.OperationId, default));
                 await responding;
             }
 
@@ -130,7 +130,7 @@ internal static class AuthorizationChecks
             {
                 Check(store.Gate.CurrentCount == 0, "Lifecycle execution holds the same Server gate as configuration and credential mutation");
                 observedChannel = request.RuntimeLifecycle!.Authorization!;
-                Check((await RuntimeAuthorizationClient.ReadAsync(observedChannel, serviceOperation, ct)).Published!.Configuration.Revision == 3,
+                Check((await RuntimeAuthorizationClient.ReadAsync<SingBoxCurrentAuthorization>(observedChannel, serviceOperation, ct)).Published!.Configuration.Revision == 3,
                     "Production Server composition serves live authorization without gate recursion");
                 return new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new RuntimeSwitchResult(serviceOperation, RuntimeSwitchOutcome.Succeeded, null))));
             });
@@ -144,7 +144,7 @@ internal static class AuthorizationChecks
                 "Server composition returns Helper evidence and releases the domain gate");
             using (var ended = new CancellationTokenSource(TimeSpan.FromMilliseconds(100)))
             {
-                try { await RuntimeAuthorizationClient.ReadAsync(observedChannel!, serviceOperation, ended.Token); throw new Exception("Completed callback channel was reused"); }
+                try { await RuntimeAuthorizationClient.ReadAsync<SingBoxCurrentAuthorization>(observedChannel!, serviceOperation, ended.Token); throw new Exception("Completed callback channel was reused"); }
                 catch (OperationCanceledException) { count++; }
             }
             var user = new SingBoxRuntimeService(transport, store, provider, new TestMode(ServerMode.User));
@@ -160,7 +160,7 @@ internal static class AuthorizationChecks
         await using var pipe = new NamedPipeClientStream(".", "RelaxKonOS.RuntimeAuthorization." + channel.ChannelId.ToString("N"), PipeDirection.InOut, PipeOptions.Asynchronous);
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         await pipe.ConnectAsync(deadline.Token);
-        var context = Encoding.UTF8.GetBytes($"RelaxKonOS.RuntimeAuthorization.v1\nclient\n{channel.ChannelId:N}\n{channel.OperationId:N}\n{nonce}\n");
+        var context = Encoding.UTF8.GetBytes($"RelaxKonOS.RuntimeAuthorization.v2\n{channel.RuntimeId}\nclient\n{channel.ChannelId:N}\n{channel.OperationId:N}\n{nonce}\n");
         var proof = Convert.ToHexString(HMACSHA256.HashData(Convert.FromHexString(channel.Secret), context));
         await WriteFrameAsync(pipe, new { OperationId = channel.OperationId, Nonce = nonce, Proof = proof });
         await ReadFrameAsync(pipe);

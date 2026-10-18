@@ -83,6 +83,7 @@ sealed class TestProxySettingsService(int mixedPort) : IProxySettingsService
 sealed class StaticProxySecretStore : IProxyControllerSecretStore
 {
     public Task<string> GetOrCreateAsync(CancellationToken cancellationToken) => Task.FromResult("controller-secret");
+    public Task<string?> ReadExistingAsync(CancellationToken cancellationToken) => Task.FromResult<string?>("controller-secret");
 }
 
 sealed class TestProxyPaths(string root) : IProxyPlatformPaths

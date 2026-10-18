@@ -3,6 +3,12 @@ using System.Text.Json.Serialization;
 
 namespace RelaxKonOS.Protocol.ManagedRuntimes;
 
+/// <summary>A configuration publication freezes identities, never configuration text or credentials.</summary>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed record RuntimeConfigurationPlan(Guid InstallationId, string HostId, string RuntimeId,
+    long ExpectedStateRevision, Guid ActiveRevisionId, string PreviousIdentity, string CandidateIdentity,
+    string IdempotencyKey);
+
 /// <summary>
 /// One program revision the host still stores. Only these are eligible rollback targets, and the
 /// immutable release identity is reported rather than inferred from a version label.
@@ -27,7 +33,7 @@ public sealed record RuntimeSwitchResult(Guid OperationId, RuntimeSwitchOutcome 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record RuntimeLifecycleRequest(string? SourceId = null, RuntimePlanRequest? Plan = null,
     RuntimeAuthorizationChannel? Authorization = null, RuntimeChangePlan? FrozenPlan = null, Guid? RecoveryOperationId = null,
-    bool Confirmed = false, Guid? CancelOperationId = null);
+    bool Confirmed = false, Guid? CancelOperationId = null, RuntimeConfigurationPlan? ConfigurationPlan = null);
 
 /// <summary>
 /// Whether a cancellation request was recorded for one transaction. It says nothing about the outcome:

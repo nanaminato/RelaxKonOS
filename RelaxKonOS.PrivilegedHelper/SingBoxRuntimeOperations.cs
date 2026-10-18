@@ -14,14 +14,16 @@ internal static class SingBoxRuntimeOperations
         var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
             Correlation: request.Correlation, Version: request.Version, RuntimeLifecycle: request.RuntimeLifecycle);
         var input = request.RuntimeLifecycle;
+        if (input?.ConfigurationPlan is not null)
+            return new(false, 64, ProblemCode: PrivilegedProblemCode.InvalidRequest, Error: "runtime.request_invalid");
         var valid = request.Operation switch
         {
             PrivilegedOperationKind.SingBoxRuntimeQuery => input is null,
-            PrivilegedOperationKind.SingBoxRuntimePlan => input is { Plan: not null, Authorization: null, FrozenPlan: null, RecoveryOperationId: null, CancelOperationId: null }
+            PrivilegedOperationKind.SingBoxRuntimePlan => input is { Plan: not null, Authorization: null, FrozenPlan: null, Confirmed: false, RecoveryOperationId: null, CancelOperationId: null }
                 && RuntimeValidation.Identifier(input.SourceId),
-            PrivilegedOperationKind.SingBoxRuntimeExecute => input is { SourceId: null, Plan: null, Authorization: not null, FrozenPlan: { Request: not null }, RecoveryOperationId: null, CancelOperationId: null }
+            PrivilegedOperationKind.SingBoxRuntimeExecute => input is { SourceId: null, Plan: null, Authorization: not null, Confirmed: false, FrozenPlan: { RuntimeId: "sing-box", Request: not null }, RecoveryOperationId: null, CancelOperationId: null }
                 && (input.FrozenPlan.Release is not null || input.FrozenPlan.Request.Change == RuntimeChange.Uninstall),
-            PrivilegedOperationKind.SingBoxRuntimeRecover => input is { SourceId: null, Plan: null, Authorization: not null, FrozenPlan: null, RecoveryOperationId: { } target, CancelOperationId: null }
+            PrivilegedOperationKind.SingBoxRuntimeRecover => input is { SourceId: null, Plan: null, Authorization: not null, FrozenPlan: null, Confirmed: false, RecoveryOperationId: { } target, CancelOperationId: null }
                 && target != Guid.Empty,
             PrivilegedOperationKind.SingBoxRuntimeCancel => input is { SourceId: null, Plan: null, Authorization: null, FrozenPlan: null, Confirmed: false, RecoveryOperationId: null, CancelOperationId: { } cancelTarget }
                 && cancelTarget != Guid.Empty,
@@ -34,6 +36,7 @@ internal static class SingBoxRuntimeOperations
         };
         if (clean != request || !valid || request.OperationId is not { } id || id == Guid.Empty
             || input?.Authorization is { } channel && (channel.OperationId != id || channel.ChannelId == Guid.Empty
+                || channel.RuntimeId != "sing-box"
                 || channel.Secret is not { Length: 64 } || !channel.Secret.All(Uri.IsHexDigit)))
             return new(false, 64, ProblemCode: PrivilegedProblemCode.InvalidRequest, Error: "runtime.request_invalid");
         if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())

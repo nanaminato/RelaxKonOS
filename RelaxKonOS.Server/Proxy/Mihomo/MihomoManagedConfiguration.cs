@@ -1,6 +1,8 @@
 using System.Net;
 using System.Text;
 using RelaxKonOS.Protocol.Proxy;
+using RelaxKonOS.ManagedRuntimes;
+using YamlDotNet.RepresentationModel;
 
 namespace RelaxKonOS.Server.Proxy.Mihomo;
 
@@ -13,7 +15,8 @@ internal static class MihomoManagedConfiguration
 {
     private static readonly HashSet<string> ControllerKeys = new(StringComparer.OrdinalIgnoreCase)
     {
-        "external-controller",
+        "external-controller", "external-controller-tls", "external-controller-unix", "external-controller-pipe",
+        "external-ui", "external-ui-url", "external-ui-name", "external-ui-download-url",
         "secret",
     };
     private static readonly HashSet<string> SettingsKeys = new(StringComparer.OrdinalIgnoreCase)
@@ -98,52 +101,24 @@ internal static class MihomoManagedConfiguration
     /// </summary>
     public static MihomoTunActivation ReadTunActivation(string yaml)
     {
-        ArgumentNullException.ThrowIfNull(yaml);
-        var enabled = false;
-        var routeExclusions = new List<string>();
-        var inTun = false;
-        var inRouteExclusions = false;
-        using var reader = new StringReader(yaml);
-        string? line;
-        while ((line = reader.ReadLine()) is not null)
-        {
-            if (TryGetTopLevelKey(line, out var key))
-            {
-                inTun = key.Equals("tun", StringComparison.OrdinalIgnoreCase);
-                inRouteExclusions = false;
-                continue;
-            }
-            if (!inTun || line.Length == 0 || line[0] == '#') continue;
-            // Any non-indented line that is not a key ends the block rather than belonging to it.
-            if (!char.IsWhiteSpace(line[0])) { inTun = false; continue; }
-            var trimmed = line.TrimStart();
-            if (trimmed.Length == 0 || trimmed[0] == '#') continue;
-            if (trimmed[0] == '-')
-            {
-                if (inRouteExclusions && Unquote(trimmed[1..].Trim()) is { Length: > 0 } route) routeExclusions.Add(route);
-                continue;
-            }
-            var separator = trimmed.IndexOf(':');
-            if (separator <= 0) continue;
-            var name = Unquote(trimmed[..separator].Trim());
-            var value = trimmed[(separator + 1)..].Trim();
-            inRouteExclusions = false;
-            if (name.Equals("enable", StringComparison.OrdinalIgnoreCase))
-            {
-                enabled = Unquote(value).Equals("true", StringComparison.OrdinalIgnoreCase);
-            }
-            else if (name.Equals("route-exclude-address", StringComparison.OrdinalIgnoreCase))
-            {
-                if (value.Length == 0) { inRouteExclusions = true; continue; }
-                // Tolerate the inline form so a hand-edited file cannot silently lose the
-                // boundary that the block form encodes.
-                foreach (var item in value.Trim('[', ']').Split(',', StringSplitOptions.RemoveEmptyEntries))
-                    if (Unquote(item.Trim()) is { Length: > 0 } route) routeExclusions.Add(route);
-            }
-        }
-        return new MihomoTunActivation(enabled, routeExclusions);
+        try { return ReadTunCore(yaml); }
+        catch (RuntimePolicyException) { throw new ArgumentException("Invalid TUN configuration."); }
     }
-
+    private static MihomoTunActivation ReadTunCore(string yaml)
+    {
+        var root = Parse(yaml);
+        var node = MihomoYaml.Get(root, "tun");
+        if (node is null) return new(false, []);
+        if (node is not YamlMappingNode tun) throw new ArgumentException("Invalid TUN configuration.");
+        var enable = MihomoYaml.Scalar(MihomoYaml.Get(tun, "enable"));
+        if (enable is not null && !bool.TryParse(enable, out _)) throw new ArgumentException("Invalid TUN flag.");
+        var excluded = MihomoYaml.Get(tun, "route-exclude-address");
+        if (excluded is not null && excluded is not YamlSequenceNode) throw new ArgumentException("Invalid route exclusions.");
+        var routes = excluded is YamlSequenceNode list
+            ? list.Children.Select(child => MihomoYaml.Scalar(child) ?? throw new ArgumentException("Invalid route exclusion.")).ToArray()
+            : [];
+        return new(enable is not null && bool.Parse(enable), routes);
+    }
     /// <summary>
     /// Managed Mihomo always uses the versioned GEO files staged in its <c>-d</c> directory.
     /// Removing profile-provided download settings prevents first-start networking from becoming
@@ -159,78 +134,39 @@ internal static class MihomoManagedConfiguration
         return builder.ToString();
     }
 
-    private static string RemoveTopLevelControllerSettings(string yaml)
-    {
-        using var reader = new StringReader(yaml);
-        var retained = new StringBuilder(yaml.Length);
-        var skipping = false;
-        string? line;
-        while ((line = reader.ReadLine()) is not null)
-        {
-            if (TryGetTopLevelKey(line, out var key))
-                skipping = ControllerKeys.Contains(key);
-            if (!skipping) retained.AppendLine(line);
-        }
-        return retained.ToString();
-    }
-
-    private static string RemoveTopLevelSettings(string yaml)
-        => RemoveTopLevelKeys(yaml, SettingsKeys);
+    private static string RemoveTopLevelControllerSettings(string yaml) => RemoveTopLevelKeys(yaml, ControllerKeys);
+    private static string RemoveTopLevelSettings(string yaml) => RemoveTopLevelKeys(yaml, SettingsKeys);
 
     private static string RemoveTopLevelKeys(string yaml, IReadOnlySet<string> keys)
     {
-        using var reader = new StringReader(yaml);
-        var retained = new StringBuilder(yaml.Length);
-        var skipping = false;
-        string? line;
-        while ((line = reader.ReadLine()) is not null)
-        {
-            if (TryGetTopLevelKey(line, out var key)) skipping = keys.Contains(key);
-            if (!skipping) retained.AppendLine(line);
-        }
-        return retained.ToString();
+        var root = Parse(yaml);
+        MihomoYaml.Remove(root, keys);
+        return MihomoYaml.Render(root);
     }
 
     private static string ReplaceDnsEnabled(string yaml, bool enabled)
     {
-        var lines = yaml.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n').ToList();
-        var dnsIndex = lines.FindIndex(line => TryGetTopLevelKey(line, out var key) && key.Equals("dns", StringComparison.OrdinalIgnoreCase));
-        if (dnsIndex < 0)
-        {
-            lines.Add("dns:"); lines.Add("  enable: " + (enabled ? "true" : "false"));
-            return string.Join('\n', lines);
-        }
-        var end = dnsIndex + 1;
-        while (end < lines.Count && (lines[end].Length == 0 || char.IsWhiteSpace(lines[end][0]) || lines[end].StartsWith('#'))) end++;
-        for (var index = dnsIndex + 1; index < end; index++)
-        {
-            var trimmed = lines[index].TrimStart();
-            if (trimmed.StartsWith("enable:", StringComparison.OrdinalIgnoreCase))
-            {
-                var indent = lines[index][..(lines[index].Length - trimmed.Length)];
-                lines[index] = indent + "enable: " + (enabled ? "true" : "false");
-                return string.Join('\n', lines);
-            }
-        }
-        lines.Insert(dnsIndex + 1, "  enable: " + (enabled ? "true" : "false"));
-        return string.Join('\n', lines);
+        try { return ReplaceDnsCore(yaml, enabled); }
+        catch (RuntimePolicyException) { throw new ArgumentException("Invalid DNS configuration."); }
     }
-
-    private static bool TryGetTopLevelKey(string line, out string key)
+    private static string ReplaceDnsCore(string yaml, bool enabled)
     {
-        key = "";
-        if (line.Length == 0 || char.IsWhiteSpace(line[0]) || line[0] is '#' or '-') return false;
-        var separator = line.IndexOf(':');
-        if (separator <= 0) return false;
-        var candidate = line[..separator].Trim();
-        if (candidate.Length >= 2 && candidate[0] == candidate[^1] && candidate[0] is '\'' or '\"')
-            candidate = candidate[1..^1];
-        if (candidate.Length == 0 || candidate.Any(character => !(char.IsLetterOrDigit(character) || character is '-' or '_')))
-            return false;
-        key = candidate;
-        return true;
+        var root = Parse(yaml);
+        var original = MihomoYaml.Get(root, "dns");
+        var dns = original is null ? new YamlMappingNode() : original as YamlMappingNode
+            ?? throw new ArgumentException("Invalid DNS configuration.");
+        MihomoYaml.Remove(dns, ["enable"]);
+        dns.Add("enable", enabled ? "true" : "false");
+        MihomoYaml.Remove(root, ["dns"]);
+        root.Add("dns", dns);
+        return MihomoYaml.Render(root);
     }
 
+    private static YamlMappingNode Parse(string yaml)
+    {
+        try { return MihomoYaml.Parse(yaml); }
+        catch (RuntimePolicyException) { throw new ArgumentException("Invalid proxy profile YAML."); }
+    }
     private static string ControllerAddress(Uri endpoint)
     {
         var host = endpoint.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ? "127.0.0.1" : endpoint.Host;
@@ -243,9 +179,6 @@ internal static class MihomoManagedConfiguration
         .Replace("\\", "\\\\", StringComparison.Ordinal)
         .Replace("\"", "\\\"", StringComparison.Ordinal);
 
-    private static string Unquote(string value) => value.Length >= 2 && value[0] == value[^1] && value[0] is '\'' or '"'
-        ? value[1..^1]
-        : value;
 }
 
 /// <summary>The TUN activation a managed configuration carries: the flag plus its safety boundary.</summary>

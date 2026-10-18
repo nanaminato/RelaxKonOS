@@ -8,6 +8,7 @@ namespace RelaxKonOS.Server.Proxy.Mihomo;
 public interface IProxyControllerSecretStore
 {
     Task<string> GetOrCreateAsync(CancellationToken cancellationToken);
+    Task<string?> ReadExistingAsync(CancellationToken cancellationToken);
 }
 
 /// <summary>Machine-local encrypted secret persistence until the host-global Proxy store is introduced in Goal 4.</summary>
@@ -49,6 +50,20 @@ public sealed class DataProtectionProxyControllerSecretStore : IProxyControllerS
             File.Move(staging, _path, overwrite: false);
             SetPrivateFile(_path);
             return secret;
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>Authorization reads never create, replace or repair a credential.</summary>
+    public async Task<string?> ReadExistingAsync(CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (!File.Exists(_path)) return null;
+            try { return _protector.Unprotect(await File.ReadAllTextAsync(_path, cancellationToken)); }
+            catch (Exception ex) when (ex is CryptographicException or IOException or UnauthorizedAccessException)
+            { throw new ProxyControllerSecretException(); }
         }
         finally { _gate.Release(); }
     }

@@ -71,7 +71,8 @@ internal static class SingBoxManagedRuntime
                 break;
             default: return Failure("proxy_server.request_invalid");
         }
-        if (state.Active is null || state.Pending is not null || state.Installation.RecoveryRequired) return Failure(Recovery);
+        if (state.Active is null || state.Pending is not null || state.Removal is not null || state.Configuration is not null
+            || state.Installation.RecoveryRequired) return Failure(Recovery);
         return request.Operation switch
         {
             PrivilegedOperationKind.ProxyServerGenerateKeys => await GenerateKeysAsync(root, state),
@@ -105,7 +106,7 @@ internal static class SingBoxManagedRuntime
         CancellationToken ct)
     {
         var active = state.Active;
-        var pending = state.Pending is not null || state.Installation.RecoveryRequired;
+        var pending = state.Pending is not null || state.Removal is not null || state.Configuration is not null || state.Installation.RecoveryRequired;
         SingBoxServiceObservation observed;
         try { observed = await host.ObserveAsync(ct); }
         catch (RuntimePolicyException)

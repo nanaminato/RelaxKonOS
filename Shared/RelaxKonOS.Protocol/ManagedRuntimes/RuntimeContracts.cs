@@ -13,7 +13,7 @@ public enum RuntimeInstallMode { Archive, SystemPackage }
 [JsonConverter(typeof(JsonStringEnumConverter<RuntimeEvidence>))]
 public enum RuntimeEvidence { Unverified, NativeConfiguration, Interoperability }
 [JsonConverter(typeof(JsonStringEnumConverter<RuntimeChange>))]
-public enum RuntimeChange { Install, Update, Repair, Rollback, Uninstall }
+public enum RuntimeChange { Install, Update, Repair, Rollback, Uninstall, Configure }
 [JsonConverter(typeof(JsonStringEnumConverter<RuntimeSourceKind>))]
 public enum RuntimeSourceKind { HttpsManifest }
 

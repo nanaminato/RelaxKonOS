@@ -22,6 +22,9 @@ public static class RuntimeArchiveRecovery
         if (state?.Removal is { } removal)
             return new(true, removal.OperationId, RuntimeChange.Uninstall, removal.Stage, removal.RemovalStarted,
                 removal.ProblemCode, removal.RecoveryProblemCode, null, state.Active?.Release.ReleaseId);
+        if (state?.Configuration is { } configuration)
+            return new(true, configuration.OperationId, RuntimeChange.Configure, configuration.Stage, configuration.SwitchStarted,
+                configuration.ProblemCode, configuration.RecoveryProblemCode, state.Active?.Release.ReleaseId, state.Active?.Release.ReleaseId);
         return new(false, null, null, null, false, null, null, null, null);
     }
 
@@ -45,7 +48,7 @@ public static class RuntimeArchiveRecovery
         bool confirmed, RuntimeServiceObservation? observation)
     {
         var state = session.State ?? throw new RuntimePolicyException("runtime.installation_observation_required");
-        var target = state.Pending?.OperationId ?? state.Removal?.OperationId
+        var target = state.Pending?.OperationId ?? state.Removal?.OperationId ?? state.Configuration?.OperationId
             ?? throw new RuntimePolicyException("runtime.recovery_absent");
         if (target != operationId) throw new RuntimePolicyException("runtime.recovery_target_conflict");
         // Closing a merely unfinished transaction would skip compensation that is still expected to work.
@@ -53,6 +56,14 @@ public static class RuntimeArchiveRecovery
         if (!confirmed) throw new RuntimePolicyException("runtime.recovery_confirmation_required");
         // An unobserved or still-running program would be hidden by closing; the stop must be real.
         if (observation is not { Running: false }) throw new RuntimePolicyException("runtime.recovery_stop_required");
+        if (state.Configuration is { } configuration)
+        {
+            var receipt = new RuntimeSwitchReceipt(operationId, configuration.RequestHash, configuration.IdempotencyHash,
+                RuntimeSwitchOutcome.Failed, state.Active!.RevisionId, ClosedProblemCode, DateTimeOffset.UtcNow, configuration.Snapshot);
+            Save(session, state with { Configuration = null, Installation = state.Installation with { RecoveryRequired = false },
+                Receipts = [.. state.Receipts, receipt] });
+            return new(operationId, receipt.Outcome, receipt.ProblemCode);
+        }
         return state.Pending is { } pending ? CloseSwitch(session, state, pending)
             : CloseRemoval(session, state, state.Removal!);
     }

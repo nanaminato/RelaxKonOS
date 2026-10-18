@@ -46,7 +46,7 @@ public sealed class SingBoxRuntimeService(IPrivilegedOperationTransport helper, 
         await store.Gate.WaitAsync(ct);
         try
         {
-            await using var callback = new RuntimeAuthorizationServer(operationId, authorization.ReadAsync);
+            await using var callback = new RuntimeAuthorizationServer<SingBoxCurrentAuthorization>(operationId, authorization.ReadAsync);
             var result = await CallAsync<RuntimeSwitchResult>(new(PrivilegedOperationKind.SingBoxRuntimeExecute,
                 OperationId: operationId, RuntimeLifecycle: new(Authorization: callback.Channel, FrozenPlan: plan)), CancellationToken.None);
             if (result.OperationId != operationId) throw new RuntimeLifecycleException("runtime.operation_id_conflict");
@@ -61,7 +61,7 @@ public sealed class SingBoxRuntimeService(IPrivilegedOperationTransport helper, 
         await store.Gate.WaitAsync(ct);
         try
         {
-            await using var callback = new RuntimeAuthorizationServer(requestOperationId, authorization.ReadAsync);
+            await using var callback = new RuntimeAuthorizationServer<SingBoxCurrentAuthorization>(requestOperationId, authorization.ReadAsync);
             // A null result proves only that no pending Helper transaction remains; callers must still query its receipt.
             return await CallAsync<RuntimeSwitchResult?>(new(PrivilegedOperationKind.SingBoxRuntimeRecover,
                 OperationId: requestOperationId, RuntimeLifecycle: new(Authorization: callback.Channel, RecoveryOperationId: recoveryOperationId)), CancellationToken.None, allowNull: true);

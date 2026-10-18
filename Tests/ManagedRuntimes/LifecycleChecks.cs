@@ -1,4 +1,4 @@
-﻿using System.Security.Cryptography;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text;
 using RelaxKonOS.ManagedRuntimes;
@@ -42,7 +42,7 @@ internal static class LifecycleChecks
                 query with { OperationId = null }, query with { Operation = PrivilegedOperationKind.FileWrite },
                 query with { Operation = PrivilegedOperationKind.SingBoxRuntimePlan, RuntimeLifecycle = new(SourceId: "../other") },
                 query with { Operation = PrivilegedOperationKind.SingBoxRuntimeExecute, RuntimeLifecycle = new() },
-                query with { Operation = PrivilegedOperationKind.SingBoxRuntimeRecover, RuntimeLifecycle = new(Authorization: new(Guid.NewGuid(), Guid.NewGuid(), new string('0', 64))) } };
+                query with { Operation = PrivilegedOperationKind.SingBoxRuntimeRecover, RuntimeLifecycle = new(Authorization: new(Guid.NewGuid(), Guid.NewGuid(), "sing-box", new string('0', 64))) } };
             foreach (var invalid in malformed)
                 Check(!(await SingBoxRuntimeOperations.ExecuteAsync(invalid, Create)).Success, "Mixed or incomplete lifecycle input is rejected");
             Check(created == 1, "Invalid requests never construct a privileged lifecycle");
@@ -92,7 +92,7 @@ internal static class LifecycleChecks
             var forged = frozen with { Release = frozen.Release! with { Artifact = artifact with
                 { Layout = artifact.Layout with { Files = [artifact.Layout.Files[0] with { Length = 5 }] } } } };
             var operationId = Guid.NewGuid();
-            var channel = new RuntimeAuthorizationChannel(Guid.NewGuid(), operationId, new string('0', 64));
+            var channel = new RuntimeAuthorizationChannel(Guid.NewGuid(), operationId, "sing-box", new string('0', 64));
             var result = await lifecycle.ExecuteAsync(operationId, forged, channel, default);
             Check(result.Outcome == RuntimeSwitchOutcome.Failed && result.ProblemCode == "runtime.release_untrusted",
                 "Forged artifact layout fails independent Helper authorization before download or execution");

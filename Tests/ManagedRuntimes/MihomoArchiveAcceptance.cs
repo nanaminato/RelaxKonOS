@@ -9,8 +9,8 @@ using RelaxKonOS.Server.Proxy.Mihomo;
 
 /// <summary>
 /// Real Mihomo evidence: the reviewed upstream gzip archives, the shared signed-catalog and extraction
-/// pipeline, and the native '-v'/'t' reports of the binaries they contain. No service is installed and no
-/// proxy traffic is proxied, so this proves the archive/native-format range and nothing more.
+/// pipeline, native '-v'/'t' reports and archive transactions. The default uses a simulated service;
+/// the explicit systemd command additionally registers the fixed unit and forwards real HTTP traffic.
 /// </summary>
 internal static class MihomoArchiveAcceptance
 {
@@ -44,7 +44,7 @@ internal static class MihomoArchiveAcceptance
             - 223.5.5.5
         """;
 
-    internal static async Task<int> RunAsync(string olderArchive, string currentArchive)
+    internal static async Task<int> RunAsync(string olderArchive, string currentArchive, bool systemd = false)
     {
         if (!OperatingSystem.IsLinux() || RuntimeInformation.ProcessArchitecture != Architecture.X64)
             throw new Exception("Real Mihomo archive acceptance requires Linux x64.");
@@ -73,7 +73,7 @@ internal static class MihomoArchiveAcceptance
                     DateTimeOffset.UtcNow);
 
             using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-            var (_, catalog) = Accept(key,
+            var (sources, catalog) = Accept(key,
             [
                 Release("v" + OlderVersion, OlderSha256, new FileInfo(olderArchive).Length, older),
                 Release("v" + NewerVersion, NewerSha256, new FileInfo(currentArchive).Length, current),
@@ -97,26 +97,66 @@ internal static class MihomoArchiveAcceptance
 
             foreach (var (release, archive) in new[] { (olderRelease, olderArchive), (newerRelease, currentArchive) })
             {
-                await using var stream = File.OpenRead(archive);
-                var extracted = await RuntimeArchiveExtractor.ExtractAsync(stream, release.Artifact, staging, default);
+                var data = Path.Combine(work, "data-" + release.SortVersion);
+                Directory.CreateDirectory(data);
+                var plan = new RuntimeChangePlan(new(Guid.NewGuid(), "mihomo-acceptance", RuntimeChange.Install,
+                    0, catalog.Revision, catalog.TrustRevision, release.ReleaseId, "prepare-" + release.ReleaseId),
+                    "mihomo", release, null);
+                var transport = new FixtureTransport(archive);
+                var prepared = await new MihomoRuntimePreparation(sources, transport)
+                    .PrepareAsync(plan, staging, data, configuration, default);
+                var extracted = prepared.Artifact.Archive;
+                Check(transport.Calls == 1 && prepared.ConfigurationIdentity ==
+                    Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(configuration))),
+                    release.SortVersion + " prepares the frozen signed artifact and current configuration together");
                 var declared = release.Artifact.Layout.Files.Single();
                 Check(new FileInfo(extracted.EntryPoint).Length == declared.Length
                     && await MatchesAsync(extracted.EntryPoint, declared.Sha256),
                     release.SortVersion + " extracts the exact reviewed executable from its single gzip member");
                 Check(UnixFileMode.UserExecute == (File.GetUnixFileMode(extracted.EntryPoint) & UnixFileMode.UserExecute),
                     release.SortVersion + " extracted executable keeps its execute bit");
-                var build = MihomoNativeValidation.Parse(await MihomoOperations.VersionAsync(extracted.EntryPoint),
-                    release.OriginalVersion, "linux", "amd64");
+                var build = prepared.Build;
                 Check(build is { Os: "linux", Architecture: "amd64" } && build.Version == release.SortVersion,
                     release.SortVersion + " reports exactly the version, platform and architecture it was signed as");
                 Check(build.BuildTags.Contains("with_gvisor"),
                     release.SortVersion + " reports the build tags the signed layout depends on");
-                var data = Path.Combine(work, "data-" + release.SortVersion);
-                Directory.CreateDirectory(data);
-                // The one generated configuration must satisfy every version inside the declared range.
-                await MihomoOperations.TestConfigurationAsync(extracted.EntryPoint, data, configuration);
                 Check(true, release.SortVersion + " accepts the generated native configuration");
                 RuntimeArchiveExtractor.Discard(extracted, staging);
+
+                // A caller cannot replace even non-executable evidence in the frozen catalog record.
+                try
+                {
+                    await new MihomoRuntimePreparation(sources, transport).PrepareAsync(plan with
+                    { Release = release with { Evidence = RuntimeEvidence.Interoperability } }, staging, data, configuration, default);
+                    throw new Exception("A substituted frozen record was prepared");
+                }
+                catch (RuntimePolicyException ex) when (ex.ProblemCode == "runtime.release_untrusted")
+                { Check(transport.Calls == 1 && !Directory.EnumerateFileSystemEntries(staging).Any(),
+                    "Forged frozen evidence is refused before download"); }
+
+                using var cancelled = new CancellationTokenSource();
+                cancelled.Cancel();
+                try
+                {
+                    await new MihomoRuntimePreparation(sources, transport)
+                        .PrepareAsync(plan, staging, data, configuration, cancelled.Token);
+                    throw new Exception("Cancelled preparation succeeded");
+                }
+                catch (OperationCanceledException)
+                { Check(!Directory.EnumerateFileSystemEntries(staging).Any(), "Cancelled preparation leaves no staging residue"); }
+
+                var original = await File.ReadAllTextAsync(configuration);
+                var drifting = new FixtureTransport(archive)
+                { AfterCopy = () => File.AppendAllText(configuration, "\n# concurrent publication\n") };
+                try
+                {
+                    await new MihomoRuntimePreparation(sources, drifting)
+                        .PrepareAsync(plan, staging, data, configuration, default);
+                    throw new Exception("A changed configuration was accepted");
+                }
+                catch (RuntimePolicyException ex) when (ex.ProblemCode == "runtime.configuration_drift")
+                { Check(!Directory.EnumerateFileSystemEntries(staging).Any(), "Configuration drift discards the prepared executable"); }
+                finally { await File.WriteAllTextAsync(configuration, original); }
             }
 
             var tampered = Path.Combine(work, "tampered.gz");
@@ -144,6 +184,9 @@ internal static class MihomoArchiveAcceptance
                 && RuntimeFormatSupport.Configuration(Signed("v1.18.10")) is { Supported: false, SortVersion: "1.18.10" }
                 && RuntimeFormatSupport.Configuration(Signed("v1.20.0")) is { Supported: false, SortVersion: "1.20.0" },
                 "Discovery honours the measured range around the versions proven here");
+            count += await MihomoArchiveTransactionChecks.RunAsync(Path.Combine(work, "transaction"), sources,
+                catalog, olderArchive, currentArchive, await File.ReadAllTextAsync(configuration));
+            if (systemd) count += await MihomoSystemdAcceptance.RunAsync(sources, catalog, olderArchive, currentArchive);
         }
         finally
         {
@@ -152,6 +195,19 @@ internal static class MihomoArchiveAcceptance
             try { Directory.Delete(work, true); } catch (IOException) { }
         }
         return count;
+    }
+
+    private sealed class FixtureTransport(string archive) : IRuntimeArchiveTransport
+    {
+        internal int Calls;
+        internal Action? AfterCopy;
+        public async Task CopyAsync(RuntimeSource source, ManifestRelease release, Stream destination, CancellationToken ct)
+        {
+            Calls++;
+            await using var input = File.OpenRead(archive);
+            await input.CopyToAsync(destination, ct);
+            AfterCopy?.Invoke();
+        }
     }
 
     private readonly record struct ArchiveLayout(long Bytes, string Sha256);

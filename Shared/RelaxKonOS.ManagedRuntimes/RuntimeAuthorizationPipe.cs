@@ -9,16 +9,17 @@ using RelaxKonOS.Protocol.ManagedRuntimes;
 namespace RelaxKonOS.ManagedRuntimes;
 
 /// <summary>An operation-scoped local callback. No grant or channel key is persisted.</summary>
-public sealed class RuntimeAuthorizationServer : IAsyncDisposable
+public sealed class RuntimeAuthorizationServer<T> : IAsyncDisposable where T : class, IRuntimeAuthorizationGrant
 {
     private readonly CancellationTokenSource stopped = new();
     private readonly Task serving;
     public RuntimeAuthorizationChannel Channel { get; }
 
-    public RuntimeAuthorizationServer(Guid operationId, Func<CancellationToken, Task<SingBoxCurrentAuthorization>> read)
+    public RuntimeAuthorizationServer(Guid operationId, Func<CancellationToken, Task<T>> read)
     {
-        if (operationId == Guid.Empty) throw new ArgumentException("An operation identity is required.", nameof(operationId));
-        Channel = new(Guid.NewGuid(), operationId, Convert.ToHexString(RandomNumberGenerator.GetBytes(32)));
+        if (operationId == Guid.Empty || !RuntimeValidation.Identifier(T.RuntimeId))
+            throw new ArgumentException("An operation and runtime identity are required.", nameof(operationId));
+        Channel = new(Guid.NewGuid(), operationId, T.RuntimeId, Convert.ToHexString(RandomNumberGenerator.GetBytes(32)));
         // Create the first listener before the descriptor can be handed to Helper.
         var first = CreatePipe();
         serving = ServeAsync(first, read);
@@ -27,7 +28,7 @@ public sealed class RuntimeAuthorizationServer : IAsyncDisposable
     private NamedPipeServerStream CreatePipe() => new(RuntimeAuthorizationWire.Name(Channel.ChannelId),
         PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
 
-    private async Task ServeAsync(NamedPipeServerStream first, Func<CancellationToken, Task<SingBoxCurrentAuthorization>> read)
+    private async Task ServeAsync(NamedPipeServerStream first, Func<CancellationToken, Task<T>> read)
     {
         NamedPipeServerStream? next = first;
         var acceptedNonces = new HashSet<string>(StringComparer.Ordinal);
@@ -48,7 +49,7 @@ public sealed class RuntimeAuthorizationServer : IAsyncDisposable
                             || !RuntimeAuthorizationWire.Verify(Channel, "client", request.Nonce, [], request.Proof)
                             || !acceptedNonces.Add(request.Nonce) || acceptedNonces.Count > 1024)
                             throw new RuntimePolicyException("runtime.authorization_unavailable");
-                        RuntimeAuthorizationWire.Content content;
+                        RuntimeAuthorizationWire.Content<T> content;
                         try { content = new(await read(deadline.Token), null); }
                         catch (RuntimePolicyException ex) { content = new(null, RuntimeAuthorizationWire.PublicProblem(ex.ProblemCode)); }
                         catch (Exception) when (!stopped.IsCancellationRequested) { content = new(null, "runtime.authorization_unavailable"); }
@@ -78,11 +79,11 @@ public sealed class RuntimeAuthorizationServer : IAsyncDisposable
 
 public static class RuntimeAuthorizationClient
 {
-    public static async Task<SingBoxCurrentAuthorization> ReadAsync(RuntimeAuthorizationChannel channel,
-        Guid operationId, CancellationToken ct)
+    public static async Task<T> ReadAsync<T>(RuntimeAuthorizationChannel channel,
+        Guid operationId, CancellationToken ct) where T : class, IRuntimeAuthorizationGrant
     {
         if (channel.ChannelId == Guid.Empty || operationId == Guid.Empty || channel.OperationId != operationId
-            || !RuntimeAuthorizationWire.Hex(channel.Secret)) throw new RuntimePolicyException("runtime.authorization_unavailable");
+            || channel.RuntimeId != T.RuntimeId || !RuntimeAuthorizationWire.Hex(channel.Secret)) throw new RuntimePolicyException("runtime.authorization_unavailable");
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(TimeSpan.FromSeconds(10));
         try
@@ -97,11 +98,20 @@ public static class RuntimeAuthorizationClient
             var bytes = Convert.FromBase64String(response.Content);
             if (!RuntimeAuthorizationWire.Verify(channel, "server", nonce, bytes, response.Proof))
                 throw new RuntimePolicyException("runtime.authorization_unavailable");
-            var content = JsonSerializer.Deserialize<RuntimeAuthorizationWire.Content>(bytes)
+            var content = JsonSerializer.Deserialize<RuntimeAuthorizationWire.Content<T>>(bytes)
                 ?? throw new RuntimePolicyException("runtime.authorization_unavailable");
             if (content.ProblemCode is not null) throw new RuntimePolicyException(RuntimeAuthorizationWire.PublicProblem(content.ProblemCode));
             if (content.Grant is not { } grant || grant.ValidUntil <= DateTimeOffset.UtcNow || grant.ValidUntil > DateTimeOffset.UtcNow.AddMinutes(5))
                 throw new RuntimePolicyException("runtime.authorization_unavailable");
+            if (grant is MihomoCurrentAuthorization { Published: { } published }) MihomoRuntimeMaterial.Validate(published);
+            if (grant is MihomoConfigurationAuthorization configuration)
+            {
+                // Recovery has a fresh channel operation but names the original publication in the grant.
+                // The runtime adapter compares that named transaction with its durable pending record.
+                if (configuration.OperationId == Guid.Empty) throw new RuntimePolicyException("runtime.authorization_unavailable");
+                if (configuration.Previous is { } previous) MihomoRuntimeMaterial.Validate(previous);
+                if (configuration.Candidate is { } candidate) MihomoRuntimeMaterial.Validate(candidate);
+            }
             return grant;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or FormatException
@@ -119,11 +129,11 @@ internal static class RuntimeAuthorizationWire
     [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
     internal sealed record Response(string Content, string Proof);
     [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-    internal sealed record Content(SingBoxCurrentAuthorization? Grant, string? ProblemCode);
+    internal sealed record Content<T>(T? Grant, string? ProblemCode) where T : class, IRuntimeAuthorizationGrant;
     internal static bool Hex(string? value) => value is { Length: 64 } && value.All(Uri.IsHexDigit);
     internal static string Proof(RuntimeAuthorizationChannel channel, string role, string nonce, byte[] content)
     {
-        var context = Encoding.UTF8.GetBytes($"RelaxKonOS.RuntimeAuthorization.v1\n{role}\n{channel.ChannelId:N}\n{channel.OperationId:N}\n{nonce}\n");
+        var context = Encoding.UTF8.GetBytes($"RelaxKonOS.RuntimeAuthorization.v2\n{channel.RuntimeId}\n{role}\n{channel.ChannelId:N}\n{channel.OperationId:N}\n{nonce}\n");
         var key = Convert.FromHexString(channel.Secret);
         try
         {

@@ -8,7 +8,7 @@ namespace RelaxKonOS.PrivilegedHelper;
 /// content is the exact operation id. A marker for another operation is ignored, so a stale file can never
 /// abort an unrelated transaction, and the running transaction deletes the marker when it ends.
 /// </summary>
-internal static class SingBoxRuntimeCancelChannel
+internal static class RuntimeCancelChannel
 {
     internal static string Marker(string root) => Path.Combine(root, "state", "cancel.request");
 
@@ -50,14 +50,14 @@ internal static class SingBoxRuntimeCancelChannel
 /// existence check per interval, works on both fixed hosts without a watcher quota, and leaves no thread
 /// blocked on a file system notification that a root-only directory may not deliver.
 /// </summary>
-internal sealed class SingBoxRuntimeCancellation : IDisposable
+internal sealed class RuntimeCancellation : IDisposable
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(200);
     private readonly string _root;
     private readonly CancellationTokenSource _source;
     private readonly Task _poll;
 
-    private SingBoxRuntimeCancellation(string root, Guid operationId, CancellationToken ct)
+    private RuntimeCancellation(string root, Guid operationId, CancellationToken ct)
     {
         _root = root;
         _source = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -66,7 +66,7 @@ internal sealed class SingBoxRuntimeCancellation : IDisposable
 
     internal CancellationToken Token => _source.Token;
 
-    internal static SingBoxRuntimeCancellation Watch(string root, Guid operationId, CancellationToken ct) =>
+    internal static RuntimeCancellation Watch(string root, Guid operationId, CancellationToken ct) =>
         new(root, operationId, ct);
 
     private async Task PollAsync(Guid operationId)
@@ -74,7 +74,7 @@ internal sealed class SingBoxRuntimeCancellation : IDisposable
         var token = _source.Token;
         while (!token.IsCancellationRequested)
         {
-            if (SingBoxRuntimeCancelChannel.Matches(_root, operationId))
+            if (RuntimeCancelChannel.Matches(_root, operationId))
             {
                 try { await _source.CancelAsync(); } catch (ObjectDisposedException) { }
                 return;
@@ -89,6 +89,6 @@ internal sealed class SingBoxRuntimeCancellation : IDisposable
         try { _source.Cancel(); } catch (ObjectDisposedException) { }
         try { _poll.Wait(TimeSpan.FromSeconds(2)); } catch (AggregateException) { }
         _source.Dispose();
-        SingBoxRuntimeCancelChannel.Clear(_root);
+        RuntimeCancelChannel.Clear(_root);
     }
 }

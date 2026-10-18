@@ -1,6 +1,18 @@
 ﻿using System.Text.Json;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 
+if (args is ["runtime-configuration-crash", var configurationRoot, var configurationOperation])
+{
+    await ConfigurationTransactionChecks.CrashAsync(configurationRoot, Guid.Parse(configurationOperation));
+    return;
+}
+
+if (args is ["runtime-configuration-only"])
+{
+    Console.WriteLine($"Runtime configuration transaction checks passed: {await ConfigurationTransactionChecks.RunAsync()}");
+    return;
+}
+
 if (args is ["-n", var helperFixture] && Path.GetFileName(helperFixture) == InstallationChecks.FixtureFile)
 {
     await InstallationChecks.RunHelperFixtureAsync();
@@ -91,6 +103,12 @@ if (args is ["native-mihomo-archive", var olderMihomo, var currentMihomo] && Ope
     return;
 }
 
+if (args is ["native-mihomo-systemd", var olderSystemMihomo, var currentSystemMihomo] && OperatingSystem.IsLinux())
+{
+    Console.WriteLine($"Real Mihomo systemd acceptance checks passed: {await MihomoArchiveAcceptance.RunAsync(olderSystemMihomo, currentSystemMihomo, systemd: true)}");
+    return;
+}
+
 if (args is ["native-probe-fixture", var mode])
 {
     NativeProcessChecks.RunFixture(mode);
@@ -175,14 +193,20 @@ Console.WriteLine($"Runtime archive checks passed: {await ArchiveChecks.RunAsync
 Console.WriteLine($"Runtime artifact preparation checks passed: {await PreparationChecks.RunAsync()}");
 Console.WriteLine($"Runtime archive transaction checks passed: {await SwitchChecks.RunAsync()}");
 Console.WriteLine($"Runtime version/native build checks passed: {NativeVersionChecks.Run()}");
+Console.WriteLine($"Mihomo data revision checks passed: {await MihomoDataChecks.RunAsync()}");
+Console.WriteLine($"Mihomo YAML/configuration policy checks passed: {MihomoConfigurationPolicyChecks.Run()}");
 Console.WriteLine($"Native child process checks passed: {await NativeProcessChecks.RunAsync()}");
 Console.WriteLine($"Windows native host/policy checks passed: {await WindowsHostChecks.RunAsync()}");
 Console.WriteLine($"Linux listener checks passed: {LinuxListenerChecks.Run()}");
 Console.WriteLine($"Runtime current authorization checks passed: {await AuthorizationChecks.RunAsync()}");
+Console.WriteLine($"Typed Mihomo authorization checks passed: {await MihomoAuthorizationChecks.RunAsync()}");
+Console.WriteLine($"Mihomo publication authority checks passed: {await MihomoPublicationChecks.RunAsync()}");
+Console.WriteLine($"Mihomo lifecycle boundary checks passed: {await MihomoLifecycleBoundaryChecks.RunAsync()}");
 Console.WriteLine($"Runtime lifecycle boundary checks passed: {await LifecycleChecks.RunAsync()}");
 Console.WriteLine($"Runtime installation coordinator checks passed: {await InstallationChecks.RunAsync()}");
 Console.WriteLine($"Managed runtime service checks passed: {await ManagedServiceChecks.RunAsync()}");
 Console.WriteLine($"Runtime archive removal checks passed: {await RemovalChecks.RunAsync()}");
 Console.WriteLine($"Runtime recovery entry checks passed: {await RecoveryChecks.RunAsync()}");
+Console.WriteLine($"Runtime configuration transaction checks passed: {await ConfigurationTransactionChecks.RunAsync()}");
 Console.WriteLine($"Runtime cancellation checks passed: {await CancellationChecks.RunAsync()}");
 Console.WriteLine($"Runtime dependency checks passed: {DependencyChecks.Run()}");

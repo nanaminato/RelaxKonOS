@@ -9,6 +9,14 @@ public sealed record MihomoBuildEvidence(string Version, string Os, string Archi
 /// <summary>Mihomo-specific tag syntax and 'mihomo -v' output. Nothing here is guessed from a file name.</summary>
 public static class MihomoNativeValidation
 {
+    public static string? UpdateProblem(string currentMeasuredVersion, string targetTag)
+    {
+        if (!RuntimeSemanticVersion.TryParse(currentMeasuredVersion, out var current) || !TryTag(targetTag, out var target))
+            return "runtime.native_version_invalid";
+        var comparison = target.CompareTo(current);
+        return comparison > 0 ? null : comparison == 0 ? "runtime.version_unchanged" : "runtime.update_target_not_newer";
+    }
+
     /// <summary>
     /// Only an explicit 'v' prefix on a strict semantic version is a Mihomo version tag. The upstream
     /// "Prerelease-Alpha" channel and date-stamped builds are not versions and stay unsupported.

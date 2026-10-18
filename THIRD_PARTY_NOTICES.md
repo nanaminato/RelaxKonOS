@@ -20,6 +20,15 @@
 
 ---
 
+## YamlDotNet
+
+- **来源**：[aaubry/YamlDotNet](https://github.com/aaubry/YamlDotNet)，NuGet `YamlDotNet` 18.1.0。
+- **许可**：MIT，Copyright (c) Antoine Aubry and contributors。
+- **用途**：受管 Mihomo 配置的有界 YAML 结构解析、合并键规范化与生成；不使用 YAML 对象反序列化构造应用类型。
+- **许可全文**：[YamlDotNet.txt](Shared/RelaxKonOS.ManagedRuntimes/ThirdPartyLicenses/YamlDotNet.txt)，随依赖它的宿主发布输出复制到 `ThirdPartyLicenses/YamlDotNet.txt`。
+
+---
+
 ## Jaya File Manager
 
 - **来源**：<https://github.com/waliarubal/Jaya>

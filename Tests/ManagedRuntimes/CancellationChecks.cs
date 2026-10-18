@@ -30,25 +30,25 @@ internal static class CancellationChecks
 
             var operationId = Guid.NewGuid();
             lifecycle.CancelRequest(operationId);
-            Check(SingBoxRuntimeCancelChannel.Matches(runtimeRoot, operationId),
+            Check(RuntimeCancelChannel.Matches(runtimeRoot, operationId),
                 "A cancellation request is recorded for the exact transaction that asked for it");
-            Check(!SingBoxRuntimeCancelChannel.Matches(runtimeRoot, Guid.NewGuid()),
+            Check(!RuntimeCancelChannel.Matches(runtimeRoot, Guid.NewGuid()),
                 "A recorded request is never honored by an unrelated transaction");
-            await File.WriteAllTextAsync(SingBoxRuntimeCancelChannel.Marker(runtimeRoot), "not-a-guid");
-            Check(!SingBoxRuntimeCancelChannel.Matches(runtimeRoot, operationId),
+            await File.WriteAllTextAsync(RuntimeCancelChannel.Marker(runtimeRoot), "not-a-guid");
+            Check(!RuntimeCancelChannel.Matches(runtimeRoot, operationId),
                 "A malformed marker is treated as absent instead of aborting the running transaction");
             var second = Guid.NewGuid();
             lifecycle.CancelRequest(second);
-            Check(SingBoxRuntimeCancelChannel.Matches(runtimeRoot, second)
-                && !SingBoxRuntimeCancelChannel.Matches(runtimeRoot, operationId),
+            Check(RuntimeCancelChannel.Matches(runtimeRoot, second)
+                && !RuntimeCancelChannel.Matches(runtimeRoot, operationId),
                 "Only one request is held: the newest holds the single marker");
-            SingBoxRuntimeCancelChannel.Clear(runtimeRoot);
-            Check(!SingBoxRuntimeCancelChannel.Matches(runtimeRoot, second), "Clearing the request is observable");
+            RuntimeCancelChannel.Clear(runtimeRoot);
+            Check(!RuntimeCancelChannel.Matches(runtimeRoot, second), "Clearing the request is observable");
 
             var cancelRequest = new PrivilegedOperationRequest(PrivilegedOperationKind.SingBoxRuntimeCancel,
                 OperationId: Guid.NewGuid(), RuntimeLifecycle: new(CancelOperationId: operationId));
             var recorded = await SingBoxRuntimeOperations.ExecuteAsync(cancelRequest, Create);
-            Check(recorded.Success && SingBoxRuntimeCancelChannel.Matches(runtimeRoot, operationId),
+            Check(recorded.Success && RuntimeCancelChannel.Matches(runtimeRoot, operationId),
                 "The Helper records a cancellation request without reading or writing the transaction ledger");
             var result = JsonSerializer.Deserialize<RuntimeCancelRequestResult>(Convert.FromBase64String(recorded.OutputBase64!))!;
             Check(result.OperationId == operationId && result.Requested,
@@ -59,7 +59,7 @@ internal static class CancellationChecks
                 cancelRequest with { RuntimeLifecycle = new() },
                 cancelRequest with { RuntimeLifecycle = new(CancelOperationId: operationId, RecoveryOperationId: operationId) },
                 cancelRequest with { Operation = PrivilegedOperationKind.SingBoxRuntimeExecute, RuntimeLifecycle = new(
-                    Authorization: new(Guid.NewGuid(), Guid.NewGuid(), new string('0', 64)), FrozenPlan: new(
+                    Authorization: new(Guid.NewGuid(), Guid.NewGuid(), "sing-box", new string('0', 64)), FrozenPlan: new(
                         new(Guid.NewGuid(), "host", RuntimeChange.Install, 0, 0, 0, "release", "key"), "sing-box", null, null),
                     CancelOperationId: operationId) }
             })
@@ -72,8 +72,8 @@ internal static class CancellationChecks
             }
             catch (RuntimePolicyException ex) { Check(ex.ProblemCode == "runtime.operation_id_invalid", "A cancellation must name one transaction"); }
 
-            SingBoxRuntimeCancelChannel.Clear(runtimeRoot);
-            using (var watched = SingBoxRuntimeCancellation.Watch(runtimeRoot, operationId, default))
+            RuntimeCancelChannel.Clear(runtimeRoot);
+            using (var watched = RuntimeCancellation.Watch(runtimeRoot, operationId, default))
             {
                 // The realistic path: the request arrives while the transaction is already preparing.
                 using var request = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -86,10 +86,10 @@ internal static class CancellationChecks
                 lifecycle.CancelRequest(operationId);
                 Check(await observed, "A request recorded during preparation cancels the running transaction's token");
             }
-            Check(!File.Exists(SingBoxRuntimeCancelChannel.Marker(runtimeRoot)),
+            Check(!File.Exists(RuntimeCancelChannel.Marker(runtimeRoot)),
                 "Ending the transaction clears the request so the next one starts clean");
 
-            using (var watched = SingBoxRuntimeCancellation.Watch(runtimeRoot, operationId, default))
+            using (var watched = RuntimeCancellation.Watch(runtimeRoot, operationId, default))
             {
                 lifecycle.CancelRequest(Guid.NewGuid());
                 await Task.Delay(TimeSpan.FromMilliseconds(600));
@@ -98,7 +98,7 @@ internal static class CancellationChecks
             }
 
             using var abandoned = new CancellationTokenSource();
-            var watcher = SingBoxRuntimeCancellation.Watch(runtimeRoot, operationId, abandoned.Token);
+            var watcher = RuntimeCancellation.Watch(runtimeRoot, operationId, abandoned.Token);
             abandoned.Cancel();
             Check(watcher.Token.IsCancellationRequested, "The caller's own token still ends the watch");
             watcher.Dispose();
