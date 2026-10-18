@@ -65,6 +65,19 @@ internal static class CatalogChecks
         Reject("release_channel_invalid", () => RuntimeSourceOperations.ConfigurationSupport(Tagged("v1.14.3", RuntimeChannel.Prerelease)));
         Check(RuntimeSourceOperations.ConfigurationSupport(release with { RuntimeId = "nginx" }) is { Supported: false, Capability: "" },
             "No other runtime inherits the sing-box capability");
+        // Mihomo carries its own declaration: a different runtime can never widen another runtime's range.
+        ManifestRelease Mihomo(string tag, RuntimeChannel channel = RuntimeChannel.Stable) =>
+            release with { RuntimeId = "mihomo", OriginalVersion = tag, Channel = channel };
+        Check(RuntimeSourceOperations.ConfigurationSupport(Mihomo("v1.19.30")) is { Supported: true, SortVersion: "1.19.30" }
+            && RuntimeSourceOperations.ConfigurationSupport(Mihomo("v1.19.0")).Capability == MihomoRuntimeSupport.Capability,
+            "Mihomo releases inside the measured range receive its own capability");
+        Check(!RuntimeSourceOperations.ConfigurationSupport(Mihomo("v1.18.10")).Supported
+            && !RuntimeSourceOperations.ConfigurationSupport(Mihomo("v1.20.0")).Supported
+            && !RuntimeSourceOperations.ConfigurationSupport(Mihomo("v1.20.0-alpha.1", RuntimeChannel.Prerelease)).Supported,
+            "Mihomo releases below, above or ahead of the measured range stay discoverable but uninstallable");
+        Check(RuntimeSourceOperations.ConfigurationSupport(Mihomo("v1.19.30")).Capability != SingBoxRuntimeSupport.Capability,
+            "Mihomo never acquires the sing-box capability");
+        Reject("release_channel_invalid", () => RuntimeSourceOperations.ConfigurationSupport(Mihomo("v1.19.30", RuntimeChannel.Prerelease)));
         Check(Verify(history: first.History).PayloadHash == first.PayloadHash, "Same revision and bytes may refresh");
         Check(Verify(manifest with { Revision = 2, Releases = [release with { Artifact = artifact with { Sha256 = artifact.Sha256.ToUpperInvariant() } }] },
             first.History).Catalog.Releases.Single().Trust == RuntimeTrust.Confirmed, "Digest casing is not a changed artifact");

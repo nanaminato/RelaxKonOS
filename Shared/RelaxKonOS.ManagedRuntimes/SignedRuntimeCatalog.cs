@@ -141,7 +141,8 @@ public static class RuntimeCatalogVerifier
             || target.Libc is not null && !RuntimeValidation.Identifier(target.Libc)
             || !RuntimeValidation.Identifier(artifact.ArtifactId) || artifact.Sha256.Length != 64
             || !artifact.Sha256.All(Uri.IsHexDigit) || artifact.MaximumBytes is <= 0 or > 2L * 1024 * 1024 * 1024
-            || artifact.Format is not ("zip" or "tar.gz") || target.InstallMode != RuntimeInstallMode.Archive
+            || artifact.Format is null || !RuntimeArchiveRules.Formats.Contains(artifact.Format)
+            || target.InstallMode != RuntimeInstallMode.Archive
             || !RuntimeValidation.RelativePath(artifact.EntryPoint)
             || !RuntimeArchiveRules.Valid(artifact)
             || artifact.VerificationIdentity != source.KeyId

@@ -85,6 +85,12 @@ if (args is ["native-sing-box-runtime", var olderRuntime, var currentRuntime] &&
     return;
 }
 
+if (args is ["native-mihomo-archive", var olderMihomo, var currentMihomo] && OperatingSystem.IsLinux())
+{
+    Console.WriteLine($"Real Mihomo archive acceptance checks passed: {await MihomoArchiveAcceptance.RunAsync(olderMihomo, currentMihomo)}");
+    return;
+}
+
 if (args is ["native-probe-fixture", var mode])
 {
     NativeProcessChecks.RunFixture(mode);

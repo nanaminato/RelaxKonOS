@@ -3,6 +3,12 @@ namespace RelaxKonOS.Protocol.ManagedRuntimes;
 /// <summary>Portable archive names and bounded, signed file declarations. No OS path guessing.</summary>
 public static class RuntimeArchiveRules
 {
+    /// <summary>
+    /// Every archive format this build can verify. <c>gz</c> is a single compressed member rather than a
+    /// container, so it can only describe one declared executable and never a directory tree.
+    /// </summary>
+    public static readonly IReadOnlySet<string> Formats = new HashSet<string>(StringComparer.Ordinal) { "zip", "tar.gz", "gz" };
+
     public static bool SafePath(string? path)
     {
         if (path is not { Length: > 0 and <= 512 }) return false;
@@ -20,9 +26,13 @@ public static class RuntimeArchiveRules
     public static bool Valid(RuntimeArtifact artifact)
     {
         if (artifact.Layout is not { } layout || !SafePath(artifact.EntryPoint)
+            || artifact.Format is null || !Formats.Contains(artifact.Format)
             || layout.MaximumExpandedBytes is <= 0 or > 2L * 1024 * 1024 * 1024
             || layout.MaximumEntries is <= 0 or > 4096 || layout.Files is null
             || layout.Files.Count == 0 || layout.Files.Count > layout.MaximumEntries) return false;
+        // A single-member gzip carries no names and no directories: the one declared file must be the
+        // entrypoint itself. Anything else would require guessing a layout the archive never states.
+        if (artifact.Format == "gz" && (layout.Files.Count != 1 || layout.Files[0]?.Path != artifact.EntryPoint)) return false;
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var directories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var directoryNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

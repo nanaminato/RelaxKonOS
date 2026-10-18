@@ -28,7 +28,7 @@ public static class RuntimeArchiveExtractor
         string protectedStagingRoot, CancellationToken ct)
     {
         if (!archive.CanRead || !archive.CanSeek || !RuntimeArchiveRules.Valid(artifact)
-            || artifact.Format is not ("zip" or "tar.gz") || artifact.Sha256 is not { Length: 64 }
+            || artifact.Format is not ("zip" or "tar.gz" or "gz") || artifact.Sha256 is not { Length: 64 }
             || !artifact.Sha256.All(Uri.IsHexDigit) || artifact.MaximumBytes is <= 0 or > 2L * 1024 * 1024 * 1024)
             throw new RuntimePolicyException("runtime.artifact_invalid");
         var root = Path.GetFullPath(protectedStagingRoot);
@@ -44,6 +44,7 @@ public static class RuntimeArchiveExtractor
         {
             var extraction = new Extraction(stage, artifact, ct);
             if (artifact.Format == "zip") await extraction.ZipAsync(archive);
+            else if (artifact.Format == "gz") await extraction.GzipAsync(archive);
             else await extraction.TarGzipAsync(archive);
             extraction.RequireComplete();
             return new(stage, Path.Combine(stage, artifact.EntryPoint.Replace('/', Path.DirectorySeparatorChar)));
@@ -174,6 +175,17 @@ public static class RuntimeArchiveExtractor
                 await using var input = entry.Open();
                 await WriteAsync(file, input.ReadAsync, checkEnd: true);
             }
+        }
+
+        internal async Task GzipAsync(Stream archive)
+        {
+            // A single-member gzip is not a container: it must inflate to exactly the one declared
+            // executable and then stop. The signed layout already guarantees that shape, and the
+            // declared length plus the end-of-stream check reject trailing or appended payloads.
+            using var gzip = new GZipStream(archive, CompressionMode.Decompress, leaveOpen: true);
+            var declared = artifact.Layout.Files[0];
+            var input = new BoundedTarInput(gzip, artifact.Layout.MaximumExpandedBytes);
+            await WriteAsync(declared, input.ReadAsync, checkEnd: true);
         }
 
         internal async Task TarGzipAsync(Stream archive)

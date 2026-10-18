@@ -79,6 +79,42 @@ internal static class ArchiveChecks
                 var truncated = bytes[..(bytes.Length / 2)];
                 await Reject("archive_invalid", truncated, Artifact(truncated, format));
             }
+            // Mihomo ships one raw gzip member per Linux build: the archive names no file at all, so the
+            // signed layout may only declare the entrypoint itself.
+            var gzFile = new RuntimeArchiveFile("mihomo", body.Length, Hash(body), true);
+            RuntimeArtifact Gz(byte[] bytes) => new("artifact-gz", Hash(bytes), bytes.Length, "gz", gzFile.Path,
+                "key-1", new(1024, 4, [gzFile]));
+            var gz = Gzip(body);
+            using (var input = new MemoryStream(gz))
+            {
+                var output = await RuntimeArchiveExtractor.ExtractAsync(input, Gz(gz), root, default);
+                Check(File.ReadAllBytes(output.EntryPoint).SequenceEqual(body), "Single-member gzip extracts its one declared executable");
+                Check(output.EntryPoint == Path.Combine(output.Directory, "mihomo"), "Single-member gzip entrypoint is exactly the declared path");
+                RemoveStage(output.Directory);
+            }
+            await Reject("archive_file_digest_mismatch", gz, Gz(gz) with
+            { Layout = new(1024, 4, [gzFile with { Sha256 = new string('0', 64) }]) });
+            await Reject("archive_file_length_mismatch", gz, Gz(gz) with { Layout = new(1024, 4, [gzFile with { Length = gzFile.Length + 1 }]) });
+            var appended = Gzip([.. body, 1, 2, 3]);
+            await Reject("archive_file_length_mismatch", appended, Gz(appended));
+            // A truncated gzip is refused either as an invalid stream or as an incomplete declared file;
+            // which one depends on where deflate stops, and neither may ever be accepted.
+            var truncatedGzip = gz[..(gz.Length / 2)];
+            try
+            {
+                using var input = new MemoryStream(truncatedGzip);
+                await RuntimeArchiveExtractor.ExtractAsync(input, Gz(truncatedGzip), root, default);
+                throw new Exception("A truncated single-member gzip was extracted");
+            }
+            catch (RuntimePolicyException ex) when (ex.ProblemCode is "runtime.archive_invalid" or "runtime.archive_file_length_mismatch")
+            { Check(!Directory.EnumerateFileSystemEntries(root).Any(), "A truncated single-member gzip leaves no extracted files"); }
+            Check(!RuntimeArchiveRules.Valid(Gz(gz) with { Layout = new(1024, 4, [gzFile, new("LICENSE", 0, Hash([]), false)]) }),
+                "A gzip artifact may not declare a second file");
+            Check(!RuntimeArchiveRules.Valid(Gz(gz) with { Layout = new(1024, 4, [gzFile with { Path = "other" }]) }),
+                "A gzip artifact must declare exactly its entrypoint");
+            Check(!RuntimeArchiveRules.Valid(Gz(gz) with { Layout = new(1024, 4, [gzFile with { Length = 2048 }]) }),
+                "A single gzip member is bounded by the signed expanded limit");
+            Check(!RuntimeArchiveRules.Valid(Gz(gz) with { Format = "xz" }), "Unknown archive formats are rejected by the shared rules");
             var link = Zip([(file.Path, body, false)], symlink: true);
             await Reject("archive_entry_unsupported", link, Artifact(link, "zip"));
             foreach (var type in new[] { TarEntryType.SymbolicLink, TarEntryType.HardLink, TarEntryType.BlockDevice, TarEntryType.Fifo })

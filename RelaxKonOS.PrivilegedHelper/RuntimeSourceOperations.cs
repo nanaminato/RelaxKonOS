@@ -45,21 +45,14 @@ internal static class RuntimeSourceOperations
 
     // Discovery is safe before lifecycle adapters are connected. Catalog publishers cannot enable support:
     // the capability comes from this build's measured native-format range, never from the signed manifest.
-    internal static RuntimeConfigurationSupport ConfigurationSupport(ManifestRelease release)
-    {
-        if (release.RuntimeId != "sing-box" || !SingBoxNativeValidation.TryTag(release.OriginalVersion, out var version))
-            return new("", "", false);
-        if (version.IsPrerelease != (release.Channel == RuntimeChannel.Prerelease))
-            throw new RuntimePolicyException("runtime.release_channel_invalid");
-        var capability = SingBoxRuntimeSupport.CapabilityFor(version.Normalized);
-        return new(version.Normalized, capability ?? "", capability is not null);
-    }
+    internal static RuntimeConfigurationSupport ConfigurationSupport(ManifestRelease release) =>
+        RuntimeFormatSupport.Configuration(release);
 
     internal static RuntimeCatalogSnapshot Snapshot(StoredRuntimeSource stored, string? problem)
     {
         var source = stored.Source;
         var catalog = stored.Cached?.Catalog;
-        if (catalog is not null && source.RuntimeId == "sing-box")
+        if (catalog is not null && RuntimeFormatSupport.SortsBySemanticVersion(source.RuntimeId))
             catalog = catalog with { Releases = catalog.Releases.OrderByDescending(r =>
                 RuntimeSemanticVersion.TryParse(r.SortVersion, out var version) ? version : null).ToArray() };
         var fresh = catalog is not null && catalog.ExpiresAt > DateTimeOffset.UtcNow

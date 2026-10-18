@@ -43,7 +43,7 @@ internal static class NativeProcessChecks
             Check(json.RootElement.GetProperty("Path").GetString() != Environment.GetEnvironmentVariable("PATH"),
                 "Native child uses fixed trusted PATH");
             try { await SingBoxOperations.RunAsync(process, Arguments("oversize")); throw new Exception("Oversized output was silently truncated"); }
-            catch (IOException ex) { Check(ex.Message == "sing-box output exceeds limit.", "Actual oversized output is rejected"); }
+            catch (IOException ex) { Check(ex.Message == "runtime output exceeds limit.", "Actual oversized output is rejected"); }
             try { await SingBoxOperations.RunAsync(process, Arguments("failure")); throw new Exception("Native failure accepted"); }
             catch (InvalidOperationException ex)
             { Check(!ex.ToString().Contains("secret-native-diagnostic", StringComparison.Ordinal), "Actual native diagnostics do not cross privilege error boundary"); }

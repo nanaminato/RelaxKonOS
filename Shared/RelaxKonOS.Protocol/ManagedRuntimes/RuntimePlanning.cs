@@ -55,7 +55,8 @@ public static class RuntimePlanning
         Reject(string.IsNullOrWhiteSpace(artifact.ArtifactId) || artifact.Sha256.Length != 64
             || !artifact.Sha256.All(Uri.IsHexDigit) || artifact.MaximumBytes <= 0
             || string.IsNullOrWhiteSpace(artifact.VerificationIdentity)
-            || artifact.Format is not ("zip" or "tar.gz") || !RuntimeArchiveRules.Valid(artifact), "artifact_invalid");
+            || artifact.Format is null || !RuntimeArchiveRules.Formats.Contains(artifact.Format)
+            || !RuntimeArchiveRules.Valid(artifact), "artifact_invalid");
         Reject(request.Change == RuntimeChange.Repair && release.ReleaseId != installation.ActiveReleaseId, "repair_target_mismatch");
         Reject(request.Change is RuntimeChange.Update or RuntimeChange.Rollback && release.ReleaseId == installation.ActiveReleaseId,
             "target_unchanged");

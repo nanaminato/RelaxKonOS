@@ -443,37 +443,8 @@ internal static class SingBoxOperations
         File.Delete(Pending);
     }
 
-    internal static async Task<string> RunAsync(string binary, string[] arguments, int? allowedExitCode = null)
-    {
-        using var process = new Process { StartInfo = new(binary) { UseShellExecute = false, CreateNoWindow = true,
-            RedirectStandardOutput = true, RedirectStandardError = true } };
-        TrustedProcessEnvironment.Apply(process.StartInfo);
-        process.StartInfo.WorkingDirectory = Path.GetDirectoryName(Path.GetFullPath(binary))!;
-        foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
-        foreach (var variable in new[] { "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy" }) process.StartInfo.Environment.Remove(variable);
-        if (!process.Start()) throw new IOException();
-        var output = ReadBoundedAsync(process.StandardOutput);
-        var errors = ReadBoundedAsync(process.StandardError);
-        try { await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(45)); }
-        catch { try { process.Kill(true); } catch (InvalidOperationException) { } throw; }
-        await Task.WhenAll(output, errors);
-        var text = await output;
-        // Native diagnostics can contain secrets: never cross the privilege boundary.
-        if (process.ExitCode != 0 && process.ExitCode != allowedExitCode) throw new InvalidOperationException("sing-box operation failed.");
-        return text;
-    }
-    private static async Task<string> ReadBoundedAsync(StreamReader reader)
-    {
-        var result = new StringBuilder(); var buffer = new char[4096]; int read;
-        var oversized = false;
-        while ((read = await reader.ReadAsync(buffer)) > 0)
-        {
-            if (result.Length + read > 8192) oversized = true;
-            if (result.Length < 8192) result.Append(buffer, 0, Math.Min(read, 8192 - result.Length));
-        }
-        if (oversized) throw new IOException("sing-box output exceeds limit.");
-        return result.ToString();
-    }
+    internal static Task<string> RunAsync(string binary, string[] arguments, int? allowedExitCode = null) =>
+        NativeRuntimeProcess.RunAsync(binary, arguments, 8192, allowedExitCode);
     private static PrivilegedOperationResult Json<T>(T value) => new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(value, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default)));
     private static PrivilegedOperationResult Failure(string code) => new(false, ExitCode: 1, ProblemCode: PrivilegedProblemCode.InvalidRequest, Error: code);
 }

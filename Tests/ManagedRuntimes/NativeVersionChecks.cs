@@ -76,6 +76,40 @@ internal static class NativeVersionChecks
         Check(RuntimeSourceOperations.ConfigurationSupport(release with { RuntimeId = "other-runtime" }).SortVersion == "", "Other runtime version schemes are not parsed as sing-box");
         Check(RuntimeSourceOperations.ConfigurationSupport(release with { OriginalVersion = "nightly-20261017" }).SortVersion == "", "Unknown sing-box names remain unsupported");
         Reject("release_channel_invalid", () => RuntimeSourceOperations.ConfigurationSupport(release with { OriginalVersion = "v1.15.0-alpha.1" }));
+
+        // Mihomo has its own tag rule, its own measured native-format range and its own '-v' report.
+        Check(MihomoNativeValidation.TryTag("v1.19.30", out var mihomoTag) && mihomoTag.Normalized == "1.19.30",
+            "Mihomo explicitly handles its v tag prefix");
+        foreach (var unknown in new[] { "1.19.30", "vv1.19.30", "Prerelease-Alpha", "v1.19", "v1.19.30.1", "v1.19.30 " })
+            Check(!MihomoNativeValidation.TryTag(unknown, out _), "Not a Mihomo version tag: " + unknown);
+        Check(MihomoRuntimeSupport.CapabilityFor("1.19.0") == MihomoRuntimeSupport.Capability
+            && MihomoRuntimeSupport.CapabilityFor("1.19.30") == MihomoRuntimeSupport.Capability
+            && MihomoRuntimeSupport.CapabilityFor("1.18.10") is null
+            && MihomoRuntimeSupport.CapabilityFor("1.20.0") is null
+            && MihomoRuntimeSupport.CapabilityFor("1.20.0-alpha.1") is null
+            && MihomoRuntimeSupport.CapabilityFor(null) is null,
+            "Only the measured stable Mihomo range receives a capability");
+        const string mihomoReport = "Mihomo Meta v1.19.30 linux amd64 with go1.26.6 Sun Aug 16 09:58:25 UTC 2026\nUse tags: with_gvisor\n";
+        MihomoBuildEvidence Mihomo(string output) => MihomoNativeValidation.Parse(output, "v1.19.30", "linux", "amd64");
+        var mihomoBuild = Mihomo(mihomoReport);
+        Check(mihomoBuild is { Version: "1.19.30", Os: "linux", Architecture: "amd64", GoVersion: "go1.26.6" }
+            && mihomoBuild.BuildTags.SetEquals(["with_gvisor"]), "Actual Mihomo version, platform and build tags parsed");
+        Check(Mihomo(mihomoReport.Replace("\n", "\r\n", StringComparison.Ordinal)).Architecture == "amd64",
+            "Native Windows line endings accepted for Mihomo");
+        Reject("native_version_mismatch", () => Mihomo(mihomoReport.Replace("v1.19.30", "v1.19.31", StringComparison.Ordinal)));
+        Reject("native_platform_mismatch", () => Mihomo(mihomoReport.Replace("linux amd64", "windows amd64", StringComparison.Ordinal)));
+        Reject("native_platform_mismatch", () => Mihomo(mihomoReport.Replace("linux amd64", "linux arm64", StringComparison.Ordinal)));
+        Reject("native_version_invalid", () => Mihomo("Mihomo Meta v1.19.30 linux amd64\n"));
+        Reject("native_version_invalid", () => Mihomo(mihomoReport + "Unexpected: payload\n"));
+        Reject("native_version_invalid", () => Mihomo(mihomoReport + new string('a', 9000)));
+        Reject("native_features_invalid", () => Mihomo(mihomoReport.Replace("with_gvisor", "with_gvisor,with gvisor", StringComparison.Ordinal)));
+        Reject("native_version_invalid", () => Mihomo(mihomoReport + "\u001b[31m"));
+        var mihomoRelease = release with { RuntimeId = "mihomo", OriginalVersion = "v1.19.30" };
+        Check(RuntimeSourceOperations.ConfigurationSupport(mihomoRelease) is { SortVersion: "1.19.30", Supported: true, Capability: MihomoRuntimeSupport.Capability },
+            "Mihomo discovery grants only its declared native-format range");
+        Check(RuntimeSourceOperations.ConfigurationSupport(mihomoRelease with { OriginalVersion = "Prerelease-Alpha" }) is { SortVersion: "", Supported: false },
+            "The upstream Mihomo alpha channel is discoverable but never installable");
+        Reject("release_channel_invalid", () => RuntimeSourceOperations.ConfigurationSupport(mihomoRelease with { OriginalVersion = "v1.20.0-alpha.1" }));
         return count;
     }
 }
