@@ -133,6 +133,7 @@
     "proxy.runtime_download_unavailable": "当前平台没有可自行下载的受信任 Mihomo 安装包。",
     "proxy.runtime_install_from_server_file": "从服务器文件安装",
     "proxy.runtime_server_file_hint": "选择已经存放在 RelaxKonOS Server 上、且与当前受信任版本匹配的 Mihomo 压缩包。",
+    "proxy.runtime_selection_hint": "运行时页面会列出已确认的发布版本；选择目标版本后由 Server 冻结计划，安装、更新、修复、回退与卸载都在同一台账中执行。",
     "proxy.runtime.select_server_package": "选择服务器上的 Mihomo 安装包",
     "proxy.runtime.package_filter": "Mihomo 安装包",
     "proxy.runtime_rollback": "回滚运行时",

@@ -133,6 +133,7 @@
     "proxy.runtime_download_unavailable": "No trusted Mihomo package is available for manual download on this platform.",
     "proxy.runtime_install_from_server_file": "Install from server file",
     "proxy.runtime_server_file_hint": "Choose a Mihomo archive already on the RelaxKonOS Server that matches the trusted current release.",
+    "proxy.runtime_selection_hint": "The runtime page lists confirmed releases; picking a target makes the Server freeze a plan, and install, update, repair, rollback and removal all run through the same ledger.",
     "proxy.runtime.select_server_package": "Select Mihomo package on Server",
     "proxy.runtime.package_filter": "Mihomo packages",
     "proxy.runtime_rollback": "Rollback runtime",

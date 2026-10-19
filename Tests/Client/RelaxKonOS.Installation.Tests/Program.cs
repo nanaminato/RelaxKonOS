@@ -33,6 +33,10 @@ static void Check(bool condition, string label)
     if (!condition) throw new Exception(label);
     Console.WriteLine("PASS: " + label);
 }
+// A frozen plan is the only installation body the ledger accepts for Mihomo.
+static ManagedRuntimeInstallationRequest RuntimePlanBody() => new(true, new RuntimeChangePlan(
+    new RuntimePlanRequest(Guid.NewGuid(), "host-test", RuntimeChange.Install, 1, 12, 7, "rel-mihomo", Guid.NewGuid().ToString("N")),
+    "mihomo", null, null));
 static HttpResponseMessage Json(HttpStatusCode status, object value) => new(status)
 {
     Content = JsonContent.Create(value, options: RelaxKonOSJsonOptions.Default)
@@ -47,7 +51,7 @@ using (var http = new HttpClient(new Handler(_ => Json(HttpStatusCode.NotFound, 
     vm.ShowPrivilegedHelperUnavailableAsync = code => { Check(code == helperCode, "Helper error is preserved"); dialogs++; return Task.CompletedTask; };
     Check(await vm.CreateFileReferenceAsync("/mihomo.gz") is null && vm.HasMessage && dialogs == 1,
         "File-reference POST failure remains visible and opens guidance");
-    await vm.SubmitAsync(InstallationOperationKind.Install, new MihomoInstallationRequest(true));
+    await vm.SubmitAsync(InstallationOperationKind.Install, RuntimePlanBody());
     Check(vm.HasMessage && dialogs == 2, "Install POST failure is not silently treated as no result");
 }
 
@@ -62,7 +66,7 @@ using (var http = new HttpClient(new Handler(request => Json(HttpStatusCode.OK,
     using var vm = new InstallationTaskViewModel(new InstallationClient(http, session), settings, InstallationServiceId.Mihomo,
         "test", () => { completed.SetResult(); return Task.CompletedTask; }, () => Task.FromResult<string?>(null));
     vm.ShowPrivilegedHelperUnavailableAsync = code => { Check(code == helperCode, "Polled helper error is preserved"); dialogs++; return Task.CompletedTask; };
-    await vm.SubmitAsync(InstallationOperationKind.Install, new MihomoInstallationRequest(true, FileReferenceId: "archive"));
+    await vm.SubmitAsync(InstallationOperationKind.Install, RuntimePlanBody());
     await completed.Task.WaitAsync(TimeSpan.FromSeconds(5));
     Check(dialogs == 1 && vm.HasMessage && vm.Operation?.State == InstallationOperationState.Failed,
         "Asynchronous archive installation failure opens guidance once and retains feedback");

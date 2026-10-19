@@ -11,9 +11,11 @@ internal static class DeploymentServiceRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.SmbInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.NginxInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.FrpInstallationService>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.MihomoInstallationService>();
-        // Resolve the catalog adapter now; switch the public ledger registration together with both current clients.
+        // Mihomo installs only through the managed catalog adapter. The fixed-manifest installer is gone,
+        // so no request shape can reach the retired download/archive path.
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.MihomoRuntimeInstallationService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService>(sp =>
+            sp.GetRequiredService<RelaxKonOS.Server.Installations.MihomoRuntimeInstallationService>());
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.SingBoxInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.DockerInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.InstallationFileReferenceStore>();

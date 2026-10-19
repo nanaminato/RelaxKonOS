@@ -43,10 +43,14 @@ internal static class MihomoRegistrationChecks
         Check(scope.ServiceProvider.GetRequiredService<IProxyConfigurationTransactionService>() is ProxyConfigurationTransactionService
             && services.GetRequiredService<IProxySettingsService>() is MihomoSettingsService,
             "Default profile and settings writers resolve the shared publication authority");
-        Check(services.GetRequiredService<RelaxKonOS.Server.Installations.MihomoRuntimeInstallationService>() is not null
-            && !builder.Services.Any(x => x.ServiceType == typeof(RelaxKonOS.Server.Installations.IInstallationService)
-                && x.ImplementationType == typeof(RelaxKonOS.Server.Installations.MihomoRuntimeInstallationService)),
-            "Managed Mihomo adapter resolves while public registration awaits both current clients");
+        // Only the Mihomo ledger entry is factory-registered; instantiate exactly that one so the
+        // fixture never has to construct unrelated package installers.
+        var descriptor = builder.Services.Single(x => x.ServiceType == typeof(RelaxKonOS.Server.Installations.IInstallationService)
+            && x.ImplementationFactory is not null);
+        var ledger = (RelaxKonOS.Server.Installations.IInstallationService)descriptor.ImplementationFactory!(services)!;
+        Check(ledger.Id == RelaxKonOS.Protocol.Installations.InstallationServiceId.Mihomo
+            && ReferenceEquals(ledger, services.GetRequiredService<RelaxKonOS.Server.Installations.MihomoRuntimeInstallationService>()),
+            "Mihomo installs only through the managed catalog adapter, registered once");
         Check(builder.Services.Any(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType == typeof(MihomoPublicationRecoveryService)),
             "Default startup registers pending publication recovery");
         return count;

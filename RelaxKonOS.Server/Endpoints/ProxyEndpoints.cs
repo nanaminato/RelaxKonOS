@@ -31,9 +31,6 @@ public static class ProxyEndpoints
             .RequireAuthorization("ProxyManage").WithTags("Proxy");
         app.MapGet(ProxyApiRoutes.RuntimeReleases, (RelaxKonOS.Protocol.Proxy.MihomoRuntimeManifest manifest) => manifest.Available())
             .RequireAuthorization("ProxyRead").WithTags("Proxy");
-        app.MapGet(ProxyApiRoutes.RuntimeDownload, async (string? version, IProxyRuntimeManager runtime, CancellationToken ct) =>
-            await runtime.GetManagedDownloadAsync("mihomo", version, ct) is { } download ? Results.Ok(download) : Results.NotFound())
-            .RequireAuthorization("ProxyRead").WithTags("Proxy");
 
         app.MapPost(ProxyApiRoutes.Lifecycle, (string action, HttpContext context, ProxyOperationStore operations, IProxyLifecycleService lifecycle, ProxyAuditStore audit, CancellationToken ct) =>
         {

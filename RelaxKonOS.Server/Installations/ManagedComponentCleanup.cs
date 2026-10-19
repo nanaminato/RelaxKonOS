@@ -66,33 +66,28 @@ public static class ManagedComponentCleanup
                 var result = await runtime.UninstallManagedFrpcAsync(token);
                 return result.Succeeded ? null : result.ProblemCode;
             }),
-            ("mihomo", async token => {
-                var runtime = services.GetRequiredService<IProxyRuntimeManager>();
-                var paths = services.GetRequiredService<IProxyPlatformPaths>();
-                // Maintenance must not contact the controller or decrypt credentials under
-                // the administrator's key ring. Runtime ownership is persisted locally.
-                if (!File.Exists(Path.Combine(paths.GetStateDirectory(), "mihomo-runtime.json"))) {
-                    var versions = paths.GetEngineVersionsDirectory("mihomo");
-                    return Directory.Exists(versions) && Directory.EnumerateFileSystemEntries(versions).Any()
-                        ? "deployment.component_ownership_missing" : null;
-                }
-                var settings = await services.GetRequiredService<IProxySettingsService>().GetAsync(token);
-                var componentDirectories = new[] { paths.GetProtectedConfigurationDirectory(),
-                    paths.GetEngineDataDirectory("mihomo"), paths.GetSanitizedLogDirectory(), paths.GetStateDirectory() };
-                foreach (var directory in componentDirectories) RequirePlainTree(directory);
-                if (settings.SystemProxyEnabled) {
-                    var problem = await services.GetRequiredService<IHostSystemProxyService>().ApplyAsync(
-                        settings with { SystemProxyEnabled = false }, settings, true, token);
-                    if (!string.IsNullOrEmpty(problem)) return problem;
-                }
-                var result = await runtime.UninstallManagedAsync("mihomo", token);
-                if (!string.IsNullOrEmpty(result.ProblemCode)) return result.ProblemCode;
-                foreach (var directory in componentDirectories)
-                    if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
-                return null;
-            })
+            ("mihomo", token => Task.FromResult(RemoveMihomoAsync(services)))
         ];
         return RunAsync(steps.Where(x => selected.Contains(x.Name, StringComparer.Ordinal)), receiptPath, ct);
+    }
+
+    /// <summary>
+    /// Mihomo is now owned by the managed-runtime ledger, whose removal must run through the Host
+    /// (original-record proof, service stop and kernel-side cleanup). This maintenance path can only
+    /// report the remaining footprint; it never deletes ledger-owned bytes or claims a clean removal.
+    /// </summary>
+    private static string? RemoveMihomoAsync(IServiceProvider services)
+    {
+        var paths = services.GetRequiredService<IProxyPlatformPaths>();
+        var leftovers = new List<string>();
+        if (OperatingSystem.IsLinux() && Directory.Exists("/var/lib/relaxkonos/managed-mihomo"))
+            leftovers.Add("managed runtime root");
+        if (File.Exists(Path.Combine(paths.GetStateDirectory(), "mihomo-runtime.json")))
+            leftovers.Add("legacy runtime state");
+        var versions = paths.GetEngineVersionsDirectory("mihomo");
+        if (Directory.Exists(versions) && Directory.EnumerateFileSystemEntries(versions).Any())
+            leftovers.Add("legacy runtime versions");
+        return leftovers.Count == 0 ? null : "deployment.component_ownership_missing";
     }
 
     private static void RequirePlainTree(string root)

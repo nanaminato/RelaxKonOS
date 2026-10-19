@@ -4,6 +4,9 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Diagnostics;
+using RelaxKonOS.ManagedRuntimes;
+using RelaxKonOS.Protocol.ManagedRuntimes;
+using RelaxKonOS.Server.ManagedRuntimes;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Server.Installations;
@@ -26,7 +29,8 @@ public sealed class MihomoRuntimeManager(
     MihomoControllerOptions controllerOptions,
     MihomoRuntimeManifest manifest,
     IProxyDiagnosticLogStore? diagnostics = null,
-    IProxyGeoDataService? geoData = null) : IProxyRuntimeManager, IMihomoConfigurationValidator
+    IProxyGeoDataService? geoData = null,
+    RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeService? managedRuntime = null) : IProxyRuntimeManager, IMihomoConfigurationValidator
 {
     private const string ServiceName = "relaxkonos-mihomo";
     private const string ServiceConfigurationId = "mihomo-default";
@@ -40,27 +44,69 @@ public sealed class MihomoRuntimeManager(
         try
         {
             var state = await ReadStateAsync(cancellationToken);
-            if (state?.ActiveVersion is not { Length: > 0 } active)
-                return new(MihomoEngine.Id, ProxyRuntimeMode.Managed, ProxyRuntimeState.NotInstalled, null, null, false, false, ProxyProblemCodes.RuntimeNotInstalled);
-            if (!File.Exists(ExecutablePath(active)))
-                return new(MihomoEngine.Id, ProxyRuntimeMode.Managed, ProxyRuntimeState.NotInstalled, active, state.PreviousVersion, false, false, ProxyProblemCodes.RuntimeNotInstalled);
+            // Installation, updates and removal belong to the managed-runtime ledger, so the
+            // installed bytes are described by the Host's own observation rather than by a local
+            // state file this writer could fabricate. Only an answer the Helper actually produced
+            // is projected; an unreadable observation stays unknown instead of becoming "not installed".
+            if (state?.ActiveVersion is not { Length: > 0 })
+                return await ManagedProjectionAsync(state, cancellationToken);
+            if (!File.Exists(ExecutablePath(state.ActiveVersion)))
+                return new(MihomoEngine.Id, ProxyRuntimeMode.Managed, ProxyRuntimeState.NotInstalled, state.ActiveVersion, state.PreviousVersion, false, false, ProxyProblemCodes.RuntimeNotInstalled);
 
             // Runtime status is intentionally read-only. Opening Proxy Manager or pressing its
             // ordinary refresh button must never rewrite configuration or restart Mihomo: a
             // restart can make provider-backed subscriptions fetch again. Managed
             // controller/GEO settings are applied by explicit configuration and subscription
             // refresh operations instead.
-            var controllerHealth = await controller.IsReachableAsync(cancellationToken);
-            // An HTTP 401 proves Mihomo is listening even though its credential is wrong; the
-            // health projection reports that mismatch separately. Other failures mean the
-            // installed runtime is not currently reachable as a running service.
-            var runtimeState = controllerHealth.Succeeded || controllerHealth.ProblemCode == ProxyProblemCodes.ControllerAuthenticationFailed
-                ? ProxyRuntimeState.Running
-                : ProxyRuntimeState.Stopped;
-            return new(MihomoEngine.Id, ProxyRuntimeMode.Managed, runtimeState, active, state.PreviousVersion, true, false);
+            var runtimeState = await RunningStateAsync(cancellationToken);
+            return new(MihomoEngine.Id, ProxyRuntimeMode.Managed, runtimeState, state.ActiveVersion, state.PreviousVersion, true, false);
         }
         finally { _gate.Release(); }
     }
+
+    /// <summary>Maps the managed ledger's own installation facts onto the legacy proxy projection.</summary>
+    private async Task<ProxyRuntimeDto> ManagedProjectionAsync(RuntimeState? state, CancellationToken cancellationToken)
+    {
+        if (managedRuntime is null)
+            return new(MihomoEngine.Id, ProxyRuntimeMode.Managed, ProxyRuntimeState.NotInstalled, null, null, false, false, ProxyProblemCodes.RuntimeNotInstalled);
+        RuntimeInstallationSnapshot snapshot;
+        try { snapshot = await managedRuntime.QueryAsync(cancellationToken); }
+        catch (Exception ex) when (ex is RuntimeLifecycleException or RuntimePolicyException or IOException or HttpRequestException
+            or OperationCanceledException or System.Text.Json.JsonException)
+        {
+            // An unmeasured Host is not an absent installation.
+            return new(MihomoEngine.Id, ProxyRuntimeMode.Managed, ProxyRuntimeState.Failed, null, state?.PreviousVersion, false, false,
+                ProxyProblemCodes.RuntimeStateUnknown);
+        }
+        var installation = snapshot.Installation;
+        var version = snapshot.MeasuredVersion;
+        return installation.Ownership switch
+        {
+            RuntimeOwnership.Managed => new(MihomoEngine.Id, ProxyRuntimeMode.Managed,
+                snapshot.ProblemCode is null ? await RunningStateAsync(cancellationToken) : ProxyRuntimeState.Failed,
+                version, state?.PreviousVersion, snapshot.ProblemCode is null, false, ProblemCode(snapshot.ProblemCode)),
+            RuntimeOwnership.External => new(MihomoEngine.Id, ProxyRuntimeMode.External, ProxyRuntimeState.Stopped, version,
+                null, false, true, ProblemCode(snapshot.ProblemCode)),
+            RuntimeOwnership.Absent when snapshot.ProblemCode is null =>
+                new(MihomoEngine.Id, ProxyRuntimeMode.Managed, ProxyRuntimeState.NotInstalled, null, null, false, false, ProxyProblemCodes.RuntimeNotInstalled),
+            // Ownership that could not be measured, or an installation that exists while its
+            // owner is unproven, must never be reported as a clean "not installed".
+            _ => new(MihomoEngine.Id, ProxyRuntimeMode.Managed, ProxyRuntimeState.Failed, version, null, false, false,
+                ProblemCode(snapshot.ProblemCode))
+        };
+    }
+
+    private async Task<ProxyRuntimeState> RunningStateAsync(CancellationToken cancellationToken)
+    {
+        // An HTTP 401 proves Mihomo is listening even though its credential is wrong; the health
+        // projection reports that mismatch separately.
+        var controllerHealth = await controller.IsReachableAsync(cancellationToken);
+        return controllerHealth.Succeeded || controllerHealth.ProblemCode == ProxyProblemCodes.ControllerAuthenticationFailed
+            ? ProxyRuntimeState.Running : ProxyRuntimeState.Stopped;
+    }
+
+    /// <summary>Keeps the public code in the proxy namespace the clients already localize.</summary>
+    private static string ProblemCode(string? code) => string.IsNullOrEmpty(code) ? "" : ProxyProblemCodes.RuntimeStateUnknown;
 
     /// <summary>
     /// Validates a candidate profile with the active, verified managed binary. This deliberately
@@ -142,187 +188,6 @@ public sealed class MihomoRuntimeManager(
         return version is null
             ? new(MihomoEngine.Id, ProxyRuntimeMode.External, ProxyRuntimeState.Failed, null, null, false, true, ProxyProblemCodes.ExternalRuntimeInvalid)
             : new(MihomoEngine.Id, ProxyRuntimeMode.External, ProxyRuntimeState.Stopped, version, null, false, true);
-    }
-
-    public Task<ProxyRuntimeDto> InstallManagedAsync(string engineId, string? version, CancellationToken cancellationToken) =>
-        InstallManagedAsync(engineId, version, null, cancellationToken);
-
-    public Task<ProxyRuntimeDownloadDto?> GetManagedDownloadAsync(string engineId, string? version, CancellationToken cancellationToken)
-    {
-        var release = engineId == MihomoEngine.Id ? manifest.Find(version) : null;
-        return Task.FromResult<ProxyRuntimeDownloadDto?>(release is null ? null : new(release.Version, release.DownloadUri.ToString()));
-    }
-
-    public Task<ProxyRuntimeDto> InstallManagedAsync(string engineId, string? version, Func<string, Task>? stageReporter, CancellationToken cancellationToken) =>
-        engineId != MihomoEngine.Id
-            ? Task.FromResult(Unsupported(engineId))
-            : InstallManagedCoreAsync(version, async (release, destination, token) =>
-            {
-                await WriteDiagnosticAsync("info", "Managed Mihomo installation is downloading the trusted release.", token);
-                await ReportStageAsync(stageReporter, "downloading");
-                await DownloadAndVerifyAsync(release, destination, token);
-            }, stageReporter, cancellationToken);
-
-    public Task<ProxyRuntimeDto> InstallManagedFromArchiveAsync(string engineId, string? version, Stream archive, long length,
-        IInstallationProgress progress, CancellationToken cancellationToken) =>
-        engineId != MihomoEngine.Id
-            ? Task.FromResult(Unsupported(engineId))
-            : InstallManagedCoreAsync(version, async (release, destination, token) =>
-            {
-                if (length < 0 || length > MihomoRuntimeManifest.MaximumArchiveBytes)
-                    throw new RuntimeInstallException(ProxyProblemCodes.RuntimeIntegrityFailed);
-                await progress.ReportAsync(new(InstallationStage.Copying, 0, Cancellable: true), token);
-                await CopyAndVerifyArchiveAsync(release, archive, destination, length, progress, token);
-            }, stage => ReportStageAsync(progress, stage), cancellationToken);
-
-    private async Task<ProxyRuntimeDto> InstallManagedCoreAsync(string? version, Func<MihomoRuntimeRelease, string, CancellationToken, Task> stageArchiveAsync, Func<string, Task>? stageReporter, CancellationToken cancellationToken)
-    {
-        var release = manifest.Find(version);
-        if (release is null)
-        {
-            await WriteDiagnosticAsync("warning", "Managed Mihomo installation was rejected because the requested release is not trusted for this host.", cancellationToken);
-            return new(MihomoEngine.Id, ProxyRuntimeMode.Managed, ProxyRuntimeState.Failed, null, null, false, false,
-                MihomoRuntimeManifest.CurrentRid() == "unsupported" ? ProxyProblemCodes.RuntimeUnsupportedPlatform : ProxyProblemCodes.RuntimeVersionUnsupported);
-        }
-
-        await _gate.WaitAsync(cancellationToken);
-        try
-        {
-            await ReportStageAsync(stageReporter, "preparing");
-            var before = await ReadStateAsync(cancellationToken);
-            if (before?.ActiveVersion is null && !AreBootstrapPortsAvailable())
-            {
-                await WriteDiagnosticAsync("warning", "Managed Mihomo installation was blocked because its controller or mixed proxy port is already in use.", cancellationToken);
-                return Failure(before, ProxyProblemCodes.PortInUse);
-            }
-            await WriteDiagnosticAsync("info", before?.ActiveVersion is { Length: > 0 }
-                ? "Managed Mihomo installation is preparing a runtime update."
-                : "Managed Mihomo installation is preparing the first runtime activation.", cancellationToken);
-            var finalDirectory = VersionDirectory(release.Version);
-            try
-            {
-                var serviceInstalled = false;
-                if (!Directory.Exists(finalDirectory))
-                    await StageAndInstallReleaseAsync(release, finalDirectory, stageArchiveAsync, stageReporter, cancellationToken);
-
-                await ReportStageAsync(stageReporter, "checking");
-                if (await probe.GetVersionAsync(ExecutablePath(release.Version), cancellationToken) is null)
-                {
-                    await WriteDiagnosticAsync("warning", "Managed Mihomo runtime verification failed after extraction.", cancellationToken);
-                    return Failure(before, ProxyProblemCodes.RuntimeHealthCheckFailed);
-                }
-
-                if (geoData is not null)
-                {
-                    var geoProblem = await geoData.EnsureBundledAsync(cancellationToken);
-                    if (!string.IsNullOrEmpty(geoProblem))
-                    {
-                        await WriteDiagnosticAsync("warning", "Managed Mihomo installation could not stage its bundled GEO data: " + geoProblem, cancellationToken);
-                        return Failure(before, geoProblem);
-                    }
-                }
-
-                await ReportStageAsync(stageReporter, "activating");
-                // The stage reporter atomically closes cancellation before any host mutation.
-                // Once activation starts, finish it or restore the previous runtime safely.
-                cancellationToken.ThrowIfCancellationRequested();
-                cancellationToken = CancellationToken.None;
-                var runtimeOperation = before?.ActiveVersion is { Length: > 0 }
-                    ? await privileged.ReplaceRuntimeAsync(new ReplaceProxyRuntimeOperation(MihomoEngine.Id, release.Version, ReleaseDirectoryId(release.Version)), cancellationToken)
-                    : await privileged.InstallRuntimeAsync(new InstallProxyRuntimeOperation(MihomoEngine.Id, release.Version, ReleaseDirectoryId(release.Version)), cancellationToken);
-                if (!runtimeOperation.Succeeded)
-                {
-                    await WriteDiagnosticAsync("warning", "Managed Mihomo runtime activation failed: " + runtimeOperation.ProblemCode, cancellationToken);
-                    return Failure(before, runtimeOperation.ProblemCode);
-                }
-
-                // First boot has no Profile yet. This fixed bootstrap file intentionally keeps TUN
-                // off and only exposes the controller on loopback; Goal 4 replaces it transactionally.
-                var bootstrap = await EnsureBootstrapConfigurationAsync(cancellationToken);
-                if (!bootstrap.Succeeded)
-                {
-                    await WriteDiagnosticAsync("warning", "Managed Mihomo bootstrap configuration failed: " + bootstrap.ProblemCode, cancellationToken);
-                    return await RestorePreviousAsync(before, release.Version, bootstrap.ProblemCode, serviceInstalled, cancellationToken);
-                }
-
-                if (before?.ActiveVersion is null)
-                {
-                    await ReportStageAsync(stageReporter, "installing_service");
-                    var installService = await privileged.InstallServiceAsync(new InstallProxyServiceOperation(MihomoEngine.Id, ServiceName, ServiceConfigurationId), cancellationToken);
-                    if (!installService.Succeeded)
-                    {
-                        await WriteDiagnosticAsync("warning", "Managed Mihomo service installation failed: " + installService.ProblemCode, cancellationToken);
-                        return await RestorePreviousAsync(before, release.Version, installService.ProblemCode, serviceInstalled, cancellationToken);
-                    }
-                    serviceInstalled = true;
-                }
-
-                await ReportStageAsync(stageReporter, "starting");
-                var start = await privileged.RestartServiceAsync(new ProxyServiceOperation(MihomoEngine.Id, ServiceName), cancellationToken);
-                if (!start.Succeeded)
-                {
-                    await WriteDiagnosticAsync("warning", "Managed Mihomo service start failed: " + start.ProblemCode, cancellationToken);
-                    return await RestorePreviousAsync(before, release.Version, start.ProblemCode, serviceInstalled, cancellationToken);
-                }
-                var health = await WaitForControllerReadinessAsync(cancellationToken);
-                if (!health.Succeeded)
-                {
-                    await WriteDiagnosticAsync("warning", "Managed Mihomo service started but its loopback controller did not become ready: " + health.ProblemCode, cancellationToken);
-                    return await RestorePreviousAsync(before, release.Version, string.IsNullOrEmpty(health.ProblemCode) ? ProxyProblemCodes.RuntimeHealthCheckFailed : health.ProblemCode, serviceInstalled, cancellationToken);
-                }
-
-                await WriteStateAsync(new RuntimeState(release.Version, before?.ActiveVersion, DateTimeOffset.UtcNow), cancellationToken);
-                await WriteDiagnosticAsync("info", "Managed Mihomo installation completed successfully.", cancellationToken);
-                await ReportStageAsync(stageReporter, "completed");
-                return new(MihomoEngine.Id, ProxyRuntimeMode.Managed, ProxyRuntimeState.Running, release.Version, before?.ActiveVersion, true, false);
-            }
-            catch (RuntimeInstallException exception) { await WriteDiagnosticAsync("warning", "Managed Mihomo installation failed: " + exception.ProblemCode, cancellationToken); return Failure(before, exception.ProblemCode); }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { await WriteDiagnosticAsync("warning", "Managed Mihomo installation timed out during a runtime operation.", cancellationToken); return Failure(before, ProxyProblemCodes.RuntimeHealthCheckFailed); }
-            catch (HttpRequestException exception) { await WriteDiagnosticAsync("warning", "Managed Mihomo download failed: " + exception.HttpRequestError, cancellationToken); return Failure(before, ProxyProblemCodes.RuntimeHealthCheckFailed); }
-            catch (IOException) { await WriteDiagnosticAsync("warning", "Managed Mihomo installation encountered a file-system error.", cancellationToken); return Failure(before, ProxyProblemCodes.RuntimeIntegrityFailed); }
-            catch (UnauthorizedAccessException) { await WriteDiagnosticAsync("warning", "Managed Mihomo installation was denied access to a protected host resource.", cancellationToken); return Failure(before, ProxyProblemCodes.PrivilegedOperationUnavailable); }
-        }
-        finally { _gate.Release(); }
-    }
-
-    public async Task<ProxyRuntimeDto> RollbackManagedAsync(string engineId, CancellationToken cancellationToken)
-    {
-        if (engineId != MihomoEngine.Id) return Unsupported(engineId);
-        await _gate.WaitAsync(cancellationToken);
-        try
-        {
-            var before = await ReadStateAsync(cancellationToken);
-            if (before?.PreviousVersion is not { Length: > 0 } previous || await probe.GetVersionAsync(ExecutablePath(previous), cancellationToken) is null)
-                return Failure(before, ProxyProblemCodes.RuntimeHealthCheckFailed);
-            var result = await privileged.ReplaceRuntimeAsync(new ReplaceProxyRuntimeOperation(MihomoEngine.Id, previous, ReleaseDirectoryId(previous)), cancellationToken);
-            if (!result.Succeeded) return Failure(before, result.ProblemCode);
-            result = await privileged.RestartServiceAsync(new ProxyServiceOperation(MihomoEngine.Id, ServiceName), cancellationToken);
-            var health = await WaitForControllerReadinessAsync(cancellationToken);
-            if (!result.Succeeded || !health.Succeeded) return Failure(before, result.Succeeded ? (string.IsNullOrEmpty(health.ProblemCode) ? ProxyProblemCodes.RuntimeHealthCheckFailed : health.ProblemCode) : result.ProblemCode);
-            await WriteStateAsync(new RuntimeState(previous, before.ActiveVersion, DateTimeOffset.UtcNow), cancellationToken);
-            return new(MihomoEngine.Id, ProxyRuntimeMode.Managed, ProxyRuntimeState.Running, previous, before.ActiveVersion, true, false);
-        }
-        finally { _gate.Release(); }
-    }
-
-    public async Task<ProxyRuntimeDto> UninstallManagedAsync(string engineId, CancellationToken cancellationToken)
-    {
-        if (engineId != MihomoEngine.Id) return Unsupported(engineId);
-        await _gate.WaitAsync(cancellationToken);
-        try
-        {
-            var before = await ReadStateAsync(cancellationToken);
-            if (before is null) return new(MihomoEngine.Id, ProxyRuntimeMode.Managed, ProxyRuntimeState.NotInstalled, null, null, false, false, ProxyProblemCodes.RuntimeNotInstalled);
-            var stop = await privileged.StopServiceAsync(new ProxyServiceOperation(MihomoEngine.Id, ServiceName), cancellationToken);
-            if (!stop.Succeeded) return Failure(before, stop.ProblemCode);
-            var service = await privileged.RemoveServiceAsync(new RemoveProxyServiceOperation(MihomoEngine.Id, ServiceName), cancellationToken);
-            if (!service.Succeeded) return Failure(before, service.ProblemCode);
-            var runtime = await privileged.RemoveRuntimeAsync(new RemoveProxyRuntimeOperation(MihomoEngine.Id), cancellationToken);
-            if (!runtime.Succeeded) return Failure(before, runtime.ProblemCode);
-            DeleteState(); // Version material is removed by the constrained platform helper.
-            return new(MihomoEngine.Id, ProxyRuntimeMode.Managed, ProxyRuntimeState.NotInstalled, null, null, false, false);
-        }
-        finally { _gate.Release(); }
     }
 
     private async Task StageAndInstallReleaseAsync(MihomoRuntimeRelease release, string finalDirectory, Func<MihomoRuntimeRelease, string, CancellationToken, Task> stageArchiveAsync, Func<string, Task>? stageReporter, CancellationToken cancellationToken)

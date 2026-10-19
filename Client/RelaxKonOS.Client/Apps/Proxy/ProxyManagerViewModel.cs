@@ -1,5 +1,3 @@
-using RelaxKonOS.Protocol.Installations;
-using RelaxKonOS.Client.Services.Installation;
 using System.Collections.ObjectModel;
 using RelaxKonOS.Client.Apps.TaskManager;
 using RelaxKonOS.Client.Localization;
@@ -13,8 +11,6 @@ namespace RelaxKonOS.Client.Apps.Proxy;
 /// <summary>Presentation state for the host-global proxy workspace. Controller details stay on the RelaxKonOS.Server.</summary>
 public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
 {
-    public InstallationTaskViewModel Installation { get; set; } = null!;
-
     private readonly IProxyRepository repository;
     private readonly ITaskManagerClient? systemMonitor;
     private bool _updatingOverviewProxySelection;
@@ -65,8 +61,6 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
     [ObservableProperty] private ProxyNodeItem? _selectedOverviewProxyNode;
     [ObservableProperty] private bool _isTunSettingsSelected;
 
-    public Func<Task<string?>>? RequestServerRuntimePackageAsync { get; set; }
-    public Func<string, Task>? ShowRuntimeDownloadUrlAsync { get; set; }
     public Func<Task<string?>>? RequestServerGeoDataFileAsync { get; set; }
     public Func<Task<bool>>? RequestSystemProxySubscriptionDownloadAsync { get; set; }
     /// <summary>Asks whether a saved listener-port change should restart Mihomo immediately.</summary>
@@ -80,11 +74,6 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
     public Action<string>? NavigateRequested { get; set; }
 
 
-    public void SetServerRuntimePackageRequest(Func<Task<string?>>? request)
-    {
-        RequestServerRuntimePackageAsync = request;
-        InstallRuntimeFromServerFileCommand.NotifyCanExecuteChanged();
-    }
     public void SetServerGeoDataFileRequest(Func<Task<string?>>? request)
     {
         RequestServerGeoDataFileAsync = request;
@@ -300,30 +289,8 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
     [RelayCommand(CanExecute = nameof(CanRestartProxy))] private Task RestartProxyAsync() => LifecycleAsync(ProxyLifecycleAction.Restart);
     [RelayCommand(CanExecute = nameof(CanToggleProxy))]
     private Task ToggleProxyAsync() => LifecycleAsync(ProxyIsRunning ? ProxyLifecycleAction.Stop : ProxyLifecycleAction.Start);
-    [RelayCommand(CanExecute = nameof(CanInstallRuntime))] private Task InstallRuntimeAsync() => Installation.SubmitAsync(InstallationOperationKind.Install, new MihomoInstallationRequest(true));
-    [RelayCommand(CanExecute = nameof(CanInstallRuntimeFromServerFile))]
-    private async Task InstallRuntimeFromServerFileAsync()
-    {
-        if (RequestServerRuntimePackageAsync is not { } request) return;
-        var path = await request();
-        if (string.IsNullOrWhiteSpace(path)) return;
-        var reference = await Installation.CreateFileReferenceAsync(path);
-        if (reference is not null)
-            await Installation.SubmitAsync(InstallationOperationKind.Install, new MihomoInstallationRequest(true, FileReferenceId: reference));
-    }
-    [RelayCommand(CanExecute = nameof(CanInstallRuntime))]
-    private async Task ShowRuntimeDownloadAsync()
-    {
-        try
-        {
-            var download = await repository.GetManagedRuntimeDownloadAsync();
-            if (download is null) { StatusText = LocalizedText.Ref("proxy.runtime_download_unavailable"); return; }
-            await (ShowRuntimeDownloadUrlAsync?.Invoke(download.Url) ?? Task.CompletedTask);
-        }
-        catch (Exception exception) { SetFailureStatus(exception); }
-    }
-    [RelayCommand(CanExecute = nameof(CanInstalledRuntime))] private Task RollbackRuntimeAsync() => Installation.SubmitAsync(InstallationOperationKind.Repair, new MihomoInstallationRequest(true, Rollback: true));
-    [RelayCommand(CanExecute = nameof(CanInstalledRuntime))] private Task UninstallRuntimeAsync() => Installation.SubmitAsync(InstallationOperationKind.Uninstall, new MihomoInstallationRequest(true));
+    /// <summary>Runtime version negotiation lives on its own page; this only navigates there.</summary>
+    [RelayCommand] private void OpenRuntimePage() => NavigateRequested?.Invoke("runtime");
     [RelayCommand(CanExecute = nameof(CanEnableTun))]
     private Task EnableTunAsync() => (SelectedProfile ?? Overview?.ActiveProfile) is { } profile
         ? QueueAsync(() => repository.EnableTunAsync(profile.Id))
@@ -645,9 +612,6 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
     private bool CanRefresh => !IsBusy;
     private bool CanManageSystemProxy => CanManage && Settings is not null && (IsSystemProxyAvailable || SystemProxyEnabled);
     private bool CanManage => HasManagePermission && !IsBusy;
-    private bool CanInstallRuntime => CanManage && RuntimeIsNotInstalled;
-    private bool CanInstallRuntimeFromServerFile => CanInstallRuntime && RequestServerRuntimePackageAsync is not null;
-    private bool CanInstalledRuntime => CanManage && RuntimeIsInstalled;
     private bool CanStartProxy => CanManage && Runtime?.State == ProxyRuntimeState.Stopped;
     private bool CanStopProxy => CanManage && Runtime?.State == ProxyRuntimeState.Running;
     private bool CanRestartProxy => CanManage && Runtime?.State is ProxyRuntimeState.Stopped or ProxyRuntimeState.Running;
@@ -714,8 +678,6 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
         OnPropertyChanged(nameof(RuntimeServiceMode));
         StartProxyCommand.NotifyCanExecuteChanged(); StopProxyCommand.NotifyCanExecuteChanged(); RestartProxyCommand.NotifyCanExecuteChanged();
         ToggleProxyCommand.NotifyCanExecuteChanged();
-        InstallRuntimeCommand.NotifyCanExecuteChanged(); InstallRuntimeFromServerFileCommand.NotifyCanExecuteChanged(); ShowRuntimeDownloadCommand.NotifyCanExecuteChanged();
-        RollbackRuntimeCommand.NotifyCanExecuteChanged(); UninstallRuntimeCommand.NotifyCanExecuteChanged();
     }
     partial void OnGeoDataChanged(ProxyGeoDataDto? value)
     {
@@ -773,7 +735,6 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
     private void NotifyCommands()
     {
         RefreshCommand.NotifyCanExecuteChanged(); StartProxyCommand.NotifyCanExecuteChanged(); StopProxyCommand.NotifyCanExecuteChanged(); RestartProxyCommand.NotifyCanExecuteChanged(); ToggleProxyCommand.NotifyCanExecuteChanged();
-        InstallRuntimeCommand.NotifyCanExecuteChanged(); InstallRuntimeFromServerFileCommand.NotifyCanExecuteChanged(); ShowRuntimeDownloadCommand.NotifyCanExecuteChanged(); RollbackRuntimeCommand.NotifyCanExecuteChanged(); UninstallRuntimeCommand.NotifyCanExecuteChanged();
         ConfigureGeoDataFromServerFileCommand.NotifyCanExecuteChanged();
         EnableTunCommand.NotifyCanExecuteChanged(); DisableTunCommand.NotifyCanExecuteChanged(); EmergencyDisableCommand.NotifyCanExecuteChanged(); ToggleTunCommand.NotifyCanExecuteChanged();
         ToggleSystemProxyCommand.NotifyCanExecuteChanged();

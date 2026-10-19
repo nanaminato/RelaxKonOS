@@ -56,8 +56,6 @@ public sealed record NginxInstallationRequest(bool Confirmed, string? Version = 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record FrpInstallationRequest(bool Confirmed, string? Version = null, bool Rollback = false, string? FileReferenceId = null);
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-public sealed record MihomoInstallationRequest(bool Confirmed, string? Version = null, bool Rollback = false, string? FileReferenceId = null);
-[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record DockerInstallationRequest(bool Confirmed);
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record ManagedRuntimeInstallationRequest(bool Confirmed, ManagedRuntimes.RuntimeChangePlan Plan);

@@ -13,6 +13,14 @@
 
 ## 受管运行时公共目录接入进度（MR-03，2026-10-19）
 
+### 2026-10-19：生产台账注册切换（Server + 桌面）
+
+`IInstallationService` 的 Mihomo 注册现为 `MihomoRuntimeInstallationService`，旧固定清单安装器 `MihomoInstallationService` 与 `MihomoInstallationRequest` 一并删除：台账 `POST /api/v1.0/installations/Mihomo/{kind}` 只接受携带冻结计划的 `ManagedRuntimeInstallationRequest`，缺计划、计划运行时/动作/制品绑定不符、幂等键不符都在受理前拒绝，不存在旧请求解析或备用执行入口。`IProxyRuntimeManager` 同时去掉下载、安装、回退与卸载成员，只有只读观察和外部探测；`/proxy/runtime/download` 路由删除。维护期的组件清理不再自行删除运行时目录，只要受管根或旧状态仍存在就返回 `deployment.component_ownership_missing`，由受管台账移除。
+
+代理状态不再依赖旧安装器自己的状态文件：`MihomoRuntimeManager.GetAsync` 在本地状态缺失时投影 Helper 实测的受管安装事实（归属、实测版本、控制器可达性），无法测量时返回 `proxy.runtime_state_unknown` 而不是“未安装”。启动/停止/重启仍走同一 `relaxkonos-mihomo.service`，配置与设置发布此前已走受管事务，因此代理工作区在不改变日常操作的前提下切换到受管运行时。
+
+桌面 Proxy Manager 新增“运行时”页（复用 Proxy Server 的运行时页面与 `IMihomoRuntimeCatalogClient`）：列出已确认版本、阻止原因、目标差异，执行前取得 Host 计划，安装/更新/修复/回退/卸载都经同一台账，支持取消下载、待恢复重试/紧急停止/操作员关账。旧“安装托管运行时／从服务器文件安装／自行下载／回退／卸载”按钮改为进入该页面。Android 代理界面仍使用旧 `MihomoInstallationRequest`，其运行时页面尚未接入——本切分明确不完整，Android 仍然会在台账收到 `installation.invalid_request`。
+
 ### 2026-10-19：受控 GEO 资源预备（离线、编译期摘要）
 
 `POST /managed-runtimes/mihomo/resources`（统一 API 前缀下）要求 RuntimeManage、Mihomo 安装权限与目标为 `mihomo` 的 MihomoInstall 提权，并在发布 Gate 内拒绝未确认提交（409 `runtime.publication_unconfirmed`）。请求不携带路径、URL 或选择：可放置的集合由 `Shared/RelaxKonOS.ManagedRuntimes/MihomoGeoDataFiles.cs` 的编译期摘要表固定（`geoip.metadb`、`geoip.dat`、`geosite.dat`、`country.mmdb`、`GeoLite2-ASN.mmdb`），Server 原有 GEO 服务与 Helper 共用同一张表，任一侧都不能自行扩大集合。
