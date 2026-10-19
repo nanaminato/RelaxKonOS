@@ -40,11 +40,14 @@ public class RemoteRuntimeCatalogClient(HttpClient http, IAuthSession session, I
     private readonly InstallationServiceId _service = service is InstallationServiceId.SingBox or InstallationServiceId.Mihomo
         ? service : throw new ArgumentOutOfRangeException(nameof(service));
     public string RuntimeId => _service == InstallationServiceId.SingBox ? "sing-box" : "mihomo";
-    public bool SupportsRecoveryStopAndClose => _service == InstallationServiceId.SingBox;
+    /// <summary>Both runtimes expose the same closed recovery verbs; the UI still decides when one applies.</summary>
+    public bool SupportsRecoveryStopAndClose => true;
     private string InstallationRoute => _service == InstallationServiceId.SingBox ? RuntimeRoutes.SingBoxInstallation : RuntimeRoutes.MihomoInstallation;
     private string PlanRoute => _service == InstallationServiceId.SingBox ? RuntimeRoutes.SingBoxPlan : RuntimeRoutes.MihomoPlan;
     private string RecoveryRoute => _service == InstallationServiceId.SingBox ? RuntimeRoutes.SingBoxRecovery : RuntimeRoutes.MihomoRecovery;
     private string RecoveryRetryRoute => _service == InstallationServiceId.SingBox ? RuntimeRoutes.SingBoxRecoveryRetry : RuntimeRoutes.MihomoRecoveryRetry;
+    private string RecoveryStopRoute => _service == InstallationServiceId.SingBox ? RuntimeRoutes.SingBoxRecoveryStop : RuntimeRoutes.MihomoRecoveryStop;
+    private string RecoveryCloseRoute => _service == InstallationServiceId.SingBox ? RuntimeRoutes.SingBoxRecoveryClose : RuntimeRoutes.MihomoRecoveryClose;
 
     public Task<IReadOnlyList<RuntimeSourceView>> SourcesAsync(CancellationToken ct) =>
         SendAsync<IReadOnlyList<RuntimeSourceView>>(HttpMethod.Get, RuntimeRoutes.Sources, null, null, ct);
@@ -87,11 +90,11 @@ public class RemoteRuntimeCatalogClient(HttpClient http, IAuthSession session, I
             new RuntimeRecoveryActionRequest(operationId), Guid.NewGuid().ToString("N"), ct);
 
     public Task<RuntimeRecoverySnapshot> StopRecoveryAsync(Guid operationId, CancellationToken ct) =>
-        SendAsync<RuntimeRecoverySnapshot>(HttpMethod.Post, RequireManualRecovery(RuntimeRoutes.SingBoxRecoveryStop),
+        SendAsync<RuntimeRecoverySnapshot>(HttpMethod.Post, RecoveryStopRoute,
             new RuntimeRecoveryActionRequest(operationId), Guid.NewGuid().ToString("N"), ct);
 
     public Task<RuntimeSwitchResult> CloseRecoveryAsync(Guid operationId, CancellationToken ct) =>
-        SendAsync<RuntimeSwitchResult>(HttpMethod.Post, RequireManualRecovery(RuntimeRoutes.SingBoxRecoveryClose),
+        SendAsync<RuntimeSwitchResult>(HttpMethod.Post, RecoveryCloseRoute,
             new RuntimeRecoveryActionRequest(operationId, Confirmed: true), Guid.NewGuid().ToString("N"), ct);
 
     /// <summary>The same elevation grant the installation ledger requires, requested in place of a silent failure.</summary>
@@ -99,9 +102,6 @@ public class RemoteRuntimeCatalogClient(HttpClient http, IAuthSession session, I
         (await SendAsync<HostElevationResult>(HttpMethod.Post, PrivilegedApiRoutes.Elevation,
             new HostElevationRequest(_service == InstallationServiceId.SingBox ? HostElevationCapability.SingBoxInstall : HostElevationCapability.MihomoInstall,
                 _service == InstallationServiceId.SingBox ? "singbox" : "mihomo", password), null, ct)).Elevated;
-
-    private string RequireManualRecovery(string route) => SupportsRecoveryStopAndClose
-        ? route : throw new NotSupportedException("runtime.recovery_action_unsupported");
 
     private static string CatalogRoute(string sourceId, bool includePrerelease) =>
         RuntimeRoutes.Catalog.Replace("{sourceId}", Segment(sourceId), StringComparison.Ordinal)

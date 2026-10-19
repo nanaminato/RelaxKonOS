@@ -325,3 +325,11 @@ systemd 专项运行的是重命名测试 apphost，并非 sing-box，未验证�
 ## Mihomo 命名恢复 HTTP
 
 当前公开恢复查询和重试已接通：查询合并 Server 未确认提交；重试要求 RuntimeManage、Mihomo 安装权限和匹配提权。协调器持有发布 Gate，按精确 Pending 分派安装/配置/卸载恢复，缺少 Server Pending 时只恢复 Helper 原操作；冲突 ID 不触达 Helper，受理后不因请求取消丢失提交。组合成功必须包含 Server 提交完成。没有新增独立用户台账或固定版本回退路径。默认注册构造及 Linux 常规 1233 项通过，其中卸载组合 92、HTTP 22；真实 systemd 167 项通过，包含命名入口完成实际卸载后的 Server 宿主提交。生产客户端、安装注册和停止/关账入口尚未整体接通。
+
+## Mihomo 停止与关账 HTTP
+
+`POST /managed-runtimes/mihomo/recovery/stop` 与 `/close` 与重试同门禁：RuntimeManage、Mihomo 安装权限及目标为 `mihomo` 的 MihomoInstall 提权；空操作 ID 在触达 Helper 前被拒绝。关账还须显式 `confirmed`，否则 400 `runtime.recovery_confirmation_required`。
+
+停止不要求发布权威可用，也不修改原生台账或 Server 记录，因此存在未确认提交时仍可执行；关账结算的是原生事务，所以同一操作存在 Server 未确认提交时返回 409 `runtime.publication_unconfirmed`，避免留下永远无法确认的发布；权威不可读返回 409 `runtime.publication_state_invalid`。两项判定都在发布 Gate 内完成，关账不会与进行中的提交并发。
+
+常规 1249 项通过（HTTP 34、Helper/Server 集成 39），真实 systemd 167 项通过；客户端 `RemoteRuntimeCatalogClient` 已按运行时绑定各自闭合的停止/关账路由。桌面 Mihomo 恢复 UI、生产安装注册与资源分发仍未接通。

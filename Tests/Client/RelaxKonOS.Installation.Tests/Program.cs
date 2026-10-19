@@ -146,6 +146,8 @@ using (var mihomoHttp = new HttpClient(new Handler(request =>
         return Json(HttpStatusCode.OK, new RuntimeInstallationSnapshot(runtimeInstallation with { RuntimeId = "mihomo" }, null, null, null, null, null, null));
     if (path == RuntimeRoutes.MihomoRecovery) return Json(HttpStatusCode.OK, runtimeRecovery);
     if (path == RuntimeRoutes.MihomoRecoveryRetry) return Json(HttpStatusCode.OK, new RuntimeSwitchResult(runtimePendingId, RuntimeSwitchOutcome.Succeeded, null));
+    if (path == RuntimeRoutes.MihomoRecoveryStop) return Json(HttpStatusCode.OK, runtimeRecovery with { Service = new(false, false, false) });
+    if (path == RuntimeRoutes.MihomoRecoveryClose) return Json(HttpStatusCode.OK, new RuntimeSwitchResult(runtimePendingId, RuntimeSwitchOutcome.Succeeded, null));
     if (path == RuntimeRoutes.MihomoPlan) return Json(HttpStatusCode.OK, new RuntimePlanResult(null, ["runtime.release_untrusted"]));
     if (path.StartsWith("/api/v1.0/installations/", StringComparison.Ordinal)) return Json(HttpStatusCode.OK,
         new InstallationOperationDto(runtimeOperationId, InstallationServiceId.Mihomo, InstallationOperationKind.Upgrade,
@@ -154,8 +156,8 @@ using (var mihomoHttp = new HttpClient(new Handler(request =>
 })))
 {
     var mihomoClient = new MihomoRuntimeCatalogClient(mihomoHttp, session);
-    Check(mihomoClient.RuntimeId == "mihomo" && !mihomoClient.SupportsRecoveryStopAndClose,
-        "Mihomo has an explicit runtime binding and advertises only its implemented recovery actions");
+    Check(mihomoClient.RuntimeId == "mihomo" && mihomoClient.SupportsRecoveryStopAndClose,
+        "Mihomo has an explicit runtime binding and advertises the recovery verbs its Server routes implement");
     await mihomoClient.InstallationAsync(default);
     await mihomoClient.PlanAsync("source", runtimePlan.Plan!.Request, default);
     await mihomoClient.RecoveryAsync(default);
@@ -172,12 +174,14 @@ using (var mihomoHttp = new HttpClient(new Handler(request =>
     var elevationRequest = System.Text.Json.JsonSerializer.Deserialize<HostElevationRequest>(mihomoElevation, RelaxKonOSJsonOptions.Default);
     Check(elevationRequest is { Capability: HostElevationCapability.MihomoInstall, Target: "mihomo" },
         "Mihomo elevation binds its own capability and exact target");
+    var stopped = await mihomoClient.StopRecoveryAsync(runtimePendingId, default);
+    var closed = await mihomoClient.CloseRecoveryAsync(runtimePendingId, default);
+    Check(stopped.Service is { Running: false } && closed is { Outcome: RuntimeSwitchOutcome.Succeeded }
+        && mihomoCalls.Contains("POST " + RuntimeRoutes.MihomoRecoveryStop)
+        && mihomoCalls.Contains("POST " + RuntimeRoutes.MihomoRecoveryClose)
+        && !mihomoCalls.Any(c => c.Contains("/sing-box/recovery/", StringComparison.Ordinal)),
+        "Mihomo stop/close use only their own closed recovery routes");
     var beforeManualRecovery = mihomoCalls.Count;
-    try { await mihomoClient.StopRecoveryAsync(runtimePendingId, default); throw new Exception("Unsupported stop was accepted"); }
-    catch (NotSupportedException) { }
-    try { await mihomoClient.CloseRecoveryAsync(runtimePendingId, default); throw new Exception("Unsupported close was accepted"); }
-    catch (NotSupportedException) { }
-    Check(mihomoCalls.Count == beforeManualRecovery, "Unimplemented Mihomo recovery actions never fall back to another runtime");
     try { await mihomoClient.StartAsync(InstallationOperationKind.Upgrade, new(true, runtimePlan.Plan), "idem", default); throw new Exception("Cross-runtime plan accepted"); }
     catch (ArgumentException) { }
     Check(mihomoCalls.Count == beforeManualRecovery, "Mihomo rejects a sing-box frozen plan before any HTTP submission");

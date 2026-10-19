@@ -223,6 +223,8 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
     /// <summary>
     /// Closes a transaction whose compensation already failed. The acknowledgement is part of the Helper
     /// request, so the privileged side records the same decision the operator made rather than inferring it.
+    /// A close settles only the native ledger, so the Server must have no unresolved commit of its own for
+    /// the same operation; otherwise the operator would strand a publication that can never be confirmed.
     /// </summary>
     public async Task<RuntimeSwitchResult> CloseRecoveryAsync(Guid operationId, bool confirmed, CancellationToken ct)
     {
@@ -231,6 +233,12 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
         await store.Gate.WaitAsync(ct);
         try
         {
+            try
+            {
+                if ((await store.ReadAsync(ct)).Pending?.OperationId == operationId)
+                    throw new RuntimeLifecycleException("runtime.publication_unconfirmed");
+            }
+            catch (RuntimePolicyException ex) { throw new RuntimeLifecycleException(ex.ProblemCode); }
             return await CallAsync<RuntimeSwitchResult>(new(PrivilegedOperationKind.MihomoRuntimeRecoveryClose,
                 RuntimeLifecycle: new(RecoveryOperationId: operationId, Confirmed: true)), ct);
         }

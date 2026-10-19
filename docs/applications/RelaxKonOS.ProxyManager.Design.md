@@ -13,11 +13,21 @@
 
 ## 受管运行时公共目录接入进度（MR-03，2026-10-19）
 
+### 2026-10-19：紧急停止与操作员关账 HTTP
+
+公开 `POST /managed-runtimes/mihomo/recovery/stop` 与 `POST /managed-runtimes/mihomo/recovery/close`（统一 API 前缀下）与重试共用同一门禁：RuntimeManage、Mihomo 安装权限及目标为 `mihomo` 的 MihomoInstall 提权，缺任何一项都不触达 Helper。请求只携带精确操作 ID，不接受计划、路径或来源；关账还须显式 `confirmed`，缺失按 `runtime.recovery_confirmation_required`（400）拒绝。两条动作都不创建新的用户台账。
+
+停止是安全动作：它要求 Helper 停自己拥有的单元并回报实测观察，保留原生事务台账与 Server 发布记录，因此 Server 仍有未确认提交时也允许执行。关账只结算原生台账、不结算 Server 提交；同一操作存在 Server 未确认提交时返回 409 `runtime.publication_unconfirmed`，否则关掉原生事务会留下永远无法确认的发布。发布权威不可读返回 409 `runtime.publication_state_invalid`，不据损坏文件放行。
+
+客户端 `RemoteRuntimeCatalogClient` 现按运行时选择各自闭合的停止/关账路由，不再把这两条动作限定为 sing-box；桌面 Mihomo 页面尚未接入恢复面板。
+
+在指定 `192.168.1.7` Debian 13 x64 上常规 **1249 项**通过（HTTP **34**，此前 22；Helper/Server 集成 39），真实 `native-mihomo-systemd` **167 项**通过。日志为 `/home/nanami/mr03-recovery-verbs-full3-20261019.log`、`/home/nanami/mr03-recovery-verbs-systemd-20261019.log`。生产安装已换为 `0.1.0-dev20261019-mr03`（Linux system 模式、自签证书含 `192.168.1.7`、三种文件访问范围均为 `/`、无防火墙规则）：实测 `/healthz` 200、LAN 可达、`GET /mihomo/installation` 与 `/recovery` 返回实测事实、无提权的关账返回 `elevation-required` 403。生产安装注册、客户端版本入口、资源分发与 TUN 网络事务仍待完成。
+
 ### 2026-10-19：命名恢复 HTTP 入口
 
 公开 `GET /managed-runtimes/mihomo/recovery`（统一 API 前缀下）要求 RuntimeRead；`POST /managed-runtimes/mihomo/recovery/retry` 要求 RuntimeManage、Mihomo 安装权限及目标为 mihomo 的 MihomoInstall 提权。请求只携带精确操作 ID。`MihomoRuntimeRecoveryService` 在同一发布 Gate 内检查 Server Pending：分派安装、配置或卸载的原意图恢复；不匹配 ID 立即拒绝，不访问 Helper。没有 Server Pending 时才调用 Helper 原事务恢复。受理后不因 HTTP 断开中断对账，不重新准备制品、安装或生成凭据。响应代表原生及 Server 提交的组合结果，不能将原生成功但 Server 未提交报告为成功。
 
-默认 DI 已接入恢复协调器；Linux 常规 **1233 项**通过（卸载发布/宿主组合 **92**、HTTP **22**、Helper/Server 集成 **35**），覆盖只读公开查询、权限/提权拒绝、空/冲突操作 ID，以及保留与删除数据的已提交原生卸载返回丢失后经命名恢复完成 Server 提交。真实 systemd **167 项**通过，包含实际卸载返回丢失及宿主清理失败后，通过该命名恢复协调器完成提交且不重复卸载。日志为 `/home/nanami/mr03-recovery-endpoints-full-20261019.log`、`/home/nanami/mr03-recovery-endpoints-systemd-20261019.log`。桌面/Android 尚未接入新恢复 UI，生产安装注册/版本入口仍待整体替换；此入口不等于生产多版本更新交付。紧急停止与操作员关账仍未开放 Mihomo HTTP。
+默认 DI 已接入恢复协调器；Linux 常规 **1233 项**通过（卸载发布/宿主组合 **92**、HTTP **22**、Helper/Server 集成 **35**），覆盖只读公开查询、权限/提权拒绝、空/冲突操作 ID，以及保留与删除数据的已提交原生卸载返回丢失后经命名恢复完成 Server 提交。真实 systemd **167 项**通过，包含实际卸载返回丢失及宿主清理失败后，通过该命名恢复协调器完成提交且不重复卸载。日志为 `/home/nanami/mr03-recovery-endpoints-full-20261019.log`、`/home/nanami/mr03-recovery-endpoints-systemd-20261019.log`。桌面/Android 尚未接入新恢复 UI，生产安装注册/版本入口仍待整体替换；此入口不等于生产多版本更新交付。紧急停止与操作员关账当时仍未开放 Mihomo HTTP，已由上方“紧急停止与操作员关账 HTTP”节推进。
 
 ### 2026-10-19：卸载宿主代理清理与公开恢复状态
 

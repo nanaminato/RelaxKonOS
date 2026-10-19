@@ -81,6 +81,10 @@ public static class RuntimeRoutes
     public const string MihomoPlan = Root + "/mihomo/plan";
     public const string MihomoRecovery = Root + "/mihomo/recovery";
     public const string MihomoRecoveryRetry = MihomoRecovery + "/retry";
+    /// <summary>Stops the managed service; leaves the transaction ledger untouched.</summary>
+    public const string MihomoRecoveryStop = MihomoRecovery + "/stop";
+    /// <summary>Closes an unrecoverable transaction after the operator confirms the observed state.</summary>
+    public const string MihomoRecoveryClose = MihomoRecovery + "/close";
     /// <summary>Read-only ledger and live service facts for an unfinished transaction.</summary>
     public const string SingBoxRecovery = Root + "/sing-box/recovery";
     /// <summary>Retries the Host's own compensation; never prepares a new revision.</summary>

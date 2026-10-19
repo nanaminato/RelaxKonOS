@@ -91,6 +91,40 @@ internal static class MihomoRuntimeHttpChecks
                 Check(userMode.StatusCode == HttpStatusCode.Forbidden && fixture.Calls == beforeUserMode, "User Mode cannot contact privileged Mihomo operations");
             fixture.SystemMode = true;
             client.DefaultRequestHeaders.Authorization = new("Bearer", "installer");
+            // Emergency stop and operator closing are privileged host actions like retry: the permission
+            // alone is not enough, and neither verb may run before the caller proved its elevation.
+            var beforeRecoveryVerbs = fixture.Calls;
+            foreach (var identity in new[] { "manage", "wrong-install", "installer" })
+            {
+                client.DefaultRequestHeaders.Authorization = new("Bearer", identity);
+                foreach (var route in new[] { RuntimeRoutes.MihomoRecoveryStop, RuntimeRoutes.MihomoRecoveryClose })
+                {
+                    using var refused = await client.PostAsJsonAsync(route, new RuntimeRecoveryActionRequest(Guid.NewGuid(), Confirmed: true));
+                    Check(refused.StatusCode == HttpStatusCode.Forbidden && fixture.Calls == beforeRecoveryVerbs,
+                        "Recovery stop/close requires the Mihomo install claim and its elevation: " + identity + " " + route);
+                }
+            }
+            client.DefaultRequestHeaders.Authorization = new("Bearer", "elevated-installer");
+            using (var emptyStop = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryStop, new RuntimeRecoveryActionRequest(Guid.Empty)))
+                Check(emptyStop.StatusCode == HttpStatusCode.BadRequest && fixture.Calls == beforeRecoveryVerbs,
+                    "Emergency stop rejects an empty operation identity");
+            using (var unconfirmedClose = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryClose,
+                new RuntimeRecoveryActionRequest(Guid.NewGuid())))
+                Check(unconfirmedClose.StatusCode == HttpStatusCode.BadRequest && fixture.Calls == beforeRecoveryVerbs,
+                    "Closing an unrecoverable transaction needs an explicit operator acknowledgement");
+            var stopTarget = Guid.NewGuid();
+            var stopped = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryStop, new RuntimeRecoveryActionRequest(stopTarget));
+            Check(stopped.IsSuccessStatusCode && (await stopped.Content.ReadFromJsonAsync<RuntimeRecoverySnapshot>()) is { Required: true }
+                && fixture.Last?.Operation == PrivilegedOperationKind.MihomoRuntimeRecoveryStop
+                && fixture.Last?.RuntimeLifecycle is { RecoveryOperationId: var stopId, Confirmed: false } && stopId == stopTarget,
+                "An elevated stop names the exact transaction and asks the Host to stop the service");
+            var closeTarget = Guid.NewGuid();
+            var closed = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryClose, new RuntimeRecoveryActionRequest(closeTarget, Confirmed: true));
+            Check(closed.IsSuccessStatusCode && (await closed.Content.ReadFromJsonAsync<RuntimeSwitchResult>())?.Outcome == RuntimeSwitchOutcome.Succeeded
+                && fixture.Last?.Operation == PrivilegedOperationKind.MihomoRuntimeRecoveryClose
+                && fixture.Last?.RuntimeLifecycle is { RecoveryOperationId: var closeId, Confirmed: true } && closeId == closeTarget,
+                "An acknowledged close carries the operator decision to the Host");
+            var beforePending = fixture.Calls;
             var material = new MihomoPublishedRuntime("# pending\n", [], 9090, "http-fixture-secret", [new("127.0.0.1", 7890)]);
             var release = new RuntimeRelease("release", "mihomo", "v1.19.30", "1.19.30", RuntimeChannel.Stable, "source", fixture.Installation.Target,
                 new("artifact", new string('a', 64), 4096, "gz", "mihomo", "signed-manifest:key", new(4096, 1, [new("mihomo", 1, new string('b', 64), true)])),
@@ -99,7 +133,7 @@ internal static class MihomoRuntimeHttpChecks
             await store.BeginInstallationAsync(pendingOperation, 0, material, new(request, "mihomo", release, null), default);
             using (var pending = await client.PostAsJsonAsync(RuntimeRoutes.MihomoPlan, selection))
                 Check(pending.IsSuccessStatusCode && (await pending.Content.ReadFromJsonAsync<RuntimePlanResult>())!.Problems.Contains("runtime.publication_unconfirmed")
-                    && fixture.Calls == beforeUserMode, "Pending Server publication blocks plans before a second Helper operation");
+                    && fixture.Calls == beforePending, "Pending Server publication blocks plans before a second Helper operation");
             client.DefaultRequestHeaders.Authorization = new("Bearer", "read");
             fixture.Observation = new(fixture.Installation with { Ownership = RuntimeOwnership.Managed, StateRevision = 1, ActiveReleaseId = release.ReleaseId },
                 "1.19.30", Guid.NewGuid(), MihomoPublicationStore.Identity(material.Yaml), null, null, null);
@@ -109,6 +143,19 @@ internal static class MihomoRuntimeHttpChecks
                 "Public observation reports unresolved Server work even after a healthy native commit");
             Check((await store.ReadAsync(default)).Pending?.OperationId == pendingOperation,
                 "Runtime observation never confirms or compensates a pending Server publication");
+            client.DefaultRequestHeaders.Authorization = new("Bearer", "elevated-installer");
+            var beforePendingStop = fixture.Calls;
+            using (var pendingStop = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryStop,
+                new RuntimeRecoveryActionRequest(pendingOperation)))
+                Check(pendingStop.IsSuccessStatusCode && fixture.Last?.Operation == PrivilegedOperationKind.MihomoRuntimeRecoveryStop
+                    && (await store.ReadAsync(default)).Pending?.OperationId == pendingOperation,
+                    "Emergency stop still runs while the Server holds unresolved commit work, without touching that record");
+            using (var strandedClose = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryClose,
+                new RuntimeRecoveryActionRequest(pendingOperation, Confirmed: true)))
+                Check(strandedClose.StatusCode == HttpStatusCode.Conflict && fixture.Calls == beforePendingStop + 1
+                    && (await store.ReadAsync(default)).Pending?.OperationId == pendingOperation,
+                    "Closing cannot abandon an unresolved Server commit for the same transaction");
+            client.DefaultRequestHeaders.Authorization = new("Bearer", "read");
             var runtime = app.Services.GetRequiredService<MihomoRuntimeService>();
             var recovery = (await client.GetFromJsonAsync<RuntimeRecoverySnapshot>(RuntimeRoutes.MihomoRecovery))!;
             Check(recovery is { Required: true, Change: RuntimeChange.Install, Stage: null,
@@ -196,6 +243,12 @@ internal static class MihomoRuntimeHttpChecks
             {
                 PrivilegedOperationKind.MihomoRuntimeQuery => Observation ?? new RuntimeInstallationSnapshot(Installation, null, null, null, null, null, "runtime.state_unknown"),
                 PrivilegedOperationKind.MihomoRuntimeRecoveryQuery => Recovery ?? new RuntimeRecoverySnapshot(false, null, null, null, false, null, null, null, null),
+                // The Host reports the unit it just stopped; the Server never infers a stop from a request.
+                PrivilegedOperationKind.MihomoRuntimeRecoveryStop => new RuntimeRecoverySnapshot(true,
+                    request.RuntimeLifecycle?.RecoveryOperationId, RuntimeChange.Install, null, false, "runtime.recovery_required",
+                    null, null, null, new(true, false, false)),
+                PrivilegedOperationKind.MihomoRuntimeRecoveryClose => new RuntimeSwitchResult(
+                    request.RuntimeLifecycle?.RecoveryOperationId ?? Guid.NewGuid(), RuntimeSwitchOutcome.Succeeded, null),
                 PrivilegedOperationKind.MihomoRuntimePlan => new RuntimePlanResult(null, ["runtime.release_untrusted"]),
                 _ => throw new Exception("HTTP read/plan route executed an unrequested Helper action")
             };

@@ -86,6 +86,8 @@ ZIP 在创建 ZipArchive 条目集合前先限制中央目录条目数和各元�
 | `POST /api/v1.0/managed-runtimes/sing-box/plan` | RuntimeManage 与 SingBoxInstall；从保护目录生成冻结计划 |
 | `GET /api/v1.0/managed-runtimes/mihomo/recovery` | RuntimeRead；合并 Helper 恢复事实与 Server 未确认提交，不清除冲突操作身份 |
 | `POST /api/v1.0/managed-runtimes/mihomo/recovery/retry` | RuntimeManage、Mihomo 安装权限与 MihomoInstall 对应提权；按命名 Pending 分派安装/配置/卸载发布恢复，否则恢复 Helper 原事务，不重新准备 |
+| `POST /api/v1.0/managed-runtimes/mihomo/recovery/stop` | 同一组权限/提权；只停服务，保留原生台账与 Server 发布记录，存在未确认提交时仍可执行 |
+| `POST /api/v1.0/managed-runtimes/mihomo/recovery/close` | 同一组权限/提权且须 `"confirmed":true`；同一操作存在 Server 未确认提交时返回 409 `runtime.publication_unconfirmed` |
 | `GET /api/v1.0/managed-runtimes/sing-box/recovery` | RuntimeRead；返回待恢复事务、原始/补偿失败码与实测服务状态，不写台账 |
 | `POST /api/v1.0/managed-runtimes/sing-box/recovery/retry` | RuntimeManage 与 SingBoxInstall；重新补偿同一事务，不重新准备 |
 | `POST /api/v1.0/managed-runtimes/sing-box/recovery/stop` | RuntimeManage 与 SingBoxInstall；只停服务并关闭开机启动，不读凭据 |
@@ -94,7 +96,7 @@ ZIP 在创建 ZipArchive 条目集合前先限制中央目录条目数和各元�
 | `GET /api/v1.0/managed-runtimes/sources/{sourceId}/catalog` | RuntimeRead；返回缓存，不触发网络请求 |
 | `POST /api/v1.0/managed-runtimes/sources/{sourceId}/refresh` | RuntimeManage；Helper 以自身保护的策略下载、验证并原子接受目录，不安装软件 |
 
-RuntimeRead 允许 controller/observer；RuntimeManage 仅允许 controller，均要求宿主支持 PrivilegedOperations。目录查询/刷新默认隐藏预发布版，显式 `?includePrerelease=true` 才显示。当前没有远端新增/修改信任路由。三条恢复写路由另有该操作员的新鲜提权要求，缺失时返回 `elevation-required`；关账还必须同时满足补偿已失败、请求体 `"confirmed":true` 和实测服务未运行，详见[人工恢复入口](RelaxKonOS.ManagedRuntimes.Transactions.md#人工恢复入口)。取消下载**没有**新的运行时路由：它复用台账既有的 `POST /api/v1.0/installations/{operationId}/cancel`，只有主机把准备阶段报为可取消时台账才接受，并把它转成一次 `SingBoxRuntimeCancel` 请求，详见[下载取消](RelaxKonOS.ManagedRuntimes.Transactions.md#下载取消)。
+RuntimeRead 允许 controller/observer；RuntimeManage 仅允许 controller，均要求宿主支持 PrivilegedOperations。目录查询/刷新默认隐藏预发布版，显式 `?includePrerelease=true` 才显示。当前没有远端新增/修改信任路由。sing-box 与 mihomo 重试/停止/关账三条恢复写路由另有该操作员的新鲜提权要求，缺失时返回 `elevation-required`；关账还必须显式 `"confirmed":true`，且 Helper 只在补偿已失败、实测服务未运行时接受，详见[人工恢复入口](RelaxKonOS.ManagedRuntimes.Transactions.md#人工恢复入口)。Mihomo 的关账还要求同一操作没有 Server 未确认提交，因为关闭原生台账无法结算 Server 提交。取消下载**没有**新的运行时路由：它复用台账既有的 `POST /api/v1.0/installations/{operationId}/cancel`，只有主机把准备阶段报为可取消时台账才接受，并把它转成一次 `SingBoxRuntimeCancel` 请求，详见[下载取消](RelaxKonOS.ManagedRuntimes.Transactions.md#下载取消)。
 
 快照分别报告 `catalog`、`fresh` 和 `problemCode`：未取得目录返回 `runtime.catalog_missing`；过期缓存仍可显示；刷新失败保留最后已接受目录，并附带失败码，即使缓存尚未过期也不得报告“已是最新版”。新信任修订必须刷新目录后才能恢复新鲜状态。
 
