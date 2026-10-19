@@ -89,7 +89,7 @@ internal static class MihomoSystemdAcceptance
                 && states.Read()!.Installation.Ownership == RuntimeOwnership.Absent,
                 "A candidate grant for a different frozen installation is refused without creating a service");
             mismatchInstallationBinding = false;
-            var installation = await MihomoServerInstallationAcceptance.RunAsync(lifecycle, Plan(RuntimeChange.Install, older, "systemd-install"), published,
+            var installation = await MihomoServerInstallationAcceptance.RunAsync(lifecycle, Plan(RuntimeChange.Install, older, "systemd-install"), newer, published,
                 frame => { if (frame.Stage is { } stage) stages.Add(stage); });
             count += installation.Checks;
             var install = installation.Receipt;
@@ -314,7 +314,7 @@ internal static class MihomoSystemdAcceptance
             await File.WriteAllTextAsync(outside, "unchanged");
             await File.WriteAllTextAsync(Path.Combine(work, "hidden"), "host-temp-file");
             await File.WriteAllTextAsync(configuration, "# read-only input\n");
-            await File.WriteAllTextAsync(binary, $"""
+            await File.WriteAllTextAsync(binary, ($"""
                 #!/bin/sh
                 set -eu
                 test "$1" = -t
@@ -327,7 +327,7 @@ internal static class MihomoSystemdAcceptance
                 if /usr/bin/touch "$5" 2>/dev/null; then exit 31; fi
                 if /usr/bin/python3 -c 'import socket; socket.socket(socket.AF_INET, socket.SOCK_STREAM)' 2>/dev/null; then exit 32; fi
                 echo 'test is successful'
-                """ + "\n");
+                """ + "\n").Replace("\r\n", "\n", StringComparison.Ordinal));
             File.SetUnixFileMode(binary, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             await MihomoOperations.TestConfigurationAsync(binary, data, configuration);
             if (await File.ReadAllTextAsync(outside) != "unchanged" || await File.ReadAllTextAsync(Path.Combine(data, "proof")) != "isolated")

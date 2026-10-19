@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Http.Json;
 using System.Reflection;
 using Avalonia;
@@ -131,14 +131,66 @@ var runtimeRecovery = new RuntimeRecoverySnapshot(true, runtimePendingId, Runtim
 RuntimePlanResult runtimePlan = new(new RuntimeChangePlan(new RuntimePlanRequest(runtimeInstallation.InstallationId,
     runtimeInstallation.HostId, RuntimeChange.Update, runtimeInstallation.StateRevision, runtimeCatalog.Revision, 7,
     "rel-1160", "idem", false), "sing-box", runtimeCatalog.Releases[0], "rel-1143"), []);
+var mihomoCalls = new List<string>();
+var mihomoElevation = "";
+using (var mihomoHttp = new HttpClient(new Handler(request =>
+{
+    var path = request.RequestUri!.AbsolutePath;
+    mihomoCalls.Add(request.Method.Method + " " + path);
+    if (path == PrivilegedApiRoutes.Elevation)
+    {
+        mihomoElevation = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+        return Json(HttpStatusCode.OK, new HostElevationResult(true));
+    }
+    if (path == RuntimeRoutes.MihomoInstallation)
+        return Json(HttpStatusCode.OK, new RuntimeInstallationSnapshot(runtimeInstallation with { RuntimeId = "mihomo" }, null, null, null, null, null, null));
+    if (path == RuntimeRoutes.MihomoRecovery) return Json(HttpStatusCode.OK, runtimeRecovery);
+    if (path == RuntimeRoutes.MihomoRecoveryRetry) return Json(HttpStatusCode.OK, new RuntimeSwitchResult(runtimePendingId, RuntimeSwitchOutcome.Succeeded, null));
+    if (path == RuntimeRoutes.MihomoPlan) return Json(HttpStatusCode.OK, new RuntimePlanResult(null, ["runtime.release_untrusted"]));
+    if (path.StartsWith("/api/v1.0/installations/", StringComparison.Ordinal)) return Json(HttpStatusCode.OK,
+        new InstallationOperationDto(runtimeOperationId, InstallationServiceId.Mihomo, InstallationOperationKind.Upgrade,
+            InstallationOperationState.Queued, InstallationStage.Queued, null, null, DateTimeOffset.UtcNow, null, null, false));
+    return Json(HttpStatusCode.NotFound, new { code = "runtime.request_failed" });
+})))
+{
+    var mihomoClient = new MihomoRuntimeCatalogClient(mihomoHttp, session);
+    Check(mihomoClient.RuntimeId == "mihomo" && !mihomoClient.SupportsRecoveryStopAndClose,
+        "Mihomo has an explicit runtime binding and advertises only its implemented recovery actions");
+    await mihomoClient.InstallationAsync(default);
+    await mihomoClient.PlanAsync("source", runtimePlan.Plan!.Request, default);
+    await mihomoClient.RecoveryAsync(default);
+    await mihomoClient.RetryRecoveryAsync(runtimePendingId, default);
+    await mihomoClient.StartAsync(InstallationOperationKind.Upgrade, new(true, runtimePlan.Plan with { RuntimeId = "mihomo", Release = runtimePlan.Plan.Release! with { RuntimeId = "mihomo" } }), "idem", default);
+    await mihomoClient.ElevateAsync("fixture", default);
+    Check(mihomoCalls.Contains("GET " + RuntimeRoutes.MihomoInstallation)
+        && mihomoCalls.Contains("POST " + RuntimeRoutes.MihomoPlan)
+        && mihomoCalls.Contains("GET " + RuntimeRoutes.MihomoRecovery)
+        && mihomoCalls.Contains("POST " + RuntimeRoutes.MihomoRecoveryRetry)
+        && mihomoCalls.Any(c => c.Contains("/installations/Mihomo/Upgrade", StringComparison.OrdinalIgnoreCase))
+        && !mihomoCalls.Any(c => c.Contains("sing-box", StringComparison.OrdinalIgnoreCase)),
+        "Mihomo observations, plans, ledger and recovery never use sing-box routes");
+    var elevationRequest = System.Text.Json.JsonSerializer.Deserialize<HostElevationRequest>(mihomoElevation, RelaxKonOSJsonOptions.Default);
+    Check(elevationRequest is { Capability: HostElevationCapability.MihomoInstall, Target: "mihomo" },
+        "Mihomo elevation binds its own capability and exact target");
+    var beforeManualRecovery = mihomoCalls.Count;
+    try { await mihomoClient.StopRecoveryAsync(runtimePendingId, default); throw new Exception("Unsupported stop was accepted"); }
+    catch (NotSupportedException) { }
+    try { await mihomoClient.CloseRecoveryAsync(runtimePendingId, default); throw new Exception("Unsupported close was accepted"); }
+    catch (NotSupportedException) { }
+    Check(mihomoCalls.Count == beforeManualRecovery, "Unimplemented Mihomo recovery actions never fall back to another runtime");
+    try { await mihomoClient.StartAsync(InstallationOperationKind.Upgrade, new(true, runtimePlan.Plan), "idem", default); throw new Exception("Cross-runtime plan accepted"); }
+    catch (ArgumentException) { }
+    Check(mihomoCalls.Count == beforeManualRecovery, "Mihomo rejects a sing-box frozen plan before any HTTP submission");
+}
 using (var runtimeHttp = new HttpClient(new Handler(request =>
 {
     var path = request.RequestUri!.AbsolutePath;
     runtimeCalls.Add(request.Method.Method + " " + path);
     if (path.EndsWith("/managed-runtimes/sources", StringComparison.Ordinal))
-        return Json(HttpStatusCode.OK, new[] { runtimeSource });
+        return Json(HttpStatusCode.OK, new[] { runtimeSource, runtimeSource with { RuntimeId = "mihomo" } });
     if (path.EndsWith("/catalog", StringComparison.Ordinal))
-        return Json(HttpStatusCode.OK, new RuntimeCatalogSnapshot(runtimeSource, runtimeCatalog, true, null));
+        return Json(HttpStatusCode.OK, new RuntimeCatalogSnapshot(runtimeSource, runtimeCatalog with
+            { Releases = runtimeCatalog.Releases.Append(runtimeCatalog.Releases[0] with { RuntimeId = "mihomo", ReleaseId = "other-runtime-release" }).ToArray() }, true, null));
     if (path.EndsWith("/refresh", StringComparison.Ordinal))
         return runtimeRefreshFails
             ? Json(HttpStatusCode.BadGateway, new { code = "runtime.catalog_missing" })
@@ -195,7 +247,7 @@ using (var runtimeHttp = new HttpClient(new Handler(request =>
     return Json(HttpStatusCode.NotFound, new { code = "runtime.source_not_found" });
 })))
 {
-    var catalogClient = new RemoteRuntimeCatalogClient(runtimeHttp, session);
+    var catalogClient = new SingBoxRuntimeCatalogClient(runtimeHttp, session);
     var rejected = false;
     try { await catalogClient.CatalogAsync("../escape", false, default); }
     catch (ArgumentException) { rejected = true; }
@@ -203,8 +255,8 @@ using (var runtimeHttp = new HttpClient(new Handler(request =>
 
     using var runtimeVm = new ProxyServerRuntimeViewModel(catalogClient);
     await runtimeVm.LoadAsync();
-    Check(runtimeVm.HasSources && runtimeVm.Releases.Count == 3,
-        "Runtime page lists the registered source and every catalog release");
+    Check(runtimeVm.Sources.Count == 1 && runtimeVm.Releases.Count == 3,
+        "Runtime page lists only sources and releases for its explicitly bound runtime");
     var blocked = runtimeVm.Releases.Single(option => option.Release.ReleaseId == "rel-rc");
     Check(blocked.HasBlocked && blocked.Blocked.Resolve() == LocalizedText.Get("proxy_server.runtime_problem.configuration_unsupported"),
         "A release without declared configuration support shows its block reason");
@@ -344,9 +396,10 @@ using (var runtimeHttp = new HttpClient(new Handler(request =>
     {
         var path = request.RequestUri!.AbsolutePath;
         if (path.EndsWith("/managed-runtimes/sources", StringComparison.Ordinal))
-            return Json(HttpStatusCode.OK, new[] { runtimeSource });
+            return Json(HttpStatusCode.OK, new[] { runtimeSource, runtimeSource with { RuntimeId = "mihomo" } });
         if (path.EndsWith("/catalog", StringComparison.Ordinal))
-            return Json(HttpStatusCode.OK, new RuntimeCatalogSnapshot(runtimeSource, runtimeCatalog, true, null));
+            return Json(HttpStatusCode.OK, new RuntimeCatalogSnapshot(runtimeSource, runtimeCatalog with
+            { Releases = runtimeCatalog.Releases.Append(runtimeCatalog.Releases[0] with { RuntimeId = "mihomo", ReleaseId = "other-runtime-release" }).ToArray() }, true, null));
         if (path.EndsWith("/sing-box/installation", StringComparison.Ordinal))
             return Json(HttpStatusCode.OK, new RuntimeInstallationSnapshot(runtimeInstallation, "1.14.3", null, null, null, null, null, null, runtimeInstalled));
         if (path.EndsWith("/sing-box/plan", StringComparison.Ordinal))
@@ -372,7 +425,7 @@ using (var runtimeHttp = new HttpClient(new Handler(request =>
                 null, problem, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, cancellable);
     })))
     {
-        var cancelClient = new RemoteRuntimeCatalogClient(cancelHttp, session);
+        var cancelClient = new SingBoxRuntimeCatalogClient(cancelHttp, session);
         using var cancelVm = new ProxyServerRuntimeViewModel(cancelClient);
         await cancelVm.LoadAsync();
         cancelVm.CanManage = true;

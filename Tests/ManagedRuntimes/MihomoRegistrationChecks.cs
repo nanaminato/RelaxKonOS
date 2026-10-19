@@ -19,6 +19,7 @@ internal static class MihomoRegistrationChecks
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
             { ApplicationName = typeof(MihomoRegistrationChecks).Assembly.GetName().Name, ContentRootPath = temporary.Path, EnvironmentName = "Testing" });
         builder.AddProxyServices();
+        builder.AddDeploymentServices();
         var database = System.IO.Path.Combine(temporary.Path, "registration.db");
         builder.Services.Configure<RelaxKonOS.Server.Storage.StorageOptions>(options => options.DatabasePath = database);
         builder.AddServerStorage(new RelaxKonOS.Server.Storage.StorageOptions { DatabasePath = database }, "sqlite");
@@ -32,7 +33,8 @@ internal static class MihomoRegistrationChecks
         void Check(bool ok, string name) { if (!ok) throw new Exception(name); count++; }
         var store = services.GetRequiredService<MihomoPublicationStore>();
         Check(ReferenceEquals(store, services.GetRequiredService<MihomoPublicationStore>()), "Default publication authority and gate are singleton");
-        Check(services.GetRequiredService<MihomoRuntimeService>() is not null
+        Check(services.GetRequiredService<MihomoRuntimeRecoveryService>() is not null
+            && services.GetRequiredService<MihomoRuntimeService>() is not null
             && services.GetRequiredService<MihomoConfigurationPublicationService>() is not null
             && services.GetRequiredService<MihomoInstallationPublicationService>() is not null
             && services.GetRequiredService<MihomoInstallationBootstrapService>() is not null
@@ -41,6 +43,10 @@ internal static class MihomoRegistrationChecks
         Check(scope.ServiceProvider.GetRequiredService<IProxyConfigurationTransactionService>() is ProxyConfigurationTransactionService
             && services.GetRequiredService<IProxySettingsService>() is MihomoSettingsService,
             "Default profile and settings writers resolve the shared publication authority");
+        Check(services.GetRequiredService<RelaxKonOS.Server.Installations.MihomoRuntimeInstallationService>() is not null
+            && !builder.Services.Any(x => x.ServiceType == typeof(RelaxKonOS.Server.Installations.IInstallationService)
+                && x.ImplementationType == typeof(RelaxKonOS.Server.Installations.MihomoRuntimeInstallationService)),
+            "Managed Mihomo adapter resolves while public registration awaits both current clients");
         Check(builder.Services.Any(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType == typeof(MihomoPublicationRecoveryService)),
             "Default startup registers pending publication recovery");
         return count;

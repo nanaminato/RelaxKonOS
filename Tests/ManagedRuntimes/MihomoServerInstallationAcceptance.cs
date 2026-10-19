@@ -3,6 +3,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.PrivilegedHelper;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Installations;
+using RelaxKonOS.Protocol.Proxy;
+using RelaxKonOS.Server.Installations;
+using System.Text.Json;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.HostMode;
@@ -16,7 +20,7 @@ using RelaxKonOS.Server.Proxy.Mihomo;
 internal static class MihomoServerInstallationAcceptance
 {
     internal static async Task<(RuntimeSwitchResult Receipt, int Checks)> RunAsync(MihomoRuntimeLifecycle lifecycle,
-        RuntimeChangePlan plan, MihomoPublishedRuntime material, Action<PrivilegedOperationFrame> report)
+        RuntimeChangePlan plan, RuntimeRelease newer, MihomoPublishedRuntime material, Action<PrivilegedOperationFrame> report)
     {
         var count = 0;
         void Check(bool ok, string name) { if (!ok) throw new Exception(name); count++; }
@@ -26,7 +30,14 @@ internal static class MihomoServerInstallationAcceptance
         var keys = new DirectoryInfo(Path.Combine(root, "keys"));
         var store = new MihomoPublicationStore(paths, DataProtectionProvider.Create(keys));
         var transport = new Transport(lifecycle, report);
-        var operationId = Guid.NewGuid();
+        using var lifetime = new ManagedRuntimeLedgerFixture.Lifetime();
+        var ledger = new InstallationOperationStore(new ManagedRuntimeLedgerFixture.Environment(root));
+        var request = new ManagedRuntimeInstallationRequest(true, plan);
+        var entry = ledger.Create(InstallationServiceId.Mihomo, InstallationOperationKind.Install, "native-ledger", plan.Request.IdempotencyKey,
+            InstallationOperationStore.Reference(JsonSerializer.Serialize(request)), ["service:Mihomo", "runtime:mihomo"], out _);
+        var operationId = entry.Operation.OperationId;
+        ledger.Update(operationId, operation => operation with { State = InstallationOperationState.Running,
+            Stage = InstallationStage.Preflight, StartedAt = DateTimeOffset.UtcNow }, "started");
         (MihomoRuntimeService Runtime, MihomoInstallationPublicationService Install, MihomoConfigurationPublicationService Configuration) Compose(MihomoPublicationStore authority)
         {
             var provider = new MihomoRuntimeAuthorizationProvider(authority, paths, paths);
@@ -51,12 +62,13 @@ internal static class MihomoServerInstallationAcceptance
                 && !File.Exists(active), "Real installed receipt precedes Server confirmation even when its response is lost");
             store = new(paths, DataProtectionProvider.Create(keys));
             var restarted = Compose(store);
-            using (var startup = new MihomoPublicationRecoveryService(store, restarted.Configuration, restarted.Install, new(store, restarted.Runtime, paths),
-                NullLogger<MihomoPublicationRecoveryService>.Instance))
-            {
-                await startup.StartAsync(default);
-                await startup.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(15));
-            }
+            var unusedSettings = MihomoPublicationTransactionChecks.Stub<IProxySettingsService>(_ => throw new Exception("Ledger recovery read settings"));
+            var domain = new MihomoRuntimeInstallationService(store, restarted.Runtime,
+                new(store, restarted.Install, unusedSettings, paths, new()), restarted.Install, new(store, restarted.Runtime, paths, MihomoRemovalHostFixture.Files(paths)));
+            var coordinator = new InstallationCoordinator(ledger, [domain], lifetime);
+            await coordinator.StartAsync(default);
+            Check(coordinator.Get(operationId)!.Operation.State == InstallationOperationState.Succeeded,
+                "Installation ledger startup confirms real pending installation publication before reporting success");
             var confirmed = await store.ReadAsync(default);
             Check(confirmed is { Pending: null, Published: not null } && confirmed.Identity == installed.ConfigurationIdentity
                 && await File.ReadAllTextAsync(active) == material.Yaml && transport.InstallCalls == 1 && transport.RecoveryCalls == 0,
@@ -65,6 +77,44 @@ internal static class MihomoServerInstallationAcceptance
                 "Ordinary runtime authority becomes available only after the actual installation is confirmed");
             Check((await restarted.Install.InstallAsync(operationId, 0, plan, material, default)).Outcome == MihomoPublicationOutcome.Confirmed
                 && transport.InstallCalls == 1, "Real first-install replay returns its verified result without another installation");
+            var replay = coordinator.Start(InstallationServiceId.Mihomo, InstallationOperationKind.Install,
+                JsonSerializer.SerializeToElement(request, new JsonSerializerOptions(JsonSerializerDefaults.Web)), "native-ledger", plan.Request.IdempotencyKey);
+            Check(replay.OperationId == operationId && transport.InstallCalls == 1, "Ledger replay retains operation identity and never repeats real install");
+            foreach (var change in new[] { RuntimeChange.Repair, RuntimeChange.Update, RuntimeChange.Rollback, RuntimeChange.Uninstall, RuntimeChange.Install })
+            {
+                var current = await lifecycle.QueryAsync(default);
+                var selected = change == RuntimeChange.Update ? newer : plan.Release!;
+                var key = "native-ledger-" + change;
+                var nextPlan = new RuntimeChangePlan(new(current.Installation.InstallationId, current.Installation.HostId, change,
+                    current.Installation.StateRevision, plan.Request.ExpectedCatalogRevision, plan.Request.ExpectedTrustRevision,
+                    change == RuntimeChange.Uninstall ? null : selected.ReleaseId, key), "mihomo",
+                    change == RuntimeChange.Uninstall ? null : selected, current.Installation.ActiveReleaseId);
+                var kind = change switch
+                {
+                    RuntimeChange.Repair => InstallationOperationKind.Repair, RuntimeChange.Update => InstallationOperationKind.Upgrade,
+                    RuntimeChange.Rollback => InstallationOperationKind.Rollback, RuntimeChange.Uninstall => InstallationOperationKind.Uninstall,
+                    _ => InstallationOperationKind.Install
+                };
+                var operation = coordinator.Start(InstallationServiceId.Mihomo, kind,
+                    JsonSerializer.SerializeToElement(new ManagedRuntimeInstallationRequest(true, nextPlan), new JsonSerializerOptions(JsonSerializerDefaults.Web)), "native-ledger", key);
+                var terminal = await ManagedRuntimeLedgerFixture.TerminalAsync(coordinator, operation.OperationId);
+                var after = await lifecycle.QueryAsync(default, operation.OperationId);
+                Check(terminal.State == InstallationOperationState.Succeeded && after.Receipt is { Outcome: RuntimeSwitchOutcome.Succeeded }
+                    && (change == RuntimeChange.Uninstall ? after.Installation.Ownership == RuntimeOwnership.Absent
+                        : after.Installation.ActiveReleaseId == selected.ReleaseId && after.Installation.Ownership == RuntimeOwnership.Managed)
+                    && (await store.ReadAsync(default)).Pending is null,
+                    "Real ledger action reconciles runtime and publication after response loss: " + change + ": " + terminal.ProblemCode);
+            }
+            var ledgerText = await File.ReadAllTextAsync(Path.Combine(root, "data", "installation-operations.json"));
+            using (var document = JsonDocument.Parse(ledgerText))
+            {
+                var measured = document.RootElement.GetProperty("audit").EnumerateArray().Select(item => item.GetProperty("stage").GetString()).ToArray();
+                Check(measured.Contains("Downloading") && measured.Contains("Verifying") && measured.Contains("HealthChecking"),
+                    "Real lifecycle ledger records measured Host preparation and health stages");
+            }
+            Check(!ledgerText.Contains(material.ControllerSecret, StringComparison.Ordinal) && !ledgerText.Contains("MATCH,DIRECT", StringComparison.Ordinal),
+                "Real lifecycle ledger stores neither credentials nor configuration text");
+            await coordinator.StopAsync(default);
             return (installed.Receipt!, count);
         }
         finally
@@ -82,7 +132,7 @@ internal static class MihomoServerInstallationAcceptance
             request = request with { OperationId = request.OperationId ?? Guid.NewGuid() };
             if (request.Operation == PrivilegedOperationKind.MihomoRuntimeExecute) InstallCalls++;
             if (request.Operation == PrivilegedOperationKind.MihomoRuntimeRecover) RecoveryCalls++;
-            var result = await MihomoRuntimeOperations.ExecuteAsync(request, () => lifecycle, frame => { report(frame); return Task.CompletedTask; });
+            var result = await MihomoRuntimeOperations.ExecuteAsync(request, () => lifecycle, async frame => { report(frame); await PrivilegedFrameReader.ReportAsync(frame); });
             if (request.Operation == PrivilegedOperationKind.MihomoRuntimeExecute)
                 throw new IOException("Simulated response loss after real Helper first install");
             return result;

@@ -18,6 +18,12 @@ public sealed class InstallationCancelledException(string problemCode) : Excepti
     public string ProblemCode { get; } = problemCode;
 }
 
+/// <summary>The transaction was interrupted and reconciled; this is distinct from user cancellation or failure.</summary>
+public sealed class InstallationInterruptedException(string problemCode) : Exception(problemCode)
+{
+    public string ProblemCode { get; } = problemCode;
+}
+
 public sealed record InstallationProgress(InstallationStage Stage, int? Progress = null, bool Cancellable = false);
 public interface IInstallationProgress
 {

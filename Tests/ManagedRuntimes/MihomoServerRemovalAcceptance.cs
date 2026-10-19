@@ -26,8 +26,12 @@ internal static class MihomoServerRemovalAcceptance
         var protection = DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(root, "keys")));
         var store = new MihomoPublicationStore(paths, protection);
         var transport = new Transport(lifecycle);
+        var hostProxy = new MihomoRemovalHostFixture(Path.Combine(root, "host-proxy"));
+        var settingsFiles = new MihomoSettingsPublicationFiles(paths, hostProxy);
+        var settingsPath = Path.Combine(paths.GetStateDirectory(), "mihomo-settings.json");
+        async Task<ProxySettingsDto> SettingsAsync() => System.Text.Json.JsonSerializer.Deserialize<ProxySettingsDto>(await File.ReadAllBytesAsync(settingsPath))!;
         MihomoRuntimeService Runtime() => new(transport, store, new(store, paths, paths), paths);
-        MihomoRemovalPublicationService Service() => new(store, Runtime(), paths);
+        MihomoRemovalPublicationService Service() => new(store, Runtime(), paths, settingsFiles);
         var active = Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml");
         var operation = Guid.NewGuid();
         try
@@ -36,6 +40,10 @@ internal static class MihomoServerRemovalAcceptance
             Check(measured.Installation.Ownership == RuntimeOwnership.Managed
                 && measured.ConfigurationIdentity == MihomoPublicationStore.Identity(material.Yaml),
                 "Removal starts from a real installed and matching published configuration");
+            var preferences = new ProxySettingsDto(true, false, true, false, true, "info", material.Listeners.First().Port,
+                true, "127.0.0.1", ProxyTunSettingsDto.Default, ProxySystemProxyOptionsDto.Default);
+            await hostProxy.SeedAsync(paths, preferences);
+            hostProxy.HttpsProxy = "http://external-edit.invalid:9443";
             var seed = Guid.NewGuid(); await store.BeginAsync(seed, 0, material, default);
             Directory.CreateDirectory(paths.GetProtectedConfigurationDirectory()); await File.WriteAllTextAsync(active, material.Yaml);
             await store.ConfirmAsync(seed, measured.ConfigurationIdentity!, default);
@@ -46,16 +54,32 @@ internal static class MihomoServerRemovalAcceptance
                 && removed.ConfigurationIdentity == (plan.Request.KeepData ? measured.ConfigurationIdentity : null)
                 && (await store.ReadAsync(default)).Pending?.RemovalPlan is not null && File.Exists(active),
                 "Real Helper removal commits before Server cleanup and a lost response preserves durable acceptance");
+            Check((await store.ReadAsync(default)).Pending?.Settings is not null && hostProxy.Calls == 0
+                && (await SettingsAsync()).SystemProxyEnabled,
+                "Real native receipt does not silently confirm removal before host proxy cleanup");
             if (!plan.Request.KeepData) File.Delete(active); // Measured receipt already proves removal; simulate mirror-cleanup crash.
             store = new(paths, protection);
             var runtime = Runtime(); var authorization = new MihomoRuntimeAuthorizationProvider(store, paths, paths);
+            hostProxy.Failures = 1;
             using var startup = new MihomoPublicationRecoveryService(store, new(store, authorization, runtime, paths),
                 new(store, authorization, runtime, paths), Service(), NullLogger<MihomoPublicationRecoveryService>.Instance);
             await startup.StartAsync(default); await startup.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(15));
+            Check((await store.ReadAsync(default)).Pending?.Settings is not null && hostProxy.Calls == 1
+                && (await SettingsAsync()).SystemProxyEnabled && transport.Removals == 1,
+                "Real runtime absence plus rejected host cleanup keeps Server removal pending");
+            var recoveryEntry = new MihomoRuntimeRecoveryService(store, runtime, new(store, authorization, runtime, paths),
+                new(store, authorization, runtime, paths), Service());
+            var recoveryResult = await recoveryEntry.RetryAsync(operation, default);
+            Check(recoveryResult.OperationId == operation && recoveryResult.Outcome == RuntimeSwitchOutcome.Succeeded,
+                "Named recovery entry confirms the complete native and Server removal commit");
             var state = await store.ReadAsync(default);
             Check(state is { Pending: null, LastRemoval.Confirmed: true } && (state.Published is not null) == plan.Request.KeepData
                 && File.Exists(active) == plan.Request.KeepData && transport.Removals == 1 && transport.Recoveries == 0,
                 "Startup reconciles the real receipt and exact Server cleanup window without repeating removal");
+            Check(await SettingsAsync() == (preferences with { SystemProxyEnabled = false })
+                && hostProxy.HttpProxy == MihomoRemovalHostFixture.Original && hostProxy.HttpsProxy == "http://external-edit.invalid:9443"
+                && hostProxy.Calls == 2,
+                "Real removal recovery restores owned host proxy, preserves external edits and persists only disabled activation");
             Check((await Service().RemoveAsync(operation, plan, default)).Outcome == MihomoPublicationOutcome.Confirmed
                 && transport.Removals == 1, "Real completed uninstall replays once without another Helper mutation");
             if (reinstall is not null)
@@ -66,6 +90,8 @@ internal static class MihomoServerRemovalAcceptance
                 Check(installed.Outcome == MihomoPublicationOutcome.Confirmed && transport.Installs == 1
                     && (await store.ReadAsync(default)).Published!.Yaml == material.Yaml,
                     "Real retained reinstall uses the same confirmed Server material without reading drafts or generating credentials");
+                Check(!(await SettingsAsync()).SystemProxyEnabled && hostProxy.HttpProxy == MihomoRemovalHostFixture.Original && hostProxy.Calls == 2,
+                    "Retained reinstall never silently re-enables the removed runtime's host proxy");
             }
             return count;
         }

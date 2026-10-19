@@ -96,6 +96,7 @@ public sealed class InstallationCoordinator(InstallationOperationStore store, IE
             Complete(id, lifetime.ApplicationStopping.IsCancellationRequested ? InstallationOperationState.Interrupted : InstallationOperationState.Cancelled,
                 lifetime.ApplicationStopping.IsCancellationRequested ? InstallationProblemCodes.Interrupted : InstallationProblemCodes.Cancelled);
         }
+        catch (InstallationInterruptedException error) { Complete(id, InstallationOperationState.Interrupted, error.ProblemCode); }
         catch (InstallationCancelledException error) { Complete(id, InstallationOperationState.Cancelled, error.ProblemCode); }
         catch (InstallationException error) { Complete(id, InstallationOperationState.Failed, error.ProblemCode); }
         catch { Complete(id, InstallationOperationState.Failed, InstallationProblemCodes.Failed); }
@@ -141,7 +142,7 @@ public sealed class InstallationCoordinator(InstallationOperationStore store, IE
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
                 catch { recovery = new(InstallationOperationState.Failed, InstallationProblemCodes.RecoveryUnknown); }
             }
-            if (recovery.State is not (InstallationOperationState.Succeeded or InstallationOperationState.Interrupted or InstallationOperationState.Failed))
+            if (recovery.State is not (InstallationOperationState.Succeeded or InstallationOperationState.Interrupted or InstallationOperationState.Failed or InstallationOperationState.Cancelled))
                 recovery = new(InstallationOperationState.Failed, InstallationProblemCodes.RecoveryUnknown);
             Complete(entry.Operation.OperationId, recovery.State, recovery.ProblemCode, "recovered");
         }

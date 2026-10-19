@@ -15,6 +15,8 @@ namespace RelaxKonOS.Client.Apps.ProxyServer;
 /// </summary>
 public interface IRuntimeCatalogClient
 {
+    string RuntimeId { get; }
+    bool SupportsRecoveryStopAndClose { get; }
     Task<IReadOnlyList<RuntimeSourceView>> SourcesAsync(CancellationToken ct);
     Task<RuntimeCatalogSnapshot> CatalogAsync(string sourceId, bool includePrerelease, CancellationToken ct);
     Task<RuntimeCatalogSnapshot> RefreshAsync(string sourceId, bool includePrerelease, CancellationToken ct);
@@ -32,9 +34,17 @@ public interface IRuntimeCatalogClient
     Task<bool> ElevateAsync(string password, CancellationToken ct);
 }
 
-public sealed class RemoteRuntimeCatalogClient(HttpClient http, IAuthSession session) : IRuntimeCatalogClient
+public class RemoteRuntimeCatalogClient(HttpClient http, IAuthSession session, InstallationServiceId service) : IRuntimeCatalogClient
 {
     private readonly object? _login = session.CurrentSession;
+    private readonly InstallationServiceId _service = service is InstallationServiceId.SingBox or InstallationServiceId.Mihomo
+        ? service : throw new ArgumentOutOfRangeException(nameof(service));
+    public string RuntimeId => _service == InstallationServiceId.SingBox ? "sing-box" : "mihomo";
+    public bool SupportsRecoveryStopAndClose => _service == InstallationServiceId.SingBox;
+    private string InstallationRoute => _service == InstallationServiceId.SingBox ? RuntimeRoutes.SingBoxInstallation : RuntimeRoutes.MihomoInstallation;
+    private string PlanRoute => _service == InstallationServiceId.SingBox ? RuntimeRoutes.SingBoxPlan : RuntimeRoutes.MihomoPlan;
+    private string RecoveryRoute => _service == InstallationServiceId.SingBox ? RuntimeRoutes.SingBoxRecovery : RuntimeRoutes.MihomoRecovery;
+    private string RecoveryRetryRoute => _service == InstallationServiceId.SingBox ? RuntimeRoutes.SingBoxRecoveryRetry : RuntimeRoutes.MihomoRecoveryRetry;
 
     public Task<IReadOnlyList<RuntimeSourceView>> SourcesAsync(CancellationToken ct) =>
         SendAsync<IReadOnlyList<RuntimeSourceView>>(HttpMethod.Get, RuntimeRoutes.Sources, null, null, ct);
@@ -47,16 +57,21 @@ public sealed class RemoteRuntimeCatalogClient(HttpClient http, IAuthSession ses
             Guid.NewGuid().ToString("N"), ct);
 
     public Task<RuntimeInstallationSnapshot> InstallationAsync(CancellationToken ct) =>
-        SendAsync<RuntimeInstallationSnapshot>(HttpMethod.Get, RuntimeRoutes.SingBoxInstallation, null, null, ct);
+        SendAsync<RuntimeInstallationSnapshot>(HttpMethod.Get, InstallationRoute, null, null, ct);
 
     public Task<RuntimePlanResult> PlanAsync(string? sourceId, RuntimePlanRequest request, CancellationToken ct) =>
-        SendAsync<RuntimePlanResult>(HttpMethod.Post, RuntimeRoutes.SingBoxPlan, new RuntimePlanSelection(sourceId, request),
+        SendAsync<RuntimePlanResult>(HttpMethod.Post, PlanRoute, new RuntimePlanSelection(sourceId, request),
             Guid.NewGuid().ToString("N"), ct);
 
     public Task<InstallationOperationDto?> StartAsync(InstallationOperationKind kind, ManagedRuntimeInstallationRequest request,
-        string key, CancellationToken ct) =>
-        SendAsync<InstallationOperationDto?>(HttpMethod.Post, InstallationApiRoutes.Start(InstallationServiceId.SingBox, kind),
+        string key, CancellationToken ct)
+    {
+        if (request.Plan is not { } plan || plan.RuntimeId != RuntimeId
+            || plan.Release is { } release && release.RuntimeId != RuntimeId)
+            throw new ArgumentException("runtime.request_invalid", nameof(request));
+        return SendAsync<InstallationOperationDto?>(HttpMethod.Post, InstallationApiRoutes.Start(_service, kind),
             request, key, ct);
+    }
 
     public Task<InstallationOperationDto?> OperationAsync(Guid id, CancellationToken ct) =>
         SendAsync<InstallationOperationDto?>(HttpMethod.Get, InstallationApiRoutes.Operation(id), null, null, ct);
@@ -65,24 +80,28 @@ public sealed class RemoteRuntimeCatalogClient(HttpClient http, IAuthSession ses
         SendAsync<InstallationOperationDto?>(HttpMethod.Post, InstallationApiRoutes.Cancel(id), new { }, key, ct);
 
     public Task<RuntimeRecoverySnapshot> RecoveryAsync(CancellationToken ct) =>
-        SendAsync<RuntimeRecoverySnapshot>(HttpMethod.Get, RuntimeRoutes.SingBoxRecovery, null, null, ct);
+        SendAsync<RuntimeRecoverySnapshot>(HttpMethod.Get, RecoveryRoute, null, null, ct);
 
     public Task<RuntimeSwitchResult> RetryRecoveryAsync(Guid operationId, CancellationToken ct) =>
-        SendAsync<RuntimeSwitchResult>(HttpMethod.Post, RuntimeRoutes.SingBoxRecoveryRetry,
+        SendAsync<RuntimeSwitchResult>(HttpMethod.Post, RecoveryRetryRoute,
             new RuntimeRecoveryActionRequest(operationId), Guid.NewGuid().ToString("N"), ct);
 
     public Task<RuntimeRecoverySnapshot> StopRecoveryAsync(Guid operationId, CancellationToken ct) =>
-        SendAsync<RuntimeRecoverySnapshot>(HttpMethod.Post, RuntimeRoutes.SingBoxRecoveryStop,
+        SendAsync<RuntimeRecoverySnapshot>(HttpMethod.Post, RequireManualRecovery(RuntimeRoutes.SingBoxRecoveryStop),
             new RuntimeRecoveryActionRequest(operationId), Guid.NewGuid().ToString("N"), ct);
 
     public Task<RuntimeSwitchResult> CloseRecoveryAsync(Guid operationId, CancellationToken ct) =>
-        SendAsync<RuntimeSwitchResult>(HttpMethod.Post, RuntimeRoutes.SingBoxRecoveryClose,
+        SendAsync<RuntimeSwitchResult>(HttpMethod.Post, RequireManualRecovery(RuntimeRoutes.SingBoxRecoveryClose),
             new RuntimeRecoveryActionRequest(operationId, Confirmed: true), Guid.NewGuid().ToString("N"), ct);
 
     /// <summary>The same elevation grant the installation ledger requires, requested in place of a silent failure.</summary>
     public async Task<bool> ElevateAsync(string password, CancellationToken ct) =>
         (await SendAsync<HostElevationResult>(HttpMethod.Post, PrivilegedApiRoutes.Elevation,
-            new HostElevationRequest(HostElevationCapability.SingBoxInstall, "singbox", password), null, ct)).Elevated;
+            new HostElevationRequest(_service == InstallationServiceId.SingBox ? HostElevationCapability.SingBoxInstall : HostElevationCapability.MihomoInstall,
+                _service == InstallationServiceId.SingBox ? "singbox" : "mihomo", password), null, ct)).Elevated;
+
+    private string RequireManualRecovery(string route) => SupportsRecoveryStopAndClose
+        ? route : throw new NotSupportedException("runtime.recovery_action_unsupported");
 
     private static string CatalogRoute(string sourceId, bool includePrerelease) =>
         RuntimeRoutes.Catalog.Replace("{sourceId}", Segment(sourceId), StringComparison.Ordinal)
@@ -136,3 +155,10 @@ public sealed class RemoteRuntimeCatalogClient(HttpClient http, IAuthSession ses
             throw new InvalidOperationException("proxy_server.session_changed");
     }
 }
+
+/// <summary>Closed bindings selected by the owning application, never by a server-provided route.</summary>
+public sealed class SingBoxRuntimeCatalogClient(HttpClient http, IAuthSession session)
+    : RemoteRuntimeCatalogClient(http, session, InstallationServiceId.SingBox);
+public interface IMihomoRuntimeCatalogClient : IRuntimeCatalogClient { }
+public sealed class MihomoRuntimeCatalogClient(HttpClient http, IAuthSession session)
+    : RemoteRuntimeCatalogClient(http, session, InstallationServiceId.Mihomo), IMihomoRuntimeCatalogClient;

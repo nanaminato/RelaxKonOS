@@ -33,6 +33,8 @@ internal static class ProxyServiceRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoPublicationStore>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeAuthorizationProvider>();
         builder.Services.AddSingleton<RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeRecoveryService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoSettingsPublicationFiles>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoConfigurationPublicationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoInstallationPublicationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoInstallationBootstrapService>();

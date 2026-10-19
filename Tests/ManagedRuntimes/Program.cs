@@ -1,5 +1,29 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using RelaxKonOS.Protocol.ManagedRuntimes;
+
+if (args is ["mihomo-removal-publication-only"])
+{
+    Console.WriteLine($"Mihomo removal publication checks passed: {await MihomoRemovalPublicationChecks.RunAsync()}");
+    return;
+}
+
+if (args is ["mihomo-installation-publication-only"])
+{
+    Console.WriteLine($"Mihomo installation publication checks passed: {await MihomoInstallationPublicationChecks.RunAsync()}");
+    return;
+}
+
+if (args is ["mihomo-profile-only"])
+{
+    Console.WriteLine($"Mihomo profile publication checks passed: {await MihomoProfilePublicationChecks.RunAsync()}");
+    return;
+}
+
+if (args is ["mihomo-publication-only"])
+{
+    Console.WriteLine($"Mihomo Server publication transaction checks passed: {await MihomoPublicationTransactionChecks.RunAsync()}");
+    return;
+}
 
 if (args is ["mihomo-runtime-http-only"])
 {
@@ -211,6 +235,7 @@ Console.WriteLine($"Mihomo installation publication checks passed: {await Mihomo
 Console.WriteLine($"Mihomo removal publication checks passed: {await MihomoRemovalPublicationChecks.RunAsync()}");
 Console.WriteLine($"Mihomo publication authority checks passed: {await MihomoPublicationChecks.RunAsync()}");
 Console.WriteLine($"Mihomo Server publication transaction checks passed: {await MihomoPublicationTransactionChecks.RunAsync()}");
+Console.WriteLine($"Mihomo profile publication checks passed: {await MihomoProfilePublicationChecks.RunAsync()}");
 Console.WriteLine($"Mihomo default publication registration checks passed: {MihomoRegistrationChecks.Run()}");
 Console.WriteLine($"Mihomo runtime HTTP checks passed: {await MihomoRuntimeHttpChecks.RunAsync()}");
 Console.WriteLine($"Mihomo lifecycle boundary checks passed: {await MihomoLifecycleBoundaryChecks.RunAsync()}");

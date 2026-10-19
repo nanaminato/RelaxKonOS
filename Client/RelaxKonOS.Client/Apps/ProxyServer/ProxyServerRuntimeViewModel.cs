@@ -114,9 +114,9 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
             : "proxy_server.runtime.recovery_service.Absent");
     public bool HasRecoveryServiceProblem => _recovery?.ServiceProblem is not null;
     public bool CanRetryRecovery => CanManage && !IsBusy && !_invalidated && _recovery is { Required: true };
-    public bool CanEmergencyStop => CanRetryRecovery && _recovery?.Service is { Running: true };
+    public bool CanEmergencyStop => CanRetryRecovery && client.SupportsRecoveryStopAndClose && _recovery?.Service is { Running: true };
     /// <summary>Closing is only offered once the Host proves nothing runs and its own compensation already failed.</summary>
-    public bool CanCloseRecovery => CanRetryRecovery && _recovery is { NeedsOperatorDecision: true, Service.Running: false };
+    public bool CanCloseRecovery => CanRetryRecovery && client.SupportsRecoveryStopAndClose && _recovery is { NeedsOperatorDecision: true, Service.Running: false };
 
     /// <summary>
     /// Offered only while the Host itself reports the running operation as cancellable, so the page never shows
@@ -412,7 +412,7 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
         var sources = await client.SourcesAsync(_lifetime.Token);
         var previous = SelectedSource?.Identity.SourceId;
         _loading = true;
-        Sources.Clear(); foreach (var source in sources) Sources.Add(source);
+        Sources.Clear(); foreach (var source in sources.Where(s => s.RuntimeId == client.RuntimeId)) Sources.Add(source);
         SelectedSource = Sources.FirstOrDefault(s => s.Identity.SourceId == previous) ?? Sources.FirstOrDefault();
         _loading = false;
         NotifyDerived();
@@ -462,7 +462,7 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
         Releases.Clear();
         if (_catalog?.Catalog is { } catalog)
         {
-            foreach (var release in catalog.Releases.OrderByDescending(r => r.PublishedAt).ThenBy(r => r.OriginalVersion, StringComparer.Ordinal))
+            foreach (var release in catalog.Releases.Where(r => r.RuntimeId == client.RuntimeId).OrderByDescending(r => r.PublishedAt).ThenBy(r => r.OriginalVersion, StringComparer.Ordinal))
                 Releases.Add(new RuntimeReleaseOption(release, installed.Contains(release.ReleaseId), Blocked(release, target)));
         }
         SelectedRelease = Releases.FirstOrDefault(r => r.Release.ReleaseId == previous)

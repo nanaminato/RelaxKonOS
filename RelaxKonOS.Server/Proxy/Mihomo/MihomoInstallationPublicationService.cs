@@ -39,7 +39,7 @@ public sealed class MihomoInstallationPublicationService(MihomoPublicationStore 
         {
             if (completed.RequestHash != MihomoPublicationStore.InstallationRequestHash(plan, candidate))
                 throw new RuntimePolicyException("runtime.idempotency_conflict");
-            var observed = await runtime.QueryAsync(ct, operationId);
+            var observed = await runtime.QueryHelperAsync(ct, operationId);
             RequireInstance(plan, observed);
             if (observed.PendingOperationId is not null || observed.Installation.RecoveryRequired)
                 throw new RuntimePolicyException("runtime.recovery_required");
@@ -55,7 +55,7 @@ public sealed class MihomoInstallationPublicationService(MihomoPublicationStore 
             throw new RuntimePolicyException("runtime.publication_unconfirmed");
         }
         if (state.Revision != expectedPublicationRevision) throw new RuntimePolicyException("runtime.state_revision_conflict");
-        var before = await runtime.QueryAsync(ct, operationId);
+        var before = await runtime.QueryHelperAsync(ct, operationId);
         RequireInstance(plan, before);
         if (before.PendingOperationId is not null || before.Installation.RecoveryRequired)
             throw new RuntimePolicyException("runtime.recovery_required");
@@ -72,7 +72,7 @@ public sealed class MihomoInstallationPublicationService(MihomoPublicationStore 
         state = await store.BeginInstallationAsync(operationId, expectedPublicationRevision, candidate, plan, ct);
         // No client cancellation after durable acceptance. Lost responses retain the same frozen plan.
         var result = await runtime.InstallUnderGateAsync(operationId, plan, CancellationToken.None);
-        return await ResolveAsync(state, await runtime.QueryAsync(CancellationToken.None, operationId), result, false, CancellationToken.None);
+        return await ResolveAsync(state, await runtime.QueryHelperAsync(CancellationToken.None, operationId), result, false, CancellationToken.None);
     }
 
     public async Task<MihomoPublicationResult> RecoverAsync(Guid operationId, CancellationToken ct)
@@ -89,15 +89,15 @@ public sealed class MihomoInstallationPublicationService(MihomoPublicationStore 
         finally { store.Gate.Release(); }
     }
 
-    private async Task<MihomoPublicationResult> RecoverUnderGateAsync(MihomoPublicationState state, CancellationToken ct)
+    internal async Task<MihomoPublicationResult> RecoverUnderGateAsync(MihomoPublicationState state, CancellationToken ct)
     {
         var pending = state.Pending!;
-        var observed = await runtime.QueryAsync(ct, pending.OperationId);
+        var observed = await runtime.QueryHelperAsync(ct, pending.OperationId);
         RequireInstance(pending.InstallationPlan!, observed);
         if (observed.PendingOperationId == pending.OperationId || observed.Receipt is null)
         {
             var result = await runtime.RecoverInstallationUnderGateAsync(pending.OperationId, ct);
-            return await ResolveAsync(state, await runtime.QueryAsync(ct, pending.OperationId), result, result is null, ct);
+            return await ResolveAsync(state, await runtime.QueryHelperAsync(ct, pending.OperationId), result, result is null, ct);
         }
         return await ResolveAsync(state, observed, observed.Receipt, false, ct);
     }

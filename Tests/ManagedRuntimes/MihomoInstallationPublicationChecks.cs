@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging.Abstractions;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Installations;
+using RelaxKonOS.Server.Installations;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Proxy;
@@ -130,6 +132,129 @@ internal static class MihomoInstallationPublicationChecks
                 && f.SettingsReads == 1 && f.SecretCreations == 1 && f.Installs == 1,
                 "Confirmed installation replay retains exact published material without regenerating settings or credentials");
         }
+        using (var f = new Fixture())
+        {
+            var domain = f.LedgerAdapter();
+            JsonElement Options(RuntimeChangePlan plan, bool confirmed = true) => JsonSerializer.SerializeToElement(
+                new ManagedRuntimeInstallationRequest(confirmed, plan), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            foreach (var (kind, change) in new[] { (InstallationOperationKind.Install, RuntimeChange.Install),
+                (InstallationOperationKind.Upgrade, RuntimeChange.Update), (InstallationOperationKind.Repair, RuntimeChange.Repair),
+                (InstallationOperationKind.Rollback, RuntimeChange.Rollback), (InstallationOperationKind.Uninstall, RuntimeChange.Uninstall) })
+            {
+                var plan = f.Plan with { Request = f.Plan.Request with { Change = change, ReleaseId = change == RuntimeChange.Uninstall ? null : f.Plan.Release!.ReleaseId },
+                    Release = change == RuntimeChange.Uninstall ? null : f.Plan.Release };
+                Check(domain.Validate(kind, Options(plan), f.Plan.Request.IdempotencyKey) is ManagedRuntimeInstallationRequest,
+                    "Managed Mihomo ledger accepts the exact current plan contract: " + change);
+            }
+            void Refuse(string code, Func<object> call)
+            {
+                try { call(); }
+                catch (InstallationException ex) when (ex.ProblemCode == code) { count++; return; }
+                throw new Exception("Mihomo ledger accepted an invalid plan");
+            }
+            Refuse(InstallationProblemCodes.IdempotencyConflict, () => domain.Validate(InstallationOperationKind.Install, Options(f.Plan), "other-key"));
+            Refuse(InstallationProblemCodes.InvalidRequest, () => domain.Validate(InstallationOperationKind.Install, Options(f.Plan with { RuntimeId = "sing-box" }), f.Plan.Request.IdempotencyKey));
+            Refuse(InstallationProblemCodes.InvalidRequest, () => domain.Validate(InstallationOperationKind.Rollback, Options(f.Plan), f.Plan.Request.IdempotencyKey));
+            Refuse(InstallationProblemCodes.ConfirmationRequired, () => domain.Validate(InstallationOperationKind.Install, Options(f.Plan, false), f.Plan.Request.IdempotencyKey));
+        }
+        foreach (var mode in new[] { "success", "failed", "lost-response", "cancelled", "interrupted", "recovery", "lost-response-stop" })
+        {
+            using var f = new Fixture { Mode = mode, LedgerMode = true, AllowInitialMaterial = true };
+            using var lifetime = new ManagedRuntimeLedgerFixture.Lifetime();
+            if (mode == "lost-response-stop") f.ResponseLost = lifetime.StopApplication;
+            var ledger = new InstallationOperationStore(new ManagedRuntimeLedgerFixture.Environment(f.LedgerRoot));
+            var domain = f.LedgerAdapter();
+            var coordinator = new InstallationCoordinator(ledger, [domain], lifetime);
+            await coordinator.StartAsync(default);
+            var request = new ManagedRuntimeInstallationRequest(true, f.Plan);
+            var input = JsonSerializer.SerializeToElement(request, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            var operation = coordinator.Start(InstallationServiceId.Mihomo, InstallationOperationKind.Install, input, "ledger-actor", f.Plan.Request.IdempotencyKey);
+            var completed = await ManagedRuntimeLedgerFixture.TerminalAsync(coordinator, operation.OperationId);
+            var expected = mode switch
+            {
+                "success" or "lost-response" or "lost-response-stop" => InstallationOperationState.Succeeded,
+                "cancelled" => InstallationOperationState.Cancelled,
+                "interrupted" => InstallationOperationState.Interrupted,
+                _ => InstallationOperationState.Failed
+            };
+            Check(completed.State == expected && f.Installs == 1, "Mihomo ledger reflects durable native/publication outcome: " + mode);
+            if (mode == "lost-response-stop")
+                Check(ledger.Read().Single().Operation.State == InstallationOperationState.Succeeded && f.Installs == 1,
+                    "Shutdown during response loss never replaces a confirmed native result with an inferred interruption");
+            else Check(coordinator.Start(InstallationServiceId.Mihomo, InstallationOperationKind.Install, input, "ledger-actor", f.Plan.Request.IdempotencyKey).OperationId == operation.OperationId
+                && f.Installs == 1, "Mihomo ledger request replay never installs again: " + mode);
+            Check(mode == "recovery" ? (await f.Store.ReadAsync(default)).Pending is not null
+                : (await f.Store.ReadAsync(default)).Pending is null, "Mihomo ledger does not erase a pending publication: " + mode);
+            if (mode == "lost-response")
+                Check(f.Recoveries == 0 && f.SettingsReads == 1 && f.SecretCreations == 1,
+                    "Transport-loss reconciliation confirms exact install without native replay or new material");
+            var ledgerText = await File.ReadAllTextAsync(Path.Combine(f.LedgerRoot, "data", "installation-operations.json"));
+            Check(!ledgerText.Contains(f.Secret, StringComparison.Ordinal) && !ledgerText.Contains("MATCH,DIRECT", StringComparison.Ordinal),
+                "Mihomo ledger excludes callback secrets and published YAML: " + mode);
+            await coordinator.StopAsync(default);
+        }
+        foreach (var mode in new[] { "success", "failed", "cancelled", "interrupted", "recovery", "lost-response" })
+        {
+            using var f = new Fixture { Mode = mode, LedgerMode = true };
+            await f.SeedConfirmedAsync();
+            using var lifetime = new ManagedRuntimeLedgerFixture.Lifetime();
+            var ledger = new InstallationOperationStore(new ManagedRuntimeLedgerFixture.Environment(f.LedgerRoot));
+            var coordinator = new InstallationCoordinator(ledger, [f.LedgerAdapter()], lifetime);
+            await coordinator.StartAsync(default);
+            var repair = f.Plan with { Request = f.Plan.Request with { Change = RuntimeChange.Repair }, PreviousReleaseId = f.Plan.Release!.ReleaseId };
+            var operation = coordinator.Start(InstallationServiceId.Mihomo, InstallationOperationKind.Repair,
+                JsonSerializer.SerializeToElement(new ManagedRuntimeInstallationRequest(true, repair), new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+                "repair-actor", repair.Request.IdempotencyKey);
+            var terminal = await ManagedRuntimeLedgerFixture.TerminalAsync(coordinator, operation.OperationId);
+            var expected = mode switch
+            {
+                "success" or "lost-response" => InstallationOperationState.Succeeded,
+                "cancelled" => InstallationOperationState.Cancelled, "interrupted" => InstallationOperationState.Interrupted,
+                _ => InstallationOperationState.Failed
+            };
+            Check(terminal.State == expected && f.Installs == 1 && f.SettingsReads == 0 && f.SecretCreations == 0,
+                "Program-only ledger outcome preserves the original native result without bootstrap: " + mode);
+            Check((await f.Store.ReadAsync(default)) is { Pending: null, Published: not null }
+                && (mode != "failed" || terminal.ProblemCode == "runtime.native_configuration_invalid"),
+                "Program-only ledger preserves confirmed configuration and precise failure code: " + mode);
+            await coordinator.StopAsync(default);
+        }
+        using (var f = new Fixture { Mode = "wait-cancel", LedgerMode = true, AllowInitialMaterial = true })
+        {
+            using var lifetime = new ManagedRuntimeLedgerFixture.Lifetime();
+            var ledger = new InstallationOperationStore(new ManagedRuntimeLedgerFixture.Environment(f.LedgerRoot));
+            var coordinator = new InstallationCoordinator(ledger, [f.LedgerAdapter()], lifetime);
+            await coordinator.StartAsync(default);
+            var input = JsonSerializer.SerializeToElement(new ManagedRuntimeInstallationRequest(true, f.Plan), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            var operation = coordinator.Start(InstallationServiceId.Mihomo, InstallationOperationKind.Install, input, "cancel-actor", f.Plan.Request.IdempotencyKey);
+            await f.DownloadStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Check(coordinator.Get(operation.OperationId)!.Operation is { Stage: InstallationStage.Downloading, Cancellable: true },
+                "Mihomo ledger exposes cancellation only from the Host's preparation stage");
+            await coordinator.CancelAsync(operation.OperationId, default);
+            var terminal = await ManagedRuntimeLedgerFixture.TerminalAsync(coordinator, operation.OperationId);
+            Check(terminal.State == InstallationOperationState.Cancelled && f.CancelDeliveries == 1
+                && (await f.Store.ReadAsync(default)).Pending is null && (await f.Store.ReadAsync(default)).Published is null,
+                "Mihomo ledger delivers cancellation without releasing its worker before root compensation");
+            await coordinator.StopAsync(default);
+        }
+        using (var f = new Fixture { LedgerMode = true })
+        {
+            var result = await f.LedgerAdapter().RecoverAsync(new(f.Operation, InstallationServiceId.Mihomo, InstallationOperationKind.Install,
+                InstallationOperationState.Running, InstallationStage.Preflight, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, false), default);
+            Check(result.State == InstallationOperationState.Interrupted && result.ProblemCode == "runtime.operation_not_started"
+                && f.Recoveries == 1 && f.SecretCreations == 0 && f.SettingsReads == 0,
+                "Ledger recovery before publication acceptance proves Helper lock-backed absence without creating material");
+        }
+        using (var f = new Fixture { LedgerMode = true })
+        {
+            await f.Store.BeginInstallationAsync(f.Operation, 0, f.Material, f.Plan, default);
+            f.TransientRecoveryFailures = 1;
+            var result = await f.LedgerAdapter().RecoverAsync(new(f.Operation, InstallationServiceId.Mihomo, InstallationOperationKind.Install,
+                InstallationOperationState.Running, InstallationStage.Preflight, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, false), default);
+            Check(result.State == InstallationOperationState.Interrupted && f.Recoveries == 2
+                && (await f.Store.ReadAsync(default)).Pending is null && f.SecretCreations == 0,
+                "Busy install recovery retries the same named publication and never restarts installation");
+        }
         return count;
     }
 
@@ -144,19 +269,35 @@ internal static class MihomoInstallationPublicationChecks
     {
         private readonly string root = Path.Combine(Path.GetTempPath(), "mihomo-install-publication-" + Guid.NewGuid().ToString("N"));
         private readonly IDataProtectionProvider protection = new EphemeralDataProtectionProvider();
-        internal Guid Operation { get; } = Guid.NewGuid();
+        internal Guid Operation { get; private set; } = Guid.NewGuid();
         internal string Mode = "success";
         internal string Secret = "installation-publication-secret";
         internal int Installs, Recoveries;
         internal bool AllowInitialMaterial;
+        internal bool LedgerMode;
+        internal Action? ResponseLost;
+        internal int TransientRecoveryFailures;
+        internal int CancelDeliveries;
+        internal TaskCompletionSource DownloadStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource CancelSignal { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        internal string LedgerRoot => root;
+        internal MihomoRuntimeInstallationService LedgerAdapter()
+        {
+            var provider = new MihomoRuntimeAuthorizationProvider(Store, this, this);
+            var runtime = new MihomoRuntimeService(this, Store, provider, this);
+            return new(Store, runtime, new(Store, Service, this, this, new() { Endpoint = new("http://127.0.0.1:19090/") }), Service,
+                new(Store, runtime, this, MihomoRemovalHostFixture.Files(this)));
+        }
+
         internal int SettingsReads, SecretCreations;
         internal ProxySettingsDto Settings { get; } = new(false, false, true, false, false, "info", 18888);
         internal bool GateHeld, CandidateOnly;
         internal string Active => Path.Combine(GetProtectedConfigurationDirectory(), "active.yaml");
         internal MihomoPublishedRuntime Material { get; set; }
-        internal RuntimeChangePlan Plan { get; }
+        internal RuntimeChangePlan Plan { get; private set; }
         internal RuntimeInstallationSnapshot Snapshot { get; private set; }
-        internal MihomoRemovalPublicationService Removal => new(Store, new(this, Store, new(Store, this, this), this), this);
+        internal MihomoRemovalPublicationService Removal => new(Store, new(this, Store, new(Store, this, this), this), this, MihomoRemovalHostFixture.Files(this));
         internal MihomoPublicationStore Store { get; private set; } = null!;
         internal MihomoInstallationPublicationService Service { get; private set; } = null!;
         internal MihomoConfigurationPublicationService Configuration { get; private set; } = null!;
@@ -184,9 +325,26 @@ internal static class MihomoInstallationPublicationChecks
             Configuration = new(Store, provider, runtime, this);
         }
         internal Task<MihomoPublicationResult> InstallAsync() => Service.InstallAsync(Operation, 0, Plan, Material, default);
+        internal async Task SeedConfirmedAsync()
+        {
+            var operation = Guid.NewGuid();
+            await Store.BeginAsync(operation, 0, Material, default);
+            Directory.CreateDirectory(Path.GetDirectoryName(Active)!);
+            await File.WriteAllTextAsync(Active, Material.Yaml);
+            await Store.ConfirmAsync(operation, MihomoPublicationStore.Identity(Material.Yaml), default);
+            Snapshot = Snapshot with { Installation = Snapshot.Installation with { Ownership = RuntimeOwnership.Managed, ActiveReleaseId = Plan.Release!.ReleaseId },
+                ActiveRevisionId = Guid.NewGuid(), MeasuredVersion = "1.19.30", ConfigurationIdentity = MihomoPublicationStore.Identity(Material.Yaml) };
+        }
         internal void Commit(RuntimeSwitchOutcome outcome)
         {
             var success = outcome == RuntimeSwitchOutcome.Succeeded;
+            if (Plan.Request.Change != RuntimeChange.Install)
+            {
+                Snapshot = Snapshot with { Installation = Snapshot.Installation with { StateRevision = 5, RecoveryRequired = false },
+                    ActiveRevisionId = success ? Operation : Snapshot.ActiveRevisionId, PendingOperationId = null,
+                    Receipt = new(Operation, outcome, success ? null : "runtime.native_configuration_invalid") };
+                return;
+            }
             Snapshot = Snapshot with { Installation = Snapshot.Installation with { StateRevision = 5, RecoveryRequired = false,
                 Ownership = success ? RuntimeOwnership.Managed : RuntimeOwnership.Absent, ActiveReleaseId = success ? Plan.Release!.ReleaseId : null },
                 ActiveRevisionId = success ? Operation : null, MeasuredVersion = success ? "1.19.30" : null,
@@ -196,13 +354,46 @@ internal static class MihomoInstallationPublicationChecks
         public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken ct = default)
         {
             static PrivilegedOperationResult Json<T>(T value) => new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(value)));
-            if (request.Operation == PrivilegedOperationKind.MihomoRuntimeQuery) return Json(Snapshot);
+            if (request.Operation == PrivilegedOperationKind.MihomoRuntimeCancel)
+            {
+                if (request.RuntimeLifecycle?.CancelOperationId != Operation) throw new Exception("Wrong cancellation target");
+                CancelDeliveries++; CancelSignal.TrySetResult();
+                return Json(new RuntimeCancelRequestResult(Operation, true));
+            }
+            if (request.Operation == PrivilegedOperationKind.MihomoRuntimeQuery)
+                return Json(Snapshot with { Receipt = Snapshot.Receipt?.OperationId == request.OperationId ? Snapshot.Receipt : null });
+            if (LedgerMode && request.Operation == PrivilegedOperationKind.MihomoRuntimeExecute)
+            {
+                Operation = request.OperationId!.Value;
+                Plan = request.RuntimeLifecycle!.FrozenPlan!;
+                var state = await Store.ReadAsync(ct);
+                Material = Plan.Request.Change == RuntimeChange.Install ? state.Pending!.Candidate : state.Published!;
+            }
+            if (LedgerMode && request.Operation == PrivilegedOperationKind.MihomoRuntimeRecover)
+            {
+                if (TransientRecoveryFailures-- > 0) { Recoveries++; throw new RuntimeLifecycleException("runtime.instance_busy"); }
+                if ((await Store.ReadAsync(ct)).Pending is null && Snapshot.PendingOperationId is null)
+                {
+                    if (Store.Gate.CurrentCount != 0) throw new Exception("Recovery lacks publication gate");
+                    Recoveries++; return Json<RuntimeSwitchResult?>(null);
+                }
+            }
             if (Store.Gate.Wait(0)) { Store.Gate.Release(); throw new Exception("Install publication gate was not held"); }
             GateHeld = true;
             var channel = request.RuntimeLifecycle!.Authorization!;
-            var grant = await RuntimeAuthorizationClient.ReadAsync<MihomoInstallationAuthorization>(channel, request.OperationId!.Value, ct);
-            CandidateOnly = grant.OperationId == Operation && grant.PlanIdentity == MihomoRuntimeMaterial.InstallationPlanIdentity(Plan)
-                && (await Store.ReadAsync(default)).Published is null;
+            var candidateAllowed = true;
+            if (Plan.Request.Change == RuntimeChange.Install)
+            {
+                var grant = await RuntimeAuthorizationClient.ReadAsync<MihomoInstallationAuthorization>(channel, request.OperationId!.Value, ct);
+                CandidateOnly = grant.OperationId == Operation && grant.PlanIdentity == MihomoRuntimeMaterial.InstallationPlanIdentity(Plan)
+                    && (await Store.ReadAsync(default)).Published is null;
+                candidateAllowed = grant.Candidate is not null;
+            }
+            else
+            {
+                var grant = await RuntimeAuthorizationClient.ReadAsync<MihomoCurrentAuthorization>(channel, request.OperationId!.Value, ct);
+                if (grant.Published?.Yaml != Material.Yaml) throw new Exception("Wrong ordinary program authorization");
+            }
             if (request.Operation == PrivilegedOperationKind.MihomoRuntimeRecover)
             {
                 Recoveries++;
@@ -217,11 +408,22 @@ internal static class MihomoInstallationPublicationChecks
                     Installation = Snapshot.Installation with { StateRevision = 2, RecoveryRequired = true } };
                 return Json(new RuntimeSwitchResult(Operation, RuntimeSwitchOutcome.RecoveryRequired, "runtime.recovery_required"));
             }
-            Commit(Mode == "failed" || grant.Candidate is null ? RuntimeSwitchOutcome.Failed : RuntimeSwitchOutcome.Succeeded);
+            if (Mode == "wait-cancel")
+            {
+                await PrivilegedFrameReader.ReportAsync(PrivilegedOperationFrame.Report(InstallationStage.Downloading, cancellable: true));
+                DownloadStarted.TrySetResult();
+                await CancelSignal.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            if (LedgerMode)
+                foreach (var stage in new[] { InstallationStage.Downloading, InstallationStage.Verifying, InstallationStage.Activating, InstallationStage.HealthChecking })
+                    await PrivilegedFrameReader.ReportAsync(PrivilegedOperationFrame.Report(stage));
+            Commit(Mode == "failed" || !candidateAllowed ? RuntimeSwitchOutcome.Failed
+                : Mode is "cancelled" or "wait-cancel" ? RuntimeSwitchOutcome.Cancelled : Mode == "interrupted" ? RuntimeSwitchOutcome.Interrupted : RuntimeSwitchOutcome.Succeeded);
             if (Mode == "wrong-version") Snapshot = Snapshot with { MeasuredVersion = "9.0.0" };
             if (Mode == "wrong-revision") Snapshot = Snapshot with { ActiveRevisionId = Guid.NewGuid() };
             if (Mode == "mirror-drift") { Directory.CreateDirectory(Path.GetDirectoryName(Active)!); await File.WriteAllTextAsync(Active, "# unrelated file"); }
-            if (Mode == "lost-response") throw new IOException("Simulated loss after installed Helper receipt");
+            if (Mode is "lost-response" or "lost-response-stop")
+            { ResponseLost?.Invoke(); throw new IOException("Simulated loss after installed Helper receipt"); }
             return Json(Snapshot.Receipt);
         }
         public Task<string?> ReadExistingAsync(CancellationToken ct) => Task.FromResult<string?>(Secret);

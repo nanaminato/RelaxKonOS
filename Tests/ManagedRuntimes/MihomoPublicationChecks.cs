@@ -109,7 +109,7 @@ internal static class MihomoPublicationChecks
             RuntimeSwitchResult removal;
             try
             {
-                await store.BeginRemovalAsync(operationId, restored.Revision, plan, default);
+                await store.BeginRemovalAsync(operationId, restored.Revision, plan, await MihomoRemovalHostFixture.Files(paths).CaptureRemovalAsync(default), default);
                 removal = await service.RemoveUnderGateAsync(operationId, plan, default);
             }
             finally { store.Gate.Release(); }

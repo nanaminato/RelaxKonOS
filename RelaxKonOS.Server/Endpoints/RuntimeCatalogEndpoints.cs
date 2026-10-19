@@ -51,6 +51,18 @@ public static class RuntimeCatalogEndpoints
                 return Results.BadRequest();
             return await RespondAsync(async () => Results.Ok(await service.PlanAsync(request.SourceId, request.Request, ct)));
         }).RequireAuthorization(ManagePolicy);
+        group.MapGet(RuntimeRoutes.MihomoRecovery, async ([FromServices] MihomoRuntimeService service, CancellationToken ct) =>
+            await RespondAsync(async () => Results.Ok(await service.RecoveryAsync(ct))))
+            .RequireAuthorization(ReadPolicy);
+        group.MapPost(RuntimeRoutes.MihomoRecoveryRetry, async (RuntimeRecoveryActionRequest request, HttpContext http,
+            [FromServices] MihomoRuntimeRecoveryService service, [FromServices] IHostElevationSessionStore elevations, CancellationToken ct) =>
+        {
+            if (!InstallationEndpoints.CanInstall(http.User, InstallationServiceId.Mihomo)
+                || !elevations.IsGranted(http.User, InstallationEndpoints.Capability(InstallationServiceId.Mihomo),
+                    InstallationEndpoints.Target(InstallationServiceId.Mihomo))) return ElevationRequired();
+            if (request.OperationId == Guid.Empty) return Results.BadRequest();
+            return await RespondAsync(async () => Results.Ok(await service.RetryAsync(request.OperationId, ct)));
+        }).RequireAuthorization(ManagePolicy);
         group.MapGet(RuntimeRoutes.SingBoxRecovery, async ([FromServices] SingBoxRuntimeService service, CancellationToken ct) =>
             await RespondAsync(async () => Results.Ok(await service.RecoveryAsync(ct))))
             .RequireAuthorization(ReadPolicy);

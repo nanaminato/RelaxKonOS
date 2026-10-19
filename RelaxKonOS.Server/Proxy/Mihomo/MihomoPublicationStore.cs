@@ -11,7 +11,9 @@ namespace RelaxKonOS.Server.Proxy.Mihomo;
 public sealed record MihomoPendingPublication(Guid OperationId, MihomoPublishedRuntime Candidate, string Identity,
     [property: JsonRequired] RuntimeConfigurationPlan? ConfigurationPlan,
     [property: JsonRequired] RuntimeChangePlan? InstallationPlan,
-    [property: JsonRequired] RuntimeChangePlan? RemovalPlan);
+    [property: JsonRequired] RuntimeChangePlan? RemovalPlan,
+    [property: JsonRequired] MihomoSettingsPublication? Settings,
+    [property: JsonRequired] MihomoProfilePublication? Profile);
 public sealed record MihomoPublicationCompletion(Guid OperationId, string RequestHash, bool Confirmed, bool NotStarted);
 
 /// <summary>Server-private encrypted state, never returned by ordinary management reads.</summary>
@@ -75,24 +77,25 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
         MihomoPublishedRuntime candidate, CancellationToken ct) => BeginCoreAsync(operationId, expectedRevision, candidate, null, null, null, ct);
 
     public Task<MihomoPublicationState> BeginConfigurationAsync(Guid operationId, long expectedRevision,
-        MihomoPublishedRuntime candidate, RuntimeConfigurationPlan plan, CancellationToken ct) =>
-        BeginCoreAsync(operationId, expectedRevision, candidate, plan, null, null, ct);
+        MihomoPublishedRuntime candidate, RuntimeConfigurationPlan plan, CancellationToken ct, MihomoSettingsPublication? settings = null, MihomoProfilePublication? profile = null) =>
+        BeginCoreAsync(operationId, expectedRevision, candidate, plan, null, null, ct, settings, profile);
 
     public Task<MihomoPublicationState> BeginInstallationAsync(Guid operationId, long expectedRevision,
         MihomoPublishedRuntime candidate, RuntimeChangePlan plan, CancellationToken ct) =>
         BeginCoreAsync(operationId, expectedRevision, candidate, null, plan, null, ct);
 
     public async Task<MihomoPublicationState> BeginRemovalAsync(Guid operationId, long expectedRevision,
-        RuntimeChangePlan plan, CancellationToken ct)
+        RuntimeChangePlan plan, MihomoSettingsPublication settings, CancellationToken ct)
     {
+        MihomoSettingsPublicationFiles.ValidateRemoval(settings);
         var current = await ReadAsync(ct);
         if (current.Published is not { } published) throw new RuntimePolicyException("runtime.publication_unconfirmed");
-        return await BeginCoreAsync(operationId, expectedRevision, published, null, null, plan, ct);
+        return await BeginCoreAsync(operationId, expectedRevision, published, null, null, plan, ct, settings);
     }
 
     private async Task<MihomoPublicationState> BeginCoreAsync(Guid operationId, long expectedRevision,
         MihomoPublishedRuntime candidate, RuntimeConfigurationPlan? plan, RuntimeChangePlan? installationPlan,
-        RuntimeChangePlan? removalPlan, CancellationToken ct)
+        RuntimeChangePlan? removalPlan, CancellationToken ct, MihomoSettingsPublication? settings = null, MihomoProfilePublication? profile = null)
     {
         if (operationId == Guid.Empty) throw new RuntimePolicyException("runtime.operation_id_invalid");
         MihomoRuntimeMaterial.Validate(candidate);
@@ -104,14 +107,16 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
                 && RuntimeJson.Serialize(pending.ConfigurationPlan).AsSpan().SequenceEqual(RuntimeJson.Serialize(plan)))
             {
                 if (RuntimeJson.Serialize(pending.InstallationPlan).AsSpan().SequenceEqual(RuntimeJson.Serialize(installationPlan))
-                    && RuntimeJson.Serialize(pending.RemovalPlan).AsSpan().SequenceEqual(RuntimeJson.Serialize(removalPlan))) return current;
+                    && RuntimeJson.Serialize(pending.RemovalPlan).AsSpan().SequenceEqual(RuntimeJson.Serialize(removalPlan))
+                    && RuntimeJson.Serialize(pending.Settings).AsSpan().SequenceEqual(RuntimeJson.Serialize(settings))
+                    && RuntimeJson.Serialize(pending.Profile).AsSpan().SequenceEqual(RuntimeJson.Serialize(profile))) return current;
                 throw new RuntimePolicyException("runtime.idempotency_conflict");
             }
             throw new RuntimePolicyException("runtime.publication_unconfirmed");
         }
         if (current.Revision != expectedRevision || current.LastOperationId == operationId)
             throw new RuntimePolicyException("runtime.state_revision_conflict");
-        var next = current with { Revision = checked(current.Revision + 1), Pending = new(operationId, candidate, identity, plan, installationPlan, removalPlan) };
+        var next = current with { Revision = checked(current.Revision + 1), Pending = new(operationId, candidate, identity, plan, installationPlan, removalPlan, settings, profile) };
         await SaveAsync(next, ct);
         return next;
     }
@@ -126,7 +131,7 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
         if (pending.RemovalPlan is not null) throw new RuntimePolicyException("runtime.publication_unconfirmed");
         var next = current with { Revision = checked(current.Revision + 1), Published = pending.Candidate,
             Identity = pending.Identity, LastOperationId = operationId, Pending = null,
-            LastConfiguration = pending.ConfigurationPlan is null ? null : new(operationId, ConfigurationRequestHash(pending.ConfigurationPlan, pending.Candidate), true, false),
+            LastConfiguration = pending.ConfigurationPlan is null ? null : new(operationId, ConfigurationRequestHash(pending.ConfigurationPlan, pending.Candidate, pending.Settings, pending.Profile), true, false),
             LastInstallation = pending.InstallationPlan is null ? current.LastInstallation
                 : new(operationId, InstallationRequestHash(pending.InstallationPlan, pending.Candidate), true, false) };
         await SaveAsync(next, ct);
@@ -141,7 +146,7 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
             throw new RuntimePolicyException("runtime.publication_unconfirmed");
         var next = current with { Revision = checked(current.Revision + 1), Pending = null,
             LastConfiguration = current.Pending.ConfigurationPlan is null ? current.LastConfiguration
-                : new(operationId, ConfigurationRequestHash(current.Pending.ConfigurationPlan, current.Pending.Candidate), false, notStarted),
+                : new(operationId, ConfigurationRequestHash(current.Pending.ConfigurationPlan, current.Pending.Candidate, current.Pending.Settings, current.Pending.Profile), false, notStarted),
             LastInstallation = current.Pending.InstallationPlan is null ? current.LastInstallation
                 : new(operationId, InstallationRequestHash(current.Pending.InstallationPlan, current.Pending.Candidate), false, notStarted),
             LastRemoval = current.Pending.RemovalPlan is null ? current.LastRemoval
@@ -194,8 +199,8 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
     }
 
     public static string Identity(string yaml) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(yaml)));
-    public static string ConfigurationRequestHash(RuntimeConfigurationPlan plan, MihomoPublishedRuntime candidate) =>
-        Convert.ToHexString(SHA256.HashData(RuntimeJson.Serialize(new { Plan = plan, Candidate = candidate })));
+    public static string ConfigurationRequestHash(RuntimeConfigurationPlan plan, MihomoPublishedRuntime candidate, MihomoSettingsPublication? settings = null, MihomoProfilePublication? profile = null) =>
+        Convert.ToHexString(SHA256.HashData(RuntimeJson.Serialize(new { Plan = plan, Candidate = candidate, Settings = settings, Profile = profile })));
     public static string InstallationRequestHash(RuntimeChangePlan plan, MihomoPublishedRuntime candidate) =>
         Convert.ToHexString(SHA256.HashData(RuntimeJson.Serialize(new { Plan = plan, Candidate = candidate })));
     public static string RemovalRequestHash(RuntimeChangePlan plan) => Convert.ToHexString(SHA256.HashData(RuntimeJson.Serialize(plan)));
@@ -246,10 +251,26 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
                 || installation.Request.ReleaseId != installation.Release.ReleaseId || installation.PreviousReleaseId is not null
                 || state.Published is not null && !RuntimeJson.Serialize(state.Published).AsSpan().SequenceEqual(RuntimeJson.Serialize(pending.Candidate))))
                 throw new RuntimePolicyException("runtime.publication_state_invalid");
+            if (pending.RemovalPlan is not null && pending.Settings is null)
+                throw new RuntimePolicyException("runtime.publication_state_invalid");
+            if (pending.Settings is { } settings)
+            {
+                MihomoSettingsPublicationFiles.Validate(settings);
+                if (pending.RemovalPlan is not null) MihomoSettingsPublicationFiles.ValidateRemoval(settings);
+                else if (pending.ConfigurationPlan is null || state.Published is null
+                    || !RuntimeJson.Serialize(MihomoSettingsPublicationFiles.Candidate(state.Published, settings.Candidate))
+                        .AsSpan().SequenceEqual(RuntimeJson.Serialize(pending.Candidate)))
+                    throw new RuntimePolicyException("runtime.publication_state_invalid");
+            }
+            if (pending.Profile is { } profile)
+            {
+                profile.Validate();
+                if (pending.ConfigurationPlan is null) throw new RuntimePolicyException("runtime.publication_state_invalid");
+            }
             if (pending.ConfigurationPlan is { } plan && (state.Published is null || plan.RuntimeId != "mihomo"
                 || plan.InstallationId == Guid.Empty || plan.ActiveRevisionId == Guid.Empty || string.IsNullOrWhiteSpace(plan.HostId)
                 || plan.ExpectedStateRevision < 0 || plan.PreviousIdentity != state.Identity || plan.CandidateIdentity != pending.Identity
-                || plan.PreviousIdentity == plan.CandidateIdentity || string.IsNullOrWhiteSpace(plan.IdempotencyKey)
+                || (plan.PreviousIdentity == plan.CandidateIdentity && pending.Settings is null && pending.Profile is null) || string.IsNullOrWhiteSpace(plan.IdempotencyKey)
                 || plan.IdempotencyKey.Length > 128 || plan.IdempotencyKey.Any(c => c < 33 || c > 126)))
                 throw new RuntimePolicyException("runtime.publication_state_invalid");
         }

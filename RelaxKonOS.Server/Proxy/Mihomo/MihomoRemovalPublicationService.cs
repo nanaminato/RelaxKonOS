@@ -7,7 +7,7 @@ namespace RelaxKonOS.Server.Proxy.Mihomo;
 /// <summary>Durable Server reconciliation for runtime removal. App-owned settings and canonical credentials
 /// outlive runtime uninstall; only this installation's publication and exact mirror are discarded.</summary>
 public sealed class MihomoRemovalPublicationService(MihomoPublicationStore store, MihomoRuntimeService runtime,
-    IProxyPlatformPaths paths)
+    IProxyPlatformPaths paths, MihomoSettingsPublicationFiles settingsFiles)
 {
     public async Task<MihomoPublicationResult> RemoveAsync(Guid operationId, RuntimeChangePlan plan, CancellationToken ct)
     {
@@ -27,7 +27,7 @@ public sealed class MihomoRemovalPublicationService(MihomoPublicationStore store
             {
                 if (completed.RequestHash != MihomoPublicationStore.RemovalRequestHash(plan))
                     throw new RuntimePolicyException("runtime.idempotency_conflict");
-                var observed = await runtime.QueryAsync(ct, operationId);
+                var observed = await runtime.QueryHelperAsync(ct, operationId);
                 RequireInstance(plan, observed);
                 if (observed.PendingOperationId is not null || observed.Installation.RecoveryRequired)
                     throw new RuntimePolicyException("runtime.recovery_required");
@@ -43,16 +43,17 @@ public sealed class MihomoRemovalPublicationService(MihomoPublicationStore store
                     return new(operationId, MihomoPublicationOutcome.Compensated, observed.Receipt);
                 throw new RuntimePolicyException("runtime.publication_unconfirmed");
             }
-            var before = await runtime.QueryAsync(ct, operationId);
+            var before = await runtime.QueryHelperAsync(ct, operationId);
             RequireInstance(plan, before);
             if (before.PendingOperationId is not null || before.Installation.RecoveryRequired)
                 throw new RuntimePolicyException("runtime.recovery_required");
             if (!IsRestored(state, plan, before) || before.Installation.StateRevision != plan.Request.ExpectedStateRevision
                 || before.Receipt is not null || await new MihomoPublicationFiles(paths).IdentityAsync(ct) != state.Identity)
                 throw new RuntimePolicyException("runtime.state_revision_conflict");
-            state = await store.BeginRemovalAsync(operationId, state.Revision, plan, ct);
+            var settings = await settingsFiles.CaptureRemovalAsync(ct);
+            state = await store.BeginRemovalAsync(operationId, state.Revision, plan, settings, ct);
             var receipt = await runtime.RemoveUnderGateAsync(operationId, plan, CancellationToken.None);
-            return await ResolveAsync(state, await runtime.QueryAsync(CancellationToken.None, operationId), receipt, false, CancellationToken.None);
+            return await ResolveAsync(state, await runtime.QueryHelperAsync(CancellationToken.None, operationId), receipt, false, CancellationToken.None);
         }
         finally { store.Gate.Release(); }
     }
@@ -71,15 +72,15 @@ public sealed class MihomoRemovalPublicationService(MihomoPublicationStore store
         finally { store.Gate.Release(); }
     }
 
-    private async Task<MihomoPublicationResult> RecoverUnderGateAsync(MihomoPublicationState state, CancellationToken ct)
+    internal async Task<MihomoPublicationResult> RecoverUnderGateAsync(MihomoPublicationState state, CancellationToken ct)
     {
         var pending = state.Pending!;
-        var observed = await runtime.QueryAsync(ct, pending.OperationId);
+        var observed = await runtime.QueryHelperAsync(ct, pending.OperationId);
         RequireInstance(pending.RemovalPlan!, observed);
         if (observed.PendingOperationId == pending.OperationId || observed.Receipt is null)
         {
             var receipt = await runtime.RecoverRemovalUnderGateAsync(pending.OperationId, ct);
-            return await ResolveAsync(state, await runtime.QueryAsync(ct, pending.OperationId), receipt, receipt is null, ct);
+            return await ResolveAsync(state, await runtime.QueryHelperAsync(ct, pending.OperationId), receipt, receipt is null, ct);
         }
         return await ResolveAsync(state, observed, observed.Receipt, false, ct);
     }
@@ -110,7 +111,19 @@ public sealed class MihomoRemovalPublicationService(MihomoPublicationStore store
             {
                 if (await files.IdentityAsync(ct) != state.Identity) throw new RuntimePolicyException("runtime.publication_unconfirmed");
             }
-            else await files.DeleteRemovedAsync(state, ct);
+            else if (files.Exists() && await files.IdentityAsync(ct) != state.Identity)
+                throw new RuntimePolicyException("runtime.publication_unconfirmed");
+            if (pending.Settings is not { } settings) throw new RuntimePolicyException("runtime.publication_state_invalid");
+            // Root removal is already proved. Disable only this application's owned host proxy, then
+            // persist its disabled preference before confirming the Server side of the same operation.
+            await settingsFiles.CommitRemovalAsync(settings, ct);
+            var after = await runtime.QueryHelperAsync(ct, pending.OperationId);
+            RequireInstance(plan, after);
+            if (!IsAbsent(after) || after.PendingOperationId is not null || after.Installation.RecoveryRequired
+                || after.Installation.StateRevision != observed.Installation.StateRevision
+                || after.ConfigurationIdentity != observed.ConfigurationIdentity || after.Receipt != receipt)
+                throw new RuntimePolicyException("runtime.publication_unconfirmed");
+            if (!plan.Request.KeepData) await files.DeleteRemovedAsync(state, ct);
             await store.CompleteRemovalAsync(pending.OperationId, observed.ConfigurationIdentity, ct);
             return new(pending.OperationId, MihomoPublicationOutcome.Confirmed, receipt);
         }

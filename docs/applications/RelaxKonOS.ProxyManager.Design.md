@@ -11,7 +11,76 @@
 
 ---
 
-## 受管运行时公共目录接入进度（MR-03，2026-10-18）
+## 受管运行时公共目录接入进度（MR-03，2026-10-19）
+
+### 2026-10-19：命名恢复 HTTP 入口
+
+公开 `GET /managed-runtimes/mihomo/recovery`（统一 API 前缀下）要求 RuntimeRead；`POST /managed-runtimes/mihomo/recovery/retry` 要求 RuntimeManage、Mihomo 安装权限及目标为 mihomo 的 MihomoInstall 提权。请求只携带精确操作 ID。`MihomoRuntimeRecoveryService` 在同一发布 Gate 内检查 Server Pending：分派安装、配置或卸载的原意图恢复；不匹配 ID 立即拒绝，不访问 Helper。没有 Server Pending 时才调用 Helper 原事务恢复。受理后不因 HTTP 断开中断对账，不重新准备制品、安装或生成凭据。响应代表原生及 Server 提交的组合结果，不能将原生成功但 Server 未提交报告为成功。
+
+默认 DI 已接入恢复协调器；Linux 常规 **1233 项**通过（卸载发布/宿主组合 **92**、HTTP **22**、Helper/Server 集成 **35**），覆盖只读公开查询、权限/提权拒绝、空/冲突操作 ID，以及保留与删除数据的已提交原生卸载返回丢失后经命名恢复完成 Server 提交。真实 systemd **167 项**通过，包含实际卸载返回丢失及宿主清理失败后，通过该命名恢复协调器完成提交且不重复卸载。日志为 `/home/nanami/mr03-recovery-endpoints-full-20261019.log`、`/home/nanami/mr03-recovery-endpoints-systemd-20261019.log`。桌面/Android 尚未接入新恢复 UI，生产安装注册/版本入口仍待整体替换；此入口不等于生产多版本更新交付。紧急停止与操作员关账仍未开放 Mihomo HTTP。
+
+### 2026-10-19：卸载宿主代理清理与公开恢复状态
+
+卸载发布现在必须冻结 `MihomoSettingsPublication`：读取并校验原设置及文件摘要，候选仅将 `SystemProxyEnabled` 置为 false，保留其余偏好。加密 Pending 的 removal 必须包含此设置意图，拒绝缺失或改变其他字段的状态，不提供旧格式回退。坏设置在原生卸载开始前拒绝。
+
+原生卸载成功并核对精确回执、实例及状态修订后，Server 通过所有权感知宿主代理事务清理自己拥有的代理，再原子保存设置；再次核对 Helper 的缺席状态与同一回执，最后清理匹配镜像并确认发布权威。即使原偏好已经关闭，也必须取得宿主清理证明。外部修改的代理值保留；原生补偿时不修改宿主或设置。宿主失败、Helper 暂不可用、返回丢失、设置漂移或确认窗口中断保留同一 Pending，启动对账只补齐剩余提交，不重复卸载，不覆盖后续编辑。
+
+公开运行时观察同时反映 Server 的未确认发布：原生已卸载但宿主提交未完成时，仍显示命名待恢复事务；原生存在不同操作则保留冲突身份。发布权威损坏时撤回归属/活动版本证明并返回未知，不能显示为正常未安装。内部编排单独读取 Helper 实测事实，不能使用公开投影自证提交。恢复查询也合并 Server 待提交的操作身份，不把原生已完成误报为无需恢复；保留实际冲突身份，不从发布意图虚构失败补偿或原生阶段。损坏权威保留已有原生恢复事实并报告状态无效。
+
+指定 `192.168.1.7` Debian 13 x64 常规检查 **1220 项**、真实 `native-mihomo-systemd` **165 项**通过，其中卸载发布/宿主组合 **88 项**、HTTP/恢复观察 **17 项**。宿主检查运行真实 `LinuxSystemProxyTransaction` 所有权及补偿算法，后端为隔离内存实现，未修改机器实际桌面/环境代理；原生验收覆盖真实卸载返回丢失、宿主清理失败、重建 Server 启动恢复及保留重装不重新启用代理。Server 的 `--host-storage-only`、`--proxy-configuration-only`、`--system-proxy-only` 回归通过。最新常规日志为 `/home/nanami/mr03-recovery-observation-full-20261019.log`；卸载组合日志为 `/home/nanami/mr03-host-removal-full-20261019.log`、`/home/nanami/mr03-host-removal-systemd-20261019.log`。
+
+本节完成 Server 卸载宿主提交边界；独立 Helper IPC、生产安装注册/变更 HTTP、桌面与 Android 当前调用者、资源分发和 TUN 网络事务仍待整体接通，未开放生产多版本更新。以下各节为阶段证据，旧的“卸载宿主代理联动待完成”由本节取代。
+
+### 2026-10-19：运行时计划与安装台账组合（生产注册待同步切换）
+
+已增加 `MihomoRuntimeInstallationService`，复用 `ManagedRuntimeInstallationRequest`、`InstallationCoordinator` 和现有操作文件/资源互斥，不增加另一份用户台账。验证明确计划的运行时/动作/制品绑定、确认与幂等键；安装走候选材料引导/发布确认，卸载走专属发布对账，更新/修复/回退走当前已确认材料与 Helper 归档事务，不调用固定版本清单、上传引用、草稿或直接控制器重载。动作仍由 Helper 复核完整冻结制品/信任/状态修订。
+
+台账恢复在同一发布 Gate 内区分 Server 命名安装/卸载 Pending 与普通 Helper 程序事务；已成功的原生安装/卸载还必须核对 Server 对应确认记录及实测配置身份，不能凭 Helper 成功回执或进程存活推断发布完成。没有回执也要取得 Helper 实例锁后才能记录未开始。实例忙或 Helper 暂不可用重试原操作，不重新安装。返回消息丢失时读取原事务证据完成对账，受理后的此项对账不受 Server 停止 token 中断；关机期间也不把已提交成功误写为中断。
+
+取消走请求交付，worker 等待原生取消/补偿结果，只有 Host 报告可取消时才提供按钮；Root 已取消按 Cancelled 落账。新增明确的 `InstallationInterruptedException`，将原生中断与失败、用户取消分别记录；启动恢复也允许受信任域返回已证明的 Cancelled。恢复未完成保留发布/Helper Pending 并报告相应问题码，不抹掉恢复事实。台账仅含请求摘要/阶段/问题码，发布 YAML、控制器秘密和授权通道不进入操作文件。
+
+在指定 Debian 13 x64 上，最终常规 **1159 项**通过，其中安装发布/台账组合 **86 项**、默认注册构造 **5 项**。组合检查覆盖成功/失败/取消/中断、幂等重放、消息丢失、停止 token 与消息丢失竞态、协作取消交付、程序变更不调用安装引导、未开始及 busy 后的命名恢复。真实 `native-mihomo-systemd` **158 项**通过：实际首次安装丢失响应后，由持久 Running 台账启动对账确认；后续 Repair、1.19.10→1.19.30 Update、Rollback、保留数据 Uninstall、保留材料 Install 均经台账 Start 执行，每次丢失真实 Helper 返回消息仍核对原回执/发布状态，实测阶段进入原台账，未重复执行变更。测试依然不自动启动首次安装服务或启用开机启动。沙箱夹具现显式将脚本换行为 LF，避免 Windows 源码换行让 Linux shebang 变为 `/bin/sh\r`；生产沙箱权限没有放宽。
+
+准确边界：适配器已作为具体类型注册以验证默认依赖构造，**尚未替换生产 `IInstallationService` 的 Mihomo 注册**。隔离测试显式选用新适配器，实际 Helper 生命周期仍在测试进程内，未覆盖独立 Helper 传输或生产 HTTP/PAM。正式注册切换必须同一变更同步升级桌面/Android 当前调用者、移除旧固定清单安装请求；没有增加备用 HTTP 入口、旧新请求双解析或兼容适配。宿主代理卸载联动、资源分发、客户端版本界面和 TUN 网络事务仍待完成。日志为 `/home/nanami/mr03-ledger-full-20261019.log`、`/home/nanami/mr03-ledger-systemd-20261019.log`。生产安装未替换，本机 `https://127.0.0.1:5000/healthz` 实测 200。
+
+以下各节保留分阶段证据；“安装台账尚未接通”现指生产注册与客户端入口尚未切换，不能将本节组合验收宣称为生产端到端交付。
+
+### 2026-10-19：活动档案元数据纳入发布提交
+
+受管档案激活现在将 `MihomoProfilePublication` 写入加密 Pending 的必需 `profile` 字段（无选择变更时显式 null），冻结目标档案 ID/修订/创建时间与原活动档案 ID/修订/创建时间，并参与配置发布请求摘要。不读取或解析缺少该字段的旧状态。候选 YAML 及运行时计划继续独立冻结，恢复不从后续草稿重新生成候选。
+
+Host-global SQLite 迁移 **16** 新增单行 `proxy_profile_publication` 提交标记，保存操作 ID、档案 ID、预期/提交修订、配置身份与完整选择意图摘要。元数据提交在一个 SQLite 事务内复核目标档案及原活动选择，切换活动标志、递增目标修订并写入同一操作标记。任何一步失败整体回滚元数据；同一操作的精确标记只核对已提交选择，不重复递增修订。不同操作、配置身份/意图变化、删除/改名修订冲突或同 ID/同修订重建但创建身份变化均不能冒充原选择。此表是当前选择的内部提交证明，不是新增用户操作台账。
+
+`MihomoConfigurationPublicationService` 在实测 Helper 成功并核对候选凭据后提交档案元数据，完成后再次核对 Helper 实例/修订/回执，最后确认发布权威。`ProxyConfigurationTransactionService` 不再在权威确认之后单独调用无操作标记的 `SetActiveAsync`。数据库临时失败或已提交响应丢失保留原 Pending；启动恢复核对原 Helper 回执并补齐/核对 SQLite 标记，不再次切换服务。真实冲突继续待恢复，不覆盖后续编辑。无需改变候选 YAML 的重复选择也持久提交选择意图，但不执行原生事务、不伪造 Helper 回执。
+
+本轮在 `192.168.1.7` Debian 13 x64 的常规检查通过 **1104 项**（Server 配置发布 **85**、真实 SQLite 选择事务 **19**）；最终 `native-mihomo-systemd` **149 项**通过，原生专项新增真实 SQLite 标记失败时元数据回滚但 HTTP 服务保持、重建 Server 启动恢复完成选择、相同配置选择不触发原生切换，详见 `/home/nanami/mr03-profile-systemd-20261019.log`。常规日志为 `/home/nanami/mr03-profile-full-20261019.log`。另通过 Server `--host-storage-only`、`--proxy-configuration-only` 与 `--system-proxy-only`，覆盖迁移/原有档案库以及原配置/系统代理回归。Helper 仍为测试进程内边界，尚未验证独立 IPC 或生产 HTTP/PAM。生产安装保持原版本，本轮未部署替换。
+
+以下设置与档案发布段落保留分阶段记录；其中“活动档案元数据尚无自动对账”已由本节推进。资源分发、卸载宿主代理联动、安装/恢复变更 HTTP、台账/UI 和 TUN 网络事务仍待完成。
+
+### 2026-10-19：受管设置发布与中断对账
+
+`MihomoSettingsService.UpdateAsync` 已对有已确认发布的受管安装接入公共配置发布事务。候选仅从当前 Published 派生，保留当前 TUN 激活与排除范围，使用现有只读控制器凭据；冻结实测安装/程序/状态修订及设置意图。`MihomoPendingPublication.settings` 为当前加密状态的必需字段（无设置变更时显式为 null），保存旧设置文件摘要、旧设置与候选设置，参与幂等请求摘要，不解析缺字段旧格式。持久状态读取再次验证候选设置能从旧 Published 精确生成同一份候选 YAML，不能把其他配置与设置意图混合。
+
+原生切换成功后，在发布共锁内依次核对精确 Helper 回执、替换 Server 配置镜像、复核当前候选授权、通过原有所有权感知宿主代理适配器应用设置，再以私有文件和原子改名持久保存设置；再次核对 Helper 身份/修订后才确认发布权威。宿主代理失败、设置文件写入失败或响应丢失保留同一 Pending，启动恢复重读冻结意图及同一 Helper 回执，继续剩余步骤，不重新执行原生切换、不回写无关设置、不提前报告成功。原生补偿失败继续使用原有恢复门禁；原生已补偿则不应用候选设置。应用设置的宿主代理失败属于 Server 提交待恢复，不能据此伪造 Helper 的 RecoveryRequired/成功回执。
+
+当候选 YAML 与旧发布字节完全一致（例如只修改订阅信任选项），同样持久保存设置意图、复核凭据/配置镜像/安装修订并完成宿主/设置提交，但不调用 Helper 配置切换、不重启服务、不伪造原生回执。启动系统代理对账已允许健康已确认受管安装，Pending、坏设置、凭据撤销或实例漂移仍拒绝。TUN/透明代理网络切换继续不支持；完整 GEO/provider/凭据分发、活动档案元数据对账、卸载时宿主代理联动、安装台账/版本 UI 仍待完成。
+
+最终代码在指定 Debian 13 x64 主机通过 **1071 项常规检查**，其中 Server 配置发布事务 **71 项**；`native-mihomo-systemd` **146 项**。新增覆盖设置成功/原生补偿、响应丢失、宿主失败后中断恢复、无关设置漂移保护、坏设置/凭据拒绝、已有候选设置文件的提交中断窗口、冻结设置与候选不匹配、缺少当前 settings 字段拒绝，以及无需原生切换的宿主设置变更。真实专项新增设置入口改变监听并实际转发 HTTP、宿主设置失败后启动对账、设置文件/权威确认，以及仅改订阅信任时 Helper 状态修订和原生调用数保持不变。宿主代理副作用使用记录适配器及失败注入，未修改测试机实际系统代理；Helper 生命周期仍在测试进程内，未覆盖独立 IPC/生产 HTTP/PAM。日志为 `/home/nanami/mr03-settings-full-20261019.log` 与 `/home/nanami/mr03-settings-systemd-20261019.log`。本次仍以隔离测试包验收，生产安装未替换。 同机 Server 回归 `--proxy-configuration-only` 与 `--system-proxy-only` 均通过，覆盖原有激活/回滚、系统代理能力/PAC 门禁、持久化失败补偿、守护并发及 Pending 阻塞。
+
+以下档案接线及 2026-10-18 段落保留分阶段证据；“设置尚未接线”已由本节推进，其余未完成项仍有效。
+
+### 2026-10-19：应用配置档案发布接线
+
+`ProxyConfigurationTransactionService` 对已确认的受管 Mihomo 发布接通实际档案保存/激活：保存只做有界结构及资源/网络门禁，不调用旧固定清单引擎、不准备旧数据目录；激活在同一发布 Gate 内读取现有凭据与宿主设置，冻结当前 Helper 安装/程序/状态修订及旧候选摘要，再经 `MihomoConfigurationPublicationService` 的持久事务完成目标原生校验、切换、健康核对及 Server 镜像/权威确认。受理后事务不随客户端取消；丢失响应保留 Pending 交由现有启动恢复，不直接回写旧配置或推断成功。只有实测确认后更新活动档案元数据；元数据写入失败报告待恢复，不撤销已提交运行时发布。该元数据尚无独立自动对账，不能称为档案元数据与运行时的跨存储原子提交。
+
+凭据读取只使用 `ReadExistingAsync`，撤销/缺失不生成替代秘密。未知/损坏权威、已有 Pending、Helper 配置漂移及待恢复均拒绝写入。未完成受控资源分发前，文件 provider/证书/密钥引用明确不支持；TUN/透明代理网络切换继续拒绝。未建立发布权威的已有路径没有因此取得新运行时所有权。设置、TUN、系统代理写入及安装台账/版本 UI 仍待后续接线，尚未开放生产多版本更新。
+
+验收使用指定的 `192.168.1.7` Debian 13 x64：常规 **1045** 项通过，Server 配置发布事务由 34 增至 **45** 项，新增应用保存不触达固定运行时、实测成功/补偿/响应丢失、凭据撤销与资源/TUN 拒绝。`native-mihomo-systemd` 由 141 增至 **143** 项，新增应用 `ApplyAsync` → 真实 Helper 生命周期 → systemd 服务的监听变化/HTTP 转发，以及原生无效规则拒绝后保留旧配置与档案选择；档案元数据使用记录夹具，Helper 仍在测试进程内，未覆盖独立 IPC 或生产 HTTP/PAM。测试完成清理测试自有服务与运行时根。
+
+运行命令：`RelaxKonOS.ManagedRuntimes.Tests mihomo-publication-only`（45 项）；`RelaxKonOS.ManagedRuntimes.Tests`（1045 项）；`TMPDIR=/var/tmp RelaxKonOS.ManagedRuntimes.Tests native-mihomo-systemd <1.19.10.gz> <1.19.30.gz>`（143 项）。远端日志为 `/home/nanami/mr03-application-full-20261019.log` 和 `/home/nanami/mr03-application-systemd-20261019.log`。本次用隔离测试包验证，现有生产服务仍为 `0.1.0-dev20261018-mr03`，未将测试二进制覆盖到生产安装。实测现有部署为 Linux system 模式，三种文件访问范围均为 `/`，nftables 空规则，自签证书 SAN 已含 `192.168.1.7`。
+
+以下为 2026-10-18 的分阶段实现记录；其中“实际配置发布尚未接线”已由上述有范围的档案发布接线推进，其他未完成项仍有效。
+
 
 版本生命周期遵循[公共设计](../platform/RelaxKonOS.ManagedRuntimes.Design.md)。当前已有 Mihomo 的签名目录、单文件 gzip 解包、严格 `v` 标签及 `mihomo-v1` 稳定版能力范围（`1.19.0 ≤ v < 1.20.0`）；目录发布者不能扩大配置支持范围。
 

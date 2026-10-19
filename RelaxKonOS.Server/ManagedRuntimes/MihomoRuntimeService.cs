@@ -14,7 +14,36 @@ namespace RelaxKonOS.Server.ManagedRuntimes;
 public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, MihomoPublicationStore store,
     MihomoRuntimeAuthorizationProvider authorization, IServerModeResolver mode)
 {
-    public Task<RuntimeInstallationSnapshot> QueryAsync(CancellationToken ct, Guid? receiptOperationId = null) =>
+    /// <summary>Public observation includes unresolved Server publication work, even after root commits.
+    /// It never upgrades ownership from an encrypted file or reads controller credentials.</summary>
+    public async Task<RuntimeInstallationSnapshot> QueryAsync(CancellationToken ct)
+    {
+        var observed = await QueryHelperAsync(ct);
+        try
+        {
+            var state = await store.ReadAsync(ct);
+            if (state.Pending is not { } pending) return observed;
+            var conflict = observed.PendingOperationId is { } rootOperation && rootOperation != pending.OperationId;
+            return observed with
+            {
+                Installation = observed.Installation with { RecoveryRequired = true },
+                PendingOperationId = observed.PendingOperationId ?? pending.OperationId,
+                PendingStage = observed.PendingStage,
+                ProblemCode = conflict ? "runtime.recovery_target_conflict" : "runtime.publication_unconfirmed"
+            };
+        }
+        catch (Exception ex) when (ex is RuntimePolicyException or IOException or UnauthorizedAccessException)
+        {
+            return observed with
+            {
+                Installation = observed.Installation with { Ownership = RuntimeOwnership.Unknown, ActiveReleaseId = null, RecoveryRequired = true },
+                MeasuredVersion = null, ActiveRevisionId = null, ProblemCode = "runtime.publication_state_invalid"
+            };
+        }
+    }
+
+    /// <summary>Coordinators already own the Server authority; only actual Helper facts can confirm it.</summary>
+    internal Task<RuntimeInstallationSnapshot> QueryHelperAsync(CancellationToken ct, Guid? receiptOperationId = null) =>
         CallAsync<RuntimeInstallationSnapshot>(new(PrivilegedOperationKind.MihomoRuntimeQuery, OperationId: receiptOperationId), ct);
 
     public async Task<RuntimePlanResult> PlanAsync(string? sourceId, RuntimePlanRequest request, CancellationToken ct)
@@ -62,12 +91,17 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
         await store.Gate.WaitAsync(ct);
         try
         {
-            await using var callback = new RuntimeAuthorizationServer<MihomoCurrentAuthorization>(requestOperationId, authorization.ReadAsync);
-            // A null result proves only that no pending Helper transaction remains; callers must still query its receipt.
-            return await CallAsync<RuntimeSwitchResult?>(new(PrivilegedOperationKind.MihomoRuntimeRecover,
-                OperationId: requestOperationId, RuntimeLifecycle: new(Authorization: callback.Channel, RecoveryOperationId: recoveryOperationId)), CancellationToken.None, allowNull: true);
+            return await RecoverUnderGateAsync(requestOperationId, recoveryOperationId, CancellationToken.None);
         }
         finally { store.Gate.Release(); }
+    }
+
+    internal async Task<RuntimeSwitchResult?> RecoverUnderGateAsync(Guid requestOperationId, Guid recoveryOperationId, CancellationToken ct)
+    {
+        await using var callback = new RuntimeAuthorizationServer<MihomoCurrentAuthorization>(requestOperationId, authorization.ReadAsync);
+        // A null result proves only that no pending Helper transaction remains; callers must still query its receipt.
+        return await CallAsync<RuntimeSwitchResult?>(new(PrivilegedOperationKind.MihomoRuntimeRecover,
+            OperationId: requestOperationId, RuntimeLifecycle: new(Authorization: callback.Channel, RecoveryOperationId: recoveryOperationId)), ct, allowNull: true);
     }
 
     /// <summary>The configuration publication coordinator already owns Gate, including confirmation.</summary>
@@ -137,8 +171,29 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
     }
 
     /// <summary>Read-only recovery facts. It observes the service but changes neither the ledger nor the service.</summary>
-    public Task<RuntimeRecoverySnapshot> RecoveryAsync(CancellationToken ct) =>
-        CallAsync<RuntimeRecoverySnapshot>(new(PrivilegedOperationKind.MihomoRuntimeRecoveryQuery), ct);
+    public async Task<RuntimeRecoverySnapshot> RecoveryAsync(CancellationToken ct)
+    {
+        var observed = await CallAsync<RuntimeRecoverySnapshot>(new(PrivilegedOperationKind.MihomoRuntimeRecoveryQuery), ct);
+        try
+        {
+            var state = await store.ReadAsync(ct);
+            if (state.Pending is not { } pending) return observed;
+            if (observed.OperationId is { } actual && actual != pending.OperationId)
+                return observed with { Required = true, ProblemCode = "runtime.recovery_target_conflict" };
+            // Server commit work is still recoverable after the native transaction has finished.
+            // Do not invent a failed compensation or a native stage from this publication intent.
+            return observed with
+            {
+                Required = true, OperationId = pending.OperationId,
+                Change = pending.InstallationPlan?.Request.Change ?? pending.RemovalPlan?.Request.Change ?? observed.Change,
+                ProblemCode = "runtime.publication_unconfirmed"
+            };
+        }
+        catch (Exception ex) when (ex is RuntimePolicyException or IOException or UnauthorizedAccessException)
+        {
+            return observed with { Required = true, ProblemCode = "runtime.publication_state_invalid" };
+        }
+    }
 
     /// <summary>
     /// Records a cancellation request for one running transaction. It takes no shared gate on purpose: the

@@ -42,7 +42,13 @@ internal static class MihomoRuntimeHttpChecks
         });
         builder.Services.AddSingleton<IServerModeResolver>(fixture);
         builder.Services.AddSingleton(new RuntimeCatalogService(fixture));
-        builder.Services.AddSingleton(new MihomoRuntimeService(fixture, store, new(store, fixture, fixture), fixture));
+        var authorization = new MihomoRuntimeAuthorizationProvider(store, fixture, fixture);
+        var runtimeService = new MihomoRuntimeService(fixture, store, authorization, fixture);
+        builder.Services.AddSingleton(runtimeService);
+        builder.Services.AddSingleton(new MihomoRuntimeRecoveryService(store, runtimeService,
+            new(store, authorization, runtimeService, fixture), new(store, authorization, runtimeService, fixture),
+            new(store, runtimeService, fixture, MihomoRemovalHostFixture.Files(fixture))));
+        builder.Services.AddSingleton<IHostElevationSessionStore, Elevations>();
         await using var app = builder.Build();
         app.UseAuthentication(); app.UseAuthorization(); app.MapRuntimeCatalogEndpoints();
         try
@@ -89,10 +95,63 @@ internal static class MihomoRuntimeHttpChecks
             var release = new RuntimeRelease("release", "mihomo", "v1.19.30", "1.19.30", RuntimeChannel.Stable, "source", fixture.Installation.Target,
                 new("artifact", new string('a', 64), 4096, "gz", "mihomo", "signed-manifest:key", new(4096, 1, [new("mihomo", 1, new string('b', 64), true)])),
                 "mihomo-v1", true, RuntimeTrust.Confirmed, RuntimeEvidence.Unverified, null);
-            await store.BeginInstallationAsync(Guid.NewGuid(), 0, material, new(request, "mihomo", release, null), default);
+            var pendingOperation = Guid.NewGuid();
+            await store.BeginInstallationAsync(pendingOperation, 0, material, new(request, "mihomo", release, null), default);
             using (var pending = await client.PostAsJsonAsync(RuntimeRoutes.MihomoPlan, selection))
                 Check(pending.IsSuccessStatusCode && (await pending.Content.ReadFromJsonAsync<RuntimePlanResult>())!.Problems.Contains("runtime.publication_unconfirmed")
                     && fixture.Calls == beforeUserMode, "Pending Server publication blocks plans before a second Helper operation");
+            client.DefaultRequestHeaders.Authorization = new("Bearer", "read");
+            fixture.Observation = new(fixture.Installation with { Ownership = RuntimeOwnership.Managed, StateRevision = 1, ActiveReleaseId = release.ReleaseId },
+                "1.19.30", Guid.NewGuid(), MihomoPublicationStore.Identity(material.Yaml), null, null, null);
+            var pendingObservation = await client.GetFromJsonAsync<RuntimeInstallationSnapshot>(RuntimeRoutes.MihomoInstallation);
+            Check(pendingObservation is { Installation.RecoveryRequired: true, MeasuredVersion: "1.19.30", PendingStage: null, ProblemCode: "runtime.publication_unconfirmed" }
+                && pendingObservation.PendingOperationId == pendingOperation && fixture.Last?.Operation == PrivilegedOperationKind.MihomoRuntimeQuery,
+                "Public observation reports unresolved Server work even after a healthy native commit");
+            Check((await store.ReadAsync(default)).Pending?.OperationId == pendingOperation,
+                "Runtime observation never confirms or compensates a pending Server publication");
+            var runtime = app.Services.GetRequiredService<MihomoRuntimeService>();
+            var recovery = (await client.GetFromJsonAsync<RuntimeRecoverySnapshot>(RuntimeRoutes.MihomoRecovery))!;
+            Check(recovery is { Required: true, Change: RuntimeChange.Install, Stage: null,
+                    RecoveryProblemCode: null, ProblemCode: "runtime.publication_unconfirmed" }
+                && recovery.OperationId == pendingOperation,
+                "Recovery observation retains Server commit work without inventing a failed native compensation");
+            var beforeRecovery = fixture.Calls;
+            foreach (var identity in new[] { "manage", "wrong-install", "installer" })
+            {
+                client.DefaultRequestHeaders.Authorization = new("Bearer", identity);
+                using var refused = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryRetry,
+                    new RuntimeRecoveryActionRequest(pendingOperation));
+                Check(refused.StatusCode == HttpStatusCode.Forbidden && fixture.Calls == beforeRecovery,
+                    "Recovery requires Mihomo install permission and its matching elevation: " + identity);
+            }
+            client.DefaultRequestHeaders.Authorization = new("Bearer", "elevated-installer");
+            using (var wrongOperation = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryRetry,
+                new RuntimeRecoveryActionRequest(Guid.NewGuid())))
+                Check(wrongOperation.StatusCode == HttpStatusCode.Conflict && fixture.Calls == beforeRecovery,
+                    "Elevated recovery refuses a different Server pending operation before contacting Helper");
+            using (var emptyOperation = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryRetry,
+                new RuntimeRecoveryActionRequest(Guid.Empty)))
+                Check(emptyOperation.StatusCode == HttpStatusCode.BadRequest && fixture.Calls == beforeRecovery,
+                    "Recovery rejects an empty operation identity");
+            client.DefaultRequestHeaders.Authorization = new("Bearer", "read");
+            var otherRootOperation = Guid.NewGuid();
+            fixture.Observation = fixture.Observation with { PendingOperationId = otherRootOperation };
+            var conflicting = await client.GetFromJsonAsync<RuntimeInstallationSnapshot>(RuntimeRoutes.MihomoInstallation);
+            Check(conflicting?.ProblemCode == "runtime.recovery_target_conflict" && conflicting.PendingOperationId == otherRootOperation,
+                "Public observation retains an actual conflicting Helper operation instead of relabeling it");
+            fixture.Recovery = recovery with { OperationId = otherRootOperation, ProblemCode = "runtime.recovery_required" };
+            var recoveryConflict = await runtime.RecoveryAsync(default);
+            Check(recoveryConflict.OperationId == otherRootOperation && recoveryConflict.ProblemCode == "runtime.recovery_target_conflict",
+                "Recovery observation preserves conflicting native operation identity");
+            await File.WriteAllTextAsync(Path.Combine(fixture.GetStateDirectory(), "mihomo-publication.protected"), "corrupt");
+            var invalidRecovery = await runtime.RecoveryAsync(default);
+            Check(invalidRecovery.Required && invalidRecovery.ProblemCode == "runtime.publication_state_invalid"
+                && invalidRecovery.OperationId == otherRootOperation,
+                "Corrupt Server authority cannot clear a native recovery operation");
+            var unknown = await client.GetFromJsonAsync<RuntimeInstallationSnapshot>(RuntimeRoutes.MihomoInstallation);
+            Check(unknown is { Installation.Ownership: RuntimeOwnership.Unknown, Installation.RecoveryRequired: true,
+                Installation.ActiveReleaseId: null, MeasuredVersion: null, ActiveRevisionId: null, ProblemCode: "runtime.publication_state_invalid" },
+                "Unreadable Server authority withdraws ownership/version proof and never reports not installed");
         }
         finally { await app.StopAsync(); Directory.Delete(root, true); }
         return count;
@@ -107,15 +166,27 @@ internal static class MihomoRuntimeHttpChecks
             if (!token.StartsWith("Bearer ", StringComparison.Ordinal)) return Task.FromResult(AuthenticateResult.NoResult());
             var name = token[7..];
             var claims = new List<Claim> { new(ClaimTypes.NameIdentifier, "http-fixture"), new("permission", name == "read" ? "read" : "manage") };
-            if (name is "installer" or "wrong-install") { claims.Add(new("role", "controller")); claims.Add(new("installation:install", name == "installer" ? "mihomo" : "singbox")); }
+            if (name is "installer" or "wrong-install" or "elevated-installer") { claims.Add(new("role", "controller")); claims.Add(new("installation:install", name != "wrong-install" ? "mihomo" : "singbox")); }
+            if (name == "elevated-installer") claims.Add(new("test-elevated", "true"));
             return Task.FromResult(AuthenticateResult.Success(new(new ClaimsPrincipal(new ClaimsIdentity(claims, "fixture")), "fixture")));
         }
+    }
+    private sealed class Elevations : IHostElevationSessionStore
+    {
+        public bool IsGranted(ClaimsPrincipal principal, HostElevationCapability capability, string target) =>
+            principal.HasClaim("permission", "manage") && principal.HasClaim("test-elevated", "true")
+            && capability == HostElevationCapability.MihomoInstall && target == "mihomo";
+        public DateTimeOffset Grant(ClaimsPrincipal principal, HostElevationCapability capability, string target,
+            bool includeDescendants, string authenticationMethod, string? correlationId = null) => throw new NotSupportedException();
+        public void Revoke(ClaimsPrincipal principal) => throw new NotSupportedException();
     }
     private sealed class Fixture(string root) : IPrivilegedOperationTransport, IServerModeResolver, IProxyPlatformPaths, IProxyControllerSecretStore
     {
         internal int Calls;
         internal bool SystemMode = true;
         internal PrivilegedOperationRequest? Last;
+        internal RuntimeInstallationSnapshot? Observation;
+        internal RuntimeRecoverySnapshot? Recovery;
         internal RuntimeInstallation Installation { get; } = new(Guid.NewGuid(), "http-host", "mihomo", 0, RuntimeOwnership.Unknown,
             new("linux", "amd64", null, null, RuntimeInstallMode.Archive, "systemd"), null, false);
         public Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken ct = default)
@@ -123,7 +194,8 @@ internal static class MihomoRuntimeHttpChecks
             Calls++; Last = request;
             object value = request.Operation switch
             {
-                PrivilegedOperationKind.MihomoRuntimeQuery => new RuntimeInstallationSnapshot(Installation, null, null, null, null, null, "runtime.state_unknown"),
+                PrivilegedOperationKind.MihomoRuntimeQuery => Observation ?? new RuntimeInstallationSnapshot(Installation, null, null, null, null, null, "runtime.state_unknown"),
+                PrivilegedOperationKind.MihomoRuntimeRecoveryQuery => Recovery ?? new RuntimeRecoverySnapshot(false, null, null, null, false, null, null, null, null),
                 PrivilegedOperationKind.MihomoRuntimePlan => new RuntimePlanResult(null, ["runtime.release_untrusted"]),
                 _ => throw new Exception("HTTP read/plan route executed an unrequested Helper action")
             };
