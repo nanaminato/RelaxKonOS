@@ -39,6 +39,8 @@ class SmbCancellationFlowTest {
         InstallationKind.Install, InstallationState.Running, InstallationStage.Installing, null, null, 1, 1, null, true)
     private val tasks = mutableMapOf(task.operationId to task)
     private val cancellations = mutableListOf<String>()
+    private val installationKeys = mutableListOf<String>()
+    private val installationReadClockTimes = java.util.concurrent.CopyOnWriteArrayList<Long>()
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     private fun text(id: Int) = context.getString(id)
     private class Storage : InstallationRequestStorage {
@@ -49,7 +51,7 @@ class SmbCancellationFlowTest {
     private val facts = SmbFacts(SmbCapabilities(true, true, true, true, false, null),
         SmbStatus(SmbRuntimeState.Running, "4", true, true, null), emptyList(), emptyList(),
         SmbConnection("review-host", 445, "prefix", "smb://review-host"))
-    private fun show(includeUser: Boolean = false) {
+    private fun show(includeUser: Boolean = false, notInstalled: Boolean = false) {
         val app = context.applicationContext as RelaxKonApplication
         val gateway = object : RelaxKonGateway by app.container.gateway {
             override suspend fun login(serverUrl: String, identifier: String, password: CharArray) = ApiResult.Success(
@@ -61,15 +63,22 @@ class SmbCancellationFlowTest {
                 if (cancelRead) throw CancellationException("private cancelled read")
                 return ApiResult.Success(facts.capabilities)
             }
-            override suspend fun smbStatus(serverUrl: String, accessToken: String) = ApiResult.Success(facts.status)
+            override suspend fun smbStatus(serverUrl: String, accessToken: String) = ApiResult.Success(
+                if (notInstalled) facts.status.copy(state = SmbRuntimeState.NotInstalled, serviceActive = false, port445Listening = false) else facts.status)
             override suspend fun smbConnection(serverUrl: String, accessToken: String) = ApiResult.Success(facts.connection)
             override suspend fun smbShares(serverUrl: String, accessToken: String): ApiResult<List<SmbShare>> = ApiResult.Success(currentShares)
             override suspend fun smbUsers(serverUrl: String, accessToken: String): ApiResult<List<SmbUser>> =
                 ApiResult.Success(if (includeUser) listOf(SmbUser("review-user", true, true)) else emptyList())
             override suspend fun activeInstallation(serverUrl: String, accessToken: String, service: InstallationService): ApiResult<InstallationOperation?> = ApiResult.Success(null)
             override suspend fun installation(serverUrl: String, accessToken: String, operationId: String): ApiResult<InstallationOperation> {
+                installationReadClockTimes += rule.mainClock.currentTime
                 if (failFactsAfterInstallation) readFailure = IllegalStateException("private post-installation facts failure")
                 return tasks[operationId]?.let { ApiResult.Success(it) } ?: ApiResult.Problem(404, "installation.missing", null)
+            }
+            override suspend fun startInstallation(serverUrl: String, accessToken: String, kind: InstallationKind,
+                request: InstallationRequest, idempotencyKey: String): ApiResult<InstallationOperation> {
+                installationKeys += idempotencyKey
+                return ApiResult.Transport(null)
             }
             override suspend fun cancelInstallation(serverUrl: String, accessToken: String, operationId: String, idempotencyKey: String): ApiResult<InstallationOperation> {
                 cancellations += operationId
@@ -257,6 +266,123 @@ class SmbCancellationFlowTest {
         rule.onNodeWithText(text(R.string.installation_state_failed)).performScrollTo().assertIsDisplayed()
         rule.onNodeWithText(text(R.string.installation_problem_failed)).performScrollTo().assertIsDisplayed()
         rule.runOnIdle { assertTrue(model.state.installationVerified); assertEquals(failed.problemCode, model.state.problem); assertEquals(0, writes) }
+    }
+
+    @Test fun oldPasswordCancelCannotCloseReplacementReviewOrClearItsInputs() {
+        show(includeUser = true)
+        rule.onNodeWithText(text(R.string.workspace_users)).performClick()
+        rule.onNodeWithText(text(R.string.smb_password)).performScrollTo().performClick()
+        val old = requireNotNull(model.changeReview)
+        fun field(id: Int) = rule.onNode(hasSetTextAction() and hasText(text(id)))
+        field(R.string.smb_password).performTextInput("synthetic-old-password")
+        field(R.string.smb_password_again).performTextInput("synthetic-old-password")
+        val oldSubmit = requireNotNull(rule.onNodeWithText(text(R.string.smb_submit))
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action)
+        val oldCancel = requireNotNull(rule.onNodeWithText(text(R.string.common_cancel))
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action)
+        rule.runOnIdle { model.requestChange(old.owner, old.confirmation.expected, old.confirmation.change) }
+        val replacement = requireNotNull(model.changeReview)
+        field(R.string.smb_password).assertTextEquals(text(R.string.smb_password), "")
+        field(R.string.smb_password_again).assertTextEquals(text(R.string.smb_password_again), "")
+        field(R.string.smb_password).performTextInput("synthetic-new-password")
+        field(R.string.smb_password_again).performTextInput("synthetic-new-password")
+        rule.runOnIdle { oldSubmit(); oldCancel(); assertSame(replacement, model.changeReview); assertEquals(0, writes) }
+        field(R.string.smb_password).assert(hasText("synthetic-new-password"))
+        field(R.string.smb_password_again).assert(hasText("synthetic-new-password"))
+        rule.onNodeWithText(text(R.string.smb_submit)).assertIsEnabled()
+        rule.onNodeWithText(text(R.string.common_cancel)).performClick()
+        rule.runOnIdle { assertNull(model.changeReview); assertEquals(0, writes) }
+    }
+
+    @Test fun oldInstallationCloseCannotDismissReopenedTaskConfirmation() {
+        show()
+        rule.runOnIdle { model.recoverInstall(task.operationId, false) }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.installationVerified }
+        rule.onAllNodesWithText(text(R.string.smb_records)).filter(hasClickAction()).onFirst().performClick()
+        rule.onNodeWithText(text(R.string.operations_request_cancel)).performScrollTo().performClick()
+        val old = requireNotNull(model.installationCancellation)
+        val oldClose = requireNotNull(rule.onNodeWithText(text(R.string.common_close))
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action)
+        rule.runOnIdle { model.requestInstallationCancellation(old.owner, old.operation) }
+        val reopened = requireNotNull(model.installationCancellation)
+        rule.runOnIdle { oldClose(); assertSame(reopened, model.installationCancellation); assertTrue(cancellations.isEmpty()) }
+        rule.onNodeWithText(text(R.string.common_close)).performClick()
+        rule.runOnIdle { assertNull(model.installationCancellation); assertTrue(cancellations.isEmpty()) }
+    }
+
+    @Test fun pausedInstallationApprovalCannotSubmitCapturedButton() {
+        show(notInstalled = true)
+        rule.onNodeWithText(text(R.string.smb_install)).performScrollTo().performClick()
+        val oldSubmit = requireNotNull(rule.onNodeWithText(text(R.string.smb_submit))
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action)
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+            rule.runOnUiThread { oldSubmit(); assertTrue(installationKeys.isEmpty()) }
+            rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        } finally { rule.mainClock.autoAdvance = true }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.runOnIdle { assertFalse(model.state.pendingInstallation); assertEquals(0, writes); assertTrue(cancellations.isEmpty()) }
+    }
+
+    @Test fun oldInstallationButtonsCannotConsumeReopenedApproval() {
+        show(notInstalled = true)
+        rule.onNodeWithText(text(R.string.smb_install)).performScrollTo().performClick()
+        val oldSubmit = requireNotNull(rule.onNodeWithText(text(R.string.smb_submit))
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action)
+        val oldCancel = requireNotNull(rule.onNodeWithText(text(R.string.common_cancel))
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action)
+        rule.onNodeWithText(text(R.string.common_cancel)).performClick()
+        rule.onNodeWithText(text(R.string.smb_install)).performScrollTo().performClick()
+        rule.runOnIdle { oldCancel(); oldSubmit(); assertTrue(installationKeys.isEmpty()) }
+        rule.onNode(isDialog()).assertExists()
+        rule.onNodeWithText(text(R.string.smb_submit)).performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.pendingInstallation }
+        rule.runOnIdle { oldSubmit(); assertEquals(1, installationKeys.size); assertEquals(0, writes) }
+        rule.onNodeWithText(text(R.string.common_dismiss)).performClick()
+        rule.onNodeWithText(text(R.string.common_retry)).performScrollTo().performClick()
+        val retry = requireNotNull(model.installationReview)
+        rule.runOnIdle { oldSubmit(); assertSame(retry, model.installationReview); assertEquals(1, installationKeys.size) }
+        rule.onNodeWithText(text(R.string.smb_submit)).performClick()
+        rule.waitUntil(5_000) { !model.state.busy && installationKeys.size == 2 }
+        rule.runOnIdle { assertEquals(installationKeys.first(), installationKeys.last()); assertEquals(0, writes); assertTrue(cancellations.isEmpty()) }
+    }
+
+    @Test fun unchangedRunningInstallationContinuesAutomaticObservation() {
+        show()
+        rule.runOnIdle { model.recoverInstall(task.operationId, false) }
+        rule.waitUntil(5_000) { model.state.installationVerified && !model.state.busy }
+        rule.waitUntil(6_500) { installationReadClockTimes.size >= 4 }
+        rule.runOnIdle {
+            assertEquals(task, model.state.installation); assertTrue(model.state.installationVerified)
+            assertTrue(installationKeys.isEmpty()); assertTrue(cancellations.isEmpty()); assertEquals(0, writes)
+        }
+    }
+
+    @Test fun stoppedPageDoesNotPollAndResumeStartsAnotherFullIntervalWithoutComposeFrames() {
+        show()
+        rule.runOnIdle { model.recoverInstall(task.operationId, false) }
+        rule.waitUntil(5_000) { model.state.installationVerified && !model.state.busy }
+        rule.waitForIdle()
+        val before = installationReadClockTimes.size
+        var resumedAt = 0L
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.mainClock.advanceTimeBy(1_000)
+            rule.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+            assertEquals(Lifecycle.State.CREATED, rule.activityRule.scenario.state)
+            // Advance the effect scheduler while the stopped Activity's recomposer remains paused.
+            rule.mainClock.advanceTimeBy(2_000)
+            android.os.SystemClock.sleep(2_000)
+            assertEquals(before, installationReadClockTimes.size)
+            resumedAt = rule.mainClock.currentTime
+            rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        } finally { rule.mainClock.autoAdvance = true }
+        rule.waitUntil(5_000) { installationReadClockTimes.size > before }
+        val interval = installationReadClockTimes[before] - resumedAt
+        assertTrue("Resume must wait for a new polling interval, got ${interval}ms on the effect clock", interval >= 1_500)
+        rule.waitUntil(5_000) { installationReadClockTimes.size > before + 1 }
+        rule.runOnIdle { assertTrue(model.state.installationVerified); assertTrue(installationKeys.isEmpty()); assertTrue(cancellations.isEmpty()); assertEquals(0, writes) }
     }
 
 }

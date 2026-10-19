@@ -57,3 +57,9 @@ Samba 用户页面仅针对 Server 报告的 eligible Unix 账户提供启用/�
 - [Smb.kt](../../app/src/main/java/app/relaxkonos/mobile/core/net/Smb.kt)、[SmbValidation.kt](../../app/src/main/java/app/relaxkonos/mobile/core/net/SmbValidation.kt)：当前 typed 格式、路由和校验。
 - [SmbRepository.kt](../../app/src/main/java/app/relaxkonos/mobile/data/SmbRepository.kt)、[SmbMutationJournal.kt](../../app/src/main/java/app/relaxkonos/mobile/data/SmbMutationJournal.kt)：读取、提权、复核和未知标记。
 - [SmbScreen.kt](../../app/src/main/java/app/relaxkonos/mobile/ui/manage/smb/SmbScreen.kt)、[SmbViewModel.kt](../../app/src/main/java/app/relaxkonos/mobile/ui/manage/smb/SmbViewModel.kt)：页面、安装恢复与观察。
+
+每次打开变更确认都使用独立的对象身份，即使同一账户、相同事实和相同动作在两次重绘之间直接替换，也不会沿用旧密码输入。旧提交和关闭回调只作用于原确认，不得清空或关闭新确认的输入；安装取消确认的关闭同样绑定原对象。用户关闭与生命周期撤销使用独立入口，暂停、离页和新请求仍可直接撤销当前确认。
+
+安装提交确认也持有独立身份，冻结原登录、共享事实与是否重试原请求；模型在确认时再次核对当前资格，提交前一次消费。暂停、离页、栏目导航、刷新、找回任务或关闭都会撤销旧确认。旧提交/关闭不能操作重新打开的确认，也不能切换栏目；只有接受当前确认才进入操作记录。未确认前不准备请求或写入安装恢复标记，结果未知后的显式重试继续使用原幂等键。
+
+安装观察以每次读取的反馈代次重新安排等待；服务器快速返回相同运行快照时仍持续观察，不依赖忙碌状态必须被重绘。Activity 暂停和恢复同步改变观察代次，旧等待即使未触发重绘也失效；后台不开始新的安装读取，恢复前台后重新等待完整间隔。已开始的只读请求仍可完成，观察不会重放安装、取消或共享变更。

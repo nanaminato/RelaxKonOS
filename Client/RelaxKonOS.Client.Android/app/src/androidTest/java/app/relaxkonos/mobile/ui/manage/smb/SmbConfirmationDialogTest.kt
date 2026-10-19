@@ -157,7 +157,7 @@ class SmbConfirmationDialogTest {
         action(R.string.common_cancel).assertIsEnabled()
         rule.runOnIdle { busy.value = false; ready.value = true }
         action(R.string.smb_submit).assertIsEnabled()
-        rule.runOnIdle { pending.value = pending.value.copy(change = SmbChange(SmbChangeKind.Password, "other-user")) }
+        rule.runOnIdle { pending.value = SmbConfirmation(pending.value.expected, SmbChange(SmbChangeKind.Password, "other-user")) }
         emptyFields()
         rule.onNodeWithText("other-user").assertExists()
         Espresso.closeSoftKeyboard()
@@ -179,4 +179,13 @@ class SmbConfirmationDialogTest {
         rule.onNodeWithText("Parent page").assertIsDisplayed()
         rule.runOnIdle { assertEquals(request, pending.value.change.share); assertEquals(0, sends); assertEquals(1, closes) }
     }
+    @Test fun identicalReplacementRequiresFreshPasswordInput() {
+        show(); fill()
+        action(R.string.smb_submit).assertIsEnabled()
+        val previous = pending.value
+        rule.runOnIdle { pending.value = SmbConfirmation(previous.expected, previous.change) }
+        emptyFields()
+        rule.runOnIdle { assertEquals(0, sends); assertEquals(0, closes) }
+    }
+
 }

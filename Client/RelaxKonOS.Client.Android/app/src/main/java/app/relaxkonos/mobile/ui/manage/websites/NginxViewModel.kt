@@ -13,6 +13,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 internal data class NginxState(
+    val requestVersion: Long = 0,
     val loading: Boolean = false, val busy: Boolean = false,
     val servers: List<WebServer> = emptyList(), val candidates: List<WebServerCandidate> = emptyList(),
     val statuses: Map<String, WebServerStatus> = emptyMap(), val tests: Map<String, WebServerConfigTest> = emptyMap(),
@@ -350,7 +351,7 @@ internal class NginxViewModel(private val session: AuthSession, private val gate
         }
         NginxDiagnostics.event("work.begin epoch=$sessionEpoch")
         workGeneration++
-        state = state.copy(busy = true, problemCode = null, uncertain = false)
+        state = state.copy(busy = true, problemCode = null, uncertain = false, requestVersion = workGeneration)
         viewModelScope.launch {
             try { verify(active); block(active) }
             catch (cancelled: CancellationException) { NginxDiagnostics.event("work.cancelled epoch=$sessionEpoch"); throw cancelled }

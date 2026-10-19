@@ -1,5 +1,7 @@
 package app.relaxkonos.mobile.ui.manage.firewall
 
+import android.graphics.Bitmap
+import java.io.File
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.Lifecycle
@@ -36,6 +38,7 @@ class FirewallCancellationFlowTest {
     private val visible = mutableStateOf(true)
     private var delayRules = false
     private var pendingRules: kotlin.coroutines.Continuation<ApiResult<List<FirewallRule>>>? = null
+    private var currentRules = emptyList<FirewallRule>()
     private var currentStatus = FirewallStatus(true, false, "ufw", null, "deny", "allow", "")
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     private fun text(id: Int) = context.getString(id)
@@ -59,7 +62,7 @@ class FirewallCancellationFlowTest {
             }
             override suspend fun firewallRules(serverUrl: String, accessToken: String): ApiResult<List<FirewallRule>> =
                 if (delayRules) kotlin.coroutines.suspendCoroutine { pendingRules = it }
-                else ApiResult.Success(emptyList())
+                else ApiResult.Success(currentRules)
             override suspend fun changeFirewall(serverUrl: String, accessToken: String, change: FirewallChange): ApiResult<FirewallResult> {
                 writes++
                 if (!successfulWrite) throw CancellationException("private cancelled write")
@@ -199,6 +202,60 @@ class FirewallCancellationFlowTest {
         rule.onNode(isDialog()).assertExists()
         rule.onNodeWithText(text(R.string.common_dismiss)).assertIsDisplayed()
         rule.runOnIdle { assertNull(model.state.facts); assertFalse(model.state.busy); assertEquals(0, writes) }
+    }
+
+    @Test fun oldCancelCannotDismissReplacementOrReopenedConfirmation() {
+        show()
+        rule.onNodeWithText(text(R.string.firewall_enable)).performScrollTo().performClick()
+        val oldCancel = requireNotNull(rule.onNodeWithText(text(R.string.common_cancel))
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action)
+        val original = requireNotNull(model.confirmation)
+        rule.runOnIdle {
+            model.requestChange(original.owner, original.expected,
+                FirewallChange(FirewallChangeKind.Defaults, incoming = "reject", outgoing = "allow"))
+        }
+        val replacement = requireNotNull(model.confirmation)
+        rule.runOnIdle { oldCancel(); assertSame(replacement, model.confirmation); assertEquals(0, writes) }
+        rule.onNodeWithText(text(R.string.common_cancel)).performClick()
+        rule.runOnIdle { assertNull(model.confirmation) }
+        rule.onNodeWithText(text(R.string.firewall_enable)).performScrollTo().performClick()
+        val reopened = requireNotNull(model.confirmation)
+        rule.runOnIdle { oldCancel(); assertSame(reopened, model.confirmation); assertEquals(0, writes) }
+        rule.onNodeWithText(text(R.string.common_cancel)).performClick()
+        rule.runOnIdle { assertNull(model.confirmation) }
+    }
+
+    @Test fun deleteReviewShowsRuleEndpointsProtocolAndAddressFamily() {
+        val target = FirewallRule(7, "allow", "in", "tcp", "2001:db8:1234:5678::1/128", "2001:db8:abcd:ffff::2/128", "5000", "IPv6")
+        currentRules = listOf(target)
+        show()
+        rule.onNode(hasText("7 ·", substring = true)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.common_delete)).performScrollTo().performClick()
+        listOf(target.source, target.destination, target.port).forEach { value ->
+            rule.onNode(hasText(value) and hasAnyAncestor(isDialog())).performScrollTo().assertIsDisplayed()
+            if (value == target.source) captureReview("firewall-delete-source.png")
+        }
+        rule.onNode(hasText("TCP", substring = true) and hasAnyAncestor(isDialog())).performScrollTo().assertIsDisplayed()
+        rule.onNode(hasText(target.addressFamily, substring = true) and hasAnyAncestor(isDialog())).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(context.getString(R.string.firewall_number, target.number)).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.firewall_submit)).assertIsDisplayed()
+        captureReview("firewall-delete-target.png")
+        rule.onNodeWithText(text(R.string.common_cancel)).performClick()
+        rule.runOnIdle { assertEquals(0, writes); assertNull(model.confirmation) }
+    }
+
+    private fun captureReview(name: String) {
+        rule.onNodeWithText(text(R.string.firewall_confirm)).assertIsDisplayed()
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        automation.waitForIdle(500, 5_000)
+        val root = requireNotNull(automation.rootInActiveWindow)
+        assertEquals(context.packageName, root.packageName.toString())
+        val bitmap = requireNotNull(automation.takeScreenshot())
+        try {
+            File(context.getExternalFilesDir(null), name).outputStream().use {
+                assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
+            }
+        } finally { bitmap.recycle() }
     }
 
 }

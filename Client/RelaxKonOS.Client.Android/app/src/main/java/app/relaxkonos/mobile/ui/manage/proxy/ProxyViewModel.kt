@@ -15,7 +15,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Job
 
-internal data class ProxyState(val busy: Boolean = false, val overview: ApiResult<ProxyOverview>? = null,
+internal data class ProxyState(val requestVersion: Long = 0, val busy: Boolean = false, val overview: ApiResult<ProxyOverview>? = null,
     val profiles: ApiResult<List<ProxyProfile>>? = null, val subscriptions: ApiResult<List<ProxySubscription>>? = null,
     val groups: ApiResult<List<ProxyGroup>>? = null, val routing: ApiResult<ProxyRoutingMode>? = null,
     val releases: ApiResult<List<ProxyRelease>>? = null,
@@ -321,7 +321,7 @@ internal class ProxyViewModel(private val session: AuthSession, private val repo
         if (state.busy) return
         stopDiagnostics()
         workGeneration++
-        state = state.copy(busy = true, problemCode = null, uncertain = false)
+        state = state.copy(busy = true, problemCode = null, uncertain = false, requestVersion = workGeneration)
         viewModelScope.launch {
             try { verify(active); block(active) }
             catch (cancelled: CancellationException) { throw cancelled }

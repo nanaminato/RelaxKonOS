@@ -65,7 +65,7 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
     }
     OperationMessageDialog(if (state.busy) null else state.problemCode?.let { nginxProblemLabel(it) } ?: if (state.uncertain) stringResource(R.string.nginx_uncertain) else null, tone = if (state.problemCode == null) StatusTone.Warning else StatusTone.Danger)
     LaunchedEffect(owner, sessionEpoch, section) { if (owner != null) model.refresh() }
-    LaunchedEffect(owner, sessionEpoch, section, resumed, state.busy, state.operation, state.installation,
+    LaunchedEffect(owner, sessionEpoch, section, resumed, state.busy, state.requestVersion, state.operation, state.installation,
         state.operationVerified, state.installationVerified, state.uncertain, state.problemCode, state.siteDraft,
         installDialog, recoveryDialog, confirmation, cancellation) {
         if (resumed && section in setOf("instances", "sites", "records") && !installDialog && !recoveryDialog && confirmation == null && cancellation == null) {

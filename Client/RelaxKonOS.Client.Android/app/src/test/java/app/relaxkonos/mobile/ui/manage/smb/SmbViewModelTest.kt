@@ -155,7 +155,7 @@ class SmbViewModelTest {
         val password = "review-password".toCharArray()
         model.change(old, password); advanceUntilIdle()
         assertEquals(0, sends); assertTrue(password.all { it == '\u0000' }); assertSame(fresh, model.changeReview)
-        model.dismissConfirmation(); model.change(fresh, password); advanceUntilIdle(); assertEquals(0, sends)
+        model.dismissConfirmation(fresh); model.change(fresh, password); advanceUntilIdle(); assertEquals(0, sends)
     }
     @Test fun `stop revokes review and fresh confirmation sends once then clears password`() = runTest {
         val old = review(); model.stop()
@@ -240,6 +240,72 @@ class SmbViewModelTest {
         model.recoverInstall(terminalInstallation.operationId, false); advanceUntilIdle()
         assertEquals(terminalInstallation, model.state.installation); assertTrue(model.state.installationVerified)
         assertEquals("file-services.smb.installation_refresh_failed", model.state.problem); assertFalse(model.state.busy)
+    }
+
+    @Test fun `stale review dismissal cannot close identical replacement or reopened review`() = runTest {
+        val old = review()
+        model.requestChange(old.owner, old.confirmation.expected, old.confirmation.change)
+        val replacement = requireNotNull(model.changeReview)
+        assertNotSame(old.confirmation, replacement.confirmation)
+        model.dismissConfirmation(old); assertSame(replacement, model.changeReview)
+        model.dismissConfirmation(replacement); assertNull(model.changeReview)
+        model.requestChange(old.owner, old.confirmation.expected, old.confirmation.change)
+        val reopened = requireNotNull(model.changeReview)
+        model.dismissConfirmation(old); assertSame(reopened, model.changeReview)
+        model.dismissConfirmation(reopened); assertNull(model.changeReview)
+        assertEquals(0, sends)
+    }
+    @Test fun `stale installation dismissal cannot close replacement cancellation`() = runTest {
+        login(); runCurrent()
+        val operation = InstallationOperation("55555555-5555-5555-5555-555555555555", InstallationService.Smb,
+            InstallationKind.Install, InstallationState.Running, InstallationStage.Installing, null, null, 1, 1, null, true)
+        gateway.onInstallation = { ApiResult.Success(operation) }
+        model.recoverInstall(operation.operationId, false); advanceUntilIdle()
+        val owner = requireNotNull(model.state.owner)
+        model.requestInstallationCancellation(owner, operation)
+        val old = requireNotNull(model.installationCancellation)
+        model.requestInstallationCancellation(owner, operation)
+        val replacement = requireNotNull(model.installationCancellation)
+        model.dismissInstallationCancellation(old); assertSame(replacement, model.installationCancellation)
+        model.dismissInstallationCancellation(replacement); assertNull(model.installationCancellation)
+        assertEquals(0, sends)
+    }
+
+    private suspend fun TestScope.installationReview(): SmbInstallationReview {
+        gateway.onSmbStatus = { ApiResult.Success(facts.status.copy(state = SmbRuntimeState.NotInstalled)) }
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        model.requestInstallation(requireNotNull(model.state.owner), requireNotNull(model.state.facts))
+        return requireNotNull(model.installationReview)
+    }
+    @Test fun `installation approval is consumed once and explicit retry retains original key`() = runTest {
+        val keys = mutableListOf<String>()
+        gateway.onStartInstallation = { _, _, key -> keys += key; ApiResult.Transport(null) }
+        val old = installationReview()
+        assertTrue(installations.pending(old.owner).isEmpty())
+        model.dismissInstallationReview(old)
+        model.requestInstallation(old.owner, old.expected)
+        val fresh = requireNotNull(model.installationReview)
+        model.dismissInstallationReview(old); assertSame(fresh, model.installationReview)
+        assertFalse(model.install(old)); assertSame(fresh, model.installationReview)
+        assertTrue(model.install(fresh)); assertFalse(model.install(fresh)); advanceUntilIdle()
+        assertEquals(1, keys.size); assertTrue(model.state.pendingInstallation)
+        model.requestInstallation(old.owner, requireNotNull(model.state.facts))
+        val retry = requireNotNull(model.installationReview)
+        assertTrue(retry.retry); assertFalse(model.install(old)); assertSame(retry, model.installationReview)
+        assertTrue(model.install(retry)); advanceUntilIdle()
+        assertEquals(2, keys.size); assertEquals(keys.first(), keys.last())
+    }
+    @Test fun `refresh stop and relogin revoke installation approvals without preparing a request`() = runTest {
+        val first = installationReview()
+        model.refresh(); advanceUntilIdle(); assertFalse(model.install(first))
+        model.requestInstallation(first.owner, requireNotNull(model.state.facts))
+        val stopped = requireNotNull(model.installationReview)
+        model.stop(); assertFalse(model.install(stopped))
+        model.refresh(); advanceUntilIdle()
+        model.requestInstallation(first.owner, requireNotNull(model.state.facts))
+        val oldLogin = requireNotNull(model.installationReview)
+        login(); runCurrent(); model.refresh(); advanceUntilIdle(); assertFalse(model.install(oldLogin))
+        assertNull(model.installationReview); assertTrue(installations.pending(requireNotNull(model.state.owner)).isEmpty())
     }
 
 }

@@ -614,4 +614,87 @@ class SshFilesControllerTest {
         rule.runOnIdle { assertTrue(model.state.value.deleteEntries.isEmpty()) }
     }
 
+    @Test fun immediateRepeatedFailureShowsFeedbackAfterDismissal() {
+        connectFailure = IllegalStateException("private connection failure")
+        model.resume("isolated-host"); dispatcher.drain()
+        rule.setContent { MaterialTheme {
+            val state by model.state.collectAsState()
+            SshFilesFeedback(state)
+        } }
+        val dismiss = rule.activity.getString(R.string.common_dismiss)
+        rule.onNodeWithText(dismiss).assertIsDisplayed().performClick()
+        rule.onNodeWithText(dismiss).assertDoesNotExist()
+        rule.runOnIdle { model.reload(); dispatcher.drain() }
+        rule.onNodeWithText(dismiss).assertIsDisplayed()
+        rule.onNodeWithText("private connection failure").assertDoesNotExist()
+        rule.runOnIdle { assertEquals(2, connects); assertEquals(0, writes); assertCleared() }
+    }
+
+    @Test fun systemBackExitsSelectionThenTraversesParentsBeforeWorkspace() {
+        model.resume("isolated-host"); dispatcher.drain()
+        model.navigate("/history"); dispatcher.drain()
+        model.navigate("/first/second"); dispatcher.drain()
+        model.selectMode()
+        var workspaceBacks = 0
+        rule.setContent {
+            androidx.activity.compose.BackHandler { workspaceBacks++ }
+            val state by model.state.collectAsState()
+            SshFilesBackHandler(state, model)
+        }
+        fun back() { rule.runOnIdle { rule.activity.onBackPressedDispatcher.onBackPressed() }; rule.waitForIdle() }
+        back()
+        rule.runOnIdle { assertFalse(model.state.value.selecting); assertEquals("/first/second", model.state.value.path); assertEquals(0, workspaceBacks) }
+        back()
+        rule.runOnIdle { dispatcher.drain(); assertEquals("/first", model.state.value.path); assertEquals(0, workspaceBacks) }
+        back()
+        rule.runOnIdle { dispatcher.drain(); assertEquals("/", model.state.value.path); assertEquals(0, workspaceBacks) }
+        back()
+        rule.runOnIdle { assertEquals(1, workspaceBacks); assertEquals(0, writes) }
+    }
+
+    @Test fun systemBackRetainsDirtyTextUntilExplicitDiscard() {
+        val entry = SshFileEntry("/draft.txt", "draft.txt", false, false, 3)
+        files[entry.path] = entry; contents[entry.path] = "old".toByteArray()
+        model.resume("isolated-host"); dispatcher.drain()
+        model.open(entry); dispatcher.drain()
+        model.updateText("unsaved", requireNotNull(model.state.value.detailIntent))
+        var workspaceBacks = 0
+        rule.setContent { MaterialTheme {
+            androidx.activity.compose.BackHandler { workspaceBacks++ }
+            val state by model.state.collectAsState()
+            SshFilesBackHandler(state, model)
+            SshFileDiscardConfirmation(state, model)
+        } }
+        rule.runOnIdle { rule.activity.onBackPressedDispatcher.onBackPressed() }
+        rule.runOnIdle {
+            assertNotNull(model.state.value.discardIntent)
+            assertEquals("unsaved", (model.state.value.preview as SshPreview.Text).content)
+            assertEquals(0, workspaceBacks); assertEquals(0, writes)
+        }
+        rule.onNodeWithText(rule.activity.getString(R.string.common_cancel)).performClick()
+        rule.runOnIdle { assertNull(model.state.value.discardIntent); assertNotNull(model.state.value.detailEntry) }
+        rule.runOnIdle { rule.activity.onBackPressedDispatcher.onBackPressed() }
+        rule.runOnIdle { model.discardDetail(requireNotNull(model.state.value.discardIntent)); assertNull(model.state.value.detailEntry) }
+    }
+
+    @Test fun staleBackCannotNavigateHiddenWorkspaceOrCancelActiveTransfer() {
+        model.resume("isolated-host"); dispatcher.drain()
+        model.navigate("/first/second"); dispatcher.drain()
+        model.detach()
+        val before = connects
+        model.backFromFiles(); dispatcher.drain()
+        assertEquals("/first/second", model.state.value.path); assertEquals(before, connects)
+        model.resume("isolated-host"); dispatcher.drain()
+        val entry = SshFileEntry("/source", "source", false, false, 1)
+        files[entry.path] = entry; model.clipboard(entry, false); model.requestPaste()
+        val paste = requireNotNull(model.state.value.pasteIntent)
+        gate = CompletableDeferred(); model.paste(paste); dispatcher.drain()
+        assertTrue(model.transferring)
+        val lease = model.transferLease
+        model.backFromFiles()
+        assertEquals("/first/second", model.state.value.path); assertTrue(model.transferring)
+        assertEquals(lease, model.transferLease); assertEquals(0, writes)
+        gate!!.complete(Unit); dispatcher.drain()
+    }
+
 }

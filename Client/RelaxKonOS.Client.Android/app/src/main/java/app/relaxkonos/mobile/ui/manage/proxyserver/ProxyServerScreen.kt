@@ -12,7 +12,13 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.ui.common.*
@@ -44,10 +50,18 @@ private const val RECORDS = "records"
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ProxyServerScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
-    val model: ProxyServerViewModel = viewModel()
-    val state = model.state
     val container = appContainer()
-    val owner = container.activeSession
+    val model: ProxyServerViewModel = viewModel(factory = viewModelFactory {
+        initializer { ProxyServerViewModel(container.session, container.proxyServer, container.operationIndex) }
+    })
+    ProxyServerContent(model, container.activeSession, onBack, modifier)
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable internal fun ProxyServerContent(model: ProxyServerViewModel, owner: SessionState.Active?,
+    onBack: () -> Unit, modifier: Modifier = Modifier) {
+    val state = model.state
+    val disclosureVersion = model.disclosureVersion
     val available = owner?.capabilities?.contains(ServerCapabilities.PROXY_SERVER) == true
     val canManage = available && owner?.privilegedOperations == true
     val canExport = owner?.privilegedOperations == true
@@ -62,6 +76,17 @@ fun ProxyServerScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     val facts = state.facts
     val editorOpen = credentialDraft != null || principalDraft != null
 
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(model, owner, lifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) model.clearSensitiveOutputs()
+        }
+        lifecycle.addObserver(observer)
+        onDispose {
+            lifecycle.removeObserver(observer)
+            model.clearSensitiveOutputs()
+        }
+    }
     LaunchedEffect(owner, epoch) { if (available) model.refresh() }
     LaunchedEffect(owner, epoch, facts?.status?.installed) { if (available && facts?.status?.installed == true) model.loadReleases() }
     LaunchedEffect(owner, epoch, state.operation?.operationId, state.operation?.state?.wire, state.busy, editorOpen) {
@@ -82,7 +107,7 @@ fun ProxyServerScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             WorkspaceDestination(CONNECT, R.string.proxy_server_connect_title),
             WorkspaceDestination(SUBSCRIPTIONS, R.string.proxy_server_subscriptions_title),
             WorkspaceDestination(RECORDS, R.string.workspace_records)),
-        section, { section = it }, modifier, stateKey = owner to epoch,
+        section, { if (section != it) model.clearSensitiveOutputs(); section = it }, modifier, stateKey = owner to epoch,
         contentSpacing = Spacing.sm, contentPadding = PaddingValues(Spacing.lg)) {
         if (!available) {
             Text(stringResource(R.string.error_capability_missing))
@@ -270,7 +295,7 @@ fun ProxyServerScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                         ProxyServerExportFormats.all.forEach { format ->
                             val option = state.exportOptions.firstOrNull { it.format == format }
-                            OutlinedButton(enabled = canExport && state.ready && option?.supported == true, onClick = { model.export(format) }) {
+                            OutlinedButton(enabled = canExport && state.ready && option?.supported == true, onClick = { model.export(owner, disclosureVersion, format) }) {
                                 Text(proxyServerFormatLabel(format))
                             }
                         }
@@ -303,7 +328,7 @@ fun ProxyServerScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                 Text(stringResource(R.string.proxy_server_subscription_hint), style = MaterialTheme.typography.bodySmall)
                 val credentials = facts?.credentials.orEmpty()
                 credentials.forEach { credential ->
-                    SubscriptionIssuer(credential, canExport && state.ready, model)
+                    SubscriptionIssuer(credential, canExport && state.ready, model, owner, disclosureVersion)
                 }
                 state.issued?.let { issued ->
                     HorizontalDivider()
@@ -415,7 +440,7 @@ fun ProxyServerScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
 })
 
 /** One credential's subscription form. Local state, so an abandoned form leaves nothing behind. */
-@Composable private fun SubscriptionIssuer(credential: ProxyServerCredential, enabled: Boolean, model: ProxyServerViewModel) {
+@Composable private fun SubscriptionIssuer(credential: ProxyServerCredential, enabled: Boolean, model: ProxyServerViewModel, owner: SessionState.Active?, disclosureVersion: Long) {
     var expanded by remember(credential.id) { mutableStateOf(false) }
     var formats by remember(credential.id) { mutableStateOf(setOf(ProxyServerExportFormats.URI)) }
     TextButton(enabled = enabled, onClick = { expanded = !expanded }) {
@@ -428,7 +453,7 @@ fun ProxyServerScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
         }
     }
     Button(enabled = enabled && formats.isNotEmpty(), onClick = {
-        model.issueSubscription(credential.id, ProxyServerExportFormats.all.filter { it in formats }, null)
+        model.issueSubscription(owner, disclosureVersion, credential.id, ProxyServerExportFormats.all.filter { it in formats }, null)
         expanded = false
     }) { Text(stringResource(R.string.proxy_server_subscription_issue)) }
 }

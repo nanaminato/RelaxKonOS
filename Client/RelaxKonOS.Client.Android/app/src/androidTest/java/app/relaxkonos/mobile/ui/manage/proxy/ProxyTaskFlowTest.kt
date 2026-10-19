@@ -30,6 +30,7 @@ import org.junit.Test
 
 class ProxyTaskFlowTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
+    private val pollClockTimes = java.util.concurrent.CopyOnWriteArrayList<Long>()
     private val store = ViewModelStore()
     private lateinit var model: ProxyViewModel
     private lateinit var owner: SessionState.Active
@@ -68,11 +69,11 @@ class ProxyTaskFlowTest {
             override suspend fun proxyRecovery(serverUrl: String, accessToken: String) = ApiResult.Success(ProxyRecovery(false, false, null, ""))
             override suspend fun proxyGeoData(serverUrl: String, accessToken: String) = ApiResult.Success(ProxyGeoData(false, null))
             override suspend fun proxyOperation(serverUrl: String, accessToken: String, id: String): ApiResult<ProxyOperation> {
-                operationReads++; return ApiResult.Success(operation)
+                pollClockTimes += rule.mainClock.currentTime; operationReads++; return ApiResult.Success(operation)
             }
             override suspend fun activeInstallation(serverUrl: String, accessToken: String, service: InstallationService): ApiResult<InstallationOperation?> = ApiResult.Success(if (tasks) current else null)
             override suspend fun installation(serverUrl: String, accessToken: String, operationId: String): ApiResult<InstallationOperation> {
-                installationReads++; return ApiResult.Success(current)
+                pollClockTimes += rule.mainClock.currentTime; installationReads++; return ApiResult.Success(current)
             }
             override suspend fun cancelInstallation(serverUrl: String, accessToken: String, operationId: String, idempotencyKey: String): ApiResult<InstallationOperation> {
                 sent += operationId; return ApiResult.Transport(null)
@@ -176,4 +177,37 @@ class ProxyTaskFlowTest {
         assertEquals(left, logReads)
         rule.runOnIdle { assertTrue(sent.isEmpty()) }
     }
+    @Test fun identicalSnapshotsContinuePollingWithoutBusyFrames() {
+        start()
+        rule.runOnUiThread { model.recoverOperation(operation.operationId) }; rule.waitUntil(5_000) { !model.state.busy && model.state.operationVerified }
+        rule.waitForIdle()
+        val initialOperations = operationReads
+        val initialInstallations = installationReads
+        rule.waitUntil(10_000) { operationReads >= initialOperations + 3 && installationReads >= initialInstallations + 3 }
+        rule.runOnIdle { assertTrue(sent.isEmpty()); assertTrue(model.state.installationVerified) }
+    }
+
+    @Test fun pausedTaskObservationRestartsWithFullInterval() {
+        start()
+        rule.runOnUiThread { model.recoverOperation(operation.operationId) }; rule.waitUntil(5_000) { !model.state.busy && model.state.operationVerified }
+        rule.waitForIdle()
+        var paused = 0
+        var resumedAt = 0L
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.mainClock.advanceTimeBy(1_000)
+            rule.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+            paused = pollClockTimes.size
+            rule.mainClock.advanceTimeBy(4_000)
+            android.os.SystemClock.sleep(2_000)
+            assertEquals(paused, pollClockTimes.size)
+            resumedAt = rule.mainClock.currentTime
+            rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        } finally { rule.mainClock.autoAdvance = true }
+        rule.waitUntil(6_000) { pollClockTimes.size > paused }
+        val interval = pollClockTimes[paused] - resumedAt
+        assertTrue("New observation must wait a full interval, got $interval", interval >= 1500)
+        rule.runOnIdle { assertTrue(sent.isEmpty()); assertTrue(model.state.installationVerified) }
+    }
+
 }

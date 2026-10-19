@@ -33,6 +33,7 @@ import org.junit.Test
 
 class GitInstallationFlowTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
+    private val pollClockTimes = java.util.concurrent.CopyOnWriteArrayList<Long>()
     private val store = ViewModelStore()
     private lateinit var model: GitWorkspaceViewModel
     private val operation = InstallationOperation("44444444-4444-4444-4444-444444444444", InstallationService.Git,
@@ -57,7 +58,7 @@ class GitInstallationFlowTest {
             override suspend fun gitEngine(serverUrl: String, accessToken: String) = ApiResult.Success(GitEngine(false, "not_installed", null, true))
             override suspend fun activeInstallation(serverUrl: String, accessToken: String, service: InstallationService): ApiResult<InstallationOperation?> = ApiResult.Success(current)
             override suspend fun installation(serverUrl: String, accessToken: String, operationId: String): ApiResult<InstallationOperation> {
-                reads++
+                pollClockTimes += rule.mainClock.currentTime; reads++
                 if (cancelRead) throw CancellationException("isolated query cancellation")
                 return ApiResult.Success(current)
             }
@@ -148,4 +149,36 @@ class GitInstallationFlowTest {
         cancelButton().performScrollTo().assertIsEnabled()
         rule.runOnIdle { assertEquals(operation.operationId, model.state.installation?.operationId); assertTrue(sent.isEmpty()) }
     }
+    @Test fun identicalSnapshotsContinuePollingWithoutBusyFrames() {
+        start()
+
+        rule.waitForIdle()
+        val initial = reads
+        rule.waitUntil(10_000) { reads >= initial + 3 }
+        rule.runOnIdle { assertTrue(sent.isEmpty()); assertTrue(model.state.installationVerified) }
+    }
+
+    @Test fun pausedTaskObservationRestartsWithFullInterval() {
+        start()
+
+        rule.waitForIdle()
+        var paused = 0
+        var resumedAt = 0L
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.mainClock.advanceTimeBy(1_000)
+            rule.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+            paused = pollClockTimes.size
+            rule.mainClock.advanceTimeBy(4_000)
+            android.os.SystemClock.sleep(2_000)
+            assertEquals(paused, pollClockTimes.size)
+            resumedAt = rule.mainClock.currentTime
+            rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        } finally { rule.mainClock.autoAdvance = true }
+        rule.waitUntil(6_000) { pollClockTimes.size > paused }
+        val interval = pollClockTimes[paused] - resumedAt
+        assertTrue("New observation must wait a full interval, got $interval", interval >= 2500)
+        rule.runOnIdle { assertTrue(sent.isEmpty()); assertTrue(model.state.installationVerified) }
+    }
+
 }

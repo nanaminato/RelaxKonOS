@@ -71,7 +71,7 @@ internal fun GitWorkspaceSection(owner: SessionState.Active, section: String, on
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer); model.dismissInstallationCancellation() }
     }
-    LaunchedEffect(owner, state.installation, state.installationVerified, state.busy, state.problem, resumed, model.installationCancellation) {
+    LaunchedEffect(owner, state.installation, state.installationVerified, state.busy, state.feedbackVersion, state.problem, resumed, model.installationCancellation) {
         if (resumed) model.observeInstallation { lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
     }
     LaunchedEffect(section, state.selectedId, state.busy) {

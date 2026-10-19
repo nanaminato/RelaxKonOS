@@ -51,7 +51,7 @@ import java.util.Date
     val dirty = (draft != null && draft != initialDraft) || (defaults != null && defaults != initialDefaults)
     val navigate: (() -> Unit) -> Unit = { action ->
         if (!state.busy) {
-            model.dismissConfirmation()
+            model.withdrawConfirmation()
             if (dirty) leave = action else action()
         }
     }
@@ -61,7 +61,7 @@ import java.util.Date
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(owner, lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_PAUSE) { model.dismissConfirmation(); leave = null }
+            if (event == Lifecycle.Event.ON_PAUSE) { model.withdrawConfirmation(); leave = null }
         }
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
@@ -185,20 +185,35 @@ import java.util.Date
     if (visible && facts == null && editing && pending == null && leave == null) FirewallRetainedDraftDialog(
         draft, defaults, state.busy, state.problem, model::refresh,
         { navigate { draft = null; defaults = null } })
-    if (pending != null) AlertDialog(onDismissRequest = { model.dismissConfirmation() }, title = { Text(stringResource(R.string.firewall_confirm)) },
+    if (pending != null) key(pending) { AlertDialog(onDismissRequest = { model.dismissConfirmation(pending) }, title = { Text(stringResource(R.string.firewall_confirm)) },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Text(stringResource(R.string.firewall_management_warning))
             Text(firewallChangeLabel(pending.change.kind))
-            pending.change.rule?.let { Text("${firewallValue(it.action)} · ${firewallValue(it.direction)} · ${it.source} → ${it.destination}:${it.port} · ${firewallValue(it.protocol)}") }
+            val reviewedRule = pending.change.rule ?: pending.expected.rules.singleOrNull {
+                pending.change.kind == FirewallChangeKind.Delete && it.number == pending.change.number
+            }
+            reviewedRule?.let {
+                Text("${firewallValue(it.action)} · ${firewallValue(it.direction)} · ${it.addressFamily}")
+                FirewallReviewField(stringResource(R.string.firewall_source_label), it.source)
+                FirewallReviewField(stringResource(R.string.firewall_destination_label), it.destination)
+                FirewallReviewField(stringResource(R.string.firewall_port_label), it.port.ifEmpty { firewallValue("any") })
+                FirewallReviewField(stringResource(R.string.firewall_protocol), firewallValue(it.protocol))
+            }
             pending.change.number?.let { Text(stringResource(R.string.firewall_number, it)) }
             pending.change.enabled?.let { Text(stringResource(if (it) R.string.firewall_enable else R.string.firewall_disable)) }
             pending.change.incoming?.let { Text(stringResource(R.string.firewall_defaults_value, firewallValue(it), firewallValue(pending.change.outgoing))) }
         } }, confirmButton = { Button(enabled = ready, onClick = {
             model.change(pending)
-        }) { Text(stringResource(R.string.firewall_submit)) } }, dismissButton = { TextButton(onClick = { model.dismissConfirmation() }) { Text(stringResource(R.string.common_cancel)) } })
+        }) { Text(stringResource(R.string.firewall_submit)) } }, dismissButton = { TextButton(onClick = { model.dismissConfirmation(pending) }) { Text(stringResource(R.string.common_cancel)) } }) }
     if (leave != null) AlertDialog(onDismissRequest = { leave = null }, title = { Text(stringResource(R.string.firewall_discard)) },
         text = { Text(stringResource(R.string.firewall_discard_help)) }, confirmButton = { TextButton(onClick = { val action = leave; leave = null; action?.invoke() }) { Text(stringResource(R.string.firewall_discard_action)) } },
         dismissButton = { TextButton(onClick = { leave = null }) { Text(stringResource(R.string.firewall_continue_editing)) } })
+}
+@Composable private fun FirewallReviewField(label: String, value: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.bodyMedium)
+    }
 }
 @OptIn(ExperimentalLayoutApi::class)
 @Composable private fun FirewallChoices(label: String, values: List<String>, selected: String, enabled: Boolean, onSelect: (String) -> Unit) {

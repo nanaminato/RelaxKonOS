@@ -79,7 +79,7 @@ private data class ProxyEditRequest(val kind: String, val profile: ProxyProfile?
     LaunchedEffect(owner, epoch, initialOperationId, state.busy) {
         if (available && initialOperationId != null && !state.busy && !attemptedInitial) { attemptedInitial = true; section = "records"; model.recoverOperation(initialOperationId) }
     }
-    LaunchedEffect(owner, epoch, state.operation, state.installation, state.busy, state.operationVerified, state.installationVerified, editor, install, networkEditing, resumed, confirm, cancellation, state.uncertain, state.problemCode) {
+    LaunchedEffect(owner, epoch, state.operation, state.installation, state.busy, state.requestVersion, state.operationVerified, state.installationVerified, editor, install, networkEditing, resumed, confirm, cancellation, state.uncertain, state.problemCode) {
         if (resumed && editor == null && !install && !networkEditing && confirm == null && cancellation == null) model.observeTasks {
             lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && editor == null && !install && !networkEditing && confirm == null && model.installationCancellation == null
         }

@@ -50,28 +50,32 @@ internal fun SmbContent(model: SmbViewModel, owner: SessionState.Active?, onBack
     var draft by remember(owner) { mutableStateOf<SmbDraft?>(null) }
     var draftFacts by remember(owner) { mutableStateOf<SmbFacts?>(null) }
     val review = model.changeReview?.takeIf { it.owner === owner }
-    val confirmation = review?.confirmation
     var leave by remember(owner) { mutableStateOf<(() -> Unit)?>(null) }
-    var install by remember(owner) { mutableStateOf(false) }; val cancel = model.installationCancellation?.takeIf { it.owner === owner }
+    val install = model.installationReview?.takeIf { it.owner === owner }; val cancel = model.installationCancellation?.takeIf { it.owner === owner }
     var recover by remember(owner) { mutableStateOf(false) }; var operationId by remember(owner) { mutableStateOf("") }; var identified by remember(owner) { mutableStateOf(false) }
-    val navigate: (() -> Unit) -> Unit = { action -> if (draft != null) leave = action else action() }
+    val navigate: (() -> Unit) -> Unit = { action ->
+        model.withdrawInstallationReview()
+        if (draft != null) leave = action else action()
+    }
     LaunchedEffect(owner, state.owner) { if (visible && owner != null) model.refresh() }
     LaunchedEffect(owner, state.saved) { if (visible && state.saved > 0) draft = null }
     DisposableEffect(owner) { onDispose { model.stop() } }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    var resumed by remember(lifecycle) { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
-    LaunchedEffect(owner, state.installation?.operationId, state.installation?.state, state.installationVerified, state.busy, resumed, cancel) {
-        if (visible && resumed && cancel == null) model.observeInstallation {
-            resumed && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && model.installationCancellation == null
-        }
-    }
+    var lifecycleEpoch by remember(owner, lifecycle) { mutableIntStateOf(0) }
     DisposableEffect(owner, lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
-            resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
-            if (event == Lifecycle.Event.ON_PAUSE) { model.dismissConfirmation(); leave = null; install = false; model.dismissInstallationCancellation(); recover = false; identified = false }
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_RESUME) lifecycleEpoch++
+            if (event == Lifecycle.Event.ON_PAUSE) { model.withdrawConfirmation(); leave = null; model.withdrawInstallationReview(); model.withdrawInstallationCancellation(); recover = false; identified = false }
         }
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
+    }
+    val observationEpoch = lifecycleEpoch
+    LaunchedEffect(owner, state.installation?.operationId, state.installation?.state, state.installationVerified,
+        state.busy, state.feedbackVersion, observationEpoch, visible, cancel) {
+        if (visible && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && cancel == null) model.observeInstallation {
+            lifecycleEpoch == observationEpoch && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && model.installationCancellation == null
+        }
     }
     BackHandler(section == "shares" && (draft != null || selected != null)) { navigate { draft = null; selected = null } }
     val pages = buildList {
@@ -123,7 +127,7 @@ WorkspaceSection(section == "overview") {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 if (facts.capabilities.installSupported && canManage && !state.pendingInstallation) OutlinedButton(enabled = !state.busy && draft == null && state.pending.isEmpty() && state.installation?.state?.active != true &&
                     (state.installation == null || state.installationVerified || state.pendingInstallation) &&
-                    facts.status.state == SmbRuntimeState.NotInstalled, onClick = { install = true }) { Text(stringResource(R.string.smb_install)) }
+                    facts.status.state == SmbRuntimeState.NotInstalled, onClick = { model.requestInstallation(requireNotNull(owner), facts) }) { Text(stringResource(R.string.smb_install)) }
                 if (canManage) SmbChangeKind.entries.filter { it in setOf(SmbChangeKind.Start, SmbChangeKind.Stop, SmbChangeKind.Restart) }.forEach { action ->
                     val allowed = if (action == SmbChangeKind.Start) facts.status.state == SmbRuntimeState.Stopped else facts.status.state == SmbRuntimeState.Running
                     OutlinedButton(enabled = ready && allowed && draft == null, onClick = { model.requestChange(requireNotNull(owner), facts, SmbChange(action)) }) { Text(smbActionLabel(action)) }
@@ -147,7 +151,7 @@ WorkspaceSection(section == "overview") {
         Text(stringResource(R.string.smb_records_help), style = MaterialTheme.typography.bodySmall)
         if (state.pendingInstallation) SmbPanel {
             Text(stringResource(R.string.installation_pending, installationServiceLabel(InstallationService.Smb), installationKindLabel(InstallationKind.Install)), color = MaterialTheme.colorScheme.error)
-            if (canManage) OutlinedButton(enabled = !state.busy && state.pending.isEmpty() && facts?.capabilities?.installSupported == true && state.installation?.state?.active != true, onClick = { install = true }) { ActionLabel(R.string.common_retry) }
+            if (canManage) OutlinedButton(enabled = !state.busy && state.pending.isEmpty() && facts?.capabilities?.installSupported == true && state.installation?.state?.active != true, onClick = { facts?.let { model.requestInstallation(owner, it) } }) { ActionLabel(R.string.common_retry) }
         }
         if (canManage) TextButton(enabled = !state.busy, onClick = { identified = false; recover = true }) { Text(stringResource(R.string.installation_recover)) }
         state.installation?.let { operation ->
@@ -238,15 +242,24 @@ WorkspaceSection(section == "overview") {
             }
         }
     }
-    confirmation?.let { pending -> SmbConfirmationDialog(pending, state.busy, ready, { model.dismissConfirmation() }) { secret ->
-        model.change(requireNotNull(review), secret)
+    review?.let { current -> key(current) {
+        SmbConfirmationDialog(current.confirmation, state.busy, ready, { model.dismissConfirmation(current) }) { secret ->
+            model.change(current, secret)
+        }
     } }
     if (leave != null) AlertDialog(onDismissRequest = { leave = null }, title = { Text(stringResource(R.string.smb_discard)) }, text = { Text(stringResource(R.string.smb_discard_note)) },
         confirmButton = { TextButton(onClick = { val action = leave; leave = null; action?.invoke() }) { Text(stringResource(R.string.smb_discard_action)) } }, dismissButton = { TextButton(onClick = { leave = null }) { Text(stringResource(R.string.common_cancel)) } })
-    if (install) AlertDialog(onDismissRequest = { install = false }, title = { Text(stringResource(R.string.smb_install)) }, text = { Text(stringResource(R.string.smb_install_note)) },
-        confirmButton = { Button(enabled = !state.busy, onClick = { install = false; section = "records"; model.install() }) { Text(stringResource(R.string.smb_submit)) } }, dismissButton = { TextButton(onClick = { install = false }) { Text(stringResource(R.string.common_cancel)) } })
-    cancel?.let { cancellation -> AlertDialog(onDismissRequest = { model.dismissInstallationCancellation() }, title = { Text(stringResource(R.string.operations_request_cancel)) }, text = { Text(stringResource(R.string.operations_cancel_explanation)) },
-        confirmButton = { Button(onClick = { model.cancelInstall(cancellation) }) { Text(stringResource(R.string.common_cancel)) } }, dismissButton = { TextButton(onClick = { model.dismissInstallationCancellation() }) { Text(stringResource(R.string.common_close)) } }) }
+    install?.let { current -> key(current) {
+        AlertDialog(onDismissRequest = { model.dismissInstallationReview(current) }, title = { Text(stringResource(R.string.smb_install)) }, text = {
+            Text(stringResource(R.string.smb_install_note))
+        }, confirmButton = { Button(enabled = !state.busy, onClick = {
+            if (model.install(current)) section = "records"
+        }) { Text(stringResource(R.string.smb_submit)) } }, dismissButton = {
+            TextButton(onClick = { model.dismissInstallationReview(current) }) { Text(stringResource(R.string.common_cancel)) }
+        })
+    } }
+    cancel?.let { cancellation -> key(cancellation) { AlertDialog(onDismissRequest = { model.dismissInstallationCancellation(cancellation) }, title = { Text(stringResource(R.string.operations_request_cancel)) }, text = { Text(stringResource(R.string.operations_cancel_explanation)) },
+        confirmButton = { Button(onClick = { model.cancelInstall(cancellation) }) { Text(stringResource(R.string.common_cancel)) } }, dismissButton = { TextButton(onClick = { model.dismissInstallationCancellation(cancellation) }) { Text(stringResource(R.string.common_close)) } }) } }
     if (recover) AlertDialog(onDismissRequest = { recover = false }, title = { Text(stringResource(R.string.installation_recover)) }, text = { Column {
         Text(stringResource(R.string.installation_recover_help)); OutlinedTextField(operationId, { operationId = it }, singleLine = true, label = { Text(stringResource(R.string.installation_operation_id)) })
         if (state.pendingInstallation) SmbCheck(identified, true, R.string.smb_identify_original) { identified = it }

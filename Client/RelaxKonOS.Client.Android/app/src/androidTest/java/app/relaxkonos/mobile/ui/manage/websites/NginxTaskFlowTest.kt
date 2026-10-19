@@ -32,6 +32,7 @@ import org.junit.Test
 
 class NginxTaskFlowTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
+    private val pollClockTimes = java.util.concurrent.CopyOnWriteArrayList<Long>()
     private val store = ViewModelStore()
     private lateinit var model: NginxViewModel
     private lateinit var owner: SessionState.Active
@@ -42,6 +43,8 @@ class NginxTaskFlowTest {
         WebServerOperationState.Running, "starting", "", null, 1, null)
     private val sent = mutableListOf<String>()
     @Volatile private var reads = 0
+    @Volatile private var operationReads = 0
+    @Volatile private var installationReads = 0
     private var failedRead = false
     private fun storage() = object : InstallationRequestStorage {
         var bytes: ByteArray? = null
@@ -61,10 +64,12 @@ class NginxTaskFlowTest {
             override suspend fun hostOperatingSystem(serverUrl: String) = ApiResult.Success(HostOperatingSystemKind.Linux)
             override suspend fun activeInstallation(serverUrl: String, accessToken: String, service: InstallationService): ApiResult<InstallationOperation?> = ApiResult.Success(current)
             override suspend fun installation(serverUrl: String, accessToken: String, operationId: String): ApiResult<InstallationOperation> {
-                reads++; return if (failedRead) ApiResult.Transport(null) else ApiResult.Success(current)
+                installationReads++
+                pollClockTimes += rule.mainClock.currentTime; reads++; return if (failedRead) ApiResult.Transport(null) else ApiResult.Success(current)
             }
             override suspend fun webServerOperation(serverUrl: String, accessToken: String, operationId: String): ApiResult<WebServerOperation> {
-                reads++; return ApiResult.Success(web)
+                operationReads++
+                pollClockTimes += rule.mainClock.currentTime; reads++; return ApiResult.Success(web)
             }
             override suspend fun cancelInstallation(serverUrl: String, accessToken: String, operationId: String, idempotencyKey: String): ApiResult<InstallationOperation> {
                 sent += operationId; return ApiResult.Transport(null)
@@ -176,4 +181,37 @@ class NginxTaskFlowTest {
         rule.waitUntil(8_000) { reads > paused && !model.state.busy }
         rule.runOnIdle { assertTrue(sent.isEmpty()) }
     }
+    @Test fun identicalSnapshotsContinuePollingWithoutBusyFrames() {
+        start()
+        rule.runOnUiThread { model.recover(web.operationId) }; rule.waitUntil(5_000) { !model.state.busy && model.state.operationVerified }
+        rule.waitForIdle()
+        val initialOperations = operationReads
+        val initialInstallations = installationReads
+        rule.waitUntil(10_000) { operationReads >= initialOperations + 3 && installationReads >= initialInstallations + 3 }
+        rule.runOnIdle { assertTrue(sent.isEmpty()); assertTrue(model.state.installationVerified) }
+    }
+
+    @Test fun pausedTaskObservationRestartsWithFullInterval() {
+        start()
+        rule.runOnUiThread { model.recover(web.operationId) }; rule.waitUntil(5_000) { !model.state.busy && model.state.operationVerified }
+        rule.waitForIdle()
+        var paused = 0
+        var resumedAt = 0L
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.mainClock.advanceTimeBy(1_000)
+            rule.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+            paused = pollClockTimes.size
+            rule.mainClock.advanceTimeBy(4_000)
+            android.os.SystemClock.sleep(2_000)
+            assertEquals(paused, pollClockTimes.size)
+            resumedAt = rule.mainClock.currentTime
+            rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        } finally { rule.mainClock.autoAdvance = true }
+        rule.waitUntil(6_000) { pollClockTimes.size > paused }
+        val interval = pollClockTimes[paused] - resumedAt
+        assertTrue("New observation must wait a full interval, got $interval", interval >= 1500)
+        rule.runOnIdle { assertTrue(sent.isEmpty()); assertTrue(model.state.installationVerified) }
+    }
+
 }

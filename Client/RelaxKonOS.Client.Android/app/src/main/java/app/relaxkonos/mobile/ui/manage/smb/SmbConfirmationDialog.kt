@@ -15,7 +15,7 @@ import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.ui.theme.Spacing
 
-internal data class SmbConfirmation(val expected: SmbFacts, val change: SmbChange)
+internal class SmbConfirmation(val expected: SmbFacts, val change: SmbChange)
 
 @Composable
 internal fun SmbConfirmationDialog(pending: SmbConfirmation, busy: Boolean, ready: Boolean,

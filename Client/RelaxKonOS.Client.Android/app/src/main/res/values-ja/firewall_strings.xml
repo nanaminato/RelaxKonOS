@@ -48,4 +48,7 @@
     <string name="firewall_windows_scope">有効状態と既定ポリシーは全プロファイルに適用され、一覧は本アプリの管理ルールです。</string>
     <string name="firewall_refresh_failed">ホストは変更を受け付けましたが、現在のファイアウォール情報を確認できません。送信済みの下書きを閉じました。次の変更前に現在の情報を読み取り、明示的に採用してください。</string>
     <string name="firewall_recovery_storage_failed">ホストの結果を受信しましたが、ローカルの復元記録を削除できませんでした。次の変更前に現在の情報を読み取り、明示的に採用してください。</string>
+    <string name="firewall_source_label">送信元</string>
+    <string name="firewall_destination_label">宛先</string>
+    <string name="firewall_port_label">ポート</string>
 </resources>

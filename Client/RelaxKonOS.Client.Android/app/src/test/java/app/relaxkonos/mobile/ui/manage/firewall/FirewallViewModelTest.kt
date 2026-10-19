@@ -101,7 +101,7 @@ class FirewallViewModelTest {
         model.requestChange(requireNotNull(model.state.owner), facts, change)
         val fresh = requireNotNull(model.confirmation)
         model.change(old); advanceUntilIdle(); assertEquals(0, sends)
-        model.dismissConfirmation(); model.change(fresh); advanceUntilIdle(); assertEquals(0, sends)
+        model.dismissConfirmation(fresh); model.change(fresh); advanceUntilIdle(); assertEquals(0, sends)
     }
     @Test fun `confirmation is consumed only once and stop invalidates it`() = runTest {
         val old = review(); model.stop(); model.change(old); advanceUntilIdle()
@@ -150,6 +150,27 @@ class FirewallViewModelTest {
         assertEquals("firewall.refresh_failed", model.state.problem)
         assertEquals(1, model.state.pending.size); assertEquals(1, writes)
         assertFalse(model.state.busy)
+    }
+
+    @Test fun `stale dismissal cannot withdraw a different or reopened confirmation`() = runTest {
+        val old = review()
+        model.requestChange(old.owner, old.expected, FirewallChange(FirewallChangeKind.Defaults, incoming = "deny", outgoing = "deny"))
+        val replacement = requireNotNull(model.confirmation)
+        model.dismissConfirmation(old); assertSame(replacement, model.confirmation)
+        model.dismissConfirmation(replacement); assertNull(model.confirmation)
+        model.requestChange(old.owner, old.expected, old.change)
+        val reopened = requireNotNull(model.confirmation)
+        model.dismissConfirmation(old); assertSame(reopened, model.confirmation)
+        model.dismissConfirmation(reopened); assertNull(model.confirmation)
+    }
+    @Test fun `numbered change requires a unique target in the captured facts`() = runTest {
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        val owner = requireNotNull(model.state.owner)
+        model.requestChange(owner, facts, FirewallChange(FirewallChangeKind.Delete, 7))
+        assertNull(model.confirmation)
+        val target = FirewallRule(7, "allow", "in", "tcp", "any", "any", "5000", "IPv4 + IPv6")
+        model.requestChange(owner, facts, FirewallChange(FirewallChangeKind.Replace, 7, rule = target))
+        assertNull(model.confirmation)
     }
 
 }

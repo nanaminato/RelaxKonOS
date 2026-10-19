@@ -97,6 +97,7 @@ data class SshFilesUiState(
     val transfer: app.relaxkonos.mobile.ui.common.TransferProgress? = null,
     val uploading: Boolean = false,
     val problem: String? = null,
+    val feedbackVersion: Long = 0,
     val selected: SshFileEntry? = null,
     val detailEntry: SshFileEntry? = null,
     val preview: SshPreview = SshPreview.None,
@@ -151,6 +152,13 @@ internal val SshFileEntry.isText: Boolean get() = name.substringAfterLast('.', "
 internal val SshFileEntry.isImage: Boolean get() = name.substringAfterLast('.', "").lowercase() in
     setOf("png", "jpg", "jpeg", "webp", "gif", "bmp")
 
+@Composable
+internal fun SshFilesBackHandler(state: SshFilesUiState, model: SshFilesController) {
+    BackHandler(enabled = state.detailEntry != null || !state.busy && (state.selecting || state.path != "/")) {
+        model.backFromFiles()
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SshFilesScreen(hostId: String, modifier: Modifier = Modifier) {
@@ -167,7 +175,7 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
     val resumed = rememberSshFilesResumed(model, hostId, workspaceRevision) { true }
     val state by model.state.collectAsStateWithLifecycle()
     val detailIntent = state.detailIntent
-    BackHandler(enabled = state.detailEntry != null) { detailIntent?.let(model::closeDetail) }
+    SshFilesBackHandler(state, model)
     var pendingUpload by remember(hostId, workspaceRevision) { mutableStateOf<SshUploadSelection?>(null) }
     var launchedUpload by remember(hostId, workspaceRevision) { mutableStateOf<SshUploadIntent?>(null) }
     var pendingDownload by remember(hostId, workspaceRevision) { mutableStateOf<Pair<SshDownloadIntent, Uri?>?>(null) }
@@ -220,7 +228,7 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
             }
             TextButton(onClick = model::requestAdopt, enabled = !state.busy && !state.writesSettling && state.checked.isNotEmpty() && state.checked.all { it.exists != null }) { Text(stringResource(R.string.ssh_files_adopt_facts)) }
         }
-        OperationMessageDialog(state.problem?.takeUnless { state.busy || state.newDirectory != null || state.renameTarget != null }?.let { problemText(it) })
+        SshFilesFeedback(state)
         if (!state.connected) {
             if (state.busy) CircularProgressIndicator()
             else OutlinedButton(model::reload, modifier = Modifier.fillMaxWidth()) { ActionLabel(R.string.common_retry) }
@@ -467,6 +475,13 @@ internal fun SshFileNameEditor(state: SshFilesUiState, model: SshFilesController
     confirmButton = { TextButton(onConfirm, enabled = !busy && !unknown && SshFileTransferRules.safeName(value.trim())) { ActionLabel(R.string.common_save) } },
     dismissButton = { TextButton(onDismiss, enabled = !busy) { Text(stringResource(R.string.common_cancel)) } },
 )
+
+@Composable
+internal fun SshFilesFeedback(state: SshFilesUiState) {
+    OperationMessageDialog(state.problem?.takeUnless {
+        state.busy || state.newDirectory != null || state.renameTarget != null
+    }?.let { problemText(it) }, eventKey = state.feedbackVersion)
+}
 
 @Composable private fun problemText(problem: String): String = stringResource(when (problem) {
     "text-unreadable" -> R.string.ssh_files_text_unreadable

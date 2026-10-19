@@ -52,6 +52,7 @@ class SshFilesController(
     private val writeRequests = mutableSetOf<Request>()
     private var job: Job? = null; private var connection: ServerCenterHostSession? = null
     private var workspaceRevision = -1
+    private var feedbackSequence = 0L
     private val uncertain = mutableMapOf<String, Set<String>>()
     val transferLease: Int get() = generation
     val transferring: Boolean get() = state.value.busy && state.value.transfer != null
@@ -92,6 +93,15 @@ class SshFilesController(
             mutable.update { it.copy(selected = entry, detailEntry = entry, preview = SshPreview.None, detailIntent = SshDetailIntent(), discardIntent = null) }
             if (entry.isSymbolicLink) return
             if (entry.isText) preview(entry, false) else if (entry.isImage) preview(entry, true)
+        }
+    }
+    fun backFromFiles() {
+        val snapshot = state.value
+        if (!currentWorkspace() || snapshot.busy) return
+        when {
+            snapshot.detailEntry != null -> snapshot.detailIntent?.let(::closeDetail)
+            snapshot.selecting -> mutable.update { it.copy(selecting = false, selectedPaths = emptySet()) }
+            snapshot.path != "/" -> up()
         }
     }
     fun up() { if (state.value.path != "/") navigate(parent(state.value.path)) }
@@ -446,7 +456,10 @@ class SshFilesController(
         uncertain[request.hostId] = (uncertain[request.hostId].orEmpty() + request.targets.orEmpty()).take(1000).toSet()
         if (state.value.hostId == request.hostId) mutable.update { it.copy(unknown = true, checked = emptyList(), writesSettling = writeRequests.any { pending -> pending.hostId == request.hostId && pending.sent }) }
     }
-    private fun problem(value: String) = mutable.update { it.copy(problem = value) }
+    private fun problem(value: String) {
+        val version = ++feedbackSequence
+        mutable.update { it.copy(problem = value, feedbackVersion = version) }
+    }
     private fun parent(path: String) = path.trimEnd('/').substringBeforeLast('/', "").ifBlank { "/" }
     private fun boundedOutput(destination: OutputStream, limit: Long) = SshBoundedOutputStream(destination, limit)
     private companion object {

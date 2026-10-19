@@ -17,26 +17,33 @@ internal class FirewallViewModel(private val session: AuthSession, private val f
     private val elevationAnswers: ElevationAnswerProvider) : ViewModel() {
     var state by mutableStateOf(FirewallState()); private set
     var confirmation by mutableStateOf<FirewallConfirmation?>(null); private set
-    fun dismissConfirmation() { confirmation = null }
+    fun dismissConfirmation(expected: FirewallConfirmation) {
+        if (confirmation === expected && state.owner === expected.owner && session.state.value === expected.owner && !state.busy) {
+            confirmation = null
+        }
+    }
+    fun withdrawConfirmation() { confirmation = null }
     fun requestChange(owner: SessionState.Active, expected: FirewallFacts, change: FirewallChange) {
         if (session.state.value !== owner || state.owner !== owner || state.busy || state.facts != expected ||
             !owner.privilegedOperations || !expected.status.isAvailable || state.pending.isNotEmpty()) return
         if (runCatching { change.validate() }.isFailure) return
+        if (change.kind in setOf(FirewallChangeKind.Delete, FirewallChangeKind.Replace) &&
+            expected.rules.singleOrNull { it.number == change.number } == null) return
         confirmation = FirewallConfirmation(owner, expected, change)
     }
     private var job: Job? = null
     private var generation = 0
     init { viewModelScope.launch { session.state.collect { next ->
-        if (next !== state.owner) { dismissConfirmation(); job?.cancel(); generation++; state = FirewallState(owner = next as? SessionState.Active) }
+        if (next !== state.owner) { withdrawConfirmation(); job?.cancel(); generation++; state = FirewallState(owner = next as? SessionState.Active) }
     } } }
-    fun stop() { dismissConfirmation(); job?.cancel(); generation++; state = state.copy(busy = false, facts = null, checkedAtMillis = null) }
-    fun refresh() { dismissConfirmation(); work { owner -> load(owner) } }
+    fun stop() { withdrawConfirmation(); job?.cancel(); generation++; state = state.copy(busy = false, facts = null, checkedAtMillis = null) }
+    fun refresh() { withdrawConfirmation(); work { owner -> load(owner) } }
     fun accept(pending: PendingFirewallChange) = work { owner ->
         val result = firewall.acceptFacts(owner, pending); verify(owner); showFacts(owner, result)
     }
     fun change(review: FirewallConfirmation) {
         if (confirmation !== review) return
-        dismissConfirmation()
+        withdrawConfirmation()
         if (session.state.value !== review.owner || state.owner !== review.owner || state.facts != review.expected || state.pending.isNotEmpty()) return
         val expected = review.expected; val change = review.change
         work { owner ->
