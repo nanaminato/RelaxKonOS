@@ -8,7 +8,9 @@ namespace RelaxKonOS.PrivilegedHelper;
 
 /// <summary>Production composition for the one Helper-owned mihomo installation.</summary>
 internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateStore states, RuntimeSourceStore sources,
-    IMihomoArchiveHost host, Action<string> protect, IRuntimeDependencyEnvironment? environment = null, IRuntimeArchiveTransport? transport = null)
+    IMihomoArchiveHost host, Action<string> protect, IRuntimeDependencyEnvironment? environment = null,
+    IRuntimeArchiveTransport? transport = null, string? resourceDirectory = null,
+    IReadOnlyList<MihomoGeoDataFile>? resourceFiles = null)
 {
     // Requirements are measured by the Host, never declared by the catalog publisher.
     private readonly IRuntimeDependencyEnvironment environment = environment ?? new HostDependencyEnvironment();
@@ -242,6 +244,89 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
         using var session = states.Acquire();
         return RuntimeArchiveRecovery.Close(session, operationId, confirmed: true,
             new(observed.Exists, observed.Running, observed.BootEnabled));
+    }
+
+    /// <summary>
+    /// Places the declared GEO resource set into the pre-provisioned data baseline and the active revision.
+    /// The bytes come from the package installed beside this Helper and are accepted only when they match the
+    /// digests compiled into the Helper: nothing is downloaded, the set is closed, and no client-supplied path
+    /// or URL can extend it. Provider, certificate, and key resources remain outside this operation.
+    /// </summary>
+    internal async Task<RuntimeResourceReport> PrepareResourcesAsync(CancellationToken ct)
+    {
+        await EnsureStateAsync(ct);
+        using var session = states.Acquire();
+        var state = session.State ?? throw new RuntimePolicyException("runtime.state_unknown");
+        if (HasPending(state)) throw new RuntimePolicyException("runtime.recovery_required");
+        if (state.Active is not { } active) throw new RuntimePolicyException("runtime.installation_absent");
+        var data = Path.Combine(root, "data", active.RevisionId.ToString("N"));
+        var seed = Path.Combine(root, "seed-data");
+        RuntimeSourceStore.RequireNoLinks(data);
+        if (!Directory.Exists(data)) throw new RuntimePolicyException("runtime.data_snapshot_missing");
+        var directory = Path.GetFullPath(resourceDirectory
+            ?? Path.Combine(AppContext.BaseDirectory, "..", "server", "Assets", "Mihomo", "GeoData"));
+        if (!Directory.Exists(directory)) throw new RuntimePolicyException("runtime.resource_source_missing");
+        var placed = new List<RuntimeResourceFile>();
+        foreach (var file in resourceFiles ?? MihomoGeoDataFiles.Bundled)
+        {
+            var from = Path.Combine(directory, file.Name);
+            var (length, digest) = await MeasureAsync(from, file, ct);
+            // The baseline feeds every later revision; the active revision feeds the running service.
+            foreach (var target in new[] { seed, data }) await PlaceAsync(from, Path.Combine(target, file.Name), digest, ct);
+            placed.Add(new(file.Name, length, digest));
+        }
+        // The baseline is fully Helper-owned. Live data may hold process-written cache files, so only the
+        // files placed here are mode-restricted rather than re-verifying the whole directory.
+        protect(seed);
+        return new(active.RevisionId, placed);
+    }
+
+    /// <summary>The declared digest is the only accepted content, so a replaced package asset fails here.</summary>
+    private static async Task<(long Length, string Digest)> MeasureAsync(string path, MihomoGeoDataFile file, CancellationToken ct)
+    {
+        RuntimeSourceStore.RequireNoLinks(path);
+        var info = new FileInfo(path);
+        if (!info.Exists) throw new RuntimePolicyException("runtime.resource_source_missing");
+        if (info.Length is <= 0 or > MihomoGeoDataFiles.MaximumBytes)
+            throw new RuntimePolicyException("runtime.resource_digest_mismatch");
+        await using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, useAsync: true);
+        var digest = Convert.ToHexString(await SHA256.HashDataAsync(input, ct)).ToLowerInvariant();
+        if (!MihomoGeoDataFiles.DigestMatches(file.Sha256, digest))
+            throw new RuntimePolicyException("runtime.resource_digest_mismatch");
+        return (info.Length, digest);
+    }
+
+    /// <summary>Resources are added or replaced whole, so a running service never observes a partial database.</summary>
+    private static async Task PlaceAsync(string from, string destination, string digest, CancellationToken ct)
+    {
+        RuntimeSourceStore.RequireNoLinks(destination);
+        if (File.Exists(destination))
+        {
+            await using var existing = new FileStream(destination, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, useAsync: true);
+            if (MihomoGeoDataFiles.DigestMatches(digest, Convert.ToHexString(await SHA256.HashDataAsync(existing, ct)))) return;
+        }
+        var directory = Path.GetDirectoryName(destination)!;
+        if (!Directory.Exists(directory))
+            Directory.CreateDirectory(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var temporary = Path.Combine(directory, "." + Guid.NewGuid().ToString("N") + ".resource");
+        try
+        {
+            var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write };
+            if (!OperatingSystem.IsWindows())
+                options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+            await using (var input = new FileStream(from, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, useAsync: true))
+            await using (var output = new FileStream(temporary, options))
+            {
+                await input.CopyToAsync(output, ct);
+                await output.FlushAsync(ct);
+            }
+            if (!OperatingSystem.IsWindows())
+                File.SetUnixFileMode(temporary, UnixFileMode.UserRead | UnixFileMode.UserWrite
+                    | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+            RuntimeSourceStore.RequireNoLinks(destination);
+            File.Move(temporary, destination, true);
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 
     private RuntimeArchiveRemoval Removal(RuntimeAuthorizationChannel channel, RuntimeStageReporter? progress) =>

@@ -333,3 +333,11 @@ systemd 专项运行的是重命名测试 apphost，并非 sing-box，未验证�
 停止不要求发布权威可用，也不修改原生台账或 Server 记录，因此存在未确认提交时仍可执行；关账结算的是原生事务，所以同一操作存在 Server 未确认提交时返回 409 `runtime.publication_unconfirmed`，避免留下永远无法确认的发布；权威不可读返回 409 `runtime.publication_state_invalid`。两项判定都在发布 Gate 内完成，关账不会与进行中的提交并发。
 
 常规 1249 项通过（HTTP 34、Helper/Server 集成 39），真实 systemd 167 项通过；客户端 `RemoteRuntimeCatalogClient` 已按运行时绑定各自闭合的停止/关账路由。桌面 Mihomo 恢复 UI、生产安装注册与资源分发仍未接通。
+
+## Mihomo GEO 资源预备
+
+`POST /managed-runtimes/mihomo/resources` 与恢复写路由同门禁（RuntimeManage、Mihomo 安装权限、MihomoInstall 提权），并在发布 Gate 内拒绝未确认提交。请求为空：可放置的资源是 `MihomoGeoDataFiles` 里的编译期摘要表（五个 GEO 文件），Helper 不接收路径、URL 或选择项，也不下载任何内容。
+
+Helper 从自身版本目录旁的 `../server/Assets/Mihomo/GeoData` 读取，长度与 SHA-256 全部匹配后才整份写入 `seed-data` 与活动修订的 `data/<revisionId>`（临时文件 + 原子改名 + 0644）。摘要不符 `runtime.resource_digest_mismatch`、来源缺失 `runtime.resource_source_missing`、链接 `runtime.linked_path_forbidden`、未安装 `runtime.installation_absent`、未完成事务 `runtime.recovery_required`。预置基线让后续修订与原生预检共享同一份已校验数据；Server 只接受闭合集合内的报告。
+
+边界：provider 订阅、证书、私钥与其他发行源资源仍须受控分发层；本操作不改变配置能力声明，也不宣称协议互通。常规 1269 项（HTTP 41、GEO 资源 11、Helper/Server 集成 41）与真实 systemd 通过；桌面/Android 尚无入口。

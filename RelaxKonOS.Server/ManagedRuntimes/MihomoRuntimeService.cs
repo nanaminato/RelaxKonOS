@@ -245,6 +245,26 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
         finally { store.Gate.Release(); }
     }
 
+    /// <summary>
+    /// Places the Host-owned GEO resource set for the active revision. It downloads nothing and accepts no
+    /// path: the Helper verifies its own compiled digests against the package installed beside it.
+    /// </summary>
+    public async Task<RuntimeResourceReport> PrepareResourcesAsync(CancellationToken ct)
+    {
+        await store.Gate.WaitAsync(ct);
+        try
+        {
+            try
+            {
+                if ((await store.ReadAsync(ct)).Pending is not null)
+                    throw new RuntimeLifecycleException("runtime.publication_unconfirmed");
+            }
+            catch (RuntimePolicyException ex) { throw new RuntimeLifecycleException(ex.ProblemCode); }
+            return await CallAsync<RuntimeResourceReport>(new(PrivilegedOperationKind.MihomoRuntimeResources), ct);
+        }
+        finally { store.Gate.Release(); }
+    }
+
     private async Task<T> CallAsync<T>(PrivilegedOperationRequest request, CancellationToken ct, bool allowNull = false)
     {
         if (mode.Mode != ServerMode.System || !mode.Supports(ServerHostFeature.PrivilegedOperations))
@@ -262,7 +282,8 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
             if (value is RuntimeSwitchResult receipt && !ValidReceipt(receipt)
                 || value is RuntimeInstallationSnapshot snapshot && (snapshot.Installation is null
                     || snapshot.Receipt is { } observed && (!ValidReceipt(observed) || observed.OperationId != request.OperationId))
-                || value is RuntimeRecoverySnapshot recovery && !ValidRecovery(recovery))
+                || value is RuntimeRecoverySnapshot recovery && !ValidRecovery(recovery)
+                || value is RuntimeResourceReport resources && !ValidResources(resources))
                 throw new RuntimeLifecycleException("runtime.helper_response_invalid");
             return value is not null || allowNull ? value! : throw new RuntimeLifecycleException("runtime.helper_response_invalid");
         }
@@ -282,4 +303,11 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
         && (recovery.ServiceProblem is null || PublicCode(recovery.ServiceProblem));
     private static bool PublicCode(string? code) => code is { Length: > 8 and <= 120 }
         && code.StartsWith("runtime.", StringComparison.Ordinal) && code.All(c => char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c is '_' or '.');
+
+    /// <summary>A resource report may only name the closed set the Server is willing to describe.</summary>
+    private static bool ValidResources(RuntimeResourceReport report) =>
+        report.RevisionId != Guid.Empty && report.Files is { Count: > 0 }
+        && report.Files.All(file => MihomoGeoDataFiles.IsDeclared(file.Name)
+            && file.Length is > 0 and <= MihomoGeoDataFiles.MaximumBytes
+            && file.Sha256 is { Length: 64 } && file.Sha256.All(Uri.IsHexDigit));
 }

@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.Proxy;
 
 namespace RelaxKonOS.Server.Proxy.Mihomo;
@@ -13,27 +14,14 @@ public sealed class MihomoGeoDataService(
     string? bundledDataDirectory = null,
     IReadOnlyDictionary<string, string>? bundledFileHashes = null) : IProxyGeoDataService
 {
-    private const long MaximumBytes = 128L * 1024 * 1024;
+    private const long MaximumBytes = MihomoGeoDataFiles.MaximumBytes;
     private const int CopyAttempts = 3;
-    private const string PrimaryFileName = "geoip.metadb";
-    private static readonly string[] BundledFileNames =
-    [
-        "geoip.metadb",
-        "geoip.dat",
-        "geosite.dat",
-        "country.mmdb",
-        "GeoLite2-ASN.mmdb",
-    ];
-    // SHA-256 values of the artifacts committed in Assets/Mihomo/GeoData. Do not accept a
-    // partially downloaded or replaced payload merely because its name and length look valid.
-    private static readonly IReadOnlyDictionary<string, string> BundledFileHashes = new Dictionary<string, string>(StringComparer.Ordinal)
-    {
-        ["country.mmdb"] = "FE721D5E47D320B2A23DB4EAFDDB796A22026EF01899BBE7007FC0274016E5F4",
-        ["geoip.dat"] = "0D5D2BA0C5A5C58027FD1347A6AFD57C9470799B6BB3CBC274FD4657ED8DE382",
-        ["geoip.metadb"] = "91EF340938FF44A94FF8E5D8D8BD7E8D7DAD9D9E3C4ECEA9E160DD95E6A9916B",
-        ["GeoLite2-ASN.mmdb"] = "93456017EEF970E7E60AB66312402B2130BB233AF792A5AA30B2FF4DE854C5CF",
-        ["geosite.dat"] = "665FAD6D83E9F3CF28EC7200D2812280508FBBF07983818A33CAF90514AB6F17",
-    };
+    private const string PrimaryFileName = MihomoGeoDataFiles.PrimaryFile;
+    // The declared GEO set and its digests live in one place so the managed runtime places exactly
+    // the artifacts this service verifies; neither side may widen the set on its own.
+    private static readonly string[] BundledFileNames = MihomoGeoDataFiles.Bundled.Select(file => file.Name).ToArray();
+    private static readonly IReadOnlyDictionary<string, string> BundledFileHashes =
+        MihomoGeoDataFiles.Bundled.ToDictionary(file => file.Name, file => file.Sha256, StringComparer.Ordinal);
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     public Task<ProxyGeoDataDto> GetAsync(CancellationToken cancellationToken)
@@ -153,7 +141,7 @@ public sealed class MihomoGeoDataService(
             if (!info.Exists || info.Length is <= 0 or > MaximumBytes || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0
                 || !(bundledFileHashes ?? BundledFileHashes).TryGetValue(info.Name, out var expectedHash)) return false;
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            return Convert.ToHexString(SHA256.HashData(stream)).Equals(expectedHash, StringComparison.Ordinal);
+            return MihomoGeoDataFiles.DigestMatches(expectedHash, Convert.ToHexString(SHA256.HashData(stream)));
         }
         catch (IOException) { return false; }
         catch (UnauthorizedAccessException) { return false; }

@@ -13,6 +13,16 @@
 
 ## 受管运行时公共目录接入进度（MR-03，2026-10-19）
 
+### 2026-10-19：受控 GEO 资源预备（离线、编译期摘要）
+
+`POST /managed-runtimes/mihomo/resources`（统一 API 前缀下）要求 RuntimeManage、Mihomo 安装权限与目标为 `mihomo` 的 MihomoInstall 提权，并在发布 Gate 内拒绝未确认提交（409 `runtime.publication_unconfirmed`）。请求不携带路径、URL 或选择：可放置的集合由 `Shared/RelaxKonOS.ManagedRuntimes/MihomoGeoDataFiles.cs` 的编译期摘要表固定（`geoip.metadb`、`geoip.dat`、`geosite.dat`、`country.mmdb`、`GeoLite2-ASN.mmdb`），Server 原有 GEO 服务与 Helper 共用同一张表，任一侧都不能自行扩大集合。
+
+Helper 从自身版本目录旁的 `../server/Assets/Mihomo/GeoData` 读取，逐文件核对长度与 SHA-256 后才落地：包内资产被替换返回 `runtime.resource_digest_mismatch`，文件缺失返回 `runtime.resource_source_missing`，链接路径返回 `runtime.linked_path_forbidden`，未安装返回 `runtime.installation_absent`，有未完成事务返回 `runtime.recovery_required`。写入对象是预置基线 `seed-data` 与当前活动修订的 `data/<revisionId>`：基线让后续安装/更新的候选数据与原生 `-t` 预检看到同一份已校验数据，活动修订让正在运行的服务直接可用。文件整份临时写入后原子改名、按 0644 落地，已一致的文件不重写，旧副本被替换整份。Server 只接受闭合集合内的报告，越界名称按无效 Helper 响应处理。
+
+边界：本操作**不下载任何内容**，也不处理 provider 订阅、证书与私钥——它们仍属受控分发层。桌面/Android 尚无该操作入口，`MihomoGeoDataService` 仍服务旧的固定清单运行时目录。
+
+在指定 `192.168.1.7` Debian 13 x64 上常规 **1269 项**通过（GEO 资源 **11**、HTTP **41**、Helper/Server 集成 41），真实 `native-mihomo-systemd` **167 项**通过。日志为 `/home/nanami/mr03-resources-full-final-20261019.log`、`/home/nanami/mr03-resources-systemd3-20261019.log`。生产安装已换为 `0.1.0-dev20261019-mr03b`：`/healthz` 200，新路由已上线并在无提权时返回 403 `elevation-required`；该测试机账户不在管理员组，未做提权后的生产调用。
+
 ### 2026-10-19：紧急停止与操作员关账 HTTP
 
 公开 `POST /managed-runtimes/mihomo/recovery/stop` 与 `POST /managed-runtimes/mihomo/recovery/close`（统一 API 前缀下）与重试共用同一门禁：RuntimeManage、Mihomo 安装权限及目标为 `mihomo` 的 MihomoInstall 提权，缺任何一项都不触达 Helper。请求只携带精确操作 ID，不接受计划、路径或来源；关账还须显式 `confirmed`，缺失按 `runtime.recovery_confirmation_required`（400）拒绝。两条动作都不创建新的用户台账。

@@ -85,6 +85,8 @@ public static class RuntimeRoutes
     public const string MihomoRecoveryStop = MihomoRecovery + "/stop";
     /// <summary>Closes an unrecoverable transaction after the operator confirms the observed state.</summary>
     public const string MihomoRecoveryClose = MihomoRecovery + "/close";
+    /// <summary>Places the Host-owned GEO resource set for the active revision; it never downloads anything.</summary>
+    public const string MihomoResources = Root + "/mihomo/resources";
     /// <summary>Read-only ledger and live service facts for an unfinished transaction.</summary>
     public const string SingBoxRecovery = Root + "/sing-box/recovery";
     /// <summary>Retries the Host's own compensation; never prepares a new revision.</summary>

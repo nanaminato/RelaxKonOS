@@ -31,6 +31,12 @@ if (args is ["mihomo-runtime-http-only"])
     return;
 }
 
+if (args is ["mihomo-resources-only"])
+{
+    Console.WriteLine($"Mihomo GEO resource checks passed: {await MihomoResourceChecks.RunAsync()}");
+    return;
+}
+
 if (args is ["runtime-configuration-crash", var configurationRoot, var configurationOperation])
 {
     await ConfigurationTransactionChecks.CrashAsync(configurationRoot, Guid.Parse(configurationOperation));
@@ -238,6 +244,7 @@ Console.WriteLine($"Mihomo Server publication transaction checks passed: {await 
 Console.WriteLine($"Mihomo profile publication checks passed: {await MihomoProfilePublicationChecks.RunAsync()}");
 Console.WriteLine($"Mihomo default publication registration checks passed: {MihomoRegistrationChecks.Run()}");
 Console.WriteLine($"Mihomo runtime HTTP checks passed: {await MihomoRuntimeHttpChecks.RunAsync()}");
+Console.WriteLine($"Mihomo GEO resource checks passed: {await MihomoResourceChecks.RunAsync()}");
 Console.WriteLine($"Mihomo lifecycle boundary checks passed: {await MihomoLifecycleBoundaryChecks.RunAsync()}");
 Console.WriteLine($"Runtime lifecycle boundary checks passed: {await LifecycleChecks.RunAsync()}");
 Console.WriteLine($"Runtime installation coordinator checks passed: {await InstallationChecks.RunAsync()}");

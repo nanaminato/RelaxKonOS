@@ -57,23 +57,29 @@ public static class RuntimeCatalogEndpoints
         group.MapPost(RuntimeRoutes.MihomoRecoveryRetry, async (RuntimeRecoveryActionRequest request, HttpContext http,
             [FromServices] MihomoRuntimeRecoveryService service, [FromServices] IHostElevationSessionStore elevations, CancellationToken ct) =>
         {
-            if (!MihomoRecoveryTarget(http, elevations)) return ElevationRequired();
+            if (!MihomoHostTarget(http, elevations)) return ElevationRequired();
             if (request.OperationId == Guid.Empty) return Results.BadRequest();
             return await RespondAsync(async () => Results.Ok(await service.RetryAsync(request.OperationId, ct)));
         }).RequireAuthorization(ManagePolicy);
         group.MapPost(RuntimeRoutes.MihomoRecoveryStop, async (RuntimeRecoveryActionRequest request, HttpContext http,
             [FromServices] MihomoRuntimeService service, [FromServices] IHostElevationSessionStore elevations, CancellationToken ct) =>
         {
-            if (!MihomoRecoveryTarget(http, elevations)) return ElevationRequired();
+            if (!MihomoHostTarget(http, elevations)) return ElevationRequired();
             if (request.OperationId == Guid.Empty) return Results.BadRequest();
             return await RespondAsync(async () => Results.Ok(await service.StopRecoveryAsync(request.OperationId, ct)));
         }).RequireAuthorization(ManagePolicy);
         group.MapPost(RuntimeRoutes.MihomoRecoveryClose, async (RuntimeRecoveryActionRequest request, HttpContext http,
             [FromServices] MihomoRuntimeService service, [FromServices] IHostElevationSessionStore elevations, CancellationToken ct) =>
         {
-            if (!MihomoRecoveryTarget(http, elevations)) return ElevationRequired();
+            if (!MihomoHostTarget(http, elevations)) return ElevationRequired();
             if (request.OperationId == Guid.Empty) return Results.BadRequest();
             return await RespondAsync(async () => Results.Ok(await service.CloseRecoveryAsync(request.OperationId, request.Confirmed, ct)));
+        }).RequireAuthorization(ManagePolicy);
+        group.MapPost(RuntimeRoutes.MihomoResources, async (HttpContext http,
+            [FromServices] MihomoRuntimeService service, [FromServices] IHostElevationSessionStore elevations, CancellationToken ct) =>
+        {
+            if (!MihomoHostTarget(http, elevations)) return ElevationRequired();
+            return await RespondAsync(async () => Results.Ok(await service.PrepareResourcesAsync(ct)));
         }).RequireAuthorization(ManagePolicy);
         group.MapGet(RuntimeRoutes.SingBoxRecovery, async ([FromServices] SingBoxRuntimeService service, CancellationToken ct) =>
             await RespondAsync(async () => Results.Ok(await service.RecoveryAsync(ct))))
@@ -114,8 +120,8 @@ public static class RuntimeCatalogEndpoints
         && elevations.IsGranted(http.User, InstallationEndpoints.Capability(InstallationServiceId.SingBox),
             InstallationEndpoints.Target(InstallationServiceId.SingBox));
 
-    /// <summary>The Mihomo recovery verbs share one claim and one elevation target; neither is inferred from the other runtime.</summary>
-    private static bool MihomoRecoveryTarget(HttpContext http, IHostElevationSessionStore elevations) =>
+    /// <summary>Every Mihomo host write shares one claim and one elevation target; neither is inferred from the other runtime.</summary>
+    private static bool MihomoHostTarget(HttpContext http, IHostElevationSessionStore elevations) =>
         InstallationEndpoints.CanInstall(http.User, InstallationServiceId.Mihomo)
         && elevations.IsGranted(http.User, InstallationEndpoints.Capability(InstallationServiceId.Mihomo),
             InstallationEndpoints.Target(InstallationServiceId.Mihomo));
@@ -146,6 +152,7 @@ public static class RuntimeCatalogEndpoints
                     or "runtime.recovery_target_conflict" or "runtime.recovery_not_required"
                     or "runtime.recovery_stop_required" or "runtime.recovery_stop_failed"
                     or "runtime.publication_unconfirmed" or "runtime.publication_state_invalid"
+                    or "runtime.installation_absent"
                     or "runtime.external_installation" or "runtime.state_unknown" => 409,
                 "runtime.platform_unsupported" => 403,
                 _ => 503

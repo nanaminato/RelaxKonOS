@@ -88,6 +88,7 @@ ZIP 在创建 ZipArchive 条目集合前先限制中央目录条目数和各元�
 | `POST /api/v1.0/managed-runtimes/mihomo/recovery/retry` | RuntimeManage、Mihomo 安装权限与 MihomoInstall 对应提权；按命名 Pending 分派安装/配置/卸载发布恢复，否则恢复 Helper 原事务，不重新准备 |
 | `POST /api/v1.0/managed-runtimes/mihomo/recovery/stop` | 同一组权限/提权；只停服务，保留原生台账与 Server 发布记录，存在未确认提交时仍可执行 |
 | `POST /api/v1.0/managed-runtimes/mihomo/recovery/close` | 同一组权限/提权且须 `"confirmed":true`；同一操作存在 Server 未确认提交时返回 409 `runtime.publication_unconfirmed` |
+| `POST /api/v1.0/managed-runtimes/mihomo/resources` | 同一组权限/提权；Helper 按编译期摘要表放置包内 GEO 资源，不下载、不接受路径或选择 |
 | `GET /api/v1.0/managed-runtimes/sing-box/recovery` | RuntimeRead；返回待恢复事务、原始/补偿失败码与实测服务状态，不写台账 |
 | `POST /api/v1.0/managed-runtimes/sing-box/recovery/retry` | RuntimeManage 与 SingBoxInstall；重新补偿同一事务，不重新准备 |
 | `POST /api/v1.0/managed-runtimes/sing-box/recovery/stop` | RuntimeManage 与 SingBoxInstall；只停服务并关闭开机启动，不读凭据 |

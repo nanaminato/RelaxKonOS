@@ -34,6 +34,8 @@ internal static class MihomoRuntimeOperations
                 && stopTarget != Guid.Empty,
             PrivilegedOperationKind.MihomoRuntimeRecoveryClose => input is { SourceId: null, Plan: null, Authorization: null, FrozenPlan: null, Confirmed: true, RecoveryOperationId: { } closeTarget, CancelOperationId: null }
                 && closeTarget != Guid.Empty,
+            // The resource set is closed and compiled into the Helper, so the request carries no selection.
+            PrivilegedOperationKind.MihomoRuntimeResources => input is null,
             _ => false
         };
         if (clean != request || !valid || request.OperationId is not { } id || id == Guid.Empty
@@ -57,6 +59,7 @@ internal static class MihomoRuntimeOperations
                 PrivilegedOperationKind.MihomoRuntimeCancel => Json(lifecycle.CancelRequest(input!.CancelOperationId!.Value)),
                 PrivilegedOperationKind.MihomoRuntimeRecoveryQuery => Json(await lifecycle.RecoveryAsync(default)),
                 PrivilegedOperationKind.MihomoRuntimeRecoveryStop => Json(await lifecycle.StopAsync(input!.RecoveryOperationId!.Value, default)),
+                PrivilegedOperationKind.MihomoRuntimeResources => Json(await lifecycle.PrepareResourcesAsync(default)),
                 _ => Json(await lifecycle.CloseAsync(input!.RecoveryOperationId!.Value, default))
             };
         }

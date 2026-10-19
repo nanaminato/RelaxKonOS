@@ -103,6 +103,9 @@ internal static class MihomoRuntimeHttpChecks
                     Check(refused.StatusCode == HttpStatusCode.Forbidden && fixture.Calls == beforeRecoveryVerbs,
                         "Recovery stop/close requires the Mihomo install claim and its elevation: " + identity + " " + route);
                 }
+                using (var refusedResources = await client.PostAsJsonAsync(RuntimeRoutes.MihomoResources, new { }))
+                    Check(refusedResources.StatusCode == HttpStatusCode.Forbidden && fixture.Calls == beforeRecoveryVerbs,
+                        "Placing GEO resources requires the Mihomo install claim and its elevation: " + identity);
             }
             client.DefaultRequestHeaders.Authorization = new("Bearer", "elevated-installer");
             using (var emptyStop = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryStop, new RuntimeRecoveryActionRequest(Guid.Empty)))
@@ -124,6 +127,21 @@ internal static class MihomoRuntimeHttpChecks
                 && fixture.Last?.Operation == PrivilegedOperationKind.MihomoRuntimeRecoveryClose
                 && fixture.Last?.RuntimeLifecycle is { RecoveryOperationId: var closeId, Confirmed: true } && closeId == closeTarget,
                 "An acknowledged close carries the operator decision to the Host");
+            var placedResources = await client.PostAsJsonAsync(RuntimeRoutes.MihomoResources, new { });
+            Check(placedResources.IsSuccessStatusCode
+                && (await placedResources.Content.ReadFromJsonAsync<RuntimeResourceReport>()) is { Files.Count: 1 }
+                && fixture.Last?.Operation == PrivilegedOperationKind.MihomoRuntimeResources,
+                "An elevated resource request asks the Host to place its verified GEO set");
+            fixture.InvalidResources = true;
+            using (var invalidResources = await client.PostAsJsonAsync(RuntimeRoutes.MihomoResources, new { }))
+                Check(invalidResources.StatusCode == HttpStatusCode.ServiceUnavailable,
+                    "A Host report naming an undeclared resource is refused instead of rendered");
+            fixture.InvalidResources = false;
+            fixture.AbsentInstallation = true;
+            using (var absentResources = await client.PostAsJsonAsync(RuntimeRoutes.MihomoResources, new { }))
+                Check(absentResources.StatusCode == HttpStatusCode.Conflict,
+                    "A Host refusal for an absent installation is a state conflict, not a service failure");
+            fixture.AbsentInstallation = false;
             var beforePending = fixture.Calls;
             var material = new MihomoPublishedRuntime("# pending\n", [], 9090, "http-fixture-secret", [new("127.0.0.1", 7890)]);
             var release = new RuntimeRelease("release", "mihomo", "v1.19.30", "1.19.30", RuntimeChannel.Stable, "source", fixture.Installation.Target,
@@ -134,6 +152,10 @@ internal static class MihomoRuntimeHttpChecks
             using (var pending = await client.PostAsJsonAsync(RuntimeRoutes.MihomoPlan, selection))
                 Check(pending.IsSuccessStatusCode && (await pending.Content.ReadFromJsonAsync<RuntimePlanResult>())!.Problems.Contains("runtime.publication_unconfirmed")
                     && fixture.Calls == beforePending, "Pending Server publication blocks plans before a second Helper operation");
+            var beforePendingResources = fixture.Calls;
+            using (var pendingResources = await client.PostAsJsonAsync(RuntimeRoutes.MihomoResources, new { }))
+                Check(pendingResources.StatusCode == HttpStatusCode.Conflict && fixture.Calls == beforePendingResources,
+                    "An unresolved Server publication blocks resource placement before the Helper is asked");
             client.DefaultRequestHeaders.Authorization = new("Bearer", "read");
             fixture.Observation = new(fixture.Installation with { Ownership = RuntimeOwnership.Managed, StateRevision = 1, ActiveReleaseId = release.ReleaseId },
                 "1.19.30", Guid.NewGuid(), MihomoPublicationStore.Identity(material.Yaml), null, null, null);
@@ -231,6 +253,8 @@ internal static class MihomoRuntimeHttpChecks
     {
         internal int Calls;
         internal bool SystemMode = true;
+        internal bool InvalidResources;
+        internal bool AbsentInstallation;
         internal PrivilegedOperationRequest? Last;
         internal RuntimeInstallationSnapshot? Observation;
         internal RuntimeRecoverySnapshot? Recovery;
@@ -239,6 +263,9 @@ internal static class MihomoRuntimeHttpChecks
         public Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken ct = default)
         {
             Calls++; Last = request;
+            if (AbsentInstallation && request.Operation == PrivilegedOperationKind.MihomoRuntimeResources)
+                return Task.FromResult(new PrivilegedOperationResult(false, 1, Error: "runtime.installation_absent",
+                    ProblemCode: PrivilegedProblemCode.Conflict));
             object value = request.Operation switch
             {
                 PrivilegedOperationKind.MihomoRuntimeQuery => Observation ?? new RuntimeInstallationSnapshot(Installation, null, null, null, null, null, "runtime.state_unknown"),
@@ -249,6 +276,8 @@ internal static class MihomoRuntimeHttpChecks
                     null, null, null, new(true, false, false)),
                 PrivilegedOperationKind.MihomoRuntimeRecoveryClose => new RuntimeSwitchResult(
                     request.RuntimeLifecycle?.RecoveryOperationId ?? Guid.NewGuid(), RuntimeSwitchOutcome.Succeeded, null),
+                PrivilegedOperationKind.MihomoRuntimeResources => new RuntimeResourceReport(Guid.NewGuid(),
+                    [InvalidResources ? new("unknown.dat", 16, new string('c', 64)) : new("geosite.dat", 4096, new string('c', 64))]),
                 PrivilegedOperationKind.MihomoRuntimePlan => new RuntimePlanResult(null, ["runtime.release_untrusted"]),
                 _ => throw new Exception("HTTP read/plan route executed an unrequested Helper action")
             };

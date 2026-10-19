@@ -48,6 +48,8 @@ public enum PrivilegedOperationKind
     MihomoRuntimeRecoveryStop,
     MihomoRuntimeRecoveryClose,
     MihomoRuntimeConfigure,
+    /// <summary>Places the declared GEO resource set from the installed package into the managed data directory.</summary>
+    MihomoRuntimeResources,
     ProxyServerStatus,
     ProxyServerAction,
     ProxyServerValidate,
