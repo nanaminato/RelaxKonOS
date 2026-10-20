@@ -1,6 +1,8 @@
 {
     "Culture": "ja-JP",
     "Strings": {
+      "terminal.vt_engine": "VT エンジン",
+      "terminal.vt_engine.description": "Auto は Ghostty を優先し、利用できない場合は Managed を使用します。Native は Ghostty が必要です。この端末に保存され、新しいターミナルに適用されます。",
         "terminal.open_administrator": "管理者ターミナルを開く",
         "terminal.administrator_title": "管理者ターミナル",
         "terminal.status.administrator_connected": "接続済み · 管理者権限",

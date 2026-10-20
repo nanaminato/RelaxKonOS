@@ -59,6 +59,7 @@
         <!-- 0.4.0 → 0.5.2：修复 Tab/光标渲染缺陷（0.4.1 PR #106 "Clear terminal selection when typing"）
              0.5.2 → 0.6.3：上游当前稳定线（Avalonia 依赖抬到 >= 12.1.3），客户端与服务端同步。 -->
         <PackageVersion Include="RoyalApps.RoyalTerminal.Avalonia" Version="0.6.3" />
+        <PackageVersion Include="RoyalApps.RoyalTerminal.Terminal.Vt.Ghostty" Version="0.6.3" />
         <!-- Server 端 PTY 工厂（Windows ConPTY / Unix forkpty），Terminal Hub 哑中继用 -->
         <PackageVersion Include="RoyalApps.RoyalTerminal.Terminal.Pty.Platform" Version="0.6.3" />
 

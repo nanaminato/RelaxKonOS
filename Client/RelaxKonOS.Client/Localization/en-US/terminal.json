@@ -1,6 +1,8 @@
 {
     "Culture": "en-US",
     "Strings": {
+      "terminal.vt_engine": "VT engine",
+      "terminal.vt_engine.description": "Auto prefers Ghostty and uses Managed when unavailable. Native requires Ghostty. Saved on this device; applies to new terminals.",
         "terminal.open_administrator": "Open administrator terminal",
         "terminal.administrator_title": "Administrator terminal",
         "terminal.status.administrator_connected": "Connected · Administrator",

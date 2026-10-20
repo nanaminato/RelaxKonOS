@@ -78,7 +78,7 @@ RemoteTerminal 是 RelaxKonOS 的内置应用之一，遵循架构 §6 的两类
 - `RoyalApps.RoyalTerminal.Avalonia` 传递依赖 `Terminal.Pty.Platform`、`Terminal.Transport.Ssh.Abstractions`、`Terminal.Transport.Ssh.SshNet` 等，Client 端无需单独引用 PTY 平台包（仅 Server 需要）。
 - `AddSignalR` 由 `Microsoft.NET.Sdk.Web` 隐式 FrameworkReference 提供，Server 端无需额外 NuGet。
 - **不引入** `RoyalApps.RoyalTerminal.Avalonia.App`（自带 MainWindow / 标签 / 标题栏，会与 RelaxKonOS 的 WindowManager 冲突）。
-- **不引入** native Ghostty VT 包（`Terminal.Vt.Ghostty` + RID 相关原生资产），当前使用托管 VT 处理器。
+- 引入 `RoyalApps.RoyalTerminal.Terminal.Vt.Ghostty` 0.6.3；发布时指定 RID（例如 `dotnet publish -r win-x64`），由 GhosttySharp 的 `runtime.json` 选择原生资产。无 RID 的开发构建可能只具备 Managed，Auto 按可用性选择。
 
 ### 2.2 嵌入而非替换 Shell
 
@@ -119,7 +119,7 @@ var control = new TerminalControl(
 - `NullSshCredentialProvider` / `KnownHostsSshHostKeyValidator` 来自包传递依赖 `Terminal.Transport.Ssh.SshNet` / `Terminal.Transport.Ssh.Abstractions`，namespace 为 `RoyalTerminal.Terminal.Transport.Ssh` / `.SshNet`。**实际使用的是客户端自己的 provider**：`TerminalSurfaceFactory` 注入 `SshDesktopCredentialProvider`（把服务器中心已建立的 SSH 会话密码喂给传输）与 `KnownHostsSshHostKeyValidator`，供 SSH 直连终端（`SshTransportOptions`）使用；包内置的 `NullSshCredentialProvider` 只在无 SSH 需求的组合里满足构造函数签名。
 - 构造后设置 `Focusable = true`、`Columns`、`Rows`、`ScrollbackLimit`、`TerminalFontSize`（原先在 XAML 中设置的属性）。
 
-### 2.4 渲染引擎：RoyalTerminal 单引擎
+### 2.4 RoyalTerminal 表面与可选 VT 引擎
 
 桌面终端的**渲染层只有一个引擎**：`BuiltInTerminalSurface`（RoyalTerminal 托管终端控件，进程内渲染，所有平台可用）。早期版本曾把 xterm.js 作为第二个引擎嵌在 `Avalonia.Controls.WebView` 里，现已移除——它需要额外的 WebView 桥、原生子窗口生命周期、重复的渲染/选区/剪贴板行为与随包资产，而 RoyalTerminal 已经提供原生 Avalonia 表面，并在自己的终端抽象后面持有 VT 处理。
 
@@ -128,14 +128,14 @@ var control = new TerminalControl(
 #### 2.4.1 分层
 
 ```text
-TerminalBackends (Shared/RelaxKonOS.Protocol)   规范 token + 校验（builtin / 遗留 xterm）
+DesktopDeviceOptions.TerminalVtEngine          Auto / Managed / Native（设备本地）
     ↓
 TerminalSurfaceFactory (每个标签页一个)         造 ITerminalSurface，并持有共用的 SignalRTransportFactory
     ↓
 ITerminalSurface                                BuiltInTerminalSurface（桌面唯一实现）
 ```
 
-`TerminalSurfaceFactory.Create()` 不接受引擎参数：引擎是编译期事实，不是运行期选择。`ITerminalSurface` 仍然保留，用来把会话生命周期与 Avalonia 宿主分开，也为将来其它客户端的专用前端留出接缝。
+`TerminalSurfaceFactory.Create(VtProcessorPreference)` 接收 VT 偏好，`BuiltInTerminalSurface` 将其传给 `TerminalControl.VtProcessorPreference`，并显式向默认工厂注册 `GhosttyVtProcessorProvider`。`ITerminalSurface` 仍然保留，用来把会话生命周期与 Avalonia 宿主分开，也为将来其它客户端的专用前端留出接缝。
 
 #### 2.4.2 遗留 `backend` 字段
 
@@ -151,13 +151,13 @@ ITerminalSurface                                BuiltInTerminalSurface（桌面�
 
 #### 2.4.3 外观变更不碰会话
 
-改字体/字号/配色只走 `ITerminalSurface.ApplyAppearance`：不重建表面、不重连传输、不重启 PTY。`TerminalViewModel` 不再有切换引擎的路径（早期 `ChangeBackendAsync` 已删除），因此"切引擎把会话变成另一条终端"这类问题在桌面端不复存在。这与"断开保留会话"语义（§4.2.1）一致：渲染引擎是会话的呈现方式，不是会话本身。
+改字体/字号/配色只走 `ITerminalSurface.ApplyAppearance`：不重建表面、不重连传输、不重启 PTY。VT 偏好仅影响新建终端，不重建当前表面或 PTY。这与"断开保留会话"语义（§4.2.1）一致：渲染引擎是会话的呈现方式，不是会话本身。
 
 #### 2.4.4 协议与设置界面
 
 - 服务端 `PUT /api/v1.0/workspaces/{id}/terminal-settings` 校验未知 token 并返回 400（规范化后写入）；`GET` 返回规范化结果。
 - 注册表 `Workspace\Terminal\backend` 仍由 `RegistryConfigurationFields` 呈现为枚举下拉（取值来自 `TerminalBackends.All`），默认值 `builtin`；管理员改它不会让桌面换引擎，只影响文档里的记录值。
-- 终端设置对话框只有字体/字号/配色三行，不再有「终端引擎」单选；`BackendNotice` / `HasBackendNotice` 与对应的三语文案已一并删除。
+- 终端设置提供字体、字号、配色及 VT 引擎下拉。VT 引擎为设备级 `TerminalVtEngine`，与 Workspace `backend` 字段独立；SSH 桌面使用自己的 device.json。默认 Auto：优先 Ghostty，加载不可用或创建失败时使用 Managed；Managed 强制 C# 处理器；Native 强制 Ghostty，不可用时报错。选择对新建终端生效，当前会话保持运行。
 
 ---
 

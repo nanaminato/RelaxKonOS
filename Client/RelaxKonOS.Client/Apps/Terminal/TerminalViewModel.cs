@@ -16,6 +16,14 @@ namespace RelaxKonOS.Client.Apps.Terminal;
 /// </summary>
 public partial class TerminalViewModel : LocalizedObservableObject
 {
+    private readonly RelaxKonOS.Client.Services.DesktopDevicePreferences? _devicePreferences;
+    public IReadOnlyList<string> VtEngines { get; } = ["Auto", "Managed", "Native"];
+    [ObservableProperty] private string _vtEngine = "Auto";
+    partial void OnVtEngineChanged(string value)
+    {
+        if (VtEngines.Contains(value))
+            _devicePreferences?.Update(options => options with { TerminalVtEngine = value });
+    }
     private readonly RelaxKonOS.Client.Services.ClientPresentationPreferences? _preferences;
     public RelaxKonOS.Protocol.Registry.TerminalPaddingSettings Padding => _preferences?.TerminalPadding ?? RelaxKonOS.Protocol.Registry.TerminalPaddingSettings.Default;
     private void OnPreferencesChanged(object? sender, EventArgs args)
@@ -95,8 +103,11 @@ public partial class TerminalViewModel : LocalizedObservableObject
         string? initialSessionId = null,
         string? initialWorkingDirectory = null,
         bool isAdministrator = false,
-        RelaxKonOS.Client.Services.ClientPresentationPreferences? preferences = null)
+        RelaxKonOS.Client.Services.ClientPresentationPreferences? preferences = null,
+        RelaxKonOS.Client.Services.DesktopDevicePreferences? devicePreferences = null)
     {
+        _devicePreferences = sshDesktop?.IsConnected == true ? sshDesktop.DevicePreferences : devicePreferences;
+        _vtEngine = _devicePreferences?.Value.TerminalVtEngine ?? "Auto";
         _preferences = session is { State: AuthSessionState.Authenticated } && sshDesktop?.IsConnected != true ? preferences : null;
         _session = session;
         _settingsClient = settingsClient;
@@ -132,7 +143,7 @@ public partial class TerminalViewModel : LocalizedObservableObject
         else await LoadAppearanceAsync();
         if (!_attached || generation != _attachmentGeneration) return;
 
-        // RoyalTerminal is the only desktop engine; a stored legacy `xterm` token is a workspace
+        // The device VT preference selects a processor inside RoyalTerminal; the workspace
         // preference that this client resolves to the same surface.
         CreateSurface();
         await StartSessionAsync(_initialSessionId);
@@ -182,7 +193,8 @@ public partial class TerminalViewModel : LocalizedObservableObject
         if (_surfaceFactory is not { } factory)
             return;
 
-        var surface = factory.Create();
+        var engine = _devicePreferences?.Value.TerminalVtEngine ?? VtEngine;
+        var surface = factory.Create(Enum.Parse<VtProcessorPreference>(engine));
         surface.ProcessExited += OnProcessExited;
         surface.TitleChanged += OnTitleChanged;
         surface.ApplyAppearance(Appearance);

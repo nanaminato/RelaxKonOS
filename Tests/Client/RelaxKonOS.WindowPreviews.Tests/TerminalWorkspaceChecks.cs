@@ -88,14 +88,16 @@ internal static class TerminalWorkspaceChecks
         preview.Close();
         Dispatcher.UIThread.RunJobs();
         CheckEngineMigration();
-        CheckRenderingPreferences();
-        Console.WriteLine("Terminal workspace checks passed (tabs, overflow, single-engine migration, presentation).");
+        CheckRenderingPreferences(RoyalTerminal.Terminal.VtProcessorPreference.Managed);
+        if (new RoyalTerminal.Terminal.GhosttyVtProcessorProvider().IsAvailable)
+            CheckRenderingPreferences(RoyalTerminal.Terminal.VtProcessorPreference.Native);
+        Console.WriteLine("Terminal workspace checks passed (tabs, overflow, VT selection, presentation).");
     }
 
-    private static void CheckRenderingPreferences()
+    private static void CheckRenderingPreferences(RoyalTerminal.Terminal.VtProcessorPreference preference)
     {
         var transport = new PresentationTransport();
-        using var surface = new BuiltInTerminalSurface(new PresentationFactory(transport), new SshDesktopCredentialProvider(new RelaxKonOS.Client.Services.ServerCenter.SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!))), new RoyalTerminal.Terminal.Transport.Ssh.KnownHostsSshHostKeyValidator());
+        using var surface = new BuiltInTerminalSurface(new PresentationFactory(transport), new SshDesktopCredentialProvider(new RelaxKonOS.Client.Services.ServerCenter.SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!))), new RoyalTerminal.Terminal.Transport.Ssh.KnownHostsSshHostKeyValidator(), preference);
         var settings = TerminalSettingsDto.Default with { ScrollbackLines = 50, CursorStyle = "bar", CursorBlink = false };
         surface.ApplyAppearance(settings);
         var window = new Window { Width = 640, Height = 320, Content = surface.View };
@@ -117,7 +119,7 @@ internal static class TerminalWorkspaceChecks
             "Live appearance changes must affect history and cursor without restarting a transport.");
         Check(transport.Starts == 1 && transport.InputBytes == 0, "Appearance changes must never become shell input or restart a session.");
         window.Close(); surface.StopSession();
-        Console.WriteLine("Terminal presentation checks passed (emulator cursor, blink, live history, no PTY input/restart).");
+        Console.WriteLine($"Terminal {preference} presentation checks passed (cursor, blink, history, no PTY input/restart).");
     }
     private sealed class PresentationFactory(PresentationTransport transport) : RoyalTerminal.Terminal.ITerminalTransportFactory
     {
@@ -137,12 +139,31 @@ internal static class TerminalWorkspaceChecks
     }
 
     /// <summary>
-    /// A workspace may still store the terminal engine it was written with. RoyalTerminal is the only
-    /// desktop engine, so the stored request must never fail a window, the factory may not accept an
-    /// engine choice, and the settings surface may not offer a picker.
+    /// VT selection is a device preference independent of the workspace renderer token.
     /// </summary>
     private static void CheckEngineMigration()
     {
+        var provider = new RoyalTerminal.Terminal.GhosttyVtProcessorProvider();
+        var factory = new RoyalTerminal.Terminal.DefaultVtProcessorFactory([provider]);
+        foreach (var preference in Enum.GetValues<RoyalTerminal.Terminal.VtProcessorPreference>())
+        {
+            if (preference == RoyalTerminal.Terminal.VtProcessorPreference.Native && !provider.IsAvailable)
+            {
+                try
+                {
+                    factory.Create(new RoyalTerminal.Avalonia.Rendering.TerminalScreen(80, 24), preference);
+                    throw new Exception("Native must fail when its library is unavailable");
+                }
+                catch (InvalidOperationException) { }
+                continue;
+            }
+            var processor = factory.Create(new RoyalTerminal.Avalonia.Rendering.TerminalScreen(80, 24), preference);
+            var native = preference != RoyalTerminal.Terminal.VtProcessorPreference.Managed && provider.IsAvailable;
+            Check(processor.GetType().Name == (native ? "GhosttyVtProcessor" : "BasicVtProcessor"),
+                $"{preference} must instantiate the expected VT processor");
+            (processor as IDisposable)?.Dispose();
+        }
+        Console.WriteLine($"VT processor selection passed; Ghostty available: {provider.IsAvailable}");
         // The protocol still reports what the document asks for; an older document stays readable.
         Check(TerminalSettingsDto.Default.RequestedBackend == TerminalBackends.BuiltIn,
             "The default workspace settings ask for the built-in engine");
@@ -167,15 +188,15 @@ internal static class TerminalWorkspaceChecks
         Check(migrated.Appearance.Backend == TerminalBackends.BuiltIn,
             "Saving an appearance change must rewrite a stored legacy token to the built-in engine");
 
-        // The engine is a compile-time fact rather than a runtime choice: the factory takes no
-        // argument and the desktop assembly ships no second surface.
-        Check(typeof(TerminalSurfaceFactory).GetMethod(nameof(TerminalSurfaceFactory.Create))?.GetParameters().Length == 0,
-            "The surface factory must not accept an engine choice");
+        // VT preference is independent of the workspace backend token. The factory takes an
+        // explicit preference and the desktop assembly ships one Avalonia surface.
+        Check(typeof(TerminalSurfaceFactory).GetMethod(nameof(TerminalSurfaceFactory.Create))?.GetParameters().Single().ParameterType == typeof(RoyalTerminal.Terminal.VtProcessorPreference),
+            "The surface factory must accept the RoyalTerminal VT preference");
         Check(typeof(TerminalSurfaceFactory).Assembly.GetTypes()
                 .All(type => !type.Name.Contains("xterm", StringComparison.OrdinalIgnoreCase)),
             "The desktop client must not ship an xterm.js surface");
 
-        // The view-model exposes no engine API, so no view can bind the picker that no longer exists.
+        // The removed WebView backend API stays absent.
         foreach (var member in new[] { "Backend", "EffectiveBackend", "BackendNotice", "HasBackendNotice", "IsXtermBackendSelected", "IsXtermBackendAvailable" })
         {
             Check(typeof(TerminalViewModel).GetProperty(member) is null,
@@ -187,12 +208,25 @@ internal static class TerminalWorkspaceChecks
         host.Show();
         Dispatcher.UIThread.RunJobs();
         Check(!settings.GetVisualDescendants().OfType<RadioButton>().Any(),
-            "The terminal settings must not offer a terminal-engine picker");
-        Check(settings.GetVisualDescendants().OfType<ComboBox>().Count() == 3,
-            "The terminal settings still expose font family, size and colour scheme");
+            "The VT selector uses a ComboBox");
+        Check(settings.GetVisualDescendants().OfType<ComboBox>().Count() == 4,
+            "The terminal settings expose VT engine, font family, size and colour scheme");
         host.Close();
         Dispatcher.UIThread.RunJobs();
-        Console.WriteLine("Terminal engine migration checks passed (single engine, legacy token tolerated).");
+        var path = Path.Combine(Path.GetTempPath(), "relaxkon-vt-" + Guid.NewGuid() + ".json");
+        try
+        {
+            var preferences = new RelaxKonOS.Client.Services.DesktopDevicePreferences(path);
+            var model = new TerminalViewModel(null, new Settings(), null, devicePreferences: preferences);
+            Check(model.VtEngines.SequenceEqual(new[] { "Auto", "Managed", "Native" }), "All VT modes are selectable");
+            model.VtEngine = "Native";
+            var reloaded = new RelaxKonOS.Client.Services.DesktopDevicePreferences(path);
+            Check(reloaded.Value.TerminalVtEngine == "Native", "VT preference survives device settings reload");
+            Check(new TerminalViewModel(null, new Settings(), null, devicePreferences: reloaded).VtEngine == "Native",
+                "New terminal reads the saved VT preference");
+        }
+        finally { File.Delete(path); }
+        Console.WriteLine("Terminal VT selection and persistence checks passed.");
     }
 
     private static void Check(bool condition, string message)

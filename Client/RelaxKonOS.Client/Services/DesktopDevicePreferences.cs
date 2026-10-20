@@ -58,6 +58,7 @@ public sealed class DesktopDevicePreferences : ObservableObject
     private static DesktopDeviceOptions Normalize(DesktopDeviceOptions value) => value with
     {
         InterfaceScale = ScaleChoices.Contains(value.InterfaceScale) ? value.InterfaceScale : 100,
+        TerminalVtEngine = value.TerminalVtEngine is "Auto" or "Managed" or "Native" ? value.TerminalVtEngine : "Auto",
         PinnedSettings = (value.PinnedSettings ?? []).Where(PinnableRoutes.Contains).Distinct().ToArray()
     };
 
@@ -71,6 +72,7 @@ public sealed class DesktopDevicePreferences : ObservableObject
 
 public sealed record DesktopDeviceOptions
 {
+    public string TerminalVtEngine { get; init; } = "Auto";
     public int InterfaceScale { get; init; } = 100;
     public bool ReducedMotion { get; init; }
     public bool HighContrast { get; init; }

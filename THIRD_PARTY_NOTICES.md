@@ -96,6 +96,7 @@ RelaxKonOS 通过 NuGet 引用以下第三方包（版本声明集中于 [`Direc
 | `Microsoft.AspNetCore.Authentication.JwtBearer` | MIT | Server JWT 鉴权 |
 | `Microsoft.AspNetCore.OpenApi` | MIT | Server OpenAPI |
 | `RoyalApps.RoyalTerminal.Avalonia` / `RoyalApps.RoyalTerminal.Terminal.Pty.Platform` | Apache-2.0 | 终端控件 + 平台 PTY 工厂 |
+| `RoyalApps.RoyalTerminal.Terminal.Vt.Ghostty` / `RoyalApps.RoyalTerminal.GhosttySharp` / RID native packages | MIT | Ghostty VT 处理器、绑定与原生库（随 RID 选择） |
 | `SixLabors.ImageSharp` | Apache-2.0（见下） | Server 端缩略图渲染（`/files/thumbnail`） |
 | `Xaml.Behaviors.Avalonia` | MIT | Explorer 交互 behaviors（双击导航等） |
 | `Newtonsoft.Json` | MIT | Explorer 配置模型序列化（保留 Jaya 原依赖） |

@@ -6,7 +6,7 @@
              x:Class="RelaxKonOS.Client.Apps.Terminal.TerminalSettingsView"
              x:DataType="terminal:TerminalViewModel"
              Width="460" Classes="builtin-app">
-    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" Margin="20" RowSpacing="14">
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto" Margin="20" RowSpacing="14">
         <TextBlock Text="{loc:Loc terminal.settings}" FontSize="18" FontWeight="SemiBold" />
         <Grid Grid.Row="1" ColumnDefinitions="150,*" ColumnSpacing="12">
             <TextBlock Text="{loc:Loc terminal.font_family}" VerticalAlignment="Center" />
@@ -20,9 +20,14 @@
             <TextBlock Text="{loc:Loc terminal.color_scheme}" VerticalAlignment="Center" />
             <ComboBox Grid.Column="1" ItemsSource="{Binding ColorSchemes}" SelectedItem="{Binding ColorScheme, Mode=TwoWay}" />
         </Grid>
-        <TextBlock Grid.Row="4" Text="{loc:Loc terminal.settings.description}"
+        <Grid Grid.Row="4" ColumnDefinitions="150,*" ColumnSpacing="12">
+            <TextBlock Text="{loc:Loc terminal.vt_engine}" VerticalAlignment="Center" />
+            <ComboBox Grid.Column="1" ItemsSource="{Binding VtEngines}" SelectedItem="{Binding VtEngine, Mode=TwoWay}"
+                      AutomationProperties.Name="{loc:Loc terminal.vt_engine}" />
+        </Grid>
+        <TextBlock Grid.Row="5" Text="{loc:Loc terminal.vt_engine.description}"
                    TextWrapping="Wrap" VerticalAlignment="Top" Opacity="0.7" />
-        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right">
+        <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Classes="primary" Content="{loc:Loc common.done}" Command="{Binding CloseSettingsCommand}" />
         </StackPanel>
     </Grid>

@@ -37,6 +37,7 @@
         <PackageReference Include="System.Security.Cryptography.ProtectedData"/>
         <PackageReference Include="Microsoft.AspNetCore.SignalR.Client"/>
         <PackageReference Include="RoyalApps.RoyalTerminal.Avalonia"/>
+        <PackageReference Include="RoyalApps.RoyalTerminal.Terminal.Vt.Ghostty"/>
         <!-- Explorer: behaviors 用于双击导航等交互；Newtonsoft 保留 Jaya 配置模型序列化 -->
         <PackageReference Include="Xaml.Behaviors.Avalonia"/>
         <PackageReference Include="Newtonsoft.Json"/>

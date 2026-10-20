@@ -28,7 +28,8 @@ public sealed class BuiltInTerminalSurface : ITerminalSurface
     public BuiltInTerminalSurface(
         ITerminalTransportFactory transportFactory,
         ISshCredentialProvider credentials,
-        ISshHostKeyValidator hostKeys)
+        ISshHostKeyValidator hostKeys,
+        VtProcessorPreference vtEngine = VtProcessorPreference.Auto)
     {
         // TerminalTransportFactory is a read-only property, so the custom factory has to arrive
         // through the constructor; a XAML-declared control would keep the default composite factory.
@@ -37,11 +38,13 @@ public sealed class BuiltInTerminalSurface : ITerminalSurface
             new DefaultTerminalInputAdapter(),
             new DefaultTerminalSelectionService(),
             new DefaultTerminalScrollService(),
-            new DefaultVtProcessorFactory(),
+            new DefaultVtProcessorFactory([new GhosttyVtProcessorProvider()]),
             new DefaultPtyFactory(),
             credentials,
             hostKeys,
             transportFactory);
+
+        _control.VtProcessorPreference = vtEngine;
 
         _control.Focusable = true;
         // These values only initialize the PTY. RoyalTerminal derives the live grid from the

@@ -29,8 +29,8 @@ public sealed class TerminalSurfaceFactory
 
     public Func<IReadOnlyDictionary<string, string>> Labels { get; }
 
-    public ITerminalSurface Create() =>
-        new BuiltInTerminalSurface(TransportFactory, _credentials, _hostKeys);
+    public ITerminalSurface Create(VtProcessorPreference vtEngine) =>
+        new BuiltInTerminalSurface(TransportFactory, _credentials, _hostKeys, vtEngine);
 }
 
 public static class TerminalSurfaceLabels
