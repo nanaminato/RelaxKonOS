@@ -16,9 +16,9 @@ using RoyalTerminal.Terminal.Transport.Ssh.SshNet;
 namespace RelaxKonOS.Client.Apps.Terminal;
 
 /// <summary>
-/// Hosts one terminal session. The workspace picks the rendering engine (see
-/// <see cref="TerminalBackendSelector"/>); this view only places whichever surface the view-model
-/// resolved and forwards the shared chrome actions — clipboard, select-all, clear-screen and focus.
+/// Hosts one terminal session. RoyalTerminal is the only desktop engine, so this view only places
+/// the surface the view-model exposes and forwards the shared chrome actions — clipboard,
+/// select-all, clear-screen and focus.
 /// </summary>
 public partial class TerminalView : UserControl
 {

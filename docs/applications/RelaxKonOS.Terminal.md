@@ -1,6 +1,6 @@
 # RelaxKonOS Terminal 模块设计
 
-> **当前 UI 行为（优先于下文早期工具条描述）**：一个服务端 PTY 对应一个桌面终端窗口；不提供会话切换、新建、断开、Restart 或 Clear 按钮。进入已认证桌面时会自动恢复所有存活会话；再次手动打开 Terminal 时也会恢复存活会话，若不存在会话则新建一个。只有关闭某个终端窗口才会显式终止对应的服务端进程。字体、字号、配色**与终端引擎**（内置终端 / xterm.js，见 §2.4）为 Workspace 级设置，经 `GET`/`PUT /api/v1.0/workspaces/{id}/terminal-settings` 保存在服务器端。
+> **当前 UI 行为（优先于下文早期工具条描述）**：一个服务端 PTY 对应一个桌面终端窗口；不提供会话切换、新建、断开、Restart 或 Clear 按钮。进入已认证桌面时会自动恢复所有存活会话；再次手动打开 Terminal 时也会恢复存活会话，若不存在会话则新建一个。只有关闭某个终端窗口才会显式终止对应的服务端进程。字体、字号、配色为 Workspace 级设置（桌面渲染引擎固定为 RoyalTerminal，见 §2.4），经 `GET`/`PUT /api/v1.0/workspaces/{id}/terminal-settings` 保存在服务器端。
 
 > 内置终端应用：基于 [RoyalTerminal](https://github.com/royalapplications/RoyalTerminal) NuGet 包引入终端能力，支持 **Remote Mode**（SignalR 远端 PTY）与 **Local Mode**（本地 PTY 回退）。
 
@@ -71,7 +71,7 @@ RemoteTerminal 是 RelaxKonOS 的内置应用之一，遵循架构 §6 的两类
 |----|------|------|
 | `RoyalApps.RoyalTerminal.Avalonia` | 0.6.3 | Avalonia 终端控件 `TerminalControl` + 默认会话组合（托管 VT 处理器 + 平台 PTY 工厂），目标 net10.0 |
 | `RoyalApps.RoyalTerminal.Terminal.Pty.Platform` | 0.6.3 | Server 端 PTY 工厂（Windows ConPTY / Unix forkpty），Terminal Hub 仅转发数据用 |
-| `Avalonia.Controls.WebView` | 12.1.0 | `NativeWebView`，xterm.js 终端后端的原生 WebView 外壳（内置浏览器同用） |
+| `Avalonia.Controls.WebView` | 12.1.0 | `NativeWebView`，内置浏览器的原生 WebView 外壳（桌面终端已不再使用 WebView） |
 | `Microsoft.AspNetCore.SignalR.Client` | 10.0.0 | Client 端 SignalR 连接（`HubConnection`） |
 
 - 中心化包管理：版本声明在 [`Directory.Packages.props`](../../Directory.Packages.props)，csproj 仅 `PackageReference`（不带 Version）。
@@ -119,64 +119,45 @@ var control = new TerminalControl(
 - `NullSshCredentialProvider` / `KnownHostsSshHostKeyValidator` 来自包传递依赖 `Terminal.Transport.Ssh.SshNet` / `Terminal.Transport.Ssh.Abstractions`，namespace 为 `RoyalTerminal.Terminal.Transport.Ssh` / `.SshNet`。**实际使用的是客户端自己的 provider**：`TerminalSurfaceFactory` 注入 `SshDesktopCredentialProvider`（把服务器中心已建立的 SSH 会话密码喂给传输）与 `KnownHostsSshHostKeyValidator`，供 SSH 直连终端（`SshTransportOptions`）使用；包内置的 `NullSshCredentialProvider` 只在无 SSH 需求的组合里满足构造函数签名。
 - 构造后设置 `Focusable = true`、`Columns`、`Rows`、`ScrollbackLimit`、`TerminalFontSize`（原先在 XAML 中设置的属性）。
 
-### 2.4 渲染后端选择（内置终端 / xterm.js）
+### 2.4 渲染引擎：RoyalTerminal 单引擎
 
-终端**渲染层**可在两个引擎之间选择；**传输层不变**——两个引擎都通过同一套 `ITerminalTransport` 工作（SSH → `SshTransportOptions`、远端 PTY → `SignalRTransportOptions`、未登录回退 → `PtyTransportOptions`）。因此 SSH 直连终端、远端 SignalR 终端与本地回退终端都受同一个选择影响，切换引擎不会改变会话是怎么建立的。
+桌面终端的**渲染层只有一个引擎**：`BuiltInTerminalSurface`（RoyalTerminal 托管终端控件，进程内渲染，所有平台可用）。早期版本曾把 xterm.js 作为第二个引擎嵌在 `Avalonia.Controls.WebView` 里，现已移除——它需要额外的 WebView 桥、原生子窗口生命周期、重复的渲染/选区/剪贴板行为与随包资产，而 RoyalTerminal 已经提供原生 Avalonia 表面，并在自己的终端抽象后面持有 VT 处理。
 
-| 后端 token | 实现 | 宿主能力要求 |
-|------------|------|--------------|
-| `builtin`（默认） | `BuiltInTerminalSurface`：RoyalTerminal 托管终端控件（进程内渲染） | 所有平台 |
-| `xterm` | `XtermJsTerminalSurface`：xterm.js 单页 + `Avalonia.Controls.WebView.NativeWebView` | 需要内嵌 WebView 宿主（Windows / macOS；Linux 不可用） |
+**传输层不受影响**：SSH 直连终端（`SshTransportOptions`）、远端 PTY（`SignalRTransportOptions`）与未登录时的本地回退（`PtyTransportOptions`）共用同一套 `ITerminalTransport`。
 
-选择值保存在 Workspace 级设置的 `backend` 字段（与字体/字号/配色同一个 `TerminalSettingsDto`，见 §2.4.4）。
-
-#### 2.4.1 分层与回退规则
-
-设置里的 `backend` 是**请求**而不是命令：它会随账号在设备之间同步，而"能不能承载 WebView"是用户面前这台机器的属性。因此解析分三层，且**永远给出可用的引擎**：
+#### 2.4.1 分层
 
 ```text
-TerminalBackends (Shared/RelaxKonOS.Protocol)     规范 token + 校验（builtin / xterm）
+TerminalBackends (Shared/RelaxKonOS.Protocol)   规范 token + 校验（builtin / 遗留 xterm）
     ↓
-TerminalBackendSelector (Client)                  请求 × 本机能力 → 生效引擎 + 回退原因 key
+TerminalSurfaceFactory (每个标签页一个)         造 ITerminalSurface，并持有共用的 SignalRTransportFactory
     ↓
-TerminalSurfaceFactory (每个标签页一个)            按引擎造 ITerminalSurface，并持有共用的 SignalRTransportFactory
-    ↓
-ITerminalSurface                                  BuiltInTerminalSurface / XtermJsTerminalSurface
+ITerminalSurface                                BuiltInTerminalSurface（桌面唯一实现）
 ```
 
-`TerminalBackendSelector.Resolve` 的回退规则：
+`TerminalSurfaceFactory.Create()` 不接受引擎参数：引擎是编译期事实，不是运行期选择。`ITerminalSurface` 仍然保留，用来把会话生命周期与 Avalonia 宿主分开，也为将来其它客户端的专用前端留出接缝。
 
-| 输入 | 生效引擎 | 提示资源 key |
-|------|----------|--------------|
-| `builtin` / 字段缺失 / JSON `null` | `builtin` | —（无提示） |
-| `xterm`（大小写与首尾空白不敏感） | `xterm`（本机可承载 WebView） | — |
-| `xterm`，但本机无内嵌 WebView 宿主（Linux） | `builtin` | `terminal.backend.fallback.webview_unavailable` |
-| 未知 token（如 `xterm-wasm`；服务端 PUT 阶段已拒绝，此处兜底） | `builtin` | `terminal.backend.fallback.unknown` |
-| `xterm` 表面已选中但启动失败（WebView 初始化/页面就绪超时） | `builtin` | `terminal.backend.fallback.start_failed`（带异常消息） |
+#### 2.4.2 遗留 `backend` 字段
 
-- `TerminalBackendSelector.WebViewHostAvailable` 是唯一的能力探测点：Linux 客户端刻意把网页委托给系统浏览器进程，没有内嵌 WebView 宿主，因此该平台恒为 `false`。
-- 提示文案由终端设置对话框顶部的「终端引擎」一行显示（`BackendNotice` / `HasBackendNotice`），三语言键集合受 `Tools/verify-localization.py` 强校验。
-- 第三行（启动失败）是**运行时**回退：`TerminalViewModel.StartSessionAsync` 捕获 `TerminalSurfaceUnavailableException` 后换回内置引擎、以同一个 sessionId 重新附加；此时渲染窗口内的状态栏也会给出同一原因的失败提示。
+`TerminalSettingsDto.backend` 保留，因为它已经写进工作区注册表文档，服务端 `PUT` 阶段仍接受遗留 token（大小写与首尾空白不敏感）：
 
-#### 2.4.2 会话存活语义
+| 存储值 | `RequestedBackend`（协议侧读取） | 桌面行为 |
+|--------|-----------------------------------|----------|
+| `builtin` / 字段缺失 / JSON `null` | `builtin` | 内置引擎，无提示 |
+| `xterm`（大小写与首尾空白不敏感） | `xterm` | 内置引擎，**不给用户任何错误提示** |
+| 未知 token（如 `xterm-wasm`） | `builtin` | 服务端 `PUT` 拒绝（400）；读取侧降级为内置 |
 
-切换引擎**不杀 PTY**：`TerminalViewModel.ChangeBackendAsync` 只做 `ReleaseActiveSession(kill: false)`（`StopActiveAsync`，不调 Hub `CloseSession`），然后以同一 sessionId 重新附加。这与既有的"断开保留会话"语义（§4.2.1）一致——引擎是会话的呈现方式，不是会话本身。
+`TerminalSettingsDto.RequestedBackend` 只做**规范化**（未知/缺失 → `builtin`，遗留 `xterm` 原样保留），它表达"文档请求了什么"，不代表桌面会换引擎：桌面客户端根本不消费这个值。迁移靠写入侧——`TerminalViewModel.UpdateAppearance` 在保存外观时把 `backend` 覆写为 `builtin`，因此遗留文档会随用户第一次改字体/配色自然迁移；读取阶段不写回、不报错、不提示。
 
-#### 2.4.3 xterm.js 表面的实现要点
+#### 2.4.3 外观变更不碰会话
 
-- **资产离线内联**：`XtermTerminalPage.Compose` 把 `xterm.js` / `xterm.css` / `addon-fit.js` / `terminal-bridge.js` 内联进单个 HTML（`Assets/Terminal/xterm/terminal.html` 里的占位注释），再经 `NativeWebView.NavigateToString(html, baseUri)` 加载。**不需要本地 Web 服务器、不走文件系统路径、无跨域、运行时无网络请求**。
-- **JS 桥**：`terminal-bridge.js` 暴露 `window.rkTerminal`（`write` / `setOptions` / `paste` / `selectAll` / `clear` / `focus` / `dispose` 等）；页面→宿主消息为 `ready` / `input` / `resize` / `title` / `selection` / `copy` / `paste`。宿主→页面只能靠 `InvokeScript`（OS WebView 没有反向通道）。
-- **字节回流**：`ITerminalTransport.DataReceived` 的字节先进缓冲，只在 UI 线程排一次唤醒（`Interlocked.Exchange` 去重），再按 ≤96KB 分批 `InvokeScript("window.rkTerminal.write('<base64>')")`；缓冲上限 4MB。滚动历史 10000 行。
-- **剪贴板归宿主**：页面内的 Ctrl+Shift+C/V 与右键菜单只**发出意图**（`copy` / `paste` 消息），实际读写走 Avalonia 的 `IClipboard`；右键菜单文案来自 `TerminalSurfaceLabels`（`LocalizedText`），随显示语言变化。
-- **原生子窗口**：`NativeWebView` 是 OS 子窗口，不参与 Avalonia 合成，会盖住 Avalonia 的浮层。因此 `ITerminalSurface.SetNativeVisible(bool)` 必须在这些场景被调用：Avalonia 菜单/下拉打开时、所在标签页非激活时、窗口失焦或最小化时、设置对话框打开时（见 `TerminalView` / `TerminalWorkspaceView.SetNativeSurfacesVisible` / `TerminalApp`）。内置引擎的 `SetNativeVisible` 是空实现。
-- **页面就绪握手**：`WaitForPageAsync` 等待页面 `ready` 消息（20 秒超时），超时或取消即抛 `TerminalSurfaceUnavailableException`，触发上述运行时回退。
+改字体/字号/配色只走 `ITerminalSurface.ApplyAppearance`：不重建表面、不重连传输、不重启 PTY。`TerminalViewModel` 不再有切换引擎的路径（早期 `ChangeBackendAsync` 已删除），因此"切引擎把会话变成另一条终端"这类问题在桌面端不复存在。这与"断开保留会话"语义（§4.2.1）一致：渲染引擎是会话的呈现方式，不是会话本身。
 
 #### 2.4.4 协议与设置界面
 
-- `TerminalSettingsDto.backend` 是**可选尾字段**：缺失或 `null` 一律视为 `builtin`，因此升级前写入的文档无需迁移。
-- 服务端 `PUT /api/v1.0/workspaces/{id}/terminal-settings` 校验未知 token 并返回 400（规范化大小写与空白后写入）；`GET` 返回规范化结果。
-- 注册表 `Workspace\Terminal\backend` 由 `RegistryConfigurationFields` 呈现为枚举下拉（取值来自 `TerminalBackends.All`），默认值 `builtin`。
-- 终端设置对话框顶部「终端引擎」用两个 `RadioButton` 单选；`xterm` 选项在不可用的平台上置灰（`IsXtermBackendAvailable`）。
+- 服务端 `PUT /api/v1.0/workspaces/{id}/terminal-settings` 校验未知 token 并返回 400（规范化后写入）；`GET` 返回规范化结果。
+- 注册表 `Workspace\Terminal\backend` 仍由 `RegistryConfigurationFields` 呈现为枚举下拉（取值来自 `TerminalBackends.All`），默认值 `builtin`；管理员改它不会让桌面换引擎，只影响文档里的记录值。
+- 终端设置对话框只有字体/字号/配色三行，不再有「终端引擎」单选；`BackendNotice` / `HasBackendNotice` 与对应的三语文案已一并删除。
 
 ---
 
@@ -380,22 +361,18 @@ else
 | `Client/RelaxKonOS.Client/Apps/Terminal/TerminalView.axaml` | UserControl：会话菜单 Button + `MenuFlyout`（打开管理员终端 / 终端设置 / 环境设置）+ 多标签工作区 + `TerminalHost` |
 | `Client/RelaxKonOS.Client/Apps/Terminal/TerminalView.axaml.cs` | 持有 `TerminalSurfaceFactory`；把 `TerminalViewModel.Surface.View` 挂进 `TerminalHost`；原生表面可见性、右键菜单与会话菜单让位逻辑 |
 | `Client/RelaxKonOS.Client/Apps/Terminal/TerminalWorkspaceView.axaml`(.cs) | 标签条（加号 / Ctrl+Shift+T、Ctrl+Tab 切换、关闭确认）+ 每个标签一个 `TerminalView`；`SetNativeSurfacesVisible` 统一隐藏非激活标签的原生表面 |
-| `Client/RelaxKonOS.Client/Apps/Terminal/TerminalViewModel.cs` | 会话状态、列表+恢复、断开语义、引擎解析与回退、切换后端（保留会话重附加） |
-| `Client/RelaxKonOS.Client/Apps/Terminal/TerminalBackend.cs` | `TerminalBackendKind` + `TerminalBackendSelector`（能力探测 / 回退原因 key） |
+| `Client/RelaxKonOS.Client/Apps/Terminal/TerminalViewModel.cs` | 会话状态、列表+恢复、断开语义、外观应用（引擎固定为内置） |
 | `Client/RelaxKonOS.Client/Apps/Terminal/ITerminalSurface.cs` | 渲染表面抽象（`View` / `StartSessionAsync` / 外观 / 标签 / `SetNativeVisible` / 剪贴板） |
 | `Client/RelaxKonOS.Client/Apps/Terminal/BuiltInTerminalSurface.cs` | 内置引擎表面：code-behind 创建 `TerminalControl`（9-param ctor）+ 焦点/配色/清屏/剪贴板 |
-| `Client/RelaxKonOS.Client/Apps/Terminal/XtermJsTerminalSurface.cs` | xterm.js 表面：`NativeWebView` 生命周期、页面就绪握手、字节回流、剪贴板桥接、尺寸同步 |
-| `Client/RelaxKonOS.Client/Apps/Terminal/XtermTerminalPage.cs` | 资产读取 + 单页 HTML 组装（内联 CSS/JS/桥接/选项，去 BOM） |
-| `Client/RelaxKonOS.Client/Apps/Terminal/TerminalSurfaceFactory.cs` | 每个标签一个：共用 `SignalRTransportFactory` + 按后端造表面 + 页内菜单本地化标签 |
+| `Client/RelaxKonOS.Client/Apps/Terminal/TerminalSurfaceFactory.cs` | 每个标签一个：共用 `SignalRTransportFactory` + 造内置表面 + 页内菜单本地化标签 |
 | `Client/RelaxKonOS.Client/Apps/Terminal/TerminalAppearance.cs` | 外观解析（字体族回退、CSS 字体栈） |
-| `Client/RelaxKonOS.Client/Apps/Terminal/TerminalSettingsView.axaml` | 终端设置对话框：终端引擎单选 + 字体/字号/配色 |
+| `Client/RelaxKonOS.Client/Apps/Terminal/TerminalSettingsView.axaml` | 终端设置对话框：字体/字号/配色 |
 | `Client/RelaxKonOS.Client/Apps/Terminal/TerminalSettingsClient.cs` / `ITerminalSettingsClient.cs` | `GET`/`PUT /api/v1.0/workspaces/{id}/terminal-settings` 客户端 |
 | `Client/RelaxKonOS.Client/Apps/Terminal/SignalRTransportOptions.cs` | SignalR 传输选项 DTO（含 `SessionId`） |
 | `Client/RelaxKonOS.Client/Apps/Terminal/SignalRTerminalTransport.cs` | `ITerminalTransport` 的 SignalR 实现（`StartAsync` 附加、`StopAsync` 不杀、`KillAsync` 杀、`ListSessionsAsync`） |
 | `Client/RelaxKonOS.Client/Apps/Terminal/SignalRTransportFactory.cs` | 传输工厂：SignalR + SSH + 本地 PTY 回退；`StopActiveAsync`/`KillActiveAsync`/`CurrentSessionId` |
 | `Client/RelaxKonOS.Client/Apps/Terminal/TerminalHubConnection.cs` | 构建 `HubConnection` + 一次性连接拉取 `ListSessions` |
 | `Client/RelaxKonOS.Client/Apps/Terminal/TerminalDesktopRestoreParticipant.cs` | 桌面恢复参与者（按会话补窗口） |
-| `Client/RelaxKonOS.Client/Assets/Terminal/xterm/` | xterm.js 资产（`xterm.js` / `xterm.css` / `addon-fit.js` + 原创 `terminal.html` / `terminal-bridge.js` / `LICENSE-xterm.txt`）；归属见 [`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md) |
 
 ### Server 端
 
@@ -446,16 +423,12 @@ else
 - **嵌入 `TerminalControl`，禁止引入 `RoyalApps.RoyalTerminal.Avalonia.App`**：RelaxKonOS 自有 WindowManager / RemoteWindow / Taskbar，不能被 RoyalTerminal 的外壳接管。
 - **焦点修复不可移除**：`TerminalControl.Focusable = true`（code-behind 设置）+ `PointerPressed` 延迟聚焦是输入正常的前提。`RemoteWindow` 的 `WindowManager.Focus` 会抢回焦点，必须用 `Dispatcher.UIThread.Post` 延迟。
 - **会话清理走 View 的 `OnUnloaded`**：SDK 无 `Deactivate` 钩子；`RemoteWindow` 关闭 → 控件离开视觉树 → `Detach()` → 按断开语义 `KillActiveAsync`/`StopActiveAsync` + `StopPty()`。
-- **渲染引擎是会话的呈现方式，不是会话本身**：`builtin` 与 `xterm` 必须共用同一套 `ITerminalTransport`（`SignalRTransportFactory` → SignalR / SSH / 本地 PTY）。**禁止**为某个引擎另起一条会话建立路径，否则"切引擎"会变成"另开一个终端"。切换引擎（`ChangeBackendAsync`）只允许 `ReleaseActiveSession(kill: false)` + 以同一 sessionId 重新附加。
-- **设置里的 `backend` 是请求，必须能被本机能力否决**：新增后端时，能力探测与回退必须留在 `TerminalBackendSelector` 里（含本地化回退原因 key），视图层不得自行 if/else 决定引擎。新增 token 时三处同步：`TerminalBackends`（协议）、注册表下拉（`RegistryConfigurationFields`）、Android `TerminalSettings.kt`（字段透传，避免移动端保存设置时丢字段）。
-- **新增后端 token 必须可选且向后兼容**：`TerminalSettingsDto.backend` 缺失/`null` 恒等于 `builtin`；旧文档不得需要迁移。服务端在 `PUT` 阶段拒绝未知 token（400），客户端在读取阶段只回退不抛错。
-- **xterm.js 资产必须保持离线内联**：`Assets/Terminal/xterm/` 下的 JS/CSS 经 `NavigateToString` 内联加载，**禁止**改成 `file://`、本地 HTTP 服务器或 CDN 引用（会引入跨域、端口与离线问题）。升级 xterm.js 时同步更新 `THIRD_PARTY_NOTICES.md` 里的版本与 SHA-256。
-- **原生 WebView 子窗口必须显式隐藏**：`NativeWebView` 不参与 Avalonia 合成，会盖住 Avalonia 浮层与其它标签页。任何新增浮层（菜单、Flyout、对话框）都要复用 `SetNativeVisible(false)` 让位路径；`ITerminalSurface.SetNativeVisible` 是强制契约，不是可选优化。
-- **剪贴板归宿主**：xterm.js 页面**不得**自行调用浏览器剪贴板 API（在 WebView 里不可靠且会绕过 Avalonia 的剪贴板策略）；页面只发 `copy`/`paste` 意图，读写由宿主完成。
+- **桌面渲染引擎只有一个**：`BuiltInTerminalSurface`（RoyalTerminal）是唯一实现，`TerminalSurfaceFactory.Create()` 不接受引擎参数。**禁止**为终端再引入第二条渲染路径（WebView / 网页前端 / 原生子窗口）——需要网页前端时它属于 Web 客户端，不属于 Avalonia 桌面客户端。
+- **会话建立路径只有一条**：所有终端（SSH 直连、远端 PTY、未登录本地回退）共用同一套 `ITerminalTransport`（`SignalRTransportFactory` → SignalR / SSH / 本地 PTY）；渲染层不得自行决定会话怎么建立。
+- **`backend` 字段是遗留记录，不是行为开关**：桌面客户端不消费 `TerminalSettingsDto.RequestedBackend`——无论文档请求哪个 token 都渲染内置引擎。`RequestedBackend` 只做规范化（缺失/`null`/未知 → `builtin`，遗留 `xterm` 原样保留）；服务端在 `PUT` 阶段仍拒绝未知 token（400），读取阶段不报错、不提示。桌面只在下一次外观写入时把该字段覆写为 `builtin`。
+- **删除引擎选择要同步三处**：`TerminalViewModel`（不得再暴露 `Backend` / `BackendNotice` / `IsXtermBackend*`）、三语 `terminal.json`（`terminal.backend*` 文案键已删除，`Tools/verify-localization.py` 强校验键集相等）、`THIRD_PARTY_NOTICES.md`（xterm.js 资产条目已移除）。新增 token 时仍要同步 `TerminalBackends`（协议）与注册表下拉（`RegistryConfigurationFields`）。
 - **不引入 native Ghostty VT**（除非显式需求）：当前用托管 VT；引入 native 需按 RID 处理原生资产包。
 - **程序集名是 `RoyalTerminal.Avalonia`**（非 NuGet 包 id `RoyalApps.RoyalTerminal.Avalonia`）；`NullSshCredentialProvider` 在 `RoyalTerminal.Terminal.Transport.Ssh.SshNet` namespace，`KnownHostsSshHostKeyValidator` 在 `RoyalTerminal.Terminal.Transport.Ssh` namespace（abstractions 程序集，传递依赖可用）。
-
-WebView 输出采用有界 FIFO 缓冲：最多保留最近 4 MiB，每次向页面发送最多 96 KiB；单次超限输出也保留尾部，不对空缓冲执行越界裁剪。关闭会释放缓冲、结束等待页面就绪的流程，并尝试清理页面；后台脚本调用统一等待并处理失败。
 
 终端工具栏使用“终端”文字和下拉箭头作为菜单入口，集中提供复制、粘贴、全选、清屏及设置操作；复制随当前选区启用，关闭菜单后回到终端焦点。工具栏显示会话状态，完整 shell 标题通过悬停查看；标签中的可执行文件绝对路径缩短为文件名，其他 shell 标题保持原样，管理员标签仍保留标记。
 

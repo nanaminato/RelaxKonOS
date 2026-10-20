@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using System.Text.Json;
 using RelaxKonOS.Client.Apps.Terminal;
 using RelaxKonOS.Protocol.Workspace;
@@ -86,10 +87,9 @@ internal static class TerminalWorkspaceChecks
         Check(crowded.ScrollTabsBy(1) && crowdedScroller.Offset.X == 0, "The wheel scrolls the strip back");
         preview.Close();
         Dispatcher.UIThread.RunJobs();
-        CheckBackendSelection();
-        CheckOutputBuffer();
+        CheckEngineMigration();
         CheckRenderingPreferences();
-        Console.WriteLine("Terminal workspace checks passed (17 scenarios).");
+        Console.WriteLine("Terminal workspace checks passed (tabs, overflow, single-engine migration, presentation).");
     }
 
     private static void CheckRenderingPreferences()
@@ -116,9 +116,6 @@ internal static class TerminalWorkspaceChecks
         Check(surface.Control.Screen!.ScrollbackLimit == 0 && cursor!.CursorStyle == RoyalTerminal.Terminal.TerminalCursorStyle.Underline && cursor.CursorBlinking,
             "Live appearance changes must affect history and cursor without restarting a transport.");
         Check(transport.Starts == 1 && transport.InputBytes == 0, "Appearance changes must never become shell input or restart a session.");
-        var options = XtermJsTerminalSurface.DescribeOptions(settings with { ScrollbackLines = 0 }, new Dictionary<string, string>());
-        Check((int)options["scrollback"]! == 0 && (string)options["cursorStyle"]! == "bar" && !(bool)options["cursorBlink"]!,
-            "xterm.js must receive explicit zero history and disabled blinking.");
         window.Close(); surface.StopSession();
         Console.WriteLine("Terminal presentation checks passed (emulator cursor, blink, live history, no PTY input/restart).");
     }
@@ -139,153 +136,65 @@ internal static class TerminalWorkspaceChecks
         public void Dispose() => IsRunning = false;
     }
 
-    private static void CheckOutputBuffer()
-    {
-        using var surface = new XtermJsTerminalSurface(null!, new Dictionary<string, string>());
-        const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
-        var receive = typeof(XtermJsTerminalSurface).GetMethod("OnTransportData", flags)!;
-        var take = typeof(XtermJsTerminalSurface).GetMethod("TakePending", flags)!;
-        var pending = (Queue<byte>)typeof(XtermJsTerminalSurface).GetField("_pending", flags)!.GetValue(surface)!;
-        const int limit = 4 * 1024 * 1024;
-        var burst = new byte[limit + 17];
-        burst[17] = 42;
-        burst[^1] = 99;
-        receive.Invoke(surface, [burst, burst.Length]);
-        Check(pending.Count == limit && pending.Peek() == 42, "An oversized burst must retain the bounded tail without throwing.");
-        var chunk = (byte[])take.Invoke(surface, null)!;
-        Check(chunk.Length == 96 * 1024 && chunk[0] == 42, "Terminal output must drain in ordered, bounded chunks.");
-        receive.Invoke(surface, [new byte[] { 1, 2, 3 }, 100]);
-        var tail = pending.ToArray();
-        Check(tail[^4] == 99 && tail[^1] == 3, "Subsequent output must preserve ordering and clamp the supplied count.");
-        surface.Dispose();
-        Dispatcher.UIThread.RunJobs();
-        Check(pending.Count == 0, "Closing the surface must release queued output.");
-    }
-
     /// <summary>
-    /// A workspace stores a terminal-engine request; the machine in front of the user decides whether
-    /// it can run it, because hosting a WebView is a property of that machine. These are the cases that
-    /// have to stay stable: a shipped engine, a shipped engine on a host without a WebView, a workspace
-    /// saved before the field existed, and a token this build does not ship.
+    /// A workspace may still store the terminal engine it was written with. RoyalTerminal is the only
+    /// desktop engine, so the stored request must never fail a window, the factory may not accept an
+    /// engine choice, and the settings surface may not offer a picker.
     /// </summary>
-    private static void CheckBackendSelection()
+    private static void CheckEngineMigration()
     {
-        var selected = TerminalBackendSelector.Resolve(TerminalBackends.XtermJs, webViewHostAvailable: true);
-        Check(selected is { Backend: TerminalBackendKind.XtermJs } && !selected.HasFallback,
-            "A shipped engine runs when the host can provide a WebView");
-        var blocked = TerminalBackendSelector.Resolve(TerminalBackends.XtermJs, webViewHostAvailable: false);
-        Check(blocked is { Backend: TerminalBackendKind.BuiltIn, FallbackReasonKey: "terminal.backend.fallback.webview_unavailable" },
-            "An engine the host cannot run falls back to the built-in terminal instead of opening a blank window");
-        Check(TerminalBackendSelector.Resolve(TerminalBackends.BuiltIn, webViewHostAvailable: false).FallbackReasonKey is null,
-            "The built-in terminal is never reported as a fallback");
-        Check(TerminalBackendSelector.Resolve(null, webViewHostAvailable: true) is { Backend: TerminalBackendKind.BuiltIn } and { FallbackReasonKey: null },
-            "A workspace saved before the backend field existed keeps the built-in terminal");
-        Check(TerminalBackendSelector.Resolve("xterm-wasm", webViewHostAvailable: true)
-                is { Backend: TerminalBackendKind.BuiltIn, FallbackReasonKey: "terminal.backend.fallback.unknown" },
-            "An engine token this build does not ship is reported instead of silently ignored");
-        Check(TerminalBackends.TryNormalize(" XTerm ", out var canonical) && canonical == TerminalBackends.XtermJs
-              && TerminalBackendSelector.FromWire(canonical) == TerminalBackendKind.XtermJs,
-            "A stored engine token is canonicalized before it is compared");
+        // The protocol still reports what the document asks for; an older document stays readable.
+        Check(TerminalSettingsDto.Default.RequestedBackend == TerminalBackends.BuiltIn,
+            "The default workspace settings ask for the built-in engine");
+        Check((TerminalSettingsDto.Default with { Backend = TerminalBackends.XtermJs }).RequestedBackend == TerminalBackends.XtermJs,
+            "The wire contract still canonicalizes the legacy xterm.js token");
+        Check((TerminalSettingsDto.Default with { Backend = "  XTerm  " }).RequestedBackend == TerminalBackends.XtermJs,
+            "A stored engine token is canonicalized before it is reported");
+        Check((TerminalSettingsDto.Default with { Backend = "xterm-wasm" }).RequestedBackend == TerminalBackends.BuiltIn,
+            "A token this build does not ship degrades to the built-in request instead of throwing");
+        Check((TerminalSettingsDto.Default with { Backend = null }).RequestedBackend == TerminalBackends.BuiltIn,
+            "A workspace saved before the field existed keeps the built-in engine");
+        Check(TerminalBackends.All.Contains(TerminalBackends.XtermJs),
+            "The shipped token set keeps the legacy value so an older document is still accepted");
         Check(!TerminalBackends.TryNormalize("xterm-wasm", out _),
-            "The wire contract refuses an engine token this build does not ship");
+            "The wire contract still refuses an engine token this build does not ship");
 
-        // Every notice a user can be shown has to resolve to real text, in whichever language is active.
-        var notices = new[]
+        // The desktop does not consume the request: it renders RoyalTerminal either way and rewrites
+        // the stored token on the next appearance change, so a legacy document migrates by itself.
+        var migrated = new TerminalViewModel(null, new Settings(), null);
+        migrated.Appearance = TerminalSettingsDto.Default with { Backend = TerminalBackends.XtermJs };
+        migrated.FontSize = TerminalSettingsDto.Default.FontSize + 1;
+        Check(migrated.Appearance.Backend == TerminalBackends.BuiltIn,
+            "Saving an appearance change must rewrite a stored legacy token to the built-in engine");
+
+        // The engine is a compile-time fact rather than a runtime choice: the factory takes no
+        // argument and the desktop assembly ships no second surface.
+        Check(typeof(TerminalSurfaceFactory).GetMethod(nameof(TerminalSurfaceFactory.Create))?.GetParameters().Length == 0,
+            "The surface factory must not accept an engine choice");
+        Check(typeof(TerminalSurfaceFactory).Assembly.GetTypes()
+                .All(type => !type.Name.Contains("xterm", StringComparison.OrdinalIgnoreCase)),
+            "The desktop client must not ship an xterm.js surface");
+
+        // The view-model exposes no engine API, so no view can bind the picker that no longer exists.
+        foreach (var member in new[] { "Backend", "EffectiveBackend", "BackendNotice", "HasBackendNotice", "IsXtermBackendSelected", "IsXtermBackendAvailable" })
         {
-            TerminalBackendSelector.Resolve(TerminalBackends.XtermJs, webViewHostAvailable: false).FallbackReasonKey,
-            TerminalBackendSelector.Resolve("xterm-wasm", webViewHostAvailable: true).FallbackReasonKey,
-        };
-        foreach (var key in notices.OfType<string>())
-        {
-            var text = RelaxKonOS.Client.Localization.LocalizedText.Get(key, string.Empty);
-            Check(!string.IsNullOrWhiteSpace(text) && !text.Contains(key, StringComparison.Ordinal),
-                $"The fallback notice '{key}' must be a resource string, not a raw key");
+            Check(typeof(TerminalViewModel).GetProperty(member) is null,
+                $"The terminal view-model must not expose the retired '{member}' engine member");
         }
 
-        var model = new TerminalViewModel(null, new Settings(), null);
-        Check(model.IsBuiltInBackendSelected && !model.IsXtermBackendSelected,
-            "The terminal settings show the engine the workspace stored");
-        Check(model.IsXtermBackendAvailable == TerminalBackendSelector.WebViewHostAvailable,
-            "The terminal settings disable an engine this host cannot run");
-        Check(!model.HasBackendNotice, "A workspace that got the engine it asked for shows no fallback notice");
-        model.Backend = TerminalBackends.XtermJs;
-        Check(model.IsXtermBackendSelected && !model.IsBuiltInBackendSelected,
-            "Choosing an engine in the settings switches the selected backend");
-        Console.WriteLine("Terminal backend selection checks passed (12 scenarios).");
-        CheckXtermPage();
+        var settings = new TerminalSettingsView { DataContext = new TerminalViewModel(null, new Settings(), null) };
+        var host = new Window { Width = 460, Height = 420, Content = settings };
+        host.Show();
+        Dispatcher.UIThread.RunJobs();
+        Check(!settings.GetVisualDescendants().OfType<RadioButton>().Any(),
+            "The terminal settings must not offer a terminal-engine picker");
+        Check(settings.GetVisualDescendants().OfType<ComboBox>().Count() == 3,
+            "The terminal settings still expose font family, size and colour scheme");
+        host.Close();
+        Dispatcher.UIThread.RunJobs();
+        Console.WriteLine("Terminal engine migration checks passed (single engine, legacy token tolerated).");
     }
 
-    /// <summary>
-    /// The xterm.js engine is a document string handed to the platform WebView, so a broken template or
-    /// an inlined option bag is invisible until someone opens a terminal on a machine that has a
-    /// WebView. These checks pin the properties the document has to satisfy on every platform: fully
-    /// self-contained, no leftover placeholder, a parseable option bag, and no way for session text to
-    /// escape the script element it is inlined into.
-    /// </summary>
-    private static void CheckXtermPage()
-    {
-        var labels = new Dictionary<string, string>(StringComparer.Ordinal) { ["copy"] = "Copy" };
-        var benign = XtermTerminalPage.Compose(XtermJsTerminalSurface.DescribeOptions(TerminalSettingsDto.Default, labels));
-        Check(!benign.Contains("__RELAXKONOS_", StringComparison.Ordinal),
-            "Every placeholder in the terminal page template must be substituted before the page is handed to a WebView");
-        Check(benign.Contains("FitAddon", StringComparison.Ordinal) && benign.Contains("window.rkTerminal", StringComparison.Ordinal),
-            "The document must carry the inlined fit addon and bridge");
-        Check(!benign.Contains("unpkg", StringComparison.Ordinal) && !benign.Contains("cdn.", StringComparison.Ordinal)
-              && !benign.Contains("src=\"http", StringComparison.Ordinal) && !benign.Contains("href=\"http", StringComparison.Ordinal),
-            "The document must stay offline: no CDN, no fetched script or stylesheet");
-        Check(XtermTerminalPage.BaseUri.Scheme == Uri.UriSchemeHttps,
-            "The document claims a stable origin even though it never fetches anything");
-
-        using var options = JsonDocument.Parse(OptionsLiteral(benign));
-        var root = options.RootElement;
-        Check(root.TryGetProperty("fontFamily", out _) && root.TryGetProperty("labels", out _)
-              && root.TryGetProperty("theme", out _) && root.TryGetProperty("scrollback", out _),
-            "The page must be told how to look and which labels to draw before the session attaches");
-        Check(root.TryGetProperty("fontSize", out var size)
-              && Math.Abs(size.GetDouble() - TerminalSettingsDto.Default.FontSize) < 0.001,
-            "The inlined options must carry the workspace font size, not a hardcoded default");
-        Check(root.TryGetProperty("theme", out var theme)
-              && theme.GetProperty("background").GetString() == TerminalSettingsDto.Default.BackgroundColor
-              && theme.GetProperty("foreground").GetString() == TerminalSettingsDto.Default.ForegroundColor,
-            "The inlined options must carry the workspace colours");
-        Check(root.TryGetProperty("labels", out var inlined) && inlined.GetProperty("copy").GetString() == "Copy",
-            "The in-page context menu must use the host's localized labels");
-
-        // Text that reaches the page is inlined into a script element, so a shell or a translation that
-        // happens to contain HTML must not be able to end that element or break the literal it sits in.
-        var hostile = XtermJsTerminalSurface.DescribeOptions(TerminalSettingsDto.Default,
-            new Dictionary<string, string>(StringComparer.Ordinal) { ["copy"] = "</script><script>alert(1)</script>\u2028" });
-        var escaped = XtermTerminalPage.Compose(hostile);
-        Check(Occurrences(escaped, "</script>") == Occurrences(benign, "</script>") && !escaped.Contains('\u2028'),
-            "Text reaching the page must not be able to close the script element it is inlined into");
-
-        var changed = XtermTerminalPage.Compose(XtermJsTerminalSurface.DescribeOptions(
-            TerminalSettingsDto.Default with { Backend = TerminalBackends.XtermJs, FontSize = 22 }, labels));
-        Check(!string.Equals(changed, benign, StringComparison.Ordinal) && changed.Contains("FitAddon", StringComparison.Ordinal),
-            "Composing a page twice with different options must not hand back a stale document");
-        Console.WriteLine("Terminal page composition checks passed (10 scenarios).");
-    }
-
-    /// <summary>Reads back the option literal the page was seeded with, exactly as the browser would.</summary>
-    private static string OptionsLiteral(string document)
-    {
-        const string marker = "window.__relaxkonosTerminal = ";
-        var start = document.IndexOf(marker, StringComparison.Ordinal);
-        Check(start >= 0, "The page must seed its options from the host");
-        start += marker.Length;
-        var end = document.IndexOf("</script>", start, StringComparison.Ordinal);
-        Check(end > start, "The seeded options must be terminated");
-        return document[start..end].Trim().TrimEnd(';');
-    }
-
-    private static int Occurrences(string text, string needle)
-    {
-        var count = 0;
-        for (var index = text.IndexOf(needle, StringComparison.Ordinal); index >= 0;
-             index = text.IndexOf(needle, index + needle.Length, StringComparison.Ordinal))
-            count++;
-        return count;
-    }
     private static void Check(bool condition, string message)
     { if (!condition) throw new InvalidOperationException(message); }
     private sealed class Settings : ITerminalSettingsClient

@@ -42,10 +42,3 @@ public interface ITerminalSurface : IDisposable
     /// <summary>Platform hook retained by the host; the Avalonia RoyalTerminal surface is a no-op.</summary>
     void SetNativeVisible(bool visible);
 }
-
-/// <summary>
-/// Retained for compatibility with the view-model's defensive surface-start fallback path. The
-/// RoyalTerminal desktop surface does not normally throw this exception.
-/// </summary>
-public sealed class TerminalSurfaceUnavailableException(string message, Exception? innerException = null)
-    : Exception(message, innerException);

@@ -11,8 +11,8 @@ namespace RelaxKonOS.Client.Apps.Terminal;
 
 /// <summary>
 /// One view-model owns exactly one terminal session; a workspace can host several session tabs.
-/// The backends differ only in the engine that draws the session, so the view-model owns the
-/// transport lifetime and asks the surface factory for whichever engine the workspace selected.
+/// RoyalTerminal is the only desktop engine, so the view-model owns the transport lifetime and
+/// hosts the single surface the factory builds.
 /// </summary>
 public partial class TerminalViewModel : LocalizedObservableObject
 {
@@ -23,10 +23,8 @@ public partial class TerminalViewModel : LocalizedObservableObject
         if (_session?.State != AuthSessionState.Authenticated) return;
         OnPropertyChanged(nameof(Padding));
         if (_preferences is null || Appearance == _preferences.Terminal) return;
-        var backendChanged = Appearance.RequestedBackend != _preferences.Terminal.RequestedBackend;
         ApplyAppearance(_preferences.Terminal);
         _surface?.ApplyAppearance(Appearance);
-        if (backendChanged) _ = ChangeBackendAsync();
     }
     private const int Columns = 80;
     private const int Rows = 24;
@@ -43,8 +41,6 @@ public partial class TerminalViewModel : LocalizedObservableObject
     private bool _attached;
     private long _attachmentGeneration;
     private bool _loadingAppearance;
-    private string? _backendNoticeKey;
-    private object? _backendNoticeArgument;
 
     [ObservableProperty] private LocalizedStatus _status = LocalizedText.Ref("terminal.status.ready");
     [ObservableProperty] private bool _hasExited;
@@ -64,10 +60,6 @@ public partial class TerminalViewModel : LocalizedObservableObject
     [ObservableProperty] private string _fontFamily = TerminalSettingsDto.Default.FontFamily;
     [ObservableProperty] private double _fontSize = TerminalSettingsDto.Default.FontSize;
     [ObservableProperty] private string _colorScheme = TerminalSettingsDto.Default.ColorScheme;
-    [ObservableProperty] private string _backend = TerminalBackends.BuiltIn;
-    [ObservableProperty] private TerminalBackendKind _effectiveBackend = TerminalBackendKind.BuiltIn;
-    [ObservableProperty] private LocalizedStatus _backendNotice = LocalizedStatus.Literal(string.Empty);
-    [ObservableProperty] private bool _hasBackendNotice;
 
     public IReadOnlyList<string> FontFamilies => TerminalAppearance.FontFamilies;
     public IReadOnlyList<double> FontSizes => TerminalAppearance.FontSizes;
@@ -86,21 +78,6 @@ public partial class TerminalViewModel : LocalizedObservableObject
 
     /// <summary>Raised after <see cref="Surface"/> was replaced; the view re-hosts the session control.</summary>
     public event EventHandler? SurfaceChanged;
-
-    /// <summary>True when the workspace's backend can run on this host.</summary>
-    public bool IsXtermBackendAvailable => TerminalBackendSelector.IsAvailable(TerminalBackendKind.XtermJs, TerminalBackendSelector.WebViewHostAvailable);
-
-    public bool IsBuiltInBackendSelected
-    {
-        get => EffectiveBackend == TerminalBackendKind.BuiltIn && string.Equals(Backend, TerminalBackends.BuiltIn, StringComparison.Ordinal);
-        set { if (value) Backend = TerminalBackends.BuiltIn; }
-    }
-
-    public bool IsXtermBackendSelected
-    {
-        get => string.Equals(Backend, TerminalBackends.XtermJs, StringComparison.Ordinal);
-        set { if (value) Backend = TerminalBackends.XtermJs; }
-    }
 
     /// <summary>
     /// True while closing the window would kill a live server PTY. Desktop teardown and logout
@@ -155,11 +132,9 @@ public partial class TerminalViewModel : LocalizedObservableObject
         else await LoadAppearanceAsync();
         if (!_attached || generation != _attachmentGeneration) return;
 
-        // The stored backend is a request from the workspace; this host decides which engine runs it.
-        var selection = TerminalBackendSelector.Resolve(Backend);
-        EffectiveBackend = selection.Backend;
-        ApplyBackendNotice(selection);
-        CreateSurface(selection.Backend);
+        // RoyalTerminal is the only desktop engine; a stored legacy `xterm` token is a workspace
+        // preference that this client resolves to the same surface.
+        CreateSurface();
         await StartSessionAsync(_initialSessionId);
     }
 
@@ -186,14 +161,8 @@ public partial class TerminalViewModel : LocalizedObservableObject
         _surfaceFactory = null;
     }
 
-    /// <summary>Re-resolves the backend notice text; called when the display language changes.</summary>
-    public void RefreshLocalization()
-    {
-        ApplyBackendNotice(new TerminalBackendSelection(EffectiveBackend, _backendNoticeKey));
-        // The notice is a struct holding the same key, so the generated setter would consider it
-        // unchanged; the text itself has to be re-read for the new language.
-        OnPropertyChanged(nameof(BackendNotice));
-    }
+    /// <summary>Re-raises the localizable state so the open window re-renders after a language switch.</summary>
+    public void RefreshLocalization() => OnPropertyChanged(nameof(Status));
 
     [CommunityToolkit.Mvvm.Input.RelayCommand]
     private async Task OpenSettingsAsync()
@@ -208,12 +177,12 @@ public partial class TerminalViewModel : LocalizedObservableObject
     [CommunityToolkit.Mvvm.Input.RelayCommand]
     private void OpenAdministratorTerminal() => RequestAdministratorTerminal?.Invoke();
 
-    private void CreateSurface(TerminalBackendKind backend)
+    private void CreateSurface()
     {
         if (_surfaceFactory is not { } factory)
             return;
 
-        var surface = factory.Create(backend);
+        var surface = factory.Create();
         surface.ProcessExited += OnProcessExited;
         surface.TitleChanged += OnTitleChanged;
         surface.ApplyAppearance(Appearance);
@@ -232,27 +201,6 @@ public partial class TerminalViewModel : LocalizedObservableObject
         surface.StopSession();
         surface.Dispose();
         _surface = null;
-    }
-
-    /// <summary>Swaps the rendering engine, keeping the server session alive and re-attaching it.</summary>
-    private async Task ChangeBackendAsync()
-    {
-        if (_surfaceFactory is null || _surface is null)
-            return;
-
-        var selection = TerminalBackendSelector.Resolve(Backend);
-        ApplyBackendNotice(selection);
-        if (selection.Backend == EffectiveBackend)
-            return;
-
-        // The session outlives its renderer: detach (without killing the PTY) and let the new
-        // surface re-attach to the same server session.
-        var sessionId = _surfaceFactory.TransportFactory.CurrentSessionId ?? _initialSessionId;
-        ReleaseActiveSession(kill: false);
-        TeardownSurface();
-        EffectiveBackend = selection.Backend;
-        CreateSurface(selection.Backend);
-        await StartSessionAsync(sessionId);
     }
 
     private async Task StartSessionAsync(string? sessionId)
@@ -310,36 +258,11 @@ public partial class TerminalViewModel : LocalizedObservableObject
                 OpenSessions.TryAdd(id, 0);
             Status = LocalizedText.Ref(IsAdministrator ? "terminal.status.administrator_connected" : "terminal.status.connected");
         }
-        catch (TerminalSurfaceUnavailableException exception)
-        {
-            // The engine failed on this host, not the session: open the very same request with the
-            // engine every platform can host, and say why.
-            await FallBackToBuiltInAsync(exception, sessionId);
-        }
         catch (Exception ex)
         {
             HasExited = true;
             Status = LocalizedText.Ref("terminal.status.start_failed", ex.Message);
         }
-    }
-
-    private async Task FallBackToBuiltInAsync(Exception exception, string? sessionId)
-    {
-        if (_surface is null || _surfaceFactory is null || EffectiveBackend == TerminalBackendKind.BuiltIn)
-        {
-            HasExited = true;
-            Status = LocalizedText.Ref("terminal.status.start_failed", exception.Message);
-            return;
-        }
-
-        _backendNoticeKey = "terminal.backend.fallback.start_failed";
-        _backendNoticeArgument = exception.Message;
-        ReleaseActiveSession(kill: false);
-        TeardownSurface();
-        EffectiveBackend = TerminalBackendKind.BuiltIn;
-        ApplyBackendNotice(new TerminalBackendSelection(EffectiveBackend, _backendNoticeKey));
-        CreateSurface(TerminalBackendKind.BuiltIn);
-        await StartSessionAsync(sessionId);
     }
 
     private void ReleaseActiveSession(bool kill)
@@ -350,18 +273,6 @@ public partial class TerminalViewModel : LocalizedObservableObject
         if (_surfaceFactory.TransportFactory.CurrentSessionId is { } id)
             OpenSessions.TryRemove(id, out _);
         _ = kill ? _surfaceFactory.TransportFactory.KillActiveAsync() : _surfaceFactory.TransportFactory.StopActiveAsync();
-    }
-
-    private void ApplyBackendNotice(TerminalBackendSelection selection)
-    {
-        _backendNoticeKey = selection.FallbackReasonKey;
-        if (string.Equals(_backendNoticeKey, "terminal.backend.fallback.start_failed", StringComparison.Ordinal))
-            BackendNotice = LocalizedText.Ref("terminal.backend.fallback.start_failed", _backendNoticeArgument ?? string.Empty);
-        else if (_backendNoticeKey is { } key)
-            BackendNotice = LocalizedText.Ref(key);
-        else
-            BackendNotice = LocalizedStatus.Literal(string.Empty);
-        HasBackendNotice = !BackendNotice.IsEmpty;
     }
 
     private async Task LoadAppearanceAsync()
@@ -387,7 +298,6 @@ public partial class TerminalViewModel : LocalizedObservableObject
         FontFamily = settings.FontFamily;
         FontSize = settings.FontSize;
         ColorScheme = settings.ColorScheme;
-        Backend = settings.RequestedBackend;
         _loadingAppearance = false;
     }
 
@@ -395,22 +305,20 @@ public partial class TerminalViewModel : LocalizedObservableObject
     partial void OnFontSizeChanged(double value) => UpdateAppearance();
     partial void OnColorSchemeChanged(string value) => UpdateAppearance(applyScheme: true);
 
-    partial void OnBackendChanged(string value)
-    {
-        OnPropertyChanged(nameof(IsBuiltInBackendSelected));
-        OnPropertyChanged(nameof(IsXtermBackendSelected));
-        if (_loadingAppearance) return;
-        UpdateAppearance();
-        // Deferred: the engine swap detaches and re-attaches the session.
-        _ = ChangeBackendAsync();
-    }
-
     private void UpdateAppearance(bool applyScheme = false)
     {
         if (_loadingAppearance)
             return;
 
-        var updated = Appearance with { FontFamily = FontFamily, FontSize = FontSize, ColorScheme = ColorScheme, Backend = Backend };
+        // The stored engine is always the built-in one, so a workspace written by an older build
+        // (which could still hold the legacy `xterm` token) migrates on its next appearance write.
+        var updated = Appearance with
+        {
+            FontFamily = FontFamily,
+            FontSize = FontSize,
+            ColorScheme = ColorScheme,
+            Backend = TerminalBackends.BuiltIn,
+        };
         Appearance = applyScheme ? TerminalAppearance.ApplyScheme(updated, ColorScheme) : updated;
         _surface?.ApplyAppearance(Appearance);
         _ = SaveAppearanceAsync(Appearance);
