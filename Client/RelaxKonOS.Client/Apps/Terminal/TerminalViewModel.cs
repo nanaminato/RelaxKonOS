@@ -143,9 +143,16 @@ public partial class TerminalViewModel : LocalizedObservableObject
         else await LoadAppearanceAsync();
         if (!_attached || generation != _attachmentGeneration) return;
 
-        // The device VT preference selects a processor inside RoyalTerminal; the workspace
-        // preference that this client resolves to the same surface.
-        CreateSurface();
+        try
+        {
+            CreateSurface();
+        }
+        catch (Exception ex)
+        {
+            HasExited = true;
+            Status = LocalizedText.Ref("terminal.status.start_failed", ex.Message);
+            return;
+        }
         await StartSessionAsync(_initialSessionId);
     }
 

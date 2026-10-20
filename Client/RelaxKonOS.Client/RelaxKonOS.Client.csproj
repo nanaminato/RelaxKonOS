@@ -38,6 +38,10 @@
         <PackageReference Include="Microsoft.AspNetCore.SignalR.Client"/>
         <PackageReference Include="RoyalApps.RoyalTerminal.Avalonia"/>
         <PackageReference Include="RoyalApps.RoyalTerminal.Terminal.Vt.Ghostty"/>
+        <!-- Explicit runtime assets also support ordinary IDE Debug builds without a RID. -->
+        <PackageReference Include="RoyalApps.RoyalTerminal.GhosttySharp.Native.Win64"/>
+        <PackageReference Include="RoyalApps.RoyalTerminal.GhosttySharp.Native.Linux64"/>
+        <PackageReference Include="RoyalApps.RoyalTerminal.GhosttySharp.Native.OSX"/>
         <!-- Explorer: behaviors 用于双击导航等交互；Newtonsoft 保留 Jaya 配置模型序列化 -->
         <PackageReference Include="Xaml.Behaviors.Avalonia"/>
         <PackageReference Include="Newtonsoft.Json"/>

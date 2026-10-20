@@ -78,7 +78,7 @@ RemoteTerminal 是 RelaxKonOS 的内置应用之一，遵循架构 §6 的两类
 - `RoyalApps.RoyalTerminal.Avalonia` 传递依赖 `Terminal.Pty.Platform`、`Terminal.Transport.Ssh.Abstractions`、`Terminal.Transport.Ssh.SshNet` 等，Client 端无需单独引用 PTY 平台包（仅 Server 需要）。
 - `AddSignalR` 由 `Microsoft.NET.Sdk.Web` 隐式 FrameworkReference 提供，Server 端无需额外 NuGet。
 - **不引入** `RoyalApps.RoyalTerminal.Avalonia.App`（自带 MainWindow / 标签 / 标题栏，会与 RelaxKonOS 的 WindowManager 冲突）。
-- 引入 `RoyalApps.RoyalTerminal.Terminal.Vt.Ghostty` 0.6.3；发布时指定 RID（例如 `dotnet publish -r win-x64`），由 GhosttySharp 的 `runtime.json` 选择原生资产。无 RID 的开发构建可能只具备 Managed，Auto 按可用性选择。
+- 引入 `RoyalApps.RoyalTerminal.Terminal.Vt.Ghostty` 0.6.3，并显式引用同版本 Win64、Linux64、OSX 原生资产包，使普通无 RID 的 Debug/IDE 构建也具备原生库。发布时仍指定 RID（例如 `dotnet publish -r win-x64`）筛选目标平台资产。Native 在控件进入布局前检查可用性，缺库时显示启动失败状态。
 
 ### 2.2 嵌入而非替换 Shell
 
@@ -136,6 +136,8 @@ ITerminalSurface                                BuiltInTerminalSurface（桌面�
 ```
 
 `TerminalSurfaceFactory.Create(VtProcessorPreference)` 接收 VT 偏好，`BuiltInTerminalSurface` 将其传给 `TerminalControl.VtProcessorPreference`，并显式向默认工厂注册 `GhosttyVtProcessorProvider`。`ITerminalSurface` 仍然保留，用来把会话生命周期与 Avalonia 宿主分开，也为将来其它客户端的专用前端留出接缝。
+
+`ConnectingTerminalSessionService` 在异步传输连接期间也保护 VT 生命周期。RoyalTerminal 0.6.3 在传输完成连接前已经绑定输入模式源，若此时仍按空闲状态处理布局或历史设置，会释放输入源引用的 Ghostty 处理器。连接中的会话因此也报告为活动，阻止空闲处理器重建；连接完成、失败或取消后恢复实际传输状态。回归测试使用延迟连接，在连接期间改变网格及历史设置，再验证按键按下与释放。
 
 #### 2.4.2 遗留 `backend` 字段
 
@@ -427,7 +429,7 @@ else
 - **会话建立路径只有一条**：所有终端（SSH 直连、远端 PTY、未登录本地回退）共用同一套 `ITerminalTransport`（`SignalRTransportFactory` → SignalR / SSH / 本地 PTY）；渲染层不得自行决定会话怎么建立。
 - **`backend` 字段是遗留记录，不是行为开关**：桌面客户端不消费 `TerminalSettingsDto.RequestedBackend`——无论文档请求哪个 token 都渲染内置引擎。`RequestedBackend` 只做规范化（缺失/`null`/未知 → `builtin`，遗留 `xterm` 原样保留）；服务端在 `PUT` 阶段仍拒绝未知 token（400），读取阶段不报错、不提示。桌面只在下一次外观写入时把该字段覆写为 `builtin`。
 - **删除引擎选择要同步三处**：`TerminalViewModel`（不得再暴露 `Backend` / `BackendNotice` / `IsXtermBackend*`）、三语 `terminal.json`（`terminal.backend*` 文案键已删除，`Tools/verify-localization.py` 强校验键集相等）、`THIRD_PARTY_NOTICES.md`（xterm.js 资产条目已移除）。新增 token 时仍要同步 `TerminalBackends`（协议）与注册表下拉（`RegistryConfigurationFields`）。
-- **不引入 native Ghostty VT**（除非显式需求）：当前用托管 VT；引入 native 需按 RID 处理原生资产包。
+- **原生 Ghostty VT**：使用 NuGet 随包资产，支持普通 Debug 构建；发布指定 RID。无需安装 Ghostty 应用。
 - **程序集名是 `RoyalTerminal.Avalonia`**（非 NuGet 包 id `RoyalApps.RoyalTerminal.Avalonia`）；`NullSshCredentialProvider` 在 `RoyalTerminal.Terminal.Transport.Ssh.SshNet` namespace，`KnownHostsSshHostKeyValidator` 在 `RoyalTerminal.Terminal.Transport.Ssh` namespace（abstractions 程序集，传递依赖可用）。
 
 终端工具栏使用“终端”文字和下拉箭头作为菜单入口，集中提供复制、粘贴、全选、清屏及设置操作；复制随当前选区启用，关闭菜单后回到终端焦点。工具栏显示会话状态，完整 shell 标题通过悬停查看；标签中的可执行文件绝对路径缩短为文件名，其他 shell 标题保持原样，管理员标签仍保留标记。

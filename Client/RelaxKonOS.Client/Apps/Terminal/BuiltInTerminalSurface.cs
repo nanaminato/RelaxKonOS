@@ -31,14 +31,20 @@ public sealed class BuiltInTerminalSurface : ITerminalSurface
         ISshHostKeyValidator hostKeys,
         VtProcessorPreference vtEngine = VtProcessorPreference.Auto)
     {
+        var nativeProvider = new GhosttyVtProcessorProvider();
+        // Reject unavailable Native before hosting the control: Avalonia can create its
+        // screen during layout, outside the asynchronous session-start exception handler.
+        if (vtEngine == VtProcessorPreference.Native && !nativeProvider.IsAvailable)
+            throw new InvalidOperationException("Ghostty VT native library is unavailable for this device. Check the application runtime assets.");
+
         // TerminalTransportFactory is a read-only property, so the custom factory has to arrive
         // through the constructor; a XAML-declared control would keep the default composite factory.
         _control = new TerminalControl(
-            new TerminalSessionService(),
+            new ConnectingTerminalSessionService(),
             new DefaultTerminalInputAdapter(),
             new DefaultTerminalSelectionService(),
             new DefaultTerminalScrollService(),
-            new DefaultVtProcessorFactory([new GhosttyVtProcessorProvider()]),
+            new DefaultVtProcessorFactory([nativeProvider]),
             new DefaultPtyFactory(),
             credentials,
             hostKeys,

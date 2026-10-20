@@ -96,17 +96,30 @@ internal static class TerminalWorkspaceChecks
 
     private static void CheckRenderingPreferences(RoyalTerminal.Terminal.VtProcessorPreference preference)
     {
-        var transport = new PresentationTransport();
+        var transport = new PresentationTransport { StartGate = new(TaskCreationOptions.RunContinuationsAsynchronously) };
         using var surface = new BuiltInTerminalSurface(new PresentationFactory(transport), new SshDesktopCredentialProvider(new RelaxKonOS.Client.Services.ServerCenter.SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!))), new RoyalTerminal.Terminal.Transport.Ssh.KnownHostsSshHostKeyValidator(), preference);
         var settings = TerminalSettingsDto.Default with { ScrollbackLines = 50, CursorStyle = "bar", CursorBlink = false };
         surface.ApplyAppearance(settings);
         var window = new Window { Width = 640, Height = 320, Content = surface.View };
         window.Show(); Dispatcher.UIThread.RunJobs();
         var start = surface.StartSessionAsync(new RoyalTerminal.Terminal.PtyTransportOptions(null, null, null, new(80, 24, 640, 320)), CancellationToken.None);
+        Check(!start.IsCompleted && surface.Control.TerminalSessionService.HasActiveTransport,
+            "Pending connection must protect the processor already bound to the session");
+        // Network transports remain pending while the window receives its final layout.
+        // Key-up resolves the processor through the session service rather than the control.
+        surface.Control.Columns += 7;
+        surface.Control.Rows += 3;
+        surface.Control.ScrollbackLimit = 51;
+        Dispatcher.UIThread.RunJobs();
+        transport.StartGate.SetResult();
         var deadline = DateTime.UtcNow.AddSeconds(5);
         while (!start.IsCompleted && DateTime.UtcNow < deadline) { Dispatcher.UIThread.RunJobs(); Thread.Sleep(1); }
         if (!start.IsCompleted) throw new TimeoutException("Fake terminal transport did not start.");
         start.GetAwaiter().GetResult();
+        surface.Control.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Up });
+        surface.Control.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyUpEvent, Key = Key.Up });
+        Check(transport.InputBytes > 0, "Keyboard input must still reach the transport after pending-start layout changes");
+        transport.InputBytes = 0;
         for (var index = 0; index < 20; index++) { Dispatcher.UIThread.RunJobs(); Thread.Sleep(5); }
         var cursor = surface.Control.GetType().GetField("_vtProcessor", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(surface.Control) as RoyalTerminal.Terminal.ITerminalCursorStyleSource;
         Check(cursor is not null && cursor.CursorStyle == RoyalTerminal.Terminal.TerminalCursorStyle.Bar && !cursor.CursorBlinking,
@@ -128,10 +141,16 @@ internal static class TerminalWorkspaceChecks
     private sealed class PresentationTransport : RoyalTerminal.Terminal.ITerminalTransport
     {
         public int Starts; public int InputBytes;
+        public TaskCompletionSource? StartGate;
         public bool IsRunning { get; private set; }
         public event Action<byte[], int>? DataReceived { add { } remove { } }
         public event Action<int>? ProcessExited { add { } remove { } }
-        public ValueTask StartAsync(RoyalTerminal.Terminal.ITerminalTransportOptions options, CancellationToken cancellationToken) { Starts++; IsRunning = true; return ValueTask.CompletedTask; }
+        public async ValueTask StartAsync(RoyalTerminal.Terminal.ITerminalTransportOptions options, CancellationToken cancellationToken)
+        {
+            Starts++;
+            if (StartGate is not null) await StartGate.Task.WaitAsync(cancellationToken);
+            IsRunning = true;
+        }
         public void SendInput(ReadOnlySpan<byte> data) => InputBytes += data.Length;
         public void Resize(RoyalTerminal.Terminal.TerminalSessionDimensions dimensions) { }
         public ValueTask StopAsync() { IsRunning = false; return ValueTask.CompletedTask; }
@@ -144,6 +163,9 @@ internal static class TerminalWorkspaceChecks
     private static void CheckEngineMigration()
     {
         var provider = new RoyalTerminal.Terminal.GhosttyVtProcessorProvider();
+        if (OperatingSystem.IsWindows() && System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture
+            is System.Runtime.InteropServices.Architecture.X64 or System.Runtime.InteropServices.Architecture.Arm64)
+            Check(provider.IsAvailable, "Ordinary Windows Debug builds must include a loadable Ghostty native library without an explicit RID");
         var factory = new RoyalTerminal.Terminal.DefaultVtProcessorFactory([provider]);
         foreach (var preference in Enum.GetValues<RoyalTerminal.Terminal.VtProcessorPreference>())
         {
