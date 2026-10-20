@@ -14,7 +14,7 @@ internal sealed record PreparedMihomoRuntime(PreparedRuntimeArtifact Artifact, M
 /// The caller holds its installation lock and supplies protected configuration, data and staging paths.
 /// </summary>
 internal sealed class MihomoRuntimePreparation(RuntimeSourceStore sources, IRuntimeArchiveTransport transport,
-    RuntimeStageReporter? progress = null)
+    RuntimeDownloadProxy? downloadProxy = null, RuntimeStageReporter? progress = null)
 {
     internal static void RequireSupportedRelease(RuntimeRelease release)
     {
@@ -48,7 +48,7 @@ internal sealed class MihomoRuntimePreparation(RuntimeSourceStore sources, IRunt
         var prepared = await new RuntimeArtifactPreparer(sources, transport,
             progress is null ? null : stage => progress(stage, cancellable: true)).PrepareAsync(release.SourceId,
             release.ReleaseId, plan.Request.ExpectedCatalogRevision, plan.Request.ExpectedTrustRevision,
-            release.Target, plan.Request.AllowPrerelease, protectedStagingRoot, ct);
+            release.Target, plan.Request.AllowPrerelease, protectedStagingRoot, downloadProxy, ct);
         try
         {
             ct.ThrowIfCancellationRequested();

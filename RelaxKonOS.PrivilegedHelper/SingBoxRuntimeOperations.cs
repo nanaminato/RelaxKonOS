@@ -12,8 +12,11 @@ internal static class SingBoxRuntimeOperations
         Func<SingBoxRuntimeLifecycle>? create = null, Func<PrivilegedOperationFrame, Task>? report = null)
     {
         var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
-            Correlation: request.Correlation, Version: request.Version, RuntimeLifecycle: request.RuntimeLifecycle);
+            Correlation: request.Correlation, Version: request.Version, RuntimeLifecycle: request.RuntimeLifecycle,
+            DownloadProxy: request.DownloadProxy);
         var input = request.RuntimeLifecycle;
+        // Only a program change fetches bytes, so no other verb may name a download route.
+        var misplacedRoute = request.DownloadProxy is not null && request.Operation != PrivilegedOperationKind.SingBoxRuntimeExecute;
         if (input?.ConfigurationPlan is not null)
             return new(false, 64, ProblemCode: PrivilegedProblemCode.InvalidRequest, Error: "runtime.request_invalid");
         var valid = request.Operation switch
@@ -34,7 +37,7 @@ internal static class SingBoxRuntimeOperations
                 && closeTarget != Guid.Empty,
             _ => false
         };
-        if (clean != request || !valid || request.OperationId is not { } id || id == Guid.Empty
+        if (clean != request || !valid || misplacedRoute || request.OperationId is not { } id || id == Guid.Empty
             || input?.Authorization is { } channel && (channel.OperationId != id || channel.ChannelId == Guid.Empty
                 || channel.RuntimeId != "sing-box"
                 || channel.Secret is not { Length: 64 } || !channel.Secret.All(Uri.IsHexDigit)))
@@ -43,13 +46,14 @@ internal static class SingBoxRuntimeOperations
             return new(false, 64, ProblemCode: PrivilegedProblemCode.UnsupportedOperation, Error: "runtime.platform_unsupported");
         try
         {
+            if (request.DownloadProxy is { } route) RuntimeDownloadPolicy.Validate(route);
             var lifecycle = (create ?? SingBoxRuntimeLifecycle.Create)();
             RuntimeStageReporter? progress = report is null ? null : (stage, cancellable) => report(PrivilegedOperationFrame.Report(stage, cancellable: cancellable));
             return request.Operation switch
             {
                 PrivilegedOperationKind.SingBoxRuntimeQuery => Json(await lifecycle.QueryAsync(default, id)),
                 PrivilegedOperationKind.SingBoxRuntimePlan => Json(await lifecycle.PlanAsync(input!.SourceId!, input.Plan!, default)),
-                PrivilegedOperationKind.SingBoxRuntimeExecute => Json(await lifecycle.ExecuteAsync(id, input!.FrozenPlan!, input.Authorization!, default, progress)),
+                PrivilegedOperationKind.SingBoxRuntimeExecute => Json(await lifecycle.ExecuteAsync(id, input!.FrozenPlan!, input.Authorization!, default, progress, request.DownloadProxy)),
                 PrivilegedOperationKind.SingBoxRuntimeRecover => Json(await lifecycle.RecoverAsync(input!.Authorization!, input.RecoveryOperationId!.Value, default, progress)),
                 PrivilegedOperationKind.SingBoxRuntimeCancel => Json(lifecycle.CancelRequest(input!.CancelOperationId!.Value)),
                 PrivilegedOperationKind.SingBoxRuntimeRecoveryQuery => Json(await lifecycle.RecoveryAsync(default)),

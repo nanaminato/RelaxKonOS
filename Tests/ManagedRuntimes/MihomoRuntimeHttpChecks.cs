@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
@@ -42,9 +42,9 @@ internal static class MihomoRuntimeHttpChecks
             options.AddPolicy(RuntimeCatalogEndpoints.ManagePolicy, policy => policy.RequireClaim("permission", "manage"));
         });
         builder.Services.AddSingleton<IServerModeResolver>(fixture);
-        builder.Services.AddSingleton(new RuntimeCatalogService(fixture));
+        builder.Services.AddSingleton(new RuntimeCatalogService(fixture, new DirectDownloads()));
         var authorization = new MihomoRuntimeAuthorizationProvider(store, fixture, fixture);
-        var runtimeService = new MihomoRuntimeService(fixture, store, authorization, fixture);
+        var runtimeService = new MihomoRuntimeService(fixture, store, authorization, fixture, new DirectDownloads());
         builder.Services.AddSingleton(runtimeService);
         builder.Services.AddSingleton(new MihomoRuntimeRecoveryService(store, runtimeService,
             new(store, authorization, runtimeService, fixture), new(store, authorization, runtimeService, fixture),

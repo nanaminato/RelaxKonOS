@@ -16,7 +16,7 @@ public sealed class RuntimeLifecycleException(string code) : Exception(code)
 
 /// <summary>Server composition: published-state gate, per-operation authenticated callback, and installed Helper.</summary>
 public sealed class SingBoxRuntimeService(IPrivilegedOperationTransport helper, ProxyServerStore store,
-    ProxyServerRuntimeAuthorizationProvider authorization, IServerModeResolver mode)
+    ProxyServerRuntimeAuthorizationProvider authorization, IServerModeResolver mode, IRuntimeDownloadProxyProvider downloadProxy)
 {
     public Task<RuntimeInstallationSnapshot> QueryAsync(CancellationToken ct, Guid? receiptOperationId = null) =>
         CallAsync<RuntimeInstallationSnapshot>(new(PrivilegedOperationKind.SingBoxRuntimeQuery, OperationId: receiptOperationId), ct);
@@ -48,7 +48,8 @@ public sealed class SingBoxRuntimeService(IPrivilegedOperationTransport helper, 
         {
             await using var callback = new RuntimeAuthorizationServer<SingBoxCurrentAuthorization>(operationId, authorization.ReadAsync);
             var result = await CallAsync<RuntimeSwitchResult>(new(PrivilegedOperationKind.SingBoxRuntimeExecute,
-                OperationId: operationId, RuntimeLifecycle: new(Authorization: callback.Channel, FrozenPlan: plan)), CancellationToken.None);
+                OperationId: operationId, RuntimeLifecycle: new(Authorization: callback.Channel, FrozenPlan: plan),
+                DownloadProxy: removal ? null : await downloadProxy.ResolveAsync(ct)), CancellationToken.None);
             if (result.OperationId != operationId) throw new RuntimeLifecycleException("runtime.operation_id_conflict");
             return result;
         }

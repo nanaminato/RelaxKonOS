@@ -28,8 +28,9 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
         return active;
     }
 
+    // Configuration work never fetches a program, so these tools carry no download route.
     private MihomoArchiveAdapter Tools(RuntimePendingConfiguration pending, bool candidate) => new(root, states, sources,
-        new RuntimeArchiveTransport(), host, new SelectedAuthorization(authorization, pending, candidate), protect);
+        new RuntimeArchiveTransport(), downloadProxy: null, host, new SelectedAuthorization(authorization, pending, candidate), protect);
 
     public async Task PreflightAsync(RuntimeConfigurationPlan plan, RuntimeArchiveState current, CancellationToken ct)
     {

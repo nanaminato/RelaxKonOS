@@ -13,6 +13,16 @@
 
 ## 受管运行时公共目录接入进度（MR-03，2026-10-20）
 
+### 2026-10-20：受管下载路由与有界重试（平台层）
+
+受管下载现在只走两种路由：直连，或宿主已保存的下载代理偏好（`ApplyToRuntimeDownloads`）。路由由 Server 解析成 `RuntimeDownloadProxy`，只在取字节的动词（目录刷新、`*RuntimeExecute`）上随操作传给 Helper；Helper 复校验后才连接，路由不进冻结计划、幂等摘要或台账，因此换路由不会作废已受理安装，内核运行时自己的出站代理也不继承该值。偏好启用但不可用返回 `runtime.download_proxy_unavailable`，不静默退回直连；非法值返回 `runtime.download_proxy_invalid`。
+
+传输层故障自动重试 3 次（500 ms→1500 ms 退避，`Retry-After` 封顶 10 s，受 45 s/4 min 总时限约束），每次重试把目标截断回起始偏移；证书不受信任（`runtime.source_tls_invalid`）、地址/重定向拒绝、4xx 与超限一律终态，新增稳定码 `runtime.source_unavailable` 表示“已按上限重试仍不可用”。代理凭据只在 407 挑战后发往代理连接，源站请求仍只带 `User-Agent`；`noProxy` 按主机名边界与端口匹配，命中即直连。
+
+首版按朴素注入在默认 DI 里接到 `MihomoRuntimeService` 上，实测启动即失败：`MihomoRuntimeService → IRuntimeDownloadProxyProvider → IDockerProxyResolver → IProxySettingsService(MihomoSettingsService) → MihomoConfigurationPublicationService → MihomoRuntimeService` 形成构造环。改为在组合根以工厂延迟取得 resolver（路由只在受理操作时读取），并把默认注册检查改成同时注册真实 `DockerProxyResolver`，让该环一旦回归就会在构造期失败。
+
+指定 `192.168.1.7` Debian 13 x64 上，受管运行时常规检查 **1344 项**通过，其中下载专项 **60 项**（真实 CONNECT 代理与真实 HTTPS 源站，见[下载路由与自动重试](../../platform/RelaxKonOS.ManagedRuntimes.Transactions.md#下载路由与自动重试)）。测试机已升级为 `0.1.0-dev20261020-mr03e`（system 模式、LAN、自签证书含 `192.168.1.7`、三类文件策略 full、Guardian 与自启开启、`/healthz` 200、LAN `host-operating-system` 200）。成功路径的两条断言需要进程能采纳测试 CA，本机不具备该环境，按 SKIP 记录。
+
 ### 2026-10-20：生产 HTTP/独立 Helper 全生命周期与资源包
 
 指定 Debian 13 x64 上通过生产 HTTPS、PAM 提权、Server 安装台账及独立 Helper 进程验证 `v1.19.10 → v1.19.30` 更新、同版本 Repair、回退、保留数据卸载/重装和删除数据卸载。增强验收共 **81 项**，包含每个动作的冻结计划/键、同键重放同一操作、无未确认发布、实测程序/配置身份、首次安装不启动/不开机启动、更新恢复运行、保留数据重装维持配置与凭据身份，以及五次真实 mixed 监听 HTTP 转发。命令与可信来源准备见 [生产 HTTP 验收](../../Tests/ManagedRuntimes/ProductionHttpAcceptance.md)。配置为 DIRECT 基线，不代表 provider/TUN 支持。

@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
@@ -95,7 +95,7 @@ internal static class InstallationChecks
                     default: throw new Exception("Unexpected fixture operation");
                 }
             });
-            var runtime = new SingBoxRuntimeService(transport, store, authorization, new TestMode());
+            var runtime = new SingBoxRuntimeService(transport, store, authorization, new TestMode(), new DirectDownloads());
             var domain = new SingBoxInstallationService(runtime);
             var operations = new InstallationOperationStore(new Environment(root));
             using var lifetime = new Lifetime();
@@ -163,7 +163,7 @@ internal static class InstallationChecks
                     request.RuntimeLifecycle!.CancelOperationId!.Value, true)),
                 _ => throw new Exception("Unexpected fixture operation")
             }));
-            var cancelledDomain = new SingBoxInstallationService(new SingBoxRuntimeService(cancelTransport, store, authorization, new TestMode()));
+            var cancelledDomain = new SingBoxInstallationService(new SingBoxRuntimeService(cancelTransport, store, authorization, new TestMode(), new DirectDownloads()));
             var cancelledCoordinator = new InstallationCoordinator(new InstallationOperationStore(new Environment(root)), [cancelledDomain], lifetime);
             await cancelledCoordinator.StartAsync(default);
             var cancelledJob = cancelledCoordinator.Start(cancelledDomain.Id, InstallationOperationKind.Install,
@@ -210,7 +210,7 @@ internal static class InstallationChecks
                 var marker = processRoot + "/" + FixtureFile; await File.WriteAllTextAsync(marker, "fixture");
                 var runner = new LocalPrivilegedOperationRunner(new PrivilegedHelperOptions { HelperPath = marker, SudoPath = System.Environment.ProcessPath! },
                     NullLogger<LocalPrivilegedOperationRunner>.Instance);
-                var processRuntime = new SingBoxRuntimeService(runner, store, authorization, new TestMode());
+                var processRuntime = new SingBoxRuntimeService(runner, store, authorization, new TestMode(), new DirectDownloads());
                 var processDomain = new SingBoxInstallationService(processRuntime);
                 using var processLifetime = new Lifetime();
                 var processOperations = new InstallationOperationStore(new Environment(processRoot));

@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Sockets;
 using System.Runtime.Versioning;
 using System.Text;
@@ -389,7 +389,7 @@ internal static class MihomoSystemdAcceptance
     }
     private sealed class Transport(string olderId, string older, string newer) : IRuntimeArchiveTransport
     {
-        public async Task CopyAsync(RuntimeSource source, ManifestRelease release, Stream destination, CancellationToken ct)
+        public async Task CopyAsync(RuntimeSource source, ManifestRelease release, RuntimeDownloadProxy? proxy, Stream destination, CancellationToken ct)
         {
             await using var input = File.OpenRead(release.ReleaseId == olderId ? older : newer);
             await input.CopyToAsync(destination, ct);

@@ -38,7 +38,7 @@ internal interface IMihomoArchiveAuthorization
 /// fresh published authorization, OS protection, and use this state store's lock for all configuration writes.
 /// </summary>
 internal sealed class MihomoArchiveAdapter(string protectedRoot, RuntimeArchiveStateStore stateStore, RuntimeSourceStore sources,
-    IRuntimeArchiveTransport transport, IMihomoArchiveHost host, IMihomoArchiveAuthorization authorization,
+    IRuntimeArchiveTransport transport, RuntimeDownloadProxy? downloadProxy, IMihomoArchiveHost host, IMihomoArchiveAuthorization authorization,
     Action<string> protectDirectory, RuntimeStageReporter? progress = null, IRuntimeDependencyEnvironment? environment = null)
     : IRuntimeArchiveSwitchAdapter
 {
@@ -114,7 +114,7 @@ internal sealed class MihomoArchiveAdapter(string protectedRoot, RuntimeArchiveS
         var dataSource = RollbackDataSource(plan, operationId)
             ?? (plan.Request.Change == RuntimeChange.Install ? MihomoRuntimeData.RetainedSource(root, plan.Release!) : null);
         await MihomoRuntimeData.CopyAsync(dataSource ?? SeedData, Data(operationId), protectDirectory, ct);
-        var preparedRuntime = await new MihomoRuntimePreparation(sources, transport, progress)
+        var preparedRuntime = await new MihomoRuntimePreparation(sources, transport, downloadProxy, progress)
             .PrepareAsync(plan, operationStaging, Data(operationId), candidate, ct);
         var prepared = preparedRuntime.Artifact;
         RequireFeatures(preparedRuntime.Build, current);

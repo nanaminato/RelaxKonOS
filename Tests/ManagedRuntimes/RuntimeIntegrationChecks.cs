@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
@@ -39,7 +39,7 @@ internal static class RuntimeIntegrationChecks
         var loopback = source with { BaseUri = "https://127.0.0.1/catalog/" };
         try
         {
-            await new RuntimeMetadataDownloader().DownloadAsync(loopback, default);
+            await new RuntimeMetadataDownloader().DownloadAsync(loopback, null, default);
             throw new Exception("Loopback metadata must be blocked before connect");
         }
         catch (RuntimePolicyException ex) when (ex.ProblemCode == "runtime.address_forbidden") { count++; }
@@ -50,7 +50,7 @@ internal static class RuntimeIntegrationChecks
             var downloads = 0;
             var failDownload = false;
             var changeTrust = false;
-            Task<byte[]> Download(RuntimeSource policy, CancellationToken ct)
+            Task<byte[]> Download(RuntimeSource policy, RuntimeDownloadProxy? proxy, CancellationToken ct)
             {
                 downloads++;
                 if (changeTrust)
@@ -62,7 +62,7 @@ internal static class RuntimeIntegrationChecks
                 return Task.FromResult(envelope);
             }
             var transport = new TestTransport(request => RuntimeSourceOperations.ExecuteAsync(request, store, Download));
-            var service = new RuntimeCatalogService(transport);
+            var service = new RuntimeCatalogService(transport, new DirectDownloads());
             var sources = await service.SourcesAsync(default);
             Check(sources.Single().Identity.TrustRevision == 1 && downloads == 0, "Source list requires no network or installation");
             var missing = await service.CatalogAsync(source.SourceId, false, false, default);

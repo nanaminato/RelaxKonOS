@@ -12,8 +12,11 @@ internal static class MihomoRuntimeOperations
         Func<MihomoRuntimeLifecycle>? create = null, Func<PrivilegedOperationFrame, Task>? report = null)
     {
         var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
-            Correlation: request.Correlation, Version: request.Version, RuntimeLifecycle: request.RuntimeLifecycle);
+            Correlation: request.Correlation, Version: request.Version, RuntimeLifecycle: request.RuntimeLifecycle,
+            DownloadProxy: request.DownloadProxy);
         var input = request.RuntimeLifecycle;
+        // Only a program change fetches bytes, so no other verb may name a download route.
+        var misplacedRoute = request.DownloadProxy is not null && request.Operation != PrivilegedOperationKind.MihomoRuntimeExecute;
         if (input?.ConfigurationPlan is not null && request.Operation != PrivilegedOperationKind.MihomoRuntimeConfigure)
             return new(false, 64, ProblemCode: PrivilegedProblemCode.InvalidRequest, Error: "runtime.request_invalid");
         var valid = request.Operation switch
@@ -39,7 +42,7 @@ internal static class MihomoRuntimeOperations
             PrivilegedOperationKind.MihomoRuntimeResourceQuery => input is null,
             _ => false
         };
-        if (clean != request || !valid || request.OperationId is not { } id || id == Guid.Empty
+        if (clean != request || !valid || misplacedRoute || request.OperationId is not { } id || id == Guid.Empty
             || input?.Authorization is { } channel && (channel.OperationId != id || channel.ChannelId == Guid.Empty
                 || channel.RuntimeId != "mihomo"
                 || channel.Secret is not { Length: 64 } || !channel.Secret.All(Uri.IsHexDigit)))
@@ -48,6 +51,7 @@ internal static class MihomoRuntimeOperations
             return new(false, 64, ProblemCode: PrivilegedProblemCode.UnsupportedOperation, Error: "runtime.platform_unsupported");
         try
         {
+            if (request.DownloadProxy is { } route) RuntimeDownloadPolicy.Validate(route);
             var lifecycle = (create ?? MihomoRuntimeLifecycle.Create)();
             RuntimeStageReporter? progress = report is null ? null : (stage, cancellable) => report(PrivilegedOperationFrame.Report(stage, cancellable: cancellable));
             return request.Operation switch
@@ -55,7 +59,7 @@ internal static class MihomoRuntimeOperations
                 PrivilegedOperationKind.MihomoRuntimeQuery => Json(await lifecycle.QueryAsync(default, id)),
                 PrivilegedOperationKind.MihomoRuntimeConfigure => Json(await lifecycle.ConfigureAsync(id, input!.ConfigurationPlan!, input.Authorization!, default, progress)),
                 PrivilegedOperationKind.MihomoRuntimePlan => Json(await lifecycle.PlanAsync(input!.SourceId!, input.Plan!, default)),
-                PrivilegedOperationKind.MihomoRuntimeExecute => Json(await lifecycle.ExecuteAsync(id, input!.FrozenPlan!, input.Authorization!, default, progress)),
+                PrivilegedOperationKind.MihomoRuntimeExecute => Json(await lifecycle.ExecuteAsync(id, input!.FrozenPlan!, input.Authorization!, default, progress, request.DownloadProxy)),
                 PrivilegedOperationKind.MihomoRuntimeRecover => Json(await lifecycle.RecoverAsync(input!.Authorization!, input.RecoveryOperationId!.Value, default, progress)),
                 PrivilegedOperationKind.MihomoRuntimeCancel => Json(lifecycle.CancelRequest(input!.CancelOperationId!.Value)),
                 PrivilegedOperationKind.MihomoRuntimeRecoveryQuery => Json(await lifecycle.RecoveryAsync(default)),

@@ -1,4 +1,4 @@
-using System.IO.Compression;
+﻿using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using RelaxKonOS.ManagedRuntimes;
@@ -45,7 +45,7 @@ internal static class PreparationChecks
                 if (stage == InstallationStage.Downloading) throw new IOException("Fixture progress reader disconnected");
                 return Task.CompletedTask;
             });
-            var prepared = await preparer.PrepareAsync(f.Source.SourceId, f.Release.ReleaseId, 1, 1, f.Release.Target, false, f.Stage, default);
+            var prepared = await preparer.PrepareAsync(f.Source.SourceId, f.Release.ReleaseId, 1, 1, f.Release.Target, false, f.Stage, null, default);
             Check(File.ReadAllBytes(prepared.Archive.EntryPoint).SequenceEqual(f.Binary), "Progress reader loss cannot skip artifact verification");
             Check(stages.SequenceEqual(new[] { InstallationStage.Downloading, InstallationStage.Extracting }), "Transfer and extraction report their actual stages");
             RuntimeArchiveExtractor.Discard(prepared.Archive, f.Stage);
@@ -74,7 +74,7 @@ internal static class PreparationChecks
         using (var f = new Fixture())
         {
             await Reject("target_unsupported", f, () => f.Preparer.PrepareAsync(f.Source.SourceId, f.Release.ReleaseId,
-                1, 1, f.Release.Target with { Architecture = "other" }, false, f.Stage, default));
+                1, 1, f.Release.Target with { Architecture = "other" }, false, f.Stage, null, default));
             Check(f.Transport.Calls == 0, "Wrong platform rejected before disk/network mutation");
         }
         using (var f = new Fixture(supported: false))
@@ -93,7 +93,7 @@ internal static class PreparationChecks
         {
             f.Accept(f.Manifest with { Revision = 2, RevokedReleaseIds = [f.Release.ReleaseId] });
             await Reject("release_untrusted", f, () => f.Preparer.PrepareAsync(f.Source.SourceId, f.Release.ReleaseId,
-                2, 1, f.Release.Target, false, f.Stage, default));
+                2, 1, f.Release.Target, false, f.Stage, null, default));
             Check(f.Transport.Calls == 0, "Revoked artifact never downloaded");
         }
         using (var f = new Fixture())
@@ -101,7 +101,7 @@ internal static class PreparationChecks
             var expired = f.Manifest with { Revision = 2, ExpiresAt = DateTimeOffset.UtcNow.AddHours(-1), IssuedAt = DateTimeOffset.UtcNow.AddHours(-2) };
             f.Accept(expired, DateTimeOffset.UtcNow.AddHours(-2));
             await Reject("catalog_expired", f, () => f.Preparer.PrepareAsync(f.Source.SourceId, f.Release.ReleaseId,
-                2, 1, f.Release.Target, false, f.Stage, default));
+                2, 1, f.Release.Target, false, f.Stage, null, default));
         }
         using (var f = new Fixture())
         {
@@ -172,7 +172,7 @@ internal static class PreparationChecks
         }
 
         internal Task<PreparedRuntimeArtifact> PrepareAsync(bool allowPrerelease = false) =>
-            Preparer.PrepareAsync(Source.SourceId, Release.ReleaseId, 1, 1, Release.Target, allowPrerelease, Stage, default);
+            Preparer.PrepareAsync(Source.SourceId, Release.ReleaseId, 1, 1, Release.Target, allowPrerelease, Stage, null, default);
         internal void Accept(RuntimeManifest value, DateTimeOffset? now = null)
         {
             var payload = RuntimeJson.Serialize(value);
@@ -196,7 +196,7 @@ internal static class PreparationChecks
         internal byte[] Bytes { get; set; } = [];
         internal Action? AfterCopy { get; set; }
         internal int Calls { get; private set; }
-        public async Task CopyAsync(RuntimeSource source, ManifestRelease release, Stream destination, CancellationToken ct)
+        public async Task CopyAsync(RuntimeSource source, ManifestRelease release, RuntimeDownloadProxy? proxy, Stream destination, CancellationToken ct)
         {
             Calls++;
             await destination.WriteAsync(Bytes, ct);

@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text;
 using RelaxKonOS.ManagedRuntimes;
@@ -125,7 +125,7 @@ internal static class LifecycleChecks
             var authority = new ActivationAuthorization();
             var activationHost = new ActivationHost(() => authority.Unavailable = true);
             var activationAdapter = new SingBoxArchiveAdapter(activationRoot,
-                new(activationRoot + "/state", Protect), sources, new NoTransport(), activationHost, authority, Protect);
+                new(activationRoot + "/state", Protect), sources, new NoTransport(), downloadProxy: null, activationHost, authority, Protect);
             var revision = new RuntimeStoredRevision(activationId, frozen.Release!, "1.14.3", identity, 1, 1);
             var pending = new RuntimePendingSwitch(activationId, new string('a', 64), new string('b', 64), frozen,
                 RelaxKonOS.Protocol.Installations.InstallationStage.Activating, revision,
@@ -172,7 +172,7 @@ internal static class LifecycleChecks
 
     private sealed class NoTransport : IRuntimeArchiveTransport
     {
-        public Task CopyAsync(RuntimeSource source, ManifestRelease release, Stream destination, CancellationToken ct) => throw new Exception("No download expected");
+        public Task CopyAsync(RuntimeSource source, ManifestRelease release, RuntimeDownloadProxy? proxy, Stream destination, CancellationToken ct) => throw new Exception("No download expected");
     }
     private sealed class StopHost(SingBoxServiceObservation observation) : ISingBoxArchiveHost
     {

@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging.Abstractions;
 using RelaxKonOS.ManagedRuntimes;
@@ -39,7 +39,7 @@ internal static class MihomoServerPublicationAcceptance
         });
 
         MihomoRuntimeService Runtime(MihomoPublicationStore selected) => new(transport, selected,
-            new(selected, paths, paths), paths);
+            new(selected, paths, paths), paths, new DirectDownloads());
         MihomoConfigurationPublicationService Service(MihomoPublicationStore selected) =>
             new(selected, new(selected, paths, paths), Runtime(selected), paths, new(paths, systemProxy), publicationProfiles);
         async Task<(Guid Operation, RuntimeConfigurationPlan Plan, long Revision)> PlanAsync(MihomoPublishedRuntime target)

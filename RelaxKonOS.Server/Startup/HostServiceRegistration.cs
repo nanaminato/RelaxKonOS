@@ -62,6 +62,13 @@ internal static class HostServiceRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerEngineProxyConfigurator, RelaxKonOS.Server.Docker.DockerEngineProxyConfigurator>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerProxyResolver, RelaxKonOS.Server.Docker.DockerProxyResolver>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IOutboundProxyHttpClientFactory, RelaxKonOS.Server.Docker.OutboundProxyHttpClientFactory>();
+        // Managed-runtime installs read the same host preference, so an operator who routed runtime
+        // downloads through a proxy for Nginx/FRP is not silently sent direct by the newer lifecycle.
+        // The resolver is looked up per operation: its own dependency chain runs through the proxy
+        // settings and publication services, which are built after this runtime service.
+        builder.Services.AddSingleton<RelaxKonOS.Server.ManagedRuntimes.IRuntimeDownloadProxyProvider>(services =>
+            new RelaxKonOS.Server.ManagedRuntimes.RuntimeDownloadProxyProvider(
+                () => services.GetRequiredService<RelaxKonOS.Server.Docker.IDockerProxyResolver>()));
         // Docker Desktop is the only host that hides the real upstream behind an internal relay, so the
         // reader that knows its settings file is selected here instead of probing for a file that cannot
         // exist on the other platforms.

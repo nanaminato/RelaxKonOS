@@ -11,7 +11,7 @@ public sealed class RuntimeCatalogException(string code) : Exception(code)
 }
 
 /// <summary>Server never provisions Helper trust through the runtime download/install boundary.</summary>
-public sealed class RuntimeCatalogService(IPrivilegedOperationTransport transport)
+public sealed class RuntimeCatalogService(IPrivilegedOperationTransport transport, IRuntimeDownloadProxyProvider downloadProxy)
 {
     public Task<RuntimeSourceView[]> SourcesAsync(CancellationToken ct) =>
         ExecuteAsync<RuntimeSourceView[]>(new(PrivilegedOperationKind.RuntimeSources), ct);
@@ -21,8 +21,10 @@ public sealed class RuntimeCatalogService(IPrivilegedOperationTransport transpor
         if (string.IsNullOrWhiteSpace(sourceId) || sourceId.Length > 128
             || sourceId.Any(c => !(char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.')))
             throw new RuntimeCatalogException("runtime.source_invalid");
+        // Only a refresh opens a socket, so only a refresh can carry the host's download route.
         var result = await ExecuteAsync<RuntimeCatalogSnapshot>(new(refresh ? PrivilegedOperationKind.RuntimeCatalogRefresh
-            : PrivilegedOperationKind.RuntimeCatalogGet, RuntimeSourceId: sourceId), ct);
+            : PrivilegedOperationKind.RuntimeCatalogGet, RuntimeSourceId: sourceId,
+            DownloadProxy: refresh ? await downloadProxy.ResolveAsync(ct) : null), ct);
         return !includePrerelease && result.Catalog is { } catalog
             ? result with { Catalog = catalog with { Releases = catalog.Releases.Where(r => r.Channel == RuntimeChannel.Stable).ToArray() } }
             : result;

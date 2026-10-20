@@ -11,24 +11,28 @@ internal static class RuntimeSourceOperations
         ExecuteAsync(request, RuntimeSourceProtection.Store(), new RuntimeMetadataDownloader().DownloadAsync);
 
     internal static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request,
-        RuntimeSourceStore store, Func<RuntimeSource, CancellationToken, Task<byte[]>> download)
+        RuntimeSourceStore store, Func<RuntimeSource, RuntimeDownloadProxy?, CancellationToken, Task<byte[]>> download)
     {
         var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
-            Correlation: request.Correlation, Version: request.Version, RuntimeSourceId: request.RuntimeSourceId);
+            Correlation: request.Correlation, Version: request.Version, RuntimeSourceId: request.RuntimeSourceId,
+            DownloadProxy: request.DownloadProxy);
         if (request.Operation is not (PrivilegedOperationKind.RuntimeSources or PrivilegedOperationKind.RuntimeCatalogGet or PrivilegedOperationKind.RuntimeCatalogRefresh)
             || clean != request || request.Operation == PrivilegedOperationKind.RuntimeSources && request.RuntimeSourceId is not null
             || request.Operation is PrivilegedOperationKind.RuntimeCatalogGet or PrivilegedOperationKind.RuntimeCatalogRefresh
-                && !RuntimeValidation.Identifier(request.RuntimeSourceId))
+                && !RuntimeValidation.Identifier(request.RuntimeSourceId)
+            // A cached read touches no network, so it must not carry a route it would ignore.
+            || request.DownloadProxy is not null && request.Operation != PrivilegedOperationKind.RuntimeCatalogRefresh)
             return new(false, 64, ProblemCode: PrivilegedProblemCode.InvalidRequest, Error: "runtime.request_invalid");
         try
         {
+            if (request.DownloadProxy is { } route) RuntimeDownloadPolicy.Validate(route);
             if (request.Operation == PrivilegedOperationKind.RuntimeSources)
                 return Json(store.List().Select(View).ToArray());
             var state = store.Read(request.RuntimeSourceId!) ?? throw new RuntimePolicyException("runtime.source_not_found");
             if (request.Operation == PrivilegedOperationKind.RuntimeCatalogGet) return Json(Snapshot(state, null));
             try
             {
-                var envelope = await download(state.Source, CancellationToken.None);
+                var envelope = await download(state.Source, request.DownloadProxy, CancellationToken.None);
                 store.Accept(state.Source.SourceId, state.Source.TrustRevision, envelope, DateTimeOffset.UtcNow, ConfigurationSupport);
                 return Json(Snapshot(store.Read(state.Source.SourceId)!, null));
             }

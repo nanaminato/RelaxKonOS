@@ -1,4 +1,4 @@
-using RelaxKonOS.ManagedRuntimes;
+﻿using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.PrivilegedHelper;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 
@@ -24,7 +24,7 @@ internal static class MihomoArchiveTransactionChecks
         var grant = new Authorization(yaml);
         var host = new Host();
         var transport = new Transport(new() { [older.ReleaseId] = olderArchive, [newer.ReleaseId] = newerArchive });
-        var adapter = new MihomoArchiveAdapter(root, state, sources, transport, host, grant, Protect);
+        var adapter = new MihomoArchiveAdapter(root, state, sources, transport, downloadProxy: null, host, grant, Protect);
         var transaction = new RuntimeArchiveSwitch(state, adapter);
         RuntimeChangePlan Plan(RuntimeChange action, RuntimeRelease release, string key)
         {
@@ -202,7 +202,7 @@ internal static class MihomoArchiveTransactionChecks
     {
         internal int Calls;
         internal Action? AfterCopy;
-        public async Task CopyAsync(RuntimeSource source, ManifestRelease release, Stream destination, CancellationToken ct)
+        public async Task CopyAsync(RuntimeSource source, ManifestRelease release, RuntimeDownloadProxy? proxy, Stream destination, CancellationToken ct)
         {
             Calls++;
             await using var input = File.OpenRead(archives[release.ReleaseId]);

@@ -65,7 +65,8 @@ internal sealed class SingBoxRuntimeLifecycle(string root, RuntimeArchiveStateSt
     }
 
     internal async Task<RuntimeSwitchResult> ExecuteAsync(Guid operationId, RuntimeChangePlan plan,
-        RuntimeAuthorizationChannel channel, CancellationToken ct, RuntimeStageReporter? progress = null)
+        RuntimeAuthorizationChannel channel, CancellationToken ct, RuntimeStageReporter? progress = null,
+        RuntimeDownloadProxy? downloadProxy = null)
     {
         // The channel descriptor never enters a frozen plan, durable journal, or idempotency hash.
         if (channel.OperationId != operationId || channel.RuntimeId != "sing-box")
@@ -77,7 +78,7 @@ internal sealed class SingBoxRuntimeLifecycle(string root, RuntimeArchiveStateSt
         // Removal never reads published credentials, so it does not depend on a live authorization channel.
         return plan.Request.Change == RuntimeChange.Uninstall
             ? await Removal(progress).ExecuteAsync(operationId, plan, cancellation.Token)
-            : await Switch(channel, progress).ExecuteAsync(operationId, plan, cancellation.Token);
+            : await Switch(channel, progress, downloadProxy).ExecuteAsync(operationId, plan, cancellation.Token);
     }
 
     /// <summary>
@@ -100,7 +101,7 @@ internal sealed class SingBoxRuntimeLifecycle(string root, RuntimeArchiveStateSt
         if (states.Read()?.Configuration is not null) throw new RuntimePolicyException("runtime.action_unsupported");
         return states.Read()?.Removal is not null
             ? await Removal(progress).RecoverAsync(operationId, ct)
-            : await Switch(channel, progress).RecoverAsync(operationId, ct);
+            : await Switch(channel, progress, downloadProxy: null).RecoverAsync(operationId, ct);
     }
 
     /// <summary>
@@ -155,8 +156,10 @@ internal sealed class SingBoxRuntimeLifecycle(string root, RuntimeArchiveStateSt
     private RuntimeArchiveRemoval Removal(RuntimeStageReporter? progress) =>
         new(states, new SingBoxRemovalAdapter(root, host, protect), progress);
 
-    private RuntimeArchiveSwitch Switch(RuntimeAuthorizationChannel channel, RuntimeStageReporter? progress) => new(states,
-        new SingBoxArchiveAdapter(root, states, sources, new RuntimeArchiveTransport(), host, new Authorization(channel), protect, progress, environment), progress);
+    private RuntimeArchiveSwitch Switch(RuntimeAuthorizationChannel channel, RuntimeStageReporter? progress,
+        RuntimeDownloadProxy? downloadProxy) => new(states,
+        new SingBoxArchiveAdapter(root, states, sources, new RuntimeArchiveTransport(), downloadProxy, host,
+            new Authorization(channel), protect, progress, environment), progress);
 
     private async Task<RuntimeArchiveState> EnsureStateAsync(CancellationToken ct)
     {

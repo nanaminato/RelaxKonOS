@@ -1,4 +1,4 @@
-using System.IO.Compression;
+﻿using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using RelaxKonOS.ManagedRuntimes;
@@ -201,7 +201,7 @@ internal static class MihomoArchiveAcceptance
     {
         internal int Calls;
         internal Action? AfterCopy;
-        public async Task CopyAsync(RuntimeSource source, ManifestRelease release, Stream destination, CancellationToken ct)
+        public async Task CopyAsync(RuntimeSource source, ManifestRelease release, RuntimeDownloadProxy? proxy, Stream destination, CancellationToken ct)
         {
             Calls++;
             await using var input = File.OpenRead(archive);

@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
@@ -103,7 +103,7 @@ internal static class MihomoPublicationChecks
                 var fresh = await RuntimeAuthorizationClient.ReadAsync<MihomoCurrentAuthorization>(channel, request.OperationId!.Value, ct);
                 Check(fresh.Published!.Yaml == material.Yaml && channel.RuntimeId == "mihomo", "Server composition supplies a fresh runtime-bound callback");
                 return new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new RuntimeSwitchResult(operationId, RuntimeSwitchOutcome.Succeeded, null))));
-            }), store, provider, new TestMode(ServerMode.System));
+            }), store, provider, new TestMode(ServerMode.System), new DirectDownloads());
             await Denied(() => service.ExecuteAsync(operationId, plan, default), "runtime.removal_publication_required");
             await store.Gate.WaitAsync();
             RuntimeSwitchResult removal;
@@ -117,7 +117,7 @@ internal static class MihomoPublicationChecks
                 "The Server returns the Helper receipt and releases its publication gate");
             Check(channel is not null && !JsonSerializer.Serialize(plan).Contains(channel.Secret, StringComparison.Ordinal),
                 "Ephemeral channel credentials never enter the frozen installation plan");
-            var user = new MihomoRuntimeService(new Transport((_, _) => throw new Exception("User mode reached Helper")), store, provider, new TestMode(ServerMode.User));
+            var user = new MihomoRuntimeService(new Transport((_, _) => throw new Exception("User mode reached Helper")), store, provider, new TestMode(ServerMode.User), new DirectDownloads());
             await Denied(async () => await user.RemoveUnderGateAsync(operationId, plan, default), "runtime.platform_unsupported");
             Check(helperCalls == 1 && store.Gate.CurrentCount == 1, "Refused host modes leave the gate available");
 
