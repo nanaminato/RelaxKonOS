@@ -1,0 +1,343 @@
+# 受管归档运行时的 Helper 事务组件
+
+> 2026-10-18，MR-01 已收口、MR-02 已有真实跨版本与协议验收。公共事务、固定平台宿主、Helper 生命周期组合和 Server 新鲜授权服务均已接入；安装操作台账/API、已发布配置发布与启停、卸载/数据保留、人工恢复入口与下载取消均已接通。公共目录只对声明范围（`sing-box-v1`，1.13.0 ≤ v < 1.15.0 稳定版）标为可安装。其他运行时仍各自追踪。
+
+## 与安装操作台账的关系
+
+`RuntimeArchiveSwitch` 接收既有 Server 安装操作的 operationId，复用 `InstallationStage` 阶段，不新增一套用户可见操作记录或安装端点。Server 的 `InstallationCoordinator` 继续负责后台任务、用户权限、操作查询和取消；Helper 事务状态保存特权侧必须独立持有的切换检查点、活动指针和去重回执。
+
+当前组件支持归档运行时的 Install / Update / Repair / Rollback 事务框架、受管安装的配置发布与服务控制，以及只针对自有受管安装的 Uninstall（保留或删除数据）；不支持包管理器、业务数据以外的删除或第一方宿主组件更新。这些操作仍需按各自生命周期实现，不能将归档切换包装成通用卸载/软件包事务。sing-box 已通过既有安装台账调用该框架并可在受管活动修订上发布配置；公共目录只把声明范围内的稳定版标为可安装。
+
+## 受保护的实例状态
+
+宿主为每个受管实例提供固定的保护目录和权限核对函数。`RuntimeArchiveStateStore` 在其中原子写入 `archive-state.json`，以 `instance.lock` 串行化全部变更。当前固定版配置发布、启停与归档生命周期已共用 `state/instance.lock`；归档安装后的配置发布/启停仍待适配，存在活动归档修订时拒绝进入原平铺程序路径。读取快照允许与工作进程并行，读取者看到完整旧状态或新状态。Linux 状态锁和来源账本锁创建时显式使用 0600，不依赖调用者 umask，也不把已有可写保护文件静默修正为可信。
+
+文件保存：安装/宿主/运行时身份和状态修订、活动程序修订、当前配置身份、保留版本、一个未结束事务、以及既有 operationId 对应的 Helper 回执。程序修订引用不可变制品、实测版本及安装时配置证据；当前发布配置身份单独维护，配置发布不必更改旧程序版本的证据。配置内容、凭据、证书私钥不进入此元数据文件；备份使用适配器保护的文件和不透明 GUID 引用。
+
+首次初始化必须提供实测所有权观察。未知/外部实例不能安装覆盖，初始化也不能把未登记的已有受管程序自动接管。状态损坏会拒绝读取和新操作，不创建空状态替代；状态修订每次持久化变更递增。状态上限 32 MiB、256 个程序修订、4096 个回执，达到限额时拒绝新事务，不静默丢弃历史。
+
+## 切换检查点
+
+| 检查点 | 特权侧持久证据与行为 |
+| --- | --- |
+| Preflight | 绑定安装/宿主、明确 releaseId、状态/目录/信任修订和请求指纹；记录未结束 operationId 后才调用适配器 |
+| Preparing | 保存原配置/资源备份引用、原运行与开机启动状态；准备目录必须可由 operationId 找回，捕获/准备中断也可清理 |
+| Verifying | 保存已准备的新不可变程序修订；适配器完成目标二进制版本/特性、现行发布配置及当前授权检查 |
+| Activating | 同一原子写入更新活动程序/配置身份并记录 SwitchStarted；这是普通取消的截止点 |
+| HealthChecking | 服务切换后验证实测版本、配置身份、原生配置有效性、健康、运行状态及开机启动状态 |
+| Completed | 验证成功才清除 pending 并保存成功回执；备份引用保留在回执中，后续只能按所有权与保留策略清理 |
+| RollingBack / Interrupted | 停止失败候选，重新验证旧状态当前仍允许恢复，再恢复活动指针、配置、服务、启动状态和自有资源；不完整则保留待恢复状态 |
+
+调用适配器前记录 pending，可在准备方法尚未返回时重启恢复。新程序修订 ID 必须等于 operationId，避免恢复时依赖随机临时路径或重新生成秘密。准备阶段可取消；Activating 检查点持久化后，激活、健康检查和补偿使用不被客户端/普通取消令牌中断的事务边界。进程被终止仍可能中断，因此不能用取消处理替代持久恢复。
+
+安装默认不启动或启用开机启动；其他切换保持原运行/启动状态。Repair 只能选择当前 releaseId，并建立新的程序修订，不报告成跨版本升级。Update / Rollback 必须是不同 releaseId；Rollback 还必须具有保留的相同制品摘要，并由运行时适配器确认数据格式、凭据和实际文件仍可恢复。目录和版本名称不能单独授予这些许可。
+
+同一幂等键和完整冻结请求重试返回原 operationId 的持久回执，不再次执行；改变目标、修订或其他字段会冲突。存在 pending 时拒绝新变更，重复请求也不能绕过恢复重新准备。回执记录实际活动程序修订，后续升级不会改写历史结果。
+
+## 补偿及启动恢复
+
+适配器失败后，框架记录 RollingBack。已经进入切换时先停止候选，然后要求 `ValidateRestoreAsync` 核对当前授权、证书、凭据和数据格式。恢复成功必须返回与旧实测版本、捕获的配置身份、原运行/启动状态匹配的证据，以及自有资源已恢复和健康结论。仅停止/启动成功或进程存活不能通过这些检查。
+
+不能恢复时设置 RecoveryRequired，保留原失败码和独立 RecoveryProblemCode；例如旧凭据已撤销时记录 `runtime.credentials_revoked`，不重启旧服务。此时后续生命周期变更仍被阻止，只能走[人工恢复入口](#人工恢复入口)：重试补偿、紧急停止，或由操作员确认后关账。
+
+`RecoverAsync` 从磁盘 pending 核对和补偿，不重新运行捕获/准备，不重新生成凭据，不因进程活着就提交新版本。切换前中断只清理本次准备；切换后中断重新验证旧状态后恢复，补偿失败继续待恢复。当前框架没有自动推断不可用的授权；运行时适配器无法取得恢复所需当前证据时必须拒绝恢复并保持停止。已拒绝候选从可回退修订记录中移除，旧程序及其历史证据保留。
+
+`IRuntimeArchiveSwitchAdapter` 是宿主内的固定运行时实现，不是客户端可提交的插件。适配器负责受保护备份、原生生成/校验、服务和资源所有权、版本/特性检查、当前凭据授权、真实健康探测、清理和保留策略。公共组件没有任意 shell、可执行路径或原生参数的远端入口，也不能独立证明平台服务已经符合规范。
+
+## 受管安装的配置发布与服务控制
+
+### 配置专属持久事务核心
+
+`RuntimeArchiveConfiguration` 提供独立于程序安装的共享事务：冻结安装/宿主/运行时、活动程序修订、旧/候选配置摘要、预期状态修订和幂等键，使用同一个 `RuntimeArchiveStateStore` 实例锁、状态修订和回执。当前账本必须显式携带 `configuration`（无事务时为 null），不读取缺该字段的旧格式；`RuntimeChange.Configure` 只标识配置恢复，普通制品计划拒绝此动作，配置发布使用自己的身份计划。程序修订及其安装时配置证据保持不变。
+
+准备期允许取消且不能修改活动配置/数据；切换检查后原子保存候选身份和切换标记，此后使用不可取消令牌完成或补偿。资源适配器必须停止自有服务后持久快照可变数据，再应用新配置，保留服务运行及开机启动状态。配置/数据快照由保护操作目录保存，账本只保留不透明引用。补偿先停止候选并重新核对旧配置授权，恢复后核对版本、配置身份、运行/开机启动、自有资源与健康，全部通过才提交旧身份。恢复只补偿，不重做准备或生成秘密；暂存清理不得删除回执所保留的恢复快照。
+
+补偿不完整保留命名事务及原问题/恢复问题，阻止新的配置、程序切换及移除。人工恢复描述为 Configure；关账要求已发生补偿失败、明确确认和服务实测停止，保留最近提交的身份并记录失败，不把无法证明的恢复视为成功。普通程序切换现也显式拒绝尚未结束的移除事务。
+
+该核心于 2026-10-18 在指定 Debian 13 x64 测试机通过 90 项检查：使用真实状态文件、共享锁和模拟资源适配器，含逐阶段错误、幂等、取消、授权撤销、失败补偿恢复、跨动作阻塞、损坏状态拒绝与关账；独立子进程在持久切换点直接退出，父进程只执行补偿恢复。Mihomo 另由 `MihomoConfigurationAdapter` 接入真实配置/数据快照及固定宿主，使用专属 `MihomoRuntimeConfigure` 与命名恢复入口、`MihomoConfigurationAuthorization`；真实 systemd/HTTP 专项已覆盖监听变更、部分备份失败、数据补偿、旧/候选授权分别撤销及新通道恢复，精确范围见 [MR-03 证据](../applications/RelaxKonOS.ProxyManager.Design.md#受管运行时公共目录接入进度mr-032026-10-19)。Server 待发布授权/确认编排已组合，默认 DI 与启动恢复调度已接通，2026-10-19 已将受管配置档案保存/激活接通该事务，受管设置发布与宿主设置意图/启动对账也已接通（常规 1071 项、真实 systemd 146 项），运行时变更 HTTP 仍待接通；不能把测试进程内调用 Helper 入口的验收称为生产发布端到端验收。sing-box 现有配置路径没有改用此核心，遇到此类恢复方式明确拒绝，不报告为没有待恢复事务。
+
+Server `MihomoConfigurationPublicationService` 在发布 Gate 内持久化完整冻结计划，读取命名待发布 grant 后调用 Helper，确认前核对同一操作的回执、安装/活动程序修订、配置身份和无未结束事务。Helper 成功后先原子替换 Server 的 active.yaml 镜像，再确认加密发布权威；中断时允许专属回调核对两个冻结镜像摘要，普通生命周期授权仍拒绝 Pending。Helper 失败或恢复结果只有在旧身份已实测恢复时才能 Abort。最近一次配置结果保存请求摘要供幂等核对，重试不重新执行已接受的操作。传输错误保留 Pending；Server 已接受而 Helper 未开始时，恢复先取得 Helper 实例锁再核对完全未变的状态修订，结果明确为 NotStarted，不构造 Helper 回执。加密状态显式要求 pending configurationPlan 与 lastConfiguration，不增加缺字段旧格式解析。
+
+Server 编排在测试机通过 34 项真实加密文件/管道配合模拟 Helper 的检查，含确认/补偿重放、丢失回执、冲突证据、未启动核对、Server 文件替换后的中断窗口与独立凭据撤销；另通过 8 项真实 Mihomo 服务组合检查，含确认后的 HTTP 转发、丢失已提交 Helper 响应后重建 Server 对账、真实原生拒绝及成功/失败幂等。它们计入 MR-03 的 1034 项常规/141 项原生专项；尚不覆盖独立 Helper 进程 IPC、默认 HTTP/应用配置写入或应用安装台账入口。
+
+默认 DI 现注册发布权威、授权/运行时/配置编排和启动恢复服务，新增 4 项构造检查使用真实 Proxy/SQLite 注册构造服务，不联系 Helper 或下载；配置服务与设置/TUN/系统代理守护共用发布 Gate，旧直写在 Pending/未知权威上拒绝为待恢复，在健康受管发布上拒绝为不支持。Server 配置激活与系统代理专项在测试机复验并覆盖 Pending 下不改文件/不改宿主。2026-10-19 的受管配置档案及设置写入已改用该编排；设置意图绑定旧文件摘要/旧候选设置，配置原生切换成功后才应用宿主设置与原子替换设置文件，并在这些步骤完成后确认权威。中断保留 Pending 并继续同一意图；无需改 YAML 的宿主设置更新持久对账但不触发原生事务。准确证据与仍未完成范围见 MR-03 应用进度。
+
+`MihomoPublicationRecoveryService` 启动时只恢复命名 Pending 配置操作；空状态不调用 Helper，忙/暂不可用只重试同一操作，不重新准备或生成秘密。需要操作员介入则保留状态并结束自动重试。模拟检查覆盖空启动、补偿、busy 后重试和人工处理停留；真实 Server/Helper/systemd 组合中，丢失已提交响应后重建 Server 的场景已改由此启动服务对账。未覆盖实际 Server 进程重启或独立 Helper IPC。
+
+Mihomo 数据快照先完整复制到 `data-backup.partial`，原子改名为正式备份后才写入数据变更标记并应用候选。备份缺失且存在变更标记时禁止自动恢复；没有正式备份的部分复制失败不删除活动数据。恢复从保留备份重建完整替换，再替换失败数据；备份始终保留供再次恢复和回执追溯。准备与运行后验证使用独立检查数据，原生检查不会写入运行中的活动数据。
+
+专属配置 grant 显式命名原发布事务并分别授权旧/候选材料；新恢复请求的临时通道可以有不同操作 ID，适配器仍与持久事务 ID 比较。候选撤销不阻断已独立授权的旧配置补偿，旧授权撤销必须停留在待恢复。普通/配置 grant 严格区分。回调服务在回复前准备下一条管道监听，避免 Unix 连续读取连接到即将关闭的旧监听；最多两个管道实例，授权提供者仍串行执行，HMAC/重放/期限/大小限制不变，64 次连续真实管道读取在测试机通过。
+
+### 首次安装候选授权边界
+
+Mihomo 观察与计划已公开为当前 `/managed-runtimes/mihomo/installation`（RuntimeRead）及 `/managed-runtimes/mihomo/plan`（RuntimeManage 加 Mihomo 安装权限）入口，系统模式宿主限制仍生效；不提供此阶段以外的执行备用路由。10 项本机 Kestrel HTTP 检查使用测试认证/模拟 Helper 验证权限、封闭请求、来源缺省仅用于移除、未知状态与 Server Pending 阻塞。实际安装台账/客户端及恢复变更 HTTP 仍未替换。
+
+终态查询重新核对真实服务归属/路径、受保护文件及已应用配置身份，程序摘要或配置漂移、缺失/不可观察登记等返回 Unknown，版本证明不沿用；特殊文件先于哈希流打开拒绝。查询不改状态修订；计划在实例锁内重测并只对可证明的非受管归属变化更新修订，旧观察/计划必须刷新。存在持久事务时保留事务事实，不能把切换中暂态擅自改为外部归属。
+
+紧急停止和关账使用另一个固定单元归属/停止证明，只证明受管单元已无进程，不证明程序、配置或凭据健康。观察完整性错误仍单独保留。这样既不接管外部单元，也不会因为坏程序无法通过完整观察而阻断紧急停止；关账后查询仍可报告 Unknown。测试机真实专项已覆盖停止服务时可写程序权限拒绝及损坏权限下的停止证明/紧急停止。
+
+`MihomoInstallationAuthorization` 是独立的当前契约，绑定原安装 operationId、完整冻结计划的 SHA-256 身份、短期租约和候选材料。`MihomoInstallationAuthorizationReader` 只用于同一持久 Install（无旧活动程序，切换后只能是本操作修订），逐次比对计划、操作与保留配置身份；不得以普通已发布 grant 或配置发布 grant 替代。保留重装不能夹带配置变更，新恢复通道也不能改换原安装计划。源信任、归档与原生检查仍由现有适配器独立核验。
+
+Server 加密 Pending 显式携带 installationPlan，与 configurationPlan/removalPlan 互斥；`ReadInstallationAsync` 每次核对命名计划、现有凭据及镜像漂移，只提供候选权限，不提前确认 Published。保留重装材料须与已有发布一致。运行时服务的普通 Execute 拒绝未经引导的 Install，专属 InstallUnderGate 提供类型化候选调用；`MihomoInstallationPublicationService` 现持有同一 Gate 完成安装接受、执行、确认/补偿及命名恢复，启动服务按冻结计划类型分派配置、安装或卸载恢复。
+
+首次安装确认须证明同一 Helper 操作成功、安装/宿主/目标匹配、活动程序修订等于原操作、实测版本匹配目标、配置身份匹配候选且无未结束事务，再创建私有 Server 镜像并确认权威。传输错误保留 Pending，不重跑安装；重建 Server 可按已提交回执完成确认。成功/失败的最近请求摘要及结果标志以显式 lastInstallation 字段持久保存供幂等核对，不以另一次安装替代丢失响应。失败/未开始只有在实测未安装及原配置身份一致时才 Abort；未知既有镜像不覆盖、不接管。未开始还须取得 Helper 实例锁并核对完全未变的状态修订，不制造 Helper 回执。
+
+2026-10-19 增加 `MihomoRuntimeInstallationService` 的隔离台账组合：同一发布 Gate 内按命名 Pending 分派安装/卸载恢复，再与 Helper 回执及确认身份核对；普通更新/修复/回退只使用已确认材料。返回消息丢失不重新提交变更，受理后对账不受 Server 停止 token 中断；取消请求交给 root，台账区分成功、失败、原生中断和已证实取消。常规检查累计 1159 项（安装发布/台账组合 86、默认 DI 5），真实 systemd 158 项，包括台账启动确认首次安装，以及修复/跨版本更新/回退/保留卸载/重装每次丢失响应后的原操作对账与实测阶段记录。该适配器仅作为具体类型注册，生产 Mihomo `IInstallationService`、桌面/Android 当前调用者仍待同一变更整体替换；没有新增备用 HTTP 或旧格式解析。独立 Helper IPC、资源分发和卸载宿主代理联动仍未验收，准确边界见 MR-03 应用进度。
+
+首次安装材料由 `MihomoInstallationBootstrapService` 在发布共锁内选择：没有已确认发布时，读取当前宿主设置并显式生成 DIRECT 基线，禁用 TUN、不引用 GEO/provider 资源、不启用系统代理；保留安装复用已确认材料，待发布重试只读加密冻结候选，不重读设置或生成凭据。32 项安装编排检查包含首次选择及重放约束；真实 1.19.10/1.19.30 systemd 专项改用启用 DNS 的该基线并通过全部 141 项。该服务已注册，默认安装台账及客户端尚未调用它。
+
+测试机新增 32 项安装发布编排检查，覆盖确认/失败重放、已安装响应丢失、待恢复补偿、未开始、镜像写入中断窗口、未知既有文件、错误版本/修订及撤销凭据；另有 6 项真实 systemd 首次安装发布检查，从没有 Published/Server 镜像开始，安装后丢失实际 Helper 响应，再经启动恢复确认，核对只安装一次且无自动重装。普通安装仍不启动服务或启用开机启动。Server/Helper 为测试进程内组合，默认安装台账/HTTP、独立 Helper IPC 及应用资源预备仍未接通。
+
+首次安装失败时，如果快照证明没有旧配置或服务，可在候选授权失效后停止/移除本次自有注册并恢复为未安装，不需要重新授权一个将被删除的候选。旧配置存在时的授权门禁不因此放宽。测试机新增 17 项安装授权检查，并在真实 systemd 专项增加错误冻结计划拒绝、候选撤销后补偿为未安装两项；合计常规 1034 / 原生 141 项。此证据不是默认应用首次安装端到端验收。
+
+`MihomoRemovalPublicationService` 在同一 Gate 内持久保存 `removalPlan`，同时保留旧 Published 供失败补偿；普通 Execute 拒绝绕过此编排的 Uninstall。专属卸载回调只授权同一待处理操作恢复原配置，普通运行时授权仍拒绝 Pending。成功必须核对同一实例/操作的成功回执、递增状态修订、程序与服务实测移除，以及符合 KeepData 的配置身份。保留数据保留 Server 发布材料与镜像；删除数据只移除身份匹配的 Server 镜像并清空该安装的加密发布材料，不删除应用拥有的设置或规范控制器凭据。镜像已删除但加密状态尚未提交的精确中断窗口可由已完成回执对账，目录、无关文件或冲突回执不能当成清理成功。`lastRemoval` 保存冻结请求摘要与确认/未开始结果，当前格式要求这些字段，不解析旧格式。
+
+卸载失败只有实测恢复为原受管安装/配置才 Abort；没有 Helper 事务还需取得实例锁并核对状态修订未变，才能记为 NotStarted。传输错误保留 Pending，启动恢复按原操作核对，不重跑卸载或重新安装。测试机通过 34 项加密状态/授权管道配合模拟 Helper 的卸载编排检查；另有 11 项真实服务组合检查，覆盖保留/删除卸载的响应丢失、启动对账、镜像删除中断窗口、成功幂等，以及同一 Server 发布状态下保留数据重装且不重读设置/生成凭据。它们计入 1034 项常规及 141 项原生专项。已注册默认 DI/启动恢复，默认安装台账/客户端仍待统一替换，不能据此声称生产卸载路径已切换。
+`SingBoxManagedRuntime` 在同一个实例锁内处理受管活动修订上的 `ProxyServerStatus/Validate/Apply/GenerateKeys/Action`。程序只能来自 `versions/{revisionId}/` 中已记录且逐文件摘要仍匹配的不可变制品；本类不下载程序、不改活动修订、不建立信任。
+
+| 操作 | 规则 |
+| --- | --- |
+| 状态 | 版本取实测记录，`ConfigurationHash` 取持久化的已发布配置身份；配置缺失/内容不符或运行进程的应用身份不符即为 `proxy_server.configuration_drift`；存在未结束事务或待恢复状态时为 `proxy_server.recovery_required` |
+| 校验（Validate） | 用已记录程序执行原生 version/check 和构建特性核对，不触碰服务与状态；失败不留下候选配置 |
+| 发布（Apply） | 拒绝在漂移或未结束事务上覆盖；先把被替换配置保存为 `config.json.previous`，仅在原服务运行且登记一致时停止，原子替换配置后用同一身份重新登记并恢复原运行/开机启动状态；核对进程应用身份与监听后才提交新身份并递增状态修订 |
+| 失败补偿 | 重新核对 `.previous` 与已记录身份一致，恢复配置、登记和原运行状态；核对不通过或恢复失败进入待恢复，不谎报成功 |
+| 启动/重启 | 只启动已发布的身份；未登记但配置存在时按该身份登记后再启动，运行后必须读到相同应用身份 |
+| 开机启动 | 仅改登记的开机启动状态，不启停服务，事后核对实际状态 |
+| 配置回滚 | 只恢复 `.previous` 并重新执行原生检查，不涉及程序版本回滚 |
+| 程序版本 | Install/Upgrade 在已有受管修订上是空操作；真正的版本切换只走生命周期事务，Uninstall 明确返回 `proxy_server.managed_runtime_required` |
+
+未取得新鲜授权的配置发布不会进行；配置发布的身份与运行时事务使用同一 `ConfigurationIdentity`，因此事务进行中不能发布配置，发布配置后旧冻结计划的状态修订即冲突。原生检查通过 `ISingBoxNativeChecks` 固定宿主实现执行，测试可替换为记录型实现而不执行第三方程序。
+
+## 卸载与数据保留
+
+`RuntimeArchiveRemoval` 是独立的归档移除事务，复用同一 operationId、阶段词汇和幂等回执，不改写 `RuntimeArchiveSwitch` 的切换语义。它只接受自有受管安装：`Ownership` 必须是 `Managed` 且存在活动修订，`ReleaseId` 必须为空，`PreviousReleaseId` 必须等于当前活动发布，请求不得携带预发布或保留数据以外的安装选项。
+
+| 检查点 | 特权侧持久证据与行为 |
+| --- | --- |
+| Preflight | 记录 `Removal`（操作身份、请求与幂等摘要、冻结计划）后才调用适配器；适配器核对修订逐文件摘要、服务登记归属与配置身份 |
+| Activating | 保存捕获的服务/配置快照；`RemovalStarted` 写入后普通取消不再生效，只能成功或补偿 |
+| Verifying | 适配器确认登记与活动修订已移除；未移除报 `runtime.removal_incomplete` 并走补偿 |
+| CleanupStarted | 不可逆边界：之后删除 `versions/`、`staging/`、`operations/`（`versions` 空时删除目录），`KeepData=false` 时再删 `config.json`、`config.json.previous`、`candidate.json`；此阶段失败只上报 `runtime.removal_cleanup_failed`，不回滚也不假装原状返回 |
+| Completed | `Ownership=Absent`、`Active=null`、`Revisions=[]`；`KeepData=true` 保留 `ConfigurationIdentity`，删除数据时清空 |
+
+`RuntimeArchiveStateStore` 校验 `Pending` 与 `Removal` 互斥，并核对检查点一致性：未记录 `RemovalStarted` 不得进入 Verifying，`ExpectedTrust/CatalogRevision` 只拒绝负值。启动恢复按 `CleanupStarted` 分流——之前重新核对当前程序与配置后恢复原登记，之后只关账并返回 `runtime.removal_cleanup_interrupted`，因为程序或数据可能已部分删除。
+
+`SingBoxRemovalAdapter` 是卸载的固定宿主实现：只删除受保护实例根内由本安装记录的文件，拒绝外部安装、配置漂移和程序文件被改写；不调用包管理器、不删除证书私钥、接口与防火墙规则（本运行时没有自有规则），也不移除代理服务端应用入口。
+
+Server 侧 `SingBoxRuntimeService.PlanAsync` 允许卸载不带来源（内部用 `"removal"` 占位），`RuntimeCatalogEndpoints` 只在卸载时可省略 `SourceId`，`SingBoxInstallationService` 以 `InstallationOperationKind.Uninstall` 受理并校验“无发布、无 releaseId”；其余变更仍必须有 release 且 runtimeId 与 releaseId 一致。
+
+客户端版本计划页在这条链路上只做三件事：显示四维状态与阻止原因、先取计划再入台账、卸载必须经二次确认并在确认宿主缺失时什么都不做。它不提交 URL、可执行路径或原生参数；刷新失败保留上次目录并明确显示失败，待恢复状态禁用安装/更新/卸载。
+
+## 人工恢复入口
+
+补偿失败（`RecoveryRequired=true`）后，`RuntimeArchiveRecovery` 提供三条互不替代的路径，全部复用既有安装 operationId、阶段词汇和幂等回执，不新增用户可见台账。
+
+| 入口 | 路由 | 规则 |
+| --- | --- | --- |
+| 查询 | `GET …/managed-runtimes/sing-box/recovery` | 只读快照：是否待恢复、事务与变更、阶段、切换是否已开始、原始失败、补偿失败、目标/原发布与实测服务状态；观测失败返回 `ServiceProblem`，不伪造"已停止" |
+| 重试 | `POST …/sing-box/recovery/retry` | 复用 `RecoverAsync`：重新核对授权、凭据、配置与数据格式后补偿；不重新捕获/准备，不重新生成凭据；仍失败则保持待恢复并返回新的补偿失败码 |
+| 紧急停止 | `POST …/sing-box/recovery/stop` | 只停服务并关闭开机启动，不读发布配置与凭据（凭据已撤销时仍可用）；只对本次观测存在的服务生效，复观测仍在运行报 `runtime.recovery_stop_failed`；不改台账，不宣称恢复 |
+| 关账 | `POST …/sing-box/recovery/close` | 只承认"已停止且不再自动恢复"，不假装恢复 |
+
+关账要求三个条件同时成立，缺一即拒：`RecoveryRequired=true`（补偿确实已失败）、请求体 `Confirmed=true`（操作员明确确认）、当前实测服务未运行（`Service.Running == false`）。对应问题码 `runtime.recovery_not_required` / `runtime.recovery_confirmation_required` / `runtime.recovery_stop_required`；操作 ID 为空、不存在、不匹配分别报 `runtime.operation_id_invalid` / `runtime.recovery_absent` / `runtime.recovery_target_conflict`。关账按不可逆边界分流，且只清理失败事务自身留下的候选，已提交指针不动：
+
+| 关账检查点 | 结果 |
+| --- | --- |
+| 切换已开始 | 保留 `Active` 与 `ConfigurationIdentity`，剔除未提交的候选修订，回执 `RuntimeSwitchOutcome.Failed` |
+| 切换尚未开始 | 保留旧修订与活动发布，候选不入回退记录 |
+| 卸载未开始 | 只清 `Removal`，保持受管与活动修订 |
+| 卸载已开始 | 转移为 `Ownership=Absent`、`Active=null`、`Revisions=[]`；`KeepData=false` 时连配置身份一并清空 |
+
+关账回执的 `ClosedProblemCode` 固定为 `runtime.recovery_closed_by_operator`，因此后续任何读取都能区分"恢复成功"与"由人放弃恢复"。三条写路由都要求 `CanInstall` 与该操作员的新鲜提权（缺失返回 `elevation-required`），查询只要读权限；Helper 侧对应 `SingBoxRuntimeRecoveryQuery/Stop/Close` 三种特权操作，Stop 要求 `Confirmed=false`、Close 要求 `Confirmed=true`，形状不符在下载与执行前即被拒。
+
+客户端 `ProxyServerRuntimeViewModel` 把这三条路径做成显式决策而不是静默失败：待恢复面板列出事务、变更、阶段、原始失败、补偿失败与实测服务；运行中只提供"重试"与"紧急停止"，只有实测停止后才出现"关账"并在关账前要求确认；`elevation-required` 弹出密码框并重试一次，操作员取消即失败而不重试；缺少确认宿主时关账什么都不做。
+
+## 运行时绑定的新鲜授权通道
+
+Server 与 Helper 的本机回调使用唯一当前 `RuntimeAuthorizationChannel(ChannelId, OperationId, RuntimeId, Secret)` 契约。`RuntimeAuthorizationServer<T>` 从当前授权类型确定运行时身份，Helper 使用 `RuntimeAuthorizationClient.ReadAsync<T>` 明确选择该运行时的材料类型；HMAC v2 上下文包含运行时、通道、操作、client/server 角色和 nonce。改写 RuntimeId 不能复用原证明；过期/过长租期、重复 nonce、非法字段或签名拒绝。sing-box 与 Mihomo 均已改用当前格式，不保留 v1 上下文或旧描述符解析。材料与通道密钥不写入冻结计划、持久回执或普通状态。
+
+Mihomo 的材料还要求有界 YAML、唯一构建标签、合法精确监听、本机控制器端口和凭据。Server 的加密发布状态区分待发布/已确认/已补偿，未确认候选、active.yaml 字节漂移和现有凭据撤销不能授权运行时切换；授权读取不创建秘密。`MihomoRuntimeService` 已有域门锁与逐操作回调组合，Helper 的 Linux 固定入口已登记；默认代理管理器的受管档案保存/激活已于 2026-10-19 接入门锁与确认流程，受管设置与宿主设置意图/启动对账也已接通（最终常规 1071 项、真实 systemd 146 项）；受控资源分发及卸载宿主代理联动仍待完成，再统一安装台账和客户端。实现与准确证据见 [MR-03 应用进度](../applications/RelaxKonOS.ProxyManager.Design.md#受管运行时公共目录接入进度mr-032026-10-19)。2026-10-19 活动档案选择也已纳入同一发布提交：加密 profile 意图冻结 ID/修订/创建身份与原活动选择，SQLite 迁移 16 在同一事务切换元数据并保存操作标记；已提交响应丢失后核对标记，不重复递增修订或原生切换。常规 1104 项及真实 systemd 149 项通过，独立 IPC/生产 HTTP 仍待验证，不能将本机组合验收称为生产 HTTP 接线完成。
+
+## 下载取消
+
+取消是**请求**，不是中断连接。Server 从不因为客户端断开或请求取消就杀掉 Helper：一次安装是独立的一次特权进程，`Execute` 调用固定用 `CancellationToken.None`，所以连接断了后台事务照常走完。要真正中止准备阶段，请求必须落到那个已经在跑的事务上。
+
+| 环节 | 机制与规则 |
+| --- | --- |
+| 请求通道 | 事务全程持有 `state/instance.lock`，因此请求不能走同一把锁。它是 `state/cancel.request` 单文件：内容为**该事务自己的 operationId**，先写临时文件再原子覆盖 |
+| 送达 | 特权操作 `SingBoxRuntimeCancel` 只写这个标记，不读台账、不取实例锁，所以在事务运行中也能立即返回；它回答的是“请求已记录”，不是“已取消” |
+| 生效 | 运行中的事务启动一个 200 ms 轮询监视器，标记内容与自己匹配才取消内部令牌；该令牌贯穿 Preflight、捕获、准备与 Verifying，`PrepareAsync` 原样把它传进下载与解包 |
+| 边界 | 与切换检查点同一条线：写 `SwitchStarted` 之后激活与健康检查用不可取消令牌，取消不再生效。到达太晚的请求照样被记录，但结果由事务回执决定，界面按“已完成”呈现 |
+| 收尾 | 事务结束（成功、失败、补偿、取消）时删除标记；标记只匹配自己的 operationId，因此残留文件永远不会误伤下一条事务，内容不合法时按“未请求”处理 |
+
+台账一侧用同一套边界说话：`RuntimeArchiveSwitch` 与 `RuntimeArchiveRemoval` 每个阶段都向上报“此刻还能不能取消”（切换：Preflight/Preparing/Verifying 可以，Activating/HealthChecking/RollingBack 不可以；卸载：Preflight/Activating 可以，Verifying 之后不可以），特权帧携带该标志，`POST /api/v1.0/installations/{id}/cancel` 记进 `Cancellable`。所以界面不会出现“点了却没反应”的取消按钮。
+
+`InstallationCoordinator` 因此区分两种取消语义：`CooperativeCancel = false` 的安装器（apt、git、文件引用等）沿用原有做法，取消本地工作令牌即可；sing-box 是 `true`，协调器只记录请求并把它转给主机，**不**取消自己的等待——主事务还在跑的时候就把台账写成 `Cancelled` 是谎报。主事务真正取消后回执是 `RuntimeSwitchOutcome.Cancelled`（`runtime.operation_cancelled`），服务端据此把台账落成 `Cancelled` 而不是 `Failed`。请求送不到主机时，协调器把 `Cancellable` 恢复成可用并上报错误，不留下“看似取消过”的状态。
+
+客户端 `ProxyServerRuntimeViewModel` 在轮询操作时读同一个 `Cancellable` 决定是否显示「取消下载」，点击只发请求并立刻撤下按钮；循环继续等待回执，收到 `Cancelled` 就按“已取消、未改变任何内容”收尾，而不是报成失败。
+
+## 宿主依赖预检
+
+依赖是**主机自己的事实**，不是发布者的声明。签名清单不接受配置能力、互通证据或依赖列表（见[发布清单格式](RelaxKonOS.ManagedRuntimes.Manifest.md#发布清单格式)），所以 `RuntimeArchiveDependencies` 只从 Host 已经验证过的那份制品推导要求，词表封闭：新增一类依赖是契约变更，不是某条发布的字段。
+
+| 依赖 | 身份 | 要求从哪里来 | 主机怎么回答 |
+| --- | --- | --- | --- |
+| `Platform` | `linux/amd64` 这类目标标识 | 制品声明的目标 | `SingBoxManifest.PlatformName/ArchitectureName`，不支持时为空 |
+| `ServiceHost` | `systemd` / `scm` | 制品声明的服务宿主 | Linux 看 `/run/systemd/system` 是否存在；Windows 恒为 `scm` |
+| `DiskSpace` | `protected-root` | 归档上限 + 解压后总量 + 64 MiB 余量 | 受管目录所在卷的 `AvailableFreeSpace` |
+| `FileSystem` | `protected-root` | 固定 | 路径全程无重解析点，且不是同名普通文件；目录缺失视为就绪（事务自己会以私有权限创建） |
+| `KernelFeature` | `ipv6` | **发布配置**里有 IPv6 监听地址时才出现 | Linux 读 `/proc/sys/net/ipv6/conf/all/disable_ipv6`；Windows 用 `Socket.OSSupportsIPv6` |
+
+三种回答必须分开：`Satisfied`、`Missing`（测到了，但不满足）、`Unknown`（测不到）。`Unknown` 与 `Missing` 一样阻止，但含义不同——前者是"主机没法回答"，后者是"主机回答了不满足"；把它们并成一档会让界面说谎。绑定 IPv6 地址的配置在没有 IPv6 的主机上会直接失败，所以这条依赖跟着配置走，而不是跟着发布走。
+
+门禁放在两处，缺一不可：
+
+1. **计划**：`RuntimePlanning.Create` 收下主机对目标发布的实测报告，要求**精确覆盖**——每条要求恰好一条同身份观测，一条不缺、一条不多。因此别的发布（或别的架构）的报告不能顺带放行这一条，并且报告缺失即拒绝（`runtime.dependencies_unsatisfied`），不存在"没测过就当没事"。拒绝时报告随结果一起返回，界面点名失败项与两侧数值。
+2. **前置检查**：`SingBoxArchiveAdapter.PreflightAsync` 在**下载任何字节之前**重新测量，并把发布要求与当前已发布配置的要求合并后一次判定。计划发生在持锁之前、可能与实际操作相隔很久，所以这一步不能省。
+
+报告只含能力名与字节数，不含路径、命令、凭据或配置正文：读权限接口 `GET /api/v1.0/managed-runtimes/sing-box/installation` 会带上宿主环境事实，客户端据此在任何人按"安装"之前显示平台、服务宿主、可用空间、受管目录与 IPv6 状态；其中只有平台、服务宿主和受管目录会作为阻塞原因提示，IPv6 关闭只在配置真的需要它时才是问题。
+
+清单里的系统包依赖**尚未实现**，词表里也没有它：包管理器适配器接入前，不假装探测过 `dpkg`/`apt` 状态，也不用自由命令去问。
+
+## 验证证据与剩余工作
+
+`Tests/ManagedRuntimes/SwitchChecks.cs` 有 96 项检查，覆盖真实磁盘状态、共享互斥锁、幂等回执、跨版本目标、同版本修复、保留版本回退、配置漂移、当前发布配置恢复、切换取消边界、独立版本/配置/运行/启动/原生健康失败、撤销恢复及待恢复阻断。
+
+其中四组测试启动独立子进程，分别在捕获、准备、激活、健康检查中 `Environment.Exit`，由父进程重新读取磁盘并恢复。服务和二进制使用文件适配器模拟，没有执行第三方运行时、操作真实服务或更改系统启动设置；不能据此宣称 Windows/Linux 生命周期验收通过。
+
+仍需将组件接入各声明平台的原生配置与监听/互通验收，并完成真实服务的故障与重启验收；系统包依赖随包管理器适配器一起实现。总体进度继续以 [任务表](RelaxKonOS.ManagedRuntimes.Design.md) 为准。
+
+`ManagedServiceChecks` 另有 13 项检查，覆盖受管安装的状态上报、只校验不发布、首次发布与身份递增、运行中再发布保留运行状态、仅改开机启动不重启、配置回滚、磁盘漂移拒绝覆盖、登记失败后的补偿与运行状态恢复、程序文件漂移拒绝执行、以及 Install/Uninstall 的边界；其原生检查使用记录型实现，不执行第三方程序。
+
+`RemovalChecks` 有 15 项检查，覆盖保留数据的卸载、程序/暂存/备份目录清理、实例根外文件不受影响、单回执与幂等重放、重复卸载被拒、删除发布配置与保留副本、移除登记失败后的补偿、清理开始前恢复、清理开始后中断关账、外部安装拒绝与程序漂移拒绝。测试使用文件适配器模拟服务，不操作真实 SCM/systemd。
+
+`CancellationChecks` 有 16 项检查，覆盖请求只被自己的事务认领、残留与畸形标记不会中止无关事务、单标记下新请求覆盖旧请求、Helper 在运行中登记请求而完全不动台账、取消字段不被其他生命周期动词接受、空操作 ID 被拒、准备中登记的请求确实取消运行令牌、结束即清标记、以及调用方令牌仍能结束监视。事务侧的取消边界由事务夹具体另行证明：切换点之前取消得到 `Cancelled` 且不激活，切换点之后取消不打断已提交的切换。
+
+`DependencyChecks` 有 30 项检查，覆盖要求的种类与顺序、磁盘最小值的构成（下载 + 解压 + 余量）、满足时放行、跨平台与跨发布报告不得顶替、部分与多余观测都被精确覆盖拒绝、平台不符时点名实测值、服务宿主缺失为 `Unknown` 而非猜测、磁盘不足与磁盘不可读的区别、受管目录非私有目录被拒、IPv6 要求仅由 IPv6 监听触发且关闭/不可读分别为 `Missing`/`Unknown`、计划在无报告时拒绝并回传失败观测、有报告时随计划一起返回、卸载不需要任何测量，只读快照按固定顺序给出全部环境事实，以及真实环境在本机能量出平台、卷可用空间、受管目录与链接拒绝（创建链接需要特权，取不到时跳过该条而不算通过）。
+
+`RecoveryChecks` 有 16 项检查，覆盖无待恢复时快照为空、事实描述与双问题码、目标事务不符被拒、未确认/未停/目标错三种拒绝对状态无影响、未进入待恢复不可关账、跨过切换点关账保留活动修订、切换前关账保留旧修订且候选不入回退、重复关账被拒、卸载未开始关账保持受管、卸载已开始关账转移所有权、删除数据关账不留配置身份，以及卸载词汇与发布字段。关账一律返回 `runtime.recovery_closed_by_operator`，检查不执行第三方服务。
+
+## sing-box 真实文件与原生命令适配器
+
+`RelaxKonOS.PrivilegedHelper/SingBoxArchiveAdapter.cs` 已实现 `IRuntimeArchiveSwitchAdapter` 的归档/原生部分：
+
+- 只接受本机声明的原生格式范围内版本：能力名 `sing-box-v1` 对应 `1.13.0 ≤ v < 1.15.0` 的稳定版（`SingBoxRuntimeSupport`）。范围外版本可被发现和展示，但前置检查在下载前以 `runtime.configuration_unsupported` 拒绝。同时核对运行时、宿主 OS/架构、服务宿主和固定入口文件名；保留目录发现与安装许可的区分。
+- 从 Helper 保护的来源账本解析明确目标，通过制品准备组件验证整个归档及所有声明文件，保留依赖 DLL/库和许可证，移动到 `versions/{operationId}/`；暂存根也按 operationId 分隔，中断后可定位清理。
+- 捕获当前配置与服务注册快照，配置及含秘密的备份只写私有操作目录。准备和切换前读取当前已发布授权并生成配置，用实际目标二进制执行 version / check，比较配置身份；不使用业务草稿。
+- 激活时先停止服务、原子替换配置，再通过固定宿主配置已验证程序和启动状态；成功证据包含原生检查、程序/配置身份和宿主监听结论。未知开机启动状态不能作为验证成功。
+- 补偿时重新验证当前授权与旧制品许可，逐文件核对保留程序，再验证并恢复备份配置、程序和注册状态。缺少新鲜授权时保持停止和待恢复，不恢复旧凭据。
+
+`ISingBoxArchiveHost` 必须由 Helper 内置的 Windows/systemd 实现提供，不能从客户端注入；它负责固定服务所有权、实际进程路径、实际加载配置身份和监听检查。`ISingBoxArchiveAuthorization` 必须由 Server 当前已发布状态及凭据/证书授权提供，不能将输入草稿或长时间缓存当作授权；无法取得新鲜证据时拒绝。授权租期最多五分钟，切换/恢复多次重新读取，不在元数据回执中保存秘密。
+
+当前已实现 Windows 与 Linux 固定服务宿主代码、Helper 本机生命周期组合、Server 当前授权提供者和既有配置路径共锁；Server 安装操作台账/API 及受管修订上的已发布配置发布与服务控制已接通；卸载与数据保留走独立归档移除事务。公共目录只对声明范围内版本标为配置支持（[真实跨版本与协议验收](#真实-sing-box-跨版本与协议验收)），范围外条目仍为不支持；发布者不能通过清单声明扩大范围。保留的操作备份也仍需接入最终卸载和保留策略。
+
+可选真实二进制检查：
+
+```text
+dotnet run --project Tests/ManagedRuntimes/RelaxKonOS.ManagedRuntimes.Tests.csproj -- native-sing-box-archive <sing-box-1.14.3-windows-amd64.zip的绝对路径>
+```
+
+2026-10-17 在 Windows x64 通过 12 项，使用工作树既有缓存，开始执行前先核对归档 SHA-256 为 `d8b86ef58936dba9230ec6a57ffa4243933f3c14ef4809828b6c553440ed1518`（与当前固定清单一致）。测试在临时目录创建隔离信任账本和签名清单，实际解包并执行官方程序的 version、REALITY 密钥生成和 check；覆盖空配置及带真实生成凭据的 REALITY 已发布配置、同版本修复、模拟服务配置失败后的原生补偿、授权中断保持待恢复和授权恢复后的再次检查。
+
+这些测试没有运行 sing-box 入站服务、修改 SCM/systemd 或系统信任目录，服务仍为测试宿主，不证明真实监听/互通或平台服务验收。跨版本与协议证据改由 Linux 上的独立检查提供（见下节），Windows 这条检查只证明该平台的归档/原生适配器；不能因此扩大平台范围、跳过证书验证或把同版本修复当作升级。常规检查与这些可选检查分别记录，普通测试不依赖忽略目录中的缓存归档。
+
+## 真实 sing-box 跨版本与协议验收
+
+2026-10-18 在 Debian 13 x64 测试机（192.168.1.7、root）以真实上游归档通过 24 项检查：
+
+```text
+dotnet run --project Tests/ManagedRuntimes/RelaxKonOS.ManagedRuntimes.Tests.csproj -- \
+  native-sing-box-runtime <sing-box-1.13.21-linux-amd64.tar.gz> <sing-box-1.14.3-linux-amd64.tar.gz>
+```
+
+两个归档在开始前按发布页摘要核对：1.13.21 为 `24f9ef8e7234e13e71e74c3598a4164c5fe07b7b67ccc6e96cf68b54789f72cd`，1.14.3 为 `e2bdf179c15a3652955dc44867e33ca0965c9c9b91b34267dcc5a5d639a5feee`（与源码固定清单一致）。检查用测试签名清单接受两个发布，能力由 Helper 自己计算，然后走**真实归档事务 + 真实 systemd 单元**：
+
+1. 安装 1.13.21，确认提交的修订与上游二进制摘要一致、注册单元但未启动。
+2. 发布一条 REALITY 入站（密钥由已安装的二进制生成），同版本修复激活该配置，启动服务；`ListenersHealthyAsync` 由进程 socket inode 证明监听，运行观察证明单元实际加载的配置身份。
+3. 启动真实 `sing-box run` 客户端（只有 VLESS 出站、`xtls-rprx-vision`、REALITY + uTLS），经 SOCKS5 取回 `http://example.com/` 并比对正文。
+4. 更新到 1.14.3：配置身份不变；用 1.14.3 客户端、再用**保留的 1.13.21 客户端**各取回一次，证明两个方向都互通。
+5. 停止受管服务后同一客户端不再能取回正文（客户端没有其它出站，因此这条证明流量确实经过受管服务），重启后恢复。
+6. 回退到保留的 1.13.21 修订并再次互通，再更新回 1.14.3。
+7. 保留数据卸载：单元与程序目录消失、发布配置保留、所有权回到未安装。
+
+边界也由同一条检查证明：清单把某条发布标成受支持并不能越过本机范围，伪造的 1.12.0 发布在下载任何字节前被 `runtime.configuration_unsupported` 拒绝；声明的范围本身（`1.13.0 ≤ v < 1.15.0` 稳定版、不含预发布）由 `SingBoxRuntimeSupport` 单点决定，目录与适配器共用它。
+
+证据范围仅限 Linux x64、systemd、VLESS/REALITY 的真进程/真单元/真 socket：不含 Hysteria2、Trojan、VLESS WebSocket 的互通，不含 Windows SCM 端到端，也不是 Android 或第三方图形客户端的互通矩阵。范围内版本共用同一生成的原生格式，因此没有新增旧格式解析分支或按版本分叉的生成器。
+
+## 新鲜授权与固定生命周期组合
+
+`ProxyServerRuntimeAuthorizationProvider` 每次读取受保护的已发布业务状态，不夹带草稿配置、新凭据或未发布证书。存在未确认发布时拒绝授权；逐个检查已发布凭据是否仍存在、启用、未轮换/过期且仍授权原入站，并核对当前证书来源与已发布证书的版本、内容、私钥和有效期。授权最长 30 秒，且不超过最早凭据/证书期限。
+
+`RuntimeAuthorizationServer/Client` 为单个 operationId 建立随机本机管道和 256 位临时密钥。请求与响应分别使用带角色、通道、操作和随机 nonce 的 HMAC；认证前不读取业务机密，同一 nonce 不重复接受。长度、连接时限和租期有界，失败只返回固定问题码；管道和密钥不进入冻结计划、状态、回执或普通 DTO。操作结束关闭通道，Helper 每次切换/补偿检查都重新挑战，而不是复用首次下载时的授权。注册可能耗尽前一次租期，因此候选和旧版本均在服务注册后、实际启动前再次核对新鲜授权。
+
+`SingBoxRuntimeService` 持有与业务配置/凭据变更相同的 Server gate，并在持有期间提供回调；读取者不反向取得该 gate 或调用 Helper，避免锁递归。缺少 Server 回调、错误操作身份、已结束通道或撤销授权都不能恢复旧凭据。
+
+Helper 的 `SingBoxRuntimeQuery/Plan/Execute/Recover` 是唯一当前本机操作形状，所有混用字段被拒绝。`SingBoxRuntimeLifecycle.Create` 仅组合固定根、保护状态/信任账本、固定 OS 宿主和内置下载器；不接受客户端选择路径、服务或程序。首次状态初始化观察外部/未知所有权，宿主身份来自本机身份的摘要。计划在实例锁内从保护目录生成，执行使用冻结计划以保留幂等请求身份；适配器将冻结的完整版本记录与保护账本返回的记录逐字节比较，包含制品布局和主机赋予的配置/验证元数据。回执重放先返回原结果，不能因后来的状态或信任修订变化再次执行。查询可按既有 operationId 返回特权侧准确回执，不能用当前进程存活推断某次操作成功。
+
+本机新操作已接入 Server 安装操作台账，客户端版本计划页已实现：只显示目录与阻止原因，先取冻结计划再写入台账，卸载需二次确认且不带发布。可安装条目只限声明范围内版本，提交自行构造的冻结计划仍会被 Helper 的能力与范围检查拒绝。受管修订上的配置发布与服务控制、卸载/数据保留、下载取消与人工恢复入口均已接通。
+
+## Linux 固定宿主与进程证明
+
+2026-10-18 新增 `LinuxSingBoxArchiveHost`，仅管理 `/var/lib/relaxkonos/proxy-server` 与 `relaxkonos-sing-box.service`。程序仅能来自 `versions/{非空GUID}/.../sing-box`；配置固定为根目录 `config.json`。拒绝链接、单位语法注入、外部服务、额外 drop-in、未重载单元和无法核实的状态；服务、登记文件、程序和配置及其祖先必须属于 root 且不可被组或其他用户写入。已有固定平铺版本不自动转为受管归档安装。
+
+配置登记保存程序和配置摘要。systemd 使用 DynamicUser、只读系统与私有临时目录，通过 LoadCredential 为每次启动取得私有配置副本；只授予绑定低端口的能力。启动前核对当前程序与配置摘要；运行观察核对 MainPID、进程启动时间、`/proc/{pid}/exe`、实际参数，以及该进程命名空间中本次 systemd credential 的摘要。替换磁盘配置不会给旧进程附上新配置身份。
+
+`LinuxOwnedListeners` 有界解析 IPv4/IPv6 TCP/UDP 表，显式处理原生 32 位字序，只接受 TCP LISTEN 和未连接 UDP 绑定。网络命名空间的表本身不代表进程所有权；读取前后将 inode 与目标进程描述符关联，并核对启动时间。健康检查还在监听读取后重新核对完整进程与配置身份。
+
+Debian 13 x64 测试机上通过 533 项常规检查：33 项准入、68 项签名目录、19 项集成、68 项归档、24 项制品准备、96 项事务、68 项版本/原生输出、4 项子进程、18 项 Linux 监听、31 项新鲜授权、30 项生命周期边界、46 项安装台账、13 项受管服务及 15 项归档卸载检查。包含独立模拟 Helper 进程的 NDJSON 进度及宿主停止后结果保留；模拟 Helper 与服务不构成真实 sing-box 验收。Android 当前契约的 23 项 JVM 检查也在该测试机通过，含安装枚举及发布请求调用验证；没有执行 Android 设备界面验收。
+
+Linux 监听检查包括双字节序与双地址族解析、畸形表拒绝、真实 TCP/UDP inode 归属及错误进程启动时间拒绝。显式命令 `RelaxKonOS.ManagedRuntimes.Tests linux-systemd-host` 另通过 12 项真实 systemd 检查：安装时不启动、不启用开机启动、开机启动变更只改登记而启停不变、启停、实际配置身份、真实监听健康与错误端口拒绝、磁盘配置变化不改写运行身份、启动前配置漂移拒绝、可写程序拒绝、自有注册移除及固定配置路径使用同一实例锁。测试机 root 的 umask 为 0002，锁文件仍明确创建为 0600；没有通过放宽保护检查取得通过。此专项要求固定服务及根目录均不存在，仅在授权测试机执行；退出后清理本次服务及测试文件。
+
+systemd 专项运行的是重命名测试 apphost，并非 sing-box，未验证协议、跨版本、重启恢复或生产生命周期接线；这些由上面的真实 sing-box 验收单独覆盖。不得把两者混称为完整 Linux 生命周期验收。
+
+启停在 systemd 报告 settled 状态后才观察：简单服务 `systemctl start` 返回时单元可能仍在 `activating`，`stop` 返回时可能仍在 `deactivating`；直接观察会把刚启动/刚停止的服务报成 `state_unknown`（真实验收里先暴露过这个竞态）。等待有上限，超时后仍按实际状态判定，不放宽任何保护检查。
+
+2026-10-18 授权测试机以保留业务数据的卸载/重装方式部署当前工作树 `0.1.0-dev20261018-02`（先在原版本上执行保留数据卸载，再以新包安装；安装标识保持不变），Server 与 Guardian 在 Linux 系统模式运行并启用开机启动。三类文件访问策略设为 full，未修改宿主文件的 Unix 权限。自签名 HTTPS 证书包含测试机 IP 与 loopback 身份，使用该证书作为明确 CA 验证 loopback 健康返回 200；开发机以同一证书验证 LAN TLS 成功、受保护 API 返回 401。测试机未安装 ufw/iptables，nftables 规则集为空，没有主机防火墙端口限制。此宿主部署不等于第三方运行时已完成生产多版本安装；其代理运行时根目录仍不存在，因此受管配置发布尚未在该机执行端到端验收。
+
+## Windows 固定宿主与进程证明
+
+`WindowsSingBoxArchiveHost` 只管理固定根目录对应的 SingBox 组件服务。配置只允许根目录 `config.json`，程序必须位于 `versions/{非空GUID}/.../sing-box.exe`；拒绝邻接目录、旧平铺程序路径和任意程序名。复用独立组件服务的 ImagePath/所有权检查、受保护宿主包和 Job Object，不创建通用命令接口。开机启动参数在 SCM 注册时明确写为 auto 或 demand，不先自动启用再补一次修改。
+
+状态读取核对 SCM、真实 PID、启动时间、程序映像，并使用进程启动时捕获的 AppliedIdentity。组件工作进程在实际启动前核对程序摘要；sing-box 还核对实际配置摘要。程序、sing-box 配置和目录需要受保护所有权/写权限。工作进程及 sc.exe 使用固定可信环境，不继承下载代理或其他环境注入。
+
+监听核对使用 [Windows IP Helper 的 TCP PID 表](https://learn.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getextendedtcptable) 及 UDP PID 表，分别读取 IPv4/IPv6、本地地址/范围、网络序端口和归属 PID；TCP 只接受 LISTEN。绑定必须属于已核实的组件 PID，之后再次核对启动时间，避免仅凭全局端口存在或复用 PID 判定健康。
+
+`WindowsHostChecks` 在 Windows 上通过 27 项：四类原生表解析及错误边界、真实临时回环 TCP/UDP 的 PID 归属、固定路径拒绝、当前状态契约及启动前配置/程序摘要漂移。没有创建、启动、停止或删除真实 SCM 服务，因此平台服务端到端仍待验收。既有 `--independent-component-services-only` 专项因当前账户不能创建临时符号链接而中断；本轮只通过该工程编译，不能复用历史隔离主机结论声称当前格式已复验。
+
+独立组件服务状态是唯一当前格式，AppliedIdentity 必须存在（其他无应用证明组件可以显式 null），不解析缺字段旧格式。第一方更新需要重新发布并验证当前独立服务宿主及状态，不能继续运行旧宿主却为其补造新证明；此更新编排和隔离服务复验仍由 MR-09 追踪。相关共享服务改动见 [独立组件进度](../services/RelaxKonOS.IndependentComponentServices.Progress.md)。
+
+## 既有安装台账接线
+
+`SingBoxInstallationService` 使用现有 `InstallationCoordinator` 的 operationId、持久幂等键和阶段记录；Rollback 是独立操作，其他服务不因此开放回滚。严格请求包含明确确认及冻结计划，计划幂等键必须等于台账请求键。安装权限使用 SingBoxInstall，目标为 `singbox`，不接受客户端原生参数。
+
+启动恢复只接受同一 operationId 的特权回执；无回执时按指定原事务执行恢复，拒绝恢复其他 pending 事务。活跃实例锁返回 busy 时继续等待，不重启工作进程，也不根据版本或进程存在推断成功。当前执行提交后不提供取消；下载取消仍待实现。
+
+进度来自实际准备与持久检查点，并经过 Helper 帧协议验证。进度读端断开不打断特权切换，宿主停止不能丢弃最终特权结果。同版本（含仅构建元数据变化）不可作为 Update，必须选择 Repair；较旧版本须明确走 Rollback。
+
+## 2026-10-19：卸载后的宿主提交与观察补充
+
+当前卸载 Pending 必须携带冻结的 settings 意图：旧文件摘要及原设置、仅关闭系统代理的候选设置；拒绝缺失/其他字段变化，不解析旧空意图。原生成功与精确缺席证明后，Server 先通过所有权感知宿主事务撤销自己的代理，再原子保存设置，再核对 Helper 同一实例/修订/回执，最后清理匹配镜像并确认权威。宿主暂不可用或设置漂移保留命名 Pending；恢复不重复原生卸载。已补偿原生操作不应用候选设置，完成重放不重复宿主副作用。
+
+公开安装与恢复观察保留 Server 未确认提交及冲突操作身份，不以原生事务完成清除 Server 待提交事实，不虚构失败补偿或原生阶段；损坏权威报告未知并撤回活动版本证明。内部协调器使用独立 Helper 实测查询，避免将此公开投影当成自身提交证据。此补充取代前文“卸载宿主代理联动待完成”的阶段说明；生产注册和客户端入口仍待整体迁移。
+
+指定 Debian 13 x64 常规 1220 项（卸载发布/宿主组合 88、HTTP/恢复观察 17），真实 systemd 165 项通过。宿主组合使用真实 Linux 所有权/补偿算法及隔离内存后端，未更改机器实际代理；独立 Helper IPC 与生产 HTTP 尚未验收。Server 存储、配置激活/回滚和系统代理专项回归通过。详见 [MR-03 应用进度](../applications/RelaxKonOS.ProxyManager.Design.md#受管运行时公共目录接入进度mr-032026-10-19)。
+
+## Mihomo 命名恢复 HTTP
+
+当前公开恢复查询和重试已接通：查询合并 Server 未确认提交；重试要求 RuntimeManage、Mihomo 安装权限和匹配提权。协调器持有发布 Gate，按精确 Pending 分派安装/配置/卸载恢复，缺少 Server Pending 时只恢复 Helper 原操作；冲突 ID 不触达 Helper，受理后不因请求取消丢失提交。组合成功必须包含 Server 提交完成。没有新增独立用户台账或固定版本回退路径。默认注册构造及 Linux 常规 1233 项通过，其中卸载组合 92、HTTP 22；真实 systemd 167 项通过，包含命名入口完成实际卸载后的 Server 宿主提交。生产客户端、安装注册和停止/关账入口尚未整体接通。
+
+## Mihomo 停止与关账 HTTP
+
+`POST /managed-runtimes/mihomo/recovery/stop` 与 `/close` 与重试同门禁：RuntimeManage、Mihomo 安装权限及目标为 `mihomo` 的 MihomoInstall 提权；空操作 ID 在触达 Helper 前被拒绝。关账还须显式 `confirmed`，否则 400 `runtime.recovery_confirmation_required`。
+
+停止不要求发布权威可用，也不修改原生台账或 Server 记录，因此存在未确认提交时仍可执行；关账结算的是原生事务，所以同一操作存在 Server 未确认提交时返回 409 `runtime.publication_unconfirmed`，避免留下永远无法确认的发布；权威不可读返回 409 `runtime.publication_state_invalid`。两项判定都在发布 Gate 内完成，关账不会与进行中的提交并发。
+
+常规 1249 项通过（HTTP 34、Helper/Server 集成 39），真实 systemd 167 项通过；客户端 `RemoteRuntimeCatalogClient` 已按运行时绑定各自闭合的停止/关账路由。桌面 Mihomo 恢复 UI、生产安装注册与资源分发仍未接通。
+
+## Mihomo GEO 资源预备
+
+`POST /managed-runtimes/mihomo/resources` 与恢复写路由同门禁（RuntimeManage、Mihomo 安装权限、MihomoInstall 提权），并在发布 Gate 内拒绝未确认提交。请求为空：可放置的资源是 `MihomoGeoDataFiles` 里的编译期摘要表（五个 GEO 文件），Helper 不接收路径、URL 或选择项，也不下载任何内容。
+
+Helper 从自身版本目录旁的 `../server/Assets/Mihomo/GeoData` 读取，长度与 SHA-256 全部匹配后才整份写入 `seed-data` 与活动修订的 `data/<revisionId>`（临时文件 + 原子改名 + 0644）。摘要不符 `runtime.resource_digest_mismatch`、来源缺失 `runtime.resource_source_missing`、链接 `runtime.linked_path_forbidden`、未安装 `runtime.installation_absent`、未完成事务 `runtime.recovery_required`。预置基线让后续修订与原生预检共享同一份已校验数据；Server 只接受闭合集合内的报告。
+
+边界：provider 订阅、证书、私钥与其他发行源资源仍须受控分发层；本操作不改变配置能力声明，也不宣称协议互通。常规 1269 项（HTTP 41、GEO 资源 11、Helper/Server 集成 41）与真实 systemd 通过；桌面/Android 尚无入口。

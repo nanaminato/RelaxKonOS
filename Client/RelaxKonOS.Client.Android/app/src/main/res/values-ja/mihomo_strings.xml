@@ -38,9 +38,6 @@
     <string name="mihomo_geodata">GeoData</string>
     <string name="mihomo_geodata_configured">ホストの GeoData は準備済み</string>
     <string name="mihomo_geodata_missing">ホストの GeoData は未設定</string>
-    <string name="mihomo_geodata_note">サーバーのサービスアカウントが読み取れる GeoIP ファイルを選択してください。サーバーが検証して準備します。</string>
-    <string name="mihomo_geodata_path">サーバー上の GeoIP パス</string>
-    <string name="mihomo_geodata_select">サーバーのファイルから GeoData を準備</string>
     <string name="mihomo_group_automatic">このグループはノードを自動選択します。</string>
     <string name="mihomo_group_summary">%1$s · %2$d ノード</string>
     <string name="mihomo_group_testing">%1$s をテスト中 · %2$d/%3$d</string>

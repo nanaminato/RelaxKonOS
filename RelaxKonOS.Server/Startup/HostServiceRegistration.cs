@@ -6,6 +6,7 @@ internal static class HostServiceRegistration
 {
     public static void AddHostServices(this WebApplicationBuilder builder, RelaxKonOS.Server.Certificate.KestrelCertificateRegistry kestrelCertificates)
     {
+        builder.Services.AddSingleton<RelaxKonOS.Server.ManagedRuntimes.RuntimeCatalogService>();
         // 任务管理器：系统指标采集 Provider（按宿主 OS 平台选择，与 IIdentityProvider 同模式）。
         // CPU/内存平台特定（Linux 读 /proc；Windows 走 P/Invoke），磁盘/网络/GPU/进程跨平台共享。
         // 以宿主 OS 进程身份读取，复用宿主用户/权限（不另建 ACL）。Singleton 持相邻采样差分状态。

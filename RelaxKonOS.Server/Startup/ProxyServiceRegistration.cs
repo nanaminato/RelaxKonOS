@@ -7,6 +7,8 @@ internal static class ProxyServiceRegistration
     public static void AddProxyServices(this WebApplicationBuilder builder)
     {
         builder.Services.AddSingleton<RelaxKonOS.Server.ProxyServer.ProxyServerStore>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.ProxyServer.ProxyServerRuntimeAuthorizationProvider>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.ManagedRuntimes.SingBoxRuntimeService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.ProxyServer.IProxyServerCertificateSource, RelaxKonOS.Server.ProxyServer.ProxyServerCertificateSource>();
         builder.Services.AddSingleton<RelaxKonOS.Server.ProxyServer.ProxyServerService>();
         builder.Services.AddHostedService<RelaxKonOS.Server.ProxyServer.ProxyServerExpiryService>();
@@ -28,6 +30,16 @@ internal static class ProxyServiceRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyEngineRegistry, RelaxKonOS.Server.Proxy.ProxyEngineRegistry>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Platform.IProxyPrivilegedOperations, RelaxKonOS.Server.Proxy.Platform.NativeMihomoPrivilegedOperations>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyPlatformPaths, RelaxKonOS.Server.Proxy.Platform.ProxyPlatformPaths>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoPublicationStore>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeAuthorizationProvider>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeRecoveryService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoSettingsPublicationFiles>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoConfigurationPublicationService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoInstallationPublicationService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoInstallationBootstrapService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoRemovalPublicationService>();
+        builder.Services.AddHostedService<RelaxKonOS.Server.Proxy.Mihomo.MihomoPublicationRecoveryService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyPlatformService, RelaxKonOS.Server.Proxy.Platform.ProxyPlatformService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Platform.IHostSystemProxyService, RelaxKonOS.Server.Proxy.Platform.HostSystemProxyService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyDiagnosticLogStore, RelaxKonOS.Server.Proxy.ProxyDiagnosticLogStore>();
@@ -36,10 +48,6 @@ internal static class ProxyServiceRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeManager>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyRuntimeManager>(sp => sp.GetRequiredService<RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeManager>());
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.IMihomoConfigurationValidator>(sp => sp.GetRequiredService<RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeManager>());
-        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyGeoDataService, RelaxKonOS.Server.Proxy.Mihomo.MihomoGeoDataService>();
-        // Provision bundled GEO files into Mihomo's -d HomeDir during Server startup, before users
-        // import subscriptions. The transaction service repeats this as an idempotent safety net.
-        builder.Services.AddHostedService<RelaxKonOS.Server.Proxy.Mihomo.MihomoGeoDataHostedService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxySettingsService, RelaxKonOS.Server.Proxy.Mihomo.MihomoSettingsService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyTunRuntimeController>(sp => (RelaxKonOS.Server.Proxy.Mihomo.MihomoSettingsService)sp.GetRequiredService<RelaxKonOS.Server.Proxy.IProxySettingsService>());
         builder.Services.AddHostedService<RelaxKonOS.Server.Proxy.Mihomo.SystemProxyGuardHostedService>();

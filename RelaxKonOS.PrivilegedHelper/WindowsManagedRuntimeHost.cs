@@ -421,7 +421,7 @@ internal static class WindowsManagedRuntimeHost
         if (NginxRunning(root)) return new(true);
         var test = await NginxCommandAsync(root, ["-t"]);
         if (!test.Success) return test;
-        await WindowsComponentService.InstallAsync(ComponentKind.Nginx, root, Path.Combine(root, "nginx.exe"), Path.Combine(root, "conf", "nginx.conf"));
+        await WindowsComponentService.InstallAsync(ComponentKind.Nginx, root, Path.Combine(root, "nginx.exe"), Path.Combine(root, "conf", "nginx.conf"), true);
         await WindowsComponentService.StartAsync(ComponentKind.Nginx, root);
         return new(true);
     }

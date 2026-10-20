@@ -31,7 +31,7 @@ internal enum class ProxySettingsSection(val title: Int) {
     canManage: Boolean,
     ready: Boolean,
     edit: (ProxySettingsSection) -> Unit,
-    configureGeo: () -> Unit,
+    prepareResources: () -> Unit,
     toggleTun: (Boolean) -> Unit,
     toggleSystemProxy: (Boolean) -> Unit,
     emergency: () -> Unit,
@@ -45,20 +45,22 @@ internal enum class ProxySettingsSection(val title: Int) {
 
     ManagementCard {
         Text(stringResource(R.string.mihomo_geodata), style = MaterialTheme.typography.titleMedium)
-        val geo = (state.geoData as? ApiResult.Success)?.value
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(when {
-                geo == null -> R.string.mihomo_unverified
-                geo.configured -> R.string.mihomo_geodata_configured
-                else -> R.string.mihomo_geodata_missing
-            }), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-            geo?.sizeBytes?.let {
-                Text(stringResource(R.string.mihomo_bytes, it), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+        val resources = (state.resources as? ApiResult.Success)?.value
+        Text(stringResource(when {
+            resources == null -> R.string.mihomo_unverified
+            resources.problem == "runtime.installation_absent" -> R.string.runtime_install_hint
+            resources.problem != null -> R.string.mihomo_unverified
+            resources.verified -> R.string.mihomo_geodata_configured
+            else -> R.string.mihomo_geodata_missing
+        }, "Mihomo"))
+        resources?.files?.forEach { file ->
+            Text(file.name + " · " + resourceStateLabel(file.state), style = MaterialTheme.typography.bodySmall)
+            file.length?.let { Text(stringResource(R.string.mihomo_bytes, it), style = MaterialTheme.typography.bodySmall) }
+            file.problem?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
-        if (canManage) TextButton(enabled = ready, onClick = configureGeo) {
-            Text(stringResource(R.string.mihomo_geodata_select))
+        resources?.problem?.takeUnless { it == "runtime.installation_absent" }?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        if (canManage) TextButton(enabled = ready && resources?.canPrepare == true, onClick = prepareResources) {
+            Text(stringResource(R.string.mihomo_geodata_prepare))
         }
     }
     ManagementCard {
@@ -175,3 +177,10 @@ internal enum class ProxySettingsSection(val title: Int) {
             modifier = Modifier.semantics { contentDescription = label })
     }
 }
+
+@Composable internal fun resourceStateLabel(state: String): String = stringResource(when (state) {
+    "verified" -> R.string.managed_resource_verified
+    "missing" -> R.string.managed_resource_missing
+    "invalid" -> R.string.managed_resource_invalid
+    else -> R.string.managed_resource_unknown
+})

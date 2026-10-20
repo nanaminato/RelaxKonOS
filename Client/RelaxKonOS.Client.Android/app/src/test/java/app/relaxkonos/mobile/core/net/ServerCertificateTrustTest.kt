@@ -110,7 +110,11 @@ private class VerificationCallbackCertificate(private val leaf: java.security.ce
     private var called = false
     private fun verified() { if (!called) { called = true; callback() } }
     override fun verify(key: java.security.PublicKey) { verified(); leaf.verify(key) }
-    override fun verify(key: java.security.PublicKey, provider: String) { verified(); leaf.verify(key, provider) }
+    override fun verify(key: java.security.PublicKey, provider: String?) {
+        verified()
+        // PKIX may request the default provider with null; keep the real signature check intact.
+        if (provider == null) leaf.verify(key) else leaf.verify(key, provider)
+    }
     override fun checkValidity() = leaf.checkValidity()
     override fun checkValidity(date: Date) = leaf.checkValidity(date)
     override fun getVersion() = leaf.version

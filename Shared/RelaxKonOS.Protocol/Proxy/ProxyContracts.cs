@@ -16,6 +16,8 @@ public enum ProxyRoutingMode { Rule, Global, Direct }
 public static class ProxyProblemCodes
 {
     public const string RuntimeNotInstalled = "proxy.runtime_not_installed";
+    /// <summary>The Host could not measure the managed installation; this is not an absent one.</summary>
+    public const string RuntimeStateUnknown = "proxy.runtime_state_unknown";
     public const string RuntimeUnsupportedPlatform = "proxy.runtime_unsupported_platform";
     public const string RuntimeVersionUnsupported = "proxy.runtime_version_unsupported";
     public const string RuntimeArchiveUnavailable = "proxy.runtime_archive_unavailable";
@@ -72,11 +74,9 @@ public static class ProxyApiRoutes
     public const string Logs = Proxy + "/logs";
     public const string Dns = Proxy + "/dns";
     public const string Settings = Proxy + "/settings";
-    public const string GeoData = Proxy + "/geodata";
     public const string Recovery = Proxy + "/recovery";
     public const string OperationsPattern = "/operations/{operationId:guid}";
     public const string RuntimeExternalDetection = Runtime + "/detect-external";
-    public const string RuntimeDownload = Runtime + "/download";
     public const string RuntimeReleases = Runtime + "/releases";
     public const string Lifecycle = Proxy + "/lifecycle/{action}";
     public const string TunEnable = Tun + "/enable";
@@ -192,7 +192,6 @@ public sealed record ProxySettingsDto(bool SystemProxyEnabled, bool AllowLan, bo
     string LogLevel, int MixedPort, bool AllowInsecureSubscriptionSources = false, string SystemProxyHost = "127.0.0.1",
     ProxyTunSettingsDto? Tun = null, ProxySystemProxyOptionsDto? SystemProxy = null);
 /// <summary>Metadata for the locally staged GeoIP database. The original Server path is never exposed.</summary>
-public sealed record ProxyGeoDataDto(bool IsConfigured, long? SizeBytes = null);
 public sealed record ProxyRecoveryStatusDto(bool RecoveryRequired, bool HasRecoveryMarker, DateTimeOffset? MarkerCreatedAt, string ProblemCode = "");
 public sealed record ProxyOperationDto(Guid OperationId, string Kind, ProxyOperationState State, string Stage, string ProblemCode, DateTimeOffset? StartedAt, DateTimeOffset? CompletedAt);
 
@@ -206,7 +205,6 @@ public sealed record ImportProxySubscriptionRequest(string Url, string? Name = n
 public sealed record SelectProxyGroupRequest(string Proxy);
 public sealed record ProxyTunRequest(Guid ProfileId);
 public sealed record ProxyRuntimeRequest(string EngineId, string? Version = null, string? ExternalPath = null);
-public sealed record ProxyRuntimeDownloadDto(string Version, string Url);
 public sealed record ProxyRuntimeReleaseDto(string Version, string Url, bool Recommended);
 public sealed record ProxyLifecycleRequest(bool Confirmed = false);
 public sealed record ApplyProxyConfigurationRequest(string Yaml);
@@ -214,5 +212,4 @@ public sealed record UpdateProxySettingsRequest(bool SystemProxyEnabled, bool Al
     string LogLevel, int MixedPort, bool AllowInsecureSubscriptionSources = false, string SystemProxyHost = "127.0.0.1",
     ProxyTunSettingsDto? Tun = null, ProxySystemProxyOptionsDto? SystemProxy = null);
 /// <summary>Selects a GeoIP database already accessible to the RelaxKonOS Server service account.</summary>
-public sealed record ConfigureProxyGeoDataRequest(string FilePath);
 public sealed record ProxyOperationAcceptedDto(Guid OperationId);

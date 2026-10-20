@@ -5,6 +5,9 @@ using System.Diagnostics;
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
 using RelaxKonOS.Protocol.Proxy;
+using RelaxKonOS.ManagedRuntimes;
+using RelaxKonOS.Protocol.ManagedRuntimes;
+using RelaxKonOS.Server.ManagedRuntimes;
 
 namespace RelaxKonOS.Server.Proxy.Mihomo;
 
@@ -15,10 +18,14 @@ public sealed class MihomoSettingsService(
     IProxyControllerSecretStore controllerSecrets,
     MihomoControllerOptions controllerOptions,
     Platform.IHostSystemProxyService systemProxyService,
-    ILogger<MihomoSettingsService>? logger = null) : IProxySettingsService, IProxyTunRuntimeController
+    MihomoPublicationStore publication,
+    ILogger<MihomoSettingsService>? logger = null,
+    MihomoConfigurationPublicationService? managedPublication = null,
+    MihomoRuntimeService? managedRuntime = null,
+    MihomoSettingsPublicationFiles? settingsFiles = null) : IProxySettingsService, IProxyTunRuntimeController
 {
     private static readonly HashSet<string> LogLevels = new(StringComparer.OrdinalIgnoreCase) { "silent", "error", "warning", "info", "debug" };
-    private readonly SemaphoreSlim _gate = new(1, 1);
+    private SemaphoreSlim _gate => publication.Gate;
 
     public async Task<ProxySettingsDto> GetAsync(CancellationToken cancellationToken) =>
         await ReadAsync(cancellationToken) ?? Defaults;
@@ -42,7 +49,12 @@ public sealed class MihomoSettingsService(
         await _gate.WaitAsync(cancellationToken);
         try
         {
+            var state = await publication.ReadAsync(cancellationToken);
+            if (state.Pending is not null) return ProxyProblemCodes.RecoveryRequired;
             var previous = await ReadAsync(cancellationToken) ?? Defaults;
+            if (state.Published is not null)
+                return await UpdateManagedUnderGateAsync(settings, previous, state, cancellationToken);
+            if (await publication.UncoordinatedWriteProblemAsync(cancellationToken) is { } publicationProblem) return publicationProblem;
             var directory = paths.GetProtectedConfigurationDirectory();
             var active = Path.Combine(directory, "active.yaml");
             if (!File.Exists(active))
@@ -110,9 +122,50 @@ public sealed class MihomoSettingsService(
             }
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
         }
+        catch (RuntimePolicyException) { return ProxyProblemCodes.RecoveryRequired; }
         catch (IOException) { return ProxyProblemCodes.ConfigApplyFailed; }
         catch (UnauthorizedAccessException) { return ProxyProblemCodes.PrivilegedOperationUnavailable; }
+        catch (ArgumentException) { return ProxyProblemCodes.ConfigInvalid; }
         finally { _gate.Release(); }
+    }
+
+    private async Task<string?> UpdateManagedUnderGateAsync(ProxySettingsDto settings, ProxySettingsDto previous,
+        MihomoPublicationState state, CancellationToken ct)
+    {
+        if (managedPublication is null || managedRuntime is null || settingsFiles is null) return ProxyProblemCodes.NotSupported;
+        try
+        {
+            var observed = await VerifyManagedAsync(state, ct);
+            var candidate = MihomoSettingsPublicationFiles.Candidate(state.Published!, settings);
+            if (MihomoConfigurationPolicy.Validate(candidate).Material.NetworkTransitionRequired)
+                return ProxyProblemCodes.NotSupported;
+            var intent = await settingsFiles.CaptureAsync(previous, settings, ct);
+            var operationId = Guid.NewGuid();
+            var plan = new RuntimeConfigurationPlan(observed.Installation.InstallationId, observed.Installation.HostId,
+                "mihomo", observed.Installation.StateRevision, observed.ActiveRevisionId!.Value, state.Identity!,
+                MihomoPublicationStore.Identity(candidate.Yaml), operationId.ToString("N"));
+            var result = await managedPublication.PublishUnderGateAsync(operationId, state.Revision, plan, candidate, ct, intent);
+            return result.Outcome == MihomoPublicationOutcome.Confirmed ? null
+                : result.Outcome == MihomoPublicationOutcome.RecoveryRequired ? ProxyProblemCodes.RecoveryRequired : ProxyProblemCodes.ConfigApplyFailed;
+        }
+        catch (Exception ex) when (ex is RuntimePolicyException or RuntimeLifecycleException or IOException or ProxyControllerSecretException)
+        { return ProxyProblemCodes.RecoveryRequired; }
+    }
+
+    private async Task<RuntimeInstallationSnapshot> VerifyManagedAsync(MihomoPublicationState state, CancellationToken ct)
+    {
+        if (managedRuntime is null || state.Published is null || state.Pending is not null)
+            throw new RuntimePolicyException("runtime.publication_unconfirmed");
+        // ReadExisting never repairs or regenerates a revoked credential.
+        if (await controllerSecrets.ReadExistingAsync(ct) != state.Published.ControllerSecret)
+            throw new RuntimePolicyException("runtime.credentials_revoked");
+        if (await new MihomoPublicationFiles(paths).IdentityAsync(ct) != state.Identity)
+            throw new RuntimePolicyException("runtime.configuration_drift");
+        var observed = await managedRuntime.QueryHelperAsync(ct);
+        if (observed.Installation.Ownership != RuntimeOwnership.Managed || observed.ActiveRevisionId is null
+            || observed.PendingOperationId is not null || observed.Installation.RecoveryRequired || observed.ConfigurationIdentity != state.Identity)
+            throw new RuntimePolicyException("runtime.publication_unconfirmed");
+        return observed;
     }
 
     public async Task<string?> ReconcileSystemProxyAsync(bool startup, CancellationToken cancellationToken)
@@ -120,11 +173,19 @@ public sealed class MihomoSettingsService(
         await _gate.WaitAsync(cancellationToken);
         try
         {
+            var state = await publication.ReadAsync(cancellationToken);
+            if (state.Pending is not null) return ProxyProblemCodes.RecoveryRequired;
+            if (state.Published is not null) await VerifyManagedAsync(state, cancellationToken);
+            else if (await publication.UncoordinatedWriteProblemAsync(cancellationToken) is { } publicationProblem) return publicationProblem;
             var settings = await ReadAsync(cancellationToken) ?? Defaults;
+            if (state.Published is not null && settingsFiles is not null)
+                await settingsFiles.CaptureAsync(settings, settings, cancellationToken);
             var guarded = settings.SystemProxyEnabled && settings.SystemProxy?.GuardEnabled == true;
             if (!startup && !guarded) return null;
             return await systemProxyService.ApplyAsync(settings, settings, enforce: guarded, cancellationToken);
         }
+        catch (Exception ex) when (ex is RuntimePolicyException or RuntimeLifecycleException or IOException or ProxyControllerSecretException)
+        { return ProxyProblemCodes.RecoveryRequired; }
         finally { _gate.Release(); }
     }
 
@@ -133,6 +194,7 @@ public sealed class MihomoSettingsService(
         await _gate.WaitAsync(cancellationToken);
         try
         {
+            if (await publication.UncoordinatedWriteProblemAsync(cancellationToken) is { } publicationProblem) return publicationProblem;
             var active = Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml");
             if (!File.Exists(active)) return ProxyProblemCodes.RuntimeNotInstalled;
             var settings = await ReadAsync(cancellationToken) ?? Defaults;
@@ -196,6 +258,7 @@ public sealed class MihomoSettingsService(
             logger?.LogWarning(exception, "Mihomo TUN configuration transition was denied access to its protected configuration.");
             return ProxyProblemCodes.PrivilegedOperationUnavailable;
         }
+        catch (ArgumentException) { return ProxyProblemCodes.ConfigInvalid; }
         finally { _gate.Release(); }
     }
 
@@ -226,6 +289,7 @@ public sealed class MihomoSettingsService(
         }
         catch (JsonException) { return null; }
     }
+
 
     private async Task WriteAsync(ProxySettingsDto settings, CancellationToken cancellationToken)
     {
@@ -314,7 +378,7 @@ public sealed class MihomoSettingsService(
         return match.Success && int.TryParse(match.Groups[1].Value, out var port) && port is > 0 and <= 65535;
     }
 
-    private static readonly ProxySettingsDto Defaults = new(false, false, true, true, false, "warning", 7890, false, "127.0.0.1", ProxyTunSettingsDto.Default, ProxySystemProxyOptionsDto.Default);
+    private static ProxySettingsDto Defaults => MihomoSettingsPublicationFiles.Defaults;
 
     internal static IReadOnlyList<string> BuildTunRouteExclusions(RelaxKonOS.Server.Proxy.Platform.ProxyManagementRouteSnapshot snapshot)
     {

@@ -10,18 +10,22 @@ enum class InstallationService(val wire: String, val capability: String, val ele
     Frp("frp", ServerCapabilities.TUNNELS, "frpInstall"),
     Mihomo("mihomo", ServerCapabilities.PROXY, "mihomoInstall"),
     Docker("docker", ServerCapabilities.DOCKER, "dockerInstall"),
-    Git("git", ServerCapabilities.GIT, "gitPackageInstall");
+    Git("git", ServerCapabilities.GIT, "gitPackageInstall"),
+    SingBox("singBox", ServerCapabilities.PROXY_SERVER, "singBoxInstall");
 
     val kinds: Set<InstallationKind> get() = when (this) {
         Smb, Docker, Git -> setOf(InstallationKind.Install)
-        else -> InstallationKind.entries.toSet()
+        Nginx, Frp -> setOf(InstallationKind.Install, InstallationKind.Upgrade, InstallationKind.Repair, InstallationKind.Uninstall)
+        Mihomo -> InstallationKind.entries.toSet()
+        SingBox -> emptySet() // Current Android support observes these records; frozen-plan submission has no form.
     }
-    val acceptsPackage: Boolean get() = this == Nginx || this == Frp || this == Mihomo
+    val elevationTarget: String get() = name.lowercase(java.util.Locale.ROOT)
+    val acceptsPackage: Boolean get() = this == Nginx || this == Frp
     val supportsRollback: Boolean get() = this == Frp || this == Mihomo
 }
 
 enum class InstallationKind(val wire: String) {
-    Install("install"), Upgrade("upgrade"), Repair("repair"), Uninstall("uninstall")
+    Install("install"), Upgrade("upgrade"), Repair("repair"), Uninstall("uninstall"), Rollback("rollback")
 }
 
 enum class InstallationState(val wire: String) {
@@ -87,8 +91,7 @@ data class NginxInstallationRequest(override val confirmed: Boolean, val version
 }
 data class FrpInstallationRequest(override val confirmed: Boolean, val version: String? = null, val rollback: Boolean = false,
     val fileReferenceId: String? = null) : InstallationRequest { override val service = InstallationService.Frp }
-data class MihomoInstallationRequest(override val confirmed: Boolean, val version: String? = null, val rollback: Boolean = false,
-    val fileReferenceId: String? = null) : InstallationRequest { override val service = InstallationService.Mihomo }
+
 
 object InstallationRoutes {
     const val ROOT = "/api/v1.0/installations"
@@ -117,9 +120,9 @@ internal object InstallationWire {
                 validateSource(kind, request.fileReferenceId, request.rollback)
                 body.string("version", request.version).bool("rollback", request.rollback).string("fileReferenceId", request.fileReferenceId)
             }
-            is MihomoInstallationRequest -> {
-                validateSource(kind, request.fileReferenceId, request.rollback)
-                body.string("version", request.version).bool("rollback", request.rollback).string("fileReferenceId", request.fileReferenceId)
+            is ManagedRuntimeInstallationRequest -> {
+                require(kind == request.kind)
+                body.raw("plan", request.plan)
             }
             else -> Unit
         }

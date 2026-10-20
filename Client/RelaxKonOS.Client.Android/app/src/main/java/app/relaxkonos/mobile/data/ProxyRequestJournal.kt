@@ -6,7 +6,7 @@ import java.io.*
 import java.util.UUID
 
 /** Never persists URLs, YAML, node names or credentials. One unresolved mutation per owner. */
-enum class ProxyWrite { Profile, Activate, Delete, Configuration, Import, Selection, Routing, Settings, GeoData, Connection }
+enum class ProxyWrite { Profile, Activate, Delete, Configuration, Import, Selection, Routing, Settings, Connection }
 data class PendingProxyRequest(val serviceId: String, val account: String, val action: ProxyAction?, val target: String?, val key: String, val write: ProxyWrite?)
 class FileProxyRequestStorage(private val directory: File) : InstallationRequestStorage {
     private val file get() = File(directory, "proxy-requests.bin")

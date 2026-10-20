@@ -344,6 +344,10 @@ public static class Bootstrapper
         services.AddSingleton<RelaxKonOS.Client.Apps.ProxyServer.ProxyServerApp>();
         services.AddHttpClient<RelaxKonOS.Client.Apps.ProxyServer.IProxyServerClient, RelaxKonOS.Client.Apps.ProxyServer.RemoteProxyServerClient>()
             .RemoveAllLoggers();
+        services.AddHttpClient<RelaxKonOS.Client.Apps.ProxyServer.IRuntimeCatalogClient, RelaxKonOS.Client.Apps.ProxyServer.SingBoxRuntimeCatalogClient>()
+            .RemoveAllLoggers();
+        services.AddHttpClient<RelaxKonOS.Client.Apps.ProxyServer.IMihomoRuntimeCatalogClient, RelaxKonOS.Client.Apps.ProxyServer.MihomoRuntimeCatalogClient>()
+            .RemoveAllLoggers();
         services.AddHttpClient<RelaxKonOS.Client.Apps.Squid.ISquidClient, RelaxKonOS.Client.Apps.Squid.RemoteSquidClient>()
             .AddHttpMessageHandler<AcceptLanguageHandler>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Certificates.CertificateManagerApp>();

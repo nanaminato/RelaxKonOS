@@ -35,6 +35,21 @@ class InstallationRepositoryTest {
     private val operation = InstallationOperation(id, InstallationService.Nginx, InstallationKind.Install,
         InstallationState.Running, InstallationStage.Preparing, null, null, 1L, null, null, true)
 
+    @Test fun `managed submission uses frozen plan key across lost response and explicit retry`() = runTest {
+        val owner = signIn(capability = ServerCapabilities.PROXY)
+        val request = ManagedRuntimeInstallationRequest(true, RUNTIME_PLAN)
+        val intent = repository.prepare(owner, InstallationKind.Upgrade, request)
+        val keys = mutableListOf<String>()
+        gateway.onStartInstallation = { _, _, key -> keys += key; ApiResult.Transport(null) }
+        repository.submit(intent, ElevationAnswerProvider { _, _ -> null })
+        assertEquals(RUNTIME_KEY, repository.pending(owner).single().key)
+        gateway.onActiveInstallation = { ApiResult.Success(null) }
+        repository.submit(intent, ElevationAnswerProvider { _, _ -> null })
+        assertEquals(listOf(RUNTIME_KEY, RUNTIME_KEY), keys)
+        assertTrue(runCatching { repository.prepare(owner, InstallationKind.Upgrade,
+            ManagedRuntimeInstallationRequest(true, RUNTIME_PLAN.replace(RUNTIME_KEY, "other-plan-key"))) }.isFailure)
+    }
+
     @Test fun `explicit original ID identification validates service and kind before resolving pending request`() = runTest {
         val owner = signIn(); val pending = journal.begin(owner, InstallationService.Nginx, InstallationKind.Install, "digest")
         gateway.onInstallation = { ApiResult.Success(operation.copy(service = InstallationService.Frp)) }

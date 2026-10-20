@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="managed_runtime_unknown">Host state is unknown. Refresh before planning.</string>
+    <string name="managed_runtime_identity">Ownership: %1$s · Version: %2$s</string>
+    <string name="managed_runtime_keep_data">Keep application data</string>
+    <string name="managed_runtime_delete_data">Delete application data (irreversible)</string>
+    <string name="managed_runtime_sources">Confirmed release sources</string>
+    <string name="managed_runtime_prerelease">Include prereleases</string>
+    <string name="managed_runtime_stale">Catalog is stale or refresh failed. Installation is blocked.</string>
+    <string name="managed_runtime_unsupported">Configuration is unsupported for this release.</string>
+    <string name="managed_runtime_preview">Preview host plan</string>
+    <string name="managed_runtime_plan">%1$s · Current: %2$s · Target: %3$s</string>
+    <string name="managed_runtime_restart">The host validates current published configuration; this action may restart the service.</string>
+    <string name="managed_runtime_recovery">An unfinished transaction requires recovery.</string>
+    <string name="managed_runtime_stop">Emergency stop service</string>
+    <string name="managed_runtime_close_confirm">I confirm closing this transaction without restoring it.</string>
+    <string name="managed_runtime_close">Close transaction</string>
+    <string name="managed_runtime_disk">Available: %1$s bytes · Required: %2$s bytes</string>
+    <string name="managed_runtime_no_sources">No release sources are configured. Confirm a signed release source on the host first.</string>
+    <string name="mihomo_geodata_prepare">Verify and prepare bundled GEO data</string>
+    <string name="mihomo_geodata_prepare_note">The host verifies the GEO files shipped with its Helper and repairs the managed resource copies. No path or download source is accepted.</string>
+    <string name="managed_resource_verified">Verified</string>
+    <string name="managed_resource_missing">Missing</string>
+    <string name="managed_resource_invalid">Invalid</string>
+    <string name="managed_resource_unknown">Unknown</string>
+</resources>

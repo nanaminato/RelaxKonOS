@@ -83,6 +83,7 @@ sealed class TestProxySettingsService(int mixedPort) : IProxySettingsService
 sealed class StaticProxySecretStore : IProxyControllerSecretStore
 {
     public Task<string> GetOrCreateAsync(CancellationToken cancellationToken) => Task.FromResult("controller-secret");
+    public Task<string?> ReadExistingAsync(CancellationToken cancellationToken) => Task.FromResult<string?>("controller-secret");
 }
 
 sealed class TestProxyPaths(string root) : IProxyPlatformPaths
@@ -190,14 +191,6 @@ sealed class TestProxyPrivilegedOperations : IProxyPrivilegedOperations
     public Task<ProxyPrivilegedResult> RepairServiceAsync(ProxyServiceOperation request, CancellationToken cancellationToken) => Task.FromResult(Result());
 }
 
-sealed class RecordingGeoDataService : IProxyGeoDataService
-{
-    public int EnsureCalls { get; private set; }
-    public Task<ProxyGeoDataDto> GetAsync(CancellationToken cancellationToken) => Task.FromResult(new ProxyGeoDataDto(false));
-    public Task<string?> EnsureBundledAsync(CancellationToken cancellationToken) { EnsureCalls++; return Task.FromResult<string?>(null); }
-    public Task<string?> ConfigureFromServerFileAsync(string filePath, CancellationToken cancellationToken) => Task.FromResult<string?>(ProxyProblemCodes.NotSupported);
-}
-
 sealed class TransactionTestEngine : IProxyEngine
 {
     public string EngineId => MihomoEngine.Id;
@@ -279,6 +272,7 @@ sealed class TestHostEnvironment(string contentRoot) : IHostEnvironment
 
 sealed class SilentInstallationProgress : IInstallationProgress
 {
+    public Guid OperationId { get; } = Guid.NewGuid();
     public Task ReportAsync(InstallationProgress progress, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }
 

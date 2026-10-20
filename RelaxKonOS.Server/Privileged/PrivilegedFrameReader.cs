@@ -47,8 +47,10 @@ internal static class PrivilegedFrameReader
 
     public static async Task ReportAsync(PrivilegedOperationFrame frame)
     {
+        // The Host reports whether this stage can still be abandoned; the ledger must not offer a
+        // cancellation the transaction would ignore after its durable switch checkpoint.
         if (InstallationExecutionContext.Progress.Value is { } observer && frame.Stage is { } stage)
-            await observer.ReportAsync(new(stage, frame.Progress));
+            await observer.ReportAsync(new(stage, frame.Progress, frame.Cancellable));
     }
     public static async Task<string> DrainAsync(Stream stream)
     {

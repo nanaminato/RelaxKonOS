@@ -22,14 +22,14 @@ private data class ProxySettingsEditRequest(val section: ProxySettingsSection, v
     val state = model.state; val overview = (state.overview as? ApiResult.Success)?.value
     val settings = (state.settings as? ApiResult.Success)?.value
     var editing by remember { mutableStateOf<ProxySettingsEditRequest?>(null) }
-    var configuringGeo by remember { mutableStateOf(false) }
-    SideEffect { onEditorChanged(editing != null || configuringGeo) }
+    var preparingResources by remember { mutableStateOf(false) }
+    SideEffect { onEditorChanged(editing != null || preparingResources) }
     DisposableEffect(Unit) { onDispose { onEditorChanged(false) } }
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         if (section == "settings") {
             ProxySettingsPanel(state, canManage, ready, edit = { target ->
                 if (settings != null && overview != null) editing = ProxySettingsEditRequest(target, settings, overview)
-            }, configureGeo = { configuringGeo = true },
+            }, prepareResources = { preparingResources = true },
                 toggleTun = { enabled -> confirm { model.queue(if (enabled) ProxyAction.EnableTun else ProxyAction.DisableTun, if (enabled) overview?.activeProfile?.id else null) } },
                 toggleSystemProxy = { enabled -> settings?.let { confirm { model.saveSettings(it.copy(systemProxyEnabled = enabled,
                     systemProxy = it.systemProxy?.copy(usePac = it.systemProxy.usePac && overview?.systemProxy?.supportsPac == true))) } } },
@@ -104,22 +104,24 @@ private data class ProxySettingsEditRequest(val section: ProxySettingsSection, v
             ProxySettingsEditor(request.settings, request.overview, request.section, state, model::saveSettings) { editing = null }
         }
     }
-    if (configuringGeo) ProxyGeoDataEditor(state, model::configureGeoData) { configuringGeo = false }
+    if (preparingResources) ProxyResourcesEditor(state, model::prepareResources) { preparingResources = false }
 }
 
-@Composable internal fun ProxyGeoDataEditor(state: ProxyState, submit: (String) -> Unit, dismiss: () -> Unit) {
-    var path by remember { mutableStateOf("") }; var confirmed by remember { mutableStateOf(false) }; val initial = remember { state.savedEpoch }
-    var discard by remember { mutableStateOf(false) }
-    fun close() { if (!state.busy) { if (path.isNotEmpty() || confirmed) discard = true else dismiss() } }
+@Composable internal fun ProxyResourcesEditor(state: ProxyState, submit: () -> Unit, dismiss: () -> Unit) {
+    var confirmed by remember { mutableStateOf(false) }
+    val initial = remember { state.savedEpoch }
     LaunchedEffect(state.savedEpoch) { if (initial != state.savedEpoch) dismiss() }
-    AlertDialog(onDismissRequest = ::close, modifier = Modifier.imePadding(), title = { Text(stringResource(R.string.mihomo_geodata_select)) }, text = {
-        Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
-            Text(stringResource(R.string.mihomo_geodata_note)); RemotePathField(path, { path = it }, R.string.mihomo_geodata_path, RemotePathKind.File, enabled = !state.busy)
-            ProxyCheck(confirmed, !state.busy, R.string.mihomo_apply_confirm) { confirmed = it }
-            ProxyEditorFeedback(state)
-        }
-    }, confirmButton = { Button(enabled = !state.busy && confirmed && path.isNotBlank() && state.pending.isEmpty(), onClick = { submit(path) }) { ActionLabel(R.string.common_save) } }, dismissButton = { TextButton(enabled = !state.busy, onClick = ::close) { Text(stringResource(R.string.common_cancel)) } })
-    if (discard) AlertDialog(onDismissRequest = { discard = false }, text = { Text(stringResource(R.string.mihomo_discard)) },
-        confirmButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_close)) } },
-        dismissButton = { TextButton(onClick = { discard = false }) { Text(stringResource(R.string.common_cancel)) } })
+    DraftCloseGuard(!state.busy, confirmed, dismiss) { requestClose ->
+        AlertDialog(onDismissRequest = requestClose, modifier = Modifier.imePadding(),
+            title = { Text(stringResource(R.string.mihomo_geodata_prepare)) }, text = {
+                Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+                    Text(stringResource(R.string.mihomo_geodata_prepare_note))
+                    ProxyCheck(confirmed, !state.busy, R.string.mihomo_apply_confirm) { confirmed = it }
+                    ProxyEditorFeedback(state)
+                }
+            }, confirmButton = { Button(enabled = !state.busy && confirmed && state.pending.isEmpty() &&
+                (state.resources as? ApiResult.Success)?.value?.canPrepare == true, onClick = submit) {
+                ActionLabel(R.string.mihomo_geodata_prepare)
+            } }, dismissButton = { TextButton(enabled = !state.busy, onClick = requestClose) { Text(stringResource(R.string.common_cancel)) } })
+    }
 }

@@ -1,0 +1,222 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RelaxKonOS.Client.Apps.ProxyServer"
+             xmlns:runtimes="clr-namespace:RelaxKonOS.Protocol.ManagedRuntimes;assembly=RelaxKonOS.Protocol"
+             xmlns:loc="using:RelaxKonOS.Client.Localization"
+             x:Class="RelaxKonOS.Client.Apps.ProxyServer.Views.ProxyServerRuntimeView"
+             x:DataType="vm:ProxyServerRuntimeViewModel">
+  <UserControl.Styles>
+    <Style Selector="TextBlock.section-title"><Setter Property="FontSize" Value="16" /><Setter Property="FontWeight" Value="SemiBold" /></Style>
+    <Style Selector="TextBlock.section-hint"><Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" /><Setter Property="FontSize" Value="12" /><Setter Property="TextWrapping" Value="Wrap" /></Style>
+    <Style Selector="TextBlock.fact-label"><Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" /><Setter Property="TextWrapping" Value="Wrap" /><Setter Property="VerticalAlignment" Value="Center" /><Setter Property="Margin" Value="0,0,12,0" /></Style>
+    <Style Selector="TextBlock.fact-value"><Setter Property="FontWeight" Value="SemiBold" /><Setter Property="VerticalAlignment" Value="Center" /><Setter Property="TextWrapping" Value="Wrap" /></Style>
+    <Style Selector="TextBlock.problem"><Setter Property="Foreground" Value="{DynamicResource DangerBrush}" /><Setter Property="FontSize" Value="12" /><Setter Property="TextWrapping" Value="Wrap" /></Style>
+    <Style Selector="Border.fact-row"><Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" /><Setter Property="BorderThickness" Value="0,1,0,0" /><Setter Property="Padding" Value="0,7" /></Style>
+  </UserControl.Styles>
+
+  <StackPanel Spacing="16">
+    <Border Classes="app-panel" Padding="18">
+      <StackPanel Spacing="10">
+        <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.runtime.state_title}" />
+        <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.intro}" TextWrapping="Wrap" />
+        <StackPanel Spacing="0">
+          <Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.fact.ownership}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding OwnershipText}" />
+          </Grid>
+          <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.fact.target}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding TargetText}" />
+          </Grid></Border>
+          <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.fact.measured}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding MeasuredVersionText}" />
+          </Grid></Border>
+          <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.fact.active_revision}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding ActiveRevisionText}" FontFamily="Consolas" FontSize="12" />
+          </Grid></Border>
+          <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.fact.installed}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding InstalledReleasesText}" />
+          </Grid></Border>
+          <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.fact.configuration}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding PublishedConfigurationText}" FontFamily="Consolas" FontSize="12" />
+          </Grid></Border>
+          <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.fact.pending}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding PendingText}" />
+          </Grid></Border>
+        </StackPanel>
+        <TextBlock Classes="problem" Text="{Binding RecoveryText}" IsVisible="{Binding NeedsRecovery}" />
+        <TextBlock Classes="problem" Text="{Binding RuntimeProblemText}" IsVisible="{Binding HasRuntimeProblem}" />
+      </StackPanel>
+    </Border>
+
+    <Border Classes="app-panel" Padding="18" IsVisible="{Binding HasEnvironment}">
+      <StackPanel Spacing="10">
+        <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.runtime.environment_title}" />
+        <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.environment_hint}" TextWrapping="Wrap" />
+        <StackPanel Spacing="0">
+          <Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.environment.fact.platform}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding EnvironmentPlatformText}" />
+          </Grid>
+          <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.environment.fact.service_host}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding EnvironmentServiceHostText}" />
+          </Grid></Border>
+          <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.environment.fact.disk_space}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding EnvironmentDiskSpaceText}" />
+          </Grid></Border>
+          <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.environment.fact.file_system}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding EnvironmentFileSystemText}" />
+          </Grid></Border>
+          <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.environment.fact.kernel}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding EnvironmentKernelText}" />
+          </Grid></Border>
+        </StackPanel>
+        <TextBlock Classes="problem" Text="{Binding EnvironmentWarning}" IsVisible="{Binding HasEnvironmentWarning}" />
+      </StackPanel>
+    </Border>
+
+    <Border Classes="app-panel" Padding="18" IsVisible="{Binding NeedsRecovery}">
+      <StackPanel Spacing="10">
+        <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.runtime.recovery_title}" />
+        <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.recovery_intro}" TextWrapping="Wrap" />
+        <StackPanel Spacing="0">
+          <Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.fact.recovery_operation}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding RecoveryOperationText}" FontFamily="Consolas" FontSize="12" />
+          </Grid>
+          <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.fact.recovery_change}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding RecoveryChangeText}" />
+          </Grid></Border>
+          <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.fact.recovery_stage}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding RecoveryStageText}" />
+          </Grid></Border>
+          <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.fact.recovery_problem}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding RecoveryOriginalProblem}" TextWrapping="Wrap" />
+          </Grid></Border>
+          <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.fact.recovery_compensation}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding RecoveryProblem}" TextWrapping="Wrap" />
+          </Grid></Border>
+          <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.fact.recovery_service}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding RecoveryServiceText}" TextWrapping="Wrap" />
+          </Grid></Border>
+        </StackPanel>
+        <TextBlock Classes="problem" Text="{Binding RecoveryServiceText}" IsVisible="{Binding HasRecoveryServiceProblem}" />
+        <WrapPanel>
+          <Button Content="{loc:Loc proxy_server.runtime.recovery_retry}" Command="{Binding RetryRecoveryCommand}"
+                  IsEnabled="{Binding CanRetryRecovery}" Margin="0,0,8,0" />
+          <Button Content="{loc:Loc proxy_server.runtime.recovery_stop}" Command="{Binding EmergencyStopCommand}"
+                  IsEnabled="{Binding CanEmergencyStop}" Margin="0,0,8,0" />
+          <Button Content="{loc:Loc proxy_server.runtime.recovery_close}" Command="{Binding CloseRecoveryCommand}"
+                  IsEnabled="{Binding CanCloseRecovery}" />
+        </WrapPanel>
+        <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.recovery_close_hint}" TextWrapping="Wrap" />
+      </StackPanel>
+    </Border>
+
+    <Border Classes="app-panel" Padding="18">
+      <StackPanel Spacing="10">
+        <DockPanel>
+          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
+            <Button Content="{loc:Loc proxy_server.runtime.refresh_catalog}" Command="{Binding RefreshCatalogCommand}" IsEnabled="{Binding CanRefreshCatalog}" />
+            <Button Content="{loc:Loc proxy_server.refresh}" Command="{Binding RefreshSourcesCommand}" />
+          </StackPanel>
+          <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.runtime.source_title}" />
+        </DockPanel>
+        <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.no_sources}" IsVisible="{Binding !HasSources}" />
+        <ComboBox ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource, Mode=TwoWay}" HorizontalAlignment="Stretch">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="runtimes:RuntimeSourceView">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <TextBlock Text="{Binding Identity.SourceId}" />
+                <TextBlock Grid.Column="1" Text="{Binding Identity.Publisher}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" />
+              </Grid>
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+        <TextBlock Classes="section-hint" Text="{Binding SourceSummary}" TextWrapping="Wrap" />
+        <TextBlock Classes="section-hint" Text="{Binding CatalogText}" TextWrapping="Wrap" />
+        <TextBlock Classes="problem" Text="{Binding CatalogProblem}" TextWrapping="Wrap" />
+        <CheckBox Content="{loc:Loc proxy_server.runtime.include_prerelease}" IsChecked="{Binding IncludePrerelease, Mode=TwoWay}" />
+        <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.include_prerelease_hint}" TextWrapping="Wrap" />
+      </StackPanel>
+    </Border>
+
+    <Border Classes="app-panel" Padding="18">
+      <StackPanel Spacing="10">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Right" Classes="section-hint" VerticalAlignment="Center" Text="{Binding ReleaseCountText}" />
+          <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.runtime.releases_title}" />
+        </DockPanel>
+        <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.no_releases}" IsVisible="{Binding !HasReleases}" />
+        <ListBox ItemsSource="{Binding Releases}" SelectedItem="{Binding SelectedRelease, Mode=TwoWay}" MinHeight="120" MaxHeight="260">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:RuntimeReleaseOption">
+              <StackPanel Spacing="2">
+                <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8">
+                  <TextBlock Text="{Binding Version}" FontWeight="SemiBold" />
+                  <TextBlock Grid.Column="1" Text="{Binding ChannelLabel}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="3" Text="{Binding Published}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" VerticalAlignment="Center" />
+                </Grid>
+                <WrapPanel>
+                  <TextBlock Text="{Binding TrustLabel}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,6,0" />
+                  <TextBlock Text="·" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,0,6,0" />
+                  <TextBlock Text="{Binding SupportLabel}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,6,0" />
+                  <TextBlock Text="·" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,0,6,0" />
+                  <TextBlock Text="{Binding EvidenceLabel}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,6,0" />
+                  <TextBlock Text="{loc:Loc proxy_server.runtime.installed_badge}" FontSize="11" IsVisible="{Binding IsInstalled}" />
+                </WrapPanel>
+                <TextBlock Text="{Binding Blocked}" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource DangerBrush}"
+                           IsVisible="{Binding HasBlocked}" />
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </StackPanel>
+    </Border>
+
+    <Border Classes="app-panel" Padding="18">
+      <StackPanel Spacing="10">
+        <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.runtime.action_title}" />
+        <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.action_hint}" TextWrapping="Wrap" />
+        <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.requires_manage}" IsVisible="{Binding !CanManage}" />
+        <WrapPanel>
+          <Button Classes="primary" Content="{Binding ActionText}" Command="{Binding ActCommand}" IsEnabled="{Binding CanAct}" Margin="0,0,8,0"
+                  ToolTip.Tip="{loc:Loc proxy_server.runtime.action_tooltip}" />
+          <Button Content="{loc:Loc proxy_server.runtime.cancel_download}" Command="{Binding CancelDownloadCommand}"
+                  IsEnabled="{Binding CanCancelDownload}" IsVisible="{Binding CanCancelDownload}" Margin="0,0,8,0"
+                  ToolTip.Tip="{loc:Loc proxy_server.runtime.cancel_hint}" />
+          <ProgressBar IsIndeterminate="True" Width="90" Height="3" VerticalAlignment="Center" IsVisible="{Binding IsBusy}" />
+        </WrapPanel>
+        <TextBlock Classes="section-hint" Text="{Binding OperationText}" TextWrapping="Wrap" IsVisible="{Binding IsBusy}" />
+        <TextBlock Classes="section-hint" Text="{Binding PlanText}" TextWrapping="Wrap" IsVisible="{Binding HasPlanText}" />
+        <TextBlock Classes="problem" Text="{Binding DependencyText}" TextWrapping="Wrap" IsVisible="{Binding HasDependencyBlock}" />
+        <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.hint}" TextWrapping="Wrap" />
+        <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" />
+        <StackPanel Spacing="6">
+          <TextBlock Classes="section-title" FontSize="14" Text="{loc:Loc proxy_server.runtime.uninstall_title}" />
+          <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.uninstall_scope}" TextWrapping="Wrap" />
+          <WrapPanel>
+            <Button Content="{loc:Loc proxy_server.runtime.uninstall_keep}" Command="{Binding UninstallKeepDataCommand}"
+                    IsEnabled="{Binding CanUninstall}" Margin="0,0,8,0" />
+            <Button Content="{loc:Loc proxy_server.runtime.uninstall_delete}" Command="{Binding UninstallDeleteDataCommand}"
+                    IsEnabled="{Binding CanUninstall}" />
+          </WrapPanel>
+        </StackPanel>
+      </StackPanel>
+    </Border>
+  </StackPanel>
+</UserControl>

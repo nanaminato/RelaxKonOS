@@ -344,6 +344,19 @@ if (args.Contains("--managed-outbound-proxy-only"))
     finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(proxyRoot, recursive: true); }
     return;
 }
+if (args.Contains("--host-storage-only"))
+{
+    var storageRoot = Path.Combine(Path.GetTempPath(), $"relaxkonos-host-storage-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(storageRoot);
+    try
+    {
+        await HostStorageChecks.VerifyHostGlobalMigrationAsync(storageRoot);
+        await HostStorageChecks.VerifyProxyHostProfileRepositoryAsync(storageRoot);
+    }
+    finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(storageRoot, recursive: true); }
+    Console.WriteLine("Host storage migrations and profile repository checks passed.");
+    return;
+}
 if (args.Contains("--proxy-configuration-only"))
 {
     var proxyRoot = Path.Combine(Path.GetTempPath(), $"relaxkonos-proxy-configuration-{Guid.NewGuid():N}");
@@ -435,8 +448,6 @@ try
     await EventAlertChecks.VerifyAppendProjectionAndRecoveryAsync(root);
     if (args.Contains("--proxy-geodata-only"))
     {
-        await ProxyConfigurationChecks.VerifyMihomoGeoDataStagingAsync(root);
-        await ProxyConfigurationChecks.VerifyMihomoGeoDataStartupProvisioningAsync();
         await ProxyConfigurationChecks.VerifyProxyConfigurationTransactionAsync(root);
         await NetworkProxyTunnelChecks.VerifyProxyDiagnosticLogsAsync(root);
         Console.WriteLine("Proxy GEO data and configuration checks passed.");
@@ -522,8 +533,6 @@ try
     await DockerChecks.VerifyDockerProxyAsync(root);
     await DockerChecks.VerifyDockerEngineControlAsync(root);
     await DockerChecks.VerifyStackOperationsAsync(root);
-    await ProxyConfigurationChecks.VerifyMihomoGeoDataStagingAsync(root);
-    await ProxyConfigurationChecks.VerifyMihomoGeoDataStartupProvisioningAsync();
     await ProxyConfigurationChecks.VerifyProxyConfigurationTransactionAsync(root);
     await SquidGatewayChecks.RunAsync();
     await ProxyConfigurationChecks.VerifyProxyTunSafetyAsync(root);

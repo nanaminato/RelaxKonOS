@@ -38,9 +38,6 @@
     <string name="mihomo_geodata">GeoData</string>
     <string name="mihomo_geodata_configured">服务器 GeoData 已暂存</string>
     <string name="mihomo_geodata_missing">服务器未配置 GeoData</string>
-    <string name="mihomo_geodata_note">选择服务器服务账户可访问的 GeoIP 文件。服务端校验并暂存，手机不读取内容。</string>
-    <string name="mihomo_geodata_path">服务器 GeoIP 路径</string>
-    <string name="mihomo_geodata_select">从服务器文件暂存 GeoData</string>
     <string name="mihomo_group_automatic">此分组自动选择节点。</string>
     <string name="mihomo_group_summary">%1$s · %2$d 个节点</string>
     <string name="mihomo_group_testing">正在测试 %1$s · %2$d/%3$d</string>

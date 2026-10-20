@@ -19,20 +19,10 @@ public static class ProxyEndpoints
             await audit.RecordAsync(Actor(context.User), "settings.update", string.IsNullOrEmpty(problem) ? "succeeded" : "failed", problem, ct);
             return string.IsNullOrEmpty(problem) ? Results.NoContent() : Problem(problem, StatusCodes.Status400BadRequest);
         }).RequireAuthorization("ProxyManage").WithTags("Proxy");
-        app.MapGet(ProxyApiRoutes.GeoData, (IProxyGeoDataService geoData, CancellationToken ct) => geoData.GetAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
-        app.MapPut(ProxyApiRoutes.GeoData, async (ConfigureProxyGeoDataRequest request, IProxyGeoDataService geoData, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
-        {
-            var problem = await geoData.ConfigureFromServerFileAsync(request.FilePath, ct);
-            await audit.RecordAsync(Actor(context.User), "geodata.configure", string.IsNullOrEmpty(problem) ? "succeeded" : "failed", problem, ct);
-            return string.IsNullOrEmpty(problem) ? Results.NoContent() : Problem(problem, StatusCodes.Status400BadRequest);
-        }).RequireAuthorization("ProxyManage").WithTags("Proxy");
         app.MapPost(ProxyApiRoutes.RuntimeExternalDetection, async (ProxyRuntimeRequest request, IProxyRuntimeManager runtime, CancellationToken ct) =>
             string.IsNullOrWhiteSpace(request.ExternalPath) ? Problem(ProxyProblemCodes.ExternalRuntimeInvalid, StatusCodes.Status400BadRequest) : Results.Ok(await runtime.DetectExternalAsync(request.EngineId, request.ExternalPath, ct)))
             .RequireAuthorization("ProxyManage").WithTags("Proxy");
         app.MapGet(ProxyApiRoutes.RuntimeReleases, (RelaxKonOS.Protocol.Proxy.MihomoRuntimeManifest manifest) => manifest.Available())
-            .RequireAuthorization("ProxyRead").WithTags("Proxy");
-        app.MapGet(ProxyApiRoutes.RuntimeDownload, async (string? version, IProxyRuntimeManager runtime, CancellationToken ct) =>
-            await runtime.GetManagedDownloadAsync("mihomo", version, ct) is { } download ? Results.Ok(download) : Results.NotFound())
             .RequireAuthorization("ProxyRead").WithTags("Proxy");
 
         app.MapPost(ProxyApiRoutes.Lifecycle, (string action, HttpContext context, ProxyOperationStore operations, IProxyLifecycleService lifecycle, ProxyAuditStore audit, CancellationToken ct) =>

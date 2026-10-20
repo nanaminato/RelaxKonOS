@@ -43,15 +43,15 @@ class InstallationRequestJournal(private val storage: InstallationRequestStorage
     }
 
     @Synchronized
-    fun begin(owner: SessionState.Active, service: InstallationService, kind: InstallationKind, fingerprint: String): PendingInstallationRequest {
+    fun begin(owner: SessionState.Active, service: InstallationService, kind: InstallationKind, fingerprint: String, key: String = ""): PendingInstallationRequest {
         val entries = read()
         val existing = entries.firstOrNull { it.serviceId == owner.serviceId && it.account == owner.userName && it.service == service }
         if (existing != null) {
-            require(existing.kind == kind && existing.fingerprint == fingerprint) { "Resolve the original installation request first." }
+            require(existing.kind == kind && existing.fingerprint == fingerprint && (key.isEmpty() || existing.key == key)) { "Resolve the original installation request first." }
             return existing
         }
         require(entries.size < 100) { "Installation recovery journal is full." }
-        return PendingInstallationRequest(owner.serviceId, owner.userName, service, kind, UUID.randomUUID().toString(), fingerprint)
+        return PendingInstallationRequest(owner.serviceId, owner.userName, service, kind, key.ifEmpty { UUID.randomUUID().toString() }, fingerprint)
             .also { write(entries + it) }
     }
 

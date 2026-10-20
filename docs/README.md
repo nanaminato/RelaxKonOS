@@ -23,7 +23,8 @@ Android 的设计、功能、支持范围和发布要求统一维护在 [Android
 - [代理管理器实现说明（中文）](./applications/RelaxKonOS.ProxyManager.Discovery.md)
 - [代理管理器实现说明（英文）](./applications/RelaxKonOS.ProxyManager.Discovery.en.md)
 - [代理管理器设计](./applications/RelaxKonOS.ProxyManager.Design.md)
-- [代理服务端应用设计（sing-box，尚未实现）](./applications/RelaxKonOS.ProxyServer.Design.md)
+- [代理服务端应用设计（sing-box，首版实现与验收边界）](./applications/RelaxKonOS.ProxyServer.Design.md)
+- [内置应用受管运行时、版本目录与发布源（设计中，含补齐清单）](./platform/RelaxKonOS.ManagedRuntimes.Design.md)
 - [代理管理运维指南](./proxy/)
 - [优化与验收记录](./development/RelaxKonOS.Optimization.Progress.md)
 
@@ -483,5 +484,6 @@ RelaxKonOS.Server     = Cloud Backend
 | [`AppSettings`](./development/RelaxKonOS.AppSettings.md) | 应用私有配置存储 |
 | [`ApplicationCompatibility`](./development/RelaxKonOS.ApplicationCompatibility.md) | 应用兼容性、平台适配与降级策略 |
 | [`BuiltInApplication.Conventions`](./development/RelaxKonOS.BuiltInApplication.Conventions.md) | 内置应用设计、国际化与跨平台约束 |
+| [`ManagedRuntimes.Design`](./platform/RelaxKonOS.ManagedRuntimes.Design.md) | 内置应用安装/卸载/多版本更新、可信发布源与补齐任务 |
 | [`Develop`](./development/RelaxKonOS.Develop.md) | 开发者快速上手、代码结构与调试指南 |
 | [`DeveloperMode`](./development/RelaxKonOS.DeveloperMode.md) | 开发模式、DevCli 与应用包发布 |

@@ -20,7 +20,7 @@ public sealed class InstallationCoordinator(InstallationOperationStore store, IE
             throw new InstallationException(InstallationProblemCodes.IdempotencyRequired, 400);
         if (!registry.TryGetValue(service, out var domain)) throw new InstallationException(InstallationProblemCodes.NotSupported, 400);
         object request;
-        try { request = domain.Validate(kind, options); }
+        try { request = domain.Validate(kind, options, key); }
         catch (Exception error) when (error is JsonException or InvalidOperationException or NotSupportedException)
         {
             throw new InstallationException(InstallationProblemCodes.InvalidRequest, 400);
@@ -48,19 +48,35 @@ public sealed class InstallationCoordinator(InstallationOperationStore store, IE
             && (administrator || x.ActorReference == InstallationOperationStore.Reference(actor)))
         .OrderByDescending(x => x.Operation.CreatedAt).FirstOrDefault();
 
-    public InstallationOperationDto Cancel(Guid id)
+    /// <summary>
+    /// Accepts a cancellation request. Aborting services lose their worker token here; a cooperative service
+    /// only gets the request recorded, because its root transaction owns the outcome and is still running.
+    /// </summary>
+    public async Task<InstallationOperationDto> CancelAsync(Guid id, CancellationToken ct)
     {
+        InstallationOperationDto operation;
+        CancellationTokenSource source;
+        IInstallationService domain;
         lock (gate)
         {
-            var operation = Get(id)?.Operation ?? throw new InstallationException("installation.not_found", 404);
+            operation = Get(id)?.Operation ?? throw new InstallationException("installation.not_found", 404);
             if (!InstallationOperationStore.Active(operation)) return operation;
-            if (!operation.Cancellable || !registry[operation.Service].Cancel(operation) || !cancellations.TryGetValue(id, out var source))
+            domain = registry[operation.Service];
+            if (!operation.Cancellable || !domain.Cancel(operation) || !cancellations.TryGetValue(id, out var active))
                 throw new InstallationException(InstallationProblemCodes.NotCancellable);
-            // Only the worker may acknowledge cancellation and release resources.
-            var result = operationStore.Update(id, x => x with { Cancellable = false }, "cancel-requested");
-            source.Cancel();
-            return result;
+            source = active;
+            // Withdraw the offer first so a second request cannot race the delivery below.
+            operation = operationStore.Update(id, x => x with { Cancellable = false }, "cancel-requested");
         }
+        if (!domain.CooperativeCancel) { source.Cancel(); return operation; }
+        try { await domain.RequestCancelAsync(operation, ct); }
+        catch (InstallationException)
+        {
+            // The request never reached the transaction, so the offer stays open instead of silently vanishing.
+            lock (gate) { operationStore.Update(id, x => x with { Cancellable = true }, "cancel-undelivered"); }
+            throw;
+        }
+        return operation;
     }
 
     private async Task RunAsync(InstallationOperationDto operation, IInstallationService domain, object request, string actor, CancellationTokenSource cancellation)
@@ -80,6 +96,8 @@ public sealed class InstallationCoordinator(InstallationOperationStore store, IE
             Complete(id, lifetime.ApplicationStopping.IsCancellationRequested ? InstallationOperationState.Interrupted : InstallationOperationState.Cancelled,
                 lifetime.ApplicationStopping.IsCancellationRequested ? InstallationProblemCodes.Interrupted : InstallationProblemCodes.Cancelled);
         }
+        catch (InstallationInterruptedException error) { Complete(id, InstallationOperationState.Interrupted, error.ProblemCode); }
+        catch (InstallationCancelledException error) { Complete(id, InstallationOperationState.Cancelled, error.ProblemCode); }
         catch (InstallationException error) { Complete(id, InstallationOperationState.Failed, error.ProblemCode); }
         catch { Complete(id, InstallationOperationState.Failed, InstallationProblemCodes.Failed); }
         finally
@@ -121,9 +139,10 @@ public sealed class InstallationCoordinator(InstallationOperationStore store, IE
                         ? await domain.RecoverAsync(entry.Operation, cancellationToken)
                         : new(InstallationOperationState.Failed, InstallationProblemCodes.RecoveryUnknown);
                 }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
                 catch { recovery = new(InstallationOperationState.Failed, InstallationProblemCodes.RecoveryUnknown); }
             }
-            if (recovery.State is not (InstallationOperationState.Succeeded or InstallationOperationState.Interrupted or InstallationOperationState.Failed))
+            if (recovery.State is not (InstallationOperationState.Succeeded or InstallationOperationState.Interrupted or InstallationOperationState.Failed or InstallationOperationState.Cancelled))
                 recovery = new(InstallationOperationState.Failed, InstallationProblemCodes.RecoveryUnknown);
             Complete(entry.Operation.OperationId, recovery.State, recovery.ProblemCode, "recovered");
         }
@@ -139,13 +158,14 @@ public sealed class InstallationCoordinator(InstallationOperationStore store, IE
 
     private sealed class Reporter(InstallationCoordinator owner, Guid id, CancellationToken workerToken) : IInstallationProgress
     {
+        public Guid OperationId => id;
         public Task ReportAsync(InstallationProgress progress, CancellationToken cancellationToken = default)
         {
             lock (owner.gate)
             {
-                workerToken.ThrowIfCancellationRequested();
                 cancellationToken.ThrowIfCancellationRequested();
-                owner.operationStore.Update(id, x => x with { Stage = progress.Stage, Progress = progress.Progress, Cancellable = progress.Cancellable }, "stage");
+                owner.operationStore.Update(id, x => x with { Stage = progress.Stage, Progress = progress.Progress,
+                    Cancellable = progress.Cancellable && !workerToken.IsCancellationRequested }, "stage");
             }
             return Task.CompletedTask;
         }

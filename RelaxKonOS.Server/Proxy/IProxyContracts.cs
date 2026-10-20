@@ -36,14 +36,12 @@ public interface IProxyEngineRegistry
 
 public interface IProxyRuntimeManager
 {
+    /// <summary>
+    /// Read-only facts about the hosted runtime. Installation, update, repair, rollback and removal
+    /// belong to the managed runtime ledger; this boundary can never change which bytes are installed.
+    /// </summary>
     Task<ProxyRuntimeDto> GetAsync(string engineId, CancellationToken cancellationToken);
-    Task<ProxyRuntimeDownloadDto?> GetManagedDownloadAsync(string engineId, string? version, CancellationToken cancellationToken);
     Task<ProxyRuntimeDto> DetectExternalAsync(string engineId, string executablePath, CancellationToken cancellationToken);
-    Task<ProxyRuntimeDto> InstallManagedAsync(string engineId, string? version, CancellationToken cancellationToken);
-    Task<ProxyRuntimeDto> InstallManagedAsync(string engineId, string? version, Func<string, Task>? stageReporter, CancellationToken cancellationToken);
-    Task<ProxyRuntimeDto> InstallManagedFromArchiveAsync(string engineId, string? version, Stream archive, long length, IInstallationProgress progress, CancellationToken cancellationToken);
-    Task<ProxyRuntimeDto> RollbackManagedAsync(string engineId, CancellationToken cancellationToken);
-    Task<ProxyRuntimeDto> UninstallManagedAsync(string engineId, CancellationToken cancellationToken);
 }
 
 public interface IProxyProfileService
@@ -62,15 +60,6 @@ public interface IProxySettingsService
     Task<ProxySettingsDto> GetAsync(CancellationToken cancellationToken);
     Task<string?> UpdateAsync(UpdateProxySettingsRequest request, CancellationToken cancellationToken);
     Task<string?> ReconcileSystemProxyAsync(bool startup, CancellationToken cancellationToken);
-}
-
-public interface IProxyGeoDataService
-{
-    Task<ProxyGeoDataDto> GetAsync(CancellationToken cancellationToken);
-    /// <summary>Copies the GEO data packaged with RelaxKonOS into Mihomo's private data directory.</summary>
-    Task<string?> EnsureBundledAsync(CancellationToken cancellationToken);
-    /// <returns>An empty string on success; otherwise a stable public problem code.</returns>
-    Task<string?> ConfigureFromServerFileAsync(string filePath, CancellationToken cancellationToken);
 }
 
 public interface IProxyRecoveryService

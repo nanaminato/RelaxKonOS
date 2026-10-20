@@ -181,6 +181,7 @@ internal class WebsitesViewModel(private val session: AuthSession, private val w
                     }
                 }
                 val outcome = publicationRequests.submit(owner, WebsitePublishRequest(
+
                     applicationId = applicationId, webServerId = serverId, domain = domain,
                     certificateId = certificateId, contactEmail = contactEmail, acceptedTerms = acceptedTerms,
                     publicReachabilityConfirmed = publiclyReachable, confirmed = true,

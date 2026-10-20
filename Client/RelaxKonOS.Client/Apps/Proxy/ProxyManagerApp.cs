@@ -9,6 +9,8 @@ using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.ViewModels;
 using RelaxKonOS.Client.Apps.Explorer.Views;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
+using RelaxKonOS.Client.Apps.FileServices.Views;
+using RelaxKonOS.Client.Apps.ProxyServer;
 using RelaxKonOS.Client.Apps.Proxy.Views;
 using RelaxKonOS.Client.Apps.TaskManager;
 using RelaxKonOS.Client.Localization;
@@ -38,53 +40,27 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
         {
             context.ShowWindow(LocalizedText.Get("application.relaxkonos.proxy.display_name"), new TextBlock { Text = LocalizedText.Get("proxy.login_required"), Margin = new Thickness(24), TextWrapping = Avalonia.Media.TextWrapping.Wrap }, new Rect(180, 160, 470, 180), Manifest.IconGlyph, false, false, false); return;
         }
-        var files = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
         var systemMonitor = context.Services.GetService(typeof(ITaskManagerClient)) as ITaskManagerClient;
         // Do not start a proxy operation with the initial Undecided permission snapshot.
         // ApplicationManager presents prompts after Activate returns, so this workspace owns
         // the first request and waits for its decision before enabling server actions.
         var vm = new ProxyManagerViewModel(repository, canManage: false, canManageTun: false, systemMonitor);
-        vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Mihomo, "relaxkonos.proxy", () => vm.RefreshCommand.ExecuteAsync(null));
-        var view = new ProxyManagerWorkspace(vm);
-        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.proxy.display_name"), InstallationPanel.Wrap(view, vm.Installation), new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
+        // Runtime installation, update and removal belong to the managed-runtime page: it negotiates a
+        // concrete catalog release, freezes a Host plan and executes through the shared installation ledger.
+        var runtime = context.Services.GetService(typeof(IMihomoRuntimeCatalogClient)) is IMihomoRuntimeCatalogClient catalog
+            ? new ProxyServerRuntimeViewModel(catalog) : null;
+        var view = runtime is null ? new ProxyManagerWorkspace(vm) : new ProxyManagerWorkspace(vm, runtime);
+        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.proxy.display_name"), view, new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
         vm.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window, problemCode);
-        vm.Installation.ShowPrivilegedHelperUnavailableAsync = vm.ShowPrivilegedHelperUnavailableAsync;
-        vm.SetServerRuntimePackageRequest(async () =>
+        if (runtime is not null)
         {
-            if (files is null) return null;
-            return await context.ShowDialogAsync<string?>(window, LocalizedText.Get("proxy.runtime.select_server_package"), dialog =>
-            {
-                var picker = new ExplorerViewModel(files, new ExplorerPickerOptions(ExplorerPickerMode.OpenFile,
-                    Filters: [new ExplorerFileFilter(LocalizedText.Get("proxy.runtime.package_filter"), ["*.zip", "*.gz"])]),
-                    paths => dialog.Close(paths.FirstOrDefault()), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "ProxyManager.binary") { CancelAction = dialog.Cancel };
-                _ = picker.LoadRootAsync();
-                return new ExplorerMainView { DataContext = picker };
-            }, new RelaxKonOS.Core.Primitives.Size(720, 520));
-        });
-        vm.ShowRuntimeDownloadUrlAsync = url => context.ShowDialogAsync<bool?>(window, LocalizedText.Get("proxy.runtime_download_title"), dialog => new DownloadUrlDialogView
-        {
-            DataContext = new DownloadUrlDialogViewModel(url, async value =>
-            {
-                var topLevel = Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop ? desktop.MainWindow : null;
-                if (topLevel?.Clipboard is not null) await topLevel.Clipboard.SetTextAsync(value);
-            }, () => dialog.Close(true)),
-        }, new RelaxKonOS.Core.Primitives.Size(660, 210));
-        vm.SetServerGeoDataFileRequest(async () =>
-        {
-            if (files is null) return null;
-            return await context.ShowDialogAsync<string?>(window, LocalizedText.Get("proxy.geodata.select_server_file"), dialog =>
-            {
-                var picker = new ExplorerViewModel(files,
-                    new ExplorerPickerOptions(ExplorerPickerMode.OpenFile, Filters: [new ExplorerFileFilter(LocalizedText.Get("proxy.geodata.file_filter"), ["*.metadb"])]),
-                    paths => dialog.Close(paths.FirstOrDefault()), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "ProxyManager.configuration")
-                {
-                    CancelAction = dialog.Cancel,
-                };
-                _ = picker.LoadRootAsync();
-                return new ExplorerMainView { DataContext = picker };
-            }, new RelaxKonOS.Core.Primitives.Size(720, 520));
-        });
+            runtime.ConfirmAsync = async (title, message) => await ConfirmAsync(title.Resolve(), message.Resolve());
+            runtime.PasswordPromptAsync = () => context.ShowDialogAsync<string?>(window,
+                LocalizedText.Get("installation.elevation_title"),
+                dialog => new FileServicesPasswordDialogView(dialog, LocalizedText.Get("installation.elevation_message")),
+                new RelaxKonOS.Core.Primitives.Size(460, 230));
+        }
         vm.RequestSystemProxySubscriptionDownloadAsync = async () =>
         {
             var useSystemProxy = false;
@@ -123,7 +99,12 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
                 new ProxyNetworkSettingsDialogView(vm, dialog), new RelaxKonOS.Core.Primitives.Size(600, isTun ? 700 : 650));
         };
         EventHandler<RelaxKonOS.WindowManager.ManagedWindow>? closed = null;
-        closed = (_, current) => { if (ReferenceEquals(current, window)) context.WindowManager.WindowClosed -= closed; };
+        closed = (_, current) =>
+        {
+            if (!ReferenceEquals(current, window)) return;
+            context.WindowManager.WindowClosed -= closed;
+            runtime?.Dispose();
+        };
         context.WindowManager.WindowClosed += closed;
         _ = InitializeAfterPermissionDecisionAsync();
 
@@ -133,12 +114,22 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
             var manage = await RequestIfUndecidedAsync(AppPermissions.ServerProxyManage);
             var tun = await RequestIfUndecidedAsync(AppPermissions.ServerProxyTunManage);
             vm.SetPermissions(manage, tun);
+            if (runtime is not null) runtime.CanManage = manage;
 
             // A declined read grant still permits the workspace to render its normal API
             // authorization result, but it never enables a mutation solely because the prompt
             // happened to complete after activation.
             _ = read;
             await vm.StartAsync();
+        }
+
+        async Task<bool> ConfirmAsync(string title, string message)
+        {
+            var accepted = false;
+            await context.ShowDialogAsync<bool>(window, title, dialog => new ConfirmDialogView
+            { DataContext = new ConfirmDialogViewModel(message, value => { accepted = value; dialog.Close(value); }) },
+                new RelaxKonOS.Core.Primitives.Size(560, 280));
+            return accepted;
         }
 
         async Task<bool> RequestIfUndecidedAsync(string permission)

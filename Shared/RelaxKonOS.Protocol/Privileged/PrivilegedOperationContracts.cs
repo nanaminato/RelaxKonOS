@@ -22,6 +22,35 @@ public static class PrivilegedOperationProtocol
 [JsonConverter(typeof(JsonStringEnumConverter<PrivilegedOperationKind>))]
 public enum PrivilegedOperationKind
 {
+    RuntimeSources,
+    RuntimeCatalogGet,
+    RuntimeCatalogRefresh,
+    SingBoxRuntimeQuery,
+    SingBoxRuntimePlan,
+    SingBoxRuntimeExecute,
+    SingBoxRuntimeRecover,
+    /// <summary>Records a cancellation request for one running transaction. It only writes the request
+    /// marker, so it never blocks behind the instance lock the transaction itself holds; the running
+    /// transaction decides whether it is still before the switch checkpoint.</summary>
+    SingBoxRuntimeCancel,
+    /// <summary>Reads the unfinished transaction and the fixed host's live service observation.</summary>
+    SingBoxRuntimeRecoveryQuery,
+    /// <summary>Stops the managed service and disables its start-on-boot registration. The ledger is not touched.</summary>
+    SingBoxRuntimeRecoveryStop,
+    /// <summary>Closes an unrecoverable transaction after the host proves nothing is running.</summary>
+    SingBoxRuntimeRecoveryClose,
+    MihomoRuntimeQuery,
+    MihomoRuntimePlan,
+    MihomoRuntimeExecute,
+    MihomoRuntimeRecover,
+    MihomoRuntimeCancel,
+    MihomoRuntimeRecoveryQuery,
+    MihomoRuntimeRecoveryStop,
+    MihomoRuntimeRecoveryClose,
+    MihomoRuntimeConfigure,
+    /// <summary>Places the declared GEO resource set from the installed package into the managed data directory.</summary>
+    MihomoRuntimeResources,
+    MihomoRuntimeResourceQuery,
     ProxyServerStatus,
     ProxyServerAction,
     ProxyServerValidate,
@@ -304,7 +333,9 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("squidConfiguration")] RelaxKonOS.Protocol.GatewayProxy.ApplySquidConfigurationRequest? SquidConfiguration = null,
     [property: JsonPropertyName("squidServiceAction")] RelaxKonOS.Protocol.GatewayProxy.SquidServiceAction? SquidServiceAction = null,
     [property: JsonPropertyName("squidAccount")] RelaxKonOS.Protocol.GatewayProxy.SquidAccountMutation? SquidAccount = null,
-    [property: JsonPropertyName("proxyServer")] RelaxKonOS.Protocol.ProxyServer.ProxyServerHelperRequest? ProxyServer = null);
+    [property: JsonPropertyName("proxyServer")] RelaxKonOS.Protocol.ProxyServer.ProxyServerHelperRequest? ProxyServer = null,
+    [property: JsonPropertyName("runtimeSourceId")] string? RuntimeSourceId = null,
+    [property: JsonPropertyName("runtimeLifecycle")] RelaxKonOS.Protocol.ManagedRuntimes.RuntimeLifecycleRequest? RuntimeLifecycle = null);
 
 /// <summary>Versioned structured result returned by the local Helper.</summary>
 public sealed record PrivilegedOperationResult(

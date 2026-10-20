@@ -89,6 +89,7 @@ class WebsitePublicationRecoveryFlowTest {
         rule.runOnUiThread {
             model = WebsitesViewModel(session, WebPublishingRepository(gateway, session, elevation, index),
                 DeploymentRepository(gateway, session), CertificateRepository(gateway, session, index, CertificateRequestJournal(Storage()), elevation), ElevationAnswerProvider.Declines, publicationJournal)
+
             store.put("websites", model)
         }
         rule.setContent { MaterialTheme { androidx.compose.foundation.layout.Column(

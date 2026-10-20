@@ -8,6 +8,9 @@ using RelaxKonOS.Protocol.FileServices;
 using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.PrivilegedHelper;
 
+if (args.FirstOrDefault() == "runtime-source")
+    return await RuntimeSourceCommand.RunAsync(args[1..]);
+
 if (OperatingSystem.IsWindows() && args.Contains("--component-service", StringComparer.Ordinal))
 {
     WindowsComponentService.Run(args);

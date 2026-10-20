@@ -34,7 +34,7 @@ private data class ProxyEditRequest(val kind: String, val profile: ProxyProfile?
     val container = appContainer()
     val model: ProxyViewModel = viewModel(factory = viewModelFactory {
         initializer { ProxyViewModel(container.session, container.proxy, container.installations,
-            container.operationIndex, container.elevationAnswers, container.uploadDocuments) }
+            container.operationIndex, container.elevationAnswers) }
     })
     ProxyContent(model, container.activeSession, onBack, modifier, initialOperationId)
 }

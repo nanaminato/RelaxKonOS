@@ -28,6 +28,11 @@ private val ProxyServerUnavailable: ApiResult<Nothing> = ApiResult.Transport("Pr
  * The implementation is [RelaxKonApi]; route names and payload shapes stay owned by that class.
  */
 interface RelaxKonGateway {
+    suspend fun runtimeResources(serverUrl: String, accessToken: String): ApiResult<ManagedRuntimeResources> = ApiResult.Transport("Runtime resources unavailable.")
+
+    suspend fun managedRuntime(serverUrl: String, accessToken: String, method: String, route: String,
+        body: JsonBody? = null, key: String? = null): ApiResult<String> = ApiResult.Transport("Managed runtime unavailable.")
+
     suspend fun hostTime(serverUrl: String, accessToken: String): ApiResult<HostTimeSettings>
     suspend fun hostIdentity(serverUrl: String, accessToken: String): ApiResult<HostIdentitySettings>
     suspend fun hostEnvironmentTarget(serverUrl: String, accessToken: String, scope: HostEnvironmentScope): ApiResult<HostSettingsTarget>
@@ -68,9 +73,7 @@ interface RelaxKonGateway {
     suspend fun proxyConnections(serverUrl: String, accessToken: String): ApiResult<List<ProxyConnection>>
     suspend fun proxyLogs(serverUrl: String, accessToken: String): ApiResult<List<ProxyLog>>
     suspend fun proxyDns(serverUrl: String, accessToken: String): ApiResult<ProxyDns>
-    suspend fun proxyGeoData(serverUrl: String, accessToken: String): ApiResult<ProxyGeoData>
     suspend fun saveProxySettings(serverUrl: String, accessToken: String, settings: ProxySettings): ApiResult<Unit>
-    suspend fun configureProxyGeoData(serverUrl: String, accessToken: String, path: String): ApiResult<Unit>
     suspend fun closeProxyConnection(serverUrl: String, accessToken: String, id: String): ApiResult<Unit>
     suspend fun proxyOverview(serverUrl: String, accessToken: String): ApiResult<ProxyOverview>
     suspend fun proxyProfiles(serverUrl: String, accessToken: String): ApiResult<List<ProxyProfile>>
@@ -79,8 +82,6 @@ interface RelaxKonGateway {
     suspend fun proxyRouting(serverUrl: String, accessToken: String): ApiResult<ProxyRoutingMode>
     suspend fun proxyDownloadOptions(serverUrl: String, accessToken: String): ApiResult<Boolean>
     suspend fun proxyOperation(serverUrl: String, accessToken: String, id: String): ApiResult<ProxyOperation>
-    suspend fun proxyReleases(serverUrl: String, accessToken: String): ApiResult<List<ProxyRelease>>
-    suspend fun proxyDownload(serverUrl: String, accessToken: String, version: String): ApiResult<ProxyDownload>
     suspend fun proxyQueue(serverUrl: String, accessToken: String, action: ProxyAction, target: String?, key: String): ApiResult<String>
     suspend fun saveProxyProfile(serverUrl: String, accessToken: String, id: String?, request: ProxyProfileRequest): ApiResult<ProxyProfile>
     suspend fun activateProxyProfile(serverUrl: String, accessToken: String, id: String): ApiResult<ProxyProfile>

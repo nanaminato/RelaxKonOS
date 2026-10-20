@@ -227,6 +227,15 @@ internal static class AuthenticationServiceRegistration
             options.AddPolicy("ProxyRead", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
                 context.User.HasClaim("role", "controller") || context.User.HasClaim("role", "observer")
                 || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "observer")));
+            options.AddPolicy(RelaxKonOS.Server.Endpoints.RuntimeCatalogEndpoints.ReadPolicy, policy =>
+                policy.RequireAuthenticatedUser().RequireAssertion(context =>
+                    context.User.HasClaim("role", "controller") || context.User.HasClaim("role", "observer")
+                    || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")
+                    || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "observer")));
+            options.AddPolicy(RelaxKonOS.Server.Endpoints.RuntimeCatalogEndpoints.ManagePolicy, policy =>
+                policy.RequireAuthenticatedUser().RequireAssertion(context =>
+                    context.User.HasClaim("role", "controller")
+                    || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")));
             options.AddPolicy("ProxyServerExport", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
                 context.User.HasClaim("role", "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")));
             options.AddPolicy("ProxyManage", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>

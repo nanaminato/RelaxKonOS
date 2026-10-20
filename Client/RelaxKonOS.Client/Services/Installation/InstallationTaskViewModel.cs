@@ -76,7 +76,8 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
         {
             if (IsActive) return;
             // Retain the key after an uncertain response; retry can never start a duplicate installer.
-            pendingKey ??= Guid.NewGuid().ToString("N");
+            if (options is ManagedRuntimeInstallationRequest runtime) pendingKey = runtime.Plan.Request.IdempotencyKey;
+            else pendingKey ??= Guid.NewGuid().ToString("N");
             InstallationOperationDto? submitted;
             try { submitted = await client.StartAsync(service, kind, options, pendingKey, lifetime.Token); }
             catch (InstallationApiException error) when (error.ProblemCode == "elevation-required")

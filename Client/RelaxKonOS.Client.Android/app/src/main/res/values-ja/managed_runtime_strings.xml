@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="managed_runtime_unknown">ホストの状態が不明です。更新してから計画してください。</string>
+    <string name="managed_runtime_identity">所有権：%1$s · バージョン：%2$s</string>
+    <string name="managed_runtime_keep_data">アプリデータを保持</string>
+    <string name="managed_runtime_delete_data">アプリデータを削除（取り消し不可）</string>
+    <string name="managed_runtime_sources">確認済みリリース元</string>
+    <string name="managed_runtime_prerelease">プレリリースを表示</string>
+    <string name="managed_runtime_stale">カタログの期限切れ、または更新失敗のためインストールできません。</string>
+    <string name="managed_runtime_unsupported">このリリースの構成はサポートされていません。</string>
+    <string name="managed_runtime_preview">ホストの計画を確認</string>
+    <string name="managed_runtime_plan">%1$s · 現在：%2$s · 対象：%3$s</string>
+    <string name="managed_runtime_restart">ホストは公開済み構成を検証します。サービスが再起動する場合があります。</string>
+    <string name="managed_runtime_recovery">未完了のトランザクションを復旧してください。</string>
+    <string name="managed_runtime_stop">サービスを緊急停止</string>
+    <string name="managed_runtime_close_confirm">このトランザクションを復元せずに終了することを確認します。</string>
+    <string name="managed_runtime_close">トランザクションを終了</string>
+    <string name="managed_runtime_disk">空き：%1$s バイト · 必要：%2$s バイト</string>
+    <string name="managed_runtime_no_sources">リリース元が未設定です。先にホストで署名付きリリース元を確認してください。</string>
+    <string name="mihomo_geodata_prepare">同梱 GEO データを検証して準備</string>
+    <string name="mihomo_geodata_prepare_note">ホストは Helper 同梱の GEO ファイルを検証し、管理対象のコピーを修復します。パスやダウンロード元は指定しません。</string>
+    <string name="managed_resource_verified">検証済み</string>
+    <string name="managed_resource_missing">不足</string>
+    <string name="managed_resource_invalid">破損</string>
+    <string name="managed_resource_unknown">不明</string>
+</resources>

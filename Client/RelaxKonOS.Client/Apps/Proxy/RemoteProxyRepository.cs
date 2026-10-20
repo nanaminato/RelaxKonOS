@@ -3,11 +3,14 @@ using System.Net.Http.Json;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Proxy;
+using RelaxKonOS.Protocol.ManagedRuntimes;
+using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Client.Services.Privileged;
 
 namespace RelaxKonOS.Client.Apps.Proxy;
 
 /// <summary>Typed RelaxKonOS API client. It never receives a Mihomo controller address, secret or response schema.</summary>
-public sealed class RemoteProxyRepository(HttpClient http, IAuthSession session) : IProxyRepository
+public sealed class RemoteProxyRepository(HttpClient http, IAuthSession session, IHostElevationBroker elevation) : IProxyRepository
 {
     public Task<ProxyOverviewDto> GetOverviewAsync(CancellationToken cancellationToken = default) => SendAsync<ProxyOverviewDto>(HttpMethod.Get, ProxyApiRoutes.Overview, null, cancellationToken);
     public Task<IReadOnlyList<ProxyProfileDto>> ListProfilesAsync(CancellationToken cancellationToken = default) => SendAsync<IReadOnlyList<ProxyProfileDto>>(HttpMethod.Get, ProxyApiRoutes.Profiles, null, cancellationToken);
@@ -28,11 +31,13 @@ public sealed class RemoteProxyRepository(HttpClient http, IAuthSession session)
     public Task<ProxyDnsStatusDto> GetDnsStatusAsync(CancellationToken cancellationToken = default) => SendAsync<ProxyDnsStatusDto>(HttpMethod.Get, ProxyApiRoutes.Dns, null, cancellationToken);
     public Task<ProxySettingsDto> GetSettingsAsync(CancellationToken cancellationToken = default) => SendAsync<ProxySettingsDto>(HttpMethod.Get, ProxyApiRoutes.Settings, null, cancellationToken);
     public Task UpdateSettingsAsync(UpdateProxySettingsRequest request, CancellationToken cancellationToken = default) => SendNoContentAsync(HttpMethod.Put, ProxyApiRoutes.Settings, request, cancellationToken);
-    public Task<ProxyGeoDataDto> GetGeoDataAsync(CancellationToken cancellationToken = default) => SendAsync<ProxyGeoDataDto>(HttpMethod.Get, ProxyApiRoutes.GeoData, null, cancellationToken);
-    public Task ConfigureGeoDataFromServerFileAsync(string filePath, CancellationToken cancellationToken = default) => SendNoContentAsync(HttpMethod.Put, ProxyApiRoutes.GeoData, new ConfigureProxyGeoDataRequest(filePath), cancellationToken);
+    private readonly object? login = session.CurrentSession;
+    public Task<RuntimeResourceSnapshot> GetResourcesAsync(CancellationToken cancellationToken = default) =>
+        SendAsync<RuntimeResourceSnapshot>(HttpMethod.Get, RuntimeRoutes.MihomoResources, null, cancellationToken);
+    public Task<RuntimeResourceReport> PrepareResourcesAsync(CancellationToken cancellationToken = default) =>
+        elevation.ExecuteAsync(HostElevationCapability.MihomoInstall, "mihomo", () =>
+            SendAsync<RuntimeResourceReport>(HttpMethod.Post, RuntimeRoutes.MihomoResources, new { }, cancellationToken, idempotent: true), cancellationToken);
     public Task<ProxyRuntimeDto> GetRuntimeAsync(CancellationToken cancellationToken = default) => SendAsync<ProxyRuntimeDto>(HttpMethod.Get, ProxyApiRoutes.Runtime, null, cancellationToken);
-    public Task<ProxyRuntimeDownloadDto?> GetManagedRuntimeDownloadAsync(string? version = null, CancellationToken cancellationToken = default) =>
-        SendAsync<ProxyRuntimeDownloadDto?>(HttpMethod.Get, ProxyApiRoutes.RuntimeDownload + (string.IsNullOrWhiteSpace(version) ? string.Empty : "?version=" + Uri.EscapeDataString(version)), null, cancellationToken);
     public Task<ProxyOperationDto?> GetOperationAsync(Guid operationId, CancellationToken cancellationToken = default) => SendAsync<ProxyOperationDto?>(HttpMethod.Get, ProxyApiRoutes.Proxy + "/operations/" + operationId.ToString("D"), null, cancellationToken);
     public Task<ProxyOperationAcceptedDto> LifecycleAsync(ProxyLifecycleAction action, CancellationToken cancellationToken = default) => SendAsync<ProxyOperationAcceptedDto>(HttpMethod.Post, ProxyApiRoutes.Lifecycle.Replace("{action}", action.ToString().ToLowerInvariant()), new ProxyLifecycleRequest(true), cancellationToken, idempotent: true);
     public Task<ProxyOperationAcceptedDto> EnableTunAsync(Guid profileId, CancellationToken cancellationToken = default) => SendAsync<ProxyOperationAcceptedDto>(HttpMethod.Post, ProxyApiRoutes.TunEnable, new ProxyTunRequest(profileId), cancellationToken, idempotent: true);
@@ -46,6 +51,7 @@ public sealed class RemoteProxyRepository(HttpClient http, IAuthSession session)
 
     private async Task<T> SendAsync<T>(HttpMethod method, string route, object? body, CancellationToken cancellationToken, bool idempotent = false)
     {
+        Verify();
         if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.EffectiveBaseUrl is null) throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
         using var request = new HttpRequestMessage(method, new Uri(new Uri(session.EffectiveBaseUrl), route.TrimStart('/')))
         {
@@ -54,12 +60,14 @@ public sealed class RemoteProxyRepository(HttpClient http, IAuthSession session)
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
         if (idempotent) request.Headers.TryAddWithoutValidation("Idempotency-Key", Guid.NewGuid().ToString("N"));
         using var response = await http.SendAsync(request, cancellationToken);
+        Verify();
         if (!response.IsSuccessStatusCode) throw await CreateRequestExceptionAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, cancellationToken) ?? throw new ProxyRequestException("proxy.response_empty");
     }
 
     private async Task SendNoContentAsync(HttpMethod method, string route, object? body, CancellationToken cancellationToken)
     {
+        Verify();
         if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.EffectiveBaseUrl is null) throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
         using var request = new HttpRequestMessage(method, new Uri(new Uri(session.EffectiveBaseUrl), route.TrimStart('/')))
         {
@@ -67,7 +75,13 @@ public sealed class RemoteProxyRepository(HttpClient http, IAuthSession session)
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
         using var response = await http.SendAsync(request, cancellationToken);
+        Verify();
         if (!response.IsSuccessStatusCode) throw await CreateRequestExceptionAsync(response, cancellationToken);
+    }
+
+    private void Verify()
+    {
+        if (login is null || !ReferenceEquals(login, session.CurrentSession)) throw new ProxyRequestException("proxy.session_changed");
     }
 
     private static string ProfileRoute(Guid profileId) => ProxyApiRoutes.Proxy + "/profiles/" + profileId;
@@ -79,16 +93,16 @@ public sealed class RemoteProxyRepository(HttpClient http, IAuthSession session)
         {
             var problem = await response.Content.ReadFromJsonAsync<ProxyProblemResponse>(RelaxKonOSJsonOptions.Default, cancellationToken);
             var problemCode = ExtractProblemCode(problem);
-            if (problemCode is not null) return new ProxyRequestException(problemCode);
+            if (problemCode is not null) return new ProxyRequestException(problemCode, (int)response.StatusCode);
         }
         catch (Exception exception) when (exception is HttpRequestException or System.Text.Json.JsonException or NotSupportedException) { }
-        return new ProxyRequestException("proxy.http_" + (int)response.StatusCode);
+        return new ProxyRequestException("proxy.http_" + (int)response.StatusCode, (int)response.StatusCode);
     }
 
     private static string? ExtractProblemCode(ProxyProblemResponse? problem)
     {
         foreach (var candidate in new[] { problem?.ProblemCode, problem?.Detail, problem?.Title })
-            if (!string.IsNullOrWhiteSpace(candidate) && candidate.StartsWith("proxy.", StringComparison.Ordinal)) return candidate;
+            if (!string.IsNullOrWhiteSpace(candidate) && (candidate.StartsWith("proxy.", StringComparison.Ordinal) || candidate.StartsWith("runtime.", StringComparison.Ordinal) || candidate.StartsWith("elevation-", StringComparison.Ordinal))) return candidate;
 
         const string prefix = "https://relaxkonos.app/problems/proxy.";
         return problem?.Type is { } type && type.StartsWith(prefix, StringComparison.Ordinal)
@@ -98,4 +112,8 @@ public sealed class RemoteProxyRepository(HttpClient http, IAuthSession session)
 
     private sealed record ProxyProblemResponse(string? Detail, string? Title, string? Type, string? ProblemCode);
 }
-public sealed class ProxyRequestException(string problemCode) : Exception(problemCode) { public string ProblemCode { get; } = problemCode; }
+public sealed class ProxyRequestException(string problemCode, int statusCode = 0)
+    : HttpRequestException(problemCode, null, statusCode == 0 ? null : (System.Net.HttpStatusCode)statusCode)
+{
+    public string ProblemCode { get; } = problemCode;
+}

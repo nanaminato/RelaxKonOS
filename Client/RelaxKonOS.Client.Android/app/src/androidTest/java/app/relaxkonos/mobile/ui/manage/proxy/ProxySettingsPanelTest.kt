@@ -29,7 +29,7 @@ class ProxySettingsPanelTest {
         ProxyProfile("profile", "Profile", "mihomo", true, 1), true, true, "healthy", "", true, true, true,
         "Windows", false, ProxySystemProxyCapabilities(true, true, false, true), supportsDns = true)
     private val state = ProxyState(overview = ApiResult.Success(overview), settings = ApiResult.Success(settings),
-        recovery = ApiResult.Success(ProxyRecovery(false, false, null, "")), geoData = ApiResult.Success(ProxyGeoData(true, 8597075)),
+        recovery = ApiResult.Success(ProxyRecovery(false, false, null, "")), resources = ApiResult.Success(ManagedRuntimeResources("00112233-4455-6677-8899-aabbccddeeff", listOf(ManagedRuntimeResource("geoip.metadb", "verified", 8597075, "a".repeat(64), null)), null)),
         dns = ApiResult.Success(ProxyDns(true, false, "fake-ip", "")))
 
     private fun show(facts: ProxyState = state, canManage: Boolean = true, ready: Boolean = true,

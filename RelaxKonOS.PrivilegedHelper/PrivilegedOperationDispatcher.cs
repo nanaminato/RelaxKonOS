@@ -21,6 +21,25 @@ public static partial class PrivilegedOperationExecutor
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "operation id is required");
         if (request.Correlation is not { } correlation || !correlation.IsValid())
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "valid correlation metadata is required");
+        if (request.Operation is PrivilegedOperationKind.SingBoxRuntimeQuery or PrivilegedOperationKind.SingBoxRuntimePlan
+            or PrivilegedOperationKind.SingBoxRuntimeExecute or PrivilegedOperationKind.SingBoxRuntimeRecover
+            or PrivilegedOperationKind.SingBoxRuntimeCancel
+            or PrivilegedOperationKind.SingBoxRuntimeRecoveryQuery or PrivilegedOperationKind.SingBoxRuntimeRecoveryStop
+            or PrivilegedOperationKind.SingBoxRuntimeRecoveryClose)
+            return await SingBoxRuntimeOperations.ExecuteAsync(request, report: progress);
+        if (request.Operation is PrivilegedOperationKind.MihomoRuntimeQuery or PrivilegedOperationKind.MihomoRuntimePlan
+            or PrivilegedOperationKind.MihomoRuntimeExecute or PrivilegedOperationKind.MihomoRuntimeRecover
+            or PrivilegedOperationKind.MihomoRuntimeCancel or PrivilegedOperationKind.MihomoRuntimeRecoveryQuery
+            or PrivilegedOperationKind.MihomoRuntimeRecoveryStop or PrivilegedOperationKind.MihomoRuntimeRecoveryClose
+            or PrivilegedOperationKind.MihomoRuntimeConfigure or PrivilegedOperationKind.MihomoRuntimeResources
+            or PrivilegedOperationKind.MihomoRuntimeResourceQuery)
+            return await MihomoRuntimeOperations.ExecuteAsync(request, report: progress);
+        if (request.RuntimeLifecycle is not null)
+            return Fail(64, PrivilegedProblemCode.InvalidRequest, "runtime lifecycle fields require a dedicated operation");
+        if (request.Operation is PrivilegedOperationKind.RuntimeSources or PrivilegedOperationKind.RuntimeCatalogGet or PrivilegedOperationKind.RuntimeCatalogRefresh)
+            return await RuntimeSourceOperations.ExecuteAsync(request);
+        if (request.RuntimeSourceId is not null)
+            return Fail(64, PrivilegedProblemCode.InvalidRequest, "runtime source fields require a dedicated operation");
         if (request.Operation is PrivilegedOperationKind.ProxyServerStatus or PrivilegedOperationKind.ProxyServerAction or PrivilegedOperationKind.ProxyServerValidate or PrivilegedOperationKind.ProxyServerApply or PrivilegedOperationKind.ProxyServerGenerateKeys)
             return await SingBoxOperations.ExecuteAsync(request);
         if (request.ProxyServer is not null) return Fail(64, PrivilegedProblemCode.InvalidRequest, "ProxyServer fields require a dedicated operation");

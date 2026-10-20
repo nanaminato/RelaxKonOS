@@ -11,6 +11,183 @@
 
 ---
 
+## 受管运行时公共目录接入进度（MR-03，2026-10-20）
+
+### 2026-10-20：生产 HTTP/独立 Helper 全生命周期与资源包
+
+指定 Debian 13 x64 上通过生产 HTTPS、PAM 提权、Server 安装台账及独立 Helper 进程验证 `v1.19.10 → v1.19.30` 更新、同版本 Repair、回退、保留数据卸载/重装和删除数据卸载。增强验收共 **81 项**，包含每个动作的冻结计划/键、同键重放同一操作、无未确认发布、实测程序/配置身份、首次安装不启动/不开机启动、更新恢复运行、保留数据重装维持配置与凭据身份，以及五次真实 mixed 监听 HTTP 转发。命令与可信来源准备见 [生产 HTTP 验收](../../Tests/ManagedRuntimes/ProductionHttpAcceptance.md)。配置为 DIRECT 基线，不代表 provider/TUN 支持。
+
+真实部署另发现并修复 GEO 资源来源错误：Linux 安装器把 Helper 复制到 `/usr/local/lib/relaxkonos/privileged-helper`，其资源准备此前假定相邻 Server 目录，返回 `runtime.resource_source_missing`。Helper 现在把编译期闭合的五项 GEO 文件打入自身 `Assets/Mihomo/GeoData` 发布载荷，仅从当前组件目录读取并再次校验摘要，不回退探测 Server 路径。正式资源路由实测返回正确活动修订及五个长度/摘要，重复准备身份不变；专项检查 **16 项**，全部托管运行时常规检查 **1274 项**通过。
+
+测试机当前为 `0.1.0-dev20261020-mr03c`，系统模式、三类文件策略 full、原 IP SAN 自签证书保留，Server/Guardian 运行。验收使用管理员显式 inspect/confirm 的本地测试源，精确授权 `192.168.1.7/32:18443`，签名私钥留在准备机；验收完成已以信任修订 2 禁用来源、保留高水位/历史、停止镜像、撤下验收临时 CA 与 TLS 私钥。最终实测 Mihomo 单元不存在、无待恢复事务，不把测试源当作生产官方来源。
+
+Android 完整 Debug APK 和单元/设备测试 Kotlin 源码已编译通过；完整 Gradle 运行时 classpath 迁移到该 Debian 测试机后，**1566 项 JVM 测试**通过。证书握手回调夹具已允许 JDK PKIX 用 null 请求默认签名提供者，仍调用真实证书签名验证；设备界面尚未执行；Android 当前交互与验证规则继续由 Android 文档维护。provider/凭据资源分发、TUN 网络事务及 Windows 端到端仍未完成，不能把 Linux 基线生命周期验收扩大为全部 MR-03 交付。
+
+### 2026-10-20：Android 当前契约与生产通道核验
+
+Android Mihomo 已接入来源/目录、实测安装观察、计划预览、精确冻结计划台账提交与命名恢复；旧 `MihomoInstallationRequest`、包引用与已删除下载路由调用移除。安装 journal 使用计划已有幂等键，未知提交不能被新计划替换。当前 API 的运行时枚举采用 camelCase，与 Server 实际响应一致，不增加双格式解析。Android 专属交互与验证规则见 [功能说明](../../Client/RelaxKonOS.Client.Android/docs/features/Proxy.md) 和 [验证要求](../../Client/RelaxKonOS.Client.Android/docs/development/Verification.md)。
+
+指定 Debian 13 x64 测试机 `192.168.1.7` 已部署 `0.1.0-dev20261020-mr03`（Server/Helper/Guardian 当前源码的 Linux 自包含构建），系统模式，普通/管理员/root 文件策略均为 full，HTTPS 证书包含该 IP 的 SAN；内核 nftables 实测无规则表，旧 iptables 防火墙工具未安装。生产 HTTP 经 PAM 登录及独立 Helper 验证来源、安装/依赖/恢复观察、旧请求拒绝、计划缺源/不存在安装拒绝与恢复提权门禁，共 12 项通过。
+
+此前 Android 增量 Kotlin/Compose 编译及 65 项专项 JUnit 已通过；当前完整 Debug APK 构建与生产 HTTP 生命周期证据见上节。Android 设备交互仍独立验收，不能由 JVM 或宿主 API 测试替代。
+
+### 2026-10-19：生产台账注册切换（Server + 桌面）
+
+`IInstallationService` 的 Mihomo 注册现为 `MihomoRuntimeInstallationService`，旧固定清单安装器 `MihomoInstallationService` 与 `MihomoInstallationRequest` 一并删除：台账 `POST /api/v1.0/installations/Mihomo/{kind}` 只接受携带冻结计划的 `ManagedRuntimeInstallationRequest`，缺计划、计划运行时/动作/制品绑定不符、幂等键不符都在受理前拒绝，不存在旧请求解析或备用执行入口。`IProxyRuntimeManager` 同时去掉下载、安装、回退与卸载成员，只有只读观察和外部探测；`/proxy/runtime/download` 路由删除。维护期的组件清理不再自行删除运行时目录，只要受管根或旧状态仍存在就返回 `deployment.component_ownership_missing`，由受管台账移除。
+
+代理状态不再依赖旧安装器自己的状态文件：`MihomoRuntimeManager.GetAsync` 在本地状态缺失时投影 Helper 实测的受管安装事实（归属、实测版本、控制器可达性），无法测量时返回 `proxy.runtime_state_unknown` 而不是“未安装”。启动/停止/重启仍走同一 `relaxkonos-mihomo.service`，配置与设置发布此前已走受管事务，因此代理工作区在不改变日常操作的前提下切换到受管运行时。
+
+桌面 Proxy Manager 新增“运行时”页（复用 Proxy Server 的运行时页面与 `IMihomoRuntimeCatalogClient`）：列出已确认版本、阻止原因、目标差异，执行前取得 Host 计划，安装/更新/修复/回退/卸载都经同一台账，支持取消下载、待恢复重试/紧急停止/操作员关账。旧“安装托管运行时／从服务器文件安装／自行下载／回退／卸载”按钮改为进入该页面。Android 已在 2026-10-20 切换到当前冻结计划契约，客户端详细行为由 [Android 文档](../../Client/RelaxKonOS.Client.Android/docs/features/Proxy.md) 维护。
+
+### 2026-10-19：受控 GEO 资源预备（离线、编译期摘要）
+
+`POST /managed-runtimes/mihomo/resources`（统一 API 前缀下）要求 RuntimeManage、Mihomo 安装权限与目标为 `mihomo` 的 MihomoInstall 提权，并在发布 Gate 内拒绝未确认提交（409 `runtime.publication_unconfirmed`）。请求不携带路径、URL 或选择：可放置的集合由 `Shared/RelaxKonOS.ManagedRuntimes/MihomoGeoDataFiles.cs` 的编译期摘要表固定（`geoip.metadb`、`geoip.dat`、`geosite.dat`、`country.mmdb`、`GeoLite2-ASN.mmdb`），Server 原有 GEO 服务与 Helper 共用同一张表，任一侧都不能自行扩大集合。
+
+Helper 从自身版本目录的 `Assets/Mihomo/GeoData` 读取，逐文件核对长度与 SHA-256 后才落地：包内资产被替换返回 `runtime.resource_digest_mismatch`，文件缺失返回 `runtime.resource_source_missing`，链接路径返回 `runtime.linked_path_forbidden`，未安装返回 `runtime.installation_absent`，有未完成事务返回 `runtime.recovery_required`。写入对象是预置基线 `seed-data` 与当前活动修订的 `data/<revisionId>`：基线让后续安装/更新的候选数据与原生 `-t` 预检看到同一份已校验数据，活动修订让正在运行的服务直接可用。文件整份临时写入后原子改名、按 0644 落地，已一致的文件不重写，旧副本被替换整份。Server 只接受闭合集合内的报告，越界名称按无效 Helper 响应处理。
+
+边界：本操作**不下载任何内容**，也不处理 provider 订阅、证书与私钥——它们仍属受控分发层。桌面/Android 尚无该操作入口，`MihomoGeoDataService` 仍服务旧的固定清单运行时目录。
+
+在指定 `192.168.1.7` Debian 13 x64 上常规 **1269 项**通过（GEO 资源 **11**、HTTP **41**、Helper/Server 集成 41），真实 `native-mihomo-systemd` **167 项**通过。日志为 `/home/nanami/mr03-resources-full-final-20261019.log`、`/home/nanami/mr03-resources-systemd3-20261019.log`。生产安装已换为 `0.1.0-dev20261019-mr03b`：`/healthz` 200，新路由已上线并在无提权时返回 403 `elevation-required`；该测试机账户不在管理员组，未做提权后的生产调用。
+
+### 2026-10-19：紧急停止与操作员关账 HTTP
+
+公开 `POST /managed-runtimes/mihomo/recovery/stop` 与 `POST /managed-runtimes/mihomo/recovery/close`（统一 API 前缀下）与重试共用同一门禁：RuntimeManage、Mihomo 安装权限及目标为 `mihomo` 的 MihomoInstall 提权，缺任何一项都不触达 Helper。请求只携带精确操作 ID，不接受计划、路径或来源；关账还须显式 `confirmed`，缺失按 `runtime.recovery_confirmation_required`（400）拒绝。两条动作都不创建新的用户台账。
+
+停止是安全动作：它要求 Helper 停自己拥有的单元并回报实测观察，保留原生事务台账与 Server 发布记录，因此 Server 仍有未确认提交时也允许执行。关账只结算原生台账、不结算 Server 提交；同一操作存在 Server 未确认提交时返回 409 `runtime.publication_unconfirmed`，否则关掉原生事务会留下永远无法确认的发布。发布权威不可读返回 409 `runtime.publication_state_invalid`，不据损坏文件放行。
+
+客户端 `RemoteRuntimeCatalogClient` 现按运行时选择各自闭合的停止/关账路由，不再把这两条动作限定为 sing-box；桌面 Mihomo 页面尚未接入恢复面板。
+
+在指定 `192.168.1.7` Debian 13 x64 上常规 **1249 项**通过（HTTP **34**，此前 22；Helper/Server 集成 39），真实 `native-mihomo-systemd` **167 项**通过。日志为 `/home/nanami/mr03-recovery-verbs-full3-20261019.log`、`/home/nanami/mr03-recovery-verbs-systemd-20261019.log`。生产安装已换为 `0.1.0-dev20261019-mr03`（Linux system 模式、自签证书含 `192.168.1.7`、三种文件访问范围均为 `/`、无防火墙规则）：实测 `/healthz` 200、LAN 可达、`GET /mihomo/installation` 与 `/recovery` 返回实测事实、无提权的关账返回 `elevation-required` 403。生产安装注册、客户端版本入口、资源分发与 TUN 网络事务仍待完成。
+
+### 2026-10-19：命名恢复 HTTP 入口
+
+公开 `GET /managed-runtimes/mihomo/recovery`（统一 API 前缀下）要求 RuntimeRead；`POST /managed-runtimes/mihomo/recovery/retry` 要求 RuntimeManage、Mihomo 安装权限及目标为 mihomo 的 MihomoInstall 提权。请求只携带精确操作 ID。`MihomoRuntimeRecoveryService` 在同一发布 Gate 内检查 Server Pending：分派安装、配置或卸载的原意图恢复；不匹配 ID 立即拒绝，不访问 Helper。没有 Server Pending 时才调用 Helper 原事务恢复。受理后不因 HTTP 断开中断对账，不重新准备制品、安装或生成凭据。响应代表原生及 Server 提交的组合结果，不能将原生成功但 Server 未提交报告为成功。
+
+默认 DI 已接入恢复协调器；Linux 常规 **1233 项**通过（卸载发布/宿主组合 **92**、HTTP **22**、Helper/Server 集成 **35**），覆盖只读公开查询、权限/提权拒绝、空/冲突操作 ID，以及保留与删除数据的已提交原生卸载返回丢失后经命名恢复完成 Server 提交。真实 systemd **167 项**通过，包含实际卸载返回丢失及宿主清理失败后，通过该命名恢复协调器完成提交且不重复卸载。日志为 `/home/nanami/mr03-recovery-endpoints-full-20261019.log`、`/home/nanami/mr03-recovery-endpoints-systemd-20261019.log`。桌面/Android 尚未接入新恢复 UI，生产安装注册/版本入口仍待整体替换；此入口不等于生产多版本更新交付。紧急停止与操作员关账当时仍未开放 Mihomo HTTP，已由上方“紧急停止与操作员关账 HTTP”节推进。
+
+### 2026-10-19：卸载宿主代理清理与公开恢复状态
+
+卸载发布现在必须冻结 `MihomoSettingsPublication`：读取并校验原设置及文件摘要，候选仅将 `SystemProxyEnabled` 置为 false，保留其余偏好。加密 Pending 的 removal 必须包含此设置意图，拒绝缺失或改变其他字段的状态，不提供旧格式回退。坏设置在原生卸载开始前拒绝。
+
+原生卸载成功并核对精确回执、实例及状态修订后，Server 通过所有权感知宿主代理事务清理自己拥有的代理，再原子保存设置；再次核对 Helper 的缺席状态与同一回执，最后清理匹配镜像并确认发布权威。即使原偏好已经关闭，也必须取得宿主清理证明。外部修改的代理值保留；原生补偿时不修改宿主或设置。宿主失败、Helper 暂不可用、返回丢失、设置漂移或确认窗口中断保留同一 Pending，启动对账只补齐剩余提交，不重复卸载，不覆盖后续编辑。
+
+公开运行时观察同时反映 Server 的未确认发布：原生已卸载但宿主提交未完成时，仍显示命名待恢复事务；原生存在不同操作则保留冲突身份。发布权威损坏时撤回归属/活动版本证明并返回未知，不能显示为正常未安装。内部编排单独读取 Helper 实测事实，不能使用公开投影自证提交。恢复查询也合并 Server 待提交的操作身份，不把原生已完成误报为无需恢复；保留实际冲突身份，不从发布意图虚构失败补偿或原生阶段。损坏权威保留已有原生恢复事实并报告状态无效。
+
+指定 `192.168.1.7` Debian 13 x64 常规检查 **1220 项**、真实 `native-mihomo-systemd` **165 项**通过，其中卸载发布/宿主组合 **88 项**、HTTP/恢复观察 **16 项**。宿主检查运行真实 `LinuxSystemProxyTransaction` 所有权及补偿算法，后端为隔离内存实现，未修改机器实际桌面/环境代理；原生验收覆盖真实卸载返回丢失、宿主清理失败、重建 Server 启动恢复及保留重装不重新启用代理。Server 的 `--host-storage-only`、`--proxy-configuration-only`、`--system-proxy-only` 回归通过。最新常规日志为 `/home/nanami/mr03-recovery-observation-full-20261019.log`；卸载组合日志为 `/home/nanami/mr03-host-removal-full-20261019.log`、`/home/nanami/mr03-host-removal-systemd-20261019.log`。
+
+本节完成 Server 卸载宿主提交边界；独立 Helper IPC、生产安装注册/变更 HTTP、桌面与 Android 当前调用者、资源分发和 TUN 网络事务仍待整体接通，未开放生产多版本更新。以下各节为阶段证据，旧的“卸载宿主代理联动待完成”由本节取代。
+
+### 2026-10-19：运行时计划与安装台账组合（生产注册待同步切换）
+
+已增加 `MihomoRuntimeInstallationService`，复用 `ManagedRuntimeInstallationRequest`、`InstallationCoordinator` 和现有操作文件/资源互斥，不增加另一份用户台账。验证明确计划的运行时/动作/制品绑定、确认与幂等键；安装走候选材料引导/发布确认，卸载走专属发布对账，更新/修复/回退走当前已确认材料与 Helper 归档事务，不调用固定版本清单、上传引用、草稿或直接控制器重载。动作仍由 Helper 复核完整冻结制品/信任/状态修订。
+
+台账恢复在同一发布 Gate 内区分 Server 命名安装/卸载 Pending 与普通 Helper 程序事务；已成功的原生安装/卸载还必须核对 Server 对应确认记录及实测配置身份，不能凭 Helper 成功回执或进程存活推断发布完成。没有回执也要取得 Helper 实例锁后才能记录未开始。实例忙或 Helper 暂不可用重试原操作，不重新安装。返回消息丢失时读取原事务证据完成对账，受理后的此项对账不受 Server 停止 token 中断；关机期间也不把已提交成功误写为中断。
+
+取消走请求交付，worker 等待原生取消/补偿结果，只有 Host 报告可取消时才提供按钮；Root 已取消按 Cancelled 落账。新增明确的 `InstallationInterruptedException`，将原生中断与失败、用户取消分别记录；启动恢复也允许受信任域返回已证明的 Cancelled。恢复未完成保留发布/Helper Pending 并报告相应问题码，不抹掉恢复事实。台账仅含请求摘要/阶段/问题码，发布 YAML、控制器秘密和授权通道不进入操作文件。
+
+在指定 Debian 13 x64 上，最终常规 **1159 项**通过，其中安装发布/台账组合 **86 项**、默认注册构造 **5 项**。组合检查覆盖成功/失败/取消/中断、幂等重放、消息丢失、停止 token 与消息丢失竞态、协作取消交付、程序变更不调用安装引导、未开始及 busy 后的命名恢复。真实 `native-mihomo-systemd` **158 项**通过：实际首次安装丢失响应后，由持久 Running 台账启动对账确认；后续 Repair、1.19.10→1.19.30 Update、Rollback、保留数据 Uninstall、保留材料 Install 均经台账 Start 执行，每次丢失真实 Helper 返回消息仍核对原回执/发布状态，实测阶段进入原台账，未重复执行变更。测试依然不自动启动首次安装服务或启用开机启动。沙箱夹具现显式将脚本换行为 LF，避免 Windows 源码换行让 Linux shebang 变为 `/bin/sh\r`；生产沙箱权限没有放宽。
+
+准确边界：适配器已作为具体类型注册以验证默认依赖构造，**尚未替换生产 `IInstallationService` 的 Mihomo 注册**。隔离测试显式选用新适配器，实际 Helper 生命周期仍在测试进程内，未覆盖独立 Helper 传输或生产 HTTP/PAM。正式注册切换必须同一变更同步升级桌面/Android 当前调用者、移除旧固定清单安装请求；没有增加备用 HTTP 入口、旧新请求双解析或兼容适配。宿主代理卸载联动、资源分发、客户端版本界面和 TUN 网络事务仍待完成。日志为 `/home/nanami/mr03-ledger-full-20261019.log`、`/home/nanami/mr03-ledger-systemd-20261019.log`。生产安装未替换，本机 `https://127.0.0.1:5000/healthz` 实测 200。
+
+以下各节保留分阶段证据；“安装台账尚未接通”现指生产注册与客户端入口尚未切换，不能将本节组合验收宣称为生产端到端交付。
+
+### 2026-10-19：活动档案元数据纳入发布提交
+
+受管档案激活现在将 `MihomoProfilePublication` 写入加密 Pending 的必需 `profile` 字段（无选择变更时显式 null），冻结目标档案 ID/修订/创建时间与原活动档案 ID/修订/创建时间，并参与配置发布请求摘要。不读取或解析缺少该字段的旧状态。候选 YAML 及运行时计划继续独立冻结，恢复不从后续草稿重新生成候选。
+
+Host-global SQLite 迁移 **16** 新增单行 `proxy_profile_publication` 提交标记，保存操作 ID、档案 ID、预期/提交修订、配置身份与完整选择意图摘要。元数据提交在一个 SQLite 事务内复核目标档案及原活动选择，切换活动标志、递增目标修订并写入同一操作标记。任何一步失败整体回滚元数据；同一操作的精确标记只核对已提交选择，不重复递增修订。不同操作、配置身份/意图变化、删除/改名修订冲突或同 ID/同修订重建但创建身份变化均不能冒充原选择。此表是当前选择的内部提交证明，不是新增用户操作台账。
+
+`MihomoConfigurationPublicationService` 在实测 Helper 成功并核对候选凭据后提交档案元数据，完成后再次核对 Helper 实例/修订/回执，最后确认发布权威。`ProxyConfigurationTransactionService` 不再在权威确认之后单独调用无操作标记的 `SetActiveAsync`。数据库临时失败或已提交响应丢失保留原 Pending；启动恢复核对原 Helper 回执并补齐/核对 SQLite 标记，不再次切换服务。真实冲突继续待恢复，不覆盖后续编辑。无需改变候选 YAML 的重复选择也持久提交选择意图，但不执行原生事务、不伪造 Helper 回执。
+
+本轮在 `192.168.1.7` Debian 13 x64 的常规检查通过 **1104 项**（Server 配置发布 **85**、真实 SQLite 选择事务 **19**）；最终 `native-mihomo-systemd` **149 项**通过，原生专项新增真实 SQLite 标记失败时元数据回滚但 HTTP 服务保持、重建 Server 启动恢复完成选择、相同配置选择不触发原生切换，详见 `/home/nanami/mr03-profile-systemd-20261019.log`。常规日志为 `/home/nanami/mr03-profile-full-20261019.log`。另通过 Server `--host-storage-only`、`--proxy-configuration-only` 与 `--system-proxy-only`，覆盖迁移/原有档案库以及原配置/系统代理回归。Helper 仍为测试进程内边界，尚未验证独立 IPC 或生产 HTTP/PAM。生产安装保持原版本，本轮未部署替换。
+
+以下设置与档案发布段落保留分阶段记录；其中“活动档案元数据尚无自动对账”已由本节推进。资源分发、卸载宿主代理联动、安装/恢复变更 HTTP、台账/UI 和 TUN 网络事务仍待完成。
+
+### 2026-10-19：受管设置发布与中断对账
+
+`MihomoSettingsService.UpdateAsync` 已对有已确认发布的受管安装接入公共配置发布事务。候选仅从当前 Published 派生，保留当前 TUN 激活与排除范围，使用现有只读控制器凭据；冻结实测安装/程序/状态修订及设置意图。`MihomoPendingPublication.settings` 为当前加密状态的必需字段（无设置变更时显式为 null），保存旧设置文件摘要、旧设置与候选设置，参与幂等请求摘要，不解析缺字段旧格式。持久状态读取再次验证候选设置能从旧 Published 精确生成同一份候选 YAML，不能把其他配置与设置意图混合。
+
+原生切换成功后，在发布共锁内依次核对精确 Helper 回执、替换 Server 配置镜像、复核当前候选授权、通过原有所有权感知宿主代理适配器应用设置，再以私有文件和原子改名持久保存设置；再次核对 Helper 身份/修订后才确认发布权威。宿主代理失败、设置文件写入失败或响应丢失保留同一 Pending，启动恢复重读冻结意图及同一 Helper 回执，继续剩余步骤，不重新执行原生切换、不回写无关设置、不提前报告成功。原生补偿失败继续使用原有恢复门禁；原生已补偿则不应用候选设置。应用设置的宿主代理失败属于 Server 提交待恢复，不能据此伪造 Helper 的 RecoveryRequired/成功回执。
+
+当候选 YAML 与旧发布字节完全一致（例如只修改订阅信任选项），同样持久保存设置意图、复核凭据/配置镜像/安装修订并完成宿主/设置提交，但不调用 Helper 配置切换、不重启服务、不伪造原生回执。启动系统代理对账已允许健康已确认受管安装，Pending、坏设置、凭据撤销或实例漂移仍拒绝。TUN/透明代理网络切换继续不支持；完整 GEO/provider/凭据分发、活动档案元数据对账、卸载时宿主代理联动、安装台账/版本 UI 仍待完成。
+
+最终代码在指定 Debian 13 x64 主机通过 **1071 项常规检查**，其中 Server 配置发布事务 **71 项**；`native-mihomo-systemd` **146 项**。新增覆盖设置成功/原生补偿、响应丢失、宿主失败后中断恢复、无关设置漂移保护、坏设置/凭据拒绝、已有候选设置文件的提交中断窗口、冻结设置与候选不匹配、缺少当前 settings 字段拒绝，以及无需原生切换的宿主设置变更。真实专项新增设置入口改变监听并实际转发 HTTP、宿主设置失败后启动对账、设置文件/权威确认，以及仅改订阅信任时 Helper 状态修订和原生调用数保持不变。宿主代理副作用使用记录适配器及失败注入，未修改测试机实际系统代理；Helper 生命周期仍在测试进程内，未覆盖独立 IPC/生产 HTTP/PAM。日志为 `/home/nanami/mr03-settings-full-20261019.log` 与 `/home/nanami/mr03-settings-systemd-20261019.log`。本次仍以隔离测试包验收，生产安装未替换。 同机 Server 回归 `--proxy-configuration-only` 与 `--system-proxy-only` 均通过，覆盖原有激活/回滚、系统代理能力/PAC 门禁、持久化失败补偿、守护并发及 Pending 阻塞。
+
+以下档案接线及 2026-10-18 段落保留分阶段证据；“设置尚未接线”已由本节推进，其余未完成项仍有效。
+
+### 2026-10-19：应用配置档案发布接线
+
+`ProxyConfigurationTransactionService` 对已确认的受管 Mihomo 发布接通实际档案保存/激活：保存只做有界结构及资源/网络门禁，不调用旧固定清单引擎、不准备旧数据目录；激活在同一发布 Gate 内读取现有凭据与宿主设置，冻结当前 Helper 安装/程序/状态修订及旧候选摘要，再经 `MihomoConfigurationPublicationService` 的持久事务完成目标原生校验、切换、健康核对及 Server 镜像/权威确认。受理后事务不随客户端取消；丢失响应保留 Pending 交由现有启动恢复，不直接回写旧配置或推断成功。只有实测确认后更新活动档案元数据；元数据写入失败报告待恢复，不撤销已提交运行时发布。该元数据尚无独立自动对账，不能称为档案元数据与运行时的跨存储原子提交。
+
+凭据读取只使用 `ReadExistingAsync`，撤销/缺失不生成替代秘密。未知/损坏权威、已有 Pending、Helper 配置漂移及待恢复均拒绝写入。未完成受控资源分发前，文件 provider/证书/密钥引用明确不支持；TUN/透明代理网络切换继续拒绝。未建立发布权威的已有路径没有因此取得新运行时所有权。设置、TUN、系统代理写入及安装台账/版本 UI 仍待后续接线，尚未开放生产多版本更新。
+
+验收使用指定的 `192.168.1.7` Debian 13 x64：常规 **1045** 项通过，Server 配置发布事务由 34 增至 **45** 项，新增应用保存不触达固定运行时、实测成功/补偿/响应丢失、凭据撤销与资源/TUN 拒绝。`native-mihomo-systemd` 由 141 增至 **143** 项，新增应用 `ApplyAsync` → 真实 Helper 生命周期 → systemd 服务的监听变化/HTTP 转发，以及原生无效规则拒绝后保留旧配置与档案选择；档案元数据使用记录夹具，Helper 仍在测试进程内，未覆盖独立 IPC 或生产 HTTP/PAM。测试完成清理测试自有服务与运行时根。
+
+运行命令：`RelaxKonOS.ManagedRuntimes.Tests mihomo-publication-only`（45 项）；`RelaxKonOS.ManagedRuntimes.Tests`（1045 项）；`TMPDIR=/var/tmp RelaxKonOS.ManagedRuntimes.Tests native-mihomo-systemd <1.19.10.gz> <1.19.30.gz>`（143 项）。远端日志为 `/home/nanami/mr03-application-full-20261019.log` 和 `/home/nanami/mr03-application-systemd-20261019.log`。本次用隔离测试包验证，现有生产服务仍为 `0.1.0-dev20261018-mr03`，未将测试二进制覆盖到生产安装。实测现有部署为 Linux system 模式，三种文件访问范围均为 `/`，nftables 空规则，自签证书 SAN 已含 `192.168.1.7`。
+
+以下为 2026-10-18 的分阶段实现记录；其中“实际配置发布尚未接线”已由上述有范围的档案发布接线推进，其他未完成项仍有效。
+
+
+版本生命周期遵循[公共设计](../platform/RelaxKonOS.ManagedRuntimes.Design.md)。当前已有 Mihomo 的签名目录、单文件 gzip 解包、严格 `v` 标签及 `mihomo-v1` 稳定版能力范围（`1.19.0 ≤ v < 1.20.0`）；目录发布者不能扩大配置支持范围。
+
+已增加 `/managed-runtimes/mihomo/installation` 观察及 `/managed-runtimes/mihomo/plan` 冻结计划 HTTP 入口（均带当前 API 版本前缀）。观察使用 RuntimeRead，计划同时要求 RuntimeManage 和 Mihomo 安装权限，并受系统模式宿主能力限制；计划不执行变更、下载或取得控制器凭据。Server 发布 Pending 在调用第二个 Helper 之前阻止新计划。10 项真实 Kestrel HTTP 检查使用测试认证主体和模拟 Helper，覆盖匿名/仅管理权限/错误安装目标/正确权限、未知状态保留、非法来源与扩展路径字段拒绝、无来源卸载计划、User Mode 拒绝和待发布阻塞；不等于生产 PAM/JWT 或安装 HTTP 端到端验证。实际安装台账/客户端当前仍需替换，未增加旧请求解析或备用执行入口。
+
+终态观察现每次核对固定宿主归属、停止时的程序/配置/数据权限、登记程序与数据路径、不可变程序字节身份、配置摘要和运行进程的已应用配置身份；异常返回 Unknown 并撤回当前版本/活动修订证明，不沿用台账中的“未安装”或“已验证版本”。FIFO 等特殊文件在打开哈希流前拒绝。未结束事务保留其持久阶段事实，不把合法切换中的暂态当作外部接管。查询不改配置/服务或状态修订；计划在同一实例锁内重测，只有可证明的非受管归属变化才更新归属并递增修订，使旧计划失效，不自动接管服务或文件。
+
+恢复另有固定单元归属/零 PID 停止证明，不能用它宣称程序健康。程序权限或映像异常时，恢复状态同时保留完整性问题和单元是否停止；紧急停止/人工确认关账不要求先恢复坏程序或重新授权凭据。真实专项新增停止服务的可写程序拒绝、异常程序权限下的单元停止证明与紧急停止；模拟边界另覆盖外部服务出现/消失、观察失败、字节/配置/应用身份漂移、特殊文件及关账后不虚报健康。
+
+`MihomoRuntimePreparation` 已组合保护账本授权、完整冻结版本记录比较、制品下载/解包、目标原生版本/平台测量及当前 Server 生成配置的 `-t` 校验。仅允许当前宿主、固定服务宿主和精确的 `mihomo`/`mihomo.exe` 入口；原生检查后重查信任与配置身份，失败或取消清理本次暂存。调用者仍须持有安装锁并提供保护目录；该组件不注册服务、不切换活动版本，也不是客户端可直接调用的执行授权。
+
+`MihomoArchiveAdapter` / `MihomoRemovalAdapter` 已接入公共归档切换/移除事务，提供完整冻结记录、当前配置授权、声明的构建特性、依赖与版本排序门禁，以及安装、跨版本更新、同版本修复、显式回滚、补偿、命名恢复和卸载。回滚/卸载失败后的重启必须重新核对当前配置授权及制品信任，不能恢复已失效的发布。观察/计划 HTTP 已接入，实际变更仍未接当前安装台账/客户端。
+
+`MihomoRuntimeLifecycle` / `MihomoRuntimeOperations` 已提供 Linux 固定作用域的查询、计划、执行、配置发布、恢复、取消、紧急停止与确认关账闭合入口，并在通用 Helper 分发器中登记。入口拒绝混合路径/来源字段、跨运行时冻结计划与通道、错误 operationId 和多余确认字段；配置计划只允许专属 `MihomoRuntimeConfigure` 操作，不能夹带到其他 Mihomo 或 sing-box 操作。观察失败保持未知，不初始化为未安装。程序计划和执行共用包含 1 GiB 数据修订空间的依赖要求。取消组件统一为 `RuntimeCancellation`，sing-box 与 Mihomo 分别在自己的保护根和操作 ID 下使用，不保留旧类型别名。
+
+新鲜授权现由共享的 `RuntimeAuthorizationServer<T>` / `RuntimeAuthorizationClient.ReadAsync<T>` 传递。当前唯一格式的描述符强制携带 `RuntimeId`，HMAC v2 上下文绑定运行时、通道、操作、角色和 nonce；sing-box 调用者与测试同步改用当前契约，拒绝跨运行时冒用，不解析 v1。`MihomoPublishedRuntime` 为保护的本机回调材料，包含 YAML、构建标签、精确监听和控制器凭据；不会进入普通状态、冻结计划或操作台账，诊断字符串脱敏，传输与 Helper 均核对结构和大小。
+
+Server 的 `MihomoPublicationStore`、`MihomoRuntimeAuthorizationProvider`、`MihomoRuntimeService` 组合已实现，**已在默认 DI 注册，实际应用写入及变更 HTTP 尚未切换**。发布状态以 Data Protection 加密，使用当前修订和命名事务区分待发布、已确认与已补偿；确认须提供固定 Helper 实测的配置身份，未确认状态不能授权程序切换。授权每次重读已确认状态，核对 Server 自有 active.yaml 的字节身份及现有控制器凭据，租期 30 秒，不读取无关草稿、不创建秘密。生命周期服务全程持有发布域门锁，回调不重复获取锁；配置、设置与 TUN 写入方已共用门锁，仍须替换实际发布调用并完成确认流程后才能开放生产入口。现有秘密存储新增只读 `ReadExistingAsync`，不会创建或修复文件。
+
+共享 `RuntimeArchiveConfiguration` 已实现配置专属的持久事务核心：冻结安装/宿主/程序修订、旧与候选配置摘要及预期状态修订，共用归档实例锁和回执；只变更配置身份，不重新下载程序或新建程序修订。切换点之前可取消，之后必须完成或补偿。恢复不重做准备、不生成秘密；先停止候选、重新授权旧配置，再恢复并核验服务、开机启动和自有资源，核验成功后才提交旧身份。补偿失败持久保留待恢复状态，阻止新配置发布、程序切换和卸载。操作员关账仍须明确确认且服务实测停止，关账不把旧配置恢复或候选健康标成成功。当前状态格式要求显式 `configuration` 字段（无事务时为 null），不兼容缺该字段的旧账本。
+
+`MihomoConfigurationAdapter` 已组合该核心与真实固定宿主：准备使用 seed-data 沙箱，实测停止服务后将有界数据完整复制到暂存目录，再原子改名为操作的正式备份，未完成副本不能用于恢复。提交数据变更标记后才校验/应用候选；备份缺失且已有变更标记时拒绝恢复。补偿先从保留备份准备完整替换，再恢复活动数据与旧配置；重试不消耗备份。原生校验不写入运行中的活动数据。配置发布保留原程序修订和数据路径，数据备份由操作回执保留，尚未自动裁剪。配置预检额外预留两份 1 GiB 数据空间，仍须独立完成资源准备。
+
+配置回调使用专属 `MihomoConfigurationAuthorization`，显式命名原发布操作并分别提供旧/候选授权，适配器与持久事务 ID 比较。恢复通道可以有新的请求 ID，但不得改换原发布目标；普通生命周期 grant 与配置 grant 不能互相解码。候选授权被撤销不妨碍单独授权的旧配置补偿，旧授权撤销则保持停止/待恢复。认证通道在回复前准备下一监听，避免 Unix 上连续读取连接到正在关闭的旧监听；授权提供者仍串行执行。
+
+`MihomoConfigurationPublicationService` 已组合 Server 待发布授权、Helper 配置执行、结果核验、Server 文件镜像与加密发布权威的确认/补偿。全程持有发布 Gate，接受后不随客户端取消中断；传输丢失保留待发布状态。恢复从加密状态重读完整冻结计划，以同一操作的 Helper 回执、安装/活动程序修订、配置身份和待恢复状态对账，不按进程存活或响应缺失推断成功。Helper 成功后先原子替换 Server 镜像再确认；该窗口内专属待发布授权只接受冻结的旧/候选镜像摘要，普通运行时授权仍拒绝待发布状态。补偿结果必须实测旧身份后才能 Abort。若 Server 已接受但 Helper 尚未启动，恢复必须经过 Helper 实例锁并再次观察原状态修订，单独记为 NotStarted，不伪造 Helper 回执。最近一次配置结果仅保留请求摘要和确认/未启动标志供幂等核对，操作记录仍以 Helper/现有安装台账为准。当前加密状态要求显式的 pending configurationPlan 和 lastConfiguration 字段，不解析缺字段旧格式。
+
+`MihomoRuntimeAuthorizationProvider.ReadConfigurationAsync` 每次重读命名待发布事务与现有控制器凭据，分别授权旧/候选材料；凭据轮换不能授权已撤销的一侧，不创建秘密。Server 编排已通过真实 systemd 服务组合验收，**默认 DI 与启动恢复已接通，变更 HTTP 与实际配置/设置发布调用仍未替换**；首次安装已有专属 Server 编排及真实服务组合证据，但默认安装台账/HTTP 入口仍需接线。
+
+默认注册现包含发布权威、授权提供者、运行时/发布编排及 `MihomoPublicationRecoveryService`。启动恢复处理已有命名配置/安装事务；空状态不联系 Helper，不从旧 active.yaml 自动接管或生成秘密。实例忙或 Helper 暂不可用时等待后重试同一事务，已经需要人工处理的结果保留 Pending 并结束自动循环。配置服务、设置与 TUN 写入及系统代理守护已改用同一个发布 Gate；尚未替换的新发布调用不能走旧的文件覆盖路径绕过权威：Pending/不可读状态返回待恢复，健康受管发布返回该直写方式不支持，不误报安装故障。这是写入隔离与启动恢复，**不是**默认应用发布链路已全部替换；旧固定运行时管理、应用安装入口及资源传递仍待整体替换。
+
+首次安装已有专属授权边界：`MihomoInstallationAuthorization` 绑定原操作 ID、完整冻结安装计划摘要及候选材料。Helper 只在同一持久 Install 事务（原程序修订为空，切换后活动修订只能属于该操作）内选择此授权；普通/配置/安装三类 grant 不能互相解码。保留数据重装还要求候选配置身份等于保留身份，不能借重装发布无关配置。恢复可用新通道，但仍绑定原安装事务和计划。真正没有旧配置/旧服务的首次安装在候选撤销后允许停止并清理本次资源、补偿到实测未安装；这不恢复或启动任何撤销配置。有旧配置/程序时仍重新核对其授权。
+
+Server 的加密 Pending 已可保存专属 installationPlan（当前格式必须显式存在，可为 null，不能与 configurationPlan 并存），`ReadInstallationAsync` 每次重读冻结计划和当前凭据，只签发命名候选，绝不提前建立 Published。已有发布的保留重装还要求材料完全一致。`InstallUnderGateAsync` 提供专属类型化安装调用；普通 `ExecuteAsync` 拒绝未经安装发布引导的 Install。`MihomoInstallationPublicationService` 已接通安装确认/幂等/补偿/中断编排，启动服务按 installationPlan 分派恢复；默认应用安装台账和 HTTP 尚未替换，不能称为应用首次安装端到端完成。
+
+安装编排接受后持久保存完整冻结目标，成功必须核对同一操作回执、安装 ID/宿主/目标、该操作的活动修订、目标实测版本和候选配置身份；安装前不创建已确认发布或 Server 镜像，确认时才创建私有镜像。响应丢失保留 Pending；启动恢复先核对同一回执，缺回执/有事务时进入 Helper 命名恢复并复测状态，不重跑下载或安装。未开始结果须经过 Helper 实例锁并核对原状态修订，不伪造回执。首次失败恢复至未安装时不留下已确认发布或镜像；已有保留发布的重装保留原材料。未知现有 Server 文件禁止接管或覆盖，镜像写入后的中断只接受已冻结候选摘要。lastInstallation 显式保留最近安装请求摘要及确认/未开始标志，当前状态格式必须含此字段；安装成功和失败重放均不重新执行目标。真实验收从无已确认发布开始，安装后模拟响应丢失，通过重建 Server 和启动恢复完成确认；没有用预置 Published 绕过首次安装。
+
+每个程序修订对应独立 `data/<revisionId>`。准备检查使用保护的 `seed-data`；更新/修复在实测服务停止后复制最新数据，再用目标二进制检查，失败版本不会写入旧修订的数据。显式回滚从目标的保留修订复制数据，回退会放弃较新修订的缓存/选择变化。复制限制为 1 GiB、4096 项和 32 层目录，拒绝链接及 FIFO 等特殊文件，写入私有文件。磁盘预检包含这部分独立空间。保留数据卸载保留数据修订、配置、原有 Server 凭据引用与保护的 `retained-data.json` 来源记录；重装核对格式与版本，拒绝将较新数据交给较旧二进制。删除数据卸载清理这些副本与来源记录。当前不自动裁剪保留的数据历史。
+
+Linux 固定宿主为 `LinuxMihomoArchiveHost`：`/var/lib/relaxkonos/managed-mihomo` 和 `relaxkonos-mihomo.service`。保护根与旧的 Server 可写 proxy 目录分开；不接管既有外部/旧注册。宿主核对根所有权、精确 unit/程序/数据路径、程序摘要、真实进程参数与启动身份、systemd 本次加载的配置凭据，以及归属该 PID 的混合端口和控制器监听。健康检查还要求本机控制器凭据正确、报告版本匹配，限制正文大小和总耗时，不使用代理或跟随重定向。服务只开放自身数据目录写入，限制设备和能力；当前不授予 TUN 的网络权限。原生 `-t` 在 systemd 临时沙箱执行：宿主与输入只读、候选数据可写、私有临时目录、无网络/设备特权，不在检查中下载 GEO/provider 资源；这些资源须预先准备。
+
+配置路径策略现由共享 `MihomoYaml` / `MihomoConfigurationPolicy` 实现。YamlDotNet 18.1.0 只用于结构解析/生成，限制单文档 4 MiB、64 层、10 万解析事件/展开节点及 4 MiB 展开文本；拒绝循环/前向/重复锚点、重复键及非支持标签，按 YAML 合并优先级展开锚点和合并键，保留字面量与显式标量类型。Server 的控制器、DNS、运行时和 TUN 重写已使用该结构，不再逐行猜测根键；控制器附加监听、UI 下载/目录等字段也归 Server 所有。无效配置映射为应用错误，不输出原始 YAML。
+
+Helper 从实际 YAML 重新派生控制器、监听、TUN/透明代理网络需求和必需构建标签，核对回调声明；不能用假监听、假 secret 或假的“无需网络切换”标志通过门禁。资源只允许保护数据目录下的 `proxy_providers/`、`rule_providers/`、`certificates/`、`keys/` 相对路径，拒绝绝对路径、穿越、链接与 FIFO 等特殊文件；区分 WebSocket URL 路径、WireGuard 内联密钥与真正的文件引用。本地 proxy provider 内的节点及已知传输层凭据同样检查，资源总数最多 128，单文件最多 16 MiB，provider YAML 为 4 MiB 且严格 UTF-8。HTTP provider 必须先由 Server 受控准备成文件，不能在 root 原生检查或服务启动中自行下载；缺资源明确拒绝。自定义入站列表暂不属于已验证的监听/健康适配范围，不能绕过门禁开启。这里交付的是结构和范围门禁，**不是** GEO/provider/凭据文件的自动准备、完整性分发或协议互通。
+
+2026-10-18 在 Debian 13 x64 测试机 192.168.1.7 上通过：
+
+- 常规 1034 项，其中首次安装授权 17 项（持久 Install 绑定/保留身份/三类 grant 分离/Server 冻结候选及撤销）、数据修订 11 项、授权 34 项（含配置/普通 grant 严格分离、命名恢复及 64 次连续读取）、Server 发布权威/组合 33 项、Server 配置发布事务 34 项、Server 安装发布事务 32 项、Server 卸载发布事务 34 项、默认 DI 4 项、Mihomo 生命周期/观察/恢复边界 38 项、HTTP 10 项；YAML/配置路径策略 34 项覆盖规范化语义、合并优先级、锚点/标签/规模边界、TUN 派生、监听与凭据声明、资源路径、本地 provider 内层引用和特殊文件。Server 事务检查覆盖成功/补偿幂等、回执冲突、丢失已提交响应、待恢复补偿、未启动核对、镜像替换后的中断窗口、无关文件漂移、独立凭据撤销与启动恢复（空状态/补偿/busy 重试/人工处理）；使用真实加密文件/授权管道及模拟 Helper。共享配置事务 90 项另覆盖逐阶段失败、取消边界、跨动作阻塞、实例锁、损坏状态拒绝与关账，并以子进程在切换点直接退出验证重启恢复。Server 测试的 `--proxy-configuration-only` 在同一主机通过现有配置激活/回滚回归。
+- `TMPDIR=/var/tmp RelaxKonOS.ManagedRuntimes.Tests native-mihomo-systemd <1.19.10.gz> <1.19.30.gz>` 共 141 项：26 项归档/准备，39 项真实二进制配合模拟宿主的事务/补偿/恢复/卸载门禁，47 项 Helper 生命周期/配置入口、systemd 及本地 HTTP 转发，8 项 Server 配置发布编排配合真实服务的确认/响应丢失对账/幂等/原生拒绝补偿，6 项首次安装发布/丢失安装响应/启动确认/重放，11 项 Server 卸载发布/响应丢失/启动对账/镜像删除中断/保留材料重装，4 项原生沙箱隔离。首次安装另验证错误冻结计划授权不创建服务、候选撤销后补偿为未安装；配置专项验证真实监听变更/HTTP 转发、保留程序修订、停止后的数据快照、FIFO 导致快照中途失败后的补偿、候选授权撤销后的配置/数据恢复、旧授权撤销时停止并保留事务、以新通道恢复原事务，以及停止服务发布时保留开机启动。高频显式重启曾实测触发 systemd start-limit-hit；固定宿主在核验归属的显式启动中处理失败锁存，仅对实测限流结果重试一次，不禁用自动重启限流。真实操作经 Helper 计划/执行/配置/恢复入口与逐操作的类型化授权通道，使用隔离签名目录及已发布配置夹具；Helper 入口在测试进程内调用，未覆盖独立 Helper 进程传输或默认生产 HTTP/台账路径。另覆盖安装后不启动/不启用开机启动、1.19.10→1.19.30 更新、同版本修复、回退、数据隔离、独立开机启动、错误控制器凭据、保留数据卸载/重装和删除数据卸载，以及实测阶段/无秘密回执。测试结束移除测试自有 unit 和运行时根。
+- 不注册持久 Mihomo 服务的 `native-mihomo-archive` 命令执行前两组（65 项）；原生检查仍需 root/systemd 沙箱。`/tmp` 为不足 1 GiB 的 tmpfs，无法满足真实数据修订磁盘预检，因此真实归档验收使用磁盘上的 `/var/tmp`。
+
+版本范围是配置能力声明，真实二进制证据仅覆盖上述两版；HTTP 混合监听转发不证明所有出站协议或 TUN 互通。
+
+准备门禁阶段已将测试宿主升级至服务端包 `0.1.0-dev20261018-mr03`（Linux system 模式），安装器完成 Server `/healthz` 和 Guardian IPC 核验。TLS SAN 包含 `192.168.1.7`，沿用升级前证书；普通/管理员/root 文件访问范围均为 `/`，nftables 无规则。本节随后新增的事务/沙箱通过独立测试宿主执行，尚未接入该生产安装；部署与健康证据不替代 Mihomo 服务事务验收。
+
+首次安装材料选择已由 `MihomoInstallationBootstrapService` 在发布共锁内实现并注册：首次生成当前设置的 DIRECT 基线、TUN 关闭且无 GEO/provider 资源；待发布重试与保留安装复用冻结/已确认材料，不重新生成凭据。测试包含启用 DNS 的基线，并通过两个真实版本的 systemd 专项；默认安装台账和客户端接线仍待完成。
+
+卸载已增加 `MihomoRemovalPublicationService`：命名冻结计划与旧发布材料一起持久保存，成功须核对同一实例的实际成功回执、递增修订、移除状态及保留/删除配置身份，再保留材料或删除精确匹配的 Server 镜像和加密发布材料。失败只在原安装/配置实测恢复后补偿确认；响应丢失与镜像删除中断由启动恢复对账，不重跑卸载。应用拥有的设置和规范控制器凭据继续保留。默认 DI/启动恢复已注册；默认安装台账及客户端尚未切换。
+
+MR-03 仍在实施：生产 `MihomoRuntimeManager` 尚用固定清单；新 Server/Helper 组合的实际配置/设置/HTTP 发布接线、GEO/provider/凭据资源的受控准备和完整性分发、TUN 网络恢复边界、更新/修复/回滚/卸载台账与客户端版本选择尚未完成，Windows 端到端未验收。当前实际配置或授权声明涉及网络切换时，适配器在停止现有服务之前拒绝；不能借普通程序更新绕过网络恢复。尚不能作为生产多版本更新交付，现有固定版本重装仍不能称为升级。
+
 # 1. 文档目的
 
 面向手机、电脑提供代理服务的应用另见 [代理服务端应用设计](RelaxKonOS.ProxyServer.Design.md)（sing-box，尚未实现）。本文中的引擎扩展指宿主出站代理管理，不包含该独立应用的入站、代理使用者和订阅发布模型。

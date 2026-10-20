@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Security.Principal;
 using System.ServiceProcess;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Tunnels;
 
@@ -14,7 +15,7 @@ internal enum ComponentKind { Nginx, Mihomo, Frpc, Frps, SingBox }
 internal sealed record ComponentServiceConfiguration(ComponentKind Kind, string Name, string Root,
     string Executable, string Configuration, string? DataDirectory, string BinaryHash, string? AppliedIdentity);
 internal sealed record ComponentProcessState(int ProcessId, DateTime StartedAt, bool Connected,
-    bool AuthenticationFailed, IReadOnlyList<TunnelLogEntryDto> Logs);
+    bool AuthenticationFailed, IReadOnlyList<TunnelLogEntryDto> Logs, string? AppliedIdentity);
 
 /// <summary>Independent SCM host. It has no Helper pipe or remote command surface.</summary>
 [SupportedOSPlatform("windows")]
@@ -29,6 +30,8 @@ internal sealed class WindowsComponentService : ServiceBase
     private readonly object _stateGate = new();
     private readonly Queue<TunnelLogEntryDto> _logs = new();
     private bool _connected, _authenticationFailed;
+    private static readonly JsonSerializerOptions ProcessStateJson = new()
+    { RespectRequiredConstructorParameters = true, UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow };
 
     private WindowsComponentService(ComponentServiceConfiguration configuration, string path)
     {
@@ -75,7 +78,7 @@ internal sealed class WindowsComponentService : ServiceBase
     private static string ConfigPath(string name) => Path.Combine(HostRoot, "services", name + ".json");
 
     internal static async Task InstallAsync(ComponentKind kind, string root, string executable, string configuration,
-        string? dataDirectory = null, string? instance = null, string? appliedIdentity = null)
+        bool startOnBoot, string? dataDirectory = null, string? instance = null, string? appliedIdentity = null)
     {
         var name = Name(kind, root, instance);
         if (Exists(name)) EnsureOwnedService(name, kind, root);
@@ -114,7 +117,7 @@ internal sealed class WindowsComponentService : ServiceBase
         File.Move(path + ".new", path, true);
         var host = Path.Combine(destination, "RelaxKonOS.PrivilegedHelper.exe");
         var command = $"\"{host}\" --component-service --config \"{path}\"";
-        await ScAsync(Exists(name) ? "config" : "create", name, "binPath=", command, "start=", "auto", "obj=", "LocalSystem");
+        await ScAsync(Exists(name) ? "config" : "create", name, "binPath=", command, "start=", startOnBoot ? "auto" : "demand", "obj=", "LocalSystem");
         await ScAsync("failure", name, "reset=", "86400", "actions=", "restart/3000/restart/10000/restart/30000");
     }
 
@@ -179,7 +182,7 @@ internal sealed class WindowsComponentService : ServiceBase
         File.Move(candidate, active, true);
         try
         {
-            await InstallAsync(kind, root, executable, active, instance: instance, appliedIdentity: appliedIdentity);
+            await InstallAsync(kind, root, executable, active, true, instance: instance, appliedIdentity: appliedIdentity);
             await StartAsync(kind, root, instance);
         }
         catch
@@ -190,7 +193,7 @@ internal sealed class WindowsComponentService : ServiceBase
                 if (Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(previous.Executable))) != previous.BinaryHash)
                     throw new UnauthorizedAccessException("Previous component integrity failed.");
                 await File.WriteAllBytesAsync(active + ".new", previousContent); File.Move(active + ".new", active, true);
-                await InstallAsync(kind, root, previous.Executable, active, instance: instance, appliedIdentity: previous.AppliedIdentity);
+                await InstallAsync(kind, root, previous.Executable, active, true, instance: instance, appliedIdentity: previous.AppliedIdentity);
                 if (wasRunning) await StartAsync(kind, root, instance);
             }
             else await RemoveAsync(kind, root, instance);
@@ -223,16 +226,47 @@ internal sealed class WindowsComponentService : ServiceBase
         var statePath = Path.ChangeExtension(path, ".state.json");
         if (!File.Exists(statePath)) return new(false, false, false, null, []);
         using var stateInput = new FileStream(statePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        var state = JsonSerializer.Deserialize<ComponentProcessState>(stateInput) ?? throw new InvalidDataException();
+        var state = ReadProcessState(stateInput);
         try
         {
             using var process = Process.GetProcessById(state.ProcessId);
             var running = serviceRunning && !process.HasExited && process.StartTime.ToUniversalTime() == state.StartedAt
                 && string.Equals(process.MainModule?.FileName, config.Executable, StringComparison.OrdinalIgnoreCase);
-            return new(running, running && state.Connected, state.AuthenticationFailed, state.StartedAt, state.Logs, running ? config.AppliedIdentity : null);
+            return new(running, running && state.Connected, state.AuthenticationFailed, state.StartedAt, state.Logs, running ? state.AppliedIdentity : null);
         }
         catch (ArgumentException) { return new(false, false, false, null, state.Logs); }
     }
+    internal static ComponentServiceConfiguration? ReadOwnedRegistration(ComponentKind kind, string root)
+    {
+        var name = Name(kind, root);
+        if (!Exists(name)) return null;
+        EnsureOwnedService(name, kind, root);
+        var configuration = JsonSerializer.Deserialize<ComponentServiceConfiguration>(File.ReadAllText(ConfigPath(name))) ?? throw new InvalidDataException();
+        Validate(configuration);
+        return configuration;
+    }
+
+    internal static ComponentProcessState? ReadVerifiedProcess(ComponentKind kind, string root)
+    {
+        var configuration = ReadOwnedRegistration(kind, root);
+        if (configuration is null) return null;
+        using var service = new ServiceController(configuration.Name);
+        if (service.Status != ServiceControllerStatus.Running) return null;
+        var path = Path.ChangeExtension(ConfigPath(configuration.Name), ".state.json");
+        WindowsManagedRuntimePolicy.RequireNoLinks(path);
+        if (!File.Exists(path)) return null;
+        using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        var state = ReadProcessState(input);
+        try
+        {
+            using var process = Process.GetProcessById(state.ProcessId);
+            return !process.HasExited && process.StartTime.ToUniversalTime() == state.StartedAt
+                && string.Equals(process.MainModule?.FileName, configuration.Executable, StringComparison.OrdinalIgnoreCase) ? state : null;
+        }
+        catch (ArgumentException) { return null; }
+    }
+    internal static ComponentProcessState ReadProcessState(Stream input) =>
+        JsonSerializer.Deserialize<ComponentProcessState>(input, ProcessStateJson) ?? throw new InvalidDataException();
     private static bool Exists(string name)
     {
         using var service = new ServiceController(name);
@@ -256,6 +290,7 @@ internal sealed class WindowsComponentService : ServiceBase
     private static async Task ScAsync(params string[] arguments)
     {
         var info = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "sc.exe")) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        TrustedProcessEnvironment.Apply(info);
         foreach (var argument in arguments) info.ArgumentList.Add(argument);
         using var process = Process.Start(info) ?? throw new IOException("SCM command could not start.");
         var output = process.StandardOutput.ReadToEndAsync(); var error = process.StandardError.ReadToEndAsync();
@@ -302,10 +337,12 @@ internal sealed class WindowsComponentService : ServiceBase
         while (!_stopping.IsCancellationRequested)
         {
             var configuration = _configuration;
-            if (Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(configuration.Executable))) != configuration.BinaryHash)
-                throw new InvalidDataException("Component binary integrity failed.");
+            RequireProtected(configuration.Executable);
+            if (configuration.Kind == ComponentKind.SingBox) RequireProtected(configuration.Configuration);
+            await ValidateLaunchAsync(configuration, _stopping.Token);
             var info = new ProcessStartInfo(configuration.Executable) { UseShellExecute = false, CreateNoWindow = true,
                 WorkingDirectory = Path.GetDirectoryName(configuration.Executable)!, RedirectStandardOutput = true, RedirectStandardError = true };
+            TrustedProcessEnvironment.Apply(info);
             var arguments = configuration.Kind switch {
                 ComponentKind.Nginx => new[] { "-p", configuration.Root.Replace('\\', '/') + "/", "-c", configuration.Configuration },
                 ComponentKind.Mihomo => new[] { "-d", configuration.DataDirectory!, "-f", configuration.Configuration },
@@ -329,6 +366,19 @@ internal sealed class WindowsComponentService : ServiceBase
             if (!_stopping.IsCancellationRequested) await Task.Delay(3000, _stopping.Token);
         }
     }
+    internal static async Task ValidateLaunchAsync(ComponentServiceConfiguration configuration, CancellationToken ct)
+    {
+        Validate(configuration);
+        await using (var binary = File.OpenRead(configuration.Executable))
+            if (!Convert.ToHexString(await SHA256.HashDataAsync(binary, ct)).Equals(configuration.BinaryHash, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Component binary integrity failed.");
+        if (configuration.Kind != ComponentKind.SingBox) return;
+        await using var config = File.OpenRead(configuration.Configuration);
+        if (config.Length > 4 * 1024 * 1024 || configuration.AppliedIdentity is not { Length: 64 }
+            || !configuration.AppliedIdentity.All(Uri.IsHexDigit)
+            || !Convert.ToHexString(await SHA256.HashDataAsync(config, ct)).Equals(configuration.AppliedIdentity, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Component configuration identity failed.");
+    }
     private void Record(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return;
@@ -346,8 +396,8 @@ internal sealed class WindowsComponentService : ServiceBase
         lock (_stateGate)
         {
             if (_child is not { HasExited: false } child) return;
-            var state = new ComponentProcessState(child.Id, child.StartTime.ToUniversalTime(), _connected, _authenticationFailed, _logs.ToArray());
-            File.WriteAllText(_statePath + ".new", JsonSerializer.Serialize(state)); File.Move(_statePath + ".new", _statePath, true);
+            var state = new ComponentProcessState(child.Id, child.StartTime.ToUniversalTime(), _connected, _authenticationFailed, _logs.ToArray(), _configuration.AppliedIdentity);
+            File.WriteAllText(_statePath + ".new", JsonSerializer.Serialize(state, ProcessStateJson)); File.Move(_statePath + ".new", _statePath, true);
         }
     }
     protected override void OnStop()

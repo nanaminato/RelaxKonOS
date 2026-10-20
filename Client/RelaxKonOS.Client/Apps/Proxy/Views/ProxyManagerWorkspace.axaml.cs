@@ -1,6 +1,8 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using RelaxKonOS.Client.Apps.ProxyServer;
+using RelaxKonOS.Client.Apps.ProxyServer.Views;
 
 namespace RelaxKonOS.Client.Apps.Proxy.Views;
 
@@ -13,11 +15,19 @@ internal partial class ProxyManagerWorkspace : UserControl
     }
 
     private Button? _selectedButton;
-    public ProxyManagerWorkspace(ProxyManagerViewModel viewModel)
+    private readonly ProxyServerRuntimeViewModel? _runtime;
+    private readonly ProxyServerRuntimeView? _runtimeView;
+
+    public ProxyManagerWorkspace(ProxyManagerViewModel viewModel) : this(viewModel, null) { }
+
+    public ProxyManagerWorkspace(ProxyManagerViewModel viewModel, ProxyServerRuntimeViewModel? runtime)
     {
         InitializeComponent();
         RelaxKonOS.Client.Controls.CompactWorkspaceNavigation.Install(this, WorkspaceBody);
         DataContext = viewModel;
+        _runtime = runtime;
+        _runtimeView = runtime is null ? null : new ProxyServerRuntimeView(runtime);
+        RuntimeButton.IsVisible = runtime is not null;
         viewModel.NavigateRequested = section => Dispatcher.UIThread.Post(() => ShowPage(section, FindNavigationButton(section)));
         ShowPage("overview", OverviewButton);
     }
@@ -38,15 +48,19 @@ internal partial class ProxyManagerWorkspace : UserControl
             "proxies" => new ProxyGroupsView(),
             "connections" => new ProxyConnectionsView(),
             "logs" => new ProxyLogsView(),
+            "runtime" when _runtimeView is not null => _runtimeView,
             "settings" => new ProxySettingsView(),
             _ => new ProxyOverviewView()
         };
+        // The runtime page re-reads Host facts on entry; a running operation is never duplicated.
+        if (section == "runtime") _ = _runtime?.EnsureLoadedAsync();
     }
 
     private Button? FindNavigationButton(string section) => section switch
     {
         "profiles" => ProfilesButton,
         "proxies" => ProxiesButton,
+        "runtime" => RuntimeButton,
         "settings" => SettingsButton,
         _ => OverviewButton,
     };

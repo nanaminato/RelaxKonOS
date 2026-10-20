@@ -54,6 +54,7 @@ object OperationDestinations {
             InstallationService.Nginx -> OperationTarget(OperationDestination.WebServer)
             InstallationService.Frp -> OperationTarget(OperationDestination.Tunnels)
             InstallationService.Mihomo -> OperationTarget(OperationDestination.Proxy)
+            InstallationService.SingBox -> null
         }
     }
 

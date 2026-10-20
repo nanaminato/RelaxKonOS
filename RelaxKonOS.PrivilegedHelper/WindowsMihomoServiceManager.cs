@@ -25,7 +25,7 @@ internal static class WindowsMihomoServiceManager
             if (release != trusted.ReleaseDirectoryId) return new(false, ProblemCode: PrivilegedProblemCode.InvalidRequest);
             var serviceBinary = await ImportTrustedBinaryAsync(trusted, versions);
             await WindowsComponentService.InstallAsync(ComponentKind.Mihomo, Root, serviceBinary,
-                Path.Combine(Root, "config", "active.yaml"), Path.Combine(Root, "engines", "mihomo", "data"));
+                Path.Combine(Root, "config", "active.yaml"), true, Path.Combine(Root, "engines", "mihomo", "data"));
             return new(true);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)

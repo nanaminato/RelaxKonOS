@@ -40,6 +40,7 @@ fun WebsitesScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initial
     val viewModel: WebsitesViewModel = viewModel(factory = viewModelFactory {
         initializer { WebsitesViewModel(dependencies.session, dependencies.webPublishing, dependencies.deployments,
             dependencies.certificates, dependencies.elevationAnswers, dependencies.websitePublicationJournal) }
+
     })
     val state = viewModel.state
     val container = app.relaxkonos.mobile.ui.common.appContainer()

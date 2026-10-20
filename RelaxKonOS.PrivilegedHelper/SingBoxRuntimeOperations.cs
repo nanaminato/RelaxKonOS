@@ -1,0 +1,67 @@
+using System.Text.Json;
+using RelaxKonOS.ManagedRuntimes;
+using RelaxKonOS.Protocol.ManagedRuntimes;
+using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Protocol.Installations;
+
+namespace RelaxKonOS.PrivilegedHelper;
+
+internal static class SingBoxRuntimeOperations
+{
+    internal static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request,
+        Func<SingBoxRuntimeLifecycle>? create = null, Func<PrivilegedOperationFrame, Task>? report = null)
+    {
+        var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
+            Correlation: request.Correlation, Version: request.Version, RuntimeLifecycle: request.RuntimeLifecycle);
+        var input = request.RuntimeLifecycle;
+        if (input?.ConfigurationPlan is not null)
+            return new(false, 64, ProblemCode: PrivilegedProblemCode.InvalidRequest, Error: "runtime.request_invalid");
+        var valid = request.Operation switch
+        {
+            PrivilegedOperationKind.SingBoxRuntimeQuery => input is null,
+            PrivilegedOperationKind.SingBoxRuntimePlan => input is { Plan: not null, Authorization: null, FrozenPlan: null, Confirmed: false, RecoveryOperationId: null, CancelOperationId: null }
+                && RuntimeValidation.Identifier(input.SourceId),
+            PrivilegedOperationKind.SingBoxRuntimeExecute => input is { SourceId: null, Plan: null, Authorization: not null, Confirmed: false, FrozenPlan: { RuntimeId: "sing-box", Request: not null }, RecoveryOperationId: null, CancelOperationId: null }
+                && (input.FrozenPlan.Release is not null || input.FrozenPlan.Request.Change == RuntimeChange.Uninstall),
+            PrivilegedOperationKind.SingBoxRuntimeRecover => input is { SourceId: null, Plan: null, Authorization: not null, FrozenPlan: null, Confirmed: false, RecoveryOperationId: { } target, CancelOperationId: null }
+                && target != Guid.Empty,
+            PrivilegedOperationKind.SingBoxRuntimeCancel => input is { SourceId: null, Plan: null, Authorization: null, FrozenPlan: null, Confirmed: false, RecoveryOperationId: null, CancelOperationId: { } cancelTarget }
+                && cancelTarget != Guid.Empty,
+            PrivilegedOperationKind.SingBoxRuntimeRecoveryQuery => input is null,
+            PrivilegedOperationKind.SingBoxRuntimeRecoveryStop => input is { SourceId: null, Plan: null, Authorization: null, FrozenPlan: null, Confirmed: false, RecoveryOperationId: { } stopTarget, CancelOperationId: null }
+                && stopTarget != Guid.Empty,
+            PrivilegedOperationKind.SingBoxRuntimeRecoveryClose => input is { SourceId: null, Plan: null, Authorization: null, FrozenPlan: null, Confirmed: true, RecoveryOperationId: { } closeTarget, CancelOperationId: null }
+                && closeTarget != Guid.Empty,
+            _ => false
+        };
+        if (clean != request || !valid || request.OperationId is not { } id || id == Guid.Empty
+            || input?.Authorization is { } channel && (channel.OperationId != id || channel.ChannelId == Guid.Empty
+                || channel.RuntimeId != "sing-box"
+                || channel.Secret is not { Length: 64 } || !channel.Secret.All(Uri.IsHexDigit)))
+            return new(false, 64, ProblemCode: PrivilegedProblemCode.InvalidRequest, Error: "runtime.request_invalid");
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+            return new(false, 64, ProblemCode: PrivilegedProblemCode.UnsupportedOperation, Error: "runtime.platform_unsupported");
+        try
+        {
+            var lifecycle = (create ?? SingBoxRuntimeLifecycle.Create)();
+            RuntimeStageReporter? progress = report is null ? null : (stage, cancellable) => report(PrivilegedOperationFrame.Report(stage, cancellable: cancellable));
+            return request.Operation switch
+            {
+                PrivilegedOperationKind.SingBoxRuntimeQuery => Json(await lifecycle.QueryAsync(default, id)),
+                PrivilegedOperationKind.SingBoxRuntimePlan => Json(await lifecycle.PlanAsync(input!.SourceId!, input.Plan!, default)),
+                PrivilegedOperationKind.SingBoxRuntimeExecute => Json(await lifecycle.ExecuteAsync(id, input!.FrozenPlan!, input.Authorization!, default, progress)),
+                PrivilegedOperationKind.SingBoxRuntimeRecover => Json(await lifecycle.RecoverAsync(input!.Authorization!, input.RecoveryOperationId!.Value, default, progress)),
+                PrivilegedOperationKind.SingBoxRuntimeCancel => Json(lifecycle.CancelRequest(input!.CancelOperationId!.Value)),
+                PrivilegedOperationKind.SingBoxRuntimeRecoveryQuery => Json(await lifecycle.RecoveryAsync(default)),
+                PrivilegedOperationKind.SingBoxRuntimeRecoveryStop => Json(await lifecycle.StopAsync(input!.RecoveryOperationId!.Value, default)),
+                _ => Json(await lifecycle.CloseAsync(input!.RecoveryOperationId!.Value, default))
+            };
+        }
+        catch (RuntimePolicyException ex) { return new(false, 1, Error: ex.ProblemCode, ProblemCode: PrivilegedProblemCode.Conflict); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException
+            or JsonException or System.ComponentModel.Win32Exception or System.Security.Cryptography.CryptographicException)
+        { return new(false, 1, Error: "runtime.state_unknown", ProblemCode: PrivilegedProblemCode.InternalError); }
+    }
+
+    private static PrivilegedOperationResult Json<T>(T value) => new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(value)));
+}

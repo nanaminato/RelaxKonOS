@@ -16,18 +16,24 @@ public abstract class InstallationService<T> : IInstallationService where T : cl
         ? [$"service:{Id}", "linux:apt-dpkg"] : [$"service:{Id}"];
     protected abstract bool Confirmed(T request);
     protected virtual bool Supports(InstallationOperationKind kind) => kind == InstallationOperationKind.Install;
-    public object Validate(InstallationOperationKind kind, JsonElement options)
+    public object Validate(InstallationOperationKind kind, JsonElement options, string idempotencyKey)
     {
         if (!Supports(kind)) throw new InstallationException(InstallationProblemCodes.NotSupported, 400);
         var request = options.Deserialize<T>(Json) ?? throw new InstallationException(InstallationProblemCodes.InvalidRequest, 400);
         if (!Confirmed(request)) throw new InstallationException(InstallationProblemCodes.ConfirmationRequired, 400);
+        ValidateRequest(kind, request, idempotencyKey);
         return request;
     }
+    protected virtual void ValidateRequest(InstallationOperationKind kind, T request, string idempotencyKey) { }
     public Task StartAsync(InstallationOperationKind kind, object options, string actor, IInstallationProgress progress, CancellationToken ct)
         => ExecuteAsync(kind, (T)options, actor, progress, ct);
     protected abstract Task ExecuteAsync(InstallationOperationKind kind, T options, string actor, IInstallationProgress progress, CancellationToken ct);
     public abstract Task<InstallationRecovery> RecoverAsync(InstallationOperationDto operation, CancellationToken ct);
     public bool Cancel(InstallationOperationDto operation) => operation.Cancellable;
+    // Package and file installers abort through their own worker token; only a root runtime transaction
+    // outlives that token and therefore needs a request delivered to the Host.
+    public virtual bool CooperativeCancel => false;
+    public virtual Task RequestCancelAsync(InstallationOperationDto operation, CancellationToken ct) => Task.CompletedTask;
     protected static InstallationRecovery Recovery(bool healthy) => healthy
         ? new(InstallationOperationState.Succeeded)
         : new(InstallationOperationState.Interrupted, InstallationProblemCodes.Interrupted);

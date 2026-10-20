@@ -51,6 +51,7 @@ class WebsitesViewModelTest {
         Dispatchers.setMain(StandardTestDispatcher())
         model = WebsitesViewModel(session, WebPublishingRepository(gateway, session, elevation, index),
             DeploymentRepository(gateway, session), CertificateRepository(gateway, session, index, CertificateRequestJournal(Storage()), elevation), ElevationAnswerProvider.Declines, journal)
+
         store.put("websites", model)
     }
     @After fun cleanup() { store.clear(); Dispatchers.resetMain() }

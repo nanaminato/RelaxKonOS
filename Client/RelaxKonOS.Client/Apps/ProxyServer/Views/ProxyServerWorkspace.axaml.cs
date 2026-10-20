@@ -7,8 +7,9 @@ namespace RelaxKonOS.Client.Apps.ProxyServer.Views;
 /// <summary>Proxy Server workspace with compact page navigation and a pinned publication bar.</summary>
 public partial class ProxyServerWorkspace : UserControl
 {
-    private const int PageCount = 5;
+    private const int PageCount = 6;
     private ProxyServerViewModel? _viewModel;
+    private ProxyServerRuntimeViewModel? _runtime;
 
     public ProxyServerWorkspace()
     {
@@ -18,6 +19,12 @@ public partial class ProxyServerWorkspace : UserControl
     }
 
     public ProxyServerWorkspace(ProxyServerViewModel viewModel) : this() => DataContext = viewModel;
+
+    public ProxyServerWorkspace(ProxyServerViewModel viewModel, ProxyServerRuntimeViewModel runtime) : this(viewModel)
+    {
+        _runtime = runtime;
+        RuntimeView.DataContext = runtime;
+    }
 
     private void NavigationButton_Click(object? sender, RoutedEventArgs e)
     {
@@ -32,6 +39,8 @@ public partial class ProxyServerWorkspace : UserControl
             this.FindControl<Button>($"PageButton{i}")!.Classes.Set("nav-selected", i == page);
         }
         BodyScroll.Offset = default;
+        // Host state, not a cached list, decides what the page may offer.
+        if (page == 5) _ = _runtime?.EnsureLoadedAsync();
     }
 
     /// <summary>Copies the visible export text. The view owns the clipboard; the view model keeps no copy.</summary>

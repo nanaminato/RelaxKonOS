@@ -26,10 +26,9 @@ class InstallationWireTest {
             .forEach { assertTrue(runCatching { InstallationWire.operation(it) }.isFailure) }
     }
 
-    @Test fun `six typed requests carry only their current protocol fields`() {
+    @Test fun `five package requests carry only their current protocol fields`() {
         val requests = listOf(SmbInstallationRequest(true), GitInstallationRequest(true), DockerInstallationRequest(true),
-            NginxInstallationRequest(true, "1.28", "ref"), FrpInstallationRequest(true, "0.64", fileReferenceId = "ref"),
-            MihomoInstallationRequest(true, "1.19", fileReferenceId = "ref"))
+            NginxInstallationRequest(true, "1.28", "ref"), FrpInstallationRequest(true, "0.64", fileReferenceId = "ref"))
         requests.forEach { request ->
             val body = JSONObject(InstallationWire.request(request, InstallationKind.Install).toByteArray().decodeToString())
             assertTrue(body.getBoolean("confirmed"))
@@ -44,7 +43,6 @@ class InstallationWireTest {
         assertTrue(runCatching { InstallationWire.request(GitInstallationRequest(true), InstallationKind.Upgrade) }.isFailure)
         assertTrue(runCatching { InstallationWire.request(NginxInstallationRequest(true, fileReferenceId = "ref"), InstallationKind.Repair) }.isFailure)
         assertTrue(runCatching { InstallationWire.request(FrpInstallationRequest(true, rollback = true), InstallationKind.Install) }.isFailure)
-        assertTrue(runCatching { InstallationWire.request(MihomoInstallationRequest(true, rollback = true, fileReferenceId = "ref"), InstallationKind.Repair) }.isFailure)
         val rollback = JSONObject(InstallationWire.request(FrpInstallationRequest(true, rollback = true), InstallationKind.Repair).toByteArray().decodeToString())
         assertTrue(rollback.getBoolean("rollback"))
     }
@@ -61,5 +59,14 @@ class InstallationWireTest {
         val reference = InstallationWire.fileReference("""{"id":"ref","fileName":"nginx.zip","length":12,"expiresAt":"2026-09-30T00:20:00Z"}""")
         assertFalse(reference.expired(reference.expiresAtMillis - 1))
         assertTrue(reference.expired(reference.expiresAtMillis))
+    }
+
+    @Test fun `sing-box rollback records are current observations without enabling a submit form`() {
+        val parsed = InstallationWire.operation(operation.replace("\"nginx\"", "\"singBox\"").replace("\"install\"", "\"rollback\""))
+        assertEquals(InstallationService.SingBox, parsed.service)
+        assertEquals(InstallationKind.Rollback, parsed.kind)
+        assertTrue(InstallationService.SingBox.kinds.isEmpty())
+        assertEquals("singbox", InstallationService.SingBox.elevationTarget)
+        assertTrue(runCatching { InstallationWire.request(FrpInstallationRequest(true), InstallationKind.Rollback) }.isFailure)
     }
 }
