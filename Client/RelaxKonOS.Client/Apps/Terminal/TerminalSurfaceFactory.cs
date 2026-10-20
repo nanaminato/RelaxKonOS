@@ -4,10 +4,10 @@ using RoyalTerminal.Terminal.Transport.Ssh;
 namespace RelaxKonOS.Client.Apps.Terminal;
 
 /// <summary>
-/// Builds the terminal surface a window asks for.
+/// Builds the RoyalTerminal surface for a terminal tab.
 ///
-/// One factory belongs to one tab: it owns the transport factory, so the session a tab is attached to
-/// stays addressable (current session id, stop, kill) no matter which engine is currently drawing it.
+/// One factory belongs to one tab and owns the transport factory, so the session remains addressable
+/// independently from the Avalonia control that renders it.
 /// </summary>
 public sealed class TerminalSurfaceFactory
 {
@@ -25,21 +25,14 @@ public sealed class TerminalSurfaceFactory
         TransportFactory = new SignalRTransportFactory(credentials, hostKeys);
     }
 
-    /// <summary>The transport factory every surface of this tab shares.</summary>
     public SignalRTransportFactory TransportFactory { get; }
 
-    /// <summary>Current display-language labels for chrome drawn inside a web-rendered surface.</summary>
     public Func<IReadOnlyDictionary<string, string>> Labels { get; }
 
-    public ITerminalSurface Create(TerminalBackendKind backend) => backend == TerminalBackendKind.XtermJs
-        ? new XtermJsTerminalSurface(TransportFactory, Labels())
-        : new BuiltInTerminalSurface(TransportFactory, _credentials, _hostKeys);
+    public ITerminalSurface Create(TerminalBackendKind backend) =>
+        new BuiltInTerminalSurface(TransportFactory, _credentials, _hostKeys);
 }
 
-/// <summary>
-/// The clipboard and reset actions offered inside a web-rendered terminal. They are resolved through
-/// the shared resource table so the in-page menu follows the display language like the rest of the UI.
-/// </summary>
 public static class TerminalSurfaceLabels
 {
     public static IReadOnlyDictionary<string, string> Build() => new Dictionary<string, string>(StringComparer.Ordinal)
