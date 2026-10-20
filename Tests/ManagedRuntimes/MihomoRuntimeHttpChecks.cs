@@ -12,6 +12,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.Endpoints;
@@ -129,7 +130,7 @@ internal static class MihomoRuntimeHttpChecks
                 "An acknowledged close carries the operator decision to the Host");
             var placedResources = await client.PostAsJsonAsync(RuntimeRoutes.MihomoResources, new { });
             Check(placedResources.IsSuccessStatusCode
-                && (await placedResources.Content.ReadFromJsonAsync<RuntimeResourceReport>()) is { Files.Count: 1 }
+                && (await placedResources.Content.ReadFromJsonAsync<RuntimeResourceReport>()) is { Files.Count: 5 }
                 && fixture.Last?.Operation == PrivilegedOperationKind.MihomoRuntimeResources,
                 "An elevated resource request asks the Host to place its verified GEO set");
             fixture.InvalidResources = true;
@@ -137,6 +138,26 @@ internal static class MihomoRuntimeHttpChecks
                 Check(invalidResources.StatusCode == HttpStatusCode.ServiceUnavailable,
                     "A Host report naming an undeclared resource is refused instead of rendered");
             fixture.InvalidResources = false;
+            fixture.DuplicateResources = true;
+            using (var duplicate = await client.PostAsJsonAsync(RuntimeRoutes.MihomoResources, new { }))
+                Check(duplicate.StatusCode == HttpStatusCode.ServiceUnavailable, "Duplicate resource names cannot stand in for the full closed set");
+            fixture.DuplicateResources = false;
+            fixture.WrongResourceDigest = true;
+            using (var wrongDigest = await client.PostAsJsonAsync(RuntimeRoutes.MihomoResources, new { }))
+                Check(wrongDigest.StatusCode == HttpStatusCode.ServiceUnavailable, "Resource identities must match the Server compiled digest table");
+            fixture.WrongResourceDigest = false;
+            client.DefaultRequestHeaders.Authorization = new("Bearer", "read");
+            var resourceObservation = await client.GetFromJsonAsync<RuntimeResourceSnapshot>(RuntimeRoutes.MihomoResources);
+            Check(resourceObservation is { Files.Count: 5, ProblemCode: null }
+                && fixture.Last?.Operation == PrivilegedOperationKind.MihomoRuntimeResourceQuery,
+                "Read permission observes Helper-measured resources without requiring elevation or preparing anything");
+            fixture.InvalidResourceSnapshot = true;
+            using (var unknownResources = await client.GetAsync(RuntimeRoutes.MihomoResources))
+                Check(unknownResources.StatusCode == HttpStatusCode.ServiceUnavailable, "An unknown observation cannot carry a verified digest identity");
+            fixture.InvalidResourceSnapshot = false;
+            using (var oldRoute = await client.PutAsJsonAsync("/api/v1.0/proxy/geodata", new { filePath = "/tmp/geoip.metadb" }))
+                Check(oldRoute.StatusCode == HttpStatusCode.NotFound, "The removed arbitrary server-path resource route has no fallback");
+            client.DefaultRequestHeaders.Authorization = new("Bearer", "elevated-installer");
             fixture.AbsentInstallation = true;
             using (var absentResources = await client.PostAsJsonAsync(RuntimeRoutes.MihomoResources, new { }))
                 Check(absentResources.StatusCode == HttpStatusCode.Conflict,
@@ -254,6 +275,9 @@ internal static class MihomoRuntimeHttpChecks
         internal int Calls;
         internal bool SystemMode = true;
         internal bool InvalidResources;
+        internal bool DuplicateResources;
+        internal bool WrongResourceDigest;
+        internal bool InvalidResourceSnapshot;
         internal bool AbsentInstallation;
         internal PrivilegedOperationRequest? Last;
         internal RuntimeInstallationSnapshot? Observation;
@@ -276,12 +300,23 @@ internal static class MihomoRuntimeHttpChecks
                     null, null, null, new(true, false, false)),
                 PrivilegedOperationKind.MihomoRuntimeRecoveryClose => new RuntimeSwitchResult(
                     request.RuntimeLifecycle?.RecoveryOperationId ?? Guid.NewGuid(), RuntimeSwitchOutcome.Succeeded, null),
-                PrivilegedOperationKind.MihomoRuntimeResources => new RuntimeResourceReport(Guid.NewGuid(),
-                    [InvalidResources ? new("unknown.dat", 16, new string('c', 64)) : new("geosite.dat", 4096, new string('c', 64))]),
+                PrivilegedOperationKind.MihomoRuntimeResources => ResourceReport(),
+                PrivilegedOperationKind.MihomoRuntimeResourceQuery => new RuntimeResourceSnapshot(Guid.NewGuid(),
+                    MihomoGeoDataFiles.Bundled.Select(file => new RuntimeResourceObservation(file.Name,
+                        InvalidResourceSnapshot ? RuntimeResourceState.Unknown : RuntimeResourceState.Verified,
+                        4096, file.Sha256)).ToArray()),
                 PrivilegedOperationKind.MihomoRuntimePlan => new RuntimePlanResult(null, ["runtime.release_untrusted"]),
                 _ => throw new Exception("HTTP read/plan route executed an unrequested Helper action")
             };
             return Task.FromResult(new PrivilegedOperationResult(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(value))));
+        }
+        private RuntimeResourceReport ResourceReport()
+        {
+            var files = MihomoGeoDataFiles.Bundled.Select(file => new RuntimeResourceFile(file.Name, 4096, file.Sha256)).ToArray();
+            if (InvalidResources) files = [new("unknown.dat", 16, new string('c', 64))];
+            if (DuplicateResources) files[1] = files[0];
+            if (WrongResourceDigest) files[0] = files[0] with { Sha256 = new string('a', 64) };
+            return new(Guid.NewGuid(), files);
         }
         public ServerMode Mode => SystemMode ? ServerMode.System : ServerMode.User;
         public bool Supports(ServerHostFeature feature) => SystemMode;

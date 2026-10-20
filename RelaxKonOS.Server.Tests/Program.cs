@@ -448,8 +448,6 @@ try
     await EventAlertChecks.VerifyAppendProjectionAndRecoveryAsync(root);
     if (args.Contains("--proxy-geodata-only"))
     {
-        await ProxyConfigurationChecks.VerifyMihomoGeoDataStagingAsync(root);
-        await ProxyConfigurationChecks.VerifyMihomoGeoDataStartupProvisioningAsync();
         await ProxyConfigurationChecks.VerifyProxyConfigurationTransactionAsync(root);
         await NetworkProxyTunnelChecks.VerifyProxyDiagnosticLogsAsync(root);
         Console.WriteLine("Proxy GEO data and configuration checks passed.");
@@ -535,8 +533,6 @@ try
     await DockerChecks.VerifyDockerProxyAsync(root);
     await DockerChecks.VerifyDockerEngineControlAsync(root);
     await DockerChecks.VerifyStackOperationsAsync(root);
-    await ProxyConfigurationChecks.VerifyMihomoGeoDataStagingAsync(root);
-    await ProxyConfigurationChecks.VerifyMihomoGeoDataStartupProvisioningAsync();
     await ProxyConfigurationChecks.VerifyProxyConfigurationTransactionAsync(root);
     await SquidGatewayChecks.RunAsync();
     await ProxyConfigurationChecks.VerifyProxyTunSafetyAsync(root);

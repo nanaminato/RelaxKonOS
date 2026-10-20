@@ -22,7 +22,6 @@ public sealed class ProxyConfigurationTransactionService(
     IProxyControllerSecretStore controllerSecrets,
     MihomoControllerOptions controllerOptions,
     MihomoPublicationStore publication,
-    IProxyGeoDataService? geoData = null,
     IProxySettingsService? settingsService = null,
     ILogger<ProxyConfigurationTransactionService>? logger = null,
     MihomoConfigurationPublicationService? managedPublication = null,
@@ -48,11 +47,6 @@ public sealed class ProxyConfigurationTransactionService(
             if (state.Pending is not null) return ProxyProblemCodes.RecoveryRequired;
             var managed = engine.EngineId == MihomoEngine.Id && state.Published is not null;
             if (!managed && await publication.UncoordinatedWriteProblemAsync(cancellationToken) is { } publicationProblem) return publicationProblem;
-            if (!managed && engine.EngineId == MihomoEngine.Id && geoData is not null)
-            {
-                var geoProblem = await geoData.EnsureBundledAsync(cancellationToken);
-                if (!string.IsNullOrEmpty(geoProblem)) return geoProblem;
-            }
             var directory = GetProfilesDirectory();
             var temporary = Path.Combine(directory, ".validate-" + Guid.NewGuid().ToString("N"));
             try

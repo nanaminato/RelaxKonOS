@@ -249,6 +249,18 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
     /// Places the Host-owned GEO resource set for the active revision. It downloads nothing and accepts no
     /// path: the Helper verifies its own compiled digests against the package installed beside it.
     /// </summary>
+    public async Task<RuntimeResourceSnapshot> QueryResourcesAsync(CancellationToken ct)
+    {
+        await store.Gate.WaitAsync(ct);
+        try
+        {
+            if ((await store.ReadAsync(ct)).Pending is not null) return new(null, [], "runtime.publication_unconfirmed");
+            return await CallAsync<RuntimeResourceSnapshot>(new(PrivilegedOperationKind.MihomoRuntimeResourceQuery), ct);
+        }
+        catch (RuntimePolicyException ex) { throw new RuntimeLifecycleException(ex.ProblemCode); }
+        finally { store.Gate.Release(); }
+    }
+
     public async Task<RuntimeResourceReport> PrepareResourcesAsync(CancellationToken ct)
     {
         await store.Gate.WaitAsync(ct);
@@ -283,7 +295,8 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
                 || value is RuntimeInstallationSnapshot snapshot && (snapshot.Installation is null
                     || snapshot.Receipt is { } observed && (!ValidReceipt(observed) || observed.OperationId != request.OperationId))
                 || value is RuntimeRecoverySnapshot recovery && !ValidRecovery(recovery)
-                || value is RuntimeResourceReport resources && !ValidResources(resources))
+                || value is RuntimeResourceReport resources && !ValidResources(resources)
+                || value is RuntimeResourceSnapshot resourceSnapshot && !ValidResourceSnapshot(resourceSnapshot))
                 throw new RuntimeLifecycleException("runtime.helper_response_invalid");
             return value is not null || allowNull ? value! : throw new RuntimeLifecycleException("runtime.helper_response_invalid");
         }
@@ -306,8 +319,29 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
 
     /// <summary>A resource report may only name the closed set the Server is willing to describe.</summary>
     private static bool ValidResources(RuntimeResourceReport report) =>
-        report.RevisionId != Guid.Empty && report.Files is { Count: > 0 }
+        report.RevisionId != Guid.Empty && report.Files is { } files && files.Count == MihomoGeoDataFiles.Bundled.Count
+        && files.All(file => file is not null)
+        && files.Select(file => file.Name).Distinct(StringComparer.Ordinal).Count() == files.Count
         && report.Files.All(file => MihomoGeoDataFiles.IsDeclared(file.Name)
             && file.Length is > 0 and <= MihomoGeoDataFiles.MaximumBytes
-            && file.Sha256 is { Length: 64 } && file.Sha256.All(Uri.IsHexDigit));
+            && file.Sha256 is { Length: 64 } && file.Sha256.All(Uri.IsHexDigit)
+            && MihomoGeoDataFiles.DigestMatches(MihomoGeoDataFiles.Bundled.Single(f => f.Name == file.Name).Sha256, file.Sha256));
+
+    private static bool ValidResourceSnapshot(RuntimeResourceSnapshot snapshot)
+    {
+        if (snapshot.RevisionId == Guid.Empty || snapshot.Files is null) return false;
+        if (snapshot.ProblemCode is { } problem)
+            return PublicCode(problem) && snapshot.Files.Count == 0
+                && (problem != "runtime.installation_absent" || snapshot.RevisionId is null);
+        return snapshot.RevisionId is not null && snapshot.Files.Count == MihomoGeoDataFiles.Bundled.Count
+            && snapshot.Files.All(file => file is not null)
+            && snapshot.Files.Select(file => file.Name).Distinct(StringComparer.Ordinal).Count() == snapshot.Files.Count
+            && snapshot.Files.All(file => MihomoGeoDataFiles.IsDeclared(file.Name) && Enum.IsDefined(file.State)
+                && (file.State == RuntimeResourceState.Verified
+                    ? file.ProblemCode is null && file.Length is > 0 and <= MihomoGeoDataFiles.MaximumBytes
+                        && file.Sha256 is { Length: 64 } && file.Sha256.All(Uri.IsHexDigit)
+                        && MihomoGeoDataFiles.DigestMatches(MihomoGeoDataFiles.Bundled.Single(f => f.Name == file.Name).Sha256, file.Sha256)
+                    : file.Length is null && file.Sha256 is null && (file.State == RuntimeResourceState.Missing
+                        ? file.ProblemCode is null : PublicCode(file.ProblemCode))));
+    }
 }

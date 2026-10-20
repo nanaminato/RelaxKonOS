@@ -7,6 +7,8 @@
     <RootNamespace>RelaxKonOS.PrivilegedHelper</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <None Include="../RelaxKonOS.Server/Assets/Mihomo/GeoData/geoip.metadb;../RelaxKonOS.Server/Assets/Mihomo/GeoData/geoip.dat;../RelaxKonOS.Server/Assets/Mihomo/GeoData/geosite.dat;../RelaxKonOS.Server/Assets/Mihomo/GeoData/country.mmdb;../RelaxKonOS.Server/Assets/Mihomo/GeoData/GeoLite2-ASN.mmdb"
+          Link="Assets/Mihomo/GeoData/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Compile Include="../RelaxKonOS.Server/Terminal/ConPty.cs" Link="Terminal/ConPty.cs" />
     <Compile Include="../RelaxKonOS.Server/Terminal/TerminalUserEnvironment.cs" Link="Terminal/TerminalUserEnvironment.cs" />
     <Compile Include="../RelaxKonOS.Server/SystemMonitor/ProcessInstanceTermination.cs" Link="SystemMonitor/ProcessInstanceTermination.cs" />

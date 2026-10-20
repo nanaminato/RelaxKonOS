@@ -30,7 +30,7 @@ class InstallationRepository(
         require(owner.privilegedOperations && request.service.capability in owner.capabilities)
         val digest = MessageDigest.getInstance("SHA-256").digest(InstallationWire.request(request, kind).toByteArray())
             .joinToString("") { "%02x".format(it) }
-        return InstallationSubmission(owner, kind, request, journal.begin(owner, request.service, kind, digest))
+        return InstallationSubmission(owner, kind, request, journal.begin(owner, request.service, kind, digest, (request as? ManagedRuntimeInstallationRequest)?.key.orEmpty()))
     }
 
     fun pending(owner: SessionState.Active): List<PendingInstallationRequest> { verify(owner); return journal.pending(owner) }
@@ -84,6 +84,32 @@ class InstallationRepository(
             }
             is ApiResult.Transport -> Unit
         }
+        result
+    }
+
+    suspend fun runtimeRecovery(owner: SessionState.Active, action: String, body: JsonBody,
+        provider: ElevationAnswerProvider): ApiResult<String> {
+        require(action in setOf("retry", "stop", "close"))
+        return runtimeWrite(owner, "${ManagedRuntimeRoutes.RECOVERY}/$action", body, provider)
+    }
+    suspend fun prepareRuntimeResources(owner: SessionState.Active, provider: ElevationAnswerProvider) =
+        runtimeWrite(owner, ManagedRuntimeRoutes.RESOURCES, JsonBody(), provider)
+
+    private suspend fun runtimeWrite(owner: SessionState.Active, route: String, body: JsonBody,
+        provider: ElevationAnswerProvider): ApiResult<String> = mutations.withLock {
+        verify(owner)
+        require(owner.privilegedOperations && ServerCapabilities.PROXY in owner.capabilities)
+        val key = UUID.randomUUID().toString()
+        val result = elevations.withElevation(InstallationService.Mihomo.elevation, "mihomo", ElevationAnswerProvider { capability, target ->
+            verify(owner)
+            val answer = provider.answer(capability, target)
+            if (session.state.value !== owner) { answer?.password?.fill('\u0000'); verify(owner) }
+            answer
+        }) { url, token ->
+            verify(owner)
+            gateway.managedRuntime(url, token, "POST", route, body, key)
+        }
+        verify(owner)
         result
     }
 

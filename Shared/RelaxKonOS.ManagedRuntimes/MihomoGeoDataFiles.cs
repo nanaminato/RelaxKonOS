@@ -1,6 +1,6 @@
 namespace RelaxKonOS.ManagedRuntimes;
 
-/// <summary>One GEO artifact shipped with the Server package, named by its fixed installed file name.</summary>
+/// <summary>One GEO artifact shipped with the first-party component payloads, named by its fixed installed file name.</summary>
 public sealed record MihomoGeoDataFile(string Name, string Sha256);
 
 /// <summary>

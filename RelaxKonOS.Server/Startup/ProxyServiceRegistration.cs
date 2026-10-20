@@ -48,10 +48,6 @@ internal static class ProxyServiceRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeManager>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyRuntimeManager>(sp => sp.GetRequiredService<RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeManager>());
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.IMihomoConfigurationValidator>(sp => sp.GetRequiredService<RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeManager>());
-        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyGeoDataService, RelaxKonOS.Server.Proxy.Mihomo.MihomoGeoDataService>();
-        // Provision bundled GEO files into Mihomo's -d HomeDir during Server startup, before users
-        // import subscriptions. The transaction service repeats this as an idempotent safety net.
-        builder.Services.AddHostedService<RelaxKonOS.Server.Proxy.Mihomo.MihomoGeoDataHostedService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxySettingsService, RelaxKonOS.Server.Proxy.Mihomo.MihomoSettingsService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyTunRuntimeController>(sp => (RelaxKonOS.Server.Proxy.Mihomo.MihomoSettingsService)sp.GetRequiredService<RelaxKonOS.Server.Proxy.IProxySettingsService>());
         builder.Services.AddHostedService<RelaxKonOS.Server.Proxy.Mihomo.SystemProxyGuardHostedService>();

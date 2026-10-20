@@ -45,7 +45,7 @@ class ProxyViewModelTest {
     private var logReads = 0
     @Before fun setup() {
         Dispatchers.setMain(StandardTestDispatcher())
-        model = ProxyViewModel(session, repository, installations, index, ElevationAnswerProvider.Declines, UploadDocumentOpener { null })
+        model = ProxyViewModel(session, repository, installations, index, ElevationAnswerProvider.Declines)
         store.put("proxy", model)
         gateway.onProxyOverview = { ApiResult.Success(overview) }
         gateway.onProxyProfiles = { ApiResult.Success(emptyList()) }
@@ -54,7 +54,7 @@ class ProxyViewModelTest {
         gateway.onProxyDownloadOptions = { ApiResult.Success(false) }
         gateway.onProxySettings = { ApiResult.Success(ProxySettings(false, false, true, false, false, "info", 7890, false, "127.0.0.1", null, null)) }
         gateway.onProxyRecovery = { ApiResult.Success(ProxyRecovery(false, false, null, "")) }
-        gateway.onProxyGeoData = { ApiResult.Success(ProxyGeoData(false, null)) }
+        gateway.onRuntimeResources = { ApiResult.Success(ManagedRuntimeResources(null, emptyList(), "runtime.installation_absent")) }
         gateway.onActiveInstallation = { ApiResult.Success(install) }
         gateway.onInstallation = { installationReads++; ApiResult.Success(install) }
         gateway.onProxyOperation = { operationReads++; ApiResult.Success(operation) }
@@ -74,6 +74,80 @@ class ProxyViewModelTest {
         model.recoverOperation(operation.operationId); advanceUntilIdle()
         return owner
     }
+    private val runtimeWire = """{"installation":{"installationId":"00112233-4455-6677-8899-aabbccddeeff","hostId":"host","runtimeId":"mihomo","ownership":"managed","stateRevision":3,"activeReleaseId":"release-a","recoveryRequired":false},"pendingOperationId":null,"measuredVersion":"1.19.10","problemCode":null}"""
+    private val sourceWire = """[{"runtimeId":"mihomo","baseUri":"https://release.invalid/","confirmationFingerprint":"key","identity":{"sourceId":"official","publisher":"Publisher","enabled":true,"trust":"confirmed"}}]"""
+    private val catalogWire = """{"source":{"identity":{"sourceId":"official"}},"fresh":true,"problemCode":null,"catalog":{"revision":4,"trustRevision":5,"signatureVerified":true,"releases":[{"runtimeId":"mihomo","releaseId":"release-b","originalVersion":"1.19.30","trust":"confirmed","configurationSupported":true,"channel":"stable","target":{"os":"linux","architecture":"amd64","serviceHost":"systemd"},"evidence":"nativeConfiguration"}]}}"""
+    private suspend fun TestScope.runtimeReady() {
+        login(); runCurrent()
+        gateway.onManagedRuntime = { _, route, _, _ -> ApiResult.Success(when (route) {
+            ManagedRuntimeRoutes.INSTALLATION -> runtimeWire
+            ManagedRuntimeRoutes.SOURCES -> sourceWire
+            ManagedRuntimeRoutes.RECOVERY -> """{"required":false}"""
+            else -> catalogWire
+        }) }
+        model.loadRuntime(); advanceUntilIdle()
+        model.loadRuntimeCatalog("official", false, false); advanceUntilIdle()
+    }
+    @Test fun `recovery callback cannot target a transaction absent from current observation`() = runTest {
+        runtimeReady()
+        var called = false
+        gateway.onManagedRuntime = { _, _, _, _ -> called = true; ApiResult.Transport(null) }
+        model.recoverRuntime("close", "00112233-4455-6677-8899-aabbccddeeff", true); advanceUntilIdle()
+        assertFalse(called)
+        model.recoverRuntime("stop", "00112233-4455-6677-8899-aabbccddeeff", false); advanceUntilIdle()
+        assertFalse(called)
+    }
+    @Test fun `stale refresh discards catalog and prevents installation planning`() = runTest {
+        runtimeReady(); assertNotNull(model.state.runtimeCatalog)
+        var calls = 0
+        gateway.onManagedRuntime = { _, _, _, _ -> calls++; ApiResult.Transport(null) }
+        model.loadRuntimeCatalog("official", true, false); advanceUntilIdle()
+        assertNull(model.state.runtimeCatalog); assertNull(model.state.runtimePlan)
+        model.planRuntime(InstallationKind.Upgrade, "release-b", false, true); advanceUntilIdle()
+        assertEquals(1, calls); assertNull(model.state.runtimePlan)
+    }
+    @Test fun `refused host plan displays blockers and cannot create ledger intent`() = runTest {
+        runtimeReady()
+        gateway.onManagedRuntime = { _, route, _, _ ->
+            assertEquals(ManagedRuntimeRoutes.PLAN, route)
+            ApiResult.Success("""{"allowed":false,"plan":null,"problems":["runtime.dependencies_unmet"],"dependencies":{"observations":[]}}""")
+        }
+        model.planRuntime(InstallationKind.Upgrade, "release-b", false, true); advanceUntilIdle()
+        assertEquals(listOf("runtime.dependencies_unmet"), model.state.runtimeProblems)
+        assertNotNull(model.state.runtimeDependencies); assertNull(model.state.runtimePlan); assertFalse(model.hasIntent)
+        model.installRuntime(); advanceUntilIdle(); assertFalse(model.hasIntent)
+    }
+    @Test fun `host plan freezes exact selection and matching key without submitting automatically`() = runTest {
+        runtimeReady()
+        gateway.onManagedRuntime = { _, _, body, _ ->
+            val request = org.json.JSONObject(requireNotNull(body).toByteArray().decodeToString()).getJSONObject("request")
+            assertEquals("update", request.getString("change")); assertEquals("release-b", request.getString("releaseId"))
+            val plan = org.json.JSONObject(RUNTIME_PLAN).put("request", request)
+            ApiResult.Success(org.json.JSONObject().put("allowed", true).put("problems", org.json.JSONArray()).put("plan", plan).toString())
+        }
+        model.planRuntime(InstallationKind.Upgrade, "release-b", false, true); advanceUntilIdle()
+        assertNotNull(model.state.runtimePlan); assertFalse(model.hasIntent)
+        model.clearRuntimePlan(); assertNull(model.state.runtimePlan)
+    }
+    @Test fun `unknown ownership blocks overwrite before HTTP planning`() = runTest {
+        runtimeReady()
+        gateway.onManagedRuntime = { _, route, _, _ -> ApiResult.Success(when (route) {
+            ManagedRuntimeRoutes.INSTALLATION -> runtimeWire.replace("managed", "unknown")
+            ManagedRuntimeRoutes.SOURCES -> sourceWire
+            else -> """{"required":false}"""
+        }) }
+        model.loadRuntime(); advanceUntilIdle()
+        var called = false
+        gateway.onManagedRuntime = { _, _, _, _ -> called = true; ApiResult.Transport(null) }
+        model.planRuntime(InstallationKind.Uninstall, null, false, true); advanceUntilIdle()
+        assertFalse(called); assertNull(model.state.runtimePlan)
+    }
+    @Test fun `session replacement clears frozen plan observations and recovery`() = runTest {
+        runtimeReady(); assertNotNull(model.state.runtime)
+        login(); runCurrent()
+        assertNull(model.state.runtime); assertNull(model.state.runtimeCatalog); assertTrue(model.state.runtimeSources.isEmpty())
+    }
+
     @Test fun `replacement installation rejects old callback and current confirmation sends once`() = runTest {
         val owner = ready()
         model.requestInstallationCancellation(owner, install)

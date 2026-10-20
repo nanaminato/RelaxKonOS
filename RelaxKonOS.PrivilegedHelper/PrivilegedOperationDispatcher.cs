@@ -31,7 +31,8 @@ public static partial class PrivilegedOperationExecutor
             or PrivilegedOperationKind.MihomoRuntimeExecute or PrivilegedOperationKind.MihomoRuntimeRecover
             or PrivilegedOperationKind.MihomoRuntimeCancel or PrivilegedOperationKind.MihomoRuntimeRecoveryQuery
             or PrivilegedOperationKind.MihomoRuntimeRecoveryStop or PrivilegedOperationKind.MihomoRuntimeRecoveryClose
-            or PrivilegedOperationKind.MihomoRuntimeConfigure or PrivilegedOperationKind.MihomoRuntimeResources)
+            or PrivilegedOperationKind.MihomoRuntimeConfigure or PrivilegedOperationKind.MihomoRuntimeResources
+            or PrivilegedOperationKind.MihomoRuntimeResourceQuery)
             return await MihomoRuntimeOperations.ExecuteAsync(request, report: progress);
         if (request.RuntimeLifecycle is not null)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "runtime lifecycle fields require a dedicated operation");

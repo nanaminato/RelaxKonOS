@@ -246,6 +246,41 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
             new(observed.Exists, observed.Running, observed.BootEnabled));
     }
 
+    internal async Task<RuntimeResourceSnapshot> QueryResourcesAsync(CancellationToken ct)
+    {
+        await EnsureStateAsync(ct);
+        using var session = states.Acquire();
+        var state = session.State ?? throw new RuntimePolicyException("runtime.state_unknown");
+        if (HasPending(state)) return new(state.Active?.RevisionId, [], "runtime.recovery_required");
+        var observation = await ObserveInstallationAsync(state, ct);
+        if (observation.Problem is { } problem) return new(null, [], problem);
+        if (state.Active is not { } active) return new(null, [], "runtime.installation_absent");
+        var directory = Path.Combine(root, "data", active.RevisionId.ToString("N"));
+        var files = new List<RuntimeResourceObservation>();
+        foreach (var file in resourceFiles ?? MihomoGeoDataFiles.Bundled)
+        {
+            var path = Path.Combine(directory, file.Name);
+            try
+            {
+                RuntimeSourceStore.RequireNoLinks(path);
+                if ((File.GetAttributes(path) & FileAttributes.Directory) != 0)
+                    throw new RuntimePolicyException("runtime.resource_digest_mismatch");
+                var measured = await MeasureAsync(path, file, ct);
+                files.Add(new(file.Name, RuntimeResourceState.Verified, measured.Length, measured.Digest));
+            }
+            catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+            { files.Add(new(file.Name, RuntimeResourceState.Missing)); }
+            catch (RuntimePolicyException ex)
+            {
+                files.Add(new(file.Name, ex.ProblemCode == "runtime.resource_digest_mismatch"
+                    ? RuntimeResourceState.Invalid : RuntimeResourceState.Unknown, ProblemCode: ex.ProblemCode));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            { files.Add(new(file.Name, RuntimeResourceState.Unknown, ProblemCode: "runtime.resource_observation_failed")); }
+        }
+        return new(active.RevisionId, files);
+    }
+
     /// <summary>
     /// Places the declared GEO resource set into the pre-provisioned data baseline and the active revision.
     /// The bytes come from the package installed beside this Helper and are accepted only when they match the
@@ -258,13 +293,14 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
         using var session = states.Acquire();
         var state = session.State ?? throw new RuntimePolicyException("runtime.state_unknown");
         if (HasPending(state)) throw new RuntimePolicyException("runtime.recovery_required");
+        var observation = await ObserveInstallationAsync(state, ct);
+        if (observation.Problem is { } problem) throw new RuntimePolicyException(problem);
         if (state.Active is not { } active) throw new RuntimePolicyException("runtime.installation_absent");
         var data = Path.Combine(root, "data", active.RevisionId.ToString("N"));
         var seed = Path.Combine(root, "seed-data");
         RuntimeSourceStore.RequireNoLinks(data);
         if (!Directory.Exists(data)) throw new RuntimePolicyException("runtime.data_snapshot_missing");
-        var directory = Path.GetFullPath(resourceDirectory
-            ?? Path.Combine(AppContext.BaseDirectory, "..", "server", "Assets", "Mihomo", "GeoData"));
+        var directory = Path.GetFullPath(resourceDirectory ?? BundledResourceDirectory);
         if (!Directory.Exists(directory)) throw new RuntimePolicyException("runtime.resource_source_missing");
         var placed = new List<RuntimeResourceFile>();
         foreach (var file in resourceFiles ?? MihomoGeoDataFiles.Bundled)
@@ -280,6 +316,10 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
         protect(seed);
         return new(active.RevisionId, placed);
     }
+
+    // The installed Helper is an independent component, not a sibling of the Server directory.
+    // Only its own versioned payload supplies resources; no alternative install-root lookup.
+    internal static string BundledResourceDirectory => Path.Combine(AppContext.BaseDirectory, "Assets", "Mihomo", "GeoData");
 
     /// <summary>The declared digest is the only accepted content, so a replaced package asset fails here.</summary>
     private static async Task<(long Length, string Digest)> MeasureAsync(string path, MihomoGeoDataFile file, CancellationToken ct)

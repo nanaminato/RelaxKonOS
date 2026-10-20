@@ -66,7 +66,7 @@ class ProxyTaskFlowTest {
             override suspend fun proxyDownloadOptions(serverUrl: String, accessToken: String) = ApiResult.Success(false)
             override suspend fun proxySettings(serverUrl: String, accessToken: String) = ApiResult.Success(ProxySettings(false, false, true, false, false, "info", 7890, false, "127.0.0.1", null, null))
             override suspend fun proxyRecovery(serverUrl: String, accessToken: String) = ApiResult.Success(ProxyRecovery(false, false, null, ""))
-            override suspend fun proxyGeoData(serverUrl: String, accessToken: String) = ApiResult.Success(ProxyGeoData(false, null))
+            override suspend fun runtimeResources(serverUrl: String, accessToken: String) = ApiResult.Success(ManagedRuntimeResources(null, emptyList(), "runtime.installation_absent"))
             override suspend fun proxyOperation(serverUrl: String, accessToken: String, id: String): ApiResult<ProxyOperation> {
                 operationReads++; return ApiResult.Success(operation)
             }
@@ -93,7 +93,7 @@ class ProxyTaskFlowTest {
         rule.runOnUiThread {
             model = ProxyViewModel(session, ProxyRepository(gateway, session, index, ProxyRequestJournal(storage())),
                 InstallationRepository(gateway, session, elevation, index, InstallationRequestJournal(storage())),
-                index, ElevationAnswerProvider.Declines, UploadDocumentOpener { null })
+                index, ElevationAnswerProvider.Declines)
             store.put("proxy", model)
         }
         rule.setContent { MaterialTheme {

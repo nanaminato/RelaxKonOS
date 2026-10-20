@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="managed_runtime_unknown">宿主状态未知，请刷新后再生成计划。</string>
+    <string name="managed_runtime_identity">所有权：%1$s · 版本：%2$s</string>
+    <string name="managed_runtime_keep_data">保留应用数据</string>
+    <string name="managed_runtime_delete_data">删除应用数据（不可撤销）</string>
+    <string name="managed_runtime_sources">已确认发布源</string>
+    <string name="managed_runtime_prerelease">显示预发布版</string>
+    <string name="managed_runtime_stale">目录已过期或刷新失败，禁止安装。</string>
+    <string name="managed_runtime_unsupported">此版本不支持当前配置能力。</string>
+    <string name="managed_runtime_preview">预览宿主计划</string>
+    <string name="managed_runtime_plan">%1$s · 当前：%2$s · 目标：%3$s</string>
+    <string name="managed_runtime_restart">宿主将校验当前已发布配置，此操作可能重启服务。</string>
+    <string name="managed_runtime_recovery">存在未完成事务，需要恢复。</string>
+    <string name="managed_runtime_stop">紧急停止服务</string>
+    <string name="managed_runtime_close_confirm">我确认关账，不再恢复此事务。</string>
+    <string name="managed_runtime_close">事务关账</string>
+    <string name="managed_runtime_disk">可用：%1$s 字节 · 需要：%2$s 字节</string>
+    <string name="managed_runtime_no_sources">尚未配置发布源。请先在宿主确认签名发布源。</string>
+    <string name="mihomo_geodata_prepare">校验并准备包内 GEO 数据</string>
+    <string name="mihomo_geodata_prepare_note">宿主校验 Helper 随包发布的 GEO 文件并修复受管副本，不接受路径或下载源。</string>
+    <string name="managed_resource_verified">已验证</string>
+    <string name="managed_resource_missing">缺失</string>
+    <string name="managed_resource_invalid">损坏</string>
+    <string name="managed_resource_unknown">未知</string>
+</resources>

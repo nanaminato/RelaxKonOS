@@ -62,15 +62,6 @@ public interface IProxySettingsService
     Task<string?> ReconcileSystemProxyAsync(bool startup, CancellationToken cancellationToken);
 }
 
-public interface IProxyGeoDataService
-{
-    Task<ProxyGeoDataDto> GetAsync(CancellationToken cancellationToken);
-    /// <summary>Copies the GEO data packaged with RelaxKonOS into Mihomo's private data directory.</summary>
-    Task<string?> EnsureBundledAsync(CancellationToken cancellationToken);
-    /// <returns>An empty string on success; otherwise a stable public problem code.</returns>
-    Task<string?> ConfigureFromServerFileAsync(string filePath, CancellationToken cancellationToken);
-}
-
 public interface IProxyRecoveryService
 {
     Task<ProxyRecoveryStatusDto> GetStatusAsync(CancellationToken cancellationToken);

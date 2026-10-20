@@ -40,7 +40,6 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
         {
             context.ShowWindow(LocalizedText.Get("application.relaxkonos.proxy.display_name"), new TextBlock { Text = LocalizedText.Get("proxy.login_required"), Margin = new Thickness(24), TextWrapping = Avalonia.Media.TextWrapping.Wrap }, new Rect(180, 160, 470, 180), Manifest.IconGlyph, false, false, false); return;
         }
-        var files = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
         var systemMonitor = context.Services.GetService(typeof(ITaskManagerClient)) as ITaskManagerClient;
         // Do not start a proxy operation with the initial Undecided permission snapshot.
         // ApplicationManager presents prompts after Activate returns, so this workspace owns
@@ -62,21 +61,6 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
                 dialog => new FileServicesPasswordDialogView(dialog, LocalizedText.Get("installation.elevation_message")),
                 new RelaxKonOS.Core.Primitives.Size(460, 230));
         }
-        vm.SetServerGeoDataFileRequest(async () =>
-        {
-            if (files is null) return null;
-            return await context.ShowDialogAsync<string?>(window, LocalizedText.Get("proxy.geodata.select_server_file"), dialog =>
-            {
-                var picker = new ExplorerViewModel(files,
-                    new ExplorerPickerOptions(ExplorerPickerMode.OpenFile, Filters: [new ExplorerFileFilter(LocalizedText.Get("proxy.geodata.file_filter"), ["*.metadb"])]),
-                    paths => dialog.Close(paths.FirstOrDefault()), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "ProxyManager.configuration")
-                {
-                    CancelAction = dialog.Cancel,
-                };
-                _ = picker.LoadRootAsync();
-                return new ExplorerMainView { DataContext = picker };
-            }, new RelaxKonOS.Core.Primitives.Size(720, 520));
-        });
         vm.RequestSystemProxySubscriptionDownloadAsync = async () =>
         {
             var useSystemProxy = false;

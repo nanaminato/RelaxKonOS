@@ -10,24 +10,24 @@ import kotlinx.coroutines.sync.withLock
 class ProxyRepository(private val gateway: RelaxKonGateway, private val session: AuthSession,
     private val index: OperationIndex, private val journal: ProxyRequestJournal) {
     private val mutations = Mutex()
+    suspend fun runtime(owner: SessionState.Active, method: String, route: String, body: JsonBody? = null, key: String? = null) =
+        read(owner) { u, t -> gateway.managedRuntime(u, t, method, route, body, key) }
+
     fun pending(owner: SessionState.Active) = journal.pending(owner.also(::verify))
     suspend fun overview(owner: SessionState.Active) = read(owner, gateway::proxyOverview)
     suspend fun profiles(owner: SessionState.Active) = read(owner, gateway::proxyProfiles)
     suspend fun subscriptions(owner: SessionState.Active) = read(owner, gateway::proxySubscriptions)
     suspend fun groups(owner: SessionState.Active) = read(owner, gateway::proxyGroups)
     suspend fun routing(owner: SessionState.Active) = read(owner, gateway::proxyRouting)
-    suspend fun releases(owner: SessionState.Active) = read(owner, gateway::proxyReleases)
     suspend fun downloadOptions(owner: SessionState.Active) = read(owner, gateway::proxyDownloadOptions)
-    suspend fun download(owner: SessionState.Active, version: String) = read(owner) { u, t -> gateway.proxyDownload(u, t, version) }
     suspend fun settings(owner: SessionState.Active) = read(owner, gateway::proxySettings)
     suspend fun recovery(owner: SessionState.Active) = read(owner, gateway::proxyRecovery)
     suspend fun traffic(owner: SessionState.Active) = read(owner, gateway::proxyTraffic)
     suspend fun connections(owner: SessionState.Active) = read(owner, gateway::proxyConnections)
     suspend fun logs(owner: SessionState.Active) = read(owner, gateway::proxyLogs)
     suspend fun dns(owner: SessionState.Active) = read(owner, gateway::proxyDns)
-    suspend fun geoData(owner: SessionState.Active) = read(owner, gateway::proxyGeoData)
+    suspend fun resources(owner: SessionState.Active) = read(owner, gateway::runtimeResources)
     suspend fun saveSettings(owner: SessionState.Active, settings: ProxySettings) = mutate(owner, ProxyWrite.Settings, null) { u, t -> gateway.saveProxySettings(u, t, settings) }
-    suspend fun configureGeoData(owner: SessionState.Active, path: String) = mutate(owner, ProxyWrite.GeoData, null) { u, t -> gateway.configureProxyGeoData(u, t, path) }
     suspend fun closeConnection(owner: SessionState.Active, id: String) = mutate(owner, ProxyWrite.Connection, null) { u, t -> gateway.closeProxyConnection(u, t, id) }
     suspend fun operation(owner: SessionState.Active, id: String): ApiResult<ProxyOperation> {
         val canonical = InstallationRoutes.canonicalId(id)
@@ -84,7 +84,7 @@ class ProxyRepository(private val gateway: RelaxKonGateway, private val session:
         val overview = overview(owner); val profiles = profiles(owner); val subscriptions = subscriptions(owner)
         val extra = when (pending.write) {
             ProxyWrite.Selection -> groups(owner); ProxyWrite.Routing -> routing(owner); ProxyWrite.Settings -> settings(owner)
-            ProxyWrite.GeoData -> geoData(owner); ProxyWrite.Connection -> connections(owner); else -> ApiResult.Success(Unit)
+            ProxyWrite.Connection -> connections(owner); else -> ApiResult.Success(Unit)
         }
         if (listOf(overview, profiles, subscriptions, extra).all { it is ApiResult.Success }) {
             journal.complete(pending); ApiResult.Success(Unit)

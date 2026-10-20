@@ -29,7 +29,6 @@ data class ProxyTraffic(val uploadPerSecond: Long, val downloadPerSecond: Long, 
 data class ProxyConnection(val id: String, val network: String, val source: String, val destination: String, val rule: String, val chains: String, val startedAtMillis: Long)
 data class ProxyLog(val timestampMillis: Long, val level: String, val message: String)
 data class ProxyDns(val enabled: Boolean, val hijackEnabled: Boolean, val mode: String?, val problemCode: String)
-data class ProxyGeoData(val configured: Boolean, val sizeBytes: Long?)
 object ProxyDiagnosticsWire {
     fun settings(payload: String) = JSONObject(payload).let { j ->
         val tun = if (j.isNull("tun")) null else j.getJSONObject("tun").let { ProxyTunSettings(it.getString("stack"), it.getString("deviceName"), it.getBoolean("autoRoute"), it.getBoolean("strictRoute"), it.getBoolean("autoDetectInterface"), it.getString("dnsHijack"), it.getInt("mtu")) }
@@ -45,6 +44,5 @@ object ProxyDiagnosticsWire {
     fun connections(payload: String) = array(payload, 10000) { j -> ProxyConnection(j.getString("id"), j.getString("network"), j.getString("source"), j.getString("destination"), j.getString("rule"), j.getString("chains"), IsoInstant.requireEpochMillis(j.getString("startedAt"))) }
     fun logs(payload: String) = array(payload, 500) { j -> ProxyLog(IsoInstant.requireEpochMillis(j.getString("timestamp")), j.getString("level"), j.getString("message")) }
     fun dns(payload: String) = JSONObject(payload).let { ProxyDns(it.getBoolean("enabled"), it.getBoolean("hijackEnabled"), if (it.isNull("mode")) null else it.getString("mode"), it.getString("problemCode")) }
-    fun geoData(payload: String) = JSONObject(payload).let { ProxyGeoData(it.getBoolean("isConfigured"), if (it.isNull("sizeBytes")) null else it.getLong("sizeBytes").also { size -> require(size >= 0) }) }
     private fun <T> array(payload: String, max: Int, parse: (JSONObject) -> T) = JSONArray(payload).let { a -> require(a.length() <= max); List(a.length()) { parse(a.getJSONObject(it)) } }
 }

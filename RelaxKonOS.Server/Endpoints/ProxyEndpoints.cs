@@ -19,13 +19,6 @@ public static class ProxyEndpoints
             await audit.RecordAsync(Actor(context.User), "settings.update", string.IsNullOrEmpty(problem) ? "succeeded" : "failed", problem, ct);
             return string.IsNullOrEmpty(problem) ? Results.NoContent() : Problem(problem, StatusCodes.Status400BadRequest);
         }).RequireAuthorization("ProxyManage").WithTags("Proxy");
-        app.MapGet(ProxyApiRoutes.GeoData, (IProxyGeoDataService geoData, CancellationToken ct) => geoData.GetAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
-        app.MapPut(ProxyApiRoutes.GeoData, async (ConfigureProxyGeoDataRequest request, IProxyGeoDataService geoData, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
-        {
-            var problem = await geoData.ConfigureFromServerFileAsync(request.FilePath, ct);
-            await audit.RecordAsync(Actor(context.User), "geodata.configure", string.IsNullOrEmpty(problem) ? "succeeded" : "failed", problem, ct);
-            return string.IsNullOrEmpty(problem) ? Results.NoContent() : Problem(problem, StatusCodes.Status400BadRequest);
-        }).RequireAuthorization("ProxyManage").WithTags("Proxy");
         app.MapPost(ProxyApiRoutes.RuntimeExternalDetection, async (ProxyRuntimeRequest request, IProxyRuntimeManager runtime, CancellationToken ct) =>
             string.IsNullOrWhiteSpace(request.ExternalPath) ? Problem(ProxyProblemCodes.ExternalRuntimeInvalid, StatusCodes.Status400BadRequest) : Results.Ok(await runtime.DetectExternalAsync(request.EngineId, request.ExternalPath, ct)))
             .RequireAuthorization("ProxyManage").WithTags("Proxy");

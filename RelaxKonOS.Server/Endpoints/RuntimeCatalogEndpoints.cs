@@ -75,6 +75,9 @@ public static class RuntimeCatalogEndpoints
             if (request.OperationId == Guid.Empty) return Results.BadRequest();
             return await RespondAsync(async () => Results.Ok(await service.CloseRecoveryAsync(request.OperationId, request.Confirmed, ct)));
         }).RequireAuthorization(ManagePolicy);
+        group.MapGet(RuntimeRoutes.MihomoResources, async ([FromServices] MihomoRuntimeService service, CancellationToken ct) =>
+            await RespondAsync(async () => Results.Ok(await service.QueryResourcesAsync(ct))))
+            .RequireAuthorization(ReadPolicy);
         group.MapPost(RuntimeRoutes.MihomoResources, async (HttpContext http,
             [FromServices] MihomoRuntimeService service, [FromServices] IHostElevationSessionStore elevations, CancellationToken ct) =>
         {

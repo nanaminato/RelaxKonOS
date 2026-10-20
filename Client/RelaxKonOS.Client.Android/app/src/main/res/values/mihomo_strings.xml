@@ -38,9 +38,6 @@
     <string name="mihomo_geodata">GeoData</string>
     <string name="mihomo_geodata_configured">Host GeoData staged</string>
     <string name="mihomo_geodata_missing">Host GeoData not configured</string>
-    <string name="mihomo_geodata_note">Select a GeoIP file accessible to the server service account. The server validates and stages it; the phone does not read its contents.</string>
-    <string name="mihomo_geodata_path">GeoIP path on server</string>
-    <string name="mihomo_geodata_select">Stage GeoData from server file</string>
     <string name="mihomo_group_automatic">This group selects nodes automatically.</string>
     <string name="mihomo_group_summary">%1$s · %2$d nodes</string>
     <string name="mihomo_group_testing">Testing %1$s · %2$d/%3$d</string>

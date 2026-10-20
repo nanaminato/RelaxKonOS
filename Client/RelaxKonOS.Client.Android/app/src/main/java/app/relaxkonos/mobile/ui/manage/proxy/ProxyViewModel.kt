@@ -1,7 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.proxy
 
 import app.relaxkonos.mobile.core.auth.AuthSession
-import android.net.Uri
 import androidx.compose.runtime.*
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -15,24 +14,26 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Job
 
-internal data class ProxyState(val busy: Boolean = false, val overview: ApiResult<ProxyOverview>? = null,
+internal data class ProxyState(
+    val runtime: ManagedRuntimeInstallation? = null, val runtimeSources: List<ManagedRuntimeSource> = emptyList(),
+    val runtimeCatalog: ManagedRuntimeCatalog? = null, val runtimePlan: ManagedRuntimeInstallationRequest? = null,
+    val runtimeProblems: List<String> = emptyList(), val runtimeDependencies: String? = null, val runtimeRecovery: String? = null,
+    val busy: Boolean = false, val overview: ApiResult<ProxyOverview>? = null,
     val profiles: ApiResult<List<ProxyProfile>>? = null, val subscriptions: ApiResult<List<ProxySubscription>>? = null,
     val groups: ApiResult<List<ProxyGroup>>? = null, val routing: ApiResult<ProxyRoutingMode>? = null,
-    val releases: ApiResult<List<ProxyRelease>>? = null,
-    val downloadOptions: Boolean = false, val download: ApiResult<ProxyDownload>? = null,
+    val downloadOptions: Boolean = false,
     val delays: Map<String, ApiResult<ProxyDelay>> = emptyMap(), val testingProxies: Set<String> = emptySet(),
     val testingGroup: String? = null, val pending: List<PendingProxyRequest> = emptyList(),
     val operation: ProxyOperation? = null, val operationVerified: Boolean = false,
     val installation: InstallationOperation? = null, val installationVerified: Boolean = false, val pendingInstallation: Boolean = false,
-    val reference: InstallationFileReference? = null, val uploadBytes: Long? = null,
     val settings: ApiResult<ProxySettings>? = null, val recovery: ApiResult<ProxyRecovery>? = null,
     val traffic: ApiResult<ProxyTraffic>? = null, val connections: ApiResult<List<ProxyConnection>>? = null,
-    val logs: ApiResult<List<ProxyLog>>? = null, val dns: ApiResult<ProxyDns>? = null, val geoData: ApiResult<ProxyGeoData>? = null,
+    val logs: ApiResult<List<ProxyLog>>? = null, val dns: ApiResult<ProxyDns>? = null, val resources: ApiResult<ManagedRuntimeResources>? = null,
     val diagnosticsBusy: Boolean = false, val diagnosticsFailed: Boolean = false, val diagnosticsSection: String? = null, val diagnosticsAtMillis: Long? = null, val problemCode: String? = null, val uncertain: Boolean = false, val savedEpoch: Int = 0, val observedAtMillis: Long? = null)
 internal class ProxyInstallationCancellation(val owner: SessionState.Active, val operation: InstallationOperation)
 internal class ProxyViewModel(private val session: AuthSession, private val repository: ProxyRepository,
     private val installations: InstallationRepository, private val operationIndex: OperationIndex,
-    private val elevationAnswers: ElevationAnswerProvider, private val uploadDocuments: UploadDocumentOpener) : ViewModel() {
+    private val elevationAnswers: ElevationAnswerProvider) : ViewModel() {
     private var workGeneration = 0L
     private var diagnosticsGeneration = 0L
     private var diagnosticsJob: Job? = null
@@ -105,19 +106,19 @@ internal class ProxyViewModel(private val session: AuthSession, private val repo
     }
     private suspend fun load(active: SessionState.Active) {
         state = state.copy(overview = null, profiles = null, subscriptions = null, groups = null, routing = null,
-            settings = null, recovery = null, geoData = null, observedAtMillis = null)
+            settings = null, recovery = null, resources = null, observedAtMillis = null)
         val overview = repository.overview(active); val profiles = repository.profiles(active); val subscriptions = repository.subscriptions(active)
         verify(active)
         val facts = (overview as? ApiResult.Success)?.value
         val groups = if (facts?.controllerReachable == true && facts.supportsGroups) repository.groups(active) else null
         val routing = if (facts?.controllerReachable == true) repository.routing(active) else null
         val options = if (active.privilegedOperations) repository.downloadOptions(active) else null
-        val settings = repository.settings(active); val recovery = repository.recovery(active); val geoData = repository.geoData(active)
+        val settings = repository.settings(active); val recovery = repository.recovery(active); val resources = repository.resources(active)
         verify(active)
         state = state.copy(overview = overview, profiles = profiles, subscriptions = subscriptions, groups = groups, routing = routing,
-            downloadOptions = (options as? ApiResult.Success)?.value == true, settings = settings, recovery = recovery, geoData = geoData, pending = repository.pending(active),
+            downloadOptions = (options as? ApiResult.Success)?.value == true, settings = settings, recovery = recovery, resources = resources, pending = repository.pending(active),
             pendingInstallation = installations.pending(active).any { it.service == InstallationService.Mihomo }, observedAtMillis = System.currentTimeMillis())
-        val failure = listOfNotNull(overview, profiles, subscriptions, groups, routing, options, settings, recovery, geoData).firstOrNull { it !is ApiResult.Success }
+        val failure = listOfNotNull(overview, profiles, subscriptions, groups, routing, options, settings, recovery, resources).firstOrNull { it !is ApiResult.Success }
         if (failure != null) failure(failure)
     }
     fun queue(action: ProxyAction, target: String? = null) = work { active ->
@@ -156,7 +157,18 @@ internal class ProxyViewModel(private val session: AuthSession, private val repo
     fun select(group: ProxyGroup, proxy: String) = mutation { active -> repository.select(active, group, proxy) }
     fun routing(mode: ProxyRoutingMode) = mutation { active -> repository.routing(active, mode) }
     fun saveSettings(settings: ProxySettings) = mutation { active -> repository.saveSettings(active, settings) }
-    fun configureGeoData(path: String) = mutation { active -> repository.configureGeoData(active, path) }
+    fun prepareResources() = work { active ->
+        val prior = (state.resources as? ApiResult.Success)?.value
+        require(prior?.canPrepare == true)
+        state = state.copy(resources = null)
+        val result = installations.prepareRuntimeResources(active, elevationAnswers); verify(active); failure(result)
+        val observation = repository.resources(active); verify(active); failure(observation)
+        state = state.copy(resources = observation)
+        if (result is ApiResult.Success && observation is ApiResult.Success) {
+            if (ManagedRuntimeResourceWire.matchesReport(result.value, observation.value)) state = state.copy(savedEpoch = state.savedEpoch + 1)
+            else state = state.copy(problemCode = "runtime.resource_observation_changed")
+        }
+    }
     fun closeConnection(id: String) = work { active ->
         val result = repository.closeConnection(active, id); verify(active); failure(result)
         if (result is ApiResult.Success) {
@@ -244,34 +256,84 @@ internal class ProxyViewModel(private val session: AuthSession, private val repo
         load(active)
         if (result !is ApiResult.Success) failure(result)
     }
-    fun loadReleases() = work { active ->
-        val result = repository.releases(active); verify(active); failure(result); state = state.copy(releases = result)
+    fun loadRuntime() = work { active ->
+        state = state.copy(runtime = null, runtimeCatalog = null, runtimePlan = intent?.request as? ManagedRuntimeInstallationRequest, runtimeProblems = emptyList(), runtimeDependencies = null, runtimeRecovery = null)
+        val installation = repository.runtime(active, "GET", ManagedRuntimeRoutes.INSTALLATION); verify(active); failure(installation)
+        if (installation is ApiResult.Success) {
+            val json = org.json.JSONObject(installation.value)
+            state = state.copy(runtime = ManagedRuntimeInstallation(installation.value),
+                runtimeDependencies = if (json.isNull("environment")) null else json.getJSONObject("environment").toString())
+        }
+        val sources = repository.runtime(active, "GET", ManagedRuntimeRoutes.SOURCES); verify(active); failure(sources)
+        state = state.copy(runtimeSources = if (sources is ApiResult.Success) ManagedRuntimeWire.sources(sources.value) else emptyList())
+        val recovery = repository.runtime(active, "GET", ManagedRuntimeRoutes.RECOVERY); verify(active); failure(recovery)
+        if (recovery is ApiResult.Success) state = state.copy(runtimeRecovery = recovery.value)
     }
-    fun download(version: String) = work { active ->
-        val result = repository.download(active, version); verify(active); failure(result); state = state.copy(download = result)
+    fun loadRuntimeCatalog(source: String, refresh: Boolean, prerelease: Boolean) = work { active ->
+        state = state.copy(runtimeCatalog = null, runtimePlan = null, runtimeProblems = emptyList())
+        require(state.runtimeSources.any { it.id == source })
+        val result = repository.runtime(active, if (refresh) "POST" else "GET", ManagedRuntimeRoutes.catalog(source, refresh, prerelease),
+            if (refresh) JsonBody() else null, if (refresh) java.util.UUID.randomUUID().toString() else null)
+        verify(active); failure(result)
+        if (result is ApiResult.Success) { val catalog = ManagedRuntimeWire.catalog(result.value); require(catalog.source == source); state = state.copy(runtimeCatalog = catalog) }
     }
-    fun clearReference() { if (!state.busy && intent == null) state = state.copy(reference = null, download = null) }
-    fun reference(path: String) = work { active ->
-        val result = installations.fileReference(active, InstallationService.Mihomo, path); verify(active); failure(result)
-        state = state.copy(reference = (result as? ApiResult.Success)?.value)
+    fun clearRuntimePlan() { if (!state.busy && !hasIntent) state = state.copy(runtimePlan = null, runtimeProblems = emptyList(), runtimeDependencies = null) }
+    fun planRuntime(kind: InstallationKind, release: String?, prerelease: Boolean, keepData: Boolean) = work { active ->
+        require(!hasIntent && !state.pendingInstallation)
+        state = state.copy(runtimePlan = null, runtimeProblems = emptyList(), runtimeDependencies = null)
+        val installation = requireNotNull(state.runtime)
+        val catalog = state.runtimeCatalog
+        if (kind != InstallationKind.Uninstall) {
+            require(catalog?.fresh == true && catalog.problem == null)
+            require(release != null && installation.eligible(kind, release))
+            require(catalog.releases.any { it.id == release && it.trust == "confirmed" && it.supported && (prerelease || it.channel == "stable") })
+        }
+        val key = java.util.UUID.randomUUID().toString()
+        val body = JsonBody().raw("sourceId", if (kind == InstallationKind.Uninstall) "null" else org.json.JSONObject.quote(requireNotNull(catalog).source))
+            .objectField("request", installation.request(kind, catalog, release, key, prerelease, keepData))
+        val result = repository.runtime(active, "POST", ManagedRuntimeRoutes.PLAN, body, key); verify(active); failure(result)
+        if (result is ApiResult.Success) {
+            val json = org.json.JSONObject(result.value); val problems = json.getJSONArray("problems")
+            state = state.copy(runtimeDependencies = if (json.isNull("dependencies")) null else json.getJSONObject("dependencies").toString())
+            state = state.copy(runtimeProblems = (0 until problems.length()).map { problems.getString(it) })
+            if (json.getBoolean("allowed") && problems.length() == 0 && !json.isNull("plan")) {
+                val request = ManagedRuntimeInstallationRequest(true, json.getJSONObject("plan").toString())
+                require(request.key == key && request.kind == kind)
+                val expected = org.json.JSONObject(body.toByteArray().decodeToString()).getJSONObject("request")
+                val actual = json.getJSONObject("plan").getJSONObject("request")
+                require(expected.keys().asSequence().toSet() == actual.keys().asSequence().toSet())
+                require(expected.keys().asSequence().all { expected.get(it).toString() == actual.get(it).toString() })
+                state = state.copy(runtimePlan = request)
+            }
+        }
     }
-    fun upload(uri: Uri) = work { active ->
-        val document = uploadDocuments.open(uri.toString()) ?: run { state = state.copy(problemCode = InstallationProblemCodes.FILE_REFERENCE_UNAVAILABLE); return@work }
-        val result = installations.upload(active, InstallationService.Mihomo, document) { bytes ->
-            viewModelScope.launch { if (activeSession === active && state.busy) state = state.copy(uploadBytes = bytes) }
-        }; verify(active); failure(result); state = state.copy(reference = (result as? ApiResult.Success)?.value, uploadBytes = null)
-    }
-    fun install(kind: InstallationKind, version: String?, rollback: Boolean, packageSource: Boolean) = work { active ->
+    fun installRuntime() = work { active ->
         if (intent == null) {
-            if (packageSource && state.reference?.expired() != false) { state = state.copy(problemCode = InstallationProblemCodes.FILE_REFERENCE_UNAVAILABLE); return@work }
-            intent = installations.prepare(active, kind, MihomoInstallationRequest(true, version?.trim()?.takeIf(String::isNotEmpty), rollback, if (packageSource) state.reference?.id else null))
+            val request = requireNotNull(state.runtimePlan)
+            intent = installations.prepare(active, request.kind, request)
         }
         val result = installations.submit(requireNotNull(intent), elevationAnswers); verify(active); failure(result)
         state = state.copy(pendingInstallation = installations.pending(active).any { it.service == InstallationService.Mihomo })
-        if (result is ApiResult.Success) { intent = null; installationResult(active, result); state = state.copy(reference = null, pendingInstallation = false) }
+        if (result is ApiResult.Success) { intent = null; state = state.copy(runtimePlan = null, pendingInstallation = false); installationResult(active, result) }
         else if (result is ApiResult.Problem && !state.pendingInstallation) intent = null
     }
-    fun retryInstall() { val old = intent ?: return; val r = old.request as MihomoInstallationRequest; install(old.kind, r.version, r.rollback, r.fileReferenceId != null) }
+    fun retryInstall() { if (intent != null) installRuntime() }
+    fun recoverRuntime(action: String, operationId: String, confirmed: Boolean) = work { active ->
+        require(action in setOf("retry", "stop", "close"))
+        require(action != "close" || confirmed)
+        val observedRecovery = org.json.JSONObject(requireNotNull(state.runtimeRecovery))
+        require(observedRecovery.getBoolean("required") && observedRecovery.getString("operationId") == operationId)
+        if (action == "close") {
+            val service = observedRecovery.getJSONObject("service")
+            require(!observedRecovery.isNull("recoveryProblemCode") && !service.getBoolean("running") && observedRecovery.isNull("serviceProblem"))
+        }
+        val body = JsonBody().string("operationId", InstallationRoutes.canonicalId(operationId)).bool("confirmed", action == "close")
+        val result = installations.runtimeRecovery(active, action, body, elevationAnswers)
+        verify(active); failure(result)
+        state = state.copy(runtime = null, runtimePlan = null, runtimeRecovery = null)
+        val recovery = repository.runtime(active, "GET", ManagedRuntimeRoutes.RECOVERY); verify(active); failure(recovery)
+        if (recovery is ApiResult.Success) state = state.copy(runtimeRecovery = recovery.value)
+    }
     fun acceptInstallationFacts() = work { active ->
         val pending = installations.pending(active).firstOrNull { it.service == InstallationService.Mihomo } ?: return@work
         val overview = repository.overview(active); verify(active); failure(overview)
@@ -280,7 +342,6 @@ internal class ProxyViewModel(private val session: AuthSession, private val repo
         if (result is ApiResult.Success) { intent = null; load(active) }
     }
     val hasIntent get() = intent != null
-    val currentIntent get() = intent
     fun recoverInstall(id: String, identified: Boolean) = work { active ->
         val pending = installations.pending(active).firstOrNull { it.service == InstallationService.Mihomo }
         if (pending != null && !identified) return@work

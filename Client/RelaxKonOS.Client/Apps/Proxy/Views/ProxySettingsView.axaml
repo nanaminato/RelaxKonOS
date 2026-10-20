@@ -20,7 +20,7 @@
         </StackPanel>
       </StackPanel>
     </Border>
-    <Border Padding="20" Classes="app-panel"><StackPanel Spacing="12"><TextBlock Text="{loc:Loc proxy.geodata}" FontSize="19" FontWeight="SemiBold" /><TextBlock Text="{loc:Loc proxy.geodata.hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" /><Grid ColumnDefinitions="*,Auto" ColumnSpacing="18"><TextBlock Text="{loc:Loc proxy.geodata.state}" VerticalAlignment="Center" /><TextBlock Grid.Column="1" Text="{Binding GeoDataState}" VerticalAlignment="Center" /></Grid><Button Content="{loc:Loc proxy.geodata.select_server_file}" Command="{Binding ConfigureGeoDataFromServerFileCommand}" HorizontalAlignment="Left" /></StackPanel></Border>
+    <Border Padding="20" Classes="app-panel"><StackPanel Spacing="12"><TextBlock Text="{loc:Loc proxy.geodata}" FontSize="19" FontWeight="SemiBold" /><TextBlock Text="{loc:Loc proxy.geodata.hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" /><Grid ColumnDefinitions="*,Auto" ColumnSpacing="18"><TextBlock Text="{loc:Loc proxy.geodata.state}" VerticalAlignment="Center" /><TextBlock Grid.Column="1" Text="{Binding ResourceState}" VerticalAlignment="Center" /></Grid><TextBlock Text="{Binding ResourceDetails}" TextWrapping="Wrap" /><Button Content="{loc:Loc proxy.geodata.prepare}" Command="{Binding PrepareResourcesCommand}" HorizontalAlignment="Left" /></StackPanel></Border>
     <Border Padding="20" Classes="app-panel">
       <StackPanel Spacing="12">
         <TextBlock Text="{loc:Loc proxy.system_settings}" FontSize="19" FontWeight="SemiBold" />

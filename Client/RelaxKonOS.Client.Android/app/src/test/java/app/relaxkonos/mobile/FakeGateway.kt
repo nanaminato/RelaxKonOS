@@ -35,6 +35,10 @@ import java.io.InputStream
  * returned a default.
  */
 class FakeGateway : RelaxKonGateway {
+    var onManagedRuntime: (suspend (String, String, JsonBody?, String?) -> ApiResult<String>)? = null
+    override suspend fun managedRuntime(serverUrl: String, accessToken: String, method: String, route: String,
+        body: JsonBody?, key: String?): ApiResult<String> = requireHandler(onManagedRuntime, "managedRuntime")(method, route, body, key)
+
     var onHostTime: (suspend () -> ApiResult<HostTimeSettings>)? = null
     var onHostIdentity: (suspend () -> ApiResult<HostIdentitySettings>)? = null
     var onHostEnvironmentTarget: (suspend (HostEnvironmentScope) -> ApiResult<HostSettingsTarget>)? = null
@@ -141,11 +145,10 @@ class FakeGateway : RelaxKonGateway {
     var onProxyLogs: suspend () -> ApiResult<List<ProxyLog>> = { error("Unexpected proxy diagnostic call") }
     override suspend fun proxyLogs(serverUrl: String, accessToken: String): ApiResult<List<ProxyLog>> = onProxyLogs()
     override suspend fun proxyDns(serverUrl: String, accessToken: String): ApiResult<ProxyDns> = error("Unexpected proxy diagnostic call")
-    var onProxyGeoData: suspend () -> ApiResult<ProxyGeoData> = { error("Unexpected proxy diagnostic call") }
-    override suspend fun proxyGeoData(serverUrl: String, accessToken: String): ApiResult<ProxyGeoData> = onProxyGeoData()
+    var onRuntimeResources: suspend () -> ApiResult<ManagedRuntimeResources> = { error("Unexpected proxy diagnostic call") }
+    override suspend fun runtimeResources(serverUrl: String, accessToken: String): ApiResult<ManagedRuntimeResources> = onRuntimeResources()
     var onSaveProxySettings: suspend (ProxySettings) -> ApiResult<Unit> = { _ -> error("Unexpected proxy diagnostic call") }
     override suspend fun saveProxySettings(serverUrl: String, accessToken: String, settings: ProxySettings): ApiResult<Unit> = onSaveProxySettings(settings)
-    override suspend fun configureProxyGeoData(serverUrl: String, accessToken: String, path: String): ApiResult<Unit> = error("Unexpected proxy diagnostic call")
     override suspend fun closeProxyConnection(serverUrl: String, accessToken: String, id: String): ApiResult<Unit> = error("Unexpected proxy diagnostic call")
     var onProxyOverview: suspend () -> ApiResult<ProxyOverview> = { error("Unexpected proxy call") }
     override suspend fun proxyOverview(serverUrl: String, accessToken: String): ApiResult<ProxyOverview> = onProxyOverview()
@@ -161,8 +164,6 @@ class FakeGateway : RelaxKonGateway {
     override suspend fun proxyDownloadOptions(serverUrl: String, accessToken: String): ApiResult<Boolean> = onProxyDownloadOptions()
     var onProxyOperation: suspend (String) -> ApiResult<ProxyOperation> = { _ -> error("Unexpected proxy call") }
     override suspend fun proxyOperation(serverUrl: String, accessToken: String, id: String): ApiResult<ProxyOperation> = onProxyOperation(id)
-    override suspend fun proxyReleases(serverUrl: String, accessToken: String): ApiResult<List<ProxyRelease>> = error("Unexpected proxy call")
-    override suspend fun proxyDownload(serverUrl: String, accessToken: String, version: String): ApiResult<ProxyDownload> = error("Unexpected proxy call")
     var onProxyQueue: suspend (ProxyAction, String?, String) -> ApiResult<String> = { _, _, _ -> error("Unexpected proxy call") }
     override suspend fun proxyQueue(serverUrl: String, accessToken: String, action: ProxyAction, target: String?, key: String): ApiResult<String> = onProxyQueue(action, target, key)
     override suspend fun saveProxyProfile(serverUrl: String, accessToken: String, id: String?, request: ProxyProfileRequest): ApiResult<ProxyProfile> = error("Unexpected proxy call")

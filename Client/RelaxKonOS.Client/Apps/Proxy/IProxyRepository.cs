@@ -1,4 +1,5 @@
 using RelaxKonOS.Protocol.Proxy;
+using RelaxKonOS.Protocol.ManagedRuntimes;
 
 namespace RelaxKonOS.Client.Apps.Proxy;
 
@@ -22,10 +23,9 @@ public interface IProxyRepository
     Task<ProxyDnsStatusDto> GetDnsStatusAsync(CancellationToken cancellationToken = default);
     Task<ProxySettingsDto> GetSettingsAsync(CancellationToken cancellationToken = default);
     Task UpdateSettingsAsync(UpdateProxySettingsRequest request, CancellationToken cancellationToken = default);
-    Task<ProxyGeoDataDto> GetGeoDataAsync(CancellationToken cancellationToken = default);
-    Task ConfigureGeoDataFromServerFileAsync(string filePath, CancellationToken cancellationToken = default);
+    Task<RuntimeResourceSnapshot> GetResourcesAsync(CancellationToken cancellationToken = default);
+    Task<RuntimeResourceReport> PrepareResourcesAsync(CancellationToken cancellationToken = default);
     Task<ProxyRuntimeDto> GetRuntimeAsync(CancellationToken cancellationToken = default);
-    Task<ProxyRuntimeDownloadDto?> GetManagedRuntimeDownloadAsync(string? version = null, CancellationToken cancellationToken = default);
     Task<ProxyOperationDto?> GetOperationAsync(Guid operationId, CancellationToken cancellationToken = default);
     Task<ProxyOperationAcceptedDto> LifecycleAsync(ProxyLifecycleAction action, CancellationToken cancellationToken = default);
     Task<ProxyOperationAcceptedDto> EnableTunAsync(Guid profileId, CancellationToken cancellationToken = default);

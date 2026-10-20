@@ -191,14 +191,6 @@ sealed class TestProxyPrivilegedOperations : IProxyPrivilegedOperations
     public Task<ProxyPrivilegedResult> RepairServiceAsync(ProxyServiceOperation request, CancellationToken cancellationToken) => Task.FromResult(Result());
 }
 
-sealed class RecordingGeoDataService : IProxyGeoDataService
-{
-    public int EnsureCalls { get; private set; }
-    public Task<ProxyGeoDataDto> GetAsync(CancellationToken cancellationToken) => Task.FromResult(new ProxyGeoDataDto(false));
-    public Task<string?> EnsureBundledAsync(CancellationToken cancellationToken) { EnsureCalls++; return Task.FromResult<string?>(null); }
-    public Task<string?> ConfigureFromServerFileAsync(string filePath, CancellationToken cancellationToken) => Task.FromResult<string?>(ProxyProblemCodes.NotSupported);
-}
-
 sealed class TransactionTestEngine : IProxyEngine
 {
     public string EngineId => MihomoEngine.Id;

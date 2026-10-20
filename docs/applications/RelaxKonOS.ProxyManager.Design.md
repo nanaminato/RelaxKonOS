@@ -11,7 +11,25 @@
 
 ---
 
-## 受管运行时公共目录接入进度（MR-03，2026-10-19）
+## 受管运行时公共目录接入进度（MR-03，2026-10-20）
+
+### 2026-10-20：生产 HTTP/独立 Helper 全生命周期与资源包
+
+指定 Debian 13 x64 上通过生产 HTTPS、PAM 提权、Server 安装台账及独立 Helper 进程验证 `v1.19.10 → v1.19.30` 更新、同版本 Repair、回退、保留数据卸载/重装和删除数据卸载。增强验收共 **81 项**，包含每个动作的冻结计划/键、同键重放同一操作、无未确认发布、实测程序/配置身份、首次安装不启动/不开机启动、更新恢复运行、保留数据重装维持配置与凭据身份，以及五次真实 mixed 监听 HTTP 转发。命令与可信来源准备见 [生产 HTTP 验收](../../Tests/ManagedRuntimes/ProductionHttpAcceptance.md)。配置为 DIRECT 基线，不代表 provider/TUN 支持。
+
+真实部署另发现并修复 GEO 资源来源错误：Linux 安装器把 Helper 复制到 `/usr/local/lib/relaxkonos/privileged-helper`，其资源准备此前假定相邻 Server 目录，返回 `runtime.resource_source_missing`。Helper 现在把编译期闭合的五项 GEO 文件打入自身 `Assets/Mihomo/GeoData` 发布载荷，仅从当前组件目录读取并再次校验摘要，不回退探测 Server 路径。正式资源路由实测返回正确活动修订及五个长度/摘要，重复准备身份不变；专项检查 **16 项**，全部托管运行时常规检查 **1274 项**通过。
+
+测试机当前为 `0.1.0-dev20261020-mr03c`，系统模式、三类文件策略 full、原 IP SAN 自签证书保留，Server/Guardian 运行。验收使用管理员显式 inspect/confirm 的本地测试源，精确授权 `192.168.1.7/32:18443`，签名私钥留在准备机；验收完成已以信任修订 2 禁用来源、保留高水位/历史、停止镜像、撤下验收临时 CA 与 TLS 私钥。最终实测 Mihomo 单元不存在、无待恢复事务，不把测试源当作生产官方来源。
+
+Android 完整 Debug APK 和单元/设备测试 Kotlin 源码已编译通过；完整 Gradle 运行时 classpath 迁移到该 Debian 测试机后，**1566 项 JVM 测试**通过。证书握手回调夹具已允许 JDK PKIX 用 null 请求默认签名提供者，仍调用真实证书签名验证；设备界面尚未执行；Android 当前交互与验证规则继续由 Android 文档维护。provider/凭据资源分发、TUN 网络事务及 Windows 端到端仍未完成，不能把 Linux 基线生命周期验收扩大为全部 MR-03 交付。
+
+### 2026-10-20：Android 当前契约与生产通道核验
+
+Android Mihomo 已接入来源/目录、实测安装观察、计划预览、精确冻结计划台账提交与命名恢复；旧 `MihomoInstallationRequest`、包引用与已删除下载路由调用移除。安装 journal 使用计划已有幂等键，未知提交不能被新计划替换。当前 API 的运行时枚举采用 camelCase，与 Server 实际响应一致，不增加双格式解析。Android 专属交互与验证规则见 [功能说明](../../Client/RelaxKonOS.Client.Android/docs/features/Proxy.md) 和 [验证要求](../../Client/RelaxKonOS.Client.Android/docs/development/Verification.md)。
+
+指定 Debian 13 x64 测试机 `192.168.1.7` 已部署 `0.1.0-dev20261020-mr03`（Server/Helper/Guardian 当前源码的 Linux 自包含构建），系统模式，普通/管理员/root 文件策略均为 full，HTTPS 证书包含该 IP 的 SAN；内核 nftables 实测无规则表，旧 iptables 防火墙工具未安装。生产 HTTP 经 PAM 登录及独立 Helper 验证来源、安装/依赖/恢复观察、旧请求拒绝、计划缺源/不存在安装拒绝与恢复提权门禁，共 12 项通过。
+
+此前 Android 增量 Kotlin/Compose 编译及 65 项专项 JUnit 已通过；当前完整 Debug APK 构建与生产 HTTP 生命周期证据见上节。Android 设备交互仍独立验收，不能由 JVM 或宿主 API 测试替代。
 
 ### 2026-10-19：生产台账注册切换（Server + 桌面）
 
@@ -19,13 +37,13 @@
 
 代理状态不再依赖旧安装器自己的状态文件：`MihomoRuntimeManager.GetAsync` 在本地状态缺失时投影 Helper 实测的受管安装事实（归属、实测版本、控制器可达性），无法测量时返回 `proxy.runtime_state_unknown` 而不是“未安装”。启动/停止/重启仍走同一 `relaxkonos-mihomo.service`，配置与设置发布此前已走受管事务，因此代理工作区在不改变日常操作的前提下切换到受管运行时。
 
-桌面 Proxy Manager 新增“运行时”页（复用 Proxy Server 的运行时页面与 `IMihomoRuntimeCatalogClient`）：列出已确认版本、阻止原因、目标差异，执行前取得 Host 计划，安装/更新/修复/回退/卸载都经同一台账，支持取消下载、待恢复重试/紧急停止/操作员关账。旧“安装托管运行时／从服务器文件安装／自行下载／回退／卸载”按钮改为进入该页面。Android 代理界面仍使用旧 `MihomoInstallationRequest`，其运行时页面尚未接入——本切分明确不完整，Android 仍然会在台账收到 `installation.invalid_request`。
+桌面 Proxy Manager 新增“运行时”页（复用 Proxy Server 的运行时页面与 `IMihomoRuntimeCatalogClient`）：列出已确认版本、阻止原因、目标差异，执行前取得 Host 计划，安装/更新/修复/回退/卸载都经同一台账，支持取消下载、待恢复重试/紧急停止/操作员关账。旧“安装托管运行时／从服务器文件安装／自行下载／回退／卸载”按钮改为进入该页面。Android 已在 2026-10-20 切换到当前冻结计划契约，客户端详细行为由 [Android 文档](../../Client/RelaxKonOS.Client.Android/docs/features/Proxy.md) 维护。
 
 ### 2026-10-19：受控 GEO 资源预备（离线、编译期摘要）
 
 `POST /managed-runtimes/mihomo/resources`（统一 API 前缀下）要求 RuntimeManage、Mihomo 安装权限与目标为 `mihomo` 的 MihomoInstall 提权，并在发布 Gate 内拒绝未确认提交（409 `runtime.publication_unconfirmed`）。请求不携带路径、URL 或选择：可放置的集合由 `Shared/RelaxKonOS.ManagedRuntimes/MihomoGeoDataFiles.cs` 的编译期摘要表固定（`geoip.metadb`、`geoip.dat`、`geosite.dat`、`country.mmdb`、`GeoLite2-ASN.mmdb`），Server 原有 GEO 服务与 Helper 共用同一张表，任一侧都不能自行扩大集合。
 
-Helper 从自身版本目录旁的 `../server/Assets/Mihomo/GeoData` 读取，逐文件核对长度与 SHA-256 后才落地：包内资产被替换返回 `runtime.resource_digest_mismatch`，文件缺失返回 `runtime.resource_source_missing`，链接路径返回 `runtime.linked_path_forbidden`，未安装返回 `runtime.installation_absent`，有未完成事务返回 `runtime.recovery_required`。写入对象是预置基线 `seed-data` 与当前活动修订的 `data/<revisionId>`：基线让后续安装/更新的候选数据与原生 `-t` 预检看到同一份已校验数据，活动修订让正在运行的服务直接可用。文件整份临时写入后原子改名、按 0644 落地，已一致的文件不重写，旧副本被替换整份。Server 只接受闭合集合内的报告，越界名称按无效 Helper 响应处理。
+Helper 从自身版本目录的 `Assets/Mihomo/GeoData` 读取，逐文件核对长度与 SHA-256 后才落地：包内资产被替换返回 `runtime.resource_digest_mismatch`，文件缺失返回 `runtime.resource_source_missing`，链接路径返回 `runtime.linked_path_forbidden`，未安装返回 `runtime.installation_absent`，有未完成事务返回 `runtime.recovery_required`。写入对象是预置基线 `seed-data` 与当前活动修订的 `data/<revisionId>`：基线让后续安装/更新的候选数据与原生 `-t` 预检看到同一份已校验数据，活动修订让正在运行的服务直接可用。文件整份临时写入后原子改名、按 0644 落地，已一致的文件不重写，旧副本被替换整份。Server 只接受闭合集合内的报告，越界名称按无效 Helper 响应处理。
 
 边界：本操作**不下载任何内容**，也不处理 provider 订阅、证书与私钥——它们仍属受控分发层。桌面/Android 尚无该操作入口，`MihomoGeoDataService` 仍服务旧的固定清单运行时目录。
 
@@ -55,7 +73,7 @@ Helper 从自身版本目录旁的 `../server/Assets/Mihomo/GeoData` 读取，�
 
 公开运行时观察同时反映 Server 的未确认发布：原生已卸载但宿主提交未完成时，仍显示命名待恢复事务；原生存在不同操作则保留冲突身份。发布权威损坏时撤回归属/活动版本证明并返回未知，不能显示为正常未安装。内部编排单独读取 Helper 实测事实，不能使用公开投影自证提交。恢复查询也合并 Server 待提交的操作身份，不把原生已完成误报为无需恢复；保留实际冲突身份，不从发布意图虚构失败补偿或原生阶段。损坏权威保留已有原生恢复事实并报告状态无效。
 
-指定 `192.168.1.7` Debian 13 x64 常规检查 **1220 项**、真实 `native-mihomo-systemd` **165 项**通过，其中卸载发布/宿主组合 **88 项**、HTTP/恢复观察 **17 项**。宿主检查运行真实 `LinuxSystemProxyTransaction` 所有权及补偿算法，后端为隔离内存实现，未修改机器实际桌面/环境代理；原生验收覆盖真实卸载返回丢失、宿主清理失败、重建 Server 启动恢复及保留重装不重新启用代理。Server 的 `--host-storage-only`、`--proxy-configuration-only`、`--system-proxy-only` 回归通过。最新常规日志为 `/home/nanami/mr03-recovery-observation-full-20261019.log`；卸载组合日志为 `/home/nanami/mr03-host-removal-full-20261019.log`、`/home/nanami/mr03-host-removal-systemd-20261019.log`。
+指定 `192.168.1.7` Debian 13 x64 常规检查 **1220 项**、真实 `native-mihomo-systemd` **165 项**通过，其中卸载发布/宿主组合 **88 项**、HTTP/恢复观察 **16 项**。宿主检查运行真实 `LinuxSystemProxyTransaction` 所有权及补偿算法，后端为隔离内存实现，未修改机器实际桌面/环境代理；原生验收覆盖真实卸载返回丢失、宿主清理失败、重建 Server 启动恢复及保留重装不重新启用代理。Server 的 `--host-storage-only`、`--proxy-configuration-only`、`--system-proxy-only` 回归通过。最新常规日志为 `/home/nanami/mr03-recovery-observation-full-20261019.log`；卸载组合日志为 `/home/nanami/mr03-host-removal-full-20261019.log`、`/home/nanami/mr03-host-removal-systemd-20261019.log`。
 
 本节完成 Server 卸载宿主提交边界；独立 Helper IPC、生产安装注册/变更 HTTP、桌面与 Android 当前调用者、资源分发和 TUN 网络事务仍待整体接通，未开放生产多版本更新。以下各节为阶段证据，旧的“卸载宿主代理联动待完成”由本节取代。
 

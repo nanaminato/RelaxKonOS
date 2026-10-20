@@ -29,7 +29,6 @@ public sealed class MihomoRuntimeManager(
     MihomoControllerOptions controllerOptions,
     MihomoRuntimeManifest manifest,
     IProxyDiagnosticLogStore? diagnostics = null,
-    IProxyGeoDataService? geoData = null,
     RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeService? managedRuntime = null) : IProxyRuntimeManager, IMihomoConfigurationValidator
 {
     private const string ServiceName = "relaxkonos-mihomo";
