@@ -32,12 +32,29 @@ internal data class ProxyState(
     val logs: ApiResult<List<ProxyLog>>? = null, val dns: ApiResult<ProxyDns>? = null, val resources: ApiResult<ManagedRuntimeResources>? = null,
     val diagnosticsBusy: Boolean = false, val diagnosticsFailed: Boolean = false, val diagnosticsSection: String? = null, val diagnosticsAtMillis: Long? = null, val problemCode: String? = null, val uncertain: Boolean = false, val savedEpoch: Int = 0, val observedAtMillis: Long? = null)
 internal class ProxyInstallationCancellation(val owner: SessionState.Active, val operation: InstallationOperation)
+internal class ProxyAdoptionReview(val owner: SessionState.Active, val pending: PendingProxyRequest, val version: Long)
 internal class ProxyViewModel(private val session: AuthSession, private val repository: ProxyRepository,
     private val installations: InstallationRepository, private val operationIndex: OperationIndex,
     private val elevationAnswers: ElevationAnswerProvider) : ViewModel() {
     private var workGeneration = 0L
     private var diagnosticsGeneration = 0L
     private var diagnosticsJob: Job? = null
+    private var adoptionActive = false
+    var adoptionVersion by mutableStateOf(0L); private set
+    var adoptionReview by mutableStateOf<ProxyAdoptionReview?>(null); private set
+    fun setAdoptionActive(active: Boolean) {
+        if (!active && adoptionActive) adoptionVersion++
+        adoptionActive = active
+        if (!active) adoptionReview = null
+    }
+    fun requestAdoption(version: Long, active: SessionState.Active, pending: PendingProxyRequest) {
+        if (!adoptionActive || adoptionVersion != version || activeSession !== active || owner !== active || state.busy ||
+            pending.action != null || state.pending.none { it === pending }) return
+        adoptionReview = ProxyAdoptionReview(active, pending, version)
+    }
+    fun dismissAdoption(review: ProxyAdoptionReview) {
+        if (adoptionReview === review && activeSession === review.owner && !state.busy) adoptionReview = null
+    }
     var installationCancellation by mutableStateOf<ProxyInstallationCancellation?>(null); private set
     fun dismissInstallationCancellation() { installationCancellation = null }
     fun requestInstallationCancellation(active: SessionState.Active, operation: InstallationOperation) {
@@ -45,7 +62,7 @@ internal class ProxyViewModel(private val session: AuthSession, private val repo
             state.installationVerified && state.installation == operation && operation.state.active && operation.cancellable)
             installationCancellation = ProxyInstallationCancellation(active, operation)
     }
-    private fun canObserveTasks() = !state.busy && !state.uncertain && state.problemCode == null && installationCancellation == null
+    private fun canObserveTasks() = !state.busy && !state.uncertain && state.problemCode == null && installationCancellation == null && adoptionReview == null
     suspend fun observeTasks(canObserve: () -> Boolean) {
         val active = activeSession ?: return
         val operation = state.operation?.takeIf { state.operationVerified && it.state.active }
@@ -88,7 +105,7 @@ internal class ProxyViewModel(private val session: AuthSession, private val repo
     var sessionEpoch by mutableIntStateOf(0)
         private set
     init { viewModelScope.launch { session.state.collect { next ->
-        if (next !== owner) { dismissInstallationCancellation(); stopDiagnostics(); owner = next as? SessionState.Active; intent = null; state = ProxyState(); sessionEpoch++ }
+        if (next !== owner) { adoptionReview = null; dismissInstallationCancellation(); stopDiagnostics(); owner = next as? SessionState.Active; intent = null; state = ProxyState(); sessionEpoch++ }
     } } }
     fun refresh() = work { active ->
         state = state.copy(operationVerified = false, installationVerified = false)
@@ -106,8 +123,7 @@ internal class ProxyViewModel(private val session: AuthSession, private val repo
         }
     }
     private suspend fun load(active: SessionState.Active) {
-        state = state.copy(overview = null, profiles = null, subscriptions = null, groups = null, routing = null,
-            settings = null, recovery = null, resources = null, observedAtMillis = null)
+        clearFacts()
         val overview = repository.overview(active); val profiles = repository.profiles(active); val subscriptions = repository.subscriptions(active)
         verify(active)
         val facts = (overview as? ApiResult.Success)?.value
@@ -132,8 +148,24 @@ internal class ProxyViewModel(private val session: AuthSession, private val repo
         if (reference.operationId != state.operation?.operationId) state = state.copy(
             operation = ProxyOperation(reference.operationId, reference.resourceId, ProxyOperationState.Queued, "queued", ""), operationVerified = false)
     }
-    fun accept(pending: PendingProxyRequest) = work { active ->
-        val result = repository.acceptFacts(active, pending); verify(active); failure(result); load(active)
+    fun accept(review: ProxyAdoptionReview) {
+        if (!adoptionActive || adoptionVersion != review.version || adoptionReview !== review || activeSession !== review.owner ||
+            owner !== review.owner || state.busy || state.pending.none { it === review.pending }) return
+        adoptionReview = null
+        work { active ->
+            clearFacts()
+            try {
+                val result = repository.acceptFacts(active, review.pending); verify(active); failure(result)
+                if (result is ApiResult.Success) load(active)
+            } catch (cancelled: CancellationException) {
+                if (activeSession === active) state = state.copy(uncertain = true)
+                throw cancelled
+            }
+        }
+    }
+    private fun clearFacts() {
+        state = state.copy(overview = null, profiles = null, subscriptions = null, groups = null, routing = null,
+            settings = null, recovery = null, resources = null, observedAtMillis = null)
     }
     fun recoverOperation(id: String) = work { active ->
         state = state.copy(operationVerified = false)
@@ -377,6 +409,7 @@ internal class ProxyViewModel(private val session: AuthSession, private val repo
         if (result is ApiResult.Transport) state = state.copy(uncertain = true)
     }
     private fun work(block: suspend (SessionState.Active) -> Unit) {
+        adoptionReview = null
         dismissInstallationCancellation()
         val active = activeSession ?: return
         if (owner !== active) { owner = active; intent = null; state = ProxyState(); sessionEpoch++ }

@@ -4,6 +4,8 @@ import app.relaxkonos.mobile.core.auth.AuthSession
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -86,6 +88,8 @@ class ProxyRepository(private val gateway: RelaxKonGateway, private val session:
             ProxyWrite.Selection -> groups(owner); ProxyWrite.Routing -> routing(owner); ProxyWrite.Settings -> settings(owner)
             ProxyWrite.Connection -> connections(owner); else -> ApiResult.Success(Unit)
         }
+        currentCoroutineContext().ensureActive()
+        verify(owner)
         if (listOf(overview, profiles, subscriptions, extra).all { it is ApiResult.Success }) {
             journal.complete(pending); ApiResult.Success(Unit)
         } else ApiResult.Transport(null)

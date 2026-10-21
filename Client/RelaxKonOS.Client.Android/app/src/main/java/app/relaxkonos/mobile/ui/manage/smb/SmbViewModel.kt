@@ -18,6 +18,13 @@ internal class SmbInstallationCancellation(val owner: SessionState.Active, val o
 internal class SmbViewModel(private val session: AuthSession, private val smb: SmbRepository,
     private val installations: InstallationRepository, private val operationIndex: OperationIndex,
     private val elevationAnswers: ElevationAnswerProvider) : ViewModel() {
+    private var interactionActive = false
+    var interactionVersion by mutableStateOf(0L); private set
+    fun setInteractionActive(active: Boolean) {
+        if (!active && interactionActive) interactionVersion++
+        interactionActive = active
+        if (!active) withdrawConfirmation()
+    }
     var installationReview by mutableStateOf<SmbInstallationReview?>(null); private set
     private fun installationReady(owner: SessionState.Active, expected: SmbFacts) =
         session.state.value === owner && state.owner === owner && owner.privilegedOperations &&
@@ -52,8 +59,8 @@ internal class SmbViewModel(private val session: AuthSession, private val smb: S
         }
     }
     fun withdrawConfirmation() { changeReview = null }
-    fun requestChange(owner: SessionState.Active, expected: SmbFacts, change: SmbChange) {
-        if (session.state.value !== owner || state.owner !== owner || !owner.privilegedOperations || state.busy ||
+    fun requestChange(version: Long, owner: SessionState.Active, expected: SmbFacts, change: SmbChange) {
+        if (!interactionActive || version != interactionVersion || session.state.value !== owner || state.owner !== owner || !owner.privilegedOperations || state.busy ||
             state.facts != expected || state.pending.isNotEmpty() || state.pendingInstallation ||
             state.installation?.state?.active == true || state.installation != null && !state.installationVerified ||
             !expected.capabilities.supported || !expected.status.state.manageable) return
@@ -78,7 +85,7 @@ internal class SmbViewModel(private val session: AuthSession, private val smb: S
     init { viewModelScope.launch { session.state.collect { next ->
         if (next !== state.owner) { withdrawConfirmation(); withdrawInstallationCancellation(); withdrawInstallationReview(); job?.cancel(); generation++; intent = null; state = SmbState(owner = next as? SessionState.Active) }
     } } }
-    fun stop() { withdrawConfirmation(); withdrawInstallationCancellation(); withdrawInstallationReview(); job?.cancel(); generation++; state = state.copy(busy = false, facts = null, installationVerified = false) }
+    fun stop() { setInteractionActive(false); withdrawInstallationCancellation(); withdrawInstallationReview(); job?.cancel(); generation++; state = state.copy(busy = false, facts = null, installationVerified = false) }
     fun refresh() = work { owner ->
         load(owner)
         if (owner.privilegedOperations) {
@@ -97,12 +104,16 @@ internal class SmbViewModel(private val session: AuthSession, private val smb: S
             } else state = state.copy(installationVerified = false)
         }
     }
-    fun accept(pending: PendingSmbMutation) = work { owner ->
-        val result = smb.acceptFacts(owner, pending); verify(owner)
-        showFacts(owner, result)
+    fun accept(version: Long, owner: SessionState.Active, pending: PendingSmbMutation) {
+        if (!interactionActive || version != interactionVersion || state.owner !== owner || session.state.value !== owner ||
+            state.pending.none { it === pending }) return
+        work { currentOwner ->
+            val result = smb.acceptFacts(currentOwner, pending); verify(currentOwner)
+            showFacts(currentOwner, result)
+        }
     }
     fun change(review: SmbChangeReview, password: CharArray? = null) {
-        if (changeReview !== review) { password?.fill('\u0000'); return }
+        if (!interactionActive || changeReview !== review) { password?.fill('\u0000'); return }
         withdrawConfirmation()
         if (state.busy || session.state.value !== review.owner || state.owner !== review.owner ||
             state.facts != review.confirmation.expected || ServerCapabilities.FILE_SERVICES !in review.owner.capabilities) { password?.fill('\u0000'); return }

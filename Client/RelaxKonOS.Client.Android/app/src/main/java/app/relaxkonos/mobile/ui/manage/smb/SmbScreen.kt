@@ -27,6 +27,8 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 import java.text.DateFormat
 import java.util.Date
 
+private class SmbLeaveReview(val draft: SmbDraft, val editor: Any, val action: () -> Unit)
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable fun SmbScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     val container = appContainer()
@@ -40,6 +42,10 @@ import java.util.Date
 @Composable
 internal fun SmbContent(model: SmbViewModel, owner: SessionState.Active?, onBack: () -> Unit, modifier: Modifier = Modifier) {
     val state = model.state
+    val interactionVersion = model.interactionVersion
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val currentInteraction = { owner != null && model.state.owner === owner &&
+        model.interactionVersion == interactionVersion && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
     val visible = state.owner === owner; val facts = state.facts.takeIf { visible }
     val canManage = visible && owner?.privilegedOperations == true
     val ready = canManage && !state.busy && state.pending.isEmpty() && !state.pendingInstallation && state.installation?.state?.active != true &&
@@ -48,27 +54,33 @@ internal fun SmbContent(model: SmbViewModel, owner: SessionState.Active?, onBack
     var diagnostics by rememberSaveable(owner) { mutableStateOf(false) }
     var selected by remember(owner) { mutableStateOf<String?>(null) }
     var draft by remember(owner) { mutableStateOf<SmbDraft?>(null) }
+    var draftEditor by remember(owner) { mutableStateOf(Any()) }
     var draftFacts by remember(owner) { mutableStateOf<SmbFacts?>(null) }
     val review = model.changeReview?.takeIf { it.owner === owner }
-    var leave by remember(owner) { mutableStateOf<(() -> Unit)?>(null) }
+    var leave by remember(owner) { mutableStateOf<SmbLeaveReview?>(null) }
     val install = model.installationReview?.takeIf { it.owner === owner }; val cancel = model.installationCancellation?.takeIf { it.owner === owner }
     var recover by remember(owner) { mutableStateOf(false) }; var operationId by remember(owner) { mutableStateOf("") }; var identified by remember(owner) { mutableStateOf(false) }
     val navigate: (() -> Unit) -> Unit = { action ->
-        model.withdrawInstallationReview()
-        if (draft != null) leave = action else action()
+        if (currentInteraction()) {
+            model.withdrawInstallationReview()
+            val currentDraft = draft
+            if (currentDraft != null) leave = SmbLeaveReview(currentDraft, draftEditor, action) else action()
+        }
     }
     LaunchedEffect(owner, state.owner) { if (visible && owner != null) model.refresh() }
     LaunchedEffect(owner, state.saved) { if (visible && state.saved > 0) draft = null }
     DisposableEffect(owner) { onDispose { model.stop() } }
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
     var lifecycleEpoch by remember(owner, lifecycle) { mutableIntStateOf(0) }
     DisposableEffect(owner, lifecycle) {
+        model.setInteractionActive(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
         val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) model.setInteractionActive(true)
+            if (event == Lifecycle.Event.ON_PAUSE) model.setInteractionActive(false)
             if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_RESUME) lifecycleEpoch++
             if (event == Lifecycle.Event.ON_PAUSE) { model.withdrawConfirmation(); leave = null; model.withdrawInstallationReview(); model.withdrawInstallationCancellation(); recover = false; identified = false }
         }
         lifecycle.addObserver(observer)
-        onDispose { lifecycle.removeObserver(observer) }
+        onDispose { model.setInteractionActive(false); lifecycle.removeObserver(observer) }
     }
     val observationEpoch = lifecycleEpoch
     LaunchedEffect(owner, state.installation?.operationId, state.installation?.state, state.installationVerified,
@@ -103,7 +115,11 @@ internal fun SmbContent(model: SmbViewModel, owner: SessionState.Active?, onBack
             Text(stringResource(R.string.smb_pending), color = MaterialTheme.colorScheme.error)
             Text(smbActionLabel(pending.kind)); pending.target?.let { Text(it) }
             pending.receiptId?.let { Text(stringResource(R.string.smb_receipt_id, it), style = MaterialTheme.typography.bodySmall) }
-            OutlinedButton(enabled = !state.busy, onClick = { model.accept(pending) }) { Text(stringResource(R.string.smb_accept_facts)) }
+            key(interactionVersion, state.feedbackVersion, pending) {
+                OutlinedButton(enabled = !state.busy, onClick = {
+                    model.accept(interactionVersion, requireNotNull(owner), pending)
+                }) { Text(stringResource(R.string.smb_accept_facts)) }
+            }
             }
         }
         if (facts == null && section != "records") Text(stringResource(R.string.smb_unverified))
@@ -130,7 +146,7 @@ WorkspaceSection(section == "overview") {
                     facts.status.state == SmbRuntimeState.NotInstalled, onClick = { model.requestInstallation(requireNotNull(owner), facts) }) { Text(stringResource(R.string.smb_install)) }
                 if (canManage) SmbChangeKind.entries.filter { it in setOf(SmbChangeKind.Start, SmbChangeKind.Stop, SmbChangeKind.Restart) }.forEach { action ->
                     val allowed = if (action == SmbChangeKind.Start) facts.status.state == SmbRuntimeState.Stopped else facts.status.state == SmbRuntimeState.Running
-                    OutlinedButton(enabled = ready && allowed && draft == null, onClick = { model.requestChange(requireNotNull(owner), facts, SmbChange(action)) }) { Text(smbActionLabel(action)) }
+                    key(interactionVersion, action) { OutlinedButton(enabled = ready && allowed && draft == null, onClick = { model.requestChange(interactionVersion, requireNotNull(owner), facts, SmbChange(action)) }) { Text(smbActionLabel(action)) } }
                 }
             }
             }
@@ -175,7 +191,11 @@ WorkspaceSection(section == "overview") {
         }
         if (facts != null && facts.capabilities.supported && facts.status.state.manageable) {
             if (section == "shares" && facts.capabilities.managedSharesSupported) {
-                OutlinedButton(enabled = ready && draft == null, onClick = { selected = null; draftFacts = facts; draft = SmbDraft() }) { Text(stringResource(R.string.smb_create)) }
+                OutlinedButton(enabled = ready && draft == null, onClick = {
+                    if (currentInteraction() && !model.state.busy && draft == null && model.state.facts == facts) {
+                        selected = null; draftEditor = Any(); draftFacts = facts; draft = SmbDraft()
+                    }
+                }) { Text(stringResource(R.string.smb_create)) }
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
                     val wide = maxWidth >= 600.dp
                     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
@@ -198,11 +218,15 @@ WorkspaceSection(section == "overview") {
                             }
                         }
                         val editing = draft
+                        val editor = draftEditor
                         val chosen = facts.shares?.firstOrNull { it.id == selected }
                         if (editing != null || chosen != null) Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                            if (editing != null) SmbShareEditor(editing, facts, ready, { draft = it }, {
-                                model.requestChange(requireNotNull(owner), facts, SmbChange(if (editing.id == null) SmbChangeKind.CreateShare else SmbChangeKind.UpdateShare, editing.id, editing.request()))
-                            }, { navigate { draft = null } })
+                            if (editing != null) {
+                                val currentEditor = { currentInteraction() && leave == null && model.changeReview == null && draftEditor === editor && draft != null }
+                                SmbShareEditor(editing, facts, ready, { if (currentEditor() && !model.state.busy) draft = it }, {
+                                    if (currentEditor() && draft === editing) model.requestChange(interactionVersion, requireNotNull(owner), facts, SmbChange(if (editing.id == null) SmbChangeKind.CreateShare else SmbChangeKind.UpdateShare, editing.id, editing.request()))
+                                }, { if (currentEditor()) navigate { draft = null } }, interactionVersion to editor)
+                            }
                             else if (chosen != null) SmbPanel {
                                 Text(chosen.name, style = MaterialTheme.typography.titleMedium); SelectionContainer { Text(chosen.path) }; chosen.description?.let { Text(it) }
                                 Text(stringResource(if (chosen.enabled) R.string.smb_enabled else R.string.smb_disabled))
@@ -211,8 +235,12 @@ WorkspaceSection(section == "overview") {
                                 chosen.permissions.forEach { Text(it.principal + " · " + smbAccessLabel(it.access)) }
                                 if (!chosen.managed || chosen.drifted) Text(stringResource(if (chosen.drifted) R.string.smb_drifted else R.string.smb_external), color = MaterialTheme.colorScheme.error)
                                 FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                                    Button(enabled = ready && chosen.managed && !chosen.drifted, onClick = { draftFacts = facts; draft = SmbDraft.from(chosen, facts.capabilities.windowsShareSecuritySupported) }) { Text(stringResource(R.string.smb_edit)) }
-                                    OutlinedButton(enabled = ready && chosen.managed && !chosen.drifted, onClick = { model.requestChange(requireNotNull(owner), facts, SmbChange(SmbChangeKind.DeleteShare, chosen.id)) }, colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) { ActionLabel(R.string.common_delete) }
+                                    Button(enabled = ready && chosen.managed && !chosen.drifted, onClick = {
+                                        if (currentInteraction() && !model.state.busy && draft == null && model.state.facts == facts) {
+                                            draftEditor = Any(); draftFacts = facts; draft = SmbDraft.from(chosen, facts.capabilities.windowsShareSecuritySupported)
+                                        }
+                                    }) { Text(stringResource(R.string.smb_edit)) }
+                                    key(interactionVersion) { OutlinedButton(enabled = ready && chosen.managed && !chosen.drifted, onClick = { model.requestChange(interactionVersion, requireNotNull(owner), facts, SmbChange(SmbChangeKind.DeleteShare, chosen.id)) }, colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) { ActionLabel(R.string.common_delete) } }
                                 }
                                 TextButton(onClick = { selected = null }) { Text(stringResource(R.string.common_close)) }
                             }
@@ -227,18 +255,22 @@ WorkspaceSection(section == "overview") {
                     Text(user.username, style = MaterialTheme.typography.titleMedium)
                     SmbStatusBadge(stringResource(if (user.enabled) R.string.smb_user_enabled else R.string.smb_user_disabled), user.enabled)
                     if (!user.eligible) Text(stringResource(R.string.smb_user_ineligible))
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    OutlinedButton(enabled = ready && user.eligible, onClick = { model.requestChange(requireNotNull(owner), facts, SmbChange(if (user.enabled) SmbChangeKind.DisableUser else SmbChangeKind.EnableUser, user.username)) }) { Text(smbActionLabel(if (user.enabled) SmbChangeKind.DisableUser else SmbChangeKind.EnableUser)) }
-                    OutlinedButton(enabled = ready && user.eligible, onClick = { model.requestChange(requireNotNull(owner), facts, SmbChange(SmbChangeKind.Password, user.username)) }) { Text(stringResource(R.string.smb_password)) }
-                    }
+                    key(interactionVersion) { FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    OutlinedButton(enabled = ready && user.eligible, onClick = { model.requestChange(interactionVersion, requireNotNull(owner), facts, SmbChange(if (user.enabled) SmbChangeKind.DisableUser else SmbChangeKind.EnableUser, user.username)) }) { Text(smbActionLabel(if (user.enabled) SmbChangeKind.DisableUser else SmbChangeKind.EnableUser)) }
+                    OutlinedButton(enabled = ready && user.eligible, onClick = { model.requestChange(interactionVersion, requireNotNull(owner), facts, SmbChange(SmbChangeKind.Password, user.username)) }) { Text(stringResource(R.string.smb_password)) }
+                    } }
                     }
                 }
             }
         }
         if (visible && draft != null && (facts == null || !facts.capabilities.supported || !facts.capabilities.managedSharesSupported || !facts.status.state.manageable)) {
             val retainedFacts = draftFacts
+            val retainedDraft = requireNotNull(draft)
+            val retainedEditor = draftEditor
             if (retainedFacts != null) {
-                SmbRetainedShareEditor(requireNotNull(draft), retainedFacts, state.busy, model::refresh, { navigate { draft = null } })
+                val currentEditor = { currentInteraction() && leave == null && draftEditor === retainedEditor && draft === retainedDraft }
+                SmbRetainedShareEditor(retainedDraft, retainedFacts, state.busy,
+                    { if (currentEditor()) model.refresh() }, { if (currentEditor()) navigate { draft = null } }, interactionVersion to retainedEditor)
             }
         }
     }
@@ -247,8 +279,15 @@ WorkspaceSection(section == "overview") {
             model.change(current, secret)
         }
     } }
-    if (leave != null) AlertDialog(onDismissRequest = { leave = null }, title = { Text(stringResource(R.string.smb_discard)) }, text = { Text(stringResource(R.string.smb_discard_note)) },
-        confirmButton = { TextButton(onClick = { val action = leave; leave = null; action?.invoke() }) { Text(stringResource(R.string.smb_discard_action)) } }, dismissButton = { TextButton(onClick = { leave = null }) { Text(stringResource(R.string.common_cancel)) } })
+    val leaving = leave
+    if (leaving != null) key(leaving) {
+        val currentDecision = { currentInteraction() && leave === leaving && draft === leaving.draft && draftEditor === leaving.editor }
+        val continueEditing = { if (currentDecision()) leave = null }
+        AlertDialog(onDismissRequest = continueEditing, title = { Text(stringResource(R.string.smb_discard)) }, text = { Text(stringResource(R.string.smb_discard_note)) },
+            confirmButton = { TextButton(onClick = {
+                if (currentDecision()) { leave = null; leaving.action() }
+            }) { Text(stringResource(R.string.smb_discard_action)) } }, dismissButton = { TextButton(onClick = continueEditing) { Text(stringResource(R.string.common_cancel)) } })
+    }
     install?.let { current -> key(current) {
         AlertDialog(onDismissRequest = { model.dismissInstallationReview(current) }, title = { Text(stringResource(R.string.smb_install)) }, text = {
             Text(stringResource(R.string.smb_install_note))

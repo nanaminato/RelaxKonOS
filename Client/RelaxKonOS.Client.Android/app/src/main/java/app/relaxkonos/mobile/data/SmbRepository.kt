@@ -68,7 +68,11 @@ class SmbRepository(private val gateway: RelaxKonGateway, private val session: A
     } finally { password?.fill('\u0000') }
     suspend fun acceptFacts(owner: SessionState.Active, pending: PendingSmbMutation): ApiResult<SmbFacts> = mutations.withLock {
         verify(owner); require(pending in journal.pending(owner))
-        facts(owner).also { if (it is ApiResult.Success && it.value.capabilities.supported && it.value.status.state.manageable) journal.complete(pending) }
+        facts(owner).also {
+            currentCoroutineContext().ensureActive()
+            verify(owner)
+            if (it is ApiResult.Success && it.value.capabilities.supported && it.value.status.state.manageable) journal.complete(pending)
+        }
     }
     private fun validate(facts: SmbFacts, change: SmbChange, password: CharArray?) {
         when (change.kind) {

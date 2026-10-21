@@ -30,7 +30,8 @@ class ProxyViewModelTest {
         override fun write(bytes: ByteArray) { this.bytes = bytes.copyOf() }
     })
     private val elevation = ElevationRepository(gateway, session, CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto()), UsageMemoryStore(InMemoryUsageMemoryStorage()))
-    private val repository = ProxyRepository(gateway, session, index, ProxyRequestJournal(Storage()))
+    private val journal = ProxyRequestJournal(Storage())
+    private val repository = ProxyRepository(gateway, session, index, journal)
     private val installations = InstallationRepository(gateway, session, elevation, index, InstallationRequestJournal(Storage()))
     private val store = ViewModelStore()
     private lateinit var model: ProxyViewModel
@@ -46,6 +47,7 @@ class ProxyViewModelTest {
     @Before fun setup() {
         Dispatchers.setMain(StandardTestDispatcher())
         model = ProxyViewModel(session, repository, installations, index, ElevationAnswerProvider.Declines)
+        model.setAdoptionActive(true)
         store.put("proxy", model)
         gateway.onProxyOverview = { ApiResult.Success(overview) }
         gateway.onProxyProfiles = { ApiResult.Success(emptyList()) }
@@ -68,6 +70,80 @@ class ProxyViewModelTest {
         }) }
         session.login(ServerConnectionIdentityRules.direct("https://review.invalid"), "review", "test".toCharArray()) {}
         return session.state.value as SessionState.Active
+    }
+    @Test fun `failed adoption does not reread and publish replacement facts`() = runTest {
+        val owner = login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        val pending = journal.begin(owner, null, null, ProxyWrite.Profile)
+        model.refresh(); advanceUntilIdle()
+        var reads = 0
+        gateway.onProxyOverview = { reads++; if (reads == 1) ApiResult.Transport(null) else ApiResult.Success(overview) }
+        adopt(pending); advanceUntilIdle()
+        assertEquals(1, reads)
+        assertNull(model.state.overview); assertNull(model.state.profiles); assertNull(model.state.observedAtMillis)
+        assertTrue(model.state.uncertain); assertEquals(listOf(pending), model.state.pending)
+    }
+    @Test fun `repeated failed adoption preserves marker and explicit success can recover`() = runTest {
+        val owner = login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        val pending = journal.begin(owner, null, null, ProxyWrite.Profile)
+        model.refresh(); advanceUntilIdle()
+        var reads = 0
+        gateway.onProxyOverview = { reads++; ApiResult.Transport(null) }
+        adopt(pending); advanceUntilIdle()
+        val version = model.state.requestVersion
+        adopt(pending); advanceUntilIdle()
+        assertTrue(model.state.requestVersion > version); assertEquals(2, reads)
+        assertNull(model.state.overview); assertTrue(model.state.uncertain)
+        assertEquals(listOf(pending), journal.pending(owner))
+        gateway.onProxyOverview = { ApiResult.Success(overview) }
+        adopt(pending); advanceUntilIdle()
+        assertTrue(model.state.pending.isEmpty()); assertFalse(model.state.uncertain)
+        assertEquals(ApiResult.Success(overview), model.state.overview)
+    }
+    @Test fun `cancelled adoption withdraws old core facts and keeps recovery gate`() = runTest {
+        val owner = login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        val pending = journal.begin(owner, null, null, ProxyWrite.Profile)
+        model.refresh(); advanceUntilIdle()
+        gateway.onProxyOverview = { throw CancellationException("private cancelled read") }
+        adopt(pending); advanceUntilIdle()
+        assertNull(model.state.overview); assertNull(model.state.settings); assertNull(model.state.observedAtMillis)
+        assertTrue(model.state.uncertain); assertFalse(model.state.busy)
+        assertEquals(listOf(pending), model.state.pending)
+    }
+    private fun adoption(pending: PendingProxyRequest): ProxyAdoptionReview {
+        model.requestAdoption(model.adoptionVersion, session.state.value as SessionState.Active, model.state.pending.single { it.key == pending.key })
+        return requireNotNull(model.adoptionReview)
+    }
+    private fun adopt(pending: PendingProxyRequest) { model.accept(adoption(pending)) }
+    private suspend fun TestScope.prepareAdoption(): ProxyAdoptionReview {
+        val active = login(); runCurrent()
+        val pending = journal.begin(active, null, null, ProxyWrite.Profile)
+        model.refresh(); advanceUntilIdle()
+        return adoption(pending)
+    }
+    @Test fun `adoption confirmation is one shot and stale close or submit cannot consume replacement`() = runTest {
+        val old = prepareAdoption()
+        model.dismissAdoption(old)
+        val fresh = adoption(old.pending)
+        model.dismissAdoption(old); model.accept(old); advanceUntilIdle()
+        assertSame(fresh, model.adoptionReview); assertEquals(1, model.state.pending.size)
+        model.accept(fresh); model.accept(fresh); advanceUntilIdle()
+        assertTrue(model.state.pending.isEmpty()); assertNull(model.adoptionReview)
+    }
+    @Test fun `pause refresh and login invalidate adoption confirmation and old opener`() = runTest {
+        val old = prepareAdoption()
+        model.setAdoptionActive(false); model.setAdoptionActive(true)
+        model.requestAdoption(old.version, old.owner, old.pending)
+        assertNull(model.adoptionReview)
+        model.accept(old); advanceUntilIdle(); assertEquals(1, model.state.pending.size)
+        val fresh = adoption(old.pending)
+        model.refresh(); advanceUntilIdle()
+        model.accept(fresh); advanceUntilIdle()
+        assertNull(model.adoptionReview); assertEquals(1, model.state.pending.size)
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        model.requestAdoption(model.adoptionVersion, old.owner, model.state.pending.single())
+        assertNull(model.adoptionReview)
+        adopt(model.state.pending.single()); advanceUntilIdle()
+        assertTrue(model.state.pending.isEmpty())
     }
     private suspend fun TestScope.ready(): SessionState.Active {
         val owner = login(); runCurrent(); model.refresh(); advanceUntilIdle()

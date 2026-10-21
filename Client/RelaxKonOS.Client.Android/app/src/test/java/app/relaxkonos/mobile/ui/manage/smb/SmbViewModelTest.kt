@@ -46,6 +46,7 @@ class SmbViewModelTest {
     @Before fun setup() {
         Dispatchers.setMain(StandardTestDispatcher())
         model = SmbViewModel(session, smb, installations, index, ElevationAnswerProvider.Declines)
+        model.setInteractionActive(true)
         store.put("smb", model)
         gateway.onSmbCapabilities = { ApiResult.Success(facts.capabilities) }
         gateway.onSmbStatus = { ApiResult.Success(facts.status) }
@@ -80,7 +81,7 @@ class SmbViewModelTest {
     @Test fun `cancelled change retains recovery marker and revokes old facts`() = runTest {
         login(); runCurrent(); model.refresh(); advanceUntilIdle()
         gateway.onSmbChange = { _, _ -> sends++; throw CancellationException("private cancelled write") }
-        model.requestChange(requireNotNull(model.state.owner), facts, SmbChange(SmbChangeKind.Stop))
+        model.requestChange(model.interactionVersion, requireNotNull(model.state.owner), facts, SmbChange(SmbChangeKind.Stop))
         model.change(requireNotNull(model.changeReview)); advanceUntilIdle()
         assertNull(model.state.facts); assertFalse(model.state.busy)
         assertEquals("file-services.smb.unverified", model.state.problem)
@@ -90,20 +91,73 @@ class SmbViewModelTest {
     @Test fun `failed adoption cannot be hidden by a second successful read`() = runTest {
         login(); runCurrent(); model.refresh(); advanceUntilIdle()
         assertEquals(facts, model.state.facts)
-        val marker = journal.begin(requireNotNull(model.state.owner), SmbChange(SmbChangeKind.Stop))
+        journal.begin(requireNotNull(model.state.owner), SmbChange(SmbChangeKind.Stop))
+        model.refresh(); advanceUntilIdle()
+        val marker = model.state.pending.single()
         var reads = 0
         gateway.onSmbCapabilities = {
             reads++
             if (reads == 1) ApiResult.Transport(null) else ApiResult.Success(facts.capabilities)
         }
-        model.accept(marker); advanceUntilIdle()
+        model.accept(model.interactionVersion, requireNotNull(model.state.owner), marker); advanceUntilIdle()
         assertEquals("file-services.smb.unverified", model.state.problem)
         assertNull(model.state.facts); assertEquals(listOf(marker), model.state.pending)
         assertEquals(1, reads); assertEquals(0, sends); assertFalse(model.state.busy)
     }
+    @Test fun `left page cannot adopt a recovery marker`() = runTest {
+        login(); runCurrent()
+        val owner = requireNotNull(model.state.owner)
+        journal.begin(owner, SmbChange(SmbChangeKind.Stop))
+        model.refresh(); advanceUntilIdle()
+        val marker = model.state.pending.single()
+        model.stop()
+        var reads = 0
+        gateway.onSmbCapabilities = { reads++; ApiResult.Success(facts.capabilities) }
+        model.accept(model.interactionVersion, requireNotNull(model.state.owner), marker); advanceUntilIdle()
+        assertEquals(0, reads); assertEquals(listOf(marker), journal.pending(owner))
+    }
+    @Test fun `left page cannot open a new mutation review after a read`() = runTest {
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        model.stop(); model.refresh(); advanceUntilIdle()
+        model.requestChange(model.interactionVersion, requireNotNull(model.state.owner), facts, SmbChange(SmbChangeKind.Stop))
+        assertNull(model.changeReview)
+        assertEquals(0, sends)
+    }
+    @Test fun `old interaction cannot open mutation review after resume and rejects passwords safely`() = runTest {
+        val old = review(); val version = model.interactionVersion
+        model.setInteractionActive(false); model.setInteractionActive(true)
+        model.requestChange(version, old.owner, facts, old.confirmation.change)
+        assertNull(model.changeReview)
+        model.requestChange(model.interactionVersion, old.owner, facts, old.confirmation.change)
+        val fresh = requireNotNull(model.changeReview)
+        val password = "review-password".toCharArray()
+        model.change(old, password); advanceUntilIdle()
+        assertTrue(password.all { it == '\u0000' }); assertSame(fresh, model.changeReview); assertEquals(0, sends)
+    }
+    @Test fun `adoption requires current lifecycle owner and displayed marker`() = runTest {
+        login(); runCurrent()
+        val owner = requireNotNull(model.state.owner)
+        journal.begin(owner, SmbChange(SmbChangeKind.Stop))
+        model.refresh(); advanceUntilIdle()
+        val old = model.state.pending.single(); val version = model.interactionVersion
+        model.setInteractionActive(false); model.setInteractionActive(true)
+        model.accept(version, owner, old); advanceUntilIdle()
+        assertEquals(1, journal.pending(owner).size)
+        model.refresh(); advanceUntilIdle()
+        val fresh = model.state.pending.single()
+        val feedback = model.state.feedbackVersion
+        model.accept(model.interactionVersion, owner, old); advanceUntilIdle()
+        assertEquals(feedback, model.state.feedbackVersion); assertEquals(facts, model.state.facts); assertNull(model.state.problem)
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        model.accept(model.interactionVersion, owner, model.state.pending.single()); advanceUntilIdle()
+        assertEquals(1, journal.pending(requireNotNull(model.state.owner)).size)
+        assertNotSame(old, fresh)
+        model.accept(model.interactionVersion, requireNotNull(model.state.owner), model.state.pending.single()); advanceUntilIdle()
+        assertTrue(model.state.pending.isEmpty()); assertEquals(facts, model.state.facts); assertNull(model.state.problem)
+    }
     private suspend fun TestScope.review(): SmbChangeReview {
         login(); runCurrent(); model.refresh(); advanceUntilIdle()
-        model.requestChange(requireNotNull(model.state.owner), facts, SmbChange(SmbChangeKind.Password, "review-user"))
+        model.requestChange(model.interactionVersion, requireNotNull(model.state.owner), facts, SmbChange(SmbChangeKind.Password, "review-user"))
         return requireNotNull(model.changeReview)
     }
     @Test fun `replacement task withdraws cancellation and old callback cannot cancel new task`() = runTest {
@@ -150,7 +204,7 @@ class SmbViewModelTest {
     }
     @Test fun `refresh and dismissal cannot reuse old approval for identical change`() = runTest {
         val old = review(); model.refresh(); advanceUntilIdle(); assertNull(model.changeReview)
-        model.requestChange(requireNotNull(model.state.owner), facts, old.confirmation.change)
+        model.requestChange(model.interactionVersion, requireNotNull(model.state.owner), facts, old.confirmation.change)
         val fresh = requireNotNull(model.changeReview)
         val password = "review-password".toCharArray()
         model.change(old, password); advanceUntilIdle()
@@ -161,8 +215,9 @@ class SmbViewModelTest {
         val old = review(); model.stop()
         val rejected = "review-password".toCharArray()
         model.change(old, rejected); advanceUntilIdle(); assertEquals(0, sends); assertTrue(rejected.all { it == '\u0000' })
+        model.setInteractionActive(true)
         model.refresh(); advanceUntilIdle()
-        model.requestChange(requireNotNull(model.state.owner), facts, old.confirmation.change)
+        model.requestChange(model.interactionVersion, requireNotNull(model.state.owner), facts, old.confirmation.change)
         val fresh = requireNotNull(model.changeReview); val password = "review-password".toCharArray()
         model.change(fresh, password); model.change(fresh, "duplicate-password".toCharArray()); advanceUntilIdle()
         assertEquals(1, sends); assertEquals(1, model.state.pending.size); assertTrue(password.all { it == '\u0000' })
@@ -170,20 +225,22 @@ class SmbViewModelTest {
 
     @Test fun `successful adoption uses the exact verified facts and does not read twice or replay`() = runTest {
         login(); runCurrent(); model.refresh(); advanceUntilIdle()
-        val marker = journal.begin(requireNotNull(model.state.owner), SmbChange(SmbChangeKind.Stop))
+        journal.begin(requireNotNull(model.state.owner), SmbChange(SmbChangeKind.Stop))
+        model.refresh(); advanceUntilIdle()
+        val marker = model.state.pending.single()
         var reads = 0
         gateway.onSmbCapabilities = {
             reads++
             if (reads == 1) ApiResult.Success(facts.capabilities) else ApiResult.Transport(null)
         }
-        model.accept(marker); advanceUntilIdle()
+        model.accept(model.interactionVersion, requireNotNull(model.state.owner), marker); advanceUntilIdle()
         assertEquals(facts, model.state.facts); assertNull(model.state.problem)
         assertTrue(model.state.pending.isEmpty()); assertEquals(1, reads)
         assertEquals(0, sends); assertFalse(model.state.busy)
     }
     private val receipt = SmbReceipt("11111111-1111-1111-1111-111111111111", true, null)
     private fun submitStop() {
-        model.requestChange(requireNotNull(model.state.owner), facts, SmbChange(SmbChangeKind.Stop))
+        model.requestChange(model.interactionVersion, requireNotNull(model.state.owner), facts, SmbChange(SmbChangeKind.Stop))
         model.change(requireNotNull(model.changeReview))
     }
     @Test fun `successful change uses one verification and preserves receipt`() = runTest {
@@ -244,12 +301,12 @@ class SmbViewModelTest {
 
     @Test fun `stale review dismissal cannot close identical replacement or reopened review`() = runTest {
         val old = review()
-        model.requestChange(old.owner, old.confirmation.expected, old.confirmation.change)
+        model.requestChange(model.interactionVersion, old.owner, old.confirmation.expected, old.confirmation.change)
         val replacement = requireNotNull(model.changeReview)
         assertNotSame(old.confirmation, replacement.confirmation)
         model.dismissConfirmation(old); assertSame(replacement, model.changeReview)
         model.dismissConfirmation(replacement); assertNull(model.changeReview)
-        model.requestChange(old.owner, old.confirmation.expected, old.confirmation.change)
+        model.requestChange(model.interactionVersion, old.owner, old.confirmation.expected, old.confirmation.change)
         val reopened = requireNotNull(model.changeReview)
         model.dismissConfirmation(old); assertSame(reopened, model.changeReview)
         model.dismissConfirmation(reopened); assertNull(model.changeReview)

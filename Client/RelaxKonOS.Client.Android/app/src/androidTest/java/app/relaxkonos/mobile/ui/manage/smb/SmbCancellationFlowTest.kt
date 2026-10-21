@@ -4,6 +4,8 @@ import androidx.activity.ComponentActivity
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.Lifecycle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.espresso.Espresso
@@ -33,6 +35,9 @@ class SmbCancellationFlowTest {
     private var failFactsAfterInstallation = false
     private var readFailure: Exception? = null
     private var capabilityReads = 0
+    private val visible = mutableStateOf(true)
+    private var delayUsers = false
+    private var pendingUsers: kotlin.coroutines.Continuation<ApiResult<List<SmbUser>>>? = null
     private var currentShares = emptyList<SmbShare>()
     private val receipt = SmbReceipt("33333333-3333-3333-3333-333333333333", true, null)
     private val task = InstallationOperation("11111111-1111-1111-1111-111111111111", InstallationService.Smb,
@@ -68,7 +73,8 @@ class SmbCancellationFlowTest {
             override suspend fun smbConnection(serverUrl: String, accessToken: String) = ApiResult.Success(facts.connection)
             override suspend fun smbShares(serverUrl: String, accessToken: String): ApiResult<List<SmbShare>> = ApiResult.Success(currentShares)
             override suspend fun smbUsers(serverUrl: String, accessToken: String): ApiResult<List<SmbUser>> =
-                ApiResult.Success(if (includeUser) listOf(SmbUser("review-user", true, true)) else emptyList())
+                if (delayUsers) kotlin.coroutines.suspendCoroutine { pendingUsers = it }
+                else ApiResult.Success(if (includeUser) listOf(SmbUser("review-user", true, true)) else emptyList())
             override suspend fun activeInstallation(serverUrl: String, accessToken: String, service: InstallationService): ApiResult<InstallationOperation?> = ApiResult.Success(null)
             override suspend fun installation(serverUrl: String, accessToken: String, operationId: String): ApiResult<InstallationOperation> {
                 installationReadClockTimes += rule.mainClock.currentTime
@@ -111,7 +117,7 @@ class SmbCancellationFlowTest {
                 InstallationRepository(gateway, session, elevation, index, InstallationRequestJournal(Storage())), index, ElevationAnswerProvider.Declines)
             store.put("smb", model)
         }
-        rule.setContent { MaterialTheme { SmbContent(model, owner, {}) } }
+        rule.setContent { MaterialTheme { if (visible.value) SmbContent(model, owner, { visible.value = false }) else Text("Other page") } }
         rule.waitUntil(5_000) { model.state.facts != null && !model.state.busy }
     }
     @After fun cleanup() { rule.runOnUiThread { store.clear() } }
@@ -119,6 +125,8 @@ class SmbCancellationFlowTest {
     @Test fun pausedPasswordConfirmationClearsInputsAndRejectsOldCallback() {
         show(includeUser = true)
         rule.onNodeWithText(text(R.string.workspace_users)).performClick()
+        val oldOpen = rule.onNodeWithText(text(R.string.smb_password)).performScrollTo()
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
         rule.onNodeWithText(text(R.string.smb_password)).performScrollTo().performClick()
         val old = requireNotNull(model.changeReview)
         fun field(id: Int) = rule.onNode(hasSetTextAction() and hasText(text(id)))
@@ -131,10 +139,13 @@ class SmbCancellationFlowTest {
                 assertNull(model.changeReview)
                 val password = "review-password".toCharArray()
                 model.change(old, password); assertTrue(password.all { it == '\u0000' }); assertEquals(0, writes)
+                oldOpen(); assertNull(model.changeReview)
             }
             rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+            rule.runOnUiThread { oldOpen(); assertNull(model.changeReview) }
         } finally { rule.mainClock.autoAdvance = true }
         rule.onNode(isDialog()).assertDoesNotExist()
+        rule.runOnIdle { oldOpen(); assertNull(model.changeReview); assertEquals(0, writes) }
         rule.onNodeWithText(text(R.string.smb_password)).performScrollTo().performClick()
         field(R.string.smb_password).assertTextEquals(text(R.string.smb_password), "")
         field(R.string.smb_password_again).assertTextEquals(text(R.string.smb_password_again), "")
@@ -189,13 +200,140 @@ class SmbCancellationFlowTest {
         rule.onNodeWithText(text(R.string.smb_stop)).performScrollTo().assertIsNotEnabled()
         rule.runOnIdle { assertEquals(1, writes); assertEquals(1, model.state.pending.size) }
     }
-    private fun submitNewShare() {
+    private fun openUnknownStopRecovery() {
+        rule.onNodeWithText(text(R.string.smb_stop)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.smb_submit)).performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.pending.size == 1 }
+        dismissFailure()
+        rule.onNodeWithText(text(R.string.smb_records_attention)).performScrollTo().performClick()
+    }
+    @Test fun recoveryRequiresCurrentForegroundAndDisplayedMarker() {
+        show(); openUnknownStopRecovery()
+        val oldAdopt = rule.onNodeWithText(text(R.string.smb_accept_facts)).performScrollTo()
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        val reads = capabilityReads
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+            rule.runOnUiThread { oldAdopt(); assertFalse(model.state.busy); assertEquals(reads, capabilityReads) }
+            rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+            rule.runOnUiThread { oldAdopt(); assertFalse(model.state.busy); assertEquals(reads, capabilityReads) }
+        } finally { rule.mainClock.autoAdvance = true }
+        rule.runOnIdle { oldAdopt(); assertFalse(model.state.busy); assertEquals(reads, capabilityReads) }
+        val oldMarker = rule.onNodeWithText(text(R.string.smb_accept_facts))
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        refresh()
+        rule.waitUntil(5_000) { !model.state.busy }
+        val refreshedReads = capabilityReads
+        rule.runOnIdle { oldMarker(); assertFalse(model.state.busy); assertEquals(refreshedReads, capabilityReads); assertEquals(1, model.state.pending.size) }
+        rule.onNodeWithText(text(R.string.smb_accept_facts)).performScrollTo().performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.pending.isEmpty() }
+        rule.runOnIdle { assertEquals(refreshedReads + 1, capabilityReads); assertNotNull(model.state.facts); assertNull(model.state.problem); assertEquals(1, writes) }
+    }
+    @Test fun leavingCancelledAdoptionDoesNotClearMarkerWhenReadReturnsLate() {
+        show(); openUnknownStopRecovery()
+        rule.runOnIdle { delayUsers = true }
+        rule.onNodeWithText(text(R.string.smb_accept_facts)).performScrollTo().performClick()
+        rule.waitUntil(5_000) { pendingUsers != null }
+        rule.runOnIdle { visible.value = false }
+        rule.onNodeWithText("Other page").assertIsDisplayed()
+        rule.runOnIdle { delayUsers = false; visible.value = true }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.facts != null }
+        rule.runOnUiThread { pendingUsers!!.resumeWith(Result.success(ApiResult.Success(emptyList()))) }
+        rule.waitForIdle()
+        rule.runOnIdle { assertEquals(1, model.state.pending.size); assertEquals(1, writes) }
+        rule.onNodeWithText(text(R.string.smb_records_attention)).performScrollTo().performClick()
+        val reads = capabilityReads
+        rule.onNodeWithText(text(R.string.smb_accept_facts)).performScrollTo().performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.pending.isEmpty() }
+        rule.runOnIdle { assertEquals(reads + 1, capabilityReads); assertNotNull(model.state.facts); assertNull(model.state.problem); assertEquals(1, writes) }
+    }
+    private fun prepareShareDraft() {
         rule.onNodeWithText(text(R.string.workspace_shares)).performClick()
         rule.onNodeWithText(text(R.string.smb_create)).performScrollTo().performClick()
         rule.onNode(hasSetTextAction() and hasText(text(R.string.smb_name))).performScrollTo().performTextInput("review-share")
         rule.onNode(hasSetTextAction() and hasText(text(R.string.smb_path))).performScrollTo()
             .performTextInput("/srv/relaxkonos-shares/review-share")
         Espresso.closeSoftKeyboard()
+    }
+    private fun discardDraft() {
+        rule.onNodeWithText(text(R.string.common_cancel)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.smb_discard_action)).performClick()
+    }
+    @Test fun oldDiscardButtonsCannotConsumeReopenedShareDecision() {
+        show(); prepareShareDraft()
+        rule.onNodeWithText(text(R.string.common_cancel)).performScrollTo().performClick()
+        val oldDiscard = rule.onNodeWithText(text(R.string.smb_discard_action))
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        val cancel = hasText(text(R.string.common_cancel)) and hasAnyAncestor(isDialog())
+        val oldCancel = rule.onNode(cancel).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        rule.onNode(cancel).performClick()
+        rule.onNodeWithText(text(R.string.common_cancel)).performScrollTo().performClick()
+        rule.runOnIdle { oldCancel() }
+        rule.onNodeWithText(text(R.string.smb_discard_note)).assertIsDisplayed()
+        rule.runOnIdle { oldDiscard(); assertEquals(0, writes) }
+        rule.onNodeWithText(text(R.string.smb_discard_note)).assertIsDisplayed()
+        rule.onNode(cancel).performClick()
+        rule.onNode(hasSetTextAction() and hasText(text(R.string.smb_name))).performScrollTo()
+            .assertTextEquals(text(R.string.smb_name), "review-share")
+        discardDraft()
+        rule.onNodeWithText(text(R.string.common_save)).assertDoesNotExist()
+        rule.runOnIdle { oldDiscard(); oldCancel(); assertEquals(0, writes) }
+    }
+    @Test fun oldSaveAndCloseCannotAffectAReopenedShareDraft() {
+        show(); prepareShareDraft()
+        val oldSave = rule.onNodeWithText(text(R.string.common_save)).performScrollTo()
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        val oldClose = rule.onNodeWithText(text(R.string.common_cancel))
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        discardDraft()
+        rule.runOnIdle { oldSave(); assertNull(model.changeReview); assertEquals(0, writes) }
+        rule.onNodeWithText(text(R.string.smb_create)).performScrollTo().performClick()
+        rule.runOnIdle { oldSave(); oldClose(); assertNull(model.changeReview); assertEquals(0, writes) }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.onNode(hasSetTextAction() and hasText(text(R.string.smb_name))).performScrollTo()
+            .assertTextEquals(text(R.string.smb_name), "")
+    }
+    @Test fun resumedShareDraftKeepsFieldsButRejectsOldSaveAndClose() {
+        show(); prepareShareDraft(); successfulWrite = true
+        val oldSave = rule.onNodeWithText(text(R.string.common_save)).performScrollTo()
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        val oldClose = rule.onNodeWithText(text(R.string.common_cancel))
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+            rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+            rule.runOnUiThread { oldSave(); oldClose(); assertNull(model.changeReview); assertEquals(0, writes) }
+        } finally { rule.mainClock.autoAdvance = true }
+        rule.runOnIdle { oldSave(); oldClose(); assertNull(model.changeReview); assertEquals(0, writes) }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.onNode(hasSetTextAction() and hasText(text(R.string.smb_name))).performScrollTo()
+            .assertTextEquals(text(R.string.smb_name), "review-share")
+        rule.onNode(hasSetTextAction() and hasText(text(R.string.smb_path))).performScrollTo()
+            .assertTextEquals(text(R.string.smb_path), "/srv/relaxkonos-shares/review-share")
+        rule.onNodeWithText(text(R.string.common_save)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.smb_submit)).performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.saved == 1 }
+        rule.runOnIdle { oldSave(); oldClose(); assertNull(model.changeReview); assertEquals(1, writes) }
+    }
+    @Test fun currentBackCanLeaveWhileFactsReadIsPending() {
+        show()
+        rule.runOnIdle { delayUsers = true }
+        refresh()
+        rule.waitUntil(5_000) { pendingUsers != null }
+        try {
+            rule.onNodeWithContentDescription(text(R.string.common_back)).performClick()
+            rule.onNodeWithText("Other page").assertIsDisplayed()
+            rule.runOnIdle { assertFalse(model.state.busy); assertNull(model.state.facts); assertEquals(0, writes) }
+        } finally {
+            rule.runOnUiThread { pendingUsers!!.resumeWith(Result.success(ApiResult.Success(emptyList()))) }
+        }
+        rule.waitForIdle()
+        rule.onNodeWithText("Other page").assertIsDisplayed()
+    }
+    private fun submitNewShare() {
+        prepareShareDraft()
         rule.onNodeWithText(text(R.string.common_save)).performScrollTo().performClick()
         rule.onNodeWithText(text(R.string.smb_submit)).performClick()
     }
@@ -280,7 +418,7 @@ class SmbCancellationFlowTest {
             .fetchSemanticsNode().config[SemanticsActions.OnClick].action)
         val oldCancel = requireNotNull(rule.onNodeWithText(text(R.string.common_cancel))
             .fetchSemanticsNode().config[SemanticsActions.OnClick].action)
-        rule.runOnIdle { model.requestChange(old.owner, old.confirmation.expected, old.confirmation.change) }
+        rule.runOnIdle { model.requestChange(model.interactionVersion, old.owner, old.confirmation.expected, old.confirmation.change) }
         val replacement = requireNotNull(model.changeReview)
         field(R.string.smb_password).assertTextEquals(text(R.string.smb_password), "")
         field(R.string.smb_password_again).assertTextEquals(text(R.string.smb_password_again), "")
