@@ -2,7 +2,7 @@
 
 # RelaxKonOS
 
-**Cloud-Native Desktop Operating System Environment**
+**Your servers, as one desktop · a cloud-native desktop environment**
 
 [![Avalonia](https://img.shields.io/badge/Avalonia-12.1.3-blue)](https://avaloniaui.net/)
 [![dotnet](https://img.shields.io/badge/.NET-10.0-purple)](https://dotnet.microsoft.com/)
@@ -19,7 +19,7 @@ Website <https://relaxkon.com> · Docs <https://relaxkon.com/docs> · Downloads 
 
 ## ✨ Introduction
 
-**RelaxKonOS** is a cross-platform, cloud-native desktop operating environment. The client renders the interface locally; the server provides accounts, storage, synchronization and remote runtime capabilities. They exchange system state, application state and user actions rather than screen pixels.
+**RelaxKonOS** is a cross-platform, cloud-native desktop environment — your servers, as one desktop. The client renders the interface locally; the server provides accounts, storage, synchronization and remote runtime capabilities. They exchange system state, application state and user actions rather than screen pixels.
 
 ### What it is for
 

@@ -2,7 +2,7 @@
 
 # RelaxKonOS
 
-**云原生桌面操作系统环境**
+**把你的服务器变成一台桌面 · 云原生桌面环境**
 
 [![Avalonia](https://img.shields.io/badge/Avalonia-12.1.3-blue)](https://avaloniaui.net/)
 [![dotnet](https://img.shields.io/badge/.NET-10.0-purple)](https://dotnet.microsoft.com/)
@@ -19,7 +19,7 @@
 
 ## ✨ 项目简介
 
-**RelaxKonOS** 是跨平台的云原生桌面操作系统环境。客户端本地渲染界面，服务端提供账户、存储、同步和远程运行能力。两端传输系统状态、应用状态和操作意图，不传输屏幕像素。
+**RelaxKonOS** 是跨平台的云原生桌面环境——把服务器当成那台机器。客户端本地渲染界面，服务端提供账户、存储、同步和远程运行能力。两端传输系统状态、应用状态和操作意图，不传输屏幕像素。
 
 ### 核心用途
 
