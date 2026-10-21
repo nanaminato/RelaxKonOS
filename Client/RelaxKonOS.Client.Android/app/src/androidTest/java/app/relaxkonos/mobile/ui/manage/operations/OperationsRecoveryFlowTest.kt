@@ -32,6 +32,15 @@ import org.junit.Assert.*
 class OperationsRecoveryFlowTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
     private val store = ViewModelStore()
+    private var documentRequest: Int? = null
+    private val documentRegistry = object : androidx.activity.result.ActivityResultRegistry() {
+        override fun <I, O> onLaunch(requestCode: Int,
+            contract: androidx.activity.result.contract.ActivityResultContract<I, O>, input: I,
+            options: androidx.core.app.ActivityOptionsCompat?) { documentRequest = requestCode }
+    }
+    private val documentOwner = object : androidx.activity.result.ActivityResultRegistryOwner {
+        override val activityResultRegistry get() = documentRegistry
+    }
     private lateinit var model: OperationsViewModel
     private lateinit var owner: SessionState.Active
     private lateinit var session: AuthSession
@@ -42,6 +51,7 @@ class OperationsRecoveryFlowTest {
     private var operationState = "running"
     private var exports = 0
     private var exportResult = false
+    private var exportGate: CompletableDeferred<Unit>? = null
     private val exportedReports = mutableListOf<String>()
     private val refreshReads = java.util.concurrent.atomic.AtomicInteger()
     private val hiddenIds = java.util.concurrent.CopyOnWriteArrayList<String>()
@@ -80,13 +90,13 @@ class OperationsRecoveryFlowTest {
             override suspend fun hide(owner: SessionState.Active, item: ObservedOperation) { hiddenIds += item.reference.operationId }
             override suspend fun recoverInstallation(owner: SessionState.Active, id: String): ApiResult<*> = throw CancellationException("private lookup detail")
             override suspend fun exportReport(uri: Uri, report: String): Boolean {
-                exports++; exportedReports += report; return exportResult
+                exports++; exportedReports += report; exportGate?.await(); return exportResult
             }
         }
         rule.runOnUiThread { model = OperationsViewModel(session, actions); store.put("operations", model) }
         rule.setContent { MaterialTheme {
             val density = LocalDensity.current
-            CompositionLocalProvider(LocalAppContainer provides app.container, LocalDensity provides Density(density.density, 1.6f)) {
+            CompositionLocalProvider(androidx.activity.compose.LocalActivityResultRegistryOwner provides documentOwner, LocalAppContainer provides app.container, LocalDensity provides Density(density.density, 1.6f)) {
                 val active by session.state.collectAsState()
                 Box(Modifier.safeDrawingPadding().requiredSize(360.dp, 640.dp)) {
                     (active as? SessionState.Active)?.let { OperationsContent(model, it) }
@@ -106,6 +116,77 @@ class OperationsRecoveryFlowTest {
             session.login(ServerConnectionIdentityRules.direct("https://operations-review.invalid"), "review", "test".toCharArray()) {}
         } }
         rule.waitUntil(5_000) { model.state.owner === session.state.value && !model.state.loading && model.state.items.isNotEmpty() }
+    }
+    @Test fun reportPickerReturnsToOriginalTaskAndBusyExportCannotReopen() {
+        show(includeSecond = true)
+        rule.onNodeWithText("review-operation").performScrollTo().performClick()
+        rule.onNodeWithText("review-diagnostic").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.operations_export_diagnostics)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.operations_export_save)).performClick()
+        rule.waitUntil(5_000) { documentRequest != null }
+        val gate = CompletableDeferred<Unit>()
+        rule.runOnIdle {
+            exportGate = gate; exportResult = true
+            documentRegistry.dispatchResult(requireNotNull(documentRequest), Uri.parse("content://operations-review/report"))
+        }
+        rule.waitUntil(5_000) { model.state.exporting }
+        rule.onNodeWithText(text(R.string.operations_export_diagnostics)).performScrollTo().assertIsNotEnabled()
+        rule.onNodeWithText("other-operation").performScrollTo().performClick()
+        rule.runOnIdle { gate.complete(Unit) }
+        rule.waitUntil(5_000) { !model.state.exporting }
+        rule.onNodeWithText(text(R.string.operations_export_saved)).assertDoesNotExist()
+        rule.onNodeWithText("review-operation").performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.operations_export_saved)).performScrollTo().assertIsDisplayed()
+        rule.runOnIdle {
+            assertEquals(1, exports); assertEquals(0, writes)
+            assertTrue(exportedReports.single().contains("review-diagnostic"))
+        }
+    }
+    @Test fun suspendedExportRejectsDuplicateAndCancellationRestoresButton() {
+        show()
+        rule.onNodeWithText("review-operation").performScrollTo().performClick()
+        rule.onNodeWithText("review-diagnostic").performScrollTo().assertIsDisplayed()
+        val gate = CompletableDeferred<Unit>()
+        val job = rule.runOnIdle {
+            exportGate = gate
+            CoroutineScope(Dispatchers.Main.immediate).launch(start = CoroutineStart.UNDISPATCHED) {
+                model.exportReport(owner, Uri.parse("content://operations-review/export"), "frozen report")
+            }
+        }
+        try {
+            rule.onNodeWithText(text(R.string.operations_export_diagnostics)).performScrollTo().assertIsNotEnabled()
+            rule.runOnIdle { runBlocking {
+                assertTrue(model.state.exporting)
+                assertFalse(model.exportReport(owner, Uri.parse("content://operations-review/duplicate"), "duplicate"))
+                assertEquals(listOf("frozen report"), exportedReports)
+                job.cancel()
+            } }
+            rule.waitUntil(5_000) { !model.state.exporting }
+            rule.onNodeWithText(text(R.string.operations_export_diagnostics)).assertIsEnabled()
+            rule.runOnIdle { runBlocking {
+                exportGate = null; exportResult = true
+                assertTrue(model.exportReport(owner, Uri.parse("content://operations-review/retry"), "new report"))
+                assertFalse(model.state.exporting); assertEquals(2, exports); assertEquals(0, writes)
+            } }
+        } finally { rule.runOnUiThread { job.cancel(); gate.complete(Unit) } }
+    }
+    @Test fun repeatedImmediateReadFailureReopensFeedback() {
+        show()
+        rule.runOnIdle { cancelRead = true; model.refresh(owner) }
+        rule.waitUntil(5_000) {
+            rule.onAllNodesWithText(text(R.string.operations_refresh_failed)).fetchSemanticsNodes().isNotEmpty()
+        }
+        val dismiss = rule.onNodeWithText(text(R.string.common_dismiss)).fetchSemanticsNode()
+            .config[androidx.compose.ui.semantics.SemanticsActions.OnClick].action!!
+        rule.runOnIdle { dismiss(); model.refresh(owner) }
+        rule.waitUntil(5_000) {
+            rule.onAllNodesWithText(text(R.string.operations_refresh_failed)).fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithText(text(R.string.operations_refresh_failed)).assertIsDisplayed()
+        rule.runOnIdle {
+            assertTrue(model.state.error); assertFalse(model.state.loading)
+            assertEquals(0, writes); assertEquals(0, exports)
+        }
     }
     @Test fun reloginClearsOldReportAndApprovalAndRejectsOldExport() {
         show()

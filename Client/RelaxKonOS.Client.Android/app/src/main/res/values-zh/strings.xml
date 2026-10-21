@@ -74,4 +74,7 @@
     <string name="docker_container_exited">已退出</string>
     <string name="docker_container_dead">已失效</string>
     <string name="docker_container_unknown">未知状态（%1$s）</string>
+    <string name="server_maintenance_pending">原维护操作尚未核实，新的变更已暂停。</string>
+    <string name="server_maintenance_reconcile">核实原操作</string>
+    <string name="server_maintenance_reconciled">已核实原操作记录。请检查当前状态后再开始新的变更。</string>
 </resources>

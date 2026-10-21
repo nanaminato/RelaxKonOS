@@ -140,6 +140,9 @@ class AppContainer(context: Context) {
         FileServerInstallOperationStorage(appContext.noBackupFilesDir), sshHostKeyTrust,
     )
 
+    internal val maintenancePendingJournal = app.relaxkonos.mobile.servercenter.MaintenancePendingJournal(
+        app.relaxkonos.mobile.servercenter.FileMaintenancePendingStorage(appContext.noBackupFilesDir))
+
     val sshCredentials = ServerCenterSshCredentialStore(vault, vaultAccess)
     val loginTunnels = app.relaxkonos.mobile.servercenter.LoginTunnelStore(appContext.noBackupFilesDir)
     private val loginTunnelOwnership = app.relaxkonos.mobile.servercenter.LoginTunnelOwnership(

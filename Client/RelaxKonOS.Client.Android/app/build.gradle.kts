@@ -8,6 +8,10 @@ plugins {
 val componentReview = providers.gradleProperty("relaxkonComponentReview")
     .map { it.toBooleanStrict() }.getOrElse(false)
 
+val processReview = providers.gradleProperty("relaxkonProcessReview")
+    .map { it.toBooleanStrict() }.getOrElse(false)
+require(!processReview || !componentReview) { "Process recovery review requires the full application runner." }
+
 val releaseSigningPropertiesPath = providers.gradleProperty("relaxkonSigningProperties").orNull
 val releaseSigningProperties = releaseSigningPropertiesPath?.let { path ->
     val file = file(path)
@@ -49,6 +53,8 @@ val generateDeploymentAssets = tasks.register("generateDeploymentAssets") {
 
 android {
     namespace = "app.relaxkonos.mobile"
+    // Manual, separately orchestrated process-death checks are excluded from ordinary connected tests.
+    if (processReview) sourceSets.getByName("androidTest").java.srcDir("src/processReview/java")
     compileSdk = 36
 
     sourceSets.getByName("main").assets.srcDir(launcherAssets.get().asFile)

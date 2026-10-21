@@ -64,6 +64,22 @@ class OperationsViewModelTest {
         OperationReference(owner.serviceId, owner.userName, OperationDomain.Compose, "certificate", "operation", 1, lastVerifiedAtMillis = verifiedAt),
         OperationCheck.Verified, "certificate", state = operationState, cancellable = true)
     private fun otherItem(owner: SessionState.Active) = item(owner).let { it.copy(reference = it.reference.copy(operationId = "other")) }
+    @Test fun `repeated read failures have distinct feedback events across relogin`() = runTest {
+        val owner = start()
+        cancelRefresh = true
+        model.refresh(owner); advanceUntilIdle()
+        val first = model.state.feedbackVersion
+        assertTrue(model.state.error); assertFalse(model.state.loading)
+        model.refresh(owner); advanceUntilIdle()
+        assertTrue(model.state.feedbackVersion > first)
+        val second = model.state.feedbackVersion
+        session.login(ServerConnectionIdentityRules.direct("https://operations-review.invalid"), "review", "test".toCharArray()) {}
+        runCurrent()
+        val next = session.state.value as SessionState.Active
+        model.refresh(next); advanceUntilIdle()
+        assertTrue(model.state.feedbackVersion > second)
+        assertTrue(model.state.error); assertFalse(model.state.loading); assertEquals(0, writes)
+    }
     @Test fun `same account relogin clears old task facts and approval before page refresh`() = runTest {
         val owner = start(); model.select(owner, item(owner)); advanceUntilIdle(); model.requestHide(owner, item(owner))
         session.login(ServerConnectionIdentityRules.direct("https://operations-review.invalid"), "review", "test".toCharArray()) {}

@@ -78,4 +78,7 @@
     <string name="docker_container_exited">Exited</string>
     <string name="docker_container_dead">Dead</string>
     <string name="docker_container_unknown">Unknown (%1$s)</string>
+    <string name="server_maintenance_pending">The previous maintenance operation is unverified. New changes are paused.</string>
+    <string name="server_maintenance_reconcile">Verify original operation</string>
+    <string name="server_maintenance_reconciled">The original operation record is verified. Check current status before starting a new change.</string>
 </resources>

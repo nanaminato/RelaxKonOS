@@ -181,14 +181,19 @@ internal fun OperationsContent(
     var exportPreview by remember(owner) { mutableStateOf(false) }
     var pendingReport by remember(owner) { mutableStateOf<String?>(null) }
     var pendingOperationId by remember(owner) { mutableStateOf("") }
+    var pendingReportKey by remember(owner) { mutableStateOf<Pair<OperationDomain, String>?>(null) }
+    var reportResultKey by remember(owner) { mutableStateOf<Pair<OperationDomain, String>?>(null) }
     var exportFailed by remember(owner) { mutableStateOf(false) }
     var exportSaved by remember(owner) { mutableStateOf(false) }
     val saveReport = key(owner) { rememberLauncherForActivityResult(rememberUsageCreateDocument("application/json", "OperationsScreen.export-report")) { uri ->
         val report = pendingReport
+        val reportKey = pendingReportKey
         pendingReport = null
+        pendingReportKey = null
         if (uri != null && report != null) scope.launch {
             exportFailed = false
             val saved = viewModel.exportReport(owner, uri, report)
+            reportResultKey = reportKey
             exportSaved = saved
             exportFailed = !saved
         }
@@ -206,7 +211,8 @@ internal fun OperationsContent(
         }
         if (tab == 0) {
         RefreshProgressIndicator(visible = !visible || state.loading || state.hiding)
-        OperationMessageDialog(if (visible && state.error && !state.loading) stringResource(R.string.operations_refresh_failed) else null)
+        OperationMessageDialog(if (visible && state.error && !state.loading) stringResource(R.string.operations_refresh_failed) else null,
+            eventKey = state.feedbackVersion)
         if (visible && !state.loading && state.items.isEmpty() && !state.error) {
             Text(stringResource(R.string.operations_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -353,12 +359,13 @@ internal fun OperationsContent(
                 pendingReport = OperationDiagnosticReport.create(selected,
                     (diagnostics as? ApiResult.Success)?.value.orEmpty(), diagnostics is ApiResult.Success)
                 pendingOperationId = selected.reference.operationId
+                pendingReportKey = selected.reference.domain to selected.reference.operationId
                 exportPreview = true
                 exportFailed = false
                 exportSaved = false
-            }) { Text(stringResource(R.string.operations_export_diagnostics)) }
-            if (exportFailed) Text(stringResource(R.string.operations_export_failed), color = MaterialTheme.colorScheme.error)
-            if (exportSaved) Text(stringResource(R.string.operations_export_saved))
+            }, enabled = !state.exporting) { Text(stringResource(R.string.operations_export_diagnostics)) }
+            if (reportResultKey == state.selectedKey && exportFailed) Text(stringResource(R.string.operations_export_failed), color = MaterialTheme.colorScheme.error)
+            if (reportResultKey == state.selectedKey && exportSaved) Text(stringResource(R.string.operations_export_saved))
         }
         } else if (hasAlerts) AlertPanel(owner, openTarget)
     }

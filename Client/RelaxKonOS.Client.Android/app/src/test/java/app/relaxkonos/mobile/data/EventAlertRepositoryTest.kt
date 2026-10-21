@@ -21,6 +21,33 @@ class EventAlertRepositoryTest {
         return session.state.value as SessionState.Active
     }
     private fun detail(alert: OperationalAlert) = OperationalAlertDetail(alert, emptyList(), emptyList())
+    @Test fun `unexpected read exception returns safe transport and permits retry`() = runTest {
+        val owner = signIn()
+        gateway.onAlertDetail = { throw IllegalStateException("private read detail") }
+        assertEquals(ApiResult.Transport(null), repository.detail(owner, "selected"))
+        gateway.onAlertDetail = { ApiResult.Success(detail(alert())) }
+        assertTrue(repository.detail(owner, "selected") is ApiResult.Success)
+    }
+    @Test fun `unexpected preflight exception does not dispatch or mark unknown`() = runTest {
+        val owner = signIn(); var writes = 0
+        gateway.onAlertDetail = { throw IllegalStateException("private preflight detail") }
+        gateway.onMutateAlert = { _, _, _, _ -> writes++; ApiResult.Transport(null) }
+        val outcome = repository.mutate(owner, alert(), AlertMutation.Acknowledge)
+        assertEquals(ApiResult.Transport(null), outcome.result)
+        assertFalse(outcome.mayHaveApplied); assertFalse(repository.hasUnknown(owner, "selected")); assertEquals(0, writes)
+    }
+    @Test fun `unexpected send exception retains unknown without replay and can reconcile`() = runTest {
+        val owner = signIn(); var current = alert(); var writes = 0
+        gateway.onAlertDetail = { ApiResult.Success(detail(current)) }
+        gateway.onMutateAlert = { _, _, _, _ -> writes++; throw IllegalStateException("private send detail") }
+        val outcome = repository.mutate(owner, alert(), AlertMutation.Acknowledge)
+        assertEquals(ApiResult.Transport(null), outcome.result); assertTrue(outcome.mayHaveApplied)
+        assertTrue(repository.hasUnknown(owner, "selected"))
+        repository.mutate(owner, alert(), AlertMutation.Acknowledge); assertEquals(1, writes)
+        current = current.copy(status = "acknowledged")
+        assertTrue(repository.reconcile(owner, "selected") is ApiResult.Success)
+        assertFalse(repository.hasUnknown(owner, "selected")); assertEquals(1, writes)
+    }
     @Test fun `detail for another alert cannot supply selected remediation`() = runTest {
         val owner = signIn(); gateway.onAlertDetail = { ApiResult.Success(detail(alert("other"))) }
         assertTrue(repository.detail(owner, "selected") is ApiResult.Transport)
