@@ -41,7 +41,9 @@ import org.json.JSONObject
             TextButton(enabled = !locked, onClick = { changed(); model.loadRuntime() }) { Text(stringResource(R.string.common_refresh)) }
             if (runtime == null) Text(stringResource(R.string.managed_runtime_unknown))
             else {
-                Text(stringResource(R.string.managed_runtime_identity, runtime.ownership, runtime.version.orEmpty()))
+                if (runtime.ownership == "absent") Text(managedRuntimeOwnershipLabel(runtime.ownership))
+                else Text(stringResource(R.string.managed_runtime_identity, managedRuntimeOwnershipLabel(runtime.ownership),
+                    runtime.version?.takeIf(String::isNotBlank) ?: stringResource(R.string.managed_runtime_version_unmeasured)))
                 runtime.problem?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
             if (runtime != null && !runtime.recoveryRequired && runtime.problem == null && runtime.ownership in setOf("absent", "managed")) {
@@ -57,7 +59,7 @@ import org.json.JSONObject
                     Text(stringResource(R.string.managed_runtime_sources))
                     if (state.runtimeSources.isEmpty()) Text(stringResource(R.string.managed_runtime_no_sources))
                     state.runtimeSources.forEach { item ->
-                        RadioOption(source == item.id, "${item.publisher} · ${item.id} · ${item.trust}\n${item.address}\n${item.fingerprint}", !locked && item.enabled && item.trust == "confirmed") {
+                        RadioOption(source == item.id, "${item.publisher} · ${item.id}\n${managedRuntimeTrustLabel(item.trust)}\n${item.address}\n${item.fingerprint}", !locked && item.enabled && item.trust == "confirmed") {
                             source = item.id; release = if (kind == InstallationKind.Repair) runtime.activeRelease else null; changed()
                             model.loadRuntimeCatalog(item.id, false, prerelease)
                         }
@@ -72,7 +74,7 @@ import org.json.JSONObject
                         if (!catalog.fresh || catalog.problem != null) Text(stringResource(R.string.managed_runtime_stale), color = MaterialTheme.colorScheme.error)
                         catalog.problem?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                         catalog.releases.filter { kind != InstallationKind.Rollback || it.id in runtime.storedReleases && it.id != runtime.activeRelease }.forEach { item ->
-                            RadioOption(release == item.id, "${item.version} · ${item.target} · ${item.trust} · ${item.evidence}",
+                            RadioOption(release == item.id, "${item.version} · ${item.target} · ${managedRuntimeTrustLabel(item.trust)} · ${managedRuntimeEvidenceLabel(item.evidence)}",
                                 !locked && catalog.fresh && catalog.problem == null && item.trust == "confirmed" && item.supported &&
                                     (prerelease || item.channel == "stable") && runtime.eligible(kind, item.id)) { release = item.id; changed() }
                             if (!item.supported) Text(stringResource(R.string.managed_runtime_unsupported))
@@ -88,17 +90,19 @@ import org.json.JSONObject
                 val observations = JSONObject(report).getJSONArray("observations")
                 for (index in 0 until observations.length()) {
                     val item = observations.getJSONObject(index)
-                    Text("${item.getString("kind")} · ${item.getString("identity")} · ${item.getString("state")}")
+                    Text(stringResource(R.string.managed_runtime_dependency_observation,
+                        managedRuntimeDependencyKindLabel(item.getString("kind")), item.getString("identity"),
+                        managedRuntimeDependencyStateLabel(item.getString("state"))))
                     if (!item.isNull("requiredBytes")) Text(stringResource(R.string.managed_runtime_disk,
-                        if (item.isNull("availableBytes")) "?" else item.getLong("availableBytes").toString(), item.getLong("requiredBytes").toString()))
+                        if (item.isNull("availableBytes")) stringResource(R.string.managed_resource_unknown) else item.getLong("availableBytes").toString(), item.getLong("requiredBytes").toString()))
                 }
             }
             state.runtimeProblems.forEach { Text(it, color = MaterialTheme.colorScheme.error) }
             state.runtimePlan?.let { plan ->
                 val json = JSONObject(plan.plan)
                 Text(stringResource(R.string.managed_runtime_plan, installationKindLabel(plan.kind),
-                    json.optNullableString("previousReleaseId").orEmpty(),
-                    if (json.isNull("release")) "" else json.getJSONObject("release").getString("originalVersion")))
+                    json.optNullableString("previousReleaseId") ?: stringResource(R.string.managed_runtime_no_release),
+                    if (json.isNull("release")) stringResource(R.string.managed_runtime_no_release) else json.getJSONObject("release").getString("originalVersion")))
                 Text(stringResource(R.string.managed_runtime_restart))
                 Row { Checkbox(confirmed, enabled = !state.busy, onCheckedChange = { confirmed = it }); Text(stringResource(R.string.mihomo_install_confirm)) }
             }

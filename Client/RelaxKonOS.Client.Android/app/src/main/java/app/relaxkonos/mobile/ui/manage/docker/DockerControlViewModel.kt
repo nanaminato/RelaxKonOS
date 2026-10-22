@@ -152,7 +152,7 @@ internal class DockerControlViewModel(private val session: AuthSession, private 
     fun recoverInstall(id: String, identified: Boolean) = work { owner ->
         val pending = installations.pending(owner).firstOrNull { it.service == InstallationService.Docker }
         if (pending != null && !identified) return@work
-        val result = if (pending == null) installations.recoverById(owner, id.trim())
+        val result = if (pending == null) installations.recoverById(owner, id.trim(), InstallationService.Docker)
             else installations.identifyOriginal(owner, pending, id.trim())
         installResult(owner, result)
         if (result is ApiResult.Success && result.value.service == InstallationService.Docker && result.value.kind == InstallationKind.Install) intent = null

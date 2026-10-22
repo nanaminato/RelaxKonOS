@@ -31,7 +31,16 @@ internal data class ProxyState(
     val traffic: ApiResult<ProxyTraffic>? = null, val connections: ApiResult<List<ProxyConnection>>? = null,
     val logs: ApiResult<List<ProxyLog>>? = null, val dns: ApiResult<ProxyDns>? = null, val resources: ApiResult<ManagedRuntimeResources>? = null,
     val diagnosticsBusy: Boolean = false, val diagnosticsFailed: Boolean = false, val diagnosticsSection: String? = null, val diagnosticsAtMillis: Long? = null, val problemCode: String? = null, val uncertain: Boolean = false, val savedEpoch: Int = 0, val observedAtMillis: Long? = null)
-internal class ProxyInstallationCancellation(val owner: SessionState.Active, val operation: InstallationOperation)
+// Latency samples are independent reads and do not alter the facts reviewed for a mutation.
+private fun ProxyState.changeFacts() = copy(delays = emptyMap(), testingProxies = emptySet(), testingGroup = null)
+internal class ProxyChangeReview(val owner: SessionState.Active, val version: Long,
+    val observed: ProxyState, internal val action: () -> Unit)
+internal data class ProxyRecoveryDraft(val id: String, val identified: Boolean = false)
+internal class ProxyRecoveryForm(val owner: SessionState.Active, val installation: Boolean, val requestVersion: Long,
+    val pending: PendingInstallationRequest?, initialId: String) {
+    var draft by mutableStateOf(ProxyRecoveryDraft(initialId)); internal set
+}
+internal class ProxyInstallationCancellation(val owner: SessionState.Active, val operation: InstallationOperation, val version: Long)
 internal class ProxyAdoptionReview(val owner: SessionState.Active, val pending: PendingProxyRequest, val version: Long)
 internal class ProxyViewModel(private val session: AuthSession, private val repository: ProxyRepository,
     private val installations: InstallationRepository, private val operationIndex: OperationIndex,
@@ -39,16 +48,67 @@ internal class ProxyViewModel(private val session: AuthSession, private val repo
     private var workGeneration = 0L
     private var diagnosticsGeneration = 0L
     private var diagnosticsJob: Job? = null
-    private var adoptionActive = false
-    var adoptionVersion by mutableStateOf(0L); private set
+    private var interactionActive = false
+    var interactionVersion by mutableStateOf(0L); private set
     var adoptionReview by mutableStateOf<ProxyAdoptionReview?>(null); private set
-    fun setAdoptionActive(active: Boolean) {
-        if (!active && adoptionActive) adoptionVersion++
-        adoptionActive = active
-        if (!active) adoptionReview = null
+    var changeReview by mutableStateOf<ProxyChangeReview?>(null); private set
+    fun isCurrentInteraction(version: Long, active: SessionState.Active) =
+        interactionActive && interactionVersion == version && activeSession === active && owner === active
+    var recoveryForm by mutableStateOf<ProxyRecoveryForm?>(null); private set
+    fun requestRecovery(version: Long, active: SessionState.Active, observed: ProxyState, installation: Boolean) {
+        if (!isCurrentInteraction(version, active) || state.busy || state.changeFacts() != observed.changeFacts() ||
+            ServerCapabilities.PROXY !in active.capabilities || installation && !active.privilegedOperations ||
+            recoveryForm != null || changeReview != null || adoptionReview != null || installationCancellation != null) return
+        val pending = try { if (installation) installations.pending(active).firstOrNull { it.service == InstallationService.Mihomo } else null }
+        catch (_: CancellationException) { return }
+        catch (_: Exception) { if (activeSession === active && owner === active) state = state.copy(uncertain = true); return }
+        if (!isCurrentInteraction(version, active)) return
+        if (installation && state.pendingInstallation != (pending != null)) { state = state.copy(uncertain = true); return }
+        stopDiagnostics()
+        recoveryForm = ProxyRecoveryForm(active, installation, state.requestVersion, pending,
+            if (installation && state.installationVerified) state.installation?.operationId.orEmpty() else "")
     }
+    private fun ownsRecovery(form: ProxyRecoveryForm, version: Long) = recoveryForm === form &&
+        isCurrentInteraction(version, form.owner) && !state.busy && state.requestVersion == form.requestVersion
+    fun changeRecoveryId(form: ProxyRecoveryForm, version: Long, id: String) {
+        if (ownsRecovery(form, version) && form.draft.id != id) form.draft = ProxyRecoveryDraft(id)
+    }
+    fun identifyRecovery(form: ProxyRecoveryForm, version: Long, draft: ProxyRecoveryDraft, identified: Boolean) {
+        if (ownsRecovery(form, version) && form.draft === draft && form.pending != null) form.draft = draft.copy(identified = identified)
+    }
+    fun dismissRecovery(form: ProxyRecoveryForm, version: Long) {
+        if (ownsRecovery(form, version)) recoveryForm = null
+    }
+    fun submitRecovery(form: ProxyRecoveryForm, version: Long, draft: ProxyRecoveryDraft) {
+        if (!ownsRecovery(form, version) || form.draft !== draft || form.pending != null && !draft.identified) return
+        val id = runCatching { InstallationRoutes.canonicalId(draft.id.trim()) }.getOrNull() ?: return
+        recoveryForm = null
+        if (form.installation) recoverInstall(form, id) else recoverOperation(id)
+    }
+    fun requestChange(version: Long, active: SessionState.Active, observed: ProxyState, action: () -> Unit) {
+        if (!interactionActive || interactionVersion != version || activeSession !== active || owner !== active ||
+            !active.privilegedOperations || ServerCapabilities.PROXY !in active.capabilities || state.busy || state.changeFacts() != observed.changeFacts() ||
+            changeReview != null || adoptionReview != null || installationCancellation != null || recoveryForm != null) return
+        stopDiagnostics()
+        changeReview = ProxyChangeReview(active, version, state.changeFacts(), action)
+    }
+    fun dismissChange(review: ProxyChangeReview) {
+        if (changeReview === review) changeReview = null
+    }
+    fun submitChange(review: ProxyChangeReview) {
+        if (changeReview !== review || !interactionActive || interactionVersion != review.version ||
+            activeSession !== review.owner || owner !== review.owner || state.busy || state.changeFacts() != review.observed) return
+        changeReview = null
+        review.action()
+    }
+    fun setInteractionActive(active: Boolean) {
+        if (!active && interactionActive) interactionVersion++
+        interactionActive = active
+        if (!active) { adoptionReview = null; installationCancellation = null; changeReview = null }
+    }
+    fun leavePage() { setInteractionActive(false); recoveryForm = null }
     fun requestAdoption(version: Long, active: SessionState.Active, pending: PendingProxyRequest) {
-        if (!adoptionActive || adoptionVersion != version || activeSession !== active || owner !== active || state.busy ||
+        if (!interactionActive || interactionVersion != version || activeSession !== active || owner !== active || state.busy || recoveryForm != null || changeReview != null || installationCancellation != null ||
             pending.action != null || state.pending.none { it === pending }) return
         adoptionReview = ProxyAdoptionReview(active, pending, version)
     }
@@ -56,13 +116,15 @@ internal class ProxyViewModel(private val session: AuthSession, private val repo
         if (adoptionReview === review && activeSession === review.owner && !state.busy) adoptionReview = null
     }
     var installationCancellation by mutableStateOf<ProxyInstallationCancellation?>(null); private set
-    fun dismissInstallationCancellation() { installationCancellation = null }
-    fun requestInstallationCancellation(active: SessionState.Active, operation: InstallationOperation) {
-        if (activeSession === active && owner === active && active.privilegedOperations && !state.busy &&
-            state.installationVerified && state.installation == operation && operation.state.active && operation.cancellable)
-            installationCancellation = ProxyInstallationCancellation(active, operation)
+    fun dismissInstallationCancellation(review: ProxyInstallationCancellation) {
+        if (installationCancellation === review) installationCancellation = null
     }
-    private fun canObserveTasks() = !state.busy && !state.uncertain && state.problemCode == null && installationCancellation == null && adoptionReview == null
+    fun requestInstallationCancellation(version: Long, active: SessionState.Active, operation: InstallationOperation) {
+        if (interactionActive && interactionVersion == version && activeSession === active && owner === active && active.privilegedOperations && !state.busy && recoveryForm == null && changeReview == null && adoptionReview == null &&
+            state.installationVerified && state.installation == operation && operation.state.active && operation.cancellable)
+            installationCancellation = ProxyInstallationCancellation(active, operation, version)
+    }
+    private fun canObserveTasks() = recoveryForm == null && changeReview == null && !state.busy && !state.uncertain && state.problemCode == null && installationCancellation == null && adoptionReview == null
     suspend fun observeTasks(canObserve: () -> Boolean) {
         val active = activeSession ?: return
         val operation = state.operation?.takeIf { state.operationVerified && it.state.active }
@@ -105,7 +167,7 @@ internal class ProxyViewModel(private val session: AuthSession, private val repo
     var sessionEpoch by mutableIntStateOf(0)
         private set
     init { viewModelScope.launch { session.state.collect { next ->
-        if (next !== owner) { adoptionReview = null; dismissInstallationCancellation(); stopDiagnostics(); owner = next as? SessionState.Active; intent = null; state = ProxyState(); sessionEpoch++ }
+        if (next !== owner) { recoveryForm = null; changeReview = null; adoptionReview = null; installationCancellation = null; stopDiagnostics(); owner = next as? SessionState.Active; intent = null; state = ProxyState(); sessionEpoch++ }
     } } }
     fun refresh() = work { active ->
         state = state.copy(operationVerified = false, installationVerified = false)
@@ -149,7 +211,7 @@ internal class ProxyViewModel(private val session: AuthSession, private val repo
             operation = ProxyOperation(reference.operationId, reference.resourceId, ProxyOperationState.Queued, "queued", ""), operationVerified = false)
     }
     fun accept(review: ProxyAdoptionReview) {
-        if (!adoptionActive || adoptionVersion != review.version || adoptionReview !== review || activeSession !== review.owner ||
+        if (!interactionActive || interactionVersion != review.version || adoptionReview !== review || activeSession !== review.owner ||
             owner !== review.owner || state.busy || state.pending.none { it === review.pending }) return
         adoptionReview = null
         work { active ->
@@ -375,11 +437,12 @@ internal class ProxyViewModel(private val session: AuthSession, private val repo
         if (result is ApiResult.Success) { intent = null; load(active) }
     }
     val hasIntent get() = intent != null
-    fun recoverInstall(id: String, identified: Boolean) = work { active ->
+    private fun recoverInstall(form: ProxyRecoveryForm, id: String) = work { active ->
+        if (active !== form.owner) return@work
         val pending = installations.pending(active).firstOrNull { it.service == InstallationService.Mihomo }
-        if (pending != null && !identified) return@work
+        if (pending != form.pending) { state = state.copy(uncertain = true); return@work }
         state = state.copy(installationVerified = false)
-        val result = if (pending == null) installations.recoverById(active, id.trim()) else installations.identifyOriginal(active, pending, id.trim())
+        val result = if (pending == null) installations.recoverById(active, id.trim(), InstallationService.Mihomo) else installations.identifyOriginal(active, pending, id.trim())
         installationResult(active, result)
         if (result is ApiResult.Success && result.value.service == InstallationService.Mihomo) intent = null
     }
@@ -389,8 +452,8 @@ internal class ProxyViewModel(private val session: AuthSession, private val repo
         installationResult(active, installations.operation(active, id))
     }
     fun cancelInstall(review: ProxyInstallationCancellation) {
-        if (installationCancellation !== review) return
-        dismissInstallationCancellation()
+        if (!interactionActive || interactionVersion != review.version || installationCancellation !== review) return
+        installationCancellation = null
         if (activeSession !== review.owner || owner !== review.owner || !state.installationVerified || state.installation != review.operation) return
         work { active ->
             state = state.copy(installationVerified = false)
@@ -409,8 +472,10 @@ internal class ProxyViewModel(private val session: AuthSession, private val repo
         if (result is ApiResult.Transport) state = state.copy(uncertain = true)
     }
     private fun work(block: suspend (SessionState.Active) -> Unit) {
+        recoveryForm = null
+        changeReview = null
         adoptionReview = null
-        dismissInstallationCancellation()
+        installationCancellation = null
         val active = activeSession ?: return
         if (owner !== active) { owner = active; intent = null; state = ProxyState(); sessionEpoch++ }
         if (state.busy) return

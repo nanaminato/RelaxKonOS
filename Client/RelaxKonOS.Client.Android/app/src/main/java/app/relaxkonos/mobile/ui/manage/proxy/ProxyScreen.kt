@@ -27,8 +27,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 import java.text.DateFormat
 import java.util.Date
 
-private data class ProxyConfirmation(val action: () -> Unit)
-private data class ProxyEditRequest(val kind: String, val profile: ProxyProfile?)
+private class ProxyEditRequest(val kind: String, val profile: ProxyProfile?) { var open = true }
 @OptIn(ExperimentalLayoutApi::class)
 @Composable fun ProxyScreen(onBack: () -> Unit, initialOperationId: String? = null, modifier: Modifier = Modifier) {
     val container = appContainer()
@@ -43,7 +42,7 @@ private data class ProxyEditRequest(val kind: String, val profile: ProxyProfile?
 @Composable internal fun ProxyContent(model: ProxyViewModel, owner: SessionState.Active?, onBack: () -> Unit,
     modifier: Modifier = Modifier, initialOperationId: String? = null) {
     val state = model.state
-    val adoptionVersion = model.adoptionVersion
+    val interactionVersion = model.interactionVersion
     val adoption = model.adoptionReview?.takeIf { it.owner === owner }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val lifecycleState by lifecycle.currentStateAsState()
@@ -52,34 +51,34 @@ private data class ProxyEditRequest(val kind: String, val profile: ProxyProfile?
     val canManage = available && owner?.privilegedOperations == true
     val epoch = model.sessionEpoch
     var section by rememberSaveable(owner, epoch) { mutableStateOf("overview") }
-    var confirm by remember(owner, epoch, section, resumed, state.busy, state.operation, state.installation,
-        state.installationVerified, state.operationVerified, state.pending, state.overview, state.profiles) { mutableStateOf<ProxyConfirmation?>(null) }
+    val confirm = model.changeReview?.takeIf { it.owner === owner }
+    val requestChange: (() -> Unit) -> Unit = { action ->
+        owner?.let { model.requestChange(interactionVersion, it, state, action) }
+    }
     val cancellation = model.installationCancellation?.takeIf { it.owner === owner }
     var install by remember(owner, epoch) { mutableStateOf(false) }
     var editor by remember(owner, epoch) { mutableStateOf<ProxyEditRequest?>(null) }
     var selected by remember(owner, epoch) { mutableStateOf<String?>(null) }
-    var recoveredId by remember(owner, epoch) { mutableStateOf("") }
-    var recoverInstallation by remember(owner, epoch) { mutableStateOf(false) }
-    var identified by remember(owner, epoch) { mutableStateOf(false) }
-    var recovering by remember(owner, epoch) { mutableStateOf(false) }
+    val recovery = model.recoveryForm?.takeIf { it.owner === owner }
+    val recovering = recovery != null
     var attemptedInitial by remember(owner, epoch, initialOperationId) { mutableStateOf(false) }
     val networkSection = section in setOf("connections", "logs", "settings")
     var networkEditing by remember(owner, epoch) { mutableStateOf(false) }
     var showRecovery by remember(owner, epoch) { mutableStateOf(false) }
     DisposableEffect(owner, epoch, section, lifecycle) {
-        model.setAdoptionActive(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+        model.setInteractionActive(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
         val adoptionObserver = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) model.setAdoptionActive(true)
-            if (event == Lifecycle.Event.ON_PAUSE) model.setAdoptionActive(false)
+            if (event == Lifecycle.Event.ON_RESUME) model.setInteractionActive(true)
+            if (event == Lifecycle.Event.ON_PAUSE) model.setInteractionActive(false)
         }
         val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_PAUSE) {
-            confirm = null; model.dismissInstallationCancellation(); model.stopDiagnostics()
+            model.installationCancellation?.let(model::dismissInstallationCancellation); model.stopDiagnostics()
         } }
         lifecycle.addObserver(observer)
         lifecycle.addObserver(adoptionObserver)
-        onDispose { model.setAdoptionActive(false); lifecycle.removeObserver(adoptionObserver); lifecycle.removeObserver(observer); model.dismissInstallationCancellation(); model.stopDiagnostics() }
+        onDispose { model.leavePage(); lifecycle.removeObserver(adoptionObserver); lifecycle.removeObserver(observer); model.installationCancellation?.let(model::dismissInstallationCancellation); model.stopDiagnostics() }
     }
-    DisposableEffect(owner, epoch, section, resumed, networkEditing, editor, install, confirm, cancellation, adoption) {
+    DisposableEffect(owner, epoch, section, resumed, networkEditing, editor, install, confirm, cancellation, adoption, recovering) {
         onDispose { model.stopDiagnostics() }
     }
     OperationMessageDialog(if (state.busy || editor != null || install || networkEditing) null else state.problemCode?.let { proxyProblemLabel(it) } ?: if (state.uncertain) stringResource(R.string.mihomo_uncertain) else null,
@@ -88,9 +87,9 @@ private data class ProxyEditRequest(val kind: String, val profile: ProxyProfile?
     LaunchedEffect(owner, epoch, initialOperationId, state.busy) {
         if (available && initialOperationId != null && !state.busy && !attemptedInitial) { attemptedInitial = true; section = "records"; model.recoverOperation(initialOperationId) }
     }
-    LaunchedEffect(owner, epoch, state.operation, state.installation, state.busy, state.requestVersion, state.operationVerified, state.installationVerified, editor, install, networkEditing, resumed, confirm, cancellation, adoption, state.uncertain, state.problemCode) {
-        if (resumed && editor == null && !install && !networkEditing && confirm == null && cancellation == null && adoption == null) model.observeTasks {
-            lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && editor == null && !install && !networkEditing && confirm == null && model.installationCancellation == null && model.adoptionReview == null
+    LaunchedEffect(owner, epoch, state.operation, state.installation, state.busy, state.requestVersion, state.operationVerified, state.installationVerified, editor, install, networkEditing, resumed, confirm, cancellation, adoption, state.uncertain, state.problemCode, recovering) {
+        if (resumed && !recovering && editor == null && !install && !networkEditing && confirm == null && cancellation == null && adoption == null) model.observeTasks {
+            lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && editor == null && !install && !networkEditing && confirm == null && model.installationCancellation == null && model.adoptionReview == null && model.recoveryForm == null
         }
     }
     val overview = (state.overview as? ApiResult.Success)?.value
@@ -101,10 +100,16 @@ private data class ProxyEditRequest(val kind: String, val profile: ProxyProfile?
     val ready = !state.busy && !state.uncertain && overview != null && profiles != null && subscriptions != null && state.pending.isEmpty() &&
         (state.operation == null || state.operationVerified && !state.operation.state.active) &&
         (state.installation == null || state.installationVerified && !state.installation.state.active) && !state.pendingInstallation
+    val openEditor: (String, ProxyProfile?) -> Unit = { kind, profile ->
+        if (owner != null && model.isCurrentInteraction(interactionVersion, owner) && model.state == state && ready && editor == null) {
+            if (kind == "profile" && profile == null) selected = null
+            editor = ProxyEditRequest(kind, profile)
+        }
+    }
     val connected = overview?.controllerReachable == true
-    LaunchedEffect(owner, epoch, section, connected, state.uncertain, state.problemCode, state.busy, networkEditing, resumed, editor, install, confirm, cancellation, adoption) {
-        if (resumed && !networkEditing && editor == null && !install && confirm == null && cancellation == null && adoption == null) model.observeDiagnostics(section) {
-            lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && !networkEditing && editor == null && !install && confirm == null && model.installationCancellation == null && model.adoptionReview == null
+    LaunchedEffect(owner, epoch, section, connected, state.uncertain, state.problemCode, state.busy, networkEditing, resumed, editor, install, confirm, cancellation, adoption, recovering) {
+        if (resumed && !recovering && !networkEditing && editor == null && !install && confirm == null && cancellation == null && adoption == null) model.observeDiagnostics(section) {
+            lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && !networkEditing && editor == null && !install && confirm == null && model.installationCancellation == null && model.adoptionReview == null && model.recoveryForm == null
         }
     }
     BackHandler(section == "profiles" && selected != null && editor == null && !state.busy) { selected = null }
@@ -133,7 +138,7 @@ WorkspaceSection(section == "overview") {
             if (canManage) FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 ProxyAction.entries.filter { it in setOf(ProxyAction.Start, ProxyAction.Stop, ProxyAction.Restart) }.forEach { action ->
                     val supported = overview.runtime.state in setOf(ProxyRuntimeState.Stopped, ProxyRuntimeState.Running, ProxyRuntimeState.Degraded, ProxyRuntimeState.Failed)
-                    OutlinedButton(enabled = ready && supported, onClick = { confirm = ProxyConfirmation { model.queue(action) } }) { Text(proxyActionLabel(action)) }
+                    key(interactionVersion, state.requestVersion, action) { OutlinedButton(enabled = ready && supported, onClick = { requestChange { model.queue(action) } }) { Text(proxyActionLabel(action)) } }
                 }
             }
             }
@@ -154,7 +159,9 @@ WorkspaceSection(section == "overview") {
             }
         }
         if (notInstalled) TextButton(onClick = { showRecovery = !showRecovery }) { Text(stringResource(R.string.runtime_recovery_tools)) }
-        if (!notInstalled || showRecovery) TextButton(enabled = !state.busy, onClick = { recoveredId = ""; recoverInstallation = false; recovering = true }) { Text(stringResource(R.string.mihomo_recover_operation)) }
+        if (!notInstalled || showRecovery) key(interactionVersion, state.requestVersion) {
+            TextButton(enabled = !state.busy, onClick = { owner?.let { model.requestRecovery(interactionVersion, it, state, false) } }) { Text(stringResource(R.string.mihomo_recover_operation)) }
+        }
         state.installation?.let { operation ->
             ManagementCard {
             Text(operation.operationId, style = MaterialTheme.typography.bodySmall)
@@ -166,31 +173,33 @@ WorkspaceSection(section == "overview") {
             PageActionRow(refresh = {
                 TextButton(enabled = !state.busy, onClick = model::pollInstall) { ActionLabel(R.string.common_refresh) }
             })
-            if (canManage && state.installationVerified && operation.state.active && operation.cancellable) TextButton(enabled = !state.busy,
-                onClick = { model.requestInstallationCancellation(requireNotNull(owner), operation) }) { Text(stringResource(R.string.common_cancel)) }
+            if (canManage && state.installationVerified && operation.state.active && operation.cancellable) key(interactionVersion, state.requestVersion, operation) { TextButton(enabled = !state.busy,
+                onClick = { model.requestInstallationCancellation(interactionVersion, requireNotNull(owner), operation) }) { Text(stringResource(R.string.common_cancel)) } }
             }
         }
         if (state.pendingInstallation) {
             Text(stringResource(R.string.mihomo_install_pending), color = MaterialTheme.colorScheme.error)
             Text(stringResource(R.string.mihomo_install_accept_note), style = MaterialTheme.typography.bodySmall)
-            if (canManage) TextButton(enabled = !state.busy, onClick = { confirm = ProxyConfirmation(model::acceptInstallationFacts) }) {
+            if (canManage) key(interactionVersion, state.requestVersion) { TextButton(enabled = !state.busy, onClick = { requestChange(model::acceptInstallationFacts) }) {
                 Text(stringResource(R.string.mihomo_accept_facts))
-            }
-            if (canManage && model.hasIntent) TextButton(enabled = !state.busy, onClick = { confirm = ProxyConfirmation(model::retryInstall) }) { ActionLabel(R.string.common_retry) }
+            } }
+            key(interactionVersion, state.requestVersion) { if (canManage && model.hasIntent) TextButton(enabled = !state.busy, onClick = { requestChange(model::retryInstall) }) { ActionLabel(R.string.common_retry) } }
         }
-        if (canManage && (!notInstalled || showRecovery)) TextButton(enabled = !state.busy, onClick = { recoveredId = if (state.installationVerified) state.installation?.operationId.orEmpty() else ""; identified = false; recoverInstallation = true; recovering = true }) { Text(stringResource(R.string.mihomo_recover_installation)) }
+        if (canManage && (!notInstalled || showRecovery)) key(interactionVersion, state.requestVersion) {
+            TextButton(enabled = !state.busy, onClick = { owner?.let { model.requestRecovery(interactionVersion, it, state, true) } }) { Text(stringResource(R.string.mihomo_recover_installation)) }
+        }
         state.pending.forEach { pending ->
             ManagementCard {
             Text(stringResource(R.string.mihomo_pending), color = MaterialTheme.colorScheme.error)
             Text(pending.key, style = MaterialTheme.typography.bodySmall)
             if (pending.action != null) {
                 Text(proxyActionLabel(pending.action))
-                if (canManage) TextButton(enabled = !state.busy, onClick = { confirm = ProxyConfirmation { model.resume(pending) } }) { Text(stringResource(R.string.mihomo_replay)) }
+                if (canManage) key(interactionVersion, state.requestVersion, pending) { TextButton(enabled = !state.busy, onClick = { requestChange { model.resume(pending) } }) { Text(stringResource(R.string.mihomo_replay)) } }
             } else {
                 Text(stringResource(R.string.mihomo_pending_sync))
-                key(adoptionVersion, state.requestVersion, pending) {
+                key(interactionVersion, state.requestVersion, pending) {
                     TextButton(enabled = !state.busy, onClick = {
-                        model.requestAdoption(adoptionVersion, requireNotNull(owner), pending)
+                        model.requestAdoption(interactionVersion, requireNotNull(owner), pending)
                     }) { Text(stringResource(R.string.mihomo_accept_facts)) }
                 }
             }
@@ -199,38 +208,38 @@ WorkspaceSection(section == "overview") {
         }
         WorkspaceSection(networkSection) {
             if (!notInstalled || networkEditing) key(owner, epoch) { ProxyNetworkPanel(model, canManage, ready, section,
-                onEditorChanged = { networkEditing = it }) { action -> confirm = ProxyConfirmation(action) } }
+                onEditorChanged = { networkEditing = it }) { action -> requestChange(action) } }
         }
 WorkspaceSection(section == "profiles") {
         Text(stringResource(R.string.mihomo_subscriptions), style = MaterialTheme.typography.titleMedium)
         if (canManage) FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            OutlinedButton(enabled = ready, onClick = { editor = ProxyEditRequest("subscription", null) }) { Text(stringResource(R.string.mihomo_import)) }
-            TextButton(enabled = ready && !subscriptions.isNullOrEmpty(), onClick = { confirm = ProxyConfirmation { model.queue(ProxyAction.RefreshAll) } }) { Text(stringResource(R.string.mihomo_refresh_all)) }
+            key(interactionVersion, state.requestVersion) { OutlinedButton(enabled = ready, onClick = { openEditor("subscription", null) }) { Text(stringResource(R.string.mihomo_import)) } }
+            key(interactionVersion, state.requestVersion) { TextButton(enabled = ready && !subscriptions.isNullOrEmpty(), onClick = { requestChange { model.queue(ProxyAction.RefreshAll) } }) { Text(stringResource(R.string.mihomo_refresh_all)) } }
         }
         if (subscriptions == null) Text(stringResource(R.string.mihomo_unavailable)) else subscriptions.forEach { subscription ->
             ManagementCard {
             Text(subscription.name + if (subscription.active) " · " + stringResource(R.string.mihomo_active) else "")
             subscription.lastUpdatedAtMillis?.let { Text(DateFormat.getDateTimeInstance().format(Date(it)), style = MaterialTheme.typography.bodySmall) }
             if (canManage) PageActionRow(refresh = {
-                    TextButton(enabled = ready, onClick = { confirm = ProxyConfirmation { model.queue(ProxyAction.RefreshSubscription, subscription.id) } }) { ActionLabel(R.string.common_refresh) }
+                    key(interactionVersion, state.requestVersion, subscription) { TextButton(enabled = ready, onClick = { requestChange { model.queue(ProxyAction.RefreshSubscription, subscription.id) } }) { ActionLabel(R.string.common_refresh) } }
             }, actions = {
-                TextButton(enabled = ready, onClick = { confirm = ProxyConfirmation { model.queue(ProxyAction.ActivateSubscription, subscription.id) } }) { Text(stringResource(R.string.mihomo_activate)) }
+                key(interactionVersion, state.requestVersion, subscription) { TextButton(enabled = ready, onClick = { requestChange { model.queue(ProxyAction.ActivateSubscription, subscription.id) } }) { Text(stringResource(R.string.mihomo_activate)) } }
             })
             }
         }
         HorizontalDivider()
         Text(stringResource(R.string.mihomo_profiles), style = MaterialTheme.typography.titleMedium)
-        if (canManage) OutlinedButton(enabled = ready, onClick = { selected = null; editor = ProxyEditRequest("profile", null) }) { Text(stringResource(R.string.mihomo_create_profile)) }
+        if (canManage) key(interactionVersion, state.requestVersion) { OutlinedButton(enabled = ready, onClick = { openEditor("profile", null) }) { Text(stringResource(R.string.mihomo_create_profile)) } }
         if (profiles == null) Text(stringResource(R.string.mihomo_unavailable)) else BoxWithProfileList(profiles, selected, { selected = it }) {
             current?.let { profile ->
                 ManagementCard {
                 Text(profile.name, style = MaterialTheme.typography.titleSmall)
                 Text(stringResource(R.string.mihomo_revision, profile.revision))
                 if (canManage) FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    TextButton(enabled = ready, onClick = { editor = ProxyEditRequest("profile", current) }) { Text(stringResource(R.string.tunnels_edit)) }
-                    TextButton(enabled = ready && !profile.active, onClick = { confirm = ProxyConfirmation { model.activate(profile) } }) { Text(stringResource(R.string.mihomo_activate)) }
-                    TextButton(enabled = ready && overview?.supportsValidation == true, onClick = { editor = ProxyEditRequest("yaml", current) }) { Text(stringResource(R.string.mihomo_apply_yaml)) }
-                    TextButton(enabled = ready && !profile.active, onClick = { confirm = ProxyConfirmation { model.delete(profile) } }) { ActionLabel(R.string.common_delete) }
+                    key(interactionVersion, state.requestVersion) { TextButton(enabled = ready, onClick = { openEditor("profile", current) }) { Text(stringResource(R.string.tunnels_edit)) } }
+                    key(interactionVersion, state.requestVersion, profile) { TextButton(enabled = ready && !profile.active, onClick = { requestChange { model.activate(profile) } }) { Text(stringResource(R.string.mihomo_activate)) } }
+                    key(interactionVersion, state.requestVersion) { TextButton(enabled = ready && overview?.supportsValidation == true, onClick = { openEditor("yaml", current) }) { Text(stringResource(R.string.mihomo_apply_yaml)) } }
+                    key(interactionVersion, state.requestVersion, profile) { TextButton(enabled = ready && !profile.active, onClick = { requestChange { model.delete(profile) } }) { ActionLabel(R.string.common_delete) } }
                 }
                 }
             }
@@ -241,8 +250,8 @@ WorkspaceSection(section == "profiles") {
         if (!connected) Text(stringResource(R.string.mihomo_controller_unavailable)) else {
             val routing = (state.routing as? ApiResult.Success)?.value
             FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) { ProxyRoutingMode.entries.forEach { mode ->
-                FilterChip(selected = routing == mode, enabled = canManage && ready && routing != null,
-                    onClick = { confirm = ProxyConfirmation { model.routing(mode) } }, label = { Text(proxyRoutingLabel(mode)) })
+                key(interactionVersion, state.requestVersion, mode) { FilterChip(selected = routing == mode, enabled = canManage && ready && routing != null,
+                    onClick = { requestChange { model.routing(mode) } }, label = { Text(proxyRoutingLabel(mode)) }) }
             } }
             key(owner, epoch) { ProxyNodesPanel(state, canManage, ready, model::refresh, model::select, model::testGroup) }
         }
@@ -251,13 +260,16 @@ WorkspaceSection(section == "profiles") {
             }
     if (install) key(owner, epoch) { ProxyInstallEditor(model, onSubmitted = { section = "records" }) { install = false } }
     editor?.let { request -> key(owner, epoch, request) {
-        ProxyEditor(request.kind, request.profile, state, { name, content, route ->
-            when (request.kind) {
+        DisposableEffect(request) { onDispose { request.open = false } }
+        val eligible = { request.open && editor === request && owner != null &&
+            model.isCurrentInteraction(interactionVersion, owner) && !model.state.busy }
+        ProxyEditor(request.kind, request.profile, state, interactionVersion, eligible, { name, content, route ->
+            if (eligible()) when (request.kind) {
                 "profile" -> model.saveProfile(request.profile, name)
                 "yaml" -> model.apply(requireNotNull(request.profile), content)
                 else -> model.import(content, name, route)
             }
-        }) { editor = null }
+        }) { if (eligible()) { request.open = false; editor = null } }
     } }
     adoption?.let { review -> key(review) {
         AlertDialog(onDismissRequest = { model.dismissAdoption(review) }, title = { Text(stringResource(R.string.tunnels_confirm)) },
@@ -265,23 +277,38 @@ WorkspaceSection(section == "profiles") {
             confirmButton = { Button(enabled = !state.busy && resumed, onClick = { model.accept(review) }) { Text(stringResource(R.string.tunnels_confirm)) } },
             dismissButton = { TextButton(onClick = { model.dismissAdoption(review) }) { Text(stringResource(R.string.common_cancel)) } })
     } }
-    confirm?.let { request -> AlertDialog(onDismissRequest = { confirm = null }, title = { Text(stringResource(R.string.tunnels_confirm)) },
-        text = { Text(stringResource(R.string.mihomo_change_confirm)) }, confirmButton = { Button(enabled = !state.busy && resumed, onClick = { confirm = null; request.action() }) { Text(stringResource(R.string.tunnels_confirm)) } },
-        dismissButton = { TextButton(onClick = { confirm = null }) { Text(stringResource(R.string.common_cancel)) } }) }
-    cancellation?.let { review -> AlertDialog(onDismissRequest = model::dismissInstallationCancellation,
+    confirm?.let { request -> key(request) { AlertDialog(onDismissRequest = { model.dismissChange(request) }, title = { Text(stringResource(R.string.tunnels_confirm)) },
+        text = { Text(stringResource(R.string.mihomo_change_confirm)) }, confirmButton = { Button(enabled = !state.busy && resumed, onClick = { model.submitChange(request) }) { Text(stringResource(R.string.tunnels_confirm)) } },
+        dismissButton = { TextButton(onClick = { model.dismissChange(request) }) { Text(stringResource(R.string.common_cancel)) } }) } }
+    cancellation?.let { review -> key(review) { AlertDialog(onDismissRequest = { model.dismissInstallationCancellation(review) },
         title = { Text(stringResource(R.string.tunnels_confirm)) },
         text = { Column(Modifier.verticalScroll(rememberScrollState())) {
             Text(review.operation.operationId)
             Text(stringResource(R.string.operations_cancel_explanation))
         } },
         confirmButton = { Button(enabled = !state.busy && resumed, onClick = { model.cancelInstall(review) }) { Text(stringResource(R.string.tunnels_confirm)) } },
-        dismissButton = { TextButton(onClick = model::dismissInstallationCancellation) { Text(stringResource(R.string.common_cancel)) } }) }
-    if (recovering) AlertDialog(onDismissRequest = { recovering = false }, title = { Text(stringResource(if (recoverInstallation) R.string.mihomo_recover_installation else R.string.mihomo_recover_operation)) },
-        text = { Column { Text(stringResource(R.string.mihomo_recover_note)); OutlinedTextField(recoveredId, { recoveredId = it }, singleLine = true, label = { Text(stringResource(R.string.certificates_operation_id)) })
-            if (recoverInstallation && state.pendingInstallation) ProxyCheck(identified, !state.busy, R.string.mihomo_identify) { identified = it }
-        } }, confirmButton = { Button(enabled = !state.busy && runCatching { InstallationRoutes.canonicalId(recoveredId.trim()) }.isSuccess && (!recoverInstallation || !state.pendingInstallation || identified), onClick = {
-            if (recoverInstallation) model.recoverInstall(recoveredId, identified) else model.recoverOperation(recoveredId); recovering = false
-        }) { ActionLabel(R.string.common_refresh) } }, dismissButton = { TextButton(onClick = { recovering = false }) { Text(stringResource(R.string.common_cancel)) } })
+        dismissButton = { TextButton(onClick = { model.dismissInstallationCancellation(review) }) { Text(stringResource(R.string.common_cancel)) } }) } }
+    recovery?.let { form -> key(form) {
+        val draft = form.draft
+        AlertDialog(onDismissRequest = { model.dismissRecovery(form, interactionVersion) }, modifier = Modifier.imePadding(),
+            title = { Text(stringResource(if (form.installation) R.string.mihomo_recover_installation else R.string.mihomo_recover_operation)) },
+            text = { Column(Modifier.heightIn(max = 430.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                Text(stringResource(R.string.mihomo_recover_note))
+                key(interactionVersion) {
+                    OutlinedTextField(draft.id, { model.changeRecoveryId(form, interactionVersion, it) },
+                        enabled = !state.busy && resumed, singleLine = true, label = { Text(stringResource(R.string.certificates_operation_id)) })
+                    if (form.pending != null) key(draft.id) { ProxyCheck(draft.identified, !state.busy && resumed, R.string.mihomo_identify) {
+                        model.identifyRecovery(form, interactionVersion, draft, it)
+                    } }
+                }
+            } }, confirmButton = { key(interactionVersion, draft) {
+                Button(enabled = !state.busy && resumed && runCatching { InstallationRoutes.canonicalId(draft.id.trim()) }.isSuccess &&
+                    (form.pending == null || draft.identified), onClick = { model.submitRecovery(form, interactionVersion, draft) }) { ActionLabel(R.string.common_refresh) }
+            } }, dismissButton = { key(interactionVersion) {
+                TextButton(onClick = { model.dismissRecovery(form, interactionVersion) }) { Text(stringResource(R.string.common_cancel)) }
+            } })
+    } }
+
 }
 
 @Composable private fun BoxWithProfileList(profiles: List<ProxyProfile>, selected: String?, select: (String?) -> Unit, detail: @Composable () -> Unit) {
@@ -296,30 +323,73 @@ WorkspaceSection(section == "profiles") {
     }
 }
 
-@Composable internal fun ProxyEditor(kind: String, profile: ProxyProfile?, state: ProxyState,
-    submit: (String, String, ProxyDownloadRoute) -> Unit, dismiss: () -> Unit) {
-    var name by remember { mutableStateOf(if (kind == "profile") profile?.name.orEmpty() else "") }
-    var content by remember { mutableStateOf("") }; var route by remember { mutableStateOf(ProxyDownloadRoute.Direct) }
-    var confirmed by remember { mutableStateOf(false) }; var discard by remember { mutableStateOf(false) }
+private data class ProxyEditorDraft(val name: String, val content: String = "",
+    val route: ProxyDownloadRoute = ProxyDownloadRoute.Direct, val confirmed: Boolean = false) {
+    fun valid(kind: String, downloadOptions: Boolean): Boolean = name.length <= 128 && when (kind) {
+        "profile" -> name.isNotBlank()
+        "yaml" -> confirmed && content.isNotBlank() && content.length <= 1048576
+        "subscription" -> confirmed && content.length <= 16384 && (route == ProxyDownloadRoute.Direct || downloadOptions) &&
+            runCatching { java.net.URI(content.trim()).let { it.scheme in setOf("https", "http") && it.host != null && it.userInfo == null } }.getOrDefault(false)
+        else -> false
+    }
+}
+
+@Composable internal fun ProxyEditor(kind: String, profile: ProxyProfile?, state: ProxyState, actionKey: Long,
+    isCurrent: () -> Boolean, submit: (String, String, ProxyDownloadRoute) -> Unit, dismiss: () -> Unit) {
+    val originalName = remember { if (kind == "profile") profile?.name.orEmpty() else "" }
+    var draft by remember { mutableStateOf(ProxyEditorDraft(originalName)) }
+    var discard by remember { mutableStateOf<Any?>(null) }
+    var finished by remember { mutableStateOf(false) }
+    var consumed by remember { mutableStateOf<Any?>(null) }
     val initial = remember { state.savedEpoch }
-    LaunchedEffect(state.savedEpoch) { if (state.savedEpoch != initial) dismiss() }
-    val close = { if (content.isNotEmpty() || name != (if (kind == "profile") profile?.name.orEmpty() else "") || route != ProxyDownloadRoute.Direct || confirmed) discard = true else dismiss() }
-    AlertDialog(onDismissRequest = { if (!state.busy) close() }, modifier = Modifier.imePadding(), title = { Text(stringResource(when (kind) { "yaml" -> R.string.mihomo_apply_yaml; "subscription" -> R.string.mihomo_import; else -> R.string.mihomo_profiles })) },
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val lifecycleState by lifecycle.currentStateAsState()
+    val latestState by rememberUpdatedState(state)
+    val latestKey by rememberUpdatedState(actionKey)
+    val latestCurrent by rememberUpdatedState(isCurrent)
+    val latestDismiss by rememberUpdatedState(dismiss)
+    val snapshot = draft
+    val ticket = remember(actionKey, draft, state.requestVersion, state.busy, state.pending, state.savedEpoch) { Any() }
+    val currentTicket by rememberUpdatedState(ticket)
+    fun eligible() = !finished && latestKey == actionKey && latestCurrent() && !latestState.busy &&
+        lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+    fun finish() { if (eligible()) { finished = true; discard = null; latestDismiss() } }
+    DisposableEffect(Unit) { onDispose { finished = true } }
+    LaunchedEffect(actionKey) { discard = null }
+    LaunchedEffect(state.savedEpoch, state.busy, actionKey) { if (state.savedEpoch != initial) finish() }
+    val close = {
+        if (eligible() && discard == null) {
+            if (draft != ProxyEditorDraft(originalName)) discard = Any() else finish()
+        }
+    }
+    val enabled = !state.busy && !finished && discard == null && lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
+    AlertDialog(onDismissRequest = close, modifier = Modifier.imePadding(), title = { Text(stringResource(when (kind) { "yaml" -> R.string.mihomo_apply_yaml; "subscription" -> R.string.mihomo_import; else -> R.string.mihomo_profiles })) },
         text = { Column(Modifier.heightIn(max = 430.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            if (kind != "yaml") ProxyText(name, !state.busy, R.string.mihomo_name) { name = it }
-            if (kind == "yaml") { Text(stringResource(R.string.mihomo_yaml_note)); OutlinedTextField(content, { if (it.length <= 1048576) content = it }, enabled = !state.busy, minLines = 6, label = { Text(stringResource(R.string.mihomo_yaml)) }) }
+            key(actionKey) {
+            if (kind != "yaml") ProxyText(draft.name, enabled, R.string.mihomo_name) { if (eligible() && discard == null) draft = draft.copy(name = it) }
+            if (kind == "yaml") { Text(stringResource(R.string.mihomo_yaml_note)); OutlinedTextField(draft.content, { if (eligible() && discard == null && it.length <= 1048576) draft = draft.copy(content = it) }, enabled = enabled, minLines = 6, label = { Text(stringResource(R.string.mihomo_yaml)) }) }
             if (kind == "subscription") {
                 Text(stringResource(R.string.mihomo_subscription_note))
-                OutlinedTextField(content, { content = it }, enabled = !state.busy, singleLine = true, visualTransformation = PasswordVisualTransformation(), label = { Text(stringResource(R.string.mihomo_source_url)) })
-                ProxyDownloadRoute.entries.forEach { option -> RadioOption(route == option, stringResource(if (option == ProxyDownloadRoute.Direct) R.string.mihomo_download_direct else R.string.mihomo_download_system), !state.busy && (option == ProxyDownloadRoute.Direct || state.downloadOptions)) { route = option } }
+                OutlinedTextField(draft.content, { if (eligible() && discard == null) draft = draft.copy(content = it) }, enabled = enabled, singleLine = true, visualTransformation = PasswordVisualTransformation(), label = { Text(stringResource(R.string.mihomo_source_url)) })
+                ProxyDownloadRoute.entries.forEach { option -> RadioOption(draft.route == option, stringResource(if (option == ProxyDownloadRoute.Direct) R.string.mihomo_download_direct else R.string.mihomo_download_system), enabled && (option == ProxyDownloadRoute.Direct || state.downloadOptions)) {
+                    if (eligible() && discard == null && (option == ProxyDownloadRoute.Direct || latestState.downloadOptions)) draft = draft.copy(route = option)
+                } }
             }
-            if (kind != "profile") ProxyCheck(confirmed, !state.busy, R.string.mihomo_apply_confirm) { confirmed = it }
+            if (kind != "profile") ProxyCheck(draft.confirmed, enabled, R.string.mihomo_apply_confirm) { if (eligible() && discard == null) draft = draft.copy(confirmed = it) }
+            }
             ProxyEditorFeedback(state)
-        } }, confirmButton = { Button(enabled = !state.busy && state.pending.isEmpty() && name.length <= 128 && when (kind) {
-            "profile" -> name.isNotBlank(); "yaml" -> confirmed && content.isNotBlank(); else -> confirmed && content.length <= 16384 && runCatching { java.net.URI(content.trim()).let { it.scheme in setOf("https", "http") && it.host != null && it.userInfo == null } }.getOrDefault(false)
-        }, onClick = { submit(name, content, route) }) { ActionLabel(R.string.common_save) } },
-        dismissButton = { TextButton(enabled = !state.busy, onClick = close) { Text(stringResource(R.string.common_cancel)) } })
-    if (discard) AlertDialog(onDismissRequest = { discard = false }, text = { Text(stringResource(R.string.mihomo_discard)) }, confirmButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_close)) } }, dismissButton = { TextButton(onClick = { discard = false }) { Text(stringResource(R.string.common_cancel)) } })
+        } }, confirmButton = { key(ticket) { Button(enabled = enabled && state.savedEpoch == initial && state.pending.isEmpty() && draft.valid(kind, state.downloadOptions), onClick = {
+            if (eligible() && discard == null && currentTicket === ticket && consumed !== ticket && draft === snapshot &&
+                latestState.savedEpoch == initial && latestState.pending.isEmpty() && snapshot.valid(kind, latestState.downloadOptions)) {
+                consumed = ticket; submit(snapshot.name, snapshot.content, snapshot.route)
+            }
+        }) { ActionLabel(R.string.common_save) } } },
+        dismissButton = { key(actionKey) { TextButton(enabled = enabled, onClick = close) { Text(stringResource(R.string.common_cancel)) } } })
+    discard?.let { decision -> key(decision) {
+        AlertDialog(onDismissRequest = { if (eligible() && discard === decision) discard = null }, text = { Text(stringResource(R.string.mihomo_discard)) },
+            confirmButton = { TextButton(onClick = { if (eligible() && discard === decision) finish() }) { Text(stringResource(R.string.common_close)) } },
+            dismissButton = { TextButton(onClick = { if (eligible() && discard === decision) discard = null }) { Text(stringResource(R.string.common_cancel)) } })
+    } }
 }
 @Composable internal fun ProxyEditorFeedback(state: ProxyState) {
     if (!state.busy) {

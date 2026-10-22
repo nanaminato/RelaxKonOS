@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="managed_runtime_unknown">宿主状态未知，请刷新后再生成计划。</string>
-    <string name="managed_runtime_identity">所有权：%1$s · 版本：%2$s</string>
+    <string name="managed_runtime_identity">所有权：%1$s\n版本：%2$s</string>
     <string name="managed_runtime_keep_data">保留应用数据</string>
     <string name="managed_runtime_delete_data">删除应用数据（不可撤销）</string>
-    <string name="managed_runtime_sources">已确认发布源</string>
+    <string name="managed_runtime_sources">发布源</string>
     <string name="managed_runtime_prerelease">显示预发布版</string>
     <string name="managed_runtime_stale">目录已过期或刷新失败，禁止安装。</string>
     <string name="managed_runtime_unsupported">此版本不支持当前配置能力。</string>
@@ -23,4 +23,22 @@
     <string name="managed_resource_missing">缺失</string>
     <string name="managed_resource_invalid">损坏</string>
     <string name="managed_resource_unknown">未知</string>
+    <string name="managed_runtime_ownership_external">外部安装</string>
+    <string name="managed_runtime_ownership_managed">RelaxKonOS 受管安装</string>
+    <string name="managed_runtime_trust_unconfirmed">未确认</string>
+    <string name="managed_runtime_trust_confirmed">已确认</string>
+    <string name="managed_runtime_trust_revoked">已撤销</string>
+    <string name="managed_runtime_trust_conflict">发布信息冲突</string>
+    <string name="managed_runtime_evidence_unverified">未验证</string>
+    <string name="managed_runtime_evidence_native">原生配置已验证</string>
+    <string name="managed_runtime_evidence_interoperability">互通已验证</string>
+    <string name="managed_runtime_dependency_platform">平台</string>
+    <string name="managed_runtime_dependency_host">服务宿主</string>
+    <string name="managed_runtime_dependency_disk">磁盘空间</string>
+    <string name="managed_runtime_dependency_filesystem">文件系统</string>
+    <string name="managed_runtime_dependency_kernel">内核能力</string>
+    <string name="managed_runtime_dependency_satisfied">已满足</string>
+    <string name="managed_runtime_version_unmeasured">未测得</string>
+    <string name="managed_runtime_no_release">无</string>
+    <string name="managed_runtime_dependency_observation">%1$s · %2$s · %3$s</string>
 </resources>

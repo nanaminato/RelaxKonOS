@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="managed_runtime_unknown">Host state is unknown. Refresh before planning.</string>
-    <string name="managed_runtime_identity">Ownership: %1$s · Version: %2$s</string>
+    <string name="managed_runtime_identity">Ownership: %1$s\nVersion: %2$s</string>
     <string name="managed_runtime_keep_data">Keep application data</string>
     <string name="managed_runtime_delete_data">Delete application data (irreversible)</string>
-    <string name="managed_runtime_sources">Confirmed release sources</string>
+    <string name="managed_runtime_sources">Release sources</string>
     <string name="managed_runtime_prerelease">Include prereleases</string>
     <string name="managed_runtime_stale">Catalog is stale or refresh failed. Installation is blocked.</string>
     <string name="managed_runtime_unsupported">Configuration is unsupported for this release.</string>
@@ -23,4 +23,22 @@
     <string name="managed_resource_missing">Missing</string>
     <string name="managed_resource_invalid">Invalid</string>
     <string name="managed_resource_unknown">Unknown</string>
+    <string name="managed_runtime_ownership_external">Externally managed</string>
+    <string name="managed_runtime_ownership_managed">Managed by RelaxKonOS</string>
+    <string name="managed_runtime_trust_unconfirmed">Unconfirmed</string>
+    <string name="managed_runtime_trust_confirmed">Confirmed</string>
+    <string name="managed_runtime_trust_revoked">Revoked</string>
+    <string name="managed_runtime_trust_conflict">Conflicting release information</string>
+    <string name="managed_runtime_evidence_unverified">Not verified</string>
+    <string name="managed_runtime_evidence_native">Native configuration checked</string>
+    <string name="managed_runtime_evidence_interoperability">Interoperability checked</string>
+    <string name="managed_runtime_dependency_platform">Platform</string>
+    <string name="managed_runtime_dependency_host">Service host</string>
+    <string name="managed_runtime_dependency_disk">Disk space</string>
+    <string name="managed_runtime_dependency_filesystem">File system</string>
+    <string name="managed_runtime_dependency_kernel">Kernel feature</string>
+    <string name="managed_runtime_dependency_satisfied">Satisfied</string>
+    <string name="managed_runtime_version_unmeasured">Not measured</string>
+    <string name="managed_runtime_no_release">None</string>
+    <string name="managed_runtime_dependency_observation">%1$s · %2$s · %3$s</string>
 </resources>

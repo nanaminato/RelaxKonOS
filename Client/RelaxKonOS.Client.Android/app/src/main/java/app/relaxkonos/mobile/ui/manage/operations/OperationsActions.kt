@@ -25,7 +25,7 @@ internal class RepositoryOperationsActions(private val container: AppContainer, 
     override suspend fun diagnostics(owner: SessionState.Active, item: ObservedOperation) = container.operationCenter.diagnostics(owner, item)
     override suspend fun cancel(owner: SessionState.Active, item: ObservedOperation) = container.operationCenter.cancel(owner, item)
     override suspend fun hide(owner: SessionState.Active, item: ObservedOperation) { container.operationCenter.hide(owner, item) }
-    override suspend fun recoverInstallation(owner: SessionState.Active, id: String) = container.installations.recoverById(owner, id)
+    override suspend fun recoverInstallation(owner: SessionState.Active, id: String) = container.installations.recoverById(owner, id, null)
     override suspend fun exportReport(uri: Uri, report: String): Boolean = try {
         withContext(Dispatchers.IO) {
             val output = resolver.openOutputStream(uri, "w") ?: error("Unable to open diagnostic destination")

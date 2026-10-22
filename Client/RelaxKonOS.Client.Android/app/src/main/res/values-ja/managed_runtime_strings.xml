@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="managed_runtime_unknown">ホストの状態が不明です。更新してから計画してください。</string>
-    <string name="managed_runtime_identity">所有権：%1$s · バージョン：%2$s</string>
+    <string name="managed_runtime_identity">所有権：%1$s\nバージョン：%2$s</string>
     <string name="managed_runtime_keep_data">アプリデータを保持</string>
     <string name="managed_runtime_delete_data">アプリデータを削除（取り消し不可）</string>
-    <string name="managed_runtime_sources">確認済みリリース元</string>
+    <string name="managed_runtime_sources">リリース元</string>
     <string name="managed_runtime_prerelease">プレリリースを表示</string>
     <string name="managed_runtime_stale">カタログの期限切れ、または更新失敗のためインストールできません。</string>
     <string name="managed_runtime_unsupported">このリリースの構成はサポートされていません。</string>
@@ -23,4 +23,22 @@
     <string name="managed_resource_missing">不足</string>
     <string name="managed_resource_invalid">破損</string>
     <string name="managed_resource_unknown">不明</string>
+    <string name="managed_runtime_ownership_external">外部管理</string>
+    <string name="managed_runtime_ownership_managed">RelaxKonOS 管理</string>
+    <string name="managed_runtime_trust_unconfirmed">未確認</string>
+    <string name="managed_runtime_trust_confirmed">確認済み</string>
+    <string name="managed_runtime_trust_revoked">失効</string>
+    <string name="managed_runtime_trust_conflict">リリース情報の競合</string>
+    <string name="managed_runtime_evidence_unverified">未検証</string>
+    <string name="managed_runtime_evidence_native">ネイティブ設定を検証済み</string>
+    <string name="managed_runtime_evidence_interoperability">相互運用を検証済み</string>
+    <string name="managed_runtime_dependency_platform">プラットフォーム</string>
+    <string name="managed_runtime_dependency_host">サービスホスト</string>
+    <string name="managed_runtime_dependency_disk">ディスク容量</string>
+    <string name="managed_runtime_dependency_filesystem">ファイルシステム</string>
+    <string name="managed_runtime_dependency_kernel">カーネル機能</string>
+    <string name="managed_runtime_dependency_satisfied">充足</string>
+    <string name="managed_runtime_version_unmeasured">未測定</string>
+    <string name="managed_runtime_no_release">なし</string>
+    <string name="managed_runtime_dependency_observation">%1$s · %2$s · %3$s</string>
 </resources>

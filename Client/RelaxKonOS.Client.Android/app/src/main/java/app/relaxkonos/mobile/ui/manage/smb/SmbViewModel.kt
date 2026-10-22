@@ -163,7 +163,7 @@ internal class SmbViewModel(private val session: AuthSession, private val smb: S
     fun recoverInstall(id: String, identified: Boolean) = work { owner ->
         val pending = installations.pending(owner).firstOrNull { it.service == InstallationService.Smb }
         if (pending != null && !identified) return@work
-        val result = if (pending == null) installations.recoverById(owner, id.trim()) else installations.identifyOriginal(owner, pending, id.trim())
+        val result = if (pending == null) installations.recoverById(owner, id.trim(), InstallationService.Smb) else installations.identifyOriginal(owner, pending, id.trim())
         installResult(owner, result)
         if (result is ApiResult.Success && result.value.service == InstallationService.Smb && result.value.kind == InstallationKind.Install) intent = null
     }

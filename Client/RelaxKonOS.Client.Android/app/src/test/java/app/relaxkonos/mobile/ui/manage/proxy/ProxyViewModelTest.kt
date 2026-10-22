@@ -32,7 +32,8 @@ class ProxyViewModelTest {
     private val elevation = ElevationRepository(gateway, session, CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto()), UsageMemoryStore(InMemoryUsageMemoryStorage()))
     private val journal = ProxyRequestJournal(Storage())
     private val repository = ProxyRepository(gateway, session, index, journal)
-    private val installations = InstallationRepository(gateway, session, elevation, index, InstallationRequestJournal(Storage()))
+    private val installationJournal = InstallationRequestJournal(Storage())
+    private val installations = InstallationRepository(gateway, session, elevation, index, installationJournal)
     private val store = ViewModelStore()
     private lateinit var model: ProxyViewModel
     private val operation = ProxyOperation("55555555-5555-5555-5555-555555555555", "start", ProxyOperationState.Running, "starting", "")
@@ -47,7 +48,7 @@ class ProxyViewModelTest {
     @Before fun setup() {
         Dispatchers.setMain(StandardTestDispatcher())
         model = ProxyViewModel(session, repository, installations, index, ElevationAnswerProvider.Declines)
-        model.setAdoptionActive(true)
+        model.setInteractionActive(true)
         store.put("proxy", model)
         gateway.onProxyOverview = { ApiResult.Success(overview) }
         gateway.onProxyProfiles = { ApiResult.Success(emptyList()) }
@@ -110,7 +111,7 @@ class ProxyViewModelTest {
         assertEquals(listOf(pending), model.state.pending)
     }
     private fun adoption(pending: PendingProxyRequest): ProxyAdoptionReview {
-        model.requestAdoption(model.adoptionVersion, session.state.value as SessionState.Active, model.state.pending.single { it.key == pending.key })
+        model.requestAdoption(model.interactionVersion, session.state.value as SessionState.Active, model.state.pending.single { it.key == pending.key })
         return requireNotNull(model.adoptionReview)
     }
     private fun adopt(pending: PendingProxyRequest) { model.accept(adoption(pending)) }
@@ -131,7 +132,7 @@ class ProxyViewModelTest {
     }
     @Test fun `pause refresh and login invalidate adoption confirmation and old opener`() = runTest {
         val old = prepareAdoption()
-        model.setAdoptionActive(false); model.setAdoptionActive(true)
+        model.setInteractionActive(false); model.setInteractionActive(true)
         model.requestAdoption(old.version, old.owner, old.pending)
         assertNull(model.adoptionReview)
         model.accept(old); advanceUntilIdle(); assertEquals(1, model.state.pending.size)
@@ -140,7 +141,7 @@ class ProxyViewModelTest {
         model.accept(fresh); advanceUntilIdle()
         assertNull(model.adoptionReview); assertEquals(1, model.state.pending.size)
         login(); runCurrent(); model.refresh(); advanceUntilIdle()
-        model.requestAdoption(model.adoptionVersion, old.owner, model.state.pending.single())
+        model.requestAdoption(model.interactionVersion, old.owner, model.state.pending.single())
         assertNull(model.adoptionReview)
         adopt(model.state.pending.single()); advanceUntilIdle()
         assertTrue(model.state.pending.isEmpty())
@@ -226,28 +227,170 @@ class ProxyViewModelTest {
 
     @Test fun `replacement installation rejects old callback and current confirmation sends once`() = runTest {
         val owner = ready()
-        model.requestInstallationCancellation(owner, install)
+        model.requestInstallationCancellation(model.interactionVersion, owner, install)
         val old = requireNotNull(model.installationCancellation)
         val replacement = install.copy(operationId = "66666666-6666-6666-6666-666666666666")
         gateway.onActiveInstallation = { ApiResult.Success(replacement) }
         model.refresh(); advanceUntilIdle(); model.cancelInstall(old); advanceUntilIdle()
         assertNull(model.installationCancellation); assertTrue(sent.isEmpty())
-        model.requestInstallationCancellation(owner, replacement)
+        model.requestInstallationCancellation(model.interactionVersion, owner, replacement)
         val current = requireNotNull(model.installationCancellation)
         model.cancelInstall(current); model.cancelInstall(current); advanceUntilIdle()
         assertEquals(listOf(replacement.operationId), sent); assertFalse(model.state.installationVerified)
     }
     @Test fun `reopening same task cannot revive dismissed confirmation`() = runTest {
         val owner = ready()
-        model.requestInstallationCancellation(owner, install)
+        model.requestInstallationCancellation(model.interactionVersion, owner, install)
         val old = requireNotNull(model.installationCancellation)
-        model.dismissInstallationCancellation(); model.requestInstallationCancellation(owner, install)
+        model.dismissInstallationCancellation(old); model.requestInstallationCancellation(model.interactionVersion, owner, install)
         val current = requireNotNull(model.installationCancellation)
-        model.cancelInstall(old)
+        model.cancelInstall(old); model.dismissInstallationCancellation(old)
         assertSame(current, model.installationCancellation); assertTrue(sent.isEmpty())
     }
+    @Test fun `paused cancellation rejects old opener and submit after resume`() = runTest {
+        val owner = ready()
+        val version = model.interactionVersion
+        model.requestInstallationCancellation(model.interactionVersion, owner, install)
+        val old = requireNotNull(model.installationCancellation)
+        model.setInteractionActive(false)
+        assertNull(model.installationCancellation)
+        model.cancelInstall(old); advanceUntilIdle(); assertTrue(sent.isEmpty())
+        model.setInteractionActive(true)
+        model.requestInstallationCancellation(version, owner, install)
+        assertNull(model.installationCancellation)
+        model.requestInstallationCancellation(model.interactionVersion, owner, install)
+        val current = requireNotNull(model.installationCancellation)
+        model.cancelInstall(old); assertSame(current, model.installationCancellation)
+        model.cancelInstall(current); advanceUntilIdle(); assertEquals(listOf(install.operationId), sent)
+    }
+
+    @Test fun `change confirmation consumes only current instance once`() = runTest {
+        val owner = ready(); var writes = 0
+        model.requestChange(model.interactionVersion, owner, model.state) { writes++ }
+        val old = requireNotNull(model.changeReview)
+        model.dismissChange(old)
+        model.requestChange(model.interactionVersion, owner, model.state) { writes++ }
+        val current = requireNotNull(model.changeReview)
+        model.dismissChange(old); model.submitChange(old)
+        assertSame(current, model.changeReview); assertEquals(0, writes)
+        model.submitChange(current); model.submitChange(current)
+        assertNull(model.changeReview); assertEquals(1, writes)
+    }
+    @Test fun `latency sample completion does not invalidate unrelated change confirmation`() = runTest {
+        val owner = ready(); var writes = 0
+        val sample = CompletableDeferred<ApiResult<ProxyDelay>>()
+        gateway.onTestProxyDelay = { _, _, _, _ -> sample.await() }
+        model.testGroup(ProxyGroup("review-group", "Selector", "review-node", listOf("review-node")))
+        runCurrent()
+        model.requestChange(model.interactionVersion, owner, model.state) { writes++ }
+        val review = requireNotNull(model.changeReview)
+        sample.complete(ApiResult.Success(ProxyDelay("review-node", 12, false, ""))); advanceUntilIdle()
+        assertNull(model.state.testingGroup); assertEquals(1, model.state.delays.size)
+        model.submitChange(review); assertEquals(1, writes); assertNull(model.changeReview)
+    }
+    @Test fun `change confirmation rejects paused opener old state and old login`() = runTest {
+        val owner = ready(); var writes = 0
+        val version = model.interactionVersion
+        val observed = model.state
+        model.requestChange(version, owner, observed) { writes++ }
+        val old = requireNotNull(model.changeReview)
+        model.setInteractionActive(false); assertNull(model.changeReview)
+        model.submitChange(old); model.requestChange(version, owner, observed) { writes++ }
+        assertNull(model.changeReview)
+        model.setInteractionActive(true)
+        model.requestChange(version, owner, observed) { writes++ }; model.submitChange(old)
+        assertNull(model.changeReview)
+        model.refresh(); advanceUntilIdle()
+        model.requestChange(model.interactionVersion, owner, observed) { writes++ }
+        assertNull(model.changeReview)
+        model.requestChange(model.interactionVersion, owner, model.state) { writes++ }
+        val refreshReview = requireNotNull(model.changeReview)
+        model.refresh(); advanceUntilIdle(); model.submitChange(refreshReview)
+        assertNull(model.changeReview)
+        model.requestChange(model.interactionVersion, owner, model.state) { writes++ }
+        val loginReview = requireNotNull(model.changeReview)
+        login(); runCurrent(); model.submitChange(loginReview)
+        model.requestChange(model.interactionVersion, owner, model.state) { writes++ }
+        assertNull(model.changeReview); assertEquals(0, writes)
+    }
+
+    private fun recovery(owner: SessionState.Active, installation: Boolean = false): ProxyRecoveryForm {
+        model.requestRecovery(model.interactionVersion, owner, model.state, installation)
+        return requireNotNull(model.recoveryForm)
+    }
+    @Test fun `recovery owns form draft and one query`() = runTest {
+        val owner = ready(); val before = operationReads
+        val old = recovery(owner); val version = model.interactionVersion
+        model.changeRecoveryId(old, version, operation.operationId)
+        val oldDraft = old.draft
+        model.dismissRecovery(old, version)
+        val fresh = recovery(owner)
+        model.changeRecoveryId(fresh, version, operation.operationId)
+        model.dismissRecovery(old, version); model.submitRecovery(old, version, oldDraft)
+        assertSame(fresh, model.recoveryForm); assertEquals(before, operationReads)
+        val stale = fresh.draft
+        model.changeRecoveryId(fresh, version, install.operationId)
+        model.submitRecovery(fresh, version, stale); assertEquals(before, operationReads)
+        model.changeRecoveryId(fresh, version, operation.operationId)
+        val current = fresh.draft
+        model.submitRecovery(fresh, version, current); model.submitRecovery(fresh, version, current); advanceUntilIdle()
+        assertNull(model.recoveryForm); assertEquals(before + 1, operationReads)
+    }
+    @Test fun `recovery pause preserves draft but old interactions refresh login and exit revoke ownership`() = runTest {
+        val owner = ready(); val before = operationReads
+        val form = recovery(owner); val version = model.interactionVersion
+        model.changeRecoveryId(form, version, operation.operationId)
+        val draft = form.draft
+        model.setInteractionActive(false)
+        model.changeRecoveryId(form, version, "changed"); model.dismissRecovery(form, version); model.submitRecovery(form, version, draft)
+        assertSame(form, model.recoveryForm); assertSame(draft, form.draft)
+        model.setInteractionActive(true)
+        model.submitRecovery(form, version, draft); assertEquals(before, operationReads)
+        model.refresh(); advanceUntilIdle(); assertNull(model.recoveryForm)
+        model.submitRecovery(form, model.interactionVersion, draft); assertEquals(before + 1, operationReads)
+        recovery(owner); model.leavePage(); assertNull(model.recoveryForm)
+        model.setInteractionActive(true); val replaced = recovery(owner)
+        login(); runCurrent(); model.submitRecovery(replaced, model.interactionVersion, replaced.draft)
+        assertNull(model.recoveryForm); assertEquals(before + 1, operationReads)
+    }
+    @Test fun `installation recovery cannot identify replacement pending request`() = runTest {
+        val owner = ready()
+        val pending = installationJournal.begin(owner, InstallationService.Mihomo, InstallationKind.Install, "first")
+        model.refresh(); advanceUntilIdle()
+        val form = recovery(owner, true); assertEquals(pending, form.pending)
+        model.changeRecoveryId(form, model.interactionVersion, install.operationId)
+        model.identifyRecovery(form, model.interactionVersion, form.draft, true)
+        installationJournal.complete(pending)
+        val replacement = installationJournal.begin(owner, InstallationService.Mihomo, InstallationKind.Uninstall, "replacement")
+        val before = installationReads
+        model.submitRecovery(form, model.interactionVersion, form.draft); advanceUntilIdle()
+        assertEquals(before, installationReads); assertEquals(listOf(replacement), installationJournal.pending(owner))
+        assertTrue(model.state.uncertain); assertNull(model.recoveryForm)
+    }
+    @Test fun `installation recovery requires explicit identification of original pending request`() = runTest {
+        val owner = ready()
+        val pending = installationJournal.begin(owner, InstallationService.Mihomo, InstallationKind.Install, "original")
+        model.refresh(); advanceUntilIdle()
+        val form = recovery(owner, true); val before = installationReads
+        model.submitRecovery(form, model.interactionVersion, form.draft); advanceUntilIdle()
+        assertSame(form, model.recoveryForm); assertEquals(before, installationReads)
+        model.identifyRecovery(form, model.interactionVersion, form.draft, true)
+        val oldConsent = form.draft
+        model.changeRecoveryId(form, model.interactionVersion, operation.operationId)
+        assertFalse(form.draft.identified)
+        model.identifyRecovery(form, model.interactionVersion, oldConsent, true)
+        model.submitRecovery(form, model.interactionVersion, form.draft); advanceUntilIdle()
+        assertSame(form, model.recoveryForm); assertEquals(before, installationReads)
+        model.changeRecoveryId(form, model.interactionVersion, install.operationId)
+        model.identifyRecovery(form, model.interactionVersion, form.draft, true)
+        val draft = form.draft
+        model.submitRecovery(form, model.interactionVersion, draft); model.submitRecovery(form, model.interactionVersion, draft); advanceUntilIdle()
+        assertEquals(before + 1, installationReads); assertTrue(installationJournal.pending(owner).isEmpty())
+        assertTrue(model.state.installationVerified); assertFalse(model.state.pendingInstallation); assertTrue(sent.isEmpty())
+    }
+
     @Test fun `same address new login clears tasks and rejects old confirmation`() = runTest {
-        val owner = ready(); model.requestInstallationCancellation(owner, install)
+        val owner = ready(); model.requestInstallationCancellation(model.interactionVersion, owner, install)
         val old = requireNotNull(model.installationCancellation)
         login(); runCurrent(); model.cancelInstall(old); advanceUntilIdle()
         assertNull(model.state.installation); assertNull(model.installationCancellation); assertTrue(sent.isEmpty())

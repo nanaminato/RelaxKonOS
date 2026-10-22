@@ -221,7 +221,7 @@ internal class TunnelsViewModel(private val session: AuthSession, private val tu
     fun recoverInstall(id: String, identified: Boolean) = work { active ->
         val pending = installations.pending(active).firstOrNull { it.service == InstallationService.Frp }
         if (pending != null && !identified) return@work
-        val result = if (pending == null) installations.recoverById(active, id.trim()) else installations.identifyOriginal(active, pending, id.trim())
+        val result = if (pending == null) installations.recoverById(active, id.trim(), InstallationService.Frp) else installations.identifyOriginal(active, pending, id.trim())
         installationResult(active, result)
         if (result is ApiResult.Success && result.value.service == InstallationService.Frp) intent = null
     }

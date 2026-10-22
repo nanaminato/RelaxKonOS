@@ -55,6 +55,7 @@ class InstallationRepositoryTest {
         gateway.onInstallation = { ApiResult.Success(operation.copy(service = InstallationService.Frp)) }
         assertTrue(repository.identifyOriginal(owner, pending, id) is ApiResult.Transport)
         assertEquals(1, journal.pending(owner).size)
+        assertTrue(index.forOwner(owner).isEmpty())
         gateway.onInstallation = { ApiResult.Success(operation) }
         assertTrue(repository.identifyOriginal(owner, pending, id) is ApiResult.Success)
         assertTrue(journal.pending(owner).isEmpty()); assertEquals(id, index.forOwner(owner).single().operationId)
@@ -247,6 +248,26 @@ class InstallationRepositoryTest {
         assertTrue(index.forOwner(owner).isEmpty())
     }
 
+    @Test fun `scoped recovery rejects another service before index reveal or journal cleanup`() = runTest {
+        val owner = signIn()
+        val pending = journal.begin(owner, InstallationService.Nginx, InstallationKind.Install, "nginx")
+        journal.update(pending.copy(operationId = id))
+        index.record(owner, OperationDomain.Installation, InstallationService.Nginx.name, id)
+        index.hide(owner, index.forOwner(owner).single())
+        gateway.onInstallation = { ApiResult.Success(operation) }
+        assertTrue(repository.recoverById(owner, id, InstallationService.Mihomo) is ApiResult.Transport)
+        assertTrue(index.forOwner(owner).isEmpty()); assertEquals(id, journal.pending(owner).single().operationId)
+        assertTrue(repository.recoverById(owner, id, null) is ApiResult.Success)
+        assertTrue(journal.pending(owner).isEmpty()); assertEquals(id, index.forOwner(owner).single().operationId)
+    }
+    @Test fun `explicit recovery cannot resolve linked pending request with a different action`() = runTest {
+        val owner = signIn()
+        val pending = journal.begin(owner, InstallationService.Nginx, InstallationKind.Uninstall, "uninstall")
+        journal.update(pending.copy(operationId = id))
+        gateway.onInstallation = { ApiResult.Success(operation) }
+        repository.recoverById(owner, id, InstallationService.Nginx)
+        assertEquals(InstallationKind.Uninstall, journal.pending(owner).single().kind)
+    }
     @Test fun `explicit recovery reveals only the verified owner record`() = runTest {
         val owner = signIn()
         val bob = owner.copy(userName = "bob")
@@ -255,7 +276,7 @@ class InstallationRepositoryTest {
             index.hide(account, index.forOwner(account).single())
         }
         gateway.onInstallation = { ApiResult.Success(operation) }
-        repository.recoverById(owner, id)
+        repository.recoverById(owner, id, InstallationService.Nginx)
         assertEquals(id, index.forOwner(owner).single().operationId)
         assertTrue(index.forOwner(bob).isEmpty())
     }

@@ -22,7 +22,7 @@ class ProxyEditorRecoveryTest {
         var closed = false
         var submittedName = ""
         rule.setContent { MaterialTheme {
-            ProxyEditor("profile", profile, state.value, { name, _, _ ->
+            ProxyEditor("profile", profile, state.value, 0L, { !closed }, { name, _, _ ->
                 submittedName = name; state.value = state.value.copy(busy = true)
             }, { closed = true })
         } }

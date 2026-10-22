@@ -174,7 +174,7 @@ internal class GitWorkspaceViewModel(private val session: AuthSession, private v
         val pending = installations.pending(owner).firstOrNull { it.service == InstallationService.Git }
         if (pending != null && !identified) return@work
         state = state.copy(installationVerified = false)
-        installationResult(owner, if (pending == null) installations.recoverById(owner, id.trim()) else installations.identifyOriginal(owner, pending, id.trim()))
+        installationResult(owner, if (pending == null) installations.recoverById(owner, id.trim(), InstallationService.Git) else installations.identifyOriginal(owner, pending, id.trim()))
         if (!state.pendingInstallation) installIntent = null
     }
     private suspend fun loadInstallation(owner: SessionState.Active) {
