@@ -156,14 +156,14 @@ internal fun OperationsContent(
     }
     DisposableEffect(owner) { onDispose { viewModel.stopObserving(owner) } }
     DisposableEffect(owner, tab) {
-        viewModel.dismissCancel(); viewModel.dismissHide()
-        onDispose { viewModel.dismissCancel(); viewModel.dismissHide() }
+        viewModel.withdrawReviews(owner)
+        onDispose { viewModel.withdrawReviews(owner) }
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var lifecycleEpoch by remember(owner) { mutableIntStateOf(0) }
     DisposableEffect(owner, lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_PAUSE) { viewModel.dismissCancel(); viewModel.dismissHide() }
+            if (event == Lifecycle.Event.ON_PAUSE) { viewModel.withdrawReviews(owner) }
             if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_RESUME) lifecycleEpoch++
         }
         lifecycle.addObserver(observer)
@@ -384,24 +384,24 @@ internal fun OperationsContent(
         dismissButton = { TextButton(onClick = { recoverDialog = false }) { Text(stringResource(R.string.common_cancel)) } },
     )
     state.cancelReview?.takeIf { visible }?.let { reviewed -> AlertDialog(
-        onDismissRequest = viewModel::dismissCancel,
+        onDismissRequest = { viewModel.dismissCancel(reviewed) },
         title = { Text(stringResource(R.string.operations_request_cancel)) },
         text = { Column(Modifier.verticalScroll(rememberScrollState())) {
             Text(stringResource(R.string.operations_cancel_explanation))
             Text(reviewed.item.target); Text(reviewed.item.reference.operationId)
         } },
         confirmButton = { Button(onClick = { viewModel.cancel(owner, reviewed) }) { Text(stringResource(R.string.common_cancel)) } },
-        dismissButton = { TextButton(onClick = viewModel::dismissCancel) { Text(stringResource(R.string.common_close)) } },
+        dismissButton = { TextButton(onClick = { viewModel.dismissCancel(reviewed) }) { Text(stringResource(R.string.common_close)) } },
     ) }
     state.hideReview?.takeIf { visible }?.let { reviewed -> AlertDialog(
-        onDismissRequest = viewModel::dismissHide,
+        onDismissRequest = { viewModel.dismissHide(reviewed) },
         title = { Text(stringResource(R.string.operations_hide)) },
         text = { Column(Modifier.verticalScroll(rememberScrollState())) {
             Text(stringResource(R.string.operations_hide_explanation))
             Text(reviewed.item.target); Text(reviewed.item.reference.operationId)
         } },
         confirmButton = { Button(onClick = { viewModel.hide(owner, reviewed) }) { Text(stringResource(R.string.operations_hide)) } },
-        dismissButton = { TextButton(onClick = viewModel::dismissHide) { Text(stringResource(R.string.common_cancel)) } },
+        dismissButton = { TextButton(onClick = { viewModel.dismissHide(reviewed) }) { Text(stringResource(R.string.common_cancel)) } },
     ) }
     if (exportPreview && pendingReport != null) AlertDialog(
         onDismissRequest = { exportPreview = false; pendingReport = null },

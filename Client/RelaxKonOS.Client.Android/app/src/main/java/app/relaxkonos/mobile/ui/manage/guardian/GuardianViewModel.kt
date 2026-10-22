@@ -39,7 +39,9 @@ internal class GuardianActionReview(val owner: SessionState.Active, val target: 
 class GuardianViewModel(private val session: AuthSession, private val repository: GuardianRepository) : ViewModel() {
     internal var actionReview by mutableStateOf<GuardianActionReview?>(null)
         private set
-    internal fun dismissAction() { actionReview = null }
+    internal fun dismissAction(review: GuardianActionReview) {
+        if (actionReview === review) actionReview = null
+    }
     internal fun requestAction(active: SessionState.Active, target: GuardianWorkload, action: String) {
         val state = mutable.value
         if (current(active) && !state.loading && !state.stale && !state.unknown && editing == null &&
@@ -68,7 +70,7 @@ class GuardianViewModel(private val session: AuthSession, private val repository
     internal val logObserver = GuardianLogObserver(session, viewModelScope)
     init { viewModelScope.launch { session.state.collect { value ->
         val active = value as? SessionState.Active
-        if (owner !== active) { dismissAction(); work?.cancel(); reading?.cancel(); selection?.cancel(); observation?.cancel(); logObserver.stop(); owner = active; editing = null; mutable.value = GuardianUiState() }
+        if (owner !== active) { actionReview = null; work?.cancel(); reading?.cancel(); selection?.cancel(); observation?.cancel(); logObserver.stop(); owner = active; editing = null; mutable.value = GuardianUiState() }
     } } }
     private fun current(active: SessionState.Active) = owner === active && session.state.value === active
     fun observe(active: SessionState.Active, visible: Boolean) {
@@ -87,7 +89,7 @@ class GuardianViewModel(private val session: AuthSession, private val repository
         }
     }
     fun stopObserving() {
-        dismissAction()
+        actionReview = null
         observation?.cancel(); observation = null
         val wasReading = reading?.isActive == true
         readingGeneration++
@@ -101,7 +103,7 @@ class GuardianViewModel(private val session: AuthSession, private val repository
     }
     fun load(active: SessionState.Active, reconcile: Boolean = true) {
         if (session.state.value !== active) return
-        if (reconcile) dismissAction() else if (actionReview != null) return
+        if (reconcile) actionReview = null else if (actionReview != null) return
         if (owner !== active) { work?.cancel(); reading?.cancel(); selection?.cancel(); observation?.cancel(); logObserver.stop(); owner = active; editing = null; mutable.value = GuardianUiState() }
         if (mutable.value.loading) return
         val request = ++readingGeneration
@@ -128,7 +130,7 @@ class GuardianViewModel(private val session: AuthSession, private val repository
         }
     }
     fun select(id: String?) {
-        dismissAction()
+        actionReview = null
         val request = ++selectionGeneration
         selection?.cancel()
         mutable.update { it.copy(selectedId = id, definition = null, logs = emptyList(), error = id == null && it.error) }

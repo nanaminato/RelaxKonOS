@@ -10,6 +10,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -111,6 +112,36 @@ class OperationsRecoveryFlowTest {
         }
     }
     private fun acknowledge() { rule.onNodeWithText(text(R.string.common_dismiss)).performClick() }
+    private fun verifyOldDismissal(hide: Boolean) {
+        show()
+        rule.onNodeWithText("review-operation").performScrollTo().performClick()
+        val opening = text(if (hide) R.string.operations_hide else R.string.operations_request_cancel)
+        val closing = text(if (hide) R.string.common_cancel else R.string.common_close)
+        rule.onNodeWithText(opening).performScrollTo().performClick()
+        val close = rule.onNode(hasText(closing) and hasClickAction() and hasAnyAncestor(isDialog()))
+        val oldClose = requireNotNull(close.fetchSemanticsNode().config[SemanticsActions.OnClick].action)
+        close.performClick()
+        rule.onNodeWithText(opening).performScrollTo().performClick()
+        val fresh = requireNotNull(if (hide) model.state.hideReview else model.state.cancelReview)
+        rule.runOnIdle {
+            oldClose()
+            assertSame(fresh, if (hide) model.state.hideReview else model.state.cancelReview)
+            assertEquals(0, writes); assertTrue(hiddenIds.isEmpty())
+        }
+        rule.onNode(isDialog()).assertExists()
+        val confirm = rule.onNode(hasText(text(if (hide) R.string.operations_hide else R.string.common_cancel)) and
+            hasClickAction() and hasAnyAncestor(isDialog()))
+        val submit = requireNotNull(confirm.fetchSemanticsNode().config[SemanticsActions.OnClick].action)
+        rule.runOnIdle { submit(); submit() }
+        rule.waitUntil(5_000) { if (hide) hiddenIds.size == 1 && !model.state.hiding else writes == 1 && !model.state.cancelling }
+        rule.runOnIdle {
+            oldClose()
+            assertEquals(if (hide) 0 else 1, writes)
+            assertEquals(if (hide) listOf("11111111-1111-1111-1111-111111111111") else emptyList<String>(), hiddenIds.toList())
+        }
+    }
+    @Test fun oldCancelCloseCannotDismissReopenedReview() = verifyOldDismissal(hide = false)
+    @Test fun oldHideCancelCannotDismissReopenedReview() = verifyOldDismissal(hide = true)
     private fun relogin() {
         rule.runOnIdle { runBlocking {
             session.login(ServerConnectionIdentityRules.direct("https://operations-review.invalid"), "review", "test".toCharArray()) {}

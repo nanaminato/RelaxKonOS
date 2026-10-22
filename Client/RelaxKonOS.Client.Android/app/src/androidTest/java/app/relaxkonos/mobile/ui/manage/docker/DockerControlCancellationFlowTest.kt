@@ -34,8 +34,11 @@ class DockerControlCancellationFlowTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
     private val store = ViewModelStore()
     private lateinit var model: DockerControlViewModel
+    private lateinit var operationIndex: OperationIndex
     private var cancelRead = false
     private var writes = 0
+    private var unknownMirrorWrite = false
+    private val mirrorRequests = mutableListOf<DockerMirrorRequest>()
     private var statusReads = 0
     private var failAfterMirrorCreate = false
     private var successfulEngineAction = false
@@ -58,7 +61,8 @@ class DockerControlCancellationFlowTest {
         override fun write(bytes: ByteArray) { this.bytes = bytes.copyOf() }
     }
     private val facts = DockerControlFacts(DockerStatus(true, "", "28", "linux", "amd64"), emptyList())
-    private fun show(includeMirrors: Boolean = false, includeRecords: Boolean = false) {
+    private fun show(includeMirrors: Boolean = false, includeRecords: Boolean = false, unknownInstallation: Boolean = false,
+        unknownKind: InstallationKind = InstallationKind.Install) {
         val app = context.applicationContext as RelaxKonApplication
         val gateway = object : RelaxKonGateway by app.container.gateway {
             override suspend fun login(serverUrl: String, identifier: String, password: CharArray) = ApiResult.Success(
@@ -85,6 +89,8 @@ class DockerControlCancellationFlowTest {
             override suspend fun dockerMirrors(serverUrl: String, accessToken: String): ApiResult<List<DockerImageMirror>> = ApiResult.Success(mirrors)
             override suspend fun dockerCreateMirror(serverUrl: String, accessToken: String, request: DockerMirrorRequest): ApiResult<DockerImageMirror> {
                 writes++
+                mirrorRequests += request
+                if (unknownMirrorWrite) return ApiResult.Transport(null)
                 val created = DockerImageMirror("33333333-3333-3333-3333-333333333333", request.name, request.endpoint, false)
                 mirrors = listOf(created)
                 if (failAfterMirrorCreate) readFailure = IllegalStateException("private verification failure")
@@ -108,10 +114,16 @@ class DockerControlCancellationFlowTest {
             override fun read() = bytes
             override fun write(bytes: ByteArray) { this.bytes = bytes.copyOf() }
         })
+        operationIndex = index
+        val installationJournal = InstallationRequestJournal(Storage())
+        if (unknownInstallation) {
+            val pending = installationJournal.begin(owner, InstallationService.Docker, unknownKind, "review-installation")
+            installationJournal.update(pending.copy(attempted = true))
+        }
         rule.runOnUiThread {
             model = DockerControlViewModel(session, DockerControlRepository(gateway, session, controlJournal, gate),
                 DockerResourceRepository(gateway, session, resourceJournal, gate),
-                InstallationRepository(gateway, session, elevation, index, InstallationRequestJournal(Storage())), index, gate, ElevationAnswerProvider.Declines)
+                InstallationRepository(gateway, session, elevation, index, installationJournal), index, gate, ElevationAnswerProvider.Declines)
             store.put("firewall", model)
         }
         rule.setContent { CompositionLocalProvider(LocalAppContainer provides app.container) { MaterialTheme {
@@ -124,17 +136,313 @@ class DockerControlCancellationFlowTest {
     }
     @After fun cleanup() { rule.runOnUiThread { store.clear() } }
     private fun refresh() = rule.onNodeWithText(text(R.string.common_refresh)).performScrollTo().performClick()
-    @Test fun replacingInstallationWithdrawsOldCancelAndNewConfirmationTargetsNewTask() {
+    private fun restoreInstallation(id: String, identified: Boolean) {
+        val form = requireNotNull(model.requestRecovery(requireNotNull(model.state.owner)))
+        model.changeRecoveryId(form, id)
+        if (identified) model.identifyRecovery(form, form.draft, true)
+        model.submitRecovery(form, form.draft)
+    }
+    private fun openMirrorDraft(name: String = "Review mirror", endpoint: String = "mirror.review.invalid") {
+        rule.onNodeWithText(text(R.string.docker_control_add_mirror)).performScrollTo().performClick()
+        rule.onNode(hasSetTextAction() and hasText(text(R.string.docker_control_mirror_name))).performScrollTo().performTextInput(name)
+        rule.onNode(hasSetTextAction() and hasText(text(R.string.docker_control_mirror_endpoint))).performScrollTo().performTextInput(endpoint)
+        Espresso.closeSoftKeyboard()
+    }
+    private fun dialogButton(label: Int) = rule.onNode(hasText(text(label)) and hasClickAction() and hasAnyAncestor(isDialog()))
+    private fun clickAction(node: SemanticsNodeInteraction) = requireNotNull(node.fetchSemanticsNode().config[SemanticsActions.OnClick].action)
+    private fun openRecovery(id: String = operation.operationId) {
+        rule.onNodeWithText(text(R.string.installation_recover)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.installation_operation_id)).performTextReplacement(id)
+        Espresso.closeSoftKeyboard()
+    }
+    @Test fun unsupportedRecoveryActionCannotRevealHiddenReceiptAndCurrentInstallStillRecovers() {
+        show(includeRecords = true)
+        val repair = operation.copy(operationId = "22222222-2222-2222-2222-222222222222", kind = InstallationKind.Repair)
+        rule.runOnIdle {
+            section.value = "records"; tasks[repair.operationId] = repair
+            val owner = requireNotNull(model.state.owner)
+            operationIndex.record(owner, OperationDomain.Installation, InstallationService.Docker.name, repair.operationId)
+            operationIndex.hide(owner, operationIndex.forOwner(owner).single())
+        }
+        openRecovery(repair.operationId); dialogButton(R.string.common_refresh).performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.problem != null }
+        rule.runOnIdle {
+            assertTrue(operationIndex.forOwner(requireNotNull(model.state.owner)).isEmpty())
+            assertFalse(model.state.installationVerified); assertNull(model.state.installation); assertEquals(0, writes)
+        }
+        rule.onNodeWithText(text(R.string.common_dismiss)).performClick()
+        openRecovery(operation.operationId); dialogButton(R.string.common_refresh).performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.installationVerified }
+        rule.runOnIdle {
+            assertEquals(listOf(operation.operationId), operationIndex.forOwner(requireNotNull(model.state.owner)).map { it.operationId })
+            assertEquals(0, writes); assertTrue(cancellations.isEmpty())
+        }
+    }
+    @Test fun unsupportedOriginalActionRemainsPendingWithoutQueryOrIndexRegistration() {
+        show(includeRecords = true, unknownInstallation = true, unknownKind = InstallationKind.Repair)
+        rule.runOnIdle { section.value = "records"; tasks[operation.operationId] = operation.copy(kind = InstallationKind.Repair) }
+        openRecovery(); rule.onNode(isToggleable() and hasAnyAncestor(isDialog())).performClick()
+        dialogButton(R.string.common_refresh).performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.problem != null }
+        rule.runOnIdle {
+            assertEquals(0, operationReads.get()); assertTrue(model.state.pendingInstallation)
+            assertTrue(operationIndex.forOwner(requireNotNull(model.state.owner)).isEmpty()); assertEquals(0, writes)
+        }
+    }
+    @Test fun oldRecoveryCloseCannotDismissReopenedForm() {
+        show(includeRecords = true); rule.runOnIdle { section.value = "records" }; openRecovery()
+        val oldClose = clickAction(dialogButton(R.string.common_cancel))
+        dialogButton(R.string.common_cancel).performClick()
+        openRecovery()
+        rule.runOnIdle { oldClose() }
+        rule.onNode(isDialog()).assertExists()
+        rule.runOnIdle { assertEquals(0, operationReads.get()); assertEquals(0, writes) }
+    }
+    @Test fun oldRecoverySubmitCannotReadEditedId() {
+        show(includeRecords = true); rule.runOnIdle { section.value = "records" }; openRecovery()
+        val oldSubmit = clickAction(dialogButton(R.string.common_refresh))
+        val next = operation.copy(operationId = "22222222-2222-2222-2222-222222222222")
+        rule.runOnIdle { tasks[next.operationId] = next }
+        rule.onNodeWithText(text(R.string.installation_operation_id)).performTextReplacement(next.operationId)
+        rule.runOnIdle { oldSubmit(); assertEquals(0, operationReads.get()); assertEquals(0, writes) }
+        rule.onNode(isDialog()).assertExists()
+        dialogButton(R.string.common_refresh).performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.installation?.operationId == next.operationId }
+    }
+    @Test fun oldRecoverySubmitCannotReadReopenedForm() {
+        show(includeRecords = true); rule.runOnIdle { section.value = "records" }; openRecovery()
+        val oldSubmit = clickAction(dialogButton(R.string.common_refresh))
+        dialogButton(R.string.common_cancel).performClick()
+        openRecovery()
+        rule.runOnIdle { oldSubmit(); assertEquals(0, operationReads.get()); assertEquals(0, writes) }
+        rule.onNode(isDialog()).assertExists()
+    }
+    @Test fun recoveryIdentificationIsRevokedWhenIdChanges() {
+        show(includeRecords = true, unknownInstallation = true); rule.runOnIdle { section.value = "records" }; openRecovery()
+        rule.onNode(isToggleable() and hasAnyAncestor(isDialog())).performClick().assertIsOn()
+        rule.onNodeWithText(text(R.string.installation_operation_id)).performTextReplacement("22222222-2222-2222-2222-222222222222")
+        rule.onNode(isToggleable() and hasAnyAncestor(isDialog())).assertIsOff()
+        dialogButton(R.string.common_refresh).assertIsNotEnabled()
+        rule.runOnIdle { assertEquals(0, operationReads.get()); assertTrue(model.state.pendingInstallation) }
+    }
+    @Test fun oldRecoveryCheckboxCannotIdentifyChangedIdAndCurrentSubmitReadsOnce() {
+        show(includeRecords = true, unknownInstallation = true); rule.runOnIdle { section.value = "records" }; openRecovery()
+        val checkbox = rule.onNode(isToggleable() and hasAnyAncestor(isDialog()))
+        val oldCheck = clickAction(checkbox)
+        checkbox.performClick().assertIsOn()
+        val next = operation.copy(operationId = "22222222-2222-2222-2222-222222222222")
+        rule.runOnIdle { tasks[next.operationId] = next }
+        rule.onNodeWithText(text(R.string.installation_operation_id)).performTextReplacement(next.operationId)
+        rule.runOnIdle { oldCheck(); assertFalse(requireNotNull(model.recoveryForm).draft.identified); assertEquals(0, operationReads.get()) }
+        rule.onNode(isToggleable() and hasAnyAncestor(isDialog())).assertIsOff().performClick()
+        val submit = clickAction(dialogButton(R.string.common_refresh))
+        rule.runOnIdle { submit(); submit() }
+        rule.waitUntil(5_000) { !model.state.busy && !model.state.pendingInstallation && model.state.installation?.operationId == next.operationId }
+        rule.runOnIdle { assertEquals(1, operationReads.get()); assertEquals(0, writes); assertTrue(cancellations.isEmpty()) }
+    }
+    @Test fun recoveryFormPausesObservationAndCloseResumesOriginalTask() {
+        show(includeRecords = true)
+        rule.runOnIdle { section.value = "records"; restoreInstallation(operation.operationId, false) }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.installationVerified }
+        openRecovery()
+        val before = operationReads.get()
+        android.os.SystemClock.sleep(1_800)
+        rule.runOnIdle { assertEquals(before, operationReads.get()) }
+        dialogButton(R.string.common_cancel).performClick()
+        rule.waitUntil(5_000) { operationReads.get() > before && !model.state.busy }
+        rule.runOnIdle { assertEquals(operation.operationId, model.state.installation?.operationId); assertEquals(0, writes) }
+    }
+    @Test fun pausedRecoveryCallbacksCannotAffectFreshFormBeforeOrAfterRedraw() {
+        show(includeRecords = true); rule.runOnIdle { section.value = "records" }
+        val oldOpen = clickAction(rule.onNodeWithText(text(R.string.installation_recover)).performScrollTo())
+        openRecovery()
+        val oldSubmit = clickAction(dialogButton(R.string.common_refresh))
+        val oldClose = clickAction(dialogButton(R.string.common_cancel))
+        val oldField = requireNotNull(rule.onNodeWithText(text(R.string.installation_operation_id)).fetchSemanticsNode().config[SemanticsActions.SetText].action)
+        var checkedResume = false
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                oldSubmit(); oldClose(); oldOpen(); assertNull(model.recoveryForm); assertEquals(0, operationReads.get()); checkedResume = true
+            }
+        }
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+            rule.runOnUiThread { oldSubmit(); oldClose(); oldOpen(); assertNull(model.recoveryForm); rule.activity.lifecycle.addObserver(observer) }
+            rule.mainClock.autoAdvance = true
+            rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        } finally {
+            rule.mainClock.autoAdvance = true
+            rule.runOnUiThread { rule.activity.lifecycle.removeObserver(observer) }
+        }
+        rule.runOnIdle { assertTrue(checkedResume); assertEquals(0, operationReads.get()) }
+        val next = operation.copy(operationId = "22222222-2222-2222-2222-222222222222")
+        rule.runOnIdle { tasks[next.operationId] = next }
+        openRecovery(next.operationId)
+        val fresh = requireNotNull(model.recoveryForm)
+        rule.runOnIdle {
+            oldSubmit(); oldClose(); oldField(androidx.compose.ui.text.AnnotatedString(operation.operationId))
+            assertSame(fresh, model.recoveryForm); assertEquals(next.operationId, fresh.draft.id); assertEquals(0, operationReads.get())
+        }
+        val submit = clickAction(dialogButton(R.string.common_refresh))
+        rule.runOnIdle { submit(); submit() }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.installation?.operationId == next.operationId }
+        rule.runOnIdle { assertEquals(1, operationReads.get()); assertEquals(0, writes) }
+    }
+    @Test fun oldMirrorDiscardCancelCannotWithdrawReopenedDecision() {
+        show(includeMirrors = true); rule.runOnIdle { section.value = "mirrors" }; openMirrorDraft()
+        rule.onNodeWithText(text(R.string.common_cancel)).performScrollTo().performClick()
+        val oldCancel = clickAction(dialogButton(R.string.common_cancel))
+        dialogButton(R.string.common_cancel).performClick()
+        rule.onNodeWithText(text(R.string.common_cancel)).performScrollTo().performClick()
+        rule.runOnIdle { oldCancel() }
+        rule.onNode(isDialog()).assertExists()
+        dialogButton(R.string.common_cancel).performClick()
+        rule.onNodeWithText("Review mirror").assertExists()
+        rule.runOnIdle { assertEquals(0, writes) }
+    }
+    @Test fun oldMirrorDiscardCannotConsumeReopenedDecision() {
+        show(includeMirrors = true); rule.runOnIdle { section.value = "mirrors" }; openMirrorDraft()
+        rule.onNodeWithText(text(R.string.common_cancel)).performScrollTo().performClick()
+        val oldDiscard = clickAction(dialogButton(R.string.docker_control_confirm))
+        dialogButton(R.string.common_cancel).performClick()
+        rule.onNodeWithText(text(R.string.common_cancel)).performScrollTo().performClick()
+        rule.runOnIdle { oldDiscard() }
+        rule.onNode(isDialog()).assertExists()
+        dialogButton(R.string.common_cancel).performClick()
+        rule.onNodeWithText("Review mirror").assertExists()
+        rule.runOnIdle { assertEquals(0, writes) }
+    }
+    @Test fun discardedMirrorSaveCannotCreateConfirmationForNewDraft() {
+        show(includeMirrors = true); rule.runOnIdle { section.value = "mirrors" }; openMirrorDraft()
+        val oldSave = clickAction(rule.onNodeWithText(text(R.string.common_save)).performScrollTo())
+        rule.onNodeWithText(text(R.string.common_cancel)).performScrollTo().performClick()
+        dialogButton(R.string.docker_control_confirm).performClick()
+        openMirrorDraft("New mirror", "new.review.invalid")
+        rule.runOnIdle { oldSave(); assertNull(model.confirmation); assertEquals(0, writes) }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.onNodeWithText("New mirror").assertExists()
+    }
+    @Test fun oldMirrorSaveCannotConfirmEditedEndpoint() {
+        show(includeMirrors = true); rule.runOnIdle { section.value = "mirrors" }; openMirrorDraft()
+        val oldSave = clickAction(rule.onNodeWithText(text(R.string.common_save)).performScrollTo())
+        rule.onNode(hasSetTextAction() and hasText(text(R.string.docker_control_mirror_endpoint))).performScrollTo().performTextReplacement("new.review.invalid")
+        Espresso.closeSoftKeyboard()
+        rule.runOnIdle { oldSave(); assertNull(model.confirmation); assertEquals(0, writes) }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.common_save)).performScrollTo().performClick()
+        rule.runOnIdle { assertEquals("new.review.invalid", model.confirmation?.change?.mirror?.endpoint) }
+    }
+    @Test fun discardedMirrorFieldCannotOverwriteNewDraft() {
+        show(includeMirrors = true); rule.runOnIdle { section.value = "mirrors" }; openMirrorDraft()
+        val oldField = requireNotNull(rule.onNode(hasSetTextAction() and hasText(text(R.string.docker_control_mirror_name)))
+            .fetchSemanticsNode().config[SemanticsActions.SetText].action)
+        rule.onNodeWithText(text(R.string.common_cancel)).performScrollTo().performClick()
+        dialogButton(R.string.docker_control_confirm).performClick()
+        openMirrorDraft("New mirror", "new.review.invalid")
+        rule.runOnIdle { oldField(androidx.compose.ui.text.AnnotatedString("Stale mirror")) }
+        rule.onNodeWithText("New mirror").assertExists()
+        rule.onNodeWithText("Stale mirror").assertDoesNotExist()
+        rule.runOnIdle { assertEquals(0, writes) }
+    }
+    @Test fun mirrorResumeRejectsOldCallbacksAndCurrentUnknownSaveRetainsDraft() {
+        show(includeMirrors = true); rule.runOnIdle { section.value = "mirrors" }
+        val oldOpen = clickAction(rule.onNodeWithText(text(R.string.docker_control_add_mirror)).performScrollTo())
+        openMirrorDraft()
+        val oldField = requireNotNull(rule.onNode(hasSetTextAction() and hasText(text(R.string.docker_control_mirror_name)))
+            .fetchSemanticsNode().config[SemanticsActions.SetText].action)
+        val oldSave = clickAction(rule.onNodeWithText(text(R.string.common_save)).performScrollTo())
+        val oldCancel = clickAction(rule.onNodeWithText(text(R.string.common_cancel)))
+        var checkedResume = false
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                oldField(androidx.compose.ui.text.AnnotatedString("Stale mirror")); oldSave(); oldCancel(); oldOpen()
+                assertNull(model.confirmation); assertEquals(0, writes); checkedResume = true
+            }
+        }
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+            rule.runOnUiThread {
+                oldField(androidx.compose.ui.text.AnnotatedString("Paused mirror")); oldSave(); oldCancel(); oldOpen()
+                assertNull(model.confirmation); assertEquals(0, writes)
+                rule.activity.lifecycle.addObserver(observer)
+            }
+            rule.mainClock.autoAdvance = true
+            rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        } finally {
+            rule.mainClock.autoAdvance = true
+            rule.runOnUiThread { rule.activity.lifecycle.removeObserver(observer) }
+        }
+        rule.runOnIdle { assertTrue(checkedResume); oldSave(); oldCancel(); oldOpen(); unknownMirrorWrite = true }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.onNodeWithText("Review mirror").assertExists()
+        rule.onNodeWithText("mirror.review.invalid").assertExists()
+        rule.onNodeWithText(text(R.string.common_save)).performScrollTo().performClick()
+        val submit = clickAction(dialogButton(R.string.docker_control_confirm))
+        rule.runOnIdle { submit(); submit() }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.pending.size == 1 }
+        rule.onNodeWithText(text(R.string.common_dismiss)).performClick()
+        rule.onNodeWithText("Review mirror").assertExists()
+        rule.onNodeWithText("mirror.review.invalid").assertExists()
+        rule.onNodeWithText(text(R.string.common_save)).assertIsNotEnabled()
+        rule.runOnIdle {
+            assertEquals(listOf(DockerMirrorRequest("Review mirror", "mirror.review.invalid")), mirrorRequests)
+            assertEquals(1, writes)
+        }
+        refresh()
+        rule.onNodeWithText(text(R.string.docker_control_discard_note)).assertIsDisplayed()
+        dialogButton(R.string.docker_control_confirm).performClick()
+        rule.waitUntil(5_000) { !model.state.busy }
+        rule.runOnIdle { assertEquals(1, writes); assertEquals(1, model.state.pending.size) }
+    }
+    @Test fun oldCloseCannotDismissReopenedEngineReview() {
+        show()
+        rule.onNodeWithText(text(R.string.docker_control_engine_restart)).performScrollTo().performClick()
+        val close = rule.onNode(hasText(text(R.string.common_cancel)) and hasClickAction() and hasAnyAncestor(isDialog()))
+        val oldClose = requireNotNull(close.fetchSemanticsNode().config[SemanticsActions.OnClick].action)
+        close.performClick()
+        rule.onNodeWithText(text(R.string.docker_control_engine_restart)).performScrollTo().performClick()
+        val fresh = requireNotNull(model.confirmation)
+        rule.runOnIdle { oldClose(); assertSame(fresh, model.confirmation); assertEquals(0, writes) }
+        rule.onNode(isDialog()).assertExists()
+        val submit = requireNotNull(rule.onNode(hasText(text(R.string.docker_control_confirm)) and hasClickAction() and hasAnyAncestor(isDialog()))
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action)
+        rule.runOnIdle { submit(); submit() }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.pending.size == 1 }
+        rule.runOnIdle { assertEquals(1, writes); assertTrue(cancellations.isEmpty()) }
+    }
+    @Test fun oldCloseCannotDismissReopenedInstallationCancellation() {
+        show(includeRecords = true)
+        rule.runOnIdle { section.value = "records"; restoreInstallation(operation.operationId, false) }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.installationVerified }
+        rule.onNodeWithText(text(R.string.operations_request_cancel)).performScrollTo().performClick()
+        val close = rule.onNode(hasText(text(R.string.common_close)) and hasClickAction() and hasAnyAncestor(isDialog()))
+        val oldClose = requireNotNull(close.fetchSemanticsNode().config[SemanticsActions.OnClick].action)
+        close.performClick()
+        rule.onNodeWithText(text(R.string.operations_request_cancel)).performScrollTo().performClick()
+        val fresh = requireNotNull(model.installationCancellation)
+        rule.runOnIdle { oldClose(); assertSame(fresh, model.installationCancellation); assertTrue(cancellations.isEmpty()) }
+        rule.onNode(isDialog()).assertExists()
+        val submit = requireNotNull(rule.onNode(hasText(text(R.string.common_cancel)) and hasClickAction() and hasAnyAncestor(isDialog()))
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action)
+        rule.runOnIdle { submit(); submit() }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.installation?.state == InstallationState.Cancelled }
+        rule.runOnIdle { assertEquals(listOf(operation.operationId), cancellations); assertEquals(0, writes) }
+    }
+    @Test fun recoveryAfterClosingReviewRejectsOldCancelAndTargetsNewTask() {
         show(includeRecords = true)
         val next = operation.copy(operationId = "22222222-2222-2222-2222-222222222222")
-        rule.runOnIdle { tasks[next.operationId] = next; section.value = "records"; model.recoverInstall(operation.operationId, false) }
+        rule.runOnIdle { tasks[next.operationId] = next; section.value = "records"; restoreInstallation(operation.operationId, false) }
         rule.waitUntil(5_000) { !model.state.busy && model.state.installation?.operationId == operation.operationId }
         rule.onNodeWithText(text(R.string.operations_request_cancel)).performScrollTo().performClick()
         rule.onNode(isDialog()).assertExists()
-        rule.runOnIdle { model.recoverInstall(next.operationId, false) }
+        val oldReview = requireNotNull(model.installationCancellation)
+        dialogButton(R.string.common_close).performClick()
+        rule.runOnIdle { restoreInstallation(next.operationId, false) }
         rule.waitUntil(5_000) { !model.state.busy && model.state.installation?.operationId == next.operationId }
         rule.onNode(isDialog()).assertDoesNotExist()
-        rule.runOnIdle { assertTrue(cancellations.isEmpty()) }
+        rule.runOnIdle { model.cancelInstall(oldReview); assertTrue(cancellations.isEmpty()) }
         rule.onNodeWithText(text(R.string.operations_request_cancel)).performScrollTo().performClick()
         rule.onNode(hasText(text(R.string.common_cancel)) and hasAnyAncestor(isDialog())).performClick()
         rule.waitUntil(5_000) { !model.state.busy && model.state.installation?.state == InstallationState.Cancelled }
@@ -228,7 +536,7 @@ class DockerControlCancellationFlowTest {
         show(includeMirrors = true)
         rule.runOnIdle { section.value = "mirrors" }
         rule.onNodeWithText(text(R.string.docker_control_add_mirror)).performScrollTo().assertIsEnabled()
-        rule.runOnIdle { model.recoverInstall(operation.operationId, false) }
+        rule.runOnIdle { restoreInstallation(operation.operationId, false) }
         rule.waitUntil(5_000) { operationReads.get() >= 1 && !model.state.busy }
         rule.runOnIdle { section.value = "other" }
         rule.onNodeWithText("Other Docker resources").assertIsDisplayed()
@@ -241,7 +549,7 @@ class DockerControlCancellationFlowTest {
     }
     @Test fun backgroundInstallationTimerStopsWithoutComposeFramesAndResumes() {
         show()
-        rule.runOnIdle { model.recoverInstall(operation.operationId, false) }
+        rule.runOnIdle { restoreInstallation(operation.operationId, false) }
         rule.waitUntil(5_000) { operationReads.get() >= 1 && !model.state.busy }
         rule.waitForIdle()
         val activity = rule.activity
@@ -296,7 +604,7 @@ class DockerControlCancellationFlowTest {
     }
     @Test fun cancellationReviewPausesObservationAndHidingRevokesOldCallback() {
         show(includeRecords = true)
-        rule.runOnIdle { section.value = "records"; model.recoverInstall(operation.operationId, false) }
+        rule.runOnIdle { section.value = "records"; restoreInstallation(operation.operationId, false) }
         rule.waitUntil(5_000) { !model.state.busy && model.state.installationVerified }
         openInstallationCancellation()
         val old = requireNotNull(model.installationCancellation)
@@ -312,7 +620,7 @@ class DockerControlCancellationFlowTest {
     }
     @Test fun pauseAndSameTaskRefreshRevokeReviewsAndFreshButtonCancelsOnce() {
         show(includeRecords = true)
-        rule.runOnIdle { section.value = "records"; model.recoverInstall(operation.operationId, false) }
+        rule.runOnIdle { section.value = "records"; restoreInstallation(operation.operationId, false) }
         rule.waitUntil(5_000) { !model.state.busy && model.state.installationVerified }
         openInstallationCancellation()
         val paused = requireNotNull(model.installationCancellation)
@@ -402,7 +710,7 @@ class DockerControlCancellationFlowTest {
         show(includeRecords = true)
         val terminal = operation.copy(state = InstallationState.Succeeded, stage = InstallationStage.Completed,
             completedAtMillis = 2, cancellable = false)
-        rule.runOnIdle { tasks[operation.operationId] = terminal; section.value = "records"; failFactsAfterInstallation = true; model.recoverInstall(operation.operationId, false) }
+        rule.runOnIdle { tasks[operation.operationId] = terminal; section.value = "records"; failFactsAfterInstallation = true; restoreInstallation(operation.operationId, false) }
         rule.waitUntil(5_000) { !model.state.busy && model.state.installation == terminal }
         rule.onNodeWithText(text(R.string.docker_control_installation_refresh_failed)).assertIsDisplayed()
         rule.onNodeWithText(text(R.string.common_dismiss)).performClick()
@@ -419,7 +727,7 @@ class DockerControlCancellationFlowTest {
         show(includeRecords = true)
         val failed = operation.copy(state = InstallationState.Failed, stage = InstallationStage.Failed,
             problemCode = InstallationProblemCodes.FAILED, completedAtMillis = 2, cancellable = false)
-        rule.runOnIdle { tasks[operation.operationId] = failed; section.value = "records"; model.recoverInstall(operation.operationId, false) }
+        rule.runOnIdle { tasks[operation.operationId] = failed; section.value = "records"; restoreInstallation(operation.operationId, false) }
         rule.waitUntil(5_000) { !model.state.busy && model.state.installation == failed }
         rule.onNode(hasText(text(R.string.installation_problem_failed)) and hasAnyAncestor(isDialog())).assertIsDisplayed()
         rule.onNodeWithText(text(R.string.common_dismiss)).performClick()

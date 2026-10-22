@@ -130,32 +130,44 @@ class InstallationRepository(
     suspend fun operation(owner: SessionState.Active, id: String): ApiResult<InstallationOperation> =
         lookupOperation(owner, id).also { if (it is ApiResult.Success) retainObservation(owner, it.value) }
 
-    /** A scoped application must validate service ownership before publishing or resolving a receipt. */
-    suspend fun recoverById(owner: SessionState.Active, id: String, expectedService: InstallationService?): ApiResult<InstallationOperation> = mutations.withLock {
-        val result = lookupOperation(owner, id)
-        if (result is ApiResult.Success) {
-            if (expectedService != null && result.value.service != expectedService) return@withLock ApiResult.Transport(null)
-            retainObservation(owner, result.value)
-            verify(owner)
-            index.reveal(owner, OperationDomain.Installation, result.value.operationId)
+    /** Validate the caller's service and action scope before publishing or resolving a receipt. */
+    suspend fun recoverById(owner: SessionState.Active, id: String, expectedService: InstallationService?,
+        expectedKinds: Set<InstallationKind>): ApiResult<InstallationOperation> {
+        val kinds = expectedKinds.toSet()
+        require(kinds.isNotEmpty())
+        return mutations.withLock {
+            val result = lookupOperation(owner, id)
+            if (result is ApiResult.Success) {
+                if (expectedService != null && result.value.service != expectedService || result.value.kind !in kinds)
+                    return@withLock ApiResult.Transport(null)
+                retainObservation(owner, result.value)
+                verify(owner)
+                index.reveal(owner, OperationDomain.Installation, result.value.operationId)
+            }
+            result
         }
-        result
     }
 
     /** Only explicit identification of the unchanged original request can resolve an unknown request key. */
-    suspend fun identifyOriginal(owner: SessionState.Active, pending: PendingInstallationRequest, id: String): ApiResult<InstallationOperation> = mutations.withLock {
-        verify(owner); require(pending in journal.pending(owner))
-        val result = lookupOperation(owner, id)
-        if (result is ApiResult.Success) {
-            if (result.value.service != pending.service || result.value.kind != pending.kind ||
-                (pending.operationId != null && pending.operationId != result.value.operationId) || pending !in journal.pending(owner))
-                return@withLock ApiResult.Transport(null)
-            record(owner, result.value)
-            verify(owner)
-            index.reveal(owner, OperationDomain.Installation, result.value.operationId)
-            journal.complete(pending)
+    suspend fun identifyOriginal(owner: SessionState.Active, pending: PendingInstallationRequest, id: String,
+        expectedKinds: Set<InstallationKind>): ApiResult<InstallationOperation> {
+        val kinds = expectedKinds.toSet()
+        require(kinds.isNotEmpty())
+        return mutations.withLock {
+            verify(owner); require(pending in journal.pending(owner))
+            if (pending.kind !in kinds) return@withLock ApiResult.Transport(null)
+            val result = lookupOperation(owner, id)
+            if (result is ApiResult.Success) {
+                if (result.value.service != pending.service || result.value.kind != pending.kind ||
+                    (pending.operationId != null && pending.operationId != result.value.operationId) || pending !in journal.pending(owner))
+                    return@withLock ApiResult.Transport(null)
+                record(owner, result.value)
+                verify(owner)
+                index.reveal(owner, OperationDomain.Installation, result.value.operationId)
+                journal.complete(pending)
+            }
+            result
         }
-        result
     }
 
     suspend fun active(owner: SessionState.Active, service: InstallationService): ApiResult<InstallationOperation?> {

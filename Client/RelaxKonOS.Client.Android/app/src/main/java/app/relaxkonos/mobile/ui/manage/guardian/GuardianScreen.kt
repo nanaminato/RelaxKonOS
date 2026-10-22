@@ -93,7 +93,7 @@ internal fun GuardianContent(owner: SessionState.Active, onBack: () -> Unit, mod
     var resumed by remember(lifecycle) { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
     DisposableEffect(lifecycle, model) {
         val listener = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_PAUSE) model.dismissAction()
+            if (event == Lifecycle.Event.ON_PAUSE) model.actionReview?.let(model::dismissAction)
             resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
         }
         lifecycle.addObserver(listener)
@@ -105,11 +105,11 @@ internal fun GuardianContent(owner: SessionState.Active, onBack: () -> Unit, mod
     actionReview?.let { review ->
         val target = review.target; val action = review.action
         val label = stringResource(when (action) { "start" -> R.string.guardian_start; "stop" -> R.string.guardian_stop; "restart" -> R.string.guardian_restart; else -> R.string.common_delete })
-        AlertDialog(onDismissRequest = { model.dismissAction() }, title = { Text(label) },
+        AlertDialog(onDismissRequest = { model.dismissAction(review) }, title = { Text(label) },
             text = { Text(stringResource(R.string.guardian_action_confirm, label, target.name, target.id)) },
             confirmButton = { TextButton(enabled = !state.loading && !state.unknown && !state.stale, onClick = {
                 model.confirmAction(review)
-            }) { Text(label) } }, dismissButton = { TextButton(onClick = { model.dismissAction() }) { Text(stringResource(R.string.common_cancel)) } })
+            }) { Text(label) } }, dismissButton = { TextButton(onClick = { model.dismissAction(review) }) { Text(stringResource(R.string.common_cancel)) } })
     }
     BackHandler(enabled = editing == null && state.selectedId != null) { model.select(null) }
     if (editing != null) {

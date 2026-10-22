@@ -113,7 +113,7 @@ class OperationsViewModelTest {
     }
     @Test fun `dismissed hide approval cannot be executed`() = runTest {
         val owner = start(); model.select(owner, item(owner)); runCurrent(); model.requestHide(owner, item(owner))
-        val review = requireNotNull(model.state.hideReview); model.dismissHide()
+        val review = requireNotNull(model.state.hideReview); model.dismissHide(review)
         model.hide(owner, review); advanceUntilIdle(); assertEquals(0, hides)
     }
     @Test fun `cancellation approval can only be consumed once`() = runTest {
@@ -122,9 +122,56 @@ class OperationsViewModelTest {
         model.cancel(owner, review); model.cancel(owner, review); advanceUntilIdle()
         assertEquals(1, writes)
     }
+    @Test fun `old cancel dismissal cannot withdraw reopened confirmation`() = runTest {
+        val owner = start(); model.select(owner, item(owner)); runCurrent()
+        model.requestCancel(owner, item(owner))
+        val old = requireNotNull(model.state.cancelReview)
+        val oldDismiss = { model.dismissCancel(old) }
+        oldDismiss()
+        model.requestCancel(owner, item(owner))
+        val fresh = requireNotNull(model.state.cancelReview)
+        oldDismiss()
+        assertSame(fresh, model.state.cancelReview)
+        model.cancel(owner, fresh); model.cancel(owner, fresh); advanceUntilIdle()
+        assertEquals(1, writes)
+    }
+    @Test fun `old hide dismissal cannot withdraw reopened confirmation`() = runTest {
+        val owner = start(); model.select(owner, item(owner)); runCurrent()
+        model.requestHide(owner, item(owner))
+        val old = requireNotNull(model.state.hideReview)
+        val oldDismiss = { model.dismissHide(old) }
+        oldDismiss()
+        model.requestHide(owner, item(owner))
+        val fresh = requireNotNull(model.state.hideReview)
+        oldDismiss()
+        assertSame(fresh, model.state.hideReview)
+        model.hide(owner, fresh); model.hide(owner, fresh); advanceUntilIdle()
+        assertEquals(1, hides)
+    }
+    @Test fun `old owner withdrawal cannot clear new login confirmation`() = runTest {
+        val oldOwner = start()
+        session.login(ServerConnectionIdentityRules.direct("https://operations-review.invalid"), "review", "test".toCharArray()) {}
+        runCurrent()
+        val owner = session.state.value as SessionState.Active
+        model.refresh(owner); advanceUntilIdle(); model.select(owner, item(owner)); runCurrent()
+        model.requestCancel(owner, item(owner))
+        val cancel = requireNotNull(model.state.cancelReview)
+        model.withdrawReviews(oldOwner)
+        assertSame(cancel, model.state.cancelReview)
+        model.withdrawReviews(owner)
+        assertNull(model.state.cancelReview)
+        model.cancel(owner, cancel); advanceUntilIdle(); assertEquals(0, writes)
+        model.requestHide(owner, item(owner))
+        val hide = requireNotNull(model.state.hideReview)
+        model.withdrawReviews(oldOwner)
+        assertSame(hide, model.state.hideReview)
+        model.withdrawReviews(owner)
+        assertNull(model.state.hideReview)
+        model.hide(owner, hide); advanceUntilIdle(); assertEquals(0, hides)
+    }
     @Test fun `reopened confirmation cannot consume old approval for identical task`() = runTest {
         val owner = start(); model.select(owner, item(owner)); runCurrent(); model.requestCancel(owner, item(owner))
-        val old = requireNotNull(model.state.cancelReview); model.dismissCancel()
+        val old = requireNotNull(model.state.cancelReview); model.dismissCancel(old)
         model.requestCancel(owner, item(owner)); val fresh = requireNotNull(model.state.cancelReview)
         model.cancel(owner, old); advanceUntilIdle(); assertEquals(0, writes)
         model.cancel(owner, fresh); advanceUntilIdle(); assertEquals(1, writes)

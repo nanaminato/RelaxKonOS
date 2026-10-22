@@ -7,6 +7,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
 import app.relaxkonos.mobile.R
@@ -108,6 +109,22 @@ class GuardianCancellationFlowTest {
         rule.onNode(hasText(text(R.string.guardian_restart)) and hasAnyAncestor(isDialog()) and hasClickAction()).performClick()
         rule.waitUntil(5_000) { actions == 1 && !model.state.value.loading }
         rule.runOnIdle { model.confirmAction(old); org.junit.Assert.assertEquals(1, actions) }
+    }
+    @Test fun oldCancelCallbackCannotDismissReopenedActionReview() {
+        show(withWorkload = true)
+        rule.runOnIdle { model.select("job") }
+        rule.waitUntil(5_000) { model.state.value.definition != null }
+        rule.onNodeWithText(text(R.string.guardian_restart)).performScrollTo().performClick()
+        val cancel = rule.onNode(hasText(text(R.string.common_cancel)) and hasAnyAncestor(isDialog()) and hasClickAction())
+        val oldCancel = requireNotNull(cancel.fetchSemanticsNode().config[SemanticsActions.OnClick].action)
+        cancel.performClick()
+        rule.onNodeWithText(text(R.string.guardian_restart)).performScrollTo().performClick()
+        val fresh = requireNotNull(model.actionReview)
+        rule.runOnIdle { oldCancel(); org.junit.Assert.assertSame(fresh, model.actionReview) }
+        rule.onNode(isDialog()).assertExists()
+        rule.onNode(hasText(text(R.string.guardian_restart)) and hasAnyAncestor(isDialog()) and hasClickAction()).performClick()
+        rule.waitUntil(5_000) { actions == 1 && !model.state.value.loading }
+        rule.runOnIdle { oldCancel(); model.confirmAction(fresh); org.junit.Assert.assertEquals(1, actions) }
     }
     @Test fun leavingDuringNonCooperativeReadAllowsFreshPageToRecover() {
         show()

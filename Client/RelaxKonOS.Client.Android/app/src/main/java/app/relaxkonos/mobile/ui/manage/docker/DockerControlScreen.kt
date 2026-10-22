@@ -28,6 +28,7 @@ import java.util.Date
 private data class MirrorDraft(val id: String? = null, val name: String = "", val endpoint: String = "") {
     fun request() = DockerMirrorRequest(name.trim(), endpoint.trim())
 }
+private class MirrorLeaveReview(val editor: Any, val draft: MirrorDraft, val action: () -> Unit)
 
 @Composable internal fun dockerControlViewModel(): DockerControlViewModel {
     val container = appContainer()
@@ -49,24 +50,40 @@ private data class MirrorDraft(val id: String? = null, val name: String = "", va
     val ready = manage && !state.busy && state.pending.isEmpty() && !state.resourcePending && !state.pendingInstallation &&
         state.installation?.state?.active != true && (state.installation == null || state.installationVerified) && facts != null
     var draft by remember(owner) { mutableStateOf<MirrorDraft?>(null) }
+    var draftEditor by remember(owner) { mutableStateOf(Any()) }
     val confirmation = model.confirmation?.takeIf { it.owner === owner }
-    var leave by remember(owner) { mutableStateOf<(() -> Unit)?>(null) }
+    var leave by remember(owner) { mutableStateOf<MirrorLeaveReview?>(null) }
     var install by remember(owner) { mutableStateOf(false) }; val cancel = model.installationCancellation?.takeIf { it.owner === owner }
-    var recover by remember(owner) { mutableStateOf(false) }; var id by remember(owner) { mutableStateOf("") }; var identified by remember(owner) { mutableStateOf(false) }
+    val recovery = model.recoveryForm?.takeIf { it.owner === owner }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var lifecycleEpoch by remember(owner, lifecycle) { mutableIntStateOf(0) }
     val observationEpoch = lifecycleEpoch
+    val currentActive = rememberUpdatedState(active)
+    val currentOwner = rememberUpdatedState(owner)
+    val currentInteraction = { currentActive.value && currentOwner.value === owner && model.state.owner === owner &&
+        lifecycleEpoch == observationEpoch && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
     DisposableEffect(owner, lifecycle, active) {
-        fun withdraw() { model.dismissConfirmation(); leave = null; install = false; model.dismissInstallationCancellation(); recover = false; identified = false }
+        fun withdraw() { model.withdrawReviews(owner); leave = null; install = false }
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE) { withdraw(); lifecycleEpoch++ }
             if (event == Lifecycle.Event.ON_RESUME) lifecycleEpoch++
         }
         lifecycle.addObserver(observer)
-        if (!active) withdraw()
+        if (!active) { withdraw(); lifecycleEpoch++ }
         onDispose { lifecycle.removeObserver(observer) }
     }
-    val navigate: (() -> Unit) -> Unit = { action -> if (draft != null) leave = action else action() }
+    val observedDraft = draft
+    val observedEditor = draftEditor
+    val navigate: (() -> Unit) -> Unit = { action ->
+        if (currentInteraction() && !model.state.busy && leave == null && model.confirmation == null &&
+            draft === observedDraft && draftEditor === observedEditor) {
+            if (observedDraft != null) leave = MirrorLeaveReview(observedEditor, observedDraft, action) else action()
+        }
+    }
+    fun openEditor(value: MirrorDraft) {
+        if (currentInteraction() && ready && !model.state.busy && model.state.facts == facts && draftEditor === observedEditor &&
+            draft == null && leave == null && model.confirmation == null) { draftEditor = Any(); draft = value }
+    }
     LaunchedEffect(owner, state.owner, active) {
         if (active && visible && owner != null && state.facts == null && state.problem == null && !state.busy) model.refresh()
     }
@@ -77,7 +94,7 @@ private data class MirrorDraft(val id: String? = null, val name: String = "", va
             submitted.kind in setOf(DockerControlKind.MirrorCreate, DockerControlKind.MirrorUpdate) &&
             submitted.target == editing.id && submitted.mirror == editing.request()) draft = null
     }
-    LaunchedEffect(owner, active, observationEpoch, state.installation?.operationId, state.installation?.state, state.installationVerified, state.busy, cancel) {
+    LaunchedEffect(owner, active, observationEpoch, state.installation?.operationId, state.installation?.state, state.installationVerified, state.busy, cancel, recovery) {
         if (active && visible) model.observeInstallation {
             active && lifecycleEpoch == observationEpoch && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
         }
@@ -158,7 +175,11 @@ WorkspaceSection(!mirrorsOnly && !recordsOnly) {
         }
         if (visible && state.pendingInstallation && manage) OutlinedButton(enabled = !state.busy && state.pending.isEmpty() && state.installation?.state?.active != true && (state.installation == null || state.installationVerified || state.pendingInstallation), onClick = { install = true }) { ActionLabel(R.string.common_retry) }
                 if (visible && state.pendingInstallation) Text(stringResource(R.string.installation_pending, installationServiceLabel(InstallationService.Docker), installationKindLabel(InstallationKind.Install)), color = MaterialTheme.colorScheme.error)
-        if (manage) TextButton(enabled = !state.busy, onClick = { identified = false; recover = true }) { Text(stringResource(R.string.installation_recover)) }
+        key(observationEpoch, state.feedbackVersion) {
+            if (manage) TextButton(enabled = !state.busy, onClick = {
+                if (currentInteraction() && model.state.feedbackVersion == state.feedbackVersion) model.requestRecovery(requireNotNull(owner))
+            }) { Text(stringResource(R.string.installation_recover)) }
+        }
         if (visible && state.installationLookupFailed) ManagementCard {
             state.installationLookupId?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             Text(stringResource(if (state.installationLookupMissing) R.string.operations_missing else R.string.operations_unverified))
@@ -180,7 +201,9 @@ WorkspaceSection(mirrorsOnly) {
         Text(stringResource(R.string.docker_control_mirrors), style = MaterialTheme.typography.titleLarge)
         Text(stringResource(R.string.docker_control_mirror_note))
         if (facts != null) {
-            if (manage) OutlinedButton(enabled = ready && draft == null, onClick = { draft = MirrorDraft() }) { Text(stringResource(R.string.docker_control_add_mirror)) }
+            key(observationEpoch, draftEditor) {
+                if (manage) OutlinedButton(enabled = ready && draft == null, onClick = { openEditor(MirrorDraft()) }) { Text(stringResource(R.string.docker_control_add_mirror)) }
+            }
             BoxWithConstraints(Modifier.fillMaxWidth()) {
                 val wide = maxWidth >= 600.dp
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
@@ -193,29 +216,38 @@ WorkspaceSection(mirrorsOnly) {
                             if (manage) FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                                 TextButton(enabled = ready && !mirror.selected && draft == null, onClick = { model.requestChange(requireNotNull(owner), facts, DockerControlChange(DockerControlKind.MirrorSelect, mirror.id)) }) { Text(stringResource(R.string.docker_control_select)) }
                                 if (!mirror.default) {
-                                    TextButton(enabled = ready && draft == null, onClick = { draft = MirrorDraft(mirror.id, mirror.name, mirror.endpoint) }) { Text(stringResource(R.string.docker_control_edit_mirror)) }
+                                    key(observationEpoch, draftEditor) {
+                                        TextButton(enabled = ready && draft == null, onClick = { openEditor(MirrorDraft(mirror.id, mirror.name, mirror.endpoint)) }) { Text(stringResource(R.string.docker_control_edit_mirror)) }
+                                    }
                                     TextButton(enabled = ready && draft == null, onClick = { model.requestChange(requireNotNull(owner), facts, DockerControlChange(DockerControlKind.MirrorDelete, mirror.id)) }) { ActionLabel(R.string.common_delete) }
                                 }
                             }
                             }
                         }
                     }
-                    draft?.let { editing -> Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    draft?.let { editing ->
+                    val editor = draftEditor
+                    val currentEditor = { currentInteraction() && draftEditor === editor && draft === editing &&
+                        !model.state.busy && leave == null && model.confirmation == null }
+                    key(editor, observationEpoch) { Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                         Text(stringResource(if (editing.id == null) R.string.docker_control_add_mirror else R.string.docker_control_edit_mirror))
-                        OutlinedTextField(editing.name, { draft = editing.copy(name = it) }, enabled = ready, singleLine = true, label = { Text(stringResource(R.string.docker_control_mirror_name)) })
-                        OutlinedTextField(editing.endpoint, { draft = editing.copy(endpoint = it) }, enabled = ready, singleLine = true, label = { Text(stringResource(R.string.docker_control_mirror_endpoint)) })
+                        OutlinedTextField(editing.name, { if (currentEditor()) draft = editing.copy(name = it) }, enabled = ready, singleLine = true, label = { Text(stringResource(R.string.docker_control_mirror_name)) })
+                        OutlinedTextField(editing.endpoint, { if (currentEditor()) draft = editing.copy(endpoint = it) }, enabled = ready, singleLine = true, label = { Text(stringResource(R.string.docker_control_mirror_endpoint)) })
                         Text(stringResource(R.string.docker_control_mirror_format))
+                        key(editing) {
                         Button(enabled = ready && DockerMirrorValidation.valid(editing.request()), onClick = {
-                            model.requestChange(requireNotNull(owner), facts, DockerControlChange(if (editing.id == null) DockerControlKind.MirrorCreate else DockerControlKind.MirrorUpdate, editing.id, editing.request()))
+                            if (currentEditor() && model.state.facts == facts)
+                                model.requestChange(requireNotNull(owner), facts, DockerControlChange(if (editing.id == null) DockerControlKind.MirrorCreate else DockerControlKind.MirrorUpdate, editing.id, editing.request()))
                         }) { ActionLabel(R.string.common_save) }
-                        TextButton(onClick = { navigate { draft = null } }) { Text(stringResource(R.string.common_cancel)) }
-                    } }
+                        TextButton(enabled = !state.busy, onClick = { if (currentEditor()) navigate { draft = null } }) { Text(stringResource(R.string.common_cancel)) }
+                        }
+                    } } }
                 }
             }
         }
 }
             }
-    if (active) confirmation?.let { pending -> AlertDialog(onDismissRequest = { model.dismissConfirmation() }, title = { Text(controlActionLabel(pending.change.kind)) }, text = { Column {
+    if (active) confirmation?.let { pending -> AlertDialog(onDismissRequest = { model.dismissConfirmation(pending) }, title = { Text(controlActionLabel(pending.change.kind)) }, text = { Column {
         if (pending.change.engine != null) Text(stringResource(R.string.docker_control_engine_warning))
         else {
             Text(stringResource(R.string.docker_control_mirror_warning))
@@ -225,22 +257,41 @@ WorkspaceSection(mirrorsOnly) {
             if (pending.change.kind == DockerControlKind.MirrorDelete && target?.selected == true) Text(stringResource(R.string.docker_control_delete_selected))
         }
     } }, confirmButton = { Button(enabled = ready, onClick = { model.change(pending) }) { Text(stringResource(R.string.docker_control_confirm)) } },
-        dismissButton = { TextButton(onClick = { model.dismissConfirmation() }) { Text(stringResource(R.string.common_cancel)) } }) }
-    if (active && leave != null) AlertDialog(onDismissRequest = { leave = null }, title = { Text(stringResource(R.string.docker_control_discard)) },
-        text = { Text(stringResource(R.string.docker_control_discard_note)) }, confirmButton = { TextButton(onClick = { val action = leave; leave = null; action?.invoke() }) { Text(stringResource(R.string.docker_control_confirm)) } },
-        dismissButton = { TextButton(onClick = { leave = null }) { Text(stringResource(R.string.common_cancel)) } })
+        dismissButton = { TextButton(onClick = { model.dismissConfirmation(pending) }) { Text(stringResource(R.string.common_cancel)) } }) }
+    if (active) leave?.let { review -> key(review) {
+        val currentDecision = { currentInteraction() && !model.state.busy && leave === review &&
+            draftEditor === review.editor && draft === review.draft }
+        val continueEditing = { if (currentDecision()) leave = null }
+        AlertDialog(onDismissRequest = continueEditing, title = { Text(stringResource(R.string.docker_control_discard)) },
+            text = { Text(stringResource(R.string.docker_control_discard_note)) }, confirmButton = { TextButton(onClick = {
+                if (currentDecision()) { leave = null; draft = null; review.action() }
+            }) { Text(stringResource(R.string.docker_control_confirm)) } },
+            dismissButton = { TextButton(onClick = continueEditing) { Text(stringResource(R.string.common_cancel)) } })
+    } }
     if (active && install) AlertDialog(onDismissRequest = { install = false }, title = { Text(stringResource(R.string.docker_control_install)) }, text = { Text(stringResource(R.string.docker_control_install_note)) },
         confirmButton = { Button(enabled = !state.busy, onClick = { install = false; model.install() }) { Text(stringResource(R.string.docker_control_confirm)) } }, dismissButton = { TextButton(onClick = { install = false }) { Text(stringResource(R.string.common_cancel)) } })
-    if (active) cancel?.let { request -> AlertDialog(onDismissRequest = model::dismissInstallationCancellation, title = { Text(stringResource(R.string.operations_request_cancel)) },
+    if (active) cancel?.let { request -> AlertDialog(onDismissRequest = { model.dismissInstallationCancellation(request) }, title = { Text(stringResource(R.string.operations_request_cancel)) },
         text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text(request.operation.operationId); Text(stringResource(R.string.operations_cancel_explanation)) } },
         confirmButton = { Button(enabled = !state.busy && owner === request.owner && state.installationVerified && state.installation == request.operation && request.operation.state.active && request.operation.cancellable,
             onClick = { model.cancelInstall(request) }) { Text(stringResource(R.string.common_cancel)) } },
-        dismissButton = { TextButton(onClick = model::dismissInstallationCancellation) { Text(stringResource(R.string.common_close)) } }) }
-    if (active && recover) AlertDialog(onDismissRequest = { recover = false }, title = { Text(stringResource(R.string.installation_recover)) }, text = { Column {
-        Text(stringResource(R.string.installation_recover_help)); OutlinedTextField(id, { id = it }, singleLine = true, label = { Text(stringResource(R.string.installation_operation_id)) })
-        if (state.pendingInstallation) CheckboxOption(identified, stringResource(R.string.docker_control_identify)) { identified = it }
-    } }, confirmButton = { Button(enabled = !state.busy && (!state.pendingInstallation || identified) && runCatching { InstallationRoutes.operation(id.trim()) }.isSuccess,
-        onClick = { recover = false; model.recoverInstall(id, identified) }) { ActionLabel(R.string.common_refresh) } }, dismissButton = { TextButton(onClick = { recover = false }) { Text(stringResource(R.string.common_cancel)) } })
+        dismissButton = { TextButton(onClick = { model.dismissInstallationCancellation(request) }) { Text(stringResource(R.string.common_close)) } }) }
+    if (active) recovery?.let { form -> key(form, observationEpoch) {
+        val input = form.draft
+        val dismiss = { if (currentInteraction()) model.dismissRecovery(form) }
+        AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(R.string.installation_recover)) }, text = { Column {
+            Text(stringResource(R.string.installation_recover_help))
+            OutlinedTextField(input.id, { if (currentInteraction()) model.changeRecoveryId(form, it) }, singleLine = true,
+                label = { Text(stringResource(R.string.installation_operation_id)) })
+            if (form.pending != null) key(input) {
+                CheckboxOption(input.identified, stringResource(R.string.docker_control_identify)) {
+                    if (currentInteraction()) model.identifyRecovery(form, input, it)
+                }
+            }
+        } }, confirmButton = { key(input) {
+            Button(enabled = !state.busy && (form.pending == null || input.identified) && runCatching { InstallationRoutes.operation(input.id.trim()) }.isSuccess,
+                onClick = { if (currentInteraction()) model.submitRecovery(form, input) }) { ActionLabel(R.string.common_refresh) }
+        } }, dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) } })
+    } }
 }
 
 @Composable internal fun controlActionLabel(kind: DockerControlKind): String = stringResource(when (kind) {

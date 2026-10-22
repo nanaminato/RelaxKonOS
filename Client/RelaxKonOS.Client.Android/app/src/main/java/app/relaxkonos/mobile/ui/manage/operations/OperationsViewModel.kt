@@ -189,11 +189,18 @@ internal class OperationsViewModel(private val session: AuthSession, private val
         if (reviewable(owner, item) && item.check == OperationCheck.Verified && item.cancellable)
             state = state.copy(cancelReview = OperationReview(item), hideReview = null)
     }
-    fun dismissCancel() { state = state.copy(cancelReview = null) }
+    fun dismissCancel(review: OperationReview) {
+        if (state.cancelReview === review) state = state.copy(cancelReview = null)
+    }
     fun requestHide(owner: SessionState.Active, item: ObservedOperation) {
         if (reviewable(owner, item)) state = state.copy(hideReview = OperationReview(item), cancelReview = null)
     }
-    fun dismissHide() { state = state.copy(hideReview = null) }
+    fun dismissHide(review: OperationReview) {
+        if (state.hideReview === review) state = state.copy(hideReview = null)
+    }
+    fun withdrawReviews(owner: SessionState.Active) {
+        if (state.owner === owner) state = state.copy(cancelReview = null, hideReview = null)
+    }
 
     fun hide(owner: SessionState.Active, review: OperationReview) {
         val item = review.item

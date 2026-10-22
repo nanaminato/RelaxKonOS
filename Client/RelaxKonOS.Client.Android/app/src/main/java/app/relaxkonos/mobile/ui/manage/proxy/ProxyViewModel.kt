@@ -442,7 +442,7 @@ internal class ProxyViewModel(private val session: AuthSession, private val repo
         val pending = installations.pending(active).firstOrNull { it.service == InstallationService.Mihomo }
         if (pending != form.pending) { state = state.copy(uncertain = true); return@work }
         state = state.copy(installationVerified = false)
-        val result = if (pending == null) installations.recoverById(active, id.trim(), InstallationService.Mihomo) else installations.identifyOriginal(active, pending, id.trim())
+        val result = if (pending == null) installations.recoverById(active, id.trim(), InstallationService.Mihomo, InstallationKind.entries.toSet()) else installations.identifyOriginal(active, pending, id.trim(), InstallationKind.entries.toSet())
         installationResult(active, result)
         if (result is ApiResult.Success && result.value.service == InstallationService.Mihomo) intent = null
     }
