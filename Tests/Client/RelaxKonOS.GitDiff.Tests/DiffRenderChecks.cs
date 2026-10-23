@@ -3,26 +3,30 @@ using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
-using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Styling;
 using Avalonia.Themes.Fluent;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using AvaloniaEdit;
-using AvaloniaEdit.Document;
 using AvaloniaEdit.Rendering;
 using RelaxKonOS.Client.Controls.Diff;
+using RelaxKonOS.Protocol.Workspace;
 
 namespace RelaxKonOS.GitDiff.Tests;
 
 /// <summary>
-/// Step 0 of the migration: can an AvaloniaEdit text view carry the colours, the CJK column
-/// alignment and a ten-thousand-line patch with our own theme? Renders off-screen through
-/// headless Skia and writes PNGs next to the executable.
+/// Renders the real <see cref="DiffView"/> off-screen and inspects the bitmap: the row band has to
+/// reach both the gutter and the right edge, the gutter has to carry two number columns, and the
+/// text has to be tinted. None of that is visible to an assertion that only looks at properties.
 /// </summary>
 internal static class DiffRenderChecks
 {
+    private const int ViewWidth = 980;
+    private const int ViewHeight = 680;
+
     private const string SamplePatch = """
 diff --git a/src/map.ts b/src/map.ts
 index 4bee98b..9a1c2f0 100644
@@ -62,29 +66,94 @@ index 4bee98b..9a1c2f0 100644
 
         var document = DiffDocument.Parse(SamplePatch);
         Check(!document.IsEmpty && !document.IsIncomplete, "the sample patch parses completely");
-        var sample = document.Files[0];
-        var kinds = sample.Lines.Select(line => line.Kind).ToList();
-        var text = string.Join('\n', sample.RawLines);
+        var rows = document.Files[0].Lines;
+        var addedRow = RowOf(rows, DiffLineKind.Added);
+        var removedRow = RowOf(rows, DiffLineKind.Removed);
+        var contextRow = RowOf(rows, DiffLineKind.Context);
 
+        var surfaces = new Dictionary<string, Color>();
         foreach (var variant in new[] { ThemeVariant.Light, ThemeVariant.Dark })
         {
-            var palette = DiffPalette.For(variant);
-            var (window, editor) = CreateWindow(text, kinds, palette, variant, sample.DisplayPath, "+8 −1");
+            var colors = ApplyPalette(variant);
+            var surface = Color.Parse(colors["SurfaceSunken"]);
+            surfaces[variant.ToString()] = surface;
+
+            var view = new DiffView { Document = document };
+            var (window, editor) = CreateWindow(view, surface);
             window.Show();
             Dispatcher.UIThread.RunJobs();
-            Check(editor.Document.LineCount == sample.Lines.Count, "every patch line is one document line");
-            Check(editor.TextArea.TextView is { VisualLines.Count: > 0 }, "the view produced visual lines");
-            using var bitmap = new RenderTargetBitmap(new PixelSize(980, 680));
+
+            var textView = editor.TextArea.TextView;
+            var gutter = editor.TextArea.LeftMargins.OfType<DiffLineNumberMargin>().Single();
+            Check(editor.Document.LineCount == rows.Count, "every patch line is one document line");
+            Check(gutter.Bounds.Width > 24, $"the gutter reserved room for two columns ({gutter.Bounds.Width:F0}px)");
+            Check(textView is { VisualLines.Count: > 0 }, "the view produced visual lines");
+
+            using var bitmap = new RenderTargetBitmap(new PixelSize(ViewWidth, ViewHeight));
             bitmap.Render(window);
-            var path = Path.Combine(output, $"diff-{(variant == ThemeVariant.Dark ? "dark" : "light")}.png");
+            var name = variant == ThemeVariant.Dark ? "dark" : "light";
+            var path = Path.Combine(output, $"diff-{name}.png");
             bitmap.Save(path, PngBitmapEncoderOptions.Default);
             Check(new FileInfo(path).Length > 4000, "the bitmap holds rendered content");
-            Check(CountTinted(bitmap, green: true) > 200, "added lines are drawn in a green tint");
-            Check(CountTinted(bitmap, green: false) > 100, "removed lines are drawn in a red tint");
+
+            var snapshot = new Snapshot(bitmap, ViewWidth, ViewHeight);
+            var lineHeight = textView.DefaultLineHeight;
+            var gutterWidth = (int)gutter.Bounds.Width;
+
+            // The band is what makes a change scannable, so it must span the whole row: gutter
+            // included, right edge included. A band that stops at the text run is the defect this
+            // check exists for.
+            var addedRowBand = RowBand(snapshot, textView, addedRow, lineHeight);
+            Check(addedRowBand.Fraction(c => IsGreenish(c)) > 0.5, "the added row is green across its full width");
+
+            var removedRowBand = RowBand(snapshot, textView, removedRow, lineHeight);
+            Check(removedRowBand.Fraction(c => IsReddish(c)) > 0.5, "the removed row is red across its full width");
+
+            var contextBand = RowBand(snapshot, textView, contextRow, lineHeight);
+            Check(contextBand.Fraction(c => !IsGreenish(c) && !IsReddish(c)) > 0.9, "an unchanged row keeps the surface colour");
+
+            // Two numbering spaces mean two columns; an empty half would mean the old or the new
+            // side silently stopped being rendered.
+            var gutterBand = RowBand(snapshot, textView, contextRow, lineHeight);
+            var leftHalf = gutterBand.Sub(0, gutterWidth / 2);
+            var rightHalf = gutterBand.Sub(gutterWidth / 2, gutterWidth / 2);
+            Check(leftHalf.Count(c => Distance(c, surface) > 45) > 20, "the old-side column shows numbers");
+            Check(rightHalf.Count(c => Distance(c, surface) > 45) > 20, "the new-side column shows numbers");
+
+            Check(snapshot.Count(c => IsGreenish(c) && Luminance(c) < 150) > 40, "added text is drawn in a green tint");
+            Check(snapshot.Count(c => IsReddish(c) && Luminance(c) < 150) > 20, "removed text is drawn in a red tint");
+
+            // A palette swap replaces the colour dictionary as a whole, so an already-open diff has
+            // to repaint from the new tokens. Baking brushes at construction would leave it light.
+            if (variant == ThemeVariant.Light)
+            {
+                ApplyPalette(ThemeVariant.Dark);
+                Dispatcher.UIThread.RunJobs();
+                using var switchedBitmap = new RenderTargetBitmap(new PixelSize(ViewWidth, ViewHeight));
+                switchedBitmap.Render(window);
+                switchedBitmap.Save(Path.Combine(output, "diff-theme-switch.png"), PngBitmapEncoderOptions.Default);
+                var switchedSnapshot = new Snapshot(switchedBitmap, ViewWidth, ViewHeight);
+                var switchedBand = RowBand(switchedSnapshot, textView, addedRow, lineHeight);
+                Check(
+                    switchedBand.Fraction(c => IsGreenish(c) && Luminance(c) < 140) > 0.5,
+                    "an open diff repaints its row bands when the palette switches");
+                ApplyPalette(ThemeVariant.Light);
+                Dispatcher.UIThread.RunJobs();
+            }
+
             window.Close();
         }
 
-        // A patch the size of the server's 200 KB cap, to see whether the text view stays usable.
+        Check(!surfaces.Values.First().Equals(surfaces.Values.Last()), "the two renders use different palettes");
+
+        // An empty patch must not throw and must not reserve a gutter for numbers that cannot exist.
+        var emptyWindow = CreateWindow(new DiffView { Document = DiffDocument.Parse(null) }, surfaces.Values.First());
+        emptyWindow.Window.Show();
+        Dispatcher.UIThread.RunJobs();
+        Check(emptyWindow.Editor.Document.LineCount == 1 && emptyWindow.Editor.Text.Length == 0, "an empty patch renders an empty document");
+        emptyWindow.Window.Close();
+
+        // A patch the size of the server's 200 KB cap, to see whether the editor stays usable.
         var bigPatch = BuildBigPatch(400);
         var stopwatch = Stopwatch.StartNew();
         var bigDocument = DiffDocument.Parse(bigPatch);
@@ -92,10 +161,8 @@ index 4bee98b..9a1c2f0 100644
         Check(!bigDocument.IsIncomplete, "the synthetic patch is complete");
         Check(bigDocument.Files[0].Hunks.Count == 400, "every hunk of the large patch is parsed");
 
-        var bigKinds = bigDocument.Files[0].Lines.Select(line => line.Kind).ToList();
         stopwatch.Restart();
-        var (bigWindow, bigEditor) = CreateWindow(
-            string.Join('\n', bigDocument.Files[0].RawLines), bigKinds, DiffPalette.Light, ThemeVariant.Light, "big.cs", $"+{bigDocument.Additions} −{bigDocument.Deletions}");
+        var (bigWindow, bigEditor) = CreateWindow(new DiffView { Document = bigDocument }, surfaces.Values.First());
         bigWindow.Show();
         Dispatcher.UIThread.RunJobs();
         var loadMilliseconds = stopwatch.ElapsedMilliseconds;
@@ -103,101 +170,76 @@ index 4bee98b..9a1c2f0 100644
         Check(bigEditor.TextArea.TextView is { VisualLines.Count: > 0 }, "the large patch renders visible lines");
         Check(parseMilliseconds < 1500, $"parsing stays fast ({parseMilliseconds} ms)");
         Check(loadMilliseconds < 3000, $"loading stays fast ({loadMilliseconds} ms)");
-        var bigPath = Path.Combine(output, "diff-large.png");
-        using (var bitmap = new RenderTargetBitmap(new PixelSize(980, 680)))
+        using (var bitmap = new RenderTargetBitmap(new PixelSize(ViewWidth, ViewHeight)))
         {
             bitmap.Render(bigWindow);
-            bitmap.Save(bigPath, PngBitmapEncoderOptions.Default);
+            bitmap.Save(Path.Combine(output, "diff-large.png"), PngBitmapEncoderOptions.Default);
         }
 
         bigWindow.Close();
         Console.WriteLine($"PASS: {checks} diff render checks. {bigEditor.Document.LineCount} lines parsed in {parseMilliseconds} ms, shown in {loadMilliseconds} ms. Screenshots: {output}");
     }
 
-    private static (Window Window, TextEditor Editor) CreateWindow(
-        string text,
-        IReadOnlyList<DiffLineKind> kinds,
-        DiffPalette palette,
-        ThemeVariant variant,
-        string path,
-        string stats)
-    {
-        var editor = new TextEditor
-        {
-            IsReadOnly = true,
-            ShowLineNumbers = false,
-            FontFamily = new FontFamily("Cascadia Code,Cascadia Mono,Consolas,DejaVu Sans Mono,monospace"),
-            FontSize = 12.5,
-            WordWrap = false,
-            Background = palette.Page,
-            Foreground = palette.Text,
-            Padding = new Thickness(0, 6, 0, 6),
-        };
-        editor.Text = text;
-        editor.TextArea.TextView.BackgroundRenderers.Add(new DiffLineBackgroundRenderer(kinds, palette));
-        editor.TextArea.TextView.LineTransformers.Add(new DiffLineColorizer(kinds, palette));
-
-        var header = new Border
-        {
-            Background = palette.Page,
-            BorderBrush = palette.Border,
-            BorderThickness = new Thickness(0, 0, 0, 1),
-            Padding = new Thickness(14, 8),
-            Child = new StackPanel
-            {
-                Orientation = Avalonia.Layout.Orientation.Horizontal,
-                Spacing = 10,
-                Children =
-                {
-                    new TextBlock { Text = path, FontSize = 13, Foreground = palette.Text, FontWeight = FontWeight.SemiBold },
-                    new TextBlock { Text = stats, FontSize = 12, Foreground = palette.Muted },
-                },
-            },
-        };
-
-        var host = new DockPanel();
-        DockPanel.SetDock(header, Dock.Top);
-        host.Children.Add(header);
-        host.Children.Add(editor);
-        return (new Window
-        {
-            Width = 980,
-            Height = 680,
-            Content = host,
-            RequestedThemeVariant = variant,
-            Background = palette.Page,
-        }, editor);
-    }
-
     /// <summary>
-    /// Counts pixels whose colour channel clearly dominates. Backgrounds are translucent enough to
-    /// sit below the threshold, so a hit means the text itself was tinted, not just the row.
+    /// Publishes the colour tokens the same way the application does. The diff view reads them from
+    /// its resource chain, so without this it would render the fallback literals instead of the
+    /// palette under test.
     /// </summary>
-    private static int CountTinted(RenderTargetBitmap bitmap, bool green)
+    private static Dictionary<string, string> ApplyPalette(ThemeVariant variant)
     {
-        var area = new PixelRect(0, 0, 980, 680);
-        var stride = area.Width * 4;
-        var buffer = Marshal.AllocHGlobal(stride * area.Height);
-        try
-        {
-            bitmap.CopyPixels(area, buffer, stride * area.Height, stride);
-            var pixels = new byte[stride * area.Height];
-            Marshal.Copy(buffer, pixels, 0, pixels.Length);
-            var count = 0;
-            for (var index = 0; index + 3 < pixels.Length; index += 4)
-            {
-                int blue = pixels[index], channel = pixels[index + 1], red = pixels[index + 2];
-                if (green ? channel > red + 24 && channel > blue + 24 : red > channel + 24 && red > blue + 24)
-                    count++;
-            }
+        var colors = ThemePaletteDefaults.Resolve(AppearancePreferencesDto.Default, variant == ThemeVariant.Dark);
+        var dictionary = new ResourceDictionary();
+        foreach (var (name, value) in colors)
+            dictionary[name + "Color"] = Color.Parse(value);
 
-            return count;
-        }
-        finally
-        {
-            Marshal.FreeHGlobal(buffer);
-        }
+        var application = Application.Current!;
+        application.RequestedThemeVariant = variant;
+        application.Resources.MergedDictionaries.Clear();
+        application.Resources.MergedDictionaries.Add(dictionary);
+        return colors;
     }
+
+    private static (Window Window, TextEditor Editor) CreateWindow(DiffView view, Color surface)
+    {
+        var window = new Window
+        {
+            Width = ViewWidth,
+            Height = ViewHeight,
+            Content = view,
+            Background = new SolidColorBrush(surface),
+        };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        return (window, view.GetVisualDescendants().OfType<TextEditor>().Single());
+    }
+
+    private static int RowOf(IReadOnlyList<DiffLine> rows, DiffLineKind kind)
+    {
+        for (var index = 0; index < rows.Count; index++)
+        {
+            if (rows[index].Kind == kind)
+                return index + 1;
+        }
+
+        throw new InvalidOperationException($"The sample patch has no {kind} line.");
+    }
+
+    private static PixelRegion RowBand(Snapshot snapshot, TextView textView, int lineNumber, double lineHeight)
+    {
+        var top = textView.GetVisualTopByDocumentLine(lineNumber) - textView.VerticalOffset;
+        if (top < 0 || top + lineHeight > snapshot.Height)
+            throw new InvalidOperationException($"Row {lineNumber} is outside the viewport at y={top:F0}.");
+        return snapshot.Rect(0, (int)top, snapshot.Width, (int)lineHeight);
+    }
+
+    private static bool IsGreenish(Color color) => color.G > color.R + 8 && color.G > color.B + 4;
+
+    private static bool IsReddish(Color color) => color.R > color.G + 12 && color.R > color.B + 8;
+
+    private static double Luminance(Color color) => (0.299 * color.R) + (0.587 * color.G) + (0.114 * color.B);
+
+    private static int Distance(Color left, Color right)
+        => Math.Max(Math.Abs(left.R - right.R), Math.Max(Math.Abs(left.G - right.G), Math.Abs(left.B - right.B)));
 
     private static string BuildBigPatch(int hunks)
     {
@@ -221,115 +263,70 @@ index 4bee98b..9a1c2f0 100644
     }
 }
 
-/// <summary>Backgrounds for diff lines, resolved per theme variant.</summary>
-internal sealed record DiffPalette(
-    IBrush Page,
-    IBrush Text,
-    IBrush Muted,
-    IBrush Border,
-    IBrush? Added,
-    IBrush? Removed,
-    IBrush? Hunk,
-    IBrush? Metadata,
-    IBrush? AddedInk,
-    IBrush? RemovedInk,
-    IBrush? MetaInk)
+/// <summary>A bitmap held as BGRA bytes, so a check can ask questions about regions of it.</summary>
+internal sealed class Snapshot
 {
-    public static DiffPalette Light { get; } = new(
-        new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF)),
-        new SolidColorBrush(Color.FromRgb(0x1F, 0x23, 0x28)),
-        new SolidColorBrush(Color.FromRgb(0x6B, 0x72, 0x80)),
-        new SolidColorBrush(Color.FromRgb(0xE2, 0xE6, 0xEA)),
-        new SolidColorBrush(Color.FromArgb(0x30, 0x16, 0xA3, 0x4A)),
-        new SolidColorBrush(Color.FromArgb(0x30, 0xDC, 0x26, 0x26)),
-        new SolidColorBrush(Color.FromArgb(0x2E, 0x25, 0x63, 0xEB)),
-        new SolidColorBrush(Color.FromArgb(0x1F, 0x6B, 0x72, 0x80)),
-        new SolidColorBrush(Color.FromRgb(0x15, 0x80, 0x3D)),
-        new SolidColorBrush(Color.FromRgb(0xB9, 0x1C, 0x1C)),
-        new SolidColorBrush(Color.FromRgb(0x6B, 0x72, 0x80)));
+    private readonly byte[] _pixels;
 
-    public static DiffPalette Dark { get; } = new(
-        new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x1E)),
-        new SolidColorBrush(Color.FromRgb(0xE6, 0xE6, 0xE6)),
-        new SolidColorBrush(Color.FromRgb(0x9C, 0xA3, 0xAF)),
-        new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3A)),
-        new SolidColorBrush(Color.FromArgb(0x2A, 0x22, 0xC5, 0x5E)),
-        new SolidColorBrush(Color.FromArgb(0x2E, 0xEF, 0x44, 0x44)),
-        new SolidColorBrush(Color.FromArgb(0x33, 0x3B, 0x82, 0xF6)),
-        new SolidColorBrush(Color.FromArgb(0x1F, 0x9C, 0xA3, 0xAF)),
-        new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80)),
-        new SolidColorBrush(Color.FromRgb(0xF8, 0x71, 0x71)),
-        new SolidColorBrush(Color.FromRgb(0x9C, 0xA3, 0xAF)));
-
-    public static DiffPalette For(ThemeVariant variant) => variant == ThemeVariant.Dark ? Dark : Light;
-
-    public IBrush? BrushFor(DiffLineKind kind) => kind switch
+    public Snapshot(RenderTargetBitmap bitmap, int width, int height)
     {
-        DiffLineKind.Added => Added,
-        DiffLineKind.Removed => Removed,
-        DiffLineKind.HunkHeader => Hunk,
-        DiffLineKind.Metadata => Metadata,
-        _ => null,
-    };
-
-    public IBrush? InkFor(DiffLineKind kind) => kind switch
-    {
-        DiffLineKind.Added => AddedInk,
-        DiffLineKind.Removed => RemovedInk,
-        DiffLineKind.Metadata or DiffLineKind.HunkHeader or DiffLineKind.NoNewline => MetaInk,
-        _ => null,
-    };
-}
-
-/// <summary>
-/// Colours a changed line's text. Step 2 replaces this with token colouring composed the same way:
-/// a line transformer can apply syntax highlighting and then tint added or removed text.
-/// </summary>
-internal sealed class DiffLineColorizer(IReadOnlyList<DiffLineKind> kinds, DiffPalette palette) : DocumentColorizingTransformer
-{
-    protected override void ColorizeLine(DocumentLine line)
-    {
-        var lineNumber = line.LineNumber;
-        if (lineNumber < 1 || lineNumber > kinds.Count)
-            return;
-        if (palette.InkFor(kinds[lineNumber - 1]) is not { } brush)
-            return;
-        ChangeLinePart(line.Offset, line.EndOffset, element => element.TextRunProperties.SetForegroundBrush(brush));
-    }
-}
-
-/// <summary>
-/// Fills the full width of each changed line. Line kinds are indexed by document line number,
-/// which is why the document must hold exactly one patch line per document line.
-/// </summary>
-internal sealed class DiffLineBackgroundRenderer(IReadOnlyList<DiffLineKind> kinds, DiffPalette palette) : IBackgroundRenderer
-{
-    public KnownLayer Layer => KnownLayer.Background;
-
-    public void Draw(TextView textView, DrawingContext drawingContext)
-    {
-        if (textView.VisualLines.Count == 0)
-            return;
-
-        foreach (var visualLine in textView.VisualLines)
+        Width = width;
+        Height = height;
+        var stride = width * 4;
+        var buffer = Marshal.AllocHGlobal(stride * height);
+        try
         {
-            var lineNumber = visualLine.FirstDocumentLine.LineNumber;
-            if (lineNumber < 1 || lineNumber > kinds.Count)
-                continue;
-            if (palette.BrushFor(kinds[lineNumber - 1]) is not { } brush)
-                continue;
-
-            var segment = new TextSegment
-            {
-                StartOffset = visualLine.FirstDocumentLine.Offset,
-                EndOffset = visualLine.LastDocumentLine.EndOffset,
-            };
-            // Backgrounds must cover the whole viewport, not just the text run, so an indented or
-            // short line still reads as a band across the diff.
-            foreach (var rect in BackgroundGeometryBuilder.GetRectsForSegment(textView, segment))
-                drawingContext.FillRectangle(brush, new Rect(0, rect.Y, textView.Bounds.Width, rect.Height));
+            bitmap.CopyPixels(new PixelRect(0, 0, width, height), buffer, stride * height, stride);
+            _pixels = new byte[stride * height];
+            Marshal.Copy(buffer, _pixels, 0, _pixels.Length);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
         }
     }
+
+    public int Width { get; }
+
+    public int Height { get; }
+
+    public Color At(int x, int y)
+    {
+        var index = ((y * Width) + x) * 4;
+        return Color.FromArgb(_pixels[index + 3], _pixels[index + 2], _pixels[index + 1], _pixels[index]);
+    }
+
+    public PixelRegion Rect(int x, int y, int width, int height)
+        => new(this, x, y, Math.Min(width, Width - x), Math.Min(height, Height - y));
+
+    public int Count(Func<Color, bool> predicate) => Rect(0, 0, Width, Height).Count(predicate);
+}
+
+/// <summary>A rectangular window onto a <see cref="Snapshot"/>.</summary>
+internal sealed class PixelRegion(Snapshot snapshot, int x, int y, int width, int height)
+{
+    public int Count(Func<Color, bool> predicate)
+    {
+        var count = 0;
+        for (var row = y; row < y + height; row++)
+        {
+            for (var column = x; column < x + width; column++)
+            {
+                if (predicate(snapshot.At(column, row)))
+                    count++;
+            }
+        }
+
+        return count;
+    }
+
+    public double Fraction(Func<Color, bool> predicate)
+    {
+        var total = width * height;
+        return total == 0 ? 0 : (double)Count(predicate) / total;
+    }
+
+    public PixelRegion Sub(int offsetX, int subWidth) => new(snapshot, x + offsetX, y, Math.Min(subWidth, width - offsetX), height);
 }
 
 public sealed class DiffApp : Application

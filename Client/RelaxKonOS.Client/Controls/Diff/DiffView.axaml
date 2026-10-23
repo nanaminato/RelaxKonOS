@@ -1,0 +1,11 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:editor="clr-namespace:AvaloniaEdit;assembly=AvaloniaEdit"
+             x:Class="RelaxKonOS.Client.Controls.Diff.DiffView">
+    <!-- The gutter is added in code: it needs two numbering columns, so it cannot be the editor's
+         own line-number margin. Everything else the editor already provides is used as-is. -->
+    <editor:TextEditor Name="Editor" IsReadOnly="True" ShowLineNumbers="False" WordWrap="False"
+                       BorderThickness="0" Padding="6,6,12,10" FontSize="12"
+                       FontFamily="Cascadia Mono,Consolas,monospace"
+                       Background="{DynamicResource SurfaceSunkenBrush}" />
+</UserControl>

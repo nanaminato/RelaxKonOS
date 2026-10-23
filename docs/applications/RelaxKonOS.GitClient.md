@@ -310,7 +310,7 @@ GitClientViewModel
 - **左侧导航**（190px，`#EEF3FA` 浅色）：概览 / 工作区 / 日志 / 冲突解决 / 远程 五个导航按钮（`NavigationButton_Click` 切换 `ActivePage`，高亮激活页）。
 - **右侧内容区**（`ScrollViewer` + `ContentControl`，按 `ActivePage` 切换子视图）：
   - **概览页**：仓库卡片（名称/路径/当前分支/upstream/远程 URL）+ 状态摘要卡片（已暂存/未暂存/未跟踪/冲突计数 + ahead/behind）+ 快捷操作按钮（拉取/推送/提交/新建分支）。
-  - **工作区页**：变更文件列表和提交消息输入框；点击文件（包括提交确认对话框中的文件）以原生只读统一 diff 打开，带旧/新行号、增删着色和统计。未跟踪文件显示为相对空文件的新增内容。
+  - **工作区页**：变更文件列表和提交消息输入框；点击文件（包括提交确认对话框中的文件）以原生只读统一 diff 打开（`DiffView`，见 5.6），带旧/新双列行号、整行增删底色和统计。未跟踪文件显示为相对空文件的新增内容。
   - **日志页**（原分支+历史合并，三栏统一视图）：
     - 左栏（220px）：分支/标签树（HEAD、本地分支分组、远程分支分组），支持右键菜单：新建分支、切换、重命名、删除、推送、拉取、更新、设置跟踪分支、显示与工作树差异、复制分支名。
     - 中栏：提交列表（带时间图元、hash、作者、时间、消息、分支标签），支持搜索过滤（文本/哈希、用户、日期、路径），右键菜单：复制修订号（SHA）、创建补丁、签出修订、在修订版中显示仓库、与本地比较、将当前分支重置到此处、还原提交、撤销提交、编辑提交消息、Fixup、压缩到、删除提交、压缩提交、交互式变基、推送此前所有提交、新建分支、新建标记。
@@ -332,6 +332,26 @@ GitClientViewModel
 | `ShowResolveConflictDialogAsync` | 冲突文件 + ours/theirs 选择 | `GitResolveRequest?` |
 | `ShowRegisterRepositoryDialogAsync` | 仓库名 + 路径 | `GitRepositoryRegistration?` |
 | `ShowConfirmAsync` | 危险操作二次确认 | `bool` |
+
+### 5.6 diff 视图（`Client/RelaxKonOS.Client/Controls/Diff/`）
+
+diff 的解析与渲染与对话框解耦，放在共享控件目录里，不再由弹窗内联实现：
+
+| 文件 | 职责 |
+|------|------|
+| `DiffDocument.cs` | 模型：`DiffDocument / DiffFile / DiffHunk / DiffLine`，每行同时保留去掉标记的 `Text` 与原文 `Raw`（`PatchIndex` 指向 `DiffFile.RawLines`），后者是后续按行生成子 patch 的输入 |
+| `GitPatchParser.cs` | 状态机解析：缺省计数、`\ No newline`、`/dev/null` 两侧、rename/copy、binary、C 风格八进制路径（按 UTF-8 字节解码）、CRLF、被 200KB 截断的半个 hunk（`DiffHunk.IsComplete`） |
+| `DiffRowMap.cs` | 把 `DiffFile.RawLines` 投影成编辑器文本 + 逐行 `DiffRow(Kind, OldNumber, NewNumber)`，保证「一行 patch = 一个文档行」 |
+| `DiffView.axaml(.cs)` | 只读渲染宿主：AvaloniaEdit `TextEditor` + 双行号边距 + 全宽行背景 + 行内着色 |
+| `DiffStyle.cs` | 从主题令牌（`SuccessColor`/`DangerColor`/`AccentColor`/`TextTertiaryColor`）解析出带 alpha 的行色带；**不含任何颜色字面量**，令牌缺失时不画带而不是退化成硬编码颜色 |
+| `DiffLineNumberMargin.cs` | 从 `AbstractMargin` 派生的双列行号栏（旧号 / 新号），按改动侧着色 |
+
+两个必须守住的不变量：
+
+1. **一行 patch 对应一个文档行**。渲染器按文档行号索引 `DiffRowMap`，任何插入行（例如文件之间的分隔行）都会让底色与行号错位。
+2. **颜色只在绘制时解析**。调色板与系统样式切换是整本资源字典替换，构造期缓存笔刷会让已打开的 diff 停在旧配色；`DiffStyle.Reload` + `Redraw()` 负责重取。
+
+暂缓项：语法高亮（需要把 hunk 内容按文件语言正确分片后再着色，直接对 patch 文本跑 tokenizer 会把 `@@`/`---` 当代码）、按 hunk 折叠、行级暂存（需新增服务端 `apply` 端点与子 patch 生成）。验证放在 `Tests/Client/RelaxKonOS.GitDiff.Tests`（`--render-only` 走 headless Skia，断言行色带覆盖行号栏与右边缘、双列行号都有墨迹、切换调色板后已打开视图会重绘）。
 
 ---
 
