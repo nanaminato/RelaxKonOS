@@ -29,15 +29,10 @@ public sealed partial class GitClientViewModel
     private async Task ShowCommitFileDiffAsync(GitFileChangeDto? file)
     {
         file ??= SelectedCommitFile;
-        if (file is null || SelectedRepository is null || SelectedCommit is null) return;
-        try
-        {
-            // ref=sha returns this commit relative to its parent, including root commits.
-            FileDiff = await client.GetDiffAsync(SelectedRepository.Id, file.Path, staged: false, @ref: SelectedCommit.Sha);
-            if (ShowFileDiffAsync is not null)
-                await ShowFileDiffAsync(null, FileDiff);
-        }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.diff_failed_format_v2", ex.Message)); }
+        if (file is null) return;
+        // The log page has room for the diff beside the commit list, so this path does not open a
+        // window; the worktree page still uses the modal shell for its own file list.
+        await ShowInlineCommitFileDiffAsync(file);
     }
 
     /// <summary>Opens the selected push commit's file diff, or the originating commit for an aggregate preview entry.</summary>

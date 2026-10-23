@@ -66,6 +66,7 @@ internal partial class GitLogView : UserControl
         BranchTree.ItemsSource = BranchTreeRoots;
         ChangedFileTree.ItemsSource = CommitFileTreeRoots;
         RebuildCommitFileTree();
+        ApplyDiffPaneLayout();
     }
 
     protected override void OnUnloaded(RoutedEventArgs e)
@@ -80,7 +81,26 @@ internal partial class GitLogView : UserControl
         if (e.PropertyName is nameof(GitClientViewModel.BranchSearchText)
             or nameof(GitClientViewModel.Status))
             RebuildBranchTree();
+        if (e.PropertyName is nameof(GitClientViewModel.IsInlineDiffOpen))
+            ApplyDiffPaneLayout();
     }
+
+    /// <summary>
+    /// The diff pane is a real column, not an overlay: the commit list and the file tree give up
+    /// width so the patch gets it. Collapsing the column back to zero restores the three-pane
+    /// layout exactly, including a splitter the user dragged.
+    /// </summary>
+    private void ApplyDiffPaneLayout()
+    {
+        var open = _vm?.IsInlineDiffOpen == true;
+        LogLayoutRoot.ColumnDefinitions[5].Width = new GridLength(open ? 5 : 0);
+        LogLayoutRoot.ColumnDefinitions[6].Width = open
+            ? new GridLength(1.5, GridUnitType.Star)
+            : new GridLength(0);
+    }
+
+    private void DiffPane_CloseRequested(object? sender, RoutedEventArgs e)
+        => _vm?.CloseInlineDiffCommand.Execute(null);
 
     private void BranchTree_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {

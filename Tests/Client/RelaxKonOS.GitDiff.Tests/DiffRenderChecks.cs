@@ -12,8 +12,17 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using AvaloniaEdit;
 using AvaloniaEdit.Rendering;
+using Microsoft.Extensions.DependencyInjection;
+using RelaxKonOS.Client.Apps.Git;
+using RelaxKonOS.Client.Apps.Git.Views;
 using RelaxKonOS.Client.Controls.Diff;
+using RelaxKonOS.Client.Localization;
+using RelaxKonOS.Client.Services;
+using RelaxKonOS.Client.Services.ServerCenter;
+using RelaxKonOS.Client.Services.Theming;
+using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Protocol.Workspace;
+using RelaxKonOS.Protocol.Workspace.SystemStyles;
 
 namespace RelaxKonOS.GitDiff.Tests;
 
@@ -153,6 +162,61 @@ index 4bee98b..9a1c2f0 100644
         Check(emptyWindow.Editor.Document.LineCount == 1 && emptyWindow.Editor.Text.Length == 0, "an empty patch renders an empty document");
         emptyWindow.Window.Close();
 
+        // The pane is shared by the modal dialog and the log page's inline column, so its bindings
+        // (path, both counts, the close mark the host opts into) are worth a render rather than a
+        // reading — a renamed property would otherwise only show up as a blank header at runtime.
+        // BuildLocalization() has to run first: the presentation resolves its captions the same way
+        // every other view model does, through the application service provider.
+        using var localization = BuildLocalization();
+        var presentation = new GitDiffPresentation(new GitDiffDto("src/map.ts", "v1", null, SamplePatch, 8, 1));
+        var pane = new GitDiffPane { DataContext = presentation, CanClose = true };
+        var paneWindow = new Window { Width = ViewWidth, Height = ViewHeight, Content = pane };
+        paneWindow.Show();
+        Dispatcher.UIThread.RunJobs();
+        var paneTexts = pane.GetVisualDescendants().OfType<TextBlock>().Select(block => block.Text).ToList();
+        Check(paneTexts.Contains("src/map.ts"), "the pane header shows the file path");
+        Check(paneTexts.Contains("+8") && paneTexts.Contains("−1"), "the pane header shows both change counts");
+        Check(
+            pane.GetVisualDescendants().OfType<DiffView>().Single().Document?.Files[0].Lines.Count == rows.Count,
+            "the pane hands the parsed patch to the diff view");
+        var closeMark = pane.GetVisualDescendants().OfType<Button>().Single();
+        Check(closeMark.IsVisible, "a pane that may close shows its close mark");
+        using (var paneBitmap = new RenderTargetBitmap(new PixelSize(ViewWidth, ViewHeight)))
+        {
+            paneBitmap.Render(paneWindow);
+            paneBitmap.Save(Path.Combine(output, "diff-pane.png"), PngBitmapEncoderOptions.Default);
+        }
+
+        pane.CanClose = false;
+        Dispatcher.UIThread.RunJobs();
+        Check(!closeMark.IsVisible, "a pane hosted by a dialog hides its close mark");
+        paneWindow.Close();
+
+        // The log page hosts the same pane in a real column. Only a render shows whether that column
+        // actually opens next to the file tree, which is the whole point of not opening a window.
+        var logViewModel = new GitClientViewModel(null!) { InlineDiff = presentation, IsInlineDiffOpen = true };
+        var logView = new GitLogView(logViewModel);
+        var logWindow = new Window { Width = 1400, Height = 800, Content = logView };
+        logWindow.Show();
+        Dispatcher.UIThread.RunJobs();
+        var inlinePane = logView.GetVisualDescendants().OfType<GitDiffPane>().Single();
+        Check(inlinePane.Bounds.Width > 240, $"the log page gives the diff a column ({inlinePane.Bounds.Width:F0}px)");
+        var paneOrigin = inlinePane.TranslatePoint(new Point(0, 0), logView) ?? new Point(0, 0);
+        Check(paneOrigin.X > 590, $"the diff sits to the right of the three-pane layout (x={paneOrigin.X:F0})");
+        using (var logBitmap = new RenderTargetBitmap(new PixelSize(1400, 800)))
+        {
+            logBitmap.Render(logWindow);
+            logBitmap.Save(Path.Combine(output, "diff-log-page.png"), PngBitmapEncoderOptions.Default);
+        }
+
+        logViewModel.CloseInlineDiffCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        // A hidden control keeps its last arranged bounds, so the column itself is what proves the
+        // layout went back to three panes.
+        var layoutRoot = logView.FindControl<Grid>("LogLayoutRoot")!;
+        Check(layoutRoot.ColumnDefinitions[6].Width.Value == 0, "closing the diff collapses its column again");
+        logWindow.Close();
+
         // A patch the size of the server's 200 KB cap, to see whether the editor stays usable.
         var bigPatch = BuildBigPatch(400);
         var stopwatch = Stopwatch.StartNew();
@@ -178,6 +242,20 @@ index 4bee98b..9a1c2f0 100644
 
         bigWindow.Close();
         Console.WriteLine($"PASS: {checks} diff render checks. {bigEditor.Document.LineCount} lines parsed in {parseMilliseconds} ms, shown in {loadMilliseconds} ms. Screenshots: {output}");
+    }
+
+    /// <summary>
+    /// Publishes the service provider <c>LocalizedText</c> reads through, the same way the other
+    /// client checks do: a presentation that formats captions cannot be built without it.
+    /// </summary>
+    private static ServiceProvider BuildLocalization()
+    {
+        var appearance = new AppearanceService(Application.Current!, new SystemStyleRegistry());
+        var settings = new ShellSettings(appearance);
+        var localization = new LocalizationService(settings, new SshDesktopSession(null!, new ShellSettings(null!)));
+        var provider = new ServiceCollection().AddSingleton(localization).BuildServiceProvider();
+        typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, provider);
+        return provider;
     }
 
     /// <summary>

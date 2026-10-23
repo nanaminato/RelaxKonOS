@@ -52,7 +52,9 @@
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
     </UserControl.Styles>
-    <Grid x:Name="LogLayoutRoot" ColumnDefinitions="190,6,*,6,280" MinHeight="380">
+    <!-- Columns 5 and 6 belong to the inline diff pane: both stay at zero width until a file is
+         opened, so the three-pane layout is unchanged when nothing is being reviewed. -->
+    <Grid x:Name="LogLayoutRoot" ColumnDefinitions="190,6,*,6,280,0,0" MinHeight="380">
 
         <!-- ============================================================
              LEFT PANE : Branch / Tag Tree (Fork-style)
@@ -470,6 +472,26 @@
                     </ScrollViewer>
                 </Border>
             </Grid>
+        </Border>
+
+        <!-- ============================================================
+             DIFF PANE : the selected file's patch, beside the file tree
+             ============================================================ -->
+        <GridSplitter Grid.Column="5" Width="5" HorizontalAlignment="Stretch" Background="Transparent"
+                      ResizeDirection="Columns" ResizeBehavior="PreviousAndNext"
+                      IsVisible="{Binding IsInlineDiffOpen}" />
+
+        <Border Grid.Column="6" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1"
+                Classes="app-panel" Padding="10" IsVisible="{Binding IsInlineDiffOpen}">
+            <Panel>
+                <Panel IsVisible="{Binding InlineDiff, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <gitViews:GitDiffPane DataContext="{Binding InlineDiff}" CanClose="True"
+                                          CloseRequested="DiffPane_CloseRequested" />
+                </Panel>
+                <TextBlock Text="{loc:Loc git.log.diff_pane.loading}" IsVisible="{Binding IsInlineDiffLoading}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextSecondaryBrush}" />
+            </Panel>
         </Border>
     </Grid>
 </UserControl>

@@ -99,6 +99,8 @@ public sealed partial class GitClientViewModel
     // ── 选中提交变化：加载提交详情（含变更文件列表）──
     partial void OnSelectedCommitChanged(GitCommitDto? value)
     {
+        // A pane showing the previous commit's file has nothing to say about this one.
+        if (IsInlineDiffOpen) CloseInlineDiff();
         _ = LoadCommitDetailAsync(value);
     }
 
