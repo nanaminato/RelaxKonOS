@@ -43,7 +43,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -59,6 +61,8 @@ import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.RemotePathField
 import app.relaxkonos.mobile.ui.common.RemotePathKind
 import app.relaxkonos.mobile.ui.theme.Spacing
+
+private class ScriptLeaveDecision(val snapshot: Any)
 
 private fun scriptStateLabel(state: String): Int = when (state) {
     "queued" -> R.string.scripts_queued
@@ -103,10 +107,15 @@ internal fun ScriptsContent(model: ScriptsViewModel, owner: SessionState.Active,
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val lifecycleState by lifecycle.currentStateAsState()
+    var interactionEpoch by remember(owner, lifecycle) { mutableIntStateOf(0) }
+    val observedEpoch = interactionEpoch
     DisposableEffect(model, owner, lifecycle) {
-        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_PAUSE) model.dismissCancellation() }
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) { model.withdrawCancellation(); interactionEpoch++ }
+            if (event == Lifecycle.Event.ON_RESUME) interactionEpoch++
+        }
         lifecycle.addObserver(observer)
-        onDispose { lifecycle.removeObserver(observer); model.dismissCancellation() }
+        onDispose { lifecycle.removeObserver(observer); model.withdrawCancellation() }
     }
     LaunchedEffect(owner, editing, state.selectionEpoch, state.selected?.id, state.selected?.state, state.error, state.cancellation, lifecycle) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
@@ -117,8 +126,10 @@ internal fun ScriptsContent(model: ScriptsViewModel, owner: SessionState.Active,
     }
     if (editing) {
         androidx.compose.runtime.key(owner) {
-            ScriptEditor(owner, state, requireNotNull(state.draft), model::updateDraft,
-                onBack = model::closeEditor, onSubmit = model::submit, onVerify = model::verifyRequest, modifier = modifier)
+            val draft = requireNotNull(state.draft)
+            ScriptEditor(owner, state, draft, { model.updateDraft(draft, it) },
+                onBack = { model.closeEditor(draft) }, onSubmit = { model.submit(draft, it) },
+                onVerify = model::verifyRequest, modifier = modifier)
         }
         return
     }
@@ -127,12 +138,18 @@ internal fun ScriptsContent(model: ScriptsViewModel, owner: SessionState.Active,
         Text(stringResource(R.string.scripts_identity, owner.userName))
         state.pending?.let { Text(stringResource(R.string.scripts_pending_task, it.taskId)) }
         if (state.loading) ActivityIndicator(stringResource(R.string.scripts_loading))
-        OperationMessageDialog(if (state.error && !state.loading) stringResource(scriptProblemLabel(state.problemCode)) else null)
+        OperationMessageDialog(if (state.error && !state.loading) stringResource(scriptProblemLabel(state.problemCode)) else null,
+            eventKey = owner to state.feedbackVersion)
         PageActionRow(refresh = {
             OutlinedButton(onClick = { model.load(owner) }, enabled = !state.loading) { ActionLabel(R.string.common_refresh) }
         }, actions = {
-            Button(onClick = model::openEditor,
+            androidx.compose.runtime.key(observedEpoch, state) {
+            Button(onClick = {
+                if (interactionEpoch == observedEpoch && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
+                    model.state.value === state) model.openEditor()
+            },
                 enabled = !state.loading && state.pending == null && state.journalAvailable) { Text(stringResource(R.string.scripts_new)) }
+            }
         })
         if (state.listVerified && !state.loading && !state.error && state.pending == null && state.tasks.isEmpty() && state.selected == null) {
             Text(stringResource(R.string.scripts_empty), style = MaterialTheme.typography.bodyMedium)
@@ -163,14 +180,14 @@ internal fun ScriptsContent(model: ScriptsViewModel, owner: SessionState.Active,
         }
     }
     state.cancellation?.takeIf { it.owner === owner }?.let { review ->
-        AlertDialog(onDismissRequest = model::dismissCancellation, title = { Text(stringResource(R.string.scripts_cancel)) },
+        AlertDialog(onDismissRequest = { model.dismissCancellation(review) }, title = { Text(stringResource(R.string.scripts_cancel)) },
             text = { Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text(review.task.executablePath)
                 Text(review.task.id)
                 Text(stringResource(R.string.operations_cancel_explanation))
             } },
             confirmButton = { TextButton(enabled = !state.loading && lifecycleState.isAtLeast(Lifecycle.State.RESUMED), onClick = { model.cancel(review) }) { Text(stringResource(R.string.tunnels_confirm)) } },
-            dismissButton = { TextButton(onClick = model::dismissCancellation) { Text(stringResource(R.string.common_cancel)) } })
+            dismissButton = { TextButton(onClick = { model.dismissCancellation(review) }) { Text(stringResource(R.string.common_cancel)) } })
     }
 }
 
@@ -185,26 +202,59 @@ internal fun ScriptEditor(owner: SessionState.Active, state: ScriptsUiState, dra
     val timeout = draft.timeout
     val runAs = draft.runAs
     val adminName = draft.adminName
+    val approvalRequired = draft.requiresApproval(owner)
     var adminPassword by remember { mutableStateOf("") }
-    var confirmLeave by remember { mutableStateOf(false) }
+    var confirmLeave by remember { mutableStateOf<ScriptLeaveDecision?>(null) }
+    var disposed by remember { mutableStateOf(false) }
+    var consumed by remember(state, draft) { mutableStateOf(false) }
+    val latestState by rememberUpdatedState(state)
+    val snapshot = remember(draft, state, adminPassword) { Any() }
+    val currentSnapshot by rememberUpdatedState(snapshot)
+    LaunchedEffect(snapshot) { if (confirmLeave?.snapshot !== snapshot) confirmLeave = null }
+    val observedPassword = adminPassword
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var interactionEpoch by remember(lifecycle) { mutableIntStateOf(0) }
+    val observedEpoch = interactionEpoch
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_RESUME) {
+                interactionEpoch++
+                confirmLeave = null
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer); disposed = true; confirmLeave = null; adminPassword = "" }
+    }
+    fun current() = !disposed && interactionEpoch == observedEpoch && currentSnapshot === snapshot && adminPassword == observedPassword &&
+        lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+    fun finish() {
+        if (current() && !latestState.loading) { disposed = true; confirmLeave = null; adminPassword = ""; onBack() }
+    }
     val dirty = draft.dirty(owner.userName) || adminPassword.isNotEmpty()
-    val leave = { if (!state.loading) { if (dirty) confirmLeave = true else onBack() } }
-    val editable = !state.loading && state.pending == null && state.journalAvailable && state.problemCode != "scripts.write_unknown"
+    val leave = {
+        if (current() && !latestState.loading && confirmLeave == null) {
+            if (dirty) confirmLeave = ScriptLeaveDecision(snapshot) else finish()
+        }
+    }
+    val editable = !state.loading && state.pending == null && state.journalAvailable && state.problemCode != "scripts.write_unknown" && confirmLeave == null
+    fun change(next: ScriptDraft) { if (current() && editable && confirmLeave == null && !consumed) onDraftChange(next) }
     BackHandler(onBack = leave)
-    if (confirmLeave) AlertDialog(
-        onDismissRequest = { confirmLeave = false },
+    confirmLeave?.takeIf { it.snapshot === snapshot }?.let { decision -> androidx.compose.runtime.key(decision) { AlertDialog(
+        onDismissRequest = { if (current() && confirmLeave === decision) confirmLeave = null },
         title = { Text(stringResource(R.string.ui_discard_draft_title)) },
         text = { Text(stringResource(R.string.ui_discard_draft_message)) },
-        confirmButton = { TextButton(onClick = { adminPassword = ""; onBack() }) {
+        confirmButton = { TextButton(onClick = { if (confirmLeave === decision) finish() }) {
             Text(stringResource(R.string.editor_discard_changes))
         } },
-        dismissButton = { TextButton(onClick = { confirmLeave = false }) {
+        dismissButton = { TextButton(onClick = { if (current() && confirmLeave === decision) confirmLeave = null }) {
             Text(stringResource(R.string.common_cancel))
         } },
-    )
+    ) } }
     val environmentValues = scriptEnvironment(environment)
-    Column(modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-        ScreenHeader(title = stringResource(R.string.scripts_new), onBack = leave)
+    val editorScroll = rememberScrollState()
+    androidx.compose.runtime.key(observedEpoch) {
+    Column(modifier.fillMaxSize().imePadding().verticalScroll(editorScroll).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        androidx.compose.runtime.key(snapshot) { ScreenHeader(title = stringResource(R.string.scripts_new), onBack = leave) }
         if (state.loading) ActivityIndicator(stringResource(R.string.scripts_loading))
         if (state.error && !state.loading) Text(stringResource(scriptProblemLabel(state.problemCode)),
             color = MaterialTheme.colorScheme.error)
@@ -212,49 +262,59 @@ internal fun ScriptEditor(owner: SessionState.Active, state: ScriptsUiState, dra
             Text(stringResource(R.string.scripts_pending_task, pending.taskId))
         }
         if (state.pending != null || !state.journalAvailable)
-            OutlinedButton(onClick = onVerify, enabled = !state.loading) { Text(stringResource(R.string.scripts_verify)) }
-        RemotePathField(executable, { onDraftChange(draft.copy(executable = it)) }, R.string.guardian_executable,
+            OutlinedButton(onClick = { if (current() && !latestState.loading && confirmLeave == null) onVerify() }, enabled = !state.loading) { Text(stringResource(R.string.scripts_verify)) }
+        RemotePathField(executable, { change(draft.copy(executable = it)) }, R.string.guardian_executable,
             RemotePathKind.File, modifier = Modifier.fillMaxWidth(), enabled = editable)
         Text(stringResource(R.string.guardian_arguments))
         arguments.forEachIndexed { index, value ->
             Row(Modifier.fillMaxWidth()) {
-                OutlinedTextField(value, { next -> onDraftChange(draft.copy(arguments = arguments.mapIndexed { i, old -> if (i == index) next else old })) },
+                OutlinedTextField(value, { next -> change(draft.copy(arguments = arguments.mapIndexed { i, old -> if (i == index) next else old })) },
                     enabled = editable, isError = value.length > 4096 || '\u0000' in value,
                     label = { Text(stringResource(R.string.guardian_argument_number, index + 1)) },
                     modifier = Modifier.weight(1f), maxLines = 4)
-                IconButton(onClick = { onDraftChange(draft.copy(arguments = arguments.filterIndexed { i, _ -> i != index })) },
+                IconButton(onClick = { change(draft.copy(arguments = arguments.filterIndexed { i, _ -> i != index })) },
                     enabled = editable, modifier = Modifier.size(48.dp)) {
                     Icon(Icons.Default.Close, stringResource(R.string.guardian_remove_argument, index + 1))
                 }
             }
         }
         if (!draft.validArguments) Text(stringResource(R.string.scripts_arguments_invalid), color = MaterialTheme.colorScheme.error)
-        OutlinedButton(onClick = { onDraftChange(draft.copy(arguments = arguments + "")) },
+        OutlinedButton(onClick = { if (arguments.size < 64) change(draft.copy(arguments = arguments + "")) },
             enabled = editable && arguments.size < 64) { Text(stringResource(R.string.guardian_add_argument)) }
-        RemotePathField(directory, { onDraftChange(draft.copy(directory = it)) }, R.string.guardian_directory,
+        RemotePathField(directory, { change(draft.copy(directory = it)) }, R.string.guardian_directory,
             RemotePathKind.Directory, modifier = Modifier.fillMaxWidth(), enabled = editable)
-        OutlinedTextField(environment, { onDraftChange(draft.copy(environment = it)) }, enabled = editable,
+        if ('\u0000' in executable || '\u0000' in directory)
+            Text(stringResource(R.string.scripts_paths_invalid), color = MaterialTheme.colorScheme.error)
+        OutlinedTextField(environment, { change(draft.copy(environment = it)) }, enabled = editable,
             isError = environmentValues == null,
             supportingText = { if (environmentValues == null) Text(stringResource(R.string.scripts_environment_invalid)) },
             label = { Text(stringResource(R.string.scripts_environment)) }, modifier = Modifier.fillMaxWidth(), minLines = 3)
-        OutlinedTextField(timeout, { onDraftChange(draft.copy(timeout = it.filter(Char::isDigit))) }, enabled = editable, label = { Text(stringResource(R.string.scripts_timeout)) })
-        OutlinedTextField(runAs, { onDraftChange(draft.copy(runAs = it)) }, enabled = editable, label = { Text(stringResource(R.string.guardian_run_as)) })
-        if (runAs.trim() != owner.userName) {
+        OutlinedTextField(timeout, { change(draft.copy(timeout = it.filter(Char::isDigit))) }, enabled = editable, label = { Text(stringResource(R.string.scripts_timeout)) })
+        OutlinedTextField(runAs, { change(draft.copy(runAs = it)) }, enabled = editable, isError = !draft.validRunAs,
+            label = { Text(stringResource(R.string.guardian_run_as)) },
+            supportingText = { Text(if (draft.validRunAs) stringResource(R.string.scripts_run_as_default, owner.userName)
+                else stringResource(R.string.scripts_run_as_invalid)) })
+        if (approvalRequired) {
             Text(stringResource(R.string.guardian_approval_notice))
-            OutlinedTextField(adminName, { onDraftChange(draft.copy(adminName = it)) }, enabled = editable, label = { Text(stringResource(R.string.guardian_admin_name)) })
-            OutlinedTextField(adminPassword, { adminPassword = it }, enabled = editable, label = { Text(stringResource(R.string.guardian_admin_password)) },
+            OutlinedTextField(adminName, { change(draft.copy(adminName = it)) }, enabled = editable, label = { Text(stringResource(R.string.guardian_admin_name)) })
+            OutlinedTextField(adminPassword, { if (current() && editable && confirmLeave == null && !consumed) adminPassword = it }, enabled = editable, label = { Text(stringResource(R.string.guardian_admin_password)) },
                 visualTransformation = PasswordVisualTransformation())
         }
         Text(stringResource(R.string.scripts_durability))
-        Button(onClick = {
-            val approval = if (runAs.trim() == owner.userName) null else GuardianApproval(adminName, adminPassword.toCharArray())
-            onSubmit(ScriptRequest(executable.trim(), arguments, directory.trim(),
+        val valid = draft.validArguments && draft.validPaths && draft.validRunAs &&
+            timeout.toIntOrNull()?.let { it in 1..3600 } == true && environmentValues != null &&
+            (!approvalRequired || adminName.isNotBlank() && adminPassword.isNotBlank())
+        androidx.compose.runtime.key(snapshot) { Button(onClick = {
+            if (!current() || !editable || confirmLeave != null || consumed || !valid) return@Button
+            consumed = true
+            val approval = if (approvalRequired) GuardianApproval(adminName, adminPassword.toCharArray()) else null
+            onSubmit(ScriptRequest(executable, arguments, directory,
                 requireNotNull(environmentValues),
-                timeout.toInt(), runAs.trim(), approval))
+                timeout.toInt(), draft.executionAccount(owner.userName), approval))
             adminPassword = ""
-        }, enabled = editable && draft.validArguments && executable.isNotBlank() && directory.isNotBlank() && timeout.toIntOrNull()?.let { it in 1..3600 } == true &&
-            environmentValues != null && (runAs.trim() == owner.userName || adminName.isNotBlank() && adminPassword.isNotBlank())) {
+        }, enabled = editable && !consumed && valid) {
             Text(stringResource(R.string.scripts_run))
-        }
+        } }
+    }
     }
 }

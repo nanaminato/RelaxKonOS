@@ -17,6 +17,9 @@
     <string name="scripts_loading">Loading script tasks…</string>
     <string name="scripts_new">New script task</string>
     <string name="scripts_pending_task">Task to verify: %1$s</string>
+    <string name="scripts_paths_invalid">Executable and working directory paths cannot contain NUL. Paths are sent exactly as entered.</string>
+    <string name="scripts_run_as_default">Leave blank to run as your signed-in host account (%1$s).</string>
+    <string name="scripts_run_as_invalid">The host account cannot contain NUL or start with a hyphen.</string>
     <string name="scripts_queued">Queued</string>
     <string name="scripts_run">Run remotely</string>
     <string name="scripts_running">Running</string>

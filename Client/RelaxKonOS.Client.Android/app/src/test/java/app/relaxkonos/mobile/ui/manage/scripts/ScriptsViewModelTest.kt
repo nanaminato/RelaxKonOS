@@ -71,12 +71,87 @@ class ScriptsViewModelTest {
         model.state.value.cancellation?.let(model::cancel)
     }
 
+    @Test fun `identical read failures and new login produce distinct feedback events`() = runTest {
+        val owner = login()
+        listing = { ApiResult.Transport(null) }
+        model.load(owner); runCurrent()
+        val first = model.state.value.feedbackVersion
+        assertTrue(model.state.value.error)
+        model.load(owner); runCurrent()
+        val second = model.state.value.feedbackVersion
+        assertTrue(second > first)
+        assertTrue(model.state.value.error)
+        assertFalse(model.state.value.loading)
+        assertFalse(model.state.value.listVerified)
+        val next = login(); runCurrent(); model.load(next); runCurrent()
+        assertTrue(model.state.value.feedbackVersion > second)
+        assertEquals(0, submissions); assertEquals(0, cancellations)
+    }
+
+    @Test fun `repeated journal failure has new feedback and recovery restores verified reads`() = runTest {
+        val owner = login(); model.load(owner); runCurrent()
+        storage.failRead = true
+        model.load(owner); runCurrent()
+        val first = model.state.value.feedbackVersion
+        assertEquals("scripts.storage_failed", model.state.value.problemCode)
+        model.load(owner); runCurrent()
+        assertTrue(model.state.value.feedbackVersion > first)
+        assertFalse(model.state.value.journalAvailable)
+        assertFalse(model.state.value.loading)
+        assertEquals("scripts.storage_failed", model.state.value.problemCode)
+        storage.failRead = false
+        model.load(owner); runCurrent()
+        assertTrue(model.state.value.journalAvailable)
+        assertTrue(model.state.value.listVerified)
+        assertFalse(model.state.value.error)
+        assertEquals(0, submissions); assertEquals(0, cancellations)
+    }
+
+    @Test fun `slow detail retry does not publish old failure as a new outcome`() = runTest {
+        val owner = login(); listing = { ApiResult.Transport(null) }
+        model.load(owner); runCurrent()
+        val first = model.state.value.feedbackVersion
+        val response = CompletableDeferred<ApiResult<ScriptTaskResult>>()
+        details = { response.await() }
+        model.select("a"); runCurrent()
+        assertEquals(first, model.state.value.feedbackVersion)
+        response.complete(ApiResult.Transport(null)); runCurrent()
+        assertTrue(model.state.value.feedbackVersion > first)
+        assertTrue(model.state.value.error)
+        assertEquals(0, submissions); assertEquals(0, cancellations)
+    }
+
+    @Test fun `old editor operations cannot mutate close or submit a replacement draft`() = runTest {
+        val owner = login(); model.load(owner); runCurrent(); model.openEditor()
+        val old = requireNotNull(model.state.value.draft)
+        model.closeEditor(old); model.openEditor()
+        val current = requireNotNull(model.state.value.draft)
+        model.updateDraft(old, old.copy(executable = "/old"))
+        model.closeEditor(old)
+        val password = "secret".toCharArray()
+        model.submit(old, request(password)); runCurrent()
+        assertSame(current, model.state.value.draft)
+        assertEquals(0, submissions)
+        assertTrue(password.all { it == '\u0000' })
+        model.updateDraft(current, current.copy(executable = "/current"))
+        val changed = requireNotNull(model.state.value.draft)
+        model.submit(current, request()); model.closeEditor(current)
+        assertSame(changed, model.state.value.draft)
+        assertEquals(0, submissions)
+        model.submit(changed, request()); model.submit(changed, request()); runCurrent()
+        assertEquals(1, submissions)
+        assertSame(changed, model.state.value.draft)
+        assertNotNull(model.state.value.pending)
+    }
+
     @Test fun `reopened confirmation rejects old object and sends only once`() = runTest {
         val owner = login(); model.load(owner); runCurrent(); model.select("a"); runCurrent()
         model.requestCancellation(owner, requireNotNull(model.state.value.selected))
         val old = requireNotNull(model.state.value.cancellation)
-        model.dismissCancellation(); model.requestCancellation(owner, old.task)
+        model.dismissCancellation(old); model.requestCancellation(owner, old.task)
         val current = requireNotNull(model.state.value.cancellation)
+        model.dismissCancellation(old); assertSame(current, model.state.value.cancellation)
+        assertEquals(0, cancellations)
         model.cancel(old); assertSame(current, model.state.value.cancellation)
         model.cancel(current); model.cancel(current); runCurrent()
         assertEquals(1, cancellations); assertNotNull(model.state.value.pending)
@@ -127,12 +202,12 @@ class ScriptsViewModelTest {
         model.load(login()); runCurrent(); model.openEditor()
         val password = "private".toCharArray()
         submission = { throw CancellationException("private submit error") }
-        model.submit(request(password)); runCurrent()
+        model.submit(model.state.value.draft, request(password)); runCurrent()
         assertFalse(model.state.value.loading); assertTrue(model.state.value.error)
         assertEquals("scripts.write_unknown", model.state.value.problemCode)
         assertTrue(requireNotNull(model.state.value.pending).attempted)
         assertNotNull(model.state.value.draft); assertTrue(password.all { it == '\u0000' })
-        model.submit(request()); runCurrent(); assertEquals(1, submissions)
+        model.submit(model.state.value.draft, request()); runCurrent(); assertEquals(1, submissions)
         details = { throw CancellationException("private verify error") }
         model.verifyRequest(); runCurrent()
         assertFalse(model.state.value.loading); assertNotNull(model.state.value.pending)
@@ -243,7 +318,7 @@ class ScriptsViewModelTest {
         details = { release.await(); ApiResult.Success(ScriptTaskResult(true, "", task("a", "cancelled"))) }
         confirmCancel("a"); runCurrent()
         assertTrue(model.state.value.loading)
-        confirmCancel("a"); model.submit(request()); runCurrent()
+        confirmCancel("a"); model.submit(model.state.value.draft, request()); runCurrent()
         assertEquals(1, cancellations); assertEquals(0, submissions)
         release.complete(Unit); runCurrent()
         assertFalse(model.state.value.loading)
@@ -255,7 +330,7 @@ class ScriptsViewModelTest {
         model.openEditor()
         submission = { ApiResult.Success(ScriptTaskResult(false, "guardian.script_invalid", null)) }
         val first = "first".toCharArray(); val duplicate = "second".toCharArray()
-        model.submit(request(first)); model.submit(request(duplicate)); runCurrent()
+        model.submit(model.state.value.draft, request(first)); model.submit(model.state.value.draft, request(duplicate)); runCurrent()
         assertEquals(1, submissions)
         assertTrue(first.all { it == '\u0000' }); assertTrue(duplicate.all { it == '\u0000' })
         assertTrue(model.state.value.error)
@@ -290,7 +365,7 @@ class ScriptsViewModelTest {
         model.load(login()); runCurrent()
         model.openEditor()
         val password = "secret".toCharArray()
-        model.submit(request(password)); store.clear(); runCurrent()
+        model.submit(model.state.value.draft, request(password)); store.clear(); runCurrent()
         assertEquals(0, submissions)
         assertTrue(password.all { it == '\u0000' })
     }
@@ -299,7 +374,7 @@ class ScriptsViewModelTest {
         model.load(login()); runCurrent()
         model.openEditor()
         submission = { ApiResult.Success(ScriptTaskResult(true, "", task(submittedKey, "queued"))) }
-        model.submit(request()); model.submit(request()); runCurrent()
+        model.submit(model.state.value.draft, request()); model.submit(model.state.value.draft, request()); runCurrent()
         assertEquals(1, submissions)
         assertNull(model.state.value.draft)
         assertEquals(submittedKey, model.state.value.selected?.id)
@@ -311,12 +386,12 @@ class ScriptsViewModelTest {
         model.load(login()); runCurrent()
         model.openEditor()
         submission = { ApiResult.Success(ScriptTaskResult(true, "", null)) }
-        model.submit(request()); runCurrent()
+        model.submit(model.state.value.draft, request()); runCurrent()
         assertNotNull(model.state.value.draft)
         assertTrue(model.state.value.error)
         assertEquals("scripts.write_unknown", model.state.value.problemCode)
         val password = "secret".toCharArray()
-        model.submit(request(password)); runCurrent()
+        model.submit(model.state.value.draft, request(password)); runCurrent()
         assertEquals(1, submissions)
         assertTrue(password.all { it == '\u0000' })
     }
@@ -324,20 +399,20 @@ class ScriptsViewModelTest {
     @Test fun `transport failure retains failed outcome without accepting or replaying`() = runTest {
         model.load(login()); runCurrent()
         model.openEditor()
-        model.submit(request()); runCurrent()
+        model.submit(model.state.value.draft, request()); runCurrent()
         assertFalse(model.state.value.loading)
         assertNotNull(model.state.value.draft)
         assertEquals("scripts.write_unknown", model.state.value.problemCode)
-        model.submit(request()); runCurrent()
+        model.submit(model.state.value.draft, request()); runCurrent()
         assertEquals(1, submissions)
     }
 
     @Test fun `reentering the same session preserves full draft and unknown feedback`() = runTest {
         val owner = login(); model.load(owner); runCurrent(); model.openEditor()
         val draft = ScriptDraft("other", "/bin/job", listOf("", "first\nsecond", " spaced "), "/work", "KEY=value", "42", "admin")
-        model.updateDraft(draft)
-        model.submit(request()); runCurrent()
-        model.load(owner); model.openEditor(); model.updateDraft(draft.copy(executable = "/changed")); runCurrent()
+        model.updateDraft(model.state.value.draft, draft)
+        model.submit(model.state.value.draft, request()); runCurrent()
+        model.load(owner); model.openEditor(); model.updateDraft(model.state.value.draft, draft.copy(executable = "/changed")); runCurrent()
         assertEquals(draft, model.state.value.draft)
         assertEquals("scripts.write_unknown", model.state.value.problemCode)
         assertTrue(model.state.value.error)
@@ -347,24 +422,24 @@ class ScriptsViewModelTest {
     @Test fun `busy submission refuses draft changes and close then known failure preserves it`() = runTest {
         model.load(login()); runCurrent(); model.openEditor()
         val draft = ScriptDraft("alice", executable = "/bin/job", environment = "invalid line", timeout = "")
-        model.updateDraft(draft)
+        model.updateDraft(model.state.value.draft, draft)
         val release = CompletableDeferred<Unit>()
         submission = { release.await(); ApiResult.Problem(403, "denied", null) }
-        model.submit(request()); runCurrent()
-        model.updateDraft(draft.copy(executable = "changed")); model.closeEditor()
+        model.submit(model.state.value.draft, request()); runCurrent()
+        model.updateDraft(model.state.value.draft, draft.copy(executable = "changed")); model.closeEditor(model.state.value.draft)
         assertEquals(draft, model.state.value.draft)
         release.complete(Unit); runCurrent()
         assertEquals(draft, model.state.value.draft)
         assertFalse(model.state.value.loading)
-        model.updateDraft(draft.copy(executable = "/corrected"))
+        model.updateDraft(model.state.value.draft, draft.copy(executable = "/corrected"))
         assertEquals("/corrected", model.state.value.draft?.executable)
-        model.closeEditor()
+        model.closeEditor(model.state.value.draft)
         assertNull(model.state.value.draft)
     }
 
     @Test fun `new account removes old draft and opens only its own default identity`() = runTest {
         model.load(login()); runCurrent(); model.openEditor()
-        model.updateDraft(ScriptDraft("other", executable = "/private/job", adminName = "admin"))
+        model.updateDraft(model.state.value.draft, ScriptDraft("other", executable = "/private/job", adminName = "admin"))
         val next = login("bob"); runCurrent()
         assertNull(model.state.value.draft)
         model.load(next); runCurrent(); model.openEditor()
@@ -383,8 +458,8 @@ class ScriptsViewModelTest {
 
     @Test fun `unknown submission is recovered only by reading its exact request ID`() = runTest {
         model.load(login()); runCurrent(); model.openEditor()
-        model.updateDraft(ScriptDraft("alice", executable = "/bin/job"))
-        model.submit(request()); runCurrent()
+        model.updateDraft(model.state.value.draft, ScriptDraft("alice", executable = "/bin/job"))
+        model.submit(model.state.value.draft, request()); runCurrent()
         val pending = requireNotNull(model.state.value.pending)
         assertEquals(submittedKey, pending.taskId)
         val lookedUp = mutableListOf<String>()
@@ -399,8 +474,8 @@ class ScriptsViewModelTest {
 
     @Test fun `missing mismatched and failed recovery preserve original pending request and draft`() = runTest {
         model.load(login()); runCurrent(); model.openEditor()
-        model.updateDraft(ScriptDraft("alice", executable = "/bin/job"))
-        model.submit(request()); runCurrent()
+        model.updateDraft(model.state.value.draft, ScriptDraft("alice", executable = "/bin/job"))
+        model.submit(model.state.value.draft, request()); runCurrent()
         val pending = model.state.value.pending; val draft = model.state.value.draft
         for (result in listOf(ApiResult.Success(ScriptTaskResult(false, "guardian.script_not_found", null)),
             ApiResult.Success(ScriptTaskResult(true, "", task("other"))), ApiResult.Transport(null))) {
@@ -415,8 +490,8 @@ class ScriptsViewModelTest {
 
     @Test fun `list refresh cannot unlock unknown request when exact lookup is missing`() = runTest {
         val owner = login(); model.load(owner); runCurrent(); model.openEditor()
-        model.submit(request()); runCurrent(); val pending = model.state.value.pending
-        model.closeEditor()
+        model.submit(model.state.value.draft, request()); runCurrent(); val pending = model.state.value.pending
+        model.closeEditor(model.state.value.draft)
         details = { ApiResult.Success(ScriptTaskResult(false, "guardian.script_not_found", null)) }
         model.load(owner); runCurrent(); model.openEditor(); confirmCancel("a"); runCurrent()
         assertEquals(pending, model.state.value.pending)
@@ -442,19 +517,19 @@ class ScriptsViewModelTest {
     @Test fun `server error and agent timeout preserve request ID instead of granting replay`() = runTest {
         model.load(login()); runCurrent(); model.openEditor()
         submission = { ApiResult.Problem(500, "server.error", null) }
-        model.submit(request()); runCurrent()
+        model.submit(model.state.value.draft, request()); runCurrent()
         assertEquals(submittedKey, model.state.value.pending?.taskId)
-        model.submit(request()); runCurrent(); assertEquals(1, submissions)
+        model.submit(model.state.value.draft, request()); runCurrent(); assertEquals(1, submissions)
         val next = login("bob"); runCurrent(); model.load(next); runCurrent(); model.openEditor()
         submission = { ApiResult.Success(ScriptTaskResult(false, "guardian.agent_timeout", null)) }
-        model.submit(request()); runCurrent()
+        model.submit(model.state.value.draft, request()); runCurrent()
         assertEquals(submittedKey, model.state.value.pending?.taskId)
         assertEquals("scripts.write_unknown", model.state.value.problemCode)
     }
 
     @Test fun `recreated model recovers persisted request ID with no new submission`() = runTest {
         val owner = login(); model.load(owner); runCurrent(); model.openEditor()
-        model.submit(request()); runCurrent(); val pending = model.state.value.pending
+        model.submit(model.state.value.draft, request()); runCurrent(); val pending = model.state.value.pending
         store.clear(); model = newModel(); store.put("recreated", model)
         details = { ApiResult.Success(ScriptTaskResult(false, "guardian.script_not_found", null)) }
         model.load(owner); runCurrent()
@@ -472,21 +547,21 @@ class ScriptsViewModelTest {
         val owner = login(); model.load(owner); runCurrent(); model.openEditor()
         storage.failWrite = true
         val password = "secret".toCharArray()
-        model.submit(request(password)); runCurrent()
+        model.submit(model.state.value.draft, request(password)); runCurrent()
         assertEquals(0, submissions)
         assertTrue(password.all { it == '\u0000' })
         assertFalse(model.state.value.journalAvailable)
         assertNotNull(model.state.value.draft)
-        model.submit(request()); runCurrent(); assertEquals(0, submissions)
+        model.submit(model.state.value.draft, request()); runCurrent(); assertEquals(0, submissions)
         storage.failWrite = false; model.verifyRequest(); runCurrent()
         assertTrue(model.state.value.journalAvailable)
-        model.submit(request()); runCurrent(); assertEquals(1, submissions)
+        model.submit(model.state.value.draft, request()); runCurrent(); assertEquals(1, submissions)
         assertNotNull(ScriptRequestJournal(storage).pending(owner))
     }
 
     @Test fun `journal read failure blocks new writes and later restores original pending ID`() = runTest {
         val owner = login(); model.load(owner); runCurrent(); model.openEditor()
-        model.submit(request()); runCurrent(); val pending = model.state.value.pending
+        model.submit(model.state.value.draft, request()); runCurrent(); val pending = model.state.value.pending
         store.clear(); model = newModel(); store.put("recreated", model)
         storage.failRead = true; model.load(owner); runCurrent(); model.openEditor(); confirmCancel("a")
         assertFalse(model.state.value.journalAvailable)
@@ -501,7 +576,7 @@ class ScriptsViewModelTest {
     @Test fun `failure to clear accepted journal keeps request blocked until verified cleanup succeeds`() = runTest {
         val owner = login(); model.load(owner); runCurrent(); model.openEditor()
         submission = { storage.failWrite = true; ApiResult.Success(ScriptTaskResult(true, "", task(submittedKey))) }
-        model.submit(request()); runCurrent()
+        model.submit(model.state.value.draft, request()); runCurrent()
         assertNotNull(model.state.value.pending); assertNotNull(model.state.value.draft)
         assertFalse(model.state.value.journalAvailable); assertFalse(model.state.value.loading)
         storage.failWrite = false
@@ -515,7 +590,7 @@ class ScriptsViewModelTest {
     @Test fun `recreated model clears a request cancelled before its send coroutine starts`() = runTest {
         val owner = login(); model.load(owner); runCurrent(); model.openEditor()
         val password = "secret".toCharArray()
-        model.submit(request(password))
+        model.submit(model.state.value.draft, request(password))
         assertEquals(false, ScriptRequestJournal(storage).pending(owner)?.attempted)
         store.clear(); runCurrent()
         model = newModel(); store.put("recreated", model); model.load(owner); runCurrent()
@@ -532,7 +607,7 @@ class ScriptsViewModelTest {
         val owner = login(); model.load(owner); runCurrent(); model.openEditor()
         storage.failWriteAt = 2
         val password = "secret".toCharArray()
-        model.submit(request(password)); runCurrent()
+        model.submit(model.state.value.draft, request(password)); runCurrent()
         assertEquals(0, submissions)
         assertEquals(false, ScriptRequestJournal(storage).pending(owner)?.attempted)
         assertFalse(model.state.value.journalAvailable)
@@ -542,7 +617,7 @@ class ScriptsViewModelTest {
         assertNull(ScriptRequestJournal(storage).pending(owner))
         assertTrue(model.state.value.journalAvailable)
         assertEquals(0, reads)
-        model.submit(request()); runCurrent()
+        model.submit(model.state.value.draft, request()); runCurrent()
         assertEquals(1, submissions)
         assertEquals(true, ScriptRequestJournal(storage).pending(owner)?.attempted)
     }

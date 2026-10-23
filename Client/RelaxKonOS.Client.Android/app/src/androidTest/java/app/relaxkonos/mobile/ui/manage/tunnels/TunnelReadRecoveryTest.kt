@@ -4,6 +4,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.*
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelStore
 import androidx.test.platform.app.InstrumentationRegistry
@@ -22,10 +23,12 @@ import org.junit.Rule
 import org.junit.Test
 
 class TunnelReadRecoveryTest {
-    @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule(order = 0) val diagnostics = app.relaxkonos.mobile.testing.ReviewWaitDiagnostics()
+    @get:Rule(order = 1) val rule = createAndroidComposeRule<ComponentActivity>()
     private val store = ViewModelStore()
     private lateinit var model: TunnelsViewModel
     private lateinit var owner: SessionState.Active
+    private fun text(id: Int) = InstrumentationRegistry.getInstrumentation().targetContext.getString(id)
     @Volatile private var frpsReads = 0
     @Volatile private var profileReads = 0
     @Volatile private var installationReads = 0
@@ -37,6 +40,8 @@ class TunnelReadRecoveryTest {
     private var installationStarts = 0
     private val cancelledInstallationIds = mutableListOf<String>()
     private var lifecycleWrites = 0
+    private val profileWrites = mutableListOf<TunnelProfileRequest>()
+    private val definitionWrites = mutableListOf<TunnelDefinitionRequest>()
     private val queriedInstallationIds = mutableListOf<String>()
     private val profileId = "22222222-2222-2222-2222-222222222222"
     private val profile = TunnelProfile(profileId, "review-edge", "frp.example.test", 7000, TunnelAuth.None,
@@ -67,6 +72,12 @@ class TunnelReadRecoveryTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val app = context.applicationContext as RelaxKonApplication
         val gateway = object : RelaxKonGateway by app.container.gateway {
+            override suspend fun saveTunnelProfile(serverUrl: String, accessToken: String, id: String?, request: TunnelProfileRequest): ApiResult<TunnelProfile> {
+                profileWrites += request; return ApiResult.Transport(null)
+            }
+            override suspend fun saveTunnelDefinition(serverUrl: String, accessToken: String, id: String?, request: TunnelDefinitionRequest): ApiResult<TunnelDefinition> {
+                definitionWrites += request; return ApiResult.Transport(null)
+            }
             override suspend fun login(serverUrl: String, identifier: String, password: CharArray) = ApiResult.Success(
                 LoginSession("review", "review", ServerDescriptor("linux", setOf(ServerCapabilities.TUNNELS), true),
                     AuthTokens("test-access", "test-refresh", null, null), workspaceId = "11111111-1111-1111-1111-111111111111"))
@@ -130,6 +141,125 @@ class TunnelReadRecoveryTest {
     private fun refresh() {
         rule.runOnUiThread { model.refresh() }
         rule.waitUntil(5_000) { !model.state.busy }
+    }
+
+    private fun click(node: SemanticsNodeInteraction) = requireNotNull(node.fetchSemanticsNode()
+        .config[androidx.compose.ui.semantics.SemanticsActions.OnClick].action)
+    private fun editorConfirm() = rule.onAllNodesWithText(text(R.string.tunnels_confirm)).filter(hasClickAction()).onLast()
+
+    @Test fun profileSaveUsesCurrentSnapshotAndOldDismissCannotConsumeReopenedReview() {
+        start(); showPage()
+        rule.runOnIdle { model.editProfile(profile) }
+        val oldSave = click(rule.onNodeWithText(text(R.string.common_save)))
+        rule.onNodeWithText(text(R.string.tunnels_name)).performTextReplacement("current-profile")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        rule.runOnIdle { oldSave(); assertTrue(profileWrites.isEmpty()) }
+        rule.onNodeWithText(text(R.string.tunnels_profile_save_confirm)).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.common_save)).performClick()
+        val oldDismiss = click(rule.onNodeWithText(text(R.string.common_cancel)))
+        rule.onNodeWithText(text(R.string.common_cancel)).performClick()
+        rule.onNodeWithText(text(R.string.common_save)).performClick()
+        rule.runOnIdle { oldDismiss(); assertTrue(profileWrites.isEmpty()) }
+        rule.onNodeWithText(text(R.string.tunnels_profile_save_confirm)).assertIsDisplayed()
+        val submit = click(editorConfirm())
+        rule.runOnIdle { submit(); submit() }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.pending.isNotEmpty() }
+        rule.runOnIdle {
+            assertEquals(listOf("current-profile"), profileWrites.map { it.name })
+            assertEquals(1L, profileWrites.single().expectedRevision)
+            assertEquals("current-profile", model.state.profileDraft?.name)
+            assertEquals(1, model.state.pending.size)
+        }
+        rule.onNodeWithText(text(R.string.common_save)).assertIsNotEnabled()
+        rule.onNodeWithText(text(R.string.tunnels_uncertain)).assertExists()
+    }
+
+    @Test fun definitionReplacementRevokesReviewAndCurrentSavePreservesPorts() {
+        start(); showPage()
+        rule.runOnIdle { model.editDefinition(profileId, definition) }
+        rule.onNodeWithText(text(R.string.common_save)).performClick()
+        val oldSubmit = click(editorConfirm())
+        rule.runOnIdle {
+            val old = requireNotNull(model.state.definitionDraft)
+            model.updateDefinition(old, old.copy(name = "current-tcp", localPort = "9090"))
+        }
+        rule.onNodeWithText(text(R.string.tunnels_definition_save_confirm)).assertDoesNotExist()
+        rule.runOnIdle { oldSubmit(); assertTrue(definitionWrites.isEmpty()) }
+        rule.onNodeWithText(text(R.string.common_save)).performClick()
+        val submit = click(editorConfirm())
+        rule.runOnIdle { submit(); submit() }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.pending.isNotEmpty() }
+        rule.runOnIdle {
+            assertEquals(1, definitionWrites.size)
+            val sent = definitionWrites.single()
+            assertEquals("current-tcp", sent.name); assertEquals(9090, sent.localPort); assertEquals(7001, sent.remotePort)
+            assertEquals(profileId, sent.profileId); assertEquals(1L, sent.expectedRevision)
+            assertEquals("9090", model.state.definitionDraft?.localPort)
+        }
+        rule.onNodeWithText(text(R.string.common_save)).assertIsNotEnabled()
+    }
+
+    @Test fun definitionPauseAndResumeRejectOldFieldsSaveCloseAndReload() {
+        start(); showPage()
+        rule.runOnIdle { model.editDefinition(profileId, definition) }
+        val draft = requireNotNull(model.state.definitionDraft)
+        val field = requireNotNull(rule.onNode(hasText(text(R.string.tunnels_name)) and hasSetTextAction())
+            .fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsActions.SetText].action)
+        val save = click(rule.onNodeWithText(text(R.string.common_save)))
+        val close = click(rule.onNodeWithText(text(R.string.common_close)))
+        val reload = click(rule.onNodeWithText(text(R.string.tunnels_reload)).performScrollTo())
+        val before = profileReads
+        fun oldCallbacks() {
+            field(androidx.compose.ui.text.AnnotatedString("stale")); save(); close(); reload()
+            assertSame(draft, model.state.definitionDraft); assertTrue(definitionWrites.isEmpty()); assertEquals(before, profileReads)
+        }
+        val resumed = java.util.concurrent.atomic.AtomicBoolean()
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) { oldCallbacks(); resumed.set(true) } }
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+            rule.runOnUiThread { oldCallbacks(); rule.activity.lifecycle.addObserver(observer) }
+            rule.mainClock.autoAdvance = true
+            rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+            rule.waitUntil(5_000) { resumed.get() }
+        } finally {
+            rule.mainClock.autoAdvance = true
+            rule.runOnUiThread { rule.activity.lifecycle.removeObserver(observer) }
+        }
+        rule.runOnIdle { oldCallbacks() }
+        rule.onNodeWithText(text(R.string.tunnels_definition_save_confirm)).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.tunnels_discard_confirm)).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.tunnels_reload_confirm)).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.common_save)).performClick()
+        val current = click(editorConfirm())
+        rule.runOnIdle { current(); current() }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.pending.isNotEmpty() }
+        rule.runOnIdle { assertEquals(1, definitionWrites.size); assertSame(draft, model.state.definitionDraft) }
+    }
+
+    @Test fun closedProfileAndDefinitionNodesCannotChangeReopenedEditors() {
+        start(); showPage()
+        rule.runOnIdle { model.editProfile(profile) }
+        val profileField = requireNotNull(rule.onNode(hasText(text(R.string.tunnels_name)) and hasSetTextAction())
+            .fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsActions.SetText].action)
+        val profileSave = click(rule.onNodeWithText(text(R.string.common_save)))
+        val profileClose = click(rule.onNodeWithText(text(R.string.common_close)))
+        rule.runOnIdle { model.closeProfile(requireNotNull(model.state.profileDraft)); model.editProfile(profile) }
+        val freshProfile = requireNotNull(model.state.profileDraft)
+        rule.runOnIdle { profileField(androidx.compose.ui.text.AnnotatedString("stale")); profileSave(); profileClose(); assertSame(freshProfile, model.state.profileDraft) }
+        rule.onNodeWithText(text(R.string.tunnels_profile_save_confirm)).assertDoesNotExist()
+        rule.runOnIdle { model.closeProfile(freshProfile); model.editDefinition(profileId, definition) }
+        val field = requireNotNull(rule.onNode(hasText(text(R.string.tunnels_name)) and hasSetTextAction())
+            .fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsActions.SetText].action)
+        val save = click(rule.onNodeWithText(text(R.string.common_save)))
+        val close = click(rule.onNodeWithText(text(R.string.common_close)))
+        rule.runOnIdle { model.closeDefinition(requireNotNull(model.state.definitionDraft)); model.editDefinition(profileId, definition) }
+        val fresh = requireNotNull(model.state.definitionDraft)
+        rule.runOnIdle {
+            field(androidx.compose.ui.text.AnnotatedString("stale")); save(); close(); profileSave(); profileClose()
+            assertSame(fresh, model.state.definitionDraft); assertTrue(profileWrites.isEmpty()); assertTrue(definitionWrites.isEmpty())
+        }
+        rule.onNodeWithText(text(R.string.tunnels_definition_save_confirm)).assertDoesNotExist()
     }
 
     @Test fun installationCancellationRejectsDismissedAndReopenedReviewsAndSendsOnce() {
@@ -233,7 +363,7 @@ class TunnelReadRecoveryTest {
         val initial = frpsReads
         rule.waitUntil(8_000) { frpsReads > initial && !model.state.busy }
         rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
-        rule.waitForIdle()
+        rule.runOnUiThread { assertEquals(Lifecycle.State.STARTED, rule.activity.lifecycle.currentState) }
         rule.waitUntil(5_000) { !model.state.busy }
         val paused = frpsReads
         Thread.sleep(3_800)
@@ -253,7 +383,7 @@ class TunnelReadRecoveryTest {
             assertFalse("Observation failed: ${model.state.problemCode}, installationVerified=${model.state.installationVerified}", model.state.uncertain)
         }
         rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
-        rule.waitForIdle()
+        rule.runOnUiThread { assertEquals(Lifecycle.State.STARTED, rule.activity.lifecycle.currentState) }
         rule.waitUntil(5_000) { !model.state.busy }
         val paused = reads()
         Thread.sleep(3_800)
@@ -369,7 +499,7 @@ class TunnelReadRecoveryTest {
         Thread.sleep(3_800)
         assertEquals(before, frpsReads)
         rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
-        rule.waitForIdle()
+        rule.runOnUiThread { assertEquals(Lifecycle.State.STARTED, rule.activity.lifecycle.currentState) }
         rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
         rule.onNodeWithText(text(R.string.frps_stop_confirm)).assertDoesNotExist()
         rule.onNodeWithText(text(R.string.frps_stop)).performScrollTo().performClick()
@@ -393,7 +523,7 @@ class TunnelReadRecoveryTest {
         Thread.sleep(3_800)
         assertEquals(before, profileReads)
         rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
-        rule.waitForIdle()
+        rule.runOnUiThread { assertEquals(Lifecycle.State.STARTED, rule.activity.lifecycle.currentState) }
         rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
         rule.onNodeWithText(text(R.string.tunnels_stop_confirm)).assertDoesNotExist()
         rule.onNodeWithText(text(R.string.tunnels_stop)).performScrollTo().performClick()

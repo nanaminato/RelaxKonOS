@@ -22,7 +22,7 @@ internal data class TunnelsState(val busy: Boolean = false, val facts: ApiResult
     val frps: ApiResult<ManagedFrps>? = null, val frpsAtMillis: Long? = null, val frpsDraft: ManagedFrpsDraft? = null,
     val initialFrps: ManagedFrpsDraft? = null, val frpsAction: ApiResult<TunnelResult>? = null,
     val frpsLogs: ApiResult<List<TunnelLog>>? = null, val frpsAudit: ApiResult<List<TunnelAudit>>? = null, val frpsDiagnosticsAtMillis: Long? = null,
-    val problemCode: String? = null, val uncertain: Boolean = false)
+    val problemCode: String? = null, val uncertain: Boolean = false, val editorVersion: Long = 0)
 internal class TunnelInstallationCancellation(val owner: SessionState.Active, val operation: InstallationOperation)
 internal class TunnelsViewModel(private val session: AuthSession, private val tunnels: TunnelRepository,
     private val installations: InstallationRepository, private val operationIndex: OperationIndex,
@@ -64,6 +64,7 @@ internal class TunnelsViewModel(private val session: AuthSession, private val tu
     private var owner: SessionState.Active? = null
     private var intent: InstallationSubmission? = null
     private var workGeneration = 0L
+    private var editorSequence = 0L
     var state by mutableStateOf(TunnelsState())
         private set
     var sessionEpoch by mutableIntStateOf(0)
@@ -97,36 +98,53 @@ internal class TunnelsViewModel(private val session: AuthSession, private val tu
             pendingInstallation = installations.pending(active).any { it.service == InstallationService.Frp })
     }
     fun select(id: String?) { if (!state.busy) state = state.copy(selectedId = id, logs = null, logsAtMillis = null, action = null) }
-    fun editProfile(profile: TunnelProfile? = null) { if (!state.busy && state.pending.isEmpty()) {
+    fun profileIsCurrent(expected: TunnelProfileDraft?) = owner != null && activeSession === owner && expected != null && state.profileDraft === expected
+    fun definitionIsCurrent(expected: TunnelDefinitionDraft?) = owner != null && activeSession === owner && expected != null && state.definitionDraft === expected
+    fun editProfile(profile: TunnelProfile? = null) { if (activeSession === owner && owner != null && !state.busy && !state.editorOpen && state.pending.isEmpty()) {
         val draft = profile?.let(TunnelProfileDraft::from) ?: TunnelProfileDraft()
-        state = state.copy(profileDraft = draft, initialProfile = draft, detected = null)
+        state = state.copy(profileDraft = draft, initialProfile = draft, detected = null, editorVersion = ++editorSequence)
     } }
-    fun updateProfile(draft: TunnelProfileDraft) { if (!state.busy && state.pending.isEmpty()) state = state.copy(profileDraft = draft, detected = null) }
-    fun closeProfile() { if (!state.busy) state = state.copy(profileDraft = null, initialProfile = null, detected = null) }
-    fun editDefinition(profileId: String, definition: TunnelDefinition? = null) { if (!state.busy && state.pending.isEmpty()) {
+    fun updateProfile(expected: TunnelProfileDraft, draft: TunnelProfileDraft) { if (profileIsCurrent(expected) && !state.busy && state.pending.isEmpty()) state = state.copy(profileDraft = draft, detected = null) }
+    fun closeProfile(expected: TunnelProfileDraft) { if (profileIsCurrent(expected) && !state.busy) state = state.copy(profileDraft = null, initialProfile = null, detected = null) }
+    fun editDefinition(profileId: String, definition: TunnelDefinition? = null) { if (activeSession === owner && owner != null && !state.busy && !state.editorOpen && state.pending.isEmpty()) {
         val draft = definition?.let(TunnelDefinitionDraft::from) ?: TunnelDefinitionDraft(profileId = profileId)
-        state = state.copy(definitionDraft = draft, initialDefinition = draft)
+        state = state.copy(definitionDraft = draft, initialDefinition = draft, editorVersion = ++editorSequence)
     } }
-    fun updateDefinition(draft: TunnelDefinitionDraft) { if (!state.busy && state.pending.isEmpty()) state = state.copy(definitionDraft = draft) }
-    fun closeDefinition() { if (!state.busy) state = state.copy(definitionDraft = null, initialDefinition = null) }
-    fun saveProfile() = work { active ->
-        val draft = state.profileDraft ?: return@work; val request = draft.request() ?: return@work
-        val result = tunnels.saveProfile(active, draft.id, request); verify(active); failure(result)
+    fun updateDefinition(expected: TunnelDefinitionDraft, draft: TunnelDefinitionDraft) { if (definitionIsCurrent(expected) && !state.busy && state.pending.isEmpty()) state = state.copy(definitionDraft = draft) }
+    fun closeDefinition(expected: TunnelDefinitionDraft) { if (definitionIsCurrent(expected) && !state.busy) state = state.copy(definitionDraft = null, initialDefinition = null) }
+    fun saveProfile(expected: TunnelProfileDraft) {
+        if (!profileIsCurrent(expected) || state.busy || state.pending.isNotEmpty()) return
+        val request = expected.request() ?: return
+        work { active ->
+        if (!profileIsCurrent(expected)) return@work
+        val result = tunnels.saveProfile(active, expected.id, request); verify(active); failure(result)
         state = state.copy(pending = tunnels.pending(active))
         if (result is ApiResult.Success) { state = state.copy(profileDraft = null, initialProfile = null, selectedId = result.value.id); load(active) }
-    }
-    fun saveDefinition() = work { active ->
-        val draft = state.definitionDraft ?: return@work; val request = draft.request() ?: return@work
-        val result = tunnels.saveDefinition(active, draft.id, request); verify(active); failure(result)
+    } }
+    fun saveDefinition(expected: TunnelDefinitionDraft) {
+        if (!definitionIsCurrent(expected) || state.busy || state.pending.isNotEmpty()) return
+        val request = expected.request() ?: return
+        val profiles = (state.facts as? ApiResult.Success)?.value?.profiles.orEmpty()
+        if (profiles.none { it.id == expected.profileId }) return
+        work { active ->
+        if (!definitionIsCurrent(expected)) return@work
+        val result = tunnels.saveDefinition(active, expected.id, request); verify(active); failure(result)
         state = state.copy(pending = tunnels.pending(active))
         if (result is ApiResult.Success) { state = state.copy(definitionDraft = null, initialDefinition = null); load(active) }
+    } }
+    fun reloadProfile(expected: TunnelProfileDraft) {
+        if (profileIsCurrent(expected) && !state.busy && state.pending.isEmpty()) reloadDraft(expected, null)
     }
-    fun reloadDraft() = work { active ->
+    fun reloadDefinition(expected: TunnelDefinitionDraft) {
+        if (definitionIsCurrent(expected) && !state.busy && state.pending.isEmpty()) reloadDraft(null, expected)
+    }
+    private fun reloadDraft(profile: TunnelProfileDraft?, definition: TunnelDefinitionDraft?) = work { active ->
+        if (!profileIsCurrent(profile) && !definitionIsCurrent(definition)) return@work
         load(active)
         if (state.pending.isNotEmpty()) return@work
         val facts = (state.facts as? ApiResult.Success)?.value ?: return@work
-        state.profileDraft?.id?.let { id -> facts.profiles.firstOrNull { it.id == id }?.let { current -> val draft = TunnelProfileDraft.from(current); state = state.copy(profileDraft = draft, initialProfile = draft) } }
-        state.definitionDraft?.id?.let { id -> facts.definitions.firstOrNull { it.id == id }?.let { current -> val draft = TunnelDefinitionDraft.from(current); state = state.copy(definitionDraft = draft, initialDefinition = draft) } }
+        if (profileIsCurrent(profile)) profile?.id?.let { id -> facts.profiles.firstOrNull { it.id == id }?.let { current -> val draft = TunnelProfileDraft.from(current); state = state.copy(profileDraft = draft, initialProfile = draft, editorVersion = ++editorSequence) } }
+        if (definitionIsCurrent(definition)) definition?.id?.let { id -> facts.definitions.firstOrNull { it.id == id }?.let { current -> val draft = TunnelDefinitionDraft.from(current); state = state.copy(definitionDraft = draft, initialDefinition = draft, editorVersion = ++editorSequence) } }
     }
     fun deleteProfile(profile: TunnelProfile) = mutation { active -> tunnels.deleteProfile(active, profile, elevationAnswers) }
     fun deleteDefinition(definition: TunnelDefinition) = mutation { active -> tunnels.deleteDefinition(active, definition) }
@@ -195,7 +213,10 @@ internal class TunnelsViewModel(private val session: AuthSession, private val tu
         state = state.copy(frpsLogs = logs, frpsAudit = audit, frpsDiagnosticsAtMillis = System.currentTimeMillis())
         failure(if (logs !is ApiResult.Success) logs else audit)
     }
-    fun detect(path: String) = work { active -> val result = tunnels.detect(active, path); verify(active); state = state.copy(detected = result); failure(result) }
+    fun detect(expected: TunnelProfileDraft) {
+        if (!profileIsCurrent(expected) || state.busy || state.pending.isNotEmpty() || expected.mode != TunnelRuntimeMode.External || !TunnelInputs.absolutePath(expected.path.trim())) return
+        work { active -> if (!profileIsCurrent(expected)) return@work; val result = tunnels.detect(active, expected.path.trim()); verify(active); state = state.copy(detected = result); failure(result) }
+    }
     fun logs(profileId: String) = work { active -> val result = tunnels.logs(active, profileId); verify(active); state = state.copy(logs = result, logsAtMillis = System.currentTimeMillis()); failure(result) }
     fun download(version: String) = work { active -> val result = tunnels.download(active, version); verify(active); state = state.copy(download = result); failure(result) }
     fun clearReference() { if (!state.busy && intent == null) state = state.copy(reference = null) }
