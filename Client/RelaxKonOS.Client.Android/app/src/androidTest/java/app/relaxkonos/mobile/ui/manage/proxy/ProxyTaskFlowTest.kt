@@ -52,6 +52,7 @@ class ProxyTaskFlowTest {
     private val profileSaves = mutableListOf<String>()
     private val imports = mutableListOf<ProxyImportRequest>()
     private val yamlSaves = mutableListOf<String>()
+    private val settingsSaves = mutableListOf<ProxySettings>()
     private var terminalRecovery = false
     private val operationTargets = mutableListOf<String>()
     private var showProfile = false
@@ -62,6 +63,13 @@ class ProxyTaskFlowTest {
     @Volatile private var logReads = 0
     private var logFailure = false
     private var tasks = true
+    private var resourcesAvailable = false
+    private var resourceWrites = 0
+    private var runtimeAvailable = false
+    private var runtimePlanReads = 0
+    private var runtimeRecoveryId: String? = null
+    private val runtimeRecoveryWrites = mutableListOf<Triple<String, String, Boolean>>()
+    private val runtimeSubmissions = mutableListOf<ManagedRuntimeInstallationRequest>()
     private fun storage() = object : InstallationRequestStorage {
         var bytes: ByteArray? = null
         override fun read() = bytes
@@ -96,14 +104,56 @@ class ProxyTaskFlowTest {
             override suspend fun proxyRouting(serverUrl: String, accessToken: String) = ApiResult.Success(ProxyRoutingMode.Rule)
             override suspend fun proxyDownloadOptions(serverUrl: String, accessToken: String) = ApiResult.Success(downloadOptions)
             override suspend fun proxySettings(serverUrl: String, accessToken: String) = ApiResult.Success(ProxySettings(false, false, true, false, false, "info", 7890, false, "127.0.0.1", null, null))
+            override suspend fun saveProxySettings(serverUrl: String, accessToken: String, settings: ProxySettings): ApiResult<Unit> {
+                settingsSaves += settings; return ApiResult.Success(Unit)
+            }
             override suspend fun proxyRecovery(serverUrl: String, accessToken: String) = ApiResult.Success(ProxyRecovery(false, false, null, ""))
-            override suspend fun runtimeResources(serverUrl: String, accessToken: String) = ApiResult.Success(ManagedRuntimeResources(null, emptyList(), "runtime.installation_absent"))
+            override suspend fun runtimeResources(serverUrl: String, accessToken: String) = ApiResult.Success(
+                if (resourcesAvailable) ManagedRuntimeResources("00112233-4455-6677-8899-aabbccddeeff",
+                    listOf("geoip.metadb", "geoip.dat", "geosite.dat", "country.mmdb", "GeoLite2-ASN.mmdb").map {
+                        ManagedRuntimeResource(it, "missing", null, null, null)
+                    }, null)
+                else ManagedRuntimeResources(null, emptyList(), "runtime.installation_absent"))
+            override suspend fun managedRuntime(serverUrl: String, accessToken: String, method: String, route: String, body: JsonBody?, key: String?): ApiResult<String> {
+                if (runtimeAvailable) {
+                    if (method == "GET") return ApiResult.Success(when (route) {
+                        ManagedRuntimeRoutes.INSTALLATION -> """{"installation":{"installationId":"00112233-4455-6677-8899-aabbccddeeff","hostId":"review-host","runtimeId":"mihomo","ownership":"managed","stateRevision":1,"activeReleaseId":"review-current","recoveryRequired":${runtimeRecoveryId != null}},"pendingOperationId":null,"measuredVersion":"1.19.10","problemCode":null}"""
+                        ManagedRuntimeRoutes.SOURCES -> "[]"
+                        ManagedRuntimeRoutes.RECOVERY -> runtimeRecoveryId?.let { id ->
+                            """{"required":true,"operationId":"$id","problemCode":"runtime.recovery_required","recoveryProblemCode":"runtime.compensation_failed","service":{"running":false},"serviceProblem":null}"""
+                        } ?: """{"required":false}"""
+                        else -> error("Unexpected runtime read: $route")
+                    })
+                    if (route.startsWith(ManagedRuntimeRoutes.RECOVERY + "/")) {
+                        assertEquals("POST", method)
+                        val value = org.json.JSONObject(requireNotNull(body).toByteArray().decodeToString())
+                        runtimeRecoveryWrites += Triple(route.substringAfterLast('/'), value.getString("operationId"), value.getBoolean("confirmed"))
+                        return ApiResult.Transport(null)
+                    }
+                    assertEquals("POST", method); assertEquals(ManagedRuntimeRoutes.PLAN, route)
+                    runtimePlanReads++
+                    val request = org.json.JSONObject(requireNotNull(body).toByteArray().decodeToString()).getJSONObject("request")
+                    assertEquals("uninstall", request.getString("change")); assertEquals(key, request.getString("idempotencyKey"))
+                    val plan = org.json.JSONObject().put("runtimeId", "mihomo").put("request", request)
+                        .put("previousReleaseId", "review-current").put("release", org.json.JSONObject.NULL)
+                    return ApiResult.Success(org.json.JSONObject().put("allowed", true).put("problems", org.json.JSONArray())
+                        .put("dependencies", org.json.JSONObject.NULL).put("plan", plan).toString())
+                }
+                assertEquals("POST", method); assertEquals(ManagedRuntimeRoutes.RESOURCES, route)
+                resourceWrites++; return ApiResult.Transport(null)
+            }
             override suspend fun proxyOperation(serverUrl: String, accessToken: String, id: String): ApiResult<ProxyOperation> {
                 pollClockTimes += rule.mainClock.currentTime; operationReads++; operationTargets += id; return ApiResult.Success(if (terminalRecovery) operation.copy(operationId = id, state = ProxyOperationState.Succeeded) else operation)
             }
             override suspend fun activeInstallation(serverUrl: String, accessToken: String, service: InstallationService): ApiResult<InstallationOperation?> = ApiResult.Success(if (tasks) current else null)
             override suspend fun installation(serverUrl: String, accessToken: String, operationId: String): ApiResult<InstallationOperation> {
                 pollClockTimes += rule.mainClock.currentTime; installationReads++; return ApiResult.Success(current.copy(service = installationService))
+            }
+            override suspend fun startInstallation(serverUrl: String, accessToken: String, kind: InstallationKind,
+                request: InstallationRequest, idempotencyKey: String): ApiResult<InstallationOperation> {
+                val frozen = request as ManagedRuntimeInstallationRequest
+                assertTrue(runtimeAvailable); assertEquals(InstallationKind.Uninstall, kind); assertEquals(frozen.key, idempotencyKey)
+                runtimeSubmissions += frozen; return ApiResult.Transport(null)
             }
             override suspend fun cancelInstallation(serverUrl: String, accessToken: String, operationId: String, idempotencyKey: String): ApiResult<InstallationOperation> {
                 sent += operationId; return ApiResult.Transport(null)
@@ -162,11 +212,13 @@ class ProxyTaskFlowTest {
         val reads = overviewReads
         val armed = java.util.concurrent.atomic.AtomicBoolean(false)
         val rejectedAtResume = java.util.concurrent.atomic.AtomicBoolean(false)
+        val observedResume = java.util.concurrent.atomic.AtomicBoolean(false)
         val lifecycle = rule.activity.lifecycle
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME && armed.get()) {
                 oldOpen(); oldConfirm()
                 rejectedAtResume.set(model.adoptionReview == null && overviewReads == reads)
+                observedResume.set(true)
             }
         }
         rule.runOnUiThread { lifecycle.addObserver(observer) }
@@ -177,7 +229,8 @@ class ProxyTaskFlowTest {
             armed.set(true)
             rule.mainClock.autoAdvance = true
             rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
-            assertTrue(rejectedAtResume.get())
+            rule.waitUntil(5_000) { observedResume.get() }
+            assertTrue("old adoption callback changed review or reads at resume", rejectedAtResume.get())
         } finally {
             rule.mainClock.autoAdvance = true
             rule.runOnUiThread { lifecycle.removeObserver(observer) }
@@ -417,6 +470,249 @@ class ProxyTaskFlowTest {
         dialogButton(R.string.common_save).performClick()
         rule.waitUntil(5_000) { !model.state.busy && yamlSaves.size == 1 }
         rule.runOnIdle { oldSave(); assertEquals(listOf("mode: direct"), yamlSaves) }
+    }
+    private fun openSettingsEditor(port: String) {
+        rule.onNodeWithContentDescription(text(R.string.mihomo_general_settings)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.mihomo_mixed_port)).performScrollTo().performTextReplacement(port)
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+    }
+    @Test fun settingsDiscardOldCallbacksCannotConsumeReopenedDecision() {
+        start(withTasks = false); tab(R.string.workspace_settings); openSettingsEditor("7891")
+        dialogButton(R.string.common_cancel).performClick()
+        val oldCancel = discardButton(R.string.common_cancel).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        val oldDiscard = discardButton(R.string.common_close).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        discardButton(R.string.common_cancel).performClick()
+        dialogButton(R.string.common_cancel).performClick()
+        rule.runOnIdle { oldCancel(); oldDiscard(); assertTrue(settingsSaves.isEmpty()) }
+        rule.onNodeWithText(text(R.string.mihomo_discard)).assertIsDisplayed()
+        discardButton(R.string.common_cancel).performClick()
+        rule.onNodeWithText("7891").assertExists()
+    }
+    @Test fun settingsPauseRetainsDraftAndRejectsOldFieldsSaveCloseAndOpen() {
+        start(withTasks = false); tab(R.string.workspace_settings)
+        val oldOpen = rule.onNodeWithContentDescription(text(R.string.mihomo_general_settings)).performScrollTo()
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        openSettingsEditor("7891")
+        rule.onNodeWithText(text(R.string.mihomo_apply_confirm)).performScrollTo().performClick()
+        val oldSave = dialogButton(R.string.common_save).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        val oldClose = dialogButton(R.string.common_cancel).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        val oldField = rule.onNodeWithText(text(R.string.mihomo_mixed_port)).performScrollTo()
+            .fetchSemanticsNode().config[SemanticsActions.SetText].action!!
+        val armed = java.util.concurrent.atomic.AtomicBoolean(false)
+        val checkedAtResume = java.util.concurrent.atomic.AtomicBoolean(false)
+        val observedResume = java.util.concurrent.atomic.AtomicBoolean(false)
+        val lifecycle = rule.activity.lifecycle
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && armed.get()) {
+                oldOpen(); oldField(androidx.compose.ui.text.AnnotatedString("7898")); oldSave(); oldClose()
+                checkedAtResume.set(settingsSaves.isEmpty())
+                observedResume.set(true)
+            }
+        }
+        rule.runOnUiThread { lifecycle.addObserver(observer) }
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+            rule.runOnUiThread { oldField(androidx.compose.ui.text.AnnotatedString("7899")); oldSave(); oldClose(); assertTrue(settingsSaves.isEmpty()) }
+            armed.set(true)
+            rule.mainClock.autoAdvance = true
+            rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+            rule.waitUntil(5_000) { observedResume.get() }
+            assertTrue("old callback wrote at resume: ${settingsSaves.map { it.mixedPort }}; version=${model.interactionVersion}", checkedAtResume.get())
+        } finally {
+            rule.mainClock.autoAdvance = true
+            rule.runOnUiThread { lifecycle.removeObserver(observer) }
+        }
+        rule.runOnIdle { oldOpen(); oldField(androidx.compose.ui.text.AnnotatedString("7898")); oldSave(); oldClose(); assertTrue(settingsSaves.isEmpty()) }
+        rule.onNodeWithText(text(R.string.mihomo_discard)).assertDoesNotExist()
+        rule.onNodeWithText("7891").assertExists()
+        val save = dialogButton(R.string.common_save).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        rule.runOnIdle { save(); save() }
+        rule.waitUntil(5_000) { !model.state.busy && settingsSaves.size == 1 }
+        rule.runOnIdle { oldOpen(); oldSave(); oldClose(); assertEquals(7891, settingsSaves.single().mixedPort) }
+        rule.onNodeWithText(text(R.string.mihomo_mixed_port)).assertDoesNotExist()
+        openSettingsEditor("7892")
+        rule.runOnIdle { oldSave(); oldClose(); oldField(androidx.compose.ui.text.AnnotatedString("7897")); assertEquals(1, settingsSaves.size) }
+        rule.onNodeWithText("7892").assertExists()
+        rule.onNodeWithText(text(R.string.mihomo_discard)).assertDoesNotExist()
+    }
+    private fun resourceButton() = rule.onNode(hasText(text(R.string.mihomo_geodata_prepare)) and hasClickAction() and !hasAnyAncestor(isDialog()))
+    private fun openResourceEditor() {
+        resourceButton().performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.mihomo_geodata_prepare_confirm)).performScrollTo().performClick()
+    }
+    private fun resourceDiscardButton(id: Int) = rule.onNode(hasText(text(id)) and hasClickAction() and
+        hasAnyAncestor(isDialog() and hasAnyDescendant(hasText(text(R.string.ui_discard_draft_title)))))
+    @Test fun resourceDiscardOldCallbacksCannotConsumeReopenedDecision() {
+        resourcesAvailable = true
+        start(withTasks = false); tab(R.string.workspace_settings); openResourceEditor()
+        dialogButton(R.string.common_cancel).performClick()
+        val oldCancel = resourceDiscardButton(R.string.common_cancel).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        val oldDiscard = resourceDiscardButton(R.string.editor_discard_changes).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        resourceDiscardButton(R.string.common_cancel).performClick()
+        dialogButton(R.string.common_cancel).performClick()
+        rule.runOnIdle { oldCancel(); oldDiscard(); assertEquals(0, resourceWrites) }
+        rule.onNodeWithText(text(R.string.ui_discard_draft_title)).assertIsDisplayed()
+        resourceDiscardButton(R.string.common_cancel).performClick()
+        rule.onNodeWithText(text(R.string.mihomo_geodata_prepare_confirm)).assertIsOn()
+    }
+    @Test fun resourcePauseAndReopenRejectOldConsentSubmitCloseAndOpener() {
+        resourcesAvailable = true
+        start(withTasks = false); tab(R.string.workspace_settings)
+        val oldOpen = resourceButton().performScrollTo().fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        openResourceEditor()
+        val oldSubmit = dialogButton(R.string.mihomo_geodata_prepare).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        val oldClose = dialogButton(R.string.common_cancel).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        val oldConsent = rule.onNodeWithText(text(R.string.mihomo_geodata_prepare_confirm)).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+            rule.runOnUiThread { oldOpen(); oldConsent(); oldSubmit(); oldClose(); assertEquals(0, resourceWrites) }
+        } finally { rule.mainClock.autoAdvance = true }
+        rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        rule.runOnIdle { oldOpen(); oldConsent(); oldSubmit(); oldClose(); assertEquals(0, resourceWrites) }
+        rule.onNodeWithText(text(R.string.ui_discard_draft_title)).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.mihomo_geodata_prepare_confirm)).assertIsOn()
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val flags = automation.serviceInfo.flags
+        try {
+            automation.serviceInfo = automation.serviceInfo.apply {
+                this.flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+            }
+            rule.waitForIdle()
+            automation.waitForIdle(500, 5_000)
+            val focused = automation.windows.single { it.isFocused }
+            assertEquals("app.relaxkonos.mobile", focused.root.packageName.toString())
+            captureRecoveryForm("proxy-resource-preparation-form.png")
+        } finally { automation.serviceInfo = automation.serviceInfo.apply { this.flags = flags } }
+        dialogButton(R.string.common_cancel).performClick()
+        resourceDiscardButton(R.string.editor_discard_changes).performClick()
+        rule.runOnIdle { oldOpen(); oldConsent(); oldSubmit(); oldClose(); assertEquals(0, resourceWrites) }
+        rule.onNodeWithText(text(R.string.mihomo_geodata_prepare_confirm)).assertDoesNotExist()
+        openResourceEditor()
+        rule.runOnIdle { oldConsent(); oldSubmit(); oldClose(); assertEquals(0, resourceWrites) }
+        rule.onNodeWithText(text(R.string.mihomo_geodata_prepare_confirm)).assertIsOn()
+        val submit = dialogButton(R.string.mihomo_geodata_prepare).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        rule.runOnIdle { submit(); submit() }
+        rule.waitUntil(5_000) { !model.state.busy && resourceWrites == 1 }
+        rule.onNodeWithText(text(R.string.mihomo_uncertain)).performScrollTo().assertIsDisplayed()
+        rule.runOnIdle { oldSubmit(); submit(); assertEquals(1, resourceWrites) }
+    }
+    private fun openRuntimeEditor() {
+        rule.onNode(hasText(text(R.string.mihomo_runtime_manage)) and hasClickAction() and !hasAnyAncestor(isDialog()))
+            .performScrollTo().performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.runtime != null }
+        rule.onNodeWithText(text(R.string.installation_kind_uninstall)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.managed_runtime_delete_data)).performScrollTo().performClick()
+    }
+    private fun previewRuntime() {
+        rule.onNodeWithText(text(R.string.managed_runtime_preview)).performScrollTo().performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.runtimePlan != null }
+    }
+    private fun runtimeConsent() = rule.onNode(SemanticsMatcher.expectValue(
+        androidx.compose.ui.semantics.SemanticsProperties.Role, androidx.compose.ui.semantics.Role.Checkbox) and hasAnyAncestor(isDialog()))
+    @Test fun runtimeDiscardOldCallbacksCannotConsumeReopenedDecision() {
+        runtimeAvailable = true
+        start(withTasks = false); openRuntimeEditor()
+        dialogButton(R.string.common_close).performClick()
+        val oldCancel = resourceDiscardButton(R.string.common_cancel).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        val oldDiscard = resourceDiscardButton(R.string.editor_discard_changes).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        resourceDiscardButton(R.string.common_cancel).performClick()
+        dialogButton(R.string.common_close).performClick()
+        rule.runOnIdle { oldCancel(); oldDiscard(); assertTrue(runtimeSubmissions.isEmpty()) }
+        rule.onNodeWithText(text(R.string.ui_discard_draft_title)).assertIsDisplayed()
+        resourceDiscardButton(R.string.common_cancel).performClick()
+        rule.onNodeWithText(text(R.string.managed_runtime_delete_data)).assertIsSelected()
+    }
+    @Test fun runtimePauseKeepsFrozenSelectionAndRejectsOldActions() {
+        runtimeAvailable = true
+        start(withTasks = false)
+        val oldOpen = rule.onNode(hasText(text(R.string.mihomo_runtime_manage)) and hasClickAction()).performScrollTo()
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        openRuntimeEditor(); previewRuntime(); runtimeConsent().performScrollTo().performClick()
+        val plan = requireNotNull(model.state.runtimePlan)
+        val oldConsent = runtimeConsent().fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        val oldPreview = rule.onNodeWithText(text(R.string.managed_runtime_preview)).performScrollTo()
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        val oldSubmit = dialogButton(R.string.tunnels_confirm).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        val oldClose = dialogButton(R.string.common_close).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        val reads = runtimePlanReads
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+            rule.runOnUiThread { oldPreview(); oldConsent(); oldSubmit(); oldClose(); assertEquals(reads, runtimePlanReads); assertTrue(runtimeSubmissions.isEmpty()) }
+        } finally { rule.mainClock.autoAdvance = true }
+        rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        rule.runOnIdle { oldOpen(); oldPreview(); oldConsent(); oldSubmit(); oldClose(); assertEquals(reads, runtimePlanReads); assertTrue(runtimeSubmissions.isEmpty()); assertSame(plan, model.state.runtimePlan) }
+        rule.onNodeWithText(text(R.string.ui_discard_draft_title)).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.managed_runtime_delete_data)).assertIsSelected()
+        runtimeConsent().assertIsOn()
+        val submit = dialogButton(R.string.tunnels_confirm).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        rule.runOnIdle { submit(); submit() }
+        rule.waitUntil(5_000) { !model.state.busy && runtimeSubmissions.size == 1 }
+        rule.runOnIdle { assertSame(plan, runtimeSubmissions.single()); assertTrue(model.hasIntent) }
+        dialogButton(R.string.common_close).performClick(); resourceDiscardButton(R.string.editor_discard_changes).performClick()
+        rule.runOnIdle { oldOpen(); oldConsent(); oldSubmit(); oldClose(); assertEquals(1, runtimeSubmissions.size) }
+        rule.onNodeWithText(text(R.string.mihomo_install_confirm)).assertDoesNotExist()
+        rule.onNode(hasText(text(R.string.mihomo_runtime_manage)) and hasClickAction()).performScrollTo().performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.runtime != null }
+        rule.runOnIdle { oldConsent(); oldSubmit(); oldClose(); assertEquals(1, runtimeSubmissions.size) }
+        runtimeConsent().assertIsOff()
+        rule.onNodeWithText(text(R.string.managed_runtime_delete_data)).performScrollTo().assertIsSelected()
+        rule.onNodeWithText(text(R.string.managed_runtime_keep_data)).assertIsNotEnabled()
+        runtimeConsent().performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.managed_runtime_pending_intent)).performScrollTo().assertIsDisplayed()
+        captureOwnedForm("proxy-runtime-frozen-retry.png")
+        val retry = dialogButton(R.string.common_retry).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        rule.runOnIdle { retry(); retry() }
+        rule.waitUntil(5_000) { !model.state.busy && runtimeSubmissions.size == 2 }
+        rule.runOnIdle { assertSame(plan, runtimeSubmissions.last()); assertEquals(plan.key, runtimeSubmissions.last().key) }
+    }
+    @Test fun oldRuntimePlanConsentCannotApproveNewDataRetentionChoice() {
+        runtimeAvailable = true
+        start(withTasks = false); openRuntimeEditor(); previewRuntime(); runtimeConsent().performScrollTo().performClick()
+        val oldConsent = runtimeConsent().fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        val oldSubmit = dialogButton(R.string.tunnels_confirm).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        rule.onNodeWithText(text(R.string.managed_runtime_keep_data)).performScrollTo().performClick(); previewRuntime()
+        rule.runOnIdle { oldConsent(); oldSubmit(); assertTrue(runtimeSubmissions.isEmpty()) }
+        runtimeConsent().assertIsOff().performScrollTo().performClick()
+        val submit = dialogButton(R.string.tunnels_confirm).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        rule.runOnIdle { oldSubmit(); assertTrue(runtimeSubmissions.isEmpty()); submit(); submit() }
+        rule.waitUntil(5_000) { !model.state.busy && runtimeSubmissions.size == 1 }
+        rule.runOnIdle { assertTrue(org.json.JSONObject(runtimeSubmissions.single().plan).getJSONObject("request").getBoolean("keepData")) }
+    }
+    @Test fun runtimeRecoveryOldControlsCannotActOnReplacementTransaction() {
+        runtimeAvailable = true; runtimeRecoveryId = "00112233-4455-6677-8899-aabbccddeeff"
+        start(withTasks = false)
+        rule.onNode(hasText(text(R.string.mihomo_runtime_manage)) and hasClickAction()).performScrollTo().performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.runtimeRecovery != null }
+        runtimeConsent().performScrollTo().performClick()
+        val oldConsent = runtimeConsent().fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        val oldRetry = dialogButton(R.string.common_retry).performScrollTo().fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        val oldStop = dialogButton(R.string.managed_runtime_stop).performScrollTo().fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        val oldClose = dialogButton(R.string.managed_runtime_close).performScrollTo().fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        val replacement = "10112233-4455-6677-8899-aabbccddeeff"
+        rule.runOnUiThread { runtimeRecoveryId = replacement; model.loadRuntime() }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.runtimeRecovery?.contains(replacement) == true }
+        rule.runOnIdle { oldConsent(); oldRetry(); oldStop(); oldClose(); assertTrue(runtimeRecoveryWrites.isEmpty()); assertTrue(runtimeSubmissions.isEmpty()) }
+        runtimeConsent().assertIsOff().performScrollTo().performClick()
+        val close = dialogButton(R.string.managed_runtime_close).performScrollTo().fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        rule.runOnIdle { close(); close() }
+        rule.waitUntil(5_000) { !model.state.busy && runtimeRecoveryWrites.size == 1 }
+        rule.runOnIdle { assertEquals(Triple("close", replacement, true), runtimeRecoveryWrites.single()); oldClose(); assertEquals(1, runtimeRecoveryWrites.size) }
+        runtimeConsent().assertIsOff()
+    }
+    private fun captureOwnedForm(name: String) {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val flags = automation.serviceInfo.flags
+        try {
+            automation.serviceInfo = automation.serviceInfo.apply {
+                this.flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+            }
+            rule.waitForIdle(); automation.waitForIdle(500, 5_000)
+            assertEquals("app.relaxkonos.mobile", automation.windows.single { it.isFocused }.root.packageName.toString())
+            captureRecoveryForm(name)
+        } finally { automation.serviceInfo = automation.serviceInfo.apply { this.flags = flags } }
     }
     private fun openOperationRecovery(id: String = operation.operationId) {
         rule.onNodeWithText(text(R.string.mihomo_recover_operation)).performScrollTo().performClick()

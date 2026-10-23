@@ -152,8 +152,11 @@ class ProxyViewModelTest {
         return owner
     }
     private val runtimeWire = """{"installation":{"installationId":"00112233-4455-6677-8899-aabbccddeeff","hostId":"host","runtimeId":"mihomo","ownership":"managed","stateRevision":3,"activeReleaseId":"release-a","recoveryRequired":false},"pendingOperationId":null,"measuredVersion":"1.19.10","problemCode":null}"""
-    private val sourceWire = """[{"runtimeId":"mihomo","baseUri":"https://release.invalid/","confirmationFingerprint":"key","identity":{"sourceId":"official","publisher":"Publisher","enabled":true,"trust":"confirmed"}}]"""
-    private val catalogWire = """{"source":{"identity":{"sourceId":"official"}},"fresh":true,"problemCode":null,"catalog":{"revision":4,"trustRevision":5,"signatureVerified":true,"releases":[{"runtimeId":"mihomo","releaseId":"release-b","originalVersion":"1.19.30","trust":"confirmed","configurationSupported":true,"channel":"stable","target":{"os":"linux","architecture":"amd64","serviceHost":"systemd"},"evidence":"nativeConfiguration"}]}}"""
+    private val sourceWire = """[{"runtimeId":"mihomo","baseUri":"https://release.invalid/","confirmationFingerprint":"key","identity":{"sourceId":"official","publisher":"Publisher","enabled":true,"trust":"confirmed","trustRevision":5}}]"""
+    private val catalogWire = org.json.JSONObject("""{"source":{"identity":{"sourceId":"official"}},"fresh":true,"problemCode":null,"catalog":{"revision":4,"trustRevision":5,"signatureVerified":true,"releases":[{"runtimeId":"mihomo","releaseId":"release-b","originalVersion":"1.19.30","trust":"confirmed","configurationSupported":true,"channel":"stable","target":{"os":"linux","architecture":"amd64","serviceHost":"systemd"},"evidence":"nativeConfiguration"}]}}""").apply {
+        put("source", org.json.JSONArray(sourceWire).getJSONObject(0))
+        getJSONObject("catalog").put("sourceId", "official").getJSONArray("releases").getJSONObject(0).put("sourceId", "official")
+    }.toString()
     private suspend fun TestScope.runtimeReady() {
         login(); runCurrent()
         gateway.onManagedRuntime = { _, route, _, _ -> ApiResult.Success(when (route) {
@@ -218,6 +221,59 @@ class ProxyViewModelTest {
         gateway.onManagedRuntime = { _, _, _, _ -> called = true; ApiResult.Transport(null) }
         model.planRuntime(InstallationKind.Uninstall, null, false, true); advanceUntilIdle()
         assertFalse(called); assertNull(model.state.runtimePlan)
+    }
+    private suspend fun TestScope.rejectCatalogSourceChange(trust: String, enabled: Boolean) {
+        runtimeReady()
+        val payload = org.json.JSONObject(catalogWire).apply {
+            getJSONObject("source").getJSONObject("identity").put("trust", trust).put("enabled", enabled)
+        }.toString()
+        gateway.onManagedRuntime = { _, _, _, _ -> ApiResult.Success(payload) }
+        model.loadRuntimeCatalog("official", false, false); advanceUntilIdle()
+        assertEquals(trust, model.state.runtimeSources.single().trust)
+        assertEquals(enabled, model.state.runtimeSources.single().enabled)
+        var plans = 0
+        gateway.onManagedRuntime = { _, _, _, _ -> plans++; ApiResult.Transport(null) }
+        model.planRuntime(InstallationKind.Upgrade, "release-b", false, true); advanceUntilIdle()
+        assertEquals(0, plans); assertNull(model.state.runtimePlan); assertFalse(model.hasIntent)
+    }
+    @Test fun `catalog source revocation replaces old trusted source and blocks planning`() = runTest {
+        rejectCatalogSourceChange("revoked", true)
+    }
+    @Test fun `catalog source disable replaces old enabled source and blocks planning`() = runTest {
+        rejectCatalogSourceChange("confirmed", false)
+    }
+    @Test fun `catalog from an older trust revision cannot generate a new plan`() = runTest {
+        runtimeReady()
+        val payload = org.json.JSONObject(catalogWire).apply {
+            getJSONObject("source").getJSONObject("identity").put("trustRevision", 6)
+        }.toString()
+        gateway.onManagedRuntime = { _, _, _, _ -> ApiResult.Success(payload) }
+        model.loadRuntimeCatalog("official", false, false); advanceUntilIdle()
+        var plans = 0
+        gateway.onManagedRuntime = { _, _, _, _ -> plans++; ApiResult.Transport(null) }
+        model.planRuntime(InstallationKind.Upgrade, "release-b", false, true); advanceUntilIdle()
+        assertEquals(0, plans); assertNull(model.state.runtimePlan)
+    }
+    @Test fun `managed uninstall does not inherit source or catalog revisions`() = runTest {
+        runtimeReady()
+        val payload = org.json.JSONObject(catalogWire).apply {
+            getJSONObject("source").getJSONObject("identity").put("trust", "revoked")
+        }.toString()
+        gateway.onManagedRuntime = { _, _, _, _ -> ApiResult.Success(payload) }
+        model.loadRuntimeCatalog("official", false, false); advanceUntilIdle()
+        var plans = 0
+        gateway.onManagedRuntime = { _, route, body, _ ->
+            plans++; assertEquals(ManagedRuntimeRoutes.PLAN, route)
+            val value = org.json.JSONObject(requireNotNull(body).toByteArray().decodeToString())
+            assertTrue(value.isNull("sourceId"))
+            val request = value.getJSONObject("request")
+            assertEquals(0L, request.getLong("expectedCatalogRevision"))
+            assertEquals(0L, request.getLong("expectedTrustRevision"))
+            assertEquals("uninstall", request.getString("change")); assertTrue(request.getBoolean("keepData"))
+            ApiResult.Success("""{"allowed":false,"plan":null,"problems":["runtime.dependencies_unmet"],"dependencies":null}""")
+        }
+        model.planRuntime(InstallationKind.Uninstall, null, false, true); advanceUntilIdle()
+        assertEquals(1, plans); assertFalse(model.hasIntent)
     }
     @Test fun `session replacement clears frozen plan observations and recovery`() = runTest {
         runtimeReady(); assertNotNull(model.state.runtime)

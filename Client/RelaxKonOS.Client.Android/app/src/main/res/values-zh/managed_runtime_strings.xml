@@ -41,4 +41,7 @@
     <string name="managed_runtime_version_unmeasured">未测得</string>
     <string name="managed_runtime_no_release">无</string>
     <string name="managed_runtime_dependency_observation">%1$s · %2$s · %3$s</string>
+    <string name="mihomo_geodata_prepare_confirm">确认校验并修复服务器上的受管 GEO 数据。</string>
+    <string name="managed_runtime_pending_intent">结果尚待核实。当前选择已锁定；重试将继续原请求，保留原动作和数据选择。</string>
+    <string name="managed_runtime_trust_changed">发布源已停用、未受信任或信任信息已变化，禁止生成新的安装计划。</string>
 </resources>

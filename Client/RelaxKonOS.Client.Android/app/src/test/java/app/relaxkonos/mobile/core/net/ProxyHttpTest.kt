@@ -40,7 +40,7 @@ class ProxyHttpTest {
         server.createContext(ManagedRuntimeRoutes.SOURCES) { exchange ->
             assertEquals("GET", exchange.requestMethod)
             assertEquals("Bearer token", exchange.requestHeaders.getFirst("Authorization"))
-            val bytes = """[{"runtimeId":"mihomo","baseUri":"https://release.invalid/","confirmationFingerprint":"fingerprint","identity":{"sourceId":"official","publisher":"Publisher","enabled":true,"trust":"confirmed"}}]""".toByteArray()
+            val bytes = """[{"runtimeId":"mihomo","baseUri":"https://release.invalid/","confirmationFingerprint":"fingerprint","identity":{"sourceId":"official","publisher":"Publisher","enabled":true,"trust":"confirmed","trustRevision":5}}]""".toByteArray()
             exchange.sendResponseHeaders(200, bytes.size.toLong())
             exchange.responseBody.use { it.write(bytes) }; exchange.close()
         }

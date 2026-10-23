@@ -28,6 +28,7 @@ internal enum class ProxySettingsSection(val title: Int) {
 
 @Composable internal fun ProxySettingsPanel(
     state: ProxyState,
+    actionKey: Long,
     canManage: Boolean,
     ready: Boolean,
     edit: (ProxySettingsSection) -> Unit,
@@ -59,13 +60,14 @@ internal enum class ProxySettingsSection(val title: Int) {
             file.problem?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
         resources?.problem?.takeUnless { it == "runtime.installation_absent" }?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        if (canManage) TextButton(enabled = ready && resources?.canPrepare == true, onClick = prepareResources) {
+        key(actionKey) { if (canManage) TextButton(enabled = ready && resources?.canPrepare == true, onClick = prepareResources) {
             Text(stringResource(R.string.mihomo_geodata_prepare))
-        }
+        } }
     }
     ManagementCard {
         Text(stringResource(R.string.mihomo_system_settings), style = MaterialTheme.typography.titleMedium)
         ProxyNetworkSettingRow(
+            actionKey = actionKey,
             title = R.string.mihomo_tun_mode,
             summary = if (overview?.supportsTun == true) proxyTunLabel(overview.tunState)
                 else stringResource(if (overview == null) R.string.mihomo_unverified else R.string.mihomo_tun_unsupported),
@@ -80,6 +82,7 @@ internal enum class ProxySettingsSection(val title: Int) {
         )
         HorizontalDivider()
         ProxyNetworkSettingRow(
+            actionKey = actionKey,
             title = R.string.mihomo_system_proxy_title,
             summary = if (systemProxySupported || settings?.systemProxyEnabled == true) stringResource(when (settings?.systemProxyEnabled) {
                 true -> R.string.mihomo_on; false -> R.string.mihomo_off; null -> R.string.mihomo_unverified
@@ -123,10 +126,10 @@ internal enum class ProxySettingsSection(val title: Int) {
                     ?: stringResource(R.string.mihomo_unverified), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (canManage) IconButton(enabled = ready && settings != null && overview != null,
+            key(actionKey) { if (canManage) IconButton(enabled = ready && settings != null && overview != null,
                 onClick = { edit(ProxySettingsSection.Mihomo) }) {
                 Icon(Icons.Default.Settings, contentDescription = stringResource(ProxySettingsSection.Mihomo.title))
-            }
+            } }
         }
     }
     if (overview?.supportsDns == true) ManagementCard {
@@ -161,7 +164,7 @@ internal enum class ProxySettingsSection(val title: Int) {
 }
 
 @Composable private fun ProxyNetworkSettingRow(
-    title: Int, summary: String, checked: Boolean, enabled: Boolean, change: (Boolean) -> Unit,
+    actionKey: Long, title: Int, summary: String, checked: Boolean, enabled: Boolean, change: (Boolean) -> Unit,
     editTitle: Int, canEdit: Boolean, edit: () -> Unit
 ) {
     val label = stringResource(title)
@@ -170,9 +173,9 @@ internal enum class ProxySettingsSection(val title: Int) {
             Text(label, style = MaterialTheme.typography.bodyLarge)
             Text(summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        IconButton(enabled = canEdit, onClick = edit) {
+        key(actionKey) { IconButton(enabled = canEdit, onClick = edit) {
             Icon(Icons.Default.Settings, contentDescription = stringResource(editTitle))
-        }
+        } }
         Switch(checked = checked, onCheckedChange = change, enabled = enabled,
             modifier = Modifier.semantics { contentDescription = label })
     }

@@ -366,25 +366,31 @@ internal class ProxyViewModel(private val session: AuthSession, private val repo
     }
     fun loadRuntimeCatalog(source: String, refresh: Boolean, prerelease: Boolean) = work { active ->
         state = state.copy(runtimeCatalog = null, runtimePlan = null, runtimeProblems = emptyList())
-        require(state.runtimeSources.any { it.id == source })
+        require(state.runtimeSources.count { it.id == source } == 1)
         val result = repository.runtime(active, if (refresh) "POST" else "GET", ManagedRuntimeRoutes.catalog(source, refresh, prerelease),
             if (refresh) JsonBody() else null, if (refresh) java.util.UUID.randomUUID().toString() else null)
         verify(active); failure(result)
-        if (result is ApiResult.Success) { val catalog = ManagedRuntimeWire.catalog(result.value); require(catalog.source == source); state = state.copy(runtimeCatalog = catalog) }
+        if (result is ApiResult.Success) {
+            val catalog = ManagedRuntimeWire.catalog(result.value); require(catalog.source.id == source)
+            state = state.copy(runtimeCatalog = catalog, runtimeSources = state.runtimeSources.map {
+                if (it.id == source) catalog.source else it
+            })
+        }
     }
     fun clearRuntimePlan() { if (!state.busy && !hasIntent) state = state.copy(runtimePlan = null, runtimeProblems = emptyList(), runtimeDependencies = null) }
     fun planRuntime(kind: InstallationKind, release: String?, prerelease: Boolean, keepData: Boolean) = work { active ->
         require(!hasIntent && !state.pendingInstallation)
         state = state.copy(runtimePlan = null, runtimeProblems = emptyList(), runtimeDependencies = null)
         val installation = requireNotNull(state.runtime)
-        val catalog = state.runtimeCatalog
+        val catalog = state.runtimeCatalog.takeUnless { kind == InstallationKind.Uninstall }
         if (kind != InstallationKind.Uninstall) {
-            require(catalog?.fresh == true && catalog.problem == null)
+            require(catalog?.usable == true)
+            require(state.runtimeSources.singleOrNull { it.id == catalog.source.id } == catalog.source)
             require(release != null && installation.eligible(kind, release))
             require(catalog.releases.any { it.id == release && it.trust == "confirmed" && it.supported && (prerelease || it.channel == "stable") })
         }
         val key = java.util.UUID.randomUUID().toString()
-        val body = JsonBody().raw("sourceId", if (kind == InstallationKind.Uninstall) "null" else org.json.JSONObject.quote(requireNotNull(catalog).source))
+        val body = JsonBody().raw("sourceId", if (kind == InstallationKind.Uninstall) "null" else org.json.JSONObject.quote(requireNotNull(catalog).source.id))
             .objectField("request", installation.request(kind, catalog, release, key, prerelease, keepData))
         val result = repository.runtime(active, "POST", ManagedRuntimeRoutes.PLAN, body, key); verify(active); failure(result)
         if (result is ApiResult.Success) {

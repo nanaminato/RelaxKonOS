@@ -41,4 +41,7 @@
     <string name="managed_runtime_version_unmeasured">未測定</string>
     <string name="managed_runtime_no_release">なし</string>
     <string name="managed_runtime_dependency_observation">%1$s · %2$s · %3$s</string>
+    <string name="mihomo_geodata_prepare_confirm">サーバーの管理対象 GEO データの検証と修復を確認します。</string>
+    <string name="managed_runtime_pending_intent">結果は未確認です。選択内容は固定され、再試行では元の操作とデータ設定を維持して元のリクエストを続行します。</string>
+    <string name="managed_runtime_trust_changed">リリース元が無効、未信頼、または信頼情報が変更されています。新しいインストール計画は作成できません。</string>
 </resources>

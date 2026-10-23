@@ -56,7 +56,7 @@ private class ProxyEditRequest(val kind: String, val profile: ProxyProfile?) { v
         owner?.let { model.requestChange(interactionVersion, it, state, action) }
     }
     val cancellation = model.installationCancellation?.takeIf { it.owner === owner }
-    var install by remember(owner, epoch) { mutableStateOf(false) }
+    var install by remember(owner, epoch) { mutableStateOf<Any?>(null) }
     var editor by remember(owner, epoch) { mutableStateOf<ProxyEditRequest?>(null) }
     var selected by remember(owner, epoch) { mutableStateOf<String?>(null) }
     val recovery = model.recoveryForm?.takeIf { it.owner === owner }
@@ -81,15 +81,15 @@ private class ProxyEditRequest(val kind: String, val profile: ProxyProfile?) { v
     DisposableEffect(owner, epoch, section, resumed, networkEditing, editor, install, confirm, cancellation, adoption, recovering) {
         onDispose { model.stopDiagnostics() }
     }
-    OperationMessageDialog(if (state.busy || editor != null || install || networkEditing) null else state.problemCode?.let { proxyProblemLabel(it) } ?: if (state.uncertain) stringResource(R.string.mihomo_uncertain) else null,
+    OperationMessageDialog(if (state.busy || editor != null || install != null || networkEditing) null else state.problemCode?.let { proxyProblemLabel(it) } ?: if (state.uncertain) stringResource(R.string.mihomo_uncertain) else null,
         tone = if (state.problemCode == null) StatusTone.Warning else StatusTone.Danger, eventKey = owner to state.requestVersion)
     LaunchedEffect(owner, epoch) { if (available) model.refresh() }
     LaunchedEffect(owner, epoch, initialOperationId, state.busy) {
         if (available && initialOperationId != null && !state.busy && !attemptedInitial) { attemptedInitial = true; section = "records"; model.recoverOperation(initialOperationId) }
     }
     LaunchedEffect(owner, epoch, state.operation, state.installation, state.busy, state.requestVersion, state.operationVerified, state.installationVerified, editor, install, networkEditing, resumed, confirm, cancellation, adoption, state.uncertain, state.problemCode, recovering) {
-        if (resumed && !recovering && editor == null && !install && !networkEditing && confirm == null && cancellation == null && adoption == null) model.observeTasks {
-            lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && editor == null && !install && !networkEditing && confirm == null && model.installationCancellation == null && model.adoptionReview == null && model.recoveryForm == null
+        if (resumed && !recovering && editor == null && install == null && !networkEditing && confirm == null && cancellation == null && adoption == null) model.observeTasks {
+            lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && editor == null && install == null && !networkEditing && confirm == null && model.installationCancellation == null && model.adoptionReview == null && model.recoveryForm == null
         }
     }
     val overview = (state.overview as? ApiResult.Success)?.value
@@ -108,8 +108,8 @@ private class ProxyEditRequest(val kind: String, val profile: ProxyProfile?) { v
     }
     val connected = overview?.controllerReachable == true
     LaunchedEffect(owner, epoch, section, connected, state.uncertain, state.problemCode, state.busy, networkEditing, resumed, editor, install, confirm, cancellation, adoption, recovering) {
-        if (resumed && !recovering && !networkEditing && editor == null && !install && confirm == null && cancellation == null && adoption == null) model.observeDiagnostics(section) {
-            lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && !networkEditing && editor == null && !install && confirm == null && model.installationCancellation == null && model.adoptionReview == null && model.recoveryForm == null
+        if (resumed && !recovering && !networkEditing && editor == null && install == null && confirm == null && cancellation == null && adoption == null) model.observeDiagnostics(section) {
+            lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && !networkEditing && editor == null && install == null && confirm == null && model.installationCancellation == null && model.adoptionReview == null && model.recoveryForm == null
         }
     }
     BackHandler(section == "profiles" && selected != null && editor == null && !state.busy) { selected = null }
@@ -122,7 +122,11 @@ WorkspaceSection(section == "overview") {
         PageActionRow(refresh = {
             TextButton(enabled = !state.busy, onClick = model::refresh) { ActionLabel(R.string.common_refresh) }
         }, actions = {
-            if (canManage) OutlinedButton(enabled = !state.busy && state.installation?.state?.active != true, onClick = { install = true }) { Text(if (notInstalled) stringResource(R.string.runtime_install_action, "Mihomo") else stringResource(R.string.mihomo_runtime_manage)) }
+            key(interactionVersion, state.requestVersion) { if (canManage) OutlinedButton(enabled = !state.busy && state.installation?.state?.active != true, onClick = {
+                if (owner != null && model.isCurrentInteraction(interactionVersion, owner) && model.state == state &&
+                    !model.state.busy && model.state.installation?.state?.active != true && install == null && editor == null)
+                    install = Any()
+            }) { Text(if (notInstalled) stringResource(R.string.runtime_install_action, "Mihomo") else stringResource(R.string.mihomo_runtime_manage)) } }
         })
         RefreshProgressIndicator(visible = state.busy)
 
@@ -207,7 +211,7 @@ WorkspaceSection(section == "overview") {
         }
         }
         WorkspaceSection(networkSection) {
-            if (!notInstalled || networkEditing) key(owner, epoch) { ProxyNetworkPanel(model, canManage, ready, section,
+            if (!notInstalled || networkEditing) key(owner, epoch) { ProxyNetworkPanel(model, owner, canManage, ready, section,
                 onEditorChanged = { networkEditing = it }) { action -> requestChange(action) } }
         }
 WorkspaceSection(section == "profiles") {
@@ -258,7 +262,12 @@ WorkspaceSection(section == "profiles") {
         }
 }
             }
-    if (install) key(owner, epoch) { ProxyInstallEditor(model, onSubmitted = { section = "records" }) { install = false } }
+    install?.let { request -> key(owner, epoch, request) {
+        val current = { install === request && owner != null && model.isCurrentInteraction(interactionVersion, owner) }
+        ProxyInstallEditor(model, interactionVersion, current, onSubmitted = { if (current()) section = "records" }) {
+            if (current()) install = null
+        }
+    } }
     editor?.let { request -> key(owner, epoch, request) {
         DisposableEffect(request) { onDispose { request.open = false } }
         val eligible = { request.open && editor === request && owner != null &&

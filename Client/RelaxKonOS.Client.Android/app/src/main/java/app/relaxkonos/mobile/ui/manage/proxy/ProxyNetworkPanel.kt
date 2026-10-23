@@ -1,5 +1,9 @@
 package app.relaxkonos.mobile.ui.manage.proxy
 
+import app.relaxkonos.mobile.core.auth.SessionState
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -15,21 +19,28 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 import java.text.DateFormat
 import java.util.Date
 
-private data class ProxySettingsEditRequest(val section: ProxySettingsSection, val settings: ProxySettings, val overview: ProxyOverview)
+private class ProxySettingsEditRequest(val section: ProxySettingsSection, val settings: ProxySettings, val overview: ProxyOverview)
 
-@Composable internal fun ProxyNetworkPanel(model: ProxyViewModel, canManage: Boolean, ready: Boolean, section: String,
+@Composable internal fun ProxyNetworkPanel(model: ProxyViewModel, owner: SessionState.Active?, canManage: Boolean, ready: Boolean, section: String,
     onEditorChanged: (Boolean) -> Unit, confirm: (() -> Unit) -> Unit) {
+    val actionKey = model.interactionVersion
     val state = model.state; val overview = (state.overview as? ApiResult.Success)?.value
     val settings = (state.settings as? ApiResult.Success)?.value
     var editing by remember { mutableStateOf<ProxySettingsEditRequest?>(null) }
-    var preparingResources by remember { mutableStateOf(false) }
-    SideEffect { onEditorChanged(editing != null || preparingResources) }
+    var preparingResources by remember { mutableStateOf<Any?>(null) }
+    SideEffect { onEditorChanged(editing != null || preparingResources != null) }
     DisposableEffect(Unit) { onDispose { onEditorChanged(false) } }
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         if (section == "settings") {
-            ProxySettingsPanel(state, canManage, ready, edit = { target ->
-                if (settings != null && overview != null) editing = ProxySettingsEditRequest(target, settings, overview)
-            }, prepareResources = { preparingResources = true },
+            ProxySettingsPanel(state, actionKey, canManage, ready, edit = { target ->
+                if (owner != null && model.isCurrentInteraction(actionKey, owner) && model.state == state &&
+                    !model.state.busy && canManage && ready && editing == null && preparingResources == null && settings != null && overview != null)
+                    editing = ProxySettingsEditRequest(target, settings, overview)
+            }, prepareResources = {
+                if (owner != null && model.isCurrentInteraction(actionKey, owner) && model.state == state &&
+                    !model.state.busy && canManage && ready && editing == null && preparingResources == null &&
+                    (state.resources as? ApiResult.Success)?.value?.canPrepare == true) preparingResources = Any()
+            },
                 toggleTun = { enabled -> confirm { model.queue(if (enabled) ProxyAction.EnableTun else ProxyAction.DisableTun, if (enabled) overview?.activeProfile?.id else null) } },
                 toggleSystemProxy = { enabled -> settings?.let { confirm { model.saveSettings(it.copy(systemProxyEnabled = enabled,
                     systemProxy = it.systemProxy?.copy(usePac = it.systemProxy.usePac && overview?.systemProxy?.supportsPac == true))) } } },
@@ -100,28 +111,74 @@ private data class ProxySettingsEditRequest(val section: ProxySettingsSection, v
         }
     }
     editing?.let { request ->
-        key(request.section) {
-            ProxySettingsEditor(request.settings, request.overview, request.section, state, model::saveSettings) { editing = null }
+        key(request) {
+            val current = { editing === request && owner != null && model.isCurrentInteraction(actionKey, owner) }
+            ProxySettingsEditor(request.settings, request.overview, request.section, state, actionKey, current, model::saveSettings) {
+                if (current()) editing = null
+            }
         }
     }
-    if (preparingResources) ProxyResourcesEditor(state, model::prepareResources) { preparingResources = false }
+    preparingResources?.let { request -> key(request) {
+        val current = { preparingResources === request && owner != null && model.isCurrentInteraction(actionKey, owner) }
+        ProxyResourcesEditor(state, actionKey, current, model::prepareResources) { if (current()) preparingResources = null }
+    } }
 }
 
-@Composable internal fun ProxyResourcesEditor(state: ProxyState, submit: () -> Unit, dismiss: () -> Unit) {
-    var confirmed by remember { mutableStateOf(false) }
+@Composable internal fun ProxyResourcesEditor(state: ProxyState, actionKey: Long, isCurrent: () -> Boolean,
+    submit: () -> Unit, dismiss: () -> Unit) {
+    val facts = state.resources
+    var confirmed by remember(facts) { mutableStateOf(false) }
+    var discard by remember { mutableStateOf<Any?>(null) }
+    var finished by remember { mutableStateOf(false) }
+    var consumed by remember { mutableStateOf<Any?>(null) }
     val initial = remember { state.savedEpoch }
-    LaunchedEffect(state.savedEpoch) { if (initial != state.savedEpoch) dismiss() }
-    DraftCloseGuard(!state.busy, confirmed, dismiss) { requestClose ->
-        AlertDialog(onDismissRequest = requestClose, modifier = Modifier.imePadding(),
-            title = { Text(stringResource(R.string.mihomo_geodata_prepare)) }, text = {
-                Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
-                    Text(stringResource(R.string.mihomo_geodata_prepare_note))
-                    ProxyCheck(confirmed, !state.busy, R.string.mihomo_apply_confirm) { confirmed = it }
-                    ProxyEditorFeedback(state)
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val lifecycleState by lifecycle.currentStateAsState()
+    val latestKey by rememberUpdatedState(actionKey)
+    val latestState by rememberUpdatedState(state)
+    val latestCurrent by rememberUpdatedState(isCurrent)
+    val latestDismiss by rememberUpdatedState(dismiss)
+    val latestSubmit by rememberUpdatedState(submit)
+    fun eligible() = !finished && latestKey == actionKey && latestCurrent() && !latestState.busy &&
+        lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+    fun finish() { if (eligible()) { finished = true; discard = null; latestDismiss() } }
+    DisposableEffect(Unit) { onDispose { finished = true } }
+    LaunchedEffect(actionKey) { discard = null }
+    LaunchedEffect(state.savedEpoch, state.busy, actionKey) { if (initial != state.savedEpoch) finish() }
+    val requestClose = { if (eligible() && discard == null) { if (confirmed) discard = Any() else finish() } }
+    val enabled = !state.busy && !finished && discard == null && lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
+    val submission = remember(actionKey, facts, confirmed, state.requestVersion, state.savedEpoch, state.busy, state.pending) { Any() }
+    val currentSubmission by rememberUpdatedState(submission)
+    AlertDialog(onDismissRequest = requestClose, modifier = Modifier.imePadding(),
+        title = { Text(stringResource(R.string.mihomo_geodata_prepare)) }, text = {
+            Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+                Text(stringResource(R.string.mihomo_geodata_prepare_note))
+                key(actionKey, facts) {
+                    ProxyCheck(confirmed, enabled, R.string.mihomo_geodata_prepare_confirm) {
+                        if (eligible() && discard == null && latestState.resources == facts) confirmed = it
+                    }
                 }
-            }, confirmButton = { Button(enabled = !state.busy && confirmed && state.pending.isEmpty() &&
-                (state.resources as? ApiResult.Success)?.value?.canPrepare == true, onClick = submit) {
-                ActionLabel(R.string.mihomo_geodata_prepare)
-            } }, dismissButton = { TextButton(enabled = !state.busy, onClick = requestClose) { Text(stringResource(R.string.common_cancel)) } })
-    }
+                ProxyEditorFeedback(state)
+            }
+        }, confirmButton = { key(submission) {
+            Button(enabled = enabled && confirmed && state.pending.isEmpty() &&
+                (facts as? ApiResult.Success)?.value?.canPrepare == true, onClick = {
+                if (eligible() && discard == null && currentSubmission === submission && consumed !== submission &&
+                    confirmed && latestState.resources == facts && (facts as? ApiResult.Success)?.value?.canPrepare == true &&
+                    latestState.pending.isEmpty() && latestState.savedEpoch == initial && latestState.requestVersion == state.requestVersion) {
+                    consumed = submission; latestSubmit()
+                }
+            }) { ActionLabel(R.string.mihomo_geodata_prepare) }
+        } }, dismissButton = { key(actionKey) {
+            TextButton(enabled = enabled, onClick = requestClose) { Text(stringResource(R.string.common_cancel)) }
+        } })
+    discard?.let { decision -> key(actionKey, decision) {
+        AlertDialog(onDismissRequest = { if (eligible() && discard === decision) discard = null },
+            title = { Text(stringResource(R.string.ui_discard_draft_title)) },
+            confirmButton = { TextButton(onClick = { if (eligible() && discard === decision) finish() }) {
+                Text(stringResource(R.string.editor_discard_changes))
+            } }, dismissButton = { TextButton(onClick = { if (eligible() && discard === decision) discard = null }) {
+                Text(stringResource(R.string.common_cancel))
+            } })
+    } }
 }

@@ -41,4 +41,7 @@
     <string name="managed_runtime_version_unmeasured">Not measured</string>
     <string name="managed_runtime_no_release">None</string>
     <string name="managed_runtime_dependency_observation">%1$s · %2$s · %3$s</string>
+    <string name="mihomo_geodata_prepare_confirm">Confirm verification and repair of managed GEO data on the server.</string>
+    <string name="managed_runtime_pending_intent">Result not yet verified. Selections are locked; retry continues the original request with the same action and data choices.</string>
+    <string name="managed_runtime_trust_changed">The release source is disabled, untrusted, or has changed trust. A new installation plan is blocked.</string>
 </resources>

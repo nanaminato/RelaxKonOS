@@ -46,6 +46,7 @@ class ProxyRuntimePresentationTest(private val language: String, private val dar
     private lateinit var localized: Context
     private var ownership = "absent"
     private var trust = "confirmed"
+    private var catalogTrust: String? = null
     private val requests = mutableListOf<Pair<String, String>>()
     private val dependencies = listOf(
         Triple("platform", "linux/amd64", "satisfied"), Triple("serviceHost", "systemd", "missing"),
@@ -72,8 +73,13 @@ class ProxyRuntimePresentationTest(private val language: String, private val dar
     private fun sources() = JSONArray().put(JSONObject().put("runtimeId", "mihomo")
         .put("baseUri", "https://release.invalid/").put("confirmationFingerprint", "ab".repeat(32))
         .put("identity", JSONObject().put("sourceId", "review-source").put("publisher", "Review Publisher")
-            .put("enabled", true).put("trust", trust))).toString()
-    private val catalog = """{"source":{"identity":{"sourceId":"review-source"}},"fresh":true,"problemCode":null,"catalog":{"revision":1,"trustRevision":1,"signatureVerified":true,"releases":[{"runtimeId":"mihomo","releaseId":"release-reviewed","originalVersion":"1.19.30","trust":"confirmed","configurationSupported":true,"channel":"stable","target":{"os":"linux","architecture":"amd64","serviceHost":"systemd"},"evidence":"nativeConfiguration"}]}}"""
+            .put("enabled", true).put("trust", trust).put("trustRevision", 1))).toString()
+    private val catalog get() = JSONObject("""{"source":{"identity":{"sourceId":"review-source"}},"fresh":true,"problemCode":null,"catalog":{"revision":1,"trustRevision":1,"signatureVerified":true,"releases":[{"runtimeId":"mihomo","releaseId":"release-reviewed","originalVersion":"1.19.30","trust":"confirmed","configurationSupported":true,"channel":"stable","target":{"os":"linux","architecture":"amd64","serviceHost":"systemd"},"evidence":"nativeConfiguration"}]}}""").apply {
+        val currentSource = JSONArray(sources()).getJSONObject(0)
+        catalogTrust?.let { currentSource.getJSONObject("identity").put("trust", it) }
+        put("source", currentSource)
+        getJSONObject("catalog").put("sourceId", "review-source").getJSONArray("releases").getJSONObject(0).put("sourceId", "review-source")
+    }.toString()
     private fun show() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val configuration = Configuration(context.resources.configuration).apply {
@@ -118,7 +124,7 @@ class ProxyRuntimePresentationTest(private val language: String, private val dar
             CompositionLocalProvider(LocalContext provides localized, LocalConfiguration provides configuration,
                 LocalResources provides localized.resources, LocalDensity provides Density(density.density, 1.6f)) {
                 MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
-                    ProxyInstallEditor(model, {}, {})
+                    ProxyInstallEditor(model, 0L, { true }, {}, {})
                 }
             }
         }
@@ -147,6 +153,7 @@ class ProxyRuntimePresentationTest(private val language: String, private val dar
         rule.onNodeWithText(text(R.string.managed_runtime_preview)).performScrollTo().assertIsNotEnabled()
         rule.runOnUiThread { ownership = "managed"; trust = "revoked"; model.loadRuntime() }
         rule.waitUntil(5_000) { !model.state.busy && model.state.runtime?.ownership == "managed" }
+        rule.onNodeWithText(text(R.string.installation_kind_repair)).performScrollTo().assertIsSelected()
         val kinds = listOf(R.string.managed_runtime_dependency_platform, R.string.managed_runtime_dependency_host,
             R.string.managed_runtime_dependency_disk, R.string.managed_runtime_dependency_filesystem, R.string.managed_runtime_dependency_kernel)
         val states = listOf(R.string.managed_runtime_dependency_satisfied, R.string.managed_resource_missing,
@@ -164,4 +171,20 @@ class ProxyRuntimePresentationTest(private val language: String, private val dar
         rule.onNodeWithText(text(R.string.tunnels_confirm)).assertIsNotEnabled()
         rule.runOnIdle { assertTrue(requests.all { it.first == "GET" }); assertEquals(7, requests.size); assertFalse(model.hasIntent) }
     }
+    @Test fun catalogRevocationBlocksOtherwiseValidReleaseAndPlan() {
+        show()
+        rule.runOnUiThread { catalogTrust = "revoked" }
+        rule.onNodeWithText("review-source", substring = true).performScrollTo().performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.runtimeCatalog != null }
+        rule.onNodeWithText(text(R.string.managed_runtime_trust_revoked), substring = true).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("review-source", substring = true).assertIsNotEnabled()
+        rule.onNodeWithText(text(R.string.managed_runtime_prerelease)).assertHasClickAction()
+        rule.onNodeWithText("1.19.30", substring = true).performScrollTo().assertIsNotEnabled()
+        rule.onNodeWithText(text(R.string.managed_runtime_trust_changed)).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.managed_runtime_preview)).performScrollTo().assertIsNotEnabled()
+        rule.onNodeWithText(text(R.string.tunnels_confirm)).assertIsNotEnabled()
+        rule.runOnIdle { assertTrue(requests.all { it.first == "GET" }); assertEquals(4, requests.size); assertFalse(model.hasIntent) }
+        capture("revoked-catalog")
+    }
+
 }
