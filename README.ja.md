@@ -4,7 +4,7 @@
 
 **クラウドネイティブデスクトップオペレーティングシステム環境**
 
-[![Avalonia](https://img.shields.io/badge/Avalonia-12.1.3-blue)](https://avaloniaui.net/)
+[![Avalonia](https://img.shields.io/badge/Avalonia-12.1.4-blue)](https://avaloniaui.net/)
 [![dotnet](https://img.shields.io/badge/.NET-10.0-purple)](https://dotnet.microsoft.com/)
 [![ASP.NET Core](https://img.shields.io/badge/ASP.NET%20Core-10.0-green)](https://dotnet.microsoft.com/)
 [![License: RNCL](https://img.shields.io/badge/License-RNCL-blue)](./LICENSE)
@@ -19,120 +19,61 @@
 
 ## ✨ プロジェクト紹介
 
-**RelaxKonOS** は、クロスプラットフォームのクラウドネイティブなデスクトップ OS 環境です。クライアントが画面を端末上で描画し、サーバーがアカウント・ストレージ・同期・リモート実行を提供します。両者が交換するのはシステムやアプリの状態と利用者の操作で、画面のピクセルは転送しません。
+**RelaxKonOS** は、クロスプラットフォームのクラウドネイティブなデスクトップ OS 環境です。デスクトップクライアント（Avalonia）と Android クライアント（Kotlin + Compose）が画面を端末上で描画し、サーバー（ASP.NET Core、Linux / Windows で稼働）がアカウント・ストレージ・同期・リモート実行を提供します。両者が交換するのはシステムやアプリの状態と利用者の操作で、画面のピクセルは転送しません。
 
 ### 何のためにあるのか
 
 - **接続より長く生きるワークロード** — ターミナルセッション、保護されたプロセス、リモートサービスはサーバー上で動き続けるため、回線が切れてもセッションが失われません。
-- **複数デバイスで1つのワークスペース** — ワークステーション、ノートPC、サーバーコンソールが見るのは、それぞれのローカル状態ではなく同じ Workspace です。
-- **サーバー運用を1つのデスクトップに集約** — Docker、ファイアウォール、証明書、Webサーバー、Git、FRPトンネル、プロキシ管理が同じシェルに入り、ホストOSのアカウントと権限をそのまま使います。
+- **複数デバイスで1つのワークスペース** — ワークステーション、ノートPC、サーバーコンソール、スマートフォンが見るのは、それぞれのローカル状態ではなく同じ Workspace です。
+- **サーバー運用を1つのクライアントに集約** — Docker、ファイアウォール、証明書、Webサーバー、Git、FRPトンネル、プロキシ管理が同じシェルに入り、ホストOSのアカウントと権限をそのまま使います。
 - **拡張できるアプリケーション** — インターフェースを1つ実装するだけで、内蔵アプリと同じウィンドウ管理・ライフサイクル・ケイパビリティAPIが得られます。
 
 ### 対象となるユーザー
 
 | あなたは | 推奨する始め方 |
 | --- | --- |
+| Windows 10/11 の個人ユーザー | クライアントのログイン画面で**この PC を管理**を選び、**個人モード**でサーバーを導入します。現在のアカウントが RelaxKonOS の管理者になり、本機を認可したうえで他のデバイスとペアリングできます。詳しくは[個人PC向けガイド](./deployment/WindowsPersonalComputer.md)（中国語）を参照してください |
 | 個人ユーザー / セルフホスト志向の方 | 既存の一般 Linux アカウントで**ユーザーモード**のサーバーを導入（**sudo 不要**）。クライアントは手元の PC で動かします |
 | 運用担当 / システム管理者 | **システムモード**で Server、Guardian Agent、特権ヘルパーをシステムサービスとして登録し、マルチユーザーの本番環境を構築 |
+| Android スマートフォン / タブレットのユーザー | [Android クライアント](https://relaxkon.com/docs/ja-JP/latest/getting-started/android)を導入し、既存のサーバーに接続してファイル、転送、Docker、サイト、トンネルを操作します。詳細は [Android ドキュメント](./Client/RelaxKonOS.Client.Android/docs/README.md) を参照してください |
 | アプリケーション開発者 | **開発者モード**と `DevCli` で独自アプリを `.roapp` としてパッケージし、同じデスクトップに組み込みます |
 | まず試したいだけ | [ダウンロードページ](https://relaxkon.com/downloads)から公開済みのクライアント／サーバー ZIP を取得するか、[ソースから実行](#ソースから実行開発者) |
 
-> どれを選ぶか迷ったら、まず[「インストール方法の選択」](#インストール方法の選択)をお読みください。3つの方式は用途が重複しません。一般ユーザーは管理者向け・開発者向けの手順を流用しないでください。
+> どれを選ぶか迷ったら、まず[「実行モードの選択」](#実行モードの選択)をお読みください。4つの方式は役割が異なります。一般ユーザーは管理者向け・開発者向けの手順を流用しないでください。
 
 ### 主な特徴
 
-- 🖥️ **クロスプラットフォームデスクトップシェル** — Avaloniaベース、Windows 11スタイルのインターフェース
-- 🌐 **クラウドネイティブアーキテクチャ** — Client/Server分離、サーバーはLinux、Windows 10/11、Windows Serverで稼働。同じ個人PCでServerとClientを利用できます。Windows版のログイン画面には「この PC にインストール」があり、UACとシステムモードを使い、ローカル導入にSSHは不要です。[個人PC向けガイド（中国語）](./deployment/WindowsPersonalComputer.md)を参照してください。
+- 🖥️ **デスクトップとモバイルの2クライアント** — デスクトップは Avalonia ベースで Windows 11 スタイルの画面、モバイルは Kotlin + Jetpack Compose のネイティブ実装で、スマートフォンとタブレットに合わせてレイアウトを切り替えます
+- 🌐 **クラウドネイティブアーキテクチャ** — Client/Server分離。サーバーは Linux、Windows 10/11、Windows Server で稼働し、クライアントと同じ個人PCに同居できます
 - 🔐 **ホストOSアイデンティティ統合** — ホストシステムのユーザーと権限体系を活用（Windows LogonUser / Linux PAM）
-- 🪟 **ウィンドウ管理システム** — ウィンドウの完全ライフサイクル：作成、移動、リサイズ、最小化/最大化、Z-Order、モーダルダイアログ
-- 🧩 **アプリケーションSDK** — `IRemoteApplication`インターフェース経由で統一されたウィンドウ管理とライフサイクルを提供
-- 🔌 **SignalRリアルタイム通信** — ターミナルなどのアプリがSignalR Hub経由でリアルタイム双方向通信
-- 🐳 **Docker管理** — リモートDocker Engineの検出、コンテナ/イメージ/Stack/ネットワーク/ボリューム管理
-- 🛡️ **プロセスガーディアン** — 保護されたワークロード、ヘルスチェック、自動復旧、ネイティブサービス管理 + ガーディアンログのSignalRブロードキャスト
-- 🔒 **証明書管理** — ACME証明書申請、更新、失効、Kestrelデプロイ；ホストレベルリソースはバージョン化マイグレーションで永続化
-- 🌐 **Webサーバー管理** — Nginx検出、サイト、設定スナップショット、最小侵入インテグレーション
-- 🧾 **Gitクライアント** — リモートホストGitリポジトリ、ブランチ、コミット、プル衝突解決、プッシュと履歴
-- 🚇 **FRPトンネル管理** — NATトラバーサル Server Profile / トンネル定義 / シークレットと監査
-- 🔀 **プロキシマネージャー** — ホストプロキシランタイム（Mihomoを初号エンジンとし、sing-box/Xrayに拡張可能）、TUNモード、サブスクリプションとプロファイル、システムプロキシ、トラフィック/接続モニタリング、ネットワークセーフティと復旧
-- 🧱 **設定レジストリ** — schema制約のdesired/applied状態機械設定センター
-- 🪞 **ミラーソース管理** — APT/Docker/NPM/PyPIなどのミラーソースをWorkspace設定と同期
-- 🔧 **アプリケーションケイパビリティとプライベートKV** — `/api/v1.0/capabilities` + App Settings ユーザー/アプリ単位の隔離KV
-- 🌍 **多言語対応** — 中国語、英語、日本語の言語パックを内蔵
-- 🔧 **デベロッパー拡張** — `DevCli`ツール経由でカスタムアプリケーションパッケージのインストールと管理に対応
+- 🪟 **ウィンドウとアプリケーションモデル** — ウィンドウの完全なライフサイクル（作成、移動、リサイズ、最小化/最大化、Z-Order、モーダルダイアログ）。アプリは `IRemoteApplication` 経由で同じ管理を利用します
+- 🔌 **SignalRリアルタイムチャネル** — ターミナル PTY、ガーディアンログ、パフォーマンス指標を購読中にプッシュし、構成の変化も即座に反映します
+- 🛠️ **ホスト運用スイート** — Docker と Compose、プロセスガーディアン、UFW ファイアウォール、ACME 証明書、Nginx サイト、Git、FRP トンネル、Mihomo／Squid／sing-box プロキシ、SMB ファイルサービス
+- 🧱 **設定と環境設定のセンター** — schema 制約の desired/applied レジストリ、Workspace 設定の同期、ミラーソース管理、ユーザー／アプリ単位で隔離されたプライベート KV
+- 🌍 **多言語と拡張性** — 中国語・英語・日本語の言語パックを内蔵。`DevCli` が `.roapp` のパッケージ化、インストール、監視リロードを担当します
 
 ---
 
 ## 🏗️ アーキテクチャ概要
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                  RelaxKonOS.Client                        │
-│          (Avalonia Desktop Shell · ローカル描画)          │
-│                                                         │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐  │
-│  │ Explorer │ │ Terminal │ │ Browser  │ │    ...    │  │
-│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └─────┬─────┘  │
-│       │             │            │              │       │
-│  ┌────┴─────────────┴────────────┴──────────────┴────┐  │
-│  │              Application Runtime / SDK              │  │
-│  └──────────────────────────┬────────────────────────┘  │
-│                              │                           │
-│  ┌──────────────────────────┴────────────────────────┐  │
-│  │              Window Manager (RemoteWindow)          │  │
-│  └──────────────────────────┬────────────────────────┘  │
-│                             │                            │
-│  ┌──────────────────────────┴────────────────────────┐  │
-│  │                    Protocol (DTOs)                   │  │
-│  └──────────────────────────┬────────────────────────┘  │
-└──────────────────────────────┼──────────────────────────┘
-                               │ HTTP REST / SignalR
-                               ▼
-┌─────────────────────────────────────────────────────────┐
-│                   RelaxKonOS.Server                        │
-│         (ASP.NET Core · クラウドバックエンド · クロスプラットフォーム) │
-│                                                         │
-│  ┌────────┐ ┌────────┐ ┌────────┐ ┌───────┐ ┌──────┐  │
-│  │  Auth  │ │Workspace│ │ Storage│ │Files  │ │Browser│  │
-│  └────────┘ └────────┘ └────────┘ └───────┘ └──────┘  │
-│                                                         │
-│  ┌──────────┐ ┌──────────────┐ ┌────────┐ ┌──────────┐ │
-│  │App-Capab-│ │  AppSettings │ │Registry│ │Image-    │ │
-│  │ilities   │ │              │ │        │ │Mirrors   │ │
-│  └──────────┘ └──────────────┘ └────────┘ └──────────┘ │
-│                                                         │
-│  ┌──────────┐ ┌──────────────┐ ┌────────┐ ┌──────────┐ │
-│  │   Docker │ │ProcessGuardian│ │Firewall│ │System-   │ │
-│  │          │ │ (SignalR Hub) │ │  (UFW) │ │Monitor   │ │
-│  └──────────┘ └──────────────┘ └────────┘ └──────────┘ │
-│                                                         │
-│  ┌──────────┐ ┌──────────────┐ ┌────────┐ ┌──────────┐ │
-│  │WebServers│ │ Certificates │ │  Git   │ │ Tunnels  │ │
-│  │(Nginx…)  │ │  (ACME/Host) │ │        │ │  (FRP)   │ │
-│  └──────────┘ └──────────────┘ └────────┘ └──────────┘ │
-│                                                         │
-│  ┌───────────────────────────────────────────────────┐  │
-│  │  Proxy Management (Mihomoランタイム · TUN · サブスク) │  │
-│  └───────────────────────────────────────────────────┘  │
-│                                                         │
-│  ┌───────────────────────────────────────────────────┐  │
-│  │  OS Abstraction Layer (Providerインターフェース群)    │  │
-│  │  IIdentityProvider · ISystemMetricsProvider        │  │
-│  │  IFirewallProvider · IWebServerProvider            │  │
-│  │  ICertificateProvider · IGitProvider …             │  │
-│  └───────────────────────────────────────────────────┘  │
-│                                                         │
-│  ┌───────────────────────────────────────────────────┐  │
-│  │  Persistence (デュアルドメインSQLite)                │  │
-│  │  業務DB: EF Core + 増分補完; HostGlobal: v1~v7移行  │  │
-│  └───────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────┐
-│              RelaxKonOS.Guardian.Agent                     │
-│    (独立プロセス · 保護ワークロード ·                      │
-│     ネイティブサービス管理)                                │
-└─────────────────────────────────────────────────────────┘
+Client（デスクトップ Avalonia · Android Kotlin/Compose）
+  ├─ 内蔵アプリ            Explorer · Terminal · Settings · Server Center · Docker · Proxy …
+  ├─ ランタイム / SDK      IRemoteApplication · AppContext · ケイパビリティとプライベート KV
+  ├─ ウィンドウ管理        RemoteWindow · ライフサイクル · Z-Order · モーダルダイアログ
+  └─ Protocol（DTO）       ルート · Hub 契約 · シリアライズ規約
+        │  HTTP REST + SignalR（状態と操作を転送し、画面ピクセルは送らない）
+        ▼
+Server（ASP.NET Core · Linux / Windows）
+  ├─ 認証とワークスペース  Auth · Workspace · Session · Device · Alias
+  ├─ データと設定          Storage · Files · AppSettings · Registry · ミラー
+  ├─ ホスト運用            Docker · Guardian · Firewall · Metrics · 独立コンポーネントサービス
+  ├─ サイトとネットワーク  WebServers · Certificates · Git · Tunnels · Squid · Proxy
+  ├─ OS 抽象化             IIdentityProvider · IFirewallProvider · ICertificateProvider …
+  └─ 永続化                業務DB EF Core + SQLite · HostGlobal v1~v7 マイグレーション
+        │
+        ▼
+Guardian Agent / Privileged Helper（独立プロセス · ネイティブサービス · 特権操作）
 ```
 
 ---
@@ -141,17 +82,18 @@
 
 | コンポーネント | 技術 | バージョン |
 |---------------|------|-----------|
-| UIフレームワーク | [Avalonia UI](https://avaloniaui.net/) | 12.1.3 |
-| MVVM | CommunityToolkit.Mvvm | 8.4.2 |
+| デスクトップUI | [Avalonia UI](https://avaloniaui.net/) | 12.1.4 |
+| デスクトップMVVM | CommunityToolkit.Mvvm | 8.4.2 |
+| モバイルクライアント | Kotlin + Jetpack Compose (Material 3) | compileSdk 36 · minSdk 29 |
 | フレームワーク | .NET | 10.0 |
 | サーバー | ASP.NET Core | 10.0 |
 | リアルタイム通信 | SignalR | 10.0 |
 | 認証 | JWT Bearer | — |
 | パーシステンス | EF Core + SQLite | 10.0 |
-| ターミナルコントロール | RoyalTerminal (Avalonia + PTY) | 0.4.0 |
-| ブラウザ | Avalonia.Controls.WebView | 12.0.1 |
+| ターミナルコントロール | RoyalTerminal (Avalonia + PTY) | 0.6.3 |
+| ブラウザ | Avalonia.Controls.WebView | 12.1.0 |
 | ファイルマネージャUI | Jaya File Manager (BSD-3ライセンス) | — |
-| ビデオ再生 | LibVLCSharp.Avalonia | 3.10.0 |
+| ビデオ再生 | LibVLCSharp.Avalonia | 3.10.1 |
 
 ---
 
@@ -161,36 +103,45 @@
 RelaxKonOS/
 ├── Client/
 │   ├── RelaxKonOS.Client/          # デスクトップシェル + 内蔵アプリ（クラスライブラリ）
-│   │   ├── Apps/                 # 内蔵アプリケーション
-│   │   │   ├── Explorer/         # ファイルマネージャ
-│   │   │   ├── Terminal/         # ターミナル
-│   │   │   ├── Browser/          # ブラウザ
-│   │   │   ├── Settings/         # 設定センター（システム/個人設定/時間と言語/ネットワーク/アプリ/ミラー/開発者）
-│   │   │   ├── TaskManager/      # タスクマネージャ
-│   │   │   ├── Docker/           # Dockerマネージャ
-│   │   │   ├── ProcessGuardian/  # プロセスガーディアン
-│   │   │   ├── Firewall/         # Linux UFWファイアウォール
-│   │   │   ├── Proxy/            # プロキシマネージャー（Mihomoランタイム、TUN、サブスクリプション、システムプロキシ）
-│   │   │   ├── PortForwarding/   # SSHポートフォワーディング
-│   │   │   ├── Certificates/     # ACME証明書管理
-│   │   │   ├── WebServers/       # Webサーバー管理（Nginxなど）
-│   │   │   ├── Git/              # Gitクライアント
-│   │   │   ├── Tunnels/          # FRPトンネル管理
-│   │   │   ├── Registry/         # 設定レジストリ
-│   │   │   ├── Notepad/          # メモ帳
-│   │   │   ├── CodeEditor/       # コードエディタ
-│   │   │   ├── TextEditor/       # テキストエンコーディングダイアログ（Notepad/CodeEditor共通）
-│   │   │   ├── ImageViewer/      # 画像ビューア
-│   │   │   ├── Welcome/          # ウェルカムページ
-│   │   │   └── AppInstaller/     # アプリインストーラー
-│   │   ├── Localization/         # 言語リソース（en-US / zh-CN / ja-JP）
-│   │   ├── Services/             # 認証、権限、開発モードサービス
-│   │   ├── ViewModels/           # Shell / Login ViewModel
-│   │   └── Views/                # Shell / Login / MainWindowビュー
-│   └── RelaxKonOS.Client.Desktop/  # プラットフォームエントリーポイント（WinExe）
+│   │   ├── Apps/                   # 内蔵アプリケーション（下の一覧を参照）
+│   │   │   ├── Explorer/           # ファイルマネージャ
+│   │   │   ├── Terminal/           # ターミナル
+│   │   │   ├── Browser/            # ブラウザ
+│   │   │   ├── Settings/           # 設定センター（システム/アカウントセキュリティ/ネットワーク/個人設定/アプリ/時刻と言語/アクセシビリティ/開発者）
+│   │   │   ├── ServerCenter/       # サーバーセンター：インストール、更新、修復、ロールバック、アンインストール
+│   │   │   ├── TaskManager/        # タスクマネージャ
+│   │   │   ├── Docker/             # Dockerマネージャ
+│   │   │   ├── ApplicationDeployments/ # コンテナアプリのデプロイ
+│   │   │   ├── ProcessGuardian/    # プロセスガーディアン
+│   │   │   ├── Firewall/           # Linux UFWファイアウォール
+│   │   │   ├── Proxy/              # プロキシマネージャー（Mihomoランタイム、TUN、サブスクリプション、システムプロキシ）
+│   │   │   ├── ProxyServer/        # プロキシサーバー（sing-box）
+│   │   │   ├── Squid/              # Squid HTTPプロキシゲートウェイ
+│   │   │   ├── FileServices/       # ファイルサービス（SMB）
+│   │   │   ├── PortForwarding/     # SSHポートフォワーディング
+│   │   │   ├── Certificates/       # ACME証明書管理
+│   │   │   ├── WebServers/         # Webサーバー管理（Nginxなど）
+│   │   │   ├── Git/                # Gitクライアント
+│   │   │   ├── Tunnels/            # FRPトンネル管理
+│   │   │   ├── Registry/           # 設定レジストリ
+│   │   │   ├── EventAlerts/        # イベントとアラートのセンター
+│   │   │   ├── Notepad/            # メモ帳
+│   │   │   ├── CodeEditor/         # コードエディタ
+│   │   │   ├── TextEditor/         # テキストエンコーディングダイアログ（Notepad/CodeEditor共通）
+│   │   │   ├── ImageViewer/        # 画像ビューア
+│   │   │   ├── Welcome/            # ウェルカムページ
+│   │   │   └── AppInstaller/       # アプリインストーラー
+│   │   ├── Localization/           # 言語リソース（en-US / zh-CN / ja-JP）
+│   │   ├── Services/               # 認証、権限、開発モードサービス
+│   │   ├── ViewModels/             # Shell / Login ViewModel
+│   │   └── Views/                  # Shell / Login / MainWindowビュー
+│   ├── RelaxKonOS.Client.Desktop/  # デスクトップのエントリーポイント（WinExe）
+│   └── RelaxKonOS.Client.Android/  # Androidクライアント（Kotlin + Compose、独自の docs/ を含む）
 ├── Framework/
 │   ├── RelaxKonOS.Core/            # プラットフォーム非依存プリミティブ（幾何、ウィンドウ、アプリモデル）
+│   ├── RelaxKonOS.Core.Tests/      # プリミティブ層の単体テスト
 │   ├── RelaxKonOS.UI/              # Avalonia共有テーマ/スタイル
+│   ├── RelaxKonOS.Shell/           # デスクトップシェルの組み立て
 │   ├── RelaxKonOS.WindowManager/   # ウィンドウマネージャ + RemoteWindowコントロール
 │   ├── RelaxKonOS.App.SDK/         # アプリ開発API（AppContext / IRemoteApplication）
 │   └── RelaxKonOS.Runtime/         # アプリランタイム（ApplicationManager）
@@ -199,17 +150,11 @@ RelaxKonOS/
 ├── RelaxKonOS.Server/              # サーバー（ASP.NET Core）
 ├── RelaxKonOS.Guardian.Agent/      # プロセスガーディアン独立プロセス（ネイティブサービス管理）
 ├── RelaxKonOS.PrivilegedHelper/    # クロスプラットフォーム特権操作ヘルパー（Windowsサービス / Linuxデーモン）
-├── Tools/
-│   ├── RelaxKonOS.DevCli/          # デベロッパーCLIツール
-│   ├── verify-localization.py    # 多言語検証スクリプト
-│   └── slice_app_icons.py        # アプリアイコンスプライトスライススクリプト
-├── examples/
-│   ├── VideoPlayer/              # ビデオプレーヤーサンプルアプリ
-│   ├── ServerMonitor/            # サーバーモニターサンプルアプリ
-│   └── HelpCenter/               # ヘルプセンターサンプルアプリ
-├── deployment/                   # デプロイスクリプト（Linux / Windows）
-├── docs/                         # 詳細設計ドキュメント
-├── Directory.Packages.props      # 中央パッケージ管理
+├── Tools/                          # DevCli、多言語検証、アイコンスライスなどのスクリプト
+├── examples/                       # サンプルアプリ（VideoPlayer / ServerMonitor / HelpCenter）
+├── deployment/                     # デプロイスクリプトとドキュメント（Linux / Windows / クライアント配布）
+├── docs/                           # 詳細設計ドキュメント（アーキテクチャ/プラットフォーム/デスクトップ/アプリ/プロキシ/サービス/テスト）
+├── Directory.Packages.props        # 中央パッケージ管理
 └── RelaxKonOS.sln                  # ソリューションファイル
 ```
 
@@ -217,43 +162,74 @@ RelaxKonOS/
 
 ## 🧩 内蔵アプリケーション
 
+ステータス凡例：✅ **利用可能**（日常的に使える）· 🧪 **MVP**（主要な流れは動作し、境界と受け入れは継続中）· 🚧 **進行中**（カバー範囲が未完成）。
+
 | アプリケーション | 説明 | ステータス |
 |-----------------|------|-----------|
-| **Welcome** | ウェルカムオンボーディングページ、RuntimeとWindowManagerの検証 | ✅ 実装済み |
-| **Notepad** | テキストファイル編集（マルチエンコーディング UTF-8/GBK/Shift-JIS オープン & セーブ） | ✅ 実装済み |
-| **Code Editor** | コードファイル編集（シンタックスハイライト、マルチエンコーディング対応） | ✅ 実装済み |
-| **Image Viewer** | 画像ファイル閲覧（ズームとスクロール） | ✅ 実装済み |
-| **Settings** | システム設定センター（5+ カテゴリページ：システム/個人設定/時間と言語/ネットワーク/アプリ/ミラー/開発者） | ✅ 実装済み |
-| **Terminal** | リモートターミナル（Remote Mode: SignalR + PTY永続セッション; Local Modeフォールバック） | ✅ 実装済み |
-| **Explorer** | リモートファイルマネージャ（REST API + ホストOS権限活用） | ✅ 実装済み |
-| **Browser** | 内蔵ブラウザ（ブックマーク/履歴、ホームページ & リンク開く位置の永続化） | ✅ 実装済み |
-| **Port Forwarding** | ローカルSSH loopbackトンネル管理（Clientのみ、Serverと同期しない） | ✅ 実装済み |
-| **Task Manager** | リモートタスクマネージャ（パフォーマンスページ: 購読中のみ SignalR 1Hzプッシュ + 60s履歴; プロセスページ: オンデマンド低頻度サンプリング） | ✅ 実装済み |
-| **Docker Manager** | リモートDocker Engine管理（コンテナ/イメージ/Stack/ネットワーク/ボリューム + Composeオーケストレーション） | ✅ 実装済み |
-| **Process Guardian** | 保護ワークロード、IPC、永続化; SignalR `/hubs/guardian-logs` ログブロードキャスト | 🚧 基本実装 |
-| **Firewall** | Linux Server UFWファイアウォール状態、デフォルトポリシーとルール管理 | ✅ 実装済み |
-| **App Installer** | アプリパッケージ（`.roapp`）のインストールと管理 | ✅ 実装済み |
-| **Registry** | 設定レジストリ（キー/値ブラウズ、desired/applied状態機械、サーバー側永続化） | ✅ MVP |
-| **Certificate Manager** | ACME証明書申請、更新、Kestrelデプロイ、失効 & 削除、自己署名証明書 | ✅ MVP |
-| **Web Server Manager** | Nginxインスタンス/サイト/設定スナップショット/操作ログ + 監査（ホストレベル HostGlobal永続化） | ✅ MVP |
-| **Git Client** | リモートGitリポジトリ登録、ブランチ、コミット、プル衝突解決、プッシュ、履歴ログ | ✅ MVP |
-| **Tunnel Manager** | FRP NATトラバーサル（Server Profile/Definition/Secrets/Audit、サーバー側永続化） | ✅ MVP |
-| **Proxy Manager** | プロキシマネージャー（Mihomoランタイムのインストール/起動/停止/アップグレード、TUNモード、サブスクリプションとプロファイル、システムプロキシ、トラフィック/接続モニタリング、ネットワークセーフティと緊急復旧） | ✅ MVP |
+| **Welcome** | ウェルカムオンボーディングページ、RuntimeとWindowManagerの検証 | ✅ 利用可能 |
+| **Notepad** | テキストファイル編集（UTF-8/GBK/Shift-JIS などのマルチエンコーディング） | ✅ 利用可能 |
+| **Code Editor** | コードファイル編集（シンタックスハイライト、マルチエンコーディング対応） | ✅ 利用可能 |
+| **Image Viewer** | 画像ファイル閲覧（ズームとスクロール） | ✅ 利用可能 |
+| **Settings** | 設定センター（8カテゴリ：システム/アカウントセキュリティ/ネットワーク/個人設定/アプリ/時刻と言語/アクセシビリティ/開発者。全ページ検索つき） | ✅ 利用可能 |
+| **Server Center** | サーバーセンター：SSHとホスト鍵の確認、事前チェック、インストール、更新、修復、ロールバック、アンインストール | ✅ 利用可能 |
+| **Terminal** | リモートターミナル（SignalR + PTY永続セッション、VTエンジンは Auto/Managed/Native から選択） | ✅ 利用可能 |
+| **Explorer** | リモートファイルマネージャ（REST API + ホストOS権限活用） | ✅ 利用可能 |
+| **Browser** | 内蔵ブラウザ（ブックマーク/履歴、ホームページ & リンク開く位置の永続化） | ✅ 利用可能 |
+| **Port Forwarding** | ローカルSSH loopbackトンネル管理（Clientのみ、Serverと同期しない） | ✅ 利用可能 |
+| **Task Manager** | リモートタスクマネージャ（パフォーマンスページ: 購読中のみ SignalR 1Hzプッシュ + 60s履歴; プロセスページ: オンデマンド低頻度サンプリング） | ✅ 利用可能 |
+| **Docker Manager** | リモートDocker Engine管理（コンテナ/イメージ/Stack/ネットワーク/ボリューム + Composeオーケストレーション） | ✅ 利用可能 |
+| **App Installer** | アプリパッケージ（`.roapp`）のインストールと管理 | ✅ 利用可能 |
+| **Firewall** | Linux Server UFWファイアウォール状態、デフォルトポリシーとルール管理 | ✅ 利用可能 |
+| **Process Guardian** | 保護ワークロード、IPC、永続化; SignalR `/hubs/guardian-logs` ログブロードキャスト | 🚧 進行中 |
+| **Application Deployments** | コンテナアプリのデプロイ：ウィザード、定義編集、ログ、バージョンとロールバック、テンプレート | 🧪 MVP |
+| **Registry** | 設定レジストリ（キー/値ブラウズ、desired/applied状態機械、サーバー側永続化） | 🧪 MVP |
+| **Certificate Manager** | ACME証明書申請、更新、Kestrelデプロイ、失効 & 削除、自己署名証明書 | 🧪 MVP |
+| **Web Server Manager** | Nginxインスタンス/サイト/設定スナップショット/操作ログ + 監査（ホストレベル HostGlobal永続化） | 🧪 MVP |
+| **Git Client** | リモートGitリポジトリ登録、ブランチ、コミット、プル衝突解決、プッシュ、履歴ログ | 🧪 MVP |
+| **Tunnel Manager** | FRP NATトラバーサル（Server Profile/Definition/Secrets/Audit、サーバー側永続化） | 🧪 MVP |
+| **Proxy Manager** | プロキシマネージャー（Mihomoランタイムのインストール/起動/停止/アップグレード、TUNモード、サブスクリプションとプロファイル、システムプロキシ、トラフィック/接続モニタリング、ネットワークセーフティと緊急復旧） | 🧪 MVP |
+| **Squid Gateway** | Squid HTTPプロキシゲートウェイ（APTインストール、リスナーとACL、HTTP parent、検証付き公開、サービス制御） | 🧪 MVP |
+| **Proxy Server** | 内蔵プロキシサーバー（sing-boxランタイム、インバウンドと資格情報、接続エクスポートとサブスクリプション、公開とロールバック） | 🧪 MVP |
+| **File Services (SMB)** | SMBファイルサービス（インストール、共有、権限と資格情報、結果の確認） | 🧪 MVP |
+| **Event Alerts** | イベントとアラートのセンター：サーバー側のイベント台帳とアラート投影、デスクトップは概要とアラート一覧を表示 | 🚧 進行中 |
+| **Text Encoding Dialog** | テキストエンコーディングダイアログ（Notepad / Code Editor 共通、独立アプリではない） | ✅ 利用可能 |
 
 ---
 
 ## 🚀 クイックスタート
 
-### クライアントからサーバーをインストール
+### 実行モードの選択
 
-1. [ダウンロード](https://relaxkon.com/downloads)から対応するクライアントを取得し、**サーバーセンター**を開きます。
+サーバーにはインストール時に選ぶ3つの実行モードがあり、開発者向けのモードが別にあります。選び方を誤ると権限不足になるか、逆に権限が過剰になります。
+
+| モード | 向いている場面 | 必要な権限 | サービスの形態 |
+| --- | --- | --- | --- |
+| **個人モード** | 自分専用の Windows 10/11 PC | インストールと保守のときだけ UAC | 現在のユーザーのサインインで起動し、サインアウトで停止。SSH 不要 |
+| **システムモード** | マルチユーザーホスト、Windows Server | root／sudo または昇格済み管理者 | Server、Guardian Agent、特権ヘルパーをシステムサービスとして登録 |
+| **ユーザーモード** | 既存の一般 Linux アカウントを変えたくない場合 | 一般アカウント、**sudo 不要** | ユーザー単位のプロセス。既定はループバックのみ待ち受け、SSH トンネルも可 |
+| **開発者モード** | 独自の `.roapp` アプリを書く場合 | サインイン中のセッションに従う | サーバーのインストールは伴わない。下の「開発と拡張」を参照 |
+
+### サーバーのインストール
+
+1. [ダウンロード](https://relaxkon.com/downloads)から対応するクライアントを取得し、**サーバーセンター**を開きます。Windows 10/11 の本機なら、ログイン画面で**この PC を管理**を選ぶこともできます。
 2. 対象の SSH アドレス、ポート、アカウントを追加し、ホスト鍵を確認して事前チェックを実行します。
 3. 公式安定版、ローカル ZIP、サーバー上の ZIP、カスタム HTTPS ダウンロードを選びます。システムモードとユーザーモードは対象 OS・アーキテクチャの `*-server.zip` を共用し、インストール時にモードを選択します。
-4. Linux システム、Linux ユーザー、Windows システムから選びます。システムモードは root／sudo または昇格済み管理者が必要で、Linux ユーザーモードは通常のアカウントで sudo 不要です。
+4. システムモードまたはユーザーモードを選びます（Windows 10/11 の本機では個人モードも選べます）。システムモードは root／sudo または昇格済み管理者が必要で、Linux ユーザーモードは通常のアカウントで sudo 不要です。
 5. ポート、プログラムとデータのディレクトリ、ネットワーク、TLS、ファイルアクセスを設定します。Linux システムモードでは管理者と root の範囲、Docker の許可、対応一覧外のシステムを設定できます。ユーザーモードはデータ、設定、状態、キャッシュのルートを設定できます。
 6. 確認して実行し、最終結果と正常性チェックを待ってログインに戻ります。
 
-更新、修復、ロールバック、アンインストールもサーバーセンターで実行し、既定ではデータを保持します。全手順と設定の適用範囲は[インストール](https://relaxkon.com/docs/ja-JP/latest/getting-started/installation)と[ユーザーモード](https://relaxkon.com/docs/ja-JP/latest/getting-started/user-mode)を参照してください。
+### 更新と保守
+
+インストール後の保守はすべて**サーバーセンター**から行います。クライアントとサーバーは別々に更新され、クライアントを更新してもサーバーは更新されません。
+
+| 目的 | 選ぶ操作 | 注意点 |
+| --- | --- | --- |
+| 新しいサーバーパッケージに移行 | 更新／アップグレード | 元のディレクトリと設定を引き継ぎ、通常の更新では TLS の同一性を保ちます |
+| 現在のインストールやコンポーネントを修復 | 修復 | 新しいバージョンの選択とは異なります。通常の修復はデータと既存の証明書を保持します |
+| 記録された直前のバージョンに戻す | ロールバック | 復元するのはプログラムのみで、データやデータベース構造は戻しません |
+| サーバーを削除 | アンインストール（既定でデータを保持） | 管理データの完全削除には別途の確認が必要です |
+
+保守の前にバックアップを取り、使える SSH または本機の管理経路を確保してください。サービスの再起動中にクライアントが切断されても操作の失敗とは限りません。再接続して結果、バージョン、正常性を確認します。詳しい手順は[インストール](https://relaxkon.com/docs/ja-JP/latest/getting-started/installation)、[更新・アンインストール・保守](https://relaxkon.com/docs/ja-JP/latest/apps/server-maintenance)、[ユーザーモード](https://relaxkon.com/docs/ja-JP/latest/getting-started/user-mode)を参照してください。
 
 保守担当者向けのデプロイエンジン、引数の対応、パッケージ作成、手動診断は [`deployment/README.md`](./deployment/README.md)、クライアント配布は [`deployment/ClientDistribution.md`](./deployment/ClientDistribution.md) を参照してください。
 
@@ -318,6 +294,7 @@ dotnet run
 | [RelaxKonOS.Workspace.md](./docs/architecture/RelaxKonOS.Workspace.md) | ユーザー/Workspace/Session/Device、マルチデバイスモデル |
 | [RelaxKonOS.Registry.md](./docs/architecture/RelaxKonOS.Registry.md) | 設定レジストリアーキテクチャ、desired/applied状態機械 |
 | [RelaxKonOS.ApplicationActivation.md](./docs/architecture/RelaxKonOS.ApplicationActivation.md) | アプリ起動URIとウィンドウインスタンスポリシー |
+| [RelaxKonOS.FileUpload.Design.md](./docs/architecture/RelaxKonOS.FileUpload.Design.md) | アップロード経路、分割転送、レジュームの契約 |
 
 ### プラットフォームサービス
 
@@ -327,6 +304,12 @@ dotnet run
 | [RelaxKonOS.Authentication.Hardening.md](./docs/platform/RelaxKonOS.Authentication.Hardening.md) | 認証レート制限、リスク制御、ログイン保護ガイダンス |
 | [RelaxKonOS.Login.md](./docs/platform/RelaxKonOS.Login.md) | ログインモジュール実装詳細、mstscスタイルログインウィンドウ |
 | [RelaxKonOS.Security.md](./docs/platform/RelaxKonOS.Security.md) | セキュリティ設計、権限昇格、危険操作 |
+| [RelaxKonOS.AppPermissions.v2.md](./docs/platform/RelaxKonOS.AppPermissions.v2.md) | アプリ権限モデル、許可範囲、判定ルール |
+| [RelaxKonOS.InstallationManagement.Design.md](./docs/platform/RelaxKonOS.InstallationManagement.Design.md) | インストールコンポーネント、インストール設定、修復と状態の区別 |
+| [RelaxKonOS.ManagedRuntimes.Design.md](./docs/platform/RelaxKonOS.ManagedRuntimes.Design.md) | 管理ランタイムのライフサイクル：導入、バージョン、更新、ロールバック |
+| [RelaxKonOS.PrivilegedOperations.Goal.md](./docs/platform/RelaxKonOS.PrivilegedOperations.Goal.md) | 制限付きヘルパー、Windows Server 対応、特権操作の移行 |
+| [RelaxKonOS.ServerCenter.Goal.md](./docs/platform/RelaxKonOS.ServerCenter.Goal.md) | サーバーセンター、信頼済み SSH デプロイ、ライフサイクルの受け入れ |
+| [RelaxKonOS.UserModeServer.Goal.md](./docs/services/RelaxKonOS.UserModeServer.Goal.md) | sudo 不要の Linux ユーザーモードサーバー、SSH トンネル、能力の境界 |
 | [RelaxKonOS.Storage.md](./docs/platform/RelaxKonOS.Storage.md) | サーバーパーシステンス、EF Core + SQLite |
 
 ### デスクトップ体験
@@ -349,13 +332,16 @@ dotnet run
 | [RelaxKonOS.PortForwarding.md](./docs/applications/RelaxKonOS.PortForwarding.md) | SSHポートフォワーディング、ローカルloopbackトンネル |
 | [RelaxKonOS.TaskManager.md](./docs/applications/RelaxKonOS.TaskManager.md) | タスクマネージャ、システムメトリクス、プロセス管理、SignalRプッシュ再実装 |
 | [RelaxKonOS.DockerManager.md](./docs/applications/RelaxKonOS.DockerManager.md) | Dockerマネージャ、コンテナ/イメージ/Stack/ネットワーク/ボリューム |
+| [RelaxKonOS.ApplicationDeployment.Design.md](./docs/applications/RelaxKonOS.ApplicationDeployment.Design.md) | コンテナアプリのデプロイ、テンプレート契約、状態機械と復旧の意味論 |
 | [RelaxKonOS.Firewall.md](./docs/applications/RelaxKonOS.Firewall.md) | Linux Server UFWファイアウォールアプリ |
 | [RelaxKonOS.ProcessGuardian.md](./docs/applications/RelaxKonOS.ProcessGuardian.md) | プロセスガーディアン、ヘルスチェック、ネイティブサービス管理、ログHub |
 | [RelaxKonOS.CertificateManager.md](./docs/applications/RelaxKonOS.CertificateManager.md) | ACME証明書ライフサイクル、Kestrelデプロイ、更新、HostGlobal永続化 |
+| [RelaxKonOS.EventAlertCenter.md](./docs/applications/RelaxKonOS.EventAlertCenter.md) | イベントとアラートのセンター：イベント台帳、アラート投影、検証の境界 |
 | [RelaxKonOS.WebServerManager.Design.md](./docs/applications/RelaxKonOS.WebServerManager.Design.md) | Webサーバー管理、Nginx統合、サイト/スナップショット/監査 |
 | [RelaxKonOS.GitClient.md](./docs/applications/RelaxKonOS.GitClient.md) | Gitクライアント、リポジトリ/ブランチ/コミット/衝突/履歴 |
 | [RelaxKonOS.FRP_Integration.Design.md](./docs/applications/RelaxKonOS.FRP_Integration.Design.md) | FRP NATトラバーサルアーキテクチャ、セキュリティ & 運用境界 |
 | [RelaxKonOS.ProxyManager.Design.md](./docs/applications/RelaxKonOS.ProxyManager.Design.md) | プロキシマネージャー、Mihomoランタイム、TUN、サブスクリプションとプロファイル |
+| [RelaxKonOS.ProxyServer.Design.md](./docs/applications/RelaxKonOS.ProxyServer.Design.md) | プロキシサーバー設計：sing-box、インバウンド、資格情報、接続エクスポートとサブスクリプション |
 | [RelaxKonOS.RegistryApp.md](./docs/applications/RelaxKonOS.RegistryApp.md) | 設定レジストリブラウズ、書き込みと隔離境界 |
 | [RelaxKonOS.CodeEditor.md](./docs/applications/RelaxKonOS.CodeEditor.md) | コードエディタ、シンタックスハイライト、ファイルセキュリティ境界 |
 | [RelaxKonOS.NetworkInspector.md](./docs/applications/RelaxKonOS.NetworkInspector.md) | ネットワークインスペクター、診断ツール、ネットワーク分析 |
@@ -365,13 +351,22 @@ dotnet run
 | ドキュメント | 説明 |
 |-------------|------|
 | [architecture.md](./docs/proxy/architecture.md) | プロキシモジュールアーキテクチャ、エンジン抽象（IProxyEngine）、Mihomo統合 |
-| [squid.en.md](./docs/proxy/squid.en.md) | Squid HTTP ゲートウェイ：初期バックエンド、API、セキュリティ、復旧と今後の実装 |
+| [squid.md](./docs/proxy/squid.md) | Squid HTTP ゲートウェイ：バックエンド、API、セキュリティ、復旧と今後の実装 |
 | [installation.md](./docs/proxy/installation.md) | プロキシランタイムのインストール、デプロイ、アップグレード |
 | [mihomo.md](./docs/proxy/mihomo.md) | Mihomoエンジン設定、コントロールプレーン、ランタイム管理 |
 | [tun.md](./docs/proxy/tun.md) | TUNモード、ネットワークスタック、透過プロキシ |
 | [recovery.md](./docs/proxy/recovery.md) | プロキシ障害復旧、ネットワークセーフティ、緊急無効化 |
 | [security.md](./docs/proxy/security.md) | プロキシセキュリティモデル、権限境界、監査 |
 | [troubleshooting.md](./docs/proxy/troubleshooting.md) | プロキシトラブルシューティングガイドとFAQ |
+
+### モバイルクライアント（Android）
+
+| ドキュメント | 説明 |
+|-------------|------|
+| [docs/mobile](./docs/mobile/README.md) | モバイルの入口。Android 側のドキュメントを指し示します |
+| [Android ドキュメント](./Client/RelaxKonOS.Client.Android/docs/README.md) | 設計仕様、現在の機能、ビルドとリリース、検証要件 |
+| [サポート範囲](./Client/RelaxKonOS.Client.Android/docs/design/SupportScope.md) | アプリの構成、デプロイ範囲、プラットフォーム制限と検証 |
+| [ビルドとリリース](./Client/RelaxKonOS.Client.Android/docs/development/android-release.md) | Android のビルド、署名、リリース手順 |
 
 ### 開発 & 拡張
 
@@ -382,12 +377,15 @@ dotnet run
 | [RelaxKonOS.AppSettings.md](./docs/development/RelaxKonOS.AppSettings.md) | アプリプライベート設定ストレージ |
 | [RelaxKonOS.BuiltInApplication.Conventions.md](./docs/development/RelaxKonOS.BuiltInApplication.Conventions.md) | 内蔵アプリ設計制約、国際化、クロスプラットフォーム |
 | [RelaxKonOS.ApplicationCompatibility.md](./docs/development/RelaxKonOS.ApplicationCompatibility.md) | アプリケーション互換性、プラットフォーム適応、フォールバック |
+| [RelaxKonOS.LocalDebugging.md](./docs/development/RelaxKonOS.LocalDebugging.md) | ローカルデバッグ環境とよくある問題 |
 
 ### プロジェクトドキュメントインデックス
 
 | ドキュメント | 説明 |
 |-------------|------|
-| [RelaxKonOS.md](./docs/README.md) | プロジェクト構造、コードマップ、現在の進捗 |
+| [docs/README.md](./docs/README.md) | プロジェクト構造、コードマップ、現在の進捗 |
+| [docs/services](./docs/services) | ユーザーモードサーバー、インストールサービス、独立コンポーネントサービスの進捗 |
+| [docs/testing](./docs/testing) | 受け入れケースとスキップされたテストの説明 |
 
 ---
 
