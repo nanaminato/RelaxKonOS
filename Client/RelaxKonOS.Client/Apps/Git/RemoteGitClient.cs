@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Git;
@@ -167,16 +168,40 @@ public sealed class RemoteGitClient(HttpClient http, IAuthSession session) : IRe
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
         using var response = await http.SendAsync(request, cancellationToken);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
-        response.EnsureSuccessStatusCode();
+        await ThrowIfFailedAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, cancellationToken);
     }
 
     private async Task<T> SendAsync<T>(HttpMethod method, string route, object? body, CancellationToken cancellationToken)
     {
         var response = await SendRawAsync(method, route, body, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await ThrowIfFailedAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, cancellationToken)
             ?? throw new InvalidOperationException("RelaxKonOS returned an empty response.");
+    }
+
+    /// <summary>Every Git failure is reported to the user through the exception message, so a bare
+    /// status code is not an answer. The server already explains itself in a ProblemDetails body
+    /// ("Repository path does not exist.", "The path is not a Git repository: fatal: detected dubious
+    /// ownership …"); losing it turned every refusal into "400 (Bad Request)" and left the user with
+    /// nothing to act on. Same shape as <c>BrowserClient</c> / <c>ExplorerClient</c>.</summary>
+    private static async Task ThrowIfFailedAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        if (response.IsSuccessStatusCode) return;
+        ProblemDetails? problem = null;
+        try
+        {
+            problem = await response.Content.ReadFromJsonAsync<ProblemDetails>(RelaxKonOSJsonOptions.Default, cancellationToken);
+        }
+        catch (Exception exception) when (exception is JsonException or NotSupportedException or InvalidOperationException)
+        {
+            // A proxy page or an empty body: fall back to the status code below.
+        }
+        throw problem is null
+            ? new RelaxKonOSAuthException(new ProblemDetails(
+                "https://relaxkonos.app/problems/http-error", $"HTTP {(int)response.StatusCode}",
+                (int)response.StatusCode, response.ReasonPhrase, null))
+            : new RelaxKonOSAuthException(problem);
     }
 
     private async Task<HttpResponseMessage> SendRawAsync(HttpMethod method, string route, object? body, CancellationToken cancellationToken)

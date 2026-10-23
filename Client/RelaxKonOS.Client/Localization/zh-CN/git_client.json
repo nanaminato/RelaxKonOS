@@ -340,6 +340,7 @@
         "git.vm.registered_format": "已注册项目「{0}」，正在打开…",
         "git.vm.path_picker_unavailable": "路径选择器不可用（ShowRemotePathPickerAsync=null）",
         "git.vm.not_repo": "所选目录不是 Git 仓库",
+        "git.vm.not_repo_reason_format": "所选目录不是 Git 仓库：{0}",
         "git.vm.init_cancelled": "已取消初始化",
         "git.vm.init_failed_format": "git init 失败：{0}",
         "git.vm.initialized": "Git 仓库已初始化",

@@ -134,13 +134,19 @@ public sealed record GitRemoteDto(
     [property: JsonPropertyName("fetchUrl")] string FetchUrl,
     [property: JsonPropertyName("pushUrl")] string? PushUrl = null);
 
-/// <summary>Probe result for an arbitrary path: is it a Git repo, current branch, configured remotes.</summary>
+/// <summary>Probe result for an arbitrary path: is it a Git repo, current branch, configured remotes.
+/// <para><c>Problem</c> carries Git's own first stderr line when the probe could not open the path as a
+/// work tree. "Not a repository" and "the effective identity may not open this repository" are
+/// different answers to the user — an ownership mismatch or a permission denial looks identical to a
+/// plain empty directory without it, and sends the user to <c>git init</c> over a repo that already
+/// exists.</para></summary>
 public sealed record GitRepositoryProbeDto(
     [property: JsonPropertyName("isRepository")] bool IsRepository,
     [property: JsonPropertyName("hasCommits")] bool HasCommits = false,
     [property: JsonPropertyName("currentBranch")] string? CurrentBranch = null,
     [property: JsonPropertyName("defaultBranch")] string? DefaultBranch = null,
-    [property: JsonPropertyName("remotes")] IReadOnlyList<GitRemoteDto>? Remotes = null);
+    [property: JsonPropertyName("remotes")] IReadOnlyList<GitRemoteDto>? Remotes = null,
+    [property: JsonPropertyName("problem")] string? Problem = null);
 
 /// <summary>Add or update a Git remote. <c>Name</c> is the remote name (origin/upstream/...);
 /// <c>Url</c> is the fetch URL; <c>PushUrl</c> overrides the push URL if non-null.</summary>

@@ -101,27 +101,33 @@ public sealed partial class GitClientViewModel
         {
             Log("调用 client.ProbeRepositoryAsync …");
             var probe = await client.ProbeRepositoryAsync(path);
-            Log($"Probe 返回: IsRepository={probe.IsRepository} HasCommits={probe.HasCommits} Branch={probe.CurrentBranch} Remotes={probe.Remotes?.Count ?? 0}");
+            Log($"Probe 返回: IsRepository={probe.IsRepository} Problem={probe.Problem} HasCommits={probe.HasCommits} Branch={probe.CurrentBranch} Remotes={probe.Remotes?.Count ?? 0}");
             if (!probe.IsRepository)
             {
-                ProbeHint = LocalizedText.Get("git.vm.not_repo");
-                var init = ShowInitConfirmAsync is not null && await ShowInitConfirmAsync(path);
-                Log($"ShowInitConfirm 返回: {init}");
-                if (!init)
+                ProbeHint = DescribeNotRepository(probe);
+                // Git refused to open the path (owner mismatch, permission denied, boundary down). That
+                // is not an empty directory: initialising would fail for the same reason and bury the
+                // real cause, so the reason itself is the answer.
+                if (!string.IsNullOrWhiteSpace(probe.Problem))
+                {
+                    await NotifyAsync(ProbeHint);
+                    return;
+                }
+                if (!await ConfirmInitAsync(path))
                 {
                     StatusText = LocalizedText.Ref("git.vm.init_cancelled");
                     return;
                 }
-                var initResult = await client.InitRepositoryAsync(path);
-                Log($"git init 返回: Success={initResult.Success} Message={initResult.Message}");
-                if (!initResult.Success)
+
+                if (!await TryInitializeAsync(path)) return;
+                probe = await client.ProbeRepositoryAsync(path);
+                Log($"重探测后: IsRepository={probe.IsRepository} DefaultBranch={probe.DefaultBranch} Problem={probe.Problem}");
+                if (!probe.IsRepository)
                 {
-                    await NotifyAsync(LocalizedText.Format("git.vm.init_failed_format", initResult.Message));
+                    ProbeHint = DescribeNotRepository(probe);
+                    await NotifyAsync(ProbeHint);
                     return;
                 }
-                StatusText = LocalizedText.Ref("git.vm.initialized");
-                probe = await client.ProbeRepositoryAsync(path);
-                Log($"重探测后: IsRepository={probe.IsRepository} DefaultBranch={probe.DefaultBranch}");
             }
 
             // 已是 Git 仓库：检查是否已注册
@@ -139,7 +145,19 @@ public sealed partial class GitClientViewModel
             var name = System.IO.Path.GetFileName(path.TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar));
             if (string.IsNullOrWhiteSpace(name)) name = path;
             Log($"自动注册: name={name} path={path}");
-            var dto = await client.RegisterRepositoryAsync(new GitRepositoryRegistration(name, path));
+            GitRepositoryDto dto;
+            try
+            {
+                dto = await client.RegisterRepositoryAsync(new GitRepositoryRegistration(name, path));
+            }
+            catch (Exception ex)
+            {
+                var message = LocalizedText.Format("git.vm.register_failed_format", ex.Message);
+                ProbeHint = message;
+                await NotifyAsync(message);
+                Log($"注册异常：{ex.GetType().Name} {ex.Message}");
+                return;
+            }
             if (!Repositories.Contains(dto))
                 Repositories.Add(dto);
             StatusText = LocalizedText.Ref("git.vm.project_registered_format", dto.Name);
@@ -155,6 +173,46 @@ public sealed partial class GitClientViewModel
         {
             IsProbing = false;
             IsBusy = false;
+        }
+    }
+
+    /// <summary>"Not a repository" and "git refused to open this repository" are different answers, and
+    /// only the second one tells the user to fix permissions or ownership instead of initialising.</summary>
+    private static string DescribeNotRepository(GitRepositoryProbeDto probe)
+        => string.IsNullOrWhiteSpace(probe.Problem)
+            ? LocalizedText.Get("git.vm.not_repo")
+            : LocalizedText.Format("git.vm.not_repo_reason_format", probe.Problem);
+
+    private async Task<bool> ConfirmInitAsync(string path)
+    {
+        var init = ShowInitConfirmAsync is not null && await ShowInitConfirmAsync(path);
+        Log($"ShowInitConfirm 返回: {init}");
+        return init;
+    }
+
+    private async Task<bool> TryInitializeAsync(string path)
+    {
+        try
+        {
+            var initResult = await client.InitRepositoryAsync(path);
+            Log($"git init 返回: Success={initResult.Success} Message={initResult.Message}");
+            if (!initResult.Success)
+            {
+                var message = LocalizedText.Format("git.vm.init_failed_format", initResult.Message);
+                ProbeHint = message;
+                await NotifyAsync(message);
+                return false;
+            }
+            StatusText = LocalizedText.Ref("git.vm.initialized");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            var message = LocalizedText.Format("git.vm.init_failed_format", ex.Message);
+            ProbeHint = message;
+            await NotifyAsync(message);
+            Log($"init 异常：{ex.GetType().Name} {ex.Message}");
+            return false;
         }
     }
 

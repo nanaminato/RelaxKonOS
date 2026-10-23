@@ -18,6 +18,26 @@ namespace RelaxKonOS.Server.Git;
 
 public sealed partial class LocalGitRepositoryService
 {
+    /// <summary>Returned by <see cref="RunGitAsync"/> when the effective identity could not enter the
+    /// working directory at all, so callers can say "this path does not exist" without running their
+    /// own <c>Directory.Exists</c> check as the Server account.</summary>
+    private const string PathNotFoundCode = "path_not_found";
+
+    /// <summary>First meaningful line of Git's own stderr. Git names the real reason a work tree was
+    /// refused — dubious ownership, a missing directory, a corrupt <c>.git</c> — and it is localized on
+    /// the host, so it is passed through rather than flattened into one generic phrase.</summary>
+    private static string DescribeGitFailure(CommandResult result)
+    {
+        if (string.IsNullOrWhiteSpace(result.Error)) return "git_failed";
+        foreach (var line in result.Error.Split('\n'))
+        {
+            var trimmed = line.Trim();
+            if (trimmed.Length == 0) continue;
+            return trimmed.Length <= 300 ? trimmed : string.Concat(trimmed.AsSpan(0, 300), "…");
+        }
+        return "git_failed";
+    }
+
     private static bool IsPathSafe(string repoRoot, string path)
     {
         if (!Path.IsPathRooted(path))
@@ -101,7 +121,10 @@ public sealed partial class LocalGitRepositoryService
                 var response = await executionTransport.ExecuteAsync(new RelaxKonOS.Protocol.UserExecution.UserExecutionRequest(
                     context.Identity, RelaxKonOS.Protocol.UserExecution.UserExecutionOperationKind.GitExecute, Path: workingDir,
                     GitArguments: arguments, OperationId: Guid.NewGuid()), cancellationToken);
-                if (!response.Success || string.IsNullOrWhiteSpace(response.OutputBase64)) return new CommandResult(false, "", "user_execution_unavailable");
+                if (!response.Success || string.IsNullOrWhiteSpace(response.OutputBase64))
+                    return new CommandResult(false, "", response.ProblemCode == RelaxKonOS.Protocol.UserExecution.UserExecutionProblemCode.NotFound
+                        ? PathNotFoundCode
+                        : "user_execution_unavailable");
                 var result = JsonSerializer.Deserialize<GitExecutionResult>(Convert.FromBase64String(response.OutputBase64), RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default);
                 return result is null ? new CommandResult(false, "", "user_execution_invalid_result") : new CommandResult(result.Success, result.Output, result.Error, result.ExitCode);
             }

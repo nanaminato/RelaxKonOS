@@ -15,7 +15,9 @@
 
 ## 1. 定位
 
-仓库注册和路径探测仅在服务端校验绝对路径格式，随后由 Git 的有效执行身份打开工作目录并执行 `rev-parse --is-inside-work-tree`。System 模式使用当前登录账号绑定的宿主身份经用户执行助手检查；User 模式使用当前进程身份。不得先用服务账号的 `Directory.Exists` 判断用户工作树是否存在，否则私有家目录会被误判为不存在。目录不可访问、不存在或不是工作树时不写入注册记录，无需放宽用户家目录权限。
+仓库注册、路径探测与 `git init` 仅在服务端校验绝对路径格式，随后由 Git 的有效执行身份打开工作目录并执行（`rev-parse --is-inside-work-tree` / `init`）。System 模式使用当前登录账号绑定的宿主身份经用户执行助手检查；User 模式使用当前进程身份。不得先用服务账号的 `Directory.Exists` 判断用户工作树是否存在，否则私有家目录会被误判为不存在。目录不可访问、不存在或不是工作树时不写入注册记录，无需放宽用户家目录权限。
+
+「探测返回不是仓库」有四种不同原因，界面上必须能区分：目录根本不是仓库（提示初始化）、git 拒绝打开（`detected dubious ownership`——工作树属于别的账号，通常是提权文件管理或 root 克隆造成的）、权限不足、以及用户执行边界不可用。因此 `GitRepositoryProbeDto.Problem` 携带 Git 自己的首行 stderr，客户端把它拼在提示里；服务端不再把「git 失败」与「不是仓库」压成同一个布尔值，否则用户会被引导去 `git init` 一个早就存在的仓库。修法是校正工作树属主（`chown -R <user>:<user> <path>`），不是放宽 git 的 `safe.directory`。
 
 GitClient 是 RelaxKonOS 的内置版本控制客户端，参考 TortoiseGit / Git Extensions。
 

@@ -36,6 +36,37 @@ public static class GitRegistrationChecks
         Assert((await service.ProbeRepositoryAsync(path, user)).IsRepository,
             "Repository probing also uses the effective identity without a service-side existence check");
 
+        // A work tree the effective identity may not open is not an empty directory. The reason Git
+        // gives is the only thing that tells the user to fix ownership or permissions, so it travels
+        // with the probe result instead of being reported as a plain "not a repository".
+        transport.Failure = "dubious-ownership";
+        var refused = await service.ProbeRepositoryAsync(path, user);
+        Assert(!refused.IsRepository && refused.Problem == "fatal: detected dubious ownership in repository at '/home/nanami/repository'",
+            "A refused work tree reports Git's own reason with the probe result");
+        await RejectAsync(() => service.RegisterRepositoryAsync(new("refused", path), user),
+            "detected dubious ownership");
+        transport.Failure = null;
+
+        // init must reach the same identity as registration: an existence check here would run as the
+        // Server account and refuse every path inside a 0700 home that the user can open perfectly well.
+        Assert(!Directory.Exists(path), "Fixture stays invisible to service-side existence checks");
+        Assert((await service.InitRepositoryAsync(path, user)).Success,
+            "Initialising does not depend on the Server account being able to see the directory");
+        Assert(transport.Requests.Last().GitArguments!.SequenceEqual(["init"]) && transport.Requests.Last().Path == path,
+            "Initialisation runs Git under the authenticated user identity");
+        transport.Missing = true;
+        try
+        {
+            await service.InitRepositoryAsync(Path.Combine(root, "absent"), user);
+            throw new Exception("Initialising a path the effective identity cannot enter must be rejected");
+        }
+        catch (ArgumentException exception)
+        {
+            Assert(exception.Message.Contains("does not exist", StringComparison.Ordinal),
+                "A missing path is still reported as a missing path");
+        }
+        transport.Missing = false;
+
         foreach (var failure in new[] { "not-worktree", "inaccessible" })
         {
             transport.Failure = failure;
@@ -50,10 +81,14 @@ public static class GitRegistrationChecks
         Console.WriteLine("Git registration identity checks passed.");
     }
 
-    private static async Task RejectAsync(Func<Task<GitRepositoryDto>> action)
+    private static async Task RejectAsync(Func<Task<GitRepositoryDto>> action, string? contains = null)
     {
         try { await action(); }
-        catch (ArgumentException) { return; }
+        catch (ArgumentException exception)
+        {
+            if (contains is null || exception.Message.Contains(contains, StringComparison.Ordinal)) return;
+            throw new Exception($"Rejection should mention '{contains}', got: {exception.Message}");
+        }
         throw new Exception("Invalid repository registration should be rejected");
     }
     private static void Assert(bool condition, string message)
@@ -66,10 +101,26 @@ public static class GitRegistrationChecks
     {
         public List<UserExecutionRequest> Requests { get; } = [];
         public string? Failure { get; set; }
+        /// <summary>Simulates a working directory the effective identity cannot enter at all.</summary>
+        public bool Missing { get; set; }
         public Task<UserExecutionResult> ExecuteAsync(UserExecutionRequest request, CancellationToken cancellationToken = default)
         {
             Requests.Add(request);
+            if (Missing) return Task.FromResult(new UserExecutionResult(false, null, "path not found", UserExecutionProblemCode.NotFound));
             if (Failure == "inaccessible") return Task.FromResult(new UserExecutionResult(false));
+            if (Failure == "dubious-ownership")
+            {
+                // What Git 2.35+ prints for a work tree owned by another account.
+                var refused = new
+                {
+                    Success = false,
+                    ExitCode = 128,
+                    Output = "",
+                    Error = "fatal: detected dubious ownership in repository at '/home/nanami/repository'\nTo add an exception for this directory, call:\n\n\tgit config --global --add safe.directory /home/nanami/repository\n",
+                };
+                return Task.FromResult(new UserExecutionResult(true, Convert.ToBase64String(
+                    JsonSerializer.SerializeToUtf8Bytes(refused, RelaxKonOSJsonOptions.Default))));
+            }
             var isWorktree = request.GitArguments!.SequenceEqual(["rev-parse", "--is-inside-work-tree"]);
             var result = new { Success = true, ExitCode = 0, Output = isWorktree && Failure == null ? "true\n" : "", Error = "" };
             return Task.FromResult(new UserExecutionResult(true, Convert.ToBase64String(

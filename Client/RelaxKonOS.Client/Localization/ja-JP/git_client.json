@@ -340,6 +340,7 @@
         "git.vm.registered_format": "プロジェクト '{0}' を登録しました、開いています…",
         "git.vm.path_picker_unavailable": "パスピッカーが利用できません（ShowRemotePathPickerAsync=null）",
         "git.vm.not_repo": "選択したディレクトリは Git リポジトリではありません",
+        "git.vm.not_repo_reason_format": "選択したディレクトリは Git リポジトリではありません：{0}",
         "git.vm.init_cancelled": "初期化をキャンセルしました",
         "git.vm.init_failed_format": "git init 失敗：{0}",
         "git.vm.initialized": "Git リポジトリを初期化しました",
