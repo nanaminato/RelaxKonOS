@@ -25,6 +25,42 @@ def function(name):
 
 
 class InstallationOptionChecks(unittest.TestCase):
+    def test_system_locator_uses_authenticated_privileges_without_stdin(self):
+        script = "set -euo pipefail\nsudo_requested=true\n" + function("managed_root") + r'''
+run_privileged() {
+  [[ $1 == python3 && $2 == -c && $4 == /var/lib/relaxkonos-deployment-location/roots.json ]]
+  [[ $5 == dataRoot && $6 == /default && $7 == linuxSystem ]]
+  [[ $3 == *'unsafe root locator'* ]]
+  printf /protected/data
+}
+[[ $(managed_root linuxSystem dataRoot '' /default) == /protected/data ]]
+# Explicit roots do not read the locator or require another privileged command.
+run_privileged() { exit 91; }
+[[ $(managed_root linuxSystem dataRoot /explicit /default) == /explicit ]]
+'''
+        # Git Bash and Linux tests run unelevated; root cannot exercise this branch.
+        if os.name != 'nt' and os.geteuid() == 0:
+            self.skipTest('requires an unelevated shell')
+        result = subprocess.run([BASH, '-c', script], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_unexpected_exit_persists_failure_and_preserves_terminal_receipts(self):
+        for state, status, expected in [('running', 1, 1), ('running', 0, 1),
+                                         ('succeeded', 0, 0), ('failed', 2, 2)]:
+            with self.subTest(state=state, status=status):
+                script = 'set -euo pipefail\n' + function('finish_operation') + f'''
+record_state={state}
+now_utc() {{ printf test-time; }}
+emit_event() {{ printf 'terminal:%s:%s\\n' "$1" "$2"; }}
+cleanup_staged_payload() {{ printf 'cleaned\\n'; }}
+trap finish_operation EXIT
+exit {status}
+'''
+                result = subprocess.run([BASH, '-c', script], capture_output=True, text=True)
+                self.assertEqual(result.returncode, expected, result.stderr)
+                self.assertIn('cleaned', result.stdout)
+                self.assertEqual('terminal:failed:failed' in result.stdout, state == 'running')
+
     def run_mapping(self, mode, options, kind="install"):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

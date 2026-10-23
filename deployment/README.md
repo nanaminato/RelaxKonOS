@@ -43,6 +43,8 @@ Windows 10/11 个人电脑可同时运行 Server 与 Client，具体步骤见[�
 
 配置目录定位分别保存在 Windows `%ProgramData%\RelaxKonOS-Deployment\roots.json`、Linux System `/var/lib/relaxkonos-deployment-location/roots.json` 与 Linux User 默认 XDG 状态下的 `relaxkonos-deployment/user-roots.json`。后续探测、修复、更新、回滚和卸载读取这些定位及安装状态，不假定默认目录。定位由受管身份写入，保留数据卸载后也保留定位。部署锁与回执仍使用固定宿主目录，不随自定义数据根漂移。
 
+Linux 系统维护在完成 sudo/su 认证后，以同一提权身份读取系统目录定位；定位目录仅 root 可进入时也能维护，不放宽目录权限。部署进程在受理后意外退出时写入失败终态，不能留下“正在执行部署动作”的运行中回执。2026-10-24 已通过路径提权选择、显式路径、异常退出及已有终态保留回归检查；Debian 13 普通 SSH 账号通过真实 su 认证读取 root 专属定位目录验证通过，未把此读取验证视为完整安装验收。
+
 发布制品分为 `client` 与 `server` 两种包。`server` 包包含 Server、Guardian Agent、权限助手和平台部署引擎；Linux 包同时包含用户 launcher。两种模式共用服务端包，由显式安装选项决定模式。用户模式仅部署 Server、同 UID Guardian 和用户 launcher，不安装权限助手、sudoers 或系统服务；`client` 包只包含桌面 Client。
 
 Guardian 是可选部署组件，发布包仍携带同版本文件。首次向导可取消“安装进程守护”；之后在服务器中心的“组件”页选择并应用即可补装或移除，定义与日志保留。Windows 个人模式不支持 Guardian。升级、普通修复和回滚继承安装记录的 `guardianEnabled`，不会自动补装未选择的组件。
