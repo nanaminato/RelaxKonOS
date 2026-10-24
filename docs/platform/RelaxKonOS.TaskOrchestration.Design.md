@@ -368,43 +368,11 @@ secretRef + revision + purpose
 
 Plan、日志、审计和脚本文本不得展开密码、私钥或 token 明文。Plan digest 应绑定秘密引用的身份/修订和用途，而不是把秘密值本身持久化进计划。
 
-## 11. Component Installer / Workloads
+## 11. 组件中心 / Workloads
 
-组件安装器不是一个新的安装后端，它是 TaskPlan 的图形化生成器。
+Component Installer 产品设计已拆分为[组件中心设计](RelaxKonOS.ComponentCenter.Design.md)，统一拥有安装、更新、修复、回退、卸载、来源选择、应用未就绪引导和工作负载交互。各应用仅保留依赖状态及受控跳转，业务配置和服务启停仍归领域应用。
 
-WorkloadDefinition 可以表达：
-
-```text
-workload: proxy-server
-  required:
-    - sing-box
-  optional:
-    - nginx
-    - certificate-acme
-  features:
-    - name: public-https
-      requires: [nginx, certificate-acme]
-    - name: tun
-      constraints: [platform capability ...]
-```
-
-UI 可以表现为 Windows Features / Visual Studio Workloads 风格：
-
-```text
-[✓] Proxy Server
-    [✓] sing-box
-    [✓] HTTPS certificate support
-    [ ] Nginx reverse proxy
-
-[ ] Remote Development
-    [ ] OpenSSH
-    [ ] Git
-    [ ] Docker
-```
-
-勾选结果先交给 Planner。Planner 根据当前主机产生 no-op、install、conflict、unsupported 和 approval requirements，再进入统一 Preview。
-
-Workload 不应把具体安装命令写进 UI manifest；它只引用稳定的 runtime/action ID 和约束。
+组件中心是 TaskPlan 的图形化输入端，不是新的安装后端。组件/工作负载引用受信任 action/runtime ID 和约束，不在 UI manifest 写安装命令。变更草稿经 Planner 产生 no-op、conflict、unsupported 和审批要求，再使用本文统一 Preview/Approval/Executor。产品实施由 CC 跟踪，编排基础由 TO 跟踪，不重复维护 UI 规范。
 
 ## 12. Action Catalog：脚本不直接依赖内部 API
 
@@ -528,13 +496,11 @@ Task Executor 调用其公开的计划/安装/更新/修复/回滚能力，不�
 
 验收：一次 UI 审批可完成多个已列出的 privileged steps，但任何未列出的目标均被拒绝。
 
-### TO-04：Component Installer / Workloads
+### TO-04：组件中心 / Workloads 接入
 
-- workload manifest；
-- feature/sub-feature；
-- dependencies/conflicts；
-- 自动生成 Preview；
-- 第一批使用真实服务器初始化场景验收。
+- 对接[组件中心 CC 跟踪项](RelaxKonOS.ComponentCenter.Design.md#10-实施跟踪与验收)，由其拥有 UI、功能树、来源和应用引导；
+- 将组件变更和 workload 依赖/冲突转换为冻结 TaskPlan，复用统一 Preview；
+- 第一批使用真实服务器初始化及组件生命周期场景验收。
 
 ### TO-05：Task Recipe
 
