@@ -64,4 +64,35 @@
   <!-- ── Generic flyouts (flyout, quick settings, dialog surface) ── -->
   <SolidColorBrush x:Key="FlyoutPresenterBackground" Color="{DynamicResource SurfaceRaisedColor}" />
   <SolidColorBrush x:Key="FlyoutBorderThemeBrush" Color="{DynamicResource BorderDefaultColor}" />
+
+  <!-- ── Trees ──
+       Fluent paints a selected tree row with the raw accent at medium strength and inverts the text
+       to white, so a file row becomes a saturated block that hides the status colour next to it.
+       Bridging the keys onto the selection role gives every tree in every application the same
+       rounded, palette-following row a list already has, and keeps the label legible on it. -->
+  <SolidColorBrush x:Key="TreeViewItemBackground" Color="Transparent" />
+  <SolidColorBrush x:Key="TreeViewItemBackgroundPointerOver" Color="{DynamicResource SurfaceHoverColor}" />
+  <SolidColorBrush x:Key="TreeViewItemBackgroundPressed" Color="{DynamicResource SurfacePressedColor}" />
+  <SolidColorBrush x:Key="TreeViewItemBackgroundSelected" Color="{DynamicResource SelectionBackgroundColor}" />
+  <SolidColorBrush x:Key="TreeViewItemBackgroundSelectedPointerOver" Color="{DynamicResource SelectionBackgroundColor}" />
+  <SolidColorBrush x:Key="TreeViewItemBackgroundSelectedPressed" Color="{DynamicResource SelectionBackgroundColor}" />
+  <SolidColorBrush x:Key="TreeViewItemBackgroundSelectedDisabled" Color="{DynamicResource SelectionBackgroundColor}" />
+  <SolidColorBrush x:Key="TreeViewItemForeground" Color="{DynamicResource TextPrimaryColor}" />
+  <SolidColorBrush x:Key="TreeViewItemForegroundPointerOver" Color="{DynamicResource TextPrimaryColor}" />
+  <SolidColorBrush x:Key="TreeViewItemForegroundPressed" Color="{DynamicResource TextPrimaryColor}" />
+  <SolidColorBrush x:Key="TreeViewItemForegroundSelected" Color="{DynamicResource SelectionForegroundColor}" />
+  <SolidColorBrush x:Key="TreeViewItemForegroundSelectedPointerOver" Color="{DynamicResource SelectionForegroundColor}" />
+  <SolidColorBrush x:Key="TreeViewItemForegroundSelectedPressed" Color="{DynamicResource SelectionForegroundColor}" />
+  <SolidColorBrush x:Key="TreeViewItemForegroundSelectedDisabled" Color="{DynamicResource TextDisabledColor}" />
+  <SolidColorBrush x:Key="TreeViewItemForegroundDisabled" Color="{DynamicResource TextDisabledColor}" />
+  <SolidColorBrush x:Key="TreeViewItemBorderBrushSelected" Color="Transparent" />
+  <SolidColorBrush x:Key="TreeViewItemBorderBrushSelectedPointerOver" Color="Transparent" />
+  <SolidColorBrush x:Key="TreeViewItemBorderBrushSelectedPressed" Color="Transparent" />
+
+  <!-- ── AvaloniaEdit text surface ──
+       The code editor and the diff viewer are the same control, and its theme paints a dragged
+       selection with an opaque teal block and inverts the text to white on top of it. Bridging the
+       one key the theme reads gives both surfaces the palette's text-selection role, so a selection
+       over syntax-highlighted code stays readable in every palette instead of hiding it. -->
+  <SolidColorBrush x:Key="TextAreaSelectionBrush" Color="{DynamicResource TextSelectionColor}" />
 </ResourceDictionary>

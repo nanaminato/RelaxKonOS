@@ -14,7 +14,7 @@ public static class AccessibilityPaletteDefaults
             colors[key] = "#FFFFFF";
         foreach (var key in new[] { "Accent", "AccentHover", "AccentPressed", "FocusBorder", "FocusRing" })
             colors[key] = "#FFFF00";
-        foreach (var key in new[] { "SurfaceHover", "SurfacePressed", "AccentMuted", "SelectionBackground", "SuccessMuted", "WarningMuted" })
+        foreach (var key in new[] { "SurfaceHover", "SurfacePressed", "AccentMuted", "SelectionBackground", "TextSelection", "SuccessMuted", "WarningMuted" })
             colors[key] = "#333333";
         colors["SelectionForeground"] = "#FFFFFF";
         colors["TextOnAccent"] = "#000000";

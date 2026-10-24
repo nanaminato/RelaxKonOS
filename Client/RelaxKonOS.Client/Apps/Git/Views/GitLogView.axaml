@@ -5,7 +5,10 @@
  x:Class="RelaxKonOS.Client.Apps.Git.Views.GitLogView" x:Name="LogViewRoot" x:DataType="git:GitClientViewModel"
  x:CompileBindings="False" Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
  <UserControl.Styles>
-  <Style Selector="ListBox#CommitList:not(:focus-within) ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}"/></Style>
+  <!-- An unfocused log still marks the commit it is showing. Keeping it a desaturated tint of the
+       selection (rather than the generic hover grey) is what distinguishes "selected but not active"
+       from "merely hovered". -->
+  <Style Selector="ListBox#CommitList:not(:focus-within) ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="{DynamicResource AccentMutedBrush}"/></Style>
   <Style Selector="ListBox#CommitList ListBoxItem"><Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="0"/><Setter Property="MinHeight" Value="26"/><Setter Property="Height" Value="26"/></Style>
   <Style Selector="Button.log-tool"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Width" Value="27"/><Setter Property="Height" Value="30"/><Setter Property="MinHeight" Value="0"/><Setter Property="MinWidth" Value="0"/><Setter Property="Padding" Value="5"/></Style>
   <Style Selector="ToggleButton.log-tool"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Width" Value="27"/><Setter Property="Height" Value="30"/><Setter Property="MinHeight" Value="0"/><Setter Property="Padding" Value="5"/></Style>

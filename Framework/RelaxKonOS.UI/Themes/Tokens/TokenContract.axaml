@@ -27,6 +27,7 @@
   <SolidColorBrush x:Key="AccentMutedBrush" Color="{DynamicResource AccentMutedColor}" />
   <SolidColorBrush x:Key="SelectionBackgroundBrush" Color="{DynamicResource SelectionBackgroundColor}" />
   <SolidColorBrush x:Key="SelectionForegroundBrush" Color="{DynamicResource SelectionForegroundColor}" />
+  <SolidColorBrush x:Key="TextSelectionBrush" Color="{DynamicResource TextSelectionColor}" />
   <SolidColorBrush x:Key="SuccessBrush" Color="{DynamicResource SuccessColor}" /><SolidColorBrush x:Key="SuccessMutedBrush" Color="{DynamicResource SuccessMutedColor}" />
   <SolidColorBrush x:Key="WarningBrush" Color="{DynamicResource WarningColor}" /><SolidColorBrush x:Key="WarningMutedBrush" Color="{DynamicResource WarningMutedColor}" />
   <SolidColorBrush x:Key="DangerBrush" Color="{DynamicResource DangerColor}" /><SolidColorBrush x:Key="DangerHoverBrush" Color="{DynamicResource DangerHoverColor}" /><SolidColorBrush x:Key="DangerPressedBrush" Color="{DynamicResource DangerPressedColor}" />
