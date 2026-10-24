@@ -578,12 +578,15 @@ public sealed partial class ExplorerApp : RemoteApplicationBase, IAppActivationH
         {
             var owner = FindOwnerWindow(context, vm);
             if (owner is null) return;
+            var ownershipAvailable = (context.Services.GetService(typeof(IAuthSession)) as IAuthSession)
+                ?.CurrentServer?.Host?.Mode == ServerMode.System;
             await context.ShowDialogAsync<bool>(owner, LocalizedText.Get("explorer.properties"), dialog => new FilePropertiesDialogView
             {
                 DataContext = new FilePropertiesDialogViewModel(
                     properties,
-                    (unixMode, recursive) => client.SetUnixPermissionsAsync(properties.Path, unixMode, recursive),
-                    () => dialog.Close(true)),
+                    (unixMode, recursive) => vm.SetUnixPermissionsAsync(properties.Path, unixMode, recursive),
+                    () => dialog.Close(true),
+                    ownershipAvailable ? (owner, group, recursive) => vm.SetUnixOwnershipAsync(properties.Path, owner, group, recursive) : null),
             }, new RelaxKonOS.Core.Primitives.Size(720, 620));
         };
     }

@@ -334,12 +334,15 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
     public FilePropertiesDto? GetProperties(string path)
     {
         EnsureUserModePath(path);
+        var ownership = File.Exists(path) || Directory.Exists(path)
+            ? RelaxKonOS.PrivilegedHelper.LinuxFileOwnership.Read(path)
+            : (Owner: (uint?)null, Group: (uint?)null);
         if (Directory.Exists(path))
         {
             var directory = new DirectoryInfo(path);
             return new FilePropertiesDto(directory.FullName, directory.Name, FileSystemEntryType.Directory,
                 null, directory.CreationTimeUtc, directory.LastWriteTimeUtc, directory.LastAccessTimeUtc,
-                GetPermissions(path, directory.Attributes), directory.Attributes.ToString(), GetUnixMode(path));
+                GetPermissions(path, directory.Attributes), directory.Attributes.ToString(), GetUnixMode(path), ownership.Owner, ownership.Group);
         }
 
         if (File.Exists(path))
@@ -347,7 +350,7 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
             var file = new FileInfo(path);
             return new FilePropertiesDto(file.FullName, file.Name, FileSystemEntryType.File,
                 file.Length, file.CreationTimeUtc, file.LastWriteTimeUtc, file.LastAccessTimeUtc,
-                GetPermissions(path, file.Attributes), file.Attributes.ToString(), GetUnixMode(path));
+                GetPermissions(path, file.Attributes), file.Attributes.ToString(), GetUnixMode(path), ownership.Owner, ownership.Group);
         }
 
         return null;

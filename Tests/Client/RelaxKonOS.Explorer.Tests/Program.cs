@@ -20,6 +20,7 @@ void Check(bool condition, string label)
     Console.WriteLine($"PASS {++passed}: {label}");
 }
 await PickerMemoryChecks.RunAsync(Check);
+await OwnershipDialogChecks.RunAsync(Check);
 FileBrowserPresentationChecks.Run(Check);
 ImageViewerChecks.Run(Check);
 await ArchiveBrowserChecks.RunAsync(Check);

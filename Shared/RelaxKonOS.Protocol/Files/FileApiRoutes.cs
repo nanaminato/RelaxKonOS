@@ -6,6 +6,7 @@ namespace RelaxKonOS.Protocol.Files;
 /// 所有端点需 JWT（[Authorize]），错误统一返回 RFC 7807 ProblemDetails。</summary>
 public static class FileApiRoutes
 {
+    public const string Ownership = $"/{V1}/files/ownership";
     public const string Text = $"/{V1}/files/text";
     public const string ArchiveEntries = $"/{V1}/files/archive/entries";
     public const string ArchiveContent = $"/{V1}/files/archive/content";

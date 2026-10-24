@@ -147,6 +147,10 @@ public sealed class ExplorerClient : IExplorerClient, IArchiveClient
         => SendAsync<FilePropertiesDto>(HttpMethod.Put, FileApiRoutes.Permissions,
             body: new UpdateUnixPermissionsRequest(path, unixMode, recursive), ct: ct);
 
+    public Task<FilePropertiesDto> SetUnixOwnershipAsync(string path, string owner, string group, bool recursive, CancellationToken ct = default)
+        => SendAsync<FilePropertiesDto>(HttpMethod.Put, FileApiRoutes.Ownership,
+            body: new UpdateUnixOwnershipRequest(path, owner, group, recursive), ct: ct);
+
     public Task<FileSystemEntryDto> CreateDirectoryAsync(string path, CancellationToken ct = default)
         => SendAsync<FileSystemEntryDto>(HttpMethod.Post, FileApiRoutes.Directory, query: ("path", path), ct: ct);
 

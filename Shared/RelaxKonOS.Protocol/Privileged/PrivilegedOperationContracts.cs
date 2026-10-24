@@ -76,6 +76,7 @@ public enum PrivilegedOperationKind
     FileGetInfo,
     FileGetProperties,
     FileSetUnixPermissions,
+    FileSetUnixOwnership,
     FileGetStagingLength,
     FileDeleteStaging,
     FileCreateStaging,
@@ -280,6 +281,8 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("fileAuthorizationSource")] PrivilegedFileAuthorizationSource? FileAuthorizationSource = null,
     [property: JsonPropertyName("unixMode")] int? UnixMode = null,
     [property: JsonPropertyName("recursive")] bool Recursive = false,
+    [property: JsonPropertyName("unixOwner")] string? UnixOwner = null,
+    [property: JsonPropertyName("unixGroup")] string? UnixGroup = null,
     /// <summary>Byte offset for FileUploadChunk or FileRead; other operations leave it null.</summary>
     [property: JsonPropertyName("offset")] long? Offset = null,
     [property: JsonPropertyName("readCount")] int? ReadCount = null,

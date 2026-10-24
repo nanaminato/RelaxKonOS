@@ -107,7 +107,27 @@
                 </StackPanel>
             </Border>
 
-            <Grid Grid.Row="3" ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <StackPanel Grid.Row="3" Spacing="18">
+                <Border Padding="16" Classes="app-panel" IsVisible="{Binding HasUnixOwnership}">
+                    <StackPanel Spacing="12" IsEnabled="{Binding CanEditOwnership}">
+                        <TextBlock Text="{loc:Loc explorer.ownership.title}" FontSize="15" FontWeight="SemiBold" />
+                        <TextBlock Text="{loc:Loc explorer.ownership.note}" FontSize="12" Opacity="0.7" TextWrapping="Wrap" />
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="{loc:Loc explorer.ownership.owner}" />
+                                <TextBox Text="{Binding OwnershipOwner}" MaxLength="256" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="4">
+                                <TextBlock Text="{loc:Loc explorer.ownership.group}" />
+                                <TextBox Text="{Binding OwnershipGroup}" MaxLength="256" />
+                            </StackPanel>
+                        </Grid>
+                        <CheckBox Content="{loc:Loc explorer.permissions.recursive}" IsChecked="{Binding RecursiveOwnership}" IsVisible="{Binding IsDirectory}" />
+                        <TextBlock Text="{Binding OwnershipStatus}" FontSize="12" TextWrapping="Wrap" />
+                        <Button Content="{loc:Loc explorer.ownership.save}" Command="{Binding SaveOwnershipCommand}" HorizontalAlignment="Right" Classes="primary" />
+                    </StackPanel>
+                </Border>
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
                 <Border Grid.Column="0" Padding="12" IsVisible="{Binding !CanEditPermissions}" Classes="app-panel">
                 <TextBlock Text="{loc:Loc explorer.properties.permissions_unsupported}"
                            FontSize="12" Opacity="0.7" TextWrapping="Wrap" />
@@ -116,6 +136,7 @@
                 <Button Grid.Column="1" Content="{loc:Loc common.close}" Command="{Binding CloseCommand}"
                         HorizontalAlignment="Right" VerticalAlignment="Bottom" Padding="20,7" />
             </Grid>
+            </StackPanel>
             </Grid>
         </ScrollViewer>
     </Grid>

@@ -179,7 +179,9 @@ public sealed partial class GitClientViewModel
     /// <summary>"Not a repository" and "git refused to open this repository" are different answers, and
     /// only the second one tells the user to fix permissions or ownership instead of initialising.</summary>
     private static string DescribeNotRepository(GitRepositoryProbeDto probe)
-        => string.IsNullOrWhiteSpace(probe.Problem)
+        => probe.Problem?.Contains("detected dubious ownership", StringComparison.OrdinalIgnoreCase) == true
+            ? LocalizedText.Get("git.vm.ownership_mismatch")
+            : string.IsNullOrWhiteSpace(probe.Problem)
             ? LocalizedText.Get("git.vm.not_repo")
             : LocalizedText.Format("git.vm.not_repo_reason_format", probe.Problem);
 

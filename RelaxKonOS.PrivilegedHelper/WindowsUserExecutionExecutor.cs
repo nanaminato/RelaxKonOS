@@ -366,7 +366,7 @@ internal static class WindowsUserExecutionExecutor
         if (info is null) return null;
         var attributes = File.GetAttributes(path);
         return new(info.Path, info.Name, info.Type, info.Size, info.Created, info.Modified, info.Accessed,
-            attributes.HasFlag(FileAttributes.ReadOnly) ? "Read-only" : "Windows ACL", attributes.ToString(), null);
+            attributes.HasFlag(FileAttributes.ReadOnly) ? "Read-only" : "Windows ACL", attributes.ToString(), null, null, null);
     }
 
     private static void CommitMove(string source, string destination, bool overwrite)
