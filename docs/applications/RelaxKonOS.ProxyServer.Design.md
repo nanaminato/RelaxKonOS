@@ -248,3 +248,19 @@ UI 先选择目标：VLESS/Trojan/Hysteria2 分享 URI、sing-box 配置、Mihom
 2026-10-17 的 Linux systemd、REALITY/Vision 实际连接、轮换/停用/到期、端口冲突补偿及原生配置检查结果见 [验收记录](../testing/RelaxKonOS.ProxyServer.Acceptance.md)。该记录单独列出未验收的平台与协议组合，不扩大运行时已验证协议清单。
 
 2026-10-18 起桌面端「运行时」页直接读取签名目录：每个版本分别显示来源可信度、目标支持、配置能力与验证证据，阻止原因就地显示；安装/更新/修复/回退先向宿主申请冻结计划再写入安装台账，卸载分「保留数据」「删除数据」两种确认语义。刷新失败保留上次目录并提示失败，待恢复状态下不提供变更操作。UI 本身不提交 URL、可执行路径或原生参数，也不因目录出现新版本就开放安装。同一页另有「宿主环境」面板，直接展示主机实测的平台、服务宿主、可用空间、受管目录与 IPv6 状态；计划被前置条件拒绝时按条列出未满足项与两侧数值，而不是只显示一个错误码。事务与检查数字见[事务证据](../platform/RelaxKonOS.ManagedRuntimes.Transactions.md)，依赖判定规则见[宿主依赖预检](../platform/RelaxKonOS.ManagedRuntimes.Transactions.md#宿主依赖预检)。
+
+2026-10-24 桌面运行时生命周期入口已集中到组件中心，代理服务端保留业务配置与服务控制。组件中心的 sing-box 版本/卸载草稿已支持客户端重启后恢复，按服务器和用户隔离；恢复不执行宿主请求，预览仍校验实际安装身份、精确版本及当前来源并重新请求冻结计划审批。存储失败会提示并保留当前进程内的选择。实施与测试边界见[组件中心设计](../platform/RelaxKonOS.ComponentCenter.Design.md#桌面草稿跨进程恢复2026-10-24)。
+
+2026-10-24 组件中心支持重新打开后观察已有 sing-box 安装台账任务，展示宿主阶段进度和当前可取消能力。按原 operationId 与 SingBox 服务身份校验，重新观察不发起安装或恢复；关闭窗口只停止本地刷新。取消请求后的最终结果及待恢复状态仍由宿主决定。检查和未验收项见[组件中心设计](../platform/RelaxKonOS.ComponentCenter.Design.md#桌面已有任务重新观察2026-10-24)。
+
+组件中心所需 TaskPlan 只读规划基础已加入：sing-box 安装身份/修订与可信目录核对可产生 no-op 或冲突，并进入确定性摘要。此实现当前仅供内部规划专项，未接入代理服务端或组件中心执行入口，不扩大现有版本、平台或授权范围。详见[TO-01 实施记录](../platform/RelaxKonOS.TaskOrchestration.Design.md#to-01-内部只读核心2026-10-24)。
+
+2026-10-24 桌面组件中心可通过生产只读 TaskPlan 预览核对 sing-box 安装身份/状态修订及当前缓存来源目录。该入口支持读权限观察者，结果在生命周期刷新或会话切换后失效；目录未加载会明确显示未检查。核对不刷新来源、不请求变更计划、不提权或安装，运行时变更继续使用领域冻结计划审批。生产边界与桌面验证见[TO-01 生产接入](../platform/RelaxKonOS.TaskOrchestration.Design.md#to-01-生产只读预览与桌面状态核对2026-10-24)。
+
+2026-10-24 组件中心只读核对使用的 TaskPlan 已接入服务端持久计划和独立有效性记录。保存失败时桌面提示计划配额或存储故障；计划保存、失效和按用户隔离读取不会提交 sing-box 安装台账或取得提权。此项不改变运行时支持范围或已有领域审批流程。证据见[持久冻结计划与有效性](../platform/RelaxKonOS.TaskOrchestration.Design.md#to-01-持久冻结计划与有效性2026-10-24)。
+
+2026-10-24 sing-box 生命周期已加入组件中心 TaskPlan 服务端规划适配（仅提案）：安装、更新、同版本修复、受管保留版本回退及保留/删除数据卸载均冻结明确领域选择与完整制品，查询/领域计划/再次查询核对已发布配置漂移。规划 API 受 controller、sing-box 安装限制和宿主能力约束；不创建提权 grant 或提交安装台账。与安装台账共用唯一 ResourceKeys。桌面当前生命周期执行仍走原有领域冻结计划确认；TaskPlan 审批/TaskRun/Executor 尚未接入。验证与未完成项见[生命周期规划记录](../platform/RelaxKonOS.TaskOrchestration.Design.md#sing-box-生命周期变更规划2026-10-24)。
+
+2026-10-24 组件中心 TaskPlan 的内部审批与 Queued Run 已有耐久身份绑定和单次消费基础，规划审批记录仅允许 sing-box 的明确能力/目标与当前实现修订。同一事务记录审批消费、run 身份和稳定步骤键；没有实际派发、Helper 授权或安装台账提交，生产 `/approve`/`/run` 尚未开放。此阶段不改变代理服务端当前领域审批流程。验证与剩余工作见[内部审批/run 记录](../platform/RelaxKonOS.TaskOrchestration.Design.md#to-02to-03-内部审批与-queued-run-原子分配2026-10-24)。
+
+2026-10-24 TaskPlan 内部审批新增实时策略读取与令牌/controller 租约有效期约束，宿主管理员认证结果提供 canonical UID/SID。此基础尚未组合成可调用的 TaskPlan 审批/执行流程，不改变 sing-box 领域生命周期或真实宿主验收结论。验证及剩余工作见[实时审批策略证据](../platform/RelaxKonOS.TaskOrchestration.Design.md#to-02-实时审批策略证据2026-10-24)。

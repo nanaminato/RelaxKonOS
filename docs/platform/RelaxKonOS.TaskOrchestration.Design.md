@@ -1,6 +1,6 @@
 # RelaxKonOS 任务编排、批量执行与组件安装器设计
 
-> 状态：设计提案，尚未实施。
+> 状态：TO-01 只读规划、持久计划/有效性、HTTP 预览和桌面状态核对已接入；sing-box 变更规划已接入；审批/Queued Run 内部持久状态已加入，生产身份验证、逐步授权和 Executor 尚未接入。
 >
 > 更新：2026-10-24。
 >
@@ -465,6 +465,8 @@ Task Executor 调用其公开的计划/安装/更新/修复/回滚能力，不�
 
 ### TO-01：TaskPlan 核心与只读 Planner
 
+当前状态：内部核心实施中。共享不可变契约、严格输入读取、规范化摘要与 Server 规划器，以及 sing-box 安装状态/目录核对动作已加入源码；已增加生产只读观察适配、HTTP 预览及桌面状态核对入口。尚不构成完整 TO-01 交付，详见文末实施记录。
+
 - 定义 `TaskPlan`、`TaskStep`、Action Catalog 和 digest；
 - 先接 2~3 个无副作用或低风险 Action；
 - 支持 Preview、DAG、no-op 和 conflict；
@@ -707,3 +709,79 @@ TO-01～TO-03 必须覆盖以下行为，测试以真实边界和可注入崩溃
 9. 跨用户查询/订阅/取消/恢复被正确限制；日志、摘要载荷和错误响应不泄露秘密。
 
 这些验收与各领域现有测试共同构成交付门禁。TO 跟踪项与实际接入应用文档在实现时同步更新，未完成项保留“计划中”，不将本文补齐视为功能完成。
+
+### TO-01 内部只读核心（2026-10-24）
+
+`Shared/RelaxKonOS.Protocol/TaskOrchestration/` 现定义 `TaskPlanIntent`、`TaskStepIntent`、`TaskPlan`、`TaskStep`、资源基线、能力/目标与明确配额。集合使用不可变数组，冻结时克隆输入 JSON；原始 JSON 文档释放不影响计划。`TaskPlanJson.ReadIntent` 是待接入边界的唯一严格输入读取入口，限制正文与深度，先拒绝任意层重复属性，再拒绝未知契约字段。当前 Action 参数只允许其明确 schema，不接受 shell、URL、路径或未知参数。
+
+`TaskPlanCanonicalizer` 在 Shared 唯一实现规范化：属性按 ordinal 排序，步骤稳定排序、集合去重/稳定排序，有序输入数组保留顺序，数值仅接受当前 schema 使用的 Int64；语义摘要包含宿主、主体、来源/输入修订、动作 schema/实现修订、参数、依赖、资源/基线、处置结果、风险及失败/取消/配额约束。planId 与 createdAt 不参与摘要。已有基础 JSON/SHA-256 与完整两动作计划的固定向量；此处 schema 是唯一当前格式，不提供旧格式读取。
+
+`RelaxKonOS.Server/TaskOrchestration/TaskPlanner.cs` 先验证整图与所有参数，再执行只读观察；支持依赖去重、环/深度/大小拒绝、no-op/conflict/unsupported，以及同一资源在一次规划中出现矛盾基线时整体拒绝。只读动作返回 Ready（将产生变更）会被拒绝。初批编译期动作 `runtime.verifyInstallation`、`runtime.verifyCatalog` 由受信任 `IRuntimeTaskObservations` 提供事实：前者核对实际 host/runtime/安装 ID/状态修订、所有权和活动/恢复状态；后者核对来源归属、目录/信任修订、签名、新鲜度、有效期及撤销。这里只核对事实，不创建 RuntimeChangePlan，不授予安装许可；目录过期、no-op 漂移或来源撤销都不会转换成变更步骤。
+
+验证：`dotnet run --project Tests/TaskOrchestration/RelaxKonOS.TaskOrchestration.Tests.csproj --no-restore -v:q`，**41 项通过**。专项引用 Server 工程并注入领域观察，覆盖固定向量、规范化、输入所有权、整图/schema 拒绝、配额、取消、矛盾基线、状态漂移与源信任失败。Server 与桌面工程构建通过；既有依赖审计及分析警告仍存在。
+
+尚未实施：修改型计划的统一桌面预览、其他领域 Action、输出引用与修订传递、PlanApproval、TaskRun/journal、Executor、撤权和重启恢复。当前 DTO 不是安装台账可接受的执行请求，内部规划测试不证明这些能力；TO-02/TO-03 与第一阶段真实 workload 验收目标保持计划中。
+
+### TO-01 生产只读预览与桌面状态核对（2026-10-24）
+
+新增 `POST /api/v1.0/task-plans/preview`，由 `RuntimeRead` 与宿主 `PrivilegedOperations` 功能共同准入。主体只取认证后的 canonical subject，宿主身份取 sing-box 领域查询结果，不接受客户端注入。`RuntimeTaskPreviewService`/DI 使用现有 `SingBoxRuntimeService.QueryAsync` 和 `RuntimeCatalogService.CatalogAsync(refresh:false)`，每次请求隔离安装与目录快照缓存；先验证整图/schema 再读取宿主。只读核对不刷新来源、不请求 RuntimeChangePlan、不提权、不提交安装台账。匿名、无读取角色、缺主体、宿主模式不支持及非法输入在观察前拒绝。
+
+HTTP 和客户端均限制正文大小；无 Content-Length 的流式请求也按实际读取长度限额。唯一当前 Task 输入契约使用精确 camelCase，重复属性和未知字段拒绝；Action 参数记录已移入 Shared，并使用同一明确属性名，不保留旧格式解析。完整计划固定摘要向量已同步为 `37a8af03900dd65231a18d6c8a9f8959c87ca35f1f63bb849ae39f12a9760cc2`。响应 `Cache-Control: no-store`，领域错误只返回稳定问题码，不包含原始宿主诊断。
+
+桌面组件中心新增“核对组件状态”面板，通过 `ITaskPlanPreviewClient` 访问固定预览路由。客户端重新验证会话、用户、宿主、来源上下文、精确动作/参数/依赖和摘要，并拒绝修改型步骤或权限扩张；结果使用三语言说明，不把 DTO、摘要或实现修订暴露为用户决策。没有目录时明确显示“目录未检查”。观察者有读权限即可核对，不授予管理权限。生命周期刷新或会话变化使旧结果失效；此面板的结果不作为安装许可，实际变更仍重新请求领域冻结计划和确认。
+
+验证：规划核心 **41 项**与生产适配/真实本地 HTTP 边界 **16 项**通过；后者覆盖 Query/Get 两个 Helper 动词、整图准入、认证/主体/宿主模式、未知字段、重复属性、有界普通/分块正文、摘要/身份、禁止缓存、诊断隔离和无执行路由。Client Installation 专项 **158 项 PASS**，包含预览客户端篡改/错宿主/错主体/会话切换/响应上限与面板过期结果拒绝。WindowPreviews `--component-center-only` 三语言 × 明暗主题通过，新增 6 组状态核对冲突渲染；已查看日文深色实际图。Server 与桌面构建通过，既有审计/分析警告仍存在，NuGet 审计源不可达时另报 NU1900。
+
+当前 preview 是一次只读观察的冻结计划，现已支持持久保存和按 ID 查询/失效（详见下节），不提供审批或执行，也不构成修改型计划的统一 Preview/Approval/Executor 闭环。尚需完成其他领域 Action、最小持久审批/执行身份、TaskRun/journal、领域幂等/恢复与桌面变更入口替换；不将只读核对扩大为批量组件安装已完成。
+
+### TO-01 持久冻结计划与有效性（2026-10-24）
+
+预览现在先将服务端生成的冻结计划耐久保存，再返回成功。新增 `TaskPlanStore`，使用内容根下 `data/task-plans.db` 的 SQLite WAL/FULL 事务；冻结计划、独立有效性/修订与审计一起提交。记录使用现有 Host Data Protection 的专用 purpose 保护，打开与读取时重新核对保护完整性、计划摘要、ID/主体索引、有效性和审计关系。同一 planId 不能替换内容、主体或创建时间，重复保存相同 envelope 返回原记录。此存储不保存密码或授予任何执行权。
+
+`TaskPlanRecord` 分别暴露冻结 `Plan` 与 `Resolved/Invalidated`、有效性修订、到期时间和失效原因。当前预览有效期为创建后 600 秒；读取或重试保存到期计划时持久记录 `task.plan_expired`，重复保存不能使其重新有效。主体默认最多 256 条，存储最多 4096 条；超过限制返回稳定问题码，不自动清除历史。自动保留策略、计划历史列表和桌面按 ID 恢复仍待接入；不以清空存储解决配额或损坏。
+
+新增 `GET /api/v1.0/task-plans/{planId}` 与 `POST .../{planId}/invalidate`，均要求读取角色并按当前认证主体隔离。跨主体查询/失效统一返回未找到；失效提交精确 digest 和有效性 revision，拒绝过时修订及重复/未知输入字段。失效不修改计划内容、不调用领域服务，不授予取消/恢复领域任务的能力。存储查询在宿主变更功能不可用时仍可达，响应禁止缓存。计划保存失败阻止预览成功返回；密钥不可用、保护记录损坏、缺少既有 schema 或 I/O 失败均失败关闭，不重建空台账。已观察到损坏的实例禁止后续写入。
+
+桌面把计划配额和存储不可用映射为三语言处理说明，清空旧核对结果；只接受明确列出的稳定问题码，不显示原始数据库/宿主诊断。此轮未增加桌面历史恢复或审批按钮，现有组件变更继续走领域冻结计划确认。
+
+验证：规划 **41 项**、生产适配/HTTP **23 项**、持久存储 **30 项**通过。存储专项覆盖独立实例并发、重开、ID 内容冲突、跨主体隔离、过期/保存重试、审计/有效性、配额、缺密钥、保护记录损坏与缺 schema；注入计划写入和有效性写入之后、提交之前的故障，重开确认完整回滚到未写入/原修订，未留下部分计划或审计。HTTP 验证本人读取、他人不可见/不可失效、宿主功能不可用仍可读，以及精确摘要/修订门槛。Client Installation **162 项 PASS**，三语言 × 明暗主题组件中心布局回归通过；Server 与桌面构建通过，既有审计/分析警告仍存在。
+
+尚需交付其他领域 Action、计划级审批与受限执行身份、TaskRun/step journal、执行器及领域操作对账/恢复；TaskRun 当前仅有内部持久排队记录（详见下文），尚无生产执行入口；持久计划或审批记录不能作为 RuntimeChangePlan 授权或通用提权凭据使用。
+
+### sing-box 生命周期变更规划（2026-10-24）
+
+新增生产 `POST /api/v1.0/task-plans/plan`，仅接受结构化 Action intent；要求 RuntimeManage、controller 与 sing-box 安装限制，并同时核对 PrivilegedOperations/AgentInstallation 宿主功能。观察者和安装权限受限到其他组件的 controller 在进入规划服务前拒绝。此接口只生成并持久保存提案，不请求管理员认证、不创建 grant、不调用安装台账或执行器；只读 preview 路由仍不登记这些修改动作。
+
+受信任 Action Catalog 现通过 `ITaskPlanningAction` 明确只读属性、写资源与解析后的输入/权限/风险/重试/领域补偿语义，替换原只读接口，不保留旧接口别名。加入 `runtime.install/update/repair/rollback/uninstall`（sing-box-change-1）；当前同一运行时的多个修改步骤即使声明先后依赖也会在观察前返回资源冲突，不能靠顺序隐式覆盖基线。多个有修订传递关系的修改步骤须等待输出绑定实现，尚不承诺可执行。
+
+`RuntimeTaskChangePlanningService` 复用实际 `SingBoxRuntimeService.QueryAsync/PlanAsync`：先验证全部 intent，读取安装事实，由既有领域计划复核来源、信任、明确版本、平台、配置支持和宿主依赖，再重新查询安装/程序/已发布配置身份；规划期间发生变化即拒绝冻结。任务层额外区分未知/外部所有权、活动任务/恢复、安装身份/修订、修复当前 release、可恢复的回退目标和 SemVer 更新/回退方向；缺少完整领域制品或宿主依赖证据的“允许”结果也拒绝。被拒目录不被当作已观察到的目录修订。
+
+Shared 中新增精确生命周期选择和冻结变更记录。后者包含完整不可变 release/artifact/layout、原 release/实测版本/已发布配置身份、数据保留/删除、停服与可能重启、跨步骤补偿限制及宿主依赖证据。所有字段进入任务摘要；输入和冻结 JSON 使用唯一当前严格 camelCase 编解码，未知执行字段拒绝。规划探测只使用固定非执行 key，冻结记录中不包含该 key 或可复用的领域幂等键；未来执行须依据 approved host/run/step 分配稳定 dispatch key，再由冻结选择与制品构造领域请求，不能重新解析版本。此执行绑定本轮未实现。
+
+权限目标与资源复用安装领域的 `SingBoxInstall/singbox`、`service:SingBox` 和 `runtime:sing-box`；安装服务公开唯一只读 ResourceKeys，编排不另拼一套锁身份。数据删除单独标为 destructive；领域内部事务补偿与跨步骤补偿分别表达，不承诺跨步骤整体回滚。当前不提供 PlanApproval/TaskRun/执行路由；桌面变更按钮继续使用已实现的领域冻结计划确认，尚未切换到新接口。
+
+验证：规划核心 **41 项**、生产适配/真实本地 HTTP **31 项**、持久存储 **30 项**、新增生命周期规划 **25 项**通过。覆盖五种意图、精确制品/摘要、键隔离、资源冲突、无权/错误安装目标/缺宿主能力拒绝、只读路由不能夹带变更、提案持久读取、领域拒绝、不完整依赖/撤销制品、错误宿主、版本方向、回退保留版本、数据删除与配置漂移。生产适配使用真实领域服务和记录 Helper 传输，仅出现 Query→Plan→Query，无执行或提权动词；这些模拟检查不替代实际安装或协议验收。Client Installation **162 项**与组件中心三语言 × 明暗主题布局回归通过，Server/桌面构建通过，既有依赖审计/分析警告仍存在。
+
+### TO-02/TO-03 内部审批与 Queued Run 原子分配（2026-10-24）
+
+新增 Shared 审批/运行/步骤状态契约，以及服务端内部 `RecordApproval`、`StartRun`、按主体读取和撤销的持久基础。生产管理员认证验证器、HTTP 审批/运行接口、派发器和 Helper 执行身份桥接尚未接入；内部 `TaskApprovalIdentity/TaskExecutionIdentity` 只表达将由实时验证器提供的证据，不是客户端请求模型或通用提权凭据。本轮测试使用明确的验证器夹具身份，不能据此宣称真实管理员认证、撤权或后台委托已经验收。
+
+审批绑定 planId/digest、主体/会话、实际宿主、策略修订、审批者身份/认证方式和从冻结步骤推导的精确 capability/target。只接受当前已支持的 Action schema/实现修订，冲突计划、额外目标和错上下文均拒绝。`startBefore` 为创建后至多 120 秒并受计划到期约束；`runAuthorizationExpiresAt` 为独立的至多 600 秒授权期限。审批重试不刷新期限，未消费过期审批持久转为 Expired，撤销保留已消费的 run 关联。记录本身不代表当前身份/策略仍有效，后续每一步和 Helper challenge 仍必须实时复核。
+
+同一个 SQLite 事务消费审批、分配唯一 Queued TaskRun、初始化 Pending 步骤及稳定 host/run/step/execute 幂等键，并记录请求映射和审计。不同请求键并发启动同一审批收敛到同一 run；映射同样持久保存，重开后同键不同请求仍冲突。每个 plan 至多一个完整 run，竞争审批不能重复从头开始；后续恢复需专用剩余步骤审批，尚未实现。撤销后的原键重试只可读回原 run 身份，不产生新的执行权。当前步骤没有 requestDigest 或 domainOperationId，不假装已经提交任何领域操作，也不提前将规划时的 no-op 标为执行成功。
+
+计划、审批、run、请求映射与审计全部受 Data Protection 保护，重开时核对索引和跨记录绑定；显式计划失效与相关审批撤销同事务提交。初始化 schema 也使用原子事务。唯一当前数据库格式升为 `user_version=2`，旧格式被保留并失败关闭，不添加旧解析、空库重置或迁移适配。每计划最多 16 个审批、每 run 最多 64 个请求映射；活动和历史记录均未自动清除。无权主体不能借 ID 查询审批/run，损坏的保护记录阻止继续写入。
+
+验证：规划 41 项、HTTP 32 项、计划存储 30 项、生命周期规划 25 项保持通过，新增内部审批/run 存储 **40 项**通过。新增覆盖单次消费、独立实例并发、不同请求键合并、同键不同请求冲突、跨用户/会话/宿主/策略、过期/撤销、竞争审批、稳定步骤键、重开、旧格式与损坏失败关闭；在审批写入、审批消费、run 写入、计划失效联动撤销的提交前注入故障，确认无部分审批、消费或 run 遗留。真实本地 HTTP 继续验证 `/approve`、`/run` 没有开放。Server 构建通过，既有审计/分析警告仍存在。
+
+下一步须完成生产实时身份验证与审批服务、逐步受限上下文、新鲜授权检查、dispatch intent/journal、领域幂等关联与恢复协调，再开放受控 Executor/HTTP 并接桌面变更预览。既有会话撤销设施主要为进程内状态，当前不承诺跨 Server 重启或访问令牌到期继续特权任务；TO-02/TO-03 仍在实施中，未完成纵向执行验收。
+
+### TO-02 实时审批策略证据（2026-10-24）
+
+已实现并注册 `TaskApprovalPolicyReader`，在宿主只读查询前后使用新 DI scope 读取用户、会话、设备、workspace 和宿主权限。先验证 controller 业务角色与 sing-box 安装限制，再检查当前用户安全版本、活动 session、JWT 会话绑定、controller 设备与未过期租约、System Mode 和宿主能力、OS UID/SID 的 canonical binding。查询期间策略发生变化即拒绝；JWT 角色或已有通用提权记录不能代替上述观察。
+
+策略摘要绑定用户/会话、认证方式、controller 授予时间、当前宿主权限与安装限制；令牌刷新和租约续期不改变摘要，但有效期限独立取当前令牌与租约的较早值。内部审批存储新增必填 `ValidUntil`，启动和执行授权期限均不能超过该证据；同键重试不会因刷新凭据而延长期限。宿主管理员认证结果新增 canonical administrator identity：Windows 使用实际登录 token 的 SID，Linux 使用认证得到的 UID，后续审批不得使用用户输入的显示名替代。
+
+验证：规划 41、HTTP 32、计划存储 30、生命周期规划 25、审批/run 存储 43、实时策略 15 项通过。策略测试使用内存仓储及 OS/宿主观察夹具，验证角色/目标先拒绝、安全版本、冲突 claims、失效 session、租约、宿主能力、身份查询不可用与观察期间撤权；不宣称真实管理员认证或后台执行已验收。Server.Tests 全工程仍有 HEAD 中既有的 7 处 `MihomoRuntimeManager.InstallManagedAsync` 缺失编译错误；本轮服务端及专项工程编译通过。
+
+审批服务尚未把实时策略、冻结计划重新校验和管理员认证组合起来，生产 `/approve`、`/run` 仍未开放。注销撤销 session、后台委托持久化、每步新鲜授权、journal/派发和恢复仍须完成；当前进程重启后没有活动 session 时策略读取拒绝，不承诺自动后台续跑。TO-02/TO-03 不标记完成。

@@ -238,6 +238,9 @@
         <TextBlock Classes="section-title" Text="{loc:Loc component_center.page.Tasks}" />
         <TextBlock Text="{Binding PendingText}" TextWrapping="Wrap" />
         <TextBlock Text="{Binding OperationText}" TextWrapping="Wrap" />
+        <TextBlock Text="{loc:Loc component_center.stage_progress}" IsVisible="{Binding HasActiveOperation}" Classes="section-hint" />
+        <ProgressBar Minimum="0" Maximum="100" Value="{Binding OperationProgress}"
+                     IsIndeterminate="{Binding IsOperationIndeterminate}" IsVisible="{Binding HasActiveOperation}" />
         <TextBlock Text="{Binding OutcomeText}" TextWrapping="Wrap" />
         <Button Content="{loc:Loc proxy_server.runtime.cancel_download}" Command="{Binding CancelDownloadCommand}"
                 IsVisible="{Binding CanCancelDownload}" IsEnabled="{Binding CanCancelDownload}" HorizontalAlignment="Left" />

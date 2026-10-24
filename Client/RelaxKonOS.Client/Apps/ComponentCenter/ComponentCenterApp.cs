@@ -46,7 +46,8 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
         var runtime = new ProxyServerRuntimeViewModel(catalog);
         var drafts = (ComponentDraftStore?)context.Services.GetService(typeof(ComponentDraftStore))
             ?? throw new InvalidOperationException("Component draft store is not registered.");
-        var model = new ComponentCenterViewModel(runtime, drafts, session.ServiceId!, session.CurrentUser!.Id);
+        var model = new ComponentCenterViewModel(runtime, drafts, session.ServiceId!, session.CurrentUser!.Id,
+            (ITaskPlanPreviewClient?)context.Services.GetService(typeof(ITaskPlanPreviewClient)));
         model.ConnectionAvailable = true;
         _model = model;
         var view = new ComponentCenterWorkspace(model);
@@ -91,11 +92,19 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                 });
         };
         session.StateChanged += sessionChanged;
+        var taskRefresh = new Avalonia.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        taskRefresh.Tick += async (_, _) =>
+        {
+            if (runtime.CanRead && !runtime.IsBusy && !runtime.IsInvalidated && runtime.HasActiveOperation)
+                await runtime.RefreshActiveOperationAsync();
+        };
+        taskRefresh.Start();
         EventHandler<RelaxKonOS.WindowManager.ManagedWindow>? closed = null;
         closed = (_, current) =>
         {
             if (!ReferenceEquals(current, window)) return;
             context.WindowManager.WindowClosed -= closed; session.StateChanged -= sessionChanged;
+            taskRefresh.Stop();
             if (ReferenceEquals(_model, model)) _model = null;
             runtime.PropertyChanged -= observed;
             model.Dispose();

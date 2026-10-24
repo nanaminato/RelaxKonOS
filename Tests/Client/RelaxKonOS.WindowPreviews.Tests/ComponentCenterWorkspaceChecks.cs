@@ -9,6 +9,9 @@ using RelaxKonOS.Client.Apps.ProxyServer;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Protocol.Desktop;
 using RelaxKonOS.Protocol.ManagedRuntimes;
+using RelaxKonOS.Protocol.Installations;
+using RelaxKonOS.Protocol.TaskOrchestration;
+using System.Collections.Immutable;
 
 internal static class ComponentCenterWorkspaceChecks
 {
@@ -54,6 +57,44 @@ internal static class ComponentCenterWorkspaceChecks
                     bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light-") + page + ".png"), new PngBitmapEncoderOptions());
                 }
                 window.Close(); Dispatcher.UIThread.RunJobs();
+                var activeClient = DispatchProxy.Create<IRuntimeCatalogClient, DisplayOnlyRuntime>();
+                ((DisplayOnlyRuntime)(object)activeClient).Active = true;
+                using var activeRuntime = new ProxyServerRuntimeViewModel(activeClient) { CanRead = true, CanManage = true };
+                activeRuntime.LoadAsync().GetAwaiter().GetResult();
+                using var activeModel = new ComponentCenterViewModel(activeRuntime, new(), "https://host.example/", Guid.NewGuid(), new InspectionPreview());
+                activeModel.Navigate(ComponentCenterPage.Tasks);
+                var activeView = new ComponentCenterWorkspace(activeModel);
+                var activeWindow = new Window { Width = 1060, Height = 800, Content = activeView };
+                activeWindow.Show(); Dispatcher.UIThread.RunJobs(); activeWindow.UpdateLayout();
+                Check(activeRuntime.CanCancelDownload && activeRuntime.OperationProgress == 42,
+                    "Reattached task exposes host stage progress and cancellation");
+                Check(!activeView.GetVisualDescendants().OfType<TextBlock>().Any(t =>
+                    t.Text?.Contains("component_center.", StringComparison.Ordinal) == true
+                    || t.Text?.Contains("installation.stage.", StringComparison.Ordinal) == true),
+                    "Reattached task text resolves in " + language);
+                using (var bitmap = new RenderTargetBitmap(new PixelSize(1060, 800)))
+                {
+                    bitmap.Render(activeWindow);
+                    bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light-") + "ActiveTask.png"), new PngBitmapEncoderOptions());
+                }
+                activeWindow.Close(); Dispatcher.UIThread.RunJobs();
+                activeModel.Navigate(ComponentCenterPage.All);
+                activeModel.InspectCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+                var inspectionView = new ComponentCenterWorkspace(activeModel);
+                var inspectionWindow = new Window { Width = 1060, Height = 800, Content = inspectionView };
+                inspectionWindow.Show(); Dispatcher.UIThread.RunJobs(); inspectionWindow.UpdateLayout();
+                Check(activeModel.InspectionSteps.Count == 1 && activeModel.ShowInspection,
+                    "Read-only plan results are displayed in component details");
+                Check(!inspectionView.GetVisualDescendants().OfType<TextBlock>().Any(t =>
+                    t.Text?.Contains("component_center.", StringComparison.Ordinal) == true
+                    || t.Text?.StartsWith("runtime.", StringComparison.Ordinal) == true),
+                    "Inspection titles and conflicts resolve in " + language);
+                using (var bitmap = new RenderTargetBitmap(new PixelSize(1060, 800)))
+                {
+                    bitmap.Render(inspectionWindow);
+                    bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light-") + "Inspection.png"), new PngBitmapEncoderOptions());
+                }
+                inspectionWindow.Close(); Dispatcher.UIThread.RunJobs();
             }
         }
         finally { settings.Language = languageBefore; settings.Appearance = appearanceBefore; }
@@ -65,12 +106,35 @@ internal static class ComponentCenterWorkspaceChecks
     }
 }
 
+internal sealed class InspectionPreview : ITaskPlanPreviewClient
+{
+    public Task<TaskPlan> PreviewAsync(TaskPlanIntent intent, string expectedHost, CancellationToken ct)
+    {
+        var steps = intent.Steps.Select(step => new TaskStep(step.StepId, step.ActionId, step.SchemaVersion,
+            step.ImplementationRevision, step.Inputs, step.DependsOn, [], [], [], TaskStepDisposition.Conflict,
+            ["runtime.operation_pending"], "read-only", "none", "none")).ToImmutableArray();
+        var semantics = new TaskPlanSemantics(expectedHost, "rendering", intent.SourceKind, intent.SourceIdentity,
+            intent.InputRevision, steps, "stop-on-failure", "safe-boundary", false, TaskPlanLimits.Default);
+        return Task.FromResult(new TaskPlan(Guid.NewGuid(), DateTimeOffset.UtcNow, TaskPlanCanonicalizer.Digest(semantics), semantics));
+    }
+}
+
 public class DisplayOnlyRuntime : DispatchProxy
 {
+    public bool Active;
+    private readonly Guid _operation = Guid.NewGuid();
     protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
     {
         "get_RuntimeId" => "sing-box",
         "get_SupportsRecoveryStopAndClose" => true,
+        "InstallationAsync" when Active => Task.FromResult(new RuntimeInstallationSnapshot(
+            new RuntimeInstallation(Guid.NewGuid(), "host-a", "sing-box", 1, RuntimeOwnership.Managed,
+                new RuntimeTarget("linux", "x64", null, null, RuntimeInstallMode.Archive, "systemd"), "release", false),
+            "1.14.3", null, null, _operation, InstallationStage.Downloading, null)),
+        "OperationAsync" when Active => Task.FromResult<InstallationOperationDto?>(new(_operation,
+            InstallationServiceId.SingBox, InstallationOperationKind.Upgrade, InstallationOperationState.Running,
+            InstallationStage.Downloading, 42, null, DateTimeOffset.UtcNow, null, null, true)),
+        "SourcesAsync" when Active => Task.FromResult<IReadOnlyList<RuntimeSourceView>>([]),
         _ => throw new InvalidOperationException("Rendering must not call a remote runtime: " + method?.Name)
     };
 }

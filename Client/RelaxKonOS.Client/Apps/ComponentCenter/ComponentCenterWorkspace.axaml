@@ -61,6 +61,24 @@
       </StackPanel>
      </Border>
      <Button Content="{loc:Loc application.relaxkonos.proxy-server.display_name}" Click="OpenApplication_Click" IsVisible="{Binding HasRuntimeDetails}" HorizontalAlignment="Left" />
+     <Border IsVisible="{Binding ShowInspection}" Classes="app-panel" Padding="18">
+      <StackPanel Spacing="10">
+       <TextBlock Text="{loc:Loc component_center.inspect_title}" FontSize="16" FontWeight="SemiBold" />
+       <TextBlock Text="{loc:Loc component_center.inspect_hint}" TextWrapping="Wrap" />
+       <Button Content="{loc:Loc component_center.inspect}" Command="{Binding InspectCommand}" IsEnabled="{Binding CanInspect}" HorizontalAlignment="Left" />
+       <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsInspecting}" />
+       <TextBlock Text="{Binding InspectionNotice}" TextWrapping="Wrap" />
+       <ItemsControl ItemsSource="{Binding InspectionSteps}">
+        <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:ComponentInspectionStep">
+         <StackPanel Spacing="4" Margin="0,6">
+          <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding State}" />
+          <TextBlock Text="{Binding Problems}" TextWrapping="Wrap" Foreground="{DynamicResource DangerBrush}" />
+         </StackPanel>
+        </DataTemplate></ItemsControl.ItemTemplate>
+       </ItemsControl>
+      </StackPanel>
+     </Border>
      <StackPanel IsVisible="{Binding HasRuntimeDetails}"><views:ProxyServerRuntimeView x:Name="RuntimeView" DataContext="{Binding Runtime}" /></StackPanel>
     </StackPanel>
    </ScrollViewer>
@@ -80,7 +98,7 @@
     <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="8">
      <Button Content="{loc:Loc component_center.preview_title}" Command="{Binding PreviewCommand}" IsEnabled="{Binding CanPreview}" Classes="primary" />
      <Button Grid.Column="1" Content="{loc:Loc component_center.discard}" Command="{Binding DiscardCommand}" IsEnabled="{Binding HasDrafts}" />
-     <TextBlock Grid.Column="2" Text="{loc:Loc component_center.draft_hint}" TextWrapping="Wrap" VerticalAlignment="Center" />
+     <TextBlock Grid.Column="2" Text="{Binding PersistenceNotice}" TextWrapping="Wrap" VerticalAlignment="Center" />
     </Grid>
    </StackPanel>
   </Border>

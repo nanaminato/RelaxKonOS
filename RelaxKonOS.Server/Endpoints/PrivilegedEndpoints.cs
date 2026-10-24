@@ -50,7 +50,7 @@ public static class PrivilegedEndpoints
             if (elevations.IsGranted(http.User, request.Capability, request.Target))
                 return Results.Ok(new HostElevationResult(true));
             var authentication = ownerDevices.IsOwner(http.User)
-                ? new HostAdministratorAuthenticationResult(true, string.Empty, "windows-owner-device")
+                ? new HostAdministratorAuthenticationResult(true, string.Empty, "windows-owner-device", "owner-device:" + http.User.FindFirstValue("device_id"))
                 : AuthenticateAdministrator(http.User, request, administrators);
             if (!authentication.Succeeded) return Problem(403, authentication.ProblemCode, "宿主管理员认证未通过，未执行操作。");
             try
@@ -90,7 +90,7 @@ public static class PrivilegedEndpoints
     {
         var username = principal.FindFirstValue(JwtRegisteredClaimNames.Name);
         return string.IsNullOrWhiteSpace(username)
-            ? new(false, "elevation-session-unavailable", "none")
+            ? new(false, "elevation-session-unavailable", "none", null)
             : administrators.Authenticate(username, request.AdministratorUsername, request.Password);
     }
 }

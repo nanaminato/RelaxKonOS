@@ -26,17 +26,3 @@ public static class ComponentCatalog
 public sealed record ComponentChangeDraft(string ComponentId, string RuntimeId, string HostId,
     Guid InstallationId, string? SourceId, string? ReleaseId, string? Version, RuntimeChange Change,
     bool KeepData, bool AllowPrerelease);
-
-/// <summary>Kept locally for this desktop process, isolated by server identity and actor.</summary>
-public sealed class ComponentDraftStore
-{
-    private readonly Dictionary<(string Server, Guid Actor), ComponentChangeDraft[]> _drafts = [];
-    public IReadOnlyList<ComponentChangeDraft> Read(string server, Guid actor) =>
-        _drafts.TryGetValue((server, actor), out var items) ? items.ToArray() : [];
-    public void Save(string server, Guid actor, IEnumerable<ComponentChangeDraft> drafts)
-    {
-        var items = drafts.ToArray();
-        if (items.Length == 0) _drafts.Remove((server, actor));
-        else _drafts[(server, actor)] = items;
-    }
-}

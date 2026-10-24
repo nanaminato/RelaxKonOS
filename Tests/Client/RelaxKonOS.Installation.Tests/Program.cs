@@ -45,7 +45,10 @@ Check(!ComponentCenterNavigation.TryParse(new Uri("relaxkonos://components/sing-
     && !ComponentCenterNavigation.TryParse(new Uri("relaxkonos://components/unknown?hostId=host&appId=relaxkonos.proxy-server"), out _),
     "Component links cannot nominate arbitrary applications or component IDs");
 ComponentSelectionChecks.Run();
+ComponentDraftPersistenceChecks.Run();
+await RuntimeReattachmentChecks.RunAsync();
 await ApplicationAvailabilityChecks.RunAsync();
+await TaskPreviewClientChecks.RunAsync();
 // A frozen plan is the only installation body the ledger accepts for Mihomo.
 static ManagedRuntimeInstallationRequest RuntimePlanBody() => new(true, new RuntimeChangePlan(
     new RuntimePlanRequest(Guid.NewGuid(), "host-test", RuntimeChange.Install, 1, 12, 7, "rel-mihomo", Guid.NewGuid().ToString("N")),
@@ -440,6 +443,7 @@ using (var runtimeHttp = new HttpClient(new Handler(request =>
     runtimeActiveReleaseMissing = true;
     using (var missingSourceVm = new ProxyServerRuntimeViewModel(catalogClient))
     {
+        missingSourceVm.CanRead = true;
         missingSourceVm.CanManage = true;
         await missingSourceVm.LoadAsync();
         Check(missingSourceVm.HasSources && missingSourceVm.SelectedSource is null && !missingSourceVm.CanAct

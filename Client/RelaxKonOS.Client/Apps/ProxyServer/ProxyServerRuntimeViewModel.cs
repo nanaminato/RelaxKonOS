@@ -42,7 +42,9 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
     private bool _refreshFailed;
     /// <summary>The submitted operation and whether the Host still allows abandoning it.</summary>
     private Guid? _cancelTarget;
+    private Guid? _cancelRequested;
     private bool _operationCancellable;
+    private InstallationOperationDto? _observedOperation;
     /// <summary>The measurement behind a refused plan, so the page can name the fact that failed.</summary>
     private RuntimeDependencyReport? _blockedDependencies;
 
@@ -59,7 +61,8 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
         nameof(HasEnvironment), nameof(EnvironmentPlatformText), nameof(EnvironmentServiceHostText),
         nameof(EnvironmentDiskSpaceText), nameof(EnvironmentFileSystemText), nameof(EnvironmentKernelText),
         nameof(HasEnvironmentWarning), nameof(EnvironmentWarning), nameof(DependencyText), nameof(HasDependencyBlock),
-        nameof(Installation), nameof(IsInvalidated), nameof(Updates), nameof(HasUpdates), nameof(SelectedInstallDraft), nameof(InstallModeText)
+        nameof(Installation), nameof(IsInvalidated), nameof(Updates), nameof(HasUpdates), nameof(SelectedInstallDraft), nameof(InstallModeText), nameof(HasActiveOperation),
+        nameof(OperationProgress), nameof(IsOperationIndeterminate)
     ];
 
     public event EventHandler? StateChanged;
@@ -84,6 +87,7 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
     /// <summary>Component Center stages local intent; other runtime hosts execute through the guarded plan flow.</summary>
     public Func<ComponentChangeDraft, bool>? StageChange { get; set; }
     public RuntimeInstallationSnapshot? Installation => _installation;
+    public RuntimeCatalogSnapshot? CatalogSnapshot => _catalog;
     public bool IsInvalidated => _invalidated;
 
     private ComponentChangeDraft Draft(RuntimeChange change, RuntimeRelease? release, bool keepData) => new(
@@ -149,7 +153,16 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
     /// Offered only while the Host itself reports the running operation as cancellable, so the page never shows
     /// a button the transaction would silently ignore after its switch checkpoint.
     /// </summary>
-    public bool CanCancelDownload => CanRead && CanManage && !_invalidated && _cancelTarget is not null && _operationCancellable;
+    public bool CanCancelDownload => CanRead && CanManage && !_invalidated && _cancelTarget is not null
+        && _cancelRequested != _cancelTarget && _operationCancellable;
+    public bool HasActiveOperation => (_installation?.PendingOperationId is not null || _cancelTarget is not null) && !NeedsRecovery;
+    public int OperationProgress => Math.Clamp(_observedOperation?.Progress ?? 0, 0, 100);
+    public bool IsOperationIndeterminate => _observedOperation?.Progress is null;
+
+    private static LocalizedStatus OperationSummary(InstallationOperationDto operation) => LocalizedStatus.Format(
+        "proxy_server.operation_state", operation.OperationId.ToString("D"),
+        LocalizedStatus.Key("component_center.operation_state." + operation.State),
+        LocalizedStatus.Key("installation.stage." + operation.Stage));
 
     /// <summary>What the Host measured about itself; there is nothing to show until it has answered once.</summary>
     public bool HasEnvironment => _installation?.Environment is not null;
@@ -218,7 +231,7 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
         : LocalizedStatus.Literal("—");
     public LocalizedStatus PendingText => _installation is null ? LocalizedStatus.Key("proxy_server.state.unknown")
         : _installation.PendingStage is { } stage
-        ? LocalizedStatus.Format("proxy_server.runtime.pending", stage.ToString(), _installation.PendingOperationId?.ToString("D") ?? "—")
+        ? LocalizedStatus.Format("proxy_server.runtime.pending", LocalizedStatus.Key("installation.stage." + stage), _installation.PendingOperationId?.ToString("D") ?? "—")
         : LocalizedStatus.Key("proxy_server.runtime.pending_none");
     public LocalizedStatus RuntimeProblemText => _installation?.ProblemCode is { } problem
         ? ProblemText(problem) : LocalizedStatus.Literal("");
@@ -396,6 +409,7 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
         try
         {
             await client.CancelAsync(id, Guid.NewGuid().ToString("N"), _lifetime.Token);
+            _cancelRequested = id;
             _operationCancellable = false;
             OperationText = LocalizedStatus.Key("proxy_server.runtime.cancel_requested");
             NotifyDerived();
@@ -438,6 +452,7 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
             submitted = await client.StartAsync(Kind(change), new ManagedRuntimeInstallationRequest(true, plan.Plan), key, _lifetime.Token);
         });
         var operation = submitted ?? throw new InvalidOperationException("runtime.operation_failed");
+        ValidateOperation(operation, operation.OperationId);
         OperationText = LocalizedStatus.Format("proxy_server.operation_pending", operation.OperationId.ToString("D"));
         _cancelTarget = operation.OperationId;
         try
@@ -446,8 +461,9 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
             {
                 var current = await client.OperationAsync(operation.OperationId, _lifetime.Token)
                     ?? throw new InvalidOperationException("runtime.operation_failed");
-                OperationText = LocalizedStatus.Format("proxy_server.operation_state",
-                    current.OperationId.ToString("D"), current.State, current.Stage);
+                ValidateOperation(current, operation.OperationId);
+                _observedOperation = current;
+                OperationText = OperationSummary(current);
                 _operationCancellable = current.Cancellable;
                 NotifyDerived();
                 // A cancellation the Host performed is an outcome, not a failure: say so and stop quietly.
@@ -479,8 +495,62 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
     {
         RequireRead();
         await ReloadStateAsync();
+        await ObserveActiveOperationAsync();
         await LoadSourcesAsync();
     });
+
+    /// <summary>Reattaches to the host's existing ledger entry, never starts or retries a change.</summary>
+    public Task RefreshActiveOperationAsync() => RunAsync(async () =>
+    {
+        RequireRead();
+        var previous = _cancelTarget;
+        _cancelTarget = null;
+        _operationCancellable = false;
+        await ReloadStateAsync();
+        await ObserveActiveOperationAsync(previous);
+    });
+
+    private async Task ObserveActiveOperationAsync(Guid? previous = null)
+    {
+        _cancelTarget = null;
+        _operationCancellable = false;
+        _observedOperation = null;
+        if (_installation is null || NeedsRecovery || (_installation.PendingOperationId ?? previous) is not { } id) return;
+        var operation = await client.OperationAsync(id, _lifetime.Token)
+            ?? throw new InvalidOperationException("runtime.operation_failed");
+        RequireRead();
+        ValidateOperation(operation, id);
+        _observedOperation = operation;
+        OperationText = OperationSummary(operation);
+        if (operation.State is InstallationOperationState.Queued or InstallationOperationState.Running)
+        {
+            _cancelTarget = id;
+            _operationCancellable = operation.Cancellable;
+        }
+        else
+        {
+            await ReloadStateAsync();
+            OutcomeText = operation.State switch
+            {
+                InstallationOperationState.Succeeded => LocalizedStatus.Key("proxy_server.runtime.action_done"),
+                InstallationOperationState.Cancelled => LocalizedStatus.Key("proxy_server.runtime.operation_cancelled"),
+                _ => ProblemText(operation.ProblemCode ?? "runtime.operation_failed")
+            };
+        }
+        NotifyDerived();
+    }
+
+    private void ValidateOperation(InstallationOperationDto operation, Guid expectedId)
+    {
+        var service = client.RuntimeId switch
+        {
+            "sing-box" => InstallationServiceId.SingBox,
+            "mihomo" => InstallationServiceId.Mihomo,
+            _ => throw new InvalidOperationException("runtime.request_invalid")
+        };
+        if (operation.OperationId != expectedId || operation.Service != service)
+            throw new InvalidOperationException("runtime.request_invalid");
+    }
 
     /// <summary>Re-reads Host state without re-entering the busy gate, so a finished command can refresh itself.</summary>
     private async Task ReloadStateAsync()
@@ -673,6 +743,7 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
     }
     private void ClearObservations()
     {
+        _cancelTarget = null; _cancelRequested = null; _operationCancellable = false; _observedOperation = null;
         _installation = null; _recovery = null; _catalog = null;
         _loading = true;
         try { Sources.Clear(); Releases.Clear(); SelectedSource = null; SelectedRelease = null; }

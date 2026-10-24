@@ -47,13 +47,19 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     public string HostIdentity => _server;
     public ObservableCollection<ComponentDraftItem> Drafts { get; } = [];
     public bool HasDrafts => Drafts.Count > 0;
-    public bool CanPreview => HasDrafts && !Runtime.IsBusy && Runtime.CanManage && !Runtime.IsInvalidated && Runtime.Installation is not null;
+    public LocalizedStatus PersistenceNotice => LocalizedStatus.Key(_store.HasPersistenceFailure(_server, _actor)
+        ? "component_center.persistence_failed" : "component_center.persistence_hint");
+    public bool CanPreview => HasDrafts && !IsInspecting && !Runtime.IsBusy && Runtime.CanManage && !Runtime.IsInvalidated && Runtime.Installation is not null;
     public LocalizedStatus DraftSummary => LocalizedStatus.Format("component_center.pending", Drafts.Count);
     [ObservableProperty] private LocalizedStatus notice = LocalizedStatus.Literal("");
 
-    public ComponentCenterViewModel(ProxyServerRuntimeViewModel runtime, ComponentDraftStore store, string server, Guid actor)
+    public ComponentCenterViewModel(ProxyServerRuntimeViewModel runtime, ComponentDraftStore store, string server, Guid actor,
+        ITaskPlanPreviewClient? previews = null)
     {
         Runtime = runtime; _store = store; _server = server; _actor = actor;
+        _previews = previews;
+        _inspectionInstallation = runtime.Installation;
+        _inspectionCatalog = runtime.CatalogSnapshot;
         BuildTrees();
         foreach (var draft in store.Read(server, actor)) Drafts.Add(new(draft));
         SelectedNavigation = Pages[0];
@@ -62,8 +68,9 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         runtime.PropertyChanged += RuntimeChanged;
         runtime.StateChanged += RuntimeStateChanged;
     }
-    private void RuntimeChanged(object? sender, PropertyChangedEventArgs e) => OnPropertyChanged(nameof(CanPreview));
-    private void RuntimeStateChanged(object? sender, EventArgs e) => RefreshTree();
+    private void RuntimeChanged(object? sender, PropertyChangedEventArgs e)
+    { OnPropertyChanged(nameof(CanPreview)); OnPropertyChanged(nameof(CanInspect)); }
+    private void RuntimeStateChanged(object? sender, EventArgs e) { ObserveInspectionState(); RefreshTree(); }
     partial void OnSelectedNavigationChanged(ComponentCenterNavigationItem? value)
     {
         OnPropertyChanged(nameof(SelectedPage));
@@ -83,7 +90,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     private void NotifyContext()
     {
         foreach (var property in new[] { nameof(HasResults), nameof(HasRuntimeDetails), nameof(HasWorkloadDetails),
-            nameof(SelectedTitle), nameof(EmptyMessage), nameof(WorkloadRequirements), nameof(WorkloadOptional) }) OnPropertyChanged(property);
+            nameof(SelectedTitle), nameof(EmptyMessage), nameof(WorkloadRequirements), nameof(WorkloadOptional), nameof(ShowInspection) }) OnPropertyChanged(property);
     }
     private void BuildTrees()
     {
@@ -209,11 +216,13 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     public void Persist()
     {
         _store.Save(_server, _actor, Drafts.Select(d => d.Draft));
+        OnPropertyChanged(nameof(PersistenceNotice));
         OnPropertyChanged(nameof(HasDrafts)); OnPropertyChanged(nameof(DraftSummary)); OnPropertyChanged(nameof(CanPreview));
         RefreshTree();
     }
     public void Dispose()
     {
+        _inspectionLifetime.Cancel(); _inspectionLifetime.Dispose();
         Runtime.StageChange = null;
         Runtime.PropertyChanged -= RuntimeChanged;
         Runtime.StateChanged -= RuntimeStateChanged;

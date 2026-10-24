@@ -8,7 +8,8 @@ namespace RelaxKonOS.Server.Installations;
 public sealed class SingBoxInstallationService(SingBoxRuntimeService runtime) : InstallationService<ManagedRuntimeInstallationRequest>
 {
     public override InstallationServiceId Id => InstallationServiceId.SingBox;
-    public override IReadOnlyList<string> Resources => ["service:SingBox", "runtime:sing-box"];
+    public static IReadOnlyList<string> ResourceKeys { get; } = Array.AsReadOnly<string>(["service:SingBox", "runtime:sing-box"]);
+    public override IReadOnlyList<string> Resources => ResourceKeys;
     protected override bool Confirmed(ManagedRuntimeInstallationRequest request) => request.Confirmed;
     protected override bool Supports(InstallationOperationKind kind) => kind is InstallationOperationKind.Install
         or InstallationOperationKind.Upgrade or InstallationOperationKind.Repair or InstallationOperationKind.Rollback
