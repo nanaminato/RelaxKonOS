@@ -114,7 +114,9 @@ internal static class FusedWorkspaceChecks
                 if (name is not ("browser" or "notepad" or "taskmanager"))
                 {
                     Check(window.View.HeaderLeading is Image { Source: not null }, $"{name}: workspace icon binding was lost after reparenting.");
-                    Check(window.View.HeaderCenter is TextBlock { Text.Length: > 0 }, $"{name}: workspace title binding was lost after reparenting.");
+                    Check(name == "git"
+                        ? gitView.FindControl<TextBlock>("ProjectNameLabel") is { Text.Length: > 0 }
+                        : window.View.HeaderCenter is TextBlock { Text.Length: > 0 }, $"{name}: workspace title binding was lost after reparenting.");
                 }
                 if (view.FindControl<Grid>("HeaderHost") is { } oldHeader && name != "application-deployments")
                     Check(oldHeader.Bounds.Height < 1, $"{name}: duplicate header row.");
@@ -155,15 +157,15 @@ internal static class FusedWorkspaceChecks
             git.IsPickerMode = true; Pump(); Check(!gitWindow.View.HasTitleBarContent, "Git picker retained application chrome.");
             git.IsPickerMode = false; Pump(); Check(gitWindow.View.HasTitleBarContent, "Git repository did not restore fused chrome.");
             git.Status = new RelaxKonOS.Protocol.Git.GitStatusDto("review/main", [], [], [], [], "review"); Pump();
-            Check(gitWindow.View.HeaderTrailing!.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == "review/main"),
+            Check(gitWindow.View.HeaderCenter!.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == "review/main"),
                 "Detached Git branch badge did not follow the repository status binding.");
             Check(gitView.FindControl<Button>("RefreshButton")!.Command == gitProject.RefreshCommand,
                 "Detached Git refresh button lost its command binding.");
             var identity = gitView.FindControl<WorkspaceWindowHeader>("Header")!;
             identity.Title = "Updated identity"; Pump();
-            Check(((TextBlock)gitWindow.View.HeaderCenter!).Text == "Updated identity", "Detached title no longer follows identity changes.");
+            Check(gitView.FindControl<TextBlock>("ProjectNameLabel")!.Text == "Updated identity", "Detached title no longer follows identity changes.");
             gitView.AttachWindowHeader(gitWindow); Pump();
-            Check(((TextBlock)gitWindow.View.HeaderCenter!).Text == "Updated identity", "Repeated header attachment changed bindings.");
+            Check(gitView.FindControl<TextBlock>("ProjectNameLabel")!.Text == "Updated identity", "Repeated header attachment changed bindings.");
             serverWindow.View.IsVisible = true; gitWindow.View.IsVisible = false;
             var compactNavigation = serverView.GetVisualDescendants().OfType<Button>().Single(button => button.Name == "CompactWorkspaceMenu");
             compactNavigation.Flyout!.ShowAt(compactNavigation); Pump();

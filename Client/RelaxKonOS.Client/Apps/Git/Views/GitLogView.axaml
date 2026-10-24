@@ -10,12 +10,12 @@
              Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
     <UserControl.Styles>
         <Style Selector="ComboBox.historyFilter">
-            <Setter Property="Height" Value="36" />
-            <Setter Property="MinHeight" Value="36" />
-            <Setter Property="Padding" Value="12,0" />
-            <Setter Property="Margin" Value="0,0,8,8" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="Padding" Value="6,0" />
+            <Setter Property="Margin" Value="0,0,4,3" />
             <Setter Property="FontSize" Value="12" />
-            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="CornerRadius" Value="3" />
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource BorderDefaultBrush}" />
             <Setter Property="BorderThickness" Value="1" />
@@ -25,10 +25,10 @@
             <Setter Property="MaxDropDownHeight" Value="320" />
         </Style>
         <Style Selector="Border.historyField">
-            <Setter Property="Height" Value="36" />
-            <Setter Property="Padding" Value="10,0" />
-            <Setter Property="Margin" Value="0,0,8,8" />
-            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="Padding" Value="6,0" />
+            <Setter Property="Margin" Value="0,0,4,3" />
+            <Setter Property="CornerRadius" Value="3" />
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource BorderDefaultBrush}" />
             <Setter Property="BorderThickness" Value="1" />
@@ -54,13 +54,13 @@
     </UserControl.Styles>
     <!-- Columns 5 and 6 belong to the inline diff pane: both stay at zero width until a file is
          opened, so the three-pane layout is unchanged when nothing is being reviewed. -->
-    <Grid x:Name="LogLayoutRoot" ColumnDefinitions="190,6,*,6,280,0,0">
+    <Grid x:Name="LogLayoutRoot" ColumnDefinitions="200,4,*,4,260,0,0">
 
         <!-- ============================================================
              LEFT PANE : Branch / Tag Tree (Fork-style)
              ============================================================ -->
-        <Border Grid.Column="0" Padding="8"
-                BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" Classes="app-panel">
+        <Border x:Name="BranchPane" Grid.Column="0" Padding="8" ClipToBounds="True"
+                BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,1,0" CornerRadius="0" Classes="app-panel">
             <Grid RowDefinitions="Auto,Auto,*">
                 <!-- 搜索框 -->
                 <Border Grid.Row="0" Background="{DynamicResource SurfaceSunkenBrush}" CornerRadius="6" Padding="8,4" Margin="0,0,0,6">
@@ -179,24 +179,19 @@
         </Border>
 
         <!-- 分隔条（占位，5px 宽） -->
-        <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="Transparent" />
+        <GridSplitter x:Name="BranchSplitter" Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="Transparent" />
 
         <!-- ============================================================
              MIDDLE PANE : Commit list (history) with toolbar
              ============================================================ -->
-        <Border Grid.Column="2" Padding="0"
-                BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" Classes="app-panel">
+        <Border Grid.Column="2" Padding="0" ClipToBounds="True"
+                BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,1,0" CornerRadius="0" Classes="app-panel">
             <Grid RowDefinitions="Auto,*">
                 <!-- 顶部筛选工具栏 -->
-                <Border Grid.Row="0" Background="{DynamicResource SurfaceSunkenBrush}" Padding="12,8,4,4" CornerRadius="8,8,0,0">
-                    <StackPanel Spacing="10">
-                        <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock Text="{loc:Loc git.page.log}" FontSize="14" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
-                            <Button Grid.Column="1" Content="⟳" Command="{Binding RefreshCommand}"
-                                    ToolTip.Tip="{loc:Loc git.refresh}" Padding="8,4" />
-                        </Grid>
-                        <WrapPanel Orientation="Horizontal">
+                <Border Grid.Row="0" Background="{DynamicResource SurfaceSunkenBrush}" Padding="4,3,0,0" CornerRadius="0">
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+
+                        <StackPanel Orientation="Horizontal">
                             <!-- 搜索框 -->
                             <Border Classes="historyField" Width="240">
                                 <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
@@ -236,8 +231,8 @@
                                          Text="{Binding LogPathFilter, Mode=TwoWay}" FontSize="12" Padding="0"
                                          VerticalContentAlignment="Center" />
                             </Border>
-                        </WrapPanel>
-                    </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
                 </Border>
 
                 <!-- 提交列表（ListBox 自定义 item，Fork 样式） -->
@@ -245,23 +240,14 @@
                          SelectedItem="{Binding SelectedCommit, Mode=TwoWay}"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          ScrollViewer.VerticalScrollBarVisibility="Auto"
-                         Background="Transparent" Padding="4">
+                         Background="Transparent" Padding="0">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <Grid ColumnDefinitions="18,*" RowDefinitions="Auto,Auto" MinHeight="52"
-                                  HorizontalAlignment="Stretch" Margin="4,3" ToolTip.Tip="{Binding Subject}">
-                                <Ellipse Grid.RowSpan="2" Width="8" Height="8" Fill="{DynamicResource AccentBrush}"
-                                         VerticalAlignment="Top" Margin="0,6,0,0" />
-                                <TextBlock Grid.Column="1" Text="{Binding Subject}" FontSize="13"
-                                           Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" />
-                                <Grid Grid.Column="1" Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,5,0,0">
-                                    <TextBlock Text="{Binding ShortSha}" FontSize="11" Margin="0,0,10,0"
-                                               FontFamily="Cascadia Code,Consolas,monospace" Foreground="{DynamicResource AccentBrush}" />
-                                    <TextBlock Grid.Column="1" Text="{Binding Author}" FontSize="11" Margin="0,0,8,0"
-                                               Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Grid.Column="2" Text="{Binding AuthorDate, Converter={x:Static gitViews:GitLogConverters.CommitDateConverter}}"
-                                               ToolTip.Tip="{Binding AuthorDate}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" />
-                                </Grid>
+                            <Grid ColumnDefinitions="16,2*,*,*" MinHeight="26" HorizontalAlignment="Stretch" Margin="2,0" ToolTip.Tip="{Binding Subject}">
+                                <Ellipse Width="6" Height="6" Fill="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="{Binding Subject}" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <TextBlock Grid.Column="2" Text="{Binding Author}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <TextBlock Grid.Column="3" Text="{Binding AuthorDate, Converter={x:Static gitViews:GitLogConverters.CommitDateConverter}}" ToolTip.Tip="{Binding AuthorDate}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" VerticalAlignment="Center" HorizontalAlignment="Right" />
                             </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
@@ -269,6 +255,9 @@
                     <ListBox.ItemContainerTheme>
                         <ControlTheme TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                             <Setter Property="HorizontalAlignment" Value="Stretch" />
+                            <Setter Property="Padding" Value="2,0" />
+                            <Setter Property="MinHeight" Value="26" />
+                            <Setter Property="CornerRadius" Value="3" />
                             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                             <Setter Property="ContextMenu">
                                 <ContextMenu>
@@ -346,8 +335,8 @@
         <!-- ============================================================
              RIGHT PANE : Changed files + Commit details
              ============================================================ -->
-        <Border Grid.Column="4" Padding="0"
-                BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" Classes="app-panel">
+        <Border Grid.Column="4" Padding="0" ClipToBounds="True"
+                BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,1,0" CornerRadius="0" Classes="app-panel">
             <Grid RowDefinitions="Auto,*,5,*">
                 <!-- 文件树标题栏 -->
                 <Border Grid.Row="0" Background="{DynamicResource SurfaceSunkenBrush}" Padding="10,6" CornerRadius="8,8,0,0">

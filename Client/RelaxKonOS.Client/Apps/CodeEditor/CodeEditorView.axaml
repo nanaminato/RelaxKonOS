@@ -117,7 +117,7 @@
                          the row and the full list hangs off its trailing edge, the way IDEA's open
                          files popup does. That is why the list no longer needs a sidebar area of
                          its own. -->
-                    <Grid x:Name="HeaderTabs" Grid.Row="1" Grid.ColumnSpan="3" ColumnDefinitions="*,Auto" ColumnSpacing="2">
+                    <Grid x:Name="HeaderTabs" Grid.Row="1" Grid.ColumnSpan="3" ColumnDefinitions="*,Auto" ColumnSpacing="2" IsVisible="{Binding HasDocuments}">
                     <ListBox x:Name="DocumentTabs" Classes="title-tabs" Height="{DynamicResource WindowTabHeight}" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled" ItemsSource="{Binding OpenDocuments}" SelectedItem="{Binding ActiveDocument, Mode=TwoWay}" SelectionMode="Single">
                         <ListBox.ItemsPanel>
                             <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
@@ -181,10 +181,10 @@
                 </StackPanel>
             </Border>
 
-            <Border Grid.Column="1"
+            <Border x:Name="FolderPanel" Grid.Column="1"
                     IsVisible="{Binding IsSidebarVisible}" Classes="app-sidebar">
                 <Grid RowDefinitions="Auto,*">
-                    <DockPanel Grid.Row="0" Margin="10,8,8,6">
+                    <DockPanel x:Name="FolderToolbar" Grid.Row="0" Margin="10,8,8,6">
                         <TextBlock DockPanel.Dock="Left" Text="{loc:Loc code_editor.sidebar.folders}" FontWeight="SemiBold" VerticalAlignment="Center" />
                         <StackPanel x:Name="FolderActions" DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2">
                             <Button Classes="header-action compact" ToolTip.Tip="{loc:Loc code_editor.add_folder}" AutomationProperties.Name="{loc:Loc code_editor.add_folder}" Command="{Binding AddFolderCommand}">
@@ -217,7 +217,7 @@
                 </Grid>
             </Border>
 
-            <GridSplitter Grid.Column="2" Width="6" HorizontalAlignment="Stretch" Background="{DynamicResource SurfaceBrush}"
+            <GridSplitter x:Name="FolderSplitter" Grid.Column="2" Width="6" HorizontalAlignment="Stretch" Background="{DynamicResource SurfaceBrush}"
                           ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" Cursor="SizeWestEast"
                           IsVisible="{Binding IsSidebarVisible}" />
 
@@ -259,6 +259,13 @@
                         </ScrollViewer>
                     </Grid>
                 </Grid>
+                <StackPanel Grid.Row="3" IsVisible="{Binding ShowProjectEmptyState}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="18" Margin="24">
+                    <TextBlock Text="{loc:Loc git.editor.empty_title}" FontSize="18" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Text="{loc:Loc git.editor.empty_project}" Foreground="{DynamicResource TextTertiaryBrush}" />
+                    <TextBlock Text="{loc:Loc git.editor.empty_commit}" Foreground="{DynamicResource TextTertiaryBrush}" />
+                    <TextBlock Text="{loc:Loc git.editor.empty_log}" Foreground="{DynamicResource TextTertiaryBrush}" />
+                    <TextBlock Text="{loc:Loc git.editor.empty_file}" Foreground="{DynamicResource TextTertiaryBrush}" />
+                </StackPanel>
                 <Grid Grid.Row="3" IsVisible="{Binding IsComparisonDocument}" RowDefinitions="Auto,*">
                     <TextBlock Text="{Binding ComparisonNotice}" IsVisible="{Binding HasComparisonNotice}" Margin="12,6" TextWrapping="Wrap" />
                     <diff:DiffView Grid.Row="1" Document="{Binding Comparison}" />
@@ -277,7 +284,7 @@
             </Grid>
         </Grid>
 
-        <Border Grid.Row="2" Classes="app-statusbar">
+        <Border x:Name="EditorStatusBar" Grid.Row="2" Classes="app-statusbar">
             <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="14">
                 <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
                 <Button Grid.Column="1" Content="{Binding EncodingName}" FontSize="12" Padding="4,0"

@@ -156,6 +156,13 @@ internal static class ProjectEditorChecks
             Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
             Check(view.EditorView.IsVisible && view.EditorView.Bounds.Height > 100, $"Editor remains mounted at {width} DIP with Git tools open.");
             Check(view.FindControl<ContentControl>("ContentHost")!.Content is GitLogView, "The bottom Git tool contains the real log view.");
+            Check(view.FindControl<Border>("GitToolHost")!.Bounds.Width > view.FindControl<Border>("SidebarHost")!.Bounds.Width,
+                "The bottom Git tool spans beneath both the sidebar and editor.");
+            Check(view.FindControl<Menu>("MainMenu")!.IsVisible == (width >= 900),
+                "The menu collapses to one entry in compact windows.");
+            var log = (GitLogView)view.FindControl<ContentControl>("ContentHost")!.Content!;
+            Check(log.FindControl<Border>("BranchPane")!.IsVisible == (width - 38 >= 800),
+                "Compact logs reserve space for commits and files while retaining the branch filter.");
             using var bitmap = new RenderTargetBitmap(new PixelSize(width, 760));
             bitmap.Render(host);
             bitmap.Save(Path.Combine(output, $"project-editor-{width}.png"), new PngBitmapEncoderOptions());

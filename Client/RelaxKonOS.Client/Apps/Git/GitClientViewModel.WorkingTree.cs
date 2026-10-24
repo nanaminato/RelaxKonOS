@@ -420,6 +420,7 @@ public sealed partial class GitClientViewModel
         Replace(EditorUnstagedFiles, UnstagedFiles);
         Replace(EditorUntrackedFiles, UntrackedFiles);
         Replace(EditorConflictFiles, ConflictFiles);
+        OnPropertyChanged(nameof(HasEditorChanges));
     }
 
     private void OnItemSelectionChanged(object? sender, EventArgs e)

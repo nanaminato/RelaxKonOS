@@ -53,6 +53,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
     public ObservableCollection<GitEditorChangeItem> EditorUnstagedFiles { get; } = [];
     public ObservableCollection<GitEditorChangeItem> EditorUntrackedFiles { get; } = [];
     public ObservableCollection<GitEditorChangeItem> EditorConflictFiles { get; } = [];
+    public bool HasEditorChanges => EditorStagedFiles.Count + EditorUnstagedFiles.Count + EditorUntrackedFiles.Count + EditorConflictFiles.Count > 0;
     public ObservableCollection<GitFileChangeDto> CommitChangedFiles { get; } = [];
     public ObservableCollection<GitLogFilterOption> LogBranchOptions { get; } = [];
     public ObservableCollection<GitLogFilterOption> LogAuthorOptions { get; } = [];

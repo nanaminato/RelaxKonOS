@@ -4,61 +4,190 @@
              xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
              xmlns:code="clr-namespace:RelaxKonOS.Client.Apps.CodeEditor"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:proto="clr-namespace:RelaxKonOS.Protocol.Git;assembly=RelaxKonOS.Protocol"
              xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.Git.Views"
              x:Class="RelaxKonOS.Client.Apps.Git.Views.GitClientWorkspace"
              x:DataType="git:GitClientViewModel"
              Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
+    <UserControl.Styles>
+        <Style Selector="ToggleButton.tool-window">
+            <Setter Property="Width" Value="34" /><Setter Property="Height" Value="34" />
+            <Setter Property="MinWidth" Value="0" /><Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="8" /><Setter Property="Margin" Value="2,3" />
+            <Setter Property="CornerRadius" Value="6" /><Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="ToggleButton.tool-window:checked">
+            <Setter Property="Background" Value="{DynamicResource AccentMutedBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+        </Style>
+        <Style Selector="MenuItem"><Setter Property="FontSize" Value="12" /></Style>
+    </UserControl.Styles>
     <Grid RowDefinitions="Auto,*,Auto">
-        <Grid x:Name="HeaderHost" ColumnDefinitions="*,Auto" IsVisible="{Binding !IsPickerMode}">
-            <common:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc git.title}" Subtitle="{loc:Loc git.subtitle}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/codeeditor.png" />
-            <StackPanel x:Name="HeaderActions" Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                <TextBlock x:Name="ProjectNameLabel" MaxWidth="140" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                <Button x:Name="BranchBadge" Content="{Binding Status.Branch}" Click="Branches_Click" ToolTip.Tip="{loc:Loc git.page.log}" />
+        <Grid x:Name="HeaderHost" ColumnDefinitions="24,*,Auto" IsVisible="{Binding !IsPickerMode}">
+            <common:WorkspaceWindowHeader x:Name="Header" Width="24" ClipToBounds="True" Title="{loc:Loc git.title}" Subtitle="{loc:Loc git.subtitle}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/codeeditor.png" />
+            <StackPanel x:Name="HeaderMenuHost" MinHeight="30" Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <Button x:Name="CompactMenuButton" Classes="header-action" ToolTip.Tip="{loc:Loc git.editor.main_menu}" AutomationProperties.Name="{loc:Loc git.editor.main_menu}" IsVisible="False">
+                    <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.4" Width="16" Height="16" Stretch="Uniform" Data="M3 5 H21 M3 12 H21 M3 19 H21" />
+                    <Button.Flyout><MenuFlyout>
+                        <MenuItem Header="{loc:Loc common.file}">
+                            <MenuItem Header="{loc:Loc common.new}" Click="New_Click" InputGesture="Ctrl+N" />
+                            <MenuItem Header="{loc:Loc common.open_ellipsis}" Click="OpenFile_Click" />
+                            <MenuItem Header="{loc:Loc common.save}" Click="Save_Click" InputGesture="Ctrl+S" />
+                            <MenuItem Header="{loc:Loc git.editor.save_all}" Click="SaveAll_Click" />
+                            <MenuItem Header="{loc:Loc common.save_as_ellipsis}" Click="SaveAs_Click" />
+                            <Separator /><MenuItem Header="{loc:Loc git.editor.open_project}" Click="OpenProject_Click" />
+                        </MenuItem>
+                        <MenuItem Header="{loc:Loc code_editor.find}" Click="Find_Click" />
+                        <MenuItem Header="{loc:Loc git.editor.project}" Click="Project_Click" />
+                        <MenuItem Header="{loc:Loc git.editor.commit}" Click="ShowCommit_Click" IsEnabled="{Binding CanManage}" />
+                        <MenuItem Header="{loc:Loc git.editor.git_window}" Click="GitWindow_Click" IsEnabled="{Binding CanManage}" />
+                        <MenuItem Header="Git">
+                            <MenuItem Header="{loc:Loc git.editor.pull}" Command="{Binding PullCommand}" />
+                            <MenuItem Header="{loc:Loc git.editor.push}" Command="{Binding PushCommand}" />
+                            <MenuItem Header="{loc:Loc git.editor.fetch}" Command="{Binding FetchCommand}" />
+                            <MenuItem Header="{loc:Loc git.page.remotes}" Tag="remotes" Click="GitTool_Click" IsEnabled="{Binding CanManage}" />
+                            <MenuItem Header="{loc:Loc git.page.conflicts}" Command="{Binding OpenConflictResolutionCommand}" IsVisible="{Binding ShowConflictPage}" />
+                            <MenuItem Header="{loc:Loc git.editor.initialize}" Click="Initialize_Click" />
+                        </MenuItem>
+                    </MenuFlyout></Button.Flyout>
+                </Button>
+                <Menu x:Name="MainMenu" FontSize="12" Background="Transparent" BorderThickness="0" Padding="0">
+                    <MenuItem x:Name="FileMenu" x:DataType="code:CodeEditorViewModel" Header="{loc:Loc common.file}">
+                        <MenuItem Header="{loc:Loc common.new}" Command="{Binding NewDocumentCommand}" InputGesture="Ctrl+N" />
+                        <MenuItem Header="{loc:Loc common.open_ellipsis}" Command="{Binding OpenDocumentCommand}" InputGesture="Ctrl+O" />
+                        <Separator />
+                        <MenuItem Header="{loc:Loc common.save}" Command="{Binding SaveCommand}" InputGesture="Ctrl+S" />
+                        <MenuItem Header="{loc:Loc git.editor.save_all}" Command="{Binding SaveAllCommand}" InputGesture="Ctrl+Shift+S" />
+                        <MenuItem Header="{loc:Loc common.save_as_ellipsis}" Command="{Binding SaveAsCommand}" />
+                        <MenuItem Header="{loc:Loc common.close}" Command="{Binding CloseDocumentCommand}" InputGesture="Ctrl+W" />
+                        <Separator /><MenuItem Header="{loc:Loc git.editor.open_project}" Click="OpenProject_Click" />
+                    </MenuItem>
+                    <MenuItem x:Name="EditMenu" x:DataType="code:CodeEditorViewModel" Header="{loc:Loc git.editor.edit_menu}">
+                        <MenuItem Header="{loc:Loc code_editor.find}" Click="Find_Click" InputGesture="Ctrl+F" />
+                        <MenuItem Header="{loc:Loc common.file_encoding}" Command="{Binding ChooseEncodingCommand}" />
+                        <MenuItem Header="{loc:Loc common.settings}" Command="{Binding OpenSettingsCommand}" />
+                    </MenuItem>
+                    <MenuItem Header="{loc:Loc git.editor.view_menu}">
+                        <MenuItem Header="{loc:Loc git.editor.project}" Click="Project_Click" InputGesture="Alt+1" />
+                        <MenuItem Header="{loc:Loc git.editor.commit}" Click="Commit_Click" InputGesture="Alt+0" IsEnabled="{Binding CanManage}" />
+                        <MenuItem Header="{loc:Loc git.editor.git_window}" Click="GitWindow_Click" InputGesture="Alt+9" IsEnabled="{Binding CanManage}" />
+                        <Separator /><MenuItem Header="{loc:Loc git.editor.hide_tools}" Click="HideTools_Click" />
+                    </MenuItem>
+                    <MenuItem Header="Git">
+                        <MenuItem Header="{loc:Loc git.editor.commit}" Click="ShowCommit_Click" InputGesture="Ctrl+K" IsEnabled="{Binding CanManage}" />
+                        <MenuItem Header="{loc:Loc git.editor.push}" Command="{Binding PushCommand}" InputGesture="Ctrl+Shift+K" />
+                        <MenuItem Header="{loc:Loc git.editor.pull}" Command="{Binding PullCommand}" InputGesture="Ctrl+T" />
+                        <MenuItem Header="{loc:Loc git.editor.fetch}" Command="{Binding FetchCommand}" />
+                        <Separator />
+                        <MenuItem Header="{loc:Loc git.editor.branches}" Click="Branches_Click" IsEnabled="{Binding CanManage}" />
+                        <MenuItem Header="{loc:Loc git.branches.new_branch}" Command="{Binding CreateBranchCommand}" />
+                        <MenuItem Header="{loc:Loc git.editor.stage_current}" Click="Stage_Click" IsEnabled="{Binding CanManage}" />
+                        <Separator />
+                        <MenuItem Header="{loc:Loc git.editor.git_window}" Tag="log" Click="GitTool_Click" IsEnabled="{Binding CanManage}" />
+                        <MenuItem Header="{loc:Loc git.page.remotes}" Tag="remotes" Click="GitTool_Click" IsEnabled="{Binding CanManage}" />
+                        <MenuItem Header="{loc:Loc git.page.conflicts}" Command="{Binding OpenConflictResolutionCommand}" IsVisible="{Binding ShowConflictPage}" />
+                        <MenuItem x:Name="InitializeButton" Header="{loc:Loc git.editor.initialize}" Click="Initialize_Click" />
+                    </MenuItem>
+                </Menu>
+                <TextBlock x:Name="ProjectNameLabel" Text="{Binding #Header.Title}" MaxWidth="160" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" FontWeight="SemiBold" />
+                <Button x:Name="BranchBadge" Padding="6,3" MinHeight="24" MaxWidth="180" Background="Transparent" BorderThickness="0" ToolTip.Tip="{loc:Loc git.editor.branches}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.3" Data="M6 4 V15 C6 19 18 18 18 11 V8 M3 4 A3 3 0 1 0 9 4 A3 3 0 1 0 3 4 M15 5 A3 3 0 1 0 21 5 A3 3 0 1 0 15 5" Width="14" Height="14" Stretch="Uniform" />
+                        <TextBlock Text="{Binding Status.Branch}" MaxWidth="130" TextTrimming="CharacterEllipsis" />
+                        <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Data="M2 3 L6 7 L10 3" Width="9" Height="6" Stretch="Uniform" />
+                    </StackPanel>
+                    <Button.Flyout><Flyout>
+                        <Grid RowDefinitions="Auto,*,Auto" MinWidth="240" MaxHeight="400">
+                            <TextBlock Text="{loc:Loc git.editor.branches}" FontWeight="SemiBold" Margin="8" />
+                            <ListBox x:Name="HeaderBranchList" Grid.Row="1" ItemsSource="{Binding Branches}" SelectedItem="{Binding SelectedBranch, Mode=TwoWay}" DoubleTapped="HeaderBranch_DoubleTapped" KeyDown="HeaderBranch_KeyDown" MaxHeight="280">
+                                <ListBox.ItemTemplate><DataTemplate x:DataType="proto:GitBranchDto"><TextBlock Text="{Binding Name}" /></DataTemplate></ListBox.ItemTemplate>
+                            </ListBox>
+                            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6" Margin="4,8,4,0">
+                                <Button Content="{loc:Loc git.branches.new_branch}" Command="{Binding CreateBranchCommand}" />
+                                <Button Content="{loc:Loc git.editor.branches}" Click="Branches_Click" />
+                            </StackPanel>
+                        </Grid>
+                    </Flyout></Button.Flyout>
+                </Button>
+            </StackPanel>
+            <StackPanel x:Name="HeaderActions" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                 <Button x:Name="RefreshButton" Classes="header-action" ToolTip.Tip="{loc:Loc git.refresh}" AutomationProperties.Name="{loc:Loc git.refresh}">
                     <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="16" Height="16" Data="M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14" />
                 </Button>
             </StackPanel>
         </Grid>
-        <Grid x:Name="WorkspaceBody" Grid.Row="1" RowDefinitions="Auto,*" IsVisible="{Binding !IsPickerMode}">
-            <Border Classes="app-toolbar" Padding="6,4">
-                <WrapPanel>
-                    <Button Content="{loc:Loc git.editor.project}" Click="Project_Click" Margin="0,0,4,2" />
-                    <Button Content="{loc:Loc git.editor.commit}" Click="Commit_Click" IsEnabled="{Binding CanManage}" Margin="0,0,8,2" />
-                    <Button Content="{loc:Loc common.new}" Click="New_Click" Margin="0,0,4,2" />
-                    <Button Content="{loc:Loc common.save}" Click="Save_Click" Margin="0,0,4,2" />
-                    <Button Content="{loc:Loc git.editor.save_all}" Click="SaveAll_Click" Margin="0,0,4,2" />
-                    <Button Content="{loc:Loc common.save_as_ellipsis}" Click="SaveAs_Click" Margin="0,0,4,2" />
-                    <Button Content="{loc:Loc code_editor.find}" Click="Find_Click" Margin="0,0,8,2" />
-                    <Button x:Name="InitializeButton" Content="{loc:Loc git.editor.initialize}" Click="Initialize_Click" Margin="0,0,4,2" />
-                    <Button Content="{loc:Loc git.editor.stage}" Click="Stage_Click" IsEnabled="{Binding CanManage}" Margin="0,0,4,2" />
-                    <Button Content="{loc:Loc git.editor.pull}" Command="{Binding PullCommand}" Margin="0,0,4,2" />
-                    <Button Content="{loc:Loc git.editor.push}" Command="{Binding PushCommand}" Margin="0,0,4,2" />
-                    <Button Content="{loc:Loc git.page.conflicts}" Command="{Binding OpenConflictResolutionCommand}" IsVisible="{Binding ShowConflictPage}" />
-                </WrapPanel>
-            </Border>
-            <Grid Grid.Row="1" x:Name="MainWorkspace" ColumnDefinitions="0,0,*">
-                <views:GitCommitToolView x:Name="CommitTool" IsVisible="False" />
-                <GridSplitter x:Name="CommitSplitter" Grid.Column="1" Width="5" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" IsVisible="False" />
-                <Grid x:Name="EditorArea" Grid.Column="2" RowDefinitions="*,0,Auto,0">
-                        <code:CodeEditorView x:Name="EditorPane" />
-                    <GridSplitter x:Name="GitSplitter" Grid.Row="1" Height="5" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext" IsVisible="False" />
-                    <Border Grid.Row="2" Classes="app-toolbar" Padding="6,2">
-                        <StackPanel Orientation="Horizontal" Spacing="4">
-                            <Button Content="{loc:Loc git.page.log}" Tag="log" Click="GitTool_Click" IsEnabled="{Binding CanManage}" />
-                            <Button Content="{loc:Loc git.editor.branches}" Tag="branches" Click="GitTool_Click" IsEnabled="{Binding CanManage}" />
-                            <Button Content="{loc:Loc git.page.remotes}" Tag="remotes" Click="GitTool_Click" IsEnabled="{Binding CanManage}" />
-                            <Button Content="{loc:Loc git.page.overview}" Tag="overview" Click="GitTool_Click" IsEnabled="{Binding CanManage}" />
-                        </StackPanel>
-                    </Border>
-                    <Border Grid.Row="3" x:Name="GitToolHost" IsVisible="False" Padding="6" Background="{DynamicResource SurfaceSunkenBrush}">
-                        <ContentControl x:Name="ContentHost" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
-                    </Border>
+        <Grid x:Name="WorkspaceBody" Grid.Row="1" ColumnDefinitions="38,*" RowDefinitions="*,0,0" IsVisible="{Binding !IsPickerMode}">
+            <Border Grid.RowSpan="3" Background="{DynamicResource SurfaceSunkenBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,0,1,0">
+                <Grid RowDefinitions="Auto,*,Auto">
+                    <StackPanel>
+                        <ToggleButton x:Name="ProjectToolButton" Classes="tool-window" Click="Project_Click" ToolTip.Tip="{loc:Loc git.editor.project_shortcut}" AutomationProperties.Name="{loc:Loc git.editor.project}">
+                            <Path Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.3" Width="18" Height="18" Stretch="Uniform" Data="M2 5 H9 L12 8 H22 V21 H2 Z" />
+                        </ToggleButton>
+                        <ToggleButton x:Name="CommitToolButton" Classes="tool-window" Click="Commit_Click" IsEnabled="{Binding CanManage}" ToolTip.Tip="{loc:Loc git.editor.commit_shortcut}" AutomationProperties.Name="{loc:Loc git.editor.commit}">
+                            <Path Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.3" Width="18" Height="18" Stretch="Uniform" Data="M2 12 H7 M17 12 H22 M7 12 A5 5 0 1 0 17 12 A5 5 0 1 0 7 12" />
+                        </ToggleButton>
+                    </StackPanel>
+                    <ToggleButton x:Name="GitToolButton" Grid.Row="2" Classes="tool-window" Click="GitWindow_Click" IsEnabled="{Binding CanManage}" ToolTip.Tip="{loc:Loc git.editor.git_shortcut}" AutomationProperties.Name="{loc:Loc git.editor.git_window}">
+                        <Path Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.3" Width="18" Height="18" Stretch="Uniform" Data="M6 3 V17 M6 8 C16 8 18 9 18 16 M3 20 A3 3 0 1 0 9 20 A3 3 0 1 0 3 20 M15 19 A3 3 0 1 0 21 19 A3 3 0 1 0 15 19" />
+                    </ToggleButton>
                 </Grid>
+            </Border>
+            <Grid Grid.Column="1" x:Name="MainWorkspace" ColumnDefinitions="0,0,*" ClipToBounds="True">
+                <code:CodeEditorView x:Name="EditorPane" Grid.Column="2" />
+                <Border x:Name="SidebarHost" Grid.Column="0" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,0,1,0" ZIndex="2">
+                    <Grid>
+                        <Grid x:Name="ProjectTool" RowDefinitions="Auto,*">
+                            <Border BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,0,0,1" Padding="12,7">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Text="{loc:Loc git.editor.project}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    <Button Grid.Column="1" Classes="header-action" Click="RefreshProject_Click" ToolTip.Tip="{loc:Loc git.refresh}" AutomationProperties.Name="{loc:Loc git.refresh}">
+                                        <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="14" Height="14" Data="M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14" />
+                                    </Button>
+                                </Grid>
+                            </Border>
+                            <ContentControl x:Name="ProjectToolHost" Grid.Row="1" />
+                        </Grid>
+                        <views:GitCommitToolView x:Name="CommitTool" IsVisible="False" />
+                    </Grid>
+                </Border>
+                <GridSplitter x:Name="CommitSplitter" Grid.Column="1" Width="4" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" />
             </Grid>
+            <GridSplitter x:Name="GitSplitter" Grid.Column="1" Grid.Row="1" Height="4" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext" IsVisible="False" />
+            <Border Grid.Column="1" Grid.Row="2" x:Name="GitToolHost" IsVisible="False" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,1,0,0" ClipToBounds="True">
+                <Grid RowDefinitions="30,*">
+                    <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" Background="{DynamicResource SurfaceSunkenBrush}" ColumnSpacing="8" Margin="10,0,4,0">
+                        <TextBlock Text="Git" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <Border Grid.Column="1" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="0,0,0,2" Padding="8,4">
+                            <TextBlock x:Name="GitTabTitle" VerticalAlignment="Center" FontSize="12" />
+                        </Border>
+                        <Button Grid.Column="3" Classes="header-action" ToolTip.Tip="{loc:Loc git.editor.tool_options}" AutomationProperties.Name="{loc:Loc git.editor.tool_options}">
+                            <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="2.5" Stretch="Uniform" Width="3" Height="14" Data="M1 1 H2 M1 6 H2 M1 11 H2" />
+                            <Button.Flyout><MenuFlyout>
+                                <MenuItem Header="{loc:Loc git.page.log}" Tag="log" Click="GitTool_Click" />
+                                <MenuItem Header="{loc:Loc git.editor.branches}" Tag="branches" Click="GitTool_Click" />
+                                <MenuItem Header="{loc:Loc git.page.remotes}" Tag="remotes" Click="GitTool_Click" />
+                                <MenuItem Header="{loc:Loc git.page.overview}" Tag="overview" Click="GitTool_Click" />
+                            </MenuFlyout></Button.Flyout>
+                        </Button>
+                        <Button x:Name="HideGitButton" Grid.Column="4" Classes="header-action" Click="HideGit_Click" ToolTip.Tip="{loc:Loc git.editor.hide_window}" AutomationProperties.Name="{loc:Loc git.editor.hide_window}">
+                            <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.3" Stretch="Uniform" Width="12" Height="1" Data="M1 1 H13" />
+                        </Button>
+                    </Grid>
+                    <ContentControl x:Name="ContentHost" Grid.Row="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+                </Grid>
+            </Border>
         </Grid>
         <views:GitProjectPickerView Grid.Row="1" IsVisible="{Binding IsPickerMode}" x:Name="PickerHost" />
         <Border Grid.Row="2" Classes="app-statusbar">
-            <TextBlock Text="{Binding StatusText}" FontSize="12" TextTrimming="CharacterEllipsis" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <TextBlock x:Name="StatusLine" Text="{Binding StatusText}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                <StackPanel x:Name="EditorStatus" Grid.Column="1" x:DataType="code:CodeEditorViewModel" Orientation="Horizontal" Spacing="12">
+                    <TextBlock Text="{Binding EncodingName}" IsVisible="{Binding IsTextDocument}" FontSize="11" />
+                    <TextBlock Text="{Binding NewlineText}" IsVisible="{Binding IsTextDocument}" FontSize="11" />
+                    <TextBlock Text="{Binding CaretPosition}" IsVisible="{Binding IsTextDocument}" FontSize="11" />
+                </StackPanel>
+            </Grid>
         </Border>
     </Grid>
 </UserControl>

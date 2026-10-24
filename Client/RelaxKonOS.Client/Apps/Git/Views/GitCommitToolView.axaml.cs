@@ -7,6 +7,7 @@ namespace RelaxKonOS.Client.Apps.Git.Views;
 internal partial class GitCommitToolView : UserControl
 {
     public GitCommitToolView() => InitializeComponent();
+    public void FocusMessage() => CommitMessageInput.Focus();
     private GitClientViewModel? Model => DataContext as GitClientViewModel;
     private async void Diff_Click(object? sender, RoutedEventArgs e)
     {

@@ -61,6 +61,11 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _imageAtActualSize;
     [ObservableProperty] private string _caretPosition = "1:1";
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowProjectEmptyState))]
+    private bool _isProjectWorkspace;
+    public bool ShowProjectEmptyState => IsProjectWorkspace && ActiveDocument is null;
+    public bool HasDocuments => OpenDocuments.Count > 0;
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanEditDocument))]
     private bool _isOperationLocked;
 
@@ -147,6 +152,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
 
     partial void OnActiveDocumentChanged(CodeEditorDocument? value)
     {
+        OnPropertyChanged(nameof(ShowProjectEmptyState));
         _isLoadingDocument = true;
         ShowImageSource = value?.ShowSource ?? false;
         Text = value?.Text ?? string.Empty;
@@ -188,6 +194,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
             nameof(FileSizeText), nameof(ImageDimensionsText), nameof(IsComparisonDocument), nameof(Comparison),
             nameof(ComparisonNotice), nameof(HasComparisonNotice), nameof(HasExternalChanges), nameof(IsReadOnly), nameof(IsTextReadOnly) }) OnPropertyChanged(name);
         NotifySaveCommands();
+        OnPropertyChanged(nameof(HasDocuments));
     }
 
     public void RefreshLocalization()
@@ -675,6 +682,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
         OpenDocuments.Clear();
         WorkspaceRoots.Clear();
         SelectedFolderNode = null;
+        NotifyContentChanged();
     }
 
     /// <summary>Reload clean documents, preserving dirty buffers and marking external conflicts.</summary>

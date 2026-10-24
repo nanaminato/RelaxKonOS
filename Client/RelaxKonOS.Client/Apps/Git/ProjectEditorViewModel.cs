@@ -30,7 +30,7 @@ public sealed partial class ProjectEditorViewModel : ObservableObject, IDisposab
         _client = client;
         Git.RepositoryPathComparison = pathCaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
         Editor = new CodeEditorViewModel(files, pathCaseSensitive, defaultEncoding, files as IEditorFileWriter)
-        { OpenFilesOnSelection = false };
+        { OpenFilesOnSelection = false, IsProjectWorkspace = true };
         Git.OpenEditorProjectAsync = OpenRepositoryAsync;
         Git.OpenPlainFolderAsync = OpenPlainFolderAsync;
         Git.PrepareEditorOperationAsync = PrepareOperationAsync;
@@ -62,6 +62,22 @@ public sealed partial class ProjectEditorViewModel : ObservableObject, IDisposab
 
     [RelayCommand]
     private void ToggleCommit() => IsCommitVisible = !IsCommitVisible;
+
+    [RelayCommand]
+    private async Task CloseProjectAsync()
+    {
+        if (!CanClose || !await PrepareOperationAsync()) return;
+        Git.Stop();
+        Editor.ResetWorkspace();
+        _diffs.Clear();
+        _diffRequest++;
+        IsCommitVisible = false;
+        IsGitVisible = false;
+        ProjectPath = null;
+        ProjectName = null;
+        Git.SelectedRepository = null;
+        Git.IsPickerMode = true;
+    }
 
     [RelayCommand]
     private async Task InitializeGitAsync()

@@ -23,6 +23,7 @@ public partial class CodeEditorView : UserControl
 
     private ColumnDefinition SidebarColumn => EditorContentGrid.ColumnDefinitions[1];
     private ColumnDefinition SidebarSplitterColumn => EditorContentGrid.ColumnDefinitions[2];
+    public Control ProjectToolContent => FolderPanel;
 
     public CodeEditorView()
     {
@@ -79,7 +80,15 @@ public partial class CodeEditorView : UserControl
         HeaderHost.Children.Add(HeaderTabs);
         ActivityBar.IsVisible = false;
         FolderActions.IsVisible = false;
+        FolderToolbar.IsVisible = false;
+        FolderSplitter.IsVisible = false;
+        EditorStatusBar.IsVisible = false;
+        EditorContentGrid.Children.Remove(FolderPanel);
+        FolderPanel.DataContext = DataContext;
+        FolderPanel.IsVisible = true;
         EditorContentGrid.ColumnDefinitions[0].Width = new GridLength(0);
+        SidebarColumn.Width = new GridLength(0);
+        SidebarSplitterColumn.Width = new GridLength(0);
     }
 
     private async void ProjectTree_DoubleTapped(object? sender, TappedEventArgs e)
@@ -202,6 +211,7 @@ public partial class CodeEditorView : UserControl
     /// <summary>Collapsing the sidebar releases its space while retaining the user's dragged width.</summary>
     private void UpdateSidebarLayout(bool isVisible)
     {
+        if (_projectLayout) return;
         if (isVisible && (Bounds.Width <= 0 || Bounds.Width >= 600))
         {
             SidebarColumn.Width = new GridLength(_sidebarWidth, GridUnitType.Pixel);

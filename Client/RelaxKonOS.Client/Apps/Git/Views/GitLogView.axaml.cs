@@ -26,7 +26,20 @@ internal partial class GitLogView : UserControl
     private bool _attached;
     private readonly Dictionary<string, bool> _branchExpansionState = new(StringComparer.Ordinal);
 
-    public GitLogView() => InitializeComponent();
+    public GitLogView()
+    {
+        InitializeComponent();
+        SizeChanged += (_, _) => ApplyResponsiveLayout();
+    }
+
+    private void ApplyResponsiveLayout()
+    {
+        var compact = Bounds.Width < 800;
+        BranchPane.IsVisible = BranchSplitter.IsVisible = !compact;
+        LogLayoutRoot.ColumnDefinitions[0].Width = new GridLength(compact ? 0 : 200);
+        LogLayoutRoot.ColumnDefinitions[1].Width = new GridLength(compact ? 0 : 4);
+        LogLayoutRoot.ColumnDefinitions[4].Width = new GridLength(Bounds.Width < 1000 ? 180 : 260);
+    }
     public GitLogView(GitClientViewModel vm) : this()
     {
         _vm = vm;
