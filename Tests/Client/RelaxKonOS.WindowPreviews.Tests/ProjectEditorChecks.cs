@@ -33,6 +33,7 @@ internal static class ProjectEditorChecks
 
     private static async Task RunAsync(ShellSettings settings)
     {
+        LocalizationResourceChecks.Run(settings);
         var files = DispatchProxy.Create<IExplorerClient, ProjectFiles>();
         var store = (ProjectFiles)(object)files;
         store.Files["/work/app.cs"] = Encoding.UTF8.GetBytes("class App {}\r\n");
