@@ -2,6 +2,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:ui="clr-namespace:RelaxKonOS.Client.Controls"
+             xmlns:explorer="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Controls"
              xmlns:gitViews="clr-namespace:RelaxKonOS.Client.Apps.Git.Views"
              x:Class="RelaxKonOS.Client.Apps.Git.Views.GitLogView"
              x:Name="LogViewRoot"
@@ -63,9 +65,9 @@
                 BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,1,0" CornerRadius="0" Classes="app-panel">
             <Grid RowDefinitions="Auto,Auto,*">
                 <!-- 搜索框 -->
-                <Border Grid.Row="0" Background="{DynamicResource SurfaceSunkenBrush}" CornerRadius="6" Padding="8,4" Margin="0,0,0,6">
+                <Border Grid.Row="0" Background="{DynamicResource SurfaceSunkenBrush}" CornerRadius="5" Padding="6,3" Margin="0,0,0,6">
                     <Grid ColumnDefinitions="Auto,*">
-                        <TextBlock Text="🔍" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <ui:WorkspaceIcon Kind="Search" Width="14" Height="14" Foreground="{DynamicResource TextTertiaryBrush}" VerticalAlignment="Center" Margin="0,0,6,0" />
                         <TextBox Grid.Column="1" PlaceholderText="{loc:Loc git.log.branch_search_watermark}" BorderThickness="0" Background="Transparent"
                                  Text="{Binding BranchSearchText, Mode=TwoWay}"
                                  FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" Padding="0"
@@ -75,12 +77,12 @@
 
                 <!-- 快捷操作按钮栏 -->
                 <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="4" Margin="0,0,0,6">
-                    <Button Content="➕" Command="{Binding CreateBranchCommand}"
-                            ToolTip.Tip="{loc:Loc git.branches.new_branch}" FontSize="12" Padding="6,2" />
-                    <Button Content="⬇" Command="{Binding FetchCommand}"
-                            ToolTip.Tip="{loc:Loc git.log.menu.fetch_all}" FontSize="12" Padding="6,2" />
-                    <Button Content="⟳" Command="{Binding RefreshCommand}"
-                            ToolTip.Tip="{loc:Loc git.refresh}" FontSize="12" Padding="6,2" />
+                    <Button  Command="{Binding CreateBranchCommand}"
+                            ToolTip.Tip="{loc:Loc git.branches.new_branch}" FontSize="12" Padding="6,2" ><ui:WorkspaceIcon Kind="Plus" Width="14" Height="14" Foreground="{DynamicResource TextSecondaryBrush}" /></Button>
+                    <Button  Command="{Binding FetchCommand}"
+                            ToolTip.Tip="{loc:Loc git.log.menu.fetch_all}" FontSize="12" Padding="6,2" ><ui:WorkspaceIcon Kind="Download" Width="14" Height="14" Foreground="{DynamicResource TextSecondaryBrush}" /></Button>
+                    <Button  Command="{Binding RefreshCommand}"
+                            ToolTip.Tip="{loc:Loc git.refresh}" FontSize="12" Padding="6,2" ><ui:WorkspaceIcon Kind="Refresh" Width="14" Height="14" Foreground="{DynamicResource TextSecondaryBrush}" /></Button>
                 </StackPanel>
 
                 <!-- 分支 TreeView -->
@@ -94,7 +96,7 @@
                                         Background="Transparent" MinHeight="28"
                                         DoubleTapped="BranchNode_DoubleTapped"
                                         ToolTip.Tip="{Binding DisplayName}">
-                                <ContentPresenter Content="{Binding Icon}" />
+                                <ui:WorkspaceIcon Kind="{Binding IconKind}" Foreground="{DynamicResource TextSecondaryBrush}" />
                                 <!-- Branch names must remain readable in every palette.  The
                                      node-specific brush is static and can become white after a
                                      theme change, so use the live theme foreground here. -->
@@ -116,60 +118,60 @@
                                     <MenuItem Header="{loc:Loc git.log.menu.checkout}"
                                               Command="{Binding $parent[UserControl].DataContext.CheckoutBranchCommand}"
                                               CommandParameter="{Binding Branch}"
-                                              Icon="👉"
-                                              IsVisible="{Binding CanCheckout}" />
+
+                                              IsVisible="{Binding CanCheckout}" ><MenuItem.Icon><ui:WorkspaceIcon Kind="Branch" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <MenuItem Header="{loc:Loc git.log.menu.checkout_and_update}"
                                               Command="{Binding $parent[UserControl].DataContext.CheckoutAndUpdateBranchCommand}"
                                               CommandParameter="{Binding Branch}"
-                                              Icon="🔄"
-                                              IsVisible="{Binding CanCheckoutAndUpdate}" />
+
+                                              IsVisible="{Binding CanCheckoutAndUpdate}" ><MenuItem.Icon><ui:WorkspaceIcon Kind="Refresh" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <MenuItem Header="{Binding NewBranchMenuText}"
                                               Command="{Binding $parent[UserControl].DataContext.CreateBranchFromHereCommand}"
                                               CommandParameter="{Binding Branch}"
-                                              Icon="🌿"
-                                              IsVisible="{Binding IsActionableBranch}" />
+
+                                              IsVisible="{Binding IsActionableBranch}" ><MenuItem.Icon><ui:WorkspaceIcon Kind="Branch" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <MenuItem Header="{loc:Loc git.log.menu.diff_working_tree}"
                                               Command="{Binding $parent[UserControl].DataContext.CompareBranchCommand}"
                                               CommandParameter="{Binding Branch}"
-                                              Icon="↔"
-                                              IsVisible="{Binding IsActionableBranch}" />
+
+                                              IsVisible="{Binding IsActionableBranch}" ><MenuItem.Icon><ui:WorkspaceIcon Kind="Commit" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <MenuItem Header="{Binding CompareMenuText}"
                                               Command="{Binding $parent[UserControl].DataContext.CompareBranchCommand}"
                                               CommandParameter="{Binding Branch}"
-                                              Icon="↔"
-                                              IsVisible="{Binding CanMergeIntoCurrent}" />
+
+                                              IsVisible="{Binding CanMergeIntoCurrent}" ><MenuItem.Icon><ui:WorkspaceIcon Kind="Commit" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <MenuItem Header="{Binding MergeMenuText}"
                                               Command="{Binding $parent[UserControl].DataContext.MergeBranchCommand}"
                                               CommandParameter="{Binding Branch}"
-                                              Icon="⊕"
-                                              IsVisible="{Binding CanMergeIntoCurrent}" />
+
+                                              IsVisible="{Binding CanMergeIntoCurrent}" ><MenuItem.Icon><ui:WorkspaceIcon Kind="Plus" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <Separator IsVisible="{Binding IsActionableBranch}" />
                                     <MenuItem Header="{Binding PullMenuText}"
                                               Command="{Binding $parent[UserControl].DataContext.PullBranchCommand}"
                                               CommandParameter="{Binding Branch}"
-                                              Icon="🔄"
-                                              IsVisible="{Binding CanUpdate}" />
+
+                                              IsVisible="{Binding CanUpdate}" ><MenuItem.Icon><ui:WorkspaceIcon Kind="Refresh" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <MenuItem Header="{loc:Loc git.log.menu.push}"
                                               Command="{Binding $parent[UserControl].DataContext.PushBranchCommand}"
                                               CommandParameter="{Binding Branch}"
-                                              Icon="⬆"
-                                              IsVisible="{Binding CanPush}" />
+
+                                              IsVisible="{Binding CanPush}" ><MenuItem.Icon><ui:WorkspaceIcon Kind="Branch" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <MenuItem Header="{loc:Loc git.log.menu.tracked_branch}"
                                               Command="{Binding $parent[UserControl].DataContext.SetUpstreamBranchCommand}"
                                               CommandParameter="{Binding Branch}"
-                                              Icon="🔗"
-                                              IsVisible="{Binding IsCurrentLocalBranch}" />
+
+                                              IsVisible="{Binding IsCurrentLocalBranch}" ><MenuItem.Icon><ui:WorkspaceIcon Kind="Branch" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <Separator IsVisible="{Binding IsActionableBranch}" />
                                     <MenuItem Header="{loc:Loc git.log.menu.rename}"
                                               Command="{Binding $parent[UserControl].DataContext.RenameBranchCommand}"
                                               CommandParameter="{Binding Branch}"
-                                              Icon="✏"
-                                              IsVisible="{Binding CanRename}" />
+
+                                              IsVisible="{Binding CanRename}" ><MenuItem.Icon><ui:WorkspaceIcon Kind="Edit" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <MenuItem Header="{loc:Loc git.log.menu.delete_branch}"
                                               Command="{Binding $parent[UserControl].DataContext.DeleteBranchContextCommand}"
                                               CommandParameter="{Binding Branch}"
-                                              Icon="🗑"
-                                              IsVisible="{Binding CanDelete}" />
+
+                                              IsVisible="{Binding CanDelete}" ><MenuItem.Icon><ui:WorkspaceIcon Kind="File" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                 </ContextMenu>
                             </Setter>
                         </Style>
@@ -188,14 +190,14 @@
                 BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,1,0" CornerRadius="0" Classes="app-panel">
             <Grid RowDefinitions="Auto,*">
                 <!-- 顶部筛选工具栏 -->
-                <Border Grid.Row="0" Background="{DynamicResource SurfaceSunkenBrush}" Padding="4,3,0,0" CornerRadius="0">
+                <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}" Padding="4,3,0,0" CornerRadius="0">
                     <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
 
                         <StackPanel Orientation="Horizontal">
                             <!-- 搜索框 -->
                             <Border Classes="historyField" Width="240">
                                 <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
-                                    <TextBlock Text="🔍" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                    <ui:WorkspaceIcon Kind="Search" Width="14" Height="14" Foreground="{DynamicResource TextTertiaryBrush}" VerticalAlignment="Center" Margin="0,0,6,0" />
                                     <TextBox Grid.Column="1" PlaceholderText="{loc:Loc git.log.commit_search_watermark}" BorderThickness="0" Background="Transparent"
                                              Text="{Binding CommitSearchText, Mode=TwoWay}"
                                              FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" Padding="0"
@@ -206,9 +208,9 @@
                                     <ToggleButton Grid.Column="3" Content="Cc" ToolTip.Tip="{loc:Loc git.log.case_sensitive}" FontSize="11" Padding="4,0"
                                                   IsChecked="{Binding IsLogCaseSensitive, Mode=TwoWay}"
                                                   Background="Transparent" Foreground="{DynamicResource TextPrimaryBrush}" BorderThickness="0" />
-                                    <Button Grid.Column="4" Content="🔍" ToolTip.Tip="{loc:Loc git.log.search_history}"
+                                    <Button Grid.Column="4"  ToolTip.Tip="{loc:Loc git.log.search_history}"
                                             Command="{Binding ApplyLogFiltersCommand}" FontSize="11" Padding="4,0"
-                                            Background="Transparent" Foreground="{DynamicResource TextPrimaryBrush}" BorderThickness="0" />
+                                            Background="Transparent" Foreground="{DynamicResource TextPrimaryBrush}" BorderThickness="0" ><ui:WorkspaceIcon Kind="Search" Width="14" Height="14" Foreground="{DynamicResource TextSecondaryBrush}" /></Button>
                                 </Grid>
                             </Border>
                             <!-- These controls issue a server-side git log query. -->
@@ -263,61 +265,61 @@
                                 <ContextMenu>
                                     <MenuItem Header="{loc:Loc git.log.menu.copy_sha}"
                                               Command="{Binding $parent[UserControl].DataContext.CopyShaCommand}"
-                                              CommandParameter="{Binding}" Icon="📋" />
+                                              CommandParameter="{Binding}"  ><MenuItem.Icon><ui:WorkspaceIcon Kind="File" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <MenuItem Header="{loc:Loc git.log.menu.create_patch}"
                                               Command="{Binding $parent[UserControl].DataContext.CreatePatchFromCommitCommand}"
-                                              CommandParameter="{Binding}" Icon="🧵" />
+                                              CommandParameter="{Binding}"  ><MenuItem.Icon><ui:WorkspaceIcon Kind="Branch" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <Separator />
                                     <MenuItem Header="{loc:Loc git.log.menu.cherry_pick}" IsEnabled="False" Foreground="{DynamicResource TextPrimaryBrush}">
                                         <MenuItem Header="{loc:Loc git.log.menu.checkout_revision}"
                                                   Command="{Binding $parent[UserControl].DataContext.CheckoutCommitCommand}"
-                                                  CommandParameter="{Binding}" Icon="👉" />
+                                                  CommandParameter="{Binding}"  ><MenuItem.Icon><ui:WorkspaceIcon Kind="Branch" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                         <MenuItem Header="{loc:Loc git.log.menu.show_in_revision}"
                                                   Command="{Binding $parent[UserControl].DataContext.ShowFileHistoryCommand}"
-                                                  CommandParameter="{Binding}" Icon="📁" />
+                                                  CommandParameter="{Binding}"  ><MenuItem.Icon><ui:WorkspaceIcon Kind="Folder" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                         <MenuItem Header="{loc:Loc git.log.menu.compare_local}"
                                                   Command="{Binding $parent[UserControl].DataContext.ResetToCommitCommand}"
-                                                  CommandParameter="{Binding}" Icon="↔" />
+                                                  CommandParameter="{Binding}"  ><MenuItem.Icon><ui:WorkspaceIcon Kind="Commit" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     </MenuItem>
                                     <Separator />
                                     <MenuItem Header="{loc:Loc git.log.menu.reset_to_here}"
                                               Command="{Binding $parent[UserControl].DataContext.ResetToCommitCommand}"
-                                              CommandParameter="{Binding}" Icon="↺" />
+                                              CommandParameter="{Binding}"  ><MenuItem.Icon><ui:WorkspaceIcon Kind="Refresh" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <MenuItem Header="{loc:Loc git.log.menu.revert_commit}"
                                               Command="{Binding $parent[UserControl].DataContext.RevertCommitContextCommand}"
-                                              CommandParameter="{Binding}" Icon="↩" />
+                                              CommandParameter="{Binding}"  ><MenuItem.Icon><ui:WorkspaceIcon Kind="Refresh" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <MenuItem Header="{loc:Loc git.log.menu.undo_commit}"
                                               Command="{Binding $parent[UserControl].DataContext.UndoCommitCommand}"
-                                              CommandParameter="{Binding}" Icon="⏪" />
+                                              CommandParameter="{Binding}"  ><MenuItem.Icon><ui:WorkspaceIcon Kind="Refresh" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <MenuItem Header="{loc:Loc git.log.menu.edit_message}"
                                               Command="{Binding $parent[UserControl].DataContext.EditCommitMessageCommand}"
-                                              CommandParameter="{Binding}" Icon="✏" />
+                                              CommandParameter="{Binding}"  ><MenuItem.Icon><ui:WorkspaceIcon Kind="Edit" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <MenuItem Header="{loc:Loc git.log.menu.fixup}"
                                               Command="{Binding $parent[UserControl].DataContext.SquashFromHereCommand}"
-                                              CommandParameter="{Binding}" Icon="🔧" />
+                                              CommandParameter="{Binding}"  ><MenuItem.Icon><ui:WorkspaceIcon Kind="Edit" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <MenuItem Header="{loc:Loc git.log.menu.squash_into}"
                                               Command="{Binding $parent[UserControl].DataContext.SquashFromHereCommand}"
-                                              CommandParameter="{Binding}" Icon="📦" />
+                                              CommandParameter="{Binding}"  ><MenuItem.Icon><ui:WorkspaceIcon Kind="Folder" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <MenuItem Header="{loc:Loc git.log.menu.delete_commit}"
                                               Command="{Binding $parent[UserControl].DataContext.UndoCommitCommand}"
-                                              CommandParameter="{Binding}" Icon="🗑" />
+                                              CommandParameter="{Binding}"  ><MenuItem.Icon><ui:WorkspaceIcon Kind="File" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <MenuItem Header="{loc:Loc git.log.menu.squash_commits}"
                                               Command="{Binding $parent[UserControl].DataContext.SquashFromHereCommand}"
-                                              CommandParameter="{Binding}" Icon="🗃" />
+                                              CommandParameter="{Binding}"  ><MenuItem.Icon><ui:WorkspaceIcon Kind="Folder" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <MenuItem Header="{loc:Loc git.log.menu.rebase_interactive}"
                                               Command="{Binding $parent[UserControl].DataContext.RebaseInteractiveFromHereCommand}"
-                                              CommandParameter="{Binding}" Icon="♻" />
+                                              CommandParameter="{Binding}"  ><MenuItem.Icon><ui:WorkspaceIcon Kind="Refresh" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <MenuItem Header="{loc:Loc git.log.menu.push_all_before}"
                                               Command="{Binding $parent[UserControl].DataContext.PushAllBeforeCommand}"
-                                              CommandParameter="{Binding}" Icon="⬆" />
+                                              CommandParameter="{Binding}"  ><MenuItem.Icon><ui:WorkspaceIcon Kind="Branch" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <Separator />
                                     <MenuItem Header="{loc:Loc git.log.menu.branch_origin_master}" IsEnabled="False" Foreground="{DynamicResource TextPrimaryBrush}" />
                                     <MenuItem Header="{loc:Loc git.log.menu.new_branch}"
                                               Command="{Binding $parent[UserControl].DataContext.CreateBranchAtCommitCommand}"
-                                              CommandParameter="{Binding}" Icon="🌿" />
+                                              CommandParameter="{Binding}"  ><MenuItem.Icon><ui:WorkspaceIcon Kind="Branch" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <MenuItem Header="{loc:Loc git.log.menu.new_tag}"
                                               Command="{Binding $parent[UserControl].DataContext.CreateTagFromCommitCommand}"
-                                              CommandParameter="{Binding}" Icon="🏷" />
+                                              CommandParameter="{Binding}"  ><MenuItem.Icon><ui:WorkspaceIcon Kind="Tag" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                 </ContextMenu>
                             </Setter>
                         </ControlTheme>
@@ -339,11 +341,9 @@
                 BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,1,0" CornerRadius="0" Classes="app-panel">
             <Grid RowDefinitions="Auto,*,5,*">
                 <!-- 文件树标题栏 -->
-                <Border Grid.Row="0" Background="{DynamicResource SurfaceSunkenBrush}" Padding="10,6" CornerRadius="8,8,0,0">
+                <Border Grid.Row="0" Background="{DynamicResource SurfaceSunkenBrush}" Padding="10,6" CornerRadius="0">
                     <Grid ColumnDefinitions="*,Auto">
                         <TextBlock FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}">
-                            <Run Text="📁" />
-                            <Run Text="  " />
                             <Run x:Name="CommitFileCount" />
                         </TextBlock>
                     </Grid>
@@ -357,14 +357,14 @@
                     <TreeView.ItemTemplate>
                         <TreeDataTemplate x:DataType="gitViews:CommitFileTreeNode" ItemsSource="{Binding Children}">
                             <Grid ColumnDefinitions="Auto,*,Auto" MinHeight="24">
-                                <TextBlock Grid.Column="0" Text="{Binding Icon}" FontSize="12" Margin="0,0,6,0" />
+                                <explorer:ExplorerIcon Grid.Column="0" FileName="{Binding Name}" EntryType="{Binding EntryType}" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" />
                                 <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}"
                                            TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                 <Border Grid.Column="2" IsVisible="{Binding IsFile}"
-                                        Background="{Binding Status, Converter={x:Static gitViews:GitLogConverters.StatusBgConverter}}"
+                                        Background="Transparent"
                                         CornerRadius="3" Padding="4,0" Margin="4,0,0,0">
                                     <TextBlock Text="{Binding Status, Converter={x:Static gitViews:GitLogConverters.StatusLabelConverter}}"
-                                               FontSize="10" Foreground="{DynamicResource TextOnAccentBrush}" />
+                                               FontSize="11" FontWeight="SemiBold" Foreground="{Binding Status, Converter={x:Static gitViews:GitLogConverters.StatusBgConverter}}" />
                                 </Border>
                             </Grid>
                         </TreeDataTemplate>
@@ -376,10 +376,10 @@
                                 <ContextMenu>
                                     <MenuItem Header="{loc:Loc git.log.menu.show_diff}"
                                               Command="{Binding $parent[UserControl].DataContext.ShowCommitFileDiffCommand}"
-                                              CommandParameter="{Binding File}" Icon="↔" />
+                                              CommandParameter="{Binding File}"  ><MenuItem.Icon><ui:WorkspaceIcon Kind="Commit" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <MenuItem Header="{loc:Loc git.log.menu.diff_new_tab}"
                                               Command="{Binding $parent[UserControl].DataContext.ShowCommitFileDiffCommand}"
-                                              CommandParameter="{Binding File}" Icon="🗐" />
+                                              CommandParameter="{Binding File}"  ><MenuItem.Icon><ui:WorkspaceIcon Kind="File" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <MenuItem Header="{loc:Loc git.log.menu.compare_with_local}"
                                               Command="{Binding $parent[UserControl].DataContext.ShowFileDiffContextCommand}"
                                               CommandParameter="{Binding File}" Icon="🆚" />
@@ -396,7 +396,7 @@
                                     <Separator />
                                     <MenuItem Header="{loc:Loc git.log.menu.revert_selected}"
                                               Command="{Binding $parent[UserControl].DataContext.RevertFileChangeCommand}"
-                                              CommandParameter="{Binding File}" Icon="↺" />
+                                              CommandParameter="{Binding File}"  ><MenuItem.Icon><ui:WorkspaceIcon Kind="Refresh" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <MenuItem Header="{loc:Loc git.log.menu.cherry_pick_selected}"
                                               Command="{Binding $parent[UserControl].DataContext.StageFileContextCommand}"
                                               CommandParameter="{Binding File}" Icon="✅" />
@@ -405,11 +405,11 @@
                                               CommandParameter="{Binding File}" Icon="✂" />
                                     <MenuItem Header="{loc:Loc git.log.menu.delete_selected}"
                                               Command="{Binding $parent[UserControl].DataContext.RevertFileChangeCommand}"
-                                              CommandParameter="{Binding File}" Icon="🗑" />
+                                              CommandParameter="{Binding File}"  ><MenuItem.Icon><ui:WorkspaceIcon Kind="File" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <Separator />
                                     <MenuItem Header="{loc:Loc git.log.menu.create_patch}"
                                               Command="{Binding $parent[UserControl].DataContext.CreatePatchFromFileCommand}"
-                                              CommandParameter="{Binding File}" Icon="🧵" />
+                                              CommandParameter="{Binding File}"  ><MenuItem.Icon><ui:WorkspaceIcon Kind="Branch" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                     <MenuItem Header="{loc:Loc git.log.menu.get_from_revision}"
                                               Command="{Binding $parent[UserControl].DataContext.ShowCommitFileDiffCommand}"
                                               CommandParameter="{Binding File}" Icon="⬇" />
@@ -418,7 +418,7 @@
                                               CommandParameter="{Binding File}" Icon="📜" />
                                     <MenuItem Header="{loc:Loc git.log.menu.show_changes_to_parent}"
                                               Command="{Binding $parent[UserControl].DataContext.ShowCommitFileDiffCommand}"
-                                              CommandParameter="{Binding File}" Icon="↔" />
+                                              CommandParameter="{Binding File}"  ><MenuItem.Icon><ui:WorkspaceIcon Kind="Commit" Foreground="{DynamicResource TextSecondaryBrush}" /></MenuItem.Icon></MenuItem>
                                 </ContextMenu>
                             </Setter>
                         </Style>

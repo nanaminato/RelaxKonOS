@@ -27,7 +27,7 @@
     <Grid x:Name="HeaderHost" Grid.Row="0" ColumnDefinitions="*,Auto">
       <common:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc application.relaxkonos.proxy-server.display_name}"
                                     Subtitle="{loc:Loc proxy_server.intro}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/proxy-server.png" />
-      <Button x:Name="HeaderActions" Grid.Column="1" Classes="header-action" Command="{Binding RefreshCommand}"
+      <Button x:Name="HeaderActions" Grid.Column="1" Classes="header-action header-refresh" Command="{Binding RefreshCommand}"
               ToolTip.Tip="{loc:Loc proxy_server.refresh}" AutomationProperties.Name="{loc:Loc proxy_server.refresh}" VerticalAlignment="Center">
         <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="16" Height="16"
               Data="M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14" />

@@ -127,7 +127,7 @@
                              list and on the editor tab that has it open. -->
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="codeEditor:CodeEditorDocument">
-                                <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6" MinWidth="128" VerticalAlignment="Center">
+                                <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6" MinWidth="128" VerticalAlignment="Center" Background="Transparent" ContextRequested="DocumentTab_ContextRequested">
                                     <explorer:ExplorerIcon Kind="{Binding Kind}" Width="16" Height="16" VerticalAlignment="Center" />
                                     <TextBlock Grid.Column="1" Text="{Binding DisplayName}" MaxWidth="180" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding DisplayName}" VerticalAlignment="Center" />
                                     <Ellipse Grid.Column="2" Width="8" Height="8" Fill="{DynamicResource TextPrimaryBrush}" IsVisible="{Binding IsDirty}" VerticalAlignment="Center" />
@@ -190,7 +190,7 @@
                             <Button Classes="header-action compact" ToolTip.Tip="{loc:Loc code_editor.add_folder}" AutomationProperties.Name="{loc:Loc code_editor.add_folder}" Command="{Binding AddFolderCommand}">
                                 <PathIcon Width="14" Height="14" Data="{StaticResource ChromeAddIcon}" />
                             </Button>
-                            <Button Classes="header-action compact" ToolTip.Tip="{loc:Loc common.refresh}" AutomationProperties.Name="{loc:Loc common.refresh}" Command="{Binding RefreshFolderCommand}">
+                            <Button Classes="header-action compact header-refresh" ToolTip.Tip="{loc:Loc common.refresh}" AutomationProperties.Name="{loc:Loc common.refresh}" Command="{Binding RefreshFolderCommand}">
                                 <PathIcon Width="14" Height="14" Data="{StaticResource ChromeRefreshIcon}" />
                             </Button>
                             <Button Classes="header-action compact" ToolTip.Tip="{loc:Loc code_editor.remove_folder}" AutomationProperties.Name="{loc:Loc code_editor.remove_folder}" Command="{Binding RemoveFolderCommand}">
@@ -198,16 +198,18 @@
                             </Button>
                         </StackPanel>
                     </DockPanel>
-                    <TreeView x:Name="ProjectTree" Grid.Row="1" ItemsSource="{Binding WorkspaceRoots}" SelectedItem="{Binding SelectedFolderNode, Mode=TwoWay}" Margin="4,0,4,8"
+                    <TreeView Background="{DynamicResource SurfaceSunkenBrush}" x:Name="ProjectTree" Grid.Row="1" ItemsSource="{Binding WorkspaceRoots}" SelectedItem="{Binding SelectedFolderNode, Mode=TwoWay}" Margin="4,0,4,8"
                               DoubleTapped="ProjectTree_DoubleTapped" KeyDown="ProjectTree_KeyDown">
                         <TreeView.Styles>
+                            <Style Selector="TreeViewItem:selected /template/ Border#PART_LayoutRoot"><Setter Property="Background" Value="{DynamicResource AccentMutedBrush}" /></Style>
+                            <Style Selector="TreeViewItem:selected"><Setter Property="Background" Value="{DynamicResource AccentMutedBrush}" /><Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" /></Style>
                             <Style Selector="TreeViewItem">
                                 <Setter Property="IsExpanded" Value="{ReflectionBinding IsExpanded, Mode=TwoWay}" />
                             </Style>
                         </TreeView.Styles>
                         <TreeView.ItemTemplate>
                             <TreeDataTemplate ItemsSource="{Binding Children}">
-                                <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding !IsPlaceholder}">
+                                <StackPanel x:Name="ProjectNodeHeader" Orientation="Horizontal" Spacing="6" IsVisible="{Binding !IsPlaceholder}" Background="Transparent" ContextRequested="ProjectNode_ContextRequested">
                                     <explorer:ExplorerIcon Kind="{Binding Kind}" Width="18" Height="18" VerticalAlignment="Center" />
                                     <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" MaxWidth="190" VerticalAlignment="Center" ToolTip.Tip="{Binding Path}" />
                                 </StackPanel>

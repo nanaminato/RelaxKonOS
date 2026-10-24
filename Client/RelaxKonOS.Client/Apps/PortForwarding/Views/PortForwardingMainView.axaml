@@ -8,7 +8,7 @@
     <Grid RowDefinitions="Auto,*">
         <Grid x:Name="HeaderHost" ColumnDefinitions="*,Auto">
             <common:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc port_forwarding.title}" Subtitle="{loc:Loc port_forwarding.description}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/port-forwarding.png" />
-            <Button x:Name="HeaderActions" Grid.Column="1" Classes="header-action" Command="{Binding RefreshCommand}" IsEnabled="{Binding !IsBusy}" ToolTip.Tip="{loc:Loc common.refresh}" AutomationProperties.Name="{loc:Loc common.refresh}" VerticalAlignment="Center"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="16" Height="16" Data="M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14" /></Button>
+            <Button x:Name="HeaderActions" Grid.Column="1" Classes="header-action header-refresh" Command="{Binding RefreshCommand}" IsEnabled="{Binding !IsBusy}" ToolTip.Tip="{loc:Loc common.refresh}" AutomationProperties.Name="{loc:Loc common.refresh}" VerticalAlignment="Center"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="16" Height="16" Data="M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14" /></Button>
         </Grid>
 
         <Grid x:Name="WorkspaceBody" Grid.Row="1" ColumnDefinitions="190,*">

@@ -101,7 +101,7 @@ public sealed class CodeEditorApp : RemoteApplicationBase, IFileOpenApplication
         // The window guard covers every open tab, not just the active one, so closing the window
         // cannot silently drop a background document; a write in flight blocks the close.
         DraftWindowCloseGuard.Attach(context.WindowManager, window,
-            isBusy: () => viewModel.IsSaving,
+            isBusy: () => viewModel.IsSaving || viewModel.IsTreeBusy,
             hasChanges: () => viewModel.HasUnsavedDocuments);
 
         CodeEditorSessionDialogs.Configure(context, window, viewModel, files);

@@ -49,7 +49,7 @@ public sealed partial class ProjectEditorViewModel : ObservableObject, IDisposab
     [ObservableProperty] private string? _projectName;
     [ObservableProperty] private bool _isCommitVisible;
     [ObservableProperty] private bool _isGitVisible;
-    public bool CanClose => !Git.IsBusy && !Editor.IsSaving && !_preparing && !_refreshing;
+    public bool CanClose => !Git.IsBusy && !Editor.IsSaving && !Editor.IsTreeBusy && !_preparing && !_refreshing;
 
     partial void OnIsCommitVisibleChanged(bool value) => Editor.IsSidebarVisible = !value;
 
@@ -112,7 +112,7 @@ public sealed partial class ProjectEditorViewModel : ObservableObject, IDisposab
 
     private async Task<bool> OpenFolderCoreAsync(string path, string name)
     {
-        if (_disposed || Editor.HasUnsavedDocuments || Editor.IsSaving) return false;
+        if (_disposed || Editor.HasUnsavedDocuments || Editor.IsSaving || Editor.IsTreeBusy) return false;
         _diffRequest++;
         _diffs.Clear();
         Editor.ResetWorkspace();
@@ -127,7 +127,7 @@ public sealed partial class ProjectEditorViewModel : ObservableObject, IDisposab
     /// <summary>Used by every command that changes the worktree/index, including conflict operations.</summary>
     public async Task<bool> PrepareOperationAsync()
     {
-        if (_disposed || _preparing || _refreshing || Editor.IsSaving) return false;
+        if (_disposed || _preparing || _refreshing || Editor.IsSaving || Editor.IsTreeBusy) return false;
         if (!Editor.HasUnsavedDocuments) return true;
         _preparing = true;
         try
@@ -221,7 +221,8 @@ public sealed partial class ProjectEditorViewModel : ObservableObject, IDisposab
 
     private async void FileSaved(object? sender, string path)
     {
-        if (_preparing || _disposed || Git.IsBusy || Git.SelectedRepository is null) return;
+        // Defer save-triggered Git refresh until the surrounding tree mutation finishes.
+        if (_preparing || _disposed || Editor.IsTreeOperationPending || Git.IsBusy || Git.SelectedRepository is null) return;
         var active = Editor.ActiveDocument;
         try
         {
@@ -235,14 +236,14 @@ public sealed partial class ProjectEditorViewModel : ObservableObject, IDisposab
     [RelayCommand]
     public async Task RefreshAsync()
     {
-        if (_disposed || Git.IsBusy || Editor.IsSaving) return;
+        if (_disposed || Git.IsBusy || Editor.IsSaving || Editor.IsTreeBusy) return;
         if (Git.SelectedRepository is not null) await Git.RefreshCommand.ExecuteAsync(null);
         await RefreshEditorAsync();
     }
 
     private async Task RefreshEditorAsync()
     {
-        if (_disposed || Git.IsBusy || Editor.IsSaving || ProjectPath is null) return;
+        if (_disposed || Git.IsBusy || Editor.IsSaving || Editor.IsTreeBusy || ProjectPath is null) return;
         if (_refreshing) { _refreshRequested = true; return; }
         _refreshing = true;
         Editor.IsOperationLocked = true;

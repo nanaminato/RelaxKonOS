@@ -70,7 +70,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
     private bool _isOperationLocked;
 
     /// <summary>False while a write is in flight; the editor and its command surface bind to this.</summary>
-    public bool CanEditDocument => !IsSaving && !IsOperationLocked;
+    public bool CanEditDocument => !IsSaving && !IsOperationLocked && !IsTreeBusy;
     public bool IsReadOnly => !CanEditDocument || ActiveDocument?.IsReadOnly == true;
     public bool HasImageSourceText => ActiveDocument?.ContentKind == CodeEditorContentKind.Image
         && string.Equals(Path.GetExtension(CurrentPath), ".svg", StringComparison.OrdinalIgnoreCase);
@@ -302,6 +302,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
         var wasActive = ReferenceEquals(ActiveDocument, document);
         OpenDocuments.Remove(document);
         document.Dispose();
+        NotifyContentChanged();
         if (!wasActive) return;
         ActiveDocument = OpenDocuments.Count == 0 ? null : OpenDocuments[Math.Clamp(index, 0, OpenDocuments.Count - 1)];
     }

@@ -84,6 +84,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
     // the picker (including a recent/history entry), otherwise their initial
     // disabled state is retained by Avalonia.
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanManage))]
     [NotifyCanExecuteChangedFor(nameof(PullCommand), nameof(PushCommand), nameof(FetchCommand), nameof(RefreshCommand), nameof(ApplyLogFiltersCommand))]
     private GitRepositoryDto? _selectedRepository;
     [ObservableProperty] private GitClientPage _activePage = GitClientPage.Overview;
@@ -95,6 +96,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
     [ObservableProperty] private GitRemoteDto? _selectedRemote;
     [ObservableProperty] private LocalizedStatus _statusText;
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanManage))]
     [NotifyCanExecuteChangedFor(nameof(PullCommand), nameof(PushCommand), nameof(FetchCommand), nameof(RefreshCommand), nameof(ApplyLogFiltersCommand))]
     private bool _isBusy;
     [ObservableProperty] private bool _isAutoRefresh = true;

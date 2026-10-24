@@ -55,11 +55,11 @@
             <Grid Grid.Column="1" RowDefinitions="Auto,*">
                 <Grid Grid.Row="0" Margin="18,8,18,6" ColumnDefinitions="*,Auto" IsVisible="{Binding ActiveTab, Converter={x:Static conv:TabVisibilityConverter.Instance}, ConverterParameter=Performance}">
                     <TextBlock Text="{loc:Loc task_manager.performance}" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    <Button Grid.Column="1" Classes="header-action" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc common.refresh}" AutomationProperties.Name="{loc:Loc common.refresh}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="16" Height="16" Data="M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14" /></Button>
+                    <Button Grid.Column="1" Classes="header-action header-refresh" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc common.refresh}" AutomationProperties.Name="{loc:Loc common.refresh}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="16" Height="16" Data="M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14" /></Button>
                 </Grid>
                 <Grid Grid.Row="0" Margin="18,8,18,6" ColumnDefinitions="*,Auto,Auto" IsVisible="{Binding ActiveTab, Converter={x:Static conv:TabVisibilityConverter.Instance}, ConverterParameter=Processes}">
                     <TextBlock Text="{loc:Loc task_manager.processes}" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    <Button Grid.Column="1" Classes="header-action" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc common.refresh}" AutomationProperties.Name="{loc:Loc common.refresh}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="16" Height="16" Data="M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14" /></Button>
+                    <Button Grid.Column="1" Classes="header-action header-refresh" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc common.refresh}" AutomationProperties.Name="{loc:Loc common.refresh}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="16" Height="16" Data="M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14" /></Button>
                     <Button Grid.Column="2" Content="{loc:Loc task_manager.end_task}" Command="{Binding KillProcessCommand}" Classes="danger" Padding="14,6" Margin="8,0,0,0" ToolTip.Tip="{loc:Loc task_manager.end_task_tooltip}" />
                 </Grid>
 

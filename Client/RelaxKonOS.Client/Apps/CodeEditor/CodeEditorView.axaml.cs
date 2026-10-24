@@ -102,9 +102,20 @@ public partial class CodeEditorView : UserControl
 
     private async void ProjectTree_KeyDown(object? sender, KeyEventArgs e)
     {
-        if (_projectLayout && e.Key == Key.Enter && _viewModel?.SelectedFolderNode is { IsDirectory: false, IsPlaceholder: false } node)
+        if (_viewModel?.SelectedFolderNode is not { IsPlaceholder: false } node) return;
+        if (e.Key == Key.Enter && !node.IsDirectory)
         {
             await _viewModel.OpenPathAsync(node.Path);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.F2 && !node.IsWorkspaceRoot)
+        {
+            await _viewModel.PerformTreeActionAsync(node, EditorTreeAction.Rename);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Delete && !node.IsWorkspaceRoot)
+        {
+            await _viewModel.PerformTreeActionAsync(node, EditorTreeAction.Delete);
             e.Handled = true;
         }
     }

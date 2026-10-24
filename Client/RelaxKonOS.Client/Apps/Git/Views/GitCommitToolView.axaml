@@ -33,6 +33,7 @@
         </Style>
         <Style Selector="Expander /template/ ToggleButton">
             <Setter Property="Padding" Value="6,2" /><Setter Property="MinHeight" Value="26" />
+            <Setter Property="Background" Value="Transparent" />
             <Setter Property="CornerRadius" Value="3" /><Setter Property="BorderThickness" Value="0" />
         </Style>
     </UserControl.Styles>
@@ -43,7 +44,7 @@
             </Border>
         </Border>
         <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="6,0" Spacing="2">
-            <Button Classes="header-action" Command="{Binding RefreshChangesCommand}" ToolTip.Tip="{loc:Loc git.refresh}" AutomationProperties.Name="{loc:Loc git.refresh}">
+            <Button Classes="header-action header-refresh" Command="{Binding RefreshChangesCommand}" ToolTip.Tip="{loc:Loc git.refresh}" AutomationProperties.Name="{loc:Loc git.refresh}">
                 <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="14" Height="14" Data="M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14" />
             </Button>
             <Button Classes="header-action" Command="{Binding SelectAllChangesCommand}" ToolTip.Tip="{loc:Loc git.workspace.select_all}" AutomationProperties.Name="{loc:Loc git.workspace.select_all}">

@@ -342,6 +342,7 @@ public sealed class BranchTreeNode
     public bool HasBadge => !string.IsNullOrEmpty(Badge);
     public GitBranchDto? Branch { get; }
     public BranchNodeKind Kind { get; }
+    public string IconKind => Kind switch { BranchNodeKind.Group => "Folder", BranchNodeKind.RemoteGroup => "Remote", BranchNodeKind.Head => "Commit", _ => "Branch" };
     public bool CanDelete { get; }
     public bool IsBranchAndNotCurrent { get; }
     public bool IsExpanded { get; set; }
@@ -408,6 +409,7 @@ public sealed class CommitFileTreeNode
     public string Name { get; }
     public GitFileChangeDto? File { get; }
     public bool IsFile => File is not null;
+    public RelaxKonOS.Protocol.Files.FileSystemEntryType EntryType => IsFile ? RelaxKonOS.Protocol.Files.FileSystemEntryType.File : RelaxKonOS.Protocol.Files.FileSystemEntryType.Directory;
     public string Icon => IsFile ? "📄" : "📁";
     public string Status => File?.Status ?? string.Empty;
     public ObservableCollection<CommitFileTreeNode> Children { get; } = [];

@@ -22,6 +22,16 @@ internal static class CodeEditorSessionDialogs
 {
     public static void Configure(AppContext context, RelaxKonOS.WindowManager.ManagedWindow window, CodeEditorViewModel viewModel, IExplorerClient? files)
     {
+        viewModel.RequestEntryNameAsync = (prompt, initial) => context.ShowDialogAsync<string>(window, prompt, dialog =>
+            new TextInputDialogView { DataContext = new TextInputDialogViewModel(prompt, initial,
+                value => { if (value is null) dialog.Cancel(); else dialog.Close(value); }, validate: CodeEditorViewModel.IsValidEntryName) },
+            new Size(420, 180));
+        viewModel.RequestDeleteEntryAsync = path => context.ShowDialogAsync<bool>(window,
+            LocalizedText.Get("code_editor.context.delete"), dialog =>
+                new ConfirmDialogView { DataContext = new ConfirmDialogViewModel(
+                    LocalizedText.Format("code_editor.context.delete_confirm", path), dialog.Close,
+                    LocalizedText.Get("code_editor.context.delete")) }, new Size(460, 200));
+
         viewModel.RequestFileAsync = () => files is null
             ? Task.FromResult<string?>(null)
             : context.ShowDialogAsync<string>(window, LocalizedText.Get("code_editor.open_remote_file"), dialog =>

@@ -2,6 +2,9 @@ using System.Reflection;
 using System.Text;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Headless;
+using Avalonia.Input;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using RelaxKonOS.Client.Apps.CodeEditor;
@@ -37,9 +40,48 @@ internal static class ProjectEditorChecks
         var remote = (ProjectGit)(object)api;
         var git = new GitClientViewModel(api);
         using var project = new ProjectEditorViewModel(git, api, files, true);
+        // Mount while still in the picker: bindings must follow repository selection.
+        var view = GitClientWorkspace.Create(git, project);
+        var host = new Window { Width = 1180, Height = 760, Content = view };
+        host.Show();
+        Dispatcher.UIThread.RunJobs();
+        var commitButton = view.FindControl<ToggleButton>("CommitToolButton")!;
+        var gitButton = view.FindControl<ToggleButton>("GitToolButton")!;
+        Check(!commitButton.IsEnabled && !gitButton.IsEnabled, "Git tools are disabled before opening a repository.");
+        void ClickTool(ToggleButton button)
+        {
+            host.UpdateLayout();
+            var point = button.TranslatePoint(new Point(button.Bounds.Width / 2, button.Bounds.Height / 2), host)!.Value;
+            host.MouseDown(point, MouseButton.Left);
+            host.MouseUp(point, MouseButton.Left);
+            Dispatcher.UIThread.RunJobs();
+            host.UpdateLayout();
+        }
         var repository = new GitRepositoryDto("repo", "Project", "/work");
+        git.Repositories.Add(repository);
+        git.IsStarting = false;
+        git.HasLoadedRepositories = true;
         await git.OpenProjectCommand.ExecuteAsync(repository);
         Check(!git.IsPickerMode && project.Editor.WorkspaceRoots.Single().Path == "/work", "Opening a repository loads its full project tree.");
+        Dispatcher.UIThread.RunJobs();
+        Check(commitButton.IsEnabled && gitButton.IsEnabled, "Opening from the picker enables both Git tool buttons.");
+        ClickTool(commitButton);
+        Check(project.IsCommitVisible && view.FindControl<Border>("SidebarHost")!.IsVisible
+            && view.FindControl<GitCommitToolView>("CommitTool")!.IsVisible,
+            "A real pointer click opens the Commit tool below Project.");
+        ClickTool(commitButton);
+        Check(!project.IsCommitVisible, "Clicking Commit again collapses it.");
+        git.IsBusy = true;
+        Check(!git.CanManage && commitButton.IsEnabled && gitButton.IsEnabled,
+            "Git operations disable management without disabling tool navigation.");
+        ClickTool(gitButton);
+        Check(project.IsGitVisible && view.FindControl<Border>("GitToolHost")!.IsVisible
+            && view.FindControl<ContentControl>("ContentHost")!.Content is GitLogView,
+            "A real pointer click opens the bottom Git log even while busy.");
+        ClickTool(gitButton);
+        Check(!project.IsGitVisible && !view.FindControl<Border>("GitToolHost")!.IsVisible,
+            "Clicking Git again collapses the bottom tool.");
+        git.IsBusy = false;
         await project.OpenWorkingTreeFileAsync(new("app.cs"));
         var document = project.Editor.ActiveDocument!;
         Check(document.Text.Contains("class App") && document.Version == GitTextFileWrite.Version(store.Files["/work/app.cs"]), "Editor reads a file with its exact byte version.");
@@ -129,10 +171,6 @@ internal static class ProjectEditorChecks
         Check(remote.LastCommit?.Paths.SequenceEqual(new[] { "app.cs" }) == true
             && Encoding.UTF8.GetString(store.Files["/work/app.cs"]) == "commit content", "Commit saves drafts and submits only explicitly selected disk paths.");
 
-        var view = GitClientWorkspace.Create(git, project);
-        var host = new Window { Width = 1180, Height = 760, Content = view };
-        host.Show();
-        Dispatcher.UIThread.RunJobs();
         var textEditor = view.EditorView.FindControl<AvaloniaEdit.TextEditor>("Editor")!;
         var firstBuffer = textEditor.Document;
         textEditor.CaretOffset = 4;
@@ -187,6 +225,21 @@ internal static class ProjectEditorChecks
                     using var bitmap = new RenderTargetBitmap(new PixelSize(1180, 760));
                     bitmap.Render(host);
                     bitmap.Save(Path.Combine(output, $"project-editor-{language}-{(dark ? "dark" : "light")}.png"), new PngBitmapEncoderOptions());
+                    project.IsCommitVisible = false;
+                    project.Editor.IsSidebarVisible = true;
+                    project.Editor.SelectedFolderNode = project.Editor.WorkspaceRoots.FirstOrDefault();
+                    Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
+                    using var treeBitmap = new RenderTargetBitmap(new PixelSize(1180, 760));
+                    treeBitmap.Render(host);
+                    treeBitmap.Save(Path.Combine(output, $"project-tree-{language}-{(dark ? "dark" : "light")}.png"), new PngBitmapEncoderOptions());
+                    project.IsCommitVisible = true;
+                    git.IsPickerMode = true;
+                    Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
+                    using var pickerBitmap = new RenderTargetBitmap(new PixelSize(1180, 760));
+                    pickerBitmap.Render(host);
+                    pickerBitmap.Save(Path.Combine(output, $"project-picker-{language}-{(dark ? "dark" : "light")}.png"), new PngBitmapEncoderOptions());
+                    git.IsPickerMode = false;
+                    Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
                 }
             }
         }
@@ -214,6 +267,7 @@ internal static class ProjectEditorChecks
         slowRead.SetResult(Encoding.UTF8.GetBytes("late"));
         await late;
         Check(plain.Editor.OpenDocuments.Count == 0, "Disposal prevents late file reads from reopening a tab.");
+        await EditorContextChecks.RunAsync();
         Console.WriteLine("Project editor behavior and layout checks passed.");
     }
 
@@ -228,15 +282,45 @@ public class ProjectFiles : DispatchProxy, IEditorFileWriter
 {
     public Dictionary<string, byte[]> Files { get; } = [];
     public int Writes { get; private set; }
+    public HashSet<string> Directories { get; } = ["/work"];
+    public bool FailMutation { get; set; }
+    private static string ParentPath(string path) => path[..path.LastIndexOf('/')];
+    private static FileSystemEntryDto Entry(string path, bool directory) => new(path, path.Split('/').Last(), null,
+        directory ? FileSystemEntryType.Directory : FileSystemEntryType.File, null, null, null, false, false, null);
     public TaskCompletionSource<byte[]?>? PendingRead { get; set; }
     protected override object? Invoke(MethodInfo? method, object?[]? args)
     {
         var path = args?[0] as string ?? "/work";
-        return method!.Name switch
+        if (method!.Name == nameof(IExplorerClient.CreateDirectoryAsync))
         {
+            if (FailMutation || !Directories.Add(path)) throw new IOException("Cannot create directory");
+            return Task.FromResult(Entry(path, true));
+        }
+        if (method.Name == nameof(IExplorerClient.RenameAsync))
+        {
+            if (FailMutation) throw new IOException("Cannot rename");
+            var target = ParentPath(path) + "/" + (string)args![1]!;
+            if (Files.ContainsKey(target) || Directories.Contains(target)) throw new IOException("Already exists");
+            var directory = Directories.Contains(path);
+            foreach (var key in Files.Keys.Where(key => key == path || key.StartsWith(path + "/")).ToArray())
+            { Files[target + key[path.Length..]] = Files[key]; Files.Remove(key); }
+            foreach (var key in Directories.Where(key => key == path || key.StartsWith(path + "/")).ToArray())
+            { Directories.Remove(key); Directories.Add(target + key[path.Length..]); }
+            return Task.FromResult(Entry(target, directory));
+        }
+        if (method.Name == nameof(IExplorerClient.DeleteAsync))
+        {
+            if (FailMutation) throw new IOException("Cannot delete");
+            foreach (var key in Files.Keys.Where(key => key == path || key.StartsWith(path + "/")).ToArray()) Files.Remove(key);
+            Directories.RemoveWhere(key => key == path || key.StartsWith(path + "/"));
+            return Task.CompletedTask;
+        }
+        return method.Name switch
+        {
+            nameof(IExplorerClient.GetInfoAsync) => Task.FromResult<FileSystemEntryDto?>(Files.ContainsKey(path) || Directories.Contains(path) ? Entry(path, Directories.Contains(path)) : null),
             nameof(IExplorerClient.ReadFileAsync) => PendingRead?.Task ?? Task.FromResult(Files.GetValueOrDefault(path)),
-            nameof(IExplorerClient.GetDirectoryAsync) => Task.FromResult(new DirectoryDto(path, "Project", FileSystemEntryType.Directory, [],
-                Files.Select(item => new FileEntryDto(item.Key, item.Key.Split('/').Last(), ".cs", item.Value.Length, null, null, null, false, false, "text/plain")).ToArray(), null, null)),
+            nameof(IExplorerClient.GetDirectoryAsync) => Task.FromResult(new DirectoryDto(path, "Project", FileSystemEntryType.Directory, Directories.Where(item => item != path && ParentPath(item) == path).Select(item => Entry(item, true)).ToArray(),
+                Files.Where(item => ParentPath(item.Key) == path).Select(item => new FileEntryDto(item.Key, item.Key.Split('/').Last(), ".cs", item.Value.Length, null, null, null, false, false, "text/plain")).ToArray(), null, null)),
             _ => throw new NotSupportedException(method.Name),
         };
     }

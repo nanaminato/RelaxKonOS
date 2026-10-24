@@ -5,6 +5,7 @@
              xmlns:code="clr-namespace:RelaxKonOS.Client.Apps.CodeEditor"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:proto="clr-namespace:RelaxKonOS.Protocol.Git;assembly=RelaxKonOS.Protocol"
+             xmlns:ui="clr-namespace:RelaxKonOS.Client.Controls"
              xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.Git.Views"
              x:Class="RelaxKonOS.Client.Apps.Git.Views.GitClientWorkspace"
              x:DataType="git:GitClientViewModel"
@@ -16,7 +17,14 @@
             <Setter Property="Padding" Value="8" /><Setter Property="Margin" Value="2,3" />
             <Setter Property="CornerRadius" Value="6" /><Setter Property="BorderThickness" Value="0" />
             <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="Template"><ControlTemplate>
+                <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                    <ContentPresenter Content="{TemplateBinding Content}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+            </ControlTemplate></Setter>
         </Style>
+        <Style Selector="ToggleButton.tool-window:pointerover"><Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" /></Style>
         <Style Selector="ToggleButton.tool-window:checked">
             <Setter Property="Background" Value="{DynamicResource AccentMutedBrush}" />
             <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
@@ -41,7 +49,7 @@
                         <MenuItem Header="{loc:Loc code_editor.find}" Click="Find_Click" />
                         <MenuItem Header="{loc:Loc git.editor.project}" Click="Project_Click" />
                         <MenuItem Header="{loc:Loc git.editor.commit}" Click="ShowCommit_Click" IsEnabled="{Binding CanManage}" />
-                        <MenuItem Header="{loc:Loc git.editor.git_window}" Click="GitWindow_Click" IsEnabled="{Binding CanManage}" />
+                        <MenuItem Header="{loc:Loc git.editor.git_window}" Click="GitWindow_Click" IsEnabled="{Binding !!SelectedRepository}" />
                         <MenuItem Header="Git">
                             <MenuItem Header="{loc:Loc git.editor.pull}" Command="{Binding PullCommand}" />
                             <MenuItem Header="{loc:Loc git.editor.push}" Command="{Binding PushCommand}" />
@@ -112,7 +120,7 @@
                 </Button>
             </StackPanel>
             <StackPanel x:Name="HeaderActions" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                <Button x:Name="RefreshButton" Classes="header-action" ToolTip.Tip="{loc:Loc git.refresh}" AutomationProperties.Name="{loc:Loc git.refresh}">
+                <Button x:Name="RefreshButton" Classes="header-action header-refresh" ToolTip.Tip="{loc:Loc git.refresh}" AutomationProperties.Name="{loc:Loc git.refresh}">
                     <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="16" Height="16" Data="M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14" />
                 </Button>
             </StackPanel>
@@ -122,26 +130,26 @@
                 <Grid RowDefinitions="Auto,*,Auto">
                     <StackPanel>
                         <ToggleButton x:Name="ProjectToolButton" Classes="tool-window" Click="Project_Click" ToolTip.Tip="{loc:Loc git.editor.project_shortcut}" AutomationProperties.Name="{loc:Loc git.editor.project}">
-                            <Path Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.3" Width="18" Height="18" Stretch="Uniform" Data="M2 5 H9 L12 8 H22 V21 H2 Z" />
+                            <ui:WorkspaceIcon Kind="Folder" Width="19" Height="19" Foreground="{Binding $parent[ToggleButton].Foreground}" />
                         </ToggleButton>
-                        <ToggleButton x:Name="CommitToolButton" Classes="tool-window" Click="Commit_Click" IsEnabled="{Binding CanManage}" ToolTip.Tip="{loc:Loc git.editor.commit_shortcut}" AutomationProperties.Name="{loc:Loc git.editor.commit}">
-                            <Path Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.3" Width="18" Height="18" Stretch="Uniform" Data="M2 12 H7 M17 12 H22 M7 12 A5 5 0 1 0 17 12 A5 5 0 1 0 7 12" />
+                        <ToggleButton x:Name="CommitToolButton" Classes="tool-window" Click="Commit_Click" IsEnabled="{Binding !!SelectedRepository}" ToolTip.Tip="{loc:Loc git.editor.commit_shortcut}" AutomationProperties.Name="{loc:Loc git.editor.commit}">
+                            <ui:WorkspaceIcon Kind="Commit" Width="19" Height="19" Foreground="{Binding $parent[ToggleButton].Foreground}" />
                         </ToggleButton>
                     </StackPanel>
-                    <ToggleButton x:Name="GitToolButton" Grid.Row="2" Classes="tool-window" Click="GitWindow_Click" IsEnabled="{Binding CanManage}" ToolTip.Tip="{loc:Loc git.editor.git_shortcut}" AutomationProperties.Name="{loc:Loc git.editor.git_window}">
-                        <Path Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.3" Width="18" Height="18" Stretch="Uniform" Data="M6 3 V17 M6 8 C16 8 18 9 18 16 M3 20 A3 3 0 1 0 9 20 A3 3 0 1 0 3 20 M15 19 A3 3 0 1 0 21 19 A3 3 0 1 0 15 19" />
+                    <ToggleButton x:Name="GitToolButton" Grid.Row="2" Classes="tool-window" Click="GitWindow_Click" IsEnabled="{Binding !!SelectedRepository}" ToolTip.Tip="{loc:Loc git.editor.git_shortcut}" AutomationProperties.Name="{loc:Loc git.editor.git_window}">
+                            <ui:WorkspaceIcon Kind="Branch" Width="19" Height="19" Foreground="{Binding $parent[ToggleButton].Foreground}" />
                     </ToggleButton>
                 </Grid>
             </Border>
-            <Grid Grid.Column="1" x:Name="MainWorkspace" ColumnDefinitions="0,0,*" ClipToBounds="True">
+            <Grid Grid.Column="1" x:Name="MainWorkspace" Background="{DynamicResource SurfaceSunkenBrush}" ColumnDefinitions="0,0,*" ClipToBounds="True">
                 <code:CodeEditorView x:Name="EditorPane" Grid.Column="2" />
-                <Border x:Name="SidebarHost" Grid.Column="0" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,0,1,0" ZIndex="2">
+                <Border x:Name="SidebarHost" Grid.Column="0" Background="{DynamicResource SurfaceSunkenBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,0,1,0" ZIndex="2">
                     <Grid>
                         <Grid x:Name="ProjectTool" RowDefinitions="Auto,*">
                             <Border BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,0,0,1" Padding="12,7">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <TextBlock Text="{loc:Loc git.editor.project}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                    <Button Grid.Column="1" Classes="header-action" Click="RefreshProject_Click" ToolTip.Tip="{loc:Loc git.refresh}" AutomationProperties.Name="{loc:Loc git.refresh}">
+                                    <Button Grid.Column="1" Classes="header-action header-refresh" Click="RefreshProject_Click" ToolTip.Tip="{loc:Loc git.refresh}" AutomationProperties.Name="{loc:Loc git.refresh}">
                                         <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="14" Height="14" Data="M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14" />
                                     </Button>
                                 </Grid>
