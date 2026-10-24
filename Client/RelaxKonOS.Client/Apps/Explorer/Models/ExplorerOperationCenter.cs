@@ -308,10 +308,11 @@ public sealed partial class ExplorerOperationCard(ExplorerOperationCenter center
     public bool ShowSpeedGraph => ShowTransferDetails && HasMeasuredProgress && !NeedsAttention && Snapshot.State == FileOperationState.Running;
     public bool HasDestination => !string.IsNullOrWhiteSpace(DestinationLocation);
     public bool HasMeasuredProgress => Snapshot.CurrentTotalBytes > 0 && !Missing;
-    public string ProgressText => HasMeasuredProgress && Snapshot.State == FileOperationState.Running
-        ? LocalizedText.Format(IsLocalTransfer ? "explorer.operations.percent_complete"
+    public string ProgressText => Snapshot.Kind == FileOperationKind.Extract && Snapshot.State == FileOperationState.Running && !HasMeasuredProgress
+        ? LocalizedText.Get("explorer.operations.extracting") : HasMeasuredProgress && Snapshot.State == FileOperationState.Running
+        ? LocalizedText.Format(Snapshot.Kind == FileOperationKind.Extract ? "explorer.operations.extracted_percent" : IsLocalTransfer ? "explorer.operations.percent_complete"
             : "explorer.operations.current_file_percent", (int)Math.Floor(Progress)) : StateText;
-    public string ProgressScope => !HasMeasuredProgress ? string.Empty : LocalizedText.Get(IsLocalTransfer
+    public string ProgressScope => !HasMeasuredProgress ? string.Empty : LocalizedText.Get(IsLocalTransfer || Snapshot.Kind == FileOperationKind.Extract
         ? "explorer.operations.entire_operation" : "explorer.operations.current_file_short");
     public string Summary => LocalizedText.Format("explorer.operations.processing_items", Title, Snapshot.Items.Count);
     public string CurrentFileName => string.IsNullOrWhiteSpace(Snapshot.CurrentPath)
@@ -348,7 +349,8 @@ public sealed partial class ExplorerOperationCard(ExplorerOperationCenter center
     private string LocationsFor(bool destination)
     {
         var paths = Snapshot.Items.Select(item => destination ? item.DestinationPath : item.SourcePath)
-            .Where(path => !string.IsNullOrWhiteSpace(path)).Select(path => ExplorerPath.Parent(path!) ?? path!)
+            .Where(path => !string.IsNullOrWhiteSpace(path)).Select(path => destination && Snapshot.Kind == FileOperationKind.Extract
+                ? path! : ExplorerPath.Parent(path!) ?? path!)
             .Distinct(StringComparer.Ordinal).ToArray();
         return paths.Length switch { 0 => string.Empty, 1 => paths[0], _ => LocalizedText.Get("explorer.operations.multiple_locations") };
     }

@@ -57,8 +57,11 @@ public sealed class WindowsNamedPipeUserExecutionTransport(PrivilegedHelperOptio
         }
     }
 
-    public async Task<UserExecutionResult> ExecuteAsync(UserExecutionRequest request,
-        CancellationToken cancellationToken = default)
+    public Task<UserExecutionResult> ExecuteAsync(UserExecutionRequest request, CancellationToken cancellationToken = default) => ExecuteCoreAsync(request, null, cancellationToken);
+    public Task<UserExecutionResult> ExecuteArchiveAsync(UserExecutionRequest request, Action<ArchiveExtractionProgress> progress,
+        CancellationToken cancellationToken = default) => ExecuteCoreAsync(request, progress, cancellationToken);
+    private async Task<UserExecutionResult> ExecuteCoreAsync(UserExecutionRequest request, Action<ArchiveExtractionProgress>? progress,
+        CancellationToken cancellationToken)
     {
         var operationId = request.OperationId is { } id && id != Guid.Empty ? id : Guid.NewGuid();
         var ambient = correlation?.Current;
@@ -101,13 +104,24 @@ public sealed class WindowsNamedPipeUserExecutionTransport(PrivilegedHelperOptio
             // Once submitted, cancellation of the HTTP request cannot make an in-flight mutation
             // disappear. Wait for the Helper's own bounded, authoritative result instead.
             using var responseDeadline = new CancellationTokenSource(
-                TimeSpan.FromSeconds(Math.Clamp(options.TimeoutSeconds + 5, 6, 125)));
-            var response = JsonSerializer.Deserialize<PipeEnvelope>(await ReadFrameAsync(pipe, responseDeadline.Token));
-            if (response is null || !TryDecodeAndVerify(secret, response, out var payload))
-                return Complete(request, InvalidProtocol());
-            var result = JsonSerializer.Deserialize<UserExecutionResult>(payload, RelaxKonOSJsonOptions.Default);
-            return Complete(request, result is null || result.Version != UserExecutionProtocol.Version
-                || !Enum.IsDefined(result.ProblemCode) ? InvalidProtocol() : result);
+                TimeSpan.FromSeconds(request.Operation == UserExecutionOperationKind.FileExtractArchive ? 605 : Math.Clamp(options.TimeoutSeconds + 5, 6, 125)));
+            for (var frames = 0; frames < 4096; frames++)
+            {
+                var response = JsonSerializer.Deserialize<PipeEnvelope>(await ReadFrameAsync(pipe, responseDeadline.Token));
+                if (response is null || !TryDecodeAndVerify(secret, response, out var payload))
+                    return Complete(request, InvalidProtocol());
+                var result = JsonSerializer.Deserialize<UserExecutionResult>(payload, RelaxKonOSJsonOptions.Default);
+                if (result?.ArchiveProgress is { } snapshot)
+                {
+                    if (request.Operation != UserExecutionOperationKind.FileExtractArchive || result.Version != UserExecutionProtocol.Version
+                        || !result.Success || result.OutputBase64 is not null) return Complete(request, InvalidProtocol());
+                    progress?.Invoke(snapshot);
+                    continue;
+                }
+                return Complete(request, result is null || result.Version != UserExecutionProtocol.Version
+                    || !Enum.IsDefined(result.ProblemCode) ? InvalidProtocol() : result);
+            }
+            return Complete(request, InvalidProtocol());
         }
         catch (OperationCanceledException) when (submitted || !cancellationToken.IsCancellationRequested)
         {

@@ -23,7 +23,10 @@ public sealed class LinuxUserExecutionTransport(PrivilegedHelperOptions options,
         "user-execution-identity-mismatch", "user-execution-identity-transition-failed"
     };
 
-    public async Task<UserExecutionResult> ExecuteAsync(UserExecutionRequest request, CancellationToken cancellationToken = default)
+    public Task<UserExecutionResult> ExecuteAsync(UserExecutionRequest request, CancellationToken cancellationToken = default) => ExecuteCoreAsync(request, null, cancellationToken);
+    public Task<UserExecutionResult> ExecuteArchiveAsync(UserExecutionRequest request, Action<ArchiveExtractionProgress> progress,
+        CancellationToken cancellationToken = default) => ExecuteCoreAsync(request, progress, cancellationToken);
+    private async Task<UserExecutionResult> ExecuteCoreAsync(UserExecutionRequest request, Action<ArchiveExtractionProgress>? progress, CancellationToken cancellationToken)
     {
         var operationId = request.OperationId is { } id && id != Guid.Empty ? id : Guid.NewGuid();
         var ambient = correlation?.Current;
@@ -53,24 +56,31 @@ public sealed class LinuxUserExecutionTransport(PrivilegedHelperOptions options,
         {
             using var process = Process.Start(start);
             if (process is null) return Complete(request, new(false, Error: "user-execution Helper could not be started", ProblemCode: UserExecutionProblemCode.HelperUnavailable));
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Clamp(options.TimeoutSeconds, 1, 600)));
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(request.Operation == UserExecutionOperationKind.FileExtractArchive
+                ? 600 : Math.Clamp(options.TimeoutSeconds, 1, 600)));
             using var execution = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
             try
             {
                 await JsonSerializer.SerializeAsync(process.StandardInput.BaseStream, request,
                     RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default, execution.Token);
                 await process.StandardInput.DisposeAsync();
-                var output = ReadBoundedTextAsync(process.StandardOutput.BaseStream,
-                    UserExecutionProtocol.MaximumResponseBytes, execution.Token);
+                async Task<UserExecutionResult> ReadResult()
+                {
+                    if (request.Operation == UserExecutionOperationKind.FileExtractArchive)
+                        return await UserExecutionArchiveStream.ReadAsync(process.StandardOutput.BaseStream, progress, execution.Token);
+                    var json = await ReadBoundedTextAsync(process.StandardOutput.BaseStream, UserExecutionProtocol.MaximumResponseBytes, execution.Token);
+                    return JsonSerializer.Deserialize<UserExecutionResult>(json, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default)
+                        ?? new(false, Error: "user-execution Helper returned no result", ProblemCode: UserExecutionProblemCode.InternalError);
+                }
+                var output = ReadResult();
                 var error = DrainDiagnosticsAsync(process.StandardError.BaseStream, execution.Token);
                 await Task.WhenAll(output, error, process.WaitForExitAsync(execution.Token));
                 if (await error) logger.LogWarning("User-execution Helper emitted diagnostics. OperationId={OperationId}", request.OperationId);
-                return Complete(request, JsonSerializer.Deserialize<UserExecutionResult>(await output, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default)
-                    ?? new(false, Error: "user-execution Helper returned no result", ProblemCode: UserExecutionProblemCode.InternalError));
+                return Complete(request, await output);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                Kill(process);
+                await KillAsync(process);
                 var cancelled = new UserExecutionResult(false, Error: "user-execution operation was cancelled",
                     ProblemCode: UserExecutionProblemCode.Cancelled);
                 // The accepted audit record must always have a terminal outcome, including when
@@ -81,7 +91,7 @@ public sealed class LinuxUserExecutionTransport(PrivilegedHelperOptions options,
             }
             catch (OperationCanceledException)
             {
-                Kill(process);
+                await KillAsync(process);
                 logger.LogWarning("User-execution Helper timed out. OperationId={OperationId}", request.OperationId);
                 return Complete(request, new(false, Error: "user-execution operation timed out", ProblemCode: UserExecutionProblemCode.TimedOut));
             }
@@ -163,9 +173,11 @@ public sealed class LinuxUserExecutionTransport(PrivilegedHelperOptions options,
         }
     }
 
-    private static void Kill(Process process)
+    private static async Task KillAsync(Process process)
     {
         try { if (!process.HasExited) process.Kill(entireProcessTree: true); }
         catch { }
+        // Staged extraction cleanup must not race a worker that is still creating files.
+        await process.WaitForExitAsync(CancellationToken.None);
     }
 }

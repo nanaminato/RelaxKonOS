@@ -7,7 +7,7 @@ namespace RelaxKonOS.Protocol.UserExecution;
 /// <summary>Protocol constants for the dedicated, local-only user-execution channel.</summary>
 public static class UserExecutionProtocol
 {
-    public const string Version = "1.7";
+    public const string Version = "1.8";
     // A 12 MiB payload expands to 16 MiB in base64; leave bounded room for the JSON envelope.
     public const int MaximumRequestBytes = 17 * 1024 * 1024;
     public const int MaximumFileContentBytes = 12 * 1024 * 1024;
@@ -62,6 +62,7 @@ public enum UserExecutionOperationKind
     FileUpload,
     FileCreateDirectory,
     FileGetProperties,
+    FileExtractArchive,
     FileSetUnixPermissions,
     // Resumable upload staging. A staging file lives in its destination directory, so committing it is
     // a same-directory rename rather than a cross-volume copy, and it is created under the same
@@ -118,7 +119,11 @@ public sealed record UserExecutionRequest(
     [property: JsonPropertyName("version")] string Version = UserExecutionProtocol.Version,
     [property: JsonPropertyName("expectedSha256")] string? ExpectedSha256 = null,
     [property: JsonPropertyName("terminalAdministrator")] bool TerminalAdministrator = false,
-    [property: JsonPropertyName("terminalEnvironment")] Settings.TerminalEnvironmentOverrides? TerminalEnvironment = null);
+    [property: JsonPropertyName("terminalEnvironment")] Settings.TerminalEnvironmentOverrides? TerminalEnvironment = null,
+    [property: JsonPropertyName("archiveCredentials")] Files.ArchiveCredentials? ArchiveCredentials = null);
+
+public sealed record ArchiveExtractionResult(int Entries);
+public sealed record ArchiveExtractionProgress(int Entries, int TotalEntries, long Bytes, long TotalBytes);
 
 [JsonConverter(typeof(JsonStringEnumConverter<UserExecutionProblemCode>))]
 public enum UserExecutionProblemCode
@@ -144,6 +149,9 @@ public enum UserExecutionProblemCode
     Cancelled,
     TimedOut,
     InternalError,
+    ArchivePasswordRequired,
+    ArchivePasswordInvalid,
+    ArchiveInvalid,
 }
 
 /// <summary>
@@ -176,4 +184,5 @@ public sealed record UserExecutionResult(
     [property: JsonPropertyName("outputBase64")] string? OutputBase64 = null,
     [property: JsonPropertyName("error")] string? Error = null,
     [property: JsonPropertyName("problemCode")] UserExecutionProblemCode ProblemCode = UserExecutionProblemCode.None,
-    [property: JsonPropertyName("version")] string Version = UserExecutionProtocol.Version);
+    [property: JsonPropertyName("version")] string Version = UserExecutionProtocol.Version,
+    [property: JsonPropertyName("archiveProgress")] ArchiveExtractionProgress? ArchiveProgress = null);

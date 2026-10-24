@@ -7,6 +7,7 @@ using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.Protocol.UserExecution;
 using RelaxKonOS.Protocol.Git;
+using RelaxKonOS.Server.Files;
 
 namespace RelaxKonOS.PrivilegedHelper;
 
@@ -22,9 +23,9 @@ internal static class WindowsUserExecutionExecutor
         new(WellKnownSidType.LocalSystemSid, null);
 
     public static Task<UserExecutionResult> ExecuteAsync(UserExecutionRequest request,
-        CancellationToken cancellationToken) => Task.FromResult(Execute(request, cancellationToken));
+        CancellationToken cancellationToken, Action<ArchiveExtractionProgress>? progress = null) => Task.FromResult(Execute(request, cancellationToken, progress));
 
-    private static UserExecutionResult Execute(UserExecutionRequest request, CancellationToken cancellationToken)
+    private static UserExecutionResult Execute(UserExecutionRequest request, CancellationToken cancellationToken, Action<ArchiveExtractionProgress>? progress)
     {
         if (!OperatingSystem.IsWindows())
             return Fail(UserExecutionProblemCode.UnsupportedPlatform, "Windows user execution requires Windows");
@@ -51,13 +52,15 @@ internal static class WindowsUserExecutionExecutor
             // Keep all path access within the synchronous impersonation callback. No task or file
             // handle is allowed to outlive the OS token scope.
             var result = WindowsIdentity.RunImpersonated(token,
-                () => ExecuteImpersonated(request, account.HomeDirectory, cancellationToken));
+                () => ExecuteImpersonated(request, account.HomeDirectory, cancellationToken, progress));
             using var restored = WindowsIdentity.GetCurrent();
             return restored.User == LocalSystemSid
                 ? result
                 : Fail(UserExecutionProblemCode.InternalError, "Helper identity was not restored");
         }
         catch (OperationCanceledException) { return Fail(UserExecutionProblemCode.Cancelled, "user-execution operation was cancelled"); }
+        catch (ArchivePasswordException ex) { return Fail(ex.Code == "archive-password-required" ? UserExecutionProblemCode.ArchivePasswordRequired : UserExecutionProblemCode.ArchivePasswordInvalid, "archive password required or invalid"); }
+        catch (InvalidDataException) { return Fail(UserExecutionProblemCode.ArchiveInvalid, "invalid archive content"); }
         catch (ContentTooLargeException) { return Fail(UserExecutionProblemCode.ContentTooLarge, "user-execution content is too large"); }
         catch (UserExecutionUnsupportedException) { return Fail(UserExecutionProblemCode.UnsupportedPlatform, "operation is not implemented for Windows user execution"); }
         catch (UnauthorizedAccessException) { return Fail(UserExecutionProblemCode.AccessDenied, "access denied"); }
@@ -71,11 +74,14 @@ internal static class WindowsUserExecutionExecutor
     }
 
     private static UserExecutionResult ExecuteImpersonated(UserExecutionRequest request,
-        string homeDirectory, CancellationToken cancellationToken)
+        string homeDirectory, CancellationToken cancellationToken, Action<ArchiveExtractionProgress>? progress)
     {
         cancellationToken.ThrowIfCancellationRequested();
         object? output = request.Operation switch
         {
+            UserExecutionOperationKind.FileExtractArchive => FileArchiveService.ExtractContentsAsync(new LocalArchiveFileSystem(),
+                ValidatePath(request.Path!), ValidatePath(request.DestinationPath!), (_, _, _, _) => { }, request.ArchiveCredentials,
+                cancellationToken, progress).GetAwaiter().GetResult(),
             UserExecutionOperationKind.FileListDirectory => List(ValidatePath(request.Path!)),
             UserExecutionOperationKind.FileGetSpecialLocations => SpecialLocations(homeDirectory),
             UserExecutionOperationKind.GitConflictSnapshot => GitConflictFileAccess.Read(ValidatePath(request.Path!), request.FileName!),

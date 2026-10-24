@@ -34,9 +34,13 @@ public static class UserExecutionRequestPolicy
             || request.Operation != UserExecutionOperationKind.TerminalStart || !environment.IsValid(request.Identity.Platform == Common.HostPlatformKind.Windows)))
             return false;
         var noStaging = request.Offset is null && request.ExpectedBytes is null;
+        if (request.ArchiveCredentials is not null && request.Operation != UserExecutionOperationKind.FileExtractArchive) return false;
 
         return request.Operation switch
         {
+            UserExecutionOperationKind.FileExtractArchive => !terminal && request.Path is not null
+                && request.DestinationPath is not null && noName && noContent && noMode && noGit
+                && noTerminal && noStaging && !request.Overwrite,
             UserExecutionOperationKind.FileGetSpecialLocations => !terminal && request.Path is null
                 && noDestination && noName && noContent && noMode && noGit && noTerminal && noStaging
                 && !request.Overwrite,

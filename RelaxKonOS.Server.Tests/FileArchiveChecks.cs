@@ -12,6 +12,18 @@ public static class FileArchiveChecks
         var zipPath = Path.Combine(root, "bundle.zip");
         var count = 0;
         void Check(bool condition, string message) { if (!condition) throw new Exception(message); Console.WriteLine($"PASS ARCHIVE {++count}: {message}"); }
+        var sampledFrames = new[] { 1, 30, 70, 100 }.Select(n => new UserExecutionResult(true, ArchiveProgress: new(n, 100, n, 100))).ToArray();
+        var terminalFrame = new UserExecutionResult(true, Convert.ToBase64String(Encoding.UTF8.GetBytes("{}")));
+        string Wire(UserExecutionResult frame) => JsonSerializer.Serialize(frame, RelaxKonOSJsonOptions.Default);
+        var sampledWire = string.Join('\n', sampledFrames.Select(Wire).Append(Wire(terminalFrame)));
+        var sampledCounts = new List<int>();
+        var terminal = await UserExecutionArchiveStream.ReadAsync(new MemoryStream(Encoding.UTF8.GetBytes(sampledWire)), s => sampledCounts.Add(s.Entries), default);
+        Check(terminal == terminalFrame && sampledCounts.SequenceEqual(new[] { 1, 30, 70, 100 }), "Streaming worker delivers sampled progress before its terminal result");
+        foreach (var invalidWire in new[] { Wire(sampledFrames[0]), Wire(terminalFrame) + "\n" + Wire(terminalFrame), new string('x', 65537) })
+        {
+            try { await UserExecutionArchiveStream.ReadAsync(new MemoryStream(Encoding.UTF8.GetBytes(invalidWire)), null, default); throw new Exception("Accepted invalid archive frames"); }
+            catch (InvalidDataException) { Check(true, "Missing terminal, duplicate terminal or oversized extraction frames are rejected"); }
+        }
         Task Run(FileOperationKind kind, string[] sources, string destination, Action<string, long, long, bool>? progress = null, CancellationToken ct = default) =>
             FileArchiveService.ExecuteAsync(fs, kind, sources, destination, progress ?? ((_, _, _, _) => { }), (_, error) => throw error, ct);
         var progress = 0;
@@ -145,18 +157,40 @@ public static class FileArchiveChecks
         new Random(42).NextBytes(bulkBytes);
         var bulkArchive = Path.Combine(root, "bulk.zip");
         using (var zip = ZipFile.Open(bulkArchive, ZipArchiveMode.Create))
-        { using var content = zip.CreateEntry("bulk.bin", CompressionLevel.NoCompression).Open(); content.Write(bulkBytes); }
+        {
+            using (var content = zip.CreateEntry("bulk.bin", CompressionLevel.NoCompression).Open()) content.Write(bulkBytes);
+            for (var i = 0; i < 100; i++)
+            { using var writer = new StreamWriter(zip.CreateEntry($"small/file-{i}.txt").Open()); writer.Write("small file " + i); }
+        }
         var requestStart = transport.Requests.Count;
+        var snapshotStart = transport.Snapshots.Count;
         var bulkOutput = Path.Combine(root, "bulk-output");
         var bulkJob = jobs.Start("owner", new ClaimsPrincipal(), new(Guid.NewGuid(), FileOperationKind.Extract, [new(bulkArchive, bulkOutput)]));
         check((await Wait(bulkJob.Id)).State == FileOperationState.Completed
             && File.ReadAllBytes(Path.Combine(bulkOutput, "bulk.bin")).SequenceEqual(bulkBytes), "Batched identity extraction preserves multi-chunk contents");
         var bulkRequests = transport.Requests.Skip(requestStart).ToArray();
-        check(bulkRequests.Count(r => r.Operation == UserExecutionOperationKind.FileAppendStaging) == 3,
-            "Two MiB plus a tail requires three durable Helper appends instead of seventeen");
+        check(bulkRequests.Count(r => r.Operation == UserExecutionOperationKind.FileExtractArchive) == 1
+            && !bulkRequests.Any(r => r.Operation is UserExecutionOperationKind.FileAppendStaging or UserExecutionOperationKind.FileRead),
+            "Extraction uses one identity worker without per-file or per-chunk wire operations");
+        var snapshots = transport.Snapshots.Skip(snapshotStart).ToArray();
+        check(snapshots.Length is > 0 and < 101 && snapshots[^1].Entries == 101
+            && snapshots[^1].TotalEntries == 101 && snapshots[^1].Bytes == snapshots[^1].TotalBytes
+            && jobs.Get("owner", bulkJob.Id).ProcessedItems == 101,
+            "One hundred small files use sampled snapshots and an exact final count");
         check(bulkRequests.Count(r => r.Operation == UserExecutionOperationKind.FileGetInfo) <= 4
             && bulkRequests.Any(r => r.Operation == UserExecutionOperationKind.FileGetProperties),
             "Ancestor safety checks use properties without duplicate info requests");
+        transport.PauseExtraction = true;
+        var cancelledOutput = Path.Combine(root, "cancelled-worker-output");
+        var cancelledWorker = jobs.Start("owner", new ClaimsPrincipal(), new(Guid.NewGuid(), FileOperationKind.Extract, [new(bulkArchive, cancelledOutput)]));
+        await transport.ExtractionPaused.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var liveSnapshot = jobs.Get("owner", cancelledWorker.Id);
+        check(liveSnapshot.State == FileOperationState.Running && liveSnapshot.CurrentPath == bulkArchive,
+            "Running extraction snapshots retain the archive path rather than individual entry names");
+        jobs.Cancel("owner", cancelledWorker.Id);
+        check((await Wait(cancelledWorker.Id)).State == FileOperationState.Cancelled && !Directory.Exists(cancelledOutput)
+            && !Directory.EnumerateDirectories(root, ".relaxkonos-archive-*").Any(), "Cancelled worker stops before staging cleanup and never publishes partial output");
+        transport.PauseExtraction = false;
         var conflict = jobs.Start("owner", new ClaimsPrincipal(new ClaimsIdentity()), request with { RequestId = Guid.NewGuid() });
         var waiting = await Wait(conflict.Id, dto => dto.State == FileOperationState.WaitingForDecision || dto.IsTerminal);
         check(waiting.Issue?.Choices.SequenceEqual(new[] { FileOperationDecision.KeepBoth, FileOperationDecision.Skip }) == true, "Archive conflicts never offer destructive replace");
@@ -241,14 +275,30 @@ public sealed class ArchiveTestTransport(UserExecutionIdentity identity) : IUser
     private readonly LocalArchiveFileSystem fs = new();
     public List<UserExecutionRequest> Requests { get; } = [];
     public bool DenyReads;
-    public async Task<UserExecutionResult> ExecuteAsync(UserExecutionRequest request, CancellationToken cancellationToken = default)
+    public List<ArchiveExtractionProgress> Snapshots { get; } = [];
+    public bool PauseExtraction;
+    public TaskCompletionSource ExtractionPaused { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public Task<UserExecutionResult> ExecuteAsync(UserExecutionRequest request, CancellationToken cancellationToken = default) => ExecuteCoreAsync(request, null, cancellationToken);
+    public Task<UserExecutionResult> ExecuteArchiveAsync(UserExecutionRequest request, Action<ArchiveExtractionProgress> progress,
+        CancellationToken cancellationToken = default) => ExecuteCoreAsync(request, progress, cancellationToken);
+    private async Task<UserExecutionResult> ExecuteCoreAsync(UserExecutionRequest request, Action<ArchiveExtractionProgress>? progress, CancellationToken cancellationToken)
     {
         if (request.Identity != identity || !UserExecutionRequestPolicy.IsValid(request, false)) throw new Exception("Invalid identity-bound archive request");
         Requests.Add(request);
-        if (DenyReads && request.Operation == UserExecutionOperationKind.FileRead) return new(false, ProblemCode: UserExecutionProblemCode.AccessDenied);
+        if (DenyReads && request.Operation is UserExecutionOperationKind.FileRead or UserExecutionOperationKind.FileExtractArchive) return new(false, ProblemCode: UserExecutionProblemCode.AccessDenied);
         object? result;
         switch (request.Operation)
         {
+            case UserExecutionOperationKind.FileExtractArchive:
+                try { result = await FileArchiveService.ExtractContentsAsync(fs, request.Path!, request.DestinationPath!, (_, _, _, _) => { }, request.ArchiveCredentials, cancellationToken,
+                    snapshot =>
+                    {
+                        Snapshots.Add(snapshot); progress?.Invoke(snapshot);
+                        if (PauseExtraction) { ExtractionPaused.TrySetResult(); cancellationToken.WaitHandle.WaitOne(); cancellationToken.ThrowIfCancellationRequested(); }
+                    }); }
+                catch (ArchivePasswordException ex) { return new(false, ProblemCode: ex.Code == "archive-password-required" ? UserExecutionProblemCode.ArchivePasswordRequired : UserExecutionProblemCode.ArchivePasswordInvalid); }
+                catch (InvalidDataException) { return new(false, ProblemCode: UserExecutionProblemCode.ArchiveInvalid); }
+                break;
             case UserExecutionOperationKind.FileGetInfo: result = await fs.Info(request.Path!, cancellationToken); break;
             case UserExecutionOperationKind.FileGetProperties: result = await fs.Properties(request.Path!, cancellationToken); break;
             case UserExecutionOperationKind.FileListDirectory: result = await fs.List(request.Path!, cancellationToken); break;

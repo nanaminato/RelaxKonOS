@@ -7,6 +7,8 @@
     <RootNamespace>RelaxKonOS.PrivilegedHelper</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../RelaxKonOS.Server/Files/FileArchiveService*.cs;../RelaxKonOS.Server/Files/LocalArchiveFileSystem.cs;../RelaxKonOS.Server/Files/IArchiveReader.cs;../RelaxKonOS.Server/Files/SevenZipArchiveProvider.cs;../RelaxKonOS.Server/Files/ArchivePasswordException.cs" Link="Files/%(Filename)%(Extension)" />
+    <None Include="../RelaxKonOS.Server/Assets/SevenZip/**/*" Link="Assets/SevenZip/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Include="../RelaxKonOS.Server/Assets/Mihomo/GeoData/geoip.metadb;../RelaxKonOS.Server/Assets/Mihomo/GeoData/geoip.dat;../RelaxKonOS.Server/Assets/Mihomo/GeoData/geosite.dat;../RelaxKonOS.Server/Assets/Mihomo/GeoData/country.mmdb;../RelaxKonOS.Server/Assets/Mihomo/GeoData/GeoLite2-ASN.mmdb"
           Link="Assets/Mihomo/GeoData/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Compile Include="../RelaxKonOS.Server/Terminal/ConPty.cs" Link="Terminal/ConPty.cs" />
@@ -24,4 +26,10 @@
     <PackageReference Include="System.Management" />
     <PackageReference Include="SixLabors.ImageSharp" />
   </ItemGroup>
+  <Target Name="SetArchiveDecoderBuildPermissions" AfterTargets="Build" Condition="'$(OS)' != 'Windows_NT'">
+    <Exec Command="chmod 755 &quot;$(TargetDir)Assets/SevenZip/linux-x64/7zz&quot; &quot;$(TargetDir)Assets/SevenZip/linux-arm64/7zz&quot; &quot;$(TargetDir)Assets/SevenZip/osx-x64/7zz&quot; &quot;$(TargetDir)Assets/SevenZip/osx-arm64/7zz&quot;" />
+  </Target>
+  <Target Name="SetArchiveDecoderPublishPermissions" AfterTargets="Publish" Condition="'$(OS)' != 'Windows_NT'">
+    <Exec Command="chmod 755 &quot;$(PublishDir)Assets/SevenZip/linux-x64/7zz&quot; &quot;$(PublishDir)Assets/SevenZip/linux-arm64/7zz&quot; &quot;$(PublishDir)Assets/SevenZip/osx-x64/7zz&quot; &quot;$(PublishDir)Assets/SevenZip/osx-arm64/7zz&quot;" />
+  </Target>
 </Project>

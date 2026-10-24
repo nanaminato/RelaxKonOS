@@ -180,6 +180,8 @@
         "explorer.batch.not_started": "Not started",
         "explorer.operations.percent_complete": "{0}% complete",
         "explorer.operations.current_file_percent": "Current file {0}%",
+        "explorer.operations.extracting": "Extracting…",
+        "explorer.operations.extracted_percent": "{0}% extracted",
         "explorer.operations.entire_operation": "Entire operation",
         "explorer.operations.current_file_short": "Current file",
         "explorer.operations.items_processed": "{0} items processed · {1} skipped",

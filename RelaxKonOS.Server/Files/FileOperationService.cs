@@ -414,7 +414,8 @@ public sealed partial class FileOperationService(IPrivilegedFileService privileg
 
     private async Task<T> ExecuteUserAsync<T>(Job job, UserExecutionOperationKind operation, string? path = null,
         string? destinationPath = null, bool overwrite = false, CancellationToken cancellationToken = default,
-        long? offset = null, long? expectedBytes = null, string? content = null)
+        long? offset = null, long? expectedBytes = null, string? content = null, ArchiveCredentials? archiveCredentials = null,
+        Action<ArchiveExtractionProgress>? archiveProgress = null)
     {
         if (job.RootExecution)
             return await ExecutePrivilegedOperationAsync<T>(
@@ -426,20 +427,24 @@ public sealed partial class FileOperationService(IPrivilegedFileService privileg
         {
             var request = new UserExecutionRequest(context.Identity, operation, Path: path,
                 DestinationPath: destinationPath, Overwrite: overwrite, OperationId: Guid.NewGuid(),
-                Offset: offset, ExpectedBytes: expectedBytes, ContentBase64: content);
+                Offset: offset, ExpectedBytes: expectedBytes, ContentBase64: content, ArchiveCredentials: archiveCredentials);
             if (!new DirectUserExecutionService(mode).Validate(context, request).Success)
                 throw new UnauthorizedAccessException("Personal execution identity changed.");
-            try { return (T)(await DirectUserExecutionOperations.ExecuteAsync(new LocalFileService(mode), request, cancellationToken))!; }
+            try { return (T)(await DirectUserExecutionOperations.ExecuteAsync(new LocalFileService(mode), request, cancellationToken, archiveProgress))!; }
             catch (UnauthorizedAccessException)
             {
-                if (TryAuthorize(job, path!, destinationPath, Capability(operation)) is not { } personalAuthorization) throw;
+                if (operation == UserExecutionOperationKind.FileExtractArchive
+                    || TryAuthorize(job, path!, destinationPath, Capability(operation)) is not { } personalAuthorization) throw;
                 return await ExecutePrivilegedOperationAsync<T>(personalAuthorization, operation, path, destinationPath, overwrite, cancellationToken, offset, expectedBytes, content);
             }
         }
-        var response = await executionTransport.ExecuteAsync(new UserExecutionRequest(context.Identity, operation,
+        var executionRequest = new UserExecutionRequest(context.Identity, operation,
             Path: path, DestinationPath: destinationPath, Overwrite: overwrite, OperationId: Guid.NewGuid(),
-            Offset: offset, ExpectedBytes: expectedBytes, ContentBase64: content), cancellationToken);
-        if (!response.Success && response.ProblemCode == UserExecutionProblemCode.AccessDenied
+            Offset: offset, ExpectedBytes: expectedBytes, ContentBase64: content, ArchiveCredentials: archiveCredentials);
+        var response = operation == UserExecutionOperationKind.FileExtractArchive && archiveProgress is not null
+            ? await executionTransport.ExecuteArchiveAsync(executionRequest, archiveProgress, cancellationToken)
+            : await executionTransport.ExecuteAsync(executionRequest, cancellationToken);
+        if (!response.Success && operation != UserExecutionOperationKind.FileExtractArchive && response.ProblemCode == UserExecutionProblemCode.AccessDenied
             && TryAuthorize(job, path!, destinationPath, Capability(operation)) is { } authorized)
             return await ExecutePrivilegedOperationAsync<T>(authorized, operation, path, destinationPath, overwrite, cancellationToken, offset, expectedBytes, content);
         if (!response.Success)
@@ -450,6 +455,9 @@ public sealed partial class FileOperationService(IPrivilegedFileService privileg
                 UserExecutionProblemCode.Conflict => new IOException("User-execution file operation failed."),
                 UserExecutionProblemCode.InvalidRequest or UserExecutionProblemCode.ContentTooLarge => new ArgumentException("Invalid user-execution file request."),
                 UserExecutionProblemCode.TimedOut => new TimeoutException("User-execution file operation timed out."),
+                UserExecutionProblemCode.ArchivePasswordRequired => new ArchivePasswordException(),
+                UserExecutionProblemCode.ArchivePasswordInvalid => new ArchivePasswordException(true),
+                UserExecutionProblemCode.ArchiveInvalid => new InvalidDataException("Invalid archive content."),
                 _ => new InvalidOperationException("User-execution Helper is unavailable."),
             };
         try { return JsonSerializer.Deserialize<T>(Convert.FromBase64String(response.OutputBase64!), RelaxKonOSJsonOptions.Default)!; }

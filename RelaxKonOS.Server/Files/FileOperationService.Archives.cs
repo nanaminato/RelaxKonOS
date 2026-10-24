@@ -7,6 +7,7 @@ namespace RelaxKonOS.Server.Files;
 
 public sealed partial class FileOperationService
 {
+    private static readonly SemaphoreSlim ExtractionWorkers = new(2);
     private async Task ProcessArchiveAsync(Job job)
     {
         var ct = job.Cancellation.Token;
@@ -14,6 +15,7 @@ public sealed partial class FileOperationService
             ? new IdentityArchiveFileSystem(this, job) : new LocalArchiveFileSystem();
         var destination = job.Request.Items[0].DestinationPath!;
         var sources = job.Request.Items.Select(i => i.SourcePath).ToArray();
+        lock (job.Gate) { job.CurrentPath = sources[0]; job.Bytes = 0; job.TotalBytes = 0; }
         while (true)
         {
             ct.ThrowIfCancellationRequested();
@@ -81,6 +83,32 @@ public sealed partial class FileOperationService
 
     private sealed class IdentityArchiveFileSystem(FileOperationService service, Job job) : ArchiveFileSystem
     {
+        public override async Task<ArchiveExtractionResult> Extract(string source, string staging,
+            Action<string, long, long, bool> report, ArchiveCredentials? credentials, CancellationToken ct)
+        {
+            await ExtractionWorkers.WaitAsync(ct);
+            try
+            {
+                if (job.RootExecution) return await base.Extract(source, staging, report, credentials, ct);
+                var result = await service.ExecuteUserAsync<ArchiveExtractionResult>(job, UserExecutionOperationKind.FileExtractArchive,
+                    source, staging, cancellationToken: ct, archiveCredentials: credentials, archiveProgress: progress =>
+                    {
+                        if (progress.Entries is < 0 or > FileArchiveService.MaximumEntries || progress.Bytes < 0
+                            || progress.TotalBytes < 0 || progress.TotalBytes > FileArchiveService.MaximumTotalBytes) return;
+                        lock (job.Gate) { job.Processed = progress.Entries; job.Bytes = progress.Bytes; job.TotalBytes = progress.TotalBytes; }
+                    });
+                if (result.Entries is < 0 or > FileArchiveService.MaximumEntries) throw new InvalidDataException("Invalid extraction result.");
+                lock (job.Gate)
+                {
+                    job.Processed = result.Entries;
+                    job.CurrentPath = source;
+                    job.Bytes = 0;
+                    job.TotalBytes = 0;
+                }
+                return result;
+            }
+            finally { ExtractionWorkers.Release(); }
+        }
         public override async Task<FileSystemEntryDto?> Info(string path, CancellationToken ct)
         {
             try { return await service.GetUserInfoAsync(job, path, ct); }

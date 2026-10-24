@@ -153,8 +153,12 @@ internal sealed class WindowsUserExecutionPipeServer(WindowsHelperPipeConfigurat
         }
 
         using var executionDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        executionDeadline.CancelAfter(TimeSpan.FromSeconds(configuration.UserExecutionTimeoutSeconds));
-        var result = await WindowsUserExecutionExecutor.ExecuteAsync(request, executionDeadline.Token);
+        executionDeadline.CancelAfter(TimeSpan.FromSeconds(request.Operation == UserExecutionOperationKind.FileExtractArchive
+            ? 600 : configuration.UserExecutionTimeoutSeconds));
+        var result = await WindowsUserExecutionExecutor.ExecuteAsync(request, executionDeadline.Token,
+            request.Operation == UserExecutionOperationKind.FileExtractArchive
+                ? snapshot => WriteResultAsync(pipe, secret, new(true, ArchiveProgress: snapshot), executionDeadline.Token).GetAwaiter().GetResult()
+                : null);
         if (!cancellationToken.IsCancellationRequested && executionDeadline.IsCancellationRequested
             && result.ProblemCode == UserExecutionProblemCode.Cancelled)
             result = Fail(UserExecutionProblemCode.TimedOut, "user-execution operation timed out");

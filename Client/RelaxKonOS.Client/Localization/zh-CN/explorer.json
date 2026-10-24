@@ -180,6 +180,8 @@
         "explorer.batch.not_started": "未执行",
         "explorer.operations.percent_complete": "已完成 {0}%",
         "explorer.operations.current_file_percent": "当前文件 {0}%",
+        "explorer.operations.extracting": "正在解压…",
+        "explorer.operations.extracted_percent": "已解压 {0}%",
         "explorer.operations.entire_operation": "整个任务",
         "explorer.operations.current_file_short": "当前文件",
         "explorer.operations.items_processed": "已处理 {0} 个项目 · 跳过 {1} 个",

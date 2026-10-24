@@ -29,8 +29,11 @@ public static class ExplorerOperationCenterChecks
         var download = center.Jobs.Single();
         var archiveCard = new ExplorerOperationCard(center, download.Snapshot with
         { Kind = FileOperationKind.Extract, State = FileOperationState.Running, CurrentBytes = 100, CurrentTotalBytes = 100 });
-        check(archiveCard.ProgressText == RelaxKonOS.Client.Localization.LocalizedText.Format("explorer.operations.current_file_percent", 100),
-            "Archive file completion is labelled as current-file progress rather than whole-job completion");
+        check(archiveCard.ProgressText == RelaxKonOS.Client.Localization.LocalizedText.Format("explorer.operations.extracted_percent", 100),
+            "Archive snapshots display aggregate extraction progress");
+        archiveCard.Snapshot = archiveCard.Snapshot with { Items = [new("/home/user/Documents/test.zip", "/home/user/Documents")] };
+        check(archiveCard.SourceLocation == "/home/user/Documents" && archiveCard.DestinationLocation == "/home/user/Documents",
+            "Extract-here shows the actual destination directory rather than its parent");
         downloadProgress!("/source/download.bin", 50, 0);
         check(download.IsDownload && download.IsLocalTransfer && download.Progress == 50 && download.CanCancel,
             "Download opens the operation window with measured bytes and cancellation");

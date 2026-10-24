@@ -28,7 +28,10 @@ public sealed class LocalIdentityUserExecutionTransport(LocalFileService direct,
     ILogger<LocalIdentityUserExecutionTransport> logger, ICorrelationContextAccessor? correlation = null,
     ISecurityAuditWriter? securityAudit = null, ObservabilityOptions? observability = null) : IUserExecutionTransport
 {
-    public async Task<UserExecutionResult> ExecuteAsync(UserExecutionRequest request, CancellationToken cancellationToken = default)
+    public Task<UserExecutionResult> ExecuteAsync(UserExecutionRequest request, CancellationToken cancellationToken = default) => ExecuteCoreAsync(request, null, cancellationToken);
+    public Task<UserExecutionResult> ExecuteArchiveAsync(UserExecutionRequest request, Action<ArchiveExtractionProgress> progress,
+        CancellationToken cancellationToken = default) => ExecuteCoreAsync(request, progress, cancellationToken);
+    private async Task<UserExecutionResult> ExecuteCoreAsync(UserExecutionRequest request, Action<ArchiveExtractionProgress>? progress, CancellationToken cancellationToken)
     {
         var operationId = request.OperationId is { } id && id != Guid.Empty ? id : Guid.NewGuid();
         var ambient = correlation?.Current;
@@ -52,7 +55,7 @@ public sealed class LocalIdentityUserExecutionTransport(LocalFileService direct,
             return Complete(request, new(false, Error: "invalid user-execution request", ProblemCode: UserExecutionProblemCode.InvalidRequest));
         try
         {
-            var value = await DirectUserExecutionOperations.ExecuteAsync(direct, request, cancellationToken);
+            var value = await DirectUserExecutionOperations.ExecuteAsync(direct, request, cancellationToken, progress);
             var output = Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(value, RelaxKonOSJsonOptions.Default));
             return Complete(request, new(true, output));
         }
@@ -80,6 +83,9 @@ public sealed class LocalIdentityUserExecutionTransport(LocalFileService direct,
     {
         var (code, message) = exception switch
         {
+            RelaxKonOS.Server.Files.ArchivePasswordException ex => (ex.Code == "archive-password-required"
+                ? UserExecutionProblemCode.ArchivePasswordRequired : UserExecutionProblemCode.ArchivePasswordInvalid, "archive password required or invalid"),
+            InvalidDataException => (UserExecutionProblemCode.ArchiveInvalid, "invalid archive content"),
             DirectUserExecutionOperations.ContentTooLargeException =>
                 (UserExecutionProblemCode.ContentTooLarge, "user-execution content is too large"),
             UnauthorizedAccessException => (UserExecutionProblemCode.AccessDenied, "access denied"),

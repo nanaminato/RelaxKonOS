@@ -17,9 +17,12 @@ namespace RelaxKonOS.Server.UserExecution;
 /// </remarks>
 internal static class DirectUserExecutionOperations
 {
-    public static async Task<object?> ExecuteAsync(LocalFileService direct, UserExecutionRequest request, CancellationToken cancellationToken = default)
+    public static async Task<object?> ExecuteAsync(LocalFileService direct, UserExecutionRequest request, CancellationToken cancellationToken = default,
+        Action<ArchiveExtractionProgress>? archiveProgress = null)
         => request.Operation switch
         {
+            UserExecutionOperationKind.FileExtractArchive => await FileArchiveService.ExtractContentsAsync(new LocalArchiveFileSystem(),
+                request.Path!, request.DestinationPath!, (_, _, _, _) => { }, request.ArchiveCredentials, cancellationToken, archiveProgress),
             UserExecutionOperationKind.FileGetSpecialLocations => direct.GetSpecialLocations(),
             UserExecutionOperationKind.GitConflictSnapshot => GitConflictFileAccess.Read(request.Path!, request.FileName!),
             UserExecutionOperationKind.GitConflictWrite => GitConflictFileAccess.Write(request.Path!, request.FileName!, Convert.FromBase64String(request.ContentBase64!), request.ExpectedSha256!),

@@ -332,7 +332,9 @@ Linux 上用 root（或任何 UID < 1000 的账户、nobody）登录时，认证
 
 ## 有界文件下载协议
 
-当前用户执行协议为 `1.7`，提权协议为 `1.5`；Server 与 Helper 必须一起更新。`FileRead` 不再返回整个文件：用户执行请求必须携带非负的 `offset` 和 `expectedBytes`，提权请求必须携带 `offset` 和 `readCount`，读取长度均为 0 至 1 MiB。
+当前用户执行协议为 `1.8`，提权协议为 `1.5`；Server 与 Helper 必须一起更新。`FileRead` 不再返回整个文件：用户执行请求必须携带非负的 `offset` 和 `expectedBytes`，提权请求必须携带 `offset` 和 `readCount`，读取长度均为 0 至 1 MiB。
+
+- [x] 普通身份归档解压使用一次 `FileExtractArchive` worker，在身份转换后直接处理本机源/暂存目录，250 ms 抽样传回累计进度，Server 负责发布与失败清理；密码只经请求内存传递。实现与本地测试已完成，真实 sudo/S4U 部署及 Linux 性能仍待验收。详细约束见 [Explorer 归档设计](../applications/RelaxKonOS.Explorer.Archives.md)。
 
 长度 0 只打开文件并返回元数据；响应为 `UserExecutionFileRead`（本块 Base64、文件名、内容类型、文件总长度）。旧的整文件请求形状直接拒绝。独立 `FileReadText` 保留当前受限文本编辑语义，使用 TextFileCodec 验证格式与大小；它不接收分块下载字段，也不允许通过提权降级绕过普通宿主身份。
 

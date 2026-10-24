@@ -15,6 +15,17 @@ public abstract class ArchiveFileSystem
     public abstract Task<long> Append(string path, long offset, ReadOnlyMemory<byte> bytes, CancellationToken ct);
     public abstract Task Move(string source, string destination, CancellationToken ct);
     public abstract Task Delete(string path, CancellationToken ct);
+    public virtual Task<RelaxKonOS.Protocol.UserExecution.ArchiveExtractionResult> Extract(string source, string staging,
+        Action<string, long, long, bool> report, ArchiveCredentials? credentials, CancellationToken ct)
+    {
+        var processed = 0;
+        return FileArchiveService.ExtractContentsAsync(this, source, staging, (_, _, _, _) => { }, credentials, ct, snapshot =>
+        {
+            report(source, snapshot.Bytes, snapshot.TotalBytes, false);
+            while (processed < snapshot.Entries)
+            { processed++; report(source, snapshot.Bytes, snapshot.TotalBytes, true); }
+        });
+    }
 }
 
 public static partial class FileArchiveService
@@ -122,26 +133,8 @@ public static partial class FileArchiveService
             else
             {
                 if (sources.Count != 1) throw new ArgumentException("Extraction requires one archive.");
-                await RejectLinksAsync(fs, sources[0], ct);
-                await using var input = await fs.Read(sources[0], ct);
-                if (!input.CanSeek || input.Length > MaximumArchiveBytes) throw new InvalidDataException("Archive input is too large or not seekable.");
-                if (!FileArchiveFormats.IsBcl(format))
-                {
-                    await using var archive = await SevenZipArchiveProvider.OpenAsync(input, format, ct, sources[0], credentials);
-                    await fs.CreateDirectory(staging, ct); created = true;
-                    await ExtractProviderAsync(fs, archive, staging, report, ct);
-                }
-                else if (format != FileArchiveFormat.Zip)
-                {
-                    await fs.CreateDirectory(staging, ct); created = true;
-                    await ExtractTarAsync(fs, input, staging, format, report, ct);
-                }
-                else
-                {
-                    await using var archive = await OpenReaderAsync(input, sources[0], ct, credentials);
-                    await fs.CreateDirectory(staging, ct); created = true;
-                    await ExtractProviderAsync(fs, archive, staging, report, ct);
-                }
+                await fs.CreateDirectory(staging, ct); created = true;
+                await fs.Extract(sources[0], staging, report, credentials, ct);
             }
             ct.ThrowIfCancellationRequested();
             await RejectLinksAsync(fs, destination, ct);
@@ -185,6 +178,47 @@ public static partial class FileArchiveService
                 try { await fs.Delete(staging, CancellationToken.None); }
                 catch (Exception ex) { cleanupFailed(staging, ex); }
         }
+    }
+
+    // Runs inside the authenticated identity boundary. The caller owns staging creation, final
+    // publication and cleanup, including after the worker process is terminated on cancellation.
+    public static async Task<RelaxKonOS.Protocol.UserExecution.ArchiveExtractionResult> ExtractContentsAsync(
+        ArchiveFileSystem fs, string source, string staging, Action<string, long, long, bool> report,
+        ArchiveCredentials? credentials, CancellationToken ct,
+        Action<RelaxKonOS.Protocol.UserExecution.ArchiveExtractionProgress>? snapshot = null)
+    {
+        credentials?.Validate();
+        await RejectLinksAsync(fs, staging, ct);
+        if ((await fs.Info(staging, ct))?.Type != FileSystemEntryType.Directory) throw new DirectoryNotFoundException(staging);
+        await RejectLinksAsync(fs, source, ct);
+        var format = FileArchiveFormats.Detect(source) ?? throw new NotSupportedException("Unsupported archive format.");
+        await using var input = await fs.Read(source, ct);
+        if (!input.CanSeek || input.Length > MaximumArchiveBytes) throw new InvalidDataException("Archive input is too large or not seekable.");
+        var count = 0; long completedBytes = 0, totalBytes = 0;
+        var totalEntries = 0;
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        var lastSnapshot = TimeSpan.FromMilliseconds(-250);
+        void Report(string path, long bytes, long total, bool finished)
+        {
+            if (finished) { count++; completedBytes += total; }
+            report(path, bytes, total, finished);
+            if (snapshot is not null && timer.Elapsed - lastSnapshot >= TimeSpan.FromMilliseconds(250))
+            {
+                lastSnapshot = timer.Elapsed;
+                snapshot(new(count, totalEntries, completedBytes + (finished ? 0 : bytes), totalBytes));
+            }
+        }
+        if (FileArchiveFormats.IsBcl(format) && format != FileArchiveFormat.Zip)
+            await ExtractTarAsync(fs, input, staging, format, Report, ct);
+        else
+        {
+            await using var archive = await OpenReaderAsync(input, source, ct, credentials);
+            totalEntries = archive.Entries.Count;
+            totalBytes = archive.Entries.Sum(entry => entry.Size);
+            await ExtractProviderAsync(fs, archive, staging, Report, ct);
+        }
+        snapshot?.Invoke(new(count, totalEntries == 0 ? count : totalEntries, completedBytes, totalBytes == 0 ? completedBytes : totalBytes));
+        return new(count);
     }
 
     // Bound the central directory before BCL materializes its entries, including ZIP64.

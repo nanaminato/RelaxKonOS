@@ -7,6 +7,7 @@ using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.Protocol.UserExecution;
 using RelaxKonOS.Protocol.Git;
 using RoyalTerminal.Terminal;
+using RelaxKonOS.Server.Files;
 
 namespace RelaxKonOS.PrivilegedHelper;
 
@@ -44,6 +45,8 @@ public static class UserExecutionExecutor
                 return await WriteAsync(Fail(UserExecutionProblemCode.IdentityNotExecutable, "could not assume OS user identity"));
             return await WriteAsync(await ExecuteAsync(request, account.Home));
         }
+        catch (ArchivePasswordException ex) { return await WriteAsync(Fail(ex.Code == "archive-password-required" ? UserExecutionProblemCode.ArchivePasswordRequired : UserExecutionProblemCode.ArchivePasswordInvalid, "archive password required or invalid")); }
+        catch (InvalidDataException) { return await WriteAsync(Fail(UserExecutionProblemCode.ArchiveInvalid, "invalid archive content")); }
         catch (ContentTooLargeException) { return await WriteAsync(Fail(UserExecutionProblemCode.ContentTooLarge, "user-execution content is too large")); }
         catch (UnauthorizedAccessException) { return await WriteAsync(Fail(UserExecutionProblemCode.AccessDenied, "access denied")); }
         catch (Exception exception) when (exception is DirectoryNotFoundException or FileNotFoundException) { return await WriteAsync(Fail(UserExecutionProblemCode.NotFound, "path not found")); }
@@ -148,6 +151,12 @@ public static class UserExecutionExecutor
         var destination = request.DestinationPath is null ? null : ValidatePath(request.DestinationPath);
         object? result = request.Operation switch
         {
+            UserExecutionOperationKind.FileExtractArchive => await FileArchiveService.ExtractContentsAsync(new LocalArchiveFileSystem(),
+                path!, destination!, (_, _, _, _) => { }, request.ArchiveCredentials, CancellationToken.None, snapshot =>
+                {
+                    Console.Out.WriteLine(JsonSerializer.Serialize(new UserExecutionResult(true, ArchiveProgress: snapshot), RelaxKonOSJsonOptions.Default));
+                    Console.Out.Flush();
+                }),
             UserExecutionOperationKind.FileListDirectory => List(path!),
             UserExecutionOperationKind.FileGetSpecialLocations => Special(home),
             UserExecutionOperationKind.GitConflictSnapshot => GitConflictFileAccess.Read(path!, request.FileName!),
