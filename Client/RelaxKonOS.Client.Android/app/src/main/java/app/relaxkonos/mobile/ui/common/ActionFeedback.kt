@@ -194,7 +194,7 @@ fun CapabilityMissingNotice(modifier: Modifier = Modifier) {
  * It is deliberately not [ActionFeedback]: nothing has failed yet, there is nothing to retry, and a
  * fact about the session cannot be dismissed away. It wears the warning tone rather than the danger
  * one because the session itself is perfectly usable — metrics, processes and the rest keep working;
- * only the file, terminal and Git surfaces the user is most likely to reach for next do not.
+ * only the file and terminal surfaces the user is most likely to reach for next do not.
  *
  * [reason] is the server's stable reason code, never its text; the sentence comes from the client's
  * own packs through [executionEligibilityMessage].

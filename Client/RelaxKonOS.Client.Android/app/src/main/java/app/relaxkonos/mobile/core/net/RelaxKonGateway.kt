@@ -43,13 +43,6 @@ interface RelaxKonGateway {
     suspend fun hostSettingsOperation(serverUrl: String, accessToken: String, id: String): ApiResult<HostSettingsOperation>
     suspend fun rollbackHostSettings(serverUrl: String, accessToken: String, id: String, expectedRevision: String): ApiResult<HostSettingsOperation>
 
-    suspend fun gitEngine(serverUrl: String, accessToken: String): ApiResult<GitEngine> = ApiResult.Transport("Git unavailable.")
-    suspend fun gitDiff(serverUrl: String, accessToken: String, id: String, path: String, staged: Boolean, reference: String?): ApiResult<GitDiff> = ApiResult.Transport("Git unavailable.")
-    suspend fun gitLog(serverUrl: String, accessToken: String, id: String, skip: Int, search: String): ApiResult<List<GitCommit>> = ApiResult.Transport("Git unavailable.")
-    suspend fun gitCommitDetail(serverUrl: String, accessToken: String, id: String, sha: String): ApiResult<GitCommitDetail> = ApiResult.Transport("Git unavailable.")
-    suspend fun gitConflicts(serverUrl: String, accessToken: String, id: String): ApiResult<GitConflictState> = ApiResult.Transport("Git unavailable.")
-    suspend fun gitConflict(serverUrl: String, accessToken: String, id: String, path: String): ApiResult<GitConflictFile> = ApiResult.Transport("Git unavailable.")
-    suspend fun gitMutation(serverUrl: String, accessToken: String, id: String, change: GitMutation): ApiResult<GitOperation> = ApiResult.Transport("Git unavailable.")
     suspend fun textFile(serverUrl: String, accessToken: String, path: String): ApiResult<RemoteTextFile> = ApiResult.Transport("Text editing unavailable.")
     suspend fun saveTextFile(serverUrl: String, accessToken: String, file: RemoteTextFile, content: String): ApiResult<RemoteTextFile> = ApiResult.Transport("Text editing unavailable.")
     suspend fun createTextFile(serverUrl: String, accessToken: String, path: String, content: String, encoding: String, bom: Boolean): ApiResult<RemoteTextFile> = ApiResult.Transport("Text editing unavailable.")
@@ -173,21 +166,6 @@ interface RelaxKonGateway {
     suspend fun guardianSave(serverUrl: String, accessToken: String, definition: GuardianDefinition, approval: GuardianApproval?): ApiResult<GuardianDefinitionResult>
     suspend fun guardianAction(serverUrl: String, accessToken: String, id: String, action: String): ApiResult<GuardianOperation>
     suspend fun guardianDelete(serverUrl: String, accessToken: String, id: String): ApiResult<GuardianOperation>
-    suspend fun gitRepositories(serverUrl: String, accessToken: String): ApiResult<List<GitRepository>> = ApiResult.Transport("Git unavailable.")
-    suspend fun gitRegisterRepository(serverUrl: String, accessToken: String, name: String, path: String): ApiResult<GitRepository> = ApiResult.Transport("Git unavailable.")
-    suspend fun gitBranches(serverUrl: String, accessToken: String, id: String): ApiResult<List<GitBranch>> = ApiResult.Transport("Git unavailable.")
-    suspend fun gitStatus(serverUrl: String, accessToken: String, id: String): ApiResult<GitStatus> = ApiResult.Transport("Git unavailable.")
-    suspend fun gitTextFile(serverUrl: String, accessToken: String, id: String, path: String): ApiResult<RemoteTextFile> = ApiResult.Transport("Git editing unavailable.")
-    suspend fun gitSaveTextFile(serverUrl: String, accessToken: String, id: String, file: RemoteTextFile, content: String): ApiResult<RemoteTextFile> = ApiResult.Transport("Git editing unavailable.")
-    suspend fun gitBuildCredentials(serverUrl: String, accessToken: String): ApiResult<List<GitBuildCredential>> = ApiResult.Transport("Git builds unavailable.")
-    suspend fun gitBuildSetCredential(serverUrl: String, accessToken: String, name: String, token: String): ApiResult<GitBuildCredential> = ApiResult.Transport("Git builds unavailable.")
-    suspend fun gitBuildResolve(serverUrl: String, accessToken: String, url: String, reference: String, credentialId: String?): ApiResult<GitBuildResolved> = ApiResult.Transport("Git builds unavailable.")
-    suspend fun gitBuildRefs(serverUrl: String, accessToken: String, url: String, credentialId: String?): ApiResult<List<GitBuildRef>> = ApiResult.Transport("Git builds unavailable.")
-    suspend fun gitBuilds(serverUrl: String, accessToken: String): ApiResult<List<GitBuildOperation>> = ApiResult.Transport("Git builds unavailable.")
-    suspend fun gitBuildStart(serverUrl: String, accessToken: String, request: GitBuildRequest, key: String): ApiResult<GitBuildOperation> = ApiResult.Transport("Git builds unavailable.")
-    suspend fun gitBuildGet(serverUrl: String, accessToken: String, id: String): ApiResult<GitBuildOperation> = ApiResult.Transport("Git builds unavailable.")
-    suspend fun gitBuildCancel(serverUrl: String, accessToken: String, id: String): ApiResult<GitBuildOperation> = ApiResult.Transport("Git builds unavailable.")
-    suspend fun deployGitBuild(serverUrl: String, accessToken: String, applicationId: String, build: GitBuildOperation, expectedUpdatedAt: String, key: String): ApiResult<DeploymentOperation> = ApiResult.Transport("Git deployment unavailable.")
     suspend fun webServers(serverUrl: String, accessToken: String): ApiResult<List<WebServer>> = ApiResult.Transport("Web servers are unavailable.")
     suspend fun webServerStatus(serverUrl: String, accessToken: String, instanceId: String): ApiResult<WebServerStatus> = ApiResult.Transport("Web server status is unavailable.")
     /** A server-side syntax check: it does not write, reload, or start the web server. */

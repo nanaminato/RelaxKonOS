@@ -12,7 +12,6 @@ internal fun installationServiceLabel(value: InstallationService): String = stri
     InstallationService.Frp -> R.string.installation_service_frp
     InstallationService.Mihomo -> R.string.installation_service_mihomo
     InstallationService.Docker -> R.string.installation_service_docker
-    InstallationService.Git -> R.string.installation_service_git
     InstallationService.SingBox -> R.string.installation_service_singbox
 })
 

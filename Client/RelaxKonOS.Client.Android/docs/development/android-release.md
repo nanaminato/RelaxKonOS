@@ -6,9 +6,11 @@ Android 客户端是独立的 Kotlin + Jetpack Compose Gradle 工程，位于 `C
 
 最低支持 Android 10（API 29）；`minSdk = 29`，`compileSdk = targetSdk = 36`。发布前需在 API 29 验证共享下载目录、图片缓存、文件排序、生物识别与前台传输，并验证较新系统的权限和生命周期行为。
 
-工程的 [`gradle/wrapper/gradle-wrapper.properties`](../../gradle/wrapper/gradle-wrapper.properties) 将发行包固定为本机 `D:\environments\gradle-9.7.1-all.zip`（`file:///D:/environments/gradle-9.7.1-all.zip`）。
+工程的 [`gradle/wrapper/gradle-wrapper.properties`](../../gradle/wrapper/gradle-wrapper.properties) 跟随 Git 提交，统一固定 Gradle 9.7.1 的官方 HTTPS 发行包地址，不写入设备绝对路径。Wrapper 首次使用时下载并解压到 `GRADLE_USER_HOME/wrapper/dists`，之后复用缓存；改变发行 URL、版本、缓存目录或删除缓存可能需要重新下载。工程当前未提交 `gradlew` 脚本和 Wrapper JAR，现有 PowerShell 构建脚本直接调用已安装的 Gradle。
 
-首次执行环境初始化时，`Initialize-AndroidEnvironment.ps1` 从该本地包解压 Gradle；构建过程不应改回在线 Gradle 分发地址。
+本机 SDK 路径写入 `local.properties`，该文件不跟踪且由 `.gitignore` 忽略；Android Studio 可生成该文件，也可在本机设置 `sdk.dir`。不要用 `assume-unchanged` 或 `skip-worktree` 隐藏共享配置改动。
+
+离线环境可继续运行 `Initialize-AndroidEnvironment.ps1 -AndroidRoot <本机目录> -GradleArchive <本机ZIP>` 解压 Gradle，再用 `Build-Android.ps1 -AndroidSdkRoot <SDK目录> -GradleHome <Gradle目录> -JavaSdkRoot <JDK目录>` 构建，不修改共享 Wrapper 配置。`GRADLE_USER_HOME` 可以在本机设置；缓存应保持稳定，不必为不同工作目录重复下载分发包。
 
 ```powershell
 pwsh Tools/Mobile/Initialize-AndroidEnvironment.ps1

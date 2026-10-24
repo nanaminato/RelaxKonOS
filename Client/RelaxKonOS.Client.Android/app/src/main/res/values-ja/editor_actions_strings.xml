@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="editor_save">ファイルを保存</string>
+    <string name="editor_discard_draft">サーバーファイルを使用</string>
+    <string name="editor_compare_latest">最新版に対して下書きを確認</string>
+    <string name="editor_preview_diff">差分を確認</string>
+</resources>

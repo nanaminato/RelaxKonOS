@@ -21,7 +21,7 @@ class MobileFeatureCatalogTest {
     @Test fun `catalog only links concrete native routes and excludes desktop extension runtime`() {
         val routes=MobileFeatureCatalog.entries.map{it.route}
         assertEquals(routes.size,routes.toSet().size)
-        assertFalse(routes.any{it.contains("registry")||it.contains("browser")||it.contains("appinstaller")||it.contains("welcome")})
+        assertFalse(routes.any{it.contains("registry")||it.contains("browser")||it.contains("appinstaller")||it.contains("welcome")||it.contains("git")})
         assertTrue(routes.all{it==Routes.FILES||it==Routes.TERMINAL||it.startsWith("manage/")||it.startsWith("more/")})
     }
 }

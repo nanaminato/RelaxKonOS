@@ -8,13 +8,15 @@
 
 | 服务 | 公共安装动作 | 安装包与回滚 |
 | --- | --- | --- |
-| SMB、Docker、Git | Install | 使用服务端安装来源 |
+| SMB、Docker | Install | 使用服务端安装来源 |
 | Nginx | Install / Upgrade / Repair / Uninstall | 包引用仅用于 Install |
 | FRP | Install / Upgrade / Repair / Uninstall | 包引用仅用于无回滚的 Install；回滚使用 Repair + rollback |
 | Mihomo | Install / Upgrade / Repair / Rollback / Uninstall | 只接受宿主冻结计划；不接受包引用、版本字符串或 rollback 标记 |
 | sing-box | 观察当前 Installations 记录（包括独立 Rollback），按宿主 Cancellable 状态提供通用取消 | 没有冻结版本计划的 Android 提交表单，不接受包引用或通用安装请求 |
 
-这是当前 Android 的提交/观察范围，不代表所有宿主一定支持执行。登录响应的 `server.host.capabilities.privilegedOperations` 为真且相应服务能力存在时，Repository 才能准备提交、运维中心才自动发现安装任务。User Mode 的 Git 浏览能力不代表可以安装 Git。权限、宿主运行模式与实际安装条件继续由 Server 校验；服务专属界面仍需核对各领域当前能力。
+这是当前 Android 的提交/观察范围，不代表所有宿主一定支持执行。登录响应的 `server.host.capabilities.privilegedOperations` 为真且相应服务能力存在时，Repository 才能准备提交、运维中心才自动发现安装任务。权限、宿主运行模式与实际安装条件继续由 Server 校验；服务专属界面仍需核对各领域当前能力。
+
+Android 不包含 Git 安装、观察、取消或恢复入口；不会因服务器声明 `server.git` 而恢复这些功能。
 
 ## 2. API、提权与包来源
 
@@ -24,7 +26,7 @@
 
 显式按 ID 恢复和原请求识别必须传入调用方当前允许的安装动作集合。集合在异步读取前冻结；普通恢复在登记索引、恢复隐藏项或清理匹配日志之前核对服务与动作，原请求识别先拒绝调用方不支持的原动作，再按原服务、动作及已知 ID 核对回执。拒绝保留原日志和隐藏状态，不以页面稍后的拒绝替代仓库边界。
 
-Docker、Git、SMB 的专属恢复仅接受 Install。FRP 接受 Install、Upgrade、Repair、Uninstall，回滚仍是 Repair 的显式选项，不接收独立 Rollback。Mihomo 接受当前五类冻结计划动作；运维中心明确允许跨服务和当前全部动作。此恢复范围不增加应用的安装或版本管理能力，也不改变提交契约。
+Docker、SMB 的专属恢复仅接受 Install。FRP 接受 Install、Upgrade、Repair、Uninstall，回滚仍是 Repair 的显式选项，不接收独立 Rollback。Mihomo 接受当前五类冻结计划动作；运维中心明确允许跨服务和当前全部动作。此恢复范围不增加应用的安装或版本管理能力，也不改变提交契约。
 
 手机包接收现有 `PickedDocument`，以 `package` multipart 字段流式发送到专用暂存端点，不借用普通文件上传地址。已知和实际读取长度都受 128 MiB 限制；源流在每次受认证授权的 401 重试时重新打开，未知长度不把整个包读入内存。上传仅产生限时引用，不自动安装，不提供续传或后台任务承诺。服务器文件来自现有远端文件选择能力，其路径只进入创建引用请求。
 

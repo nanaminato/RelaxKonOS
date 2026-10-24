@@ -8,7 +8,6 @@ import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.BackupManifest
 import app.relaxkonos.mobile.core.net.DeploymentOperation
 import app.relaxkonos.mobile.core.net.DockerStackOperation
-import app.relaxkonos.mobile.core.net.GitBuildOperation
 import app.relaxkonos.mobile.core.net.ScriptTask
 import app.relaxkonos.mobile.core.net.ServerCapabilities
 import app.relaxkonos.mobile.core.net.WebsitePublicationOperation
@@ -41,8 +40,7 @@ data class OperationCenterSnapshot(val items: List<ObservedOperation>, val incom
     val pendingFirewall: List<PendingFirewallChange> = emptyList(),
     val pendingSmb: List<PendingSmbMutation> = emptyList(),
     val pendingDockerControl: List<PendingDockerControl> = emptyList(),
-    val pendingDockerResources: List<PendingDockerResource> = emptyList(),
-    val pendingGit: List<PendingGitMutation> = emptyList())
+    val pendingDockerResources: List<PendingDockerResource> = emptyList())
 
 /** Reads each domain's own durable record. Discovery also recovers operations not yet in the local index. */
 class OperationCenter(
@@ -51,7 +49,6 @@ class OperationCenter(
     private val deployments: DeploymentRepository,
     private val websites: WebPublishingRepository,
     private val docker: DockerRepository,
-    private val git: GitRepositoryClient,
     private val scripts: ScriptTaskRepository,
     private val backups: BackupRecoveryRepository,
     private val installations: InstallationRepository,
@@ -65,7 +62,6 @@ class OperationCenter(
     private val smb: SmbRepository,
     private val dockerControl: DockerControlRepository,
     private val dockerResources: DockerResourceRepository,
-    private val gitWorkspace: GitWorkspaceRepository,
 ) {
     suspend fun refresh(owner: SessionState.Active): OperationCenterSnapshot {
         verify(owner)
@@ -123,15 +119,6 @@ class OperationCenter(
                 }
             }
         }
-        if (ServerCapabilities.GIT in owner.capabilities) {
-            val builds = git.builds(owner)
-            if (builds !is ApiResult.Success) incomplete = true
-            if (builds is ApiResult.Success) builds.value.forEach buildLoop@ { build ->
-                if (index.isHidden(owner, OperationDomain.GitBuild, build.id)) return@buildLoop
-                runCatching { index.record(owner, OperationDomain.GitBuild, build.id, build.id) }
-                discovered[OperationDomain.GitBuild to build.id] = fromGitBuild(owner, build)
-            }
-        }
         if (ServerCapabilities.GUARDIAN in owner.capabilities) {
             val tasks = scripts.tasks(owner)
             if (tasks !is ApiResult.Success || !tasks.value.success) incomplete = true
@@ -179,8 +166,7 @@ class OperationCenter(
             if (ServerCapabilities.FIREWALL in owner.capabilities) firewall.pending(owner) else emptyList(),
             if (ServerCapabilities.FILE_SERVICES in owner.capabilities) smb.pending(owner) else emptyList(),
             if (ServerCapabilities.DOCKER in owner.capabilities) dockerControl.pending(owner) else emptyList(),
-            if (ServerCapabilities.DOCKER in owner.capabilities) dockerResources.pending(owner) else emptyList(),
-            if (ServerCapabilities.GIT in owner.capabilities) gitWorkspace.pending(owner) else emptyList())
+            if (ServerCapabilities.DOCKER in owner.capabilities) dockerResources.pending(owner) else emptyList())
     }
 
     suspend fun diagnostics(owner: SessionState.Active, item: ObservedOperation): ApiResult<List<String>> {
@@ -193,11 +179,6 @@ class OperationCenter(
             }
             OperationDomain.Compose -> when (val result = docker.stackOperationDiagnostics(owner, item.reference.operationId)) {
                 is ApiResult.Success -> ApiResult.Success(result.value.lines)
-                is ApiResult.Problem -> result
-                is ApiResult.Transport -> result
-            }
-            OperationDomain.GitBuild -> when (val result = git.build(owner, item.reference.operationId)) {
-                is ApiResult.Success -> ApiResult.Success(result.value.logs)
                 is ApiResult.Problem -> result
                 is ApiResult.Transport -> result
             }
@@ -234,7 +215,6 @@ class OperationCenter(
             OperationDomain.WebServer -> webServers.cancel(owner, item.reference.operationId)
             OperationDomain.Installation -> installations.cancel(owner, item.reference.operationId)
             OperationDomain.Compose -> docker.cancelStackOperation(owner, item.reference.resourceId, item.reference.operationId)
-            OperationDomain.GitBuild -> git.cancelBuild(owner, item.reference.operationId)
             OperationDomain.Script -> when (val result = scripts.cancel(owner, item.reference.operationId)) {
                 is ApiResult.Success -> if (result.value.success) result else ApiResult.Transport(result.value.problemCode)
                 else -> result
@@ -297,12 +277,6 @@ class OperationCenter(
                 is ApiResult.Problem -> unknown(reference, if (result.status == 404) OperationCheck.Missing else OperationCheck.Unavailable)
                 is ApiResult.Transport -> unknown(reference, OperationCheck.Unavailable)
             }
-            OperationDomain.GitBuild -> when (val result = git.build(owner, reference.operationId)) {
-                is ApiResult.Success -> if (result.value.id == reference.resourceId) fromGitBuild(owner, result.value)
-                    else unknown(reference, OperationCheck.Missing)
-                is ApiResult.Problem -> unknown(reference, if (result.status == 404) OperationCheck.Missing else OperationCheck.Unavailable)
-                is ApiResult.Transport -> unknown(reference, OperationCheck.Unavailable)
-            }
             OperationDomain.Script -> when (val result = scripts.task(owner, reference.operationId)) {
                 is ApiResult.Success -> result.value.task?.takeIf { result.value.success && it.id == reference.resourceId }
                     ?.let { fromScript(owner, it) } ?: unknown(reference,
@@ -344,11 +318,6 @@ class OperationCenter(
         verified(owner, OperationDomain.Compose, operation.projectName, operation.operationId,
             operation.projectName, operation.state.wire, operation.stage, null,
             operation.problemCode ?: operation.recoveryProblemCode, operation.cancellable)
-
-    private fun fromGitBuild(owner: SessionState.Active, build: GitBuildOperation): ObservedOperation =
-        verified(owner, OperationDomain.GitBuild, build.id, build.id,
-            build.reference, build.state, "", null, build.problemCode,
-            build.state == "queued" || build.state == "running")
 
     private fun fromScript(owner: SessionState.Active, task: ScriptTask): ObservedOperation =
         verified(owner, OperationDomain.Script, task.id, task.id,

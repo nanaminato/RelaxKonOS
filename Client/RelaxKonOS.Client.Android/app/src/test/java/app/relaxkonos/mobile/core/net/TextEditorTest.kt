@@ -25,7 +25,7 @@ class TextEditorTest {
         assertTrue(TextEditorPolicy.valid("a".repeat(TextEditorPolicy.MAXIMUM_BYTES), "utf-8", false))
         assertFalse(TextEditorPolicy.valid("a".repeat(TextEditorPolicy.MAXIMUM_BYTES), "utf-8", true))
     }
-    @Test fun `file and Git editor send current conditional format and encoded path without task keys`() = runTest {
+    @Test fun `file editor send current conditional format and encoded path without task keys`() = runTest {
         val requests = mutableListOf<List<String>>()
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         server.createContext("/") { e ->
@@ -41,10 +41,9 @@ class TextEditorTest {
             assertTrue(api.textFile(url, "token", "/配置 a.json") is ApiResult.Success)
             assertTrue(api.saveTextFile(url, "token", file, "new\r\n") is ApiResult.Success)
             assertTrue(api.createTextFile(url, "token", "/new.txt", "new", "utf-16be", true) is ApiResult.Success)
-            assertTrue(api.gitSaveTextFile(url, "token", "repo", file, "git") is ApiResult.Success)
-            assertEquals(listOf("GET", "PUT", "POST", "PUT"), requests.map { it[0] })
+            assertEquals(listOf("GET", "PUT", "POST"), requests.map { it[0] })
             assertTrue(requests[0][1].contains("%E9%85%8D%E7%BD%AE+a.json"))
-            listOf(requests[1], requests[3]).forEach {
+            listOf(requests[1]).forEach {
                 val body = JSONObject(it[2]); assertEquals(file.version, body.getString("expectedVersion"))
                 assertEquals(file.encoding, body.getString("encoding")); assertFalse(body.getBoolean("bom"))
             }

@@ -15,7 +15,6 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 class TextEditorViewModel(private val session: AuthSession, private val client: TextEditorRepository) : ViewModel() {
     private var owner: SessionState.Active? = null
-    private var repositoryId: String? = null
     private var initialPath: String? = null
     private var job: Job? = null
     private var operationVersion = 0L
@@ -43,9 +42,9 @@ class TextEditorViewModel(private val session: AuthSession, private val client: 
     val valid get() = TextEditorPolicy.valid(value.text, encoding, bom)
     val verificationPath get() = pendingPath.takeIf { unknown }
 
-    fun start(session: SessionState.Active, path: String?, gitId: String?) {
-        if (owner === session && initialPath == path && repositoryId == gitId) return
-        clear(); owner = session; initialPath = path; repositoryId = gitId
+    fun start(session: SessionState.Active, path: String?) {
+        if (owner === session && initialPath == path) return
+        clear(); owner = session; initialPath = path
         if (path != null) reload()
     }
     fun edit(next: TextFieldValue) { value = preserveInsertedNewlines(value, next, preferredNewline); saved = false }
@@ -75,9 +74,8 @@ class TextEditorViewModel(private val session: AuthSession, private val client: 
     fun reload() {
         val session = owner ?: return
         val path = verificationPath ?: baseline?.path ?: initialPath ?: destination.trim().takeIf { it.isNotBlank() } ?: return
-        val gitId = repositoryId
         launch { version ->
-            val result = client.read(session, path, gitId)
+            val result = client.read(session, path)
             verifyOperation(session, version)
             when (result) {
                 is ApiResult.Success -> {
@@ -104,18 +102,17 @@ class TextEditorViewModel(private val session: AuthSession, private val client: 
         val formatBom = bom
         if ((opened == null || asNew) && target.isBlank()) return
         pendingPath = if (opened == null || asNew) target else opened.path
-        val gitId = repositoryId
         launch(write = true) { version ->
             val result = if (opened == null || asNew) client.create(session, target, content, formatEncoding, formatBom)
-                else client.save(session, requireNotNull(format), content, gitId)
+                else client.save(session, requireNotNull(format), content)
             verifyOperation(session, version)
             when (result) {
-                is ApiResult.Success -> { accept(result.value); saved = true; if (asNew) repositoryId = null }
+                is ApiResult.Success -> { accept(result.value); saved = true }
                 is ApiResult.Problem -> {
                     failed = true
                     if (result.status >= 500) unknown = true
                     if (result.status == 409 && opened != null && !asNew) {
-                        val current = client.read(session, opened.path, gitId)
+                        val current = client.read(session, opened.path)
                         verifyOperation(session, version)
                         when (current) {
                             is ApiResult.Success -> { latest = current.value; failed = false }
@@ -149,7 +146,7 @@ class TextEditorViewModel(private val session: AuthSession, private val client: 
     }
     fun clear() {
         operationVersion++
-        job?.cancel(); job = null; owner = null; initialPath = null; repositoryId = null
+        job?.cancel(); job = null; owner = null; initialPath = null
         baseline = null; latest = null; value = TextFieldValue(""); encoding = "utf-8"; bom = false
         destination = ""; busy = false; failed = false; unknown = false; saved = false; pendingPath = null; preferredNewline = null
     }

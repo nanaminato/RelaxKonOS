@@ -9,12 +9,12 @@ import kotlinx.coroutines.sync.withLock
 
 class TextEditorRepository(private val gateway: RelaxKonGateway, private val session: AuthSession) {
     private val calls = Mutex()
-    suspend fun read(owner: SessionState.Active, path: String, repositoryId: String?) = call(owner) { url, token ->
-        validate(if (repositoryId == null) gateway.textFile(url, token, path) else gateway.gitTextFile(url, token, repositoryId, path), path)
+    suspend fun read(owner: SessionState.Active, path: String) = call(owner) { url, token ->
+        validate(gateway.textFile(url, token, path), path)
     }
-    suspend fun save(owner: SessionState.Active, file: RemoteTextFile, content: String, repositoryId: String?) = call(owner) { url, token ->
+    suspend fun save(owner: SessionState.Active, file: RemoteTextFile, content: String) = call(owner) { url, token ->
         require(TextEditorPolicy.valid(content, file.encoding, file.bom))
-        validate(if (repositoryId == null) gateway.saveTextFile(url, token, file, content) else gateway.gitSaveTextFile(url, token, repositoryId, file, content), file.path, content, file.encoding, file.bom)
+        validate(gateway.saveTextFile(url, token, file, content), file.path, content, file.encoding, file.bom)
     }
     suspend fun create(owner: SessionState.Active, path: String, content: String, encoding: String, bom: Boolean) = call(owner) { url, token ->
         require(TextEditorPolicy.valid(content, encoding, bom))

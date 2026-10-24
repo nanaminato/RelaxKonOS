@@ -26,8 +26,8 @@ class InstallationWireTest {
             .forEach { assertTrue(runCatching { InstallationWire.operation(it) }.isFailure) }
     }
 
-    @Test fun `five package requests carry only their current protocol fields`() {
-        val requests = listOf(SmbInstallationRequest(true), GitInstallationRequest(true), DockerInstallationRequest(true),
+    @Test fun `four package requests carry only their current protocol fields`() {
+        val requests = listOf(SmbInstallationRequest(true), DockerInstallationRequest(true),
             NginxInstallationRequest(true, "1.28", "ref"), FrpInstallationRequest(true, "0.64", fileReferenceId = "ref"))
         requests.forEach { request ->
             val body = JSONObject(InstallationWire.request(request, InstallationKind.Install).toByteArray().decodeToString())
@@ -40,7 +40,7 @@ class InstallationWireTest {
     }
 
     @Test fun `unsupported actions and package rollback combinations are rejected`() {
-        assertTrue(runCatching { InstallationWire.request(GitInstallationRequest(true), InstallationKind.Upgrade) }.isFailure)
+        assertTrue(runCatching { InstallationWire.request(DockerInstallationRequest(true), InstallationKind.Upgrade) }.isFailure)
         assertTrue(runCatching { InstallationWire.request(NginxInstallationRequest(true, fileReferenceId = "ref"), InstallationKind.Repair) }.isFailure)
         assertTrue(runCatching { InstallationWire.request(FrpInstallationRequest(true, rollback = true), InstallationKind.Install) }.isFailure)
         val rollback = JSONObject(InstallationWire.request(FrpInstallationRequest(true, rollback = true), InstallationKind.Repair).toByteArray().decodeToString())

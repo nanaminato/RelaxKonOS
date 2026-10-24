@@ -269,118 +269,21 @@ class RelaxKonApi(
     }
 
     override suspend fun textFile(serverUrl: String, accessToken: String, path: String): ApiResult<RemoteTextFile> =
-        gitCall("GET", serverUrl, TextEditorRoutes.file(path), accessToken, null, TextEditorWire::file)
+        textFileCall("GET", serverUrl, TextEditorRoutes.file(path), accessToken, null, TextEditorWire::file)
 
     override suspend fun saveTextFile(serverUrl: String, accessToken: String, file: RemoteTextFile, content: String): ApiResult<RemoteTextFile> =
-        gitCall("PUT", serverUrl, TextEditorRoutes.file(file.path), accessToken,
+        textFileCall("PUT", serverUrl, TextEditorRoutes.file(file.path), accessToken,
             JsonBody().string("content", content).string("expectedVersion", file.version)
                 .string("encoding", file.encoding).bool("bom", file.bom), TextEditorWire::file)
 
     override suspend fun createTextFile(serverUrl: String, accessToken: String, path: String, content: String, encoding: String, bom: Boolean): ApiResult<RemoteTextFile> =
-        gitCall("POST", serverUrl, TextEditorRoutes.file(path), accessToken,
+        textFileCall("POST", serverUrl, TextEditorRoutes.file(path), accessToken,
             JsonBody().string("content", content).string("encoding", encoding).bool("bom", bom), TextEditorWire::file)
 
-    override suspend fun gitEngine(serverUrl: String, accessToken: String): ApiResult<GitEngine> =
-        gitCall("GET", serverUrl, GitWorkspaceRoutes.ENGINE, accessToken, null, GitWorkspaceWire::engine)
-    override suspend fun gitDiff(serverUrl: String, accessToken: String, id: String, path: String, staged: Boolean, reference: String?): ApiResult<GitDiff> =
-        gitCall("GET", serverUrl, GitWorkspaceRoutes.diff(id, path, staged, reference), accessToken, null, GitWorkspaceWire::diff)
-    override suspend fun gitLog(serverUrl: String, accessToken: String, id: String, skip: Int, search: String): ApiResult<List<GitCommit>> =
-        gitCall("GET", serverUrl, GitWorkspaceRoutes.log(id, skip, search), accessToken, null, GitWorkspaceWire::log)
-    override suspend fun gitCommitDetail(serverUrl: String, accessToken: String, id: String, sha: String): ApiResult<GitCommitDetail> =
-        gitCall("GET", serverUrl, GitWorkspaceRoutes.commit(id, sha), accessToken, null, GitWorkspaceWire::detail)
-    override suspend fun gitConflicts(serverUrl: String, accessToken: String, id: String): ApiResult<GitConflictState> =
-        gitCall("GET", serverUrl, GitWorkspaceRoutes.conflicts(id), accessToken, null, GitWorkspaceWire::conflicts)
-    override suspend fun gitConflict(serverUrl: String, accessToken: String, id: String, path: String): ApiResult<GitConflictFile> =
-        gitCall("GET", serverUrl, GitWorkspaceRoutes.conflict(id, path), accessToken, null, GitWorkspaceWire::conflict)
-    override suspend fun gitMutation(serverUrl: String, accessToken: String, id: String, change: GitMutation): ApiResult<GitOperation> {
-        GitWorkspacePolicy.validate(change)
-        val body = when (change.action) {
-            GitAction.Checkout -> JsonBody().string("branch", requireNotNull(change.branch)).bool("createIfMissing", false)
-            GitAction.CreateBranch -> JsonBody().string("name", requireNotNull(change.branch)).bool("checkout", true).bool("track", false).bool("resetExisting", false)
-            GitAction.Stage, GitAction.Unstage -> JsonBody().raw("paths", JSONArray(change.paths).toString())
-            GitAction.Commit -> JsonBody().string("message", requireNotNull(change.message)).raw("paths", "[]").bool("amend", false)
-            GitAction.Pull -> JsonBody().string("strategy", change.strategy)
-            GitAction.Push -> JsonBody().bool("saveCredentials", false)
-            GitAction.Resolve -> JsonBody().string("path", requireNotNull(change.conflict).path).string("revision", change.conflict.revision)
-                .string("choice", requireNotNull(change.choice)).apply { change.content?.let { string("content", it) } }
-            GitAction.Continue, GitAction.Abort -> JsonBody().string("operation", requireNotNull(change.operation)).string("action", if (change.action == GitAction.Continue) "continue" else "abort")
-            GitAction.Fetch -> JsonBody()
-            GitAction.DeleteBranch -> null
-        }
-        return gitCall(if (change.action == GitAction.DeleteBranch) "DELETE" else "POST", serverUrl,
-            GitWorkspaceRoutes.mutation(id, change), accessToken, body, GitWire::operation)
-    }
-
-    override suspend fun gitRepositories(serverUrl: String, accessToken: String): ApiResult<List<GitRepository>> =
-        gitCall("GET", serverUrl, GitRoutes.REPOSITORIES, accessToken, null, GitWire::repositories)
-
-    override suspend fun gitRegisterRepository(serverUrl: String, accessToken: String, name: String, path: String): ApiResult<GitRepository> =
-        gitCall("POST", serverUrl, GitRoutes.REPOSITORIES, accessToken,
-            JsonBody().string("name", name.trim()).string("path", path.trim()), GitWire::repository)
-
-    override suspend fun gitBranches(serverUrl: String, accessToken: String, id: String): ApiResult<List<GitBranch>> =
-        gitCall("GET", serverUrl, GitRoutes.branches(id), accessToken, null, GitWire::branches)
-
-    override suspend fun gitStatus(serverUrl: String, accessToken: String, id: String): ApiResult<GitStatus> =
-        gitCall("GET", serverUrl, GitRoutes.status(id), accessToken, null, GitWire::status)
-
-    override suspend fun gitTextFile(serverUrl: String, accessToken: String, id: String, path: String): ApiResult<RemoteTextFile> =
-        gitCall("GET", serverUrl, GitRoutes.textFile(id, path), accessToken, null, GitWire::textFile)
-
-    override suspend fun gitSaveTextFile(serverUrl: String, accessToken: String, id: String, file: RemoteTextFile, content: String): ApiResult<RemoteTextFile> =
-        gitCall("PUT", serverUrl, GitRoutes.textFile(id, file.path), accessToken,
-            JsonBody().string("content", content).string("expectedVersion", file.version)
-                .string("encoding", file.encoding).bool("bom", file.bom), GitWire::textFile)
-
-    override suspend fun gitBuildCredentials(serverUrl: String, accessToken: String): ApiResult<List<GitBuildCredential>> =
-        gitCall("GET", serverUrl, GitBuildRoutes.CREDENTIALS, accessToken, null, GitBuildWire::credentials)
-
-    override suspend fun gitBuildSetCredential(serverUrl: String, accessToken: String, name: String, token: String): ApiResult<GitBuildCredential> =
-        gitCall("POST", serverUrl, GitBuildRoutes.CREDENTIALS, accessToken,
-            JsonBody().string("name", name.trim()).string("token", token), GitBuildWire::credential)
-
-    override suspend fun gitBuildResolve(serverUrl: String, accessToken: String, url: String, reference: String, credentialId: String?): ApiResult<GitBuildResolved> =
-        gitCall("POST", serverUrl, GitBuildRoutes.RESOLVE, accessToken,
-            JsonBody().string("repositoryUrl", url.trim()).string("reference", reference.trim())
-                .string("credentialId", credentialId), GitBuildWire::resolved)
-
-    override suspend fun gitBuildRefs(serverUrl: String, accessToken: String, url: String, credentialId: String?): ApiResult<List<GitBuildRef>> =
-        gitCall("POST", serverUrl, GitBuildRoutes.REFS, accessToken,
-            JsonBody().string("repositoryUrl", url.trim()).string("reference", "main")
-                .string("credentialId", credentialId), GitBuildWire::refs)
-
-    override suspend fun gitBuilds(serverUrl: String, accessToken: String): ApiResult<List<GitBuildOperation>> =
-        gitCall("GET", serverUrl, GitBuildRoutes.ROOT, accessToken, null, GitBuildWire::operations)
-
-    override suspend fun gitBuildStart(serverUrl: String, accessToken: String, request: GitBuildRequest, key: String): ApiResult<GitBuildOperation> =
-        when (val result = execute("POST", serverUrl, GitBuildRoutes.ROOT, accessToken,
-            JsonBody().string("repositoryUrl", request.repositoryUrl).string("reference", request.reference)
-                .string("commitSha", request.commitSha).string("contextDirectory", request.contextDirectory)
-                .string("dockerfile", request.dockerfile).string("credentialId", request.credentialId),
-            mapOf("Idempotency-Key" to key))) {
-            is ApiResult.Success -> runCatching { GitBuildWire.operation(result.value) }
-                .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed Git build response.") })
-            is ApiResult.Problem -> result
-            is ApiResult.Transport -> result
-        }
-
-    override suspend fun gitBuildGet(serverUrl: String, accessToken: String, id: String): ApiResult<GitBuildOperation> =
-        gitCall("GET", serverUrl, GitBuildRoutes.operation(id), accessToken, null, GitBuildWire::operation)
-
-    override suspend fun gitBuildCancel(serverUrl: String, accessToken: String, id: String): ApiResult<GitBuildOperation> =
-        gitCall("POST", serverUrl, GitBuildRoutes.cancel(id), accessToken, JsonBody(), GitBuildWire::operation)
-
-    override suspend fun deployGitBuild(serverUrl: String, accessToken: String, applicationId: String,
-        build: GitBuildOperation, expectedUpdatedAt: String, key: String): ApiResult<DeploymentOperation> {
-        val source = JSONObject().put("imageReference", build.imageReference).put("gitBuildId", build.id).toString()
-        return deploymentMutation("POST", serverUrl, ApplicationDeploymentRoutes.deploy(applicationId), accessToken,
-            JsonBody().raw("source", source).string("expectedUpdatedAt", expectedUpdatedAt).bool("confirmed", true), key, ApplicationDeploymentWire::acceptedOperation)
-    }
-
-    private suspend fun <T> gitCall(method: String, serverUrl: String, route: String, accessToken: String,
+    private suspend fun <T> textFileCall(method: String, serverUrl: String, route: String, accessToken: String,
         body: JsonBody?, parse: (String) -> T): ApiResult<T> = when (val result = execute(method, serverUrl, route, accessToken, body)) {
         is ApiResult.Success -> runCatching { parse(result.value) }
-            .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed Git response.") })
+            .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed text file response.") })
         is ApiResult.Problem -> result
         is ApiResult.Transport -> result
     }

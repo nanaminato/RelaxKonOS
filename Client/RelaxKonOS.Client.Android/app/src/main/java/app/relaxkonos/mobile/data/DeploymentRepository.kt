@@ -187,17 +187,6 @@ class DeploymentRepository(
     suspend fun createImageDefinition(owner: SessionState.Active, definition: ImageDeploymentDefinition, key: String): ApiResult<DeploymentApplication> =
         read(owner) { url, token -> gateway.createImageDeployment(url, token, definition, key) }
 
-    suspend fun deployGitBuild(owner: SessionState.Active, applicationId: String, build: GitBuildOperation, key: String): ApiResult<DeploymentOperation> {
-        return when (val current = snapshot(owner, applicationId)) {
-            is ApiResult.Success -> if (current.value.application.id != applicationId || current.value.application.sourceKind != "image") ApiResult.Problem(409, "application-deployment.definition_conflict", null)
-                else submitRevision(owner, current.value.application) { url, token, dispatch ->
-                    dispatch(); gateway.deployGitBuild(url, token, applicationId, build, current.value.application.updatedAt, key)
-                }.result
-            is ApiResult.Problem -> current
-            is ApiResult.Transport -> current
-        }
-    }
-
     suspend fun createArchiveDefinition(owner: SessionState.Active, definition: ArchiveDeploymentDefinition, key: String): ApiResult<DeploymentApplication> =
         read(owner) { url, token -> gateway.createArchiveDeployment(url, token, definition, key) }
 

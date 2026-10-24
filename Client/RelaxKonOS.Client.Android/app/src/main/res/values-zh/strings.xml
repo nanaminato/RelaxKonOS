@@ -30,12 +30,12 @@
     <string name="error_elevation_required">此操作需要管理员密码。</string>
     <string name="error_generic">服务器拒绝了该请求。</string>
     <string name="error_home_directory_required">该服务器账户没有经过验证的绝对家目录。请让服务器管理员修复用户配置文件。</string>
-    <string name="error_identity_not_eligible">该服务器账户不满足服务器普通文件、终端或 Git 操作的执行条件。请检查账户身份与用户目录。</string>
+    <string name="error_identity_not_eligible">该服务器账户不满足服务器普通文件、终端操作的执行条件。请检查账户身份与用户目录。</string>
     <string name="error_identity_not_executable">服务器当前无法以该服务器账户执行普通操作：User Mode 下它只能以自身的服务器账户执行，其他部署需要先让管理员确认特权助手已安装并运行。</string>
     <string name="error_invalid_credential">账户或密码不正确。</string>
     <string name="error_login_rate_limited">登录尝试过于频繁，请稍后再试。</string>
     <string name="error_performance_not_ready">主机指标尚未就绪。</string>
-    <string name="error_reserved_identity">该 Linux 保留账户不能执行普通文件、终端或 Git 操作。请使用常规服务器账户；受保护文件可通过管理员授权操作。</string>
+    <string name="error_reserved_identity">该 Linux 保留账户不能执行普通文件、终端操作。请使用常规服务器账户；受保护文件可通过管理员授权操作。</string>
     <string name="error_system_account">该 Linux 系统账户的 UID 小于 1000，不能在本服务器执行普通操作。请使用常规服务器账户登录。</string>
     <string name="error_unauthorized">会话已过期，请重新登录。</string>
     <string name="error_windows_profile_required">Windows 普通操作需要服务器上的本地账户、有效 SID 和用户配置文件目录。请检查服务器上该账户的 Windows 用户配置文件。</string>

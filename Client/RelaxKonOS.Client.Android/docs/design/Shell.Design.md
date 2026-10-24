@@ -32,7 +32,7 @@ Android 客户端采用 **原生 Mobile Shell**：能在手机和平板上登录
 能力可见性由**登录后拿到的 `ServerDescriptorDto.capabilities`** 决定：能力缺失时入口不出现，不用灰色占位。
 
 能力是**部署事实**，回答"这台服务器有没有这个域"。它与**登录身份**是否被允许执行普通操作是两件事：`LoginResponse.executionEligibility`
-（`ServerExecutionEligibilityDto`）回答后者，同一台服务器对 root 与对普通账户的答案不同。Linux System Mode 的 root 会话普通 worker 不可用，但 `privilegedFilesAvailable=true` 表示受管文件操作直接走 Helper；不能因此把文件入口判为不可用。Terminal 与 Git 仍须分别判断普通执行资格。`server.files` 存在并不代表当前身份能用它——
+（`ServerExecutionEligibilityDto`）回答后者，同一台服务器对 root 与对普通账户的答案不同。Linux System Mode 的 root 会话普通 worker 不可用，但 `privilegedFilesAvailable=true` 表示受管文件操作直接走 Helper；不能因此把文件入口判为不可用。Terminal 仍须判断普通执行资格。`server.files` 存在并不代表当前身份能用它——
 入口照常出现；当普通执行和特权文件路由都不可用时，首页先显示服务端给的原因（`ExecutionEligibilityNotice`）。
 客户端只消费服务端给的稳定原因码（`ExecutionEligibilityReasons`），文案一律取自本工程自己的 Android 字符串资源。
 
@@ -100,7 +100,6 @@ Android 客户端采用 **原生 Mobile Shell**：能在手机和平板上登录
 | `manage/monitor`、`manage/processes` | 性能与进程 |
 | `manage/deployments`、`manage/deployments/detail` | 应用部署列表与详情 |
 | `manage/docker` | Docker 与 Compose |
-| `manage/git` | Git 编辑与构建 |
 | `manage/websites` | Nginx、站点管理与网站发布 |
 | `manage/certificates` | 独立证书管理与任务恢复 |
 | `manage/tunnels` | FRP 客户端/frps、运行时与同步请求核实 |

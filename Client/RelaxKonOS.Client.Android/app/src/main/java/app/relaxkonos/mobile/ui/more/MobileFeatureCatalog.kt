@@ -15,7 +15,6 @@ object MobileFeatureCatalog {
         MobileFeature(R.string.operations_title,R.string.operations_subtitle,Routes.MANAGE_OPERATIONS,setOf(ServerCapabilities.APPLICATION_DEPLOYMENTS,ServerCapabilities.WEB_SERVER,ServerCapabilities.EVENT_ALERTS,ServerCapabilities.CERTIFICATES,ServerCapabilities.TUNNELS,ServerCapabilities.PROXY,ServerCapabilities.FIREWALL)),
         MobileFeature(R.string.deployments_title,R.string.deployments_subtitle,Routes.MANAGE_DEPLOYMENTS,setOf(ServerCapabilities.APPLICATION_DEPLOYMENTS)),
         MobileFeature(R.string.docker_title,R.string.docker_subtitle,Routes.MANAGE_DOCKER,setOf(ServerCapabilities.DOCKER)),
-        MobileFeature(R.string.git_title,R.string.git_subtitle,Routes.MANAGE_GIT,setOf(ServerCapabilities.GIT)),
         MobileFeature(R.string.websites_title,R.string.websites_subtitle,Routes.MANAGE_WEBSITES,setOf(ServerCapabilities.WEB_SERVER)),
         MobileFeature(R.string.certificates_title,R.string.certificates_subtitle,Routes.MANAGE_CERTIFICATES,setOf(ServerCapabilities.CERTIFICATES)),
         MobileFeature(R.string.tunnels_title,R.string.tunnels_subtitle,Routes.MANAGE_TUNNELS,setOf(ServerCapabilities.TUNNELS)),

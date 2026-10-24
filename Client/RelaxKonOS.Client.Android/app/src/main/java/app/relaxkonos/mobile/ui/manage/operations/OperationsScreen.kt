@@ -74,8 +74,6 @@ fun OperationsScreen(
     onOpenTunnels: () -> Unit,
     onOpenProxy: (String?) -> Unit,
     onOpenCompose: (String) -> Unit,
-    onOpenGitBuild: (String) -> Unit,
-    onOpenGit: () -> Unit,
     onOpenScript: (String) -> Unit,
     onOpenDocker: () -> Unit,
     onOpenGuardian: () -> Unit,
@@ -92,7 +90,7 @@ fun OperationsScreen(
     })
     OperationsContent(viewModel, owner, onBack, startOnAlerts, onStartOnAlertsConsumed,
         onOpenDeployment, onOpenWebsite, onOpenWebServers, onOpenCertificates, onOpenTunnels,
-        onOpenProxy, onOpenCompose, onOpenGitBuild, onOpenGit, onOpenScript, onOpenDocker,
+        onOpenProxy, onOpenCompose, onOpenScript, onOpenDocker,
         onOpenGuardian, onOpenDockerResources, onOpenDockerControl, onOpenSmb, onOpenFirewall, modifier)
 }
 
@@ -110,8 +108,6 @@ internal fun OperationsContent(
     onOpenTunnels: () -> Unit = {},
     onOpenProxy: (String?) -> Unit = {},
     onOpenCompose: (String) -> Unit = {},
-    onOpenGitBuild: (String) -> Unit = {},
-    onOpenGit: () -> Unit = {},
     onOpenScript: (String) -> Unit = {},
     onOpenDocker: () -> Unit = {},
     onOpenGuardian: () -> Unit = {},
@@ -133,8 +129,6 @@ internal fun OperationsContent(
             OperationDestination.Deployment -> onOpenDeployment(requireNotNull(target.id))
             OperationDestination.Website -> onOpenWebsite(requireNotNull(target.id))
             OperationDestination.Compose -> onOpenCompose(requireNotNull(target.id))
-            OperationDestination.GitWorkspace -> onOpenGit()
-            OperationDestination.GitBuild -> onOpenGitBuild(requireNotNull(target.id))
             OperationDestination.Script -> onOpenScript(requireNotNull(target.id))
             OperationDestination.WebServer -> onOpenWebServers()
             OperationDestination.Certificate -> onOpenCertificates(target.id)
@@ -229,10 +223,6 @@ internal fun OperationsContent(
             Text(stringResource(R.string.mihomo_pending), color = MaterialTheme.colorScheme.error)
             TextButton(onClick = { onOpenProxy(null) }) { Text(stringResource(R.string.mihomo_title)) }
         }
-        if (visible) state.pendingGit.forEach {
-            Text(stringResource(R.string.gw_unknown), color = MaterialTheme.colorScheme.error)
-            TextButton(onClick = onOpenGit) { Text(stringResource(R.string.git_title)) }
-        }
         if (visible) state.pendingDockerResources.forEach {
             Text(stringResource(R.string.docker_resources_pending), color = MaterialTheme.colorScheme.error)
             Text(app.relaxkonos.mobile.ui.manage.docker.resourceActionLabel(it.action))
@@ -280,7 +270,6 @@ internal fun OperationsContent(
                     OperationDomain.Deployment -> R.string.operations_deployment
                     OperationDomain.Website -> R.string.operations_website
                     OperationDomain.Compose -> R.string.operations_compose
-                    OperationDomain.GitBuild -> R.string.operations_git_build
                     OperationDomain.Script -> R.string.operations_script
                     OperationDomain.Backup -> R.string.operations_backup
                     OperationDomain.Installation -> R.string.operations_installation

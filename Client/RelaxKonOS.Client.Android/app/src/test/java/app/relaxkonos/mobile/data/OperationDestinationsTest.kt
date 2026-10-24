@@ -6,12 +6,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class OperationDestinationsTest {
-    @Test fun `Git installation opens the native workspace only for the current capability and owner`() {
-        val owner = owner(ServerCapabilities.GIT)
-        assertEquals(OperationTarget(OperationDestination.GitWorkspace), OperationDestinations.operation(owner, reference(OperationDomain.Installation, "Git")))
-        assertNull(OperationDestinations.installation(owner(), "Git"))
-        assertNull(OperationDestinations.operation(owner, reference(OperationDomain.Installation, "Git").copy(account = "other")))
+    @Test fun `server Git capability cannot restore removed mobile installation or build destinations`() {
+        val owner = owner("server.git")
+        assertNull(OperationDestinations.installation(owner, "Git"))
+        assertNull(OperationDestinations.operation(owner, reference(OperationDomain.Installation, "Git")))
+        assertFalse(InstallationService.entries.any { it.wire == "git" })
+        assertFalse(OperationDestination.entries.any { it.name.startsWith("Git") })
     }
+
     private fun owner(vararg capabilities: String) = SessionState.Active("server", "https://example.test", "alice", "workspace",
         capabilities.toSet(), "linux", ExecutionEligibility(true, null, true), workspaceId = "11111111-1111-1111-1111-111111111111")
     private fun reference(domain: OperationDomain, resource: String = "target") = OperationReference("server", "alice", domain, resource, "original-op", 0)

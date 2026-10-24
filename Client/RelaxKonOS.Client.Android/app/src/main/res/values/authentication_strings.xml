@@ -58,7 +58,7 @@
     <string name="elevation_title">Administrator confirmation</string>
     <string name="elevation_use_fingerprint">Use fingerprint</string>
     <string name="elevation_vault_unavailable">Saving an administrator password needs a strong fingerprint sensor, so it is unavailable on this device.</string>
-    <string name="execution_root_files_available">File operations are available through the privileged Helper. Ordinary terminal and Git operations are unavailable for this account.</string>
+    <string name="execution_root_files_available">File operations are available through the privileged Helper. Ordinary terminal operations are unavailable for this account.</string>
     <string name="login_action_connect">Connect</string>
     <string name="login_action_connecting">Connecting…</string>
     <string name="login_action_sign_in">Sign in</string>

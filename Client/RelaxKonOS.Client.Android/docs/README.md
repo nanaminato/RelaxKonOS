@@ -10,6 +10,7 @@
 | [Shell、认证与安全](design/Shell.Design.md) | 路由、返回栈、会话、提权与凭据安全 |
 | [登录与本地凭据](design/LoginCredentials.Design.md) | 身份识别、凭据保存与失效、密码生命周期 |
 | [移动端包方案](design/ApplicationPackages.Design.md) | 包类型、权限、版本、更新与移除，以及桌面包的支持范围 |
+| [移动端功能精简](design/MobileSimplification.md) | 精简判断、当前移除边界及待评估建议 |
 | [支持范围](design/SupportScope.md) | 应用组织、部署范围、平台限制与验证要求 |
 | [Windows 设备密钥](design/OwnerDeviceKeys.Design.md) | 工作站配对、Keystore 签名登录与授权边界 |
 
@@ -20,7 +21,7 @@
 | [应用内功能导航](features/ApplicationNavigation.md) | 管理应用的分类、返回行为、状态保留与操作范围 |
 | [服务器中心](features/ServerCenter.md) | SSH 信任、文件与终端、隧道、安装及结果核实 |
 | [登录页 SSH 隧道](features/LoginSshTunnel.md) | SSH 认证、登录、连接配置、会话与证书信任 |
-| [文件与 Git 共用编辑器](features/TextEditor.md) | 编码与换行、查找替换、条件保存、冲突与离页保护 |
+| [文件文本编辑器](features/TextEditor.md) | 编码与换行、查找替换、条件保存、冲突与离页保护 |
 | [使用记忆](features/Settings.md#使用记忆) | 提权用户名、文件选择位置、本地隔离与清理 |
 | [文件与图片](features/Files.md) | 浏览、多选、复制移动、属性与权限、图片预览 |
 | [文件传输](features/FileTransfers.md) | 分块上传、源文件暂存、断点续传、后台传输与清理 |
@@ -39,7 +40,6 @@
 | [宿主防火墙](features/Firewall.md) | 状态、默认策略、规则、提权与变更结果核实 |
 | [FRP 隧道与运行时](features/Tunnels.md) | 运行时安装、隧道与服务端配置、维护、审计与恢复 |
 | [网站发布](features/WebPublishing.md) | 诊断、HTTPS 确认、发布恢复与访问检查 |
-| [Git 工作区与构建](features/Git.md) | 分支、提交、差异、冲突、Git 安装、隔离构建与发布 |
 | [终端、脚本与守护](features/TerminalAutomation.md) | Server 与 SSH 会话、终端布局、脚本与远端任务 |
 | [进程守护](features/Guardian.md) | 工作负载定义、运行身份、健康检查、状态与日志 |
 | [任务管理与监控](features/TaskManager.md) | 实时指标、趋势、进程管理、排序、分页与降级显示 |
@@ -54,7 +54,6 @@
 | 文档 | 内容 |
 | --- | --- |
 | [构建、调试与发布](development/android-release.md) | 本地环境、签名机、APK/AAB、导入发布与渠道证书 |
-| [Ubuntu Git 构建环境](development/GitBuild.Ubuntu.md) | rootless BuildKit 的宿主准备、配置与受限执行 |
 | [验证要求](development/Verification.md) | 设备、宿主、文件传输及故障场景的检查与预期行为 |
 | [界面与流程专项审查](development/UiReview.md) | 本次用户要求的逐页审查流程与总进度 |
 

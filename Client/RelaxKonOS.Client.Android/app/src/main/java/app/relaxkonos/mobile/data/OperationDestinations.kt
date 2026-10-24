@@ -6,7 +6,7 @@ import app.relaxkonos.mobile.core.net.OperationalAlert
 import app.relaxkonos.mobile.core.net.OperationalEvent
 import app.relaxkonos.mobile.core.net.ServerCapabilities
 
-enum class OperationDestination { Deployment, Website, Compose, GitBuild, GitWorkspace, Script, WebServer, Certificate, Proxy, Tunnels, Docker, Guardian, Firewall, Smb, DockerControl }
+enum class OperationDestination { Deployment, Website, Compose, Script, WebServer, Certificate, Proxy, Tunnels, Docker, Guardian, Firewall, Smb, DockerControl }
 data class OperationTarget(val destination: OperationDestination, val id: String? = null)
 
 /** Only implemented native destinations; server-provided URLs and commands never become navigation. */
@@ -15,7 +15,6 @@ object OperationDestinations {
         OperationDomain.Deployment -> ServerCapabilities.APPLICATION_DEPLOYMENTS
         OperationDomain.Website, OperationDomain.WebServer -> ServerCapabilities.WEB_SERVER
         OperationDomain.Compose -> ServerCapabilities.DOCKER
-        OperationDomain.GitBuild -> ServerCapabilities.GIT
         OperationDomain.Script -> ServerCapabilities.GUARDIAN
         OperationDomain.Backup -> ServerCapabilities.BACKUP_RECOVERY
         OperationDomain.Certificate -> ServerCapabilities.CERTIFICATES
@@ -31,7 +30,6 @@ object OperationDestinations {
             OperationDomain.Deployment, OperationDomain.Backup -> OperationTarget(OperationDestination.Deployment, reference.resourceId)
             OperationDomain.Website -> OperationTarget(OperationDestination.Website, reference.resourceId)
             OperationDomain.Compose -> OperationTarget(OperationDestination.Compose, reference.resourceId)
-            OperationDomain.GitBuild -> OperationTarget(OperationDestination.GitBuild, reference.operationId)
             OperationDomain.Script -> OperationTarget(OperationDestination.Script, reference.operationId)
             OperationDomain.WebServer -> OperationTarget(OperationDestination.WebServer)
             OperationDomain.Certificate -> OperationTarget(OperationDestination.Certificate, reference.operationId)
@@ -48,7 +46,6 @@ object OperationDestinations {
         val kind = InstallationService.entries.firstOrNull { it.name == service } ?: return null
         if (kind.capability !in owner.capabilities) return null
         return when (kind) {
-            InstallationService.Git -> OperationTarget(OperationDestination.GitWorkspace)
             InstallationService.Docker -> OperationTarget(OperationDestination.DockerControl)
             InstallationService.Smb -> OperationTarget(OperationDestination.Smb)
             InstallationService.Nginx -> OperationTarget(OperationDestination.WebServer)

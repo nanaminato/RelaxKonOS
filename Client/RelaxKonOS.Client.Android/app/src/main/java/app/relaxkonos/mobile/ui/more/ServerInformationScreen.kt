@@ -118,7 +118,6 @@ private val serverFeatureLabels = listOf(
     ServerCapabilities.APPLICATION_DEPLOYMENTS to R.string.server_feature_deployments,
     ServerCapabilities.WEB_SERVER to R.string.server_feature_web_server,
     ServerCapabilities.CERTIFICATES to R.string.server_feature_certificates,
-    ServerCapabilities.GIT to R.string.server_feature_git,
     ServerCapabilities.EVENT_ALERTS to R.string.server_feature_alerts,
     ServerCapabilities.BACKUP_RECOVERY to R.string.server_feature_backup_recovery,
     ServerCapabilities.POSIX_PERMISSIONS to R.string.server_feature_posix_permissions,

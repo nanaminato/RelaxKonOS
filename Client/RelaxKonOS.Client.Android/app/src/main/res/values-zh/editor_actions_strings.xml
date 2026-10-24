@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="editor_save">保存文件</string>
+    <string name="editor_discard_draft">使用服务器文件</string>
+    <string name="editor_compare_latest">按最新文件审阅草稿</string>
+    <string name="editor_preview_diff">查看差异</string>
+</resources>

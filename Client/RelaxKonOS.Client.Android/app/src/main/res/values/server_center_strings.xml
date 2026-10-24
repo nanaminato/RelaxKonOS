@@ -37,7 +37,6 @@
     <string name="installation_recover_help">Enter the original operation ID. This queries the host without starting another installation.</string>
     <string name="installation_service_docker">Docker</string>
     <string name="installation_service_frp">FRP</string>
-    <string name="installation_service_git">Git</string>
     <string name="installation_service_singbox">sing-box</string>
     <string name="installation_service_mihomo">Mihomo</string>
     <string name="installation_service_nginx">Nginx</string>
@@ -154,7 +153,6 @@
     <string name="server_feature_file_services">File sharing services</string>
     <string name="server_feature_files">File management</string>
     <string name="server_feature_firewall">Firewall management</string>
-    <string name="server_feature_git">Git repositories</string>
     <string name="server_feature_guardian">Workload supervision</string>
     <string name="server_feature_metrics">Performance monitoring</string>
     <string name="server_feature_posix_permissions">POSIX file permissions</string>

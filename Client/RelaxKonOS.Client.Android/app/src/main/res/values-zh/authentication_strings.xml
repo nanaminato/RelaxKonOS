@@ -54,7 +54,7 @@
     <string name="elevation_title">管理员确认</string>
     <string name="elevation_use_fingerprint">使用指纹确认</string>
     <string name="elevation_vault_unavailable">保存管理员密码需要强指纹传感器，本机不支持。</string>
-    <string name="execution_root_files_available">文件操作可通过受限特权 Helper 使用；此账户仍不能执行普通终端和 Git 操作。</string>
+    <string name="execution_root_files_available">文件操作可通过受限特权 Helper 使用；此账户仍不能执行普通终端操作。</string>
     <string name="login_action_connect">连接</string>
     <string name="login_action_connecting">连接中…</string>
     <string name="login_action_sign_in">登录</string>

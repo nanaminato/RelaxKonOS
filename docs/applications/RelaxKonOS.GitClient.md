@@ -575,7 +575,7 @@ Server、Helper 使用当前 user-execution 1.5 协议，`FileReadText` 在实�
 
 仓库锁只协调 Server 内请求，客户端预读和文件条件写入不提供跨外部 Git/整个仓库的原子事务。
 
-`config --list --null` 仅用于有效配置摘要，封闭 Git policy 仍拒绝任意 config 写入。配置可含凭据，原始输出不返回 HTTP DTO、不进入诊断日志；Android 交互和未知标记由 [Android Git 文档](../../Client/RelaxKonOS.Client.Android/docs/features/Git.md) 维护。
+`config --list --null` 仅用于有效配置摘要，封闭 Git policy 仍拒绝任意 config 写入。配置可含凭据，原始输出不返回 HTTP DTO、不进入诊断日志；Android 当前支持边界由 [移动端功能精简](../../Client/RelaxKonOS.Client.Android/docs/design/MobileSimplification.md) 维护。
 
 ## 标题栏菜单与工作区扩展（2026-10-24）
 

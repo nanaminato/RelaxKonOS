@@ -52,7 +52,7 @@ class TextEditorViewModelTest {
         return session.state.value as SessionState.Active
     }
     @Test fun `refresh of a new draft preserves content and format until explicit adoption`() = runTest {
-        editor.start(login(), null, null)
+        editor.start(login(), null)
         editor.destination = "/new"
         editor.edit(TextFieldValue("local draft")); editor.format("utf-16le")
         editor.reload(); advanceUntilIdle()
@@ -64,7 +64,7 @@ class TextEditorViewModelTest {
         assertNull(editor.latest); assertTrue(editor.dirty)
     }
     @Test fun `resolved conflict shows comparison but a subsequent read failure remains visible`() = runTest {
-        editor.start(login(), "/old", null); advanceUntilIdle()
+        editor.start(login(), "/old"); advanceUntilIdle()
         editor.edit(TextFieldValue("local draft"))
         onSave = { ApiResult.Problem(409, "text-file-changed", null) }
         onRead = { ApiResult.Success(file.copy(path = it, content = "server revision", version = "b".repeat(64))) }
@@ -77,7 +77,7 @@ class TextEditorViewModelTest {
         assertEquals("server revision", editor.latest?.content); assertEquals("local draft", editor.value.text)
     }
     @Test fun `known create rejection refreshes a corrected destination rather than the rejected path`() = runTest {
-        editor.start(login(), null, null)
+        editor.start(login(), null)
         editor.destination = "/rejected"; editor.edit(TextFieldValue("local"))
         onCreate = { ApiResult.Problem(403, "access-denied", null) }
         editor.save(); advanceUntilIdle()
@@ -88,7 +88,7 @@ class TextEditorViewModelTest {
         assertEquals(1, creates)
     }
     @Test fun `unknown save as fixes the verification target and prevents write replay`() = runTest {
-        editor.start(login(), "/old", null); advanceUntilIdle()
+        editor.start(login(), "/old"); advanceUntilIdle()
         editor.edit(TextFieldValue("local")); editor.destination = "/new"
         editor.save(true); advanceUntilIdle()
         assertTrue(editor.unknown); assertEquals("/new", editor.verificationPath)
@@ -99,7 +99,7 @@ class TextEditorViewModelTest {
         assertTrue(editor.unknown); assertEquals("/new", editor.latest?.path)
     }
     @Test fun `matching readback resolves unknown create without another write`() = runTest {
-        editor.start(login(), null, null)
+        editor.start(login(), null)
         editor.destination = "/new"; editor.edit(TextFieldValue("local")); editor.format("utf-16le")
         editor.save(); advanceUntilIdle()
         assertTrue(editor.unknown); assertEquals(1, creates)
@@ -110,7 +110,7 @@ class TextEditorViewModelTest {
         assertNull(editor.verificationPath); assertEquals(1, creates)
     }
     @Test fun `late read from a cleared identity cannot replace the new session draft`() = runTest {
-        editor.start(login(), null, null)
+        editor.start(login(), null)
         editor.destination = "/old-target"; editor.edit(TextFieldValue("old draft"))
         val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
         onRead = { path ->
@@ -121,7 +121,7 @@ class TextEditorViewModelTest {
         editor.reload(); runCurrent(); entered.await()
         session.clearSession(); runCurrent()
         assertEquals("", editor.value.text); assertEquals("", editor.destination); assertFalse(editor.busy)
-        editor.start(login(), null, null)
+        editor.start(login(), null)
         editor.destination = "/new-target"; editor.edit(TextFieldValue("new draft"))
         release.complete(Unit); advanceUntilIdle()
         assertEquals("new draft", editor.value.text); assertEquals("/new-target", editor.destination)
@@ -129,7 +129,7 @@ class TextEditorViewModelTest {
         assertEquals(0, creates)
     }
     @Test fun `read exception retains draft while create exception requires verification`() = runTest {
-        editor.start(login(), null, null)
+        editor.start(login(), null)
         editor.destination = "/new"; editor.edit(TextFieldValue("local"))
         onRead = { throw IllegalStateException("private detail") }
         editor.reload(); advanceUntilIdle()
@@ -150,8 +150,8 @@ class TextEditorViewModelTest {
             withContext(NonCancellable) { release.await() }
             ApiResult.Success(file.copy(path = path))
         }
-        editor.start(active, "/old", null); runCurrent(); entered.await()
-        editor.start(active, null, null)
+        editor.start(active, "/old"); runCurrent(); entered.await()
+        editor.start(active, null)
         editor.destination = "/new"; editor.edit(TextFieldValue("new draft"))
         release.complete(Unit); advanceUntilIdle()
         assertEquals("new draft", editor.value.text); assertEquals("/new", editor.destination)
@@ -174,8 +174,8 @@ class TextEditorViewModelTest {
                 ApiResult.Success(file.copy(path = path))
             }
         }
-        editor.start(active, "/old", null); runCurrent(); oldEntered.await()
-        editor.start(active, "/new", null); runCurrent()
+        editor.start(active, "/old"); runCurrent(); oldEntered.await()
+        editor.start(active, "/new"); runCurrent()
         oldRelease.complete(Unit); runCurrent(); newEntered.await()
         assertTrue(editor.busy); assertFalse(editor.failed); assertNull(editor.baseline)
         newRelease.complete(Unit); advanceUntilIdle()
@@ -183,7 +183,7 @@ class TextEditorViewModelTest {
     }
 
     @Test fun `busy gate blocks duplicate reads before the coroutine is dispatched`() = runTest {
-        editor.start(login(), "/old", null)
+        editor.start(login(), "/old")
         assertTrue(editor.busy)
         editor.reload(); editor.reload()
         advanceUntilIdle()
@@ -193,7 +193,7 @@ class TextEditorViewModelTest {
 
     @Test fun `late create receipt cannot mark a reopened editor as saved`() = runTest {
         val active = login()
-        editor.start(active, null, null)
+        editor.start(active, null)
         editor.destination = "/created"; editor.edit(TextFieldValue("old draft"))
         val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
         onCreate = {
@@ -202,7 +202,7 @@ class TextEditorViewModelTest {
             ApiResult.Success(file.copy(path = "/created", content = "old draft"))
         }
         editor.save(); runCurrent(); entered.await()
-        editor.clear(); editor.start(active, null, null)
+        editor.clear(); editor.start(active, null)
         editor.destination = "/new"; editor.edit(TextFieldValue("new draft"))
         release.complete(Unit); advanceUntilIdle()
         assertEquals("new draft", editor.value.text); assertEquals("/new", editor.destination)

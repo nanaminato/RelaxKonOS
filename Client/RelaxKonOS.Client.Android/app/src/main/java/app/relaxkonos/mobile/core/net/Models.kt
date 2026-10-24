@@ -14,7 +14,7 @@ data class AuthTokens(
 data class ServerDescriptor(val platform: String, val capabilities: Set<String>, val privilegedOperations: Boolean = false)
 
 /**
- * Whether the identity that just signed in may run ordinary operations (files, terminal, Git) on the
+ * Whether the identity that just signed in may run ordinary operations (files, terminal) on the
  * host. A per-login fact, not a deployment fact: the same server answers differently for root than for
  * a regular account. A root session may have [privilegedFilesAvailable] even when [available]
  * is false because its file operations use the closed privileged Helper route.
@@ -241,7 +241,6 @@ object ServerCapabilities {
     const val POSIX_PERMISSIONS = "server.posix.permissions"
     const val GUARDIAN = "server.guardian"
     const val DOCKER = "server.docker"
-    const val GIT = "server.git"
     const val APPLICATION_DEPLOYMENTS = "server.application-deployments"
     const val WEB_SERVER = "server.web-server"
     const val CERTIFICATES = "server.certificates"

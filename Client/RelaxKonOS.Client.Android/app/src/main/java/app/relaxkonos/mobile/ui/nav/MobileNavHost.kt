@@ -41,7 +41,6 @@ import app.relaxkonos.mobile.ui.manage.ManageScreen
 import app.relaxkonos.mobile.ui.manage.ManageViewModel
 import app.relaxkonos.mobile.ui.manage.deployments.DeploymentsScreen
 import app.relaxkonos.mobile.ui.manage.docker.DockerScreen
-import app.relaxkonos.mobile.ui.manage.git.GitScreen
 import app.relaxkonos.mobile.ui.manage.guardian.GuardianScreen
 import app.relaxkonos.mobile.ui.manage.scripts.ScriptsScreen
 import app.relaxkonos.mobile.ui.manage.monitor.MonitorScreen
@@ -91,8 +90,6 @@ fun MobileNavHost(
                     initialStack = taskTarget, onBack = { navigator.pop() },
                     onOpenApplication = { taskTarget = it; navigator.push(Routes.MANAGE_DEPLOYMENT_DETAIL) },
                     onOpenManagedProxy = { taskTarget = null; navigator.push(Routes.MANAGE_PROXY) }, modifier = Modifier.fillMaxSize())
-            Routes.MANAGE_GIT -> GitScreen(owner = session, onBack = { navigator.pop() },
-                initialBuildId = taskTarget, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_WEBSITES -> WebsitesScreen(onBack = { navigator.pop() },
                 initialApplicationId = taskTarget, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_GUARDIAN -> GuardianScreen(owner = session, onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
@@ -120,8 +117,6 @@ fun MobileNavHost(
                 onOpenFirewall = { taskTarget = null; navigator.push(Routes.MANAGE_FIREWALL) },
                 onOpenProxy = { taskTarget = it; navigator.push(Routes.MANAGE_PROXY) },
                 onOpenCompose = { taskTarget = it; navigator.push(Routes.MANAGE_DOCKER) },
-                onOpenGit = { taskTarget = null; navigator.push(Routes.MANAGE_GIT) },
-                onOpenGitBuild = { taskTarget = it; navigator.push(Routes.MANAGE_GIT) },
                 onOpenScript = { taskTarget = it; navigator.push(Routes.MANAGE_SCRIPTS) },
                 onOpenDocker = { taskTarget = null; navigator.push(Routes.MANAGE_DOCKER) },
                 onOpenGuardian = { taskTarget = null; navigator.push(Routes.MANAGE_GUARDIAN) },
@@ -201,7 +196,6 @@ private fun ManageDestination(navigator: MobileNavigator, layoutState: LayoutSta
                 onOpenMonitor = { viewModel.openPane(Routes.MANAGE_MONITOR) },
                 onOpenDeployments = { clearTaskTarget(); navigator.push(Routes.MANAGE_DEPLOYMENTS) },
                 onOpenDocker = { clearTaskTarget(); navigator.push(Routes.MANAGE_DOCKER) },
-                onOpenGit = { clearTaskTarget(); navigator.push(Routes.MANAGE_GIT) },
                 onOpenWebsites = { clearTaskTarget(); navigator.push(Routes.MANAGE_WEBSITES) },
             onOpenCertificates = { clearTaskTarget(); navigator.push(Routes.MANAGE_CERTIFICATES) },
                 onOpenTunnels = { clearTaskTarget(); navigator.push(Routes.MANAGE_TUNNELS) },
@@ -235,7 +229,6 @@ private fun ManageDestination(navigator: MobileNavigator, layoutState: LayoutSta
             onOpenMonitor = { navigator.push(Routes.MANAGE_MONITOR) },
             onOpenDeployments = { clearTaskTarget(); navigator.push(Routes.MANAGE_DEPLOYMENTS) },
             onOpenDocker = { clearTaskTarget(); navigator.push(Routes.MANAGE_DOCKER) },
-            onOpenGit = { clearTaskTarget(); navigator.push(Routes.MANAGE_GIT) },
             onOpenWebsites = { clearTaskTarget(); navigator.push(Routes.MANAGE_WEBSITES) },
             onOpenCertificates = { clearTaskTarget(); navigator.push(Routes.MANAGE_CERTIFICATES) },
             onOpenTunnels = { clearTaskTarget(); navigator.push(Routes.MANAGE_TUNNELS) },

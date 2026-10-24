@@ -45,7 +45,6 @@ fun ManageScreen(
     onOpenMonitor: () -> Unit,
     onOpenDeployments: () -> Unit,
     onOpenDocker: () -> Unit,
-    onOpenGit: () -> Unit,
     onOpenWebsites: () -> Unit,
     onOpenCertificates: () -> Unit,
     onOpenTunnels: () -> Unit,
@@ -71,9 +70,6 @@ fun ManageScreen(
         }
         if (container.capabilities.contains(ServerCapabilities.DOCKER)) {
             add(ManageDomain(R.string.docker_title, R.string.docker_subtitle, R.drawable.ic_app_docker, onOpenDocker))
-        }
-        if (container.capabilities.contains(ServerCapabilities.GIT)) {
-            add(ManageDomain(R.string.git_title, R.string.git_subtitle, R.drawable.ic_sys_file_git_config, onOpenGit))
         }
         if (container.capabilities.contains(ServerCapabilities.APPLICATION_DEPLOYMENTS)) {
             add(ManageDomain(R.string.deployments_title, R.string.deployments_subtitle,

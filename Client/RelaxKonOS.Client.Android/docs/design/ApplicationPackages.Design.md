@@ -17,7 +17,7 @@ application 与 desktopShell 使用不同激活机制。普通扩展经 Assembly
 | 内置 Android 客户端 | Android 系统核对签名与平台；Compose 原生路由随客户端构建 | 通过签名 APK/AAB 更新；系统应用设置管理 OS 权限/存储与卸载；不在客户端动态装入代码 |
 | 普通 .roapp / desktopShell | 当前 Android 一律拒绝执行，明确说明所需桌面运行时；在对应桌面客户端检查/安装 | Android 不生成 installedVersion、成功回执或桌面权限授予；桌面 package manager 负责更新/卸载。手机上传文件仅是文件传输，不算安装 |
 | 服务端应用部署 | 现有 applications 定义、固定来源、目录版本与 operation 契约，在远端 Docker 执行 | 部署权限/秘密/端口/卷独立确认；升级/回滚/删除沿用 BP16，不授予手机 OS 或桌面扩展权限 |
-| Nginx/FRP/Mihomo/Git/Docker 等宿主运行时 | 现有 installation capabilities、固定清单或核验包来源，在明确远端宿主执行 | preview/来源/hash/提权/持久 operation 与对应领域生命周期；不复用 .roapp 安装器 |
+| Nginx/FRP/Mihomo/Docker 等宿主运行时 | 现有 installation capabilities、固定清单或核验包来源，在明确远端宿主执行 | preview/来源/hash/提权/持久 operation 与对应领域生命周期；不复用 .roapp 安装器 |
 | Web 服务 | BP20 使用实际 HTTP(S) 地址交给外部应用 | 无代码安装、客户端凭据或原生桥接；站点版本和删除由服务端领域管理 |
 | APK 或其他系统安装包 | 当前不提供 APK 旁加载器、任意 OS 包管理或通用 shell 安装 | 交给 Android/宿主原有安装渠道；文件扩展名不能绕过平台或签名检查 |
 

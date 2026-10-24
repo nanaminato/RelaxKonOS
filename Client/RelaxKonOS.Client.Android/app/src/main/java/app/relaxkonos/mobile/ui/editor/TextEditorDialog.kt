@@ -32,22 +32,21 @@ import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.ui.common.ScreenHeader
-import app.relaxkonos.mobile.ui.manage.git.lineDiff
 import app.relaxkonos.mobile.ui.theme.Spacing
 
 @Composable
-fun TextEditorDialog(owner: SessionState.Active, path: String?, repositoryId: String? = null,
+fun TextEditorDialog(owner: SessionState.Active, path: String?,
     onSaved: (RemoteTextFile) -> Unit = {}, onClose: () -> Unit) {
     val container = appContainer()
     val editor: TextEditorViewModel = viewModel(key = "shared-text-editor", factory = viewModelFactory {
         initializer { TextEditorViewModel(container.session, container.textEditor) }
     })
-    LaunchedEffect(owner, path, repositoryId) { editor.start(owner, path, repositoryId) }
-    TextEditorContent(editor, path, repositoryId, onSaved, onClose)
+    LaunchedEffect(owner, path) { editor.start(owner, path) }
+    TextEditorContent(editor, path, onSaved, onClose)
 }
 
 @Composable
-internal fun TextEditorContent(editor: TextEditorViewModel, path: String?, repositoryId: String?,
+internal fun TextEditorContent(editor: TextEditorViewModel, path: String?,
     onSaved: (RemoteTextFile) -> Unit = {}, onClose: () -> Unit) {
     var confirmClose by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
@@ -82,25 +81,24 @@ internal fun TextEditorContent(editor: TextEditorViewModel, path: String?, repos
                             Text(lineDiff(latest.content, editor.value.text), fontFamily = FontFamily.Monospace)
                         }
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                            OutlinedButton(onClick = editor::discardLatest, enabled = !editor.busy) { Text(stringResource(R.string.git_discard_draft)) }
-                            OutlinedButton(onClick = editor::compareLatest, enabled = !editor.busy) { Text(stringResource(R.string.git_compare_latest)) }
+                            OutlinedButton(onClick = editor::discardLatest, enabled = !editor.busy) { Text(stringResource(R.string.editor_discard_draft)) }
+                            OutlinedButton(onClick = editor::compareLatest, enabled = !editor.busy) { Text(stringResource(R.string.editor_compare_latest)) }
                         }
                         }
                     }
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                         TextButton(onClick = { formatDialog = true }, enabled = !editor.busy) { Text(stringResource(R.string.editor_format)) }
                         TextButton(onClick = { searchDialog = true }, enabled = !editor.busy) { Text(stringResource(R.string.editor_search_replace)) }
-                        TextButton(onClick = { diff = true }, enabled = !editor.busy) { Text(stringResource(R.string.git_preview_diff)) }
+                        TextButton(onClick = { diff = true }, enabled = !editor.busy) { Text(stringResource(R.string.editor_preview_diff)) }
                     }
                     CodeTextField(editor.value, editor::edit, enabled = !editor.busy && (path == null || editor.baseline != null), modifier = Modifier.weight(1f))
-                    // A Git editor saves to its repository. Save-as is offered from the Files entry.
-                    if (repositoryId == null && editor.baseline == null) OutlinedTextField(editor.destination, { editor.destination = it },
+                    if (editor.baseline == null) OutlinedTextField(editor.destination, { editor.destination = it },
                         label = { Text(stringResource(R.string.editor_destination)) }, singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !editor.busy)
                 }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Button(onClick = { editor.save() }, enabled = !editor.busy && editor.valid && !editor.unknown && editor.latest == null &&
-                        (editor.baseline != null && editor.dirty || path == null && editor.destination.isNotBlank())) { Text(stringResource(R.string.git_save)) }
-                    if (repositoryId == null && editor.baseline != null) OutlinedButton(onClick = { saveAsDialog = true },
+                        (editor.baseline != null && editor.dirty || path == null && editor.destination.isNotBlank())) { Text(stringResource(R.string.editor_save)) }
+                    if (editor.baseline != null) OutlinedButton(onClick = { saveAsDialog = true },
                         enabled = !editor.busy && editor.valid && !editor.unknown && editor.latest == null) { Text(stringResource(R.string.editor_save_as)) }
                     OutlinedButton(onClick = editor::reload, enabled = !editor.busy && (path != null || editor.baseline != null || editor.destination.isNotBlank())) { ActionLabel(R.string.common_refresh) }
                 }
@@ -126,7 +124,7 @@ internal fun TextEditorContent(editor: TextEditorViewModel, path: String?, repos
                 TextButton(onClick = { editor.replace(query, replacement) }, enabled = !editor.busy && query.isNotEmpty()) { Text(stringResource(R.string.editor_replace_all)) }
             }
         }
-        if (diff) EditorToolDialog(stringResource(R.string.git_preview_diff), { diff = false }) {
+        if (diff) EditorToolDialog(stringResource(R.string.editor_preview_diff), { diff = false }) {
             SelectionContainer { Text(lineDiff(editor.baseline?.content.orEmpty(), editor.value.text), fontFamily = FontFamily.Monospace) }
         }
         if (saveAsDialog) AlertDialog(onDismissRequest = { if (!editor.busy) saveAsDialog = false }, modifier = Modifier.imePadding(),

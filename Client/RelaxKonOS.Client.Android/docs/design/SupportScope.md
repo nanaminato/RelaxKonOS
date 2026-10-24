@@ -4,7 +4,7 @@ Android 使用原生 Compose 页面管理已有远端主机。生产容器、Ngi
 
 ## 应用组织
 
-文件与 Git 共用文本编辑器，图片查看属于文件工作流。登录、首页、帮助和关于承担引导。服务地址交由系统浏览器或外部应用打开。Android 没有独立欢迎、记事本、内置浏览器或注册表应用。
+文件提供文本编辑器，图片查看属于文件工作流。登录、首页、帮助和关于承担引导。服务地址交由系统浏览器或外部应用打开。Android 没有独立欢迎、记事本、内置浏览器或注册表应用。
 
 内置功能随签名客户端更新；桌面 `.roapp` 包不能作为 Android 应用运行。移动包与权限边界见 [应用包说明](ApplicationPackages.Design.md)。应用分类、返回与状态保留见 [应用内功能导航](../features/ApplicationNavigation.md)。
 
@@ -14,7 +14,7 @@ Android 使用原生 Compose 页面管理已有远端主机。生产容器、Ngi
 
 网站发布不提供 DNS 服务商自动化或内网发布集成；不收集未接入服务商的凭据。证书签发当前不支持提交 DNS-01。见 [网站发布](../features/WebPublishing.md) 与 [证书](../features/Certificates.md)。
 
-Git 构建采用受限 Ubuntu BuildKit 环境。静态站点及其他构建模板、更新比较和按发布修订引用回收产物不属于当前完整能力；成功构建的镜像可能被发布修订引用，不能直接清理。见 [Git](../features/Git.md) 和 [构建环境](../development/GitBuild.Ubuntu.md)。
+Android 不提供 Git 仓库管理、分支、暂存提交、同步、历史、冲突处理、Git 运行时安装及构建任务，也不提供 Git 构建镜像发布到应用的链路。普通 Image 部署、文件编辑和终端保留。手机端精简规则与其他待评估项见 [移动端功能精简](MobileSimplification.md)。
 
 Android 提供定义备份创建、清单和只读预检，没有恢复提交界面。卷/数据库一致性恢复和跨安装秘密重绑定不属于当前能力；定义备份不能代表业务数据备份。告警观察与前台通知不保证事件持久重放或可靠后台送达。见 [任务、告警与恢复](../features/OperationsRecovery.md)。
 

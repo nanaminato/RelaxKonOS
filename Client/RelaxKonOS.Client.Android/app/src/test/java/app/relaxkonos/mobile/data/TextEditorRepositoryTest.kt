@@ -29,22 +29,22 @@ class TextEditorRepositoryTest {
     }
     @Test fun `transport loss sends one conditional write without replay`() = runTest {
         val owner = signIn()
-        assertTrue(client.save(owner, file, "new", null) is ApiResult.Transport)
+        assertTrue(client.save(owner, file, "new") is ApiResult.Transport)
         assertEquals(1, saves)
     }
     @Test fun `wrong path and mismatched save receipt remain unknown`() = runTest {
         val owner = signIn(); onRead = { ApiResult.Success(file.copy(path = "/wrong")) }
-        assertTrue(client.read(owner, "/a", null) is ApiResult.Transport)
+        assertTrue(client.read(owner, "/a") is ApiResult.Transport)
         onSave = { ApiResult.Success(file.copy(content = "other")) }
-        assertTrue(client.save(owner, file, "new", null) is ApiResult.Transport)
+        assertTrue(client.save(owner, file, "new") is ApiResult.Transport)
     }
     @Test fun `old session cannot read or save and late response is discarded`() = runTest {
         val owner = signIn(); val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
         onRead = { entered.complete(Unit); release.await(); ApiResult.Success(file) }
-        val result = async { runCatching { client.read(owner, "/a", null) } }
+        val result = async { runCatching { client.read(owner, "/a") } }
         entered.await(); signIn(); release.complete(Unit)
         assertTrue(result.await().exceptionOrNull() is CancellationException)
-        assertTrue(runCatching { client.save(owner, file, "new", null) }.exceptionOrNull() is CancellationException)
+        assertTrue(runCatching { client.save(owner, file, "new") }.exceptionOrNull() is CancellationException)
         assertEquals(0, saves)
     }
 }

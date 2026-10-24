@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="editor_save">Save file</string>
+    <string name="editor_discard_draft">Use server file</string>
+    <string name="editor_compare_latest">Review draft against latest</string>
+    <string name="editor_preview_diff">Review changes</string>
+</resources>

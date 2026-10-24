@@ -32,7 +32,6 @@
     <string name="operations_export_saved">诊断报告已保存</string>
     <string name="operations_export_warning">保存前请检查报告。诊断输出可能包含秘密信息。时间范围是本机首次观察和最后核实操作的时间，不是服务器日志的时间范围。</string>
     <string name="operations_failed">失败</string>
-    <string name="operations_git_build">Git 构建</string>
     <string name="operations_hide">在本机隐藏</string>
     <string name="operations_hide_explanation">仅从本机此账号的列表中隐藏任务。服务器操作及其资源不受影响。</string>
     <!-- Unified runtime installation operations. -->

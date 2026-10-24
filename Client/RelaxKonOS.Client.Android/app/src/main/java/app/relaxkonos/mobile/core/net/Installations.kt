@@ -10,11 +10,10 @@ enum class InstallationService(val wire: String, val capability: String, val ele
     Frp("frp", ServerCapabilities.TUNNELS, "frpInstall"),
     Mihomo("mihomo", ServerCapabilities.PROXY, "mihomoInstall"),
     Docker("docker", ServerCapabilities.DOCKER, "dockerInstall"),
-    Git("git", ServerCapabilities.GIT, "gitPackageInstall"),
     SingBox("singBox", ServerCapabilities.PROXY_SERVER, "singBoxInstall");
 
     val kinds: Set<InstallationKind> get() = when (this) {
-        Smb, Docker, Git -> setOf(InstallationKind.Install)
+        Smb, Docker -> setOf(InstallationKind.Install)
         Nginx, Frp -> setOf(InstallationKind.Install, InstallationKind.Upgrade, InstallationKind.Repair, InstallationKind.Uninstall)
         Mihomo -> InstallationKind.entries.toSet()
         SingBox -> emptySet() // Current Android support observes these records; frozen-plan submission has no form.
@@ -84,7 +83,6 @@ sealed interface InstallationRequest {
     val service: InstallationService
 }
 data class SmbInstallationRequest(override val confirmed: Boolean) : InstallationRequest { override val service = InstallationService.Smb }
-data class GitInstallationRequest(override val confirmed: Boolean) : InstallationRequest { override val service = InstallationService.Git }
 data class DockerInstallationRequest(override val confirmed: Boolean) : InstallationRequest { override val service = InstallationService.Docker }
 data class NginxInstallationRequest(override val confirmed: Boolean, val version: String? = null, val fileReferenceId: String? = null) : InstallationRequest {
     override val service = InstallationService.Nginx

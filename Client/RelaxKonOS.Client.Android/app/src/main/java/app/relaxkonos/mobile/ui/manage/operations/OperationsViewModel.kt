@@ -42,7 +42,6 @@ internal data class OperationsState(
     val pendingCertificates: List<app.relaxkonos.mobile.data.PendingCertificateRequest> = emptyList(),
     val pendingTunnels: List<app.relaxkonos.mobile.data.PendingTunnelMutation> = emptyList(),
     val pendingProxy: List<app.relaxkonos.mobile.data.PendingProxyRequest> = emptyList(),
-    val pendingGit: List<app.relaxkonos.mobile.data.PendingGitMutation> = emptyList(),
     val pendingDockerResources: List<app.relaxkonos.mobile.data.PendingDockerResource> = emptyList(),
     val pendingDockerControl: List<app.relaxkonos.mobile.data.PendingDockerControl> = emptyList(),
     val pendingSmb: List<app.relaxkonos.mobile.data.PendingSmbMutation> = emptyList(),
@@ -102,7 +101,7 @@ internal class OperationsViewModel(private val session: AuthSession, private val
 
     fun poll(owner: SessionState.Active) {
         if (session.state.value !== owner || state.owner !== owner || state.loading || refreshJob?.isActive == true || state.cancelling || state.hiding || state.cancelReview != null || state.hideReview != null) return
-        if (state.items.any { it.check == OperationCheck.Unavailable || it.state in setOf("queued", "running", "cancelling") } || state.error || state.pendingInstallations.isNotEmpty() || state.pendingSites.isNotEmpty() || state.pendingCertificates.isNotEmpty() || state.pendingTunnels.isNotEmpty() || state.pendingProxy.isNotEmpty() || state.pendingWebServers.isNotEmpty() || state.pendingFirewall.isNotEmpty() || state.pendingSmb.isNotEmpty() || state.pendingDockerControl.isNotEmpty() || state.pendingDockerResources.isNotEmpty() || state.pendingGit.isNotEmpty())
+        if (state.items.any { it.check == OperationCheck.Unavailable || it.state in setOf("queued", "running", "cancelling") } || state.error || state.pendingInstallations.isNotEmpty() || state.pendingSites.isNotEmpty() || state.pendingCertificates.isNotEmpty() || state.pendingTunnels.isNotEmpty() || state.pendingProxy.isNotEmpty() || state.pendingWebServers.isNotEmpty() || state.pendingFirewall.isNotEmpty() || state.pendingSmb.isNotEmpty() || state.pendingDockerControl.isNotEmpty() || state.pendingDockerResources.isNotEmpty())
             refresh(owner, quiet = true)
     }
 
@@ -143,7 +142,7 @@ internal class OperationsViewModel(private val session: AuthSession, private val
                     }
                     state = state.copy(loading = false, items = items,
                         selectedKey = state.selectedKey?.takeIf { key -> items.any { (it.reference.domain to it.reference.operationId) == key } },
-                        error = snapshot.incomplete || cancellationUnverified, feedbackVersion = ++feedbackSequence, pendingInstallations = snapshot.pendingInstallations, pendingSites = snapshot.pendingSites, pendingCertificates = snapshot.pendingCertificates, pendingTunnels = snapshot.pendingTunnels, pendingProxy = snapshot.pendingProxy, pendingWebServers = snapshot.pendingWebServers, pendingFirewall = snapshot.pendingFirewall, pendingSmb = snapshot.pendingSmb, pendingDockerControl = snapshot.pendingDockerControl, pendingDockerResources = snapshot.pendingDockerResources, pendingGit = snapshot.pendingGit)
+                        error = snapshot.incomplete || cancellationUnverified, feedbackVersion = ++feedbackSequence, pendingInstallations = snapshot.pendingInstallations, pendingSites = snapshot.pendingSites, pendingCertificates = snapshot.pendingCertificates, pendingTunnels = snapshot.pendingTunnels, pendingProxy = snapshot.pendingProxy, pendingWebServers = snapshot.pendingWebServers, pendingFirewall = snapshot.pendingFirewall, pendingSmb = snapshot.pendingSmb, pendingDockerControl = snapshot.pendingDockerControl, pendingDockerResources = snapshot.pendingDockerResources)
                     val selected = items.firstOrNull { (it.reference.domain to it.reference.operationId) == state.selectedKey }
                     if (selected?.check != OperationCheck.Verified) {
                         diagnosticGeneration++

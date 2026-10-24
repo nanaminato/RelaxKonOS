@@ -66,11 +66,11 @@ class TextEditorFlowTest {
             rule.activity.window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
             editor = TextEditorViewModel(session, TextEditorRepository(gateway, session))
             store.put("editor", editor)
-            editor.start(session.state.value as SessionState.Active, file.path.takeIf { existingFile }, null)
+            editor.start(session.state.value as SessionState.Active, file.path.takeIf { existingFile })
         }
         rule.setContent { MaterialTheme(colorScheme = if (darkTheme.value) darkColorScheme() else lightColorScheme()) {
             if (closed.value) Text("Parent page")
-            else TextEditorContent(editor, file.path.takeIf { existingFile }, null, { savedCallbacks++ }, { closed.value = true })
+            else TextEditorContent(editor, file.path.takeIf { existingFile }, { savedCallbacks++ }, { closed.value = true })
         } }
         rule.waitUntil(5_000) { !editor.busy && (!existingFile || editor.baseline != null) }
     }
@@ -95,9 +95,9 @@ class TextEditorFlowTest {
         showEditor()
         rule.onNode(hasSetTextAction() and hasText("original")).performTextReplacement("unconfirmed draft")
         Espresso.closeSoftKeyboard()
-        rule.onNodeWithText(text(R.string.git_save)).performClick()
+        rule.onNodeWithText(text(R.string.editor_save)).performClick()
         rule.waitUntil(5_000) { editor.busy }
-        rule.onNodeWithText(text(R.string.git_save)).assertIsNotEnabled()
+        rule.onNodeWithText(text(R.string.editor_save)).assertIsNotEnabled()
         rule.onNodeWithText("unconfirmed draft").assertIsNotEnabled()
         Espresso.pressBack()
         rule.runOnIdle { assertFalse(closed.value); assertEquals(1, writes); assertEquals(0, savedCallbacks) }
@@ -106,7 +106,7 @@ class TextEditorFlowTest {
         rule.onNodeWithText(text(R.string.editor_unknown)).assertIsDisplayed()
         rule.onNodeWithText(text(R.string.common_dismiss)).performClick()
         rule.onNodeWithText("unconfirmed draft").assertIsDisplayed()
-        rule.onNodeWithText(text(R.string.git_save)).assertIsNotEnabled()
+        rule.onNodeWithText(text(R.string.editor_save)).assertIsNotEnabled()
         rule.onNodeWithText(text(R.string.common_refresh)).performClick()
         rule.waitUntil(5_000) { editor.latest != null && !editor.busy }
         rule.runOnIdle {
@@ -120,7 +120,7 @@ class TextEditorFlowTest {
         showEditor()
         rule.onNode(hasSetTextAction() and hasText("original")).performTextReplacement("conflicting draft")
         Espresso.closeSoftKeyboard()
-        rule.onNodeWithText(text(R.string.git_save)).performClick()
+        rule.onNodeWithText(text(R.string.editor_save)).performClick()
         rule.waitUntil(5_000) { editor.busy }
         rule.runOnIdle { readFile = file.copy(content = "server revision", version = "b".repeat(64)) }
         receipt.complete(ApiResult.Problem(409, "text-file-changed", null))
@@ -128,11 +128,11 @@ class TextEditorFlowTest {
         rule.onNodeWithText(text(R.string.editor_failed)).assertDoesNotExist()
         rule.onNodeWithText(text(R.string.editor_conflict)).assertIsDisplayed()
         rule.onNodeWithText("conflicting draft").assertIsDisplayed()
-        rule.onNodeWithText(text(R.string.git_save)).assertIsNotEnabled()
+        rule.onNodeWithText(text(R.string.editor_save)).assertIsNotEnabled()
         rule.runOnIdle { assertEquals("server revision", editor.latest?.content); assertEquals(1, writes); assertEquals(0, savedCallbacks) }
-        rule.onNodeWithText(text(R.string.git_compare_latest)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.editor_compare_latest)).performScrollTo().performClick()
         rule.onNodeWithText("conflicting draft").assertIsDisplayed()
-        rule.onNodeWithText(text(R.string.git_save)).assertIsEnabled()
+        rule.onNodeWithText(text(R.string.editor_save)).assertIsEnabled()
         rule.runOnIdle {
             assertNull(editor.latest); assertEquals("server revision", editor.baseline?.content)
             assertEquals("conflicting draft", editor.value.text); assertEquals(1, writes); assertEquals(0, savedCallbacks)
@@ -162,11 +162,11 @@ class TextEditorFlowTest {
             evidence.outputStream().use { automation.takeScreenshot().compress(Bitmap.CompressFormat.PNG, 100, it) }
             rule.onNodeWithText(text(R.string.editor_title)).assertIsDisplayed()
             rule.onNodeWithText(text(R.string.editor_destination)).assertIsDisplayed().performTextInput("/tmp/review-new.txt")
-            rule.onNodeWithText(text(R.string.git_save)).assertIsDisplayed().assertIsEnabled()
+            rule.onNodeWithText(text(R.string.editor_save)).assertIsDisplayed().assertIsEnabled()
             rule.onNodeWithText(text(R.string.editor_destination)).assertHeightIsAtLeast(56.dp)
             val keyboard = automation.windows.single { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }
             val keyboardBounds = Rect().also(keyboard::getBoundsInScreen)
-            listOf(R.string.editor_title, R.string.editor_destination, R.string.git_save).forEach { label ->
+            listOf(R.string.editor_title, R.string.editor_destination, R.string.editor_save).forEach { label ->
                 val bounds = screenBounds(rule.onNodeWithText(text(label)))
                 assertFalse("Editor control $label must have screen bounds", bounds.isEmpty)
                 assertTrue("Editor control $label at $bounds must stay on screen above $keyboardBounds",

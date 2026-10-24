@@ -338,19 +338,6 @@ class AppContainer(context: Context) {
     val operationIndex = OperationIndex(FileOperationIndexStorage(appContext.noBackupFilesDir))
     val deployments = app.relaxkonos.mobile.data.DeploymentRepository(gateway, session, operationIndex,
         app.relaxkonos.mobile.data.DeploymentControlJournal(app.relaxkonos.mobile.data.FileDeploymentControlStorage(appContext.noBackupFilesDir)))
-    val git = app.relaxkonos.mobile.data.GitRepositoryClient(gateway, session, operationIndex)
-    val gitWorkspace = app.relaxkonos.mobile.data.GitWorkspaceRepository(gateway, session,
-        app.relaxkonos.mobile.data.GitWorkspaceJournal(app.relaxkonos.mobile.data.FileGitWorkspaceStorage(appContext.noBackupFilesDir))) { owner ->
-        if (installations.pending(owner).any { it.service == app.relaxkonos.mobile.core.net.InstallationService.Git })
-            app.relaxkonos.mobile.core.net.ApiResult.Problem(409, "git.workspace.installation_active", null)
-        else if (!owner.privilegedOperations) app.relaxkonos.mobile.core.net.ApiResult.Success(Unit)
-        else when (val result = installations.active(owner, app.relaxkonos.mobile.core.net.InstallationService.Git)) {
-            is app.relaxkonos.mobile.core.net.ApiResult.Success -> if (result.value == null) app.relaxkonos.mobile.core.net.ApiResult.Success(Unit)
-                else app.relaxkonos.mobile.core.net.ApiResult.Problem(409, "git.workspace.installation_active", null)
-            is app.relaxkonos.mobile.core.net.ApiResult.Problem -> result
-            is app.relaxkonos.mobile.core.net.ApiResult.Transport -> result
-        }
-    }
     val websitePublicationJournal = app.relaxkonos.mobile.data.WebsitePublicationJournal(
         app.relaxkonos.mobile.data.FileWebsitePublicationStorage(appContext.noBackupFilesDir))
     val webPublishing = app.relaxkonos.mobile.data.WebPublishingRepository(gateway, session, elevations, operationIndex)
@@ -399,7 +386,7 @@ class AppContainer(context: Context) {
     val dockerControl = app.relaxkonos.mobile.data.DockerControlRepository(gateway, session, dockerControlJournal, dockerMutationGate)
     val dockerResources = app.relaxkonos.mobile.data.DockerResourceRepository(gateway, session, dockerResourceJournal, dockerMutationGate)
     val proxyServer = app.relaxkonos.mobile.data.ProxyServerRepository(gateway, session, operationIndex)
-    val operationCenter = OperationCenter(session, operationIndex, deployments, webPublishing, docker, git, scriptTasks, backupRecovery, installations, webServers, webSites, certificates, tunnels, proxy, proxyServer, firewall, smb, dockerControl, dockerResources, gitWorkspace)
+    val operationCenter = OperationCenter(session, operationIndex, deployments, webPublishing, docker, scriptTasks, backupRecovery, installations, webServers, webSites, certificates, tunnels, proxy, proxyServer, firewall, smb, dockerControl, dockerResources)
     val eventAlerts = EventAlertRepository(gateway, session)
     val alertNotificationStore = AlertNotificationStore(appContext)
     val foregroundAlertNotifier = ForegroundAlertNotifier(appContext, session, eventAlerts, alertNotificationStore, appScope)

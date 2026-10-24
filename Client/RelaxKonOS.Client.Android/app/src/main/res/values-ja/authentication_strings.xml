@@ -54,7 +54,7 @@
     <string name="elevation_title">管理者の確認</string>
     <string name="elevation_use_fingerprint">指紋で確認</string>
     <string name="elevation_vault_unavailable">管理者パスワードの保存には強力な指紋センサーが必要なため、この端末では利用できません。</string>
-    <string name="execution_root_files_available">ファイル操作は制限付きの特権 Helper で使用できます。このアカウントでは通常のターミナルと Git 操作は使用できません。</string>
+    <string name="execution_root_files_available">ファイル操作は制限付きの特権 Helper で使用できます。このアカウントでは通常のターミナル操作は使用できません。</string>
     <string name="login_action_connect">接続</string>
     <string name="login_action_connecting">接続中…</string>
     <string name="login_action_sign_in">サインイン</string>

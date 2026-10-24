@@ -36,7 +36,7 @@ class ApplicationCatalogTest {
                     Surface(Modifier.requiredSize(360.dp, 640.dp).testTag("catalog-preview")) {
                         ApplicationCatalog(listOf(
                             CatalogApplication("docker", "Docker", "Containers and Compose", R.drawable.ic_app_docker) {},
-                            CatalogApplication("git", "Git", "Repositories and builds", R.drawable.ic_sys_file_git_config) {},
+                            CatalogApplication("files", "Files", "Remote files", DesktopIcons.navFiles) {},
                             CatalogApplication("terminal", "Terminal", "SSH sessions", DesktopIcons.navTerminal) {},
                         ), Modifier.fillMaxSize().padding(16.dp))
                     }
@@ -64,18 +64,18 @@ class ApplicationCatalogTest {
             RelaxKonOSTheme(ColorMode.Light, false) {
                 ApplicationCatalog(listOf(
                     CatalogApplication("docker", "Docker", "Containers", R.drawable.ic_app_docker) { opened++ },
-                    CatalogApplication("git", "Git", "Repositories", R.drawable.ic_sys_file_git_config) { opened++ },
+                    CatalogApplication("files", "Files", "Remote files", DesktopIcons.navFiles) { opened++ },
                 ), Modifier.requiredSize(360.dp, 640.dp))
             }
         }
         rule.onNode(hasSetTextAction()).performTextInput("REPOS")
-        rule.onNodeWithText("Git").assertIsDisplayed()
+        rule.onNodeWithText("Files").assertIsDisplayed()
         rule.onNodeWithText("Docker").assertDoesNotExist()
         rule.runOnIdle { assertEquals(0, opened) }
-        rule.onNodeWithText("Git").performClick()
+        rule.onNodeWithText("Files").performClick()
         rule.runOnIdle { assertEquals(1, opened) }
         rule.onNode(hasSetTextAction()).performTextReplacement("no-match")
-        rule.onNodeWithText("Git").assertDoesNotExist()
+        rule.onNodeWithText("Files").assertDoesNotExist()
         rule.onNode(hasSetTextAction()).performTextClearance()
         rule.onNodeWithText("Docker").assertIsDisplayed()
     }

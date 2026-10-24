@@ -37,7 +37,6 @@
     <string name="installation_recover_help">输入原操作 ID。此操作只查询服务器，不会启动新安装。</string>
     <string name="installation_service_docker">Docker</string>
     <string name="installation_service_frp">FRP</string>
-    <string name="installation_service_git">Git</string>
     <string name="installation_service_singbox">sing-box</string>
     <string name="installation_service_mihomo">Mihomo</string>
     <string name="installation_service_nginx">Nginx</string>
@@ -154,7 +153,6 @@
     <string name="server_feature_file_services">文件共享服务</string>
     <string name="server_feature_files">文件管理</string>
     <string name="server_feature_firewall">防火墙管理</string>
-    <string name="server_feature_git">Git 仓库</string>
     <string name="server_feature_guardian">工作负载守护</string>
     <string name="server_feature_metrics">性能监控</string>
     <string name="server_feature_posix_permissions">POSIX 文件权限</string>

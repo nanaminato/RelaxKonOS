@@ -32,7 +32,6 @@
     <string name="operations_export_saved">Diagnostic report saved</string>
     <string name="operations_export_warning">Review this report before saving. Diagnostic output may contain secrets. The time range is when this device first observed and last verified the operation, not the server log range.</string>
     <string name="operations_failed">Failed</string>
-    <string name="operations_git_build">Git build</string>
     <string name="operations_hide">Hide on this device</string>
     <string name="operations_hide_explanation">This removes the task from this account’s list on this device. The server operation and its resources are unaffected.</string>
     <!-- Unified runtime installation operations. -->

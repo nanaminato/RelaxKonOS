@@ -32,7 +32,6 @@
     <string name="operations_export_saved">診断レポートを保存しました</string>
     <string name="operations_export_warning">保存前にレポートを確認してください。診断出力には秘密情報が含まれる場合があります。期間はこの端末で最初に確認してから最後に検証した時刻であり、サーバーログの期間ではありません。</string>
     <string name="operations_failed">失敗</string>
-    <string name="operations_git_build">Git ビルド</string>
     <string name="operations_hide">この端末で非表示</string>
     <string name="operations_hide_explanation">この端末のこのアカウントの一覧からのみ非表示にします。サーバーの操作とリソースには影響しません。</string>
     <!-- Unified runtime installation operations. -->
