@@ -60,8 +60,7 @@ public sealed partial class GitClientViewModel
     {
         file ??= SelectedCommitFile ?? SelectedFile;
         if (file is null) return;
-        // TODO: 通过 RelaxKonOS 内置 CodeEditor 或宿主 OS 默认编辑器打开，当前占位
-        await NotifyAsync(LocalizedText.Format("git.vm.open_file_unimplemented_format", file.Path));
+        if (OpenEditorFileAsync is not null) await OpenEditorFileAsync(file);
     }
 
     [RelayCommand(CanExecute = nameof(CanManage))]
@@ -71,6 +70,7 @@ public sealed partial class GitClientViewModel
         if (file is null || SelectedRepository is null) return;
         if (ShowConfirmAsync is not null && !await ShowConfirmAsync(LocalizedText.Format("git.vm.revert_file_confirm_format", file.Path)))
             return;
+        if (!await PrepareEditorAsync()) return;
         IsBusy = true;
         try
         {
@@ -98,6 +98,7 @@ public sealed partial class GitClientViewModel
     {
         file ??= SelectedFile;
         if (file is null || SelectedRepository is null) return;
+        if (!await PrepareEditorAsync()) return;
         IsBusy = true;
         try
         {

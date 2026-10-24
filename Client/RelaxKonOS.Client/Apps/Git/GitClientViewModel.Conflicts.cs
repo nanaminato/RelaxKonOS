@@ -156,6 +156,7 @@ public sealed partial class GitClientViewModel
         var repo = SelectedRepository.Id;
         if (choice != "edited" && (ShowConfirmAsync is null ||
             !await ShowConfirmAsync(LocalizedText.Get("git.conflicts.confirm_replace")))) return;
+        if (!await PrepareEditorAsync()) return;
         ConflictBusy = true;
         IsBusy = true;
         try
@@ -185,6 +186,7 @@ public sealed partial class GitClientViewModel
         var operation = ConflictOperation;
         if (action == "abort" && (ShowConfirmAsync is null ||
             !await ShowConfirmAsync(LocalizedText.Get("git.conflicts.confirm_abort")))) return;
+        if (!await PrepareEditorAsync()) return;
         ConflictBusy = true;
         IsBusy = true;
         try

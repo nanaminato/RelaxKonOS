@@ -83,6 +83,8 @@ internal partial class GitLogView : UserControl
             RebuildBranchTree();
         if (e.PropertyName is nameof(GitClientViewModel.IsInlineDiffOpen))
             ApplyDiffPaneLayout();
+        if (e.PropertyName is nameof(GitClientViewModel.Status) or nameof(GitClientViewModel.CommitChangedFiles))
+            UpdateCommitFileCount();
     }
 
     /// <summary>
@@ -261,6 +263,7 @@ internal partial class GitLogView : UserControl
     private void RebuildCommitFileTree()
     {
         if (_vm is null) return;
+        UpdateCommitFileCount();
 
         _vm.SelectedCommitFile = null;
         CommitFileTreeRoots.Clear();
@@ -296,6 +299,11 @@ internal partial class GitLogView : UserControl
                 parent = directory.Children;
             }
         }
+    }
+
+    private void UpdateCommitFileCount()
+    {
+        if (_vm is not null) CommitFileCount.Text = LocalizedText.Format("git.log.file_count_format", _vm.CommitChangedFiles.Count);
     }
 
     private void ChangedFileTree_SelectionChanged(object? sender, SelectionChangedEventArgs e)

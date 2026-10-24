@@ -74,6 +74,7 @@ public sealed partial class GitClientViewModel
         if (commit is null || SelectedRepository is null) return;
         if (ShowConfirmAsync is not null && !await ShowConfirmAsync(LocalizedText.Format("git.vm.checkout_commit_confirm_format", commit.ShortSha)))
             return;
+        if (!await PrepareEditorAsync()) return;
         IsBusy = true;
         try
         {
@@ -95,6 +96,7 @@ public sealed partial class GitClientViewModel
         if (commit is null || SelectedRepository is null) return;
         if (ShowConfirmAsync is not null && !await ShowConfirmAsync(LocalizedText.Format("git.vm.reset_confirm_format", commit.ShortSha)))
             return;
+        if (!await PrepareEditorAsync()) return;
         IsBusy = true;
         try
         {
@@ -131,6 +133,7 @@ public sealed partial class GitClientViewModel
         }
         if (ShowConfirmAsync is not null && !await ShowConfirmAsync(LocalizedText.Format("git.vm.undo_confirm_format", commit.ShortSha)))
             return;
+        if (!await PrepareEditorAsync()) return;
         IsBusy = true;
         try
         {

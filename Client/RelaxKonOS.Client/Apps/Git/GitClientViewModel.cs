@@ -24,6 +24,21 @@ public sealed record GitLogFilterOption(string Value, string Label);
 /// Each window owns its own ViewModel instance — supports multiple projects open simultaneously (MultiWindow instance policy).</summary>
 public sealed partial class GitClientViewModel(IRemoteGitClient client) : ObservableObject
 {
+    public Func<GitRepositoryDto, Task<bool>>? OpenEditorProjectAsync { get; set; }
+    public Func<string, Task>? OpenPlainFolderAsync { get; set; }
+    public Func<Task<bool>>? PrepareEditorOperationAsync { get; set; }
+    public Func<GitFileChangeDto, Task>? OpenEditorFileAsync { get; set; }
+    public Func<GitFileChangeDto, string?, Task>? OpenEditorDiffAsync { get; set; }
+    public StringComparison RepositoryPathComparison { get; set; } = StringComparison.Ordinal;
+    private bool _preparingEditor;
+
+    private async Task<bool> PrepareEditorAsync()
+    {
+        if (_preparingEditor) return false;
+        _preparingEditor = true;
+        try { return await (PrepareEditorOperationAsync?.Invoke() ?? Task.FromResult(true)); }
+        finally { _preparingEditor = false; }
+    }
     public InstallationTaskViewModel Installation { get; set; } = null!;
 
     public ObservableCollection<GitRepositoryDto> Repositories { get; } = [];
@@ -34,6 +49,10 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
     public ObservableCollection<GitFileChangeDto> UntrackedFiles { get; } = [];
     public ObservableCollection<GitFileChangeDto> ConflictFiles { get; } = [];
     public ObservableCollection<GitRemoteDto> Remotes { get; } = [];
+    public ObservableCollection<GitEditorChangeItem> EditorStagedFiles { get; } = [];
+    public ObservableCollection<GitEditorChangeItem> EditorUnstagedFiles { get; } = [];
+    public ObservableCollection<GitEditorChangeItem> EditorUntrackedFiles { get; } = [];
+    public ObservableCollection<GitEditorChangeItem> EditorConflictFiles { get; } = [];
     public ObservableCollection<GitFileChangeDto> CommitChangedFiles { get; } = [];
     public ObservableCollection<GitLogFilterOption> LogBranchOptions { get; } = [];
     public ObservableCollection<GitLogFilterOption> LogAuthorOptions { get; } = [];

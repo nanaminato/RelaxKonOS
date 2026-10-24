@@ -4,6 +4,7 @@
              xmlns:editor="clr-namespace:AvaloniaEdit;assembly=AvaloniaEdit"
              xmlns:codeEditor="clr-namespace:RelaxKonOS.Client.Apps.CodeEditor"
              xmlns:explorer="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Controls"
+             xmlns:diff="clr-namespace:RelaxKonOS.Client.Controls.Diff"
              x:Class="RelaxKonOS.Client.Apps.CodeEditor.CodeEditorView"
              x:Name="Root"
              x:DataType="codeEditor:CodeEditorViewModel"
@@ -168,7 +169,7 @@
             <!-- One area, so its item is the sidebar's toggle and its tint says whether the panel
                  is open. The open-file list moved to the tab strip's trailing edge, where it states
                  the same thing without a panel of its own. -->
-            <Border Grid.Column="0" Padding="4" Classes="app-sidebar">
+            <Border x:Name="ActivityBar" Grid.Column="0" Padding="4" Classes="app-sidebar">
                 <StackPanel Spacing="6">
                     <Button Classes="activity-item" ToolTip.Tip="{loc:Loc code_editor.sidebar.explorer}" AutomationProperties.Name="{loc:Loc code_editor.sidebar.explorer}"
                             Command="{Binding ToggleSidebarCommand}">
@@ -185,7 +186,7 @@
                 <Grid RowDefinitions="Auto,*">
                     <DockPanel Grid.Row="0" Margin="10,8,8,6">
                         <TextBlock DockPanel.Dock="Left" Text="{loc:Loc code_editor.sidebar.folders}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2">
+                        <StackPanel x:Name="FolderActions" DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2">
                             <Button Classes="header-action compact" ToolTip.Tip="{loc:Loc code_editor.add_folder}" AutomationProperties.Name="{loc:Loc code_editor.add_folder}" Command="{Binding AddFolderCommand}">
                                 <PathIcon Width="14" Height="14" Data="{StaticResource ChromeAddIcon}" />
                             </Button>
@@ -197,7 +198,8 @@
                             </Button>
                         </StackPanel>
                     </DockPanel>
-                    <TreeView Grid.Row="1" ItemsSource="{Binding WorkspaceRoots}" SelectedItem="{Binding SelectedFolderNode, Mode=TwoWay}" Margin="4,0,4,8">
+                    <TreeView x:Name="ProjectTree" Grid.Row="1" ItemsSource="{Binding WorkspaceRoots}" SelectedItem="{Binding SelectedFolderNode, Mode=TwoWay}" Margin="4,0,4,8"
+                              DoubleTapped="ProjectTree_DoubleTapped" KeyDown="ProjectTree_KeyDown">
                         <TreeView.Styles>
                             <Style Selector="TreeViewItem">
                                 <Setter Property="IsExpanded" Value="{ReflectionBinding IsExpanded, Mode=TwoWay}" />
@@ -219,7 +221,8 @@
                           ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" Cursor="SizeWestEast"
                           IsVisible="{Binding IsSidebarVisible}" />
 
-            <Grid Grid.Column="3" RowDefinitions="Auto,*">
+            <Grid Grid.Column="3" RowDefinitions="Auto,Auto,Auto,*">
+                <TextBlock Grid.Row="1" IsVisible="{Binding IsTextReadOnly}" Text="{loc:Loc git.editor.readonly_large}" Margin="10,6" TextWrapping="Wrap" />
                 <Border IsVisible="{Binding HasImageSourceText}" Classes="app-toolbar" Padding="10,4">
                     <Button Command="{Binding ToggleImageSourceCommand}" HorizontalAlignment="Left">
                         <Grid>
@@ -228,10 +231,16 @@
                         </Grid>
                     </Button>
                 </Border>
-                <editor:TextEditor Grid.Row="1" Name="Editor" IsVisible="{Binding IsTextDocument}" SearchResultsBrush="{DynamicResource AccentMutedBrush}" ShowLineNumbers="True" WordWrap="{Binding WordWrap}"
+                <Border Grid.Row="2" IsVisible="{Binding HasExternalChanges}" Padding="10,6" Background="{DynamicResource WarningMutedBrush}">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="{loc:Loc git.editor.external_changes}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="{loc:Loc git.editor.reload}" Command="{Binding ReloadDocumentCommand}" />
+                    </Grid>
+                </Border>
+                <editor:TextEditor Grid.Row="3" Name="Editor" IsVisible="{Binding IsTextDocument}" SearchResultsBrush="{DynamicResource AccentMutedBrush}" ShowLineNumbers="True" WordWrap="{Binding WordWrap}"
                                    BorderThickness="0" Padding="12,10" FontFamily="Cascadia Code, Consolas, Menlo, monospace"
                                    FontSize="{Binding FontSize}" />
-                <Grid Grid.Row="1" IsVisible="{Binding IsImageDocument}" Background="{DynamicResource SurfaceSunkenBrush}" RowDefinitions="Auto,*">
+                <Grid Grid.Row="3" IsVisible="{Binding IsImageDocument}" Background="{DynamicResource SurfaceSunkenBrush}" RowDefinitions="Auto,*">
                     <Border Classes="app-toolbar" Padding="12,6">
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
                             <StackPanel Spacing="2" VerticalAlignment="Center">
@@ -250,7 +259,11 @@
                         </ScrollViewer>
                     </Grid>
                 </Grid>
-                <Grid Grid.Row="1" IsVisible="{Binding IsBinaryDocument}" Background="{DynamicResource SurfaceSunkenBrush}">
+                <Grid Grid.Row="3" IsVisible="{Binding IsComparisonDocument}" RowDefinitions="Auto,*">
+                    <TextBlock Text="{Binding ComparisonNotice}" IsVisible="{Binding HasComparisonNotice}" Margin="12,6" TextWrapping="Wrap" />
+                    <diff:DiffView Grid.Row="1" Document="{Binding Comparison}" />
+                </Grid>
+                <Grid Grid.Row="3" IsVisible="{Binding IsBinaryDocument}" Background="{DynamicResource SurfaceSunkenBrush}">
                     <Border Margin="24" Padding="28" MaxWidth="460" HorizontalAlignment="Center" VerticalAlignment="Center"
                             Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1" CornerRadius="12">
                         <StackPanel Spacing="12">
@@ -265,7 +278,7 @@
         </Grid>
 
         <Border Grid.Row="2" Classes="app-statusbar">
-            <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="14">
+            <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="14">
                 <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
                 <Button Grid.Column="1" Content="{Binding EncodingName}" FontSize="12" Padding="4,0"
                         IsVisible="{Binding IsTextDocument}" ToolTip.Tip="{loc:Loc common.file_encoding}"
@@ -273,6 +286,8 @@
                         Command="{Binding ChooseEncodingCommand}" />
                 <TextBlock Grid.Column="2" IsVisible="{Binding IsTextDocument}" Text="{Binding LineCountText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
                 <TextBlock Grid.Column="3" IsVisible="{Binding IsTextDocument}" Text="{Binding CharacterCountText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                <TextBlock Grid.Column="4" IsVisible="{Binding IsTextDocument}" Text="{Binding NewlineText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                <TextBlock Grid.Column="5" IsVisible="{Binding IsTextDocument}" Text="{Binding CaretPosition}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
             </Grid>
         </Border>
     </Grid>

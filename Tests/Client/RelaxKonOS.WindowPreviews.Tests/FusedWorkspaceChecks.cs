@@ -54,7 +54,8 @@ internal static class FusedWorkspaceChecks
         var server = new ServerCenterViewModel(null!, null!, null!, null!, new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)), null!, null!, login);
         var git = new GitClientViewModel(null!) { IsPickerMode = false };
         var serverView = new ServerCenterWorkspace { DataContext = server };
-        var gitView = GitClientWorkspace.Create(git);
+        using var gitProject = new ProjectEditorViewModel(git, null!, null, true);
+        var gitView = GitClientWorkspace.Create(git, gitProject);
         var auth = DispatchProxy.Create<IAuthSession, SiteEditorSession>();
         var permissions = DispatchProxy.Create<IAppPermissionScope, HeaderPreviewPermissions>();
         var proxyModel = new ProxyManagerViewModel(DispatchProxy.Create<IProxyRepository, HeaderPreviewPermissions>(), false, false);
@@ -119,7 +120,15 @@ internal static class FusedWorkspaceChecks
                     Check(oldHeader.Bounds.Height < 1, $"{name}: duplicate header row.");
                 Check(!view.GetVisualDescendants().Any(child => child is Control control && control.Classes.Contains("app-header")),
                     $"{name}: duplicate identity bar remains.");
-                if (view.FindControl<Grid>("WorkspaceBody") is { } body)
+                if (view is GitClientWorkspace projectWorkspace)
+                {
+                    var editorContent = projectWorkspace.EditorView.FindControl<Grid>("EditorContentGrid")!;
+                    Check(projectWorkspace.EditorView.Bounds.Width > Math.Min(200, view.Bounds.Width - 20),
+                        "git: the project editor lost its content viewport.");
+                    if (view.Bounds.Width < 620)
+                        Check(editorContent.ColumnDefinitions[1].Width.Value == 0, "git: project tree still consumes the narrow editor viewport.");
+                }
+                else if (view.FindControl<Grid>("WorkspaceBody") is { } body)
                     Check(body.ColumnDefinitions.Count == (view.Bounds.Width < 620 ? 1 : 2), $"{name}: sidebar still consumes the narrow content viewport.");
                 var controls = window.View.GetVisualDescendants().OfType<Grid>().Single(control => control.Name == "PART_WindowControls");
                 var title = window.View.HeaderCenter ?? window.View.HeaderTabs!;
@@ -148,7 +157,7 @@ internal static class FusedWorkspaceChecks
             git.Status = new RelaxKonOS.Protocol.Git.GitStatusDto("review/main", [], [], [], [], "review"); Pump();
             Check(gitWindow.View.HeaderTrailing!.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == "review/main"),
                 "Detached Git branch badge did not follow the repository status binding.");
-            Check(gitWindow.View.HeaderTrailing!.GetVisualDescendants().OfType<Button>().Single().Command == git.RefreshCommand,
+            Check(gitView.FindControl<Button>("RefreshButton")!.Command == gitProject.RefreshCommand,
                 "Detached Git refresh button lost its command binding.");
             var identity = gitView.FindControl<WorkspaceWindowHeader>("Header")!;
             identity.Title = "Updated identity"; Pump();

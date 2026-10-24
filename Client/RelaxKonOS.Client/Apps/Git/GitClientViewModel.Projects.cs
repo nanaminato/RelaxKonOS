@@ -23,6 +23,7 @@ public sealed partial class GitClientViewModel
     {
         Log($"OpenProjectAsync 开始: name={repo?.Name} id={repo?.Id}");
         if (repo is null) { Log("repo 为 null → 退出"); return; }
+        if (OpenEditorProjectAsync is not null && !await OpenEditorProjectAsync(repo)) return;
         try
         {
             Log($"切换 IsPickerMode=false  SelectedRepository={repo.Name}");
@@ -67,6 +68,12 @@ public sealed partial class GitClientViewModel
         var path = await ShowRemotePathPickerAsync();
         Log($"路径选择返回: {(path is null ? "null" : $"\"{path}\"")}");
         if (string.IsNullOrWhiteSpace(path)) return;
+
+        if (!IsGitAvailable && OpenPlainFolderAsync is not null)
+        {
+            await OpenPlainFolderAsync(path);
+            return;
+        }
 
         await ProbeAndOpenAsync(path);
     }
@@ -113,11 +120,13 @@ public sealed partial class GitClientViewModel
                     await NotifyAsync(ProbeHint);
                     return;
                 }
-                if (!await ConfirmInitAsync(path))
+                if (OpenPlainFolderAsync is not null)
                 {
-                    StatusText = LocalizedText.Ref("git.vm.init_cancelled");
+                    await OpenPlainFolderAsync(path);
                     return;
                 }
+
+                if (!await ConfirmInitAsync(path)) return;
 
                 if (!await TryInitializeAsync(path)) return;
                 probe = await client.ProbeRepositoryAsync(path);
@@ -132,7 +141,7 @@ public sealed partial class GitClientViewModel
 
             // 已是 Git 仓库：检查是否已注册
             var existing = Repositories.FirstOrDefault(r =>
-                string.Equals(r.Path, path, StringComparison.OrdinalIgnoreCase));
+                string.Equals(r.Path, path, RepositoryPathComparison));
             if (existing is not null)
             {
                 Log($"路径已注册为「{existing.Name}」，直接打开");
@@ -142,7 +151,7 @@ public sealed partial class GitClientViewModel
             }
 
             // 未注册：自动注册（名称取路径末段）
-            var name = System.IO.Path.GetFileName(path.TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar));
+            var name = path.Replace('\\', '/').TrimEnd('/').Split('/').Last();
             if (string.IsNullOrWhiteSpace(name)) name = path;
             Log($"自动注册: name={name} path={path}");
             GitRepositoryDto dto;
@@ -174,6 +183,12 @@ public sealed partial class GitClientViewModel
             IsProbing = false;
             IsBusy = false;
         }
+    }
+
+    public async Task InitializeEditorProjectAsync(string path)
+    {
+        if (!await PrepareEditorAsync() || !await ConfirmInitAsync(path)) return;
+        if (await TryInitializeAsync(path)) await ProbeAndOpenAsync(path);
     }
 
     /// <summary>"Not a repository" and "git refused to open this repository" are different answers, and

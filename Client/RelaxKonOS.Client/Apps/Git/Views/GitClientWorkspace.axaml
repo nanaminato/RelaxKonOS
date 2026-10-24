@@ -1,83 +1,64 @@
-<UserControl xmlns:common="clr-namespace:RelaxKonOS.Client.Controls" xmlns="https://github.com/avaloniaui"
+<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:common="clr-namespace:RelaxKonOS.Client.Controls"
              xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
+             xmlns:code="clr-namespace:RelaxKonOS.Client.Apps.CodeEditor"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.Git.Views"
              x:Class="RelaxKonOS.Client.Apps.Git.Views.GitClientWorkspace"
              x:DataType="git:GitClientViewModel"
              Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
     <Grid RowDefinitions="Auto,*,Auto">
-        <!-- Top title bar -->
-        <Grid x:Name="HeaderHost" Grid.Row="0" ColumnDefinitions="*,Auto" IsVisible="{Binding !IsPickerMode}">
-            <common:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc git.title}" Subtitle="{loc:Loc git.subtitle}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/git.png" />
-            <StackPanel x:Name="HeaderActions" Grid.Column="1" Orientation="Horizontal" Spacing="6" IsVisible="{Binding !IsPickerMode}" VerticalAlignment="Center">
-                <Border x:Name="BranchBadge" Background="{DynamicResource SurfaceSunkenBrush}" CornerRadius="{DynamicResource ControlCornerRadius}" Padding="6,3"><TextBlock Text="{Binding Status.Branch}" MaxWidth="120" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Status.Branch}" /></Border>
-                <Button Classes="header-action" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc git.refresh}" AutomationProperties.Name="{loc:Loc git.refresh}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="16" Height="16" Data="M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14" /></Button>
+        <Grid x:Name="HeaderHost" ColumnDefinitions="*,Auto" IsVisible="{Binding !IsPickerMode}">
+            <common:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc git.title}" Subtitle="{loc:Loc git.subtitle}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/codeeditor.png" />
+            <StackPanel x:Name="HeaderActions" Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <TextBlock x:Name="ProjectNameLabel" MaxWidth="140" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                <Button x:Name="BranchBadge" Content="{Binding Status.Branch}" Click="Branches_Click" ToolTip.Tip="{loc:Loc git.page.log}" />
+                <Button x:Name="RefreshButton" Classes="header-action" ToolTip.Tip="{loc:Loc git.refresh}" AutomationProperties.Name="{loc:Loc git.refresh}">
+                    <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="16" Height="16" Data="M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14" />
+                </Button>
             </StackPanel>
         </Grid>
-
-        <!-- Main content -->
-        <Grid x:Name="WorkspaceBody" Grid.Row="1" ColumnDefinitions="190,*" IsVisible="{Binding !IsPickerMode}">
-            <!-- Left navigation -->
-            <Border Grid.Column="0" Background="{DynamicResource SurfaceSunkenBrush}">
-                <StackPanel Spacing="0" Margin="0,8">
-                    <Button Classes="workspace-nav" Tag="overview" Click="NavigationButton_Click"
-                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                            Padding="16,10">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="📋" />
-                            <TextBlock Text="{loc:Loc git.page.overview}" />
-                        </StackPanel>
-                    </Button>
-                    <Button Classes="workspace-nav" Tag="workspace" Click="NavigationButton_Click"
-                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                            Padding="16,10">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="📝" />
-                            <TextBlock Text="{loc:Loc git.page.workspace}" />
-                        </StackPanel>
-                    </Button>
-                    <Button Classes="workspace-nav" Tag="log" Click="NavigationButton_Click"
-                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                            Padding="16,10">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="📜" />
-                            <TextBlock Text="{loc:Loc git.page.log}" />
-                        </StackPanel>
-                    </Button>
-                    <Button Classes="workspace-nav" Tag="remotes" Click="NavigationButton_Click"
-                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                            Padding="16,10">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="🌐" />
-                            <TextBlock Text="{loc:Loc git.page.remotes}" />
-                        </StackPanel>
-                    </Button>
-                    <Button Classes="workspace-nav" Tag="conflicts" Command="{Binding OpenConflictResolutionCommand}"
-                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                            Padding="16,10"
-                            IsVisible="{Binding ShowConflictPage}">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="⚠" />
-                            <TextBlock Text="{loc:Loc git.page.conflicts}" />
-                        </StackPanel>
-                    </Button>
-                </StackPanel>
+        <Grid x:Name="WorkspaceBody" Grid.Row="1" RowDefinitions="Auto,*" IsVisible="{Binding !IsPickerMode}">
+            <Border Classes="app-toolbar" Padding="6,4">
+                <WrapPanel>
+                    <Button Content="{loc:Loc git.editor.project}" Click="Project_Click" Margin="0,0,4,2" />
+                    <Button Content="{loc:Loc git.editor.commit}" Click="Commit_Click" IsEnabled="{Binding CanManage}" Margin="0,0,8,2" />
+                    <Button Content="{loc:Loc common.new}" Click="New_Click" Margin="0,0,4,2" />
+                    <Button Content="{loc:Loc common.save}" Click="Save_Click" Margin="0,0,4,2" />
+                    <Button Content="{loc:Loc git.editor.save_all}" Click="SaveAll_Click" Margin="0,0,4,2" />
+                    <Button Content="{loc:Loc common.save_as_ellipsis}" Click="SaveAs_Click" Margin="0,0,4,2" />
+                    <Button Content="{loc:Loc code_editor.find}" Click="Find_Click" Margin="0,0,8,2" />
+                    <Button x:Name="InitializeButton" Content="{loc:Loc git.editor.initialize}" Click="Initialize_Click" Margin="0,0,4,2" />
+                    <Button Content="{loc:Loc git.editor.stage}" Click="Stage_Click" IsEnabled="{Binding CanManage}" Margin="0,0,4,2" />
+                    <Button Content="{loc:Loc git.editor.pull}" Command="{Binding PullCommand}" Margin="0,0,4,2" />
+                    <Button Content="{loc:Loc git.editor.push}" Command="{Binding PushCommand}" Margin="0,0,4,2" />
+                    <Button Content="{loc:Loc git.page.conflicts}" Command="{Binding OpenConflictResolutionCommand}" IsVisible="{Binding ShowConflictPage}" />
+                </WrapPanel>
             </Border>
-
-            <!-- Right content area: 不使用外层 ScrollViewer，避免给子元素无限宽高；
-                 横向滚动与列表纵向滚动统一交给内部 DataGrid 自带的 ScrollViewer -->
-            <Border Grid.Column="1" Padding="16">
-                <ContentControl x:Name="ContentHost" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
-            </Border>
+            <Grid Grid.Row="1" x:Name="MainWorkspace" ColumnDefinitions="0,0,*">
+                <views:GitCommitToolView x:Name="CommitTool" IsVisible="False" />
+                <GridSplitter x:Name="CommitSplitter" Grid.Column="1" Width="5" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" IsVisible="False" />
+                <Grid x:Name="EditorArea" Grid.Column="2" RowDefinitions="*,0,Auto,0">
+                        <code:CodeEditorView x:Name="EditorPane" />
+                    <GridSplitter x:Name="GitSplitter" Grid.Row="1" Height="5" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext" IsVisible="False" />
+                    <Border Grid.Row="2" Classes="app-toolbar" Padding="6,2">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <Button Content="{loc:Loc git.page.log}" Tag="log" Click="GitTool_Click" IsEnabled="{Binding CanManage}" />
+                            <Button Content="{loc:Loc git.editor.branches}" Tag="branches" Click="GitTool_Click" IsEnabled="{Binding CanManage}" />
+                            <Button Content="{loc:Loc git.page.remotes}" Tag="remotes" Click="GitTool_Click" IsEnabled="{Binding CanManage}" />
+                            <Button Content="{loc:Loc git.page.overview}" Tag="overview" Click="GitTool_Click" IsEnabled="{Binding CanManage}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Row="3" x:Name="GitToolHost" IsVisible="False" Padding="6" Background="{DynamicResource SurfaceSunkenBrush}">
+                        <ContentControl x:Name="ContentHost" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+                    </Border>
+                </Grid>
+            </Grid>
         </Grid>
-
-        <!-- 项目选择视图：IsPickerMode=true 时显示 -->
         <views:GitProjectPickerView Grid.Row="1" IsVisible="{Binding IsPickerMode}" x:Name="PickerHost" />
-
-        <!-- Status bar -->
-        <Border Grid.Row="2" Background="{DynamicResource SurfaceSunkenBrush}" Padding="16,6">
-            <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12" />
+        <Border Grid.Row="2" Classes="app-statusbar">
+            <TextBlock Text="{Binding StatusText}" FontSize="12" TextTrimming="CharacterEllipsis" />
         </Border>
     </Grid>
 </UserControl>

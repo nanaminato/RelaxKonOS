@@ -66,7 +66,7 @@ public sealed partial class GitClientViewModel
         try
         {
             LogBranchOptions.Clear();
-            LogBranchOptions.Add(new GitLogFilterOption(string.Empty, "分支: HEAD"));
+            LogBranchOptions.Add(new GitLogFilterOption(string.Empty, LocalizedText.Get("git.editor.head_filter")));
             foreach (var branch in Branches.OrderBy(branch => branch.IsRemote).ThenBy(branch => branch.Name, StringComparer.OrdinalIgnoreCase))
                 LogBranchOptions.Add(new GitLogFilterOption(branch.Name, branch.Name));
             SelectedLogBranch = LogBranchOptions.FirstOrDefault(option => option.Value == selectedValue)
@@ -88,7 +88,7 @@ public sealed partial class GitClientViewModel
         try
         {
             LogAuthorOptions.Clear();
-            LogAuthorOptions.Add(new GitLogFilterOption(string.Empty, "用户: 全部"));
+            LogAuthorOptions.Add(new GitLogFilterOption(string.Empty, LocalizedText.Get("git.editor.author_filter")));
             foreach (var author in knownAuthors)
                 LogAuthorOptions.Add(new GitLogFilterOption(author, author));
             SelectedLogAuthor = LogAuthorOptions.FirstOrDefault(option => option.Value == selectedValue)
@@ -111,8 +111,28 @@ public sealed partial class GitClientViewModel
 
     partial void OnSelectedLogDateChanged(GitLogFilterOption? value)
     {
-        if (value is not null && SelectedRepository is not null)
+        if (!_updatingLogFilterOptions && value is not null && SelectedRepository is not null)
             _ = ApplyLogFiltersAsync();
+    }
+
+    public void RefreshEditorLocalization()
+    {
+        var date = SelectedLogDate?.Value ?? "all";
+        _updatingLogFilterOptions = true;
+        try
+        {
+            LogDateOptions.Clear();
+            foreach (var range in new[] { "all", "today", "week", "month" })
+                LogDateOptions.Add(new(range, LocalizedText.Get($"git.editor.date_{range}")));
+            SelectedLogDate = LogDateOptions.First(item => item.Value == date);
+        }
+        finally { _updatingLogFilterOptions = false; }
+        RebuildLogBranchOptions();
+        RebuildLogAuthorOptions();
+        OnPropertyChanged(nameof(StatusText));
+        OnPropertyChanged(nameof(Status));
+        OnPropertyChanged(nameof(CommitChangedFiles));
+        OnPropertyChanged(nameof(SelectedCount));
     }
 
     partial void OnCommitSearchTextChanged(string value) => QueueLogFilterRefresh();

@@ -249,6 +249,8 @@ public sealed partial class GitClientViewModel
             return;
         }
 
+        if (!await PrepareEditorAsync()) return;
+
         IsBusy = true;
         try
         {
@@ -332,6 +334,7 @@ public sealed partial class GitClientViewModel
                     : await ShowPushRejectedDialogAsync(owner);
                 if (integration is not null)
                 {
+                    if (!await PrepareEditorAsync()) return false;
                     PushStatusMessage = LocalizedText.Get("git.dialog.push_rejected.updating");
                     var pull = await client.PullAsync(SelectedRepository.Id, integration with
                     {

@@ -54,7 +54,7 @@
     </UserControl.Styles>
     <!-- Columns 5 and 6 belong to the inline diff pane: both stay at zero width until a file is
          opened, so the three-pane layout is unchanged when nothing is being reviewed. -->
-    <Grid x:Name="LogLayoutRoot" ColumnDefinitions="190,6,*,6,280,0,0" MinHeight="380">
+    <Grid x:Name="LogLayoutRoot" ColumnDefinitions="190,6,*,6,280,0,0">
 
         <!-- ============================================================
              LEFT PANE : Branch / Tag Tree (Fork-style)
@@ -355,7 +355,7 @@
                         <TextBlock FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}">
                             <Run Text="📁" />
                             <Run Text="  " />
-                            <Run Text="{Binding CommitChangedFiles.Count, Converter={x:Static git:GitPickerConverters.LocalizedFormat}, ConverterParameter='git.log.file_count_format'}" />
+                            <Run x:Name="CommitFileCount" />
                         </TextBlock>
                     </Grid>
                 </Border>

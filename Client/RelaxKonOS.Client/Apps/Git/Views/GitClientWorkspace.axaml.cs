@@ -1,15 +1,53 @@
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
-using Avalonia.VisualTree;
 
 namespace RelaxKonOS.Client.Apps.Git.Views;
 
-/// <summary>Git Client shell. Layout lives in AXAML; this class switches pages and handles navigation.
-/// 支持两种显示模式：IsPickerMode=true 时显示项目选择器；否则显示当前仓库的工作区。
-/// 通过监听 VM 的 ActivePage / IsPickerMode 属性变化来同步工作区 ContentHost，保证与 VM 状态一致。</summary>
+/// <summary>Project editor shell with persistent documents and independently toggled Git tools.</summary>
 internal partial class GitClientWorkspace : UserControl
 {
+    private readonly GitClientViewModel _viewModel;
+    private readonly ProjectEditorViewModel _project;
+    private RelaxKonOS.WindowManager.ManagedWindow? _headerWindow;
+    private bool _attached;
+    private string _tool = "log";
+    private double _gitHeight = 300;
+    private double _commitWidth = 300;
+    private readonly Dictionary<string, Control> _tools = [];
+
+    private GitClientWorkspace(GitClientViewModel viewModel, ProjectEditorViewModel project)
+    {
+        _viewModel = viewModel;
+        _project = project;
+        InitializeComponent();
+        DataContext = viewModel;
+        RefreshButton.Command = project.RefreshCommand;
+        EditorPane.DataContext = project.Editor;
+        EditorPane.UseProjectLayout();
+        EditorArea.RowDefinitions[3].Height = new GridLength(0);
+        Loaded += (_, _) =>
+        {
+            if (_attached) return;
+            _attached = true;
+            _viewModel.PropertyChanged += GitChanged;
+            _project.PropertyChanged += ProjectChanged;
+            if (_project.IsGitVisible) ShowTool();
+            UpdateLayoutState();
+        };
+        DetachedFromVisualTree += (_, _) =>
+        {
+            _viewModel.PropertyChanged -= GitChanged;
+            _project.PropertyChanged -= ProjectChanged;
+            _attached = false;
+        };
+        SizeChanged += (_, _) => UpdateLayoutState();
+    }
+
+    public static GitClientWorkspace Create(GitClientViewModel viewModel, ProjectEditorViewModel project) => new(viewModel, project);
+    public RelaxKonOS.Client.Apps.CodeEditor.CodeEditorView EditorView => EditorPane;
+
     public void AttachWindowHeader(RelaxKonOS.WindowManager.ManagedWindow window)
     {
         _headerWindow = window;
@@ -18,135 +56,97 @@ internal partial class GitClientWorkspace : UserControl
         Header.Attach(window, HeaderActions);
     }
 
-    private readonly GitClientViewModel _viewModel;
-    private Button? _selectedButton;
-    private bool _attached;
-    private RelaxKonOS.WindowManager.ManagedWindow? _headerWindow;
-
-    private GitClientWorkspace(GitClientViewModel viewModel)
-    {
-        _viewModel = viewModel;
-        InitializeComponent();
-        RelaxKonOS.Client.Controls.CompactWorkspaceNavigation.Install(this, WorkspaceBody);
-        DataContext = viewModel;
-        // 构造时 ContentHost 可能尚未注入（NameScope 未构建完整），等到 Loaded 再同步初始页面。
-        // 同时 IsPickerMode=true 时导航栏默认隐藏，ContentHost 也不可见。
-        Loaded += OnLoaded;
-        DetachedFromVisualTree += (_, _) => { _viewModel.PropertyChanged -= OnViewModelPropertyChanged; _attached = false; };
-        SizeChanged += (_, e) => BranchBadge.IsVisible = e.NewSize.Width >= 600;
-    }
-
-    public static GitClientWorkspace Create(GitClientViewModel viewModel) => new GitClientWorkspace(viewModel);
-
-    private void OnLoaded(object? sender, RoutedEventArgs e)
-    {
-        if (_attached) return;
-        _attached = true;
-        _viewModel.PropertyChanged += OnViewModelPropertyChanged;
-        // 非选择器模式（例如重启后保持的模式），则按当前 ActivePage 初始化
-        if (!_viewModel.IsPickerMode)
-            SyncPageFromViewModel();
-    }
-
-    private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    private void GitChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(GitClientViewModel.IsPickerMode) && _headerWindow is not null)
         {
             if (_viewModel.IsPickerMode) Header.Detach();
             else AttachWindowHeader(_headerWindow);
         }
-        // IsPickerMode=false 切换为工作区：显示默认概览页 + 选中“概览”按钮
-        if (e.PropertyName == nameof(GitClientViewModel.IsPickerMode) && !_viewModel.IsPickerMode)
+        if (e.PropertyName == nameof(GitClientViewModel.ActivePage))
         {
-            _viewModel.ActivePage = GitClientPage.Overview;
-            SyncPageFromViewModel();
+            _tool = _viewModel.ActivePage switch
+            {
+                GitClientPage.Log => "log", GitClientPage.Remotes => "remotes", _ => "overview",
+            };
+            _project.IsGitVisible = true;
+            ShowTool();
         }
-        else if (e.PropertyName == nameof(GitClientViewModel.ActivePage) && !_viewModel.IsPickerMode)
-        {
-            SyncPageFromViewModel();
-        }
+        UpdateLayoutState();
     }
 
-    private void NavigationButton_Click(object? sender, RoutedEventArgs e)
+    private void ProjectChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (sender is not Button { Tag: string section } btn) return;
-        var page = SectionToPage(section);
-        if (page.HasValue) _viewModel.ActivePage = page.Value;
-        ShowPage(section, btn);
+        if (e.PropertyName == nameof(ProjectEditorViewModel.IsGitVisible) && _project.IsGitVisible) ShowTool();
+        UpdateLayoutState();
     }
 
-    private void SyncPageFromViewModel()
+    private void UpdateLayoutState()
     {
-        if (ContentHost is null) return;
-        var section = PageToSection(_viewModel.ActivePage);
-        ContentHost.Content = CreatePageView(section);
-        HighlightNavButton(section);
+        InitializeButton.IsVisible = _viewModel.SelectedRepository is null;
+        ProjectNameLabel.Text = _project.ProjectName;
+        ProjectNameLabel.IsVisible = Bounds.Width >= 760;
+        ProjectNameLabel.SetValue(ToolTip.TipProperty, _project.ProjectPath);
+        BranchBadge.IsVisible = _viewModel.SelectedRepository is not null && Bounds.Width >= 600;
+        var showCommit = _project.IsCommitVisible && _viewModel.SelectedRepository is not null;
+        if (MainWorkspace.ColumnDefinitions[0].Width.Value > 0)
+            _commitWidth = MainWorkspace.ColumnDefinitions[0].Width.Value;
+        MainWorkspace.ColumnDefinitions[0].Width = new GridLength(showCommit ? Math.Min(_commitWidth, Math.Max(220, Bounds.Width * .45)) : 0);
+        MainWorkspace.ColumnDefinitions[1].Width = new GridLength(showCommit ? 5 : 0);
+        CommitTool.IsVisible = CommitSplitter.IsVisible = showCommit;
+        var showGit = _project.IsGitVisible && _viewModel.SelectedRepository is not null;
+        if (EditorArea.RowDefinitions[3].Height.Value > 0)
+            _gitHeight = EditorArea.RowDefinitions[3].Height.Value;
+        EditorArea.RowDefinitions[1].Height = new GridLength(showGit ? 5 : 0);
+        EditorArea.RowDefinitions[3].Height = new GridLength(showGit ? Math.Min(_gitHeight, Math.Max(160, Bounds.Height * .45)) : 0);
+        GitToolHost.IsVisible = GitSplitter.IsVisible = showGit;
     }
 
-    private void HighlightNavButton(string section)
+    private void ShowTool()
     {
-        // 找左侧导航栏所有 Tag 为 string 的 Button（AXAML 里的导航按钮都在左侧 StackPanel 中）
-        var navButtons = this.GetVisualDescendants()
-            .OfType<Button>()
-            .Where(b => b.Tag is string)
-            .ToList();
-
-        if (_selectedButton is not null && _selectedButton.Tag is string)
+        if (!_tools.TryGetValue(_tool, out var tool))
         {
-            _selectedButton.Classes.Remove("nav-selected");
+            tool = _tool switch
+            {
+                "branches" => new GitBranchesView(_viewModel),
+                "remotes" => new GitRemotesView(_viewModel),
+                "overview" => new GitOverviewView(_viewModel),
+                _ => new GitLogView(_viewModel),
+            };
+            _tools[_tool] = tool;
         }
-
-        var target = navButtons.FirstOrDefault(b => string.Equals((string)b.Tag!, section, StringComparison.Ordinal));
-        if (target is not null)
-        {
-            target.Classes.Add("nav-selected");
-            _selectedButton = target;
-        }
-        else
-        {
-            _selectedButton = null;
-        }
+        ContentHost.Content = tool;
     }
 
-    private void ShowPage(string section, Button? sourceButton = null)
+    private void Project_Click(object? sender, RoutedEventArgs e) => _project.ToggleProjectCommand.Execute(null);
+    private void Commit_Click(object? sender, RoutedEventArgs e) => _project.ToggleCommitCommand.Execute(null);
+    private void New_Click(object? sender, RoutedEventArgs e)
     {
-        if (_selectedButton is not null && _selectedButton != sourceButton)
-        {
-            _selectedButton.Classes.Remove("nav-selected");
-        }
-
-        if (sourceButton is not null)
-        {
-            sourceButton.Classes.Add("nav-selected");
-            _selectedButton = sourceButton;
-        }
-
-        if (ContentHost is not null)
-            ContentHost.Content = CreatePageView(section);
+        if (_project.Editor.CanEditDocument) _project.Editor.NewDocumentCommand.Execute(null);
     }
-
-    private object CreatePageView(string section) => section switch
+    private async void Save_Click(object? sender, RoutedEventArgs e) => await _project.Editor.SaveCommand.ExecuteAsync(null);
+    private async void SaveAll_Click(object? sender, RoutedEventArgs e) => await _project.Editor.SaveAllCommand.ExecuteAsync(null);
+    private async void SaveAs_Click(object? sender, RoutedEventArgs e) => await _project.Editor.SaveAsCommand.ExecuteAsync(null);
+    private void Find_Click(object? sender, RoutedEventArgs e) => EditorPane.FocusFind();
+    private async void Initialize_Click(object? sender, RoutedEventArgs e) => await _project.InitializeGitCommand.ExecuteAsync(null);
+    private async void Stage_Click(object? sender, RoutedEventArgs e)
     {
-        "workspace" => new GitWorkspaceView(_viewModel),
-        "log" => new GitLogView(_viewModel),
-        "remotes" => new GitRemotesView(_viewModel),
-        _ => new GitOverviewView(_viewModel),
-    };
-
-    private static string PageToSection(GitClientPage page) => page switch
+        if (_project.Editor.CurrentPath is not { } path || _project.ProjectPath is not { } root || !_viewModel.CanManage) return;
+        var relative = path.Replace('\\', '/');
+        var prefix = root.Replace('\\', '/').TrimEnd('/') + '/';
+        if (!relative.StartsWith(prefix, StringComparison.Ordinal)) return;
+        await _viewModel.StageFileContextCommand.ExecuteAsync(new RelaxKonOS.Protocol.Git.GitFileChangeDto(relative[prefix.Length..], Status: "modified"));
+    }
+    private void Branches_Click(object? sender, RoutedEventArgs e) => ToggleTool("branches");
+    private void GitTool_Click(object? sender, RoutedEventArgs e)
     {
-        GitClientPage.Workspace => "workspace",
-        GitClientPage.Log => "log",
-        GitClientPage.Remotes => "remotes",
-        _ => "overview",
-    };
-
-    private static GitClientPage? SectionToPage(string section) => section switch
+        if (sender is Button { Tag: string tool }) ToggleTool(tool);
+    }
+    private void ToggleTool(string tool)
     {
-        "workspace" => GitClientPage.Workspace,
-        "log" => GitClientPage.Log,
-        "remotes" => GitClientPage.Remotes,
-        "overview" => GitClientPage.Overview,
-        _ => null,
-    };
+        _project.IsGitVisible = !_project.IsGitVisible || _tool != tool;
+        _tool = tool;
+        if (_project.IsGitVisible) ShowTool();
+        UpdateLayoutState();
+    }
 }

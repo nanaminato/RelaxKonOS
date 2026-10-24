@@ -34,6 +34,11 @@ public sealed partial class GitClientViewModel
     private async Task ShowInlineCommitFileDiffAsync(GitFileChangeDto file)
     {
         if (SelectedRepository is null || SelectedCommit is null) return;
+        if (OpenEditorDiffAsync is not null)
+        {
+            await OpenEditorDiffAsync(file, SelectedCommit.Sha);
+            return;
+        }
 
         var request = ++_inlineDiffRequest;
         InlineDiff = null;

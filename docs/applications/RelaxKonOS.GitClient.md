@@ -1,8 +1,8 @@
 # RelaxKonOS GitClient 模块设计
 
-> **演进设计（设计中）**：内置 Git 将改为同时提供文件编辑和 Git 的 IDEA 风格项目编辑器，详见 [项目编辑器改造设计](./RelaxKonOS.GitEditor.Design.md)。该设计明确目标布局、现有组件复用、草稿保护、协议演进与分阶段验收；下文仍描述现有 GitClient，不代表改造已经实现。
+> **项目编辑器首版已实现**：`relaxkonos.git` 已整合项目文件树、多标签编辑、Commit 侧栏、Diff 标签和底部 Git 工具区，显示名称为“项目编辑器”。入口、草稿保护、条件保存和实际验证范围见 [实施记录](./RelaxKonOS.GitEditor.Progress.md)，后续目标见 [改造设计](./RelaxKonOS.GitEditor.Design.md)。下文保留 Git 领域能力和协议说明；早期按页面切换的壳布局已由项目编辑器替代。
 
-> 内置 Git 客户端：参考 TortoiseGit / Git Extensions，工作区式单窗口应用。面向 RelaxKonOS Server 上已存在的 Git 仓库（服务端文件系统中的工作树），提供仓库选择、分支切换、提交、拉取（含冲突解决）、新建/删除分支、提交历史、Revert 等日常版本控制操作。所有 Git 操作经 Server 端 REST API 执行，服务端以宿主 OS 进程身份调用 `git` CLI，复用宿主用户/权限（不另建 ACL，不存储任何凭据/SSH 私钥）。
+> 内置项目编辑器：参考 IDEA 的项目工具窗口与 MyGit 的变更审阅流程，每个项目拥有独立窗口。文件编辑经 Files API，仓库选择、分支切换、提交、拉取（含冲突解决）、推送、历史和 Revert 等经 Git REST API；服务端以有效宿主身份执行，复用宿主权限。
 >
 > - 架构原则见 [`RelaxKonOS.Architecture.md`](../architecture/RelaxKonOS.Architecture.md)
 > - 项目当前状态见 [`RelaxKonOS.md`](../README.md)（§6 内置应用）
@@ -21,7 +21,7 @@
 
 「探测返回不是仓库」有四种不同原因，界面上必须能区分：目录根本不是仓库（提示初始化）、git 拒绝打开（`detected dubious ownership`——工作树属于别的账号，通常是提权文件管理或 root 克隆造成的）、权限不足、以及用户执行边界不可用。因此 `GitRepositoryProbeDto.Problem` 携带 Git 自己的首行 stderr，客户端把它拼在提示里；服务端不再把「git 失败」与「不是仓库」压成同一个布尔值，否则用户会被引导去 `git init` 一个早就存在的仓库。修法是校正工作树属主（`chown -R <user>:<user> <path>`），不是放宽 git 的 `safe.directory`。
 
-GitClient 是 RelaxKonOS 的内置版本控制客户端，参考 TortoiseGit / Git Extensions。
+GitClient 是项目编辑器的 Git 领域模块；项目壳与共享文件编辑组件一起提供编辑、审阅、提交的连续工作流。
 
 - **架构归属**：§6.2 Remote Service Application —— UI 完全在 Client 本地渲染；仓库状态、提交历史、分支列表与变更结果**数据来源在 Server 端通过 `git` 实时采集**（不持久化运行时状态，每次请求都是当下快照）。
 - **复用宿主 OS 权限**（硬约束）：Server 端 `IGitRepositoryService` 以宿主 OS 进程身份调用 `git` CLI，复用宿主用户/权限，不另建 ACL。push/pull 需要 SSH 凭据或 HTTPS 凭据时，**RelaxKonOS 不存储、不代理、不收集**——直接由宿主 OS 的 `git` 凭据助手（credential helper / SSH agent）处理；若凭据缺失则 `git` 返回失败，客户端展示本地化提示，引导用户在宿主 OS 配置。
@@ -49,21 +49,22 @@ GitClient 是 RelaxKonOS 的内置版本控制客户端，参考 TortoiseGit / G
 
 ## 2. 嵌入方式
 
-`GitClientWorkspace` 作为 `UserControl` 嵌入 `RemoteWindow`，与 DockerManager / TaskManager 同构：
+`GitClientWorkspace` 作为 `UserControl` 嵌入 `RemoteWindow`；中央编辑器持续存在，侧边与底部工具区独立切换：
 
 ```text
 GitClientApp (RemoteApplicationBase)
     |
-    AppContext.ShowWindow("Git 客户端", view, bounds=1180x760)
+    AppContext.ShowWindow("项目编辑器", view, bounds=1180x760)
     |
     WindowManager.Create → RemoteWindow
     |
     GitClientWorkspace (UserControl)
-        ├── 顶部标题栏（图标 + 仓库选择器 + 当前分支 + upstream 状态 + 刷新）
-        └── 左侧导航 + 右侧内容区（按 ActivePage 切换：概览/工作区/日志/冲突解决/远程）
+        ├── 项目与分支标题栏、文件/Git 工具栏
+        ├── Project / Commit 工具区 + 持续存在的多标签 CodeEditorView
+        └── 可收起的 Git 工具区（日志 / 分支 / 远程 / 概览）
 ```
 
-`GitClientApp.Activate` 注入 `IAuthSession` + `IRemoteGitClient`（从 `context.Services`）。未登录时弹 `TextBlock` 提示窗（470x180，不可缩放），不崩溃；登录则构造 `GitClientViewModel` + `GitClientWorkspace`，`context.ShowWindow`（bounds 1180x760）后 `_ = viewModel.StartAsync()` 异步拉取仓库列表与首仓状态。
+`GitClientApp.Activate` 从组合入口取得 `IAuthSession`、`IRemoteGitClient` 与 `IExplorerClient`，构造 `GitClientViewModel` 和窗口独有的 `ProjectEditorViewModel`，再创建工作区（1180×760）。登录检查保留；`StartAsync` 异步加载项目列表。共享编辑器对话框、草稿关闭保护、快捷键和语言事件由应用入口接线；窗口关闭时释放项目协调器、编辑资源和 Git 刷新计时器。
 
 ---
 

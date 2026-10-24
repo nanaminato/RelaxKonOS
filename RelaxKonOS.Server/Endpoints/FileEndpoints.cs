@@ -63,6 +63,12 @@ public static class FileEndpoints
         }).RequireAuthorization()
             .AddEndpointFilter(new ServerModeEndpointFilter(ServerHostFeature.PrivilegedOperations))
             .WithTags("Files");
+        files.MapPut(FileApiRoutes.ConditionalContent, (ConditionalFileWriteRequest request, IFileService fs, CancellationToken ct) =>
+            TextResult(async () => await new ConditionalFileEditor(fs).SaveAsync(request, ct) is { } saved
+                ? Results.Ok(saved) : Problem(409, "text-file-changed", "File changed", "Reload or save a copy before saving.")))
+            .RequireAuthorization(FileAuthorizationPolicies.Write).WithTags("Files")
+            .WithMetadata(new RequestSizeLimitAttribute(1024 * 1024));
+
         files.MapGet(FileApiRoutes.Text, (string path, IFileService fs, CancellationToken ct) =>
             TextResult(async () => Results.Ok(await new TextFileEditor(fs).ReadAsync(path, ct))))
             .RequireAuthorization(FileAuthorizationPolicies.Read).WithTags("Files");

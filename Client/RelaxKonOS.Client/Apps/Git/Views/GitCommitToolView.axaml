@@ -1,0 +1,61 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             x:Class="RelaxKonOS.Client.Apps.Git.Views.GitCommitToolView"
+             x:DataType="git:GitClientViewModel" Classes="builtin-app">
+    <UserControl.Resources>
+        <DataTemplate x:Key="ChangeTemplate" x:DataType="git:GitEditorChangeItem">
+            <Grid ColumnDefinitions="Auto,*" Margin="2,1">
+                <CheckBox IsChecked="{Binding Selection.IsSelected, Mode=TwoWay}" IsVisible="{Binding CanSelect}"
+                          ToolTip.Tip="{loc:Loc git.editor.select_commit}" VerticalAlignment="Center" />
+                <Button Grid.Column="1" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                        Background="Transparent" BorderThickness="0" Padding="4,6" MinWidth="0" Tag="{Binding Change}" Click="Diff_Click">
+                    <TextBlock Text="{Binding Change.Path}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Change.Path}" />
+                    <Button.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="{loc:Loc git.editor.open_file}" Tag="{Binding Change}" Click="Open_Click" />
+                            <MenuItem Header="{loc:Loc git.editor.stage}" Tag="{Binding Change}" Click="Stage_Click" />
+                            <MenuItem Header="{loc:Loc git.editor.unstage}" Tag="{Binding Change}" Click="Unstage_Click" />
+                            <MenuItem Header="{loc:Loc git.editor.restore}" Tag="{Binding Change}" Click="Restore_Click" />
+                        </ContextMenu>
+                    </Button.ContextMenu>
+                </Button>
+            </Grid>
+        </DataTemplate>
+    </UserControl.Resources>
+    <Grid RowDefinitions="Auto,*,Auto" Background="{DynamicResource SurfaceSunkenBrush}">
+        <Grid ColumnDefinitions="*,Auto" Margin="10,8">
+            <TextBlock Text="{loc:Loc git.editor.commit}" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <Button Grid.Column="1" Content="{loc:Loc git.workspace.select_all}" Command="{Binding SelectAllChangesCommand}" />
+        </Grid>
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="4" Margin="6,0">
+                <Expander Header="{loc:Loc git.editor.staged}" IsExpanded="True" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <ItemsControl ItemsSource="{Binding EditorStagedFiles}" ItemTemplate="{StaticResource ChangeTemplate}" />
+                </Expander>
+                <Expander Header="{loc:Loc git.editor.unstaged}" IsExpanded="True" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <ItemsControl ItemsSource="{Binding EditorUnstagedFiles}" ItemTemplate="{StaticResource ChangeTemplate}" />
+                </Expander>
+                <Expander Header="{loc:Loc git.editor.untracked}" IsExpanded="True" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <ItemsControl ItemsSource="{Binding EditorUntrackedFiles}" ItemTemplate="{StaticResource ChangeTemplate}" />
+                </Expander>
+                <Expander Header="{loc:Loc git.page.conflicts}" IsExpanded="True" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <StackPanel>
+                        <ItemsControl ItemsSource="{Binding EditorConflictFiles}" ItemTemplate="{StaticResource ChangeTemplate}" />
+                        <Button Content="{loc:Loc git.page.conflicts}" Command="{Binding OpenConflictResolutionCommand}" IsVisible="{Binding ShowConflictPage}" />
+                    </StackPanel>
+                </Expander>
+            </StackPanel>
+        </ScrollViewer>
+        <StackPanel Grid.Row="2" Margin="10" Spacing="6" IsEnabled="{Binding !IsBusy}">
+            <TextBlock Text="{loc:Loc git.editor.commit_selection_hint}" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+            <TextBlock Text="{Binding SelectedCount, Converter={x:Static git:GitPickerConverters.LocalizedFormat}, ConverterParameter='git.workspace.file_count_format'}" />
+            <TextBox Text="{Binding CommitMessage, Mode=TwoWay}" PlaceholderText="{loc:Loc git.workspace.commit_placeholder}" AcceptsReturn="True" MinHeight="72" MaxHeight="160" />
+            <WrapPanel>
+                <Button Content="{loc:Loc git.workspace.commit}" Command="{Binding CommitCommand}" Margin="0,0,4,4" />
+                <Button Content="{loc:Loc git.workspace.commit_and_push}" Command="{Binding CommitAndPushCommand}" Margin="0,0,0,4" />
+            </WrapPanel>
+        </StackPanel>
+    </Grid>
+</UserControl>

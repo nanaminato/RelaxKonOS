@@ -45,6 +45,7 @@ public sealed partial class GitClientViewModel
         if (ShowCreateBranchDialogAsync is null || SelectedRepository is null) return;
         var request = await ShowCreateBranchDialogAsync(baseBranch);
         if (request is null) return;
+        if (!await PrepareEditorAsync()) return;
         // 若用户对话框未指定起点，则以右键选中的分支作为起点
         var startPoint = string.IsNullOrWhiteSpace(request.StartPoint) && baseBranch is not null
             ? baseBranch.Name
@@ -131,6 +132,8 @@ public sealed partial class GitClientViewModel
                 && !await ShowConfirmAsync(LocalizedText.Format("git.vm.merge_confirm_format", branch.Name)))
                 return;
         }
+
+        if (!await PrepareEditorAsync()) return;
 
         IsBusy = true;
         try
@@ -224,6 +227,8 @@ public sealed partial class GitClientViewModel
                 branchRequest = await ShowPullDialogAsync();
             if (branchRequest is null || SelectedRepository is null) return;
 
+            if (!await PrepareEditorAsync()) return;
+
             IsBusy = true;
             try
             {
@@ -259,6 +264,8 @@ public sealed partial class GitClientViewModel
         if (ShowPullDialogAsync is not null)
             request = await ShowPullDialogAsync();
         if (request is null || SelectedRepository is null) return;
+
+        if (!await PrepareEditorAsync()) return;
 
         IsBusy = true;
         try

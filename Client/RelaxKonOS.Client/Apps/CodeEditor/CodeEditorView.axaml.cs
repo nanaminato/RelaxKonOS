@@ -6,6 +6,7 @@ using Avalonia.Threading;
 using AvaloniaEdit.Search;
 using RelaxKonOS.WindowManager;
 using AvaloniaEdit.Highlighting;
+using Avalonia.Input;
 
 namespace RelaxKonOS.Client.Apps.CodeEditor;
 
@@ -17,6 +18,8 @@ public partial class CodeEditorView : UserControl
     private CodeEditorViewModel? _viewModel;
     private readonly SearchPanel _searchPanel;
     private double _sidebarWidth = DefaultSidebarWidth;
+    private bool _projectLayout;
+    private CodeEditorDocument? _displayedDocument;
 
     private ColumnDefinition SidebarColumn => EditorContentGrid.ColumnDefinitions[1];
     private ColumnDefinition SidebarSplitterColumn => EditorContentGrid.ColumnDefinitions[2];
@@ -45,6 +48,10 @@ public partial class CodeEditorView : UserControl
             if (DocumentTabs.SelectedItem is { } document) DocumentTabs.ScrollIntoView(document);
         };
         Editor.Document.TextChanged += OnEditorTextChanged;
+        Editor.TextArea.Caret.PositionChanged += (_, _) =>
+        {
+            if (_viewModel is not null) _viewModel.CaretPosition = $"{Editor.TextArea.Caret.Line}:{Editor.TextArea.Caret.Column}";
+        };
         DataContextChanged += OnDataContextChanged;
     }
 
@@ -57,6 +64,40 @@ public partial class CodeEditorView : UserControl
         window.View.HeaderCenter = HeaderCenter;
         window.View.HeaderTrailing = HeaderTrailing;
         window.View.HeaderTabs = HeaderTabs;
+    }
+
+    /// <summary>Reuse the editor/session without an application menu or nested activity bar.</summary>
+    public void UseProjectLayout()
+    {
+        _projectLayout = true;
+        HeaderHost.Children.Clear();
+        HeaderHost.ColumnDefinitions = new ColumnDefinitions("*");
+        HeaderHost.RowDefinitions = new RowDefinitions("Auto");
+        Grid.SetRow(HeaderTabs, 0);
+        Grid.SetColumn(HeaderTabs, 0);
+        Grid.SetColumnSpan(HeaderTabs, 1);
+        HeaderHost.Children.Add(HeaderTabs);
+        ActivityBar.IsVisible = false;
+        FolderActions.IsVisible = false;
+        EditorContentGrid.ColumnDefinitions[0].Width = new GridLength(0);
+    }
+
+    private async void ProjectTree_DoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (_projectLayout && _viewModel?.SelectedFolderNode is { IsDirectory: false, IsPlaceholder: false } node)
+        {
+            await _viewModel.OpenPathAsync(node.Path);
+            e.Handled = true;
+        }
+    }
+
+    private async void ProjectTree_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (_projectLayout && e.Key == Key.Enter && _viewModel?.SelectedFolderNode is { IsDirectory: false, IsPlaceholder: false } node)
+        {
+            await _viewModel.OpenPathAsync(node.Path);
+            e.Handled = true;
+        }
     }
 
     public void FocusFind()
@@ -90,8 +131,8 @@ public partial class CodeEditorView : UserControl
         if (_viewModel is not null)
         {
             _viewModel.PropertyChanged += OnViewModelPropertyChanged;
-            Editor.Text = _viewModel.Text;
-            Editor.IsReadOnly = _viewModel.IsSaving || !_viewModel.IsTextDocument;
+            SyncTextDocument();
+            Editor.IsReadOnly = _viewModel.IsReadOnly || !_viewModel.IsTextDocument;
             UpdateSyntaxHighlighting(_viewModel.CurrentPath);
             UpdateSidebarLayout(_viewModel.IsSidebarVisible);
         }
@@ -99,12 +140,12 @@ public partial class CodeEditorView : UserControl
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
     {
-        if (eventArgs.PropertyName == nameof(CodeEditorViewModel.Text) && Editor.Text != _viewModel?.Text)
-            Editor.Text = _viewModel?.Text ?? string.Empty;
-        else if ((eventArgs.PropertyName == nameof(CodeEditorViewModel.IsSaving)
+        if (eventArgs.PropertyName is nameof(CodeEditorViewModel.Text) or nameof(CodeEditorViewModel.ActiveDocument))
+            SyncTextDocument();
+        else if ((eventArgs.PropertyName == nameof(CodeEditorViewModel.IsReadOnly)
             || eventArgs.PropertyName == nameof(CodeEditorViewModel.IsTextDocument)) && _viewModel is not null)
         {
-            Editor.IsReadOnly = _viewModel.IsSaving || !_viewModel.IsTextDocument;
+            Editor.IsReadOnly = _viewModel.IsReadOnly || !_viewModel.IsTextDocument;
             if (!_viewModel.IsTextDocument) _searchPanel.Close();
         }
         else if (eventArgs.PropertyName == nameof(CodeEditorViewModel.CurrentPath))
@@ -117,6 +158,38 @@ public partial class CodeEditorView : UserControl
     {
         if (_viewModel is not null && _viewModel.Text != Editor.Text)
             _viewModel.Text = Editor.Text;
+    }
+
+    private void SyncTextDocument()
+    {
+        if (_viewModel is null) return;
+        var document = _viewModel.ActiveDocument;
+        if (!ReferenceEquals(_displayedDocument, document))
+        {
+            if (_displayedDocument is { } previous)
+            {
+                previous.CaretOffset = Editor.CaretOffset;
+                previous.VerticalOffset = Editor.VerticalOffset;
+                previous.HorizontalOffset = Editor.HorizontalOffset;
+            }
+            Editor.Document.TextChanged -= OnEditorTextChanged;
+            Editor.Document = document is null ? new AvaloniaEdit.Document.TextDocument()
+                : document.EditorBuffer ??= new AvaloniaEdit.Document.TextDocument(_viewModel.Text);
+            _displayedDocument = document;
+            Editor.Document.TextChanged += OnEditorTextChanged;
+            Editor.CaretOffset = Math.Clamp(document?.CaretOffset ?? 0, 0, Editor.Document.TextLength);
+            Editor.ScrollToVerticalOffset(document?.VerticalOffset ?? 0);
+            Editor.ScrollToHorizontalOffset(document?.HorizontalOffset ?? 0);
+        }
+        if (Editor.Text != _viewModel.Text)
+        {
+            var caret = Editor.CaretOffset;
+            Editor.Document.TextChanged -= OnEditorTextChanged;
+            Editor.Text = _viewModel.Text;
+            Editor.Document.UndoStack.ClearAll();
+            Editor.Document.TextChanged += OnEditorTextChanged;
+            Editor.CaretOffset = Math.Min(caret, Editor.Document.TextLength);
+        }
     }
 
     private void UpdateSyntaxHighlighting(string? path)

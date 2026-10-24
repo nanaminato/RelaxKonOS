@@ -171,6 +171,7 @@ Server MVC（`AddControllers().AddJsonOptions`）与 SignalR（`AddSignalR().Add
 | GET    | `/api/v1.0/files/thumbnail`   | query: `path`、`maxEdge`（16–1024，默认 256） | `image/jpeg` 或 `image/png` 字节流       | JWT |
 | GET    | `/api/v1.0/files/content`     | query: `path`                       | 原始文件字节流                            | JWT |
 | PUT    | `/api/v1.0/files/content`     | query: `path` + 请求体字节流              | `FileEntryDto`                     | JWT |
+| PUT    | `/api/v1.0/files/conditional-content` | `ConditionalFileWriteRequest(Path, Content, ExpectedVersion)`；最多 256 KiB 原始字节 | `ConditionalFileWriteResult(Version)`；版本冲突或排他新建碰撞返回 `409 text-file-changed` | JWT，Files Write |
 | GET    | `/api/v1.0/files/properties`  | query: `path`                       | `FilePropertiesDto`                | JWT |
 | PUT    | `/api/v1.0/files/permissions` | `UpdateUnixPermissionsRequest`      | `FilePropertiesDto`                | JWT |
 | POST   | `/api/v1.0/files/directory`   | query: `path`                       | `FileSystemEntryDto`（201）          | JWT |

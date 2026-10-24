@@ -13,7 +13,7 @@ namespace RelaxKonOS.Client.Apps.Explorer;
 /// 不 mutate HttpClient.BaseAddress，每个请求用 <see cref="IAuthSession.EffectiveBaseUrl"/> 构造绝对 URI（避免共享实例并发竞态）。
 /// Authorization 头从 <see cref="IAuthSession.Tokens"/> 取；未登录抛 <see cref="InvalidOperationException"/>。
 /// 失败读 ProblemDetails 抛 <see cref="RelaxKonOSAuthException"/>（与 <see cref="RelaxKonOSClient"/> 同源）。</summary>
-public sealed class ExplorerClient : IExplorerClient, IArchiveClient
+public sealed class ExplorerClient : IExplorerClient, IArchiveClient, IEditorFileWriter
 {
     private readonly HttpClient _http;
     private readonly IAuthSession _session;
@@ -122,6 +122,13 @@ public sealed class ExplorerClient : IExplorerClient, IArchiveClient
                 Capability: capability, AdministratorUsername: administratorUsername), ct: ct);
         if (result.Elevated) usageMemory.RememberAdministrator(administratorUsername);
         return result;
+    }
+
+    public async Task<string> WriteEditorFileAsync(string path, byte[] content, string? expectedVersion, CancellationToken ct = default)
+    {
+        var result = await SendAsync<ConditionalFileWriteResult>(HttpMethod.Put, FileApiRoutes.ConditionalContent,
+            body: new ConditionalFileWriteRequest(path, content, expectedVersion), ct: ct);
+        return result.Version;
     }
 
     public async Task<FileEntryDto> WriteFileAsync(string path, byte[] content, CancellationToken ct = default)
