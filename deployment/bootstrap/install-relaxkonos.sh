@@ -475,12 +475,27 @@ run_services_installer() { # version listenUrl
   bash "$engine" "${arguments[@]}" || status=$?
   return $status
 }
+verify_service_payload() { # unit expected executable
+  local unit=$1 expected=$2 pid actual
+  pid="$(systemctl show "$unit" --property=MainPID --value)" || return 1
+  [[ "$pid" =~ ^[1-9][0-9]*$ ]] || { echo "$unit has no running main process." >&2; return 1; }
+  actual="$(readlink -f -- "/proc/$pid/exe")" || return 1
+  expected="$(readlink -f -- "$expected")" || return 1
+  if [[ "$actual" != "$expected" ]]; then
+    echo "$unit is running an unexpected executable: $actual; expected: $expected. Inspect systemd ExecStart/WorkingDirectory overrides before retrying deployment." >&2
+    return 1
+  fi
+}
 verify_health() {
   local deadline=$((SECONDS + 60)) arguments=(--fail --silent --max-time 2)
   [[ "$LISTEN_SCHEME" != https ]] || arguments+=(--insecure)
   command -v curl >/dev/null || { echo 'curl is required to verify server health.' >&2; return 1; }
   while (( SECONDS < deadline )); do
     if curl "${arguments[@]}" "${LISTEN_SCHEME}://127.0.0.1:$SERVER_PORT/healthz" >/dev/null; then
+      verify_service_payload relaxkonos-server.service "$(version_root "$TARGET_VERSION")/server/RelaxKonOS.Server" || return 1
+      if [[ "$GUARDIAN_ENABLED" == true ]]; then
+        verify_service_payload relaxkonos-guardian.service "$(version_root "$TARGET_VERSION")/guardian/RelaxKonOS.Guardian.Agent" || return 1
+      fi
       if [[ "$GUARDIAN_ENABLED" != true ]] || "$(version_root "$TARGET_VERSION")/server/RelaxKonOS.Server" guardian-health --environment-file /etc/relaxkonos/server.env; then return 0; fi
     fi
     sleep 1

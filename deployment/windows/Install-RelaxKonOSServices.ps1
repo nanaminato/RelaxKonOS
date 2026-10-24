@@ -27,6 +27,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'RelaxKonOSDeploymentVerification.ps1')
 
 if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     throw 'Run this signed deployment script from an elevated Administrator session.'
@@ -363,6 +364,9 @@ if ($PSCmdlet.ShouldProcess('RelaxKonOS services', 'Start or restart')) {
     if ($GuardianEnabled) { Restart-Service -Name $GuardianServiceName -Force }
     Restart-Service -Name $PrivilegedHelperServiceName -Force
     Restart-Service -Name $ServerServiceName -Force
+    Assert-WindowsServicePayload $PrivilegedHelperServiceName $PrivilegedHelperExecutable
+    Assert-WindowsServicePayload $ServerServiceName $ServerExecutable
+    if ($GuardianEnabled) { Assert-WindowsServicePayload $GuardianServiceName $GuardianExecutable }
 }
 
 Write-Host "Installed $GuardianServiceName, $PrivilegedHelperServiceName (LocalSystem), and $ServerServiceName (LocalService). Listening on $($serverListenUri.AbsoluteUri.TrimEnd('/'))."

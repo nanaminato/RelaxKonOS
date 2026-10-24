@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [switch] $RestorePayload,
     [ValidateSet('true', 'false')][string] $AutoStart,
@@ -313,6 +313,13 @@ public static class RelaxKonOSDeploymentHealthProbe {
     $clock = [Diagnostics.Stopwatch]::StartNew()
     do {
         if ([RelaxKonOSDeploymentHealthProbe]::Check($endpoint.Uri.AbsoluteUri)) {
+            try {
+                . (Get-InstalledEnginePath 'deployment\windows\RelaxKonOSDeploymentVerification.ps1')
+                Assert-WindowsDeploymentPayload (Get-VersionRoot $targetVersion) $Mode $DataRoot ([bool]$GuardianEnabled)
+            } catch {
+                Write-Warning ('Deployment runtime verification failed: ' + $_.Exception.Message)
+                return $false
+            }
             if (-not $GuardianEnabled) { return $true }
             $guardianCheckServer = Join-Path (Get-VersionRoot $targetVersion) 'server\RelaxKonOS.Server.exe'
             $guardianCheckConfig = Join-Path (Split-Path -Parent $guardianCheckServer) 'appsettings.host.json'

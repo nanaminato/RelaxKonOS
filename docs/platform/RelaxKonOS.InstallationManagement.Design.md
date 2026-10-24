@@ -65,3 +65,11 @@ Linux User 的 TCP 与私有 socket 均通过真实检查，LAN 配置后从开�
 已复现本地 `RelaxKonOS-0.1.3-linux-x64-server.zip` 在更新准备阶段被拒绝：归档中没有 `deployment/user/relaxkon`，属于不完整的当前服务器发布包。Linux 系统与用户模式共用服务器发布包，因此系统模式也要求携带此入口；不得删除校验或对旧布局增加兼容分支。应使用当前打包脚本重新构建完整发布包，不向旧版本归档混入其他修订的脚本。
 
 修复跟踪：Linux 启动器对缺少必需组件返回明确的重新打包提示，详细缺失路径保留在操作诊断；PowerShell 与 Bash 打包入口在生成清单和归档之前检查必需入口，防止遗漏用户模式目录后仍成功输出发布物。`package_source_checks.py` 与 `release_inventory_checks.py` 共 23 项通过，包含缺失用户入口的启动器拒绝与两个打包入口的回归检查。该证据仅覆盖包准备，不代表已在用户服务器完成升级。
+
+## 运行版本与发布版本一致性（2026-10-24）
+
+Debian 13 实机发现 0.1.4 已发布、Helper 已更新，但 Server/Guardian 的遗留 systemd drop-in 将 ExecStart 固定在旧的 gitfix 目录。旧 Server 与新 Helper 的用户执行协议版本不同，目录列表和快捷位置请求被拒绝。0.1.4 包内 Server、Guardian、Helper 的协议程序集 SHA-256 一致，安装目录也匹配发布包。
+
+已备份并移走两份旧启动覆盖，重载 systemd 后重启所选服务，确认实际进程路径均为 0.1.4；nanami 登录、根目录/家目录/文档列表和七个快捷位置恢复，Server HTTP 与 Guardian 认证 IPC 健康通过。独立临时目录中真实身份解压 100 个小文件约 2.87 秒，RoyalTerminal-main.zip 的 718 项约 3.07 秒，测试目录已清理，原包未改动。这是单台主机的验收时间，不作为跨平台性能保证。
+
+后续系统模式部署的健康检查同时读取 systemd MainPID 和 `/proc/<pid>/exe`，核对实际 Server 与所选 Guardian 的可执行文件属于目标发布版本。即使旧进程的 HTTP 健康正常，也不能发布成功状态；错误说明要求检查 ExecStart/WorkingDirectory 覆盖。不会自动删除用户自定义 drop-in，也不保留旧协议兼容解析。新增 6 项路径核验回归、原有 2 项配置失败恢复检查及 Bash 语法检查通过。此脚本改动在仓库，已发布的 0.1.4 归档保持原样。

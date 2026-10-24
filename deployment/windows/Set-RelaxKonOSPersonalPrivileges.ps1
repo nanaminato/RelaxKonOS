@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param([Parameter(Mandatory)][string] $RequestPath)
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'RelaxKonOSDeploymentVerification.ps1')
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Administrator authorization is required.' }
 if ((Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\ProductOptions').ProductType -ne 'WinNT') { throw 'Personal mode is workstation-only.' }
 $request = Get-Content -LiteralPath $RequestPath -Raw | ConvertFrom-Json
@@ -141,6 +142,7 @@ $binary = '"' + $executable + '" --windows-service --config "' + $configPath + '
 Set-HelperService -BinaryPath $binary
 Start-Service -Name $service
 (Get-Service -Name $service).WaitForStatus('Running', [TimeSpan]::FromSeconds(30))
+Assert-WindowsServicePayload $service $executable
 if ($request.addFirewallRule) {
     Set-ManagedPersonalFirewall $request.listenUrl
 }

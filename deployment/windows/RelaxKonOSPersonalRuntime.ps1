@@ -3,12 +3,13 @@ function Stop-PersonalServer([string] $InstallRoot, [string] $DataRoot) {
     $record = Join-Path $DataRoot 'runtime.json'
     if (-not (Test-Path -LiteralPath $record)) { return }
     $runtime = Get-Content -LiteralPath $record -Raw | ConvertFrom-Json
+    $recordedStart = if ($runtime.startedAtUtc -is [datetime]) { $runtime.startedAtUtc.ToUniversalTime().ToString('O') } else { [string]$runtime.startedAtUtc }
     $process = Get-Process -Id $runtime.pid -ErrorAction SilentlyContinue
     if ($process) {
         $prefix = [IO.Path]::GetFullPath($InstallRoot).TrimEnd('\') + '\versions\'
         if (-not $process.Path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) -or
             [IO.Path]::GetFileName($process.Path) -ne 'RelaxKonOS.Server.exe' -or
-            $process.StartTime.ToUniversalTime().ToString('O') -ne $runtime.startedAtUtc) {
+            $process.StartTime.ToUniversalTime().ToString('O') -ne $recordedStart) {
             throw 'Personal runtime identity changed; refusing to stop this process.'
         }
         Stop-Process -Id $process.Id -ErrorAction Stop
@@ -26,15 +27,20 @@ function Start-PersonalServer([string] $InstallRoot, [string] $DataRoot, [string
         $Version = $state.version; $ListenUrl = $state.listenUrl
     }
     if ($Version -notmatch '^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$') { throw 'Invalid personal version.' }
+    $serverRoot = Join-Path $InstallRoot ('versions\' + $Version + '\server')
+    $executable = Join-Path $serverRoot 'RelaxKonOS.Server.exe'
     $record = Join-Path $DataRoot 'runtime.json'
     if (Test-Path -LiteralPath $record) {
         $runtime = Get-Content -LiteralPath $record -Raw | ConvertFrom-Json
+        $recordedStart = if ($runtime.startedAtUtc -is [datetime]) { $runtime.startedAtUtc.ToUniversalTime().ToString('O') } else { [string]$runtime.startedAtUtc }
         $running = Get-Process -Id $runtime.pid -ErrorAction SilentlyContinue
-        if ($running -and $running.Path -eq $runtime.executable -and $running.StartTime.ToUniversalTime().ToString('O') -eq $runtime.startedAtUtc) { return }
+        if ($running) {
+            if ($running.Path -eq $runtime.executable -and $running.StartTime.ToUniversalTime().ToString('O') -eq $recordedStart -and
+                [string]::Equals([IO.Path]::GetFullPath($running.Path), [IO.Path]::GetFullPath($executable), [StringComparison]::OrdinalIgnoreCase)) { return }
+            throw 'A different or unverifiable personal Server process is still running; stop the recorded runtime before starting this release.'
+        }
     }
     if ($ListenUrl -match '[\s"]') { throw 'Invalid personal listen URL.' }
-    $serverRoot = Join-Path $InstallRoot ('versions\' + $Version + '\server')
-    $executable = Join-Path $serverRoot 'RelaxKonOS.Server.exe'
     $logs = Join-Path $DataRoot 'logs'
     New-Item -ItemType Directory -Path $logs -Force | Out-Null
     # Never redirect the server's standard streams here. A redirected Start-Process creates the

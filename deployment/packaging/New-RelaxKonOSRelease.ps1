@@ -90,6 +90,9 @@ function Complete-Package($Package, [hashtable] $Payload) {
             'deployment/bootstrap/install-relaxkonos.sh', 'deployment/bootstrap/uninstall-relaxkonos.sh',
             'deployment/linux/install-relaxkonos-services.sh')
     }
+    if ($Package.Kind -eq 'server' -and $platform -eq 'windows') {
+        $required += 'deployment/windows/RelaxKonOSDeploymentVerification.ps1'
+    }
     foreach ($relative in $required) {
         if (-not (Test-Path -LiteralPath (Join-Path $Package.Directory $relative) -PathType Leaf)) {
             throw "Incomplete release package: missing $relative"
