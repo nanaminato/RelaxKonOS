@@ -8,6 +8,7 @@
 | --- | --- |
 | [产品、架构与交互](design/Product.Design.md) | 原生架构、导航、自适应布局、多语言、主题与无障碍 |
 | [Shell、认证与安全](design/Shell.Design.md) | 路由、返回栈、会话、提权与凭据安全 |
+| [应用桌面与最近服务器登录](design/ApplicationDesktop.md) | 登录摘要、应用图标网格与四项主导航 |
 | [登录与本地凭据](design/LoginCredentials.Design.md) | 身份识别、凭据保存与失效、密码生命周期 |
 | [移动端包方案](design/ApplicationPackages.Design.md) | 包类型、权限、版本、更新与移除，以及桌面包的支持范围 |
 | [移动端功能精简](design/MobileSimplification.md) | 精简判断、当前移除边界及待评估建议 |
@@ -55,11 +56,9 @@
 | --- | --- |
 | [构建、调试与发布](development/android-release.md) | 本地环境、签名机、APK/AAB、导入发布与渠道证书 |
 | [验证要求](development/Verification.md) | 设备、宿主、文件传输及故障场景的检查与预期行为 |
-| [界面与流程专项审查](development/UiReview.md) | 本次用户要求的逐页审查流程与总进度 |
+| [界面与流程复审要求](development/UiReview.md) | 当前界面重新审查的方法与范围 |
 
 ## 维护规则
-
-本次用户明确要求的界面审查与进度追踪是下述一般生命周期规则的专项例外，集中维护在 [UiReview.md](development/UiReview.md)。
 
 设计文档描述当前规则，功能文档描述实际入口、交互、授权和错误恢复，支持范围明确当前边界，开发文档描述构建、发布及验证方法。不维护目标表、阶段编号、推进顺序、完成率或测试执行流水账。功能变化时同步修改对应说明，历史由 Git 保存。共享 Protocol/Server 语义链接仓库领域文档，不复制 Android 详细文档到仓库级目录。
 

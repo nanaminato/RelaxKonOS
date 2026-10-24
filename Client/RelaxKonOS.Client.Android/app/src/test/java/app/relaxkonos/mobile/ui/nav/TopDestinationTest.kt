@@ -30,7 +30,7 @@ class TopDestinationTest {
     }
 
     @Test
-    fun `terminal appears when the server offers the capability`() {
+    fun `terminal is an application rather than a top level destination`() {
         val all = setOf(
             ServerCapabilities.FILES,
             ServerCapabilities.METRICS,
@@ -43,7 +43,7 @@ class TopDestinationTest {
             ServerCapabilities.POSIX_PERMISSIONS,
         )
 
-        assertTrue(TopDestination.visible(all).contains(TopDestination.Terminal))
+        assertEquals(listOf(Routes.HOME, Routes.FILES, Routes.MANAGE, Routes.MORE), TopDestination.visible(all).map { it.route })
     }
 
     @Test

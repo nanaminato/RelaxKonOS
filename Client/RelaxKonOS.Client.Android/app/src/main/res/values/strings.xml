@@ -44,8 +44,8 @@
     <string name="nav_files">Files</string>
     <!-- Top-level destinations -->
     <string name="nav_home">Home</string>
-    <string name="nav_manage">Manage</string>
-    <string name="nav_more">More</string>
+    <string name="nav_manage">Apps</string>
+    <string name="nav_more">Me</string>
     <string name="nav_terminal">Terminal</string>
     <string name="notice_do_not_remind">Do not remind me again</string>
     <string name="password_hide">Hide the password</string>

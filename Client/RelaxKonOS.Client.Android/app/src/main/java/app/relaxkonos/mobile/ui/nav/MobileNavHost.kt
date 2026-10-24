@@ -124,7 +124,7 @@ fun MobileNavHost(
             Routes.TERMINAL -> ServerTerminalScreen(owner = session, modifier = Modifier.fillMaxSize())
             Routes.FILES, Routes.FILES_DETAIL -> FilesDestination(navigator, layoutState)
             Routes.MANAGE, Routes.MANAGE_MONITOR, Routes.MANAGE_PROCESSES ->
-                ManageDestination(navigator, layoutState, clearTaskTarget = { taskTarget = null })
+                ManageDestination(navigator, clearTaskTarget = { taskTarget = null })
             Routes.MORE,
             Routes.MORE_NETWORK,
             Routes.MORE_ACCOUNT_SECURITY,
@@ -141,8 +141,9 @@ fun MobileNavHost(
 
             else -> HomeScreen(
                 session = session,
-                layoutState = layoutState,
                 onOpenHelp = { navigator.select(Routes.MORE); navigator.push(Routes.MORE_HELP) },
+                onOpenRoute = { taskTarget = null; if (it == Routes.FILES) navigator.select(it) else navigator.push(it) },
+                onSwitchLogin = { onSwitchLogin(null) },
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -184,64 +185,14 @@ private fun FilesDestination(navigator: MobileNavigator, layoutState: LayoutStat
 }
 
 @Composable
-private fun ManageDestination(navigator: MobileNavigator, layoutState: LayoutState, clearTaskTarget: () -> Unit) {
-    val container = appContainer()
-    val viewModel: ManageViewModel = viewModel(factory = viewModelFactory {
-        initializer { ManageViewModel(container.session, container.system, container.recentOperations, container.elevations, container.elevationAnswers) }
-    })
-
-    if (layoutState == LayoutState.Expanded) {
-        Row(Modifier.fillMaxSize()) {
-            ManageScreen(
-                onOpenMonitor = { viewModel.openPane(Routes.MANAGE_MONITOR) },
-                onOpenDeployments = { clearTaskTarget(); navigator.push(Routes.MANAGE_DEPLOYMENTS) },
-                onOpenDocker = { clearTaskTarget(); navigator.push(Routes.MANAGE_DOCKER) },
-                onOpenWebsites = { clearTaskTarget(); navigator.push(Routes.MANAGE_WEBSITES) },
-            onOpenCertificates = { clearTaskTarget(); navigator.push(Routes.MANAGE_CERTIFICATES) },
-                onOpenTunnels = { clearTaskTarget(); navigator.push(Routes.MANAGE_TUNNELS) },
-            onOpenSmb = { clearTaskTarget(); navigator.push(Routes.MANAGE_SMB) },
-            onOpenFirewall = { clearTaskTarget(); navigator.push(Routes.MANAGE_FIREWALL) },
-            onOpenProxy = { clearTaskTarget(); navigator.push(Routes.MANAGE_PROXY) },
-            onOpenProxyServer = { clearTaskTarget(); navigator.push(Routes.MANAGE_PROXY_SERVER) },
-            onOpenSquid = { clearTaskTarget(); navigator.push(Routes.MANAGE_SQUID) },
-                onOpenGuardian = { navigator.push(Routes.MANAGE_GUARDIAN) },
-                onOpenScripts = { clearTaskTarget(); navigator.push(Routes.MANAGE_SCRIPTS) },
-                onOpenOperations = { navigator.push(Routes.MANAGE_OPERATIONS) },
-                modifier = Modifier.weight(1f),
-            )
-            when (viewModel.expandedPane) {
-                Routes.MANAGE_MONITOR -> app.relaxkonos.mobile.ui.manage.TaskManagerWorkspace("performance", null, Modifier.weight(1.2f))
-                Routes.MANAGE_PROCESSES -> app.relaxkonos.mobile.ui.manage.TaskManagerWorkspace("processes", null, Modifier.weight(1.2f))
-                else -> Text(
-                    text = stringResource(R.string.manage_select_domain),
-                    modifier = Modifier.weight(1.2f).padding(16.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        return
-    }
-
+private fun ManageDestination(navigator: MobileNavigator, clearTaskTarget: () -> Unit) {
     when (navigator.route) {
         Routes.MANAGE_MONITOR -> app.relaxkonos.mobile.ui.manage.TaskManagerWorkspace("performance", { navigator.pop() }, Modifier.fillMaxSize())
         Routes.MANAGE_PROCESSES -> app.relaxkonos.mobile.ui.manage.TaskManagerWorkspace("processes", { navigator.pop() }, Modifier.fillMaxSize())
-        else -> ManageScreen(
-            onOpenMonitor = { navigator.push(Routes.MANAGE_MONITOR) },
-            onOpenDeployments = { clearTaskTarget(); navigator.push(Routes.MANAGE_DEPLOYMENTS) },
-            onOpenDocker = { clearTaskTarget(); navigator.push(Routes.MANAGE_DOCKER) },
-            onOpenWebsites = { clearTaskTarget(); navigator.push(Routes.MANAGE_WEBSITES) },
-            onOpenCertificates = { clearTaskTarget(); navigator.push(Routes.MANAGE_CERTIFICATES) },
-            onOpenTunnels = { clearTaskTarget(); navigator.push(Routes.MANAGE_TUNNELS) },
-            onOpenSmb = { clearTaskTarget(); navigator.push(Routes.MANAGE_SMB) },
-            onOpenFirewall = { clearTaskTarget(); navigator.push(Routes.MANAGE_FIREWALL) },
-            onOpenProxy = { clearTaskTarget(); navigator.push(Routes.MANAGE_PROXY) },
-            onOpenProxyServer = { clearTaskTarget(); navigator.push(Routes.MANAGE_PROXY_SERVER) },
-            onOpenSquid = { clearTaskTarget(); navigator.push(Routes.MANAGE_SQUID) },
-            onOpenGuardian = { navigator.push(Routes.MANAGE_GUARDIAN) },
-            onOpenScripts = { clearTaskTarget(); navigator.push(Routes.MANAGE_SCRIPTS) },
-            onOpenOperations = { navigator.push(Routes.MANAGE_OPERATIONS) },
-            modifier = Modifier.fillMaxSize(),
-        )
+        else -> ManageScreen(onOpenRoute = { route ->
+            clearTaskTarget()
+            if (route == Routes.FILES) navigator.select(route) else navigator.push(route)
+        }, modifier = Modifier.fillMaxSize())
     }
 }
 

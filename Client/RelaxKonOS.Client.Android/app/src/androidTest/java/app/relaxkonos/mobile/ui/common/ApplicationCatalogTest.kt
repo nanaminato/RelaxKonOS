@@ -68,7 +68,7 @@ class ApplicationCatalogTest {
                 ), Modifier.requiredSize(360.dp, 640.dp))
             }
         }
-        rule.onNode(hasSetTextAction()).performTextInput("REPOS")
+        rule.onNode(hasSetTextAction()).performTextInput("REMOTE")
         rule.onNodeWithText("Files").assertIsDisplayed()
         rule.onNodeWithText("Docker").assertDoesNotExist()
         rule.runOnIdle { assertEquals(0, opened) }
