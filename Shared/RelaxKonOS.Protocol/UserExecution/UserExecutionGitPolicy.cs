@@ -10,7 +10,7 @@ public static class UserExecutionGitPolicy
 {
     private static readonly HashSet<string> AllowedCommands = new(StringComparer.Ordinal)
     {
-        "add", "branch", "cat-file", "checkout", "cherry-pick", "commit", "config",
+        "apply", "check-ref-format", "clone", "stash", "tag", "worktree", "add", "branch", "cat-file", "checkout", "cherry-pick", "commit", "config",
         "diff", "diff-tree", "fetch", "for-each-ref", "init", "log", "ls-files", "merge", "merge-base",
         "pull", "push", "rebase", "remote", "reset", "restore", "revert", "rev-parse", "rm",
         "show", "show-ref", "status", "symbolic-ref", "update-ref",
@@ -32,13 +32,20 @@ public static class UserExecutionGitPolicy
         {
             var argument = arguments[index];
             if (argument.StartsWith("ext::", StringComparison.OrdinalIgnoreCase)
-                || argument is "--ext-diff" or "--textconv"
+                || argument is "--ext-diff" or "--textconv" or "--unsafe-paths"
                 || argument.StartsWith("--upload-pack", StringComparison.Ordinal)
                 || argument.StartsWith("--receive-pack", StringComparison.Ordinal)
                 || argument.StartsWith("--exec-path", StringComparison.Ordinal)
                 || argument.StartsWith("--config-env", StringComparison.Ordinal))
                 return false;
         }
+
+        // Clone has command-specific execution switches (-u, -c, --template). The domain only
+        // permits the literal URL/destination shape emitted by the clone service.
+        if (command == "clone")
+            return arguments.Count == commandIndex + 4 && arguments[commandIndex + 1] == "--"
+                && !arguments[commandIndex + 2].StartsWith("-", StringComparison.Ordinal)
+                && !arguments[commandIndex + 3].StartsWith("-", StringComparison.Ordinal);
 
         // The domain reads branch settings and hashes the full effective configuration. It never writes Git configuration.
         return command != "config"

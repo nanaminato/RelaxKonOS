@@ -118,7 +118,11 @@ public sealed partial class GitClientViewModel
     {
         file ??= SelectedCommitFile ?? SelectedFile;
         if (file is null) return;
-        await NotifyAsync(LocalizedText.Format("git.vm.file_history_unimplemented_format", file.Path));
+        if (!CanManage) return;
+        if (OpenFileHistoryTabAsync is not null) { await OpenFileHistoryTabAsync(file.Path); return; }
+        LogPathFilter = file.Path;
+        ActivePage = GitClientPage.Log;
+        await ApplyLogFiltersAsync();
     }
 
     [RelayCommand]
@@ -126,6 +130,16 @@ public sealed partial class GitClientViewModel
     {
         file ??= SelectedCommitFile ?? SelectedFile;
         if (file is null) return;
-        await NotifyAsync(LocalizedText.Format("git.vm.create_patch_file_unimplemented_format", file.Path));
+        if (SelectedRepository is not { } repo || OpenPatchAsync is null || !CanManage || !await PrepareEditorAsync()) return;
+        IsBusy = true;
+        try
+        {
+            var diff = await client.GetDiffAsync(repo.Id, file.Path, file.Staged, SelectedCommit?.Sha);
+            if (diff.Binary || diff.Truncated) { await NotifyAsync(LocalizedText.Get("git.editor.readonly_large")); return; }
+            if (string.IsNullOrEmpty(diff.Patch)) { await NotifyAsync(LocalizedText.Get("git.workspace.no_patch")); return; }
+            await OpenPatchAsync(diff.Patch);
+        }
+        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
+        finally { IsBusy = false; }
     }
 }

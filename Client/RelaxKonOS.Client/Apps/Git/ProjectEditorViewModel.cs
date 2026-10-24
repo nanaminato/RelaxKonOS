@@ -36,6 +36,19 @@ public sealed partial class ProjectEditorViewModel : ObservableObject, IDisposab
         Git.PrepareEditorOperationAsync = PrepareOperationAsync;
         Git.OpenEditorFileAsync = OpenWorkingTreeFileAsync;
         Git.OpenEditorDiffAsync = OpenDiffAsync;
+        if (files is not null) Git.CreatePlainProjectAsync = async path =>
+        {
+            if (await files.GetInfoAsync(path) is not null) throw new InvalidOperationException(LocalizedText.Get("git.editor.target_exists"));
+            await files.CreateDirectoryAsync(path);
+            await OpenPlainFolderAsync(path);
+        };
+        Git.OpenPatchAsync = patch =>
+        {
+            if (_disposed) return Task.CompletedTask;
+            Editor.OpenGeneratedTextDocument("changes.patch", patch);
+            Editor.StatusText = LocalizedText.Ref("git.workspace.patch_save_hint");
+            return Task.CompletedTask;
+        };
         Git.PropertyChanged += GitChanged;
         Editor.FileSaved += FileSaved;
         Editor.PropertyChanged += EditorChanged;

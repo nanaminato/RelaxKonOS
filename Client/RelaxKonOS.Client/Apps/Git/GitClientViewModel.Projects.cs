@@ -34,6 +34,7 @@ public sealed partial class GitClientViewModel
 
             Log("调用 RefreshAllAsync（并行 status/branches/log）…");
             await RefreshAllAsync();
+            if (SelectedRepository?.Id != repo.Id) return;
             await PresentConflictResolutionAsync();
             Log($"RefreshAllAsync 完成。Branches={Branches.Count} Commits={Commits.Count} " +
                 $"Staged={StagedFiles.Count} Unstaged={UnstagedFiles.Count} Untracked={UntrackedFiles.Count}");
@@ -43,6 +44,7 @@ public sealed partial class GitClientViewModel
 
             Log("调用 RefreshRemotesAsync…");
             await RefreshRemotesAsync();
+            if (SelectedRepository?.Id != repo.Id) return;
             Log($"OpenProjectAsync 结束，Remotes={Remotes.Count}，Ready");
             StatusText = LocalizedText.Ref("git.vm.ready_project_branch_format", repo.Name, Status?.Branch ?? LocalizedText.Get("git.status.unknown_branch"));
         }
@@ -57,6 +59,7 @@ public sealed partial class GitClientViewModel
     [RelayCommand(CanExecute = nameof(CanOpenProject))]
     private async Task OpenFolderAsync()
     {
+        if (!CanOpenProject) return;
         Log("OpenFolderAsync 开始");
         if (ShowRemotePathPickerAsync is null)
         {
@@ -67,7 +70,7 @@ public sealed partial class GitClientViewModel
 
         var path = await ShowRemotePathPickerAsync();
         Log($"路径选择返回: {(path is null ? "null" : $"\"{path}\"")}");
-        if (string.IsNullOrWhiteSpace(path)) return;
+        if (string.IsNullOrWhiteSpace(path) || !CanOpenProject || !await PrepareEditorAsync()) return;
 
         if (!IsGitAvailable && OpenPlainFolderAsync is not null)
         {

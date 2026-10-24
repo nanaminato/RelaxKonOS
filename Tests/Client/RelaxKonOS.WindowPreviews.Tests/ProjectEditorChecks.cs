@@ -34,6 +34,12 @@ internal static class ProjectEditorChecks
     private static async Task RunAsync(ShellSettings settings)
     {
         LocalizationResourceChecks.Run(settings);
+        Check(GitHostingLinks.Resolve([new("origin", "git@github.com:owner/repo.git")], "github", "pulls")?.AbsoluteUri == "https://github.com/owner/repo/pulls",
+            "GitHub SSH remotes map to real pull request pages.");
+        Check(GitHostingLinks.Resolve([new("origin", "git@ssh.dev.azure.com:v3/org/project/repo")], "azure", "repo")?.AbsoluteUri == "https://dev.azure.com/org/project/_git/repo",
+            "Azure SSH remotes map to their HTTPS repository page.");
+        Check(GitHostingLinks.Resolve([new("origin", "https://user:secret@gitlab.com/group/repo.git")], "gitlab", "pulls")?.AbsoluteUri == "https://gitlab.com/group/repo/-/merge_requests",
+            "Hosting links never carry clone credentials to the browser.");
         var files = DispatchProxy.Create<IExplorerClient, ProjectFiles>();
         var store = (ProjectFiles)(object)files;
         store.Files["/work/app.cs"] = Encoding.UTF8.GetBytes("class App {}\r\n");
@@ -187,8 +193,41 @@ internal static class ProjectEditorChecks
         Check(document.Text == "commit content", "Switching tabs preserves the original document's undo history.");
         project.IsCommitVisible = true;
         project.IsGitVisible = true;
+        var badge = view.FindControl<Button>("BranchBadge")!;
+        badge.Flyout!.ShowAt(badge);
+        Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
+        var branchPopup = view.FindControl<GitHeaderBranchPopup>("BranchPopup")!;
+        await branchPopup.RefreshAsync();
+        var mainNode = new GitHeaderBranchNode("main", git.Branches.First());
+        var operations = branchPopup.BuildBranchMenu(mainNode).Items.OfType<MenuItem>().ToArray();
+        Check(operations.Length == 11 && operations.Where(item => item.Command is not null)
+            .All(item => ReferenceEquals(item.CommandParameter, mainNode.Branch)),
+            "Branch actions bind their explicit clicked branch through both popup levels.");
+        Check(!operations[0].IsEnabled && !operations[^2].IsEnabled,
+            "The current branch cannot be checked out again or deleted from the header.");
+        git.Branches.Add(new("feature/git-diff-view", "abc", Tracking: "origin/feature/git-diff-view"));
+        git.Branches.Add(new("origin/feature/git-diff-view", "abc", IsRemote: true));
+        branchPopup.Rebuild();
+        Check(branchPopup.Nodes.Any(node => node.Name == LocalizedText.Get("git.workspace.local") && node.Children.Any(child => child.Name == "feature"))
+            && branchPopup.Nodes.Any(node => node.Name == LocalizedText.Get("git.workspace.remote") && node.Children.Single().Name == "origin"),
+            "The branch popup groups local paths and remote names without flattening slash-separated branches.");
+        branchPopup.FindControl<TextBox>("BranchSearch")!.Text = "git-diff";
+        Dispatcher.UIThread.RunJobs();
+        Check(branchPopup.Nodes.SelectMany(node => node.Children).All(node => node.Name != "main"), "Branch search excludes nonmatching branches.");
+        branchPopup.FindControl<TextBox>("BranchSearch")!.Text = "";
+        badge.Flyout.Hide();
+        Popup? gitMenuPopup = null;
+        var detailedGitMenu = view.FindControl<MenuItem>("GitMenu")!;
+        detailedGitMenu.TemplateApplied += (_, args) => gitMenuPopup = args.NameScope.Find<Popup>("PART_Popup");
         var output = Path.Combine(AppContext.BaseDirectory, "preview-qa", "project-editor");
         Directory.CreateDirectory(output);
+        void SavePopup(Control popup, string name, double maximumHeight = 620)
+        {
+            Check(popup.Bounds.Width > 100 && popup.Bounds.Height > 80 && popup.Bounds.Height <= maximumHeight,
+                "Header popup stays within its measured viewport.");
+            using var image = new RenderTargetBitmap(new PixelSize((int)Math.Ceiling(popup.Bounds.Width), (int)Math.Ceiling(popup.Bounds.Height)));
+            image.Render(popup); image.Save(Path.Combine(output, name), new PngBitmapEncoderOptions());
+        }
         foreach (var width in new[] { 1180, 860, 640 })
         {
             host.Width = width;
@@ -197,8 +236,23 @@ internal static class ProjectEditorChecks
             Check(view.FindControl<ContentControl>("ContentHost")!.Content is GitLogView, "The bottom Git tool contains the real log view.");
             Check(view.FindControl<Border>("GitToolHost")!.Bounds.Width > view.FindControl<Border>("SidebarHost")!.Bounds.Width,
                 "The bottom Git tool spans beneath both the sidebar and editor.");
-            Check(view.FindControl<Menu>("MainMenu")!.IsVisible == (width >= 900),
-                "The menu collapses to one entry in compact windows.");
+            var menu = view.FindControl<Menu>("MainMenu")!;
+            var expand = view.FindControl<Button>("CompactMenuButton")!;
+            Check(!menu.IsVisible && expand.IsVisible, "All widths start with the brief menu.");
+            var menuPoint = expand.TranslatePoint(new Point(expand.Bounds.Width / 2, expand.Bounds.Height / 2), host)!.Value;
+            host.MouseDown(menuPoint, MouseButton.Left);
+            host.MouseUp(menuPoint, MouseButton.Left);
+            Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
+            Check(menu.IsVisible && !expand.IsVisible, "Clicking the brief menu expands the detailed menu.");
+            var fileMenu = view.FindControl<MenuItem>("FileMenu")!;
+            fileMenu.IsSubMenuOpen = true;
+            host.MouseMove(new Point(width - 20, 400));
+            await Task.Delay(750);
+            Check(menu.IsVisible, "An open submenu keeps the detailed menu available outside the header.");
+            fileMenu.IsSubMenuOpen = false;
+            await Task.Delay(750);
+            Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
+            Check(!menu.IsVisible && expand.IsVisible, "Leaving the detailed menu restores the brief menu after submenus close.");
             var log = (GitLogView)view.FindControl<ContentControl>("ContentHost")!.Content!;
             Check(log.FindControl<Border>("BranchPane")!.IsVisible == (width - 38 >= 800),
                 "Compact logs reserve space for commits and files while retaining the branch filter.");
@@ -233,6 +287,29 @@ internal static class ProjectEditorChecks
                     using var treeBitmap = new RenderTargetBitmap(new PixelSize(1180, 760));
                     treeBitmap.Render(host);
                     treeBitmap.Save(Path.Combine(output, $"project-tree-{language}-{(dark ? "dark" : "light")}.png"), new PngBitmapEncoderOptions());
+                    badge.Flyout!.ShowAt(badge);
+                    await branchPopup.RefreshAsync();
+                    Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
+                    branchPopup.UpdateLayout();
+                    SavePopup(branchPopup, $"header-branches-{language}-{(dark ? "dark" : "light")}.png");
+                    badge.Flyout.Hide();
+                    var projectSwitcher = view.FindControl<Button>("ProjectSwitcher")!;
+                    projectSwitcher.Flyout!.ShowAt(projectSwitcher);
+                    Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
+                    var projectPopup = view.FindControl<GitHeaderProjectPopup>("ProjectPopup")!;
+                    projectPopup.Rebuild(); projectPopup.UpdateLayout();
+                    SavePopup(projectPopup, $"header-projects-{language}-{(dark ? "dark" : "light")}.png");
+                    projectSwitcher.Flyout.Hide();
+                    view.FindControl<Button>("CompactMenuButton")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                    Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
+                    detailedGitMenu.IsSubMenuOpen = true;
+                    Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
+                    Check(gitMenuPopup?.Child is not null, "The detailed Git menu uses its real popup presenter.");
+                    SavePopup(gitMenuPopup!.Child!, $"header-git-menu-{language}-{(dark ? "dark" : "light")}.png", 1080);
+                    detailedGitMenu.IsSubMenuOpen = false;
+                    host.MouseMove(new Point(1100, 400));
+                    await Task.Delay(700);
+                    Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
                     project.IsCommitVisible = true;
                     git.IsPickerMode = true;
                     Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
@@ -252,11 +329,62 @@ internal static class ProjectEditorChecks
         }
         project.IsGitVisible = false;
         Check(project.Editor.OpenDocuments.Contains(document), "Hiding Git tools does not discard editor documents.");
+        var other = new GitRepositoryDto("other", "Other", "/other");
+        store.Directories.Add("/other"); git.Repositories.Add(other);
+        project.Editor.ActiveDocument = document;
+        project.Editor.Text += " dirty";
+        project.RequestDraftActionAsync = _ => Task.FromResult(EditorDraftAction.Cancel);
+        await git.OpenProjectCommand.ExecuteAsync(other);
+        Check(git.SelectedRepository?.Id == repository.Id && project.ProjectPath == "/work" && project.Editor.HasUnsavedDocuments,
+            "Canceling project switching preserves the current repository, buffers and project tree.");
+        project.RequestDraftActionAsync = _ => Task.FromResult(EditorDraftAction.Discard);
+        await git.OpenProjectCommand.ExecuteAsync(other);
+        Check(git.SelectedRepository?.Id == other.Id && project.ProjectPath == "/other", "Accepted project switching opens the target project directly.");
+        var projectsPopup = view.FindControl<GitHeaderProjectPopup>("ProjectPopup")!;
+        projectsPopup.Rebuild();
+        Check(projectsPopup.RecentProjects.Any(item => item.Path == "/work") && projectsPopup.RecentProjects.First().Path == "/other",
+            "Project switcher remembers session history and the current project in the right order.");
+        git.ShowWorkspaceInputAsync = (_, _) => Task.FromResult<string[]?>(["release/test", "HEAD"]);
+        await git.NewTagCommand.ExecuteAsync(null);
+        Check(remote.LastWorkspaceRequest is GitTagCreateRequest { Name: "release/test", Reference: "HEAD" }, "New tag menu submits its actual input values.");
+        var priorRequest = remote.LastWorkspaceRequest;
+        var pendingInput = new TaskCompletionSource<string[]?>();
+        git.ShowWorkspaceInputAsync = (_, _) => pendingInput.Task;
+        var pendingTag = git.NewTagCommand.ExecuteAsync(null);
+        git.SelectedRepository = repository;
+        pendingInput.SetResult(["wrong-project", "HEAD"]);
+        await pendingTag;
+        Check(ReferenceEquals(priorRequest, remote.LastWorkspaceRequest), "A delayed operation dialog cannot mutate a different selected repository.");
+        await git.OpenProjectCommand.ExecuteAsync(repository);
+        await git.ExportWorkingPatchCommand.ExecuteAsync(false);
+        Check(project.Editor.ActiveDocument is { IsDirty: true, Path: null } && project.Editor.Text.Contains("exported patch"),
+            "Patch export opens an editable untitled document that can be saved as a patch.");
+        git.ShowWorkspaceInputAsync = (_, _) => Task.FromResult<string[]?>(["https://example.invalid/project.git", "/cloned"]);
+        store.Directories.Add("/cloned");
+        git.ShowGitCredentialsDialogAsync = _ => Task.FromResult<GitCredentialRequest?>(new("user", "test-password", false));
+        await git.CloneRepositoryCommand.ExecuteAsync(null);
+        Check(remote.CloneRequests.Count == 2 && remote.CloneRequests[0].Credentials is null
+            && remote.CloneRequests[1].Credentials?.Username == "user" && project.ProjectPath == "/cloned",
+            "Clone retries with user-supplied credentials and opens its registered result.");
+        var pendingStatus = new TaskCompletionSource<GitStatusDto>();
+        remote.PendingStatuses[repository.Id] = pendingStatus;
+        var openingFirst = git.OpenProjectCommand.ExecuteAsync(repository);
+        var openingSecond = git.OpenProjectCommand.ExecuteAsync(other);
+        pendingStatus.SetResult(new GitStatusDto("old-branch", [], [], [], [], "v"));
+        await Task.WhenAll(openingFirst, openingSecond);
+        remote.PendingStatuses.Remove(repository.Id);
+        Check(git.SelectedRepository?.Id == other.Id && git.Status?.Branch == "main" && git.StatusText.ToString().Contains("Other"),
+            "Late project responses cannot replace the newly selected project's status or title.");
         host.Close();
 
         var plainGit = new GitClientViewModel(api);
         using var plain = new ProjectEditorViewModel(plainGit, api, files, true);
-        plainGit.ShowRemotePathPickerAsync = () => Task.FromResult<string?>("/work");
+        var pickCount = 0;
+        plainGit.ShowRemotePathPickerAsync = () => { pickCount++; return Task.FromResult<string?>("/work"); };
+        plainGit.IsBusy = true;
+        await plainGit.OpenFolderCommand.ExecuteAsync(null);
+        Check(pickCount == 0 && plain.ProjectPath is null, "Direct menu execution cannot open another folder while Git is busy.");
+        plainGit.IsBusy = false;
         await plainGit.OpenFolderCommand.ExecuteAsync(null);
         Check(!plainGit.IsPickerMode && plainGit.SelectedRepository is null && plain.ProjectPath == "/work" && remote.Initializations == 0,
             "An ordinary directory opens for editing without initializing or registering Git.");
@@ -283,6 +411,7 @@ internal static class ProjectEditorChecks
         await late;
         Check(plain.Editor.OpenDocuments.Count == 0, "Disposal prevents late file reads from reopening a tab.");
         await EditorContextChecks.RunAsync();
+        await GitDockChecks.RunAsync(settings);
         Console.WriteLine("Project editor behavior and layout checks passed.");
     }
 
@@ -352,6 +481,9 @@ public class ProjectFiles : DispatchProxy, IEditorFileWriter
 
 public class ProjectGit : DispatchProxy
 {
+    public Dictionary<string, TaskCompletionSource<GitStatusDto>> PendingStatuses { get; } = [];
+    public object? LastWorkspaceRequest { get; private set; }
+    public List<GitCloneRequest> CloneRequests { get; } = [];
     public int Checkouts { get; private set; }
     public int Initializations { get; private set; }
     public GitCommitRequest? LastCommit { get; private set; }
@@ -360,9 +492,25 @@ public class ProjectGit : DispatchProxy
     {
         switch (method!.Name)
         {
-            case nameof(IRemoteGitClient.GetStatusAsync): return Task.FromResult(new GitStatusDto("main", [new("app.cs", Staged: true)], [new("app.cs")], [], [], "v"));
+            case nameof(IRemoteGitClient.CreateTagAsync):
+            case nameof(IRemoteGitClient.RebaseAsync):
+            case nameof(IRemoteGitClient.StashAsync):
+            case nameof(IRemoteGitClient.ApplyPatchAsync):
+                LastWorkspaceRequest = args![1]; return Task.FromResult(new GitOperationResult(true));
+            case nameof(IRemoteGitClient.ExportPatchAsync): return Task.FromResult(new GitPatchDto("exported patch\n"));
+            case nameof(IRemoteGitClient.CloneAsync):
+                var request = (GitCloneRequest)args![0]!; CloneRequests.Add(request);
+                return Task.FromResult(request.Credentials is null
+                    ? new GitCloneResult(new(false, "clone", RequiresCredentials: true))
+                    : new GitCloneResult(new(true, "clone"), new("cloned", "Cloned", request.Path)));
+            case nameof(IRemoteGitClient.GetStatusAsync): return PendingStatuses.TryGetValue((string)args![0]!, out var pendingStatus) ? pendingStatus.Task : Task.FromResult(new GitStatusDto("main", [new("app.cs", Staged: true)], [new("app.cs")], [], [], "v"));
             case nameof(IRemoteGitClient.ListBranchesAsync): return Task.FromResult<IReadOnlyList<GitBranchDto>>([new("main", "abc", IsCurrent: true)]);
+            case nameof(IRemoteGitClient.GetGraphAsync): return Task.FromResult<IReadOnlyList<GitGraphCommitDto>>([]);
+            case nameof(IRemoteGitClient.GetConsoleAsync): return Task.FromResult<IReadOnlyList<GitConsoleEntryDto>>([]);
             case nameof(IRemoteGitClient.GetLogAsync): return Task.FromResult<IReadOnlyList<GitCommitDto>>([]);
+            case nameof(IRemoteGitClient.ListTagsAsync): return Task.FromResult<IReadOnlyList<GitTagDto>>([new("v1-preview", "abc")]);
+            case nameof(IRemoteGitClient.ListStashesAsync): return Task.FromResult<IReadOnlyList<GitStashDto>>([]);
+            case nameof(IRemoteGitClient.ListWorktreesAsync): return Task.FromResult<IReadOnlyList<GitWorktreeDto>>([]);
             case nameof(IRemoteGitClient.ListRemotesAsync): return Task.FromResult<IReadOnlyList<GitRemoteDto>>([]);
             case nameof(IRemoteGitClient.GetConflictStateAsync): return Task.FromResult(new GitConflictStateDto(null, []));
             case nameof(IRemoteGitClient.GetDiffAsync): return PendingDiff?.Task ?? Task.FromResult(new GitDiffDto((string)args![1]!, "v", Patch: "@@ -1 +1 @@\n-old\n+new\n"));

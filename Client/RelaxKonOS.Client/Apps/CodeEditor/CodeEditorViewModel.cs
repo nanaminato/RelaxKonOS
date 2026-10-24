@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.TextEditor;
 using RelaxKonOS.Client.Localization;
@@ -240,6 +240,16 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
 
     [RelayCommand]
     private void ToggleSidebar() => IsSidebarVisible = !IsSidebarVisible;
+
+    /// <summary>Publishes generated text without replacing existing buffers, including while its producing Git operation finishes.</summary>
+    public void OpenGeneratedTextDocument(string title, string text)
+    {
+        if (_disposed) return;
+        _openRevision++;
+        var document = new CodeEditorDocument(null, text, DefaultEncodingName, title) { IsDirty = true };
+        OpenDocuments.Add(document);
+        ActiveDocument = document;
+    }
 
     [RelayCommand]
     private void NewDocument()

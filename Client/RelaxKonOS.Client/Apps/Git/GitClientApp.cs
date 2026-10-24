@@ -52,6 +52,12 @@ public sealed class GitClientApp : RemoteApplicationBase
         ManagedWindow? window = null;
 
         // Wire dialog callbacks — the VM commands call these and handle the returned request objects.
+        vm.RequestOpenHostingUriAsync = uri =>
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+            return Task.CompletedTask;
+        };
+        vm.ShowWorkspaceInputAsync = (key, fields) => GitClientDialogs.ShowWorkspaceInputAsync(context, window!, key, fields);
         vm.ShowCommitDialogAsync = () => GitClientDialogs.ShowCommitDialogAsync(context, window!, vm);
         vm.ShowCreateBranchDialogAsync = source => GitClientDialogs.ShowCreateBranchDialogAsync(context, window!, vm, source);
         vm.ShowPullDialogAsync = () => GitClientDialogs.ShowPullDialogAsync(context, window!, vm);
@@ -89,6 +95,17 @@ public sealed class GitClientApp : RemoteApplicationBase
         vm.ShowFileDiffAsync = (owner, diff) => GitClientDialogs.ShowFileDiffAsync(context, owner ?? window!, diff);
         vm.ShowGitCredentialsDialogAsync = owner => GitClientDialogs.ShowGitCredentialsDialogAsync(context, owner ?? window!);
         vm.ShowRemoteBranchPickerDialogAsync = (owner, remote, branch) => GitClientDialogs.ShowRemoteBranchPickerDialogAsync(context, owner ?? window!, remote, branch, vm);
+        vm.ConfigureLogSession = log =>
+        {
+            log.ShowPushDialogAsync = () => GitClientDialogs.ShowPushDialogAsync(context, window!, log);
+            log.ShowCreateBranchDialogAsync = branch => GitClientDialogs.ShowCreateBranchDialogAsync(context, window!, log, branch);
+            log.ShowPullDialogAsync = () => GitClientDialogs.ShowPullDialogAsync(context, window!, log);
+            log.ShowMergeDialogAsync = branch => GitClientDialogs.ShowMergeDialogAsync(context, window!, branch, log);
+            log.ShowSetTrackingDialogAsync = branch => GitClientDialogs.ShowSetTrackingDialogAsync(context, window!, branch, log);
+            log.ShowConflictResolutionDialogAsync = owner => GitClientDialogs.ShowConflictResolutionDialogAsync(context, owner ?? window!, log);
+            log.ShowRemoteBranchPickerDialogAsync = (owner, remote, branch) => GitClientDialogs.ShowRemoteBranchPickerDialogAsync(context, owner ?? window!, remote, branch, log);
+        };
+
 
         var view = GitClientWorkspace.Create(vm, project);
         window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.git.display_name"),
@@ -116,6 +133,8 @@ public sealed class GitClientApp : RemoteApplicationBase
         {
             if (!e.Handled && !e.IsRepeat && e.Modifiers == RemoteKeyModifiers.Alt)
             {
+                if (e.Key == RemoteKey.Left) { view.NavigateHistory(-1); e.Handled = true; return; }
+                if (e.Key == RemoteKey.Right) { view.NavigateHistory(1); e.Handled = true; return; }
                 if (e.Key == RemoteKey.Digit(1)) { view.ToggleProjectTool(); e.Handled = true; return; }
                 if (e.Key == RemoteKey.Digit(0)) { view.ToggleCommitTool(); e.Handled = true; return; }
                 if (e.Key == RemoteKey.Digit(9)) { view.ToggleGitTool(); e.Handled = true; return; }
@@ -127,7 +146,8 @@ public sealed class GitClientApp : RemoteApplicationBase
             if (!e.Handled && !e.IsRepeat && e.Key == new RemoteKey("Tab")
                 && (e.Modifiers == RemoteKeyModifiers.Control || e.Modifiers == (RemoteKeyModifiers.Control | RemoteKeyModifiers.Shift)))
             { view.EditorView.CycleDocument(e.Modifiers.HasFlag(RemoteKeyModifiers.Shift) ? -1 : 1); e.Handled = true; return; }
-            _ = WindowShortcut.TryExecute(e, RemoteKey.Letter('S'), RemoteKeyModifiers.Control, project.Editor.SaveCommand)
+            _ = WindowShortcut.TryExecute(e, RemoteKey.Letter('N'), RemoteKeyModifiers.Control | RemoteKeyModifiers.Alt, vm.CreateBranchCommand)
+                || WindowShortcut.TryExecute(e, RemoteKey.Letter('S'), RemoteKeyModifiers.Control, project.Editor.SaveCommand)
                 || WindowShortcut.TryExecute(e, RemoteKey.Letter('O'), RemoteKeyModifiers.Control, project.Editor.OpenDocumentCommand)
                 || WindowShortcut.TryExecute(e, RemoteKey.Letter('T'), RemoteKeyModifiers.Control, vm.PullCommand)
                 || WindowShortcut.TryExecute(e, RemoteKey.Letter('K'), RemoteKeyModifiers.Control | RemoteKeyModifiers.Shift, vm.PushCommand)
@@ -141,6 +161,7 @@ public sealed class GitClientApp : RemoteApplicationBase
             if (!ReferenceEquals(closedWindow, window)) return;
             context.WindowManager.WindowClosed -= closed;
             if (localization is not null) localization.LanguageChanged -= languageChanged;
+            view.DisposeGitDock();
             project.Dispose();
         };
         context.WindowManager.WindowClosed += closed;

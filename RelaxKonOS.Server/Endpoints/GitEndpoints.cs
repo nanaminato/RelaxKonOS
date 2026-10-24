@@ -16,6 +16,8 @@ public static class GitEndpoints
     {
         var group = app.MapGroup($"/{RelaxKonOS.Protocol.Common.RelaxKonOSEndpoints.ApiVersionPrefix}/git").RequireAuthorization().WithTags("Git");
 
+        app.MapGitWorkspaceEndpoints();
+
         // ── Host Git engine probe & install (host-level, user-agnostic) ──
         group.MapGet("/engine/status", (RelaxKonOS.Server.Git.IGitRepositoryService service, CancellationToken ct) =>
             service.GetEngineStatusAsync(ct));

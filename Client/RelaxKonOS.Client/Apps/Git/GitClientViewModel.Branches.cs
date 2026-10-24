@@ -193,7 +193,7 @@ public sealed partial class GitClientViewModel
     {
         branch ??= SelectedBranch;
         if (branch is null) return;
-        await NotifyAsync(LocalizedText.Format("git.vm.rebase_unimplemented_format", branch.Name));
+        await RebaseReferenceAsync(SelectedRepository, branch.Name);
     }
 
     [RelayCommand(CanExecute = nameof(CanManage))]

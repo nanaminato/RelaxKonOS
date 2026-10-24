@@ -154,7 +154,7 @@ public sealed partial class GitClientViewModel
     {
         commit ??= SelectedCommit;
         if (commit is null) return;
-        await NotifyAsync(LocalizedText.Format("git.vm.create_patch_unimplemented_format", commit.ShortSha));
+        await ExportPatchAsync(new(Reference: commit.Sha));
     }
 
     [RelayCommand(CanExecute = nameof(CanManage))]
@@ -162,7 +162,8 @@ public sealed partial class GitClientViewModel
     {
         commit ??= SelectedCommit;
         if (commit is null) return;
-        await NotifyAsync(LocalizedText.Format("git.vm.cherry_pick_unimplemented_format", commit.ShortSha));
+        if (ShowConfirmAsync is null || !await ShowConfirmAsync(LocalizedText.Format("git.workspace.cherry_pick_confirm", commit.ShortSha))) return;
+        await ExecuteWorkspaceOperationAsync(SelectedRepository, id => client.CherryPickAsync(id, new(commit.Sha)));
     }
 
     [RelayCommand]
@@ -202,7 +203,9 @@ public sealed partial class GitClientViewModel
     {
         commit ??= SelectedCommit;
         if (commit is null) return;
-        await NotifyAsync(LocalizedText.Format("git.vm.create_tag_unimplemented_format", commit.ShortSha));
+        var repo = SelectedRepository;
+        var values = await InputAsync("git.workspace.new_tag", new GitInputField("git.workspace.name"), new GitInputField("git.workspace.reference", commit.Sha));
+        if (values is not null) await ExecuteWorkspaceOperationAsync(repo, id => client.CreateTagAsync(id, new(values[0], values[1])), false);
     }
 
     [RelayCommand]

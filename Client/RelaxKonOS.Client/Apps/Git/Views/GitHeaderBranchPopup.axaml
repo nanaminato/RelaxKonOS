@@ -1,0 +1,45 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.Git.Views"
+ xmlns:ui="clr-namespace:RelaxKonOS.Client.Controls"
+ xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+ x:Class="RelaxKonOS.Client.Apps.Git.Views.GitHeaderBranchPopup"
+ x:DataType="views:GitHeaderBranchPopup" Width="360" Background="{DynamicResource SurfaceBrush}">
+ <UserControl.Styles>
+  <Style Selector="Button.branch-action"><Setter Property="HorizontalAlignment" Value="Stretch"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="9,4"/><Setter Property="MinHeight" Value="25"/><Setter Property="FontSize" Value="12"/></Style>
+  <Style Selector="Button.branch-action:pointerover"><Setter Property="Background" Value="{DynamicResource AccentMutedBrush}"/></Style>
+  <Style Selector="TreeViewItem"><Setter Property="IsExpanded" Value="True"/><Setter Property="MinHeight" Value="25"/><Setter Property="FontSize" Value="12"/><Setter Property="Padding" Value="0"/></Style>
+ </UserControl.Styles>
+ <Grid RowDefinitions="Auto,Auto,Auto,Auto" MaxHeight="620">
+  <Grid ColumnDefinitions="*,Auto" Margin="5,4,5,8">
+   <TextBox x:Name="BranchSearch" PlaceholderText="{loc:Loc git.workspace.search}" TextChanged="Search_Changed" MinHeight="30" FontSize="12"/>
+   <Button Grid.Column="1" Classes="header-action" Click="Options_Click" ToolTip.Tip="{loc:Loc git.editor.tool_options}" AutomationProperties.Name="{loc:Loc git.editor.tool_options}"><ui:WorkspaceIcon Kind="Settings"/></Button>
+  </Grid>
+  <StackPanel x:Name="SyncActions" Grid.Row="1">
+   <Button x:Name="UpdateAction" Classes="branch-action" Click="Update_Click"><Grid ColumnDefinitions="20,*,Auto"><ui:WorkspaceIcon Kind="Download"/><TextBlock Grid.Column="1" Text="{loc:Loc git.workspace.update}"/><TextBlock Grid.Column="2" Text="Ctrl+T" Opacity="0.6"/></Grid></Button>
+   <Button x:Name="CommitAction" Classes="branch-action" Click="Commit_Click"><Grid ColumnDefinitions="20,*,Auto"><ui:WorkspaceIcon Kind="Commit"/><TextBlock Grid.Column="1" Text="{loc:Loc git.workspace.commit_action}"/><TextBlock Grid.Column="2" Text="Ctrl+K" Opacity="0.6"/></Grid></Button>
+   <Button x:Name="PushAction" Classes="branch-action" Click="Push_Click"><Grid ColumnDefinitions="20,*,Auto"><ui:WorkspaceIcon Kind="Push"/><TextBlock Grid.Column="1" Text="{loc:Loc git.workspace.push}"/><TextBlock Grid.Column="2" Text="Ctrl+Shift+K" Opacity="0.6"/></Grid></Button>
+  </StackPanel>
+  <StackPanel Grid.Row="2" Margin="0,8,0,6">
+   <Separator/>
+   <Button x:Name="NewBranchAction" Classes="branch-action" Click="NewBranch_Click" Margin="0,8,0,0"><Grid ColumnDefinitions="20,*,Auto"><ui:WorkspaceIcon Kind="Plus"/><TextBlock Grid.Column="1" Text="{loc:Loc git.workspace.new_branch}"/><TextBlock Grid.Column="2" Text="Ctrl+Alt+N" Opacity="0.6"/></Grid></Button>
+   <Button x:Name="CheckoutAction" Classes="branch-action" Click="CheckoutRevision_Click"><Grid ColumnDefinitions="20,*"><ui:WorkspaceIcon Kind="Branch"/><TextBlock Grid.Column="1" Text="{loc:Loc git.workspace.checkout_revision}"/></Grid></Button>
+   <Separator Margin="0,8,0,0"/>
+  </StackPanel>
+  <ScrollViewer Grid.Row="3" MaxHeight="410" HorizontalScrollBarVisibility="Disabled">
+   <TreeView x:Name="HeaderBranchList" ItemsSource="{Binding Nodes}" KeyDown="Branches_KeyDown">
+    <TreeView.ItemTemplate>
+     <TreeDataTemplate x:DataType="views:GitHeaderBranchNode" ItemsSource="{Binding Children}">
+      <Grid ColumnDefinitions="17,*" MinHeight="25">
+       <ui:WorkspaceIcon Kind="{Binding Icon}" Width="14" Height="14" Foreground="{DynamicResource TextSecondaryBrush}"/>
+       <TextBlock Grid.Column="1" Text="{Binding Name}" IsVisible="{Binding IsGroup}" VerticalAlignment="Center"/>
+       <Button Grid.Column="1" Classes="branch-action" IsVisible="{Binding !IsGroup}" Click="Branch_Click" Padding="3,2" Tag="{Binding}">
+        <Grid ColumnDefinitions="*,Auto,12" ColumnSpacing="8"><TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/><TextBlock Grid.Column="1" Text="{Binding Tracking}" Foreground="{DynamicResource TextSecondaryBrush}" MaxWidth="145" TextTrimming="CharacterEllipsis"/><TextBlock Grid.Column="2" Text="›" Foreground="{DynamicResource TextSecondaryBrush}"/></Grid>
+       </Button>
+      </Grid>
+     </TreeDataTemplate>
+    </TreeView.ItemTemplate>
+   </TreeView>
+  </ScrollViewer>
+ </Grid>
+</UserControl>

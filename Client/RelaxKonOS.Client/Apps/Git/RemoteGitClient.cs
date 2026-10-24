@@ -11,6 +11,47 @@ namespace RelaxKonOS.Client.Apps.Git;
 /// Routes use <see cref="GitApiRoutes"/> constants; {id}/{name} are escaped via <see cref="Uri.EscapeDataString"/>.</summary>
 public sealed class RemoteGitClient(HttpClient http, IAuthSession session) : IRemoteGitClient
 {
+    public Task<IReadOnlyList<GitGraphCommitDto>> GetGraphAsync(string id, string? reference = null, CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<GitGraphCommitDto>>(HttpMethod.Get, GitApiRoutes.Graph.Replace("{id}", Uri.EscapeDataString(id)) + (string.IsNullOrEmpty(reference) ? "" : "?reference=" + Uri.EscapeDataString(reference)), null, cancellationToken);
+    public Task<IReadOnlyList<GitConsoleEntryDto>> GetConsoleAsync(string id, long after = 0, CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<GitConsoleEntryDto>>(HttpMethod.Get, GitApiRoutes.Console.Replace("{id}", Uri.EscapeDataString(id)) + "?after=" + Math.Max(0, after).ToString(System.Globalization.CultureInfo.InvariantCulture), null, cancellationToken);
+
+    public Task<IReadOnlyList<GitTagDto>> ListTagsAsync(string id, CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<GitTagDto>>(HttpMethod.Get, GitApiRoutes.ListTags.Replace("{id}", Uri.EscapeDataString(id)), null, cancellationToken);
+
+    public Task<GitOperationResult> CreateTagAsync(string id, GitTagCreateRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<GitOperationResult>(HttpMethod.Post, GitApiRoutes.CreateTag.Replace("{id}", Uri.EscapeDataString(id)), request, cancellationToken);
+
+    public Task<GitOperationResult> RebaseAsync(string id, GitReferenceRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<GitOperationResult>(HttpMethod.Post, GitApiRoutes.Rebase.Replace("{id}", Uri.EscapeDataString(id)), request, cancellationToken);
+
+    public Task<GitOperationResult> CherryPickAsync(string id, GitReferenceRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<GitOperationResult>(HttpMethod.Post, GitApiRoutes.CherryPick.Replace("{id}", Uri.EscapeDataString(id)), request, cancellationToken);
+
+    public Task<IReadOnlyList<GitStashDto>> ListStashesAsync(string id, CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<GitStashDto>>(HttpMethod.Get, GitApiRoutes.ListStashes.Replace("{id}", Uri.EscapeDataString(id)), null, cancellationToken);
+
+    public Task<GitOperationResult> StashAsync(string id, GitStashRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<GitOperationResult>(HttpMethod.Post, GitApiRoutes.Stash.Replace("{id}", Uri.EscapeDataString(id)), request, cancellationToken);
+
+    public Task<IReadOnlyList<GitWorktreeDto>> ListWorktreesAsync(string id, CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<GitWorktreeDto>>(HttpMethod.Get, GitApiRoutes.ListWorktrees.Replace("{id}", Uri.EscapeDataString(id)), null, cancellationToken);
+
+    public Task<GitOperationResult> CreateWorktreeAsync(string id, GitWorktreeCreateRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<GitOperationResult>(HttpMethod.Post, GitApiRoutes.CreateWorktree.Replace("{id}", Uri.EscapeDataString(id)), request, cancellationToken);
+
+    public Task<GitOperationResult> RemoveWorktreeAsync(string id, GitWorktreeRemoveRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<GitOperationResult>(HttpMethod.Post, GitApiRoutes.RemoveWorktree.Replace("{id}", Uri.EscapeDataString(id)), request, cancellationToken);
+
+    public Task<GitPatchDto> ExportPatchAsync(string id, GitPatchRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<GitPatchDto>(HttpMethod.Post, GitApiRoutes.ExportPatch.Replace("{id}", Uri.EscapeDataString(id)), request, cancellationToken);
+
+    public Task<GitOperationResult> ApplyPatchAsync(string id, GitPatchApplyRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<GitOperationResult>(HttpMethod.Post, GitApiRoutes.ApplyPatch.Replace("{id}", Uri.EscapeDataString(id)), request, cancellationToken);
+
+    public Task<GitCloneResult> CloneAsync(GitCloneRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<GitCloneResult>(HttpMethod.Post, GitApiRoutes.Clone, request, cancellationToken);
+
     // ── Host Git engine probe & install ──
     public Task<GitEngineStatusDto> GetEngineStatusAsync(CancellationToken cancellationToken = default)
         => SendAsync<GitEngineStatusDto>(HttpMethod.Get, GitApiRoutes.EngineStatus, null, cancellationToken);

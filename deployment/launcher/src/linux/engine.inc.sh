@@ -18,6 +18,7 @@ require_package() {
   deployment_python extract "$options_source" "$architecture" "$kind" "$package_root" "$archive" "$request_path" >>"$(diagnostics_path)" 2>&1 || extract_status=$?
   case "$extract_status" in
     0) ;;
+    75) launcher_fail package_manifest_invalid "服务器发布 ZIP 缺少必需的部署组件（包括 deployment/user/relaxkon）；请使用当前打包脚本重新生成完整服务器发布包。";;
     73) launcher_fail disk_quota_exceeded "服务器当前 SSH 用户的存储配额已耗尽，请清理本应用的安装暂存文件或调整配额后重试。";;
     74) launcher_fail disk_space_insufficient "服务器安装暂存分区空间不足，请释放空间后重试。";;
     *) launcher_fail package_manifest_invalid "the release could not be downloaded, checked or safely extracted";;

@@ -23,14 +23,15 @@ public sealed partial class GitClientViewModel
     [RelayCommand(CanExecute = nameof(CanManage))]
     private async Task ApplyLogFiltersAsync()
     {
-        if (SelectedRepository is null) return;
+        if (SelectedRepository is not { } repo) return;
         _logFilterTimer?.Stop();
         var requestVersion = Interlocked.Increment(ref _logFilterRequestVersion);
         try
         {
-            var commits = await client.GetLogAsync(SelectedRepository.Id, limit: 100, query: BuildLogQuery());
-            if (requestVersion != Volatile.Read(ref _logFilterRequestVersion)) return;
+            var commits = await client.GetLogAsync(repo.Id, limit: 100, query: BuildLogQuery());
+            if (requestVersion != Volatile.Read(ref _logFilterRequestVersion) || SelectedRepository?.Id != repo.Id) return;
             ReplaceCommits(commits);
+            await RefreshLogMetadataAsync(repo.Id);
         }
         catch (Exception ex)
         {
@@ -66,9 +67,10 @@ public sealed partial class GitClientViewModel
         try
         {
             LogBranchOptions.Clear();
-            LogBranchOptions.Add(new GitLogFilterOption(string.Empty, LocalizedText.Get("git.editor.head_filter")));
+            LogBranchOptions.Add(new GitLogFilterOption(string.Empty, LocalizedText.Get("git.dock.all_branches")));
             foreach (var branch in Branches.OrderBy(branch => branch.IsRemote).ThenBy(branch => branch.Name, StringComparer.OrdinalIgnoreCase))
                 LogBranchOptions.Add(new GitLogFilterOption(branch.Name, branch.Name));
+            foreach (var tag in Tags.OrderBy(tag => tag.Name, StringComparer.OrdinalIgnoreCase)) LogBranchOptions.Add(new("refs/tags/" + tag.Name, tag.Name));
             SelectedLogBranch = LogBranchOptions.FirstOrDefault(option => option.Value == selectedValue)
                 ?? LogBranchOptions[0];
         }
@@ -142,7 +144,7 @@ public sealed partial class GitClientViewModel
 
     private void QueueLogFilterRefresh()
     {
-        if (SelectedRepository is null) return;
+        if (SelectedRepository is null || _updatingLogFilterOptions) return;
         _logFilterTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
         _logFilterTimer.Tick -= OnLogFilterTimerTick;
         _logFilterTimer.Tick += OnLogFilterTimerTick;

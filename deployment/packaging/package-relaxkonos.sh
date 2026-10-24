@@ -42,6 +42,15 @@ publish_deployment_tools() {
 
 complete_package() {
   local kind="$1" payload="$2" hash files path length digest separator=
+  if [[ $kind == server ]]; then
+    for path in payload/linux/server/RelaxKonOS.Server payload/linux/guardian/RelaxKonOS.Guardian.Agent \
+      payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper deployment/user/relaxkon \
+      deployment/verify-release-inventory.py deployment/bootstrap/install-relaxkonos.sh \
+      deployment/bootstrap/uninstall-relaxkonos.sh deployment/linux/install-relaxkonos-services.sh; do
+      [[ -f "$BUNDLE/$path" && ! -L "$BUNDLE/$path" ]] \
+        || { echo "Incomplete release package: missing or unsafe $path" >&2; return 65; }
+    done
+  fi
   # A bundle is never trusted based on its top-level archive checksum alone: installers also
   # verify this deterministic inventory after extraction, so a partially copied local bundle is
   # rejected before it can become the active version.

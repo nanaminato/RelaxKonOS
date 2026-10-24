@@ -92,7 +92,7 @@ public sealed partial class LocalGitRepositoryService
         finally { semaphore.Release(); }
     }
 
-    private async Task<CommandResult> RunGitAsync(
+    private async Task<CommandResult> RunGitCoreAsync(
         string gitPath,
         string workingDir,
         IReadOnlyList<string> arguments,

@@ -28,7 +28,7 @@ public sealed partial class LocalGitRepositoryService
         var format = "%H%x00%h%x00%an%x00%ae%x00%aI%x00%s%x00%b%x00";
         limit = Math.Clamp(limit, 1, 500);
         skip = Math.Max(skip, 0);
-        var args = new List<string> { "log", $"--pretty=tformat:{format}", "--date=iso-strict", "-n", limit.ToString(System.Globalization.CultureInfo.InvariantCulture), $"--skip={skip}" };
+        var args = new List<string> { "log", $"--pretty=tformat:{format}", "--date=iso-strict", "--topo-order", "-n", limit.ToString(System.Globalization.CultureInfo.InvariantCulture), $"--skip={skip}" };
         if (!string.IsNullOrWhiteSpace(query?.Search))
         {
             args.Add($"--grep={query.Search}");
@@ -55,6 +55,11 @@ public sealed partial class LocalGitRepositoryService
             var verify = await RunGitAsync(gitPath, repo.Path, ["rev-parse", "--verify", $"{query.Reference}^{{commit}}"], cancellationToken);
             if (!verify.Success) throw new ArgumentException("The selected branch no longer exists.", nameof(query));
             args.Add(query.Reference);
+        }
+        else
+        {
+            args.Add("--all");
+            if ((await RunGitAsync(gitPath, repo.Path, ["rev-parse", "--verify", "HEAD"], cancellationToken)).Success) args.Add("HEAD");
         }
         if (!string.IsNullOrWhiteSpace(query?.Path))
         {

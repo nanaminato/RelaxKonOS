@@ -31,10 +31,12 @@ public sealed partial class GitClientViewModel
     /// Loads a commit file's diff into the pane. The pane opens before the fetch so the click has
     /// feedback, and clicking another file supersedes the pending request rather than racing it.
     /// </summary>
-    private async Task ShowInlineCommitFileDiffAsync(GitFileChangeDto file)
+    public Task PreviewLogFileDiffAsync(GitFileChangeDto file) => ShowInlineCommitFileDiffAsync(file, false);
+
+    private async Task ShowInlineCommitFileDiffAsync(GitFileChangeDto file, bool preferEditor = true)
     {
         if (SelectedRepository is null || SelectedCommit is null) return;
-        if (OpenEditorDiffAsync is not null)
+        if (preferEditor && OpenEditorDiffAsync is not null)
         {
             await OpenEditorDiffAsync(file, SelectedCommit.Sha);
             return;

@@ -64,7 +64,7 @@ class PackageSourceChecks(unittest.TestCase):
             'deployment/linux/install-relaxkonos-services.sh': b'#!/bin/bash\n',
         })
         self.package()
-        with self.assertRaisesRegex(ValueError, 'incomplete package'):
+        with self.assertRaisesRegex(FileNotFoundError, 'incomplete package'):
             helper['extract']('localBundle', 'linux-x64', 'server', self.root/'missing', str(self.archive))
         self.assertFalse((self.root/'missing').exists())
         self.files['deployment/bootstrap/uninstall-relaxkonos.sh'] = b'#!/bin/bash\n'
@@ -79,13 +79,13 @@ class PackageSourceChecks(unittest.TestCase):
     def test_missing_inventory_verifier_is_rejected_before_extraction(self):
         del self.files['deployment/verify-release-inventory.py']
         self.package()
-        with self.assertRaisesRegex(ValueError, 'incomplete package'):
+        with self.assertRaisesRegex(FileNotFoundError, 'incomplete package'):
             self.extract()
         self.assertFalse((self.root/'out').exists())
     def test_shared_server_package_requires_user_launcher(self):
         del self.files['deployment/user/relaxkon']
         self.package()
-        with self.assertRaisesRegex(ValueError, 'incomplete package'):
+        with self.assertRaisesRegex(FileNotFoundError, 'deployment/user/relaxkon'):
             self.extract()
         self.assertFalse((self.root/'out').exists())
     def test_client_package_cannot_replace_shared_server(self):
@@ -105,7 +105,7 @@ class PackageSourceChecks(unittest.TestCase):
         with self.assertRaises(ValueError): self.extract()
     def test_incomplete(self):
         del self.files['payload/linux/guardian/RelaxKonOS.Guardian.Agent'];self.package()
-        with self.assertRaises(ValueError):self.extract()
+        with self.assertRaises(FileNotFoundError):self.extract()
     def test_official_checks(self):
         self.package(); seen=[]
         descriptor={'schemaVersion':1,'packageKind':'server','runtime':'linux-x64','version':'0.1.0',

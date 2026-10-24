@@ -305,6 +305,9 @@ Compose 编排的**每个变更都是持久操作，不是同步结果**（`stac
 
 路由常量见 `GitApiRoutes`。服务端调用宿主 `git` CLI（`IHostGitCli`），仓库元数据持久化到 SQLite（按 Workspace 隔离）。详见 [`RelaxKonOS.GitClient.md`](../applications/RelaxKonOS.GitClient.md)。
 
+`GitWorkspaceContracts.cs` 增加轻量标签、提交引用操作、stash SHA、工作树、文本补丁及克隆的显式 DTO；路由包括 tags、rebase/cherry-pick、stashes、worktrees、patch/patch/apply 和 clone。克隆返回 `GitCloneResult`（操作结果及成功注册的仓库），不返回失败时的伪仓库；HTTPS 凭据使用现有 askpass 边界。完整请求语义、上限与验证范围由 [GitClient 当前实现](../applications/RelaxKonOS.GitClient.md#标题栏菜单与工作区扩展2026-10-24) 维护。
+
+
 | 方法             | 路径                                                         | 请求                                                   | 响应                        | 认证  |
 | -------------- | ---------------------------------------------------------- | ---------------------------------------------------- | ------------------------- | --- |
 | GET            | `/api/v1.0/git/engine/status`                                | —                                                    | 引擎状态 DTO（版本/是否安装）         | JWT |
@@ -774,3 +777,5 @@ Workspace preferences GET 返回 `revision`，PUT 必须携带读取时的 `revi
 领域边界见 [应用部署设计](../applications/RelaxKonOS.ApplicationDeployment.Design.md)。
 
 宿主 Settings Endpoint 的拒绝统一在 ProblemDetails 扩展 `problemCode` 写入稳定设置错误码，客户端不把 title 当机器契约。时区/环境/身份操作查询持有原协调锁；当状态为 Prepared 且服务端期限已过，持久转为 Failed/`settings.plan_expired`。Applying/Unknown/RecoveryRequired 不按期限当作未执行；已关闭计划的延迟 apply 返回原终态而不写宿主。期限与关单由 Server 时钟和持久操作记录决定，手机时间不能解除未知门禁。
+
+Git 工作区新增按用户/仓库隔离的 graph（sha/parents/isHead）与增量 console（after 序列）读取契约，详细字段和上限见 [Git 客户端](../applications/RelaxKonOS.GitClient.md#底部-git-多标签与日志)。默认无引用过滤的日志覆盖全部引用，显式引用仍只遍历其祖先。

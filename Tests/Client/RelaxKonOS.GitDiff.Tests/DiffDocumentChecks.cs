@@ -8,7 +8,7 @@ namespace RelaxKonOS.GitDiff.Tests;
 /// </summary>
 internal static class DiffDocumentChecks
 {
-    private const string ModifiedPatch = """
+    private static readonly string ModifiedPatch = """
 diff --git a/src/map.ts b/src/map.ts
 index 4bee98b..9a1c2f0 100644
 --- a/src/map.ts
@@ -25,9 +25,9 @@ index 4bee98b..9a1c2f0 100644
 +  }
 +}
 +// 轨道层在地图之上，透明度 0.6
-""";
+""".ReplaceLineEndings("\n");
 
-    private const string AddedPatch = """
+    private static readonly string AddedPatch = """
 diff --git a/new.md b/new.md
 new file mode 100644
 index 0000000..1111111
@@ -36,7 +36,7 @@ index 0000000..1111111
 @@ -0,0 +1,2 @@
 +hello
 +world
-""";
+""".ReplaceLineEndings("\n");
 
     public static int Run()
     {
