@@ -3,6 +3,7 @@
     "DisplayName": "日本語",
     "SortOrder": 0,
     "Strings": {
+        "common.editor_draft_hint": "閉じると下書きを保持します。保存、適用、確認済みの操作でのみサーバーへ送信します。",
         "common.discard_title": "変更を破棄しますか？",
         "common.discard_message": "未保存の変更を破棄してエディターを閉じますか？",
         "common.discard": "破棄",

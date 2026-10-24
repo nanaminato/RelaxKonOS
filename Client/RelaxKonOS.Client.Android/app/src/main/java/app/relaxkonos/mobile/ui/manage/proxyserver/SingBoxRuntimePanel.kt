@@ -35,6 +35,7 @@ import org.json.JSONObject
     val catalog = model.catalog.takeIf { visible }
     val plan = model.plan.takeIf { visible }
     val operation = model.operation.takeIf { visible }
+    var editing by remember(owner) { mutableStateOf(false) }
     var source by remember(owner) { mutableStateOf<String?>(null) }
     var release by remember(owner) { mutableStateOf<String?>(null) }
     var kind by remember(owner) { mutableStateOf(InstallationKind.Install) }
@@ -45,13 +46,14 @@ import org.json.JSONObject
     val locked = !canManage || model.busy || model.pending || model.hasIntent || operation?.state?.active == true
     LaunchedEffect(owner, model.owner, resumed) { if (visible && resumed) model.refresh() }
     DisposableEffect(owner, lifecycle) {
-        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_PAUSE) { reviewed = null; decision = null; model.stop() } }
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_PAUSE) { reviewed = null; decision = null; editing = false; model.stop() } }
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer); model.stop() }
     }
     LaunchedEffect(owner, operation, model.busy, resumed) {
         if (visible && resumed && operation?.state?.active == true && !model.busy) { delay(1500); model.observe() }
     }
+    LaunchedEffect(operation, model.busy) { if (!model.busy && operation?.state?.active == true && plan == null) editing = false }
     LaunchedEffect(host?.ownership, host?.activeRelease) {
         if (!model.hasIntent) { kind = if (host?.ownership == "absent") InstallationKind.Install else InstallationKind.Upgrade; release = null; reviewed = null }
     }
@@ -63,49 +65,52 @@ import org.json.JSONObject
         Text(stringResource(R.string.managed_runtime_identity, managedRuntimeOwnershipLabel(host.ownership), host.version ?: stringResource(R.string.managed_runtime_version_unmeasured)))
         host.problem?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (host.recoveryRequired) Text(stringResource(R.string.managed_runtime_recovery))
-        if (host.ownership in setOf("absent", "managed") && !host.recoveryRequired) {
-            val kinds = if (host.ownership == "absent") listOf(InstallationKind.Install) else listOf(InstallationKind.Upgrade, InstallationKind.Repair, InstallationKind.Rollback, InstallationKind.Uninstall)
-            kinds.forEach { choice -> RadioOption(choice == kind, installationKindLabel(choice), !locked) {
-                kind = choice; release = if (choice == InstallationKind.Repair) host.activeRelease else null; reviewed = null; model.clearPlan()
-            } }
-            if (kind == InstallationKind.Uninstall) {
-                CheckboxOption(keepData, stringResource(R.string.managed_runtime_keep_data), !locked) { keepData = it; reviewed = null; model.clearPlan() }
-                if (!keepData) Text(stringResource(R.string.managed_runtime_delete_data), color = MaterialTheme.colorScheme.error)
-            } else {
-                Text(stringResource(R.string.managed_runtime_sources))
-                if (model.sources.isEmpty()) Text(stringResource(R.string.managed_runtime_no_sources))
-                model.sources.forEach { item -> RadioOption(item.id == source,
-                    "${item.publisher} · ${item.id}\n${managedRuntimeTrustLabel(item.trust)}\n${item.address}\n${item.fingerprint}", !locked && item.trusted) {
-                    source = item.id; release = null; reviewed = null; model.catalog(item.id, false, prerelease)
+        Button(enabled = canManage && !model.busy && (operation?.state?.active != true || model.hasIntent), onClick = { editing = true }) { Text(stringResource(R.string.proxy_server_runtime_edit)) }
+    }
+    if (editing) WorkspaceEditorDialog(stringResource(R.string.proxy_server_runtime_title), visible && model.busy, { editing = false; reviewed = null }) {
+        host?.let { host ->
+            if (host.ownership in setOf("absent", "managed") && !host.recoveryRequired) {
+                val kinds = if (host.ownership == "absent") listOf(InstallationKind.Install) else listOf(InstallationKind.Upgrade, InstallationKind.Repair, InstallationKind.Rollback, InstallationKind.Uninstall)
+                kinds.forEach { choice -> RadioOption(choice == kind, installationKindLabel(choice), !locked) {
+                    kind = choice; release = if (choice == InstallationKind.Repair) host.activeRelease else null; reviewed = null; model.clearPlan()
                 } }
-                CheckboxOption(prerelease, stringResource(R.string.managed_runtime_prerelease), !locked) {
-                    prerelease = it; release = null; reviewed = null; model.clearPlan()
-                    source?.let { id -> model.catalog(id, false, prerelease) }
-                }
-                TextButton(enabled = !locked && source != null, onClick = { source?.let { reviewed = null; release = null; model.catalog(it, true, prerelease) } }) { Text(stringResource(R.string.common_refresh)) }
-                if (catalog != null) {
-                    if (!catalog.usable) Text(stringResource(R.string.managed_runtime_stale), color = MaterialTheme.colorScheme.error)
-                    catalog.problem?.let { Text(it) }
-                    catalog.releases.forEach { item ->
-                        RadioOption(release == item.id, "${item.version} · ${item.target} · ${managedRuntimeTrustLabel(item.trust)} · ${managedRuntimeEvidenceLabel(item.evidence)}",
-                            !locked && catalog.usable && item.supported && item.trust == "confirmed" && (prerelease || item.channel == "stable") && host.eligible(kind, item.id)) {
-                            release = item.id; reviewed = null; model.clearPlan()
+                if (kind == InstallationKind.Uninstall) {
+                    CheckboxOption(keepData, stringResource(R.string.managed_runtime_keep_data), !locked) { keepData = it; reviewed = null; model.clearPlan() }
+                    if (!keepData) Text(stringResource(R.string.managed_runtime_delete_data), color = MaterialTheme.colorScheme.error)
+                } else {
+                    Text(stringResource(R.string.managed_runtime_sources))
+                    if (model.sources.isEmpty()) Text(stringResource(R.string.managed_runtime_no_sources))
+                    model.sources.forEach { item -> RadioOption(item.id == source,
+                        "${item.publisher} · ${item.id}\n${managedRuntimeTrustLabel(item.trust)}\n${item.address}\n${item.fingerprint}", !locked && item.trusted) {
+                        source = item.id; release = null; reviewed = null; model.catalog(item.id, false, prerelease)
+                    } }
+                    CheckboxOption(prerelease, stringResource(R.string.managed_runtime_prerelease), !locked) {
+                        prerelease = it; release = null; reviewed = null; model.clearPlan()
+                        source?.let { id -> model.catalog(id, false, prerelease) }
+                    }
+                    TextButton(enabled = !locked && source != null, onClick = { source?.let { reviewed = null; release = null; model.catalog(it, true, prerelease) } }) { Text(stringResource(R.string.common_refresh)) }
+                    if (catalog != null) {
+                        if (!catalog.usable) Text(stringResource(R.string.managed_runtime_stale), color = MaterialTheme.colorScheme.error)
+                        catalog.problem?.let { Text(it) }
+                        catalog.releases.forEach { item ->
+                            RadioOption(release == item.id, "${item.version} · ${item.target} · ${managedRuntimeTrustLabel(item.trust)} · ${managedRuntimeEvidenceLabel(item.evidence)}",
+                                !locked && catalog.usable && item.supported && item.trust == "confirmed" && (prerelease || item.channel == "stable") && host.eligible(kind, item.id)) {
+                                release = item.id; reviewed = null; model.clearPlan()
+                            }
+                            if (!item.supported) Text(stringResource(R.string.managed_runtime_unsupported))
                         }
-                        if (!item.supported) Text(stringResource(R.string.managed_runtime_unsupported))
                     }
                 }
+                OutlinedButton(enabled = !locked && host.problem == null && (kind == InstallationKind.Uninstall || catalog?.usable == true && release != null), onClick = {
+                    reviewed = null; model.propose(kind, release, prerelease, keepData)
+                }) { Text(stringResource(R.string.managed_runtime_preview)) }
             }
-            OutlinedButton(enabled = !locked && host.problem == null && (kind == InstallationKind.Uninstall || catalog?.usable == true && release != null), onClick = {
-                reviewed = null; model.propose(kind, release, prerelease, keepData)
-            }) { Text(stringResource(R.string.managed_runtime_preview)) }
-        }
-    }
-    model.dependencies?.takeIf { visible }?.let { payload ->
-        val items = JSONObject(payload).getJSONArray("items")
-        for (i in 0 until items.length()) {
-            val item = items.getJSONObject(i)
-            Text(stringResource(R.string.managed_runtime_dependency_observation, managedRuntimeDependencyKindLabel(item.getString("kind")), item.getString("identity"), managedRuntimeDependencyStateLabel(item.getString("state"))))
-            if (!item.isNull("requiredBytes")) Text(stringResource(R.string.managed_runtime_disk, if (item.isNull("availableBytes")) stringResource(R.string.managed_resource_unknown) else item.getLong("availableBytes").toString(), item.getLong("requiredBytes").toString()))
+            model.dependencies?.takeIf { visible }?.let { payload ->
+                val items = JSONObject(payload).getJSONArray("items")
+                for (i in 0 until items.length()) {
+                    val item = items.getJSONObject(i)
+                    Text(stringResource(R.string.managed_runtime_dependency_observation, managedRuntimeDependencyKindLabel(item.getString("kind")), item.getString("identity"), managedRuntimeDependencyStateLabel(item.getString("state"))))
+                    if (!item.isNull("requiredBytes")) Text(stringResource(R.string.managed_runtime_disk, if (item.isNull("availableBytes")) stringResource(R.string.managed_resource_unknown) else item.getLong("availableBytes").toString(), item.getLong("requiredBytes").toString()))
         }
     }
     if (visible) model.problems.forEach { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -119,8 +124,13 @@ import org.json.JSONObject
             Text(stringResource(if (model.hasIntent) R.string.common_retry else R.string.proxy_server_confirm_title))
         }
     } }
+        }
+    }
+
+    if (visible && !editing) model.problems.forEach { Text(it, color = MaterialTheme.colorScheme.error) }
     if (visible && model.pending) {
         Text(stringResource(R.string.managed_runtime_pending_intent))
+        if (model.hasIntent) TextButton(enabled = canManage && !model.busy, onClick = { editing = true }) { Text(stringResource(R.string.common_retry)) }
         if (!model.hasIntent) TextButton(enabled = canManage && !model.busy, onClick = { decision = model::acceptFacts }) { Text(stringResource(R.string.proxy_server_runtime_accept_facts)) }
     }
     operation?.let { current ->

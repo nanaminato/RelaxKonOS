@@ -10,6 +10,18 @@ public partial class SquidWorkspace : UserControl
 {
     private SquidViewModel? _viewModel;
 
+    public Func<string, Control, Task>? ShowEditorAsync { get; set; }
+
+    private async void EditorButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string target } button || ShowEditorAsync is null) return;
+        var parts = target.Split(':');
+        if (parts.Length > 1 && _viewModel is { } accountModel)
+        { accountModel.SelectedAccount = null; accountModel.NewAccountName = ""; accountModel.AccountPassword = ""; }
+        await RelaxKonOS.Client.Controls.WorkspaceEditorDialogView.OpenAsync(this, parts[0], button.Content?.ToString() ?? "", ShowEditorAsync);
+        if (_viewModel is { } model) model.AccountPassword = "";
+    }
+
     public SquidWorkspace()
     {
         InitializeComponent();

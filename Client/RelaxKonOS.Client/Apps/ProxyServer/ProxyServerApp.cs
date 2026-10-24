@@ -35,12 +35,16 @@ public sealed class ProxyServerApp : RemoteApplicationBase
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.proxy-server.display_name"), view,
             new Rect(80, 45, 1060, 800), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
+        RelaxKonOS.WindowManager.ModalDialog<bool>? activeEditor = null;
+        view.ShowEditorAsync = (title, editor) => RelaxKonOS.Client.Controls.WorkspaceEditorDialogView.PresentAsync(context, window, title, editor, () => vm.IsBusy, active => activeEditor = active);
+        view.SetRuntimeEditor((title, editor) => RelaxKonOS.Client.Controls.WorkspaceEditorDialogView.PresentAsync(context, window, title, editor, () => runtime?.IsBusy == true, active => activeEditor = active));
+
         vm.ConfirmAsync = (title, message) => ConfirmAsync(title.Resolve(), message.Resolve());
         if (runtime is not null)
         {
             runtime.ConfirmAsync = (title, message) => ConfirmAsync(title.Resolve(), message.Resolve());
             // Installation, removal and the recovery entry all need the same structured elevation grant.
-            runtime.PasswordPromptAsync = () => context.ShowDialogAsync<string?>(window,
+            runtime.PasswordPromptAsync = () => ShowOwnedAsync<string?>(
                 LocalizedText.Get("installation.elevation_title"),
                 dialog => new FileServicesPasswordDialogView(dialog, LocalizedText.Get("installation.elevation_message")),
                 new Size(460, 230));
@@ -90,10 +94,13 @@ public sealed class ProxyServerApp : RemoteApplicationBase
             if (status == AppPermissionStatus.Undecided) status = await context.Permissions.RequestAsync(permission);
             return status == AppPermissionStatus.Granted && ReferenceEquals(login, session.CurrentSession);
         }
+        Task<TResult?> ShowOwnedAsync<TResult>(string title, Func<RelaxKonOS.WindowManager.ModalDialog<TResult>, Avalonia.Controls.Control> factory, RelaxKonOS.Core.Primitives.Size size)
+            => activeEditor is { } editor ? editor.ShowDialogAsync(title, factory, size) : context.ShowDialogAsync(window, title, factory, size);
+
         async Task<bool> ConfirmAsync(string title, string message)
         {
             var accepted = false;
-            await context.ShowDialogAsync<bool>(window, title, dialog => new ConfirmDialogView
+            await ShowOwnedAsync<bool>( title, dialog => new ConfirmDialogView
             { DataContext = new ConfirmDialogViewModel(message, value => { accepted = value; dialog.Close(value); }) }, new Size(560, 280));
             return accepted;
         }

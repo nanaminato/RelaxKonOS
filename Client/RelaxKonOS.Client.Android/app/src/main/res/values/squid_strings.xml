@@ -75,4 +75,6 @@
     <string name="squid_package_unsupported">Automatic package management is unavailable on this host.</string>
     <string name="squid_install_message">Install Squid from the server distribution repository? This changes host packages and does not publish the editor configuration.</string>
     <string name="squid_uninstall_message">Stop and remove the Squid package? Proxy connections will be interrupted. This is not a purge or global dependency cleanup.</string>
+    <string name="squid_edit_configuration">Edit configuration…</string>
+    <string name="squid_edit_access">Edit access mode…</string>
 </resources>

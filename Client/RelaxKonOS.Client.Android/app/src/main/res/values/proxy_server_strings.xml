@@ -131,4 +131,6 @@
     <string name="proxy_server_runtime_accept_facts">Confirm current host facts and resolve the unknown request</string>
     <string name="proxy_server_runtime_review_warning">Confirm the displayed operation and current host state. Emergency stop interrupts connections. Closing a transaction abandons recovery; resolving an unknown request accepts current facts and does not retry it.</string>
     <string name="proxy_server_connect_qr">Connection QR code (contains credentials)</string>
+    <string name="proxy_editor_draft_hint">Closing keeps the local draft. Use Save, Apply or a confirmed action to submit changes.</string>
+    <string name="proxy_server_runtime_edit">Install or update runtime…</string>
 </resources>

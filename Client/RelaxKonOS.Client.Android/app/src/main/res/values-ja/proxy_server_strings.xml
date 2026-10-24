@@ -131,4 +131,6 @@
     <string name="proxy_server_runtime_accept_facts">現在のホスト状態を確認して不明なリクエストを解決</string>
     <string name="proxy_server_runtime_review_warning">選択した操作と現在のホスト状態を確認してください。緊急停止は接続を切断します。トランザクション終了は復旧を放棄し、不明なリクエストの解決は現状を受け入れて再送しません。</string>
     <string name="proxy_server_connect_qr">接続 QR コード（認証情報を含む）</string>
+    <string name="proxy_editor_draft_hint">閉じると下書きを保持します。保存・適用・確認済み操作で変更を送信します。</string>
+    <string name="proxy_server_runtime_edit">実行環境のインストール・更新…</string>
 </resources>

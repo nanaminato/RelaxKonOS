@@ -32,6 +32,9 @@ public sealed class SquidApp : RemoteApplicationBase
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.squid.display_name"), view,
             new Rect(90, 55, 960, 760), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
+        RelaxKonOS.WindowManager.ModalDialog<bool>? activeEditor = null;
+        view.ShowEditorAsync = (title, editor) => RelaxKonOS.Client.Controls.WorkspaceEditorDialogView.PresentAsync(context, window, title, editor, () => vm.IsBusy, active => activeEditor = active);
+
         vm.ConfirmPackageAsync = uninstall => ConfirmAsync(uninstall ? "squid.uninstall" : "squid.install",
             uninstall ? "squid.uninstall_message" : "squid.install_message");
         vm.ConfirmDeleteAccountAsync = username => ConfirmAsync("squid.account_delete", "squid.account_delete_message");
@@ -67,10 +70,13 @@ public sealed class SquidApp : RemoteApplicationBase
             if (manage == AppPermissionStatus.Undecided) manage = await context.Permissions.RequestAsync(AppPermissions.ServerProxyManage);
             vm.CanManage = manage == AppPermissionStatus.Granted && session.AssignedRole == RelaxKonOS.Protocol.Workspace.DeviceRole.Controller;
         }
+        Task<TResult?> ShowOwnedAsync<TResult>(string title, Func<RelaxKonOS.WindowManager.ModalDialog<TResult>, Avalonia.Controls.Control> factory, RelaxKonOS.Core.Primitives.Size size)
+            => activeEditor is { } editor ? editor.ShowDialogAsync(title, factory, size) : context.ShowDialogAsync(window, title, factory, size);
+
         async Task<bool> ConfirmAsync(string title, string message)
         {
             var accepted = false;
-            await context.ShowDialogAsync<bool>(window, LocalizedText.Get(title), dialog => new ConfirmDialogView
+            await ShowOwnedAsync<bool>( LocalizedText.Get(title), dialog => new ConfirmDialogView
             {
                 DataContext = new ConfirmDialogViewModel(LocalizedText.Get(message), value => { accepted = value; dialog.Close(value); })
             }, new Size(520, 260));

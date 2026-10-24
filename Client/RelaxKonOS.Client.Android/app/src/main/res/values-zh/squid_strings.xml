@@ -75,4 +75,6 @@
     <string name="squid_package_unsupported">此宿主不支持自动软件包管理。</string>
     <string name="squid_install_message">从服务器发行版仓库安装 Squid？这会更改宿主软件包，不会发布编辑中的配置。</string>
     <string name="squid_uninstall_message">停止并移除 Squid 软件包？代理连接将中断。此操作不执行 purge 或全局依赖清理。</string>
+    <string name="squid_edit_configuration">编辑配置…</string>
+    <string name="squid_edit_access">编辑访问模式…</string>
 </resources>

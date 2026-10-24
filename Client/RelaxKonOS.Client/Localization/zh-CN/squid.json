@@ -1,6 +1,7 @@
 {
   "Culture": "zh-CN",
   "Strings": {
+        "squid.edit_account": "编辑账号…",
     "squid.intro": "管理 Linux 服务器的 HTTP/CONNECT 代理入口。列表每行一项，HTTPS 仅建立隧道，不解密内容。",
     "squid.bind_address": "监听 IP 地址",
     "squid.port": "监听端口（1024–65535）",

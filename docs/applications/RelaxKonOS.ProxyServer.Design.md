@@ -34,7 +34,7 @@
 
 独立建立 ProxyServer 业务边界，不把服务端用户、入站和订阅发布塞进现有出站 `IProxyEngine`。仅提取确实通用的安装验证、操作台账与服务控制基础设施。首版只实现 sing-box，暂不添加无实现的多内核切换界面。
 
-本设计不包含手机本地 VPN/TUN、设备自动连接、商业计费、集群调度、任意原生 JSON 编辑、透明代理或自动接管外部 sing-box。Android 只提供已连接服务器上的管理与导出（发布、回滚、运行时、凭据、导出、订阅），入站服务定义仍只在桌面编辑；Android 专属交互与支持范围由 [Android 文档](../../Client/RelaxKonOS.Client.Android/docs/README.md) 单独维护，见 [代理服务端](../../Client/RelaxKonOS.Client.Android/docs/features/ProxyServer.md)。
+本设计不包含手机本地 VPN/TUN、设备自动连接、商业计费、集群调度、任意原生 JSON 编辑、透明代理或自动接管外部 sing-box。Android 只提供已连接服务器上的管理与导出（发布、回滚、运行时、凭据、导出、订阅）；Android 专属交互与支持范围由 [Android 文档](../../Client/RelaxKonOS.Client.Android/docs/README.md) 单独维护，见 [代理服务端](../../Client/RelaxKonOS.Client.Android/docs/features/ProxyServer.md)。
 
 ## 2. 协议与运行时能力
 
@@ -57,7 +57,7 @@ TUIC、AnyTLS、Shadowsocks 等为后续独立扩展项，初版不显示可保�
 
 ## 3. 应用页面与主要交互
 
-桌面使用现有内置应用、MVVM、工作区及模态编辑器基础设施，界面文本接入现有多语言与主题系统。
+桌面使用现有内置应用、MVVM、工作区及模态编辑器基础设施，界面文本接入现有多语言与主题系统。主页面展示状态、列表和操作入口；入站、使用者、凭据、订阅基地址、订阅格式与运行时版本选择在独立可滚动弹窗中编辑。关闭保留本地草稿，不自动保存或发布；确认与提权作为编辑弹窗的子模态打开，提交中禁止关闭编辑弹窗。
 
 | 页面 | 内容与操作 |
 | --- | --- |

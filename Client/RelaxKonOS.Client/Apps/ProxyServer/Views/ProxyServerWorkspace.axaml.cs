@@ -11,6 +11,21 @@ public partial class ProxyServerWorkspace : UserControl
     private ProxyServerViewModel? _viewModel;
     private ProxyServerRuntimeViewModel? _runtime;
 
+    public Func<string, Control, Task>? ShowEditorAsync { get; set; }
+
+    private async void EditorButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string target } button || ShowEditorAsync is null) return;
+        var parts = target.Split(':');
+        if (parts.Length > 1 && _viewModel is { } model)
+        {
+            if (parts[0] == "InboundEditor") model.NewInboundCommand.Execute(null);
+            if (parts[0] == "PrincipalEditor") model.NewPrincipalCommand.Execute(null);
+            if (parts[0] == "CredentialEditor") model.NewCredentialCommand.Execute(null);
+        }
+        await RelaxKonOS.Client.Controls.WorkspaceEditorDialogView.OpenAsync(this, parts[0], button.Content?.ToString() ?? "", ShowEditorAsync);
+    }
+
     public ProxyServerWorkspace()
     {
         InitializeComponent();
@@ -24,6 +39,16 @@ public partial class ProxyServerWorkspace : UserControl
     {
         _runtime = runtime;
         RuntimeView.DataContext = runtime;
+    }
+
+    public void SetRuntimeEditor(Func<string, Control, Task> presenter) => RuntimeView.ShowEditorAsync = presenter;
+
+    private async void RuntimeEditor_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_runtime is null) return;
+        ShowPage(5);
+        await _runtime.EnsureLoadedAsync();
+        await RuntimeView.OpenEditorAsync();
     }
 
     private void NavigationButton_Click(object? sender, RoutedEventArgs e)

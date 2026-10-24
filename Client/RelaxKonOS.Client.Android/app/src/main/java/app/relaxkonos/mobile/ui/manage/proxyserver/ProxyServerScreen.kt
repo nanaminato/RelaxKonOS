@@ -447,16 +447,18 @@ fun ProxyServerScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     TextButton(enabled = enabled, onClick = { expanded = !expanded }) {
         Text(stringResource(R.string.proxy_server_subscription_issue_for, credential.name))
     }
-    if (!expanded) return
-    ProxyServerExportFormats.all.forEach { format ->
-        CheckboxOption(formats.contains(format), proxyServerFormatLabel(format), enabled) { checked ->
-            formats = if (checked) formats + format else formats - format
+    LaunchedEffect(owner, disclosureVersion) { expanded = false }
+    if (expanded) WorkspaceEditorDialog(stringResource(R.string.proxy_server_subscription_issue), model.state.busy, { expanded = false }) {
+        ProxyServerExportFormats.all.forEach { format ->
+            CheckboxOption(formats.contains(format), proxyServerFormatLabel(format), enabled) { checked ->
+                formats = if (checked) formats + format else formats - format
+            }
         }
+        Button(enabled = enabled && formats.isNotEmpty(), onClick = {
+            model.issueSubscription(owner, disclosureVersion, credential.id, ProxyServerExportFormats.all.filter { it in formats }, null)
+            expanded = false
+        }) { Text(stringResource(R.string.proxy_server_subscription_issue)) }
     }
-    Button(enabled = enabled && formats.isNotEmpty(), onClick = {
-        model.issueSubscription(owner, disclosureVersion, credential.id, ProxyServerExportFormats.all.filter { it in formats }, null)
-        expanded = false
-    }) { Text(stringResource(R.string.proxy_server_subscription_issue)) }
 }
 
 /** Credential form. Required: a name, a proxy user and at least one authorized inbound. */

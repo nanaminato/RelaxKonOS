@@ -1,6 +1,7 @@
 {
   "Culture": "ja-JP",
   "Strings": {
+        "squid.edit_account": "アカウントを編集…",
     "squid.intro": "Linux サーバーの HTTP/CONNECT ゲートウェイを管理します。リストは 1 行 1 項目です。HTTPS は復号しません。",
     "squid.bind_address": "待ち受け IP アドレス",
     "squid.port": "待ち受けポート（1024–65535）",

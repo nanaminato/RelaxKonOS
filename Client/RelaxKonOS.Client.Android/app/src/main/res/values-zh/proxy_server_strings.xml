@@ -131,4 +131,6 @@
     <string name="proxy_server_runtime_accept_facts">核对当前宿主事实并处理未知请求</string>
     <string name="proxy_server_runtime_review_warning">请核对所选操作与当前宿主状态。紧急停止会中断连接；关闭事务将放弃恢复；处理未知请求只接受当前事实，不会重试请求。</string>
     <string name="proxy_server_connect_qr">连接二维码（包含凭据）</string>
+    <string name="proxy_editor_draft_hint">关闭会保留本地草稿。保存、应用或确认操作后才会提交变更。</string>
+    <string name="proxy_server_runtime_edit">安装或更新运行时…</string>
 </resources>

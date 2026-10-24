@@ -14,6 +14,8 @@ internal partial class ProxyManagerWorkspace : UserControl
         Header.Attach(window, HeaderActions);
     }
 
+    public void SetRuntimeEditor(Func<string, Control, Task> presenter) { if (_runtimeView is not null) _runtimeView.ShowEditorAsync = presenter; }
+
     private Button? _selectedButton;
     private readonly ProxyServerRuntimeViewModel? _runtime;
     private readonly ProxyServerRuntimeView? _runtimeView;

@@ -127,7 +127,9 @@
       </StackPanel>
     </Border>
 
-    <Border Classes="app-panel" Padding="18">
+    <Button Content="{loc:Loc proxy_server.runtime.action_title}" Tag="RuntimeEditor" Click="EditorButton_Click" IsEnabled="{Binding CanManage}" HorizontalAlignment="Left" />
+<StackPanel x:Name="RuntimeEditor" IsVisible="False" Spacing="12">
+<Border Classes="app-panel" Padding="18">
       <StackPanel Spacing="10">
         <DockPanel>
           <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
@@ -218,5 +220,6 @@
         </StackPanel>
       </StackPanel>
     </Border>
-  </StackPanel>
+
+</StackPanel></StackPanel>
 </UserControl>

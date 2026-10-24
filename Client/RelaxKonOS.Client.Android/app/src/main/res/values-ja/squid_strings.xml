@@ -75,4 +75,6 @@
     <string name="squid_package_unsupported">このホストは自動パッケージ管理に対応していません。</string>
     <string name="squid_install_message">サーバーの配布リポジトリから Squid をインストールしますか？ホストのパッケージを変更します。編集中の設定は公開されません。</string>
     <string name="squid_uninstall_message">Squid を停止してパッケージを削除しますか？接続が切断されます。purge や依存関係の一括削除は行いません。</string>
+    <string name="squid_edit_configuration">設定を編集…</string>
+    <string name="squid_edit_access">アクセス方式を編集…</string>
 </resources>
