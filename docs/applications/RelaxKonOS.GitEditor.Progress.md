@@ -143,3 +143,7 @@ Git Diff 原有解析 70 项与渲染 40 项通过。Client 与 Server 主项目
 - Added explicit branch, author and date labels to the history filter toolbar in Chinese, English and Japanese.
 - History graphs render real parent relationships with colored lanes and curved fork/merge connections; linear history remains a single lane. The graph API must be available on the connected server.
 - Verified with the headless Git dock checks, including commit command notifications, merge parents, multiple lanes and narrow layouts.
+
+## 顶部分支菜单刷新（2026-10-24）
+
+分支弹出菜单使用独立的分支/标签刷新，不再加载暂存和工作树，避免无关接口失败弹出错误并中断分支刷新。刷新后保留所选分支，仓库切换后丢弃旧响应。新增无关维护接口返回 Not Found 时仍可刷新分支和标签的回归检查。

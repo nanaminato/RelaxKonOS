@@ -47,7 +47,7 @@ internal partial class GitHeaderBranchPopup : UserControl
         var version = ++_refreshVersion;
         BranchSearch.Text = "";
         RecordCurrentBranch(); Rebuild();
-        if (_vm is not null) await _vm.RefreshWorkspaceReferencesAsync();
+        if (_vm is not null) await _vm.RefreshBranchReferencesAsync();
         if (version != _refreshVersion) return;
         Rebuild();
         Dispatcher.UIThread.Post(() => BranchSearch.Focus(), DispatcherPriority.Loaded);

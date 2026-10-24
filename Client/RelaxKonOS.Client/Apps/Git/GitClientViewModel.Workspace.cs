@@ -57,6 +57,28 @@ public sealed partial class GitClientViewModel
         catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
     }
 
+    public async Task RefreshBranchReferencesAsync()
+    {
+        if (SelectedRepository is not { } repo) return;
+        try
+        {
+            var branches = client.ListBranchesAsync(repo.Id);
+            var tags = client.ListTagsAsync(repo.Id);
+            await Task.WhenAll(branches, tags);
+            if (!ReferenceEquals(SelectedRepository, repo)) return;
+            var selected = SelectedBranch;
+            Branches.Clear(); foreach (var branch in await branches) Branches.Add(branch);
+            SelectedBranch = Branches.FirstOrDefault(branch => branch.Name == selected?.Name && branch.IsRemote == selected.IsRemote)
+                ?? Branches.FirstOrDefault(branch => branch.IsCurrent);
+            Tags.Clear(); foreach (var tag in await tags) Tags.Add(tag);
+        }
+        catch (Exception ex)
+        {
+            if (ReferenceEquals(SelectedRepository, repo))
+                await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message));
+        }
+    }
+
     private async Task ExecuteWorkspaceOperationAsync(GitRepositoryDto? repo, Func<string, Task<GitOperationResult>> action, bool prepare = true)
     {
         if (repo is null || SelectedRepository?.Id != repo.Id || !CanManage) return;

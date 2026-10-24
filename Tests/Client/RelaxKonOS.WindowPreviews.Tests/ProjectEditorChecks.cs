@@ -194,10 +194,16 @@ internal static class ProjectEditorChecks
         project.IsCommitVisible = true;
         project.IsGitVisible = true;
         var badge = view.FindControl<Button>("BranchBadge")!;
+        remote.FailMaintenanceReads = true;
+        var maintenanceReads = remote.MaintenanceReads;
         badge.Flyout!.ShowAt(badge);
         Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
         var branchPopup = view.FindControl<GitHeaderBranchPopup>("BranchPopup")!;
         await branchPopup.RefreshAsync();
+        Check(remote.MaintenanceReads == maintenanceReads
+            && git.Tags.Any(tag => tag.Name == "v1-preview") && git.Branches.Any(branch => branch.IsCurrent),
+            "Opening the header refreshes branches and tags without requesting unavailable stash or worktree endpoints.");
+        remote.FailMaintenanceReads = false;
         var mainNode = new GitHeaderBranchNode("main", git.Branches.First());
         var operations = branchPopup.BuildBranchMenu(mainNode).Items.OfType<MenuItem>().ToArray();
         Check(operations.Length == 11 && operations.Where(item => item.Command is not null)
@@ -481,6 +487,8 @@ public class ProjectFiles : DispatchProxy, IEditorFileWriter
 
 public class ProjectGit : DispatchProxy
 {
+    public bool FailMaintenanceReads { get; set; }
+    public int MaintenanceReads { get; private set; }
     public Dictionary<string, TaskCompletionSource<GitStatusDto>> PendingStatuses { get; } = [];
     public object? LastWorkspaceRequest { get; private set; }
     public List<GitCloneRequest> CloneRequests { get; } = [];
@@ -509,8 +517,14 @@ public class ProjectGit : DispatchProxy
             case nameof(IRemoteGitClient.GetConsoleAsync): return Task.FromResult<IReadOnlyList<GitConsoleEntryDto>>([]);
             case nameof(IRemoteGitClient.GetLogAsync): return Task.FromResult<IReadOnlyList<GitCommitDto>>([]);
             case nameof(IRemoteGitClient.ListTagsAsync): return Task.FromResult<IReadOnlyList<GitTagDto>>([new("v1-preview", "abc")]);
-            case nameof(IRemoteGitClient.ListStashesAsync): return Task.FromResult<IReadOnlyList<GitStashDto>>([]);
-            case nameof(IRemoteGitClient.ListWorktreesAsync): return Task.FromResult<IReadOnlyList<GitWorktreeDto>>([]);
+            case nameof(IRemoteGitClient.ListStashesAsync):
+                MaintenanceReads++;
+                if (FailMaintenanceReads) throw new HttpRequestException("Not Found", null, System.Net.HttpStatusCode.NotFound);
+                return Task.FromResult<IReadOnlyList<GitStashDto>>([]);
+            case nameof(IRemoteGitClient.ListWorktreesAsync):
+                MaintenanceReads++;
+                if (FailMaintenanceReads) throw new HttpRequestException("Not Found", null, System.Net.HttpStatusCode.NotFound);
+                return Task.FromResult<IReadOnlyList<GitWorktreeDto>>([]);
             case nameof(IRemoteGitClient.ListRemotesAsync): return Task.FromResult<IReadOnlyList<GitRemoteDto>>([]);
             case nameof(IRemoteGitClient.GetConflictStateAsync): return Task.FromResult(new GitConflictStateDto(null, []));
             case nameof(IRemoteGitClient.GetDiffAsync): return PendingDiff?.Task ?? Task.FromResult(new GitDiffDto((string)args![1]!, "v", Patch: "@@ -1 +1 @@\n-old\n+new\n"));
