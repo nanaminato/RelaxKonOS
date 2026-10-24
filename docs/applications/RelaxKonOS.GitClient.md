@@ -1,5 +1,7 @@
 # RelaxKonOS GitClient 模块设计
 
+> **演进设计（设计中）**：内置 Git 将改为同时提供文件编辑和 Git 的 IDEA 风格项目编辑器，详见 [项目编辑器改造设计](./RelaxKonOS.GitEditor.Design.md)。该设计明确目标布局、现有组件复用、草稿保护、协议演进与分阶段验收；下文仍描述现有 GitClient，不代表改造已经实现。
+
 > 内置 Git 客户端：参考 TortoiseGit / Git Extensions，工作区式单窗口应用。面向 RelaxKonOS Server 上已存在的 Git 仓库（服务端文件系统中的工作树），提供仓库选择、分支切换、提交、拉取（含冲突解决）、新建/删除分支、提交历史、Revert 等日常版本控制操作。所有 Git 操作经 Server 端 REST API 执行，服务端以宿主 OS 进程身份调用 `git` CLI，复用宿主用户/权限（不另建 ACL，不存储任何凭据/SSH 私钥）。
 >
 > - 架构原则见 [`RelaxKonOS.Architecture.md`](../architecture/RelaxKonOS.Architecture.md)

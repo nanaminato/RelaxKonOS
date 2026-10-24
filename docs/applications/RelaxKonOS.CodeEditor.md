@@ -1,5 +1,7 @@
 # RelaxKonOS Code Editor 设计
 
+> **共享编辑能力演进（设计中）**：独立 Code Editor 计划与内置 Git 演进的项目编辑器共享文档会话和编辑面板，保留轻量编辑应用身份。目标与实施边界见 [项目编辑器改造设计](./RelaxKonOS.GitEditor.Design.md)；下文的 Git/SCM 非目标仍适用于独立 Code Editor。
+
 > 内置代码编辑器（`relaxkonos.codeeditor`）。它在 Client 本地渲染编辑体验，经既有 Files API 读取和保存 **RelaxKonOS.Server 宿主机** 上的代码文件；不直接访问客户端或服务端文件系统。
 >
 > 当前状态：已实现多文件夹工作区、多标签文本编辑、文件树分类图标与图片预览。文本文件按扩展名提供基础语法高亮，所有读写复用远程 Files API。

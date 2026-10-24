@@ -6,6 +6,7 @@ Android 的设计、功能、支持范围和发布要求统一维护在 [Android
 
 专题补充：
 
+- [内置 Git → IDEA 风格项目编辑器（设计中，文件编辑与 Git 整合）](./applications/RelaxKonOS.GitEditor.Design.md)
 - [桌面界面与流程优化审查](./desktop/UiReview.md)
 - [移动端入口](./mobile/README.md)
 - [虚拟系统盘实施计划](./architecture/RelaxKonOS.VirtualSystemDrive.Goal.md)
@@ -285,7 +286,7 @@ Application Package
 | **Firewall** | Linux Server UFW 防火墙状态、默认策略与规则管理 | 已实现（Linux 专用；系统管理员动态授权，其他会话精确管理员认证） |
 | **CertificateManager** | 本机 ACME 证书申请、部署与续期 | 已实现（基础 UI、预检、申请/取消、续期、Kestrel 部署、吊销与删除、自签证书；DNS-01/Wildcard、Nginx/Apache/IIS 部署、部署审计落 HostGlobal，详见 [`RelaxKonOS.CertificateManager.md`](./applications/RelaxKonOS.CertificateManager.md)） |
 | **WebServerManager** | Nginx 发现、最小侵入集成与托管 | 已实现 MVP（实例/站点/配置快照/操作流水、已安装 Nginx 确认、审计落 HostGlobal；更多 Provider 设计中，详见 [`RelaxKonOS.WebServerManager.Design.md`](./applications/RelaxKonOS.WebServerManager.Design.md)） |
-| **GitClient** | 远端宿主机 Git 仓库版本控制（仓库登记、分支、提交、拉取含冲突解决、推送、历史 Log、Remotes） | 已实现 MVP（跨平台 `git` CLI 调用、凭据委托宿主 OS；详见 [`RelaxKonOS.GitClient.md`](./applications/RelaxKonOS.GitClient.md)） |
+| **GitClient** | 远端宿主机 Git 仓库版本控制（仓库登记、分支、提交、拉取含冲突解决、推送、历史 Log、Remotes） | 已实现 MVP（跨平台 `git` CLI 调用、凭据委托宿主 OS；详见 [`RelaxKonOS.GitClient.md`](./applications/RelaxKonOS.GitClient.md)）；文件编辑与 Git 整合的 [IDEA 风格项目编辑器](./applications/RelaxKonOS.GitEditor.Design.md) 设计中 |
 | **TunnelManager** | FRP 内网穿透（Server Profile / 隧道定义 / Secrets / 审计） | 已实现 MVP（配置持久化 + 审计，FRP 运行时诊断与日志；替代旧 PortForwarding 桌面图标位） |
 | **Registry** | 受 schema 约束的配置注册表（键/值浏览、受控写入、desired/applied 状态机、审计） | 已实现 MVP（服务端落表 `registry_keys` / `registry_entries`） |
 | **App Installer** | 应用包（`.roapp`）安装与管理 | 已实现 |
