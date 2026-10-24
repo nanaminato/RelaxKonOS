@@ -24,7 +24,7 @@
     <string name="squid_resume">继续查询待确认操作</string>
     <string name="squid_pending">操作结果尚未确认。请继续查询，原请求键将被复用，请勿重复操作。</string>
     <string name="squid_unsupported">Squid 仅在 Linux 系统模式服务器上运行，因此该主机无法提供网关。</string>
-    <string name="squid_install_required">尚未安装 Squid。请先在服务器安装发行版 Squid 软件包，再应用配置。</string>
+    <string name="squid_install_required">Squid 尚未安装。宿主支持包管理时可使用安装入口，否则请在服务器安装发行版软件包。</string>
     <string name="squid_recovery_required">配置事务中断，需要在主机上恢复。仍可停止服务或禁用开机启动，请参阅 Squid 恢复规程。</string>
     <string name="squid_running">运行中</string>
     <string name="squid_stopped">已停止</string>
@@ -52,4 +52,27 @@
     <string name="squid_operation_interrupted">已中断</string>
     <string name="squid_revisions">期望修订：%1$d；已发布：%2$s</string>
     <string name="squid_runtime_note">文件一致不证明运行时已采用配置或 HTTP/CONNECT 可用。</string>
+    <string name="squid_access">访问控制与账号</string>
+    <string name="squid_mode_ip">IP 白名单</string>
+    <string name="squid_mode_password">用户名与密码</string>
+    <string name="squid_mode_both">密码与 IP 白名单</string>
+    <string name="squid_auth_hint">代理账号独立于登录账号。Basic 认证不加密密码，请使用可信网络或安全隧道。</string>
+    <string name="squid_no_accounts">密码访问需要至少一个已启用的代理账号。</string>
+    <string name="squid_account_name">用户名（字母、数字、点、下划线、连字符；最多 64 位）</string>
+    <string name="squid_account_password">密码（8–128 位，不含控制字符）</string>
+    <string name="squid_account_enabled">已启用</string>
+    <string name="squid_account_disabled">已禁用</string>
+    <string name="squid_account_enable">启用账号</string>
+    <string name="squid_account_disable">禁用账号</string>
+    <string name="squid_account_create">创建账号</string>
+    <string name="squid_account_reset">重置密码</string>
+    <string name="squid_account_delete">删除账号</string>
+    <string name="squid_last_account">配置密码访问时不能移除或禁用最后一个已启用账号。</string>
+    <string name="squid_delete_message">删除代理账号 %1$s？其访问权限将被撤销。</string>
+    <string name="squid_install">安装 Squid</string>
+    <string name="squid_uninstall">卸载 Squid</string>
+    <string name="squid_package_note">使用服务器发行版包管理器。不提供版本选择、升级、修复、回滚或发布源管理。</string>
+    <string name="squid_package_unsupported">此宿主不支持自动软件包管理。</string>
+    <string name="squid_install_message">从服务器发行版仓库安装 Squid？这会更改宿主软件包，不会发布编辑中的配置。</string>
+    <string name="squid_uninstall_message">停止并移除 Squid 软件包？代理连接将中断。此操作不执行 purge 或全局依赖清理。</string>
 </resources>

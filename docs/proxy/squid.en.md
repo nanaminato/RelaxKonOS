@@ -1,6 +1,6 @@
 # Squid HTTP gateway
 
-The backend, Avalonia built-in Squid application and Android management application are implemented. The desktop supports APT package installation/removal; host recovery remains an administrator task; Ubuntu 26.04 / Squid 7.2 package management, configuration, service controls and HTTP/CONNECT have been verified on a live host. Debian and other distributions, rollback and interrupted-operation fault injection still require separate acceptance. The detailed design, API examples, recovery procedure and Linux acceptance checklist are maintained in [squid.md](squid.md).
+The backend, Avalonia built-in Squid application and Android management application are implemented. Desktop and Android support APT package installation/removal; host recovery remains an administrator task; Ubuntu 26.04 / Squid 7.2 package management, configuration, service controls and HTTP/CONNECT have been verified on a live host. Debian and other distributions, rollback and interrupted-operation fault injection still require separate acceptance. The detailed design, API examples, recovery procedure and Linux acceptance checklist are maintained in [squid.md](squid.md).
 
 Squid has a separate `GatewayProxy` contract and Server service. It does not implement the Mihomo-oriented outbound `IProxyEngine`. A manually configured HTTP parent can point at Mihomo's actual HTTP/mixed listener. Parent routing uses `never_direct` to prevent silent direct fallback; see the official [cache hierarchy documentation](https://wiki.squid-cache.org/Features/CacheHierarchy).
 

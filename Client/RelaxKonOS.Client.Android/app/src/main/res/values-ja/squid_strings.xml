@@ -24,7 +24,7 @@
     <string name="squid_resume">保留中の操作を再開</string>
     <string name="squid_pending">結果が未確認です。同じリクエストキーで再開し、操作を重複させないでください。</string>
     <string name="squid_unsupported">Squid は Linux システムモードのサーバーでのみ動作するため、このホストではゲートウェイを提供できません。</string>
-    <string name="squid_install_required">Squid が未インストールです。サーバーにディストリビューションの Squid パッケージをインストールしてください。</string>
+    <string name="squid_install_required">Squid が未インストールです。対応ホストではインストール操作を使用し、それ以外はサーバーで配布パッケージを導入してください。</string>
     <string name="squid_recovery_required">中断した設定処理の復旧が必要です。停止と自動起動の無効化は利用できます。Squid の復旧手順を参照してください。</string>
     <string name="squid_running">実行中</string>
     <string name="squid_stopped">停止中</string>
@@ -52,4 +52,27 @@
     <string name="squid_operation_interrupted">中断</string>
     <string name="squid_revisions">希望リビジョン：%1$d、公開済み：%2$s</string>
     <string name="squid_runtime_note">ファイルの一致は実行時の反映や HTTP/CONNECT の利用を証明しません。</string>
+    <string name="squid_access">アクセスとアカウント</string>
+    <string name="squid_mode_ip">IP 許可リスト</string>
+    <string name="squid_mode_password">ユーザー名とパスワード</string>
+    <string name="squid_mode_both">パスワードと IP 許可リスト</string>
+    <string name="squid_auth_hint">プロキシアカウントはログインと独立しています。Basic 認証はパスワードを暗号化しません。信頼できるネットワークか安全なトンネルを使用してください。</string>
+    <string name="squid_no_accounts">パスワード認証には有効なアカウントが必要です。</string>
+    <string name="squid_account_name">ユーザー名（英数字、ドット、下線、ハイフン、最大64文字）</string>
+    <string name="squid_account_password">パスワード（8～128文字、制御文字不可）</string>
+    <string name="squid_account_enabled">有効</string>
+    <string name="squid_account_disabled">無効</string>
+    <string name="squid_account_enable">有効にする</string>
+    <string name="squid_account_disable">無効にする</string>
+    <string name="squid_account_create">作成</string>
+    <string name="squid_account_reset">パスワードを再設定</string>
+    <string name="squid_account_delete">削除</string>
+    <string name="squid_last_account">パスワード認証中は最後の有効アカウントを削除・無効化できません。</string>
+    <string name="squid_delete_message">プロキシアカウント %1$s を削除し、アクセスを取り消しますか？</string>
+    <string name="squid_install">Squid をインストール</string>
+    <string name="squid_uninstall">Squid をアンインストール</string>
+    <string name="squid_package_note">サーバーの配布パッケージを使用します。バージョン選択、更新、修復、ロールバック、配布元管理は利用できません。</string>
+    <string name="squid_package_unsupported">このホストは自動パッケージ管理に対応していません。</string>
+    <string name="squid_install_message">サーバーの配布リポジトリから Squid をインストールしますか？ホストのパッケージを変更します。編集中の設定は公開されません。</string>
+    <string name="squid_uninstall_message">Squid を停止してパッケージを削除しますか？接続が切断されます。purge や依存関係の一括削除は行いません。</string>
 </resources>

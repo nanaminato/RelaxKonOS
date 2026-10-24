@@ -48,7 +48,6 @@
     <string name="proxy_server_format_mihomo">Mihomo YAML</string>
     <string name="proxy_server_format_sing_box">sing-box JSON</string>
     <string name="proxy_server_format_uri">分享链接</string>
-    <string name="proxy_server_inbound_desktop_note">入站服务在桌面客户端编辑，监听地址、对外端点、SNI 与 REALITY 握手需要一起设置。</string>
     <string name="proxy_server_inbound_disabled">已禁用</string>
     <string name="proxy_server_inbound_listen">监听 %1$s:%2$d</string>
     <string name="proxy_server_inbound_public">对外 %1$s:%2$d</string>
@@ -114,4 +113,22 @@
     <string name="proxy_server_unavailable">无法读取宿主机状态。</string>
     <string name="proxy_server_validation_failed">配置校验失败。</string>
     <string name="proxy_server_validation_ok">配置校验通过，发布会使其生效。</string>
+    <string name="proxy_server_inbound_draft_note">保存草稿后，校验并发布才会生效。删除入站或更改秘密类型前，请先移除相关凭据授权。</string>
+    <string name="proxy_server_inbound_add">新增或编辑入站</string>
+    <string name="proxy_server_inbound_invalid">请检查必填项、端口、证书 ID 和 WebSocket 路径。服务器还会校验地址及协议约束。</string>
+    <string name="proxy_server_field_name">名称</string>
+    <string name="proxy_server_field_address">监听 IP 地址</string>
+    <string name="proxy_server_field_port">监听端口（1024–65535）</string>
+    <string name="proxy_server_field_host">对外主机地址</string>
+    <string name="proxy_server_field_public_port">对外端口</string>
+    <string name="proxy_server_field_server_name">服务器名称（SNI）</string>
+    <string name="proxy_server_field_certificate">受管证书 ID（UUID）</string>
+    <string name="proxy_server_field_handshake">REALITY 握手目标主机</string>
+    <string name="proxy_server_field_handshake_port">REALITY 握手端口</string>
+    <string name="proxy_server_field_path">WebSocket 路径</string>
+    <string name="proxy_server_subscription_base">订阅基地址（HTTPS；留空禁用托管）</string>
+    <string name="proxy_server_runtime_confirm">我确认此运行时计划及其数据保留选项。</string>
+    <string name="proxy_server_runtime_accept_facts">核对当前宿主事实并处理未知请求</string>
+    <string name="proxy_server_runtime_review_warning">请核对所选操作与当前宿主状态。紧急停止会中断连接；关闭事务将放弃恢复；处理未知请求只接受当前事实，不会重试请求。</string>
+    <string name="proxy_server_connect_qr">连接二维码（包含凭据）</string>
 </resources>

@@ -12,7 +12,7 @@
 | Nginx | Install / Upgrade / Repair / Uninstall | 包引用仅用于 Install |
 | FRP | Install / Upgrade / Repair / Uninstall | 包引用仅用于无回滚的 Install；回滚使用 Repair + rollback |
 | Mihomo | Install / Upgrade / Repair / Rollback / Uninstall | 只接受宿主冻结计划；不接受包引用、版本字符串或 rollback 标记 |
-| sing-box | 观察当前 Installations 记录（包括独立 Rollback），按宿主 Cancellable 状态提供通用取消 | 没有冻结版本计划的 Android 提交表单，不接受包引用或通用安装请求 |
+| sing-box | Install / Upgrade / Repair / Rollback / Uninstall；按宿主 Cancellable 状态提供取消 | 代理服务端的运行时页使用宿主冻结计划；不接受包引用或通用版本字符串 |
 
 这是当前 Android 的提交/观察范围，不代表所有宿主一定支持执行。登录响应的 `server.host.capabilities.privilegedOperations` 为真且相应服务能力存在时，Repository 才能准备提交、运维中心才自动发现安装任务。权限、宿主运行模式与实际安装条件继续由 Server 校验；服务专属界面仍需核对各领域当前能力。
 

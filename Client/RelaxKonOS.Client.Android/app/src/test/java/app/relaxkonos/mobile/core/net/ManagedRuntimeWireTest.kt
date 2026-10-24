@@ -43,7 +43,7 @@ class ManagedRuntimeWireTest {
         assertEquals(42, body.getJSONObject("plan").getJSONObject("release").getJSONObject("artifact").getJSONObject("layout").getJSONArray("files").getJSONObject(0).getInt("length"))
     }
     @Test fun `cross runtime mismatched artifact and action cannot enter ledger`() {
-        listOf(RUNTIME_PLAN.replace("mihomo", "sing-box"), RUNTIME_PLAN.replace("\"releaseId\":\"release-b\",\"artifact", "\"releaseId\":\"other\",\"artifact"), RUNTIME_PLAN.replace("update", "configure"))
+        listOf(RUNTIME_PLAN.replace("mihomo", "unknown-runtime"), RUNTIME_PLAN.replaceFirst("mihomo", "sing-box"), RUNTIME_PLAN.replace("\"releaseId\":\"release-b\",\"artifact", "\"releaseId\":\"other\",\"artifact"), RUNTIME_PLAN.replace("update", "configure"))
             .forEach { assertTrue(runCatching { ManagedRuntimeInstallationRequest(true, it) }.isFailure) }
         assertTrue(runCatching { InstallationWire.request(ManagedRuntimeInstallationRequest(true, RUNTIME_PLAN), InstallationKind.Install) }.isFailure)
         assertFalse(InstallationService.Mihomo.acceptsPackage)
@@ -70,5 +70,13 @@ class ManagedRuntimeWireTest {
         val request = JSONObject(ManagedRuntimeInstallation(wire.replace("unknown", "managed")).request(InstallationKind.Uninstall, null, null, RUNTIME_KEY, false, false).toByteArray().decodeToString())
         assertTrue(request.isNull("releaseId")); assertFalse(request.getBoolean("keepData"))
         assertEquals(3, request.getLong("expectedStateRevision"))
+    }
+    @Test fun `sing-box frozen plans bind installation service and immutable artifact`() {
+        val request = ManagedRuntimeInstallationRequest(true, RUNTIME_PLAN.replace("mihomo", "sing-box"))
+        assertEquals(InstallationService.SingBox, request.service)
+        assertEquals("/api/v1.0/installations/SingBox/Upgrade", InstallationRoutes.start(request.service, request.kind))
+        val body = JSONObject(InstallationWire.request(request, request.kind).toByteArray().decodeToString())
+        assertEquals(RUNTIME_KEY, body.getJSONObject("plan").getJSONObject("request").getString("idempotencyKey"))
+        assertEquals("sing-box", body.getJSONObject("plan").getJSONObject("release").getString("runtimeId"))
     }
 }

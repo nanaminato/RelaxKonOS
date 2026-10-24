@@ -5,7 +5,7 @@ import org.json.JSONArray
 
 /** Frozen host proposals retain the complete current wire object, including immutable artifact layout. */
 class ManagedRuntimeInstallationRequest(override val confirmed: Boolean, plan: String) : InstallationRequest {
-    override val service = InstallationService.Mihomo
+    override val service get() = when (value.getString("runtimeId")) { "mihomo" -> InstallationService.Mihomo; "sing-box" -> InstallationService.SingBox; else -> error("Unsupported runtime") }
     val plan: String = JSONObject(plan).toString()
     private val value get() = JSONObject(plan)
     val key: String get() = value.getJSONObject("request").getString("idempotencyKey")
@@ -18,13 +18,13 @@ class ManagedRuntimeInstallationRequest(override val confirmed: Boolean, plan: S
         else -> error("Unsupported runtime action")
     }
     init {
-        require(value.getString("runtimeId") == "mihomo")
+        require(value.getString("runtimeId") in setOf("mihomo", "sing-box"))
         require(key.length in 8..128 && key.isNotBlank())
         val request = value.getJSONObject("request")
         if (kind == InstallationKind.Uninstall) require(value.isNull("release") && request.isNull("releaseId"))
         else {
             val release = value.getJSONObject("release")
-            require(release.getString("runtimeId") == "mihomo" && release.getString("releaseId") == request.getString("releaseId"))
+            require(release.getString("runtimeId") == value.getString("runtimeId") && release.getString("releaseId") == request.getString("releaseId"))
         }
     }
 }
@@ -36,6 +36,9 @@ object ManagedRuntimeRoutes {
     const val PLAN = "$ROOT/mihomo/plan"
     const val RESOURCES = "$ROOT/mihomo/resources"
     const val RECOVERY = "$ROOT/mihomo/recovery"
+    fun installation(runtime: String): String { require(runtime in setOf("mihomo", "sing-box")); return "$ROOT/$runtime/installation" }
+    fun plan(runtime: String): String { require(runtime in setOf("mihomo", "sing-box")); return "$ROOT/$runtime/plan" }
+    fun recovery(runtime: String): String { require(runtime in setOf("mihomo", "sing-box")); return "$ROOT/$runtime/recovery" }
     fun catalog(source: String, refresh: Boolean, prerelease: Boolean): String {
         require(source.matches(Regex("[A-Za-z0-9_.-]{1,128}")))
         return "$SOURCES/$source/${if (refresh) "refresh" else "catalog"}?includePrerelease=$prerelease"
@@ -88,25 +91,25 @@ class ManagedRuntimeInstallation(val wire: String) {
 }
 
 object ManagedRuntimeWire {
-    private fun source(value: JSONObject): ManagedRuntimeSource {
-        require(value.getString("runtimeId") == "mihomo")
+    private fun source(value: JSONObject, runtime: String): ManagedRuntimeSource {
+        require(value.getString("runtimeId") == runtime)
         val identity = value.getJSONObject("identity")
         return ManagedRuntimeSource(identity.getString("sourceId"), identity.getString("publisher"),
             identity.getBoolean("enabled"), identity.getString("trust"), identity.getLong("trustRevision"),
             value.getString("baseUri"), value.getString("confirmationFingerprint"))
     }
-    fun sources(payload: String): List<ManagedRuntimeSource> = JSONArray(payload).let { array ->
-        (0 until array.length()).map { array.getJSONObject(it) }.filter { it.getString("runtimeId") == "mihomo" }.map(::source)
+    fun sources(payload: String, runtime: String = "mihomo"): List<ManagedRuntimeSource> = JSONArray(payload).let { array ->
+        (0 until array.length()).map { array.getJSONObject(it) }.filter { it.getString("runtimeId") == runtime }.map { source(it, runtime) }
     }
-    fun catalog(payload: String): ManagedRuntimeCatalog = JSONObject(payload).let { value ->
-        val source = source(value.getJSONObject("source"))
+    fun catalog(payload: String, runtime: String = "mihomo"): ManagedRuntimeCatalog = JSONObject(payload).let { value ->
+        val source = source(value.getJSONObject("source"), runtime)
         val catalog = if (value.isNull("catalog")) null else value.getJSONObject("catalog")
         if (catalog != null) require(catalog.getString("sourceId") == source.id)
         val releases = catalog?.getJSONArray("releases") ?: JSONArray()
         ManagedRuntimeCatalog(source, catalog?.getLong("revision") ?: 0, catalog?.getLong("trustRevision") ?: 0,
             value.getBoolean("fresh") && catalog?.getBoolean("signatureVerified") == true, value.optNullableString("problemCode"),
             (0 until releases.length()).map { releases.getJSONObject(it) }.map {
-                require(it.getString("runtimeId") == "mihomo" && it.getString("sourceId") == source.id)
+                require(it.getString("runtimeId") == runtime && it.getString("sourceId") == source.id)
                 val target = it.getJSONObject("target")
                 ManagedRuntimeRelease(it.getString("releaseId"), it.getString("originalVersion"), it.getString("trust"),
                     it.getBoolean("configurationSupported"), it.getString("channel"),

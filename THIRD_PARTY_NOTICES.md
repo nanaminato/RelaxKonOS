@@ -101,6 +101,7 @@ RelaxKonOS 通过 NuGet 引用以下第三方包（版本声明集中于 [`Direc
 | `Xaml.Behaviors.Avalonia` | MIT | Explorer 交互 behaviors（双击导航等） |
 | `Newtonsoft.Json` | MIT | Explorer 配置模型序列化（保留 Jaya 原依赖） |
 | AndroidX Activity / Jetpack Compose / Material 3 | Apache-2.0 | Kotlin Android 原生 UI |
+| [ZXing Core](https://github.com/zxing/zxing) | Apache-2.0 | Android 本地生成代理连接二维码 |
 | Kotlin / Kotlin Coroutines | Apache-2.0 | Kotlin Android 运行时与异步执行 |
 | Google Material Icons | Apache-2.0 | Android 矢量图标路径（密码可见性切换） |
 

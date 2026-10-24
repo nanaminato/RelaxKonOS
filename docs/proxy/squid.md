@@ -1,6 +1,6 @@
 # Squid HTTP 代理网关
 
-状态：已实现后端 API、Avalonia 内置应用与 Android 管理应用。桌面支持通过 APT 安装和卸载 Squid，主机恢复由管理员操作；Ubuntu 26.04 / Squid 7.2 的包管理、配置、服务控制与 HTTP/CONNECT 已实机验证；Debian 等其他发行版及故障恢复场景仍需分别验收。
+状态：已实现后端 API、Avalonia 内置应用与 Android 管理应用。桌面与 Android 支持通过 APT 安装和卸载 Squid，主机恢复由管理员操作；Ubuntu 26.04 / Squid 7.2 的包管理、配置、服务控制与 HTTP/CONNECT 已实机验证；Debian 等其他发行版及故障恢复场景仍需分别验收。
 
 ## 定位与架构
 
@@ -35,7 +35,7 @@ flowchart LR
 | 应用配置、备份、reload 失败回滚、未完成事务阻断 | 已实现；Ubuntu 26.04 配置应用已实测，回滚与中断故障注入待验收 |
 | start / stop / restart / reload / enable / disable | 已实现，固定 squid.service |
 | 操作 ID、幂等键、controller 写权限、observer 读权限、审计 | 复用现有基础设施 |
-| 软件包安装 / 卸载 | 桌面运行状态页支持 APT 安装和卸载；卸载保留配置 |
+| 软件包安装 / 卸载 | 桌面与 Android 支持 APT 安装和卸载；卸载保留配置 |
 | 编辑器读取结构化状态、desired/published 修订与磁盘漂移 | 已实现主机级持久化；尚未接入用户级 Configuration Registry，不宣称运行时 applied |
 | Avalonia / Android 独立应用入口与编辑器 | 已实现配置表单、预览、校验、发布、服务控制和操作查询；Android 文档见其自有目录 |
 | Basic 用户与密码哈希管理、凭据轮换 | 已实现独立账号创建、重置、启用／禁用、删除；桌面访问控制页 |

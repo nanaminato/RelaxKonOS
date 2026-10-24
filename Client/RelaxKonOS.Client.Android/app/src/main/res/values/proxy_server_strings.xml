@@ -48,7 +48,6 @@
     <string name="proxy_server_format_mihomo">Mihomo YAML</string>
     <string name="proxy_server_format_sing_box">sing-box JSON</string>
     <string name="proxy_server_format_uri">Share URI</string>
-    <string name="proxy_server_inbound_desktop_note">Inbound services are edited on the desktop client, where the listen address, public endpoint, SNI and REALITY handshake are set together.</string>
     <string name="proxy_server_inbound_disabled">Disabled</string>
     <string name="proxy_server_inbound_listen">Listens on %1$s:%2$d</string>
     <string name="proxy_server_inbound_public">Public %1$s:%2$d</string>
@@ -114,4 +113,22 @@
     <string name="proxy_server_unavailable">The host state could not be read.</string>
     <string name="proxy_server_validation_failed">Validation failed.</string>
     <string name="proxy_server_validation_ok">Validation passed. Publish to apply it.</string>
+    <string name="proxy_server_inbound_draft_note">Save a draft, then validate and publish to apply. Remove credential grants before deleting an inbound or changing its secret type.</string>
+    <string name="proxy_server_inbound_add">Add or edit inbound</string>
+    <string name="proxy_server_inbound_invalid">Check required fields, ports, certificate ID and WebSocket path. The server validates addresses and protocol constraints.</string>
+    <string name="proxy_server_field_name">Name</string>
+    <string name="proxy_server_field_address">Listen IP address</string>
+    <string name="proxy_server_field_port">Listen port (1024–65535)</string>
+    <string name="proxy_server_field_host">Public host</string>
+    <string name="proxy_server_field_public_port">Public port</string>
+    <string name="proxy_server_field_server_name">Server name (SNI)</string>
+    <string name="proxy_server_field_certificate">Managed certificate ID (UUID)</string>
+    <string name="proxy_server_field_handshake">REALITY handshake host</string>
+    <string name="proxy_server_field_handshake_port">REALITY handshake port</string>
+    <string name="proxy_server_field_path">WebSocket path</string>
+    <string name="proxy_server_subscription_base">Subscription base URL (HTTPS; empty disables hosting)</string>
+    <string name="proxy_server_runtime_confirm">I confirm this exact runtime plan and its data retention choice.</string>
+    <string name="proxy_server_runtime_accept_facts">Confirm current host facts and resolve the unknown request</string>
+    <string name="proxy_server_runtime_review_warning">Confirm the displayed operation and current host state. Emergency stop interrupts connections. Closing a transaction abandons recovery; resolving an unknown request accepts current facts and does not retry it.</string>
+    <string name="proxy_server_connect_qr">Connection QR code (contains credentials)</string>
 </resources>

@@ -48,7 +48,6 @@
     <string name="proxy_server_format_mihomo">Mihomo YAML</string>
     <string name="proxy_server_format_sing_box">sing-box JSON</string>
     <string name="proxy_server_format_uri">共有 URI</string>
-    <string name="proxy_server_inbound_desktop_note">受信サービスはデスクトップ版で編集します。待受アドレス、公開端点、SNI、REALITY のハンドシェイクをまとめて設定します。</string>
     <string name="proxy_server_inbound_disabled">無効</string>
     <string name="proxy_server_inbound_listen">%1$s:%2$d で待受</string>
     <string name="proxy_server_inbound_public">公開 %1$s:%2$d</string>
@@ -114,4 +113,22 @@
     <string name="proxy_server_unavailable">ホストの状態を読み取れませんでした。</string>
     <string name="proxy_server_validation_failed">設定の検証に失敗しました。</string>
     <string name="proxy_server_validation_ok">設定の検証に成功しました。公開すると反映されます。</string>
+    <string name="proxy_server_inbound_draft_note">保存後に検証・公開して反映します。入站の削除やシークレット形式の変更前に、関連する認証情報の許可を解除してください。</string>
+    <string name="proxy_server_inbound_add">インバウンドを追加・編集</string>
+    <string name="proxy_server_inbound_invalid">必須項目、ポート、証明書 ID、WebSocket パスを確認してください。アドレスとプロトコル制約はサーバーでも検証されます。</string>
+    <string name="proxy_server_field_name">名前</string>
+    <string name="proxy_server_field_address">待受 IP アドレス</string>
+    <string name="proxy_server_field_port">待受ポート（1024～65535）</string>
+    <string name="proxy_server_field_host">公開ホスト</string>
+    <string name="proxy_server_field_public_port">公開ポート</string>
+    <string name="proxy_server_field_server_name">サーバー名（SNI）</string>
+    <string name="proxy_server_field_certificate">管理証明書 ID（UUID）</string>
+    <string name="proxy_server_field_handshake">REALITY ハンドシェイク先</string>
+    <string name="proxy_server_field_handshake_port">REALITY ハンドシェイクポート</string>
+    <string name="proxy_server_field_path">WebSocket パス</string>
+    <string name="proxy_server_subscription_base">購読ベース URL（HTTPS、空欄で無効）</string>
+    <string name="proxy_server_runtime_confirm">この実行環境プランとデータ保持設定を確認しました。</string>
+    <string name="proxy_server_runtime_accept_facts">現在のホスト状態を確認して不明なリクエストを解決</string>
+    <string name="proxy_server_runtime_review_warning">選択した操作と現在のホスト状態を確認してください。緊急停止は接続を切断します。トランザクション終了は復旧を放棄し、不明なリクエストの解決は現状を受け入れて再送しません。</string>
+    <string name="proxy_server_connect_qr">接続 QR コード（認証情報を含む）</string>
 </resources>
