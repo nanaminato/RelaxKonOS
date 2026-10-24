@@ -116,7 +116,7 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
             var manage = await RequestIfUndecidedAsync(AppPermissions.ServerProxyManage);
             var tun = await RequestIfUndecidedAsync(AppPermissions.ServerProxyTunManage);
             vm.SetPermissions(manage, tun);
-            if (runtime is not null) runtime.CanManage = manage;
+            if (runtime is not null) { runtime.CanRead = read; runtime.CanManage = read && manage; }
 
             // A declined read grant still permits the workspace to render its normal API
             // authorization result, but it never enables a mutation solely because the prompt
