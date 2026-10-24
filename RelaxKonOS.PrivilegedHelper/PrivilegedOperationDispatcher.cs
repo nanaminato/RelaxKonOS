@@ -21,6 +21,14 @@ public static partial class PrivilegedOperationExecutor
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "operation id is required");
         if (request.Correlation is not { } correlation || !correlation.IsValid())
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "valid correlation metadata is required");
+        if (request.Operation != PrivilegedOperationKind.FileSetUnixOwnership
+            && (request.UnixOwner is not null || request.UnixGroup is not null))
+            return Fail(64, PrivilegedProblemCode.InvalidRequest, "ownership fields require an ownership operation");
+        if (request.Operation == PrivilegedOperationKind.FileSetUnixOwnership
+            && (request.DestinationPath is not null || request.NewName is not null || request.FileName is not null
+                || request.ContentBase64 is not null || request.UnixMode is not null || request.Overwrite
+                || request.Offset is not null || request.ReadCount is not null))
+            return Fail(64, PrivilegedProblemCode.InvalidRequest, "invalid ownership operation shape");
         if (request.Operation is PrivilegedOperationKind.SingBoxRuntimeQuery or PrivilegedOperationKind.SingBoxRuntimePlan
             or PrivilegedOperationKind.SingBoxRuntimeExecute or PrivilegedOperationKind.SingBoxRuntimeRecover
             or PrivilegedOperationKind.SingBoxRuntimeCancel
@@ -161,7 +169,12 @@ public static partial class PrivilegedOperationExecutor
         if (isFileOperation != (request.FileAuthorizationSource is not null)
             || request.FileAuthorizationSource is { } fileSource && !Enum.IsDefined(fileSource)
             || request.UnixMode is not null && request.Operation != PrivilegedOperationKind.FileSetUnixPermissions
-            || request.Recursive && request.Operation != PrivilegedOperationKind.FileSetUnixPermissions)
+            || request.Recursive && request.Operation is not (PrivilegedOperationKind.FileSetUnixPermissions or PrivilegedOperationKind.FileSetUnixOwnership)
+            || request.Operation == PrivilegedOperationKind.FileSetUnixOwnership
+                && (string.IsNullOrWhiteSpace(request.UnixOwner) || string.IsNullOrWhiteSpace(request.UnixGroup)
+                    || request.UnixOwner.Length > 256 || request.UnixGroup.Length > 256)
+            || request.Operation != PrivilegedOperationKind.FileSetUnixOwnership
+                && (request.UnixOwner is not null || request.UnixGroup is not null))
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "file authorization shape is invalid");
         var fileRoots = isFileOperation ? policy.FileRoots(request.FileAuthorizationSource!.Value) : Array.Empty<string>();
         try
@@ -209,6 +222,7 @@ public static partial class PrivilegedOperationExecutor
                 PrivilegedOperationKind.FileGetSpecialLocations => GetSpecialLocations(request.Path, fileRoots),
                 PrivilegedOperationKind.FileGetInfo => GetInfo(request.Path, fileRoots),
                 PrivilegedOperationKind.FileGetProperties => GetProperties(request.Path, fileRoots),
+                PrivilegedOperationKind.FileSetUnixOwnership => SetUnixOwnership(request.Path, request.UnixOwner!, request.UnixGroup!, request.Recursive, fileRoots),
                 PrivilegedOperationKind.FileSetUnixPermissions => SetUnixPermissions(request.Path, request.UnixMode, request.Recursive, fileRoots),
                 PrivilegedOperationKind.FileGetStagingLength => GetStagingLength(request.Path, fileRoots),
                 PrivilegedOperationKind.FileDeleteStaging => DeleteStaging(request.Path, fileRoots),

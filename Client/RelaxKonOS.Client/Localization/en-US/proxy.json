@@ -158,7 +158,6 @@
     "proxy.system_proxy_default_bypass": "Always use default bypass",
     "proxy.system_proxy_bypass_list": "Current bypass:",
     "proxy.clash_settings": "Clash settings",
-    "proxy.system_proxy_mode_hint_enabled": "System proxy is enabled; host traffic is forwarded through the Mihomo listener.",
     "proxy.system_proxy_mode_hint_disabled": "System proxy is disabled. This option is recommended for most users.",
     "proxy.tun_mode_hint": "TUN mode is disabled. Use it for applications that require traffic interception.",
     "proxy.tun_managed_settings": "Virtual adapter settings",

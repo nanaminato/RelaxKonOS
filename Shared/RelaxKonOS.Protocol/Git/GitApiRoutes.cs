@@ -6,6 +6,20 @@ namespace RelaxKonOS.Protocol.Git;
 public static class GitApiRoutes
 {
     private const string V1 = RelaxKonOSEndpoints.ApiVersionPrefix;
+    public const string Graph = $"/{V1}/git/repositories/{{id}}/graph";
+    public const string Console = $"/{V1}/git/repositories/{{id}}/console";
+    public const string ListTags = $"/{V1}/git/repositories/{{id}}/tags";
+    public const string CreateTag = $"/{V1}/git/repositories/{{id}}/tags";
+    public const string Rebase = $"/{V1}/git/repositories/{{id}}/rebase";
+    public const string CherryPick = $"/{V1}/git/repositories/{{id}}/cherry-pick";
+    public const string ListStashes = $"/{V1}/git/repositories/{{id}}/stashes";
+    public const string Stash = $"/{V1}/git/repositories/{{id}}/stashes";
+    public const string ListWorktrees = $"/{V1}/git/repositories/{{id}}/worktrees";
+    public const string CreateWorktree = $"/{V1}/git/repositories/{{id}}/worktrees";
+    public const string RemoveWorktree = $"/{V1}/git/repositories/{{id}}/worktrees/remove";
+    public const string ExportPatch = $"/{V1}/git/repositories/{{id}}/patch";
+    public const string ApplyPatch = $"/{V1}/git/repositories/{{id}}/patch/apply";
+    public const string Clone = $"/{V1}/git/clone";
     public const string EngineStatus = $"/{V1}/git/engine/status";
     public const string Repositories = $"/{V1}/git/repositories";
     public const string RepositoryById = $"/{V1}/git/repositories/{{id}}";

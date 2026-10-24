@@ -380,7 +380,8 @@ def extract(source, runtime, kind, destination, archive, request_path=None):
         if kind == 'server': required += ['payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper','deployment/bootstrap/install-relaxkonos.sh','deployment/bootstrap/uninstall-relaxkonos.sh','deployment/linux/install-relaxkonos-services.sh']
         required += ['deployment/user/relaxkon']
         files = {e.filename:e for e in entries if not e.is_dir()}
-        if any(name not in files for name in required): raise ValueError('incomplete package')
+        missing = [name for name in required if name not in files]
+        if missing: raise FileNotFoundError(errno.ENOENT, 'incomplete package: missing ' + ', '.join(missing))
         if source == 'officialStable':
             listed = manifest.get('files',[])
             if len({f['path'] for f in listed}) != len(listed) or set(files) != {'manifest.json'} | {f['path'] for f in listed}: raise ValueError('file inventory')
@@ -414,7 +415,8 @@ try:
     else: raise ValueError('unsupported helper action')
 except Exception as error:
     print('Deployment input rejected: ' + str(error),file=sys.stderr)
-    sys.exit(73 if isinstance(error, OSError) and error.errno == errno.EDQUOT else
+    sys.exit(75 if isinstance(error, FileNotFoundError) and 'incomplete package' in str(error) else
+             73 if isinstance(error, OSError) and error.errno == errno.EDQUOT else
              74 if isinstance(error, OSError) and error.errno == errno.ENOSPC else 1)
 PY
 }
@@ -626,7 +628,8 @@ managed_root() { # mode key override default
   if [[ -n $3 ]]; then printf '%s' "$3"; return; fi
   local locator=/var/lib/relaxkonos-deployment-location/roots.json
   [[ $1 != linuxUser ]] || locator="${XDG_STATE_HOME:-$HOME/.local/state}/relaxkonos-deployment/user-roots.json"
-  python3 - "$locator" "$2" "$4" "$1" <<'ROOTS'
+  local resolver
+  resolver=$(cat <<'ROOTS'
 import json, os, stat, sys
 from pathlib import Path
 path,key,default,mode=sys.argv[1:]
@@ -639,6 +642,14 @@ else: value=default
 if not value.startswith('/') or value=='/' or any(ord(c)<32 for c in value): raise ValueError('invalid managed root')
 print(value,end='')
 ROOTS
+  )
+  # Use the authenticated identity for protected system metadata. Privileged
+  # commands isolate stdin, so pass this fixed resolver as code, not a pipe.
+  if [[ $1 == linuxSystem && $sudo_requested == true && $EUID -ne 0 ]]; then
+    run_privileged python3 -c "$resolver" "$locator" "$2" "$4" "$1"
+  else
+    python3 -c "$resolver" "$locator" "$2" "$4" "$1"
+  fi
 }
 user_state_root() { managed_root linuxUser stateRoot "$options_state_root" "${XDG_STATE_HOME:-$HOME/.local/state}/relaxkonos"; }
 user_data_root() { managed_root linuxUser dataRoot "$options_data_root" "${XDG_DATA_HOME:-$HOME/.local/share}/relaxkonos"; }
@@ -875,6 +886,7 @@ require_package() {
   deployment_python extract "$options_source" "$architecture" "$kind" "$package_root" "$archive" "$request_path" >>"$(diagnostics_path)" 2>&1 || extract_status=$?
   case "$extract_status" in
     0) ;;
+    75) launcher_fail package_manifest_invalid "服务器发布 ZIP 缺少必需的部署组件（包括 deployment/user/relaxkon）；请使用当前打包脚本重新生成完整服务器发布包。";;
     73) launcher_fail disk_quota_exceeded "服务器当前 SSH 用户的存储配额已耗尽，请清理本应用的安装暂存文件或调整配额后重试。";;
     74) launcher_fail disk_space_insufficient "服务器安装暂存分区空间不足，请释放空间后重试。";;
     *) launcher_fail package_manifest_invalid "the release could not be downloaded, checked or safely extracted";;
@@ -1419,6 +1431,22 @@ trap cleanup_staged_payload EXIT
 check_idempotency
 started_at=$(now_utc)
 persist_digest
+finish_operation() {
+  local status=$?
+  trap - EXIT
+  # An unexpected shell exit must not leave a durable running receipt.
+  case "$record_state" in
+    succeeded|failed|cancelled|interrupted) ;;
+    *)
+      completed_at=$(now_utc)
+      emit_event failed failed "" failed "部署进程意外退出，请查看操作记录"
+      [[ $status != 0 ]] || status=1
+      ;;
+  esac
+  cleanup_staged_payload || true
+  exit "$status"
+}
+trap finish_operation EXIT
 authenticate_sudo
 case "$operation_kind" in
   probe) action_probe;;

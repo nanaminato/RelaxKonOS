@@ -5,6 +5,21 @@ namespace RelaxKonOS.Server.Git;
 /// <summary>The only server boundary allowed to invoke the host's git CLI and manage repository registrations.</summary>
 public interface IGitRepositoryService
 {
+    Task<IReadOnlyList<GitGraphCommitDto>> GetGraphAsync(Guid id, Guid userId, string? reference = null, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<GitConsoleEntryDto>> GetConsoleAsync(Guid id, Guid userId, long after = 0, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<GitTagDto>> ListTagsAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
+    Task<GitOperationResult> CreateTagAsync(Guid id, Guid userId, GitTagCreateRequest request, CancellationToken cancellationToken = default);
+    Task<GitOperationResult> RebaseAsync(Guid id, Guid userId, GitReferenceRequest request, CancellationToken cancellationToken = default);
+    Task<GitOperationResult> CherryPickAsync(Guid id, Guid userId, GitReferenceRequest request, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<GitStashDto>> ListStashesAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
+    Task<GitOperationResult> StashAsync(Guid id, Guid userId, GitStashRequest request, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<GitWorktreeDto>> ListWorktreesAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
+    Task<GitOperationResult> CreateWorktreeAsync(Guid id, Guid userId, GitWorktreeCreateRequest request, CancellationToken cancellationToken = default);
+    Task<GitOperationResult> RemoveWorktreeAsync(Guid id, Guid userId, GitWorktreeRemoveRequest request, CancellationToken cancellationToken = default);
+    Task<GitPatchDto> ExportPatchAsync(Guid id, Guid userId, GitPatchRequest request, CancellationToken cancellationToken = default);
+    Task<GitOperationResult> ApplyPatchAsync(Guid id, Guid userId, GitPatchApplyRequest request, CancellationToken cancellationToken = default);
+    Task<GitCloneResult> CloneAsync(GitCloneRequest request, Guid userId, CancellationToken cancellationToken = default);
+
     // ── Host Git engine probe & install ──
     Task<GitEngineStatusDto> GetEngineStatusAsync(CancellationToken cancellationToken = default);
 

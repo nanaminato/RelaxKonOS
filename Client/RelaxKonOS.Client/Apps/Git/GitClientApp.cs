@@ -13,6 +13,8 @@ using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.WindowManager;
+using RelaxKonOS.Core.Input;
+using RelaxKonOS.Client.Apps.CodeEditor;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
 
 namespace RelaxKonOS.Client.Apps.Git;
@@ -23,9 +25,9 @@ namespace RelaxKonOS.Client.Apps.Git;
 public sealed class GitClientApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(
-        new AppId("relaxkonos.git"), "Git Client", "0.2.0", "\U0001f33f",
-        "Manage Git repositories on the RelaxKonOS Server",
-        [AppPermissions.ServerGitRead, AppPermissions.ServerGitManage],
+        new AppId("relaxkonos.git"), "Project Editor", "0.3.0", "\U0001f4bb",
+        "Edit project files and manage Git repositories on the RelaxKonOS Server",
+        [AppPermissions.ServerGitRead, AppPermissions.ServerGitManage, AppPermissions.ServerFilesRead, AppPermissions.ServerFilesWrite],
         InstancePolicy: ApplicationInstancePolicy.MultiWindow);
 
     public override void Activate(AppContext context)
@@ -43,10 +45,19 @@ public sealed class GitClientApp : RemoteApplicationBase
         // 复用 Explorer 的 IExplorerClient，用于远程文件夹选择对话框（与 Code Editor 同一模式）
         var files = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
         var vm = new GitClientViewModel(client);
+        var encodings = context.Services.GetService(typeof(TextEditorEncodingSettings)) as TextEditorEncodingSettings;
+        var project = new ProjectEditorViewModel(vm, client, files,
+            session.CurrentServer?.Platform != HostPlatformKind.Windows, encodings?.CodeEditorDefaultEncoding ?? "UTF-8");
         vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Git, "relaxkonos.git", vm.RefreshInstallationAsync);
         ManagedWindow? window = null;
 
         // Wire dialog callbacks — the VM commands call these and handle the returned request objects.
+        vm.RequestOpenHostingUriAsync = uri =>
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+            return Task.CompletedTask;
+        };
+        vm.ShowWorkspaceInputAsync = (key, fields) => GitClientDialogs.ShowWorkspaceInputAsync(context, window!, key, fields);
         vm.ShowCommitDialogAsync = () => GitClientDialogs.ShowCommitDialogAsync(context, window!, vm);
         vm.ShowCreateBranchDialogAsync = source => GitClientDialogs.ShowCreateBranchDialogAsync(context, window!, vm, source);
         vm.ShowPullDialogAsync = () => GitClientDialogs.ShowPullDialogAsync(context, window!, vm);
@@ -57,12 +68,7 @@ public sealed class GitClientApp : RemoteApplicationBase
         vm.ShowMessageAsync = message => GitClientDialogs.ShowMessageAsync(context, window!, message);
         vm.ShowGitUnavailableAsync = async () =>
         {
-            var shouldContinue = await GitClientDialogs.ShowGitUnavailableAsync(context, window!, vm);
-            if (!shouldContinue)
-            {
-                // User cancelled / exited: close the window to leave the app.
-                context.WindowManager.Close(window!);
-            }
+            await GitClientDialogs.ShowGitUnavailableAsync(context, window!, vm);
         };
 
         // 远程文件夹选择：直接复用内置 Explorer（ExplorerPickerMode.SelectFolder），
@@ -89,11 +95,76 @@ public sealed class GitClientApp : RemoteApplicationBase
         vm.ShowFileDiffAsync = (owner, diff) => GitClientDialogs.ShowFileDiffAsync(context, owner ?? window!, diff);
         vm.ShowGitCredentialsDialogAsync = owner => GitClientDialogs.ShowGitCredentialsDialogAsync(context, owner ?? window!);
         vm.ShowRemoteBranchPickerDialogAsync = (owner, remote, branch) => GitClientDialogs.ShowRemoteBranchPickerDialogAsync(context, owner ?? window!, remote, branch, vm);
+        vm.ConfigureLogSession = log =>
+        {
+            log.ShowPushDialogAsync = () => GitClientDialogs.ShowPushDialogAsync(context, window!, log);
+            log.ShowCreateBranchDialogAsync = branch => GitClientDialogs.ShowCreateBranchDialogAsync(context, window!, log, branch);
+            log.ShowPullDialogAsync = () => GitClientDialogs.ShowPullDialogAsync(context, window!, log);
+            log.ShowMergeDialogAsync = branch => GitClientDialogs.ShowMergeDialogAsync(context, window!, branch, log);
+            log.ShowSetTrackingDialogAsync = branch => GitClientDialogs.ShowSetTrackingDialogAsync(context, window!, branch, log);
+            log.ShowConflictResolutionDialogAsync = owner => GitClientDialogs.ShowConflictResolutionDialogAsync(context, owner ?? window!, log);
+            log.ShowRemoteBranchPickerDialogAsync = (owner, remote, branch) => GitClientDialogs.ShowRemoteBranchPickerDialogAsync(context, owner ?? window!, remote, branch, log);
+        };
 
-        var view = GitClientWorkspace.Create(vm);
+
+        var view = GitClientWorkspace.Create(vm, project);
         window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.git.display_name"),
             InstallationPanel.Wrap(view, vm.Installation), new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
+        var localization = context.Services.GetService(typeof(LocalizationService)) as LocalizationService;
+        EventHandler<SystemLanguageChangedEventArgs> languageChanged = (_, _) => project.RefreshLocalization();
+        if (localization is not null) localization.LanguageChanged += languageChanged;
+        CodeEditorSessionDialogs.Configure(context, window, project.Editor, files);
+        project.RequestDraftActionAsync = async documents =>
+        {
+            return await context.ShowDialogAsync<EditorDraftAction>(window, LocalizedText.Get("git.editor.drafts_title"),
+                dialog => new ProjectDraftDialog(documents.Select(item => item.Path ?? item.DisplayName).ToArray(), dialog.Close),
+                new Size(540, 360));
+        };
+        project.Editor.RequestCloseDocumentAsync = async document =>
+        {
+            var action = await project.RequestDraftActionAsync([document]);
+            return action == EditorDraftAction.Discard || action == EditorDraftAction.Save && await project.Editor.SaveDocumentAsync(document);
+        };
+        project.Editor.RequestDiscardChangesAsync = async document =>
+            await project.RequestDraftActionAsync([document]) == EditorDraftAction.Discard;
+        window.CanCloseAsync = async () => project.CanClose && await project.PrepareOperationAsync() && project.CanClose;
+        window.KeyDown += (_, e) =>
+        {
+            if (!e.Handled && !e.IsRepeat && e.Modifiers == RemoteKeyModifiers.Alt)
+            {
+                if (e.Key == RemoteKey.Left) { view.NavigateHistory(-1); e.Handled = true; return; }
+                if (e.Key == RemoteKey.Right) { view.NavigateHistory(1); e.Handled = true; return; }
+                if (e.Key == RemoteKey.Digit(1)) { view.ToggleProjectTool(); e.Handled = true; return; }
+                if (e.Key == RemoteKey.Digit(0)) { view.ToggleCommitTool(); e.Handled = true; return; }
+                if (e.Key == RemoteKey.Digit(9)) { view.ToggleGitTool(); e.Handled = true; return; }
+            }
+            if (!e.Handled && !e.IsRepeat && e.Modifiers == RemoteKeyModifiers.Control && e.Key == RemoteKey.Letter('K'))
+            { view.ShowCommitTool(); e.Handled = true; return; }
+            if (!e.Handled && !e.IsRepeat && e.Key == RemoteKey.Letter('F') && e.Modifiers == RemoteKeyModifiers.Control)
+            { view.EditorView.FocusFind(); e.Handled = true; return; }
+            if (!e.Handled && !e.IsRepeat && e.Key == new RemoteKey("Tab")
+                && (e.Modifiers == RemoteKeyModifiers.Control || e.Modifiers == (RemoteKeyModifiers.Control | RemoteKeyModifiers.Shift)))
+            { view.EditorView.CycleDocument(e.Modifiers.HasFlag(RemoteKeyModifiers.Shift) ? -1 : 1); e.Handled = true; return; }
+            _ = WindowShortcut.TryExecute(e, RemoteKey.Letter('N'), RemoteKeyModifiers.Control | RemoteKeyModifiers.Alt, vm.CreateBranchCommand)
+                || WindowShortcut.TryExecute(e, RemoteKey.Letter('S'), RemoteKeyModifiers.Control, project.Editor.SaveCommand)
+                || WindowShortcut.TryExecute(e, RemoteKey.Letter('O'), RemoteKeyModifiers.Control, project.Editor.OpenDocumentCommand)
+                || WindowShortcut.TryExecute(e, RemoteKey.Letter('T'), RemoteKeyModifiers.Control, vm.PullCommand)
+                || WindowShortcut.TryExecute(e, RemoteKey.Letter('K'), RemoteKeyModifiers.Control | RemoteKeyModifiers.Shift, vm.PushCommand)
+                || WindowShortcut.TryExecute(e, RemoteKey.Letter('S'), RemoteKeyModifiers.Control | RemoteKeyModifiers.Shift, project.Editor.SaveAllCommand)
+                || WindowShortcut.TryExecute(e, RemoteKey.Letter('N'), RemoteKeyModifiers.Control, project.Editor.NewDocumentCommand)
+                || WindowShortcut.TryExecute(e, RemoteKey.Letter('W'), RemoteKeyModifiers.Control, project.Editor.CloseDocumentCommand);
+        };
+        EventHandler<ManagedWindow>? closed = null;
+        closed = (_, closedWindow) =>
+        {
+            if (!ReferenceEquals(closedWindow, window)) return;
+            context.WindowManager.WindowClosed -= closed;
+            if (localization is not null) localization.LanguageChanged -= languageChanged;
+            view.DisposeGitDock();
+            project.Dispose();
+        };
+        context.WindowManager.WindowClosed += closed;
         vm.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window, problemCode);
         _ = vm.StartAsync();
     }

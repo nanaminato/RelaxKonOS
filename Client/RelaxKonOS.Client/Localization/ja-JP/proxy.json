@@ -20,7 +20,6 @@
     "proxy.system_proxy_bypass_list": "現在の除外：",
     "proxy.clash_settings": "Clash 設定",
     "proxy.system_settings": "システム設定",
-    "proxy.system_proxy_mode_hint_enabled": "システム プロキシが有効です。ホストのトラフィックは Mihomo リスナーを経由します。",
     "proxy.system_proxy_mode_hint_disabled": "システム プロキシは無効です。ほとんどのユーザーには有効化を推奨します。",
     "proxy.tun_mode_hint": "TUN モードは無効です。特殊なアプリケーションのトラフィックを扱う場合に使用します。",
     "proxy.tun_managed_settings": "仮想アダプター設定",

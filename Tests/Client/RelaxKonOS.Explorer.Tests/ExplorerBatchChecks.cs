@@ -37,7 +37,54 @@ public static class ExplorerBatchChecks
         var clipboard = new RemoteFileClipboard();
         var vm = new ExplorerViewModel(client, fileClipboard: clipboard);
         var peer = new ExplorerViewModel(client, fileClipboard: clipboard);
+        var elevationRequests = 0;
+        vm.RequestFileOperationElevationAsync = (paths, capability) =>
+        {
+            elevationRequests++;
+            check(paths.SequenceEqual(["/root-owned/project"]) && capability == FileElevationCapability.Write,
+                "Permission editing requests Write elevation only for the edited entry");
+            fake.RequireElevation = false;
+            return Task.FromResult(true);
+        };
+        fake.RequireElevation = true;
+        var saved = await vm.SetUnixPermissionsAsync("/root-owned/project", 0x1ed, true);
+        check(saved.UnixMode == 0x1ed && elevationRequests == 1 && fake.Calls.Count == 2
+            && fake.PermissionRequests.All(r => r == (0x1ed, true)),
+            "Permission editing retries once after elevation with unchanged mode and recursion");
+        fake.Reset();
+        await vm.SetUnixPermissionsAsync("/root-owned/project", 0x1c0, false);
+        check(elevationRequests == 1 && fake.Calls.Count == 1,
+            "Permission editing does not elevate when the OS accepts the request");
+        fake.Reset();
+        fake.RequireElevation = true;
+        vm.RequestFileOperationElevationAsync = (_, _) => Task.FromResult(false);
+        try { await vm.SetUnixPermissionsAsync("/root-owned/project", 0x1ed, true); check(false, "Declined elevation must cancel permission editing"); }
+        catch (OperationCanceledException) { check(fake.Calls.Count == 1, "Declined permission elevation does not retry"); }
+        fake.Reset();
+        fake.RequireElevation = true;
+        vm.RequestFileOperationElevationAsync = (_, _) => Task.FromResult(true);
+        try { await vm.SetUnixPermissionsAsync("/root-owned/project", 0x1ed, true); check(false, "Repeated permission denial must propagate"); }
+        catch (RelaxKonOSAuthException) { check(fake.Calls.Count == 2, "Permission denial after elevation is not retried repeatedly"); }
+        fake.Reset();
         await vm.NavigateToAsync("/source");
+        fake.RequireElevation = true;
+        vm.RequestFileOperationElevationAsync = (paths, capability) =>
+        {
+            check(paths.SequenceEqual(["/root-owned/project"]) && capability == FileElevationCapability.Write,
+                "Ownership editing elevates only the selected path");
+            fake.RequireElevation = false;
+            return Task.FromResult(true);
+        };
+        var owned = await vm.SetUnixOwnershipAsync("/root-owned/project", "nanami", "1000", true);
+        check(fake.Calls.Count == 2 && fake.OwnershipRequests.All(r => r == ("nanami", "1000", true))
+            && owned.UnixOwnerId == 1000 && owned.UnixGroupId == 1000,
+            "Ownership editing preserves owner, group and recursion across one elevated retry");
+        fake.Reset();
+        fake.RequireElevation = true;
+        vm.RequestFileOperationElevationAsync = (_, _) => Task.FromResult(false);
+        try { await vm.SetUnixOwnershipAsync("/root-owned/project", "1000", "1000", false); check(false, "Declined ownership elevation must cancel"); }
+        catch (OperationCanceledException) { check(fake.Calls.Count == 1, "Declined ownership elevation makes no second mutation"); }
+        fake.Reset();
         await peer.NavigateToAsync("/source");
         void Select(params FileSystemEntryDto[] entries)
         {
@@ -184,15 +231,33 @@ public class BatchClientFake : DispatchProxy
 {
     public record Call(string Action, string Path, string? Destination, bool Overwrite);
     public List<Call> Calls { get; } = [];
+    public List<(int Mode, bool Recursive)> PermissionRequests { get; } = [];
+    public List<(string Owner, string Group, bool Recursive)> OwnershipRequests { get; } = [];
     public HashSet<string> FailPaths { get; } = [];
     public Func<string, Task>? BeforeMutation { get; set; }
     public bool RequireElevation { get; set; }
     public bool FailRefresh { get; set; }
     public IReadOnlyList<FileSystemEntryDto> DirectoryEntries { get; set; } = [];
-    public void Reset() { Calls.Clear(); FailPaths.Clear(); BeforeMutation = null; RequireElevation = false; FailRefresh = false; DirectoryEntries = []; }
+    public void Reset() { Calls.Clear(); PermissionRequests.Clear(); OwnershipRequests.Clear(); FailPaths.Clear(); BeforeMutation = null; RequireElevation = false; FailRefresh = false; DirectoryEntries = []; }
     protected override object? Invoke(MethodInfo? method, object?[]? args)
     {
         var path = (string)args![0]!;
+        if (method!.Name == nameof(IExplorerClient.SetUnixOwnershipAsync))
+        {
+            Calls.Add(new(method.Name, path, null, false));
+            OwnershipRequests.Add(((string)args[1]!, (string)args[2]!, (bool)args[3]!));
+            return RequireElevation
+                ? Task.FromException<FilePropertiesDto>(new RelaxKonOSAuthException(new ProblemDetails("test/elevation-required", "Elevation", 403, "Denied", null)))
+                : Task.FromResult(new FilePropertiesDto(path, path, FileSystemEntryType.Directory, null, null, null, null, "0755", "", 0x1ed, 1000, 1000));
+        }
+        if (method!.Name == nameof(IExplorerClient.SetUnixPermissionsAsync))
+        {
+            Calls.Add(new(method.Name, path, null, false));
+            PermissionRequests.Add(((int)args[1]!, (bool)args[2]!));
+            return RequireElevation
+                ? Task.FromException<FilePropertiesDto>(new RelaxKonOSAuthException(new ProblemDetails("test/elevation-required", "Elevation", 403, "Denied", null)))
+                : Task.FromResult(new FilePropertiesDto(path, path, FileSystemEntryType.Directory, null, null, null, null, "", "", (int)args[1]!, 1000, 1000));
+        }
         if (method!.Name == nameof(IExplorerClient.GetDirectoryAsync))
             return FailRefresh ? Task.FromException<DirectoryDto>(new IOException("Refresh failed"))
                 : Task.FromResult(ExplorerFake.Directory(path) with { Directories = DirectoryEntries });

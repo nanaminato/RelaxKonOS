@@ -158,7 +158,6 @@
     "proxy.system_proxy_default_bypass": "始终使用默认绕过",
     "proxy.system_proxy_bypass_list": "当前绕过：",
     "proxy.clash_settings": "Clash 设置",
-    "proxy.system_proxy_mode_hint_enabled": "系统代理已开启，主机流量将通过 Mihomo 监听端口转发。",
     "proxy.system_proxy_mode_hint_disabled": "系统代理已关闭，建议大多数用户开启此选项。",
     "proxy.tun_mode_hint": "TUN 模式已关闭，适用于需要接管特殊应用流量的场景。",
     "proxy.tun_managed_settings": "虚拟网卡设置",

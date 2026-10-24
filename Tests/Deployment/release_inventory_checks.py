@@ -78,6 +78,15 @@ class ReleaseInventoryChecks(unittest.TestCase):
         with self.assertRaises(ValueError): self.verify(skip=True)
 
     def test_linux_packager_produces_the_same_json_inventory(self):
+        for relative in ('payload/linux/guardian/RelaxKonOS.Guardian.Agent',
+                         'payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper',
+                         'deployment/user/relaxkon', 'deployment/verify-release-inventory.py',
+                         'deployment/bootstrap/install-relaxkonos.sh',
+                         'deployment/bootstrap/uninstall-relaxkonos.sh',
+                         'deployment/linux/install-relaxkonos-services.sh'):
+            target = self.root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b'fixture')
         script = (ROOT / 'deployment/packaging/package-relaxkonos.sh').read_text(encoding='utf-8')
         function = 'complete_package() {' + script.split('complete_package() {', 1)[1].split('\n}', 1)[0] + '\n}'
         bash = shutil.which('bash') if os.name != 'nt' else 'C:/Program Files/Git/bin/bash.exe'
@@ -95,6 +104,37 @@ class ReleaseInventoryChecks(unittest.TestCase):
         finally:
             for suffix in ('.zip', '.zip.sha256', '.zip.json'):
                 (self.root.parent / (self.root.name + suffix)).unlink(missing_ok=True)
+
+    def test_packagers_reject_missing_user_launcher_before_archiving(self):
+        for script_name, function_name in (('package-relaxkonos.sh', 'complete_package'),
+                                            ('New-RelaxKonOSRelease.ps1', 'Complete-Package')):
+            script = (ROOT / 'deployment/packaging' / script_name).read_text(encoding='utf-8')
+            if script_name.endswith('.sh'):
+                function = 'complete_package() {' + script.split('complete_package() {', 1)[1].split('\n}', 1)[0] + '\n}'
+                # All required files except the launcher, matching the reported release defect.
+                for relative in ('payload/linux/server/RelaxKonOS.Server',
+                                 'payload/linux/guardian/RelaxKonOS.Guardian.Agent',
+                                 'payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper'):
+                    target = self.root / relative
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(b'fixture')
+                bash = shutil.which('bash') if os.name != 'nt' else 'C:/Program Files/Git/bin/bash.exe'
+                result = subprocess.run([bash, '-s'], text=True, capture_output=True,
+                    input=function + "\ncomplete_package server '{}'\n",
+                    env={**os.environ, 'BUNDLE': self.root.as_posix()})
+            else:
+                powershell = shutil.which('powershell.exe') or shutil.which('pwsh')
+                if not powershell:
+                    continue  # The Bash gate still runs on hosts without PowerShell.
+                function = 'function Complete-Package' + script.split('function Complete-Package', 1)[1].split('\n# Export launchers', 1)[0]
+                test_script = self.root / 'check.ps1'
+                test_script.write_text("$ErrorActionPreference = 'Stop'\n$platform = 'linux'\n" + function +
+                    "\nComplete-Package @{ Kind = 'server'; Directory = $PSScriptRoot } @{}\n", encoding='utf-8-sig')
+                result = subprocess.run([powershell, '-NoProfile', '-File', str(test_script)],
+                                        text=True, capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('deployment/user/relaxkon', result.stderr)
+            self.assertFalse((self.root / 'manifest.json').exists())
 
 
 if __name__ == '__main__':

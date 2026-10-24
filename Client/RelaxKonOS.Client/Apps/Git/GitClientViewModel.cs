@@ -24,6 +24,21 @@ public sealed record GitLogFilterOption(string Value, string Label);
 /// Each window owns its own ViewModel instance — supports multiple projects open simultaneously (MultiWindow instance policy).</summary>
 public sealed partial class GitClientViewModel(IRemoteGitClient client) : ObservableObject
 {
+    public Func<GitRepositoryDto, Task<bool>>? OpenEditorProjectAsync { get; set; }
+    public Func<string, Task>? OpenPlainFolderAsync { get; set; }
+    public Func<Task<bool>>? PrepareEditorOperationAsync { get; set; }
+    public Func<GitFileChangeDto, Task>? OpenEditorFileAsync { get; set; }
+    public Func<GitFileChangeDto, string?, Task>? OpenEditorDiffAsync { get; set; }
+    public StringComparison RepositoryPathComparison { get; set; } = StringComparison.Ordinal;
+    private bool _preparingEditor;
+
+    private async Task<bool> PrepareEditorAsync()
+    {
+        if (_preparingEditor) return false;
+        _preparingEditor = true;
+        try { return await (PrepareEditorOperationAsync?.Invoke() ?? Task.FromResult(true)); }
+        finally { _preparingEditor = false; }
+    }
     public InstallationTaskViewModel Installation { get; set; } = null!;
 
     public ObservableCollection<GitRepositoryDto> Repositories { get; } = [];
@@ -34,6 +49,11 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
     public ObservableCollection<GitFileChangeDto> UntrackedFiles { get; } = [];
     public ObservableCollection<GitFileChangeDto> ConflictFiles { get; } = [];
     public ObservableCollection<GitRemoteDto> Remotes { get; } = [];
+    public ObservableCollection<GitEditorChangeItem> EditorStagedFiles { get; } = [];
+    public ObservableCollection<GitEditorChangeItem> EditorUnstagedFiles { get; } = [];
+    public ObservableCollection<GitEditorChangeItem> EditorUntrackedFiles { get; } = [];
+    public ObservableCollection<GitEditorChangeItem> EditorConflictFiles { get; } = [];
+    public bool HasEditorChanges => EditorStagedFiles.Count + EditorUnstagedFiles.Count + EditorUntrackedFiles.Count + EditorConflictFiles.Count > 0;
     public ObservableCollection<GitFileChangeDto> CommitChangedFiles { get; } = [];
     public ObservableCollection<GitLogFilterOption> LogBranchOptions { get; } = [];
     public ObservableCollection<GitLogFilterOption> LogAuthorOptions { get; } = [];
@@ -64,6 +84,8 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
     // the picker (including a recent/history entry), otherwise their initial
     // disabled state is retained by Avalonia.
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanManage), nameof(CanOpenProject))]
+    [NotifyCanExecuteChangedFor(nameof(ApplyPatchFileCommand), nameof(CheckoutReferenceCommand), nameof(OpenWorktreeCommand), nameof(NewTagCommand), nameof(RebaseOntoCommand), nameof(MergeIntoHeadCommand), nameof(ResetHeadCommand), nameof(NewWorktreeCommand), nameof(RemoveWorktreeCommand), nameof(SaveStashCommand), nameof(ApplyStashCommand), nameof(PopStashCommand), nameof(DropStashCommand), nameof(ExportWorkingPatchCommand), nameof(CloneRepositoryCommand), nameof(NewProjectCommand), nameof(OpenProjectCommand), nameof(OpenFolderCommand), nameof(RegisterRepositoryCommand))]
     [NotifyCanExecuteChangedFor(nameof(PullCommand), nameof(PushCommand), nameof(FetchCommand), nameof(RefreshCommand), nameof(ApplyLogFiltersCommand))]
     private GitRepositoryDto? _selectedRepository;
     [ObservableProperty] private GitClientPage _activePage = GitClientPage.Overview;
@@ -75,6 +97,8 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
     [ObservableProperty] private GitRemoteDto? _selectedRemote;
     [ObservableProperty] private LocalizedStatus _statusText;
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanManage), nameof(CanOpenProject))]
+    [NotifyCanExecuteChangedFor(nameof(ApplyPatchFileCommand), nameof(CheckoutReferenceCommand), nameof(OpenWorktreeCommand), nameof(NewTagCommand), nameof(RebaseOntoCommand), nameof(MergeIntoHeadCommand), nameof(ResetHeadCommand), nameof(NewWorktreeCommand), nameof(RemoveWorktreeCommand), nameof(SaveStashCommand), nameof(ApplyStashCommand), nameof(PopStashCommand), nameof(DropStashCommand), nameof(ExportWorkingPatchCommand), nameof(CloneRepositoryCommand), nameof(NewProjectCommand), nameof(OpenProjectCommand), nameof(OpenFolderCommand), nameof(RegisterRepositoryCommand))]
     [NotifyCanExecuteChangedFor(nameof(PullCommand), nameof(PushCommand), nameof(FetchCommand), nameof(RefreshCommand), nameof(ApplyLogFiltersCommand))]
     private bool _isBusy;
     [ObservableProperty] private bool _isAutoRefresh = true;
@@ -200,7 +224,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
 
     public bool HasUpstream => Status?.Upstream is not null;
     public bool CanManage => SelectedRepository is not null && !IsBusy;
-    public bool CanOpenProject => !IsBusy && IsPickerMode;
+    public bool CanOpenProject => !IsBusy;
 
     public async Task StartAsync()
     {
@@ -278,14 +302,21 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
     private async Task RefreshAllAsync()
     {
         if (SelectedRepository is null) { Log("RefreshAllAsync: SelectedRepository=null → 跳过"); return; }
-        if (Interlocked.CompareExchange(ref _refreshing, 1, 0) != 0) { Log("RefreshAllAsync: 另一次刷新正在进行 → 跳过"); return; }
+        var repository = SelectedRepository;
+        while (Interlocked.CompareExchange(ref _refreshing, 1, 0) != 0)
+        {
+            await Task.Delay(20);
+            if (SelectedRepository?.Id != repository.Id) return;
+        }
         try
         {
             Log("RefreshAllAsync: 并行请求 GetStatus / ListBranches / GetLog(100) …");
-            var statusTask = client.GetStatusAsync(SelectedRepository.Id);
-            var branchesTask = client.ListBranchesAsync(SelectedRepository.Id);
-            var logTask = client.GetLogAsync(SelectedRepository.Id, limit: 100, query: BuildLogQuery());
+            var statusTask = client.GetStatusAsync(repository.Id);
+            var branchesTask = client.ListBranchesAsync(repository.Id);
+            var logTask = client.GetLogAsync(repository.Id, limit: 100, query: BuildLogQuery());
 
+            await Task.WhenAll(statusTask, branchesTask, logTask);
+            if (SelectedRepository?.Id != repository.Id) return;
             Status = await statusTask;
             var branches = await branchesTask;
             var commits = await logTask;
@@ -293,6 +324,8 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
 
             Branches.Clear();
             foreach (var b in branches) Branches.Add(b);
+            SelectedBranch = branches.FirstOrDefault(branch => branch.Name == SelectedBranch?.Name && branch.IsRemote == SelectedBranch.IsRemote)
+                ?? branches.FirstOrDefault(branch => branch.IsCurrent);
 
             ReplaceCommits(commits);
             RebuildLogBranchOptions();
@@ -317,6 +350,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
                 Log("⚠ Status 返回为 null — 工作区变更与分支信息无法呈现");
             }
 
+            await RefreshLogMetadataAsync(repository.Id);
             await RefreshConflictStateAsync();
             RebuildChangesList();
             StatusText = LocalizedText.Ref("git.status.ready_branch_format", Status?.Branch ?? LocalizedText.Get("git.status.unknown_branch"));
@@ -336,9 +370,12 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
     {
         if (SelectedRepository is null || IsBusy) return;
         if (Interlocked.CompareExchange(ref _refreshing, 1, 0) != 0) return;
+        var repository = SelectedRepository;
         try
         {
-            Status = await client.GetStatusAsync(SelectedRepository.Id);
+            var status = await client.GetStatusAsync(repository.Id);
+            if (SelectedRepository?.Id != repository.Id) return;
+            Status = status;
             StagedFiles.Clear();
             UnstagedFiles.Clear();
             UntrackedFiles.Clear();
@@ -416,10 +453,11 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
     {
         CommitChangedFiles.Clear();
         CommitDetail = null;
-        if (commit is null || SelectedRepository is null) return;
+        if (commit is null || SelectedRepository is not { } repo) return;
         try
         {
-            var detail = await client.GetCommitDetailAsync(SelectedRepository.Id, commit.Sha);
+            var detail = await client.GetCommitDetailAsync(repo.Id, commit.Sha);
+            if (SelectedRepository?.Id != repo.Id || SelectedCommit?.Sha != commit.Sha) return;
             CommitDetail = detail;
             foreach (var f in detail.ChangedFiles) CommitChangedFiles.Add(f);
         }

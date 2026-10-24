@@ -95,7 +95,9 @@ public sealed partial class LocalGitRepositoryService(
         // Opening the working directory and checking the worktree must use the same
         // execution identity. The service account need not be able to traverse a user's home.
         var revParse = await RunGitAsync(gitPath, registration.Path, ["rev-parse", "--is-inside-work-tree"], cancellationToken);
-        if (!revParse.Success || !revParse.Output.Trim().Equals("true", StringComparison.OrdinalIgnoreCase))
+        if (!revParse.Success)
+            throw new ArgumentException($"The path is not a Git repository: {DescribeGitFailure(revParse)}", nameof(registration.Path));
+        if (!revParse.Output.Trim().Equals("true", StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException("The path is not a Git repository.", nameof(registration.Path));
 
         var repo = new GitRepository
@@ -218,7 +220,9 @@ public sealed partial class LocalGitRepositoryService(
 
         // Let the effective Git identity open the directory, as in registration.
         var revParse = await RunGitAsync(gitPath, path, ["rev-parse", "--is-inside-work-tree"], cancellationToken);
-        if (!revParse.Success || !revParse.Output.Trim().Equals("true", StringComparison.OrdinalIgnoreCase))
+        if (!revParse.Success)
+            return new GitRepositoryProbeDto(false, Problem: DescribeGitFailure(revParse));
+        if (!revParse.Output.Trim().Equals("true", StringComparison.OrdinalIgnoreCase))
             return new GitRepositoryProbeDto(false);
 
         // 是否有提交
@@ -256,15 +260,18 @@ public sealed partial class LocalGitRepositoryService(
             throw new ArgumentException("Repository path must not be empty.", nameof(path));
         if (!Path.IsPathRooted(path))
             throw new ArgumentException("Repository path must be absolute.", nameof(path));
-        if (!Directory.Exists(path))
-            throw new ArgumentException("Repository path does not exist.", nameof(path));
-
+        // No Directory.Exists here on purpose: that check would run as the Server account, and a path
+        // the effective user can open is routinely invisible to it (a 0700 home directory is the
+        // normal case). Git decides existence and permission under the identity that will use the
+        // repository, exactly as registration and probing do; only a missing path is reported as one.
         var gitPath = gitCli.ResolveGitPath()
             ?? throw new InvalidOperationException("Git executable not found on the host.");
 
         var initResult = await RunGitAsync(gitPath, path, ["init"], cancellationToken);
+        if (initResult.Error == PathNotFoundCode)
+            throw new ArgumentException("Repository path does not exist.", nameof(path));
         if (!initResult.Success)
-            return new GitOperationResult(false, "init", Message: initResult.Error);
+            return new GitOperationResult(false, "init", Message: DescribeGitFailure(initResult));
         // git init 输出形如 "Initialized empty Git repository in /path/.git/"；不解析也行。
         return new GitOperationResult(true, "init");
     }

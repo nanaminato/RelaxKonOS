@@ -5,6 +5,21 @@ namespace RelaxKonOS.Client.Apps.Git;
 /// <summary>Typed JWT client for the server's Git repository facade.</summary>
 public interface IRemoteGitClient
 {
+    Task<IReadOnlyList<GitGraphCommitDto>> GetGraphAsync(string id, string? reference = null, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<GitConsoleEntryDto>> GetConsoleAsync(string id, long after = 0, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<GitTagDto>> ListTagsAsync(string id, CancellationToken cancellationToken = default);
+    Task<GitOperationResult> CreateTagAsync(string id, GitTagCreateRequest request, CancellationToken cancellationToken = default);
+    Task<GitOperationResult> RebaseAsync(string id, GitReferenceRequest request, CancellationToken cancellationToken = default);
+    Task<GitOperationResult> CherryPickAsync(string id, GitReferenceRequest request, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<GitStashDto>> ListStashesAsync(string id, CancellationToken cancellationToken = default);
+    Task<GitOperationResult> StashAsync(string id, GitStashRequest request, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<GitWorktreeDto>> ListWorktreesAsync(string id, CancellationToken cancellationToken = default);
+    Task<GitOperationResult> CreateWorktreeAsync(string id, GitWorktreeCreateRequest request, CancellationToken cancellationToken = default);
+    Task<GitOperationResult> RemoveWorktreeAsync(string id, GitWorktreeRemoveRequest request, CancellationToken cancellationToken = default);
+    Task<GitPatchDto> ExportPatchAsync(string id, GitPatchRequest request, CancellationToken cancellationToken = default);
+    Task<GitOperationResult> ApplyPatchAsync(string id, GitPatchApplyRequest request, CancellationToken cancellationToken = default);
+    Task<GitCloneResult> CloneAsync(GitCloneRequest request, CancellationToken cancellationToken = default);
+
     // ── Host Git engine probe & install ──
     Task<GitEngineStatusDto> GetEngineStatusAsync(CancellationToken cancellationToken = default);
 

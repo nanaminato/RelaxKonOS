@@ -5,6 +5,7 @@ namespace RelaxKonOS.Server.Privileged;
 
 public interface IPrivilegedFileService
 {
+    Task<FilePropertiesDto> SetUnixOwnershipAsync(PrivilegedFileAuthorizationSource source, string path, string owner, string group, bool recursive, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SpecialLocationDto>> GetSpecialLocationsAsync(PrivilegedFileAuthorizationSource source, string home, CancellationToken cancellationToken = default);
     Task<FileSystemEntryDto?> GetInfoAsync(PrivilegedFileAuthorizationSource source, string path, CancellationToken cancellationToken = default);
     Task<FilePropertiesDto?> GetPropertiesAsync(PrivilegedFileAuthorizationSource source, string path, CancellationToken cancellationToken = default);

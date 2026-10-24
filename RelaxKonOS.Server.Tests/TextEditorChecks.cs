@@ -1,4 +1,5 @@
 using RelaxKonOS.Server.Files;
+using RelaxKonOS.Protocol.Git;
 
 public static class TextEditorChecks
 {
@@ -61,10 +62,45 @@ public static class TextEditorChecks
             var copyPath = Path.Combine(root, "copy.txt");
             var copy = await editor.CreateAsync(copyPath, new(edited!.Content, "utf-16be", true), default);
             Check(copy.Encoding == "utf-16be" && copy.Content == edited.Content, "Save-as changes encoding without changing source");
+
+            var conditional = new ConditionalFileEditor(new LocalFileService(new TestSystemModeResolver()));
+            var rawPath = Path.Combine(root, "source.cs");
+            byte[] originalBytes = [0xff, 0xfe, 0x41, 0x00, 0x0d, 0x00, 0x0a, 0x00];
+            var created = await conditional.SaveAsync(new(rawPath, originalBytes, null), default);
+            Check(created!.Version == GitTextFileWrite.Version(originalBytes)
+                && (await File.ReadAllBytesAsync(rawPath)).SequenceEqual(originalBytes), "Byte-preserving conditional creation retains the original encoding and BOM");
+            byte[] replacement = [0x41, 0x0a];
+            var receipt = await conditional.SaveAsync(new(rawPath, replacement, created.Version), default);
+            Check(receipt!.Version == GitTextFileWrite.Version(replacement), "Conditional replacement returns the new content version");
+            Check(await conditional.SaveAsync(new(rawPath, originalBytes, created.Version), default) is null
+                && (await File.ReadAllBytesAsync(rawPath)).SequenceEqual(replacement), "Stale editor version cannot overwrite a changed file");
+            var createRefused = await conditional.SaveAsync(new(rawPath, originalBytes, null), default) is null;
+            Check(createRefused && (await File.ReadAllBytesAsync(rawPath)).SequenceEqual(replacement), "Save-as cannot overwrite an existing file");
+            var oversizeRefused = false;
+            try { await conditional.SaveAsync(new(rawPath, new byte[TextFileCodec.MaximumBytes + 1], receipt.Version), default); }
+            catch (InvalidDataException) { oversizeRefused = true; }
+            Check(oversizeRefused, "Editor writes enforce the byte limit before mutation");
+            var versionRefused = false;
+            try { await conditional.SaveAsync(new(rawPath, replacement, "invalid"), default); }
+            catch (ArgumentException) { versionRefused = true; }
+            Check(versionRefused, "Editor write rejects malformed expected versions");
+            var relativeRefused = false;
+            try { await conditional.SaveAsync(new("relative.cs", replacement, null), default); }
+            catch (ArgumentException) { relativeRefused = true; }
+            Check(relativeRefused, "Editor creation rejects relative destinations");
+            Check(Directory.GetFiles(root).Length == 3, "Failed exclusive creation cleans its staging file");
         }
         finally { Directory.Delete(root, recursive: true); }
         Check(JsonSerializer.Serialize(new SaveTextFileRequest("x", new string('a', 64), "utf-8", false), RelaxKonOSJsonOptions.Default)
             .Contains("\"expectedVersion\""), "Current shared camelCase contract");
+        var conditionalJson = JsonSerializer.Serialize(new ConditionalFileWriteRequest("/project/a.txt", [0xef, 0xbb, 0xbf, 65], null), RelaxKonOSJsonOptions.Default);
+        var conditionalRoundtrip = JsonSerializer.Deserialize<ConditionalFileWriteRequest>(conditionalJson, RelaxKonOSJsonOptions.Default)!;
+        Check(conditionalJson.Contains("\"expectedVersion\":null") && conditionalRoundtrip.Content.SequenceEqual(new byte[] { 0xef, 0xbb, 0xbf, 65 }),
+            "Conditional write has one explicit byte-preserving wire shape, including null for creation");
+        var incompleteRefused = false;
+        try { JsonSerializer.Deserialize<ConditionalFileWriteRequest>("{\"path\":\"/project/a.txt\",\"content\":\"QQ==\"}", RelaxKonOSJsonOptions.Default); }
+        catch (JsonException) { incompleteRefused = true; }
+        Check(incompleteRefused, "Conditional write requires an explicit expectedVersion field");
         var readRequest = new UserExecutionRequest(new(HostPlatformKind.Linux, "1000", "alice", "/home/alice"),
             UserExecutionOperationKind.FileReadText, Path: "/home/alice/a.txt", OperationId: Guid.NewGuid());
         Check(UserExecutionRequestPolicy.IsValid(readRequest, false)

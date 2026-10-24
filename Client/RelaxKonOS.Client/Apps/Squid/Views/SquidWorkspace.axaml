@@ -38,7 +38,7 @@
     <Grid x:Name="HeaderHost" Grid.Row="0" ColumnDefinitions="*,Auto">
       <common:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc application.relaxkonos.squid.display_name}"
                                     Subtitle="{loc:Loc squid.intro}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/squid.png" />
-      <Button x:Name="HeaderActions" Grid.Column="1" Classes="header-action" Command="{Binding RefreshCommand}"
+      <Button x:Name="HeaderActions" Grid.Column="1" Classes="header-action header-refresh" Command="{Binding RefreshCommand}"
               ToolTip.Tip="{loc:Loc squid.refresh}" AutomationProperties.Name="{loc:Loc squid.refresh}" VerticalAlignment="Center">
         <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="16" Height="16"
               Data="M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14" />

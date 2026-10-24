@@ -21,6 +21,7 @@ public sealed partial class GitClientViewModel
     private async Task CheckoutAsync(GitBranchDto branch)
     {
         if (SelectedRepository is null || branch is null) return;
+        if (!await PrepareEditorAsync()) return;
         IsBusy = true;
         StatusText = LocalizedText.Ref("git.vm.checkout_progress_format", branch.Name);
         try
@@ -51,6 +52,7 @@ public sealed partial class GitClientViewModel
         if (ShowCreateBranchDialogAsync is null || SelectedRepository is null) return;
         var request = await ShowCreateBranchDialogAsync(null);
         if (request is null) return;
+        if (!await PrepareEditorAsync()) return;
         IsBusy = true;
         try
         {
@@ -102,6 +104,7 @@ public sealed partial class GitClientViewModel
         {
             var request = await ShowCommitDialogAsync();
             if (request is null) return;
+            if (!await PrepareEditorAsync()) return;
             IsBusy = true;
             try
             {
@@ -145,6 +148,7 @@ public sealed partial class GitClientViewModel
             await NotifyAsync(LocalizedText.Get("git.status.commit_message_required"));
             return;
         }
+        if (!await PrepareEditorAsync()) return;
         IsBusy = true;
         try
         {
@@ -183,6 +187,7 @@ public sealed partial class GitClientViewModel
         if (ShowPullDialogAsync is not null)
             request = await ShowPullDialogAsync();
         if (request is null) return;
+        if (!await PrepareEditorAsync()) return;
         IsBusy = true;
         StatusText = LocalizedText.Ref("git.vm.pull_progress");
         try
@@ -258,6 +263,11 @@ public sealed partial class GitClientViewModel
     public async Task ShowWorkingTreeFileDiffAsync(GitFileChangeDto file, ManagedWindow? owner)
     {
         if (SelectedRepository is null || file is null) return;
+        if (owner is null && OpenEditorDiffAsync is not null)
+        {
+            await OpenEditorDiffAsync(file, null);
+            return;
+        }
         try
         {
             FileDiff = await client.GetDiffAsync(SelectedRepository.Id, file.Path, file.Staged);
@@ -273,6 +283,7 @@ public sealed partial class GitClientViewModel
         if (SelectedRepository is null || commit is null) return;
         if (ShowConfirmAsync is not null && !await ShowConfirmAsync(LocalizedText.Format("git.vm.revert_confirm_format", commit.ShortSha)))
             return;
+        if (!await PrepareEditorAsync()) return;
         IsBusy = true;
         try
         {
@@ -296,6 +307,7 @@ public sealed partial class GitClientViewModel
     private async Task StageFileAsync(GitFileChangeDto file)
     {
         if (SelectedRepository is null || file is null) return;
+        if (!await PrepareEditorAsync()) return;
         IsBusy = true;
         try
         {
@@ -372,7 +384,7 @@ public sealed partial class GitClientViewModel
         UntrackedChanges.Clear();
 
         // Add unstaged files (tracked files with modifications)
-        foreach (var f in UnstagedFiles)
+        foreach (var f in UnstagedFiles.Concat(StagedFiles.Where(staged => !UnstagedFiles.Any(item => item.Path == staged.Path))))
         {
             var item = new GitFileChangeItem(f, selectedPaths.Contains(f.Path));
             item.SelectionChanged += OnItemSelectionChanged;
@@ -392,8 +404,23 @@ public sealed partial class GitClientViewModel
             }
         }
 
+        RebuildEditorGroups();
         OnPropertyChanged(nameof(SelectedCount));
         OnPropertyChanged(nameof(SelectedFilePaths));
+    }
+
+    private void RebuildEditorGroups()
+    {
+        void Replace(ObservableCollection<GitEditorChangeItem> target, IEnumerable<GitFileChangeDto> files)
+        {
+            target.Clear();
+            foreach (var file in files) target.Add(new(file, Changes.FirstOrDefault(item => item.Path == file.Path)));
+        }
+        Replace(EditorStagedFiles, StagedFiles);
+        Replace(EditorUnstagedFiles, UnstagedFiles);
+        Replace(EditorUntrackedFiles, UntrackedFiles);
+        Replace(EditorConflictFiles, ConflictFiles);
+        OnPropertyChanged(nameof(HasEditorChanges));
     }
 
     private void OnItemSelectionChanged(object? sender, EventArgs e)

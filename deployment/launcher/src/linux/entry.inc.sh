@@ -66,6 +66,22 @@ trap cleanup_staged_payload EXIT
 check_idempotency
 started_at=$(now_utc)
 persist_digest
+finish_operation() {
+  local status=$?
+  trap - EXIT
+  # An unexpected shell exit must not leave a durable running receipt.
+  case "$record_state" in
+    succeeded|failed|cancelled|interrupted) ;;
+    *)
+      completed_at=$(now_utc)
+      emit_event failed failed "" failed "部署进程意外退出，请查看操作记录"
+      [[ $status != 0 ]] || status=1
+      ;;
+  esac
+  cleanup_staged_payload || true
+  exit "$status"
+}
+trap finish_operation EXIT
 authenticate_sudo
 case "$operation_kind" in
   probe) action_probe;;

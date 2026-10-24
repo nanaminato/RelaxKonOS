@@ -160,7 +160,11 @@ Jaya 原架构通过 `ServiceLocator` 反射扫描 `Jaya.Provider.*.dll` 加载�
 | `GET /files/properties?path=` | `string path` | `FilePropertiesDto`（404 if 缺） | `not-found` / `access-denied` / `invalid-path` |
 | `PUT /files/permissions` | body `UpdateUnixPermissionsRequest`（`path`、`unixMode`、`recursive`） | `FilePropertiesDto` | `not-found` / `access-denied` / `invalid-path` / `invalid-mode` / `unsupported-operation` |
 
-Windows/Linux 桌面端的 POSIX 权限编辑默认仅修改当前项目；目录属性提供“递归修改所有后代”复选框，勾选后将同一模式应用至目录及其所有后代，跳过符号链接。先修改后代再修改父目录；失败可能留下部分修改，不保证回滚。该能力由远端 Linux 宿主提供，Windows 宿主的权限摘要仍只读。
+Windows/Linux 桌面端的 POSIX 权限编辑默认仅修改当前项目；目录属性提供“递归修改所有后代”复选框，勾选后将同一模式应用至目录及其所有后代，跳过符号链接。先修改后代再修改父目录；失败可能留下部分修改，不保证回滚。该能力由远端 Linux 宿主提供，Windows 宿主的权限摘要仍只读。保存被宿主拒绝且返回 `elevation-required` 时，复用系统管理员认证流程，对所选路径申请 Write 授权并重试一次；取消认证不会再次修改。修改权限位不会改变所有者，也不会绕过 Git 的所有权检查。
+
+Linux 属性另行展示当前所有者 UID 和组 GID。System 模式提供独立的“保存所有者”，接受宿主用户名/组名或十进制 UID/GID；User 模式仅查看。`PUT /files/ownership` 接收 `UpdateUnixOwnershipRequest(path, owner, group, recursive)`，在所选路径的 Write 管理员授权后调用固定 Helper 动作，返回更新的 `FilePropertiesDto`（包含 `unixOwnerId`、`unixGroupId`，非 Linux 为 null）。未授权返回 `elevation-required`，不存在的名称返回 `invalid-ownership`；名称通过宿主 NSS 解析，不执行 shell，不修改 Git 的信任配置。
+
+所有权默认仅修改所选项，目录可单独勾选递归。Helper 对每级目录使用固定文件描述符与授权根，拒绝所选符号链接和文件系统根，递归跳过符号链接并拒绝跨文件系统；先处理后代再处理父目录。失败可能留下部分修改，需刷新后判断。Linux 可能因 chown 清除 setuid/setgid 位，保存后以宿主重新读取的属性为准，不自动恢复这些特殊权限。客户端、Server 与 Helper 须使用同一批当前协议构建。
 | `POST /files/directory?path=` | `string path` | `Results.Created(path, FileSystemEntryDto)` | `already-exists` / `access-denied` |
 | `DELETE /files?path=` | `string path` | `Results.NoContent()` | `not-found` / `access-denied` / `io-error` |
 | `POST /files/rename` | body `RenameRequest` | `FileSystemEntryDto` | `not-found` / `already-exists` / `access-denied` |

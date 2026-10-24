@@ -29,15 +29,10 @@ public sealed partial class GitClientViewModel
     private async Task ShowCommitFileDiffAsync(GitFileChangeDto? file)
     {
         file ??= SelectedCommitFile;
-        if (file is null || SelectedRepository is null || SelectedCommit is null) return;
-        try
-        {
-            // ref=sha returns this commit relative to its parent, including root commits.
-            FileDiff = await client.GetDiffAsync(SelectedRepository.Id, file.Path, staged: false, @ref: SelectedCommit.Sha);
-            if (ShowFileDiffAsync is not null)
-                await ShowFileDiffAsync(null, FileDiff);
-        }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.diff_failed_format_v2", ex.Message)); }
+        if (file is null) return;
+        // The log page has room for the diff beside the commit list, so this path does not open a
+        // window; the worktree page still uses the modal shell for its own file list.
+        await ShowInlineCommitFileDiffAsync(file);
     }
 
     /// <summary>Opens the selected push commit's file diff, or the originating commit for an aggregate preview entry.</summary>
@@ -65,8 +60,7 @@ public sealed partial class GitClientViewModel
     {
         file ??= SelectedCommitFile ?? SelectedFile;
         if (file is null) return;
-        // TODO: 通过 RelaxKonOS 内置 CodeEditor 或宿主 OS 默认编辑器打开，当前占位
-        await NotifyAsync(LocalizedText.Format("git.vm.open_file_unimplemented_format", file.Path));
+        if (OpenEditorFileAsync is not null) await OpenEditorFileAsync(file);
     }
 
     [RelayCommand(CanExecute = nameof(CanManage))]
@@ -76,6 +70,7 @@ public sealed partial class GitClientViewModel
         if (file is null || SelectedRepository is null) return;
         if (ShowConfirmAsync is not null && !await ShowConfirmAsync(LocalizedText.Format("git.vm.revert_file_confirm_format", file.Path)))
             return;
+        if (!await PrepareEditorAsync()) return;
         IsBusy = true;
         try
         {
@@ -103,6 +98,7 @@ public sealed partial class GitClientViewModel
     {
         file ??= SelectedFile;
         if (file is null || SelectedRepository is null) return;
+        if (!await PrepareEditorAsync()) return;
         IsBusy = true;
         try
         {
@@ -122,7 +118,11 @@ public sealed partial class GitClientViewModel
     {
         file ??= SelectedCommitFile ?? SelectedFile;
         if (file is null) return;
-        await NotifyAsync(LocalizedText.Format("git.vm.file_history_unimplemented_format", file.Path));
+        if (!CanManage) return;
+        if (OpenFileHistoryTabAsync is not null) { await OpenFileHistoryTabAsync(file.Path); return; }
+        LogPathFilter = file.Path;
+        ActivePage = GitClientPage.Log;
+        await ApplyLogFiltersAsync();
     }
 
     [RelayCommand]
@@ -130,6 +130,16 @@ public sealed partial class GitClientViewModel
     {
         file ??= SelectedCommitFile ?? SelectedFile;
         if (file is null) return;
-        await NotifyAsync(LocalizedText.Format("git.vm.create_patch_file_unimplemented_format", file.Path));
+        if (SelectedRepository is not { } repo || OpenPatchAsync is null || !CanManage || !await PrepareEditorAsync()) return;
+        IsBusy = true;
+        try
+        {
+            var diff = await client.GetDiffAsync(repo.Id, file.Path, file.Staged, SelectedCommit?.Sha);
+            if (diff.Binary || diff.Truncated) { await NotifyAsync(LocalizedText.Get("git.editor.readonly_large")); return; }
+            if (string.IsNullOrEmpty(diff.Patch)) { await NotifyAsync(LocalizedText.Get("git.workspace.no_patch")); return; }
+            await OpenPatchAsync(diff.Patch);
+        }
+        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
+        finally { IsBusy = false; }
     }
 }

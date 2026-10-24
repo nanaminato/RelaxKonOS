@@ -28,7 +28,9 @@ public sealed partial class GitClientViewModel
         Log($"RefreshRemotesAsync: 调用 client.ListRemotesAsync(RepoId={SelectedRepository.Id}) …");
         try
         {
-            var remotes = await client.ListRemotesAsync(SelectedRepository.Id);
+            var repo = SelectedRepository.Id;
+            var remotes = await client.ListRemotesAsync(repo);
+            if (SelectedRepository?.Id != repo) return;
             Remotes.Clear();
             foreach (var r in remotes) Remotes.Add(r);
             Log($"加载远程完成: count={Remotes.Count} items=[{string.Join(",", remotes.Select(r => $"{r.Name}={r.FetchUrl}"))}]");
@@ -99,6 +101,8 @@ public sealed partial class GitClientViewModel
     // ── 选中提交变化：加载提交详情（含变更文件列表）──
     partial void OnSelectedCommitChanged(GitCommitDto? value)
     {
+        // A pane showing the previous commit's file has nothing to say about this one.
+        if (IsInlineDiffOpen) CloseInlineDiff();
         _ = LoadCommitDetailAsync(value);
     }
 

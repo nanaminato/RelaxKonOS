@@ -23,6 +23,7 @@ public sealed partial class GitClientViewModel
     {
         Log($"OpenProjectAsync 开始: name={repo?.Name} id={repo?.Id}");
         if (repo is null) { Log("repo 为 null → 退出"); return; }
+        if (OpenEditorProjectAsync is not null && !await OpenEditorProjectAsync(repo)) return;
         try
         {
             Log($"切换 IsPickerMode=false  SelectedRepository={repo.Name}");
@@ -33,6 +34,7 @@ public sealed partial class GitClientViewModel
 
             Log("调用 RefreshAllAsync（并行 status/branches/log）…");
             await RefreshAllAsync();
+            if (SelectedRepository?.Id != repo.Id) return;
             await PresentConflictResolutionAsync();
             Log($"RefreshAllAsync 完成。Branches={Branches.Count} Commits={Commits.Count} " +
                 $"Staged={StagedFiles.Count} Unstaged={UnstagedFiles.Count} Untracked={UntrackedFiles.Count}");
@@ -42,6 +44,7 @@ public sealed partial class GitClientViewModel
 
             Log("调用 RefreshRemotesAsync…");
             await RefreshRemotesAsync();
+            if (SelectedRepository?.Id != repo.Id) return;
             Log($"OpenProjectAsync 结束，Remotes={Remotes.Count}，Ready");
             StatusText = LocalizedText.Ref("git.vm.ready_project_branch_format", repo.Name, Status?.Branch ?? LocalizedText.Get("git.status.unknown_branch"));
         }
@@ -56,6 +59,7 @@ public sealed partial class GitClientViewModel
     [RelayCommand(CanExecute = nameof(CanOpenProject))]
     private async Task OpenFolderAsync()
     {
+        if (!CanOpenProject) return;
         Log("OpenFolderAsync 开始");
         if (ShowRemotePathPickerAsync is null)
         {
@@ -66,7 +70,13 @@ public sealed partial class GitClientViewModel
 
         var path = await ShowRemotePathPickerAsync();
         Log($"路径选择返回: {(path is null ? "null" : $"\"{path}\"")}");
-        if (string.IsNullOrWhiteSpace(path)) return;
+        if (string.IsNullOrWhiteSpace(path) || !CanOpenProject || !await PrepareEditorAsync()) return;
+
+        if (!IsGitAvailable && OpenPlainFolderAsync is not null)
+        {
+            await OpenPlainFolderAsync(path);
+            return;
+        }
 
         await ProbeAndOpenAsync(path);
     }
@@ -101,32 +111,40 @@ public sealed partial class GitClientViewModel
         {
             Log("调用 client.ProbeRepositoryAsync …");
             var probe = await client.ProbeRepositoryAsync(path);
-            Log($"Probe 返回: IsRepository={probe.IsRepository} HasCommits={probe.HasCommits} Branch={probe.CurrentBranch} Remotes={probe.Remotes?.Count ?? 0}");
+            Log($"Probe 返回: IsRepository={probe.IsRepository} Problem={probe.Problem} HasCommits={probe.HasCommits} Branch={probe.CurrentBranch} Remotes={probe.Remotes?.Count ?? 0}");
             if (!probe.IsRepository)
             {
-                ProbeHint = LocalizedText.Get("git.vm.not_repo");
-                var init = ShowInitConfirmAsync is not null && await ShowInitConfirmAsync(path);
-                Log($"ShowInitConfirm 返回: {init}");
-                if (!init)
+                ProbeHint = DescribeNotRepository(probe);
+                // Git refused to open the path (owner mismatch, permission denied, boundary down). That
+                // is not an empty directory: initialising would fail for the same reason and bury the
+                // real cause, so the reason itself is the answer.
+                if (!string.IsNullOrWhiteSpace(probe.Problem))
                 {
-                    StatusText = LocalizedText.Ref("git.vm.init_cancelled");
+                    await NotifyAsync(ProbeHint);
                     return;
                 }
-                var initResult = await client.InitRepositoryAsync(path);
-                Log($"git init 返回: Success={initResult.Success} Message={initResult.Message}");
-                if (!initResult.Success)
+                if (OpenPlainFolderAsync is not null)
                 {
-                    await NotifyAsync(LocalizedText.Format("git.vm.init_failed_format", initResult.Message));
+                    await OpenPlainFolderAsync(path);
                     return;
                 }
-                StatusText = LocalizedText.Ref("git.vm.initialized");
+
+                if (!await ConfirmInitAsync(path)) return;
+
+                if (!await TryInitializeAsync(path)) return;
                 probe = await client.ProbeRepositoryAsync(path);
-                Log($"重探测后: IsRepository={probe.IsRepository} DefaultBranch={probe.DefaultBranch}");
+                Log($"重探测后: IsRepository={probe.IsRepository} DefaultBranch={probe.DefaultBranch} Problem={probe.Problem}");
+                if (!probe.IsRepository)
+                {
+                    ProbeHint = DescribeNotRepository(probe);
+                    await NotifyAsync(ProbeHint);
+                    return;
+                }
             }
 
             // 已是 Git 仓库：检查是否已注册
             var existing = Repositories.FirstOrDefault(r =>
-                string.Equals(r.Path, path, StringComparison.OrdinalIgnoreCase));
+                string.Equals(r.Path, path, RepositoryPathComparison));
             if (existing is not null)
             {
                 Log($"路径已注册为「{existing.Name}」，直接打开");
@@ -136,10 +154,22 @@ public sealed partial class GitClientViewModel
             }
 
             // 未注册：自动注册（名称取路径末段）
-            var name = System.IO.Path.GetFileName(path.TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar));
+            var name = path.Replace('\\', '/').TrimEnd('/').Split('/').Last();
             if (string.IsNullOrWhiteSpace(name)) name = path;
             Log($"自动注册: name={name} path={path}");
-            var dto = await client.RegisterRepositoryAsync(new GitRepositoryRegistration(name, path));
+            GitRepositoryDto dto;
+            try
+            {
+                dto = await client.RegisterRepositoryAsync(new GitRepositoryRegistration(name, path));
+            }
+            catch (Exception ex)
+            {
+                var message = LocalizedText.Format("git.vm.register_failed_format", ex.Message);
+                ProbeHint = message;
+                await NotifyAsync(message);
+                Log($"注册异常：{ex.GetType().Name} {ex.Message}");
+                return;
+            }
             if (!Repositories.Contains(dto))
                 Repositories.Add(dto);
             StatusText = LocalizedText.Ref("git.vm.project_registered_format", dto.Name);
@@ -155,6 +185,54 @@ public sealed partial class GitClientViewModel
         {
             IsProbing = false;
             IsBusy = false;
+        }
+    }
+
+    public async Task InitializeEditorProjectAsync(string path)
+    {
+        if (!await PrepareEditorAsync() || !await ConfirmInitAsync(path)) return;
+        if (await TryInitializeAsync(path)) await ProbeAndOpenAsync(path);
+    }
+
+    /// <summary>"Not a repository" and "git refused to open this repository" are different answers, and
+    /// only the second one tells the user to fix permissions or ownership instead of initialising.</summary>
+    private static string DescribeNotRepository(GitRepositoryProbeDto probe)
+        => probe.Problem?.Contains("detected dubious ownership", StringComparison.OrdinalIgnoreCase) == true
+            ? LocalizedText.Get("git.vm.ownership_mismatch")
+            : string.IsNullOrWhiteSpace(probe.Problem)
+            ? LocalizedText.Get("git.vm.not_repo")
+            : LocalizedText.Format("git.vm.not_repo_reason_format", probe.Problem);
+
+    private async Task<bool> ConfirmInitAsync(string path)
+    {
+        var init = ShowInitConfirmAsync is not null && await ShowInitConfirmAsync(path);
+        Log($"ShowInitConfirm 返回: {init}");
+        return init;
+    }
+
+    private async Task<bool> TryInitializeAsync(string path)
+    {
+        try
+        {
+            var initResult = await client.InitRepositoryAsync(path);
+            Log($"git init 返回: Success={initResult.Success} Message={initResult.Message}");
+            if (!initResult.Success)
+            {
+                var message = LocalizedText.Format("git.vm.init_failed_format", initResult.Message);
+                ProbeHint = message;
+                await NotifyAsync(message);
+                return false;
+            }
+            StatusText = LocalizedText.Ref("git.vm.initialized");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            var message = LocalizedText.Format("git.vm.init_failed_format", ex.Message);
+            ProbeHint = message;
+            await NotifyAsync(message);
+            Log($"init 异常：{ex.GetType().Name} {ex.Message}");
+            return false;
         }
     }
 

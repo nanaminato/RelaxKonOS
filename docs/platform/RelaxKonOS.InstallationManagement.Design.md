@@ -58,3 +58,10 @@ WindowsSystem、LinuxSystem 和 LinuxUser 支持 Guardian；WindowsUser 当前�
 Linux User 的 TCP 与私有 socket 均通过真实检查，LAN 配置后从开发机访问受保护 API 得到预期的认证要求；本机健康端点保持仅 loopback 可访问。最终测试版本为 `0.1.0-dev20261014-05`。系统模式 DLL 再次恢复后核对监听、组件、启动、权限设置、JWT / 审计身份以及 Guardian 定义保持不变。Linux 专用锁和数据链接恢复回归测试在主机通过。
 
 真实 Windows 系统 / 个人模式、宿主重启后自动启动以及完整客户端登录重连仍需独立验收。该测试机 root SSH 登录关闭、nanami 没有 sudo 权限；系统模式通过已授权的 `su` 管理会话运行固定启动器，普通用户模式使用 nanami SSH，未声称桌面系统模式 SSH 提权链路已验收。Windows 个人模式不支持 Guardian。Linux User 发布包包含 Server 与 Guardian，不包含系统 Helper。
+
+
+## 发布包完整性问题（2026-10-24）
+
+已复现本地 `RelaxKonOS-0.1.3-linux-x64-server.zip` 在更新准备阶段被拒绝：归档中没有 `deployment/user/relaxkon`，属于不完整的当前服务器发布包。Linux 系统与用户模式共用服务器发布包，因此系统模式也要求携带此入口；不得删除校验或对旧布局增加兼容分支。应使用当前打包脚本重新构建完整发布包，不向旧版本归档混入其他修订的脚本。
+
+修复跟踪：Linux 启动器对缺少必需组件返回明确的重新打包提示，详细缺失路径保留在操作诊断；PowerShell 与 Bash 打包入口在生成清单和归档之前检查必需入口，防止遗漏用户模式目录后仍成功输出发布物。`package_source_checks.py` 与 `release_inventory_checks.py` 共 23 项通过，包含缺失用户入口的启动器拒绝与两个打包入口的回归检查。该证据仅覆盖包准备，不代表已在用户服务器完成升级。

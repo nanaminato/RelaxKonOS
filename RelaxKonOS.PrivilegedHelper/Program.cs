@@ -633,7 +633,14 @@ static PrivilegedOperationResult GetProperties(string? path, IReadOnlyList<strin
     return FileOutput(new FilePropertiesDto(canonical, Path.GetFileName(canonical),
         isDirectory ? FileSystemEntryType.Directory : FileSystemEntryType.File,
         isDirectory ? null : info.Length, info.CreationTimeUtc, info.LastWriteTimeUtc, info.LastAccessTimeUtc,
-        mode is { } value ? Convert.ToString(value, 8) : attributes.ToString(), attributes.ToString(), mode));
+        mode is { } value ? Convert.ToString(value, 8) : attributes.ToString(), attributes.ToString(), mode, null, null));
+}
+
+static PrivilegedOperationResult SetUnixOwnership(string? path, string owner, string group, bool recursive, IReadOnlyList<string> roots)
+{
+    if (!OperatingSystem.IsLinux()) throw new PlatformNotSupportedException();
+    var canonical = ValidatePath(path, roots);
+    return FileOutput(Properties(RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.SetUnixOwnership(canonical, owner, group, recursive)));
 }
 
 static PrivilegedOperationResult SetUnixPermissions(string? path, int? unixMode, bool recursive, IReadOnlyList<string> roots)
@@ -731,7 +738,7 @@ static FilePropertiesDto Properties(RelaxKonOS.PrivilegedHelper.LinuxUserFileOpe
     var info = SystemEntry(metadata);
     var mode = (int)metadata.UnixMode;
     return new FilePropertiesDto(info.Path, info.Name, info.Type, info.Size, info.Created, info.Modified, info.Accessed,
-        Convert.ToString(mode, 8).PadLeft(4, '0'), metadata.Attributes.ToString(), mode);
+        Convert.ToString(mode, 8).PadLeft(4, '0'), metadata.Attributes.ToString(), mode, metadata.Owner, metadata.Group);
 }
 
 static void EnsureNginxCanTraverseStaticSiteRoot(string destination)

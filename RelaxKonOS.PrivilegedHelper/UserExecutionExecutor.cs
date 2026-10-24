@@ -295,7 +295,7 @@ public static class UserExecutionExecutor
         var mode = (int)metadata.UnixMode;
         var info = ToInfo(metadata);
         return new(info.Path, info.Name, info.Type, info.Size, info.Created, info.Modified, info.Accessed,
-            Convert.ToString(mode, 8).PadLeft(4, '0'), metadata.Attributes.ToString(), mode);
+            Convert.ToString(mode, 8).PadLeft(4, '0'), metadata.Attributes.ToString(), mode, metadata.Owner, metadata.Group);
     }
     private static FileSystemEntryDto ToInfo(FileEntryDto f) => new(f.Path, f.Name, f.Size, FileSystemEntryType.File, f.Created, f.Modified, f.Accessed, f.IsHidden, f.IsSystem, f.MimeType);
     private static string ContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch

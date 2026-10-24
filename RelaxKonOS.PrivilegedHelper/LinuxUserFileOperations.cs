@@ -442,6 +442,42 @@ public static class LinuxUserFileOperations
         return Metadata(path, StatHandle(handle), reparsePoint);
     }
 
+    public static LinuxPathMetadata SetUnixOwnership(string path, string owner, string group, bool recursive)
+    {
+        var uid = LinuxFileOwnership.Resolve(owner, group: false);
+        var gid = LinuxFileOwnership.Resolve(group, group: true);
+        path = NormalizePath(path);
+        if (Path.GetPathRoot(path) == path)
+            throw new UnauthorizedAccessException("Ownership of the filesystem root cannot be changed.");
+        using var parent = OpenParentDirectory(path, out var name);
+        using var handle = OpenPathWithinRoot(parent, name);
+        if (IsSymbolicLink(StatHandle(handle)))
+            throw new UnauthorizedAccessException("Symbolic link ownership cannot be changed.");
+        void Apply(SafeFileHandle entry)
+        {
+            var metadata = StatHandle(entry);
+            if (recursive && IsDirectory(metadata))
+            {
+                using var directory = OpenDirectoryHandleUnrestricted(DescriptorPath(entry));
+                foreach (var childPath in Directory.EnumerateFileSystemEntries(DescriptorPath(directory)))
+                {
+                    var childName = Path.GetFileName(childPath);
+                    if (IsSymbolicLink(StatAt(directory, childName))) continue;
+                    using var child = OpenPathWithinRoot(directory, childName);
+                    var childMetadata = StatHandle(child);
+                    if (IsSymbolicLink(childMetadata)) continue;
+                    if (childMetadata.DeviceMajor != metadata.DeviceMajor || childMetadata.DeviceMinor != metadata.DeviceMinor)
+                        throw new UnauthorizedAccessException("Recursive ownership cannot cross filesystems.");
+                    Apply(child);
+                }
+            }
+            if (chown(DescriptorPath(entry), uid, gid) != 0)
+                throw NativeIOException("Could not change file ownership");
+        }
+        Apply(handle);
+        return Metadata(path, StatHandle(handle), reparsePoint: false);
+    }
+
     private static void ChangeDescendantModes(SafeFileHandle directory, UnixFileMode mode)
     {
         foreach (var entry in Directory.EnumerateFileSystemEntries(DescriptorPath(directory)))
@@ -1072,7 +1108,7 @@ public static class LinuxUserFileOperations
         return new(path, name,
             IsDirectory(stat), stat.Size, created, ToDateTimeUtc(stat.ModificationTime),
             ToDateTimeUtc(stat.AccessTime), attributes,
-            (UnixFileMode)(stat.Mode & PermissionMask));
+            (UnixFileMode)(stat.Mode & PermissionMask), stat.Owner, stat.Group);
     }
 
     private static DateTime ToDateTimeUtc(StatxTimestamp timestamp)
@@ -1321,7 +1357,7 @@ public static class LinuxUserFileOperations
 
     public sealed record LinuxPathMetadata(string Path, string Name, bool IsDirectory, ulong Size,
         DateTime CreatedUtc, DateTime ModifiedUtc, DateTime AccessedUtc, FileAttributes Attributes,
-        UnixFileMode UnixMode);
+        UnixFileMode UnixMode, uint Owner, uint Group);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct StatxTimestamp
@@ -1335,6 +1371,8 @@ public static class LinuxUserFileOperations
     private struct StatxBuffer
     {
         [FieldOffset(0)] public uint Mask;
+        [FieldOffset(20)] public uint Owner;
+        [FieldOffset(24)] public uint Group;
         [FieldOffset(28)] public ushort Mode;
         [FieldOffset(32)] public ulong Inode;
         [FieldOffset(40)] public ulong Size;
@@ -1372,6 +1410,7 @@ public static class LinuxUserFileOperations
     [DllImport("libc.so.6", SetLastError = true)] private static extern int open(string path, int flags);
     [DllImport("libc.so.6", SetLastError = true)] private static extern int dup(int descriptor);
     [DllImport("libc.so.6", SetLastError = true)] private static extern int chmod(string path, uint mode);
+    [DllImport("libc.so.6", SetLastError = true)] private static extern int chown(string path, uint owner, uint group);
     [DllImport("libc.so.6", SetLastError = true)] private static extern int openat(int directory, string path, int flags);
     [DllImport("libc.so.6", SetLastError = true)] private static extern int openat(int directory, string path, int flags, uint mode);
     [DllImport("libc.so.6", SetLastError = true)] private static extern int mkdirat(int directory, string path, uint mode);
