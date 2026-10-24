@@ -275,6 +275,7 @@
         "explorer.archive.failed": "アーカイブ操作に失敗しました: {0}",
         "explorer.operations.kind.Compress": "圧縮",
         "explorer.operations.kind.Extract": "展開",
+        "explorer.error.editor_endpoint_unavailable": "サーバーまたはリバースプロキシが PUT {0} に HTTP 404 を返しました。接続先サーバーをクライアントに対応するバージョンに更新して再起動し、プロキシの転送設定を確認してください。",
         "explorer.archive.compress_as": "形式を指定して圧縮…"
     }
 }

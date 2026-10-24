@@ -275,6 +275,7 @@
         "explorer.archive.failed": "Archive operation failed: {0}",
         "explorer.operations.kind.Compress": "Compress",
         "explorer.operations.kind.Extract": "Extract",
+        "explorer.error.editor_endpoint_unavailable": "The Server or reverse proxy returned HTTP 404 for PUT {0}. Update and restart the connected Server to match this Client, and check that the proxy forwards this route.",
         "explorer.archive.compress_as": "Compress as…"
     }
 }

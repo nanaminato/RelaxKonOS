@@ -63,6 +63,8 @@
         "code_editor.context.close_saved": "关闭已保存",
         "code_editor.context.close_all": "全部关闭",
         "code_editor.context.delete_confirm": "删除 {0}？文件夹中的所有内容也会被删除。",
+        "code_editor.context.operation_error": "操作失败",
+        "code_editor.context.operation_busy": "项目正忙，请等待当前操作完成后重试。",
         "code_editor.context.operation_failed": "操作失败：{0}",
         "code_editor.context.creation_unavailable": "当前连接不支持排他创建文件。"
     }

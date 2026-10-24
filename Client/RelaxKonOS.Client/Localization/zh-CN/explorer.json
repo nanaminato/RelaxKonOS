@@ -275,6 +275,7 @@
         "explorer.archive.failed": "压缩/解压缩操作失败：{0}",
         "explorer.operations.kind.Compress": "压缩",
         "explorer.operations.kind.Extract": "解压缩",
+        "explorer.error.editor_endpoint_unavailable": "服务端或反向代理对 PUT {0} 返回了 HTTP 404。请将连接的服务端同步更新到当前客户端对应的版本并重启，同时检查代理是否转发此路由。",
         "explorer.archive.compress_as": "压缩为…"
     }
 }

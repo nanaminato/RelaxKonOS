@@ -261,6 +261,20 @@ internal static class ProjectEditorChecks
         Check(!plainGit.IsPickerMode && plainGit.SelectedRepository is null && plain.ProjectPath == "/work" && remote.Initializations == 0,
             "An ordinary directory opens for editing without initializing or registering Git.");
 
+        var nameInput = new TaskCompletionSource<string?>();
+        plain.Editor.RequestEntryNameAsync = (_, _) => nameInput.Task;
+        var create = plain.Editor.PerformTreeActionAsync(plain.Editor.WorkspaceRoots.Single(), EditorTreeAction.NewFile);
+        Check(plain.Editor.IsTreeOperationPending && !plain.CanClose && !await plain.PrepareOperationAsync(),
+            "A pending file name prevents project close and worktree mutations.");
+        await plain.RefreshAsync();
+        Check(!plain.Editor.IsOperationLocked, "Project refresh cannot lock the editor while its file-name dialog is open.");
+        nameInput.SetResult("created.cs");
+        await create;
+        Check(store.Files.ContainsKey("/work/created.cs") && plain.Editor.ActiveDocument?.Path == "/work/created.cs"
+            && !plain.Editor.IsTreeOperationPending && plain.CanClose,
+            "Confirming a pending name creates and opens the file, then releases the project guard.");
+        await plain.Editor.CloseDocumentCommand.ExecuteAsync(plain.Editor.ActiveDocument);
+
         var slowRead = new TaskCompletionSource<byte[]?>();
         store.PendingRead = slowRead;
         var late = plain.Editor.OpenPathAsync("/work/late.cs");

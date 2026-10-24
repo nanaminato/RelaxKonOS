@@ -63,6 +63,8 @@
         "code_editor.context.close_saved": "保存済みを閉じる",
         "code_editor.context.close_all": "すべて閉じる",
         "code_editor.context.delete_confirm": "{0} を削除しますか？フォルダー内のすべての項目も削除されます。",
+        "code_editor.context.operation_error": "操作に失敗しました",
+        "code_editor.context.operation_busy": "プロジェクトは処理中です。完了してから再試行してください。",
         "code_editor.context.operation_failed": "操作に失敗しました：{0}",
         "code_editor.context.creation_unavailable": "この接続はファイルの排他的な作成をサポートしていません。"
     }

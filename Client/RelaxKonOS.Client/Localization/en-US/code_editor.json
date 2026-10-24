@@ -63,6 +63,8 @@
         "code_editor.context.close_saved": "Close Saved",
         "code_editor.context.close_all": "Close All",
         "code_editor.context.delete_confirm": "Delete {0}? This also deletes all children of a folder.",
+        "code_editor.context.operation_error": "Operation failed",
+        "code_editor.context.operation_busy": "The project is busy. Wait for the current operation and try again.",
         "code_editor.context.operation_failed": "Operation failed: {0}",
         "code_editor.context.creation_unavailable": "This connection does not support exclusive file creation."
     }

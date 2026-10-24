@@ -22,6 +22,25 @@ internal static class CodeEditorSessionDialogs
 {
     public static void Configure(AppContext context, RelaxKonOS.WindowManager.ManagedWindow window, CodeEditorViewModel viewModel, IExplorerClient? files)
     {
+        viewModel.ShowTreeOperationErrorAsync = async message =>
+            await context.ShowDialogAsync<bool>(window, LocalizedText.Get("code_editor.context.operation_error"), dialog =>
+                new Avalonia.Controls.ScrollViewer
+                {
+                    Content = new Avalonia.Controls.StackPanel
+                    {
+                        Margin = new Avalonia.Thickness(20), Spacing = 16,
+                        Children =
+                        {
+                            new Avalonia.Controls.TextBlock { Text = message, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                            new Avalonia.Controls.Button
+                            {
+                                Content = LocalizedText.Get("common.ok"),
+                                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+                                Command = new CommunityToolkit.Mvvm.Input.RelayCommand(() => dialog.Close(true)),
+                            },
+                        },
+                    },
+                }, new Size(480, 240));
         viewModel.RequestEntryNameAsync = (prompt, initial) => context.ShowDialogAsync<string>(window, prompt, dialog =>
             new TextInputDialogView { DataContext = new TextInputDialogViewModel(prompt, initial,
                 value => { if (value is null) dialog.Cancel(); else dialog.Close(value); }, validate: CodeEditorViewModel.IsValidEntryName) },

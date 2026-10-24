@@ -56,6 +56,18 @@ internal static class EditorContextChecks
         await vm.PerformTreeActionAsync(root, EditorTreeAction.NewFolder);
         Check(store.Directories.Contains("/work/src") && root.Children.Any(n => n.Name == "src"), "New Folder refreshes the tree.");
         var folder = root.Children.Single(n => n.Name == "src");
+        string? shownError = null;
+        vm.ShowTreeOperationErrorAsync = message => { shownError = message; return Task.CompletedTask; };
+        vm.RequestEntryNameAsync = (_, _) =>
+        {
+            vm.IsOperationLocked = true;
+            return Task.FromResult<string?>("blocked.cs");
+        };
+        await vm.PerformTreeActionAsync(folder, EditorTreeAction.NewFile);
+        Check(shownError is not null && !store.Files.ContainsKey("/work/src/blocked.cs") && !vm.IsTreeOperationPending,
+            "An operation lock acquired during name entry reports failure instead of silently abandoning creation.");
+        vm.IsOperationLocked = false;
+        shownError = null;
         vm.RequestEntryNameAsync = (_, _) => Task.FromResult<string?>("new.cs");
         await vm.PerformTreeActionAsync(folder, EditorTreeAction.NewFile);
         var draft = vm.ActiveDocument!;
@@ -63,6 +75,7 @@ internal static class EditorContextChecks
         Check(store.Files.ContainsKey("/work/src/new.cs") && draft.Path == "/work/src/new.cs", "New File creates exclusively and opens its tab.");
         vm.RequestEntryNameAsync = (_, _) => Task.FromResult<string?>("new.cs");
         await vm.PerformTreeActionAsync(folder, EditorTreeAction.NewFile);
+        Check(shownError is not null, "Exclusive creation failures are presented through the error dialog callback.");
         Check(draft.Text == "unsaved" && store.Files["/work/src/new.cs"].Length == 0, "Creating an existing file cannot overwrite disk or its draft.");
         vm.RequestEntryNameAsync = (_, _) => Task.FromResult<string?>("../outside");
         await vm.PerformTreeActionAsync(folder, EditorTreeAction.NewFolder);

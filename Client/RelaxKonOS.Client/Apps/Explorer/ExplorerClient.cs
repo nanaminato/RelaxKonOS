@@ -126,9 +126,20 @@ public sealed class ExplorerClient : IExplorerClient, IArchiveClient, IEditorFil
 
     public async Task<string> WriteEditorFileAsync(string path, byte[] content, string? expectedVersion, CancellationToken ct = default)
     {
-        var result = await SendAsync<ConditionalFileWriteResult>(HttpMethod.Put, FileApiRoutes.ConditionalContent,
-            body: new ConditionalFileWriteRequest(path, content, expectedVersion), ct: ct);
-        return result.Version;
+        try
+        {
+            var result = await SendAsync<ConditionalFileWriteResult>(HttpMethod.Put, FileApiRoutes.ConditionalContent,
+                body: new ConditionalFileWriteRequest(path, content, expectedVersion), ct: ct);
+            return result.Version;
+        }
+        catch (RelaxKonOSAuthException error) when (error.Status == 404
+            && (error.Type == "https://relaxkonos.app/problems/http-error" || string.IsNullOrWhiteSpace(error.Detail)))
+        {
+            // A missing route has no Files API detail. Keep a typed file/parent-not-found response intact.
+            throw new RelaxKonOSAuthException(new ProblemDetails(
+                "https://relaxkonos.app/problems/editor-endpoint-unavailable", error.Title, error.Status,
+                LocalizedText.Format("explorer.error.editor_endpoint_unavailable", FileApiRoutes.ConditionalContent), null));
+        }
     }
 
     public async Task<FileEntryDto> WriteFileAsync(string path, byte[] content, CancellationToken ct = default)

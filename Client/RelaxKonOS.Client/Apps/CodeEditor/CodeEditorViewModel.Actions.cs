@@ -19,6 +19,7 @@ public sealed partial class CodeEditorViewModel
     public bool CanCreateWorkspaceFile => _conditionalWriter is not null || _files is IEditorFileWriter;
     public Func<string, string, Task<string?>>? RequestEntryNameAsync { get; set; }
     public Func<string, Task<bool>>? RequestDeleteEntryAsync { get; set; }
+    public Func<string, Task>? ShowTreeOperationErrorAsync { get; set; }
 
     public static bool IsValidEntryName(string? name) => !string.IsNullOrWhiteSpace(name)
         && name is not "." and not ".." && name.IndexOfAny(['/', '\\', '\0', ':']) < 0;
@@ -80,6 +81,7 @@ public sealed partial class CodeEditorViewModel
         var folder = node.IsDirectory && action is EditorTreeAction.NewFile or EditorTreeAction.NewFolder ? node : parent;
         if (folder is null) return;
         _treeOperation = true;
+        OnPropertyChanged(nameof(IsTreeOperationPending));
         var changed = false;
         string? createdPath = null;
         try
@@ -101,7 +103,8 @@ public sealed partial class CodeEditorViewModel
                 if (name is null) return;
                 if (!IsValidEntryName(name)) { StatusText = LocalizedText.Ref("explorer.input_invalid"); return; }
             }
-            if (_disposed || !CanEditDocument) return;
+            if (_disposed) return;
+            if (!CanEditDocument) throw new InvalidOperationException(LocalizedText.Get("code_editor.context.operation_busy"));
             // Prevent edits and saves while the remote path mutation is in flight.
             IsTreeBusy = true;
             _openRevision++;
@@ -144,11 +147,17 @@ public sealed partial class CodeEditorViewModel
             changed = true;
         }
         catch (OperationCanceledException) when (_disposed) { }
-        catch (Exception ex) { StatusText = LocalizedText.Ref("code_editor.context.operation_failed", ex.Message); }
+        catch (Exception ex)
+        {
+            StatusText = LocalizedText.Ref("code_editor.context.operation_failed", ex.Message);
+            if (!_disposed && ShowTreeOperationErrorAsync is { } showError)
+                await showError(LocalizedText.Format("code_editor.context.operation_failed", ex.Message));
+        }
         finally
         {
             IsTreeBusy = false;
             _treeOperation = false;
+            OnPropertyChanged(nameof(IsTreeOperationPending));
             if (changed && !_disposed)
             {
                 if (createdPath is not null) await OpenPathAsync(createdPath);
