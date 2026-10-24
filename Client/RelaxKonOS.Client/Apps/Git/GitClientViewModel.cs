@@ -87,6 +87,11 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
     [NotifyPropertyChangedFor(nameof(CanManage), nameof(CanOpenProject))]
     [NotifyCanExecuteChangedFor(nameof(ApplyPatchFileCommand), nameof(CheckoutReferenceCommand), nameof(OpenWorktreeCommand), nameof(NewTagCommand), nameof(RebaseOntoCommand), nameof(MergeIntoHeadCommand), nameof(ResetHeadCommand), nameof(NewWorktreeCommand), nameof(RemoveWorktreeCommand), nameof(SaveStashCommand), nameof(ApplyStashCommand), nameof(PopStashCommand), nameof(DropStashCommand), nameof(ExportWorkingPatchCommand), nameof(CloneRepositoryCommand), nameof(NewProjectCommand), nameof(OpenProjectCommand), nameof(OpenFolderCommand), nameof(RegisterRepositoryCommand))]
     [NotifyCanExecuteChangedFor(nameof(PullCommand), nameof(PushCommand), nameof(FetchCommand), nameof(RefreshCommand), nameof(ApplyLogFiltersCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CheckoutAndUpdateBranchCommand), nameof(CheckoutBranchCommand), nameof(CheckoutCommand), nameof(CheckoutCommitCommand), nameof(CherryPickCommitCommand), nameof(CommitAndPushCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CommitCommand), nameof(CompareBranchCommand), nameof(CreateBranchCommand), nameof(CreateBranchFromHereCommand), nameof(DeleteBranchCommand), nameof(DeleteBranchContextCommand))]
+    [NotifyCanExecuteChangedFor(nameof(FetchBranchCommand), nameof(MergeBranchCommand), nameof(PullBranchCommand), nameof(PushAllBeforeCommand), nameof(PushBranchCommand), nameof(RebaseBranchCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RefreshChangesCommand), nameof(RenameBranchCommand), nameof(ResetToCommitCommand), nameof(RevertCommand), nameof(RevertCommitContextCommand), nameof(RevertFileChangeCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SetUpstreamBranchCommand), nameof(StageFileContextCommand), nameof(UndoCommitCommand), nameof(UnstageFileCommand))]
     private GitRepositoryDto? _selectedRepository;
     [ObservableProperty] private GitClientPage _activePage = GitClientPage.Overview;
     [ObservableProperty] private GitStatusDto? _status;
@@ -100,6 +105,11 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
     [NotifyPropertyChangedFor(nameof(CanManage), nameof(CanOpenProject))]
     [NotifyCanExecuteChangedFor(nameof(ApplyPatchFileCommand), nameof(CheckoutReferenceCommand), nameof(OpenWorktreeCommand), nameof(NewTagCommand), nameof(RebaseOntoCommand), nameof(MergeIntoHeadCommand), nameof(ResetHeadCommand), nameof(NewWorktreeCommand), nameof(RemoveWorktreeCommand), nameof(SaveStashCommand), nameof(ApplyStashCommand), nameof(PopStashCommand), nameof(DropStashCommand), nameof(ExportWorkingPatchCommand), nameof(CloneRepositoryCommand), nameof(NewProjectCommand), nameof(OpenProjectCommand), nameof(OpenFolderCommand), nameof(RegisterRepositoryCommand))]
     [NotifyCanExecuteChangedFor(nameof(PullCommand), nameof(PushCommand), nameof(FetchCommand), nameof(RefreshCommand), nameof(ApplyLogFiltersCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CheckoutAndUpdateBranchCommand), nameof(CheckoutBranchCommand), nameof(CheckoutCommand), nameof(CheckoutCommitCommand), nameof(CherryPickCommitCommand), nameof(CommitAndPushCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CommitCommand), nameof(CompareBranchCommand), nameof(CreateBranchCommand), nameof(CreateBranchFromHereCommand), nameof(DeleteBranchCommand), nameof(DeleteBranchContextCommand))]
+    [NotifyCanExecuteChangedFor(nameof(FetchBranchCommand), nameof(MergeBranchCommand), nameof(PullBranchCommand), nameof(PushAllBeforeCommand), nameof(PushBranchCommand), nameof(RebaseBranchCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RefreshChangesCommand), nameof(RenameBranchCommand), nameof(ResetToCommitCommand), nameof(RevertCommand), nameof(RevertCommitContextCommand), nameof(RevertFileChangeCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SetUpstreamBranchCommand), nameof(StageFileContextCommand), nameof(UndoCommitCommand), nameof(UnstageFileCommand))]
     private bool _isBusy;
     [ObservableProperty] private bool _isAutoRefresh = true;
     [ObservableProperty] private string _commitMessage = string.Empty;

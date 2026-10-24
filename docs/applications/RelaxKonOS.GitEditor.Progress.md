@@ -136,3 +136,10 @@ Git Diff 原有解析 70 项与渲染 40 项通过。Client 与 Server 主项目
 验证：Server 独立工程 60 项真实 Windows 仓库检查通过；底部独立回归覆盖不同标签内容、独立状态、父关系、引用、差异、共享忙碌、迟到请求、控制台清空/关闭、最大化/隐藏恢复，以及 320/640/860 DIP 按钮命中。项目编辑器、融合标题栏和 Git Diff（70 项解析、40 项渲染）回归通过。Client/Server 构建保留现有依赖漏洞及平台/弃用警告。
 
 中/英/日浅深主题预览位于预览工程 `bin/Debug/net10.0/preview-qa/git-dock/`，包括 `git-toolwindow-*`、`git-log-*`、`git-console-*` 和窄窗口截图；人工复核中文日志浅色与控制台深色。预览使用确定的测试仓库数据；真实 Git 行为由上述临时仓库测试独立验证。尚未验收 Linux/Helper、远程网络与高 DPI，未提供跨重启标签恢复、无限历史索引或实时交互终端。
+
+## 2026-10-24 Git commit controls and history presentation
+
+- Fixed command availability notifications when the selected repository or shared busy state changes, including Commit and Commit and Push.
+- Added explicit branch, author and date labels to the history filter toolbar in Chinese, English and Japanese.
+- History graphs render real parent relationships with colored lanes and curved fork/merge connections; linear history remains a single lane. The graph API must be available on the connected server.
+- Verified with the headless Git dock checks, including commit command notifications, merge parents, multiple lanes and narrow layouts.

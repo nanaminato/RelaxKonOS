@@ -33,8 +33,10 @@ public static partial class FileArchiveService
         credentials?.Validate();
         if (kind is not (FileOperationKind.Compress or FileOperationKind.Extract)) throw new ArgumentException("Invalid archive operation.");
         await RejectLinksAsync(fs, destination, ct);
-        if (await fs.Info(destination, ct) is not null) throw new IOException("Destination already exists.");
-        var parent = Path.GetDirectoryName(destination) ?? throw new ArgumentException("Destination needs a parent directory.");
+        var existing = await fs.Info(destination, ct);
+        var intoDirectory = kind == FileOperationKind.Extract && existing?.Type == FileSystemEntryType.Directory;
+        if (existing is not null && !intoDirectory) throw new IOException("Destination already exists.");
+        var parent = intoDirectory ? destination : Path.GetDirectoryName(destination) ?? throw new ArgumentException("Destination needs a parent directory.");
         if ((await fs.Info(parent, ct))?.Type != FileSystemEntryType.Directory) throw new DirectoryNotFoundException(parent);
         var format = FileArchiveFormats.Detect(kind == FileOperationKind.Compress ? destination : sources[0])
             ?? throw new NotSupportedException("Unsupported archive format.");
@@ -141,7 +143,38 @@ public static partial class FileArchiveService
             }
             ct.ThrowIfCancellationRequested();
             await RejectLinksAsync(fs, destination, ct);
-            await fs.Move(staging, destination, ct);
+            if (intoDirectory)
+            {
+                var contents = await fs.List(staging, ct);
+                var entries = contents.Directories.Select(x => (x.Path, x.Name))
+                    .Concat(contents.Files.Select(x => (x.Path, x.Name))).ToArray();
+                foreach (var entry in entries)
+                {
+                    var target = Path.Combine(destination, entry.Name);
+                    await RejectLinksAsync(fs, target, ct);
+                    if (await fs.Info(target, ct) is not null) throw new IOException($"Destination already exists: {target}");
+                }
+                var published = new List<(string Source, string Target)>();
+                try
+                {
+                    foreach (var entry in entries)
+                    {
+                        var target = Path.Combine(destination, entry.Name);
+                        await RejectLinksAsync(fs, target, ct);
+                        await fs.Move(entry.Path, target, ct);
+                        published.Add((entry.Path, target));
+                    }
+                }
+                catch
+                {
+                    foreach (var entry in published.AsEnumerable().Reverse())
+                        try { await fs.Move(entry.Target, entry.Source, CancellationToken.None); }
+                        catch (Exception ex) { cleanupFailed(entry.Target, ex); }
+                    throw;
+                }
+                await fs.Delete(staging, CancellationToken.None);
+            }
+            else await fs.Move(staging, destination, ct);
             created = false;
         }
         finally

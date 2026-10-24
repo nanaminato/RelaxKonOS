@@ -23,6 +23,16 @@ public static class FileArchiveChecks
             "Empty directory, empty file and measured item progress");
         try { await Run(FileOperationKind.Extract, [zipPath], output); throw new Exception("Overwrote destination"); }
         catch (IOException) { Check(Directory.Exists(output), "Existing destination is protected"); }
+        var selectedFolder = Path.Combine(root, "selected-folder");
+        Directory.CreateDirectory(selectedFolder);
+        await File.WriteAllTextAsync(Path.Combine(selectedFolder, "keep.txt"), "keep");
+        await Run(FileOperationKind.Extract, [zipPath], selectedFolder);
+        Check(File.Exists(Path.Combine(selectedFolder, "资料", "中文.txt"))
+            && await File.ReadAllTextAsync(Path.Combine(selectedFolder, "keep.txt")) == "keep",
+            "Extract into an existing selected directory preserves unrelated files");
+        try { await Run(FileOperationKind.Extract, [zipPath], root); throw new Exception("Overwrote source directory"); }
+        catch (IOException) { Check(await File.ReadAllTextAsync(Path.Combine(source, "中文.txt")) == "archive test 😀",
+            "Extract here protects existing top-level entries including the source"); }
         async Task Bad(string label, Action<ZipArchive> write)
         {
             var bad = Path.Combine(root, "bad.zip");
@@ -120,6 +130,11 @@ public static class FileArchiveChecks
         }
         var done = await Wait(job.Id);
         check(done.State == FileOperationState.Completed && done.CompletedSources.SequenceEqual(new[] { source }), "Archive job completes through captured identity transport");
+        var extractHere = jobs.Start("owner", new ClaimsPrincipal(), new(Guid.NewGuid(), FileOperationKind.Extract,
+            [new(destination, root)]));
+        check((await Wait(extractHere.Id)).State == FileOperationState.Completed
+            && File.ReadAllText(Path.Combine(root, "中文.txt")) == "archive test 😀",
+            "Identity job accepts the archive parent as the extraction destination");
         check(transport.Requests.All(request => request.Identity == identity.Identity && UserExecutionRequestPolicy.IsValid(request, false))
             && transport.Requests.Any(request => request.Operation == UserExecutionOperationKind.FileRead)
             && transport.Requests.Any(request => request.Operation == UserExecutionOperationKind.FileAppendStaging), "Every archive I/O request keeps the closed identity-bound contract");

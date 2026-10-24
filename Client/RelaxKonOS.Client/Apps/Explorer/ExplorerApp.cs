@@ -372,6 +372,18 @@ public sealed partial class ExplorerApp : RemoteApplicationBase, IAppActivationH
     private static void WireDialogs(AppContext context, ExplorerViewModel vm, IExplorerClient client)
     {
         vm.RequestArchivePasswordAsync = (format, invalid, ct) => RequestArchivePasswordAsync(context, format, invalid, ct);
+        vm.RequestExtractionFolderAsync = async initialPath =>
+        {
+            var owner = FindOwnerWindow(context, vm);
+            if (owner is null) return null;
+            return await context.ShowDialogAsync<string>(owner, LocalizedText.Get("explorer.archive.extract_to"), dialog =>
+            {
+                var picker = new ExplorerViewModel(client, new ExplorerPickerOptions(ExplorerPickerMode.SelectFolder),
+                    paths => dialog.Close(paths[0])) { CancelAction = dialog.Cancel };
+                _ = OpenInitialLocationAsync(picker, initialPath, null);
+                return new ExplorerMainView { DataContext = picker };
+            });
+        };
         vm.RequestTextInputAsync = async (title, prompt, defaultValue, confirmLabel) =>
         {
             string? result = null;

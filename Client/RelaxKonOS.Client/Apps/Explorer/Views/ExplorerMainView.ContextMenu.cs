@@ -11,6 +11,7 @@ public partial class ExplorerMainView
     private MenuItem? _saveToHostMenuItem;
     private MenuItem? _compressMenuItem;
     private MenuItem? _extractMenuItem;
+    private MenuItem? _extractToMenuItem;
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
@@ -38,6 +39,8 @@ public partial class ExplorerMainView
         _extractMenuItem = new MenuItem { Header = LocalizedText.Get("explorer.archive.extract") };
         items.Insert(insertAt + 1, _compressMenuItem);
         items.Insert(insertAt + 2, _extractMenuItem);
+        _extractToMenuItem = new MenuItem { Header = LocalizedText.Get("explorer.archive.extract_to") };
+        items.Insert(insertAt + 3, _extractToMenuItem);
         _entryContextMenu.Opened += EntryContextMenu_Opened;
     }
 
@@ -74,6 +77,12 @@ public partial class ExplorerMainView
             _extractMenuItem.IsVisible = singleFile && FileArchiveFormats.Detect(vm.SelectedEntry!.Name) is not null
                 && !vm.IsPickerMode && vm.QueueOperationAsync is not null;
             _extractMenuItem.IsEnabled = vm.CanExtract;
+            if (_extractToMenuItem is not null)
+            {
+                _extractToMenuItem.Command = vm.ExtractToCommand;
+                _extractToMenuItem.IsVisible = _extractMenuItem.IsVisible;
+                _extractToMenuItem.IsEnabled = vm.CanExtract;
+            }
         }
         _saveToHostMenuItem.Command = vm.SaveToHostCommand;
         _saveToHostMenuItem.IsVisible = !vm.IsPickerMode && selected > 0;

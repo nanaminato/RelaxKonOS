@@ -34,14 +34,17 @@ public static class ArchiveCommandChecks
         check(vm.CanExtract, "Single ZIP selection enables extraction case-insensitively");
         vm.RequestTextInputAsync = (_, _, name, _) => Task.FromResult<string?>(name);
         await vm.ExtractCommand.ExecuteAsync(null);
-        check(requests.Count == 2 && requests[1].Kind == FileOperationKind.Extract && requests[1].Items.Single().DestinationPath == "/source/bundle",
-            "Extraction submits one archive into a named new directory");
-        vm.RequestTextInputAsync = (_, _, _, _) => { scope = "new-session"; return Task.FromResult<string?>("stale"); };
-        await vm.ExtractCommand.ExecuteAsync(null);
-        check(requests.Count == 2, "Session change while prompting cannot submit stale archive work");
-        vm.RequestTextInputAsync = (_, _, _, _) => Task.FromResult<string?>("../escape");
-        await vm.ExtractCommand.ExecuteAsync(null);
-        check(requests.Count == 2, "Archive prompt rejects path traversal before submission");
+        check(requests.Count == 2 && requests[1].Kind == FileOperationKind.Extract && requests[1].Items.Single().DestinationPath == "/source",
+            "Extraction submits into the current directory without a name prompt");
+        vm.RequestExtractionFolderAsync = initial => Task.FromResult<string?>("/chosen");
+        await vm.ExtractToCommand.ExecuteAsync(null);
+        check(requests.Count == 3 && requests.Last().Items.Single().DestinationPath == "/chosen", "Extraction uses the selected folder");
+        vm.RequestExtractionFolderAsync = _ => Task.FromResult<string?>(null);
+        await vm.ExtractToCommand.ExecuteAsync(null);
+        check(requests.Count == 3, "Cancelling the folder picker submits nothing");
+        vm.RequestExtractionFolderAsync = _ => { scope = "new-session"; return Task.FromResult<string?>("/stale"); };
+        await vm.ExtractToCommand.ExecuteAsync(null);
+        check(requests.Count == 3, "Session changes discard folder picker results");
         var expectedCount = requests.Count;
         foreach (var suffix in new[] { ".tar", ".tar.gz", ".TGZ", ".7z", ".rar", ".iso", ".cab", ".xz", ".bz2", ".zst", ".wim" })
         {
@@ -50,7 +53,7 @@ public static class ArchiveCommandChecks
             check(vm.CanExtract, suffix + " enables extraction");
             vm.RequestTextInputAsync = (_, _, name, _) => Task.FromResult<string?>(name);
             await vm.ExtractCommand.ExecuteAsync(null);
-            check(requests[++expectedCount - 1].Items.Single().DestinationPath == "/source/bundle", suffix + " uses its full archive suffix for the output folder");
+            check(requests[++expectedCount - 1].Items.Single().DestinationPath == "/source", suffix + " extracts into the current directory");
         }
         vm.RequestTextInputAsync = (_, _, name, _) => Task.FromResult<string?>(name);
         await vm.CompressTarCommand.ExecuteAsync(null);

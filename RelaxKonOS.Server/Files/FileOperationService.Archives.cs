@@ -19,7 +19,9 @@ public sealed partial class FileOperationService
             ct.ThrowIfCancellationRequested();
             try
             {
-                if (await fs.Info(destination, ct) is not null)
+                var destinationInfo = await fs.Info(destination, ct);
+                if (destinationInfo is not null && !(job.Request.Kind == FileOperationKind.Extract
+                    && destinationInfo.Type == FileSystemEntryType.Directory))
                 {
                     var decision = await AskAsync(job, "conflict", sources[0], destination, "Destination already exists.",
                         [FileOperationDecision.KeepBoth, FileOperationDecision.Skip]);

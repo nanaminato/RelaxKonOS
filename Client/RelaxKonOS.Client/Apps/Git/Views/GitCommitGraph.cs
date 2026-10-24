@@ -78,10 +78,22 @@ internal sealed class GitCommitGraphCell : Control
         var middle = Bounds.Height / 2;
         foreach (var edge in row.Edges)
         {
-            var pen = new Pen(Colors[edge.From % Colors.Length], 1.2, edge.Cut ? DashStyle.Dash : null);
+            var pen = new Pen(Colors[(edge.Incoming || edge.Through ? edge.From : edge.To) % Colors.Length], 1.2, edge.Cut ? DashStyle.Dash : null);
             var from = new Point(X(edge.From), edge.Incoming || edge.Through ? 0 : middle);
             var to = new Point(X(edge.To), edge.Incoming ? middle : edge.Cut ? middle + 7 : Bounds.Height);
-            context.DrawLine(pen, from, to);
+            if (edge.From == edge.To) context.DrawLine(pen, from, to);
+            else
+            {
+                var geometry = new StreamGeometry();
+                using (var path = geometry.Open())
+                {
+                    path.BeginFigure(from, false);
+                    var bend = (to.Y - from.Y) / 2;
+                    path.CubicBezierTo(new Point(from.X, from.Y + bend), new Point(to.X, to.Y - bend), to);
+                    path.EndFigure(false);
+                }
+                context.DrawGeometry(null, pen, geometry);
+            }
         }
         context.DrawEllipse(Colors[row.Lane % Colors.Length], null, new Point(X(row.Lane), middle), row.IsHead ? 4.7 : 3.6, row.IsHead ? 4.7 : 3.6);
         if (row.IsHead) context.DrawEllipse(Brushes.White, null, new Point(X(row.Lane), middle), 2.2, 2.2);

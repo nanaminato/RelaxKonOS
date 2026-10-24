@@ -57,6 +57,7 @@ public sealed partial class FileOperationService(IPrivilegedFileService privileg
             if (Path.GetPathRoot(source) == source) throw new ArgumentException("A filesystem root cannot be operated on.");
             var destination = request.Kind == FileOperationKind.Delete ? null : Normalize(item.DestinationPath!);
             if (destination is not null && ((ContainsPath(source, destination) || ContainsPath(destination, source))
+                && !(request.Kind == FileOperationKind.Extract && !ContainsPath(source, destination))
                 && !(request.Kind == FileOperationKind.Copy && string.Equals(source, destination, Comparison))))
                 throw new ArgumentException("Cannot move or copy an item into itself or its descendants.");
             return new FileOperationItem(source, destination);
@@ -71,7 +72,7 @@ public sealed partial class FileOperationService(IPrivilegedFileService privileg
             && (ContainsPath(other.SourcePath, destination) || ContainsPath(destination, other.SourcePath)
                 || other.DestinationPath is { } d && (ContainsPath(d, destination) || ContainsPath(destination, d))))))
             throw new ArgumentException("Overlapping source and destination selections.");
-        if (archive && items.Any(item => items.Any(other => ContainsPath(other.SourcePath, item.DestinationPath!) || ContainsPath(item.DestinationPath!, other.SourcePath))))
+        if (request.Kind == FileOperationKind.Compress && items.Any(item => items.Any(other => ContainsPath(other.SourcePath, item.DestinationPath!) || ContainsPath(item.DestinationPath!, other.SourcePath))))
             throw new ArgumentException("Archive source and destination trees overlap.");
         request = request with { Items = items };
         lock (_gate)

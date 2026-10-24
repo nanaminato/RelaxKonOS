@@ -1747,6 +1747,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         CompressEncryptedZipCommand.NotifyCanExecuteChanged();
         CompressEncryptedSevenZipCommand.NotifyCanExecuteChanged();
         ExtractCommand.NotifyCanExecuteChanged();
+        ExtractToCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>

@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Git;
 
 namespace RelaxKonOS.Client.Apps.Git;
@@ -63,7 +64,11 @@ public sealed partial class GitClientViewModel
         var reference = SelectedLogBranch?.Value;
         var graphTask = client.GetGraphAsync(repository, reference);
         var tagsTask = client.ListTagsAsync(repository);
-        await Task.WhenAll(graphTask, tagsTask);
+        try { await Task.WhenAll(graphTask, tagsTask); }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            throw new InvalidOperationException(LocalizedText.Get("git.log.metadata_unavailable"), ex);
+        }
         if (SelectedRepository?.Id != repository || SelectedLogBranch?.Value != reference || request != Volatile.Read(ref _graphRequestVersion)) return;
         GraphCommits.Clear(); foreach (var item in await graphTask) GraphCommits.Add(item);
         Tags.Clear(); foreach (var item in await tagsTask) Tags.Add(item);

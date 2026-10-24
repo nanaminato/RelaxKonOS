@@ -32,28 +32,41 @@ public sealed partial class ExplorerViewModel
     [RelayCommand(CanExecute = nameof(CanExtract))]
     private Task ExtractAsync() => SubmitArchiveAsync(true);
 
-    private async Task SubmitArchiveAsync(bool extract, FileArchiveFormat format = FileArchiveFormat.Zip, bool encrypt = false)
+    public Func<string, Task<string?>>? RequestExtractionFolderAsync { get; set; }
+
+    [RelayCommand(CanExecute = nameof(CanExtract))]
+    private Task ExtractToAsync() => SubmitArchiveAsync(true, chooseFolder: true);
+
+    private async Task SubmitArchiveAsync(bool extract, FileArchiveFormat format = FileArchiveFormat.Zip, bool encrypt = false, bool chooseFolder = false)
     {
         if (extract ? !CanExtract : !CanCompress) return;
         var selection = NormalizeBatchSelection(GetSelectedEntries()).ToArray();
         var directory = AddressbarPath!;
         var scope = FileListCacheScope?.Invoke();
         var extension = FileArchiveFormats.Extension(format);
-        var defaultName = extract ? FileArchiveFormats.Stem(selection[0].Name)
-            : (selection.Length == 1 ? selection[0].Name : "Archive") + extension;
+        var defaultName = (selection.Length == 1 ? selection[0].Name : "Archive") + extension;
         if (string.IsNullOrWhiteSpace(defaultName)) defaultName = "Archive";
-        var action = extract ? "extract" : "compress";
         _archivePromptActive = true;
         NotifySelectionCommands();
         try
         {
-            var name = await (RequestTextInputAsync?.Invoke(LocalizedText.Get("explorer.archive." + action),
-                LocalizedText.Get(extract ? "explorer.archive.extract_prompt" : "explorer.archive.compress_prompt"), defaultName,
-                LocalizedText.Get("explorer.archive." + action)) ?? Task.FromResult<string?>(null));
+            if (extract)
+            {
+                var target = chooseFolder
+                    ? await (RequestExtractionFolderAsync?.Invoke(directory) ?? Task.FromResult<string?>(null))
+                    : directory;
+                if (string.IsNullOrWhiteSpace(target) || _disposed || scope != FileListCacheScope?.Invoke()) return;
+                await SubmitOperationAsync(FileOperationKind.Extract,
+                    selection.Select(entry => new FileOperationItem(entry.Path, target)).ToArray());
+                return;
+            }
+            var name = await (RequestTextInputAsync?.Invoke(LocalizedText.Get("explorer.archive.compress"),
+                LocalizedText.Get("explorer.archive.compress_prompt"), defaultName,
+                LocalizedText.Get("explorer.archive.compress")) ?? Task.FromResult<string?>(null));
             if (string.IsNullOrWhiteSpace(name) || _disposed || scope != FileListCacheScope?.Invoke()) return;
             if (!ExplorerPath.IsValidName(name, directory) || name.Contains('\\') || name.Contains(':') || name.Any(char.IsControl))
                 throw new ArgumentException(LocalizedText.Get("explorer.archive.invalid_name"));
-            if (!extract && FileArchiveFormats.Detect(name) != format) name += extension;
+            if (FileArchiveFormats.Detect(name) != format) name += extension;
             var destination = ExplorerPath.Combine(directory, name);
             ArchiveCredentials? credentials = null;
             if (encrypt)
@@ -62,7 +75,7 @@ public sealed partial class ExplorerViewModel
                 if (password is null || _disposed || scope != FileListCacheScope?.Invoke()) return;
                 credentials = new(password); credentials.ValidateForCreation(format);
             }
-            await SubmitOperationAsync(extract ? FileOperationKind.Extract : FileOperationKind.Compress,
+            await SubmitOperationAsync(FileOperationKind.Compress,
                 selection.Select(entry => new FileOperationItem(entry.Path, destination)).ToArray(), credentials);
         }
         catch (OperationCanceledException) { }

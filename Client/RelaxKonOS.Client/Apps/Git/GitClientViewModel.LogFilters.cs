@@ -67,7 +67,7 @@ public sealed partial class GitClientViewModel
         try
         {
             LogBranchOptions.Clear();
-            LogBranchOptions.Add(new GitLogFilterOption(string.Empty, LocalizedText.Get("git.dock.all_branches")));
+            LogBranchOptions.Add(new GitLogFilterOption(string.Empty, LocalizedText.Get("git.log.all_values")));
             foreach (var branch in Branches.OrderBy(branch => branch.IsRemote).ThenBy(branch => branch.Name, StringComparer.OrdinalIgnoreCase))
                 LogBranchOptions.Add(new GitLogFilterOption(branch.Name, branch.Name));
             foreach (var tag in Tags.OrderBy(tag => tag.Name, StringComparer.OrdinalIgnoreCase)) LogBranchOptions.Add(new("refs/tags/" + tag.Name, tag.Name));
@@ -90,7 +90,7 @@ public sealed partial class GitClientViewModel
         try
         {
             LogAuthorOptions.Clear();
-            LogAuthorOptions.Add(new GitLogFilterOption(string.Empty, LocalizedText.Get("git.editor.author_filter")));
+            LogAuthorOptions.Add(new GitLogFilterOption(string.Empty, LocalizedText.Get("git.log.all_values")));
             foreach (var author in knownAuthors)
                 LogAuthorOptions.Add(new GitLogFilterOption(author, author));
             SelectedLogAuthor = LogAuthorOptions.FirstOrDefault(option => option.Value == selectedValue)

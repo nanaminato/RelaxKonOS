@@ -37,8 +37,23 @@ internal static class GitDockChecks
         var view = GitClientWorkspace.Create(vm, project);
         var host = new Window { Width = 1475, Height = 670, Content = view };
         host.Show(); Dispatcher.UIThread.RunJobs();
+        var commitStateChanges = 0;
+        var pushCommitStateChanges = 0;
+        vm.CommitCommand.CanExecuteChanged += (_, _) => commitStateChanges++;
+        vm.CommitAndPushCommand.CanExecuteChanged += (_, _) => pushCommitStateChanges++;
+        Check(!vm.CommitCommand.CanExecute(null) && !vm.CommitAndPushCommand.CanExecute(null), "Commit requires an open repository.");
         var repo = new GitRepositoryDto("dock", "Workspace", "/dock");
         vm.Repositories.Add(repo); await vm.OpenProjectCommand.ExecuteAsync(repo);
+        Check(vm.CommitCommand.CanExecute(null) && vm.CommitAndPushCommand.CanExecute(null),
+            "Opening a repository re-enables both commit commands.");
+        vm.IsBusy = true;
+        Check(!vm.CommitCommand.CanExecute(null) && !vm.CommitAndPushCommand.CanExecute(null),
+            "Both commit commands disable during repository operations.");
+        vm.IsBusy = false;
+        Check(vm.CommitCommand.CanExecute(null) && vm.CommitAndPushCommand.CanExecute(null),
+            "Both commit commands recover after a repository operation finishes.");
+        Check(commitStateChanges >= 3 && pushCommitStateChanges >= 3,
+            "Repository and busy changes notify the bound commit buttons to re-evaluate availability.");
         view.ToggleGitTool(); Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
         var primary = view.SelectedGitTab!;
         Check(primary.View is GitLogView && primary.Session == vm, "The primary log remains a real log view.");
