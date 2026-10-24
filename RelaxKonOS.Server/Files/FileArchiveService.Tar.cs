@@ -93,7 +93,7 @@ public static partial class FileArchiveService
                 await RejectLinksAsync(fs, target, ct);
                 var temporary = Path.Combine(Path.GetDirectoryName(target)!, $".entry.{Guid.NewGuid():N}.rkup");
                 await fs.CreateFile(temporary, ct);
-                await using (var output = new BufferedStream(new AppendStream(fs, temporary, ct, MaximumEntryBytes), 131072))
+                await using (var output = new BufferedStream(new AppendStream(fs, temporary, ct, MaximumEntryBytes), WriteBufferBytes))
                 {
                     if (entry.DataStream is { } content) await CopyAsync(content, output, entry.Length, bytes => report(name, bytes, entry.Length, false), ct);
                     else if (entry.Length != 0) throw new InvalidDataException("TAR content is missing.");

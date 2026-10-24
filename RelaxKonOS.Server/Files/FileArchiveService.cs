@@ -24,6 +24,8 @@ public static partial class FileArchiveService
     public const long MaximumTotalBytes = 10L * 1024 * 1024 * 1024;
     public const long MaximumArchiveBytes = 2L * 1024 * 1024 * 1024;
     public const long MaximumMetadataBytes = 64L * 1024 * 1024;
+    // Amortize identity Helper startup and durable append costs without exceeding its payload limit.
+    private const int WriteBufferBytes = 1024 * 1024;
     private static readonly StringComparer Names = StringComparer.OrdinalIgnoreCase;
 
     public static async Task ExecuteAsync(ArchiveFileSystem fs, FileOperationKind kind,
@@ -75,7 +77,7 @@ public static partial class FileArchiveService
                 }
                 foreach (var source in sources) await Add(source, Path.GetFileName(source), 0);
                 await fs.CreateFile(staging, ct); created = true;
-                await using (var output = new BufferedStream(new AppendStream(fs, staging, ct, MaximumArchiveBytes), 131072))
+                await using (var output = new BufferedStream(new AppendStream(fs, staging, ct, MaximumArchiveBytes), WriteBufferBytes))
                 {
                     if (format == FileArchiveFormat.SevenZip || credentials is not null)
                         await SevenZipArchiveProvider.CreateAsync(format, credentials, async (root, token) =>
@@ -245,9 +247,13 @@ public static partial class FileArchiveService
     {
         for (var current = path; current is not null; current = Path.GetDirectoryName(current))
         {
-            var info = await fs.Info(current, ct);
-            if (info is null) continue;
-            var properties = await fs.Properties(current, ct) ?? throw new IOException("Cannot inspect archive path.");
+            // Properties already includes attributes and existence. Do not issue a second Helper
+            // request for Info at every ancestor. Only explicit not-found results may be skipped.
+            FilePropertiesDto? properties;
+            try { properties = await fs.Properties(current, ct); }
+            catch (FileNotFoundException) { continue; }
+            catch (DirectoryNotFoundException) { continue; }
+            if (properties is null) continue;
             if (!Enum.TryParse<FileAttributes>(properties.Attributes, out var attributes)) throw new IOException("Invalid archive path metadata.");
             if ((attributes & (FileAttributes.ReparsePoint | FileAttributes.Device)) != 0)
                 throw new NotSupportedException("Links and special files are not supported by archive jobs.");
@@ -292,7 +298,7 @@ public static partial class FileArchiveService
             token.ThrowIfCancellationRequested(); ct.ThrowIfCancellationRequested();
             while (!buffer.IsEmpty)
             {
-                var chunk = buffer[..Math.Min(buffer.Length, 131072)];
+                var chunk = buffer[..Math.Min(buffer.Length, WriteBufferBytes)];
                 if (position > maximumBytes - chunk.Length) throw new InvalidDataException("Archive output size limit exceeded.");
                 var length = await fs.Append(path, position, chunk, token);
                 if (length != position + chunk.Length) throw new IOException("Archive append length mismatch.");

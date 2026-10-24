@@ -309,7 +309,8 @@ public sealed partial class ExplorerOperationCard(ExplorerOperationCenter center
     public bool HasDestination => !string.IsNullOrWhiteSpace(DestinationLocation);
     public bool HasMeasuredProgress => Snapshot.CurrentTotalBytes > 0 && !Missing;
     public string ProgressText => HasMeasuredProgress && Snapshot.State == FileOperationState.Running
-        ? LocalizedText.Format("explorer.operations.percent_complete", (int)Math.Floor(Progress)) : StateText;
+        ? LocalizedText.Format(IsLocalTransfer ? "explorer.operations.percent_complete"
+            : "explorer.operations.current_file_percent", (int)Math.Floor(Progress)) : StateText;
     public string ProgressScope => !HasMeasuredProgress ? string.Empty : LocalizedText.Get(IsLocalTransfer
         ? "explorer.operations.entire_operation" : "explorer.operations.current_file_short");
     public string Summary => LocalizedText.Format("explorer.operations.processing_items", Title, Snapshot.Items.Count);

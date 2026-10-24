@@ -179,6 +179,7 @@
         "explorer.batch.details": "操作の詳細",
         "explorer.batch.not_started": "未実行",
         "explorer.operations.percent_complete": "{0}% 完了",
+        "explorer.operations.current_file_percent": "現在のファイル {0}%",
         "explorer.operations.entire_operation": "操作全体",
         "explorer.operations.current_file_short": "現在のファイル",
         "explorer.operations.items_processed": "{0} 項目を処理 · {1} 項目をスキップ",

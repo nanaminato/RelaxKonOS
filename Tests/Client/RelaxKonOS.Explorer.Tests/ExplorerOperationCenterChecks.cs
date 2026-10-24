@@ -27,6 +27,10 @@ public static class ExplorerOperationCenterChecks
             return downloadEnd.Task.WaitAsync(ct);
         });
         var download = center.Jobs.Single();
+        var archiveCard = new ExplorerOperationCard(center, download.Snapshot with
+        { Kind = FileOperationKind.Extract, State = FileOperationState.Running, CurrentBytes = 100, CurrentTotalBytes = 100 });
+        check(archiveCard.ProgressText == RelaxKonOS.Client.Localization.LocalizedText.Format("explorer.operations.current_file_percent", 100),
+            "Archive file completion is labelled as current-file progress rather than whole-job completion");
         downloadProgress!("/source/download.bin", 50, 0);
         check(download.IsDownload && download.IsLocalTransfer && download.Progress == 50 && download.CanCancel,
             "Download opens the operation window with measured bytes and cancellation");

@@ -50,7 +50,7 @@ public static partial class FileArchiveService
                 var temporary = Path.Combine(Path.GetDirectoryName(target)!, $".entry.{Guid.NewGuid():N}.rkup");
                 await fs.CreateFile(temporary, ct);
                 await using (var output = new BufferedStream(new AppendStream(fs, temporary, ct, entry.Size,
-                    bytes => report(entry.Name, bytes, entry.Size, false)), 131072))
+                    bytes => report(entry.Name, bytes, entry.Size, false)), WriteBufferBytes))
                     await archive.CopyEntryAsync(entry.Name, output, ct);
                 await fs.Move(temporary, target, ct);
             }

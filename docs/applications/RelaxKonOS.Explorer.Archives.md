@@ -39,6 +39,10 @@
 
 ## 验证
 
+性能：路径安全检查逐级直接读取属性，避免对每个祖先重复发送 Info 和 Properties；不缓存路径安全结论，以保留发布前重新检查。ZIP、TAR 和 provider 解压及压缩输出采用 1 MiB 写入缓冲和追加分块，减少身份 Helper 调用与 Linux 持久化刷盘次数。暂存目录及条目发布/回滚策略保留。运行中的服务端进度明确显示“当前文件百分比”，不代表整体任务已完成。Linux 仍使用逐请求 Helper，尚未实现单次解压会话或批量元数据协议；真实 Linux 性能需部署测量。
+
+2026-10-24 本地验证：独立归档入口运行现有归档检查，53 项基础/身份任务、39 项 provider、27 项加密及 20 项 TAR 检查通过；新增请求计数验证 2 MiB + 17 字节文件仅需 3 次追加（原分块需 17 次），内容一致，祖先检查无重复 Info 请求。Explorer 419 项检查与 5035 个三语键校验通过。Server 编译通过；完整 Server.Tests 构建被既有 NetworkProxyTunnelChecks 对已删除 Mihomo InstallManagedAsync 的引用阻塞，因此归档检查以临时独立工程引用相同测试源码执行。
+
 ```text
 dotnet build RelaxKonOS.Server.Tests -m:1
 dotnet run --project RelaxKonOS.Server.Tests --no-build -- --archives-only

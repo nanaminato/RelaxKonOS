@@ -140,6 +140,23 @@ public static class FileArchiveChecks
             && transport.Requests.Any(request => request.Operation == UserExecutionOperationKind.FileAppendStaging), "Every archive I/O request keeps the closed identity-bound contract");
         var extract = jobs.Start("owner", new ClaimsPrincipal(new ClaimsIdentity()), new(Guid.NewGuid(), FileOperationKind.Extract, [new(destination, Path.Combine(root, "job-result"))]));
         check((await Wait(extract.Id)).State == FileOperationState.Completed && File.Exists(Path.Combine(root, "job-result", "中文.txt")), "Extraction job uses identity-bound seekable reads and staged writes");
+        // Count real protocol requests, rather than timing a fake Helper without process startup.
+        var bulkBytes = new byte[2 * 1024 * 1024 + 17];
+        new Random(42).NextBytes(bulkBytes);
+        var bulkArchive = Path.Combine(root, "bulk.zip");
+        using (var zip = ZipFile.Open(bulkArchive, ZipArchiveMode.Create))
+        { using var content = zip.CreateEntry("bulk.bin", CompressionLevel.NoCompression).Open(); content.Write(bulkBytes); }
+        var requestStart = transport.Requests.Count;
+        var bulkOutput = Path.Combine(root, "bulk-output");
+        var bulkJob = jobs.Start("owner", new ClaimsPrincipal(), new(Guid.NewGuid(), FileOperationKind.Extract, [new(bulkArchive, bulkOutput)]));
+        check((await Wait(bulkJob.Id)).State == FileOperationState.Completed
+            && File.ReadAllBytes(Path.Combine(bulkOutput, "bulk.bin")).SequenceEqual(bulkBytes), "Batched identity extraction preserves multi-chunk contents");
+        var bulkRequests = transport.Requests.Skip(requestStart).ToArray();
+        check(bulkRequests.Count(r => r.Operation == UserExecutionOperationKind.FileAppendStaging) == 3,
+            "Two MiB plus a tail requires three durable Helper appends instead of seventeen");
+        check(bulkRequests.Count(r => r.Operation == UserExecutionOperationKind.FileGetInfo) <= 4
+            && bulkRequests.Any(r => r.Operation == UserExecutionOperationKind.FileGetProperties),
+            "Ancestor safety checks use properties without duplicate info requests");
         var conflict = jobs.Start("owner", new ClaimsPrincipal(new ClaimsIdentity()), request with { RequestId = Guid.NewGuid() });
         var waiting = await Wait(conflict.Id, dto => dto.State == FileOperationState.WaitingForDecision || dto.IsTerminal);
         check(waiting.Issue?.Choices.SequenceEqual(new[] { FileOperationDecision.KeepBoth, FileOperationDecision.Skip }) == true, "Archive conflicts never offer destructive replace");
@@ -201,7 +218,7 @@ public static class FileArchiveChecks
         check(deniedState.Issue?.Code == "access-denied" && !File.Exists(deniedPath), "Permission denial cannot fall back to service-account reads");
         jobs.Cancel("owner", denied.Id);
         check((await Wait(denied.Id)).State == FileOperationState.Cancelled && !File.Exists(deniedPath), "Waiting archive jobs remain cancellable");
-        check(transport.Requests.Where(r => r.Operation == UserExecutionOperationKind.FileAppendStaging).All(r => r.ExpectedBytes <= 131072)
+        check(transport.Requests.Where(r => r.Operation == UserExecutionOperationKind.FileAppendStaging).All(r => r.ExpectedBytes <= 1024 * 1024)
             && transport.Requests.Where(r => r.Operation == UserExecutionOperationKind.FileRead).All(r => r.ExpectedBytes <= UserExecutionFileReads.MaximumChunkBytes), "Archive wire payloads stay within bounded chunk limits");
     }
 }
