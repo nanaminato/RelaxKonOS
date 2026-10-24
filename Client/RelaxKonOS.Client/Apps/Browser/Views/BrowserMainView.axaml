@@ -29,15 +29,25 @@
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="CornerRadius" Value="10" />
         </Style>
-        <Style Selector="Button.browser-entry:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
-        </Style>
         <Style Selector="ListBox.browser-collection ListBoxItem /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Padding" Value="2" />
             <Setter Property="CornerRadius" Value="10" />
         </Style>
         <Style Selector="ListBox.browser-collection ListBoxItem">
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+        <!-- The list item paints the entire row; child buttons must not split its highlight. -->
+        <Style Selector="ListBox.browser-collection ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
+        </Style>
+        <Style Selector="ListBox.browser-collection ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SelectionBackgroundBrush}" />
+        </Style>
+        <Style Selector="ListBox.browser-collection Button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="ListBox.browser-collection Button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
         </Style>
     </UserControl.Styles>
 

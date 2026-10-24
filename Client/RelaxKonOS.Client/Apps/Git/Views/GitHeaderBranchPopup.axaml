@@ -9,6 +9,11 @@
   <Style Selector="Button.branch-action"><Setter Property="HorizontalAlignment" Value="Stretch"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="9,4"/><Setter Property="MinHeight" Value="25"/><Setter Property="FontSize" Value="12"/></Style>
   <Style Selector="Button.branch-action:pointerover"><Setter Property="Background" Value="{DynamicResource AccentMutedBrush}"/></Style>
   <Style Selector="TreeViewItem"><Setter Property="IsExpanded" Value="True"/><Setter Property="MinHeight" Value="25"/><Setter Property="FontSize" Value="12"/><Setter Property="Padding" Value="0"/></Style>
+  <!-- The tree owns the full-row highlight, including the indentation and icon. -->
+  <Style Selector="TreeViewItem:pointerover /template/ Border#PART_LayoutRoot"><Setter Property="Background" Value="{DynamicResource AccentMutedBrush}"/></Style>
+  <Style Selector="TreeViewItem:selected /template/ Border#PART_LayoutRoot"><Setter Property="Background" Value="{DynamicResource AccentMutedBrush}"/></Style>
+  <Style Selector="Button.branch-entry:pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="Transparent"/></Style>
+  <Style Selector="Button.branch-entry:pressed /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="Transparent"/></Style>
  </UserControl.Styles>
  <Grid RowDefinitions="Auto,Auto,Auto,Auto" MaxHeight="620">
   <Grid ColumnDefinitions="*,Auto" Margin="5,4,5,8">
@@ -33,7 +38,7 @@
       <Grid ColumnDefinitions="17,*" MinHeight="25">
        <ui:WorkspaceIcon Kind="{Binding Icon}" Width="14" Height="14" Foreground="{DynamicResource TextSecondaryBrush}"/>
        <TextBlock Grid.Column="1" Text="{Binding Name}" IsVisible="{Binding IsGroup}" VerticalAlignment="Center"/>
-       <Button Grid.Column="1" Classes="branch-action" IsVisible="{Binding !IsGroup}" Click="Branch_Click" Padding="3,2" Tag="{Binding}">
+       <Button Grid.Column="1" Classes="branch-action branch-entry" IsVisible="{Binding !IsGroup}" Click="Branch_Click" Padding="3,2" Tag="{Binding}">
         <Grid ColumnDefinitions="*,Auto,12" ColumnSpacing="8"><TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/><TextBlock Grid.Column="1" Text="{Binding Tracking}" Foreground="{DynamicResource TextSecondaryBrush}" MaxWidth="145" TextTrimming="CharacterEllipsis"/><TextBlock Grid.Column="2" Text="›" Foreground="{DynamicResource TextSecondaryBrush}"/></Grid>
        </Button>
       </Grid>
