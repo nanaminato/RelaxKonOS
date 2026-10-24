@@ -26,7 +26,7 @@ Android 的设计、功能、支持范围和发布要求统一维护在 [Android
 - [代理管理器实现说明（英文）](./applications/RelaxKonOS.ProxyManager.Discovery.en.md)
 - [代理管理器设计](./applications/RelaxKonOS.ProxyManager.Design.md)
 - [代理服务端应用设计（sing-box，首版实现与验收边界）](./applications/RelaxKonOS.ProxyServer.Design.md)
-- [组件中心（设计中：统一安装、更新、卸载、版本与来源）](./platform/RelaxKonOS.ComponentCenter.Design.md)
+- [组件中心（桌面首批接入中：统一安装、更新、卸载、版本与来源）](./platform/RelaxKonOS.ComponentCenter.Design.md)
 - [任务编排、冻结计划与统一审批（设计中）](./platform/RelaxKonOS.TaskOrchestration.Design.md)
 - [内置应用受管运行时、版本目录与发布源（设计中，含补齐清单）](./platform/RelaxKonOS.ManagedRuntimes.Design.md)
 - [代理管理运维指南](./proxy/)

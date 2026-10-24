@@ -36,7 +36,7 @@ internal static class RemoteClockChecks
             var windows = new RelaxKonOS.WindowManager.WindowManager();
             return new(windows, new ApplicationManager(windows, services), settings, localization,
                 session, new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)), () => { },
-                null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, time);
+                null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, time, null);
         }
         var expected = TimeZoneInfo.ConvertTime(observed, TimeZoneInfo.FindSystemTimeZoneById("Pacific/Kiritimati"));
         var vm = Create();

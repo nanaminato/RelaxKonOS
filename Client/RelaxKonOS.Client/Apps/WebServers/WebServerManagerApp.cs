@@ -80,7 +80,7 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
         viewModel.OpenFileBrowserAtPathAsync = path =>
         {
             var activation = context.Activations.Activate(RelaxKonOSActivationUris.ExplorerPath(path));
-            if (!activation.Succeeded && !activation.IsPendingUserChoice)
+            if (!activation.IsAccepted)
                 viewModel.SiteStatusText = LocalizedText.Get("webservers.site.file_browser_failed");
             return Task.CompletedTask;
         };

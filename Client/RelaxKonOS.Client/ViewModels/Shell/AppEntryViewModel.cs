@@ -1,3 +1,5 @@
+using RelaxKonOS.Client.Apps.ComponentCenter;
+using RelaxKonOS.Client.Localization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Core.Applications;
@@ -33,6 +35,21 @@ public partial class AppEntryViewModel : ObservableObject, IDisposable
     public IImage? IconImage { get; }
     public bool HasIconImage => IconImage is not null;
     public string? Description { get; }
+    private ApplicationAvailability? _availability;
+    public bool HasComponentDependency => ComponentCatalog.Components.Any(component => component.Applications.Contains(Id.Value));
+    public bool IsReady => !HasComponentDependency || _availability?.CanOpen == true;
+    public bool HasAvailabilityBadge => HasComponentDependency;
+    public string? AvailabilityState => HasComponentDependency ? (_availability?.State ?? ComponentAvailabilityKind.Unknown).ToString() : null;
+    public LocalizedStatus AvailabilityText => HasComponentDependency
+        ? LocalizedStatus.Key("component_center.badge." + (_availability?.State ?? ComponentAvailabilityKind.Unknown))
+        : LocalizedStatus.Literal("");
+    public void RefreshAvailability(ApplicationAvailability? availability)
+    {
+        if (_disposed) return;
+        _availability = availability;
+        OnPropertyChanged(nameof(IsReady)); OnPropertyChanged(nameof(HasAvailabilityBadge));
+        OnPropertyChanged(nameof(AvailabilityText)); OnPropertyChanged(nameof(AvailabilityState));
+    }
     [ObservableProperty] private bool _isDesktopSelected;
 
     internal bool Matches(ApplicationInfo info) => !_disposed && Id == info.Id && DisplayName == info.DisplayName

@@ -44,6 +44,8 @@
                     </ScrollViewer>
                 </StackPanel>
 
+                <CheckBox x:Name="ReadyAppsToggle" Content="{loc:Loc component_center.ready_only}" />
+                <TextBlock Text="{loc:Loc component_center.ready_only_hint}" TextWrapping="Wrap" Opacity="0.8" />
                 <Separator Margin="0,4,0,0" />
 
                 <TextBlock Text="{loc:Loc shell.desktop_display.server_desktop_files}"

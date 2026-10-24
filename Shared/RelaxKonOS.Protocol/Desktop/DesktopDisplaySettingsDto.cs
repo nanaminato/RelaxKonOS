@@ -26,6 +26,10 @@ public sealed record DesktopDisplaySettingsDto
     [JsonPropertyName("pinnedAppIds")]
     public List<string> PinnedAppIds { get; set; } = [];
 
+    /// <summary>Show only launch-ready application entries; settings and recovery remain discoverable.</summary>
+    [JsonPropertyName("onlyReadyApplications")]
+    public bool OnlyReadyApplications { get; set; } = false;
+
     /// <summary>是否显示服务器桌面一般文件（非快捷方式，默认 true）。</summary>
     [property: JsonPropertyName("showServerDesktopFiles")]
     public bool ShowServerDesktopFiles { get; set; } = true;
@@ -55,6 +59,7 @@ public sealed record DesktopDisplaySettingsDto
     public static DesktopDisplaySettingsDto Default => new()
     {
         ShowBuiltInApps = true,
+        OnlyReadyApplications = false,
         VisibleAppIds = [],
         ShowServerDesktopFiles = true,
         ShowServerDesktopShortcuts = false,

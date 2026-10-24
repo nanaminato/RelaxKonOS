@@ -1,0 +1,88 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:loc="using:RelaxKonOS.Client.Localization"
+ xmlns:views="using:RelaxKonOS.Client.Apps.ProxyServer.Views"
+ xmlns:vm="using:RelaxKonOS.Client.Apps.ComponentCenter"
+ x:Class="RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterWorkspace"
+ x:DataType="vm:ComponentCenterViewModel" Classes="builtin-app"
+ Background="{DynamicResource AppBackgroundBrush}">
+ <Grid RowDefinitions="Auto,*,Auto">
+  <Border Padding="20,14" BorderThickness="0,0,0,1" BorderBrush="{DynamicResource BorderSubtleBrush}">
+   <Grid ColumnDefinitions="*,Auto">
+    <StackPanel Spacing="4">
+     <TextBlock Text="{loc:Loc application.relaxkonos.component-center.display_name}" FontSize="20" FontWeight="SemiBold" />
+     <TextBlock Text="{Binding HostIdentity}" TextWrapping="Wrap" />
+     <StackPanel Orientation="Horizontal" Spacing="12">
+      <TextBlock Text="{Binding ConnectionText}" />
+      <TextBlock Text="{Binding Runtime.TargetText}" Foreground="{DynamicResource TextSecondaryBrush}" />
+     </StackPanel>
+     <TextBlock Text="{Binding Runtime.OutcomeText}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+    </StackPanel>
+    <Button Grid.Column="1" Content="{loc:Loc proxy_server.refresh}" Command="{Binding RefreshCommand}" IsEnabled="{Binding Runtime.CanRefreshSources}" VerticalAlignment="Top" />
+   </Grid>
+  </Border>
+  <Grid Grid.Row="1" ColumnDefinitions="260,*" x:Name="WorkspaceBody">
+   <Border Classes="app-sidebar" Padding="12">
+    <Grid RowDefinitions="Auto,Auto,Auto,*" RowSpacing="8">
+     <TextBox x:Name="Search" PlaceholderText="{loc:Loc component_center.search}" Text="{Binding Search, Mode=TwoWay}" />
+     <ListBox Grid.Row="1" x:Name="PageNavigation" ItemsSource="{Binding Pages}" SelectedItem="{Binding SelectedNavigation, Mode=TwoWay}">
+      <ListBox.ItemTemplate><DataTemplate x:DataType="vm:ComponentCenterNavigationItem"><TextBlock Text="{Binding Label}" /></DataTemplate></ListBox.ItemTemplate>
+     </ListBox>
+     <TextBlock Grid.Row="2" Text="{loc:Loc component_center.selection_hint}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+     <TreeView Grid.Row="3" x:Name="ComponentTree" ItemsSource="{Binding VisibleRoots}" SelectedItem="{Binding SelectedNode, Mode=TwoWay}">
+      <TreeView.Styles><Style Selector="TreeViewItem"><Setter Property="IsExpanded" Value="True" /></Style></TreeView.Styles>
+      <TreeView.ItemTemplate><TreeDataTemplate x:DataType="vm:ComponentTreeNode" ItemsSource="{Binding VisibleChildren}">
+       <Grid ColumnDefinitions="Auto,*" ColumnSpacing="4">
+        <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}" IsThreeState="{Binding IsGroup}" IsEnabled="{Binding CanSelect}" VerticalAlignment="Top"
+                  AutomationProperties.Name="{Binding Label}" />
+        <StackPanel Grid.Column="1" Spacing="2">
+         <TextBlock Text="{Binding Label}" TextWrapping="Wrap" MaxWidth="170" />
+         <TextBlock Text="{Binding Requirement}" IsVisible="{Binding ShowRequirement}" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" />
+         <TextBlock Text="{Binding Status}" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" />
+         <TextBlock Text="{Binding Version}" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" />
+        </StackPanel>
+       </Grid>
+      </TreeDataTemplate></TreeView.ItemTemplate>
+     </TreeView>
+    </Grid>
+   </Border>
+   <ScrollViewer Grid.Column="1" Padding="20,16" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Spacing="14">
+     <TextBlock Text="{Binding SelectedTitle}" FontSize="18" FontWeight="SemiBold" />
+     <TextBlock Text="{Binding EmptyMessage}" IsVisible="{Binding !HasResults}" TextWrapping="Wrap" />
+     <Border IsVisible="{Binding HasWorkloadDetails}" Classes="app-panel" Padding="18">
+      <StackPanel Spacing="12">
+       <TextBlock Text="{loc:Loc component_center.workload_hint}" TextWrapping="Wrap" />
+       <TextBlock Text="{loc:Loc component_center.required}" FontWeight="SemiBold" />
+       <TextBlock Text="{Binding WorkloadRequirements}" TextWrapping="Wrap" />
+       <TextBlock Text="{loc:Loc component_center.optional}" FontWeight="SemiBold" />
+       <TextBlock Text="{Binding WorkloadOptional}" TextWrapping="Wrap" />
+       <Button Content="{loc:Loc component_center.stage_workload}" Command="{Binding SelectWorkloadCommand}" HorizontalAlignment="Left" />
+      </StackPanel>
+     </Border>
+     <Button Content="{loc:Loc application.relaxkonos.proxy-server.display_name}" Click="OpenApplication_Click" IsVisible="{Binding HasRuntimeDetails}" HorizontalAlignment="Left" />
+     <StackPanel IsVisible="{Binding HasRuntimeDetails}"><views:ProxyServerRuntimeView x:Name="RuntimeView" DataContext="{Binding Runtime}" /></StackPanel>
+    </StackPanel>
+   </ScrollViewer>
+  </Grid>
+  <Border x:Name="DraftFooter" Grid.Row="2" Padding="16,12" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource BorderSubtleBrush}">
+   <StackPanel Spacing="8">
+    <TextBlock Text="{Binding DraftSummary}" FontWeight="SemiBold" />
+    <TextBlock Text="{Binding Notice}" TextWrapping="Wrap" Foreground="{DynamicResource DangerBrush}" />
+    <ItemsControl ItemsSource="{Binding Drafts}" MaxHeight="130">
+     <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:ComponentDraftItem">
+      <DockPanel Margin="0,2">
+       <Button DockPanel.Dock="Right" Content="{loc:Loc component_center.remove}" Click="RemoveDraft_Click" />
+       <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" VerticalAlignment="Center" />
+      </DockPanel>
+     </DataTemplate></ItemsControl.ItemTemplate>
+    </ItemsControl>
+    <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="8">
+     <Button Content="{loc:Loc component_center.preview_title}" Command="{Binding PreviewCommand}" IsEnabled="{Binding CanPreview}" Classes="primary" />
+     <Button Grid.Column="1" Content="{loc:Loc component_center.discard}" Command="{Binding DiscardCommand}" IsEnabled="{Binding HasDrafts}" />
+     <TextBlock Grid.Column="2" Text="{loc:Loc component_center.draft_hint}" TextWrapping="Wrap" VerticalAlignment="Center" />
+    </Grid>
+   </StackPanel>
+  </Border>
+ </Grid>
+</UserControl>

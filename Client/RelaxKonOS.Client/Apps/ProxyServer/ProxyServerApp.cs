@@ -28,27 +28,20 @@ public sealed class ProxyServerApp : RemoteApplicationBase
         var client = (IProxyServerClient?)context.Services.GetService(typeof(IProxyServerClient));
         if (session?.State != AuthSessionState.Authenticated || client is null) return;
         var vm = new ProxyServerViewModel(client);
-        // The runtime page stays unavailable on hosts that cannot execute privileged operations.
-        var runtime = context.Services.GetService(typeof(IRuntimeCatalogClient)) is IRuntimeCatalogClient catalog
-            ? new ProxyServerRuntimeViewModel(catalog) : null;
-        var view = runtime is null ? new ProxyServerWorkspace(vm) : new ProxyServerWorkspace(vm, runtime);
+        var view = new ProxyServerWorkspace(vm);
+        view.OpenComponentCenter = () =>
+        {
+            if (session.State == AuthSessionState.Authenticated && session.ServiceId is { } host)
+                context.Activations.Activate(RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterNavigation.Component(
+                    host, Manifest.Id.Value, "sing-box"));
+        };
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.proxy-server.display_name"), view,
             new Rect(80, 45, 1060, 800), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
         RelaxKonOS.WindowManager.ModalDialog<bool>? activeEditor = null;
         view.ShowEditorAsync = (title, editor) => RelaxKonOS.Client.Controls.WorkspaceEditorDialogView.PresentAsync(context, window, title, editor, () => vm.IsBusy, active => activeEditor = active);
-        view.SetRuntimeEditor((title, editor) => RelaxKonOS.Client.Controls.WorkspaceEditorDialogView.PresentAsync(context, window, title, editor, () => runtime?.IsBusy == true, active => activeEditor = active));
 
         vm.ConfirmAsync = (title, message) => ConfirmAsync(title.Resolve(), message.Resolve());
-        if (runtime is not null)
-        {
-            runtime.ConfirmAsync = (title, message) => ConfirmAsync(title.Resolve(), message.Resolve());
-            // Installation, removal and the recovery entry all need the same structured elevation grant.
-            runtime.PasswordPromptAsync = () => ShowOwnedAsync<string?>(
-                LocalizedText.Get("installation.elevation_title"),
-                dialog => new FileServicesPasswordDialogView(dialog, LocalizedText.Get("installation.elevation_message")),
-                new Size(460, 230));
-        }
         window.CanCloseAsync = () => vm.IsBusy || vm.HasUnsavedChanges
             ? ConfirmAsync(LocalizedText.Get("common.discard_title"), LocalizedText.Get("proxy_server.close_warning"))
             : Task.FromResult(true);
@@ -59,7 +52,6 @@ public sealed class ProxyServerApp : RemoteApplicationBase
                 Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                 {
                     vm.InvalidateSession();
-                    runtime?.InvalidateSession();
                 });
         };
         session.StateChanged += sessionChanged;
@@ -69,7 +61,6 @@ public sealed class ProxyServerApp : RemoteApplicationBase
             if (!ReferenceEquals(current, window)) return;
             context.WindowManager.WindowClosed -= closed; session.StateChanged -= sessionChanged;
             vm.Dispose();
-            runtime?.Dispose();
         };
         context.WindowManager.WindowClosed += closed;
         _ = InitializeAsync();
@@ -85,7 +76,6 @@ public sealed class ProxyServerApp : RemoteApplicationBase
             if (!controller || !ReferenceEquals(login, session.CurrentSession)) return;
             vm.CanManage = await PermissionAsync(AppPermissions.ServerProxyManage);
             vm.CanExport = await PermissionAsync(AppPermissions.ServerProxyServerExport);
-            if (runtime is not null) runtime.CanManage = vm.CanManage;
             if (vm.SelectedCredential is null && vm.Credentials.Count > 0) vm.SelectedCredential = vm.Credentials[0];
         }
         async Task<bool> PermissionAsync(string permission)

@@ -92,6 +92,7 @@ public static class WorkspacePreferencesValidator
         var normalizedDesktopDisplay = new DesktopDisplaySettingsDto
         {
             ShowBuiltInApps = desktopDisplay.ShowBuiltInApps,
+            OnlyReadyApplications = desktopDisplay.OnlyReadyApplications,
             VisibleAppIds = normalizedVisibleAppIds,
             PinnedAppIds = normalizedPins,
             ShowServerDesktopFiles = desktopDisplay.ShowServerDesktopFiles,

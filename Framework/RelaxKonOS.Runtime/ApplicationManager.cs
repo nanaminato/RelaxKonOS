@@ -13,6 +13,7 @@ public sealed class ApplicationManager : IAppActivationService
 {
     private readonly Dictionary<AppId, IRemoteApplication> _apps = new();
     private readonly HashSet<AppId> _builtInApps = [];
+    private readonly Dictionary<AppId, Action> _pendingActivations = [];
     private readonly IWindowManager _windowManager;
     private readonly IServiceProvider _services;
 
@@ -71,19 +72,7 @@ public sealed class ApplicationManager : IAppActivationService
             || !app.Manifest.SupportsTextFiles)
             return false;
 
-        if (!EnsureCompatible(app.Manifest))
-            return false;
-        var existing = FindExistingPrimaryWindow(id);
-        if (existing is not null && app.Manifest.InstancePolicy == ApplicationInstancePolicy.SingleWindow)
-        {
-            _windowManager.Restore(existing);
-            _windowManager.Focus(existing);
-            RequestUndecidedPermissions(app.Manifest.Id);
-            return true;
-        }
-        fileOpener.OpenFile(new AppContext(id, _windowManager, _services, app.Manifest), path);
-        RequestUndecidedPermissions(app.Manifest.Id);
-        return true;
+        return Accepted(GuardActivation(app, () => OpenFileCore(app, fileOpener, path)));
     }
 
     /// <summary>Whether the registered application explicitly accepts the supplied file path.</summary>
@@ -129,38 +118,37 @@ public sealed class ApplicationManager : IAppActivationService
         (_services.GetService(typeof(IApplicationCompatibilityEvaluator)) as IApplicationCompatibilityEvaluator)
             ?.Evaluate(manifest) ?? ApplicationCompatibilityResult.Compatible;
 
-    /// <summary>Launch the application with the given id (no-op if not registered).</summary>
+    /// <summary>Accept a launch request, checking current prerequisites before opening or reusing its window.</summary>
     public bool Launch(AppId id)
     {
         if (!_apps.TryGetValue(id, out var app))
             return false;
 
-        return ActivateApplication(app, null);
+        return Accepted(ActivateApplication(app, null));
     }
 
     /// <summary>Open a file in a registered file-opening application.</summary>
-    public bool OpenFile(AppId id, string path)
+    public bool OpenFile(AppId id, string path) => Accepted(OpenFileResult(id, path));
+
+    private AppActivationResult OpenFileResult(AppId id, string path)
     {
         if (!_apps.TryGetValue(id, out var app) || app is not IFileOpenApplication fileOpener
             || !app.Manifest.SupportsFile(path))
-            return false;
+            return new(AppActivationStatus.Unavailable, id);
 
-        if (!EnsureCompatible(app.Manifest))
-            return false;
-        var existing = FindExistingPrimaryWindow(id);
+        return GuardActivation(app, () => OpenFileCore(app, fileOpener, path));
+    }
+
+    private void OpenFileCore(IRemoteApplication app, IFileOpenApplication fileOpener, string path)
+    {
+        var existing = FindExistingPrimaryWindow(app.Manifest.Id);
         if (existing is not null && app.Manifest.InstancePolicy == ApplicationInstancePolicy.SingleWindow)
         {
-            // A future single-window file application may additionally implement an activation
-            // handler and route its file reference into a tab. Until then, preserving the
-            // single-window guarantee is safer than silently creating another instance.
             _windowManager.Restore(existing);
             _windowManager.Focus(existing);
-            RequestUndecidedPermissions(app.Manifest.Id);
-            return true;
         }
-        fileOpener.OpenFile(new AppContext(id, _windowManager, _services, app.Manifest), path);
+        else fileOpener.OpenFile(new AppContext(app.Manifest.Id, _windowManager, _services, app.Manifest), path);
         RequestUndecidedPermissions(app.Manifest.Id);
-        return true;
     }
 
     /// <summary>
@@ -177,12 +165,14 @@ public sealed class ApplicationManager : IAppActivationService
             .Where(app => app is IOpenTerminalApplication)
             .OrderBy(app => app.Manifest.DisplayName)
             .FirstOrDefault();
-        if (terminal is not IOpenTerminalApplication terminalOpener || !EnsureCompatible(terminal.Manifest))
+        if (terminal is not IOpenTerminalApplication terminalOpener)
             return false;
 
-        terminalOpener.OpenTerminal(new AppContext(terminal.Manifest.Id, _windowManager, _services, terminal.Manifest), workingDirectory);
-        RequestUndecidedPermissions(terminal.Manifest.Id);
-        return true;
+        return Accepted(GuardActivation(terminal, () =>
+        {
+            terminalOpener.OpenTerminal(new AppContext(terminal.Manifest.Id, _windowManager, _services, terminal.Manifest), workingDirectory);
+            RequestUndecidedPermissions(terminal.Manifest.Id);
+        }));
     }
 
     /// <summary>
@@ -225,9 +215,7 @@ public sealed class ApplicationManager : IAppActivationService
         var application = matches[0];
         var activated = ActivateApplication(application, request);
         Log($"Shell route target={application.Manifest.Id.Value}, activated={activated}.");
-        return activated
-            ? new AppActivationResult(AppActivationStatus.Activated, application.Manifest.Id)
-            : new AppActivationResult(AppActivationStatus.Unavailable, application.Manifest.Id);
+        return activated;
     }
 
     private AppActivationResult ActivateExternalUri(AppActivationRequest request)
@@ -256,9 +244,7 @@ public sealed class ApplicationManager : IAppActivationService
         {
             var activated = ActivateApplication(application, request);
             Log($"External route chose default target={application.Manifest.Id.Value}, activated={activated}.");
-            return activated
-                ? new AppActivationResult(AppActivationStatus.Activated, application.Manifest.Id)
-                : new AppActivationResult(AppActivationStatus.Unavailable, application.Manifest.Id);
+            return activated;
         }
 
         if (matches.Length == 1)
@@ -266,9 +252,7 @@ public sealed class ApplicationManager : IAppActivationService
             application = matches[0];
             var activated = ActivateApplication(application, request);
             Log($"External route chose sole target={application.Manifest.Id.Value}, activated={activated}.");
-            return activated
-                ? new AppActivationResult(AppActivationStatus.Activated, application.Manifest.Id)
-                : new AppActivationResult(AppActivationStatus.Unavailable, application.Manifest.Id);
+            return activated;
         }
 
         var routingUi = _services.GetService(typeof(IUriSchemeRoutingUi)) as IUriSchemeRoutingUi;
@@ -364,9 +348,7 @@ public sealed class ApplicationManager : IAppActivationService
             return new AppActivationResult(AppActivationStatus.InvalidUri);
 
         var target = new AppId(appId);
-        return OpenFile(target, path)
-            ? new AppActivationResult(AppActivationStatus.Activated, target)
-            : new AppActivationResult(AppActivationStatus.Unavailable, target);
+        return OpenFileResult(target, path);
     }
 
     private static IReadOnlyDictionary<string, string> ParseQuery(Uri uri)
@@ -384,11 +366,51 @@ public sealed class ApplicationManager : IAppActivationService
         return values;
     }
 
-    private bool ActivateApplication(IRemoteApplication app, AppActivationRequest? request)
-    {
-        if (!EnsureCompatible(app.Manifest))
-            return false;
+    private static bool Accepted(AppActivationResult result) => result.Succeeded || result.IsPendingAvailabilityCheck;
 
+    private AppActivationResult GuardActivation(IRemoteApplication app, Action activate)
+    {
+        var id = app.Manifest.Id;
+        if (!EnsureCompatible(app.Manifest)) return new(AppActivationStatus.Unavailable, id);
+        if (_services.GetService(typeof(IApplicationLaunchGuard)) is IApplicationLaunchGuard guard
+            && guard.RequiresCheck(app.Manifest))
+        {
+            if (_pendingActivations.ContainsKey(id))
+                _pendingActivations[id] = activate; // One pending check; the latest local navigation wins.
+            else
+            {
+                _pendingActivations.Add(id, activate);
+                _ = CompleteGuardedActivationAsync(app, guard);
+            }
+            return new(AppActivationStatus.AvailabilityCheckPending, id);
+        }
+        activate();
+        return new(AppActivationStatus.Activated, id);
+    }
+
+    private async Task CompleteGuardedActivationAsync(IRemoteApplication app, IApplicationLaunchGuard guard)
+    {
+        try
+        {
+            var context = new AppContext(app.Manifest.Id, _windowManager, _services, app.Manifest);
+            if (!await guard.CheckAsync(context, FindExistingPrimaryWindow(app.Manifest.Id))) return;
+            if (_apps.TryGetValue(app.Manifest.Id, out var registered) && ReferenceEquals(registered, app)
+                && EnsureCompatible(app.Manifest) && _pendingActivations.TryGetValue(app.Manifest.Id, out var activate))
+                activate();
+        }
+        catch (Exception exception)
+        {
+            // A failed or interrupted observation must never fall through to activation.
+            Log($"Application prerequisite check failed: target={app.Manifest.Id.Value}, error={exception.GetType().Name}.");
+        }
+        finally { _pendingActivations.Remove(app.Manifest.Id); }
+    }
+
+    private AppActivationResult ActivateApplication(IRemoteApplication app, AppActivationRequest? request) =>
+        GuardActivation(app, () => ActivateApplicationCore(app, request));
+
+    private void ActivateApplicationCore(IRemoteApplication app, AppActivationRequest? request)
+    {
         var context = new AppContext(app.Manifest.Id, _windowManager, _services, app.Manifest);
         var existing = FindExistingPrimaryWindow(app.Manifest.Id);
         if (existing is not null && app.Manifest.InstancePolicy == ApplicationInstancePolicy.SingleWindow)
@@ -398,14 +420,12 @@ public sealed class ApplicationManager : IAppActivationService
             _windowManager.Restore(existing);
             _windowManager.Focus(existing);
             RequestUndecidedPermissions(app.Manifest.Id);
-            return true;
+            return;
         }
-
         app.Activate(context);
         RequestUndecidedPermissions(app.Manifest.Id);
         if (request is not null && app is IAppActivationHandler activationHandler)
             activationHandler.HandleActivation(context, request, FindExistingPrimaryWindow(app.Manifest.Id));
-        return true;
     }
 
     private void RequestUndecidedPermissions(AppId appId)

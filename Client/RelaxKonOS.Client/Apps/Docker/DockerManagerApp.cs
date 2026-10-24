@@ -75,7 +75,7 @@ public sealed class DockerManagerApp : RemoteApplicationBase
         vm.OpenFileBrowserAtPathAsync = path =>
         {
             var activation = context.Activations.Activate(RelaxKonOSActivationUris.ExplorerPath(path));
-            if (!activation.Succeeded && !activation.IsPendingUserChoice)
+            if (!activation.IsAccepted)
                 vm.StatusText = LocalizedText.Get("docker.stack.explorer_unavailable");
             return Task.CompletedTask;
         };

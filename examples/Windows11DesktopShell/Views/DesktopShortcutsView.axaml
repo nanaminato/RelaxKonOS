@@ -58,6 +58,10 @@
                             <Border IsVisible="{Binding IsShortcut}" HorizontalAlignment="Left" VerticalAlignment="Bottom" Background="White" CornerRadius="2">
                                 <TextBlock Text="↗" Foreground="Black" FontSize="13" Margin="1,0" />
                             </Border>
+                            <Border IsVisible="{Binding HasAvailability}" ToolTip.Tip="{Binding Availability.Label}" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                    Background="{DynamicResource SurfaceRaisedBrush}" CornerRadius="6" Padding="3,0">
+                                <TextBlock Text="•" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="14" />
+                            </Border>
                         </Grid>
                         <TextBlock Classes="desktop-label" Text="{Binding DisplayName}"
                                    Foreground="{Binding DataContext.DesktopItemLabelForeground, ElementName=DesktopShortcutsRoot}" />

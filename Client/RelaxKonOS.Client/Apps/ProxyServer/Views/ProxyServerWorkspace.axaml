@@ -60,7 +60,6 @@
           <Button x:Name="PageButton2" Classes="workspace-nav" Tag="2" Click="NavigationButton_Click" Content="{loc:Loc proxy_server.section.access}" HorizontalContentAlignment="Left" Padding="10,8" />
           <Button x:Name="PageButton3" Classes="workspace-nav" Tag="3" Click="NavigationButton_Click" Content="{loc:Loc proxy_server.section.connect}" HorizontalContentAlignment="Left" Padding="10,8" />
           <Button x:Name="PageButton4" Classes="workspace-nav" Tag="4" Click="NavigationButton_Click" Content="{loc:Loc proxy_server.section.subscriptions}" HorizontalContentAlignment="Left" Padding="10,8" />
-          <Button x:Name="PageButton5" Classes="workspace-nav" Tag="5" Click="NavigationButton_Click" Content="{loc:Loc proxy_server.section.runtime}" HorizontalContentAlignment="Left" Padding="10,8" />
         </StackPanel>
       </Border>
 
@@ -103,20 +102,14 @@
                 </StackPanel>
                 <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" />
                 <WrapPanel>
-                  <Button Content="{loc:Loc proxy_server.install}" Click="RuntimeEditor_Click" IsVisible="{Binding ShowInstall}" Margin="0,0,8,8" />
-                  <Button Content="{loc:Loc proxy_server.upgrade}" Click="RuntimeEditor_Click" IsVisible="{Binding ShowUninstall}" Margin="0,0,8,8" />
+                  <Button Content="{loc:Loc component_center.manage}" Click="RuntimeEditor_Click" Margin="0,0,8,8" />
                   <Button Content="{loc:Loc proxy_server.start}" Command="{Binding RuntimeCommand}" CommandParameter="Start" IsVisible="{Binding ShowRuntimeActions}" Margin="0,0,8,8" />
                   <Button Content="{loc:Loc proxy_server.stop}" Command="{Binding RuntimeCommand}" CommandParameter="Stop" IsVisible="{Binding ShowRuntimeActions}" Margin="0,0,8,8" />
                   <Button Content="{loc:Loc proxy_server.restart}" Command="{Binding RuntimeCommand}" CommandParameter="Restart" IsVisible="{Binding ShowRuntimeActions}" Margin="0,0,8,8" />
                   <Button Content="{loc:Loc proxy_server.enable}" Command="{Binding RuntimeCommand}" CommandParameter="Enable" IsVisible="{Binding ShowRuntimeActions}" Margin="0,0,8,8" />
                   <Button Content="{loc:Loc proxy_server.disable}" Command="{Binding RuntimeCommand}" CommandParameter="Disable" IsVisible="{Binding ShowRuntimeActions}" Margin="0,0,8,8" />
-                  <Button Content="{loc:Loc proxy_server.recover}" Command="{Binding RecoverCommand}" IsVisible="{Binding ShowRecovery}" Margin="0,0,8,8" />
                 </WrapPanel>
-                <WrapPanel IsVisible="{Binding ShowUninstall}">
-                  <Button Content="{loc:Loc proxy_server.uninstall}" Command="{Binding UninstallCommand}" CommandParameter="keep" Margin="0,0,8,0"
-                          ToolTip.Tip="{loc:Loc proxy_server.uninstall_hint}" />
-                  <Button Content="{loc:Loc proxy_server.uninstall_delete}" Command="{Binding UninstallCommand}" CommandParameter="delete" />
-                </WrapPanel>
+
               </StackPanel>
             </Border>
 
@@ -364,9 +357,7 @@
             </Border>
           </StackPanel>
 
-          <StackPanel x:Name="Page5" Spacing="16" IsVisible="False">
-            <views:ProxyServerRuntimeView x:Name="RuntimeView" />
-          </StackPanel>
+
         </StackPanel>
       </ScrollViewer>
     </Grid>

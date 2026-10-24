@@ -47,6 +47,9 @@ var localization = new LocalizationService(settings, new SshDesktopSession(null!
 using var services = new ServiceCollection().AddSingleton(localization).AddSingleton(new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!))).BuildServiceProvider();
 // The XAML localization extension resolves the host application's singleton provider.
 typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
+if (args.Contains("--windows11-only")) { Windows11DesktopChecks.RunAsync().GetAwaiter().GetResult(); return; }
+if (args.Contains("--readiness-only")) { ApplicationReadinessShellChecks.Run(settings, localization, services); return; }
+if (args.Contains("--component-center-only")) { ComponentCenterWorkspaceChecks.Run(settings); return; }
 if (args.Contains("--git-dock-only")) { GitDockChecks.Run(settings); return; }
 if (args.Contains("--project-editor-only"))
 {
@@ -435,7 +438,7 @@ static void RunDesktopShellInteractionRegression(Window host, ShellSettings sett
     // workspace persistence, application launch or desktop restoration operation is invoked.
     var vm = new DesktopShellViewModel(windows, new ApplicationManager(windows, services), settings,
         localization, session, new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)), () => { },
-        null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!);
+        null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null);
     var store = new ShellStateStore();
     store.Publish(vm);
     var surfaces = new PreviewSurfaceRegistry(windows);

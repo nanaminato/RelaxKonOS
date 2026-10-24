@@ -38,7 +38,7 @@ internal static class DesktopClipboardChecks
         var windows = new RelaxKonOS.WindowManager.WindowManager();
         var shell = new DesktopShellViewModel(windows, new ApplicationManager(windows, services), settings, localization,
             session, new SshDesktopSession(null!, new ShellSettings(null!)), () => { },
-            null!, files, clipboard, null!, null!, diagnostics, null!, null!, null!, null!, null!, null!);
+            null!, files, clipboard, null!, null!, diagnostics, null!, null!, null!, null!, null!, null!, null);
         typeof(DesktopShellViewModel).GetField("_desktopPath", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(shell, "/desktop");
         var entry = new FileSystemEntryDto("/source/a.bin", "a.bin", 10, FileSystemEntryType.File, null, null, null, false, false, null);
         var icon = new DesktopFileEntryViewModel(entry);

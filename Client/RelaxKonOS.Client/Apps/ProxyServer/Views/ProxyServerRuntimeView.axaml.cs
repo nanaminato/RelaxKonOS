@@ -19,6 +19,24 @@ public partial class ProxyServerRuntimeView : UserControl
         ? RelaxKonOS.Client.Controls.WorkspaceEditorDialogView.OpenAsync(this, "RuntimeEditor", RelaxKonOS.Client.Localization.LocalizedText.Get("proxy_server.runtime.action_title"), presenter)
         : Task.CompletedTask;
 
+    /// <summary>Component Center uses the same controls inline; domain workspaces retain their editor host.</summary>
+    public void ShowCenterSection(RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterPage page)
+    {
+        EditorButton.IsVisible = false;
+        RuntimeEditor.IsVisible = true;
+        var tasks = page == RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterPage.Tasks;
+        var sources = page == RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterPage.Sources;
+        StatePanel.IsVisible = !sources;
+        EnvironmentSection.IsVisible = !tasks && !sources;
+        RecoverySection.IsVisible = tasks;
+        SourcesPanel.IsVisible = sources || page == RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterPage.All;
+        ReleasesPanel.IsVisible = !tasks && !sources;
+        ChangesPanel.IsVisible = !tasks && !sources;
+        ActivityPanel.IsVisible = tasks;
+        ReleaseList.Bind(ItemsControl.ItemsSourceProperty, new Avalonia.Data.Binding(
+            page == RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterPage.Updates ? "Updates" : "Releases"));
+    }
+
     public ProxyServerRuntimeView() => InitializeComponent();
 
     public ProxyServerRuntimeView(ProxyServerRuntimeViewModel viewModel) : this() => DataContext = viewModel;
