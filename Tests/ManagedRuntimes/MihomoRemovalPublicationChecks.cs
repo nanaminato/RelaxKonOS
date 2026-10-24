@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging.Abstractions;
 using RelaxKonOS.ManagedRuntimes;
@@ -253,7 +253,7 @@ internal static class MihomoRemovalPublicationChecks
         internal void Recreate()
         {
             Store = new(this, protection); Authorization = new(Store, this, this);
-            var runtime = new MihomoRuntimeService(this, Store, Authorization, this);
+            var runtime = new MihomoRuntimeService(this, Store, Authorization, this, new DirectDownloads());
             Service = new(Store, runtime, this, Files); Configuration = new(Store, Authorization, runtime, this);
             Installation = new(Store, Authorization, runtime, this);
             Recovery = new(Store, runtime, Configuration, Installation, Service);

@@ -117,6 +117,29 @@ internal static class GitClientDialogs
             dialog => BuildSetTrackingDialog(localBranch, vm, dialog),
             new RelaxKonOS.Core.Primitives.Size(460, 260));
 
+    public static Task<string[]?> ShowWorkspaceInputAsync(AppContext context, ManagedWindow owner, string titleKey, IReadOnlyList<GitInputField> fields)
+        => context.ShowDialogAsync<string[]?>(owner, LocalizedText.Get(titleKey), dialog =>
+        {
+            var panel = new StackPanel { Margin = new(20), Spacing = 10 };
+            var boxes = new List<TextBox>();
+            foreach (var field in fields)
+            {
+                panel.Children.Add(new TextBlock { Text = LocalizedText.Get(field.LabelKey), TextWrapping = TextWrapping.Wrap });
+                var box = new TextBox { Text = field.Value };
+                boxes.Add(box); panel.Children.Add(box);
+            }
+            var ok = new Button { Content = LocalizedText.Get("common.ok"), HorizontalAlignment = HorizontalAlignment.Right };
+            void Validate() => ok.IsEnabled = fields.Select((field, index) => !field.Required || !string.IsNullOrWhiteSpace(boxes[index].Text)).All(valid => valid);
+            foreach (var box in boxes) box.TextChanged += (_, _) => Validate();
+            ok.Click += (_, _) => dialog.Close(boxes.Select(box => box.Text?.Trim() ?? "").ToArray());
+            var cancel = new Button { Content = LocalizedText.Get("common.cancel") };
+            cancel.Click += (_, _) => dialog.Cancel();
+            panel.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8, Children = { ok, cancel } });
+            Validate();
+            panel.AttachedToVisualTree += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() => boxes.FirstOrDefault()?.Focus());
+            return panel;
+        }, new RelaxKonOS.Core.Primitives.Size(480, 140 + fields.Count * 78));
+
     // ── Dialog builders (programmatic — no separate AXAML files needed) ──
 
     private static Control BuildInitConfirmDialog(string path, ModalDialog<bool?> dialog)

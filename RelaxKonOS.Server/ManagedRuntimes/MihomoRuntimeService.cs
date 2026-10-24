@@ -12,7 +12,7 @@ namespace RelaxKonOS.Server.ManagedRuntimes;
 
 /// <summary>Server composition: published-state gate, per-operation authenticated callback, and installed Helper.</summary>
 public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, MihomoPublicationStore store,
-    MihomoRuntimeAuthorizationProvider authorization, IServerModeResolver mode)
+    MihomoRuntimeAuthorizationProvider authorization, IServerModeResolver mode, IRuntimeDownloadProxyProvider downloadProxy)
 {
     /// <summary>Public observation includes unresolved Server publication work, even after root commits.
     /// It never upgrades ownership from an encrypted file or reads controller credentials.</summary>
@@ -78,7 +78,8 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
         {
             await using var callback = new RuntimeAuthorizationServer<MihomoCurrentAuthorization>(operationId, authorization.ReadAsync);
             var result = await CallAsync<RuntimeSwitchResult>(new(PrivilegedOperationKind.MihomoRuntimeExecute,
-                OperationId: operationId, RuntimeLifecycle: new(Authorization: callback.Channel, FrozenPlan: plan)), CancellationToken.None);
+                OperationId: operationId, RuntimeLifecycle: new(Authorization: callback.Channel, FrozenPlan: plan),
+                DownloadProxy: await downloadProxy.ResolveAsync(ct)), CancellationToken.None);
             if (result.OperationId != operationId) throw new RuntimeLifecycleException("runtime.operation_id_conflict");
             return result;
         }
@@ -122,7 +123,8 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
         await using var callback = new RuntimeAuthorizationServer<MihomoInstallationAuthorization>(operationId,
             token => authorization.ReadInstallationAsync(operationId, token));
         var result = await CallAsync<RuntimeSwitchResult>(new(PrivilegedOperationKind.MihomoRuntimeExecute,
-            OperationId: operationId, RuntimeLifecycle: new(Authorization: callback.Channel, FrozenPlan: plan)), ct);
+            OperationId: operationId, RuntimeLifecycle: new(Authorization: callback.Channel, FrozenPlan: plan),
+            DownloadProxy: await downloadProxy.ResolveAsync(ct)), ct);
         if (result.OperationId != operationId) throw new RuntimeLifecycleException("runtime.operation_id_conflict");
         return result;
     }

@@ -176,6 +176,25 @@ Mihomo 的材料还要求有界 YAML、唯一构建标签、合法精确监听�
 
 客户端 `ProxyServerRuntimeViewModel` 在轮询操作时读同一个 `Cancellable` 决定是否显示「取消下载」，点击只发请求并立刻撤下按钮；循环继续等待回执，收到 `Cancelled` 就按“已取消、未改变任何内容”收尾，而不是报成失败。
 
+## 下载路由与自动重试
+
+受管下载（目录元数据与程序归档）只有两种路由：**直连**或**宿主显式配置的下载代理**。代理不是客户端能力，也不来自进程环境：Server 从已保存的宿主下载代理偏好（`ApplyToRuntimeDownloads`）解析出 `RuntimeDownloadProxy`，把它作为**逐操作**的结构化字段传给 Helper，Helper 再校验一遍才允许开套接字。它不进入冻结计划、幂等摘要或台账，因此更换路由不会作废已受理的安装；内核运行时自己的出站代理是另一个配置项，绝不继承这个值。
+
+| 规则 | 表现 |
+| --- | --- |
+| 可用范围 | 只有会取字节的动词可携带路由：目录刷新、`*RuntimeExecute`。缓存读取、计划、配置、恢复、卸载、资源预备携带路由一律按 `runtime.request_invalid` 拒绝 |
+| 形态 | 仅 `http`/`https` 代理端点，必须带主机与端口，不接受路径、查询、片段、控制字符；长度、旁路条目数（≤32）与端点长度（≤512）都有上限；非法值返回 `runtime.download_proxy_invalid` |
+| 保存值不可用 | 偏好已启用但解析不可用（内部错误码/无效代理值）时返回 `runtime.download_proxy_unavailable`，**不**静默改走直连 |
+| 旁路 | `noProxy` 条目按主机名边界匹配（`example.test` 命中自身与子域，不命中 `notexample.test`），可带端口；命中的目标直接连接，代理完全看不到它 |
+| 凭据 | 代理 URL 的 userinfo 只作为**代理连接**的认证，按 407 挑战发送；发往源站的请求只有 `User-Agent`，不夹带 `Authorization`/`Proxy-Authorization`。诊断文本只用 `scheme://host:port` |
+| 直连校验 | 直连仍逐跳校验 HTTPS 前缀、DNS 结果与实际连接地址，连接到已验证 IP |
+| 代理校验 | 隧道由代理解析与连接，因此无法钉住源站 IP；改为在开连前拒绝目标 URL 里的字面回环/私网/元数据地址（除已授权的私网镜像），代理端点本身是管理员声明而非请求值 |
+| 重试 | 最多 3 次尝试（首发 + 2 次重试），只重复传输层故障：`runtime.network_unavailable`、`runtime.source_timeout`、`runtime.source_rate_limited`、`runtime.source_unavailable`（408/425/5xx）。退避 500 ms→1500 ms，`Retry-After` 取值但封顶 10 s，整体仍受 45 s（元数据）/4 min（归档）总时限约束 |
+| 不重试 | 证书不受信任（`runtime.source_tls_invalid`）、地址/重定向被拒、来源禁用、4xx、超限、摘要或签名问题都是终态；TLS 拒绝只握手一次，不重复同一端点 |
+| 中断与偏移 | 每次重试把目标截断回起始偏移再写，因此校验仍然面对**一个**完整正文；目标不可回卷时只尝试一次。取消令牌立即生效，重试等待期间取消同样立即返回 |
+
+`runtime.source_unavailable` 是新增的稳定问题码，专门表示“源站暂时不可用且已按上限重试完毕”，与终态 `runtime.source_http_failed` 分开，避免把 4xx 与 5xx 混成一个状态。
+
 ## 宿主依赖预检
 
 依赖是**主机自己的事实**，不是发布者的声明。签名清单不接受配置能力、互通证据或依赖列表（见[发布清单格式](RelaxKonOS.ManagedRuntimes.Manifest.md#发布清单格式)），所以 `RuntimeArchiveDependencies` 只从 Host 已经验证过的那份制品推导要求，词表封闭：新增一类依赖是契约变更，不是某条发布的字段。

@@ -74,4 +74,7 @@
     <string name="docker_container_exited">終了</string>
     <string name="docker_container_dead">無効</string>
     <string name="docker_container_unknown">不明な状態（%1$s）</string>
+    <string name="server_maintenance_pending">元の保守操作が未確認のため、新しい変更を停止しています。</string>
+    <string name="server_maintenance_reconcile">元の操作を確認</string>
+    <string name="server_maintenance_reconciled">元の操作記録を確認しました。新しい変更の前に現在の状態を確認してください。</string>
 </resources>

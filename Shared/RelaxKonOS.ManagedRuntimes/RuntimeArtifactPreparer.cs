@@ -5,14 +5,15 @@ namespace RelaxKonOS.ManagedRuntimes;
 
 public interface IRuntimeArchiveTransport
 {
-    Task CopyAsync(RuntimeSource source, ManifestRelease release, Stream destination, CancellationToken ct);
+    /// <summary>The route is resolved by the caller for this operation; it is never part of the frozen plan.</summary>
+    Task CopyAsync(RuntimeSource source, ManifestRelease release, RuntimeDownloadProxy? proxy, Stream destination, CancellationToken ct);
 }
 
 public sealed class RuntimeArchiveTransport : IRuntimeArchiveTransport
 {
-    public Task CopyAsync(RuntimeSource source, ManifestRelease release, Stream destination, CancellationToken ct) =>
+    public Task CopyAsync(RuntimeSource source, ManifestRelease release, RuntimeDownloadProxy? proxy, Stream destination, CancellationToken ct) =>
         RuntimeHttpsTransfer.CopyAsync(source, new Uri(release.DownloadUri), release.Artifact.MaximumBytes,
-            metadata: false, destination, ct);
+            metadata: false, destination, proxy, ct);
 }
 
 public sealed record PreparedRuntimeArtifact(AuthorizedRuntimeRelease Authorization, VerifiedRuntimeArchive Archive);
@@ -23,7 +24,7 @@ public sealed class RuntimeArtifactPreparer(RuntimeSourceStore sources, IRuntime
 {
     public async Task<PreparedRuntimeArtifact> PrepareAsync(string sourceId, string releaseId,
         long expectedCatalogRevision, long expectedTrustRevision, RuntimeTarget target,
-        bool allowPrerelease, string protectedStagingRoot, CancellationToken ct)
+        bool allowPrerelease, string protectedStagingRoot, RuntimeDownloadProxy? proxy, CancellationToken ct)
     {
         var authorization = sources.AuthorizeRelease(sourceId, releaseId, expectedCatalogRevision,
             expectedTrustRevision, target, allowPrerelease, DateTimeOffset.UtcNow);
@@ -40,7 +41,7 @@ public sealed class RuntimeArtifactPreparer(RuntimeSourceStore sources, IRuntime
             {
                 await NotifyAsync(InstallationStage.Downloading);
                 // A transport is not an authorization authority: the Helper rechecks size, digest and contents.
-                await transport.CopyAsync(authorization.Source, authorization.Release,
+                await transport.CopyAsync(authorization.Source, authorization.Release, proxy,
                     new BoundedDestination(archive, authorization.Release.Artifact.MaximumBytes), ct);
                 archive.Flush(true);
                 await NotifyAsync(InstallationStage.Extracting);
@@ -66,14 +67,27 @@ public sealed class RuntimeArtifactPreparer(RuntimeSourceStore sources, IRuntime
         catch (ObjectDisposedException) { }
     }
 
+    /// <summary>
+    /// Fails a body that grows past the declared maximum while still allowing the transport to rewind to
+    /// a previous offset, so a repeated download attempt writes one body instead of appending to a partial one.
+    /// </summary>
     private sealed class BoundedDestination(Stream output, long limit) : Stream
     {
         private long written;
         public override bool CanRead => false;
-        public override bool CanSeek => false;
+        public override bool CanSeek => output.CanSeek;
         public override bool CanWrite => true;
         public override long Length => written;
-        public override long Position { get => written; set => throw new NotSupportedException(); }
+        public override long Position
+        {
+            get => written;
+            set
+            {
+                if (!output.CanSeek || value < 0 || value > written) throw new NotSupportedException();
+                output.Position = value;
+                written = value;
+            }
+        }
         public override void Flush() => output.Flush();
         public override Task FlushAsync(CancellationToken ct) => output.FlushAsync(ct);
         private void Reserve(int count)
@@ -86,7 +100,23 @@ public sealed class RuntimeArtifactPreparer(RuntimeSourceStore sources, IRuntime
         public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken ct = default)
         { Reserve(buffer.Length); await output.WriteAsync(buffer, ct); }
         public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-        public override void SetLength(long value) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin)
+        {
+            var target = origin switch
+            {
+                SeekOrigin.Begin => offset,
+                SeekOrigin.Current => written + offset,
+                SeekOrigin.End => written + offset,
+                _ => throw new NotSupportedException()
+            };
+            Position = target;
+            return written;
+        }
+        public override void SetLength(long value)
+        {
+            if (!output.CanSeek || value < 0 || value > written) throw new NotSupportedException();
+            output.SetLength(value);
+            written = value;
+        }
     }
 }

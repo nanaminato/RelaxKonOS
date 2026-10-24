@@ -35,7 +35,7 @@ internal interface ISingBoxArchiveAuthorization
 /// fresh published authorization, OS protection, and use this state store's lock for all configuration writes.
 /// </summary>
 internal sealed class SingBoxArchiveAdapter(string protectedRoot, RuntimeArchiveStateStore stateStore, RuntimeSourceStore sources,
-    IRuntimeArchiveTransport transport, ISingBoxArchiveHost host, ISingBoxArchiveAuthorization authorization,
+    IRuntimeArchiveTransport transport, RuntimeDownloadProxy? downloadProxy, ISingBoxArchiveHost host, ISingBoxArchiveAuthorization authorization,
     Action<string> protectDirectory, RuntimeStageReporter? progress = null, IRuntimeDependencyEnvironment? environment = null)
     : IRuntimeArchiveSwitchAdapter
 {
@@ -102,7 +102,7 @@ internal sealed class SingBoxArchiveAdapter(string protectedRoot, RuntimeArchive
         var operationStaging = Path.Combine(Staging, operationId.ToString("N")); Protect(operationStaging);
         var prepared = await new RuntimeArtifactPreparer(sources, transport, progress is null ? null : stage => progress(stage, cancellable: true)).PrepareAsync(plan.Release!.SourceId, plan.Release.ReleaseId,
             plan.Request.ExpectedCatalogRevision, plan.Request.ExpectedTrustRevision, plan.Release.Target,
-            plan.Request.AllowPrerelease, operationStaging, ct);
+            plan.Request.AllowPrerelease, operationStaging, downloadProxy, ct);
         var revisionDirectory = Revision(operationId);
         if (Directory.Exists(revisionDirectory))
         { RuntimeArchiveExtractor.Discard(prepared.Archive, operationStaging); throw new RuntimePolicyException("runtime.staging_conflict"); }

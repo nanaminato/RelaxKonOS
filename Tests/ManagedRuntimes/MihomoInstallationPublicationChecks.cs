@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging.Abstractions;
 using RelaxKonOS.ManagedRuntimes;
@@ -285,7 +285,7 @@ internal static class MihomoInstallationPublicationChecks
         internal MihomoRuntimeInstallationService LedgerAdapter()
         {
             var provider = new MihomoRuntimeAuthorizationProvider(Store, this, this);
-            var runtime = new MihomoRuntimeService(this, Store, provider, this);
+            var runtime = new MihomoRuntimeService(this, Store, provider, this, new DirectDownloads());
             return new(Store, runtime, new(Store, Service, this, this, new() { Endpoint = new("http://127.0.0.1:19090/") }), Service,
                 new(Store, runtime, this, MihomoRemovalHostFixture.Files(this)));
         }
@@ -297,7 +297,7 @@ internal static class MihomoInstallationPublicationChecks
         internal MihomoPublishedRuntime Material { get; set; }
         internal RuntimeChangePlan Plan { get; private set; }
         internal RuntimeInstallationSnapshot Snapshot { get; private set; }
-        internal MihomoRemovalPublicationService Removal => new(Store, new(this, Store, new(Store, this, this), this), this, MihomoRemovalHostFixture.Files(this));
+        internal MihomoRemovalPublicationService Removal => new(Store, new(this, Store, new(Store, this, this), this, new DirectDownloads()), this, MihomoRemovalHostFixture.Files(this));
         internal MihomoPublicationStore Store { get; private set; } = null!;
         internal MihomoInstallationPublicationService Service { get; private set; } = null!;
         internal MihomoConfigurationPublicationService Configuration { get; private set; } = null!;
@@ -320,7 +320,7 @@ internal static class MihomoInstallationPublicationChecks
         {
             Store = new(this, protection);
             var provider = new MihomoRuntimeAuthorizationProvider(Store, this, this);
-            var runtime = new MihomoRuntimeService(this, Store, provider, this);
+            var runtime = new MihomoRuntimeService(this, Store, provider, this, new DirectDownloads());
             Service = new(Store, provider, runtime, this);
             Configuration = new(Store, provider, runtime, this);
         }

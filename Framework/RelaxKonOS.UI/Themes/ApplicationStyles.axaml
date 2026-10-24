@@ -104,6 +104,33 @@
     <Setter Property="Width" Value="26" />
     <Setter Property="Height" Value="26" />
   </Style>
+  <!-- A shared refresh affordance, distinct from caption controls and consistent across apps. -->
+  <Style Selector="Button.header-refresh">
+    <Setter Property="Width" Value="28" /><Setter Property="Height" Value="28" />
+    <Setter Property="MinWidth" Value="0" /><Setter Property="MinHeight" Value="0" />
+    <Setter Property="Padding" Value="0" /><Setter Property="Margin" Value="4,0" />
+    <Setter Property="CornerRadius" Value="7" />
+    <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="ContentTemplate">
+      <DataTemplate>
+        <Path Width="14" Height="14" Stretch="Uniform" Stroke="{Binding $parent[Button].Foreground}"
+              StrokeThickness="1.5" StrokeLineCap="Round" StrokeJoin="Round"
+              Data="M20 10 A8 8 0 0 0 6 6 L3 9 M3 4 V9 H8 M4 14 A8 8 0 0 0 18 18 L21 15 M16 15 H21 V20" />
+      </DataTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="Button.header-refresh:pointerover">
+    <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderDefaultBrush}" />
+  </Style>
+  <Style Selector="Button.header-refresh:pressed">
+    <Setter Property="Background" Value="{DynamicResource SurfacePressedBrush}" />
+  </Style>
+  <Style Selector="Button.header-refresh:disabled"><Setter Property="Opacity" Value="0.45" /></Style>
   <Style Selector="Button.command-action">
     <Setter Property="Height" Value="32" />
     <Setter Property="MinWidth" Value="0" />

@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+class AlertReview internal constructor(val baseline: OperationalAlert, val action: AlertMutation)
+
 /** A cursor belongs to one immutable query. Read observation never replays an alert action. */
 data class EventAlertBrowserState(
     val owner: SessionState.Active? = null, val active: Boolean = false, val eventsMode: Boolean = false,
@@ -20,6 +22,8 @@ data class EventAlertBrowserState(
     val selectedId: String? = null, val detailLoading: Boolean = false, val detail: ApiResult<OperationalAlertDetail>? = null,
     val actionBusy: Boolean = false, val actionResult: ApiResult<OperationalAlertDetail>? = null, val unknown: Boolean = false,
     val checkedAtMillis: Long? = null,
+    val confirmation: AlertReview? = null,
+    val detailFeedbackVersion: Long = 0,
 ) {
     val atLimit: Boolean get() = (if (eventsMode) events.size else alerts.size) >= 500
 }
@@ -30,6 +34,7 @@ class EventAlertBrowser(private val repository: EventAlertRepository, private va
     private var generation = 0
     private var selection = 0
     private var actionVersion = 0
+    private var detailFeedbackSequence = 0L
     private var pageJob: Job? = null
     private var detailJob: Job? = null
     private var pollJob: Job? = null
@@ -44,19 +49,19 @@ class EventAlertBrowser(private val repository: EventAlertRepository, private va
         pollJob = scope.launch {
             while (isActive && current(owner)) {
                 delay(15_000)
-                if (!mutableState.value.loading && !mutableState.value.actionBusy && mutableState.value.pagesLoaded <= 1) refresh()
+                if (!mutableState.value.loading && !mutableState.value.actionBusy && mutableState.value.confirmation == null && mutableState.value.pagesLoaded <= 1) refresh()
             }
         }
     }
     fun stop() {
         generation++; selection++; actionVersion++
         pageJob?.cancel(); detailJob?.cancel(); pollJob?.cancel(); actionJob?.cancel()
-        mutableState.update { it.copy(active = false, loading = false, detailLoading = false, actionBusy = false, alerts = emptyList(), events = emptyList(), detail = null, summary = null, readResult = null, nextCursor = null, pagesLoaded = 0, checkedAtMillis = null) }
+        mutableState.update { it.copy(confirmation = null, active = false, loading = false, detailLoading = false, actionBusy = false, alerts = emptyList(), events = emptyList(), detail = null, summary = null, readResult = null, nextCursor = null, pagesLoaded = 0, checkedAtMillis = null) }
     }
     fun filters(eventsMode: Boolean, alertQuery: AlertQuery, eventQuery: EventQuery) {
         if (mutableState.value.actionBusy) return
         generation++; selection++; pageJob?.cancel(); detailJob?.cancel()
-        mutableState.update { it.copy(eventsMode = eventsMode, alertQuery = alertQuery, eventQuery = eventQuery,
+        mutableState.update { it.copy(confirmation = null, eventsMode = eventsMode, alertQuery = alertQuery, eventQuery = eventQuery,
             alerts = emptyList(), events = emptyList(), nextCursor = null, pagesLoaded = 0, selectedId = null, detail = null, actionResult = null, unknown = false) }
         refresh()
     }
@@ -68,7 +73,7 @@ class EventAlertBrowser(private val repository: EventAlertRepository, private va
         pageJob?.cancel()
         val revision = ++generation
         val cursor = if (more) before.nextCursor else null
-        mutableState.update { it.copy(loading = true, readResult = null) }
+        mutableState.update { it.copy(confirmation = null, loading = true, readResult = null) }
         pageJob = scope.launch {
             try {
                 val summary = repository.summary(owner)
@@ -97,11 +102,11 @@ class EventAlertBrowser(private val repository: EventAlertRepository, private va
         val owner = mutableState.value.owner ?: return
         if (!current(owner) || mutableState.value.actionBusy) return
         detailJob?.cancel(); val version = ++selection
-        mutableState.update { it.copy(selectedId = id, detailLoading = true, detail = null, actionResult = null, unknown = repository.hasUnknown(owner, id)) }
+        mutableState.update { it.copy(confirmation = null, selectedId = id, detailLoading = true, detail = null, actionResult = null, unknown = repository.hasUnknown(owner, id)) }
         detailJob = scope.launch {
             try {
                 val result = repository.detail(owner, id)
-                if (current(owner) && selection == version) mutableState.update { it.copy(detail = result) }
+                if (current(owner) && selection == version) mutableState.update { it.copy(detail = result, detailFeedbackVersion = ++detailFeedbackSequence) }
             } finally { if (current(owner) && selection == version) mutableState.update { it.copy(detailLoading = false) } }
         }
     }
@@ -109,17 +114,31 @@ class EventAlertBrowser(private val repository: EventAlertRepository, private va
         val owner = mutableState.value.owner ?: return; val id = mutableState.value.selectedId ?: return
         if (!current(owner) || mutableState.value.actionBusy) return
         detailJob?.cancel(); val version = ++selection
-        mutableState.update { it.copy(detailLoading = true) }
+        mutableState.update { it.copy(confirmation = null, detailLoading = true) }
         detailJob = scope.launch {
             try {
                 val result = repository.reconcile(owner, id)
-                if (current(owner) && selection == version) mutableState.update { it.copy(detail = result, unknown = repository.hasUnknown(owner, id), actionResult = null) }
+                if (current(owner) && selection == version) mutableState.update { it.copy(detail = result, detailFeedbackVersion = ++detailFeedbackSequence, unknown = repository.hasUnknown(owner, id), actionResult = null) }
             } finally { if (current(owner) && selection == version) mutableState.update { it.copy(detailLoading = false) } }
         }
     }
-    fun mutate(baseline: OperationalAlert, action: AlertMutation, reason: String?, expiry: Long?) {
-        val owner = mutableState.value.owner ?: return
-        if (!current(owner) || mutableState.value.selectedId != baseline.id || mutableState.value.actionBusy || mutableState.value.unknown) return
+    fun requestMutation(baseline: OperationalAlert, action: AlertMutation) {
+        val state = mutableState.value
+        val owner = state.owner ?: return
+        if (!current(owner) || state.loading || state.detailLoading || state.actionBusy || state.unknown ||
+            state.selectedId != baseline.id || (state.detail as? ApiResult.Success)?.value?.alert != baseline ||
+            !canMutateAlert(baseline, action)) return
+        mutableState.update { it.copy(confirmation = AlertReview(baseline, action)) }
+    }
+    fun dismissMutation() { mutableState.update { it.copy(confirmation = null) } }
+    fun mutate(review: AlertReview, reason: String?, expiry: Long?) {
+        val state = mutableState.value
+        val owner = state.owner ?: return
+        val baseline = review.baseline; val action = review.action
+        if (!current(owner) || state.confirmation !== review || state.selectedId != baseline.id || state.actionBusy ||
+            state.loading || state.detailLoading || state.unknown ||
+            (state.detail as? ApiResult.Success)?.value?.alert != baseline) return
+        mutableState.update { it.copy(confirmation = null) }
         detailJob?.cancel(); pageJob?.cancel(); generation++; selection++
         val actionRevision = ++actionVersion
         mutableState.update { it.copy(actionBusy = true, actionResult = null, loading = false, detailLoading = false) }

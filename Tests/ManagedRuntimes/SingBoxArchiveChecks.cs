@@ -51,7 +51,7 @@ internal static class SingBoxArchiveChecks
             var states = new RuntimeArchiveStateStore(Path.Combine(runtimeRoot, "state"), path => Directory.CreateDirectory(path));
             states.Initialize(new(Guid.NewGuid(), "native-fixture-host", "sing-box", 0, RuntimeOwnership.Absent, target, null, false), null);
             var host = new TestHost(); var authorization = new Authorization();
-            var adapter = new SingBoxArchiveAdapter(runtimeRoot, states, sources, new ArchiveCopy(archivePath), host, authorization,
+            var adapter = new SingBoxArchiveAdapter(runtimeRoot, states, sources, new ArchiveCopy(archivePath), downloadProxy: null, host, authorization,
                 path => Directory.CreateDirectory(path));
             var lifecycle = new RuntimeArchiveSwitch(states, adapter);
             RuntimeChangePlan Plan(RuntimeChange change, string name)
@@ -130,7 +130,7 @@ internal static class SingBoxArchiveChecks
 
     private sealed class ArchiveCopy(string path) : IRuntimeArchiveTransport
     {
-        public async Task CopyAsync(RuntimeSource source, ManifestRelease release, Stream destination, CancellationToken ct)
+        public async Task CopyAsync(RuntimeSource source, ManifestRelease release, RuntimeDownloadProxy? proxy, Stream destination, CancellationToken ct)
         { await using var input = File.OpenRead(path); await input.CopyToAsync(destination, ct); }
     }
     private sealed class Authorization : ISingBoxArchiveAuthorization

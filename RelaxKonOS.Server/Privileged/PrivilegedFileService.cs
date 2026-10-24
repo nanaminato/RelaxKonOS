@@ -9,6 +9,9 @@ namespace RelaxKonOS.Server.Privileged;
 
 public sealed class PrivilegedFileService(IPrivilegedOperationTransport runner) : IPrivilegedFileService
 {
+    public Task<FilePropertiesDto> SetUnixOwnershipAsync(PrivilegedFileAuthorizationSource source, string path, string owner, string group, bool recursive, CancellationToken cancellationToken = default)
+        => SendAsync<FilePropertiesDto>(new(PrivilegedOperationKind.FileSetUnixOwnership, Path: path,
+            FileAuthorizationSource: source, UnixOwner: owner, UnixGroup: group, Recursive: recursive), path, cancellationToken);
     public async Task<IReadOnlyList<SpecialLocationDto>> GetSpecialLocationsAsync(PrivilegedFileAuthorizationSource source, string home, CancellationToken cancellationToken = default)
         => await SendAsync<SpecialLocationDto[]>(new(PrivilegedOperationKind.FileGetSpecialLocations,
             Path: home, FileAuthorizationSource: source), home, cancellationToken);

@@ -193,9 +193,10 @@ WorkspaceSection(section in setOf("profiles", "logs")) {
     }
     if (install) key(owner, epoch) { TunnelInstallEditor(model, onSubmitted = { section = "records" }) { install = false } }
     if (state.frpsDraft != null) key(owner, epoch) { ManagedFrpsEditor(model, state) }
-    if (state.profileDraft != null) key(owner, epoch) { TunnelProfileEditor(state, model::updateProfile,
-        model::closeProfile, model::saveProfile, model::reloadDraft, model::detect) }
-    if (state.definitionDraft != null) key(owner, epoch) { TunnelDefinitionEditor(state, model) }
+    state.profileDraft?.let { draft -> key(owner, epoch, state.editorVersion) { TunnelProfileEditor(state,
+        { model.updateProfile(draft, it) }, { model.closeProfile(draft) }, { model.saveProfile(draft) },
+        { model.reloadProfile(draft) }, { model.detect(draft) }, { model.profileIsCurrent(draft) && !model.state.busy }) } }
+    if (state.definitionDraft != null) key(owner, epoch, state.editorVersion) { TunnelDefinitionEditor(state, model) }
     tokenProfile?.let { profile -> AlertDialog(onDismissRequest = { secret = ""; tokenProfile = null }, modifier = Modifier.imePadding(),
         title = { Text(stringResource(R.string.tunnels_token_set)) }, text = { Column {
             Text(profile.name + " · " + profile.id)

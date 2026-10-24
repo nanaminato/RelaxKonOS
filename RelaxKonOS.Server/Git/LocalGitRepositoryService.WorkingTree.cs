@@ -49,7 +49,10 @@ public sealed partial class LocalGitRepositoryService
         var gitPath = ResolveGitPathOrThrow();
         return await WithWriteLockAsync(id, async () =>
         {
-            var result = await RunGitAsync(gitPath, repo.Path, ["reset", $"--{mode}", request.Sha], cancellationToken);
+            string sha;
+            try { sha = await CommitShaAsync(gitPath, repo.Path, request.Sha, cancellationToken); }
+            catch (ArgumentException ex) { return new GitOperationResult(false, "reset", Message: ex.Message); }
+            var result = await RunGitAsync(gitPath, repo.Path, ["reset", $"--{mode}", sha], cancellationToken);
             return new GitOperationResult(result.Success, "reset", Message: result.Success ? null : result.Error);
         });
     }

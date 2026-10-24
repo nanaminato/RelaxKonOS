@@ -37,6 +37,7 @@ class FirewallViewModelTest {
     @Before fun setup() {
         Dispatchers.setMain(StandardTestDispatcher())
         model = FirewallViewModel(session, repository, ElevationAnswerProvider.Declines)
+        model.setReviewActive(true)
         store.put("firewall", model)
         gateway.onFirewallStatus = { ApiResult.Success(status) }
         gateway.onFirewallRules = { ApiResult.Success(emptyList()) }
@@ -63,7 +64,7 @@ class FirewallViewModelTest {
         login(); runCurrent(); model.refresh(); advanceUntilIdle()
         var sends = 0
         gateway.onChangeFirewall = { sends++; throw CancellationException("private cancelled write") }
-        model.requestChange(requireNotNull(model.state.owner), facts, change)
+        model.requestChange(model.interactionVersion, requireNotNull(model.state.owner), facts, change)
         model.change(requireNotNull(model.confirmation)); advanceUntilIdle()
         assertNull(model.state.facts); assertFalse(model.state.busy)
         assertEquals("firewall.unverified", model.state.problem)
@@ -74,17 +75,72 @@ class FirewallViewModelTest {
     }
     @Test fun `failed adoption is not replaced with a second successful read`() = runTest {
         login(); runCurrent(); model.refresh(); advanceUntilIdle()
-        val pending = journal.begin(requireNotNull(model.state.owner), change.kind, change.number)
+        journal.begin(requireNotNull(model.state.owner), change.kind, change.number)
+        model.refresh(); advanceUntilIdle()
+        val pending = model.state.pending.single()
         var reads = 0
         gateway.onFirewallStatus = { reads++; if (reads == 1) ApiResult.Transport(null) else ApiResult.Success(status) }
-        model.accept(pending); advanceUntilIdle()
+        model.accept(model.interactionVersion, requireNotNull(model.state.owner), pending); advanceUntilIdle()
         assertNull(model.state.facts)
         assertEquals("firewall.unverified", model.state.problem)
         assertEquals(listOf(pending), model.state.pending); assertEquals(1, reads)
     }
+    @Test fun `paused adoption must not read or clear a recovery marker`() = runTest {
+        login(); runCurrent()
+        val owner = requireNotNull(model.state.owner)
+        journal.begin(owner, change.kind, change.number)
+        model.refresh(); advanceUntilIdle()
+        val pending = model.state.pending.single()
+        var reads = 0
+        gateway.onFirewallStatus = { reads++; ApiResult.Success(status) }
+        model.setReviewActive(false)
+        model.accept(model.interactionVersion, requireNotNull(model.state.owner), pending); advanceUntilIdle()
+        assertEquals(0, reads)
+        assertEquals(listOf(pending), journal.pending(owner))
+    }
+
+    @Test fun `old adoption must not clear a later identical change`() = runTest {
+        login(); runCurrent()
+        val owner = requireNotNull(model.state.owner)
+        journal.begin(owner, change.kind, change.number)
+        model.refresh(); advanceUntilIdle()
+        val old = model.state.pending.single()
+        model.accept(model.interactionVersion, requireNotNull(model.state.owner), old); advanceUntilIdle()
+        assertTrue(journal.pending(owner).isEmpty())
+        journal.begin(owner, change.kind, change.number)
+        model.refresh(); advanceUntilIdle()
+        val fresh = model.state.pending.single()
+        assertEquals(old, fresh); assertNotSame(old, fresh)
+        var reads = 0
+        gateway.onFirewallStatus = { reads++; ApiResult.Success(status) }
+        model.accept(model.interactionVersion, requireNotNull(model.state.owner), old); advanceUntilIdle()
+        assertEquals(0, reads)
+        assertEquals(listOf(fresh), journal.pending(owner))
+        model.accept(model.interactionVersion, owner, fresh); advanceUntilIdle()
+        assertEquals(1, reads); assertTrue(journal.pending(owner).isEmpty())
+    }
+
+    @Test fun `old lifecycle and login cannot adopt the current marker`() = runTest {
+        login(); runCurrent()
+        val owner = requireNotNull(model.state.owner)
+        journal.begin(owner, change.kind, change.number)
+        model.refresh(); advanceUntilIdle()
+        val pending = model.state.pending.single()
+        val version = model.interactionVersion
+        model.setReviewActive(false); model.setReviewActive(true)
+        var reads = 0
+        gateway.onFirewallStatus = { reads++; ApiResult.Success(status) }
+        model.accept(version, owner, pending); advanceUntilIdle()
+        assertEquals(0, reads); assertEquals(1, journal.pending(owner).size)
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        reads = 0
+        model.accept(model.interactionVersion, owner, model.state.pending.single()); advanceUntilIdle()
+        assertEquals(0, reads); assertEquals(1, journal.pending(requireNotNull(model.state.owner)).size)
+    }
+
     private suspend fun TestScope.review(): FirewallConfirmation {
         login(); runCurrent(); model.refresh(); advanceUntilIdle()
-        model.requestChange(requireNotNull(model.state.owner), facts, change)
+        model.requestChange(model.interactionVersion, requireNotNull(model.state.owner), facts, change)
         return requireNotNull(model.confirmation)
     }
     @Test fun `old login confirmation cannot write identical facts after relogin`() = runTest {
@@ -98,15 +154,16 @@ class FirewallViewModelTest {
         val old = review(); var sends = 0
         gateway.onChangeFirewall = { sends++; ApiResult.Transport(null) }
         model.refresh(); advanceUntilIdle(); assertNull(model.confirmation)
-        model.requestChange(requireNotNull(model.state.owner), facts, change)
+        model.requestChange(model.interactionVersion, requireNotNull(model.state.owner), facts, change)
         val fresh = requireNotNull(model.confirmation)
         model.change(old); advanceUntilIdle(); assertEquals(0, sends)
         model.dismissConfirmation(fresh); model.change(fresh); advanceUntilIdle(); assertEquals(0, sends)
     }
     @Test fun `confirmation is consumed only once and stop invalidates it`() = runTest {
         val old = review(); model.stop(); model.change(old); advanceUntilIdle()
+        model.setReviewActive(true)
         model.refresh(); advanceUntilIdle()
-        model.requestChange(requireNotNull(model.state.owner), facts, change)
+        model.requestChange(model.interactionVersion, requireNotNull(model.state.owner), facts, change)
         val fresh = requireNotNull(model.confirmation); var sends = 0
         gateway.onChangeFirewall = { sends++; ApiResult.Transport(null) }
         model.change(fresh); model.change(fresh); advanceUntilIdle()
@@ -134,7 +191,7 @@ class FirewallViewModelTest {
         var reads = 0; var writes = 0
         gateway.onFirewallStatus = { reads++; check(reads <= 3) { "redundant read" }; ApiResult.Success(status) }
         gateway.onChangeFirewall = { writes++; ApiResult.Success(FirewallResult(true, "")) }
-        model.requestChange(requireNotNull(model.state.owner), facts, change)
+        model.requestChange(model.interactionVersion, requireNotNull(model.state.owner), facts, change)
         model.change(requireNotNull(model.confirmation)); advanceUntilIdle()
         assertEquals(3, reads); assertEquals(1, writes)
         assertEquals(facts, model.state.facts); assertNull(model.state.problem)
@@ -144,7 +201,7 @@ class FirewallViewModelTest {
         login(); runCurrent(); model.refresh(); advanceUntilIdle()
         var writes = 0
         gateway.onChangeFirewall = { writes++; gateway.onFirewallStatus = { error("private post-write verification failure") }; ApiResult.Success(FirewallResult(true, "")) }
-        model.requestChange(requireNotNull(model.state.owner), facts, change)
+        model.requestChange(model.interactionVersion, requireNotNull(model.state.owner), facts, change)
         model.change(requireNotNull(model.confirmation)); advanceUntilIdle()
         assertEquals(1, model.state.saved); assertNull(model.state.facts)
         assertEquals("firewall.refresh_failed", model.state.problem)
@@ -154,11 +211,11 @@ class FirewallViewModelTest {
 
     @Test fun `stale dismissal cannot withdraw a different or reopened confirmation`() = runTest {
         val old = review()
-        model.requestChange(old.owner, old.expected, FirewallChange(FirewallChangeKind.Defaults, incoming = "deny", outgoing = "deny"))
+        model.requestChange(model.interactionVersion, old.owner, old.expected, FirewallChange(FirewallChangeKind.Defaults, incoming = "deny", outgoing = "deny"))
         val replacement = requireNotNull(model.confirmation)
         model.dismissConfirmation(old); assertSame(replacement, model.confirmation)
         model.dismissConfirmation(replacement); assertNull(model.confirmation)
-        model.requestChange(old.owner, old.expected, old.change)
+        model.requestChange(model.interactionVersion, old.owner, old.expected, old.change)
         val reopened = requireNotNull(model.confirmation)
         model.dismissConfirmation(old); assertSame(reopened, model.confirmation)
         model.dismissConfirmation(reopened); assertNull(model.confirmation)
@@ -166,11 +223,38 @@ class FirewallViewModelTest {
     @Test fun `numbered change requires a unique target in the captured facts`() = runTest {
         login(); runCurrent(); model.refresh(); advanceUntilIdle()
         val owner = requireNotNull(model.state.owner)
-        model.requestChange(owner, facts, FirewallChange(FirewallChangeKind.Delete, 7))
+        model.requestChange(model.interactionVersion, owner, facts, FirewallChange(FirewallChangeKind.Delete, 7))
         assertNull(model.confirmation)
         val target = FirewallRule(7, "allow", "in", "tcp", "any", "any", "5000", "IPv4 + IPv6")
-        model.requestChange(owner, facts, FirewallChange(FirewallChangeKind.Replace, 7, rule = target))
+        model.requestChange(model.interactionVersion, owner, facts, FirewallChange(FirewallChangeKind.Replace, 7, rule = target))
         assertNull(model.confirmation)
+    }
+
+    @Test fun `paused page cannot open or submit a new confirmation`() = runTest {
+        val old = review()
+        model.setReviewActive(false)
+        model.requestChange(model.interactionVersion, old.owner, old.expected, old.change)
+        assertNull(model.confirmation)
+        model.change(old); advanceUntilIdle()
+        assertTrue(model.state.pending.isEmpty())
+        model.setReviewActive(true)
+        model.requestChange(model.interactionVersion, old.owner, old.expected, old.change)
+        assertNotNull(model.confirmation)
+    }
+
+    @Test fun `pre pause action cannot open confirmation after resume or replace a fresh review`() = runTest {
+        val old = review()
+        val version = model.interactionVersion
+        model.setReviewActive(false); model.setReviewActive(true)
+        model.requestChange(version, old.owner, old.expected, old.change)
+        assertNull(model.confirmation)
+        model.requestChange(model.interactionVersion, old.owner, old.expected, old.change)
+        val fresh = requireNotNull(model.confirmation)
+        model.requestChange(version, old.owner, old.expected, FirewallChange(FirewallChangeKind.Defaults, incoming = "deny", outgoing = "deny"))
+        assertSame(fresh, model.confirmation)
+        model.change(old); advanceUntilIdle()
+        assertSame(fresh, model.confirmation)
+        assertTrue(model.state.pending.isEmpty())
     }
 
 }

@@ -40,6 +40,35 @@ public static class FileEndpoints
             });
 
         files.MapArchiveEndpoints();
+        files.MapPut(FileApiRoutes.Ownership, async (UpdateUnixOwnershipRequest request, HttpContext http,
+            IHostFileAuthorizationService authorizations, IPrivilegedFileService privileged) =>
+        {
+            if (!OperatingSystem.IsLinux()) return Problem(409, "unsupported-operation", "Unsupported operation", "Ownership editing requires Linux.");
+            if (string.IsNullOrWhiteSpace(request.Path) || !Path.IsPathRooted(request.Path)
+                || string.IsNullOrWhiteSpace(request.Owner) || string.IsNullOrWhiteSpace(request.Group)
+                || request.Owner.Length > 256 || request.Group.Length > 256)
+                return Problem(400, "invalid-ownership", "Invalid ownership", "Provide an absolute path, owner and group.");
+            try
+            {
+                var source = authorizations.Authorize(http.User, FileElevationCapability.Write, [request.Path]);
+                if (source is null) return Problem(403, "elevation-required", "Administrator authorization required", "Changing ownership requires administrator authorization.");
+                return Results.Ok(await privileged.SetUnixOwnershipAsync(source.Value, request.Path,
+                    request.Owner, request.Group, request.Recursive, http.RequestAborted));
+            }
+            catch (UnauthorizedAccessException) { return Problem(403, "elevation-required", "Administrator authorization required", "Ownership change was denied."); }
+            catch (FileNotFoundException) { return Problem(404, "not-found", "Not found", "Path not found."); }
+            catch (ArgumentException) { return Problem(400, "invalid-ownership", "Invalid ownership", "Check the owner, group and path."); }
+            catch (IOException) { return Problem(409, "ownership-failed", "Ownership change failed", "Some entries may have changed; refresh properties before retrying."); }
+            catch (InvalidOperationException) { return Problem(503, "helper-unavailable", "Helper unavailable", "The privileged file helper is unavailable."); }
+        }).RequireAuthorization()
+            .AddEndpointFilter(new ServerModeEndpointFilter(ServerHostFeature.PrivilegedOperations))
+            .WithTags("Files");
+        files.MapPut(FileApiRoutes.ConditionalContent, (ConditionalFileWriteRequest request, IFileService fs, CancellationToken ct) =>
+            TextResult(async () => await new ConditionalFileEditor(fs).SaveAsync(request, ct) is { } saved
+                ? Results.Ok(saved) : Problem(409, "text-file-changed", "File changed", "Reload or save a copy before saving.")))
+            .RequireAuthorization(FileAuthorizationPolicies.Write).WithTags("Files")
+            .WithMetadata(new RequestSizeLimitAttribute(1024 * 1024));
+
         files.MapGet(FileApiRoutes.Text, (string path, IFileService fs, CancellationToken ct) =>
             TextResult(async () => Results.Ok(await new TextFileEditor(fs).ReadAsync(path, ct))))
             .RequireAuthorization(FileAuthorizationPolicies.Read).WithTags("Files");

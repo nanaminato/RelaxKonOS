@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.TextEditor;
 using RelaxKonOS.Client.Localization;
@@ -6,6 +6,10 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Apps.ImageViewer;
 using Avalonia.Media;
+using RelaxKonOS.Client.Controls.Diff;
+using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Protocol.Files;
+using RelaxKonOS.Protocol.Git;
 
 namespace RelaxKonOS.Client.Apps.CodeEditor;
 
@@ -21,10 +25,14 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
     // longer matches must not activate its file over whatever the user opened meanwhile.
     private int _openRevision;
     private bool _disposed;
+    private readonly CancellationTokenSource _lifetime = new();
+    private readonly IEditorFileWriter? _conditionalWriter;
 
-    public CodeEditorViewModel(IExplorerClient? files, bool pathCaseSensitive = true, string defaultEncodingName = "UTF-8")
+    public CodeEditorViewModel(IExplorerClient? files, bool pathCaseSensitive = true, string defaultEncodingName = "UTF-8",
+        IEditorFileWriter? conditionalWriter = null)
     {
         _files = files;
+        _conditionalWriter = conditionalWriter;
         _pathComparer = pathCaseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase;
         DefaultEncodingName = TextFileEncodings.IsSupported(defaultEncodingName) ? defaultEncodingName : "UTF-8";
         EncodingName = DefaultEncodingName;
@@ -51,15 +59,34 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
     private bool _isSaving;
     [ObservableProperty] private bool _showImageSource;
     [ObservableProperty] private bool _imageAtActualSize;
+    [ObservableProperty] private string _caretPosition = "1:1";
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowProjectEmptyState))]
+    private bool _isProjectWorkspace;
+    public bool ShowProjectEmptyState => IsProjectWorkspace && ActiveDocument is null;
+    public bool HasDocuments => OpenDocuments.Count > 0;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanEditDocument))]
+    private bool _isOperationLocked;
 
     /// <summary>False while a write is in flight; the editor and its command surface bind to this.</summary>
-    public bool CanEditDocument => !IsSaving;
+    public bool CanEditDocument => !IsSaving && !IsOperationLocked && !IsTreeBusy;
+    public bool IsReadOnly => !CanEditDocument || ActiveDocument?.IsReadOnly == true;
     public bool HasImageSourceText => ActiveDocument?.ContentKind == CodeEditorContentKind.Image
         && string.Equals(Path.GetExtension(CurrentPath), ".svg", StringComparison.OrdinalIgnoreCase);
     public bool IsTextDocument => ActiveDocument?.ContentKind == CodeEditorContentKind.Text || (HasImageSourceText && ShowImageSource);
     public bool IsImageDocument => ActiveDocument?.ContentKind == CodeEditorContentKind.Image && !ShowImageSource;
     public bool IsBinaryDocument => ActiveDocument?.ContentKind == CodeEditorContentKind.Binary;
-    public bool CanSaveDocument => !IsSaving && (ActiveDocument is null || IsTextDocument);
+    public bool CanSaveDocument => CanEditDocument && ActiveDocument?.IsReadOnly != true && (ActiveDocument is null || IsTextDocument);
+    public bool IsComparisonDocument => ActiveDocument?.ContentKind == CodeEditorContentKind.Comparison;
+    public DiffDocument? Comparison => ActiveDocument?.Comparison;
+    public string ComparisonNotice => ActiveDocument?.ComparisonNoticeKey is { } key ? LocalizedText.Get(key) : string.Empty;
+    public bool HasComparisonNotice => !string.IsNullOrEmpty(ActiveDocument?.ComparisonNoticeKey);
+    public bool HasExternalChanges => ActiveDocument?.HasExternalChanges == true;
+    public bool IsTextReadOnly => IsTextDocument && ActiveDocument?.IsReadOnly == true;
+    public string NewlineText => TextFileCodec.Newline(Text).ToUpperInvariant();
+    public event EventHandler<string>? FileSaved;
+    public bool OpenFilesOnSelection { get; set; } = true;
     public IImage? PreviewImage => ActiveDocument?.ImageSource;
     public double PreviewWidth => ImageAtActualSize ? PreviewImage?.Size.Width ?? double.NaN : double.NaN;
     public double PreviewHeight => ImageAtActualSize ? PreviewImage?.Size.Height ?? double.NaN : double.NaN;
@@ -84,6 +111,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
     public Func<Task<string?>>? RequestFolderAsync { get; set; }
     public Func<string, Task<string?>>? RequestSavePathAsync { get; set; }
     public Func<CodeEditorDocument, Task<bool>>? RequestDiscardChangesAsync { get; set; }
+    public Func<CodeEditorDocument, Task<bool>>? RequestCloseDocumentAsync { get; set; }
     public Func<Task>? RequestSettingsAsync { get; set; }
     public Func<Task<EncodingDialogAction?>>? RequestEncodingActionAsync { get; set; }
     public Func<Task<string?>>? RequestEncodingAsync { get; set; }
@@ -96,7 +124,8 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(LineCount));
         OnPropertyChanged(nameof(LineCountText));
         OnPropertyChanged(nameof(CharacterCountText));
-        if (ActiveDocument is null || !IsTextDocument) return;
+        OnPropertyChanged(nameof(NewlineText));
+        if (ActiveDocument is null || !IsTextDocument || ActiveDocument.IsReadOnly) return;
         ActiveDocument.Text = value;
         if (!_isLoadingDocument)
         {
@@ -123,6 +152,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
 
     partial void OnActiveDocumentChanged(CodeEditorDocument? value)
     {
+        OnPropertyChanged(nameof(ShowProjectEmptyState));
         _isLoadingDocument = true;
         ShowImageSource = value?.ShowSource ?? false;
         Text = value?.Text ?? string.Empty;
@@ -136,6 +166,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
     }
 
     partial void OnIsSavingChanged(bool value) => NotifySaveCommands();
+    partial void OnIsOperationLockedChanged(bool value) => NotifySaveCommands();
     partial void OnShowImageSourceChanged(bool value)
     {
         if (!_isLoadingDocument && ActiveDocument is { } document) document.ShowSource = value;
@@ -150,6 +181,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
     private void NotifySaveCommands()
     {
         OnPropertyChanged(nameof(CanSaveDocument));
+        OnPropertyChanged(nameof(IsReadOnly));
         SaveCommand.NotifyCanExecuteChanged();
         SaveAsCommand.NotifyCanExecuteChanged();
         ChooseEncodingCommand.NotifyCanExecuteChanged();
@@ -159,8 +191,19 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
     {
         foreach (var name in new[] { nameof(IsTextDocument), nameof(IsImageDocument), nameof(IsBinaryDocument),
             nameof(HasImageSourceText), nameof(PreviewImage), nameof(PreviewWidth), nameof(PreviewHeight),
-            nameof(FileSizeText), nameof(ImageDimensionsText) }) OnPropertyChanged(name);
+            nameof(FileSizeText), nameof(ImageDimensionsText), nameof(IsComparisonDocument), nameof(Comparison),
+            nameof(ComparisonNotice), nameof(HasComparisonNotice), nameof(HasExternalChanges), nameof(IsReadOnly), nameof(IsTextReadOnly) }) OnPropertyChanged(name);
         NotifySaveCommands();
+        OnPropertyChanged(nameof(HasDocuments));
+    }
+
+    public void RefreshLocalization()
+    {
+        NotifyContentChanged();
+        OnPropertyChanged(nameof(StatusText));
+        OnPropertyChanged(nameof(DocumentName));
+        OnPropertyChanged(nameof(LineCountText));
+        OnPropertyChanged(nameof(CharacterCountText));
     }
 
     [RelayCommand]
@@ -192,15 +235,26 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
             value.IsExpanded = true;
             return;
         }
-        _ = OpenPathAsync(value.Path);
+        if (OpenFilesOnSelection) _ = OpenPathAsync(value.Path);
     }
 
     [RelayCommand]
     private void ToggleSidebar() => IsSidebarVisible = !IsSidebarVisible;
 
+    /// <summary>Publishes generated text without replacing existing buffers, including while its producing Git operation finishes.</summary>
+    public void OpenGeneratedTextDocument(string title, string text)
+    {
+        if (_disposed) return;
+        _openRevision++;
+        var document = new CodeEditorDocument(null, text, DefaultEncodingName, title) { IsDirty = true };
+        OpenDocuments.Add(document);
+        ActiveDocument = document;
+    }
+
     [RelayCommand]
     private void NewDocument()
     {
+        if (!CanEditDocument || _disposed) return;
         // A new tab supersedes any read still in flight.
         _openRevision++;
         var document = new CodeEditorDocument(null, string.Empty, DefaultEncodingName,
@@ -213,7 +267,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task OpenDocumentAsync()
     {
-        if (IsSaving) return;
+        if (!CanEditDocument) return;
         var path = await (RequestFileAsync?.Invoke() ?? Task.FromResult<string?>(null));
         if (!string.IsNullOrWhiteSpace(path)) await OpenPathAsync(path);
     }
@@ -247,10 +301,10 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task CloseDocumentAsync(CodeEditorDocument? document)
     {
-        if (IsSaving) return;
+        if (!CanEditDocument) return;
         document ??= ActiveDocument;
         if (document is null) return;
-        if (document.IsDirty && !(await (RequestDiscardChangesAsync?.Invoke(document) ?? Task.FromResult(false)))) return;
+        if (document.IsDirty && !(await ((RequestCloseDocumentAsync ?? RequestDiscardChangesAsync)?.Invoke(document) ?? Task.FromResult(false)))) return;
 
         var index = OpenDocuments.IndexOf(document);
         // Removing the selected ListBox item synchronously writes null through its two-way
@@ -258,6 +312,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
         var wasActive = ReferenceEquals(ActiveDocument, document);
         OpenDocuments.Remove(document);
         document.Dispose();
+        NotifyContentChanged();
         if (!wasActive) return;
         ActiveDocument = OpenDocuments.Count == 0 ? null : OpenDocuments[Math.Clamp(index, 0, OpenDocuments.Count - 1)];
     }
@@ -351,6 +406,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
         var existing = OpenDocuments.FirstOrDefault(document => !string.IsNullOrWhiteSpace(document.Path) && PathEquals(document.Path, path));
         if (existing is not null && !forceReload)
         {
+            _openRevision++;
             ActivateDocument(existing);
             return;
         }
@@ -361,10 +417,16 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
         }
         // Reserve the next read revision: a newer open or a new tab wins over this late result.
         var revision = ++_openRevision;
+        var existingRevision = existing?.Revision;
         try
         {
-            var bytes = await _files.ReadFileAsync(path);
+            var bytes = await _files.ReadFileAsync(path, _lifetime.Token);
             if (_disposed || revision != _openRevision) return;
+            if (existing is not null && existing.Revision != existingRevision)
+            {
+                StatusText = LocalizedText.Ref("code_editor.status.save_or_discard");
+                return;
+            }
             // A missing file leaves every open tab untouched instead of clearing the editor.
             if (bytes is null) { StatusText = LocalizedText.Ref("code_editor.status.file_missing"); return; }
             var encoding = existing?.EncodingName ?? CodeEditorFileContent.DetectEncoding(bytes, DefaultEncodingName);
@@ -411,6 +473,9 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
             existing.ContentKind = contentKind;
             existing.ImageSource = image;
             existing.ByteLength = bytes.LongLength;
+            existing.Version = GitTextFileWrite.Version(bytes);
+            existing.HasExternalChanges = false;
+            existing.IsReadOnly = _conditionalWriter is not null && bytes.Length > TextFileCodec.MaximumBytes;
             ActivateDocument(existing);
             StatusText = contentKind == CodeEditorContentKind.Text
                 ? LocalizedText.Ref("code_editor.status.opened", Path.GetFileName(path), encoding)
@@ -429,7 +494,8 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
         node.IsLoading = true;
         try
         {
-            var directory = await _files.GetDirectoryAsync(node.Path);
+            var directory = await _files.GetDirectoryAsync(node.Path, _lifetime.Token);
+            if (_disposed) return;
             node.Children.Clear();
             foreach (var child in directory.Directories)
                 node.Children.Add(CreateFolderNode(child.Name, child.Path, false));
@@ -455,17 +521,24 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
     private async Task SaveToPathAsync(CodeEditorDocument document, string path)
     {
         if (_files is null) { StatusText = LocalizedText.Ref("code_editor.status.connect_before_save"); return; }
-        if (IsSaving || (document.ContentKind != CodeEditorContentKind.Text
+        if (!CanEditDocument || document.IsReadOnly || (document.ContentKind != CodeEditorContentKind.Text
             && !string.Equals(Path.GetExtension(document.Path), ".svg", StringComparison.OrdinalIgnoreCase))) return;
         // Snapshot the revision, bytes and encoding so the write describes exactly the tab the
         // user asked to save.
         var revision = document.Revision;
         var content = TextFileEncodings.Encode(document.Text, document.EncodingName);
         var encoding = document.EncodingName;
+        var saved = false;
         IsSaving = true;
         try
         {
-            await _files.WriteFileAsync(path, content);
+            if (_conditionalWriter is not null)
+                document.Version = await _conditionalWriter.WriteEditorFileAsync(path, content,
+                    document.Path is not null && PathEquals(document.Path, path) ? document.Version : null, _lifetime.Token);
+            else
+                await _files.WriteFileAsync(path, content, _lifetime.Token);
+            if (_disposed) return;
+            document.HasExternalChanges = false;
             // An edit made while the write was in flight keeps its dirty flag.
             if (document.Revision == revision)
             {
@@ -489,13 +562,25 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
             }
             OnPropertyChanged(nameof(DocumentName));
             StatusText = LocalizedText.Ref("code_editor.status.saved", Path.GetFileName(path), encoding);
+            saved = true;
+        }
+        catch (RelaxKonOSAuthException ex) when (ex.Type.EndsWith("/text-file-changed", StringComparison.Ordinal))
+        {
+            var samePath = document.Path is not null && PathEquals(document.Path, path);
+            if (samePath) document.HasExternalChanges = true;
+            StatusText = LocalizedText.Ref(samePath ? "git.editor.external_changes" : "git.editor.target_exists");
+            NotifyContentChanged();
         }
         catch (Exception ex)
         {
             // The write is unconfirmed. Leave the tab dirty so the user verifies before retrying.
             StatusText = LocalizedText.Ref("code_editor.status.save_failed", ex.Message);
         }
-        finally { IsSaving = false; }
+        finally
+        {
+            IsSaving = false;
+            if (saved) FileSaved?.Invoke(this, path);
+        }
     }
 
     private static bool IsAncestor(CodeEditorFolderNode root, CodeEditorFolderNode node)
@@ -521,9 +606,138 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
         _disposed = true;
+        _lifetime.Cancel();
         _openRevision++;
         foreach (var document in OpenDocuments) document.Dispose();
+    }
+
+    public void OpenComparison(string key, string title, string? patch, string? noticeKey)
+    {
+        if (_disposed) return;
+        _openRevision++;
+        var document = OpenDocuments.FirstOrDefault(item => item.ComparisonKey == key);
+        if (document is null)
+        {
+            document = new CodeEditorDocument(null, string.Empty, "UTF-8", title)
+            {
+                ComparisonKey = key, TabTitle = title, ContentKind = CodeEditorContentKind.Comparison, IsReadOnly = true,
+            };
+            OpenDocuments.Add(document);
+        }
+        document.Comparison = DiffDocument.Parse(patch);
+        document.ComparisonNoticeKey = noticeKey;
+        ActivateDocument(document);
+    }
+
+    [RelayCommand]
+    public async Task SaveAllAsync()
+    {
+        if (!CanEditDocument) return;
+        foreach (var document in OpenDocuments.Where(item => item.IsDirty).ToArray())
+        {
+            if (!await SaveDocumentAsync(document)) return;
+        }
+    }
+
+    public async Task<bool> SaveDocumentAsync(CodeEditorDocument document)
+    {
+        if (!CanEditDocument || document.IsReadOnly || !OpenDocuments.Contains(document)) return false;
+        var path = document.Path;
+        if (string.IsNullOrWhiteSpace(path)) path = await (RequestSavePathAsync?.Invoke(document.DisplayName) ?? Task.FromResult<string?>(null));
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        await SaveToPathAsync(document, path);
+        return !document.IsDirty;
+    }
+
+    public async Task<bool> DiscardDocumentAsync(CodeEditorDocument document)
+    {
+        if (_disposed || IsSaving || !OpenDocuments.Contains(document)) return false;
+        if (document.Path is null)
+        {
+            document.IsDirty = false;
+            await CloseDocumentCommand.ExecuteAsync(document);
+            return true;
+        }
+        if (_files is not null)
+        {
+            var revision = document.Revision;
+            try
+            {
+                var bytes = await _files.ReadFileAsync(document.Path, _lifetime.Token);
+                if (_disposed || document.Revision != revision || !OpenDocuments.Contains(document)) return false;
+                if (bytes is null)
+                {
+                    document.IsDirty = false;
+                    await CloseDocumentCommand.ExecuteAsync(document);
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusText = LocalizedText.Ref("code_editor.status.open_failed", ex.Message);
+                return false;
+            }
+        }
+        await OpenPathAsync(document.Path, forceReload: true, allowDiscardDirty: true);
+        return !document.IsDirty;
+    }
+
+    public void ResetWorkspace()
+    {
+        if (HasUnsavedDocuments || IsSaving) throw new InvalidOperationException("Resolve drafts before resetting the editor.");
+        _openRevision++;
+        ActiveDocument = null;
+        foreach (var document in OpenDocuments) document.Dispose();
+        OpenDocuments.Clear();
+        WorkspaceRoots.Clear();
+        SelectedFolderNode = null;
+        NotifyContentChanged();
+    }
+
+    /// <summary>Reload clean documents, preserving dirty buffers and marking external conflicts.</summary>
+    public async Task RefreshOpenDocumentsAsync()
+    {
+        if (_files is null || _disposed || IsSaving) return;
+        foreach (var document in OpenDocuments.Where(item => item.Path is not null).ToArray())
+        {
+            var revision = document.Revision;
+            var path = document.Path!;
+            try
+            {
+                var bytes = await _files.ReadFileAsync(path, _lifetime.Token);
+                if (_disposed || !OpenDocuments.Contains(document) || document.Revision != revision || document.Path != path) continue;
+                var version = bytes is null ? null : GitTextFileWrite.Version(bytes);
+                if (version == document.Version) continue;
+                document.HasExternalChanges = true;
+                if (bytes is not null && !document.IsDirty && document.ContentKind == CodeEditorContentKind.Text)
+                {
+                    var text = TextFileEncodings.Decode(bytes, document.EncodingName);
+                    if (CodeEditorFileContent.IsBinary(path, text)) document.IsReadOnly = true;
+                    else
+                    {
+                        document.Text = text;
+                        document.Version = version;
+                        document.ByteLength = bytes.LongLength;
+                        document.IsReadOnly = _conditionalWriter is not null && bytes.Length > TextFileCodec.MaximumBytes;
+                        document.HasExternalChanges = false;
+                    }
+                }
+                if (ReferenceEquals(document, ActiveDocument)) ActivateDocument(document);
+            }
+            catch (OperationCanceledException) when (_disposed) { return; }
+            catch (Exception ex) { StatusText = LocalizedText.Ref("code_editor.status.open_failed", ex.Message); }
+        }
+    }
+
+    [RelayCommand]
+    private async Task ReloadDocumentAsync()
+    {
+        var document = ActiveDocument;
+        if (!CanEditDocument || document?.Path is null) return;
+        if (document.IsDirty && !(await (RequestDiscardChangesAsync?.Invoke(document) ?? Task.FromResult(false)))) return;
+        await OpenPathAsync(document.Path, forceReload: true, allowDiscardDirty: true);
     }
 
     private bool PathEquals(string left, string right) => _pathComparer.Equals(left, right);

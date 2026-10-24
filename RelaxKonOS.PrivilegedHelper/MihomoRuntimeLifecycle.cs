@@ -137,7 +137,8 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
     }
 
     internal async Task<RuntimeSwitchResult> ExecuteAsync(Guid operationId, RuntimeChangePlan plan,
-        RuntimeAuthorizationChannel channel, CancellationToken ct, RuntimeStageReporter? progress = null)
+        RuntimeAuthorizationChannel channel, CancellationToken ct, RuntimeStageReporter? progress = null,
+        RuntimeDownloadProxy? downloadProxy = null)
     {
         // The channel descriptor never enters a frozen plan, durable journal, or idempotency hash.
         if (channel.OperationId != operationId || channel.RuntimeId != "mihomo")
@@ -149,7 +150,8 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
         // Removal never reads published credentials, so it does not depend on a live authorization channel.
         return plan.Request.Change == RuntimeChange.Uninstall
             ? await Removal(channel, progress).ExecuteAsync(operationId, plan, cancellation.Token)
-            : await Switch(channel, progress, plan.Request.Change == RuntimeChange.Install ? plan : null).ExecuteAsync(operationId, plan, cancellation.Token);
+            : await Switch(channel, progress, plan.Request.Change == RuntimeChange.Install ? plan : null, downloadProxy)
+                .ExecuteAsync(operationId, plan, cancellation.Token);
     }
 
     /// <summary>
@@ -184,7 +186,7 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
         return states.Read()?.Removal is not null
             ? await Removal(channel, progress).RecoverAsync(operationId, ct)
             : await Switch(channel, progress, states.Read()?.Pending is { Plan.Request.Change: RuntimeChange.Install } installation
-                ? installation.Plan : null).RecoverAsync(operationId, ct);
+                ? installation.Plan : null, downloadProxy: null).RecoverAsync(operationId, ct);
     }
 
     /// <summary>
@@ -381,8 +383,9 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
             RuntimeAuthorizationClient.ReadAsync<MihomoConfigurationAuthorization>(channel, channel.OperationId, ct);
     }
 
-    private RuntimeArchiveSwitch Switch(RuntimeAuthorizationChannel channel, RuntimeStageReporter? progress, RuntimeChangePlan? installationPlan) => new(states,
-        new MihomoArchiveAdapter(root, states, sources, transport ?? new RuntimeArchiveTransport(), host,
+    private RuntimeArchiveSwitch Switch(RuntimeAuthorizationChannel channel, RuntimeStageReporter? progress,
+        RuntimeChangePlan? installationPlan, RuntimeDownloadProxy? downloadProxy) => new(states,
+        new MihomoArchiveAdapter(root, states, sources, transport ?? new RuntimeArchiveTransport(), downloadProxy, host,
             installationPlan is null ? new Authorization(channel) : new MihomoInstallationAuthorizationReader(states, installationPlan,
                 ct => RuntimeAuthorizationClient.ReadAsync<MihomoInstallationAuthorization>(channel, channel.OperationId, ct)), protect, progress, environment), progress);
 

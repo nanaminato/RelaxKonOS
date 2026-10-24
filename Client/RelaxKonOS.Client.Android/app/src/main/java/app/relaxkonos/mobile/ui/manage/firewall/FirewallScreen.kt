@@ -24,6 +24,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 import java.text.DateFormat
 import java.util.Date
 
+private class FirewallLeaveReview(val action: () -> Unit)
 
 @Composable fun FirewallScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     val container = appContainer()
@@ -36,6 +37,7 @@ import java.util.Date
 @Composable internal fun FirewallContent(model: FirewallViewModel, owner: SessionState.Active?,
     onBack: () -> Unit, modifier: Modifier = Modifier) {
     val state = model.state
+    val interactionVersion = model.interactionVersion
     val visible = state.owner === owner
     val facts = if (visible) state.facts else null
     val ready = visible && !state.busy && owner?.privilegedOperations == true && facts?.status?.isAvailable == true && state.pending.isEmpty()
@@ -46,13 +48,13 @@ import java.util.Date
     var initialDefaults by remember(owner) { mutableStateOf<Pair<String, String>?>(null) }
     var selected by remember(owner) { mutableStateOf<Int?>(null) }
     val confirmation = model.confirmation?.takeIf { it.owner === owner }
-    var leave by remember(owner) { mutableStateOf<(() -> Unit)?>(null) }
+    var leave by remember(owner) { mutableStateOf<FirewallLeaveReview?>(null) }
     val editing = draft != null || defaults != null
     val dirty = (draft != null && draft != initialDraft) || (defaults != null && defaults != initialDefaults)
     val navigate: (() -> Unit) -> Unit = { action ->
         if (!state.busy) {
             model.withdrawConfirmation()
-            if (dirty) leave = action else action()
+            if (dirty) leave = FirewallLeaveReview(action) else action()
         }
     }
     LaunchedEffect(owner, state.owner) { if (owner != null && visible) model.refresh() }
@@ -60,11 +62,13 @@ import java.util.Date
     DisposableEffect(owner) { onDispose { model.stop() } }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(owner, lifecycle) {
+        model.setReviewActive(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_PAUSE) { model.withdrawConfirmation(); leave = null }
+            if (event == Lifecycle.Event.ON_RESUME) model.setReviewActive(true)
+            if (event == Lifecycle.Event.ON_PAUSE) { model.setReviewActive(false); leave = null }
         }
         lifecycle.addObserver(observer)
-        onDispose { lifecycle.removeObserver(observer) }
+        onDispose { model.setReviewActive(false); lifecycle.removeObserver(observer) }
     }
     BackHandler(editing) { navigate { draft = null; defaults = null } }
 
@@ -82,7 +86,11 @@ import java.util.Date
         if (visible && section == "records") state.pending.forEach { pending ->
             ManagementCard {
             Text(stringResource(R.string.firewall_pending), color = MaterialTheme.colorScheme.error)
-            OutlinedButton(enabled = !state.busy, onClick = { model.accept(pending) }) { Text(stringResource(R.string.firewall_accept_facts)) }
+            key(interactionVersion, state.feedbackVersion, pending) {
+                OutlinedButton(enabled = !state.busy, onClick = {
+                    model.accept(interactionVersion, requireNotNull(owner), pending)
+                }) { Text(stringResource(R.string.firewall_accept_facts)) }
+            }
             }
         }
         if (visible && section == "records" && state.pending.isEmpty()) ManagementCard { Text(stringResource(R.string.workspace_records_empty)) }
@@ -111,12 +119,12 @@ import java.util.Date
             }
             if (facts.status.backend == "windows-defender") Text(stringResource(R.string.firewall_windows_scope))
             state.checkedAtMillis?.let { Text(stringResource(R.string.operations_checked, DateFormat.getDateTimeInstance().format(Date(it)))) }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                OutlinedButton(enabled = ready && !editing, onClick = { model.requestChange(requireNotNull(owner), facts, FirewallChange(FirewallChangeKind.Enabled, enabled = if (facts.status.backend == "windows-defender") true else !facts.status.isEnabled)) }) {
+            key(interactionVersion) { FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                OutlinedButton(enabled = ready && !editing, onClick = { model.requestChange(interactionVersion, requireNotNull(owner), facts, FirewallChange(FirewallChangeKind.Enabled, enabled = if (facts.status.backend == "windows-defender") true else !facts.status.isEnabled)) }) {
                     Text(stringResource(if (facts.status.backend != "windows-defender" && facts.status.isEnabled) R.string.firewall_disable else R.string.firewall_enable))
                 }
                 if (facts.status.backend == "windows-defender") OutlinedButton(enabled = ready && !editing, onClick = {
-                    model.requestChange(requireNotNull(owner), facts, FirewallChange(FirewallChangeKind.Enabled, enabled = false))
+                    model.requestChange(interactionVersion, requireNotNull(owner), facts, FirewallChange(FirewallChangeKind.Enabled, enabled = false))
                 }) { Text(stringResource(R.string.firewall_disable)) }
                 OutlinedButton(enabled = ready && !editing, onClick = {
                     initialDefaults = (facts.status.defaultIncomingPolicy ?: "deny") to (facts.status.defaultOutgoingPolicy ?: "allow")
@@ -127,18 +135,22 @@ import java.util.Date
                     initialDraft = FirewallRule(0, "allow", "in", "tcp", "any", "any", "", "IPv4 + IPv6")
                     draft = initialDraft
                 }) { Text(stringResource(R.string.firewall_create)) }
+            } }
             }
-            }
-            if (defaults != null && confirmation == null && leave == null) AlertDialog(
+            val policyDraft = defaults
+            if (policyDraft != null && confirmation == null && leave == null) AlertDialog(
                 onDismissRequest = { if (!state.busy) navigate { defaults = null } }, modifier = Modifier.imePadding(),
                 title = { Text(stringResource(R.string.firewall_defaults)) },
                 text = { Column(Modifier.heightIn(max = 430.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                FirewallChoices(stringResource(R.string.firewall_incoming), if (facts.status.backend == "windows-defender") listOf("allow", "deny") else FirewallValues.policies, defaults!!.first, ready) { defaults = it to defaults!!.second }
-                FirewallChoices(stringResource(R.string.firewall_outgoing), if (facts.status.backend == "windows-defender") listOf("allow", "deny") else FirewallValues.policies, defaults!!.second, ready) { defaults = defaults!!.first to it }
+                FirewallChoices(stringResource(R.string.firewall_incoming), if (facts.status.backend == "windows-defender") listOf("allow", "deny") else FirewallValues.policies, policyDraft.first, ready) { if (defaults === policyDraft) defaults = it to policyDraft.second }
+                FirewallChoices(stringResource(R.string.firewall_outgoing), if (facts.status.backend == "windows-defender") listOf("allow", "deny") else FirewallValues.policies, policyDraft.second, ready) { if (defaults === policyDraft) defaults = policyDraft.first to it }
                 FirewallEditorFeedback(state.problem, state.busy)
                 if (!ready) TextButton(enabled = !state.busy, onClick = model::refresh) { Text(stringResource(R.string.firewall_refresh_keep_draft)) }
                 } },
-                confirmButton = { Button(enabled = ready, onClick = { model.requestChange(requireNotNull(owner), facts, FirewallChange(FirewallChangeKind.Defaults, incoming = defaults!!.first, outgoing = defaults!!.second)) }) { ActionLabel(R.string.common_save) } },
+                confirmButton = { key(interactionVersion, policyDraft) { Button(enabled = ready, onClick = {
+                    if (defaults === policyDraft) model.requestChange(interactionVersion, requireNotNull(owner), facts,
+                        FirewallChange(FirewallChangeKind.Defaults, incoming = policyDraft.first, outgoing = policyDraft.second))
+                }) { ActionLabel(R.string.common_save) } } },
                 dismissButton = { TextButton(enabled = !state.busy, onClick = { navigate { defaults = null } }) { Text(stringResource(R.string.common_cancel)) } })
             Box(Modifier.fillMaxWidth()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
@@ -168,15 +180,15 @@ import java.util.Date
                         if (!ready) TextButton(enabled = !state.busy, onClick = model::refresh) { Text(stringResource(R.string.firewall_refresh_keep_draft)) }
                         } }, confirmButton = {
                         val change = FirewallChange(if (rule.number == 0) FirewallChangeKind.Create else FirewallChangeKind.Replace, rule.number.takeIf { it > 0 }, rule = rule)
-                        Button(enabled = ready && runCatching { change.validate() }.isSuccess, onClick = { model.requestChange(requireNotNull(owner), facts, change) }) { ActionLabel(R.string.common_save) }
+                        key(interactionVersion) { Button(enabled = ready && runCatching { change.validate() }.isSuccess, onClick = { model.requestChange(interactionVersion, requireNotNull(owner), facts, change) }) { ActionLabel(R.string.common_save) } }
                         }, dismissButton = { TextButton(enabled = !state.busy, onClick = { navigate { draft = null } }) { Text(stringResource(R.string.common_cancel)) } })
                 }
             }
             facts.rules.firstOrNull { it.number == selected }?.let { rule ->
-                if (!editing) FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                if (!editing) key(interactionVersion) { FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     OutlinedButton(enabled = ready, onClick = { initialDraft = rule; draft = rule }) { Text(stringResource(R.string.firewall_edit)) }
-                    OutlinedButton(enabled = ready, onClick = { model.requestChange(requireNotNull(owner), facts, FirewallChange(FirewallChangeKind.Delete, rule.number)) }) { ActionLabel(R.string.common_delete) }
-                }
+                    OutlinedButton(enabled = ready, onClick = { model.requestChange(interactionVersion, requireNotNull(owner), facts, FirewallChange(FirewallChangeKind.Delete, rule.number)) }) { ActionLabel(R.string.common_delete) }
+                } }
             }
         }
     }
@@ -205,9 +217,17 @@ import java.util.Date
         } }, confirmButton = { Button(enabled = ready, onClick = {
             model.change(pending)
         }) { Text(stringResource(R.string.firewall_submit)) } }, dismissButton = { TextButton(onClick = { model.dismissConfirmation(pending) }) { Text(stringResource(R.string.common_cancel)) } }) }
-    if (leave != null) AlertDialog(onDismissRequest = { leave = null }, title = { Text(stringResource(R.string.firewall_discard)) },
-        text = { Text(stringResource(R.string.firewall_discard_help)) }, confirmButton = { TextButton(onClick = { val action = leave; leave = null; action?.invoke() }) { Text(stringResource(R.string.firewall_discard_action)) } },
-        dismissButton = { TextButton(onClick = { leave = null }) { Text(stringResource(R.string.firewall_continue_editing)) } })
+    val leaving = leave
+    if (leaving != null) key(leaving) {
+        val currentDecision = { leave === leaving && !model.state.busy && model.state.owner === owner &&
+            lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
+        val continueEditing = { if (currentDecision()) leave = null }
+        AlertDialog(onDismissRequest = continueEditing, title = { Text(stringResource(R.string.firewall_discard)) },
+            text = { Text(stringResource(R.string.firewall_discard_help)) }, confirmButton = { TextButton(onClick = {
+                if (currentDecision()) { leave = null; leaving.action() }
+            }) { Text(stringResource(R.string.firewall_discard_action)) } },
+            dismissButton = { TextButton(onClick = continueEditing) { Text(stringResource(R.string.firewall_continue_editing)) } })
+    }
 }
 @Composable private fun FirewallReviewField(label: String, value: String) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {

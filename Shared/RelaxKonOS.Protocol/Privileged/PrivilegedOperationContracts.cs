@@ -76,6 +76,7 @@ public enum PrivilegedOperationKind
     FileGetInfo,
     FileGetProperties,
     FileSetUnixPermissions,
+    FileSetUnixOwnership,
     FileGetStagingLength,
     FileDeleteStaging,
     FileCreateStaging,
@@ -280,6 +281,8 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("fileAuthorizationSource")] PrivilegedFileAuthorizationSource? FileAuthorizationSource = null,
     [property: JsonPropertyName("unixMode")] int? UnixMode = null,
     [property: JsonPropertyName("recursive")] bool Recursive = false,
+    [property: JsonPropertyName("unixOwner")] string? UnixOwner = null,
+    [property: JsonPropertyName("unixGroup")] string? UnixGroup = null,
     /// <summary>Byte offset for FileUploadChunk or FileRead; other operations leave it null.</summary>
     [property: JsonPropertyName("offset")] long? Offset = null,
     [property: JsonPropertyName("readCount")] int? ReadCount = null,
@@ -335,6 +338,12 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("squidAccount")] RelaxKonOS.Protocol.GatewayProxy.SquidAccountMutation? SquidAccount = null,
     [property: JsonPropertyName("proxyServer")] RelaxKonOS.Protocol.ProxyServer.ProxyServerHelperRequest? ProxyServer = null,
     [property: JsonPropertyName("runtimeSourceId")] string? RuntimeSourceId = null,
+    /// <summary>
+    /// Host download route for the operations that fetch bytes (catalog refresh, runtime execution).
+    /// The Server resolves it from the saved host preference; the Helper validates it again and it is
+    /// never stored in a frozen plan, a ledger, or the runtime's own outbound proxy configuration.
+    /// </summary>
+    [property: JsonPropertyName("downloadProxy")] RelaxKonOS.Protocol.ManagedRuntimes.RuntimeDownloadProxy? DownloadProxy = null,
     [property: JsonPropertyName("runtimeLifecycle")] RelaxKonOS.Protocol.ManagedRuntimes.RuntimeLifecycleRequest? RuntimeLifecycle = null);
 
 /// <summary>Versioned structured result returned by the local Helper.</summary>

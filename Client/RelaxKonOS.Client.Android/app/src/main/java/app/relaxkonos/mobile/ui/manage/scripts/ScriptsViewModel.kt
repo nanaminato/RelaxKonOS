@@ -23,7 +23,7 @@ class ScriptCancellation(val owner: SessionState.Active, val task: ScriptTask)
 data class ScriptsUiState(val loading: Boolean = false, val listVerified: Boolean = false, val tasks: List<ScriptTask> = emptyList(),
     val selected: ScriptTask? = null, val selectionEpoch: Long = 0, val error: Boolean = false, val problemCode: String? = null,
     val draft: ScriptDraft? = null, val pending: PendingScriptRequest? = null, val journalAvailable: Boolean = true,
-    val cancellation: ScriptCancellation? = null)
+    val cancellation: ScriptCancellation? = null, val feedbackVersion: Long = 0)
 
 class ScriptsViewModel(private val session: AuthSession, private val repository: ScriptTaskRepository,
     private val journal: ScriptRequestJournal) : ViewModel() {
@@ -47,6 +47,12 @@ class ScriptsViewModel(private val session: AuthSession, private val repository:
     private var selectionJob: Job? = null
     private var loadJob: Job? = null
     private var writeJob: Job? = null
+    private var feedbackSequence = 0L
+
+    private fun beginFeedback() {
+        val version = ++feedbackSequence
+        mutable.update { it.copy(feedbackVersion = version) }
+    }
 
     init {
         viewModelScope.launch {
@@ -66,7 +72,10 @@ class ScriptsViewModel(private val session: AuthSession, private val repository:
 
     private fun owns(active: SessionState.Active) = owner === active && session.state.value === active
 
-    fun dismissCancellation() { mutable.update { it.copy(cancellation = null) } }
+    fun dismissCancellation(review: ScriptCancellation) {
+        mutable.update { if (it.cancellation === review) it.copy(cancellation = null) else it }
+    }
+    fun withdrawCancellation() { mutable.update { it.copy(cancellation = null) } }
     private fun canCancel(active: SessionState.Active, task: ScriptTask) = owns(active) && state.value.journalAvailable &&
         !state.value.loading && !state.value.error && state.value.selected == task && task.state in setOf("queued", "running") &&
         writeJob?.isActive != true && state.value.pending == null && state.value.draft == null
@@ -85,22 +94,25 @@ class ScriptsViewModel(private val session: AuthSession, private val repository:
         mutable.update { it.copy(draft = ScriptDraft(active.userName), error = false, problemCode = null, cancellation = null) }
     }
 
-    fun updateDraft(draft: ScriptDraft) {
+    fun updateDraft(expected: ScriptDraft?, draft: ScriptDraft) {
         val active = owner ?: return
-        if (!owns(active) || !state.value.journalAvailable || state.value.loading || state.value.draft == null ||
+        if (!owns(active) || !state.value.journalAvailable || state.value.loading || expected == null || state.value.draft !== expected ||
             state.value.pending != null) return
         mutable.update { it.copy(draft = draft) }
     }
 
-    fun closeEditor() {
-        if (!state.value.loading) mutable.update { it.copy(draft = null) }
+    fun closeEditor(expected: ScriptDraft?) {
+        val active = owner ?: return
+        if (owns(active) && expected != null && state.value.draft === expected && !state.value.loading)
+            mutable.update { it.copy(draft = null) }
     }
 
     fun load(active: SessionState.Active) {
         if (session.state.value !== active) return
         if (owner !== active) reset(active)
-        dismissCancellation()
+        withdrawCancellation()
         if (mutable.value.loading || mutable.value.draft != null) return
+        beginFeedback()
         if (!restorePending(active)) return
         selectionJob?.cancel()
         val version = ++selectionVersion
@@ -131,7 +143,7 @@ class ScriptsViewModel(private val session: AuthSession, private val repository:
     fun select(id: String) {
         val active = owner ?: return
         if (!owns(active) || !state.value.journalAvailable || writeJob?.isActive == true || state.value.draft != null || state.value.pending != null) return
-        dismissCancellation()
+        withdrawCancellation()
         selectionJob?.cancel()
         val version = ++selectionVersion
         selectedId = id
@@ -142,11 +154,14 @@ class ScriptsViewModel(private val session: AuthSession, private val repository:
     private suspend fun readSelected(active: SessionState.Active, id: String, version: Long) {
         val result = try { repository.task(active, id) }
         catch (cancelled: CancellationException) {
-            if (currentCoroutineContext().isActive && owns(active) && selectionVersion == version && selectedId == id)
+            if (currentCoroutineContext().isActive && owns(active) && selectionVersion == version && selectedId == id) {
+                beginFeedback()
                 mutable.update { it.copy(error = true, problemCode = null) }
+            }
             throw cancelled
         }
         if (!owns(active) || selectionVersion != version || selectedId != id) return
+        if (result !is ApiResult.Success || !result.value.success || result.value.task?.id != id) beginFeedback()
         when (result) {
             is ApiResult.Success -> {
                 val valid = result.value.success && result.value.task?.id == id
@@ -157,10 +172,11 @@ class ScriptsViewModel(private val session: AuthSession, private val repository:
         }
     }
 
-    fun submit(request: ScriptRequest) {
+    fun submit(expected: ScriptDraft?, request: ScriptRequest) {
         val active = owner ?: run { request.approval?.password?.fill('\u0000'); return }
-        if (!owns(active) || !state.value.journalAvailable || state.value.draft == null || state.value.loading || writeJob?.isActive == true ||
+        if (!owns(active) || !state.value.journalAvailable || expected == null || state.value.draft !== expected || state.value.loading || writeJob?.isActive == true ||
             state.value.pending != null) { request.approval?.password?.fill('\u0000'); return }
+        beginFeedback()
         selectionJob?.cancel(); selectionVersion++
         val key = UUID.randomUUID().toString()
         val pending = PendingScriptRequest(key, false)
@@ -197,9 +213,10 @@ class ScriptsViewModel(private val session: AuthSession, private val repository:
 
     fun cancel(review: ScriptCancellation) {
         if (state.value.cancellation !== review) return
-        dismissCancellation()
+        dismissCancellation(review)
         val active = review.owner
         if (!canCancel(active, review.task)) return
+        beginFeedback()
         val id = review.task.id
         val pending = PendingScriptRequest(id, true)
         if (!persistPending(active, pending)) return
@@ -248,6 +265,7 @@ class ScriptsViewModel(private val session: AuthSession, private val repository:
     fun verifyRequest() {
         val active = owner ?: return
         if (!owns(active) || state.value.loading) return
+        beginFeedback()
         if (!restorePending(active) || state.value.pending == null) return
         mutable.update { it.copy(loading = true) }
         loadJob = launchWork(active) {

@@ -22,7 +22,7 @@ internal static class TextFileEncodings
     {
         var encoding = GetEncoding(encodingName);
         var content = encoding.GetBytes(text);
-        if (encodingName != "UTF-8 BOM") return content;
+        if (encodingName is not ("UTF-8 BOM" or "UTF-16 LE" or "UTF-16 BE" or "UTF-32 LE" or "UTF-32 BE")) return content;
 
         var preamble = encoding.GetPreamble();
         var bytes = new byte[preamble.Length + content.Length];
@@ -36,8 +36,8 @@ internal static class TextFileEncodings
         "UTF-8 BOM" => new UTF8Encoding(encoderShouldEmitUTF8Identifier: true),
         "UTF-16 LE" => Encoding.Unicode,
         "UTF-16 BE" => Encoding.BigEndianUnicode,
-        "UTF-32 LE" => new UTF32Encoding(bigEndian: false, byteOrderMark: false),
-        "UTF-32 BE" => new UTF32Encoding(bigEndian: true, byteOrderMark: false),
+        "UTF-32 LE" => new UTF32Encoding(bigEndian: false, byteOrderMark: true),
+        "UTF-32 BE" => new UTF32Encoding(bigEndian: true, byteOrderMark: true),
         "ASCII" => Encoding.ASCII,
         "ISO-8859-1" => Encoding.Latin1,
         "Windows-1252" => Encoding.GetEncoding(1252),

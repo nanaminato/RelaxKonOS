@@ -25,7 +25,7 @@
     <string name="operations_detail">Operation</string>
     <string name="operations_diagnostics">Diagnostics</string>
     <string name="operations_diagnostics_failed">Could not read diagnostics for this task. Please retry.</string>
-    <string name="operations_empty">No deployment or publishing operations were found for this account.</string>
+    <string name="operations_empty">No operation records to display.</string>
     <string name="operations_export_diagnostics">Export diagnostics</string>
     <string name="operations_export_failed">Could not save the diagnostic report</string>
     <string name="operations_export_save">Choose destination</string>
@@ -48,7 +48,7 @@
     <string name="operations_running">Running</string>
     <string name="operations_script">Script task</string>
     <string name="operations_stage">Stage: %1$s</string>
-    <string name="operations_subtitle">Verify deployment and publishing results</string>
+    <string name="operations_subtitle">Check task status and verify results</string>
     <string name="operations_succeeded">Succeeded</string>
     <string name="operations_tasks">Tasks</string>
     <string name="operations_title">Tasks &amp; recovery</string>

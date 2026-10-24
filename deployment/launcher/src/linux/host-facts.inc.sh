@@ -3,7 +3,8 @@ managed_root() { # mode key override default
   if [[ -n $3 ]]; then printf '%s' "$3"; return; fi
   local locator=/var/lib/relaxkonos-deployment-location/roots.json
   [[ $1 != linuxUser ]] || locator="${XDG_STATE_HOME:-$HOME/.local/state}/relaxkonos-deployment/user-roots.json"
-  python3 - "$locator" "$2" "$4" "$1" <<'ROOTS'
+  local resolver
+  resolver=$(cat <<'ROOTS'
 import json, os, stat, sys
 from pathlib import Path
 path,key,default,mode=sys.argv[1:]
@@ -16,6 +17,14 @@ else: value=default
 if not value.startswith('/') or value=='/' or any(ord(c)<32 for c in value): raise ValueError('invalid managed root')
 print(value,end='')
 ROOTS
+  )
+  # Use the authenticated identity for protected system metadata. Privileged
+  # commands isolate stdin, so pass this fixed resolver as code, not a pipe.
+  if [[ $1 == linuxSystem && $sudo_requested == true && $EUID -ne 0 ]]; then
+    run_privileged python3 -c "$resolver" "$locator" "$2" "$4" "$1"
+  else
+    python3 -c "$resolver" "$locator" "$2" "$4" "$1"
+  fi
 }
 user_state_root() { managed_root linuxUser stateRoot "$options_state_root" "${XDG_STATE_HOME:-$HOME/.local/state}/relaxkonos"; }
 user_data_root() { managed_root linuxUser dataRoot "$options_data_root" "${XDG_DATA_HOME:-$HOME/.local/share}/relaxkonos"; }

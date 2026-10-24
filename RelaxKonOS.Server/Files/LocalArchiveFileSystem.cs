@@ -32,7 +32,7 @@ public sealed class LocalArchiveFileSystem : ArchiveFileSystem
             if ((stat.Mode & 0xf000) is not (0x4000 or 0x8000 or 0xa000)) attributes |= FileAttributes.Device;
         }
         return Task.FromResult<FilePropertiesDto?>(new(path, Path.GetFileName(path), attributes.HasFlag(FileAttributes.Directory) ? FileSystemEntryType.Directory : FileSystemEntryType.File,
-            null, null, null, null, "", attributes.ToString(), null));
+            null, null, null, null, "", attributes.ToString(), null, null, null));
     }
     public override async Task<DirectoryDto> List(string path, CancellationToken ct)
     {

@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Formats.Tar;
 using System.IO.Compression;
 using System.Net;
@@ -87,7 +87,7 @@ internal static class SingBoxRuntimeAcceptance
             var states = new RuntimeArchiveStateStore(Path.Combine(root, "state"), Protect);
             states.Initialize(new(Guid.NewGuid(), "acceptance-host", "sing-box", 0, RuntimeOwnership.Absent, target, null, false), null);
             var authorization = new Authorization();
-            var adapter = new SingBoxArchiveAdapter(root, states, sources, new ArchiveCopy(older, current), host, authorization, Protect);
+            var adapter = new SingBoxArchiveAdapter(root, states, sources, new ArchiveCopy(older, current), downloadProxy: null, host, authorization, Protect);
             var lifecycle = new RuntimeArchiveSwitch(states, adapter);
 
             // A catalog entry cannot buy support by claiming a capability or a version the build has not measured.
@@ -410,7 +410,7 @@ internal static class SingBoxRuntimeAcceptance
     /// <summary>Serves each fixture as its own published asset, so a wrong-asset download is a digest failure.</summary>
     private sealed class ArchiveCopy(string older, string newer) : IRuntimeArchiveTransport
     {
-        public async Task CopyAsync(RuntimeSource source, ManifestRelease release, Stream destination, CancellationToken ct)
+        public async Task CopyAsync(RuntimeSource source, ManifestRelease release, RuntimeDownloadProxy? proxy, Stream destination, CancellationToken ct)
         {
             var path = release.OriginalVersion == "v" + OlderVersion ? older : newer;
             await using var input = File.OpenRead(path);

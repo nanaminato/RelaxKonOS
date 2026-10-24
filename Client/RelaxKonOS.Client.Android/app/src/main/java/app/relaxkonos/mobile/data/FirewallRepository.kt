@@ -61,7 +61,11 @@ class FirewallRepository(private val gateway: RelaxKonGateway, private val sessi
         }
     suspend fun acceptFacts(owner: SessionState.Active, pending: PendingFirewallChange): ApiResult<FirewallFacts> = mutations.withLock {
         verify(owner); require(pending in journal.pending(owner))
-        facts(owner).also { if (it is ApiResult.Success && it.value.status.isAvailable) journal.complete(pending) }
+        facts(owner).also {
+            currentCoroutineContext().ensureActive()
+            verify(owner)
+            if (it is ApiResult.Success && it.value.status.isAvailable) journal.complete(pending)
+        }
     }
     private suspend fun <T> call(owner: SessionState.Active, request: suspend (String, String) -> ApiResult<T>): ApiResult<T> {
         verify(owner)

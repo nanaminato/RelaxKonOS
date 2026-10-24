@@ -53,16 +53,17 @@ class InstallationRepositoryTest {
     @Test fun `explicit original ID identification validates service and kind before resolving pending request`() = runTest {
         val owner = signIn(); val pending = journal.begin(owner, InstallationService.Nginx, InstallationKind.Install, "digest")
         gateway.onInstallation = { ApiResult.Success(operation.copy(service = InstallationService.Frp)) }
-        assertTrue(repository.identifyOriginal(owner, pending, id) is ApiResult.Transport)
+        assertTrue(repository.identifyOriginal(owner, pending, id, InstallationKind.entries.toSet()) is ApiResult.Transport)
         assertEquals(1, journal.pending(owner).size)
+        assertTrue(index.forOwner(owner).isEmpty())
         gateway.onInstallation = { ApiResult.Success(operation) }
-        assertTrue(repository.identifyOriginal(owner, pending, id) is ApiResult.Success)
+        assertTrue(repository.identifyOriginal(owner, pending, id, InstallationKind.entries.toSet()) is ApiResult.Success)
         assertTrue(journal.pending(owner).isEmpty()); assertEquals(id, index.forOwner(owner).single().operationId)
     }
     @Test fun `original ID identification refuses another actor pending marker`() = runTest {
         val owner = signIn(); val pending = journal.begin(owner, InstallationService.Nginx, InstallationKind.Install, "digest")
         signIn("bob"); val other = session.state.value as SessionState.Active
-        assertTrue(runCatching { repository.identifyOriginal(other, pending, id) }.isFailure)
+        assertTrue(runCatching { repository.identifyOriginal(other, pending, id, InstallationKind.entries.toSet()) }.isFailure)
     }
     @Test fun `polling a verified Mihomo ID resolves its persisted installation marker`() = runTest {
         val owner = signIn(capability = ServerCapabilities.PROXY)
@@ -80,7 +81,7 @@ class InstallationRepositoryTest {
         gateway.onInstallation = { ApiResult.Success(operation.copy(service = InstallationService.Mihomo, state = InstallationState.Succeeded)) }
         assertTrue(repository.operation(owner, id) is ApiResult.Success)
         assertEquals(1, repository.pending(owner).size)
-        assertTrue(repository.identifyOriginal(owner, repository.pending(owner).single(), id) is ApiResult.Success)
+        assertTrue(repository.identifyOriginal(owner, repository.pending(owner).single(), id, InstallationKind.entries.toSet()) is ApiResult.Success)
         assertTrue(repository.pending(owner).isEmpty())
     }
     private suspend fun signIn(account: String = "alice", privileged: Boolean = true, capability: String = ServerCapabilities.WEB_SERVER): SessionState.Active {
@@ -247,6 +248,111 @@ class InstallationRepositoryTest {
         assertTrue(index.forOwner(owner).isEmpty())
     }
 
+    @Test fun `scoped recovery rejects another service before index reveal or journal cleanup`() = runTest {
+        val owner = signIn()
+        val pending = journal.begin(owner, InstallationService.Nginx, InstallationKind.Install, "nginx")
+        journal.update(pending.copy(operationId = id))
+        index.record(owner, OperationDomain.Installation, InstallationService.Nginx.name, id)
+        index.hide(owner, index.forOwner(owner).single())
+        gateway.onInstallation = { ApiResult.Success(operation) }
+        assertTrue(repository.recoverById(owner, id, InstallationService.Mihomo, InstallationKind.entries.toSet()) is ApiResult.Transport)
+        assertTrue(index.forOwner(owner).isEmpty()); assertEquals(id, journal.pending(owner).single().operationId)
+        assertTrue(repository.recoverById(owner, id, null, InstallationKind.entries.toSet()) is ApiResult.Success)
+        assertTrue(journal.pending(owner).isEmpty()); assertEquals(id, index.forOwner(owner).single().operationId)
+    }
+    @Test fun `install recovery rejects same service repair before index registration`() = runTest {
+        val owner = signIn(capability = ServerCapabilities.DOCKER)
+        gateway.onInstallation = { ApiResult.Success(operation.copy(service = InstallationService.Docker, kind = InstallationKind.Repair)) }
+        assertTrue(repository.recoverById(owner, id, InstallationService.Docker, setOf(InstallationKind.Install)) is ApiResult.Transport)
+        assertTrue(index.forOwner(owner).isEmpty())
+    }
+    @Test fun `install recovery cannot reveal a hidden repair for the same service`() = runTest {
+        val owner = signIn(capability = ServerCapabilities.DOCKER)
+        index.record(owner, OperationDomain.Installation, InstallationService.Docker.name, id)
+        index.hide(owner, index.forOwner(owner).single())
+        gateway.onInstallation = { ApiResult.Success(operation.copy(service = InstallationService.Docker, kind = InstallationKind.Repair)) }
+        repository.recoverById(owner, id, InstallationService.Docker, setOf(InstallationKind.Install))
+        assertTrue(index.forOwner(owner).isEmpty())
+    }
+    @Test fun `install recovery cannot clear a linked same service repair request`() = runTest {
+        val owner = signIn(capability = ServerCapabilities.DOCKER)
+        val pending = journal.begin(owner, InstallationService.Docker, InstallationKind.Repair, "repair").copy(operationId = id, attempted = true)
+        journal.update(pending)
+        gateway.onInstallation = { ApiResult.Success(operation.copy(service = InstallationService.Docker, kind = InstallationKind.Repair)) }
+        repository.recoverById(owner, id, InstallationService.Docker, setOf(InstallationKind.Install))
+        assertEquals(listOf(pending), journal.pending(owner))
+    }
+    @Test fun `explicit full action scope preserves managed runtime and center recovery`() = runTest {
+        val owner = signIn(capability = ServerCapabilities.PROXY)
+        for (kind in InstallationKind.entries) {
+            gateway.onInstallation = { ApiResult.Success(operation.copy(service = InstallationService.Mihomo, kind = kind)) }
+            val scoped = repository.recoverById(owner, id, InstallationService.Mihomo, InstallationKind.entries.toSet())
+            assertEquals(kind, (scoped as ApiResult.Success).value.kind)
+            val center = repository.recoverById(owner, id, null, InstallationKind.entries.toSet())
+            assertEquals(kind, (center as ApiResult.Success).value.kind)
+        }
+    }
+    @Test fun `action scope is frozen before the asynchronous lookup`() = runTest {
+        val owner = signIn(capability = ServerCapabilities.DOCKER)
+        val allowed = mutableSetOf(InstallationKind.Install)
+        gateway.onInstallation = {
+            allowed += InstallationKind.Repair
+            ApiResult.Success(operation.copy(service = InstallationService.Docker, kind = InstallationKind.Repair))
+        }
+        assertTrue(repository.recoverById(owner, id, InstallationService.Docker, allowed) is ApiResult.Transport)
+        assertTrue(index.forOwner(owner).isEmpty())
+    }
+    @Test fun `install identification cannot register a same service repair request`() = runTest {
+        val owner = signIn(capability = ServerCapabilities.DOCKER)
+        val pending = journal.begin(owner, InstallationService.Docker, InstallationKind.Repair, "repair")
+        gateway.onInstallation = { ApiResult.Success(operation.copy(service = InstallationService.Docker, kind = InstallationKind.Repair)) }
+        assertTrue(repository.identifyOriginal(owner, pending, id, setOf(InstallationKind.Install)) is ApiResult.Transport)
+        assertTrue(index.forOwner(owner).isEmpty())
+    }
+    @Test fun `install identification cannot reveal a hidden same service repair`() = runTest {
+        val owner = signIn(capability = ServerCapabilities.DOCKER)
+        val pending = journal.begin(owner, InstallationService.Docker, InstallationKind.Repair, "repair")
+        index.record(owner, OperationDomain.Installation, InstallationService.Docker.name, id)
+        index.hide(owner, index.forOwner(owner).single())
+        gateway.onInstallation = { ApiResult.Success(operation.copy(service = InstallationService.Docker, kind = InstallationKind.Repair)) }
+        repository.identifyOriginal(owner, pending, id, setOf(InstallationKind.Install))
+        assertTrue(index.forOwner(owner).isEmpty())
+    }
+    @Test fun `install identification cannot clear an unsupported original action`() = runTest {
+        val owner = signIn(capability = ServerCapabilities.DOCKER)
+        val pending = journal.begin(owner, InstallationService.Docker, InstallationKind.Repair, "repair")
+        var reads = 0
+        gateway.onInstallation = { reads++; ApiResult.Success(operation.copy(service = InstallationService.Docker, kind = InstallationKind.Repair)) }
+        repository.identifyOriginal(owner, pending, id, setOf(InstallationKind.Install))
+        assertEquals(listOf(pending), journal.pending(owner))
+        assertEquals(0, reads)
+    }
+    @Test fun `managed original identification retains all explicitly supported actions`() = runTest {
+        val owner = signIn(capability = ServerCapabilities.PROXY)
+        for (kind in InstallationKind.entries) {
+            val pending = journal.begin(owner, InstallationService.Mihomo, kind, kind.name)
+            gateway.onInstallation = { ApiResult.Success(operation.copy(service = InstallationService.Mihomo, kind = kind)) }
+            assertTrue(repository.identifyOriginal(owner, pending, id, InstallationKind.entries.toSet()) is ApiResult.Success)
+            assertTrue(journal.pending(owner).isEmpty())
+        }
+    }
+    @Test fun `frp recovery scope rejects standalone rollback and accepts repair`() = runTest {
+        val owner = signIn(capability = ServerCapabilities.TUNNELS)
+        val kinds = setOf(InstallationKind.Install, InstallationKind.Upgrade, InstallationKind.Repair, InstallationKind.Uninstall)
+        gateway.onInstallation = { ApiResult.Success(operation.copy(service = InstallationService.Frp, kind = InstallationKind.Rollback)) }
+        assertTrue(repository.recoverById(owner, id, InstallationService.Frp, kinds) is ApiResult.Transport)
+        assertTrue(index.forOwner(owner).isEmpty())
+        gateway.onInstallation = { ApiResult.Success(operation.copy(service = InstallationService.Frp, kind = InstallationKind.Repair)) }
+        assertTrue(repository.recoverById(owner, id, InstallationService.Frp, kinds) is ApiResult.Success)
+    }
+    @Test fun `explicit recovery cannot resolve linked pending request with a different action`() = runTest {
+        val owner = signIn()
+        val pending = journal.begin(owner, InstallationService.Nginx, InstallationKind.Uninstall, "uninstall")
+        journal.update(pending.copy(operationId = id))
+        gateway.onInstallation = { ApiResult.Success(operation) }
+        repository.recoverById(owner, id, InstallationService.Nginx, setOf(InstallationKind.Install))
+        assertEquals(InstallationKind.Uninstall, journal.pending(owner).single().kind)
+    }
     @Test fun `explicit recovery reveals only the verified owner record`() = runTest {
         val owner = signIn()
         val bob = owner.copy(userName = "bob")
@@ -255,7 +361,7 @@ class InstallationRepositoryTest {
             index.hide(account, index.forOwner(account).single())
         }
         gateway.onInstallation = { ApiResult.Success(operation) }
-        repository.recoverById(owner, id)
+        repository.recoverById(owner, id, InstallationService.Nginx, setOf(InstallationKind.Install))
         assertEquals(id, index.forOwner(owner).single().operationId)
         assertTrue(index.forOwner(bob).isEmpty())
     }

@@ -46,6 +46,21 @@ class SmbRepositoryTest {
         assertTrue(runCatching { repository.change(owner, facts, change, "private-secret".toCharArray(), ElevationAnswerProvider.Declines) }.isFailure)
         assertEquals(1, calls); assertTrue(repository.acceptFacts(owner, pending) is ApiResult.Success); assertTrue(repository.pending(owner).isEmpty())
     }
+    @Test fun `cancelled adoption cannot clear marker after non cooperative read returns`() = runTest {
+        val owner = signIn()
+        val pending = journal.begin(owner, change)
+        lateinit var reply: kotlin.coroutines.Continuation<ApiResult<List<SmbUser>>>
+        val delayedGateway = object : RelaxKonGateway by gateway {
+            override suspend fun smbUsers(serverUrl: String, accessToken: String): ApiResult<List<SmbUser>> =
+                kotlin.coroutines.suspendCoroutine { reply = it }
+        }
+        val delayedRepository = SmbRepository(delayedGateway, session, elevation, journal)
+        val adoption = launch { delayedRepository.acceptFacts(owner, pending) }
+        yield(); adoption.cancel()
+        reply.resumeWith(Result.success(ApiResult.Success(facts.users!!)))
+        adoption.join()
+        assertEquals(listOf(pending), repository.pending(owner))
+    }
     @Test fun `changed share facts refuse write before journaling or exposing password`() = runTest {
         val owner = signIn(); gateway.onSmbShares = { ApiResult.Success(facts.shares!!.map { it.copy(drifted = true) }) }
         val password = "private-secret".toCharArray()

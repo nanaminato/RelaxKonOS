@@ -15,6 +15,8 @@ using var services = new ServiceCollection()
     .AddSingleton(new LocalizationService(new ShellSettings(null!), new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!))))
     .BuildServiceProvider();
 typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
+await EditorWriteChecks.RunAsync();
+if (args.Contains("--editor-write-only")) return;
 
 static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
 var client = new FakeClient();

@@ -10,6 +10,7 @@ public sealed partial class FilePropertiesDialogViewModel : ObservableObject
 {
     private readonly Action _close;
     private readonly Func<int, bool, Task<FilePropertiesDto>>? _saveUnixPermissions;
+    private readonly Func<string, string, bool, Task<FilePropertiesDto>>? _saveUnixOwnership;
     private bool _initializingPermissions;
     private bool _synchronizingPermissionOctalInput;
     private int _specialPermissionBits;
@@ -17,15 +18,41 @@ public sealed partial class FilePropertiesDialogViewModel : ObservableObject
     public FilePropertiesDialogViewModel(
         FilePropertiesDto properties,
         Func<int, bool, Task<FilePropertiesDto>>? saveUnixPermissions,
-        Action close)
+        Action close,
+        Func<string, string, bool, Task<FilePropertiesDto>>? saveUnixOwnership)
     {
         _close = close;
         _saveUnixPermissions = saveUnixPermissions;
+        _saveUnixOwnership = saveUnixOwnership;
         Properties = properties;
     }
 
     [ObservableProperty] private FilePropertiesDto _properties = null!;
     [ObservableProperty] private bool _recursivePermissions;
+    [ObservableProperty] private string _ownershipOwner = string.Empty;
+    [ObservableProperty] private string _ownershipGroup = string.Empty;
+    [ObservableProperty] private bool _recursiveOwnership;
+    [ObservableProperty] private bool _isSavingOwnership;
+    [ObservableProperty] private string _ownershipStatus = string.Empty;
+    public bool HasUnixOwnership => Properties.UnixOwnerId is not null;
+    public bool CanEditOwnership => HasUnixOwnership && _saveUnixOwnership is not null && !IsSavingOwnership && !IsSavingPermissions;
+
+    [RelayCommand]
+    private async Task SaveOwnershipAsync()
+    {
+        if (_saveUnixOwnership is null || IsSavingOwnership || IsSavingPermissions) return;
+        if (string.IsNullOrWhiteSpace(OwnershipOwner) || string.IsNullOrWhiteSpace(OwnershipGroup))
+        { OwnershipStatus = LocalizedText.Get("explorer.ownership.required"); return; }
+        IsSavingOwnership = true;
+        try
+        {
+            Properties = await _saveUnixOwnership(OwnershipOwner.Trim(), OwnershipGroup.Trim(), IsDirectory && RecursiveOwnership);
+            OwnershipStatus = LocalizedText.Get("explorer.ownership.saved");
+        }
+        catch (OperationCanceledException) { OwnershipStatus = LocalizedText.Get("explorer.status.elevation_required"); }
+        catch (Exception ex) { OwnershipStatus = LocalizedText.Format("explorer.permissions.save_failed", ex.Message); }
+        finally { IsSavingOwnership = false; }
+    }
     public bool IsDirectory => Properties.Type == FileSystemEntryType.Directory;
     [ObservableProperty] private bool _ownerRead;
     [ObservableProperty] private bool _ownerWrite;
@@ -50,10 +77,18 @@ public sealed partial class FilePropertiesDialogViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(SizeText));
         OnPropertyChanged(nameof(IsDirectory));
+        OnPropertyChanged(nameof(CanEditOwnership));
+        OnPropertyChanged(nameof(HasUnixOwnership));
+        OwnershipOwner = value.UnixOwnerId?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
+        OwnershipGroup = value.UnixGroupId?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
         InitializePermissions();
     }
 
-    partial void OnIsSavingPermissionsChanged(bool value) => SavePermissionsCommand.NotifyCanExecuteChanged();
+    partial void OnIsSavingPermissionsChanged(bool value)
+    {
+        SavePermissionsCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(CanEditOwnership));
+    }
 
     partial void OnPermissionOctalInputChanged(string value)
     {
@@ -105,6 +140,10 @@ public sealed partial class FilePropertiesDialogViewModel : ObservableObject
             Properties = await _saveUnixPermissions(CurrentUnixMode, IsDirectory && RecursivePermissions);
             PermissionStatus = LocalizedText.Format("explorer.permissions.saved", PermissionOctalInput);
         }
+        catch (OperationCanceledException)
+        {
+            PermissionStatus = LocalizedText.Get("explorer.status.elevation_required");
+        }
         catch (Exception ex)
         {
             PermissionStatus = LocalizedText.Format("explorer.permissions.save_failed", ex.Message);
@@ -118,7 +157,13 @@ public sealed partial class FilePropertiesDialogViewModel : ObservableObject
     [RelayCommand]
     private void Close() => _close();
 
-    private bool CanSavePermissions() => CanEditPermissions && HasValidPermissionOctal && !IsSavingPermissions;
+    private bool CanSavePermissions() => CanEditPermissions && HasValidPermissionOctal && !IsSavingPermissions && !IsSavingOwnership;
+
+    partial void OnIsSavingOwnershipChanged(bool value)
+    {
+        SavePermissionsCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(CanEditOwnership));
+    }
 
     private void InitializePermissions()
     {

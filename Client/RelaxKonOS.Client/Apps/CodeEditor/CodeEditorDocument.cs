@@ -2,6 +2,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using RelaxKonOS.Client.Apps.Explorer.Models;
 using RelaxKonOS.Protocol.Files;
 using Avalonia.Media;
+using RelaxKonOS.Client.Controls.Diff;
+using AvaloniaEdit.Document;
 
 namespace RelaxKonOS.Client.Apps.CodeEditor;
 
@@ -23,6 +25,19 @@ public sealed partial class CodeEditorDocument : ObservableObject, IDisposable
     [ObservableProperty] private CodeEditorContentKind _contentKind;
     [ObservableProperty] private IImage? _imageSource;
     [ObservableProperty] private long _byteLength;
+    [ObservableProperty] private bool _hasExternalChanges;
+    [ObservableProperty] private bool _isReadOnly;
+    public string? Version { get; set; }
+    public string? ComparisonKey { get; init; }
+    public DiffDocument? Comparison { get; set; }
+    public string? ComparisonNoticeKey { get; set; }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DisplayName))]
+    private string? _tabTitle;
+    public TextDocument? EditorBuffer { get; set; }
+    public int CaretOffset { get; set; }
+    public double VerticalOffset { get; set; }
+    public double HorizontalOffset { get; set; }
     public bool ShowSource { get; set; }
 
     public void Dispose() => (ImageSource as IDisposable)?.Dispose();
@@ -34,7 +49,8 @@ public sealed partial class CodeEditorDocument : ObservableObject, IDisposable
     public int Revision { get; private set; }
 
     public string UntitledName { get; }
-    public string DisplayName => string.IsNullOrWhiteSpace(Path) ? UntitledName : System.IO.Path.GetFileName(Path) ?? UntitledName;
+    public string DisplayName => TabTitle ?? (string.IsNullOrWhiteSpace(Path) ? UntitledName
+        : Path.Replace('\\', '/').Split('/').LastOrDefault() ?? UntitledName);
 
     /// <summary>
     /// The tab's file-type mark. An untitled document has no extension at all, so it falls to the
@@ -51,4 +67,4 @@ public sealed partial class CodeEditorDocument : ObservableObject, IDisposable
     partial void OnTextChanged(string value) => Revision++;
 }
 
-public enum CodeEditorContentKind { Text, Image, Binary }
+public enum CodeEditorContentKind { Text, Image, Binary, Comparison }

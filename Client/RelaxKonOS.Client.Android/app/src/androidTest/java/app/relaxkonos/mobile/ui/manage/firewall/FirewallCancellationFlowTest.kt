@@ -110,6 +110,31 @@ class FirewallCancellationFlowTest {
         rule.waitUntil(5_000) { !model.state.busy && model.state.pending.size == 1 }
         rule.runOnIdle { model.change(old); assertEquals(1, writes) }
     }
+    @Test fun pausedPageRejectsLateActionBeforeAnotherComposeFrame() {
+        show()
+        val oldEnable = rule.onNodeWithText(text(R.string.firewall_enable)).performScrollTo()
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+            rule.runOnUiThread {
+                oldEnable()
+                assertNull(model.confirmation)
+                assertEquals(0, writes)
+            }
+            rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+            rule.runOnUiThread {
+                oldEnable()
+                assertNull("Pre-pause action must remain invalid after resume", model.confirmation)
+                assertEquals(0, writes)
+            }
+        } finally { rule.mainClock.autoAdvance = true }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.firewall_enable)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.firewall_submit)).performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.pending.size == 1 }
+        rule.runOnIdle { assertEquals(1, writes) }
+    }
     @Test fun cancelledRefreshRemovesOldActionsAndExplicitRefreshRecovers() {
         show()
         rule.runOnIdle { cancelRead = true }
@@ -156,11 +181,109 @@ class FirewallCancellationFlowTest {
         rule.onNodeWithText(text(R.string.firewall_enable)).performScrollTo().assertIsNotEnabled()
         rule.runOnIdle { assertEquals(1, writes); assertEquals(1, model.state.pending.size) }
     }
+    private fun openUnknownChangeRecovery() {
+        rule.onNodeWithText(text(R.string.firewall_enable)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.firewall_submit)).performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.pending.size == 1 }
+        dismissFailure()
+        rule.onNodeWithText(text(R.string.workspace_records_attention)).performScrollTo().performClick()
+    }
+    @Test fun recoveryActionRequiresCurrentLifecycleAndCannotAdoptLaterIdenticalChange() {
+        show()
+        openUnknownChangeRecovery()
+        val oldAdopt = rule.onNodeWithText(text(R.string.firewall_accept_facts)).performScrollTo()
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        val reads = statusReads
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+            rule.runOnUiThread { oldAdopt(); assertFalse(model.state.busy); assertEquals(reads, statusReads) }
+            rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+            rule.runOnUiThread { oldAdopt(); assertFalse(model.state.busy); assertEquals(reads, statusReads) }
+        } finally { rule.mainClock.autoAdvance = true }
+        rule.runOnIdle { oldAdopt(); assertFalse(model.state.busy); assertEquals(reads, statusReads) }
+        val previousMarkerAdopt = rule.onNodeWithText(text(R.string.firewall_accept_facts))
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        rule.onNodeWithText(text(R.string.firewall_accept_facts)).performScrollTo().performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.pending.isEmpty() }
+        rule.runOnIdle { assertEquals(reads + 1, statusReads); assertNotNull(model.state.facts); assertNull(model.state.problem) }
+        rule.onNodeWithText(text(R.string.workspace_overview)).performClick()
+        openUnknownChangeRecovery()
+        val laterReads = statusReads
+        rule.runOnIdle { oldAdopt(); previousMarkerAdopt(); assertFalse(model.state.busy); assertEquals(laterReads, statusReads); assertEquals(1, model.state.pending.size) }
+        rule.onNodeWithText(text(R.string.firewall_accept_facts)).performScrollTo().performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.pending.isEmpty() }
+        rule.runOnIdle { assertEquals(2, writes); assertEquals(laterReads + 1, statusReads); assertNotNull(model.state.facts); assertNull(model.state.problem) }
+    }
+    @Test fun leavingDuringAdoptionKeepsMarkerWhenCancelledReadReturnsLate() {
+        show()
+        openUnknownChangeRecovery()
+        rule.runOnIdle { delayRules = true }
+        rule.onNodeWithText(text(R.string.firewall_accept_facts)).performScrollTo().performClick()
+        rule.waitUntil(5_000) { pendingRules != null }
+        rule.runOnIdle { visible.value = false }
+        rule.onNodeWithText("Other page").assertIsDisplayed()
+        rule.runOnIdle { delayRules = false; visible.value = true }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.facts != null }
+        rule.runOnUiThread { pendingRules!!.resumeWith(Result.success(ApiResult.Success(emptyList()))) }
+        rule.waitForIdle()
+        rule.runOnIdle { assertEquals(1, model.state.pending.size); assertEquals(1, writes) }
+        rule.onNodeWithText(text(R.string.workspace_records_attention)).performScrollTo().performClick()
+        val readsBeforeAdoption = statusReads
+        rule.onNodeWithText(text(R.string.firewall_accept_facts)).performScrollTo().performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.pending.isEmpty() }
+        rule.runOnIdle { assertEquals(1, writes); assertEquals(readsBeforeAdoption + 1, statusReads); assertNotNull(model.state.facts); assertNull(model.state.problem) }
+    }
     private fun submitChangedDefaults() {
         rule.onNodeWithText(text(R.string.firewall_defaults)).performScrollTo().performClick()
         rule.onAllNodesWithText(text(R.string.firewall_reject)).onFirst().performClick()
         rule.onNodeWithText(text(R.string.common_save)).performClick()
         rule.onNodeWithText(text(R.string.firewall_submit)).performClick()
+    }
+    @Test fun resumedDefaultsKeepDraftButRejectPrePauseSave() {
+        show()
+        successfulWrite = true
+        rule.onNodeWithText(text(R.string.firewall_defaults)).performScrollTo().performClick()
+        rule.onAllNodesWithText(text(R.string.firewall_reject)).onFirst().performClick()
+        val oldSave = rule.onNodeWithText(text(R.string.common_save))
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+            rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+            rule.runOnUiThread { oldSave(); assertNull(model.confirmation); assertEquals(0, writes) }
+        } finally { rule.mainClock.autoAdvance = true }
+        rule.onAllNodesWithText(text(R.string.firewall_reject)).onFirst().assertIsSelected()
+        rule.runOnIdle { oldSave(); assertNull(model.confirmation); assertEquals(0, writes) }
+        rule.onNodeWithText(text(R.string.common_save)).performClick()
+        rule.runOnIdle { assertEquals("reject", model.confirmation?.change?.incoming) }
+        rule.onNodeWithText(text(R.string.firewall_submit)).performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.saved == 1 }
+        rule.runOnIdle { assertEquals(1, writes); assertEquals("reject", model.state.facts?.status?.defaultIncomingPolicy) }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.runOnIdle { oldSave(); assertNull(model.confirmation); assertEquals(1, writes) }
+    }
+    @Test fun oldDiscardCallbacksCannotConsumeReopenedDraftDecision() {
+        show()
+        rule.onNodeWithText(text(R.string.firewall_defaults)).performScrollTo().performClick()
+        rule.onAllNodesWithText(text(R.string.firewall_reject)).onFirst().performClick()
+        rule.onNodeWithText(text(R.string.common_cancel)).performClick()
+        val oldDiscard = rule.onNodeWithText(text(R.string.firewall_discard_action))
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        val oldContinue = rule.onNodeWithText(text(R.string.firewall_continue_editing))
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        rule.onNodeWithText(text(R.string.firewall_continue_editing)).performClick()
+        rule.onNodeWithText(text(R.string.common_cancel)).performClick()
+        rule.runOnIdle { oldContinue() }
+        rule.onNodeWithText(text(R.string.firewall_discard_help)).assertIsDisplayed()
+        rule.runOnIdle { oldDiscard(); assertEquals(0, writes) }
+        rule.onNodeWithText(text(R.string.firewall_discard_help)).assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.firewall_continue_editing)).performClick()
+        rule.onAllNodesWithText(text(R.string.firewall_reject)).onFirst().assertIsSelected()
+        rule.onNodeWithText(text(R.string.common_cancel)).performClick()
+        rule.onNodeWithText(text(R.string.firewall_discard_action)).performClick()
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.runOnIdle { oldDiscard(); oldContinue(); assertNull(model.confirmation); assertEquals(0, writes) }
     }
     @Test fun successfulDefaultsCloseEditorUsingTheSingleVerification() {
         show()
@@ -211,7 +334,7 @@ class FirewallCancellationFlowTest {
             .fetchSemanticsNode().config[SemanticsActions.OnClick].action)
         val original = requireNotNull(model.confirmation)
         rule.runOnIdle {
-            model.requestChange(original.owner, original.expected,
+            model.requestChange(model.interactionVersion, original.owner, original.expected,
                 FirewallChange(FirewallChangeKind.Defaults, incoming = "reject", outgoing = "allow"))
         }
         val replacement = requireNotNull(model.confirmation)

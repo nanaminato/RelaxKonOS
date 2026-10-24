@@ -84,6 +84,17 @@ function Compress-PortableArchive([string] $Source, [string] $Archive) {
 }
 
 function Complete-Package($Package, [hashtable] $Payload) {
+    $required = @($Payload.Values)
+    if ($Package.Kind -eq 'server' -and $platform -eq 'linux') {
+        $required += @('deployment/user/relaxkon', 'deployment/verify-release-inventory.py',
+            'deployment/bootstrap/install-relaxkonos.sh', 'deployment/bootstrap/uninstall-relaxkonos.sh',
+            'deployment/linux/install-relaxkonos-services.sh')
+    }
+    foreach ($relative in $required) {
+        if (-not (Test-Path -LiteralPath (Join-Path $Package.Directory $relative) -PathType Leaf)) {
+            throw "Incomplete release package: missing $relative"
+        }
+    }
     $baseLength = $Package.Directory.Length + 1
     $files = @(Get-ChildItem -LiteralPath $Package.Directory -Recurse -File | Sort-Object FullName | ForEach-Object {
         $relative = $_.FullName.Substring($baseLength).Replace('\', '/')

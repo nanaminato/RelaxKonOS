@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Builder;
+﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -13,7 +13,7 @@ using RelaxKonOS.Server.Startup;
 
 internal static class MihomoRegistrationChecks
 {
-    internal static int Run()
+    internal static async Task<int> RunAsync()
     {
         using var temporary = new TemporaryDirectory();
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
@@ -27,6 +27,13 @@ internal static class MihomoRegistrationChecks
         builder.Services.AddSingleton<IServerModeResolver>(new FixedMode());
         builder.Services.AddSingleton<IPrivilegedOperationTransport>(new NoHelper());
         builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IOutboundProxyHttpClientFactory>(new NoDownloads());
+        // Mirrors HostServiceRegistration: the resolver is looked up per operation, and that deferral is
+        // exactly what keeps the runtime service, its publication coordinator and the proxy settings
+        // service out of a construction cycle. Registering a stub here would hide that.
+        builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerProxyResolver, RelaxKonOS.Server.Docker.DockerProxyResolver>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.ManagedRuntimes.IRuntimeDownloadProxyProvider>(container =>
+            new RelaxKonOS.Server.ManagedRuntimes.RuntimeDownloadProxyProvider(
+                () => container.GetRequiredService<RelaxKonOS.Server.Docker.IDockerProxyResolver>()));
         using var services = builder.Services.BuildServiceProvider();
         using var scope = services.CreateScope();
         var count = 0;
@@ -53,13 +60,27 @@ internal static class MihomoRegistrationChecks
             "Mihomo installs only through the managed catalog adapter, registered once");
         Check(builder.Services.Any(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType == typeof(MihomoPublicationRecoveryService)),
             "Default startup registers pending publication recovery");
+        // Resolving the runtime service while the real Docker proxy resolver is registered is the assertion:
+        // an eager resolver dependency closes the cycle this fixture used to hide with a stub.
+        Check(services.GetRequiredService<RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeService>() is not null,
+            "Runtime service resolves alongside the real download-proxy resolver without a construction cycle");
         return count;
     }
     private sealed class TemporaryDirectory : IDisposable
     {
         internal string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "mihomo-registration-" + Guid.NewGuid().ToString("N"));
         internal TemporaryDirectory() => Directory.CreateDirectory(Path);
-        public void Dispose() => Directory.Delete(Path, true);
+        // A pooled SQLite connection can keep the scratch file open briefly; a scratch directory is not
+        // worth failing the check over, so a busy file is left to the OS instead of aborting the run.
+        public void Dispose()
+        {
+            for (var attempt = 0; attempt < 10; attempt++)
+            {
+                try { Directory.Delete(Path, true); return; }
+                catch (IOException) { Thread.Sleep(100); }
+                catch (UnauthorizedAccessException) { Thread.Sleep(100); }
+            }
+        }
     }
     private sealed class NoHelper : IPrivilegedOperationTransport
     {

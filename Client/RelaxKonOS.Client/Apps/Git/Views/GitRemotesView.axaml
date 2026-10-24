@@ -5,7 +5,7 @@
              xmlns:proto="clr-namespace:RelaxKonOS.Protocol.Git;assembly=RelaxKonOS.Protocol"
              x:Class="RelaxKonOS.Client.Apps.Git.Views.GitRemotesView"
              x:DataType="git:GitClientViewModel" Classes="builtin-app">
-    <Grid RowDefinitions="Auto,*,Auto" MinHeight="300">
+    <Grid RowDefinitions="Auto,*,Auto">
         <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
             <Button Command="{Binding AddRemoteCommand}">
                 <StackPanel Orientation="Horizontal" Spacing="6">

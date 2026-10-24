@@ -4,6 +4,10 @@ using Avalonia.Threading;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
+using RelaxKonOS.Client.Apps.Explorer;
+using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Protocol.Files;
+using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.VirtualSystemDrive;
 using RelaxKonOS.Client.Services.SystemUi;
@@ -507,8 +511,25 @@ public sealed class DesktopShellOverlayService : IShellOverlayService
         { DataContext = new TextInputDialogViewModel(prompt, defaultValue, done, LocalizedText.Get("common.rename")) });
         vm.RequestDesktopOpenWithAsync = (apps, extension) => Dialog<OpenWithChoice>(vm, LocalizedText.Get("explorer.open_with"), new Size(500, 360), done => new OpenWithDialogView
         { DataContext = new OpenWithDialogViewModel(apps, extension, done) });
+        var metadataClient = App.Services.GetRequiredService<IExplorerClient>();
+        var metadataContext = new RelaxKonOS.AppSDK.AppContext(new AppId("relaxkonos.explorer"),
+            App.Services.GetRequiredService<RelaxKonOS.WindowManager.IWindowManager>(), App.Services);
+        async Task<FilePropertiesDto> SaveMetadataAsync(string path, Func<Task<FilePropertiesDto>> save)
+        {
+            try { return await save(); }
+            catch (RelaxKonOSAuthException error) when (error.Type.EndsWith("/elevation-required", StringComparison.Ordinal))
+            {
+                if (!await ExplorerApp.RequestOperationElevationAsync(metadataContext, metadataClient, [path], FileElevationCapability.Write))
+                    throw new OperationCanceledException();
+                return await save();
+            }
+        }
         vm.ShowDesktopPropertiesAsync = properties => Dialog<bool>(vm, LocalizedText.Get("explorer.properties"), new Size(720, 620), done => new FilePropertiesDialogView
-        { DataContext = new FilePropertiesDialogViewModel(properties, (mode, recursive) => vm.SetDesktopUnixPermissionsAsync(properties.Path, mode, recursive), () => done(true)) });
+        { DataContext = new FilePropertiesDialogViewModel(properties,
+            (mode, recursive) => SaveMetadataAsync(properties.Path, () => vm.SetDesktopUnixPermissionsAsync(properties.Path, mode, recursive)),
+            () => done(true),
+            App.Services.GetRequiredService<IAuthSession>().CurrentServer?.Host?.Mode == ServerMode.System
+                ? (owner, group, recursive) => SaveMetadataAsync(properties.Path, () => metadataClient.SetUnixOwnershipAsync(properties.Path, owner, group, recursive)) : null) });
         vm.ShowDesktopPasteErrorAsync = async message => await Dialog<bool>(vm, LocalizedText.Get("explorer.paste"), new Size(460, 210), done =>
         {
             var button = new Button { Content = LocalizedText.Get("common.ok"), HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right };

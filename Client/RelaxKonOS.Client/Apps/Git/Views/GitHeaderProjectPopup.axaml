@@ -1,0 +1,15 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" xmlns:ui="clr-namespace:RelaxKonOS.Client.Controls"
+ x:Class="RelaxKonOS.Client.Apps.Git.Views.GitHeaderProjectPopup" Width="370" Background="{DynamicResource SurfaceBrush}">
+ <UserControl.Styles>
+  <Style Selector="Button.project-entry"><Setter Property="HorizontalAlignment" Value="Stretch"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="MinHeight" Value="25"/><Setter Property="Padding" Value="8,4"/><Setter Property="FontSize" Value="12"/></Style>
+  <Style Selector="Button.project-entry:pointerover"><Setter Property="Background" Value="{DynamicResource AccentMutedBrush}"/></Style>
+ </UserControl.Styles>
+ <ScrollViewer MaxHeight="540" HorizontalScrollBarVisibility="Disabled"><StackPanel Margin="0,3">
+  <Button x:Name="NewProjectAction" Classes="project-entry"><StackPanel Orientation="Horizontal" Spacing="8"><ui:WorkspaceIcon Kind="Plus"/><TextBlock Text="{loc:Loc git.workspace.new_project}"/></StackPanel></Button>
+  <Button x:Name="OpenProjectAction" Classes="project-entry"><StackPanel Orientation="Horizontal" Spacing="8"><ui:WorkspaceIcon Kind="Folder"/><TextBlock Text="{loc:Loc common.open_ellipsis}"/></StackPanel></Button>
+  <Button x:Name="CloneProjectAction" Classes="project-entry"><StackPanel Orientation="Horizontal" Spacing="8"><ui:WorkspaceIcon Kind="Branch"/><TextBlock Text="{loc:Loc git.workspace.get_from_vcs}"/></StackPanel></Button>
+  <Separator Margin="0,5"/>
+  <StackPanel x:Name="ProjectEntries"/>
+ </StackPanel></ScrollViewer>
+</UserControl>

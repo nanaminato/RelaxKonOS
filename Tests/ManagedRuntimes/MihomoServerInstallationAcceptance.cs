@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.DataProtection;
+﻿using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging.Abstractions;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.PrivilegedHelper;
@@ -41,7 +41,7 @@ internal static class MihomoServerInstallationAcceptance
         (MihomoRuntimeService Runtime, MihomoInstallationPublicationService Install, MihomoConfigurationPublicationService Configuration) Compose(MihomoPublicationStore authority)
         {
             var provider = new MihomoRuntimeAuthorizationProvider(authority, paths, paths);
-            var runtime = new MihomoRuntimeService(transport, authority, provider, paths);
+            var runtime = new MihomoRuntimeService(transport, authority, provider, paths, new DirectDownloads());
             return (runtime, new(authority, provider, runtime, paths), new(authority, provider, runtime, paths));
         }
         var active = Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml");

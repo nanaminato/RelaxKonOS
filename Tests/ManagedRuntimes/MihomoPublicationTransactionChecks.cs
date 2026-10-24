@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text;
 using System.Reflection;
@@ -166,7 +166,7 @@ internal static class MihomoPublicationTransactionChecks
                 ? Task.FromResult(new ProxySettingsDto(false, false, false, false, false, "warning", 18889, false, "127.0.0.1", ProxyTunSettingsDto.Default))
                 : throw new Exception("Unexpected settings mutation"));
             f.Profiles = profiles; f.RecreateService();
-            var runtime = new MihomoRuntimeService(f, f.Store, f.Provider, f);
+            var runtime = new MihomoRuntimeService(f, f.Store, f.Provider, f, new DirectDownloads());
             var service = new ProxyConfigurationTransactionService(f, new ProxyEngineRegistry([engine]), profiles, f,
                 new MihomoControllerOptions { Endpoint = new("http://127.0.0.1:19090/") }, f.Store,
                 settingsService: settings, managedPublication: f.Service, managedRuntime: runtime);
@@ -226,7 +226,7 @@ internal static class MihomoPublicationTransactionChecks
             var settingsFiles = new MihomoSettingsPublicationFiles(f, f.HostProxy);
             var service = new MihomoSettingsService(f, controller, f,
                 new MihomoControllerOptions { Endpoint = new("http://127.0.0.1:19090/") }, f.HostProxy, f.Store,
-                managedPublication: f.Service, managedRuntime: new(f, f.Store, f.Provider, f), settingsFiles: settingsFiles);
+                managedPublication: f.Service, managedRuntime: new(f, f.Store, f.Provider, f, new DirectDownloads()), settingsFiles: settingsFiles);
             var metadataOnly = mode.StartsWith("metadata-", StringComparison.Ordinal);
             var request = new UpdateProxySettingsRequest(false, false, true, true, false, "warning", metadataOnly ? 18888 : 18889,
                 AllowInsecureSubscriptionSources: metadataOnly);
@@ -370,7 +370,7 @@ internal static class MihomoPublicationTransactionChecks
         internal int TransientRecoveryFailures;
         internal bool RemainRecoveryRequired;
         internal bool GateHeldDuringHelper, ConfigurationGrantRead;
-        internal MihomoRemovalPublicationService Removal => new(Store, new(this, Store, new(Store, this, this), this), this, MihomoRemovalHostFixture.Files(this));
+        internal MihomoRemovalPublicationService Removal => new(Store, new(this, Store, new(Store, this, this), this, new DirectDownloads()), this, MihomoRemovalHostFixture.Files(this));
         internal MihomoPublicationStore Store { get; private set; } = null!;
         internal MihomoRuntimeAuthorizationProvider Provider { get; private set; } = null!;
         internal MihomoConfigurationPublicationService Service { get; private set; } = null!;
@@ -411,7 +411,7 @@ internal static class MihomoPublicationTransactionChecks
         {
             Store = new(this, protection);
             Provider = new(Store, this, this);
-            var runtime = new MihomoRuntimeService(this, Store, Provider, this);
+            var runtime = new MihomoRuntimeService(this, Store, Provider, this, new DirectDownloads());
             Service = new(Store, Provider, runtime, this, new(this, HostProxy), Profiles);
             Installation = new(Store, Provider, runtime, this);
             return Service;

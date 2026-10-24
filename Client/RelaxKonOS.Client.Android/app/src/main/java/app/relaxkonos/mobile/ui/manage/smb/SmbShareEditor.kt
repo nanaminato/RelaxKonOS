@@ -10,14 +10,14 @@ import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.ui.common.*
 import app.relaxkonos.mobile.ui.theme.Spacing
 
-@Composable internal fun SmbRetainedShareEditor(draft: SmbDraft, facts: SmbFacts, busy: Boolean, refresh: () -> Unit, dismiss: () -> Unit) {
+@Composable internal fun SmbRetainedShareEditor(draft: SmbDraft, facts: SmbFacts, busy: Boolean, refresh: () -> Unit, dismiss: () -> Unit, actionKey: Any) {
     Text(stringResource(R.string.smb_unverified), color = MaterialTheme.colorScheme.error)
-    TextButton(enabled = !busy, onClick = refresh) { Text(stringResource(R.string.smb_refresh_keep_draft)) }
-    SmbShareEditor(draft, facts, false, {}, {}, dismiss)
+    key(actionKey) { TextButton(enabled = !busy, onClick = refresh) { Text(stringResource(R.string.smb_refresh_keep_draft)) } }
+    SmbShareEditor(draft, facts, false, {}, {}, dismiss, actionKey)
 }
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable internal fun SmbShareEditor(draft: SmbDraft, facts: SmbFacts, enabled: Boolean, change: (SmbDraft) -> Unit, save: () -> Unit, dismiss: () -> Unit) {
+@Composable internal fun SmbShareEditor(draft: SmbDraft, facts: SmbFacts, enabled: Boolean, change: (SmbDraft) -> Unit, save: () -> Unit, dismiss: () -> Unit, actionKey: Any) {
     var advanced by remember(draft.id) { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         Text(stringResource(if (draft.id == null) R.string.smb_create else R.string.smb_edit), style = MaterialTheme.typography.titleMedium)
@@ -71,8 +71,10 @@ import app.relaxkonos.mobile.ui.theme.Spacing
         val valid = SmbValidation.share(draft.request(), facts.capabilities.windowsShareSecuritySupported)
         if (!valid) Text(stringResource(R.string.smb_invalid), color = MaterialTheme.colorScheme.error)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            Button(enabled = enabled && valid, onClick = save) { ActionLabel(R.string.common_save) }
-            TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) }
+            key(actionKey) {
+                Button(enabled = enabled && valid, onClick = save) { ActionLabel(R.string.common_save) }
+                TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) }
+            }
         }
     }
 }

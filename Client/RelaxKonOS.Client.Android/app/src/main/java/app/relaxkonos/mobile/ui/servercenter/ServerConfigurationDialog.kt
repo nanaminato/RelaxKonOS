@@ -15,17 +15,32 @@ import androidx.compose.ui.unit.dp
 
 internal data class ServerConfigurationDraft(val reviewed: ServerHostSnapshot, val port: Int, val lan: Boolean, val guardian: Boolean, val autoStart: Boolean? = null, val fileAccess: String? = null, val fileRoots: List<String>? = null)
 
+/** In-memory fields belong to one maintenance editor; no credentials or process-persistent state. */
+internal class ServerConfigurationFields(reviewed: ServerHostSnapshot) {
+    val endpoint = runCatching { URI(reviewed.listenUrl) }.getOrNull()
+    val port = mutableStateOf(endpoint?.port?.toString().orEmpty())
+    val lan = mutableStateOf(endpoint?.host == "0.0.0.0")
+    val guardian = mutableStateOf(reviewed.guardianEnabled == true)
+    val access = mutableStateOf(reviewed.fileAccess)
+    val roots = mutableStateOf(reviewed.fileRoots?.joinToString("\n").orEmpty())
+    val autoStart = mutableStateOf(reviewed.autoStart == true)
+    val discard = mutableStateOf(false)
+}
+
 @Composable
-internal fun ServerConfigurationDialog(reviewed: ServerHostSnapshot, componentsOnly: Boolean, busy: Boolean,
+internal fun ServerConfigurationDialog(editor: MaintenanceConfiguration, busy: Boolean, interactionVersion: Long,
     onDismiss: () -> Unit, onApply: (ServerConfigurationDraft) -> Unit) {
-    val endpoint = remember(reviewed) { runCatching { URI(reviewed.listenUrl) }.getOrNull() }
-    var port by remember(reviewed) { mutableStateOf(endpoint?.port?.toString().orEmpty()) }
-    var lan by remember(reviewed) { mutableStateOf(endpoint?.host == "0.0.0.0") }
-    var guardian by remember(reviewed) { mutableStateOf(reviewed.guardianEnabled == true) }
-    var access by remember(reviewed) { mutableStateOf(reviewed.fileAccess) }
-    var roots by remember(reviewed) { mutableStateOf(reviewed.fileRoots?.joinToString("\n").orEmpty()) }
-    var autoStart by remember(reviewed) { mutableStateOf(reviewed.autoStart == true) }
-    var discard by remember { mutableStateOf(false) }
+    val reviewed = editor.snapshot
+    val componentsOnly = editor.componentsOnly
+    val fields = editor.fields
+    val endpoint = fields.endpoint
+    var port by fields.port
+    var lan by fields.lan
+    var guardian by fields.guardian
+    var access by fields.access
+    var roots by fields.roots
+    var autoStart by fields.autoStart
+    var discard by fields.discard
     val valid = endpoint?.host in listOf("127.0.0.1", "0.0.0.0") &&
         endpoint?.scheme in listOf("http", "https") && (port.toIntOrNull() ?: 0) in 1..65535 && reviewed.guardianEnabled != null && (access != "whitelist" || roots.lines().filter { it.isNotBlank() }.let { paths -> paths.isNotEmpty() && paths.all { it.trim().startsWith("/") || Regex("^[A-Za-z]:[\\\\/].+").matches(it.trim()) } })
     val changed = port != endpoint?.port?.toString() || lan != (endpoint?.host == "0.0.0.0") || guardian != reviewed.guardianEnabled || access != reviewed.fileAccess || roots != reviewed.fileRoots?.joinToString("\n").orEmpty() || reviewed.autoStart != null && autoStart != reviewed.autoStart
@@ -48,12 +63,12 @@ internal fun ServerConfigurationDialog(reviewed: ServerHostSnapshot, componentsO
                 CheckboxOption(lan, stringResource(R.string.server_configuration_lan), !busy) { lan = it }
             }
         } },
-        confirmButton = { TextButton(onClick = { onApply(ServerConfigurationDraft(reviewed, requireNotNull(port.toIntOrNull()), lan, guardian, if (reviewed.autoStart != null) autoStart else null, access, if (access == "whitelist") roots.lines().map(String::trim).filter(String::isNotEmpty) else null)) }, enabled = !busy && valid) {
+        confirmButton = { key(interactionVersion) { TextButton(onClick = { onApply(ServerConfigurationDraft(reviewed, requireNotNull(port.toIntOrNull()), lan, guardian, if (reviewed.autoStart != null) autoStart else null, access, if (access == "whitelist") roots.lines().map(String::trim).filter(String::isNotEmpty) else null)) }, enabled = !busy && valid) {
             Text(stringResource(R.string.server_configuration_apply))
-        } },
-        dismissButton = { TextButton(onClick = close, enabled = !busy) { Text(stringResource(R.string.common_cancel)) } })
+        } } },
+        dismissButton = { key(interactionVersion) { TextButton(onClick = close, enabled = !busy) { Text(stringResource(R.string.common_cancel)) } } })
     if (discard) AlertDialog(onDismissRequest = { discard = false },
         title = { Text(stringResource(R.string.server_configuration_discard)) },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.server_configuration_discard_confirm)) } },
-        dismissButton = { TextButton(onClick = { discard = false }) { Text(stringResource(R.string.common_cancel)) } })
+        confirmButton = { key(interactionVersion) { TextButton(onClick = onDismiss) { Text(stringResource(R.string.server_configuration_discard_confirm)) } } },
+        dismissButton = { key(interactionVersion) { TextButton(onClick = { discard = false }) { Text(stringResource(R.string.common_cancel)) } } })
 }

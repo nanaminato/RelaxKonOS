@@ -31,6 +31,12 @@ if (args is ["mihomo-runtime-http-only"])
     return;
 }
 
+if (args is ["runtime-download-proxy-only"])
+{
+    Console.WriteLine($"Runtime download proxy/retry checks passed: {await DownloadProxyChecks.RunAsync()}");
+    return;
+}
+
 if (args is ["mihomo-resources-only"])
 {
     Console.WriteLine($"Mihomo GEO resource checks passed: {await MihomoResourceChecks.RunAsync()}");
@@ -242,7 +248,7 @@ Console.WriteLine($"Mihomo removal publication checks passed: {await MihomoRemov
 Console.WriteLine($"Mihomo publication authority checks passed: {await MihomoPublicationChecks.RunAsync()}");
 Console.WriteLine($"Mihomo Server publication transaction checks passed: {await MihomoPublicationTransactionChecks.RunAsync()}");
 Console.WriteLine($"Mihomo profile publication checks passed: {await MihomoProfilePublicationChecks.RunAsync()}");
-Console.WriteLine($"Mihomo default publication registration checks passed: {MihomoRegistrationChecks.Run()}");
+Console.WriteLine($"Mihomo default publication registration checks passed: {await MihomoRegistrationChecks.RunAsync()}");
 Console.WriteLine($"Mihomo runtime HTTP checks passed: {await MihomoRuntimeHttpChecks.RunAsync()}");
 Console.WriteLine($"Mihomo GEO resource checks passed: {await MihomoResourceChecks.RunAsync()}");
 Console.WriteLine($"Mihomo lifecycle boundary checks passed: {await MihomoLifecycleBoundaryChecks.RunAsync()}");
@@ -254,3 +260,4 @@ Console.WriteLine($"Runtime recovery entry checks passed: {await RecoveryChecks.
 Console.WriteLine($"Runtime configuration transaction checks passed: {await ConfigurationTransactionChecks.RunAsync()}");
 Console.WriteLine($"Runtime cancellation checks passed: {await CancellationChecks.RunAsync()}");
 Console.WriteLine($"Runtime dependency checks passed: {DependencyChecks.Run()}");
+Console.WriteLine($"Runtime download proxy/retry checks passed: {await DownloadProxyChecks.RunAsync()}");

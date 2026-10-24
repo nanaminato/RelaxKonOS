@@ -13,7 +13,7 @@ namespace RelaxKonOS.Client.Apps.Explorer;
 /// 不 mutate HttpClient.BaseAddress，每个请求用 <see cref="IAuthSession.EffectiveBaseUrl"/> 构造绝对 URI（避免共享实例并发竞态）。
 /// Authorization 头从 <see cref="IAuthSession.Tokens"/> 取；未登录抛 <see cref="InvalidOperationException"/>。
 /// 失败读 ProblemDetails 抛 <see cref="RelaxKonOSAuthException"/>（与 <see cref="RelaxKonOSClient"/> 同源）。</summary>
-public sealed class ExplorerClient : IExplorerClient, IArchiveClient
+public sealed class ExplorerClient : IExplorerClient, IArchiveClient, IEditorFileWriter
 {
     private readonly HttpClient _http;
     private readonly IAuthSession _session;
@@ -124,6 +124,24 @@ public sealed class ExplorerClient : IExplorerClient, IArchiveClient
         return result;
     }
 
+    public async Task<string> WriteEditorFileAsync(string path, byte[] content, string? expectedVersion, CancellationToken ct = default)
+    {
+        try
+        {
+            var result = await SendAsync<ConditionalFileWriteResult>(HttpMethod.Put, FileApiRoutes.ConditionalContent,
+                body: new ConditionalFileWriteRequest(path, content, expectedVersion), ct: ct);
+            return result.Version;
+        }
+        catch (RelaxKonOSAuthException error) when (error.Status == 404
+            && (error.Type == "https://relaxkonos.app/problems/http-error" || string.IsNullOrWhiteSpace(error.Detail)))
+        {
+            // A missing route has no Files API detail. Keep a typed file/parent-not-found response intact.
+            throw new RelaxKonOSAuthException(new ProblemDetails(
+                "https://relaxkonos.app/problems/editor-endpoint-unavailable", error.Title, error.Status,
+                LocalizedText.Format("explorer.error.editor_endpoint_unavailable", FileApiRoutes.ConditionalContent), null));
+        }
+    }
+
     public async Task<FileEntryDto> WriteFileAsync(string path, byte[] content, CancellationToken ct = default)
     {
         var serverUrl = RequireSession();
@@ -146,6 +164,10 @@ public sealed class ExplorerClient : IExplorerClient, IArchiveClient
     public Task<FilePropertiesDto> SetUnixPermissionsAsync(string path, int unixMode, bool recursive, CancellationToken ct = default)
         => SendAsync<FilePropertiesDto>(HttpMethod.Put, FileApiRoutes.Permissions,
             body: new UpdateUnixPermissionsRequest(path, unixMode, recursive), ct: ct);
+
+    public Task<FilePropertiesDto> SetUnixOwnershipAsync(string path, string owner, string group, bool recursive, CancellationToken ct = default)
+        => SendAsync<FilePropertiesDto>(HttpMethod.Put, FileApiRoutes.Ownership,
+            body: new UpdateUnixOwnershipRequest(path, owner, group, recursive), ct: ct);
 
     public Task<FileSystemEntryDto> CreateDirectoryAsync(string path, CancellationToken ct = default)
         => SendAsync<FileSystemEntryDto>(HttpMethod.Post, FileApiRoutes.Directory, query: ("path", path), ct: ct);

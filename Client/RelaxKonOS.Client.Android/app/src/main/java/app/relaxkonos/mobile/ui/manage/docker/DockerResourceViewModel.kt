@@ -18,7 +18,12 @@ internal class ResourceConfirmation(val owner: SessionState.Active, val facts: D
     val target: DockerResourceTarget?, val change: DockerResourceChange)
 internal class DockerResourceViewModel(private val session: AuthSession, private val resources: DockerResourceRepository, private val gate: DockerMutationGate) : ViewModel() {
     var confirmation by mutableStateOf<ResourceConfirmation?>(null); private set
-    fun dismissConfirmation() { confirmation = null }
+    fun dismissConfirmation(review: ResourceConfirmation) {
+        if (confirmation === review) confirmation = null
+    }
+    fun withdrawReview(owner: SessionState.Active?) {
+        if (state.owner === owner) confirmation = null
+    }
     fun updateForce(review: ResourceConfirmation, force: Boolean) {
         if (confirmation !== review || review.change.action !in setOf(DockerResourceAction.DeleteContainer, DockerResourceAction.Stop)) return
         requestChange(review.owner, review.facts, review.target, review.change.copy(force = force))
@@ -61,9 +66,9 @@ internal class DockerResourceViewModel(private val session: AuthSession, private
     private var generation = 0
     var state by mutableStateOf(DockerResourceState()); private set
     init { viewModelScope.launch { session.state.collect { next ->
-        if (next !== state.owner) { dismissConfirmation(); job?.cancel(); generation++; state = DockerResourceState(owner = next as? SessionState.Active) }
+        if (next !== state.owner) { confirmation = null; job?.cancel(); generation++; state = DockerResourceState(owner = next as? SessionState.Active) }
     } } }
-    fun stop() { dismissConfirmation(); job?.cancel(); generation++; state = DockerResourceState(owner = state.owner) }
+    fun stop() { confirmation = null; job?.cancel(); generation++; state = DockerResourceState(owner = state.owner) }
     fun refresh() = work { owner -> load(owner); state = state.copy(target = null, stats = null, logs = null) }
     fun select(kind: DockerResourceKind, id: String) = work { owner ->
         state = state.copy(target = null, stats = null, logs = null, result = null)
@@ -79,7 +84,7 @@ internal class DockerResourceViewModel(private val session: AuthSession, private
     }
     fun change(review: ResourceConfirmation) {
         if (confirmation !== review) return
-        dismissConfirmation()
+        confirmation = null
         if (session.state.value !== review.owner || state.owner !== review.owner || state.facts != review.facts ||
             review.target != null && state.target != review.target) return
         state = state.copy(result = null)
@@ -128,7 +133,7 @@ internal class DockerResourceViewModel(private val session: AuthSession, private
         is ApiResult.Problem -> result.code; is ApiResult.Transport -> "docker.control.unverified"; is ApiResult.Success -> null
     }
     private fun work(block: suspend (SessionState.Active) -> Unit) {
-        dismissConfirmation()
+        confirmation = null
         val owner = state.owner ?: return
         if (state.busy || ServerCapabilities.DOCKER !in owner.capabilities) return
         val request = ++generation; state = state.copy(busy = true, problem = null, feedbackVersion = state.feedbackVersion + 1)

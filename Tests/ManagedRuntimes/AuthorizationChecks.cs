@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Buffers.Binary;
 using System.IO.Pipes;
@@ -134,7 +134,7 @@ internal static class AuthorizationChecks
                     "Production Server composition serves live authorization without gate recursion");
                 return new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new RuntimeSwitchResult(serviceOperation, RuntimeSwitchOutcome.Succeeded, null))));
             });
-            var runtime = new SingBoxRuntimeService(transport, store, provider, new TestMode(ServerMode.System));
+            var runtime = new SingBoxRuntimeService(transport, store, provider, new TestMode(ServerMode.System), new DirectDownloads());
             var artifact = new RuntimeArtifact("fixture", new string('a', 64), 1024, "zip", "sing-box", "key", new(1024, 8, [new("sing-box", 4, new string('b', 64), true)]));
             var target = new RuntimeTarget("linux", "amd64", null, null, RuntimeInstallMode.Archive, "systemd");
             var release = new RuntimeRelease("fixture", "sing-box", "v1.14.3", "1.14.3", RuntimeChannel.Stable, "fixture", target,
@@ -147,7 +147,7 @@ internal static class AuthorizationChecks
                 try { await RuntimeAuthorizationClient.ReadAsync<SingBoxCurrentAuthorization>(observedChannel!, serviceOperation, ended.Token); throw new Exception("Completed callback channel was reused"); }
                 catch (OperationCanceledException) { count++; }
             }
-            var user = new SingBoxRuntimeService(transport, store, provider, new TestMode(ServerMode.User));
+            var user = new SingBoxRuntimeService(transport, store, provider, new TestMode(ServerMode.User), new DirectDownloads());
             try { await user.QueryAsync(default); throw new Exception("User mode obtained a host runtime channel"); }
             catch (RuntimeLifecycleException ex) { Check(ex.ProblemCode == "runtime.platform_unsupported", "User mode cannot reach the Helper lifecycle"); }
         }

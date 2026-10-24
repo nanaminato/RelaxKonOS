@@ -1,6 +1,8 @@
 # RelaxKonOS GitClient 模块设计
 
-> 内置 Git 客户端：参考 TortoiseGit / Git Extensions，工作区式单窗口应用。面向 RelaxKonOS Server 上已存在的 Git 仓库（服务端文件系统中的工作树），提供仓库选择、分支切换、提交、拉取（含冲突解决）、新建/删除分支、提交历史、Revert 等日常版本控制操作。所有 Git 操作经 Server 端 REST API 执行，服务端以宿主 OS 进程身份调用 `git` CLI，复用宿主用户/权限（不另建 ACL，不存储任何凭据/SSH 私钥）。
+> **项目编辑器首版已实现**：`relaxkonos.git` 已整合项目文件树、多标签编辑、Commit 侧栏、Diff 标签和底部 Git 工具区，显示名称为“项目编辑器”。入口、草稿保护、条件保存和实际验证范围见 [实施记录](./RelaxKonOS.GitEditor.Progress.md)，后续目标见 [改造设计](./RelaxKonOS.GitEditor.Design.md)。下文保留 Git 领域能力和协议说明；早期按页面切换的壳布局已由项目编辑器替代。
+
+> 内置项目编辑器：参考 IDEA 的项目工具窗口与 MyGit 的变更审阅流程，每个项目拥有独立窗口。文件编辑经 Files API，仓库选择、分支切换、提交、拉取（含冲突解决）、推送、历史和 Revert 等经 Git REST API；服务端以有效宿主身份执行，复用宿主权限。
 >
 > - 架构原则见 [`RelaxKonOS.Architecture.md`](../architecture/RelaxKonOS.Architecture.md)
 > - 项目当前状态见 [`RelaxKonOS.md`](../README.md)（§6 内置应用）
@@ -15,13 +17,15 @@
 
 ## 1. 定位
 
-仓库注册和路径探测仅在服务端校验绝对路径格式，随后由 Git 的有效执行身份打开工作目录并执行 `rev-parse --is-inside-work-tree`。System 模式使用当前登录账号绑定的宿主身份经用户执行助手检查；User 模式使用当前进程身份。不得先用服务账号的 `Directory.Exists` 判断用户工作树是否存在，否则私有家目录会被误判为不存在。目录不可访问、不存在或不是工作树时不写入注册记录，无需放宽用户家目录权限。
+仓库注册、路径探测与 `git init` 仅在服务端校验绝对路径格式，随后由 Git 的有效执行身份打开工作目录并执行（`rev-parse --is-inside-work-tree` / `init`）。System 模式使用当前登录账号绑定的宿主身份经用户执行助手检查；User 模式使用当前进程身份。不得先用服务账号的 `Directory.Exists` 判断用户工作树是否存在，否则私有家目录会被误判为不存在。目录不可访问、不存在或不是工作树时不写入注册记录，无需放宽用户家目录权限。
 
-GitClient 是 RelaxKonOS 的内置版本控制客户端，参考 TortoiseGit / Git Extensions。
+「探测返回不是仓库」有四种不同原因，界面上必须能区分：目录根本不是仓库（提示初始化）、git 拒绝打开（`detected dubious ownership`——工作树属于别的账号，通常是提权文件管理或 root 克隆造成的）、权限不足、以及用户执行边界不可用。因此 `GitRepositoryProbeDto.Problem` 携带 Git 自己的首行 stderr，客户端把它拼在提示里；服务端不再把「git 失败」与「不是仓库」压成同一个布尔值，否则用户会被引导去 `git init` 一个早就存在的仓库。修法是校正工作树属主（`chown -R <user>:<user> <path>`），不是放宽 git 的 `safe.directory`。
+
+GitClient 是项目编辑器的 Git 领域模块；项目壳与共享文件编辑组件一起提供编辑、审阅、提交的连续工作流。
 
 - **架构归属**：§6.2 Remote Service Application —— UI 完全在 Client 本地渲染；仓库状态、提交历史、分支列表与变更结果**数据来源在 Server 端通过 `git` 实时采集**（不持久化运行时状态，每次请求都是当下快照）。
-- **复用宿主 OS 权限**（硬约束）：Server 端 `IGitRepositoryService` 以宿主 OS 进程身份调用 `git` CLI，复用宿主用户/权限，不另建 ACL。push/pull 需要 SSH 凭据或 HTTPS 凭据时，**RelaxKonOS 不存储、不代理、不收集**——直接由宿主 OS 的 `git` 凭据助手（credential helper / SSH agent）处理；若凭据缺失则 `git` 返回失败，客户端展示本地化提示，引导用户在宿主 OS 配置。
-- **不存储任何凭据/私钥**：认证委托宿主 OS 的 git 凭据体系，GitClient 仅消费 `IAuthSession.Tokens.AccessToken`（RelaxKonOS 自身登录），不接触 Git 远程仓库的凭据。
+- **复用宿主 OS 权限**：Server 的 Git 操作使用有效身份执行；System/Helper 模式以登录账号绑定的宿主身份执行，User 模式使用当前进程身份。SSH 使用宿主 Git/SSH agent；HTTPS 的交互与保存范围见下述凭据说明。
+- **凭据边界**：不管理 SSH 私钥。现有 HTTPS 推送与本轮克隆可由用户输入凭据，经短期 askpass 传给子进程；只有用户选择保存时，才按用户和远程主机通过 Data Protection 加密存储。Helper 后端仍拒绝凭据化进程请求，不能由本地验证推定其支持此能力。
 - **跨平台抽象**：与 `IIdentityProvider` / `ISystemMetricsProvider` 同模式——`IGitRepositoryService` 接口 + 平台无关的 `LocalGitRepositoryService`（`git` CLI 在 Windows/Linux 行为一致），仅在探测 `git` 可执行文件路径与 shell 启动环境时按宿主 OS 处理。平台差异封装在服务之后，Server 端单一代码库跨 Ubuntu + Windows Server。
 
 **核心功能（MVP 范围）**：
@@ -39,27 +43,28 @@ GitClient 是 RelaxKonOS 的内置版本控制客户端，参考 TortoiseGit / G
 | Diff | 单文件 diff（工作区/已暂存/某提交） | `GET /api/v1.0/git/repositories/{id}/diff` |
 | 冲突解决 | 三栏编辑、逐块选择、逐文件暂存与独立继续/中止 | `POST /api/v1.0/git/repositories/{id}/resolve` |
 
-**非目标（MVP 不含）**：cherry-pick、rebase 交互式编辑、submodule 深度管理、stash、tag 管理、内置 merge 三方编辑器（冲突解决调用宿主 CodeEditor 或外联）、PR 工作流、多远程管理。这些列入 §8 后续演进。
+**尚未支持**：交互式 rebase 编辑、submodule 深度管理、标签删除/注释标签、远程分支删除、PR 的应用内审阅/创建、跨重启最近记录。普通 rebase、cherry-pick、stash、轻量标签列表/创建、工作树、补丁导出/应用及托管平台浏览器链接已接入，见末尾当前实现说明。
 
 ---
 
 ## 2. 嵌入方式
 
-`GitClientWorkspace` 作为 `UserControl` 嵌入 `RemoteWindow`，与 DockerManager / TaskManager 同构：
+`GitClientWorkspace` 作为 `UserControl` 嵌入 `RemoteWindow`；中央编辑器持续存在，侧边与底部工具区独立切换：
 
 ```text
 GitClientApp (RemoteApplicationBase)
     |
-    AppContext.ShowWindow("Git 客户端", view, bounds=1180x760)
+    AppContext.ShowWindow("项目编辑器", view, bounds=1180x760)
     |
     WindowManager.Create → RemoteWindow
     |
     GitClientWorkspace (UserControl)
-        ├── 顶部标题栏（图标 + 仓库选择器 + 当前分支 + upstream 状态 + 刷新）
-        └── 左侧导航 + 右侧内容区（按 ActivePage 切换：概览/工作区/日志/冲突解决/远程）
+        ├── 项目与分支标题栏、文件/Git 工具栏
+        ├── Project / Commit 工具区 + 持续存在的多标签 CodeEditorView
+        └── 可收起的 Git 工具区（日志 / 分支 / 远程 / 概览）
 ```
 
-`GitClientApp.Activate` 注入 `IAuthSession` + `IRemoteGitClient`（从 `context.Services`）。未登录时弹 `TextBlock` 提示窗（470x180，不可缩放），不崩溃；登录则构造 `GitClientViewModel` + `GitClientWorkspace`，`context.ShowWindow`（bounds 1180x760）后 `_ = viewModel.StartAsync()` 异步拉取仓库列表与首仓状态。
+`GitClientApp.Activate` 从组合入口取得 `IAuthSession`、`IRemoteGitClient` 与 `IExplorerClient`，构造 `GitClientViewModel` 和窗口独有的 `ProjectEditorViewModel`，再创建工作区（1180×760）。登录检查保留；`StartAsync` 异步加载项目列表。共享编辑器对话框、草稿关闭保护、快捷键和语言事件由应用入口接线；窗口关闭时释放项目协调器、编辑资源和 Git 刷新计时器。
 
 ---
 
@@ -138,7 +143,7 @@ IGitRepositoryService (接口)
           ├── 仓库注册表：从 RelaxKonOSDbContext 读写 GitRepository(Name, Path) 记录
           ├── 所有 git 操作：捕获 stdout/stderr + exit code → GitOperationResult
           ├── 路径校验：Path.IsPathRooted + 白名单根（注册时记的 Path，禁止越权到仓库外）
-          └── 凭据：完全不介入——由宿主 git 凭据助手处理
+          └── 凭据：SSH/宿主助手；HTTPS 使用现有受保护 askpass 流程（Helper 限制见正文）
 ```
 
 `IHostGitCli` 仅负责解析 `git` 可执行路径（Linux 用 `which git` / 常见路径 `/usr/bin/git`；Windows 用 `where git` / PATH 探测），**不**硬编码盘符或注册表。命令参数以**结构化数组**传递（`ArgumentBuilder`），不拼接 shell 字符串（符合约束 §4 路径与命令规则）。
@@ -169,7 +174,7 @@ builder.Services.AddSingleton<IGitRepositoryService, LocalGitRepositoryService>(
 
 **并发与 index.lock**：同一仓库的写操作用 `SemaphoreSlim(1,1)`（按 repoId 缓存）串行化；读操作不串行（git 读不持锁）。3 秒 timeout 获取信号量失败返回 `Success=false, Message="仓库繁忙"`。
 
-**凭据**：push/pull 调用 `git push` / `git fetch`，凭据由宿主 git credential helper（如 `manager` / `store` / `cache`）或 SSH agent 处理。若 `git` 因凭据缺失返回非零，`GitOperationResult.RequiresCredentials=true`，客户端展示本地化提示「需在宿主 OS 配置 Git 凭据」，**不**重试、**不**收集密码。
+**凭据**：Git 保持非交互环境。HTTPS 推送和克隆返回 `RequiresCredentials` 时，桌面可请求用户输入并重试；密码通过短期 askpass 环境传递，不进入命令行，按用户意愿加密保存。拉取/获取仍依赖相应现有宿主凭据路径；Helper 后端的显式凭据请求不受支持。
 
 ### 4.3 危险操作预检
 
@@ -310,11 +315,12 @@ GitClientViewModel
 - **左侧导航**（190px，`#EEF3FA` 浅色）：概览 / 工作区 / 日志 / 冲突解决 / 远程 五个导航按钮（`NavigationButton_Click` 切换 `ActivePage`，高亮激活页）。
 - **右侧内容区**（`ScrollViewer` + `ContentControl`，按 `ActivePage` 切换子视图）：
   - **概览页**：仓库卡片（名称/路径/当前分支/upstream/远程 URL）+ 状态摘要卡片（已暂存/未暂存/未跟踪/冲突计数 + ahead/behind）+ 快捷操作按钮（拉取/推送/提交/新建分支）。
-  - **工作区页**：变更文件列表和提交消息输入框；点击文件（包括提交确认对话框中的文件）以原生只读统一 diff 打开，带旧/新行号、增删着色和统计。未跟踪文件显示为相对空文件的新增内容。
-  - **日志页**（原分支+历史合并，三栏统一视图）：
+  - **工作区页**：变更文件列表和提交消息输入框；点击文件（包括提交确认对话框中的文件）以原生只读统一 diff 打开（`DiffView`，见 5.6），带旧/新双列行号、整行增删底色和统计。未跟踪文件显示为相对空文件的新增内容。
+  - **日志页**（原分支+历史合并，三栏统一视图，选中文件时展开第四栏 diff）：
     - 左栏（220px）：分支/标签树（HEAD、本地分支分组、远程分支分组），支持右键菜单：新建分支、切换、重命名、删除、推送、拉取、更新、设置跟踪分支、显示与工作树差异、复制分支名。
     - 中栏：提交列表（带时间图元、hash、作者、时间、消息、分支标签），支持搜索过滤（文本/哈希、用户、日期、路径），右键菜单：复制修订号（SHA）、创建补丁、签出修订、在修订版中显示仓库、与本地比较、将当前分支重置到此处、还原提交、撤销提交、编辑提交消息、Fixup、压缩到、删除提交、压缩提交、交互式变基、推送此前所有提交、新建分支、新建标记。
-    - 右栏（360px）：上半部分为提交变更文件树（按文件夹分组，显示状态图标）；点击文件打开其相对父提交的原生 diff，右键菜单保留显示差异、与本地比较等动作；下半部分为提交详情（SHA、作者、日期、消息正文、所在分支标签）。推送预览中的文件树同样可点击查看对应提交的 diff。
+    - 右栏（280px）：上半部分为提交变更文件树（按文件夹分组，显示状态图标）；下半部分为提交详情（SHA、作者、日期、消息正文、所在分支标签）。
+    - **diff 栏（默认折叠）**：点击右栏文件树中的文件，在该页最右侧展开 `GitDiffPane`，显示该文件相对父提交的 diff（旧/新双列行号、整行增删底色、`+N/−M` 统计），带加载中状态和关闭按钮；切换提交时自动收起。第四栏宽度为 `1.5*` 星值、与中栏共享剩余空间，关闭时两列都归零，三栏布局与之前完全一致。推送预览中的文件树仍打开模态窗口。
   - **冲突解决页**（冲突时显示）：冲突文件列表 + 每文件 ours/theirs 选择 + 继续/中止合并按钮。
   - **远程页**：多远程仓库管理（添加、修改、删除 remote，配置 push/pull URL）。
 
@@ -332,6 +338,30 @@ GitClientViewModel
 | `ShowResolveConflictDialogAsync` | 冲突文件 + ours/theirs 选择 | `GitResolveRequest?` |
 | `ShowRegisterRepositoryDialogAsync` | 仓库名 + 路径 | `GitRepositoryRegistration?` |
 | `ShowConfirmAsync` | 危险操作二次确认 | `bool` |
+
+### 5.6 diff 视图（`Client/RelaxKonOS.Client/Controls/Diff/`）
+
+diff 的解析与渲染与对话框解耦，放在共享控件目录里，不再由弹窗内联实现：
+
+| 文件 | 职责 |
+|------|------|
+| `DiffDocument.cs` | 模型：`DiffDocument / DiffFile / DiffHunk / DiffLine`，每行同时保留去掉标记的 `Text` 与原文 `Raw`（`PatchIndex` 指向 `DiffFile.RawLines`），后者是后续按行生成子 patch 的输入 |
+| `GitPatchParser.cs` | 状态机解析：缺省计数、`\ No newline`、`/dev/null` 两侧、rename/copy、binary、C 风格八进制路径（按 UTF-8 字节解码）、CRLF、被 200KB 截断的半个 hunk（`DiffHunk.IsComplete`） |
+| `DiffRowMap.cs` | 把 `DiffFile.RawLines` 投影成编辑器文本 + 逐行 `DiffRow(Kind, OldNumber, NewNumber)`，保证「一行 patch = 一个文档行」 |
+| `DiffView.axaml(.cs)` | 只读渲染宿主：AvaloniaEdit `TextEditor` + 双行号边距 + 全宽行背景 + 行内着色 |
+| `DiffStyle.cs` | 从主题令牌（`SuccessColor`/`DangerColor`/`AccentColor`/`TextTertiaryColor`）解析出带 alpha 的行色带；**不含任何颜色字面量**，令牌缺失时不画带而不是退化成硬编码颜色 |
+| `DiffLineNumberMargin.cs` | 从 `AbstractMargin` 派生的双列行号栏（旧号 / 新号），按改动侧着色 |
+| `Apps/Git/GitDiffPresentation.cs` | 呈现模型（路径、`+N/−M`、二进制/空/截断提示、解析后的 `DiffDocument`），由 `GitDiffPane` 消费 |
+| `Apps/Git/Views/GitDiffPane.axaml` | diff 面板本体（标题栏 + 提示 + `DiffView`），日志页内嵌栏与模态窗口共用；`CanClose` 为真时自带 ✕ 并发 `CloseRequested` |
+
+宿主有两个，同一份面板：日志页的第四栏（`IsInlineDiffOpen` 驱动，关闭时列宽归零）；以及 `GitDiffDialog`——只有工作区页和推送预览这类脱离日志页的场景才弹窗。
+
+两个必须守住的不变量：
+
+1. **一行 patch 对应一个文档行**。渲染器按文档行号索引 `DiffRowMap`，任何插入行（例如文件之间的分隔行）都会让底色与行号错位。
+2. **颜色只在绘制时解析**。调色板与系统样式切换是整本资源字典替换，构造期缓存笔刷会让已打开的 diff 停在旧配色；`DiffStyle.Reload` + `Redraw()` 负责重取。
+
+暂缓项：语法高亮（需要把 hunk 内容按文件语言正确分片后再着色，直接对 patch 文本跑 tokenizer 会把 `@@`/`---` 当代码）、按 hunk 折叠、行级暂存（需新增服务端 `apply` 端点与子 patch 生成）、工作区页把 diff 也改成内嵌（该页目前仍是文件列表 + 提交框，没有可放面板的位置）。验证放在 `Tests/Client/RelaxKonOS.GitDiff.Tests`（`--render-only` 走 headless Skia，断言行色带覆盖行号栏与右边缘、双列行号都有墨迹、切换调色板后已打开视图会重绘、面板标题/统计/✕ 绑定生效、日志页展开与收起第四栏）。
 
 ---
 
@@ -437,24 +467,24 @@ GitOperationResult
 
 ### 8.1 分支树右键菜单（左栏）
 
-- **[右键菜单已占位] 重命名分支**：`git branch -m <old> <new>`。需加 `POST /repositories/{id}/branches/{name}/rename`，校验新分支名不冲突 + 当前分支允许重命名。
+- **重命名分支（已实现）**：`POST /repositories/{id}/branches/{name}/rename`，允许当前本地分支重命名；远程分支不在此入口操作。
 - **合并分支**：`git merge <source>`。冲突时沿用 `GitOperationResult.Conflicts` 通道弹出多文件冲突解决窗口（与 pull/revert 同构）。
-- **[右键菜单已占位] 变基分支**：`git rebase <upstream>`。需加 `POST /repositories/{id}/rebase`（交互式/非交互式，abort/continue/skip 子动作）。交互式 rebase 后续补编辑器。
-- **[右键菜单已占位] 设置跟踪分支**：`git branch -u <upstream> <branch>`。需加 `PUT /repositories/{id}/branches/{name}/tracking`，允许解绑（track=null）。
-- **[右键菜单已占位] 显示与工作树差异**：基于现有 diff 接口 `GET /diff?ref=<branch>`，新增「工作树 vs 指定分支」比较，当前仅支持工作区 vs HEAD / staged。
+- **普通变基（已实现）**：`POST /repositories/{id}/rebase`，将输入引用解析为提交后执行；冲突沿用现有继续/中止流程。交互式 todo 编辑仍未实现。
+- **设置跟踪分支（已实现）**：`PUT /repositories/{id}/branches/{name}/tracking`，支持自定义上游及解绑。
+- **与工作树比较（已实现）**：通过分支 comparison 接口加载变化文件，标题栏入口打开日志面板呈现结果。
 
 ### 8.2 提交列表右键菜单（中栏）
 
-- **[右键菜单已占位] 创建补丁**：`git format-patch -1 <sha>`。需加 `GET /repositories/{id}/patch?sha=` 返回 `.patch` 文件文本或 zip。
+- **创建补丁（已实现）**：`POST /repositories/{id}/patch`，导出工作树、索引或所选提交的统一文本补丁；在新标签中另存为 `.patch`，不是包含邮件元数据的 format-patch。
 - **[右键菜单已占位] 签出修订（detached）**：`git checkout <sha>`。复用现有 checkout 接口，传入分支名=SHA 且 `CreateIfMissing=false`，进入 detached HEAD 状态；UI 需同步禁用分支写操作。
 - **重置 / 撤销提交**：已支持 `POST /repositories/{id}/reset` 的 `--soft` 与 `--mixed`；客户端「重置到此处」使用 mixed，「撤销提交」仅允许当前 HEAD 并使用 soft，保留暂存内容。`--hard` 仍不暴露。
 - **[右键菜单已占位] 编辑提交消息**：`git commit --amend -m <newMsg>`，当前 `POST /commit` 已有 `Amend` 参数，需校验是 HEAD 提交（无未暂存变更或允许 amend+暂存）。
 - **[右键菜单已占位] Fixup / 压缩到 / 删除提交 / 压缩提交**：均基于交互式 rebase（`git rebase -i <sha>^`），后续与 8.1 的变基一起补齐；动作分别对应 fixup/squash/drop/squash 行。
 - **[右键菜单已占位] 交互式变基**：`git rebase -i <startPoint>`，需返回 todo 列表供客户端编辑，再 `POST /rebase/continue` 提交 todo 文本。
 - **[右键菜单已占位] 推送此前所有提交**：`git push <remote> <sha>:<branch>`，当前 push 接口仅支持当前分支 → upstream，需扩展指定源/目标 refspec。
-- **[右键菜单已占位] 新建标记（tag）**：`git tag <name> <sha>`。需加 `GET/POST/DELETE /repositories/{id}/tags`（含 lightweight/annotated 两种，后者支持 message）。与 §8.3 同项。
-- **cherry-pick / rebase -i**：当前 revert 之外的反向操作。后续加交互式 rebase 编辑器（与 Fixup/压缩同属 rebase 子系统）。
-- **tag 管理**：当前未含。后续加 tag 列表/新建/删除，同时在日志页左栏分支树增加「标签」分组展示。
+- **新建标签（已实现）**：`GET/POST /repositories/{id}/tags`，目前创建轻量标签；提交右键可预填目标 SHA。
+- **cherry-pick（已实现）/ rebase -i（未实现）**：前者通过 `POST /repositories/{id}/cherry-pick` 应用选中提交，并复用冲突生命周期；后者仍需交互式编辑器。
+- **tag 管理**：标题栏分支弹窗已显示标签并支持检出；删除、注释标签及签名仍待实现。
 - **历史搜索 / 责怪 (blame)**：当前仅 log + 搜索过滤。后续加 `git log -S`（按 diff 内容搜索）/ `git blame <path>`（逐行最后修改人+SHA），右栏文件右键菜单补充「显示 Blame」。
 
 ### 8.3 变更文件树右键菜单（右栏）
@@ -466,15 +496,15 @@ GitOperationResult
 - **[右键菜单已占位] 优选所选更改 / 将所选更改提取到单独的提交**：交互性提交重排，基于 `git add -p` / interactive add，后续与 reset --soft + recommit 组合实现；当前提交接口 `Paths` 字段仅支持全文件暂存。
 - **[右键菜单已占位] 删除所选更改**：等价于还原 + 工作区删除，需二次确认（工作区文件将被覆盖/删除）。
 - **[右键菜单已占位] 从修订中获取**：`git show <sha>:<path>` 将指定提交版本的文件内容提取到工作区（可选另存路径），与「打开仓库版本」同用 show 命令。
-- **[右键菜单已占位] 迄今为止的历史记录**：`git log -- <path>`，当前中栏仅全仓库 log，需增加按路径过滤（复用现有 `Log` 接口新增 `path` query）。
+- **文件历史（已实现）**：设置日志路径筛选并调用带 path 查询的 log 接口。
 - **[右键菜单已占位] 显示对父项的更改**：当前 diff 默认相对 HEAD；对于多父提交（merge commit），需支持选择相对第 1 父 / 第 2 父，`GET /diff` 接口新增 `parent` 参数（1-based）。
 
 ### 8.4 其它后续演进
 
-- **stash**：当前未含。后续加 `POST /stash` + 工作区快照列表（push/pop/apply/drop），工作区页与分支 checkout 前预检走 stash。
+- **stash（已实现）**：`GET/POST /repositories/{id}/stashes` 提供列表、保存（含未跟踪文件）、应用并保留、应用并移除、显式删除；按选中 SHA 重新核对，恢复失败保留记录。
 - **submodule**：当前未含。后续按需新增（`.gitmodules` 探测 + submodule add/init/update/sync）。
-- **内置冲突编辑器**：当前冲突解决仅 ours/theirs 二选一。后续调用 CodeEditor 打开冲突文件做三方合并（与 8.3 三元 diff 同视图）。
-- **多远程管理**：当前远程页 UI 已占位；`GET/POST/DELETE/PUT /repositories/{id}/remotes`（name/url/pushUrl/fetch），与现有的多 remote 路由映射对齐。
+- **内置冲突编辑器（已实现）**：现有多文件三方冲突解析器支持逐块选择、编辑、暂存和独立继续/中止；本轮新变基/cherry-pick/stash 冲突复用其入口。
+- **多远程管理（已实现）**：现有远程页支持添加、编辑及移除远程；标题栏和 Git 菜单均有入口。
 - **强制 push / reset --hard**：MVP 不暴露（危险操作）。后续在「高级」对话框二次确认暴露，写入审计日志。
 - **LFS 指针文件**：当前未特殊处理。后续探测 `.gitattributes` 的 LFS 配置，diff 时对 LFS 指针文件跳过内容展示（显示「LFS 对象」占位）。
 
@@ -488,7 +518,7 @@ GitOperationResult
 2. **跨平台抽象**：与 `IIdentityProvider` 同模式——`IGitRepositoryService` 接口 + `LocalGitRepositoryService` 实现，平台差异（`git` 可执行路径探测）封装在 `IHostGitCli`。Server 端单一 CLI 实现跨 Ubuntu + Windows Server（`git` 行为一致）。
 3. **Provider 必须 Singleton**：`IGitRepositoryService` 持有按 repoId 缓存的 `SemaphoreSlim` 字典（写操作串行化，避免 index.lock 冲突），必须 Singleton。禁止 Scoped/Transient。
 4. **复用 `IAuthSession` JWT**：`IRemoteGitClient` 不持有独立凭据；未登录时 `GitClientApp.Activate` 弹提示窗，不崩溃。`RemoteGitClient` 每请求检查 `State == Authenticated`。
-5. **不存储 Git 凭据**：push/pull 的 SSH 私钥 / HTTPS 密码完全由宿主 OS git 凭据体系处理。RelaxKonOS 不代理、不收集、不存储。凭据缺失时 `RequiresCredentials=true`，引导用户在宿主 OS 配置（硬约束 §5.2）。
+5. **Git 凭据隔离**：HTTPS 凭据不得进入命令行或诊断日志，保存必须尊重用户选择并通过既有 Data Protection 用户/主机范围隔离；不处理 SSH 私钥。有效身份和 Helper 限制见 §4.2。
 6. **不 mutate `HttpClient.BaseAddress`**：每请求用绝对 URI，与 `TaskManagerClient` / `DockerClient` 同模式。
 7. **路由常量共用 `GitApiRoutes`**：Server 注册路由与 Client 拼接 URL 必须用同一常量，`{id}`/`{name}` 用 `Uri.EscapeDataString` 替换，禁止硬编码字符串。
 8. **DTO 用 `sealed record` + `[property: JsonPropertyName]`**（Protocol 约定），JSON 用 `RelaxKonOSJsonOptions.Default`。
@@ -546,3 +576,37 @@ Server、Helper 使用当前 user-execution 1.5 协议，`FileReadText` 在实�
 仓库锁只协调 Server 内请求，客户端预读和文件条件写入不提供跨外部 Git/整个仓库的原子事务。
 
 `config --list --null` 仅用于有效配置摘要，封闭 Git policy 仍拒绝任意 config 写入。配置可含凭据，原始输出不返回 HTTP DTO、不进入诊断日志；Android 交互和未知标记由 [Android Git 文档](../../Client/RelaxKonOS.Client.Android/docs/features/Git.md) 维护。
+
+## 标题栏菜单与工作区扩展（2026-10-24）
+
+- 简要模式为菜单按钮、前进/后退、项目按钮与分支按钮；点击展开详细菜单，离开且子菜单关闭后收起。窄窗口的详细菜单横向滚动，文件/编辑/视图/导航/代码/重命名文件/工具/Git/窗口/帮助入口使用实际能力。
+- 项目弹窗提供新建空目录项目、打开目录、从版本控制克隆、当前项目、会话内最近项目及其他已注册项目，显示路径和分支；切换前复用保存/放弃/取消保护。不是 Rider 的 `.sln` 模板生成器，也没有跨窗口项目激活列表。
+- 分支弹窗按截图提供操作搜索、更新/提交/推送、新建/检出、最近/本地/远程/标签树、路径分组、跟踪名称和会话收藏；叶节点打开以该分支为目标的菜单，Enter 可检出。项目与分支最近记录、收藏仅在当前窗口会话内保留。
+- Git 菜单按截图分组增加标签、普通变基、HEAD soft/mixed reset、工作树/stash 管理、日志、补丁和当前文件操作。GitLab/GitHub/Azure DevOps 子菜单在存在对应远程时启用，打开仓库或合并请求网页；不声称拥有应用内 PR/API 集成。
+
+新增契约位于 `GitWorkspaceContracts.cs`，路由均使用 `GitApiRoutes`：
+
+| 方法 | 路径（前缀 `/api/v1.0/git`） | 行为 |
+|---|---|---|
+| GET / POST | `/repositories/{id}/tags` | 轻量标签列表/创建 |
+| POST | `/repositories/{id}/rebase`、`/repositories/{id}/cherry-pick` | 验证引用后执行，复用冲突处理 |
+| GET / POST | `/repositories/{id}/stashes` | 列表及 save/apply/pop/drop，操作现存记录时使用 SHA |
+| GET / POST | `/repositories/{id}/worktrees` | 工作树列表/创建；可选新分支，留空则 detached |
+| POST | `/repositories/{id}/worktrees/remove` | 移除干净且未锁定的关联工作树，不使用 force |
+| POST | `/repositories/{id}/patch` | 导出完整文本补丁，超过 200 KiB、二进制或非 UTF-8 内容拒绝导出 |
+| POST | `/repositories/{id}/patch/apply` | 输入服务器上补丁的绝对路径；先 check 再 apply，不使用 unsafe-paths |
+| POST | `/clone` | 克隆至服务器上的目标绝对路径；返回操作结果与成功注册的仓库，可提示 HTTPS 凭据重试 |
+
+所有变更使用有效身份和仓库级写锁；读结果在项目切换后丢弃，延迟对话框不得改变其他仓库。仓库锁无法协调外部 Git 进程或多个注册 ID 的跨工作树事务，克隆仍受既有 30 秒 Git 进程超时约束。Windows 本地临时仓库验证结果与远程/Helper 尚未验收的范围见 [实施记录](./RelaxKonOS.GitEditor.Progress.md)。
+
+## 底部 Git 多标签与日志
+
+底部支持多个日志、文件历史、控制台和仓库管理页并存；“+”新建日志，菜单可复制当前日志或切换标签。每个日志独立保留引用、作者、日期、路径、搜索条件、选中提交、文件、滚动和显示选项。关闭、隐藏恢复与最大化不会混淆标签内容；仓库变更共享忙碌保护，关闭后的迟到读取不会重新打开标签。
+
+日志采用分支/标签树、提交图、变更文件树与提交详情四区布局，提交行固定 26 DIP。图线来自真实父提交关系，缺失或被筛掉的父节点显示截断线；HEAD、分支和标签按真实 SHA 标识。支持路径历史、引用/作者/日期/文本筛选、正则/大小写、列显示、文件状态和单击选择/双击打开差异、独立差异预览。默认日志覆盖全部引用，每次查询最多 100 条，图元数据最多 500 条；没有无限历史索引。
+
+新增 `GET /repositories/{id}/graph?reference=` 返回 `sha/parents/isHead`，`GET /repositories/{id}/console?after=` 返回 `sequence/timestamp/command/output/error/exitCode`，均位于 `/api/v1.0/git` 并按用户和仓库校验。注释标签解析为目标提交。Android 继续使用既有日志接口。
+
+控制台显示服务端实际完成的 Git 领域命令及结果，支持换行、滚动到底部和清空。记录不含日常查询/配置输出，去除显式密码与 URL 凭据/查询参数；内存最多保留 500 条，每字段最多 8192 字符，客户端文本最多约 256k 字符。记录随服务端重启消失，不是交互终端或实时流式进度；清空和关闭不会回放已消费记录。
+
+布局参考 [IDEA Git 工具窗口](https://www.jetbrains.com/help/idea/version-control-tool-window.html) 与 [Log 页面](https://www.jetbrains.com.cn/en-us/help/idea/log-tab.html)。完整 IDE 的索引、跨重启标签恢复及所有历史操作不属于当前实现。

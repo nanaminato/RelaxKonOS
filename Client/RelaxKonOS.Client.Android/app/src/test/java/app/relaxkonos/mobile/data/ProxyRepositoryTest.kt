@@ -6,6 +6,8 @@ import app.relaxkonos.mobile.core.auth.*
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.servercenter.ServerConnectionIdentityRules
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.yield
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
@@ -21,6 +23,21 @@ class ProxyRepositoryTest {
         gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession().let { it.copy(userName = account, server = it.server.copy(capabilities = setOf(ServerCapabilities.PROXY), privilegedOperations = manage)) }) }
         session.login(ServerConnectionIdentityRules.direct("https://example.test"), account, "pw".toCharArray()) {}
         return session.state.value as SessionState.Active
+    }
+    @Test fun `cancelled adoption does not clear marker after late successful read`() = runTest {
+        val owner = signIn(); facts()
+        val pending = journal.begin(owner, null, null, ProxyWrite.Profile)
+        lateinit var reply: kotlin.coroutines.Continuation<ApiResult<List<ProxySubscription>>>
+        val delayedGateway = object : RelaxKonGateway by gateway {
+            override suspend fun proxySubscriptions(serverUrl: String, accessToken: String): ApiResult<List<ProxySubscription>> =
+                kotlin.coroutines.suspendCoroutine { reply = it }
+        }
+        val delayedRepository = ProxyRepository(delayedGateway, session, index, journal)
+        val adoption = launch { delayedRepository.acceptFacts(owner, pending) }
+        yield(); adoption.cancel()
+        reply.resumeWith(Result.success(ApiResult.Success(emptyList())))
+        adoption.join()
+        assertEquals(listOf(pending), repository.pending(owner))
     }
     private fun facts() {
         gateway.onProxyOverview = { ApiResult.Success(ProxyOverview(ProxyRuntime("managed", ProxyRuntimeState.Running, "1", null, true, ""), null, false, true, "healthy", "", true, true, false, "linux", false, ProxySystemProxyCapabilities(true, false, true, false))) }

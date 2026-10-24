@@ -1,0 +1,58 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
+             xmlns:diff="clr-namespace:RelaxKonOS.Client.Controls.Diff"
+             x:Class="RelaxKonOS.Client.Apps.Git.Views.GitDiffPane"
+             x:Name="PaneRoot"
+             x:DataType="git:GitDiffPresentation">
+    <UserControl.Resources>
+        <!-- A flat silhouette, like every other piece of chrome in the app: an emoji or a symbol
+             font glyph changes shape and weight with whatever the host happens to have. -->
+        <StreamGeometry x:Key="PaneCloseMark">M19 6.41 L17.59 5 L12 10.59 L6.41 5 L5 6.41 L10.59 12 L5 17.59 L6.41 19 L12 13.41 L17.59 19 L19 17.59 L13.41 12 Z</StreamGeometry>
+    </UserControl.Resources>
+
+    <Grid RowDefinitions="Auto,Auto,*" RowSpacing="8">
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8">
+            <StackPanel Spacing="2" VerticalAlignment="Center">
+                <TextBlock Text="{Binding DisplayPath}" FontWeight="SemiBold" FontSize="13"
+                           Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding Description}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </StackPanel>
+            <Border Grid.Column="1" Background="{DynamicResource SuccessMutedBrush}" CornerRadius="4" Padding="7,3"
+                    VerticalAlignment="Center">
+                <TextBlock Text="{Binding AdditionsText}" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
+            </Border>
+            <Border Grid.Column="2" Background="{DynamicResource DangerMutedBrush}" CornerRadius="4" Padding="7,3"
+                    VerticalAlignment="Center">
+                <TextBlock Text="{Binding DeletionsText}" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
+            </Border>
+            <!-- The modal shell brings its own Close button, so the mark only appears where the
+                 pane has to dismiss itself. -->
+            <Button Grid.Column="3" Classes="header-action compact" Click="Close_Click"
+                    IsVisible="{Binding #PaneRoot.CanClose}" VerticalAlignment="Center"
+                    ToolTip.Tip="{loc:Loc common.close}" AutomationProperties.Name="{loc:Loc common.close}">
+                <PathIcon Width="11" Height="11" Data="{StaticResource PaneCloseMark}" />
+            </Button>
+        </Grid>
+
+        <Border Grid.Row="1" IsVisible="{Binding IsTruncated}" Background="{DynamicResource WarningMutedBrush}"
+                CornerRadius="4" Padding="8,5">
+            <TextBlock Text="{Binding TruncatedMessage}" FontSize="12" TextWrapping="Wrap"
+                       Foreground="{DynamicResource TextPrimaryBrush}" />
+        </Border>
+
+        <Border Grid.Row="2" Background="{DynamicResource SurfaceSunkenBrush}" CornerRadius="6"
+                BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" ClipToBounds="True">
+            <Panel>
+                <diff:DiffView Document="{Binding Document}" IsVisible="{Binding HasTextPatch}" />
+                <TextBlock IsVisible="{Binding IsBinary}" Text="{Binding BinaryMessage}" Margin="20"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           TextAlignment="Center" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                <TextBlock IsVisible="{Binding IsEmpty}" Text="{Binding EmptyMessage}" Margin="20"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           TextAlignment="Center" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </Panel>
+        </Border>
+    </Grid>
+</UserControl>

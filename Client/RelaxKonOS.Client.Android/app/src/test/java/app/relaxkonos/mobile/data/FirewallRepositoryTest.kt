@@ -45,6 +45,18 @@ class FirewallRepositoryTest {
         assertEquals(1, calls)
         assertTrue(repository.acceptFacts(owner, pending) is ApiResult.Success); assertTrue(repository.pending(owner).isEmpty())
     }
+    @Test fun `cancelled adoption cannot clear marker after non cooperative read returns`() = runTest {
+        val owner = signIn()
+        val pending = journal.begin(owner, change.kind, change.number)
+        lateinit var reply: kotlin.coroutines.Continuation<ApiResult<List<FirewallRule>>>
+        gateway.onFirewallRules = { kotlin.coroutines.suspendCoroutine { reply = it } }
+        val adoption = launch { repository.acceptFacts(owner, pending) }
+        yield()
+        adoption.cancel()
+        reply.resumeWith(Result.success(ApiResult.Success(emptyList())))
+        adoption.join()
+        assertEquals(listOf(pending), repository.pending(owner))
+    }
     @Test fun `changed rule numbering or policy refuses mutation before authorization`() = runTest {
         val owner = signIn(); gateway.onFirewallStatus = { ApiResult.Success(status.copy(isEnabled = true)) }
         val result = repository.change(owner, facts, change, ElevationAnswerProvider.Declines).result

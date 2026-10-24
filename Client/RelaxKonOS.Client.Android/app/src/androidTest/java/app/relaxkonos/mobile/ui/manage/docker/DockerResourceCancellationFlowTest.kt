@@ -33,6 +33,7 @@ class DockerResourceCancellationFlowTest {
     private lateinit var model: DockerResourceViewModel
     private var cancelRead = false
     private var writes = 0
+    private val submittedChanges = mutableListOf<DockerResourceChange>()
     private var successWrite = false
     private var failAfterWrite = false
     private var readFailure: Exception? = null
@@ -80,6 +81,7 @@ class DockerResourceCancellationFlowTest {
                 ApiResult.Success(DockerVolumeDetails(name, "local", "/review-volume", emptyList(), mapOf("review-label" to "private-review-value")))
             override suspend fun dockerResourceChange(serverUrl: String, accessToken: String, change: DockerResourceChange): ApiResult<DockerOperation> {
                 writes++
+                submittedChanges += change
                 if (!successWrite) throw CancellationException("private cancelled write")
                 if (change.action == DockerResourceAction.CreateVolume) createdVolumes += DockerVolume(requireNotNull(change.value), "local", "/review-created")
                 if (failAfterWrite) readFailure = IllegalStateException("private verification failure")
@@ -103,6 +105,122 @@ class DockerResourceCancellationFlowTest {
     }
     @After fun cleanup() { rule.runOnUiThread { store.clear() } }
     private fun refresh() = rule.onNodeWithText(text(R.string.common_refresh)).performScrollTo().performClick()
+    private fun openVolumeDraft(name: String = "review-data") {
+        rule.onNodeWithText(text(R.string.docker_resources_create_volume)).performScrollTo().performClick()
+        rule.onNode(hasSetTextAction() and hasText(text(R.string.docker_resources_name))).performScrollTo().performTextInput(name)
+    }
+    private fun dialogButton(label: Int) = rule.onNode(hasText(text(label)) and hasClickAction() and hasAnyAncestor(isDialog()))
+    private fun clickAction(node: SemanticsNodeInteraction) = requireNotNull(node.fetchSemanticsNode().config[SemanticsActions.OnClick].action)
+    @Test fun oldDiscardCancelCannotWithdrawReopenedDecision() {
+        show(); openVolumeDraft()
+        rule.onNodeWithText(text(R.string.common_cancel)).performScrollTo().performClick()
+        val oldCancel = clickAction(dialogButton(R.string.common_cancel))
+        dialogButton(R.string.common_cancel).performClick()
+        rule.onNodeWithText(text(R.string.common_cancel)).performScrollTo().performClick()
+        rule.runOnIdle { oldCancel() }
+        rule.onNode(isDialog()).assertExists()
+        dialogButton(R.string.common_cancel).performClick()
+        rule.onNodeWithText("review-data").assertExists()
+        rule.runOnIdle { assertEquals(0, writes) }
+    }
+    @Test fun discardedDraftReviewCannotCreateConfirmationForNewEditor() {
+        show(); openVolumeDraft()
+        val oldReview = clickAction(rule.onNodeWithText(text(R.string.docker_resources_review)).performScrollTo())
+        rule.onNodeWithText(text(R.string.common_cancel)).performScrollTo().performClick()
+        dialogButton(R.string.docker_resources_discard).performClick()
+        openVolumeDraft("new-data")
+        rule.runOnIdle { oldReview(); assertEquals(0, writes); assertNull(model.confirmation) }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.onNodeWithText("new-data").assertExists()
+    }
+    @Test fun oldReviewCannotConfirmEditedSnapshot() {
+        show(); openVolumeDraft()
+        val oldReview = clickAction(rule.onNodeWithText(text(R.string.docker_resources_review)).performScrollTo())
+        rule.onNode(hasSetTextAction() and hasText(text(R.string.docker_resources_name))).performScrollTo().performTextReplacement("new-data")
+        rule.runOnIdle { oldReview(); assertNull(model.confirmation); assertEquals(0, writes) }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.docker_resources_review)).performScrollTo().performClick()
+        rule.runOnIdle { assertEquals("new-data", model.confirmation?.change?.value) }
+    }
+    @Test fun oldDiscardCannotClearNewDecisionOrDraft() {
+        show(); openVolumeDraft()
+        rule.onNodeWithText(text(R.string.common_cancel)).performScrollTo().performClick()
+        val oldDiscard = clickAction(dialogButton(R.string.docker_resources_discard))
+        dialogButton(R.string.common_cancel).performClick()
+        rule.onNodeWithText(text(R.string.common_cancel)).performScrollTo().performClick()
+        rule.runOnIdle { oldDiscard() }
+        rule.onNode(isDialog()).assertExists()
+        dialogButton(R.string.common_cancel).performClick()
+        rule.onNodeWithText("review-data").assertExists()
+        rule.runOnIdle { assertEquals(0, writes) }
+    }
+    @Test fun discardedFieldCallbackCannotOverwriteNewDraft() {
+        show(); openVolumeDraft()
+        val oldField = requireNotNull(rule.onNode(hasSetTextAction() and hasText(text(R.string.docker_resources_name)))
+            .fetchSemanticsNode().config[SemanticsActions.SetText].action)
+        rule.onNodeWithText(text(R.string.common_cancel)).performScrollTo().performClick()
+        dialogButton(R.string.docker_resources_discard).performClick()
+        openVolumeDraft("new-data")
+        rule.runOnIdle { oldField(androidx.compose.ui.text.AnnotatedString("stale-data")) }
+        rule.onNodeWithText("new-data").assertExists()
+        rule.onNodeWithText("stale-data").assertDoesNotExist()
+        rule.runOnIdle { assertEquals(0, writes) }
+    }
+    @Test fun resumedEditorRejectsOldCallbacksBeforeRedrawAndPreservesCurrentSubmission() {
+        show()
+        val oldOpen = clickAction(rule.onNodeWithText(text(R.string.docker_resources_create_volume)).performScrollTo())
+        openVolumeDraft()
+        val oldField = requireNotNull(rule.onNode(hasSetTextAction() and hasText(text(R.string.docker_resources_name)))
+            .fetchSemanticsNode().config[SemanticsActions.SetText].action)
+        val oldReview = clickAction(rule.onNodeWithText(text(R.string.docker_resources_review)).performScrollTo())
+        val oldCancel = clickAction(rule.onNodeWithText(text(R.string.common_cancel)))
+        var checkedResume = false
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                oldField(androidx.compose.ui.text.AnnotatedString("stale-data")); oldReview(); oldCancel(); oldOpen()
+                assertNull(model.confirmation); assertEquals(0, writes); checkedResume = true
+            }
+        }
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+            rule.runOnUiThread {
+                oldField(androidx.compose.ui.text.AnnotatedString("paused-data")); oldReview(); oldCancel(); oldOpen()
+                assertNull(model.confirmation); assertEquals(0, writes)
+                rule.activity.lifecycle.addObserver(observer)
+            }
+            rule.mainClock.autoAdvance = true
+            rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        } finally {
+            rule.mainClock.autoAdvance = true
+            rule.runOnUiThread { rule.activity.lifecycle.removeObserver(observer) }
+        }
+        rule.runOnIdle { assertTrue(checkedResume); oldReview(); oldCancel(); oldOpen() }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.onNodeWithText("review-data").assertExists()
+        rule.onNodeWithText(text(R.string.docker_resources_review)).performScrollTo().performClick()
+        val submit = clickAction(dialogButton(R.string.docker_resources_apply))
+        rule.runOnIdle { submit(); submit() }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.pending.size == 1 }
+        rule.runOnIdle { assertEquals(listOf("review-data"), submittedChanges.map { it.value }); assertEquals(1, writes) }
+    }
+    @Test fun oldCloseCannotDismissReopenedVolumeReview() {
+        show()
+        rule.onNodeWithText(text(R.string.docker_resources_create_volume)).performScrollTo().performClick()
+        rule.onNode(hasSetTextAction() and hasText(text(R.string.docker_resources_name))).performScrollTo().performTextInput("review-data")
+        rule.onNodeWithText(text(R.string.docker_resources_review)).performScrollTo().performClick()
+        val close = rule.onNode(hasText(text(R.string.common_cancel)) and hasClickAction() and hasAnyAncestor(isDialog()))
+        val oldClose = requireNotNull(close.fetchSemanticsNode().config[SemanticsActions.OnClick].action)
+        close.performClick()
+        rule.onNodeWithText(text(R.string.docker_resources_review)).performScrollTo().performClick()
+        val fresh = requireNotNull(model.confirmation)
+        rule.runOnIdle { oldClose(); assertSame(fresh, model.confirmation); assertEquals(0, writes) }
+        rule.onNode(isDialog()).assertExists()
+        val submit = requireNotNull(rule.onNodeWithText(text(R.string.docker_resources_apply)).fetchSemanticsNode().config[SemanticsActions.OnClick].action)
+        rule.runOnIdle { submit(); submit() }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.pending.size == 1 }
+        rule.runOnIdle { assertEquals(1, writes); assertEquals(DockerResourceAction.CreateVolume, model.state.pending.single().action) }
+    }
     @Test fun backgroundStatsTimerStopsWithoutComposeFramesAndResumes() {
         show(resourceKind = DockerResourceKind.Containers)
         rule.runOnIdle { model.select(DockerResourceKind.Containers, containerId) }

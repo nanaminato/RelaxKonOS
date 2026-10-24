@@ -78,7 +78,13 @@ class EventAlertRepository(private val gateway: RelaxKonGateway, private val ses
         requests.withLock {
             fun verify() { if (session.state.value !== owner) throw CancellationException("Alert session changed") }
             verify()
-            val result = session.authenticated { url, token -> verify(); request(url, token) }
+            val result = try {
+                session.authenticated { url, token -> verify(); request(url, token) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                ApiResult.Transport(null)
+            }
             verify()
             result
         }

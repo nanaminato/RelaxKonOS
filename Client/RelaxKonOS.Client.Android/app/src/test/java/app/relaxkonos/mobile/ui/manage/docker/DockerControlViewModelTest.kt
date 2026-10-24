@@ -32,9 +32,10 @@ class DockerControlViewModelTest {
         override fun read() = bytes
         override fun write(bytes: ByteArray) { this.bytes = bytes.copyOf() }
     })
+    private val installationJournal = InstallationRequestJournal(Storage())
     private val installations = InstallationRepository(gateway, session,
         ElevationRepository(gateway, session, CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto()), UsageMemoryStore(InMemoryUsageMemoryStorage())),
-        index, InstallationRequestJournal(Storage()))
+        index, installationJournal)
     private val facts = DockerControlFacts(DockerStatus(true, "", "28", "linux", "amd64"), emptyList())
     private val change = DockerControlChange(DockerControlKind.EngineRestart)
     private val task = InstallationOperation("11111111-1111-1111-1111-111111111111", InstallationService.Docker, InstallationKind.Install,
@@ -53,6 +54,99 @@ class DockerControlViewModelTest {
         gateway.onDockerVolumes = { ApiResult.Success(emptyList()) }
     }
     @After fun cleanup() { store.clear(); Dispatchers.resetMain() }
+    private fun restoreInstallation(id: String, identified: Boolean) {
+        val form = requireNotNull(model.requestRecovery(requireNotNull(model.state.owner)))
+        model.changeRecoveryId(form, id)
+        if (identified) model.identifyRecovery(form, form.draft, true)
+        model.submitRecovery(form, form.draft)
+    }
+    @Test fun `recovery is bound to form and exact input and current submission reads once`() = runTest {
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        val owner = requireNotNull(model.state.owner)
+        val old = requireNotNull(model.requestRecovery(owner))
+        model.changeRecoveryId(old, task.operationId)
+        val oldInput = old.draft
+        val nextId = "22222222-2222-2222-2222-222222222222"
+        model.changeRecoveryId(old, nextId)
+        var reads = 0
+        gateway.onInstallation = { id -> reads++; ApiResult.Success(task.copy(operationId = id)) }
+        model.submitRecovery(old, oldInput); advanceUntilIdle(); assertEquals(0, reads)
+        model.dismissRecovery(old)
+        val fresh = requireNotNull(model.requestRecovery(owner))
+        model.dismissRecovery(old); assertSame(fresh, model.recoveryForm)
+        model.submitRecovery(old, old.draft); advanceUntilIdle(); assertEquals(0, reads)
+        val input = fresh.draft
+        model.submitRecovery(fresh, input); model.submitRecovery(fresh, input); advanceUntilIdle()
+        assertEquals(1, reads); assertEquals(nextId, model.state.installation?.operationId)
+    }
+    @Test fun `identification resets for changed id and old checkbox cannot identify new input`() = runTest {
+        login(); runCurrent()
+        val owner = requireNotNull(model.state.owner)
+        val pending = installationJournal.begin(owner, InstallationService.Docker, InstallationKind.Install, "original")
+        installationJournal.update(pending.copy(attempted = true))
+        model.refresh(); advanceUntilIdle()
+        val form = requireNotNull(model.requestRecovery(owner))
+        model.changeRecoveryId(form, task.operationId)
+        val old = form.draft
+        model.identifyRecovery(form, old, true); assertTrue(form.draft.identified)
+        model.changeRecoveryId(form, "22222222-2222-2222-2222-222222222222")
+        assertFalse(form.draft.identified)
+        model.identifyRecovery(form, old, true); assertFalse(form.draft.identified)
+        var reads = 0
+        gateway.onInstallation = { id -> reads++; ApiResult.Success(task.copy(operationId = id)) }
+        model.submitRecovery(form, form.draft); advanceUntilIdle(); assertEquals(0, reads)
+        model.identifyRecovery(form, form.draft, true)
+        model.submitRecovery(form, form.draft); advanceUntilIdle()
+        assertEquals(1, reads); assertTrue(installationJournal.pending(owner).isEmpty())
+    }
+    @Test fun `replaced original pending request is neither queried nor cleared`() = runTest {
+        login(); runCurrent()
+        val owner = requireNotNull(model.state.owner)
+        val original = installationJournal.begin(owner, InstallationService.Docker, InstallationKind.Install, "original")
+        installationJournal.update(original.copy(attempted = true))
+        model.refresh(); advanceUntilIdle()
+        val form = requireNotNull(model.requestRecovery(owner))
+        model.changeRecoveryId(form, task.operationId); model.identifyRecovery(form, form.draft, true)
+        installationJournal.complete(original)
+        val replacement = installationJournal.begin(owner, InstallationService.Docker, InstallationKind.Repair, "replacement")
+        var reads = 0
+        gateway.onInstallation = { reads++; ApiResult.Success(task) }
+        model.submitRecovery(form, form.draft); advanceUntilIdle()
+        assertEquals(0, reads); assertEquals(listOf(replacement), installationJournal.pending(owner))
+        assertTrue(model.state.pendingInstallation); assertFalse(model.state.busy)
+    }
+    @Test fun `withdrawal and explicit refresh revoke recovery forms`() = runTest {
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        val owner = requireNotNull(model.state.owner)
+        var reads = 0
+        gateway.onInstallation = { reads++; ApiResult.Success(task) }
+        val old = requireNotNull(model.requestRecovery(owner)); model.changeRecoveryId(old, task.operationId)
+        model.withdrawReviews(owner); model.submitRecovery(old, old.draft); advanceUntilIdle(); assertEquals(0, reads)
+        val fresh = requireNotNull(model.requestRecovery(owner)); model.changeRecoveryId(fresh, task.operationId)
+        model.refresh(); advanceUntilIdle()
+        model.submitRecovery(fresh, fresh.draft); advanceUntilIdle(); assertNull(model.recoveryForm); assertEquals(0, reads)
+    }
+    @Test fun `same account new login rejects old recovery before collection`() = runTest {
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        val old = requireNotNull(model.requestRecovery(requireNotNull(model.state.owner)))
+        model.changeRecoveryId(old, task.operationId)
+        var reads = 0
+        gateway.onInstallation = { reads++; ApiResult.Success(task) }
+        login(); model.submitRecovery(old, old.draft); runCurrent()
+        assertEquals(0, reads); assertNull(model.recoveryForm)
+    }
+    @Test fun `installation observation pauses for recovery and resumes on close`() = runTest {
+        login(); runCurrent(); gateway.onInstallation = { ApiResult.Success(task) }
+        restoreInstallation(task.operationId, false); advanceUntilIdle()
+        val form = requireNotNull(model.requestRecovery(requireNotNull(model.state.owner)))
+        model.requestInstallationCancellation(requireNotNull(model.state.owner), task)
+        assertNull(model.installationCancellation)
+        var reads = 0
+        gateway.onInstallation = { reads++; ApiResult.Success(task.copy(state = InstallationState.Succeeded)) }
+        model.observeInstallation { true }; advanceUntilIdle(); assertEquals(0, reads)
+        model.dismissRecovery(form)
+        model.observeInstallation { true }; advanceUntilIdle(); assertEquals(1, reads)
+    }
     private suspend fun login() {
         gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession().let {
             it.copy(server = it.server.copy(capabilities = setOf(ServerCapabilities.DOCKER), privilegedOperations = true))
@@ -101,6 +195,43 @@ class DockerControlViewModelTest {
         login(); runCurrent(); model.refresh(); advanceUntilIdle()
         model.change(old); advanceUntilIdle(); assertEquals(0, sends); assertTrue(model.state.pending.isEmpty())
     }
+    @Test fun `old close cannot dismiss reopened engine review`() = runTest {
+        val old = review()
+        val close = { model.dismissConfirmation(old) }
+        close()
+        model.requestChange(requireNotNull(model.state.owner), facts, change)
+        val fresh = requireNotNull(model.confirmation)
+        close(); assertSame(fresh, model.confirmation)
+        var sends = 0
+        gateway.onDockerEngineAction = { _, _ -> sends++; ApiResult.Transport(null) }
+        model.change(fresh); model.change(fresh); advanceUntilIdle(); assertEquals(1, sends)
+    }
+    @Test fun `old close cannot dismiss reopened installation cancellation`() = runTest {
+        val old = cancellationReview()
+        val close = { model.dismissInstallationCancellation(old) }
+        close()
+        model.requestInstallationCancellation(requireNotNull(model.state.owner), task)
+        val fresh = requireNotNull(model.installationCancellation)
+        close(); assertSame(fresh, model.installationCancellation)
+        var sends = 0
+        gateway.onCancelInstallation = { _, _ -> sends++; ApiResult.Success(task.copy(state = InstallationState.Cancelled)) }
+        model.cancelInstall(fresh); model.cancelInstall(fresh); advanceUntilIdle(); assertEquals(1, sends)
+    }
+    @Test fun `old login withdrawal leaves current control and cancellation reviews intact`() = runTest {
+        val old = review()
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        val owner = requireNotNull(model.state.owner)
+        model.requestChange(owner, facts, change)
+        val fresh = requireNotNull(model.confirmation)
+        model.withdrawReviews(old.owner); assertSame(fresh, model.confirmation)
+        model.withdrawReviews(owner); assertNull(model.confirmation)
+        gateway.onInstallation = { ApiResult.Success(task) }
+        restoreInstallation(task.operationId, false); advanceUntilIdle()
+        model.requestInstallationCancellation(owner, task)
+        val cancel = requireNotNull(model.installationCancellation)
+        model.withdrawReviews(old.owner); assertSame(cancel, model.installationCancellation)
+        model.withdrawReviews(owner); assertNull(model.installationCancellation)
+    }
     @Test fun `refresh and dismissal invalidate old confirmation even after reopening`() = runTest {
         val old = review(); var sends = 0
         gateway.onDockerEngineAction = { _, _ -> sends++; ApiResult.Transport(null) }
@@ -108,7 +239,7 @@ class DockerControlViewModelTest {
         model.requestChange(requireNotNull(model.state.owner), facts, change)
         val fresh = requireNotNull(model.confirmation)
         model.change(old); advanceUntilIdle(); assertEquals(0, sends)
-        model.dismissConfirmation(); model.change(fresh); advanceUntilIdle(); assertEquals(0, sends)
+        model.dismissConfirmation(fresh); model.change(fresh); advanceUntilIdle(); assertEquals(0, sends)
     }
     @Test fun `stop invalidates review and fresh confirmation is consumed once`() = runTest {
         val old = review(); model.stop(); model.change(old); advanceUntilIdle()
@@ -122,17 +253,19 @@ class DockerControlViewModelTest {
     private suspend fun TestScope.cancellationReview(): DockerInstallationCancellation {
         login(); runCurrent()
         gateway.onInstallation = { ApiResult.Success(task) }
-        model.recoverInstall(task.operationId, false); advanceUntilIdle()
+        restoreInstallation(task.operationId, false); advanceUntilIdle()
         model.requestInstallationCancellation(requireNotNull(model.state.owner), task)
         return requireNotNull(model.installationCancellation)
     }
-    @Test fun `old cancel cannot target replacement installation while fresh confirmation can`() = runTest {
+    @Test fun `explicit recovery requires closing prior review and old cancel cannot target replacement`() = runTest {
         val old = cancellationReview()
         val next = task.copy(operationId = "22222222-2222-2222-2222-222222222222")
         val cancellations = mutableListOf<String>()
         gateway.onInstallation = { ApiResult.Success(next) }
         gateway.onCancelInstallation = { id, _ -> cancellations += id; ApiResult.Success(next.copy(state = InstallationState.Cancelled)) }
-        model.recoverInstall(next.operationId, false); advanceUntilIdle()
+        assertNull(model.requestRecovery(old.owner)); assertSame(old, model.installationCancellation)
+        model.dismissInstallationCancellation(old)
+        restoreInstallation(next.operationId, false); advanceUntilIdle()
         model.cancelInstall(old); advanceUntilIdle(); assertTrue(cancellations.isEmpty())
         model.requestInstallationCancellation(requireNotNull(model.state.owner), next)
         model.cancelInstall(requireNotNull(model.installationCancellation)); advanceUntilIdle()
@@ -157,7 +290,7 @@ class DockerControlViewModelTest {
     @Test fun `same address new login rejects previous cancellation even for identical task`() = runTest {
         val old = cancellationReview(); var sends = 0
         gateway.onCancelInstallation = { _, _ -> sends++; ApiResult.Success(task.copy(state = InstallationState.Cancelled)) }
-        login(); runCurrent(); model.recoverInstall(task.operationId, false); advanceUntilIdle()
+        login(); runCurrent(); restoreInstallation(task.operationId, false); advanceUntilIdle()
         model.cancelInstall(old); advanceUntilIdle(); assertEquals(0, sends)
         model.requestInstallationCancellation(requireNotNull(model.state.owner), task)
         model.cancelInstall(requireNotNull(model.installationCancellation)); advanceUntilIdle(); assertEquals(1, sends)
@@ -169,7 +302,7 @@ class DockerControlViewModelTest {
         model.requestInstallationCancellation(requireNotNull(model.state.owner), task)
         val reopened = requireNotNull(model.installationCancellation)
         model.cancelInstall(old); assertSame(reopened, model.installationCancellation)
-        model.dismissInstallationCancellation(); model.cancelInstall(reopened); advanceUntilIdle(); assertEquals(0, sends)
+        model.dismissInstallationCancellation(reopened); model.cancelInstall(reopened); advanceUntilIdle(); assertEquals(0, sends)
         model.requestInstallationCancellation(requireNotNull(model.state.owner), task)
         val fresh = requireNotNull(model.installationCancellation)
         model.cancelInstall(fresh); model.cancelInstall(fresh); advanceUntilIdle(); assertEquals(1, sends)
@@ -178,7 +311,7 @@ class DockerControlViewModelTest {
         cancellationReview(); var reads = 0
         gateway.onInstallation = { reads++; ApiResult.Success(task.copy(state = InstallationState.Succeeded)) }
         model.observeInstallation { true }; advanceUntilIdle(); assertEquals(0, reads)
-        model.dismissInstallationCancellation()
+        model.dismissInstallationCancellation(requireNotNull(model.installationCancellation))
         model.observeInstallation { true }; advanceUntilIdle(); assertEquals(1, reads)
     }
     @Test fun `old installation timer cannot query a newly selected task`() = runTest {
@@ -186,10 +319,10 @@ class DockerControlViewModelTest {
         val next = task.copy(operationId = "22222222-2222-2222-2222-222222222222")
         val reads = mutableListOf<String>()
         gateway.onInstallation = { id -> reads += id; ApiResult.Success(if (id == task.operationId) task else next) }
-        model.recoverInstall(task.operationId, false); runCurrent()
+        restoreInstallation(task.operationId, false); runCurrent()
         val timer = launch { model.observeInstallation { true } }
         runCurrent()
-        model.recoverInstall(next.operationId, false); runCurrent()
+        restoreInstallation(next.operationId, false); runCurrent()
         advanceTimeBy(1_500); runCurrent(); timer.join()
         assertEquals(listOf(task.operationId, next.operationId), reads)
     }
@@ -197,7 +330,7 @@ class DockerControlViewModelTest {
         login(); runCurrent()
         var foreground = true; var reads = 0
         gateway.onInstallation = { reads++; ApiResult.Success(task) }
-        model.recoverInstall(task.operationId, false); runCurrent()
+        restoreInstallation(task.operationId, false); runCurrent()
         val timer = launch { model.observeInstallation { foreground } }; runCurrent()
         foreground = false
         advanceTimeBy(1_500); runCurrent(); timer.join()
@@ -207,7 +340,7 @@ class DockerControlViewModelTest {
         login(); runCurrent()
         var reads = 0
         gateway.onInstallation = { reads++; ApiResult.Success(if (reads < 4) task else task.copy(state = InstallationState.Succeeded)) }
-        model.recoverInstall(task.operationId, false); runCurrent()
+        restoreInstallation(task.operationId, false); runCurrent()
         val timer = launch { model.observeInstallation { true } }; runCurrent()
         advanceTimeBy(4_500); runCurrent(); timer.join()
         assertEquals(4, reads); assertEquals(InstallationState.Succeeded, model.state.installation?.state)
@@ -216,10 +349,10 @@ class DockerControlViewModelTest {
         login(); runCurrent()
         var reads = 0
         gateway.onInstallation = { reads++; ApiResult.Success(task) }
-        model.recoverInstall(task.operationId, false); runCurrent()
+        restoreInstallation(task.operationId, false); runCurrent()
         val timer = launch { model.observeInstallation { true } }; runCurrent()
         advanceTimeBy(1_000)
-        model.recoverInstall(task.operationId, false); runCurrent()
+        restoreInstallation(task.operationId, false); runCurrent()
         advanceTimeBy(500); runCurrent()
         assertEquals(2, reads)
         timer.cancelAndJoin()
@@ -251,7 +384,7 @@ class DockerControlViewModelTest {
         val terminal = task.copy(state = InstallationState.Succeeded, stage = InstallationStage.Completed, completedAtMillis = 2, cancellable = false)
         gateway.onInstallation = { ApiResult.Success(terminal) }
         gateway.onDockerStatus = { error("private post-installation read failure") }
-        model.recoverInstall(task.operationId, false); advanceUntilIdle()
+        restoreInstallation(task.operationId, false); advanceUntilIdle()
         assertEquals(terminal, model.state.installation); assertTrue(model.state.installationVerified)
         assertNull(model.state.facts); assertEquals("docker.control.installation_refresh_failed", model.state.problem)
         assertFalse(model.state.busy); assertFalse(model.state.installationLookupFailed)
@@ -261,7 +394,7 @@ class DockerControlViewModelTest {
         val terminal = task.copy(state = InstallationState.Succeeded, stage = InstallationStage.Completed, completedAtMillis = 2, cancellable = false)
         gateway.onInstallation = { ApiResult.Success(terminal) }
         gateway.onDockerStatus = { throw CancellationException("private verification cancellation") }
-        model.recoverInstall(task.operationId, false); advanceUntilIdle()
+        restoreInstallation(task.operationId, false); advanceUntilIdle()
         assertEquals(terminal, model.state.installation); assertTrue(model.state.installationVerified)
         assertNull(model.state.facts); assertEquals("docker.control.installation_refresh_failed", model.state.problem)
     }
@@ -270,7 +403,7 @@ class DockerControlViewModelTest {
         val failed = task.copy(state = InstallationState.Failed, stage = InstallationStage.Failed,
             problemCode = InstallationProblemCodes.FAILED, completedAtMillis = 2, cancellable = false)
         gateway.onInstallation = { ApiResult.Success(failed) }
-        model.recoverInstall(task.operationId, false); advanceUntilIdle()
+        restoreInstallation(task.operationId, false); advanceUntilIdle()
         assertEquals(failed, model.state.installation); assertTrue(model.state.installationVerified)
         assertEquals(facts, model.state.facts); assertEquals(failed.problemCode, model.state.problem)
         model.refresh(); advanceUntilIdle()

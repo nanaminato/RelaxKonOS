@@ -29,7 +29,7 @@ class SmbRetainedShareEditorTest {
         var refreshed = 0
         var discarded = false
         rule.setContent { MaterialTheme { Column(Modifier.verticalScroll(rememberScrollState())) {
-            SmbRetainedShareEditor(draft, facts, busy.value, { refreshed++; busy.value = true }, { discarded = true })
+            SmbRetainedShareEditor(draft, facts, busy.value, { refreshed++; busy.value = true }, { discarded = true }, draft)
         } } }
         rule.onNodeWithText("review-share").assertExists()
         rule.onNodeWithText(text(R.string.smb_name)).assertIsNotEnabled()

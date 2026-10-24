@@ -42,11 +42,17 @@ object ManagedRuntimeRoutes {
     }
 }
 
-data class ManagedRuntimeSource(val id: String, val publisher: String, val enabled: Boolean, val trust: String, val address: String, val fingerprint: String)
+data class ManagedRuntimeSource(val id: String, val publisher: String, val enabled: Boolean, val trust: String,
+    val trustRevision: Long, val address: String, val fingerprint: String) {
+    val trusted get() = enabled && trust == "confirmed"
+}
 data class ManagedRuntimeRelease(val id: String, val version: String, val trust: String, val supported: Boolean,
     val channel: String, val target: String, val evidence: String)
-data class ManagedRuntimeCatalog(val source: String, val revision: Long, val trustRevision: Long, val fresh: Boolean,
-    val problem: String?, val releases: List<ManagedRuntimeRelease>)
+data class ManagedRuntimeCatalog(val source: ManagedRuntimeSource, val revision: Long, val trustRevision: Long, val fresh: Boolean,
+    val problem: String?, val releases: List<ManagedRuntimeRelease>) {
+    val trusted get() = source.trusted && trustRevision == source.trustRevision
+    val usable get() = fresh && problem == null && trusted
+}
 class ManagedRuntimeInstallation(val wire: String) {
     private val value get() = JSONObject(wire)
     private val installation get() = value.getJSONObject("installation")
@@ -82,19 +88,25 @@ class ManagedRuntimeInstallation(val wire: String) {
 }
 
 object ManagedRuntimeWire {
+    private fun source(value: JSONObject): ManagedRuntimeSource {
+        require(value.getString("runtimeId") == "mihomo")
+        val identity = value.getJSONObject("identity")
+        return ManagedRuntimeSource(identity.getString("sourceId"), identity.getString("publisher"),
+            identity.getBoolean("enabled"), identity.getString("trust"), identity.getLong("trustRevision"),
+            value.getString("baseUri"), value.getString("confirmationFingerprint"))
+    }
     fun sources(payload: String): List<ManagedRuntimeSource> = JSONArray(payload).let { array ->
-        (0 until array.length()).map { array.getJSONObject(it) }.filter { it.getString("runtimeId") == "mihomo" }.map {
-            val identity = it.getJSONObject("identity")
-            ManagedRuntimeSource(identity.getString("sourceId"), identity.getString("publisher"), identity.getBoolean("enabled"), identity.getString("trust"), it.getString("baseUri"), it.getString("confirmationFingerprint"))
-        }
+        (0 until array.length()).map { array.getJSONObject(it) }.filter { it.getString("runtimeId") == "mihomo" }.map(::source)
     }
     fun catalog(payload: String): ManagedRuntimeCatalog = JSONObject(payload).let { value ->
-        val source = value.getJSONObject("source").getJSONObject("identity").getString("sourceId")
+        val source = source(value.getJSONObject("source"))
         val catalog = if (value.isNull("catalog")) null else value.getJSONObject("catalog")
+        if (catalog != null) require(catalog.getString("sourceId") == source.id)
         val releases = catalog?.getJSONArray("releases") ?: JSONArray()
         ManagedRuntimeCatalog(source, catalog?.getLong("revision") ?: 0, catalog?.getLong("trustRevision") ?: 0,
             value.getBoolean("fresh") && catalog?.getBoolean("signatureVerified") == true, value.optNullableString("problemCode"),
-            (0 until releases.length()).map { releases.getJSONObject(it) }.filter { it.getString("runtimeId") == "mihomo" }.map {
+            (0 until releases.length()).map { releases.getJSONObject(it) }.map {
+                require(it.getString("runtimeId") == "mihomo" && it.getString("sourceId") == source.id)
                 val target = it.getJSONObject("target")
                 ManagedRuntimeRelease(it.getString("releaseId"), it.getString("originalVersion"), it.getString("trust"),
                     it.getBoolean("configurationSupported"), it.getString("channel"),

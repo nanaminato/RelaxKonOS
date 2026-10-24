@@ -23,6 +23,7 @@ import app.relaxkonos.mobile.ui.common.*
 import app.relaxkonos.mobile.ui.theme.Spacing
 import java.util.UUID
 
+private class ResourceLeaveReview(val editor: Any, val draft: DockerResourceDraft, val action: () -> Unit)
 
 @Composable internal fun dockerResourceViewModel(key: String): DockerResourceViewModel {
     val container = appContainer()
@@ -44,24 +45,44 @@ import java.util.UUID
     val ready = visible && owner?.privilegedOperations == true && !state.busy && state.blocked == null && state.pending.isEmpty() && facts?.status?.available == true
     var kind by remember(owner) { mutableStateOf(resourceKind ?: DockerResourceKind.Containers) }
     var draft by remember(owner) { mutableStateOf<DockerResourceDraft?>(null) }
+    var draftEditor by remember(owner) { mutableStateOf(Any()) }
     val confirmation = model.confirmation?.takeIf { it.owner === owner }
-    var leave by remember(owner) { mutableStateOf<(() -> Unit)?>(null) }
+    var leave by remember(owner) { mutableStateOf<ResourceLeaveReview?>(null) }
     var reveal by remember(owner, target?.id) { mutableStateOf(false) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var lifecycleEpoch by remember(owner, lifecycle) { mutableIntStateOf(0) }
     val observationEpoch = lifecycleEpoch
+    val currentActive = rememberUpdatedState(active)
+    val currentOwner = rememberUpdatedState(owner)
+    val currentInteraction = { currentActive.value && currentOwner.value === owner && model.state.owner === owner &&
+        lifecycleEpoch == observationEpoch && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
     DisposableEffect(owner, target?.id, lifecycle, active) {
-        fun withdraw() { model.dismissConfirmation(); leave = null; reveal = false }
+        fun withdraw() { model.withdrawReview(owner); leave = null; reveal = false }
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE) { withdraw(); lifecycleEpoch++ }
             if (event == Lifecycle.Event.ON_RESUME) lifecycleEpoch++
         }
         lifecycle.addObserver(observer)
-        if (!active) withdraw()
+        if (!active) { withdraw(); lifecycleEpoch++ }
         onDispose { lifecycle.removeObserver(observer) }
     }
-    val navigate: (() -> Unit) -> Unit = { action -> if (draft != null) leave = action else action() }
-    fun confirm(change: DockerResourceChange) { facts?.let { model.requestChange(requireNotNull(owner), it, target.takeIf { change.target != null }, change) } }
+    val observedDraft = draft
+    val observedEditor = draftEditor
+    val navigate: (() -> Unit) -> Unit = { action ->
+        if (currentInteraction() && !model.state.busy && leave == null && draft === observedDraft && draftEditor === observedEditor) {
+            if (observedDraft != null) leave = ResourceLeaveReview(observedEditor, observedDraft, action) else action()
+        }
+    }
+    fun openEditor(value: DockerResourceDraft) {
+        if (currentInteraction() && ready && !model.state.busy && model.state.facts == facts &&
+            draftEditor === observedEditor && draft == null && leave == null && model.confirmation == null) {
+            draftEditor = Any(); draft = value
+        }
+    }
+    fun confirm(change: DockerResourceChange) {
+        if (currentInteraction() && ready && !model.state.busy && leave == null && model.state.facts == facts)
+            facts?.let { model.requestChange(requireNotNull(owner), it, target.takeIf { change.target != null }, change) }
+    }
     LaunchedEffect(owner, state.owner) { if (visible && owner != null) model.refresh() }
     LaunchedEffect(owner, state.saved) { if (visible && state.saved > 0) draft = null }
     LaunchedEffect(active, owner, observationEpoch, target?.id, target?.container?.state, state.busy, draft, confirmation) {
@@ -88,7 +109,9 @@ import java.util.UUID
             if (resourceKind == null) FlowRow { DockerResourceKind.entries.forEach { item -> FilterChip(selected = kind == item, enabled = !state.busy,
                 onClick = { navigate { draft = null; kind = item; model.refresh() } }, label = { Text(resourceKindLabel(item)) }) } }
             val create = when (kind) { DockerResourceKind.Containers -> DockerResourceAction.CreateContainer; DockerResourceKind.Images -> DockerResourceAction.PullImage; DockerResourceKind.Networks -> DockerResourceAction.CreateNetwork; DockerResourceKind.Volumes -> DockerResourceAction.CreateVolume }
-            if (owner.privilegedOperations) OutlinedButton(enabled = ready && draft == null, onClick = { draft = DockerResourceDraft(create, driver = if (kind == DockerResourceKind.Networks) "bridge" else "local") }) { Text(resourceActionLabel(create)) }
+            key(observationEpoch, draftEditor) {
+                if (owner.privilegedOperations) OutlinedButton(enabled = ready && draft == null, onClick = { openEditor(DockerResourceDraft(create, driver = if (kind == DockerResourceKind.Networks) "bridge" else "local")) }) { Text(resourceActionLabel(create)) }
+            }
             val rows = when (kind) {
                 DockerResourceKind.Containers -> facts.containers.orEmpty().map { Triple(it.id, it.names, "${it.image} · ${dockerContainerStatus(it.state, it.status)}") }
                 DockerResourceKind.Images -> facts.images.orEmpty().map { Triple(it.id, "${it.repository}:${it.tag}", "${it.id} · ${it.size} · ${it.createdSince}") }
@@ -122,7 +145,9 @@ import java.util.UUID
                         }
                     } else if (owner.privilegedOperations) FlowRow {
                         if (kind == DockerResourceKind.Containers) {
-                            TextButton(enabled = ready && draft == null, onClick = { draft = DockerResourceDraft(DockerResourceAction.RenameContainer, name = selected.container!!.name) }) { Text(resourceActionLabel(DockerResourceAction.RenameContainer)) }
+                            key(observationEpoch, draftEditor) {
+                                TextButton(enabled = ready && draft == null, onClick = { openEditor(DockerResourceDraft(DockerResourceAction.RenameContainer, name = selected.container!!.name)) }) { Text(resourceActionLabel(DockerResourceAction.RenameContainer)) }
+                            }
                             listOf(DockerResourceAction.Start, DockerResourceAction.Stop, DockerResourceAction.Restart, DockerResourceAction.Pause, DockerResourceAction.Unpause, DockerResourceAction.DeleteContainer).forEach { action ->
                                 TextButton(enabled = ready && draft == null && (action != DockerResourceAction.Pause || selected.container?.state == "running") && (action != DockerResourceAction.Unpause || selected.container?.state == "paused"), onClick = { confirm(DockerResourceChange(action, selected.id)) }) { Text(resourceActionLabel(action)) }
                             }
@@ -133,8 +158,16 @@ import java.util.UUID
                         }
                     }
                 } }
-                draft?.let { editing -> ResourceEditor(editing, { draft = it }, enabled = !state.busy,
-                    onCancel = { navigate { draft = null } }, onReview = { editing.change(target?.id)?.let(::confirm) }, ready = ready) }
+                draft?.let { editing ->
+                    val editor = draftEditor
+                    val currentEditor = { currentInteraction() && draftEditor === editor && draft === editing &&
+                        !model.state.busy && leave == null && model.confirmation == null }
+                    key(editor, observationEpoch) {
+                        ResourceEditor(editing, { if (currentEditor()) draft = it }, enabled = !state.busy,
+                            onCancel = { if (currentEditor()) navigate { draft = null } },
+                            onReview = { if (currentEditor()) editing.change(target?.id)?.let(::confirm) }, ready = ready)
+                    }
+                }
             }
             BoxWithConstraints {
                 if (maxWidth >= 600.dp) Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) { Column(Modifier.weight(1f)) { listing() }; Column(Modifier.weight(1f)) { detail() } }
@@ -142,7 +175,7 @@ import java.util.UUID
             }
         }
     }
-    if (active) confirmation?.let { frozen -> AlertDialog(onDismissRequest = { model.dismissConfirmation() }, title = { Text(resourceActionLabel(frozen.change.action)) }, text = { Column {
+    if (active) confirmation?.let { frozen -> AlertDialog(onDismissRequest = { model.dismissConfirmation(frozen) }, title = { Text(resourceActionLabel(frozen.change.action)) }, text = { Column {
         Text(frozen.change.target ?: frozen.change.container?.name ?: frozen.change.value.orEmpty())
         Text(stringResource(R.string.docker_resources_confirm))
         if (frozen.change.action == DockerResourceAction.CreateContainer) Text(stringResource(R.string.docker_resources_create_only))
@@ -150,10 +183,17 @@ import java.util.UUID
         if (frozen.change.action == DockerResourceAction.DeleteImage) Text(stringResource(R.string.docker_resources_image_warning))
         if (frozen.change.action == DockerResourceAction.DeleteVolume) Text(stringResource(R.string.docker_resources_volume_warning))
         if (frozen.change.action in listOf(DockerResourceAction.DeleteContainer, DockerResourceAction.Stop)) CheckboxOption(frozen.change.force, stringResource(if (frozen.change.action == DockerResourceAction.Stop) R.string.docker_resources_force_stop else R.string.docker_resources_force), !state.busy) { model.updateForce(frozen, it) }
-    } }, confirmButton = { Button(enabled = !state.busy, onClick = { model.change(frozen) }) { Text(stringResource(R.string.docker_resources_apply)) } }, dismissButton = { TextButton(onClick = { model.dismissConfirmation() }) { Text(stringResource(R.string.common_cancel)) } }) }
-    if (active) leave?.let { action -> AlertDialog(onDismissRequest = { leave = null }, title = { Text(stringResource(R.string.docker_resources_discard)) },
-        confirmButton = { Button(onClick = { leave = null; draft = null; model.dismissConfirmation(); action() }) { Text(stringResource(R.string.docker_resources_discard)) } },
-        dismissButton = { TextButton(onClick = { leave = null }) { Text(stringResource(R.string.common_cancel)) } }) }
+    } }, confirmButton = { Button(enabled = !state.busy, onClick = { model.change(frozen) }) { Text(stringResource(R.string.docker_resources_apply)) } }, dismissButton = { TextButton(onClick = { model.dismissConfirmation(frozen) }) { Text(stringResource(R.string.common_cancel)) } }) }
+    if (active) leave?.let { review -> key(review) {
+        val currentDecision = { currentInteraction() && !model.state.busy && leave === review &&
+            draftEditor === review.editor && draft === review.draft }
+        val continueEditing = { if (currentDecision()) leave = null }
+        AlertDialog(onDismissRequest = continueEditing, title = { Text(stringResource(R.string.docker_resources_discard)) },
+            confirmButton = { Button(onClick = {
+                if (currentDecision()) { leave = null; draft = null; model.withdrawReview(owner); review.action() }
+            }) { Text(stringResource(R.string.docker_resources_discard)) } },
+            dismissButton = { TextButton(onClick = continueEditing) { Text(stringResource(R.string.common_cancel)) } })
+    } }
 }
 @Composable private fun ResourceEditor(draft: DockerResourceDraft, update: (DockerResourceDraft) -> Unit, enabled: Boolean, ready: Boolean, onCancel: () -> Unit, onReview: () -> Unit) = SectionCard(resourceActionLabel(draft.action)) {
     @Composable fun field(label: Int, value: String, change: (String) -> DockerResourceDraft, multi: Boolean = false) {
@@ -177,7 +217,9 @@ import java.util.UUID
     }
     if (draft.action in listOf(DockerResourceAction.CreateNetwork, DockerResourceAction.CreateVolume)) field(R.string.docker_resources_driver, draft.driver, { draft.copy(driver = it) })
     if (draft.action in listOf(DockerResourceAction.CreateContainer, DockerResourceAction.CreateVolume)) field(R.string.docker_resources_labels, draft.labels, { draft.copy(labels = it) }, true)
-    Row { TextButton(enabled = enabled, onClick = onCancel) { Text(stringResource(R.string.common_cancel)) }; Button(enabled = ready && draft.change(null) != null, onClick = onReview) { Text(stringResource(R.string.docker_resources_review)) } }
+    key(draft) {
+        Row { TextButton(enabled = enabled, onClick = onCancel) { Text(stringResource(R.string.common_cancel)) }; Button(enabled = ready && draft.change(null) != null, onClick = onReview) { Text(stringResource(R.string.docker_resources_review)) } }
+    }
 }
 @Composable internal fun resourceKindLabel(kind: DockerResourceKind): String = stringResource(when (kind) {
     DockerResourceKind.Containers -> R.string.docker_containers; DockerResourceKind.Images -> R.string.docker_images; DockerResourceKind.Networks -> R.string.docker_networks; DockerResourceKind.Volumes -> R.string.docker_volumes

@@ -211,7 +211,8 @@ def extract(source, runtime, kind, destination, archive, request_path=None):
         if kind == 'server': required += ['payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper','deployment/bootstrap/install-relaxkonos.sh','deployment/bootstrap/uninstall-relaxkonos.sh','deployment/linux/install-relaxkonos-services.sh']
         required += ['deployment/user/relaxkon']
         files = {e.filename:e for e in entries if not e.is_dir()}
-        if any(name not in files for name in required): raise ValueError('incomplete package')
+        missing = [name for name in required if name not in files]
+        if missing: raise FileNotFoundError(errno.ENOENT, 'incomplete package: missing ' + ', '.join(missing))
         if source == 'officialStable':
             listed = manifest.get('files',[])
             if len({f['path'] for f in listed}) != len(listed) or set(files) != {'manifest.json'} | {f['path'] for f in listed}: raise ValueError('file inventory')
@@ -245,7 +246,8 @@ try:
     else: raise ValueError('unsupported helper action')
 except Exception as error:
     print('Deployment input rejected: ' + str(error),file=sys.stderr)
-    sys.exit(73 if isinstance(error, OSError) and error.errno == errno.EDQUOT else
+    sys.exit(75 if isinstance(error, FileNotFoundError) and 'incomplete package' in str(error) else
+             73 if isinstance(error, OSError) and error.errno == errno.EDQUOT else
              74 if isinstance(error, OSError) and error.errno == errno.ENOSPC else 1)
 PY
 }

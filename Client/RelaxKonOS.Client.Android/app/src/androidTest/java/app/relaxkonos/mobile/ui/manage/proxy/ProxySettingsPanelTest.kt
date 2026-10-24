@@ -36,7 +36,7 @@ class ProxySettingsPanelTest {
         edit: (ProxySettingsSection) -> Unit = {}, toggle: (Boolean) -> Unit = {}, emergency: () -> Unit = {}, systemProxy: (Boolean) -> Unit = {}) {
         rule.setContent { MaterialTheme {
             Column(Modifier.width(360.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                ProxySettingsPanel(facts, canManage, ready, edit, {}, toggle, systemProxy, emergency, {})
+                ProxySettingsPanel(facts, 0L, canManage, ready, edit, {}, toggle, systemProxy, emergency, {})
             }
         } }
     }

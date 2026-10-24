@@ -1,5 +1,8 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using Avalonia.Input;
+using Avalonia.VisualTree;
+using CommunityToolkit.Mvvm.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Data.Converters;
@@ -20,13 +23,49 @@ internal partial class GitLogView : UserControl
     public ObservableCollection<CommitFileTreeNode> CommitFileTreeRoots { get; } = [];
 
     private GitClientViewModel? _vm;
-    private bool _branchesHandlerAttached;
-    private bool _commitFilesHandlerAttached;
+    public static readonly StyledProperty<double> GraphWidthProperty = AvaloniaProperty.Register<GitLogView, double>(nameof(GraphWidth), 22);
+    public double GraphWidth { get => GetValue(GraphWidthProperty); set => SetValue(GraphWidthProperty, value); }
+    public static readonly StyledProperty<bool> ShowAuthorsProperty = AvaloniaProperty.Register<GitLogView, bool>(nameof(ShowAuthors), true);
+    public bool ShowAuthors { get => GetValue(ShowAuthorsProperty); set => SetValue(ShowAuthorsProperty, value); }
+    public static readonly StyledProperty<bool> ShowDatesProperty = AvaloniaProperty.Register<GitLogView, bool>(nameof(ShowDates), true);
+    public bool ShowDates { get => GetValue(ShowDatesProperty); set => SetValue(ShowDatesProperty, value); }
+    public static readonly StyledProperty<bool> ShowReferencesProperty = AvaloniaProperty.Register<GitLogView, bool>(nameof(ShowReferences), true);
+    public bool ShowReferences { get => GetValue(ShowReferencesProperty); set => SetValue(ShowReferencesProperty, value); }
+    public ObservableCollection<GitLogRow> LogRows { get; } = [];
+    private bool _rowsPending, _rebuildingRows, _initialized;
+    private bool? _showBranches;
+    private bool _singleClickFilters = true;
+    private double _branchWidth = 300, _filesWidth = 280;
+    private readonly HashSet<string> _favorites = [];
     private bool _commitTreeRebuildPending;
     private bool _attached;
+    private string? _filesFingerprint, _selectedFilePath;
+    private bool _rebuildingFiles, _rebuildingBranches;
+    private string? _selectedBranchName;
     private readonly Dictionary<string, bool> _branchExpansionState = new(StringComparer.Ordinal);
 
-    public GitLogView() => InitializeComponent();
+    public GitLogView()
+    {
+        InitializeComponent();
+        _initialized = true;
+        SizeChanged += (_, _) => ApplyResponsiveLayout();
+    }
+
+    private void ApplyResponsiveLayout()
+    {
+        var compact = !(_showBranches ?? Bounds.Width >= 800);
+        BranchPane.IsVisible = BranchSplitter.IsVisible = !compact;
+        ShowBranchesButton.IsVisible = compact;
+        LogLayoutRoot.ColumnDefinitions[0].Width = new GridLength(compact ? 0 : Math.Min(_branchWidth, Math.Max(160, Bounds.Width * .35)));
+        LogLayoutRoot.ColumnDefinitions[1].Width = new GridLength(compact ? 0 : 4);
+        LogLayoutRoot.ColumnDefinitions[4].Width = new GridLength(Math.Min(_filesWidth, Bounds.Width < 800 ? 180 : Math.Max(180, Bounds.Width * .27)));
+        var center = Bounds.Width - LogLayoutRoot.ColumnDefinitions[0].Width.Value - LogLayoutRoot.ColumnDefinitions[4].Width.Value - 8;
+        if (_vm?.IsInlineDiffOpen == true) center /= 2.5;
+        ShowAuthors = AuthorsOption.IsChecked == true && center >= 400;
+        ShowDates = DatesOption.IsChecked == true && center >= 550;
+        ShowReferences = ReferencesOption.IsChecked == true && center >= 480;
+    }
+    public void SetBranchesVisible(bool visible) { if (!visible && LogLayoutRoot.ColumnDefinitions[0].Width.Value > 0) _branchWidth = LogLayoutRoot.ColumnDefinitions[0].Width.Value; _showBranches = visible; ApplyResponsiveLayout(); }
     public GitLogView(GitClientViewModel vm) : this()
     {
         _vm = vm;
@@ -44,21 +83,13 @@ internal partial class GitLogView : UserControl
         // 把 ViewModel 的 Branches 扁平列表映射为「HEAD / 本地 / 远程 / 每个 remote」 树形结构
         RebuildBranchTree();
 
-        if (!_branchesHandlerAttached)
-        {
-            _vm.Branches.CollectionChanged += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-            {
-                if (_attached) RebuildBranchTree();
-            });
-            _branchesHandlerAttached = true;
-        }
-
-        if (!_commitFilesHandlerAttached)
-        {
-            _vm.CommitChangedFiles.CollectionChanged += (_, _) => QueueCommitFileTreeRebuild();
-            _commitFilesHandlerAttached = true;
-        }
-
+        _vm.Branches.CollectionChanged += BranchesChanged;
+        _vm.Tags.CollectionChanged += BranchesChanged;
+        _vm.Commits.CollectionChanged += CommitsChanged;
+        _vm.GraphCommits.CollectionChanged += CommitsChanged;
+        _vm.CommitChangedFiles.CollectionChanged += FilesChanged;
+        CommitList.ItemsSource = LogRows;
+        RebuildLogRows();
         // 搜索框变化时重建（过滤）分支树；Status 更新时 HEAD 文案可能变
         _vm.PropertyChanged += ViewModel_PropertyChanged;
 
@@ -66,13 +97,23 @@ internal partial class GitLogView : UserControl
         BranchTree.ItemsSource = BranchTreeRoots;
         ChangedFileTree.ItemsSource = CommitFileTreeRoots;
         RebuildCommitFileTree();
+        ApplyDiffPaneLayout();
+        UpdateActionButtons();
     }
 
     protected override void OnUnloaded(RoutedEventArgs e)
     {
         base.OnUnloaded(e);
         _attached = false;
-        if (_vm is not null) _vm.PropertyChanged -= ViewModel_PropertyChanged;
+        if (LogLayoutRoot.ColumnDefinitions[0].Width.Value > 0) _branchWidth = LogLayoutRoot.ColumnDefinitions[0].Width.Value;
+        if (LogLayoutRoot.ColumnDefinitions[4].Width.Value > 0) _filesWidth = LogLayoutRoot.ColumnDefinitions[4].Width.Value;
+        if (_vm is not null)
+        {
+            _vm.PropertyChanged -= ViewModel_PropertyChanged;
+            _vm.Branches.CollectionChanged -= BranchesChanged; _vm.Tags.CollectionChanged -= BranchesChanged;
+            _vm.Commits.CollectionChanged -= CommitsChanged; _vm.GraphCommits.CollectionChanged -= CommitsChanged;
+            _vm.CommitChangedFiles.CollectionChanged -= FilesChanged;
+        }
     }
 
     private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -80,26 +121,52 @@ internal partial class GitLogView : UserControl
         if (e.PropertyName is nameof(GitClientViewModel.BranchSearchText)
             or nameof(GitClientViewModel.Status))
             RebuildBranchTree();
+        if (e.PropertyName is nameof(GitClientViewModel.IsBusy) or nameof(GitClientViewModel.SelectedBranch) or nameof(GitClientViewModel.SelectedCommit)) UpdateActionButtons();
+        if (e.PropertyName == nameof(GitClientViewModel.SelectedLogBranch)) { _selectedBranchName = _vm?.SelectedLogBranch?.Value; RestoreBranchSelection(); }
+        if (e.PropertyName == nameof(GitClientViewModel.SelectedCommit))
+            CommitList.SelectedItem = LogRows.FirstOrDefault(row => row.Commit.Sha == _vm?.SelectedCommit?.Sha);
+        if (e.PropertyName is nameof(GitClientViewModel.IsInlineDiffOpen))
+            ApplyDiffPaneLayout();
+        if (e.PropertyName is nameof(GitClientViewModel.Status) or nameof(GitClientViewModel.CommitChangedFiles))
+            QueueCommitFileTreeRebuild();
     }
+
+    /// <summary>
+    /// The diff pane is a real column, not an overlay: the commit list and the file tree give up
+    /// width so the patch gets it. Collapsing the column back to zero restores the three-pane
+    /// layout exactly, including a splitter the user dragged.
+    /// </summary>
+    private void ApplyDiffPaneLayout()
+    {
+        var open = _vm?.IsInlineDiffOpen == true;
+        LogLayoutRoot.ColumnDefinitions[5].Width = new GridLength(open ? 5 : 0);
+        LogLayoutRoot.ColumnDefinitions[6].Width = open
+            ? new GridLength(1.5, GridUnitType.Star)
+            : new GridLength(0);
+        ApplyResponsiveLayout();
+    }
+
+    private void DiffPane_CloseRequested(object? sender, RoutedEventArgs e)
+        => _vm?.CloseInlineDiffCommand.Execute(null);
 
     private void BranchTree_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
-        if (_vm is not null)
-            _vm.SelectedBranch = (BranchTree.SelectedItem as BranchTreeNode)?.Branch;
+        if (_vm is null || _rebuildingBranches) return;
+        var branch = (BranchTree.SelectedItem as BranchTreeNode)?.Branch;
+        _selectedBranchName = branch?.Name;
+        _vm.SelectedBranch = branch;
+        if (_singleClickFilters && branch is not null) FilterBranch(branch);
     }
 
     private void BranchNode_DoubleTapped(object? sender, RoutedEventArgs e)
     {
-        if (_vm is null || sender is not Control
-            { DataContext: BranchTreeNode { IsLocalBranch: true, Branch: { } branch } }) return;
-
-        var option = _vm.LogBranchOptions.FirstOrDefault(option =>
-            string.Equals(option.Value, branch.Name, StringComparison.Ordinal));
-        if (option is null) return;
-
-        // Reuse the dropdown's filter pipeline, including its stale-response guard.
-        _vm.SelectedLogBranch = option;
-        e.Handled = true;
+        if (_vm is null || sender is not Control { DataContext: BranchTreeNode { Branch: { } branch } }) return;
+        FilterBranch(branch); e.Handled = true;
+    }
+    private void FilterBranch(GitBranchDto branch)
+    {
+        var option = _vm?.LogBranchOptions.FirstOrDefault(option => option.Value == branch.Name);
+        if (option is not null) _vm!.SelectedLogBranch = option;
     }
 
     private void RebuildBranchTree()
@@ -113,6 +180,9 @@ internal partial class GitLogView : UserControl
         var all = _vm.Branches.ToList();
         var currentBranchName = _vm.Status?.Branch;
 
+        _rebuildingBranches = true;
+        try
+        {
         BranchTreeRoots.Clear();
 
         // 1. HEAD 伪节点
@@ -147,6 +217,7 @@ internal partial class GitLogView : UserControl
             icon: "📁",
             nodeKind: BranchNodeKind.Group,
             isExpanded: GetBranchExpansionState("local", defaultValue: true));
+        localGroup.Key = "local";
         foreach (var b in locals)
         {
             if (!Pass(b.Name)) continue;
@@ -156,8 +227,8 @@ internal partial class GitLogView : UserControl
             var badge = b.Ahead > 0 || b.Behind > 0
                 ? $"{(b.Ahead > 0 ? $"↑{b.Ahead}" : "")}{(b.Behind > 0 ? $"↓{b.Behind}" : "")}"
                 : string.Empty;
-            localGroup.Children.Add(new BranchTreeNode(
-                displayName: b.Name,
+            AddBranchPath(localGroup, b.Name, new BranchTreeNode(
+                displayName: b.Name.Split('/').Last(),
                 icon: icon,
                 foreground: fg,
                 fontWeight: weight,
@@ -177,6 +248,7 @@ internal partial class GitLogView : UserControl
             icon: "🌐",
             nodeKind: BranchNodeKind.Group,
             isExpanded: GetBranchExpansionState("remotes", defaultValue: true));
+        remoteRoot.Key = "remotes";
         var remoteGroups = new Dictionary<string, BranchTreeNode>(StringComparer.OrdinalIgnoreCase);
         foreach (var b in remotes)
         {
@@ -192,11 +264,12 @@ internal partial class GitLogView : UserControl
                     icon: "📂",
                     nodeKind: BranchNodeKind.RemoteGroup,
                     isExpanded: GetBranchExpansionState($"remote:{remoteName}", defaultValue: true));
+                rg.Key = "remote:" + remoteName;
                 remoteGroups[remoteName] = rg;
                 remoteRoot.Children.Add(rg);
             }
-            rg.Children.Add(new BranchTreeNode(
-                displayName: shortName,
+            AddBranchPath(rg, shortName, new BranchTreeNode(
+                displayName: shortName.Split('/').Last(),
                 icon: "🔗",
                 foreground: ThemeBrushes.Get("TextSecondaryBrush"),
                 fontWeight: FontWeight.Normal,
@@ -207,21 +280,40 @@ internal partial class GitLogView : UserControl
                 currentBranchName: currentBranchName));
         }
         BranchTreeRoots.Add(remoteRoot);
+        var tags = new BranchTreeNode(LocalizedText.Get("git.workspace.tags"), "📁", nodeKind: BranchNodeKind.Group, isExpanded: GetBranchExpansionState("tags", true)) { Key = "tags" };
+        foreach (var tag in _vm.Tags.Where(tag => Pass(tag.Name)))
+            AddBranchPath(tags, tag.Name, new BranchTreeNode(tag.Name.Split('/').Last(), "tag", branch: new GitBranchDto("refs/tags/" + tag.Name, tag.Sha), nodeKind: BranchNodeKind.Tag));
+        BranchTreeRoots.Add(tags);
+        RestoreBranchSelection();
+        }
+        finally { _rebuildingBranches = false; }
     }
 
+    private void AddBranchPath(BranchTreeNode parent, string path, BranchTreeNode node)
+    {
+        var key = parent.Key ?? parent.DisplayName;
+        foreach (var part in path.Split('/')[..^1])
+        {
+            key += "/" + part;
+            var group = parent.Children.FirstOrDefault(child => child.Key == key);
+            if (group is null) { group = new BranchTreeNode(part, "📁", nodeKind: BranchNodeKind.Group, isExpanded: GetBranchExpansionState(key, true)) { Key = key }; parent.Children.Add(group); }
+            parent = group;
+        }
+        node.IsFavorite = node.Branch is not null && _favorites.Contains(node.Branch.Name);
+        parent.Children.Add(node);
+    }
     private void CaptureBranchExpansionState()
     {
-        foreach (var root in BranchTreeRoots)
+        void Capture(BranchTreeNode node)
         {
-            if (root.Kind == BranchNodeKind.Group && root.Icon == "📁")
-                _branchExpansionState["local"] = root.IsExpanded;
-            else if (root.Kind == BranchNodeKind.Group && root.Icon == "🌐")
-            {
-                _branchExpansionState["remotes"] = root.IsExpanded;
-                foreach (var remote in root.Children.Where(node => node.Kind == BranchNodeKind.RemoteGroup))
-                    _branchExpansionState[$"remote:{remote.DisplayName}"] = remote.IsExpanded;
-            }
+            if (node.Key is not null) _branchExpansionState[node.Key] = node.IsExpanded;
+            foreach (var child in node.Children) Capture(child);
         }
+        foreach (var root in BranchTreeRoots) Capture(root);
+        var local = BranchTreeRoots.FirstOrDefault(node => node.Kind == BranchNodeKind.Group && node.Icon == "📁" && node.Key != "tags");
+        if (local is not null) _branchExpansionState["local"] = local.IsExpanded;
+        var remotes = BranchTreeRoots.FirstOrDefault(node => node.Icon == "🌐");
+        if (remotes is not null) { _branchExpansionState["remotes"] = remotes.IsExpanded; foreach (var remote in remotes.Children) _branchExpansionState[$"remote:{remote.DisplayName}"] = remote.IsExpanded; }
     }
 
     private bool GetBranchExpansionState(string key, bool defaultValue)
@@ -241,9 +333,15 @@ internal partial class GitLogView : UserControl
     private void RebuildCommitFileTree()
     {
         if (_vm is null) return;
+        UpdateCommitFileCount();
 
+        var fingerprint = _vm.SelectedCommit?.Sha + "|" + LocalizedText.Get("git.log.file_count_format") + "|" + string.Join(";", _vm.CommitChangedFiles.Select(file => file.Path + ":" + file.Status));
+        if (fingerprint == _filesFingerprint) return;
+        _filesFingerprint = fingerprint;
+        _rebuildingFiles = true;
         _vm.SelectedCommitFile = null;
         CommitFileTreeRoots.Clear();
+        var roots = new ObservableCollection<CommitFileTreeNode>();
         var directories = new Dictionary<string, CommitFileTreeNode>(StringComparer.Ordinal);
 
         foreach (var file in _vm.CommitChangedFiles.OrderBy(file => file.Path, StringComparer.OrdinalIgnoreCase))
@@ -253,7 +351,7 @@ internal partial class GitLogView : UserControl
                 .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             if (segments.Length == 0) continue;
 
-            var parent = CommitFileTreeRoots;
+            var parent = roots;
             var directoryPath = string.Empty;
             for (var index = 0; index < segments.Length; index++)
             {
@@ -276,22 +374,38 @@ internal partial class GitLogView : UserControl
                 parent = directory.Children;
             }
         }
+        void Compact(CommitFileTreeNode node)
+        {
+            while (!node.IsFile && node.Children.Count == 1 && !node.Children[0].IsFile)
+            {
+                var child = node.Children[0]; node.Name += "/" + child.Name;
+                var children = child.Children.ToArray(); node.Children.Clear(); foreach (var item in children) node.Children.Add(item);
+            }
+            foreach (var child in node.Children) Compact(child);
+        }
+        foreach (var root in roots) { Compact(root); CommitFileTreeRoots.Add(root); }
+        CommitFileTreeNode? Find(IEnumerable<CommitFileTreeNode> nodes) => nodes.SelectMany(node => node.IsFile ? new[] { node } : Flatten(node.Children)).FirstOrDefault(node => node.File?.Path == _selectedFilePath);
+        IEnumerable<CommitFileTreeNode> Flatten(IEnumerable<CommitFileTreeNode> nodes) => nodes.SelectMany(node => node.IsFile ? new[] { node } : Flatten(node.Children));
+        ChangedFileTree.SelectedItem = Find(CommitFileTreeRoots);
+        _rebuildingFiles = false;
+    }
+
+    private void UpdateCommitFileCount()
+    {
+        if (_vm is not null) CommitFileCount.Text = LocalizedText.Format("git.log.file_count_format", _vm.CommitChangedFiles.Count);
     }
 
     private void ChangedFileTree_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         if (_vm is null) return;
         _vm.SelectedCommitFile = (ChangedFileTree.SelectedItem as CommitFileTreeNode)?.File;
-        if (_vm.SelectedCommitFile is not { } file) return;
-        _vm.ShowCommitFileDiffCommand.Execute(file);
-        // Treat this as an action rather than a persistent selection, so one click
-        // on the same file also opens the viewer again after it is closed.
-        ChangedFileTree.SelectedItem = null;
+        if (!_rebuildingFiles) _selectedFilePath = _vm.SelectedCommitFile?.Path;
+        if (DiffPreviewToggle.IsChecked == true && _vm.SelectedCommitFile is { } file) _ = _vm.PreviewLogFileDiffAsync(file);
     }
 }
 
 /// <summary>分支/分组树节点（用于 TreeView）。</summary>
-public sealed class BranchTreeNode
+public sealed class BranchTreeNode : ObservableObject
 {
     public string DisplayName { get; }
     public string Icon { get; }
@@ -301,9 +415,13 @@ public sealed class BranchTreeNode
     public bool HasBadge => !string.IsNullOrEmpty(Badge);
     public GitBranchDto? Branch { get; }
     public BranchNodeKind Kind { get; }
+    public string IconKind => IsFavorite ? "Star" : Kind == BranchNodeKind.Tag || Branch?.IsCurrent == true ? "Tag" : Kind switch { BranchNodeKind.Group => "Folder", BranchNodeKind.RemoteGroup => "Remote", BranchNodeKind.Head => "Commit", _ => "Branch" };
     public bool CanDelete { get; }
     public bool IsBranchAndNotCurrent { get; }
-    public bool IsExpanded { get; set; }
+    private bool _isExpanded;
+    public bool IsExpanded { get => _isExpanded; set => SetProperty(ref _isExpanded, value); }
+    public string? Key { get; set; }
+    public bool IsFavorite { get; set; }
 
     public bool IsBranch => Kind is BranchNodeKind.LocalBranch or BranchNodeKind.RemoteBranch or BranchNodeKind.Head;
     public bool IsLocalBranch => Kind == BranchNodeKind.LocalBranch;
@@ -353,10 +471,10 @@ public sealed class BranchTreeNode
     }
 }
 
-public enum BranchNodeKind { Item, Group, Head, LocalBranch, RemoteBranch, RemoteGroup }
+public enum BranchNodeKind { Item, Group, Head, LocalBranch, RemoteBranch, RemoteGroup, Tag }
 
 /// <summary>A node in the selected commit's changed-file tree. Directory nodes have no associated file.</summary>
-public sealed class CommitFileTreeNode
+public sealed class CommitFileTreeNode : ObservableObject
 {
     public CommitFileTreeNode(string name, GitFileChangeDto? file = null)
     {
@@ -364,9 +482,14 @@ public sealed class CommitFileTreeNode
         File = file;
     }
 
-    public string Name { get; }
+    public string Name { get; set; }
+    private bool _isExpanded = true;
+    public bool IsExpanded { get => _isExpanded; set => SetProperty(ref _isExpanded, value); }
+    public int FileCount => IsFile ? 1 : Children.Sum(child => child.FileCount);
+    public string CountLabel => LocalizedText.Format("git.log.file_count_format", FileCount);
     public GitFileChangeDto? File { get; }
     public bool IsFile => File is not null;
+    public RelaxKonOS.Protocol.Files.FileSystemEntryType EntryType => IsFile ? RelaxKonOS.Protocol.Files.FileSystemEntryType.File : RelaxKonOS.Protocol.Files.FileSystemEntryType.Directory;
     public string Icon => IsFile ? "📄" : "📁";
     public string Status => File?.Status ?? string.Empty;
     public ObservableCollection<CommitFileTreeNode> Children { get; } = [];
@@ -378,6 +501,7 @@ public static class GitLogConverters
     public static readonly IValueConverter StatusBgConverter = new FileStatusBgConverter();
     public static readonly IValueConverter StatusLabelConverter = new FileStatusLabelConverter();
     public static readonly IValueConverter CommitDateConverter = new CommitDateConverter();
+    public static readonly IValueConverter MergeOpacityConverter = new FuncValueConverter<bool, double>(merge => merge ? .6 : 1);
 }
 
 public sealed class FileStatusBgConverter : IValueConverter
@@ -394,7 +518,7 @@ public sealed class FileStatusBgConverter : IValueConverter
             "copied" => ThemeBrushes.Get("AccentBrush"),
             "untracked" => ThemeBrushes.Get("TextTertiaryBrush"),
             "conflicted" => ThemeBrushes.Get("DangerBrush"),
-            _ => ThemeBrushes.Get("TextTertiaryBrush"),
+            _ => ThemeBrushes.Get("TextPrimaryBrush"),
         };
     }
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
@@ -426,10 +550,13 @@ public sealed class FileStatusLabelConverter : IValueConverter
 public sealed class CommitDateConverter : IValueConverter
 {
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-        => value is string text && DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture,
-            DateTimeStyles.None, out var date)
-            ? date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
-            : value;
+    {
+        if (value is not string text || !DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)) return value;
+        var today = DateTimeOffset.UtcNow.ToOffset(date.Offset).Date;
+        if (date.Date == today) return LocalizedText.Format("git.dock.today_time", date.ToString("HH:mm", CultureInfo.InvariantCulture));
+        if (date.Date == today.AddDays(-1)) return LocalizedText.Format("git.dock.yesterday_time", date.ToString("HH:mm", CultureInfo.InvariantCulture));
+        return date.ToString("yyyy/MM/dd HH:mm", CultureInfo.InvariantCulture);
+    }
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => throw new NotSupportedException();

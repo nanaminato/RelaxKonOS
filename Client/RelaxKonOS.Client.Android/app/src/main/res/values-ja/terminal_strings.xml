@@ -17,6 +17,9 @@
     <string name="scripts_loading">タスクを読み込み中…</string>
     <string name="scripts_new">新しいタスク</string>
     <string name="scripts_pending_task">確認待ちのタスク：%1$s</string>
+    <string name="scripts_paths_invalid">実行ファイルと作業ディレクトリのパスに NUL は使用できません。パスは入力どおりに送信されます。</string>
+    <string name="scripts_run_as_default">空欄の場合はログイン中のホストアカウント（%1$s）で実行します。</string>
+    <string name="scripts_run_as_invalid">ホストアカウントに NUL は使用できず、ハイフンで始めることもできません。</string>
     <string name="scripts_queued">待機中</string>
     <string name="scripts_run">リモートで実行</string>
     <string name="scripts_running">実行中</string>

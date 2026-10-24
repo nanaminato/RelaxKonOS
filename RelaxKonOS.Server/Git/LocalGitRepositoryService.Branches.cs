@@ -204,6 +204,12 @@ public sealed partial class LocalGitRepositoryService
             else
             {
                 if (request.CreateIfMissing) args.Add("-b");
+                else
+                {
+                    var commit = await RunGitAsync(gitPath, repo.Path,
+                        ["rev-parse", "--verify", "--end-of-options", request.Branch + "^{commit}"], cancellationToken);
+                    if (!commit.Success) return new GitOperationResult(false, "checkout", Message: "The selected reference is not a commit or branch.");
+                }
                 args.Add(request.Branch);
             }
             var result = await RunGitAsync(gitPath, repo.Path, [.. args], cancellationToken);

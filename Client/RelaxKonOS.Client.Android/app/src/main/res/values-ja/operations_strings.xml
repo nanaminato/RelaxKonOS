@@ -25,7 +25,7 @@
     <string name="operations_detail">操作の詳細</string>
     <string name="operations_diagnostics">診断</string>
     <string name="operations_diagnostics_failed">このタスクの診断情報を読み取れませんでした。再試行してください。</string>
-    <string name="operations_empty">このアカウントのデプロイまたは公開操作はありません。</string>
+    <string name="operations_empty">表示できる操作記録はありません。</string>
     <string name="operations_export_diagnostics">診断をエクスポート</string>
     <string name="operations_export_failed">診断レポートを保存できませんでした</string>
     <string name="operations_export_save">保存先を選択</string>
@@ -48,7 +48,7 @@
     <string name="operations_running">実行中</string>
     <string name="operations_script">スクリプトタスク</string>
     <string name="operations_stage">段階: %1$s</string>
-    <string name="operations_subtitle">デプロイと公開の結果を確認</string>
+    <string name="operations_subtitle">タスクの状態と操作結果を確認</string>
     <string name="operations_succeeded">成功</string>
     <string name="operations_tasks">タスク</string>
     <string name="operations_title">タスクと復旧</string>

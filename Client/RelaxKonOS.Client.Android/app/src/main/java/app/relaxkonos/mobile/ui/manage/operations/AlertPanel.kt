@@ -5,7 +5,6 @@ import app.relaxkonos.mobile.ui.common.PageActionRow
 import app.relaxkonos.mobile.ui.common.ActionLabel
 import app.relaxkonos.mobile.ui.common.ActivityIndicator
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
-import app.relaxkonos.mobile.ui.common.StatusTone
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -40,17 +39,26 @@ import java.util.Date
 @Composable
 internal fun AlertPanel(owner: SessionState.Active, onOpenTarget: (OperationTarget) -> Unit) {
     val model: AlertViewModel = viewModel()
-    val browser = model.browser
+    AlertPanelContent(owner, model.browser, onOpenTarget)
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun AlertPanelContent(owner: SessionState.Active, browser: EventAlertBrowser, onOpenTarget: (OperationTarget) -> Unit) {
     val state by browser.state.collectAsStateWithLifecycle()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var resumed by remember(lifecycle) { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
+    var lifecycleEpoch by remember(lifecycle) { mutableIntStateOf(0) }
     DisposableEffect(lifecycle, browser) {
-        val observer = LifecycleEventObserver { _, _ -> resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
+        val observer = LifecycleEventObserver { _, event ->
+            resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+            if (event == Lifecycle.Event.ON_PAUSE) browser.stop()
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_RESUME) lifecycleEpoch++
+        }
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer); browser.stop() }
     }
-    LaunchedEffect(owner, resumed) { if (resumed) browser.activate(owner) else browser.stop() }
-    var confirmation by remember(owner, resumed) { mutableStateOf<Pair<OperationalAlert, AlertMutation>?>(null) }
+    LaunchedEffect(owner, resumed, lifecycleEpoch) { if (resumed) browser.activate(owner) else browser.stop() }
     val visible = state.owner === owner && state.active
     HorizontalDivider()
     Text(stringResource(R.string.operations_alerts), style = MaterialTheme.typography.titleMedium)
@@ -118,12 +126,13 @@ internal fun AlertPanel(owner: SessionState.Active, onOpenTarget: (OperationTarg
     if (!state.eventsMode && state.selectedId != null) {
         HorizontalDivider()
         Text(stringResource(R.string.operations_alert_detail), style = MaterialTheme.typography.titleSmall)
+        Text(state.selectedId.orEmpty(), style = MaterialTheme.typography.bodySmall)
         if (state.detailLoading) ActivityIndicator(stringResource(R.string.event_center_loading))
-        if (state.detail != null && state.detail !is ApiResult.Success) AlertFailure(state.detail)
+        if (state.detail != null && state.detail !is ApiResult.Success) AlertFailure(state.detail, state.detailFeedbackVersion)
         val detail = (state.detail as? ApiResult.Success)?.value
         detail?.let { value ->
             val alert = value.alert
-            Text(alertTitle(alert.type)); Text(alert.id, style = MaterialTheme.typography.bodySmall)
+            Text(alertTitle(alert.type))
             Text(stringResource(R.string.operations_alert_summary, alertSeverity(alert.severity), alertStatus(alert.status), alert.occurrenceCount))
             Text(alert.problemCode)
             Text(stringResource(R.string.event_center_first_last, eventTime(alert.firstOccurredAtMillis), eventTime(alert.lastOccurredAtMillis)))
@@ -137,21 +146,24 @@ internal fun AlertPanel(owner: SessionState.Active, onOpenTarget: (OperationTarg
             value.actions.forEach { action ->
                 Text(stringResource(R.string.event_center_action_record, actionKind(action.kind), eventTime(action.createdAtMillis), action.actorReference.orEmpty(), action.note.orEmpty()), style = MaterialTheme.typography.bodySmall)
             }
-            if (state.unknown) OperationMessageDialog(if (state.actionBusy) null else stringResource(R.string.event_center_unknown), tone = StatusTone.Warning)
-            else if (state.actionResult != null && state.actionResult !is ApiResult.Success) AlertFailure(state.actionResult)
-            if (state.actionResult is ApiResult.Success) Text(stringResource(R.string.event_center_action_saved))
-            TextButton(enabled = !state.actionBusy && !state.detailLoading, onClick = browser::reconcile) { Text(stringResource(R.string.event_center_reconcile)) }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 AlertMutation.entries.filter { canMutateAlert(alert, it) }.forEach { action -> OutlinedButton(
-                    enabled = !state.actionBusy && !state.unknown && !state.detailLoading,
-                    onClick = { confirmation = alert to action }) { Text(alertAction(action)) } }
+                    enabled = !state.actionBusy && !state.unknown && !state.detailLoading && !state.loading,
+                    onClick = { browser.requestMutation(alert, action) }) { Text(alertAction(action)) } }
             }
         }
+        if (state.unknown) Text(stringResource(R.string.event_center_unknown), color = MaterialTheme.colorScheme.error)
+        else if (state.actionResult != null && state.actionResult !is ApiResult.Success) AlertFailure(state.actionResult)
+        if (state.actionResult is ApiResult.Success) Text(stringResource(R.string.event_center_action_saved))
+        TextButton(enabled = !state.actionBusy && !state.detailLoading && !state.loading, onClick = browser::reconcile) {
+            Text(stringResource(R.string.event_center_reconcile))
+        }
     }
-    confirmation?.let { (baseline, action) ->
+    state.confirmation?.let { review ->
+        val baseline = review.baseline; val action = review.action
         AlertActionDialog(baseline, action, !state.actionBusy && !state.unknown && !state.detailLoading &&
             (state.detail as? ApiResult.Success)?.value?.alert == baseline,
-            onDismiss = { confirmation = null }, onSubmit = { reason, expiry -> browser.mutate(baseline, action, reason, expiry); confirmation = null })
+            onDismiss = browser::dismissMutation, onSubmit = { reason, expiry -> browser.mutate(review, reason, expiry) })
     }
 }
 
@@ -190,7 +202,7 @@ private fun AlertActionDialog(baseline: OperationalAlert, action: AlertMutation,
 }
 
 @Composable
-private fun AlertFailure(result: ApiResult<*>?) {
+private fun AlertFailure(result: ApiResult<*>?, eventKey: Any? = result) {
     val key = when (result) {
         is ApiResult.Problem -> when {
             result.status == 403 -> R.string.event_center_forbidden
@@ -201,7 +213,7 @@ private fun AlertFailure(result: ApiResult<*>?) {
         }
         else -> R.string.operations_alerts_unavailable
     }
-    OperationMessageDialog(stringResource(key), eventKey = result)
+    OperationMessageDialog(stringResource(key), eventKey = eventKey)
 }
 
 private fun eventTime(value: Long?): String = value?.let { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(it)) }.orEmpty()

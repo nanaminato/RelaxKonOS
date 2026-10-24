@@ -8,7 +8,7 @@
   <Grid RowDefinitions="Auto,Auto,*,Auto">
     <Grid x:Name="HeaderHost" Grid.Row="0" ColumnDefinitions="*,Auto">
             <common:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc proxy.title}" Subtitle="{loc:Loc proxy.subtitle}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/proxy.png" />
-            <Button x:Name="HeaderActions" Grid.Column="1" Classes="header-action" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc common.refresh}" AutomationProperties.Name="{loc:Loc common.refresh}" VerticalAlignment="Center"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="16" Height="16" Data="M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14" /></Button>
+            <Button x:Name="HeaderActions" Grid.Column="1" Classes="header-action header-refresh" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc common.refresh}" AutomationProperties.Name="{loc:Loc common.refresh}" VerticalAlignment="Center"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="16" Height="16" Data="M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14" /></Button>
         </Grid>
     <StackPanel Grid.Row="1" Spacing="0">
 

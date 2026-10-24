@@ -21,6 +21,112 @@ class EventAlertBrowserTest {
         gateway.onEventSummary = { ApiResult.Success(EventAlertSummary(2, 0, 0, "error", 1)) }
         return session.state.value as SessionState.Active
     }
+    private var writes = 0
+    private suspend fun TestScope.reviewBrowser(): EventAlertBrowser {
+        val owner = owner()
+        gateway.onAlerts = { _, _ -> ApiResult.Success(OperationalAlertPage(listOf(alert("a"), alert("b")), null)) }
+        gateway.onAlertDetail = { id -> ApiResult.Success(OperationalAlertDetail(alert(id), emptyList(), emptyList())) }
+        gateway.onMutateAlert = { _, _, _, _ -> writes++; ApiResult.Problem(403, "forbidden", null) }
+        return EventAlertBrowser(repository, backgroundScope).also {
+            it.activate(owner); runCurrent(); it.select("a"); runCurrent()
+        }
+    }
+    @Test fun `failed reconciliation keeps unknown target and gives each failure a new feedback event`() = runTest {
+        val browser = reviewBrowser()
+        gateway.onMutateAlert = { _, _, _, _ -> writes++; throw IllegalStateException("private send detail") }
+        browser.requestMutation(alert("a"), AlertMutation.Acknowledge)
+        browser.mutate(requireNotNull(browser.state.value.confirmation), null, null); runCurrent()
+        gateway.onAlertDetail = { throw IllegalStateException("private reconciliation detail") }
+        browser.reconcile(); runCurrent()
+        val first = browser.state.value.detailFeedbackVersion
+        assertEquals(ApiResult.Transport(null), browser.state.value.detail)
+        browser.reconcile(); runCurrent()
+        assertTrue(browser.state.value.detailFeedbackVersion > first)
+        assertEquals("a", browser.state.value.selectedId); assertTrue(browser.state.value.unknown)
+        assertFalse(browser.state.value.detailLoading); assertEquals(1, writes)
+        gateway.onAlertDetail = { ApiResult.Success(OperationalAlertDetail(alert("a").copy(status = "acknowledged"), emptyList(), emptyList())) }
+        browser.reconcile(); runCurrent()
+        assertFalse(browser.state.value.unknown); assertTrue(browser.state.value.detail is ApiResult.Success)
+        assertEquals(1, writes); browser.stop()
+    }
+    @Test fun `observation preserves open confirmation and resumes after dismissal`() = runTest {
+        val browser = reviewBrowser(); var reads = 0
+        gateway.onAlerts = { _, _ -> reads++; ApiResult.Success(OperationalAlertPage(listOf(alert("a")), null)) }
+        browser.requestMutation(alert("a"), AlertMutation.Acknowledge)
+        val review = requireNotNull(browser.state.value.confirmation)
+        advanceTimeBy(15_000); runCurrent()
+        assertSame(review, browser.state.value.confirmation); assertEquals(0, reads)
+        browser.dismissMutation(); advanceTimeBy(15_000); runCurrent()
+        assertEquals(1, reads); assertEquals(0, writes); browser.stop()
+    }
+    @Test fun `dismissed review cannot borrow a fresh confirmation for identical alert`() = runTest {
+        val browser = reviewBrowser()
+        browser.requestMutation(alert("a"), AlertMutation.Acknowledge)
+        val old = requireNotNull(browser.state.value.confirmation)
+        browser.dismissMutation(); browser.requestMutation(alert("a"), AlertMutation.Acknowledge)
+        val fresh = requireNotNull(browser.state.value.confirmation)
+        browser.mutate(old, null, null); runCurrent(); assertEquals(0, writes)
+        browser.mutate(fresh, null, null); runCurrent(); assertEquals(1, writes); browser.stop()
+    }
+    @Test fun `confirmation cannot be reused after completed rejection`() = runTest {
+        val browser = reviewBrowser()
+        browser.requestMutation(alert("a"), AlertMutation.Acknowledge)
+        val review = requireNotNull(browser.state.value.confirmation)
+        browser.mutate(review, null, null); runCurrent()
+        browser.mutate(review, null, null); runCurrent()
+        assertEquals(1, writes); assertNull(browser.state.value.confirmation); browser.stop()
+    }
+    @Test fun `selection round trip invalidates original alert confirmation`() = runTest {
+        val browser = reviewBrowser()
+        browser.requestMutation(alert("a"), AlertMutation.Acknowledge)
+        val review = requireNotNull(browser.state.value.confirmation)
+        browser.select("b"); runCurrent(); browser.select("a"); runCurrent()
+        browser.mutate(review, null, null); runCurrent()
+        assertEquals(0, writes); assertNull(browser.state.value.confirmation); browser.stop()
+    }
+    @Test fun `refresh and stopped page both withdraw reviewed action`() = runTest {
+        val browser = reviewBrowser()
+        browser.requestMutation(alert("a"), AlertMutation.Acknowledge)
+        val beforeRefresh = requireNotNull(browser.state.value.confirmation)
+        browser.refresh(); runCurrent(); browser.mutate(beforeRefresh, null, null); runCurrent()
+        assertEquals(0, writes)
+        browser.requestMutation(alert("a"), AlertMutation.Acknowledge)
+        val beforeStop = requireNotNull(browser.state.value.confirmation)
+        val owner = requireNotNull(browser.state.value.owner)
+        browser.stop(); browser.activate(owner); runCurrent()
+        browser.mutate(beforeStop, null, null); runCurrent(); assertEquals(0, writes); browser.stop()
+    }
+    @Test fun `unexpected page and detail failures remain recoverable without escaping browser`() = runTest {
+        val owner = owner()
+        gateway.onAlerts = { _, _ -> throw IllegalStateException("private page detail") }
+        val browser = EventAlertBrowser(repository, backgroundScope)
+        browser.activate(owner); runCurrent()
+        assertEquals(ApiResult.Transport(null), browser.state.value.readResult)
+        assertFalse(browser.state.value.loading)
+        gateway.onAlerts = { _, _ -> ApiResult.Success(OperationalAlertPage(listOf(alert("a")), null)) }
+        browser.refresh(); runCurrent()
+        gateway.onAlertDetail = { throw IllegalStateException("private detail") }
+        browser.select("a"); runCurrent()
+        assertEquals(ApiResult.Transport(null), browser.state.value.detail); assertFalse(browser.state.value.detailLoading)
+        gateway.onAlertDetail = { ApiResult.Success(OperationalAlertDetail(alert("a"), emptyList(), emptyList())) }
+        browser.reconcile(); runCurrent()
+        assertTrue(browser.state.value.detail is ApiResult.Success); browser.stop()
+    }
+    @Test fun `unexpected send failure reaches unknown state and browser never replays`() = runTest {
+        val owner = owner(); var writes = 0
+        gateway.onAlerts = { _, _ -> ApiResult.Success(OperationalAlertPage(listOf(alert("a")), null)) }
+        gateway.onAlertDetail = { ApiResult.Success(OperationalAlertDetail(alert("a"), emptyList(), emptyList())) }
+        gateway.onMutateAlert = { _, _, _, _ -> writes++; throw IllegalStateException("private send detail") }
+        val browser = EventAlertBrowser(repository, backgroundScope)
+        browser.activate(owner); runCurrent(); browser.select("a"); runCurrent()
+        browser.requestMutation(alert("a"), AlertMutation.Acknowledge)
+        val review = requireNotNull(browser.state.value.confirmation)
+        browser.mutate(review, null, null); runCurrent()
+        assertTrue(browser.state.value.unknown); assertFalse(browser.state.value.actionBusy)
+        assertEquals(ApiResult.Transport(null), browser.state.value.actionResult)
+        browser.mutate(review, null, null); browser.reconcile(); runCurrent()
+        assertEquals(1, writes); assertTrue(browser.state.value.unknown); browser.stop()
+    }
     @Test fun `cursor paging deduplicates and stops a repeating cursor`() = runTest {
         val owner = owner(); val cursors = mutableListOf<String?>()
         gateway.onAlerts = { cursor, _ -> cursors += cursor; ApiResult.Success(OperationalAlertPage(

@@ -87,6 +87,26 @@ class DockerResourceViewModelTest {
         login(); runCurrent(); model.refresh(); advanceUntilIdle()
         model.change(old); advanceUntilIdle(); assertEquals(0, sends); assertTrue(model.state.pending.isEmpty())
     }
+    @Test fun `old close cannot dismiss reopened resource review`() = runTest {
+        val old = review()
+        val close = { model.dismissConfirmation(old) }
+        close()
+        model.requestChange(requireNotNull(model.state.owner), facts, null, change)
+        val fresh = requireNotNull(model.confirmation)
+        close(); assertSame(fresh, model.confirmation)
+        var sends = 0
+        gateway.onDockerResourceChange = { sends++; ApiResult.Transport(null) }
+        model.change(fresh); model.change(fresh); advanceUntilIdle(); assertEquals(1, sends)
+    }
+    @Test fun `old login withdrawal leaves current resource confirmation intact`() = runTest {
+        val old = review()
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        val owner = requireNotNull(model.state.owner)
+        model.requestChange(owner, facts, null, change)
+        val fresh = requireNotNull(model.confirmation)
+        model.withdrawReview(old.owner); assertSame(fresh, model.confirmation)
+        model.withdrawReview(owner); assertNull(model.confirmation)
+    }
     @Test fun `refresh and dismissal reject old callback even when identical review reopens`() = runTest {
         val old = review(); var sends = 0
         gateway.onDockerResourceChange = { sends++; ApiResult.Transport(null) }
@@ -94,7 +114,7 @@ class DockerResourceViewModelTest {
         model.requestChange(requireNotNull(model.state.owner), facts, null, change)
         val fresh = requireNotNull(model.confirmation)
         model.change(old); advanceUntilIdle(); assertEquals(0, sends)
-        model.dismissConfirmation(); model.change(fresh); advanceUntilIdle(); assertEquals(0, sends)
+        model.dismissConfirmation(fresh); model.change(fresh); advanceUntilIdle(); assertEquals(0, sends)
     }
     @Test fun `stopped review cannot execute and fresh confirmation is consumed once`() = runTest {
         val old = review(); model.stop(); model.change(old); advanceUntilIdle()
@@ -120,7 +140,7 @@ class DockerResourceViewModelTest {
         assertEquals(listOf(first, second), reads)
     }
     @Test fun `force edits replace approval and switching target revokes it`() = runTest {
-        review(); model.dismissConfirmation()
+        model.dismissConfirmation(review())
         val id = "a".repeat(64)
         gateway.onDockerContainerDetails = { target -> ApiResult.Success(DockerContainerDetails(target, "review", "image", "", "running", "running", "", "", "",
             emptyList(), emptyList(), emptyList(), emptyList(), emptyMap())) }

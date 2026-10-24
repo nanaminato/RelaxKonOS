@@ -111,6 +111,13 @@
         "explorer.permissions.invalid_octal": "Enter 3 or 4 octal digits (0–7).",
         "explorer.permissions.saving": "Saving permissions…",
         "explorer.permissions.saved": "Saved as {0}.",
+        "explorer.ownership.title": "Linux ownership",
+        "explorer.ownership.owner": "Owner (name or UID)",
+        "explorer.ownership.group": "Group (name or GID)",
+        "explorer.ownership.save": "Save ownership",
+        "explorer.ownership.note": "Administrator authorization is required. Changes apply to this entry unless recursive is selected. Recursion skips symbolic links and does not cross filesystems. Failures may leave partial changes; Linux may clear setuid/setgid bits.",
+        "explorer.ownership.required": "Enter an owner and group.",
+        "explorer.ownership.saved": "Ownership saved.",
         "explorer.permissions.save_failed": "Could not save permissions: {0}",
         "explorer.permissions.unsaved_changes": "Unsaved permission changes.",
         "explorer.menu.file": "File (_F)",
@@ -268,6 +275,7 @@
         "explorer.archive.failed": "Archive operation failed: {0}",
         "explorer.operations.kind.Compress": "Compress",
         "explorer.operations.kind.Extract": "Extract",
+        "explorer.error.editor_endpoint_unavailable": "The Server or reverse proxy returned HTTP 404 for PUT {0}. Update and restart the connected Server to match this Client, and check that the proxy forwards this route.",
         "explorer.archive.compress_as": "Compress as…"
     }
 }

@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.DataProtection;
+﻿using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging.Abstractions;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.PrivilegedHelper;
@@ -30,7 +30,7 @@ internal static class MihomoServerRemovalAcceptance
         var settingsFiles = new MihomoSettingsPublicationFiles(paths, hostProxy);
         var settingsPath = Path.Combine(paths.GetStateDirectory(), "mihomo-settings.json");
         async Task<ProxySettingsDto> SettingsAsync() => System.Text.Json.JsonSerializer.Deserialize<ProxySettingsDto>(await File.ReadAllBytesAsync(settingsPath))!;
-        MihomoRuntimeService Runtime() => new(transport, store, new(store, paths, paths), paths);
+        MihomoRuntimeService Runtime() => new(transport, store, new(store, paths, paths), paths, new DirectDownloads());
         MihomoRemovalPublicationService Service() => new(store, Runtime(), paths, settingsFiles);
         var active = Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml");
         var operation = Guid.NewGuid();

@@ -17,6 +17,9 @@
     <string name="scripts_loading">正在加载脚本任务…</string>
     <string name="scripts_new">新建脚本任务</string>
     <string name="scripts_pending_task">待核实任务：%1$s</string>
+    <string name="scripts_paths_invalid">可执行文件和工作目录路径不能包含 NUL。路径将按输入原样发送。</string>
+    <string name="scripts_run_as_default">留空时以当前登录的服务器账号（%1$s）运行。</string>
+    <string name="scripts_run_as_invalid">服务器账号不能包含 NUL 或以连字符开头。</string>
     <string name="scripts_queued">排队中</string>
     <string name="scripts_run">远端运行</string>
     <string name="scripts_running">运行中</string>

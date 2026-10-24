@@ -14,4 +14,6 @@ public sealed record FilePropertiesDto(
     [property: JsonPropertyName("permissions")] string Permissions,
     [property: JsonPropertyName("attributes")] string Attributes,
     /// <summary>Linux POSIX permission bits (for example 0755). Null on unsupported hosts.</summary>
-    [property: JsonPropertyName("unixMode")] int? UnixMode);
+    [property: JsonPropertyName("unixMode")] int? UnixMode,
+    [property: JsonPropertyName("unixOwnerId")] uint? UnixOwnerId,
+    [property: JsonPropertyName("unixGroupId")] uint? UnixGroupId);

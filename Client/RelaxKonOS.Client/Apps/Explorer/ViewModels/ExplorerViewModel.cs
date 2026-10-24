@@ -1753,6 +1753,25 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     /// Leaves the first mutation to the host OS. Only its explicit elevation-required response
     /// opens the system authentication flow, then retries once with the JWT-scoped grant.
     /// </summary>
+    public async Task<FilePropertiesDto> SetUnixOwnershipAsync(string path, string owner, string group, bool recursive)
+    {
+        FilePropertiesDto? properties = null;
+        if (!await RetryWithOperationElevationAsync(async () =>
+            properties = await _client.SetUnixOwnershipAsync(path, owner, group, recursive),
+            FileElevationCapability.Write, path)) throw new OperationCanceledException();
+        return properties!;
+    }
+
+    public async Task<FilePropertiesDto> SetUnixPermissionsAsync(string path, int unixMode, bool recursive)
+    {
+        FilePropertiesDto? properties = null;
+        if (!await RetryWithOperationElevationAsync(async () =>
+            properties = await _client.SetUnixPermissionsAsync(path, unixMode, recursive),
+            FileElevationCapability.Write, path))
+            throw new OperationCanceledException();
+        return properties!;
+    }
+
     private async Task<bool> RetryWithOperationElevationAsync(Func<Task> operation, FileElevationCapability capability, params string?[] directoryPaths)
     {
         try

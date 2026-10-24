@@ -322,6 +322,8 @@ internal static class EditorDraftStateChecks
             => throw new NotSupportedException();
         public Task<FilePropertiesDto?> GetPropertiesAsync(string path, CancellationToken ct = default)
             => throw new NotSupportedException();
+        public Task<FilePropertiesDto> SetUnixOwnershipAsync(string path, string owner, string group, bool recursive, CancellationToken ct = default)
+            => throw new NotSupportedException();
         public Task<FilePropertiesDto> SetUnixPermissionsAsync(string path, int unixMode, bool recursive, CancellationToken ct = default)
             => throw new NotSupportedException();
         public Task<FileSystemEntryDto> CreateDirectoryAsync(string path, CancellationToken ct = default)

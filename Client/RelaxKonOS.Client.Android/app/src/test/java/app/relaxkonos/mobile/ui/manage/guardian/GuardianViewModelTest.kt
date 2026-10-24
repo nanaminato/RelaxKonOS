@@ -49,6 +49,15 @@ class GuardianViewModelTest {
         model.confirmAction(review); advanceUntilIdle(); assertEquals(0, actions)
         assertNull(model.actionReview)
     }
+    @Test fun `old dismissal cannot withdraw reopened action review`() = runTest {
+        val old = review()
+        model.dismissAction(old)
+        model.requestAction(owner, workload, "restart")
+        val fresh = requireNotNull(model.actionReview)
+        model.dismissAction(old)
+        assertSame(fresh, model.actionReview)
+        model.confirmAction(fresh); advanceUntilIdle(); assertEquals(1, actions)
+    }
     @Test fun `stopped detail read cannot restore definition or logs`() = runTest {
         login(); runCurrent(); model.load(owner); advanceUntilIdle()
         lateinit var reply: kotlin.coroutines.Continuation<ApiResult<List<GuardianLog>>>
@@ -78,6 +87,42 @@ class GuardianViewModelTest {
         assertFalse(model.state.value.error)
     }
     private val gateway = FakeGateway()
+    @Test fun `unexpected status exception revokes facts and permits explicit recovery`() = runTest {
+        login(); runCurrent(); model.load(owner); advanceUntilIdle()
+        gateway.onGuardianStatus = { error("private status failure") }
+        model.load(owner); advanceUntilIdle()
+        assertNull(model.state.value.status); assertTrue(model.state.value.stale)
+        assertTrue(model.state.value.error); assertFalse(model.state.value.loading)
+        model.act("job", "restart"); advanceUntilIdle(); assertEquals(0, actions)
+        gateway.onGuardianStatus = { ApiResult.Success(GuardianStatus(true, true, "", "test")) }
+        model.load(owner); advanceUntilIdle(); assertFalse(model.state.value.stale)
+    }
+    @Test fun `unexpected detail exception revokes mutation permission`() = runTest {
+        login(); runCurrent(); model.load(owner); advanceUntilIdle()
+        gateway.onGuardianLogs = { error("private logs failure") }
+        model.select("job"); advanceUntilIdle()
+        assertEquals(definition, model.state.value.definition); assertTrue(model.state.value.stale)
+        assertTrue(model.state.value.error)
+        model.act("job", "restart"); advanceUntilIdle(); assertEquals(0, actions)
+    }
+    @Test fun `unexpected editor exception retains draft and releases loading`() = runTest {
+        login(); runCurrent(); model.load(owner); advanceUntilIdle()
+        model.beginEdit(definition, false)
+        val draft = requireNotNull(model.editing)
+        gateway.onGuardianDefinition = { error("private editor failure") }
+        model.readEditor(); advanceUntilIdle()
+        assertSame(draft, model.editing); assertTrue(model.state.value.stale)
+        assertTrue(model.state.value.error); assertFalse(model.state.value.loading)
+    }
+    @Test fun `unexpected action exception blocks replay until explicit reconciliation`() = runTest {
+        login(); runCurrent(); model.load(owner); advanceUntilIdle()
+        gateway.onGuardianAction = { _, _ -> actions++; error("private action failure") }
+        model.act("job", "restart"); advanceUntilIdle()
+        assertTrue(model.state.value.unknown); assertTrue(model.state.value.error)
+        assertFalse(model.state.value.loading)
+        model.act("job", "restart"); advanceUntilIdle(); assertEquals(1, actions)
+        model.load(owner); advanceUntilIdle(); assertFalse(model.state.value.unknown)
+    }
     private val session = AuthSession(gateway)
     private val store = ViewModelStore()
     private lateinit var model: GuardianViewModel

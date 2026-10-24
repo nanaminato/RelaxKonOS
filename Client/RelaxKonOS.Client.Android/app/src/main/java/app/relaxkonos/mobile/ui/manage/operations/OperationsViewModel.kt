@@ -34,7 +34,9 @@ internal data class OperationsState(
     val cancelReview: OperationReview? = null,
     val hideReview: OperationReview? = null,
     val hiding: Boolean = false,
+    val exporting: Boolean = false,
     val error: Boolean = false,
+    val feedbackVersion: Long = 0,
     val pendingInstallations: List<PendingInstallationRequest> = emptyList(),
     val pendingSites: List<app.relaxkonos.mobile.data.PendingSiteMutation> = emptyList(),
     val pendingCertificates: List<app.relaxkonos.mobile.data.PendingCertificateRequest> = emptyList(),
@@ -51,8 +53,14 @@ internal data class OperationsState(
 internal class OperationsViewModel(private val session: AuthSession, private val actions: OperationsActions,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO) : ViewModel() {
     suspend fun exportReport(owner: SessionState.Active, uri: android.net.Uri, report: String): Boolean {
-        if (session.state.value !== owner || state.owner !== owner) return false
-        return actions.exportReport(uri, report)
+        if (session.state.value !== owner || state.owner !== owner || state.exporting) return false
+        val request = ++exportSequence
+        state = state.copy(exporting = true)
+        return try {
+            actions.exportReport(uri, report)
+        } finally {
+            if (request == exportSequence && session.state.value === owner && state.owner === owner) state = state.copy(exporting = false)
+        }
     }
 
 
@@ -70,6 +78,8 @@ internal class OperationsViewModel(private val session: AuthSession, private val
     private var refreshJob: Job? = null
     private var generation = 0
     private var diagnosticGeneration = 0L
+    private var feedbackSequence = 0L
+    private var exportSequence = 0L
 
     init {
         viewModelScope.launch {
@@ -105,10 +115,10 @@ internal class OperationsViewModel(private val session: AuthSession, private val
                 val result = withContext(ioDispatcher) { actions.recoverInstallation(owner, id.trim()) }
                 if (current(owner, request)) refresh(owner, result !is ApiResult.Success)
             } catch (cancelled: CancellationException) {
-                if (current(owner, request)) state = state.copy(loading = false, error = true)
+                if (current(owner, request)) state = state.copy(loading = false, error = true, feedbackVersion = ++feedbackSequence)
                 throw cancelled
             } catch (_: Exception) {
-                if (current(owner, request)) state = state.copy(loading = false, error = true)
+                if (current(owner, request)) state = state.copy(loading = false, error = true, feedbackVersion = ++feedbackSequence)
             }
         }
     }
@@ -133,7 +143,7 @@ internal class OperationsViewModel(private val session: AuthSession, private val
                     }
                     state = state.copy(loading = false, items = items,
                         selectedKey = state.selectedKey?.takeIf { key -> items.any { (it.reference.domain to it.reference.operationId) == key } },
-                        error = snapshot.incomplete || cancellationUnverified, pendingInstallations = snapshot.pendingInstallations, pendingSites = snapshot.pendingSites, pendingCertificates = snapshot.pendingCertificates, pendingTunnels = snapshot.pendingTunnels, pendingProxy = snapshot.pendingProxy, pendingWebServers = snapshot.pendingWebServers, pendingFirewall = snapshot.pendingFirewall, pendingSmb = snapshot.pendingSmb, pendingDockerControl = snapshot.pendingDockerControl, pendingDockerResources = snapshot.pendingDockerResources, pendingGit = snapshot.pendingGit)
+                        error = snapshot.incomplete || cancellationUnverified, feedbackVersion = ++feedbackSequence, pendingInstallations = snapshot.pendingInstallations, pendingSites = snapshot.pendingSites, pendingCertificates = snapshot.pendingCertificates, pendingTunnels = snapshot.pendingTunnels, pendingProxy = snapshot.pendingProxy, pendingWebServers = snapshot.pendingWebServers, pendingFirewall = snapshot.pendingFirewall, pendingSmb = snapshot.pendingSmb, pendingDockerControl = snapshot.pendingDockerControl, pendingDockerResources = snapshot.pendingDockerResources, pendingGit = snapshot.pendingGit)
                     val selected = items.firstOrNull { (it.reference.domain to it.reference.operationId) == state.selectedKey }
                     if (selected?.check != OperationCheck.Verified) {
                         diagnosticGeneration++
@@ -179,11 +189,18 @@ internal class OperationsViewModel(private val session: AuthSession, private val
         if (reviewable(owner, item) && item.check == OperationCheck.Verified && item.cancellable)
             state = state.copy(cancelReview = OperationReview(item), hideReview = null)
     }
-    fun dismissCancel() { state = state.copy(cancelReview = null) }
+    fun dismissCancel(review: OperationReview) {
+        if (state.cancelReview === review) state = state.copy(cancelReview = null)
+    }
     fun requestHide(owner: SessionState.Active, item: ObservedOperation) {
         if (reviewable(owner, item)) state = state.copy(hideReview = OperationReview(item), cancelReview = null)
     }
-    fun dismissHide() { state = state.copy(hideReview = null) }
+    fun dismissHide(review: OperationReview) {
+        if (state.hideReview === review) state = state.copy(hideReview = null)
+    }
+    fun withdrawReviews(owner: SessionState.Active) {
+        if (state.owner === owner) state = state.copy(cancelReview = null, hideReview = null)
+    }
 
     fun hide(owner: SessionState.Active, review: OperationReview) {
         val item = review.item
@@ -197,10 +214,10 @@ internal class OperationsViewModel(private val session: AuthSession, private val
                     items = state.items.filterNot { it.reference == item.reference }, selectedKey = null,
                     hiding = false, diagnostics = null, diagnosticsLoading = false)
             } catch (cancelled: CancellationException) {
-                if (current(owner, request)) state = state.copy(hiding = false, error = true)
+                if (current(owner, request)) state = state.copy(hiding = false, error = true, feedbackVersion = ++feedbackSequence)
                 throw cancelled
             } catch (_: Exception) {
-                if (current(owner, request)) state = state.copy(hiding = false, error = true)
+                if (current(owner, request)) state = state.copy(hiding = false, error = true, feedbackVersion = ++feedbackSequence)
             }
         }
     }
@@ -226,7 +243,7 @@ internal class OperationsViewModel(private val session: AuthSession, private val
     private fun invalidateFacts() {
         diagnosticGeneration++
         state = state.copy(loading = false, cancelling = false, hiding = false, cancelReview = null, hideReview = null,
-            error = true, diagnostics = null, diagnosticsLoading = false,
+            error = true, feedbackVersion = ++feedbackSequence, diagnostics = null, diagnosticsLoading = false,
             items = state.items.map { it.copy(check = OperationCheck.Unavailable, cancellable = false, checkedAtMillis = null) })
     }
 
