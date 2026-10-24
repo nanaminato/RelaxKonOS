@@ -43,6 +43,10 @@ public interface IGitRepositoryService
     Task<GitOperationResult> FetchAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
     Task<GitOperationResult> PullAsync(Guid id, Guid userId, GitPullRequest request, CancellationToken cancellationToken = default);
     Task<GitOperationResult> PushAsync(Guid id, Guid userId, GitPushRequest? request = null, CancellationToken cancellationToken = default);
+    /// <summary>Commits a push to the given destination would actually upload. Works for a destination
+    /// ref that does not exist yet, so "the remote has never seen this branch" is previewable and pushable.</summary>
+    Task<GitPushPreviewDto> GetPushPreviewAsync(Guid id, Guid userId, string? localBranch = null,
+        string? remote = null, string? remoteBranch = null, int limit = 200, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<GitCommitDto>> GetLogAsync(Guid id, Guid userId, int limit = 200, int skip = 0,
         GitLogQuery? query = null, CancellationToken cancellationToken = default);
     Task<GitCommitDetailDto> GetCommitDetailAsync(Guid id, Guid userId, string sha, CancellationToken cancellationToken = default);

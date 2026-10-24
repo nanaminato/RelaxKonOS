@@ -586,6 +586,7 @@
         "git.dialog.push.all_tags": "所有",
         "git.dialog.push.loading_commits": "正在加载待推送的提交…",
         "git.dialog.push.no_commits_ahead": "没有需要推送的新提交",
+        "git.dialog.push.new_remote_branch_format": "远端还没有「{0}」，推送将新建该分支",
         "git.dialog.push.select_remote": "选择远程仓库",
         "git.dialog.push.select_branch": "选择分支",
         "git.dialog.push.remote_placeholder": "选择远程…",

@@ -37,7 +37,8 @@ GitClient 是项目编辑器的 Git 领域模块；项目壳与共享文件编�
 | 分支管理 | 本地+远程分支列表、切换(checkout)、新建、删除 | `GET/POST/DELETE /api/v1.0/git/repositories/{id}/branches` |
 | 提交 | 对请求路径暂存并使用 `git commit --only` 提交，不附带其他已暂存文件 | `POST /api/v1.0/git/repositories/{id}/commit` |
 | 拉取 | 当前分支 fetch+merge/fetch+rebase；未检出分支可仅安全快进更新 | `POST /api/v1.0/git/repositories/{id}/pull` |
-| 推送 | 推送当前或指定本地分支到指定 remote/分支，无需 checkout | `POST /api/v1.0/git/repositories/{id}/push` |
+| 推送 | 推送当前或指定本地分支到指定 remote/分支，无需 checkout；目标分支不存在时由推送创建 | `POST /api/v1.0/git/repositories/{id}/push` |
+| 推送预览 | 待推送提交与文件；目标分支尚未存在于远端时同样可算出（用于推送对话框） | `GET /api/v1.0/git/repositories/{id}/push/preview` |
 | 提交历史 | log 列表（hash/作者/时间/消息）+ 单提交详情 | `GET /api/v1.0/git/repositories/{id}/log` |
 | Revert | 反向提交指定 commit | `POST /api/v1.0/git/repositories/{id}/revert` |
 | Diff | 单文件 diff（工作区/已暂存/某提交） | `GET /api/v1.0/git/repositories/{id}/diff` |
@@ -93,6 +94,7 @@ Checkout           = /api/v1.0/git/repositories/{id}/checkout          (POST)   
 Commit             = /api/v1.0/git/repositories/{id}/commit            (POST)        # 提交
 Pull               = /api/v1.0/git/repositories/{id}/pull              (POST)        # 拉取
 Push               = /api/v1.0/git/repositories/{id}/push              (POST)        # 推送
+PushPreview        = /api/v1.0/git/repositories/{id}/push/preview      (GET)         # ?localBranch=&remote=&remoteBranch= 待推送提交
 Log                = /api/v1.0/git/repositories/{id}/log              (GET)         # 历史
 Diff               = /api/v1.0/git/repositories/{id}/diff             (GET)         # 文件 diff
 Revert             = /api/v1.0/git/repositories/{id}/revert            (POST)        # 反向提交
@@ -169,8 +171,11 @@ builder.Services.AddSingleton<IGitRepositoryService, LocalGitRepositoryService>(
 | diff | 工作区：`git diff --no-color [--cached] -- <path>`；提交：`git show --format= --no-color <ref> -- <path>`；未跟踪：`git diff --no-index -- /dev/null <path>` | 原始 patch 文本 + `--stat` 计数；`ref` 始终表示该提交相对父提交（根提交相对空树） |
 | 当前分支 | `git rev-parse --abbrev-ref HEAD` / detached 用 `git rev-parse --short HEAD` | |
 | ahead/behind | `git rev-list --left-right --count <upstream>...HEAD` | `left\tRight` |
+| 推送预览 | `git rev-list --count <local> --not <目标引用>`；目标引用不存在时 `<local> --not --remotes=<remote>` | 目标 ref 缺失 ≠ 没有待推送提交；推送用显式 refspec，会创建该分支 |
 
 **写操作**（commit/checkout/pull/push/revert/merge）：捕获 exit code + stderr + 是否进入冲突状态（`git status --porcelain=v2` 含 `u` 行 = 冲突）。
+
+**推送预览的基线**（`GET .../push/preview` → `GitPushPreviewDto`）：先按 `branch.<name>.pushRemote`/`.remote`/唯一 remote/`origin` 解析目标 remote，再按 `branch.<name>.merge` 或本地分支名解析目标分支。目标 `refs/remotes/<remote>/<branch>` 存在 → 只算它缺少的提交；不存在 → 算该 remote 尚不包含的提交（`--not --remotes=<remote>`），因为推送会新建该分支。**不要用 `GitBranchDto.ahead` / `GitStatusDto.ahead` 判断"是否可推送"**：它们来自 `%(upstream:track)`，本地分支没有 upstream（从未推送过）时恒为 `ahead 0`，这正是"推送对话框显示 0 个提交"的成因。
 
 **并发与 index.lock**：同一仓库的写操作用 `SemaphoreSlim(1,1)`（按 repoId 缓存）串行化；读操作不串行（git 读不持锁）。3 秒 timeout 获取信号量失败返回 `Success=false, Message="仓库繁忙"`。
 
@@ -207,6 +212,7 @@ builder.Services.AddSingleton<IGitRepositoryService, LocalGitRepositoryService>(
 | POST | `/api/v1.0/git/repositories/{id}/fetch` | 仅抓取 |
 | POST | `/api/v1.0/git/repositories/{id}/pull` | 拉取（merge/rebase） |
 | POST | `/api/v1.0/git/repositories/{id}/push` | 推送 |
+| GET | `/api/v1.0/git/repositories/{id}/push/preview` | 待推送提交预览（query: localBranch, remote, remoteBranch, limit） |
 | GET | `/api/v1.0/git/repositories/{id}/log` | 提交历史（query: limit, skip） |
 | GET | `/api/v1.0/git/repositories/{id}/diff` | 文件 diff（query: path, staged, ref） |
 | POST | `/api/v1.0/git/repositories/{id}/revert` | 反向提交 |
@@ -297,7 +303,7 @@ GitClientViewModel
 | `DeleteBranchCommand` | 二次确认 → `DELETE branches/{name}` | SelectedBranch != null && !IsCurrent |
 | `CommitCommand` | 弹提交对话框 → `POST commit` | SelectedRepository != null && StagedFiles 非空 && !IsBusy |
 | `PullCommand` | `POST pull` (Merge/Rebase 选择) → 冲突则进冲突视图 | HasUpstream && !IsBusy |
-| `PushCommand` | `POST push` → RequiresCredentials 则提示 | HasUpstream && !IsBusy |
+| `PushCommand` | 先 `GET push/preview` 再弹推送对话框 → `POST push`；无 upstream 的本地分支同样可推（远端据此新建分支） | CanManage && !IsBusy |
 | `FetchCommand` | `POST fetch` | SelectedRepository != null && !IsBusy |
 | `RevertCommand` | 二次确认 → `POST revert` → 冲突则进冲突视图 | SelectedCommit != null && !IsBusy |
 | `StageCommand`/`UnstageCommand` | `POST stage` / `POST unstage` 暂存调整 | SelectedFile != null |

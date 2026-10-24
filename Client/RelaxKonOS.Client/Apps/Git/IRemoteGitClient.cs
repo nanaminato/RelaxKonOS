@@ -40,6 +40,10 @@ public interface IRemoteGitClient
     Task<GitOperationResult> FetchAsync(string id, CancellationToken cancellationToken = default);
     Task<GitOperationResult> PullAsync(string id, GitPullRequest request, CancellationToken cancellationToken = default);
     Task<GitOperationResult> PushAsync(string id, GitPushRequest? request = null, CancellationToken cancellationToken = default);
+    /// <summary>Commits the push to <paramref name="remote"/>/<paramref name="remoteBranch"/> would upload,
+    /// including when that remote branch does not exist yet (it is then created by the push).</summary>
+    Task<GitPushPreviewDto> GetPushPreviewAsync(string id, string? localBranch = null, string? remote = null,
+        string? remoteBranch = null, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<GitCommitDto>> GetLogAsync(string id, int limit = 200, int skip = 0,
         GitLogQuery? query = null, CancellationToken cancellationToken = default);
     Task<GitCommitDetailDto> GetCommitDetailAsync(string id, string sha, CancellationToken cancellationToken = default);

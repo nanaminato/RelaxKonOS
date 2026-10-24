@@ -214,6 +214,7 @@ public class DockGitClient : DispatchProxy
                 var commit = Commits.Single(commit => commit.Sha == (string)args![1]!);
                 return Task.FromResult(new GitCommitDetailDto(commit.Sha, commit.Author, commit.AuthorDate, commit.Subject, [B, C], [new("Client/Views/Workspace.axaml"), new("Client/Views/Workspace.axaml.cs"), new("Client/ViewModels/GitLog.cs"), new("docs/Git.md")], commit.Body));
             case nameof(IRemoteGitClient.GetDiffAsync): return Task.FromResult(new GitDiffDto((string)args![1]!, "v", Patch: "diff --git a/file b/file\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-old\n+new\n"));
+            case nameof(IRemoteGitClient.GetPushPreviewAsync): return Task.FromResult(new GitPushPreviewDto("main", "origin", "main", true, 1, [Commits[0]]));
             case nameof(IRemoteGitClient.CheckoutAsync): return PendingCheckout?.Task ?? Task.FromResult(new GitOperationResult(true));
             default: throw new NotSupportedException(method.Name);
         }

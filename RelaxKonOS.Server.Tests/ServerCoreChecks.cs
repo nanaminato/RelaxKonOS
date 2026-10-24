@@ -276,7 +276,7 @@ internal static void VerifyUserExecutionContextContract()
         "Helper Git policy rejected a command used by the Server Git domain.");
     string[] gitDomainCommands = ["add", "branch", "cat-file", "checkout", "cherry-pick", "commit", "diff",
         "diff-tree", "fetch", "for-each-ref", "init", "log", "ls-files", "merge", "merge-base", "pull", "push", "rebase",
-        "remote", "reset", "restore", "revert", "rev-parse", "rm", "show", "show-ref", "status", "symbolic-ref", "update-ref"];
+        "remote", "reset", "restore", "revert", "rev-list", "rev-parse", "rm", "show", "show-ref", "status", "symbolic-ref", "update-ref"];
     TestAssert.Assert(gitDomainCommands.All(command => UserExecutionGitPolicy.IsAllowed([command])),
         "Helper Git policy is missing a Server Git domain subcommand.");
     TestAssert.Assert(!UserExecutionGitPolicy.IsAllowed(["-c", "alias.run=!sh", "run"])

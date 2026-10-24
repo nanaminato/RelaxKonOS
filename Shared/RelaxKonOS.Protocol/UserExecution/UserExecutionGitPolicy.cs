@@ -12,7 +12,7 @@ public static class UserExecutionGitPolicy
     {
         "apply", "check-ref-format", "clone", "stash", "tag", "worktree", "add", "branch", "cat-file", "checkout", "cherry-pick", "commit", "config",
         "diff", "diff-tree", "fetch", "for-each-ref", "init", "log", "ls-files", "merge", "merge-base",
-        "pull", "push", "rebase", "remote", "reset", "restore", "revert", "rev-parse", "rm",
+        "pull", "push", "rebase", "remote", "reset", "restore", "revert", "rev-list", "rev-parse", "rm",
         "show", "show-ref", "status", "symbolic-ref", "update-ref",
     };
 
