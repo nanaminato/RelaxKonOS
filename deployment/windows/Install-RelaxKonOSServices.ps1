@@ -364,6 +364,9 @@ if ($PSCmdlet.ShouldProcess('RelaxKonOS services', 'Start or restart')) {
     if ($GuardianEnabled) { Restart-Service -Name $GuardianServiceName -Force }
     Restart-Service -Name $PrivilegedHelperServiceName -Force
     Restart-Service -Name $ServerServiceName -Force
+    $startedServices = @($PrivilegedHelperServiceName, $ServerServiceName)
+    if ($GuardianEnabled) { $startedServices += $GuardianServiceName }
+    foreach ($startedService in $startedServices) { (Get-Service -Name $startedService).WaitForStatus('Running', [TimeSpan]::FromSeconds(30)) }
     Assert-WindowsServicePayload $PrivilegedHelperServiceName $PrivilegedHelperExecutable
     Assert-WindowsServicePayload $ServerServiceName $ServerExecutable
     if ($GuardianEnabled) { Assert-WindowsServicePayload $GuardianServiceName $GuardianExecutable }

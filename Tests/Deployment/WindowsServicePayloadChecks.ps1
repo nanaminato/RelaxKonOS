@@ -109,6 +109,31 @@ Check (-not (Test-LoopbackHealth 'http://localhost:5000')) 'Healthy HTTP cannot 
 Set-Fixture RelaxKonOSServer $server 101
 Check (Test-LoopbackHealth 'http://localhost:5000') 'Healthy HTTP and current payload pass.'
 
+$runtimeAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repository 'deployment/windows/RelaxKonOSPersonalRuntime.ps1'), [ref]$tokens, [ref]$errors)
+$start = $runtimeAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Start-PersonalServer' }, $true)
+$reuse = $start.Find({ param($node) $node -is [Management.Automation.Language.IfStatementAst] -and $node.Extent.Text.StartsWith('if (Test-Path -LiteralPath $record)') }, $true)
+function Test-Path { param([string] $LiteralPath) $true }
+function Get-Content { [CmdletBinding()] param([string] $LiteralPath, [switch] $Raw) $script:runtime | ConvertTo-Json }
+$record = 'C:\Data\runtime.json'; $executable = $server
+. ([scriptblock]::Create($reuse.Extent.Text))
+Check $true 'Personal startup may reuse the current verified release.'
+$script:runtime.executable = $server.Replace('0.1.5', 'gitfix')
+$script:personalProcess.Path = $script:runtime.executable
+Reject { . ([scriptblock]::Create($reuse.Extent.Text)) } 'Personal startup must not silently reuse a valid but old release.'
+Remove-Item Function:\Test-Path
+Remove-Item Function:\Get-Content
+
+$packager = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repository 'deployment/packaging/New-RelaxKonOSRelease.ps1'), [ref]$tokens, [ref]$errors)
+$complete = $packager.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Complete-Package' }, $true)
+Invoke-Expression $complete.Extent.Text
+$platform = 'windows'
+$missingPackage = Join-Path ([IO.Path]::GetTempPath()) ('relaxkonos-absent-' + [guid]::NewGuid().ToString('N'))
+$missingCheck = $false
+try { Complete-Package @{ Kind = 'server'; Directory = $missingPackage } @{} } catch {
+    $missingCheck = $_.Exception.Message.Contains('missing deployment/windows/RelaxKonOSDeploymentVerification.ps1')
+}
+Check $missingCheck 'Packaging must reject a Windows bundle missing the runtime verifier.'
+
 foreach ($file in @('deployment/windows/RelaxKonOSDeploymentVerification.ps1', 'deployment/windows/Set-RelaxKonOSPersonalPrivileges.ps1',
     'deployment/windows/Install-RelaxKonOSServices.ps1', 'deployment/windows/RelaxKonOSPersonalRuntime.ps1', 'deployment/packaging/New-RelaxKonOSRelease.ps1')) {
     $null = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repository $file), [ref]$tokens, [ref]$errors)

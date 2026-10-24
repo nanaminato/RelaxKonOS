@@ -73,3 +73,11 @@ Debian 13 实机发现 0.1.4 已发布、Helper 已更新，但 Server/Guardian 
 已备份并移走两份旧启动覆盖，重载 systemd 后重启所选服务，确认实际进程路径均为 0.1.4；nanami 登录、根目录/家目录/文档列表和七个快捷位置恢复，Server HTTP 与 Guardian 认证 IPC 健康通过。独立临时目录中真实身份解压 100 个小文件约 2.87 秒，RoyalTerminal-main.zip 的 718 项约 3.07 秒，测试目录已清理，原包未改动。这是单台主机的验收时间，不作为跨平台性能保证。
 
 后续系统模式部署的健康检查同时读取 systemd MainPID 和 `/proc/<pid>/exe`，核对实际 Server 与所选 Guardian 的可执行文件属于目标发布版本。即使旧进程的 HTTP 健康正常，也不能发布成功状态；错误说明要求检查 ExecStart/WorkingDirectory 覆盖。不会自动删除用户自定义 drop-in，也不保留旧协议兼容解析。新增 6 项路径核验回归、原有 2 项配置失败恢复检查及 Bash 语法检查通过。此脚本改动在仓库，已发布的 0.1.4 归档保持原样。
+
+### Windows 运行版本核验
+
+系统模式的安装引擎在启动服务后，以及 bootstrap 的 HTTP 健康检查通过后，均核验 Server、特权 Helper 和已选择的 Guardian。共享脚本 `deployment/windows/RelaxKonOSDeploymentVerification.ps1` 读取 `Win32_Service.PathName` 与服务 PID 对应的 `Win32_Process.ExecutablePath`，要求配置与实际进程均指向目标版本目录。带空格的服务执行路径必须引用；路径不可读、进程缺失、服务在核验期间切换 PID 均失败，不以 HTTP 健康替代版本一致性。失败沿用已有升级回退和配置恢复流程。
+
+个人模式核对 `runtime.json` 的目标执行路径、PID、实际进程路径和启动时间，防止旧记录、旧版本或 PID 复用。独立启动命令不再直接复用仍在运行的其他版本；正常部署先安全停止已记录的旧实例再启动目标版本。个人 Helper 的配置和实际进程由现有 UAC 管理员安装步骤核验，检查失败进入现有 Helper 恢复分支，个人 Server 不因此提权。日期核验同时适用于 PowerShell 5.1 的 JSON 字符串和 PowerShell 7 的 DateTime 值。
+
+Windows Server 发布包必须携带共享核验脚本；打包缺失时拒绝生成发布物。bootstrap 保留 UTF-8 BOM，确保 PowerShell 5.1 正确解析多语言文本。28 项受控核验在 PowerShell 5.1 与 7 均通过，覆盖三个服务的新旧配置/进程、未选择 Guardian、PID 变化、个人实例复用、健康接口正常但版本错误和脚本缺失。原有个人启动、Guardian 选择/配置恢复及证书升级检查通过。没有对本机服务做安装或重启；真实 Windows 系统与个人模式的升级/修复/回滚仍需部署验收。后续重新打包才会包含这些检查，不改写已有发布归档。
