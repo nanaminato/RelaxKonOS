@@ -109,8 +109,6 @@ public sealed partial class LocalGitRepositoryService
         if (serverMode.Mode == RelaxKonOS.Protocol.Common.ServerMode.System
             && userExecution.Backend == RelaxKonOS.Server.UserExecution.UserExecutionBackend.Helper)
         {
-            if (credentials is not null)
-                return new CommandResult(false, "", "credentialed_user_execution_not_supported");
             var principal = http.HttpContext?.User;
             if (principal is null) return new CommandResult(false, "", "user_execution_context_unavailable");
             try
@@ -118,9 +116,14 @@ public sealed partial class LocalGitRepositoryService
                 UserExecutionContext context;
                 using (var scope = executionScopes.CreateScope())
                     context = scope.ServiceProvider.GetRequiredService<IUserExecutionContextResolver>().Resolve(principal);
+                // Credentials travel with the one operation that needs them. The Helper applies them to a
+                // short-lived askpass process after it has dropped to the effective identity, and refuses
+                // them for every other operation kind, so the closed contract stays closed.
                 var response = await executionTransport.ExecuteAsync(new RelaxKonOS.Protocol.UserExecution.UserExecutionRequest(
                     context.Identity, RelaxKonOS.Protocol.UserExecution.UserExecutionOperationKind.GitExecute, Path: workingDir,
-                    GitArguments: arguments, OperationId: Guid.NewGuid()), cancellationToken);
+                    GitArguments: arguments,
+                    GitCredentials: credentials is null ? null : new RelaxKonOS.Protocol.UserExecution.GitExecutionCredentials(credentials.Username, credentials.Password),
+                    OperationId: Guid.NewGuid()), cancellationToken);
                 if (!response.Success || string.IsNullOrWhiteSpace(response.OutputBase64))
                     return new CommandResult(false, "", response.ProblemCode == RelaxKonOS.Protocol.UserExecution.UserExecutionProblemCode.NotFound
                         ? PathNotFoundCode
@@ -134,7 +137,7 @@ public sealed partial class LocalGitRepositoryService
         try
         {
             logger.LogDebug("Starting git operation {GitOperation}.", operation);
-            using var askPass = credentials is null ? null : new GitAskPassScope(credentials);
+            using var askPass = GitAskPassScope.Create(credentials?.Username, credentials?.Password);
             using var process = new Process
             {
                 StartInfo = new ProcessStartInfo(gitPath)
@@ -152,13 +155,7 @@ public sealed partial class LocalGitRepositoryService
             // Fail promptly when no saved/supplied credential exists; when one is available,
             // Git obtains it from the temporary askpass process below.
             UserExecutionGitPolicy.ApplySafeEnvironment(process.StartInfo);
-            if (askPass is not null)
-            {
-                process.StartInfo.Environment["GIT_ASKPASS"] = askPass.Path;
-                process.StartInfo.Environment["GIT_ASKPASS_REQUIRE"] = "force";
-                process.StartInfo.Environment["RELAXKONOS_GIT_ASKPASS_USERNAME"] = credentials!.Username;
-                process.StartInfo.Environment["RELAXKONOS_GIT_ASKPASS_PASSWORD"] = credentials.Password;
-            }
+            askPass?.ApplyTo(process.StartInfo);
             foreach (var arg in arguments) process.StartInfo.ArgumentList.Add(arg);
             if (!process.Start())
                 return new CommandResult(false, "", "start_failed");
@@ -199,30 +196,6 @@ public sealed partial class LocalGitRepositoryService
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or FileNotFoundException)
         {
             return new CommandResult(false, "", "git_not_found");
-        }
-    }
-
-    /// <summary>Creates a short-lived helper used only by one child Git process. Secrets live in that
-    /// process environment rather than in its command line, and the helper file is deleted immediately.</summary>
-    private sealed class GitAskPassScope : IDisposable
-    {
-        public string Path { get; }
-
-        public GitAskPassScope(GitCredentialRequest credentials)
-        {
-            var extension = OperatingSystem.IsWindows() ? ".cmd" : ".sh";
-            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"relaxkonos-git-askpass-{Guid.NewGuid():N}{extension}");
-            var script = OperatingSystem.IsWindows()
-                ? "@echo off\r\nset \"prompt=%~1\"\r\necho %prompt% | findstr /I /C:\"username\" >nul\r\nif not errorlevel 1 ( <nul set /p \"=%RELAXKONOS_GIT_ASKPASS_USERNAME%\" & exit /b 0 )\r\necho %prompt% | findstr /I /C:\"password\" >nul\r\nif not errorlevel 1 ( <nul set /p \"=%RELAXKONOS_GIT_ASKPASS_PASSWORD%\" & exit /b 0 )\r\nexit /b 1\r\n"
-                : "#!/bin/sh\ncase \"$1\" in\n  *[Uu]sername*) printf '%s\\n' \"$RELAXKONOS_GIT_ASKPASS_USERNAME\" ;;\n  *[Pp]assword*) printf '%s\\n' \"$RELAXKONOS_GIT_ASKPASS_PASSWORD\" ;;\n  *) exit 1 ;;\nesac\n";
-            File.WriteAllText(Path, script, Encoding.UTF8);
-            if (!OperatingSystem.IsWindows())
-                File.SetUnixFileMode(Path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        }
-
-        public void Dispose()
-        {
-            try { File.Delete(Path); } catch { /* best effort cleanup of the one-shot helper */ }
         }
     }
 

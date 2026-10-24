@@ -25,7 +25,7 @@ GitClient 是项目编辑器的 Git 领域模块；项目壳与共享文件编�
 
 - **架构归属**：§6.2 Remote Service Application —— UI 完全在 Client 本地渲染；仓库状态、提交历史、分支列表与变更结果**数据来源在 Server 端通过 `git` 实时采集**（不持久化运行时状态，每次请求都是当下快照）。
 - **复用宿主 OS 权限**：Server 的 Git 操作使用有效身份执行；System/Helper 模式以登录账号绑定的宿主身份执行，User 模式使用当前进程身份。SSH 使用宿主 Git/SSH agent；HTTPS 的交互与保存范围见下述凭据说明。
-- **凭据边界**：不管理 SSH 私钥。现有 HTTPS 推送与本轮克隆可由用户输入凭据，经短期 askpass 传给子进程；只有用户选择保存时，才按用户和远程主机通过 Data Protection 加密存储。Helper 后端仍拒绝凭据化进程请求，不能由本地验证推定其支持此能力。
+- **凭据边界**：不管理 SSH 私钥。现有 HTTPS 推送与本轮克隆可由用户输入凭据，经短期 askpass 传给子进程；只有用户选择保存时，才按用户和远程主机通过 Data Protection 加密存储。System Mode 下凭据随 `GitExecute` 请求的 `gitCredentials` 交给 Helper，由其在完成身份降权后生成一次性 askpass 脚本（用户执行协议 `1.9`，Server 与 Helper 必须同版本部署）；Windows Helper 尚未实现 `GitExecute`。
 - **跨平台抽象**：与 `IIdentityProvider` / `ISystemMetricsProvider` 同模式——`IGitRepositoryService` 接口 + 平台无关的 `LocalGitRepositoryService`（`git` CLI 在 Windows/Linux 行为一致），仅在探测 `git` 可执行文件路径与 shell 启动环境时按宿主 OS 处理。平台差异封装在服务之后，Server 端单一代码库跨 Ubuntu + Windows Server。
 
 **核心功能（MVP 范围）**：
@@ -179,7 +179,7 @@ builder.Services.AddSingleton<IGitRepositoryService, LocalGitRepositoryService>(
 
 **并发与 index.lock**：同一仓库的写操作用 `SemaphoreSlim(1,1)`（按 repoId 缓存）串行化；读操作不串行（git 读不持锁）。3 秒 timeout 获取信号量失败返回 `Success=false, Message="仓库繁忙"`。
 
-**凭据**：Git 保持非交互环境。HTTPS 推送和克隆返回 `RequiresCredentials` 时，桌面可请求用户输入并重试；密码通过短期 askpass 环境传递，不进入命令行，按用户意愿加密保存。拉取/获取仍依赖相应现有宿主凭据路径；Helper 后端的显式凭据请求不受支持。
+**凭据**：Git 保持非交互环境。HTTPS 推送和克隆返回 `RequiresCredentials` 时，桌面可请求用户输入并重试；密码通过短期 askpass 环境传递，不进入命令行，按用户意愿加密保存。拉取/获取仍依赖相应现有宿主凭据路径。System Mode（Helper 后端）的显式凭据随 `GitExecute` 请求的 `gitCredentials` 下发，Helper 在降权后生成一次性 askpass 脚本，因此推送对话框在该模式下同样可用。
 
 ### 4.3 危险操作预检
 

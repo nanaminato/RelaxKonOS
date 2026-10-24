@@ -133,6 +133,21 @@ Check((await service.ConflictOperationAsync(conflictId, user, new("rebase", "abo
 Check(!(await service.ResetAsync(id, user, new("HEAD", "hard"))).Success, "UI reset contract never permits hard reset");
 foreach (var command in new[] { "stash", "tag", "worktree", "apply", "check-ref-format" }) Check(UserExecutionGitPolicy.IsAllowed([command, "--help"]), "Shared Helper allowlist supports " + command);
 Check(UserExecutionGitPolicy.IsAllowed(["clone", "--", "https://example.invalid/repo", "/tmp/repo"]) && !UserExecutionGitPolicy.IsAllowed(["clone", "-u", "evil", "url", "path"]) && !UserExecutionGitPolicy.IsAllowed(["apply", "--unsafe-paths"]) && !UserExecutionGitPolicy.IsAllowed(["clone", "--upload-pack=evil", "url", "path"]) && !UserExecutionGitPolicy.IsAllowed(["clone", "ext::evil", "path"]), "Shared execution policy rejects arbitrary transport commands");
+// One askpass implementation now serves both the Server's in-process runner and the privileged
+// Helper, so the credential never reaches a command line on either path.
+var askPass = GitAskPassScope.Create("octocat", "token-value") ?? throw new Exception("AskPass scope was not created");
+var askPassInfo = new ProcessStartInfo("git");
+askPass.ApplyTo(askPassInfo);
+Check(askPassInfo.Environment["GIT_ASKPASS"] == askPass.Path
+    && askPassInfo.Environment["GIT_ASKPASS_REQUIRE"] == "force"
+    && askPassInfo.Environment["RELAXKONOS_GIT_ASKPASS_USERNAME"] == "octocat"
+    && File.ReadAllText(askPass.Path).Contains("RELAXKONOS_GIT_ASKPASS_PASSWORD", StringComparison.Ordinal)
+    && !File.ReadAllText(askPass.Path).Contains("token-value", StringComparison.Ordinal),
+    "AskPass scope points one child process at a script that reads the secret from its environment");
+var askPassPath = askPass.Path;
+askPass.Dispose();
+Check(!File.Exists(askPassPath) && GitAskPassScope.Create(null, "token") is null && GitAskPassScope.Create("user", "") is null,
+    "AskPass scope deletes its script and refuses an incomplete credential");
 var (graphPath, graphId) = await Setup("graph");
 await Run(graphPath, "checkout", "-b", "feature/ui");
 await File.WriteAllTextAsync(Path.Combine(graphPath, "feature.txt"), "feature\n"); await Run(graphPath, "add", "."); await Run(graphPath, "commit", "-m", "feature");

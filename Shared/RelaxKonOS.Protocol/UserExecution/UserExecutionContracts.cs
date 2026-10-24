@@ -7,7 +7,7 @@ namespace RelaxKonOS.Protocol.UserExecution;
 /// <summary>Protocol constants for the dedicated, local-only user-execution channel.</summary>
 public static class UserExecutionProtocol
 {
-    public const string Version = "1.8";
+    public const string Version = "1.9";
     // A 12 MiB payload expands to 16 MiB in base64; leave bounded room for the JSON envelope.
     public const int MaximumRequestBytes = 17 * 1024 * 1024;
     public const int MaximumFileContentBytes = 12 * 1024 * 1024;
@@ -42,8 +42,11 @@ public static class UserExecutionProtocol
 
 /// <summary>
 /// Closed operations allowed on the user-execution channel. This is deliberately not a process
-/// runner: executable paths, arguments, shells, passwords, tokens and environment variables do
-/// not belong in this contract.
+/// runner: executable paths, shells and arbitrary environment variables do not belong in this
+/// contract. Two bounded exceptions exist because the operation is impossible without them — an
+/// archive password for <see cref="UserExecutionOperationKind.FileExtractArchive"/> and transient
+/// HTTPS credentials for <see cref="UserExecutionOperationKind.GitExecute"/>. Both are redacted
+/// from console records and logs, and neither may be persisted by the Helper.
 /// </summary>
 [JsonConverter(typeof(JsonStringEnumConverter<UserExecutionOperationKind>))]
 public enum UserExecutionOperationKind
@@ -120,7 +123,27 @@ public sealed record UserExecutionRequest(
     [property: JsonPropertyName("expectedSha256")] string? ExpectedSha256 = null,
     [property: JsonPropertyName("terminalAdministrator")] bool TerminalAdministrator = false,
     [property: JsonPropertyName("terminalEnvironment")] Settings.TerminalEnvironmentOverrides? TerminalEnvironment = null,
-    [property: JsonPropertyName("archiveCredentials")] Files.ArchiveCredentials? ArchiveCredentials = null);
+    [property: JsonPropertyName("archiveCredentials")] Files.ArchiveCredentials? ArchiveCredentials = null,
+    /// <summary>One-shot HTTPS credentials for a single <see cref="UserExecutionOperationKind.GitExecute"/>.
+    /// The Helper hands them to Git through a short-lived askpass process inside the already-dropped
+    /// identity and never writes them to disk or to its own output.</summary>
+    [property: JsonPropertyName("gitCredentials")] GitExecutionCredentials? GitCredentials = null);
+
+/// <summary>Transient username/password pair for one credentialed Git operation. Deliberately not the
+/// persisted <see cref="Git.GitCredentialRequest"/>: nothing on this channel may ask the Helper to
+/// remember a secret, so the storage policy never crosses the execution boundary.</summary>
+public sealed record GitExecutionCredentials(
+    [property: JsonPropertyName("username")] string Username,
+    [property: JsonPropertyName("password")] string Password)
+{
+    public const int MaximumUsernameLength = 1024;
+    public const int MaximumPasswordLength = 8192;
+
+    public bool IsValid() =>
+        !string.IsNullOrEmpty(Username) && !string.IsNullOrEmpty(Password)
+        && Username.Length <= MaximumUsernameLength && Password.Length <= MaximumPasswordLength
+        && !Username.Contains('\0') && !Password.Contains('\0');
+}
 
 public sealed record ArchiveExtractionResult(int Entries);
 public sealed record ArchiveExtractionProgress(int Entries, int TotalEntries, long Bytes, long TotalBytes);

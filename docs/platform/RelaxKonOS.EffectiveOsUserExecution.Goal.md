@@ -200,7 +200,7 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 - Linux one-shot Helper 新增独立 `--user-execution` 入口：以 root 重新解析 UID、canonical username 与 home，拒绝 UID < 1000 及 nobody UID 65534；在 `initgroups` 后以 `setresgid`/`setresuid` 同时替换 real/effective/saved IDs，复核六个 ID，主动确认不能回到 UID 0，并设置 `PR_SET_NO_NEW_PRIVS`。只有这些检查全部成功才执行一项封闭操作；降权后没有特权 dispatcher 可返回。
 - `IFileService` 已替换为有效用户路由：User Mode 仍调用本地服务；Linux System Mode 通过独立 transport 调用 Helper。目标用户的权限拒绝首先返回 `elevation-required`；只有客户端在用户明确确认并完成管理员认证后才取得短期 capability，并通过既有 root/LocalSystem Helper 重试对应的受控操作；绝不静默提权或自动认证。
 - 特殊位置、目录枚举、读写、上传、删除、重命名、移动、复制、创建目录、属性和 POSIX mode 均覆盖这一文件通道。System Mode batch file jobs 也会在 HTTP 请求存活时冻结有效用户 context；每一次后台枚举、冲突检查、复制、移动或删除均通过同一 one-shot Helper 完成，绝不在 Server 服务账号下打开用户路径。既有冲突决定、取消和 elevated retry 语义保持；目录合并移动按用户身份逐项执行。
-- Git 的 Linux 通道已迁移为专用 `GitExecute` operation：Helper 只使用固定位置的 Git binary，并在降权后以当前用户身份运行服务端 Git domain 生成的 arguments 与工作目录。System Mode Helper 与 User Mode 直连通道共用同一子命令 allowlist 和进程环境：拒绝全局 `-c`、写配置、external diff/textconv、自定义 upload/receive-pack 和 `ext::` remote；执行时固定禁用 repository hooks，默认拒绝未知 transport，只显式允许 file/git/http/https/ssh。没有 generic executable、shell 或环境字段。需要临时 AskPass 凭据的远程操作暂时 fail closed，直到凭据可在不进入 User Execution wire contract 的前提下安全注入。
+- Git 的 Linux 通道已迁移为专用 `GitExecute` operation：Helper 只使用固定位置的 Git binary，并在降权后以当前用户身份运行服务端 Git domain 生成的 arguments 与工作目录。System Mode Helper 与 User Mode 直连通道共用同一子命令 allowlist 和进程环境：拒绝全局 `-c`、写配置、external diff/textconv、自定义 upload/receive-pack 和 `ext::` remote；执行时固定禁用 repository hooks，默认拒绝未知 transport，只显式允许 file/git/http/https/ssh。没有 generic executable、shell 或环境字段。临时 AskPass 凭据以 `gitCredentials` 这一**唯一**的、仅对 `GitExecute` 有效的有界字段进入 wire contract：Helper 在完成身份降权之后才生成 0600 的一次性 askpass 脚本，只把用户名/口令放进那一个子进程的环境并从不出现在命令行、日志、审计或 Helper 输出中，进程结束即删除。之所以必须进入 contract 而不是留在 Server：Git 由 Helper 以目标用户身份执行，Server 降权后无法再注入环境变量。
 - Terminal 的 Linux System Mode 已迁移到专用 `--user-terminal` Helper 入口：它读取一次结构化、allowlisted shell 请求，重新验证身份并降权，然后才创建真正 PTY，通过独立的输入/resize/close 帧桥接到现有 SignalR 会话。当前只支持 bash/sh；尺寸边界由 Server 和 Helper 双层验证，resize 已传递到用户 PTY。交互终端在完整 UID/GID/groups 切换及不可直接恢复 root 的检查后，不设置 `PR_SET_NO_NEW_PRIVS`，允许用户按宿主 sudoers/PAM 策略主动使用 sudo/su；这不依赖 RelaxKonOS 管理员角色，也不改变文件/Git one-shot worker 的防提权标志。已设置标志的旧会话必须关闭后新建。
 - User Execution Helper 现在对首请求强制帧大小上限，并按 operation 拒绝所有无关字段；Terminal 的 JSON 首帧不再经可预读的文本 reader，避免吞掉后续二进制控制帧。协议版本已直接升级为 `1.1`，不接受旧格式回退。
 - Helper 读文件时会在分配完整内容前检查并流式执行上限；Git stdout/stderr 也共享有界预算，避免大文件或巨量 Git 输出在降权 Helper 内无界占用内存。
@@ -235,7 +235,7 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 ### 尚未实施（明确不跳过）
 
 - Windows LocalSystem named-pipe/SID impersonation 的代码路径已完成首个文件垂直切片，但尚未在真实 Windows Server 验证 S4U logon type、NTFS deny/allow、UAC/管理员本地账户语义、token 释放、并发、取消、服务重启、profile/known-folder 与网络/映射盘行为；验收前保持默认关闭，不能标记 Goal 3/4 完成。（2026-09-25 补充：Windows 开发宿主上的构建、身份契约与用户执行通道关闭态已实测通过，见文末 Windows 宿主验证；上述多用户项仍未验证。）
-- Git 的临时 AskPass 远程凭据路径。Windows 本地账号终端已通过受限 S4U primary token 和 Helper ConPTY 实现，见 [Terminal 文档](../applications/RelaxKonOS.Terminal.md)；域账号终端继续拒绝执行。
+- Git 的临时 AskPass 远程凭据：Linux 通道已实现（`gitCredentials` 只对 `GitExecute` 生效，Helper 在降权后生成 0600 的一次性 askpass 脚本，进程退出即删除）；Windows Helper 仍整体拒绝 `GitExecute`，因此 Windows 系统模式下的凭据路径随该 operation 一起待实现。Windows 本地账号终端已通过受限 S4U primary token 和 Helper ConPTY 实现，见 [Terminal 文档](../applications/RelaxKonOS.Terminal.md)；域账号终端继续拒绝执行。
 - 应用部署的完整用户工作负载 owner model：当前只保证从文件选择器导入源 archive 时按登录用户读取、随后由 deployment-owned staging 使用；Docker Engine 容器本身仍是宿主级资源。
 - Linux user-execution 的文件代码路径已完成本轮 descriptor-relative 收尾；仍需安装为 root-owned Helper 后的真实多用户残留演练。代码已用真实子进程 SIGKILL 验证 staging 恢复与清单初始化窗口回收，并用源/目标/恢复父路径替换验证 descriptor anchoring；隔离环境仍须验证 root Helper、`relaxkon-server`/`nanami`/`alice` 三账户、共享目录、supplementary groups 与 owner/group 结果。
 - 安装器、Helper 配置和真实 Linux/Windows integration 环境。
@@ -332,7 +332,7 @@ Linux 上用 root（或任何 UID < 1000 的账户、nobody）登录时，认证
 
 ## 有界文件下载协议
 
-当前用户执行协议为 `1.8`，提权协议为 `1.5`；Server 与 Helper 必须一起更新。`FileRead` 不再返回整个文件：用户执行请求必须携带非负的 `offset` 和 `expectedBytes`，提权请求必须携带 `offset` 和 `readCount`，读取长度均为 0 至 1 MiB。
+当前用户执行协议为 `1.9`，提权协议为 `1.5`；Server 与 Helper 必须一起更新。`1.9` 新增仅对 `GitExecute` 有效的 `gitCredentials` 字段（用户名/口令成对、有界、不落盘、不进日志）。`FileRead` 不再返回整个文件：用户执行请求必须携带非负的 `offset` 和 `expectedBytes`，提权请求必须携带 `offset` 和 `readCount`，读取长度均为 0 至 1 MiB。
 
 - [x] 普通身份归档解压使用一次 `FileExtractArchive` worker，在身份转换后直接处理本机源/暂存目录，250 ms 抽样传回累计进度，Server 负责发布与失败清理；密码只经请求内存传递。实现与本地测试已完成，真实 sudo/S4U 部署及 Linux 性能仍待验收。详细约束见 [Explorer 归档设计](../applications/RelaxKonOS.Explorer.Archives.md)。
 

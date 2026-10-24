@@ -67,6 +67,33 @@ public static class GitRegistrationChecks
         }
         transport.Missing = false;
 
+        // In system mode Git runs as the effective user, so the Server cannot apply a credential itself.
+        // It has to travel through the closed user-execution contract instead of being refused there.
+        var repoId = Guid.Parse(registered.Id);
+        var credentialed = await service.PushAsync(repoId, user, new(LocalBranch: "main", Remote: "origin", RemoteBranch: "main",
+            Credentials: new("octocat", "token-value")));
+        Assert(credentialed.Success, "A credentialed push is accepted instead of being refused in system mode");
+        Assert(transport.Requests.Last().GitCredentials is { Username: "octocat", Password: "token-value" },
+            "Explicit credentials travel with the Git request that needs them");
+        Assert(transport.Requests.Last().Operation == UserExecutionOperationKind.GitExecute
+            && transport.Requests.Last().GitArguments!.SequenceEqual(["push", "origin", "refs/heads/main:refs/heads/main"]),
+            "A credentialed push still runs the closed push refspec");
+        Assert(transport.Requests.Last().GitCredentials!.Password == "token-value",
+            "The contract carries the secret itself rather than a path to it");
+        await service.PushAsync(repoId, user, new(LocalBranch: "main", Remote: "origin", RemoteBranch: "main"));
+        Assert(transport.Requests.Last().GitCredentials is null,
+            "A push that supplies no credential carries no credential field");
+        Assert(!UserExecutionRequestPolicy.IsValid(new UserExecutionRequest(identity, UserExecutionOperationKind.FileRead,
+                Path: "/home/nanami/x", Offset: 0, ExpectedBytes: 1, OperationId: Guid.NewGuid(),
+                GitCredentials: new("octocat", "token-value")), false)
+            && !UserExecutionRequestPolicy.IsValid(new UserExecutionRequest(identity, UserExecutionOperationKind.GitExecute,
+                Path: "/home/nanami/repository", GitArguments: ["push"], OperationId: Guid.NewGuid(),
+                GitCredentials: new("", "token-value")), false)
+            && UserExecutionRequestPolicy.IsValid(new UserExecutionRequest(identity, UserExecutionOperationKind.GitExecute,
+                Path: "/home/nanami/repository", GitArguments: ["push"], OperationId: Guid.NewGuid(),
+                GitCredentials: new("octocat", "token-value")), false),
+            "Credentials are closed to GitExecute and must be a complete username/password pair");
+
         foreach (var failure in new[] { "not-worktree", "inaccessible" })
         {
             transport.Failure = failure;
