@@ -25,7 +25,8 @@ public sealed partial class LocalGitRepositoryService
         var gitPath = ResolveGitPathOrThrow();
         return await WithWriteLockAsync(id, async () =>
         {
-            var result = await RunGitAsync(gitPath, repo.Path, ["fetch"], cancellationToken);
+            var credentials = await GetFetchCredentialsAsync(userId, gitPath, repo.Path, null, null, cancellationToken);
+            var result = await RunGitAsync(gitPath, repo.Path, ["fetch"], cancellationToken, credentials);
             return new GitOperationResult(result.Success, "fetch",
                 RequiresCredentials: !result.Success && IsCredentialError(result.Error),
                 Message: result.Success ? null : result.Error);
@@ -42,7 +43,10 @@ public sealed partial class LocalGitRepositoryService
             var currentBranch = await GetCurrentBranchAsync(gitPath, repo.Path, cancellationToken);
             if (!string.IsNullOrWhiteSpace(request.Branch) &&
                 !string.Equals(request.Branch, currentBranch, StringComparison.Ordinal))
-                return await UpdateNonCurrentBranchAsync(gitPath, repo.Path, request, cancellationToken);
+                return await UpdateNonCurrentBranchAsync(userId, gitPath, repo.Path, request, cancellationToken);
+
+            if (!string.IsNullOrEmpty(request.Refspec) && string.IsNullOrEmpty(request.Remote))
+                return new GitOperationResult(false, "pull", Message: "A remote is required when a refspec is supplied.");
 
             var args = new List<string> { "pull" };
             switch (request.Strategy.ToLowerInvariant())
@@ -54,7 +58,8 @@ public sealed partial class LocalGitRepositoryService
             }
             if (!string.IsNullOrEmpty(request.Remote)) args.Add(request.Remote);
             if (!string.IsNullOrEmpty(request.Refspec)) args.Add(request.Refspec);
-            var result = await RunGitAsync(gitPath, repo.Path, [.. args], cancellationToken);
+            var credentials = await GetFetchCredentialsAsync(userId, gitPath, repo.Path, request.Remote, currentBranch, cancellationToken);
+            var result = await RunGitAsync(gitPath, repo.Path, [.. args], cancellationToken, credentials);
             var conflicts = await TryGetConflictPathsAsync(gitPath, repo.Path, cancellationToken);
             return new GitOperationResult(result.Success, "pull",
                 Conflicts: conflicts,
@@ -123,7 +128,7 @@ public sealed partial class LocalGitRepositoryService
     /// inactive branch without changing the worktree, so this deliberately performs only a safe
     /// fast-forward after fetching its configured upstream.</summary>
     private async Task<GitOperationResult> UpdateNonCurrentBranchAsync(
-        string gitPath, string repoPath, GitPullRequest request, CancellationToken cancellationToken)
+        Guid userId, string gitPath, string repoPath, GitPullRequest request, CancellationToken cancellationToken)
     {
         var branch = request.Branch!.Trim();
         if (!IsSafeRefComponent(branch))
@@ -148,7 +153,8 @@ public sealed partial class LocalGitRepositoryService
         if (!IsSafeRefComponent(remoteBranch))
             return new GitOperationResult(false, "update-branch", Message: "A valid upstream branch is required.");
 
-        var fetch = await RunGitAsync(gitPath, repoPath, ["fetch", remote], cancellationToken);
+        var credentials = await GetFetchCredentialsAsync(userId, gitPath, repoPath, remote, branch, cancellationToken);
+        var fetch = await RunGitAsync(gitPath, repoPath, ["fetch", remote], cancellationToken, credentials);
         if (!fetch.Success)
             return new GitOperationResult(false, "update-branch",
                 RequiresCredentials: IsCredentialError(fetch.Error), Message: fetch.Error);

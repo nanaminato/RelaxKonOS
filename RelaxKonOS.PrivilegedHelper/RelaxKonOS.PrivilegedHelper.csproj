@@ -7,6 +7,7 @@
     <RootNamespace>RelaxKonOS.PrivilegedHelper</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="RelaxKonOS.WindowsGit.Tests" />
     <Compile Include="../RelaxKonOS.Server/Files/FileArchiveService*.cs;../RelaxKonOS.Server/Files/LocalArchiveFileSystem.cs;../RelaxKonOS.Server/Files/IArchiveReader.cs;../RelaxKonOS.Server/Files/SevenZipArchiveProvider.cs;../RelaxKonOS.Server/Files/ArchivePasswordException.cs" Link="Files/%(Filename)%(Extension)" />
     <None Include="../RelaxKonOS.Server/Assets/SevenZip/**/*" Link="Assets/SevenZip/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Include="../RelaxKonOS.Server/Assets/Mihomo/GeoData/geoip.metadb;../RelaxKonOS.Server/Assets/Mihomo/GeoData/geoip.dat;../RelaxKonOS.Server/Assets/Mihomo/GeoData/geosite.dat;../RelaxKonOS.Server/Assets/Mihomo/GeoData/country.mmdb;../RelaxKonOS.Server/Assets/Mihomo/GeoData/GeoLite2-ASN.mmdb"

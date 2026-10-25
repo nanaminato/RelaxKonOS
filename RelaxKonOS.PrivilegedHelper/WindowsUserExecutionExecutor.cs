@@ -12,7 +12,7 @@ using RelaxKonOS.Server.Files;
 namespace RelaxKonOS.PrivilegedHelper;
 
 /// <summary>
-/// Executes the closed Windows file-operation subset under a fresh local-account S4U token.
+/// Executes closed Windows file and Git operations under a fresh local-account S4U token.
 /// Identity lookup and token creation happen before impersonation; user-controlled paths are not
 /// touched until <see cref="WindowsIdentity.RunImpersonated{T}(Microsoft.Win32.SafeHandles.SafeAccessTokenHandle,Func{T})"/> is active.
 /// </summary>
@@ -51,8 +51,10 @@ internal static class WindowsUserExecutionExecutor
 
             // Keep all path access within the synchronous impersonation callback. No task or file
             // handle is allowed to outlive the OS token scope.
-            var result = WindowsIdentity.RunImpersonated(token,
-                () => ExecuteImpersonated(request, account.HomeDirectory, cancellationToken, progress));
+            var result = request.Operation == UserExecutionOperationKind.GitExecute
+                ? SerializeResult(WindowsUserGit.Execute(token, request, account.HomeDirectory, cancellationToken))
+                : WindowsIdentity.RunImpersonated(token,
+                    () => ExecuteImpersonated(request, account.HomeDirectory, cancellationToken, progress));
             using var restored = WindowsIdentity.GetCurrent();
             return restored.User == LocalSystemSid
                 ? result
@@ -62,6 +64,7 @@ internal static class WindowsUserExecutionExecutor
         catch (ArchivePasswordException ex) { return Fail(ex.Code == "archive-password-required" ? UserExecutionProblemCode.ArchivePasswordRequired : UserExecutionProblemCode.ArchivePasswordInvalid, "archive password required or invalid"); }
         catch (InvalidDataException) { return Fail(UserExecutionProblemCode.ArchiveInvalid, "invalid archive content"); }
         catch (ContentTooLargeException) { return Fail(UserExecutionProblemCode.ContentTooLarge, "user-execution content is too large"); }
+        catch (WindowsUserGit.OutputTooLargeException) { return Fail(UserExecutionProblemCode.ContentTooLarge, "Git output is too large"); }
         catch (UserExecutionUnsupportedException) { return Fail(UserExecutionProblemCode.UnsupportedPlatform, "operation is not implemented for Windows user execution"); }
         catch (UnauthorizedAccessException) { return Fail(UserExecutionProblemCode.AccessDenied, "access denied"); }
         catch (Exception exception) when (exception is DirectoryNotFoundException or FileNotFoundException)
@@ -111,11 +114,16 @@ internal static class WindowsUserExecutionExecutor
             UserExecutionOperationKind.FileDeleteStaging => DeleteStaging(ValidatePath(request.Path!)),
             UserExecutionOperationKind.FileCommitStaging => CommitStaging(ValidatePath(request.Path!),
                 ValidatePath(request.DestinationPath!)),
-            // Git and Terminal require separate executable/PTY lifecycle work and stay fail-closed.
-            UserExecutionOperationKind.GitExecute or UserExecutionOperationKind.TerminalStart
+            // Terminal uses the separate streaming endpoint.
+            UserExecutionOperationKind.TerminalStart
                 => throw new UserExecutionUnsupportedException(),
             _ => throw new ArgumentException(),
         };
+        return SerializeResult(output);
+    }
+
+    private static UserExecutionResult SerializeResult(object? output)
+    {
         var json = JsonSerializer.SerializeToUtf8Bytes(output, RelaxKonOSJsonOptions.Default);
         return json.Length > UserExecutionProtocol.MaximumResultBytes
             ? Fail(UserExecutionProblemCode.ContentTooLarge, "user-execution result is too large")

@@ -56,18 +56,12 @@
                     </ComboBox>
                     <TextBlock IsVisible="{Binding IsWindowsUserMode}" Text="{Binding PersonalModeHint}" TextWrapping="Wrap" />
                     <TextBox IsVisible="{Binding ShowsSudoPassword}" Text="{Binding SudoPassword, Mode=TwoWay}" PasswordChar="●" PlaceholderText="{Binding SudoPasswordText}" />
-                    <TextBlock Text="{Binding FileAccessText}" />
-                    <ComboBox IsVisible="{Binding IsSystemMode}" ItemsSource="{Binding FileAccesses}" SelectedItem="{Binding SelectedFileAccess}" HorizontalAlignment="Left" MinWidth="320">
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
+                    <TextBlock IsVisible="{Binding HasFullFileAccess}" Text="{Binding FullFileAccessDescription}" TextWrapping="Wrap" />
                     <TextBlock Text="{Binding AdvancedLabel}" FontWeight="SemiBold" />
                     <TextBlock Text="{Binding ServerPortLabel}" /><TextBox Text="{Binding ServerPortText, Mode=TwoWay}" />
                     <TextBlock Text="{Binding DataRootLabel}" /><TextBox Text="{Binding DataRoot, Mode=TwoWay}" IsEnabled="{Binding CanEditDataRoot}" />
                     <StackPanel IsVisible="{Binding IsSystemMode}" Spacing="8">
                         <TextBlock Text="{Binding InstallRootLabel}" /><TextBox Text="{Binding InstallRoot, Mode=TwoWay}" IsEnabled="{Binding CanEditDataRoot}" />
-                        <TextBox IsVisible="{Binding IsFileWhitelist}" PlaceholderText="{Binding FileRootsLabel}" Text="{Binding FileRoots, Mode=TwoWay}" AcceptsReturn="True" MinHeight="80" />
                     </StackPanel>
                     <StackPanel IsVisible="{Binding IsUserMode}" Spacing="8">
                         <TextBlock Text="{Binding ConfigRootLabel}" /><TextBox Text="{Binding ConfigRoot, Mode=TwoWay}" />
@@ -75,12 +69,6 @@
                         <TextBlock Text="{Binding CacheRootLabel}" /><TextBox Text="{Binding CacheRoot, Mode=TwoWay}" />
                     </StackPanel>
                     <StackPanel IsVisible="{Binding IsLinuxSystemMode}" Spacing="8">
-                        <TextBlock Text="{Binding AdministratorAccessLabel}" />
-                        <ComboBox IsVisible="{Binding IsSystemMode}" ItemsSource="{Binding FileAccesses}" SelectedItem="{Binding SelectedAdministratorFileAccess}"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate></ComboBox>
-                        <TextBox IsVisible="{Binding IsAdministratorWhitelist}" PlaceholderText="{Binding FileRootsLabel}" Text="{Binding AdministratorFileRoots, Mode=TwoWay}" AcceptsReturn="True" MinHeight="80" />
-                        <TextBlock Text="{Binding RootAccessLabel}" />
-                        <ComboBox IsVisible="{Binding IsSystemMode}" ItemsSource="{Binding FileAccesses}" SelectedItem="{Binding SelectedRootFileAccess}"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate></ComboBox>
-                        <TextBox IsVisible="{Binding IsRootWhitelist}" PlaceholderText="{Binding FileRootsLabel}" Text="{Binding RootFileRoots, Mode=TwoWay}" AcceptsReturn="True" MinHeight="80" />
                         <CheckBox Content="{Binding DockerAccessLabel}" IsChecked="{Binding DockerAccess}" />
                     </StackPanel>
                     <CheckBox IsVisible="{Binding IsLinuxHost}" Content="{Binding AllowUnsupportedLabel}" IsChecked="{Binding AllowUnsupportedSystem}" />
@@ -125,7 +113,7 @@
                         <TextBlock Grid.Row="2" Text="{Binding ModeText}" Foreground="{DynamicResource TextSecondaryBrush}" />
                         <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedModeText}" TextWrapping="Wrap" />
                         <TextBlock Grid.Row="3" Text="{Binding FileAccessText}" Foreground="{DynamicResource TextSecondaryBrush}" />
-                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedFileAccess.Label}" TextWrapping="Wrap" />
+                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding FileAccessSummary}" TextWrapping="Wrap" />
                         <TextBlock Grid.Row="4" Text="{Binding NetworkText}" Foreground="{DynamicResource TextSecondaryBrush}" />
                         <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding SelectedNetwork.Label}" TextWrapping="Wrap" />
                         <TextBlock Grid.Row="5" Text="{Binding CertificateText}" Foreground="{DynamicResource TextSecondaryBrush}" />

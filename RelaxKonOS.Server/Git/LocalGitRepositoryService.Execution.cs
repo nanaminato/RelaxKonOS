@@ -106,8 +106,7 @@ public sealed partial class LocalGitRepositoryService
         // process already is the effective user, so the ordinary in-process path below is used
         // instead of borrowing the Helper contract — which also keeps credentialed operations
         // available to a developer working as themselves.
-        if (serverMode.Mode == RelaxKonOS.Protocol.Common.ServerMode.System
-            && userExecution.Backend == RelaxKonOS.Server.UserExecution.UserExecutionBackend.Helper)
+        if (UsesHelper)
         {
             var principal = http.HttpContext?.User;
             if (principal is null) return new CommandResult(false, "", "user_execution_context_unavailable");

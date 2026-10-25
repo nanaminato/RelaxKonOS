@@ -235,7 +235,7 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 ### 尚未实施（明确不跳过）
 
 - Windows LocalSystem named-pipe/SID impersonation 的代码路径已完成首个文件垂直切片，但尚未在真实 Windows Server 验证 S4U logon type、NTFS deny/allow、UAC/管理员本地账户语义、token 释放、并发、取消、服务重启、profile/known-folder 与网络/映射盘行为；验收前保持默认关闭，不能标记 Goal 3/4 完成。（2026-09-25 补充：Windows 开发宿主上的构建、身份契约与用户执行通道关闭态已实测通过，见文末 Windows 宿主验证；上述多用户项仍未验证。）
-- Git 的临时 AskPass 远程凭据：Linux 通道已实现（`gitCredentials` 只对 `GitExecute` 生效，Helper 在降权后生成 0600 的一次性 askpass 脚本，进程退出即删除）；Windows Helper 仍整体拒绝 `GitExecute`，因此 Windows 系统模式下的凭据路径随该 operation 一起待实现。Windows 本地账号终端已通过受限 S4U primary token 和 Helper ConPTY 实现，见 [Terminal 文档](../applications/RelaxKonOS.Terminal.md)；域账号终端继续拒绝执行。
+- Git 的临时 AskPass 远程凭据：Linux 通道已实现（`gitCredentials` 只对 `GitExecute` 生效，Helper 在降权后生成 0700 的一次性 askpass 脚本，进程退出即删除）；Windows Helper 已接入受限用户 primary token 的 Git 执行及 askpass 凭据链路，原生进程测试及 Windows Server 2022 普通用户/Administrator 的真实 S4U Git 专项已通过，详见下方 2026-10-25 记录。Windows 本地账号终端已通过受限 S4U primary token 和 Helper ConPTY 实现，见 [Terminal 文档](../applications/RelaxKonOS.Terminal.md)；域账号终端继续拒绝执行。
 - 应用部署的完整用户工作负载 owner model：当前只保证从文件选择器导入源 archive 时按登录用户读取、随后由 deployment-owned staging 使用；Docker Engine 容器本身仍是宿主级资源。
 - Linux user-execution 的文件代码路径已完成本轮 descriptor-relative 收尾；仍需安装为 root-owned Helper 后的真实多用户残留演练。代码已用真实子进程 SIGKILL 验证 staging 恢复与清单初始化窗口回收，并用源/目标/恢复父路径替换验证 descriptor anchoring；隔离环境仍须验证 root Helper、`relaxkon-server`/`nanami`/`alice` 三账户、共享目录、supplementary groups 与 owner/group 结果。
 - 安装器、Helper 配置和真实 Linux/Windows integration 环境。
@@ -253,7 +253,7 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 | `dotnet build RelaxKonOS.sln -c Debug --no-restore -m:1 -p:MSBuildEnableWorkloadResolver=false` | 通过 | Server、Helper、Guardian Agent、Client/Desktop 及 Framework 全部编译成功；最新整体构建为 0 warning / 0 error。 |
 | Linux installer / sudoers | 通过 | 四个受影响的安装/卸载脚本均通过 `bash -n`；三个精确命令形状组成的 sudoers 条目通过 `visudo -cf -`。发布 inventory 的缺失、篡改与多余文件拒绝以及 runtime 快照清理使用临时目录 smoke test 验证。 |
 | Linux System Mode 集成 | 暂缓 | 需要安装 root-owned Helper 与 sudoers 规则，以及 `relaxkon-server`、`nanami`、`alice` 三账户隔离环境；当前工作区不应修改宿主账户或 sudoers。 |
-| Windows impersonation 代码 | 首个文件切片完成、默认关闭 | 独立认证管道、本地 SID/account/profile 二次验证、一次性 MSV1_0 S4U token、同步 impersonation 文件操作和 replay/大小限制已接入；Windows 本地账号终端经受限 primary token 和 ConPTY 执行，域账户、Git 进程执行与 POSIX mode fail closed。 |
+| Windows impersonation 代码 | 首个文件切片完成、默认关闭 | 独立认证管道、本地 SID/account/profile 二次验证、一次性 MSV1_0 S4U token、同步 impersonation 文件操作和 replay/大小限制已接入；Windows 本地账号终端经受限 primary token 和 ConPTY 执行，Git 进程执行已补充受限 primary token 原生启动器（见 2026-10-25 记录）；域账户与 POSIX mode fail closed。 |
 | Windows impersonation 集成 | 暂缓 | 安装器省略 `-EnableWindowsUserExecution` 时写入 `UserExecutionBackend=disabled`（Helper 侧能力门同时为 `false`）；需真实 Windows Server + LocalSystem Helper + 两个普通本地账户完成 NTFS ACL、owner、token、并发、取消与重启验收后才可启用。 |
 
 ### 2026-09-25 Windows 宿主验证
@@ -341,3 +341,17 @@ Linux 上用 root（或任何 UID < 1000 的账户、nobody）登录时，认证
 下载和媒体服务使用可 seek 的有界读取流，HTTP Range 继续可用。每块重新经过原有身份或提权授权边界；最多保留一块内容，不把文件总大小与 12 MiB 单次内容上限混淆。读取中发现长度变化或短读时中断响应；已开始发送的响应无法再改成 ProblemDetails。发送前的超限拒绝保留 `413 / content-too-large`。
 
 `RelaxKonOS.Server.Tests --file-download-only` 验证 156 MiB 文件的 SHA-256、跨块读取、尾部 Range、取消、空文件、长度变化和请求块大小限制。
+
+## 2026-10-25 Windows Helper GitExecute
+
+- [x] Windows 普通 Git 经现有认证用户管道与 SID/account/profile 再验证，使用受限 S4U primary token 和 `CreateProcessAsUserW`；不以 SYSTEM 启动，不添加任意可执行路径或环境字段。
+- [x] 从目标用户环境的 PATH 解析绝对 `git.exe`；Server 的 PATH 不再阻止 Helper 模式注册、初始化或引擎探测，引擎探测使用目标用户家目录。
+- [x] 共享 Git allowlist 与非交互环境；显式 HTTPS 凭据经用户私有临时目录中的无 BOM shell askpass 下发，密码仅在子进程环境中存在。
+- [x] 挂起创建进程，加入 kill-on-close Job Object 后恢复；只继承三条指定标准句柄，双路输出合计有界，取消、Helper 截止时间、输出超限或服务退出时回收进程树。
+- [x] `RelaxKonOS.WindowsGit.Tests`：16 项 Windows 原生检查通过，包括真实 Git 初始化/提交、中文与特殊字符、子进程 SID、本地 HTTP challenge 凭据、闭合参数拒绝、取消与后代进程终止、输出超限、预取消；普通测试使用当前账户的受限 token，不冒充 S4U 服务验收。
+- [x] `RelaxKonOS.GitWorkspace.Tests`：64 项通过，并执行 Helper 注册/凭据传递/引擎探测身份回归，确认不访问 Server 的 Git PATH。
+- [x] 保存的推送凭据可复用于 HTTPS fetch/pull 和非当前分支更新；按有效下载 URL（含 insteadOf）、用户及 authority 选择。新增离线 URL 解析的受限 Helper 命令形状，应用令牌禁用宿主 credential helper。Windows 两账户实际内容拉取与 URL 重写验收通过，扩展的本地权限/凭据路由回归及 17 项原生检查通过。
+- [x] 用户授权的 Windows Server 2022 主机已部署当前自包含 Server（LocalService）与 Helper（LocalSystem），普通账户 codexdev 与 Administrator 各 20 项真实 API Git 检查通过；双向仓库/目录隔离、错误凭据拒绝、日志去敏及真实 SYSTEM/S4U 启动均通过。详见 [Git 专项验收](../applications/RelaxKonOS.GitClient.WindowsAcceptance.md)。仅该测试主机显式打开用户执行能力门，产品默认值未改变。
+- [ ] 更多普通账户及完整文件执行的并发、服务重启与 profile 生命周期矩阵仍待验收。OS Credential Manager 在该 S4U 会话下不可用；应用加密保存凭据的 HTTPS push/clone/fetch/pull 及非当前分支更新已实测；交互 SSH agent 和映射盘未验收。
+
+复现命令：`dotnet run --project Tests/Server/RelaxKonOS.WindowsGit.Tests`；受控 LocalSystem 测试宿主可加 `-- --s4u <SID> <MACHINE\user> <profile>` 检查真实 S4U 分发。已安装服务的 `RelaxKonOS.Server.Tests --installed-windows-user-execution <helper-config> <SID> <MACHINE\user> <profile>` 也已补 Git 版本检查；该聚合工程本轮未运行，真实服务验收通过独立的用户 HTTP API 测试与 SYSTEM/S4U 检查完成。Server.Tests 整体构建受既有 `NetworkProxyTunnelChecks` 对已移除 Mihomo API 的引用阻塞；本轮 Git 注册检查已接入可独立构建的 GitWorkspace 测试工程。

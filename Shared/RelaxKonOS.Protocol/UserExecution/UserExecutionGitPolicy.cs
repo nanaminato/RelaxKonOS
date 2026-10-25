@@ -12,7 +12,7 @@ public static class UserExecutionGitPolicy
     {
         "apply", "check-ref-format", "clone", "stash", "tag", "worktree", "add", "branch", "cat-file", "checkout", "cherry-pick", "commit", "config",
         "diff", "diff-tree", "fetch", "for-each-ref", "init", "log", "ls-files", "merge", "merge-base",
-        "pull", "push", "rebase", "remote", "reset", "restore", "revert", "rev-list", "rev-parse", "rm",
+        "pull", "push", "rebase", "remote", "reset", "restore", "revert", "rev-list", "rev-parse", "rm", "ls-remote",
         "show", "show-ref", "status", "symbolic-ref", "update-ref",
     };
 
@@ -46,6 +46,11 @@ public static class UserExecutionGitPolicy
             return arguments.Count == commandIndex + 4 && arguments[commandIndex + 1] == "--"
                 && !arguments[commandIndex + 2].StartsWith("-", StringComparison.Ordinal)
                 && !arguments[commandIndex + 3].StartsWith("-", StringComparison.Ordinal);
+
+        // This is URL resolution only, including insteadOf rewrites; it must never contact a remote.
+        if (command == "ls-remote")
+            return arguments.Count == commandIndex + 3 && arguments[commandIndex + 1] == "--get-url"
+                && !string.IsNullOrWhiteSpace(arguments[commandIndex + 2]) && !arguments[commandIndex + 2].StartsWith('-');
 
         // The domain reads branch settings and hashes the full effective configuration. It never writes Git configuration.
         return command != "config"

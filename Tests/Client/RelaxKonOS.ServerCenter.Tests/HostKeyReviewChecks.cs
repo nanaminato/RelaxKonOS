@@ -85,7 +85,17 @@ static class HostKeyReviewChecks
             var wizard = new ServerInstallationWizardViewModel(viewModel, () => { }, () => Task.FromResult(true),
                 () => Task.FromResult<string?>("/home/alice/server.zip"), () => Task.CompletedTask);
             Check(!wizard.AddFirewallRule && !wizard.CanAddFirewallRule, "防火墙选项默认不勾选，本机监听不可添加");
+            Check(wizard.SelectedMode?.Mode is null && wizard.HasFullFileAccess,
+                "自动模式在预检选择系统安装时也使用全部文件范围");
             wizard.SelectedMode = wizard.Modes.Single(m => m.Mode == ServerInstallMode.LinuxSystem);
+            Check(wizard.HasFullFileAccess && wizard.FileAccess == ServerFileAccessScope.Full &&
+                wizard.AdvancedReviewText.Contains(wizard.FullFileAccessDescription),
+                "Linux 系统安装直接管理所有本地文件，确认页说明身份与提权边界");
+            wizard.SelectedMode = wizard.Modes.Single(m => m.Mode == ServerInstallMode.LinuxUser);
+            Check(!wizard.HasFullFileAccess && wizard.FileAccess == ServerFileAccessScope.Restricted,
+                "Linux 用户模式不配置特权文件访问范围");
+            wizard.SelectedMode = wizard.Modes.Single(m => m.Mode == ServerInstallMode.LinuxSystem);
+            Check(wizard.HasFullFileAccess, "切换回系统模式仍直接管理所有本地文件");
             wizard.SelectedNetwork = wizard.Networks.Single(n => n.Profile == ServerNetworkProfile.Lan);
             wizard.AddFirewallRule = true;
             Check(wizard.CanAddFirewallRule && wizard.AdvancedReviewText.Contains("True"), "系统局域网安装允许选择，确认页包含防火墙选择");

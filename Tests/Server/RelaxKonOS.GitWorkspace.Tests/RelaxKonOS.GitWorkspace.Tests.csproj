@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
  <ItemGroup><ProjectReference Include="../../../RelaxKonOS.Server/RelaxKonOS.Server.csproj"/></ItemGroup>
+ <ItemGroup><Compile Include="../../../RelaxKonOS.Server.Tests/GitRegistrationChecks.cs" Link="GitRegistrationChecks.cs"/></ItemGroup>
 </Project>
