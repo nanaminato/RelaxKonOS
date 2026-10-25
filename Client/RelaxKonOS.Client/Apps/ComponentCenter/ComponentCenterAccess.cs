@@ -1,4 +1,4 @@
-using RelaxKonOS.AppSDK;
+﻿using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Client.Apps.ProxyServer;
 using RelaxKonOS.Client.Services.Auth;
@@ -30,9 +30,9 @@ public sealed class ComponentCenterAccess(IAuthSession session, IAppPermissionSc
             foreach (var item in _runtimes) item.InvalidateSession();
             return;
         }
-        var canRead = supported() && permissions.GetStatus(AppPermissions.ServerProxyRead) == AppPermissionStatus.Granted;
+        var canRead = supported() && permissions.GetStatus(AppPermissions.ServerComponentsRead) == AppPermissionStatus.Granted;
         var canManage = canRead && session.AssignedRole == DeviceRole.Controller
-            && permissions.GetStatus(AppPermissions.ServerProxyManage) == AppPermissionStatus.Granted;
+            && permissions.GetStatus(AppPermissions.ServerComponentsManage) == AppPermissionStatus.Granted;
         foreach (var item in _runtimes) { item.CanRead = canRead; item.CanManage = canManage; }
     }
 }

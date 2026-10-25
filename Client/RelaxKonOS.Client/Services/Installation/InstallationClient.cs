@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -17,6 +17,14 @@ public sealed class InstallationApiException(string code, HttpStatusCode status)
 
 public sealed class InstallationClient(HttpClient http, IAuthSession session, IHttpClientFactory? httpClients = null)
 {
+    private readonly object? login = session.CurrentSession;
+    private readonly string? baseUrl = session.EffectiveBaseUrl;
+    private void VerifySession()
+    {
+        if (login is null || !ReferenceEquals(login, session.CurrentSession) || session.EffectiveBaseUrl != baseUrl
+            || session.State != AuthSessionState.Authenticated)
+            throw new InstallationApiException("installation.signed_out", HttpStatusCode.Unauthorized);
+    }
     private const long MaximumHostPackageBytes = 128L * 1024 * 1024;
     public Task<InstallationOperationDto?> StartAsync(InstallationServiceId service, InstallationOperationKind kind, object options, string key, CancellationToken ct)
         => SendAsync<InstallationOperationDto>(HttpMethod.Post, InstallationApiRoutes.Start(service, kind), options, key, ct);
@@ -89,6 +97,7 @@ public sealed class InstallationClient(HttpClient http, IAuthSession session, IH
             InstallationServiceId.Smb => HostElevationCapability.SmbInstall, InstallationServiceId.Nginx => HostElevationCapability.NginxInstall,
             InstallationServiceId.Frp => HostElevationCapability.FrpInstall, InstallationServiceId.Mihomo => HostElevationCapability.MihomoInstall,
             InstallationServiceId.Git => HostElevationCapability.GitPackageInstall, InstallationServiceId.Docker => HostElevationCapability.DockerInstall,
+            InstallationServiceId.Squid => HostElevationCapability.ProxyServiceAction,
             InstallationServiceId.SingBox => HostElevationCapability.SingBoxInstall, _ => throw new ArgumentOutOfRangeException(nameof(service))
         };
         var result = await SendAsync<HostElevationResult>(HttpMethod.Post, PrivilegedApiRoutes.Elevation,
@@ -97,12 +106,14 @@ public sealed class InstallationClient(HttpClient http, IAuthSession session, IH
     }
     private async Task<T?> SendAsync<T>(HttpMethod method, string route, object? body, string? key, CancellationToken ct)
     {
-        if (session.State != AuthSessionState.Authenticated || session.EffectiveBaseUrl is null) throw new InstallationApiException("installation.signed_out", HttpStatusCode.Unauthorized);
+        VerifySession();
         using var request = new HttpRequestMessage(method, new Uri(new Uri(session.EffectiveBaseUrl), route.TrimStart('/')));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await session.GetAccessTokenAsync(TimeSpan.FromMinutes(1), ct: ct));
+        VerifySession();
         if (key is not null) request.Headers.Add("Idempotency-Key", key);
         if (body is not null) request.Content = JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default);
         using var response = await http.SendAsync(request, ct);
+        VerifySession();
         if (response.StatusCode == HttpStatusCode.NotFound && method == HttpMethod.Get) return default;
         if (!response.IsSuccessStatusCode)
         {

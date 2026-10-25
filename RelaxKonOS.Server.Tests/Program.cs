@@ -1,4 +1,4 @@
-using RelaxKonOS.Protocol.Proxy;
+﻿using RelaxKonOS.Protocol.Proxy;
 if (args.Contains("--squid-only"))
 {
     await SquidGatewayChecks.RunAsync();
@@ -15,6 +15,7 @@ if (args.Contains("--archives-only"))
 if (args.Contains("--components-only"))
 {
     await ComponentLifecycleChecks.RunAsync();
+    await ComponentInstallationChecks.RunAsync();
     return;
 }
 if (args.Contains("--quiet-settings-only"))

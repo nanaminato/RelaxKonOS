@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 
 namespace RelaxKonOS.Server.Startup;
 
@@ -156,6 +156,17 @@ internal static class HostServiceRegistration
         // package) so callers never branch on the product.
         builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter, RelaxKonOS.Server.Components.SingBoxComponentAdapter>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter, RelaxKonOS.Server.Components.NginxComponentAdapter>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter, RelaxKonOS.Server.Components.MihomoComponentAdapter>();
+        foreach (var componentId in new[] { "squid", "samba", "docker" })
+            builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter>(services =>
+                new RelaxKonOS.Server.Components.HostPackageComponentAdapter(componentId,
+                    services.GetRequiredService<RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport>()));
+        foreach (var componentId in new[] { "frpc", "frps" })
+            builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter>(services =>
+                new RelaxKonOS.Server.Components.FrpComponentAdapter(componentId,
+                    services.GetRequiredService<RelaxKonOS.Server.Runtimes.IRuntimeManager>(),
+                    services.GetRequiredService<Microsoft.Extensions.Options.IOptions<RelaxKonOS.Server.Runtimes.FrpRuntimeOptions>>(),
+                    services.GetRequiredService<RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport>()));
         builder.Services.AddSingleton<RelaxKonOS.Server.Components.ComponentLifecycleRegistry>();
         builder.Services.AddSingleton<RelaxKonOS.Server.WebsitePublishing.WebsitePublicationStore>();
         builder.Services.AddSingleton<RelaxKonOS.Server.WebsitePublishing.WebsitePublicationCoordinator>();
@@ -171,6 +182,7 @@ internal static class HostServiceRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.Tunnels.ITunnelProvider, RelaxKonOS.Server.Tunnels.FrpTunnelProvider>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Tunnels.IManagedFrpsService, RelaxKonOS.Server.Tunnels.ManagedFrpsService>();
         builder.Services.AddHostedService(sp => (RelaxKonOS.Server.Tunnels.FrpTunnelProvider)sp.GetRequiredService<RelaxKonOS.Server.Tunnels.ITunnelProvider>());
+        builder.Services.AddSingleton<RelaxKonOS.ManagedRuntimes.IPinnedArchiveTransfer, RelaxKonOS.ManagedRuntimes.RuntimePinnedArchiveTransfer>();
         builder.Services.Configure<RelaxKonOS.Server.Runtimes.FrpRuntimeOptions>(builder.Configuration.GetSection("FrpRuntime"));
 
         // Certificate management is host-global. PEM/account keys remain behind the server-side

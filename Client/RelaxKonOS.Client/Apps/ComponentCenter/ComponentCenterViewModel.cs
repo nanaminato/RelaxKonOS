@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -48,12 +48,13 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     public bool HasWorkloadDetails => HasResults && SelectedNode?.WorkloadId is not null && SelectedNode.ComponentId is null;
     /// <summary>True when the selected component has no runtime page to drive, whatever the reason.</summary>
     public bool ShowNotIntegrated => HasResults && SelectedDefinition is { } definition
-        && (definition.Integration == ComponentIntegration.Application || DetailRuntime is null);
+        && (definition.Integration == ComponentIntegration.Application || DetailRuntime is null)
+        && !(definition.Integration == ComponentIntegration.Installation && PackageInstallation is not null);
     public int SelectedSourceKindCount => SelectedDefinition?.Sources.Count ?? 0;
     public LocalizedStatus SelectedComponentDescription => SelectedDefinition is { } definition
         ? LocalizedStatus.Key(definition.DescriptionKey) : LocalizedStatus.Literal("");
     /// <summary>The platform the Host reported for itself. Empty until an observation succeeded.</summary>
-    public string HostPlatform => Runtime.Installation?.Installation.Target.Os ?? "";
+    public string HostPlatform => SelectedComponentState?.State?.Target.Os ?? Runtime.Installation?.Installation.Target.Os ?? "";
     /// <summary>Declared provenance for this host's platforms, plus everything declared elsewhere.</summary>
     public IReadOnlyList<ComponentSourceChip> SelectedHostSources => SourceChips(hostPlatformOnly: true);
     public IReadOnlyList<ComponentSourceChip> SelectedOtherSources => SourceChips(hostPlatformOnly: false);
@@ -104,6 +105,9 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         get
         {
             if (SelectedDefinition is not { } definition) return LocalizedStatus.Literal("");
+            if (SelectedComponentState?.State is { } packageState)
+                return packageState.RecoveryRequired ? LocalizedStatus.Key("component_center.badge.Recovery")
+                    : LocalizedStatus.Key("proxy_server.runtime.ownership." + packageState.Ownership);
             var runtime = DetailRuntime;
             // A component with no runtime page in this build has no measured state to claim.
             if (definition.Integration == ComponentIntegration.Application || runtime is null)
@@ -114,8 +118,10 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
             return runtime.OwnershipText;
         }
     }
-    public LocalizedStatus SelectedVersionText => DetailRuntime?.MeasuredVersionText ?? LocalizedStatus.Literal("—");
-    public bool HasSelectedVersion => DetailRuntime?.Installation?.MeasuredVersion is { Length: > 0 };
+    public LocalizedStatus SelectedVersionText => SelectedComponentState?.State?.ActiveVersion is { } version
+        ? LocalizedStatus.Literal(version) : DetailRuntime?.MeasuredVersionText ?? LocalizedStatus.Literal("—");
+    public bool HasSelectedVersion => SelectedComponentState?.State?.ActiveVersion is { Length: > 0 }
+        || DetailRuntime?.Installation?.MeasuredVersion is { Length: > 0 };
     public bool SelectedHasUpdate => DetailRuntime?.HasUpdates == true;
     /// <summary>The host target chip is only meaningful once the host reported a target.</summary>
     public bool HasTargetText => Runtime.Installation?.Installation.Target is not null;
@@ -134,7 +140,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     public ComponentHostObservation? HostObservation => SelectedDefinition?.ComponentId is { } id
         ? _hostObservations.GetValueOrDefault(id) : null;
     public bool HasHostObservation => HostObservation is not null;
-    public bool ShowHostObservation => CanObserveHost && SelectedDefinition is { Integration: ComponentIntegration.Application };
+    public bool ShowHostObservation => CanObserveHost && SelectedDefinition is { Integration: ComponentIntegration.Application or ComponentIntegration.Installation };
     public bool CanObserveHost => !IsObservingHost && SelectedDefinition is { } definition
         && _observers.Any(observer => observer.CanObserve(definition.ComponentId));
     public LocalizedStatus HostObservationPlatformText => LocalizedStatus.Format("component_center.observation.platform",
@@ -301,12 +307,14 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
                 // Only the batch-integrated component stages drafts here; other rows stay read-only.
                 node.CanSelect = !IsTaskBusy && !(runtime?.IsBusy ?? false) && definition.Integration == ComponentIntegration.Batch;
                 node.ShowStatus = true;
-                node.ShowVersion = runtime?.Installation is not null;
-                node.Status = runtime is null ? LocalizedStatus.Key("component_center.status.not_integrated")
+                var packageState = _componentStates.GetValueOrDefault(id)?.State;
+                node.ShowVersion = runtime?.Installation is not null || packageState?.ActiveVersion is not null;
+                node.Status = packageState is not null ? LocalizedStatus.Key("proxy_server.runtime.ownership." + packageState.Ownership)
+                    : runtime is null ? LocalizedStatus.Key("component_center.status.not_integrated")
                     : runtime.NeedsRecovery ? LocalizedStatus.Key("component_center.badge.Recovery")
                     : runtime.HasRuntimeProblem ? LocalizedStatus.Key("component_center.badge.Faulted")
                     : runtime.OwnershipText;
-                node.Version = runtime?.MeasuredVersionText.Resolve() ?? "";
+                node.Version = packageState?.ActiveVersion ?? runtime?.MeasuredVersionText.Resolve() ?? "";
                 node.SetTone(Tone(definition));
                 node.HasUpdate = runtime?.HasUpdates == true;
             }
@@ -314,7 +322,8 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         bool Eligible(ComponentTreeNode node) => SelectedPage switch
         {
             ComponentCenterPage.Installed => node.ComponentId is { } installed
-                && RuntimeFor(installed)?.Installation?.Installation.Ownership is RuntimeOwnership.Managed or RuntimeOwnership.External,
+                && (RuntimeFor(installed)?.Installation?.Installation.Ownership ?? _componentStates.GetValueOrDefault(installed)?.State?.Ownership)
+                    is RuntimeOwnership.Managed or RuntimeOwnership.External,
             ComponentCenterPage.Updates => node.ComponentId is { } updating && RuntimeFor(updating)?.HasUpdates == true,
             _ => true
         };
@@ -429,6 +438,11 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     }
     public void Dispose()
     {
+        foreach (var installation in _packageInstallations.Values)
+        {
+            installation.PropertyChanged -= PackageInstallationChanged;
+            installation.Dispose();
+        }
         _taskDisposed = true; _driveTask = false;
         _inspectionLifetime.Cancel(); _inspectionLifetime.Dispose();
         Runtime.StageChange = null;

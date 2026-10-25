@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.ServiceProcess;
@@ -90,7 +90,7 @@ public sealed record WindowsHelperServiceConfiguration(string PipeName, string S
     bool EnableWindowsUserExecution = false, int UserExecutionTimeoutSeconds = 25,
     string? NginxRoot = null, string? RuntimePrivateRoot = null,
     IReadOnlyList<string>? RuntimeArchiveRoots = null, IReadOnlyList<WindowsFrpRelease>? FrpReleases = null,
-    string ServiceName = "RelaxKonOSPrivilegedHelper", string? PersonalOwnerSid = null, string? PersonalProxyRoot = null)
+    string ServiceName = "RelaxKonOSPrivilegedHelper", string? PersonalOwnerSid = null, string? PersonalProxyRoot = null, IReadOnlyList<WindowsNginxRelease>? NginxReleases = null)
 {
     public void Validate()
     {
@@ -112,13 +112,13 @@ public sealed record WindowsHelperServiceConfiguration(string PipeName, string S
         }
         else if (ServiceName != "RelaxKonOSPrivilegedHelper" || PersonalProxyRoot is not null)
             throw new InvalidOperationException("System Helper service identity cannot be changed.");
-        WindowsManagedRuntimePolicy.Create(NginxRoot, RuntimePrivateRoot, RuntimeArchiveRoots, [], FrpReleases).Validate();
+        WindowsManagedRuntimePolicy.Create(NginxRoot, RuntimePrivateRoot, RuntimeArchiveRoots, [], FrpReleases, NginxReleases).Validate();
     }
 
     internal WindowsHelperPipeConfiguration ToPipeConfiguration()
         => new(PipeName, SharedSecret, FileAllowedRoots, AllowedServiceIds, ServerServiceSid,
             UserExecutionTimeoutSeconds: UserExecutionTimeoutSeconds,
-            WindowsRuntimes: WindowsManagedRuntimePolicy.Create(NginxRoot, RuntimePrivateRoot, RuntimeArchiveRoots, [ServerServiceSid], FrpReleases),
+            WindowsRuntimes: WindowsManagedRuntimePolicy.Create(NginxRoot, RuntimePrivateRoot, RuntimeArchiveRoots, [ServerServiceSid], FrpReleases, NginxReleases),
             PersonalOwnerSid: PersonalOwnerSid);
 
     public void VerifyCurrentExecutable()

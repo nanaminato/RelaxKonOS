@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using RelaxKonOS.Protocol.ManagedRuntimes;
@@ -14,7 +14,7 @@ public sealed class RuntimePolicyException(string problemCode) : Exception(probl
 public sealed record RuntimeSource(string SourceId, string RuntimeId, string Publisher, RuntimeSourceKind Kind, string BaseUri,
     string ManifestPath, string KeyId, string PublicKeySpki, bool Enabled, long TrustRevision,
     RuntimeChannel[] Channels, int MaximumMetadataBytes, int MaximumValiditySeconds,
-    string[] DownloadPrefixes, string[] RedirectPrefixes, RuntimePrivateNetwork[] PrivateNetworks)
+    string[] DownloadPrefixes, string[] RedirectPrefixes, RuntimePrivateNetwork[] PrivateNetworks) : IRuntimeDownloadScope
 {
     [JsonIgnore]
     public string ConfirmationFingerprint => Convert.ToHexString(SHA256.HashData(

@@ -1,8 +1,12 @@
-using RelaxKonOS.ManagedRuntimes;
+﻿using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.ManagedRuntimes.ComponentPackages;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Server.ManagedRuntimes;
 using RelaxKonOS.Server.WebServer;
+using RelaxKonOS.Protocol.WebServers;
+using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Server.Privileged;
+using RelaxKonOS.Server.Installations;
 
 namespace RelaxKonOS.Server.Components;
 
@@ -14,7 +18,7 @@ namespace RelaxKonOS.Server.Components;
 /// implement, and it says so instead of offering the Linux path.
 /// </summary>
 internal sealed class NginxComponentAdapter(IPrivilegedNginxOperations nginx, NginxWebServerManager manager,
-    NginxManagedOptions options) : IComponentLifecycleAdapter
+    IPrivilegedOperationTransport helper, IRuntimeDownloadProxyProvider downloadProxy) : IComponentLifecycleAdapter
 {
     private const string Linux = "linux";
     private const string Windows = "windows";
@@ -25,16 +29,31 @@ internal sealed class NginxComponentAdapter(IPrivilegedNginxOperations nginx, Ng
 
     /// <summary>What this build can do for nginx on this host, decided without touching the host.</summary>
     internal static IReadOnlyList<ComponentModeSupport> DeclaredModes { get; } = OperatingSystem.IsWindows()
-        ? [new(ComponentSourceMode.ManagedArchive, Windows, false, ComponentProblemCodes.ExecutionUnavailable)]
+        ? [new(ComponentSourceMode.ManagedArchive, Windows, true, null)]
         : [new(ComponentSourceMode.SystemPackage, Linux, true, null)];
 
     public async Task<ComponentStateView> StateAsync(CancellationToken ct)
     {
+        if (OperatingSystem.IsWindows())
+        {
+            var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.NginxArchiveQuery), ct);
+            if (!result.Success || result.ComponentArchive is not { } archive)
+                return new(ComponentId, null, Modes, [ComponentProblemCodes.StateUnavailable]);
+            var observed = MapArchive(archive, Environment.MachineName,
+                System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant());
+            if (!archive.Installed && (await manager.ListIntegrationCandidatesAsync(ct)).Count != 0)
+                observed = observed with { Ownership = RuntimeOwnership.External };
+            var revision = ComponentRevision.Of(archive.Releases.Select(pin => pin.ReleaseId + "|" + pin.SourceUri).ToArray());
+            return new(ComponentId, observed, Modes, [], archive.Releases, revision, archive.CommittedOperationId);
+        }
         if (!OperatingSystem.IsLinux())
-            return new(ComponentId, null, Modes, [ComponentProblemCodes.PlatformUnsupported]);
+            return new(ComponentId, null, [], [ComponentProblemCodes.PlatformUnsupported]);
         try
         {
-            return new(ComponentId, await ReadStateAsync(ct), Modes, []);
+            var resolution = await ResolveAsync(ct);
+            var state = NginxPackagePlan.BuildState(resolution, resolution.Managed, Environment.MachineName, NginxPackagePlan.HostArchitecture());
+            return new(ComponentId, state, Modes, [], CommittedOperationId: resolution.CommittedOperationId,
+                PendingOperationId: resolution.PendingOperationId);
         }
         catch (ComponentLifecycleException ex) { return new(ComponentId, null, Modes, [ex.ProblemCode]); }
         catch (RuntimeLifecycleException) { return new(ComponentId, null, Modes, [ComponentProblemCodes.StateUnavailable]); }
@@ -49,8 +68,27 @@ internal sealed class NginxComponentAdapter(IPrivilegedNginxOperations nginx, Ng
     {
         if (!string.Equals(request.ComponentId, ComponentId, StringComparison.Ordinal))
             throw new ComponentLifecycleException(ComponentProblemCodes.UnknownComponent);
+        if (OperatingSystem.IsWindows())
+        {
+            var view = await StateAsync(ct);
+            if (view.State is not { } windowsState) return new(null, null, null, [ComponentProblemCodes.StateUnavailable], []);
+            var problems = new List<string>();
+            if (request.HostId != windowsState.HostId || string.IsNullOrWhiteSpace(request.IdempotencyKey)) problems.Add(ComponentProblemCodes.RequestInvalid);
+            if (request.Mode != ComponentSourceMode.ManagedArchive) problems.Add(ComponentProblemCodes.SourceModeUnsupported);
+            if (request.Change != RuntimeChange.Install) problems.Add(ComponentProblemCodes.ExecutionUnavailable);
+            if (windowsState.Ownership != RuntimeOwnership.Absent) problems.Add(ComponentProblemCodes.PackageAlreadyInstalled);
+            if (windowsState.RecoveryRequired) problems.Add(ComponentProblemCodes.RecoveryRequired);
+            if (request.ExpectedRevision != windowsState.Revision || request.ExpectedSourceRevision != view.PinRevision)
+                problems.Add(ComponentProblemCodes.StateRevisionConflict);
+            if (request.ExpectedTrustRevision != 0 || !request.KeepData
+                || request.ReleaseId is not null && request.SourceId != "host-pins") problems.Add(ComponentProblemCodes.RequestInvalid);
+            var pin = view.PinnedArchives?.SingleOrDefault(pin => pin.ReleaseId == request.ReleaseId && pin.Version == request.RequestedVersion);
+            if (pin is null) problems.Add(ComponentProblemCodes.PackageUnresolved);
+            return new(request, windowsState, pin is null ? null : ComponentFrozenTarget.FromPin(pin), problems, []);
+        }
         if (!OperatingSystem.IsLinux())
-            return new(null, null, null, [ComponentProblemCodes.PlatformUnsupported], []);
+            return new(null, null, null, [OperatingSystem.IsWindows()
+                ? ComponentProblemCodes.ExecutionUnavailable : ComponentProblemCodes.PlatformUnsupported], []);
         if (request.Mode != ComponentSourceMode.SystemPackage)
             return new(null, null, null, [ComponentProblemCodes.SourceModeUnsupported], []);
         if (request.Change == RuntimeChange.Configure || string.IsNullOrWhiteSpace(request.IdempotencyKey)
@@ -71,6 +109,27 @@ internal sealed class NginxComponentAdapter(IPrivilegedNginxOperations nginx, Ng
     /// </summary>
     public async Task<ComponentExecutionResult> ExecuteAsync(ComponentExecuteRequest request, CancellationToken ct)
     {
+        if (OperatingSystem.IsWindows())
+        {
+            var progress = InstallationExecutionContext.Progress.Value;
+            if (progress is null || request.ComponentId != ComponentId || request.Expected?.Pin is not { } windowsExpected)
+                return Failed(ComponentProblemCodes.ExecutionNotRequested, null);
+            var plan = await PlanAsync(request.Request, ct);
+            if (!plan.Allowed || plan.Target?.Pin is not { } current || current.ReleaseId != windowsExpected.ReleaseId
+                || current.Sha256 != windowsExpected.Sha256 || current.Version != windowsExpected.Version || current.SourceUri != windowsExpected.SourceUri
+                || current.Rid != windowsExpected.Rid || current.Format != windowsExpected.Format || current.MaximumBytes != windowsExpected.MaximumBytes
+                || !current.AffectedComponents.SequenceEqual(windowsExpected.AffectedComponents))
+                return Failed(ComponentProblemCodes.PackageExpectationChanged, null);
+            await progress.ReportAsync(new(RelaxKonOS.Protocol.Installations.InstallationStage.Installing, Cancellable: false), ct);
+            var installed = await helper.ExecuteAsync(new(PrivilegedOperationKind.NginxArchiveInstall,
+                ArchiveExpectation: windowsExpected, OperationId: progress.OperationId, DownloadProxy: await downloadProxy.ResolveAsync(ct)), CancellationToken.None);
+            var observed = await helper.ExecuteAsync(new(PrivilegedOperationKind.NginxArchiveQuery), CancellationToken.None);
+            if (!installed.Success || observed.ComponentArchive is not { Managed: true, RecoveryRequired: false } windowsResult
+                || windowsResult.CommittedOperationId != progress.OperationId || windowsResult.Version != windowsExpected.Version)
+                return Failed(ComponentProblemCodes.InstallFailed, null);
+            return new(ComponentId, ComponentExecutionOutcome.Succeeded, [], [],
+                MapArchive(windowsResult, Environment.MachineName, System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant()), windowsResult.Version);
+        }
         if (NginxPackagePlan.PrecheckExecute(request, OperatingSystem.IsLinux()) is { } refused) return refused;
         var expected = request.Expected!.Package!;
         var state = await ReadStateAsync(ct);
@@ -94,17 +153,28 @@ internal sealed class NginxComponentAdapter(IPrivilegedNginxOperations nginx, Ng
             after, after.ActiveVersion);
     }
 
+    internal static ComponentState MapArchive(ComponentArchiveHostSnapshot archive, string hostId, string architecture) =>
+        new(ComponentIds.Nginx, hostId, ComponentRevision.Of(archive.Installed.ToString(), archive.Managed.ToString(),
+            archive.Version, archive.CommittedOperationId?.ToString(), archive.RecoveryRequired.ToString()),
+            archive.Managed ? RuntimeOwnership.Managed : archive.Installed ? RuntimeOwnership.External : RuntimeOwnership.Absent,
+            ComponentSourceMode.ManagedArchive, new("windows", architecture, null, null, RuntimeInstallMode.Archive, "scm"),
+            archive.Version, archive.RecoveryRequired);
+
     private ComponentExecutionResult Failed(string problem, string? detail) =>
         new(ComponentId, ComponentExecutionOutcome.Failed, [problem], [ComponentProblemCodes.RollbackUnsupported],
             null, null, detail);
 
-    private async Task<ComponentState> ReadStateAsync(CancellationToken ct) =>
-        NginxPackagePlan.BuildState(await ResolveAsync(ct), NginxManagedPaths.IsManaged(options), Environment.MachineName,
-            NginxPackagePlan.HostArchitecture());
+    private async Task<ComponentState> ReadStateAsync(CancellationToken ct)
+    {
+        var resolution = await ResolveAsync(ct);
+        return NginxPackagePlan.BuildState(resolution, resolution.Managed, Environment.MachineName, NginxPackagePlan.HostArchitecture());
+    }
 
     private async Task<ComponentPackageResolution> ResolveAsync(CancellationToken ct)
     {
         var result = await nginx.QueryPackageAsync(ct);
+        if (!result.Success && result.ProblemCode == PrivilegedProblemCode.UnsupportedOperation)
+            throw new ComponentLifecycleException(ComponentProblemCodes.PlatformUnsupported);
         if (!result.Success || result.ComponentPackage is not { } resolution)
             throw new ComponentLifecycleException(ComponentProblemCodes.PackageIndexUnavailable);
         if (!string.Equals(resolution.PackageName, AptPackageResolution.PackageName, StringComparison.Ordinal))

@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 using RelaxKonOS.Protocol.Settings;
 using RelaxKonOS.Protocol.Observability;
 using RelaxKonOS.Protocol.Proxy;
@@ -88,13 +88,17 @@ public enum PrivilegedOperationKind
     /// itself and refuses when the version, repository or digest moved, so a stale freeze can never
     /// install something else. A package transaction has no supported rollback.
     /// </summary>
-    NginxPackageInstallFrozen,
     NginxPackageUninstall,
     /// <summary>
     /// Read-only resolution of the Nginx package the host's own package manager would install.
     /// It reads signed repository metadata and never downloads, installs, or changes a source.
     /// </summary>
-    NginxPackageQuery,
+    ComponentPackageQuery,
+    ComponentPackageInstall,
+    ComponentPackageRecover,
+    NginxArchiveQuery,
+    NginxArchiveInstall,
+    FrpArchiveCatalog,
     NginxConfigurationTest,
     NginxRuntimeStatus,
     NginxWriteManagedFile,
@@ -300,6 +304,9 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("serviceId")] string? ServiceId = null,
     [property: JsonPropertyName("serviceAction")] PrivilegedServiceAction? ServiceAction = null,
     [property: JsonPropertyName("nginxServiceAction")] NginxSystemServiceAction? NginxServiceAction = null,
+    [property: JsonPropertyName("componentId")] string? ComponentId = null,
+    [property: JsonPropertyName("packageRecovery")] RelaxKonOS.Protocol.ManagedRuntimes.ComponentRecoveryRequest? PackageRecovery = null,
+    [property: JsonPropertyName("archiveExpectation")] RelaxKonOS.Protocol.ManagedRuntimes.ComponentPinnedArchive? ArchiveExpectation = null,
     [property: JsonPropertyName("packageVersion")] string? PackageVersion = null,
     /// <summary>The frozen package identity an install must honour. Only the frozen install kind reads it.</summary>
     [property: JsonPropertyName("packageExpectation")] RelaxKonOS.Protocol.ManagedRuntimes.ComponentPackageTarget? PackageExpectation = null,
@@ -378,7 +385,9 @@ public sealed record PrivilegedOperationResult(
     [property: JsonPropertyName("systemAuthenticationResult")] SystemAuthenticationResult? SystemAuthenticationResult = null,
     [property: JsonPropertyName("hostAdministratorEligible")] bool? HostAdministratorEligible = null,
     [property: JsonPropertyName("nginxRunning")] bool? NginxRunning = null,
-    /// <summary>Read-only package facts. Only <see cref="PrivilegedOperationKind.NginxPackageQuery"/> sets it.</summary>
+    /// <summary>Read-only package facts. Only <see cref="PrivilegedOperationKind.ComponentPackageQuery"/> sets it.</summary>
+    [property: JsonPropertyName("pinnedArchives")] IReadOnlyList<RelaxKonOS.Protocol.ManagedRuntimes.ComponentPinnedArchive>? PinnedArchives = null,
+    [property: JsonPropertyName("componentArchive")] RelaxKonOS.Protocol.ManagedRuntimes.ComponentArchiveHostSnapshot? ComponentArchive = null,
     [property: JsonPropertyName("componentPackage")] RelaxKonOS.Protocol.ManagedRuntimes.ComponentPackageResolution? ComponentPackage = null,
     [property: JsonPropertyName("componentProcess")] ManagedProcessSnapshot? ComponentProcess = null,
     [property: JsonPropertyName("processSnapshot")] HostProcessSnapshotDto? ProcessSnapshot = null,

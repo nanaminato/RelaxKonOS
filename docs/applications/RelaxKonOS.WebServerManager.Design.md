@@ -1,4 +1,6 @@
-# RelaxKonOS WebServerManager / Nginx 集成设计
+﻿# RelaxKonOS WebServerManager / Nginx 集成设计
+
+> 当前逐组件实施状态与 Nginx 平台边界见[组件中心实施进度](../platform/RelaxKonOS.ComponentCenter.Progress.md)；下文历史切片的验收范围保持原记录。
 
 > 状态：**Nginx Provider V3 已实现**。除发现、配置测试、集成、受管安装和生命周期管理外，一个 RelaxKonOS 站点现在可同时服务静态目录、SPA 回退和多个路径前缀的反向代理；创建、修改、删除都会先执行 `nginx -t`，再重载或回滚。站点可绑定证书管理器中已有的证书；私钥仍只保留在服务器本地。证书的签发与自动续期后触发重载仍可在后续阶段进一步自动化。
 
@@ -1643,3 +1645,7 @@ UI 必须使用 `webserver.*` 三语言本地化 key，显示管理模式、实�
 受管 HTTPS 站点保存还需证书 Issued/Active、处于有效期内且 SAN 覆盖全部域名绑定；规范化 IDN/IP，单层通配符不覆盖 apex、多层或 IP。校验在版本检查后、权限/include/配置副作用前执行，不可用返回 `webserver.site_certificate_not_usable`，不覆盖返回 `webserver.site_certificate_domain_mismatch`。宿主 PEM 路径模式不通过元数据推断有效期或客户端信任。
 
 Linux 静态目录自动授权依赖 `acl` 软件包（`/usr/bin/setfacl`）。保存时缺少依赖返回 `webserver.site_acl_package_required`，客户端提示管理员在服务器执行 `sudo apt-get install acl` 后重新保存并保留草稿。此失败不会写入站点配置或元数据。通过内置 APT 流程安装 Nginx 时一并安装 `acl`。
+
+### nginx 冻结安装接入台账（2026-10-25）
+
+Linux nginx 首次冻结安装从组件中心经产品提权进入统一安装台账，提供原键幂等提交、资源排他、阶段进度与重开观察。无台账 component execute 路由已删除；重启时不以当前健康推导原任务成功，返回中断待核对。Windows、包补偿及逐依赖制品证明尚未完成，详见[实施范围与验证](../platform/RelaxKonOS.ComponentCenter.Progress.md)。

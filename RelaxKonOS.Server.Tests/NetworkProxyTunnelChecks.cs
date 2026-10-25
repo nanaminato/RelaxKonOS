@@ -1,4 +1,4 @@
-using RelaxKonOS.Protocol.Proxy;
+﻿using RelaxKonOS.Protocol.Proxy;
 internal static class NetworkProxyTunnelChecks
 {
 internal static void VerifyTunnelProtocolContract()
@@ -237,15 +237,17 @@ internal static async Task VerifyFrpRuntimeInstallAndRollbackAsync(string root)
 {
     if (!OperatingSystem.IsLinux()) return;
     var archive = CreateFrpFixtureArchive();
+    var secondArchive = CreateFrpFixtureArchive("0.71.1");
+    var secondDigest = Convert.ToHexString(SHA256.HashData(secondArchive)).ToLowerInvariant();
     var digest = Convert.ToHexString(SHA256.HashData(archive)).ToLowerInvariant();
     var releases = new[]
     {
         new FrpRuntimeRelease { Version = "v0.71.0", Rid = "linux-x64", Url = "https://github.com/fatedier/frp/releases/download/v0.71.0/frp_0.71.0_linux_amd64.tar.gz", Sha256 = digest, ArchiveFormat = "tar.gz" },
-        new FrpRuntimeRelease { Version = "v0.71.1", Rid = "linux-x64", Url = "https://github.com/fatedier/frp/releases/download/v0.71.1/frp_0.71.1_linux_amd64.tar.gz", Sha256 = digest, ArchiveFormat = "tar.gz" },
+        new FrpRuntimeRelease { Version = "v0.71.1", Rid = "linux-x64", Url = "https://github.com/fatedier/frp/releases/download/v0.71.1/frp_0.71.1_linux_amd64.tar.gz", Sha256 = secondDigest, ArchiveFormat = "tar.gz" },
     };
     var runtimeRoot = Path.Combine(root, "frp-runtime"); Directory.CreateDirectory(runtimeRoot);
     var env = new TestHostEnvironment(runtimeRoot);
-    var manager = new FrpRuntimeManager(env, new FixtureHttpClientFactory(archive), Options.Create(new FrpRuntimeOptions { Releases = releases }), new RelaxKonOS.Server.Privileged.ManagedRuntimeOperations(new CapturingPrivilegedTransport()));
+    var manager = new FrpRuntimeManager(env, new FixtureHttpClientFactory(archive, pinnedPayloads: new Dictionary<string, byte[]> { ["v0.71.0"] = archive, ["v0.71.1"] = secondArchive }), Options.Create(new FrpRuntimeOptions { Releases = releases }), new RelaxKonOS.Server.Privileged.ManagedRuntimeOperations(new CapturingPrivilegedTransport()), new TestRuntimeDownloadProxyProvider());
     var first = await manager.InstallManagedFrpcAsync("v0.71.0", new SilentInstallationProgress(), CancellationToken.None);
     TestAssert.Assert(first.Succeeded, "Verified FRP fixture did not install.");
     await VerifyFrpApplyLifecycleAsync(root, env, manager);
@@ -267,7 +269,7 @@ internal static async Task VerifyFrpRuntimeInstallAndRollbackAsync(string root)
     var badChecksumManager = new FrpRuntimeManager(new TestHostEnvironment(badChecksumRoot), new FixtureHttpClientFactory(archive), Options.Create(new FrpRuntimeOptions
     {
         Releases = [new FrpRuntimeRelease { Version = "v0.71.0", Rid = "linux-x64", Url = "https://github.com/fatedier/frp/releases/download/v0.71.0/frp_0.71.0_linux_amd64.tar.gz", Sha256 = new string('0', 64), ArchiveFormat = "tar.gz" }],
-    }), new RelaxKonOS.Server.Privileged.ManagedRuntimeOperations(new CapturingPrivilegedTransport()));
+    }), new RelaxKonOS.Server.Privileged.ManagedRuntimeOperations(new CapturingPrivilegedTransport()), new TestRuntimeDownloadProxyProvider());
     var badChecksum = await badChecksumManager.InstallManagedFrpcAsync("v0.71.0", new SilentInstallationProgress(), CancellationToken.None);
     TestAssert.Assert(!badChecksum.Succeeded && badChecksum.ProblemCode == "tunnel.runtime_checksum_failed", "Wrong checksum was accepted.");
     TestAssert.Assert((await badChecksumManager.GetManagedFrpcStatusAsync(CancellationToken.None)).State == TunnelRuntimeState.NotInstalled, "Checksum failure changed the active runtime.");
@@ -278,21 +280,21 @@ internal static async Task VerifyFrpRuntimeInstallAndRollbackAsync(string root)
     var maliciousManager = new FrpRuntimeManager(new TestHostEnvironment(maliciousRoot), new FixtureHttpClientFactory(maliciousArchive), Options.Create(new FrpRuntimeOptions
     {
         Releases = [new FrpRuntimeRelease { Version = "v0.71.0", Rid = "linux-x64", Url = "https://github.com/fatedier/frp/releases/download/v0.71.0/frp_0.71.0_linux_amd64.tar.gz", Sha256 = maliciousDigest, ArchiveFormat = "tar.gz" }],
-    }), new RelaxKonOS.Server.Privileged.ManagedRuntimeOperations(new CapturingPrivilegedTransport()));
+    }), new RelaxKonOS.Server.Privileged.ManagedRuntimeOperations(new CapturingPrivilegedTransport()), new TestRuntimeDownloadProxyProvider());
     var malicious = await maliciousManager.InstallManagedFrpcAsync("v0.71.0", new SilentInstallationProgress(), CancellationToken.None);
     TestAssert.Assert(!malicious.Succeeded && malicious.ProblemCode == "tunnel.runtime_archive_unexpected_entry", "Unexpected archive content was accepted.");
     TestAssert.Assert((await maliciousManager.GetManagedFrpcStatusAsync(CancellationToken.None)).State == TunnelRuntimeState.NotInstalled, "Rejected archive changed the active runtime.");
 }
 
-internal static byte[] CreateFrpFixtureArchive()
+internal static byte[] CreateFrpFixtureArchive(string version = "0.71.0")
 {
     using var target = new MemoryStream();
     using (var gzip = new GZipStream(target, CompressionLevel.SmallestSize, leaveOpen: true))
     using (var writer = new TarWriter(gzip, leaveOpen: true))
     {
-        Write("frp/frpc", "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo frpc-fixture; exit 0; fi\nif [ \"$1\" = \"verify\" ]; then exit 0; fi\nif [ \"$1\" = \"-c\" ]; then echo 'login to server success'; sleep 30; fi\n");
-        Write("frp/frps", "#!/bin/sh\necho frps-fixture\n");
-        void Write(string name, string content) => writer.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, name) { DataStream = new MemoryStream(Encoding.UTF8.GetBytes(content)) });
+        Write("frp/frpc", "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo __VERSION__; exit 0; fi\nif [ \"$1\" = \"verify\" ]; then exit 0; fi\nif [ \"$1\" = \"-c\" ]; then echo 'login to server success'; sleep 30; fi\n");
+        Write("frp/frps", "#!/bin/sh\necho __VERSION__\n");
+        void Write(string name, string content) => writer.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, name) { DataStream = new MemoryStream(Encoding.UTF8.GetBytes(content.Replace("__VERSION__", version))) });
     }
     return target.ToArray();
 }

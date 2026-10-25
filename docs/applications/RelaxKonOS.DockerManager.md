@@ -1,4 +1,4 @@
-# RelaxKonOS DockerManager 设计
+﻿# RelaxKonOS DockerManager 设计
 
 > 内置 Docker 管理器。它管理 **RelaxKonOS.Server 所在宿主机** 的本地 Docker Engine；客户端只负责本地 UI 渲染，不直连 Docker socket、不保存 Docker 凭据，也不将守护进程 API 暴露到网络。
 >
@@ -322,3 +322,7 @@ Compose 操作轮询持久操作记录与诊断快照，阶段变化记入日志
 参考资料：
 - https://code.visualstudio.com/docs/editing/getting-started/userinterface
 - https://www.jetbrains.com/help/idea/using-services-tool-window.html
+
+### 组件中心只读状态（2026-10-25）
+
+组件中心通过既有 Docker 状态接口显示 API 可用性和实测版本，不推导系统包所有权，也不把 API 不可用显示成未安装。Windows 宿主上的 Linux 引擎仍使用宿主平台标记。组件安装迁入与版本事务仍未实现，跟踪见[组件实施进度](../platform/RelaxKonOS.ComponentCenter.Progress.md)。

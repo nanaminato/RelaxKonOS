@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media.Imaging;
@@ -121,10 +121,10 @@ internal static class ComponentCenterWorkspaceChecks
                 }
                 model.SelectedNode = nginxNode;
                 Dispatcher.UIThread.RunJobs();
-                Check(model.SelectedDefinition?.Integration == ComponentIntegration.Application
+                Check(model.SelectedDefinition?.Integration == ComponentIntegration.Installation
                     && model.SelectedHostSources.Count + model.SelectedOtherSources.Count == 3
-                    && model.SelectedHostSources.Concat(model.SelectedOtherSources).All(chip => !chip.Ready),
-                    "A package-managed component declares its planned sources without claiming an adapter in " + language);
+                    && model.SelectedHostSources.Concat(model.SelectedOtherSources).Count(chip => chip.Ready) == 2,
+                    "Linux package and Windows archive adapters are connected; undeclared publisher trust stays blocked in " + language);
                 Check(model.SelectedHostSources.Count + model.SelectedOtherSources.Count == 3
                     && model.SelectedOtherSources.All(chip => !chip.IsHostPlatform),
                     "Without a host platform answer every declared source is listed as another platform in " + language);
@@ -134,11 +134,12 @@ internal static class ComponentCenterWorkspaceChecks
                 ((DisplayOnlyRuntime)(object)mihomoClient).Runtime = "mihomo";
                 var primaryClient = DispatchProxy.Create<IRuntimeCatalogClient, DisplayOnlyRuntime>();
                 ((DisplayOnlyRuntime)(object)primaryClient).Active = true;
+                var packageLifecycle = new LayoutLifecycleClient();
                 using (var primaryRuntime = new ProxyServerRuntimeViewModel(primaryClient) { CanRead = true, CanManage = true })
                 using (var mihomoRuntime = new ProxyServerRuntimeViewModel(mihomoClient))
                 using (var multiModel = new ComponentCenterViewModel(primaryRuntime, new(), "https://host.example/", Guid.NewGuid(),
                     additionalRuntimes: new Dictionary<string, ProxyServerRuntimeViewModel> { ["mihomo"] = mihomoRuntime },
-                    hostObservers: [new LayoutHostObserver()], lifecycle: new LayoutLifecycleClient()))
+                    hostObservers: [new LayoutHostObserver()], lifecycle: packageLifecycle))
                 {
                     primaryRuntime.LoadAsync().GetAwaiter().GetResult();
                     multiModel.SelectedNode = multiModel.VisibleRoots.SelectMany(root => root.DescendantsAndSelf())
@@ -193,6 +194,31 @@ internal static class ComponentCenterWorkspaceChecks
                         Dispatcher.UIThread.RunJobs(); observationWindow.UpdateLayout();
                         bitmap.Render(observationWindow);
                         bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light") + "PackageFreeze.png"), new PngBitmapEncoderOptions());
+                    }
+                    packageLifecycle.Ready = true;
+                    multiModel.AttachPackageInstallation("nginx", new(null!, null!, InstallationServiceId.Nginx,
+                        "layout", () => Task.CompletedTask, () => Task.FromResult<string?>(null)));
+                    multiModel.ResolvePackageCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+                    Check(multiModel.CanInstallPackage, "A frozen allowed package exposes explicit installation only after task integration");
+                    Dispatcher.UIThread.RunJobs(); observationWindow.UpdateLayout();
+                    using (var bitmap = new RenderTargetBitmap(new PixelSize(1060, 800)))
+                    {
+                        bitmap.Render(observationWindow);
+                        bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light-") + "PackageInstall.png"));
+                    }
+                    multiModel.PackageInstallation!.Operation = new(Guid.NewGuid(), InstallationServiceId.Nginx,
+                        InstallationOperationKind.Install, InstallationOperationState.Running, InstallationStage.Installing,
+                        null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, false);
+                    Check(!multiModel.CanInstallPackage && !multiModel.CanResolvePackage,
+                        "An active package operation blocks another freeze and install");
+                    multiModel.PackageInstallation.Operation = multiModel.PackageInstallation.Operation with {
+                        State = InstallationOperationState.Interrupted, Stage = InstallationStage.Interrupted,
+                        ProblemCode = "installation.interrupted", CompletedAt = DateTimeOffset.UtcNow };
+                    Dispatcher.UIThread.RunJobs(); observationWindow.UpdateLayout();
+                    using (var bitmap = new RenderTargetBitmap(new PixelSize(1060, 800)))
+                    {
+                        bitmap.Render(observationWindow);
+                        bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light-") + "PackageInterrupted.png"));
                     }
                     observationWindow.Close(); Dispatcher.UIThread.RunJobs();
                 }
@@ -442,10 +468,11 @@ internal sealed class LayoutHostObserver : IComponentHostObserver
 /// </summary>
 internal sealed class LayoutLifecycleClient : IComponentLifecycleClient
 {
+    public bool Ready { get; set; }
     private static readonly RelaxKonOS.Protocol.ManagedRuntimes.ComponentPackageTarget Package = new("nginx",
         "1.26.3-3+deb13u1", "amd64", "http://deb.debian.org/debian|trixie|main|amd64", "http://deb.debian.org/debian",
         "trixie", "main", "http://deb.debian.org/debian/pool/main/n/nginx/nginx_1.26.3-3+deb13u1_amd64.deb",
-        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", 540432, ["nginx-common_1.26.3-3+deb13u1_all.deb"]);
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", 540432, [new("nginx-common_1.26.3-3+deb13u1_all.deb", "http://deb.debian.org/debian/pool/main/n/nginx/nginx-common_1.26.3-3+deb13u1_all.deb", 102400, "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210")]);
 
     public Task<RelaxKonOS.Protocol.ManagedRuntimes.ComponentStateView> StateAsync(string componentId, CancellationToken ct) =>
         Task.FromResult(new RelaxKonOS.Protocol.ManagedRuntimes.ComponentStateView(componentId,
@@ -457,11 +484,11 @@ internal sealed class LayoutLifecycleClient : IComponentLifecycleClient
             [new RelaxKonOS.Protocol.ManagedRuntimes.ComponentModeSupport(
                 RelaxKonOS.Protocol.ManagedRuntimes.ComponentSourceMode.SystemPackage, "linux", true, null)], []));
 
-    public Task<RelaxKonOS.Protocol.ManagedRuntimes.ComponentPlanResult> PlanAsync(
+    public async Task<RelaxKonOS.Protocol.ManagedRuntimes.ComponentPlanResult> PlanAsync(
         RelaxKonOS.Protocol.ManagedRuntimes.ComponentPlanRequest request, CancellationToken ct) =>
-        Task.FromResult(new RelaxKonOS.Protocol.ManagedRuntimes.ComponentPlanResult(request, null,
+        new(request, (await StateAsync(request.ComponentId, ct)).State,
             RelaxKonOS.Protocol.ManagedRuntimes.ComponentFrozenTarget.FromPackage(Package),
-            [RelaxKonOS.Protocol.ManagedRuntimes.ComponentProblemCodes.ExecutionUnavailable], []));
+            Ready ? [] : [RelaxKonOS.Protocol.ManagedRuntimes.ComponentProblemCodes.ExecutionUnavailable], []);
 }
 
 internal sealed class InspectionPreview : ITaskPlanPreviewClient{    public Task<TaskPlan> PlanChangeAsync(TaskPlanIntent intent, string expectedHost, CancellationToken ct) => throw new NotSupportedException();

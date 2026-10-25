@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Formats.Tar;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
@@ -37,6 +37,12 @@ internal static class LinuxFrpServiceManager
         if (!WindowsRuntimeConfigurationWriter.IsValidRequest(request)) return new(false, ProblemCode: PrivilegedProblemCode.InvalidRequest);
         try
         {
+            var lockDirectory = Path.GetDirectoryName(Root)!; EnsurePlain(lockDirectory);
+            Directory.CreateDirectory(lockDirectory);
+            if ((File.GetUnixFileMode(lockDirectory) & (UnixFileMode.GroupWrite | UnixFileMode.OtherWrite)) != 0) throw new UnauthorizedAccessException();
+            var lockPath = Path.Combine(lockDirectory, "frp.lock"); EnsurePlain(lockPath);
+            using var lifecycleGate = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            File.SetUnixFileMode(lockPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
             if (request.Action == ManagedRuntimeAction.Install) { await InstallAsync(request); return new(true); }
             if (request.Action == ManagedRuntimeAction.Uninstall) { await RemoveAsync(); return new(true); }
             var key = Key(request);
@@ -105,10 +111,16 @@ internal static class LinuxFrpServiceManager
     {
         if (request.Version != Version) throw new ArgumentException("Unconfigured FRP release.");
         var architecture = RuntimeInformation.ProcessArchitecture switch { Architecture.X64 => "amd64", Architecture.Arm64 => "arm64", _ => throw new InvalidOperationException() };
-        var hash = architecture == "amd64" ? "84f27e39f11169f7adcef8e8b70c9329de17747b1f14dad9fb95eef5682ea716" : "f33c293c275d8fc68c654b6fba8f10b2551d6463d09a9fc9cffb7227eae82266";
+        var hash = RelaxKonOS.ManagedRuntimes.ComponentPackages.PinnedArchives.LinuxFrp(architecture == "arm64").Sha256;
         var destination = Path.Combine(Root, "versions", Version);
         EnsurePlain(destination);
-        if (File.Exists(Path.Combine(destination, ".verified-package")) && await File.ReadAllTextAsync(Path.Combine(destination, ".verified-package")) == hash) return;
+        if (Directory.Exists(destination))
+        {
+            if (File.Exists(Path.Combine(destination, ".verified-package"))
+                && await File.ReadAllTextAsync(Path.Combine(destination, ".verified-package")) == hash
+                && await VerifyVersionFilesAsync(destination)) return;
+            throw new UnauthorizedAccessException("FRP immutable release drift requires recovery.");
+        }
         if (!File.ReadLines("/etc/passwd").Any(line => line.StartsWith(Account + ":", StringComparison.Ordinal)))
             await RunAsync("/usr/sbin/useradd", ["--system", "--user-group", "--home-dir", Root, "--shell", "/usr/sbin/nologin", Account]);
         var account = File.ReadLines("/etc/passwd").Single(line => line.StartsWith(Account + ":", StringComparison.Ordinal)).Split(':');
@@ -139,6 +151,7 @@ internal static class LinuxFrpServiceManager
             var buffer = new byte[81920]; long total = 0;
             for (int read; (read = await input.ReadAsync(buffer)) != 0;) { if ((total += read) > 128L * 1024 * 1024) throw new IOException(); await output.WriteAsync(buffer.AsMemory(0, read)); }
         }
+        var stage = destination + ".preparing-" + Guid.NewGuid().ToString("N");
         try
         {
             await using var input = File.OpenRead(archive);
@@ -146,20 +159,59 @@ internal static class LinuxFrpServiceManager
             input.Position = 0;
             using var gzip = new GZipStream(input, CompressionMode.Decompress);
             using var tar = new TarReader(gzip);
-            Directory.CreateDirectory(destination);
+            Directory.CreateDirectory(stage);
+            var found = new HashSet<string>(StringComparer.Ordinal);
             for (TarEntry? entry; (entry = tar.GetNextEntry()) is not null;)
             {
                 if (entry.Name != $"frp_{Version[1..]}_linux_{architecture}/frpc" && entry.Name != $"frp_{Version[1..]}_linux_{architecture}/frps") continue;
-                if (entry.EntryType is not (TarEntryType.RegularFile or TarEntryType.V7RegularFile) || entry.DataStream is null || entry.Length > 128L * 1024 * 1024) throw new IOException();
-                var path = Path.Combine(destination, Path.GetFileName(entry.Name));
-                EnsurePlain(path);
-                await using (var output = File.Create(path)) await entry.DataStream.CopyToAsync(output);
+                var name = Path.GetFileName(entry.Name);
+                if (!found.Add(name) || entry.EntryType is not (TarEntryType.RegularFile or TarEntryType.V7RegularFile)
+                    || entry.DataStream is null || entry.Length is <= 0 or > 128L * 1024 * 1024) throw new IOException();
+                var path = Path.Combine(stage, name); EnsurePlain(path);
+                await using (var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                { await entry.DataStream.CopyToAsync(output); output.Flush(true); }
                 File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
             }
-            if (!File.Exists(Path.Combine(destination, "frpc")) || !File.Exists(Path.Combine(destination, "frps"))) throw new IOException();
-            await File.WriteAllTextAsync(Path.Combine(destination, ".verified-package"), hash);
+            if (found.Count != 2) throw new IOException();
+            var hashes = new Dictionary<string, string>();
+            foreach (var binary in new[] { "frpc", "frps" })
+            {
+                var path = Path.Combine(stage, binary);
+                if ((await RunAsync(path, ["--version"])).Trim() != Version[1..]) throw new IOException("FRP native version mismatch.");
+                await using var stream = File.OpenRead(path);
+                hashes[binary] = Convert.ToHexString(await SHA256.HashDataAsync(stream));
+            }
+            await WriteDurableRootMetadataAsync(Path.Combine(stage, ".helper-integrity.json"), JsonSerializer.Serialize(hashes));
+            await WriteDurableRootMetadataAsync(Path.Combine(stage, ".verified-package"), hash);
+            Directory.Move(stage, destination);
         }
-        finally { if (File.Exists(archive)) File.Delete(archive); }
+        finally
+        {
+            if (File.Exists(archive)) File.Delete(archive);
+            if (Directory.Exists(stage)) Directory.Delete(stage, true);
+        }
+    }
+    private static async Task WriteDurableRootMetadataAsync(string path, string content)
+    {
+        EnsurePlain(path);
+        await using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        await stream.WriteAsync(Encoding.UTF8.GetBytes(content)); stream.Flush(true);
+        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+    }
+    private static async Task<bool> VerifyVersionFilesAsync(string directory)
+    {
+        var manifest = Path.Combine(directory, ".helper-integrity.json"); EnsurePlain(manifest);
+        if (!File.Exists(manifest) || new FileInfo(manifest).Length > 4096) return false;
+        var hashes = JsonSerializer.Deserialize<Dictionary<string, string>>(await File.ReadAllBytesAsync(manifest));
+        if (hashes is null || hashes.Count != 2) return false;
+        foreach (var binary in new[] { "frpc", "frps" })
+        {
+            var path = Path.Combine(directory, binary); EnsurePlain(path);
+            if (!File.Exists(path) || !hashes.TryGetValue(binary, out var expected) || expected.Length != 64) return false;
+            await using var stream = File.OpenRead(path);
+            if (!Convert.ToHexString(await SHA256.HashDataAsync(stream)).Equals(expected, StringComparison.Ordinal)) return false;
+        }
+        return true;
     }
     private static async Task<ManagedProcessSnapshot> SnapshotAsync(string key, Instance instance)
     {

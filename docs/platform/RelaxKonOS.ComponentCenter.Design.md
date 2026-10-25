@@ -1,4 +1,6 @@
-# RelaxKonOS 组件中心设计
+﻿# RelaxKonOS 组件中心设计
+
+> 当前逐组件实施状态与 Nginx 平台边界见[组件中心实施进度](RelaxKonOS.ComponentCenter.Progress.md)；下文历史切片的验收范围保持原记录。
 
 > 状态：桌面端首批接入实施中；目录已扩到全部已声明的宿主组件（sing-box 全流程、mihomo 运行时页面、其余仅目录与来源声明），完整 CC 验收尚未完成。
 > 更新：2026-10-25。
@@ -460,3 +462,15 @@ nginx 在 Windows 声明的仍是受管归档，本构建没有对应适配器�
 边界：本切片只做到「按组件通用的计划路由 + 一个真实的系统包来源冻结」。**没有**实现 Debian 包安装事务（依赖解析后的落盘校验、失败回滚、`nginx.service` 生命周期归谁），也**没有**实现 nginx 的 Windows 受管归档分支。TaskPlan 批量层（审批/执行/对账）仍只对 sing-box 生成动作，nginx 尚不能进入任务台账。
 
 已知遗留：`RelaxKonOS.Server.Tests` 在当前 HEAD 无法编译——`NetworkProxyTunnelChecks.cs` 仍调用 MR-03 台账切换时已删除的 `MihomoRuntimeManager.InstallManagedAsync`（7 处）。该断点与本切片无关，`--components-only` 因此通过临时工程引用同一份检查源码运行；修复方式是把这些过时的固定清单安装检查删除或改写为台账路径。
+
+### mihomo 组件通用接口（2026-10-25）
+
+mihomo 新增通用组件状态/计划适配，复用发布感知领域服务；与 sing-box 共用归档准入与运行时身份核对。直接组件执行保持拒绝，安装、卸载和配置仍由领域发布协调器拥有；尚未接入批量 TaskPlan。实现与验证范围见[组件实施进度](RelaxKonOS.ComponentCenter.Progress.md)。
+
+### Squid、frpc 与 frps 只读接入（2026-10-25）
+
+目录中的 frp 已拆为独立 frpc/frps，不保留旧组件别名；各自由领域 GET 观测，frps 版本与程序所有权仍未知。Squid 保留领域安装/服务/待恢复状态，不将配置管理等同于包所有权。包冻结面板仅向已接入的 nginx 开放；新观测不改变批量接入或启动门槛。验证与后续事务缺口见[组件实施进度](RelaxKonOS.ComponentCenter.Progress.md)。
+
+### nginx 冻结安装接入台账（2026-10-25）
+
+Linux nginx 首次冻结安装从组件中心经产品提权进入统一安装台账，提供原键幂等提交、资源排他、阶段进度与重开观察。无台账 component execute 路由已删除；重启时不以当前健康推导原任务成功，返回中断待核对。Windows、包补偿及逐依赖制品证明尚未完成，详见[实施范围与验证](RelaxKonOS.ComponentCenter.Progress.md)。

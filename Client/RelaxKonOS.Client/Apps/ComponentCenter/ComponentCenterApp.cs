@@ -1,4 +1,4 @@
-using Size = RelaxKonOS.Core.Primitives.Size;
+﻿using Size = RelaxKonOS.Core.Primitives.Size;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Client.Apps.FileServices.Views;
@@ -34,7 +34,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
         _model.Notice = LocalizedStatus.Key("component_center.located");
     }
     public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.component-center"), "Component Center", "1.0.0", "⇄", "Managed host components",
-        [AppPermissions.ServerProxyRead, AppPermissions.ServerProxyManage],
+        [AppPermissions.ServerComponentsRead, AppPermissions.ServerComponentsManage],
         InstancePolicy: ApplicationInstancePolicy.SingleWindow,
         IconPath: "avares://RelaxKonOS.Client/Assets/AppIcons/proxy-server.png");
 
@@ -58,7 +58,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             (ITaskExecutionClient?)context.Services.GetService(typeof(ITaskExecutionClient)),
             (ComponentTaskReferenceStore?)context.Services.GetService(typeof(ComponentTaskReferenceStore)),
             additionalRuntimes,
-            context.Services.GetService(typeof(IComponentHostObserver)) is IComponentHostObserver observer ? [observer] : null,
+            (context.Services.GetService(typeof(IEnumerable<IComponentHostObserver>)) as IEnumerable<IComponentHostObserver>)?.ToArray(),
             context.Services.GetService(typeof(IComponentLifecycleClient)) as IComponentLifecycleClient);
         model.ConnectionAvailable = true;
         _model = model;
@@ -88,6 +88,44 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                 dialog => new FileServicesPasswordDialogView(dialog, LocalizedText.Get("installation.elevation_message")),
                 new Size(460, 230));
         }
+        if (context.Services.GetService(typeof(RelaxKonOS.Client.Services.Installation.InstallationClient))
+                is RelaxKonOS.Client.Services.Installation.InstallationClient installationClient
+            && context.Services.GetService(typeof(RelaxKonOS.Client.Services.AppSettings.IAppSettingsClient))
+                is RelaxKonOS.Client.Services.AppSettings.IAppSettingsClient settings)
+        {
+            foreach (var (componentId, serviceId) in new[] {
+                ("nginx", RelaxKonOS.Protocol.Installations.InstallationServiceId.Nginx),
+                ("squid", RelaxKonOS.Protocol.Installations.InstallationServiceId.Squid),
+                ("samba", RelaxKonOS.Protocol.Installations.InstallationServiceId.Smb),
+                ("docker", RelaxKonOS.Protocol.Installations.InstallationServiceId.Docker),
+                ("frpc", RelaxKonOS.Protocol.Installations.InstallationServiceId.Frp),
+                ("frps", RelaxKonOS.Protocol.Installations.InstallationServiceId.Frp) })
+            {
+                var task = new RelaxKonOS.Client.Services.Installation.InstallationTaskViewModel(installationClient, settings,
+                    serviceId, "relaxkonos.component-center", () => model.RefreshPackageInstallationAsync(componentId),
+                    () => ShowOwnedAsync<string?>(LocalizedText.Get("installation.elevation_title"),
+                        dialog => new FileServicesPasswordDialogView(dialog, LocalizedText.Get("installation.elevation_message")),
+                        new Size(460, 230)), "installation." + componentId);
+                model.AttachPackageInstallation(componentId, task);
+                _ = task.RestoreAsync(); // Observe only, including after a window is reopened.
+            }
+            model.ConfirmPackageInstallAsync = freeze =>
+            {
+                var package = freeze.Target!.Package;
+                var pin = freeze.Target.Pin;
+                var dependencies = package is not null ? string.Join("\n", package.AlsoInstalls.Select(item =>
+                    $"{item.FileName} · {item.Bytes} B · SHA-256 {item.Sha256}")) : string.Join(", ", pin!.AffectedComponents);
+                return ConfirmAsync(LocalizedText.Get("component_center.package.install"),
+                    LocalizedStatus.Format("component_center.package.install_confirm", freeze.State!.HostId,
+                        package?.Version ?? pin!.Version, package?.RepositoryId ?? pin!.SourceUri,
+                        package?.Sha256 ?? pin!.Sha256, dependencies, freeze.Request!.ComponentId).Resolve());
+            };
+        }
+        model.ConfirmPackageRecoveryAsync = (component, operation, action) => ConfirmAsync(
+            LocalizedText.Get("component_center.package.recovery." + action),
+            LocalizedStatus.Format(action == RelaxKonOS.Protocol.ManagedRuntimes.ComponentRecoveryAction.RefreshSources
+                ? "component_center.package.refresh_confirm" : "component_center.package.recovery_confirm", component, operation,
+                LocalizedText.Get("component_center.package.recovery." + action)).Resolve());
         model.ConfirmTaskAsync = async plan => await ShowOwnedAsync<bool>(LocalizedText.Get("component_center.task_confirm_title"),
             dialog => new TaskPlanConfirmationView(dialog, plan), new Size(720, 600)) == true;
         model.TaskCredentialsAsync = () => ShowOwnedAsync<RelaxKonOS.Client.Apps.FileServices.HostAdministratorCredentials?>(
@@ -111,7 +149,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
         // Closing the UI must not cancel a host transaction already accepted by the ledger.
         var login = session.CurrentSession;
         var access = new ComponentCenterAccess(session, context.Permissions, runtime,
-            () => session.CurrentServer?.Capabilities.Contains(ServerCapabilities.ProxyServer) == true,
+            () => session.CurrentServer?.Capabilities.Contains(ServerCapabilities.Components) == true,
             connected => model.ConnectionAvailable = connected,
             mihomo is null ? null : [mihomo]);
         runtime.RefreshAccess = access.Synchronize;
@@ -157,13 +195,13 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
         _ = InitializeAsync();
         async Task InitializeAsync()
         {
-            if (session.CurrentServer?.Capabilities.Contains(ServerCapabilities.ProxyServer) != true)
+            if (session.CurrentServer?.Capabilities.Contains(ServerCapabilities.Components) != true)
             {
                 runtime.OutcomeText = LocalizedStatus.Key("proxy_server.problem.platform_unsupported");
                 if (mihomo is not null) mihomo.OutcomeText = runtime.OutcomeText;
                 return;
             }
-            if (!await PermissionAsync(AppPermissions.ServerProxyRead))
+            if (!await PermissionAsync(AppPermissions.ServerComponentsRead))
             {
                 runtime.OutcomeText = LocalizedStatus.Key("proxy_server.permission_denied");
                 if (mihomo is not null) mihomo.OutcomeText = runtime.OutcomeText;
@@ -171,7 +209,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             }
             runtime.CanRead = true;
             runtime.CanManage = session.AssignedRole == RelaxKonOS.Protocol.Workspace.DeviceRole.Controller
-                && await PermissionAsync(AppPermissions.ServerProxyManage);
+                && await PermissionAsync(AppPermissions.ServerComponentsManage);
             access.Synchronize();
             await runtime.EnsureLoadedAsync();
             if (mihomo is { CanRead: true }) await mihomo.EnsureLoadedAsync();

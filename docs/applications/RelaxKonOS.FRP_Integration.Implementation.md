@@ -1,4 +1,4 @@
-# RelaxKonOS FRP 集成——当前实现边界
+﻿# RelaxKonOS FRP 集成——当前实现边界
 
 本文记录根据 FRP 集成 Goal 落地的代码级 V1 边界；它不改变 Goal 文档中的架构或安全约束。
 
@@ -58,3 +58,7 @@ Windows FRPS/FRPC 使用独立 SCM 服务，Linux 使用独立 systemd unit，�
 缺失/外部修改的服务配置拒绝覆盖，Running 仍不证明公网连通。详见 [独立服务进度](../services/RelaxKonOS.IndependentComponentServices.Progress.md)。
 
 `--frps-only` 使用隔离 SQLite/Data Protection 和独立服务传输替身，覆盖保存/应用版本、Server 退出后实例保留、重新创建管理器后的状态/版本恢复、显式停止、秘密审计及占用拒绝。`--independent-component-services-only` 检查实例命名隔离、路径边界和结构化应用证明。真实 SCM/systemd、FRP 协议与重启验收仍需要隔离主机。
+
+### 组件中心只读接入（2026-10-25）
+
+组件中心将 frpc 与 frps 分为独立目录项；frpc 读取程序探测，frps 只读服务状态，不能用 frpc 版本或保存配置代替 frps 程序安装证明。 可信版本与安装事务尚未迁入，详见[组件实施进度](../platform/RelaxKonOS.ComponentCenter.Progress.md)。

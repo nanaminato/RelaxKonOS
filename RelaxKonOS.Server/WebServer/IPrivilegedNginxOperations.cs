@@ -1,4 +1,4 @@
-using RelaxKonOS.Protocol.Privileged;
+﻿using RelaxKonOS.Protocol.Privileged;
 
 namespace RelaxKonOS.Server.WebServer;
 
@@ -36,12 +36,13 @@ public sealed class PrivilegedNginxOperations(RelaxKonOS.Server.Privileged.IPriv
         ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NginxPackageInstall, PackageVersion: version), cancellationToken);
     public Task<PrivilegedOperationResult> InstallFrozenPackageAsync(RelaxKonOS.Protocol.ManagedRuntimes.ComponentPackageTarget expectation,
         CancellationToken cancellationToken = default) =>
-        ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NginxPackageInstallFrozen,
+        ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.ComponentPackageInstall,
+            ComponentId: "nginx", OperationId: RelaxKonOS.Server.Installations.InstallationExecutionContext.Progress.Value?.OperationId,
             PackageVersion: expectation.Version, PackageExpectation: expectation), cancellationToken);
     public Task<PrivilegedOperationResult> UninstallPackageAsync(CancellationToken cancellationToken = default) =>
         ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NginxPackageUninstall), cancellationToken);
     public Task<PrivilegedOperationResult> QueryPackageAsync(CancellationToken cancellationToken = default) =>
-        ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NginxPackageQuery), cancellationToken);
+        ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.ComponentPackageQuery, ComponentId: "nginx"), cancellationToken);
     public Task<PrivilegedOperationResult> TestConfigurationAsync(CancellationToken cancellationToken = default) =>
         ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NginxConfigurationTest), cancellationToken);
     public Task<PrivilegedOperationResult> GetRuntimeStatusAsync(CancellationToken cancellationToken = default) =>

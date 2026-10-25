@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 
 namespace RelaxKonOS.Protocol.ManagedRuntimes;
 
@@ -11,7 +11,12 @@ public static class ComponentIds
     public const string SingBox = "sing-box";
     public const string Mihomo = "mihomo";
     public const string Nginx = "nginx";
-    public static bool Known(string? componentId) => componentId is SingBox or Mihomo or Nginx;
+    public const string Squid = "squid";
+    public const string Samba = "samba";
+    public const string Docker = "docker";
+    public const string Frpc = "frpc";
+    public const string Frps = "frps";
+    public static bool Known(string? componentId) => componentId is SingBox or Mihomo or Nginx or Squid or Samba or Docker or Frpc or Frps;
 }
 
 /// <summary>
@@ -29,18 +34,25 @@ public enum ComponentSourceMode { ManagedArchive, SystemPackage }
 /// <paramref name="AlsoInstalls"/> is the rest of the transaction's own resolution (dependencies
 /// that would be installed with it), so the plan can state its full effect instead of one name.
 /// </summary>
+public sealed record ComponentPackageArtifact(string FileName, string Uri, long Bytes, string Sha256);
+
 public sealed record ComponentPackageTarget(
     string PackageName, string Version, string Architecture,
     string RepositoryId, string BaseUri, string Suite, string Area,
-    string PoolUri, string Sha256, long Bytes, IReadOnlyList<string> AlsoInstalls);
+    string PoolUri, string Sha256, long Bytes, IReadOnlyList<ComponentPackageArtifact> AlsoInstalls);
 
 /// <summary>
 /// Exactly one member is populated, matching <paramref name="Mode"/>. A package freeze never
 /// carries an archive release and vice versa; callers must not treat the other member as optional
 /// detail.
 /// </summary>
-public sealed record ComponentFrozenTarget(ComponentSourceMode Mode, RuntimeRelease? Archive, ComponentPackageTarget? Package)
+public sealed record ComponentPinnedArchive(string ReleaseId, string Version, string Rid, string SourceUri,
+    string Sha256, string Format, long MaximumBytes, IReadOnlyList<string> AffectedComponents);
+
+public sealed record ComponentFrozenTarget(ComponentSourceMode Mode, RuntimeRelease? Archive, ComponentPackageTarget? Package,
+    ComponentPinnedArchive? Pin = null)
 {
+    public static ComponentFrozenTarget FromPin(ComponentPinnedArchive pin) => new(ComponentSourceMode.ManagedArchive, null, null, pin);
     public static ComponentFrozenTarget FromArchive(RuntimeRelease release) => new(ComponentSourceMode.ManagedArchive, release, null);
     public static ComponentFrozenTarget FromPackage(ComponentPackageTarget package) => new(ComponentSourceMode.SystemPackage, null, package);
 }
@@ -61,7 +73,8 @@ public sealed record ComponentState(string ComponentId, string HostId, long Revi
 /// "this build has no adapter yet".
 /// </summary>
 public sealed record ComponentStateView(string ComponentId, ComponentState? State,
-    IReadOnlyList<ComponentModeSupport> Modes, IReadOnlyList<string> Problems);
+    IReadOnlyList<ComponentModeSupport> Modes, IReadOnlyList<string> Problems,
+    IReadOnlyList<ComponentPinnedArchive>? PinnedArchives = null, long PinRevision = 0, Guid? CommittedOperationId = null, Guid? PendingOperationId = null);
 
 /// <summary>
 /// A request to freeze one change. Archive changes name a release and its catalog/trust revisions;
@@ -88,7 +101,9 @@ public sealed record ComponentPlanResult(ComponentPlanRequest? Request, Componen
 /// is what a fresh install would take; it is absent when the package has no installable candidate
 /// (only an installed version, or nothing at all).
 /// </summary>
-public sealed record ComponentPackageResolution(string PackageName, string? InstalledVersion, ComponentPackageTarget? Candidate);
+public sealed record ComponentPackageResolution(string PackageName, string? InstalledVersion, ComponentPackageTarget? Candidate,
+    bool Managed = false, bool RecoveryRequired = false, Guid? CommittedOperationId = null,
+    Guid? PendingOperationId = null, ComponentRecoveryReceipt? RecoveryReceipt = null, string? BlockingProblem = null);
 
 /// <summary>
 /// Asks the Host to carry out exactly the change it just froze. <paramref name="Expected"/> is what
@@ -127,10 +142,8 @@ public static class ComponentRoutes
     public const string Root = "/" + Common.RelaxKonOSEndpoints.ApiVersionPrefix + "/components";
     public const string StatePattern = Root + "/{componentId}/state";
     public const string PlanPattern = Root + "/{componentId}/plan";
-    public const string ExecutePattern = Root + "/{componentId}/execute";
     public static string State(string componentId) => Root + "/" + componentId + "/state";
     public static string Plan(string componentId) => Root + "/" + componentId + "/plan";
-    public static string Execute(string componentId) => Root + "/" + componentId + "/execute";
 }
 
 public static class ComponentProblemCodes
@@ -147,6 +160,7 @@ public static class ComponentProblemCodes
     public const string PackageAlreadyInstalled = "component.package_already_installed";
     public const string PackageAbsent = "component.package_absent";
     public const string PackageUnresolved = "component.package_unresolved";
+    public const string HostPolicyRequired = "component.host_policy_required";
     public const string PackageIndexUnavailable = "component.package_index_unavailable";
     public const string PackageVersionMismatch = "component.package_version_mismatch";
     public const string RequestInvalid = "component.request_invalid";
@@ -168,3 +182,11 @@ public static class ComponentProblemCodes
     /// <summary>Not a failure: a package transaction has no supported undo, and saying so is part of the result.</summary>
     public const string RollbackUnsupported = "component.rollback_unsupported";
 }
+
+public sealed record ComponentArchiveHostSnapshot(bool Installed, bool Managed, string? Version,
+    IReadOnlyList<ComponentPinnedArchive> Releases, Guid? CommittedOperationId, bool RecoveryRequired);
+
+[JsonConverter(typeof(JsonStringEnumConverter<ComponentRecoveryAction>))]
+public enum ComponentRecoveryAction { Stop, Close, RefreshSources }
+public sealed record ComponentRecoveryRequest(string ComponentId, Guid OperationId, ComponentRecoveryAction Action);
+public sealed record ComponentRecoveryReceipt(Guid OperationId, Guid TargetOperationId, ComponentRecoveryAction Action);

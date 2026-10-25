@@ -1,5 +1,6 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+﻿<UserControl xmlns="https://github.com/avaloniaui"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:mr="clr-namespace:RelaxKonOS.Protocol.ManagedRuntimes;assembly=RelaxKonOS.Protocol"
  xmlns:loc="using:RelaxKonOS.Client.Localization"
  xmlns:views="using:RelaxKonOS.Client.Apps.ProxyServer.Views"
  xmlns:vm="using:RelaxKonOS.Client.Apps.ComponentCenter"
@@ -276,6 +277,14 @@
        </Grid>
        <TextBlock Classes="section-hint" Text="{loc:Loc component_center.package.hint}" TextWrapping="Wrap" />
        <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsResolvingPackage}" />
+       <Button Content="{loc:Loc component_center.package.recovery.RefreshSources}" Command="{Binding RefreshPackageSourcesCommand}"
+               IsVisible="{Binding CanRefreshPackageSources}" />
+       <ComboBox ItemsSource="{Binding PinnedArchiveCandidates}" SelectedItem="{Binding SelectedPinnedArchive}"
+                 IsVisible="{Binding HasPinnedArchiveCandidates}" IsEnabled="{Binding CanResolvePackage}">
+        <ComboBox.ItemTemplate>
+         <DataTemplate x:DataType="mr:ComponentPinnedArchive"><TextBlock Text="{Binding Version}" /></DataTemplate>
+        </ComboBox.ItemTemplate>
+       </ComboBox>
        <TextBlock Text="{Binding PackageModeText}" FontSize="12" TextWrapping="Wrap" />
        <TextBlock Text="{Binding PackageInstalledText}" FontSize="12" />
        <StackPanel Spacing="5" IsVisible="{Binding HasPackageFreeze}">
@@ -286,6 +295,21 @@
                    Foreground="{DynamicResource TextTertiaryBrush}" />
         <TextBlock Text="{Binding PackageVerdictText}" FontSize="12" TextWrapping="Wrap"
                    Foreground="{DynamicResource WarningBrush}" />
+       </StackPanel>
+       <Button Content="{loc:Loc component_center.package.install}" Command="{Binding InstallPackageCommand}"
+               IsEnabled="{Binding CanInstallPackage}" IsVisible="{Binding CanInstallPackage}" />
+       <StackPanel Spacing="6" IsVisible="{Binding CanRecoverPackage}">
+        <TextBlock Text="{Binding PackageRecoveryText}" TextWrapping="Wrap" />
+        <WrapPanel>
+         <Button Content="{loc:Loc component_center.package.recovery.Stop}" Command="{Binding StopPackageRecoveryCommand}" />
+         <Button Content="{loc:Loc component_center.package.recovery.Close}" Command="{Binding ClosePackageRecoveryCommand}" />
+        </WrapPanel>
+       </StackPanel>
+       <StackPanel Spacing="6" IsVisible="{Binding PackageInstallation.HasMessage}">
+        <TextBlock Text="{Binding PackageInstallation.SummaryText}" TextWrapping="Wrap" />
+        <ProgressBar IsIndeterminate="{Binding PackageInstallation.IsIndeterminate}" Value="{Binding PackageInstallation.Progress}"
+                     IsVisible="{Binding PackageInstallation.IsActive}" />
+        <TextBlock Text="{Binding PackageInstallation.OperationLog}" TextWrapping="Wrap" FontSize="11" />
        </StackPanel>
        <TextBlock Text="{Binding PackageFreezeNotice}" TextWrapping="Wrap" FontSize="12"
                   Foreground="{DynamicResource TextTertiaryBrush}" />

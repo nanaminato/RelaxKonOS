@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.PrivilegedHelper;
@@ -51,6 +51,32 @@ public static partial class PrivilegedOperationExecutor
         if (request.Operation is PrivilegedOperationKind.ProxyServerStatus or PrivilegedOperationKind.ProxyServerAction or PrivilegedOperationKind.ProxyServerValidate or PrivilegedOperationKind.ProxyServerApply or PrivilegedOperationKind.ProxyServerGenerateKeys)
             return await SingBoxOperations.ExecuteAsync(request);
         if (request.ProxyServer is not null) return Fail(64, PrivilegedProblemCode.InvalidRequest, "ProxyServer fields require a dedicated operation");
+        if (request.Operation is PrivilegedOperationKind.ComponentPackageQuery or PrivilegedOperationKind.ComponentPackageInstall or PrivilegedOperationKind.ComponentPackageRecover)
+        {
+            var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
+                Correlation: request.Correlation, Version: request.Version,
+                ComponentId: request.Operation == PrivilegedOperationKind.ComponentPackageRecover ? null : request.ComponentId,
+                PackageExpectation: request.Operation == PrivilegedOperationKind.ComponentPackageInstall ? request.PackageExpectation : null,
+                PackageRecovery: request.Operation == PrivilegedOperationKind.ComponentPackageRecover ? request.PackageRecovery : null);
+            if (request != clean) return Fail(64, PrivilegedProblemCode.InvalidRequest, "unexpected package request fields");
+        }
+        if (request.Operation == PrivilegedOperationKind.FrpArchiveCatalog)
+        {
+            var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
+                Correlation: request.Correlation, Version: request.Version);
+            if (request != clean) return Fail(64, PrivilegedProblemCode.InvalidRequest, "unexpected FRP catalog fields");
+            var architecture = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture;
+            if (architecture is not (System.Runtime.InteropServices.Architecture.X64 or System.Runtime.InteropServices.Architecture.Arm64))
+                return Fail(64, PrivilegedProblemCode.UnsupportedOperation, "FRP platform unsupported");
+            var releases = OperatingSystem.IsWindows() && policy.WindowsRuntimes is { } windows
+                ? windows.FrpReleases.Where(pin => pin.Rid == WindowsManagedRuntimePolicy.Rid).ToArray()
+                : OperatingSystem.IsLinux() ? [RelaxKonOS.ManagedRuntimes.ComponentPackages.PinnedArchives.LinuxFrp(architecture == System.Runtime.InteropServices.Architecture.Arm64)] : [];
+            return new(true, PinnedArchives: releases.Select(pin => RelaxKonOS.ManagedRuntimes.ComponentPackages.PinnedArchives.Frp(pin)).ToArray());
+        }
+        if (request.Operation is PrivilegedOperationKind.NginxArchiveQuery or PrivilegedOperationKind.NginxArchiveInstall)
+            return OperatingSystem.IsWindows()
+                ? await WindowsManagedRuntimeHost.PinnedNginxAsync(request, policy.WindowsRuntimes)
+                : Fail(64, PrivilegedProblemCode.UnsupportedOperation, "nginx archive host unsupported");
         if (request.Operation is PrivilegedOperationKind.SquidStatus or PrivilegedOperationKind.SquidApplyConfiguration or PrivilegedOperationKind.SquidServiceAction or PrivilegedOperationKind.SquidValidateConfiguration or PrivilegedOperationKind.SquidAccountsRead or PrivilegedOperationKind.SquidAccountMutate)
             return await SquidOperations.ExecuteAsync(request);
         if (request.SquidConfiguration is not null || request.SquidServiceAction is not null || request.SquidAccount is not null)
@@ -230,9 +256,10 @@ public static partial class PrivilegedOperationExecutor
                 PrivilegedOperationKind.NativeServiceAction => await ApplyNativeServiceActionAsync(request.ServiceId, request.ServiceAction, policy.AllowedServiceIds),
                 PrivilegedOperationKind.NginxSystemServiceAction => await ApplyNginxSystemServiceActionAsync(request.NginxServiceAction),
                 PrivilegedOperationKind.NginxPackageInstall => await InstallNginxPackageAsync(request.PackageVersion),
-                PrivilegedOperationKind.NginxPackageInstallFrozen => await InstallFrozenNginxPackageAsync(request.PackageExpectation),
                 PrivilegedOperationKind.NginxPackageUninstall => await UninstallNginxPackageAsync(),
-                PrivilegedOperationKind.NginxPackageQuery => await QueryNginxPackageAsync(),
+                PrivilegedOperationKind.ComponentPackageQuery => await QueryComponentPackageAsync(request.ComponentId, request.OperationId),
+                PrivilegedOperationKind.ComponentPackageRecover => await RecoverComponentPackageAsync(request.PackageRecovery, request.OperationId),
+                PrivilegedOperationKind.ComponentPackageInstall => await InstallComponentPackageAsync(request.ComponentId, request.PackageExpectation, request.OperationId),
                 PrivilegedOperationKind.NginxConfigurationTest => await TestNginxConfigurationAsync(),
                 PrivilegedOperationKind.NginxRuntimeStatus => await GetNginxRuntimeStatusAsync(),
                 PrivilegedOperationKind.NginxWriteManagedFile => await WriteNginxManagedFileAsync(request.Path, request.ContentBase64),

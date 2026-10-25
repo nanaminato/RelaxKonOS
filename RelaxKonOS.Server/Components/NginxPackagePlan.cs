@@ -1,12 +1,11 @@
-using RelaxKonOS.ManagedRuntimes.ComponentPackages;
+﻿using RelaxKonOS.ManagedRuntimes.ComponentPackages;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 
 namespace RelaxKonOS.Server.Components;
 
 /// <summary>
 /// The Linux package decision, kept free of host access so it can be checked without a Linux host.
-/// It only ever describes a frozen candidate; whether a transaction can install it is a separate
-/// fact that this build answers with "no".
+/// It describes a frozen candidate; execution availability is supplied by the host adapter.
 /// </summary>
 public static class NginxPackagePlan
 {
@@ -19,8 +18,9 @@ public static class NginxPackagePlan
         var target = new RuntimeTarget("linux", hostArchitecture ?? "unknown", resolution.Candidate?.Suite, null,
             RuntimeInstallMode.SystemPackage, "systemd");
         return new(ComponentId, hostId, ComponentRevision.Of(resolution.InstalledVersion, resolution.Candidate?.Version,
-            resolution.Candidate?.Sha256, managed ? "managed" : "unmanaged"),
-            ownership, ComponentSourceMode.SystemPackage, target, resolution.InstalledVersion, RecoveryRequired: false);
+            resolution.Candidate?.Sha256, managed ? "managed" : "unmanaged",
+                resolution.RecoveryRequired.ToString(), resolution.CommittedOperationId?.ToString()),
+            ownership, ComponentSourceMode.SystemPackage, target, resolution.InstalledVersion, RecoveryRequired: resolution.RecoveryRequired);
     }
 
     /// <summary>
@@ -34,7 +34,7 @@ public static class NginxPackagePlan
         var problems = new List<string>();
         if (request.ExpectedRevision != state.Revision) problems.Add(ComponentProblemCodes.StateRevisionConflict);
         if (state.RecoveryRequired) problems.Add(ComponentProblemCodes.RecoveryRequired);
-        if (request.Change == RuntimeChange.Install && state.Ownership == RuntimeOwnership.Managed)
+        if (request.Change == RuntimeChange.Install && state.Ownership != RuntimeOwnership.Absent)
             problems.Add(ComponentProblemCodes.PackageAlreadyInstalled);
         if (request.Change != RuntimeChange.Install && state.Ownership == RuntimeOwnership.Absent)
             problems.Add(ComponentProblemCodes.PackageAbsent);
@@ -84,6 +84,8 @@ public static class NginxPackagePlan
     public static ComponentExecutionResult? PrecheckFrozen(ComponentExecuteRequest request, ComponentState state,
         ComponentPackageResolution resolution)
     {
+        if (!string.Equals(request.Request.HostId, state.HostId, StringComparison.Ordinal))
+            return Refuse([ComponentProblemCodes.RequestInvalid], state);
         var plan = Evaluate(request.Request, state, resolution, executionAvailable: true);
         if (!plan.Allowed) return Refuse([.. plan.Problems], state);
         var expected = request.Expected!.Package;

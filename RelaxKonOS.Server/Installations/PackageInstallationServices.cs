@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.FileServices;
@@ -62,14 +62,33 @@ public sealed class GitInstallationService(IPrivilegedOperationTransport transpo
         => Recovery((await git.GetEngineStatusAsync(ct)).IsAvailable);
 }
 
-public sealed class SmbInstallationService(IFileServiceManager manager) : InstallationService<SmbInstallationRequest>
+public sealed class SmbInstallationService(IFileServiceManager manager,
+    RelaxKonOS.Server.Components.ComponentLifecycleRegistry components, IPrivilegedOperationTransport helper) : InstallationService<SmbInstallationRequest>
 {
     public override InstallationServiceId Id => InstallationServiceId.Smb;
     public override IReadOnlyList<string> Resources => OperatingSystem.IsWindows()
         ? ["service:Smb", "windows:reboot"] : base.Resources;
+    protected override bool Supports(InstallationOperationKind kind) => kind is InstallationOperationKind.Install or InstallationOperationKind.Repair;
     protected override bool Confirmed(SmbInstallationRequest request) => request.Confirmed;
+    protected override void ValidateRequest(InstallationOperationKind kind, SmbInstallationRequest request, string key)
+    {
+        if (request.Recovery is { } recovery && request.FrozenPackage is null) ComponentPackageInstallations.ValidateRecovery("samba", kind, recovery);
+        else if (request.Recovery is null && request.FrozenPackage is { } frozen) ComponentPackageInstallations.Validate("samba", kind, frozen, key);
+        else if (request.Recovery is not null || kind != InstallationOperationKind.Install) throw new InstallationException(InstallationProblemCodes.InvalidRequest, 400);
+    }
     protected override async Task ExecuteAsync(InstallationOperationKind kind, SmbInstallationRequest options, string actor, IInstallationProgress progress, CancellationToken ct)
     {
+        if (options.Recovery is { } recovery)
+        {
+            await ComponentPackageInstallations.ExecuteRecoveryAsync(recovery, progress, helper, ct);
+            return;
+        }
+        if (options.FrozenPackage is { } frozen)
+        {
+            await ComponentPackageInstallations.ExecuteAsync(components, frozen, progress, ct);
+            Check(Healthy(await manager.GetStatusAsync(CancellationToken.None)), "smb.install_verification_failed");
+            return;
+        }
         Check((await manager.GetCapabilitiesAsync(ct)).InstallSupported, "smb.install_not_supported");
         await progress.ReportAsync(new(InstallationStage.Installing, Cancellable: false), ct);
         var result = await manager.InstallAsync(CancellationToken.None);
@@ -80,5 +99,5 @@ public sealed class SmbInstallationService(IFileServiceManager manager) : Instal
     private static bool Healthy(FileServiceStatusDto status) => status.State is FileServiceRuntimeState.Running or FileServiceRuntimeState.Stopped
         && string.IsNullOrEmpty(status.HealthProblemCode);
     public override async Task<InstallationRecovery> RecoverAsync(InstallationOperationDto operation, CancellationToken ct)
-        => Recovery(Healthy(await manager.GetStatusAsync(ct)));
+        => await ComponentPackageInstallations.RecoverAsync("samba", operation.OperationId, helper, ct, operation.Kind);
 }

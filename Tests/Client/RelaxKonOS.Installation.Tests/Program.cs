@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using System.Reflection;
 using Avalonia;
@@ -63,6 +63,22 @@ foreach (var suffix in new[] { "&execute=true", "&appId=relaxkonos.proxy-server"
 Check(!ComponentCenterNavigation.TryParse(new Uri("relaxkonos://components/sing-box?hostId=host&appId=relaxkonos.settings"), out _)
     && !ComponentCenterNavigation.TryParse(new Uri("relaxkonos://components/unknown?hostId=host&appId=relaxkonos.proxy-server"), out _),
     "Component links cannot nominate arbitrary applications or component IDs");
+var dockerObserved = DockerComponentObserver.FromStatus(new(true, "", "27.0.0", "linux", "amd64"), "windows");
+Check(dockerObserved.Found && dockerObserved.ComponentId == "docker" && dockerObserved.Version.Resolve() == "27.0.0",
+    "Docker observation reports only the responding engine version");
+Check(dockerObserved.Platform.Resolve() == LocalizedStatus.Key("component_center.platform.windows").Resolve(),
+    "Docker engine container OS cannot replace the connected host platform");
+var dockerUnavailable = DockerComponentObserver.FromStatus(new(false, "sensitive-diagnostic", "stale-version", "linux", "amd64"), null);
+Check(!dockerUnavailable.Found && dockerUnavailable.Version.Resolve() == "—"
+    && !dockerUnavailable.Note.Resolve().Contains("sensitive-diagnostic"),
+    "Unavailable Docker does not claim installation absence or reuse stale version and diagnostics");
+Check(await new DockerComponentObserver(null!).ObserveAsync("squid", "linux", default) is null,
+    "Docker observer never queries another component");
+await DomainComponentObservationChecks.RunAsync();
+if (args.Contains("--component-observers-only")) return;
+await PackageTransactionClientChecks.RunAsync(session, settings);
+await PackageTransactionClientChecks.RunAllComponentsAsync(session, settings);
+if (args.Contains("--package-transactions-only")) return;
 ComponentSelectionChecks.Run();
 ComponentDraftPersistenceChecks.Run();
 await RuntimeReattachmentChecks.RunAsync();

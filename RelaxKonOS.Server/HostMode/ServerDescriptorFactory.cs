@@ -1,4 +1,4 @@
-using RelaxKonOS.Protocol.Common;
+﻿using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Server.BackupRecovery;
 using RelaxKonOS.Server.EventAlerts;
 
@@ -24,6 +24,8 @@ public static class ServerDescriptorFactory
             ServerCapabilities.Terminal,
             ServerCapabilities.Git,
         };
+        if (serverMode.Supports(ServerHostFeature.PrivilegedOperations) && serverMode.Supports(ServerHostFeature.AgentInstallation))
+            capabilities.Add(ServerCapabilities.Components);
         if (!isWindows && serverMode.Supports(ServerHostFeature.Firewall)) capabilities.Add(ServerCapabilities.PosixPermissions);
         if (serverMode.Supports(ServerHostFeature.Firewall)) capabilities.Add(ServerCapabilities.Firewall);
 

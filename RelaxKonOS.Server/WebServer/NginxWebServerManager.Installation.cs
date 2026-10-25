@@ -1,4 +1,4 @@
-using RelaxKonOS.Protocol.Installations;
+﻿using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Server.Installations;
 using System.Diagnostics;
 using System.IO.Compression;
@@ -32,7 +32,9 @@ internal sealed partial class NginxWebServerManager
         try
         {
             return await InstallManagedCoreAsync(GetManagedLayout(),
-                new NginxManagedInstallRequest(true, expectation.Version), SilentProgress.Instance, cancellationToken, expectation);
+                new NginxManagedInstallRequest(true, expectation.Version),
+                InstallationExecutionContext.Progress.Value is { } progress ? new InstallationStageReporter(progress) : SilentProgress.Instance,
+                cancellationToken, expectation);
         }
         finally { ManagedInstallGate.Release(); }
     }

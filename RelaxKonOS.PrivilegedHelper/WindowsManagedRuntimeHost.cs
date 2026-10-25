@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Net;
@@ -16,7 +16,7 @@ namespace RelaxKonOS.PrivilegedHelper;
 
 /// <summary>Elevated runtime owner shared by the Windows service and console host. Never invokes UAC.</summary>
 [SupportedOSPlatform("windows")]
-internal static class WindowsManagedRuntimeHost
+internal static partial class WindowsManagedRuntimeHost
 {
     private const long MaximumArchiveBytes = 128L * 1024 * 1024;
     private const string IntegrityFile = ".helper-integrity.json";
@@ -97,7 +97,8 @@ internal static class WindowsManagedRuntimeHost
         return canonical;
     }
 
-    private static async Task<PrivilegedOperationResult> NginxAsync(ManagedRuntimeRequest request, WindowsManagedRuntimePolicy policy)
+    private static async Task<PrivilegedOperationResult> NginxAsync(ManagedRuntimeRequest request, WindowsManagedRuntimePolicy policy,
+        RelaxKonOS.Protocol.ManagedRuntimes.ComponentPinnedArchive? pin = null, Guid? operationId = null, RelaxKonOS.Protocol.ManagedRuntimes.RuntimeDownloadProxy? proxy = null)
     {
         if (request.ProfileId is not null || request.Client is not null || request.Server is not null) return Failure(PrivilegedProblemCode.InvalidRequest);
         var root = policy.NginxRoot;
@@ -112,7 +113,14 @@ internal static class WindowsManagedRuntimeHost
             try
             {
                 var archive = Path.Combine(staging, "official.zip");
-                await DownloadAsync($"https://nginx.org/download/nginx-{request.Version}.zip", archive);
+                if (pin is null) await DownloadAsync($"https://nginx.org/download/nginx-{request.Version}.zip", archive);
+                else
+                {
+                    await using var output = CreateProtectedFile(archive);
+                    await new RelaxKonOS.ManagedRuntimes.RuntimePinnedArchiveTransfer().CopyAsync(pin, output, proxy, CancellationToken.None);
+                }
+                if (pin is not null && (!Convert.ToHexString(await HashAsync(archive)).Equals(pin.Sha256, StringComparison.OrdinalIgnoreCase)
+                    || new FileInfo(archive).Length > pin.MaximumBytes)) return Failure(PrivilegedProblemCode.AccessDenied);
                 if (request.ArchivePath is not null)
                 {
                     var supplied = AllowedArchive(request.ArchivePath, policy);
@@ -126,6 +134,14 @@ internal static class WindowsManagedRuntimeHost
                 ProtectOwnedTree(package, policy);
                 await SaveIntegrityAsync(package, ["nginx.exe"]);
                 await File.WriteAllTextAsync(Path.Combine(package, ".relaxkonos-managed"), ManagedMarker);
+                if (pin is not null)
+                {
+                    if (operationId is null || !await VerifyPinnedNginxAsync(package, pin)) return Failure(PrivilegedProblemCode.InvalidRequest);
+                    var receipt = Path.Combine(package, ".helper-component-install.json");
+                    using var stream = CreateProtectedFile(receipt);
+                    JsonSerializer.Serialize(stream, new NginxArchiveReceipt(operationId.Value, pin));
+                    stream.Flush(true);
+                }
                 Directory.Move(package, root);
                 return new(true);
             }
@@ -175,7 +191,9 @@ internal static class WindowsManagedRuntimeHost
             ProtectDirectory(policy.PrivateRoot, policy);
             ProtectDirectory(releases, policy);
             var destination = Path.Combine(releases, pin.Version);
-            if (Directory.Exists(destination)) return await VerifyIntegrityAsync(destination, "frpc.exe") && await VerifyIntegrityAsync(destination, "frps.exe") ? new(true) : Failure(PrivilegedProblemCode.ResourceNotAllowed);
+            if (Directory.Exists(destination)) return await VerifyFrpArchiveIdentityAsync(destination, pin)
+                && await VerifyIntegrityAsync(destination, "frpc.exe") && await VerifyIntegrityAsync(destination, "frps.exe")
+                ? new(true) : Failure(PrivilegedProblemCode.ResourceNotAllowed);
             var stage = Path.Combine(releases, ".install-" + Guid.NewGuid().ToString("N"));
             ProtectDirectory(stage, policy);
             try
@@ -194,7 +212,10 @@ internal static class WindowsManagedRuntimeHost
                 ProtectDirectory(extracted, policy);
                 ExtractFrp(archive, extracted, policy);
                 ProtectOwnedTree(extracted, policy);
+                if (!await VerifyNativeFrpVersionAsync(extracted, "frpc.exe", pin.Version)
+                    || !await VerifyNativeFrpVersionAsync(extracted, "frps.exe", pin.Version)) return Failure(PrivilegedProblemCode.InvalidRequest);
                 await SaveIntegrityAsync(extracted, ["frpc.exe", "frps.exe"]);
+                await AtomicWriteAsync(Path.Combine(extracted, ".helper-archive.json"), JsonSerializer.SerializeToUtf8Bytes(pin));
                 Directory.Move(extracted, destination);
                 return new(true);
             }
@@ -219,6 +240,8 @@ internal static class WindowsManagedRuntimeHost
         if (!policy.FrpReleases.Any(x => x.Version == request.Version && x.Rid == WindowsManagedRuntimePolicy.Rid)) return Failure(PrivilegedProblemCode.ResourceNotAllowed);
         var release = Path.Combine(releases, request.Version!);
         var binary = request.Runtime == ManagedRuntime.Frpc ? "frpc.exe" : "frps.exe";
+        if (!await VerifyFrpArchiveIdentityAsync(release, policy.FrpReleases.Single(pin => pin.Version == request.Version && pin.Rid == WindowsManagedRuntimePolicy.Rid)))
+            return Failure(PrivilegedProblemCode.ResourceNotAllowed);
         if (!await VerifyIntegrityAsync(release, binary)) return Failure(PrivilegedProblemCode.ResourceNotAllowed);
         var config = request.Runtime == ManagedRuntime.Frpc
             ? WindowsRuntimeConfigurationWriter.Client(request.Client, request.Server)
@@ -245,6 +268,25 @@ internal static class WindowsManagedRuntimeHost
         WindowsManagedRuntimePolicy.RequireNoLinks(path);
         if (!File.Exists(path) || new FileInfo(path).Length > MaximumArchiveBytes) throw new UnauthorizedAccessException();
         return Path.GetFullPath(path);
+    }
+
+    private static async Task<bool> VerifyFrpArchiveIdentityAsync(string directory, WindowsFrpRelease expected)
+    {
+        var path = Path.Combine(directory, ".helper-archive.json");
+        WindowsManagedRuntimePolicy.RequireNoLinks(path);
+        if (!File.Exists(path) || new FileInfo(path).Length > 8192) return false;
+        RequireProtectedPath(path, directory: false);
+        return JsonSerializer.Deserialize<WindowsFrpRelease>(await File.ReadAllBytesAsync(path)) == expected;
+    }
+    private static async Task<bool> VerifyNativeFrpVersionAsync(string directory, string executable, string version)
+    {
+        using var process = new Process { StartInfo = StartInfo(Path.Combine(directory, executable), directory, ["--version"]) };
+        if (!process.Start()) return false;
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        var output = process.StandardOutput.ReadToEndAsync(deadline.Token);
+        var error = process.StandardError.BaseStream.CopyToAsync(Stream.Null, deadline.Token);
+        try { await process.WaitForExitAsync(deadline.Token); await error; return process.ExitCode == 0 && (await output).Trim() == version.TrimStart('v'); }
+        catch (OperationCanceledException) { if (!process.HasExited) process.Kill(true); return false; }
     }
 
     private static async Task DownloadAsync(string url, string destination)

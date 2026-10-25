@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.AppSDK;
@@ -34,7 +34,9 @@ internal static class ApplicationAvailabilityChecks
         var nginx = ComponentCatalog.Find("nginx")!;
         Check(nginx.Sources.Any(source => source.Platforms.Contains("linux") && source.Kind == ComponentSourceKind.SystemPackage)
             && nginx.Sources.Any(source => source.Platforms.Contains("windows") && source.Kind == ComponentSourceKind.ManagedArchive)
-            && nginx.Sources.All(source => !source.AdapterAvailable),
+            && nginx.Sources.Single(source => source.Kind == ComponentSourceKind.SystemPackage).AdapterAvailable
+            && nginx.Sources.Single(source => source.Kind == ComponentSourceKind.ManagedArchive).AdapterAvailable
+            && !nginx.Sources.Single(source => source.Kind == ComponentSourceKind.OfficialSource).AdapterAvailable,
             "A component with different platform implementations declares one source set per platform");
         var app = new AppId("relaxkonos.proxy-server");
         var target = new RuntimeTarget("linux", "x64", null, null, RuntimeInstallMode.Archive, "systemd");

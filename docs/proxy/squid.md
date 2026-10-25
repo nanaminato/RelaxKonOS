@@ -1,4 +1,4 @@
-# Squid HTTP 代理网关
+﻿# Squid HTTP 代理网关
 
 状态：已实现后端 API、Avalonia 内置应用与 Android 管理应用。桌面与 Android 支持通过 APT 安装和卸载 Squid，主机恢复由管理员操作；Ubuntu 26.04 / Squid 7.2 的包管理、配置、服务控制与 HTTP/CONNECT 已实机验证；Debian 等其他发行版及故障恢复场景仍需分别验收。
 
@@ -180,3 +180,7 @@ dotnet run --project RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no
 Helper 在 root-owned `/etc/squid/relaxkonos-users.json`（0600）保存随机独立 salt、100000 轮 SHA-512 crypt 哈希；NCSA 文件 `/etc/squid/relaxkonos.passwd` 只包含启用账号，以 root:proxy 0640 供发行版 `/usr/lib/squid/basic_ncsa_auth` 读取。使用 `credentialsttl 1 seconds`，账号变更后重载，凭据空闲缓存设为一秒。已有已建立 CONNECT 隧道不会被密码重置主动终止，后续新请求重新认证。哈希实现与发行版 NCSA helper 兼容，不增加 Apache 或第三方密码工具依赖。原生行为参考 [Squid NCSA 认证](https://wiki.squid-cache.org/ConfigExamples/Authenticate/Ncsa) 与 [认证参数](https://www.squid-cache.org/Doc/config/auth_param/)。
 
 账号文件与 NCSA 文件发布共用 Squid 排他锁，生成 root-only 哈希备份，先写恢复标记再原子替换；重载失败时恢复原文件并重新重载，恢复失败保留标记。账号事务标记明确要求同时恢复 `relaxkonos-users.json.previous` 和 `relaxkonos.passwd.previous`（原先不存在的文件应删除），检查权限及认证行为后再移除标记。不可按单一 squid.conf 配置事务盲目处理账号事务。卸载保留这些文件与备份。
+
+### 组件中心只读接入（2026-10-25）
+
+Squid 新增组件中心只读状态面板，显示领域安装/服务/待恢复事实；无程序版本，也不将配置受管当成包所有权。 可信版本与安装事务尚未迁入，详见[组件实施进度](../platform/RelaxKonOS.ComponentCenter.Progress.md)。

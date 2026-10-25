@@ -1,4 +1,4 @@
-# RelaxKonOS 内置代理管理器实现规范
+﻿# RelaxKonOS 内置代理管理器实现规范
 
 > 文档类型：应用设计与实现规范
 > 模块名称：RelaxKonOS Proxy Manager
@@ -4363,3 +4363,7 @@ Proxy Manager 仅在以下条件全部满足后才可标为 V1 完成：
 6. Server 逐操作授权、幂等长操作和无秘密审计均落实；AppPermissions 不作为最终授权。
 7. 没有通用 command executor、shell 拼接、公开 Controller、Defender/Firewall 绕过或业务层散布 OS 命令。
 8. Avalonia 应用采用既有 workspace、MVVM、typed repository、主题、本地化和 modal 模式，且 UI 真实呈现失败、恢复与权限状态。
+
+### mihomo 组件通用接口（2026-10-25）
+
+mihomo 新增通用组件状态/计划适配，复用发布感知领域服务；与 sing-box 共用归档准入与运行时身份核对。直接组件执行保持拒绝，安装、卸载和配置仍由领域发布协调器拥有；尚未接入批量 TaskPlan。实现与验证范围见[组件实施进度](../platform/RelaxKonOS.ComponentCenter.Progress.md)。

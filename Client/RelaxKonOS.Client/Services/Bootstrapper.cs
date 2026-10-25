@@ -1,4 +1,4 @@
-using RelaxKonOS.Client.Services.WorkspaceSettings;
+﻿using RelaxKonOS.Client.Services.WorkspaceSettings;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using RelaxKonOS.Client.Apps;
@@ -215,6 +215,12 @@ public static class Bootstrapper
         // 且 Linux（发行版包 + 系统服务）与 Windows（受管归档 + 自有服务）来源不同。
         services.AddTransient<RelaxKonOS.Client.Apps.ComponentCenter.IComponentHostObserver,
             RelaxKonOS.Client.Apps.ComponentCenter.WebServerComponentObserver>();
+        services.AddTransient<RelaxKonOS.Client.Apps.ComponentCenter.IComponentHostObserver,
+            RelaxKonOS.Client.Apps.ComponentCenter.DockerComponentObserver>();
+        services.AddTransient<RelaxKonOS.Client.Apps.ComponentCenter.IComponentHostObserver,
+            RelaxKonOS.Client.Apps.ComponentCenter.SquidComponentObserver>();
+        services.AddTransient<RelaxKonOS.Client.Apps.ComponentCenter.IComponentHostObserver,
+            RelaxKonOS.Client.Apps.ComponentCenter.TunnelComponentObserver>();
         services.AddHttpClient<RelaxKonOS.Client.Services.Privileged.IHostElevationBroker, RelaxKonOS.Client.Services.Privileged.HostElevationBroker>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "host-elevation"))
             .AddHttpMessageHandler<AcceptLanguageHandler>();

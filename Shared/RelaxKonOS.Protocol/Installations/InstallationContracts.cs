@@ -1,10 +1,10 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 using RelaxKonOS.Protocol.Common;
 
 namespace RelaxKonOS.Protocol.Installations;
 
 [JsonConverter(typeof(JsonStringEnumConverter<InstallationServiceId>))]
-public enum InstallationServiceId { Smb, Nginx, Frp, Mihomo, Docker, Git, SingBox }
+public enum InstallationServiceId { Smb, Nginx, Frp, Mihomo, Docker, Git, SingBox, Squid }
 [JsonConverter(typeof(JsonStringEnumConverter<InstallationOperationKind>))]
 public enum InstallationOperationKind { Install, Upgrade, Repair, Uninstall, Rollback }
 [JsonConverter(typeof(JsonStringEnumConverter<InstallationOperationState>))]
@@ -48,15 +48,18 @@ public static class InstallationApiRoutes
 
 // Reject unknown properties: none of these contracts can carry shell inputs or server paths.
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-public sealed record SmbInstallationRequest(bool Confirmed);
+public sealed record SmbInstallationRequest(bool Confirmed, ManagedRuntimes.ComponentExecuteRequest? FrozenPackage = null, ManagedRuntimes.ComponentRecoveryRequest? Recovery = null);
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record GitInstallationRequest(bool Confirmed);
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-public sealed record NginxInstallationRequest(bool Confirmed, string? Version = null, string? FileReferenceId = null);
+public sealed record NginxInstallationRequest(bool Confirmed, string? Version = null, string? FileReferenceId = null,
+    ManagedRuntimes.ComponentExecuteRequest? FrozenPackage = null, ManagedRuntimes.ComponentRecoveryRequest? Recovery = null);
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-public sealed record FrpInstallationRequest(bool Confirmed, string? Version = null, bool Rollback = false, string? FileReferenceId = null);
+public sealed record FrpInstallationRequest(bool Confirmed, string? Version = null, bool Rollback = false, string? FileReferenceId = null, ManagedRuntimes.ComponentExecuteRequest? FrozenArchive = null);
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-public sealed record DockerInstallationRequest(bool Confirmed);
+public sealed record DockerInstallationRequest(bool Confirmed, ManagedRuntimes.ComponentExecuteRequest? FrozenPackage = null, ManagedRuntimes.ComponentRecoveryRequest? Recovery = null);
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed record SquidInstallationRequest(bool Confirmed, ManagedRuntimes.ComponentExecuteRequest? FrozenPackage = null, ManagedRuntimes.ComponentRecoveryRequest? Recovery = null);
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record ManagedRuntimeInstallationRequest(bool Confirmed, ManagedRuntimes.RuntimeChangePlan Plan);
 

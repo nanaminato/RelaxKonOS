@@ -1,4 +1,4 @@
-using RelaxKonOS.Protocol.Installations;
+﻿using RelaxKonOS.Protocol.Installations;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
@@ -504,64 +504,6 @@ static Task<PrivilegedOperationResult> UninstallNginxPackageAsync() => !Operatin
 /// artifacts that transaction would fetch, so a caller can freeze that identity. No index update,
 /// no download, no install, and no source is added or changed.
 /// </summary>
-static async Task<PrivilegedOperationResult> QueryNginxPackageAsync()
-{
-    var (failure, resolution) = await ResolveNginxPackageAsync();
-    return failure ?? new(true, ComponentPackage: resolution);
-}
-
-/// <summary>The shared resolution: apt's own answer for the candidate and the artifacts it would fetch.</summary>
-static async Task<(PrivilegedOperationResult? Failure, RelaxKonOS.Protocol.ManagedRuntimes.ComponentPackageResolution? Resolution)> ResolveNginxPackageAsync()
-{
-    if (!OperatingSystem.IsLinux() || !File.Exists("/usr/bin/apt-get") || !File.Exists("/usr/bin/apt-cache"))
-        return (Fail(64, PrivilegedProblemCode.UnsupportedOperation, "nginx package query is unavailable"), null);
-    var package = RelaxKonOS.ManagedRuntimes.ComponentPackages.AptPackageResolution.PackageName;
-    var policyRun = await RunFixedCommandWithOutputAsync("/usr/bin/apt-cache", ["policy", package], "nginx package policy query failed");
-    if (!policyRun.Success) return (policyRun, null);
-    if (!RelaxKonOS.ManagedRuntimes.ComponentPackages.AptPackageResolution.TryParsePolicy(DecodeUtf8(policyRun.OutputBase64), package, out var policy)
-        || policy is null)
-        return (Fail(65, PrivilegedProblemCode.InternalError, "nginx package policy output was not understood"), null);
-    RelaxKonOS.Protocol.ManagedRuntimes.ComponentPackageTarget? candidate = null;
-    if (policy.CandidateVersion is { } version)
-    {
-        var plan = await RunFixedCommandWithOutputAsync("/usr/bin/apt-get",
-            ["install", "--print-uris", "--yes", "--no-install-recommends", package + "=" + version], "nginx package resolution failed");
-        if (plan.Success && RelaxKonOS.ManagedRuntimes.ComponentPackages.AptPackageResolution.TryParseUriPlan(
-                DecodeUtf8(plan.OutputBase64), package, version, out var main, out var others))
-            RelaxKonOS.ManagedRuntimes.ComponentPackages.AptPackageResolution.TryBuildTarget(policy, main, others, out candidate, out _);
-    }
-    return (null, new(package, policy.InstalledVersion, candidate));
-}
-
-/// <summary>
-/// Installs the frozen package identity and nothing else. The index is refreshed first, then the
-/// package is resolved again: if the version, publishing repository or digest moved, nothing is
-/// installed. Afterwards the installed version is measured, so a package manager that reported
-/// success for something else is a failure here. There is no rollback for a package transaction.
-/// </summary>
-static async Task<PrivilegedOperationResult> InstallFrozenNginxPackageAsync(RelaxKonOS.Protocol.ManagedRuntimes.ComponentPackageTarget? expected)
-{
-    if (!OperatingSystem.IsLinux() || !File.Exists("/usr/bin/apt-get") || !File.Exists("/usr/bin/apt-cache"))
-        return Fail(64, PrivilegedProblemCode.UnsupportedOperation, "nginx package operation is unavailable");
-    if (!RelaxKonOS.ManagedRuntimes.ComponentPackages.AptPackageResolution.IsUsableExpectation(expected))
-        return Fail(64, PrivilegedProblemCode.InvalidRequest, "the frozen package identity is unusable");
-    var update = await RunAptAsync(["update"], TimeSpan.FromMinutes(10), "nginx package update failed");
-    if (!update.Success) return update;
-    var (failure, resolution) = await ResolveNginxPackageAsync();
-    if (failure is not null) return failure;
-    if (resolution?.Candidate is not { } current
-        || !RelaxKonOS.ManagedRuntimes.ComponentPackages.AptPackageResolution.MatchesExpectation(expected, current))
-        return Fail(65, PrivilegedProblemCode.Conflict, "the host no longer resolves the frozen package");
-    var install = await RunAptAsync(["install", "--yes", "--no-install-recommends", "nginx=" + expected!.Version, "acl"],
-        TimeSpan.FromMinutes(10), "nginx package install failed");
-    if (!install.Success) return install;
-    var (verifyFailure, after) = await ResolveNginxPackageAsync();
-    if (verifyFailure is not null) return verifyFailure;
-    return string.Equals(after?.InstalledVersion, expected.Version, StringComparison.Ordinal)
-        ? new(true, ComponentPackage: after)
-        : Fail(66, PrivilegedProblemCode.InternalError, "the installed nginx version is not the frozen one");
-}
-
 static Task<PrivilegedOperationResult> TestNginxConfigurationAsync() => !OperatingSystem.IsLinux() || !File.Exists("/usr/sbin/nginx")
     ? Task.FromResult(Fail(64, PrivilegedProblemCode.UnsupportedOperation, "nginx configuration test is unavailable"))
     : RunFixedCommandWithOutputAsync("/usr/sbin/nginx", ["-t"], "nginx configuration test failed");

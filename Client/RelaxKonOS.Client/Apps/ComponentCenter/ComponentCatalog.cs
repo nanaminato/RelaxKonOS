@@ -1,4 +1,4 @@
-using RelaxKonOS.Client.Localization;
+﻿using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 
 namespace RelaxKonOS.Client.Apps.ComponentCenter;
@@ -16,7 +16,9 @@ public enum ComponentIntegration
     /// <summary>The domain runtime page is available, but no batch TaskPlan path exists yet (mihomo).</summary>
     Runtime,
     /// <summary>Installation still belongs to the owning application; the center only lists the intent.</summary>
-    Application
+    Application,
+    /// <summary>Platform package freeze and durable first-install worker; not a batch runtime.</summary>
+    Installation
 }
 
 /// <summary>Declared install provenance. A declaration is a plan, not a granted or verified source.</summary>
@@ -57,33 +59,36 @@ public static class ComponentCatalog
             ComponentIntegration.Runtime, "relaxkonos.proxy", [], [], [],
             ["relaxkonos.proxy"], [Windows, Linux],
             [new(ComponentSourceKind.ManagedArchive, true, [Windows, Linux])]),
-        new("frp", "frp", "network", "frpc / frps", "component_center.component.frp.description",
-            ComponentIntegration.Application, "relaxkonos.tunnels", [], [], [],
+        new("frpc", "frpc", "network", "frpc", "component_center.component.frpc.description",
+            ComponentIntegration.Installation, "relaxkonos.tunnels", [], [], [],
             ["relaxkonos.tunnels"], [Windows, Linux],
-            [new(ComponentSourceKind.ManagedArchive, false, [Windows, Linux]), new(ComponentSourceKind.OfficialSource, false, [Windows, Linux])]),
+            [new(ComponentSourceKind.ManagedArchive, true, [Windows, Linux]), new(ComponentSourceKind.OfficialSource, false, [Windows, Linux])]),
+        new("frps", "frps", "network", "frps", "component_center.component.frps.description",
+            ComponentIntegration.Installation, "relaxkonos.tunnels", [], [], [],
+            ["relaxkonos.tunnels"], [Windows, Linux],
+            [new(ComponentSourceKind.ManagedArchive, true, [Windows, Linux]), new(ComponentSourceKind.OfficialSource, false, [Windows, Linux])]),
         // Linux installs the distribution package behind nginx.service; Windows has no such package
-        // and uses a RelaxKonOS-managed archive with its own service registration. Both are declared
-        // and neither has a component-center adapter yet.
+        // and uses a pinned archive. Both platform adapters use durable installation workers.
         new("nginx", "nginx", "web", "Nginx", "component_center.component.nginx.description",
-            ComponentIntegration.Application, "relaxkonos.webservers", [], [], [],
+            ComponentIntegration.Installation, "relaxkonos.webservers", [], [], [],
             ["relaxkonos.webservers"], [Linux, Windows],
             [
-                new(ComponentSourceKind.SystemPackage, false, [Linux]),
+                new(ComponentSourceKind.SystemPackage, true, [Linux]),
                 new(ComponentSourceKind.OfficialSource, false, [Linux]),
-                new(ComponentSourceKind.ManagedArchive, false, [Windows])
+                new(ComponentSourceKind.ManagedArchive, true, [Windows])
             ]),
         new("squid", "squid", "web", "Squid", "component_center.component.squid.description",
-            ComponentIntegration.Application, "relaxkonos.squid", [], [], [],
+            ComponentIntegration.Installation, "relaxkonos.squid", [], [], [],
             ["relaxkonos.squid"], [Linux],
-            [new(ComponentSourceKind.SystemPackage, false, [Linux])]),
+            [new(ComponentSourceKind.SystemPackage, true, [Linux])]),
         new("docker", "docker", "system", "Docker Engine", "component_center.component.docker.description",
-            ComponentIntegration.Application, "relaxkonos.docker", [], [], [],
+            ComponentIntegration.Installation, "relaxkonos.docker", [], [], [],
             ["relaxkonos.docker"], [Linux],
-            [new(ComponentSourceKind.OfficialSource, false, [Linux]), new(ComponentSourceKind.SystemPackage, false, [Linux])]),
+            [new(ComponentSourceKind.OfficialSource, false, [Linux]), new(ComponentSourceKind.SystemPackage, true, [Linux])]),
         new("samba", "samba", "storage", "Samba", "component_center.component.samba.description",
-            ComponentIntegration.Application, "relaxkonos.file-services", [], [], [],
+            ComponentIntegration.Installation, "relaxkonos.file-services", [], [], [],
             ["relaxkonos.file-services"], [Linux],
-            [new(ComponentSourceKind.SystemPackage, false, [Linux])])
+            [new(ComponentSourceKind.SystemPackage, true, [Linux])])
     ]);
     public static IReadOnlyList<ComponentWorkloadDefinition> Workloads { get; } = Array.AsReadOnly<ComponentWorkloadDefinition>([
         new("proxy-server", "component_center.workload.proxy_server", ["sing-box"], []),

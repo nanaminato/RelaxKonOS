@@ -1,4 +1,4 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Server.Components;
@@ -30,22 +30,6 @@ public static class ComponentEndpoints
             if (!CanManage(http.User, componentId)) return Results.Forbid();
             return await RespondAsync(async () => Results.Ok(await adapter.PlanAsync(request, ct)));
         }).RequireAuthorization(RuntimeCatalogEndpoints.ManagePolicy);
-        group.MapPost(ComponentRoutes.ExecutePattern, async (string componentId, ComponentExecuteRequest request, HttpContext http,
-            ComponentLifecycleRegistry registry, CancellationToken ct) =>
-        {
-            var adapter = registry.Require(componentId);
-            if (!string.Equals(request.ComponentId, componentId, StringComparison.Ordinal))
-                return Problem(ComponentProblemCodes.RequestInvalid, 400);
-            if (!CanManage(http.User, componentId)) return Results.Forbid();
-            return await RespondAsync(async () =>
-            {
-                var result = await adapter.ExecuteAsync(request, ct);
-                // A refusal is an answer, not a transport failure: the caller must see why nothing ran.
-                return result.Outcome == ComponentExecutionOutcome.Refused
-                    ? Results.Json(result, statusCode: 409)
-                    : Results.Ok(result);
-            });
-        }).RequireAuthorization(RuntimeCatalogEndpoints.ManagePolicy);
         return app;
     }
 
@@ -55,6 +39,10 @@ public static class ComponentEndpoints
         ComponentIds.SingBox => InstallationEndpoints.CanInstall(user, InstallationServiceId.SingBox),
         ComponentIds.Mihomo => InstallationEndpoints.CanInstall(user, InstallationServiceId.Mihomo),
         ComponentIds.Nginx => InstallationEndpoints.CanInstall(user, InstallationServiceId.Nginx),
+        ComponentIds.Squid => InstallationEndpoints.CanInstall(user, InstallationServiceId.Squid),
+        ComponentIds.Samba => InstallationEndpoints.CanInstall(user, InstallationServiceId.Smb),
+        ComponentIds.Docker => InstallationEndpoints.CanInstall(user, InstallationServiceId.Docker),
+        ComponentIds.Frpc or ComponentIds.Frps => InstallationEndpoints.CanInstall(user, InstallationServiceId.Frp),
         _ => false
     };
 

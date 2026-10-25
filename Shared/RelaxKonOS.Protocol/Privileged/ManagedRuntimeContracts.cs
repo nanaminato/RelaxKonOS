@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 using RelaxKonOS.Protocol.Tunnels;
 
 namespace RelaxKonOS.Protocol.Privileged;
@@ -40,3 +40,6 @@ public static class WindowsManagedRuntimeDefaults
         new("v0.71.0", "win-arm64", "https://github.com/fatedier/frp/releases/download/v0.71.0/frp_0.71.0_windows_arm64.zip", "b56a5c2a1a2a55d11bc27aeef6edabd39f3d194360ea66660cc27281b502cb1c", "zip"),
     ];
 }
+
+/// <summary>Explicit administrator-approved Windows nginx archive identity.</summary>
+public sealed record WindowsNginxRelease(string Version, string Sha256);

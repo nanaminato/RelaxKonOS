@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Client.Apps.ComponentCenter;
@@ -51,7 +51,7 @@ internal static class ComponentCenterAccessChecks
     private sealed class Grants : IAppPermissionScope
     {
         public AppPermissionStatus Read = AppPermissionStatus.Granted, Manage = AppPermissionStatus.Granted;
-        public AppPermissionStatus GetStatus(string permission) => permission == AppPermissions.ServerProxyRead ? Read : Manage;
+        public AppPermissionStatus GetStatus(string permission) => permission == AppPermissions.ServerComponentsRead ? Read : Manage;
         public bool IsGranted(string permission) => GetStatus(permission) == AppPermissionStatus.Granted;
         public Task<AppPermissionStatus> RequestAsync(string permission, CancellationToken cancellationToken = default) => throw new Exception("Passive access refresh prompted");
         public Task OpenSettingsAsync() => throw new Exception("Passive access refresh opened settings");

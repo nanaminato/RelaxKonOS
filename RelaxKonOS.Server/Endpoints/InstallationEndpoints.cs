@@ -1,4 +1,4 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.WebUtilities;
@@ -105,6 +105,7 @@ public static class InstallationEndpoints
         InstallationServiceId.Mihomo => HostElevationCapability.MihomoInstall,
         InstallationServiceId.SingBox => HostElevationCapability.SingBoxInstall,
         InstallationServiceId.Docker => HostElevationCapability.DockerInstall,
+        InstallationServiceId.Squid => HostElevationCapability.ProxyServiceAction,
         InstallationServiceId.Git => HostElevationCapability.GitPackageInstall,
         _ => throw new ArgumentOutOfRangeException(nameof(service))
     };

@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
@@ -12,6 +12,7 @@
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsManagedRuntimePolicy.cs" Link="WindowsManagedRuntimePolicy.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsNginxStaticSiteAccess.cs" Link="WindowsNginxStaticSiteAccess.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsManagedRuntimeHost.cs" Link="WindowsManagedRuntimeHost.cs" />
+    <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsComponentArchives.cs" Link="WindowsComponentArchives.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsComponentService.cs" Link="WindowsComponentService.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsComponentJob.cs" Link="WindowsComponentJob.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsRuntimeConfigurationWriter.cs" Link="WindowsRuntimeConfigurationWriter.cs" />
