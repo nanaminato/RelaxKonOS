@@ -20,7 +20,7 @@ public partial class ProxyServerRuntimeView : UserControl
         : Task.CompletedTask;
 
     /// <summary>Component Center uses the same controls inline; domain workspaces retain their editor host.</summary>
-    public void ShowCenterSection(RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterPage page)
+    public void ShowCenterSection(RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterPage page, bool showDomainActivity)
     {
         EditorButton.IsVisible = false;
         RuntimeEditor.IsVisible = true;
@@ -32,7 +32,7 @@ public partial class ProxyServerRuntimeView : UserControl
         SourcesPanel.IsVisible = sources || page == RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterPage.All;
         ReleasesPanel.IsVisible = !tasks && !sources;
         ChangesPanel.IsVisible = !tasks && !sources;
-        ActivityPanel.IsVisible = tasks;
+        ActivityPanel.IsVisible = tasks && showDomainActivity;
         ReleaseList.Bind(ItemsControl.ItemsSourceProperty, new Avalonia.Data.Binding(
             page == RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterPage.Updates ? "Updates" : "Releases"));
     }

@@ -29,6 +29,11 @@ public interface ITaskApprovalPolicyReader
 {
     Task<TaskApprovalObservation> ReadAsync(ClaimsPrincipal principal, CancellationToken ct);
 }
+public sealed record TaskExecutionPolicyObservation(TaskExecutionIdentity Identity, DateTimeOffset ValidUntil);
+public interface ITaskExecutionPolicyReader
+{
+    TaskExecutionPolicyObservation Read(ClaimsPrincipal principal, string boundHostId);
+}
 public interface ITaskRuntimeHostObserver
 {
     Task<RuntimeInstallationSnapshot> ReadAsync(CancellationToken ct);
@@ -40,9 +45,20 @@ public sealed class SingBoxTaskRuntimeHostObserver(SingBoxRuntimeService runtime
 
 /// <summary>Reads current repository/OS policy in fresh scopes; neither JWT role nor cached elevation is sufficient.</summary>
 public sealed class TaskApprovalPolicyReader(IServiceScopeFactory scopes, ITaskRuntimeHostObserver host,
-    TimeProvider? time = null) : ITaskApprovalPolicyReader
+    TimeProvider? time = null) : ITaskApprovalPolicyReader, ITaskExecutionPolicyReader
 {
     private readonly TimeProvider _clock = time ?? TimeProvider.System;
+    public TaskExecutionPolicyObservation Read(ClaimsPrincipal principal, string boundHostId)
+    {
+        try
+        {
+            var local = ReadLocal(principal);
+            return new(new(local.Subject, local.Session, boundHostId, local.Revision), local.ValidUntil);
+        }
+        catch (AliasAuthenticationException ex) { throw new TaskApprovalException("task.identity_unavailable", ex.Status == 503 ? 503 : 403); }
+        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException or DbException or IOException)
+        { throw new TaskApprovalException("task.identity_unavailable", 503); }
+    }
     public async Task<TaskApprovalObservation> ReadAsync(ClaimsPrincipal principal, CancellationToken ct)
     {
         try

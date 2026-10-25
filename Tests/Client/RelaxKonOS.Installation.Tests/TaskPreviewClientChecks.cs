@@ -11,9 +11,24 @@ using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Identity;
 using RelaxKonOS.Protocol.TaskOrchestration;
 using RelaxKonOS.Protocol.Workspace;
+using RelaxKonOS.Protocol.ManagedRuntimes;
 
 internal static class TaskPreviewClientChecks
 {
+    internal static TaskPlan ChangePlan(TaskPlanIntent intent, Guid actor)
+    {
+        var original = Plan(intent, actor);
+        var steps = original.Semantics.Steps.Select(step => step with
+        {
+            Inputs = TaskPlanJson.FreezeInputs(new RuntimeTaskFrozenChange("sing-box", RuntimeChange.Uninstall,
+                TaskPlanJson.ReadInputs<RuntimeTaskChangeInput>(step.Inputs), null, "release", "1.14.3", null,
+                new(false, true, true, true, false, false), null)),
+            RequiredCapabilities = [new("SingBoxInstall", "singbox")], Disposition = TaskStepDisposition.Ready,
+            RiskClass = "host-management", RetryPolicy = "domain-idempotent", CompensationKind = "domain-transaction"
+        }).ToImmutableArray();
+        var semantics = original.Semantics with { Steps = steps };
+        return original with { Semantics = semantics, PlanDigest = TaskPlanCanonicalizer.Digest(semantics) };
+    }
     internal static TaskPlan Plan(TaskPlanIntent intent, Guid actor)
     {
         var steps = intent.Steps.Select(step => new TaskStep(step.StepId, step.ActionId, step.SchemaVersion,
@@ -124,12 +139,52 @@ internal static class TaskPreviewClientChecks
         runtime.CanRead = false;
         await center.InspectCommand.ExecuteAsync(null);
         Check(preview.Calls == prior && !center.CanInspect, "Missing read permission cannot initiate inspection");
+        runtime.CanRead = true; runtime.CanManage = true; preview.Pending = null;
+        await runtime.LoadAsync();
+        var installation = runtime.Installation!.Installation;
+        center.Stage(new("sing-box", "sing-box", installation.HostId, installation.InstallationId,
+            null, null, null, RuntimeChange.Uninstall, true, false));
+        await center.PlanDraftCommand.ExecuteAsync(null);
+        Check(center.ChangePlanSteps.Count == 1 && center.ChangePlanDigest.Length == 64 && center.Drafts.Count == 1,
+            "Frozen change planning preserves drafts and never submits a domain lifecycle operation");
+        var changeIntent = preview.Last!;
+        var changeResponse = ChangePlan(changeIntent, auth.User.Id);
+        using var changeHttp = new HttpClient(new Handler(request =>
+        {
+            Check(request.RequestUri!.AbsolutePath == TaskPlanningRoutes.Create,
+                "Change intent uses the strict change planning route");
+            return new(HttpStatusCode.OK) { Content = JsonContent.Create(changeResponse, options: RelaxKonOSJsonOptions.Default) };
+        }));
+        Check((await new TaskPlanPreviewClient(changeHttp, session).PlanChangeAsync(changeIntent, "host", default)).Semantics.Steps.Length == 1,
+            "Change response accepts the exact frozen selection and supported capability");
+        var validChange = changeResponse;
+        var frozen = TaskPlanJson.ReadInputs<RuntimeTaskFrozenChange>(validChange.Semantics.Steps[0].Inputs);
+        foreach (var invalidStep in new[]
+        {
+            validChange.Semantics.Steps[0] with { RequiredCapabilities = [new("SingBoxInstall", "docker")] },
+            validChange.Semantics.Steps[0] with { Inputs = TaskPlanJson.FreezeInputs(frozen with { Selection = frozen.Selection with { KeepData = false } }) }
+        })
+        {
+            var semantics = validChange.Semantics with { Steps = [invalidStep] };
+            changeResponse = validChange with { Semantics = semantics, PlanDigest = TaskPlanCanonicalizer.Digest(semantics) };
+            try { await new TaskPlanPreviewClient(changeHttp, session).PlanChangeAsync(changeIntent, "host", default); throw new Exception("Accepted forged change"); }
+            catch (InvalidDataException) { Check(true, "A self-consistent digest cannot retarget capability or change the staged data choice"); }
+        }
+        preview.Pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var changePending = center.PlanDraftCommand.ExecuteAsync(null);
+        center.DiscardCommand.Execute(null);
+        preview.Pending.SetResult(ChangePlan(preview.Last!, auth.User.Id));
+        await changePending;
+        Check(center.ChangePlanSteps.Count == 0 && center.ChangePlanDigest == "" && center.Drafts.Count == 0,
+            "Editing drafts discards an in-flight frozen change result");
     }
     private static void Check(bool condition, string label)
     { if (!condition) throw new Exception(label); Console.WriteLine("PASS: " + label); }
 
     private sealed class PreviewFixture(Guid actor) : ITaskPlanPreviewClient
     {
+        public Task<TaskPlan> PlanChangeAsync(TaskPlanIntent intent, string expectedHost, CancellationToken ct)
+        { Calls++; Last = intent; return Pending?.Task ?? Task.FromResult(ChangePlan(intent, actor)); }
         public int Calls;
         public TaskPlanIntent? Last;
         public TaskCompletionSource<TaskPlan>? Pending;
@@ -142,13 +197,14 @@ internal static class TaskPreviewClientChecks
 
 public class PreviewSession : DispatchProxy
 {
+    public string Server = "server", BaseUrl = "http://localhost/";
     public UserDto User = new(Guid.NewGuid(), "fixture", HostPlatformKind.Windows, "fixture", DateTimeOffset.UtcNow, null);
     public SessionDto Login = new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), DateTimeOffset.UtcNow,
         DateTimeOffset.UtcNow, SessionStatus.Active, Guid.NewGuid(), "password", DateTimeOffset.UtcNow);
     protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
     {
         "get_State" => AuthSessionState.Authenticated, "get_CurrentUser" => User, "get_CurrentSession" => Login,
-        "get_EffectiveBaseUrl" => "http://localhost/", "GetAccessTokenAsync" => Task.FromResult<string?>("token"),
+        "get_ServiceId" => Server, "get_EffectiveBaseUrl" => BaseUrl, "GetAccessTokenAsync" => Task.FromResult<string?>("token"),
         _ => throw new NotSupportedException(method?.Name)
     };
 }

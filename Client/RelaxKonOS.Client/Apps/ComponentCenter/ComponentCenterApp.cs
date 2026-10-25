@@ -47,7 +47,9 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
         var drafts = (ComponentDraftStore?)context.Services.GetService(typeof(ComponentDraftStore))
             ?? throw new InvalidOperationException("Component draft store is not registered.");
         var model = new ComponentCenterViewModel(runtime, drafts, session.ServiceId!, session.CurrentUser!.Id,
-            (ITaskPlanPreviewClient?)context.Services.GetService(typeof(ITaskPlanPreviewClient)));
+            (ITaskPlanPreviewClient?)context.Services.GetService(typeof(ITaskPlanPreviewClient)),
+            (ITaskExecutionClient?)context.Services.GetService(typeof(ITaskExecutionClient)),
+            (ComponentTaskReferenceStore?)context.Services.GetService(typeof(ComponentTaskReferenceStore)));
         model.ConnectionAvailable = true;
         _model = model;
         var view = new ComponentCenterWorkspace(model);
@@ -64,6 +66,11 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.component-center.display_name"),
             view, new Rect(80, 45, 1060, 800), Manifest.IconGlyph);
         runtime.ConfirmAsync = (title, message) => ConfirmAsync(title.Resolve(), message.Resolve());
+        model.ConfirmTaskAsync = async plan => await ShowOwnedAsync<bool>(LocalizedText.Get("component_center.task_confirm_title"),
+            dialog => new TaskPlanConfirmationView(dialog, plan), new Size(720, 600)) == true;
+        model.TaskCredentialsAsync = () => ShowOwnedAsync<RelaxKonOS.Client.Apps.FileServices.HostAdministratorCredentials?>(
+            LocalizedText.Get("installation.elevation_title"), dialog => new HostAdministratorCredentialsDialogView(dialog,
+                LocalizedText.Get("component_center.task_credentials"), null, session.CurrentUser?.Username ?? ""), new Size(560, 340));
         runtime.PasswordPromptAsync = () => ShowOwnedAsync<string?>(
             LocalizedText.Get("installation.elevation_title"),
             dialog => new FileServicesPasswordDialogView(dialog, LocalizedText.Get("installation.elevation_message")),
@@ -95,7 +102,9 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
         var taskRefresh = new Avalonia.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         taskRefresh.Tick += async (_, _) =>
         {
-            if (runtime.CanRead && !runtime.IsBusy && !runtime.IsInvalidated && runtime.HasActiveOperation)
+            var wasTaskActive = model.CurrentTaskRun?.State is RelaxKonOS.Protocol.TaskOrchestration.TaskRunState.Queued or RelaxKonOS.Protocol.TaskOrchestration.TaskRunState.Running or RelaxKonOS.Protocol.TaskOrchestration.TaskRunState.Cancelling;
+            await model.TickTaskAsync();
+            if (runtime.CanRead && !runtime.IsBusy && !model.IsTaskBusy && !runtime.IsInvalidated && (runtime.HasActiveOperation || wasTaskActive))
                 await runtime.RefreshActiveOperationAsync();
         };
         taskRefresh.Start();

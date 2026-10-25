@@ -191,9 +191,9 @@ internal static class TaskPlanningHttpChecks
                     && text.Contains("task.observation_unavailable", StringComparison.Ordinal), "Domain failures return a stable problem without raw diagnostics");
             }
             using (var response = await http.PostAsync(TaskPlanningRoutes.Plan(planId) + "/run", Body()))
-                Check(response.StatusCode == HttpStatusCode.NotFound, "Read-only preview exposes no execution route");
+                Check(response.StatusCode == HttpStatusCode.NotFound, "The planning-only route group does not map execution endpoints");
             using (var response = await http.PostAsync(TaskPlanningRoutes.Plan(planId) + "/approve", Body()))
-                Check(response.StatusCode == HttpStatusCode.NotFound, "Internal approval persistence is not exposed as an unaudited authentication route");
+                Check(response.StatusCode == HttpStatusCode.NotFound, "The planning-only fixture does not register the separately authenticated approval group");
         }
         finally { await app.StopAsync(); Directory.Delete(planRoot, recursive: true); }
         return count;

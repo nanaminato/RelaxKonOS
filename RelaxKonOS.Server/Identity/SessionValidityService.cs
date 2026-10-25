@@ -7,6 +7,19 @@ namespace RelaxKonOS.Server.Identity;
 
 public sealed class SessionValidityService(IServiceScopeFactory scopes)
 {
+    /// <summary>Logout expires the authenticated session so TaskPlan policy cannot reuse its live authority.</summary>
+    public void ExpireSession(ClaimsPrincipal principal)
+    {
+        if (principal.Identity?.IsAuthenticated != true
+            || !Guid.TryParse(principal.FindFirst("sub")?.Value ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId)
+            || !Guid.TryParse(principal.FindFirst("sid")?.Value, out var sessionId)) return;
+        using var scope = scopes.CreateScope();
+        var repository = scope.ServiceProvider.GetRequiredService<ISessionRepository>();
+        if (repository.FindById(sessionId) is not { } session || session.UserId != userId) return;
+        session.Status = RelaxKonOS.Protocol.Workspace.SessionStatus.Expired;
+        repository.Update(session);
+    }
+
     public bool IsValid(Guid userId, long version)
     {
         try

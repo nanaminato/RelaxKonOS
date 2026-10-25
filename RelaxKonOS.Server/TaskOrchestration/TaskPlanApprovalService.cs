@@ -86,12 +86,28 @@ public sealed class TaskPlanApprovalService(TaskPlanStore store, ITaskApprovalPo
         var after = await policy.ReadAsync(principal, ct);
         if (after.Identity != before.Identity || after.Requester != before.Requester || after.RequesterPrivilege != before.RequesterPrivilege)
             throw new TaskApprovalException("task.policy_changed", 409);
+        ValidateFinalInstallation(plan, after.Installation);
         ct.ThrowIfCancellationRequested();
         var until = before.ValidUntil < after.ValidUntil ? before.ValidUntil : after.ValidUntil;
         if (until <= _clock.GetUtcNow()) throw new TaskApprovalException("task.session_unavailable");
         var identity = after.Identity;
         return store.RecordApproval(planId, digest, new(identity.CanonicalSubject, identity.SessionIdentity,
             identity.HostId, identity.PolicyRevision, approver, method, until), requestKey);
+    }
+
+    private static void ValidateFinalInstallation(TaskPlan plan, RuntimeInstallationSnapshot snapshot)
+    {
+        foreach (var step in plan.Semantics.Steps.Where(item => !item.RequiredCapabilities.IsEmpty))
+        {
+            var frozen = TaskPlanJson.ReadInputs<RuntimeTaskFrozenChange>(step.Inputs);
+            var state = snapshot.Installation;
+            if (state.RuntimeId != frozen.RuntimeId || state.HostId != frozen.Selection.HostId
+                || state.InstallationId != frozen.Selection.InstallationId || state.StateRevision != frozen.Selection.ExpectedStateRevision
+                || state.ActiveReleaseId != frozen.PreviousReleaseId || snapshot.MeasuredVersion != frozen.CurrentVersion
+                || snapshot.ConfigurationIdentity != frozen.ConfigurationIdentity || snapshot.PendingOperationId is not null
+                || state.RecoveryRequired || state.Ownership is RuntimeOwnership.External or RuntimeOwnership.Unknown)
+                throw new TaskApprovalException("task.plan_changed", 409);
+        }
     }
 
     private TaskPlan RequirePlan(Guid id, string digest, TaskExecutionIdentity identity)

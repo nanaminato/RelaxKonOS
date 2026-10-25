@@ -6,6 +6,7 @@ using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Privileged;
 using RelaxKonOS.Server.ProxyServer;
+using RelaxKonOS.Server.TaskOrchestration;
 
 namespace RelaxKonOS.Server.ManagedRuntimes;
 
@@ -35,7 +36,25 @@ public sealed class SingBoxRuntimeService(IPrivilegedOperationTransport helper, 
         finally { store.Gate.Release(); }
     }
 
-    public async Task<RuntimeSwitchResult> ExecuteAsync(Guid operationId, RuntimeChangePlan plan, CancellationToken ct)
+    public Task<RuntimeSwitchResult> ExecuteAsync(Guid operationId, RuntimeChangePlan plan, CancellationToken ct) =>
+        ExecuteCoreAsync(operationId, plan, authorization.ReadAsync, ct);
+
+    public async Task<RuntimeSwitchResult> ExecuteTaskAsync(Guid operationId, RuntimeChangePlan plan,
+        TaskStepExecutionAuthorization authority, CancellationToken ct)
+    {
+        var frozen = RelaxKonOS.Protocol.TaskOrchestration.TaskPlanJson.ReadInputs<RuntimeChangePlan>(
+            RelaxKonOS.Protocol.TaskOrchestration.TaskPlanJson.FreezeInputs(plan));
+        if (authority.OperationId != operationId || !authority.MatchesPlan(frozen))
+            throw new RuntimeLifecycleException("runtime.authorization_unavailable");
+        try { await authority.ValidateAsync(ct); }
+        catch (Exception ex) when (ex is TaskApprovalException or TaskPlanStoreException)
+        { throw new RuntimeLifecycleException("runtime.authorization_unavailable"); }
+        return await ExecuteCoreAsync(operationId, frozen,
+            token => TaskRuntimeAuthorizationBridge.ReadAsync(authority, authorization.ReadAsync, token), ct);
+    }
+
+    private async Task<RuntimeSwitchResult> ExecuteCoreAsync(Guid operationId, RuntimeChangePlan plan,
+        Func<CancellationToken, Task<SingBoxCurrentAuthorization>> readAuthorization, CancellationToken ct)
     {
         if (operationId == Guid.Empty || plan is null || plan.Request is null || plan.RuntimeId != "sing-box")
             throw new RuntimeLifecycleException("runtime.request_invalid");
@@ -46,7 +65,7 @@ public sealed class SingBoxRuntimeService(IPrivilegedOperationTransport helper, 
         await store.Gate.WaitAsync(ct);
         try
         {
-            await using var callback = new RuntimeAuthorizationServer<SingBoxCurrentAuthorization>(operationId, authorization.ReadAsync);
+            await using var callback = new RuntimeAuthorizationServer<SingBoxCurrentAuthorization>(operationId, readAuthorization);
             var result = await CallAsync<RuntimeSwitchResult>(new(PrivilegedOperationKind.SingBoxRuntimeExecute,
                 OperationId: operationId, RuntimeLifecycle: new(Authorization: callback.Channel, FrozenPlan: plan),
                 DownloadProxy: removal ? null : await downloadProxy.ResolveAsync(ct)), CancellationToken.None);

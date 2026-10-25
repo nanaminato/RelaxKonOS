@@ -11,8 +11,13 @@ namespace RelaxKonOS.Client.Apps.ComponentCenter;
 
 public sealed record ComponentInspectionStep(TaskStep Step)
 {
+    public LocalizedStatus Effects => Step.RequiredCapabilities.IsEmpty ? LocalizedStatus.Literal("")
+        : LocalizedStatus.Key(TaskPlanJson.ReadInputs<RuntimeTaskFrozenChange>(Step.Inputs).Impact.DeletesBusinessData
+            ? "component_center.change_deletes_data" : "component_center.change_preserves_data");
     public LocalizedStatus Title => LocalizedStatus.Key(Step.ActionId == "runtime.verifyInstallation"
-        ? "component_center.inspect_installation" : "component_center.inspect_catalog");
+        ? "component_center.inspect_installation" : Step.ActionId == "runtime.verifyCatalog" ? "component_center.inspect_catalog"
+            : Step.ActionId == "runtime.uninstall" ? "proxy_server.runtime.uninstall_title"
+            : "proxy_server.runtime.action." + Enum.Parse<RuntimeChange>(Step.ActionId["runtime.".Length..], true));
     public LocalizedStatus State => LocalizedStatus.Key("component_center.inspection." + Step.Disposition);
     public LocalizedStatus Problems => LocalizedStatus.Join("\n", Step.Problems.Select(code => code.StartsWith("runtime.", StringComparison.Ordinal)
         ? ProxyServerRuntimeViewModel.ProblemText(code) : LocalizedStatus.Key("component_center.inspection_changed")));
@@ -29,10 +34,10 @@ public partial class ComponentCenterViewModel
     [ObservableProperty] private LocalizedStatus inspectionNotice = LocalizedStatus.Literal("");
     public ObservableCollection<ComponentInspectionStep> InspectionSteps { get; } = [];
     public bool ShowInspection => _previews is not null && HasRuntimeDetails && SelectedPage is not ComponentCenterPage.Tasks;
-    public bool CanInspect => _previews is not null && !IsInspecting && !Runtime.IsBusy && Runtime.CanRead
+    public bool CanInspect => _previews is not null && !IsTaskBusy && !IsInspecting && !Runtime.IsBusy && Runtime.CanRead
         && !Runtime.IsInvalidated && Runtime.Installation is not null;
     partial void OnIsInspectingChanged(bool value)
-    { OnPropertyChanged(nameof(CanInspect)); OnPropertyChanged(nameof(CanPreview)); }
+    { OnPropertyChanged(nameof(CanInspect)); OnPropertyChanged(nameof(CanPreview)); OnPropertyChanged(nameof(CanPlanDraft)); TaskProperties(); }
 
     private void ObserveInspectionState()
     {
@@ -41,6 +46,7 @@ public partial class ComponentCenterViewModel
         _inspectionInstallation = Runtime.Installation;
         _inspectionCatalog = Runtime.CatalogSnapshot;
         _inspectionGeneration++;
+        ClearChangePlan();
         InspectionSteps.Clear();
         InspectionNotice = LocalizedStatus.Literal("");
     }

@@ -131,13 +131,21 @@ try
     throw new Exception("Accepted unknown wire field");
 }
 catch (JsonException) { Check(true, "Unknown wire execution fields are rejected"); }
-Console.WriteLine($"Task orchestration: {count} checks passed. No executor or privileged action is enabled.");
+Console.WriteLine($"Task orchestration: {count} core checks passed without dispatching privileged actions.");
 Console.WriteLine($"Task planning HTTP: {await TaskPlanningHttpChecks.RunAsync(intent)} checks passed.");
 Console.WriteLine($"Task plan persistence: {await TaskPlanStoreChecks.RunAsync(plan)} checks passed.");
 Console.WriteLine($"Runtime change planning: {await RuntimeChangePlanningChecks.RunAsync()} checks passed.");
 Console.WriteLine($"Approval/run persistence: {await TaskApprovalStoreChecks.RunAsync()} checks passed.");
 Console.WriteLine($"Approval live policy: {await TaskApprovalPolicyChecks.RunAsync()} checks passed.");
 Console.WriteLine($"Approval composition: {await TaskPlanApprovalChecks.RunAsync()} checks passed.");
+Console.WriteLine($"Dispatch journal: {await TaskDispatchJournalChecks.RunAsync()} checks passed.");
+Console.WriteLine($"Step reconciliation: {await TaskReconciliationChecks.RunAsync()} checks passed.");
+Console.WriteLine($"Step authorization: {await TaskStepAuthorizationChecks.RunAsync()} checks passed.");
+Console.WriteLine($"Task dispatch worker: {await TaskDispatchServiceChecks.RunAsync()} checks passed.");
+Console.WriteLine($"Task advancement: {await TaskRunAdvancementChecks.RunAsync()} checks passed.");
+Console.WriteLine($"Task cancellation: {await TaskRunCancellationChecks.RunAsync()} checks passed.");
+Console.WriteLine($"Unaccepted cancellation: {await TaskUnacceptedCancellationChecks.RunAsync()} checks passed.");
+Console.WriteLine($"Task execution HTTP: {await TaskExecutionHttpChecks.RunAsync()} checks passed.");
 
 sealed class Observations : IRuntimeTaskObservations
 {

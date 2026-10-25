@@ -95,6 +95,66 @@ internal static class ComponentCenterWorkspaceChecks
                     bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light-") + "Inspection.png"), new PngBitmapEncoderOptions());
                 }
                 inspectionWindow.Close(); Dispatcher.UIThread.RunJobs();
+                var state = activeRuntime.Installation!.Installation;
+                activeModel.Stage(new("sing-box", "sing-box", state.HostId, state.InstallationId,
+                    null, null, null, RuntimeChange.Uninstall, false, false));
+                var selection = new RuntimeTaskChangeInput(state.InstallationId, state.HostId, state.StateRevision,
+                    0, 0, null, null, false, false);
+                activeModel.ChangePlanSteps.Add(new(new("change-sing-box", "runtime.uninstall", 1, "sing-box-change-1",
+                    TaskPlanJson.FreezeInputs(new RuntimeTaskFrozenChange("sing-box", RuntimeChange.Uninstall, selection,
+                        null, "current", "1.14.3", null, new(false, true, true, false, true, false), null)), [], [], [],
+                    [new("SingBoxInstall", "singbox")], TaskStepDisposition.Ready, [], "destructive", "domain-idempotent", "domain-transaction")));
+                activeModel.ChangePlanDigest = new string('a', 64);
+                activeModel.ChangePlanNotice = RelaxKonOS.Client.Localization.LocalizedStatus.Key("component_center.change_plan_ready");
+                var changeView = new ComponentCenterWorkspace(activeModel);
+                var changeWindow = new Window { Width = 1060, Height = 800, Content = changeView };
+                changeWindow.Show(); Dispatcher.UIThread.RunJobs(); changeWindow.UpdateLayout();
+                changeView.FindControl<ScrollViewer>("DetailsScroll")!.Offset = new Vector(0, 300);
+                Dispatcher.UIThread.RunJobs(); changeWindow.UpdateLayout();
+                Check(!changeView.GetVisualDescendants().OfType<TextBlock>().Any(t =>
+                    t.Text?.Contains("component_center.", StringComparison.Ordinal) == true
+                    || t.Text?.Contains("proxy_server.runtime.action.", StringComparison.Ordinal) == true),
+                    "Frozen change and destructive data impact resolve in " + language);
+                using (var bitmap = new RenderTargetBitmap(new PixelSize(1060, 800)))
+                {
+                    bitmap.Render(changeWindow);
+                    bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light-") + "ChangePlan.png"), new PngBitmapEncoderOptions());
+                }
+                changeWindow.Close(); Dispatcher.UIThread.RunJobs();
+                var actor = Guid.NewGuid();
+                var semantics = new TaskPlanSemantics(state.HostId, actor.ToString("D"), "app", "relaxkonos.component-center", 1,
+                    [activeModel.ChangePlanSteps.Single().Step], "stop-on-failure", "safe-boundary", false, TaskPlanLimits.Default);
+                var taskPlan = new TaskPlan(Guid.NewGuid(), DateTimeOffset.UtcNow, TaskPlanCanonicalizer.Digest(semantics), semantics);
+                using var taskModel = new ComponentCenterViewModel(activeRuntime, new(), "https://host.example/", actor, execution: new LayoutTaskTransport());
+                var runId = Guid.NewGuid();
+                var reference = new ComponentTaskHistoryItem(new(taskPlan, Guid.NewGuid(), "layout-only", runId));
+                taskModel.TaskHistory.Add(reference); taskModel.SelectedTask = reference;
+                taskModel.CurrentTaskRun = new(runId, taskPlan.PlanId, taskPlan.PlanDigest, reference.Reference.ApprovalId, actor.ToString("D"),
+                    "layout-session", state.HostId, "layout-policy", TaskRunState.Cancelling, 4, true, DateTimeOffset.UtcNow,
+                    [new(semantics.Steps[0].StepId, TaskStepRunState.Running, new string('a', 64), new string('b', 64), activeRuntime.Installation.PendingOperationId, null)], null);
+                taskModel.Navigate(ComponentCenterPage.Tasks);
+                var taskView = new ComponentCenterWorkspace(taskModel); var taskWindow = new Window { Width = 1060, Height = 800, Content = taskView };
+                taskWindow.Show(); Dispatcher.UIThread.RunJobs(); taskWindow.UpdateLayout();
+                Check(!taskView.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text?.Contains("component_center.", StringComparison.Ordinal) == true),
+                    "Task history, cancellation status and steps resolve in " + language);
+                using (var bitmap = new RenderTargetBitmap(new PixelSize(1060, 800)))
+                {
+                    bitmap.Render(taskWindow); bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light-") + "TaskExecution.png"), new PngBitmapEncoderOptions());
+                }
+                taskWindow.Close(); Dispatcher.UIThread.RunJobs();
+                var modal = Activator.CreateInstance(typeof(RelaxKonOS.WindowManager.ModalDialog<bool>), BindingFlags.Instance | BindingFlags.NonPublic,
+                    null, [null, null], null)!;
+                var confirmation = (Control)Activator.CreateInstance(typeof(ComponentCenterWorkspace).Assembly.GetType(
+                    "RelaxKonOS.Client.Apps.ComponentCenter.TaskPlanConfirmationView")!, [modal, taskPlan])!;
+                var confirmWindow = new Window { Width = 720, Height = 600, Content = confirmation };
+                confirmWindow.Show(); Dispatcher.UIThread.RunJobs(); confirmWindow.UpdateLayout();
+                Check(!confirmation.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text?.Contains("component_center.", StringComparison.Ordinal) == true),
+                    "Approval disclosure resolves in " + language);
+                using (var bitmap = new RenderTargetBitmap(new PixelSize(720, 600)))
+                {
+                    bitmap.Render(confirmWindow); bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light-") + "TaskApproval.png"), new PngBitmapEncoderOptions());
+                }
+                confirmWindow.Close(); Dispatcher.UIThread.RunJobs();
             }
         }
         finally { settings.Language = languageBefore; settings.Appearance = appearanceBefore; }
@@ -106,8 +166,20 @@ internal static class ComponentCenterWorkspaceChecks
     }
 }
 
+internal sealed class LayoutTaskTransport : ITaskExecutionClient
+{
+    public Task<TaskPlanApproval> ApproveAsync(TaskPlan plan, ApproveTaskPlanRequest request, string key, CancellationToken ct) => throw new NotSupportedException();
+    public Task<TaskPlanApproval> ReadApprovalAsync(TaskPlan plan, Guid id, CancellationToken ct) => throw new NotSupportedException();
+    public Task<TaskRun> StartAsync(TaskPlan plan, TaskPlanApproval approval, string key, CancellationToken ct) => throw new NotSupportedException();
+    public Task<TaskRun> ReadAsync(TaskPlan plan, Guid id, CancellationToken ct) => throw new NotSupportedException();
+    public Task<TaskRun> RefreshAsync(TaskPlan plan, TaskRun run, CancellationToken ct) => throw new NotSupportedException();
+    public Task<TaskRun> AdvanceAsync(TaskPlan plan, TaskRun run, CancellationToken ct) => throw new NotSupportedException();
+    public Task<TaskRun> CancelAsync(TaskPlan plan, TaskRun run, CancellationToken ct) => throw new NotSupportedException();
+}
+
 internal sealed class InspectionPreview : ITaskPlanPreviewClient
 {
+    public Task<TaskPlan> PlanChangeAsync(TaskPlanIntent intent, string expectedHost, CancellationToken ct) => throw new NotSupportedException();
     public Task<TaskPlan> PreviewAsync(TaskPlanIntent intent, string expectedHost, CancellationToken ct)
     {
         var steps = intent.Steps.Select(step => new TaskStep(step.StepId, step.ActionId, step.SchemaVersion,

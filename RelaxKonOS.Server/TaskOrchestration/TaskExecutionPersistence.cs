@@ -84,11 +84,12 @@ public sealed partial class TaskPlanStore
                 || !ValidSubject(run.CanonicalSubject) || Reference(run.CanonicalSubject) != reader.GetString(3)
                 || stored.IdempotencyReference != reader.GetString(4) || stored.RequestReference != reader.GetString(5)
                 || !Hash(stored.IdempotencyReference) || !Hash(stored.RequestReference) || !Hash(run.PlanDigest)
-                || run.Revision != reader.GetInt64(6) || run.Revision != 1 || run.State != TaskRunState.Queued
-                || run.CancellationRequested || run.ProblemCode is not null || run.Steps.IsDefaultOrEmpty
-                || run.Steps.Any(step => step is null || step.State != TaskStepRunState.Pending || !Hash(step.IdempotencyKey)
-                    || step.RequestDigest is not null || step.DomainOperationId is not null || step.ProblemCode is not null)
-                || stored.Audit is not [{ Event: "queued", StepId: null }]) throw new InvalidDataException();
+                || run.Revision != reader.GetInt64(6) || run.Revision is < 1 or > 194
+                || run.State is not (TaskRunState.Queued or TaskRunState.Running or TaskRunState.Cancelling or TaskRunState.Succeeded or TaskRunState.Failed or TaskRunState.Cancelled or TaskRunState.NeedsRecovery)
+                || run.Steps.IsDefaultOrEmpty
+                || run.Steps.Any(step => step is null || step.State is not (TaskStepRunState.Pending or TaskStepRunState.Dispatching or TaskStepRunState.Running
+                    or TaskStepRunState.Succeeded or TaskStepRunState.NoOp or TaskStepRunState.Failed or TaskStepRunState.Cancelled or TaskStepRunState.NeedsRecovery or TaskStepRunState.Skipped)
+                    || !Hash(step.IdempotencyKey))) throw new InvalidDataException();
         }
         var approval = ReadApproval(connection, transaction, stored.Record.ApprovalId, subject) ?? throw new InvalidDataException();
         var plan = Read(connection, transaction, stored.Record.PlanId, subject) ?? throw new InvalidDataException();
@@ -100,6 +101,7 @@ public sealed partial class TaskPlanStore
             || !record.Steps.Select(step => step.StepId).SequenceEqual(plan.Record.Plan.Semantics.Steps.Select(step => step.StepId))
             || record.Steps.Any(step => step.IdempotencyKey != Fingerprint(new { host = record.HostId, runId = record.RunId, step.StepId, purpose = "execute" })))
             throw new InvalidDataException();
+        ValidateRunJournal(stored, plan.Record.Plan);
         return stored;
     }
 

@@ -9,6 +9,7 @@ namespace RelaxKonOS.Client.Apps.ComponentCenter;
 public interface ITaskPlanPreviewClient
 {
     Task<TaskPlan> PreviewAsync(TaskPlanIntent intent, string expectedHost, CancellationToken ct);
+    Task<TaskPlan> PlanChangeAsync(TaskPlanIntent intent, string expectedHost, CancellationToken ct);
 }
 
 /// <summary>Read-only TaskPlan preview, bound to the authentication session that opened the component center.</summary>
@@ -18,6 +19,11 @@ public sealed class TaskPlanPreviewClient(HttpClient http, IAuthSession session)
     private readonly Guid? _actor = session.CurrentUser?.Id;
 
     public async Task<TaskPlan> PreviewAsync(TaskPlanIntent intent, string expectedHost, CancellationToken ct)
+        => await RequestAsync(intent, expectedHost, false, ct);
+    public async Task<TaskPlan> PlanChangeAsync(TaskPlanIntent intent, string expectedHost, CancellationToken ct)
+        => await RequestAsync(intent, expectedHost, true, ct);
+
+    private async Task<TaskPlan> RequestAsync(TaskPlanIntent intent, string expectedHost, bool change, CancellationToken ct)
     {
         Verify();
         var body = TaskPlanJson.WriteIntent(intent);
@@ -25,7 +31,7 @@ public sealed class TaskPlanPreviewClient(HttpClient http, IAuthSession session)
         var token = await session.GetAccessTokenAsync(TimeSpan.FromMinutes(1), ct: ct);
         Verify();
         using var request = new HttpRequestMessage(HttpMethod.Post,
-            new Uri(new Uri(session.EffectiveBaseUrl!), TaskPlanningRoutes.Preview.TrimStart('/')))
+            new Uri(new Uri(session.EffectiveBaseUrl!), (change ? TaskPlanningRoutes.Create : TaskPlanningRoutes.Preview).TrimStart('/')))
         { Content = new ByteArrayContent(body) };
         request.Content.Headers.ContentType = new("application/json");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -70,14 +76,13 @@ public sealed class TaskPlanPreviewClient(HttpClient http, IAuthSession session)
                 || semantics.Steps.Length != intent.Steps.Length
                 || semantics.Steps.Select(step => step?.StepId).Distinct(StringComparer.Ordinal).Count() != intent.Steps.Length
                 || semantics.Limits is null
-                || semantics.Steps.Any(step => step is null || step.RiskClass != "read-only"
-                    || step.Disposition is not (TaskStepDisposition.NoOp or TaskStepDisposition.Conflict or TaskStepDisposition.Unsupported)
-                    || step.RequiredCapabilities.IsDefault || step.RequiredCapabilities.Length != 0
+                || semantics.Steps.Any(step => step is null || !ValidStep(step, change)
                     || step.DependsOn.IsDefault || step.Baselines.IsDefault || step.Baselines.Any(item => item is null)
                     || step.ResourceKeys.IsDefault || step.Problems.IsDefault
                     || !intent.Steps.Any(input => input.StepId == step.StepId && input.ActionId == step.ActionId
                         && input.SchemaVersion == step.SchemaVersion && input.ImplementationRevision == step.ImplementationRevision
-                        && TaskPlanCanonicalizer.Canonicalize(input.Inputs).SequenceEqual(TaskPlanCanonicalizer.Canonicalize(step.Inputs))
+                        && TaskPlanCanonicalizer.Canonicalize(input.Inputs).SequenceEqual(TaskPlanCanonicalizer.Canonicalize(
+                            change ? TaskPlanJson.FreezeInputs(TaskPlanJson.ReadInputs<RuntimeTaskFrozenChange>(step.Inputs).Selection) : step.Inputs))
                         && input.DependsOn.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)
                             .SequenceEqual(step.DependsOn.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))))
                 || TaskPlanCanonicalizer.Digest(semantics) != plan.PlanDigest)
@@ -86,6 +91,29 @@ public sealed class TaskPlanPreviewClient(HttpClient http, IAuthSession session)
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException or TaskPlanningException or ArgumentException)
         { throw new InvalidDataException("task.response_invalid", ex); }
+    }
+
+    private static bool ValidStep(TaskStep step, bool change)
+    {
+        if (!change) return step.RiskClass == "read-only"
+            && step.Disposition is TaskStepDisposition.NoOp or TaskStepDisposition.Conflict or TaskStepDisposition.Unsupported
+            && !step.RequiredCapabilities.IsDefault && step.RequiredCapabilities.Length == 0;
+        if (step.SchemaVersion != 1 || step.ImplementationRevision != "sing-box-change-1"
+            || step.RequiredCapabilities is not [{ Capability: "SingBoxInstall", Target: "singbox" }]
+            || step.Disposition is not (TaskStepDisposition.Ready or TaskStepDisposition.Conflict)
+            || step.RetryPolicy != "domain-idempotent" || step.CompensationKind != "domain-transaction") return false;
+        var frozen = TaskPlanJson.ReadInputs<RuntimeTaskFrozenChange>(step.Inputs);
+        return frozen.RuntimeId == "sing-box" && frozen.Selection is not null && frozen.Impact is not null
+            && frozen.Change != Protocol.ManagedRuntimes.RuntimeChange.Configure && Enum.IsDefined(frozen.Change)
+            && step.ActionId == "runtime." + frozen.Change.ToString().ToLowerInvariant()
+            && frozen.Impact.PreservesBusinessData == frozen.Selection.KeepData
+            && frozen.Impact.DeletesBusinessData == (frozen.Change == Protocol.ManagedRuntimes.RuntimeChange.Uninstall && !frozen.Selection.KeepData)
+            && !frozen.Impact.CrossStepCompensationSupported
+            && frozen.Impact.StopsService == (frozen.Change == Protocol.ManagedRuntimes.RuntimeChange.Uninstall)
+            && frozen.Impact.RemovesProgram == (frozen.Change == Protocol.ManagedRuntimes.RuntimeChange.Uninstall)
+            && frozen.Impact.MayRestartService == (frozen.Change is Protocol.ManagedRuntimes.RuntimeChange.Update
+                or Protocol.ManagedRuntimes.RuntimeChange.Repair or Protocol.ManagedRuntimes.RuntimeChange.Rollback)
+            && step.RiskClass == (frozen.Impact.DeletesBusinessData ? "destructive" : "host-management");
     }
 
     private void Verify()

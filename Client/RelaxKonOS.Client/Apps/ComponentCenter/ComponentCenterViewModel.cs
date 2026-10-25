@@ -11,10 +11,11 @@ namespace RelaxKonOS.Client.Apps.ComponentCenter;
 public sealed record ComponentDraftItem(ComponentChangeDraft Draft)
 {
     public LocalizedStatus Summary => LocalizedStatus.Format("component_center.draft_summary", Draft.ComponentId,
-        LocalizedStatus.Key("proxy_server.runtime.action." + Draft.Change), Draft.Version ?? "—");
+        LocalizedStatus.Key(Draft.Change == RuntimeChange.Uninstall ? "proxy_server.runtime.uninstall_title"
+            : "proxy_server.runtime.action." + Draft.Change), Draft.Version ?? "—");
 }
 
-/// <summary>Selection is local. Only preview enters the host planner and its approval flow.</summary>
+/// <summary>Local drafts, frozen previews, and separately approved, durably tracked task execution.</summary>
 public partial class ComponentCenterViewModel : ObservableObject, IDisposable
 {
     private readonly ComponentDraftStore _store;
@@ -35,7 +36,8 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     public bool HasResults => VisibleRoots.Count > 0;
     public bool HasRuntimeDetails => HasResults && SelectedNode?.ComponentId is not null;
     public bool HasWorkloadDetails => HasResults && SelectedNode?.WorkloadId is not null && SelectedNode.ComponentId is null;
-    public LocalizedStatus SelectedTitle => SelectedNode?.Label ?? LocalizedStatus.Key("component_center.choose_component");
+    public LocalizedStatus SelectedTitle => SelectedPage == ComponentCenterPage.Tasks ? LocalizedStatus.Key("component_center.page.Tasks")
+        : SelectedNode?.Label ?? LocalizedStatus.Key("component_center.choose_component");
     public LocalizedStatus EmptyMessage => LocalizedStatus.Key(SelectedPage == ComponentCenterPage.Installed && Runtime.Installation is null
         ? "component_center.observation_unknown" : SelectedPage == ComponentCenterPage.Updates
         ? "component_center.no_updates" : "component_center.no_matches");
@@ -49,15 +51,16 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     public bool HasDrafts => Drafts.Count > 0;
     public LocalizedStatus PersistenceNotice => LocalizedStatus.Key(_store.HasPersistenceFailure(_server, _actor)
         ? "component_center.persistence_failed" : "component_center.persistence_hint");
-    public bool CanPreview => HasDrafts && !IsInspecting && !Runtime.IsBusy && Runtime.CanManage && !Runtime.IsInvalidated && Runtime.Installation is not null;
+    public bool CanPreview => HasDrafts && !IsTaskBusy && !IsInspecting && !Runtime.IsBusy && Runtime.CanManage && !Runtime.IsInvalidated && Runtime.Installation is not null;
     public LocalizedStatus DraftSummary => LocalizedStatus.Format("component_center.pending", Drafts.Count);
     [ObservableProperty] private LocalizedStatus notice = LocalizedStatus.Literal("");
 
     public ComponentCenterViewModel(ProxyServerRuntimeViewModel runtime, ComponentDraftStore store, string server, Guid actor,
-        ITaskPlanPreviewClient? previews = null)
+        ITaskPlanPreviewClient? previews = null, ITaskExecutionClient? execution = null, ComponentTaskReferenceStore? references = null)
     {
         Runtime = runtime; _store = store; _server = server; _actor = actor;
         _previews = previews;
+        _execution = execution; _references = references;
         _inspectionInstallation = runtime.Installation;
         _inspectionCatalog = runtime.CatalogSnapshot;
         BuildTrees();
@@ -67,9 +70,10 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         runtime.StageChange = Stage;
         runtime.PropertyChanged += RuntimeChanged;
         runtime.StateChanged += RuntimeStateChanged;
+        ReloadTaskHistory();
     }
     private void RuntimeChanged(object? sender, PropertyChangedEventArgs e)
-    { OnPropertyChanged(nameof(CanPreview)); OnPropertyChanged(nameof(CanInspect)); }
+    { OnPropertyChanged(nameof(CanPreview)); OnPropertyChanged(nameof(CanInspect)); OnPropertyChanged(nameof(CanPlanDraft)); TaskProperties(); }
     private void RuntimeStateChanged(object? sender, EventArgs e) { ObserveInspectionState(); RefreshTree(); }
     partial void OnSelectedNavigationChanged(ComponentCenterNavigationItem? value)
     {
@@ -120,7 +124,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
             root.SynchronizeSelection(selected);
             foreach (var node in root.DescendantsAndSelf())
             {
-                node.CanSelect = !Runtime.IsBusy && !Runtime.IsInvalidated;
+                node.CanSelect = !IsTaskBusy && !Runtime.IsBusy && !Runtime.IsInvalidated;
                 if (node.ComponentId is null) continue;
                 node.Status = Runtime.OwnershipText;
                 node.Version = Runtime.MeasuredVersionText.Resolve();
@@ -179,6 +183,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
 
     public bool Stage(ComponentChangeDraft draft)
     {
+        if (IsTaskBusy) return false;
         if (ComponentCatalog.Find(draft.ComponentId) is not { } definition || definition.RuntimeId != draft.RuntimeId)
             throw new ArgumentException("component_center.component_unknown");
         var existing = Drafts.SingleOrDefault(d => d.Draft.ComponentId == draft.ComponentId);
@@ -194,27 +199,19 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     }
     [RelayCommand] private void Remove(ComponentDraftItem? item)
     {
-        if (item is null || Runtime.IsBusy) return;
+        if (item is null || IsTaskBusy || Runtime.IsBusy) return;
         Drafts.Remove(item); Persist();
     }
     [RelayCommand] private void Discard()
     {
-        if (Runtime.IsBusy) return;
+        if (IsTaskBusy || Runtime.IsBusy) return;
         Notice = LocalizedStatus.Literal("");
         Drafts.Clear(); Persist();
     }
-    [RelayCommand] private async Task PreviewAsync()
-    {
-        if (!CanPreview) return;
-        // The first adapter is sing-box. Never silently expand this set to newly discovered updates.
-        foreach (var item in Drafts.ToArray())
-        {
-            if (!await Runtime.ApplyDraftAsync(item.Draft)) break;
-            Drafts.Remove(item); Persist();
-        }
-    }
     public void Persist()
     {
+        _draftRevision++;
+        ClearChangePlan();
         _store.Save(_server, _actor, Drafts.Select(d => d.Draft));
         OnPropertyChanged(nameof(PersistenceNotice));
         OnPropertyChanged(nameof(HasDrafts)); OnPropertyChanged(nameof(DraftSummary)); OnPropertyChanged(nameof(CanPreview));
@@ -222,6 +219,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     }
     public void Dispose()
     {
+        _taskDisposed = true; _driveTask = false;
         _inspectionLifetime.Cancel(); _inspectionLifetime.Dispose();
         Runtime.StageChange = null;
         Runtime.PropertyChanged -= RuntimeChanged;

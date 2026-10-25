@@ -49,6 +49,8 @@ ComponentDraftPersistenceChecks.Run();
 await RuntimeReattachmentChecks.RunAsync();
 await ApplicationAvailabilityChecks.RunAsync();
 await TaskPreviewClientChecks.RunAsync();
+await TaskExecutionClientChecks.RunAsync();
+await ComponentTaskExecutionChecks.RunAsync();
 // A frozen plan is the only installation body the ledger accepts for Mihomo.
 static ManagedRuntimeInstallationRequest RuntimePlanBody() => new(true, new RuntimeChangePlan(
     new RuntimePlanRequest(Guid.NewGuid(), "host-test", RuntimeChange.Install, 1, 12, 7, "rel-mihomo", Guid.NewGuid().ToString("N")),

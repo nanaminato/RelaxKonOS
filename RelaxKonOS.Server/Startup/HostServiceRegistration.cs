@@ -14,6 +14,25 @@ internal static class HostServiceRegistration
             RelaxKonOS.Server.TaskOrchestration.SingBoxTaskRuntimeHostObserver>();
         builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.ITaskApprovalPolicyReader,
             RelaxKonOS.Server.TaskOrchestration.TaskApprovalPolicyReader>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.ITaskExecutionPolicyReader,
+            RelaxKonOS.Server.TaskOrchestration.TaskApprovalPolicyReader>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.ITaskApproverPolicyReader,
+            RelaxKonOS.Server.TaskOrchestration.TaskApproverPolicyReader>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.TaskStepAuthorizationService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.TaskDispatchService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.ITaskStepDispatcher>(services =>
+            services.GetRequiredService<RelaxKonOS.Server.TaskOrchestration.TaskDispatchService>());
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.TaskRunAdvancementService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.TaskRunCancellationService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.ITaskPlanRevalidator,
+            RelaxKonOS.Server.TaskOrchestration.RuntimeTaskPlanRevalidator>();
+        builder.Services.AddScoped<RelaxKonOS.Server.TaskOrchestration.TaskPlanApprovalService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.TaskRunStartService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.ITaskReconciliationDomain,
+            RelaxKonOS.Server.TaskOrchestration.SingBoxTaskReconciliationDomain>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.TaskRunReconciliationService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.ITaskRunReconciler>(services =>
+            services.GetRequiredService<RelaxKonOS.Server.TaskOrchestration.TaskRunReconciliationService>());
         builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.IRuntimeTaskChangePlanningService,
             RelaxKonOS.Server.TaskOrchestration.RuntimeTaskChangePlanningService>();
         // 任务管理器：系统指标采集 Provider（按宿主 OS 平台选择，与 IIdentityProvider 同模式）。

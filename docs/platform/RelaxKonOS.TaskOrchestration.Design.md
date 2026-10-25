@@ -785,3 +785,116 @@ Shared 中新增精确生命周期选择和冻结变更记录。后者包含完�
 验证：规划 41、HTTP 32、计划存储 30、生命周期规划 25、审批/run 存储 43、实时策略 15 项通过。策略测试使用内存仓储及 OS/宿主观察夹具，验证角色/目标先拒绝、安全版本、冲突 claims、失效 session、租约、宿主能力、身份查询不可用与观察期间撤权；不宣称真实管理员认证或后台执行已验收。Server.Tests 全工程仍有 HEAD 中既有的 7 处 `MihomoRuntimeManager.InstallManagedAsync` 缺失编译错误；本轮服务端及专项工程编译通过。
 
 审批服务尚未把实时策略、冻结计划重新校验和管理员认证组合起来，生产 `/approve`、`/run` 仍未开放。注销撤销 session、后台委托持久化、每步新鲜授权、journal/派发和恢复仍须完成；当前进程重启后没有活动 session 时策略读取拒绝，不承诺自动后台续跑。TO-02/TO-03 不标记完成。
+### TO-02 审批组合与冻结计划复核（2026-10-25）
+
+已实现并注册内部 `TaskPlanApprovalService` 与 `RuntimeTaskPlanRevalidator`。审批要求明确确认，先校验实时业务权限，再读取主体隔离且未到期的精确 planId/digest；将冻结 selection 重新交给当前领域规划并比较完整语义。重新观察的磁盘可用字节仅在仍满足相同要求时允许变化，制品、源/信任修订、配置身份、状态、权限、影响及其他依赖语义必须一致，冻结计划本身不被改写。
+
+普通用户需新鲜宿主管理员认证，审批记录使用认证返回的 canonical UID/SID，拒绝缺失或跨平台身份；当前宿主管理员/root 仍须明确确认。认证后再次复核领域计划和实时策略，并检查最后一次宿主观察中的状态、配置、版本与 pending/recovery。计划在认证期间失效时，最终审批事务拒绝提交。没有查询或生成通用提权 grant，也没有安装、下载或服务控制派发。
+
+注销端点现将当前主体匹配的 session 标为 Expired，使内部任务策略不能继续使用该会话；不会按另一个主体的 sid 失效会话。此处不声称所有旧访问令牌在所有普通 API 上即时吊销。
+
+验证：规划 41、HTTP 32、计划存储 30、生命周期规划 25、审批/run 存储 43、实时策略 17、审批组合 20，共 208 项通过；服务端与专项工程构建通过，既有包审计及未使用参数警告保留。组合检查使用真实规划器/存储与注入的身份、认证、领域观察夹具，覆盖未确认、业务拒绝先于管理员认证、摘要错误、认证身份缺失/平台错误、认证期间撤权/制品变化/计划失效、配置漂移、磁盘空间与最终 pending 事务。不是实际 OS 管理员认证或真实安装验收。
+
+生产审批/运行 HTTP、逐步授权与 Helper 身份桥、dispatch journal、领域幂等关联和恢复协调仍未开放，桌面修改型 TaskPlan 接入仍待实施。TO-02/TO-03 和 CC-02 不标记完成。
+### 桌面修改型计划接入（2026-10-25）
+
+桌面组件中心现在可将本地 sing-box 草稿转为当前 schema 的修改型 intent 并调用生产规划路由，保留冻结提案和摘要，显示步骤/阻止原因及数据影响。严格验证返回的 actor/host、selection、capability/target、语义摘要，草稿或观察变化会丢弃旧结果。Client Installation 170 项及三语言 × 明暗布局通过，见[桌面预览记录](RelaxKonOS.ComponentCenter.Design.md#桌面修改型冻结预览2026-10-25)。未开放审批/运行 HTTP 或 Executor；本次桌面接入仅证明提案，不证明实际执行、逐步授权或恢复。
+### TO-02 派发意图与领域身份绑定（2026-10-25）
+
+内部 `PrepareDispatch` 将当前冻结 selection/release/previous release 转为精确 sing-box 安装领域请求，并使用既有 host/run/step 稳定键；规划 probe key 不进入派发。请求、adapter revision、service/kind 和绑定摘要连同 Dispatching 步骤、Running run 与审计在同一事务提交，之后才允许记录领域 operationId。当前仅允许已准备好的修改步骤，依赖未完成或已有活动步骤时拒绝；没有调度器或外部副作用。
+
+`BindDomainOperation` 核对精确 requestDigest、run revision 与步骤状态；同一个 operationId 重试保持原修订，其他 operationId 拒绝。持久绑定不要求新的执行权限，因为它只记录已发生操作的关联；新的派发准备仍要求同一主体/会话/宿主/策略、未撤销且未到期的消费审批。记录不可作为当前 Helper 执行凭据。重开按冻结计划重建请求摘要并重放审计，拒绝索引、状态、请求或事件顺序不一致。
+
+`InstallationCoordinator.FindByKey` 新增只读查询：复用领域 typed Validate 和 Start 相同的 typed request fingerprint，按主体与原 key 找回原安装台账条目，同键不同 service/kind/request 拒绝。查询不创建任务、不运行恢复、不请求管理员认证或 Helper，Interrupted/失败/成功仍保留原领域状态，不能解释成未执行并换键重试。当前尚未将该查询组合成后台协调器，也没有把领域结果写成步骤终态。
+
+派发 journal 改变受保护 run 格式，当前数据库 `user_version=3`；旧 schema 2 和其他不支持格式均失败关闭并保留，依 API 演进政策不添加迁移或双格式读取。
+
+验证：核心 41、HTTP 32、计划存储 30、生命周期规划 25、审批/run 43、实时策略 17、审批组合 20、派发 journal 25，共 233 项通过。新增并发准备只写一次、精确制品和稳定键、跨主体隔离、重开原请求、请求摘要/修订/operationId 错配、撤销后只保留证据、派发与绑定写入后的提交前故障回滚、受保护记录中伪造摘要/审计事件拒绝、schema 2 拒绝，以及真实安装领域校验/台账的只读原键查询；无实际第三方安装或 Helper 执行。Server/专项工程构建通过，既有包审计警告保留。
+
+仍待：逐步实时授权上下文与 Helper challenge 桥接、调度器、领域终态/实际状态对账、NeedsRecovery 和取消持久状态、剩余步骤恢复、生产审批/运行 HTTP 及桌面统一执行入口。TO-02/TO-03 保持未完成；Dispatching 或 Running 记录不证明任何领域副作用已执行。
+### TO-02 只读结果对账与终态证据（2026-10-25）
+
+内部 `RecordReconciliation` 新增领域台账终态、同 operationId 的宿主回执、实际安装身份/修订/目标版本的交叉检查。成功必须同时有领域 Succeeded、宿主成功回执和符合冻结目标的已观测结果，卸载核对 Absent/无 active release/无版本；状态修订必须前进。失败和取消仅在同一回执确认且旧程序/配置基线已恢复时记录相应终态。缺回执、错 operationId、状态漂移、仍有 pending/recovery 或领域 Interrupted 均记录 NeedsRecovery，不推断未执行或换键重试。活动领域轮询不写冗余结果。
+
+步骤结果证据、终态、run 状态及审计同一事务保存。失败/取消/待恢复会停止后续 Pending 步骤并标为 Skipped；仅全部步骤成功或 NoOp 才能将 run 记为 Succeeded（只读步骤 NoOp 调度尚未实现）。消费审批后来撤销不妨碍只读记录已发生结果，但不恢复执行权。同一证据重试保持原修订，矛盾终态证据拒绝，重开时重放审计并重新核验历史证据，终态历史不被后续轮询改写。
+
+已注册 `TaskRunReconciliationService` 与生产 `SingBoxTaskReconciliationDomain`：读取原键对应的安装台账、必要时绑定原 operationId，再仅调用 `SingBoxRuntimeQuery` 读取该操作回执。未找到领域受理时保持原 run；领域仍活动时不作终态推断；宿主观察不可用按未知结果记录 NeedsRecovery。没有调用 Start、RuntimeExecute 或 RuntimeRecover，也没有后台调度器或开放新的 HTTP。
+
+结果证据扩展受保护 run 格式，当前 schema 为 `user_version=4`；旧格式失败关闭、保留原文件，不添加兼容解析或迁移。
+
+验证：任务专项原 233 项加结果对账 24 项，共 257 项通过，Server/专项构建通过。新增覆盖领域 ID/service/修订错配、活动状态、成功回执与目标、撤权后只读记录、重开与终态重试、缺失/错回执/目标/修订/pending/recovery/漂移/Interrupted、已恢复基线的失败和取消、结果提交前注入故障回滚、只读服务缺受理/准确回执查询/终态不重读/宿主不可用。服务协调测试使用注入观察夹具；生产适配器仍仅调用既有只读边界，未执行真实安装或宿主恢复。既有依赖审计和编译警告保留。
+
+尚需逐步实时授权、Helper challenge 桥、真实派发/调度、持久取消、NeedsRecovery 人工恢复与剩余步骤审批、生产审批/运行 HTTP 及桌面统一执行。当前只读对账不是自动恢复，TO-02/TO-03 和 CC-02/CC-03 仍未完成。
+### TO-02 逐阶段授权与运行时回调桥（2026-10-25）
+
+新增 `TaskStepAuthorizationService` 和不可序列化的进程内 `TaskStepExecutionAuthorization`：保留登录 principal 的克隆，精确绑定 run/step、领域 operationId、requestDigest 和当前 adapter revision。每次检查要求步骤仍 Running、消费审批未撤销/未到期、计划未失效、业务会话/策略仍匹配、能力目标仍为 sing-box，并重新查询审批者 canonical UID/SID 的宿主管理员成员关系。外部身份读取后再次核对本地策略与耐久修订，撤权期间不能发出新授权。没有生成或读取通用 elevation grant，不保留密码。
+
+`TaskApprovalPolicyReader` 新增仅本地身份/策略读取接口，用于运行时已持有领域 gate 的回调；它不调用 RuntimeQuery 或重新进入 proxy domain gate。租约、令牌和 session 有效性仍实时校验，当前不承诺断线/过期或重启后继续执行。每次阶段有效期至多 10 秒，并受 run 授权和当前令牌/controller 租约约束。
+
+`TaskRuntimeAuthorizationBridge` 在读取既有已发布凭据/证书前后各复核任务授权，将返回期限取 task/session/published 的最小值。`SingBoxRuntimeService.ExecuteTaskAsync` 要求相同 operationId 和完整冻结请求，深拷贝计划防止等待锁期间调用方修改嵌套 release/layout；进入运行时前先检查，Helper 每次 callback 再检查。任务路径不能用既有领域授权替代自己的上下文。现有直接领域执行路径保持原边界，TaskPlan 不会由此产生通用提权权力。
+
+验证：实时策略扩至 23 项，新增逐步授权 18 项，任务专项共 281 项通过。覆盖精确 operation/request、会话/宿主/策略变化、审批者失权、保留 claims 克隆、阶段期限、读取发布材料期间撤权、到期、最终耐久撤销和修改冻结请求在 transport 前拒绝；实际本地 `RuntimeAuthorizationServer/Client` 管道证明有效 challenge 取得短期 grant、撤权后下一 challenge 被拒绝。身份/发布材料使用注入夹具；没有实际 OS 管理员密码认证或特权 Helper 安装。Server/专项构建通过，既有包审计与编译警告保留。
+
+尚未把上下文传入安装台账工作线程，`ExecuteTaskAsync` 还没有由 TaskPlan 调度调用。生产审批/运行 HTTP、安装派发组合、持久取消、NeedsRecovery 人工恢复、只读步骤 NoOp 调度及桌面统一执行仍待完成；TO-02/TO-03 不标记完成。
+### TO-02 显式步骤派发与安装工作线程（2026-10-25）
+
+已注册内部 `TaskDispatchService`：从当前登录身份读取实时策略，按主体加载 run、冻结计划与步骤；先用原 key 查询已受理操作，存在时只返回/绑定原 operationId，不重启 worker。尚未受理时重新复核冻结计划和实时策略，持久写入 dispatch intent 后，再调用任务专用安装入口。请求由存储计划重建，不接受客户端替换 options、能力或执行 key。
+
+`InstallationCoordinator.StartTask` 使用现有 typed Validate、资源锁和幂等台账。worker 在进入领域代码前持久绑定原 operationId，并取得 `TaskStepExecutionAuthorization`；通过 `ITaskInstallationProgress` 传给 sing-box，后者仅走 `ExecuteTaskAsync` 与逐阶段回调桥。上下文不是 HTTP 请求字段，不保留密码或 callback channel，普通 Start 不能接管 task-owned key。
+
+安装台账新增必填 `taskOwner`（普通操作显式 null，任务操作为 runId/stepId/requestDigest）；幂等冲突检查包含归属，任务对账核对归属后才绑定 operationId。旧文件缺字段失败关闭并保留，不使用旧格式解析。进程重启时 task-owned 活动操作标 Interrupted，保留归属，不调用普通领域 RecoverAsync；仅后续只读对账判定实际回执/pending/recovery，不能视为未执行或获得后台续跑授权。任务专用恢复审批与协调尚待实现。
+
+验证：新增工作线程检查 9 项、任务专项共 290 项通过，Server/专项构建通过。使用真实安装协调器、台账、任务存储、规划/复核与授权服务，领域执行/身份观察为受控夹具，覆盖业务拒绝先于受理、归属/operationId 先绑定、线程上下文、同键只启动一次、普通 Start 接管拒绝、worker 内新鲜策略、领域结果沿用原台账、重启不走普通恢复、缺归属字段失败关闭并保留。没有下载或运行第三方 sing-box，没有真实特权 Helper 安装，既有包审计/编译警告保留。
+
+此服务仅显式派发单个已批准且就绪步骤；生产审批/运行路由、调度/轮询、只读 NoOp、取消及人工恢复与桌面统一执行尚未接通。TO-02/TO-03、CC-02/CC-03 保持未完成。
+### TO-02 只读 NoOp 与按依赖推进（2026-10-25）
+
+新增内部 `TaskRunAdvancementService.AdvanceAsync`，每次明确调用至多推进一个步骤：按冻结依赖选择就绪 Pending；只读动作重新走生产只读观察接口，修改动作走既有任务派发，Dispatching 使用原键，Running 仅进行结果对账。查询 run 本身不触发执行，终态不重新观察或派发。此为受当前登录身份约束的显式推进，不是断线后台调度。
+
+`RecordReadStep` 将新观察、NoOp/失败、run 状态及审计一起提交。只接受同用户/宿主/源身份/输入修订、相同步骤/Action/schema/输入且在 run 创建后生成的证据；观察中无写能力。只有完整冻结只读语义仍一致且结果 NoOp 才完成检查。基线冲突或语义变化记 task.read_check_failed，Pending 后续步骤标 Skipped；检查期间策略变化则不记完成。审批消费、有效期与显式失效仍在事务内验证，当前会话策略在观察前后复核。
+
+重开时验证只读证据、审计顺序和依赖；NoOp 不占用领域 operationId 或 dispatch key。多步 run 只在所有步骤 Succeeded/NoOp 后成功，已完成步骤不会因后续轮询重复执行。只读证据扩展当前存储格式至 `user_version=5`，旧 schema 失败关闭、保留文件，不添加兼容读取/迁移。
+
+验证：新增推进 16 项、任务专项共 306 项通过，Server/专项构建通过。覆盖依赖未完成时拒绝修改派发、真实规划器/存储上的核对→NoOp→受控变更派发→结果对账链、重开、终态不重复、旧确认幂等、错输入修订与未认证主体拒绝、基线变化失败并跳过、读结果提交前故障回滚、观察期间撤权、旧 schema 3/4 拒绝；变更派发和结果观察为受控适配夹具，未执行真实第三方软件或特权 Helper。既有包审计及编译警告保留。
+
+生产审批/运行/推进路由、持久取消和 NeedsRecovery 人工恢复/剩余步骤审批、桌面统一确认执行与真实宿主端到端仍待完成。输出引用及写后修订传递尚未实现，不能把当前固定基线检查当作写后动态引用。TO-02/TO-03 和 CC-02/CC-03 保持实施中。
+### TO-02/TO-03 持久取消与领域投递（2026-10-25）
+
+新增内部 `RequestRunCancellation` 和 `TaskRunCancellationService`。先在同一耐久事务保存 cancel request、跳过后续 Pending 步骤和审计，再按 taskOwner/原 key 找回唯一领域操作并请求取消。未派发 Pending 可直接收敛 Cancelled；Dispatching/Running 先保持 Cancelling，台账没有受理记录时不推断已取消，也不由推进服务重发原意图。不可取消阶段或投递竞争保持 Cancelling，后续可重试投递而不增加任务取消事件。
+
+推进服务在取消后只进行原操作对账，不再派发普通步骤。已绑定的活动阶段上下文仍可在 run 授权有效且未撤权时供宿主安全收敛；取消后不能新建任务执行上下文或从原 journal 重新准备派发。取消不是撤销全部收敛权限，任务审批撤销/身份失效仍独立阻止下一阶段授权。
+
+只有原操作的取消回执与已恢复状态一致才记 Cancelled；若操作实际已成功提交并通过对账，取消请求不能把 Succeeded 改写为 Cancelled。失败或未知结果仍按既有对账规则收敛 Failed/NeedsRecovery。终态的晚到取消不改写历史。当前共享取消字段/枚举已存在，存储格式仍为 schema 5，读入时重放 cancel_requested 与后续结果事件并核对取消标记/步骤/run 状态。
+
+验证：新增持久取消 12 项，工作线程扩至 15 项，任务专项共 324 项通过，Server/专项构建通过。覆盖跨主体与修订拒绝、Queued 直接取消、重开和幂等、未明受理保持 Cancelling、停止后续派发、既有阶段可收敛而新上下文拒绝、提交成功优先于晚到取消、提交前故障回滚；真实安装协调器/台账加受控领域夹具验证投递前请求已持久保存、精确原任务投递、不可取消阶段等待、重复投递不追加任务事件、领域取消与恢复基线回执共同决定任务终态。没有实际第三方安装或特权 Helper 取消验收，既有依赖审计/编译警告保留。
+
+尚待：没有领域受理记录的 Dispatching 取消需要专用关闭/恢复协调，当前保持 Cancelling；NeedsRecovery 人工恢复及剩余步骤审批、生产审批/运行/推进/取消路由、桌面统一执行和真实主机端到端也未完成。TO-02/TO-03 和 CC-02/CC-03 保持实施中。
+### TO-02 未受理取消的关闭屏障（2026-10-25）
+
+补齐“dispatch intent 已保存、领域尚未受理”的取消关闭。安装协调器的新受理与 `TryCloseUnacceptedTask` 共用 admission gate：先核对原 actor/key/typed request/taskOwner，确认仍无领域记录后，在该 gate 内提交 TaskRun 的 dispatch_cancelled 审计与未受理取消终态。TaskRun 保留原请求摘要，domainOperationId 为空，问题码 task.cancelled_before_acceptance；不伪造领域取消回执。
+
+任务绑定新增受理前的耐久检查，在同一 gate 内、创建领域记录之前验证 run/步骤/审批/计划仍允许受理。因取消关闭而迟到的 StartTask 被拒绝，不创建安装台账或 worker；已存在的相同归属记录仍可幂等读回。锁顺序为 coordinator gate→task store，取消标记先单独持久提交并释放 task store 后才进入 gate，关闭回调不调用 Helper 或身份查询。若初次查询误报缺失但 gate 内发现已受理，则不关闭，而绑定原 operationId 并继续等待领域结果。
+
+关闭提交失败仅回滚关闭事务，原 cancel request 保持 Cancelling，可重开后按原键重试。启动后原取消标记和受理前检查仍阻止新受理，不以重开清除屏障。已经绑定领域 operationId 的未知结果不适用此关闭路径，仍按 NeedsRecovery/领域回执处理。存储记录形状未改变，当前 schema 仍为 5。
+
+验证：新增未受理取消 8 项、工作线程扩至 17 项，任务专项共 334 项通过；Server/专项构建通过。覆盖无受理记录的明确关闭/重开/幂等、关闭提交前故障与原请求保留、重开重试、初次缺失但实际已受理的竞态不误关，以及真实安装协调器在 typed Validate 后/受理前被取消关闭时拒绝迟到受理（无新记录/worker）。使用受控领域夹具，没有真实特权 Helper 安装。既有包审计及编译警告保留。
+
+生产审批/运行/推进/取消接口、NeedsRecovery 人工恢复和剩余步骤审批、统一桌面执行及真实宿主端到端仍待完成。TO-02/TO-03 不标记完成。
+### TO-02/TO-03 任务执行 HTTP 接入（2026-10-25）
+
+`ServerPipeline` 现注册独立 `TaskExecutionEndpoints`：
+
+- `POST /api/v1.0/task-plans/{planId}/approve`：严格计划摘要/明确确认/可选管理员账户和密码，要求单个有界 Idempotency-Key；复用审批服务与 login 认证限流。凭据 DTO 不生成包含密码的 record ToString，不持久保存密码。
+- `POST /api/v1.0/task-plans/{planId}/run`：严格 approvalId/planDigest 及 Idempotency-Key；`TaskRunStartService` 在首次消费前重新复核冻结计划和实时策略，只创建耐久 Queued run，返回 Accepted/Location，不触发派发。原审批已消费时仅按幂等规则读回原 run。
+- `GET /api/v1.0/task-runs/{runId}`：主体隔离、RuntimeRead、no-store，仅历史读取，不推进；宿主功能失效后仍可读取。
+- `POST /api/v1.0/task-runs/{runId}/advance`：严格 expectedRevision，推进服务在选择步骤前验证修订，拒绝旧页面推进下一步；派发和对账仍使用已实现的工作线程/授权/journal 边界。
+- `POST /api/v1.0/task-runs/{runId}/cancel`：严格 expectedRevision，复用持久取消、原操作投递与未受理关闭屏障，返回当前真实状态，不冒充已经取消。
+
+写路由要求 RuntimeManage、controller/明确 sing-box 安装限制及 PrivilegedOperations/AgentInstallation 宿主功能；服务内仍校验 canonical 用户、会话、controller 租约、策略与精确计划审批。相互冲突的 sub/NameIdentifier 拒绝，主体不接受 body 注入。审批正文最多 16 KiB，其他命令 4 KiB，普通/分块正文均逐块有界；大小写严格，重复/未知/缺字段、错误摘要与修订拒绝。异常响应仅输出稳定 task problem，不返回 Helper 或管理员认证诊断。mutating endpoint 的成功/处理错误均 no-store。
+
+验证：新增执行 HTTP 36 项，任务专项共 370 项通过，Server/专项构建通过。真实回环 ASP.NET 服务覆盖匿名、角色/安装限制/缺主体/双主体、宿主功能、显式确认、类型/幂等键/正文边界、分块超限、凭据诊断隔离、owner/跨 actor、排队不派发、启动幂等/换摘要冲突、GET 不推进、旧修订/未知参数、取消仅记请求、成功回执优先于晚到取消、功能失效下历史可读、审批后制品漂移不消费授权，以及真实 login limiter 在认证前拒绝后续请求。规划/存储/审批与启动服务使用实际实现，身份/管理员认证/派发与领域回执为受控适配夹具；未执行第三方软件或真实特权 Helper 安装。既有包审计和编译警告保留。
+
+此前 planning-only fixture 的无执行路由断言仅对应只注册规划分组的场景，不再用它声称生产执行路由未实现。当前桌面尚未调用新执行接口；人工 NeedsRecovery 恢复及剩余步骤审批、真实主机纵向验收、输出/修订传递与其他运行时仍待完成，TO-02/TO-03/CC-02/CC-03 不标记完成。
+### 桌面执行传输客户端（2026-10-25）
+
+桌面组件中心新增当前协议执行客户端，严格绑定会话/服务器/计划，校验审批能力及 run/step 不可变身份，支持带 expectedRevision 的推进和取消；首次历史读取与已跟踪刷新的会话校验分别处理。Client Installation 217 项通过，其中新增客户端检查 47 项（受控 HTTP 传输），无 Helper 实际执行。见[桌面客户端记录](RelaxKonOS.ComponentCenter.Design.md#桌面任务执行客户端2026-10-25)。可见执行界面、运行引用持久化/重开与人工恢复尚未接入，服务端 370 项验证边界保持此前记录。

@@ -1,6 +1,7 @@
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Server.ManagedRuntimes;
+using RelaxKonOS.Server.TaskOrchestration;
 
 namespace RelaxKonOS.Server.Installations;
 
@@ -50,7 +51,9 @@ public sealed class SingBoxInstallationService(SingBoxRuntimeService runtime) : 
         await progress.ReportAsync(new(InstallationStage.Preflight, Cancellable: true), ct);
         try
         {
-            var result = await runtime.ExecuteAsync(progress.OperationId, options.Plan, ct);
+            var result = progress is ITaskInstallationProgress task
+                ? await runtime.ExecuteTaskAsync(progress.OperationId, options.Plan, task.Authority, ct)
+                : await runtime.ExecuteAsync(progress.OperationId, options.Plan, ct);
             // A cancellation the Host actually performed is its own outcome, not a failure.
             if (result.Outcome == RuntimeSwitchOutcome.Cancelled)
                 throw new InstallationCancelledException(result.ProblemCode ?? "runtime.operation_cancelled");

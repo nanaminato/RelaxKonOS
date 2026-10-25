@@ -46,7 +46,7 @@
      </TreeView>
     </Grid>
    </Border>
-   <ScrollViewer Grid.Column="1" Padding="20,16" HorizontalScrollBarVisibility="Disabled">
+   <ScrollViewer x:Name="DetailsScroll" Grid.Column="1" Padding="20,16" HorizontalScrollBarVisibility="Disabled">
     <StackPanel Spacing="14">
      <TextBlock Text="{Binding SelectedTitle}" FontSize="18" FontWeight="SemiBold" />
      <TextBlock Text="{Binding EmptyMessage}" IsVisible="{Binding !HasResults}" TextWrapping="Wrap" />
@@ -73,10 +73,56 @@
          <StackPanel Spacing="4" Margin="0,6">
           <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
           <TextBlock Text="{Binding State}" />
+          <TextBlock Text="{Binding Effects}" TextWrapping="Wrap" />
           <TextBlock Text="{Binding Problems}" TextWrapping="Wrap" Foreground="{DynamicResource DangerBrush}" />
          </StackPanel>
         </DataTemplate></ItemsControl.ItemTemplate>
        </ItemsControl>
+      </StackPanel>
+     </Border>
+     <Border Classes="app-panel" Padding="18" IsVisible="{Binding HasDrafts}">
+      <StackPanel Spacing="8">
+       <TextBlock Text="{loc:Loc component_center.change_plan_title}" FontSize="16" FontWeight="SemiBold" />
+       <Button Content="{loc:Loc component_center.change_plan_title}" Command="{Binding PlanDraftCommand}" IsEnabled="{Binding CanPlanDraft}" HorizontalAlignment="Left" />
+       <Button Content="{loc:Loc component_center.task_approve}" Command="{Binding ApproveTaskCommand}" IsEnabled="{Binding CanApproveTask}" HorizontalAlignment="Left" />
+       <TextBlock Text="{Binding ChangePlanNotice}" TextWrapping="Wrap" />
+       <TextBlock Text="{Binding ChangePlanDigest}" TextWrapping="Wrap" FontSize="11" />
+       <ItemsControl ItemsSource="{Binding ChangePlanSteps}">
+        <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:ComponentInspectionStep">
+         <StackPanel Margin="0,4" Spacing="4">
+          <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding State}" />
+          <TextBlock Text="{Binding Effects}" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding Problems}" TextWrapping="Wrap" Foreground="{DynamicResource DangerBrush}" />
+         </StackPanel>
+        </DataTemplate></ItemsControl.ItemTemplate>
+       </ItemsControl>
+      </StackPanel>
+     </Border>
+     <Border Classes="app-panel" Padding="18" IsVisible="{Binding ShowTasks}">
+      <StackPanel Spacing="8">
+       <TextBlock Text="{loc:Loc component_center.task_title}" FontSize="16" FontWeight="SemiBold" />
+       <ComboBox ItemsSource="{Binding TaskHistory}" SelectedItem="{Binding SelectedTask}" IsEnabled="{Binding CanSelectTask}" HorizontalAlignment="Stretch">
+        <ComboBox.ItemTemplate><DataTemplate x:DataType="vm:ComponentTaskHistoryItem"><TextBlock Text="{Binding Title}" /></DataTemplate></ComboBox.ItemTemplate>
+       </ComboBox>
+       <TextBlock Text="{Binding TaskState}" TextWrapping="Wrap" />
+       <TextBlock Text="{Binding Runtime.OperationText}" IsVisible="{Binding ShowTaskDomainProgress}" TextWrapping="Wrap" />
+       <StackPanel IsVisible="{Binding ShowTaskDomainProgress}" Spacing="4">
+        <TextBlock Text="{loc:Loc component_center.stage_progress}" TextWrapping="Wrap" />
+        <ProgressBar Minimum="0" Maximum="100" Value="{Binding Runtime.OperationProgress}" IsIndeterminate="{Binding Runtime.IsOperationIndeterminate}" />
+        <TextBlock Text="{Binding Runtime.OperationProgress, StringFormat={}{0}%}" IsVisible="{Binding !Runtime.IsOperationIndeterminate}" />
+       </StackPanel>
+       <TextBlock Text="{Binding TaskNotice}" TextWrapping="Wrap" />
+       <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsTaskBusy}" />
+       <WrapPanel>
+        <Button Content="{loc:Loc component_center.task_refresh}" Command="{Binding RefreshTaskCommand}" IsEnabled="{Binding CanRefreshTask}" Margin="0,0,8,0" />
+        <Button Content="{loc:Loc component_center.task_resume}" Command="{Binding ResumeTaskCommand}" IsEnabled="{Binding CanResumeTask}" Margin="0,0,8,0" />
+        <Button Content="{loc:Loc component_center.task_cancel}" Command="{Binding CancelTaskCommand}" IsEnabled="{Binding CanCancelTask}" />
+       </WrapPanel>
+       <Button Content="{loc:Loc component_center.task_reload}" Command="{Binding ReloadTaskHistoryCommand}" IsEnabled="{Binding CanSelectTask}" HorizontalAlignment="Left" />
+       <ItemsControl ItemsSource="{Binding TaskSteps}"><ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:ComponentTaskStepItem">
+        <StackPanel Margin="0,4"><TextBlock Text="{Binding Title}" FontWeight="SemiBold" /><TextBlock Text="{Binding State}" /></StackPanel>
+       </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
       </StackPanel>
      </Border>
      <StackPanel IsVisible="{Binding HasRuntimeDetails}"><views:ProxyServerRuntimeView x:Name="RuntimeView" DataContext="{Binding Runtime}" /></StackPanel>
@@ -96,7 +142,7 @@
      </DataTemplate></ItemsControl.ItemTemplate>
     </ItemsControl>
     <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="8">
-     <Button Content="{loc:Loc component_center.preview_title}" Command="{Binding PreviewCommand}" IsEnabled="{Binding CanPreview}" Classes="primary" />
+     <Button Content="{loc:Loc component_center.preview_title}" Command="{Binding PlanDraftCommand}" IsEnabled="{Binding CanPlanDraft}" Classes="primary" />
      <Button Grid.Column="1" Content="{loc:Loc component_center.discard}" Command="{Binding DiscardCommand}" IsEnabled="{Binding HasDrafts}" />
      <TextBlock Grid.Column="2" Text="{Binding PersistenceNotice}" TextWrapping="Wrap" VerticalAlignment="Center" />
     </Grid>

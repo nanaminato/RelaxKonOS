@@ -15,10 +15,11 @@ public partial class ComponentCenterWorkspace : UserControl
         if (_model is not null) _model.PropertyChanged -= ModelChanged;
         base.OnDataContextChanged(e);
         _model = DataContext as ComponentCenterViewModel;
-        if (_model is not null) { _model.PropertyChanged += ModelChanged; RuntimeView?.ShowCenterSection(_model.SelectedPage); }
+        if (_model is not null) { _model.PropertyChanged += ModelChanged; RuntimeView?.ShowCenterSection(_model.SelectedPage, !_model.ShowTaskDomainProgress); }
     }
     private void ModelChanged(object? sender, PropertyChangedEventArgs e)
-    { if (e.PropertyName == nameof(ComponentCenterViewModel.SelectedPage)) RuntimeView.ShowCenterSection(_model!.SelectedPage); }
+    { if (e.PropertyName is nameof(ComponentCenterViewModel.SelectedPage) or nameof(ComponentCenterViewModel.ShowTaskDomainProgress))
+        RuntimeView.ShowCenterSection(_model!.SelectedPage, !_model.ShowTaskDomainProgress); }
     private void OpenApplication_Click(object? sender, RoutedEventArgs e) => OpenApplication?.Invoke();
     private void RemoveDraft_Click(object? sender, RoutedEventArgs e)
     {
