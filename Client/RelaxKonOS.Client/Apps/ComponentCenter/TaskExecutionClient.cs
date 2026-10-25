@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using System.Diagnostics.CodeAnalysis;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.TaskOrchestration;
 
 namespace RelaxKonOS.Client.Apps.ComponentCenter;
@@ -52,6 +53,7 @@ public sealed class TaskExecutionClient(HttpClient http, IAuthSession session) :
                     || installation.StateRevision < 0 || !Enum.IsDefined(installation.Ownership)
                     || snapshot.MeasuredVersion is { } version && !Text(version) || installation.ActiveReleaseId is { } release && !Text(release)
                     || snapshot.Receipt is { } receipt && (receipt.OperationId != item.OperationId || !Enum.IsDefined(receipt.Outcome))) Invalid();
+                if (snapshot.CommitWitness is { } witness && !RuntimeCommitWitnessRules.BoundToSnapshot(witness, snapshot)) Invalid();
             }
         });
         return evidence;
@@ -213,6 +215,11 @@ public sealed class TaskExecutionClient(HttpClient http, IAuthSession session) :
         {
             using var document = JsonDocument.Parse(buffer.ToArray(), new JsonDocumentOptions { MaxDepth = 16 });
             TaskPlanCanonicalizer.Canonicalize(document.RootElement);
+            if (typeof(T) == typeof(TaskRunEvidence) && document.RootElement.TryGetProperty("observations", out var observations)
+                && observations.ValueKind == JsonValueKind.Array)
+                foreach (var item in observations.EnumerateArray())
+                    if (item.TryGetProperty("snapshot", out var snapshot) && snapshot.ValueKind != JsonValueKind.Null)
+                        RuntimeCommitWitnessRules.RequireWireMember(snapshot);
             return document.RootElement.Deserialize<T>(Json) ?? throw new JsonException();
         }
         catch (Exception ex) when (ex is JsonException or TaskPlanningException or ArgumentException or InvalidOperationException)

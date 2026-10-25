@@ -58,6 +58,13 @@ data class ManagedRuntimeCatalog(val source: ManagedRuntimeSource, val revision:
 }
 class ManagedRuntimeInstallation(val wire: String) {
     private val value get() = JSONObject(wire)
+    init {
+        val snapshot = JSONObject(wire)
+        require(snapshot.has("commitWitness"))
+        require(snapshot.isNull("commitWitness") || snapshot.optJSONObject("commitWitness") != null)
+    }
+    /** Historical host evidence is retained verbatim; it never authorizes an installation or recovery. */
+    val commitWitness: String? get() = value.optJSONObject("commitWitness")?.toString()
     private val installation get() = value.getJSONObject("installation")
     val ownership get() = installation.getString("ownership")
     val recoveryRequired get() = installation.getBoolean("recoveryRequired") || !value.isNull("pendingOperationId")

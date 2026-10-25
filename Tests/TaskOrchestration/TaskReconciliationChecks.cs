@@ -34,10 +34,13 @@ internal static class TaskReconciliationChecks
                 var run = store.StartRun(next.PlanId, approval.ApprovalId, next.PlanDigest, live, Guid.NewGuid().ToString("N"));
                 var dispatch = store.PrepareDispatch(run.RunId, "runtime", live, 1); var operationId = Guid.NewGuid();
                 run = store.BindDomainOperation(run.RunId, "runtime", "subject", dispatch.RequestDigest, operationId, 2);
-                var operation = new InstallationOperationDto(operationId, InstallationServiceId.SingBox, InstallationOperationKind.Upgrade,
+                var operation = new InstallationOperationDto(operationId, dispatch.Service, dispatch.Kind,
                     InstallationOperationState.Succeeded, InstallationStage.Completed, null, null, run.CreatedAt, run.CreatedAt, DateTimeOffset.UtcNow, false);
                 var snapshot = fixture.Installation with { Installation = fixture.Installation.Installation with { StateRevision = 8, ActiveReleaseId = "target" },
-                    MeasuredVersion = "1.14.3", Receipt = new(operationId, RuntimeSwitchOutcome.Succeeded, null) };
+                    MeasuredVersion = "1.14.3", ActiveRevisionId = operationId, ConfigurationIdentity = new string('d', 64),
+                    Receipt = new(operationId, RuntimeSwitchOutcome.Succeeded, null) };
+                snapshot = snapshot with { CommitWitness = new(operationId, snapshot.Installation, snapshot.ActiveRevisionId,
+                    snapshot.ConfigurationIdentity, snapshot.MeasuredVersion) };
                 return (run, approval, new("runtime", operation, snapshot));
             }
             var good = Setup();
@@ -210,6 +213,57 @@ internal static class TaskReconciliationChecks
             var configWitness = changedConfiguration.Evidence with { Snapshot = changedConfiguration.Evidence.Snapshot! with { ConfigurationIdentity = "later-configuration" } };
             Check(store.RecordRecoveryReconciliation(configUnknown.RunId, "subject", configWitness, configUnknown.Revision).State == TaskRunState.NeedsRecovery,
                 "recovery cannot certify a success using later configuration state");
+            foreach (var change in new[] { RuntimeChange.Install, RuntimeChange.Uninstall })
+            foreach (var keepData in new[] { false, true })
+            {
+                if (change == RuntimeChange.Install && !keepData) continue;
+                var original = TaskPlanJson.ReadInputs<RuntimeTaskFrozenChange>(plan.Semantics.Steps[0].Inputs);
+                var frozenChange = original with { Change = change, ConfigurationIdentity = change == RuntimeChange.Install ? null : new string('e', 64),
+                    PreviousReleaseId = change == RuntimeChange.Install ? null : original.PreviousReleaseId,
+                    CurrentVersion = change == RuntimeChange.Install ? null : original.CurrentVersion,
+                    Release = change == RuntimeChange.Uninstall ? null : original.Release,
+                    Impact = change == RuntimeChange.Uninstall ? new(false, true, true, keepData, !keepData, false) : new(false, false, false, true, false, false),
+                    Selection = original.Selection with { KeepData = keepData,
+                        ExpectedCatalogRevision = change == RuntimeChange.Uninstall ? 0 : original.Selection.ExpectedCatalogRevision,
+                        ExpectedTrustRevision = change == RuntimeChange.Uninstall ? 0 : original.Selection.ExpectedTrustRevision,
+                        SourceId = change == RuntimeChange.Uninstall ? null : original.Selection.SourceId,
+                        ReleaseId = change == RuntimeChange.Uninstall ? null : original.Selection.ReleaseId } };
+                var semantics = plan.Semantics with { Steps = [plan.Semantics.Steps[0] with
+                    { ActionId = "runtime." + change.ToString().ToLowerInvariant(), RiskClass = change == RuntimeChange.Uninstall && !keepData ? "destructive" : "host-management",
+                        Inputs = TaskPlanJson.FreezeInputs(frozenChange) }] };
+                var pendingChange = Setup(plan with { Semantics = semantics, PlanDigest = TaskPlanCanonicalizer.Digest(semantics) });
+                var waiting = store.RecordReconciliation(pendingChange.Run.RunId, "subject", pendingChange.Evidence with { Snapshot = null }, 3);
+                var snapshot = pendingChange.Evidence.Snapshot!;
+                if (change == RuntimeChange.Uninstall) snapshot = snapshot with
+                {
+                    Installation = snapshot.Installation with { Ownership = RuntimeOwnership.Absent, ActiveReleaseId = null },
+                    MeasuredVersion = null, ActiveRevisionId = null, ConfigurationIdentity = keepData ? frozenChange.ConfigurationIdentity : null
+                };
+                snapshot = snapshot with { CommitWitness = new(pendingChange.Evidence.Operation.OperationId, snapshot.Installation,
+                    snapshot.ActiveRevisionId, snapshot.ConfigurationIdentity, snapshot.MeasuredVersion) };
+                var evidence = pendingChange.Evidence with { Snapshot = snapshot, Operation = pendingChange.Evidence.Operation with { State = InstallationOperationState.Interrupted } };
+                Check(store.RecordRecoveryReconciliation(waiting.RunId, "subject", evidence, waiting.Revision).State == TaskRunState.Succeeded,
+                    "original committed facts resolve interrupted " + change + " with KeepData=" + keepData);
+                Check(new TaskPlanStore(path, protection).GetRun(waiting.RunId, "subject")?.State == TaskRunState.Succeeded,
+                    "resolved installation/removal proof remains verifiable after store reopening");
+            }
+            var missingCommit = Setup();
+            var missingCommitRun = store.RecordReconciliation(missingCommit.Run.RunId, "subject", missingCommit.Evidence with { Snapshot = null }, 3);
+            Check(store.RecordRecoveryReconciliation(missingCommitRun.RunId, "subject", missingCommit.Evidence with
+                { Snapshot = missingCommit.Evidence.Snapshot! with { CommitWitness = null } }, missingCommitRun.Revision).State == TaskRunState.NeedsRecovery,
+                "a matching success receipt without the original commit witness cannot resolve an interrupted result");
+            var laterState = Setup(); var laterRun = store.RecordReconciliation(laterState.Run.RunId, "subject", laterState.Evidence with { Snapshot = null }, 3);
+            Check(store.RecordRecoveryReconciliation(laterRun.RunId, "subject", laterState.Evidence with { Snapshot = laterState.Evidence.Snapshot! with
+                { Installation = laterState.Evidence.Snapshot.Installation with { StateRevision = 9 } } }, laterRun.Revision).State == TaskRunState.NeedsRecovery,
+                "a subsequent revision with identical version/configuration does not prove the original operation's final state");
+            var wrongProof = Setup();
+            var malformedProof = wrongProof.Evidence with { Snapshot = wrongProof.Evidence.Snapshot! with { CommitWitness = wrongProof.Evidence.Snapshot.CommitWitness! with
+                { Installation = wrongProof.Evidence.Snapshot.CommitWitness!.Installation with { HostId = "unrelated-host" } } } };
+            var proofRejected = store.RecordReconciliation(wrongProof.Run.RunId, "subject", malformedProof, 3);
+            Check(proofRejected.State == TaskRunState.NeedsRecovery && store.GetRunEvidence(proofRejected.RunId, "subject")?.Observations.Single().Snapshot?.CommitWitness is null,
+                "public history withholds a substituted commit host while retaining the original uncertain result");
+            Check(store.RecordReconciliation(wrongProof.Run.RunId, "subject", malformedProof, 3).Revision == proofRejected.Revision,
+                "redacting an unrelated public commit never rewrites the stored original evidence");
 
             async Task RejectRecovery(string subject, long revision, string code)
             {

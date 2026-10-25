@@ -31,6 +31,7 @@ public partial class ComponentCenterViewModel
     private readonly ComponentTaskReferenceStore? _references;
     private TaskPlanApproval? _taskApproval;
     private bool _driveTask, _taskDisposed, _referenceReady;
+    private long _taskAccessRevision;
     private string _approvalKey = Guid.NewGuid().ToString("N");
     public Func<TaskPlan, Task<bool>>? ConfirmTaskAsync { get; set; }
     public Func<Task<HostAdministratorCredentials?>>? TaskCredentialsAsync { get; set; }
@@ -191,15 +192,38 @@ public partial class ComponentCenterViewModel
     {
         Runtime.SynchronizeAccess();
         if (!CanCancelTask || CurrentTaskRun is not { } run || SelectedTask is not { } selected) return;
+        var expected = run;
+        var accessRevision = _taskAccessRevision;
+        bool StillSelected() => !_taskDisposed && !Runtime.IsInvalidated && Runtime.CanRead
+            && _taskAccessRevision == accessRevision && SelectedTask == selected && CurrentTaskRun == expected;
         IsTaskBusy = true;
         try
         {
-            CurrentTaskRun = await _execution!.CancelAsync(selected.Reference.Plan, run, _inspectionLifetime.Token);
+            TaskRun result;
+            try { result = await _execution!.CancelAsync(selected.Reference.Plan, run, _inspectionLifetime.Token); }
+            catch (HttpRequestException ex) when (ex.Message == "task.run_revision_conflict")
+            {
+                // Admission may bind the original operation after the displayed revision. Retain this
+                // explicit cancel intent, but never retry against another selection or renewed authority.
+                Runtime.SynchronizeAccess();
+                if (!StillSelected()) return;
+                var observed = await _execution!.RefreshAsync(selected.Reference.Plan, run, _inspectionLifetime.Token);
+                Runtime.SynchronizeAccess();
+                if (!StillSelected()) return;
+                CurrentTaskRun = observed; expected = observed;
+                _driveTask = false;
+                TaskNotice = LocalizedStatus.Literal("");
+                if (!Runtime.CanManage || observed.State is not (TaskRunState.Queued or TaskRunState.Running or TaskRunState.Cancelling)) return;
+                result = await _execution.CancelAsync(selected.Reference.Plan, observed, _inspectionLifetime.Token);
+            }
             Runtime.SynchronizeAccess();
+            if (!StillSelected()) return;
+            CurrentTaskRun = result;
             // This window explicitly requested cancellation; continue delivering it until a receipt arrives.
-            _driveTask = !_taskDisposed && !Runtime.IsInvalidated && Runtime.CanRead && Runtime.CanManage;
+            _driveTask = Runtime.CanManage && result.State is TaskRunState.Queued or TaskRunState.Running or TaskRunState.Cancelling;
+            TaskNotice = LocalizedStatus.Literal("");
         }
-        catch (Exception ex) when (TaskFailure(ex)) { TaskError(ex); }
+        catch (Exception ex) when (TaskFailure(ex)) { if (StillSelected()) TaskError(ex); }
         finally { IsTaskBusy = false; }
     }
     public async Task TickTaskAsync()

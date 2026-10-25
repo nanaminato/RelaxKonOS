@@ -52,6 +52,17 @@ internal static class ComponentCenterWorkspaceChecks
                     "All visible component-center text resolves in " + language);
                 search.Text = "";
                 Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
+                model.Navigate(ComponentCenterPage.Updates);
+                Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
+                Check(!model.HasResults && model.EmptyMessage.Resolve() == RelaxKonOS.Client.Localization.LocalizedText.Get("component_center.observation_unknown"),
+                    "Updates with unobserved installation never claim there are no updates in " + language);
+                using (var updateFrame = new RenderTargetBitmap(new PixelSize(1060, 800)))
+                {
+                    updateFrame.Render(window);
+                    updateFrame.Save(Path.Combine(output, language + (dark ? "-dark" : "-light") + "-updates-unknown.png"), new PngBitmapEncoderOptions());
+                }
+                model.Navigate(ComponentCenterPage.All);
+                Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
                 var groupCheckbox = view.GetVisualDescendants().OfType<CheckBox>().Single(control => control.DataContext is ComponentTreeNode { IsGroup: true });
                 groupCheckbox.Focus();
                 window.KeyPress(Key.Space, RawInputModifiers.None, PhysicalKey.Space, null);
@@ -261,6 +272,12 @@ internal static class ComponentCenterWorkspaceChecks
                     }
                     if (resultState == TaskRunState.Succeeded)
                     {
+                        var operation = recoveryRun.Steps[0].DomainOperationId!.Value;
+                        var committed = activeRuntime.Installation! with { ActiveRevisionId = operation, ConfigurationIdentity = new string('d', 64),
+                            Receipt = new(operation, RuntimeSwitchOutcome.Succeeded, null) };
+                        committed = committed with { CommitWitness = new(operation, committed.Installation, committed.ActiveRevisionId,
+                            committed.ConfigurationIdentity, committed.MeasuredVersion) };
+                        taskModel.TaskEvidence.Add(new(new(recoveryRun.Steps[0].StepId, operation, InstallationOperationState.Succeeded, true, committed)));
                         resultView.FindControl<ScrollViewer>("DetailsScroll")!.Offset = new Vector(0, 520);
                         Dispatcher.UIThread.RunJobs(); resultWindow.UpdateLayout();
                         using var bitmap = new RenderTargetBitmap(new PixelSize(1060, 800));

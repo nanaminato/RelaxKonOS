@@ -56,8 +56,8 @@ public sealed partial class TaskPlanStore
             observed = evidence with { Operation = evidence.Operation with { State = state } };
         }
         var outcome = ClassifyResult(proposal, observed);
-        if (outcome == TaskStepRunState.Succeeded && evidence.Snapshot?.ConfigurationIdentity
-            != TaskPlanJson.ReadInputs<RuntimeTaskFrozenChange>(proposal.Inputs).ConfigurationIdentity)
+        if (outcome == TaskStepRunState.Succeeded && (evidence.Snapshot is not { } snapshot
+            || !RuntimeCommitWitnessRules.Matches(snapshot.CommitWitness, snapshot)))
             return TaskStepRunState.NeedsRecovery;
         // Reconciliation cannot resume previously skipped steps or call a partial plan successful.
         return outcome == TaskStepRunState.Succeeded && hasSkippedSteps ? TaskStepRunState.NeedsRecovery : outcome;

@@ -14,6 +14,10 @@ public sealed record ComponentTaskEvidenceItem(TaskStepResultEvidence Evidence)
         : LocalizedStatus.Format("component_center.evidence_observation", snapshot.Installation.InstallationId.ToString("D"), snapshot.Installation.StateRevision,
             snapshot.MeasuredVersion ?? "—", snapshot.Installation.ActiveReleaseId ?? "—");
     public LocalizedStatus Receipt => LocalizedStatus.Key("component_center.evidence_receipt." + (Evidence.Snapshot?.Receipt?.Outcome.ToString() ?? "Unknown"));
+    public LocalizedStatus Commit => Evidence.Snapshot?.CommitWitness is not { } witness
+        ? LocalizedStatus.Key("component_center.evidence_commit_missing")
+        : LocalizedStatus.Format("component_center.evidence_commit", witness.Installation.StateRevision,
+            witness.MeasuredVersion ?? "—", witness.Installation.ActiveReleaseId ?? "—");
 }
 
 public partial class ComponentCenterViewModel

@@ -151,6 +151,9 @@ internal static class ComponentCenterHostAcceptance
                 await reopened.ReadTaskEvidenceCommand.ExecuteAsync(null);
                 Check(reopened.TaskEvidence.Any(item => item.Evidence.Snapshot?.Receipt?.Outcome == RuntimeSwitchOutcome.Succeeded),
                     "desktop reads persisted original-operation host evidence");
+                var committedSnapshot = reopened.TaskEvidence.Single().Evidence.Snapshot!;
+                Check(RuntimeCommitWitnessRules.Matches(committedSnapshot.CommitWitness, committedSnapshot),
+                    "original immutable commit witness matches freshly verified program, configuration and exact state revision");
                 var after = await catalog.InstallationAsync(deadline.Token);
                 Check(after.Installation.InstallationId == before.Installation.InstallationId && after.Installation.HostId == before.Installation.HostId
                     && after.Installation.StateRevision > baseline.Installation.StateRevision && !after.Installation.RecoveryRequired
@@ -159,7 +162,8 @@ internal static class ComponentCenterHostAcceptance
                     : after.Installation.Ownership == RuntimeOwnership.Managed && after.Installation.ActiveReleaseId == release.ReleaseId
                         && after.MeasuredVersion == release.SortVersion, "measured program state matches the frozen lifecycle target");
                 records.Add(new { change, runId = reopened.CurrentTaskRun!.RunId, state = reopened.CurrentTaskRun.State,
-                    after.Installation.StateRevision, after.MeasuredVersion, after.Installation.ActiveReleaseId }); Save("running");
+                    after.Installation.StateRevision, after.MeasuredVersion, after.Installation.ActiveReleaseId,
+                    committedSnapshot.CommitWitness }); Save("running");
                 return after;
             }
             var installed = await Change(RuntimeChange.Install, older);

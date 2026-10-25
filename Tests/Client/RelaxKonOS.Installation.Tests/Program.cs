@@ -20,7 +20,7 @@ using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Privileged;
 
 const string helperCode = "proxy.privileged_operation_unavailable";
-if (args.FirstOrDefault() == "--component-center-host")
+if (args.FirstOrDefault() is "--component-center-host" or "--component-center-observe-host" or "--component-center-cancel-host")
     AppBuilder.Configure<Application>().UseHeadless(new AvaloniaHeadlessPlatformOptions()).SetupWithoutStarting();
 else
     AppBuilder.Configure<Application>().UsePlatformDetect().SetupWithoutStarting();
@@ -34,6 +34,16 @@ typeof(App).GetProperty(nameof(App.Services))!.SetValue(null, services);
 if (args.FirstOrDefault() == "--component-center-host")
 {
     Environment.ExitCode = await ComponentCenterHostAcceptance.RunAsync(args);
+    return;
+}
+if (args.FirstOrDefault() == "--component-center-observe-host")
+{
+    Environment.ExitCode = await ComponentCenterHostObservation.RunAsync(args);
+    return;
+}
+if (args.FirstOrDefault() == "--component-center-cancel-host")
+{
+    Environment.ExitCode = await ComponentCenterHostCancellation.RunAsync(args);
     return;
 }
 var session = DispatchProxy.Create<IAuthSession, SessionStub>();
@@ -59,6 +69,7 @@ await RuntimeReattachmentChecks.RunAsync();
 await ApplicationAvailabilityChecks.RunAsync();
 await TaskPreviewClientChecks.RunAsync();
 await TaskExecutionClientChecks.RunAsync();
+await RuntimeCommitWireChecks.RunAsync();
 await ComponentTaskExecutionChecks.RunAsync();
 await ComponentCenterAccessChecks.RunAsync();
 ComponentCenterHostAcceptanceChecks.Run();
@@ -442,16 +453,54 @@ using (var runtimeHttp = new HttpClient(new Handler(request =>
         && runtimeVm.CatalogProblem.Resolve() == LocalizedText.Get("proxy_server.runtime.refresh_failed")
         && runtimeVm.OutcomeText.Resolve() == LocalizedText.Get("proxy_server.runtime_problem.catalog_missing"),
         "A failed catalog refresh keeps the cached list and never reports the catalog as current");
+    using (var updates = new ComponentCenterViewModel(runtimeVm, new ComponentDraftStore(), "updates-host", Guid.NewGuid()))
+    {
+        updates.Navigate(ComponentCenterPage.Updates);
+        Check(!updates.HasResults && !runtimeVm.CanDetermineUpdates
+            && updates.EmptyMessage.Resolve() == LocalizedText.Get("component_center.updates_unknown"),
+            "Failed refresh withdraws cached update offers and shows unknown rather than no updates");
+    }
     runtimeRefreshFails = false;
     await runtimeVm.RefreshCatalogCommand.ExecuteAsync(null);
     Check(runtimeVm.CatalogProblem.Resolve() == LocalizedText.Get("proxy_server.runtime.catalog_fresh_hint"),
         "A successful refresh clears the failure hint");
+    Check(runtimeVm.CanDetermineUpdates && runtimeVm.HasUpdates,
+        "Successful fresh catalog observation restores confirmed update offers");
+    var freshCatalog = runtimeCatalog;
+    runtimeCatalog = runtimeCatalog with { ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1) };
+    await runtimeVm.LoadAsync();
+    using (var updates = new ComponentCenterViewModel(runtimeVm, new ComponentDraftStore(), "updates-host", Guid.NewGuid()))
+    {
+        updates.Navigate(ComponentCenterPage.Updates);
+        Check(!updates.HasResults && updates.EmptyMessage.Resolve() == LocalizedText.Get("component_center.updates_unknown"),
+            "Expired catalog cannot establish that no updates exist");
+    }
+    runtimeCatalog = freshCatalog;
 
     runtimeObservationFails = true;
     await runtimeVm.LoadAsync();
     Check(runtimeVm.Installation is null && !runtimeVm.CanAct && !runtimeVm.CanUninstall,
         "A failed installation observation clears authority and cannot offer install or uninstall from stale state");
+    using (var updates = new ComponentCenterViewModel(runtimeVm, new ComponentDraftStore(), "updates-host", Guid.NewGuid()))
+    {
+        updates.Navigate(ComponentCenterPage.Updates);
+        Check(!updates.HasResults && updates.EmptyMessage.Resolve() == LocalizedText.Get("component_center.observation_unknown"),
+            "Missing installation facts are distinguished from an observed installation with no updates");
+    }
     runtimeObservationFails = false;
+    await runtimeVm.LoadAsync();
+    var managedInstallation = runtimeInstallation;
+    foreach (var ownership in new[] { RuntimeOwnership.Absent, RuntimeOwnership.External, RuntimeOwnership.Unknown })
+    {
+        runtimeInstallation = managedInstallation with { Ownership = ownership };
+        await runtimeVm.LoadAsync();
+        using var updates = new ComponentCenterViewModel(runtimeVm, new ComponentDraftStore(), "updates-host", Guid.NewGuid());
+        updates.Navigate(ComponentCenterPage.Updates);
+        Check(!updates.HasResults && updates.EmptyMessage.Resolve() == LocalizedText.Get(ownership == RuntimeOwnership.Unknown
+                ? "component_center.observation_unknown" : "component_center.updates_requires_managed"),
+            "Update checks distinguish ownership without claiming latest: " + ownership);
+    }
+    runtimeInstallation = managedInstallation;
     await runtimeVm.LoadAsync();
     runtimeActiveReleaseMissing = true;
     using (var missingSourceVm = new ProxyServerRuntimeViewModel(catalogClient))

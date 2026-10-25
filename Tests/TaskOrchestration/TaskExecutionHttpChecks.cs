@@ -179,7 +179,12 @@ internal static class TaskExecutionHttpChecks
             recoveryRun = store.RecordReconciliation(recoveryRun.RunId, Subject, new(recoveryRun.Steps[0].StepId, recoveryOperation, null), recoveryRun.Revision);
             dispatch.RecoveryEvidence = new(recoveryRun.Steps[0].StepId, recoveryOperation, domain.Installation with
             { Installation = domain.Installation.Installation with { StateRevision = 8, ActiveReleaseId = "target" }, MeasuredVersion = "1.14.3",
+                ActiveRevisionId = recoveryOperation.OperationId, ConfigurationIdentity = new string('d', 64),
                 Receipt = new(recoveryOperation.OperationId, RuntimeSwitchOutcome.Succeeded, null) });
+            var recoveredSnapshot = dispatch.RecoveryEvidence.Snapshot!;
+            dispatch.RecoveryEvidence = dispatch.RecoveryEvidence with { Snapshot = recoveredSnapshot with
+                { CommitWitness = new(recoveryOperation.OperationId, recoveredSnapshot.Installation, recoveredSnapshot.ActiveRevisionId,
+                    recoveredSnapshot.ConfigurationIdentity, recoveredSnapshot.MeasuredVersion) } };
             var dispatchCount = dispatch.Starts; var adminCount = admin.Calls;
             foreach (var token in new[] { "other", "dual", "no-subject" })
             {

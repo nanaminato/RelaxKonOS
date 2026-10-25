@@ -136,6 +136,7 @@
            <TextBlock Text="{Binding DomainState}" TextWrapping="Wrap" />
            <TextBlock Text="{Binding Observation}" TextWrapping="Wrap" />
            <TextBlock Text="{Binding Receipt}" TextWrapping="Wrap" />
+           <TextBlock Text="{Binding Commit}" TextWrapping="Wrap" />
           </StackPanel>
          </Border>
         </DataTemplate></ItemsControl.ItemTemplate>

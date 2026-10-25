@@ -61,7 +61,7 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
         nameof(HasEnvironment), nameof(EnvironmentPlatformText), nameof(EnvironmentServiceHostText),
         nameof(EnvironmentDiskSpaceText), nameof(EnvironmentFileSystemText), nameof(EnvironmentKernelText),
         nameof(HasEnvironmentWarning), nameof(EnvironmentWarning), nameof(DependencyText), nameof(HasDependencyBlock),
-        nameof(Installation), nameof(IsInvalidated), nameof(Updates), nameof(HasUpdates), nameof(SelectedInstallDraft), nameof(InstallModeText), nameof(HasActiveOperation),
+        nameof(Installation), nameof(IsInvalidated), nameof(Updates), nameof(HasUpdates), nameof(CanDetermineUpdates), nameof(SelectedInstallDraft), nameof(InstallModeText), nameof(HasActiveOperation),
         nameof(OperationProgress), nameof(IsOperationIndeterminate)
     ];
 
@@ -100,7 +100,13 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
     public ObservableCollection<RuntimeSourceView> Sources { get; } = [];
     public ObservableCollection<RuntimeReleaseOption> Releases { get; } = [];
 
-    public IReadOnlyList<RuntimeReleaseOption> Updates => _installation?.Installation.Ownership == RuntimeOwnership.Managed
+    public bool CanDetermineUpdates => CanRead && !_invalidated && !_refreshFailed
+        && _installation is { Installation.Ownership: RuntimeOwnership.Managed }
+        && RuntimeSemanticVersion.TryParse(_installation.MeasuredVersion, out _)
+        && _catalog is { Fresh: true, ProblemCode: null, Catalog: { } catalog }
+        && catalog.ExpiresAt > DateTimeOffset.UtcNow
+        && SelectedSource?.Identity.SourceId == _catalog.Source.Identity.SourceId;
+    public IReadOnlyList<RuntimeReleaseOption> Updates => CanDetermineUpdates
         ? Releases.Where(option => option.Available && option.Release.Channel == RuntimeChannel.Stable
             && IsNewer(option.Release)).ToArray() : [];
     public bool HasUpdates => Updates.Count > 0;

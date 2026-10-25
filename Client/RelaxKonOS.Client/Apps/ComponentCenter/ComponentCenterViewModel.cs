@@ -38,9 +38,14 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     public bool HasWorkloadDetails => HasResults && SelectedNode?.WorkloadId is not null && SelectedNode.ComponentId is null;
     public LocalizedStatus SelectedTitle => SelectedPage == ComponentCenterPage.Tasks ? LocalizedStatus.Key("component_center.page.Tasks")
         : SelectedNode?.Label ?? LocalizedStatus.Key("component_center.choose_component");
-    public LocalizedStatus EmptyMessage => LocalizedStatus.Key(SelectedPage == ComponentCenterPage.Installed && Runtime.Installation is null
-        ? "component_center.observation_unknown" : SelectedPage == ComponentCenterPage.Updates
-        ? "component_center.no_updates" : "component_center.no_matches");
+    public LocalizedStatus EmptyMessage => LocalizedStatus.Key(!string.IsNullOrWhiteSpace(Search)
+        ? "component_center.no_matches"
+        : SelectedPage is ComponentCenterPage.Installed or ComponentCenterPage.Updates
+            && Runtime.Installation?.Installation.Ownership is null or RuntimeOwnership.Unknown
+        ? "component_center.observation_unknown"
+        : SelectedPage != ComponentCenterPage.Updates ? "component_center.no_matches"
+        : Runtime.Installation?.Installation.Ownership != RuntimeOwnership.Managed ? "component_center.updates_requires_managed"
+        : !Runtime.CanDetermineUpdates ? "component_center.updates_unknown" : "component_center.no_updates");
     public LocalizedStatus WorkloadRequirements => LocalizedStatus.Literal(SelectedNode?.WorkloadId is { } id
         ? string.Join(", ", ComponentCatalog.Workloads.Single(workload => workload.WorkloadId == id).RequiredComponents) : "");
     public LocalizedStatus WorkloadOptional => LocalizedStatus.Literal(SelectedNode?.WorkloadId is { } id
@@ -74,6 +79,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     }
     private void RuntimeChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName is nameof(ProxyServerRuntimeViewModel.CanRead) or nameof(ProxyServerRuntimeViewModel.CanManage)) _taskAccessRevision++;
         if (!Runtime.CanRead || !Runtime.CanManage || Runtime.IsInvalidated) _driveTask = false;
         if (!Runtime.CanRead || Runtime.IsInvalidated) { TaskRecovery = null; ClearTaskEvidence(); }
         OnPropertyChanged(nameof(CanPreview)); OnPropertyChanged(nameof(CanInspect)); OnPropertyChanged(nameof(CanPlanDraft)); TaskProperties();

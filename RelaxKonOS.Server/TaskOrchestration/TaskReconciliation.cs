@@ -61,6 +61,8 @@ public sealed partial class TaskPlanStore
             || state.StateRevision < frozen.Selection.ExpectedStateRevision || state.RecoveryRequired || snapshot.PendingOperationId is not null
             || snapshot.ProblemCode is not null)
             return TaskStepRunState.NeedsRecovery;
+        if (snapshot.CommitWitness is not null && !RuntimeCommitWitnessRules.Matches(snapshot.CommitWitness, snapshot))
+            return TaskStepRunState.NeedsRecovery;
         if (operation.State == InstallationOperationState.Succeeded && receipt.Outcome == RuntimeSwitchOutcome.Succeeded)
         {
             var expected = frozen.Change == RuntimeChange.Uninstall

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Reflection;
+using System.Text.Json;
 using RelaxKonOS.Client.Apps.ComponentCenter;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.Common;
@@ -162,6 +163,30 @@ internal static class TaskExecutionClientChecks
         var savedEvidence = new TaskRunEvidence(uncertain, [observation]); returned = savedEvidence;
         Check((await client.ReadEvidenceAsync(plan, uncertain, default)).Observations.Single().Snapshot?.MeasuredVersion == "1.14.3",
             "saved evidence preserves historical measured facts for the original operation");
+        var committedSnapshot = snapshot with { ActiveRevisionId = Guid.NewGuid(), ConfigurationIdentity = new string('d', 64),
+            Receipt = snapshot.Receipt! with { Outcome = RuntimeSwitchOutcome.Succeeded } };
+        var commitWitness = new RuntimeCommitWitness(attempt.OperationId, committedSnapshot.Installation, committedSnapshot.ActiveRevisionId,
+            committedSnapshot.ConfigurationIdentity, committedSnapshot.MeasuredVersion);
+        committedSnapshot = committedSnapshot with { CommitWitness = commitWitness };
+        returned = savedEvidence with { Observations = [observation with { Snapshot = committedSnapshot }] };
+        Check((await client.ReadEvidenceAsync(plan, uncertain, default)).Observations.Single().Snapshot?.CommitWitness == commitWitness,
+            "desktop retains original commit facts separately from the historical observation");
+        foreach (var bad in new[] { commitWitness with { OperationId = Guid.NewGuid() },
+            commitWitness with { Installation = commitWitness.Installation with { HostId = "other" } },
+            commitWitness with { Installation = commitWitness.Installation with { StateRevision = 9 } },
+            commitWitness with { ConfigurationIdentity = "not-a-digest" } })
+        {
+            returned = savedEvidence with { Observations = [observation with { Snapshot = committedSnapshot with { CommitWitness = bad } }] };
+            try { await client.ReadEvidenceAsync(plan, uncertain, default); throw new Exception("Accepted substituted commit witness"); }
+            catch (InvalidDataException) { Check(true, "commit evidence rejects operation, host, future revision and invalid configuration identity"); }
+        }
+        var missingMember = JsonSerializer.Serialize(savedEvidence, RelaxKonOSJsonOptions.Default).Replace("\"commitWitness\":null,", "", StringComparison.Ordinal)
+            .Replace(",\"commitWitness\":null", "", StringComparison.Ordinal);
+        using (var oldWire = new HttpClient(new Handler(_ => new(HttpStatusCode.OK) { Content = new StringContent(missingMember) })))
+        {
+            try { await new TaskExecutionClient(oldWire, session).ReadEvidenceAsync(plan, uncertain, default); throw new Exception("Accepted incomplete current snapshot wire"); }
+            catch (InvalidDataException) { Check(true, "current evidence wire requires explicit commitWitness even when proof is absent"); }
+        }
         foreach (var invalid in new[] { savedEvidence with { Observations = [observation with { OperationId = Guid.NewGuid() }] },
             savedEvidence with { Observations = [observation, observation] }, savedEvidence with { Observations = [observation with { RecoveryCheck = true }] },
             savedEvidence with { Observations = [observation with { Snapshot = snapshot with { Installation = snapshot.Installation with { HostId = "other" } } }] },

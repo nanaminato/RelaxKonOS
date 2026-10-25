@@ -206,6 +206,92 @@ internal static class ComponentTaskExecutionChecks
                     ? "revocation during conflict resynchronization clears intent and restoration cannot resume it"
                     : "forward worker observation preserves the already explicit continuation for the next tick");
             }
+            foreach (var scenario in new[] { "retry", "revoke", "restore", "select", "terminal", "twice" })
+            {
+                runtime.RefreshAccess = null;
+                runtime.CanManage = true;
+                var cancelStore = new ComponentTaskReferenceStore(Path.Combine(root, "cancel-race-" + scenario));
+                var original = execution.Run! with { RunId = Guid.NewGuid(), ApprovalId = Guid.NewGuid(), Revision = 3,
+                    State = TaskRunState.Running, CancellationRequested = false, Steps = [execution.Run!.Steps[0] with { State = TaskStepRunState.Running }] };
+                cancelStore.Save("server", actor, new(plan, original.ApprovalId, "cancel-race-start", original.RunId));
+                var raced = new Execution(cancelStore, actor, Check) { Run = original, CancelConflicts = scenario == "twice" ? 2 : 1 };
+                using var model = new ComponentCenterViewModel(runtime, new(), "server", actor, execution: raced, references: cancelStore)
+                    { CurrentTaskRun = original };
+                raced.DuringRefresh = () =>
+                {
+                    if (scenario == "revoke") runtime.RefreshAccess = () => runtime.CanManage = false;
+                    if (scenario == "restore") { runtime.CanManage = false; runtime.CanManage = true; }
+                    if (scenario == "select") model.SelectedTask = null;
+                    if (scenario == "terminal") raced.Run = raced.Run! with { State = TaskRunState.Succeeded };
+                };
+                await model.CancelTaskCommand.ExecuteAsync(null);
+                Check(raced.Reads == 1 && raced.Cancels == (scenario is "retry" or "twice" ? 2 : 1),
+                    "cancel conflict performs one guarded refresh and at most one retry: " + scenario);
+                if (scenario == "retry")
+                {
+                    Check(raced.CancelRevisions.SequenceEqual(new long[] { 3, 4 }) && model.CurrentTaskRun is { State: TaskRunState.Cancelling, Revision: 5 }
+                        && model.CurrentTaskRun.RunId == original.RunId && model.CurrentTaskRun.Steps[0].DomainOperationId == original.Steps[0].DomainOperationId,
+                        "cancel retries the new revision of the original task and operation only");
+                    await model.TickTaskAsync();
+                    Check(raced.Advances == 1 && model.CurrentTaskRun?.State == TaskRunState.Cancelled,
+                        "explicit cancellation survives admission race and continues to the terminal receipt");
+                }
+                if (scenario == "select") Check(model.CurrentTaskRun is null, "late cancel resynchronization cannot populate another task selection");
+                if (scenario == "terminal") Check(model.CurrentTaskRun?.State == TaskRunState.Succeeded,
+                    "cancel race observes an already completed task without changing its outcome");
+                if (scenario == "revoke")
+                {
+                    runtime.RefreshAccess = null; runtime.CanManage = true;
+                    await model.TickTaskAsync();
+                    Check(raced.Cancels == 1 && raced.Advances == 0, "restored permission never resumes a cancellation withheld during conflict refresh");
+                }
+                if (scenario == "restore")
+                {
+                    await model.TickTaskAsync();
+                    Check(raced.Cancels == 1 && raced.Advances == 0,
+                        "permission revoked and restored while reading cannot revive the original cancellation retry intent");
+                }
+                if (scenario == "twice")
+                {
+                    Check(model.TaskNotice.Resolve() == LocalizedText.Get("component_center.task_request_failed"),
+                        "a second cancellation revision race reports that the request needs attention");
+                    await model.TickTaskAsync();
+                    Check(raced.Advances == 0 && raced.Cancels == 2,
+                        "a second cancellation revision race stops without unbounded writes or automatic forward execution");
+                }
+            }
+            foreach (var revokeRead in new[] { false, true })
+            {
+                runtime.RefreshAccess = null; runtime.CanRead = true; runtime.CanManage = true;
+                var cancelStore = new ComponentTaskReferenceStore(Path.Combine(root, "cancel-before-read-" + revokeRead));
+                var original = execution.Run! with { RunId = Guid.NewGuid(), ApprovalId = Guid.NewGuid(), State = TaskRunState.Running, CancellationRequested = false };
+                cancelStore.Save("server", actor, new(plan, original.ApprovalId, "cancel-read-start", original.RunId));
+                var raced = new Execution(cancelStore, actor, Check) { Run = original, CancelConflicts = 1,
+                    DuringCancel = () => runtime.RefreshAccess = () => { if (revokeRead) runtime.CanRead = false; else runtime.CanManage = false; } };
+                using var model = new ComponentCenterViewModel(runtime, new(), "server", actor, execution: raced, references: cancelStore) { CurrentTaskRun = original };
+                await model.CancelTaskCommand.ExecuteAsync(null);
+                Check(raced.Cancels == 1 && raced.Reads == 0, "permission loss at cancellation conflict prevents even the follow-up observation request");
+                runtime.RefreshAccess = null; runtime.CanRead = true; runtime.CanManage = true;
+                await model.TickTaskAsync();
+                Check(raced.Cancels == 1 && raced.Advances == 0, "authority restoration after a cancelled conflict lookup remains read-only");
+            }
+            foreach (var clearRead in new[] { false, true })
+            {
+                var cancelStore = new ComponentTaskReferenceStore(Path.Combine(root, "cancel-late-" + clearRead));
+                var original = execution.Run! with { RunId = Guid.NewGuid(), ApprovalId = Guid.NewGuid(), State = TaskRunState.Running, CancellationRequested = false };
+                cancelStore.Save("server", actor, new(plan, original.ApprovalId, "cancel-late-start", original.RunId));
+                var pending = new TaskCompletionSource<TaskRun>();
+                var raced = new Execution(cancelStore, actor, Check) { Run = original, PendingCancel = pending };
+                using var model = new ComponentCenterViewModel(runtime, new(), "server", actor, execution: raced, references: cancelStore) { CurrentTaskRun = original };
+                var cancelling = model.CancelTaskCommand.ExecuteAsync(null);
+                if (clearRead) runtime.RefreshAccess = () => runtime.CanRead = false;
+                else model.SelectedTask = null;
+                pending.SetResult(original with { State = TaskRunState.Cancelling, Revision = original.Revision + 1, CancellationRequested = true });
+                await cancelling;
+                Check(clearRead ? model.CurrentTaskRun == original : model.CurrentTaskRun is null,
+                    "late cancellation response is discarded after read revocation or task selection change");
+                runtime.RefreshAccess = null; runtime.CanRead = true;
+            }
             var blockedPath = Path.Combine(root, "blocked"); File.WriteAllText(blockedPath, "not a directory");
             var blocked = new ComponentTaskReferenceStore(blockedPath); var prevented = new Execution(blocked, actor, Check) { NeedCredentials = false };
             using (var model = new ComponentCenterViewModel(runtime, new(), "server", actor, execution: prevented, references: blocked))
@@ -229,6 +315,10 @@ internal static class ComponentTaskExecutionChecks
     {
         public bool LoseStartResponse, NeedCredentials = true;
         public bool RevisionConflictOnce;
+        public int CancelConflicts;
+        public List<long> CancelRevisions = [];
+        public TaskCompletionSource<TaskRun>? PendingCancel;
+        public Action? DuringCancel;
         public Action? DuringRefresh;
         public int Approvals, Starts, ApprovalReads, Advances, Cancels, Reads, Rechecks;
         public int Recoveries;
@@ -293,6 +383,14 @@ internal static class ComponentTaskExecutionChecks
             return Task.FromResult(Run);
         }
         public Task<TaskRun> CancelAsync(TaskPlan plan, TaskRun run, CancellationToken ct)
-        { Cancels++; return Task.FromResult(Run = run with { State = TaskRunState.Cancelling, Revision = 4, CancellationRequested = true }); }
+        {
+            Cancels++; CancelRevisions.Add(run.Revision); DuringCancel?.Invoke();
+            if (CancelConflicts-- > 0)
+            {
+                Run = run with { Revision = run.Revision + 1 };
+                return Task.FromException<TaskRun>(new HttpRequestException("task.run_revision_conflict"));
+            }
+            return PendingCancel?.Task ?? Task.FromResult(Run = run with { State = TaskRunState.Cancelling, Revision = run.Revision + 1, CancellationRequested = true });
+        }
     }
 }

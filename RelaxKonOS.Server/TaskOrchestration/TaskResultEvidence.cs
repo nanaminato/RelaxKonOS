@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using RelaxKonOS.Protocol.TaskOrchestration;
+using RelaxKonOS.Protocol.ManagedRuntimes;
 
 namespace RelaxKonOS.Server.TaskOrchestration;
 
@@ -21,6 +22,8 @@ public sealed partial class TaskPlanStore
             if (snapshot?.Installation is not { } installation || installation.HostId != stored.Record.HostId
                 || installation.RuntimeId != frozen.RuntimeId || installation.InstallationId != frozen.Selection.InstallationId
                 || snapshot.Receipt is { } receipt && receipt.OperationId != evidence.Operation.OperationId) snapshot = null;
+            if (snapshot?.CommitWitness is { } witness && !RuntimeCommitWitnessRules.BoundToSnapshot(witness, snapshot))
+                snapshot = snapshot with { CommitWitness = null };
             return new(evidence.StepId, evidence.Operation.OperationId, evidence.Operation.State, recovery, snapshot);
         }
         var observations = stored.Results.Select(item => Project(item, false))

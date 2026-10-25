@@ -22,16 +22,29 @@ internal sealed class SingBoxRuntimeLifecycle(string root, RuntimeArchiveStateSt
     {
         var state = await EnsureStateAsync(ct);
         var receipt = state.Receipts.FirstOrDefault(r => r.OperationId == receiptOperationId);
+        var commit = states.ReadCommittedWitness(state, receipt);
+        string? commitProblem = null;
+        if (receipt is not null && state.Pending is null && state.Removal is null && state.Configuration is null)
+        {
+            using var session = states.Acquire();
+            state = session.State!;
+            receipt = state.Receipts.FirstOrDefault(r => r.OperationId == receiptOperationId);
+            commit = states.ReadCommittedWitness(state, receipt);
+            if (receipt is not null && state.Pending is null && state.Removal is null && state.Configuration is null)
+                commitProblem = await SingBoxRuntimeCommitObservation.ReadAsync(root, state, host, ct,
+                    expectedService: receipt.Outcome is RuntimeSwitchOutcome.Failed or RuntimeSwitchOutcome.Cancelled
+                        ? receipt.RetainedSnapshot : null);
+        }
         return new(state.Installation, state.Active?.MeasuredVersion, state.Active?.RevisionId, state.ConfigurationIdentity,
             state.Pending?.OperationId ?? state.Removal?.OperationId ?? state.Configuration?.OperationId,
             state.Pending?.Stage ?? state.Removal?.Stage ?? state.Configuration?.Stage,
             state.Pending?.RecoveryProblemCode ?? state.Pending?.ProblemCode
                 ?? state.Removal?.RecoveryProblemCode ?? state.Removal?.ProblemCode
-                ?? state.Configuration?.RecoveryProblemCode ?? state.Configuration?.ProblemCode,
+                ?? state.Configuration?.RecoveryProblemCode ?? state.Configuration?.ProblemCode ?? commitProblem,
             receipt is null ? null : new(receipt.OperationId, receipt.Outcome, receipt.ProblemCode),
             state.Revisions.Select(r => new RuntimeInstalledRelease(r.RevisionId, r.Release.ReleaseId, r.MeasuredVersion)).ToArray(),
             // Read-only environment facts, so a refusal can be explained before anyone presses install.
-            RuntimeDependencyProbe.Environment(environment, root));
+            RuntimeDependencyProbe.Environment(environment, root), commit);
     }
 
     internal async Task<RuntimePlanResult> PlanAsync(string sourceId, RuntimePlanRequest request, CancellationToken ct)
