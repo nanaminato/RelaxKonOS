@@ -15,8 +15,11 @@ public sealed partial class GitClientViewModel
     {
         var remote = FindRemote(remoteName);
         var url = remote?.PushUrl ?? remote?.FetchUrl;
-        return url is null ? null : _credentialResolver.Resolve(url)?.ToRequest(saveCredentials);
+        return ResolveCredentialForUrl(url, saveCredentials);
     }
+
+    private GitCredentialRequest? ResolveCredentialForUrl(string? remoteUrl, bool saveCredentials = true)
+        => remoteUrl is null ? null : _credentialResolver.Resolve(remoteUrl)?.ToRequest(saveCredentials);
 
     /// <summary>
     /// Remembers a credential entered for a remote for the lifetime of this Project Editor window.
@@ -27,7 +30,12 @@ public sealed partial class GitClientViewModel
     {
         var remote = FindRemote(remoteName);
         var url = remote?.PushUrl ?? remote?.FetchUrl;
-        var host = GitCredentialResolver.TryGetHost(url);
+        RememberCredentialForUrl(url, credentials);
+    }
+
+    private void RememberCredentialForUrl(string? remoteUrl, GitCredentialRequest credentials)
+    {
+        var host = GitCredentialResolver.TryGetHost(remoteUrl);
         if (host is null) return;
 
         _credentialResolver.AddOrUpdate(new GitCredentialAccount(
