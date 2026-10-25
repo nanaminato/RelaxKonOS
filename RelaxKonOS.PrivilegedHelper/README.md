@@ -69,7 +69,7 @@ PrivilegedHelper__SharedSecret=<相同的 Base64 密钥>
 
 Server 侧的键（含 `userExecutionBackend`）出现在 Helper 配置里同样会让 Helper 启动失败：它只可能来自配置被复制错，静默忽略会让两侧对"谁在执行"产生分歧。发布前应通过 LocalSystem 服务测试一次，以覆盖 Session 0、用户配置文件、DPAPI、网络凭据和映射驱动器差异。
 
-Windows 普通用户文件执行使用派生管道 `<pipeName>-user` 和一次性本地账户 S4U token；Windows 普通终端通过受限 primary token 和 Helper 持有的 ConPTY 执行；管理员终端须由 Server 验证系统密码登录及 canonical 管理员身份，并由 Helper 再次验证完整管理员 token；域账户、Git 进程执行与 POSIX mode 均 fail closed。
+Windows 普通用户文件执行使用派生管道 `<pipeName>-user` 和一次性本地账户 S4U token；Windows 普通终端通过受限 primary token 和 Helper 持有的 ConPTY 执行；管理员终端须由 Server 验证系统密码登录及 canonical 管理员身份，并由 Helper 再次验证完整管理员 token；普通 Git 操作使用同样的受限 primary token，经 `CreateProcessAsUserW`、独立重定向管道和 kill-on-close Job Object 执行；仅目标用户 PATH 中的绝对 `git.exe` 可被选择，采用共享 Git allowlist，显式 HTTPS 凭据通过用户私有目录中的临时 askpass 和子进程环境传递。域账户与 POSIX mode 仍 fail closed。
 
 该路径需要 LocalSystem Helper 监听该管道（Helper 配置 `enableWindowsUserExecution: true`）**并且** Server 侧选 `helper` 后端。Windows System Mode 的 bootstrap 安装器显式传入 `-EnableWindowsUserExecution`，同时打开两侧，避免新安装后普通文件浏览不可用；直接调用服务安装脚本时仍需显式传入该开关，否则写入 `disabled`，永不写入 `local-identity`。
 

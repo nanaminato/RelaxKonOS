@@ -18,6 +18,32 @@ namespace RelaxKonOS.Server.Git;
 
 public sealed partial class LocalGitRepositoryService
 {
+    private async Task<GitCredentialRequest?> GetFetchCredentialsAsync(Guid userId, string gitPath, string repoPath,
+        string? remote, string? branch, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(remote))
+        {
+            branch ??= await GetCurrentBranchAsync(gitPath, repoPath, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(branch))
+                remote = await GetBranchConfigAsync(gitPath, repoPath, branch, "remote", cancellationToken);
+            if (string.IsNullOrWhiteSpace(remote))
+            {
+                // Git uses the sole configured remote when no branch remote is configured;
+                // otherwise its default is origin. pushRemote/pushurl do not select fetch credentials.
+                var remotes = await RunGitAsync(gitPath, repoPath, ["remote"], cancellationToken);
+                var names = remotes.Success ? remotes.Output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries) : [];
+                remote = names.Length == 1 ? names[0] : "origin";
+            }
+        }
+        if (remote == "." || remote.StartsWith('-')) return null;
+        // Git resolves both remote names and explicit URLs, including insteadOf rewrites. This
+        // metadata-only command never contacts a server and never selects remote.pushurl.
+        var resolved = await RunGitAsync(gitPath, repoPath, ["ls-remote", "--get-url", remote], cancellationToken);
+        if (!resolved.Success || !Uri.TryCreate(resolved.Output.Trim(), UriKind.Absolute, out var uri)) return null;
+        return uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+            ? await GetStoredCredentialsAsync(userId, uri, cancellationToken) : null;
+    }
+
     private async Task<GitCredentialRequest?> GetStoredCredentialsAsync(Guid userId, Uri remoteUri, CancellationToken cancellationToken)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);

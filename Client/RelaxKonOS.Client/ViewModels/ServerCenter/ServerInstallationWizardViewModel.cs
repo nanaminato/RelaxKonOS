@@ -41,15 +41,6 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         SelectedSource = Sources[0];
 
         Modes = BuildModes(IsLocalInstallation ? HostPlatformKind.Windows : serverCenter.SelectedPlatform?.Platform);
-        FileAccesses =
-        [
-            new(ServerFileAccessScope.Restricted, Text("server_center.wizard.file_access_restricted", "RelaxKonOS data only (recommended)")),
-            new(ServerFileAccessScope.Whitelist, Text("server_center.wizard.file_access_whitelist", "Selected directories")),
-            new(ServerFileAccessScope.Full, Text("server_center.wizard.file_access_full", "All local files"))
-        ];
-        SelectedFileAccess = FileAccesses[0];
-        SelectedAdministratorFileAccess = FileAccesses[0];
-        SelectedRootFileAccess = FileAccesses[0];
         Networks =
         [
             new(ServerNetworkProfile.Loopback, Text("server_center.wizard.network_loopback", "Local only (recommended)")),
@@ -77,10 +68,9 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     [
         GuardianEnabled,
         SelectedSource?.Source, SelectedMode?.Mode, LocalBundlePath, RemoteBundlePath,
-        SelectedFileAccess?.Scope, SelectedNetwork?.Profile, SelectedCertificateMode?.Mode, SelectedCertificateFormat?.Format,
+        SelectedNetwork?.Profile, SelectedCertificateMode?.Mode, SelectedCertificateFormat?.Format,
         CertificatePath, CertificatePrivateKeyPath, CertificatePassword, SudoPassword, SelfSignedIdentities,
         ServerPortText, PackageUri, PackageDigest, ReleaseCatalogBaseUri, InstallRoot, DataRoot, ConfigRoot, StateRoot, CacheRoot,
-        FileRoots, AdministratorFileRoots, RootFileRoots, SelectedAdministratorFileAccess?.Scope, SelectedRootFileAccess?.Scope,
         AddFirewallRule, DockerAccess, AllowUnsupportedSystem
     ];
 
@@ -88,7 +78,6 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
 
     public IReadOnlyList<InstallationSourceOption> Sources { get; }
     public IReadOnlyList<InstallationModeOption> Modes { get; }
-    public IReadOnlyList<FileAccessOption> FileAccesses { get; }
     public IReadOnlyList<NetworkOption> Networks { get; }
     public IReadOnlyList<CertificateModeOption> CertificateModes { get; }
     public IReadOnlyList<CertificateFormatOption> CertificateFormats { get; } =
@@ -102,7 +91,6 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     [ObservableProperty] private InstallationModeOption? _selectedMode;
     [ObservableProperty] private string? _localBundlePath;
     [ObservableProperty] private string? _remoteBundlePath;
-    [ObservableProperty] private FileAccessOption? _selectedFileAccess;
     [ObservableProperty] private NetworkOption? _selectedNetwork;
     [ObservableProperty] private CertificateModeOption? _selectedCertificateMode;
     [ObservableProperty] private CertificateFormatOption? _selectedCertificateFormat;
@@ -123,11 +111,6 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     [ObservableProperty] private string? _configRoot;
     [ObservableProperty] private string? _stateRoot;
     [ObservableProperty] private string? _cacheRoot;
-    [ObservableProperty] private string? _fileRoots;
-    [ObservableProperty] private string? _administratorFileRoots;
-    [ObservableProperty] private string? _rootFileRoots;
-    [ObservableProperty] private FileAccessOption? _selectedAdministratorFileAccess;
-    [ObservableProperty] private FileAccessOption? _selectedRootFileAccess;
     [ObservableProperty] private bool _addFirewallRule;
     public string FirewallChoiceText => Text("server_center.firewall_choice", "Add an inbound firewall rule for the server TCP port");
     public string FirewallHelpText => Text("server_center.firewall_help", "Applies to network access. If the host firewall is disabled, you will be notified and no rule will be added.");
@@ -148,11 +131,17 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     public bool IsUserMode => SelectedMode?.Mode == ServerInstallMode.LinuxUser;
     public bool IsLinuxSystemMode => SelectedMode?.Mode == ServerInstallMode.LinuxSystem;
     public bool IsLinuxHost => !IsLocalInstallation && _serverCenter.SelectedPlatform?.Platform == HostPlatformKind.Linux;
-    public bool IsFileWhitelist => SelectedFileAccess?.Scope == ServerFileAccessScope.Whitelist;
-    public bool IsAdministratorWhitelist => SelectedAdministratorFileAccess?.Scope == ServerFileAccessScope.Whitelist;
-    public bool IsRootWhitelist => SelectedRootFileAccess?.Scope == ServerFileAccessScope.Whitelist;
+    // Automatic mode can resolve to System after SSH preflight. User modes do not configure
+    // privileged host file access; the deployment layer discards system-only settings for them.
+    public ServerFileAccessScope FileAccess => IsWindowsUserMode || IsUserMode
+        ? ServerFileAccessScope.Restricted : ServerFileAccessScope.Full;
+    public bool HasFullFileAccess => FileAccess == ServerFileAccessScope.Full;
+    public string FileAccessSummary => HasFullFileAccess
+        ? Text("server_center.wizard.file_access_full", "All local files")
+        : Text("server_center.wizard.file_access_user", "Current account permissions");
+    public string FullFileAccessDescription => Text("server_center.wizard.file_access_system_hint",
+        "System installation manages all local files. Ordinary operations use the signed-in account's permissions; root and administrator operations require the existing authorization.");
     private static string? Optional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-    private static IReadOnlyList<string>? Roots(string? value) => Optional(value) is null ? null : value!.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     public bool IsSourceStep => StepIndex == 0;
     public bool IsModeStep => StepIndex == 1;
@@ -183,14 +172,10 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     public string ConfigRootLabel => Text("server_center.wizard.config_root", "Configuration directory (User Mode)");
     public string StateRootLabel => Text("server_center.wizard.state_root", "State directory (User Mode)");
     public string CacheRootLabel => Text("server_center.wizard.cache_root", "Cache directory (User Mode)");
-    public string FileRootsLabel => Text("server_center.wizard.file_roots", "Allowed absolute directories, one per line");
-    public string AdministratorAccessLabel => Text("server_center.wizard.administrator_access", "Administrator file access");
-    public string RootAccessLabel => Text("server_center.wizard.root_access", "Root file access");
     public string DockerAccessLabel => Text("server_center.wizard.docker_access", "Authorize server access to Docker (Linux System)");
     public string AllowUnsupportedLabel => Text("server_center.wizard.allow_unsupported", "Allow a Linux system outside the supported matrix");
-    public string OptionsInvalidLabel => Text("server_center.wizard.options_invalid", "Check the port, HTTPS URL, SHA-256 and whitelist directories.");
+    public string OptionsInvalidLabel => Text("server_center.wizard.options_invalid", "Check the port, HTTPS URL and SHA-256.");
     public string SourceUrlLabel => Text("server_center.wizard.source_url", "Custom HTTPS download");
-    public string WhitelistLabel => Text("server_center.wizard.file_access_whitelist", "Selected directories");
     public bool CanAddFirewallRule => IsSystemMode && SelectedNetwork?.Profile == ServerNetworkProfile.Lan;
     partial void OnSelectedNetworkChanged(NetworkOption? value) { OnPropertyChanged(nameof(CanAddFirewallRule)); if (!CanAddFirewallRule) AddFirewallRule = false; }
     public string AdvancedReviewText => string.Join("\n", new[] {
@@ -198,8 +183,8 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         CanChooseGuardian ? $"{GuardianChoiceText}: {GuardianEnabled}" : string.Empty,
         $"{ServerPortLabel}: {ServerPortText}", $"{DataRootLabel}: {DataRoot}",
         IsSystemMode ? $"{InstallRootLabel}: {InstallRoot}" : $"{ConfigRootLabel}: {ConfigRoot}\n{StateRootLabel}: {StateRoot}\n{CacheRootLabel}: {CacheRoot}",
-        IsFileWhitelist ? $"{FileRootsLabel}: {FileRoots}" : string.Empty,
-        IsLinuxSystemMode ? $"{AdministratorAccessLabel}: {SelectedAdministratorFileAccess?.Label}\n{AdministratorFileRoots}\n{RootAccessLabel}: {SelectedRootFileAccess?.Label}\n{RootFileRoots}\n{DockerAccessLabel}: {DockerAccess}" : string.Empty,
+        HasFullFileAccess ? FullFileAccessDescription : string.Empty,
+        IsLinuxSystemMode ? $"{DockerAccessLabel}: {DockerAccess}" : string.Empty,
         IsLinuxHost ? $"{AllowUnsupportedLabel}: {AllowUnsupportedSystem}" : string.Empty,
         IsOfficialSource ? $"{ReleaseCatalogLabel}: {ReleaseCatalogBaseUri}" : string.Empty, IsDirectUrl ? $"SHA-256: {PackageDigest}" : string.Empty
     }.Where(value => !string.IsNullOrWhiteSpace(value)));
@@ -284,9 +269,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
             return;
         }
         if (IsSourceStep && IsDirectUrl && (!Uri.TryCreate(PackageUri, UriKind.Absolute, out var uri) || uri.Scheme != "https" || !ServerDeploymentInputRules.IsSha256(PackageDigest))) { ErrorMessage = OptionsInvalidLabel; return; }
-        if (IsModeStep && (!int.TryParse(ServerPortText, out var port) || port is < 1 or > 65535 ||
-            IsSystemMode && (IsFileWhitelist && Roots(FileRoots) is not { Count: > 0 } ||
-            IsLinuxSystemMode && (IsAdministratorWhitelist && Roots(AdministratorFileRoots) is not { Count: > 0 } || IsRootWhitelist && Roots(RootFileRoots) is not { Count: > 0 })))) { ErrorMessage = OptionsInvalidLabel; return; }
+        if (IsModeStep && (!int.TryParse(ServerPortText, out var port) || port is < 1 or > 65535)) { ErrorMessage = OptionsInvalidLabel; return; }
         ErrorMessage = string.Empty;
         StepIndex++;
     }
@@ -329,7 +312,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
                 SelectedMode?.Mode,
                 LocalBundlePath,
                 RemoteBundlePath,
-                SelectedFileAccess?.Scope ?? ServerFileAccessScope.Restricted,
+                FileAccess,
                 SelectedNetwork?.Profile ?? ServerNetworkProfile.Loopback,
                 SelectedCertificateMode?.Mode ?? ServerCertificateMode.None,
                 SelectedCertificateFormat?.Format ?? ServerCertificateFormat.Pfx,
@@ -339,9 +322,11 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
                 SelfSignedIdentities,
                 SudoPassword, int.Parse(ServerPortText), Optional(PackageUri), Optional(PackageDigest), IsOfficialSource ? Optional(ReleaseCatalogBaseUri) : null,
                 Optional(InstallRoot), Optional(DataRoot), Optional(ConfigRoot), Optional(StateRoot), Optional(CacheRoot),
-                IsFileWhitelist ? Roots(FileRoots) : null, SelectedAdministratorFileAccess?.Scope,
-                IsAdministratorWhitelist ? Roots(AdministratorFileRoots) : null, SelectedRootFileAccess?.Scope,
-                IsRootWhitelist ? Roots(RootFileRoots) : null, DockerAccess, AllowUnsupportedSystem, IsSystemMode && SelectedNetwork?.Profile == ServerNetworkProfile.Lan && AddFirewallRule, GuardianEnabled: CanInstallGuardian && GuardianEnabled));
+                FileRoots: null, AdministratorFileAccess: IsLinuxHost && !IsUserMode ? ServerFileAccessScope.Full : null,
+                AdministratorFileRoots: null, RootFileAccess: IsLinuxHost && !IsUserMode ? ServerFileAccessScope.Full : null,
+                RootFileRoots: null, DockerAccess: DockerAccess, AllowUnsupportedSystem: AllowUnsupportedSystem,
+                AddFirewallRule: IsSystemMode && SelectedNetwork?.Profile == ServerNetworkProfile.Lan && AddFirewallRule,
+                GuardianEnabled: CanInstallGuardian && GuardianEnabled));
             if (!succeeded)
                 ErrorMessage = string.IsNullOrWhiteSpace(_serverCenter.ErrorMessage)
                     ? Text("server_center.wizard.install_blocked", "Installation is blocked until the SSH host key is confirmed on the Hosts page.")
@@ -389,19 +374,17 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     partial void OnSelectedModeChanged(InstallationModeOption? value)
     {
         OnPropertyChanged(nameof(IsWindowsUserMode)); OnPropertyChanged(nameof(CanEditDataRoot)); OnPropertyChanged(nameof(SourceChecksText));
-        if (value?.Mode == ServerInstallMode.WindowsUser) { InstallRoot = string.Empty; DataRoot = string.Empty; AddFirewallRule = false; SelectedFileAccess = FileAccesses[0]; }
+        if (value?.Mode == ServerInstallMode.WindowsUser) { InstallRoot = string.Empty; DataRoot = string.Empty; AddFirewallRule = false; }
         OnPropertyChanged(nameof(CanAddFirewallRule));
+        OnPropertyChanged(nameof(FileAccess)); OnPropertyChanged(nameof(HasFullFileAccess)); OnPropertyChanged(nameof(FileAccessSummary));
         OnPropertyChanged(nameof(SelectedModeText));
         OnPropertyChanged(nameof(ShowsSudoPassword));
         OnPropertyChanged(nameof(CanChooseGuardian));
         OnPropertyChanged(nameof(CanInstallGuardian));
         OnPropertyChanged(nameof(IsSystemMode)); OnPropertyChanged(nameof(IsUserMode)); OnPropertyChanged(nameof(IsLinuxSystemMode));
-        if (value?.Mode == ServerInstallMode.LinuxUser) { SelectedNetwork = Networks[0]; SelectedCertificateMode = CertificateModes[0]; SelectedFileAccess = FileAccesses[0]; }
+        if (value?.Mode == ServerInstallMode.LinuxUser) { SelectedNetwork = Networks[0]; SelectedCertificateMode = CertificateModes[0]; }
     }
 
-    partial void OnSelectedFileAccessChanged(FileAccessOption? value) => OnPropertyChanged(nameof(IsFileWhitelist));
-    partial void OnSelectedAdministratorFileAccessChanged(FileAccessOption? value) => OnPropertyChanged(nameof(IsAdministratorWhitelist));
-    partial void OnSelectedRootFileAccessChanged(FileAccessOption? value) => OnPropertyChanged(nameof(IsRootWhitelist));
     partial void OnSelectedCertificateModeChanged(CertificateModeOption? value)
     {
         OnPropertyChanged(nameof(IsCustomCertificate));

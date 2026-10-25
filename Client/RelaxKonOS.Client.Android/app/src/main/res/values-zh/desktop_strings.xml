@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="desktop_welcome">欢迎回来</string>
+    <string name="desktop_login_subtitle">已选中上次登录的服务器，登录即可继续。</string>
+    <string name="desktop_switch_server">切换服务器</string>
+    <string name="desktop_connection_settings">连接设置</string>
+    <string name="desktop_hide_settings">收起设置</string>
+    <string name="desktop_use_password">使用其他密码</string>
+    <string name="desktop_saved_server">已保存的服务器</string>
+</resources>

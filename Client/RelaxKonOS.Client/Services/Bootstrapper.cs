@@ -77,6 +77,10 @@ public static class Bootstrapper
         services.AddSingleton<ApplicationManager>(sp =>
             new ApplicationManager(sp.GetRequiredService<IWindowManager>(), sp));
         services.AddSingleton<IAppActivationService>(sp => sp.GetRequiredService<ApplicationManager>());
+        services.AddSingleton<RelaxKonOS.Client.Apps.ComponentCenter.IApplicationAvailabilityUi, RelaxKonOS.Client.Apps.ComponentCenter.ApplicationAvailabilityUi>();
+        services.AddSingleton<RelaxKonOS.Client.Apps.ComponentCenter.ApplicationAvailabilityService>();
+        services.AddSingleton<RelaxKonOS.Client.Apps.ComponentCenter.IApplicationAvailabilityProvider>(sp => sp.GetRequiredService<RelaxKonOS.Client.Apps.ComponentCenter.ApplicationAvailabilityService>());
+        services.AddSingleton<IApplicationLaunchGuard>(sp => sp.GetRequiredService<RelaxKonOS.Client.Apps.ComponentCenter.ApplicationAvailabilityService>());
         services.AddSingleton<VirtualSystemDriveService>();
         services.AddSingleton<IBuiltInApplicationFactoryRegistry, BuiltInApplicationRegistry>();
         services.AddSingleton<BuiltInDescriptorSeeder>();
@@ -207,6 +211,10 @@ public static class Bootstrapper
         services.AddHttpClient<RelaxKonOS.Client.Apps.WebServers.IRemoteWebServerClient, RelaxKonOS.Client.Apps.WebServers.RemoteWebServerClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "webservers"))
             .AddHttpMessageHandler<AcceptLanguageHandler>();
+        // 组件中心对该组件只读观测：Nginx 的安装仍由 Web 服务器管理器拥有，
+        // 且 Linux（发行版包 + 系统服务）与 Windows（受管归档 + 自有服务）来源不同。
+        services.AddTransient<RelaxKonOS.Client.Apps.ComponentCenter.IComponentHostObserver,
+            RelaxKonOS.Client.Apps.ComponentCenter.WebServerComponentObserver>();
         services.AddHttpClient<RelaxKonOS.Client.Services.Privileged.IHostElevationBroker, RelaxKonOS.Client.Services.Privileged.HostElevationBroker>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "host-elevation"))
             .AddHttpMessageHandler<AcceptLanguageHandler>();
@@ -342,7 +350,18 @@ public static class Bootstrapper
         services.AddSingleton<RelaxKonOS.Client.Apps.Firewall.FirewallApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Squid.SquidApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.ProxyServer.ProxyServerApp>();
+        services.AddSingleton<RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterApp>();
+        services.AddSingleton(new RelaxKonOS.Client.Apps.ComponentCenter.ComponentDraftStore(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "component-drafts")));
+        services.AddSingleton(new RelaxKonOS.Client.Apps.ComponentCenter.ComponentTaskReferenceStore(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "component-tasks")));
         services.AddHttpClient<RelaxKonOS.Client.Apps.ProxyServer.IProxyServerClient, RelaxKonOS.Client.Apps.ProxyServer.RemoteProxyServerClient>()
+            .RemoveAllLoggers();
+        services.AddHttpClient<RelaxKonOS.Client.Apps.ComponentCenter.ITaskPlanPreviewClient, RelaxKonOS.Client.Apps.ComponentCenter.TaskPlanPreviewClient>()
+            .RemoveAllLoggers();
+        services.AddHttpClient<RelaxKonOS.Client.Apps.ComponentCenter.ITaskExecutionClient, RelaxKonOS.Client.Apps.ComponentCenter.TaskExecutionClient>()
+            .RemoveAllLoggers();
+        services.AddHttpClient<RelaxKonOS.Client.Apps.ComponentCenter.IComponentLifecycleClient, RelaxKonOS.Client.Apps.ComponentCenter.ComponentLifecycleClient>()
             .RemoveAllLoggers();
         services.AddHttpClient<RelaxKonOS.Client.Apps.ProxyServer.IRuntimeCatalogClient, RelaxKonOS.Client.Apps.ProxyServer.SingBoxRuntimeCatalogClient>()
             .RemoveAllLoggers();
@@ -387,7 +406,8 @@ public static class Bootstrapper
                 sp.GetRequiredService<DesktopWelcomePreferenceStore>(),
                 sp.GetRequiredService<ShortcutStore>(),
                 sp.GetRequiredService<ShortcutActivationRouter>(),
-                sp.GetRequiredService<HostSettings.IHostTimeService>());
+                sp.GetRequiredService<HostSettings.IHostTimeService>(),
+                sp.GetRequiredService<RelaxKonOS.Client.Apps.ComponentCenter.IApplicationAvailabilityProvider>());
         });
 
         services.AddSingleton<DesktopRestoreOrchestrator>();

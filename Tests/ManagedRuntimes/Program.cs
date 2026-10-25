@@ -1,6 +1,15 @@
 using System.Text.Json;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 
+if (args is ["runtime-commit-witness-only"])
+{
+    Console.WriteLine($"Runtime archive/commit witness checks passed: {await SwitchChecks.RunAsync()}");
+    Console.WriteLine($"Runtime removal/commit witness checks passed: {await RemovalChecks.RunAsync()}");
+    Console.WriteLine($"Runtime configuration transaction checks passed: {await ConfigurationTransactionChecks.RunAsync()}");
+    Console.WriteLine($"Runtime commit fresh observation checks passed: {await CommitObservationChecks.RunAsync()}");
+    return;
+}
+
 if (args is ["mihomo-removal-publication-only"])
 {
     Console.WriteLine($"Mihomo removal publication checks passed: {await MihomoRemovalPublicationChecks.RunAsync()}");
@@ -258,6 +267,7 @@ Console.WriteLine($"Managed runtime service checks passed: {await ManagedService
 Console.WriteLine($"Runtime archive removal checks passed: {await RemovalChecks.RunAsync()}");
 Console.WriteLine($"Runtime recovery entry checks passed: {await RecoveryChecks.RunAsync()}");
 Console.WriteLine($"Runtime configuration transaction checks passed: {await ConfigurationTransactionChecks.RunAsync()}");
+Console.WriteLine($"Runtime commit fresh observation checks passed: {await CommitObservationChecks.RunAsync()}");
 Console.WriteLine($"Runtime cancellation checks passed: {await CancellationChecks.RunAsync()}");
 Console.WriteLine($"Runtime dependency checks passed: {DependencyChecks.Run()}");
 Console.WriteLine($"Runtime download proxy/retry checks passed: {await DownloadProxyChecks.RunAsync()}");

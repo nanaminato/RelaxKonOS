@@ -586,6 +586,7 @@
         "git.dialog.push.all_tags": "All",
         "git.dialog.push.loading_commits": "Loading commits to push…",
         "git.dialog.push.no_commits_ahead": "No new commits to push",
+        "git.dialog.push.new_remote_branch_format": "The remote has no {0} yet — this push creates it",
         "git.dialog.push.select_remote": "Select remote repository",
         "git.dialog.push.select_branch": "Select branch",
         "git.dialog.push.remote_placeholder": "Select remote…",

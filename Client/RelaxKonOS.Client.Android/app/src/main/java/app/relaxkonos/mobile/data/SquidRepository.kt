@@ -14,13 +14,14 @@ import java.util.UUID
 data class PendingSquidRequest(val key: String, val request: SquidRequest, val operationId: String? = null)
 class SquidRepository(private val gateway: RelaxKonGateway, private val session: AuthSession, private val directory: File) {
     private val mutations = Mutex()
+    suspend fun accounts(owner: SessionState.Active) = read(owner, gateway::squidAccounts)
     suspend fun snapshot(owner: SessionState.Active) = read(owner, gateway::squidConfiguration)
     suspend fun preview(owner: SessionState.Active, configuration: SquidConfiguration) = read(owner) { u, t -> gateway.squidPreview(u, t, configuration) }
     suspend fun validate(owner: SessionState.Active, configuration: SquidConfiguration) = read(owner) { u, t -> gateway.squidValidate(u, t, configuration) }
     suspend fun pending(owner: SessionState.Active): PendingSquidRequest? = withContext(Dispatchers.IO) {
         verify(owner)
         val file = file(owner)
-        if (!file.exists()) null else JSONObject(file.readText()).let {
+        if (!file.exists()) null else JSONObject(SquidPendingCipher.decrypt(key(), file.readBytes(), file.name)).let {
             PendingSquidRequest(it.getString("key"), SquidWire.request(it.getJSONObject("request")),
                 if (it.isNull("operationId")) null else InstallationRoutes.canonicalId(it.getString("operationId")))
         }
@@ -60,11 +61,19 @@ class SquidRepository(private val gateway: RelaxKonGateway, private val session:
         val target = file(owner); val staged = File(target.path + ".new")
         try {
             val text = JSONObject().put("key", pending.key).put("request", pending.request.json()).put("operationId", pending.operationId ?: JSONObject.NULL).toString()
-            java.io.FileOutputStream(staged).use { it.write(text.toByteArray()); it.fd.sync() }
+            java.io.FileOutputStream(staged).use { it.write(SquidPendingCipher.encrypt(key(), text, target.name)); it.fd.sync() }
             check(staged.renameTo(target))
         } finally { staged.delete() }
     }
     private suspend fun clear(owner: SessionState.Active) = withContext(Dispatchers.IO) { verify(owner); val target = file(owner); check(!target.exists() || target.delete()) }
+    private fun key(): javax.crypto.SecretKey {
+        val store = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        return (store.getKey("squid-pending", null) as? javax.crypto.SecretKey) ?: javax.crypto.KeyGenerator.getInstance("AES", "AndroidKeyStore").apply {
+            init(android.security.keystore.KeyGenParameterSpec.Builder("squid-pending",
+                android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or android.security.keystore.KeyProperties.PURPOSE_DECRYPT)
+                .setBlockModes("GCM").setEncryptionPaddings("NoPadding").build())
+        }.generateKey()
+    }
     private fun file(owner: SessionState.Active): File {
         val identity = JSONObject().put("service", owner.serviceId).put("user", owner.userName).put("workspace", owner.workspaceId).toString()
         val key = MessageDigest.getInstance("SHA-256").digest(identity.toByteArray()).joinToString("") { "%02x".format(it) }

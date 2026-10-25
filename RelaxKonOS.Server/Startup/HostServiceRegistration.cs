@@ -7,6 +7,37 @@ internal static class HostServiceRegistration
     public static void AddHostServices(this WebApplicationBuilder builder, RelaxKonOS.Server.Certificate.KestrelCertificateRegistry kestrelCertificates)
     {
         builder.Services.AddSingleton<RelaxKonOS.Server.ManagedRuntimes.RuntimeCatalogService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.IRuntimeTaskPreviewService,
+            RelaxKonOS.Server.TaskOrchestration.RuntimeTaskPreviewService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.TaskPlanStore>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.ITaskRuntimeHostObserver,
+            RelaxKonOS.Server.TaskOrchestration.SingBoxTaskRuntimeHostObserver>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.ITaskApprovalPolicyReader,
+            RelaxKonOS.Server.TaskOrchestration.TaskApprovalPolicyReader>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.ITaskExecutionPolicyReader,
+            RelaxKonOS.Server.TaskOrchestration.TaskApprovalPolicyReader>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.ITaskApproverPolicyReader,
+            RelaxKonOS.Server.TaskOrchestration.TaskApproverPolicyReader>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.TaskStepAuthorizationService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.TaskDispatchService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.ITaskStepDispatcher>(services =>
+            services.GetRequiredService<RelaxKonOS.Server.TaskOrchestration.TaskDispatchService>());
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.TaskRunAdvancementService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.TaskRunCancellationService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.ITaskPlanRevalidator,
+            RelaxKonOS.Server.TaskOrchestration.RuntimeTaskPlanRevalidator>();
+        builder.Services.AddScoped<RelaxKonOS.Server.TaskOrchestration.TaskPlanApprovalService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.TaskRunStartService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.ITaskReconciliationDomain,
+            RelaxKonOS.Server.TaskOrchestration.SingBoxTaskReconciliationDomain>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.TaskRunReconciliationService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.TaskRecoveryReconciliationService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.ITaskRecoveryDomain, RelaxKonOS.Server.TaskOrchestration.SingBoxTaskRecoveryDomain>();
+        builder.Services.AddScoped<RelaxKonOS.Server.TaskOrchestration.TaskRecoveryService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.ITaskRunReconciler>(services =>
+            services.GetRequiredService<RelaxKonOS.Server.TaskOrchestration.TaskRunReconciliationService>());
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.IRuntimeTaskChangePlanningService,
+            RelaxKonOS.Server.TaskOrchestration.RuntimeTaskChangePlanningService>();
         // 任务管理器：系统指标采集 Provider（按宿主 OS 平台选择，与 IIdentityProvider 同模式）。
         // CPU/内存平台特定（Linux 读 /proc；Windows 走 P/Invoke），磁盘/网络/GPU/进程跨平台共享。
         // 以宿主 OS 进程身份读取，复用宿主用户/权限（不另建 ACL）。Singleton 持相邻采样差分状态。
@@ -120,6 +151,12 @@ internal static class HostServiceRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.WebServer.NginxWebServerManager>();
         builder.Services.AddSingleton<RelaxKonOS.Server.WebServer.IWebServerProvider>(services => services.GetRequiredService<RelaxKonOS.Server.WebServer.NginxWebServerManager>());
         builder.Services.AddSingleton<RelaxKonOS.Server.WebServer.IWebServerManager, RelaxKonOS.Server.WebServer.WebServerManager>();
+        // Component lifecycle adapters: one closed registry decides which components the center may
+        // answer for. Each adapter normalizes its own product (ledgered archive vs distribution
+        // package) so callers never branch on the product.
+        builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter, RelaxKonOS.Server.Components.SingBoxComponentAdapter>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter, RelaxKonOS.Server.Components.NginxComponentAdapter>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Components.ComponentLifecycleRegistry>();
         builder.Services.AddSingleton<RelaxKonOS.Server.WebsitePublishing.WebsitePublicationStore>();
         builder.Services.AddSingleton<RelaxKonOS.Server.WebsitePublishing.WebsitePublicationCoordinator>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<RelaxKonOS.Server.WebsitePublishing.WebsitePublicationCoordinator>());

@@ -163,7 +163,9 @@
       </Border>
     </StackPanel>
           </StackPanel>
-          <StackPanel x:Name="Page1" Spacing="16" IsVisible="False">
+          <StackPanel x:Name="Page1" Spacing="16" IsVisible="False"><Button Content="{loc:Loc squid.section.listener}" Tag="ListenerEditor" Click="EditorButton_Click" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Left" />
+<StackPanel x:Name="ListenerEditor" IsVisible="False" Spacing="12">
+
 <Border Classes="app-panel" Padding="18">
             <StackPanel Spacing="12">
               <StackPanel Spacing="2">
@@ -204,8 +206,11 @@
               </ItemsControl>
             </StackPanel>
           </Border>
-          </StackPanel>
-          <StackPanel x:Name="Page2" Spacing="16" IsVisible="False">
+
+</StackPanel></StackPanel>
+          <StackPanel x:Name="Page2" Spacing="16" IsVisible="False"><Button Content="{loc:Loc squid.section.domains}" Tag="DomainsEditor" Click="EditorButton_Click" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Left" />
+<StackPanel x:Name="DomainsEditor" IsVisible="False" Spacing="12">
+
 <Border Classes="app-panel" Padding="18">
             <StackPanel Spacing="12">
               <StackPanel Spacing="2">
@@ -231,8 +236,11 @@
               </ItemsControl>
             </StackPanel>
           </Border>
-          </StackPanel>
-          <StackPanel x:Name="Page3" Spacing="16" IsVisible="False">
+
+</StackPanel></StackPanel>
+          <StackPanel x:Name="Page3" Spacing="16" IsVisible="False"><Button Content="{loc:Loc squid.section.upstream}" Tag="UpstreamEditor" Click="EditorButton_Click" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Left" />
+<StackPanel x:Name="UpstreamEditor" IsVisible="False" Spacing="12">
+
 <Border Classes="app-panel" Padding="18">
             <StackPanel Spacing="12">
               <StackPanel Spacing="2">
@@ -258,9 +266,12 @@
               </ItemsControl>
             </StackPanel>
           </Border>
-          </StackPanel>
+
+</StackPanel></StackPanel>
           <StackPanel x:Name="Page5" Spacing="16" IsVisible="False">
-            <Border Classes="app-panel" Padding="18">
+            <Button Content="{loc:Loc squid.section.access}" Tag="AccessEditor" Click="EditorButton_Click" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Left" />
+<StackPanel x:Name="AccessEditor" IsVisible="False" Spacing="12">
+<Border Classes="app-panel" Padding="18">
               <StackPanel Spacing="12">
                 <TextBlock Classes="section-title" Text="{loc:Loc squid.section.access}" />
                 <TextBlock Classes="section-hint" Text="{loc:Loc squid.access_hint}" />
@@ -273,6 +284,7 @@
                 <TextBlock Classes="problem" Text="{loc:Loc squid.no_enabled_accounts}" IsVisible="{Binding ShowNoEnabledAccounts}" />
               </StackPanel>
             </Border>
+</StackPanel>
             <Border Classes="app-panel" Padding="18">
               <StackPanel Spacing="12">
                 <TextBlock Classes="section-title" Text="{loc:Loc squid.accounts}" />
@@ -290,7 +302,13 @@
                     </DataTemplate>
                   </ListBox.ItemTemplate>
                 </ListBox>
-                <StackPanel Spacing="4" IsEnabled="{Binding CanManageAccounts}">
+                <WrapPanel>
+  <Button Content="{loc:Loc squid.account_create}" Tag="AccountEditor:new" Click="EditorButton_Click" IsEnabled="{Binding CanManageAccounts}" Margin="0,0,8,0" />
+  <Button Content="{loc:Loc squid.edit_account}" Tag="AccountEditor" Click="EditorButton_Click" IsEnabled="{Binding CanManageAccounts}" />
+</WrapPanel>
+<StackPanel x:Name="AccountEditor" IsVisible="False" Spacing="12">
+<TextBlock Text="{Binding SelectedAccount.Username}" FontWeight="SemiBold" />
+<StackPanel Spacing="4" IsEnabled="{Binding CanManageAccounts}">
                   <TextBlock Classes="field-label" Text="{loc:Loc squid.account_name}" />
                   <TextBox x:Name="AccountNameBox" Text="{Binding NewAccountName, Mode=TwoWay}" MaxLength="64" />
                   <TextBlock Classes="field-label" Text="{loc:Loc squid.account_password}" />
@@ -302,10 +320,13 @@
                   <Button Content="{Binding ToggleAccountText}" Command="{Binding ToggleAccountCommand}" Margin="0,0,8,8" />
                   <Button Content="{loc:Loc squid.account_delete}" Command="{Binding DeleteAccountCommand}" Margin="0,0,8,8" />
                 </WrapPanel>
+</StackPanel>
               </StackPanel>
             </Border>
           </StackPanel>
           <StackPanel x:Name="Page4" Spacing="16" IsVisible="False">
+<Button Content="{loc:Loc squid.section.adoption}" Tag="AdoptionEditor" Click="EditorButton_Click" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Left" />
+<StackPanel x:Name="AdoptionEditor" IsVisible="False" Spacing="12">
 <Border Classes="app-panel" Padding="18">
             <StackPanel Spacing="10">
               <TextBlock Classes="section-title" Text="{loc:Loc squid.section.adoption}" />
@@ -316,6 +337,7 @@
               <TextBlock Classes="problem" Text="{loc:Loc squid.adopt_required}" IsVisible="{Binding NeedsAdoption}" />
             </StackPanel>
           </Border>
+</StackPanel>
 <Border x:Name="PreviewPanel" Classes="app-panel" Padding="18">
           <StackPanel Spacing="12">
             <StackPanel Spacing="2">

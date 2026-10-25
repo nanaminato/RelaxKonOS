@@ -59,7 +59,8 @@ fun MoreScreen(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.lg),
     ) {
-        ScreenHeader(title = stringResource(R.string.more_title))
+        ScreenHeader(title = stringResource(R.string.nav_more),
+            subtitle = appContainer().activeSession?.let { "${it.userName} · ${it.workspaceName}" })
 
         SectionGroup {
             SettingsRow(icon = DesktopIcons.applications, titleRes = R.string.mobile_apps_title,

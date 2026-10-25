@@ -146,7 +146,8 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
         ? string.Empty
         : LocalizedText.Format("git.dialog.push.branch_line_format", PushLocalBranchName, PushSelectedRemote, PushSelectedBranch);
     public int PushFileCount => PushChangedFiles.Count;
-    public int PushCommitCount => PushCommits.Count;
+    /// <summary>Ahead total reported by the server; the materialized <see cref="PushCommits"/> list is capped.</summary>
+    public int PushCommitCount => _pushAheadCount;
     public bool PushHasCommits => PushCommits.Count > 0;
 
     // ── 项目选择器状态：IsPickerMode=true 时显示项目选择视图而非工作区 ──

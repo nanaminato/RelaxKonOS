@@ -41,8 +41,8 @@
     <string name="error_windows_profile_required">Windows 普通操作需要服务器上的本地账户、有效 SID 和用户配置文件目录。请检查服务器上该账户的 Windows 用户配置文件。</string>
     <string name="nav_files">文件</string>
     <string name="nav_home">主页</string>
-    <string name="nav_manage">管理</string>
-    <string name="nav_more">更多</string>
+    <string name="nav_manage">应用</string>
+    <string name="nav_more">我的</string>
     <string name="nav_terminal">终端</string>
     <string name="notice_do_not_remind">不再提醒</string>
     <string name="password_hide">隐藏密码</string>

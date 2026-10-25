@@ -52,11 +52,13 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
         var view = runtime is null ? new ProxyManagerWorkspace(vm) : new ProxyManagerWorkspace(vm, runtime);
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.proxy.display_name"), view, new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
+        RelaxKonOS.WindowManager.ModalDialog<bool>? activeEditor = null;
+        view.SetRuntimeEditor((title, editor) => RelaxKonOS.Client.Controls.WorkspaceEditorDialogView.PresentAsync(context, window, title, editor, () => runtime?.IsBusy == true, active => activeEditor = active));
         vm.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window, problemCode);
         if (runtime is not null)
         {
             runtime.ConfirmAsync = async (title, message) => await ConfirmAsync(title.Resolve(), message.Resolve());
-            runtime.PasswordPromptAsync = () => context.ShowDialogAsync<string?>(window,
+            runtime.PasswordPromptAsync = () => ShowOwnedAsync<string?>(
                 LocalizedText.Get("installation.elevation_title"),
                 dialog => new FileServicesPasswordDialogView(dialog, LocalizedText.Get("installation.elevation_message")),
                 new RelaxKonOS.Core.Primitives.Size(460, 230));
@@ -114,7 +116,7 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
             var manage = await RequestIfUndecidedAsync(AppPermissions.ServerProxyManage);
             var tun = await RequestIfUndecidedAsync(AppPermissions.ServerProxyTunManage);
             vm.SetPermissions(manage, tun);
-            if (runtime is not null) runtime.CanManage = manage;
+            if (runtime is not null) { runtime.CanRead = read; runtime.CanManage = read && manage; }
 
             // A declined read grant still permits the workspace to render its normal API
             // authorization result, but it never enables a mutation solely because the prompt
@@ -123,10 +125,13 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
             await vm.StartAsync();
         }
 
+        Task<TResult?> ShowOwnedAsync<TResult>(string title, Func<RelaxKonOS.WindowManager.ModalDialog<TResult>, Avalonia.Controls.Control> factory, RelaxKonOS.Core.Primitives.Size size)
+            => activeEditor is { } editor ? editor.ShowDialogAsync(title, factory, size) : context.ShowDialogAsync(window, title, factory, size);
+
         async Task<bool> ConfirmAsync(string title, string message)
         {
             var accepted = false;
-            await context.ShowDialogAsync<bool>(window, title, dialog => new ConfirmDialogView
+            await ShowOwnedAsync<bool>( title, dialog => new ConfirmDialogView
             { DataContext = new ConfirmDialogViewModel(message, value => { accepted = value; dialog.Close(value); }) },
                 new RelaxKonOS.Core.Primitives.Size(560, 280));
             return accepted;

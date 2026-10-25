@@ -126,6 +126,7 @@ dependencies {
     // SignalR declares Gson as runtime-only; raw metric events need its JsonElement type at compile time.
     implementation("com.google.code.gson:gson:2.8.9")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.google.zxing:core:3.5.4")
 
     // QR pairing: the system scanner handles live camera capture without a CAMERA permission; the
     // bundled ML Kit reader also handles a user-selected local image without waiting for a model download.

@@ -112,6 +112,9 @@ public sealed record ShellTaskbarEntry(AppId Id, string DisplayName, string? Ico
     public bool HasIconImage => IconImage is not null;
 }
 
+/// <summary>Display-only dependency metadata. Null means the app has no independently managed component.</summary>
+public sealed record ShellApplicationAvailability(string State, string Label, bool IsReady);
+
 /// <summary>A launchable application in an external shell's Start menu or application list.</summary>
 public sealed record ShellApplicationEntry(
     AppId Id,
@@ -119,8 +122,10 @@ public sealed record ShellApplicationEntry(
     string? IconGlyph,
     string? Description,
     /// <summary>Host-loaded application artwork. Use this in preference to <see cref="IconGlyph"/>.</summary>
-    IImage? IconImage = null)
+    IImage? IconImage = null,
+    ShellApplicationAvailability? Availability = null)
 {
+    public bool HasAvailability => Availability is not null;
     /// <summary>Whether application artwork is available instead of a glyph fallback.</summary>
     public bool HasIconImage => IconImage is not null;
 }
@@ -137,8 +142,10 @@ public sealed record ShellDesktopEntry(
     bool IsSelected = false,
     /// <summary>Host-loaded application artwork. Use this in preference to <see cref="IconGlyph"/>.</summary>
     IImage? IconImage = null,
-    bool IsTaskbarPinned = false) : System.ComponentModel.INotifyPropertyChanged
+    bool IsTaskbarPinned = false,
+    ShellApplicationAvailability? Availability = null) : System.ComponentModel.INotifyPropertyChanged
 {
+    public bool HasAvailability => Availability is not null;
     private bool _isSelected = IsSelected;
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
     public bool IsSelected

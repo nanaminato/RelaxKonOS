@@ -1,6 +1,7 @@
 {
   "Culture": "en-US",
   "Strings": {
+        "squid.edit_account": "Edit account…",
     "squid.intro": "Manage the Linux server HTTP/CONNECT gateway. Lists accept one entry per line. HTTPS is tunneled without decryption.",
     "squid.bind_address": "Listen IP address",
     "squid.port": "Listen port (1024–65535)",

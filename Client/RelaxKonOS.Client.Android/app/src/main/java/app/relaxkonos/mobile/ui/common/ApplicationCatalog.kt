@@ -2,9 +2,13 @@ package app.relaxkonos.mobile.ui.common
 
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -42,32 +46,35 @@ internal fun ApplicationCatalog(applications: List<CatalogApplication>, modifier
         if (matches.isEmpty()) {
             EmptyState(stringResource(R.string.manage_search_empty), icon = DesktopIcons.search)
         } else {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(240.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)),
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                contentPadding = PaddingValues(bottom = Spacing.xl),
-                horizontalArrangement = Arrangement.spacedBy(Spacing.md),
-                verticalArrangement = Arrangement.spacedBy(Spacing.md),
-            ) {
-                items(matches, key = { it.id }) { application ->
-                    OutlinedCard(
-                        onClick = application.open,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.outlinedCardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
-                        shape = MaterialTheme.shapes.large,
-                    ) {
-                        Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                IconBadge(application.icon)
-                                Spacer(Modifier.weight(1f))
-                                DesktopIcon(DesktopIcons.disclosure, size = 20.dp)
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) { ApplicationTiles(matches) }
+        }
+    }
+}
+
+/** Readable icon grid shared by home and search; font scaling reduces the column count. */
+@Composable
+internal fun ApplicationTiles(applications: List<CatalogApplication>, modifier: Modifier = Modifier) {
+    val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val columns = (maxWidth.value / (78 * fontScale)).toInt().coerceIn(1, 8)
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+            applications.chunked(columns).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                    row.forEach { app ->
+                        Column(
+                            Modifier.weight(1f).clickable(role = Role.Button, onClick = app.open)
+                                .semantics(mergeDescendants = true) { contentDescription = app.description }
+                                .padding(vertical = Spacing.sm),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+                        ) {
+                            Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLowest) {
+                                Box(Modifier.size(56.dp), contentAlignment = Alignment.Center) { DesktopIcon(app.icon, size = 32.dp) }
                             }
-                            Text(application.title, style = MaterialTheme.typography.titleMedium)
-                            Text(application.description, style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(app.title, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center)
                         }
                     }
+                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }

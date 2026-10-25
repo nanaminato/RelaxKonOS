@@ -143,8 +143,8 @@ public static class HostElevationWireChecks
         public HostAdministratorAuthenticationResult Authenticate(string current, string? account, string? password)
         {
             Calls++;
-            return account == "alice" && password == "test-password" ? new(true, "", "test")
-                : new(false, "elevation-password-required", "none");
+            return account == "alice" && password == "test-password" ? new(true, "", "test", "fixture:alice")
+                : new(false, "elevation-password-required", "none", null);
         }
     }
     private sealed class EnvironmentTargets : IHostEnvironmentService

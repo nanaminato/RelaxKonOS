@@ -30,16 +30,23 @@ import app.relaxkonos.mobile.ui.theme.Spacing
     val manage = ready && owner?.privilegedOperations == true && owner.controller
     val available = manage && snapshot?.status?.installed == true && snapshot.status.supported
     val normal = available && snapshot?.status?.recoveryRequired == false
+    val accountManage = normal && state.accountsKnown
+    var editor by remember(owner) { mutableStateOf<String?>(null) }
     var section by rememberSaveable(owner) { mutableStateOf("overview") }
+    var packageAction by remember(owner) { mutableStateOf<SquidAction?>(null) }
+    var deleteAccount by remember(owner) { mutableStateOf<SquidAccount?>(null) }
+    var username by remember(owner) { mutableStateOf("") }
+    var password by remember(owner) { mutableStateOf("") }
+    var selected by remember(owner) { mutableStateOf<SquidAccount?>(null) }
     var confirmation by remember(owner) { mutableStateOf(false) }
     var leave by remember(owner) { mutableStateOf<(() -> Unit)?>(null) }
-    val dirty = visible && state.draft != state.initial
+    val dirty = visible && (state.draft != state.initial || password.isNotEmpty())
     val navigate: (() -> Unit) -> Unit = { action -> if (dirty || state.busy || pending != null) leave = action else action() }
     LaunchedEffect(owner, state.owner) { if (owner != null && visible) model.refresh() }
-    DisposableEffect(owner) { onDispose { model.stop() } }
+    DisposableEffect(owner) { onDispose { password = ""; model.stop() } }
     BackHandler(dirty || state.busy || pending != null) { navigate(onBack) }
     WorkspaceColumn(stringResource(R.string.squid_title), { navigate(onBack) },
-        listOf(WorkspaceDestination("overview", R.string.workspace_overview), WorkspaceDestination("configuration", R.string.squid_preview), WorkspaceDestination("records", R.string.workspace_records)),
+        listOf(WorkspaceDestination("overview", R.string.workspace_overview), WorkspaceDestination("access", R.string.squid_access), WorkspaceDestination("configuration", R.string.squid_preview), WorkspaceDestination("records", R.string.workspace_records)),
         section, { section = it }, modifier, stateKey = owner) {
         if (owner?.capabilities?.contains(ServerCapabilities.GATEWAY_PROXY) != true) {
             Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn
@@ -62,12 +69,17 @@ import app.relaxkonos.mobile.ui.theme.Spacing
                             Text(stringResource(if (status.enabled) R.string.squid_enabled else R.string.squid_disabled))
                         }
                     }
+                    Text(stringResource(R.string.squid_package_note))
+                    if (status.packageManagementSupported) {
+                        val action = if (status.installed) SquidAction.Uninstall else SquidAction.Install
+                        OutlinedButton(enabled = manage && status.supported && !status.recoveryRequired, onClick = { packageAction = action }) { Text(stringResource(action.label())) }
+                    } else Text(stringResource(R.string.squid_package_unsupported))
                     Text(stringResource(R.string.squid_revisions, facts.desiredRevision, facts.publishedRevision?.toString() ?: "—"))
                     Text(stringResource(R.string.squid_runtime_note))
                     Text(stringResource(if (facts.matchesPublishedConfiguration) R.string.squid_matching else R.string.squid_unconfirmed))
                     facts.lastProblemCode?.let { Text(squidProblem(it)) }
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                        SquidAction.entries.forEach { action ->
+                        SquidAction.entries.filter { it != SquidAction.Install && it != SquidAction.Uninstall }.forEach { action ->
                             val enabled = if (action == SquidAction.Stop || action == SquidAction.Disable) available else normal && status.managed
                             OutlinedButton(enabled = enabled, onClick = { model.lifecycle(action) }) { Text(stringResource(action.label())) }
                         }
@@ -75,22 +87,21 @@ import app.relaxkonos.mobile.ui.theme.Spacing
                 }
             }
             if (snapshot == null && !state.busy) Text(stringResource(R.string.squid_unavailable))
-            fun update(value: SquidDraft) = model.edit(value)
-            SquidField(R.string.squid_bind_address, draft.address, manage) { update(draft.copy(address = it)) }
-            SquidField(R.string.squid_port, draft.port, manage) { update(draft.copy(port = it)) }
-            SquidToggle(R.string.squid_remote_clients, draft.remote, manage) { update(draft.copy(remote = it)) }
-            SquidField(R.string.squid_networks, draft.networks, manage, multiline = true) { update(draft.copy(networks = it)) }
-            SquidField(R.string.squid_allowed_domains, draft.allowed, manage, multiline = true) { update(draft.copy(allowed = it)) }
-            SquidField(R.string.squid_denied_domains, draft.denied, manage, multiline = true) { update(draft.copy(denied = it)) }
-            SquidField(R.string.squid_upstream_host, draft.parent, manage) { update(draft.copy(parent = it)) }
-            SquidField(R.string.squid_upstream_port, draft.parentPort, manage) { update(draft.copy(parentPort = it)) }
-            SquidToggle(R.string.squid_adopt, draft.adopt, normal) { update(draft.copy(adopt = it)) }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                OutlinedButton(enabled = manage && snapshot != null, onClick = { if (dirty) leave = model::loadSaved else model.loadSaved() }) { Text(stringResource(R.string.squid_load)) }
-                OutlinedButton(enabled = manage, onClick = { section = "configuration"; model.preview() }) { Text(stringResource(R.string.squid_preview)) }
-                OutlinedButton(enabled = available, onClick = { section = "configuration"; model.validate() }) { Text(stringResource(R.string.squid_validate)) }
-                Button(enabled = normal, onClick = { confirmation = true }) { Text(stringResource(R.string.squid_apply)) }
+            Text("${draft.address}:${draft.port}")
+            Button(enabled = manage, onClick = { editor = "configuration" }) { Text(stringResource(R.string.squid_edit_configuration)) }
+
+        }
+        WorkspaceSection(section == "access") {
+            Button(enabled = manage, onClick = { editor = "access" }) { Text(stringResource(R.string.squid_edit_access)) }
+            Button(enabled = accountManage, onClick = { selected = null; username = ""; password = ""; editor = "account" }) { Text(stringResource(R.string.squid_account_create)) }
+            Text(stringResource(R.string.squid_auth_hint))
+            if (draft.accessMode != SquidAccessMode.IpWhitelist && state.accounts.none { it.enabled }) Text(stringResource(R.string.squid_no_accounts), color = MaterialTheme.colorScheme.error)
+            state.accounts.takeIf { visible }?.forEach { account ->
+                OutlinedButton(onClick = { selected = account; username = account.username; password = ""; editor = "account" }, enabled = ready) {
+                    Text(account.username + " · " + stringResource(if (account.enabled) R.string.squid_account_enabled else R.string.squid_account_disabled))
+                }
             }
+
         }
         WorkspaceSection(section == "configuration") {
             state.validation?.takeIf { visible }?.let { validation ->
@@ -119,9 +130,82 @@ import app.relaxkonos.mobile.ui.theme.Spacing
         }
         if (pending != null && section != "records") TextButton(onClick = { section = "records" }) { Text(stringResource(R.string.squid_resume)) }
     }
+    editor?.let { activeEditor -> WorkspaceEditorDialog(
+        stringResource(when (activeEditor) { "configuration" -> R.string.squid_edit_configuration; "access" -> R.string.squid_edit_access; else -> R.string.squid_access }),
+        visible && state.busy, { editor = null; password = "" }) {
+        Text(stringResource(R.string.proxy_editor_draft_hint))
+        state.problem?.takeIf { visible }?.let { Text(squidProblem(it), color = MaterialTheme.colorScheme.error) }
+        when (activeEditor) {
+            "configuration" -> {
+                fun update(value: SquidDraft) = model.edit(value)
+                SquidField(R.string.squid_bind_address, draft.address, manage) { update(draft.copy(address = it)) }
+                SquidField(R.string.squid_port, draft.port, manage) { update(draft.copy(port = it)) }
+                SquidToggle(R.string.squid_remote_clients, draft.remote, manage) { update(draft.copy(remote = it)) }
+                SquidField(R.string.squid_networks, draft.networks, manage, multiline = true) { update(draft.copy(networks = it)) }
+                SquidField(R.string.squid_allowed_domains, draft.allowed, manage, multiline = true) { update(draft.copy(allowed = it)) }
+                SquidField(R.string.squid_denied_domains, draft.denied, manage, multiline = true) { update(draft.copy(denied = it)) }
+                SquidField(R.string.squid_upstream_host, draft.parent, manage) { update(draft.copy(parent = it)) }
+                SquidField(R.string.squid_upstream_port, draft.parentPort, manage) { update(draft.copy(parentPort = it)) }
+                SquidToggle(R.string.squid_adopt, draft.adopt, normal) { update(draft.copy(adopt = it)) }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    OutlinedButton(enabled = manage && snapshot != null, onClick = { if (dirty) leave = model::loadSaved else model.loadSaved() }) { Text(stringResource(R.string.squid_load)) }
+                    OutlinedButton(enabled = manage, onClick = { section = "configuration"; model.preview() }) { Text(stringResource(R.string.squid_preview)) }
+                    OutlinedButton(enabled = available, onClick = { section = "configuration"; model.validate() }) { Text(stringResource(R.string.squid_validate)) }
+                    Button(enabled = normal && (snapshot?.status?.managed == true || draft.adopt) && (draft.accessMode == SquidAccessMode.IpWhitelist || (state.accountsKnown && state.accounts.any { it.enabled })), onClick = { confirmation = true }) { Text(stringResource(R.string.squid_apply)) }
+                }
+                state.validation?.takeIf { visible }?.let { Text(it.diagnostics) }
+                androidx.compose.foundation.text.selection.SelectionContainer { Text(state.preview.takeIf { visible } ?: "") }
+            }
+            "access" -> {
+                SquidAccessMode.entries.forEach { mode ->
+                    Row(Modifier.fillMaxWidth()) {
+                        RadioButton(selected = draft.accessMode == mode, onClick = { model.edit(draft.copy(accessMode = mode)) }, enabled = manage)
+                        Text(stringResource(when (mode) {
+                            SquidAccessMode.IpWhitelist -> R.string.squid_mode_ip
+                            SquidAccessMode.Password -> R.string.squid_mode_password
+                            SquidAccessMode.PasswordAndIpWhitelist -> R.string.squid_mode_both
+                        }), Modifier.weight(1f).padding(top = 12.dp))
+                    }
+                }
+
+                Text(stringResource(R.string.squid_auth_hint))
+            }
+            "account" -> {
+                SquidField(R.string.squid_account_name, username, accountManage) { username = it; selected = null }
+                OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text(stringResource(R.string.squid_account_password)) },
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), enabled = accountManage, singleLine = true, modifier = Modifier.fillMaxWidth())
+                val validName = Regex("[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}").matches(username)
+                val validPassword = password.length in 8..128 && password.none { Character.isISOControl(it) }
+                val current = selected?.let { item -> state.accounts.singleOrNull { it.username == item.username } }
+                val protected = current?.enabled == true && state.accounts.count { it.enabled } == 1 &&
+                    (draft.accessMode != SquidAccessMode.IpWhitelist || snapshot?.configuration?.accessMode != SquidAccessMode.IpWhitelist)
+                if (protected) Text(stringResource(R.string.squid_last_account))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    Button(enabled = accountManage && validName && validPassword && state.accounts.none { it.username == username }, onClick = {
+                        model.account(SquidAccountMutation(SquidAccountAction.Create, username, password)); password = ""
+                    }) { Text(stringResource(R.string.squid_account_create)) }
+                    OutlinedButton(enabled = accountManage && current != null && validPassword, onClick = {
+                        model.account(SquidAccountMutation(SquidAccountAction.SetPassword, requireNotNull(current).username, password)); password = ""
+                    }) { Text(stringResource(R.string.squid_account_reset)) }
+                    OutlinedButton(enabled = accountManage && current != null && !protected, onClick = {
+                        model.account(SquidAccountMutation(SquidAccountAction.SetEnabled, requireNotNull(current).username, enabled = !current.enabled))
+                    }) { Text(stringResource(if (current?.enabled == true) R.string.squid_account_disable else R.string.squid_account_enable)) }
+                    OutlinedButton(enabled = accountManage && current != null && !protected, onClick = { deleteAccount = current }) { Text(stringResource(R.string.squid_account_delete)) }
+                }
+            }
+        }
+    } }
+    packageAction?.let { action -> AlertDialog(onDismissRequest = { packageAction = null },
+        title = { Text(stringResource(action.label())) }, text = { Text(stringResource(if (action == SquidAction.Install) R.string.squid_install_message else R.string.squid_uninstall_message)) },
+        confirmButton = { TextButton(enabled = manage, onClick = { packageAction = null; section = "records"; model.lifecycle(action) }) { Text(stringResource(R.string.squid_confirm)) } },
+        dismissButton = { TextButton(onClick = { packageAction = null }) { Text(stringResource(R.string.squid_cancel)) } }) }
+    deleteAccount?.let { account -> AlertDialog(onDismissRequest = { deleteAccount = null },
+        text = { Text(stringResource(R.string.squid_delete_message, account.username)) },
+        confirmButton = { TextButton(enabled = normal, onClick = { deleteAccount = null; model.account(SquidAccountMutation(SquidAccountAction.Delete, account.username)) }) { Text(stringResource(R.string.squid_confirm)) } },
+        dismissButton = { TextButton(onClick = { deleteAccount = null }) { Text(stringResource(R.string.squid_cancel)) } }) }
     if (confirmation) AlertDialog(onDismissRequest = { confirmation = false },
         title = { Text(stringResource(R.string.squid_apply_title)) }, text = { Text(stringResource(R.string.squid_apply_message)) },
-        confirmButton = { TextButton(enabled = normal, onClick = { confirmation = false; section = "records"; model.apply() }) { Text(stringResource(R.string.squid_confirm)) } },
+        confirmButton = { TextButton(enabled = normal, onClick = { confirmation = false; editor = null; section = "records"; model.apply() }) { Text(stringResource(R.string.squid_confirm)) } },
         dismissButton = { TextButton(onClick = { confirmation = false }) { Text(stringResource(R.string.squid_cancel)) } })
     if (leave != null) AlertDialog(onDismissRequest = { leave = null }, text = { Text(stringResource(R.string.squid_close_message)) },
         confirmButton = { TextButton(onClick = { val action = leave; leave = null; action?.invoke() }) { Text(stringResource(R.string.squid_confirm)) } },
@@ -136,6 +220,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 }
 private fun SquidAction.label(): Int = when (this) {
     SquidAction.Start -> R.string.squid_start; SquidAction.Stop -> R.string.squid_stop; SquidAction.Restart -> R.string.squid_restart
+    SquidAction.Install -> R.string.squid_install; SquidAction.Uninstall -> R.string.squid_uninstall
     SquidAction.Reload -> R.string.squid_reload; SquidAction.Enable -> R.string.squid_enable; SquidAction.Disable -> R.string.squid_disable
 }
 @Composable private fun squidProblem(code: String): String = when (code) {

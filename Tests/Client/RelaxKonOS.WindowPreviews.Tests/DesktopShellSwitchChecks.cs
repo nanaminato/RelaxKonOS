@@ -20,7 +20,7 @@ internal static class DesktopShellSwitchChecks
         var vm = new DesktopShellViewModel(windows, new ApplicationManager(windows, services), settings,
             localization, DispatchProxy.Create<IAuthSession, UnusedPreviewServices>(),
             new SshDesktopSession(null!, new ShellSettings(null!)), () => { },
-            null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!);
+            null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null);
         var state = new ShellStateStore();
         state.Publish(vm);
         windows.Attach(new Canvas { Width = 1000, Height = 700 });

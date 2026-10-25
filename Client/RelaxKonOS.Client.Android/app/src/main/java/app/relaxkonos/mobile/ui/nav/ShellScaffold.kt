@@ -78,7 +78,7 @@ fun ShellScaffold(
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val layoutState = layoutStateFor(maxWidth)
         val drawerContentLayout = layoutStateFor(maxWidth - 200.dp)
-        val terminalKeyboardOpen = navigator.currentDestination == Routes.TERMINAL && WindowInsets.ime.getBottom(LocalDensity.current) > 0
+        val terminalKeyboardOpen = navigator.route == Routes.TERMINAL && WindowInsets.ime.getBottom(LocalDensity.current) > 0
         val destinations = remember(session.capabilities) { TopDestination.visible(session.capabilities) }
 
         // The system back key unwinds the active destination's own stack first, and only then leaves

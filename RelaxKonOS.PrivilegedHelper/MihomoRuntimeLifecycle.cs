@@ -39,7 +39,7 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
             receipt is null ? null : new(receipt.OperationId, receipt.Outcome, receipt.ProblemCode),
             state.Revisions.Select(r => new RuntimeInstalledRelease(r.RevisionId, r.Release.ReleaseId, r.MeasuredVersion)).ToArray(),
             // Read-only environment facts, so a refusal can be explained before anyone presses install.
-            RuntimeDependencyProbe.Environment(environment, root));
+            RuntimeDependencyProbe.Environment(environment, root), states.ReadCommittedWitness(state, receipt));
     }
 
     internal async Task<RuntimePlanResult> PlanAsync(string sourceId, RuntimePlanRequest request, CancellationToken ct)
@@ -74,6 +74,9 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
             if (state.Active is null)
             {
                 if (service.Exists) return (state.Installation with { Ownership = RuntimeOwnership.External }, "runtime.external_installation");
+                if (state.ConfigurationIdentity is { } retained && Convert.ToHexString(SHA256.HashData(
+                    await MihomoArchiveAdapter.ReadConfigurationAsync(Path.Combine(root, "active.yaml"), ct))) != retained)
+                    throw new RuntimePolicyException("runtime.configuration_drift");
                 // Retained published configuration is owned data, not an unknown flat installation.
                 if (state.ConfigurationIdentity is null && (File.Exists(Path.Combine(root, "active.yaml"))
                     || File.Exists(Path.Combine(root, "mihomo")) || File.Exists(Path.Combine(root, "installed.json"))))

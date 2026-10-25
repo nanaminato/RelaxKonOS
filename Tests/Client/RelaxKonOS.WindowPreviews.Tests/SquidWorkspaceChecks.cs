@@ -1,3 +1,4 @@
+using Avalonia.LogicalTree;
 using Avalonia.Controls;
 using System.Reflection;
 using System.Net;
@@ -217,10 +218,30 @@ internal static class SquidWorkspaceChecks
         { image.Render(view); image.Save(Path.Combine(previewDirectory, "squid.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
         view.FindControl<Button>("PageButton5")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
         Dispatcher.UIThread.RunJobs();
-        Check(view.FindControl<StackPanel>("Page5")!.IsVisible && view.FindControl<ComboBox>("AccessModeBox")!.Bounds.Height > 0 && view.FindControl<TextBox>("AccountPasswordBox")!.PasswordChar != default,
-            "Access control has a dedicated page and a masked password input.");
+        Check(view.FindControl<StackPanel>("Page5")!.IsVisible && !view.FindControl<StackPanel>("AccessEditor")!.IsVisible && view.FindControl<TextBox>("AccountPasswordBox")!.PasswordChar != default,
+            "Access control lists accounts while keeping masked editing fields inside a closed modal.");
         using (var image = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(960, 760)))
         { image.Render(view); image.Save(Path.Combine(previewDirectory, "squid-access.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
+        foreach (var workspace in new UserControl[] { (UserControl)view, new RelaxKonOS.Client.Apps.ProxyServer.Views.ProxyServerWorkspace() })
+        {
+            foreach (var field in workspace.GetLogicalDescendants().OfType<TextBox>().Where(field => !field.IsReadOnly))
+                Check(field.GetLogicalAncestors().OfType<StackPanel>().Any(panel => panel.Name?.EndsWith("Editor", StringComparison.Ordinal) == true && !panel.IsVisible), "Editable text fields belong to an unopened editor, not the main workspace.");
+        }
+        var editorOwner = view.FindControl<StackPanel>("AccessEditor")!.Parent;
+        Complete(RelaxKonOS.Client.Controls.WorkspaceEditorDialogView.OpenAsync((UserControl)view, "AccessEditor", "Access", (title, editor) =>
+        {
+            Check(editor.IsVisible && editor.Parent is null && ReferenceEquals(editor.DataContext, vm), "Opening detaches the same draft and keeps its binding owner.");
+            var wrapper = new RelaxKonOS.Client.Controls.WorkspaceEditorDialogView { DataContext = vm };
+            wrapper.FindControl<ContentControl>("EditorHost")!.Content = editor;
+            var dialogWindow = new Window { Content = wrapper, Width = 420, Height = 640 };
+            dialogWindow.Show(); Dispatcher.UIThread.RunJobs();
+            Check(view.FindControl<ComboBox>("AccessModeBox")!.Bounds.Height > 0, "The modal measures its editor at compact width.");
+            using (var image = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(420, 640)))
+            { image.Render(dialogWindow); image.Save(Path.Combine(previewDirectory, "squid-access-editor.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
+            wrapper.FindControl<ContentControl>("EditorHost")!.Content = null; dialogWindow.Close();
+            return Task.CompletedTask;
+        }));
+        Check(!view.FindControl<StackPanel>("AccessEditor")!.IsVisible && ReferenceEquals(view.FindControl<StackPanel>("AccessEditor")!.Parent, editorOwner), "Closing restores the hidden editor for a later edit without duplicating controls.");
         view.FindControl<Button>("PageButton0")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
         var boxes = new[] { "BindAddressBox", "PortBox", "NetworksBox", "AllowedDomainsBox", "DeniedDomainsBox", "UpstreamHostBox", "UpstreamPortBox", "PreviewBox", "DetailBox" }.Select(name => view.FindControl<TextBox>(name)!).ToList();
         Check(boxes.Count == 9, "The workspace renders seven editor fields plus the preview and detail panes.");

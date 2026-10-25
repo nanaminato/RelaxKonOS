@@ -187,7 +187,7 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Button Classes="start-tile" Width="142" Height="88" AttachedToVisualTree="AllApplication_OnAttachedToVisualTree"
+                                    <Button Classes="start-tile" Width="142" Height="88" Padding="6,4" ToolTip.Tip="{Binding DisplayName}" AttachedToVisualTree="AllApplication_OnAttachedToVisualTree"
                                         Command="{Binding $parent[UserControl].DataContext.OpenApplicationCommand}"
                                         CommandParameter="{Binding}">
                                         <StackPanel Spacing="6">
@@ -196,8 +196,11 @@
                                                 <TextBlock Text="{Binding IconGlyph}" FontSize="32" TextAlignment="Center"
                                                            IsVisible="{Binding !HasIconImage}" />
                                             </Grid>
-                                            <TextBlock Classes="primary" Text="{Binding DisplayName}" FontSize="12" MaxLines="2"
+                                            <TextBlock Classes="primary" Text="{Binding DisplayName}" FontSize="12" MaxLines="1"
                                                        TextAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding Availability.Label}" IsVisible="{Binding HasAvailability}" FontSize="10"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"
+                                                       TextAlignment="Center" ToolTip.Tip="{Binding Availability.Label}" />
                                         </StackPanel>
                                     </Button>
                                 </DataTemplate>

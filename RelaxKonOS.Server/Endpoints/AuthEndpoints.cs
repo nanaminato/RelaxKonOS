@@ -72,11 +72,13 @@ public static class AuthEndpoints
             })
             .WithTags("Auth");
 
-        group.MapPost(AuthApiRoutes.Logout, (LogoutRequest? req, HttpContext http, AuthSessionStore sessions, IHostElevationSessionStore elevations) =>
+        group.MapPost(AuthApiRoutes.Logout, (LogoutRequest? req, HttpContext http, AuthSessionStore sessions,
+            IHostElevationSessionStore elevations, SessionValidityService validity) =>
             {
                 if (!string.IsNullOrEmpty(req?.RefreshToken))
                     sessions.Revoke(req.RefreshToken);
                 elevations.Revoke(http.User);
+                validity.ExpireSession(http.User);
                 return Results.NoContent();
             })
             .RequireAuthorization()

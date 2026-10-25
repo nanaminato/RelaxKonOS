@@ -133,6 +133,47 @@ Check((await service.ConflictOperationAsync(conflictId, user, new("rebase", "abo
 Check(!(await service.ResetAsync(id, user, new("HEAD", "hard"))).Success, "UI reset contract never permits hard reset");
 foreach (var command in new[] { "stash", "tag", "worktree", "apply", "check-ref-format" }) Check(UserExecutionGitPolicy.IsAllowed([command, "--help"]), "Shared Helper allowlist supports " + command);
 Check(UserExecutionGitPolicy.IsAllowed(["clone", "--", "https://example.invalid/repo", "/tmp/repo"]) && !UserExecutionGitPolicy.IsAllowed(["clone", "-u", "evil", "url", "path"]) && !UserExecutionGitPolicy.IsAllowed(["apply", "--unsafe-paths"]) && !UserExecutionGitPolicy.IsAllowed(["clone", "--upload-pack=evil", "url", "path"]) && !UserExecutionGitPolicy.IsAllowed(["clone", "ext::evil", "path"]), "Shared execution policy rejects arbitrary transport commands");
+// One askpass implementation now serves both the Server's in-process runner and the privileged
+// Helper, so the credential never reaches a command line on either path.
+var askPass = GitAskPassScope.Create("octocat", "token-value") ?? throw new Exception("AskPass scope was not created");
+var askPassInfo = new ProcessStartInfo("git");
+askPass.ApplyTo(askPassInfo);
+Check(askPassInfo.Environment["GIT_ASKPASS"] == askPass.Path
+    && askPassInfo.Environment["GIT_ASKPASS_REQUIRE"] == "force"
+    && askPassInfo.Environment["RELAXKONOS_GIT_ASKPASS_USERNAME"] == "octocat"
+    && File.ReadAllText(askPass.Path).Contains("RELAXKONOS_GIT_ASKPASS_PASSWORD", StringComparison.Ordinal)
+    && !File.ReadAllText(askPass.Path).Contains("token-value", StringComparison.Ordinal),
+    "AskPass scope points one child process at a script that reads the secret from its environment");
+var askPassPath = askPass.Path;
+// Exercise Git's real askpass launch, including a URL prompt containing shell metacharacters.
+// Disable host helpers/configuration so this test never reads or writes a real credential store.
+foreach (var (username, password) in new[] { ("octocat", "token-value"), ("测试 & user", "令牌 &|<>^%!\"'() token") })
+{
+    using var scope = GitAskPassScope.Create(username, password)!;
+    using var credential = new Process { StartInfo = new(git) { WorkingDirectory = root, UseShellExecute = false, CreateNoWindow = true,
+        RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true,
+        StandardInputEncoding = new System.Text.UTF8Encoding(false), StandardOutputEncoding = System.Text.Encoding.UTF8 } };
+    UserExecutionGitPolicy.ApplySafeEnvironment(credential.StartInfo);
+    scope.ApplyTo(credential.StartInfo);
+    credential.StartInfo.Environment["GIT_CONFIG_NOSYSTEM"] = "1";
+    credential.StartInfo.Environment["GIT_CONFIG_GLOBAL"] = OperatingSystem.IsWindows() ? "NUL" : "/dev/null";
+    foreach (var argument in new[] { "-c", "credential.helper=", "credential", "fill" }) credential.StartInfo.ArgumentList.Add(argument);
+    credential.Start();
+    var outputTask = credential.StandardOutput.ReadToEndAsync();
+    var errorTask = credential.StandardError.ReadToEndAsync();
+    await credential.StandardInput.WriteAsync("protocol=https\nhost=example.invalid\npath=repo?a&b\n\n");
+    credential.StandardInput.Close();
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+    try { await credential.WaitForExitAsync(timeout.Token); }
+    catch { credential.Kill(entireProcessTree: true); throw; }
+    var output = (await outputTask).Replace("\r\n", "\n");
+    _ = await errorTask;
+    Check(credential.ExitCode == 0 && output.Split('\n').Contains("username=" + username) && output.Split('\n').Contains("password=" + password),
+        "Real Git reads exact askpass credentials, including Unicode and shell metacharacters");
+}
+askPass.Dispose();
+Check(!File.Exists(askPassPath) && GitAskPassScope.Create(null, "token") is null && GitAskPassScope.Create("user", "") is null,
+    "AskPass scope deletes its script and refuses an incomplete credential");
 var (graphPath, graphId) = await Setup("graph");
 await Run(graphPath, "checkout", "-b", "feature/ui");
 await File.WriteAllTextAsync(Path.Combine(graphPath, "feature.txt"), "feature\n"); await Run(graphPath, "add", "."); await Run(graphPath, "commit", "-m", "feature");
@@ -165,6 +206,7 @@ await service.StashAsync(id, user, new("save", Message: "https://name:trace-secr
 var safe = await service.GetConsoleAsync(id, user);
 Check(safe.Any(item => item.Command.Contains("https://example.invalid/repo")) && safe.All(item => !(item.Command + item.Output + item.Error).Contains("trace-secret") && !(item.Command + item.Output + item.Error).Contains("private-token")), "Console removes URL passwords and query tokens from real command records");
 Check((await service.GetConsoleAsync(Guid.Parse(clone.Repository!.Id), user)).Any(item => item.Command.StartsWith("git clone --")), "Successful clone transcript follows the newly registered destination repository");
+await GitRegistrationChecks.RunAsync(root);
 Console.WriteLine($"Git workspace integration checks passed: {count}. Temporary repositories: {root}");
 
 sealed class Factory(DbContextOptions<RelaxKonOSDbContext> options) : IDbContextFactory<RelaxKonOSDbContext>

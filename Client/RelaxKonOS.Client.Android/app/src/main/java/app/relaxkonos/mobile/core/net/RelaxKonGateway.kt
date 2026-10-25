@@ -52,6 +52,7 @@ interface RelaxKonGateway {
     suspend fun smbUsers(serverUrl: String, accessToken: String): ApiResult<List<SmbUser>>
     suspend fun smbConnection(serverUrl: String, accessToken: String): ApiResult<SmbConnection>
     suspend fun smbChange(serverUrl: String, accessToken: String, change: SmbChange, password: CharArray?): ApiResult<SmbReceipt>
+    suspend fun squidAccounts(serverUrl: String, accessToken: String): ApiResult<List<SquidAccount>>
     suspend fun squidConfiguration(serverUrl: String, accessToken: String): ApiResult<SquidSnapshot>
     suspend fun squidPreview(serverUrl: String, accessToken: String, configuration: SquidConfiguration): ApiResult<SquidPreview>
     suspend fun squidValidate(serverUrl: String, accessToken: String, configuration: SquidConfiguration): ApiResult<SquidValidation>
@@ -104,6 +105,7 @@ interface RelaxKonGateway {
     suspend fun proxyServerInstall(serverUrl: String, accessToken: String, idempotencyKey: String): ApiResult<String> = ProxyServerUnavailable
     suspend fun proxyServerUpgrade(serverUrl: String, accessToken: String, version: String, idempotencyKey: String): ApiResult<String> = ProxyServerUnavailable
     suspend fun proxyServerUninstall(serverUrl: String, accessToken: String, keepData: Boolean, idempotencyKey: String): ApiResult<String> = ProxyServerUnavailable
+    suspend fun proxyServerSaveConfiguration(serverUrl: String, accessToken: String, request: SaveProxyServerConfiguration, idempotencyKey: String): ApiResult<String>
     suspend fun proxyServerSavePrincipal(serverUrl: String, accessToken: String, id: String?, request: SaveProxyServerPrincipal, idempotencyKey: String): ApiResult<String> = ProxyServerUnavailable
     suspend fun proxyServerDeletePrincipal(serverUrl: String, accessToken: String, id: String, idempotencyKey: String): ApiResult<String> = ProxyServerUnavailable
     suspend fun proxyServerSaveCredential(serverUrl: String, accessToken: String, id: String?, request: SaveProxyServerCredential, idempotencyKey: String): ApiResult<String> = ProxyServerUnavailable

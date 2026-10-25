@@ -34,6 +34,27 @@ internal static class SwitchChecks
             var installed = f.Store.Read()!;
             Check(installed.Active!.RevisionId == operation && installed.Installation.Ownership == RuntimeOwnership.Managed
                 && installed.Pending is null && installed.Receipts.Length == 1, "Atomic active pointer and terminal receipt committed");
+            var committed = f.Store.ReadCommittedWitness(installed, installed.Receipts[0]);
+            var observedCommit = new RuntimeInstallationSnapshot(installed.Installation, installed.Active.MeasuredVersion, installed.Active.RevisionId,
+                installed.ConfigurationIdentity, null, null, null, new(operation, RuntimeSwitchOutcome.Succeeded, null), CommitWitness: committed);
+            Check(RuntimeCommitWitnessRules.Matches(committed, observedCommit), "Verified success persists original committed program and configuration facts");
+            Check(new RuntimeArchiveStateStore(Path.Combine(f.Root, "state"), path => Directory.CreateDirectory(path))
+                .ReadCommittedWitness(installed, installed.Receipts[0]) == committed, "Committed proof survives opening a new protected store");
+            Check(f.Store.ReadCommittedWitness(installed with { Receipts = [] }, installed.Receipts[0]) is null,
+                "A staged proof without its exact committed receipt cannot certify a result");
+            Check(!RuntimeCommitWitnessRules.Matches(committed, observedCommit with { Installation = installed.Installation with { StateRevision = installed.Installation.StateRevision + 1 } }),
+                "Later state cannot be attributed to the original committed operation even when version and configuration match");
+            var proofPath = Path.Combine(f.Root, "state", "commits", operation.ToString("D") + ".json");
+            var proofBytes = File.ReadAllBytes(proofPath);
+            File.Delete(proofPath);
+            Check(f.Store.ReadCommittedWitness(installed, installed.Receipts[0]) is null && !File.Exists(proofPath),
+                "A missing success proof remains missing and is never regenerated from current host state");
+            File.WriteAllBytes(proofPath, proofBytes);
+            var badProof = JsonNode.Parse(proofBytes)!;
+            badProof["witness"]!["configurationIdentity"] = "not-a-digest";
+            File.WriteAllText(proofPath, badProof.ToJsonString());
+            await Reject("commit_witness_invalid", () => Task.FromResult(f.Store.ReadCommittedWitness(installed, installed.Receipts[0])));
+            File.WriteAllBytes(proofPath, proofBytes);
             Check(!f.Service().Running && !f.Service().BootEnabled, "Installation does not implicitly run or enable boot");
             Check((await f.Switch.ExecuteAsync(operation, plan, default)).Outcome == RuntimeSwitchOutcome.Succeeded && f.Adapter.Activations == 1,
                 "Retry returns durable receipt without executing again");
@@ -46,6 +67,8 @@ internal static class SwitchChecks
                 == RuntimeSwitchOutcome.Succeeded, "Actual distinct-release switch succeeds in adapter fixture");
             Check(f.Service().Version == "2.0.0" && f.Service().Running && !f.Service().BootEnabled,
                 "Current running and boot-enabled states are preserved independently");
+            Check(f.Store.ReadCommittedWitness(f.Store.Read()!, installed.Receipts[0]) == committed,
+                "Later updates preserve the original immutable commit witness");
             var repair = f.Plan(RuntimeChange.Repair, "release-2", "repair");
             var beforeRepair = f.Store.Read()!.Active!.RevisionId;
             Check((await f.Switch.ExecuteAsync(Guid.NewGuid(), repair, default)).Outcome == RuntimeSwitchOutcome.Succeeded

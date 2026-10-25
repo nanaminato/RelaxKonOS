@@ -86,6 +86,29 @@ class ProxyServerRepositoryTest {
         assertEquals("proxy_server.export_multiple_inbounds", uri.reason)
     }
 
+    @Test fun `saving inbound draft retains revision protocol fields and subscription base`() = runTest {
+        val owner = signIn()
+        val configuration = ProxyServerWire.snapshot(SNAPSHOT_JSON).configuration
+        val request = SaveProxyServerConfiguration(configuration.revision, configuration.inbounds, "https://proxy.example.test")
+        gateway.onProxyServerSaveConfiguration = { value, key ->
+            val body = org.json.JSONObject(value.body().toByteArray().decodeToString())
+            assertEquals(7, body.getLong("expectedRevision")); assertEquals("https://proxy.example.test", body.getString("subscriptionBaseUrl"))
+            val inbound = body.getJSONArray("inbounds").getJSONObject(0)
+            assertEquals("vlessReality", inbound.getString("protocol")); assertEquals("www.example.com", inbound.getString("handshakeHost"))
+            assertFalse(inbound.has("certificateId")); assertTrue(key.isNotBlank())
+            ApiResult.Success(OPERATION_ID)
+        }
+        gateway.onProxyServerOperation = { ApiResult.Success(ProxyWire.operation(OPERATION_JSON.replace("proxy_server.publish", "proxy_server.configuration.save"))) }
+        assertTrue(repository.saveConfiguration(owner, request) is ApiResult.Success)
+        assertEquals(OPERATION_ID, index.forOwner(owner).single().operationId)
+    }
+    @Test fun `configuration revision conflict remains a refusal without creating a receipt`() = runTest {
+        val owner = signIn()
+        gateway.onProxyServerSaveConfiguration = { _, _ -> ApiResult.Problem(409, ProxyServerProblemCodes.REVISION_CONFLICT, null) }
+        val result = repository.saveConfiguration(owner, SaveProxyServerConfiguration(1, emptyList(), null))
+        assertTrue(result is ApiResult.Problem); assertTrue(index.forOwner(owner).isEmpty())
+    }
+
     private companion object {
         const val OPERATION_ID = "7f0f2b1e-1c2d-4e3f-8a9b-0c1d2e3f4a5b"
         const val OPERATION_JSON = """{"operationId":"$OPERATION_ID","kind":"proxy_server.publish","state":"succeeded",

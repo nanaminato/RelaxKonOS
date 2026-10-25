@@ -586,6 +586,7 @@
         "git.dialog.push.all_tags": "すべて",
         "git.dialog.push.loading_commits": "プッシュするコミットを読み込み中…",
         "git.dialog.push.no_commits_ahead": "プッシュする新しいコミットはありません",
+        "git.dialog.push.new_remote_branch_format": "リモートに「{0}」がまだないため、このプッシュで作成します",
         "git.dialog.push.select_remote": "リモートリポジトリを選択",
         "git.dialog.push.select_branch": "ブランチを選択",
         "git.dialog.push.remote_placeholder": "リモートを選択…",

@@ -51,7 +51,7 @@ enum class LoginField { Server, Identifier, Password }
 enum class EndpointDiscoveryState { Idle, Checking, Found, InvalidAddress, Unavailable }
 
 /**
- * Sign-in state for the single-form login screen.
+ * Shared sign-in state for the recent-server summary and expanded form.
  *
  * Four independent facts are held apart, exactly as the design requires
  * (`LoginCredentials.Design.md` §2, §4): who is being signed in as
@@ -71,9 +71,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     private val container: AppContainer get() = getApplication<RelaxKonApplication>().container
 
     private var revision by mutableStateOf(0)
-    private val initialLogin = container.profiles.all().firstOrNull { login ->
-        login.directServerUrl != null || container.loginTunnels.all().any { it.serviceId == login.serviceId }
-    }
+    private val initialLogin = container.profiles.recent()
     private val initialTunnel = container.loginTunnels.all().firstOrNull { it.serviceId == initialLogin?.serviceId }
     val tunnel = LoginTunnelController(container).also { controller -> initialTunnel?.let(controller::select) }
 
@@ -90,6 +88,15 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     var isLoggingIn by mutableStateOf(false)
     var message by mutableStateOf<UiMessage?>(null)
     var connectionsOpen by mutableStateOf(false)
+    var connectionDetailsOpen by mutableStateOf(initialLogin == null)
+    var useManualPassword by mutableStateOf(false)
+
+    val savedLoginName: String get() = managedHostName ?: logins.firstOrNull {
+        it.serviceId == (selectedManagedServiceId ?: selectedLogin.serviceId) && it.identifier == identifier
+    }?.displayName ?: serverUrl.ifBlank { getApplication<Application>().getString(R.string.desktop_saved_server) }
+
+    val managedLoginSelected: Boolean get() = selectedManagedServiceId != null
+    private var selectedManagedServiceId by mutableStateOf<String?>(null)
 
     /**
      * The host name of the managed login currently in the form, or `null` for a direct one.
@@ -203,6 +210,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         get() = directConnection()?.let(container.ownerDevices::isPaired) == true
 
     fun changeServer(value: String) {
+        selectedManagedServiceId = null
         discoveryJob?.cancel()
         // Typing an address means the form now describes a direct server, so it stops being a managed
         // selection: the host name and the "establish a tunnel" notice must not outlive that.
@@ -249,6 +257,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         windowUnlocked = emptySet()
         message = null
         focusRequest = null
+        useManualPassword = false
         endpointDiscoveryState = EndpointDiscoveryState.Idle
         connectionsOpen = false
         revision++
@@ -288,7 +297,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     fun select(login: SavedLogin) {
         if (login.serviceIdKind == app.relaxkonos.mobile.servercenter.ServerServiceIdKind.SshTunnelProfile) {
             val profile = tunnel.profiles.firstOrNull { it.serviceId == login.serviceId }
-            if (profile == null) { message = UiMessage(R.string.login_tunnel_missing); return }
+            if (profile == null) { connectionDetailsOpen = true; message = UiMessage(R.string.login_tunnel_missing); return }
             applySelection(LoginSelection.Tunnel(profile, login.identifier))
             windowUnlocked = windowUnlocked - loginIdOf(login.serviceId, login.identifier)
             return
@@ -312,6 +321,9 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
      * refused with "enter the server address and login identity" (`LoginCredentials.Design.md` §6.3).
      */
     private fun applySelection(selection: LoginSelection) {
+        selectedManagedServiceId = null
+        connectionDetailsOpen = false
+        useManualPassword = false
         when (selection) {
             is LoginSelection.Tunnel -> tunnel.select(selection.profile)
             is LoginSelection.Direct, is LoginSelection.Managed -> tunnel.enabled = false
@@ -372,6 +384,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     private fun selectManaged(login: SavedLogin) {
         val host = container.managedLogins.hostFor(login.serviceId)
         applySelection(LoginSelection.Managed(host?.displayName, login.identifier))
+        selectedManagedServiceId = login.serviceId
         windowUnlocked = windowUnlocked - loginIdOf(login.serviceId, login.identifier)
         message = if (host == null) {
             UiMessage(R.string.login_managed_host_missing)
@@ -379,6 +392,8 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             UiMessage(R.string.login_managed_tunnel_required, listOf(host.displayName))
         }
     }
+
+    init { initialLogin?.let(::select) }
 
     /** "Forget the password": drops the credential, keeps the login (§6.3). */
     fun forgetPassword(login: SavedLogin) {
@@ -397,7 +412,11 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         container.profiles.remove(login.serviceId, login.identifier)
         windowUnlocked = windowUnlocked - loginIdOf(login.serviceId, login.identifier)
         revision++
-        if (selectedLogin.serviceId == login.serviceId && identifier == login.identifier) {
+        if ((selectedLogin.serviceId == login.serviceId || selectedManagedServiceId == login.serviceId) && identifier == login.identifier) {
+            selectedManagedServiceId = null
+            managedHostName = null
+            tunnel.enabled = false
+            connectionDetailsOpen = true
             serverUrl = ""
             identifier = ""
             passwordText = ""
@@ -442,6 +461,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                     isLoggingIn = false; throw cancelled
                 } catch (error: Exception) {
                     isLoggingIn = false
+                    connectionDetailsOpen = true
                     tunnel.configurationOpen = true
                     message = UiMessage((error as? LoginTunnelFailure)?.messageResource ?: R.string.login_tunnel_failed)
                 }
@@ -641,6 +661,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
             is LoginDecision.MissingFields -> {
                 message = UiMessage(R.string.login_missing_fields)
+                connectionDetailsOpen = true
                 focusRequest = if (plan.server) LoginField.Server else LoginField.Identifier
             }
 
@@ -650,6 +671,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                     CredentialGap.Unavailable -> UiMessage(R.string.login_saved_password_unavailable)
                     CredentialGap.Invalidated -> UiMessage(R.string.login_saved_password_invalidated)
                 }
+                useManualPassword = true
                 focusRequest = LoginField.Password
             }
 
@@ -753,6 +775,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                     if (revealed == null) {
                         VaultDiagnostics.trace("login.unseal", "no stored credential to unseal")
                         message = UiMessage(R.string.login_saved_password_unavailable)
+                        useManualPassword = true
                         focusRequest = LoginField.Password
                         return@launch
                     }

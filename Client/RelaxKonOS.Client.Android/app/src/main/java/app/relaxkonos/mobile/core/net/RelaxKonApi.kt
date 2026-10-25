@@ -65,6 +65,7 @@ class RelaxKonApi(
     override suspend fun smbChange(serverUrl: String, accessToken: String, change: SmbChange, password: CharArray?): ApiResult<SmbReceipt> =
         webPublishingCall(SmbRoutes.method(change.kind), serverUrl, SmbRoutes.route(change), accessToken,
             if (change.kind == SmbChangeKind.Password) JsonBody().secret("password", requireNotNull(password)) else change.share?.body(), SmbWire::receipt)
+    override suspend fun squidAccounts(serverUrl: String, accessToken: String): ApiResult<List<SquidAccount>> = webPublishingRead(serverUrl, accessToken, SquidWire.ROOT + "/accounts", SquidWire::accounts)
     override suspend fun squidConfiguration(serverUrl: String, accessToken: String): ApiResult<SquidSnapshot> = webPublishingRead(serverUrl, accessToken, SquidWire.ROOT + "/configuration", SquidWire::snapshot)
     override suspend fun squidPreview(serverUrl: String, accessToken: String, configuration: SquidConfiguration): ApiResult<SquidPreview> = webPublishingCall("POST", serverUrl, SquidWire.ROOT + "/configuration/preview", accessToken, configuration.body(), SquidWire::preview)
     override suspend fun squidValidate(serverUrl: String, accessToken: String, configuration: SquidConfiguration): ApiResult<SquidValidation> = webPublishingCall("POST", serverUrl, SquidWire.ROOT + "/configuration/validate", accessToken, configuration.body(), SquidWire::validation)
@@ -121,6 +122,8 @@ class RelaxKonApi(
         proxyServerMutation("POST", serverUrl, ProxyServerRoutes.RUNTIME_UPGRADE, accessToken, JsonBody().string("version", version.trim()), idempotencyKey)
     override suspend fun proxyServerUninstall(serverUrl: String, accessToken: String, keepData: Boolean, idempotencyKey: String): ApiResult<String> =
         proxyServerMutation("POST", serverUrl, ProxyServerRoutes.RUNTIME_UNINSTALL, accessToken, JsonBody().bool("keepData", keepData), idempotencyKey)
+    override suspend fun proxyServerSaveConfiguration(serverUrl: String, accessToken: String, request: SaveProxyServerConfiguration, idempotencyKey: String): ApiResult<String> =
+        proxyServerMutation("PUT", serverUrl, ProxyServerRoutes.CONFIGURATION, accessToken, request.body(), idempotencyKey)
     override suspend fun proxyServerSavePrincipal(serverUrl: String, accessToken: String, id: String?, request: SaveProxyServerPrincipal, idempotencyKey: String): ApiResult<String> =
         proxyServerMutation(if (id == null) "POST" else "PUT", serverUrl,
             id?.let(ProxyServerRoutes::principal) ?: ProxyServerRoutes.PRINCIPALS, accessToken, request.body(), idempotencyKey)
@@ -292,7 +295,7 @@ class RelaxKonApi(
 
     override suspend fun managedRuntime(serverUrl: String, accessToken: String, method: String, route: String,
         body: JsonBody?, key: String?): ApiResult<String> {
-        require(route == ManagedRuntimeRoutes.SOURCES || route == ManagedRuntimeRoutes.INSTALLATION ||
+        require(route in listOf("installation", "plan", "recovery", "recovery/retry", "recovery/stop", "recovery/close").map { "${ManagedRuntimeRoutes.ROOT}/sing-box/$it" } || route == ManagedRuntimeRoutes.SOURCES || route == ManagedRuntimeRoutes.INSTALLATION ||
             route == ManagedRuntimeRoutes.PLAN || route == ManagedRuntimeRoutes.RECOVERY || route == ManagedRuntimeRoutes.RESOURCES ||
             route in listOf("retry", "stop", "close").map { "${ManagedRuntimeRoutes.RECOVERY}/$it" } ||
             route.matches(Regex("/api/v1.0/managed-runtimes/sources/[A-Za-z0-9_.-]{1,128}/(catalog|refresh)\\?includePrerelease=(true|false)")))

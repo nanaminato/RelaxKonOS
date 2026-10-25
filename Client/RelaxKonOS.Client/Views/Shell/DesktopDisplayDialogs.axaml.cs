@@ -49,6 +49,7 @@ public partial class DesktopDisplayDialogs : UserControl
             : T("shell.desktop_display.description", "Choose what appears on your desktop. Your preferences are saved to this workspace and sync across devices.");
 
         ShowAppsToggle.IsChecked = _buffer.ShowBuiltInApps;
+        ReadyAppsToggle.IsChecked = _buffer.OnlyReadyApplications;
         AllAppsRadio.IsChecked = _buffer.ShowAllBuiltInApps;
         CustomAppsRadio.IsChecked = !_buffer.ShowAllBuiltInApps;
         ShowFilesToggle.IsChecked = _buffer.ShowServerDesktopFiles;
@@ -108,6 +109,7 @@ public partial class DesktopDisplayDialogs : UserControl
 
     private async void SaveButton_OnClick(object? sender, RoutedEventArgs e)
     {
+        _buffer.OnlyReadyApplications = ReadyAppsToggle.IsChecked == true;
         _buffer.ShowServerDesktopFiles = ShowFilesToggle.IsChecked == true;
         _buffer.ShowServerDesktopShortcuts = ShowShortcutsToggle.IsChecked == true;
         _buffer.ApplyTo(_settings);
@@ -122,6 +124,7 @@ public partial class DesktopDisplayDialogs : UserControl
 internal sealed class DesktopDisplayEditBuffer
 {
     public bool ShowBuiltInApps { get; set; }
+    public bool OnlyReadyApplications { get; set; }
     public bool ShowServerDesktopFiles { get; set; }
     public bool ShowServerDesktopShortcuts { get; set; }
 
@@ -133,6 +136,7 @@ internal sealed class DesktopDisplayEditBuffer
     public DesktopDisplayEditBuffer(ShellSettings settings, ApplicationManager applications)
     {
         ShowBuiltInApps = settings.ShowBuiltInApps;
+        OnlyReadyApplications = settings.OnlyReadyApplications;
         ShowServerDesktopFiles = settings.ShowServerDesktopFiles;
         ShowServerDesktopShortcuts = settings.ShowServerDesktopShortcuts;
 
@@ -156,6 +160,7 @@ internal sealed class DesktopDisplayEditBuffer
     public void ApplyTo(ShellSettings settings)
     {
         settings.ShowBuiltInApps = ShowBuiltInApps;
+        settings.OnlyReadyApplications = OnlyReadyApplications;
         settings.ShowServerDesktopFiles = ShowServerDesktopFiles;
         settings.ShowServerDesktopShortcuts = ShowServerDesktopShortcuts;
 

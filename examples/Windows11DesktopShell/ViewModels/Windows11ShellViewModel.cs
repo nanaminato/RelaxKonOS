@@ -285,7 +285,7 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
             DesktopEntries.Zip(state.DesktopEntries).All(pair =>
                 pair.First.Id == pair.Second.Id && pair.First.DisplayName == pair.Second.DisplayName &&
                 pair.First.Kind == pair.Second.Kind && pair.First.IconGlyph == pair.Second.IconGlyph &&
-                pair.First.IsTaskbarPinned == pair.Second.IsTaskbarPinned &&
+                pair.First.IsTaskbarPinned == pair.Second.IsTaskbarPinned && pair.First.Availability == pair.Second.Availability &&
                 ReferenceEquals(pair.First.IconImage, pair.Second.IconImage));
         if (sameEntries)
         {

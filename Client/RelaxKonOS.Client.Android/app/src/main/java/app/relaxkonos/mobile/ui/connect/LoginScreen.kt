@@ -51,21 +51,7 @@ import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Radius
 import app.relaxkonos.mobile.ui.theme.Spacing
 
-/**
- * Sign-in screen, in one shape.
- *
- * The address, the account and the password are always visible. There is deliberately no "short form"
- * that hides the password field when a credential is stored: hiding it encodes "a password is saved" as
- * "a field is missing", which is not a state anything can read or act on
- * (`LoginCredentials.Design.md` §6.1, D7).
- *
- * The password field only ever holds what the user typed in this session. That a password is saved is
- * reported by the line beside the field, which is derived from the vault and never from the field's
- * contents (§3, §6.2).
- *
- * The brand mark sits above the card rather than inside it, so the card stays a form: one opaque
- * surface holding exactly the three fields and the action, with nothing decorative competing with them.
- */
+/** Recent-server sign-in; transport settings and manual credential replacement are explicit secondary actions. */
 @Composable
 fun LoginScreen(
     modifier: Modifier = Modifier,
@@ -122,6 +108,10 @@ fun LoginScreen(
     }
 
     val unlockMode = viewModel.vaultUnlockMode
+    val detailsOpen = viewModel.connectionDetailsOpen
+    val savedUsable = viewModel.credentialStatus in setOf(CredentialStatus.SavedByFingerprint,
+        CredentialStatus.SavedByScreenLock, CredentialStatus.SavedInDebugBuild)
+    val showPassword = detailsOpen || !savedUsable || viewModel.useManualPassword || viewModel.passwordText.isNotEmpty()
     val actionLabel = when {
         viewModel.isLoggingIn -> R.string.login_action_connecting
         viewModel.decision == LoginDecision.UnlockSavedCredential -> R.string.login_action_sign_in
@@ -143,9 +133,9 @@ fun LoginScreen(
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
             ) {
                 Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                    Text(stringResource(R.string.login_title), style = MaterialTheme.typography.titleLarge)
+                    Text(stringResource(if (viewModel.logins.isEmpty()) R.string.login_title else R.string.desktop_welcome), style = MaterialTheme.typography.headlineSmall)
                     Text(
-                        stringResource(R.string.login_subtitle),
+                        stringResource(if (viewModel.logins.isEmpty()) R.string.login_subtitle else R.string.desktop_login_subtitle),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium,
                     )
@@ -158,83 +148,112 @@ fun LoginScreen(
                         )
                     }
 
-                    // Connection choices are setup actions, so they come before the address they
-                    // may fill. A selected saved item starts connecting immediately when possible.
-                    OutlinedButton(onClick = { viewModel.openConnections() }, enabled = !viewModel.isLoggingIn && viewModel.endpointDiscoveryState != EndpointDiscoveryState.Checking, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.connections_title))
+                    if (!detailsOpen) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                            DesktopIcon(DesktopIcons.host, size = 36.dp)
+                            Column(Modifier.weight(1f)) {
+                                Text(viewModel.savedLoginName, style = MaterialTheme.typography.titleMedium)
+                                Text(viewModel.identifier, style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        if (!showPassword) credentialStatusLine(viewModel.credentialStatus)?.invoke()
+                        if (viewModel.tunnel.enabled) Text(stringResource(R.string.login_tunnel_toggle), style = MaterialTheme.typography.bodySmall)
                     }
-
-                    OutlinedTextField(
-                        value = viewModel.serverUrl,
-                        onValueChange = { viewModel.changeServer(it) },
-                        modifier = Modifier.fillMaxWidth().focusRequester(serverFocus).onFocusChanged {
-                            if (!it.isFocused) viewModel.discoverServerEndpoint()
-                        },
-                        label = { Text(stringResource(R.string.login_server_address)) },
-                        supportingText = { serverFieldSupport(viewModel.managedHostName, viewModel.endpointDiscoveryState) },
-                        singleLine = true,
-                        // A managed login has no address to edit: its transport address is the tunnel's,
-                        // which only exists once the SSH tunnel is open. Editing the field is how the form
-                        // returns to a direct server, so it is disabled only while a host is named.
-                        enabled = !viewModel.isLoggingIn && viewModel.managedHostName == null,
-                        shape = MaterialTheme.shapes.medium,
-                    )
-                    LoginTunnelOptions(viewModel, activity)
-                    OutlinedTextField(
-                        value = viewModel.identifier,
-                        onValueChange = { viewModel.changeIdentifier(it) },
-                        modifier = Modifier.fillMaxWidth().focusRequester(identifierFocus),
-                        label = { Text(stringResource(R.string.login_identifier)) },
-                        singleLine = true,
-                        enabled = !viewModel.isLoggingIn && viewModel.endpointDiscoveryState != EndpointDiscoveryState.Checking,
-                        shape = MaterialTheme.shapes.medium,
-                    )
-                    PasswordTextField(
-                        value = viewModel.passwordText,
-                        onValueChange = { viewModel.changePassword(it) },
-                        label = stringResource(R.string.login_password),
-                        modifier = Modifier.focusRequester(passwordFocus),
-                        enabled = !viewModel.isLoggingIn,
-                        supportingText = credentialStatusLine(viewModel.credentialStatus),
-                    )
-
-                    LoginCheckboxRow(
-                        checked = viewModel.rememberCredential,
-                        enabled = !viewModel.isLoggingIn && (unlockMode != null || viewModel.debugFallbackAvailable),
-                        onCheckedChange = { viewModel.rememberCredential = it },
-                        label = stringResource(
-                                if (viewModel.debugFallbackAvailable) {
-                                    R.string.login_remember_hint_debug
-                                } else {
-                                    R.string.login_remember_hint
-                                },
+                    if (detailsOpen) {
+                        OutlinedTextField(
+                            value = viewModel.serverUrl,
+                            onValueChange = { viewModel.changeServer(it) },
+                            modifier = Modifier.fillMaxWidth().focusRequester(serverFocus).onFocusChanged {
+                                if (!it.isFocused) viewModel.discoverServerEndpoint()
+                            },
+                            label = { Text(stringResource(R.string.login_server_address)) },
+                            supportingText = { serverFieldSupport(viewModel.managedHostName, viewModel.endpointDiscoveryState) },
+                            singleLine = true,
+                            // A managed login has no address to edit: its transport address is the tunnel's,
+                            // which only exists once the SSH tunnel is open. Editing the field is how the form
+                            // returns to a direct server, so it is disabled only while a host is named.
+                            enabled = !viewModel.isLoggingIn && viewModel.managedHostName == null,
+                            shape = MaterialTheme.shapes.medium,
                         )
-                    )
-                    when {
-                        viewModel.debugFallbackAvailable -> Text(
-                            stringResource(R.string.login_no_lock_screen_debug),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-
-                        unlockMode == null -> Text(
-                            stringResource(R.string.login_no_fingerprint),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-
-                        unlockMode == VaultUnlockMode.DeviceUnlockWindow -> Text(
-                            stringResource(R.string.vault_device_window_notice),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        LoginTunnelOptions(viewModel, activity)
+                        OutlinedTextField(
+                            value = viewModel.identifier,
+                            onValueChange = { viewModel.changeIdentifier(it) },
+                            modifier = Modifier.fillMaxWidth().focusRequester(identifierFocus),
+                            label = { Text(stringResource(R.string.login_identifier)) },
+                            singleLine = true,
+                            enabled = !viewModel.isLoggingIn && viewModel.endpointDiscoveryState != EndpointDiscoveryState.Checking,
+                            shape = MaterialTheme.shapes.medium,
                         )
                     }
+                    if (showPassword && !viewModel.managedLoginSelected) {
+                        PasswordTextField(
+                            value = viewModel.passwordText,
+                            onValueChange = { viewModel.changePassword(it) },
+                            label = stringResource(R.string.login_password),
+                            modifier = Modifier.focusRequester(passwordFocus),
+                            enabled = !viewModel.isLoggingIn,
+                            supportingText = credentialStatusLine(viewModel.credentialStatus),
+                        )
 
+                        LoginCheckboxRow(
+                            checked = viewModel.rememberCredential,
+                            enabled = !viewModel.isLoggingIn && (unlockMode != null || viewModel.debugFallbackAvailable),
+                            onCheckedChange = { viewModel.rememberCredential = it },
+                            label = stringResource(
+                                    if (viewModel.debugFallbackAvailable) {
+                                        R.string.login_remember_hint_debug
+                                    } else {
+                                        R.string.login_remember_hint
+                                    },
+                            )
+                        )
+                        when {
+                            viewModel.debugFallbackAvailable -> Text(
+                                stringResource(R.string.login_no_lock_screen_debug),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+
+                            unlockMode == null -> Text(
+                                stringResource(R.string.login_no_fingerprint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+
+                            unlockMode == VaultUnlockMode.DeviceUnlockWindow -> Text(
+                                stringResource(R.string.vault_device_window_notice),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+
+                    }
+                    if (viewModel.ownerDeviceSignInAvailable) {
+                        TextButton(onClick = { viewModel.signInWithOwnerDevice(activity) }, enabled = !viewModel.isLoggingIn && viewModel.endpointDiscoveryState != EndpointDiscoveryState.Checking) {
+                            Text(stringResource(R.string.owner_device_sign_in))
+                        }
+                    }
+                    if (!showPassword && !viewModel.managedLoginSelected) {
+                        TextButton(onClick = { viewModel.useManualPassword = true }, enabled = !viewModel.isLoggingIn) {
+                            Text(stringResource(R.string.desktop_use_password))
+                        }
+                    }
                     Button(
-                        onClick = { viewModel.submit(activity) },
+                        onClick = { if (viewModel.managedLoginSelected) onOpenServerCenter() else viewModel.submit(activity) },
                         enabled = !viewModel.isLoggingIn && viewModel.endpointDiscoveryState != EndpointDiscoveryState.Checking,
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text(stringResource(actionLabel)) }
+                    ) { Text(stringResource(if (viewModel.managedLoginSelected) R.string.server_center_open else actionLabel)) }
+                    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
+                        TextButton(onClick = { viewModel.openConnections() }, enabled = !viewModel.isLoggingIn && viewModel.endpointDiscoveryState != EndpointDiscoveryState.Checking) {
+                            Text(stringResource(R.string.desktop_switch_server))
+                        }
+                        TextButton(onClick = { viewModel.connectionDetailsOpen = !detailsOpen }, enabled = !viewModel.isLoggingIn && viewModel.endpointDiscoveryState != EndpointDiscoveryState.Checking) {
+                            Text(stringResource(if (detailsOpen) R.string.desktop_hide_settings else R.string.desktop_connection_settings))
+                        }
+                    }
                 }
             }
             // Setup and help remain reachable after the primary sign-in form.
@@ -285,7 +304,7 @@ private fun LoginBrand() {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
-        DesktopIcon(icon = DesktopIcons.brand, size = 72.dp)
+        DesktopIcon(icon = DesktopIcons.brand, size = 56.dp)
         Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineSmall)
     }
 }

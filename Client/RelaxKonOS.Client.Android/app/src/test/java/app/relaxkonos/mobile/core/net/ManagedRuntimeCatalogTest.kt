@@ -16,4 +16,11 @@ class ManagedRuntimeCatalogTest {
         value.getJSONObject("catalog").getJSONArray("releases").put(JSONObject("""{"sourceId":"other","runtimeId":"mihomo","releaseId":"release-b","originalVersion":"1.19.30","trust":"confirmed","configurationSupported":true,"channel":"stable","target":{"os":"linux","architecture":"amd64","serviceHost":"systemd"},"evidence":"nativeConfiguration"}"""))
         assertThrows(IllegalArgumentException::class.java) { ManagedRuntimeWire.catalog(value.toString()) }
     }
+    @Test fun singBoxCatalogCannotBorrowMihomoIdentity() {
+        assertThrows(IllegalArgumentException::class.java) { ManagedRuntimeWire.catalog(payload, "sing-box") }
+        val singBox = payload.replace("mihomo", "sing-box")
+        assertTrue(ManagedRuntimeWire.catalog(singBox, "sing-box").usable)
+        assertEquals(1, ManagedRuntimeWire.sources("[${JSONObject(singBox).getJSONObject("source")}]", "sing-box").size)
+        assertTrue(ManagedRuntimeWire.sources("[${JSONObject(payload).getJSONObject("source")}]", "sing-box").isEmpty())
+    }
 }

@@ -145,6 +145,20 @@ public class RemoteRuntimeCatalogClient(HttpClient http, IAuthSession session, I
             catch (JsonException) { }
             throw new HttpRequestException(problem, null, response.StatusCode);
         }
+        if (typeof(T) == typeof(RuntimeInstallationSnapshot))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+                RuntimeCommitWitnessRules.RequireWireMember(document.RootElement);
+                var snapshot = document.RootElement.Deserialize<T>(RelaxKonOSJsonOptions.Default);
+                if (snapshot is RuntimeInstallationSnapshot observed && observed.CommitWitness is { } witness
+                    && !RuntimeCommitWitnessRules.BoundToSnapshot(witness, observed)) throw new InvalidDataException("runtime.response_invalid");
+                Verify();
+                return snapshot ?? throw new InvalidDataException("runtime.response_invalid");
+            }
+            catch (JsonException ex) { throw new InvalidDataException("runtime.response_invalid", ex); }
+        }
         return await response.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, ct)
             ?? throw new InvalidDataException("runtime.response_invalid");
     }

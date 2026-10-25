@@ -27,7 +27,7 @@ internal data class SquidDraft(val address: String = "127.0.0.1", val port: Stri
     }
 }
 internal data class SquidState(val owner: SessionState.Active? = null, val busy: Boolean = false,
-    val snapshot: SquidSnapshot? = null, val draft: SquidDraft = SquidDraft(), val initial: SquidDraft = SquidDraft(),
+    val snapshot: SquidSnapshot? = null, val accounts: List<SquidAccount> = emptyList(), val accountsKnown: Boolean = false, val draft: SquidDraft = SquidDraft(), val initial: SquidDraft = SquidDraft(),
     val initialized: Boolean = false, val preview: String = "", val validation: SquidValidation? = null,
     val pending: PendingSquidRequest? = null, val operation: ProxyOperation? = null, val problem: String? = null)
 internal class SquidViewModel(private val session: AuthSession, private val repository: SquidRepository) : ViewModel() {
@@ -58,6 +58,8 @@ internal class SquidViewModel(private val session: AuthSession, private val repo
     fun apply() = work { owner ->
         require(owner.controller && owner.privilegedOperations && state.pending == null)
         require(state.snapshot?.status?.let { it.supported && it.installed && !it.recoveryRequired } == true)
+        require(state.snapshot?.status?.managed == true || state.draft.adopt)
+        require(state.draft.accessMode == SquidAccessMode.IpWhitelist || (state.accountsKnown && state.accounts.any { it.enabled }))
         val request = SquidRequest(state.draft.configuration(), state.draft.adopt)
         val preview = repository.preview(owner, requireNotNull(request.configuration)); verify(owner)
         if (preview !is ApiResult.Success) { state = state.copy(problem = problem(preview)); return@work }
@@ -68,9 +70,23 @@ internal class SquidViewModel(private val session: AuthSession, private val repo
     fun lifecycle(action: SquidAction) = work { owner ->
         require(owner.controller && owner.privilegedOperations && state.pending == null)
         val status = requireNotNull(state.snapshot?.status)
-        require(status.supported && status.installed)
-        require(action in setOf(SquidAction.Stop, SquidAction.Disable) || (!status.recoveryRequired && status.managed))
+        require(status.supported)
+        require(when (action) {
+            SquidAction.Install -> !status.installed && status.packageManagementSupported && !status.recoveryRequired
+            SquidAction.Uninstall -> status.installed && status.packageManagementSupported && !status.recoveryRequired
+            SquidAction.Stop, SquidAction.Disable -> status.installed
+            else -> status.installed && !status.recoveryRequired && status.managed
+        })
         watch(owner, repository.begin(owner, SquidRequest(action = action)))
+    }
+    fun account(request: SquidAccountMutation) = work { owner ->
+        require(owner.controller && owner.privilegedOperations && state.pending == null)
+        require(state.snapshot?.status?.let { it.supported && it.installed && !it.recoveryRequired } == true)
+        require(state.accountsKnown)
+        val last = state.accounts.singleOrNull { it.enabled }
+        val passwordRequired = state.snapshot?.configuration?.accessMode != SquidAccessMode.IpWhitelist || state.draft.accessMode != SquidAccessMode.IpWhitelist
+        require(!(passwordRequired && last?.username == request.username && (request.action == SquidAccountAction.Delete || (request.action == SquidAccountAction.SetEnabled && request.enabled == false))))
+        watch(owner, repository.begin(owner, SquidRequest(account = request)))
     }
     fun resume() = work { owner -> watch(owner, repository.resume(owner)) }
     private suspend fun watch(owner: SessionState.Active, result: ApiResult<String>) {
@@ -90,7 +106,12 @@ internal class SquidViewModel(private val session: AuthSession, private val repo
         if (result is ApiResult.Success) {
             val draft = if (state.initialized) state.draft else SquidDraft.from(result.value.configuration ?: SquidConfiguration())
             state = state.copy(snapshot = result.value, draft = draft, initial = if (state.initialized) state.initial else draft, initialized = true)
-        } else state = state.copy(snapshot = null, problem = problem(result))
+            if (result.value.status.installed) {
+                val accounts = repository.accounts(owner); verify(owner)
+                state = if (accounts is ApiResult.Success) state.copy(accounts = accounts.value, accountsKnown = true)
+                    else state.copy(accounts = emptyList(), accountsKnown = false, problem = problem(accounts))
+            } else state = state.copy(accounts = emptyList(), accountsKnown = false)
+        } else state = state.copy(snapshot = null, accounts = emptyList(), accountsKnown = false, problem = problem(result))
     }
     private fun work(block: suspend (SessionState.Active) -> Unit) {
         val owner = state.owner ?: return

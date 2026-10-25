@@ -19,7 +19,7 @@ internal static class Windows11DesktopChecks
         var state = new ShellStateStore();
         var entries = new[]
         {
-            new ShellDesktopEntry("app", "App shortcut", ShellDesktopEntryKind.Application, "A"),
+            new ShellDesktopEntry("app", "App shortcut", ShellDesktopEntryKind.Application, "A", Availability: new("Missing", "Needs components", false)),
             new ShellDesktopEntry("file", "Document.txt", ShellDesktopEntryKind.File, "F"),
         };
         state.PublishDesktop(new ShellDesktopState([], entries, true, Wallpaper: Avalonia.Media.Brushes.Black));
@@ -64,13 +64,23 @@ internal static class Windows11DesktopChecks
         var view = new Windows11ShellView { DataContext = vm };
         var host = new Window { Width = 1000, Height = 700, Content = view };
         host.Show(); host.UpdateLayout(); Dispatcher.UIThread.RunJobs();
-        var terminal = new ShellApplicationEntry(new RelaxKonOS.Core.Applications.AppId("test.terminal"), "终端", "T", null);
+        var terminal = new ShellApplicationEntry(new RelaxKonOS.Core.Applications.AppId("test.terminal"), "终端", "T", null, Availability: new("Missing", "Needs components", false));
         state.PublishDesktop(state.Desktop! with { Applications = [terminal, new ShellApplicationEntry(new RelaxKonOS.Core.Applications.AppId("test.editor"), "Editor", "E", null)] });
         vm.ToggleStartCommand.Execute(null);
         host.UpdateLayout();
         var search = view.GetVisualDescendants().OfType<TextBox>().First(text => text.IsEffectivelyVisible);
         search.Text = "终端";
         Check(vm.SearchQuery == "终端" && vm.IsApplicationListOpen && !vm.IsPinnedOpen && vm.FilteredApplications.SequenceEqual(new[] { terminal }), "typing in Start searches localized application names.");
+        host.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+        Check(view.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == "Needs components" && text.IsEffectivelyVisible),
+            "application tiles render the host-provided readiness label separately from the name.");
+        var previewDirectory = Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "readiness");
+        Directory.CreateDirectory(previewDirectory);
+        using (var frame = new Avalonia.Media.Imaging.RenderTargetBitmap(new PixelSize(1000, 700)))
+        {
+            frame.Render(host);
+            frame.Save(Path.Combine(previewDirectory, "external-windows11.png"), new Avalonia.Media.Imaging.PngBitmapEncoderOptions());
+        }
         search.Text = "TERMINAL";
         Check(vm.FilteredApplications.SequenceEqual(new[] { terminal }), "search matches application IDs without case sensitivity.");
         search.Text = "missing";
@@ -79,6 +89,11 @@ internal static class Windows11DesktopChecks
         Check(vm.FilteredApplications.Count == 0, "catalog refresh preserves the active search filter.");
         vm.CloseFlyoutsCommand.Execute(null);
         Check(vm.SearchQuery.Length == 0 && vm.IsPinnedOpen, "closing Start resets its search.");
+        state.PublishDesktop(state.Desktop! with { DesktopEntries = state.Desktop!.DesktopEntries.Select(entry => entry.Id == "app"
+            ? entry with { Availability = new("Stopped", "Stopped", true) } : entry).ToArray() });
+        Check(vm.DesktopEntries.Single(entry => entry.Id == "app").Availability is { State: "Stopped", IsReady: true },
+            "desktop dependency badges update when host availability changes.");
+        host.UpdateLayout(); Dispatcher.UIThread.RunJobs();
         Button[] Icons() => view.GetVisualDescendants().OfType<Button>().Where(button => button.DataContext is ShellDesktopEntry).ToArray();
         var buttons = Icons();
         Check(buttons.Length == 2, "application shortcut and file render together.");

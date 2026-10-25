@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="desktop_welcome">Welcome back</string>
+    <string name="desktop_login_subtitle">Your last server is selected. Sign in when ready.</string>
+    <string name="desktop_switch_server">Switch server</string>
+    <string name="desktop_connection_settings">Connection settings</string>
+    <string name="desktop_hide_settings">Hide settings</string>
+    <string name="desktop_use_password">Use another password</string>
+    <string name="desktop_saved_server">Saved server</string>
+</resources>

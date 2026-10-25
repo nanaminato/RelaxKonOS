@@ -15,12 +15,11 @@ enum class InstallationService(val wire: String, val capability: String, val ele
     val kinds: Set<InstallationKind> get() = when (this) {
         Smb, Docker -> setOf(InstallationKind.Install)
         Nginx, Frp -> setOf(InstallationKind.Install, InstallationKind.Upgrade, InstallationKind.Repair, InstallationKind.Uninstall)
-        Mihomo -> InstallationKind.entries.toSet()
-        SingBox -> emptySet() // Current Android support observes these records; frozen-plan submission has no form.
+        Mihomo, SingBox -> InstallationKind.entries.toSet()
     }
     val elevationTarget: String get() = name.lowercase(java.util.Locale.ROOT)
     val acceptsPackage: Boolean get() = this == Nginx || this == Frp
-    val supportsRollback: Boolean get() = this == Frp || this == Mihomo
+    val supportsRollback: Boolean get() = this == Frp || this == Mihomo || this == SingBox
 }
 
 enum class InstallationKind(val wire: String) {

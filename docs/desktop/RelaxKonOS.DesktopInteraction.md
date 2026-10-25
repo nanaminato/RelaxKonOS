@@ -83,3 +83,7 @@ Windows 11 示例包和工厂版本同步为 1.5.0。`--desktop-clipboard-only` 
 应用可从桌面单选菜单、应用列表或任务栏固定／取消固定。`desktopDisplay.pinnedAppIds` 按用户固定顺序持久化到工作区，服务端限制 256 项、裁剪空白并去重。固定项与桌面可见列表独立；关闭最后一个窗口后仍保留入口，点击后启动应用；运行中固定项复用同一窗口组，不额外生成一份入口。卸载或暂不兼容的应用不显示，但保留固定意图以便重新可用时恢复。
 
 Shell API 1.3 增加任务栏条目投影、固定状态和 `SetTaskbarPinnedAsync`，快捷方式 ID 使用链接自身 UUID，避免同名链接冲突。外部外壳只提交意图，应用启动、窗口激活和偏好保存仍由宿主负责。客户端、服务端和外置包需同步更新；不保留旧 API 适配层。`--desktop-actions-only` 验证布局不变、混合菜单、应用删除与显示配置、链接删除、批量文件删除确认，以及固定项启动、窗口关闭、取消固定与偏好往返。
+
+## 应用依赖状态与就绪筛选
+
+桌面应用名称旁的组件状态、桌面图标状态标记和“仅显示已就绪应用”使用 Host 统一观察；交互与交付范围由[组件中心设计](../platform/RelaxKonOS.ComponentCenter.Design.md)拥有。筛选通过工作区 `desktopDisplay.onlyReadyApplications` 保存，不改变应用注册和用户固定入口。外部外壳使用 `ShellApplicationEntry.Availability` / `ShellDesktopEntry.Availability` 的只读 `ShellApplicationAvailability` 渲染状态，不能根据这些字段直接安装组件或绕过公共启动检查。

@@ -20,6 +20,7 @@ public sealed class BuiltInApplicationRegistry : IBuiltInApplicationFactoryRegis
     {
         _inner = new BuiltInApplicationFactoryRegistry(new[]
         {
+            Define<RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterApp>("component-center", "relaxkonos.component-center", services),
             Define<WelcomeApp>("welcome", "relaxkonos.welcome", services),
             Define<NotepadApp>("notepad", "relaxkonos.notepad", services),
             Define<CodeEditorApp>("codeeditor", "relaxkonos.codeeditor", services),

@@ -39,6 +39,10 @@ internal static class RemovalChecks
                 && after.Receipts.Length == 1 && after.Receipts[0].OperationId == result.OperationId
                 && after.Receipts[0].Outcome == RuntimeSwitchOutcome.Succeeded && after.Receipts[0].RetainedSnapshot is { Running: true },
                 "One receipt records the removed operation and the captured run state");
+            var witness = fixture.States.ReadCommittedWitness(after, after.Receipts[0]);
+            Check(witness is { Installation.Ownership: RuntimeOwnership.Absent, ActiveRevisionId: null, MeasuredVersion: null }
+                && witness.ConfigurationIdentity == before.ConfigurationIdentity && witness.Installation.StateRevision == after.Installation.StateRevision,
+                "Retained-data removal records the removed state and preserved configuration in its immutable proof");
 
             var replay = await fixture.ReplayAsync(result.OperationId);
             Check(replay.OperationId == result.OperationId && replay.Outcome == RuntimeSwitchOutcome.Succeeded
@@ -61,6 +65,9 @@ internal static class RemovalChecks
                 "Explicit data deletion removes the published configuration and its retained copy");
             Check(!Directory.Exists(Path.Combine(fixture.Root, "versions")),
                 "Data deletion still leaves no program revision behind");
+            Check(fixture.States.ReadCommittedWitness(after, after.Receipts.Single()) is
+                { Installation.Ownership: RuntimeOwnership.Absent, ConfigurationIdentity: null, ActiveRevisionId: null, MeasuredVersion: null },
+                "Data-deleting removal proves null configuration rather than requiring the previous configuration to remain");
         }
 
         // A failing registration removal restores the exact previous service and reports failure.

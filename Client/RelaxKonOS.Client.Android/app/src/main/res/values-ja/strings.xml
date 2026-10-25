@@ -41,8 +41,8 @@
     <string name="error_windows_profile_required">Windows の通常操作には、ローカルのホストアカウント、有効な SID とユーザープロファイルが必要です。サーバー上の Windows プロファイルを確認してください。</string>
     <string name="nav_files">ファイル</string>
     <string name="nav_home">ホーム</string>
-    <string name="nav_manage">管理</string>
-    <string name="nav_more">その他</string>
+    <string name="nav_manage">アプリ</string>
+    <string name="nav_more">マイページ</string>
     <string name="nav_terminal">ターミナル</string>
     <string name="notice_do_not_remind">今後表示しない</string>
     <string name="password_hide">パスワードを隠す</string>

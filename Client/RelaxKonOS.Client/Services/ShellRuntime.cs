@@ -436,7 +436,8 @@ internal sealed class DesktopShellStateAdapter : IDisposable
 
     private void OnDesktopItemPropertyChanged(object? sender, PropertyChangedEventArgs args)
     {
-        if (args.PropertyName is nameof(AppEntryViewModel.IsDesktopSelected)
+        if (args.PropertyName is nameof(AppEntryViewModel.AvailabilityText) or nameof(AppEntryViewModel.IsReady)
+            or nameof(AppEntryViewModel.IsDesktopSelected)
             or nameof(DesktopFileEntryViewModel.IsDesktopSelected)
             or nameof(ShortcutEntryViewModel.IsDesktopSelected))
             Publish();
@@ -445,7 +446,7 @@ internal sealed class DesktopShellStateAdapter : IDisposable
 
     private void RefreshDesktopItemSubscriptions()
     {
-        var current = _workspace.DesktopItems.OfType<INotifyPropertyChanged>().Concat(_workspace.TaskbarGroups).ToHashSet();
+        var current = _workspace.DesktopItems.OfType<INotifyPropertyChanged>().Concat(_workspace.StartApps).Concat(_workspace.TaskbarGroups).ToHashSet();
         foreach (var item in _desktopItems.Except(current).ToArray())
         {
             item.PropertyChanged -= OnDesktopItemPropertyChanged;
@@ -471,7 +472,7 @@ internal sealed class DesktopShellStateAdapter : IDisposable
     private ShellDesktopState CreateSnapshot()
     {
         var applications = _workspace.StartApps
-            .Select(app => new ShellApplicationEntry(app.Id, app.DisplayName, app.IconGlyph, app.Description, app.IconImage))
+            .Select(app => new ShellApplicationEntry(app.Id, app.DisplayName, app.IconGlyph, app.Description, app.IconImage, ToAvailability(app)))
             .ToArray();
         var entries = _workspace.DesktopItems.Select(ToEntry).Where(entry => entry is not null).Cast<ShellDesktopEntry>().ToArray();
         var desktopStyles = _catalog.Available
@@ -483,10 +484,13 @@ internal sealed class DesktopShellStateAdapter : IDisposable
             _workspace.TaskbarGroups.Select(group => new ShellTaskbarEntry(group.AppId, group.DisplayName, group.IconGlyph, group.IconImage, group.IsPinned, group.WindowCount > 0, group.IsActive)).ToArray());
     }
 
+    private static ShellApplicationAvailability? ToAvailability(AppEntryViewModel app) => app.HasAvailabilityBadge
+        ? new(app.AvailabilityState!, app.AvailabilityText.Resolve(), app.IsReady) : null;
+
     private ShellDesktopEntry? ToEntry(object item) => item switch
     {
         AppEntryViewModel app => new ShellDesktopEntry("app:" + app.Id.Value, app.DisplayName,
-            ShellDesktopEntryKind.Application, app.IconGlyph, app.Id, app.IsDesktopSelected, app.IconImage, _workspace.IsTaskbarPinned(app.Id)),
+            ShellDesktopEntryKind.Application, app.IconGlyph, app.Id, app.IsDesktopSelected, app.IconImage, _workspace.IsTaskbarPinned(app.Id), ToAvailability(app)),
         DesktopFileEntryViewModel file => new ShellDesktopEntry("file:" + EntryHash(file.Entry.Path), file.DisplayName,
             file.IsDirectory ? ShellDesktopEntryKind.Folder : ShellDesktopEntryKind.File, file.IconGlyph, null, file.IsDesktopSelected, file.IconImage),
         ShortcutEntryViewModel shortcut => new ShellDesktopEntry("shortcut:" + shortcut.Shortcut.Id, shortcut.DisplayName,

@@ -90,6 +90,10 @@ public static class ThemePaletteDefaults
         target["AccentMuted"] = Blend(accent, target["SurfaceRaised"], 0.15);
         target["SelectionBackground"] = Blend(accent, target["SurfaceRaised"], 0.20);
         target["SelectionForeground"] = BestForeground(target["SelectionBackground"]);
+        // Text selection is painted *behind* the text rather than inverting it, so it needs to stay
+        // light enough for the normal foreground to remain legible. Deriving it from the accent keeps
+        // dragging the mouse over a path in a custom palette from turning into a saturated block.
+        target["TextSelection"] = Blend(accent, target["Surface"], 0.30);
         var focus = EnsureContrast(accent, target["Surface"], 3.0);
         target["FocusBorder"] = focus;
         target["FocusRing"] = focus;

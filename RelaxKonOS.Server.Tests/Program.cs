@@ -12,6 +12,11 @@ if (args.Contains("--archives-only"))
     finally { Directory.Delete(archiveRoot, true); }
     return;
 }
+if (args.Contains("--components-only"))
+{
+    await ComponentLifecycleChecks.RunAsync();
+    return;
+}
 if (args.Contains("--quiet-settings-only"))
 {
     var quietRoot = Path.Combine(Path.GetTempPath(), "relaxkon-quiet-settings-" + Guid.NewGuid().ToString("N"));
@@ -137,7 +142,6 @@ if (args.Contains("--mihomo-runtime-only"))
     Directory.CreateDirectory(runtimeRoot);
     try
     {
-        await NetworkProxyTunnelChecks.VerifyMihomoRuntimeSafetyAsync(runtimeRoot);
         var references = new RelaxKonOS.Server.Installations.InstallationFileReferenceStore(new TestHostEnvironment(runtimeRoot),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<RelaxKonOS.Server.Installations.InstallationFileReferenceStore>.Instance);
         var package = Enumerable.Range(0, 81921).Select(index => (byte)(index % 251)).ToArray();
@@ -410,7 +414,11 @@ if (args.Contains("--git-conflicts-only"))
 {
     var gitRoot = Path.Combine(Path.GetTempPath(), $"relaxkonos-git-checks-{Guid.NewGuid():N}");
     Directory.CreateDirectory(gitRoot);
-    try { await GitConflictChecks.RunAsync(gitRoot); }
+    try
+    {
+        await GitConflictChecks.RunAsync(gitRoot);
+        await GitPushPreviewChecks.RunAsync(gitRoot, "git-push-preview.sqlite");
+    }
     catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
     finally
     {
@@ -418,6 +426,22 @@ if (args.Contains("--git-conflicts-only"))
         foreach (var file in Directory.EnumerateFiles(gitRoot, "*", SearchOption.AllDirectories))
             File.SetAttributes(file, File.GetAttributes(file) & ~FileAttributes.ReadOnly);
         Directory.Delete(gitRoot, recursive: true);
+    }
+    return;
+}
+
+if (args.Contains("--push-preview-only"))
+{
+    var previewRoot = Path.Combine(Path.GetTempPath(), $"relaxkonos-git-push-preview-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(previewRoot);
+    try { await GitPushPreviewChecks.RunAsync(previewRoot, "git-push-preview.sqlite"); }
+    catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
+    finally
+    {
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        foreach (var file in Directory.EnumerateFiles(previewRoot, "*", SearchOption.AllDirectories))
+            File.SetAttributes(file, File.GetAttributes(file) & ~FileAttributes.ReadOnly);
+        Directory.Delete(previewRoot, recursive: true);
     }
     return;
 }
@@ -462,7 +486,6 @@ try
     await NetworkProxyTunnelChecks.VerifyMihomoLiveStreamsAsync();
         await NetworkProxyTunnelChecks.VerifyMihomoProxyGroupOrderingAsync(root);
         await NetworkProxyTunnelChecks.VerifyProxyDiagnosticLogsAsync(root);
-        await NetworkProxyTunnelChecks.VerifyMihomoRuntimeSafetyAsync(root);
         Console.WriteLine("Proxy TUN activation checks passed.");
         return;
     }
@@ -554,7 +577,6 @@ try
     await NetworkProxyTunnelChecks.VerifyMihomoProxyGroupOrderingAsync(root);
     await NetworkProxyTunnelChecks.VerifyProxyDiagnosticLogsAsync(root);
     await NetworkProxyTunnelChecks.VerifyLinuxMihomoRuntimeLinkActivationAsync(root);
-    await NetworkProxyTunnelChecks.VerifyMihomoRuntimeSafetyAsync(root);
     NetworkProxyTunnelChecks.VerifyFrpTomlSafety();
     await ManagedFrpsChecks.RunAsync(Path.Combine(root, "managed-frps"));
 await NetworkProxyTunnelChecks.VerifyFrpRuntimeInstallAndRollbackAsync(root);

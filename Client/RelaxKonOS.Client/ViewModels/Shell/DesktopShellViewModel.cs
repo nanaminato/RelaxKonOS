@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Apps.ComponentCenter;
 using System.Diagnostics;
 using RelaxKonOS.Client.Services.HostSettings;
 using RelaxKonOS.Client.Services.WorkspaceSettings;
@@ -56,6 +57,13 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     private int _desktopFileLoadGeneration;
     private int _shortcutLoadGeneration;
     private readonly IHostTimeService _hostTime;
+    private readonly IApplicationAvailabilityProvider? _availability;
+    private List<AppEntryViewModel> _allApplications = [];
+    public IReadOnlyList<AppEntryViewModel> AllApplications => _allApplications;
+    private bool _availabilityRefreshRunning;
+    private bool _availabilityRefreshRequested;
+    private long _lastAvailabilityRefresh;
+
     private HostSettingsConnection? _clockConnection;
     private DateTimeOffset _serverTime;
     private TimeZoneInfo? _serverTimeZone;
@@ -95,7 +103,8 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
         DesktopWelcomePreferenceStore desktopWelcomePreferences,
         ShortcutStore shortcuts,
         ShortcutActivationRouter shortcutRouter,
-        IHostTimeService hostTime)
+        IHostTimeService hostTime,
+        IApplicationAvailabilityProvider? availability)
     {
         _windowManager = windowManager;
         _applications = applications;
@@ -116,6 +125,8 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
         _shortcuts = shortcuts;
         _shortcutRouter = shortcutRouter;
         _hostTime = hostTime;
+        _availability = availability;
+        if (_availability is not null) _availability.Changed += (_, _) => Dispatcher.UIThread.Post(PopulateDesktop);
 
         _windowManager.WindowOpened += (_, _) => { TraceTaskbar("manager.windowOpened"); RefreshTaskbarGroups(); };
         _windowManager.WindowClosed += (_, _) => { TraceTaskbar("manager.windowClosed"); RefreshTaskbarGroups(); };
@@ -222,7 +233,7 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     /// <summary>Populate desktop + start menu from registered applications. Call after DI registration.</summary>
     public void PopulateDesktop()
     {
-        var previousEntries = StartApps.ToDictionary(entry => entry.Id);
+        var previousEntries = _allApplications.ToDictionary(entry => entry.Id);
         var compatibleEntries = _applications.Registered
             // An app that needs a connected Linux Server must not be advertised on a Windows
             // Server desktop or Start menu. Launch still performs the same check for defense in depth.
@@ -235,14 +246,18 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
             .Select(i =>
             {
                 var info = Localize(i);
-                return previousEntries.TryGetValue(info.Id, out var existing) && existing.Matches(info)
+                var entry = previousEntries.TryGetValue(info.Id, out var existing) && existing.Matches(info)
                     ? existing : new AppEntryViewModel(info, _applications);
+                entry.RefreshAvailability(_availability?.GetCached(entry.Id));
+                return entry;
             })
             .ToList();
 
-        // ── Start 菜单始终显示全部兼容应用，并按名称保持稳定的“全部应用”列表顺序 ──
+        _allApplications = compatibleEntries;
+        var visibleApplications = compatibleEntries.Where(ShouldShowApplication).ToList();
+        // Readiness filtering affects launch lists, never registry membership or pinned shortcuts.
         StartApps.Clear();
-        foreach (var entry in compatibleEntries.OrderBy(entry => entry.DisplayName, StringComparer.CurrentCultureIgnoreCase))
+        foreach (var entry in visibleApplications.OrderBy(entry => entry.DisplayName, StringComparer.CurrentCultureIgnoreCase))
             StartApps.Add(entry);
         RefreshStartSearchResults();
 
@@ -253,8 +268,8 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
             // 当 VisibleAppIds 为空时显示全部；否则仅显示列表中的
             var visibleSet = new HashSet<string>(_settings.VisibleAppIds, StringComparer.Ordinal);
             var filteredForDesktop = visibleSet.Count == 0
-                ? compatibleEntries
-                : compatibleEntries.Where(vm => visibleSet.Contains(vm.Id.Value)).ToList();
+                ? visibleApplications
+                : visibleApplications.Where(vm => visibleSet.Contains(vm.Id.Value)).ToList();
 
             foreach (var entry in filteredForDesktop)
                 DesktopIcons.Add(entry);
@@ -271,6 +286,36 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
         else _ = RefreshDesktopShortcutsAsync(shortcutGeneration);
         RefreshTaskbarGroups();
         _ = LoadDesktopFilesAsync();
+        _ = RefreshApplicationAvailabilityAsync(force: false);
+    }
+
+    private bool ShouldShowApplication(AppEntryViewModel entry) => !_settings.OnlyReadyApplications || entry.IsReady
+        || entry.Id.Value is "relaxkonos.component-center" or "relaxkonos.settings" or "relaxkonos.server-center";
+
+    public async Task RefreshApplicationAvailabilityAsync(bool force)
+    {
+        if (_availability is null || _sshDesktop.IsConnected || _session.State != AuthSessionState.Authenticated) return;
+        if (_availabilityRefreshRunning) { _availabilityRefreshRequested = true; return; }
+        _availabilityRefreshRunning = true;
+        _lastAvailabilityRefresh = Environment.TickCount64;
+        try
+        {
+            foreach (var entry in _allApplications.ToArray())
+            {
+                if (_applications.GetManifest(entry.Id) is not { } manifest || !_availability.RequiresCheck(manifest)) continue;
+                if (!force && _availability.GetCached(entry.Id) is not null) continue;
+                await _availability.RefreshAsync(manifest);
+            }
+        }
+        finally
+        {
+            _availabilityRefreshRunning = false;
+            if (_availabilityRefreshRequested)
+            {
+                _availabilityRefreshRequested = false;
+                Dispatcher.UIThread.Post(() => _ = RefreshApplicationAvailabilityAsync(force: false));
+            }
+        }
     }
 
     private ApplicationInfo Localize(ApplicationInfo app)
@@ -431,7 +476,7 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
             var appIds = selected.OfType<AppEntryViewModel>().Select(app => app.Id.Value).ToHashSet(StringComparer.Ordinal);
             if (appIds.Count > 0)
             {
-                var remaining = (_settings.VisibleAppIds.Count == 0 ? StartApps.Select(app => app.Id.Value) : _settings.VisibleAppIds)
+                var remaining = (_settings.VisibleAppIds.Count == 0 ? _allApplications.Select(app => app.Id.Value) : _settings.VisibleAppIds)
                     .Where(id => !appIds.Contains(id)).ToList();
                 _settings.VisibleAppIds = remaining;
                 if (remaining.Count == 0) _settings.ShowBuiltInApps = false;
@@ -1156,7 +1201,7 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
 
         foreach (var id in _settings.PinnedAppIds)
         {
-            var app = StartApps.FirstOrDefault(app => app.Id.Value == id);
+            var app = _allApplications.FirstOrDefault(app => app.Id.Value == id);
             if (app is not null) groupedWindows.TryAdd(app.Id, []);
         }
         foreach (var group in TaskbarGroups.ToList())
@@ -1177,7 +1222,7 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
         {
             var app = _applications.Get(appId);
             var displayName = app is null
-                ? StartApps.FirstOrDefault(item => item.Id == appId)?.DisplayName ?? windows.FirstOrDefault()?.Title ?? appId.Value
+                ? _allApplications.FirstOrDefault(item => item.Id == appId)?.DisplayName ?? windows.FirstOrDefault()?.Title ?? appId.Value
                 : T($"application.{app.Manifest.Id.Value}.display_name", app.Manifest.DisplayName);
             TaskbarGroups.Add(new TaskbarGroupViewModel(
                 appId,
@@ -1185,7 +1230,7 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
                 windows));
         }
         foreach (var group in TaskbarGroups)
-            group.SetApplication(StartApps.FirstOrDefault(app => app.Id == group.AppId), IsTaskbarPinned(group.AppId));
+            group.SetApplication(_allApplications.FirstOrDefault(app => app.Id == group.AppId), IsTaskbarPinned(group.AppId));
         var ordered = TaskbarGroups.OrderBy(group =>
         {
             var index = _settings.PinnedAppIds.IndexOf(group.AppId.Value);
@@ -1200,6 +1245,8 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     {
         void Tick()
         {
+            if (Environment.TickCount64 - _lastAvailabilityRefresh >= 30000 && !_availabilityRefreshRunning)
+                _ = RefreshApplicationAvailabilityAsync(force: true);
             if (_clockConnection is not null && !_hostTime.IsCurrent(_clockConnection)) _clockConnection = null;
             if (Environment.TickCount64 - _lastClockAttempt >= 60000 && !_clockSyncRunning)
                 _ = SynchronizeClockAsync();

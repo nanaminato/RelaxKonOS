@@ -9,7 +9,7 @@ using RelaxKonOS.Protocol.UserExecution;
 namespace RelaxKonOS.PrivilegedHelper;
 
 /// <summary>
-/// Dedicated authenticated pipe for Windows user file and terminal operations. It shares only the
+/// Dedicated authenticated pipe for Windows user file, Git and terminal operations. It shares only the
 /// Helper's caller ACL and machine secret with the privileged pipe; requests are parsed solely as
 /// <see cref="UserExecutionRequest"/>. Administrator terminals additionally validate an actual
 /// administrator token; file requests always remain ordinary user operations.

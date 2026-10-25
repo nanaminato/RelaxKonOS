@@ -6,8 +6,10 @@ using RelaxKonOS.Protocol.Installations;
 
 namespace RelaxKonOS.Server.Installations;
 
+public sealed record InstallationTaskOwner(Guid RunId, string StepId, string RequestDigest);
 public sealed record InstallationEntry(InstallationOperationDto Operation, string ActorReference,
-    string IdempotencyReference, string RequestReference, string[] Resources);
+    string IdempotencyReference, string RequestReference, string[] Resources,
+    [property: JsonRequired] InstallationTaskOwner? TaskOwner);
 public sealed record InstallationAudit(Guid OperationId, string ActorReference, InstallationServiceId Service,
     InstallationOperationKind Kind, InstallationOperationState State, InstallationStage Stage,
     string Event, string? ProblemCode, DateTimeOffset At, string[] Resources);
@@ -48,7 +50,7 @@ public sealed class InstallationOperationStore
     }
 
     public InstallationEntry Create(InstallationServiceId service, InstallationOperationKind kind, string actor,
-        string key, string requestReference, IReadOnlyList<string> resources, out bool created)
+        string key, string requestReference, IReadOnlyList<string> resources, out bool created, InstallationTaskOwner? taskOwner = null)
     {
         lock (gate)
         {
@@ -58,7 +60,7 @@ public sealed class InstallationOperationStore
             var existing = ledger.Entries.FirstOrDefault(x => x.IdempotencyReference == keyReference);
             if (existing is not null)
             {
-                if (existing.Operation.Service != service || existing.Operation.Kind != kind || existing.RequestReference != requestReference)
+                if (existing.Operation.Service != service || existing.Operation.Kind != kind || existing.RequestReference != requestReference || existing.TaskOwner != taskOwner)
                     throw new InstallationException(InstallationProblemCodes.IdempotencyConflict);
                 created = false;
                 return existing;
@@ -67,7 +69,8 @@ public sealed class InstallationOperationStore
             if (ledger.Entries.Any(x => Active(x.Operation) && x.Resources.Intersect(locks).Any()))
                 throw new InstallationException(InstallationProblemCodes.ResourceConflict);
             var entry = new InstallationEntry(new(Guid.NewGuid(), service, kind, InstallationOperationState.Queued,
-                InstallationStage.Queued, null, null, DateTimeOffset.UtcNow, null, null, true), actorReference, keyReference, requestReference, locks);
+                InstallationStage.Queued, null, null, DateTimeOffset.UtcNow, null, null, true), actorReference, keyReference, requestReference, locks, taskOwner);
+            if (!Valid(entry)) throw new InstallationException(InstallationProblemCodes.InvalidRequest, 400);
             Commit(new([.. ledger.Entries, entry], [.. ledger.Audit, Audit(entry, "created")]));
             created = true;
             return entry;
@@ -122,6 +125,9 @@ public sealed class InstallationOperationStore
         && (op.Progress is null || op.Stage is InstallationStage.Downloading or InstallationStage.Copying or InstallationStage.Installing or InstallationStage.UpdatingPackageLists)
         && entry.ActorReference?.Length == 64 && entry.IdempotencyReference?.Length == 64 && entry.RequestReference?.Length == 64
         && entry.Resources is { Length: > 0 } && entry.Resources.All(x => x?.Length == 64)
+        && (entry.TaskOwner is null || op.Service == InstallationServiceId.SingBox && entry.TaskOwner.RunId != Guid.Empty
+            && entry.TaskOwner.StepId is { Length: > 0 and <= 64 } && !entry.TaskOwner.StepId.Any(char.IsControl)
+            && entry.TaskOwner.RequestDigest is { Length: 64 } && entry.TaskOwner.RequestDigest.All(char.IsAsciiHexDigitLower))
         && (op.ProblemCode is null || op.ProblemCode.Length <= 120 && op.ProblemCode.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_'));
     private static bool Valid(InstallationAudit audit, IReadOnlyCollection<InstallationEntry> entries) => audit.OperationId != Guid.Empty
         && entries.Any(x => x.Operation.OperationId == audit.OperationId)

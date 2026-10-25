@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using RelaxKonOS.Protocol.Installations;
+using RelaxKonOS.Server.TaskOrchestration;
 
 namespace RelaxKonOS.Server.Installations;
 
@@ -14,7 +15,14 @@ public sealed class InstallationCoordinator(InstallationOperationStore store, IE
     private readonly ConcurrentDictionary<Guid, Task> running = new();
     private bool ready;
 
-    public InstallationOperationDto Start(InstallationServiceId service, InstallationOperationKind kind, JsonElement options, string actor, string key)
+    public InstallationOperationDto Start(InstallationServiceId service, InstallationOperationKind kind, JsonElement options, string actor, string key) =>
+        StartCore(service, kind, options, actor, key, null);
+
+    public InstallationOperationDto StartTask(InstallationOperationKind kind, JsonElement options, string actor, string key, TaskInstallationExecutionBinding binding) =>
+        StartCore(InstallationServiceId.SingBox, kind, options, actor, key, binding ?? throw new ArgumentNullException(nameof(binding)));
+
+    private InstallationOperationDto StartCore(InstallationServiceId service, InstallationOperationKind kind, JsonElement options,
+        string actor, string key, TaskInstallationExecutionBinding? binding)
     {
         if (string.IsNullOrWhiteSpace(key) || key.Length > 128 || key.Any(c => c < 33 || c > 126))
             throw new InstallationException(InstallationProblemCodes.IdempotencyRequired, 400);
@@ -31,18 +39,64 @@ public sealed class InstallationCoordinator(InstallationOperationStore store, IE
         {
             if (!ready || lifetime.ApplicationStopping.IsCancellationRequested)
                 throw new InstallationException(InstallationProblemCodes.StoreUnavailable, 503);
-            var entry = operationStore.Create(service, kind, actor, key, fingerprint, domain.Resources, out var created);
+            var existing = FindValidated(service, kind, actor, key, fingerprint);
+            if (existing is not null)
+            {
+                if (existing.TaskOwner != binding?.Owner) throw new InstallationException(InstallationProblemCodes.IdempotencyConflict);
+                return existing.Operation;
+            }
+            binding?.ValidateAcceptance();
+            var entry = operationStore.Create(service, kind, actor, key, fingerprint, domain.Resources, out var created, binding?.Owner);
             if (created)
             {
                 var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopping);
                 cancellations[entry.Operation.OperationId] = cancellation;
-                running[entry.Operation.OperationId] = Task.Run(() => RunAsync(entry.Operation, domain, request, actor, cancellation));
+                running[entry.Operation.OperationId] = Task.Run(() => RunAsync(entry.Operation, domain, request, actor, cancellation, binding));
             }
             return entry.Operation;
         }
     }
 
     public InstallationEntry? Get(Guid id) => operationStore.Read().FirstOrDefault(x => x.Operation.OperationId == id);
+    /// <summary>Serializes no-acceptance closure with domain admission. The callback only writes the task journal.</summary>
+    internal bool TryCloseUnacceptedTask(InstallationTaskOwner owner, InstallationOperationKind kind, JsonElement options,
+        string actor, string key, Action closeJournal)
+    {
+        lock (gate)
+        {
+            var existing = FindByKey(InstallationServiceId.SingBox, kind, options, actor, key);
+            if (existing is not null)
+            {
+                if (existing.TaskOwner != owner) throw new InstallationException(InstallationProblemCodes.IdempotencyConflict);
+                return false;
+            }
+            closeJournal();
+            return true;
+        }
+    }
+    /// <summary>Read-only lookup for recovery after acceptance but before an orchestrator saved the operation ID.</summary>
+    public InstallationEntry? FindByKey(InstallationServiceId service, InstallationOperationKind kind, JsonElement options, string actor, string key)
+    {
+        if (string.IsNullOrWhiteSpace(key) || key.Length > 128 || key.Any(c => c < 33 || c > 126))
+            throw new InstallationException(InstallationProblemCodes.IdempotencyRequired, 400);
+        if (!registry.TryGetValue(service, out var domain)) throw new InstallationException(InstallationProblemCodes.NotSupported, 400);
+        object request;
+        try { request = domain.Validate(kind, options, key); }
+        catch (Exception error) when (error is JsonException or InvalidOperationException or NotSupportedException)
+        { throw new InstallationException(InstallationProblemCodes.InvalidRequest, 400); }
+        var fingerprint = InstallationOperationStore.Reference(JsonSerializer.Serialize(request, request.GetType()));
+        return FindValidated(service, kind, actor, key, fingerprint);
+    }
+    private InstallationEntry? FindValidated(InstallationServiceId service, InstallationOperationKind kind, string actor, string key, string fingerprint)
+    {
+        var actorReference = InstallationOperationStore.Reference(actor);
+        var keyReference = InstallationOperationStore.Reference(actorReference + "\n" + key);
+        var entry = operationStore.Read().SingleOrDefault(item => item.IdempotencyReference == keyReference);
+        if (entry is not null && (entry.ActorReference != actorReference || entry.Operation.Service != service
+            || entry.Operation.Kind != kind || entry.RequestReference != fingerprint))
+            throw new InstallationException(InstallationProblemCodes.IdempotencyConflict);
+        return entry;
+    }
     public InstallationEntry? GetActive(InstallationServiceId service, string actor, bool administrator) => operationStore.Read()
         .Where(x => x.Operation.Service == service && InstallationOperationStore.Active(x.Operation)
             && (administrator || x.ActorReference == InstallationOperationStore.Reference(actor)))
@@ -79,7 +133,8 @@ public sealed class InstallationCoordinator(InstallationOperationStore store, IE
         return operation;
     }
 
-    private async Task RunAsync(InstallationOperationDto operation, IInstallationService domain, object request, string actor, CancellationTokenSource cancellation)
+    private async Task RunAsync(InstallationOperationDto operation, IInstallationService domain, object request, string actor,
+        CancellationTokenSource cancellation, TaskInstallationExecutionBinding? binding)
     {
         var id = operation.OperationId;
         try
@@ -87,7 +142,9 @@ public sealed class InstallationCoordinator(InstallationOperationStore store, IE
             cancellation.Token.ThrowIfCancellationRequested();
             operationStore.Update(id, x => x with { State = InstallationOperationState.Running, Stage = InstallationStage.Preflight,
                 StartedAt = DateTimeOffset.UtcNow }, "started");
-            InstallationExecutionContext.Progress.Value = new Reporter(this, id, cancellation.Token);
+            IInstallationProgress progress = new Reporter(this, id, cancellation.Token);
+            if (binding is not null) progress = binding.Attach(progress);
+            InstallationExecutionContext.Progress.Value = progress;
             await domain.StartAsync(operation.Kind, request, actor, InstallationExecutionContext.Progress.Value, cancellation.Token);
             Complete(id, InstallationOperationState.Succeeded, null);
         }
@@ -131,7 +188,8 @@ public sealed class InstallationCoordinator(InstallationOperationStore store, IE
         foreach (var entry in entries.Where(x => InstallationOperationStore.Active(x.Operation)))
         {
             var recovery = new InstallationRecovery(InstallationOperationState.Interrupted, InstallationProblemCodes.Interrupted);
-            if (entry.Operation.State == InstallationOperationState.Running)
+            // Task-owned recovery must wait for task-specific authorization; never fall through to ordinary recovery.
+            if (entry.Operation.State == InstallationOperationState.Running && entry.TaskOwner is null)
             {
                 try
                 {

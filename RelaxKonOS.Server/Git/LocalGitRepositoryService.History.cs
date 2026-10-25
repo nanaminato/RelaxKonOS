@@ -25,7 +25,7 @@ public sealed partial class LocalGitRepositoryService
         var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
         var gitPath = ResolveGitPathOrThrow();
         // NUL fields preserve multiline bodies and avoid inventing records from body lines.
-        var format = "%H%x00%h%x00%an%x00%ae%x00%aI%x00%s%x00%b%x00";
+        var format = CommitLogFormat;
         limit = Math.Clamp(limit, 1, 500);
         skip = Math.Max(skip, 0);
         var args = new List<string> { "log", $"--pretty=tformat:{format}", "--date=iso-strict", "--topo-order", "-n", limit.ToString(System.Globalization.CultureInfo.InvariantCulture), $"--skip={skip}" };
@@ -82,16 +82,7 @@ public sealed partial class LocalGitRepositoryService
             throw new InvalidOperationException("Git history could not be read.");
         }
 
-        var commits = new List<GitCommitDto>();
-        var fields = result.Output.Split('\0');
-        for (var i = 0; i + 6 < fields.Length; i += 7)
-        {
-            var sha = fields[i].Trim('\r', '\n');
-            if (sha.Length is not (40 or 64) || !sha.All(Uri.IsHexDigit))
-                throw new InvalidOperationException("Invalid Git history record.");
-            commits.Add(new GitCommitDto(sha, fields[i + 1], fields[i + 2], fields[i + 3], fields[i + 4], fields[i + 5],
-                string.IsNullOrEmpty(fields[i + 6]) ? null : fields[i + 6]));
-        }
+        var commits = ParseCommitRecords(result.Output);
         return commits;
     }
 

@@ -6,6 +6,7 @@ using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Privileged;
 using RelaxKonOS.Server.ProxyServer;
+using RelaxKonOS.Server.TaskOrchestration;
 
 namespace RelaxKonOS.Server.ManagedRuntimes;
 
@@ -35,7 +36,25 @@ public sealed class SingBoxRuntimeService(IPrivilegedOperationTransport helper, 
         finally { store.Gate.Release(); }
     }
 
-    public async Task<RuntimeSwitchResult> ExecuteAsync(Guid operationId, RuntimeChangePlan plan, CancellationToken ct)
+    public Task<RuntimeSwitchResult> ExecuteAsync(Guid operationId, RuntimeChangePlan plan, CancellationToken ct) =>
+        ExecuteCoreAsync(operationId, plan, authorization.ReadAsync, ct);
+
+    public async Task<RuntimeSwitchResult> ExecuteTaskAsync(Guid operationId, RuntimeChangePlan plan,
+        TaskStepExecutionAuthorization authority, CancellationToken ct)
+    {
+        var frozen = RelaxKonOS.Protocol.TaskOrchestration.TaskPlanJson.ReadInputs<RuntimeChangePlan>(
+            RelaxKonOS.Protocol.TaskOrchestration.TaskPlanJson.FreezeInputs(plan));
+        if (authority.OperationId != operationId || !authority.MatchesPlan(frozen))
+            throw new RuntimeLifecycleException("runtime.authorization_unavailable");
+        try { await authority.ValidateAsync(ct); }
+        catch (Exception ex) when (ex is TaskApprovalException or TaskPlanStoreException)
+        { throw new RuntimeLifecycleException("runtime.authorization_unavailable"); }
+        return await ExecuteCoreAsync(operationId, frozen,
+            token => TaskRuntimeAuthorizationBridge.ReadAsync(authority, authorization.ReadAsync, token), ct);
+    }
+
+    private async Task<RuntimeSwitchResult> ExecuteCoreAsync(Guid operationId, RuntimeChangePlan plan,
+        Func<CancellationToken, Task<SingBoxCurrentAuthorization>> readAuthorization, CancellationToken ct)
     {
         if (operationId == Guid.Empty || plan is null || plan.Request is null || plan.RuntimeId != "sing-box")
             throw new RuntimeLifecycleException("runtime.request_invalid");
@@ -46,7 +65,7 @@ public sealed class SingBoxRuntimeService(IPrivilegedOperationTransport helper, 
         await store.Gate.WaitAsync(ct);
         try
         {
-            await using var callback = new RuntimeAuthorizationServer<SingBoxCurrentAuthorization>(operationId, authorization.ReadAsync);
+            await using var callback = new RuntimeAuthorizationServer<SingBoxCurrentAuthorization>(operationId, readAuthorization);
             var result = await CallAsync<RuntimeSwitchResult>(new(PrivilegedOperationKind.SingBoxRuntimeExecute,
                 OperationId: operationId, RuntimeLifecycle: new(Authorization: callback.Channel, FrozenPlan: plan),
                 DownloadProxy: removal ? null : await downloadProxy.ResolveAsync(ct)), CancellationToken.None);
@@ -57,12 +76,25 @@ public sealed class SingBoxRuntimeService(IPrivilegedOperationTransport helper, 
     }
 
     public async Task<RuntimeSwitchResult?> RecoverAsync(Guid requestOperationId, Guid recoveryOperationId, CancellationToken ct)
+        => await RecoverCoreAsync(requestOperationId, recoveryOperationId, authorization.ReadAsync, null, ct);
+
+    public async Task<RuntimeSwitchResult?> RecoverTaskAsync(TaskRecoveryAuthorization authority, CancellationToken ct)
+    {
+        if (authority.Action != RelaxKonOS.Protocol.TaskOrchestration.TaskRecoveryAction.RetryCompensation)
+            throw new RuntimeLifecycleException("runtime.authorization_unavailable");
+        return await RecoverCoreAsync(authority.AttemptId, authority.OperationId,
+            token => TaskRuntimeAuthorizationBridge.ReadAsync(authority, authorization.ReadAsync, token), authority, ct);
+    }
+
+    private async Task<RuntimeSwitchResult?> RecoverCoreAsync(Guid requestOperationId, Guid recoveryOperationId,
+        Func<CancellationToken, Task<SingBoxCurrentAuthorization>> readAuthorization, TaskRecoveryAuthorization? authority, CancellationToken ct)
     {
         if (requestOperationId == Guid.Empty || recoveryOperationId == Guid.Empty) throw new RuntimeLifecycleException("runtime.request_invalid");
         await store.Gate.WaitAsync(ct);
         try
         {
-            await using var callback = new RuntimeAuthorizationServer<SingBoxCurrentAuthorization>(requestOperationId, authorization.ReadAsync);
+            if (authority is not null) await authority.ValidateAsync(ct);
+            await using var callback = new RuntimeAuthorizationServer<SingBoxCurrentAuthorization>(requestOperationId, readAuthorization);
             // A null result proves only that no pending Helper transaction remains; callers must still query its receipt.
             return await CallAsync<RuntimeSwitchResult?>(new(PrivilegedOperationKind.SingBoxRuntimeRecover,
                 OperationId: requestOperationId, RuntimeLifecycle: new(Authorization: callback.Channel, RecoveryOperationId: recoveryOperationId)), CancellationToken.None, allowNull: true);
@@ -88,11 +120,21 @@ public sealed class SingBoxRuntimeService(IPrivilegedOperationTransport helper, 
 
     /// <summary>Emergency stop. It deliberately needs no published-credential authorization channel.</summary>
     public async Task<RuntimeRecoverySnapshot> StopRecoveryAsync(Guid operationId, CancellationToken ct)
+        => await StopRecoveryCoreAsync(operationId, null, ct);
+
+    public Task<RuntimeRecoverySnapshot> StopTaskRecoveryAsync(TaskRecoveryAuthorization authority, CancellationToken ct)
+    {
+        if (authority.Action != RelaxKonOS.Protocol.TaskOrchestration.TaskRecoveryAction.EmergencyStop)
+            throw new RuntimeLifecycleException("runtime.authorization_unavailable");
+        return StopRecoveryCoreAsync(authority.OperationId, authority, ct);
+    }
+    private async Task<RuntimeRecoverySnapshot> StopRecoveryCoreAsync(Guid operationId, TaskRecoveryAuthorization? authority, CancellationToken ct)
     {
         if (operationId == Guid.Empty) throw new RuntimeLifecycleException("runtime.request_invalid");
         await store.Gate.WaitAsync(ct);
         try
         {
+            if (authority is not null) await authority.ValidateAsync(ct);
             return await CallAsync<RuntimeRecoverySnapshot>(new(PrivilegedOperationKind.SingBoxRuntimeRecoveryStop,
                 RuntimeLifecycle: new(RecoveryOperationId: operationId)), ct);
         }
@@ -104,12 +146,22 @@ public sealed class SingBoxRuntimeService(IPrivilegedOperationTransport helper, 
     /// request, so the privileged side records the same decision the operator made rather than inferring it.
     /// </summary>
     public async Task<RuntimeSwitchResult> CloseRecoveryAsync(Guid operationId, bool confirmed, CancellationToken ct)
+        => await CloseRecoveryCoreAsync(operationId, confirmed, null, ct);
+
+    public Task<RuntimeSwitchResult> CloseTaskRecoveryAsync(TaskRecoveryAuthorization authority, CancellationToken ct)
+    {
+        if (authority.Action != RelaxKonOS.Protocol.TaskOrchestration.TaskRecoveryAction.Close)
+            throw new RuntimeLifecycleException("runtime.authorization_unavailable");
+        return CloseRecoveryCoreAsync(authority.OperationId, true, authority, ct);
+    }
+    private async Task<RuntimeSwitchResult> CloseRecoveryCoreAsync(Guid operationId, bool confirmed, TaskRecoveryAuthorization? authority, CancellationToken ct)
     {
         if (operationId == Guid.Empty) throw new RuntimeLifecycleException("runtime.request_invalid");
         if (!confirmed) throw new RuntimeLifecycleException("runtime.recovery_confirmation_required");
         await store.Gate.WaitAsync(ct);
         try
         {
+            if (authority is not null) await authority.ValidateAsync(ct);
             return await CallAsync<RuntimeSwitchResult>(new(PrivilegedOperationKind.SingBoxRuntimeRecoveryClose,
                 RuntimeLifecycle: new(RecoveryOperationId: operationId, Confirmed: true)), ct);
         }
@@ -129,10 +181,13 @@ public sealed class SingBoxRuntimeService(IPrivilegedOperationTransport helper, 
         }
         try
         {
-            var value = JsonSerializer.Deserialize<T>(Convert.FromBase64String(result.OutputBase64 ?? ""));
+            using var document = JsonDocument.Parse(Convert.FromBase64String(result.OutputBase64 ?? ""));
+            if (typeof(T) == typeof(RuntimeInstallationSnapshot)) RuntimeCommitWitnessRules.RequireWireMember(document.RootElement, nameof(RuntimeInstallationSnapshot.CommitWitness));
+            var value = document.RootElement.Deserialize<T>();
             if (value is RuntimeSwitchResult receipt && !ValidReceipt(receipt)
                 || value is RuntimeInstallationSnapshot snapshot && (snapshot.Installation is null
-                    || snapshot.Receipt is { } observed && (!ValidReceipt(observed) || observed.OperationId != request.OperationId))
+                    || snapshot.Receipt is { } observed && (!ValidReceipt(observed) || observed.OperationId != request.OperationId)
+                    || snapshot.CommitWitness is { } witness && !RuntimeCommitWitnessRules.BoundToSnapshot(witness, snapshot))
                 || value is RuntimeRecoverySnapshot recovery && !ValidRecovery(recovery))
                 throw new RuntimeLifecycleException("runtime.helper_response_invalid");
             return value is not null || allowNull ? value! : throw new RuntimeLifecycleException("runtime.helper_response_invalid");

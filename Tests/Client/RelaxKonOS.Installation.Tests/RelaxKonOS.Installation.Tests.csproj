@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Headless" />
     <ProjectReference Include="../../../Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj" />
   </ItemGroup>
 </Project>

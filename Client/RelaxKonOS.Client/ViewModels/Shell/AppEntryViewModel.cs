@@ -1,3 +1,5 @@
+using RelaxKonOS.Client.Apps.ComponentCenter;
+using RelaxKonOS.Client.Localization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Core.Applications;
@@ -33,6 +35,26 @@ public partial class AppEntryViewModel : ObservableObject, IDisposable
     public IImage? IconImage { get; }
     public bool HasIconImage => IconImage is not null;
     public string? Description { get; }
+    private ApplicationAvailability? _availability;
+    /// <summary>
+    /// Launch readiness is only enforced where the availability adapter is registered, which today is
+    /// the batch-integrated component. A catalog entry that installs elsewhere must not turn its
+    /// application unready before that adapter exists.
+    /// </summary>
+    public bool HasComponentDependency => ComponentCatalog.LaunchGate(Id.Value) is not null;
+    public bool IsReady => !HasComponentDependency || _availability?.CanOpen == true;
+    public bool HasAvailabilityBadge => HasComponentDependency;
+    public string? AvailabilityState => HasComponentDependency ? (_availability?.State ?? ComponentAvailabilityKind.Unknown).ToString() : null;
+    public LocalizedStatus AvailabilityText => HasComponentDependency
+        ? LocalizedStatus.Key("component_center.badge." + (_availability?.State ?? ComponentAvailabilityKind.Unknown))
+        : LocalizedStatus.Literal("");
+    public void RefreshAvailability(ApplicationAvailability? availability)
+    {
+        if (_disposed) return;
+        _availability = availability;
+        OnPropertyChanged(nameof(IsReady)); OnPropertyChanged(nameof(HasAvailabilityBadge));
+        OnPropertyChanged(nameof(AvailabilityText)); OnPropertyChanged(nameof(AvailabilityState));
+    }
     [ObservableProperty] private bool _isDesktopSelected;
 
     internal bool Matches(ApplicationInfo info) => !_disposed && Id == info.Id && DisplayName == info.DisplayName

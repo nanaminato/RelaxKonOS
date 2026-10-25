@@ -183,6 +183,7 @@ class FakeGateway : RelaxKonGateway {
     override suspend fun squidPreview(serverUrl: String, accessToken: String, configuration: SquidConfiguration): ApiResult<SquidPreview> = onSquidPreview(configuration)
     var onSquidValidate: suspend (SquidConfiguration) -> ApiResult<SquidValidation> = { _ -> error("Unexpected Squid call") }
     override suspend fun squidValidate(serverUrl: String, accessToken: String, configuration: SquidConfiguration): ApiResult<SquidValidation> = onSquidValidate(configuration)
+    override suspend fun squidAccounts(serverUrl: String, accessToken: String): ApiResult<List<SquidAccount>> = ApiResult.Success(emptyList())
     var onSquidQueue: suspend (SquidRequest, String) -> ApiResult<String> = { _, _ -> error("Unexpected Squid call") }
     override suspend fun squidQueue(serverUrl: String, accessToken: String, request: SquidRequest, key: String): ApiResult<String> = onSquidQueue(request, key)
 
@@ -208,6 +209,8 @@ class FakeGateway : RelaxKonGateway {
     override suspend fun proxyServerUpgrade(serverUrl: String, accessToken: String, version: String, idempotencyKey: String): ApiResult<String> = onProxyServerUpgrade(version, idempotencyKey)
     var onProxyServerUninstall: suspend (Boolean, String) -> ApiResult<String> = { _, _ -> error("Unexpected Proxy Server call") }
     override suspend fun proxyServerUninstall(serverUrl: String, accessToken: String, keepData: Boolean, idempotencyKey: String): ApiResult<String> = onProxyServerUninstall(keepData, idempotencyKey)
+    var onProxyServerSaveConfiguration: suspend (SaveProxyServerConfiguration, String) -> ApiResult<String> = { _, _ -> error("Unexpected configuration save") }
+    override suspend fun proxyServerSaveConfiguration(serverUrl: String, accessToken: String, request: SaveProxyServerConfiguration, idempotencyKey: String) = onProxyServerSaveConfiguration(request, idempotencyKey)
     var onProxyServerSavePrincipal: suspend (String?, SaveProxyServerPrincipal, String) -> ApiResult<String> = { _, _, _ -> error("Unexpected Proxy Server call") }
     override suspend fun proxyServerSavePrincipal(serverUrl: String, accessToken: String, id: String?, request: SaveProxyServerPrincipal, idempotencyKey: String): ApiResult<String> = onProxyServerSavePrincipal(id, request, idempotencyKey)
     var onProxyServerDeletePrincipal: suspend (String, String) -> ApiResult<String> = { _, _ -> error("Unexpected Proxy Server call") }

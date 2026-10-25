@@ -20,7 +20,8 @@ public sealed record RuntimeInstalledRelease(Guid RevisionId, string ReleaseId, 
 public sealed record RuntimeInstallationSnapshot(RuntimeInstallation Installation, string? MeasuredVersion,
     Guid? ActiveRevisionId, string? ConfigurationIdentity, Guid? PendingOperationId,
     InstallationStage? PendingStage, string? ProblemCode, RuntimeSwitchResult? Receipt = null,
-    IReadOnlyList<RuntimeInstalledRelease>? InstalledReleases = null, RuntimeDependencyReport? Environment = null);
+    IReadOnlyList<RuntimeInstalledRelease>? InstalledReleases = null, RuntimeDependencyReport? Environment = null,
+    RuntimeCommitWitness? CommitWitness = null);
 
 [JsonConverter(typeof(JsonStringEnumConverter<RuntimeSwitchOutcome>))]
 public enum RuntimeSwitchOutcome { Succeeded, Failed, Cancelled, Interrupted, RecoveryRequired }
