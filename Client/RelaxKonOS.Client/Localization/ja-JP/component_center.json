@@ -148,6 +148,21 @@
     "component_center.task_host": "ホスト：{0}",
     "component_center.task_release": "配布元：{0}\r\n対象バージョン：{1}\r\n成果物ダイジェスト：{2}",
     "component_center.task_capability": "権限 / 対象：{0}",
-    "component_center.task_digest": "計画ダイジェスト：{0}"
+    "component_center.task_digest": "計画ダイジェスト：{0}",
+    "component_center.task_recheck_recovery": "復旧結果を再確認",
+    "component_center.task_recovery_unresolved": "元の操作の記録と現在のホスト状態では、結果をまだ確認できません。ホストの復旧後に再確認してください。手順は再実行されていません。",
+    "component_center.task_recovery_checked": "元の操作の記録と現在のホスト状態から結果を確認しました。手順は再実行されていません。",
+    "component_center.task_recovery_read": "復旧の詳細を取得",
+    "component_center.task_recovery_read_hint": "処理を選ぶ前に、元の操作のホスト復旧状態を取得してください。",
+    "component_center.task_recovery_summary": "復旧対象の操作：{0}、記録済み要求：{1}。操作の応答だけでは復旧を証明できません。結果を再確認してください。",
+    "component_center.task_recovery_action.RetryCompensation": "元の補償を再試行",
+    "component_center.task_recovery_action.EmergencyStop": "サービスを緊急停止",
+    "component_center.task_recovery_action.Close": "確認して処理を終了",
+    "component_center.task_recovery_effect.RetryCompensation": "元のトランザクションの補償のみを再試行し、以前のプログラム・設定・サービスの復元を試みます。再インストールや残りの手順の続行は行いません。",
+    "component_center.task_recovery_effect.EmergencyStop": "この復旧待ちトランザクションに関連するサービスを停止します。業務接続が中断されます。元の結果の不確実性は解決しません。",
+    "component_center.task_recovery_effect.Close": "補償が失敗しサービスが停止した後、元のトランザクションを終了します。手動処理が必要なリソースが残る場合があります。復旧成功を意味しません。",
+    "component_center.task_recovery_confirm": "ホスト：{0}\r\n元の操作：{1}\r\n\r\n{2}",
+    "component_center.task_recovery_response": "復旧操作の応答を記録しました。ホストの記録でタスク結果を再確認してください。",
+    "component_center.task_recovery_response_unknown": "元の復旧要求は記録済みですが、応答は不明です。ホストを再呼び出ししていません。詳細を取得し結果を再確認してください。"
   }
 }

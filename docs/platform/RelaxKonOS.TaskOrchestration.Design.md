@@ -898,3 +898,15 @@ Shared 中新增精确生命周期选择和冻结变更记录。后者包含完�
 ### 桌面执行传输客户端（2026-10-25）
 
 桌面组件中心新增当前协议执行客户端，严格绑定会话/服务器/计划，校验审批能力及 run/step 不可变身份，支持带 expectedRevision 的推进和取消；首次历史读取与已跟踪刷新的会话校验分别处理。Client Installation 217 项通过，其中新增客户端检查 47 项（受控 HTTP 传输），无 Helper 实际执行。见[桌面客户端记录](RelaxKonOS.ComponentCenter.Design.md#桌面任务执行客户端2026-10-25)。可见执行界面、运行引用持久化/重开与人工恢复尚未接入，服务端 370 项验证边界保持此前记录。
+
+### TO-03 显式恢复结果核对（2026-10-25）
+
+新增 `POST /api/v1.0/task-runs/{runId}/recheck-recovery`，仅 RuntimeRead 所有者可调用，严格接收 expectedRevision。它读取持久原 dispatch 和归属相同的领域 operation，再调用原 operationId 的只读宿主观察；不依赖旧审批继续有效、不调用管理员认证、不派发/恢复领域事务。宿主不支持变更时仍允许读取恢复证据，观察不可用返回稳定错误且不覆盖原记录；GET/普通桌面轮询仍不触发核对。
+
+`RecordRecoveryReconciliation` 在同一事务追加恢复 witness、`recovery_checked` 审计和新状态修订，保留首次结果，不把相互矛盾的新回执覆盖成原证据。Interrupted 台账仅在同 ID 回执与当前安装/版本/配置事实一致且无 pending/recovery/漂移时可确定结果。失败/取消要求恢复旧基线；成功要求状态修订前进且没有已跳过的下游步骤。其余情况仍为 NeedsRecovery；相同 witness 幂等，最多 32 条不同恢复观察。重开重放原结果与后续恢复审计并核对全部状态；提交前故障回滚三者。不会把原失败后的补偿报告为成功，也不会自动复活被跳过的步骤。
+
+受保护 StoredRun 新增强制恢复证据数组，存储 schema 直接升级为 **6**；schema 5 及更早格式失败关闭并保留原文件，不增加旧格式解析、迁移或清空重建。公开 TaskRun 形状不变，允许 NeedsRecovery 在更新修订中转为有依据的 Succeeded/Failed/Cancelled；客户端持续约束原 run/step/operation/key/session，不允许重新 Queued/Running 或同修订改结果。已核实终态仍不可回退。
+
+桌面统一确认/审批/执行、持久运行引用和重开流程已接入，详见[桌面统一执行](RelaxKonOS.ComponentCenter.Design.md#桌面统一执行与重开权限边界2026-10-25)与[恢复核对界面](RelaxKonOS.ComponentCenter.Design.md#桌面显式恢复结果核对2026-10-25)。当前新增的是只读宿主核对与服务端结果记录，任务专用恢复授权/补偿协调和剩余步骤审批仍待实施；TO-02/TO-03 保持未完成。
+
+验证：`dotnet build Tests/TaskOrchestration/RelaxKonOS.TaskOrchestration.Tests.csproj --no-restore -m:1` 通过；运行同工程 `--no-build --no-restore`，任务专项共 **408 项**通过（对账 53、执行 HTTP 44，其他分组一并回归）。新增证据覆盖原操作错配/缺失、不同用户与双主体、修订/未知字段拒绝、已撤审批与宿主变更功能失效下只读可用、原 Interrupted 回执核对、未明结果审计/幂等、失败/取消基线、配置漂移、下游 Skipped 保护、32 条观察上限、重开完整性和提交故障回滚。回环 HTTP 需在允许本机套接字连接的执行环境运行；安装与回执仍为受控领域适配，没有真实 Helper 恢复。Client Installation **264 项**和中英日 × 明暗主题布局通过，桌面构建通过；保留既有包审计与编译警告。

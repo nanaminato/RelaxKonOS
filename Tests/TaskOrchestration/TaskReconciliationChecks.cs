@@ -26,9 +26,9 @@ internal static class TaskReconciliationChecks
             var path = Path.Combine(root, "results.db"); var protection = new EphemeralDataProtectionProvider();
             var store = new TaskPlanStore(path, protection);
             var live = new TaskExecutionIdentity("subject", "session", "host", "policy");
-            (TaskRun Run, TaskPlanApproval Approval, TaskReconciliationEvidence Evidence) Setup()
+            (TaskRun Run, TaskPlanApproval Approval, TaskReconciliationEvidence Evidence) Setup(TaskPlan? candidate = null)
             {
-                var next = plan with { PlanId = Guid.NewGuid() }; store.Save(next, "subject");
+                var next = (candidate ?? plan) with { PlanId = Guid.NewGuid() }; store.Save(next, "subject");
                 var approval = store.RecordApproval(next.PlanId, next.PlanDigest, new("subject", "session", "host", "policy",
                     "linux:0", "fixture", DateTimeOffset.UtcNow.AddMinutes(5)), Guid.NewGuid().ToString("N"));
                 var run = store.StartRun(next.PlanId, approval.ApprovalId, next.PlanDigest, live, Guid.NewGuid().ToString("N"));
@@ -106,6 +106,90 @@ internal static class TaskReconciliationChecks
             var unavailable = Setup(); domain.Evidence = unavailable.Evidence; domain.Unavailable = true;
             Check((await service.ReconcileAsync(unavailable.Run.RunId, "runtime", "subject", default)).State == TaskRunState.NeedsRecovery,
                 "unavailable host evidence cannot be interpreted as domain success");
+
+            // Explicit recovery checks append fresh evidence without altering the original result or granting execution.
+            var recoverable = Setup();
+            var uncertainReceipt = recoverable.Evidence with { Operation = recoverable.Evidence.Operation with { State = InstallationOperationState.Interrupted }, Snapshot = null };
+            var needsRecovery = store.RecordReconciliation(recoverable.Run.RunId, "subject", uncertainReceipt, 3);
+            domain = new Domain { Evidence = recoverable.Evidence with { Operation = uncertainReceipt.Operation } };
+            var recoveryService = new TaskRecoveryReconciliationService(store, domain);
+            await RejectRecovery("other", needsRecovery.Revision, "task.run_not_found");
+            await RejectRecovery("subject", needsRecovery.Revision - 1, "task.run_revision_conflict");
+            Check(domain.Queries == 0, "recovery identity and revision are checked before querying the host");
+            domain.Missing = true;
+            await RejectRecovery("subject", needsRecovery.Revision, "task.domain_operation_conflict");
+            domain.Missing = false;
+            var expectedEvidence = domain.Evidence;
+            domain.Evidence = expectedEvidence with { Operation = expectedEvidence.Operation with { OperationId = Guid.NewGuid() } };
+            await RejectRecovery("subject", needsRecovery.Revision, "task.domain_operation_conflict");
+            Check(domain.Queries == 0, "recovery never queries a replacement operation");
+            domain.Evidence = expectedEvidence with { Snapshot = expectedEvidence.Snapshot! with { PendingOperationId = Guid.NewGuid() } };
+            needsRecovery = await recoveryService.RecheckAsync(needsRecovery.RunId, "subject", needsRecovery.Revision, default);
+            Check(needsRecovery.State == TaskRunState.NeedsRecovery && needsRecovery.Revision == 5,
+                "unresolved recovery evidence is retained with a new audit revision");
+            Check((await recoveryService.RecheckAsync(needsRecovery.RunId, "subject", needsRecovery.Revision, default)).Revision == 5,
+                "repeated identical recovery evidence does not inflate the journal");
+            domain.Evidence = expectedEvidence; store.RevokeApproval(recoverable.Approval.ApprovalId, "subject");
+            var recovered = await recoveryService.RecheckAsync(needsRecovery.RunId, "subject", needsRecovery.Revision, default);
+            Check(recovered is { State: TaskRunState.Succeeded, Revision: 6 },
+                "explicit check resolves interrupted ledger only with matching receipt and measured target, without renewing approval");
+            Check(new TaskPlanStore(path, protection).GetRun(recovered.RunId, "subject") is { State: TaskRunState.Succeeded, Revision: 6 },
+                "reopening replays original uncertain evidence and subsequent recovery evidence");
+            await RejectRecovery("subject", recovered.Revision, "task.recovery_not_required");
+            foreach (var cancelled in new[] { false, true })
+            {
+                var restored = Setup(); var interrupted = restored.Evidence.Operation with { State = InstallationOperationState.Interrupted };
+                var waiting = store.RecordReconciliation(restored.Run.RunId, "subject", new("runtime", interrupted, null), 3);
+                var witness = new TaskReconciliationEvidence("runtime", interrupted, fixture.Installation with
+                { Receipt = new(interrupted.OperationId, cancelled ? RuntimeSwitchOutcome.Cancelled : RuntimeSwitchOutcome.Failed, null) });
+                var result = store.RecordRecoveryReconciliation(waiting.RunId, "subject", witness, waiting.Revision);
+                Check(result.State == (cancelled ? TaskRunState.Cancelled : TaskRunState.Failed),
+                    "restored baseline and original compensation receipt resolve failure/cancellation without pretending success");
+            }
+            var commit = Setup(); var pending = store.RecordReconciliation(commit.Run.RunId, "subject", commit.Evidence with { Snapshot = null }, 3);
+            var failedCommit = new TaskPlanStore(path, protection, beforeCommit: point => { if (point == TaskPlanCommitPoint.RecoveryResultWritten) throw new IOException("injected"); });
+            Reject(() => failedCommit.RecordRecoveryReconciliation(pending.RunId, "subject", commit.Evidence, pending.Revision), "task.plan_store_unavailable");
+            Check(new TaskPlanStore(path, protection).GetRun(pending.RunId, "subject") is { State: TaskRunState.NeedsRecovery, Revision: 4 },
+                "recovery evidence, audit and state roll back atomically on failed commit");
+            var unobserved = Setup(); var waitingForHost = store.RecordReconciliation(unobserved.Run.RunId, "subject", unobserved.Evidence with { Snapshot = null }, 3);
+            var offline = new Domain { Evidence = unobserved.Evidence, Unavailable = true };
+            try { await new TaskRecoveryReconciliationService(store, offline).RecheckAsync(waitingForHost.RunId, "subject", waitingForHost.Revision, default); throw new Exception("Accepted absent host"); }
+            catch (RuntimeLifecycleException)
+            { Check(store.GetRun(waitingForHost.RunId, "subject")?.Revision == waitingForHost.Revision, "unavailable recovery observation leaves prior evidence intact"); }
+            foreach (var transform in transforms.Take(8))
+            {
+                var current = Setup(); var unknown = store.RecordReconciliation(current.Run.RunId, "subject", current.Evidence with { Snapshot = null }, 3);
+                var checkedRun = store.RecordRecoveryReconciliation(unknown.RunId, "subject", transform(current.Evidence), unknown.Revision);
+                Check(checkedRun.State == TaskRunState.NeedsRecovery, "recovery does not accept missing, mismatched, drifting or pending host evidence");
+            }
+            var bounded = Setup(); var boundedRun = store.RecordReconciliation(bounded.Run.RunId, "subject", bounded.Evidence with { Snapshot = null }, 3);
+            TaskReconciliationEvidence Unresolved() => bounded.Evidence with { Snapshot = bounded.Evidence.Snapshot! with { PendingOperationId = Guid.NewGuid() } };
+            for (var i = 0; i < 32; i++) boundedRun = store.RecordRecoveryReconciliation(boundedRun.RunId, "subject", Unresolved(), boundedRun.Revision);
+            Reject(() => store.RecordRecoveryReconciliation(boundedRun.RunId, "subject", Unresolved(), boundedRun.Revision), "task.recovery_check_capacity_exceeded");
+            Check(new TaskPlanStore(path, protection).GetRun(boundedRun.RunId, "subject")?.Revision == boundedRun.Revision,
+                "bounded recovery journal remains readable without resetting pending tasks");
+            var tail = new TaskStep("tail", "runtime.verifyInstallation", 1, "sing-box-read-1",
+                TaskPlanJson.FreezeInputs(new VerifyRuntimeInstallationInput(fixture.Installation.Installation.InstallationId, 7)),
+                ["runtime"], [], [], [], TaskStepDisposition.NoOp, [], "read-only", "none", "none");
+            var partialSemantics = plan.Semantics with { Steps = [.. plan.Semantics.Steps, tail] };
+            var partial = Setup(plan with { Semantics = partialSemantics, PlanDigest = TaskPlanCanonicalizer.Digest(partialSemantics) });
+            var skipped = store.RecordReconciliation(partial.Run.RunId, "subject", partial.Evidence with { Snapshot = null }, 3);
+            var partialResult = store.RecordRecoveryReconciliation(skipped.RunId, "subject", partial.Evidence, skipped.Revision);
+            Check(partialResult.State == TaskRunState.NeedsRecovery && partialResult.Steps.Single(item => item.StepId == "tail").State == TaskStepRunState.Skipped,
+                "recovery of a committed component cannot silently resume or declare success for skipped downstream work");
+            Check(new TaskPlanStore(path, protection).GetRun(partialResult.RunId, "subject")?.State == TaskRunState.NeedsRecovery,
+                "reopening preserves incomplete downstream work after a conclusive component receipt");
+            var changedConfiguration = Setup();
+            var configUnknown = store.RecordReconciliation(changedConfiguration.Run.RunId, "subject", changedConfiguration.Evidence with { Snapshot = null }, 3);
+            var configWitness = changedConfiguration.Evidence with { Snapshot = changedConfiguration.Evidence.Snapshot! with { ConfigurationIdentity = "later-configuration" } };
+            Check(store.RecordRecoveryReconciliation(configUnknown.RunId, "subject", configWitness, configUnknown.Revision).State == TaskRunState.NeedsRecovery,
+                "recovery cannot certify a success using later configuration state");
+
+            async Task RejectRecovery(string subject, long revision, string code)
+            {
+                try { await recoveryService.RecheckAsync(needsRecovery.RunId, subject, revision, default); throw new Exception("Accepted invalid recovery check"); }
+                catch (TaskPlanStoreException ex) { Check(ex.ProblemCode == code, "explicit recovery rejects " + code); }
+            }
         }
         finally { Directory.Delete(root, true); }
         return count;

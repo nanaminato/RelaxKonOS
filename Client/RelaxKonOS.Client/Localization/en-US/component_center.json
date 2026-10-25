@@ -148,6 +148,21 @@
     "component_center.task_host": "Host: {0}",
     "component_center.task_release": "Source: {0}\r\nTarget version: {1}\r\nArtifact digest: {2}",
     "component_center.task_capability": "Capability / target: {0}",
-    "component_center.task_digest": "Plan digest: {0}"
+    "component_center.task_digest": "Plan digest: {0}",
+    "component_center.task_recheck_recovery": "Recheck recovery result",
+    "component_center.task_recovery_unresolved": "The original receipt and current host state do not yet prove the result. Resolve host recovery and check again. No steps were executed again.",
+    "component_center.task_recovery_checked": "The original receipt and current host state confirm the result. No steps were executed again.",
+    "component_center.task_recovery_read": "Read recovery details",
+    "component_center.task_recovery_read_hint": "Read the original operation's host recovery state before choosing an action.",
+    "component_center.task_recovery_summary": "Recovery operation: {0}; recorded requests: {1}. An action response does not prove recovery. Recheck the result.",
+    "component_center.task_recovery_action.RetryCompensation": "Retry original compensation",
+    "component_center.task_recovery_action.EmergencyStop": "Emergency stop service",
+    "component_center.task_recovery_action.Close": "Acknowledge and close",
+    "component_center.task_recovery_effect.RetryCompensation": "Retry only the original transaction's compensation to restore the previous program, configuration and service. This does not install again or resume remaining steps.",
+    "component_center.task_recovery_effect.EmergencyStop": "Stop the service associated with this pending transaction. Business connections will be interrupted. The transaction's uncertain result remains unresolved.",
+    "component_center.task_recovery_effect.Close": "Close the original transaction after compensation failed and the service stopped. Resources may still need manual attention. This does not mean recovery succeeded.",
+    "component_center.task_recovery_confirm": "Host: {0}\r\nOriginal operation: {1}\r\n\r\n{2}",
+    "component_center.task_recovery_response": "The recovery action response was recorded. Recheck the task using the host receipt.",
+    "component_center.task_recovery_response_unknown": "The original recovery request is recorded, but its response is unknown. The host was not called again. Read the details and recheck the result."
   }
 }

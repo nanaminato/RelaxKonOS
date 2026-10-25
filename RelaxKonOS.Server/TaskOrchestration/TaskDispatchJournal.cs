@@ -126,12 +126,15 @@ public sealed partial class TaskPlanStore
             || stored.ReadResults.IsDefault || stored.ReadResults.Length > run.Steps.Length || stored.ReadResults.Any(item => item is null
                 || !run.Steps.Any(step => step.StepId == item.StepId))
             || stored.ReadResults.Select(item => item.StepId).Distinct().Count() != stored.ReadResults.Length
+            || stored.RecoveryResults.IsDefault || stored.RecoveryResults.Length > 32
+            || stored.RecoveryResults.Any(item => item is null || item.Operation is null || !run.Steps.Any(step => step.StepId == item.StepId))
             || stored.Audit.IsDefaultOrEmpty || stored.Audit.Length != run.Revision
             || stored.Audit[0] is not { Event: "queued", StepId: null } || stored.Audit[0].At != run.CreatedAt)
             throw new InvalidDataException();
         var states = run.Steps.ToDictionary(item => item.StepId, _ => TaskStepRunState.Pending, StringComparer.Ordinal);
         var at = run.CreatedAt;
         var cancellationRequested = false;
+        var recoveryIndex = 0;
         foreach (var audit in stored.Audit.Skip(1))
         {
             if (audit is { Event: "cancel_requested", StepId: null } && !cancellationRequested && audit.At >= at
@@ -167,6 +170,16 @@ public sealed partial class TaskPlanStore
                 states[audit.StepId] = TaskStepRunState.Running;
             else if (audit.Event == "dispatch_cancelled" && state == TaskStepRunState.Dispatching && cancellationRequested)
                 states[audit.StepId] = TaskStepRunState.Cancelled;
+            else if (audit.Event == "recovery_checked" && state == TaskStepRunState.NeedsRecovery && recoveryIndex < stored.RecoveryResults.Length)
+            {
+                var recovery = stored.RecoveryResults[recoveryIndex++];
+                var original = stored.Results.Single(item => item.StepId == audit.StepId);
+                if (recovery.StepId != audit.StepId || recovery.Operation.OperationId != original.Operation.OperationId
+                    || recovery.Operation.Service != original.Operation.Service || recovery.Operation.Kind != original.Operation.Kind
+                    || InstallationOperationStoreActive(recovery.Operation)) throw new InvalidDataException();
+                states[audit.StepId] = ClassifyRecoveryResult(plan.Semantics.Steps.Single(item => item.StepId == audit.StepId), recovery,
+                    states.Values.Any(value => value == TaskStepRunState.Skipped));
+            }
             else if (state == TaskStepRunState.Running && stored.Results.SingleOrDefault(item => item.StepId == audit.StepId) is { } result
                 && !InstallationOperationStoreActive(result.Operation))
             {
@@ -180,7 +193,7 @@ public sealed partial class TaskPlanStore
             else throw new InvalidDataException();
         }
         var problem = run.Steps.FirstOrDefault(item => item.State is TaskStepRunState.Failed or TaskStepRunState.Cancelled or TaskStepRunState.NeedsRecovery);
-        if (run.CancellationRequested != cancellationRequested || run.State != ResultRunState(run.Steps, cancellationRequested) || run.ProblemCode != problem?.ProblemCode)
+        if (recoveryIndex != stored.RecoveryResults.Length || run.CancellationRequested != cancellationRequested || run.State != ResultRunState(run.Steps, cancellationRequested) || run.ProblemCode != problem?.ProblemCode)
             throw new InvalidDataException();
         foreach (var step in run.Steps)
         {

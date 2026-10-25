@@ -31,6 +31,9 @@ internal static class HostServiceRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.ITaskReconciliationDomain,
             RelaxKonOS.Server.TaskOrchestration.SingBoxTaskReconciliationDomain>();
         builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.TaskRunReconciliationService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.TaskRecoveryReconciliationService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.ITaskRecoveryDomain, RelaxKonOS.Server.TaskOrchestration.SingBoxTaskRecoveryDomain>();
+        builder.Services.AddScoped<RelaxKonOS.Server.TaskOrchestration.TaskRecoveryService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.ITaskRunReconciler>(services =>
             services.GetRequiredService<RelaxKonOS.Server.TaskOrchestration.TaskRunReconciliationService>());
         builder.Services.AddSingleton<RelaxKonOS.Server.TaskOrchestration.IRuntimeTaskChangePlanningService,

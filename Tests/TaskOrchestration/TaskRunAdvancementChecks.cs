@@ -87,7 +87,7 @@ internal static class TaskRunAdvancementChecks
             try { await service.AdvanceAsync(principal, revoked.RunId, 1, default); throw new Exception("Accepted changed live policy"); }
             catch (TaskApprovalException ex) { Check(ex.ProblemCode == "task.policy_changed" && store.GetRun(revoked.RunId, "subject")?.Revision == 1,
                 "policy revocation during observation leaves no completed read step"); }
-            foreach (var unsupported in new[] { 3, 4 })
+            foreach (var unsupported in new[] { 3, 4, 5, 6 })
             {
                 using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString());
                 connection.Open(); using var version = connection.CreateCommand(); version.CommandText = "PRAGMA user_version=" + unsupported; version.ExecuteNonQuery();

@@ -142,6 +142,18 @@ internal static class ComponentCenterWorkspaceChecks
                     bitmap.Render(taskWindow); bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light-") + "TaskExecution.png"), new PngBitmapEncoderOptions());
                 }
                 taskWindow.Close(); Dispatcher.UIThread.RunJobs();
+                taskModel.CurrentTaskRun = taskModel.CurrentTaskRun with { State = TaskRunState.NeedsRecovery,
+                    Steps = [taskModel.CurrentTaskRun.Steps[0] with { State = TaskStepRunState.NeedsRecovery }] };
+                taskModel.TaskNotice = RelaxKonOS.Client.Localization.LocalizedStatus.Key("component_center.task_recovery_unresolved");
+                var recoveryView = new ComponentCenterWorkspace(taskModel); var recoveryWindow = new Window { Width = 1060, Height = 800, Content = recoveryView };
+                recoveryWindow.Show(); Dispatcher.UIThread.RunJobs(); recoveryWindow.UpdateLayout();
+                Check(taskModel.CanRecheckTaskRecovery && !taskModel.ShowTaskDomainProgress && !recoveryView.GetVisualDescendants().OfType<TextBlock>().Any(text =>
+                    text.Text?.Contains("component_center.", StringComparison.Ordinal) == true), "Recovery recheck and guidance resolve in " + language);
+                using (var bitmap = new RenderTargetBitmap(new PixelSize(1060, 800)))
+                {
+                    bitmap.Render(recoveryWindow); bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light-") + "TaskRecovery.png"), new PngBitmapEncoderOptions());
+                }
+                recoveryWindow.Close(); Dispatcher.UIThread.RunJobs();
                 var modal = Activator.CreateInstance(typeof(RelaxKonOS.WindowManager.ModalDialog<bool>), BindingFlags.Instance | BindingFlags.NonPublic,
                     null, [null, null], null)!;
                 var confirmation = (Control)Activator.CreateInstance(typeof(ComponentCenterWorkspace).Assembly.GetType(
@@ -175,6 +187,9 @@ internal sealed class LayoutTaskTransport : ITaskExecutionClient
     public Task<TaskRun> RefreshAsync(TaskPlan plan, TaskRun run, CancellationToken ct) => throw new NotSupportedException();
     public Task<TaskRun> AdvanceAsync(TaskPlan plan, TaskRun run, CancellationToken ct) => throw new NotSupportedException();
     public Task<TaskRun> CancelAsync(TaskPlan plan, TaskRun run, CancellationToken ct) => throw new NotSupportedException();
+    public Task<TaskRun> RecheckRecoveryAsync(TaskPlan plan, TaskRun run, CancellationToken ct) => throw new NotSupportedException();
+    public Task<TaskRecoveryView> ReadRecoveryAsync(TaskPlan plan, TaskRun run, CancellationToken ct) => throw new NotSupportedException();
+    public Task<TaskRecoveryResponse> RecoverAsync(TaskPlan plan, TaskRun run, TaskRecoveryRequest request, string key, CancellationToken ct) => throw new NotSupportedException();
 }
 
 internal sealed class InspectionPreview : ITaskPlanPreviewClient

@@ -18,7 +18,7 @@ public sealed class TaskPlanStoreException(string code, int statusCode = 503) : 
 
 public sealed record TaskPlanStorageLimits(int MaximumPlans = 4096, int MaximumPlansPerSubject = 256,
     int LifetimeSeconds = 600);
-public enum TaskPlanCommitPoint { PlanWritten, ValidityWritten, ApprovalWritten, ApprovalConsumed, RunWritten, DispatchWritten, OperationBound, ResultWritten, ReadResultWritten, CancellationWritten, UnacceptedCancellationWritten }
+public enum TaskPlanCommitPoint { PlanWritten, ValidityWritten, ApprovalWritten, ApprovalConsumed, RunWritten, DispatchWritten, OperationBound, ResultWritten, ReadResultWritten, CancellationWritten, UnacceptedCancellationWritten, RecoveryResultWritten, RecoveryIntentWritten, RecoveryResponseWritten }
 
 /// <summary>Durable plans, approval consumption and queued runs. Host execution still requires fresh external authorization.</summary>
 public sealed partial class TaskPlanStore
@@ -65,10 +65,10 @@ public sealed partial class TaskPlanStore
                 var currentVersion = (long)version.ExecuteScalar()!;
                 using var shape = connection.CreateCommand();
                 shape.Transaction = schemaTransaction;
-                shape.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('task_plans','task_approvals','task_runs','task_run_requests');";
+                shape.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('task_plans','task_approvals','task_runs','task_run_requests','task_recovery_attempts');";
                 var currentTables = (long)shape.ExecuteScalar()!;
                 if (existed || currentVersion != 0)
-                { if (currentVersion != 5 || currentTables != 4) throw new InvalidDataException(); }
+                { if (currentVersion != 7 || currentTables != 5) throw new InvalidDataException(); }
                 else if (currentTables != 0) throw new InvalidDataException();
                 using var schema = connection.CreateCommand();
                 schema.Transaction = schemaTransaction;
@@ -104,7 +104,15 @@ public sealed partial class TaskPlanStore
                         run_id TEXT NOT NULL REFERENCES task_runs(run_id),
                         protected_request BLOB NOT NULL
                     );
-                    PRAGMA user_version=5;
+                    CREATE TABLE IF NOT EXISTS task_recovery_attempts (
+                        attempt_id TEXT PRIMARY KEY NOT NULL,
+                        run_id TEXT NOT NULL REFERENCES task_runs(run_id),
+                        subject_reference TEXT NOT NULL,
+                        idempotency_reference TEXT UNIQUE NOT NULL,
+                        request_reference TEXT NOT NULL,
+                        protected_record BLOB NOT NULL
+                    );
+                    PRAGMA user_version=7;
                     """;
                 schema.ExecuteNonQuery();
                 schemaTransaction.Commit();

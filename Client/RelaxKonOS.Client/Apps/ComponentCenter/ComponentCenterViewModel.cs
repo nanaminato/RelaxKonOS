@@ -73,7 +73,10 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         ReloadTaskHistory();
     }
     private void RuntimeChanged(object? sender, PropertyChangedEventArgs e)
-    { OnPropertyChanged(nameof(CanPreview)); OnPropertyChanged(nameof(CanInspect)); OnPropertyChanged(nameof(CanPlanDraft)); TaskProperties(); }
+    {
+        if (!Runtime.CanRead || !Runtime.CanManage || Runtime.IsInvalidated) _driveTask = false;
+        OnPropertyChanged(nameof(CanPreview)); OnPropertyChanged(nameof(CanInspect)); OnPropertyChanged(nameof(CanPlanDraft)); TaskProperties();
+    }
     private void RuntimeStateChanged(object? sender, EventArgs e) { ObserveInspectionState(); RefreshTree(); }
     partial void OnSelectedNavigationChanged(ComponentCenterNavigationItem? value)
     {

@@ -53,6 +53,9 @@ internal static class TaskExecutionHttpChecks
         builder.Services.AddSingleton(new TaskPlanApprovalService(store, policy, revalidator, admin));
         builder.Services.AddSingleton(new TaskRunStartService(store, policy, revalidator));
         builder.Services.AddSingleton(new TaskRunAdvancementService(store, policy, null!, dispatch, dispatch));
+        builder.Services.AddSingleton(new TaskRecoveryReconciliationService(store, dispatch));
+        var recoveries = new RecoveryFixture(store);
+        builder.Services.AddSingleton(new TaskRecoveryService(store, policy, policy, recoveries, admin, dispatch, recoveries));
         builder.Services.AddSingleton<InstallationOperationStore>();
         builder.Services.AddSingleton<InstallationCoordinator>(); // Empty domain registry: HTTP tests never submit privileged work.
         builder.Services.AddSingleton(services => new TaskRunCancellationService(store, policy, dispatch, services.GetRequiredService<InstallationCoordinator>()));
@@ -159,6 +162,41 @@ internal static class TaskExecutionHttpChecks
             { run = (await response.Content.ReadFromJsonAsync<TaskRun>(RelaxKonOSJsonOptions.Default))!; Check(run.State == TaskRunState.Cancelling && run.Revision == 4, "cancel acknowledges only durable intent for an uncancellable active operation"); }
             using (var response = await Post(TaskPlanningRoutes.Advance(run.RunId), new TaskRunRevisionRequest(4)))
             { run = (await response.Content.ReadFromJsonAsync<TaskRun>(RelaxKonOSJsonOptions.Default))!; Check(run.State == TaskRunState.Succeeded && dispatch.Starts == 1, "receipt reconciliation preserves committed success after cancellation"); }
+            var recoveryPlan = plan with { PlanId = Guid.NewGuid() }; store.Save(recoveryPlan, Subject);
+            var recoveryApproval = store.RecordApproval(recoveryPlan.PlanId, recoveryPlan.PlanDigest,
+                new(Subject, "session", "host", "policy", "linux:0", "fixture", DateTimeOffset.UtcNow.AddMinutes(5)), "recovery-approval");
+            var recoveryRun = store.StartRun(recoveryPlan.PlanId, recoveryApproval.ApprovalId, recoveryPlan.PlanDigest,
+                new(Subject, "session", "host", "policy"), "recovery-start");
+            var recoveryOperation = await dispatch.DispatchAsync(new ClaimsPrincipal(), recoveryRun.RunId, recoveryRun.Steps[0].StepId, default);
+            recoveryRun = store.GetRun(recoveryRun.RunId, Subject)!;
+            recoveryOperation = recoveryOperation with { State = InstallationOperationState.Interrupted, CompletedAt = DateTimeOffset.UtcNow };
+            recoveryRun = store.RecordReconciliation(recoveryRun.RunId, Subject, new(recoveryRun.Steps[0].StepId, recoveryOperation, null), recoveryRun.Revision);
+            dispatch.RecoveryEvidence = new(recoveryRun.Steps[0].StepId, recoveryOperation, domain.Installation with
+            { Installation = domain.Installation.Installation with { StateRevision = 8, ActiveReleaseId = "target" }, MeasuredVersion = "1.14.3",
+                Receipt = new(recoveryOperation.OperationId, RuntimeSwitchOutcome.Succeeded, null) });
+            var dispatchCount = dispatch.Starts; var adminCount = admin.Calls;
+            foreach (var token in new[] { "other", "dual", "no-subject" })
+            {
+                http.DefaultRequestHeaders.Authorization = new("Bearer", token);
+                using var response = await Post(TaskPlanningRoutes.RecheckRecovery(recoveryRun.RunId), new TaskRunRevisionRequest(recoveryRun.Revision));
+                Check(response.StatusCode == (token == "other" ? HttpStatusCode.NotFound : HttpStatusCode.Forbidden) && dispatch.RecoveryQueries == 0,
+                    "recovery checks reject another or ambiguous actor before host observation");
+            }
+            http.DefaultRequestHeaders.Authorization = new("Bearer", "read");
+            using (var response = await Post(TaskPlanningRoutes.RecheckRecovery(recoveryRun.RunId), new { expectedRevision = recoveryRun.Revision, execute = true }))
+                Check(response.StatusCode == HttpStatusCode.BadRequest && dispatch.RecoveryQueries == 0, "recovery rejects injected execution input");
+            using (var response = await Post(TaskPlanningRoutes.RecheckRecovery(recoveryRun.RunId), new TaskRunRevisionRequest(1)))
+                Check(response.StatusCode == HttpStatusCode.Conflict && dispatch.RecoveryQueries == 0, "recovery rejects stale revision before observation");
+            mode.Enabled = false; store.RevokeApproval(recoveryApproval.ApprovalId, Subject);
+            using (var response = await Post(TaskPlanningRoutes.RecheckRecovery(recoveryRun.RunId), new TaskRunRevisionRequest(recoveryRun.Revision)))
+            {
+                var resolved = await response.Content.ReadFromJsonAsync<TaskRun>(RelaxKonOSJsonOptions.Default);
+                Check(response.StatusCode == HttpStatusCode.OK && response.Headers.CacheControl?.NoStore == true
+                    && resolved?.State == TaskRunState.Succeeded && resolved.Steps[0].DomainOperationId == recoveryOperation.OperationId
+                    && dispatch.RecoveryQueries == 1 && dispatch.Starts == dispatchCount && admin.Calls == adminCount,
+                    "read-only owner rechecks exact receipt after approval/feature loss without execution or administrator authentication");
+            }
+            http.DefaultRequestHeaders.Authorization = new("Bearer", "manage");
             mode.Enabled = false;
             using (var response = await http.GetAsync(TaskPlanningRoutes.Run(run.RunId))) Check(response.StatusCode == HttpStatusCode.OK, "host feature loss does not hide durable history");
             using (var response = await Post(TaskPlanningRoutes.Advance(run.RunId), new TaskRunRevisionRequest(run.Revision))) Check(response.StatusCode == HttpStatusCode.Forbidden, "feature loss still blocks mutation routes");
@@ -204,7 +242,8 @@ internal static class TaskExecutionHttpChecks
     }
     private sealed class Dispatch(TaskPlanStore store, RuntimeChangeFixture fixture) : ITaskStepDispatcher, ITaskRunReconciler, ITaskReconciliationDomain
     {
-        public int Starts; private InstallationOperationDto _operation = null!;
+        public int Starts, RecoveryQueries; private InstallationOperationDto _operation = null!;
+        public TaskReconciliationEvidence? RecoveryEvidence;
         public Task<InstallationOperationDto> DispatchAsync(ClaimsPrincipal principal, Guid runId, string stepId, CancellationToken ct)
         {
             Starts++; var run = store.GetRun(runId, Subject)!; var intent = store.PrepareDispatch(runId, stepId, new(Subject, "session", "host", "policy"), run.Revision);
@@ -219,8 +258,9 @@ internal static class TaskExecutionHttpChecks
                 { State = InstallationOperationState.Succeeded, Stage = InstallationStage.Completed, CompletedAt = DateTimeOffset.UtcNow }, fixture.Installation with
                 { Installation = fixture.Installation.Installation with { StateRevision = 8, ActiveReleaseId = "target" }, MeasuredVersion = "1.14.3", Receipt = new(_operation.OperationId, RuntimeSwitchOutcome.Succeeded, null) }), run.Revision));
         }
-        public InstallationOperationDto? Find(Guid runId, TaskDispatchIntent dispatch, string subject) => _operation;
-        public Task<RuntimeInstallationSnapshot> ObserveAsync(Guid operationId, CancellationToken ct) => throw new NotSupportedException();
+        public InstallationOperationDto? Find(Guid runId, TaskDispatchIntent dispatch, string subject) => RecoveryEvidence?.Operation ?? _operation;
+        public Task<RuntimeInstallationSnapshot> ObserveAsync(Guid operationId, CancellationToken ct)
+        { RecoveryQueries++; return Task.FromResult(RecoveryEvidence!.Snapshot!); }
     }
     private sealed class Authentication(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)
         : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)

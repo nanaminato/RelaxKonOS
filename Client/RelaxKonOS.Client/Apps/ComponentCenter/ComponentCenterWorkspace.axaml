@@ -120,6 +120,16 @@
         <Button Content="{loc:Loc component_center.task_cancel}" Command="{Binding CancelTaskCommand}" IsEnabled="{Binding CanCancelTask}" />
        </WrapPanel>
        <Button Content="{loc:Loc component_center.task_reload}" Command="{Binding ReloadTaskHistoryCommand}" IsEnabled="{Binding CanSelectTask}" HorizontalAlignment="Left" />
+       <Button Content="{loc:Loc component_center.task_recheck_recovery}" Command="{Binding RecheckTaskRecoveryCommand}" IsVisible="{Binding CanRecheckTaskRecovery}" HorizontalAlignment="Left" />
+       <StackPanel IsVisible="{Binding HasTaskRecovery}" Spacing="8">
+        <TextBlock Text="{Binding TaskRecoverySummary}" TextWrapping="Wrap" />
+        <WrapPanel>
+         <Button Content="{loc:Loc component_center.task_recovery_read}" Command="{Binding ReadTaskRecoveryCommand}" IsEnabled="{Binding CanReadTaskRecovery}" Margin="0,0,8,8" />
+         <Button Content="{loc:Loc component_center.task_recovery_action.RetryCompensation}" Command="{Binding RetryTaskCompensationCommand}" IsEnabled="{Binding CanRetryTaskCompensation}" Margin="0,0,8,8" />
+         <Button Content="{loc:Loc component_center.task_recovery_action.EmergencyStop}" Command="{Binding StopTaskRecoveryCommand}" IsEnabled="{Binding CanStopTaskRecovery}" Margin="0,0,8,8" />
+         <Button Content="{loc:Loc component_center.task_recovery_action.Close}" Command="{Binding CloseTaskRecoveryCommand}" IsEnabled="{Binding CanCloseTaskRecovery}" Margin="0,0,8,8" />
+        </WrapPanel>
+       </StackPanel>
        <ItemsControl ItemsSource="{Binding TaskSteps}"><ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:ComponentTaskStepItem">
         <StackPanel Margin="0,4"><TextBlock Text="{Binding Title}" FontWeight="SemiBold" /><TextBlock Text="{Binding State}" /></StackPanel>
        </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>

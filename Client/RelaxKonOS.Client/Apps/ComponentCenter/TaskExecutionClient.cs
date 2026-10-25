@@ -18,6 +18,9 @@ public interface ITaskExecutionClient
     Task<TaskRun> RefreshAsync(TaskPlan plan, TaskRun run, CancellationToken ct);
     Task<TaskRun> AdvanceAsync(TaskPlan plan, TaskRun run, CancellationToken ct);
     Task<TaskRun> CancelAsync(TaskPlan plan, TaskRun run, CancellationToken ct);
+    Task<TaskRun> RecheckRecoveryAsync(TaskPlan plan, TaskRun run, CancellationToken ct);
+    Task<TaskRecoveryView> ReadRecoveryAsync(TaskPlan plan, TaskRun run, CancellationToken ct);
+    Task<TaskRecoveryResponse> RecoverAsync(TaskPlan plan, TaskRun run, TaskRecoveryRequest request, string key, CancellationToken ct);
 }
 
 /// <summary>One login and server only. Credentials are never logged or retained by this client.</summary>
@@ -67,6 +70,54 @@ public sealed class TaskExecutionClient(HttpClient http, IAuthSession session) :
     }
     public Task<TaskRun> AdvanceAsync(TaskPlan plan, TaskRun run, CancellationToken ct) => ChangeRunAsync(plan, run, false, ct);
     public Task<TaskRun> CancelAsync(TaskPlan plan, TaskRun run, CancellationToken ct) => ChangeRunAsync(plan, run, true, ct);
+    public async Task<TaskRun> RecheckRecoveryAsync(TaskPlan plan, TaskRun previous, CancellationToken ct)
+    {
+        ValidatePlan(plan); ValidateResponse(() => ValidateRun(plan, previous));
+        if (previous.State != TaskRunState.NeedsRecovery) throw new InvalidOperationException("task.recovery_not_required");
+        var run = await SendAsync<TaskRun>(HttpMethod.Post, TaskPlanningRoutes.RecheckRecovery(previous.RunId),
+            new TaskRunRevisionRequest(previous.Revision), null, 65536, ct);
+        ValidateResponse(() => ValidateRun(plan, run)); ValidateContinuity(previous, run); return run;
+    }
+    public async Task<TaskRecoveryView> ReadRecoveryAsync(TaskPlan plan, TaskRun previous, CancellationToken ct)
+    {
+        ValidatePlan(plan); ValidateResponse(() => ValidateRun(plan, previous));
+        var view = await SendAsync<TaskRecoveryView>(HttpMethod.Get, TaskPlanningRoutes.Recovery(previous.RunId), null, null, 65536, ct);
+        ValidateResponse(() =>
+        {
+            ValidateRun(plan, view.Run); ValidateContinuity(previous, view.Run);
+            if (view.Attempts.IsDefault || view.Attempts.Length > 32 || view.Attempts.Select(item => item.AttemptId).Distinct().Count() != view.Attempts.Length) Invalid();
+            foreach (var item in view.Attempts) ValidateRecoveryAttempt(view.Run, item);
+            var recovery = view.Recovery;
+            if (recovery is null || recovery.Required && (recovery.OperationId is not { } id || id == Guid.Empty || !Enum.IsDefined(recovery.Change ?? (RelaxKonOS.Protocol.ManagedRuntimes.RuntimeChange)(-1))
+                || !view.Run.Steps.Any(step => step.State == TaskStepRunState.NeedsRecovery && step.DomainOperationId == id))
+                || !recovery.Required && recovery.OperationId is not null) Invalid();
+        });
+        return view;
+    }
+    public async Task<TaskRecoveryResponse> RecoverAsync(TaskPlan plan, TaskRun previous, TaskRecoveryRequest command, string key, CancellationToken ct)
+    {
+        ValidatePlan(plan); ValidateResponse(() => ValidateRun(plan, previous)); ValidateKey(key);
+        if (!command.Confirmed) throw new InvalidOperationException("task.confirmation_required");
+        if (command.ExpectedRevision != previous.Revision || !Enum.IsDefined(command.Action) || previous.State != TaskRunState.NeedsRecovery
+            || !previous.Steps.Any(step => step.State == TaskStepRunState.NeedsRecovery && step.DomainOperationId == command.OperationId))
+            throw new InvalidOperationException("task.recovery_request_invalid");
+        var result = await SendAsync<TaskRecoveryResponse>(HttpMethod.Post, TaskPlanningRoutes.Recovery(previous.RunId), command, key, 65536, ct);
+        ValidateResponse(() =>
+        {
+            ValidateRun(plan, result.Run); ValidateContinuity(previous, result.Run); ValidateRecoveryAttempt(result.Run, result.Attempt);
+            if (result.Attempt.OperationId != command.OperationId || result.Attempt.Action != command.Action || result.Attempt.ExpectedRevision != command.ExpectedRevision) Invalid();
+        });
+        return result;
+    }
+    private static void ValidateRecoveryAttempt(TaskRun run, TaskRecoveryAttempt item)
+    {
+        if (item is null || item.AttemptId == Guid.Empty || item.RunId != run.RunId || item.CanonicalSubject != run.CanonicalSubject || item.HostId != run.HostId
+            || !run.Steps.Any(step => step.StepId == item.StepId && step.DomainOperationId == item.OperationId) || item.OperationId == Guid.Empty
+            || item.ExpectedRevision < 1 || item.ExpectedRevision > run.Revision || !Enum.IsDefined(item.Action)
+            || !Text(item.SessionIdentity) || !Text(item.PolicyRevision) || !Text(item.ApproverIdentity) || !Text(item.AuthenticationMethod)
+            || item.CreatedAt < run.CreatedAt || item.ValidUntil <= item.CreatedAt || item.ValidUntil > item.CreatedAt.AddMinutes(2)
+            || !item.ResponseRecorded && item.ProblemCode is not null) Invalid();
+    }
     public async Task<TaskRun> RefreshAsync(TaskPlan plan, TaskRun previous, CancellationToken ct)
     {
         ValidatePlan(plan); ValidateResponse(() => ValidateRun(plan, previous));
@@ -86,13 +137,16 @@ public sealed class TaskExecutionClient(HttpClient http, IAuthSession session) :
         if (run.RunId != previous.RunId || run.ApprovalId != previous.ApprovalId || run.SessionIdentity != previous.SessionIdentity
             || run.PolicyRevision != previous.PolicyRevision || run.CreatedAt != previous.CreatedAt || run.Revision < previous.Revision
             || previous.CancellationRequested && !run.CancellationRequested
-            || Terminal(previous.State) && run.State != previous.State
+            || Terminal(previous.State) && run.State != previous.State && !(previous.State == TaskRunState.NeedsRecovery
+                && run.State is TaskRunState.Succeeded or TaskRunState.Failed or TaskRunState.Cancelled)
             || run.Revision == previous.Revision && !TaskPlanCanonicalizer.Canonicalize(TaskPlanJson.FreezeInputs(run))
                 .SequenceEqual(TaskPlanCanonicalizer.Canonicalize(TaskPlanJson.FreezeInputs(previous)))
             || run.Steps.Where((step, index) => step.IdempotencyKey != previous.Steps[index].IdempotencyKey
                 || previous.Steps[index].RequestDigest is { } digest && digest != step.RequestDigest
                 || previous.Steps[index].DomainOperationId is { } operation && operation != step.DomainOperationId
-                || TerminalStep(previous.Steps[index].State) && (previous.Steps[index].State != step.State || previous.Steps[index].ProblemCode != step.ProblemCode)).Any()) Invalid();
+                || TerminalStep(previous.Steps[index].State) && (previous.Steps[index].State != step.State || previous.Steps[index].ProblemCode != step.ProblemCode)
+                    && !(previous.State == TaskRunState.NeedsRecovery && previous.Steps[index].State == TaskStepRunState.NeedsRecovery
+                        && step.State is TaskStepRunState.Succeeded or TaskStepRunState.Failed or TaskStepRunState.Cancelled)).Any()) Invalid();
     }
     private async Task<T> SendAsync<T>(HttpMethod method, string route, object? body, string? key, int maximum, CancellationToken ct)
     {
@@ -171,7 +225,7 @@ public sealed class TaskExecutionClient(HttpClient http, IAuthSession session) :
     {
         if (run is null || run.RunId == Guid.Empty || run.ApprovalId == Guid.Empty || run.PlanId != plan.PlanId || run.PlanDigest != plan.PlanDigest
             || run.CanonicalSubject != plan.Semantics.CanonicalSubject || run.HostId != plan.Semantics.HostId || !Text(run.SessionIdentity) || !Text(run.PolicyRevision)
-            || !Enum.IsDefined(run.State) || run.Revision is < 1 or > 194 || run.CreatedAt < plan.CreatedAt || run.Steps.IsDefault
+            || !Enum.IsDefined(run.State) || run.Revision is < 1 or > 226 || run.CreatedAt < plan.CreatedAt || run.Steps.IsDefault
             || run.Steps.Length != plan.Semantics.Steps.Length || !run.Steps.Select(step => step?.StepId).SequenceEqual(plan.Semantics.Steps.Select(step => step.StepId))) Invalid();
         for (var index = 0; index < run.Steps.Length; index++)
         {
@@ -210,5 +264,6 @@ public sealed class TaskExecutionClient(HttpClient http, IAuthSession session) :
         or "task.administrator_authentication_failed" or "task.confirmation_required" or "task.run_revision_conflict" or "task.run_not_found"
         or "task.domain_unavailable" or "task.observation_unavailable" or "task.plan_store_unavailable" or "task.idempotency_conflict"
         or "task.plan_already_started" or "task.execution_authority_invalid" or "task.execution_authority_expired" or "task.step_not_ready"
-        or "task.result_conflict" or "task.domain_operation_conflict";
+        or "task.result_conflict" or "task.domain_operation_conflict" or "task.recovery_not_required"
+        or "task.domain_operation_active" or "task.recovery_check_capacity_exceeded";
 }

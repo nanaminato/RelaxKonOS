@@ -148,6 +148,21 @@
     "component_center.task_host": "宿主：{0}",
     "component_center.task_release": "来源：{0}\r\n目标版本：{1}\r\n制品摘要：{2}",
     "component_center.task_capability": "权限与目标：{0}",
-    "component_center.task_digest": "计划摘要：{0}"
+    "component_center.task_digest": "计划摘要：{0}",
+    "component_center.task_recheck_recovery": "重新核对恢复结果",
+    "component_center.task_recovery_unresolved": "原操作的回执与实际状态仍不足以确认结果。请处理宿主恢复后再次核对；未重新执行任何步骤。",
+    "component_center.task_recovery_checked": "已依据原操作回执和当前宿主状态确认结果。未重新执行任何步骤。",
+    "component_center.task_recovery_read": "读取恢复详情",
+    "component_center.task_recovery_read_hint": "先读取原操作的宿主恢复状态，再选择处理方式。",
+    "component_center.task_recovery_summary": "待恢复操作：{0}；已记录恢复请求：{1}。操作响应不代表任务已恢复，请重新核对结果。",
+    "component_center.task_recovery_action.RetryCompensation": "重试原事务补偿",
+    "component_center.task_recovery_action.EmergencyStop": "紧急停止服务",
+    "component_center.task_recovery_action.Close": "确认关账",
+    "component_center.task_recovery_effect.RetryCompensation": "仅重试原事务的补偿，尝试恢复旧程序、配置和服务；不会重新安装或继续剩余步骤。",
+    "component_center.task_recovery_effect.EmergencyStop": "停止该待恢复事务所关联的服务，业务连接会中断；不会解决原事务的不确定结果。",
+    "component_center.task_recovery_effect.Close": "确认服务已停止且补偿失败后，关闭原事务。可能保留需要人工处理的资源；不表示恢复成功。",
+    "component_center.task_recovery_confirm": "宿主：{0}\r\n原操作：{1}\r\n\r\n{2}",
+    "component_center.task_recovery_response": "已记录恢复操作响应。请依据宿主回执重新核对任务结果。",
+    "component_center.task_recovery_response_unknown": "原恢复请求已记录，但响应未知。未再次调用宿主；请读取详情并重新核对结果。"
   }
 }

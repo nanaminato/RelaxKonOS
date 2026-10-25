@@ -35,18 +35,21 @@ public partial class ComponentCenterViewModel
     public bool CanSelectTask => !IsTaskBusy;
     public bool ShowTasks => _execution is not null;
     public bool CanApproveTask => !_taskDisposed && _execution is not null && _references is not null && _referenceReady && !IsTaskBusy && !IsInspecting
-        && Runtime.CanManage && !Runtime.IsBusy && !Runtime.IsInvalidated && FrozenChangePlan is { } plan
+        && Runtime.CanRead && Runtime.CanManage && !Runtime.IsBusy && !Runtime.IsInvalidated && FrozenChangePlan is { } plan
         && plan.Semantics.Steps.All(step => step.Disposition is TaskStepDisposition.Ready or TaskStepDisposition.NoOp);
-    public bool CanRefreshTask => _execution is not null && SelectedTask is not null && !IsTaskBusy && !_taskDisposed && !Runtime.IsInvalidated;
-    public bool CanResumeTask => CanRefreshTask && Runtime.CanManage && (CurrentTaskRun?.State is TaskRunState.Queued or TaskRunState.Running
+    public bool CanRefreshTask => _execution is not null && SelectedTask is not null && Runtime.CanRead && !IsTaskBusy && !_taskDisposed && !Runtime.IsInvalidated;
+    public bool CanResumeTask => CanRefreshTask && Runtime.CanManage && (CurrentTaskRun?.State is TaskRunState.Queued or TaskRunState.Running or TaskRunState.Cancelling
         || CurrentTaskRun is null && _taskApproval?.State == TaskApprovalState.Granted);
     public bool CanCancelTask => CanRefreshTask && Runtime.CanManage && CurrentTaskRun?.State is TaskRunState.Queued or TaskRunState.Running or TaskRunState.Cancelling;
+    public bool CanRecheckTaskRecovery => CanRefreshTask && CurrentTaskRun?.State == TaskRunState.NeedsRecovery;
     public LocalizedStatus TaskState => LocalizedStatus.Key(CurrentTaskRun is { } run ? "component_center.task_state." + run.State : "component_center.task_unchecked");
-    public bool ShowTaskDomainProgress => CurrentTaskRun?.Steps.Any(step => step.DomainOperationId is { } id && id == Runtime.Installation?.PendingOperationId) == true;
+    public bool ShowTaskDomainProgress => CurrentTaskRun is { State: TaskRunState.Running or TaskRunState.Cancelling } run
+        && run.Steps.Any(step => step.State == TaskStepRunState.Running && step.DomainOperationId is { } id && id == Runtime.Installation?.PendingOperationId);
     partial void OnIsTaskBusyChanged(bool value) { TaskProperties(); OnPropertyChanged(nameof(CanPreview)); OnPropertyChanged(nameof(CanPlanDraft)); OnPropertyChanged(nameof(CanInspect)); RefreshTree(); }
     partial void OnFrozenChangePlanChanged(TaskPlan? value) { _approvalKey = Guid.NewGuid().ToString("N"); TaskProperties(); }
     partial void OnCurrentTaskRunChanged(TaskRun? value)
     {
+        if (TaskRecovery?.Run.RunId != value?.RunId || TaskRecovery?.Run.Revision != value?.Revision) TaskRecovery = null;
         TaskSteps.Clear();
         if (value is not null && SelectedTask is { } selected)
             foreach (var step in value.Steps) TaskSteps.Add(new(selected.Reference.Plan.Semantics.Steps.Single(item => item.StepId == step.StepId), step));
@@ -56,7 +59,8 @@ public partial class ComponentCenterViewModel
     { _driveTask = false; _taskApproval = null; CurrentTaskRun = null; TaskProperties(); }
     private void TaskProperties()
     {
-        foreach (var property in new[] { nameof(CanApproveTask), nameof(CanRefreshTask), nameof(CanResumeTask), nameof(CanCancelTask), nameof(CanSelectTask), nameof(TaskState), nameof(ShowTaskDomainProgress) }) OnPropertyChanged(property);
+        RecoveryProperties();
+        foreach (var property in new[] { nameof(CanApproveTask), nameof(CanRefreshTask), nameof(CanResumeTask), nameof(CanCancelTask), nameof(CanRecheckTaskRecovery), nameof(CanSelectTask), nameof(TaskState), nameof(ShowTaskDomainProgress) }) OnPropertyChanged(property);
     }
     [RelayCommand] private void ReloadTaskHistory()
     {
@@ -86,23 +90,23 @@ public partial class ComponentCenterViewModel
         IsTaskBusy = true;
         try
         {
-            if (!await ConfirmTaskAsync(plan) || _taskDisposed || revision != _draftRevision || generation != _inspectionGeneration || Runtime.IsInvalidated) return;
+            if (!await ConfirmTaskAsync(plan) || _taskDisposed || revision != _draftRevision || generation != _inspectionGeneration || Runtime.IsInvalidated || !Runtime.CanRead || !Runtime.CanManage) return;
             TaskPlanApproval approval;
             try { approval = await _execution!.ApproveAsync(plan, new() { PlanDigest = plan.PlanDigest, Confirmed = true }, approvalKey, _inspectionLifetime.Token); }
             catch (HttpRequestException ex) when (ex.Message == "task.administrator_authentication_failed")
             {
                 var credentials = TaskCredentialsAsync is { } prompt ? await prompt() : null;
-                if (credentials is null || _taskDisposed || revision != _draftRevision || generation != _inspectionGeneration || Runtime.IsInvalidated) return;
+                if (credentials is null || _taskDisposed || revision != _draftRevision || generation != _inspectionGeneration || Runtime.IsInvalidated || !Runtime.CanRead || !Runtime.CanManage) return;
                 approval = await _execution!.ApproveAsync(plan, new() { PlanDigest = plan.PlanDigest, Confirmed = true,
                     AdministratorUsername = credentials.Username, Password = credentials.Password }, approvalKey, _inspectionLifetime.Token);
             }
-            if (_taskDisposed || revision != _draftRevision || generation != _inspectionGeneration || Runtime.IsInvalidated) return;
+            if (_taskDisposed || revision != _draftRevision || generation != _inspectionGeneration || Runtime.IsInvalidated || !Runtime.CanRead || !Runtime.CanManage) return;
             var reference = new ComponentTaskReference(plan, approval.ApprovalId, Guid.NewGuid().ToString("N"), null);
             Track(reference); // Must be durable before starting, including when the start response is lost.
             _taskApproval = approval;
             var run = await _execution!.StartAsync(plan, approval, reference.StartKey, _inspectionLifetime.Token);
             Track(reference with { RunId = run.RunId }); CurrentTaskRun = run;
-            _driveTask = !_taskDisposed && revision == _draftRevision && generation == _inspectionGeneration && !Runtime.IsInvalidated;
+            _driveTask = !_taskDisposed && revision == _draftRevision && generation == _inspectionGeneration && !Runtime.IsInvalidated && Runtime.CanRead && Runtime.CanManage;
             if (_driveTask) { Drafts.Clear(); Persist(); }
             TaskNotice = LocalizedStatus.Key("component_center.task_accepted");
         }
@@ -137,13 +141,14 @@ public partial class ComponentCenterViewModel
         IsTaskBusy = true;
         try
         {
-            if (!await ConfirmTaskAsync(selected.Reference.Plan) || _taskDisposed || Runtime.IsInvalidated) return;
+            if (!await ConfirmTaskAsync(selected.Reference.Plan) || _taskDisposed || Runtime.IsInvalidated || !Runtime.CanRead || !Runtime.CanManage) return;
             if (CurrentTaskRun is null && _taskApproval is { } approval)
             {
                 var run = await _execution!.StartAsync(selected.Reference.Plan, approval, selected.Reference.StartKey, _inspectionLifetime.Token);
                 Track(selected.Reference with { RunId = run.RunId }); CurrentTaskRun = run;
             }
-            _driveTask = true; TaskNotice = LocalizedStatus.Key("component_center.task_accepted");
+            _driveTask = !_taskDisposed && !Runtime.IsInvalidated && Runtime.CanRead && Runtime.CanManage;
+            TaskNotice = LocalizedStatus.Key("component_center.task_accepted");
         }
         catch (Exception ex) when (TaskFailure(ex)) { TaskError(ex); }
         finally { IsTaskBusy = false; }
@@ -152,7 +157,12 @@ public partial class ComponentCenterViewModel
     {
         if (!CanCancelTask || CurrentTaskRun is not { } run || SelectedTask is not { } selected) return;
         IsTaskBusy = true;
-        try { CurrentTaskRun = await _execution!.CancelAsync(selected.Reference.Plan, run, _inspectionLifetime.Token); }
+        try
+        {
+            CurrentTaskRun = await _execution!.CancelAsync(selected.Reference.Plan, run, _inspectionLifetime.Token);
+            // This window explicitly requested cancellation; continue delivering it until a receipt arrives.
+            _driveTask = !_taskDisposed && !Runtime.IsInvalidated && Runtime.CanRead && Runtime.CanManage;
+        }
         catch (Exception ex) when (TaskFailure(ex)) { TaskError(ex); }
         finally { IsTaskBusy = false; }
     }
@@ -161,9 +171,25 @@ public partial class ComponentCenterViewModel
         if (!CanRefreshTask || SelectedTask is not { } selected) return;
         if (CurrentTaskRun is not { } run) { await RefreshTaskAsync(); return; }
         if (run.State is not (TaskRunState.Queued or TaskRunState.Running or TaskRunState.Cancelling)) return;
-        if (!_driveTask && !run.CancellationRequested) { await RefreshTaskAsync(); return; }
+        // Reopening (including a Cancelling run) observes only. Writes require current management
+        // permission and an explicit continue/cancel action in this window.
+        if (!Runtime.CanManage) _driveTask = false;
+        if (!_driveTask) { await RefreshTaskAsync(); return; }
         IsTaskBusy = true;
         try { CurrentTaskRun = await _execution!.AdvanceAsync(selected.Reference.Plan, run, _inspectionLifetime.Token); }
+        catch (Exception ex) when (TaskFailure(ex)) { TaskError(ex); }
+        finally { IsTaskBusy = false; }
+    }
+    [RelayCommand] private async Task RecheckTaskRecoveryAsync()
+    {
+        if (!CanRecheckTaskRecovery || CurrentTaskRun is not { } run || SelectedTask is not { } selected) return;
+        IsTaskBusy = true; _driveTask = false;
+        try
+        {
+            CurrentTaskRun = await _execution!.RecheckRecoveryAsync(selected.Reference.Plan, run, _inspectionLifetime.Token);
+            TaskNotice = LocalizedStatus.Key(CurrentTaskRun.State == TaskRunState.NeedsRecovery
+                ? "component_center.task_recovery_unresolved" : "component_center.task_recovery_checked");
+        }
         catch (Exception ex) when (TaskFailure(ex)) { TaskError(ex); }
         finally { IsTaskBusy = false; }
     }

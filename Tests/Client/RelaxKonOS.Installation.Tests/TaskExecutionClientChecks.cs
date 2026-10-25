@@ -47,7 +47,7 @@ internal static class TaskExecutionClientChecks
                     Check(request.Method == HttpMethod.Get && request.Content is null, "read is a bodyless GET and cannot submit a command");
                 else
                     Check(request.Method == HttpMethod.Post && TaskPlanJson.ReadRunRevision(request.Content!.ReadAsByteArrayAsync().GetAwaiter().GetResult()).ExpectedRevision
-                        == (path.EndsWith("/cancel", StringComparison.Ordinal) ? 3 : 1), "advance/cancel sends the caller's exact observed revision");
+                        == (path.EndsWith("/recheck-recovery", StringComparison.Ordinal) ? 4 : path.EndsWith("/cancel", StringComparison.Ordinal) ? 3 : 1), "advance/cancel/recovery check sends the caller's exact observed revision");
             }
             return new(HttpStatusCode.OK) { Content = JsonContent.Create(returned, returned.GetType(), options: RelaxKonOSJsonOptions.Default) };
         }));
@@ -83,6 +83,27 @@ internal static class TaskExecutionClientChecks
         catch (InvalidDataException) { Check(true, "refresh preserves the tracked run's original session binding"); }
         path = TaskPlanningRoutes.Advance(queued.RunId); returned = active;
         Check((await client.AdvanceAsync(plan, queued, default)).Revision == 3, "accepts forward run revision and bound operation");
+        var uncertain = active with { State = TaskRunState.NeedsRecovery, Revision = 4, ProblemCode = "task.domain_recovery_required",
+            Steps = [active.Steps[0] with { State = TaskStepRunState.NeedsRecovery, ProblemCode = "task.domain_recovery_required" }] };
+        var resolved = uncertain with { State = TaskRunState.Succeeded, Revision = 5, ProblemCode = null,
+            Steps = [uncertain.Steps[0] with { State = TaskStepRunState.Succeeded, ProblemCode = null }] };
+        path = TaskPlanningRoutes.RecheckRecovery(queued.RunId); returned = resolved;
+        Check((await client.RecheckRecoveryAsync(plan, uncertain, default)).State == TaskRunState.Succeeded,
+            "explicit recovery accepts a newer conclusive result for the original operation");
+        foreach (var invalid in new[] { resolved with { Revision = 4 }, resolved with { Steps = [resolved.Steps[0] with { DomainOperationId = Guid.NewGuid() }] },
+            active with { Revision = 5 }, queued with { Revision = 5 } })
+        {
+            returned = invalid;
+            try { await client.RecheckRecoveryAsync(plan, uncertain, default); throw new Exception("Accepted forged recovery transition"); }
+            catch (InvalidDataException) { Check(true, "recovery rejects same-revision result, operation replacement or renewed execution"); }
+        }
+        returned = resolved; path = TaskPlanningRoutes.Run(queued.RunId);
+        Check((await client.RefreshAsync(plan, uncertain, default)).State == TaskRunState.Succeeded,
+            "read-only refresh observes recovery resolved by another window");
+        returned = uncertain with { Revision = 6 };
+        try { await client.RefreshAsync(plan, resolved, default); throw new Exception("Reopened a resolved result"); }
+        catch (InvalidDataException) { Check(true, "resolved success cannot return to recovery"); }
+        path = TaskPlanningRoutes.Advance(queued.RunId);
         foreach (var invalid in new[] { active with { Revision = 1 }, active with { Steps = [active.Steps[0] with { IdempotencyKey = new string('c', 64) }] },
             active with { State = TaskRunState.Succeeded, Steps = [queued.Steps[0] with { State = TaskStepRunState.NoOp }] } })
         {

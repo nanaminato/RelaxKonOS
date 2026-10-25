@@ -33,6 +33,14 @@ public static class TaskPlanJson
         if (request.ExpectedRevision < 1) throw new TaskPlanningException("task.intent_invalid");
         return request;
     }
+    public static TaskRecoveryRequest ReadRecovery(ReadOnlyMemory<byte> utf8)
+    {
+        var request = ReadCommand<TaskRecoveryRequest>(utf8, 16384);
+        if (request.ExpectedRevision < 1 || request.OperationId == Guid.Empty || !Enum.IsDefined(request.Action)
+            || request.AdministratorUsername?.Length > 256 || request.Password?.Length > 4096)
+            throw new TaskPlanningException("task.intent_invalid");
+        return request;
+    }
     private static bool Digest(string? value) => value is { Length: 64 } && value.All(char.IsAsciiHexDigitLower);
     private static T ReadCommand<T>(ReadOnlyMemory<byte> utf8, int maximum)
     {

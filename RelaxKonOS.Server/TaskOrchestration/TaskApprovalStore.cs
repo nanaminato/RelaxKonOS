@@ -101,7 +101,7 @@ public sealed partial class TaskPlanStore
             Audit = [.. approval.Audit, new("consumed", null, now)] };
         WriteApproval(connection, transaction, consumed, insert: false);
         _beforeCommit?.Invoke(TaskPlanCommitPoint.ApprovalConsumed);
-        InsertRun(connection, transaction, new(record, keyReference, requestReference, [new("queued", null, now)], [], [], []));
+        InsertRun(connection, transaction, new(record, keyReference, requestReference, [new("queued", null, now)], [], [], [], []));
         AddRunRequest(connection, transaction, new(keyReference, requestReference, Reference(identity.CanonicalSubject), runId));
         _beforeCommit?.Invoke(TaskPlanCommitPoint.RunWritten);
         transaction.Commit();
@@ -226,6 +226,7 @@ public sealed partial class TaskPlanStore
     private sealed record StoredApproval(TaskPlanApproval Record, string IdempotencyReference, string RequestReference, ImmutableArray<ExecutionAudit> Audit);
     private sealed record StoredRun(TaskRun Record, string IdempotencyReference, string RequestReference,
         ImmutableArray<ExecutionAudit> Audit, ImmutableArray<TaskDispatchIntent> Dispatches,
-        ImmutableArray<TaskReconciliationEvidence> Results, ImmutableArray<TaskReadStepEvidence> ReadResults);
+        ImmutableArray<TaskReconciliationEvidence> Results, ImmutableArray<TaskReadStepEvidence> ReadResults,
+        ImmutableArray<TaskReconciliationEvidence> RecoveryResults);
     private sealed record RunRequest(string IdempotencyReference, string RequestReference, string SubjectReference, Guid RunId);
 }

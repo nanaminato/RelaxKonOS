@@ -146,6 +146,7 @@ Console.WriteLine($"Task advancement: {await TaskRunAdvancementChecks.RunAsync()
 Console.WriteLine($"Task cancellation: {await TaskRunCancellationChecks.RunAsync()} checks passed.");
 Console.WriteLine($"Unaccepted cancellation: {await TaskUnacceptedCancellationChecks.RunAsync()} checks passed.");
 Console.WriteLine($"Task execution HTTP: {await TaskExecutionHttpChecks.RunAsync()} checks passed.");
+Console.WriteLine($"Task recovery: {await TaskRecoveryChecks.RunAsync()} checks passed.");
 
 sealed class Observations : IRuntimeTaskObservations
 {

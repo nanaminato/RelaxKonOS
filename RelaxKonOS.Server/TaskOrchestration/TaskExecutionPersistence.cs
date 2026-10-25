@@ -84,7 +84,7 @@ public sealed partial class TaskPlanStore
                 || !ValidSubject(run.CanonicalSubject) || Reference(run.CanonicalSubject) != reader.GetString(3)
                 || stored.IdempotencyReference != reader.GetString(4) || stored.RequestReference != reader.GetString(5)
                 || !Hash(stored.IdempotencyReference) || !Hash(stored.RequestReference) || !Hash(run.PlanDigest)
-                || run.Revision != reader.GetInt64(6) || run.Revision is < 1 or > 194
+                || run.Revision != reader.GetInt64(6) || run.Revision is < 1 or > 226
                 || run.State is not (TaskRunState.Queued or TaskRunState.Running or TaskRunState.Cancelling or TaskRunState.Succeeded or TaskRunState.Failed or TaskRunState.Cancelled or TaskRunState.NeedsRecovery)
                 || run.Steps.IsDefaultOrEmpty
                 || run.Steps.Any(step => step is null || step.State is not (TaskStepRunState.Pending or TaskStepRunState.Dispatching or TaskStepRunState.Running
@@ -177,7 +177,10 @@ public sealed partial class TaskPlanStore
                 runs.Add((stored.Record.RunId, stored.Record.CanonicalSubject));
             }
         foreach (var (id, subject) in runs)
-            if (ReadRun(connection, transaction, id, subject) is null) throw new InvalidDataException();
+        {
+            var run = ReadRun(connection, transaction, id, subject) ?? throw new InvalidDataException();
+            ReadRecoveryAttempts(connection, transaction, run.Record);
+        }
         var requests = new List<string>();
         using (var command = Command(connection, transaction, "SELECT idempotency_reference FROM task_run_requests;"))
         using (var reader = command.ExecuteReader())

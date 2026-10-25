@@ -19,8 +19,13 @@ public static class TaskExecutionEndpoints
         writes.MapPost(TaskPlanningRoutes.StartRunPattern, StartAsync);
         writes.MapPost(TaskPlanningRoutes.AdvancePattern, AdvanceAsync);
         writes.MapPost(TaskPlanningRoutes.CancelRunPattern, CancelAsync);
+        writes.MapPost(TaskPlanningRoutes.RecoveryPattern, RecoverAsync).RequireRateLimiting("login");
         app.MapGet(TaskPlanningRoutes.RunPattern, GetRun).RequireAuthorization(RuntimeCatalogEndpoints.ReadPolicy).WithTags("Task execution");
         app.MapGet(TaskPlanningRoutes.ApprovalPattern, GetApproval).RequireAuthorization(RuntimeCatalogEndpoints.ReadPolicy).WithTags("Task execution");
+        app.MapPost(TaskPlanningRoutes.RecheckRecoveryPattern, RecheckRecoveryAsync)
+            .RequireAuthorization(RuntimeCatalogEndpoints.ReadPolicy).WithTags("Task execution");
+        app.MapGet(TaskPlanningRoutes.RecoveryPattern, ReadRecoveryAsync)
+            .RequireAuthorization(RuntimeCatalogEndpoints.ReadPolicy).WithTags("Task execution");
         return app;
     }
     private static string Actor(HttpContext http)
@@ -80,6 +85,18 @@ public static class TaskExecutionEndpoints
         () => Task.FromResult(store.GetRun(runId, Actor(http)) is { } run ? Results.Ok(run) : Problem("task.run_not_found", 404)), default);
     private static Task<IResult> GetApproval(Guid approvalId, HttpContext http, TaskPlanStore store) => Guard(http,
         () => Task.FromResult(store.GetApproval(approvalId, Actor(http)) is { } approval ? Results.Ok(approval) : Problem("task.approval_not_found", 404)), default);
+    private static Task<IResult> RecheckRecoveryAsync(Guid runId, HttpContext http, TaskRecoveryReconciliationService service, CancellationToken ct) => Guard(http, async () =>
+    {
+        var subject = Actor(http); var request = TaskPlanJson.ReadRunRevision(await Body(http, 4096, ct));
+        return Results.Ok(await service.RecheckAsync(runId, subject, request.ExpectedRevision, ct));
+    }, ct);
+    private static Task<IResult> ReadRecoveryAsync(Guid runId, HttpContext http, TaskRecoveryService service, CancellationToken ct) => Guard(http,
+        async () => Results.Ok(await service.ReadAsync(runId, Actor(http), ct)), ct);
+    private static Task<IResult> RecoverAsync(Guid runId, HttpContext http, TaskRecoveryService service, CancellationToken ct) => Guard(http, async () =>
+    {
+        Management(http); var key = Key(http); var request = TaskPlanJson.ReadRecovery(await Body(http, 16384, ct));
+        return Results.Ok(await service.ExecuteAsync(http.User, runId, request, key, ct));
+    }, ct);
     private static async Task<IResult> Guard(HttpContext http, Func<Task<IResult>> action, CancellationToken ct)
     {
         http.Response.Headers.CacheControl = "no-store";
