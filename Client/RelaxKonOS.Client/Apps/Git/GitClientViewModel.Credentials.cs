@@ -35,7 +35,7 @@ public sealed partial class GitClientViewModel
             credentials.Username,
             credentials.Password,
             IsDefault: true,
-            Provider: GitHostingLinks.Resolve(url)?.Provider));
+            Provider: GitHostingLinks.DetectProvider(host)));
     }
 
     private GitRemoteDto? FindRemote(string? remoteName)
