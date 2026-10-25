@@ -276,7 +276,7 @@ internal static void VerifyUserExecutionContextContract()
         "Helper Git policy rejected a command used by the Server Git domain.");
     string[] gitDomainCommands = ["add", "branch", "cat-file", "checkout", "cherry-pick", "commit", "diff",
         "diff-tree", "fetch", "for-each-ref", "init", "log", "ls-files", "merge", "merge-base", "pull", "push", "rebase",
-        "remote", "reset", "restore", "revert", "rev-parse", "rm", "show", "show-ref", "status", "symbolic-ref", "update-ref"];
+        "remote", "reset", "restore", "revert", "rev-list", "rev-parse", "rm", "show", "show-ref", "status", "symbolic-ref", "update-ref"];
     TestAssert.Assert(gitDomainCommands.All(command => UserExecutionGitPolicy.IsAllowed([command])),
         "Helper Git policy is missing a Server Git domain subcommand.");
     TestAssert.Assert(!UserExecutionGitPolicy.IsAllowed(["-c", "alias.run=!sh", "run"])
@@ -503,6 +503,13 @@ internal static async Task VerifyInstalledWindowsUserExecutionAsync(string helpe
     var listing = await transport.ExecuteAsync(new UserExecutionRequest(identity,
         UserExecutionOperationKind.FileListDirectory, Path: identity.HomeDirectory, OperationId: Guid.NewGuid()));
     TestAssert.Assert(listing.Success, $"Installed user-execution Helper rejected home-directory enumeration: {listing.ProblemCode}.");
+    var git = await transport.ExecuteAsync(new UserExecutionRequest(identity,
+        UserExecutionOperationKind.GitExecute, Path: identity.HomeDirectory, GitArguments: ["--version"], OperationId: Guid.NewGuid()));
+    TestAssert.Assert(git.Success, $"Installed user-execution Helper rejected Git: {git.ProblemCode}.");
+    using var gitResult = JsonDocument.Parse(Convert.FromBase64String(git.OutputBase64!));
+    TestAssert.Assert(gitResult.RootElement.GetProperty("success").GetBoolean()
+        && gitResult.RootElement.GetProperty("output").GetString()!.StartsWith("git version", StringComparison.Ordinal),
+        "Installed Helper did not run Git under the supplied account.");
 }
 
 internal static async Task VerifyUserExecutionTransportLifecycleAsync(string root)

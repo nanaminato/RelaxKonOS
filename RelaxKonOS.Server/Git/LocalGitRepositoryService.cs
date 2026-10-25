@@ -6,6 +6,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using RelaxKonOS.Protocol.AppSettings;
+using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.UserExecution;
@@ -41,16 +42,24 @@ public sealed partial class LocalGitRepositoryService(
 
     public async Task<GitEngineStatusDto> GetEngineStatusAsync(CancellationToken cancellationToken = default)
     {
-        var path = gitCli.ResolveGitPath();
+        var path = ResolveGitPath();
         if (string.IsNullOrEmpty(path))
             return new GitEngineStatusDto(false, ProblemCode: "not_installed", CanAutoInstall: CanAutoInstallGit());
         var version = await GetGitVersionAsync(path, cancellationToken);
-        return new GitEngineStatusDto(version is not null, ProblemCode: version is null ? "git.probe_failed" : "", Version: version, ExecutablePath: path);
+        return new GitEngineStatusDto(version is not null, ProblemCode: version is null ? "git.probe_failed" : "", Version: version,
+            ExecutablePath: UsesHelper ? null : path);
     }
 
     private async Task<string?> GetGitVersionAsync(string gitPath, CancellationToken cancellationToken)
     {
-        var r = await RunGitAsync(gitPath, Environment.CurrentDirectory, ["--version"], cancellationToken);
+        var directory = Environment.CurrentDirectory;
+        if (UsesHelper)
+        {
+            using var scope = executionScopes.CreateScope();
+            directory = scope.ServiceProvider.GetRequiredService<IUserExecutionContextResolver>().Resolve(
+                http.HttpContext?.User ?? throw new InvalidOperationException("User execution context is unavailable.")).Identity.HomeDirectory;
+        }
+        var r = await RunGitAsync(gitPath, directory, ["--version"], cancellationToken);
         if (!r.Success) return null;
         var line = r.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim();
         if (string.IsNullOrWhiteSpace(line)) return null;
@@ -215,8 +224,7 @@ public sealed partial class LocalGitRepositoryService(
             throw new ArgumentException("Repository path must not be empty.", nameof(path));
         if (!Path.IsPathRooted(path))
             throw new ArgumentException("Repository path must be absolute.", nameof(path));
-        var gitPath = gitCli.ResolveGitPath()
-            ?? throw new InvalidOperationException("Git executable not found on the host.");
+        var gitPath = ResolveGitPathOrThrow();
 
         // Let the effective Git identity open the directory, as in registration.
         var revParse = await RunGitAsync(gitPath, path, ["rev-parse", "--is-inside-work-tree"], cancellationToken);
@@ -264,8 +272,7 @@ public sealed partial class LocalGitRepositoryService(
         // the effective user can open is routinely invisible to it (a 0700 home directory is the
         // normal case). Git decides existence and permission under the identity that will use the
         // repository, exactly as registration and probing do; only a missing path is reported as one.
-        var gitPath = gitCli.ResolveGitPath()
-            ?? throw new InvalidOperationException("Git executable not found on the host.");
+        var gitPath = ResolveGitPathOrThrow();
 
         var initResult = await RunGitAsync(gitPath, path, ["init"], cancellationToken);
         if (initResult.Error == PathNotFoundCode)
@@ -278,9 +285,12 @@ public sealed partial class LocalGitRepositoryService(
 
     // ── Helpers ──
 
-    private string ResolveGitPath() => gitCli.ResolveGitPath() ?? "";
-    private string ResolveGitPathOrThrow() => gitCli.ResolveGitPath()
-        ?? throw new InvalidOperationException("Git executable not found on the host.");
+    private bool UsesHelper => serverMode.Mode == ServerMode.System && userExecution.Backend == UserExecutionBackend.Helper;
+    // The label is never launched locally in Helper mode: the Helper resolves the executable
+    // under the effective user's environment. The service's PATH must not gate that execution.
+    private string ResolveGitPath() => UsesHelper ? "git" : gitCli.ResolveGitPath() ?? "";
+    private string ResolveGitPathOrThrow() => ResolveGitPath() is { Length: > 0 } path ? path
+        : throw new InvalidOperationException("Git executable not found on the host.");
 
     private static async Task<GitRepository> GetRepoOrThrowAsync(RelaxKonOSDbContext db, Guid id, Guid userId, CancellationToken cancellationToken)
     {

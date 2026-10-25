@@ -125,7 +125,7 @@ Git Diff 原有解析 70 项与渲染 40 项通过。Client 与 Server 主项目
 
 ### 仍存在的差异与验收边界
 
-这不是完整 Rider：未提供构建/调试、语义代码分析/重构、交互式 rebase todo 编辑、标签删除/注释签名、远程分支删除、应用内 PR 工作流或跨窗口项目激活列表；“新建项目”创建普通目录，不生成 `.sln` 模板。最近记录/收藏仍限当前窗口会话，托管平台集成是浏览器链接。真实网络克隆/推送凭据、Ubuntu/Helper 有效身份、复杂并发外部 Git、高 DPI 与跨重启状态尚未验收；Helper 仍不支持带显式凭据的 Git 请求，克隆保留现有 30 秒进程超时。本轮没有修改 Git 引擎安装或其他托管运行时生命周期。
+这不是完整 Rider：未提供构建/调试、语义代码分析/重构、交互式 rebase todo 编辑、标签删除/注释签名、远程分支删除、应用内 PR 工作流或跨窗口项目激活列表；“新建项目”创建普通目录，不生成 `.sln` 模板。最近记录/收藏仍限当前窗口会话，托管平台集成是浏览器链接。真实网络克隆/推送凭据、Ubuntu/Helper 有效身份、复杂并发外部 Git、高 DPI 与跨重启状态尚未验收；Linux Helper 已接受带显式凭据的 `GitExecute`（协议 `1.9`，凭据经一次性 askpass 脚本下发），Windows Helper 也已接入受限 primary token + `CreateProcessAsUserW` 的 `GitExecute`、私有 askpass、Job Object 进程树回收和有界输出；原生用户令牌测试及 Windows Server 2022 普通用户/Administrator 的真实 S4U Git 专项通过，详见 [Windows Helper Git 验收](RelaxKonOS.GitClient.WindowsAcceptance.md)，克隆保留现有 30 秒进程超时。本轮没有修改 Git 引擎安装或其他托管运行时生命周期。
 
 ## 底部 Git 多标签与日志布局（2026-10-24）
 
@@ -151,3 +151,7 @@ Git Diff 原有解析 70 项与渲染 40 项通过。Client 与 Server 主项目
 ### 远程部署验收（2026-10-24）
 
 实际问题为客户端已更新而远程服务端仍未包含 Git Workspace 路由；仅缩小菜单请求范围无法解决标签接口的 404。Debian 13 x64 的现有 systemd 部署已同步发布当前 Server、Guardian 和 Helper，保留配置、数据备份及旧程序目录。通过真实 nanami 身份读取原有仓库：branches/tags/graph/stashes/worktrees 全部 HTTP 200，分别返回 5/0/44/0/1 项。该结果验证服务端接口与身份执行链路，不替代客户端交互验收。
+
+### Windows 保存凭据复用（2026-10-25）
+
+fetch、pull 及非当前分支更新已接入与 push/clone 相同的应用加密凭据存储。按有效下载地址（包括 insteadOf）和用户隔离，不使用 pushurl，也不让宿主 credential helper 替换或另行保存应用下发的令牌。Windows Server 2022 的普通用户与 Administrator 均在不重新输入 Git 凭据的情况下通过真实 HTTPS fetch/pull、实际内容 fast-forward、非当前分支与 URL 重写检查，详见 [验收记录](RelaxKonOS.GitClient.WindowsAcceptance.md)。

@@ -116,7 +116,7 @@ GitHub API 配额耗尽、网络断开、清单过期、摘要变化、目标不
 | MR-05 | Web Server / Nginx | 服务与配置管理、Windows 受管运行时 | 统一安装/卸载/更新页面及明确平台安装策略，区分 Nginx 发行源与其托管的镜像站 | 计划中 |
 | MR-06 | Squid 网关 | Linux 包安装/移除及服务操作；Android 已接入服务器包管理能力门禁、安装/卸载确认与操作恢复（不构成完整受管版本生命周期） | 仓库版本发现、包所有权、更新预检和可回退能力；不承诺任意版本归档安装 | 计划中 |
 | MR-07 | Docker 管理器 | Engine 检测、Linux 受约束包安装；Android 安装取消确认、按 ID 恢复归属及显式恢复动作范围见 [引擎管理](../../Client/RelaxKonOS.Client.Android/docs/features/DockerEngine.md) | Engine/Compose 等组件版本与依赖、更新/卸载能力及数据保留；外部 Desktop/Engine 明确边界 | 计划中 |
-| MR-08 | 文件服务及其他宿主依赖 | 各模块独立探测与平台实现；Android 不提供 Git 运行时管理，边界见 [移动端功能精简](../../Client/RelaxKonOS.Client.Android/docs/design/MobileSimplification.md) | 逐一盘点 Samba 等依赖；声明受管安装、仅检测或不支持，不默认拥有系统包 | 计划中 |
+| MR-08 | 文件服务及其他宿主依赖 | 各模块独立探测与平台实现；Git 为宿主探测/调用，2026-10-25 Windows 验收手工准备的校验便携 Git 不代表受管生命周期；Android 不提供 Git 运行时管理，边界见 [移动端功能精简](../../Client/RelaxKonOS.Client.Android/docs/design/MobileSimplification.md) | 逐一盘点 Samba 等依赖；声明受管安装、仅检测或不支持，不默认拥有系统包 | 计划中 |
 | MR-09 | Guardian、Server、Helper | 服务器中心安装、修复和更新流程；Windows 独立宿主状态已改用当前进程启动证明契约 | 第一方信任与组件依赖；宿主更新时重新发布/验证当前格式的独立组件服务；应用页链接统一维护入口（组件中心 CC-07 聚合，部署仍归服务器中心） | 计划中；当前 Windows 状态契约不保留旧格式解析 |
 | MR-10 | 无独立运行时的内置应用 | 随客户端/Server 发布 | 明确“不适用”；证书申请/续期、容器镜像更新不能冒充应用自身的安装/更新 | 计划中 |
 

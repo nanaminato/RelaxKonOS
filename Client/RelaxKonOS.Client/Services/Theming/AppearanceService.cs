@@ -109,6 +109,10 @@ public sealed class AppearanceService : IDisposable
         var palette = new ResourceDictionary();
         foreach (var (name, value) in colors)
             palette[name + "Color"] = Color.Parse(value);
+        // Fluent paints selected text through one theme colour. Left unset it resolves to the raw
+        // accent, which sits as an opaque saturated block behind dark text; the palette's own
+        // text-selection role keeps the highlight readable under every accent and palette.
+        palette["TextControlSelectionHighlightColor"] = Color.Parse(colors["TextSelection"]);
 
         // An unavailable style renders the complete shipped default profile. Keep the requested
         // id and the actually-rendering id distinct so callers never report an unavailable style

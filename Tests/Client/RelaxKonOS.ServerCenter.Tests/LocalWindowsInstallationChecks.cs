@@ -200,6 +200,13 @@ static class LocalWindowsInstallationChecks
             await wizard.InstallCommand.ExecuteAsync(null);
             Check(closed && selectedOptions is { Network: ServerNetworkProfile.Loopback, FileAccess: ServerFileAccessScope.Restricted } &&
                 sshFactory.Transports.Count == 0 && (await targets.LoadAsync()).Count == 0, "Local wizard defaults are private and never resolve SSH or persist a fake SSH target.");
+            wizard.SelectedMode = wizard.Modes.Single(mode => mode.Mode == ServerInstallMode.WindowsSystem);
+            Check(wizard.HasFullFileAccess && wizard.FileAccess == ServerFileAccessScope.Full && wizard.AdvancedReviewText.Contains(wizard.FullFileAccessDescription),
+                "Windows System installation shows full file access in the review without range choices.");
+            await wizard.InstallCommand.ExecuteAsync(null);
+            Check(selectedOptions is { Mode: ServerInstallMode.WindowsSystem, FileAccess: ServerFileAccessScope.Full,
+                FileRoots: null, AdministratorFileAccess: null, RootFileAccess: null },
+                "Windows System wizard sends full access and no whitelist to the installer.");
 
             var login = new LoginViewModel(DispatchProxy.Create<IAuthSession, TunnelAuthProxy>(), localization,
                 new ServerEndpointResolver(new HttpClient(), new ServerCertificateTrust(directory)), new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)),

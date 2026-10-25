@@ -117,6 +117,18 @@ public sealed class RemoteGitClient(HttpClient http, IAuthSession session) : IRe
     public Task<GitOperationResult> PushAsync(string id, GitPushRequest? request = null, CancellationToken cancellationToken = default)
         => SendAsync<GitOperationResult>(HttpMethod.Post, GitApiRoutes.Push.Replace("{id}", Uri.EscapeDataString(id)), request, cancellationToken);
 
+    public Task<GitPushPreviewDto> GetPushPreviewAsync(string id, string? localBranch = null, string? remote = null,
+        string? remoteBranch = null, CancellationToken cancellationToken = default)
+    {
+        var route = GitApiRoutes.PushPreview.Replace("{id}", Uri.EscapeDataString(id));
+        static string Add(string route, string key, string? value)
+            => string.IsNullOrWhiteSpace(value) ? route : $"{route}{(route.Contains('?') ? '&' : '?')}{key}={Uri.EscapeDataString(value)}";
+        route = Add(route, "localBranch", localBranch);
+        route = Add(route, "remote", remote);
+        route = Add(route, "remoteBranch", remoteBranch);
+        return SendAsync<GitPushPreviewDto>(HttpMethod.Get, route, null, cancellationToken);
+    }
+
     public async Task<IReadOnlyList<GitCommitDto>> GetLogAsync(string id, int limit = 200, int skip = 0,
         GitLogQuery? query = null, CancellationToken cancellationToken = default)
     {

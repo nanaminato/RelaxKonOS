@@ -1,10 +1,7 @@
 using System.ComponentModel;
-using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security.Principal;
-using System.Security.AccessControl;
 using System.Threading.Channels;
-using Microsoft.Win32.SafeHandles;
 using RelaxKonOS.Protocol.UserExecution;
 using RelaxKonOS.Server.Terminal;
 
@@ -55,11 +52,8 @@ internal static class WindowsUserTerminal
                 || identity.ImpersonationLevel != TokenImpersonationLevel.Impersonation
                 || new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator) != request.TerminalAdministrator)
                 throw new UnauthorizedAccessException("S4U token is not an ordinary user token.");
-            if (!DuplicateTokenEx(impersonation, 0xF01FF, IntPtr.Zero, 2, 1, out var primary))
-                throw new Win32Exception(Marshal.GetLastWin32Error());
-            using (primary)
+            using (var primary = WindowsUserProcessToken.Create(impersonation, request.Identity.StableIdentity))
             {
-                ConfigureTokenAccess(primary, request.Identity.StableIdentity);
                 var environment = request.TerminalAdministrator
                     ? TerminalUserEnvironment.Administrator(account.HomeDirectory)
                     : (request.TerminalEnvironment ?? new RelaxKonOS.Protocol.Settings.TerminalEnvironmentOverrides([], RelaxKonOS.Protocol.Settings.EnvironmentPathMode.Append))
@@ -118,39 +112,4 @@ internal static class WindowsUserTerminal
             catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         }
     }
-
-    private static void ConfigureTokenAccess(SafeAccessTokenHandle token, string userSid)
-    {
-        // DuplicateTokenEx is called as SYSTEM. Its default token-object ACL otherwise prevents
-        // the resulting user process from querying its own token (for example, whoami fails).
-        // Child process/thread objects also need a default ACL for the restricted user's SID.
-        var descriptor = new RawSecurityDescriptor($"D:(A;;GA;;;SY)(A;;GA;;;{userSid})");
-        var descriptorBytes = new byte[descriptor.BinaryLength];
-        descriptor.GetBinaryForm(descriptorBytes, 0);
-        var acl = descriptor.DiscretionaryAcl!;
-        var aclBytes = new byte[acl.BinaryLength];
-        acl.GetBinaryForm(aclBytes, 0);
-        var nativeAcl = Marshal.AllocHGlobal(aclBytes.Length);
-        var defaultDacl = Marshal.AllocHGlobal(IntPtr.Size);
-        try
-        {
-            if (!SetKernelObjectSecurity(token, 4, descriptorBytes))
-                throw new Win32Exception(Marshal.GetLastWin32Error());
-            Marshal.Copy(aclBytes, 0, nativeAcl, aclBytes.Length);
-            Marshal.WriteIntPtr(defaultDacl, nativeAcl);
-            if (!SetTokenInformation(token, 6, defaultDacl, IntPtr.Size))
-                throw new Win32Exception(Marshal.GetLastWin32Error());
-        }
-        finally { Marshal.FreeHGlobal(defaultDacl); Marshal.FreeHGlobal(nativeAcl); }
-    }
-
-    [DllImport("advapi32.dll", SetLastError = true)]
-    private static extern bool DuplicateTokenEx(SafeAccessTokenHandle existing, uint access, IntPtr attributes,
-        int impersonationLevel, int tokenType, out SafeAccessTokenHandle primary);
-    [DllImport("advapi32.dll", SetLastError = true)]
-    private static extern bool SetKernelObjectSecurity(SafeAccessTokenHandle handle, uint securityInformation,
-        byte[] securityDescriptor);
-    [DllImport("advapi32.dll", SetLastError = true)]
-    private static extern bool SetTokenInformation(SafeAccessTokenHandle token, int informationClass,
-        IntPtr information, int informationLength);
 }

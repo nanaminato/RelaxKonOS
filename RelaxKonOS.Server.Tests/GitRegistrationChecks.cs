@@ -1,9 +1,17 @@
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using System.Security.Claims;
+using System.Text.Json;
+using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Git;
+using RelaxKonOS.Protocol.UserExecution;
 using RelaxKonOS.Server.Git;
+using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Storage.Sqlite;
+using RelaxKonOS.Server.UserExecution;
 
 public static class GitRegistrationChecks
 {
@@ -19,9 +27,9 @@ public static class GitRegistrationChecks
         var factory = new Factory(options);
         await using (var db = factory.CreateDbContext()) await db.Database.EnsureCreatedAsync();
         var transport = new Transport();
-        var service = new LocalGitRepositoryService(factory, new HostGitCli(), new EphemeralDataProtectionProvider(),
+        var service = new LocalGitRepositoryService(factory, new ForbiddenServiceGit(), new EphemeralDataProtectionProvider(),
             NullLogger<LocalGitRepositoryService>.Instance, services.GetRequiredService<IServiceScopeFactory>(),
-            transport, new UploadSessionChecks.SystemMode(), new UserExecutionBackendSelection(UserExecutionBackend.Helper),
+            transport, new HelperMode(), new UserExecutionBackendSelection(UserExecutionBackend.Helper),
             new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity(
                 [new Claim("sub", user.ToString())], "test")) } });
         // Deliberately unavailable to the Server process; only the execution transport can inspect it.
@@ -33,6 +41,10 @@ public static class GitRegistrationChecks
         Assert(transport.Requests.Single().Identity == identity && transport.Requests.Single().Path == path &&
             transport.Requests.Single().Operation == UserExecutionOperationKind.GitExecute,
             "Registration validates the working directory through the authenticated user identity");
+        var engine = await service.GetEngineStatusAsync();
+        Assert(engine.IsAvailable && engine.Version == "test-helper" && engine.ExecutablePath is null
+            && transport.Requests.Last().Path == identity.HomeDirectory,
+            "Helper engine probing uses the target user's home and never probes the service PATH");
         Assert((await service.ProbeRepositoryAsync(path, user)).IsRepository,
             "Repository probing also uses the effective identity without a service-side existence check");
 
@@ -67,6 +79,78 @@ public static class GitRegistrationChecks
         }
         transport.Missing = false;
 
+        // In system mode Git runs as the effective user, so the Server cannot apply a credential itself.
+        // It has to travel through the closed user-execution contract instead of being refused there.
+        var repoId = Guid.Parse(registered.Id);
+        var credentialed = await service.PushAsync(repoId, user, new(LocalBranch: "main", Remote: "origin", RemoteBranch: "main",
+            Credentials: new("octocat", "token-value")));
+        Assert(credentialed.Success, "A credentialed push is accepted instead of being refused in system mode");
+        Assert(transport.Requests.Last().GitCredentials is { Username: "octocat", Password: "token-value" },
+            "Explicit credentials travel with the Git request that needs them");
+        Assert(transport.Requests.Last().Operation == UserExecutionOperationKind.GitExecute
+            && transport.Requests.Last().GitArguments!.SequenceEqual(["push", "origin", "refs/heads/main:refs/heads/main"]),
+            "A credentialed push still runs the closed push refspec");
+        Assert(transport.Requests.Last().GitCredentials!.Password == "token-value",
+            "The contract carries the secret itself rather than a path to it");
+        await service.PushAsync(repoId, user, new(LocalBranch: "main", Remote: "origin", RemoteBranch: "main"));
+        Assert(transport.Requests.Last().GitCredentials is null,
+            "A push that supplies no credential carries no credential field");
+        Assert(!UserExecutionRequestPolicy.IsValid(new UserExecutionRequest(identity, UserExecutionOperationKind.FileRead,
+                Path: "/home/nanami/x", Offset: 0, ExpectedBytes: 1, OperationId: Guid.NewGuid(),
+                GitCredentials: new("octocat", "token-value")), false)
+            && !UserExecutionRequestPolicy.IsValid(new UserExecutionRequest(identity, UserExecutionOperationKind.GitExecute,
+                Path: "/home/nanami/repository", GitArguments: ["push"], OperationId: Guid.NewGuid(),
+                GitCredentials: new("", "token-value")), false)
+            && UserExecutionRequestPolicy.IsValid(new UserExecutionRequest(identity, UserExecutionOperationKind.GitExecute,
+                Path: "/home/nanami/repository", GitArguments: ["push"], OperationId: Guid.NewGuid(),
+                GitCredentials: new("octocat", "token-value")), false),
+            "Credentials are closed to GitExecute and must be a complete username/password pair");
+
+        transport.FetchUrls["origin"] = "https://read.example.invalid/project";
+        transport.PushUrls["origin"] = "https://write.example.invalid/project";
+        transport.PushUrls["seed"] = transport.FetchUrls["origin"];
+        await service.PushAsync(repoId, user, new(LocalBranch: "main", Remote: "seed", RemoteBranch: "main",
+            Credentials: new("read-user", "read-token")));
+        await service.PushAsync(repoId, user, new(LocalBranch: "main", Remote: "origin", RemoteBranch: "main",
+            Credentials: new("write-user", "write-token")));
+        await service.FetchAsync(repoId, user);
+        Assert(transport.Requests.Last(request => request.GitArguments![0] == "fetch").GitCredentials is { Password: "read-token" },
+            "Fetch reuses the saved credential for the fetch URL, never remote.pushurl");
+        await service.PullAsync(repoId, user, new("ff-only", Remote: "origin"));
+        Assert(transport.Requests.Last(request => request.GitArguments![0] == "pull").GitCredentials is { Password: "read-token" },
+            "Pull reuses the credential saved by a previous push to the same HTTPS authority");
+        transport.Configuration["branch.main.remote"] = "upstream";
+        transport.FetchUrls["upstream"] = "https://write.example.invalid/another-project";
+        await service.FetchAsync(repoId, user);
+        Assert(transport.Requests.Last(request => request.GitArguments![0] == "fetch").GitCredentials is { Password: "write-token" },
+            "Fetch selects the current branch remote instead of assuming origin");
+        await service.PullAsync(repoId, user, new("ff-only", Remote: "https://read.example.invalid/explicit"));
+        Assert(transport.Requests.Last(request => request.GitArguments![0] == "pull").GitCredentials is { Password: "read-token" },
+            "An explicit HTTPS pull URL uses only that authority's saved credential");
+        transport.Configuration["branch.topic.remote"] = "origin";
+        transport.Configuration["branch.topic.merge"] = "refs/heads/topic";
+        await service.PullAsync(repoId, user, new("ff-only", Branch: "topic"));
+        Assert(transport.Requests.Last(request => request.GitArguments![0] == "fetch").GitCredentials is { Password: "read-token" },
+            "Updating a non-checked-out branch also supplies the saved fetch credential");
+        transport.FetchUrls["https://read.example.invalid/rewritten"] = "https://other.example.invalid/actual";
+        foreach (var remote in new[] { "https://other.example.invalid/repo", "https://read.example.invalid:8443/repo",
+            "http://read.example.invalid/repo", "ssh://read.example.invalid/repo", ".", "https://read.example.invalid/rewritten" })
+        {
+            await service.PullAsync(repoId, user, new("ff-only", Remote: remote));
+            Assert(transport.Requests.Last(request => request.GitArguments![0] == "pull").GitCredentials is null,
+                "Pull never forwards a saved token to a different authority, SSH, or local transport");
+        }
+        var otherUser = Guid.NewGuid();
+        var otherRepository = await service.RegisterRepositoryAsync(new("other owner", path), otherUser);
+        await service.FetchAsync(Guid.Parse(otherRepository.Id), otherUser);
+        Assert(transport.Requests.Last(request => request.GitArguments![0] == "fetch").GitCredentials is null,
+            "Another repository owner cannot reuse the first user's saved token");
+        Assert(UserExecutionGitPolicy.IsAllowed(["ls-remote", "--get-url", "https://example.invalid/repo"])
+            && !UserExecutionGitPolicy.IsAllowed(["ls-remote", "https://example.invalid/repo"])
+            && !UserExecutionGitPolicy.IsAllowed(["ls-remote", "--upload-pack=evil", "repo"]),
+            "Helper permits only offline URL expansion, never network ls-remote or command injection");
+        await service.UnregisterRepositoryAsync(Guid.Parse(otherRepository.Id), otherUser);
+
         foreach (var failure in new[] { "not-worktree", "inaccessible" })
         {
             transport.Failure = failure;
@@ -95,12 +179,23 @@ public static class GitRegistrationChecks
     { if (!condition) throw new Exception(message); }
     private sealed class Factory(DbContextOptions<RelaxKonOSDbContext> options) : IDbContextFactory<RelaxKonOSDbContext>
     { public RelaxKonOSDbContext CreateDbContext() => new(options); }
+    private sealed class ForbiddenServiceGit : IHostGitCli
+    { public string? ResolveGitPath() => throw new Exception("Helper operations must not resolve Git as the Server account."); }
+    private sealed class HelperMode : IServerModeResolver
+    {
+        public ServerMode Mode => ServerMode.System;
+        public ServerCapabilitiesDto Describe() => throw new NotSupportedException();
+        public bool Supports(ServerHostFeature feature) => true;
+    }
     private sealed class Resolver(UserExecutionContext context) : IUserExecutionContextResolver
     { public UserExecutionContext Resolve(ClaimsPrincipal principal) => context; }
     private sealed class Transport : IUserExecutionTransport
     {
         public List<UserExecutionRequest> Requests { get; } = [];
         public string? Failure { get; set; }
+        public Dictionary<string, string> Configuration { get; } = new();
+        public Dictionary<string, string> FetchUrls { get; } = new();
+        public Dictionary<string, string> PushUrls { get; } = new();
         /// <summary>Simulates a working directory the effective identity cannot enter at all.</summary>
         public bool Missing { get; set; }
         public Task<UserExecutionResult> ExecuteAsync(UserExecutionRequest request, CancellationToken cancellationToken = default)
@@ -122,7 +217,18 @@ public static class GitRegistrationChecks
                     JsonSerializer.SerializeToUtf8Bytes(refused, RelaxKonOSJsonOptions.Default))));
             }
             var isWorktree = request.GitArguments!.SequenceEqual(["rev-parse", "--is-inside-work-tree"]);
-            var result = new { Success = true, ExitCode = 0, Output = isWorktree && Failure == null ? "true\n" : "", Error = "" };
+            var arguments = request.GitArguments!;
+            string? configured = null;
+            if (arguments[0] == "symbolic-ref") configured = "main";
+            else if (arguments is ["config", "--get", var key]) Configuration.TryGetValue(key, out configured);
+            else if (arguments[0] == "remote" && arguments.Count > 1 && arguments[1] == "get-url")
+                (arguments.Contains("--push") ? PushUrls : FetchUrls).TryGetValue(arguments[^1], out configured);
+            else if (arguments is ["remote"]) configured = string.Join('\n', FetchUrls.Keys);
+            else if (arguments is ["ls-remote", "--get-url", var fetchRemote])
+                configured = FetchUrls.TryGetValue(fetchRemote, out var fetchUrl) ? fetchUrl : fetchRemote;
+            else if (arguments[0] == "rev-parse" && !isWorktree) configured = new string('a', 40);
+            var result = new { Success = true, ExitCode = 0, Output = request.GitArguments!.SequenceEqual(["--version"])
+                ? "git version test-helper\n" : isWorktree && Failure == null ? "true\n" : configured ?? "", Error = "" };
             return Task.FromResult(new UserExecutionResult(true, Convert.ToBase64String(
                 JsonSerializer.SerializeToUtf8Bytes(result, RelaxKonOSJsonOptions.Default))));
         }

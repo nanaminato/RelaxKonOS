@@ -25,7 +25,7 @@ GitClient 是项目编辑器的 Git 领域模块；项目壳与共享文件编�
 
 - **架构归属**：§6.2 Remote Service Application —— UI 完全在 Client 本地渲染；仓库状态、提交历史、分支列表与变更结果**数据来源在 Server 端通过 `git` 实时采集**（不持久化运行时状态，每次请求都是当下快照）。
 - **复用宿主 OS 权限**：Server 的 Git 操作使用有效身份执行；System/Helper 模式以登录账号绑定的宿主身份执行，User 模式使用当前进程身份。SSH 使用宿主 Git/SSH agent；HTTPS 的交互与保存范围见下述凭据说明。
-- **凭据边界**：不管理 SSH 私钥。现有 HTTPS 推送与本轮克隆可由用户输入凭据，经短期 askpass 传给子进程；只有用户选择保存时，才按用户和远程主机通过 Data Protection 加密存储。Helper 后端仍拒绝凭据化进程请求，不能由本地验证推定其支持此能力。
+- **凭据边界**：不管理 SSH 私钥。现有 HTTPS 推送与本轮克隆可由用户输入凭据，经短期 askpass 传给子进程；只有用户选择保存时，才按用户和远程主机通过 Data Protection 加密存储。System Mode 下凭据随 `GitExecute` 请求的 `gitCredentials` 交给 Helper，由其在完成身份降权后生成一次性 askpass 脚本（用户执行协议 `1.9`，Server 与 Helper 必须同版本部署）；Windows Helper 使用受限 S4U primary token 和 `CreateProcessAsUserW` 执行同一 `GitExecute` 合约。
 - **跨平台抽象**：与 `IIdentityProvider` / `ISystemMetricsProvider` 同模式——`IGitRepositoryService` 接口 + 平台无关的 `LocalGitRepositoryService`（`git` CLI 在 Windows/Linux 行为一致），仅在探测 `git` 可执行文件路径与 shell 启动环境时按宿主 OS 处理。平台差异封装在服务之后，Server 端单一代码库跨 Ubuntu + Windows Server。
 
 **核心功能（MVP 范围）**：
@@ -37,7 +37,8 @@ GitClient 是项目编辑器的 Git 领域模块；项目壳与共享文件编�
 | 分支管理 | 本地+远程分支列表、切换(checkout)、新建、删除 | `GET/POST/DELETE /api/v1.0/git/repositories/{id}/branches` |
 | 提交 | 对请求路径暂存并使用 `git commit --only` 提交，不附带其他已暂存文件 | `POST /api/v1.0/git/repositories/{id}/commit` |
 | 拉取 | 当前分支 fetch+merge/fetch+rebase；未检出分支可仅安全快进更新 | `POST /api/v1.0/git/repositories/{id}/pull` |
-| 推送 | 推送当前或指定本地分支到指定 remote/分支，无需 checkout | `POST /api/v1.0/git/repositories/{id}/push` |
+| 推送 | 推送当前或指定本地分支到指定 remote/分支，无需 checkout；目标分支不存在时由推送创建 | `POST /api/v1.0/git/repositories/{id}/push` |
+| 推送预览 | 待推送提交与文件；目标分支尚未存在于远端时同样可算出（用于推送对话框） | `GET /api/v1.0/git/repositories/{id}/push/preview` |
 | 提交历史 | log 列表（hash/作者/时间/消息）+ 单提交详情 | `GET /api/v1.0/git/repositories/{id}/log` |
 | Revert | 反向提交指定 commit | `POST /api/v1.0/git/repositories/{id}/revert` |
 | Diff | 单文件 diff（工作区/已暂存/某提交） | `GET /api/v1.0/git/repositories/{id}/diff` |
@@ -93,6 +94,7 @@ Checkout           = /api/v1.0/git/repositories/{id}/checkout          (POST)   
 Commit             = /api/v1.0/git/repositories/{id}/commit            (POST)        # 提交
 Pull               = /api/v1.0/git/repositories/{id}/pull              (POST)        # 拉取
 Push               = /api/v1.0/git/repositories/{id}/push              (POST)        # 推送
+PushPreview        = /api/v1.0/git/repositories/{id}/push/preview      (GET)         # ?localBranch=&remote=&remoteBranch= 待推送提交
 Log                = /api/v1.0/git/repositories/{id}/log              (GET)         # 历史
 Diff               = /api/v1.0/git/repositories/{id}/diff             (GET)         # 文件 diff
 Revert             = /api/v1.0/git/repositories/{id}/revert            (POST)        # 反向提交
@@ -169,12 +171,15 @@ builder.Services.AddSingleton<IGitRepositoryService, LocalGitRepositoryService>(
 | diff | 工作区：`git diff --no-color [--cached] -- <path>`；提交：`git show --format= --no-color <ref> -- <path>`；未跟踪：`git diff --no-index -- /dev/null <path>` | 原始 patch 文本 + `--stat` 计数；`ref` 始终表示该提交相对父提交（根提交相对空树） |
 | 当前分支 | `git rev-parse --abbrev-ref HEAD` / detached 用 `git rev-parse --short HEAD` | |
 | ahead/behind | `git rev-list --left-right --count <upstream>...HEAD` | `left\tRight` |
+| 推送预览 | `git rev-list --count <local> --not <目标引用>`；目标引用不存在时 `<local> --not --remotes=<remote>` | 目标 ref 缺失 ≠ 没有待推送提交；推送用显式 refspec，会创建该分支 |
 
 **写操作**（commit/checkout/pull/push/revert/merge）：捕获 exit code + stderr + 是否进入冲突状态（`git status --porcelain=v2` 含 `u` 行 = 冲突）。
 
+**推送预览的基线**（`GET .../push/preview` → `GitPushPreviewDto`）：先按 `branch.<name>.pushRemote`/`.remote`/唯一 remote/`origin` 解析目标 remote，再按 `branch.<name>.merge` 或本地分支名解析目标分支。目标 `refs/remotes/<remote>/<branch>` 存在 → 只算它缺少的提交；不存在 → 算该 remote 尚不包含的提交（`--not --remotes=<remote>`），因为推送会新建该分支。**不要用 `GitBranchDto.ahead` / `GitStatusDto.ahead` 判断"是否可推送"**：它们来自 `%(upstream:track)`，本地分支没有 upstream（从未推送过）时恒为 `ahead 0`，这正是"推送对话框显示 0 个提交"的成因。
+
 **并发与 index.lock**：同一仓库的写操作用 `SemaphoreSlim(1,1)`（按 repoId 缓存）串行化；读操作不串行（git 读不持锁）。3 秒 timeout 获取信号量失败返回 `Success=false, Message="仓库繁忙"`。
 
-**凭据**：Git 保持非交互环境。HTTPS 推送和克隆返回 `RequiresCredentials` 时，桌面可请求用户输入并重试；密码通过短期 askpass 环境传递，不进入命令行，按用户意愿加密保存。拉取/获取仍依赖相应现有宿主凭据路径；Helper 后端的显式凭据请求不受支持。
+**凭据**：Git 保持非交互环境。HTTPS 推送和克隆返回 `RequiresCredentials` 时，桌面可请求用户输入并重试；密码通过短期 askpass 环境传递，不进入命令行，按用户意愿加密保存。fetch、pull 及非当前分支更新复用同一用户为有效 HTTPS 下载地址保存的凭据；按分支 remote 或显式 remote/URL 解析，不使用单独的 pushurl，并计入 Git 的 insteadOf 重写。未保存的输入仍仅用于当次操作。System Mode（Helper 后端）的显式凭据随 `GitExecute` 请求的 `gitCredentials` 下发，Helper 在降权后生成一次性 askpass 脚本，因此推送对话框在该模式下同样可用。
 
 ### 4.3 危险操作预检
 
@@ -185,6 +190,8 @@ builder.Services.AddSingleton<IGitRepositoryService, LocalGitRepositoryService>(
 | checkout | 工作区有未提交变更且会覆盖时，`git checkout` 失败 → 返回冲突文件列表 | 客户端提示先提交或 stash（stash 见 §8） |
 | revert | 若会产生冲突，返回冲突文件，不自动提交 | 客户端提示冲突需手动解决 |
 | 删除仓库注册 | 仅删除注册记录，**不**删除磁盘仓库目录 | 客户端二次确认 |
+
+Windows 直接执行与 Linux 共用无 BOM、LF 换行的 `#!/bin/sh` askpass 脚本；Windows 由 Git for Windows 自带的 shell 执行，避免 CMD 的 BOM、代码页与特殊字符展开破坏凭据。回归测试通过真实 `git credential fill` 验证普通凭据、中文及 shell 特殊字符，禁用宿主 credential helper，不访问真实凭据库或远端。Windows Helper 同样使用该脚本，并在目标用户私有临时目录中创建；Git 以用户 primary token 启动，挂入 kill-on-close Job Object 后才运行，超时、输出超限或 Helper 退出时回收整个进程树。Helper 模式不以 Server 的 PATH 判定 Git 可用性；Windows Helper 从目标用户的 PATH 解析绝对 `git.exe` 路径，版本探测在其家目录执行。普通用户令牌原生集成测试，以及 Windows Server 2022 上普通用户与 Administrator 的真实 LocalService → LocalSystem → S4U Git 专项均已通过，详见 [Windows Helper Git 验收](RelaxKonOS.GitClient.WindowsAcceptance.md)。S4U 网络登录下的 OS Credential Manager 不可用，应用显式/加密保存凭据的 push/clone 已实测；不保证交互 SSH agent 或映射盘可用，HTTPS fetch/pull 已补齐应用保存凭据的复用，并通过同一测试主机的真实 HTTPS 拉取验收。
 
 **审计**：所有写操作记录操作者、时间、仓库、动作、结果（不记录 commit message 之外的文件内容、不记录凭据）。
 
@@ -207,6 +214,7 @@ builder.Services.AddSingleton<IGitRepositoryService, LocalGitRepositoryService>(
 | POST | `/api/v1.0/git/repositories/{id}/fetch` | 仅抓取 |
 | POST | `/api/v1.0/git/repositories/{id}/pull` | 拉取（merge/rebase） |
 | POST | `/api/v1.0/git/repositories/{id}/push` | 推送 |
+| GET | `/api/v1.0/git/repositories/{id}/push/preview` | 待推送提交预览（query: localBranch, remote, remoteBranch, limit） |
 | GET | `/api/v1.0/git/repositories/{id}/log` | 提交历史（query: limit, skip） |
 | GET | `/api/v1.0/git/repositories/{id}/diff` | 文件 diff（query: path, staged, ref） |
 | POST | `/api/v1.0/git/repositories/{id}/revert` | 反向提交 |
@@ -297,7 +305,7 @@ GitClientViewModel
 | `DeleteBranchCommand` | 二次确认 → `DELETE branches/{name}` | SelectedBranch != null && !IsCurrent |
 | `CommitCommand` | 弹提交对话框 → `POST commit` | SelectedRepository != null && StagedFiles 非空 && !IsBusy |
 | `PullCommand` | `POST pull` (Merge/Rebase 选择) → 冲突则进冲突视图 | HasUpstream && !IsBusy |
-| `PushCommand` | `POST push` → RequiresCredentials 则提示 | HasUpstream && !IsBusy |
+| `PushCommand` | 先 `GET push/preview` 再弹推送对话框 → `POST push`；无 upstream 的本地分支同样可推（远端据此新建分支） | CanManage && !IsBusy |
 | `FetchCommand` | `POST fetch` | SelectedRepository != null && !IsBusy |
 | `RevertCommand` | 二次确认 → `POST revert` → 冲突则进冲突视图 | SelectedCommit != null && !IsBusy |
 | `StageCommand`/`UnstageCommand` | `POST stage` / `POST unstage` 暂存调整 | SelectedFile != null |

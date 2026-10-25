@@ -181,7 +181,7 @@ public static class UserExecutionExecutor
             UserExecutionOperationKind.FileGetStagingLength => LinuxUserFileOperations.StagingLength(path!),
             UserExecutionOperationKind.FileDeleteStaging => DeleteStaging(path!),
             UserExecutionOperationKind.FileCommitStaging => ToFileEntry(LinuxUserFileOperations.CommitStagingFile(path!, destination!)),
-            UserExecutionOperationKind.GitExecute => await GitAsync(path!, request.GitArguments),
+            UserExecutionOperationKind.GitExecute => await GitAsync(path!, request.GitArguments, request.GitCredentials),
             _ => throw new ArgumentException(),
         };
         var json = JsonSerializer.SerializeToUtf8Bytes(result, RelaxKonOSJsonOptions.Default);
@@ -264,12 +264,17 @@ public static class UserExecutionExecutor
     private static long AppendStaging(string path, long offset, long expectedBytes, string content)
         => LinuxUserFileOperations.AppendStaging(path, offset, expectedBytes, Decode(content));
     private static bool DeleteStaging(string path) { LinuxUserFileOperations.DeleteStagingFile(path); return true; }
-    private static async Task<GitResult> GitAsync(string workingDirectory, IReadOnlyList<string>? arguments)
+    private static async Task<GitResult> GitAsync(string workingDirectory, IReadOnlyList<string>? arguments, GitExecutionCredentials? credentials)
     {
         if (!UserExecutionGitPolicy.IsAllowed(arguments)) throw new ArgumentException();
         var git = File.Exists("/usr/bin/git") ? "/usr/bin/git" : File.Exists("/usr/local/bin/git") ? "/usr/local/bin/git" : throw new FileNotFoundException();
+        // The identity has already been dropped permanently by the caller, so the one-shot askpass
+        // script below is created 0600 as the effective user — it is never readable by the Server
+        // account, by root, or by another local account.
+        using var askPass = GitAskPassScope.Create(credentials?.Username, credentials?.Password);
         using var process = new Process { StartInfo = new ProcessStartInfo(git) { WorkingDirectory = workingDirectory, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true } };
         UserExecutionGitPolicy.ApplySafeEnvironment(process.StartInfo);
+        askPass?.ApplyTo(process.StartInfo);
         foreach (var argument in arguments!) process.StartInfo.ArgumentList.Add(argument);
         process.Start();
         var budget = new OutputBudget(UserExecutionProtocol.MaximumResultBytes);

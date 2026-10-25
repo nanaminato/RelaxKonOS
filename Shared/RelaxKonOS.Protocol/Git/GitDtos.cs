@@ -203,6 +203,22 @@ public sealed record GitPushRequest(
     /// <summary>Destination branch on <see cref="Remote"/>. Defaults to the local branch's upstream name, then its own name.</summary>
     [property: JsonPropertyName("remoteBranch")] string? RemoteBranch = null);
 
+/// <summary>What a push of <see cref="LocalBranch"/> to <see cref="Remote"/>/<see cref="RemoteBranch"/>
+/// would transfer right now.
+/// <para>Ahead commits are computed against the exact destination ref when it exists. When the
+/// destination does not exist yet — a brand-new remote branch, or a local branch that was never
+/// pushed and has no upstream — the count comes from the commits this remote is not known to
+/// contain instead. Both cases push successfully, so the dialog must not report "nothing to push"
+/// merely because <c>refs/remotes/&lt;remote&gt;/&lt;branch&gt;</c> is missing.</para>
+/// <para><c>AheadCount</c> is the total; <c>Commits</c> is capped for display.</para></summary>
+public sealed record GitPushPreviewDto(
+    [property: JsonPropertyName("localBranch")] string LocalBranch,
+    [property: JsonPropertyName("remote")] string Remote,
+    [property: JsonPropertyName("remoteBranch")] string RemoteBranch,
+    [property: JsonPropertyName("remoteBranchExists")] bool RemoteBranchExists,
+    [property: JsonPropertyName("aheadCount")] int AheadCount,
+    [property: JsonPropertyName("commits")] IReadOnlyList<GitCommitDto> Commits);
+
 /// <summary>Checkout request.</summary>
 public sealed record GitCheckoutRequest(
     [property: JsonPropertyName("branch")] string Branch,

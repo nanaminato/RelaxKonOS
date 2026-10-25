@@ -330,6 +330,7 @@ Compose 编排的**每个变更都是持久操作，不是同步结果**（`stac
 | POST           | `/api/v1.0/git/repositories/{id}/fetch`                      | body: remote?                                        | 抓取结果                      | JWT |
 | POST           | `/api/v1.0/git/repositories/{id}/pull`                       | body: remote + branch + rebase?                      | 合并/变基结果 DTO               | JWT |
 | POST           | `/api/v1.0/git/repositories/{id}/push`                       | body: remote + branch + force? + setUpstream?        | 推送结果（含凭据请求 401）           | JWT |
+| GET            | `/api/v1.0/git/repositories/{id}/push/preview`               | query: localBranch/remote/remoteBranch/limit         | 待推送提交 DTO（目标分支不存在也可算）      | JWT |
 | GET            | `/api/v1.0/git/repositories/{id}/log`                        | query: limit/skip/branch/author                      | 提交摘要 DTO\[]（分页）           | JWT |
 | GET            | `/api/v1.0/git/repositories/{id}/commits/{sha}`              | —                                                    | 完整提交 DTO（含父提交、作者、消息、变更统计） | JWT |
 | GET            | `/api/v1.0/git/repositories/{id}/diff`                       | query: from/to/path/cached?                          | 统一差异 DTO\[]               | JWT |

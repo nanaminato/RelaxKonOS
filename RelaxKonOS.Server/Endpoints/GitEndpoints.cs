@@ -136,6 +136,26 @@ public static class GitEndpoints
             return Results.Ok(await service.PushAsync(repoId, GetUserId(principal), request, ct));
         });
 
+        // Preview answers "what would this push upload" for the destination the user selected,
+        // including a destination branch that does not exist on the remote yet.
+        group.MapGet("/repositories/{id}/push/preview", async (string id, string? localBranch, string? remote, string? remoteBranch,
+            int? limit, ClaimsPrincipal principal, RelaxKonOS.Server.Git.IGitRepositoryService service, CancellationToken ct) =>
+        {
+            if (!Guid.TryParse(id, out var repoId)) return Results.BadRequest();
+            try
+            {
+                return Results.Ok(await service.GetPushPreviewAsync(repoId, GetUserId(principal), localBranch, remote, remoteBranch, limit ?? 200, ct));
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.Problem(detail: ex.Message, statusCode: 400, title: "Invalid push destination", type: ProblemBase + "invalid-push-destination");
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.Problem(detail: ex.Message, statusCode: 500, title: "Git error", type: ProblemBase + "push-preview-failed");
+            }
+        });
+
         group.MapGet("/repositories/{id}/log", async (string id, int? limit, int? skip, string? reference, string? search,
             string? author, string? path, string? dateRange, bool? caseSensitive, bool? useRegex,
             ClaimsPrincipal principal, RelaxKonOS.Server.Git.IGitRepositoryService service, CancellationToken ct) =>
