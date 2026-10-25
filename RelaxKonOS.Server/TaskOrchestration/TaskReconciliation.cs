@@ -66,7 +66,9 @@ public sealed partial class TaskPlanStore
             var expected = frozen.Change == RuntimeChange.Uninstall
                 ? state.Ownership == RuntimeOwnership.Absent && state.ActiveReleaseId is null && snapshot.MeasuredVersion is null
                 : state.Ownership == RuntimeOwnership.Managed && state.ActiveReleaseId == frozen.Release?.ReleaseId
-                    && snapshot.MeasuredVersion == frozen.Release?.OriginalVersion;
+                    // sing-box reports canonical SemVer; the signed publisher label may start with 'v'.
+                    // Exact canonical text also keeps build metadata significant for artifact identity.
+                    && snapshot.MeasuredVersion == frozen.Release?.SortVersion;
             return expected && state.StateRevision > frozen.Selection.ExpectedStateRevision
                 ? TaskStepRunState.Succeeded : TaskStepRunState.NeedsRecovery;
         }

@@ -53,6 +53,7 @@ public partial class ComponentCenterViewModel
 
     [RelayCommand] private async Task InspectAsync()
     {
+        Runtime.SynchronizeAccess();
         if (!CanInspect || Runtime.Installation is not { } installation) return;
         var generation = _inspectionGeneration;
         var steps = new List<TaskStepIntent>
@@ -72,7 +73,8 @@ public partial class ComponentCenterViewModel
         try
         {
             var plan = await _previews!.PreviewAsync(intent, installation.Installation.HostId, _inspectionLifetime.Token);
-            if (generation != _inspectionGeneration || Runtime.IsInvalidated || _inspectionLifetime.IsCancellationRequested) return;
+            Runtime.SynchronizeAccess();
+            if (generation != _inspectionGeneration || Runtime.IsInvalidated || !Runtime.CanRead || _inspectionLifetime.IsCancellationRequested) return;
             foreach (var step in plan.Semantics.Steps) InspectionSteps.Add(new(step));
             InspectionNotice = LocalizedStatus.Key(steps.Count > 1
                 ? "component_center.inspection_complete" : "component_center.inspection_no_catalog");

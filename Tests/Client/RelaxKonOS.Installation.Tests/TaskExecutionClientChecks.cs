@@ -27,6 +27,13 @@ internal static class TaskExecutionClientChecks
         using var http = new HttpClient(new Handler(request =>
         {
             calls++; Check(request.RequestUri!.AbsolutePath == path && request.Headers.Authorization?.Parameter == "token", "uses exact route and current bearer token");
+            if (path.EndsWith("/recovery", StringComparison.Ordinal) && request.Method == HttpMethod.Post)
+            {
+                var recoveryBody = System.Text.Json.JsonSerializer.Deserialize<TaskRecoveryRequest>(request.Content!.ReadAsByteArrayAsync().GetAwaiter().GetResult(), RelaxKonOSJsonOptions.Default)!;
+                Check(request.Headers.GetValues("Idempotency-Key").Single() == "recover" && recoveryBody.Confirmed
+                    && recoveryBody.Action == TaskRecoveryAction.EmergencyStop && recoveryBody.ExpectedRevision == 4,
+                    "recovery POST carries explicit action, confirmation, observed revision and stable key");
+            }
             if (checkedRoutes.Add(path))
             {
                 if (path == TaskPlanningRoutes.Approve(plan.PlanId))
@@ -118,6 +125,61 @@ internal static class TaskExecutionClientChecks
         try { await client.CancelAsync(plan, active, default); throw new Exception("Changed original operation"); }
         catch (InvalidDataException) { Check(true, "cancel cannot replace the original domain operation"); }
         var beforeInvalidCommand = calls;
+        var attempt = new TaskRecoveryAttempt(Guid.NewGuid(), uncertain.RunId, "change", uncertain.Steps[0].DomainOperationId!.Value,
+            uncertain.Revision, TaskRecoveryAction.EmergencyStop, uncertain.CanonicalSubject, auth.Login.Id.ToString("D"), "host", "policy",
+            "linux:0", "fixture", now.AddSeconds(3), now.AddMinutes(1), true, null);
+        var recovery = new TaskRecoveryView(uncertain, new(true, attempt.OperationId, RuntimeChange.Uninstall,
+            RelaxKonOS.Protocol.Installations.InstallationStage.Failed, true, "runtime.failed", "runtime.compensation_failed", null, null, new(true, true, false)), [attempt]);
+        path = TaskPlanningRoutes.Recovery(uncertain.RunId); returned = recovery;
+        Check((await client.ReadRecoveryAsync(plan, uncertain, default)).Attempts.Single().AttemptId == attempt.AttemptId,
+            "recovery read preserves the original operation and persisted request evidence");
+        foreach (var invalid in new[] { recovery with { Recovery = recovery.Recovery with { OperationId = Guid.NewGuid() } },
+            recovery with { Attempts = [attempt, attempt] }, recovery with { Attempts = [attempt with { RunId = Guid.NewGuid() }] } })
+        {
+            returned = invalid;
+            try { await client.ReadRecoveryAsync(plan, uncertain, default); throw new Exception("Accepted forged recovery details"); }
+            catch (InvalidDataException) { Check(true, "recovery details reject replaced operation, duplicate or unrelated attempts"); }
+        }
+        var recoveryCommand = new TaskRecoveryRequest { ExpectedRevision = uncertain.Revision, OperationId = attempt.OperationId,
+            Action = TaskRecoveryAction.EmergencyStop, Confirmed = true };
+        returned = new TaskRecoveryResponse(uncertain, attempt);
+        Check((await client.RecoverAsync(plan, uncertain, recoveryCommand, "recover", default)).Attempt.AttemptId == attempt.AttemptId,
+            "explicit recovery accepts a response for the exact confirmed action");
+        foreach (var invalid in new[] { attempt with { SessionIdentity = "other-session" }, attempt with { Action = TaskRecoveryAction.Close },
+            attempt with { OperationId = Guid.NewGuid() }, attempt with { ExpectedRevision = uncertain.Revision - 1 } })
+        {
+            returned = new TaskRecoveryResponse(uncertain, invalid);
+            try { await client.RecoverAsync(plan, uncertain, recoveryCommand, "recover", default); throw new Exception("Accepted substituted recovery command"); }
+            catch (InvalidDataException) { Check(true, "recovery response binds current session, action, original operation and revision"); }
+        }
+        var beforeRecovery = calls;
+        path = TaskPlanningRoutes.Evidence(uncertain.RunId);
+        var selection = TaskPlanJson.ReadInputs<RuntimeTaskFrozenChange>(plan.Semantics.Steps[0].Inputs).Selection;
+        var snapshot = new RuntimeInstallationSnapshot(new(selection.InstallationId, "host", "sing-box", 8, RuntimeOwnership.Managed,
+            new("linux", "amd64", null, null, RuntimeInstallMode.Archive, "systemd"), "previous", false), "1.14.3", null, null, null, null, null,
+            new(attempt.OperationId, RuntimeSwitchOutcome.Interrupted, null));
+        var observation = new TaskStepResultEvidence("change", attempt.OperationId, RelaxKonOS.Protocol.Installations.InstallationOperationState.Interrupted, false, snapshot);
+        var savedEvidence = new TaskRunEvidence(uncertain, [observation]); returned = savedEvidence;
+        Check((await client.ReadEvidenceAsync(plan, uncertain, default)).Observations.Single().Snapshot?.MeasuredVersion == "1.14.3",
+            "saved evidence preserves historical measured facts for the original operation");
+        foreach (var invalid in new[] { savedEvidence with { Observations = [observation with { OperationId = Guid.NewGuid() }] },
+            savedEvidence with { Observations = [observation, observation] }, savedEvidence with { Observations = [observation with { RecoveryCheck = true }] },
+            savedEvidence with { Observations = [observation with { Snapshot = snapshot with { Installation = snapshot.Installation with { HostId = "other" } } }] },
+            savedEvidence with { Observations = [observation with { Snapshot = snapshot with { Receipt = snapshot.Receipt! with { OperationId = Guid.NewGuid() } } }] },
+            savedEvidence with { Run = uncertain with { Revision = 3 } } })
+        {
+            returned = invalid;
+            try { await client.ReadEvidenceAsync(plan, uncertain, default); throw new Exception("Accepted replaced historical evidence"); }
+            catch (InvalidDataException) { Check(true, "evidence rejects operation, sequence, host, receipt and run continuity substitutions"); }
+        }
+        returned = savedEvidence with { Observations = [observation with { Snapshot = null }, observation with { RecoveryCheck = true }] };
+        Check((await client.ReadEvidenceAsync(plan, uncertain, default)).Observations.Length == 2,
+            "recovery evidence is additive and preserves the original missing observation");
+        beforeRecovery = calls;
+        try { await client.RecoverAsync(plan, uncertain, new() { ExpectedRevision = uncertain.Revision, OperationId = attempt.OperationId,
+            Action = TaskRecoveryAction.Close, Confirmed = false }, "recover", default); throw new Exception("Sent unconfirmed recovery"); }
+        catch (InvalidOperationException) { Check(calls == beforeRecovery, "unconfirmed recovery is rejected before transport"); }
+        beforeInvalidCommand = calls;
         try { await client.ApproveAsync(plan, command, "", default); throw new Exception("Sent a missing idempotency key"); }
         catch (InvalidOperationException ex) { Check(ex.Message == "task.idempotency_required" && calls == beforeInvalidCommand, "missing idempotency key is rejected before transport"); }
         try { await client.ApproveAsync(plan, new ApproveTaskPlanRequest { PlanDigest = plan.PlanDigest, Confirmed = false }, "approve", default); throw new Exception("Sent unconfirmed approval"); }

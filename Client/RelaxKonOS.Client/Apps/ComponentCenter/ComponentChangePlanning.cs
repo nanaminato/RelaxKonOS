@@ -27,6 +27,7 @@ public partial class ComponentCenterViewModel
 
     [RelayCommand] private async Task PlanDraftAsync()
     {
+        Runtime.SynchronizeAccess();
         if (!CanPlanDraft || Runtime.Installation is not { } installation) return;
         ClearChangePlan();
         var generation = _inspectionGeneration;
@@ -54,8 +55,9 @@ public partial class ComponentCenterViewModel
         {
             var plan = await _previews!.PlanChangeAsync(new("app", "relaxkonos.component-center", revision, [.. steps]),
                 installation.Installation.HostId, _inspectionLifetime.Token);
+            Runtime.SynchronizeAccess();
             if (generation != _inspectionGeneration || revision != _draftRevision || Runtime.IsInvalidated
-                || _inspectionLifetime.IsCancellationRequested) return;
+                || !Runtime.CanRead || !Runtime.CanManage || _inspectionLifetime.IsCancellationRequested) return;
             ChangePlanDigest = plan.PlanDigest;
             FrozenChangePlan = plan;
             foreach (var step in plan.Semantics.Steps) ChangePlanSteps.Add(new(step));

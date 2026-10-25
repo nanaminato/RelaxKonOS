@@ -21,6 +21,7 @@ public static class TaskExecutionEndpoints
         writes.MapPost(TaskPlanningRoutes.CancelRunPattern, CancelAsync);
         writes.MapPost(TaskPlanningRoutes.RecoveryPattern, RecoverAsync).RequireRateLimiting("login");
         app.MapGet(TaskPlanningRoutes.RunPattern, GetRun).RequireAuthorization(RuntimeCatalogEndpoints.ReadPolicy).WithTags("Task execution");
+        app.MapGet(TaskPlanningRoutes.EvidencePattern, GetEvidence).RequireAuthorization(RuntimeCatalogEndpoints.ReadPolicy).WithTags("Task execution");
         app.MapGet(TaskPlanningRoutes.ApprovalPattern, GetApproval).RequireAuthorization(RuntimeCatalogEndpoints.ReadPolicy).WithTags("Task execution");
         app.MapPost(TaskPlanningRoutes.RecheckRecoveryPattern, RecheckRecoveryAsync)
             .RequireAuthorization(RuntimeCatalogEndpoints.ReadPolicy).WithTags("Task execution");
@@ -83,6 +84,8 @@ public static class TaskExecutionEndpoints
     }, ct);
     private static Task<IResult> GetRun(Guid runId, HttpContext http, TaskPlanStore store) => Guard(http,
         () => Task.FromResult(store.GetRun(runId, Actor(http)) is { } run ? Results.Ok(run) : Problem("task.run_not_found", 404)), default);
+    private static Task<IResult> GetEvidence(Guid runId, HttpContext http, TaskPlanStore store) => Guard(http,
+        () => Task.FromResult(store.GetRunEvidence(runId, Actor(http)) is { } evidence ? Results.Ok(evidence) : Problem("task.run_not_found", 404)), default);
     private static Task<IResult> GetApproval(Guid approvalId, HttpContext http, TaskPlanStore store) => Guard(http,
         () => Task.FromResult(store.GetApproval(approvalId, Actor(http)) is { } approval ? Results.Ok(approval) : Problem("task.approval_not_found", 404)), default);
     private static Task<IResult> RecheckRecoveryAsync(Guid runId, HttpContext http, TaskRecoveryReconciliationService service, CancellationToken ct) => Guard(http, async () =>

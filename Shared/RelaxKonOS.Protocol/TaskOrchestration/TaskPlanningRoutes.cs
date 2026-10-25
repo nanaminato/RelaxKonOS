@@ -13,6 +13,7 @@ public static class TaskPlanningRoutes
     public const string CancelRunPattern = RunPattern + "/cancel";
     public const string RecheckRecoveryPattern = RunPattern + "/recheck-recovery";
     public const string RecoveryPattern = RunPattern + "/recovery";
+    public const string EvidencePattern = RunPattern + "/evidence";
     public const string ApprovalPattern = "/" + Common.RelaxKonOSEndpoints.ApiVersionPrefix + "/task-approvals/{approvalId:guid}";
     public static string Plan(Guid id) => PlanPattern.Replace("{planId:guid}", id.ToString("D"), StringComparison.Ordinal);
     public static string Invalidate(Guid id) => Plan(id) + "/invalidate";
@@ -23,5 +24,6 @@ public static class TaskPlanningRoutes
     public static string CancelRun(Guid id) => Run(id) + "/cancel";
     public static string RecheckRecovery(Guid id) => Run(id) + "/recheck-recovery";
     public static string Recovery(Guid id) => Run(id) + "/recovery";
+    public static string Evidence(Guid id) => Run(id) + "/evidence";
     public static string Approval(Guid id) => ApprovalPattern.Replace("{approvalId:guid}", id.ToString("D"), StringComparison.Ordinal);
 }

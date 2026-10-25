@@ -197,6 +197,7 @@ internal static class TaskPreviewClientChecks
 
 public class PreviewSession : DispatchProxy
 {
+    public DeviceRole Role = DeviceRole.Controller;
     public string Server = "server", BaseUrl = "http://localhost/";
     public UserDto User = new(Guid.NewGuid(), "fixture", HostPlatformKind.Windows, "fixture", DateTimeOffset.UtcNow, null);
     public SessionDto Login = new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), DateTimeOffset.UtcNow,
@@ -205,6 +206,7 @@ public class PreviewSession : DispatchProxy
     {
         "get_State" => AuthSessionState.Authenticated, "get_CurrentUser" => User, "get_CurrentSession" => Login,
         "get_ServiceId" => Server, "get_EffectiveBaseUrl" => BaseUrl, "GetAccessTokenAsync" => Task.FromResult<string?>("token"),
+        "get_AssignedRole" => Role,
         _ => throw new NotSupportedException(method?.Name)
     };
 }

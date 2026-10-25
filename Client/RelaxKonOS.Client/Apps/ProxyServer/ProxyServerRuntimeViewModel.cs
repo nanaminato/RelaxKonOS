@@ -70,6 +70,8 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
 
     [ObservableProperty] private bool canRead;
     [ObservableProperty] private bool canManage;
+    public Action? RefreshAccess { get; set; }
+    public void SynchronizeAccess() => RefreshAccess?.Invoke();
     [ObservableProperty] private bool isBusy;
     [ObservableProperty] private bool includePrerelease;
     [ObservableProperty] private LocalizedStatus outcomeText = LocalizedStatus.Literal("");
@@ -333,6 +335,7 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
             LocalizedStatus.Key("proxy_server.runtime.recovery_close_title"),
             LocalizedStatus.Key("proxy_server.runtime.recovery_close_warning"));
         if (!accepted) return;
+        RequireManage();
         await client.CloseRecoveryAsync(id, _lifetime.Token);
         OutcomeText = LocalizedStatus.Key("proxy_server.runtime.recovery_closed");
         await ReloadStateAsync();
@@ -405,6 +408,7 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
     /// </summary>
     [RelayCommand] private async Task CancelDownloadAsync()
     {
+        SynchronizeAccess();
         if (!CanCancelDownload || _cancelTarget is not { } id) return;
         try
         {
@@ -734,6 +738,7 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
 
     private void RequireRead()
     {
+        SynchronizeAccess();
         if (!CanRead || _invalidated) throw new InvalidOperationException("proxy_server.permission_denied");
     }
     partial void OnCanReadChanged(bool value)
@@ -765,6 +770,7 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
         catch (HttpRequestException ex) when (ex.Message == "elevation-required")
         {
             var password = PasswordPromptAsync is { } prompt ? await prompt() : null;
+            RequireManage();
             if (string.IsNullOrEmpty(password)) throw new InvalidOperationException("runtime.elevation_cancelled");
             if (!await client.ElevateAsync(password, _lifetime.Token))
                 throw new InvalidOperationException("proxy_server.permission_denied");

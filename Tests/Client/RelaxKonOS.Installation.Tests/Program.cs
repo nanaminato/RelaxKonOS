@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Reflection;
 using Avalonia;
+using Avalonia.Headless;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Client;
 using RelaxKonOS.Client.Apps.ProxyServer;
@@ -19,7 +20,10 @@ using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Privileged;
 
 const string helperCode = "proxy.privileged_operation_unavailable";
-AppBuilder.Configure<Application>().UsePlatformDetect().SetupWithoutStarting();
+if (args.FirstOrDefault() == "--component-center-host")
+    AppBuilder.Configure<Application>().UseHeadless(new AvaloniaHeadlessPlatformOptions()).SetupWithoutStarting();
+else
+    AppBuilder.Configure<Application>().UsePlatformDetect().SetupWithoutStarting();
 SynchronizationContext.SetSynchronizationContext(null);
 // These tests only read localization; no appearance changes or desktop are needed.
 // The SSH desktop session is only consulted for desktop-language overrides, so it stays unconnected here.
@@ -27,6 +31,11 @@ using var services = new ServiceCollection()
     .AddSingleton(new LocalizationService(new ShellSettings(null!), new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!))))
     .BuildServiceProvider();
 typeof(App).GetProperty(nameof(App.Services))!.SetValue(null, services);
+if (args.FirstOrDefault() == "--component-center-host")
+{
+    Environment.ExitCode = await ComponentCenterHostAcceptance.RunAsync(args);
+    return;
+}
 var session = DispatchProxy.Create<IAuthSession, SessionStub>();
 var settings = DispatchProxy.Create<IAppSettingsClient, SettingsStub>();
 static void Check(bool condition, string label)
@@ -51,6 +60,8 @@ await ApplicationAvailabilityChecks.RunAsync();
 await TaskPreviewClientChecks.RunAsync();
 await TaskExecutionClientChecks.RunAsync();
 await ComponentTaskExecutionChecks.RunAsync();
+await ComponentCenterAccessChecks.RunAsync();
+ComponentCenterHostAcceptanceChecks.Run();
 // A frozen plan is the only installation body the ledger accepts for Mihomo.
 static ManagedRuntimeInstallationRequest RuntimePlanBody() => new(true, new RuntimeChangePlan(
     new RuntimePlanRequest(Guid.NewGuid(), "host-test", RuntimeChange.Install, 1, 12, 7, "rel-mihomo", Guid.NewGuid().ToString("N")),

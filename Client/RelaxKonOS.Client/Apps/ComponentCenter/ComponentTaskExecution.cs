@@ -15,6 +15,14 @@ public sealed record ComponentTaskStepItem(TaskStep Plan, TaskStepRun Run)
 {
     public LocalizedStatus Title => new ComponentInspectionStep(Plan).Title;
     public LocalizedStatus State => LocalizedStatus.Key("component_center.task_step." + Run.State);
+    public bool HasOperation => Run.DomainOperationId is not null;
+    public LocalizedStatus Operation => LocalizedStatus.Format("component_center.result_operation", Run.DomainOperationId?.ToString("D") ?? "—");
+    public bool HasDataImpact => !Plan.RequiredCapabilities.IsEmpty;
+    public LocalizedStatus DataImpact => !HasDataImpact ? LocalizedStatus.Literal("")
+        : LocalizedStatus.Key(TaskPlanJson.ReadInputs<RuntimeTaskFrozenChange>(Plan.Inputs).Impact.DeletesBusinessData
+            ? "component_center.result_planned_delete" : "component_center.result_planned_preserve");
+    public bool HasProblem => Run.ProblemCode is not null;
+    public LocalizedStatus Problem => LocalizedStatus.Key("component_center.result_problem");
 }
 
 public partial class ComponentCenterViewModel
@@ -42,6 +50,14 @@ public partial class ComponentCenterViewModel
         || CurrentTaskRun is null && _taskApproval?.State == TaskApprovalState.Granted);
     public bool CanCancelTask => CanRefreshTask && Runtime.CanManage && CurrentTaskRun?.State is TaskRunState.Queued or TaskRunState.Running or TaskRunState.Cancelling;
     public bool CanRecheckTaskRecovery => CanRefreshTask && CurrentTaskRun?.State == TaskRunState.NeedsRecovery;
+    public bool ShowTaskResult => CurrentTaskRun?.State is TaskRunState.Succeeded or TaskRunState.Failed or TaskRunState.Cancelled or TaskRunState.NeedsRecovery;
+    public LocalizedStatus TaskResultSummary => LocalizedStatus.Format("component_center.result_summary",
+        TaskSteps.Count(step => step.Run.State == TaskStepRunState.Succeeded), TaskSteps.Count(step => step.Run.State == TaskStepRunState.NoOp),
+        TaskSteps.Count(step => step.Run.State == TaskStepRunState.Failed), TaskSteps.Count(step => step.Run.State == TaskStepRunState.Skipped),
+        TaskSteps.Count(step => step.Run.State == TaskStepRunState.Cancelled), TaskSteps.Count(step => step.Run.State == TaskStepRunState.Compensated),
+        TaskSteps.Count(step => step.Run.State == TaskStepRunState.NeedsRecovery));
+    public LocalizedStatus TaskResultIdentity => LocalizedStatus.Format("component_center.result_identity", CurrentTaskRun?.RunId.ToString("D") ?? "—",
+        CurrentTaskRun?.HostId ?? "—", SelectedTask?.Reference.Plan.PlanDigest ?? "—");
     public LocalizedStatus TaskState => LocalizedStatus.Key(CurrentTaskRun is { } run ? "component_center.task_state." + run.State : "component_center.task_unchecked");
     public bool ShowTaskDomainProgress => CurrentTaskRun is { State: TaskRunState.Running or TaskRunState.Cancelling } run
         && run.Steps.Any(step => step.State == TaskStepRunState.Running && step.DomainOperationId is { } id && id == Runtime.Installation?.PendingOperationId);
@@ -49,6 +65,7 @@ public partial class ComponentCenterViewModel
     partial void OnFrozenChangePlanChanged(TaskPlan? value) { _approvalKey = Guid.NewGuid().ToString("N"); TaskProperties(); }
     partial void OnCurrentTaskRunChanged(TaskRun? value)
     {
+        if (_evidenceRun != value) ClearTaskEvidence();
         if (TaskRecovery?.Run.RunId != value?.RunId || TaskRecovery?.Run.Revision != value?.Revision) TaskRecovery = null;
         TaskSteps.Clear();
         if (value is not null && SelectedTask is { } selected)
@@ -56,11 +73,12 @@ public partial class ComponentCenterViewModel
         TaskProperties();
     }
     partial void OnSelectedTaskChanged(ComponentTaskHistoryItem? value)
-    { _driveTask = false; _taskApproval = null; CurrentTaskRun = null; TaskProperties(); }
+    { _driveTask = false; _taskApproval = null; TaskRecovery = null; ClearTaskEvidence(); CurrentTaskRun = null; TaskProperties(); }
     private void TaskProperties()
     {
         RecoveryProperties();
-        foreach (var property in new[] { nameof(CanApproveTask), nameof(CanRefreshTask), nameof(CanResumeTask), nameof(CanCancelTask), nameof(CanRecheckTaskRecovery), nameof(CanSelectTask), nameof(TaskState), nameof(ShowTaskDomainProgress) }) OnPropertyChanged(property);
+        OnPropertyChanged(nameof(CanReadTaskEvidence));
+        foreach (var property in new[] { nameof(CanApproveTask), nameof(CanRefreshTask), nameof(CanResumeTask), nameof(CanCancelTask), nameof(CanRecheckTaskRecovery), nameof(CanSelectTask), nameof(TaskState), nameof(ShowTaskDomainProgress), nameof(ShowTaskResult), nameof(TaskResultSummary), nameof(TaskResultIdentity) }) OnPropertyChanged(property);
     }
     [RelayCommand] private void ReloadTaskHistory()
     {
@@ -85,26 +103,32 @@ public partial class ComponentCenterViewModel
     }
     [RelayCommand] private async Task ApproveTaskAsync()
     {
+        Runtime.SynchronizeAccess();
         if (!CanApproveTask || FrozenChangePlan is not { } plan || ConfirmTaskAsync is null) return;
         var revision = _draftRevision; var generation = _inspectionGeneration; var approvalKey = _approvalKey;
         IsTaskBusy = true;
         try
         {
-            if (!await ConfirmTaskAsync(plan) || _taskDisposed || revision != _draftRevision || generation != _inspectionGeneration || Runtime.IsInvalidated || !Runtime.CanRead || !Runtime.CanManage) return;
+            var confirmed = await ConfirmTaskAsync(plan);
+            Runtime.SynchronizeAccess();
+            if (!confirmed || _taskDisposed || revision != _draftRevision || generation != _inspectionGeneration || Runtime.IsInvalidated || !Runtime.CanRead || !Runtime.CanManage) return;
             TaskPlanApproval approval;
             try { approval = await _execution!.ApproveAsync(plan, new() { PlanDigest = plan.PlanDigest, Confirmed = true }, approvalKey, _inspectionLifetime.Token); }
             catch (HttpRequestException ex) when (ex.Message == "task.administrator_authentication_failed")
             {
                 var credentials = TaskCredentialsAsync is { } prompt ? await prompt() : null;
+                Runtime.SynchronizeAccess();
                 if (credentials is null || _taskDisposed || revision != _draftRevision || generation != _inspectionGeneration || Runtime.IsInvalidated || !Runtime.CanRead || !Runtime.CanManage) return;
                 approval = await _execution!.ApproveAsync(plan, new() { PlanDigest = plan.PlanDigest, Confirmed = true,
                     AdministratorUsername = credentials.Username, Password = credentials.Password }, approvalKey, _inspectionLifetime.Token);
             }
+            Runtime.SynchronizeAccess();
             if (_taskDisposed || revision != _draftRevision || generation != _inspectionGeneration || Runtime.IsInvalidated || !Runtime.CanRead || !Runtime.CanManage) return;
             var reference = new ComponentTaskReference(plan, approval.ApprovalId, Guid.NewGuid().ToString("N"), null);
             Track(reference); // Must be durable before starting, including when the start response is lost.
             _taskApproval = approval;
             var run = await _execution!.StartAsync(plan, approval, reference.StartKey, _inspectionLifetime.Token);
+            Runtime.SynchronizeAccess();
             Track(reference with { RunId = run.RunId }); CurrentTaskRun = run;
             _driveTask = !_taskDisposed && revision == _draftRevision && generation == _inspectionGeneration && !Runtime.IsInvalidated && Runtime.CanRead && Runtime.CanManage;
             if (_driveTask) { Drafts.Clear(); Persist(); }
@@ -115,6 +139,7 @@ public partial class ComponentCenterViewModel
     }
     [RelayCommand] private async Task RefreshTaskAsync()
     {
+        Runtime.SynchronizeAccess();
         if (!CanRefreshTask || SelectedTask is not { } selected) return;
         IsTaskBusy = true;
         try
@@ -123,13 +148,18 @@ public partial class ComponentCenterViewModel
             if (reference.RunId is not { } runId)
             {
                 _taskApproval = await _execution!.ReadApprovalAsync(reference.Plan, reference.ApprovalId, _inspectionLifetime.Token);
+                Runtime.SynchronizeAccess();
+                if (_taskDisposed || Runtime.IsInvalidated || !Runtime.CanRead || SelectedTask != selected) return;
                 if (_taskApproval.RunId is not { } accepted)
                 { TaskNotice = LocalizedStatus.Key(_taskApproval.State == TaskApprovalState.Granted ? "component_center.task_not_started" : "component_center.task_approval_unavailable"); return; }
                 reference = reference with { RunId = accepted }; Track(reference); runId = accepted;
             }
-            CurrentTaskRun = CurrentTaskRun is { } previous
+            var observed = CurrentTaskRun is { } previous
                 ? await _execution!.RefreshAsync(reference.Plan, previous, _inspectionLifetime.Token)
                 : await _execution!.ReadAsync(reference.Plan, runId, _inspectionLifetime.Token);
+            Runtime.SynchronizeAccess();
+            if (_taskDisposed || Runtime.IsInvalidated || !Runtime.CanRead || SelectedTask?.Reference.ApprovalId != reference.ApprovalId) return;
+            CurrentTaskRun = observed;
             TaskNotice = LocalizedStatus.Literal("");
         }
         catch (Exception ex) when (TaskFailure(ex)) { TaskError(ex); }
@@ -137,16 +167,20 @@ public partial class ComponentCenterViewModel
     }
     [RelayCommand] private async Task ResumeTaskAsync()
     {
+        Runtime.SynchronizeAccess();
         if (!CanResumeTask || SelectedTask is not { } selected || ConfirmTaskAsync is null) return;
         IsTaskBusy = true;
         try
         {
-            if (!await ConfirmTaskAsync(selected.Reference.Plan) || _taskDisposed || Runtime.IsInvalidated || !Runtime.CanRead || !Runtime.CanManage) return;
+            var confirmed = await ConfirmTaskAsync(selected.Reference.Plan);
+            Runtime.SynchronizeAccess();
+            if (!confirmed || _taskDisposed || Runtime.IsInvalidated || !Runtime.CanRead || !Runtime.CanManage || SelectedTask != selected) return;
             if (CurrentTaskRun is null && _taskApproval is { } approval)
             {
                 var run = await _execution!.StartAsync(selected.Reference.Plan, approval, selected.Reference.StartKey, _inspectionLifetime.Token);
                 Track(selected.Reference with { RunId = run.RunId }); CurrentTaskRun = run;
             }
+            Runtime.SynchronizeAccess();
             _driveTask = !_taskDisposed && !Runtime.IsInvalidated && Runtime.CanRead && Runtime.CanManage;
             TaskNotice = LocalizedStatus.Key("component_center.task_accepted");
         }
@@ -155,11 +189,13 @@ public partial class ComponentCenterViewModel
     }
     [RelayCommand] private async Task CancelTaskAsync()
     {
+        Runtime.SynchronizeAccess();
         if (!CanCancelTask || CurrentTaskRun is not { } run || SelectedTask is not { } selected) return;
         IsTaskBusy = true;
         try
         {
             CurrentTaskRun = await _execution!.CancelAsync(selected.Reference.Plan, run, _inspectionLifetime.Token);
+            Runtime.SynchronizeAccess();
             // This window explicitly requested cancellation; continue delivering it until a receipt arrives.
             _driveTask = !_taskDisposed && !Runtime.IsInvalidated && Runtime.CanRead && Runtime.CanManage;
         }
@@ -168,6 +204,7 @@ public partial class ComponentCenterViewModel
     }
     public async Task TickTaskAsync()
     {
+        Runtime.SynchronizeAccess();
         if (!CanRefreshTask || SelectedTask is not { } selected) return;
         if (CurrentTaskRun is not { } run) { await RefreshTaskAsync(); return; }
         if (run.State is not (TaskRunState.Queued or TaskRunState.Running or TaskRunState.Cancelling)) return;
@@ -177,11 +214,25 @@ public partial class ComponentCenterViewModel
         if (!_driveTask) { await RefreshTaskAsync(); return; }
         IsTaskBusy = true;
         try { CurrentTaskRun = await _execution!.AdvanceAsync(selected.Reference.Plan, run, _inspectionLifetime.Token); }
+        catch (HttpRequestException ex) when (ex.Message == "task.run_revision_conflict")
+        {
+            // The installation worker can bind its operation after the previous HTTP response.
+            // Observe that forward revision; do not resend a write or renew the user's intent.
+            try
+            {
+                var observed = await _execution!.RefreshAsync(selected.Reference.Plan, run, _inspectionLifetime.Token);
+                Runtime.SynchronizeAccess();
+                if (!_taskDisposed && !Runtime.IsInvalidated && Runtime.CanRead && SelectedTask == selected && CurrentTaskRun == run)
+                { CurrentTaskRun = observed; TaskNotice = LocalizedStatus.Literal(""); }
+            }
+            catch (Exception readError) when (TaskFailure(readError)) { TaskError(readError); }
+        }
         catch (Exception ex) when (TaskFailure(ex)) { TaskError(ex); }
         finally { IsTaskBusy = false; }
     }
     [RelayCommand] private async Task RecheckTaskRecoveryAsync()
     {
+        Runtime.SynchronizeAccess();
         if (!CanRecheckTaskRecovery || CurrentTaskRun is not { } run || SelectedTask is not { } selected) return;
         IsTaskBusy = true; _driveTask = false;
         try

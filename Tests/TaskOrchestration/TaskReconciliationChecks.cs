@@ -41,6 +41,16 @@ internal static class TaskReconciliationChecks
                 return (run, approval, new("runtime", operation, snapshot));
             }
             var good = Setup();
+            var originalFrozen = TaskPlanJson.ReadInputs<RuntimeTaskFrozenChange>(plan.Semantics.Steps[0].Inputs);
+            var tagSemantics = plan.Semantics with { Steps = [plan.Semantics.Steps[0] with
+                { Inputs = TaskPlanJson.FreezeInputs(originalFrozen with { Release = originalFrozen.Release! with { OriginalVersion = "v1.14.3" } }) }] };
+            var tagged = Setup(plan with { Semantics = tagSemantics, PlanDigest = TaskPlanCanonicalizer.Digest(tagSemantics) });
+            Check(store.RecordReconciliation(tagged.Run.RunId, "subject", tagged.Evidence, 3).State == TaskRunState.Succeeded,
+                "native canonical version matches a signed v-prefixed release tag without weakening release identity");
+            var wrongBuild = Setup(plan with { Semantics = tagSemantics, PlanDigest = TaskPlanCanonicalizer.Digest(tagSemantics) });
+            Check(store.RecordReconciliation(wrongBuild.Run.RunId, "subject", wrongBuild.Evidence with
+                { Snapshot = wrongBuild.Evidence.Snapshot! with { MeasuredVersion = "1.14.3+other-build" } }, 3).State == TaskRunState.NeedsRecovery,
+                "version reconciliation still requires exact canonical build identity, not just SemVer precedence");
             Reject(() => store.RecordReconciliation(good.Run.RunId, "subject", good.Evidence with
                 { Operation = good.Evidence.Operation with { Service = InstallationServiceId.Mihomo } }, 3), "task.domain_operation_conflict");
             Reject(() => store.RecordReconciliation(good.Run.RunId, "subject", good.Evidence, 2), "task.run_revision_conflict");
@@ -52,6 +62,18 @@ internal static class TaskReconciliationChecks
                 "matching domain terminal state, receipt and actual target prove success even after authority was revoked");
             Check(new TaskPlanStore(path, protection).GetRun(good.Run.RunId, "subject")?.State == TaskRunState.Succeeded,
                 "reopening replays and validates persisted terminal evidence");
+            var historical = new TaskPlanStore(path, protection).GetRunEvidence(good.Run.RunId, "subject")!;
+            Check(historical.Run.RunId == succeeded.RunId && historical.Run.Revision == succeeded.Revision
+                && historical.Observations is [{ RecoveryCheck: false, Snapshot.MeasuredVersion: "1.14.3" }]
+                && historical.Observations[0].OperationId == good.Evidence.Operation.OperationId,
+                "historical result query preserves exact persisted host evidence across reopening");
+            Check(store.GetRunEvidence(good.Run.RunId, "other") is null, "result evidence is isolated by task owner");
+            var foreign = Setup();
+            var foreignObservation = foreign.Evidence with { Snapshot = foreign.Evidence.Snapshot! with
+                { Installation = foreign.Evidence.Snapshot.Installation with { HostId = "other-host" } } };
+            store.RecordReconciliation(foreign.Run.RunId, "subject", foreignObservation, 3);
+            Check(store.GetRunEvidence(foreign.Run.RunId, "subject") is { Run.State: TaskRunState.NeedsRecovery, Observations: [{ Snapshot: null }] },
+                "evidence query withholds unrelated host observations without rewriting the uncertain result");
             Check(store.RecordReconciliation(good.Run.RunId, "subject", good.Evidence, 3).Revision == 4, "terminal acknowledgement retry does not change history");
             Reject(() => store.RecordReconciliation(good.Run.RunId, "subject", good.Evidence with { Snapshot = null }, 4), "task.result_conflict");
             var transforms = new Func<TaskReconciliationEvidence, TaskReconciliationEvidence>[]
@@ -135,6 +157,10 @@ internal static class TaskReconciliationChecks
                 "explicit check resolves interrupted ledger only with matching receipt and measured target, without renewing approval");
             Check(new TaskPlanStore(path, protection).GetRun(recovered.RunId, "subject") is { State: TaskRunState.Succeeded, Revision: 6 },
                 "reopening replays original uncertain evidence and subsequent recovery evidence");
+            var recoveryHistory = new TaskPlanStore(path, protection).GetRunEvidence(recovered.RunId, "subject")!;
+            Check(recoveryHistory.Observations is [{ RecoveryCheck: false, Snapshot: null }, { RecoveryCheck: true }, { RecoveryCheck: true }]
+                && recoveryHistory.Observations[^1].Snapshot?.Receipt?.Outcome == RuntimeSwitchOutcome.Succeeded,
+                "evidence query preserves original uncertainty and every distinct recovery check");
             await RejectRecovery("subject", recovered.Revision, "task.recovery_not_required");
             foreach (var cancelled in new[] { false, true })
             {

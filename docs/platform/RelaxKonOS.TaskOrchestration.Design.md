@@ -910,3 +910,11 @@ Shared 中新增精确生命周期选择和冻结变更记录。后者包含完�
 桌面统一确认/审批/执行、持久运行引用和重开流程已接入，详见[桌面统一执行](RelaxKonOS.ComponentCenter.Design.md#桌面统一执行与重开权限边界2026-10-25)与[恢复核对界面](RelaxKonOS.ComponentCenter.Design.md#桌面显式恢复结果核对2026-10-25)。当前新增的是只读宿主核对与服务端结果记录，任务专用恢复授权/补偿协调和剩余步骤审批仍待实施；TO-02/TO-03 保持未完成。
 
 验证：`dotnet build Tests/TaskOrchestration/RelaxKonOS.TaskOrchestration.Tests.csproj --no-restore -m:1` 通过；运行同工程 `--no-build --no-restore`，任务专项共 **408 项**通过（对账 53、执行 HTTP 44，其他分组一并回归）。新增证据覆盖原操作错配/缺失、不同用户与双主体、修订/未知字段拒绝、已撤审批与宿主变更功能失效下只读可用、原 Interrupted 回执核对、未明结果审计/幂等、失败/取消基线、配置漂移、下游 Skipped 保护、32 条观察上限、重开完整性和提交故障回滚。回环 HTTP 需在允许本机套接字连接的执行环境运行；安装与回执仍为受控领域适配，没有真实 Helper 恢复。Client Installation **264 项**和中英日 × 明暗主题布局通过，桌面构建通过；保留既有包审计与编译警告。
+
+### TO-03 历史对账证据查询（2026-10-25）
+
+新增只读 `GET /api/v1.0/task-runs/{runId}/evidence`，返回 TaskRun 与不可变的初始/恢复对账观察序列。采用 RuntimeRead 与唯一认证主体隔离，响应 no-store，不要求变更宿主功能仍有效。存储在同一读事务中验证原运行及冻结计划，再投影原结果和最多 32 条恢复记录；不改写台账或审计、不重新观察宿主、不调用管理员认证或领域执行。
+
+公开每条证据包含步骤、原 operationId、领域台账状态、是否恢复核对及公开 RuntimeInstallationSnapshot。无法归属原宿主/运行时/安装身份或回执 ID 错配的 snapshot 投影为缺失，不能暴露其他目标细节。原始和后续恢复证据不相互替代。该查询不改变存储格式或现有审批/执行契约，亦不提供逐资源保留明细。
+
+任务专项 **441 项**通过（对账 57、执行 HTTP 48）；新增持久重开、证据并存与跨宿主观察隔离，以及回环 HTTP 的唯一主体/owner/no-store/零派发/零宿主观察检查。桌面严格客户端和界面已接入，详见[桌面历史证据](RelaxKonOS.ComponentCenter.Design.md#桌面历史宿主证据读取2026-10-25)。真实 Helper/宿主端到端、剩余步骤新审批仍待验收，TO-02/TO-03 保持实施中。

@@ -21,11 +21,41 @@ public interface ITaskExecutionClient
     Task<TaskRun> RecheckRecoveryAsync(TaskPlan plan, TaskRun run, CancellationToken ct);
     Task<TaskRecoveryView> ReadRecoveryAsync(TaskPlan plan, TaskRun run, CancellationToken ct);
     Task<TaskRecoveryResponse> RecoverAsync(TaskPlan plan, TaskRun run, TaskRecoveryRequest request, string key, CancellationToken ct);
+    Task<TaskRunEvidence> ReadEvidenceAsync(TaskPlan plan, TaskRun run, CancellationToken ct);
 }
 
 /// <summary>One login and server only. Credentials are never logged or retained by this client.</summary>
 public sealed class TaskExecutionClient(HttpClient http, IAuthSession session) : ITaskExecutionClient
 {
+    public async Task<TaskRunEvidence> ReadEvidenceAsync(TaskPlan plan, TaskRun previous, CancellationToken ct)
+    {
+        ValidatePlan(plan); ValidateResponse(() => ValidateRun(plan, previous));
+        var evidence = await SendAsync<TaskRunEvidence>(HttpMethod.Get, TaskPlanningRoutes.Evidence(previous.RunId), null, null, 524288, ct);
+        ValidateResponse(() =>
+        {
+            ValidateRun(plan, evidence.Run); ValidateContinuity(previous, evidence.Run);
+            if (evidence.Observations.IsDefault || evidence.Observations.Length > plan.Semantics.Steps.Length + 32) Invalid();
+            var initial = new HashSet<string>(StringComparer.Ordinal);
+            var recoveryCount = 0;
+            foreach (var item in evidence.Observations)
+            {
+                if (item is null || item.OperationId == Guid.Empty || !Enum.IsDefined(item.OperationState)
+                    || item.OperationState is Protocol.Installations.InstallationOperationState.Queued or Protocol.Installations.InstallationOperationState.Running
+                    || !evidence.Run.Steps.Any(step => step.StepId == item.StepId && step.DomainOperationId == item.OperationId)
+                    || !item.RecoveryCheck && !initial.Add(item.StepId) || item.RecoveryCheck && (!initial.Contains(item.StepId) || ++recoveryCount > 32)) Invalid();
+                var proposal = plan.Semantics.Steps.Single(step => step.StepId == item.StepId);
+                if (proposal.RequiredCapabilities.IsEmpty) Invalid();
+                var frozen = TaskPlanJson.ReadInputs<RuntimeTaskFrozenChange>(proposal.Inputs);
+                if (item.Snapshot is not { } snapshot) continue;
+                if (snapshot.Installation is not { } installation || installation.HostId != evidence.Run.HostId
+                    || installation.RuntimeId != frozen.RuntimeId || installation.InstallationId != frozen.Selection.InstallationId
+                    || installation.StateRevision < 0 || !Enum.IsDefined(installation.Ownership)
+                    || snapshot.MeasuredVersion is { } version && !Text(version) || installation.ActiveReleaseId is { } release && !Text(release)
+                    || snapshot.Receipt is { } receipt && (receipt.OperationId != item.OperationId || !Enum.IsDefined(receipt.Outcome))) Invalid();
+            }
+        });
+        return evidence;
+    }
     private readonly object? _login = session.CurrentSession;
     private readonly Guid? _actor = session.CurrentUser?.Id;
     private readonly Guid? _sessionId = session.CurrentSession?.Id;
@@ -105,7 +135,8 @@ public sealed class TaskExecutionClient(HttpClient http, IAuthSession session) :
         ValidateResponse(() =>
         {
             ValidateRun(plan, result.Run); ValidateContinuity(previous, result.Run); ValidateRecoveryAttempt(result.Run, result.Attempt);
-            if (result.Attempt.OperationId != command.OperationId || result.Attempt.Action != command.Action || result.Attempt.ExpectedRevision != command.ExpectedRevision) Invalid();
+            if (result.Attempt.OperationId != command.OperationId || result.Attempt.Action != command.Action || result.Attempt.ExpectedRevision != command.ExpectedRevision
+                || result.Attempt.SessionIdentity != _sessionId?.ToString("D")) Invalid();
         });
         return result;
     }

@@ -12,17 +12,20 @@
     <StackPanel Spacing="4">
      <TextBlock Text="{loc:Loc application.relaxkonos.component-center.display_name}" FontSize="20" FontWeight="SemiBold" />
      <TextBlock Text="{Binding HostIdentity}" TextWrapping="Wrap" />
-     <StackPanel Orientation="Horizontal" Spacing="12">
+     <WrapPanel ItemSpacing="12">
       <TextBlock Text="{Binding ConnectionText}" />
       <TextBlock Text="{Binding Runtime.TargetText}" Foreground="{DynamicResource TextSecondaryBrush}" />
-     </StackPanel>
+     </WrapPanel>
      <TextBlock Text="{Binding Runtime.OutcomeText}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
     </StackPanel>
     <Button Grid.Column="1" Content="{loc:Loc proxy_server.refresh}" Command="{Binding RefreshCommand}" IsEnabled="{Binding Runtime.CanRefreshSources}" VerticalAlignment="Top" />
    </Grid>
   </Border>
-  <Grid Grid.Row="1" ColumnDefinitions="260,*" x:Name="WorkspaceBody">
-   <Border Classes="app-sidebar" Padding="12">
+  <Grid Grid.Row="1" ColumnDefinitions="260,*" RowDefinitions="Auto,*" x:Name="WorkspaceBody">
+   <ToggleButton x:Name="NavigationToggle" Grid.ColumnSpan="2" Content="{loc:Loc component_center.navigation_toggle}"
+                 IsVisible="False" IsCheckedChanged="NavigationToggle_Changed" Margin="12,8" HorizontalAlignment="Left" />
+   <Border x:Name="NavigationPane" Classes="app-sidebar" Padding="12" Grid.RowSpan="2">
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
     <Grid RowDefinitions="Auto,Auto,Auto,*" RowSpacing="8">
      <TextBox x:Name="Search" PlaceholderText="{loc:Loc component_center.search}" Text="{Binding Search, Mode=TwoWay}" />
      <ListBox Grid.Row="1" x:Name="PageNavigation" ItemsSource="{Binding Pages}" SelectedItem="{Binding SelectedNavigation, Mode=TwoWay}">
@@ -33,9 +36,10 @@
       <TreeView.Styles><Style Selector="TreeViewItem"><Setter Property="IsExpanded" Value="True" /></Style></TreeView.Styles>
       <TreeView.ItemTemplate><TreeDataTemplate x:DataType="vm:ComponentTreeNode" ItemsSource="{Binding VisibleChildren}">
        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="4">
-        <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}" IsThreeState="{Binding IsGroup}" IsEnabled="{Binding CanSelect}" VerticalAlignment="Top"
+        <!-- Null is a derived aggregate. Users toggle select/clear, never request a third state. -->
+        <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}" IsThreeState="False" IsEnabled="{Binding CanSelect}" VerticalAlignment="Top"
                   AutomationProperties.Name="{Binding Label}" />
-        <StackPanel Grid.Column="1" Spacing="2">
+        <StackPanel Grid.Column="1" Spacing="2" HorizontalAlignment="Left">
          <TextBlock Text="{Binding Label}" TextWrapping="Wrap" MaxWidth="170" />
          <TextBlock Text="{Binding Requirement}" IsVisible="{Binding ShowRequirement}" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" />
          <TextBlock Text="{Binding Status}" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" />
@@ -45,8 +49,9 @@
       </TreeDataTemplate></TreeView.ItemTemplate>
      </TreeView>
     </Grid>
+    </ScrollViewer>
    </Border>
-   <ScrollViewer x:Name="DetailsScroll" Grid.Column="1" Padding="20,16" HorizontalScrollBarVisibility="Disabled">
+   <ScrollViewer x:Name="DetailsScroll" Grid.Column="1" Grid.RowSpan="2" Padding="20,16" HorizontalScrollBarVisibility="Disabled">
     <StackPanel Spacing="14">
      <TextBlock Text="{Binding SelectedTitle}" FontSize="18" FontWeight="SemiBold" />
      <TextBlock Text="{Binding EmptyMessage}" IsVisible="{Binding !HasResults}" TextWrapping="Wrap" />
@@ -60,7 +65,7 @@
        <Button Content="{loc:Loc component_center.stage_workload}" Command="{Binding SelectWorkloadCommand}" HorizontalAlignment="Left" />
       </StackPanel>
      </Border>
-     <Button Content="{loc:Loc application.relaxkonos.proxy-server.display_name}" Click="OpenApplication_Click" IsVisible="{Binding HasRuntimeDetails}" HorizontalAlignment="Left" />
+     <Button Content="{loc:Loc component_center.open_application}" Click="OpenApplication_Click" IsVisible="{Binding HasRuntimeDetails}" HorizontalAlignment="Left" />
      <Border IsVisible="{Binding ShowInspection}" Classes="app-panel" Padding="18">
       <StackPanel Spacing="10">
        <TextBlock Text="{loc:Loc component_center.inspect_title}" FontSize="16" FontWeight="SemiBold" />
@@ -106,6 +111,14 @@
         <ComboBox.ItemTemplate><DataTemplate x:DataType="vm:ComponentTaskHistoryItem"><TextBlock Text="{Binding Title}" /></DataTemplate></ComboBox.ItemTemplate>
        </ComboBox>
        <TextBlock Text="{Binding TaskState}" TextWrapping="Wrap" />
+       <Border IsVisible="{Binding ShowTaskResult}" Padding="12" Classes="app-panel">
+        <StackPanel Spacing="6">
+         <TextBlock Text="{loc:Loc component_center.result_title}" FontWeight="SemiBold" />
+         <TextBlock Text="{Binding TaskResultSummary}" TextWrapping="Wrap" />
+         <TextBlock Text="{Binding TaskResultIdentity}" TextWrapping="Wrap" FontSize="11" />
+         <TextBlock Text="{loc:Loc component_center.result_evidence_hint}" TextWrapping="Wrap" />
+        </StackPanel>
+       </Border>
        <TextBlock Text="{Binding Runtime.OperationText}" IsVisible="{Binding ShowTaskDomainProgress}" TextWrapping="Wrap" />
        <StackPanel IsVisible="{Binding ShowTaskDomainProgress}" Spacing="4">
         <TextBlock Text="{loc:Loc component_center.stage_progress}" TextWrapping="Wrap" />
@@ -113,6 +126,20 @@
         <TextBlock Text="{Binding Runtime.OperationProgress, StringFormat={}{0}%}" IsVisible="{Binding !Runtime.IsOperationIndeterminate}" />
        </StackPanel>
        <TextBlock Text="{Binding TaskNotice}" TextWrapping="Wrap" />
+       <Button Content="{loc:Loc component_center.evidence_read}" Command="{Binding ReadTaskEvidenceCommand}" IsEnabled="{Binding CanReadTaskEvidence}" HorizontalAlignment="Left" />
+       <ItemsControl ItemsSource="{Binding TaskEvidence}">
+        <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:ComponentTaskEvidenceItem">
+         <Border Padding="12" Margin="0,4" Classes="app-panel">
+          <StackPanel Spacing="4">
+           <TextBlock Text="{Binding Kind}" FontWeight="SemiBold" />
+           <TextBlock Text="{Binding Operation}" TextWrapping="Wrap" FontSize="11" />
+           <TextBlock Text="{Binding DomainState}" TextWrapping="Wrap" />
+           <TextBlock Text="{Binding Observation}" TextWrapping="Wrap" />
+           <TextBlock Text="{Binding Receipt}" TextWrapping="Wrap" />
+          </StackPanel>
+         </Border>
+        </DataTemplate></ItemsControl.ItemTemplate>
+       </ItemsControl>
        <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsTaskBusy}" />
        <WrapPanel>
         <Button Content="{loc:Loc component_center.task_refresh}" Command="{Binding RefreshTaskCommand}" IsEnabled="{Binding CanRefreshTask}" Margin="0,0,8,0" />
@@ -123,15 +150,32 @@
        <Button Content="{loc:Loc component_center.task_recheck_recovery}" Command="{Binding RecheckTaskRecoveryCommand}" IsVisible="{Binding CanRecheckTaskRecovery}" HorizontalAlignment="Left" />
        <StackPanel IsVisible="{Binding HasTaskRecovery}" Spacing="8">
         <TextBlock Text="{Binding TaskRecoverySummary}" TextWrapping="Wrap" />
+        <TextBlock Text="{Binding RecoveryServiceState}" TextWrapping="Wrap" />
+        <TextBlock Text="{Binding RecoveryVersions}" TextWrapping="Wrap" />
         <WrapPanel>
          <Button Content="{loc:Loc component_center.task_recovery_read}" Command="{Binding ReadTaskRecoveryCommand}" IsEnabled="{Binding CanReadTaskRecovery}" Margin="0,0,8,8" />
          <Button Content="{loc:Loc component_center.task_recovery_action.RetryCompensation}" Command="{Binding RetryTaskCompensationCommand}" IsEnabled="{Binding CanRetryTaskCompensation}" Margin="0,0,8,8" />
          <Button Content="{loc:Loc component_center.task_recovery_action.EmergencyStop}" Command="{Binding StopTaskRecoveryCommand}" IsEnabled="{Binding CanStopTaskRecovery}" Margin="0,0,8,8" />
          <Button Content="{loc:Loc component_center.task_recovery_action.Close}" Command="{Binding CloseTaskRecoveryCommand}" IsEnabled="{Binding CanCloseTaskRecovery}" Margin="0,0,8,8" />
         </WrapPanel>
+        <ItemsControl ItemsSource="{Binding RecoveryAttempts}">
+         <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:ComponentRecoveryAttemptItem">
+          <StackPanel Spacing="4" Margin="0,4">
+           <TextBlock Text="{Binding Action}" FontWeight="SemiBold" />
+           <TextBlock Text="{Binding Result}" TextWrapping="Wrap" />
+           <TextBlock Text="{Binding Identity}" FontSize="11" TextWrapping="Wrap" />
+          </StackPanel>
+         </DataTemplate></ItemsControl.ItemTemplate>
+        </ItemsControl>
        </StackPanel>
        <ItemsControl ItemsSource="{Binding TaskSteps}"><ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:ComponentTaskStepItem">
-        <StackPanel Margin="0,4"><TextBlock Text="{Binding Title}" FontWeight="SemiBold" /><TextBlock Text="{Binding State}" /></StackPanel>
+        <StackPanel Margin="0,4" Spacing="4">
+         <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+         <TextBlock Text="{Binding State}" />
+         <TextBlock Text="{Binding Operation}" IsVisible="{Binding HasOperation}" TextWrapping="Wrap" FontSize="11" />
+         <TextBlock Text="{Binding DataImpact}" IsVisible="{Binding HasDataImpact}" TextWrapping="Wrap" />
+         <TextBlock Text="{Binding Problem}" IsVisible="{Binding HasProblem}" TextWrapping="Wrap" Foreground="{DynamicResource DangerBrush}" />
+        </StackPanel>
        </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
       </StackPanel>
      </Border>
@@ -140,6 +184,7 @@
    </ScrollViewer>
   </Grid>
   <Border x:Name="DraftFooter" Grid.Row="2" Padding="16,12" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource BorderSubtleBrush}">
+   <ScrollViewer x:Name="DraftFooterScroll" HorizontalScrollBarVisibility="Disabled">
    <StackPanel Spacing="8">
     <TextBlock Text="{Binding DraftSummary}" FontWeight="SemiBold" />
     <TextBlock Text="{Binding Notice}" TextWrapping="Wrap" Foreground="{DynamicResource DangerBrush}" />
@@ -151,12 +196,13 @@
       </DockPanel>
      </DataTemplate></ItemsControl.ItemTemplate>
     </ItemsControl>
-    <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="8">
-     <Button Content="{loc:Loc component_center.preview_title}" Command="{Binding PlanDraftCommand}" IsEnabled="{Binding CanPlanDraft}" Classes="primary" />
-     <Button Grid.Column="1" Content="{loc:Loc component_center.discard}" Command="{Binding DiscardCommand}" IsEnabled="{Binding HasDrafts}" />
-     <TextBlock Grid.Column="2" Text="{Binding PersistenceNotice}" TextWrapping="Wrap" VerticalAlignment="Center" />
-    </Grid>
+    <WrapPanel ItemSpacing="8" LineSpacing="8">
+     <Button x:Name="PreviewChanges" Content="{loc:Loc component_center.preview_title}" Command="{Binding PlanDraftCommand}" IsEnabled="{Binding CanPlanDraft}" Classes="primary" />
+     <Button x:Name="DiscardChanges" Content="{loc:Loc component_center.discard}" Command="{Binding DiscardCommand}" IsEnabled="{Binding HasDrafts}" />
+    </WrapPanel>
+    <TextBlock Text="{Binding PersistenceNotice}" TextWrapping="Wrap" />
    </StackPanel>
+   </ScrollViewer>
   </Border>
  </Grid>
 </UserControl>

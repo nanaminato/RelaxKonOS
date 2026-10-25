@@ -92,19 +92,19 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
         };
         // Closing the UI must not cancel a host transaction already accepted by the ledger.
         var login = session.CurrentSession;
+        var access = new ComponentCenterAccess(session, context.Permissions, runtime,
+            () => session.CurrentServer?.Capabilities.Contains(ServerCapabilities.ProxyServer) == true,
+            connected => model.ConnectionAvailable = connected);
+        runtime.RefreshAccess = access.Synchronize;
         EventHandler<AuthSessionStateChangedEventArgs> sessionChanged = (_, _) =>
         {
-            if (!ReferenceEquals(login, session.CurrentSession) || session.State != AuthSessionState.Authenticated)
-                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-                {
-                    model.ConnectionAvailable = false;
-                    runtime.InvalidateSession();
-                });
+            Avalonia.Threading.Dispatcher.UIThread.Post(access.Synchronize);
         };
         session.StateChanged += sessionChanged;
         var taskRefresh = new Avalonia.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         taskRefresh.Tick += async (_, _) =>
         {
+            access.Synchronize();
             var wasTaskActive = model.CurrentTaskRun?.State is RelaxKonOS.Protocol.TaskOrchestration.TaskRunState.Queued or RelaxKonOS.Protocol.TaskOrchestration.TaskRunState.Running or RelaxKonOS.Protocol.TaskOrchestration.TaskRunState.Cancelling;
             await model.TickTaskAsync();
             if (runtime.CanRead && !runtime.IsBusy && !model.IsTaskBusy && !runtime.IsInvalidated && (runtime.HasActiveOperation || wasTaskActive))
@@ -117,6 +117,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             if (!ReferenceEquals(current, window)) return;
             context.WindowManager.WindowClosed -= closed; session.StateChanged -= sessionChanged;
             taskRefresh.Stop();
+            runtime.RefreshAccess = null;
             if (ReferenceEquals(_model, model)) _model = null;
             runtime.PropertyChanged -= observed;
             model.Dispose();
@@ -139,13 +140,15 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             runtime.CanRead = true;
             runtime.CanManage = session.AssignedRole == RelaxKonOS.Protocol.Workspace.DeviceRole.Controller
                 && await PermissionAsync(AppPermissions.ServerProxyManage);
+            access.Synchronize();
             await runtime.EnsureLoadedAsync();
         }
         async Task<bool> PermissionAsync(string permission)
         {
             var status = context.Permissions.GetStatus(permission);
             if (status == AppPermissionStatus.Undecided) status = await context.Permissions.RequestAsync(permission);
-            return status == AppPermissionStatus.Granted && ReferenceEquals(login, session.CurrentSession);
+            return status == AppPermissionStatus.Granted && !runtime.IsInvalidated && session.State == AuthSessionState.Authenticated
+                && ReferenceEquals(login, session.CurrentSession);
         }
         Task<TResult?> ShowOwnedAsync<TResult>(string title, Func<RelaxKonOS.WindowManager.ModalDialog<TResult>, Avalonia.Controls.Control> factory, RelaxKonOS.Core.Primitives.Size size)
             => context.ShowDialogAsync(window, title, factory, size);

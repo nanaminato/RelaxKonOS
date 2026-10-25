@@ -4,6 +4,9 @@ using Avalonia.Controls;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Avalonia.Headless;
+using Avalonia.Input;
+using Avalonia.Input.Raw;
 using RelaxKonOS.Client.Apps.ComponentCenter;
 using RelaxKonOS.Client.Apps.ProxyServer;
 using RelaxKonOS.Client.Services;
@@ -48,6 +51,33 @@ internal static class ComponentCenterWorkspaceChecks
                     || t.Text?.Contains("proxy_server.", StringComparison.Ordinal) == true),
                     "All visible component-center text resolves in " + language);
                 search.Text = "";
+                Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
+                var groupCheckbox = view.GetVisualDescendants().OfType<CheckBox>().Single(control => control.DataContext is ComponentTreeNode { IsGroup: true });
+                groupCheckbox.Focus();
+                window.KeyPress(Key.Space, RawInputModifiers.None, PhysicalKey.Space, null);
+                window.KeyRelease(Key.Space, RawInputModifiers.None, PhysicalKey.Space, null);
+                Dispatcher.UIThread.RunJobs();
+                Check(model.Drafts.Count == 0, "Space on a checked group removes local selections without a host change");
+                model.Stage(new("sing-box", "sing-box", "host-a", Guid.NewGuid(), "source-a", "release-a", "1.14.3", RuntimeChange.Repair, true, false));
+                var groupNode = (ComponentTreeNode)groupCheckbox.DataContext!;
+                var displayOnlyChild = new ComponentTreeNode("display-only", RelaxKonOS.Client.Localization.LocalizedStatus.Literal("optional"), "display-only");
+                groupNode.Children.Add(displayOnlyChild);
+                groupNode.SynchronizeSelection(new HashSet<string> { "sing-box" });
+                Dispatcher.UIThread.RunJobs();
+                Check(groupCheckbox.IsChecked is null && groupCheckbox.Classes.Contains(":indeterminate") && model.Drafts.Count == 1,
+                    "Partial aggregation still renders as indeterminate without creating another draft");
+                groupNode.Children.Remove(displayOnlyChild);
+                groupNode.SynchronizeSelection(new HashSet<string> { "sing-box" });
+                var treeGroup = view.GetVisualDescendants().OfType<TreeViewItem>().Single(item => item.DataContext == groupNode);
+                treeGroup.Focus();
+                window.KeyPress(Key.Left, RawInputModifiers.None, PhysicalKey.ArrowLeft, null);
+                window.KeyRelease(Key.Left, RawInputModifiers.None, PhysicalKey.ArrowLeft, null);
+                Dispatcher.UIThread.RunJobs();
+                Check(!treeGroup.IsExpanded && model.Drafts.Count == 1, "Left arrow collapses the tree without changing selection intent");
+                window.KeyPress(Key.Right, RawInputModifiers.None, PhysicalKey.ArrowRight, null);
+                window.KeyRelease(Key.Right, RawInputModifiers.None, PhysicalKey.ArrowRight, null);
+                Dispatcher.UIThread.RunJobs();
+                Check(treeGroup.IsExpanded && model.Drafts.Count == 1, "Right arrow expands the tree without executing or changing a draft");
                 foreach (var page in Enum.GetValues<ComponentCenterPage>())
                 {
                     model.Navigate(page); Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
@@ -56,6 +86,51 @@ internal static class ComponentCenterWorkspaceChecks
                     bitmap.Render(window);
                     bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light-") + page + ".png"), new PngBitmapEncoderOptions());
                 }
+                window.Width = 640; window.Height = 720;
+                Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
+                var navigationToggle = view.FindControl<Avalonia.Controls.Primitives.ToggleButton>("NavigationToggle")!;
+                var navigationPane = view.FindControl<Border>("NavigationPane")!;
+                var details = view.FindControl<ScrollViewer>("DetailsScroll")!;
+                Check(navigationToggle.IsVisible && !navigationPane.IsVisible && details.IsVisible && details.Bounds.Width >= 600,
+                    "Narrow layout dedicates the body width to details and keeps navigation reachable");
+                navigationToggle.Focus();
+                window.KeyPress(Key.Space, RawInputModifiers.None, PhysicalKey.Space, null);
+                window.KeyRelease(Key.Space, RawInputModifiers.None, PhysicalKey.Space, null);
+                Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
+                Check(navigationPane.IsVisible && !details.IsVisible && view.FindControl<TextBox>("Search")!.IsEffectivelyVisible,
+                    "Keyboard opens the full-width narrow navigation without changing a draft");
+                using (var bitmap = new RenderTargetBitmap(new PixelSize(640, 720)))
+                {
+                    bitmap.Render(window); bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light-") + "NarrowNavigation.png"), new PngBitmapEncoderOptions());
+                }
+                search.Focus();
+                model.Navigate(ComponentCenterPage.All);
+                Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
+                var previewChanges = view.FindControl<Button>("PreviewChanges")!;
+                var previewOrigin = previewChanges.TranslatePoint(default, view)!.Value;
+                Check(details.IsVisible && !navigationPane.IsVisible && model.Drafts.Count == 1 && details.Bounds.Height >= 200
+                    && navigationToggle.IsKeyboardFocusWithin
+                    && previewOrigin.X >= 0 && previewOrigin.X + previewChanges.Bounds.Width <= view.Bounds.Width
+                    && previewOrigin.Y + previewChanges.Bounds.Height <= view.Bounds.Height,
+                    "Narrow page selection returns to usable details with visible preview and unchanged local intent");
+                using (var bitmap = new RenderTargetBitmap(new PixelSize(640, 720)))
+                {
+                    bitmap.Render(window); bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light-") + "NarrowDetails.png"), new PngBitmapEncoderOptions());
+                }
+                window.Height = 540;
+                Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
+                var footerScroll = view.FindControl<ScrollViewer>("DraftFooterScroll")!;
+                var discardChanges = view.FindControl<Button>("DiscardChanges")!;
+                discardChanges.Focus(); Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
+                var discardOrigin = discardChanges.TranslatePoint(default, view)!.Value;
+                Check(footerScroll.Bounds.Height <= window.Height * .3 + 1 && details.Bounds.Height >= 140
+                    && discardOrigin.Y >= 0 && discardOrigin.Y + discardChanges.Bounds.Height <= view.Bounds.Height,
+                    "Short windows retain body space and keyboard can reach the scrolling footer action");
+                navigationToggle.Focus();
+                window.Width = 1060; window.Height = 800;
+                Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
+                Check(!navigationToggle.IsVisible && navigationPane.IsVisible && details.IsVisible && model.SelectedPage == ComponentCenterPage.All
+                    && search.IsKeyboardFocusWithin && model.Drafts.Count == 1, "Widening restores the split view and moves focus out of the hidden toggle without losing state");
                 window.Close(); Dispatcher.UIThread.RunJobs();
                 var activeClient = DispatchProxy.Create<IRuntimeCatalogClient, DisplayOnlyRuntime>();
                 ((DisplayOnlyRuntime)(object)activeClient).Active = true;
@@ -145,6 +220,13 @@ internal static class ComponentCenterWorkspaceChecks
                 taskModel.CurrentTaskRun = taskModel.CurrentTaskRun with { State = TaskRunState.NeedsRecovery,
                     Steps = [taskModel.CurrentTaskRun.Steps[0] with { State = TaskStepRunState.NeedsRecovery }] };
                 taskModel.TaskNotice = RelaxKonOS.Client.Localization.LocalizedStatus.Key("component_center.task_recovery_unresolved");
+                var recoveryRun = taskModel.CurrentTaskRun;
+                taskModel.TaskRecovery = new(recoveryRun, new(true, recoveryRun.Steps[0].DomainOperationId, RuntimeChange.Uninstall,
+                    RelaxKonOS.Protocol.Installations.InstallationStage.Failed, true, "runtime.failed", "runtime.compensation_failed",
+                    "sing-box-1.14.3", "sing-box-1.13.21", new(true, false, false)),
+                    [new(Guid.NewGuid(), recoveryRun.RunId, recoveryRun.Steps[0].StepId, recoveryRun.Steps[0].DomainOperationId!.Value,
+                        recoveryRun.Revision, TaskRecoveryAction.EmergencyStop, recoveryRun.CanonicalSubject, "recovery-session", recoveryRun.HostId,
+                        "policy", "linux:0", "fixture", recoveryRun.CreatedAt.AddSeconds(1), recoveryRun.CreatedAt.AddMinutes(1), false, null)]);
                 var recoveryView = new ComponentCenterWorkspace(taskModel); var recoveryWindow = new Window { Width = 1060, Height = 800, Content = recoveryView };
                 recoveryWindow.Show(); Dispatcher.UIThread.RunJobs(); recoveryWindow.UpdateLayout();
                 Check(taskModel.CanRecheckTaskRecovery && !taskModel.ShowTaskDomainProgress && !recoveryView.GetVisualDescendants().OfType<TextBlock>().Any(text =>
@@ -154,6 +236,38 @@ internal static class ComponentCenterWorkspaceChecks
                     bitmap.Render(recoveryWindow); bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light-") + "TaskRecovery.png"), new PngBitmapEncoderOptions());
                 }
                 recoveryWindow.Close(); Dispatcher.UIThread.RunJobs();
+                foreach (var resultState in new[] { TaskRunState.Succeeded, TaskRunState.Failed, TaskRunState.Cancelled })
+                {
+                    taskModel.TaskNotice = RelaxKonOS.Client.Localization.LocalizedStatus.Literal("");
+                    var stepState = resultState == TaskRunState.Succeeded ? TaskStepRunState.Succeeded
+                        : resultState == TaskRunState.Failed ? TaskStepRunState.Failed : TaskStepRunState.Cancelled;
+                    taskModel.CurrentTaskRun = recoveryRun with { State = resultState,
+                        Steps = [recoveryRun.Steps[0] with { State = stepState, ProblemCode = resultState == TaskRunState.Failed ? "private-server-diagnostic" : null }] };
+                    taskModel.TaskEvidence.Add(new(new(recoveryRun.Steps[0].StepId, recoveryRun.Steps[0].DomainOperationId!.Value,
+                        InstallationOperationState.Interrupted, false, null)));
+                    taskModel.TaskEvidence.Add(new(new(recoveryRun.Steps[0].StepId, recoveryRun.Steps[0].DomainOperationId!.Value,
+                        InstallationOperationState.Interrupted, true, activeRuntime.Installation with
+                        { Receipt = new(recoveryRun.Steps[0].DomainOperationId!.Value, RuntimeSwitchOutcome.Succeeded, null) })));
+                    var resultView = new ComponentCenterWorkspace(taskModel);
+                    var resultWindow = new Window { Width = 1060, Height = 800, Content = resultView };
+                    resultWindow.Show(); Dispatcher.UIThread.RunJobs(); resultWindow.UpdateLayout();
+                    Check(taskModel.ShowTaskResult && !resultView.GetVisualDescendants().OfType<TextBlock>().Any(text =>
+                        text.Text?.Contains("component_center.", StringComparison.Ordinal) == true
+                        || text.Text?.Contains("private-server-diagnostic", StringComparison.Ordinal) == true),
+                        "Terminal result and safe step evidence resolve in " + language);
+                    using (var bitmap = new RenderTargetBitmap(new PixelSize(1060, 800)))
+                    {
+                        bitmap.Render(resultWindow); bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light-") + "TaskResult-" + resultState + ".png"), new PngBitmapEncoderOptions());
+                    }
+                    if (resultState == TaskRunState.Succeeded)
+                    {
+                        resultView.FindControl<ScrollViewer>("DetailsScroll")!.Offset = new Vector(0, 520);
+                        Dispatcher.UIThread.RunJobs(); resultWindow.UpdateLayout();
+                        using var bitmap = new RenderTargetBitmap(new PixelSize(1060, 800));
+                        bitmap.Render(resultWindow); bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light-") + "TaskEvidence.png"), new PngBitmapEncoderOptions());
+                    }
+                    resultWindow.Close(); Dispatcher.UIThread.RunJobs();
+                }
                 var modal = Activator.CreateInstance(typeof(RelaxKonOS.WindowManager.ModalDialog<bool>), BindingFlags.Instance | BindingFlags.NonPublic,
                     null, [null, null], null)!;
                 var confirmation = (Control)Activator.CreateInstance(typeof(ComponentCenterWorkspace).Assembly.GetType(
@@ -180,6 +294,7 @@ internal static class ComponentCenterWorkspaceChecks
 
 internal sealed class LayoutTaskTransport : ITaskExecutionClient
 {
+    public Task<TaskRunEvidence> ReadEvidenceAsync(TaskPlan plan, TaskRun run, CancellationToken ct) => throw new NotSupportedException();
     public Task<TaskPlanApproval> ApproveAsync(TaskPlan plan, ApproveTaskPlanRequest request, string key, CancellationToken ct) => throw new NotSupportedException();
     public Task<TaskPlanApproval> ReadApprovalAsync(TaskPlan plan, Guid id, CancellationToken ct) => throw new NotSupportedException();
     public Task<TaskRun> StartAsync(TaskPlan plan, TaskPlanApproval approval, string key, CancellationToken ct) => throw new NotSupportedException();

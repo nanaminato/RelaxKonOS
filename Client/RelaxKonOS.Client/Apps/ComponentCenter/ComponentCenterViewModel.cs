@@ -75,6 +75,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     private void RuntimeChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (!Runtime.CanRead || !Runtime.CanManage || Runtime.IsInvalidated) _driveTask = false;
+        if (!Runtime.CanRead || Runtime.IsInvalidated) { TaskRecovery = null; ClearTaskEvidence(); }
         OnPropertyChanged(nameof(CanPreview)); OnPropertyChanged(nameof(CanInspect)); OnPropertyChanged(nameof(CanPlanDraft)); TaskProperties();
     }
     private void RuntimeStateChanged(object? sender, EventArgs e) { ObserveInspectionState(); RefreshTree(); }

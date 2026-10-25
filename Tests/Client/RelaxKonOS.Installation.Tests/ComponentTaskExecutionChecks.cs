@@ -41,10 +41,11 @@ internal static class ComponentTaskExecutionChecks
                 model.FrozenChangePlan = plan; model.ConfirmTaskAsync = _ => Task.FromResult(false);
                 await model.ApproveTaskCommand.ExecuteAsync(null);
                 Check(execution.Approvals == 0 && execution.Starts == 0, "dismissing confirmation never approves or starts");
-                model.ConfirmTaskAsync = _ => { runtime.CanManage = false; return Task.FromResult(true); };
+                model.ConfirmTaskAsync = _ => { runtime.RefreshAccess = () => runtime.CanManage = false; return Task.FromResult(true); };
                 await model.ApproveTaskCommand.ExecuteAsync(null);
                 Check(execution.Approvals == 0 && execution.Starts == 0,
                     "management permission revoked during confirmation prevents approval");
+                runtime.RefreshAccess = null;
                 runtime.CanManage = true;
                 model.ConfirmTaskAsync = _ => Task.FromResult(true);
                 var prompts = 0;
@@ -75,10 +76,11 @@ internal static class ComponentTaskExecutionChecks
                 await reopened.TickTaskAsync();
                 Check(execution.Advances == 1, "restored read permission does not silently resume execution");
                 await reopened.ResumeTaskCommand.ExecuteAsync(null);
-                runtime.CanManage = false;
+                runtime.RefreshAccess = () => runtime.CanManage = false;
                 await reopened.TickTaskAsync();
                 Check(execution.Reads == reads + 2 && execution.Advances == 1,
                     "revoked management permission switches active execution to read-only observation");
+                runtime.RefreshAccess = null;
                 runtime.CanManage = true;
                 await reopened.TickTaskAsync();
                 Check(execution.Advances == 1, "restored management permission does not silently resume execution");
@@ -96,6 +98,11 @@ internal static class ComponentTaskExecutionChecks
                 }
                 await reopened.TickTaskAsync();
                 Check(reopened.CurrentTaskRun?.State == TaskRunState.Cancelled, "receipt-driven advancement supplies the eventual terminal cancellation");
+                Check(reopened.ShowTaskResult && reopened.TaskSteps.Single().HasOperation
+                    && reopened.TaskSteps.Single().Operation.Resolve().Contains(reopened.CurrentTaskRun!.Steps[0].DomainOperationId!.Value.ToString("D"), StringComparison.Ordinal),
+                    "terminal results expose the host-bound original domain operation for investigation");
+                Check(reopened.TaskSteps.Single().DataImpact.Resolve() == LocalizedText.Get("component_center.result_planned_preserve"),
+                    "cancelled results label data retention as a frozen plan rather than observed success");
                 var uncertain = execution.Run! with { State = TaskRunState.NeedsRecovery,
                     Steps = [execution.Run.Steps[0] with { State = TaskStepRunState.NeedsRecovery }] };
                 execution.Run = uncertain; reopened.CurrentTaskRun = uncertain; runtime.CanManage = false;
@@ -110,6 +117,94 @@ internal static class ComponentTaskExecutionChecks
                 Check(reopened.CurrentTaskRun?.State == TaskRunState.Succeeded && !reopened.CanRecheckTaskRecovery && execution.Starts == 1,
                     "conclusive recovery result withdraws the recheck action and never starts another run");
                 runtime.CanManage = true;
+                execution.Run = uncertain; reopened.CurrentTaskRun = uncertain;
+                var operation = uncertain.Steps[0].DomainOperationId!.Value;
+                Check(execution.EvidenceReads == 0, "ordinary task polling never fetches historical evidence");
+                await reopened.ReadTaskEvidenceCommand.ExecuteAsync(null);
+                Check(execution.EvidenceReads == 1 && reopened.TaskEvidence is [{ Evidence.Snapshot: null }],
+                    "explicit historical evidence read exposes missing observation without running recovery");
+                execution.PendingEvidence = new();
+                var evidenceRead = reopened.ReadTaskEvidenceCommand.ExecuteAsync(null);
+                reopened.CurrentTaskRun = uncertain with { Revision = uncertain.Revision + 1 };
+                execution.PendingEvidence.SetResult(new(uncertain, []));
+                await evidenceRead;
+                Check(reopened.CurrentTaskRun.Revision == uncertain.Revision + 1 && reopened.TaskEvidence.Count == 0,
+                    "late evidence response cannot replace a newer task observation");
+                execution.PendingEvidence = null;
+                reopened.CurrentTaskRun = uncertain;
+                await reopened.ReadTaskEvidenceCommand.ExecuteAsync(null);
+                execution.Recovery = new(uncertain, new(true, operation, RuntimeChange.Uninstall,
+                    RelaxKonOS.Protocol.Installations.InstallationStage.Failed, true, "runtime.failed", "runtime.compensation_failed",
+                    "target", "previous", new(true, true, false)), []);
+                await reopened.ReadTaskRecoveryCommand.ExecuteAsync(null);
+                Check(reopened.CanRetryTaskCompensation && reopened.CanStopTaskRecovery && !reopened.CanCloseTaskRecovery,
+                    "running service permits compensation and emergency stop but never close");
+                reopened.ConfirmTaskRecoveryAsync = (_, _) => Task.FromResult(false);
+                await reopened.RetryTaskCompensationCommand.ExecuteAsync(null);
+                Check(execution.Recoveries == 0, "dismissed recovery confirmation sends no command");
+                reopened.ConfirmTaskRecoveryAsync = (_, _) => { runtime.CanManage = false; return Task.FromResult(true); };
+                await reopened.StopTaskRecoveryCommand.ExecuteAsync(null);
+                Check(execution.Recoveries == 0, "revoked management during recovery confirmation blocks the command");
+                runtime.CanManage = true;
+                reopened.ConfirmTaskRecoveryAsync = (_, _) => Task.FromResult(true);
+                reopened.TaskCredentialsAsync = () => { runtime.CanManage = false; return Task.FromResult<HostAdministratorCredentials?>(new("admin", "fixture-secret")); };
+                await reopened.StopTaskRecoveryCommand.ExecuteAsync(null);
+                Check(execution.Recoveries == 1, "revoked management during credential prompt prevents the authenticated retry");
+                runtime.CanManage = true;
+                await reopened.ReadTaskRecoveryCommand.ExecuteAsync(null);
+                reopened.TaskCredentialsAsync = () => Task.FromResult<HostAdministratorCredentials?>(new("admin", "fixture-secret"));
+                await reopened.StopTaskRecoveryCommand.ExecuteAsync(null);
+                Check(execution.Recoveries == 3 && execution.RecoveryKeys.Distinct().Count() == 1,
+                    "recovery authentication retries retain the original request identity");
+                Check(reopened.CanCloseTaskRecovery && !reopened.CanStopTaskRecovery && reopened.RecoveryAttempts.Count == 1,
+                    "fresh stopped-service observation enables close and exposes the recorded attempt");
+                Check(reopened.CurrentTaskRun?.State == TaskRunState.NeedsRecovery && execution.Advances == advances,
+                    "recovery response never invents task success or resumes remaining steps");
+                runtime.CanRead = false;
+                Check(reopened.TaskRecovery is null && reopened.RecoveryAttempts.Count == 0 && !reopened.CanRetryTaskCompensation,
+                    "read revocation clears recovery details and action authority");
+                Check(reopened.TaskEvidence.Count == 0 && !reopened.CanReadTaskEvidence, "read revocation clears historical evidence and blocks its query");
+                runtime.CanRead = true;
+                Check(!reopened.CanRetryTaskCompensation, "restored permission requires fresh recovery details");
+                runtime.CanManage = true;
+                await reopened.ReadTaskRecoveryCommand.ExecuteAsync(null);
+                await reopened.CloseTaskRecoveryCommand.ExecuteAsync(null);
+                await reopened.RetryTaskCompensationCommand.ExecuteAsync(null);
+                Check(reopened.RecoveryAttempts.Single().Attempt.Action == TaskRecoveryAction.RetryCompensation
+                    && execution.Recoveries == 7 && execution.Advances == advances,
+                    "close and compensation use separately confirmed actions without forward execution");
+                execution.Recovery = execution.Recovery with { Recovery = execution.Recovery.Recovery with { ServiceProblem = "runtime.service_unavailable" } };
+                await reopened.ReadTaskRecoveryCommand.ExecuteAsync(null);
+                Check(!reopened.CanCloseTaskRecovery, "service observation failure blocks close");
+                var pendingRecovery = new TaskCompletionSource<TaskRecoveryView>();
+                execution.PendingRecovery = pendingRecovery.Task;
+                var readingRecovery = reopened.ReadTaskRecoveryCommand.ExecuteAsync(null);
+                reopened.SelectedTask = null;
+                pendingRecovery.SetResult(execution.Recovery);
+                await readingRecovery;
+                Check(reopened.TaskRecovery is null && reopened.CurrentTaskRun is null,
+                    "late recovery read cannot overwrite a different task selection");
+                Check(!reopened.ShowTaskResult && reopened.TaskSteps.Count == 0, "changing task selection clears the previous result and step evidence");
+            }
+            foreach (var revoke in new[] { false, true })
+            {
+                var raceStore = new ComponentTaskReferenceStore(Path.Combine(root, "race-" + revoke));
+                var raceRun = execution.Run! with { RunId = Guid.NewGuid(), ApprovalId = Guid.NewGuid(), Revision = 3,
+                    State = TaskRunState.Running, CancellationRequested = false, Steps = [execution.Run!.Steps[0] with { State = TaskStepRunState.Running }] };
+                raceStore.Save("server", actor, new(plan, raceRun.ApprovalId, "race-start", raceRun.RunId));
+                var raced = new Execution(raceStore, actor, Check) { Run = raceRun, RevisionConflictOnce = true,
+                    DuringRefresh = revoke ? () => runtime.CanManage = false : null };
+                using var raceModel = new ComponentCenterViewModel(runtime, new(), "server", actor, execution: raced, references: raceStore)
+                    { CurrentTaskRun = raceRun, ConfirmTaskAsync = _ => Task.FromResult(true) };
+                await raceModel.ResumeTaskCommand.ExecuteAsync(null);
+                await raceModel.TickTaskAsync();
+                Check(raced.Advances == 1 && raced.Reads == 1 && raceModel.CurrentTaskRun?.Revision == 4,
+                    "worker revision conflict performs one read and never repeats a write in the same tick");
+                runtime.CanManage = true;
+                await raceModel.TickTaskAsync();
+                Check(raced.Advances == (revoke ? 1 : 2), revoke
+                    ? "revocation during conflict resynchronization clears intent and restoration cannot resume it"
+                    : "forward worker observation preserves the already explicit continuation for the next tick");
             }
             var blockedPath = Path.Combine(root, "blocked"); File.WriteAllText(blockedPath, "not a directory");
             var blocked = new ComponentTaskReferenceStore(blockedPath); var prevented = new Execution(blocked, actor, Check) { NeedCredentials = false };
@@ -133,8 +228,23 @@ internal static class ComponentTaskExecutionChecks
     private sealed class Execution(ComponentTaskReferenceStore store, Guid actor, Action<bool, string> check) : ITaskExecutionClient
     {
         public bool LoseStartResponse, NeedCredentials = true;
+        public bool RevisionConflictOnce;
+        public Action? DuringRefresh;
         public int Approvals, Starts, ApprovalReads, Advances, Cancels, Reads, Rechecks;
+        public int Recoveries;
+        public int EvidenceReads;
+        public TaskCompletionSource<TaskRunEvidence>? PendingEvidence;
+        public TaskRecoveryView? Recovery;
+        public Task<TaskRecoveryView>? PendingRecovery;
+        public List<string> RecoveryKeys = [];
         public TaskRun? Run; private TaskPlanApproval? _approval;
+        public Task<TaskRunEvidence> ReadEvidenceAsync(TaskPlan plan, TaskRun run, CancellationToken ct)
+        {
+            EvidenceReads++;
+            if (PendingEvidence is not null) return PendingEvidence.Task;
+            return Task.FromResult(new TaskRunEvidence(run, [new(run.Steps[0].StepId, run.Steps[0].DomainOperationId!.Value,
+                RelaxKonOS.Protocol.Installations.InstallationOperationState.Interrupted, false, null)]));
+        }
         public Task<TaskPlanApproval> ApproveAsync(TaskPlan plan, ApproveTaskPlanRequest request, string key, CancellationToken ct)
         {
             Approvals++;
@@ -154,13 +264,29 @@ internal static class ComponentTaskExecutionChecks
         public Task<TaskPlanApproval> ReadApprovalAsync(TaskPlan plan, Guid approvalId, CancellationToken ct)
         { ApprovalReads++; return Task.FromResult(_approval! with { State = TaskApprovalState.Consumed, Revision = 2, RunId = Run!.RunId }); }
         public Task<TaskRun> ReadAsync(TaskPlan plan, Guid runId, CancellationToken ct) { Reads++; return Task.FromResult(Run!); }
-        public Task<TaskRun> RefreshAsync(TaskPlan plan, TaskRun run, CancellationToken ct) { Reads++; return Task.FromResult(Run!); }
+        public Task<TaskRun> RefreshAsync(TaskPlan plan, TaskRun run, CancellationToken ct) { Reads++; DuringRefresh?.Invoke(); return Task.FromResult(Run!); }
         public Task<TaskRun> RecheckRecoveryAsync(TaskPlan plan, TaskRun run, CancellationToken ct) { Rechecks++; return Task.FromResult(Run!); }
-        public Task<TaskRecoveryView> ReadRecoveryAsync(TaskPlan plan, TaskRun run, CancellationToken ct) => throw new NotSupportedException();
-        public Task<TaskRecoveryResponse> RecoverAsync(TaskPlan plan, TaskRun run, TaskRecoveryRequest request, string key, CancellationToken ct) => throw new NotSupportedException();
+        public Task<TaskRecoveryView> ReadRecoveryAsync(TaskPlan plan, TaskRun run, CancellationToken ct) => PendingRecovery ?? Task.FromResult(Recovery!);
+        public Task<TaskRecoveryResponse> RecoverAsync(TaskPlan plan, TaskRun run, TaskRecoveryRequest request, string key, CancellationToken ct)
+        {
+            Recoveries++; RecoveryKeys.Add(key);
+            if (request.Password is null) return Task.FromException<TaskRecoveryResponse>(new HttpRequestException("task.administrator_authentication_failed"));
+            check(request.Confirmed && request.OperationId == run.Steps[0].DomainOperationId && request.ExpectedRevision == run.Revision,
+                "recovery command binds explicit confirmation and the original operation and revision");
+            var attempt = new TaskRecoveryAttempt(Guid.NewGuid(), run.RunId, run.Steps[0].StepId, request.OperationId, run.Revision,
+                request.Action, run.CanonicalSubject, "session", run.HostId, "policy", "linux:0", "fixture", run.CreatedAt.AddSeconds(1),
+                run.CreatedAt.AddMinutes(1), true, null);
+            Recovery = Recovery! with { Recovery = Recovery.Recovery with { Service = new(true, false, false) }, Attempts = [attempt] };
+            return Task.FromResult(new TaskRecoveryResponse(run, attempt));
+        }
         public Task<TaskRun> AdvanceAsync(TaskPlan plan, TaskRun run, CancellationToken ct)
         {
             Advances++;
+            if (RevisionConflictOnce)
+            {
+                RevisionConflictOnce = false; Run = run with { Revision = run.Revision + 1 };
+                return Task.FromException<TaskRun>(new HttpRequestException("task.run_revision_conflict"));
+            }
             Run = run.State == TaskRunState.Queued ? run with { State = TaskRunState.Running, Revision = 3, Steps = [run.Steps[0] with
                 { State = TaskStepRunState.Running, DomainOperationId = Guid.NewGuid(), RequestDigest = new string('b', 64) }] }
                 : run with { State = TaskRunState.Cancelled, Revision = 5, Steps = [run.Steps[0] with { State = TaskStepRunState.Cancelled }] };

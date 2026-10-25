@@ -139,8 +139,10 @@ internal static class TaskExecutionHttpChecks
                 Check(response.StatusCode == HttpStatusCode.Conflict && dispatch.Starts == 0, "start key cannot be reused for another digest");
             http.DefaultRequestHeaders.Authorization = new("Bearer", "dual");
             using (var response = await http.GetAsync(TaskPlanningRoutes.Run(run.RunId))) Check(response.StatusCode == HttpStatusCode.Forbidden, "ambiguous actor claims cannot read run history");
+            using (var response = await http.GetAsync(TaskPlanningRoutes.Evidence(run.RunId))) Check(response.StatusCode == HttpStatusCode.Forbidden, "ambiguous actor cannot read saved evidence");
             http.DefaultRequestHeaders.Authorization = new("Bearer", "other");
             using (var response = await http.GetAsync(TaskPlanningRoutes.Run(run.RunId))) Check(response.StatusCode == HttpStatusCode.NotFound, "run history is isolated by actor");
+            using (var response = await http.GetAsync(TaskPlanningRoutes.Evidence(run.RunId))) Check(response.StatusCode == HttpStatusCode.NotFound, "other actor cannot read task evidence");
             http.DefaultRequestHeaders.Authorization = new("Bearer", "read");
             var authenticationCalls = admin.Calls;
             using (var response = await http.GetAsync(TaskPlanningRoutes.Approval(approval.ApprovalId)))
@@ -148,6 +150,10 @@ internal static class TaskExecutionHttpChecks
                     && accepted.RunId == run.RunId && admin.Calls == authenticationCalls && response.Headers.CacheControl?.NoStore == true,
                     "owner read-only approval lookup recovers accepted run identity without administrator authentication or consumption");
             using (var response = await http.GetAsync(TaskPlanningRoutes.Run(run.RunId))) Check(response.StatusCode == HttpStatusCode.OK, "owner with read permission can inspect run history");
+            using (var response = await http.GetAsync(TaskPlanningRoutes.Evidence(run.RunId)))
+                Check((await response.Content.ReadFromJsonAsync<TaskRunEvidence>(RelaxKonOSJsonOptions.Default)) is { Observations.IsEmpty: true } saved
+                    && saved.Run.RunId == run.RunId && response.Headers.CacheControl?.NoStore == true && dispatch.Starts == 0 && admin.Calls == authenticationCalls,
+                    "read-only evidence GET is private, cache-disabled and cannot dispatch or authenticate");
             using (var response = await Post(TaskPlanningRoutes.Advance(run.RunId), new TaskRunRevisionRequest(1)))
                 Check(response.StatusCode == HttpStatusCode.Forbidden && dispatch.Starts == 0, "read-only history access cannot advance execution");
             http.DefaultRequestHeaders.Authorization = new("Bearer", "manage");
@@ -196,6 +202,11 @@ internal static class TaskExecutionHttpChecks
                     && dispatch.RecoveryQueries == 1 && dispatch.Starts == dispatchCount && admin.Calls == adminCount,
                     "read-only owner rechecks exact receipt after approval/feature loss without execution or administrator authentication");
             }
+            using (var response = await http.GetAsync(TaskPlanningRoutes.Evidence(recoveryRun.RunId)))
+                Check((await response.Content.ReadFromJsonAsync<TaskRunEvidence>(RelaxKonOSJsonOptions.Default)) is
+                    { Run.State: TaskRunState.Succeeded, Observations: [{ RecoveryCheck: false, Snapshot: null }, { RecoveryCheck: true, Snapshot.Receipt.Outcome: RuntimeSwitchOutcome.Succeeded }] }
+                    && dispatch.RecoveryQueries == 1 && dispatch.Starts == dispatchCount && admin.Calls == adminCount,
+                    "evidence GET returns original and recovered witnesses without new observations or authority after feature loss");
             http.DefaultRequestHeaders.Authorization = new("Bearer", "manage");
             mode.Enabled = false;
             using (var response = await http.GetAsync(TaskPlanningRoutes.Run(run.RunId))) Check(response.StatusCode == HttpStatusCode.OK, "host feature loss does not hide durable history");
