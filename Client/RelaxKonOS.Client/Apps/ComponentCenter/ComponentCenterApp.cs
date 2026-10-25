@@ -44,28 +44,50 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
         if (session?.State != AuthSessionState.Authenticated) return;
         if (context.Services.GetService(typeof(IRuntimeCatalogClient)) is not IRuntimeCatalogClient catalog) return;
         var runtime = new ProxyServerRuntimeViewModel(catalog);
+        // The Proxy Manager runtime is already fully implemented on Server and Helper; the center
+        // observes it instead of asking users to keep using the application's own runtime page.
+        var mihomo = context.Services.GetService(typeof(IMihomoRuntimeCatalogClient)) is IMihomoRuntimeCatalogClient mihomoCatalog
+            ? new ProxyServerRuntimeViewModel(mihomoCatalog) : null;
+        var additionalRuntimes = mihomo is null
+            ? new Dictionary<string, ProxyServerRuntimeViewModel>()
+            : new Dictionary<string, ProxyServerRuntimeViewModel> { ["mihomo"] = mihomo };
         var drafts = (ComponentDraftStore?)context.Services.GetService(typeof(ComponentDraftStore))
             ?? throw new InvalidOperationException("Component draft store is not registered.");
         var model = new ComponentCenterViewModel(runtime, drafts, session.ServiceId!, session.CurrentUser!.Id,
             (ITaskPlanPreviewClient?)context.Services.GetService(typeof(ITaskPlanPreviewClient)),
             (ITaskExecutionClient?)context.Services.GetService(typeof(ITaskExecutionClient)),
-            (ComponentTaskReferenceStore?)context.Services.GetService(typeof(ComponentTaskReferenceStore)));
+            (ComponentTaskReferenceStore?)context.Services.GetService(typeof(ComponentTaskReferenceStore)),
+            additionalRuntimes,
+            context.Services.GetService(typeof(IComponentHostObserver)) is IComponentHostObserver observer ? [observer] : null,
+            context.Services.GetService(typeof(IComponentLifecycleClient)) as IComponentLifecycleClient);
         model.ConnectionAvailable = true;
         _model = model;
         var view = new ComponentCenterWorkspace(model);
         var availability = context.Services.GetService(typeof(ApplicationAvailabilityService)) as ApplicationAvailabilityService;
         RelaxKonOS.Protocol.ManagedRuntimes.RuntimeInstallationSnapshot? lastObservation = null;
-        System.ComponentModel.PropertyChangedEventHandler observed = (_, args) =>
+        System.ComponentModel.PropertyChangedEventHandler observed = (sender, args) =>
         {
-            if (args.PropertyName != nameof(runtime.Installation) || ReferenceEquals(lastObservation, runtime.Installation)) return;
-            lastObservation = runtime.Installation;
+            if (args.PropertyName != nameof(runtime.Installation) || sender is not ProxyServerRuntimeViewModel changed
+                || ReferenceEquals(lastObservation, changed.Installation)) return;
+            lastObservation = changed.Installation;
             availability?.Clear(); // A lifecycle refresh invalidates launch badges; the next open checks the host again.
         };
         runtime.PropertyChanged += observed;
-        view.OpenApplication = () => (context.Services.GetService(typeof(RelaxKonOS.Runtime.ApplicationManager)) as RelaxKonOS.Runtime.ApplicationManager)?.Launch(new AppId("relaxkonos.proxy-server"));
+        if (mihomo is not null) mihomo.PropertyChanged += observed;
+        var applications = context.Services.GetService(typeof(RelaxKonOS.Runtime.ApplicationManager)) as RelaxKonOS.Runtime.ApplicationManager;
+        view.OpenApplication = applicationId => applications?.Launch(new AppId(applicationId));
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.component-center.display_name"),
             view, new Rect(80, 45, 1060, 800), Manifest.IconGlyph);
-        runtime.ConfirmAsync = (title, message) => ConfirmAsync(title.Resolve(), message.Resolve());
+        foreach (var host in new ProxyServerRuntimeViewModel?[] { runtime, mihomo })
+        {
+            if (host is null) continue;
+            var target = host;
+            target.ConfirmAsync = (title, message) => ConfirmAsync(title.Resolve(), message.Resolve());
+            target.PasswordPromptAsync = () => ShowOwnedAsync<string?>(
+                LocalizedText.Get("installation.elevation_title"),
+                dialog => new FileServicesPasswordDialogView(dialog, LocalizedText.Get("installation.elevation_message")),
+                new Size(460, 230));
+        }
         model.ConfirmTaskAsync = async plan => await ShowOwnedAsync<bool>(LocalizedText.Get("component_center.task_confirm_title"),
             dialog => new TaskPlanConfirmationView(dialog, plan), new Size(720, 600)) == true;
         model.TaskCredentialsAsync = () => ShowOwnedAsync<RelaxKonOS.Client.Apps.FileServices.HostAdministratorCredentials?>(
@@ -74,13 +96,9 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
         model.ConfirmTaskRecoveryAsync = (action, recovery) => ConfirmAsync(LocalizedText.Get("component_center.task_recovery_action." + action),
             LocalizedStatus.Format("component_center.task_recovery_confirm", recovery.Run.HostId, recovery.Recovery.OperationId,
                 LocalizedText.Get("component_center.task_recovery_effect." + action)).Resolve());
-        runtime.PasswordPromptAsync = () => ShowOwnedAsync<string?>(
-            LocalizedText.Get("installation.elevation_title"),
-            dialog => new FileServicesPasswordDialogView(dialog, LocalizedText.Get("installation.elevation_message")),
-            new Size(460, 230));
         window.CanCloseAsync = async () =>
         {
-            if (!model.HasDrafts || runtime.IsBusy) return true;
+            if (!model.HasDrafts || runtime.IsBusy || mihomo?.IsBusy == true) return true;
             var keep = true; // Dismissing the dialog never discards a draft.
             await context.ShowDialogAsync<bool>(window, LocalizedText.Get("component_center.close_title"), dialog =>
                 new ConfirmDialogView { DataContext = new ConfirmDialogViewModel(
@@ -94,8 +112,10 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
         var login = session.CurrentSession;
         var access = new ComponentCenterAccess(session, context.Permissions, runtime,
             () => session.CurrentServer?.Capabilities.Contains(ServerCapabilities.ProxyServer) == true,
-            connected => model.ConnectionAvailable = connected);
+            connected => model.ConnectionAvailable = connected,
+            mihomo is null ? null : [mihomo]);
         runtime.RefreshAccess = access.Synchronize;
+        if (mihomo is not null) mihomo.RefreshAccess = access.Synchronize;
         EventHandler<AuthSessionStateChangedEventArgs> sessionChanged = (_, _) =>
         {
             Avalonia.Threading.Dispatcher.UIThread.Post(access.Synchronize);
@@ -109,6 +129,10 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             await model.TickTaskAsync();
             if (runtime.CanRead && !runtime.IsBusy && !model.IsTaskBusy && !runtime.IsInvalidated && (runtime.HasActiveOperation || wasTaskActive))
                 await runtime.RefreshActiveOperationAsync();
+            // The selected component may be the Proxy Manager runtime; refresh only what it owns.
+            if (model.DetailRuntime is { } active && !ReferenceEquals(active, runtime) && active.CanRead
+                && !active.IsBusy && !active.IsInvalidated && active.HasActiveOperation)
+                await active.RefreshActiveOperationAsync();
         };
         taskRefresh.Start();
         EventHandler<RelaxKonOS.WindowManager.ManagedWindow>? closed = null;
@@ -120,6 +144,12 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             runtime.RefreshAccess = null;
             if (ReferenceEquals(_model, model)) _model = null;
             runtime.PropertyChanged -= observed;
+            if (mihomo is not null)
+            {
+                mihomo.PropertyChanged -= observed;
+                mihomo.RefreshAccess = null;
+                mihomo.Dispose();
+            }
             model.Dispose();
             runtime.Dispose();
         };
@@ -130,11 +160,13 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             if (session.CurrentServer?.Capabilities.Contains(ServerCapabilities.ProxyServer) != true)
             {
                 runtime.OutcomeText = LocalizedStatus.Key("proxy_server.problem.platform_unsupported");
+                if (mihomo is not null) mihomo.OutcomeText = runtime.OutcomeText;
                 return;
             }
             if (!await PermissionAsync(AppPermissions.ServerProxyRead))
             {
                 runtime.OutcomeText = LocalizedStatus.Key("proxy_server.permission_denied");
+                if (mihomo is not null) mihomo.OutcomeText = runtime.OutcomeText;
                 return;
             }
             runtime.CanRead = true;
@@ -142,6 +174,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                 && await PermissionAsync(AppPermissions.ServerProxyManage);
             access.Synchronize();
             await runtime.EnsureLoadedAsync();
+            if (mihomo is { CanRead: true }) await mihomo.EnsureLoadedAsync();
         }
         async Task<bool> PermissionAsync(string permission)
         {

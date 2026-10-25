@@ -33,8 +33,9 @@ public partial class ComponentCenterViewModel
     [ObservableProperty] private bool isInspecting;
     [ObservableProperty] private LocalizedStatus inspectionNotice = LocalizedStatus.Literal("");
     public ObservableCollection<ComponentInspectionStep> InspectionSteps { get; } = [];
-    public bool ShowInspection => _previews is not null && HasRuntimeDetails && SelectedPage is not ComponentCenterPage.Tasks;
-    public bool CanInspect => _previews is not null && !IsTaskBusy && !IsInspecting && !Runtime.IsBusy && Runtime.CanRead
+    /// <summary>Read-only TaskPlan verification is only implemented for the batch component (sing-box).</summary>
+    public bool ShowInspection => _previews is not null && HasRuntimeDetails && SelectedUsesBatch && SelectedPage is not ComponentCenterPage.Tasks;
+    public bool CanInspect => _previews is not null && SelectedUsesBatch && !IsTaskBusy && !IsInspecting && !Runtime.IsBusy && Runtime.CanRead
         && !Runtime.IsInvalidated && Runtime.Installation is not null;
     partial void OnIsInspectingChanged(bool value)
     { OnPropertyChanged(nameof(CanInspect)); OnPropertyChanged(nameof(CanPreview)); OnPropertyChanged(nameof(CanPlanDraft)); TaskProperties(); }

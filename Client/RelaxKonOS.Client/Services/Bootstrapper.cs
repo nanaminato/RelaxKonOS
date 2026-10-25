@@ -211,6 +211,10 @@ public static class Bootstrapper
         services.AddHttpClient<RelaxKonOS.Client.Apps.WebServers.IRemoteWebServerClient, RelaxKonOS.Client.Apps.WebServers.RemoteWebServerClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "webservers"))
             .AddHttpMessageHandler<AcceptLanguageHandler>();
+        // 组件中心对该组件只读观测：Nginx 的安装仍由 Web 服务器管理器拥有，
+        // 且 Linux（发行版包 + 系统服务）与 Windows（受管归档 + 自有服务）来源不同。
+        services.AddTransient<RelaxKonOS.Client.Apps.ComponentCenter.IComponentHostObserver,
+            RelaxKonOS.Client.Apps.ComponentCenter.WebServerComponentObserver>();
         services.AddHttpClient<RelaxKonOS.Client.Services.Privileged.IHostElevationBroker, RelaxKonOS.Client.Services.Privileged.HostElevationBroker>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "host-elevation"))
             .AddHttpMessageHandler<AcceptLanguageHandler>();
@@ -356,6 +360,8 @@ public static class Bootstrapper
         services.AddHttpClient<RelaxKonOS.Client.Apps.ComponentCenter.ITaskPlanPreviewClient, RelaxKonOS.Client.Apps.ComponentCenter.TaskPlanPreviewClient>()
             .RemoveAllLoggers();
         services.AddHttpClient<RelaxKonOS.Client.Apps.ComponentCenter.ITaskExecutionClient, RelaxKonOS.Client.Apps.ComponentCenter.TaskExecutionClient>()
+            .RemoveAllLoggers();
+        services.AddHttpClient<RelaxKonOS.Client.Apps.ComponentCenter.IComponentLifecycleClient, RelaxKonOS.Client.Apps.ComponentCenter.ComponentLifecycleClient>()
             .RemoveAllLoggers();
         services.AddHttpClient<RelaxKonOS.Client.Apps.ProxyServer.IRuntimeCatalogClient, RelaxKonOS.Client.Apps.ProxyServer.SingBoxRuntimeCatalogClient>()
             .RemoveAllLoggers();

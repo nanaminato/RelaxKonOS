@@ -33,6 +33,8 @@ public sealed record RuntimeReleaseOption(RuntimeRelease Release, bool Installed
 /// </summary>
 public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) : ObservableObject, IDisposable
 {
+    /// <summary>The runtime identity this page observes. It is the component id the center keys on.</summary>
+    public string RuntimeId => client.RuntimeId;
     private readonly CancellationTokenSource _lifetime = new();
     private RuntimeInstallationSnapshot? _installation;
     private RuntimeRecoverySnapshot? _recovery;
@@ -53,7 +55,7 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
         nameof(CanRefreshSources), nameof(HasSources), nameof(HasReleases), nameof(HasSource), nameof(CanAct), nameof(CanRefreshCatalog),
         nameof(OwnershipText), nameof(TargetText), nameof(MeasuredVersionText), nameof(ActiveRevisionText),
         nameof(InstalledReleasesText), nameof(PendingText), nameof(RuntimeProblemText), nameof(PublishedConfigurationText),
-        nameof(SourceSummary), nameof(CatalogText), nameof(CatalogProblem), nameof(ActionText), nameof(ShowPrereleaseToggle),
+        nameof(SourceSummary), nameof(CatalogText), nameof(CatalogProblem), nameof(HasCatalogProblem), nameof(ActionText), nameof(ShowPrereleaseToggle),
         nameof(ReleaseCountText), nameof(HasRuntimeProblem), nameof(CanUninstall), nameof(NeedsRecovery), nameof(RecoveryText),
         nameof(RecoveryOperationText), nameof(RecoveryChangeText), nameof(RecoveryStageText), nameof(RecoveryOriginalProblem),
         nameof(RecoveryProblem), nameof(RecoveryServiceText), nameof(HasRecoveryServiceProblem),
@@ -255,6 +257,8 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
         ? LocalizedStatus.Key("proxy_server.runtime.refresh_failed")
         : _catalog?.ProblemCode is { } problem ? ProblemText(problem) : LocalizedStatus.Key("proxy_server.runtime.catalog_fresh_hint");
     public LocalizedStatus ReleaseCountText => LocalizedStatus.Format("proxy_server.runtime.release_count", Releases.Count);
+    /// <summary>Without a catalog there is nothing to report beyond <see cref="CatalogText"/> itself.</summary>
+    public bool HasCatalogProblem => _catalog is not null;
     public bool HasRuntimeProblem => !RuntimeProblemText.IsEmpty;
     public bool HasPlanText => !PlanText.IsEmpty;
     public LocalizedStatus ActionText

@@ -8,6 +8,14 @@ public interface IPrivilegedNginxOperations
     Task<PrivilegedOperationResult> ApplyWindowsRuntimeAsync(ManagedRuntimeAction action, string? version = null, string? archivePath = null, CancellationToken cancellationToken = default);
     Task<PrivilegedOperationResult> ApplySystemServiceActionAsync(NginxSystemServiceAction action, CancellationToken cancellationToken = default);
     Task<PrivilegedOperationResult> InstallPackageAsync(string? version, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Installs exactly the frozen package identity. The Helper re-resolves the package and refuses
+    /// when the version, repository or digest moved; there is no rollback for a package transaction.
+    /// </summary>
+    Task<PrivilegedOperationResult> InstallFrozenPackageAsync(RelaxKonOS.Protocol.ManagedRuntimes.ComponentPackageTarget expectation,
+        CancellationToken cancellationToken = default);
+    /// <summary>Read-only resolution of the package the host would install. It changes nothing.</summary>
+    Task<PrivilegedOperationResult> QueryPackageAsync(CancellationToken cancellationToken = default);
     Task<PrivilegedOperationResult> UninstallPackageAsync(CancellationToken cancellationToken = default);
     Task<PrivilegedOperationResult> TestConfigurationAsync(CancellationToken cancellationToken = default);
     Task<PrivilegedOperationResult> GetRuntimeStatusAsync(CancellationToken cancellationToken = default);
@@ -26,8 +34,14 @@ public sealed class PrivilegedNginxOperations(RelaxKonOS.Server.Privileged.IPriv
         ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NginxSystemServiceAction, NginxServiceAction: action), cancellationToken);
     public Task<PrivilegedOperationResult> InstallPackageAsync(string? version, CancellationToken cancellationToken = default) =>
         ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NginxPackageInstall, PackageVersion: version), cancellationToken);
+    public Task<PrivilegedOperationResult> InstallFrozenPackageAsync(RelaxKonOS.Protocol.ManagedRuntimes.ComponentPackageTarget expectation,
+        CancellationToken cancellationToken = default) =>
+        ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NginxPackageInstallFrozen,
+            PackageVersion: expectation.Version, PackageExpectation: expectation), cancellationToken);
     public Task<PrivilegedOperationResult> UninstallPackageAsync(CancellationToken cancellationToken = default) =>
         ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NginxPackageUninstall), cancellationToken);
+    public Task<PrivilegedOperationResult> QueryPackageAsync(CancellationToken cancellationToken = default) =>
+        ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NginxPackageQuery), cancellationToken);
     public Task<PrivilegedOperationResult> TestConfigurationAsync(CancellationToken cancellationToken = default) =>
         ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NginxConfigurationTest), cancellationToken);
     public Task<PrivilegedOperationResult> GetRuntimeStatusAsync(CancellationToken cancellationToken = default) =>

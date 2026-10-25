@@ -68,6 +68,7 @@ ComponentDraftPersistenceChecks.Run();
 await RuntimeReattachmentChecks.RunAsync();
 await ApplicationAvailabilityChecks.RunAsync();
 await TaskPreviewClientChecks.RunAsync();
+await ComponentLifecycleClientChecks.RunAsync();
 await TaskExecutionClientChecks.RunAsync();
 await RuntimeCommitWireChecks.RunAsync();
 await ComponentTaskExecutionChecks.RunAsync();
@@ -354,13 +355,14 @@ using (var runtimeHttp = new HttpClient(new Handler(request =>
         Check(center.HasResults && runtimeVm.Updates.Count == 1 && runtimeVm.Updates[0].Version == "1.16.0",
             "Updates excludes the active repair target and unsupported releases");
         center.Navigate(ComponentCenterPage.Workloads);
-        Check(center.HasWorkloadDetails && center.VisibleRoots.Single().IsChecked == true,
+        var proxyServerWorkload = center.VisibleRoots.Single(root => root.WorkloadId == "proxy-server");
+        Check(center.HasWorkloadDetails && proxyServerWorkload.IsChecked == true,
             "Workload references aggregate the same shared draft without duplicating it");
-        center.VisibleRoots.Single().IsChecked = false;
+        proxyServerWorkload.IsChecked = false;
         Check(center.Drafts.Count == 0 && runtimeCalls.Count == beforeNavigation,
             "Unchecking a workload removes local intent without uninstalling its shared component");
-        center.VisibleRoots.Single().IsChecked = true;
-        Check(center.Drafts.Count == 0 && center.VisibleRoots.Single().IsChecked == false,
+        proxyServerWorkload.IsChecked = true;
+        Check(center.Drafts.Count == 0 && proxyServerWorkload.IsChecked == false,
             "Selecting an installed workload never disguises a repair as installation");
         center.Stage(staged!);
         center.Search = "no-such-component";

@@ -24,6 +24,18 @@ internal static class ApplicationAvailabilityChecks
     }
     public static async Task RunAsync()
     {
+        // A catalog entry without an availability adapter must not gate its application, otherwise
+        // listing Docker or the Web Server here would make those applications unopenable.
+        Check(ComponentCatalog.LaunchGate("relaxkonos.proxy-server")?.ComponentId == "sing-box"
+            && ComponentCatalog.LaunchGate("relaxkonos.docker") is null
+            && ComponentCatalog.LaunchGate("relaxkonos.webservers") is null
+            && ComponentCatalog.LaunchGate("relaxkonos.proxy") is null,
+            "Only the component with an availability adapter may gate application launch");
+        var nginx = ComponentCatalog.Find("nginx")!;
+        Check(nginx.Sources.Any(source => source.Platforms.Contains("linux") && source.Kind == ComponentSourceKind.SystemPackage)
+            && nginx.Sources.Any(source => source.Platforms.Contains("windows") && source.Kind == ComponentSourceKind.ManagedArchive)
+            && nginx.Sources.All(source => !source.AdapterAvailable),
+            "A component with different platform implementations declares one source set per platform");
         var app = new AppId("relaxkonos.proxy-server");
         var target = new RuntimeTarget("linux", "x64", null, null, RuntimeInstallMode.Archive, "systemd");
         var installed = new RuntimeInstallationSnapshot(new(Guid.NewGuid(), "host-a", "sing-box", 1,

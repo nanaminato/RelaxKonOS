@@ -151,6 +151,12 @@ internal static class HostServiceRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.WebServer.NginxWebServerManager>();
         builder.Services.AddSingleton<RelaxKonOS.Server.WebServer.IWebServerProvider>(services => services.GetRequiredService<RelaxKonOS.Server.WebServer.NginxWebServerManager>());
         builder.Services.AddSingleton<RelaxKonOS.Server.WebServer.IWebServerManager, RelaxKonOS.Server.WebServer.WebServerManager>();
+        // Component lifecycle adapters: one closed registry decides which components the center may
+        // answer for. Each adapter normalizes its own product (ledgered archive vs distribution
+        // package) so callers never branch on the product.
+        builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter, RelaxKonOS.Server.Components.SingBoxComponentAdapter>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter, RelaxKonOS.Server.Components.NginxComponentAdapter>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Components.ComponentLifecycleRegistry>();
         builder.Services.AddSingleton<RelaxKonOS.Server.WebsitePublishing.WebsitePublicationStore>();
         builder.Services.AddSingleton<RelaxKonOS.Server.WebsitePublishing.WebsitePublicationCoordinator>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<RelaxKonOS.Server.WebsitePublishing.WebsitePublicationCoordinator>());

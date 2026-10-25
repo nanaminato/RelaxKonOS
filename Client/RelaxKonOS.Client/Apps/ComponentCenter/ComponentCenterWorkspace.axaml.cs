@@ -8,7 +8,8 @@ public partial class ComponentCenterWorkspace : UserControl
 {
     private ComponentCenterViewModel? _model;
     private bool _compact;
-    public Action? OpenApplication { get; set; }
+    /// <summary>Receives the owning application id of the selected component; the catalog never invents one.</summary>
+    public Action<string>? OpenApplication { get; set; }
     public ComponentCenterWorkspace() => InitializeComponent();
     public ComponentCenterWorkspace(ComponentCenterViewModel viewModel) : this() => DataContext = viewModel;
     protected override void OnDataContextChanged(EventArgs e)
@@ -55,7 +56,10 @@ public partial class ComponentCenterWorkspace : UserControl
         DetailsScroll.IsVisible = !_compact || !showNavigation;
         if (_compact && !showNavigation && navigationFocused) NavigationToggle.Focus();
     }
-    private void OpenApplication_Click(object? sender, RoutedEventArgs e) => OpenApplication?.Invoke();
+    private void OpenApplication_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_model?.SelectedApplicationId is { } application) OpenApplication?.Invoke(application);
+    }
     private void RemoveDraft_Click(object? sender, RoutedEventArgs e)
     {
         if (sender is Button { DataContext: ComponentDraftItem item } && _model is { } model) model.RemoveCommand.Execute(item);

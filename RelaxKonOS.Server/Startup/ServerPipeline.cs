@@ -82,6 +82,7 @@ internal static class ServerPipeline
         app.MapGatewayProxyEndpoints();
         app.MapProxyServerEndpoints();
         app.MapRuntimeCatalogEndpoints();
+        app.MapComponentEndpoints();
         app.MapTaskPlanningEndpoints();
         app.MapTaskExecutionEndpoints();
         if (OperatingSystem.IsLinux() || OperatingSystem.IsWindows())

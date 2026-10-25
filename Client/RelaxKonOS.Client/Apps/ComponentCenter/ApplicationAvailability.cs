@@ -49,10 +49,11 @@ public sealed class ApplicationAvailabilityService : IApplicationLaunchGuard, IA
     private readonly object _cacheLock = new();
     private readonly Dictionary<(string Server, Guid User, string Component), ApplicationAvailability> _observations = [];
     public event EventHandler? Changed;
-    public bool RequiresCheck(ApplicationManifest manifest) => ComponentCatalog.Components.Any(c => c.Applications.Contains(manifest.Id.Value));
+    /// <summary>Only components with a registered availability adapter may gate an application.</summary>
+    public bool RequiresCheck(ApplicationManifest manifest) => ComponentCatalog.LaunchGate(manifest.Id.Value) is not null;
     public ApplicationAvailability? GetCached(AppId app)
     {
-        var component = ComponentCatalog.Components.SingleOrDefault(c => c.Applications.Contains(app.Value));
+        var component = ComponentCatalog.LaunchGate(app.Value);
         if (component is null || session.State != AuthSessionState.Authenticated || session.ServiceId is not { } server || session.CurrentUser is not { } user)
             return null;
         lock (_cacheLock) return _observations.GetValueOrDefault((server, user.Id, component.ComponentId));
@@ -84,7 +85,8 @@ public sealed class ApplicationAvailabilityService : IApplicationLaunchGuard, IA
 
     private async Task<ApplicationAvailability?> ObserveAsync(AppContext context, bool requestPermission)
     {
-        var component = ComponentCatalog.Components.Single(c => c.Applications.Contains(context.AppId.Value));
+        var component = ComponentCatalog.LaunchGate(context.AppId.Value);
+        if (component is null) return null;
         var login = session.CurrentSession;
         var server = session.ServiceId;
         var user = session.CurrentUser?.Id;

@@ -23,6 +23,11 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     private readonly Guid _actor;
     private readonly List<ComponentTreeNode> _componentRoots = [];
     private readonly List<ComponentTreeNode> _workloadRoots = [];
+    /// <summary>Component id to its domain runtime page. Components absent here are not managed yet.</summary>
+    private readonly IReadOnlyDictionary<string, ProxyServerRuntimeViewModel> _runtimes;
+    /// <summary>Read-only observers for components whose lifecycle belongs to another application.</summary>
+    private readonly IReadOnlyList<IComponentHostObserver> _observers;
+    private readonly Dictionary<string, ComponentHostObservation> _hostObservations = new(StringComparer.Ordinal);
     public ObservableCollection<ComponentCenterNavigationItem> Pages { get; } = new(Enum.GetValues<ComponentCenterPage>().Select(page => new ComponentCenterNavigationItem(page)));
     public ObservableCollection<ComponentTreeNode> VisibleRoots { get; } = [];
     [ObservableProperty] private ComponentCenterNavigationItem? selectedNavigation;
@@ -34,10 +39,136 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     partial void OnConnectionAvailableChanged(bool? value) => OnPropertyChanged(nameof(ConnectionText));
     public ComponentCenterPage SelectedPage => SelectedNavigation?.Page ?? ComponentCenterPage.All;
     public bool HasResults => VisibleRoots.Count > 0;
-    public bool HasRuntimeDetails => HasResults && SelectedNode?.ComponentId is not null;
+    public ComponentTreeNode? SelectedComponent => SelectedNode?.ComponentId is null ? null : SelectedNode;
+    public HostComponentDefinition? SelectedDefinition => SelectedNode?.ComponentId is { } id ? ComponentCatalog.Find(id) : null;
+    /// <summary>The detail pane follows the selected component instead of assuming sing-box.</summary>
+    public ProxyServerRuntimeViewModel? DetailRuntime => SelectedDefinition?.ComponentId is { } id && _runtimes.TryGetValue(id, out var runtime)
+        ? runtime : null;
+    public bool HasRuntimeDetails => HasResults && DetailRuntime is not null;
     public bool HasWorkloadDetails => HasResults && SelectedNode?.WorkloadId is not null && SelectedNode.ComponentId is null;
+    /// <summary>True when the selected component has no runtime page to drive, whatever the reason.</summary>
+    public bool ShowNotIntegrated => HasResults && SelectedDefinition is { } definition
+        && (definition.Integration == ComponentIntegration.Application || DetailRuntime is null);
+    public int SelectedSourceKindCount => SelectedDefinition?.Sources.Count ?? 0;
+    public LocalizedStatus SelectedComponentDescription => SelectedDefinition is { } definition
+        ? LocalizedStatus.Key(definition.DescriptionKey) : LocalizedStatus.Literal("");
+    /// <summary>The platform the Host reported for itself. Empty until an observation succeeded.</summary>
+    public string HostPlatform => Runtime.Installation?.Installation.Target.Os ?? "";
+    /// <summary>Declared provenance for this host's platforms, plus everything declared elsewhere.</summary>
+    public IReadOnlyList<ComponentSourceChip> SelectedHostSources => SourceChips(hostPlatformOnly: true);
+    public IReadOnlyList<ComponentSourceChip> SelectedOtherSources => SourceChips(hostPlatformOnly: false);
+    public bool HasSelectedSources => SelectedHostSources.Count + SelectedOtherSources.Count > 0;
+    public bool HasOtherPlatformSources => SelectedOtherSources.Count > 0;
+    private IReadOnlyList<ComponentSourceChip> SourceChips(bool hostPlatformOnly)
+    {
+        if (SelectedDefinition is not { } definition) return [];
+        var host = HostPlatform;
+        return definition.Sources
+            .Where(source => (host.Length != 0 && source.Platforms.Contains(host)) == hostPlatformOnly)
+            .Select(source => new ComponentSourceChip(
+                LocalizedStatus.Format("component_center.source_kind_entry",
+                    LocalizedStatus.Key("component_center.source_kind." + source.Kind),
+                    LocalizedStatus.Key(source.AdapterAvailable ? "component_center.source_ready" : "component_center.source_planned")),
+                PlatformName(source.Platforms), source.AdapterAvailable, hostPlatformOnly))
+            .ToArray();
+    }
+    private static LocalizedStatus PlatformName(IReadOnlyList<string> platforms) => platforms.Count switch
+    {
+        1 => platforms[0] switch
+        {
+            "linux" => LocalizedStatus.Key("component_center.platform.linux", "Linux"),
+            "windows" => LocalizedStatus.Key("component_center.platform.windows", "Windows"),
+            _ => LocalizedStatus.Literal(platforms[0])
+        },
+        _ => LocalizedStatus.Key("component_center.platform.multiple")
+    };
+    public LocalizedStatus SelectedIntegrationText => SelectedDefinition is { } definition
+        ? LocalizedStatus.Key("component_center.integration." + definition.Integration) : LocalizedStatus.Literal("");
+    public LocalizedStatus SelectedCategoryText => SelectedDefinition is { } definition
+        ? LocalizedStatus.Key("component_center.category." + definition.Category) : LocalizedStatus.Literal("");
+    public LocalizedStatus SelectedApplicationText => SelectedDefinition?.ApplicationId is { } app
+        ? LocalizedStatus.Key("application." + app + ".display_name") : LocalizedStatus.Key("component_center.no_application");
+    public bool CanOpenSelectedApplication => SelectedDefinition?.ApplicationId is not null;
+    /// <summary>The warning card already offers the same action for a component it does not manage.</summary>
+    public bool ShowHeaderOpenApplication => CanOpenSelectedApplication && !ShowNotIntegrated;
+    public string? SelectedApplicationId => SelectedDefinition?.ApplicationId;
+    /// <summary>True while the selected component still uses the batch draft and TaskPlan path.</summary>
+    public bool SelectedUsesBatch => SelectedDefinition?.Integration == ComponentIntegration.Batch;
+    public ComponentStatusTone SelectedTone => Tone(SelectedDefinition);
+    public bool SelectedToneOk => SelectedTone == ComponentStatusTone.Ok;
+    public bool SelectedToneWarning => SelectedTone == ComponentStatusTone.Warning;
+    public bool SelectedToneDanger => SelectedTone == ComponentStatusTone.Danger;
+    public bool SelectedToneIdle => SelectedTone == ComponentStatusTone.Idle;
+    public LocalizedStatus SelectedStatusText
+    {
+        get
+        {
+            if (SelectedDefinition is not { } definition) return LocalizedStatus.Literal("");
+            var runtime = DetailRuntime;
+            // A component with no runtime page in this build has no measured state to claim.
+            if (definition.Integration == ComponentIntegration.Application || runtime is null)
+                return LocalizedStatus.Key("component_center.status.not_integrated");
+            if (runtime.Installation is null) return LocalizedStatus.Key("proxy_server.state.unknown");
+            if (runtime.NeedsRecovery) return LocalizedStatus.Key("component_center.badge.Recovery");
+            if (runtime.HasRuntimeProblem) return LocalizedStatus.Key("component_center.badge.Faulted");
+            return runtime.OwnershipText;
+        }
+    }
+    public LocalizedStatus SelectedVersionText => DetailRuntime?.MeasuredVersionText ?? LocalizedStatus.Literal("—");
+    public bool HasSelectedVersion => DetailRuntime?.Installation?.MeasuredVersion is { Length: > 0 };
+    public bool SelectedHasUpdate => DetailRuntime?.HasUpdates == true;
+    /// <summary>The host target chip is only meaningful once the host reported a target.</summary>
+    public bool HasTargetText => Runtime.Installation?.Installation.Target is not null;
+    public bool HasComponentDetails => HasResults && SelectedDefinition is not null;
+    /// <summary>A runtime message belongs to the component that produced it, never to another row.</summary>
+    public LocalizedStatus HeaderOutcomeText => DetailRuntime?.OutcomeText ?? LocalizedStatus.Literal("");
+    public bool HasHeaderOutcome => !HeaderOutcomeText.IsEmpty;
+    public LocalizedStatus SelectedApplicationOpenText => LocalizedStatus.Format("component_center.open_application_named", SelectedApplicationText);
+    public LocalizedStatus NotIntegratedMessage => LocalizedStatus.Format("component_center.not_integrated_message", SelectedApplicationText);
+    /// <summary>The footer is the only carrier of unapplied intent; it never hides an existing draft.</summary>
+    public bool ShowDraftPanel => HasDrafts;
+    /// <summary>The freeze-plan card only applies to the selected batch component, never to another row.</summary>
+    public bool ShowBatchPlanPanel => HasDrafts && SelectedUsesBatch;
+    [ObservableProperty] private bool isObservingHost;
+    [ObservableProperty] private LocalizedStatus hostObservationNotice = LocalizedStatus.Literal("");
+    public ComponentHostObservation? HostObservation => SelectedDefinition?.ComponentId is { } id
+        ? _hostObservations.GetValueOrDefault(id) : null;
+    public bool HasHostObservation => HostObservation is not null;
+    public bool ShowHostObservation => CanObserveHost && SelectedDefinition is { Integration: ComponentIntegration.Application };
+    public bool CanObserveHost => !IsObservingHost && SelectedDefinition is { } definition
+        && _observers.Any(observer => observer.CanObserve(definition.ComponentId));
+    public LocalizedStatus HostObservationPlatformText => LocalizedStatus.Format("component_center.observation.platform",
+        HostObservation?.Platform ?? LocalizedStatus.Literal("—"));
+    public LocalizedStatus HostObservationManagementText => LocalizedStatus.Format("component_center.observation.management",
+        HostObservation?.Management ?? LocalizedStatus.Literal("—"));
+    public LocalizedStatus HostObservationVersionText => LocalizedStatus.Format("component_center.observation.version",
+        HostObservation?.Version ?? LocalizedStatus.Literal("—"));
+    public LocalizedStatus HostObservationStateText => LocalizedStatus.Format("component_center.observation.state",
+        HostObservation?.State ?? LocalizedStatus.Literal("—"));
+    public LocalizedStatus HostObservationNoteText => HostObservation?.Note ?? LocalizedStatus.Literal("");
+    /// <summary>Reads the owning application's own facts. It never installs, plans or approves.</summary>
+    [RelayCommand] private async Task ObserveHostAsync()
+    {
+        if (SelectedDefinition is not { } definition) return;
+        var observer = _observers.FirstOrDefault(item => item.CanObserve(definition.ComponentId));
+        if (observer is null || IsObservingHost) return;
+        IsObservingHost = true;
+        HostObservationNotice = LocalizedStatus.Key("component_center.observation.running");
+        NotifyContext();
+        try
+        {
+            var observation = await observer.ObserveAsync(definition.ComponentId, HostPlatform, _inspectionLifetime.Token);
+            if (observation is not null) _hostObservations[definition.ComponentId] = observation;
+            HostObservationNotice = LocalizedStatus.Key("component_center.observation.complete");
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or InvalidDataException or OperationCanceledException)
+        { HostObservationNotice = LocalizedStatus.Key("component_center.observation.failed"); }
+        finally { IsObservingHost = false; NotifyContext(); }
+    }
     public LocalizedStatus SelectedTitle => SelectedPage == ComponentCenterPage.Tasks ? LocalizedStatus.Key("component_center.page.Tasks")
         : SelectedNode?.Label ?? LocalizedStatus.Key("component_center.choose_component");
+    /// <summary>The identity card always names the component, never the page it is shown on.</summary>
+    public LocalizedStatus SelectedComponentTitle => SelectedNode?.Label ?? LocalizedStatus.Key("component_center.choose_component");
     public LocalizedStatus EmptyMessage => LocalizedStatus.Key(!string.IsNullOrWhiteSpace(Search)
         ? "component_center.no_matches"
         : SelectedPage is ComponentCenterPage.Installed or ComponentCenterPage.Updates
@@ -61,11 +192,18 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     [ObservableProperty] private LocalizedStatus notice = LocalizedStatus.Literal("");
 
     public ComponentCenterViewModel(ProxyServerRuntimeViewModel runtime, ComponentDraftStore store, string server, Guid actor,
-        ITaskPlanPreviewClient? previews = null, ITaskExecutionClient? execution = null, ComponentTaskReferenceStore? references = null)
+        ITaskPlanPreviewClient? previews = null, ITaskExecutionClient? execution = null, ComponentTaskReferenceStore? references = null,
+        IReadOnlyDictionary<string, ProxyServerRuntimeViewModel>? additionalRuntimes = null,
+        IReadOnlyList<IComponentHostObserver>? hostObservers = null, IComponentLifecycleClient? lifecycle = null)
     {
         Runtime = runtime; _store = store; _server = server; _actor = actor;
         _previews = previews;
         _execution = execution; _references = references;
+        _observers = hostObservers ?? [];
+        _lifecycle = lifecycle;
+        var runtimes = new Dictionary<string, ProxyServerRuntimeViewModel>(StringComparer.Ordinal) { ["sing-box"] = runtime, [runtime.RuntimeId] = runtime };
+        foreach (var pair in additionalRuntimes ?? new Dictionary<string, ProxyServerRuntimeViewModel>()) runtimes[pair.Key] = pair.Value;
+        _runtimes = runtimes;
         _inspectionInstallation = runtime.Installation;
         _inspectionCatalog = runtime.CatalogSnapshot;
         BuildTrees();
@@ -75,14 +213,22 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         runtime.StageChange = Stage;
         runtime.PropertyChanged += RuntimeChanged;
         runtime.StateChanged += RuntimeStateChanged;
+        foreach (var secondary in _runtimes.Values.Distinct().Where(item => !ReferenceEquals(item, runtime)))
+        {
+            secondary.PropertyChanged += SecondaryRuntimeChanged;
+            secondary.StateChanged += RuntimeStateChanged;
+        }
         ReloadTaskHistory();
     }
+    /// <summary>Secondary runtimes only refresh presentation; task and draft authority stays with sing-box.</summary>
+    private void SecondaryRuntimeChanged(object? sender, PropertyChangedEventArgs e) => NotifyContext();
     private void RuntimeChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(ProxyServerRuntimeViewModel.CanRead) or nameof(ProxyServerRuntimeViewModel.CanManage)) _taskAccessRevision++;
         if (!Runtime.CanRead || !Runtime.CanManage || Runtime.IsInvalidated) _driveTask = false;
         if (!Runtime.CanRead || Runtime.IsInvalidated) { TaskRecovery = null; ClearTaskEvidence(); }
         OnPropertyChanged(nameof(CanPreview)); OnPropertyChanged(nameof(CanInspect)); OnPropertyChanged(nameof(CanPlanDraft)); TaskProperties();
+        NotifyContext();
     }
     private void RuntimeStateChanged(object? sender, EventArgs e) { ObserveInspectionState(); RefreshTree(); }
     partial void OnSelectedNavigationChanged(ComponentCenterNavigationItem? value)
@@ -104,7 +250,23 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     private void NotifyContext()
     {
         foreach (var property in new[] { nameof(HasResults), nameof(HasRuntimeDetails), nameof(HasWorkloadDetails),
-            nameof(SelectedTitle), nameof(EmptyMessage), nameof(WorkloadRequirements), nameof(WorkloadOptional), nameof(ShowInspection) }) OnPropertyChanged(property);
+            nameof(SelectedTitle), nameof(EmptyMessage), nameof(WorkloadRequirements), nameof(WorkloadOptional), nameof(ShowInspection),
+            nameof(SelectedComponentTitle),
+            nameof(DetailRuntime), nameof(SelectedComponent), nameof(SelectedDefinition), nameof(ShowNotIntegrated),
+            nameof(SelectedComponentDescription), nameof(SelectedHostSources), nameof(SelectedOtherSources),
+            nameof(HasSelectedSources), nameof(HasOtherPlatformSources), nameof(HostPlatform),
+            nameof(HasHostObservation), nameof(HostObservation), nameof(ShowHostObservation), nameof(CanObserveHost),
+            nameof(HostObservationPlatformText), nameof(HostObservationManagementText), nameof(HostObservationVersionText),
+            nameof(HostObservationStateText), nameof(HostObservationNoteText),
+            nameof(SelectedIntegrationText), nameof(SelectedCategoryText), nameof(SelectedApplicationText),
+            nameof(CanOpenSelectedApplication), nameof(SelectedApplicationId), nameof(SelectedUsesBatch), nameof(ShowHeaderOpenApplication),
+            nameof(SelectedTone), nameof(SelectedToneOk), nameof(SelectedToneWarning), nameof(SelectedToneDanger), nameof(SelectedToneIdle),
+            nameof(SelectedStatusText), nameof(SelectedVersionText), nameof(SelectedHasUpdate), nameof(CanPreview), nameof(CanPlanDraft),
+            nameof(HasComponentDetails), nameof(HeaderOutcomeText), nameof(HasHeaderOutcome),
+            nameof(SelectedApplicationOpenText), nameof(NotIntegratedMessage), nameof(ShowDraftPanel),
+            nameof(ShowBatchPlanPanel), nameof(HasSelectedVersion), nameof(HasTargetText) })
+            OnPropertyChanged(property);
+        NotifyPackage();
     }
     private void BuildTrees()
     {
@@ -134,16 +296,26 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
             root.SynchronizeSelection(selected);
             foreach (var node in root.DescendantsAndSelf())
             {
-                node.CanSelect = !IsTaskBusy && !Runtime.IsBusy && !Runtime.IsInvalidated;
-                if (node.ComponentId is null) continue;
-                node.Status = Runtime.OwnershipText;
-                node.Version = Runtime.MeasuredVersionText.Resolve();
+                if (node.ComponentId is not { } id || ComponentCatalog.Find(id) is not { } definition) continue;
+                var runtime = _runtimes.GetValueOrDefault(id);
+                // Only the batch-integrated component stages drafts here; other rows stay read-only.
+                node.CanSelect = !IsTaskBusy && !(runtime?.IsBusy ?? false) && definition.Integration == ComponentIntegration.Batch;
+                node.ShowStatus = true;
+                node.ShowVersion = runtime?.Installation is not null;
+                node.Status = runtime is null ? LocalizedStatus.Key("component_center.status.not_integrated")
+                    : runtime.NeedsRecovery ? LocalizedStatus.Key("component_center.badge.Recovery")
+                    : runtime.HasRuntimeProblem ? LocalizedStatus.Key("component_center.badge.Faulted")
+                    : runtime.OwnershipText;
+                node.Version = runtime?.MeasuredVersionText.Resolve() ?? "";
+                node.SetTone(Tone(definition));
+                node.HasUpdate = runtime?.HasUpdates == true;
             }
         }
         bool Eligible(ComponentTreeNode node) => SelectedPage switch
         {
-            ComponentCenterPage.Installed => Runtime.Installation?.Installation.Ownership is RuntimeOwnership.Managed or RuntimeOwnership.External,
-            ComponentCenterPage.Updates => Runtime.HasUpdates,
+            ComponentCenterPage.Installed => node.ComponentId is { } installed
+                && RuntimeFor(installed)?.Installation?.Installation.Ownership is RuntimeOwnership.Managed or RuntimeOwnership.External,
+            ComponentCenterPage.Updates => node.ComponentId is { } updating && RuntimeFor(updating)?.HasUpdates == true,
             _ => true
         };
         var roots = SelectedPage == ComponentCenterPage.Workloads ? _workloadRoots : _componentRoots;
@@ -154,9 +326,31 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
                 : visible.SelectMany(root => root.VisibleDescendantsAndSelf()).FirstOrDefault(node => node.ComponentId is not null);
         NotifyContext();
     }
+    private ProxyServerRuntimeViewModel? RuntimeFor(string componentId) => _runtimes.GetValueOrDefault(componentId);
+    /// <summary>Presentation tone from measured facts only; unknown and external stay neutral.</summary>
+    private ComponentStatusTone Tone(HostComponentDefinition? definition)
+    {
+        if (definition is null || definition.Integration == ComponentIntegration.Application) return ComponentStatusTone.Idle;
+        var runtime = RuntimeFor(definition.ComponentId);
+        if (runtime?.Installation is not { } snapshot) return ComponentStatusTone.Idle;
+        if (runtime.NeedsRecovery) return ComponentStatusTone.Warning;
+        if (runtime.HasRuntimeProblem) return ComponentStatusTone.Danger;
+        return snapshot.Installation.Ownership switch
+        {
+            RuntimeOwnership.Managed => ComponentStatusTone.Ok,
+            RuntimeOwnership.Absent => ComponentStatusTone.Warning,
+            _ => ComponentStatusTone.Idle
+        };
+    }
     private void SelectTreeNode(ComponentTreeNode node, bool selected)
     {
         if (Runtime.IsBusy || Runtime.IsInvalidated) { RefreshTree(); return; }
+        if (node.ComponentId is { } staged && ComponentCatalog.Find(staged) is { Integration: not ComponentIntegration.Batch } stagedDefinition)
+        {
+            Notice = LocalizedStatus.Key(stagedDefinition.Integration == ComponentIntegration.Runtime
+                ? "component_center.integration_runtime_only" : "component_center.integration_application_only");
+            RefreshTree(); return;
+        }
         var ids = node.DescendantsAndSelf().Where(item => item.ComponentId is not null && (!selected || node.ComponentId is not null || !item.IsOptional))
             .Select(item => item.ComponentId!).ToHashSet(StringComparer.Ordinal);
         if (!selected)
@@ -189,7 +383,12 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         Stage(draft);
     }
     [RelayCommand] private void SelectWorkload() { if (SelectedNode is { } node) SelectTreeNode(node, true); }
-    [RelayCommand] private Task RefreshAsync() => Runtime.EnsureLoadedAsync();
+    /// <summary>Refreshes every component that has a runtime, not just the batch-integrated one.</summary>
+    [RelayCommand] private async Task RefreshAsync()
+    {
+        foreach (var runtime in _runtimes.Values.Distinct())
+            if (runtime.CanRead && !runtime.IsInvalidated) await runtime.EnsureLoadedAsync();
+    }
 
     public bool Stage(ComponentChangeDraft draft)
     {
@@ -225,6 +424,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         _store.Save(_server, _actor, Drafts.Select(d => d.Draft));
         OnPropertyChanged(nameof(PersistenceNotice));
         OnPropertyChanged(nameof(HasDrafts)); OnPropertyChanged(nameof(DraftSummary)); OnPropertyChanged(nameof(CanPreview));
+        OnPropertyChanged(nameof(ShowDraftPanel)); OnPropertyChanged(nameof(ShowBatchPlanPanel));
         RefreshTree();
     }
     public void Dispose()
@@ -234,5 +434,10 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         Runtime.StageChange = null;
         Runtime.PropertyChanged -= RuntimeChanged;
         Runtime.StateChanged -= RuntimeStateChanged;
+        foreach (var secondary in _runtimes.Values.Distinct().Where(item => !ReferenceEquals(item, Runtime)))
+        {
+            secondary.PropertyChanged -= SecondaryRuntimeChanged;
+            secondary.StateChanged -= RuntimeStateChanged;
+        }
     }
 }

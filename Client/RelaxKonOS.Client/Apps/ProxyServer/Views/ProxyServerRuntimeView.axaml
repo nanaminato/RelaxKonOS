@@ -147,7 +147,8 @@
           <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.runtime.source_title}" />
         </DockPanel>
         <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.no_sources}" IsVisible="{Binding !HasSources}" />
-        <ComboBox ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource, Mode=TwoWay}" HorizontalAlignment="Stretch">
+        <ComboBox ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource, Mode=TwoWay}" HorizontalAlignment="Stretch"
+                  IsVisible="{Binding HasSources}">
           <ComboBox.ItemTemplate>
             <DataTemplate x:DataType="runtimes:RuntimeSourceView">
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
@@ -159,7 +160,7 @@
         </ComboBox>
         <TextBlock Classes="section-hint" Text="{Binding SourceSummary}" TextWrapping="Wrap" />
         <TextBlock Classes="section-hint" Text="{Binding CatalogText}" TextWrapping="Wrap" />
-        <TextBlock Classes="problem" Text="{Binding CatalogProblem}" TextWrapping="Wrap" />
+        <TextBlock Classes="problem" Text="{Binding CatalogProblem}" TextWrapping="Wrap" IsVisible="{Binding HasCatalogProblem}" />
         <CheckBox Content="{loc:Loc proxy_server.runtime.include_prerelease}" IsChecked="{Binding IncludePrerelease, Mode=TwoWay}" />
         <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.include_prerelease_hint}" TextWrapping="Wrap" />
       </StackPanel>
@@ -173,7 +174,7 @@
         </DockPanel>
         <TextBlock Classes="section-hint" Text="{Binding SourceSummary}" TextWrapping="Wrap" />
         <TextBlock Classes="section-hint" Text="{Binding CatalogText}" TextWrapping="Wrap" />
-        <TextBlock Classes="problem" Text="{Binding CatalogProblem}" TextWrapping="Wrap" />
+        <TextBlock Classes="problem" Text="{Binding CatalogProblem}" TextWrapping="Wrap" IsVisible="{Binding HasCatalogProblem}" />
         <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.no_releases}" IsVisible="{Binding !HasReleases}" />
         <ListBox x:Name="ReleaseList" ItemsSource="{Binding Releases}" SelectedItem="{Binding SelectedRelease, Mode=TwoWay}" MinHeight="120" MaxHeight="260">
           <ListBox.ItemTemplate>

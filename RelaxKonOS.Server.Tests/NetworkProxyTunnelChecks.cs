@@ -187,88 +187,10 @@ internal static async Task VerifyProxyDiagnosticLogsAsync(string root)
         "Proxy diagnostic logs were not exposed when the controller log was unavailable.");
 }
 
-internal static async Task VerifyMihomoRuntimeSafetyAsync(string root)
-{
-    if (MihomoRuntimeManifest.CurrentRid() != "linux-x64") return;
-    var archive = CreateMihomoFixtureArchive();
-    var digest = Convert.ToHexString(SHA256.HashData(archive)).ToLowerInvariant();
-    var release = new MihomoRuntimeRelease(MihomoRuntimeManifest.SupportedVersion, "linux-x64", "mihomo-linux-amd64-v1.19.30.gz", "gz", digest);
-    var paths = new TestProxyPaths(Path.Combine(root, "mihomo-runtime"));
-    var privileged = new TestProxyPrivilegedOperations();
-    var manager = new MihomoRuntimeManager(paths, new FixtureHttpClientFactory(archive, "https://release-assets.githubusercontent.com/fixture"), privileged, new TestMihomoRuntimeProbe(), new HealthyMihomoController(), new StaticProxySecretStore(), new MihomoControllerOptions(), new MihomoRuntimeManifest { Releases = [release] });
-
-    foreach (var redirect in new[] { "http://release-assets.githubusercontent.com/fixture", "https://untrusted.example/fixture", "https://github.com/loop" })
-    {
-        var rejectedPrivileges = new TestProxyPrivilegedOperations();
-        var rejectedManager = new MihomoRuntimeManager(new TestProxyPaths(Path.Combine(root, Guid.NewGuid().ToString("N"))),
-            new FixtureHttpClientFactory(archive, redirect), rejectedPrivileges, new TestMihomoRuntimeProbe(), new HealthyMihomoController(),
-            new StaticProxySecretStore(), new MihomoControllerOptions(), new MihomoRuntimeManifest { Releases = [release] });
-        var rejected = await rejectedManager.InstallManagedAsync(MihomoEngine.Id, release.Version, CancellationToken.None);
-        TestAssert.Assert(rejected.ProblemCode == ProxyProblemCodes.RuntimeIntegrityFailed && !rejectedPrivileges.InstalledService,
-            "Mihomo accepted an unsafe redirect or redirect loop.");
-    }
-
-    var missingExternal = await manager.DetectExternalAsync(MihomoEngine.Id, Path.Combine(root, "does-not-exist"), CancellationToken.None);
-    TestAssert.Assert(missingExternal.ProblemCode == ProxyProblemCodes.ExternalRuntimeInvalid && missingExternal.ExternalPathConfigured,
-        "A missing external runtime was accepted or exposed a host path.");
-
-    var installed = await manager.InstallManagedAsync(MihomoEngine.Id, MihomoRuntimeManifest.SupportedVersion, CancellationToken.None);
-    TestAssert.Assert(installed.State == ProxyRuntimeState.Running && installed.IntegrityVerified && installed.Version == MihomoRuntimeManifest.SupportedVersion,
-        "A verified Mihomo fixture did not activate only after controller health.");
-    TestAssert.Assert(privileged.InstalledService && privileged.RestartCount == 1, "Managed Mihomo did not use the constrained native-service operations.");
-    var restartCountBeforeStatusRead = privileged.RestartCount;
-    var statusRead = await manager.GetAsync(MihomoEngine.Id, CancellationToken.None);
-    TestAssert.Assert(statusRead.State == ProxyRuntimeState.Running && privileged.RestartCount == restartCountBeforeStatusRead,
-        "Reading Mihomo status restarted the runtime and could refresh subscriptions.");
-
-    var delayedPaths = new TestProxyPaths(Path.Combine(root, "mihomo-delayed-controller"));
-    var delayedPrivileged = new TestProxyPrivilegedOperations();
-    var delayedController = new DelayedHealthyMihomoController(unavailableResponses: 2);
-    var delayedManager = new MihomoRuntimeManager(delayedPaths, new FixtureHttpClientFactory(archive), delayedPrivileged,
-        new TestMihomoRuntimeProbe(), delayedController, new StaticProxySecretStore(),
-        new MihomoControllerOptions { StartupReadinessSeconds = 1 }, new MihomoRuntimeManifest { Releases = [release] });
-    var delayedInstall = await delayedManager.InstallManagedAsync(MihomoEngine.Id, MihomoRuntimeManifest.SupportedVersion, CancellationToken.None);
-    TestAssert.Assert(delayedInstall.State == ProxyRuntimeState.Running && delayedController.HealthChecks == 3,
-        "Managed Mihomo was rolled back before its loopback controller had time to bind.");
-
-    var crossFilesystemRoot = Path.Combine("/var/tmp", "relaxkonos-mihomo-runtime-tests-" + Guid.NewGuid().ToString("N"));
-    try
-    {
-        var crossFilesystemPrivileged = new TestProxyPrivilegedOperations();
-        var crossFilesystemManager = new MihomoRuntimeManager(new TestProxyPaths(crossFilesystemRoot), new FixtureHttpClientFactory(archive),
-            crossFilesystemPrivileged, new TestMihomoRuntimeProbe(), new HealthyMihomoController(), new StaticProxySecretStore(), new MihomoControllerOptions(), new MihomoRuntimeManifest { Releases = [release] });
-        var crossFilesystemInstall = await crossFilesystemManager.InstallManagedAsync(MihomoEngine.Id, MihomoRuntimeManifest.SupportedVersion, CancellationToken.None);
-        TestAssert.Assert(crossFilesystemInstall.State == ProxyRuntimeState.Running && crossFilesystemInstall.IntegrityVerified,
-            "A verified Mihomo archive could not be atomically installed when the runtime directory was on another filesystem from /tmp.");
-    }
-    finally
-    {
-        if (Directory.Exists(crossFilesystemRoot)) Directory.Delete(crossFilesystemRoot, recursive: true);
-    }
-
-    var firstInstallPrivileged = new TestProxyPrivilegedOperations { FailServiceInstallation = true, FailUninstalledServiceRemoval = true };
-    var firstInstallManager = new MihomoRuntimeManager(new TestProxyPaths(Path.Combine(root, "mihomo-first-install-failure")), new FixtureHttpClientFactory(archive),
-        firstInstallPrivileged, new TestMihomoRuntimeProbe(), new HealthyMihomoController(), new StaticProxySecretStore(), new MihomoControllerOptions(), new MihomoRuntimeManifest { Releases = [release] });
-    var firstInstallFailure = await firstInstallManager.InstallManagedAsync(MihomoEngine.Id, MihomoRuntimeManifest.SupportedVersion, CancellationToken.None);
-    TestAssert.Assert(firstInstallFailure.ProblemCode == ProxyProblemCodes.PrivilegedOperationUnavailable,
-        "A failed first-time service installation was incorrectly reported as a recovery-required failure.");
-
-    privileged.FailReplacement = true;
-    var failedUpdate = await manager.InstallManagedAsync(MihomoEngine.Id, MihomoRuntimeManifest.SupportedVersion, CancellationToken.None);
-    var afterFailedUpdate = await manager.GetAsync(MihomoEngine.Id, CancellationToken.None);
-    TestAssert.Assert(failedUpdate.ProblemCode == ProxyProblemCodes.PrivilegedOperationUnavailable && afterFailedUpdate.Version == MihomoRuntimeManifest.SupportedVersion
-        && afterFailedUpdate.State == ProxyRuntimeState.Running,
-        "A healthy managed Mihomo runtime was not reported as running after status refresh.");
-
-    var traversalArchive = CreateMihomoTraversalArchive();
-    var traversalDigest = Convert.ToHexString(SHA256.HashData(traversalArchive)).ToLowerInvariant();
-    var traversalManager = new MihomoRuntimeManager(new TestProxyPaths(Path.Combine(root, "mihomo-traversal")), new FixtureHttpClientFactory(traversalArchive),
-        new TestProxyPrivilegedOperations(), new TestMihomoRuntimeProbe(), new HealthyMihomoController(), new StaticProxySecretStore(), new MihomoControllerOptions(),
-        new MihomoRuntimeManifest { Releases = [release with { ArchiveFormat = "zip", AssetName = "mihomo-windows-amd64-v1.19.30.zip", Sha256 = traversalDigest, Rid = "linux-x64" }] });
-    var traversal = await traversalManager.InstallManagedAsync(MihomoEngine.Id, MihomoRuntimeManifest.SupportedVersion, CancellationToken.None);
-    TestAssert.Assert(traversal.ProblemCode == ProxyProblemCodes.RuntimeIntegrityFailed, "A path-traversal runtime archive was accepted.");
-}
-
+// The fixed-manifest Mihomo installer was deleted when the MR-03 ledger took over installing
+// Mihomo (MihomoRuntimeManager now only observes, detects and validates). Redirect refusal,
+// archive traversal and controller readiness are covered on the ledger path, so those old
+// fixed-manifest assertions were removed rather than kept as permanently failing stubs.
 internal static async Task VerifyLinuxMihomoRuntimeLinkActivationAsync(string root)
 {
     if (!OperatingSystem.IsLinux() || MihomoRuntimeManifest.CurrentRid() != "linux-x64") return;
@@ -293,26 +215,6 @@ internal static async Task VerifyLinuxMihomoRuntimeLinkActivationAsync(string ro
     TestAssert.Assert(!File.Exists(temporary) && !Directory.Exists(temporary), "Managed Mihomo activation left its temporary symbolic link behind.");
     TestAssert.Assert(Path.GetFullPath(Path.Combine(versions, new DirectoryInfo(active).LinkTarget!)) == Path.GetFullPath(release),
         "Managed Mihomo activation did not atomically replace the active runtime link.");
-}
-
-internal static byte[] CreateMihomoFixtureArchive()
-{
-    var binary = new byte[64]; binary[0] = 0x7f; binary[1] = (byte)'E'; binary[2] = (byte)'L'; binary[3] = (byte)'F'; binary[4] = 2; binary[5] = 1;
-    BitConverter.GetBytes((ushort)62).CopyTo(binary, 18);
-    using var output = new MemoryStream();
-    using (var gzip = new GZipStream(output, CompressionLevel.SmallestSize, leaveOpen: true)) gzip.Write(binary);
-    return output.ToArray();
-}
-
-internal static byte[] CreateMihomoTraversalArchive()
-{
-    using var output = new MemoryStream();
-    using (var archive = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
-    {
-        var traversal = archive.CreateEntry("../mihomo");
-        using var writer = traversal.Open(); writer.Write([1, 2, 3]);
-    }
-    return output.ToArray();
 }
 
 internal static void VerifyFrpTomlSafety()

@@ -63,7 +63,9 @@ internal static class ComponentCenterWorkspaceChecks
                 }
                 model.Navigate(ComponentCenterPage.All);
                 Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
-                var groupCheckbox = view.GetVisualDescendants().OfType<CheckBox>().Single(control => control.DataContext is ComponentTreeNode { IsGroup: true });
+                var groupCheckbox = view.GetVisualDescendants().OfType<CheckBox>()
+                    .Single(control => control.DataContext is ComponentTreeNode { IsGroup: true } group
+                        && group.Children.Any(child => child.ComponentId == "sing-box"));
                 groupCheckbox.Focus();
                 window.KeyPress(Key.Space, RawInputModifiers.None, PhysicalKey.Space, null);
                 window.KeyRelease(Key.Space, RawInputModifiers.None, PhysicalKey.Space, null);
@@ -96,6 +98,103 @@ internal static class ComponentCenterWorkspaceChecks
                     using var bitmap = new RenderTargetBitmap(new PixelSize(1060, 800));
                     bitmap.Render(window);
                     bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light-") + page + ".png"), new PngBitmapEncoderOptions());
+                }
+                // The catalog now carries the whole host component set; only runtime-backed entries
+                // explain themselves with a host page, the rest point back at their owning application.
+                var catalogNodes = model.VisibleRoots.SelectMany(root => root.DescendantsAndSelf())
+                    .Where(node => node.ComponentId is not null).ToArray();
+                Check(catalogNodes.Any(node => node.ComponentId == "mihomo") && catalogNodes.Any(node => node.ComponentId == "nginx")
+                    && catalogNodes.Any(node => node.ComponentId == "samba"), "Catalog lists every declared host component in " + language);
+                var singBoxNode = catalogNodes.Single(node => node.ComponentId == "sing-box");
+                var mihomoNode = catalogNodes.Single(node => node.ComponentId == "mihomo");
+                var nginxNode = catalogNodes.Single(node => node.ComponentId == "nginx");
+                Check(singBoxNode.CanSelect && !mihomoNode.CanSelect && !nginxNode.CanSelect,
+                    "Only the batch-integrated component may stage a draft from the tree");
+                model.SelectedNode = mihomoNode;
+                Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
+                Check(model.ShowNotIntegrated && !model.HasRuntimeDetails && !model.SelectedUsesBatch,
+                    "A component without a host page in this build never shows a lifecycle action");
+                using (var bitmap = new RenderTargetBitmap(new PixelSize(1060, 800)))
+                {
+                    bitmap.Render(window);
+                    bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light") + "NotIntegrated.png"), new PngBitmapEncoderOptions());
+                }
+                model.SelectedNode = nginxNode;
+                Dispatcher.UIThread.RunJobs();
+                Check(model.SelectedDefinition?.Integration == ComponentIntegration.Application
+                    && model.SelectedHostSources.Count + model.SelectedOtherSources.Count == 3
+                    && model.SelectedHostSources.Concat(model.SelectedOtherSources).All(chip => !chip.Ready),
+                    "A package-managed component declares its planned sources without claiming an adapter in " + language);
+                Check(model.SelectedHostSources.Count + model.SelectedOtherSources.Count == 3
+                    && model.SelectedOtherSources.All(chip => !chip.IsHostPlatform),
+                    "Without a host platform answer every declared source is listed as another platform in " + language);
+                model.SelectedNode = singBoxNode;
+                Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
+                var mihomoClient = DispatchProxy.Create<IRuntimeCatalogClient, DisplayOnlyRuntime>();
+                ((DisplayOnlyRuntime)(object)mihomoClient).Runtime = "mihomo";
+                var primaryClient = DispatchProxy.Create<IRuntimeCatalogClient, DisplayOnlyRuntime>();
+                ((DisplayOnlyRuntime)(object)primaryClient).Active = true;
+                using (var primaryRuntime = new ProxyServerRuntimeViewModel(primaryClient) { CanRead = true, CanManage = true })
+                using (var mihomoRuntime = new ProxyServerRuntimeViewModel(mihomoClient))
+                using (var multiModel = new ComponentCenterViewModel(primaryRuntime, new(), "https://host.example/", Guid.NewGuid(),
+                    additionalRuntimes: new Dictionary<string, ProxyServerRuntimeViewModel> { ["mihomo"] = mihomoRuntime },
+                    hostObservers: [new LayoutHostObserver()], lifecycle: new LayoutLifecycleClient()))
+                {
+                    primaryRuntime.LoadAsync().GetAwaiter().GetResult();
+                    multiModel.SelectedNode = multiModel.VisibleRoots.SelectMany(root => root.DescendantsAndSelf())
+                        .Single(node => node.ComponentId == "mihomo");
+                    Check(ReferenceEquals(multiModel.DetailRuntime, mihomoRuntime) && multiModel.HasRuntimeDetails && !multiModel.SelectedUsesBatch,
+                        "Selecting a runtime-backed component switches the detail pane to its own runtime");
+                    multiModel.SelectedNode = multiModel.VisibleRoots.SelectMany(root => root.DescendantsAndSelf())
+                        .Single(node => node.ComponentId == "sing-box");
+                    Check(ReferenceEquals(multiModel.DetailRuntime, primaryRuntime), "Switching back restores the batch runtime");
+                    // Nginx mixes a Linux package source with a Windows managed archive, so the host
+                    // platform decides which declarations are shown as applicable.
+                    Check(multiModel.HostPlatform == "linux", "The host platform comes from the Host's own target answer");
+                    multiModel.SelectedNode = multiModel.VisibleRoots.SelectMany(root => root.DescendantsAndSelf())
+                        .Single(node => node.ComponentId == "nginx");
+                    Check(multiModel.SelectedHostSources.Count == 2 && multiModel.SelectedOtherSources.Count == 1
+                        && multiModel.SelectedHostSources.All(chip => chip.Platform.Resolve() == "Linux")
+                        && multiModel.SelectedOtherSources.All(chip => chip.Platform.Resolve() == "Windows"),
+                        "Only the current platform's sources are presented as applicable");
+                    Check(multiModel.ShowHostObservation && multiModel.CanObserveHost,
+                        "A component with a read-only observer offers the host-facts panel");
+                    multiModel.ObserveHostCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+                    Check(multiModel.HasHostObservation
+                        && multiModel.HostObservationVersionText.Resolve().Contains("1.24.0", StringComparison.Ordinal)
+                        && !multiModel.HostObservationManagementText.Resolve().StartsWith("component_center.", StringComparison.Ordinal),
+                        "Reading the owning application's facts never claims a component-center install");
+                    var observationView = new ComponentCenterWorkspace(multiModel);
+                    var observationWindow = new Window { Width = 1060, Height = 800, Content = observationView };
+                    observationWindow.Show(); Dispatcher.UIThread.RunJobs(); observationWindow.UpdateLayout();
+                    Check(!observationView.GetVisualDescendants().OfType<TextBlock>().Any(text =>
+                        text.Text?.Contains("component_center.", StringComparison.Ordinal) == true),
+                        "Host facts resolve in " + language);
+                    using (var bitmap = new RenderTargetBitmap(new PixelSize(1060, 800)))
+                    {
+                        bitmap.Render(observationWindow);
+                        bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light") + "HostObservation.png"), new PngBitmapEncoderOptions());
+                    }
+                    // The package panel names the host's own candidate and the reason it cannot run yet.
+                    Check(multiModel.ShowPackageFreeze && multiModel.CanResolvePackage,
+                        "A component installed by the host offers the source-freeze panel");
+                    multiModel.ResolvePackageCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+                    Dispatcher.UIThread.RunJobs(); observationWindow.UpdateLayout();
+                    Check(multiModel.HasPackageFreeze
+                        && multiModel.PackageCandidateText.Resolve().Contains("1.26.3-3+deb13u1", StringComparison.Ordinal)
+                        && multiModel.PackageRepositoryText.Resolve().Contains("trixie/main", StringComparison.Ordinal)
+                        && multiModel.PackageVerdictText.Resolve().Contains("component_center.", StringComparison.Ordinal) == false
+                        && !multiModel.PackageVerdictText.Resolve().StartsWith("component_center.", StringComparison.Ordinal)
+                        && multiModel.PackageVerdictText.Resolve().Length > 0,
+                        "The frozen candidate and its refusal resolve in " + language);
+                    using (var bitmap = new RenderTargetBitmap(new PixelSize(1060, 800)))
+                    {
+                        observationView.FindControl<ScrollViewer>("DetailsScroll")!.Offset = new Vector(0, 420);
+                        Dispatcher.UIThread.RunJobs(); observationWindow.UpdateLayout();
+                        bitmap.Render(observationWindow);
+                        bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light") + "PackageFreeze.png"), new PngBitmapEncoderOptions());
+                    }
+                    observationWindow.Close(); Dispatcher.UIThread.RunJobs();
                 }
                 window.Width = 640; window.Height = 720;
                 Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
@@ -195,7 +294,7 @@ internal static class ComponentCenterWorkspaceChecks
                 var changeView = new ComponentCenterWorkspace(activeModel);
                 var changeWindow = new Window { Width = 1060, Height = 800, Content = changeView };
                 changeWindow.Show(); Dispatcher.UIThread.RunJobs(); changeWindow.UpdateLayout();
-                changeView.FindControl<ScrollViewer>("DetailsScroll")!.Offset = new Vector(0, 300);
+                changeView.FindControl<ScrollViewer>("DetailsScroll")!.Offset = new Vector(0, 420);
                 Dispatcher.UIThread.RunJobs(); changeWindow.UpdateLayout();
                 Check(!changeView.GetVisualDescendants().OfType<TextBlock>().Any(t =>
                     t.Text?.Contains("component_center.", StringComparison.Ordinal) == true
@@ -324,9 +423,48 @@ internal sealed class LayoutTaskTransport : ITaskExecutionClient
     public Task<TaskRecoveryResponse> RecoverAsync(TaskPlan plan, TaskRun run, TaskRecoveryRequest request, string key, CancellationToken ct) => throw new NotSupportedException();
 }
 
-internal sealed class InspectionPreview : ITaskPlanPreviewClient
+/// <summary>Read-only fixture: an Nginx instance the Web Server application already owns.</summary>
+internal sealed class LayoutHostObserver : IComponentHostObserver
 {
-    public Task<TaskPlan> PlanChangeAsync(TaskPlanIntent intent, string expectedHost, CancellationToken ct) => throw new NotSupportedException();
+    public bool CanObserve(string componentId) => componentId == "nginx";
+    public Task<ComponentHostObservation?> ObserveAsync(string componentId, string? hostOs, CancellationToken cancellationToken) =>
+        Task.FromResult<ComponentHostObservation?>(new ComponentHostObservation(componentId,
+            RelaxKonOS.Client.Localization.LocalizedStatus.Key("component_center.platform.linux", "Linux"),
+            RelaxKonOS.Client.Localization.LocalizedStatus.Key("component_center.management.Integrated"),
+            RelaxKonOS.Client.Localization.LocalizedStatus.Literal("1.24.0"),
+            RelaxKonOS.Client.Localization.LocalizedStatus.Key("component_center.web_server_state.Running"),
+            RelaxKonOS.Client.Localization.LocalizedStatus.Key("component_center.observation.managed_note"), true));
+}
+
+/// <summary>
+/// Fixture for a host package: apt resolved one candidate and nothing can install it yet. It proves
+/// the panel shows the exact frozen identity instead of a generic "planned" label.
+/// </summary>
+internal sealed class LayoutLifecycleClient : IComponentLifecycleClient
+{
+    private static readonly RelaxKonOS.Protocol.ManagedRuntimes.ComponentPackageTarget Package = new("nginx",
+        "1.26.3-3+deb13u1", "amd64", "http://deb.debian.org/debian|trixie|main|amd64", "http://deb.debian.org/debian",
+        "trixie", "main", "http://deb.debian.org/debian/pool/main/n/nginx/nginx_1.26.3-3+deb13u1_amd64.deb",
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", 540432, ["nginx-common_1.26.3-3+deb13u1_all.deb"]);
+
+    public Task<RelaxKonOS.Protocol.ManagedRuntimes.ComponentStateView> StateAsync(string componentId, CancellationToken ct) =>
+        Task.FromResult(new RelaxKonOS.Protocol.ManagedRuntimes.ComponentStateView(componentId,
+            new RelaxKonOS.Protocol.ManagedRuntimes.ComponentState(componentId, "host-1", 42,
+                RelaxKonOS.Protocol.ManagedRuntimes.RuntimeOwnership.Absent,
+                RelaxKonOS.Protocol.ManagedRuntimes.ComponentSourceMode.SystemPackage,
+                new RelaxKonOS.Protocol.ManagedRuntimes.RuntimeTarget("linux", "amd64", "trixie", null,
+                    RelaxKonOS.Protocol.ManagedRuntimes.RuntimeInstallMode.SystemPackage, "systemd"), null, false),
+            [new RelaxKonOS.Protocol.ManagedRuntimes.ComponentModeSupport(
+                RelaxKonOS.Protocol.ManagedRuntimes.ComponentSourceMode.SystemPackage, "linux", true, null)], []));
+
+    public Task<RelaxKonOS.Protocol.ManagedRuntimes.ComponentPlanResult> PlanAsync(
+        RelaxKonOS.Protocol.ManagedRuntimes.ComponentPlanRequest request, CancellationToken ct) =>
+        Task.FromResult(new RelaxKonOS.Protocol.ManagedRuntimes.ComponentPlanResult(request, null,
+            RelaxKonOS.Protocol.ManagedRuntimes.ComponentFrozenTarget.FromPackage(Package),
+            [RelaxKonOS.Protocol.ManagedRuntimes.ComponentProblemCodes.ExecutionUnavailable], []));
+}
+
+internal sealed class InspectionPreview : ITaskPlanPreviewClient{    public Task<TaskPlan> PlanChangeAsync(TaskPlanIntent intent, string expectedHost, CancellationToken ct) => throw new NotSupportedException();
     public Task<TaskPlan> PreviewAsync(TaskPlanIntent intent, string expectedHost, CancellationToken ct)
     {
         var steps = intent.Steps.Select(step => new TaskStep(step.StepId, step.ActionId, step.SchemaVersion,
@@ -341,10 +479,12 @@ internal sealed class InspectionPreview : ITaskPlanPreviewClient
 public class DisplayOnlyRuntime : DispatchProxy
 {
     public bool Active;
+    /// <summary>Selects which component identity the rendering fixture reports.</summary>
+    public string Runtime = "sing-box";
     private readonly Guid _operation = Guid.NewGuid();
     protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
     {
-        "get_RuntimeId" => "sing-box",
+        "get_RuntimeId" => Runtime,
         "get_SupportsRecoveryStopAndClose" => true,
         "InstallationAsync" when Active => Task.FromResult(new RuntimeInstallationSnapshot(
             new RuntimeInstallation(Guid.NewGuid(), "host-a", "sing-box", 1, RuntimeOwnership.Managed,

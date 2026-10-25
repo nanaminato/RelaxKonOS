@@ -36,7 +36,12 @@ public partial class AppEntryViewModel : ObservableObject, IDisposable
     public bool HasIconImage => IconImage is not null;
     public string? Description { get; }
     private ApplicationAvailability? _availability;
-    public bool HasComponentDependency => ComponentCatalog.Components.Any(component => component.Applications.Contains(Id.Value));
+    /// <summary>
+    /// Launch readiness is only enforced where the availability adapter is registered, which today is
+    /// the batch-integrated component. A catalog entry that installs elsewhere must not turn its
+    /// application unready before that adapter exists.
+    /// </summary>
+    public bool HasComponentDependency => ComponentCatalog.LaunchGate(Id.Value) is not null;
     public bool IsReady => !HasComponentDependency || _availability?.CanOpen == true;
     public bool HasAvailabilityBadge => HasComponentDependency;
     public string? AvailabilityState => HasComponentDependency ? (_availability?.State ?? ComponentAvailabilityKind.Unknown).ToString() : null;
