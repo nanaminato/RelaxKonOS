@@ -73,7 +73,7 @@ internal sealed class GitCredentialResolver
     private static string NormalizeHost(string? host) => (host ?? string.Empty).Trim().TrimEnd('.').ToLowerInvariant();
 }
 
-/// <summary>A saved HTTPS identity for one Git host. Secret storage remains owned by the existing credential store.</summary>
+/// <summary>A saved HTTPS identity for one Git host. Secret persistence remains owned by the server credential store.</summary>
 internal sealed record GitCredentialAccount(
     string Host,
     string Username,
