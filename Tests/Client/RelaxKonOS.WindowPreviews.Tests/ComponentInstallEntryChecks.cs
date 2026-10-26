@@ -76,7 +76,19 @@ internal static class ComponentInstallEntryChecks
             (typeof(RelaxKonOS.Client.Apps.Squid.SquidViewModel), "InstallCommand"),
             (typeof(RelaxKonOS.Client.Apps.Tunnels.TunnelManagerViewModel), "InstallRuntimeCommand") })
             Check(type.GetProperty(command) is null, type.Name + " no longer exposes an application installation command.");
-        Console.WriteLine("Component installation entry checks passed (31 assertions).");
+        var taskDialogRequests = 0;
+        gitCenter.ShowTasksDialogAsync = () => { taskDialogRequests++; return Task.CompletedTask; };
+        var draft = new ComponentChangeDraft("sing-box", "sing-box", "host", Guid.NewGuid(), "source", "release", "1.0", RuntimeChange.Install, true, false);
+        gitCenter.Stage(draft);
+        Check(taskDialogRequests == 1 && gitHandler.Calls == 1,
+            "Creating a bulk draft requests its dialog without executing another host installation.");
+        gitCenter.Stage(draft);
+        Check(taskDialogRequests == 2 && gitCenter.Drafts.Count == 1 && gitHandler.Calls == 1,
+            "Repeating the same draft reopens its task dialog without duplicating intent or host work.");
+        gitCenter.OpenTasksCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(taskDialogRequests == 3 && gitCenter.Drafts.Count == 1,
+            "Reopening the task dialog preserves the existing draft.");
+        Console.WriteLine("Component installation entry checks passed (34 assertions).");
     }
     private static void Check(bool valid, string message) { if (!valid) throw new Exception(message); Console.WriteLine("PASS: " + message); }
     private sealed class EntryHandler : HttpMessageHandler

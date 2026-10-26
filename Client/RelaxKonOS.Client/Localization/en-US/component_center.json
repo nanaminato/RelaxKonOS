@@ -1,6 +1,13 @@
 {
   "Culture": "en-US",
   "Strings": {
+    "component_center.task_dialog.close_hint": "Closing preserves drafts. Submitted tasks continue in the background.",
+    "component_center.details": "Details",
+    "component_center.task_dialog.open": "Tasks…",
+    "component_center.task_dialog.title": "Component tasks",
+    "component_center.task_dialog.batch": "Batch tasks",
+    "component_center.task_dialog.scope": "For predefined scenarios and supported component operations. Select a scenario or component, preview the plan, then approve execution.",
+    "component_center.task_dialog.empty": "No task history yet.",
     "component_center.git.integration": "Existing platform installer and operation ledger",
     "component_center.manage_dependency": "Manage dependencies in Component Center",
     "component_center.component.git.description": "Host Git engine; installation and operation history are managed in Component Center.",
@@ -117,7 +124,7 @@
     "component_center.change_plan_ready": "The server has frozen this proposal. It has not been approved or executed.",
     "component_center.mode.Archive": "Managed archive",
     "component_center.mode.SystemPackage": "System package manager",
-    "component_center.task_title": "Managed tasks",
+    "component_center.task_title": "Task history",
     "component_center.task_approve": "Approve and execute",
     "component_center.task_confirm_title": "Confirm frozen plan",
     "component_center.task_confirm_hint": "Review every action, target version, data impact and digest below. Execution uses this exact plan.",

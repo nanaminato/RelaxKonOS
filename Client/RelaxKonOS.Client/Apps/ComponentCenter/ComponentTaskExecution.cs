@@ -43,6 +43,7 @@ public partial class ComponentCenterViewModel
     [ObservableProperty] private LocalizedStatus taskNotice = LocalizedStatus.Literal("");
     public bool CanSelectTask => !IsTaskBusy;
     public bool ShowTasks => _execution is not null;
+    public bool HasTaskHistory => TaskHistory.Count > 0;
     public bool CanApproveTask => !_taskDisposed && _execution is not null && _references is not null && _referenceReady && !IsTaskBusy && !IsInspecting
         && Runtime.CanRead && Runtime.CanManage && !Runtime.IsBusy && !Runtime.IsInvalidated && FrozenChangePlan is { } plan
         && plan.Semantics.Steps.All(step => step.Disposition is TaskStepDisposition.Ready or TaskStepDisposition.NoOp);
@@ -79,7 +80,7 @@ public partial class ComponentCenterViewModel
     {
         RecoveryProperties();
         OnPropertyChanged(nameof(CanReadTaskEvidence));
-        foreach (var property in new[] { nameof(CanApproveTask), nameof(CanRefreshTask), nameof(CanResumeTask), nameof(CanCancelTask), nameof(CanRecheckTaskRecovery), nameof(CanSelectTask), nameof(TaskState), nameof(ShowTaskDomainProgress), nameof(ShowTaskResult), nameof(TaskResultSummary), nameof(TaskResultIdentity) }) OnPropertyChanged(property);
+        foreach (var property in new[] { nameof(CanCloseTaskDialog), nameof(HasTaskHistory), nameof(CanApproveTask), nameof(CanRefreshTask), nameof(CanResumeTask), nameof(CanCancelTask), nameof(CanRecheckTaskRecovery), nameof(CanSelectTask), nameof(TaskState), nameof(ShowTaskDomainProgress), nameof(ShowTaskResult), nameof(TaskResultSummary), nameof(TaskResultIdentity) }) OnPropertyChanged(property);
     }
     [RelayCommand] private void ReloadTaskHistory()
     {

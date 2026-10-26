@@ -1,6 +1,13 @@
 {
   "Culture": "ja-JP",
   "Strings": {
+    "component_center.task_dialog.close_hint": "閉じても下書きは保持され、送信済みタスクはバックグラウンドで続行します。",
+    "component_center.details": "詳細",
+    "component_center.task_dialog.open": "タスク…",
+    "component_center.task_dialog.title": "コンポーネントのタスク",
+    "component_center.task_dialog.batch": "一括タスク",
+    "component_center.task_dialog.scope": "定義済みのシナリオと対応済みのコンポーネント操作に使用します。シナリオまたはコンポーネントを選択し、計画を確認してから実行を承認します。",
+    "component_center.task_dialog.empty": "タスク履歴はありません。",
     "component_center.git.integration": "既存のプラットフォームインストーラーと操作記録",
     "component_center.manage_dependency": "コンポーネントセンターで依存関係を管理",
     "component_center.component.git.description": "ホストの Git エンジン。インストールと操作記録はコンポーネントセンターで管理します。",
@@ -117,7 +124,7 @@
     "component_center.change_plan_ready": "サーバーで提案を固定しました。まだ承認・実行されていません。",
     "component_center.mode.Archive": "管理対象アーカイブ",
     "component_center.mode.SystemPackage": "システムパッケージ管理",
-    "component_center.task_title": "管理タスク",
+    "component_center.task_title": "タスク履歴",
     "component_center.task_approve": "承認して実行",
     "component_center.task_confirm_title": "固定済み計画の確認",
     "component_center.task_confirm_hint": "すべての操作、対象バージョン、データへの影響、ダイジェストを確認してください。この計画だけを実行します。",

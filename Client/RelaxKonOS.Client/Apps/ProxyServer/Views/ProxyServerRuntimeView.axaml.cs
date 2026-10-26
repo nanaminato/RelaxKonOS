@@ -29,7 +29,7 @@ public partial class ProxyServerRuntimeView : UserControl
         StatePanel.IsVisible = !tasks && !sources;
         EnvironmentSection.IsVisible = !tasks && !sources;
         RecoverySection.IsVisible = tasks;
-        SourcesPanel.IsVisible = sources || page == RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterPage.All;
+        SourcesPanel.IsVisible = sources;
         ReleasesPanel.IsVisible = !tasks && !sources;
         ChangesPanel.IsVisible = !tasks && !sources;
         ActivityPanel.IsVisible = tasks && showDomainActivity;

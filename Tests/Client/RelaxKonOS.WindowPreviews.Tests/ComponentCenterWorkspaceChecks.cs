@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media.Imaging;
@@ -43,10 +43,10 @@ internal static class ComponentCenterWorkspaceChecks
                 search.Text = "SING-BOX"; Dispatcher.UIThread.RunJobs();
                 Check(view.FindControl<TreeView>("ComponentTree")!.ItemCount == 1, "Search matches component identity without case");
                 Check(!model.CanPreview, "An unknown installation cannot execute a saved draft");
-                var footer = view.FindControl<Border>("DraftFooter")!;
-                var footerOrigin = footer.TranslatePoint(default, view)!.Value;
-                Check(footerOrigin.Y >= 0 && footerOrigin.Y + footer.Bounds.Height <= view.Bounds.Height + 1,
-                    "The draft footer stays inside the window");
+                Check(view.FindControl<Border>("DraftFooter") is null
+                    && !view.FindControl<TreeView>("ComponentTree")!.GetVisualDescendants().OfType<CheckBox>().Any()
+                    && model.BrowsePages.All(item => item.Page is not ComponentCenterPage.Tasks and not ComponentCenterPage.Workloads),
+                    "Ordinary browsing has no task footer, bulk checkboxes or task navigation pages");
                 Check(!view.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text?.Contains("component_center.", StringComparison.Ordinal) == true
                     || t.Text?.Contains("proxy_server.", StringComparison.Ordinal) == true),
                     "All visible component-center text resolves in " + language);
@@ -63,24 +63,23 @@ internal static class ComponentCenterWorkspaceChecks
                 }
                 model.Navigate(ComponentCenterPage.All);
                 Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
-                var groupCheckbox = view.GetVisualDescendants().OfType<CheckBox>()
-                    .Single(control => control.DataContext is ComponentTreeNode { IsGroup: true } group
-                        && group.Children.Any(child => child.ComponentId == "sing-box"));
-                groupCheckbox.Focus();
-                window.KeyPress(Key.Space, RawInputModifiers.None, PhysicalKey.Space, null);
-                window.KeyRelease(Key.Space, RawInputModifiers.None, PhysicalKey.Space, null);
+                var selectionView = new ComponentCenterTasksView(model);
+                var selectionWindow = new Window { Width = 840, Height = 720, Content = selectionView };
+                selectionWindow.Show(); Dispatcher.UIThread.RunJobs(); selectionWindow.UpdateLayout();
+                var taskCheckbox = selectionView.GetVisualDescendants().OfType<CheckBox>()
+                    .Single(control => control.DataContext is ComponentTreeNode { ComponentId: "sing-box" });
+                taskCheckbox.Focus();
+                selectionWindow.KeyPress(Key.Space, RawInputModifiers.None, PhysicalKey.Space, null);
+                selectionWindow.KeyRelease(Key.Space, RawInputModifiers.None, PhysicalKey.Space, null);
                 Dispatcher.UIThread.RunJobs();
-                Check(model.Drafts.Count == 0, "Space on a checked group removes local selections without a host change");
+                Check(model.Drafts.Count == 0, "Space on a task-dialog component removes local intent without a host change");
+                model.AddTaskWorkloadCommand.Execute(null); Dispatcher.UIThread.RunJobs(); selectionWindow.UpdateLayout();
+                Check(!model.Notice.IsEmpty && selectionView.GetVisualDescendants().OfType<TextBlock>()
+                    .Any(text => text.IsEffectivelyVisible && text.Text == model.Notice.Resolve()),
+                    "Task gating reasons stay visible even when there is no draft footer");
                 model.Stage(new("sing-box", "sing-box", "host-a", Guid.NewGuid(), "source-a", "release-a", "1.14.3", RuntimeChange.Repair, true, false));
-                var groupNode = (ComponentTreeNode)groupCheckbox.DataContext!;
-                var displayOnlyChild = new ComponentTreeNode("display-only", RelaxKonOS.Client.Localization.LocalizedStatus.Literal("optional"), "display-only");
-                groupNode.Children.Add(displayOnlyChild);
-                groupNode.SynchronizeSelection(new HashSet<string> { "sing-box" });
-                Dispatcher.UIThread.RunJobs();
-                Check(groupCheckbox.IsChecked is null && groupCheckbox.Classes.Contains(":indeterminate") && model.Drafts.Count == 1,
-                    "Partial aggregation still renders as indeterminate without creating another draft");
-                groupNode.Children.Remove(displayOnlyChild);
-                groupNode.SynchronizeSelection(new HashSet<string> { "sing-box" });
+                selectionWindow.Close(); Dispatcher.UIThread.RunJobs();
+                var groupNode = model.VisibleRoots.Single(group => group.Children.Any(child => child.ComponentId == "sing-box"));
                 var treeGroup = view.GetVisualDescendants().OfType<TreeViewItem>().Single(item => item.DataContext == groupNode);
                 treeGroup.Focus();
                 window.KeyPress(Key.Left, RawInputModifiers.None, PhysicalKey.ArrowLeft, null);
@@ -91,7 +90,7 @@ internal static class ComponentCenterWorkspaceChecks
                 window.KeyRelease(Key.Right, RawInputModifiers.None, PhysicalKey.ArrowRight, null);
                 Dispatcher.UIThread.RunJobs();
                 Check(treeGroup.IsExpanded && model.Drafts.Count == 1, "Right arrow expands the tree without executing or changing a draft");
-                foreach (var page in Enum.GetValues<ComponentCenterPage>())
+                foreach (var page in model.BrowsePages.Select(item => item.Page).ToArray())
                 {
                     model.Navigate(page); Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
                     Check(model.Drafts.Count == 1, "Page navigation keeps local intent");
@@ -242,26 +241,34 @@ internal static class ComponentCenterWorkspaceChecks
                 search.Focus();
                 model.Navigate(ComponentCenterPage.All);
                 Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
-                var previewChanges = view.FindControl<Button>("PreviewChanges")!;
-                var previewOrigin = previewChanges.TranslatePoint(default, view)!.Value;
                 Check(details.IsVisible && !navigationPane.IsVisible && model.Drafts.Count == 1 && details.Bounds.Height >= 200
-                    && navigationToggle.IsKeyboardFocusWithin
-                    && previewOrigin.X >= 0 && previewOrigin.X + previewChanges.Bounds.Width <= view.Bounds.Width
-                    && previewOrigin.Y + previewChanges.Bounds.Height <= view.Bounds.Height,
-                    "Narrow page selection returns to usable details with visible preview and unchanged local intent");
+                    && navigationToggle.IsKeyboardFocusWithin,
+                    "Narrow ordinary browsing retains body space without showing the saved task draft");
+                var popupView = new ComponentCenterTasksView(model);
+                var popupWindow = new Window { Width = 640, Height = 540, Content = popupView };
+                popupWindow.Show(); Dispatcher.UIThread.RunJobs(); popupWindow.UpdateLayout();
+                var previewChanges = popupView.FindControl<Button>("PreviewChanges")!;
+                var previewOrigin = previewChanges.TranslatePoint(default, popupView)!.Value;
+                Check(previewOrigin.X >= 0 && previewOrigin.X + previewChanges.Bounds.Width <= popupView.Bounds.Width
+                    && previewOrigin.Y >= 0 && previewOrigin.Y + previewChanges.Bounds.Height <= popupView.Bounds.Height,
+                    "Task preview stays reachable inside the narrow task dialog");
+                var popupFooter = popupView.FindControl<ScrollViewer>("DraftFooterScroll")!;
+                Check(popupFooter.Bounds.Height <= popupWindow.Height * .3 + 1,
+                    "Task drafts scroll within the short dialog without consuming the task body");
+                using (var bitmap = new RenderTargetBitmap(new PixelSize(640, 540)))
+                {
+                    bitmap.Render(popupWindow); bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light-") + "TaskDialog.png"), new PngBitmapEncoderOptions());
+                }
+                popupWindow.Close(); Dispatcher.UIThread.RunJobs();
+                Check(model.Drafts.Count == 1, "Closing the task dialog preserves the saved draft");
                 using (var bitmap = new RenderTargetBitmap(new PixelSize(640, 720)))
                 {
                     bitmap.Render(window); bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light-") + "NarrowDetails.png"), new PngBitmapEncoderOptions());
                 }
                 window.Height = 540;
                 Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
-                var footerScroll = view.FindControl<ScrollViewer>("DraftFooterScroll")!;
-                var discardChanges = view.FindControl<Button>("DiscardChanges")!;
-                discardChanges.Focus(); Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
-                var discardOrigin = discardChanges.TranslatePoint(default, view)!.Value;
-                Check(footerScroll.Bounds.Height <= window.Height * .3 + 1 && details.Bounds.Height >= 140
-                    && discardOrigin.Y >= 0 && discardOrigin.Y + discardChanges.Bounds.Height <= view.Bounds.Height,
-                    "Short windows retain body space and keyboard can reach the scrolling footer action");
+                Check(view.FindControl<Border>("DraftFooter") is null && details.Bounds.Height >= 240,
+                    "Short ordinary windows reserve their height for component management");
                 navigationToggle.Focus();
                 window.Width = 1060; window.Height = 800;
                 Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
@@ -274,7 +281,7 @@ internal static class ComponentCenterWorkspaceChecks
                 activeRuntime.LoadAsync().GetAwaiter().GetResult();
                 using var activeModel = new ComponentCenterViewModel(activeRuntime, new(), "https://host.example/", Guid.NewGuid(), new InspectionPreview());
                 activeModel.Navigate(ComponentCenterPage.Tasks);
-                var activeView = new ComponentCenterWorkspace(activeModel);
+                var activeView = new ComponentCenterTasksView(activeModel);
                 var activeWindow = new Window { Width = 1060, Height = 800, Content = activeView };
                 activeWindow.Show(); Dispatcher.UIThread.RunJobs(); activeWindow.UpdateLayout();
                 Check(activeRuntime.CanCancelDownload && activeRuntime.OperationProgress == 42,
@@ -291,11 +298,11 @@ internal static class ComponentCenterWorkspaceChecks
                 activeWindow.Close(); Dispatcher.UIThread.RunJobs();
                 activeModel.Navigate(ComponentCenterPage.All);
                 activeModel.InspectCommand.ExecuteAsync(null).GetAwaiter().GetResult();
-                var inspectionView = new ComponentCenterWorkspace(activeModel);
+                var inspectionView = new ComponentCenterTasksView(activeModel);
                 var inspectionWindow = new Window { Width = 1060, Height = 800, Content = inspectionView };
                 inspectionWindow.Show(); Dispatcher.UIThread.RunJobs(); inspectionWindow.UpdateLayout();
                 Check(activeModel.InspectionSteps.Count == 1 && activeModel.ShowInspection,
-                    "Read-only plan results are displayed in component details");
+                    "Read-only plan results are displayed in the task dialog");
                 Check(!inspectionView.GetVisualDescendants().OfType<TextBlock>().Any(t =>
                     t.Text?.Contains("component_center.", StringComparison.Ordinal) == true
                     || t.Text?.StartsWith("runtime.", StringComparison.Ordinal) == true),
@@ -317,7 +324,7 @@ internal static class ComponentCenterWorkspaceChecks
                     [new("SingBoxInstall", "singbox")], TaskStepDisposition.Ready, [], "destructive", "domain-idempotent", "domain-transaction")));
                 activeModel.ChangePlanDigest = new string('a', 64);
                 activeModel.ChangePlanNotice = RelaxKonOS.Client.Localization.LocalizedStatus.Key("component_center.change_plan_ready");
-                var changeView = new ComponentCenterWorkspace(activeModel);
+                var changeView = new ComponentCenterTasksView(activeModel);
                 var changeWindow = new Window { Width = 1060, Height = 800, Content = changeView };
                 changeWindow.Show(); Dispatcher.UIThread.RunJobs(); changeWindow.UpdateLayout();
                 changeView.FindControl<ScrollViewer>("DetailsScroll")!.Offset = new Vector(0, 420);
@@ -343,9 +350,26 @@ internal static class ComponentCenterWorkspaceChecks
                 taskModel.CurrentTaskRun = new(runId, taskPlan.PlanId, taskPlan.PlanDigest, reference.Reference.ApprovalId, actor.ToString("D"),
                     "layout-session", state.HostId, "layout-policy", TaskRunState.Cancelling, 4, true, DateTimeOffset.UtcNow,
                     [new(semantics.Steps[0].StepId, TaskStepRunState.Running, new string('a', 64), new string('b', 64), activeRuntime.Installation.PendingOperationId, null)], null);
+                taskModel.Navigate(ComponentCenterPage.All);
+                var ordinaryTaskView = new ComponentCenterWorkspace(taskModel);
+                var ordinaryTaskWindow = new Window { Width = 1060, Height = 800, Content = ordinaryTaskView };
+                ordinaryTaskWindow.Show(); Dispatcher.UIThread.RunJobs(); ordinaryTaskWindow.UpdateLayout();
+                Check(taskModel.ShowTasks && !ordinaryTaskView.GetVisualDescendants().OfType<ComboBox>()
+                    .Any(control => ReferenceEquals(control.ItemsSource, taskModel.TaskHistory)),
+                    "An injected task service and a running task do not put task history into ordinary browsing");
+                ordinaryTaskWindow.Close(); Dispatcher.UIThread.RunJobs();
                 taskModel.Navigate(ComponentCenterPage.Tasks);
-                var taskView = new ComponentCenterWorkspace(taskModel); var taskWindow = new Window { Width = 1060, Height = 800, Content = taskView };
+                var requestedClose = 0;
+                var taskView = new ComponentCenterTasksView(taskModel, () => requestedClose++); var taskWindow = new Window { Width = 1060, Height = 800, Content = taskView };
                 taskWindow.Show(); Dispatcher.UIThread.RunJobs(); taskWindow.UpdateLayout();
+                var closeTaskDialog = taskView.GetVisualDescendants().OfType<Button>().Single(button =>
+                    button.Content?.ToString() == RelaxKonOS.Client.Localization.LocalizedText.Get("common.close"));
+                closeTaskDialog.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                Check(requestedClose == 1 && taskModel.CurrentTaskRun?.State == TaskRunState.Cancelling && taskModel.TaskHistory.Count == 1,
+                    "Closing the task presentation does not cancel or remove the background task");
+                taskModel.IsTaskBusy = true; Dispatcher.UIThread.RunJobs();
+                Check(!closeTaskDialog.IsEnabled, "A pending explicit task request disables closing its dialog");
+                taskModel.IsTaskBusy = false; Dispatcher.UIThread.RunJobs();
                 Check(!taskView.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text?.Contains("component_center.", StringComparison.Ordinal) == true),
                     "Task history, cancellation status and steps resolve in " + language);
                 using (var bitmap = new RenderTargetBitmap(new PixelSize(1060, 800)))
@@ -363,7 +387,7 @@ internal static class ComponentCenterWorkspaceChecks
                     [new(Guid.NewGuid(), recoveryRun.RunId, recoveryRun.Steps[0].StepId, recoveryRun.Steps[0].DomainOperationId!.Value,
                         recoveryRun.Revision, TaskRecoveryAction.EmergencyStop, recoveryRun.CanonicalSubject, "recovery-session", recoveryRun.HostId,
                         "policy", "linux:0", "fixture", recoveryRun.CreatedAt.AddSeconds(1), recoveryRun.CreatedAt.AddMinutes(1), false, null)]);
-                var recoveryView = new ComponentCenterWorkspace(taskModel); var recoveryWindow = new Window { Width = 1060, Height = 800, Content = recoveryView };
+                var recoveryView = new ComponentCenterTasksView(taskModel); var recoveryWindow = new Window { Width = 1060, Height = 800, Content = recoveryView };
                 recoveryWindow.Show(); Dispatcher.UIThread.RunJobs(); recoveryWindow.UpdateLayout();
                 Check(taskModel.CanRecheckTaskRecovery && !taskModel.ShowTaskDomainProgress && !recoveryView.GetVisualDescendants().OfType<TextBlock>().Any(text =>
                     text.Text?.Contains("component_center.", StringComparison.Ordinal) == true), "Recovery recheck and guidance resolve in " + language);
@@ -384,7 +408,7 @@ internal static class ComponentCenterWorkspaceChecks
                     taskModel.TaskEvidence.Add(new(new(recoveryRun.Steps[0].StepId, recoveryRun.Steps[0].DomainOperationId!.Value,
                         InstallationOperationState.Interrupted, true, activeRuntime.Installation with
                         { Receipt = new(recoveryRun.Steps[0].DomainOperationId!.Value, RuntimeSwitchOutcome.Succeeded, null) })));
-                    var resultView = new ComponentCenterWorkspace(taskModel);
+                    var resultView = new ComponentCenterTasksView(taskModel);
                     var resultWindow = new Window { Width = 1060, Height = 800, Content = resultView };
                     resultWindow.Show(); Dispatcher.UIThread.RunJobs(); resultWindow.UpdateLayout();
                     Check(taskModel.ShowTaskResult && !resultView.GetVisualDescendants().OfType<TextBlock>().Any(text =>

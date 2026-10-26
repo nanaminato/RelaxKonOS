@@ -29,6 +29,15 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     private readonly IReadOnlyList<IComponentHostObserver> _observers;
     private readonly Dictionary<string, ComponentHostObservation> _hostObservations = new(StringComparer.Ordinal);
     public ObservableCollection<ComponentCenterNavigationItem> Pages { get; } = new(Enum.GetValues<ComponentCenterPage>().Select(page => new ComponentCenterNavigationItem(page)));
+    public IEnumerable<ComponentCenterNavigationItem> BrowsePages => Pages.Where(item => item.Page is not ComponentCenterPage.Tasks and not ComponentCenterPage.Workloads);
+    public IEnumerable<ComponentTreeNode> BatchComponents => _componentRoots.SelectMany(root => root.DescendantsAndSelf())
+        .Where(node => node.ComponentId is { } id && ComponentCatalog.Find(id)?.Integration == ComponentIntegration.Batch);
+    public IEnumerable<ComponentTreeNode> TaskWorkloads => _workloadRoots;
+    [ObservableProperty] private ComponentTreeNode? taskWorkload;
+    public bool CanCloseTaskDialog => !IsTaskBusy && !IsInspecting;
+    public Func<Task>? ShowTasksDialogAsync { get; set; }
+    [RelayCommand] private Task OpenTasksAsync() => ShowTasksDialogAsync?.Invoke() ?? Task.CompletedTask;
+    [RelayCommand] private void AddTaskWorkload() { if (TaskWorkload is { } node) SelectTreeNode(node, true); }
     public ObservableCollection<ComponentTreeNode> VisibleRoots { get; } = [];
     [ObservableProperty] private ComponentCenterNavigationItem? selectedNavigation;
     [ObservableProperty] private ComponentTreeNode? selectedNode;
@@ -45,6 +54,8 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     public ProxyServerRuntimeViewModel? DetailRuntime => SelectedDefinition?.ComponentId is { } id && _runtimes.TryGetValue(id, out var runtime)
         ? runtime : null;
     public bool HasRuntimeDetails => HasResults && DetailRuntime is not null;
+    public bool ShowRuntimeTaskActivity => HasRuntimeDetails && DetailRuntime is { } runtime
+        && (runtime.HasActiveOperation || runtime.NeedsRecovery || !runtime.OperationText.IsEmpty || !runtime.OutcomeText.IsEmpty);
     public bool HasWorkloadDetails => HasResults && SelectedNode?.WorkloadId is not null && SelectedNode.ComponentId is null;
     /// <summary>True when the selected component has no runtime page to drive, whatever the reason.</summary>
     public bool ShowNotIntegrated => HasResults && SelectedDefinition is { } definition
@@ -139,7 +150,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     /// <summary>The footer is the only carrier of unapplied intent; it never hides an existing draft.</summary>
     public bool ShowDraftPanel => HasDrafts;
     /// <summary>The freeze-plan card only applies to the selected batch component, never to another row.</summary>
-    public bool ShowBatchPlanPanel => HasDrafts && SelectedUsesBatch;
+    public bool ShowBatchPlanPanel => HasDrafts;
     [ObservableProperty] private bool isObservingHost;
     [ObservableProperty] private LocalizedStatus hostObservationNotice = LocalizedStatus.Literal("");
     public ComponentHostObservation? HostObservation => SelectedDefinition?.ComponentId is { } id
@@ -218,6 +229,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         _inspectionInstallation = runtime.Installation;
         _inspectionCatalog = runtime.CatalogSnapshot;
         BuildTrees();
+        TaskWorkload = _workloadRoots.FirstOrDefault();
         foreach (var draft in store.Read(server, actor)) Drafts.Add(new(draft));
         SelectedNavigation = Pages[0];
         RefreshTree();
@@ -292,7 +304,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         foreach (var property in new[] { nameof(HasResults), nameof(HasRuntimeDetails), nameof(HasWorkloadDetails),
             nameof(SelectedTitle), nameof(EmptyMessage), nameof(WorkloadRequirements), nameof(WorkloadOptional), nameof(ShowInspection),
             nameof(SelectedComponentTitle), nameof(ShowNginxSelection), nameof(ShowGitInstallation), nameof(CanInstallGit),
-            nameof(DetailRuntime), nameof(SelectedComponent), nameof(SelectedDefinition), nameof(ShowNotIntegrated),
+            nameof(DetailRuntime), nameof(ShowRuntimeTaskActivity), nameof(SelectedComponent), nameof(SelectedDefinition), nameof(ShowNotIntegrated),
             nameof(SelectedComponentDescription), nameof(SelectedHostSources), nameof(SelectedOtherSources),
             nameof(HasSelectedSources), nameof(HasOtherPlatformSources), nameof(HostPlatform),
             nameof(HasHostObservation), nameof(HostObservation), nameof(ShowHostObservation), nameof(CanObserveHost),
@@ -443,11 +455,13 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         if (existing is not null)
         {
             if (existing.Draft != draft) Notice = LocalizedStatus.Key("component_center.draft_conflict");
+            _ = OpenTasksAsync();
             return existing.Draft == draft;
         }
         Notice = LocalizedStatus.Literal("");
         Drafts.Add(new(draft));
         Persist();
+        _ = OpenTasksAsync();
         return true;
     }
     [RelayCommand] private void Remove(ComponentDraftItem? item)

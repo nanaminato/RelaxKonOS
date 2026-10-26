@@ -38,7 +38,7 @@ public partial class ComponentCenterViewModel
     public bool CanInspect => _previews is not null && SelectedUsesBatch && !IsTaskBusy && !IsInspecting && !Runtime.IsBusy && Runtime.CanRead
         && !Runtime.IsInvalidated && Runtime.Installation is not null;
     partial void OnIsInspectingChanged(bool value)
-    { OnPropertyChanged(nameof(CanInspect)); OnPropertyChanged(nameof(CanPreview)); OnPropertyChanged(nameof(CanPlanDraft)); TaskProperties(); }
+    { OnPropertyChanged(nameof(CanCloseTaskDialog)); OnPropertyChanged(nameof(CanInspect)); OnPropertyChanged(nameof(CanPreview)); OnPropertyChanged(nameof(CanPlanDraft)); TaskProperties(); }
 
     private void ObserveInspectionState()
     {

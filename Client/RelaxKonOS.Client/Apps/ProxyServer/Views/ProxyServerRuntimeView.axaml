@@ -15,10 +15,10 @@
   </UserControl.Styles>
 
   <StackPanel Spacing="16">
-    <Border x:Name="StatePanel" Classes="app-panel" Padding="18">
+    <StackPanel x:Name="StatePanel" Spacing="6">
+     <Expander Header="{loc:Loc proxy_server.runtime.state_title}" HorizontalAlignment="Stretch">
+    <Border Classes="app-panel" Padding="18">
       <StackPanel Spacing="10">
-        <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.runtime.state_title}" />
-        <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.intro}" TextWrapping="Wrap" />
         <StackPanel Spacing="0">
           <Grid ColumnDefinitions="170,*">
             <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.fact.ownership}" />
@@ -53,12 +53,15 @@
             <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding PendingText}" />
           </Grid></Border>
         </StackPanel>
-        <TextBlock Classes="problem" Text="{Binding RecoveryText}" IsVisible="{Binding NeedsRecovery}" />
-        <TextBlock Classes="problem" Text="{Binding RuntimeProblemText}" IsVisible="{Binding HasRuntimeProblem}" />
       </StackPanel>
     </Border>
 
-    <StackPanel x:Name="EnvironmentSection"><Border Classes="app-panel" Padding="18" IsVisible="{Binding HasEnvironment}">
+     </Expander>
+        <TextBlock Classes="problem" Text="{Binding RecoveryText}" IsVisible="{Binding NeedsRecovery}" />
+        <TextBlock Classes="problem" Text="{Binding RuntimeProblemText}" IsVisible="{Binding HasRuntimeProblem}" />
+    </StackPanel>
+
+    <StackPanel x:Name="EnvironmentSection"><Expander Header="{loc:Loc proxy_server.runtime.environment_title}" HorizontalAlignment="Stretch" IsVisible="{Binding HasEnvironment}"><Border Classes="app-panel" Padding="18" IsVisible="{Binding HasEnvironment}">
       <StackPanel Spacing="10">
         <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.runtime.environment_title}" />
         <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.environment_hint}" TextWrapping="Wrap" />
@@ -88,7 +91,7 @@
       </StackPanel>
     </Border>
 
-    </StackPanel>
+    </Expander></StackPanel>
 
     <StackPanel x:Name="RecoverySection"><Border Classes="app-panel" Padding="18" IsVisible="{Binding NeedsRecovery}">
       <StackPanel Spacing="10">
@@ -176,7 +179,7 @@
         <TextBlock Classes="section-hint" Text="{Binding CatalogText}" TextWrapping="Wrap" />
         <TextBlock Classes="problem" Text="{Binding CatalogProblem}" TextWrapping="Wrap" IsVisible="{Binding HasCatalogProblem}" />
         <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.no_releases}" IsVisible="{Binding !HasReleases}" />
-        <ListBox x:Name="ReleaseList" ItemsSource="{Binding Releases}" SelectedItem="{Binding SelectedRelease, Mode=TwoWay}" MinHeight="120" MaxHeight="260">
+        <ListBox IsVisible="{Binding HasReleases}" x:Name="ReleaseList" ItemsSource="{Binding Releases}" SelectedItem="{Binding SelectedRelease, Mode=TwoWay}" MinHeight="120" MaxHeight="260">
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="vm:RuntimeReleaseOption">
               <StackPanel Spacing="2">
@@ -220,8 +223,8 @@
         <TextBlock Classes="problem" Text="{Binding DependencyText}" TextWrapping="Wrap" IsVisible="{Binding HasDependencyBlock}" />
         <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.hint}" TextWrapping="Wrap" />
         <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" />
+        <Expander Header="{loc:Loc proxy_server.runtime.uninstall_title}" HorizontalAlignment="Stretch">
         <StackPanel Spacing="6">
-          <TextBlock Classes="section-title" FontSize="14" Text="{loc:Loc proxy_server.runtime.uninstall_title}" />
           <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.uninstall_scope}" TextWrapping="Wrap" />
           <WrapPanel>
             <Button Content="{loc:Loc proxy_server.runtime.uninstall_keep}" Command="{Binding UninstallKeepDataCommand}"
@@ -230,6 +233,7 @@
                     IsEnabled="{Binding CanUninstall}" />
           </WrapPanel>
         </StackPanel>
+        </Expander>
       </StackPanel>
     </Border>
 

@@ -29,7 +29,11 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             _model.Notice = LocalizedStatus.Key("component_center.host_mismatch");
             return;
         }
-        _model.Locate(target);
+        var taskTarget = target.Page is ComponentCenterPage.Tasks or ComponentCenterPage.Workloads;
+        _model.Locate(taskTarget ? target with { Page = ComponentCenterPage.All, WorkloadId = null } : target);
+        if (target.WorkloadId is { } workload)
+            _model.TaskWorkload = _model.TaskWorkloads.FirstOrDefault(item => item.WorkloadId == workload);
+        if (taskTarget) _ = _model.OpenTasksCommand.ExecuteAsync(null);
         // Navigation only changes context, never a draft or approval.
         _model.Notice = LocalizedStatus.Key("component_center.located");
     }
@@ -87,8 +91,25 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
         if (mihomo is not null) mihomo.PropertyChanged += observed;
         var applications = context.Services.GetService(typeof(RelaxKonOS.Runtime.ApplicationManager)) as RelaxKonOS.Runtime.ApplicationManager;
         view.OpenApplication = applicationId => applications?.Launch(new AppId(applicationId));
+        RelaxKonOS.WindowManager.ModalDialog<bool>? taskDialog = null;
+        var taskDialogOpen = false;
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.component-center.display_name"),
             view, new Rect(80, 45, 1060, 800), Manifest.IconGlyph);
+        model.ShowTasksDialogAsync = async () =>
+        {
+            if (taskDialogOpen) return;
+            taskDialogOpen = true;
+            try
+            {
+                await context.ShowDialogAsync<bool>(window, LocalizedText.Get("component_center.task_dialog.title"), dialog =>
+                {
+                    taskDialog = dialog;
+                    dialog.CanCancelAsync = () => Task.FromResult(!model.IsTaskBusy && !model.IsInspecting);
+                    return new ComponentCenterTasksView(model, dialog.Cancel);
+                }, new Size(840, 720));
+            }
+            finally { taskDialog = null; taskDialogOpen = false; }
+        };
         if (model.NginxSelection is { } nginxSelection)
             nginxSelection.RequestIntegrationConfirmationAsync = () => ConfirmAsync(
                 LocalizedText.Get("webservers.integration.confirmation.title"), LocalizedText.Get("webservers.integration.confirmation.message"));
@@ -210,6 +231,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                 mihomo.Dispose();
             }
             model.PropertyChanged -= selectedDomainChanged;
+            model.ShowTasksDialogAsync = null;
             model.Dispose();
             runtime.Dispose();
         };
@@ -279,7 +301,8 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                 && ReferenceEquals(login, session.CurrentSession);
         }
         Task<TResult?> ShowOwnedAsync<TResult>(string title, Func<RelaxKonOS.WindowManager.ModalDialog<TResult>, Avalonia.Controls.Control> factory, RelaxKonOS.Core.Primitives.Size size)
-            => context.ShowDialogAsync(window, title, factory, size);
+            => taskDialog is { } activeTaskDialog ? activeTaskDialog.ShowDialogAsync(title, factory, size)
+                : context.ShowDialogAsync(window, title, factory, size);
 
         async Task<bool> ConfirmAsync(string title, string message)
         {

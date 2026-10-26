@@ -17,19 +17,18 @@ public partial class ComponentCenterWorkspace : UserControl
         if (_model is not null) _model.PropertyChanged -= ModelChanged;
         base.OnDataContextChanged(e);
         _model = DataContext as ComponentCenterViewModel;
-        if (_model is not null) { _model.PropertyChanged += ModelChanged; RuntimeView?.ShowCenterSection(_model.SelectedPage, !_model.ShowTaskDomainProgress); }
+        if (_model is not null) { _model.PropertyChanged += ModelChanged; RuntimeView?.ShowCenterSection(_model.SelectedPage, false); }
     }
     private void ModelChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(ComponentCenterViewModel.SelectedPage) or nameof(ComponentCenterViewModel.ShowTaskDomainProgress))
-            RuntimeView.ShowCenterSection(_model!.SelectedPage, !_model.ShowTaskDomainProgress);
+            RuntimeView.ShowCenterSection(_model!.SelectedPage, false);
         if (_compact && e.PropertyName is nameof(ComponentCenterViewModel.SelectedPage) or nameof(ComponentCenterViewModel.SelectedNode))
             NavigationToggle.IsChecked = false;
     }
     protected override void OnSizeChanged(SizeChangedEventArgs e)
     {
         base.OnSizeChanged(e);
-        DraftFooterScroll.MaxHeight = Math.Max(90, Math.Min(220, e.NewSize.Height * .3));
         var compact = e.NewSize.Width < 840;
         if (compact == _compact) return;
         var toggleFocused = NavigationToggle.IsKeyboardFocusWithin;
@@ -59,9 +58,5 @@ public partial class ComponentCenterWorkspace : UserControl
     private void OpenApplication_Click(object? sender, RoutedEventArgs e)
     {
         if (_model?.SelectedApplicationId is { } application) OpenApplication?.Invoke(application);
-    }
-    private void RemoveDraft_Click(object? sender, RoutedEventArgs e)
-    {
-        if (sender is Button { DataContext: ComponentDraftItem item } && _model is { } model) model.RemoveCommand.Execute(item);
     }
 }

@@ -1,6 +1,13 @@
 {
   "Culture": "zh-CN",
   "Strings": {
+    "component_center.task_dialog.close_hint": "关闭后保留草稿，已提交的任务继续在后台执行。",
+    "component_center.details": "详细信息",
+    "component_center.task_dialog.open": "任务…",
+    "component_center.task_dialog.title": "组件任务",
+    "component_center.task_dialog.batch": "批量任务",
+    "component_center.task_dialog.scope": "用于预定义场景和已支持的组件操作。选择场景或组件，预览计划并确认后执行。",
+    "component_center.task_dialog.empty": "还没有任务记录。",
     "component_center.git.integration": "现有平台安装器与台账",
     "component_center.manage_dependency": "在组件中心管理依赖",
     "component_center.component.git.description": "宿主 Git 引擎；安装和操作记录统一由组件中心管理。",
@@ -117,7 +124,7 @@
     "component_center.change_plan_ready": "服务端已冻结此提案，尚未审批或执行。",
     "component_center.mode.Archive": "受管归档",
     "component_center.mode.SystemPackage": "系统包管理器",
-    "component_center.task_title": "受管任务",
+    "component_center.task_title": "任务记录",
     "component_center.task_approve": "审批并执行",
     "component_center.task_confirm_title": "确认冻结计划",
     "component_center.task_confirm_hint": "请核对以下全部动作、目标版本、数据影响及摘要。执行仅使用此冻结计划。",
