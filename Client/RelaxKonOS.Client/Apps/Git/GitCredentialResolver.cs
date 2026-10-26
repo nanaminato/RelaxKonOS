@@ -24,6 +24,9 @@ internal sealed class GitCredentialResolver
             _accounts.Add(host, accounts);
         }
 
+        if (account.IsDefault)
+            for (var i = 0; i < accounts.Count; i++) accounts[i] = accounts[i] with { IsDefault = false };
+
         var index = accounts.FindIndex(x => string.Equals(x.Username, account.Username, StringComparison.OrdinalIgnoreCase));
         var normalized = account with { Host = host };
         if (index >= 0) accounts[index] = normalized;
@@ -44,10 +47,13 @@ internal sealed class GitCredentialResolver
         var host = TryGetHost(remoteUrl);
         if (host is null || !_accounts.TryGetValue(host, out var accounts) || accounts.Count == 0) return null;
 
+        if (string.IsNullOrWhiteSpace(preferredUsername) && Uri.TryCreate(remoteUrl, UriKind.Absolute, out var uri) && uri.UserInfo.Length > 0)
+            preferredUsername = Uri.UnescapeDataString(uri.UserInfo.Split(':')[0]);
+
         if (!string.IsNullOrWhiteSpace(preferredUsername))
         {
             var preferred = accounts.FirstOrDefault(x => string.Equals(x.Username, preferredUsername, StringComparison.OrdinalIgnoreCase));
-            if (preferred is not null) return preferred;
+            return preferred;
         }
 
         return accounts.FirstOrDefault(x => x.IsDefault) ?? accounts[0];
@@ -59,13 +65,7 @@ internal sealed class GitCredentialResolver
         var value = remoteUrl.Trim();
 
         if (Uri.TryCreate(value, UriKind.Absolute, out var uri) && !string.IsNullOrWhiteSpace(uri.Host))
-            return NormalizeHost(uri.Host);
-
-        // SCP-style SSH remote: git@gitee.com:owner/repository.git
-        var at = value.IndexOf('@');
-        var colon = value.IndexOf(':', at + 1);
-        if (at >= 0 && colon > at + 1)
-            return NormalizeHost(value[(at + 1)..colon]);
+            return uri.Scheme == Uri.UriSchemeHttps ? NormalizeHost(uri.Authority.Split('@')[^1]) : null;
 
         return null;
     }
@@ -81,5 +81,5 @@ internal sealed record GitCredentialAccount(
     bool IsDefault = false,
     string? Provider = null)
 {
-    public GitCredentialRequest ToRequest(bool saveCredentials = true) => new(Username, Secret, saveCredentials);
+    public GitCredentialRequest ToRequest(bool saveCredentials = false) => new(Username, Secret, saveCredentials);
 }

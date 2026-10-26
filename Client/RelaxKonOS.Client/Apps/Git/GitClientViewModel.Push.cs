@@ -315,7 +315,10 @@ public sealed partial class GitClientViewModel
         PushStatusMessage = LocalizedText.Get("git.dialog.push.pushing");
         try
         {
+            var cachedCredentials = ResolveCredentialForRemote(PushSelectedRemote);
             var pushRequest = new GitPushRequest(
+                Credentials: cachedCredentials,
+                SaveCredentials: false,
                 LocalBranch: PushLocalBranchName,
                 Remote: PushSelectedRemote,
                 RemoteBranch: PushSelectedBranch);
@@ -334,6 +337,7 @@ public sealed partial class GitClientViewModel
                     Credentials = credentials,
                     SaveCredentials = credentials.SaveCredentials,
                 });
+                if (result.Success) RememberCredentialForRemote(PushSelectedRemote, credentials);
             }
 
             if (result.Success)

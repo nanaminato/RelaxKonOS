@@ -11,14 +11,14 @@ public sealed partial class GitClientViewModel
     /// actual remote host, not by GitHub/GitLab/Gitee branding, so the same path works for self-hosted
     /// Git services as well.
     /// </summary>
-    private GitCredentialRequest? ResolveCredentialForRemote(string? remoteName, bool saveCredentials = true)
+    private GitCredentialRequest? ResolveCredentialForRemote(string? remoteName, bool saveCredentials = false)
     {
         var remote = FindRemote(remoteName);
         var url = remote?.PushUrl ?? remote?.FetchUrl;
         return ResolveCredentialForUrl(url, saveCredentials);
     }
 
-    private GitCredentialRequest? ResolveCredentialForUrl(string? remoteUrl, bool saveCredentials = true)
+    private GitCredentialRequest? ResolveCredentialForUrl(string? remoteUrl, bool saveCredentials = false)
         => remoteUrl is null ? null : _credentialResolver.Resolve(remoteUrl)?.ToRequest(saveCredentials);
 
     /// <summary>
@@ -36,7 +36,7 @@ public sealed partial class GitClientViewModel
     private void RememberCredentialForUrl(string? remoteUrl, GitCredentialRequest credentials)
     {
         var host = GitCredentialResolver.TryGetHost(remoteUrl);
-        if (host is null) return;
+        if (host is null || !credentials.SaveCredentials) return;
 
         _credentialResolver.AddOrUpdate(new GitCredentialAccount(
             host,
