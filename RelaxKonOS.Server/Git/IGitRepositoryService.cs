@@ -21,6 +21,10 @@ public interface IGitRepositoryService
     Task<GitCloneResult> CloneAsync(GitCloneRequest request, Guid userId, CancellationToken cancellationToken = default);
 
     // ── Host Git engine probe & install ──
+    Task<IReadOnlyList<GitCredentialAccountDto>> ListCredentialAccountsAsync(Guid userId, CancellationToken cancellationToken = default);
+    Task<GitCredentialAccountDto> SaveCredentialAccountAsync(Guid userId, GitCredentialAccountRequest request, CancellationToken cancellationToken = default);
+    Task<bool> DeleteCredentialAccountAsync(Guid userId, string accountId, CancellationToken cancellationToken = default);
+
     Task<GitEngineStatusDto> GetEngineStatusAsync(CancellationToken cancellationToken = default);
 
     // ── Repository registration (persisted in SQLite, isolated by user) ──
@@ -40,7 +44,7 @@ public interface IGitRepositoryService
     Task<GitOperationResult> CheckoutAsync(Guid id, Guid userId, GitCheckoutRequest request, CancellationToken cancellationToken = default);
     Task<GitOperationResult> CommitAsync(Guid id, Guid userId, GitCommitRequest request, CancellationToken cancellationToken = default);
     Task<GitOperationResult> MergeBranchAsync(Guid id, Guid userId, GitMergeRequest request, CancellationToken cancellationToken = default);
-    Task<GitOperationResult> FetchAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
+    Task<GitOperationResult> FetchAsync(Guid id, Guid userId, GitFetchRequest request, CancellationToken cancellationToken = default);
     Task<GitOperationResult> PullAsync(Guid id, Guid userId, GitPullRequest request, CancellationToken cancellationToken = default);
     Task<GitOperationResult> PushAsync(Guid id, Guid userId, GitPushRequest? request = null, CancellationToken cancellationToken = default);
     /// <summary>Commits a push to the given destination would actually upload. Works for a destination

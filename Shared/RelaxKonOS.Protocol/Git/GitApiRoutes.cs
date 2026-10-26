@@ -20,6 +20,8 @@ public static class GitApiRoutes
     public const string ExportPatch = $"/{V1}/git/repositories/{{id}}/patch";
     public const string ApplyPatch = $"/{V1}/git/repositories/{{id}}/patch/apply";
     public const string Clone = $"/{V1}/git/clone";
+    public const string CredentialAccounts = $"/{V1}/git/credential-accounts";
+    public const string CredentialAccount = CredentialAccounts + "/{accountId}";
     public const string EngineStatus = $"/{V1}/git/engine/status";
     public const string Repositories = $"/{V1}/git/repositories";
     public const string RepositoryById = $"/{V1}/git/repositories/{{id}}";

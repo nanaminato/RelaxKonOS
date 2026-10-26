@@ -231,7 +231,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
 
     /// <summary>Shows the credential prompt as a child of the push preview dialog. Returned credentials
     /// are used only by the retry request and are never retained by this view model.</summary>
-    public Func<ManagedWindow?, Task<GitCredentialRequest?>>? ShowGitCredentialsDialogAsync { get; set; }
+    public Func<ManagedWindow?, string?, Task<GitCredentialRequest?>>? ShowGitCredentialsDialogAsync { get; set; }
 
     public bool HasUpstream => Status?.Upstream is not null;
     public bool CanManage => SelectedRepository is not null && !IsBusy;

@@ -157,6 +157,7 @@ internal partial class GitClientWorkspace : UserControl
         InitializeButton.IsVisible = _viewModel.SelectedRepository is null;
         GitHubMenu.IsEnabled = GitHostingLinks.Resolve(_viewModel.Remotes, "github", "repo") is not null;
         GitLabMenu.IsEnabled = GitHostingLinks.Resolve(_viewModel.Remotes, "gitlab", "repo") is not null;
+        GiteeMenu.IsEnabled = GitHostingLinks.Resolve(_viewModel.Remotes, "gitee", "repo") is not null;
         AzureMenu.IsEnabled = GitHostingLinks.Resolve(_viewModel.Remotes, "azure", "repo") is not null;
         CurrentFileMenu.IsEnabled = CurrentGitFile() is not null;
         RenameFileItem.IsEnabled = _project.Editor.SelectedFolderNode is { IsDirectory: false, IsPlaceholder: false } && _project.Editor.CanEditDocument;

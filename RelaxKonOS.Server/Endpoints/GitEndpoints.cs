@@ -22,6 +22,16 @@ public static class GitEndpoints
         group.MapGet("/engine/status", (RelaxKonOS.Server.Git.IGitRepositoryService service, CancellationToken ct) =>
             service.GetEngineStatusAsync(ct));
 
+        group.MapGet("/credential-accounts", (ClaimsPrincipal principal, RelaxKonOS.Server.Git.IGitRepositoryService service, CancellationToken ct) =>
+            service.ListCredentialAccountsAsync(GetUserId(principal), ct));
+        group.MapPut("/credential-accounts", async (GitCredentialAccountRequest request, ClaimsPrincipal principal, RelaxKonOS.Server.Git.IGitRepositoryService service, CancellationToken ct) =>
+        {
+            try { return Results.Ok(await service.SaveCredentialAccountAsync(GetUserId(principal), request, ct)); }
+            catch (ArgumentException ex) { return Results.Problem(detail: ex.Message, statusCode: 400, title: "Invalid Git account"); }
+        });
+        group.MapDelete("/credential-accounts/{accountId}", async (string accountId, ClaimsPrincipal principal, RelaxKonOS.Server.Git.IGitRepositoryService service, CancellationToken ct) =>
+            await service.DeleteCredentialAccountAsync(GetUserId(principal), accountId, ct) ? Results.NoContent() : Results.NotFound());
+
         // ── Repository registration ──
         group.MapGet("/repositories", (ClaimsPrincipal principal, RelaxKonOS.Server.Git.IGitRepositoryService service, CancellationToken ct) =>
             service.ListRepositoriesAsync(GetUserId(principal), ct));
@@ -118,10 +128,10 @@ public static class GitEndpoints
             return Results.Ok(await service.MergeBranchAsync(repoId, GetUserId(principal), request, ct));
         });
 
-        group.MapPost("/repositories/{id}/fetch", async (string id, ClaimsPrincipal principal, RelaxKonOS.Server.Git.IGitRepositoryService service, CancellationToken ct) =>
+        group.MapPost("/repositories/{id}/fetch", async (string id, GitFetchRequest request, ClaimsPrincipal principal, RelaxKonOS.Server.Git.IGitRepositoryService service, CancellationToken ct) =>
         {
             if (!Guid.TryParse(id, out var repoId)) return Results.BadRequest();
-            return Results.Ok(await service.FetchAsync(repoId, GetUserId(principal), ct));
+            return Results.Ok(await service.FetchAsync(repoId, GetUserId(principal), request, ct));
         });
 
         group.MapPost("/repositories/{id}/pull", async (string id, GitPullRequest request, ClaimsPrincipal principal, RelaxKonOS.Server.Git.IGitRepositoryService service, CancellationToken ct) =>

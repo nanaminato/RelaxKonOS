@@ -224,13 +224,12 @@ public sealed partial class GitClientViewModel
         GitRepositoryDto? repo = null;
         try
         {
-            var result = await client.CloneAsync(new(values[0], values[1], ResolveCredentialForUrl(values[0])));
+            var result = await client.CloneAsync(new(values[0], values[1]));
             if (result.Result.RequiresCredentials && ShowGitCredentialsDialogAsync is not null)
             {
-                var credentials = await ShowGitCredentialsDialogAsync(null);
+                var credentials = await ShowGitCredentialsDialogAsync(null, result.Result.CredentialHost);
                 if (credentials is null) return;
                 result = await client.CloneAsync(new(values[0], values[1], credentials));
-                if (result.Result.Success) RememberCredentialForUrl(values[0], credentials);
             }
             if (!result.Result.Success || result.Repository is null)
             {

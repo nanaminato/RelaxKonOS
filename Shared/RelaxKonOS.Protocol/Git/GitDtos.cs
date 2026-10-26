@@ -112,7 +112,8 @@ public sealed record GitOperationResult(
     [property: JsonPropertyName("operation")] string Operation = "",
     [property: JsonPropertyName("conflicts")] IReadOnlyList<string>? Conflicts = null,
     [property: JsonPropertyName("message")] string? Message = null,
-    [property: JsonPropertyName("requiresCredentials")] bool RequiresCredentials = false);
+    [property: JsonPropertyName("requiresCredentials")] bool RequiresCredentials = false,
+    [property: JsonPropertyName("credentialHost")] string? CredentialHost = null);
 
 /// <summary>Conflict file item.</summary>
 public sealed record GitConflictFileDto(
@@ -183,10 +184,11 @@ public sealed record GitPullRequest(
     [property: JsonPropertyName("refspec")] string? Refspec = null,
     /// <summary>Optional local branch to update without checking it out. When supplied and it is not
     /// HEAD, the server fetches its upstream then advances it only when the update is fast-forward.</summary>
-    [property: JsonPropertyName("branch")] string? Branch = null);
+    [property: JsonPropertyName("branch")] string? Branch = null,
+    [property: JsonPropertyName("credentials")] GitCredentialRequest? Credentials = null);
 
 /// <summary>HTTPS credentials supplied only for the current Git operation. The server may retain them
-/// in its protected per-user credential store when <see cref="GitPushRequest.SaveCredentials"/> is set.</summary>
+/// in its protected per-user credential store when <see cref="SaveCredentials"/> is set.</summary>
 public sealed record GitCredentialRequest(
     [property: JsonPropertyName("username")] string Username,
     [property: JsonPropertyName("password")] string Password,

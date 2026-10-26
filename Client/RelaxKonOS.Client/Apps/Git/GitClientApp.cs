@@ -93,10 +93,12 @@ public sealed class GitClientApp : RemoteApplicationBase
         vm.ShowSetTrackingDialogAsync = branch => GitClientDialogs.ShowSetTrackingDialogAsync(context, window!, branch, vm);
         vm.ShowPushDialogAsync = () => GitClientDialogs.ShowPushDialogAsync(context, window!, vm);
         vm.ShowFileDiffAsync = (owner, diff) => GitClientDialogs.ShowFileDiffAsync(context, owner ?? window!, diff);
-        vm.ShowGitCredentialsDialogAsync = owner => GitClientDialogs.ShowGitCredentialsDialogAsync(context, owner ?? window!);
+        vm.ShowCredentialAccountsAsync = () => GitClientDialogs.ShowCredentialAccountsAsync(context, window!, vm);
+        vm.ShowGitCredentialsDialogAsync = (owner, host) => GitClientDialogs.ShowGitCredentialsDialogAsync(context, owner ?? window!, host);
         vm.ShowRemoteBranchPickerDialogAsync = (owner, remote, branch) => GitClientDialogs.ShowRemoteBranchPickerDialogAsync(context, owner ?? window!, remote, branch, vm);
         vm.ConfigureLogSession = log =>
         {
+            log.ShowCredentialAccountsAsync = () => GitClientDialogs.ShowCredentialAccountsAsync(context, window!, log);
             log.ShowPushDialogAsync = () => GitClientDialogs.ShowPushDialogAsync(context, window!, log);
             log.ShowCreateBranchDialogAsync = branch => GitClientDialogs.ShowCreateBranchDialogAsync(context, window!, log, branch);
             log.ShowPullDialogAsync = () => GitClientDialogs.ShowPullDialogAsync(context, window!, log);

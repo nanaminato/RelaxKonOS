@@ -315,9 +315,7 @@ public sealed partial class GitClientViewModel
         PushStatusMessage = LocalizedText.Get("git.dialog.push.pushing");
         try
         {
-            var cachedCredentials = ResolveCredentialForRemote(PushSelectedRemote);
             var pushRequest = new GitPushRequest(
-                Credentials: cachedCredentials,
                 SaveCredentials: false,
                 LocalBranch: PushLocalBranchName,
                 Remote: PushSelectedRemote,
@@ -326,7 +324,7 @@ public sealed partial class GitClientViewModel
             if (result.RequiresCredentials)
             {
                 if (ShowGitCredentialsDialogAsync is null) return false;
-                var credentials = await ShowGitCredentialsDialogAsync(owner);
+                var credentials = await ShowGitCredentialsDialogAsync(owner, result.CredentialHost);
                 if (credentials is null)
                 {
                     PushStatusMessage = LocalizedText.Get("git.dialog.credentials.canceled");
@@ -337,7 +335,6 @@ public sealed partial class GitClientViewModel
                     Credentials = credentials,
                     SaveCredentials = credentials.SaveCredentials,
                 });
-                if (result.Success) RememberCredentialForRemote(PushSelectedRemote, credentials);
             }
 
             if (result.Success)
@@ -358,11 +355,11 @@ public sealed partial class GitClientViewModel
                 {
                     if (!await PrepareEditorAsync()) return false;
                     PushStatusMessage = LocalizedText.Get("git.dialog.push_rejected.updating");
-                    var pull = await client.PullAsync(SelectedRepository.Id, integration with
+                    var pull = await PullWithCredentialsAsync(integration with
                     {
                         Remote = pushRequest.Remote,
                         Refspec = pushRequest.RemoteBranch,
-                    });
+                    }, owner);
                     await RefreshAllAsync();
                     if (pull.Conflicts is { Count: > 0 })
                     {

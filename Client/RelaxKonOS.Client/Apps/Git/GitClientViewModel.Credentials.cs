@@ -1,55 +1,161 @@
+using System.Collections.ObjectModel;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Git;
+using RelaxKonOS.WindowManager;
 
 namespace RelaxKonOS.Client.Apps.Git;
 
 public sealed partial class GitClientViewModel
 {
-    private readonly GitCredentialResolver _credentialResolver = new();
+    public ObservableCollection<GitCredentialAccountDto> CredentialAccounts { get; } = [];
+    public Func<Task>? ShowCredentialAccountsAsync { get; set; }
+    [ObservableProperty] private GitCredentialAccountDto? _selectedCredentialAccount;
+    [ObservableProperty] private string _credentialHost = "";
+    [ObservableProperty] private string _credentialUsername = "";
+    [ObservableProperty] private string _credentialToken = "";
+    [ObservableProperty] private bool _credentialDefault = true;
+    [ObservableProperty] private bool _credentialAccountsBusy;
+    [ObservableProperty] private string _credentialAccountsMessage = "";
 
-    /// <summary>
-    /// Resolves a previously entered HTTPS credential for a remote. Authentication is keyed by the
-    /// actual remote host, not by GitHub/GitLab/Gitee branding, so the same path works for self-hosted
-    /// Git services as well.
-    /// </summary>
-    private GitCredentialRequest? ResolveCredentialForRemote(string? remoteName, bool saveCredentials = false)
+    partial void OnSelectedCredentialAccountChanged(GitCredentialAccountDto? value)
     {
-        var remote = FindRemote(remoteName);
-        var url = remote?.PushUrl ?? remote?.FetchUrl;
-        return ResolveCredentialForUrl(url, saveCredentials);
+        CredentialHost = value?.Host ?? "";
+        CredentialUsername = value?.Username ?? "";
+        CredentialDefault = value?.IsDefault ?? true;
+        CredentialToken = "";
     }
 
-    private GitCredentialRequest? ResolveCredentialForUrl(string? remoteUrl, bool saveCredentials = false)
-        => remoteUrl is null ? null : _credentialResolver.Resolve(remoteUrl)?.ToRequest(saveCredentials);
-
-    /// <summary>
-    /// Remembers a credential entered for a remote for the lifetime of this Project Editor window.
-    /// Durable storage remains server-owned; when SaveCredentials is true the existing Git endpoint
-    /// persists the same credential in its protected per-user credential store.
-    /// </summary>
-    private void RememberCredentialForRemote(string? remoteName, GitCredentialRequest credentials)
+    [RelayCommand]
+    private async Task ManageCredentialAccountsAsync()
     {
-        var remote = FindRemote(remoteName);
-        var url = remote?.PushUrl ?? remote?.FetchUrl;
-        RememberCredentialForUrl(url, credentials);
+        if (ShowCredentialAccountsAsync is null) return;
+        await RefreshCredentialAccountsAsync();
+        try { await ShowCredentialAccountsAsync(); }
+        finally { CredentialToken = ""; }
     }
 
-    private void RememberCredentialForUrl(string? remoteUrl, GitCredentialRequest credentials)
+    [RelayCommand]
+    private void NewCredentialAccount()
     {
-        var host = GitCredentialResolver.TryGetHost(remoteUrl);
-        if (host is null || !credentials.SaveCredentials) return;
-
-        _credentialResolver.AddOrUpdate(new GitCredentialAccount(
-            host,
-            credentials.Username,
-            credentials.Password,
-            IsDefault: true,
-            Provider: GitHostingLinks.DetectProvider(host)));
+        SelectedCredentialAccount = null;
+        CredentialHost = CredentialUsername = CredentialToken = "";
+        CredentialDefault = true;
+        CredentialAccountsMessage = "";
     }
 
-    private GitRemoteDto? FindRemote(string? remoteName)
+    [RelayCommand]
+    private async Task RefreshCredentialAccountsAsync()
     {
-        if (string.IsNullOrWhiteSpace(remoteName)) return null;
-        return Remotes.FirstOrDefault(remote =>
-            string.Equals(remote.Name, remoteName, StringComparison.Ordinal));
+        if (CredentialAccountsBusy) return;
+        CredentialAccountsBusy = true;
+        try { await LoadCredentialAccountsAsync(); CredentialAccountsMessage = ""; }
+        catch (Exception ex) { CredentialAccountsMessage = ex.Message; }
+        finally { CredentialAccountsBusy = false; }
+    }
+
+    private async Task LoadCredentialAccountsAsync(string? selectId = null)
+    {
+        var selectedId = selectId ?? SelectedCredentialAccount?.Id;
+        var accounts = await client.ListCredentialAccountsAsync();
+        CredentialAccounts.Clear();
+        foreach (var account in accounts) CredentialAccounts.Add(account);
+        SelectedCredentialAccount = accounts.FirstOrDefault(x => x.Id == selectedId);
+    }
+
+    [RelayCommand]
+    private async Task SaveCredentialAccountAsync()
+    {
+        if (CredentialAccountsBusy) return;
+        CredentialAccountsBusy = true;
+        var token = CredentialToken;
+        CredentialToken = "";
+        try
+        {
+            var account = await client.SaveCredentialAccountAsync(new(CredentialHost, CredentialUsername,
+                token.Length == 0 ? null : token, CredentialDefault));
+            await LoadCredentialAccountsAsync(account.Id);
+            CredentialAccountsMessage = LocalizedText.Get("git.accounts.saved");
+        }
+        catch (Exception ex) { CredentialAccountsMessage = ex.Message; }
+        finally { CredentialAccountsBusy = false; }
+    }
+
+    [RelayCommand]
+    private async Task DefaultCredentialAccountAsync()
+    {
+        var account = SelectedCredentialAccount;
+        if (account is null || CredentialAccountsBusy) return;
+        CredentialAccountsBusy = true;
+        try
+        {
+            await client.SaveCredentialAccountAsync(new(account.Host, account.Username, IsDefault: true));
+            await LoadCredentialAccountsAsync(account.Id);
+            CredentialAccountsMessage = LocalizedText.Get("git.accounts.saved");
+        }
+        catch (Exception ex) { CredentialAccountsMessage = ex.Message; }
+        finally { CredentialAccountsBusy = false; }
+    }
+
+    [RelayCommand]
+    private async Task DeleteCredentialAccountAsync()
+    {
+        var account = SelectedCredentialAccount;
+        if (account is null || CredentialAccountsBusy) return;
+        if (ShowConfirmAsync is not null && !await ShowConfirmAsync(LocalizedText.Format("git.accounts.delete_confirm", account.Username, account.Host))) return;
+        CredentialAccountsBusy = true;
+        try
+        {
+            await client.DeleteCredentialAccountAsync(account.Id);
+            await LoadCredentialAccountsAsync();
+            NewCredentialAccount();
+            CredentialAccountsMessage = LocalizedText.Get("git.accounts.deleted");
+        }
+        catch (Exception ex) { CredentialAccountsMessage = ex.Message; }
+        finally { CredentialAccountsBusy = false; }
+    }
+
+    [RelayCommand]
+    private async Task FetchSelectedRemoteAsync()
+    {
+        var remote = SelectedRemote;
+        if (remote is null || SelectedRepository is null || IsBusy) return;
+        IsBusy = true;
+        try
+        {
+            var result = await FetchWithCredentialsAsync(new(remote.Name));
+            if (result.Success) StatusText = LocalizedText.Ref("git.vm.fetched");
+            else await NotifyAsync(LocalizedText.Format("git.vm.failed_format", result.Message));
+            await RefreshAllAsync();
+        }
+        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
+        finally { IsBusy = false; }
+    }
+
+    // Resolve on the server: branch remotes, pushurl and insteadOf can point at different hosts.
+    // Secrets are scoped to one request and never retained by this view model.
+    private async Task<GitOperationResult> PullWithCredentialsAsync(GitPullRequest request, ManagedWindow? owner = null)
+    {
+        var id = SelectedRepository?.Id ?? throw new InvalidOperationException("No repository selected.");
+        var result = await client.PullAsync(id, request);
+        if (result.RequiresCredentials && ShowGitCredentialsDialogAsync is not null)
+        {
+            var credentials = await ShowGitCredentialsDialogAsync(owner, result.CredentialHost);
+            if (credentials is not null) result = await client.PullAsync(id, request with { Credentials = credentials });
+        }
+        return result;
+    }
+
+    private async Task<GitOperationResult> FetchWithCredentialsAsync(GitFetchRequest request)
+    {
+        var id = SelectedRepository?.Id ?? throw new InvalidOperationException("No repository selected.");
+        var result = await client.FetchAsync(id, request);
+        if (result.RequiresCredentials && ShowGitCredentialsDialogAsync is not null)
+        {
+            var credentials = await ShowGitCredentialsDialogAsync(null, result.CredentialHost);
+            if (credentials is not null) result = await client.FetchAsync(id, request with { Credentials = credentials });
+        }
+        return result;
     }
 }

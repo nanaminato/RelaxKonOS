@@ -4,6 +4,8 @@
 
 ## 已实现
 
+- 多 Git 主机与账号管理已接入项目选择页、Git 菜单和远程页；克隆、推送、拉取、逐远程抓取及非当前分支更新统一使用服务端受保护账号存储。协议、保存选择及当前支持边界见 [Git 客户端](RelaxKonOS.GitClient.md#多-git-主机与账号)。
+
 - 原 `relaxkonos.git` 直接演进为“项目编辑器”，App ID 不变，Manifest 版本为 `0.3.0`，声明文件读写和 Git 权限。
 - `ProjectEditorViewModel` 协调一个窗口的项目、文档会话与 Git；使用原 `CodeEditorViewModel`、可嵌入的 `CodeEditorView.UseProjectLayout()` 和共享 `CodeEditorSessionDialogs`。独立 Code Editor 仍使用同一编辑面板与文件对话框。
 - 普通文件夹直接打开，不强制初始化 Git；仓库打开后可浏览完整文件树。项目树双击/Enter 打开文件；多标签保留独立文本缓冲区、撤销栈、光标和滚动位置。图片、SVG、二进制分类沿用原实现。
@@ -21,7 +23,7 @@
 
 新增契约为 `ConditionalFileWriteRequest(Path, Content, ExpectedVersion)` 和 `ConditionalFileWriteResult(Version)`；`Content` 是 JSON 中的字节数组（Base64）。版本由同一份原始字节计算，不用文本长度或时间戳代替。目标已存在时不能借新建请求覆盖；写入失败清理暂存文件。
 
-新增条件写入能力没有替换原 Files content API 或改变 Android 已用契约，因此本次无需 Android 调用升级，也没有增加兼容路由、旧格式适配或 Android 文档副本。独立编辑器的现有 HTTP/SFTP 文件传输策略仍由其入口选择；项目编辑器使用 HTTP Files 的条件写入能力，不增加 SSH 执行或 Git 凭据存储。
+新增条件写入能力没有替换原 Files content API 或改变 Android 已用契约，因此本次无需 Android 调用升级，也没有增加兼容路由、旧格式适配或 Android 文档副本。独立编辑器的现有 HTTP/SFTP 文件传输策略仍由其入口选择；项目编辑器使用 HTTP Files 的条件写入能力，不增加 SSH 执行；HTTPS Git 账号由独立服务端凭据存储管理。
 
 Windows 上完成本地构建、有效文件服务的临时目录测试和 Avalonia Headless 行为/截图验证。Linux/Windows 的有效用户文件服务复用现有实现；Ubuntu 实机权限、符号链接及并发外部写入的验证仍未完成，不能由 Windows 自动化结果推定通过。
 

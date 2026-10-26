@@ -192,7 +192,7 @@ public sealed partial class GitClientViewModel
         StatusText = LocalizedText.Ref("git.vm.pull_progress");
         try
         {
-            var result = await client.PullAsync(SelectedRepository.Id, request);
+            var result = await PullWithCredentialsAsync(request);
             if (result.Conflicts is { Count: > 0 })
             {
                 await RefreshAllAsync();
@@ -242,13 +242,22 @@ public sealed partial class GitClientViewModel
         IsBusy = true;
         try
         {
-            var result = await client.FetchAsync(SelectedRepository.Id);
-            if (result.Success)
-                StatusText = LocalizedText.Ref("git.vm.fetched");
-            else if (result.RequiresCredentials)
-                await NotifyAsync(LocalizedText.Get("git.vm.credentials_required_short"));
-            else
+            var remotes = await client.ListRemotesAsync(SelectedRepository.Id);
+            if (remotes.Count == 0)
+            {
+                await NotifyAsync(LocalizedText.Get("git.remotes.empty"));
+                return;
+            }
+            var succeeded = true;
+            foreach (var remote in remotes)
+            {
+                var result = await FetchWithCredentialsAsync(new(remote.Name));
+                if (result.Success) continue;
+                succeeded = false;
                 await NotifyAsync(LocalizedText.Format("git.vm.failed_format", result.Message));
+                break;
+            }
+            if (succeeded) StatusText = LocalizedText.Ref("git.vm.fetched");
             await RefreshAllAsync();
         }
         catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }

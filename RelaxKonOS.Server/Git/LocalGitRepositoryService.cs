@@ -35,7 +35,7 @@ public sealed partial class LocalGitRepositoryService(
     private static readonly TimeSpan SemaphoreTimeout = TimeSpan.FromSeconds(3);
 
     private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _writeLocks = new();
-    private readonly IDataProtector _credentialProtector = dataProtection.CreateProtector("RelaxKonOS.GitCredentials.v1");
+    private readonly IDataProtector _credentialProtector = dataProtection.CreateProtector("RelaxKonOS.GitCredentials.v2");
     private const string CredentialAppId = "relaxkonos.git.internal";
 
     // ── Host Git engine probe & install ──

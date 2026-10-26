@@ -21,6 +21,10 @@ public interface IRemoteGitClient
     Task<GitCloneResult> CloneAsync(GitCloneRequest request, CancellationToken cancellationToken = default);
 
     // ── Host Git engine probe & install ──
+    Task<IReadOnlyList<GitCredentialAccountDto>> ListCredentialAccountsAsync(CancellationToken cancellationToken = default);
+    Task<GitCredentialAccountDto> SaveCredentialAccountAsync(GitCredentialAccountRequest request, CancellationToken cancellationToken = default);
+    Task<bool> DeleteCredentialAccountAsync(string accountId, CancellationToken cancellationToken = default);
+
     Task<GitEngineStatusDto> GetEngineStatusAsync(CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<GitRepositoryDto>> ListRepositoriesAsync(CancellationToken cancellationToken = default);
@@ -37,7 +41,7 @@ public interface IRemoteGitClient
     Task<GitOperationResult> CheckoutAsync(string id, GitCheckoutRequest request, CancellationToken cancellationToken = default);
     Task<GitOperationResult> CommitAsync(string id, GitCommitRequest request, CancellationToken cancellationToken = default);
     Task<GitOperationResult> MergeBranchAsync(string id, GitMergeRequest request, CancellationToken cancellationToken = default);
-    Task<GitOperationResult> FetchAsync(string id, CancellationToken cancellationToken = default);
+    Task<GitOperationResult> FetchAsync(string id, GitFetchRequest request, CancellationToken cancellationToken = default);
     Task<GitOperationResult> PullAsync(string id, GitPullRequest request, CancellationToken cancellationToken = default);
     Task<GitOperationResult> PushAsync(string id, GitPushRequest? request = null, CancellationToken cancellationToken = default);
     /// <summary>Commits the push to <paramref name="remote"/>/<paramref name="remoteBranch"/> would upload,

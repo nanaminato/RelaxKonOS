@@ -232,7 +232,7 @@ public sealed partial class GitClientViewModel
             IsBusy = true;
             try
             {
-                var result = await client.PullAsync(SelectedRepository.Id, branchRequest with { Branch = branch.Name });
+                var result = await PullWithCredentialsAsync(branchRequest with { Branch = branch.Name });
                 if (result.Conflicts is { Count: > 0 })
                 {
                     await RefreshAllAsync();
@@ -270,7 +270,7 @@ public sealed partial class GitClientViewModel
         IsBusy = true;
         try
         {
-            var result = await client.PullAsync(SelectedRepository.Id,
+            var result = await PullWithCredentialsAsync(
                 request with { Remote = branch.Name[..slash], Refspec = branch.Name[(slash + 1)..] });
             if (result.Success)
             {

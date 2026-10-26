@@ -117,12 +117,12 @@ Fetch              = /api/v1.0/git/repositories/{id}/fetch             (POST)   
 | `GitCommitDto` | Sha / ShortSha / Author / AuthorEmail / AuthorDate / Committer? / Subject / Body? | 提交项 |
 | `GitCommitDetailDto` | Sha / Author / Date / Subject / Body / Parents / ChangedFiles | 单提交详情 |
 | `GitDiffDto` | Path / OldPath? / Patch / Additions / Deletions / Binary (bool) | 单文件 diff 文本与统计 |
-| `GitOperationResult` | Success / Operation / Conflicts (list of path) / Message? / RequiresCredentials (bool) | 操作结果（pull/push/merge/revert 通用） |
+| `GitOperationResult` | Success / Operation / Conflicts (list of path) / Message? / RequiresCredentials (bool) / CredentialHost? | 操作结果（pull/push/merge/revert 通用） |
 | `GitConflictFileDto` | Path / Status / OursVersion? / TheirsVersion? | 冲突文件项 |
 | `GitRepositoryRegistration` | Name / Path | 注册仓库请求体 |
 | `GitCommitRequest` | Message / Paths (要暂存的文件) / Amend (bool) | 提交请求 |
 | `GitBranchCreateRequest` | Name / StartPoint? / Track (bool) | 新建分支 |
-| `GitPullRequest` | Strategy (Merge/Rebase) / Remote? / Refspec? / Branch? | 拉取策略；`Branch` 指定未检出的本地分支时，服务端 fetch 后仅允许快进该 ref |
+| `GitPullRequest` | Strategy (Merge/Rebase) / Remote? / Refspec? / Branch? / Credentials? | 拉取策略；`Branch` 指定未检出的本地分支时，服务端 fetch 后仅允许快进该 ref |
 | `GitPushRequest` | Credentials? / LocalBranch? / Remote? / RemoteBranch? | 推送选项；显式 refspec 支持在 HEAD 位于 a 时推送 b |
 | `GitCheckoutRequest` | Branch / CreateIfMissing (bool) | 切换请求 |
 | `GitRevertRequest` | Sha / NoCommit (bool) | 反向提交请求 |
@@ -179,7 +179,7 @@ builder.Services.AddSingleton<IGitRepositoryService, LocalGitRepositoryService>(
 
 **并发与 index.lock**：同一仓库的写操作用 `SemaphoreSlim(1,1)`（按 repoId 缓存）串行化；读操作不串行（git 读不持锁）。3 秒 timeout 获取信号量失败返回 `Success=false, Message="仓库繁忙"`。
 
-**凭据**：Git 保持非交互环境。HTTPS 推送和克隆返回 `RequiresCredentials` 时，桌面可请求用户输入并重试；密码通过短期 askpass 环境传递，不进入命令行，按用户意愿加密保存。fetch、pull 及非当前分支更新复用同一用户为有效 HTTPS 下载地址保存的凭据；按分支 remote 或显式 remote/URL 解析，不使用单独的 pushurl，并计入 Git 的 insteadOf 重写。未保存的输入仍仅用于当次操作。System Mode（Helper 后端）的显式凭据随 `GitExecute` 请求的 `gitCredentials` 下发，Helper 在降权后生成一次性 askpass 脚本，因此推送对话框在该模式下同样可用。
+**凭据**：Git 保持非交互环境。HTTPS 推送、克隆、抓取和拉取返回 `RequiresCredentials` 时，桌面可请求用户输入并重试；密码通过短期 askpass 环境传递，不进入命令行，按用户意愿加密保存。fetch、pull 及非当前分支更新复用同一用户为有效 HTTPS 下载地址保存的凭据；按分支 remote 或显式 remote/URL 解析，不使用单独的 pushurl，并计入 Git 的 insteadOf 重写。未保存的输入仍仅用于当次操作。System Mode（Helper 后端）的显式凭据随 `GitExecute` 请求的 `gitCredentials` 下发，Helper 在降权后生成一次性 askpass 脚本，因此推送对话框在该模式下同样可用。
 
 ### 4.3 危险操作预检
 
@@ -420,7 +420,7 @@ GitOperationResult
     │     └── POST resolve(path, revision, choice, content) → POST conflicts/operation(operation, action)
     │           ├── Success → RefreshAllAsync
     │           └── 仍有冲突 → 继续显示冲突视图
-    └── RequiresCredentials=true → StatusText="需在宿主 OS 配置 Git 凭据"
+    └── RequiresCredentials=true → 显示 CredentialHost → 输入 HTTPS 账号与令牌 → 保留原目标重试一次；取消则停止
 ```
 
 ### 6.4 分支切换流
@@ -453,7 +453,7 @@ GitOperationResult
 
 ## 7. 关键技术坑
 
-1. **不存储 Git 凭据**：push/pull 的 SSH 私钥 / HTTPS 用户名密码完全由宿主 OS 的 git 凭据体系处理。RelaxKonOS 不代理、不收集、不存储。凭据缺失时 `RequiresCredentials=true`，引导用户在宿主 OS 配置（如 `git config --global credential.helper store` 或 SSH key）。符合约束 §5.2「不存储宿主 OS 密码/sudo 密码/私钥/明文 secret」。
+1. **保护 Git 凭据**：不处理 SSH 私钥；HTTPS 令牌仅经已认证连接用于短期 askpass，用户选择保存或在账号管理中显式保存时，使用 Data Protection 按用户、主机与账号绑定加密。账号列表不返回令牌，不写入命令行或诊断日志。
 2. **index.lock 并发**：同一仓库的写操作（commit/checkout/pull/push/revert/merge）用按 repoId 缓存的 `SemaphoreSlim(1,1)` 串行化，避免 `git` 因 `.git/index.lock` 失败。读操作（status/branches/log/diff）不串行。3 秒获取信号量超时返回「仓库繁忙」。
 3. **porcelain 解析而非人类文案**：所有 `git` 输出用 `--porcelain=v2` / `--pretty=format` / `--for-each-ref --format` 等机器可读格式，按 NUL/制表符切分，不解析人类文案（避免本地化 git 输出导致解析失败）。
 4. **路径越权防护**：所有 `git` 命令的 `cwd` 设为注册时记录的仓库 `Path`；diff/commit 的 `<path>` 参数必须 `Path.IsPathRooted` 后判断是否在仓库根下（`Path.GetRelativePath` 不抛异常即合法），禁止 `../` 越权到仓库外。
@@ -590,7 +590,7 @@ Server、Helper 使用当前 user-execution 1.5 协议，`FileReadText` 在实�
 - 简要模式为菜单按钮、前进/后退、项目按钮与分支按钮；点击展开详细菜单，离开且子菜单关闭后收起。窄窗口的详细菜单横向滚动，文件/编辑/视图/导航/代码/重命名文件/工具/Git/窗口/帮助入口使用实际能力。
 - 项目弹窗提供新建空目录项目、打开目录、从版本控制克隆、当前项目、会话内最近项目及其他已注册项目，显示路径和分支；切换前复用保存/放弃/取消保护。不是 Rider 的 `.sln` 模板生成器，也没有跨窗口项目激活列表。
 - 分支弹窗按截图提供操作搜索、更新/提交/推送、新建/检出、最近/本地/远程/标签树、路径分组、跟踪名称和会话收藏；叶节点打开以该分支为目标的菜单，Enter 可检出。项目与分支最近记录、收藏仅在当前窗口会话内保留。
-- Git 菜单按截图分组增加标签、普通变基、HEAD soft/mixed reset、工作树/stash 管理、日志、补丁和当前文件操作。GitLab/GitHub/Azure DevOps 子菜单在存在对应远程时启用，打开仓库或合并请求网页；不声称拥有应用内 PR/API 集成。
+- Git 菜单按截图分组增加标签、普通变基、HEAD soft/mixed reset、工作树/stash 管理、日志、补丁和当前文件操作。GitLab/GitHub/Gitee/Azure DevOps 子菜单在存在对应远程时启用，打开仓库或合并请求网页；不声称拥有应用内 PR/API 集成。
 
 新增契约位于 `GitWorkspaceContracts.cs`，路由均使用 `GitApiRoutes`：
 
@@ -620,8 +620,16 @@ Server、Helper 使用当前 user-execution 1.5 协议，`FileReadText` 在实�
 布局参考 [IDEA Git 工具窗口](https://www.jetbrains.com/help/idea/version-control-tool-window.html) 与 [Log 页面](https://www.jetbrains.com.cn/en-us/help/idea/log-tab.html)。完整 IDE 的索引、跨重启标签恢复及所有历史操作不属于当前实现。
 
 
-### 多 Git 主机凭据进展（2026-10-26）
+### 多 Git 主机与账号
 
-桌面推送与克隆已接入统一 HTTPS 凭据解析器，按主机和端口隔离 GitHub、GitLab、Gitee 与自建服务；不依赖提供商品牌判断。窗口内支持同主机多账号，URL 指定用户名时只匹配该账号，新默认账号取代旧默认账号。仅在操作成功且用户勾选保存后复用凭据，复用请求不会再次要求持久化；SSH 与 HTTP 地址不使用此 HTTPS 缓存。持久化继续由服务端受保护凭据存储负责。
+桌面克隆、推送、拉取、抓取与非当前分支更新共用服务端 HTTPS 账号存储，支持 GitHub、GitLab、Gitee、Azure DevOps 及自建 Git 服务。账号按登录用户、规范化主机和端口隔离，每个主机保留多个用户名及一个默认账号；有效远程 URL 带用户名时精确选择该账号，缺失账号时不会切换为其他用户。用户名按大小写精确匹配。
 
-本轮回归覆盖主机隔离、端口隔离、账号选择、默认账号替换、删除和传输协议边界。尚未提供账号管理界面；fetch/pull 仍复用服务端保存凭据，尚未接入窗口内账号选择。自建服务品牌识别与应用内托管平台 API 集成仍不属于已完成能力。
+项目选择页、Git 菜单和远程管理页提供「Git 账号」入口，可新增账号、更新令牌、切换默认账号和删除；编辑时令牌留空表示保留已有密钥。删除默认账号后自动选择一个剩余账号。API 和客户端仅获取公开账号信息，令牌使用 Data Protection 加密，并绑定登录用户、主机及用户名；客户端不保留窗口令牌缓存。用户未勾选保存时只用于当次操作；网络操作成功后才保存勾选的凭据。账号管理中的显式保存直接写入账号存储，不声称验证了远端令牌。
+
+「抓取全部远程」逐个远程执行，每个目标独立解析账号并在需要时提示一次认证；失败或取消时停止，已成功抓取的结果保留。远程管理页可以单独抓取选中的远程。认证提示显示服务端实际解析出的 HTTPS 主机。fetch/pull 和 clone 通过 Git 的 `ls-remote --get-url` 解析 `insteadOf`；push 使用 `remote get-url --push --all` 解析推送目标，避免拿下载地址的令牌用于不同的 pushurl。单个 remote 的多个 pushurl 只有 HTTPS 主机、端口和用户名一致时才能共用凭据；不同身份的推送目标需配置为独立 remote。
+
+新增账号 API 位于 `/api/v1.0/git/credential-accounts`：`GET` 返回 `id/host/username/isDefault` 列表，`PUT` 接受 `host/username/password?/isDefault`，`DELETE /{accountId}` 删除账号。`POST /repositories/{id}/fetch` 必须提交 `GitFetchRequest(remote?, credentials?)`；`GitPullRequest` 新增 `credentials`，`GitOperationResult` 新增 `credentialHost`。保存格式直接升级为每主机多账号，旧单账号文档不会被读取或转换，需要重新录入；服务端与桌面应同步升级。不增加兼容路由或双格式解析。
+
+SSH 继续使用宿主 SSH 配置，HTTP 和本地传输不附带 HTTPS 令牌。GitHub、GitLab、Gitee、Azure DevOps 菜单打开对应仓库和 PR/MR 网页，Gitee 同时提供议题入口。自建服务使用通用 Git 传输；任意自建域名的品牌判断和应用内托管平台 API 集成不属于当前能力。
+
+验证入口：`Tests/Server/RelaxKonOS.GitWorkspace.Tests` 覆盖真实本地 Git、Helper 请求凭据、多主机/端口/用户隔离、多账号默认选择、更新删除、加密存储和重新创建服务后的复用；`Tests/Client/RelaxKonOS.WindowPreviews.Tests --project-editor-only` 覆盖逐远程抓取、认证重试/取消和账号管理；`Tests/Client/RelaxKonOS.GitDiff.Tests --all` 包含账号界面的浅色/深色渲染检查。这些自动化不代表各公网平台已逐一实机验收。

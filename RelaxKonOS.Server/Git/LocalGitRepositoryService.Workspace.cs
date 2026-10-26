@@ -214,14 +214,16 @@ public sealed partial class LocalGitRepositoryService
     {
         var path = CheckedAbsolutePath(request.Path);
         var parent = Path.GetDirectoryName(path) ?? throw new ArgumentException("A destination folder is required.");
-        if (string.IsNullOrWhiteSpace(request.Url) || request.Url.StartsWith('-') || request.Url.Contains("::", StringComparison.Ordinal)
+        if (string.IsNullOrWhiteSpace(request.Url) || request.Url.StartsWith('-') || IsExternalGitTransport(request.Url)
             || request.Url.Any(char.IsControl) || request.Url.Length > 4096) throw new ArgumentException("Invalid clone URL.");
         // Run in an existing parent as the effective user; Git owns destination creation and rejects nonempty destinations.
-        Uri? remote = Uri.TryCreate(request.Url, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps ? uri : null;
-        var credentials = request.Credentials ?? (remote is null ? null : await GetStoredCredentialsAsync(userId, remote, cancellationToken));
+        var gitPath = ResolveGitPathOrThrow();
+        var remote = await GetFetchRemoteUriAsync(gitPath, parent, request.Url, null, cancellationToken);
+        if (!ValidCredentials(request.Credentials)) return new(InvalidCredentials("clone"));
+        var credentials = remote is null ? null : request.Credentials ?? await GetStoredCredentialsAsync(userId, remote, cancellationToken);
         var result = await RunGitAsync(ResolveGitPathOrThrow(), parent, ["clone", "--", request.Url, path], cancellationToken, credentials);
-        if (!result.Success) return new(new(false, "clone", Message: result.Error, RequiresCredentials: remote is not null && IsCredentialError(result.Error)));
-        if (remote is not null && credentials is { SaveCredentials: true }) await SaveCredentialsAsync(userId, remote, credentials, cancellationToken);
+        if (!result.Success) return new(new(false, "clone", Message: result.Error, RequiresCredentials: remote is not null && IsCredentialError(result.Error), CredentialHost: remote?.Authority));
+        if (remote is not null && request.Credentials is { SaveCredentials: true }) await SaveCredentialsAsync(userId, remote, request.Credentials, cancellationToken);
         var repo = await RegisterRepositoryAsync(new(Path.GetFileName(path), path), userId, cancellationToken);
         return new(new(true, "clone"), repo);
     }

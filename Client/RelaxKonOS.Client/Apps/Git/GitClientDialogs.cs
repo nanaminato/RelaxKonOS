@@ -17,7 +17,7 @@ namespace RelaxKonOS.Client.Apps.Git;
 
 /// <summary>Dialog factory for the Git RelaxKonOS.Client. Uses AppContext.ShowDialogAsync (same pattern as DockerManagerDialogs).
 /// All user-facing strings are resolved through <see cref="LocalizedText"/> using keys from git_client.json.</summary>
-internal static class GitClientDialogs
+internal static partial class GitClientDialogs
 {
     public static Task<GitCommitRequest?> ShowCommitDialogAsync(AppContext context, ManagedWindow owner, GitClientViewModel vm) =>
         context.ShowDialogAsync<GitCommitRequest?>(owner, LocalizedText.Get("git.dialog.commit.title"),
@@ -867,17 +867,17 @@ internal static class GitClientDialogs
 
     /// <summary>Prompts for a HTTPS username and personal access token as a child of the push preview dialog.
     /// The dialog returns the secret to the active request only; it is never stored in the client.</summary>
-    public static Task<GitCredentialRequest?> ShowGitCredentialsDialogAsync(AppContext context, ManagedWindow owner)
+    public static Task<GitCredentialRequest?> ShowGitCredentialsDialogAsync(AppContext context, ManagedWindow owner, string? host)
         => context.ShowDialogAsync<GitCredentialRequest?>(owner,
             LocalizedText.Get("git.dialog.credentials.title"),
-            BuildGitCredentialsDialog,
-            new RelaxKonOS.Core.Primitives.Size(440, 285));
+            dialog => BuildGitCredentialsDialog(dialog, host),
+            new RelaxKonOS.Core.Primitives.Size(480, 380));
 
-    private static Control BuildGitCredentialsDialog(ModalDialog<GitCredentialRequest?> dialog)
+    private static Control BuildGitCredentialsDialog(ModalDialog<GitCredentialRequest?> dialog, string? host)
     {
         var notice = new TextBlock
         {
-            Text = LocalizedText.Get("git.dialog.credentials.notice"),
+            Text = (string.IsNullOrEmpty(host) ? "" : host + "\n") + LocalizedText.Get("git.dialog.credentials.notice"),
             TextWrapping = TextWrapping.Wrap,
             FontSize = 12,
             Foreground = ThemeBrushes.Get("TextTertiaryBrush"),

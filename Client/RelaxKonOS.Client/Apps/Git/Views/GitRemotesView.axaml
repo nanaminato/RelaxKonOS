@@ -13,6 +13,8 @@
                     <TextBlock Text="{loc:Loc git.remotes.add}" />
                 </StackPanel>
             </Button>
+            <Button Content="{loc:Loc git.accounts.title}" Command="{Binding ManageCredentialAccountsCommand}" />
+            <Button Content="{loc:Loc git.editor.fetch}" Command="{Binding FetchSelectedRemoteCommand}" />
             <Button Command="{Binding RefreshRemotesCommand}">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <TextBlock Text="⟳" />
