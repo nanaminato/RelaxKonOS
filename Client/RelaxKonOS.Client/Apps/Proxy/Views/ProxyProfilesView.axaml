@@ -38,7 +38,7 @@
     <Border Grid.Row="1" IsVisible="{Binding RuntimeIsNotInstalled}" Background="{DynamicResource WarningMutedBrush}" CornerRadius="10" Padding="14">
       <Grid ColumnDefinitions="*,Auto" ColumnSpacing="14">
         <TextBlock Text="{loc:Loc proxy.subscription_runtime_required}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" VerticalAlignment="Center" />
-        <Button Grid.Column="1" Classes="primary" Content="{loc:Loc proxy.runtime_install}" Command="{Binding OpenRuntimePageCommand}" />
+        <Button Grid.Column="1" Classes="primary" Content="{loc:Loc component_center.manage_dependency}" Command="{Binding OpenRuntimePageCommand}" />
       </Grid>
     </Border>
 

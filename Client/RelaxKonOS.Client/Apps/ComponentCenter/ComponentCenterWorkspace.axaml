@@ -284,22 +284,32 @@
         <Button Grid.Column="1" Content="{loc:Loc component_center.package.resolve}" Command="{Binding ResolvePackageCommand}"
                 IsEnabled="{Binding CanResolvePackage}" />
        </Grid>
-       <TextBlock Classes="section-hint" Text="{loc:Loc component_center.native.hint}" TextWrapping="Wrap" />
+       <!-- One host, one method: state the platform's own install path instead of both. -->
+       <TextBlock Text="{Binding PlatformMethodText}" FontSize="12" FontWeight="SemiBold"
+                  Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap" />
+       <TextBlock Classes="section-hint" Text="{Binding PackageMethodHint}" TextWrapping="Wrap" />
        <StackPanel IsVisible="{Binding IsSystemPackage}" Spacing="6">
         <TextBlock Text="{loc:Loc component_center.native.manager}" />
-        <ComboBox ItemsSource="{Binding PackageManagers}" SelectedItem="{Binding SelectedPackageManager}" HorizontalAlignment="Stretch" IsEnabled="{Binding CanResolvePackage}" />
+        <!-- A single connected manager is stated, not offered: a one-item selector looks like a
+             choice nobody has. A host that really reports several keeps the selector. -->
+        <TextBlock Text="{Binding SelectedPackageManagerText}" FontSize="13" FontWeight="SemiBold"
+                   IsVisible="{Binding !HasPackageManagerChoice}" />
+        <ComboBox ItemsSource="{Binding PackageManagers}" SelectedItem="{Binding SelectedPackageManager, Mode=TwoWay}"
+                  HorizontalAlignment="Stretch" IsVisible="{Binding HasPackageManagerChoice}" IsEnabled="{Binding CanResolvePackage}" />
         <TextBlock Text="{loc:Loc component_center.native.manager_hint}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
        </StackPanel>
        <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsResolvingPackage}" />
        <Button Content="{loc:Loc component_center.package.recovery.RefreshSources}" Command="{Binding RefreshPackageSourcesCommand}"
                IsVisible="{Binding CanRefreshPackageSources}" />
+       <TextBlock Text="{loc:Loc component_center.native.version_label}" IsVisible="{Binding HasPinnedArchiveCandidates}" />
        <ComboBox ItemsSource="{Binding PinnedArchiveCandidates}" SelectedItem="{Binding SelectedPinnedArchive}"
                  IsVisible="{Binding HasPinnedArchiveCandidates}" IsEnabled="{Binding CanResolvePackage}">
         <ComboBox.ItemTemplate>
          <DataTemplate x:DataType="mr:ComponentPinnedArchive"><TextBlock Text="{Binding Version}" /></DataTemplate>
         </ComboBox.ItemTemplate>
        </ComboBox>
-       <TextBlock Text="{Binding PackageModeText}" FontSize="12" TextWrapping="Wrap" />
+       <TextBlock Text="{loc:Loc component_center.native.install_only}" IsVisible="{Binding ShowInstallOnlyNote}"
+                  FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
        <TextBlock Text="{Binding PackageInstalledText}" FontSize="12" />
        <StackPanel Spacing="5" IsVisible="{Binding HasPackageFreeze}">
         <TextBlock Text="{Binding PackageCandidateText}" FontSize="12" />
@@ -315,8 +325,8 @@
        <WrapPanel ItemSpacing="8">
        <Button Content="{loc:Loc component_center.native.action.Install}" Command="{Binding InstallPackageCommand}"
                IsEnabled="{Binding CanInstallPackage}" IsVisible="{Binding ShowPackageInstall}" />
-        <Button IsVisible="{Binding IsSystemPackage}" Content="{loc:Loc component_center.native.action.Update}" Command="{Binding UpdatePackageCommand}" IsEnabled="{Binding CanChangeInstalledPackage}" />
-        <Button IsVisible="{Binding IsSystemPackage}" Content="{loc:Loc component_center.native.action.Uninstall}" Command="{Binding UninstallPackageCommand}" IsEnabled="{Binding CanChangeInstalledPackage}" />
+        <Button IsVisible="{Binding ShowPackageChangeActions}" Content="{loc:Loc component_center.native.action.Update}" Command="{Binding UpdatePackageCommand}" IsEnabled="{Binding CanChangeInstalledPackage}" />
+        <Button IsVisible="{Binding ShowPackageChangeActions}" Content="{loc:Loc component_center.native.action.Uninstall}" Command="{Binding UninstallPackageCommand}" IsEnabled="{Binding CanChangeInstalledPackage}" />
        </WrapPanel>
        <StackPanel Spacing="6" IsVisible="{Binding CanRecoverPackage}">
         <TextBlock Text="{Binding PackageRecoveryText}" TextWrapping="Wrap" />

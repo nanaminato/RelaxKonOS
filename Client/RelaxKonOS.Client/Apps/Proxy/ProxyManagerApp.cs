@@ -114,15 +114,6 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
         Task<TResult?> ShowOwnedAsync<TResult>(string title, Func<RelaxKonOS.WindowManager.ModalDialog<TResult>, Avalonia.Controls.Control> factory, RelaxKonOS.Core.Primitives.Size size)
             => activeEditor is { } editor ? editor.ShowDialogAsync(title, factory, size) : context.ShowDialogAsync(window, title, factory, size);
 
-        async Task<bool> ConfirmAsync(string title, string message)
-        {
-            var accepted = false;
-            await ShowOwnedAsync<bool>( title, dialog => new ConfirmDialogView
-            { DataContext = new ConfirmDialogViewModel(message, value => { accepted = value; dialog.Close(value); }) },
-                new RelaxKonOS.Core.Primitives.Size(560, 280));
-            return accepted;
-        }
-
         async Task<bool> RequestIfUndecidedAsync(string permission)
         {
             var decision = context.Permissions.GetStatus(permission);

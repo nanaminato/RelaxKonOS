@@ -64,20 +64,36 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     public int SelectedSourceKindCount => SelectedDefinition?.Sources.Count ?? 0;
     public LocalizedStatus SelectedComponentDescription => SelectedDefinition is { } definition
         ? LocalizedStatus.Key(definition.DescriptionKey) : LocalizedStatus.Literal("");
-    /// <summary>The platform the Host reported for itself. Empty until an observation succeeded.</summary>
-    private readonly string _hostPlatform;
-    public string HostPlatform => _hostPlatform;
+    /// <summary>The platform the login descriptor reported for the Server host, when it answered.</summary>
+    private readonly string? _declaredHostPlatform;
+    /// <summary>
+    /// The one platform this window speaks for. The login descriptor is authoritative; until it is
+    /// known, an observation of the host's own target answers instead of an empty string, because an
+    /// empty answer would let one host display the other platform's install method.
+    /// </summary>
+    public string HostPlatform => _declaredHostPlatform is { Length: > 0 } declared ? declared
+        : SelectedComponentState?.State?.Target.Os is { Length: > 0 } observedState ? observedState
+        : Runtime.Installation?.Installation.Target.Os is { Length: > 0 } observedTarget ? observedTarget
+        : DetailRuntime?.Installation?.Installation.Target.Os is { Length: > 0 } observedDetail ? observedDetail
+        : "";
+    /// <summary>Filtering and install methods stay hidden until the host's platform is actually known.</summary>
+    public bool HostPlatformKnown => HostPlatform is "windows" or "linux";
     /// <summary>Declared provenance for this host's platforms, plus everything declared elsewhere.</summary>
     public IReadOnlyList<ComponentSourceChip> SelectedHostSources => SourceChips(hostPlatformOnly: true);
     public IReadOnlyList<ComponentSourceChip> SelectedOtherSources => SourceChips(hostPlatformOnly: false);
     public bool HasSelectedSources => SelectedHostSources.Count + SelectedOtherSources.Count > 0;
     public bool HasOtherPlatformSources => SelectedOtherSources.Count > 0;
+    /// <summary>
+    /// Declared provenance for this host's own platform. A declaration that this build has not wired
+    /// yet still belongs here and is marked as planned; the package panel names the method that is
+    /// actually connected, so nothing presented as applicable comes from the other platform.
+    /// </summary>
     private IReadOnlyList<ComponentSourceChip> SourceChips(bool hostPlatformOnly)
     {
         if (SelectedDefinition is not { } definition) return [];
         var host = HostPlatform;
         return definition.Sources
-            .Where(source => (host.Length != 0 && source.Platforms.Contains(host)) == hostPlatformOnly && (!hostPlatformOnly || source.AdapterAvailable))
+            .Where(source => (host.Length != 0 && source.Platforms.Contains(host)) == hostPlatformOnly)
             .Select(source => new ComponentSourceChip(
                 LocalizedStatus.Format("component_center.source_kind_entry",
                     LocalizedStatus.Key("component_center.source_kind." + source.Kind),
@@ -219,7 +235,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         IReadOnlyDictionary<string, ProxyServerRuntimeViewModel>? additionalRuntimes = null,
         IReadOnlyList<IComponentHostObserver>? hostObservers = null, IComponentLifecycleClient? lifecycle = null, string? hostPlatform = null)
     {
-        _hostPlatform = hostPlatform is "windows" or "linux" ? hostPlatform : "";
+        _declaredHostPlatform = hostPlatform is "windows" or "linux" ? hostPlatform : null;
         Runtime = runtime; _store = store; _server = server; _actor = actor;
         _previews = previews;
         _execution = execution; _references = references;
@@ -294,7 +310,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
             nameof(SelectedComponentTitle), nameof(ShowNginxSelection), nameof(ShowGitInstallation),
             nameof(DetailRuntime), nameof(ShowRuntimeTaskActivity), nameof(SelectedComponent), nameof(SelectedDefinition), nameof(ShowNotIntegrated),
             nameof(SelectedComponentDescription), nameof(SelectedHostSources), nameof(SelectedOtherSources),
-            nameof(HasSelectedSources), nameof(HasOtherPlatformSources), nameof(HostPlatform),
+            nameof(HasSelectedSources), nameof(HasOtherPlatformSources), nameof(HostPlatform), nameof(HostPlatformKnown),
             nameof(HasHostObservation), nameof(HostObservation), nameof(ShowHostObservation), nameof(CanObserveHost),
             nameof(HostObservationPlatformText), nameof(HostObservationManagementText), nameof(HostObservationVersionText),
             nameof(HostObservationStateText), nameof(HostObservationNoteText),

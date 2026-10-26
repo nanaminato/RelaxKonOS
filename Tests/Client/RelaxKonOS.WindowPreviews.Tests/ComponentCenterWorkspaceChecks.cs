@@ -221,6 +221,55 @@ internal static class ComponentCenterWorkspaceChecks
                     }
                     observationWindow.Close(); Dispatcher.UIThread.RunJobs();
                 }
+                // One host, one platform: a Windows host must not list Linux-only products at all,
+                // and must describe the archive it can actually download instead of a package manager.
+                using (var windowsRuntime = new ProxyServerRuntimeViewModel(DispatchProxy.Create<IRuntimeCatalogClient, DisplayOnlyRuntime>()) { CanRead = true, CanManage = true })
+                using (var windowsModel = new ComponentCenterViewModel(windowsRuntime, new(), "https://host.example/", Guid.NewGuid(),
+                    lifecycle: new WindowsArchiveLifecycleClient(), hostPlatform: "windows"))
+                {
+                    string[] windowsIds = windowsModel.VisibleRoots.SelectMany(root => root.VisibleDescendantsAndSelf())
+                        .Where(node => node.ComponentId is not null).Select(node => node.ComponentId!).ToArray();
+                    Check(windowsIds.Contains("nginx") && windowsIds.Contains("frpc") && windowsIds.Contains("sing-box")
+                        && !windowsIds.Contains("squid") && !windowsIds.Contains("samba") && !windowsIds.Contains("docker"),
+                        "A Windows host lists only components declared for Windows in " + language);
+                    windowsModel.SelectedNode = windowsModel.VisibleRoots.SelectMany(root => root.VisibleDescendantsAndSelf())
+                        .Single(node => node.ComponentId == "nginx");
+                    Check(windowsModel.IsDirectDownload && !windowsModel.IsSystemPackage
+                        && windowsModel.PackageMethodTitle.Resolve() == RelaxKonOS.Client.Localization.LocalizedText.Get("component_center.native.download_title")
+                        && !windowsModel.PlatformMethodText.Resolve().Contains("Linux", StringComparison.Ordinal),
+                        "A Windows host describes the direct download and never the Linux package manager in " + language);
+                    Check(windowsModel.PackageManagers.Count == 0 && windowsModel.ShowInstallOnlyNote,
+                        "Windows shows no package-manager selector and says only installation is connected in " + language);
+                    windowsModel.AttachPackageInstallation("nginx", new(null!, null!, InstallationServiceId.Nginx,
+                        "layout", () => Task.CompletedTask, () => Task.FromResult<string?>(null)));
+                    windowsModel.ResolvePackageCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+                    Check(windowsModel.CanInstallPackage && windowsModel.HasPinnedArchiveCandidates
+                        && !windowsModel.HasPackageManagerChoice,
+                        "A Windows host freezes one pinned archive and enables exactly one install action in " + language);
+                    var windowsView = new ComponentCenterWorkspace(windowsModel);
+                    var windowsWindow = new Window { Width = 1060, Height = 800, Content = windowsView };
+                    windowsWindow.Show(); Dispatcher.UIThread.RunJobs(); windowsWindow.UpdateLayout();
+                    using (var bitmap = new RenderTargetBitmap(new PixelSize(1060, 800)))
+                    {
+                        bitmap.Render(windowsWindow);
+                        bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light") + "PlatformWindows.png"));
+                    }
+                    windowsWindow.Close(); Dispatcher.UIThread.RunJobs();
+                }
+                using (var linuxRuntime = new ProxyServerRuntimeViewModel(DispatchProxy.Create<IRuntimeCatalogClient, DisplayOnlyRuntime>()))
+                using (var linuxModel = new ComponentCenterViewModel(linuxRuntime, new(), "https://host.example/", Guid.NewGuid(),
+                    hostPlatform: "linux"))
+                {
+                    string[] linuxIds = linuxModel.VisibleRoots.SelectMany(root => root.VisibleDescendantsAndSelf())
+                        .Where(node => node.ComponentId is not null).Select(node => node.ComponentId!).ToArray();
+                    Check(linuxIds.Contains("squid") && linuxIds.Contains("samba") && linuxIds.Contains("docker"),
+                        "A Linux host lists the distribution-packaged components in " + language);
+                    linuxModel.SelectedNode = linuxModel.VisibleRoots.SelectMany(root => root.VisibleDescendantsAndSelf())
+                        .Single(node => node.ComponentId == "squid");
+                    Check(linuxModel.IsSystemPackage && !linuxModel.IsDirectDownload && linuxModel.ShowPackageChangeActions
+                        && linuxModel.PackageMethodTitle.Resolve() == RelaxKonOS.Client.Localization.LocalizedText.Get("component_center.native.package_title"),
+                        "A Linux host describes the package manager and offers install, update and uninstall in " + language);
+                }
                 window.Width = 640; window.Height = 720;
                 Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
                 var navigationToggle = view.FindControl<Avalonia.Controls.Primitives.ToggleButton>("NavigationToggle")!;
@@ -506,13 +555,28 @@ internal sealed class LayoutLifecycleClient : IComponentLifecycleClient
                 new RelaxKonOS.Protocol.ManagedRuntimes.RuntimeTarget("linux", "amd64", "trixie", null,
                     RelaxKonOS.Protocol.ManagedRuntimes.RuntimeInstallMode.SystemPackage, "systemd"), null, false),
             [new RelaxKonOS.Protocol.ManagedRuntimes.ComponentModeSupport(
-                RelaxKonOS.Protocol.ManagedRuntimes.ComponentSourceMode.SystemPackage, "linux", true, null)], []));
+                RelaxKonOS.Protocol.ManagedRuntimes.ComponentSourceMode.SystemPackage, "linux", true, null, "apt")], []));
 
     public async Task<RelaxKonOS.Protocol.ManagedRuntimes.ComponentPlanResult> PlanAsync(
         RelaxKonOS.Protocol.ManagedRuntimes.ComponentPlanRequest request, CancellationToken ct) =>
         new(request, (await StateAsync(request.ComponentId, ct)).State,
             RelaxKonOS.Protocol.ManagedRuntimes.ComponentFrozenTarget.FromPackage(Package),
             Ready ? [] : [RelaxKonOS.Protocol.ManagedRuntimes.ComponentProblemCodes.ExecutionUnavailable], []);
+}
+
+internal sealed class WindowsArchiveLifecycleClient : IComponentLifecycleClient
+{
+    private static readonly ComponentPinnedArchive Pin = new("release-win", "1.26.3", "win-x64",
+        "https://releases.example/nginx-1.26.3.zip", new string('b', 64), "zip", 104857600, ["nginx"]);
+
+    public Task<ComponentStateView> StateAsync(string componentId, CancellationToken ct) =>
+        Task.FromResult(new ComponentStateView(componentId,
+            new ComponentState(componentId, "win-host", 7, RuntimeOwnership.Absent, ComponentSourceMode.ManagedArchive,
+                new RuntimeTarget("windows", "x64", null, null, RuntimeInstallMode.Archive, "scm"), null, false),
+            [new ComponentModeSupport(ComponentSourceMode.ManagedArchive, "windows", true, null)], [], [Pin], 9));
+
+    public async Task<ComponentPlanResult> PlanAsync(ComponentPlanRequest request, CancellationToken ct) =>
+        new(request, (await StateAsync(request.ComponentId, ct)).State, ComponentFrozenTarget.FromPin(Pin), [], []);
 }
 
 internal sealed class InspectionPreview : ITaskPlanPreviewClient{    public Task<TaskPlan> PlanChangeAsync(TaskPlanIntent intent, string expectedHost, CancellationToken ct) => throw new NotSupportedException();

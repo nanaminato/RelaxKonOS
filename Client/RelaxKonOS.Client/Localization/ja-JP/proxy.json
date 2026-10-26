@@ -52,7 +52,7 @@
     "proxy.geodata.configured": "構成済み",
     "proxy.geodata.not_configured": "不足",
     "proxy.status.geodata_configured": "検証済み",
-    "proxy.subscription_runtime_required": "サブスクリプションをインポートして構成を検証する前に、管理対象の Mihomo ランタイムをインストールしてください。",
+    "proxy.subscription_runtime_required": "Mihomo ランタイムのインストールとバージョン管理はコンポーネントセンターで行います。そこで管理対象ランタイムを導入してから、ここに戻ってサブスクリプションをインポートし、構成を検証してください。",
     "proxy.subscription_system_proxy.title": "システム プロキシ経由でサブスクリプションをダウンロード",
     "proxy.subscription_system_proxy.message": "RelaxKonOS Server にシステム プロキシが構成されていることを検出しました。このプロキシ経由でこのサブスクリプションをダウンロードしますか？「キャンセル」を選択すると、サブスクリプション ソースに直接接続します。",
     "proxy.subscription_system_proxy.confirm": "システム プロキシを使用",

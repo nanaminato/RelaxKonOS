@@ -81,7 +81,8 @@ public partial class ComponentCenterViewModel
 {
     private readonly IComponentLifecycleClient? _lifecycle;
     [ObservableProperty] private ComponentPinnedArchive? selectedPinnedArchive;
-    public IReadOnlyList<ComponentPinnedArchive> PinnedArchiveCandidates => SelectedComponentState?.PinnedArchives ?? [];
+    public IReadOnlyList<ComponentPinnedArchive> PinnedArchiveCandidates =>
+        SelectedComponentState?.PinnedArchives ?? Array.Empty<ComponentPinnedArchive>();
     public bool HasPinnedArchiveCandidates => PinnedArchiveCandidates.Count > 0;
     partial void OnSelectedPinnedArchiveChanged(ComponentPinnedArchive? value)
     {
@@ -103,18 +104,72 @@ public partial class ComponentCenterViewModel
         && !_packageInstallations.Values.Any(task => task.IsActive) && SelectedComponentFreeze is { Allowed: true } freeze
         && freeze.Request?.Change is RuntimeChange.Install or RuntimeChange.Update or RuntimeChange.Uninstall
         && freeze.State?.Target.Os == HostPlatform
-        && (freeze.Target?.Package is not null && SelectedPackageManager == "apt" || freeze.Target?.Pin is not null);
+        && (freeze.Target?.Package is not null
+                && (SelectedPackageManager is null || PackageManagers.Contains(SelectedPackageManager))
+            || freeze.Target?.Pin is not null);
     public bool ShowPackageInstall => IsSystemPackage || CanInstallPackage;
     public bool CanInstallPackage => CanApplyPackagePlan && SelectedComponentFreeze?.Request?.Change == RuntimeChange.Install;
     public bool CanChangeInstalledPackage => CanResolvePackage && Runtime.CanManage && PackageInstallation is not null
         && !_packageInstallations.Values.Any(task => task.IsActive)
         && SelectedComponentState?.State is { Mode: ComponentSourceMode.SystemPackage, Ownership: RuntimeOwnership.Managed, RecoveryRequired: false };
-    public bool IsSystemPackage => HostPlatform == "linux" && SelectedDefinition?.Sources.Any(source => source.Kind == ComponentSourceKind.SystemPackage && source.Platforms.Contains(HostPlatform)) == true;
-    public IReadOnlyList<string> PackageManagers => SelectedComponentState is { State: not null, Problems.Count: 0 } view
-        ? view.Modes.Where(mode => mode.Available && mode.Platform == HostPlatform && mode.PackageManager is not null).Select(mode => mode.PackageManager!).Distinct().ToArray() : [];
+    /// <summary>This host installs the component from its distribution's own package manager.</summary>
+    public bool IsSystemPackage => HostPlatform == "linux" && DeclaresSourceOnHost(ComponentSourceKind.SystemPackage);
+    /// <summary>This host installs the component by downloading one pinned, verified archive.</summary>
+    public bool IsDirectDownload => HostPlatform == "windows" && DeclaresSourceOnHost(ComponentSourceKind.ManagedArchive);
+    private bool DeclaresSourceOnHost(ComponentSourceKind kind) => SelectedDefinition?.Sources.Any(source =>
+        source.Kind == kind && source.Platforms.Contains(HostPlatform)) == true;
+    /// <summary>
+    /// Stable instance per (component, platform, contents): the combo box rebinds its source on every
+    /// notification, and a fresh array each time would make the control write its selection back in
+    /// the middle of its own update.
+    /// </summary>
+    public IReadOnlyList<string> PackageManagers
+    {
+        get
+        {
+            var managers = SelectedComponentState is { State: not null, Problems.Count: 0 } view
+                ? view.Modes.Where(mode => mode.Available && mode.Platform == HostPlatform && mode.PackageManager is not null)
+                    .Select(mode => mode.PackageManager!).Distinct().ToArray()
+                : [];
+            var stamp = (SelectedDefinition?.ComponentId ?? "") + "|" + HostPlatform + "|" + string.Join(',', managers);
+            if (_packageManagers is not null && _packageManagersStamp == stamp) return _packageManagers;
+            _packageManagersStamp = stamp; _packageManagers = managers;
+            return managers;
+        }
+    }
+    private IReadOnlyList<string>? _packageManagers;
+    private string? _packageManagersStamp;
+    /// <summary>Only a host that reports more than one connected manager needs a selector.</summary>
+    public bool HasPackageManagerChoice => PackageManagers.Count > 1;
+    public LocalizedStatus SelectedPackageManagerText => LocalizedStatus.Literal(
+        SelectedPackageManager ?? LocalizedText.Get("component_center.package.unresolved"));
     [ObservableProperty] private string? selectedPackageManager;
-    partial void OnSelectedPackageManagerChanged(string? value) { if (SelectedDefinition is { } definition) _componentFreezes.Remove(definition.ComponentId); NotifyPackage(); }
+    partial void OnSelectedPackageManagerChanged(string? value)
+    {
+        // The control clears its own selection while its source is being replaced; that is not a user
+        // choice and must not discard a frozen plan.
+        if (_retargetingPackageManager || value is null) return;
+        if (SelectedDefinition is { } definition) _componentFreezes.Remove(definition.ComponentId);
+        NotifyPackage();
+    }
+    private bool _retargetingPackageManager;
     public LocalizedStatus PackageMethodTitle => LocalizedStatus.Key(IsSystemPackage ? "component_center.native.package_title" : "component_center.native.download_title");
+    /// <summary>The method is platform-specific, so its explanation must be too.</summary>
+    public LocalizedStatus PackageMethodHint => LocalizedStatus.Key(IsSystemPackage
+        ? "component_center.native.hint.package" : "component_center.native.hint.download");
+    /// <summary>Names this host's own method once, instead of describing both platforms at once.</summary>
+    public LocalizedStatus PlatformMethodText => !HostPlatformKnown
+        ? LocalizedStatus.Key("component_center.native.platform_unknown")
+        : IsSystemPackage
+            ? LocalizedStatus.Format("component_center.native.platform_method.package",
+                LocalizedStatus.Literal(SelectedPackageManager ?? LocalizedText.Get("component_center.package.unresolved")))
+            : IsDirectDownload
+                ? LocalizedStatus.Key("component_center.native.platform_method.download")
+                : LocalizedStatus.Key("component_center.native.platform_method.none");
+    /// <summary>Update and uninstall are only frozen for distribution packages in this build.</summary>
+    public bool ShowPackageChangeActions => IsSystemPackage;
+    /// <summary>A direct download can only be installed here; saying so is part of the answer.</summary>
+    public bool ShowInstallOnlyNote => IsDirectDownload;
     [RelayCommand] private async Task UpdatePackageAsync() => await PreparePackageChangeAsync(RuntimeChange.Update);
     [RelayCommand] private async Task UninstallPackageAsync() => await PreparePackageChangeAsync(RuntimeChange.Uninstall);
     private async Task PreparePackageChangeAsync(RuntimeChange change)
@@ -135,7 +190,9 @@ public partial class ComponentCenterViewModel
         }
         if (componentId == "nginx" && NginxSelection is not null) await NginxSelection.RefreshCommand.ExecuteAsync(null);
         if (componentId == "git" && GitEngine is not null) await GitEngine.RefreshEngineStatusCommand.ExecuteAsync(null);
-        NotifyPackage();
+        // A fresh host reading can be the first time the target platform is known, and that answer
+        // decides which components and which install method apply at all.
+        RefreshTree();
     }
     [RelayCommand] private async Task InstallPackageAsync()
     {
@@ -220,13 +277,12 @@ public partial class ComponentCenterViewModel
     /// Package-backed installation uses the host's resolved candidate and the durable installation
     /// worker, rather than treating a distribution package as a managed archive release.
     /// </summary>
-    public bool ShowPackageFreeze => _lifecycle is not null && (SelectedDefinition?.ComponentId != "git" || HostPlatform == "linux") && SelectedDefinition?.ComponentId is "nginx" or "squid" or "samba" or "docker" or "git" or "frpc" or "frps";
+    public bool ShowPackageFreeze => _lifecycle is not null && HostPlatformKnown
+        && (DeclaresSourceOnHost(ComponentSourceKind.SystemPackage) || DeclaresSourceOnHost(ComponentSourceKind.ManagedArchive))
+        && (SelectedDefinition?.ComponentId != "git" || IsSystemPackage)
+        && SelectedDefinition?.ComponentId is "nginx" or "squid" or "samba" or "docker" or "git" or "frpc" or "frps";
     public bool CanResolvePackage => ShowPackageFreeze && Runtime.CanRead && !IsResolvingPackage && PackageInstallation?.IsActive != true && !Runtime.IsInvalidated;
     public bool HasPackageFreeze => SelectedComponentFreeze is not null;
-    public LocalizedStatus PackageModeText => SelectedComponentState is { } state
-        ? LocalizedStatus.Join(" · ", state.Modes.Where(mode => mode.Platform == HostPlatform).Select(mode =>
-            LocalizedStatus.Format("component_center.native.method", mode.Mode == ComponentSourceMode.ManagedArchive ? LocalizedText.Get("component_center.native.direct_download") : mode.PackageManager ?? LocalizedText.Get("component_center.package.unresolved"))))
-        : LocalizedStatus.Key("component_center.package.unresolved");
     public LocalizedStatus PackageInstalledText => LocalizedStatus.Format("component_center.package.installed",
         LocalizedStatus.Literal(SelectedComponentState?.State?.ActiveVersion ?? "—"));
     public LocalizedStatus PackageCandidateText => LocalizedStatus.Format("component_center.package.candidate",
@@ -278,7 +334,14 @@ public partial class ComponentCenterViewModel
         {
             var view = await _lifecycle!.StateAsync(componentId, _inspectionLifetime.Token);
             _componentStates[componentId] = view;
-            if (SelectedDefinition?.ComponentId == componentId) SelectedPackageManager = PackageManagers.FirstOrDefault();
+            if (SelectedDefinition?.ComponentId == componentId)
+            {
+                // Fixing the manager for this component is part of preparing the plan, so it must not
+                // discard the freeze this same method is about to store.
+                _retargetingPackageManager = true;
+                try { SelectedPackageManager = PackageManagers.FirstOrDefault(); }
+                finally { _retargetingPackageManager = false; }
+            }
             if (view.State is { } state)
             {
                 var pins = view.PinnedArchives ?? [];
@@ -308,13 +371,13 @@ public partial class ComponentCenterViewModel
                 _ => "component_center.package.failed"
             });
         }
-        finally { IsResolvingPackage = false; NotifyPackage(); }
+        finally { IsResolvingPackage = false; RefreshTree(); }
     }
 
     private void NotifyPackage()
     {
-        foreach (var property in new[] { nameof(ShowPackageInstall), nameof(CanApplyPackagePlan), nameof(CanChangeInstalledPackage), nameof(IsSystemPackage), nameof(PackageManagers), nameof(PackageMethodTitle), nameof(CanRefreshPackageSources), nameof(CanRecoverPackage), nameof(PackageRecoveryText), nameof(PinnedArchiveCandidates), nameof(HasPinnedArchiveCandidates), nameof(PackageInstallation), nameof(CanInstallPackage), nameof(ShowPackageFreeze), nameof(CanResolvePackage), nameof(HasPackageFreeze),
-            nameof(PackageModeText), nameof(PackageInstalledText), nameof(PackageCandidateText), nameof(PackageRepositoryText),
+        foreach (var property in new[] { nameof(ShowPackageInstall), nameof(CanApplyPackagePlan), nameof(CanChangeInstalledPackage), nameof(IsSystemPackage), nameof(IsDirectDownload), nameof(PackageManagers), nameof(HasPackageManagerChoice), nameof(SelectedPackageManagerText), nameof(PackageMethodTitle), nameof(PackageMethodHint), nameof(PlatformMethodText), nameof(ShowPackageChangeActions), nameof(ShowInstallOnlyNote), nameof(CanRefreshPackageSources), nameof(CanRecoverPackage), nameof(PackageRecoveryText), nameof(PinnedArchiveCandidates), nameof(HasPinnedArchiveCandidates), nameof(PackageInstallation), nameof(CanInstallPackage), nameof(ShowPackageFreeze), nameof(CanResolvePackage), nameof(HasPackageFreeze),
+            nameof(PackageInstalledText), nameof(PackageCandidateText), nameof(PackageRepositoryText),
             nameof(PackageDigestText), nameof(PackageAlsoInstallsText), nameof(PackageVerdictText) })
             OnPropertyChanged(property);
         InstallPackageCommand.NotifyCanExecuteChanged();

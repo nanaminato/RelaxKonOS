@@ -49,6 +49,8 @@ Android Mihomo 已接入来源/目录、实测安装观察、计划预览、精�
 
 桌面 Proxy Manager 新增“运行时”页（复用 Proxy Server 的运行时页面与 `IMihomoRuntimeCatalogClient`）：列出已确认版本、阻止原因、目标差异，执行前取得 Host 计划，安装/更新/修复/回退/卸载都经同一台账，支持取消下载、待恢复重试/紧急停止/操作员关账。旧“安装托管运行时／从服务器文件安装／自行下载／回退／卸载”按钮改为进入该页面。Android 已在 2026-10-20 切换到当前冻结计划契约，客户端详细行为由 [Android 文档](../../Client/RelaxKonOS.Client.Android/docs/features/Proxy.md) 维护。
 
+2026-10-26 起该页本身也并入组件中心：Proxy Manager 工作区不再渲染独立运行时页，“运行时”导航与“设置 → 运行时”只提供“在组件中心管理依赖”的跳转；“订阅”页缺少运行时的横幅按钮同样只做跳转，不再出现“安装托管运行时”或上传安装包的字样。Mihomo 的选择、冻结计划、审批与台账执行只在组件中心内进行，Proxy Manager 只读取运行时状态与既有操作进度。此变更不改变运行时契约、安装台账或领域权限。
+
 ### 2026-10-19：受控 GEO 资源预备（离线、编译期摘要）
 
 `POST /managed-runtimes/mihomo/resources`（统一 API 前缀下）要求 RuntimeManage、Mihomo 安装权限与目标为 `mihomo` 的 MihomoInstall 提权，并在发布 Gate 内拒绝未确认提交（409 `runtime.publication_unconfirmed`）。请求不携带路径、URL 或选择：可放置的集合由 `Shared/RelaxKonOS.ManagedRuntimes/MihomoGeoDataFiles.cs` 的编译期摘要表固定（`geoip.metadb`、`geoip.dat`、`geosite.dat`、`country.mmdb`、`GeoLite2-ASN.mmdb`），Server 原有 GEO 服务与 Helper 共用同一张表，任一侧都不能自行扩大集合。

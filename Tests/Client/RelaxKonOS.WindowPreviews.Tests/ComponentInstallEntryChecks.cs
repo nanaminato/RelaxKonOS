@@ -19,7 +19,8 @@ internal static class ComponentInstallEntryChecks
         {
             var lifecycle = new EntryLifecycle(id);
             using var runtime = new ProxyServerRuntimeViewModel(DispatchProxy.Create<IRuntimeCatalogClient, DisplayOnlyRuntime>()) { CanRead = true, CanManage = true };
-            using var center = new ComponentCenterViewModel(runtime, new(), "https://test.invalid", Guid.NewGuid(), lifecycle: lifecycle);
+            using var center = new ComponentCenterViewModel(runtime, new(), "https://test.invalid", Guid.NewGuid(),
+                lifecycle: lifecycle, hostPlatform: "linux");
             using var handler = new EntryHandler();
             using var http = new HttpClient(handler);
             center.AttachPackageInstallation(id, new(new InstallationClient(http, DispatchProxy.Create<IAuthSession, EntrySession>()), null!, service,
@@ -40,23 +41,39 @@ internal static class ComponentInstallEntryChecks
                 && frozen.GetProperty("request").GetProperty("idempotencyKey").GetString() == handler.Key,
                 id + " preserves the component identity and frozen idempotency key across HTTP.");
         }
+        // Git has no installer of its own any more: on Linux it uses the same frozen distribution
+        // package plan as every other system package, and on Windows this build only reports the Git
+        // program that is already present.
         using var gitRuntime = new ProxyServerRuntimeViewModel(DispatchProxy.Create<IRuntimeCatalogClient, DisplayOnlyRuntime>()) { CanRead = true, CanManage = true };
-        using var gitCenter = new ComponentCenterViewModel(gitRuntime, new(), "https://test.invalid", Guid.NewGuid());
+        using var gitCenter = new ComponentCenterViewModel(gitRuntime, new(), "https://test.invalid", Guid.NewGuid(),
+            lifecycle: new EntryLifecycle("git"), hostPlatform: "linux");
         using var gitHandler = new EntryHandler();
         using var gitHttp = new HttpClient(gitHandler);
         gitCenter.GitEngine = new GitClientViewModel(null!) { CanAutoInstall = true, IsGitAvailable = false };
         gitCenter.AttachPackageInstallation("git", new(new InstallationClient(gitHttp, DispatchProxy.Create<IAuthSession, EntrySession>()), null!, InstallationServiceId.Git,
             "relaxkonos.component-center", () => Task.CompletedTask, () => Task.FromResult<string?>(null)));
         gitCenter.SelectedNode = gitCenter.VisibleRoots.SelectMany(root => root.DescendantsAndSelf()).Single(node => node.ComponentId == "git");
-        Check(!gitCenter.CanInstallGit, "Git needs its own granted manage permission.");
-        gitCenter.GitCanManage = true;
-        gitCenter.ConfirmGitInstallAsync = () => Task.FromResult(false);
-        gitCenter.InstallGitCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(typeof(ComponentCenterViewModel).GetProperty("InstallGitCommand") is null && !gitCenter.ShowGitInstallation,
+            "Git exposes no install command of its own; the observation panel belongs to Windows only.");
+        Check(gitCenter.ShowPackageFreeze && gitCenter.IsSystemPackage,
+            "Linux Git uses the shared distribution package plan instead of a private installer.");
+        gitCenter.ResolvePackageCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(gitCenter.CanInstallPackage, "The resolved Git package can be installed from Component Center.");
+        gitCenter.ConfirmPackageInstallAsync = _ => Task.FromResult(false);
+        gitCenter.InstallPackageCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Check(gitHandler.Calls == 0, "Git cancellation sends no request.");
-        gitCenter.ConfirmGitInstallAsync = () => Task.FromResult(true);
-        gitCenter.InstallGitCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        gitCenter.ConfirmPackageInstallAsync = _ => Task.FromResult(true);
+        gitCenter.InstallPackageCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Check(gitHandler.Calls == 1 && gitHandler.Path == InstallationApiRoutes.Start(InstallationServiceId.Git, InstallationOperationKind.Install),
-            "Git installs through Component Center's existing durable installer.");
+            "Git installs through the same durable installer as every other host package.");
+        using (var windowsGit = new ComponentCenterViewModel(gitRuntime, new(), "https://test.invalid", Guid.NewGuid(),
+            lifecycle: new EntryLifecycle("git"), hostPlatform: "windows"))
+        {
+            windowsGit.GitEngine = new GitClientViewModel(null!) { CanAutoInstall = true, IsGitAvailable = false };
+            windowsGit.SelectedNode = windowsGit.VisibleRoots.SelectMany(root => root.DescendantsAndSelf()).Single(node => node.ComponentId == "git");
+            Check(!windowsGit.ShowPackageFreeze && windowsGit.ShowGitInstallation,
+                "A Windows host reports the existing Git program instead of the Linux package plan.");
+        }
         foreach (var width in new[] { 1060, 640 })
         {
             var view = new ComponentCenterWorkspace(gitCenter);
@@ -88,7 +105,7 @@ internal static class ComponentInstallEntryChecks
         gitCenter.OpenTasksCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Check(taskDialogRequests == 3 && gitCenter.Drafts.Count == 1,
             "Reopening the task dialog preserves the existing draft.");
-        Console.WriteLine("Component installation entry checks passed (34 assertions).");
+        Console.WriteLine("Component installation entry checks passed (37 assertions).");
     }
     private static void Check(bool valid, string message) { if (!valid) throw new Exception(message); Console.WriteLine("PASS: " + message); }
     private sealed class EntryHandler : HttpMessageHandler
@@ -106,7 +123,9 @@ internal static class ComponentInstallEntryChecks
         private bool Pin => id is "nginx" or "frpc" or "frps";
         public Task<ComponentStateView> StateAsync(string componentId, CancellationToken ct) => Task.FromResult(new ComponentStateView(id,
             new(id, "host", 42, RuntimeOwnership.Absent, Pin ? ComponentSourceMode.ManagedArchive : ComponentSourceMode.SystemPackage,
-                new("linux", "x64", null, null, Pin ? RuntimeInstallMode.Archive : RuntimeInstallMode.SystemPackage, "systemd"), null, false), [], [],
+                new("linux", "x64", null, null, Pin ? RuntimeInstallMode.Archive : RuntimeInstallMode.SystemPackage, "systemd"), null, false),
+            Pin ? [new(ComponentSourceMode.ManagedArchive, "linux", true, null)]
+                : [new(ComponentSourceMode.SystemPackage, "linux", true, null, "apt")], [],
             Pin ? [new("release", "1.0", "linux-x64", "https://releases.example/archive", new('a', 64), "tar.gz", 1024, [id])] : [], 5));
         public async Task<ComponentPlanResult> PlanAsync(ComponentPlanRequest request, CancellationToken ct)
         {

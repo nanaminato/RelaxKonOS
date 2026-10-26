@@ -26,7 +26,7 @@
     "proxy.subscriptions_hint": "订阅配置以卡片形式呈现；只显示受保护的运行时元数据。",
     "proxy.subscription_link": "订阅文件链接",
     "proxy.subscription_import": "导入",
-    "proxy.subscription_runtime_required": "请先安装 RelaxKonOS 管理的 Mihomo 运行时，再导入订阅并完成配置校验。",
+    "proxy.subscription_runtime_required": "Mihomo 运行时的安装与版本管理统一在组件中心完成。请先在组件中心安装受管运行时，再回到此处导入订阅并完成配置校验。",
     "proxy.subscription_system_proxy.title": "通过系统代理下载订阅",
     "proxy.subscription_system_proxy.message": "检测到 RelaxKonOS Server 配置了系统代理。是否通过该代理下载此订阅？选择“取消”将直接连接订阅源。",
     "proxy.subscription_system_proxy.confirm": "使用系统代理",
