@@ -1,4 +1,4 @@
-﻿using RelaxKonOS.Protocol.ManagedRuntimes;
+using RelaxKonOS.Protocol.ManagedRuntimes;
 
 namespace RelaxKonOS.ManagedRuntimes.ComponentPackages;
 
@@ -9,6 +9,7 @@ public static class HostPackageDefinitions
 {
     public static HostPackageDefinition? Find(string? componentId) => componentId switch
     {
+        ComponentIds.Git => new(ComponentIds.Git, "git", "/usr/bin/git", "", []),
         ComponentIds.Nginx => new(ComponentIds.Nginx, "nginx", "/usr/sbin/nginx", "nginx.service", ["acl"]),
         ComponentIds.Squid => new(ComponentIds.Squid, "squid", "/usr/sbin/squid", "squid.service", []),
         ComponentIds.Samba => new(ComponentIds.Samba, "samba", "/usr/sbin/smbd", "smbd.service", ["acl"]),
@@ -16,5 +17,5 @@ public static class HostPackageDefinitions
             ["docker-ce-cli", "containerd.io", "docker-buildx-plugin", "docker-compose-plugin"]),
         _ => null
     };
-    public static bool KnownPackage(string? package) => package is "nginx" or "squid" or "samba" or "docker-ce";
+    public static bool KnownPackage(string? package) => package is "nginx" or "squid" or "samba" or "docker-ce" or "git";
 }

@@ -38,7 +38,14 @@ public static class NginxPackagePlan
             problems.Add(ComponentProblemCodes.PackageAlreadyInstalled);
         if (request.Change != RuntimeChange.Install && state.Ownership == RuntimeOwnership.Absent)
             problems.Add(ComponentProblemCodes.PackageAbsent);
-        var candidate = resolution.Candidate;
+        if (request.Change is RuntimeChange.Update or RuntimeChange.Uninstall && state.Ownership != RuntimeOwnership.Managed)
+            problems.Add(ComponentProblemCodes.PackageOwnershipRequired);
+        if (request.Change == RuntimeChange.Update && !resolution.UpdateAvailable)
+        {
+            problems.Add(resolution.CandidateVersion is null ? ComponentProblemCodes.PackageUnresolved : ComponentProblemCodes.PackageNoUpdate);
+            return new(request, state, null, problems, []);
+        }
+        var candidate = request.Change == RuntimeChange.Uninstall ? resolution.InstalledTarget : resolution.Candidate;
         if (candidate is null)
         {
             problems.Add(ComponentProblemCodes.PackageUnresolved);
@@ -48,7 +55,7 @@ public static class NginxPackagePlan
             && !string.Equals(request.RequestedVersion, candidate.Version, StringComparison.Ordinal))
             problems.Add(ComponentProblemCodes.PackageVersionMismatch);
         // Everything is frozen, but only a first install has a transaction that honours the freeze.
-        if (!executionAvailable || request.Change != RuntimeChange.Install)
+        if (!executionAvailable || request.Change is not (RuntimeChange.Install or RuntimeChange.Update or RuntimeChange.Uninstall))
             problems.Add(ComponentProblemCodes.ExecutionUnavailable);
         return new(request, state, ComponentFrozenTarget.FromPackage(candidate), problems, []);
     }
@@ -77,7 +84,7 @@ public static class NginxPackagePlan
         if (request.Expected is not { Mode: ComponentSourceMode.SystemPackage, Package: not null })
             return Refuse([ComponentProblemCodes.ExecutionNotRequested], null);
         // Only a first install has a transaction that honours a freeze; everything else stays refused.
-        return request.Request.Change == RuntimeChange.Install ? null : Refuse([ComponentProblemCodes.ExecutionUnavailable], null);
+        return request.Request.Change is RuntimeChange.Install or RuntimeChange.Update or RuntimeChange.Uninstall ? null : Refuse([ComponentProblemCodes.ExecutionUnavailable], null);
     }
 
     /// <summary>The guards that need the host's own answer: a moved revision, plan or identity refuses.</summary>

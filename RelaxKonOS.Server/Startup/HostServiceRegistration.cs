@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 
 namespace RelaxKonOS.Server.Startup;
 
@@ -157,7 +157,7 @@ internal static class HostServiceRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter, RelaxKonOS.Server.Components.SingBoxComponentAdapter>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter, RelaxKonOS.Server.Components.NginxComponentAdapter>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter, RelaxKonOS.Server.Components.MihomoComponentAdapter>();
-        foreach (var componentId in new[] { "squid", "samba", "docker" })
+        foreach (var componentId in new[] { "squid", "samba", "docker", "git" })
             builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter>(services =>
                 new RelaxKonOS.Server.Components.HostPackageComponentAdapter(componentId,
                     services.GetRequiredService<RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport>()));

@@ -211,22 +211,7 @@
           </DataTemplate>
          </ItemsControl.ItemTemplate>
         </ItemsControl>
-        <WrapPanel ItemSpacing="6" LineSpacing="6" IsVisible="{Binding HasOtherPlatformSources}">
-         <TextBlock Classes="field-label" Text="{loc:Loc component_center.field.sources_other}" VerticalAlignment="Center" Margin="0,0,4,0" />
-         <ItemsControl ItemsSource="{Binding SelectedOtherSources}">
-          <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel ItemSpacing="6" LineSpacing="6" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-          <ItemsControl.ItemTemplate>
-           <DataTemplate x:DataType="vm:ComponentSourceChip">
-            <Border Classes="meta-chip">
-             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="{Binding Platform}" FontWeight="SemiBold" FontSize="11" />
-              <TextBlock Text="{Binding Text}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" />
-             </StackPanel>
-            </Border>
-           </DataTemplate>
-          </ItemsControl.ItemTemplate>
-         </ItemsControl>
-        </WrapPanel>
+
        </StackPanel>
         </StackPanel>
        </Expander>
@@ -249,7 +234,6 @@
        <TextBlock Text="{Binding GitEngine.EngineVersion}" />
        <TextBlock Text="{Binding GitEngine.EnginePath}" TextWrapping="Wrap" />
        <Button Content="{loc:Loc common.refresh}" Command="{Binding GitEngine.RefreshEngineStatusCommand}" />
-       <Button Content="{loc:Loc common.install}" Command="{Binding InstallGitCommand}" />
        <ProgressBar IsIndeterminate="{Binding PackageInstallation.IsIndeterminate}" Value="{Binding PackageInstallation.Progress}" IsVisible="{Binding PackageInstallation.IsActive}" />
        <Button Content="{loc:Loc installation.cancel}" Command="{Binding PackageInstallation.CancelCommand}" IsVisible="{Binding PackageInstallation.IsActive}" />
        <TextBlock Text="{Binding PackageInstallation.SummaryText}" TextWrapping="Wrap" />
@@ -296,11 +280,16 @@
      <Border Classes="panel-card" IsVisible="{Binding ShowPackageFreeze}">
       <StackPanel Spacing="10">
        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-        <TextBlock Classes="section-title" Text="{loc:Loc component_center.package.title}" VerticalAlignment="Center" />
+        <TextBlock Classes="section-title" Text="{Binding PackageMethodTitle}" VerticalAlignment="Center" />
         <Button Grid.Column="1" Content="{loc:Loc component_center.package.resolve}" Command="{Binding ResolvePackageCommand}"
                 IsEnabled="{Binding CanResolvePackage}" />
        </Grid>
-       <TextBlock Classes="section-hint" Text="{loc:Loc component_center.package.hint}" TextWrapping="Wrap" />
+       <TextBlock Classes="section-hint" Text="{loc:Loc component_center.native.hint}" TextWrapping="Wrap" />
+       <StackPanel IsVisible="{Binding IsSystemPackage}" Spacing="6">
+        <TextBlock Text="{loc:Loc component_center.native.manager}" />
+        <ComboBox ItemsSource="{Binding PackageManagers}" SelectedItem="{Binding SelectedPackageManager}" HorizontalAlignment="Stretch" IsEnabled="{Binding CanResolvePackage}" />
+        <TextBlock Text="{loc:Loc component_center.native.manager_hint}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+       </StackPanel>
        <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsResolvingPackage}" />
        <Button Content="{loc:Loc component_center.package.recovery.RefreshSources}" Command="{Binding RefreshPackageSourcesCommand}"
                IsVisible="{Binding CanRefreshPackageSources}" />
@@ -323,8 +312,12 @@
         <TextBlock Text="{Binding PackageVerdictText}" FontSize="12" TextWrapping="Wrap"
                    Foreground="{DynamicResource WarningBrush}" />
        </StackPanel>
-       <Button Content="{loc:Loc component_center.package.install}" Command="{Binding InstallPackageCommand}"
-               IsEnabled="{Binding CanInstallPackage}" IsVisible="{Binding CanInstallPackage}" />
+       <WrapPanel ItemSpacing="8">
+       <Button Content="{loc:Loc component_center.native.action.Install}" Command="{Binding InstallPackageCommand}"
+               IsEnabled="{Binding CanInstallPackage}" IsVisible="{Binding ShowPackageInstall}" />
+        <Button IsVisible="{Binding IsSystemPackage}" Content="{loc:Loc component_center.native.action.Update}" Command="{Binding UpdatePackageCommand}" IsEnabled="{Binding CanChangeInstalledPackage}" />
+        <Button IsVisible="{Binding IsSystemPackage}" Content="{loc:Loc component_center.native.action.Uninstall}" Command="{Binding UninstallPackageCommand}" IsEnabled="{Binding CanChangeInstalledPackage}" />
+       </WrapPanel>
        <StackPanel Spacing="6" IsVisible="{Binding CanRecoverPackage}">
         <TextBlock Text="{Binding PackageRecoveryText}" TextWrapping="Wrap" />
         <WrapPanel>

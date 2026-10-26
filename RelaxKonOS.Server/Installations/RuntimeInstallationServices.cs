@@ -36,19 +36,8 @@ internal sealed class NginxInstallationService(NginxWebServerManager manager, In
             Check(frozen.Request!.IdempotencyKey == key, InstallationProblemCodes.IdempotencyConflict);
             return;
         }
-        Check(kind == InstallationOperationKind.Install && request.Version is null && request.FileReferenceId is null,
-            InstallationProblemCodes.InvalidRequest);
-        Check(frozen.ComponentId == ComponentIds.Nginx && frozen.Request is not null && frozen.Request.ComponentId == ComponentIds.Nginx
-            && frozen.Request.Change == RuntimeChange.Install && frozen.Request.Mode == ComponentSourceMode.SystemPackage
-            && frozen.Expected is { Mode: ComponentSourceMode.SystemPackage, Archive: null, Package: not null }
-            && RelaxKonOS.ManagedRuntimes.ComponentPackages.AptPackageResolution.IsUsableExpectation(frozen.Expected.Package)
-            && !string.IsNullOrWhiteSpace(frozen.Request.HostId) && frozen.Request.ExpectedRevision > 0
-            && frozen.Request.SourceId is null && frozen.Request.ReleaseId is null
-            && frozen.Request.ExpectedSourceRevision == 0 && frozen.Request.ExpectedTrustRevision == 0
-            && frozen.Request.KeepData
-            && (frozen.Request.RequestedVersion is null || frozen.Request.RequestedVersion == frozen.Expected.Package.Version),
-            InstallationProblemCodes.InvalidRequest);
-        Check(frozen.Request!.IdempotencyKey == key, InstallationProblemCodes.IdempotencyConflict);
+        Check(request.Version is null && request.FileReferenceId is null, InstallationProblemCodes.InvalidRequest);
+        ComponentPackageInstallations.Validate(ComponentIds.Nginx, kind, frozen, key);
     }
     protected override async Task ExecuteAsync(InstallationOperationKind kind, NginxInstallationRequest options, string actor, IInstallationProgress progress, CancellationToken ct)
     {
@@ -66,7 +55,7 @@ internal sealed class NginxInstallationService(NginxWebServerManager manager, In
             Check(result.Outcome == ComponentExecutionOutcome.Succeeded,
                 result.Detail ?? result.Problems.FirstOrDefault() ?? ComponentProblemCodes.InstallFailed);
             await progress.ReportAsync(new(InstallationStage.HealthChecking), CancellationToken.None);
-            Check(await manager.CheckInstallationAsync(false, CancellationToken.None), "nginx.install_verification_failed");
+            Check(await manager.CheckInstallationAsync(kind == InstallationOperationKind.Uninstall, CancellationToken.None), "nginx.install_verification_failed");
             return;
         }
         Check(string.IsNullOrWhiteSpace(options.FileReferenceId) || kind == InstallationOperationKind.Install, InstallationProblemCodes.InvalidRequest);
@@ -89,7 +78,7 @@ internal sealed class NginxInstallationService(NginxWebServerManager manager, In
         if (OperatingSystem.IsLinux())
         {
             var recovery = await ComponentPackageInstallations.RecoverAsync(ComponentIds.Nginx, operation.OperationId, helper, ct, operation.Kind);
-            if (recovery.State == InstallationOperationState.Succeeded && operation.Kind == InstallationOperationKind.Install
+            if (recovery.State == InstallationOperationState.Succeeded && operation.Kind is InstallationOperationKind.Install or InstallationOperationKind.Upgrade
                 && !await manager.CheckInstallationAsync(false, ct)) return new(InstallationOperationState.Interrupted, InstallationProblemCodes.Interrupted);
             return recovery;
         }

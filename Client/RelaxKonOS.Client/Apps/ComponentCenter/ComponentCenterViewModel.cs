@@ -65,7 +65,8 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     public LocalizedStatus SelectedComponentDescription => SelectedDefinition is { } definition
         ? LocalizedStatus.Key(definition.DescriptionKey) : LocalizedStatus.Literal("");
     /// <summary>The platform the Host reported for itself. Empty until an observation succeeded.</summary>
-    public string HostPlatform => SelectedComponentState?.State?.Target.Os ?? Runtime.Installation?.Installation.Target.Os ?? "";
+    private readonly string _hostPlatform;
+    public string HostPlatform => _hostPlatform;
     /// <summary>Declared provenance for this host's platforms, plus everything declared elsewhere.</summary>
     public IReadOnlyList<ComponentSourceChip> SelectedHostSources => SourceChips(hostPlatformOnly: true);
     public IReadOnlyList<ComponentSourceChip> SelectedOtherSources => SourceChips(hostPlatformOnly: false);
@@ -76,12 +77,12 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         if (SelectedDefinition is not { } definition) return [];
         var host = HostPlatform;
         return definition.Sources
-            .Where(source => (host.Length != 0 && source.Platforms.Contains(host)) == hostPlatformOnly)
+            .Where(source => (host.Length != 0 && source.Platforms.Contains(host)) == hostPlatformOnly && (!hostPlatformOnly || source.AdapterAvailable))
             .Select(source => new ComponentSourceChip(
                 LocalizedStatus.Format("component_center.source_kind_entry",
                     LocalizedStatus.Key("component_center.source_kind." + source.Kind),
                     LocalizedStatus.Key(source.AdapterAvailable ? "component_center.source_ready" : "component_center.source_planned")),
-                PlatformName(source.Platforms), source.AdapterAvailable, hostPlatformOnly))
+                PlatformName(hostPlatformOnly && HostPlatform.Length != 0 ? [HostPlatform] : source.Platforms), source.AdapterAvailable, hostPlatformOnly))
             .ToArray();
     }
     private static LocalizedStatus PlatformName(IReadOnlyList<string> platforms) => platforms.Count switch
@@ -117,7 +118,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         get
         {
             if (SelectedDefinition is not { } definition) return LocalizedStatus.Literal("");
-            if (definition.ComponentId == "git") return GitStatusText;
+            if (definition.ComponentId == "git" && HostPlatform == "windows") return GitStatusText;
             if (SelectedComponentState?.State is { } packageState)
                 return packageState.RecoveryRequired ? LocalizedStatus.Key("component_center.badge.Recovery")
                     : LocalizedStatus.Key("proxy_server.runtime.ownership." + packageState.Ownership);
@@ -216,8 +217,9 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     public ComponentCenterViewModel(ProxyServerRuntimeViewModel runtime, ComponentDraftStore store, string server, Guid actor,
         ITaskPlanPreviewClient? previews = null, ITaskExecutionClient? execution = null, ComponentTaskReferenceStore? references = null,
         IReadOnlyDictionary<string, ProxyServerRuntimeViewModel>? additionalRuntimes = null,
-        IReadOnlyList<IComponentHostObserver>? hostObservers = null, IComponentLifecycleClient? lifecycle = null)
+        IReadOnlyList<IComponentHostObserver>? hostObservers = null, IComponentLifecycleClient? lifecycle = null, string? hostPlatform = null)
     {
+        _hostPlatform = hostPlatform is "windows" or "linux" ? hostPlatform : "";
         Runtime = runtime; _store = store; _server = server; _actor = actor;
         _previews = previews;
         _execution = execution; _references = references;
@@ -274,36 +276,22 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     public bool ShowNginxSelection => SelectedDefinition?.ComponentId == "nginx" && NginxSelection is not null;
 
     public RelaxKonOS.Client.Apps.Git.GitClientViewModel? GitEngine { get; set; }
-    public bool ShowGitInstallation => SelectedDefinition?.ComponentId == "git" && GitEngine is not null;
+    public bool ShowGitInstallation => SelectedDefinition?.ComponentId == "git" && HostPlatform == "windows" && GitEngine is not null;
     public LocalizedStatus GitStatusText => LocalizedStatus.Key(GitEngine?.IsGitAvailable == true
         ? "component_center.domain.available" : GitEngine?.IsGitInstallRequired == true
             ? "component_center.domain.absent" : "proxy_server.state.unknown");
     public void RefreshGitState() => RefreshTree();
     public bool GitCanManage { get; set; }
-    public bool CanInstallGit => GitCanManage && ShowGitInstallation && GitEngine!.CanAutoInstall && !GitEngine.IsGitAvailable
-        && Runtime.CanManage && !Runtime.IsInvalidated && PackageInstallation is { IsActive: false };
-    public Func<Task<bool>>? ConfirmGitInstallAsync { get; set; }
     public void NotifyGit()
     {
-        OnPropertyChanged(nameof(CanInstallGit));
-        OnPropertyChanged(nameof(SelectedStatusText));
-        OnPropertyChanged(nameof(SelectedVersionText));
-        OnPropertyChanged(nameof(HasSelectedVersion));
-        InstallGitCommand.NotifyCanExecuteChanged();
-    }
-    [RelayCommand(CanExecute = nameof(CanInstallGit))] private async Task InstallGitAsync()
-    {
-        if (!CanInstallGit || ConfirmGitInstallAsync is null || !await ConfirmGitInstallAsync() || !CanInstallGit) return;
-        await PackageInstallation!.SubmitAsync(RelaxKonOS.Protocol.Installations.InstallationOperationKind.Install,
-            new RelaxKonOS.Protocol.Installations.GitInstallationRequest(true));
-        NotifyGit();
+        OnPropertyChanged(nameof(SelectedStatusText)); OnPropertyChanged(nameof(SelectedVersionText)); OnPropertyChanged(nameof(HasSelectedVersion));
     }
 
     private void NotifyContext()
     {
         foreach (var property in new[] { nameof(HasResults), nameof(HasRuntimeDetails), nameof(HasWorkloadDetails),
             nameof(SelectedTitle), nameof(EmptyMessage), nameof(WorkloadRequirements), nameof(WorkloadOptional), nameof(ShowInspection),
-            nameof(SelectedComponentTitle), nameof(ShowNginxSelection), nameof(ShowGitInstallation), nameof(CanInstallGit),
+            nameof(SelectedComponentTitle), nameof(ShowNginxSelection), nameof(ShowGitInstallation),
             nameof(DetailRuntime), nameof(ShowRuntimeTaskActivity), nameof(SelectedComponent), nameof(SelectedDefinition), nameof(ShowNotIntegrated),
             nameof(SelectedComponentDescription), nameof(SelectedHostSources), nameof(SelectedOtherSources),
             nameof(HasSelectedSources), nameof(HasOtherPlatformSources), nameof(HostPlatform),
@@ -366,14 +354,15 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
                 node.HasUpdate = runtime?.HasUpdates == true;
             }
         }
-        bool Eligible(ComponentTreeNode node) => SelectedPage switch
+        bool Eligible(ComponentTreeNode node) => (HostPlatform.Length == 0 || node.ComponentId is not { } componentId
+            || ComponentCatalog.Find(componentId)?.Platforms.Contains(HostPlatform) == true) && (SelectedPage switch
         {
             ComponentCenterPage.Installed => node.ComponentId is { } installed
                 && (installed == "git" ? GitEngine?.IsGitAvailable == true : (RuntimeFor(installed)?.Installation?.Installation.Ownership ?? _componentStates.GetValueOrDefault(installed)?.State?.Ownership)
                     is RuntimeOwnership.Managed or RuntimeOwnership.External),
             ComponentCenterPage.Updates => node.ComponentId is { } updating && RuntimeFor(updating)?.HasUpdates == true,
             _ => true
-        };
+        });
         var roots = SelectedPage == ComponentCenterPage.Workloads ? _workloadRoots : _componentRoots;
         var visible = roots.Where(root => root.Filter(Search.Trim(), Eligible)).ToArray();
         if (!VisibleRoots.SequenceEqual(visible)) { VisibleRoots.Clear(); foreach (var root in visible) VisibleRoots.Add(root); }

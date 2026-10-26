@@ -1,4 +1,4 @@
-﻿using RelaxKonOS.ManagedRuntimes.ComponentPackages;
+using RelaxKonOS.ManagedRuntimes.ComponentPackages;
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Privileged;
@@ -11,12 +11,14 @@ internal static class ComponentPackageInstallations
 {
     public static void Validate(string componentId, InstallationOperationKind kind, ComponentExecuteRequest frozen, string key)
     {
-        if (kind != InstallationOperationKind.Install || frozen is null || frozen.ComponentId != componentId
+        if (kind is not (InstallationOperationKind.Install or InstallationOperationKind.Upgrade or InstallationOperationKind.Uninstall) || frozen is null || frozen.ComponentId != componentId
             || frozen.Request is not { } request || request.ComponentId != componentId || !HostPackageComponentAdapter.ValidRequest(request)
             || string.IsNullOrWhiteSpace(request.HostId) || request.ExpectedRevision <= 0
             || frozen.Expected is not { Mode: ComponentSourceMode.SystemPackage, Archive: null, Package: not null }
             || frozen.Expected.Package.PackageName != HostPackageDefinitions.Find(componentId)?.PackageName
             || !AptPackageResolution.IsUsableExpectation(frozen.Expected.Package))
+            throw new InstallationException(InstallationProblemCodes.InvalidRequest, 400);
+        if (request.Change != (kind == InstallationOperationKind.Install ? RuntimeChange.Install : kind == InstallationOperationKind.Upgrade ? RuntimeChange.Update : RuntimeChange.Uninstall))
             throw new InstallationException(InstallationProblemCodes.InvalidRequest, 400);
         if (request.IdempotencyKey != key) throw new InstallationException(InstallationProblemCodes.IdempotencyConflict);
     }
@@ -55,8 +57,8 @@ internal static class ComponentPackageInstallations
         var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.ComponentPackageQuery, ComponentId: componentId, OperationId: operationId), ct);
         if (kind == InstallationOperationKind.Repair && result.Success && result.ComponentPackage?.RecoveryReceipt is { } recovery && recovery.OperationId == operationId)
             return new(InstallationOperationState.Succeeded);
-        return kind == InstallationOperationKind.Install && result.Success && result.ComponentPackage is { Managed: true, RecoveryRequired: false } state
-            && state.CommittedOperationId == operationId
+        return kind is InstallationOperationKind.Install or InstallationOperationKind.Upgrade or InstallationOperationKind.Uninstall && result.Success && result.ComponentPackage is { RecoveryRequired: false } state
+            && (kind == InstallationOperationKind.Uninstall ? state.InstalledVersion is null : state.Managed) && state.CommittedOperationId == operationId
             ? new(InstallationOperationState.Succeeded)
             : new(InstallationOperationState.Interrupted, InstallationProblemCodes.Interrupted);
     }
@@ -67,7 +69,7 @@ public sealed class SquidInstallationService(ComponentLifecycleRegistry registry
 {
     public override InstallationServiceId Id => InstallationServiceId.Squid;
     protected override bool Confirmed(SquidInstallationRequest request) => request.Confirmed;
-    protected override bool Supports(InstallationOperationKind kind) => kind is InstallationOperationKind.Install or InstallationOperationKind.Repair;
+    protected override bool Supports(InstallationOperationKind kind) => kind is InstallationOperationKind.Install or InstallationOperationKind.Upgrade or InstallationOperationKind.Uninstall or InstallationOperationKind.Repair;
     protected override void ValidateRequest(InstallationOperationKind kind, SquidInstallationRequest request, string key)
     {
         if (request.Recovery is { } recovery && request.FrozenPackage is null) ComponentPackageInstallations.ValidateRecovery(ComponentIds.Squid, kind, recovery);

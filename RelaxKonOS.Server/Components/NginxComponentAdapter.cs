@@ -1,4 +1,4 @@
-﻿using RelaxKonOS.ManagedRuntimes;
+using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.ManagedRuntimes.ComponentPackages;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Server.ManagedRuntimes;
@@ -30,7 +30,7 @@ internal sealed class NginxComponentAdapter(IPrivilegedNginxOperations nginx, Ng
     /// <summary>What this build can do for nginx on this host, decided without touching the host.</summary>
     internal static IReadOnlyList<ComponentModeSupport> DeclaredModes { get; } = OperatingSystem.IsWindows()
         ? [new(ComponentSourceMode.ManagedArchive, Windows, true, null)]
-        : [new(ComponentSourceMode.SystemPackage, Linux, true, null)];
+        : [new(ComponentSourceMode.SystemPackage, Linux, true, null, "apt")];
 
     public async Task<ComponentStateView> StateAsync(CancellationToken ct)
     {
@@ -51,7 +51,7 @@ internal sealed class NginxComponentAdapter(IPrivilegedNginxOperations nginx, Ng
         try
         {
             var resolution = await ResolveAsync(ct);
-            var state = NginxPackagePlan.BuildState(resolution, resolution.Managed, Environment.MachineName, NginxPackagePlan.HostArchitecture());
+            var state = new HostPackageComponentAdapter(ComponentId, helper).Map(resolution);
             return new(ComponentId, state, Modes, [], CommittedOperationId: resolution.CommittedOperationId,
                 PendingOperationId: resolution.PendingOperationId);
         }
@@ -130,6 +130,8 @@ internal sealed class NginxComponentAdapter(IPrivilegedNginxOperations nginx, Ng
             return new(ComponentId, ComponentExecutionOutcome.Succeeded, [], [],
                 MapArchive(windowsResult, Environment.MachineName, System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant()), windowsResult.Version);
         }
+        if (OperatingSystem.IsLinux() && request.Request.Change is RuntimeChange.Update or RuntimeChange.Uninstall)
+            return await new HostPackageComponentAdapter(ComponentId, helper).ExecuteAsync(request, ct);
         if (NginxPackagePlan.PrecheckExecute(request, OperatingSystem.IsLinux()) is { } refused) return refused;
         var expected = request.Expected!.Package!;
         var state = await ReadStateAsync(ct);
@@ -167,7 +169,7 @@ internal sealed class NginxComponentAdapter(IPrivilegedNginxOperations nginx, Ng
     private async Task<ComponentState> ReadStateAsync(CancellationToken ct)
     {
         var resolution = await ResolveAsync(ct);
-        return NginxPackagePlan.BuildState(resolution, resolution.Managed, Environment.MachineName, NginxPackagePlan.HostArchitecture());
+        return new HostPackageComponentAdapter(ComponentId, helper).Map(resolution);
     }
 
     private async Task<ComponentPackageResolution> ResolveAsync(CancellationToken ct)

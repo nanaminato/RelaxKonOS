@@ -51,15 +51,18 @@ public static partial class PrivilegedOperationExecutor
         if (request.Operation is PrivilegedOperationKind.ProxyServerStatus or PrivilegedOperationKind.ProxyServerAction or PrivilegedOperationKind.ProxyServerValidate or PrivilegedOperationKind.ProxyServerApply or PrivilegedOperationKind.ProxyServerGenerateKeys)
             return await SingBoxOperations.ExecuteAsync(request);
         if (request.ProxyServer is not null) return Fail(64, PrivilegedProblemCode.InvalidRequest, "ProxyServer fields require a dedicated operation");
-        if (request.Operation is PrivilegedOperationKind.ComponentPackageQuery or PrivilegedOperationKind.ComponentPackageInstall or PrivilegedOperationKind.ComponentPackageRecover)
+        if (request.Operation is PrivilegedOperationKind.ComponentPackageQuery or PrivilegedOperationKind.ComponentPackageInstall or PrivilegedOperationKind.ComponentPackageChange or PrivilegedOperationKind.ComponentPackageRecover)
         {
             var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
                 Correlation: request.Correlation, Version: request.Version,
                 ComponentId: request.Operation == PrivilegedOperationKind.ComponentPackageRecover ? null : request.ComponentId,
-                PackageExpectation: request.Operation == PrivilegedOperationKind.ComponentPackageInstall ? request.PackageExpectation : null,
+                PackageExpectation: request.Operation is PrivilegedOperationKind.ComponentPackageInstall or PrivilegedOperationKind.ComponentPackageChange ? request.PackageExpectation : null,
+                PackageChange: request.Operation == PrivilegedOperationKind.ComponentPackageChange ? request.PackageChange : null,
                 PackageRecovery: request.Operation == PrivilegedOperationKind.ComponentPackageRecover ? request.PackageRecovery : null);
             if (request != clean) return Fail(64, PrivilegedProblemCode.InvalidRequest, "unexpected package request fields");
         }
+        if (request.PackageChange is not null && request.Operation != PrivilegedOperationKind.ComponentPackageChange)
+            return Fail(64, PrivilegedProblemCode.InvalidRequest, "package change requires its dedicated operation");
         if (request.Operation == PrivilegedOperationKind.FrpArchiveCatalog)
         {
             var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
@@ -259,6 +262,7 @@ public static partial class PrivilegedOperationExecutor
                 PrivilegedOperationKind.NginxPackageUninstall => await UninstallNginxPackageAsync(),
                 PrivilegedOperationKind.ComponentPackageQuery => await QueryComponentPackageAsync(request.ComponentId, request.OperationId),
                 PrivilegedOperationKind.ComponentPackageRecover => await RecoverComponentPackageAsync(request.PackageRecovery, request.OperationId),
+                PrivilegedOperationKind.ComponentPackageChange => await ChangeComponentPackageAsync(request.ComponentId, request.PackageExpectation, request.PackageChange, request.OperationId),
                 PrivilegedOperationKind.ComponentPackageInstall => await InstallComponentPackageAsync(request.ComponentId, request.PackageExpectation, request.OperationId),
                 PrivilegedOperationKind.NginxConfigurationTest => await TestNginxConfigurationAsync(),
                 PrivilegedOperationKind.NginxRuntimeStatus => await GetNginxRuntimeStatusAsync(),

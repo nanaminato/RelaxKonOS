@@ -8,7 +8,7 @@ public sealed class DockerInstallationService(IDockerRuntimeInstaller installer,
     : InstallationService<DockerInstallationRequest>
 {
     public override InstallationServiceId Id => InstallationServiceId.Docker;
-    protected override bool Supports(InstallationOperationKind kind) => kind is InstallationOperationKind.Install or InstallationOperationKind.Repair;
+    protected override bool Supports(InstallationOperationKind kind) => kind is InstallationOperationKind.Install or InstallationOperationKind.Upgrade or InstallationOperationKind.Uninstall or InstallationOperationKind.Repair;
     protected override bool Confirmed(DockerInstallationRequest request) => request.Confirmed;
     protected override void ValidateRequest(InstallationOperationKind kind, DockerInstallationRequest request, string key)
     {
@@ -26,7 +26,7 @@ public sealed class DockerInstallationService(IDockerRuntimeInstaller installer,
         if (options.FrozenPackage is { } frozen)
         {
             await ComponentPackageInstallations.ExecuteAsync(components, frozen, progress, ct);
-            Check((await engine.GetStatusAsync(CancellationToken.None)).IsAvailable, "docker.access_restart_required");
+            if (kind == InstallationOperationKind.Install) Check((await engine.GetStatusAsync(CancellationToken.None)).IsAvailable, "docker.access_restart_required");
             return;
         }
         await progress.ReportAsync(new(InstallationStage.Installing, Cancellable: false), ct);

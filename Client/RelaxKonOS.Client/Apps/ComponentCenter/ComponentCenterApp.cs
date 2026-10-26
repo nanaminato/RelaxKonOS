@@ -63,7 +63,8 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             (ComponentTaskReferenceStore?)context.Services.GetService(typeof(ComponentTaskReferenceStore)),
             additionalRuntimes,
             (context.Services.GetService(typeof(IEnumerable<IComponentHostObserver>)) as IEnumerable<IComponentHostObserver>)?.ToArray(),
-            context.Services.GetService(typeof(IComponentLifecycleClient)) as IComponentLifecycleClient);
+            context.Services.GetService(typeof(IComponentLifecycleClient)) as IComponentLifecycleClient,
+            hostPlatform: session.CurrentServer?.Platform switch { HostPlatformKind.Windows => "windows", HostPlatformKind.Linux => "linux", _ => null });
         if (context.Services.GetService(typeof(RelaxKonOS.Client.Apps.Git.IRemoteGitClient)) is RelaxKonOS.Client.Apps.Git.IRemoteGitClient git)
         {
             model.GitEngine = new(git);
@@ -155,13 +156,12 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                 var pin = freeze.Target.Pin;
                 var dependencies = package is not null ? string.Join("\n", package.AlsoInstalls.Select(item =>
                     $"{item.FileName} · {item.Bytes} B · SHA-256 {item.Sha256}")) : string.Join(", ", pin!.AffectedComponents);
-                return ConfirmAsync(LocalizedText.Get("component_center.package.install"),
-                    LocalizedStatus.Format("component_center.package.install_confirm", freeze.State!.HostId,
+                return ConfirmAsync(LocalizedText.Get("component_center.native.action." + freeze.Request!.Change),
+                    LocalizedStatus.Format("component_center.native.confirm", LocalizedText.Get("component_center.native.action." + freeze.Request!.Change), freeze.State!.HostId,
                         package?.Version ?? pin!.Version, package?.RepositoryId ?? pin!.SourceUri,
                         package?.Sha256 ?? pin!.Sha256, dependencies, freeze.Request!.ComponentId).Resolve());
             };
         }
-        model.ConfirmGitInstallAsync = () => ConfirmAsync(LocalizedText.Get("common.install"), LocalizedText.Get("component_center.git.confirm"));
         model.ConfirmPackageRecoveryAsync = (component, operation, action) => ConfirmAsync(
             LocalizedText.Get("component_center.package.recovery." + action),
             LocalizedStatus.Format(action == RelaxKonOS.Protocol.ManagedRuntimes.ComponentRecoveryAction.RefreshSources

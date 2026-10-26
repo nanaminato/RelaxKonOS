@@ -95,6 +95,7 @@ public enum PrivilegedOperationKind
     /// </summary>
     ComponentPackageQuery,
     ComponentPackageInstall,
+    ComponentPackageChange,
     ComponentPackageRecover,
     NginxArchiveQuery,
     NginxArchiveInstall,
@@ -305,6 +306,7 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("serviceAction")] PrivilegedServiceAction? ServiceAction = null,
     [property: JsonPropertyName("nginxServiceAction")] NginxSystemServiceAction? NginxServiceAction = null,
     [property: JsonPropertyName("componentId")] string? ComponentId = null,
+    [property: JsonPropertyName("packageChange")] RelaxKonOS.Protocol.ManagedRuntimes.ComponentPackageChange? PackageChange = null,
     [property: JsonPropertyName("packageRecovery")] RelaxKonOS.Protocol.ManagedRuntimes.ComponentRecoveryRequest? PackageRecovery = null,
     [property: JsonPropertyName("archiveExpectation")] RelaxKonOS.Protocol.ManagedRuntimes.ComponentPinnedArchive? ArchiveExpectation = null,
     [property: JsonPropertyName("packageVersion")] string? PackageVersion = null,

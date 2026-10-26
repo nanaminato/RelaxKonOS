@@ -38,7 +38,7 @@ public sealed class PrivilegedNginxOperations(RelaxKonOS.Server.Privileged.IPriv
         CancellationToken cancellationToken = default) =>
         ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.ComponentPackageInstall,
             ComponentId: "nginx", OperationId: RelaxKonOS.Server.Installations.InstallationExecutionContext.Progress.Value?.OperationId,
-            PackageVersion: expectation.Version, PackageExpectation: expectation), cancellationToken);
+            PackageExpectation: expectation), cancellationToken);
     public Task<PrivilegedOperationResult> UninstallPackageAsync(CancellationToken cancellationToken = default) =>
         ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NginxPackageUninstall), cancellationToken);
     public Task<PrivilegedOperationResult> QueryPackageAsync(CancellationToken cancellationToken = default) =>

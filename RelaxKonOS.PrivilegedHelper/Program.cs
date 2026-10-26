@@ -1,4 +1,4 @@
-﻿using RelaxKonOS.Protocol.Installations;
+using RelaxKonOS.Protocol.Installations;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
@@ -497,7 +497,7 @@ static async Task<PrivilegedOperationResult> InstallNginxPackageAsync(string? ve
 
 static Task<PrivilegedOperationResult> UninstallNginxPackageAsync() => !OperatingSystem.IsLinux() || !File.Exists("/usr/bin/apt-get")
     ? Task.FromResult(Fail(64, PrivilegedProblemCode.UnsupportedOperation, "nginx package operation is unavailable"))
-    : RunAptAsync( ["purge", "--yes", "--auto-remove", "nginx"], TimeSpan.FromMinutes(10), "nginx package uninstall failed");
+    : RunFixedCommandAsync("/usr/bin/dpkg", ["--remove", "nginx"], TimeSpan.FromMinutes(10), "nginx package uninstall failed");
 
 /// <summary>
 /// Read-only. Asks the host package manager which Nginx package it would install and which exact

@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 using RelaxKonOS.Protocol.Common;
 
 namespace RelaxKonOS.Protocol.Installations;
@@ -50,7 +50,7 @@ public static class InstallationApiRoutes
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record SmbInstallationRequest(bool Confirmed, ManagedRuntimes.ComponentExecuteRequest? FrozenPackage = null, ManagedRuntimes.ComponentRecoveryRequest? Recovery = null);
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-public sealed record GitInstallationRequest(bool Confirmed);
+public sealed record GitInstallationRequest(bool Confirmed, ManagedRuntimes.ComponentExecuteRequest? FrozenPackage, ManagedRuntimes.ComponentRecoveryRequest? Recovery = null);
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record NginxInstallationRequest(bool Confirmed, string? Version = null, string? FileReferenceId = null,
     ManagedRuntimes.ComponentExecuteRequest? FrozenPackage = null, ManagedRuntimes.ComponentRecoveryRequest? Recovery = null);

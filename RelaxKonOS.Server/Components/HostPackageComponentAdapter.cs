@@ -13,7 +13,7 @@ public sealed class HostPackageComponentAdapter(string componentId, IPrivilegedO
         ?? throw new ArgumentException("Unsupported host package", nameof(componentId));
     public string ComponentId => definition.ComponentId;
     public IReadOnlyList<ComponentModeSupport> Modes => [new(ComponentSourceMode.SystemPackage, "linux", OperatingSystem.IsLinux(),
-        OperatingSystem.IsLinux() ? null : ComponentProblemCodes.PlatformUnsupported)];
+        OperatingSystem.IsLinux() ? null : ComponentProblemCodes.PlatformUnsupported, "apt")];
     public async Task<ComponentPackageResolution> ResolveAsync(CancellationToken ct)
     {
         var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.ComponentPackageQuery, ComponentId: ComponentId), ct);
@@ -28,7 +28,7 @@ public sealed class HostPackageComponentAdapter(string componentId, IPrivilegedO
             resolution.Managed.ToString(), resolution.RecoveryRequired.ToString(), resolution.CommittedOperationId?.ToString()),
         resolution.Managed ? RuntimeOwnership.Managed : resolution.InstalledVersion is null ? RuntimeOwnership.Absent : RuntimeOwnership.External,
         ComponentSourceMode.SystemPackage, new("linux", NginxPackagePlan.HostArchitecture() ?? "unknown", null, null,
-            RuntimeInstallMode.SystemPackage, "systemd"), resolution.InstalledVersion, resolution.RecoveryRequired);
+            RuntimeInstallMode.SystemPackage, definition.Service.Length == 0 ? "none" : "systemd"), resolution.InstalledVersion, resolution.RecoveryRequired);
     public async Task<ComponentStateView> StateAsync(CancellationToken ct)
     {
         if (!OperatingSystem.IsLinux()) return new(ComponentId, null, Modes, [ComponentProblemCodes.PlatformUnsupported]);
@@ -46,8 +46,6 @@ public sealed class HostPackageComponentAdapter(string componentId, IPrivilegedO
         if (!OperatingSystem.IsLinux()) return new(null, null, null, [ComponentProblemCodes.PlatformUnsupported], []);
         if (request.Mode != ComponentSourceMode.SystemPackage)
             return new(null, null, null, [ComponentProblemCodes.SourceModeUnsupported], []);
-        if (request.Change != RuntimeChange.Install)
-            return new(null, null, null, [ComponentProblemCodes.ExecutionUnavailable], []);
         if (!ValidRequest(request)) return new(null, null, null, [ComponentProblemCodes.RequestInvalid], []);
         var resolution = await ResolveAsync(ct);
         var state = Map(resolution);
@@ -56,7 +54,7 @@ public sealed class HostPackageComponentAdapter(string componentId, IPrivilegedO
         return NginxPackagePlan.Evaluate(request, state, resolution, true);
     }
     public static bool ValidRequest(ComponentPlanRequest request) => request.Mode == ComponentSourceMode.SystemPackage
-        && request.Change == RuntimeChange.Install && request.SourceId is null && request.ReleaseId is null
+        && request.Change is RuntimeChange.Install or RuntimeChange.Update or RuntimeChange.Uninstall && request.SourceId is null && request.ReleaseId is null
         && request.ExpectedSourceRevision == 0 && request.ExpectedTrustRevision == 0 && request.KeepData
         && !string.IsNullOrWhiteSpace(request.IdempotencyKey) && request.IdempotencyKey.Length <= 128;
     public async Task<ComponentExecutionResult> ExecuteAsync(ComponentExecuteRequest request, CancellationToken ct)
@@ -70,12 +68,16 @@ public sealed class HostPackageComponentAdapter(string componentId, IPrivilegedO
         if (!plan.Allowed || !AptPackageResolution.MatchesExpectation(request.Expected.Package, plan.Target?.Package))
             return Refused(plan.Problems.FirstOrDefault() ?? ComponentProblemCodes.PackageExpectationChanged);
         await progress.ReportAsync(new(RelaxKonOS.Protocol.Installations.InstallationStage.Installing, Cancellable: false), ct);
-        var installed = await helper.ExecuteAsync(new(PrivilegedOperationKind.ComponentPackageInstall,
-            ComponentId: ComponentId, PackageExpectation: request.Expected.Package, OperationId: progress.OperationId), CancellationToken.None);
+        var prior = await ResolveAsync(ct);
+        var installed = await helper.ExecuteAsync(request.Request.Change == RuntimeChange.Install
+            ? new(PrivilegedOperationKind.ComponentPackageInstall, ComponentId: ComponentId, PackageExpectation: request.Expected.Package, OperationId: progress.OperationId)
+            : new(PrivilegedOperationKind.ComponentPackageChange, ComponentId: ComponentId, PackageExpectation: request.Expected.Package,
+                PackageChange: new(request.Request.Change, prior.CommittedOperationId ?? Guid.Empty, prior.InstalledVersion ?? ""), OperationId: progress.OperationId), CancellationToken.None);
         if (!installed.Success) return new(ComponentId, ComponentExecutionOutcome.Failed, [ComponentProblemCodes.InstallFailed],
             [ComponentProblemCodes.RollbackUnsupported], null, null, ComponentProblemCodes.InstallFailed);
         var after = await ResolveAsync(CancellationToken.None);
-        if (!after.Managed || after.CommittedOperationId != progress.OperationId || after.InstalledVersion != request.Expected.Package.Version)
+        if (after.RecoveryRequired || after.CommittedOperationId != progress.OperationId || (request.Request.Change == RuntimeChange.Uninstall
+            ? after.InstalledVersion is not null : !after.Managed || after.InstalledVersion != request.Expected.Package.Version))
             return Refused(ComponentProblemCodes.InstalledVersionMismatch);
         return new(ComponentId, ComponentExecutionOutcome.Succeeded, [], [ComponentProblemCodes.RollbackUnsupported], Map(after), after.InstalledVersion);
     }

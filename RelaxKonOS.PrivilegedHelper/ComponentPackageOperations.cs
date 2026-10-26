@@ -1,4 +1,4 @@
-﻿using System.Security.Cryptography;
+using System.Security.Cryptography;
 using RelaxKonOS.PrivilegedHelper;
 using System.Text.Json;
 using RelaxKonOS.ManagedRuntimes.ComponentPackages;
@@ -54,7 +54,7 @@ public static partial class PrivilegedOperationExecutor
     private static async Task<(PrivilegedOperationResult? Failure, ComponentPackageResolution? Resolution)> ResolveComponentPackageAsync(HostPackageDefinition definition)
     {
         if (!OperatingSystem.IsLinux() || !File.Exists("/usr/bin/apt-get") || !File.Exists("/usr/bin/apt-cache")
-            || !Directory.Exists("/run/systemd/system"))
+            || definition.Service.Length != 0 && !Directory.Exists("/run/systemd/system"))
             return (Fail(64, PrivilegedProblemCode.UnsupportedOperation, "component package host is unsupported"), null);
         var policyRun = await RunFixedCommandWithOutputAsync("/usr/bin/apt-cache", ["policy", definition.PackageName], "package policy unavailable");
         if (policyRun.Success && policyRun.OutputBase64 is not null && string.IsNullOrWhiteSpace(DecodeUtf8(policyRun.OutputBase64)))
@@ -70,7 +70,9 @@ public static partial class PrivilegedOperationExecutor
             if (plan.Success && AptPackageResolution.TryParseUriPlan(DecodeUtf8(plan.OutputBase64), definition.PackageName, version, out var main, out var dependencies))
                 AptPackageResolution.TryBuildTarget(policy, main, dependencies, out target, out _);
         }
-        return (null, new(definition.PackageName, policy.InstalledVersion, target));
+        var updateAvailable = policy.InstalledVersion is { } installedVersion && target is not null
+            && (await RunFixedCommandAsync("/usr/bin/dpkg", ["--compare-versions", target.Version, "gt", installedVersion], TimeSpan.FromSeconds(30), "package update comparison unavailable")).Success;
+        return (null, new(definition.PackageName, policy.InstalledVersion, target, CandidateVersion: policy.CandidateVersion, UpdateAvailable: updateAvailable));
     }
     private static async Task<PrivilegedOperationResult> QueryComponentPackageAsync(string? componentId, Guid? receiptOperationId = null)
     {
@@ -81,6 +83,7 @@ public static partial class PrivilegedOperationExecutor
         try
         {
             var receipt = ReadPackageReceipt(definition);
+            var change = ReadPackageChange(definition);
             ComponentRecoveryReceipt? recovered = null;
             if (receiptOperationId is { } recoveryId)
             {
@@ -109,10 +112,11 @@ public static partial class PrivilegedOperationExecutor
             return new(true, ComponentPackage: resolution with {
                 Candidate = policyMissing ? null : resolution.Candidate,
                 BlockingProblem = policyMissing ? ComponentProblemCodes.HostPolicyRequired : null,
-                Managed = managed, RecoveryRequired = receipt is not null && !managed
+                InstalledTarget = managed ? receipt!.Target : null,
+                Managed = managed, RecoveryRequired = change is { Committed: false } || receipt is not null && !managed
                     || definition.ComponentId == ComponentIds.Squid && File.Exists("/etc/squid/relaxkonos.pending"),
-                CommittedOperationId = managed ? receipt!.OperationId : null,
-                PendingOperationId = receipt is not null && !managed ? receipt.OperationId : null, RecoveryReceipt = recovered });
+                CommittedOperationId = change is { Committed: true, Change.Change: RuntimeChange.Uninstall } && resolution.InstalledVersion is null ? change.OperationId : managed ? receipt!.OperationId : null,
+                PendingOperationId = change is { Committed: false } ? change.OperationId : receipt is not null && !managed ? receipt.OperationId : null, RecoveryReceipt = recovered });
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         { return Fail(65, PrivilegedProblemCode.Conflict, "component package ownership requires inspection"); }
@@ -131,6 +135,7 @@ public static partial class PrivilegedOperationExecutor
         var lockPath = Path.Combine(directory, "lock"); RequirePackagePath(lockPath);
         using var gate = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
         File.SetUnixFileMode(lockPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        if (ReadPackageChange(definition) is { Committed: false }) return Fail(65, PrivilegedProblemCode.Conflict, "component package change recovery required");
         var original = ReadPackageReceipt(definition);
         if (original is not null)
         {
@@ -140,7 +145,7 @@ public static partial class PrivilegedOperationExecutor
             return replay.ComponentPackage is { Managed: true, CommittedOperationId: var committed } && committed == operationId
                 ? replay : Fail(65, PrivilegedProblemCode.Conflict, "component package recovery required");
         }
-        foreach (var systemDirectory in new[] { "/etc/systemd/system", "/run/systemd/system" })
+        foreach (var systemDirectory in definition.Service.Length == 0 ? Array.Empty<string>() : new[] { "/etc/systemd/system", "/run/systemd/system" })
             if (File.Exists(Path.Combine(systemDirectory, definition.Service)) || Directory.Exists(Path.Combine(systemDirectory, definition.Service + ".d")))
                 return Fail(65, PrivilegedProblemCode.Conflict, "external service overrides require review");
         if (definition.ComponentId == ComponentIds.Docker && !DockerPackagePolicyReady())
@@ -174,10 +179,13 @@ public static partial class PrivilegedOperationExecutor
         };
         if (!health.Success) return health;
         if (!await OwnsPackageServiceAsync(definition)) return Fail(65, PrivilegedProblemCode.Conflict, "component service is external");
+        if (definition.Service.Length != 0)
+        {
         var service = await RunFixedCommandAsync("/usr/bin/systemctl", ["enable", "--now", definition.Service], TimeSpan.FromSeconds(60), "component service activation failed");
         if (!service.Success) return service;
         var running = await RunFixedCommandAsync("/usr/bin/systemctl", ["is-active", "--quiet", definition.Service], TimeSpan.FromSeconds(30), "component service unhealthy");
         if (!running.Success) return running;
+        }
         if (definition.ComponentId == ComponentIds.Docker)
         {
             var grant = await RunFixedCommandAsync("/usr/sbin/usermod", ["--append", "--groups", "docker", ReadDockerAccessUser()!],
@@ -216,7 +224,12 @@ public static partial class PrivilegedOperationExecutor
     }
     private static async Task<bool> OwnsPackageServiceAsync(HostPackageDefinition definition)
     {
-        foreach (var systemDirectory in new[] { "/etc/systemd/system", "/run/systemd/system" })
+        if (definition.Service.Length == 0)
+        {
+            var binaryOwner = await RunFixedCommandWithOutputAsync("/usr/bin/dpkg-query", ["-S", definition.Executable], "binary ownership unavailable");
+            return binaryOwner.Success && DecodeUtf8(binaryOwner.OutputBase64).StartsWith(definition.PackageName + ":", StringComparison.Ordinal);
+        }
+        foreach (var systemDirectory in definition.Service.Length == 0 ? Array.Empty<string>() : new[] { "/etc/systemd/system", "/run/systemd/system" })
             if (File.Exists(Path.Combine(systemDirectory, definition.Service)) || Directory.Exists(Path.Combine(systemDirectory, definition.Service + ".d"))) return false;
         var show = await RunFixedCommandWithOutputAsync("/usr/bin/systemctl", ["show", "--property=FragmentPath", "--value", definition.Service], "service ownership unavailable");
         var path = DecodeUtf8(show.OutputBase64).Trim();
@@ -262,6 +275,39 @@ public static partial class PrivilegedOperationExecutor
             var original = JsonSerializer.Deserialize<ComponentRecoveryReceipt>(await File.ReadAllBytesAsync(receiptPath));
             return original == result ? new(true) : Fail(65, PrivilegedProblemCode.Conflict, "component recovery identity changed");
         }
+        var pendingChange = ReadPackageChange(definition);
+        if (pendingChange is { Committed: false } && pendingChange.OperationId == request.OperationId)
+        {
+            if (request.Action == ComponentRecoveryAction.Stop && definition.Service.Length != 0)
+            {
+                if (!await OwnsPackageServiceAsync(definition)) return Fail(65, PrivilegedProblemCode.Conflict, "service ownership unavailable");
+                var stoppedChange = await RunFixedCommandAsync("/usr/bin/systemctl", ["stop", definition.Service], TimeSpan.FromSeconds(90), "service stop failed");
+                if (!stoppedChange.Success) return stoppedChange;
+            }
+            if (definition.Service.Length != 0 && (await RunFixedCommandAsync("/usr/bin/systemctl", ["is-active", "--quiet", definition.Service], TimeSpan.FromSeconds(30), "service state unavailable")).Success)
+                return Fail(65, PrivilegedProblemCode.Conflict, "service must be stopped before closing");
+            if (request.Action == ComponentRecoveryAction.Close)
+            {
+                var changeAudit = await RunFixedCommandWithOutputAsync("/usr/bin/dpkg", ["--audit"], "package audit unavailable");
+                if (!changeAudit.Success || !string.IsNullOrWhiteSpace(DecodeUtf8(changeAudit.OutputBase64)))
+                    return Fail(65, PrivilegedProblemCode.Conflict, "package repair required");
+                var closedChange = Path.Combine(directory, "closed-change-" + request.OperationId.ToString("N") + ".json");
+                RequirePackagePath(closedChange);
+                File.Move(PackageChangePath(definition), closedChange);
+                // Operator closure must not turn a partially committed update into original success.
+                var currentReceipt = ReadPackageReceipt(definition);
+                var currentFacts = await QueryComponentPackageAsync(request.ComponentId);
+                if (currentReceipt is not null && (currentReceipt.OperationId == request.OperationId || currentFacts.ComponentPackage?.Managed != true))
+                {
+                    var closedReceipt = Path.Combine(directory, "closed-" + request.OperationId.ToString("N") + ".json"); RequirePackagePath(closedReceipt);
+                    File.Move(PackageReceiptPath(definition), closedReceipt);
+                }
+            }
+            using var changeProof = new FileStream(receiptPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+            File.SetUnixFileMode(receiptPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            JsonSerializer.Serialize(changeProof, result); changeProof.Flush(true);
+            return new(true);
+        }
         var pending = ReadPackageReceipt(definition);
         if (pending is null || pending.OperationId != request.OperationId)
             return Fail(65, PrivilegedProblemCode.Conflict, "component recovery identity changed");
@@ -271,14 +317,14 @@ public static partial class PrivilegedOperationExecutor
             if (state.ComponentPackage is not { Managed: false, RecoveryRequired: true })
                 return Fail(65, PrivilegedProblemCode.Conflict, "healthy committed installation cannot be closed as unfinished");
         }
-        if (request.Action == ComponentRecoveryAction.Stop)
+        if (request.Action == ComponentRecoveryAction.Stop && definition.Service.Length != 0)
         {
             if (!await OwnsPackageServiceAsync(definition)) return Fail(65, PrivilegedProblemCode.Conflict, "component service ownership unverified");
             var stopped = await RunFixedCommandAsync("/usr/bin/systemctl", ["disable", "--now", definition.Service], TimeSpan.FromSeconds(90), "component emergency stop failed");
             if (!stopped.Success) return stopped;
         }
         var running = await RunFixedCommandAsync("/usr/bin/systemctl", ["is-active", "--quiet", definition.Service], TimeSpan.FromSeconds(30), "component service still running");
-        if (running.Success) return Fail(65, PrivilegedProblemCode.Conflict, "component service still running");
+        if (definition.Service.Length != 0 && running.Success) return Fail(65, PrivilegedProblemCode.Conflict, "component service still running");
         if (request.Action == ComponentRecoveryAction.Close)
         {
             var audit = await RunFixedCommandWithOutputAsync("/usr/bin/dpkg", ["--audit"], "package repair required");

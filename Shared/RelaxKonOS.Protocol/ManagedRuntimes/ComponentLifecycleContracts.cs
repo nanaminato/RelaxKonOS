@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 
 namespace RelaxKonOS.Protocol.ManagedRuntimes;
 
@@ -16,7 +16,8 @@ public static class ComponentIds
     public const string Docker = "docker";
     public const string Frpc = "frpc";
     public const string Frps = "frps";
-    public static bool Known(string? componentId) => componentId is SingBox or Mihomo or Nginx or Squid or Samba or Docker or Frpc or Frps;
+    public const string Git = "git";
+    public static bool Known(string? componentId) => componentId is SingBox or Mihomo or Nginx or Squid or Samba or Docker or Frpc or Frps or Git;
 }
 
 /// <summary>
@@ -103,7 +104,7 @@ public sealed record ComponentPlanResult(ComponentPlanRequest? Request, Componen
 /// </summary>
 public sealed record ComponentPackageResolution(string PackageName, string? InstalledVersion, ComponentPackageTarget? Candidate,
     bool Managed = false, bool RecoveryRequired = false, Guid? CommittedOperationId = null,
-    Guid? PendingOperationId = null, ComponentRecoveryReceipt? RecoveryReceipt = null, string? BlockingProblem = null);
+    Guid? PendingOperationId = null, ComponentRecoveryReceipt? RecoveryReceipt = null, string? BlockingProblem = null, ComponentPackageTarget? InstalledTarget = null, string? CandidateVersion = null, bool UpdateAvailable = false);
 
 /// <summary>
 /// Asks the Host to carry out exactly the change it just froze. <paramref name="Expected"/> is what
@@ -135,7 +136,7 @@ public sealed record ComponentExecutionResult(string ComponentId, ComponentExecu
 /// when the product exists on that platform but this build has no adapter for it, and
 /// <paramref name="ProblemCode"/> then names the reason instead of leaving a caller to guess.
 /// </summary>
-public sealed record ComponentModeSupport(ComponentSourceMode Mode, string Platform, bool Available, string? ProblemCode);
+public sealed record ComponentModeSupport(ComponentSourceMode Mode, string Platform, bool Available, string? ProblemCode, string? PackageManager = null);
 
 public static class ComponentRoutes
 {
@@ -158,6 +159,8 @@ public static class ComponentProblemCodes
     public const string ExecutionUnavailable = "component.execution_unavailable";
     /// <summary>Freezing worked but the host refuses the change for a domain reason.</summary>
     public const string PackageAlreadyInstalled = "component.package_already_installed";
+    public const string PackageNoUpdate = "component.package_no_update";
+    public const string PackageOwnershipRequired = "component.package_ownership_required";
     public const string PackageAbsent = "component.package_absent";
     public const string PackageUnresolved = "component.package_unresolved";
     public const string HostPolicyRequired = "component.host_policy_required";
@@ -190,3 +193,6 @@ public sealed record ComponentArchiveHostSnapshot(bool Installed, bool Managed, 
 public enum ComponentRecoveryAction { Stop, Close, RefreshSources }
 public sealed record ComponentRecoveryRequest(string ComponentId, Guid OperationId, ComponentRecoveryAction Action);
 public sealed record ComponentRecoveryReceipt(Guid OperationId, Guid TargetOperationId, ComponentRecoveryAction Action);
+
+/// <summary>Mutates an existing owned package at a measured prior commit.</summary>
+public sealed record ComponentPackageChange(RuntimeChange Change, Guid PreviousOperationId, string ExpectedInstalledVersion);
