@@ -1,4 +1,4 @@
-﻿using System.Net.Http.Headers;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -98,7 +98,7 @@ public partial class ComponentCenterViewModel
         installation.PropertyChanged += PackageInstallationChanged;
         NotifyPackage();
     }
-    private void PackageInstallationChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args) => NotifyPackage();
+    private void PackageInstallationChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args) { NotifyPackage(); NotifyGit(); }
     public bool CanInstallPackage => CanResolvePackage && Runtime.CanManage && PackageInstallation is not null && !_packageInstallations.Values.Any(task => task.IsActive)
         && SelectedComponentFreeze is { Allowed: true, Request.Change: RuntimeChange.Install,
             State.Ownership: RuntimeOwnership.Absent } freeze && (freeze.Target?.Package is not null || freeze.Target?.Pin is not null);
@@ -108,8 +108,11 @@ public partial class ComponentCenterViewModel
         if (_lifecycle is not null && !Runtime.IsInvalidated)
         {
             var affected = componentId is "frpc" or "frps" ? new[] { "frpc", "frps" } : new[] { componentId };
-            foreach (var id in affected) _componentStates[id] = await _lifecycle.StateAsync(id, _inspectionLifetime.Token);
+            foreach (var id in affected)
+                if (id != "git") _componentStates[id] = await _lifecycle.StateAsync(id, _inspectionLifetime.Token);
         }
+        if (componentId == "nginx" && NginxSelection is not null) await NginxSelection.RefreshCommand.ExecuteAsync(null);
+        if (componentId == "git" && GitEngine is not null) await GitEngine.RefreshEngineStatusCommand.ExecuteAsync(null);
         NotifyPackage();
     }
     [RelayCommand] private async Task InstallPackageAsync()
@@ -124,6 +127,7 @@ public partial class ComponentCenterViewModel
             "squid" => new SquidInstallationRequest(true, execution),
             "samba" => new SmbInstallationRequest(true, execution),
             "docker" => new DockerInstallationRequest(true, execution),
+            "frpc" or "frps" => new FrpInstallationRequest(true, FrozenArchive: execution),
             _ => throw new InvalidOperationException("component.unknown")
         };
         await PackageInstallation!.SubmitAsync(InstallationOperationKind.Install, request);

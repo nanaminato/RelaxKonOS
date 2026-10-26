@@ -27,14 +27,15 @@ public sealed class TunnelManagerApp : RemoteApplicationBase
     {
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
         var client = context.Services.GetService(typeof(IRemoteTunnelClient)) as IRemoteTunnelClient;
-        var files = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
         if (session is null || client is null || session.State != AuthSessionState.Authenticated)
         {
             context.ShowWindow(LocalizedText.Get("tunnels.title"), new TunnelLoginRequiredView(), new Rect(180, 160, 470, 180), Manifest.IconGlyph, false, false, false); return;
         }
         var canManage = context.Permissions.IsGranted(AppPermissions.ServerTunnelsManage);
         var vm = new TunnelManagerViewModel(client, canManage);
-        vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Frp, "relaxkonos.tunnels", vm.RefreshAfterChildAsync); var view = new TunnelManagerView { DataContext = vm }; var window = context.ShowWindow(LocalizedText.Get("tunnels.title"), InstallationPanel.Wrap(view, vm.Installation), new Rect(90, 65, 1040, 680), Manifest.IconGlyph);
+        var manageComponent = RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterEntry.Navigate(context, "relaxkonos.tunnels", "frpc");
+        vm.OpenComponentCenter = manageComponent;
+        vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Frp, "relaxkonos.tunnels", vm.RefreshAfterChildAsync); var view = new TunnelManagerView { DataContext = vm }; var window = context.ShowWindow(LocalizedText.Get("tunnels.title"), RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterEntry.Wrap(InstallationPanel.Wrap(view, vm.Installation), manageComponent), new Rect(90, 65, 1040, 680), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
         async Task<bool> ConfirmAsync(string title, string message, string confirmLabel)
         {
@@ -46,26 +47,6 @@ public sealed class TunnelManagerApp : RemoteApplicationBase
             return confirmed;
         }
         vm.RequestConfirmationAsync = (title, message) => ConfirmAsync(title, message, title);
-        vm.RequestServerRuntimePackageAsync = async () =>
-        {
-            if (files is null) return null;
-            return await context.ShowDialogAsync<string?>(window, LocalizedText.Get("tunnels.runtime.select_server_package"), dialog =>
-            {
-                var picker = new ExplorerViewModel(files, new ExplorerPickerOptions(ExplorerPickerMode.OpenFile,
-                    Filters: [new ExplorerFileFilter(LocalizedText.Get("tunnels.runtime.select_server_package"), ["*.zip", "*.tar.gz", "*.tgz"])]),
-                    paths => dialog.Close(paths.FirstOrDefault()), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "TunnelManager.binary") { CancelAction = dialog.Cancel };
-                _ = picker.LoadRootAsync();
-                return new ExplorerMainView { DataContext = picker };
-            }, new Size(720, 520));
-        };
-        vm.ShowRuntimeDownloadUrlAsync = url => context.ShowDialogAsync<bool?>(window, LocalizedText.Get("tunnels.runtime_download_title"), dialog => new DownloadUrlDialogView
-        {
-            DataContext = new DownloadUrlDialogViewModel(url, async value =>
-            {
-                var topLevel = Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop ? desktop.MainWindow : null;
-                if (topLevel?.Clipboard is not null) await topLevel.Clipboard.SetTextAsync(value);
-            }, () => dialog.Close(true)),
-        }, new Size(660, 210));
         vm.ShowManagedFrpsConfigurationAsync = async () =>
         {
             await vm.LoadManagedFrpsForEditingAsync();

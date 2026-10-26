@@ -33,7 +33,8 @@ public sealed class FileServicesApp : RemoteApplicationBase
             && session.ServiceId == windowService && windowUser is not null && windowSession is not null
             && ReferenceEquals(session.CurrentUser, windowUser) && ReferenceEquals(session.CurrentSession, windowSession);
         var vm = new FileServicesViewModel(client, context.Permissions, IsWindowSessionCurrent);
-        vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Smb, "relaxkonos.file-services", () => vm.RefreshCommand.ExecuteAsync(null));
+        var manageComponent = RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterEntry.Navigate(context, "relaxkonos.file-services", "samba");
+        vm.OpenComponentCenter = manageComponent;
         var workspace = new FileServicesWorkspace(vm);
         void SessionChanged(object? sender, AuthSessionStateChangedEventArgs args)
         {
@@ -48,7 +49,7 @@ public sealed class FileServicesApp : RemoteApplicationBase
             if (!IsWindowSessionCurrent()) vm.InvalidateWindowSession();
         };
         workspace.DetachedFromVisualTree += (_, _) => session.StateChanged -= SessionChanged;
-        var window = context.ShowWindow(LocalizedText.Get("file_services.title"), InstallationPanel.Wrap(workspace, vm.Installation), new Rect(90, 80, 960, 720), Manifest.IconGlyph);
+        var window = context.ShowWindow(LocalizedText.Get("file_services.title"), RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterEntry.Wrap(workspace, manageComponent), new Rect(90, 80, 960, 720), Manifest.IconGlyph);
         workspace.AttachWindowHeader(window);
         vm.RequestHostAdministratorCredentialsAsync = async error =>
         {

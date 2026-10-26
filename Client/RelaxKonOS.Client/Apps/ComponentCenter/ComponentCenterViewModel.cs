@@ -83,7 +83,8 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         },
         _ => LocalizedStatus.Key("component_center.platform.multiple")
     };
-    public LocalizedStatus SelectedIntegrationText => SelectedDefinition is { } definition
+    public LocalizedStatus SelectedIntegrationText => SelectedDefinition?.ComponentId == "git"
+        ? LocalizedStatus.Key("component_center.git.integration") : SelectedDefinition is { } definition
         ? LocalizedStatus.Key("component_center.integration." + definition.Integration) : LocalizedStatus.Literal("");
     public LocalizedStatus SelectedCategoryText => SelectedDefinition is { } definition
         ? LocalizedStatus.Key("component_center.category." + definition.Category) : LocalizedStatus.Literal("");
@@ -105,10 +106,13 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         get
         {
             if (SelectedDefinition is not { } definition) return LocalizedStatus.Literal("");
+            if (definition.ComponentId == "git") return GitStatusText;
             if (SelectedComponentState?.State is { } packageState)
                 return packageState.RecoveryRequired ? LocalizedStatus.Key("component_center.badge.Recovery")
                     : LocalizedStatus.Key("proxy_server.runtime.ownership." + packageState.Ownership);
             var runtime = DetailRuntime;
+            if (runtime is null && definition.Integration == ComponentIntegration.Installation && PackageInstallation is not null)
+                return LocalizedStatus.Key("proxy_server.state.unknown");
             // A component with no runtime page in this build has no measured state to claim.
             if (definition.Integration == ComponentIntegration.Application || runtime is null)
                 return LocalizedStatus.Key("component_center.status.not_integrated");
@@ -118,9 +122,10 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
             return runtime.OwnershipText;
         }
     }
-    public LocalizedStatus SelectedVersionText => SelectedComponentState?.State?.ActiveVersion is { } version
+    public LocalizedStatus SelectedVersionText => SelectedDefinition?.ComponentId == "git"
+        ? LocalizedStatus.Literal(GitEngine?.IsGitAvailable == true ? GitEngine.EngineVersion : "—") : SelectedComponentState?.State?.ActiveVersion is { } version
         ? LocalizedStatus.Literal(version) : DetailRuntime?.MeasuredVersionText ?? LocalizedStatus.Literal("—");
-    public bool HasSelectedVersion => SelectedComponentState?.State?.ActiveVersion is { Length: > 0 }
+    public bool HasSelectedVersion => SelectedDefinition?.ComponentId == "git" && GitEngine?.IsGitAvailable == true || SelectedComponentState?.State?.ActiveVersion is { Length: > 0 }
         || DetailRuntime?.Installation?.MeasuredVersion is { Length: > 0 };
     public bool SelectedHasUpdate => DetailRuntime?.HasUpdates == true;
     /// <summary>The host target chip is only meaningful once the host reported a target.</summary>
@@ -254,13 +259,39 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
             target.WorkloadId is { } workload ? node.WorkloadId == workload && node.ComponentId is null : node.ComponentId == target.ComponentId);
     }
     public RelaxKonOS.Client.Apps.WebServers.WebServerManagerViewModel? NginxSelection { get; set; }
-    public bool ShowNginxSelection => SelectedDefinition?.ComponentId == "nginx" && NginxSelection?.IsLinuxServer == true;
+    public bool ShowNginxSelection => SelectedDefinition?.ComponentId == "nginx" && NginxSelection is not null;
+
+    public RelaxKonOS.Client.Apps.Git.GitClientViewModel? GitEngine { get; set; }
+    public bool ShowGitInstallation => SelectedDefinition?.ComponentId == "git" && GitEngine is not null;
+    public LocalizedStatus GitStatusText => LocalizedStatus.Key(GitEngine?.IsGitAvailable == true
+        ? "component_center.domain.available" : GitEngine?.IsGitInstallRequired == true
+            ? "component_center.domain.absent" : "proxy_server.state.unknown");
+    public void RefreshGitState() => RefreshTree();
+    public bool GitCanManage { get; set; }
+    public bool CanInstallGit => GitCanManage && ShowGitInstallation && GitEngine!.CanAutoInstall && !GitEngine.IsGitAvailable
+        && Runtime.CanManage && !Runtime.IsInvalidated && PackageInstallation is { IsActive: false };
+    public Func<Task<bool>>? ConfirmGitInstallAsync { get; set; }
+    public void NotifyGit()
+    {
+        OnPropertyChanged(nameof(CanInstallGit));
+        OnPropertyChanged(nameof(SelectedStatusText));
+        OnPropertyChanged(nameof(SelectedVersionText));
+        OnPropertyChanged(nameof(HasSelectedVersion));
+        InstallGitCommand.NotifyCanExecuteChanged();
+    }
+    [RelayCommand(CanExecute = nameof(CanInstallGit))] private async Task InstallGitAsync()
+    {
+        if (!CanInstallGit || ConfirmGitInstallAsync is null || !await ConfirmGitInstallAsync() || !CanInstallGit) return;
+        await PackageInstallation!.SubmitAsync(RelaxKonOS.Protocol.Installations.InstallationOperationKind.Install,
+            new RelaxKonOS.Protocol.Installations.GitInstallationRequest(true));
+        NotifyGit();
+    }
 
     private void NotifyContext()
     {
         foreach (var property in new[] { nameof(HasResults), nameof(HasRuntimeDetails), nameof(HasWorkloadDetails),
             nameof(SelectedTitle), nameof(EmptyMessage), nameof(WorkloadRequirements), nameof(WorkloadOptional), nameof(ShowInspection),
-            nameof(SelectedComponentTitle), nameof(ShowNginxSelection),
+            nameof(SelectedComponentTitle), nameof(ShowNginxSelection), nameof(ShowGitInstallation), nameof(CanInstallGit),
             nameof(DetailRuntime), nameof(SelectedComponent), nameof(SelectedDefinition), nameof(ShowNotIntegrated),
             nameof(SelectedComponentDescription), nameof(SelectedHostSources), nameof(SelectedOtherSources),
             nameof(HasSelectedSources), nameof(HasOtherPlatformSources), nameof(HostPlatform),
@@ -276,6 +307,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
             nameof(ShowBatchPlanPanel), nameof(HasSelectedVersion), nameof(HasTargetText) })
             OnPropertyChanged(property);
         NotifyPackage();
+        NotifyGit();
     }
     private void BuildTrees()
     {
@@ -311,13 +343,13 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
                 node.CanSelect = !IsTaskBusy && !(runtime?.IsBusy ?? false) && definition.Integration == ComponentIntegration.Batch;
                 node.ShowStatus = true;
                 var packageState = _componentStates.GetValueOrDefault(id)?.State;
-                node.ShowVersion = runtime?.Installation is not null || packageState?.ActiveVersion is not null;
-                node.Status = packageState is not null ? LocalizedStatus.Key("proxy_server.runtime.ownership." + packageState.Ownership)
-                    : runtime is null ? LocalizedStatus.Key("component_center.status.not_integrated")
+                node.ShowVersion = id == "git" ? GitEngine?.IsGitAvailable == true : runtime?.Installation is not null || packageState?.ActiveVersion is not null;
+                node.Status = id == "git" ? GitStatusText : packageState is not null ? LocalizedStatus.Key("proxy_server.runtime.ownership." + packageState.Ownership)
+                    : runtime is null ? LocalizedStatus.Key(_packageInstallations.ContainsKey(id) ? "proxy_server.state.unknown" : "component_center.status.not_integrated")
                     : runtime.NeedsRecovery ? LocalizedStatus.Key("component_center.badge.Recovery")
                     : runtime.HasRuntimeProblem ? LocalizedStatus.Key("component_center.badge.Faulted")
                     : runtime.OwnershipText;
-                node.Version = packageState?.ActiveVersion ?? runtime?.MeasuredVersionText.Resolve() ?? "";
+                node.Version = id == "git" ? GitEngine?.IsGitAvailable == true ? GitEngine.EngineVersion : "" : packageState?.ActiveVersion ?? runtime?.MeasuredVersionText.Resolve() ?? "";
                 node.SetTone(Tone(definition));
                 node.HasUpdate = runtime?.HasUpdates == true;
             }
@@ -325,8 +357,8 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         bool Eligible(ComponentTreeNode node) => SelectedPage switch
         {
             ComponentCenterPage.Installed => node.ComponentId is { } installed
-                && (RuntimeFor(installed)?.Installation?.Installation.Ownership ?? _componentStates.GetValueOrDefault(installed)?.State?.Ownership)
-                    is RuntimeOwnership.Managed or RuntimeOwnership.External,
+                && (installed == "git" ? GitEngine?.IsGitAvailable == true : (RuntimeFor(installed)?.Installation?.Installation.Ownership ?? _componentStates.GetValueOrDefault(installed)?.State?.Ownership)
+                    is RuntimeOwnership.Managed or RuntimeOwnership.External),
             ComponentCenterPage.Updates => node.ComponentId is { } updating && RuntimeFor(updating)?.HasUpdates == true,
             _ => true
         };

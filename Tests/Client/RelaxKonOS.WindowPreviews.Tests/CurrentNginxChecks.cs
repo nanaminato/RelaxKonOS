@@ -15,16 +15,22 @@ internal static class CurrentNginxChecks
 {
     public static void Run()
     {
+        RunPlatform(HostPlatformKind.Linux);
+        RunPlatform(HostPlatformKind.Windows);
+    }
+    private static void RunPlatform(HostPlatformKind platform)
+    {
         var client = DispatchProxy.Create<IRemoteWebServerClient, CurrentNginxClient>();
         var host = (CurrentNginxClient)(object)client;
         var session = DispatchProxy.Create<IAuthSession, SiteEditorSession>();
+        ((SiteEditorSession)(object)session).Platform = platform;
         WebServerManagerViewModel Model(bool center) => new(client, null!, session, new FirewallTestPermissions(),
             DispatchProxy.Create<IHostElevationBroker, SiteEditorElevation>()) { IsComponentCenter = center };
         var manager = Model(false);
         var center = Model(true);
         manager.RefreshCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         center.RefreshCommand.ExecuteAsync(null).GetAwaiter().GetResult();
-        Check(manager.SelectedServer?.Id == "first" && !manager.ShowInstanceSelection, "Linux manager resolves the host selection without a picker.");
+        Check(manager.SelectedServer?.Id == "first" && !manager.ShowInstanceSelection, platform + " manager resolves the host selection without a picker.");
         center.SelectedServer = host.Servers[1];
         center.SelectCurrentNginxCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Check(host.Current == "second", "Component Center persists the explicit host selection.");
@@ -33,11 +39,13 @@ internal static class CurrentNginxChecks
         Check(manager.SelectedServer?.Id == "second" && manager.SiteEditorTargetChanged && !manager.SaveSiteCommand.CanExecute(null),
             "Changing the current Nginx invalidates the previous site editor target.");
         manager.EndSiteEditing();
+        Check(typeof(WebServerManagerViewModel).GetProperty("InstallManagedCommand") is null,
+            platform + " manager has no application installation command.");
         Check(!manager.SelectCurrentNginxCommand.CanExecute(null), "The manager cannot set the host selection.");
         foreach (var width in new[] { 1060, 520 })
         {
-            Capture(new WebServerInstancesPageView { DataContext = manager }, "manager-" + width, width);
-            Capture(new CurrentNginxSelectionView { DataContext = center }, "selection-" + width, width);
+            Capture(new WebServerInstancesPageView { DataContext = manager }, platform + "-manager-" + width, width);
+            Capture(new CurrentNginxSelectionView { DataContext = center }, platform + "-selection-" + width, width);
         }
         center.SelectedIntegrationCandidate = new("external", "nginx", WebServerType.Nginx, "/external/nginx", "/external/nginx.conf", "1.28", DateTimeOffset.UtcNow);
         center.RequestIntegrationConfirmationAsync = () => Task.FromResult(true);
@@ -49,7 +57,7 @@ internal static class CurrentNginxChecks
         host.Fail = true;
         manager.RefreshCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Check(manager.SelectedServer is null && manager.Servers.Count == 0, "A failed selection read clears old management targets.");
-        Console.WriteLine("Current Nginx desktop checks passed (7 assertions, 4 previews).");
+        Console.WriteLine("Current Nginx desktop checks passed (8 assertions, 4 previews).");
     }
     private static void Capture(Control view, string name, int width)
     {

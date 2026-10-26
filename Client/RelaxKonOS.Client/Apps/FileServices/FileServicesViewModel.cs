@@ -13,16 +13,18 @@ namespace RelaxKonOS.Client.Apps.FileServices;
 /// <summary>Window-local SMB control-plane state. It never retains Samba passwords or Helper output.</summary>
 public sealed partial class FileServicesViewModel(IRemoteFileServicesClient client, IAppPermissionScope permissions, Func<bool> isWindowSessionCurrent) : LocalizedObservableObject
 {
-    public InstallationTaskViewModel Installation { get; set; } = null!;
+    public Action? OpenComponentCenter { get; set; }
+    [RelayCommand] private void ManageComponent() => OpenComponentCenter?.Invoke();
+
 
     public ObservableCollection<FileShareDto> Shares { get; } = [];
     public ObservableCollection<FileServiceUserDto> Users { get; } = [];
     [ObservableProperty] private LocalizedStatus _statusText = LocalizedText.RefWithFallback("file_services.status.loading", "Loading SMB status…");
     [ObservableProperty] private string _connectionText = "—";
-    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(NewShareCommand), nameof(RefreshCommand), nameof(InstallCommand), nameof(StartServiceCommand), nameof(StopCommand), nameof(RestartCommand), nameof(EditShareCommand), nameof(DeleteShareCommand), nameof(ToggleUserCommand), nameof(SetSambaPasswordCommand))] private bool _isBusy;
+    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(NewShareCommand), nameof(RefreshCommand), nameof(StartServiceCommand), nameof(StopCommand), nameof(RestartCommand), nameof(EditShareCommand), nameof(DeleteShareCommand), nameof(ToggleUserCommand), nameof(SetSambaPasswordCommand))] private bool _isBusy;
     // A modal confirmation or elevation prompt is local UI, not a submitted host operation.
     // Keep commands serialized while it is open without showing the operation progress bar.
-    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(NewShareCommand), nameof(RefreshCommand), nameof(InstallCommand), nameof(StartServiceCommand), nameof(StopCommand), nameof(RestartCommand), nameof(EditShareCommand), nameof(DeleteShareCommand), nameof(ToggleUserCommand), nameof(SetSambaPasswordCommand))] private bool _isAwaitingInput;
+    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(NewShareCommand), nameof(RefreshCommand), nameof(StartServiceCommand), nameof(StopCommand), nameof(RestartCommand), nameof(EditShareCommand), nameof(DeleteShareCommand), nameof(ToggleUserCommand), nameof(SetSambaPasswordCommand))] private bool _isAwaitingInput;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(SupportsSambaCredentials))] private FileServiceCapabilitiesDto? _capabilities;
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(EditShareCommand), nameof(DeleteShareCommand))] private FileShareDto? _selectedShare;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(UserToggleText))] [NotifyCanExecuteChangedFor(nameof(ToggleUserCommand), nameof(SetSambaPasswordCommand))] private FileServiceUserDto? _selectedUser;
@@ -83,7 +85,7 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
     private static LocalizedStatus Problem(string code) => LocalizedText.Ref("file_services.problem." + code, code);
     private void NotifyActions()
     {
-        foreach (var command in new IRelayCommand[] { RefreshCommand, InstallCommand, StartServiceCommand, StopCommand, RestartCommand, NewShareCommand, EditShareCommand, DeleteShareCommand, ToggleUserCommand, SetSambaPasswordCommand }) command.NotifyCanExecuteChanged();
+        foreach (var command in new IRelayCommand[] { RefreshCommand, StartServiceCommand, StopCommand, RestartCommand, NewShareCommand, EditShareCommand, DeleteShareCommand, ToggleUserCommand, SetSambaPasswordCommand }) command.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(PlatformText)); OnPropertyChanged(nameof(PlatformHelp)); OnPropertyChanged(nameof(SupportsInstall)); OnPropertyChanged(nameof(VersionText));
         OnPropertyChanged(nameof(FactsAvailable)); OnPropertyChanged(nameof(CanManage));
     }
@@ -150,8 +152,6 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
         FactsAvailable = true;
         NotifyActions();
     }
-    [RelayCommand(CanExecute = nameof(CanInstall))]
-    private Task InstallAsync() => CanInstall() ? Installation.SubmitAsync(InstallationOperationKind.Install, new SmbInstallationRequest(true)) : Task.CompletedTask;
     [RelayCommand(CanExecute = nameof(CanStart))] private Task StartServiceAsync() => CanStart() ? Apply(() => client.LifecycleAsync(SmbLifecycleAction.Start),
         targetCurrent: () => FactsAvailable && RuntimeState == FileServiceRuntimeState.Stopped, targetFailure: "operation_failed") : Task.CompletedTask;
     [RelayCommand(CanExecute = nameof(CanStop))] private Task StopAsync() => CanStop() ? Apply(() => client.LifecycleAsync(SmbLifecycleAction.Stop),

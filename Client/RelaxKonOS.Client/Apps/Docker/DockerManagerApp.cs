@@ -34,9 +34,10 @@ public sealed class DockerManagerApp : RemoteApplicationBase
         }
 
         var vm = new DockerManagerViewModel(client);
+        var manageComponent = RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterEntry.Navigate(context, "relaxkonos.docker", "docker");
+        vm.OpenComponentCenter = manageComponent;
         var proxyViewModel = new DockerProxyViewModel(client, readOnly: true);
         var imageMirrorsViewModel = new DockerImageMirrorsViewModel(context.Services.GetRequiredService<IDockerImageMirrorClient>());
-        vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Docker, "relaxkonos.docker", () => vm.RefreshCommand.ExecuteAsync(null));
         ManagedWindow? window = null;
         var view = DockerManagerWorkspace.Create(vm, proxyViewModel, imageMirrorsViewModel,
             () => DockerManagerDialogs.ShowCreateContainerAsync(context, window!, vm),
@@ -44,7 +45,7 @@ public sealed class DockerManagerApp : RemoteApplicationBase
             () => DockerManagerDialogs.ShowPullImageAsync(context, window!, vm),
             () => DockerManagerDialogs.ShowCreateNetworkAsync(context, window!, vm),
             () => DockerManagerDialogs.ShowCreateVolumeAsync(context, window!, vm));
-        window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.docker.display_name"), InstallationPanel.Wrap(view, vm.Installation), new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
+        window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.docker.display_name"), RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterEntry.Wrap(view, manageComponent), new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
         // Stopping or restarting the engine terminates every running container on the host, so it
         // gets its own confirmation wording instead of the deletion dialog's.
@@ -79,18 +80,7 @@ public sealed class DockerManagerApp : RemoteApplicationBase
                 vm.StatusText = LocalizedText.Get("docker.stack.explorer_unavailable");
             return Task.CompletedTask;
         };
-        vm.Installation.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window!, problemCode);
-        vm.OpenDockerInstallationAsync = async () =>
-        {
-            if (session.CurrentServer?.Platform == HostPlatformKind.Linux)
-            {
-                if (vm.Installation.IsActive) return;
-                if (await vm.RequestEngineConfirmationAsync(LocalizedText.Get("docker.install.confirm")))
-                    await vm.Installation.SubmitAsync(InstallationOperationKind.Install, new DockerInstallationRequest(true));
-                return;
-            }
-            await DockerManagerDialogs.ShowWindowsSetupGuideAsync(context, window!, vm);
-        };
+        vm.OpenDockerInstallationAsync = () => { manageComponent(); return Task.CompletedTask; };
         _ = vm.StartAsync();
     }
 }

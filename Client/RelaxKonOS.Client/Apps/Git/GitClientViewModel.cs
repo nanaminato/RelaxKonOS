@@ -24,6 +24,9 @@ public sealed record GitLogFilterOption(string Value, string Label);
 /// Each window owns its own ViewModel instance — supports multiple projects open simultaneously (MultiWindow instance policy).</summary>
 public sealed partial class GitClientViewModel(IRemoteGitClient client) : ObservableObject
 {
+    public Action? OpenComponentCenter { get; set; }
+    [RelayCommand] private void ManageComponent() => OpenComponentCenter?.Invoke();
+
     public Func<GitRepositoryDto, Task<bool>>? OpenEditorProjectAsync { get; set; }
     public Func<string, Task>? OpenPlainFolderAsync { get; set; }
     public Func<Task<bool>>? PrepareEditorOperationAsync { get; set; }
@@ -39,7 +42,6 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
         try { return await (PrepareEditorOperationAsync?.Invoke() ?? Task.FromResult(true)); }
         finally { _preparingEditor = false; }
     }
-    public InstallationTaskViewModel Installation { get; set; } = null!;
 
     public ObservableCollection<GitRepositoryDto> Repositories { get; } = [];
     public ObservableCollection<GitBranchDto> Branches { get; } = [];
@@ -172,8 +174,6 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
     [ObservableProperty] private string _engineVersion = "—";
     [ObservableProperty] private string _enginePath = "—";
     [ObservableProperty] private string _problemCode = string.Empty;
-    [ObservableProperty] private bool _isInstalling;
-    [ObservableProperty] private string _installMessage = string.Empty;
 
     private DispatcherTimer? _timer;
     private DispatcherTimer? _logFilterTimer;
@@ -421,8 +421,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             EnginePath = string.IsNullOrWhiteSpace(status.ExecutablePath) ? "—" : status.ExecutablePath;
             CanAutoInstall = status.CanAutoInstall;
             IsGitInstallRequired = IsInstallRequired(IsGitAvailable, ProblemCode);
-            InstallEngineCommand.NotifyCanExecuteChanged();
-        }
+            }
         catch (Exception ex)
         {
             IsGitAvailable = false;
@@ -435,11 +434,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
         }
     }
 
-    private bool CanInstallEngine => !IsInstalling && CanAutoInstall && !IsGitAvailable;
 
-    [RelayCommand(CanExecute = nameof(CanInstallEngine))]
-    private Task InstallEngineAsync() => Installation.SubmitAsync(InstallationOperationKind.Install, new GitInstallationRequest(true));
-    public Task RefreshInstallationAsync() => RefreshEngineStatusAsync();
 
     private static bool IsInstallRequired(bool isAvailable, string problemCode)
     {

@@ -1,6 +1,11 @@
-﻿{
+{
   "Culture": "zh-CN",
   "Strings": {
+    "component_center.git.integration": "现有平台安装器与台账",
+    "component_center.manage_dependency": "在组件中心管理依赖",
+    "component_center.component.git.description": "宿主 Git 引擎；安装和操作记录统一由组件中心管理。",
+    "component_center.git.hint": "Linux 安装使用宿主既有 Git 软件包安装器；Windows 仅观测已有 Git。显示实测版本，不提供冻结版本计划、跨版本更新或回退。",
+    "component_center.git.confirm": "将在当前 Linux 宿主通过既有软件源安装 Git，沿用已有平台安装器与权限校验。此入口不提供冻结版本计划或多版本更新。是否继续？",
     "component_center.inspection_capacity": "服务器保存的计划数量已达上限，请联系服务器管理员处理历史记录。",
     "component_center.inspection_storage_failed": "服务器无法保存检查结果，请联系服务器管理员检查计划存储。",
     "component_center.inspection_no_catalog": "安装状态核对完成。尚未加载来源目录，目录未检查；请选择来源并刷新后重试。",

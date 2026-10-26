@@ -1,4 +1,4 @@
-﻿using RelaxKonOS.Client.Localization;
+using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 
 namespace RelaxKonOS.Client.Apps.ComponentCenter;
@@ -85,6 +85,10 @@ public static class ComponentCatalog
             ComponentIntegration.Installation, "relaxkonos.docker", [], [], [],
             ["relaxkonos.docker"], [Linux],
             [new(ComponentSourceKind.OfficialSource, false, [Linux]), new(ComponentSourceKind.SystemPackage, true, [Linux])]),
+        new("git", "git", "system", "Git", "component_center.component.git.description",
+            ComponentIntegration.Installation, "relaxkonos.git", [], [], [],
+            ["relaxkonos.git"], [Linux, Windows],
+            [new(ComponentSourceKind.SystemPackage, true, [Linux]), new(ComponentSourceKind.OfficialSource, false, [Windows])]),
         new("samba", "samba", "storage", "Samba", "component_center.component.samba.description",
             ComponentIntegration.Installation, "relaxkonos.file-services", [], [], [],
             ["relaxkonos.file-services"], [Linux],

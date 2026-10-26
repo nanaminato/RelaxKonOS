@@ -10,7 +10,9 @@ namespace RelaxKonOS.Client.Apps.Docker;
 /// <summary>State and safe, typed operations for the server-local Docker Manager.</summary>
 public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) : ObservableObject
 {
-    public InstallationTaskViewModel Installation { get; set; } = null!;
+    public Action? OpenComponentCenter { get; set; }
+    [RelayCommand] private void ManageComponent() => OpenComponentCenter?.Invoke();
+
     public ObservableCollection<DockerContainerDto> Containers { get; } = [];
     public ObservableCollection<DockerImageDto> Images { get; } = [];
     public ObservableCollection<DockerNetworkDto> Networks { get; } = [];

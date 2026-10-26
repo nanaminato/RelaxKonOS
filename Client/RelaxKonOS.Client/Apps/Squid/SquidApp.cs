@@ -28,6 +28,7 @@ public sealed class SquidApp : RemoteApplicationBase
         var client = (ISquidClient?)context.Services.GetService(typeof(ISquidClient));
         if (session?.State != AuthSessionState.Authenticated || client is null) return;
         var vm = new SquidViewModel(client);
+        vm.OpenComponentCenter = RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterEntry.Navigate(context, "relaxkonos.squid", "squid");
         var view = new SquidWorkspace(vm);
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.squid.display_name"), view,
             new Rect(90, 55, 960, 760), Manifest.IconGlyph);

@@ -27,15 +27,15 @@ namespace RelaxKonOS.Client.Apps.WebServers;
 /// </summary>
 public sealed partial class WebServerManagerViewModel : LocalizedObservableObject
 {
-    public string InstancesPageTitle => LocalizedText.Get(IsLinuxServer ? "webservers.current.server_management" : "webservers.instances");
-    public string ActionsTitle => LocalizedText.Get(IsLinuxServer ? "webservers.current.server_management" : "webservers.actions.title");
+    public string InstancesPageTitle => LocalizedText.Get("webservers.current.server_management");
+    public string ActionsTitle => LocalizedText.Get("webservers.current.server_management");
     public bool IsComponentCenter { get; set; }
-    public bool ShowInstanceSelection => IsComponentCenter || !IsLinuxServer;
+    public bool ShowInstanceSelection => IsComponentCenter;
     public Action? OpenComponentCenter { get; set; }
     [RelayCommand] private void ManageComponent() => OpenComponentCenter?.Invoke();
     [RelayCommand(CanExecute = nameof(CanSelectCurrentNginx))] private async Task SelectCurrentNginxAsync()
     {
-        if (!IsComponentCenter || !HasManagePermission || !IsLinuxServer || SelectedServer is not { } server || IsLoading) return;
+        if (!CanSelectCurrentNginx || SelectedServer is not { } server) return;
         IsLoading = true;
         try
         {
@@ -47,11 +47,11 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         finally { IsLoading = false; }
     }
 
-    public bool CanSelectCurrentNginx => IsComponentCenter && IsLinuxServer && HasManagePermission && SelectedServer is not null && !IsLoading && !IsOperationRunning;
+    public bool CanSelectCurrentNginx => IsComponentCenter && HasManagePermission && SelectedServer is not null && !IsLoading && !IsOperationRunning;
 
     public async Task SynchronizeCurrentNginxAsync()
     {
-        if (!IsLinuxServer || IsComponentCenter || !CanRefresh) return;
+        if (IsComponentCenter || !CanRefresh) return;
         try
         {
             var current = await _client.GetCurrentNginxAsync();
@@ -127,7 +127,6 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         _windowConnection = SiteConnection.Capture(session);
         WeakEventHandlerManager.Subscribe<IAuthSession, AuthSessionStateChangedEventArgs, WebServerManagerViewModel>(
             session, nameof(IAuthSession.StateChanged), OnSessionChanged);
-        InstallVersion = string.Empty;
         SelectedSiteCertificateSource = SiteCertificateSources[0];
     }
 
@@ -135,7 +134,6 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     public ObservableCollection<WebServerIntegrationCandidateDto> IntegrationCandidates { get; } = [];
     public ObservableCollection<WebServerStatusDto> Statuses { get; } = [];
     public ObservableCollection<WebServerSiteDto> Sites { get; } = [];
-    public ObservableCollection<string> AvailableWindowsVersions { get; } = [];
     public ObservableCollection<CertificateDto> Certificates { get; } = [];
     public ObservableCollection<WebServerSiteBindingEditor> SiteBindings { get; } = [];
     public ObservableCollection<WebServerProxyRouteEditor> SiteRoutes { get; } = [];
@@ -164,8 +162,6 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     [NotifyCanExecuteChangedFor(nameof(ToggleManagedCommand))]
     [NotifyPropertyChangedFor(nameof(IsManagedServerRunning), nameof(ManagedLifecycleActionText), nameof(ManagedRuntimeStateLabel), nameof(ManagedRuntimeStateDescription))]
     private WebServerRuntimeState _selectedRuntimeState = WebServerRuntimeState.Unknown;
-    [ObservableProperty] private string _installVersion = string.Empty;
-    [ObservableProperty] private string _localPackageName = string.Empty;
     [ObservableProperty] private string _siteName = string.Empty;
     [ObservableProperty] private string _siteBindingsBatch = string.Empty;
     [ObservableProperty] private string _siteRootPath = string.Empty;
@@ -188,13 +184,13 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     private bool _siteFactsAvailable;
     private long _siteReadVersion;
     [ObservableProperty] private LocalizedStatus _siteStatusText = string.Empty;
-    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(DiscoverCommand), nameof(InstallManagedCommand), nameof(RefreshWindowsVersionsCommand), nameof(ShowManagedDownloadCommand), nameof(SelectLocalPackageCommand), nameof(InstallManagedThroughHostCommand), nameof(IntegrateCommand), nameof(EnableAcmeHttp01Command), nameof(StartManagedCommand), nameof(StopCommand), nameof(ToggleManagedCommand), nameof(RestartCommand), nameof(ReloadCommand), nameof(UninstallManagedCommand), nameof(TestConfigurationCommand), nameof(RefreshStatusCommand), nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand))]
+    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(DiscoverCommand), nameof(IntegrateCommand), nameof(EnableAcmeHttp01Command), nameof(StartManagedCommand), nameof(StopCommand), nameof(ToggleManagedCommand), nameof(RestartCommand), nameof(ReloadCommand), nameof(UninstallManagedCommand), nameof(TestConfigurationCommand), nameof(RefreshStatusCommand), nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand))]
     [NotifyCanExecuteChangedFor(nameof(RefreshSitesCommand))]
     [NotifyCanExecuteChangedFor(nameof(SelectCurrentNginxCommand))]
     private bool _isLoading;
     // Every action uses IsOperationRunning in its CanExecute predicate. Keep the command state
     // in sync before and after polling, otherwise controls can retain a stale disabled state.
-    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(DiscoverCommand), nameof(InstallManagedCommand), nameof(RefreshWindowsVersionsCommand), nameof(ShowManagedDownloadCommand), nameof(SelectLocalPackageCommand), nameof(InstallManagedThroughHostCommand), nameof(IntegrateCommand), nameof(EnableAcmeHttp01Command), nameof(StartManagedCommand), nameof(StopCommand), nameof(ToggleManagedCommand), nameof(RestartCommand), nameof(ReloadCommand), nameof(UninstallManagedCommand), nameof(TestConfigurationCommand), nameof(RefreshStatusCommand), nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand), nameof(CancelOperationCommand))]
+    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(DiscoverCommand), nameof(IntegrateCommand), nameof(EnableAcmeHttp01Command), nameof(StartManagedCommand), nameof(StopCommand), nameof(ToggleManagedCommand), nameof(RestartCommand), nameof(ReloadCommand), nameof(UninstallManagedCommand), nameof(TestConfigurationCommand), nameof(RefreshStatusCommand), nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand), nameof(CancelOperationCommand))]
     [NotifyCanExecuteChangedFor(nameof(RefreshSitesCommand))]
     [NotifyCanExecuteChangedFor(nameof(SelectCurrentNginxCommand))]
     private bool _isOperationRunning;
@@ -202,7 +198,6 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     private bool _hasManagedInstallation;
 
     private Guid? _currentOperationId;
-    private string? localPackageReference;
 
     /// <summary>Provided by the window to surface unavailable privileged operations prominently.</summary>
     public Func<string?, Task>? ShowPrivilegedHelperUnavailableAsync { get; set; }
@@ -226,7 +221,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         WebServerRuntimeState.Stopped => LocalizedText.Get("webservers.runtime.stopped_hint"),
         _ => LocalizedText.Get("webservers.runtime.unknown_hint"),
     };
-    public string ManagementHint => IsLinuxServer ? LocalizedText.Get("webservers.current.management_hint") : SelectedServer?.ManagementMode switch
+    public string ManagementHint => !IsComponentCenter ? LocalizedText.Get("webservers.current.management_hint") : SelectedServer?.ManagementMode switch
     {
         WebServerManagementMode.Integrated => LocalizedText.Get("webservers.management_hint.integrated"),
         WebServerManagementMode.Managed => LocalizedText.Get("webservers.management_hint.managed"),
@@ -235,10 +230,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
 
     /// <summary>Supplied by the application shell so the view model never constructs UI directly.</summary>
     public Func<Task<bool>>? RequestIntegrationConfirmationAsync { get; set; }
-    public Func<Task<bool>>? RequestManagedInstallConfirmationAsync { get; set; }
     public Func<Task<bool>>? RequestManagedUninstallConfirmationAsync { get; set; }
-    public Func<Task<string?>>? RequestLocalNginxPackageAsync { get; set; }
-    public Func<string, Task>? ShowManagedDownloadUrlAsync { get; set; }
     /// <summary>Routes a known static-site directory into RemoteExplorer.</summary>
     public Func<string, Task>? OpenFileBrowserAtPathAsync { get; set; }
     /// <summary>Opens the RemoteExplorer picker for certificate or key files on the server.</summary>
@@ -256,26 +248,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     {
         await RefreshAsync();
         await LoadCertificatesAsync();
-        if (IsWindowsServer) await LoadWindowsVersionsAsync();
     }
-
-    private async Task LoadWindowsVersionsAsync()
-    {
-        try
-        {
-            var catalog = await _client.GetManagedInstallCatalogAsync();
-            AvailableWindowsVersions.Clear();
-            foreach (var version in catalog?.Versions ?? []) AvailableWindowsVersions.Add(version);
-            if (catalog is null || catalog.Versions.Count == 0 || !string.IsNullOrWhiteSpace(catalog.ProblemCode))
-            {
-                StatusText = LocalizedText.Ref("webservers.version_catalog.unavailable");
-                return;
-            }
-            if (string.IsNullOrWhiteSpace(InstallVersion)) InstallVersion = catalog.MainlineVersion ?? catalog.StableVersion ?? string.Empty;
-        }
-        catch { StatusText = LocalizedText.Ref("webservers.version_catalog.unavailable"); }
-    }
-    [RelayCommand(CanExecute = nameof(CanInstallManaged))] private Task RefreshWindowsVersionsAsync() => LoadWindowsVersionsAsync();
 
     [RelayCommand(CanExecute = nameof(CanRefresh))]
     private async Task RefreshAsync()
@@ -298,10 +271,10 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         {
             var servers = await _client.ListAsync() ?? [];
             var candidates = await _client.ListIntegrationCandidatesAsync() ?? [];
-            var current = IsLinuxServer ? await _client.GetCurrentNginxAsync() : null;
+            var current = await _client.GetCurrentNginxAsync();
             if (!HasReadPermission) return;
             ApplyDiscoveryResults(servers, candidates);
-            if (IsLinuxServer)
+            if (!IsComponentCenter || current is not null)
             {
                 SelectedServer = Servers.FirstOrDefault(server => server.Id == current?.ServerId);
                 if (!IsComponentCenter) StatusText = LocalizedText.Ref(SelectedServer is null ? "webservers.current.unavailable" : "webservers.current.ready");
@@ -330,10 +303,10 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         {
             var servers = await _client.DiscoverAsync() ?? [];
             var candidates = await _client.ListIntegrationCandidatesAsync() ?? [];
-            var current = IsLinuxServer ? await _client.GetCurrentNginxAsync() : null;
+            var current = await _client.GetCurrentNginxAsync();
             if (!HasReadPermission) return;
             ApplyDiscoveryResults(servers, candidates);
-            if (IsLinuxServer)
+            if (!IsComponentCenter || current is not null)
             {
                 SelectedServer = Servers.FirstOrDefault(server => server.Id == current?.ServerId);
                 if (!IsComponentCenter) StatusText = LocalizedText.Ref(SelectedServer is null ? "webservers.current.unavailable" : "webservers.current.ready");
@@ -441,62 +414,6 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     [RelayCommand(CanExecute = nameof(CanEnableAcmeHttp01))]
     private Task EnableAcmeHttp01Async() => RunElevatedLifecycleAsync("enable-acme-http01", WebServerLifecycleAction.EnableAcmeHttp01,
         HostElevationCapability.NginxConfigurationWrite);
-
-    [RelayCommand(CanExecute = nameof(CanInstallManaged))]
-    private async Task InstallManagedAsync()
-    {
-        if (RequestManagedInstallConfirmationAsync is null || !await RequestManagedInstallConfirmationAsync()) return;
-        await Installation.SubmitAsync(InstallationOperationKind.Install, new NginxInstallationRequest(true,
-            string.IsNullOrWhiteSpace(InstallVersion) ? null : InstallVersion.Trim(), localPackageReference));
-    }
-
-    [RelayCommand(CanExecute = nameof(CanInstallManaged))]
-    private async Task ShowManagedDownloadAsync()
-    {
-        if (string.IsNullOrWhiteSpace(InstallVersion)) { StatusText = LocalizedText.Ref("webservers.problem.version_required"); return; }
-        try
-        {
-            var download = await _client.GetManagedInstallDownloadAsync(InstallVersion.Trim());
-            if (download is null) { StatusText = LocalizedText.Ref("webservers.managed.download_unavailable"); return; }
-            await (ShowManagedDownloadUrlAsync?.Invoke(download.Url) ?? Task.CompletedTask);
-        }
-        catch (Exception exception) { StatusText = ProblemText(exception is WebServerApiException request ? request.ProblemCode : "webservers.error.request_failed"); }
-    }
-
-    [RelayCommand(CanExecute = nameof(CanInstallManaged))]
-    private async Task SelectLocalPackageAsync()
-    {
-        if (RequestLocalNginxPackageAsync is not { } select) return;
-        var path = await select();
-        if (string.IsNullOrWhiteSpace(path)) return;
-        try
-        {
-            await using var package = File.OpenRead(path);
-            var reference = await Installation.UploadPackageAsync(Path.GetFileName(path), package);
-            if (reference is null) { StatusText = LocalizedText.Ref("webservers.package.invalid"); return; }
-            localPackageReference = reference;
-            LocalPackageName = Path.GetFileName(path);
-        }
-        catch (Exception exception) { StatusText = ProblemText(exception is WebServerApiException request ? request.ProblemCode : "webservers.error.request_failed"); }
-    }
-
-    [RelayCommand(CanExecute = nameof(CanInstallManaged))]
-    private async Task InstallManagedThroughHostAsync()
-    {
-        if (string.IsNullOrWhiteSpace(InstallVersion)) { StatusText = LocalizedText.Ref("webservers.problem.version_required"); return; }
-        try
-        {
-            var version = InstallVersion.Trim();
-            var download = await _client.GetManagedInstallDownloadAsync(version);
-            if (download is null) { StatusText = LocalizedText.Ref("webservers.managed.download_unavailable"); return; }
-            if (RequestManagedInstallConfirmationAsync is null || !await RequestManagedInstallConfirmationAsync()) return;
-            var reference = await Installation.DownloadAndUploadPackageAsync(download.Url, $"nginx-{download.Version}.zip");
-            if (reference is null) return;
-            await Installation.SubmitAsync(InstallationOperationKind.Install,
-                new NginxInstallationRequest(true, download.Version, reference));
-        }
-        catch (Exception exception) { StatusText = ProblemText(exception is WebServerApiException request ? request.ProblemCode : "webservers.error.request_failed"); }
-    }
 
     [RelayCommand(CanExecute = nameof(CanStart))]
     private Task StartManagedAsync() => RunElevatedLifecycleAsync("start", WebServerLifecycleAction.Start, HostElevationCapability.NginxLifecycle);
@@ -999,7 +916,6 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     // read-only instead of letting command re-evaluation crash while the DataGrid selects it.
     private bool CanRefreshStatus => HasReadPermission && !IsLoading && !IsOperationRunning && SelectedServer?.Capabilities?.CanRead == true;
     private bool CanTestConfiguration => HasReadPermission && !IsLoading && !IsOperationRunning && SelectedServer?.Capabilities?.CanTestConfiguration == true;
-    private bool CanInstallManaged => HasManagePermission && !IsLoading && !IsOperationRunning;
     private bool CanIntegrate => HasManagePermission && !IsLoading && !IsOperationRunning && SelectedIntegrationCandidate is not null;
     private bool CanEnableAcmeHttp01 => CanManageSites;
     private bool CanStart => HasManagePermission && !IsLoading && !IsOperationRunning && SelectedServer?.Capabilities?.CanStart == true;

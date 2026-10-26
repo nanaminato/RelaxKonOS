@@ -168,6 +168,20 @@
        </ContentControl.ContentTemplate>
       </ContentControl>
      </Border>
+     <Border Classes="panel-card" IsVisible="{Binding ShowGitInstallation}">
+      <StackPanel Spacing="10">
+       <TextBlock Text="Git" Classes="section-title" />
+       <TextBlock Text="{loc:Loc component_center.git.hint}" TextWrapping="Wrap" />
+       <TextBlock Text="{Binding GitEngine.EngineVersion}" />
+       <TextBlock Text="{Binding GitEngine.EnginePath}" TextWrapping="Wrap" />
+       <Button Content="{loc:Loc common.refresh}" Command="{Binding GitEngine.RefreshEngineStatusCommand}" />
+       <Button Content="{loc:Loc common.install}" Command="{Binding InstallGitCommand}" />
+       <ProgressBar IsIndeterminate="{Binding PackageInstallation.IsIndeterminate}" Value="{Binding PackageInstallation.Progress}" IsVisible="{Binding PackageInstallation.IsActive}" />
+       <Button Content="{loc:Loc installation.cancel}" Command="{Binding PackageInstallation.CancelCommand}" IsVisible="{Binding PackageInstallation.IsActive}" />
+       <TextBlock Text="{Binding PackageInstallation.SummaryText}" TextWrapping="Wrap" />
+       <TextBlock Text="{Binding PackageInstallation.OperationLog}" TextWrapping="Wrap" />
+      </StackPanel>
+     </Border>
      <!-- Component identity: what this is, what state the host reports, and where it is managed. -->
      <Border Classes="panel-card" IsVisible="{Binding HasComponentDetails}">
       <StackPanel Spacing="14">
@@ -316,9 +330,12 @@
         </WrapPanel>
        </StackPanel>
        <StackPanel Spacing="6" IsVisible="{Binding PackageInstallation.HasMessage}">
-        <TextBlock Text="{Binding PackageInstallation.SummaryText}" TextWrapping="Wrap" />
+        <ProgressBar IsIndeterminate="{Binding PackageInstallation.IsIndeterminate}" Value="{Binding PackageInstallation.Progress}" IsVisible="{Binding PackageInstallation.IsActive}" />
+       <Button Content="{loc:Loc installation.cancel}" Command="{Binding PackageInstallation.CancelCommand}" IsVisible="{Binding PackageInstallation.IsActive}" />
+       <TextBlock Text="{Binding PackageInstallation.SummaryText}" TextWrapping="Wrap" />
         <ProgressBar IsIndeterminate="{Binding PackageInstallation.IsIndeterminate}" Value="{Binding PackageInstallation.Progress}"
                      IsVisible="{Binding PackageInstallation.IsActive}" />
+        <Button Content="{loc:Loc installation.cancel}" Command="{Binding PackageInstallation.CancelCommand}" IsVisible="{Binding PackageInstallation.IsActive}" />
         <TextBlock Text="{Binding PackageInstallation.OperationLog}" TextWrapping="Wrap" FontSize="11" />
        </StackPanel>
        <TextBlock Text="{Binding PackageFreezeNotice}" TextWrapping="Wrap" FontSize="12"

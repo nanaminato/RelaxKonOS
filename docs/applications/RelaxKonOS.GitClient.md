@@ -633,3 +633,8 @@ Server、Helper 使用当前 user-execution 1.5 协议，`FileReadText` 在实�
 SSH 继续使用宿主 SSH 配置，HTTP 和本地传输不附带 HTTPS 令牌。GitHub、GitLab、Gitee、Azure DevOps 菜单打开对应仓库和 PR/MR 网页，Gitee 同时提供议题入口。自建服务使用通用 Git 传输；任意自建域名的品牌判断和应用内托管平台 API 集成不属于当前能力。
 
 验证入口：`Tests/Server/RelaxKonOS.GitWorkspace.Tests` 覆盖真实本地 Git、Helper 请求凭据、多主机/端口/用户隔离、多账号默认选择、更新删除、加密存储和重新创建服务后的复用；`Tests/Client/RelaxKonOS.WindowPreviews.Tests --project-editor-only` 覆盖逐远程抓取、认证重试/取消和账号管理；`Tests/Client/RelaxKonOS.GitDiff.Tests --all` 包含账号界面的浅色/深色渲染检查。这些自动化不代表各公网平台已逐一实机验收。
+
+
+### 桌面安装入口（2026-10-26）
+
+本应用的宿主组件安装已移至组件中心，应用内改为“在组件中心管理依赖”跳转；保留业务配置与服务管理。各平台安装能力、冻结计划与台账路径见[组件中心实施进度](../platform/RelaxKonOS.ComponentCenter.Progress.md#桌面组件安装入口统一2026-10-26)。此项仅集中入口，不扩大运行时、信任来源、多版本更新或平台验收范围。

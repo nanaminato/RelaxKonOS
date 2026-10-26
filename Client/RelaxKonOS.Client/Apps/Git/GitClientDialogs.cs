@@ -550,35 +550,13 @@ internal static partial class GitClientDialogs
             FontSize = 14,
         };
 
-        var statusBox = new TextBox
-        {
-            Margin = new Thickness(0, 8, 0, 0),
-            IsReadOnly = true,
-            MinHeight = 80,
-            AcceptsReturn = true,
-            TextWrapping = Avalonia.Media.TextWrapping.Wrap,
-        };
-        statusBox.Bind(TextBox.TextProperty, new Avalonia.Data.Binding
-        {
-            Path = nameof(GitClientViewModel.InstallMessage),
-            Mode = Avalonia.Data.BindingMode.OneWay,
-            FallbackValue = "",
-            TargetNullValue = "",
-        });
-
         var installBtn = new Button
         {
-            Content = LocalizedText.Get("git.dialog.unavailable.install"),
+            Content = LocalizedText.Get("component_center.manage_dependency"),
             Classes = { "primary" },
-            IsEnabled = !vm.IsInstalling && vm.CanAutoInstall,
+            IsEnabled = vm.OpenComponentCenter is not null,
         };
-        installBtn.Click += async (_, _) =>
-        {
-            installBtn.IsEnabled = false;
-            await vm.InstallEngineCommand.ExecuteAsync(null);
-            if (vm.IsGitAvailable) dialog.Close(true);
-            installBtn.IsEnabled = !vm.IsInstalling && vm.CanAutoInstall && !vm.IsGitAvailable;
-        };
+        installBtn.Click += (_, _) => { dialog.Close(false); vm.OpenComponentCenter?.Invoke(); };
 
         var refreshBtn = new Button { Content = LocalizedText.Get("git.dialog.unavailable.refresh") };
         refreshBtn.Click += async (_, _) =>
@@ -602,7 +580,7 @@ internal static partial class GitClientDialogs
         {
             Margin = new Thickness(20),
             Spacing = 12,
-            Children = { header, statusBox, footer }
+            Children = { header, footer }
         };
     }
 

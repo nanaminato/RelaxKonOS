@@ -45,10 +45,11 @@ public sealed class GitClientApp : RemoteApplicationBase
         // 复用 Explorer 的 IExplorerClient，用于远程文件夹选择对话框（与 Code Editor 同一模式）
         var files = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
         var vm = new GitClientViewModel(client);
+        var manageComponent = RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterEntry.Navigate(context, "relaxkonos.git", "git");
+        vm.OpenComponentCenter = manageComponent;
         var encodings = context.Services.GetService(typeof(TextEditorEncodingSettings)) as TextEditorEncodingSettings;
         var project = new ProjectEditorViewModel(vm, client, files,
             session.CurrentServer?.Platform != HostPlatformKind.Windows, encodings?.CodeEditorDefaultEncoding ?? "UTF-8");
-        vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Git, "relaxkonos.git", vm.RefreshInstallationAsync);
         ManagedWindow? window = null;
 
         // Wire dialog callbacks — the VM commands call these and handle the returned request objects.
@@ -111,7 +112,7 @@ public sealed class GitClientApp : RemoteApplicationBase
 
         var view = GitClientWorkspace.Create(vm, project);
         window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.git.display_name"),
-            InstallationPanel.Wrap(view, vm.Installation), new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
+            RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterEntry.Wrap(view, manageComponent), new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
         var localization = context.Services.GetService(typeof(LocalizationService)) as LocalizationService;
         EventHandler<SystemLanguageChangedEventArgs> languageChanged = (_, _) => project.RefreshLocalization();

@@ -184,3 +184,8 @@ Helper 在 root-owned `/etc/squid/relaxkonos-users.json`（0600）保存随机�
 ### 组件中心只读接入（2026-10-25）
 
 Squid 新增组件中心只读状态面板，显示领域安装/服务/待恢复事实；无程序版本，也不将配置受管当成包所有权。 可信版本与安装事务尚未迁入，详见[组件实施进度](../platform/RelaxKonOS.ComponentCenter.Progress.md)。
+
+
+### 桌面安装入口（2026-10-26）
+
+本应用的宿主组件安装已移至组件中心，应用内改为“在组件中心管理依赖”跳转；保留业务配置与服务管理。各平台安装能力、冻结计划与台账路径见[组件中心实施进度](../platform/RelaxKonOS.ComponentCenter.Progress.md#桌面组件安装入口统一2026-10-26)。此项仅集中入口，不扩大运行时、信任来源、多版本更新或平台验收范围。

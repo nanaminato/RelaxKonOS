@@ -1,6 +1,11 @@
-﻿{
+{
   "Culture": "ja-JP",
   "Strings": {
+    "component_center.git.integration": "既存のプラットフォームインストーラーと操作記録",
+    "component_center.manage_dependency": "コンポーネントセンターで依存関係を管理",
+    "component_center.component.git.description": "ホストの Git エンジン。インストールと操作記録はコンポーネントセンターで管理します。",
+    "component_center.git.hint": "Linux は既存の Git パッケージインストーラーを使用し、Windows は既存の Git の状態のみ表示します。バージョン固定計画、バージョン間更新、ロールバックには対応していません。",
+    "component_center.git.confirm": "既存のパッケージソースと権限確認を使用して現在の Linux ホストに Git をインストールしますか？バージョン固定計画や複数バージョン更新には対応していません。",
     "component_center.inspection_capacity": "サーバーの保存済み計画が上限に達しました。サーバー管理者に履歴の確認を依頼してください。",
     "component_center.inspection_storage_failed": "サーバーに確認結果を保存できません。サーバー管理者に計画ストレージの確認を依頼してください。",
     "component_center.inspection_no_catalog": "インストール状態を確認しました。配布元カタログが未読込のため、カタログは未確認です。配布元を選択して更新後に再確認してください。",

@@ -148,30 +148,16 @@ internal static class SquidWorkspaceChecks
         Complete(vm.RefreshCommand.ExecuteAsync(null));
         Check(!vm.CanInstall && !vm.CanUninstall && vm.ShowPackageUnsupported,
             "A Linux host without supported package management explains why both package actions are disabled.");
-        var unavailablePackageRequests = fake.Submissions.Count;
-        Complete(vm.InstallCommand.ExecuteAsync(null));
-        Check(fake.Submissions.Count == unavailablePackageRequests, "Direct execution cannot bypass package capability gating.");
+        var packageRequests = fake.Submissions.Count;
+        var navigations = 0;
+        vm.OpenComponentCenter = () => navigations++;
+        vm.ManageComponentCommand.Execute(null);
+        Check(navigations == 1 && fake.Submissions.Count == packageRequests,
+            "Squid installation navigates to Component Center without a package mutation.");
+        Check(typeof(SquidViewModel).GetProperty("InstallCommand") is null,
+            "Squid no longer exposes its former application installer.");
         fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { PackageManagementSupported = true } };
-        Complete(vm.RefreshCommand.ExecuteAsync(null));
-        // Package actions do not depend on having an adopted configuration or valid editor draft.
-        Check(vm.CanInstall && !vm.CanUninstall, "A supported uninstalled host offers installation only.");
-        vm.CanManage = false;
-        Complete(vm.InstallCommand.ExecuteAsync(null));
-        Check(!vm.CanInstall, "Read-only users cannot install packages.");
-        vm.CanManage = true;
         var beforePackage = fake.Submissions.Count;
-        vm.ConfirmPackageAsync = _ => Task.FromResult(false);
-        Complete(vm.InstallCommand.ExecuteAsync(null));
-        Check(fake.Submissions.Count == beforePackage, "Cancelling installation never submits a mutation.");
-        vm.ConfirmPackageAsync = _ => Task.FromResult(true);
-        fake.OperationFailed = true;
-        Complete(vm.InstallCommand.ExecuteAsync(null));
-        Check(vm.ShowOutcomeFailure && !vm.HasPending && vm.CanInstall,
-            "A failed package operation retains visible failure feedback and permits an explicit retry.");
-        fake.OperationFailed = false;
-        Complete(vm.InstallCommand.ExecuteAsync(null));
-        Check(fake.Submissions.Last().Body is SquidLifecycleRequest { Action: SquidServiceAction.Install },
-            "Installation uses the typed, idempotent lifecycle contract.");
         fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { Installed = true, Managed = false } };
         Complete(vm.RefreshCommand.ExecuteAsync(null));
         Check(vm.CanUninstall && !vm.CanInstall, "Unmanaged installed packages can be uninstalled.");

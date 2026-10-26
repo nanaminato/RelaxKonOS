@@ -31,7 +31,7 @@
           <Button x:Name="ProxiesButton" Classes="workspace-nav" Tag="proxies" Click="NavigationButton_Click" Content="{loc:Loc proxy.proxies}" HorizontalContentAlignment="Left" Padding="10,8" />
           <Button Classes="workspace-nav" Tag="connections" Click="NavigationButton_Click" Content="{loc:Loc proxy.connections}" HorizontalContentAlignment="Left" Padding="10,8" />
           <Button Classes="workspace-nav" Tag="logs" Click="NavigationButton_Click" Content="{loc:Loc proxy.logs}" HorizontalContentAlignment="Left" Padding="10,8" />
-          <Button x:Name="RuntimeButton" Classes="workspace-nav" Tag="runtime" Click="NavigationButton_Click" Content="{loc:Loc proxy.runtime}" HorizontalContentAlignment="Left" Padding="10,8" />
+          <Button x:Name="RuntimeButton" Classes="workspace-nav" Tag="runtime" Click="NavigationButton_Click" Content="{loc:Loc application.relaxkonos.component-center.display_name}" HorizontalContentAlignment="Left" Padding="10,8" />
           <Button x:Name="SettingsButton" Classes="workspace-nav" Tag="settings" Click="NavigationButton_Click" Content="{loc:Loc proxy.settings}" HorizontalContentAlignment="Left" Padding="10,8" />
         </StackPanel>
       </Border>

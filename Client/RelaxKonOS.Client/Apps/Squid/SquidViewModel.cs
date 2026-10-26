@@ -16,6 +16,8 @@ namespace RelaxKonOS.Client.Apps.Squid;
 /// </summary>
 public partial class SquidViewModel : ObservableObject, IDisposable
 {
+    public Action? OpenComponentCenter { get; set; }
+    [RelayCommand] private void ManageComponent() => OpenComponentCenter?.Invoke();
     private readonly ISquidClient _client;
     private readonly CancellationTokenSource _lifetime = new();
     private bool _initialized;
@@ -215,7 +217,6 @@ public partial class SquidViewModel : ObservableObject, IDisposable
         ResetAccountPasswordCommand.NotifyCanExecuteChanged();
         ToggleAccountCommand.NotifyCanExecuteChanged();
         DeleteAccountCommand.NotifyCanExecuteChanged();
-        InstallCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
         RefreshCommand.NotifyCanExecuteChanged();
         LoadStoredCommand.NotifyCanExecuteChanged();
@@ -438,8 +439,6 @@ public partial class SquidViewModel : ObservableObject, IDisposable
         await SubmitAndWatchAsync();
     });
 
-    [RelayCommand(CanExecute = nameof(CanInstall))]
-    private Task InstallAsync() => PackageAsync(false);
 
     [RelayCommand(CanExecute = nameof(CanUninstall))]
     private Task UninstallAsync() => PackageAsync(true);

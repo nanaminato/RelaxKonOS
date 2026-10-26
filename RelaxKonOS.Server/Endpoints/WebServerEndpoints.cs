@@ -22,7 +22,6 @@ public static class WebServerEndpoints
             RelaxKonOS.Server.WebServer.WebServerMetadataRepository metadata,
             RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
         {
-            if (!OperatingSystem.IsLinux()) return Results.BadRequest();
             if (!(await manager.ListAsync(ct)).Any(server => server.Id == request.ServerId && server.ProviderId == "nginx"))
                 return Results.BadRequest(new { problemCode = "webserver.instance_not_found" });
             await metadata.SelectCurrentNginxAsync(request.ServerId!, ct);

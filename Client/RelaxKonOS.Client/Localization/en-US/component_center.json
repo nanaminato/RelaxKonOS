@@ -1,6 +1,11 @@
-﻿{
+{
   "Culture": "en-US",
   "Strings": {
+    "component_center.git.integration": "Existing platform installer and operation ledger",
+    "component_center.manage_dependency": "Manage dependencies in Component Center",
+    "component_center.component.git.description": "Host Git engine; installation and operation history are managed in Component Center.",
+    "component_center.git.hint": "Linux uses the existing host Git package installer; Windows observes existing Git only. Displays the observed version. Frozen version plans, cross-version updates and rollback are unavailable.",
+    "component_center.git.confirm": "Install Git on the current Linux host using existing package sources and authorization checks? Frozen version plans and multi-version updates are unavailable.",
     "component_center.inspection_capacity": "The server has reached its saved-plan limit. Ask the server administrator to review retained records.",
     "component_center.inspection_storage_failed": "The server could not save the inspection result. Ask the server administrator to check plan storage.",
     "component_center.inspection_no_catalog": "Installation state checked. No source catalog is loaded, so the catalog was not checked. Select a source and refresh to check it.",

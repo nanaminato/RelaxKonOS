@@ -45,24 +45,12 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
         // ApplicationManager presents prompts after Activate returns, so this workspace owns
         // the first request and waits for its decision before enabling server actions.
         var vm = new ProxyManagerViewModel(repository, canManage: false, canManageTun: false, systemMonitor);
-        // Runtime installation, update and removal belong to the managed-runtime page: it negotiates a
-        // concrete catalog release, freezes a Host plan and executes through the shared installation ledger.
-        var runtime = context.Services.GetService(typeof(IMihomoRuntimeCatalogClient)) is IMihomoRuntimeCatalogClient catalog
-            ? new ProxyServerRuntimeViewModel(catalog) : null;
-        var view = runtime is null ? new ProxyManagerWorkspace(vm) : new ProxyManagerWorkspace(vm, runtime);
+        var view = new ProxyManagerWorkspace(vm);
+        view.OpenComponentCenter = RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterEntry.Navigate(context, "relaxkonos.proxy", "mihomo");
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.proxy.display_name"), view, new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
         RelaxKonOS.WindowManager.ModalDialog<bool>? activeEditor = null;
-        view.SetRuntimeEditor((title, editor) => RelaxKonOS.Client.Controls.WorkspaceEditorDialogView.PresentAsync(context, window, title, editor, () => runtime?.IsBusy == true, active => activeEditor = active));
         vm.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window, problemCode);
-        if (runtime is not null)
-        {
-            runtime.ConfirmAsync = async (title, message) => await ConfirmAsync(title.Resolve(), message.Resolve());
-            runtime.PasswordPromptAsync = () => ShowOwnedAsync<string?>(
-                LocalizedText.Get("installation.elevation_title"),
-                dialog => new FileServicesPasswordDialogView(dialog, LocalizedText.Get("installation.elevation_message")),
-                new RelaxKonOS.Core.Primitives.Size(460, 230));
-        }
         vm.RequestSystemProxySubscriptionDownloadAsync = async () =>
         {
             var useSystemProxy = false;
@@ -105,7 +93,6 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
         {
             if (!ReferenceEquals(current, window)) return;
             context.WindowManager.WindowClosed -= closed;
-            runtime?.Dispose();
         };
         context.WindowManager.WindowClosed += closed;
         _ = InitializeAfterPermissionDecisionAsync();
@@ -116,7 +103,6 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
             var manage = await RequestIfUndecidedAsync(AppPermissions.ServerProxyManage);
             var tun = await RequestIfUndecidedAsync(AppPermissions.ServerProxyTunManage);
             vm.SetPermissions(manage, tun);
-            if (runtime is not null) { runtime.CanRead = read; runtime.CanManage = read && manage; }
 
             // A declined read grant still permits the workspace to render its normal API
             // authorization result, but it never enables a mutation solely because the prompt

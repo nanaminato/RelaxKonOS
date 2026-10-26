@@ -34,7 +34,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
         _model.Notice = LocalizedStatus.Key("component_center.located");
     }
     public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.component-center"), "Component Center", "1.0.0", "⇄", "Managed host components",
-        [AppPermissions.ServerComponentsRead, AppPermissions.ServerComponentsManage, AppPermissions.ServerWebServersRead, AppPermissions.ServerWebServersManage],
+        [AppPermissions.ServerComponentsRead, AppPermissions.ServerComponentsManage, AppPermissions.ServerWebServersRead, AppPermissions.ServerWebServersManage, AppPermissions.ServerGitRead, AppPermissions.ServerGitManage],
         InstancePolicy: ApplicationInstancePolicy.SingleWindow,
         IconPath: "avares://RelaxKonOS.Client/Assets/AppIcons/proxy-server.png");
 
@@ -60,15 +60,18 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             additionalRuntimes,
             (context.Services.GetService(typeof(IEnumerable<IComponentHostObserver>)) as IEnumerable<IComponentHostObserver>)?.ToArray(),
             context.Services.GetService(typeof(IComponentLifecycleClient)) as IComponentLifecycleClient);
+        if (context.Services.GetService(typeof(RelaxKonOS.Client.Apps.Git.IRemoteGitClient)) is RelaxKonOS.Client.Apps.Git.IRemoteGitClient git)
+        {
+            model.GitEngine = new(git);
+            model.GitEngine.PropertyChanged += (_, _) => model.RefreshGitState();
+        }
         model.ConnectionAvailable = true;
         _model = model;
-        if (session.CurrentServer?.Platform == HostPlatformKind.Linux
-            && context.Services.GetService(typeof(RelaxKonOS.Client.Apps.WebServers.IRemoteWebServerClient)) is RelaxKonOS.Client.Apps.WebServers.IRemoteWebServerClient web
+        if (context.Services.GetService(typeof(RelaxKonOS.Client.Apps.WebServers.IRemoteWebServerClient)) is RelaxKonOS.Client.Apps.WebServers.IRemoteWebServerClient web
             && context.Services.GetService(typeof(RelaxKonOS.Client.Apps.Certificates.IRemoteCertificateClient)) is RelaxKonOS.Client.Apps.Certificates.IRemoteCertificateClient certificates
             && context.Services.GetService(typeof(RelaxKonOS.Client.Services.Privileged.IHostElevationBroker)) is RelaxKonOS.Client.Services.Privileged.IHostElevationBroker elevations)
         {
             model.NginxSelection = new(web, certificates, session, context.Permissions, elevations) { IsComponentCenter = true };
-            _ = model.NginxSelection.RefreshCommand.ExecuteAsync(null);
         }
         var view = new ComponentCenterWorkspace(model);
         var availability = context.Services.GetService(typeof(ApplicationAvailabilityService)) as ApplicationAvailabilityService;
@@ -89,6 +92,9 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
         if (model.NginxSelection is { } nginxSelection)
             nginxSelection.RequestIntegrationConfirmationAsync = () => ConfirmAsync(
                 LocalizedText.Get("webservers.integration.confirmation.title"), LocalizedText.Get("webservers.integration.confirmation.message"));
+        if (model.NginxSelection is { } nginxMaintenance)
+            nginxMaintenance.RequestManagedUninstallConfirmationAsync = () => ConfirmAsync(
+                LocalizedText.Get("webservers.managed.uninstall.title"), LocalizedText.Get("webservers.managed.uninstall.message"));
         foreach (var host in new ProxyServerRuntimeViewModel?[] { runtime, mihomo })
         {
             if (host is null) continue;
@@ -105,6 +111,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                 is RelaxKonOS.Client.Services.AppSettings.IAppSettingsClient settings)
         {
             foreach (var (componentId, serviceId) in new[] {
+                ("git", RelaxKonOS.Protocol.Installations.InstallationServiceId.Git),
                 ("nginx", RelaxKonOS.Protocol.Installations.InstallationServiceId.Nginx),
                 ("squid", RelaxKonOS.Protocol.Installations.InstallationServiceId.Squid),
                 ("samba", RelaxKonOS.Protocol.Installations.InstallationServiceId.Smb),
@@ -118,6 +125,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                         dialog => new FileServicesPasswordDialogView(dialog, LocalizedText.Get("installation.elevation_message")),
                         new Size(460, 230)), "installation." + componentId);
                 model.AttachPackageInstallation(componentId, task);
+                if (componentId == "nginx" && model.NginxSelection is { } selectedNginx) selectedNginx.Installation = task;
                 _ = task.RestoreAsync(); // Observe only, including after a window is reopened.
             }
             model.ConfirmPackageInstallAsync = freeze =>
@@ -132,6 +140,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                         package?.Sha256 ?? pin!.Sha256, dependencies, freeze.Request!.ComponentId).Resolve());
             };
         }
+        model.ConfirmGitInstallAsync = () => ConfirmAsync(LocalizedText.Get("common.install"), LocalizedText.Get("component_center.git.confirm"));
         model.ConfirmPackageRecoveryAsync = (component, operation, action) => ConfirmAsync(
             LocalizedText.Get("component_center.package.recovery." + action),
             LocalizedStatus.Format(action == RelaxKonOS.Protocol.ManagedRuntimes.ComponentRecoveryAction.RefreshSources
@@ -184,6 +193,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                 await active.RefreshActiveOperationAsync();
         };
         taskRefresh.Start();
+        System.ComponentModel.PropertyChangedEventHandler? selectedDomainChanged = null;
         EventHandler<RelaxKonOS.WindowManager.ManagedWindow>? closed = null;
         closed = (_, current) =>
         {
@@ -199,9 +209,45 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                 mihomo.RefreshAccess = null;
                 mihomo.Dispose();
             }
+            model.PropertyChanged -= selectedDomainChanged;
             model.Dispose();
             runtime.Dispose();
         };
+        var preparingDomain = false;
+        string? preparedDomain = null;
+        selectedDomainChanged = async (_, args) =>
+        {
+            if (args.PropertyName != nameof(model.SelectedDefinition) || preparingDomain || !runtime.CanRead || runtime.IsInvalidated || preparedDomain == model.SelectedDefinition?.ComponentId) return;
+            preparingDomain = true;
+            preparedDomain = model.SelectedDefinition?.ComponentId;
+            try
+            {
+                if (model.SelectedDefinition?.ComponentId == "nginx" && model.NginxSelection is { } nginx)
+                {
+                    if (await PermissionAsync(AppPermissions.ServerWebServersRead))
+                    {
+                        await PermissionAsync(AppPermissions.ServerWebServersManage);
+                        await nginx.RefreshCommand.ExecuteAsync(null);
+                    }
+                }
+                if (model.SelectedDefinition?.ComponentId == "git" && model.GitEngine is { } gitEngine)
+                {
+                    if (await PermissionAsync(AppPermissions.ServerGitRead))
+                    {
+                        model.GitCanManage = await PermissionAsync(AppPermissions.ServerGitManage);
+                        await gitEngine.RefreshEngineStatusCommand.ExecuteAsync(null);
+                        model.NotifyGit();
+                    }
+                }
+            }
+            finally
+            {
+                preparingDomain = false;
+                if (preparedDomain != model.SelectedDefinition?.ComponentId)
+                    selectedDomainChanged?.Invoke(model, new(nameof(model.SelectedDefinition)));
+            }
+        };
+        model.PropertyChanged += selectedDomainChanged;
         context.WindowManager.WindowClosed += closed;
         _ = InitializeAsync();
         async Task InitializeAsync()
