@@ -1,6 +1,16 @@
 {
   "Culture": "en-US",
   "Strings": {
+    "webservers.current.management_hint": "Manage server status and website configuration.",
+    "webservers.current.server_management": "Server management",
+    "webservers.current.unavailable": "Current Nginx is unavailable. Select or install Nginx in Component Center.",
+    "webservers.current.ready": "Using the current Nginx from Component Center.",
+    "webservers.current.title": "Current Nginx",
+    "webservers.current.hint": "Select the Nginx used by this host. Web Server Manager follows this selection and automatically uses a sole instance. Confirm integration before using an external installation.",
+    "webservers.current.use": "Use this Nginx",
+    "webservers.current.saved": "Current Nginx saved.",
+    "webservers.current.failed": "Could not read or save the current Nginx. Refresh and try again.",
+    "webservers.current.manage": "Manage Nginx in Component Center",
     "webservers.subtitle": "Discover and manage host web servers",
     "webservers.login_required": "Sign in to a RelaxKonOS Server to manage its web servers.",
     "webservers.status.loading": "Loading web servers…",

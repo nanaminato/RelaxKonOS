@@ -1649,3 +1649,12 @@ Linux 静态目录自动授权依赖 `acl` 软件包（`/usr/bin/setfacl`）。�
 ### nginx 冻结安装接入台账（2026-10-25）
 
 Linux nginx 首次冻结安装从组件中心经产品提权进入统一安装台账，提供原键幂等提交、资源排他、阶段进度与重开观察。无台账 component execute 路由已删除；重启时不以当前健康推导原任务成功，返回中断待核对。Windows、包补偿及逐依赖制品证明尚未完成，详见[实施范围与验证](../platform/RelaxKonOS.ComponentCenter.Progress.md)。
+
+
+## Linux 当前 Nginx 与桌面入口（2026-10-26）
+
+CC-01：Linux 桌面组件中心提供当前 Nginx 的发现、外部实例显式集成与选择；安装沿用组件中心已有冻结包计划。选择通过 `GET/PUT /api/v1.0/webservers/current-nginx` 存入宿主全局 SQLite（迁移 17），同一宿主的客户端共享；只允许选择已受管或已集成的 Nginx。未显式选择且只有一个实例时直接使用；多个实例须选择，已保存实例消失后保持不可用，不切换到其他实例。
+
+Linux 桌面 Web 服务器管理器隐藏实例选择、发现、集成、安装和卸载入口，提供组件中心跳转；保留服务器状态、配置检查、启停/重载和站点管理。窗口打开与刷新时读取当前选择，并每三秒检查变化，变化时清空旧站点目标并重新读取。未配置或不可用时提示到组件中心处理。Windows 入口保持现有行为。此变更不增加系统包更新、回滚或补偿能力，也不改变外部实例的所有权。Android UI 尚未迁移，仍按 Android 自有文档追踪。当前验证范围为本地构建与自动化，尚无 Linux 桌面实机验收。
+
+验证：Server/Client 构建通过；`RelaxKonOS.Server.Tests --current-nginx-only` 的 8 项持久化/解析断言与桌面 `--current-nginx-only` 的 7 项联动/门禁断言通过，并检查 1060/520 宽度的四张布局预览。完整 `--webserver-only` 在既有 Windows 静态目录验证断言处失败，未据此宣称整组通过。

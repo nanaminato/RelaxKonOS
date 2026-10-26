@@ -49,6 +49,8 @@ using var services = new ServiceCollection().AddSingleton(localization).AddSingl
 typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
 if (args.Contains("--windows11-only")) { Windows11DesktopChecks.RunAsync().GetAwaiter().GetResult(); return; }
 if (args.Contains("--readiness-only")) { ApplicationReadinessShellChecks.Run(settings, localization, services); return; }
+if (args.Contains("--websites-only")) { WebSiteEditorChecks.Run(); WebSiteReadRecoveryChecks.Run(); WebSiteScopeChecks.Run(); CurrentNginxChecks.Run(); return; }
+if (args.Contains("--current-nginx-only")) { CurrentNginxChecks.Run(); return; }
 if (args.Contains("--component-center-only")) { ComponentCenterWorkspaceChecks.Run(settings); return; }
 if (args.Contains("--git-dock-only")) { GitDockChecks.Run(settings); return; }
 if (args.Contains("--project-editor-only"))
@@ -154,6 +156,7 @@ InstallationWizardDialogChecks.Run();
 LocalInstallationCloseChecks.Run();
 WebSiteEditorChecks.Run();
 WebSiteReadRecoveryChecks.Run();
+CurrentNginxChecks.Run();
 WebSiteScopeChecks.Run();
 CertificateEditorChecks.Run();
 FileShareDialogChecks.Run();

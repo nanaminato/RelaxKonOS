@@ -74,3 +74,12 @@ worker 在安装前再次实测宿主、修订和完整主包身份及每个依�
 验证：Server、PrivilegedHelper 与 Client 测试工程构建通过；隔离 Server 组件专项 90 项 PASS，覆盖持久台账重载后的同键操作身份、请求冲突、跨组件 APT 资源排他、中断终态保留、完整依赖摘要漂移和准入拒绝。Client `--package-transactions-only` 34 项 PASS，包含原键重试、精确冻结请求传输、旧登录和旧宿主请求阻断。组件中心三语言 × 明暗布局检查包含可安装按钮、活动任务互斥和 Interrupted 反馈预览；没有实际 Linux 包安装、Server 执行中断故障注入或 Windows 安装验收，不能报告实机生命周期已完成。
 
 目录接入程度新增 Package，nginx 的 Linux 系统包来源标记为已接入，官方源和 Windows 归档保持计划中；安装台账面板不再同时显示“仅目录、无安装按钮”的提示。最后一轮三语言 × 明暗布局回归通过，包含 PackageInstall 与 PackageInterrupted 渲染。
+
+
+## Linux 当前 Nginx 与桌面入口（2026-10-26）
+
+CC-01：Linux 桌面组件中心提供当前 Nginx 的发现、外部实例显式集成与选择；安装沿用组件中心已有冻结包计划。选择通过 `GET/PUT /api/v1.0/webservers/current-nginx` 存入宿主全局 SQLite（迁移 17），同一宿主的客户端共享；只允许选择已受管或已集成的 Nginx。未显式选择且只有一个实例时直接使用；多个实例须选择，已保存实例消失后保持不可用，不切换到其他实例。
+
+Linux 桌面 Web 服务器管理器隐藏实例选择、发现、集成、安装和卸载入口，提供组件中心跳转；保留服务器状态、配置检查、启停/重载和站点管理。窗口打开与刷新时读取当前选择，并每三秒检查变化，变化时清空旧站点目标并重新读取。未配置或不可用时提示到组件中心处理。Windows 入口保持现有行为。此变更不增加系统包更新、回滚或补偿能力，也不改变外部实例的所有权。Android UI 尚未迁移，仍按 Android 自有文档追踪。当前验证范围为本地构建与自动化，尚无 Linux 桌面实机验收。
+
+验证：Server/Client 构建通过；`RelaxKonOS.Server.Tests --current-nginx-only` 的 8 项持久化/解析断言与桌面 `--current-nginx-only` 的 7 项联动/门禁断言通过，并检查 1060/520 宽度的四张布局预览。完整 `--webserver-only` 在既有 Windows 静态目录验证断言处失败，未据此宣称整组通过。

@@ -1,4 +1,4 @@
-﻿using Size = RelaxKonOS.Core.Primitives.Size;
+using Size = RelaxKonOS.Core.Primitives.Size;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Client.Apps.FileServices.Views;
@@ -34,7 +34,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
         _model.Notice = LocalizedStatus.Key("component_center.located");
     }
     public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.component-center"), "Component Center", "1.0.0", "⇄", "Managed host components",
-        [AppPermissions.ServerComponentsRead, AppPermissions.ServerComponentsManage],
+        [AppPermissions.ServerComponentsRead, AppPermissions.ServerComponentsManage, AppPermissions.ServerWebServersRead, AppPermissions.ServerWebServersManage],
         InstancePolicy: ApplicationInstancePolicy.SingleWindow,
         IconPath: "avares://RelaxKonOS.Client/Assets/AppIcons/proxy-server.png");
 
@@ -62,6 +62,14 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             context.Services.GetService(typeof(IComponentLifecycleClient)) as IComponentLifecycleClient);
         model.ConnectionAvailable = true;
         _model = model;
+        if (session.CurrentServer?.Platform == HostPlatformKind.Linux
+            && context.Services.GetService(typeof(RelaxKonOS.Client.Apps.WebServers.IRemoteWebServerClient)) is RelaxKonOS.Client.Apps.WebServers.IRemoteWebServerClient web
+            && context.Services.GetService(typeof(RelaxKonOS.Client.Apps.Certificates.IRemoteCertificateClient)) is RelaxKonOS.Client.Apps.Certificates.IRemoteCertificateClient certificates
+            && context.Services.GetService(typeof(RelaxKonOS.Client.Services.Privileged.IHostElevationBroker)) is RelaxKonOS.Client.Services.Privileged.IHostElevationBroker elevations)
+        {
+            model.NginxSelection = new(web, certificates, session, context.Permissions, elevations) { IsComponentCenter = true };
+            _ = model.NginxSelection.RefreshCommand.ExecuteAsync(null);
+        }
         var view = new ComponentCenterWorkspace(model);
         var availability = context.Services.GetService(typeof(ApplicationAvailabilityService)) as ApplicationAvailabilityService;
         RelaxKonOS.Protocol.ManagedRuntimes.RuntimeInstallationSnapshot? lastObservation = null;
@@ -78,6 +86,9 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
         view.OpenApplication = applicationId => applications?.Launch(new AppId(applicationId));
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.component-center.display_name"),
             view, new Rect(80, 45, 1060, 800), Manifest.IconGlyph);
+        if (model.NginxSelection is { } nginxSelection)
+            nginxSelection.RequestIntegrationConfirmationAsync = () => ConfirmAsync(
+                LocalizedText.Get("webservers.integration.confirmation.title"), LocalizedText.Get("webservers.integration.confirmation.message"));
         foreach (var host in new ProxyServerRuntimeViewModel?[] { runtime, mihomo })
         {
             if (host is null) continue;

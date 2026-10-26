@@ -1,5 +1,6 @@
-﻿<UserControl xmlns="https://github.com/avaloniaui"
+<UserControl xmlns="https://github.com/avaloniaui"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:web="clr-namespace:RelaxKonOS.Client.Apps.WebServers.Views"
  xmlns:mr="clr-namespace:RelaxKonOS.Protocol.ManagedRuntimes;assembly=RelaxKonOS.Protocol"
  xmlns:loc="using:RelaxKonOS.Client.Localization"
  xmlns:views="using:RelaxKonOS.Client.Apps.ProxyServer.Views"
@@ -158,6 +159,15 @@
 
    <ScrollViewer x:Name="DetailsScroll" Grid.Column="1" Grid.RowSpan="2" Padding="20,16" HorizontalScrollBarVisibility="Disabled">
     <StackPanel Spacing="14">
+     <Border Classes="panel-card" IsVisible="{Binding ShowNginxSelection}">
+      <ContentControl Content="{Binding NginxSelection}">
+       <ContentControl.ContentTemplate>
+        <DataTemplate>
+         <web:CurrentNginxSelectionView />
+        </DataTemplate>
+       </ContentControl.ContentTemplate>
+      </ContentControl>
+     </Border>
      <!-- Component identity: what this is, what state the host reports, and where it is managed. -->
      <Border Classes="panel-card" IsVisible="{Binding HasComponentDetails}">
       <StackPanel Spacing="14">

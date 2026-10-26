@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -253,11 +253,14 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         SelectedNode = VisibleRoots.SelectMany(root => root.VisibleDescendantsAndSelf()).FirstOrDefault(node =>
             target.WorkloadId is { } workload ? node.WorkloadId == workload && node.ComponentId is null : node.ComponentId == target.ComponentId);
     }
+    public RelaxKonOS.Client.Apps.WebServers.WebServerManagerViewModel? NginxSelection { get; set; }
+    public bool ShowNginxSelection => SelectedDefinition?.ComponentId == "nginx" && NginxSelection?.IsLinuxServer == true;
+
     private void NotifyContext()
     {
         foreach (var property in new[] { nameof(HasResults), nameof(HasRuntimeDetails), nameof(HasWorkloadDetails),
             nameof(SelectedTitle), nameof(EmptyMessage), nameof(WorkloadRequirements), nameof(WorkloadOptional), nameof(ShowInspection),
-            nameof(SelectedComponentTitle),
+            nameof(SelectedComponentTitle), nameof(ShowNginxSelection),
             nameof(DetailRuntime), nameof(SelectedComponent), nameof(SelectedDefinition), nameof(ShowNotIntegrated),
             nameof(SelectedComponentDescription), nameof(SelectedHostSources), nameof(SelectedOtherSources),
             nameof(HasSelectedSources), nameof(HasOtherPlatformSources), nameof(HostPlatform),

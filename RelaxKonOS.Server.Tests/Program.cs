@@ -1,4 +1,4 @@
-﻿using RelaxKonOS.Protocol.Proxy;
+using RelaxKonOS.Protocol.Proxy;
 if (args.Contains("--squid-only"))
 {
     await SquidGatewayChecks.RunAsync();
@@ -156,6 +156,14 @@ if (args.Contains("--mihomo-runtime-only"))
     }
     finally { Directory.Delete(runtimeRoot, recursive: true); }
     Console.WriteLine("Mihomo runtime checks passed.");
+    return;
+}
+if (args.Contains("--current-nginx-only"))
+{
+    var nginxSelectionRoot = Path.Combine(Path.GetTempPath(), "relaxkon-current-nginx-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(nginxSelectionRoot);
+    try { await WebServerChecks.VerifyCurrentNginxAsync(nginxSelectionRoot); }
+    finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(nginxSelectionRoot, true); }
     return;
 }
 if (args.Contains("--webserver-only"))

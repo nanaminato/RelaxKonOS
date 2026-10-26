@@ -32,6 +32,7 @@ public class SiteEditorSession : DispatchProxy
     {
         switch (method!.Name)
         {
+            case "get_CurrentServer": return new ServerDescriptorDto(HostPlatformKind.Linux, [ServerCapabilities.WebServer]);
             case "get_State": return AuthSessionState.Authenticated;
             case "get_ServiceId": return Service;
             case "get_EffectiveBaseUrl": return Transport;

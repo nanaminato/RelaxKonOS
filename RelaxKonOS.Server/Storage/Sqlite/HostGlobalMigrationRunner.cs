@@ -336,6 +336,16 @@ internal static class HostGlobalMigrationRunner
                 INSERT INTO relaxkonos_host_schema_migrations(version, applied_at) VALUES (16, CURRENT_TIMESTAMP);
                 """, cancellationToken);
         }
+        if (!await IsAppliedAsync(connection, transaction, 17, cancellationToken))
+        {
+            await ExecuteAsync(connection, transaction, """
+                CREATE TABLE webserver_current_nginx (
+                    selection_id INTEGER NOT NULL PRIMARY KEY CHECK(selection_id = 1),
+                    instance_id TEXT NOT NULL
+                );
+                INSERT INTO relaxkonos_host_schema_migrations(version, applied_at) VALUES (17, CURRENT_TIMESTAMP);
+                """, cancellationToken);
+        }
         transaction.Commit();
     }
 

@@ -70,3 +70,6 @@ public sealed record WebServerOperationDto(
     [property: JsonPropertyName("snapshotId")] string? SnapshotId,
     [property: JsonPropertyName("startedAt")] DateTimeOffset? StartedAt,
     [property: JsonPropertyName("completedAt")] DateTimeOffset? CompletedAt);
+
+/// <summary>Host-wide selection; a missing/stale selection never selects another instance.</summary>
+public sealed record CurrentNginxDto([property: JsonRequired, JsonPropertyName("serverId")] string? ServerId);

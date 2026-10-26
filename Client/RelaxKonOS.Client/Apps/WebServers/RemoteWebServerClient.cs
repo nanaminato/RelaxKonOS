@@ -16,6 +16,11 @@ namespace RelaxKonOS.Client.Apps.WebServers;
 /// </summary>
 public sealed class RemoteWebServerClient(HttpClient http, IAuthSession session) : IRemoteWebServerClient
 {
+    public Task<CurrentNginxDto> GetCurrentNginxAsync(CancellationToken cancellationToken = default)
+        => SendAsync<CurrentNginxDto>(HttpMethod.Get, WebServerApiRoutes.CurrentNginx, null, null, cancellationToken);
+    public Task<CurrentNginxDto> SelectCurrentNginxAsync(CurrentNginxDto request, CancellationToken cancellationToken = default)
+        => SendAsync<CurrentNginxDto>(HttpMethod.Put, WebServerApiRoutes.CurrentNginx, request, null, cancellationToken);
+
     public Task<IReadOnlyList<WebServerDto>> DiscoverAsync(CancellationToken cancellationToken = default)
         => SendAsync<IReadOnlyList<WebServerDto>>(HttpMethod.Post, WebServerApiRoutes.Discover, null, null, cancellationToken);
 

@@ -1,6 +1,16 @@
 {
   "Culture": "ja-JP",
   "Strings": {
+    "webservers.current.management_hint": "サーバーの稼働状態とサイト設定を管理します。",
+    "webservers.current.title": "現在の Nginx",
+    "webservers.current.hint": "このホストで使用する Nginx を選択します。Web サーバーマネージャーに反映されます。利用可能なインスタンスが一つの場合は自動的に使用します。外部 Nginx は統合を確認してください。",
+    "webservers.current.use": "この Nginx を使用",
+    "webservers.current.saved": "現在の Nginx を保存しました。",
+    "webservers.current.failed": "現在の Nginx を読み取りまたは保存できません。更新して再試行してください。",
+    "webservers.current.manage": "コンポーネントセンターで Nginx を管理",
+    "webservers.current.server_management": "サーバー管理",
+    "webservers.current.unavailable": "現在の Nginx は利用できません。コンポーネントセンターで選択またはインストールしてください。",
+    "webservers.current.ready": "コンポーネントセンターの現在の Nginx を使用しています。",
     "webservers.subtitle": "ホストの Web サーバーを検出・管理",
     "webservers.login_required": "Web サーバーを管理するには RelaxKonOS Server にサインインしてください。",
     "webservers.status.loading": "Web サーバーを読み込んでいます…",

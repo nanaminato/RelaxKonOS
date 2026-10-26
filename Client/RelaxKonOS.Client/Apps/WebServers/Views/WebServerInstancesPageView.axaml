@@ -18,9 +18,9 @@
         </Style>
     </UserControl.Styles>
     <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-        <Grid MaxWidth="1440" HorizontalAlignment="Stretch" Margin="32,28,32,32"
+        <Grid x:Name="LayoutGrid" MaxWidth="1440" HorizontalAlignment="Stretch" Margin="32,28,32,32"
               ColumnDefinitions="*,1.35*" ColumnSpacing="18" MinWidth="0" MinHeight="0" ClipToBounds="True">
-            <Border Grid.Column="0" Padding="24" MinWidth="0" Classes="app-panel">
+            <Border Grid.Column="0" Padding="24" MinWidth="0" Classes="app-panel" IsVisible="{Binding ShowInstanceSelection}">
                 <!-- The discovery/install column carries every input field. Keep the field stack in a
                      Grid-free flow but wrap the action rows, so a narrow column reflows instead of
                      painting its buttons past the card edge. -->
@@ -29,7 +29,7 @@
                         <TextBlock Text="{loc:Loc webservers.instances.title}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
                         <TextBlock Text="{loc:Loc webservers.instances.subtitle}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
                     </StackPanel>
-                    <WrapPanel ItemHeight="34">
+                    <WrapPanel ItemHeight="34" IsVisible="{Binding ShowInstanceSelection}">
                         <Button Content="{loc:Loc common.refresh}" Command="{Binding RefreshCommand}" />
                         <Button Content="{loc:Loc webservers.discover}" Command="{Binding DiscoverCommand}" Margin="8,0,0,0" />
                     </WrapPanel>
@@ -84,10 +84,12 @@
                     </StackPanel>
                 </StackPanel>
             </Border>
-            <Border Grid.Column="1" Padding="24" MinWidth="0" Classes="app-panel">
+            <Border x:Name="ActionsPanel" Grid.Column="1" Padding="24" MinWidth="0" Classes="app-panel">
                 <StackPanel Spacing="16" MinWidth="0">
+                    <Button Content="{loc:Loc webservers.current.manage}" Command="{Binding ManageComponentCommand}" IsVisible="{Binding IsLinuxServer}" />
+                    <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" IsVisible="{Binding IsLinuxServer}" />
                     <StackPanel Spacing="3">
-                        <TextBlock Text="{loc:Loc webservers.actions.title}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBlock Text="{Binding ActionsTitle}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
                         <TextBlock Text="{Binding ManagementHint}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
                     </StackPanel>
                     <Border Background="{DynamicResource SurfaceSunkenBrush}" CornerRadius="10" Padding="14,10" IsVisible="{Binding !IsManagedServer}">
@@ -140,7 +142,7 @@
                             <Button Grid.Column="0" Content="{loc:Loc webservers.action.restart}" Command="{Binding RestartCommand}" HorizontalContentAlignment="Center" />
                             <Button Grid.Column="1" Content="{loc:Loc webservers.action.reload}" Command="{Binding ReloadCommand}" HorizontalContentAlignment="Center" />
                         </Grid>
-                        <Border Background="{DynamicResource WarningMutedBrush}" BorderBrush="{DynamicResource DangerBrush}" BorderThickness="1" CornerRadius="10" Padding="12,9">
+                        <Border IsVisible="{Binding !IsLinuxServer}" Background="{DynamicResource WarningMutedBrush}" BorderBrush="{DynamicResource DangerBrush}" BorderThickness="1" CornerRadius="10" Padding="12,9">
                             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
                                 <TextBlock Text="{loc:Loc webservers.managed.uninstall_hint}" FontSize="12" Foreground="{DynamicResource DangerBrush}" VerticalAlignment="Center" TextWrapping="Wrap" />
                                 <Button Grid.Column="1" Content="{loc:Loc webservers.managed.uninstall}" Command="{Binding UninstallManagedCommand}" />

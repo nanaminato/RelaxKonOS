@@ -11,6 +11,23 @@ public static class WebServerEndpoints
     public static IEndpointRouteBuilder MapWebServerEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup(WebServerApiRoutes.WebServers).RequireAuthorization().WithTags("WebServers").RequireHostFeature(ServerHostFeature.WebServer);
+        group.MapGet(WebServerApiRoutes.CurrentNginxPattern, async (RelaxKonOS.Server.WebServer.WebServerMetadataRepository metadata,
+            RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
+        {
+            var id = await metadata.ReadCurrentNginxAsync(ct);
+            // A sole installation needs no manual choice. A stale explicit selection remains unavailable.
+            return RelaxKonOS.Server.WebServer.WebServerMetadataRepository.ResolveCurrentNginx(id, await manager.ListAsync(ct));
+        });
+        group.MapPut(WebServerApiRoutes.CurrentNginxPattern, async (CurrentNginxDto request,
+            RelaxKonOS.Server.WebServer.WebServerMetadataRepository metadata,
+            RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
+        {
+            if (!OperatingSystem.IsLinux()) return Results.BadRequest();
+            if (!(await manager.ListAsync(ct)).Any(server => server.Id == request.ServerId && server.ProviderId == "nginx"))
+                return Results.BadRequest(new { problemCode = "webserver.instance_not_found" });
+            await metadata.SelectCurrentNginxAsync(request.ServerId!, ct);
+            return Results.Ok(request);
+        });
         group.MapGet(WebServerApiRoutes.ManagedInstallCatalogPattern, (RelaxKonOS.Server.WebServer.NginxWebServerManager manager, CancellationToken ct) => manager.GetManagedInstallCatalogAsync(ct));
         group.MapGet(WebServerApiRoutes.ManagedInstallDownloadPattern, async (string? version, RelaxKonOS.Server.WebServer.NginxWebServerManager manager, CancellationToken ct) =>
             await manager.GetManagedInstallDownloadAsync(version, ct) is { } download ? Results.Ok(download) : Results.NotFound());

@@ -1,6 +1,16 @@
 {
   "Culture": "zh-CN",
   "Strings": {
+    "webservers.current.management_hint": "管理服务器运行状态与站点配置。",
+    "webservers.current.server_management": "服务器管理",
+    "webservers.current.unavailable": "当前 Nginx 不可用，请在组件中心选择或安装 Nginx。",
+    "webservers.current.ready": "正在使用组件中心的当前 Nginx。",
+    "webservers.current.title": "当前 Nginx",
+    "webservers.current.hint": "在组件中心选择此宿主使用的 Nginx。服务器管理器将自动使用该选择；只有一个可用实例时会自动使用。外部 Nginx 需先确认集成。",
+    "webservers.current.use": "使用此 Nginx",
+    "webservers.current.saved": "当前 Nginx 已保存。",
+    "webservers.current.failed": "无法读取或保存当前 Nginx，请刷新后重试。",
+    "webservers.current.manage": "在组件中心管理 Nginx",
     "webservers.subtitle": "发现并管理主机上的 Web 服务器",
     "webservers.login_required": "登录 RelaxKonOS Server 后才能管理 Web 服务器。",
     "webservers.status.loading": "正在加载 Web 服务器…",

@@ -22,6 +22,34 @@ internal sealed class WebServerMetadataRepository
         _enabled = string.Equals(storage.Provider, "sqlite", StringComparison.OrdinalIgnoreCase);
     }
 
+    internal static CurrentNginxDto ResolveCurrentNginx(string? id, IReadOnlyList<WebServerDto> servers)
+    {
+        var nginx = servers.Where(server => server.ProviderId == "nginx").ToArray();
+        return new(id is null ? nginx.Length == 1 ? nginx[0].Id : null
+            : nginx.Any(server => server.Id == id) ? id : null);
+    }
+
+    public async Task<string?> ReadCurrentNginxAsync(CancellationToken ct)
+    {
+        if (!_enabled) throw new InvalidOperationException("Host-global storage is required.");
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT instance_id FROM webserver_current_nginx WHERE selection_id = 1";
+        return await command.ExecuteScalarAsync(ct) as string;
+    }
+
+    public async Task SelectCurrentNginxAsync(string id, CancellationToken ct)
+    {
+        if (!_enabled) throw new InvalidOperationException("Host-global storage is required.");
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "INSERT INTO webserver_current_nginx(selection_id, instance_id) VALUES(1,$id) ON CONFLICT(selection_id) DO UPDATE SET instance_id=excluded.instance_id";
+        command.Parameters.AddWithValue("$id", id);
+        await command.ExecuteNonQueryAsync(ct);
+    }
+
     public async Task UpsertInstanceAsync(WebServerDto instance, CancellationToken cancellationToken)
     {
         if (!_enabled) return;

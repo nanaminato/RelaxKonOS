@@ -46,10 +46,15 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
             return;
         }
         var viewModel = new WebServerManagerViewModel(client, certificates, session, context.Permissions, elevations);
+        viewModel.OpenComponentCenter = () =>
+        {
+            if (session.ServiceId is { } host)
+                context.Activations.Activate(RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterNavigation.Component(host, Manifest.Id.Value, "nginx"));
+        };
         viewModel.Installation = InstallationPanel.Create(context, InstallationServiceId.Nginx, "relaxkonos.webservers", () => viewModel.RefreshCommand.ExecuteAsync(null));
         var view = WebServerManagerWorkspace.Create(viewModel);
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.webservers.display_name"),
-            InstallationPanel.Wrap(view, viewModel.Installation), new Rect(70, 55, 1080, 680), Manifest.IconGlyph);
+            viewModel.IsLinuxServer ? view : InstallationPanel.Wrap(view, viewModel.Installation), new Rect(70, 55, 1080, 680), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
         viewModel.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window, problemCode);
         viewModel.RequestIntegrationConfirmationAsync = async () =>
@@ -149,6 +154,27 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
                 return new NginxIntegrationConfirmationDialogView { DataContext = dialogViewModel };
             }, new Size(500, 220));
             return confirmed;
+        }
+        if (viewModel.IsLinuxServer)
+        {
+            var selectionTimer = new Avalonia.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            var refreshing = false;
+            selectionTimer.Tick += async (_, _) =>
+            {
+                if (refreshing) return;
+                refreshing = true;
+                try { await viewModel.SynchronizeCurrentNginxAsync(); }
+                finally { refreshing = false; }
+            };
+            EventHandler<RelaxKonOS.WindowManager.ManagedWindow>? closed = null;
+            closed = (_, current) =>
+            {
+                if (!ReferenceEquals(current, window)) return;
+                selectionTimer.Stop();
+                context.WindowManager.WindowClosed -= closed;
+            };
+            context.WindowManager.WindowClosed += closed;
+            selectionTimer.Start();
         }
         _ = viewModel.StartAsync();
 
