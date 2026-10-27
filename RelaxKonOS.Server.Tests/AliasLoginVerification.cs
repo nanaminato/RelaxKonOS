@@ -64,6 +64,7 @@ internal static class AliasLoginVerification
         builder.Logging.ClearProviders();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         var services = builder.Services;
+        services.AddSingleton(RelaxKonOS.Server.Startup.ServerModules.Create(builder.Configuration));
         services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
         services.AddDbContext<RelaxKonOSDbContext>(options => options.UseSqlite("Data Source=" + path));
         services.AddScoped<IUserRepository, SqliteUserRepository>();

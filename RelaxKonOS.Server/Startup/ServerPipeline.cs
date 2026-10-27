@@ -87,7 +87,7 @@ internal static class ServerPipeline
         app.MapTaskExecutionEndpoints();
         if (OperatingSystem.IsLinux() || OperatingSystem.IsWindows())
             app.MapFirewallEndpoints();
-        app.MapHub<TerminalHub>("/hubs/terminals", options => options.CloseOnAuthenticationExpiration = true);
+        app.Services.GetRequiredService<ServerModules>().MapEndpoints(app);
         app.MapHub<GuardianLogsHub>(RelaxKonOSEndpoints.GuardianLogsHubPath, options => options.CloseOnAuthenticationExpiration = true);
         app.MapHub<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentLogsHub>(RelaxKonOSEndpoints.ApplicationDeploymentLogsHubPath,
             options => options.CloseOnAuthenticationExpiration = true);

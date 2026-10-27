@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
+using RelaxKonOS.Protocol.Common;
 using RoyalTerminal.Terminal;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
 
@@ -28,7 +29,8 @@ public sealed class TerminalApp : RemoteApplicationBase, IOpenTerminalApplicatio
         DisplayName: "Terminal",
         Version: "1.0.0",
         IconGlyph: "🖥",
-        Description: "远程终端");
+        Description: "远程终端",
+        ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.Terminal]));
 
     public override void Activate(AppContext context)
     {

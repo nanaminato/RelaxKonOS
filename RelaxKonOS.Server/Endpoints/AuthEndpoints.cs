@@ -100,7 +100,11 @@ public static class AuthEndpoints
             .RequireAuthorization()
             .WithTags("Auth");
 
-        group.MapGet(ServerApiRoutes.Capabilities, (IServerModeResolver serverMode) => Results.Ok(serverMode.Describe()))
+        group.MapGet(ServerApiRoutes.Capabilities, (IServerModeResolver serverMode, RelaxKonOS.Server.Startup.ServerModules modules) =>
+            {
+                var host = serverMode.Describe();
+                return Results.Ok(host with { Capabilities = host.Capabilities with { Terminal = host.Capabilities.Terminal && modules.HasTerminal } });
+            })
             .RequireAuthorization()
             .WithTags("Server");
 
@@ -247,7 +251,8 @@ public static class AuthEndpoints
                 RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? HostPlatformKind.Windows : HostPlatformKind.Linux,
                 serverMode,
                 http.RequestServices.GetRequiredService<RelaxKonOS.Server.EventAlerts.EventAlertsOptions>(),
-                http.RequestServices.GetRequiredService<RelaxKonOS.Server.BackupRecovery.IBackupRecoveryKeyProvider>()),
+                http.RequestServices.GetRequiredService<RelaxKonOS.Server.BackupRecovery.IBackupRecoveryKeyProvider>(),
+                http.RequestServices.GetRequiredService<RelaxKonOS.Server.Startup.ServerModules>().HasTerminal),
             new ServerExecutionEligibilityDto(login.ExecutionEligibility.Available,
                 login.ExecutionEligibility.ReasonCode, serverMode.Mode == ServerMode.System && login.Method == "system"
                 && user.Platform == HostPlatformKind.Linux && user.PlatformIdentity == "0" && user.Username == "root")));

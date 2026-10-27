@@ -26,6 +26,8 @@ var isDevelopment = environmentName.Equals(Environments.Development, StringCompa
 // The installer writes this optional host configuration before the mode boundary is evaluated.
 // It must not be possible for a later configuration provider to change an already-validated mode.
 builder.Configuration.AddJsonFile("appsettings.host.json", optional: true, reloadOnChange: false);
+var serverModules = ServerModules.Create(builder.Configuration);
+builder.Services.AddSingleton(serverModules);
 
 var eventAlertsOptions = builder.AddServerObservability(isDevelopment);
 // Deployment mode is an explicit security contract. In particular, Development must not turn a
@@ -55,6 +57,7 @@ using var identityHostLock = storageProvider == "sqlite"
     ? StorageStartup.AcquireIdentityHostLock(Path.Combine(builder.Environment.ContentRootPath, storageOpts.DatabasePath)) : null;
 builder.AddServerStorage(storageOpts, storageProvider);
 builder.AddWorkspaceServices();
+serverModules.ConfigureServices(builder);
 
 var app = builder.Build();
 if (await app.RunMaintenanceAsync(builder, serverModeResolver)) return;

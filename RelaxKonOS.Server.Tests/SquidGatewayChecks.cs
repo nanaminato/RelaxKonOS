@@ -315,12 +315,12 @@ internal static class SquidGatewayChecks
             Tunnels: false, Proxy: proxy, PrivilegedOperations: false);
 
         var windows = ServerDescriptorFactory.Create(HostPlatformKind.Windows, new StubModeResolver(Host(proxy: true)),
-            new EventAlertsOptions(), new UnavailableBackupRecoveryKey());
+            new EventAlertsOptions(), new UnavailableBackupRecoveryKey(), terminalEnabled: true);
         Check(windows.Capabilities.Contains(ServerCapabilities.GatewayProxy),
             "A Windows host answers the gateway contract with an unsupported status, so the capability must stay advertised; dropping it makes every client hide the application instead of explaining the host.");
 
         var unprivileged = ServerDescriptorFactory.Create(HostPlatformKind.Linux, new StubModeResolver(Host(proxy: false)),
-            new EventAlertsOptions(), new UnavailableBackupRecoveryKey());
+            new EventAlertsOptions(), new UnavailableBackupRecoveryKey(), terminalEnabled: true);
         Check(!unprivileged.Capabilities.Contains(ServerCapabilities.GatewayProxy)
             && !unprivileged.Capabilities.Contains(ServerCapabilities.Proxy),
             "A Linux User Mode host has no privileged Helper and must not advertise the gateway at all.");

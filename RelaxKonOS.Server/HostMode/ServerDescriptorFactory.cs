@@ -13,7 +13,7 @@ namespace RelaxKonOS.Server.HostMode;
 public static class ServerDescriptorFactory
 {
     public static ServerDescriptorDto Create(HostPlatformKind platform, IServerModeResolver serverMode,
-        EventAlertsOptions eventAlerts, IBackupRecoveryKeyProvider backupRecovery)
+        EventAlertsOptions eventAlerts, IBackupRecoveryKeyProvider backupRecovery, bool terminalEnabled)
     {
         var isWindows = platform == HostPlatformKind.Windows;
         var capabilities = new List<string>
@@ -21,7 +21,6 @@ public static class ServerDescriptorFactory
             ServerCapabilities.Files,
             ServerCapabilities.Metrics,
             ServerCapabilities.Processes,
-            ServerCapabilities.Terminal,
             ServerCapabilities.Git,
         };
         if (serverMode.Supports(ServerHostFeature.PrivilegedOperations) && serverMode.Supports(ServerHostFeature.AgentInstallation))
@@ -30,6 +29,8 @@ public static class ServerDescriptorFactory
         if (serverMode.Supports(ServerHostFeature.Firewall)) capabilities.Add(ServerCapabilities.Firewall);
 
         var host = serverMode.Describe();
+        host = host with { Capabilities = host.Capabilities with { Terminal = host.Capabilities.Terminal && terminalEnabled } };
+        if (host.Capabilities.Terminal) capabilities.Add(ServerCapabilities.Terminal);
         if (host.Capabilities.Guardian) capabilities.Add(ServerCapabilities.Guardian);
         if (host.Capabilities.Docker) capabilities.Add(ServerCapabilities.Docker);
         if (host.Capabilities.FileServices) capabilities.Add(ServerCapabilities.FileServices);

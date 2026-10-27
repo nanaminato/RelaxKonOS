@@ -1,5 +1,7 @@
 # RelaxKonOS Terminal 模块设计
 
+Server 的 Terminal 已接入官方模块注册试点，默认启用。可在受控 Server 配置设置 `Modules:Terminal:Enabled=false` 并重启以禁用其 PTY 服务与 Hub；桌面端在 Server 未公布 `server.terminal` 时阻止启动和自动恢复。该开关不移除发布包中的代码或依赖，也不支持在线切换；部署和会话生命周期的验收边界见[模块设计实施记录](../architecture/RelaxKonOS.ModulesAndExtensions.Design.md#首个注册框架与-terminal-试点2026-10-27)。
+
 > **当前 UI 行为（优先于下文早期工具条描述）**：一个服务端 PTY 对应一个桌面终端窗口；不提供会话切换、新建、断开、Restart 或 Clear 按钮。进入已认证桌面时会自动恢复所有存活会话；再次手动打开 Terminal 时也会恢复存活会话，若不存在会话则新建一个。只有关闭某个终端窗口才会显式终止对应的服务端进程。字体、字号、配色为 Workspace 级设置（桌面渲染引擎固定为 RoyalTerminal，见 §2.4），经 `GET`/`PUT /api/v1.0/workspaces/{id}/terminal-settings` 保存在服务器端。
 
 > 内置终端应用：基于 [RoyalTerminal](https://github.com/royalapplications/RoyalTerminal) NuGet 包引入终端能力，支持 **Remote Mode**（SignalR 远端 PTY）与 **Local Mode**（本地 PTY 回退）。
