@@ -61,7 +61,7 @@ if (args.Contains("--task-manager-only"))
 }
 if (args.Contains("--registry-only"))
 {
-    var checks = RegistryChecks.RunAsync();
+    var checks = RegistryChecks.RunAsync(settings);
     var deadline = DateTime.UtcNow.AddSeconds(15);
     while (!checks.IsCompleted && DateTime.UtcNow < deadline)
     {

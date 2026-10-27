@@ -29,6 +29,9 @@ public sealed partial class RegistryValueDialogViewModel : LocalizedObservableOb
     public RegistryEditorKind Editor => Entry?.Schema.Editor ?? RegistryEditorKind.String;
     public bool IsBoolean => ValueType == RegistryValueType.Boolean;
     public bool IsSessionValidSetting => Entry is { Scope: RegistryScope.Server, Path: "Server\\Runtime", Name: "sessionValid" };
+    public bool IsServerRuntimeSetting => Entry is { Scope: RegistryScope.Server, Path: "Server\\Runtime" };
+    public string DisplayName => _row?.Labels.Name ?? Name;
+    public string ValueTypeText => LocalizedText.Get("registry.type." + ValueType, ValueType.ToString());
     public bool IsEnum => Editor == RegistryEditorKind.Enum;
     public bool IsStringList => Editor == RegistryEditorKind.StringList;
     public bool IsInteger => !IsEnum && Editor == RegistryEditorKind.Integer;

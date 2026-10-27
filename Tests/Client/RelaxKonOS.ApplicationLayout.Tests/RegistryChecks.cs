@@ -8,10 +8,10 @@ using RelaxKonOS.Protocol.Registry;
 
 internal static class RegistryChecks
 {
-    public static async Task RunAsync()
+    public static async Task RunAsync(RelaxKonOS.Client.Services.ShellSettings settings)
     {
         await PresentationPreferencesChecks.RunAsync();
-        await ServerRuntimeClientChecks.RunAsync();
+        await ServerRuntimeClientChecks.RunAsync(settings);
         var client = new FakeRegistryClient();
         var vm = new RegistryViewModel(client);
         await vm.RefreshAsync();

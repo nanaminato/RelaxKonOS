@@ -69,9 +69,9 @@
           </ContextMenu>
         </DataGrid.ContextMenu>
         <DataGrid.Columns>
-          <DataGridTextColumn Header="{loc:Loc registry.column.name}" Binding="{Binding Name}" SortMemberPath="Name" Width="180"/>
-          <DataGridTextColumn Header="{loc:Loc registry.column.type}" Binding="{Binding Type}" SortMemberPath="Type" Width="110"/>
-          <DataGridTextColumn Header="{loc:Loc registry.column.data}" Binding="{Binding DesiredValue}" SortMemberPath="DesiredValue" Width="*"/>
+          <DataGridTextColumn Header="{loc:Loc registry.column.name}" Binding="{Binding Labels.Name}" SortMemberPath="Labels.Name" Width="240"/>
+          <DataGridTextColumn Header="{loc:Loc registry.column.type}" Binding="{Binding Labels.Type}" SortMemberPath="Labels.Type" Width="110"/>
+          <DataGridTextColumn Header="{loc:Loc registry.column.data}" Binding="{Binding Labels.Data}" SortMemberPath="Labels.Data" Width="*"/>
         </DataGrid.Columns>
       </DataGrid>
     </Grid>

@@ -80,7 +80,13 @@ internal static class QuietSettingsVerification
         app.Use((http, next) => { http.User = new(new ClaimsIdentity([new Claim("sub", actor.ToString("D")), new Claim("jti", "runtime-test"), new Claim("amr", "system")], "test")); return next(http); });
         app.UseAuthorization(); app.MapServerRuntimeEndpoints(); await app.StartAsync();
         using var http = new HttpClient { BaseAddress = new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single()) };
-        using (var denied = await http.GetAsync(ServerRuntimeRoutes.Settings)) Check(denied.StatusCode == HttpStatusCode.Forbidden, "An ordinary user cannot inspect server runtime settings.");
+        using (var denied = await http.GetAsync(ServerRuntimeRoutes.Settings))
+        {
+            Check(denied.StatusCode == HttpStatusCode.Forbidden, "An ordinary user cannot inspect server runtime settings.");
+            var problem = await denied.Content.ReadFromJsonAsync<ProblemDetails>(RelaxKonOSJsonOptions.Default);
+            Check(problem?.Type == "https://relaxkonos.app/problems/elevation-required",
+                "Runtime denial must trigger the client's administrator verification flow.");
+        }
         privilege.Level = HostAccountPrivilege.HostAdministrator;
         var snapshot = (await http.GetFromJsonAsync<ServerRuntimeSnapshot>(ServerRuntimeRoutes.Settings, RelaxKonOSJsonOptions.Default))!;
         using (var invalid = await http.PutAsJsonAsync(ServerRuntimeRoutes.Settings, new PutServerRuntimeFieldRequest(snapshot.InstanceId, "registryFlushDelayMilliseconds", JsonSerializer.SerializeToElement(0), snapshot.Revision), RelaxKonOSJsonOptions.Default))

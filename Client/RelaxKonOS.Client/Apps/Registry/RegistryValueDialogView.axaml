@@ -18,11 +18,15 @@
     <Style Selector="TreeViewItem"><Setter Property="MinHeight" Value="{DynamicResource RegistryTreeRowHeight}"/><Setter Property="Padding" Value="2,1"/></Style>
   </UserControl.Styles>
   <Grid Margin="20" RowDefinitions="Auto,Auto,*,Auto,Auto">
-    <TextBlock Grid.Row="0" Text="{Binding JsonTargetLabel}" FontWeight="SemiBold" TextWrapping="Wrap" HorizontalAlignment="Left" Margin="0,0,0,12"/>
+    <StackPanel Grid.Row="0" Margin="0,0,0,12" Spacing="6">
+      <TextBlock Text="{Binding DisplayName}" IsVisible="{Binding IsServerRuntimeSetting}" FontWeight="SemiBold"/>
+      <TextBlock Text="{Binding JsonTargetLabel}" TextWrapping="Wrap" HorizontalAlignment="Left"/>
+    </StackPanel>
 
     <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="8" HorizontalAlignment="Stretch">
       <TextBox Text="{Binding Name, Mode=TwoWay}" IsReadOnly="{Binding !CanChangeIdentity}" MinWidth="0" HorizontalAlignment="Stretch"/>
-      <ComboBox Grid.Column="1" Width="120" HorizontalAlignment="Left" IsEnabled="{Binding CanChangeIdentity}" ItemsSource="{Binding ValueTypes}" SelectedItem="{Binding ValueType, Mode=TwoWay}"/>
+      <ComboBox Grid.Column="1" Width="120" HorizontalAlignment="Left" IsVisible="{Binding CanChangeIdentity}" ItemsSource="{Binding ValueTypes}" SelectedItem="{Binding ValueType, Mode=TwoWay}"/>
+      <TextBlock Grid.Column="1" Text="{Binding ValueTypeText}" IsVisible="{Binding !CanChangeIdentity}" VerticalAlignment="Center"/>
     </Grid>
 
     <!-- Enum: localized candidate list, saved as the stable value. -->
@@ -45,7 +49,7 @@
     </StackPanel>
 
     <StackPanel Grid.Row="2" IsVisible="{Binding IsBoolean}" Spacing="12" Margin="0,12,0,0">
-      <ToggleSwitch IsChecked="{Binding BooleanValue, Mode=TwoWay}"/>
+      <ToggleSwitch IsChecked="{Binding BooleanValue, Mode=TwoWay}" OnContent="{loc:Loc registry.boolean.true}" OffContent="{loc:Loc registry.boolean.false}"/>
       <TextBlock IsVisible="{Binding IsSessionValidSetting}" Text="{loc:Loc registry.session_valid.hint}" TextWrapping="Wrap" />
     </StackPanel>
 
