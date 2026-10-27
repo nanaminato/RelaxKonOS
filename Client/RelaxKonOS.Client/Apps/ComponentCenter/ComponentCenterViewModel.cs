@@ -53,12 +53,12 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     /// <summary>The detail pane follows the selected component instead of assuming sing-box.</summary>
     public ProxyServerRuntimeViewModel? DetailRuntime => SelectedDefinition?.ComponentId is { } id && _runtimes.TryGetValue(id, out var runtime)
         ? runtime : null;
-    public bool HasRuntimeDetails => HasResults && DetailRuntime is not null;
+    public bool HasRuntimeDetails => !ShowOfficialDownloads && HasResults && DetailRuntime is not null;
     public bool ShowRuntimeTaskActivity => HasRuntimeDetails && DetailRuntime is { } runtime
         && (runtime.HasActiveOperation || runtime.NeedsRecovery || !runtime.OperationText.IsEmpty || !runtime.OutcomeText.IsEmpty);
     public bool HasWorkloadDetails => HasResults && SelectedNode?.WorkloadId is not null && SelectedNode.ComponentId is null;
     /// <summary>True when the selected component has no runtime page to drive, whatever the reason.</summary>
-    public bool ShowNotIntegrated => HasResults && SelectedDefinition is { } definition
+    public bool ShowNotIntegrated => !ShowOfficialDownloads && HasResults && SelectedDefinition is { } definition
         && (definition.Integration == ComponentIntegration.Application || DetailRuntime is null)
         && !(definition.Integration == ComponentIntegration.Installation && PackageInstallation is not null);
     public int SelectedSourceKindCount => SelectedDefinition?.Sources.Count ?? 0;
@@ -160,7 +160,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     public bool HasTargetText => Runtime.Installation?.Installation.Target is not null;
     public bool HasComponentDetails => HasResults && SelectedDefinition is not null;
     /// <summary>A runtime message belongs to the component that produced it, never to another row.</summary>
-    public LocalizedStatus HeaderOutcomeText => DetailRuntime?.OutcomeText ?? LocalizedStatus.Literal("");
+    public LocalizedStatus HeaderOutcomeText => ShowOfficialDownloads ? LocalizedStatus.Literal("") : DetailRuntime?.OutcomeText ?? LocalizedStatus.Literal("");
     public bool HasHeaderOutcome => !HeaderOutcomeText.IsEmpty;
     public LocalizedStatus SelectedApplicationOpenText => LocalizedStatus.Format("component_center.open_application_named", SelectedApplicationText);
     public LocalizedStatus NotIntegratedMessage => LocalizedStatus.Format("component_center.not_integrated_message", SelectedApplicationText);
@@ -278,7 +278,13 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         SelectedNode = null;
         RefreshTree();
     }
-    partial void OnSelectedNodeChanged(ComponentTreeNode? value) => NotifyContext();
+    partial void OnSelectedNodeChanged(ComponentTreeNode? value)
+    {
+        SelectedOfficialRelease = null;
+        OfficialVersion = "";
+        OfficialDownloadNotice = LocalizedStatus.Literal("");
+        NotifyContext();
+    }
     partial void OnSearchChanged(string value) => RefreshTree();
     public void Navigate(ComponentCenterPage page) => SelectedNavigation = Pages.Single(item => item.Page == page);
     public void Locate(ComponentCenterTarget target)
@@ -324,6 +330,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
             OnPropertyChanged(property);
         NotifyPackage();
         NotifyGit();
+        NotifyOfficialDownloads();
     }
     private void BuildTrees()
     {
@@ -370,7 +377,8 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
                 node.HasUpdate = runtime?.HasUpdates == true;
             }
         }
-        bool Eligible(ComponentTreeNode node) => (HostPlatform.Length == 0 || node.ComponentId is not { } componentId
+        bool Eligible(ComponentTreeNode node) => !(HostPlatform == "windows" && node.ComponentId == "sing-box")
+            && (HostPlatform.Length == 0 || node.ComponentId is not { } componentId
             || ComponentCatalog.Find(componentId)?.Platforms.Contains(HostPlatform) == true) && (SelectedPage switch
         {
             ComponentCenterPage.Installed => node.ComponentId is { } installed
@@ -447,6 +455,19 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     /// <summary>Refreshes every component that has a runtime, not just the batch-integrated one.</summary>
     [RelayCommand] private async Task RefreshAsync()
     {
+        if (HostPlatform == "windows")
+        {
+            if (ShowOfficialDownloads && SelectedDefinition is { } definition)
+            {
+                try { await RefreshPackageInstallationAsync(definition.ComponentId); }
+                catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or InvalidDataException or OperationCanceledException)
+                { OfficialDownloadNotice = LocalizedStatus.Key("component_center.package.problem.state_unavailable"); }
+                await LoadOfficialReleasesAsync(true);
+            }
+            else if (SelectedDefinition?.ComponentId == "git" && GitEngine is not null)
+                await GitEngine.RefreshEngineStatusCommand.ExecuteAsync(null);
+            return;
+        }
         foreach (var runtime in _runtimes.Values.Distinct())
             if (runtime.CanRead && !runtime.IsInvalidated) await runtime.EnsureLoadedAsync();
     }

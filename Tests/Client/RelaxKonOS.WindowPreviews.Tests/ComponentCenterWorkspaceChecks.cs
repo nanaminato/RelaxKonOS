@@ -31,6 +31,7 @@ internal static class ComponentCenterWorkspaceChecks
             {
                 settings.Language = language;
                 settings.Appearance = settings.Appearance with { Mode = dark ? ThemeKind.Dark : ThemeKind.Light };
+                ComponentDownloadChecks.Render(output, language + (dark ? "-dark-" : "-light-"));
                 using var runtime = new ProxyServerRuntimeViewModel(DispatchProxy.Create<IRuntimeCatalogClient, DisplayOnlyRuntime>());
                 using var model = new ComponentCenterViewModel(runtime, new(), "https://host.example/", Guid.NewGuid());
                 model.Stage(new("sing-box", "sing-box", "host-a", Guid.NewGuid(), "source-a", "release-a", "1.14.3", RuntimeChange.Repair, true, false));
@@ -230,7 +231,7 @@ internal static class ComponentCenterWorkspaceChecks
                 {
                     string[] windowsIds = windowsModel.VisibleRoots.SelectMany(root => root.VisibleDescendantsAndSelf())
                         .Where(node => node.ComponentId is not null).Select(node => node.ComponentId!).ToArray();
-                    Check(windowsIds.Contains("nginx") && windowsIds.Contains("frpc") && windowsIds.Contains("sing-box")
+                    Check(windowsIds.Contains("nginx") && windowsIds.Contains("frpc") && !windowsIds.Contains("sing-box")
                         && !windowsIds.Contains("squid") && !windowsIds.Contains("samba") && !windowsIds.Contains("docker"),
                         "A Windows host lists only components declared for Windows in " + language);
                     windowsModel.SelectedNode = windowsModel.VisibleRoots.SelectMany(root => root.VisibleDescendantsAndSelf())

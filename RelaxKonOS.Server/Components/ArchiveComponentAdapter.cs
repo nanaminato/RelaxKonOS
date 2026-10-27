@@ -26,7 +26,7 @@ public abstract class ArchiveComponentAdapter : IComponentLifecycleAdapter
     public IReadOnlyList<ComponentModeSupport> Modes { get; } =
         [new(ComponentSourceMode.ManagedArchive, "linux", true, null), new(ComponentSourceMode.ManagedArchive, "windows", true, null)];
 
-    public async Task<ComponentStateView> StateAsync(CancellationToken ct)
+    public virtual async Task<ComponentStateView> StateAsync(CancellationToken ct)
     {
         try { return new(ComponentId, Map(await query(ct)), Modes, []); }
         catch (RuntimeLifecycleException) { return new(ComponentId, null, Modes, [ComponentProblemCodes.StateUnavailable]); }

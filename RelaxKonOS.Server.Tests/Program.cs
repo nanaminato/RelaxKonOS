@@ -1,4 +1,9 @@
 using RelaxKonOS.Protocol.Proxy;
+if (args.Contains("--official-component-releases-only"))
+{
+    await OfficialComponentReleaseChecks.RunAsync(args.Contains("--live"));
+    return;
+}
 if (args.Contains("--windows-component-versions-only"))
 {
     ComponentLifecycleChecks.VerifyWindowsObservation();

@@ -17,6 +17,18 @@ public static class ComponentEndpoints
     public static IEndpointRouteBuilder MapComponentEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("").RequireHostFeature(ServerHostFeature.PrivilegedOperations).WithTags("Components");
+        group.MapGet(ComponentRoutes.ReleasesPattern, async (string componentId, bool? refresh, CancellationToken ct) =>
+        {
+            try
+            {
+                var rid = (OperatingSystem.IsWindows() ? "win-" : "linux-") +
+                    (System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture == System.Runtime.InteropServices.Architecture.Arm64 ? "arm64" : "x64");
+                return Results.Ok(await new RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialComponentReleases().ListAsync(componentId, rid, refresh == true, ct));
+            }
+            catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException or System.Text.Json.JsonException)
+            { return Problem(ComponentProblemCodes.PackageIndexUnavailable, 503); }
+            catch (RelaxKonOS.ManagedRuntimes.RuntimePolicyException ex) { return Problem(ex.ProblemCode, 400); }
+        }).RequireAuthorization(RuntimeCatalogEndpoints.ReadPolicy);
         group.MapGet(ComponentRoutes.StatePattern, async (string componentId, ComponentLifecycleRegistry registry, CancellationToken ct) =>
             await RespondAsync(async () => Results.Ok(await registry.Require(componentId).StateAsync(ct))))
             .RequireAuthorization(RuntimeCatalogEndpoints.ReadPolicy);

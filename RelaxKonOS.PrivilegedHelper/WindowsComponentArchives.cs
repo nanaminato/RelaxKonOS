@@ -44,14 +44,14 @@ internal static partial class WindowsManagedRuntimeHost
                     return Failure(PrivilegedProblemCode.InvalidRequest);
             }
             var installed = Directory.Exists(policy.NginxRoot) || File.Exists(policy.NginxRoot);
-            var managed = installed && receipt is not null && await VerifyIntegrityAsync(policy.NginxRoot, "nginx.exe");
+            var managed = installed && await VerifyIntegrityAsync(policy.NginxRoot, "nginx.exe");
             if (request.Operation == PrivilegedOperationKind.NginxArchiveQuery)
-                return new(true, ComponentArchive: new(installed, managed, managed ? receipt!.Pin.Version : null,
-                    pins, managed ? receipt!.OperationId : null, receipt is not null && !managed));
+                return new(true, ComponentArchive: new(installed, managed, managed ? await ReadNginxVersionAsync(policy.NginxRoot) : null,
+                    pins, managed ? receipt?.OperationId : null, receipt is not null && !managed));
             if (request.ArchiveExpectation is not { } expected || request.OperationId is not { } operationId || operationId == Guid.Empty
                 || !pins.Any(pin => SamePin(expected, pin))) return Failure(PrivilegedProblemCode.AccessDenied);
             if (installed)
-                return managed && receipt!.OperationId == operationId && SamePin(receipt.Pin, expected)
+                return managed && receipt is not null && receipt.OperationId == operationId && SamePin(receipt.Pin, expected)
                     && await VerifyPinnedNginxAsync(policy.NginxRoot, expected) ? new(true) : Failure(PrivilegedProblemCode.Conflict);
             return await NginxAsync(new(ManagedRuntime.Nginx, ManagedRuntimeAction.Install, Version: expected.Version), policy, expected, operationId, request.DownloadProxy);
         }
@@ -59,6 +59,22 @@ internal static partial class WindowsManagedRuntimeHost
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or ArgumentException)
         { return Failure(PrivilegedProblemCode.ResourceNotAllowed); }
         finally { Gate.Release(); }
+    }
+    private static async Task<string?> ReadNginxVersionAsync(string root)
+    {
+        using var process = new System.Diagnostics.Process { StartInfo = StartInfo(Path.Combine(root, "nginx.exe"), root, ["-v"]) };
+        if (!process.Start()) return null;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        var stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
+        var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+            var output = await stdout + await stderr;
+            var match = System.Text.RegularExpressions.Regex.Match(output, @"nginx/([0-9]+\.[0-9]+\.[0-9]+)");
+            return process.ExitCode == 0 && output.Length <= 4096 && match.Success ? match.Groups[1].Value : null;
+        }
+        catch (OperationCanceledException) { if (!process.HasExited) process.Kill(true); return null; }
     }
     private static async Task<bool> VerifyPinnedNginxAsync(string directory, ComponentPinnedArchive pin)
     {

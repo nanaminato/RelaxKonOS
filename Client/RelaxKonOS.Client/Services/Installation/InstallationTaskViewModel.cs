@@ -77,6 +77,7 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
             if (IsActive) return;
             // Retain the key after an uncertain response; retry can never start a duplicate installer.
             if (options is ManagedRuntimeInstallationRequest runtime) pendingKey = runtime.Plan.Request.IdempotencyKey;
+            if (options is MihomoInstallationRequest { Plan: { } mihomoPlan }) pendingKey = mihomoPlan.Request.IdempotencyKey;
             else if (options is NginxInstallationRequest { FrozenPackage: { } package }) pendingKey = package.Request.IdempotencyKey;
             else if (options is FrpInstallationRequest { FrozenArchive: { } bundle }) pendingKey = bundle.Request.IdempotencyKey;
             else if (options is SquidInstallationRequest { FrozenPackage: { } squid }) pendingKey = squid.Request.IdempotencyKey;

@@ -15,6 +15,11 @@ namespace RelaxKonOS.Client.Apps.ComponentCenter;
 
 using RelaxKonOS.Client.Apps.ProxyServer;
 using Avalonia.Controls;
+using Avalonia.Platform.Storage;
+using RelaxKonOS.Client.Services;
+using RelaxKonOS.Client.Apps.Explorer;
+using RelaxKonOS.Client.Apps.Explorer.ViewModels;
+using RelaxKonOS.Client.Apps.Explorer.Views;
 
 /// <summary>Desktop entry point for managed host component lifecycles.</summary>
 public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHandler
@@ -96,6 +101,39 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
         var taskDialogOpen = false;
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.component-center.display_name"),
             view, new Rect(80, 45, 1060, 800), Manifest.IconGlyph);
+        model.SelectLocalComponentPackageAsync = async task =>
+        {
+            var top = TopLevel.GetTopLevel(view);
+            if (top is null) return null;
+            var files = await UsageFilePicker.OpenFilePickerAsync(top.StorageProvider, new FilePickerOpenOptions
+            {
+                Title = LocalizedText.Get("component_center.download.local_picker"), AllowMultiple = false,
+                FileTypeFilter = [new FilePickerFileType(LocalizedText.Get("component_center.download.archive")) { Patterns = ["*.zip", "*.tar.gz", "*.gz"] }]
+            }, UsageMemoryStore.Capture(context), "ComponentCenter.package");
+            if (files.FirstOrDefault() is not { } file) return null;
+            await using var stream = await file.OpenReadAsync();
+            return await task.UploadPackageAsync(file.Name, stream);
+        };
+        model.SelectServerComponentPackageAsync = async task =>
+        {
+            if (context.Services.GetService(typeof(IExplorerClient)) is not IExplorerClient files) return null;
+            var selected = await context.ShowDialogAsync<IReadOnlyList<string>>(window,
+                LocalizedText.Get("component_center.download.server_picker"), dialog =>
+                {
+                    var picker = new ExplorerViewModel(files, new ExplorerPickerOptions(ExplorerPickerMode.OpenFile, AllowMultiple: false,
+                        Filters: [new ExplorerFileFilter(LocalizedText.Get("component_center.download.archive"), ["*.zip", "*.tar.gz", "*.gz"])]),
+                        paths => dialog.Close(paths), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "ComponentCenter.package") { CancelAction = dialog.Cancel };
+                    _ = picker.LoadRootAsync();
+                    return new ExplorerMainView { DataContext = picker };
+                }, new Size(800, 560));
+            return selected?.FirstOrDefault() is { } path ? await task.CreateFileReferenceAsync(path) : null;
+        };
+        model.OpenComponentDownloadAsync = url =>
+        {
+            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); }
+            catch (System.ComponentModel.Win32Exception) { }
+            return Task.CompletedTask;
+        };
         model.ShowTasksDialogAsync = async () =>
         {
             if (taskDialogOpen) return;
@@ -135,6 +173,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             foreach (var (componentId, serviceId) in new[] {
                 ("git", RelaxKonOS.Protocol.Installations.InstallationServiceId.Git),
                 ("nginx", RelaxKonOS.Protocol.Installations.InstallationServiceId.Nginx),
+                ("mihomo", RelaxKonOS.Protocol.Installations.InstallationServiceId.Mihomo),
                 ("squid", RelaxKonOS.Protocol.Installations.InstallationServiceId.Squid),
                 ("samba", RelaxKonOS.Protocol.Installations.InstallationServiceId.Smb),
                 ("docker", RelaxKonOS.Protocol.Installations.InstallationServiceId.Docker),
@@ -263,6 +302,13 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                 }
                 if (model.CanResolvePackage)
                     await model.ResolvePackageCommand.ExecuteAsync(null);
+                if (model.ShowOfficialDownloads)
+                {
+                    try { await model.RefreshPackageInstallationAsync(model.SelectedDefinition!.ComponentId); }
+                    catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or InvalidDataException or OperationCanceledException)
+                    { model.OfficialDownloadNotice = LocalizedStatus.Key("component_center.package.problem.state_unavailable"); }
+                    await model.LoadOfficialReleasesAsync(false);
+                }
             }
             finally
             {
@@ -292,8 +338,11 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             runtime.CanManage = session.AssignedRole == RelaxKonOS.Protocol.Workspace.DeviceRole.Controller
                 && await PermissionAsync(AppPermissions.ServerComponentsManage);
             access.Synchronize();
-            await runtime.EnsureLoadedAsync();
-            if (mihomo is { CanRead: true }) await mihomo.EnsureLoadedAsync();
+            if (model.HostPlatform != "windows")
+            {
+                await runtime.EnsureLoadedAsync();
+                if (mihomo is { CanRead: true }) await mihomo.EnsureLoadedAsync();
+            }
             selectedDomainChanged?.Invoke(model, new(nameof(model.SelectedDefinition)));
         }
         async Task<bool> PermissionAsync(string permission)

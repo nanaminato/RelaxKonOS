@@ -50,6 +50,9 @@ public sealed record ComponentPackageTarget(
 public sealed record ComponentPinnedArchive(string ReleaseId, string Version, string Rid, string SourceUri,
     string Sha256, string Format, long MaximumBytes, IReadOnlyList<string> AffectedComponents);
 
+public sealed record ComponentDownloadRelease(string Version, string Rid, string DownloadUrl, string FileName,
+    string Format, string? Sha256 = null);
+
 public sealed record ComponentFrozenTarget(ComponentSourceMode Mode, RuntimeRelease? Archive, ComponentPackageTarget? Package,
     ComponentPinnedArchive? Pin = null)
 {
@@ -143,6 +146,8 @@ public static class ComponentRoutes
     public const string Root = "/" + Common.RelaxKonOSEndpoints.ApiVersionPrefix + "/components";
     public const string StatePattern = Root + "/{componentId}/state";
     public const string PlanPattern = Root + "/{componentId}/plan";
+    public const string ReleasesPattern = Root + "/{componentId}/releases";
+    public static string Releases(string componentId) => Root + "/" + componentId + "/releases";
     public static string State(string componentId) => Root + "/" + componentId + "/state";
     public static string Plan(string componentId) => Root + "/" + componentId + "/plan";
 }

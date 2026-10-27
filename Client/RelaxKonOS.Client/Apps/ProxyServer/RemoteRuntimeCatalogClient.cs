@@ -73,7 +73,7 @@ public class RemoteRuntimeCatalogClient(HttpClient http, IAuthSession session, I
             || plan.Release is { } release && release.RuntimeId != RuntimeId)
             throw new ArgumentException("runtime.request_invalid", nameof(request));
         return SendAsync<InstallationOperationDto?>(HttpMethod.Post, InstallationApiRoutes.Start(_service, kind),
-            request, key, ct);
+            _service == InstallationServiceId.Mihomo ? new MihomoInstallationRequest(request.Confirmed, request.Plan) : (object)request, key, ct);
     }
 
     public Task<InstallationOperationDto?> OperationAsync(Guid id, CancellationToken ct) =>

@@ -193,7 +193,7 @@ internal static class ComponentLifecycleChecks
         app.MapComponentEndpoints();
         var endpoints = ((IEndpointRouteBuilder)app).DataSources.SelectMany(source => source.Endpoints)
             .OfType<RouteEndpoint>().ToArray();
-        Check(endpoints.Length == 2, "Component writes execute only through the durable installation ledger; component routes only read and plan.");
+        Check(endpoints.Length == 3, "Component writes execute only through the durable installation ledger; component routes only discover releases, read and plan.");
         foreach (var endpoint in endpoints)
         {
             var isRead = endpoint.Metadata.GetMetadata<HttpMethodMetadata>()!.HttpMethods.Contains("GET");

@@ -61,18 +61,27 @@ public sealed class FrpRuntimeManager(IHostEnvironment environment, RelaxKonOS.M
         InstallManagedFrpcCoreAsync(version, (release, destination, token) => DownloadVerifiedAsync(release, destination, progress, token), progress, ct);
 
     public Task<TunnelOperationResultDto> InstallManagedFrpcFromArchiveAsync(string version, Stream archive, long length, IInstallationProgress progress, CancellationToken ct) =>
-        InstallManagedFrpcCoreAsync(version, (release, destination, token) => CopyVerifiedArchiveAsync(release, archive, destination, length, progress, token), progress, ct);
+        InstallManagedFrpcCoreAsync(version, (release, destination, token) => CopyVerifiedArchiveAsync(release, archive, destination, length, progress, token), progress, ct, local: true);
 
     private async Task<TunnelOperationResultDto> InstallManagedFrpcCoreAsync(string version,
-        Func<FrpRuntimeRelease, string, CancellationToken, Task> stageArchiveAsync, IInstallationProgress progress, CancellationToken ct)
+        Func<FrpRuntimeRelease, string, CancellationToken, Task> stageArchiveAsync, IInstallationProgress progress, CancellationToken ct, bool local = false)
     {
         if (string.IsNullOrWhiteSpace(version) || version.Length > 32)
         {
 
             return new(false, TunnelConnectionState.RuntimeUnavailable, "tunnel.runtime_version_invalid");
         }
-        var release = _options.Releases.SingleOrDefault(x => x.Version == version && x.Rid == CurrentRid());
-        if (!IsTrustedRelease(release))
+        FrpRuntimeRelease? release;
+        if (OperatingSystem.IsWindows())
+        {
+            var official = local
+                ? RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialComponentReleases.Describe("frpc", CurrentRid(), version)
+                : await new RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialComponentReleases().ResolveAsync("frpc", CurrentRid(), version, ct);
+            release = new() { Version = version, Rid = official.Rid, Url = official.DownloadUrl,
+                Sha256 = official.Sha256 ?? "", ArchiveFormat = official.Format };
+        }
+        else release = _options.Releases.SingleOrDefault(item => item.Version == version && item.Rid == CurrentRid());
+        if (release is null || release.Url != RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialComponentReleases.Describe("frpc", release.Rid, release.Version).DownloadUrl)
         {
 
             return new(false, TunnelConnectionState.RuntimeUnavailable, "tunnel.runtime_release_not_configured");
@@ -191,6 +200,13 @@ public sealed class FrpRuntimeManager(IHostEnvironment environment, RelaxKonOS.M
         var temporary = destination + ".transfer";
         try
         {
+            if (release.Sha256.Length == 0)
+            {
+                await using var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                await RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialComponentReleases.DownloadAsync(
+                    RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialComponentReleases.Describe("frpc", release.Rid, release.Version), output, ct);
+                return;
+            }
             var pin = RelaxKonOS.ManagedRuntimes.ComponentPackages.PinnedArchives.Frp(new(release.Version, release.Rid,
                 release.Url, release.Sha256, release.ArchiveFormat), _options.MaximumArchiveBytes);
             await using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
@@ -226,7 +242,7 @@ public sealed class FrpRuntimeManager(IHostEnvironment environment, RelaxKonOS.M
         if (length is > 0 && total != length) throw new RuntimeInstallException("tunnel.runtime_length_invalid");
         await progress.ReportAsync(new(InstallationStage.Verifying, Cancellable: true), ct);
         var actual = Convert.ToHexString(hash.GetHashAndReset());
-        if (!CryptographicOperations.FixedTimeEquals(Convert.FromHexString(actual), Convert.FromHexString(release.Sha256))) throw new RuntimeInstallException("tunnel.runtime_checksum_failed");
+        if (release.Sha256.Length > 0 && !CryptographicOperations.FixedTimeEquals(Convert.FromHexString(actual), Convert.FromHexString(release.Sha256))) throw new RuntimeInstallException("tunnel.runtime_checksum_failed");
     }
 
     private static async Task ExtractExpectedExecutablesAsync(FrpRuntimeRelease release, string archivePath, string destination, CancellationToken ct)

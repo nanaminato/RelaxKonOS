@@ -2,6 +2,12 @@
 
 本文记录根据 FRP 集成 Goal 落地的代码级 V1 边界；它不改变 Goal 文档中的架构或安全约束。
 
+## Windows 多版本与文件安装（2026-10-27）
+
+组件中心的 frpc/frps 共用同一个上游发行归档，版本选择读取 fatedier/frp 的 GitHub Releases 并匹配 Windows x64/arm64。支持服务器下载、本机下载后上传、本机文件、服务器文件及官方下载链接；手动提供文件时不要求联网下载对照包或预登记版本摘要，输入的版本仍须与两个程序的原生版本一致。安装写入原有 FRP 台账，Helper 保存实际导入程序的完整性信息；启用服务继续使用既有配置验证、固定服务身份与应用授权。Linux 的固定归档能力范围未在本次扩展。
+
+官方目录与四种来源的客户端接线已经验证；没有执行本次 Windows 真实安装、跨版本切换、取消/补偿故障或协议互通，不扩大已有主机验收范围。详见[组件中心进度](../platform/RelaxKonOS.ComponentCenter.Progress.md)。
+
 ## 已实现的控制平面
 
 - `Shared/RelaxKonOS.Protocol/Tunnels` 负责 JSON 协议和路由常量。Profile 读取返回已保存 Token；FRPS 读取与保存响应返回 Token 和 Dashboard 密码，编辑器直接显示并回填。生成 TOML 和受保护密钥载荷不公开。

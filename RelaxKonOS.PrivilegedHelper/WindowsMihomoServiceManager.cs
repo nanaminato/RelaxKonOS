@@ -21,7 +21,10 @@ internal static class WindowsMihomoServiceManager
         {
             var versions = Path.Combine(Root, "engines", "mihomo", "versions");
             var release = File.ReadAllText(Path.Combine(versions, "current.txt")).Trim();
-            var trusted = new MihomoRuntimeManifest().Find(MihomoRuntimeManifest.SupportedVersion) ?? throw new InvalidOperationException();
+            var suffix = "-" + MihomoRuntimeManifest.CurrentRid();
+            if (!release.EndsWith(suffix, StringComparison.Ordinal)) throw new InvalidOperationException();
+            var selected = RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialComponentReleases.Describe("mihomo", MihomoRuntimeManifest.CurrentRid(), release[..^suffix.Length]);
+            var trusted = new MihomoRuntimeRelease(selected.Version, selected.Rid, selected.FileName, selected.Format, "");
             if (release != trusted.ReleaseDirectoryId) return new(false, ProblemCode: PrivilegedProblemCode.InvalidRequest);
             var serviceBinary = await ImportTrustedBinaryAsync(trusted, versions);
             await WindowsComponentService.InstallAsync(ComponentKind.Mihomo, Root, serviceBinary,
@@ -97,7 +100,7 @@ internal static class WindowsMihomoServiceManager
         }
         WindowsManagedRuntimePolicy.RequireNoLinks(archive);
         await using var package = File.OpenRead(archive);
-        if (!Convert.ToHexString(await SHA256.HashDataAsync(package)).Equals(release.Sha256, StringComparison.OrdinalIgnoreCase))
+        if (release.Sha256.Length > 0 && !Convert.ToHexString(await SHA256.HashDataAsync(package)).Equals(release.Sha256, StringComparison.OrdinalIgnoreCase))
         {
             await package.DisposeAsync(); File.Delete(archive);
             throw new UnauthorizedAccessException();
@@ -121,6 +124,17 @@ internal static class WindowsMihomoServiceManager
             var actualHash = await SHA256.HashDataAsync(existing);
             if (!CryptographicOperations.FixedTimeEquals(expectedHash, actualHash)) throw new UnauthorizedAccessException();
         }
+        using var process = new System.Diagnostics.Process { StartInfo = new(binary) { UseShellExecute = false, CreateNoWindow = true,
+            RedirectStandardOutput = true, RedirectStandardError = true } };
+        process.StartInfo.ArgumentList.Add("-v");
+        if (!process.Start()) throw new IOException();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        var stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
+        var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
+        try { await process.WaitForExitAsync(timeout.Token); }
+        catch (OperationCanceledException) { if (!process.HasExited) process.Kill(true); throw new IOException("Mihomo version probe timed out"); }
+        if (process.ExitCode != 0 || !System.Text.RegularExpressions.Regex.IsMatch(await stdout + await stderr,
+            @"\bv?" + System.Text.RegularExpressions.Regex.Escape(release.Version.TrimStart('v')) + @"(?:\s|$)")) throw new IOException("Mihomo version mismatch");
         return binary;
     }
 }

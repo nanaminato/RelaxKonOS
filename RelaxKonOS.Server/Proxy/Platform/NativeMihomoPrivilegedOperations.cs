@@ -164,7 +164,8 @@ public sealed class NativeMihomoPrivilegedOperations(
         return Task.FromResult(Unsupported());
     }
     private static bool IsServiceRequest(string engineId, string serviceName) => engineId == Engine && serviceName == Service;
-    private static bool IsRelease(string version, string releaseId) => version == RelaxKonOS.Protocol.Proxy.MihomoRuntimeManifest.SupportedVersion && releaseId == version + "-" + RelaxKonOS.Protocol.Proxy.MihomoRuntimeManifest.CurrentRid();
+    private static bool IsRelease(string version, string releaseId) => System.Text.RegularExpressions.Regex.IsMatch(version, @"\Av[0-9]+\.[0-9]+\.[0-9]+\z")
+        && releaseId == version + "-" + RelaxKonOS.Protocol.Proxy.MihomoRuntimeManifest.CurrentRid();
 
     private static void RenameLinuxLink(string source, string destination)
     {

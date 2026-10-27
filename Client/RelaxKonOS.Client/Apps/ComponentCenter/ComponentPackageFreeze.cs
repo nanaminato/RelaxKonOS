@@ -22,7 +22,7 @@ public interface IComponentLifecycleClient
     Task<ComponentPlanResult> PlanAsync(ComponentPlanRequest request, CancellationToken ct);
 }
 
-public sealed class ComponentLifecycleClient(HttpClient http, IAuthSession session) : IComponentLifecycleClient
+public sealed class ComponentLifecycleClient(HttpClient http, IAuthSession session) : IComponentLifecycleClient, IComponentReleaseClient
 {
     private readonly object? _login = session.CurrentSession;
     private readonly Guid? _actor = session.CurrentUser?.Id;
@@ -32,6 +32,8 @@ public sealed class ComponentLifecycleClient(HttpClient http, IAuthSession sessi
 
     public async Task<ComponentPlanResult> PlanAsync(ComponentPlanRequest request, CancellationToken ct) =>
         await SendAsync<ComponentPlanResult>(HttpMethod.Post, ComponentRoutes.Plan(request.ComponentId), request, ct);
+    public Task<ComponentDownloadRelease[]> ReleasesAsync(string componentId, bool refresh, CancellationToken ct) =>
+        SendAsync<ComponentDownloadRelease[]>(HttpMethod.Get, ComponentRoutes.Releases(componentId) + "?refresh=" + refresh.ToString().ToLowerInvariant(), null, ct);
 
     private async Task<T> SendAsync<T>(HttpMethod method, string route, object? body, CancellationToken ct) where T : class
     {
@@ -101,7 +103,7 @@ public partial class ComponentCenterViewModel
         installation.PropertyChanged += PackageInstallationChanged;
         NotifyPackage();
     }
-    private void PackageInstallationChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args) { NotifyPackage(); NotifyGit(); }
+    private void PackageInstallationChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args) { NotifyPackage(); NotifyGit(); NotifyOfficialDownloads(); }
     public bool CanApplyPackagePlan => CanResolvePackage && Runtime.CanManage && PackageInstallation is not null
         && !_packageInstallations.Values.Any(task => task.IsActive) && SelectedComponentFreeze is { Allowed: true } freeze
         && freeze.Request?.Change is RuntimeChange.Install or RuntimeChange.Update or RuntimeChange.Uninstall
@@ -279,7 +281,7 @@ public partial class ComponentCenterViewModel
     /// Package-backed installation uses the host's resolved candidate and the durable installation
     /// worker, rather than treating a distribution package as a managed archive release.
     /// </summary>
-    public bool ShowPackageFreeze => _lifecycle is not null && HostPlatformKnown
+    public bool ShowPackageFreeze => !ShowOfficialDownloads && _lifecycle is not null && HostPlatformKnown
         && (DeclaresSourceOnHost(ComponentSourceKind.SystemPackage) || DeclaresSourceOnHost(ComponentSourceKind.ManagedArchive))
         && (SelectedDefinition?.ComponentId != "git" || IsSystemPackage)
         && SelectedDefinition?.ComponentId is "nginx" or "squid" or "samba" or "docker" or "git" or "frpc" or "frps";

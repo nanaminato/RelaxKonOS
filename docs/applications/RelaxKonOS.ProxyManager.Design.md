@@ -1,6 +1,8 @@
 ﻿# RelaxKonOS 内置代理管理器实现规范
 
 > 文档类型：应用设计与实现规范
+
+> 2026-10-27 Windows 安装入口：组件中心直接从 MetaCubeX/mihomo 的 GitHub Releases 提供当前架构的正式版本，可选择服务器/本机下载、本机/服务器文件安装，也可打开官方下载链接自行取得文件。文件安装不要求签名目录注册，原生版本、解压边界和配置检查在后台完成。安装调用已有独立 SCM 宿主，保留配置/控制器凭据，失败进入既有恢复路径；不再把仅 Linux 的签名运行时页面显示给 Windows 用户。Linux 原有签名运行时不变。代码与界面/HTTP 测试通过，尚未实测本次 Windows 真实服务安装、跨版本或 TUN 行为，见[组件实施进度](../platform/RelaxKonOS.ComponentCenter.Progress.md)。
 > 模块名称：RelaxKonOS Proxy Manager
 > 首选代理核心：Mihomo  
 > 主客户端：Avalonia  

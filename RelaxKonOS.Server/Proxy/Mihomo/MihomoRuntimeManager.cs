@@ -36,6 +36,60 @@ public sealed class MihomoRuntimeManager(
     private const int BootstrapMixedPort = 7890;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
+    internal bool OwnsInstallationOperation(Guid operationId) => File.Exists(NativeOperationPath(operationId));
+    private string NativeOperationPath(Guid operationId) => Path.Combine(paths.GetStateDirectory(), "mihomo-installs", operationId.ToString("N") + ".json");
+
+    public async Task<ProxyRuntimeDto> InstallOfficialAsync(string version, InstallationFileSource? source,
+        IInstallationProgress progress, CancellationToken ct)
+    {
+        if (!OperatingSystem.IsWindows()) return Unsupported(MihomoEngine.Id);
+        var described = RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialComponentReleases.Describe("mihomo", MihomoRuntimeManifest.CurrentRid(), version);
+        await _gate.WaitAsync(ct);
+        try
+        {
+            var operationPath = NativeOperationPath(progress.OperationId);
+            Directory.CreateDirectory(Path.GetDirectoryName(operationPath)!);
+            await File.WriteAllTextAsync(operationPath, JsonSerializer.Serialize(new { progress.OperationId, Version = version }), ct);
+            var before = await ReadStateAsync(ct);
+            var release = source is null
+                ? await new RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialComponentReleases().ResolveAsync("mihomo", described.Rid, version, ct)
+                : described;
+            var nativeRelease = new MihomoRuntimeRelease(version, release.Rid, release.FileName, release.Format, release.Sha256 ?? "");
+            var final = VersionDirectory(version);
+            if (!Directory.Exists(final))
+            {
+                await StageAndInstallReleaseAsync(nativeRelease, final, async (_, destination, token) =>
+                {
+                    await progress.ReportAsync(new(source is null ? InstallationStage.Downloading : InstallationStage.Copying, Cancellable: true), token);
+                    await using var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                    if (source is null) await RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialComponentReleases.DownloadAsync(release, output, token);
+                    else await RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialComponentReleases.CopyAsync(source.Stream, output, null, token);
+                }, stage => ReportStageAsync(progress, stage), ct);
+            }
+            // Keep a running installation's configuration and controller credentials.
+            if (before is null)
+            {
+                if (!AreBootstrapPortsAvailable()) return Failure(before, ProxyProblemCodes.RuntimeHealthCheckFailed);
+                var configured = await EnsureBootstrapConfigurationAsync(ct);
+                if (!configured.Succeeded) return Failure(before, configured.ProblemCode);
+            }
+            await progress.ReportAsync(new(InstallationStage.Activating, Cancellable: false), ct);
+            ct = CancellationToken.None;
+            if (before is not null) await privileged.StopServiceAsync(new(MihomoEngine.Id, ServiceName), ct);
+            var activated = await privileged.InstallRuntimeAsync(new(MihomoEngine.Id, version, ReleaseDirectoryId(version)), ct);
+            if (!activated.Succeeded) return Failure(before, activated.ProblemCode);
+            var installed = await privileged.InstallServiceAsync(new(MihomoEngine.Id, ServiceName, ServiceConfigurationId), ct);
+            if (!installed.Succeeded) return await RestorePreviousAsync(before, version, installed.ProblemCode, false, ct);
+            var started = await privileged.StartServiceAsync(new(MihomoEngine.Id, ServiceName), ct);
+            if (!started.Succeeded) return await RestorePreviousAsync(before, version, started.ProblemCode, true, ct);
+            var health = await WaitForControllerReadinessAsync(ct);
+            if (!health.Succeeded) return await RestorePreviousAsync(before, version, health.ProblemCode, true, ct);
+            await WriteStateAsync(new(version, before?.ActiveVersion, DateTimeOffset.UtcNow), ct);
+            return new(MihomoEngine.Id, ProxyRuntimeMode.Managed, ProxyRuntimeState.Running, version, before?.ActiveVersion, true, false);
+        }
+        finally { _gate.Release(); }
+    }
+
     public async Task<ProxyRuntimeDto> GetAsync(string engineId, CancellationToken cancellationToken)
     {
         if (engineId != MihomoEngine.Id) return Unsupported(engineId);
@@ -47,6 +101,8 @@ public sealed class MihomoRuntimeManager(
             // installed bytes are described by the Host's own observation rather than by a local
             // state file this writer could fabricate. Only an answer the Helper actually produced
             // is projected; an unreadable observation stays unknown instead of becoming "not installed".
+            if (OperatingSystem.IsWindows() && state?.ActiveVersion is not { Length: > 0 })
+                return new(MihomoEngine.Id, ProxyRuntimeMode.Managed, ProxyRuntimeState.NotInstalled, null, null, false, false, ProxyProblemCodes.RuntimeNotInstalled);
             if (state?.ActiveVersion is not { Length: > 0 })
                 return await ManagedProjectionAsync(state, cancellationToken);
             if (!File.Exists(ExecutablePath(state.ActiveVersion)))

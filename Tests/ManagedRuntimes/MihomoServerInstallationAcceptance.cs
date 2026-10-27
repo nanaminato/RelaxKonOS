@@ -32,7 +32,7 @@ internal static class MihomoServerInstallationAcceptance
         var transport = new Transport(lifecycle, report);
         using var lifetime = new ManagedRuntimeLedgerFixture.Lifetime();
         var ledger = new InstallationOperationStore(new ManagedRuntimeLedgerFixture.Environment(root));
-        var request = new ManagedRuntimeInstallationRequest(true, plan);
+        var request = new MihomoInstallationRequest(true, plan);
         var entry = ledger.Create(InstallationServiceId.Mihomo, InstallationOperationKind.Install, "native-ledger", plan.Request.IdempotencyKey,
             InstallationOperationStore.Reference(JsonSerializer.Serialize(request)), ["service:Mihomo", "runtime:mihomo"], out _);
         var operationId = entry.Operation.OperationId;
@@ -64,7 +64,7 @@ internal static class MihomoServerInstallationAcceptance
             var restarted = Compose(store);
             var unusedSettings = MihomoPublicationTransactionChecks.Stub<IProxySettingsService>(_ => throw new Exception("Ledger recovery read settings"));
             var domain = new MihomoRuntimeInstallationService(store, restarted.Runtime,
-                new(store, restarted.Install, unusedSettings, paths, new()), restarted.Install, new(store, restarted.Runtime, paths, MihomoRemovalHostFixture.Files(paths)));
+                new(store, restarted.Install, unusedSettings, paths, new()), restarted.Install, new(store, restarted.Runtime, paths, MihomoRemovalHostFixture.Files(paths)), null!, null!);
             var coordinator = new InstallationCoordinator(ledger, [domain], lifetime);
             await coordinator.StartAsync(default);
             Check(coordinator.Get(operationId)!.Operation.State == InstallationOperationState.Succeeded,

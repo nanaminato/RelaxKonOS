@@ -63,6 +63,10 @@ public sealed record SquidInstallationRequest(bool Confirmed, ManagedRuntimes.Co
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record ManagedRuntimeInstallationRequest(bool Confirmed, ManagedRuntimes.RuntimeChangePlan Plan);
 
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed record MihomoInstallationRequest(bool Confirmed, ManagedRuntimes.RuntimeChangePlan? Plan = null,
+    string? Version = null, string? FileReferenceId = null);
+
 public static class InstallationProblemCodes
 {
     public const string StoreUnavailable = "installation.store_unavailable";
