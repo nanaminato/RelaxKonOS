@@ -7,6 +7,8 @@
     <PrebuiltServerAssemblyPath Condition="'$(PrebuiltServerAssemblyPath)' == ''">../RelaxKonOS.Server/bin/Debug/net10.0/RelaxKonOS.Server.dll</PrebuiltServerAssemblyPath>
   </PropertyGroup>
   <ItemGroup>
+    <!-- 动图夹具是真文件而不是编码成的常量：检查要先证明原图确实带三帧，只有真 GIF 能证明。 -->
+    <None Update="Fixtures/**/*" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../RelaxKonOS.Guardian.Agent/RelaxKonOS.Guardian.Agent.csproj" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsFirewallOperations.cs" Link="WindowsFirewallOperations.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsManagedRuntimePolicy.cs" Link="WindowsManagedRuntimePolicy.cs" />
@@ -82,8 +84,15 @@
     <Reference Include="Microsoft.IdentityModel.Tokens" Condition="'$(UsePrebuiltServerAssembly)' == 'true'">
       <HintPath>../RelaxKonOS.Server/bin/Debug/net10.0/Microsoft.IdentityModel.Tokens.dll</HintPath>
     </Reference>
-    <Reference Include="SixLabors.ImageSharp" Condition="'$(UsePrebuiltServerAssembly)' == 'true'">
-      <HintPath>../RelaxKonOS.Server/bin/Debug/net10.0/SixLabors.ImageSharp.dll</HintPath>
+    <Reference Include="SkiaSharp" Condition="'$(UsePrebuiltServerAssembly)' == 'true'">
+      <HintPath>../RelaxKonOS.Server/bin/Debug/net10.0/SkiaSharp.dll</HintPath>
     </Reference>
+    <!-- 预编译模式下 SkiaSharp 只是普通程序集引用，原生库不经 deps.json 解析，必须自己复制。 -->
+    <None Include="../RelaxKonOS.Server/bin/Debug/net10.0/libSkiaSharp.dll" Link="libSkiaSharp.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="'$(UsePrebuiltServerAssembly)' == 'true' and '$(OS)' == 'Windows_NT' and Exists('../RelaxKonOS.Server/bin/Debug/net10.0/libSkiaSharp.dll')" />
+    <None Include="../RelaxKonOS.Server/bin/Debug/net10.0/runtimes/win-x64/native/libSkiaSharp.dll" Link="libSkiaSharp.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="'$(UsePrebuiltServerAssembly)' == 'true' and '$(OS)' == 'Windows_NT' and !Exists('../RelaxKonOS.Server/bin/Debug/net10.0/libSkiaSharp.dll')" />
   </ItemGroup>
 </Project>

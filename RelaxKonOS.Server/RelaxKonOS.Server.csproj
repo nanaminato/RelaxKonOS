@@ -19,8 +19,11 @@
         <!-- EF Core + SQLite 持久化（User/Workspace/Device，含 TerminalSettings JSON 列） -->
         <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite"/>
         <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" />
-        <!-- 文件缩略图渲染（GET /files/thumbnail）；许可证判定见 Directory.Packages.props。 -->
-        <PackageReference Include="SixLabors.ImageSharp" />
+        <!-- 文件缩略图与进程图标渲染（GET /files/thumbnail、/system/processes/{id}/icon）；
+             许可证、版本与平台说明见 Directory.Packages.props。 -->
+        <PackageReference Include="SkiaSharp" />
+        <!-- Linux 原生库（静态链接，不依赖系统字体库）；非 Linux RID 发布时 NuGet 自动排除。 -->
+        <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" />
         <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -50,6 +53,21 @@
     </Target>
     <Target Name="SetSevenZipPublishPermissions" AfterTargets="Publish" Condition="'$(OS)' != 'Windows_NT'">
       <Exec Command="chmod 755 &quot;$(PublishDir)Assets/SevenZip/linux-x64/7zz&quot; &quot;$(PublishDir)Assets/SevenZip/linux-arm64/7zz&quot; &quot;$(PublishDir)Assets/SevenZip/osx-x64/7zz&quot; &quot;$(PublishDir)Assets/SevenZip/osx-arm64/7zz&quot;" Condition="Exists('$(PublishDir)Assets/SevenZip/runtime-files.json')" />
+    </Target>
+
+    <!-- SkiaSharp 的原生包里带一个 84 MB 的 libSkiaSharp.pdb：那是 Skia 自身的符号，不是本项目的，
+         既不该进发布包（比原生库本身还大七倍），也不该把 bin 撑大。 -->
+    <Target Name="DropSkiaNativeSymbols" AfterTargets="Build">
+      <ItemGroup>
+        <SkiaNativeSymbol Include="$(OutDir)runtimes/*/native/libSkiaSharp.pdb" />
+      </ItemGroup>
+      <Delete Files="@(SkiaNativeSymbol)" />
+    </Target>
+    <Target Name="DropSkiaNativeSymbolsFromPublish" AfterTargets="ComputeFilesToPublish">
+      <ItemGroup>
+        <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                               Condition="'%(Filename)' == 'libSkiaSharp' and '%(Extension)' == '.pdb'" />
+      </ItemGroup>
     </Target>
 
 </Project>

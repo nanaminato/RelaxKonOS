@@ -330,6 +330,7 @@ public partial class ComponentCenterViewModel
     {
         if (!CanResolvePackage || SelectedDefinition is not { } definition) return;
         var componentId = definition.ComponentId;
+        _componentFreezes.Remove(componentId);
         IsResolvingPackage = true;
         PackageFreezeNotice = LocalizedStatus.Key("component_center.package.running");
         NotifyPackage();
@@ -350,12 +351,9 @@ public partial class ComponentCenterViewModel
             {
                 var pins = view.PinnedArchives ?? [];
                 var pin = pins.FirstOrDefault(item => item.ReleaseId == SelectedPinnedArchive?.ReleaseId) ?? pins.FirstOrDefault();
-                if (pin is not null)
-                {
-                    _selectingPin = true;
-                    try { SelectedPinnedArchive = pin; }
-                    finally { _selectingPin = false; }
-                }
+                _selectingPin = true;
+                try { SelectedPinnedArchive = pin; }
+                finally { _selectingPin = false; }
                 if (state.Mode == ComponentSourceMode.ManagedArchive && state.Ownership != RuntimeOwnership.Absent && change is null)
                 {
                     _componentFreezes.Remove(componentId);
@@ -364,7 +362,7 @@ public partial class ComponentCenterViewModel
                 }
                 var request = new ComponentPlanRequest(componentId, state.HostId,
                     change ?? (state.Ownership == RuntimeOwnership.Absent ? RuntimeChange.Install : RuntimeChange.Update),
-                    state.Revision, state.Mode, pin is null ? null : "host-pins", pin is null ? 0 : view.PinRevision,
+                    state.Revision, state.Mode, pin is null ? null : "host-pins", view.PinRevision,
                     0, pin?.ReleaseId, pin?.Version, KeepData: true, Guid.NewGuid().ToString("N"));
                 _componentFreezes[componentId] = await _lifecycle.PlanAsync(request, _inspectionLifetime.Token);
                 PackageFreezeNotice = LocalizedStatus.Literal("");

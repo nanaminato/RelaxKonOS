@@ -385,8 +385,15 @@ internal static class ComponentLifecycleChecks
     /// The platform decides the install mode, and declaring a mode is not the same as implementing it.
     /// This is checked without constructing the adapter: the manager behind it needs a whole host.
     /// </summary>
-    private static void VerifyWindowsObservation()
+    internal static void VerifyWindowsObservation()
     {
+        var defaults = RelaxKonOS.PrivilegedHelper.WindowsManagedRuntimePolicy.Create(null, null, null, [], null);
+        defaults.Validate();
+        Check(defaults.NginxReleases is [{ Version: "1.30.6", Sha256.Length: 64 }],
+            "Default Windows Helper policy supplies the publisher-verified nginx release.");
+        var disabled = RelaxKonOS.PrivilegedHelper.WindowsManagedRuntimePolicy.Create(null, null, null, [], null, []);
+        Check(disabled.NginxReleases.Count == 0,
+            "An explicitly empty administrator catalog stays empty instead of silently restoring defaults.");
         var absent = new ComponentArchiveHostSnapshot(false, false, null, [], null, false);
         Check(NginxComponentAdapter.MapArchive(absent, "host", "x64") is { Ownership: RuntimeOwnership.Absent, Target.Os: "windows" },
             "Windows absence comes from the protected managed slot, not an empty discovery list.");

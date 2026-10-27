@@ -55,7 +55,7 @@ WindowsSystem、LinuxSystem 和 LinuxUser 支持 Guardian；WindowsUser 当前�
 
 部署成功时对所选 Guardian 执行宿主本地 `guardian-health` 认证 IPC 检查。配置失败恢复原监听地址、启动选择、组件选择与文件白名单，恢复核验失败明确要求处理，不发布目标状态。
 
-受控验证包括协议序列化、Linux 参数映射、Windows 注册 / 移除分支、三种模式配置失败恢复、跳过 Guardian 的安装记录恢复、本地配置提交前状态复核、桌面视图回归、Guardian IPC 读取及 Android 维护契约测试。桌面 / Server / Android 构建已通过；Server 存在既有 ImageSharp 依赖告警。
+受控验证包括协议序列化、Linux 参数映射、Windows 注册 / 移除分支、三种模式配置失败恢复、跳过 Guardian 的安装记录恢复、本地配置提交前状态复核、桌面视图回归、Guardian IPC 读取及 Android 维护契约测试。桌面 / Server / Android 构建已通过；图像编解码已迁至 SkiaSharp，Server 不再残留 ImageSharp 依赖告警。
 
 2026-10-14 在用户授权的 Debian 13 x64 主机验证：系统模式跳过 Guardian、补装认证 IPC、以普通 UID 运行工作负载、移除停止工作负载并保留定义、升级与普通修复保持选择、同版本 ZIP 恢复损坏 DLL；端口冲突后的监听、自动启动、组件与白名单恢复；独立 nft 删除仅移除受管规则且保留另一规则。通过 nanami 的 SSH 会话验证 Linux User 首次安装、Guardian 配置、连续维护与同版本程序恢复。测试使用独立业务数据目录，没有移除旧业务数据。
 

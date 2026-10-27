@@ -3,9 +3,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
+using SkiaSharp;
 
 namespace RelaxKonOS.Server.SystemPerformance;
 
@@ -95,16 +93,44 @@ internal sealed class ProcessIconProvider
             if (file.Length is <= 0 or > 262_144) return EmptyIcon;
             return new ProcessIconContent(File.ReadAllBytes(iconPath), "image/svg+xml");
         }
-        using var image = Image.Load<Rgba32>(iconPath);
-        image.Mutate(operation => operation.Resize(new ResizeOptions
+        using var icon = SKBitmap.Decode(iconPath);
+        if (icon is null) return EmptyIcon;
+        var png = FitOnSquarePng(icon, IconSize);
+        return png.Length == 0 ? EmptyIcon : new ProcessIconContent(png, "image/png");
+    }
+
+    /// <summary>
+    /// Draws <paramref name="source"/> centred on a transparent square of <paramref name="size"/> and
+    /// encodes it as PNG.
+    ///
+    /// Desktop icon themes mix 16, 32, 48, 128 and 256 pixel files, so the client would otherwise have to
+    /// rescale a different shape for every row. Padding rather than cropping keeps a non-square icon
+    /// whole; the transparent band is what a list row already assumes it is drawing into.
+    /// </summary>
+    private static byte[] FitOnSquarePng(SKBitmap source, int size)
+    {
+        var scale = Math.Min((float)size / source.Width, (float)size / source.Height);
+        var fitted = new SKImageInfo(
+            Math.Max(1, (int)MathF.Round(source.Width * scale)),
+            Math.Max(1, (int)MathF.Round(source.Height * scale)),
+            SKColorType.Bgra8888, SKAlphaType.Unpremul);
+        using var scaled = source.Resize(fitted, new SKSamplingOptions(SKCubicResampler.Mitchell));
+        if (scaled is null) return [];
+        using var square = new SKBitmap(new SKImageInfo(size, size, SKColorType.Bgra8888, SKAlphaType.Premul));
+        using (var canvas = new SKCanvas(square))
         {
-            Size = new Size(IconSize, IconSize),
-            Mode = ResizeMode.Pad,
-            PadColor = Color.Transparent,
-        }));
-        using var output = new MemoryStream();
-        image.SaveAsPng(output);
-        return new ProcessIconContent(output.ToArray(), "image/png");
+            canvas.Clear(SKColors.Transparent);
+            canvas.DrawBitmap(scaled, (size - fitted.Width) / 2f, (size - fitted.Height) / 2f);
+        }
+        return EncodePng(square);
+    }
+
+    /// <summary>Encodes a bitmap as PNG, or answers an empty payload when the encoder refuses.</summary>
+    private static byte[] EncodePng(SKBitmap bitmap)
+    {
+        using var image = SKImage.FromBitmap(bitmap);
+        using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+        return data?.ToArray() ?? [];
     }
 
     private static IReadOnlyDictionary<string, string> ReadDesktopIcons()
@@ -261,18 +287,7 @@ internal sealed class ProcessIconProvider
                 if (!NativeMethods.DrawIconEx(memory, 0, 0, shellInfo.Icon, IconSize, IconSize, 0, IntPtr.Zero, 0x0003)) return [];
                 var data = new byte[IconSize * IconSize * 4];
                 Marshal.Copy(pixels, data, 0, data.Length);
-                using var image = new Image<Rgba32>(IconSize, IconSize);
-                for (var y = 0; y < IconSize; y++)
-                for (var x = 0; x < IconSize; x++)
-                {
-                    var offset = (y * IconSize + x) * 4;
-                    var alpha = data[offset + 3];
-                    if (alpha == 0 && (data[offset] != 0 || data[offset + 1] != 0 || data[offset + 2] != 0)) alpha = 255;
-                    image[x, y] = new Rgba32(data[offset + 2], data[offset + 1], data[offset], alpha);
-                }
-                using var output = new MemoryStream();
-                image.SaveAsPng(output);
-                return output.ToArray();
+                return EncodeIconPng(data);
             }
             finally
             {
@@ -281,6 +296,31 @@ internal sealed class ProcessIconProvider
             }
         }
         finally { NativeMethods.DestroyIcon(shellInfo.Icon); }
+    }
+
+    /// <summary>
+    /// Turns the 32 × 32 BGRA pixels GDI painted into a PNG.
+    ///
+    /// The DIB section already holds the icon at the size the client draws, so there is nothing to
+    /// decode or resample here — only the container changes, and the byte order is the one Skia calls
+    /// <c>Bgra8888</c> so the copy is straight. A pixel that carries a colour but no alpha is promoted
+    /// to opaque, which is what the shell's own mask means by "this pixel is part of the icon"; without
+    /// that, icons drawn with a legacy mask come out as a transparent square.
+    /// </summary>
+    private static byte[] EncodeIconPng(byte[] bgra)
+    {
+        using var bitmap = new SKBitmap(new SKImageInfo(IconSize, IconSize, SKColorType.Bgra8888, SKAlphaType.Unpremul));
+        var target = bitmap.GetPixelSpan();
+        for (var offset = 0; offset < bgra.Length; offset += 4)
+        {
+            var alpha = bgra[offset + 3];
+            if (alpha == 0 && (bgra[offset] != 0 || bgra[offset + 1] != 0 || bgra[offset + 2] != 0)) alpha = byte.MaxValue;
+            target[offset + 0] = bgra[offset + 0];
+            target[offset + 1] = bgra[offset + 1];
+            target[offset + 2] = bgra[offset + 2];
+            target[offset + 3] = alpha;
+        }
+        return EncodePng(bitmap);
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]

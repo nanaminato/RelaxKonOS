@@ -122,3 +122,9 @@ Nginx、Docker、Samba、Squid 使用已有组件状态/冻结计划与安装台
 平台来源盘点：Windows Nginx 使用受保护配置中的 nginx.org 官方固定归档；Linux Nginx、Squid、Samba、Git 通过宿主 apt，Docker 使用受授权的 Docker 仓库和 apt；frp 使用固定的上游 GitHub 归档，sing-box/Mihomo 使用各自的受信任运行时目录。Windows Git 此处仍仅观察，安装未接入。固定归档只表示配置中可用的版本，不代表实时上游最新版；Windows Nginx 和 frp 在本面板仍只支持安装。apt 的更新路径仅适用于已核实受管所有权且满足准入的组件；仓库无更新、状态不明或事务待恢复时不得声称可更新。未新增发布源、跨版本归档更新或实际主机验收。
 
 验证：桌面 Client 构建通过；组件包事务客户端专项通过，组件中心中英日 × 明暗布局检查通过。未连接截图中的宿主复现其错误，也未实际安装或更新组件；这两种错误是否由宿主版本、状态或网络造成仍需现场日志确认。
+
+## CC-01 / MR-05：Windows 空版本来源与误报修复（2026-10-27）
+
+代码确认 Windows Nginx 未配置 `NginxReleases` 时默认空目录，客户端又将空目录的非零来源修订写成 0，导致无版本和状态冲突同时出现。Helper 默认提供已核验官方签名和 SHA-256 的固定 1.30.6 归档；显式空列表不被默认值覆盖。Nginx/frp 对空的批准列表报告 `HostPolicyRequired`，客户端保留真实来源修订、清理旧版本选择，并在重新检查开始时撤销旧计划，失败后不能继续安装旧目标。
+
+验证：Server/Client 构建通过，Windows 版本/状态专项 7 项通过；组件中心中英日 × 明暗回归覆盖正常固定版本、目录变空和检查失败撤销计划。官方归档在 Windows 的 `nginx.exe -v` 输出 1.30.6；归档签名、摘要和部署要求见 [Nginx 应用文档](../applications/RelaxKonOS.WebServerManager.Design.md#windows-可用版本修复2026-10-27)。完整 `--components-only` 在原有 Linux 卸载断言（仍要求 ExecutionUnavailable，与当前更新/卸载代码不符）处失败，未据此宣称全套通过。未更新截图中远端宿主，未执行第三方安装或服务变更，不扩展 MR-05 生命周期验收范围。

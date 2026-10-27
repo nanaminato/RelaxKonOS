@@ -25,12 +25,27 @@
     <PackageReference Include="RoyalApps.RoyalTerminal.Terminal.Pty.Platform" />
     <PackageReference Include="System.ServiceProcess.ServiceController" />
     <PackageReference Include="System.Management" />
-    <PackageReference Include="SixLabors.ImageSharp" />
+    <PackageReference Include="SkiaSharp" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" />
   </ItemGroup>
   <Target Name="SetArchiveDecoderBuildPermissions" AfterTargets="Build" Condition="'$(OS)' != 'Windows_NT'">
     <Exec Command="chmod 755 &quot;$(TargetDir)Assets/SevenZip/linux-x64/7zz&quot; &quot;$(TargetDir)Assets/SevenZip/linux-arm64/7zz&quot; &quot;$(TargetDir)Assets/SevenZip/osx-x64/7zz&quot; &quot;$(TargetDir)Assets/SevenZip/osx-arm64/7zz&quot;" />
   </Target>
   <Target Name="SetArchiveDecoderPublishPermissions" AfterTargets="Publish" Condition="'$(OS)' != 'Windows_NT'">
     <Exec Command="chmod 755 &quot;$(PublishDir)Assets/SevenZip/linux-x64/7zz&quot; &quot;$(PublishDir)Assets/SevenZip/linux-arm64/7zz&quot; &quot;$(PublishDir)Assets/SevenZip/osx-x64/7zz&quot; &quot;$(PublishDir)Assets/SevenZip/osx-arm64/7zz&quot;" />
+  </Target>
+  <!-- SkiaSharp 的原生包里带一个 84 MB 的 libSkiaSharp.pdb：那是 Skia 自身的符号，不是本项目的，
+       既不该进发布包，也不该把 bin 撑大。 -->
+  <Target Name="DropSkiaNativeSymbols" AfterTargets="Build">
+    <ItemGroup>
+      <SkiaNativeSymbol Include="$(OutDir)runtimes/*/native/libSkiaSharp.pdb" />
+    </ItemGroup>
+    <Delete Files="@(SkiaNativeSymbol)" />
+  </Target>
+  <Target Name="DropSkiaNativeSymbolsFromPublish" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="'%(Filename)' == 'libSkiaSharp' and '%(Extension)' == '.pdb'" />
+    </ItemGroup>
   </Target>
 </Project>

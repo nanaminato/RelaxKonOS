@@ -32,6 +32,12 @@ public sealed record WindowsFrpRelease(string Version, string Rid, string Url, s
 
 public static class WindowsManagedRuntimeDefaults
 {
+    // nginx.org archive + detached signature verified with the publisher key
+    // D6786CE303D9A9022998DC6CC8464D549AF75C0A (2026-10-27).
+    public static IReadOnlyList<WindowsNginxRelease> NginxReleases { get; } =
+    [
+        new("1.30.6", "c6ee35edb0a861063323f709192ae50d1eefaf2ea7d00678bd2b22d8542dc61e"),
+    ];
     public static string NginxRoot => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "RelaxKonOS", "webserver", "nginx");
     public static string PrivateRoot => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "RelaxKonOS", "privileged-runtimes");
     public static IReadOnlyList<WindowsFrpRelease> FrpReleases { get; } =

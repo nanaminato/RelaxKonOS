@@ -69,7 +69,8 @@ public sealed class FrpComponentAdapter(string componentId, IRuntimeManager runt
         if (request.ExpectedTrustRevision != 0 || !request.KeepData
             || request.ReleaseId is not null && request.SourceId != "host-pins") problems.Add(ComponentProblemCodes.RequestInvalid);
         var pin = view.PinnedArchives!.SingleOrDefault(pin => pin.ReleaseId == request.ReleaseId && pin.Version == request.RequestedVersion);
-        if (pin is null) problems.Add(ComponentProblemCodes.PackageUnresolved);
+        if (pin is null) problems.Add(view.PinnedArchives is not { Count: > 0 }
+            ? ComponentProblemCodes.HostPolicyRequired : ComponentProblemCodes.PackageUnresolved);
         return new(request, state, pin is null ? null : ComponentFrozenTarget.FromPin(pin), problems, []);
     }
     public Task<ComponentExecutionResult> ExecuteAsync(ComponentExecuteRequest request, CancellationToken ct) =>

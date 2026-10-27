@@ -223,9 +223,10 @@ internal static class ComponentCenterWorkspaceChecks
                 }
                 // One host, one platform: a Windows host must not list Linux-only products at all,
                 // and must describe the archive it can actually download instead of a package manager.
+                var windowsLifecycle = new WindowsArchiveLifecycleClient();
                 using (var windowsRuntime = new ProxyServerRuntimeViewModel(DispatchProxy.Create<IRuntimeCatalogClient, DisplayOnlyRuntime>()) { CanRead = true, CanManage = true })
                 using (var windowsModel = new ComponentCenterViewModel(windowsRuntime, new(), "https://host.example/", Guid.NewGuid(),
-                    lifecycle: new WindowsArchiveLifecycleClient(), hostPlatform: "windows"))
+                    lifecycle: windowsLifecycle, hostPlatform: "windows"))
                 {
                     string[] windowsIds = windowsModel.VisibleRoots.SelectMany(root => root.VisibleDescendantsAndSelf())
                         .Where(node => node.ComponentId is not null).Select(node => node.ComponentId!).ToArray();
@@ -255,6 +256,16 @@ internal static class ComponentCenterWorkspaceChecks
                         bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light") + "PlatformWindows.png"));
                     }
                     windowsWindow.Close(); Dispatcher.UIThread.RunJobs();
+                    windowsLifecycle.Fail = true;
+                    windowsModel.ResolvePackageCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+                    Check(!windowsModel.CanInstallPackage && !windowsModel.HasPackageFreeze,
+                        "A failed version refresh revokes the previous executable plan in " + language);
+                    windowsLifecycle.Fail = false;
+                    windowsLifecycle.Empty = true;
+                    windowsModel.ResolvePackageCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+                    Check(windowsLifecycle.LastRequest is { ExpectedSourceRevision: 9, ReleaseId: null }
+                        && windowsModel.SelectedPinnedArchive is null && !windowsModel.CanInstallPackage,
+                        "An empty refreshed Windows catalog retains its revision, clears the old selection and blocks installation in " + language);
                 }
                 using (var linuxRuntime = new ProxyServerRuntimeViewModel(DispatchProxy.Create<IRuntimeCatalogClient, DisplayOnlyRuntime>()))
                 using (var linuxModel = new ComponentCenterViewModel(linuxRuntime, new(), "https://host.example/", Guid.NewGuid(),
@@ -566,17 +577,25 @@ internal sealed class LayoutLifecycleClient : IComponentLifecycleClient
 
 internal sealed class WindowsArchiveLifecycleClient : IComponentLifecycleClient
 {
+    public bool Empty { get; set; }
+    public bool Fail { get; set; }
+    public ComponentPlanRequest? LastRequest { get; private set; }
     private static readonly ComponentPinnedArchive Pin = new("release-win", "1.26.3", "win-x64",
         "https://releases.example/nginx-1.26.3.zip", new string('b', 64), "zip", 104857600, ["nginx"]);
 
     public Task<ComponentStateView> StateAsync(string componentId, CancellationToken ct) =>
-        Task.FromResult(new ComponentStateView(componentId,
+        Fail ? throw new HttpRequestException("unavailable") : Task.FromResult(new ComponentStateView(componentId,
             new ComponentState(componentId, "win-host", 7, RuntimeOwnership.Absent, ComponentSourceMode.ManagedArchive,
                 new RuntimeTarget("windows", "x64", null, null, RuntimeInstallMode.Archive, "scm"), null, false),
-            [new ComponentModeSupport(ComponentSourceMode.ManagedArchive, "windows", true, null)], [], [Pin], 9));
+            [new ComponentModeSupport(ComponentSourceMode.ManagedArchive, "windows", true, null)], [], Empty ? [] : [Pin], 9));
 
-    public async Task<ComponentPlanResult> PlanAsync(ComponentPlanRequest request, CancellationToken ct) =>
-        new(request, (await StateAsync(request.ComponentId, ct)).State, ComponentFrozenTarget.FromPin(Pin), [], []);
+    public async Task<ComponentPlanResult> PlanAsync(ComponentPlanRequest request, CancellationToken ct)
+    {
+        LastRequest = request;
+        if (request.ExpectedSourceRevision != 9) throw new InvalidOperationException("Catalog revision lost");
+        return new(request, (await StateAsync(request.ComponentId, ct)).State,
+            Empty ? null : ComponentFrozenTarget.FromPin(Pin), Empty ? [ComponentProblemCodes.HostPolicyRequired] : [], []);
+    }
 }
 
 internal sealed class InspectionPreview : ITaskPlanPreviewClient{    public Task<TaskPlan> PlanChangeAsync(TaskPlanIntent intent, string expectedHost, CancellationToken ct) => throw new NotSupportedException();

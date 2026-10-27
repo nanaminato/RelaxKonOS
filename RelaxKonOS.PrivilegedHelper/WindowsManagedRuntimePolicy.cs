@@ -15,7 +15,7 @@ public sealed record WindowsManagedRuntimePolicy(string NginxRoot, string Privat
         IReadOnlyList<string>? archiveRoots, IReadOnlyList<string> readers, IReadOnlyList<WindowsFrpRelease>? releases, IReadOnlyList<WindowsNginxRelease>? nginxReleases = null)
         => new(Path.GetFullPath(nginxRoot ?? WindowsManagedRuntimeDefaults.NginxRoot),
             Path.GetFullPath(privateRoot ?? WindowsManagedRuntimeDefaults.PrivateRoot),
-            archiveRoots ?? [], readers, releases ?? WindowsManagedRuntimeDefaults.FrpReleases) { NginxReleases = nginxReleases ?? [] };
+            archiveRoots ?? [], readers, releases ?? WindowsManagedRuntimeDefaults.FrpReleases) { NginxReleases = nginxReleases ?? WindowsManagedRuntimeDefaults.NginxReleases };
 
     public void Validate()
     {

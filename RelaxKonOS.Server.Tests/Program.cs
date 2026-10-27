@@ -1,4 +1,9 @@
 using RelaxKonOS.Protocol.Proxy;
+if (args.Contains("--windows-component-versions-only"))
+{
+    ComponentLifecycleChecks.VerifyWindowsObservation();
+    return;
+}
 if (args.Contains("--squid-only"))
 {
     await SquidGatewayChecks.RunAsync();
