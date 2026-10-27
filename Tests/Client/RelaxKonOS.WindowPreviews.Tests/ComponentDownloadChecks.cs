@@ -33,6 +33,11 @@ internal static class ComponentDownloadChecks
                 id + " shows a multi-version selector without a signing-source setup or plan screen");
             model.SelectedOfficialRelease = model.OfficialReleases[1];
             var selected = model.OfficialVersion;
+            Check(!model.OpenOfficialDownloadCommand.CanExecute(null), id + " disables download without a browser handler");
+            string? openedUrl = null;
+            model.OpenComponentDownloadAsync = url => { openedUrl = url; return Task.CompletedTask; };
+            Complete(model.OpenOfficialDownloadCommand.ExecuteAsync(null));
+            Check(openedUrl == model.SelectedOfficialRelease!.DownloadUrl, id + " opens the selected archive when resolved");
             model.SelectLocalComponentPackageAsync = _ => Task.FromResult<string?>("uploaded-package");
             model.SelectServerComponentPackageAsync = _ => Task.FromResult<string?>("server-package");
             foreach (var method in new[] { ComponentDownloadMethod.ServerDownload, ComponentDownloadMethod.ClientDownload, ComponentDownloadMethod.LocalFile, ComponentDownloadMethod.ServerFile })
@@ -54,6 +59,16 @@ internal static class ComponentDownloadChecks
             releases.Fail = true;
             model.LoadOfficialReleasesAsync(true).GetAwaiter().GetResult();
             Check(model.OfficialReleases.Count == 0 && !model.CanInstallOfficial, id + " failed refresh does not reuse an old selected version");
+            var officialPage = id switch
+            {
+                "nginx" => "https://nginx.org/en/download.html",
+                "mihomo" => "https://github.com/MetaCubeX/mihomo/releases",
+                _ => "https://github.com/fatedier/frp/releases"
+            };
+            Check(model.OpenOfficialDownloadCommand.CanExecute(null), id + " keeps manual download available after discovery fails");
+            Complete(model.OpenOfficialDownloadCommand.ExecuteAsync(null));
+            Check(openedUrl == officialPage && model.OfficialDownloadUrl == officialPage,
+                id + " opens its official release page after discovery fails instead of a stale archive");
             model.OfficialVersion = selected;
             Check(model.CanInstallOfficial, id + " supports manual version and existing archive when the network is unavailable");
         }

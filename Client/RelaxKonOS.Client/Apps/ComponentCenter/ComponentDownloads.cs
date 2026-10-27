@@ -36,14 +36,28 @@ public partial class ComponentCenterViewModel
         && !string.IsNullOrWhiteSpace(OfficialVersion) && PackageInstallation is not null && !_packageInstallations.Values.Any(task => task.IsActive)
         && (SelectedDownloadMethod.Method != ComponentDownloadMethod.ClientDownload || SelectedOfficialRelease?.Version == OfficialVersion.Trim());
     public bool ShowManualVersion => SelectedDownloadMethod.Method is ComponentDownloadMethod.LocalFile or ComponentDownloadMethod.ServerFile || OfficialReleases.Count == 0;
-    public string OfficialDownloadUrl => SelectedOfficialRelease?.DownloadUrl ?? "";
+    public string OfficialDownloadUrl => SelectedOfficialRelease is { } release && OfficialReleases.Contains(release)
+        ? release.DownloadUrl : SelectedDefinition?.ComponentId switch
+        {
+            "nginx" => "https://nginx.org/en/download.html",
+            "mihomo" => "https://github.com/MetaCubeX/mihomo/releases",
+            "frpc" or "frps" => "https://github.com/fatedier/frp/releases",
+            _ => ""
+        };
+    public bool CanOpenOfficialDownload => ShowOfficialDownloads && OpenComponentDownloadAsync is not null
+        && !string.IsNullOrEmpty(OfficialDownloadUrl);
     public Func<InstallationTaskViewModel, Task<string?>>? SelectLocalComponentPackageAsync { get; set; }
     public Func<InstallationTaskViewModel, Task<string?>>? SelectServerComponentPackageAsync { get; set; }
-    public Func<string, Task>? OpenComponentDownloadAsync { get; set; }
+    private Func<string, Task>? _openComponentDownloadAsync;
+    public Func<string, Task>? OpenComponentDownloadAsync
+    {
+        get => _openComponentDownloadAsync;
+        set { _openComponentDownloadAsync = value; NotifyOfficialDownloads(); }
+    }
     partial void OnSelectedOfficialReleaseChanged(ComponentDownloadRelease? value)
     {
         if (value is not null) OfficialVersion = value.Version;
-        OnPropertyChanged(nameof(OfficialDownloadUrl));
+        NotifyOfficialDownloads();
     }
     partial void OnOfficialVersionChanged(string value) => OnPropertyChanged(nameof(CanInstallOfficial));
     partial void OnSelectedDownloadMethodChanged(ComponentDownloadMethodChoice value)
@@ -52,8 +66,9 @@ public partial class ComponentCenterViewModel
     partial void OnIsInstallingOfficialChanged(bool value) => NotifyOfficialDownloads();
     private void NotifyOfficialDownloads()
     {
-        foreach (var name in new[] { nameof(ShowOfficialDownloads), nameof(OfficialReleases), nameof(CanRefreshOfficial), nameof(CanInstallOfficial), nameof(ShowManualVersion), nameof(OfficialDownloadUrl) })
+        foreach (var name in new[] { nameof(ShowOfficialDownloads), nameof(OfficialReleases), nameof(CanRefreshOfficial), nameof(CanInstallOfficial), nameof(ShowManualVersion), nameof(OfficialDownloadUrl), nameof(CanOpenOfficialDownload) })
             OnPropertyChanged(name);
+        OpenOfficialDownloadCommand.NotifyCanExecuteChanged();
     }
     public async Task LoadOfficialReleasesAsync(bool refresh)
     {
@@ -81,8 +96,9 @@ public partial class ComponentCenterViewModel
         finally { IsLoadingOfficialReleases = false; NotifyOfficialDownloads(); }
     }
     [RelayCommand] private Task RefreshOfficialReleasesAsync() => LoadOfficialReleasesAsync(true);
-    [RelayCommand] private Task OpenOfficialDownloadAsync() => SelectedOfficialRelease is { } release && OfficialReleases.Contains(release)
-        ? OpenComponentDownloadAsync?.Invoke(release.DownloadUrl) ?? Task.CompletedTask : Task.CompletedTask;
+    [RelayCommand(CanExecute = nameof(CanOpenOfficialDownload))]
+    private Task OpenOfficialDownloadAsync() => CanOpenOfficialDownload
+        ? OpenComponentDownloadAsync!(OfficialDownloadUrl) : Task.CompletedTask;
     [RelayCommand] private async Task InstallOfficialAsync()
     {
         if (!CanInstallOfficial || SelectedDefinition is not { } definition || PackageInstallation is not { } task) return;
