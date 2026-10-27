@@ -377,8 +377,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
                 node.HasUpdate = runtime?.HasUpdates == true;
             }
         }
-        bool Eligible(ComponentTreeNode node) => !(HostPlatform == "windows" && node.ComponentId == "sing-box")
-            && (HostPlatform.Length == 0 || node.ComponentId is not { } componentId
+        bool Eligible(ComponentTreeNode node) => (HostPlatform.Length == 0 || node.ComponentId is not { } componentId
             || ComponentCatalog.Find(componentId)?.Platforms.Contains(HostPlatform) == true) && (SelectedPage switch
         {
             ComponentCenterPage.Installed => node.ComponentId is { } installed

@@ -20,6 +20,10 @@ internal static class ComponentCenterWorkspaceChecks
 {
     public static void Run(ShellSettings settings)
     {
+        var singBox = ComponentCatalog.Find("sing-box")!;
+        Check(singBox.Platforms.SequenceEqual(["linux"])
+            && singBox.Sources.All(source => source.Platforms.SequenceEqual(["linux"])),
+            "sing-box declares Linux-only component and source support; platform filtering needs no product exception.");
         var languageBefore = settings.Language;
         var appearanceBefore = settings.Appearance;
         var output = Path.Combine(AppContext.BaseDirectory, "preview-qa", "component-center");
@@ -274,7 +278,7 @@ internal static class ComponentCenterWorkspaceChecks
                 {
                     string[] linuxIds = linuxModel.VisibleRoots.SelectMany(root => root.VisibleDescendantsAndSelf())
                         .Where(node => node.ComponentId is not null).Select(node => node.ComponentId!).ToArray();
-                    Check(linuxIds.Contains("squid") && linuxIds.Contains("samba") && linuxIds.Contains("docker"),
+                    Check(linuxIds.Contains("sing-box") && linuxIds.Contains("squid") && linuxIds.Contains("samba") && linuxIds.Contains("docker"),
                         "A Linux host lists the distribution-packaged components in " + language);
                     linuxModel.SelectedNode = linuxModel.VisibleRoots.SelectMany(root => root.VisibleDescendantsAndSelf())
                         .Single(node => node.ComponentId == "squid");

@@ -53,8 +53,8 @@ public static class ComponentCatalog
     public static IReadOnlyList<HostComponentDefinition> Components { get; } = Array.AsReadOnly<HostComponentDefinition>([
         new("sing-box", "sing-box", "network", "sing-box", "component_center.component.sing-box.description",
             ComponentIntegration.Batch, "relaxkonos.proxy-server", [], [], [],
-            ["relaxkonos.proxy-server"], [Windows, Linux],
-            [new(ComponentSourceKind.ManagedArchive, true, [Windows, Linux])]),
+            ["relaxkonos.proxy-server"], [Linux],
+            [new(ComponentSourceKind.ManagedArchive, true, [Linux])]),
         new("mihomo", "mihomo", "network", "mihomo", "component_center.component.mihomo.description",
             ComponentIntegration.Runtime, "relaxkonos.proxy", [], [], [],
             ["relaxkonos.proxy"], [Windows, Linux],
