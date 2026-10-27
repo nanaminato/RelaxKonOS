@@ -32,8 +32,52 @@ public sealed class ComponentLifecycleClient(HttpClient http, IAuthSession sessi
 
     public async Task<ComponentPlanResult> PlanAsync(ComponentPlanRequest request, CancellationToken ct) =>
         await SendAsync<ComponentPlanResult>(HttpMethod.Post, ComponentRoutes.Plan(request.ComponentId), request, ct);
-    public Task<ComponentDownloadRelease[]> ReleasesAsync(string componentId, bool refresh, CancellationToken ct) =>
-        SendAsync<ComponentDownloadRelease[]>(HttpMethod.Get, ComponentRoutes.Releases(componentId) + "?refresh=" + refresh.ToString().ToLowerInvariant(), null, ct);
+    public async Task<ComponentDownloadRelease[]> ReleasesAsync(string componentId, bool refresh, CancellationToken ct)
+    {
+        // Authorization and target identity come from the connected host, never the desktop RID.
+        var view = await StateAsync(componentId, ct);
+        if (view.ComponentId != componentId || view.State is not { } state || view.Problems.Count != 0)
+            throw new InvalidDataException("component.state_unavailable");
+        var rid = (state.Target.Os == "windows" ? "win" : state.Target.Os) + "-" + state.Target.Architecture;
+        if (rid is not ("win-x64" or "win-arm64" or "linux-x64" or "linux-arm64"))
+            throw new InvalidOperationException("component.platform_unsupported");
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        lifetime.CancelAfter(TimeSpan.FromSeconds(35));
+        var pending = new List<Task<ComponentDownloadRelease[]>>
+        {
+            SendAsync<ComponentDownloadRelease[]>(HttpMethod.Get, ComponentRoutes.Releases(componentId)
+                + "?refresh=" + refresh.ToString().ToLowerInvariant(), null, lifetime.Token),
+            new RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialComponentReleases()
+                .ListAsync(componentId, rid, refresh, lifetime.Token)
+        };
+        try
+        {
+            while (pending.Count > 0)
+            {
+                var completed = await Task.WhenAny(pending);
+                pending.Remove(completed);
+                ComponentDownloadRelease[] releases;
+                try { releases = await completed; }
+                catch (Exception ex) when (ex is HttpRequestException or IOException or OperationCanceledException
+                    or System.Text.Json.JsonException) { continue; }
+                catch (InvalidOperationException ex) when (ex.Message == "component.state_unavailable") { continue; }
+                if (releases.Length == 0 || releases.Any(release => release.Rid != rid)) continue;
+                Verify();
+                ct.ThrowIfCancellationRequested();
+                return releases;
+            }
+            ct.ThrowIfCancellationRequested();
+            Verify();
+            throw new InvalidOperationException("component.state_unavailable");
+        }
+        finally
+        {
+            lifetime.Cancel();
+            // Observe the losing request even after the successful result has been returned.
+            foreach (var task in pending)
+                _ = task.ContinueWith(t => { _ = t.Exception; }, TaskContinuationOptions.OnlyOnFaulted);
+        }
+    }
 
     private async Task<T> SendAsync<T>(HttpMethod method, string route, object? body, CancellationToken ct) where T : class
     {

@@ -19,6 +19,11 @@ internal static class OfficialComponentReleaseChecks
             """;
         var frp = OfficialComponentReleases.ParseGitHub("frpc", "win-x64", json);
         Check(frp is [{ Version: "v0.71.0", Sha256: null, Rid: "win-x64" }], "GitHub releases select the host asset and do not require upstream digest metadata");
+        var arm = OfficialComponentReleases.ParseGitHub("frpc", "win-arm64", json);
+        Check(arm is [{ Rid: "win-arm64", FileName: "frp_0.71.0_windows_arm64.zip" }],
+            "local discovery uses the requested server ARM64 target instead of the desktop architecture");
+        Check(OfficialComponentReleases.ParseGitHub("frpc", "linux-arm64", json).Length == 0,
+            "discovery never substitutes a Windows asset for a Linux server");
         Check(OfficialComponentReleases.Describe("frpc", "win-arm64", "v0.70.0") == OfficialComponentReleases.Describe("frps", "win-arm64", "v0.70.0"), "frpc and frps share the selected version's bundle");
         Check(OfficialComponentReleases.Describe("mihomo", "win-x64", "v1.19.30").FileName == "mihomo-windows-amd64-v1.19.30.zip", "Mihomo resolves the chosen version instead of a build-time constant");
         var rejected = false;
