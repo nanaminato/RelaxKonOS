@@ -71,6 +71,7 @@
         "registry.apply.immediate": "立即生效",
         "registry.apply.reopen": "重新打开应用后生效",
         "registry.error.conflict": "此字段已被其他编辑更新。当前值：{0}。请关闭并重新打开编辑器以合并更改。",
-        "registry.error.conflict_unknown": "配置版本已改变；请重新读取后编辑。"
+        "registry.error.conflict_unknown": "配置版本已改变；请重新读取后编辑。",
+        "registry.session_valid.hint": "当前 token 验证管理员身份后，在该 token 到期前免重复验证。新 token 不继承。关闭会清除记忆；已验证的 token 泄露后可直接执行获准的管理操作。"
     }
 }

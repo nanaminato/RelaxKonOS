@@ -44,7 +44,8 @@ public enum HostElevationCapability
     ServerRuntimeConfigure,
 }
 
-/// <summary>Authenticated request for one non-file host capability and exact managed resource.</summary>
+/// <summary>Verifies a non-file capability/resource. Server sessionValid policy can remember successful
+/// administrator verification for this access token; requests still validate their capability and resource.</summary>
 public sealed record HostElevationRequest(
     [property: JsonPropertyName("capability")] HostElevationCapability Capability,
     [property: JsonPropertyName("target")] string Target,

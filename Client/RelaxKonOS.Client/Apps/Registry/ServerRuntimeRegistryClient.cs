@@ -52,12 +52,13 @@ public sealed class ServerRuntimeRegistryClient(HttpClient http, IAuthSession se
         return JsonSerializer.SerializeToElement(snapshot.Settings, RelaxKonOSJsonOptions.Default).EnumerateObject().Select(property =>
         {
             var bounds = property.Name switch { "registryFlushDelayMilliseconds" => (100, 30000), "notificationCoalesceMilliseconds" => (0, 1000), _ => (1, 300) };
-            return new RegistryEntryDto(RegistryScope.Server, "Server\\Runtime", property.Name, RegistryValueType.Number, property.Value.Clone(), snapshot.Revision,
+            var boolean = property.Value.ValueKind is JsonValueKind.True or JsonValueKind.False;
+            return new RegistryEntryDto(RegistryScope.Server, "Server\\Runtime", property.Name, boolean ? RegistryValueType.Boolean : RegistryValueType.Number, property.Value.Clone(), snapshot.Revision,
                 RegistryEntryState.Synced, snapshot.UpdatedAt, snapshot.UpdatedAt, RegistryApplyMode.Immediate, null, null, null)
             {
                 Address = new(new Uri(_origin!).GetLeftPart(UriPartial.Authority), null, RegistryScope.Server, snapshot.InstanceId, "Server\\Runtime"),
                 Schema = new(property.Name, true, false, false, defaults.GetProperty(property.Name).Clone())
-                { Editor = RegistryEditorKind.Integer, Minimum = bounds.Item1, Maximum = bounds.Item2 },
+                { Editor = boolean ? RegistryEditorKind.Boolean : RegistryEditorKind.Integer, Minimum = boolean ? null : bounds.Item1, Maximum = boolean ? null : bounds.Item2 },
             };
         }).ToArray();
     }

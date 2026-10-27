@@ -46,6 +46,23 @@ public sealed class SessionValidityService(IServiceScopeFactory scopes)
         return IsValid(userId, version);
     }
 
+    /// <summary>Host elevation must also reject an expired persisted login session.</summary>
+    public bool IsLiveSession(ClaimsPrincipal principal)
+    {
+        if (!IsValid(principal)
+            || !Guid.TryParse(principal.FindFirstValue("sub") ?? principal.FindFirstValue(ClaimTypes.NameIdentifier), out var userId)
+            || !Guid.TryParse(principal.FindFirstValue("sid"), out var sessionId)) return false;
+        try
+        {
+            using var scope = scopes.CreateScope();
+            var session = scope.ServiceProvider.GetRequiredService<ISessionRepository>().FindById(sessionId);
+            return session is not null && session.UserId == userId
+                && session.Status != RelaxKonOS.Protocol.Workspace.SessionStatus.Expired
+                && session.AuthenticationMethod == principal.FindFirstValue("amr");
+        }
+        catch { return false; }
+    }
+
     public bool IsOwnerDeviceValid(Guid userId, Guid deviceId)
     {
         using var scope = scopes.CreateScope();

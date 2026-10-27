@@ -44,7 +44,10 @@
       <CheckBox Content="{loc:Loc registry.editor.hex}" IsChecked="{Binding IsHex, Mode=TwoWay}"/>
     </StackPanel>
 
-    <ToggleSwitch Grid.Row="2" IsVisible="{Binding IsBoolean}" IsChecked="{Binding BooleanValue, Mode=TwoWay}"/>
+    <StackPanel Grid.Row="2" IsVisible="{Binding IsBoolean}" Spacing="12" Margin="0,12,0,0">
+      <ToggleSwitch IsChecked="{Binding BooleanValue, Mode=TwoWay}"/>
+      <TextBlock IsVisible="{Binding IsSessionValidSetting}" Text="{loc:Loc registry.session_valid.hint}" TextWrapping="Wrap" />
+    </StackPanel>
 
     <!-- String list: add and remove rows instead of hand-writing JSON. -->
     <Border Grid.Row="2" IsVisible="{Binding IsStringList}" Padding="8" CornerRadius="4">

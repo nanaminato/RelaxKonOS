@@ -540,6 +540,11 @@ public static class FileEndpoints
     {
         var username = http.User.FindFirstValue(JwtRegisteredClaimNames.Name);
         if (string.IsNullOrWhiteSpace(username)) return Results.Unauthorized();
+        var requestedPaths = new[] { request.Path }.Concat(request.RelatedPaths ?? []).ToArray();
+        if (request.Capability is { } existingCapability && Enum.IsDefined(existingCapability)
+            && requestedPaths.Length > 0 && requestedPaths.All(path => !string.IsNullOrWhiteSpace(path))
+            && elevations.IsElevated(http.User, existingCapability, requestedPaths))
+            return Results.Ok(new FileElevationResult(true, true));
         var authentication = administrators.Authenticate(username, request.AdministratorUsername, request.Password);
         if (!authentication.Succeeded)
             return Problem(403, authentication.ProblemCode, "管理员认证失败", "宿主管理员认证未通过，未执行操作。");

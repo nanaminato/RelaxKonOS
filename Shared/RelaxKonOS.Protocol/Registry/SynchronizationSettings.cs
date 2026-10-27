@@ -12,7 +12,7 @@ public sealed record ClientSynchronizationSettings(
 }
 
 public sealed record ServerRuntimeSettings(int RegistryFlushDelayMilliseconds = 5000,
-    int NotificationCoalesceMilliseconds = 50, int RetryDelaySeconds = 5)
+    int NotificationCoalesceMilliseconds = 50, int RetryDelaySeconds = 5, bool SessionValid = true)
 {
     public static ServerRuntimeSettings Default { get; } = new();
     [JsonIgnore] public bool IsValid => RegistryFlushDelayMilliseconds is >= 100 and <= 30000

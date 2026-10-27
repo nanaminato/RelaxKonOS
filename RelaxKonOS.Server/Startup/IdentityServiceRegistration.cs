@@ -67,7 +67,9 @@ internal static class IdentityServiceRegistration
                             : new RelaxKonOS.Server.UserExecution.DisabledUserExecutionTransport(),
                 });
         builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IPrivilegedFileService, RelaxKonOS.Server.Privileged.PrivilegedFileService>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.HostElevationSessionState>();
+        builder.Services.AddSingleton(sp => new RelaxKonOS.Server.Privileged.HostElevationSessionState(
+            sp.GetRequiredService<RelaxKonOS.Server.Settings.ServerRuntimeSettingsStore>(),
+            sp.GetRequiredService<RelaxKonOS.Server.Identity.SessionValidityService>()));
         builder.Services.AddScoped<RelaxKonOS.Server.Privileged.IHostElevationSessionStore, RelaxKonOS.Server.Privileged.HostElevationSessionStore>();
         builder.Services.AddScoped<RelaxKonOS.Server.Privileged.IFileElevationSessionStore, RelaxKonOS.Server.Privileged.FileElevationSessionStore>();
         builder.Services.AddScoped<RelaxKonOS.Server.Privileged.IHostAdministratorAuthenticator, RelaxKonOS.Server.Privileged.HostAdministratorAuthenticator>();

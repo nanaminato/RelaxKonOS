@@ -16,8 +16,9 @@ public enum FileElevationCapability
     Upload,
 }
 
-/// <summary>Prepares capability-scoped access for the current token for five minutes.
-/// Read grants for directories also cover descendants; read grants for files cover only that file.</summary>
+/// <summary>Verifies administrator access. With server sessionValid enabled, verification is remembered
+/// for this access token until expiry; otherwise the grant covers the requested capability/path for five minutes.
+/// Scoped read grants for directories cover descendants; scoped read grants for files cover only that file.</summary>
 public sealed record FileElevationRequest(
     [property: JsonPropertyName("path")] string Path,
     [property: JsonPropertyName("password")] string? Password = null,

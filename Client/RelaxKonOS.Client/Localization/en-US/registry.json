@@ -71,6 +71,7 @@
         "registry.apply.immediate": "Applies immediately",
         "registry.apply.reopen": "Applies when the application is reopened",
         "registry.error.conflict": "This document changed during editing. Current field value: {0}. Close and reopen the editor to merge changes.",
-        "registry.error.conflict_unknown": "The configuration revision changed. Reload before editing."
+        "registry.error.conflict_unknown": "The configuration revision changed. Reload before editing.",
+        "registry.session_valid.hint": "After administrator verification, this token skips repeat verification until it expires. New tokens do not inherit it. Turning this off clears the memory. A stolen verified token can perform permitted administrator operations."
     }
 }

@@ -1,4 +1,21 @@
 using RelaxKonOS.Protocol.Proxy;
+if (args.Contains("--session-valid-only"))
+{
+    var sessionValidRoot = Path.Combine(Environment.CurrentDirectory, ".tmp", "relaxkonos-session-valid-" + Guid.NewGuid().ToString("N"));
+    try
+    {
+        SessionValidChecks.Run(sessionValidRoot);
+        await HostElevationWireChecks.RunAsync();
+    }
+    finally
+    {
+        var cleanupPath = Path.GetFullPath(sessionValidRoot);
+        var testParent = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, ".tmp")) + Path.DirectorySeparatorChar;
+        if (!cleanupPath.StartsWith(testParent, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Invalid test cleanup path.");
+        if (Directory.Exists(cleanupPath)) Directory.Delete(cleanupPath, recursive: true);
+    }
+    return;
+}
 if (args.Contains("--official-component-releases-only"))
 {
     await OfficialComponentReleaseChecks.RunAsync(args.Contains("--live"));

@@ -27,8 +27,17 @@ internal static class ServerRuntimeClientChecks
         using var http = new HttpClient(handler);
         var client = new ServerRuntimeRegistryClient(http, session, new Grant(), instance);
         var fields = await client.ListValuesAsync(RegistryScope.Server, "Server\\Runtime");
-        Check(fields.Count == 3 && fields.All(field => field.Address.OwnerUserId is null && field.Address.ScopeId == instance && !field.Schema.CanDelete && !field.Schema.CanRename),
+        Check(fields.Count == 4 && fields.All(field => field.Address.OwnerUserId is null && field.Address.ScopeId == instance && !field.Schema.CanDelete && !field.Schema.CanRename),
             "Server fields must target the instance without a fictional user.");
+        var sessionValid = fields.Single(field => field.Name == "sessionValid");
+        Check(sessionValid.ValueType == RegistryValueType.Boolean && sessionValid.Schema.Editor == RegistryEditorKind.Boolean
+            && sessionValid.DesiredValue.GetBoolean() && sessionValid.Schema.DefaultValue!.Value.GetBoolean(),
+            "Session valid is a default-enabled boolean server setting.");
+        var toggle = new RegistryValueDialogViewModel(RegistryEntryRow.From(sessionValid), client, _ => { }, _ => { });
+        toggle.BooleanValue = false;
+        await toggle.SaveCommand.ExecuteAsync(null);
+        Check(toggle.Error is null && handler.Last is { Name: "sessionValid" } && !handler.Last.Value.GetBoolean(),
+            "Session valid toggle saves a boolean through the authorized server route.");
         var row = RegistryEntryRow.From(fields.Single(field => field.Name == "registryFlushDelayMilliseconds"));
         var model = new RegistryValueDialogViewModel(row, client, _ => { }, _ => { });
         model.NumberValue = 1000;

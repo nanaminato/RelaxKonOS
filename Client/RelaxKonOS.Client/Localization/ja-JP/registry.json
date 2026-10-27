@@ -71,6 +71,7 @@
         "registry.apply.immediate": "即時に反映",
         "registry.apply.reopen": "アプリを再度開くと反映",
         "registry.error.conflict": "編集中に設定が変更されました。現在の値：{0}。エディターを開き直して変更を確認してください。",
-        "registry.error.conflict_unknown": "設定のバージョンが変更されました。再読み込みしてください。"
+        "registry.error.conflict_unknown": "設定のバージョンが変更されました。再読み込みしてください。",
+        "registry.session_valid.hint": "管理者確認後、この token の期限まで再確認を省略します。新しい token には引き継がれません。無効にすると記憶を消去します。確認済み token が漏れると、許可された管理操作を実行される恐れがあります。"
     }
 }
