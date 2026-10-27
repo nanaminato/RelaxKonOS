@@ -50,6 +50,20 @@ typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services)
 if (args.Contains("--windows11-only")) { Windows11DesktopChecks.RunAsync().GetAwaiter().GetResult(); return; }
 if (args.Contains("--readiness-only")) { ApplicationReadinessShellChecks.Run(settings, localization, services); return; }
 if (args.Contains("--websites-only")) { WebSiteEditorChecks.Run(); WebSiteReadRecoveryChecks.Run(); WebSiteScopeChecks.Run(); CurrentNginxChecks.Run(); return; }
+if (args.Contains("--component-download-preview"))
+{
+    var downloadOutput = Path.Combine(AppContext.BaseDirectory, "preview-qa", "component-download");
+    Directory.CreateDirectory(downloadOutput);
+    foreach (var language in new[] { "zh-CN", "en-US", "ja-JP" })
+    foreach (var dark in new[] { false, true })
+    {
+        settings.Language = language;
+        settings.Appearance = settings.Appearance with { Mode = dark ? RelaxKonOS.Protocol.Desktop.ThemeKind.Dark : RelaxKonOS.Protocol.Desktop.ThemeKind.Light };
+        ComponentDownloadChecks.Render(downloadOutput, language + (dark ? "-dark-" : "-light-"));
+    }
+    Console.WriteLine(downloadOutput);
+    return;
+}
 if (args.Contains("--component-installs-only")) { ComponentInstallEntryChecks.Run(); return; }
 if (args.Contains("--current-nginx-only")) { CurrentNginxChecks.Run(); return; }
 if (args.Contains("--component-center-only")) { ComponentCenterWorkspaceChecks.Run(settings); return; }

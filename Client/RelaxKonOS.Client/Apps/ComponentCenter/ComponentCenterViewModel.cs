@@ -280,6 +280,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     }
     partial void OnSelectedNodeChanged(ComponentTreeNode? value)
     {
+        ClearPackageFile();
         SelectedOfficialRelease = null;
         OfficialVersion = "";
         OfficialDownloadNotice = LocalizedStatus.Literal("");

@@ -38,11 +38,20 @@ internal static class ComponentDownloadChecks
             model.OpenComponentDownloadAsync = url => { openedUrl = url; return Task.CompletedTask; };
             Complete(model.OpenOfficialDownloadCommand.ExecuteAsync(null));
             Check(openedUrl == model.SelectedOfficialRelease!.DownloadUrl, id + " opens the selected archive when resolved");
-            model.SelectLocalComponentPackageAsync = _ => Task.FromResult<string?>("uploaded-package");
-            model.SelectServerComponentPackageAsync = _ => Task.FromResult<string?>("server-package");
+            model.SelectLocalComponentPackageAsync = _ => Task.FromResult<ComponentPackageSelection?>(new("uploaded-package", "local.zip"));
+            model.SelectServerComponentPackageAsync = _ => Task.FromResult<ComponentPackageSelection?>(new("server-package", "/server/runtime.zip"));
             foreach (var method in new[] { ComponentDownloadMethod.ServerDownload, ComponentDownloadMethod.ClientDownload, ComponentDownloadMethod.LocalFile, ComponentDownloadMethod.ServerFile })
             {
                 model.SelectedDownloadMethod = model.DownloadMethods.Single(choice => choice.Method == method);
+                if (model.IsFileSource)
+                {
+                    Check(!model.CanInstallOfficial && model.SelectedPackageFile is null,
+                        id + " file source requires explicit file selection before installation");
+                    model.OfficialVersion = selected;
+                    Complete(model.SelectPackageFileCommand.ExecuteAsync(null));
+                    Check(model.SelectedPackageFile is not null && model.CanInstallOfficial && !model.ShowOnlineVersions,
+                        id + " selected file is visible and enables installation without the online selector");
+                }
                 Complete(model.InstallOfficialCommand.ExecuteAsync(null));
                 using var body = JsonDocument.Parse(handler.Body!);
                 Check(handler.Path == InstallationApiRoutes.Start(service, InstallationOperationKind.Install)
@@ -53,9 +62,20 @@ internal static class ComponentDownloadChecks
                     id + " " + method + " preserves the selected package reference");
             }
             var calls = handler.Calls;
-            model.SelectServerComponentPackageAsync = _ => Task.FromResult<string?>(null);
+            model.SelectServerComponentPackageAsync = _ => Task.FromResult<ComponentPackageSelection?>(null);
+            model.SelectedDownloadMethod = model.DownloadMethods.Single(choice => choice.Method == ComponentDownloadMethod.LocalFile);
+            model.SelectedDownloadMethod = model.DownloadMethods.Single(choice => choice.Method == ComponentDownloadMethod.ServerFile);
+            Complete(model.SelectPackageFileCommand.ExecuteAsync(null));
             model.InstallOfficialCommand.ExecuteAsync(null).GetAwaiter().GetResult();
             Check(handler.Calls == calls, id + " cancelled file selection does not submit installation");
+            var pendingFile = new TaskCompletionSource<ComponentPackageSelection?>();
+            model.SelectServerComponentPackageAsync = _ => pendingFile.Task;
+            var selecting = model.SelectPackageFileCommand.ExecuteAsync(null);
+            model.SelectedDownloadMethod = model.DownloadMethods.Single(choice => choice.Method == ComponentDownloadMethod.LocalFile);
+            pendingFile.SetResult(new("stale-server-file", "/server/stale.zip"));
+            Complete(selecting);
+            Check(model.SelectedPackageFile is null && !model.CanInstallOfficial,
+                id + " ignores a file selection completed after switching the source");
             releases.Fail = true;
             model.LoadOfficialReleasesAsync(true).GetAwaiter().GetResult();
             Check(model.OfficialReleases.Count == 0 && !model.CanInstallOfficial, id + " failed refresh does not reuse an old selected version");
@@ -70,6 +90,8 @@ internal static class ComponentDownloadChecks
             Check(openedUrl == officialPage && model.OfficialDownloadUrl == officialPage,
                 id + " opens its official release page after discovery fails instead of a stale archive");
             model.OfficialVersion = selected;
+            model.SelectServerComponentPackageAsync = _ => Task.FromResult<ComponentPackageSelection?>(new("server-package", "/server/runtime.zip"));
+            Complete(model.SelectPackageFileCommand.ExecuteAsync(null));
             Check(model.CanInstallOfficial, id + " supports manual version and existing archive when the network is unavailable");
         }
     }
@@ -86,6 +108,12 @@ internal static class ComponentDownloadChecks
         window.Show(); Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
         using var bitmap = new RenderTargetBitmap(new PixelSize(1060, 800));
         bitmap.Render(window); bitmap.Save(Path.Combine(output, suffix + "OfficialDownloads.png"));
+        model.SelectedDownloadMethod = model.DownloadMethods.Single(choice => choice.Method == ComponentDownloadMethod.LocalFile);
+        model.SelectedPackageFile = new("preview-file", "nginx-1.30.6.zip");
+        model.OfficialVersion = "1.30.6";
+        Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
+        using (var fileFrame = new RenderTargetBitmap(new PixelSize(1060, 800)))
+        { fileFrame.Render(window); fileFrame.Save(Path.Combine(output, suffix + "FileInstall.png")); }
         window.Close(); Dispatcher.UIThread.RunJobs();
     }
     private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); Console.WriteLine("PASS " + message); }

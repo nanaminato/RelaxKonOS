@@ -112,7 +112,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             }, UsageMemoryStore.Capture(context), "ComponentCenter.package");
             if (files.FirstOrDefault() is not { } file) return null;
             await using var stream = await file.OpenReadAsync();
-            return await task.UploadPackageAsync(file.Name, stream);
+            return await task.UploadPackageAsync(file.Name, stream) is { } reference ? new ComponentPackageSelection(reference, file.Name) : null;
         };
         model.SelectServerComponentPackageAsync = async task =>
         {
@@ -126,7 +126,8 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                     _ = picker.LoadRootAsync();
                     return new ExplorerMainView { DataContext = picker };
                 }, new Size(800, 560));
-            return selected?.FirstOrDefault() is { } path ? await task.CreateFileReferenceAsync(path) : null;
+            if (selected?.FirstOrDefault() is not { } path) return null;
+            return await task.CreateFileReferenceAsync(path) is { } reference ? new ComponentPackageSelection(reference, path) : null;
         };
         model.OpenComponentDownloadAsync = url =>
         {

@@ -10,7 +10,7 @@
     "component_center.download.method.ServerFile": "サーバーのファイルからインストール",
     "component_center.download.manual": "自分でダウンロード",
     "component_center.download.open": "公式ダウンロードを開く",
-    "component_center.download.manual_hint": "ダウンロード後、端末またはサーバーのファイルを選択してインストールします。",
+    "component_center.download.manual_hint": "ダウンロード後、本機またはサーバーのファイルを選択し、バージョンを入力してインストールしてください。",
     "component_center.download.local_picker": "端末のパッケージを選択",
     "component_center.download.server_picker": "サーバーのパッケージを選択",
     "component_center.download.archive": "ランタイムアーカイブ",
@@ -377,6 +377,12 @@
     "permission.server.components.read.display_name": "ホストコンポーネントの参照",
     "permission.server.components.read.description": "インストール状態、承認済みバージョン、操作記録を参照します。",
     "permission.server.components.manage.display_name": "ホストコンポーネントの管理",
-    "permission.server.components.manage.description": "許可されたインストールと復旧操作を計画・送信します。"
+    "permission.server.components.manage.description": "許可されたインストールと復旧操作を計画・送信します。",
+    "component_center.download.intro": "インストール元を選択し、バージョンを確認してインストールします。",
+    "component_center.download.file": "パッケージファイル",
+    "component_center.download.choose_file": "ファイルを選択…",
+    "component_center.download.no_file": "ファイル未選択",
+    "component_center.download.file_hint": "サーバーの OS とアーキテクチャに合うファイルを選び、実際のバージョンを入力してください。",
+    "component_center.download.file_failed": "ファイルの選択またはアップロードに失敗しました。再試行してください。"
   }
 }

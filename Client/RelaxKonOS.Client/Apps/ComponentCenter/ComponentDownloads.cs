@@ -11,6 +11,7 @@ public interface IComponentReleaseClient
 {
     Task<ComponentDownloadRelease[]> ReleasesAsync(string componentId, bool refresh, CancellationToken ct);
 }
+public sealed record ComponentPackageSelection(string ReferenceId, string Name);
 public enum ComponentDownloadMethod { ServerDownload, ClientDownload, LocalFile, ServerFile }
 public sealed record ComponentDownloadMethodChoice(ComponentDownloadMethod Method)
 {
@@ -19,6 +20,44 @@ public sealed record ComponentDownloadMethodChoice(ComponentDownloadMethod Metho
 
 public partial class ComponentCenterViewModel
 {
+    [ObservableProperty] private ComponentPackageSelection? selectedPackageFile;
+    [ObservableProperty] private bool isSelectingPackageFile;
+    private long _packageSelectionRevision;
+    public bool IsFileSource => SelectedDownloadMethod.Method is ComponentDownloadMethod.LocalFile or ComponentDownloadMethod.ServerFile;
+    public bool ShowOnlineVersions => !IsFileSource && OfficialReleases.Count > 0;
+    public bool CanSelectPackageFile => ShowOfficialDownloads && IsFileSource && Runtime.CanManage && !Runtime.IsInvalidated
+        && !IsInstallingOfficial && !IsSelectingPackageFile && PackageInstallation is not null
+        && !_packageInstallations.Values.Any(task => task.IsActive);
+    public LocalizedStatus SelectedPackageFileText => SelectedPackageFile is { } file
+        ? LocalizedStatus.Literal(file.Name) : LocalizedStatus.Key("component_center.download.no_file");
+    partial void OnSelectedPackageFileChanged(ComponentPackageSelection? value) => NotifyOfficialDownloads();
+    partial void OnIsSelectingPackageFileChanged(bool value) => NotifyOfficialDownloads();
+    private void ClearPackageFile()
+    {
+        _packageSelectionRevision++;
+        SelectedPackageFile = null;
+    }
+    [RelayCommand(CanExecute = nameof(CanSelectPackageFile))]
+    private async Task SelectPackageFileAsync()
+    {
+        if (!CanSelectPackageFile || PackageInstallation is not { } task) return;
+        var revision = _packageSelectionRevision;
+        var picker = SelectedDownloadMethod.Method == ComponentDownloadMethod.LocalFile
+            ? SelectLocalComponentPackageAsync : SelectServerComponentPackageAsync;
+        IsSelectingPackageFile = true;
+        try
+        {
+            var file = picker is not null ? await picker(task) : null;
+            if (revision == _packageSelectionRevision && Runtime.CanManage && !Runtime.IsInvalidated && file is not null)
+                SelectedPackageFile = file;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidOperationException or OperationCanceledException)
+        {
+            if (revision == _packageSelectionRevision)
+                OfficialDownloadNotice = LocalizedStatus.Key("component_center.download.file_failed");
+        }
+        finally { IsSelectingPackageFile = false; }
+    }
     private readonly Dictionary<string, ComponentDownloadRelease[]> _officialReleases = new();
     [ObservableProperty] private ComponentDownloadRelease? selectedOfficialRelease;
     [ObservableProperty] private string officialVersion = "";
@@ -31,9 +70,10 @@ public partial class ComponentCenterViewModel
         ? _officialReleases.GetValueOrDefault(definition.ComponentId) ?? [] : [];
     public bool ShowOfficialDownloads => _lifecycle is IComponentReleaseClient && HostPlatform == "windows"
         && SelectedDefinition?.ComponentId is "nginx" or "mihomo" or "frpc" or "frps";
-    public bool CanRefreshOfficial => ShowOfficialDownloads && Runtime.CanRead && !Runtime.IsInvalidated && !IsLoadingOfficialReleases && !IsInstallingOfficial;
-    public bool CanInstallOfficial => ShowOfficialDownloads && Runtime.CanManage && !Runtime.IsInvalidated && !IsInstallingOfficial && !IsLoadingOfficialReleases
+    public bool CanRefreshOfficial => ShowOfficialDownloads && Runtime.CanRead && !Runtime.IsInvalidated && !IsLoadingOfficialReleases && !IsInstallingOfficial && !IsSelectingPackageFile;
+    public bool CanInstallOfficial => ShowOfficialDownloads && Runtime.CanManage && !Runtime.IsInvalidated && !IsInstallingOfficial && !IsLoadingOfficialReleases && !IsSelectingPackageFile
         && !string.IsNullOrWhiteSpace(OfficialVersion) && PackageInstallation is not null && !_packageInstallations.Values.Any(task => task.IsActive)
+        && (!IsFileSource || SelectedPackageFile is not null)
         && (SelectedDownloadMethod.Method != ComponentDownloadMethod.ClientDownload || SelectedOfficialRelease?.Version == OfficialVersion.Trim());
     public bool ShowManualVersion => SelectedDownloadMethod.Method is ComponentDownloadMethod.LocalFile or ComponentDownloadMethod.ServerFile || OfficialReleases.Count == 0;
     public string OfficialDownloadUrl => SelectedOfficialRelease is { } release && OfficialReleases.Contains(release)
@@ -46,8 +86,8 @@ public partial class ComponentCenterViewModel
         };
     public bool CanOpenOfficialDownload => ShowOfficialDownloads && OpenComponentDownloadAsync is not null
         && !string.IsNullOrEmpty(OfficialDownloadUrl);
-    public Func<InstallationTaskViewModel, Task<string?>>? SelectLocalComponentPackageAsync { get; set; }
-    public Func<InstallationTaskViewModel, Task<string?>>? SelectServerComponentPackageAsync { get; set; }
+    public Func<InstallationTaskViewModel, Task<ComponentPackageSelection?>>? SelectLocalComponentPackageAsync { get; set; }
+    public Func<InstallationTaskViewModel, Task<ComponentPackageSelection?>>? SelectServerComponentPackageAsync { get; set; }
     private Func<string, Task>? _openComponentDownloadAsync;
     public Func<string, Task>? OpenComponentDownloadAsync
     {
@@ -61,28 +101,29 @@ public partial class ComponentCenterViewModel
     }
     partial void OnOfficialVersionChanged(string value) => OnPropertyChanged(nameof(CanInstallOfficial));
     partial void OnSelectedDownloadMethodChanged(ComponentDownloadMethodChoice value)
-    { OnPropertyChanged(nameof(ShowManualVersion)); OnPropertyChanged(nameof(CanInstallOfficial)); }
+    { ClearPackageFile(); if (IsFileSource) OfficialVersion = ""; else if (SelectedOfficialRelease is { } release) OfficialVersion = release.Version; NotifyOfficialDownloads(); }
     partial void OnIsLoadingOfficialReleasesChanged(bool value) => NotifyOfficialDownloads();
     partial void OnIsInstallingOfficialChanged(bool value) => NotifyOfficialDownloads();
     private void NotifyOfficialDownloads()
     {
-        foreach (var name in new[] { nameof(ShowOfficialDownloads), nameof(OfficialReleases), nameof(CanRefreshOfficial), nameof(CanInstallOfficial), nameof(ShowManualVersion), nameof(OfficialDownloadUrl), nameof(CanOpenOfficialDownload) })
+        foreach (var name in new[] { nameof(ShowOfficialDownloads), nameof(OfficialReleases), nameof(CanRefreshOfficial), nameof(CanInstallOfficial), nameof(ShowManualVersion), nameof(OfficialDownloadUrl), nameof(CanOpenOfficialDownload), nameof(IsFileSource), nameof(ShowOnlineVersions), nameof(CanSelectPackageFile), nameof(SelectedPackageFileText), nameof(IsSelectingPackageFile) })
             OnPropertyChanged(name);
         OpenOfficialDownloadCommand.NotifyCanExecuteChanged();
+        SelectPackageFileCommand.NotifyCanExecuteChanged();
     }
     public async Task LoadOfficialReleasesAsync(bool refresh)
     {
         if (!CanRefreshOfficial || SelectedDefinition is not { } definition || _lifecycle is not IComponentReleaseClient client) return;
         var component = definition.ComponentId;
         SelectedOfficialRelease = null;
-        OfficialVersion = "";
+        if (!IsFileSource) OfficialVersion = "";
         OfficialDownloadNotice = LocalizedStatus.Literal("");
         IsLoadingOfficialReleases = true;
         try
         {
             var releases = await client.ReleasesAsync(component, refresh, _inspectionLifetime.Token);
             _officialReleases[component] = releases;
-            if (SelectedDefinition?.ComponentId != component) return;
+            if (SelectedDefinition?.ComponentId != component || IsFileSource) return;
             SelectedOfficialRelease = component == "nginx"
                 ? releases.FirstOrDefault(release => Version.TryParse(release.Version, out var version) && version.Minor % 2 == 0) ?? releases.FirstOrDefault()
                 : releases.FirstOrDefault();
@@ -112,8 +153,7 @@ public partial class ComponentCenterViewModel
         {
             string? reference = method switch
             {
-                ComponentDownloadMethod.LocalFile => SelectLocalComponentPackageAsync is { } local ? await local(task) : null,
-                ComponentDownloadMethod.ServerFile => SelectServerComponentPackageAsync is { } server ? await server(task) : null,
+                ComponentDownloadMethod.LocalFile or ComponentDownloadMethod.ServerFile => SelectedPackageFile?.ReferenceId,
                 ComponentDownloadMethod.ClientDownload when release is not null => await task.DownloadAndUploadPackageAsync(release.DownloadUrl, release.FileName),
                 _ => null
             };

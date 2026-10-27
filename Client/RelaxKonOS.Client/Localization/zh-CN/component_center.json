@@ -10,7 +10,7 @@
     "component_center.download.method.ServerFile": "从服务器文件安装",
     "component_center.download.manual": "我要自己下载",
     "component_center.download.open": "打开官方下载链接",
-    "component_center.download.manual_hint": "下载后，选择“从本机文件安装”或“从服务器文件安装”，再点击安装。",
+    "component_center.download.manual_hint": "下载后，选择本机或服务器文件来源，选择安装包并填写版本，再点击安装。",
     "component_center.download.local_picker": "选择本机安装包",
     "component_center.download.server_picker": "选择服务器安装包",
     "component_center.download.archive": "压缩安装包",
@@ -377,6 +377,12 @@
     "permission.server.components.read.display_name": "读取宿主组件",
     "permission.server.components.read.description": "查看组件安装状态、可信版本与操作记录。",
     "permission.server.components.manage.display_name": "管理宿主组件",
-    "permission.server.components.manage.description": "规划并提交已获授权的组件安装与恢复操作。"
+    "permission.server.components.manage.description": "规划并提交已获授权的组件安装与恢复操作。",
+    "component_center.download.intro": "选择安装包来源，确认版本后安装。",
+    "component_center.download.file": "安装包文件",
+    "component_center.download.choose_file": "选择文件…",
+    "component_center.download.no_file": "尚未选择文件",
+    "component_center.download.file_hint": "请选择与服务器系统、架构匹配的安装包，并填写该文件的实际版本。",
+    "component_center.download.file_failed": "文件选择或上传失败，请重试。"
   }
 }

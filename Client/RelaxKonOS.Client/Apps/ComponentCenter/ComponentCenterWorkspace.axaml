@@ -283,21 +283,38 @@
         <Button Grid.Column="1" Content="{loc:Loc common.refresh}" Command="{Binding RefreshOfficialReleasesCommand}" IsEnabled="{Binding CanRefreshOfficial}" />
        </Grid>
        <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoadingOfficialReleases}" />
-       <TextBlock Text="{loc:Loc component_center.download.version}" />
-       <ComboBox ItemsSource="{Binding OfficialReleases}" SelectedItem="{Binding SelectedOfficialRelease, Mode=TwoWay}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsInstallingOfficial}">
-        <ComboBox.ItemTemplate><DataTemplate x:DataType="mr:ComponentDownloadRelease"><TextBlock Text="{Binding Version}" /></DataTemplate></ComboBox.ItemTemplate>
-       </ComboBox>
-       <TextBlock Text="{loc:Loc component_center.download.method}" />
-       <ComboBox ItemsSource="{Binding DownloadMethods}" SelectedItem="{Binding SelectedDownloadMethod, Mode=TwoWay}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsInstallingOfficial}">
-        <ComboBox.ItemTemplate><DataTemplate x:DataType="vm:ComponentDownloadMethodChoice"><TextBlock Text="{Binding Text}" /></DataTemplate></ComboBox.ItemTemplate>
-       </ComboBox>
-       <TextBox Text="{Binding OfficialVersion, Mode=TwoWay}" PlaceholderText="{loc:Loc component_center.download.version}" IsVisible="{Binding ShowManualVersion}" />
-       <TextBlock Text="{Binding OfficialDownloadNotice}" TextWrapping="Wrap" />
+       <TextBlock Classes="section-hint" Text="{loc:Loc component_center.download.intro}" />
+       <StackPanel Spacing="6">
+        <TextBlock Text="{loc:Loc component_center.download.method}" FontWeight="SemiBold" />
+        <ComboBox ItemsSource="{Binding DownloadMethods}" SelectedItem="{Binding SelectedDownloadMethod, Mode=TwoWay}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsInstallingOfficial}">
+         <ComboBox.ItemTemplate><DataTemplate x:DataType="vm:ComponentDownloadMethodChoice"><TextBlock Text="{Binding Text}" /></DataTemplate></ComboBox.ItemTemplate>
+        </ComboBox>
+       </StackPanel>
+       <Border IsVisible="{Binding IsFileSource}" Padding="14" CornerRadius="6" BorderThickness="1" BorderBrush="{DynamicResource BorderSubtleBrush}">
+        <StackPanel Spacing="8">
+         <TextBlock Text="{loc:Loc component_center.download.file}" FontWeight="SemiBold" />
+         <TextBlock Text="{Binding SelectedPackageFileText}" TextWrapping="Wrap" />
+         <Button Content="{loc:Loc component_center.download.choose_file}" Command="{Binding SelectPackageFileCommand}" HorizontalAlignment="Left" />
+         <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsSelectingPackageFile}" />
+         <TextBlock Classes="section-hint" Text="{loc:Loc component_center.download.file_hint}" />
+        </StackPanel>
+       </Border>
+       <StackPanel Spacing="6" IsVisible="{Binding ShowOnlineVersions}">
+        <TextBlock Text="{loc:Loc component_center.download.version}" FontWeight="SemiBold" />
+        <ComboBox ItemsSource="{Binding OfficialReleases}" SelectedItem="{Binding SelectedOfficialRelease, Mode=TwoWay}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsInstallingOfficial}">
+         <ComboBox.ItemTemplate><DataTemplate x:DataType="mr:ComponentDownloadRelease"><TextBlock Text="{Binding Version}" /></DataTemplate></ComboBox.ItemTemplate>
+        </ComboBox>
+       </StackPanel>
+       <StackPanel Spacing="6" IsVisible="{Binding ShowManualVersion}">
+        <TextBlock Text="{loc:Loc component_center.download.version}" FontWeight="SemiBold" />
+        <TextBox Text="{Binding OfficialVersion, Mode=TwoWay}" PlaceholderText="{loc:Loc component_center.download.version}" IsEnabled="{Binding !IsInstallingOfficial}" />
+       </StackPanel>
+       <TextBlock Text="{Binding OfficialDownloadNotice}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
        <Expander Header="{loc:Loc component_center.download.manual}" HorizontalAlignment="Stretch">
         <StackPanel Spacing="8">
-         <TextBlock Text="{loc:Loc component_center.download.manual_hint}" TextWrapping="Wrap" />
-         <TextBlock Text="{Binding OfficialDownloadUrl}" TextWrapping="Wrap" />
-         <Button Content="{loc:Loc component_center.download.open}" Command="{Binding OpenOfficialDownloadCommand}" />
+         <TextBlock Classes="section-hint" Text="{loc:Loc component_center.download.manual_hint}" />
+         <TextBlock Text="{Binding OfficialDownloadUrl}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+         <Button Content="{loc:Loc component_center.download.open}" Command="{Binding OpenOfficialDownloadCommand}" HorizontalAlignment="Left" />
         </StackPanel>
        </Expander>
        <Button Content="{loc:Loc component_center.native.action.Install}" Command="{Binding InstallOfficialCommand}" IsEnabled="{Binding CanInstallOfficial}" HorizontalAlignment="Left" />
