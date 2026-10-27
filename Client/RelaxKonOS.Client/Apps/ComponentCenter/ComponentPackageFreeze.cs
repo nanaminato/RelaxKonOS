@@ -88,7 +88,9 @@ public partial class ComponentCenterViewModel
     {
         if (SelectedDefinition is { } definition) _componentFreezes.Remove(definition.ComponentId);
         NotifyPackage();
+        if (!_selectingPin && value is not null && CanResolvePackage) _ = ResolvePackageChangeAsync(null);
     }
+    private bool _selectingPin;
     private readonly Dictionary<string, InstallationTaskViewModel> _packageInstallations = new(StringComparer.Ordinal);
     public InstallationTaskViewModel? PackageInstallation => SelectedDefinition?.ComponentId is { } id
         ? _packageInstallations.GetValueOrDefault(id) : null;
@@ -115,7 +117,7 @@ public partial class ComponentCenterViewModel
     /// <summary>This host installs the component from its distribution's own package manager.</summary>
     public bool IsSystemPackage => HostPlatform == "linux" && DeclaresSourceOnHost(ComponentSourceKind.SystemPackage);
     /// <summary>This host installs the component by downloading one pinned, verified archive.</summary>
-    public bool IsDirectDownload => HostPlatform == "windows" && DeclaresSourceOnHost(ComponentSourceKind.ManagedArchive);
+    public bool IsDirectDownload => DeclaresSourceOnHost(ComponentSourceKind.ManagedArchive) && !IsSystemPackage;
     private bool DeclaresSourceOnHost(ComponentSourceKind kind) => SelectedDefinition?.Sources.Any(source =>
         source.Kind == kind && source.Platforms.Contains(HostPlatform)) == true;
     /// <summary>
@@ -286,7 +288,8 @@ public partial class ComponentCenterViewModel
     public LocalizedStatus PackageInstalledText => LocalizedStatus.Format("component_center.package.installed",
         LocalizedStatus.Literal(SelectedComponentState?.State?.ActiveVersion ?? "—"));
     public LocalizedStatus PackageCandidateText => LocalizedStatus.Format("component_center.package.candidate",
-        LocalizedStatus.Literal(SelectedComponentFreeze?.Target?.Package?.Version ?? SelectedComponentFreeze?.Target?.Pin?.Version ?? "—"));
+        LocalizedStatus.Literal(SelectedComponentFreeze?.Target?.Package?.Version ?? SelectedComponentFreeze?.Target?.Pin?.Version
+            ?? PinnedArchiveCandidates.FirstOrDefault(pin => pin.ReleaseId == SelectedPinnedArchive?.ReleaseId)?.Version ?? "—"));
     public LocalizedStatus PackageRepositoryText => LocalizedStatus.Format("component_center.package.repository",
         LocalizedStatus.Literal(SelectedComponentFreeze?.Target?.Package is { } package
             ? package.BaseUri + " " + package.Suite + "/" + package.Area + " " + package.Architecture : "—"));
@@ -334,6 +337,7 @@ public partial class ComponentCenterViewModel
         {
             var view = await _lifecycle!.StateAsync(componentId, _inspectionLifetime.Token);
             _componentStates[componentId] = view;
+            if (SelectedDefinition?.ComponentId != componentId) return;
             if (SelectedDefinition?.ComponentId == componentId)
             {
                 // Fixing the manager for this component is part of preparing the plan, so it must not
@@ -346,13 +350,24 @@ public partial class ComponentCenterViewModel
             {
                 var pins = view.PinnedArchives ?? [];
                 var pin = pins.FirstOrDefault(item => item.ReleaseId == SelectedPinnedArchive?.ReleaseId) ?? pins.FirstOrDefault();
-                if (SelectedDefinition?.ComponentId == componentId && pin is not null) SelectedPinnedArchive = pin;
+                if (pin is not null)
+                {
+                    _selectingPin = true;
+                    try { SelectedPinnedArchive = pin; }
+                    finally { _selectingPin = false; }
+                }
+                if (state.Mode == ComponentSourceMode.ManagedArchive && state.Ownership != RuntimeOwnership.Absent && change is null)
+                {
+                    _componentFreezes.Remove(componentId);
+                    PackageFreezeNotice = LocalizedStatus.Literal("");
+                    return;
+                }
                 var request = new ComponentPlanRequest(componentId, state.HostId,
                     change ?? (state.Ownership == RuntimeOwnership.Absent ? RuntimeChange.Install : RuntimeChange.Update),
                     state.Revision, state.Mode, pin is null ? null : "host-pins", pin is null ? 0 : view.PinRevision,
                     0, pin?.ReleaseId, pin?.Version, KeepData: true, Guid.NewGuid().ToString("N"));
                 _componentFreezes[componentId] = await _lifecycle.PlanAsync(request, _inspectionLifetime.Token);
-                PackageFreezeNotice = LocalizedStatus.Key("component_center.package.complete");
+                PackageFreezeNotice = LocalizedStatus.Literal("");
             }
             else
             {

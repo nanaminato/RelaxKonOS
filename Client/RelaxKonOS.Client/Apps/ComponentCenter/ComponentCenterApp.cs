@@ -261,6 +261,8 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                         model.NotifyGit();
                     }
                 }
+                if (model.CanResolvePackage)
+                    await model.ResolvePackageCommand.ExecuteAsync(null);
             }
             finally
             {
@@ -292,6 +294,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             access.Synchronize();
             await runtime.EnsureLoadedAsync();
             if (mihomo is { CanRead: true }) await mihomo.EnsureLoadedAsync();
+            selectedDomainChanged?.Invoke(model, new(nameof(model.SelectedDefinition)));
         }
         async Task<bool> PermissionAsync(string permission)
         {

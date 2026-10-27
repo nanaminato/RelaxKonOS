@@ -311,8 +311,8 @@
        <TextBlock Text="{loc:Loc component_center.native.install_only}" IsVisible="{Binding ShowInstallOnlyNote}"
                   FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
        <TextBlock Text="{Binding PackageInstalledText}" FontSize="12" />
+       <TextBlock Text="{Binding PackageCandidateText}" FontSize="12" />
        <StackPanel Spacing="5" IsVisible="{Binding HasPackageFreeze}">
-        <TextBlock Text="{Binding PackageCandidateText}" FontSize="12" />
         <Expander Header="{loc:Loc component_center.details}" HorizontalAlignment="Stretch"><StackPanel Spacing="5">
         <TextBlock Text="{Binding PackageRepositoryText}" FontSize="12" TextWrapping="Wrap" />
         <TextBlock Text="{Binding PackageAlsoInstallsText}" FontSize="12" TextWrapping="Wrap" />
