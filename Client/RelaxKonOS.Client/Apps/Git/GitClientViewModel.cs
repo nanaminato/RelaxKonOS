@@ -60,12 +60,8 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
     public ObservableCollection<GitLogFilterOption> LogBranchOptions { get; } = [];
     public ObservableCollection<GitLogFilterOption> LogAuthorOptions { get; } = [];
     public ObservableCollection<GitLogFilterOption> LogDateOptions { get; } =
-    [
-        new("all", "全部时间"),
-        new("today", "今天"),
-        new("week", "过去 7 天"),
-        new("month", "过去 30 天"),
-    ];
+        [.. new[] { "all", "today", "week", "month" }
+            .Select(range => new GitLogFilterOption(range, LocalizedText.Get($"git.editor.date_{range}")))];
 
     /// <summary>Files shown in the Changes list (union of unstaged + untracked, excluding .gitignored).</summary>
     public ObservableCollection<GitFileChangeItem> Changes { get; } = [];

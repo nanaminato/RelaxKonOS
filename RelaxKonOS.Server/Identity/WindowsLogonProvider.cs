@@ -16,7 +16,7 @@ public sealed class WindowsLogonProvider : IIdentityProvider
     public CredentialVerifyResult Verify(string userName, string password)
     {
         if (string.IsNullOrWhiteSpace(userName))
-            return CredentialVerifyResult.Failed("用户名不能为空", CredentialError.InvalidInput);
+            return CredentialVerifyResult.Failed("The user name is required", CredentialError.InvalidInput);
 
         ParseUserName(userName, out var user, out var domain);
         if (!userName.Contains('@')) domain ??= Environment.MachineName;
@@ -43,21 +43,21 @@ public sealed class WindowsLogonProvider : IIdentityProvider
             int err = Marshal.GetLastWin32Error();
             return err switch
             {
-                ERROR_LOGON_FAILURE          => CredentialVerifyResult.Failed("用户名或密码错误", CredentialError.BadCredentials, err),
-                ERROR_NO_SUCH_USER           => CredentialVerifyResult.Failed("用户不存在", CredentialError.NoSuchUser, err),
-                ERROR_ACCOUNT_DISABLED       => CredentialVerifyResult.Failed("账户已禁用", CredentialError.AccountDisabled, err),
-                ERROR_ACCOUNT_LOCKED_OUT     => CredentialVerifyResult.Failed("账户已锁定", CredentialError.AccountLockedOut, err),
-                ERROR_PASSWORD_EXPIRED       => CredentialVerifyResult.Failed("密码已过期", CredentialError.PasswordExpired, err),
-                ERROR_ACCOUNT_EXPIRED        => CredentialVerifyResult.Failed("账户已过期", CredentialError.AccountExpired, err),
-                ERROR_ACCOUNT_RESTRICTION    => CredentialVerifyResult.Failed("账户受限（如空密码策略）", CredentialError.AccountRestriction, err),
-                ERROR_INVALID_LOGON_HOURS    => CredentialVerifyResult.Failed("不在允许登录的时间段", CredentialError.AccountRestriction, err),
-                ERROR_LOGON_TYPE_NOT_GRANTED => CredentialVerifyResult.Failed("未授予“从网络访问此计算机”权限", CredentialError.AccountRestriction, err),
-                _                            => CredentialVerifyResult.Failed($"登录失败，Win32 错误码 {err}", CredentialError.Unknown, err),
+                ERROR_LOGON_FAILURE          => CredentialVerifyResult.Failed("The user name or password is incorrect", CredentialError.BadCredentials, err),
+                ERROR_NO_SUCH_USER           => CredentialVerifyResult.Failed("The user does not exist", CredentialError.NoSuchUser, err),
+                ERROR_ACCOUNT_DISABLED       => CredentialVerifyResult.Failed("The account is disabled", CredentialError.AccountDisabled, err),
+                ERROR_ACCOUNT_LOCKED_OUT     => CredentialVerifyResult.Failed("The account is locked", CredentialError.AccountLockedOut, err),
+                ERROR_PASSWORD_EXPIRED       => CredentialVerifyResult.Failed("The password has expired", CredentialError.PasswordExpired, err),
+                ERROR_ACCOUNT_EXPIRED        => CredentialVerifyResult.Failed("The account has expired", CredentialError.AccountExpired, err),
+                ERROR_ACCOUNT_RESTRICTION    => CredentialVerifyResult.Failed("The account is restricted (for example by an empty-password policy)", CredentialError.AccountRestriction, err),
+                ERROR_INVALID_LOGON_HOURS    => CredentialVerifyResult.Failed("Sign-in is not allowed at this time", CredentialError.AccountRestriction, err),
+                ERROR_LOGON_TYPE_NOT_GRANTED => CredentialVerifyResult.Failed("The account lacks the \"Access this computer from the network\" right", CredentialError.AccountRestriction, err),
+                _                            => CredentialVerifyResult.Failed($"Sign-in failed, Win32 error {err}", CredentialError.Unknown, err),
             };
         }
         catch (Exception ex)
         {
-            return CredentialVerifyResult.FromError("调用 LogonUser 异常", ex.Message);
+            return CredentialVerifyResult.FromError("LogonUser threw", ex.Message);
         }
         finally
         {

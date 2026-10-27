@@ -49,7 +49,7 @@ public sealed partial class ExplorerApp : RemoteApplicationBase, IAppActivationH
         DisplayName: "RemoteExplorer",
         Version: "1.0.0",
         IconGlyph: "📁",
-        Description: "远端文件管理器",
+        Description: "Remote file manager",
         RequestedPermissions: [AppPermissions.ServerFilesRead, AppPermissions.ServerFilesWrite]);
 
     public override void Activate(AppContext context) => OpenExplorer(context, null);

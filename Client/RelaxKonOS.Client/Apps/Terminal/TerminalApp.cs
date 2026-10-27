@@ -29,7 +29,7 @@ public sealed class TerminalApp : RemoteApplicationBase, IOpenTerminalApplicatio
         DisplayName: "Terminal",
         Version: "1.0.0",
         IconGlyph: "🖥",
-        Description: "远程终端",
+        Description: "Remote terminal",
         ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.Terminal]));
 
     public override void Activate(AppContext context)

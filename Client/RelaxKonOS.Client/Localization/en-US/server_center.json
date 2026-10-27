@@ -168,6 +168,7 @@
     "server_center.wizard.network_lan": "0.0.0.0 (all network interfaces)",
     "server_center.wizard.show_host_addresses": "View this host's IP addresses",
     "server_center.wizard.certificate": "TLS certificate",
+    "server_center.wizard.certificate_password_placeholder": "Certificate password (optional)",
     "server_center.wizard.certificate_none": "No TLS certificate",
     "server_center.wizard.certificate_custom": "Use a custom certificate",
     "server_center.wizard.certificate_format": "Certificate format",

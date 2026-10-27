@@ -485,6 +485,7 @@
         "git.vm.delete_confirm_format": "Delete branch '{0}'?",
         "git.vm.branch_deleted_format": "Branch '{0}' deleted",
         "git.vm.failed_format": "Failed: {0}",
+        "git.vm.invalid_remote_branch": "That remote branch name is not valid.",
         "git.vm.pull_progress": "Pulling…",
         "git.vm.pulled": "Pulled successfully",
         "git.vm.credentials_required": "Git credentials required — configure on the host OS",

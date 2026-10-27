@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Identity;
 
@@ -144,5 +145,11 @@ public sealed class RelaxKonOSClient : IRelaxKonOSClient
     }
 
     private static ProblemDetails NoBodyProblem()
-        => new("https://relaxkonos.app/problems/empty-response", "空响应", 500, "服务器返回空响应体", null);
+        => new("https://relaxkonos.app/problems/empty-response",
+            Localize("common.error.empty_response_title", "Empty response"), 500,
+            Localize("common.error.empty_response_detail", "The server returned an empty response body."), null);
+
+    /// <summary>本地化表不可用（应用尚未初始化）时退回英文源文案，绝不让错误路径再抛新异常。</summary>
+    private static string Localize(string key, string englishFallback)
+        => App.Services is null ? englishFallback : LocalizedText.Get(key, englishFallback);
 }

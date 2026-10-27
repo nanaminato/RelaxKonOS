@@ -8,9 +8,42 @@ RelaxKonOS 使用 BCP-47 语言名称（`en-US`、`zh-CN`、`ja-JP`），并以�
 
 登录视图在认证前使用本机语言。`LocalLanguageStore` 仅将该 BCP-47 名称写入本地应用数据。认证后，`PreferencesSync` 会加载当前用户工作区的 `WorkspacePreferencesDto.Language`；设置页将后续变更写入该工作区偏好。除三个显式语言外，设置页提供可同步的 `follow-system`：系统中文映射为 `zh-CN`，系统日文映射为 `ja-JP`，其余系统语言映射为 `en-US`。SSH 桌面始终使用同一套设备本地映射，不读取或写入工作区偏好。退出登录后恢复本地登录语言。
 
+## 资源键校验
+
+`Tools/verify-localization.py` 除要求三语言键集完全一致外，还要求**客户端源码引用的每个键都在 `en-US` 中存在**：它扫描
+`Client/RelaxKonOS.Client/**` 下的 `.cs` 与 `.axaml`，识别 `{loc:Loc …}`、`LocalizedText.Get/Ref/RefWithFallback/Format`、
+`LocalizedStatus.Key/Format`、`xxxLocalization.Get`，以及 `ComponentObservationText.Key` / `TunnelProblemText.Format`
+这类只接收末段、由包装器补前缀的调用。用拼接构造的键（`"component_center.badge." + kind`、`"login.local_manage_" + key`）
+无法静态求值，只校验前缀至少命中一个既有键。
+
+新增、改名或删除资源键后运行：
+
+```bash
+python Tools/verify-localization.py
+```
+
+同一脚本还校验三语**格式参数**是否一一对应（`{0}` 出现在句末也计入，`{0:yyyy年M月d日}` 这类格式串同样识别），
+译文漏掉占位符会直接失败，而不是在运行时丢掉一段数据。
+
+`Tests/Client/RelaxKonOS.WindowPreviews.Tests` 里的 `LocalizationResourceChecks` 是同一套规则在测试套件中的副本
+（`--project-editor-only` 运行）：它比对**三语键集是否一致**（缺键/多键都会 throw，并列出前 10 个键）、
+三语格式参数是否一致，并实测 20 条 `code_editor.context.*` 是否真能按当前语言加载。它读的是构建输出目录里的
+语言包，因此只覆盖「已打进产物」的状态；源码引用的键是否存在，仍只有 python 脚本能查。
+
+键名写错不会编译失败；在没有 python 的环境里，`[missing: <key>]`（AXAML）或键名本身（`LocalizedText.Get(key)`）
+也不会让既有测试失败——键存在性校验目前只由 python 脚本负责，新增调用点时不要绕过它。
+
 ## API 文本
 
 每个类型化 HTTP 客户端都由 `AcceptLanguageHandler` 包装，后者将当前语言写入 `Accept-Language`。服务端会在 `Content-Language` 中回显选定的请求语言。诸如 RFC 7807 `ProblemDetails` 标题等 API 自有展示元数据由 `ApiLocalizer` 本地化；用户名、文件路径、书签名和原始主机错误文本等用户/领域值不会翻译或修改。
+
+`ApiLocalizer` 只用于服务端**自己渲染**的认证类标题（11 个键，调用点在 `AuthEndpoints`）。其余端点一律用稳定问题码充当 `title`
+（`title: code`），并在 `type` 后缀与 `problemCode` 扩展里重复同一个码；`detail` 是**英文**诊断文本，不是给用户读的句子。
+客户端按码映射到本地化文案，`detail` 只进诊断详情。
+
+服务端源码里因此不应出现中文用户可见文案：新增端点写 `title: code`，异常消息一律英文。
+审计方法：`grep -P '[\x{4e00}-\x{9fff}]' RelaxKonOS.Server/**/*.cs`，命中只允许是注释、
+`Settings/ApplicationCatalog` 的多语言标签与搜索关键词。
 
 第三方包会收到 `IExternalAppContext.SystemLanguage`，应本地化自己的资源，并在 `LanguageChanged` 时刷新。
 

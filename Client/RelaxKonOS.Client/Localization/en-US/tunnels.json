@@ -3,6 +3,7 @@
   "Strings": {
     "tunnels.title": "Tunnel Manager",
     "tunnels.subtitle": "Manage independent FRP client processes safely",
+    "tunnels.login_required": "Sign in to manage tunnels.",
     "tunnels.workspace": "WORKSPACE",
     "tunnels.overview": "Overview",
     "tunnels.status.loading": "Loading tunnel state…",

@@ -45,7 +45,7 @@ public static class WebServerEndpoints
             if (!elevations.IsGranted(context.User, HostElevationCapability.NginxConfigurationWrite, candidateId))
             {
                 loggers.CreateLogger("WebServerAuthorization").LogWarning("Nginx integration request was denied before execution because its elevation grant is missing. CandidateId={CandidateId}, User={User}", candidateId, Actor(context) ?? "<anonymous>");
-                return ElevationRequired("此 Nginx 配置操作需要当前会话对该实例的管理员授权。", "webserver.elevation_required");
+                return ElevationRequired("This Nginx configuration operation needs administrator authorization for the instance in this session.", "webserver.elevation_required");
             }
             return await StartAsync(context.Request, key => manager.IntegrateCandidateAsync(candidateId, key, request, Actor(context), ct));
         });
@@ -58,14 +58,14 @@ public static class WebServerEndpoints
                 ? HostElevationCapability.NginxConfigurationWrite
                 : HostElevationCapability.NginxLifecycle;
             if (!elevations.IsGranted(context.User, capability, id))
-                return ElevationRequired("此 Nginx 操作需要当前会话对该实例的管理员授权。");
+                return ElevationRequired("This Nginx operation needs administrator authorization for the instance in this session.");
             return await StartAsync(context.Request, key => manager.ApplyLifecycleAsync(id, lifecycle, key, Actor(context), ct));
         });
         group.MapPost(WebServerApiRoutes.ReloadPattern, async (string id, HttpContext context,
             IHostElevationSessionStore elevations, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
         {
             if (!elevations.IsGranted(context.User, HostElevationCapability.NginxLifecycle, id))
-                return ElevationRequired("此 Nginx reload 操作需要当前会话对该实例的管理员授权。");
+                return ElevationRequired("This Nginx reload needs administrator authorization for the instance in this session.");
             return await StartAsync(context.Request, key => manager.ReloadAsync(id, key, Actor(context), ct));
         });
         group.MapGet(WebServerApiRoutes.SitesPattern, async (string id, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
@@ -74,7 +74,7 @@ public static class WebServerEndpoints
             IHostElevationSessionStore elevations, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
         {
             if (!elevations.IsGranted(context.User, HostElevationCapability.NginxConfigurationWrite, id))
-                return ElevationRequired("此 Nginx 站点配置操作需要当前会话对该实例的管理员授权。");
+                return ElevationRequired("This Nginx site-configuration operation needs administrator authorization for the instance in this session.");
             try
             {
                 return await manager.UpsertSiteAsync(id, request, ct) is { } site
@@ -98,7 +98,7 @@ public static class WebServerEndpoints
             IHostElevationSessionStore elevations, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
         {
             if (!elevations.IsGranted(context.User, HostElevationCapability.NginxConfigurationWrite, id))
-                return ElevationRequired("此 Nginx 站点配置操作需要当前会话对该实例的管理员授权。");
+                return ElevationRequired("This Nginx site-configuration operation needs administrator authorization for the instance in this session.");
             try
             {
                 return await manager.DeleteSiteAsync(id, siteId, request, ct) switch { true => Results.NoContent(), false => Results.NotFound(), _ => Results.BadRequest(new { problemCode = "webserver.site_delete_failed" }) };
@@ -136,6 +136,6 @@ public static class WebServerEndpoints
         ?? context.User.Identity?.Name;
 
     private static IResult ElevationRequired(string detail, string problemCode = "webserver.elevation_required") => Results.Problem(statusCode: StatusCodes.Status403Forbidden,
-        title: "需要管理员权限", detail: detail, type: "https://relaxkonos.app/problems/elevation-required",
+        title: problemCode, detail: detail, type: "https://relaxkonos.app/problems/elevation-required",
         extensions: new Dictionary<string, object?> { ["problemCode"] = problemCode });
 }

@@ -47,7 +47,7 @@ public static class BrowserEndpoints
         app.MapPost(BrowserApiRoutes.BookmarksCreate, (CreateBookmarkRequest req, ClaimsPrincipal principal, IBrowserRepository repo) =>
         {
             if (string.IsNullOrWhiteSpace(req.Url))
-                return Problem(400, "invalid-input", "输入无效", "url 不能为空");
+                return Problem(400, "invalid-input", "url is required");
             var bm = repo.UpsertBookmark(GetUserId(principal), req.Title, req.Url);
             return Results.Created($"/{RelaxKonOS.Protocol.Common.RelaxKonOSEndpoints.ApiVersionPrefix}/browser/bookmarks/{bm.Id}", bm.ToDto());
         })
@@ -59,7 +59,7 @@ public static class BrowserEndpoints
         {
             return repo.DeleteBookmark(GetUserId(principal), id)
                 ? Results.NoContent()
-                : Problem(404, "not-found", "书签不存在", $"找不到 id={id} 的书签（或它不属于当前用户）");
+                : Problem(404, "not-found", $"No bookmark with id={id} (or it belongs to another user).");
         })
         .RequireAuthorization()
         .WithTags("Browser");
@@ -87,7 +87,7 @@ public static class BrowserEndpoints
         app.MapPost(BrowserApiRoutes.HistoryCreate, (CreateHistoryEntryRequest req, ClaimsPrincipal principal, IBrowserRepository repo) =>
         {
             if (string.IsNullOrWhiteSpace(req.Url))
-                return Problem(400, "invalid-input", "输入无效", "url 不能为空");
+                return Problem(400, "invalid-input", "url is required");
             var h = repo.UpsertHistory(GetUserId(principal), req.Title, req.Url);
             return Results.Created($"/{RelaxKonOS.Protocol.Common.RelaxKonOSEndpoints.ApiVersionPrefix}/browser/history/{h.Id}", h.ToDto());
         })
@@ -99,7 +99,7 @@ public static class BrowserEndpoints
         {
             return repo.DeleteHistory(GetUserId(principal), id)
                 ? Results.NoContent()
-                : Problem(404, "not-found", "历史记录不存在", $"找不到 id={id} 的历史记录（或它不属于当前用户）");
+                : Problem(404, "not-found", $"No history entry with id={id} (or it belongs to another user).");
         })
         .RequireAuthorization()
         .WithTags("Browser");
@@ -121,13 +121,14 @@ public static class BrowserEndpoints
     {
         var sub = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
                   ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                  ?? throw new InvalidOperationException("JWT 缺少 sub claim。");
+                  ?? throw new InvalidOperationException("The JWT has no sub claim.");
         return Guid.Parse(sub);
     }
 
     private static BrowserSettingsDto ReadSettings(IRegistryRepository registry, RelaxKonOS.Server.Domain.Workspace workspace) =>
         WorkspaceConfigurationRegistry.Read(registry, workspace, WorkspaceConfigurationRegistry.BrowserPath, BrowserSettingsDto.Default).Normalize();
 
-    private static IResult Problem(int status, string typeSuffix, string title, string detail)
-        => Results.Problem(detail: detail, statusCode: status, title: title, type: ProblemBase + typeSuffix);
+    /// <summary>The stable code doubles as the title; clients localize it (see FileEndpoints for why).</summary>
+    private static IResult Problem(int status, string typeSuffix, string detail)
+        => Results.Problem(detail: detail, statusCode: status, title: typeSuffix, type: ProblemBase + typeSuffix);
 }

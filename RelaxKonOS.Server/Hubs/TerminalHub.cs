@@ -47,7 +47,7 @@ public sealed class TerminalHub : Hub<ITerminalHubClient>
     private async Task<AttachTerminalResponse> StartCore(StartTerminalRequest req, string? sessionId, bool administrator)
     {
         var userId = Context.UserIdentifier
-            ?? throw new HubException("未认证的连接：缺少用户标识。");
+            ?? throw new HubException("Unauthenticated connection: the user identity is missing.");
 
         TerminalSession session;
         bool created;
@@ -83,7 +83,7 @@ public sealed class TerminalHub : Hub<ITerminalHubClient>
 
     public async Task<AttachTerminalResponse> AttachExisting(string sessionId)
     {
-        var userId = Context.UserIdentifier ?? throw new HubException("未认证的连接：缺少用户标识。");
+        var userId = Context.UserIdentifier ?? throw new HubException("Unauthenticated connection: the user identity is missing.");
         if (!_manager.TryGet(sessionId, out var session) || session is null ||
             session.UserId != userId || session.HasExited)
             throw new HubException("terminal.session_not_found");

@@ -256,7 +256,7 @@ public sealed partial class GitClientViewModel
         var slash = branch.Name.IndexOf('/');
         if (slash <= 0 || slash == branch.Name.Length - 1)
         {
-            await NotifyAsync(LocalizedText.Format("git.vm.failed_format", "远程分支名称无效。"));
+            await NotifyAsync(LocalizedText.Get("git.vm.invalid_remote_branch"));
             return;
         }
 

@@ -3,6 +3,7 @@
   "Strings": {
     "tunnels.title": "内网穿透",
     "tunnels.subtitle": "安全管理独立运行的 FRP Client",
+    "tunnels.login_required": "登录后才能管理隧道。",
     "tunnels.workspace": "工作区",
     "tunnels.overview": "概览",
     "tunnels.status.loading": "正在加载隧道状态…",

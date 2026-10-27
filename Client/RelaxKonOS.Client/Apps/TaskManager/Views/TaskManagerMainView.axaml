@@ -92,15 +92,15 @@
                             <TextBlock Grid.Column="1" Text="{Binding SelectedPerformanceItem.Metric}" FontSize="19" VerticalAlignment="Bottom" Margin="12,0,0,2" />
                         </Grid>
                         <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,4,0,0">
-                            <TextBlock Text="最近 60 秒" Classes="metric-label" />
+                            <TextBlock Text="{loc:Loc task_manager.performance.history_window}" Classes="metric-label" />
                             <TextBlock Grid.Column="1" Text="{Binding SelectedPerformanceItem.SideDetail}" Classes="metric-label" />
                         </Grid>
                         <Border Grid.Row="2" Height="270" ClipToBounds="True">
                             <charts:PerformanceLineChart Values="{Binding SelectedPerformanceItem.History}" Maximum="{Binding SelectedPerformanceItem.ChartMaximum}" LineColor="{Binding SelectedPerformanceItem.AccentColor}" />
                         </Border>
                         <Grid Grid.Row="3" ColumnDefinitions="*,Auto" Margin="0,4,0,10">
-                            <TextBlock Text="60 秒" Classes="metric-label" />
-                            <TextBlock Grid.Column="1" Text="现在" Classes="metric-label" />
+                            <TextBlock Text="{loc:Loc task_manager.performance.axis_start}" Classes="metric-label" />
+                            <TextBlock Grid.Column="1" Text="{loc:Loc task_manager.performance.axis_now}" Classes="metric-label" />
                         </Grid>
                         <Grid Grid.Row="4" IsVisible="{Binding SelectedPerformanceItem.IsCpu}" ColumnDefinitions="280,*" ColumnSpacing="18">
                             <Grid ColumnDefinitions="82,82,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="8" ColumnSpacing="8">

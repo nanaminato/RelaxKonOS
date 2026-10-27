@@ -162,7 +162,7 @@ public sealed class ExplorerUploadChannel(HttpClient http, IAuthSession session)
         {
             // Seeking here rather than trusting the caller's position makes the content safe to serialize
             // again (a redirect or a framework retry would otherwise send an empty tail).
-            if (!source.CanSeek) throw new InvalidOperationException("大文件分块上传要求可定位的本地文件。");
+            if (!source.CanSeek) throw new InvalidOperationException(LocalizedText.Get("explorer.upload.problem.source_must_be_seekable"));
             source.Seek(offset, SeekOrigin.Begin);
             var buffer = new byte[81_920];
             long remaining = length;
@@ -170,7 +170,7 @@ public sealed class ExplorerUploadChannel(HttpClient http, IAuthSession session)
             {
                 var read = await source.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, remaining)), cancellationToken)
                     .ConfigureAwait(false);
-                if (read == 0) throw new IOException("本地文件在传输过程中被截断。");
+                if (read == 0) throw new IOException(LocalizedText.Get("explorer.upload.problem.local_file_truncated"));
                 await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
                 remaining -= read;
                 onInFlight?.Invoke();

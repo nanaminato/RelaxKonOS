@@ -168,6 +168,7 @@
     "server_center.wizard.network_lan": "0.0.0.0（所有网络接口）",
     "server_center.wizard.show_host_addresses": "查看此主机的 IP 地址",
     "server_center.wizard.certificate": "TLS 证书",
+    "server_center.wizard.certificate_password_placeholder": "证书密码（可选）",
     "server_center.wizard.certificate_none": "不使用 TLS 证书",
     "server_center.wizard.certificate_custom": "使用自定义证书",
     "server_center.wizard.certificate_format": "证书格式",

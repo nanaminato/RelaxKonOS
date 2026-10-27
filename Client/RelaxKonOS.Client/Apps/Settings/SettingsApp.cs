@@ -50,7 +50,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         DisplayName: "Settings",
         Version: "1.0.0",
         IconGlyph: "⚙️",
-        Description: "个性化与系统设置",
+        Description: "Personalization and system settings",
         RequestedPermissions: [AppPermissions.DesktopWallpaperWrite, AppPermissions.ServerCertificatesRead, AppPermissions.ServerCertificatesManage],
         InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 

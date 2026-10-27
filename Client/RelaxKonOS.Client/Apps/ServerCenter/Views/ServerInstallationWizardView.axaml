@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerInstallationWizardView"
              x:DataType="vm:ServerInstallationWizardViewModel"
              Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
@@ -93,7 +94,7 @@
                         </ComboBox>
                         <WrapPanel ItemSpacing="10"><Button Content="{Binding ChooseCertificateText}" Click="ChooseCertificate_Click" /><TextBlock Text="{Binding CertificateFileName}" VerticalAlignment="Center" /></WrapPanel>
                         <WrapPanel ItemSpacing="10" IsVisible="{Binding IsPemCertificate}"><Button Content="{Binding ChoosePrivateKeyText}" Click="ChoosePrivateKey_Click" /><TextBlock Text="{Binding CertificatePrivateKeyFileName}" VerticalAlignment="Center" /></WrapPanel>
-                        <TextBox Text="{Binding CertificatePassword, Mode=TwoWay}" PasswordChar="●" PlaceholderText="Certificate password (optional)" />
+                        <TextBox Text="{Binding CertificatePassword, Mode=TwoWay}" PasswordChar="●" PlaceholderText="{loc:Loc server_center.wizard.certificate_password_placeholder}" />
                     </StackPanel>
                     <StackPanel Spacing="6" IsVisible="{Binding IsSelfSignedCertificate}">
                         <TextBlock Text="{Binding SelfSignedNamesText}" />

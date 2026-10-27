@@ -3,6 +3,7 @@
   "Strings": {
     "tunnels.title": "トンネル マネージャー",
     "tunnels.subtitle": "独立した FRP Client プロセスを安全に管理します",
+    "tunnels.login_required": "トンネルを管理するにはサインインしてください。",
     "tunnels.workspace": "ワークスペース",
     "tunnels.overview": "概要",
     "tunnels.status.loading": "トンネル状態を読み込んでいます…",

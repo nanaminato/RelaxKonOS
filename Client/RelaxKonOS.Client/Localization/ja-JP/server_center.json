@@ -168,6 +168,7 @@
     "server_center.wizard.network_lan": "0.0.0.0（すべてのネットワーク インターフェイス）",
     "server_center.wizard.show_host_addresses": "このホストの IP アドレスを表示",
     "server_center.wizard.certificate": "TLS 証明書",
+    "server_center.wizard.certificate_password_placeholder": "証明書パスワード（任意）",
     "server_center.wizard.certificate_none": "TLS 証明書を使用しない",
     "server_center.wizard.certificate_custom": "カスタム証明書を使用",
     "server_center.wizard.certificate_format": "証明書形式",

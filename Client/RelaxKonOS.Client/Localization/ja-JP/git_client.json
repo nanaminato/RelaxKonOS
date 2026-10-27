@@ -485,6 +485,7 @@
         "git.vm.delete_confirm_format": "ブランチ '{0}' を削除しますか？",
         "git.vm.branch_deleted_format": "ブランチ '{0}' を削除しました",
         "git.vm.failed_format": "失敗：{0}",
+        "git.vm.invalid_remote_branch": "リモートブランチ名が正しくありません。",
         "git.vm.pull_progress": "プル中…",
         "git.vm.pulled": "プル成功",
         "git.vm.credentials_required": "Git 認証情報が必要です — ホスト OS で設定してください",

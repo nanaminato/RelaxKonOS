@@ -26,10 +26,10 @@ public sealed class TaskManagerApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(
         Id: new AppId("relaxkonos.taskmanager"),
-        DisplayName: "任务管理器",
+        DisplayName: "Task Manager",
         Version: "1.0.0",
         IconGlyph: "📊",
-        Description: "查看 CPU/内存/磁盘/网络/GPU 占用与进程，可结束任务",
+        Description: "View CPU, memory, disk, network and GPU usage and the process list; end tasks here",
         RequestedPermissions: [AppPermissions.ServerMetricsRead, AppPermissions.ServerProcessesManage],
         InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 

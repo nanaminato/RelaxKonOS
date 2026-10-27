@@ -262,3 +262,11 @@ Server 与扩展宿主通过有版本的本机 IPC 建立认证、逐插件身�
 Windows 开发机上的验证：Server 与桌面 Client 构建通过（既有警告保留）；`Tests/ServerModules` 专项覆盖配置、依赖、客户端 manifest、启停状态与能力一致性，并使用真实回环 HTTP 验证启用时未认证 Hub 拒绝、禁用时返回 404；现有 Terminal Hub 契约检查通过；Alias 登录回归 68 项通过。测试宿主使用真实模块注册和路由，但不是完整的已部署 Server + 桌面客户端 PTY 端到端验收。
 
 阶段 0 的全模块依赖图、性能/体积基线，阶段 1 的其他模块迁移，以及阶段 2 的真实客户端交互、Linux/Windows 和各 Host Mode 会话生命周期验证均未完成；不能据此宣布上述阶段全部验收通过。独立程序集、可选安装、开发 CLI 和远程模块更新仍属后续阶段。
+
+### 双平台隔离测试宿主（2026-10-27）
+
+使用工作树（Git HEAD `c9438abe2686aec32f32bacdbef0c295ce99f3e4`；构建时含未提交更改）发布 `Tests/ServerModules` 的 Release 自包含程序，在 Debian 13 x64 和 Windows Server 2022 x64 测试账户的独立目录执行，各 16 项检查通过。测试宿主使用构建出的真实 Server 模块注册和 Hub 映射，以临时回环 HTTP 端口验证启用时匿名请求受到认证保护、禁用时路由返回 404；还检查配置、依赖失败、客户端 Terminal manifest 和两种状态的服务注册与能力描述一致。Debian 现有 Server 和 Guardian 在测试后均为 active；测试未替换或重启它们。
+
+本次构建的 `ServerModules.cs` SHA-256 为 `308932ec1875e22eba526451db7596d5eb1f6dbe91f1a0a62ebf9384f1663a77`，测试入口 `Program.cs` 为 `cd794e66bf38575b23aff9a63458ecf39aba332f3d488811762ffdba1f11f63a`。Linux Server/测试程序集分别为 `1f303bd66e5ccb905661703e607cc75e13de1f89dad0e64099b692b5aaa54514`、`bc04103fda7b728440ac7c534a19b76e6086d0cbb7a7bf480e61d13a6f11e9df`；Windows 分别为 `817d33babdc517d328ebc049cd532c680408d85297c8e0d6ae3afedee997dab1`、`3ae98595a49f0b39023a5afbba18284528ab5ba63ce05333883cfb6673cd7670`。测试载荷保存在各账户的 `module-acceptance-20261027` 目录，本地构建在 `artifacts/module-acceptance/`。
+
+这不是完整 Server 进程部署测试：没有以真实用户登录、通过桌面操作 PTY、测试启停后实际会话处置，也没有验证 System/User Mode 的 Helper 与服务重启。因此跨平台隔离宿主通过不等于阶段 2 的端到端验收完成。

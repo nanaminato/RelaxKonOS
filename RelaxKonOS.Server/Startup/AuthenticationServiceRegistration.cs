@@ -91,9 +91,9 @@ internal static class AuthenticationServiceRegistration
         var jwtCfg = jwtSection.Get<JwtOptions>()
                      ?? throw new InvalidOperationException("Failed to bind Jwt configuration.");
         if (string.IsNullOrWhiteSpace(jwtCfg.Secret) || jwtCfg.Secret.Length < 32)
-            throw new InvalidOperationException("Jwt:Secret 必须至少 32 字符（HMACSHA256 要求 ≥256 位）。");
+            throw new InvalidOperationException("Jwt:Secret must be at least 32 characters (HMACSHA256 needs 256 bits or more).");
         if (builder.Environment.IsProduction() && jwtCfg.Secret == JwtOptions.DefaultInsecureSecret)
-            throw new InvalidOperationException("Production 环境必须替换默认 Jwt:Secret。");
+            throw new InvalidOperationException("Production must replace the default Jwt:Secret.");
         if (jwtCfg.AccessTokenTtl <= TimeSpan.Zero || jwtCfg.RefreshTokenTtl <= TimeSpan.Zero
             || jwtCfg.RefreshTokenMaximumLifetime <= TimeSpan.Zero)
             throw new InvalidOperationException("Jwt token lifetimes must be greater than zero.");
