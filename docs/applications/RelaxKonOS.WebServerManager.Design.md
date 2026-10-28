@@ -4,6 +4,8 @@
 
 > 当前逐组件实施状态与 Nginx 平台边界见[组件中心实施进度](../platform/RelaxKonOS.ComponentCenter.Progress.md)；下文历史切片的验收范围保持原记录。
 
+> **停用门禁（2026-10-28）**：站点发布账本（`data/website-publications.json`）里若还有 `Queued`/`Running` 的发布，`Modules:WebServer:Enabled=false` 会让 Server **拒绝启动**并打印发布 ID 与域名——先启用模块让协调器重新核验（结果是 `Interrupted` + `website.recheck_required`），再停用即可。门禁只读账本（`WebsitePublicationStore.Pending()`），不会因为被询问就把操作改成中断。运行中的进程可以先用 `GET /api/v1.0/server/modules` 查 `orphanedWork` 与 `requiredBy`，在改配置之前就知道会不会被拒。
+
 > 2026-10-27 当前 Windows 日常安装入口：组件中心从 nginx.org 下载页提供多版本选择，默认稳定分支；支持服务器下载、本机下载后上传、本机文件、服务器文件及官方下载链接。已有文件不要求建立签名目录或先联网重下归档；Helper 仍限制归档路径/大小并执行原生版本与配置检查。安装后版本由实际 `nginx -v` 报告，不依赖是否存在固定归档计划回执。旧的单一默认归档仍是原受保护固定归档路径的配置，不再限制日常版本选择。此次未新增覆盖已有 Nginx 的升级事务，真实服务安装/切换尚未验收，见[当前进度](../platform/RelaxKonOS.ComponentCenter.Progress.md)。
 
 > 状态：**Nginx Provider V3 已实现**。除发现、配置测试、集成、受管安装和生命周期管理外，一个 RelaxKonOS 站点现在可同时服务静态目录、SPA 回退和多个路径前缀的反向代理；创建、修改、删除都会先执行 `nginx -t`，再重载或回滚。站点可绑定证书管理器中已有的证书；私钥仍只保留在服务器本地。证书的签发与自动续期后触发重载仍可在后续阶段进一步自动化。

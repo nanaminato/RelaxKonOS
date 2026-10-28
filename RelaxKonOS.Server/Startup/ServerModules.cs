@@ -20,6 +20,26 @@ internal interface IServerModule
     void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context);
 }
 
+/// <summary>One durable operation that only the owning module can bring to a conclusion.</summary>
+internal sealed record ServerModuleOrphanedWork(string ModuleId, string Description);
+
+/// <summary>
+/// Implemented by modules that own durable, recoverable work. When such a module is disabled, the
+/// Host asks it what it would leave behind before any route or background worker starts: the
+/// configuration switch decides what this process serves, it is not permission to abandon a ledger.
+/// Modules without durable work stay plain <see cref="IServerModule"/> implementations.
+/// </summary>
+internal interface IServerModuleDeactivationGuard
+{
+    /// <summary>
+    /// Asked only for a module that is disabled in this process, after the service provider exists so
+    /// the Core-owned ledgers can be read. An unreadable or unknown ledger must be reported as
+    /// unresolved, never as "nothing to do".
+    /// </summary>
+    ValueTask<IReadOnlyList<ServerModuleOrphanedWork>> InspectOrphanedWorkAsync(
+        IServiceProvider services, ServerModuleContext context, CancellationToken cancellationToken);
+}
+
 /// <summary>
 /// Everything a module may read while it registers itself. Modules never receive the built
 /// <see cref="WebApplication"/>, so they cannot reorder Core middleware or grab a service provider
@@ -63,6 +83,7 @@ internal sealed class ServerModules
     internal const string ProxyId = "relaxkonos.proxy";
 
     private readonly IReadOnlyList<IServerModule> _enabled;
+    private readonly IReadOnlyList<IServerModule> _disabled;
 
     /// <summary>Every capability ID the protocol declares; a module may only claim one of these.</summary>
     private static readonly IReadOnlySet<string> KnownCapabilities =
@@ -72,9 +93,10 @@ internal sealed class ServerModules
             .Select(field => (string)field.GetRawConstantValue()!)
             .ToHashSet(StringComparer.Ordinal);
 
-    private ServerModules(IReadOnlyList<IServerModule> enabled)
+    private ServerModules(IReadOnlyList<IServerModule> enabled, IReadOnlyList<IServerModule> disabled)
     {
         _enabled = enabled;
+        _disabled = disabled;
         EnabledIds = enabled.Select(module => module.Id).ToHashSet(StringComparer.Ordinal);
         Capabilities = enabled.SelectMany(module => module.Capabilities).ToHashSet(StringComparer.Ordinal);
     }
@@ -140,7 +162,8 @@ internal sealed class ServerModules
             ordered.Add(modules[id]);
         }
         foreach (var id in enabledIds.Order(StringComparer.Ordinal)) Visit(id);
-        return new ServerModules(ordered.AsReadOnly());
+        var disabled = catalog.Where(module => !enabledIds.Contains(module.Id)).ToArray();
+        return new ServerModules(ordered.AsReadOnly(), disabled);
     }
 
     /// <summary>
@@ -206,5 +229,66 @@ internal sealed class ServerModules
     internal void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)
     {
         foreach (var module in _enabled) module.MapEndpoints(endpoints, context);
+    }
+
+    /// <summary>
+    /// Read-only inventory for operators and clients. It never changes state; it answers "what would
+    /// happen if I disabled this module" with the same facts the startup gate uses.
+    /// </summary>
+    internal async Task<IReadOnlyList<ServerModuleDto>> DescribeAsync(IServiceProvider services,
+        ServerModuleContext context, CancellationToken cancellationToken)
+    {
+        var all = _enabled.Concat(_disabled).ToArray();
+        var enabled = _enabled.ToHashSet();
+        var inventory = new List<ServerModuleDto>(all.Length);
+        foreach (var module in all)
+        {
+            var isEnabled = enabled.Contains(module);
+            // A disabled module cannot be holding live work: that would have failed the startup gate.
+            IReadOnlyList<ServerModuleOrphanedWork> work;
+            if (!isEnabled || module is not IServerModuleDeactivationGuard guard)
+                work = [];
+            else
+            {
+                try { work = await guard.InspectOrphanedWorkAsync(services, context, cancellationToken); }
+                catch (Exception exception)
+                {
+                    // A diagnostic route must not fail because one guard is unhappy, and it must not
+                    // report "safe to disable" either. Reporting the failure is the fail-closed answer.
+                    work = [new(module.Id, $"the deactivation guard failed ({exception.GetType().Name}); "
+                        + "treat this module as not safe to disable until the cause is understood.")];
+                }
+            }
+            // Only an enabled dependent blocks a disable; a disabled one is already out of the process.
+            var requiredBy = all
+                .Where(other => enabled.Contains(other) && other.Requires.Contains(module.Id, StringComparer.Ordinal))
+                .Select(other => other.Id)
+                .ToArray();
+            inventory.Add(new ServerModuleDto(module.Id, isEnabled, module.Capabilities, module.Requires,
+                requiredBy, work.Select(item => item.Description).ToArray()));
+        }
+        return inventory;
+    }
+
+    /// <summary>
+    /// The deactivation gate. A module that owns durable work is asked what it would leave unresolved
+    /// while it is not part of this process; anything still queued, running or unknown stops startup
+    /// with the operation IDs an operator needs. This deliberately has no override: recovering or
+    /// finishing the work is the only way past it, and clearing a ledger to satisfy the gate would be
+    /// exactly the silent data loss this design forbids.
+    /// </summary>
+    internal async Task ValidateDeactivationAsync(IServiceProvider services, ServerModuleContext context,
+        CancellationToken cancellationToken)
+    {
+        var orphaned = new List<ServerModuleOrphanedWork>();
+        foreach (var module in _disabled.OfType<IServerModuleDeactivationGuard>())
+            orphaned.AddRange(await module.InspectOrphanedWorkAsync(services, context, cancellationToken));
+
+        if (orphaned.Count == 0) return;
+        var details = string.Join(" ", orphaned.Select(item => $"({item.ModuleId}) {item.Description}"));
+        var modules = string.Join(", ", orphaned.Select(item => item.ModuleId).Distinct(StringComparer.Ordinal));
+        throw new InvalidOperationException(
+            $"Refusing to start with unresolved durable work because {modules} is disabled: {details} " +
+            "Re-enable the module, let it reconcile or finish the operation through its normal recovery entry, then disable it again.");
     }
 }

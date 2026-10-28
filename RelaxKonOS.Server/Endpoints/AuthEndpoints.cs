@@ -105,6 +105,15 @@ public static class AuthEndpoints
             .RequireAuthorization()
             .WithTags("Server");
 
+        // Read-only module inventory. Disabling a module is still a configuration + restart decision;
+        // this route exists so that decision can be made with the two failure reasons in hand instead
+        // of discovering them when the next startup refuses.
+        group.MapGet(ServerApiRoutes.Modules, async (RelaxKonOS.Server.Startup.ServerModules modules, IServiceProvider services,
+                RelaxKonOS.Server.Startup.ServerModuleContext moduleContext, CancellationToken cancellationToken) =>
+                Results.Ok(await modules.DescribeAsync(services, moduleContext, cancellationToken)))
+            .RequireAuthorization()
+            .WithTags("Server");
+
         group.MapPost(OwnerDeviceKeyApiRoutes.LocalBootstrap, async (OwnerDeviceBootstrapRequest request, HttpContext http,
                 LoginAuthenticationService authentication, OwnerDeviceKeyService ownerDevices,
                 IUserRepository users, IWorkspaceRepository workspaces, IRegistryRepository registry, ISessionRepository sessions,

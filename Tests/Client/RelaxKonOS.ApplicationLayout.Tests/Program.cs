@@ -79,6 +79,20 @@ if (args.Contains("--browser-only"))
     host.Close();
     return;
 }
+if (args.Contains("--modules-only"))
+{
+    var checks = ServerModuleCatalogChecks.RunAsync(settings);
+    var deadline = DateTime.UtcNow.AddSeconds(15);
+    while (!checks.IsCompleted && DateTime.UtcNow < deadline)
+    {
+        Dispatcher.UIThread.RunJobs();
+        Thread.Sleep(5);
+    }
+    if (!checks.IsCompleted) throw new TimeoutException("Module catalog checks did not finish.");
+    checks.GetAwaiter().GetResult();
+    host.Close();
+    return;
+}
 var cases = 0;
 foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
 foreach (var mode in new[] { ThemeKind.Light, ThemeKind.Dark })

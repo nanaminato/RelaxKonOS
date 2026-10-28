@@ -101,6 +101,20 @@ internal sealed class WebsitePublicationStore
         }
     }
 
+    /// <summary>
+    /// Read-only view for the deactivation gate: whatever is still queued or running. It deliberately
+    /// interrupts nothing — turning an unresolved publication into "interrupted" is the coordinator's
+    /// reconciliation, never a side effect of asking whether the module may be disabled.
+    /// </summary>
+    public IReadOnlyList<WebsitePublicationOperationDto> Pending()
+    {
+        lock (gate)
+        {
+            EnsureAvailable();
+            return entries.Values.Select(entry => entry.Operation).Where(Active).ToArray();
+        }
+    }
+
     public IReadOnlyList<WebsitePublicationOperationDto> InterruptActive()
     {
         lock (gate)

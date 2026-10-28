@@ -345,5 +345,68 @@ Docker 不能像 Terminal/Git 那样整体迁入：审计发现同一个 `RelaxK
 
 已知限制：
 
-- 禁用后 `SystemProxyGuardHostedService` 不再周期性重设系统代理，`ProxyServerExpiryService` 停止清理过期凭据。停用前应先在代理界面关闭系统代理与 TUN；「有待恢复操作时阻止停用」的门禁仍属阶段 1 配置开关的已知缺口，与其他模块一致。
+- 禁用后 `SystemProxyGuardHostedService` 不再周期性重设系统代理，`ProxyServerExpiryService` 停止清理过期凭据。停用前应先在代理界面关闭系统代理与 TUN；未确认的运行时发布由停用门禁拦下（见下一节）。
 - `Storage:Provider=memory` 的启动在本机仍失败：`Git` 的 `LocalGitRepositoryService` 需要只有 sqlite 分支才注册的 `IDbContextFactory`。这是既有问题（本轮不新增该失败点），也说明内存模式目前不是可用的启动组合。
+
+### 停用门禁（2026-10-28）
+
+本文第 111 行对停用提出的要求是：遇到执行中、状态未知、待补偿或待恢复操作时应阻止，并展示具体恢复入口，且**不得为了允许停用而清除账本**。本轮把它落成 Host 的一层启动校验，而不是靠操作者自觉：
+
+- `IServerModuleDeactivationGuard`（`Startup/ServerModules.cs`）：模块自己回答「我现在缺席会留下什么」。只有**被停用**的模块会被问，且只问实现了该接口的模块；启用模块一次都不会被检查。
+- `ServerModules.ValidateDeactivationAsync`：汇总所有遗留工作，非空即抛，消息里带模块 ID、操作 ID、项目名与状态。**没有 override 开关**——完成或恢复工作后才允许停用。
+- 调用点在 `Program.cs` 打印启用模块清单之后、`InitializeServerStorageAsync`、路由映射与任何 HostedService 启动之前，因此表现为「拒绝启动」而不是「启起来再报错」。
+- 读不到的账本按「状态未知」处理并同样阻止（fail-closed）。把无法解析当成「没有待办」正是这里要避免的静默丢失。
+- 共享基础设施同理再确认一次：门禁需要读的账本必须比模块活得久，所以它们留在 Core（见下）。
+
+**账本归属调整**：`DockerStackOperationStore` 从 `relaxkonos.docker` 移回 Core（`HostServiceRegistration`），与 mihomo 发布台账同一理由——模块缺席时门禁仍要读它。写入者仍是模块里的 `DockerStackOperationCoordinator`（唯一写入者，并在启动时对账）；`DockerComposeOptions` 的 `Configure` 随之下移。
+
+**当前覆盖**：
+
+| 模块 | 判定来源 | 语义 |
+| --- | --- | --- |
+| `relaxkonos.docker` | `DockerStackOperationStore.Active`（`Queued`/`Running`） | 未协调的 compose 栈操作 |
+| `relaxkonos.proxy` | `MihomoPublicationState.Pending` | 已开始但未确认的运行时发布（未解决的权威） |
+| `relaxkonos.webserver` | `WebsitePublicationStore.Pending()`（`Queued`/`Running`） | 未完成的站点发布（协调器要拿证书与 Web 服务器重新核验） |
+
+`WebsitePublicationStore` 为此新增了只读的 `Pending()`：门禁问问题时**不得**调用 `InterruptActive()`，把一次「能不能停用」的询问变成状态变更正是设计禁止的那种副作用。
+
+**未覆盖（明确记录，不要误以为缺口已经清零）**：
+
+- `relaxkonos.certificates`：证书操作是每次 ACME 请求内的短事务，另有 `CertificateRenewalWorker` 的续期职责。停用后只是停止续期，不存在「只有它才能收尾」的挂起操作，因此本轮不加门禁；但续期停止应在界面上提示（与系统代理守卫同类）。
+
+验证：`Tests/ServerModules` **171 项**通过，新增断言为「门禁只问被停用的守卫」「启用模块从不被检查」「诊断包含模块与操作 ID」「Docker 守卫读真实账本（空账本 0 条、`Running` 操作 1 条且带操作 ID）」「站点发布守卫报出排队的发布，且询问本身不会把操作改成 interrupted」「代理守卫把不可读的发布权威报为无法读取而非无待办」「清单把同一份遗留工作一并发布」。真实进程三连（同一账本目录）：未完成栈操作 + `Modules:Docker:Enabled=false` → 启动被拒并打印 `compose stack operation a35c030e-… for project "gate" is still Running (Deploy)`；启用 Docker 启动 → `healthz` 200、协调器把该操作改为 `interrupted`；再次停用 → 启动成功、`/docker/status` 404。空账本 + 停用 Docker → 正常启动（无误报）。夹具写入器 `Tests/ServerModules` 的 `--write-unresolved-stack <dir>` 让上述账本由真实 store 生成，而不是手写 JSON。
+
+#### 只读模块清单 `/api/v1.0/server/modules`（2026-10-28）
+
+门禁只有在**重启被拒之后**才说话，而操作者真正需要的是改配置之前的答案。因此新增一个只读路由（`ServerApiRoutes.Modules`，`ServerModuleDto`）：
+
+| 字段 | 含义 |
+| --- | --- |
+| `id` / `enabled` | 模块身份与本进程是否启用 |
+| `capabilities` | 该模块在启用时提供的能力（Host 的并集里可追溯到它） |
+| `requires` | 它声明依赖的模块 |
+| `requiredBy` | **启用中**的、声明依赖它的模块——这是「停用会被拒」的第一类原因；已停用的依赖者不算 |
+| `orphanedWork` | 该模块的守卫报出的未收尾操作——第二类原因；空数组表示现在停用不会被门禁拦 |
+
+语义约束：
+
+- **只读**：启停仍然只能靠配置 + 重启；这条路由绝不改运行状态。
+- `orphanedWork` 只对**启用中**的模块有意义（停用模块若有遗留工作，启动早已被门禁拒绝），因此不对停用模块调用守卫，避免「查询即触发」。
+- 单个守卫抛异常时，清单不会 500，也不会把它报成「可以停用」，而是为该模块写一条「守卫失败（异常类型）」——诊断接口的 fail-closed 形式。
+- 端点需要 JWT（与 `/server/capabilities` 同组），`Program.cs` 把 `ServerModuleContext` 注册进 DI，端点与启动门禁读同一个快照。
+
+验证：`RelaxKonOS.Server.Tests --alias-only` 增至 **70 项**（真实登录后带 Bearer 取清单，断言能激活端点、列出终端模块、并给出「证书被 webserver 依赖」的方向）；真实进程 `/healthz` 200、`/server/modules` 与 `/server/capabilities` 均 401。
+
+#### 客户端的解释链条（2026-10-28）
+
+模块清单的意义在于让「这个应用为什么用不了」有可操作的答案，而不只是把能力名重复一遍。桌面端因此加了三层，全部只读：
+
+1. **取数**：`Client/RelaxKonOS.Client/Services/Modules/ServerModuleCatalog.cs`（`IServerModuleCatalog`）按登录读一次 `/server/modules` 并缓存。它永远不阻塞启动决策——`GetAsync` 把任何失败折叠成 `null` 并把原因记在 `LastFailure`；缓存按 `ServiceId` 归属，登录结束即作废；`EnsureLoaded()` 供启动判定顺手触发一次后台读取。
+2. **归因**：`ServerCapabilityExplanation.Explain(inventory, capability)` 是纯函数，把「缺少的能力」归到四种情形之一——未读取（`Unknown`，不猜）、提供者被停用（**点名模块**）、提供者已启用（说明限制来自部署模式或宿主平台）、没有任何模块声明（不是模块开关能解决的事）。同一份清单永远给同一个答案，启动提示与设置页不会互相矛盾。
+3. **呈现**：
+   - `ApplicationCompatibilityService` 在「缺少能力」的提示里追加第二行原因（`app_compatibility.reason_module_disabled` / `reason_module_enabled` / `reason_no_module`），清单不可用时**不写第二行**，而不是猜原因。
+   - 设置 →「系统」页新增只读的「服务端模块」卡片：模块 ID、启用状态、能力、以及两条会被门禁拒绝的原因（被哪些启用模块依赖、还有几条未收尾操作及具体操作描述）。页面在可见时通过 `OnAttachedToVisualTree` 读取一次，失败时明确显示「服务端没有返回模块清单」，不会把空列表渲染成「这个服务端没有模块」。
+
+验证：`Tests/Client/RelaxKonOS.ApplicationLayout.Tests --modules-only` 覆盖归因矩阵（含「两个提供者时以启用者为准」）、缓存只读一次 / 失效重读 / 换服务器换清单、未登录不发请求、500 与服务不可用不缓存为答案、登录事件预取与登出作废，并在三种语言下真实渲染 `SystemPageView` 断言模块 ID、依赖说明与未收尾操作说明都出现且没有未翻译标签；`Tests/Client/RelaxKonOS.WindowPreviews.Tests --settings-only`（本轮新增的隔离入口）仍通过。完整布局套件 105 个页面组合通过。
+
+已知边界：这一页只解释、不改状态——模块启停仍是配置 + 重启；「安装/卸载模块」与在线切换仍属后续阶段。

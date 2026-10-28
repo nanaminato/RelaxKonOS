@@ -60,6 +60,8 @@ builder.AddWorkspaceServices();
 // Modules register after the storage provider is resolved: a module whose persistence exists for
 // one provider only must be able to say so without duplicating the "default is sqlite" rule.
 var serverModuleContext = ServerModuleContext.Create(builder.Configuration, builder.Environment, storageProvider);
+// The module inventory route reads the same snapshot the gate uses, so both answer with one source.
+builder.Services.AddSingleton(serverModuleContext);
 serverModules.ConfigureServices(builder, serverModuleContext);
 
 var app = builder.Build();
@@ -68,6 +70,10 @@ app.Logger.LogInformation("Authentication configuration loaded. ServerMode={Serv
     serverModeResolver.Mode, linuxPamTransport, !string.IsNullOrWhiteSpace(builder.Configuration["PrivilegedHelper:HelperPath"]), userExecutionBackend);
 IdentityServiceRegistration.ReportUserExecutionBackend(app.Logger, userExecutionBackend, serverModeResolver.Mode, privilegedHelperOptions);
 app.Logger.LogInformation("Server modules enabled: {ServerModules}", serverModules.Describe());
+// A disabled module must not leave durable work unresolved. This runs before the request pipeline and
+// before any hosted service starts, so the operator sees the reason instead of a half-working server
+// that never reconciles an interrupted operation.
+await serverModules.ValidateDeactivationAsync(app.Services, serverModuleContext, app.Lifetime.ApplicationStopping);
 if (eventAlertsOptions.Enabled)
     app.Services.GetRequiredService<RelaxKonOS.Server.Hubs.EventAlertNotificationHub>().Attach();
 

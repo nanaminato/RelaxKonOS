@@ -31,6 +31,9 @@
         "app_compatibility.client_platform": "{0} 仅支持以下客户端平台：{1}；当前客户端为 {2}。",
         "app_compatibility.server_platform": "{0} 仅支持以下服务端平台：{1}；当前连接的服务端为 {2}。",
         "app_compatibility.missing_capability": "{0} 需要服务端能力，但当前服务端未提供：{1}。",
+        "app_compatibility.reason_module_disabled": "提供该能力的服务端模块（{0}）已在此服务端停用。",
+        "app_compatibility.reason_module_enabled": "提供该能力的模块（{0}）处于启用状态，因此限制来自服务端的部署模式或宿主平台。",
+        "app_compatibility.reason_no_module": "没有官方服务端模块提供该能力，限制来自服务端的部署模式或宿主平台。",
         "app_compatibility.server_unavailable": "{0} 需要先连接到 RelaxKonOS Server 才能启动。",
         "app_compatibility.generic": "此应用程序无法在当前环境中运行。"
     }

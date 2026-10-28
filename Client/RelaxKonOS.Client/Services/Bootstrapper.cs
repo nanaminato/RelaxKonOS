@@ -113,6 +113,16 @@ public static class Bootstrapper
         services.AddHttpClient<AccountSecurityClient>()
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddTransient<AuthenticatedHttpHandler>();
+        // 官方模块清单只读缓存：把「缺少某项能力」翻译成可操作的原因（模块被停用 / 被部署模式限制）。
+        // 单例持有缓存，所以用命名客户端 + 工厂，而不是 transient 的 typed client。
+        services.AddHttpClient(RelaxKonOS.Client.Services.Modules.ServerModuleCatalog.HttpClientName)
+            .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "server-modules"))
+            .AddHttpMessageHandler<AcceptLanguageHandler>()
+            .AddRelaxKonOSAuthentication();
+        services.AddSingleton<RelaxKonOS.Client.Services.Modules.IServerModuleCatalog>(sp =>
+            new RelaxKonOS.Client.Services.Modules.ServerModuleCatalog(
+                sp.GetRequiredService<IHttpClientFactory>().CreateClient(RelaxKonOS.Client.Services.Modules.ServerModuleCatalog.HttpClientName),
+                sp.GetRequiredService<IAuthSession>()));
         services.AddSingleton<ApplicationCompatibilityService>();
         services.AddSingleton<IApplicationCompatibilityEvaluator>(sp => sp.GetRequiredService<ApplicationCompatibilityService>());
         services.AddSingleton<IApplicationCompatibilityNotifier>(sp => sp.GetRequiredService<ApplicationCompatibilityService>());

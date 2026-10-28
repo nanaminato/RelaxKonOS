@@ -184,6 +184,7 @@ public sealed partial class SettingsViewModel
             ("workspace.environment", "system", "settings.workspace_environment.title", SettingsScope.Workspace, "workspace PATH environment 工作区 环境变量 ワークスペース 環境変数"),
             ("host.time.zone", "time-language", "settings.time_zone", SettingsScope.HostMachine, "timezone time zone 时区 タイムゾーン"),
             ("host.identity.hostname", "system", "settings.hostname", SettingsScope.HostMachine, "hostname computer name 主机名 计算机名 ホスト名 コンピューター名"),
+            ("server.modules", "system", "settings.server_modules.title", SettingsScope.HostMachine, "modules capability disabled 模块 能力 停用 モジュール 機能"),
             ("relaxkonos.about", "about", "settings.about_page.title", SettingsScope.ClientDevice, "about website source repository license legal 开源 官网 许可证 法律情報")
         ];
         foreach (var item in items)

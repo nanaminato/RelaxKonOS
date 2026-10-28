@@ -15,7 +15,7 @@ namespace RelaxKonOS.Server.Startup.Modules;
 /// <c>IDockerRuntimeInstaller</c>, <c>IDockerProxyResolver</c> and
 /// <c>IOutboundProxyHttpClientFactory</c>; this module only adds the management layer on top.
 /// </summary>
-internal sealed class DockerModule : IServerModule
+internal sealed class DockerModule : IServerModule, IServerModuleDeactivationGuard
 {
     public string Id => ServerModules.DockerId;
     public IReadOnlyList<string> Capabilities => [ServerCapabilities.Docker];
@@ -25,12 +25,11 @@ internal sealed class DockerModule : IServerModule
     {
         builder.Services.AddScoped<RelaxKonOS.Server.ImageMirrors.IDockerImageMirrorResolver,
             RelaxKonOS.Server.ImageMirrors.DockerImageMirrorResolver>();
-        builder.Services.Configure<RelaxKonOS.Server.Docker.DockerComposeOptions>(context.Configuration.GetSection("DockerCompose"));
         builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerComposeService, RelaxKonOS.Server.Docker.DockerComposeService>();
         // Compose stack operations are durable: the ledger outlives the HTTP request, the phone that
-        // started it, and this process. The coordinator is the only caller of the executor and
-        // reconciles an interrupted operation against the real Engine on startup instead of replaying it.
-        builder.Services.AddSingleton<RelaxKonOS.Server.Docker.DockerStackOperationStore>();
+        // started it, and this process. The ledger itself is Core-owned (the deactivation gate reads it
+        // while this module is disabled); the coordinator below is its only writer and reconciles an
+        // interrupted operation against the real Engine on startup instead of replaying it.
         builder.Services.AddSingleton<RelaxKonOS.Server.Docker.DockerStackOperationCoordinator>();
         builder.Services.AddHostedService(services => services.GetRequiredService<RelaxKonOS.Server.Docker.DockerStackOperationCoordinator>());
         // The configurator owns the platform difference internally (systemd drop-in on Linux, Docker
@@ -48,6 +47,38 @@ internal sealed class DockerModule : IServerModule
         // unit driven through the privileged Helper, or the Docker Desktop CLI.
         builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerEngineHostController, RelaxKonOS.Server.Docker.DockerEngineHostController>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerEngineControlService, RelaxKonOS.Server.Docker.DockerEngineControlService>();
+    }
+
+    /// <summary>
+    /// A stack operation that was queued or running when this process last stopped is only resolvable
+    /// by the coordinator: it observes the project against the real Engine instead of replaying the
+    /// command. Starting without it would leave the ledger claiming work nobody owns.
+    /// </summary>
+    public ValueTask<IReadOnlyList<ServerModuleOrphanedWork>> InspectOrphanedWorkAsync(
+        IServiceProvider services, ServerModuleContext context, CancellationToken cancellationToken)
+    {
+        RelaxKonOS.Server.Docker.StackOperationEntry[] entries;
+        try
+        {
+            entries = services.GetRequiredService<RelaxKonOS.Server.Docker.DockerStackOperationStore>().Read();
+        }
+        catch (Exception exception)
+        {
+            // Unknown is not "nothing to do": an unreadable ledger blocks deactivation exactly like an
+            // unresolved operation does, and the exception type is the only clue the operator gets.
+            return ValueTask.FromResult<IReadOnlyList<ServerModuleOrphanedWork>>(
+            [
+                new(Id, $"the Compose stack operation ledger cannot be read ({exception.GetType().Name}); "
+                    + "its state must be established before this module can stay disabled."),
+            ]);
+        }
+
+        return ValueTask.FromResult<IReadOnlyList<ServerModuleOrphanedWork>>(
+            entries.Where(entry => RelaxKonOS.Server.Docker.DockerStackOperationStore.Active(entry.Operation))
+                .Select(entry => new ServerModuleOrphanedWork(Id,
+                    $"compose stack operation {entry.Operation.OperationId} for project \"{entry.Operation.ProjectName}\" "
+                    + $"is still {entry.Operation.State} ({entry.Operation.Kind})."))
+                .ToArray());
     }
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)

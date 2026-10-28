@@ -123,6 +123,19 @@ public sealed class RelaxKonOSClient : IRelaxKonOSClient
             ?? throw new RelaxKonOSAuthException(NoBodyProblem());
     }
 
+    public async Task<IReadOnlyList<ServerModuleDto>> GetServerModulesAsync(string serverUrl, string accessToken,
+        CancellationToken ct = default)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, BuildUri(serverUrl, ServerApiRoutes.Modules))
+        {
+            Headers = { Authorization = new AuthenticationHeaderValue("Bearer", accessToken) },
+        };
+        using var resp = await _http.SendAsync(req, ct);
+        await EnsureSuccessAsync(resp, ct);
+        return await resp.Content.ReadFromJsonAsync<List<ServerModuleDto>>(RelaxKonOSJsonOptions.Default, ct)
+            ?? throw new RelaxKonOSAuthException(NoBodyProblem());
+    }
+
     private static Uri BuildUri(string serverUrl, string route)
     {
         var baseUri = new Uri(serverUrl, UriKind.Absolute);

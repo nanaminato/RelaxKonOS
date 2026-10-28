@@ -1,3 +1,4 @@
+using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Identity;
 
 namespace RelaxKonOS.Client.Services.Auth;
@@ -33,4 +34,11 @@ public interface IRelaxKonOSClient
 
     /// <summary>当前用户信息（需 JWT）。</summary>
     Task<UserDto> GetMeAsync(string serverUrl, string accessToken, CancellationToken ct = default);
+
+    /// <summary>
+    /// 本进程实际启用的官方模块清单（需 JWT）。只读诊断数据：调用方按「读不到就没有解释」处理，
+    /// 绝不能让它的失败阻塞任何界面。
+    /// </summary>
+    Task<IReadOnlyList<ServerModuleDto>> GetServerModulesAsync(string serverUrl, string accessToken,
+        CancellationToken ct = default);
 }

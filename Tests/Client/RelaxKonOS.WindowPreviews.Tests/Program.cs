@@ -50,6 +50,9 @@ typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services)
 if (args.Contains("--windows11-only")) { Windows11DesktopChecks.RunAsync().GetAwaiter().GetResult(); return; }
 if (args.Contains("--readiness-only")) { ApplicationReadinessShellChecks.Run(settings, localization, services); return; }
 if (args.Contains("--websites-only")) { WebSiteEditorChecks.Run(); WebSiteReadRecoveryChecks.Run(); WebSiteScopeChecks.Run(); CurrentNginxChecks.Run(); return; }
+// Runs the settings interaction checks in isolation: the full suite stops at an unrelated
+// installer wizard failure before reaching them.
+if (args.Contains("--settings-only")) { SettingsInteractionChecks.Run(settings, localization); return; }
 if (args.Contains("--component-download-preview"))
 {
     var downloadOutput = Path.Combine(AppContext.BaseDirectory, "preview-qa", "component-download");

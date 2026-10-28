@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Client.Services.Modules;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.WindowManager;
@@ -12,6 +13,13 @@ namespace RelaxKonOS.Client.Services;
 /// Evaluates package-declared client and server requirements before the runtime activates an app.
 /// It deliberately reads the server descriptor from the authenticated session instead of UserDto,
 /// whose platform is the platform of the connecting client device.
+///
+/// <para>
+/// A missing capability is answered from the server's own module inventory when it is available:
+/// "the module that provides it is disabled" is actionable, while a bare capability name is not.
+/// The inventory is diagnostic only, so the explanation is strictly additive — an unread inventory
+/// leaves the previous message intact rather than changing the verdict.
+/// </para>
 /// </summary>
 public sealed class ApplicationCompatibilityService : IApplicationCompatibilityEvaluator, IApplicationCompatibilityNotifier
 {
@@ -19,12 +27,15 @@ public sealed class ApplicationCompatibilityService : IApplicationCompatibilityE
     private readonly IAuthSession _session;
     private readonly IWindowManager _windows;
     private readonly LocalizationService _localization;
+    private readonly IServerModuleCatalog _modules;
 
-    public ApplicationCompatibilityService(IAuthSession session, IWindowManager windows, LocalizationService localization)
+    public ApplicationCompatibilityService(IAuthSession session, IWindowManager windows, LocalizationService localization,
+        IServerModuleCatalog modules)
     {
         _session = session;
         _windows = windows;
         _localization = localization;
+        _modules = modules;
     }
 
     public ApplicationCompatibilityResult Evaluate(ApplicationManifest manifest)
@@ -55,9 +66,11 @@ public sealed class ApplicationCompatibilityService : IApplicationCompatibilityE
 
         var missingCapability = requirements.RequiredCapabilities.FirstOrDefault(required =>
             !server.Capabilities.Contains(required, StringComparer.Ordinal));
-        return missingCapability is null
-            ? ApplicationCompatibilityResult.Compatible
-            : new(ApplicationCompatibilityStatus.MissingServerCapability, missingCapability);
+        if (missingCapability is null) return ApplicationCompatibilityResult.Compatible;
+        // Start the diagnostic read now so the dialog that follows can name the module instead of
+        // repeating the capability. Never awaited: a slow or absent inventory must not delay a launch.
+        _modules.EnsureLoaded();
+        return new(ApplicationCompatibilityStatus.MissingServerCapability, missingCapability);
     }
 
     public void Notify(ApplicationManifest manifest, ApplicationCompatibilityResult result)
@@ -74,9 +87,7 @@ public sealed class ApplicationCompatibilityService : IApplicationCompatibilityE
             ApplicationCompatibilityStatus.ServerPlatformMismatch => string.Format(
                 T("app_compatibility.server_platform", "{0} supports only these server platforms: {1}. The connected server is {2}."),
                 appName, result.Expected, result.Actual),
-            ApplicationCompatibilityStatus.MissingServerCapability => string.Format(
-                T("app_compatibility.missing_capability", "{0} requires a server capability that is unavailable: {1}."),
-                appName, result.Expected),
+            ApplicationCompatibilityStatus.MissingServerCapability => MissingCapabilityMessage(appName, result.Expected),
             ApplicationCompatibilityStatus.ServerUnavailable => string.Format(
                 T("app_compatibility.server_unavailable", "{0} requires a connected RelaxKonOS Server before it can start."), appName),
             _ => T("app_compatibility.generic", "This application cannot run in the current environment."),
@@ -100,6 +111,33 @@ public sealed class ApplicationCompatibilityService : IApplicationCompatibilityE
             CanResize: false,
             CanMinimize: false,
             CanMaximize: false));
+    }
+
+    /// <summary>
+    /// The base sentence names the capability; the second line says who withholds it. When the
+    /// inventory is unavailable the second line is absent — an unverified guess about the cause is
+    /// worse than no cause at all.
+    /// </summary>
+    private string MissingCapabilityMessage(string appName, string? capability)
+    {
+        var message = string.Format(
+            T("app_compatibility.missing_capability", "{0} requires a server capability that is unavailable: {1}."),
+            appName, capability);
+        var explanation = ServerCapabilityExplanation.Explain(_modules.Cached, capability ?? string.Empty);
+        var reason = explanation.Availability switch
+        {
+            ServerCapabilityAvailability.ProvidedByDisabledModule => string.Format(
+                T("app_compatibility.reason_module_disabled",
+                    "The server module that provides it ({0}) is disabled on this server."), explanation.ModuleId),
+            ServerCapabilityAvailability.ProvidedByEnabledModule => string.Format(
+                T("app_compatibility.reason_module_enabled",
+                    "The module that provides it ({0}) is enabled, so the server's deployment mode or host platform withholds it."),
+                explanation.ModuleId),
+            ServerCapabilityAvailability.NotProvidedByAnyModule => T("app_compatibility.reason_no_module",
+                "No official server module provides this capability; the server's deployment mode or platform withholds it."),
+            _ => null,
+        };
+        return reason is null ? message : message + Environment.NewLine + reason;
     }
 
     private static string DetectClientPlatform() => OperatingSystem.IsWindows()

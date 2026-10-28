@@ -72,6 +72,11 @@ internal static class HostServiceRegistration
                 () => services.GetRequiredService<RelaxKonOS.Server.Docker.IDockerProxyResolver>()));
         // 容器/镜像/网络/卷编辑、compose 与栈操作协调器、引擎生命周期与 Docker 代理界面归 docker 模块所有
         // （见 Startup/Modules/DockerModule.cs）；它们不可用不影响部署与组件下载使用引擎。
+        // The stack operation ledger is the one exception: it is durable state with a recovery duty, and
+        // the deactivation gate has to read it while the manager is disabled. The coordinator that
+        // writes to it and reconciles it stays in the module.
+        builder.Services.Configure<RelaxKonOS.Server.Docker.DockerComposeOptions>(builder.Configuration.GetSection("DockerCompose"));
+        builder.Services.AddSingleton<RelaxKonOS.Server.Docker.DockerStackOperationStore>();
         var guardianOptions = builder.Configuration.GetSection("GuardianAgent").Get<RelaxKonOS.Server.ProcessGuardian.GuardianAgentOptions>() ?? new RelaxKonOS.Server.ProcessGuardian.GuardianAgentOptions();
         builder.Services.AddSingleton(guardianOptions);
         builder.Services.AddSingleton<RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService, RelaxKonOS.Server.ProcessGuardian.NamedPipeProcessGuardianService>();

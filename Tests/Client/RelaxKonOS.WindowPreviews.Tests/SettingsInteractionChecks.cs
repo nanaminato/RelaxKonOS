@@ -146,7 +146,7 @@ internal static class SettingsInteractionChecks
             Check(hostIdentity.IsCompleted, "Host name apply did not reach the confirmed state.");
             var page = new SystemPageView
             {
-                DataContext = new SystemPageViewModel(settings, session, null, hostIdentity),
+                DataContext = new SystemPageViewModel(settings, session, null, hostIdentity, new EmptyModuleCatalog()),
             };
             var scroll = new ScrollViewer { Content = page, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
             var window = new Window { Content = scroll, Width = 1024, Height = 900 };
@@ -171,4 +171,18 @@ internal static class SettingsInteractionChecks
         }
     }
     private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
+}
+
+/// <summary>
+/// Empty module inventory. This suite checks host-name completion on the System page; the module
+/// card must render as "nothing reported" without reaching a server.
+/// </summary>
+internal sealed class EmptyModuleCatalog : RelaxKonOS.Client.Services.Modules.IServerModuleCatalog
+{
+    public IReadOnlyList<RelaxKonOS.Protocol.Common.ServerModuleDto>? Cached => [];
+    public string? LastFailure => null;
+    public Task<IReadOnlyList<RelaxKonOS.Protocol.Common.ServerModuleDto>?> GetAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<RelaxKonOS.Protocol.Common.ServerModuleDto>?>([]);
+    public void EnsureLoaded() { }
+    public void Invalidate() { }
 }

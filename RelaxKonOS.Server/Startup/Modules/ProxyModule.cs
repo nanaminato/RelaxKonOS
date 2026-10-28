@@ -31,7 +31,7 @@ namespace RelaxKonOS.Server.Startup.Modules;
 /// the Squid gateway. Recovery workers keep running from Core when the module is disabled, which is
 /// the ordering this design requires: recovery first, then optional surfaces.
 /// </summary>
-internal sealed class ProxyModule : IServerModule
+internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuard
 {
     public string Id => ServerModules.ProxyId;
 
@@ -147,6 +147,40 @@ internal sealed class ProxyModule : IServerModule
             builder.Services.AddScoped<IProxySubscriptionService, ProxySubscriptionService>();
             builder.Services.AddScoped<IProxyConfigurationTransactionService, ProxyConfigurationTransactionService>();
             builder.Services.AddScoped<IProxyConfigurationService, ProxyConfigurationService>();
+        }
+    }
+
+    /// <summary>
+    /// A runtime publication that was begun but never confirmed is an unresolved authority: the
+    /// recovery worker (Core-owned, see Startup/ProxyRuntimeRegistration.cs) is the only thing that can
+    /// confirm or roll it back. Refusing to start with the module disabled is the difference between
+    /// "the proxy UI is off" and "we silently lost track of which runtime is authorized".
+    /// </summary>
+    public async ValueTask<IReadOnlyList<ServerModuleOrphanedWork>> InspectOrphanedWorkAsync(
+        IServiceProvider services, ServerModuleContext context, CancellationToken cancellationToken)
+    {
+        var store = services.GetRequiredService<MihomoPublicationStore>();
+        try
+        {
+            var state = await store.ReadAsync(cancellationToken);
+            return state.Pending is { } pending
+                ?
+                [
+                    new(Id, $"the mihomo runtime publication for operation {pending.OperationId} is unresolved; "
+                        + "re-enable the module so the publication recovery worker can confirm or roll it back."),
+                ]
+                : [];
+        }
+        catch (Exception exception) when (exception is RelaxKonOS.ManagedRuntimes.RuntimePolicyException
+                                              or IOException or UnauthorizedAccessException)
+        {
+            // An unreadable authority is unknown, and unknown blocks deactivation: assuming "nothing
+            // pending" here would be the same silent loss this gate exists to prevent.
+            return
+            [
+                new(Id, $"the mihomo publication authority cannot be read ({exception.Message.TrimEnd('.')}); "
+                    + "an unknown authority is not the same as no work to do."),
+            ];
         }
     }
 

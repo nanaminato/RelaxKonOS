@@ -1,8 +1,10 @@
 using System.Net;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.SystemMonitor;
@@ -15,6 +17,30 @@ using RelaxKonOS.Server.Terminal;
 using RoyalTerminal.Terminal;
 using System.Text.Encodings.Web;
 
+// Fixture writer for the process-level deactivation check, so the ledger under test is produced by the
+// real store instead of hand-written JSON:
+//   RelaxKonOS.ServerModules.Tests.exe --write-unresolved-stack <absolute directory>
+// Then start the Server with DockerCompose__DataDirectory=<directory> and Modules__Docker__Enabled=false:
+// it must refuse to start and name the operation.
+if (args is ["--write-unresolved-stack", var fixtureDirectory])
+{
+    var fixtureBuilder = WebApplication.CreateBuilder();
+    var fixtureOptions = Options.Create(
+        new RelaxKonOS.Server.Docker.DockerComposeOptions { DataDirectory = fixtureDirectory });
+    var fixtureStore = new RelaxKonOS.Server.Docker.DockerStackOperationStore(fixtureBuilder.Environment, fixtureOptions);
+    var fixtureEntry = fixtureStore.Create("gate", RelaxKonOS.Protocol.Docker.DockerStackOperationKind.Deploy,
+        "fixture", "gate-" + Guid.NewGuid().ToString("N"),
+        RelaxKonOS.Server.Docker.DockerStackValidation.Reference("deploy|gate|v1"), out _);
+    fixtureStore.Update(fixtureEntry.Operation.OperationId, current => current with
+    {
+        State = RelaxKonOS.Protocol.Docker.DockerStackOperationState.Running,
+        Stage = RelaxKonOS.Protocol.Docker.DockerStackOperationStage.Applying,
+        StartedAt = DateTimeOffset.UtcNow,
+    }, "started");
+    Console.WriteLine(fixtureEntry.Operation.OperationId);
+    return;
+}
+
 static void Check(bool value, string name)
 {
     if (!value) throw new Exception(name);
@@ -26,6 +52,13 @@ static void Reject(Action action, string name)
     try { action(); }
     catch (InvalidOperationException) { Check(true, name); return; }
     throw new Exception(name);
+}
+
+/// <summary>Runs an async check and returns the diagnostic it produced, or null when it passed.</summary>
+static async Task<string?> FailureAsync(Func<Task> action)
+{
+    try { await action(); return null; }
+    catch (InvalidOperationException exception) { return exception.Message; }
 }
 
 static IConfiguration Config(params (string Key, string? Value)[] values) =>
@@ -190,6 +223,173 @@ Check(defaults.Capabilities.SetEquals([ServerCapabilities.Terminal, ServerCapabi
     }
 }
 
+// Inventory: every official module, plus the two reasons a disable request would be refused.
+{
+    var hostBuilder = WebApplication.CreateBuilder();
+    var context = ServerModuleContext.Create(hostBuilder.Configuration, hostBuilder.Environment, "sqlite");
+    var root = Path.Combine(Path.GetTempPath(), "rk-inventory-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    try
+    {
+        var collection = new ServiceCollection();
+        collection.AddDataProtection();
+        collection.AddSingleton<RelaxKonOS.Server.Proxy.IProxyPlatformPaths>(new GateProxyPaths(root));
+        collection.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoPublicationStore>();
+        collection.AddSingleton(new RelaxKonOS.Server.Docker.DockerStackOperationStore(hostBuilder.Environment,
+            Microsoft.Extensions.Options.Options.Create(new RelaxKonOS.Server.Docker.DockerComposeOptions { DataDirectory = root })));
+        using var services = collection.BuildServiceProvider();
+
+        var inventory = await ServerModules.Create(new ConfigurationBuilder().Build())
+            .DescribeAsync(services, context, CancellationToken.None);
+        Check(inventory.Count == 8 && inventory.All(item => item.Enabled && item.OrphanedWork.Count == 0),
+            "every official module is listed as enabled with nothing outstanding");
+        Check(inventory.Single(item => item.Id == ServerModules.CertificatesId).RequiredBy.SequenceEqual([ServerModules.WebServerId]),
+            "an enabled dependent is reported as a reason its dependency cannot be disabled");
+
+        var withoutWebServer = await ServerModules.Create(Config(("Modules:WebServer:Enabled", "false")))
+            .DescribeAsync(services, context, CancellationToken.None);
+        var webServer = withoutWebServer.Single(item => item.Id == ServerModules.WebServerId);
+        Check(!webServer.Enabled && webServer.OrphanedWork.Count == 0 && webServer.Capabilities.Count == 1,
+            "a disabled module is reported as disabled, keeps its declared capability, and is not inspected");
+        Check(withoutWebServer.Single(item => item.Id == ServerModules.CertificatesId).RequiredBy.Count == 0,
+            "a disabled dependent stops being a reason to keep its dependency enabled");
+    }
+    finally
+    {
+        try { Directory.Delete(root, true); } catch (IOException) { }
+    }
+}
+
+// The deactivation gate: disabling a module that owns durable work must stop startup while that work
+// is unresolved, because nothing in the process can reconcile it afterwards. The gate is deliberately
+// override-free: finishing the work is the only way past it.
+{
+    var hostBuilder = WebApplication.CreateBuilder();
+    var context = ServerModuleContext.Create(hostBuilder.Configuration, hostBuilder.Environment, "sqlite");
+    using var services = new ServiceCollection().BuildServiceProvider();
+
+    var blocked = new FakeDurableModule("relaxkonos.blocked",
+        new ServerModuleOrphanedWork("relaxkonos.blocked", "compose stack operation 6f4c is still Running."));
+    var clean = new FakeDurableModule("relaxkonos.clean");
+    var enabledDurable = new FakeDurableModule("relaxkonos.enabled",
+        new ServerModuleOrphanedWork("relaxkonos.enabled", "must never be inspected"));
+
+    var gated = ServerModules.Resolve([blocked, clean, enabledDurable],
+        new HashSet<string> { "relaxkonos.enabled" });
+    var message = await FailureAsync(() => gated.ValidateDeactivationAsync(services, context, CancellationToken.None));
+    Check(message is not null && message.Contains("relaxkonos.blocked") && message.Contains("6f4c"),
+        "a disabled module with unresolved durable work stops startup and names the operation");
+    Check(clean.Inspections == 1 && enabledDurable.Inspections == 0,
+        "the gate asks every disabled guard and never an enabled module");
+
+    var allEnabled = ServerModules.Resolve([blocked, clean, enabledDurable],
+        new HashSet<string> { "relaxkonos.blocked", "relaxkonos.clean", "relaxkonos.enabled" });
+    var inspectedWhileGated = blocked.Inspections;
+    await allEnabled.ValidateDeactivationAsync(services, context, CancellationToken.None);
+    Check(blocked.Inspections == inspectedWhileGated, "an enabled durable module is not inspected for orphaned work");
+}
+
+// The Docker guard reads the real ledger instead of trusting a flag.
+{
+    var hostBuilder = WebApplication.CreateBuilder();
+    var context = ServerModuleContext.Create(hostBuilder.Configuration, hostBuilder.Environment, "sqlite");
+    var root = Path.Combine(Path.GetTempPath(), "rk-gate-docker-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    try
+    {
+        var options = Microsoft.Extensions.Options.Options.Create(
+            new RelaxKonOS.Server.Docker.DockerComposeOptions { DataDirectory = root });
+        var store = new RelaxKonOS.Server.Docker.DockerStackOperationStore(hostBuilder.Environment, options);
+        using var services = new ServiceCollection().AddSingleton(store).BuildServiceProvider();
+        var guard = new RelaxKonOS.Server.Startup.Modules.DockerModule();
+
+        var nothingOrphaned = await guard.InspectOrphanedWorkAsync(services, context, CancellationToken.None);
+        Check(nothingOrphaned.Count == 0, "an empty compose stack ledger leaves nothing orphaned");
+
+        var operation = store.Create("web", RelaxKonOS.Protocol.Docker.DockerStackOperationKind.Deploy, "actor",
+            "gate-key", RelaxKonOS.Server.Docker.DockerStackValidation.Reference("deploy|web|v1"), out _).Operation;
+        store.Update(operation.OperationId, current => current with
+        {
+            State = RelaxKonOS.Protocol.Docker.DockerStackOperationState.Running,
+            Stage = RelaxKonOS.Protocol.Docker.DockerStackOperationStage.Applying,
+            StartedAt = DateTimeOffset.UtcNow,
+        }, "started");
+
+        var orphaned = await guard.InspectOrphanedWorkAsync(services, context, CancellationToken.None);
+        Check(orphaned.Count == 1 && orphaned[0].ModuleId == ServerModules.DockerId
+                && orphaned[0].Description.Contains(operation.OperationId.ToString()),
+            "the docker guard reports the queued or running compose stack operation");
+
+        var inventory = await ServerModules.Resolve(new IServerModule[] { guard },
+                new HashSet<string> { ServerModules.DockerId })
+            .DescribeAsync(services, context, CancellationToken.None);
+        Check(inventory.Count == 1 && inventory[0].OrphanedWork.Count == 1,
+            "the module inventory publishes the same unresolved work the gate would refuse");
+    }
+    finally
+    {
+        try { Directory.Delete(root, true); } catch (IOException) { }
+    }
+}
+
+// The web server guard reads its own ledger, and asking must not reconcile anything by itself.
+{
+    var root = Path.Combine(Path.GetTempPath(), "rk-gate-webserver-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(Path.Combine(root, "data"));
+    try
+    {
+        var hostBuilder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
+        var context = ServerModuleContext.Create(hostBuilder.Configuration, hostBuilder.Environment, "sqlite");
+        var store = new RelaxKonOS.Server.WebsitePublishing.WebsitePublicationStore(hostBuilder.Environment);
+        store.Start(new RelaxKonOS.Protocol.WebsitePublishing.PublishWebsiteRequest(Guid.NewGuid(),
+                "nginx-1", "example.test", null, null, true, true, true),
+            "actor", "gate-key", out _);
+
+        var guard = new RelaxKonOS.Server.Startup.Modules.WebServerModule();
+        using var services = new ServiceCollection().BuildServiceProvider();
+        var orphaned = await guard.InspectOrphanedWorkAsync(services, context, CancellationToken.None);
+        Check(orphaned.Count == 1 && orphaned[0].ModuleId == ServerModules.WebServerId
+                && orphaned[0].Description.Contains("example.test"),
+            "the web server guard reports the queued site publication");
+        Check(new RelaxKonOS.Server.WebsitePublishing.WebsitePublicationStore(hostBuilder.Environment).Pending().Count == 1,
+            "inspecting the publication ledger never interrupts the operation");
+    }
+    finally
+    {
+        try { Directory.Delete(root, true); } catch (IOException) { }
+    }
+}
+
+// The proxy guard treats an unreadable publication authority as unknown, never as "nothing to do".
+{
+    var hostBuilder = WebApplication.CreateBuilder();
+    var context = ServerModuleContext.Create(hostBuilder.Configuration, hostBuilder.Environment, "sqlite");
+    var root = Path.Combine(Path.GetTempPath(), "rk-gate-proxy-" + Guid.NewGuid().ToString("N"));
+    var state = Path.Combine(root, "state");
+    Directory.CreateDirectory(state);
+    try
+    {
+        var collection = new ServiceCollection();
+        collection.AddDataProtection();
+        collection.AddSingleton<RelaxKonOS.Server.Proxy.IProxyPlatformPaths>(new GateProxyPaths(root));
+        collection.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoPublicationStore>();
+        using var services = collection.BuildServiceProvider();
+        var guard = new RelaxKonOS.Server.Startup.Modules.ProxyModule();
+
+        var clean = await guard.InspectOrphanedWorkAsync(services, context, CancellationToken.None);
+        Check(clean.Count == 0, "no published runtime leaves nothing orphaned in the proxy module");
+
+        await File.WriteAllBytesAsync(Path.Combine(state, "mihomo-publication.protected"), [1, 2, 3, 4]);
+        var unknown = await guard.InspectOrphanedWorkAsync(services, context, CancellationToken.None);
+        Check(unknown.Count == 1 && unknown[0].Description.Contains("cannot be read"),
+            "an unreadable publication authority blocks deactivation instead of reporting no work");
+    }
+    finally
+    {
+        try { Directory.Delete(root, true); } catch (IOException) { }
+    }
+}
+
 foreach (var enabled in new[] { true, false })
 {
     var builder = WebApplication.CreateBuilder();
@@ -224,6 +424,10 @@ foreach (var enabled in new[] { true, false })
     // Core-owned Docker transport: deployments, the runtime installer and managed-runtime downloads
     // need the Engine whether or not the Docker manager is enabled.
     builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerEngineService, NoDockerEngine>();
+    // Core-owned Compose ledger: the deactivation gate reads it while the Docker manager is disabled,
+    // and the module's coordinator is its only writer.
+    builder.Services.Configure<RelaxKonOS.Server.Docker.DockerComposeOptions>(builder.Configuration.GetSection("DockerCompose"));
+    builder.Services.AddSingleton<RelaxKonOS.Server.Docker.DockerStackOperationStore>();
     // Core-owned web server manager: application deployment and the component center use it, so the
     // WebServer module must not be the thing that registers it.
     builder.Services.AddSingleton<RelaxKonOS.Server.WebServer.IWebServerManager, NoWebServerManager>();
@@ -361,6 +565,35 @@ sealed class FakeModule(string id, IReadOnlyList<string> requires, IReadOnlyList
     public IReadOnlyList<string> Requires => requires;
     public void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context) { }
     public void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context) { }
+}
+
+/// <summary>A module that claims durable work, so the gate can be exercised without real ledgers.</summary>
+sealed class FakeDurableModule(string id, params ServerModuleOrphanedWork[] orphaned)
+    : IServerModule, IServerModuleDeactivationGuard
+{
+    public int Inspections { get; private set; }
+    public string Id => id;
+    public IReadOnlyList<string> Capabilities => [];
+    public IReadOnlyList<string> Requires => [];
+    public void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context) { }
+    public void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context) { }
+
+    public ValueTask<IReadOnlyList<ServerModuleOrphanedWork>> InspectOrphanedWorkAsync(
+        IServiceProvider services, ServerModuleContext context, CancellationToken cancellationToken)
+    {
+        Inspections++;
+        return ValueTask.FromResult<IReadOnlyList<ServerModuleOrphanedWork>>(orphaned);
+    }
+}
+
+/// <summary>Scratch directories so the proxy publication guard reads a file the test controls.</summary>
+sealed class GateProxyPaths(string root) : RelaxKonOS.Server.Proxy.IProxyPlatformPaths
+{
+    public string GetEngineVersionsDirectory(string engineId) => Path.Combine(root, "engines", engineId, "versions");
+    public string GetEngineDataDirectory(string engineId) => Path.Combine(root, "engines", engineId, "data");
+    public string GetProtectedConfigurationDirectory() => Path.Combine(root, "config");
+    public string GetStateDirectory() => Path.Combine(root, "state");
+    public string GetSanitizedLogDirectory() => Path.Combine(root, "logs");
 }
 
 sealed class NoAuthentication(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)
