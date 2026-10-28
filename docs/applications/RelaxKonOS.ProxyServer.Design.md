@@ -3,6 +3,7 @@
 > 组件中心入口调整（2026-10-24，桌面已接入、端到端待验收）：桌面 sing-box 生命周期、版本目录与领域恢复入口已迁入[组件中心](../platform/RelaxKonOS.ComponentCenter.Design.md)，由 CC-03 追踪；代理服务端保留业务配置、发布、服务启停、配置回滚及管理跳转。Android 页面保持其应用内实现。下文领域事务记录仍有效，不能将桌面入口迁移等同于新增平台验收。
 
 > 状态：首版实现与待验收设计；已实现范围见 §13，真实平台验收尚未完成。
+> 模块归属（2026-10-28）：`/api/v1.0/proxy-server/*`、`ProxyServerService` 与凭据过期循环由 `relaxkonos.proxy` 提供（能力 `server.proxy-server`，仍受 System Mode 限制）。`SingBoxRuntimeService`、`ProxyServerStore`、`ProxyServerRuntimeAuthorizationProvider` 留在 Core：组件中心、安装域与任务编排直接驱动 sing-box 的安装、对账与恢复，禁用本界面不会让这些路径失去服务。
 > 应用名称：代理服务端 / Proxy Server
 > 应用 ID：`relaxkonos.proxy-server`（拟定）
 > 首选内核：sing-box；管理端：Avalonia；服务端：RelaxKonOS.Server。

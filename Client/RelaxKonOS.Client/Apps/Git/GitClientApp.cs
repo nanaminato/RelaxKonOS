@@ -28,6 +28,7 @@ public sealed class GitClientApp : RemoteApplicationBase
         new AppId("relaxkonos.git"), "Project Editor", "0.3.0", "\U0001f4bb",
         "Edit project files and manage Git repositories on the RelaxKonOS Server",
         [AppPermissions.ServerGitRead, AppPermissions.ServerGitManage, AppPermissions.ServerFilesRead, AppPermissions.ServerFilesWrite],
+        ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.Git]),
         InstancePolicy: ApplicationInstancePolicy.MultiWindow);
 
     public override void Activate(AppContext context)

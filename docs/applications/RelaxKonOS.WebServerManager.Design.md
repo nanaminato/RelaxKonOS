@@ -1,5 +1,7 @@
 ﻿# RelaxKonOS WebServerManager / Nginx 集成设计
 
+> **模块归属（2026-10-28）**：`/api/v1.0/webservers/*`、`/api/v1.0/website-publications/*`、站点发布事务与其后台协调器归官方模块 `relaxkonos.webserver`，默认启用，并硬依赖 `relaxkonos.certificates`。**Nginx 的读状态与 conf.d 集成实现留在 Core**（`IWebServerManager`/`NginxWebServerManager`），因为应用部署的站点发布、组件中心的 Nginx 组件状态与安装域都直接使用它；禁用本模块只是不再提供 Web Server Manager 界面与站点发布事务，不会停止或修改现有 Nginx 及其站点配置。详见[模块设计实施记录](../architecture/RelaxKonOS.ModulesAndExtensions.Design.md#certificate-与-webserver-模块2026-10-28)。
+
 > 当前逐组件实施状态与 Nginx 平台边界见[组件中心实施进度](../platform/RelaxKonOS.ComponentCenter.Progress.md)；下文历史切片的验收范围保持原记录。
 
 > 2026-10-27 当前 Windows 日常安装入口：组件中心从 nginx.org 下载页提供多版本选择，默认稳定分支；支持服务器下载、本机下载后上传、本机文件、服务器文件及官方下载链接。已有文件不要求建立签名目录或先联网重下归档；Helper 仍限制归档路径/大小并执行原生版本与配置检查。安装后版本由实际 `nginx -v` 报告，不依赖是否存在固定归档计划回执。旧的单一默认归档仍是原受保护固定归档路径的配置，不再限制日常版本选择。此次未新增覆盖已有 Nginx 的升级事务，真实服务安装/切换尚未验收，见[当前进度](../platform/RelaxKonOS.ComponentCenter.Progress.md)。

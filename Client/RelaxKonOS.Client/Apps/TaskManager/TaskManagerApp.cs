@@ -31,6 +31,10 @@ public sealed class TaskManagerApp : RemoteApplicationBase
         IconGlyph: "📊",
         Description: "View CPU, memory, disk, network and GPU usage and the process list; end tasks here",
         RequestedPermissions: [AppPermissions.ServerMetricsRead, AppPermissions.ServerProcessesManage],
+        // Both tabs read the system-performance module; a Server without it has no route behind this
+        // application, so the Host refuses the launch instead of opening an empty window.
+        ServerRequirements: new ApplicationServerRequirements(
+            Capabilities: [RelaxKonOS.Protocol.Common.ServerCapabilities.Metrics, RelaxKonOS.Protocol.Common.ServerCapabilities.Processes]),
         InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
     public override void Activate(AppContext context)

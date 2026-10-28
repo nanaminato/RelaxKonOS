@@ -41,7 +41,7 @@ var kestrelCertificates = builder.ConfigureHostListeners(serverModeResolver);
 
 // Persisted host secrets must survive upgrades that change the content root.
 builder.Services.AddHostDataProtection();
-builder.AddProxyServices();
+builder.AddProxyRuntimeServices();
 var forwardedHeaders = builder.AddServerAuthentication();
 builder.AddDeploymentServices();
 var (linuxPamTransport, privilegedHelperOptions) = builder.AddHostIdentity(serverModeResolver, userExecutionBackend);
@@ -57,17 +57,21 @@ using var identityHostLock = storageProvider == "sqlite"
     ? StorageStartup.AcquireIdentityHostLock(Path.Combine(builder.Environment.ContentRootPath, storageOpts.DatabasePath)) : null;
 builder.AddServerStorage(storageOpts, storageProvider);
 builder.AddWorkspaceServices();
-serverModules.ConfigureServices(builder);
+// Modules register after the storage provider is resolved: a module whose persistence exists for
+// one provider only must be able to say so without duplicating the "default is sqlite" rule.
+var serverModuleContext = ServerModuleContext.Create(builder.Configuration, builder.Environment, storageProvider);
+serverModules.ConfigureServices(builder, serverModuleContext);
 
 var app = builder.Build();
 if (await app.RunMaintenanceAsync(builder, serverModeResolver)) return;
 app.Logger.LogInformation("Authentication configuration loaded. ServerMode={ServerMode} LinuxPamTransport={LinuxPamTransport} PrivilegedHelperPathConfigured={PrivilegedHelperPathConfigured} UserExecutionBackend={UserExecutionBackend}",
     serverModeResolver.Mode, linuxPamTransport, !string.IsNullOrWhiteSpace(builder.Configuration["PrivilegedHelper:HelperPath"]), userExecutionBackend);
 IdentityServiceRegistration.ReportUserExecutionBackend(app.Logger, userExecutionBackend, serverModeResolver.Mode, privilegedHelperOptions);
+app.Logger.LogInformation("Server modules enabled: {ServerModules}", serverModules.Describe());
 if (eventAlertsOptions.Enabled)
     app.Services.GetRequiredService<RelaxKonOS.Server.Hubs.EventAlertNotificationHub>().Attach();
 
 app.UseServerRequestObservation(forwardedHeaders);
 await app.InitializeServerStorageAsync(storageProvider);
-app.MapServerApplication(eventAlertsOptions);
+app.MapServerApplication(eventAlertsOptions, serverModuleContext);
 app.Run();

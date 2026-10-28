@@ -246,6 +246,7 @@
     "application-deployment.runtime_mismatch": "ランタイム バージョンがアーカイブと一致しません。",
     "application-deployment.dependency_install_failed": "依存関係のインストールに失敗しました。",
     "application-deployment.build_failed": "イメージのビルドに失敗しました。",
+    "application-deployment.git_build_unavailable": "このサーバーでは Git モジュールが無効なため、Git ソースビルドをデプロイ元として使用できません。",
     "application-deployment.secret_version_missing": "シークレットに保存済みバージョンがありません。",
     "application-deployment.container_create_failed": "コンテナを作成できませんでした。",
     "application-deployment.container_start_failed": "コンテナを起動できませんでした。",

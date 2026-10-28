@@ -270,3 +270,80 @@ Windows 开发机上的验证：Server 与桌面 Client 构建通过（既有警
 本次构建的 `ServerModules.cs` SHA-256 为 `308932ec1875e22eba526451db7596d5eb1f6dbe91f1a0a62ebf9384f1663a77`，测试入口 `Program.cs` 为 `cd794e66bf38575b23aff9a63458ecf39aba332f3d488811762ffdba1f11f63a`。Linux Server/测试程序集分别为 `1f303bd66e5ccb905661703e607cc75e13de1f89dad0e64099b692b5aaa54514`、`bc04103fda7b728440ac7c534a19b76e6086d0cbb7a7bf480e61d13a6f11e9df`；Windows 分别为 `817d33babdc517d328ebc049cd532c680408d85297c8e0d6ae3afedee997dab1`、`3ae98595a49f0b39023a5afbba18284528ab5ba63ce05333883cfb6673cd7670`。测试载荷保存在各账户的 `module-acceptance-20261027` 目录，本地构建在 `artifacts/module-acceptance/`。
 
 这不是完整 Server 进程部署测试：没有以真实用户登录、通过桌面操作 PTY、测试启停后实际会话处置，也没有验证 System/User Mode 的 Helper 与服务重启。因此跨平台隔离宿主通过不等于阶段 2 的端到端验收完成。
+
+### Firewall 与 System Performance 迁移（2026-10-28）
+
+工作树基线 `7780ee7b`（构建时含未提交更改）。本轮把注册框架从「只服务 Terminal 试点」泛化为可逐个迁入的形态，并迁移两个独立领域，其他领域仍沿用原注册方式。
+
+- **框架**：`IServerModule` 增加能力声明，`ConfigureServices`/`MapEndpoints` 接收只读的 `ServerModuleContext`（配置、宿主环境、平台），模块拿不到已构建的 `WebApplication`，因此无法调整 Core 中间件顺序。模块的配置名由模块 ID 派生（`relaxkonos.system-performance` → `Modules:SystemPerformance`），避免 ID 与配置名各自维护而漂移；重复 ID、重复配置名、未知模块、未知设置项、错误布尔值、缺失/循环依赖仍阻止启动。
+- **能力发布**：启动快照的启用集合求和得到能力集合，`ServerDescriptorFactory.ApplyModules` 统一用它裁掉模块拥有的 `server.terminal`/`server.firewall`/`server.metrics`/`server.processes`；登录描述和认证后的 `/server/capabilities` 走同一方法，两处不会再给出不同答案。部署模式仍是上界：模块不能让 User Mode 主机公布特权能力。
+- **新迁移模块**：`relaxkonos.firewall`（`IHostFirewallService` 平台实现、`/api/v1.0/firewall/*`）与 `relaxkonos.system-performance`（指标 Provider、`PerformanceSampler` 及其 HostedService、`PerformanceBroadcastService`、进程采样、`/api/v1.0/system/performance/*`、`/api/v1.0/system/processes/*`、`/hubs/performance`）。
+- **边界修正**：`/api/v1.0/system/network-addresses` 从系统监控端点文件拆到 Core 的 `HostNetworkEndpoints`，因为代理应用只问「这台主机可被哪些地址访问」，与是否启用性能采样无关；`PerformanceBroadcastService` 从事务型 Workspace 注册移入模块，禁用后不再留下喂给不存在 Hub 的后台循环。桌面任务管理器声明 `server.metrics` 与 `server.processes`，与 Terminal 声明 `server.terminal` 同一机制。
+
+配置：`Modules:Firewall:Enabled`、`Modules:SystemPerformance:Enabled`（与既有 `Modules:Terminal:Enabled` 同形），默认全部启用，空配置等同旧行为。变更需重启，不提供安装/卸载、远程更新或在线切换；三个模块的代码与原生依赖仍在 Server 发布包内。
+
+Windows 开发机验证：`Tests/ServerModules` 39 项通过（默认集合、逐模块开关、非法配置、依赖缺失/循环/重复/配置名冲突、注册与能力一致性，以及真实回环 HTTP 在启用时 401、禁用时 404；网络地址路由在两种状态都保持 401）。`RelaxKonOS.Server.Tests` 的 `--squid-only`、`--session-valid-only`、`--performance-only`、`--terminal-contract-only`、`--process-termination-only`、`--alias-only`（68 项）、`--firewall-read-only`、`--settings-only` 均通过。真实 Server 进程（`DOTNET_ENVIRONMENT=Development`，临时端口）在默认配置与 `Modules:SystemPerformance:Enabled=false`+`Modules:Firewall:Enabled=false` 两种环境下启动成功，路由矩阵为：`/healthz` 200、`network-addresses` 401、`terminals` Hub 401 恒在；`performance/info`、`firewall/status`、`performance` Hub 由 401 变为 404。
+
+未完成：Proxy 的交叉依赖（任务编排、网关代理、系统代理）当时仍未拆分（已于同日迁移，见「Proxy / GatewayProxy / ProxyServer 迁移」一节）；Docker 的审计结果见下一节。缺失能力的常驻入口与原因提示、模块管理界面、Linux 实机矩阵、模块组合下的重启/恢复与活动会话处置、发布体积与空闲资源基线均未验证；本文不据此宣布阶段 4 验收通过。
+
+### Git 模块与部署端口拆分（2026-10-28）
+
+依赖审计发现 Git 只有一个跨域调用点：`ApplicationDeploymentService` 用 `GitBuildService.Artifact(owner, buildId)` 判断某次源码构建能否作为镜像来源。因此本轮的拆分方式是给消费方定义端口，而不是给提供方开后门：
+
+- 新增 `IDeploymentImageBuildSource`（`ApplicationDeployments/IDeploymentImageBuildSource.cs`），返回 `Available/NotFound/NotReady/Unavailable` 与构建操作（保留 revision 需要的构建溯源字段）。部署域不再引用 `RelaxKonOS.Server.Git` 的任何服务类型。
+- 注册顺序即语义：Host 先注册 `UnavailableDeploymentImageBuildSource`，`relaxkonos.git` 模块随后注册 `GitDeploymentImageBuildSource` 覆盖它。禁用 Git 时部署给出 `application-deployment.git_build_unavailable`(503)，不再退化成 `image_not_found`(409)，也不会静默改用归档来源；客户端已补三种语言的该错误码文案。
+- `relaxkonos.git` 拥有 `IHostGitCli`、`IGitRepositoryService`、`GitTextEditor`、`GitBuildOptions`/`GitBuildService` 与 `/api/v1.0/git/*`（含 workspace、build 路由），并公布 `server.git`；桌面 Project Editor 声明该能力。构建产物与引擎侧 image id 的比对保持不变（`image_reference_invalid`）。
+
+命令行验证：`Tests/ServerModules` 78 项通过（新增 Git 注册、能力一致性、部署端口实现选择与「未知构建从不返回可部署产物」，以及 `/git/repositories`、`/git/builds/resolve` 的 401/404）。`RelaxKonOS.Server.Tests` 的 `--git-conflicts-only`、`--push-preview-only`、`--alias-only`、`--squid-only` 通过。真实进程：默认配置 `git/repositories` 401 且启动日志列出四个模块；`Modules:Git:Enabled=false` 时 `/git/repositories`、`/git/builds`、`/git/builds/resolve` 全部 404，而 `healthz` 200、`system/performance/info` 与 `server/capabilities` 仍 401。
+
+仍未完成：Git 模块的依赖审计没有覆盖 `GitTextEditor` 对 Core `IFileService` 的依赖（同为 Core，方向正确）；Proxy 当时尚未拆分（已于同日迁移，见末节；Docker、Certificate、WebServer 见后续小节）；模块管理界面与安装/卸载仍属后续阶段。
+
+### Docker 模块与引擎传输边界（2026-10-28）
+
+Docker 不能像 Terminal/Git 那样整体迁入：审计发现同一个 `RelaxKonOS.Server.Docker` 命名空间里混着两层东西——**引擎传输**与**管理界面**。传输层被四个域直接使用：`ApplicationDeployments`（`IDockerEngineService`）、`Installations`（`IDockerEngineService` + `IDockerRuntimeInstaller`）、`ManagedRuntimes`/`Runtimes/FrpRuntimeManager`/`WebServer`/`Proxy`（`IDockerProxyResolver` 与 `IOutboundProxyHttpClientFactory`，即主机出站代理偏好）。若把这些一起塞进模块，禁用 Docker 管理界面会让 Nginx/FRP/Mihomo 与受管运行时下载静默改走直连——正是本设计第 5 节点名的失败模式。
+
+因此边界按「谁需要事实」切分：
+
+- **Core 保留**：`DockerCliEngineOptions`（含为部署构建上下文追加的 `BuildRoots`）、`IDockerEngineService`、`IDockerRuntimeInstaller`、`IDockerProxyResolver`、`IOutboundProxyHttpClientFactory`、`IRuntimeDownloadProxyProvider`。它们回答的是「这台主机怎么执行 docker」与「出站代理是什么」，与是否展示管理器无关。
+- **`relaxkonos.docker` 拥有**：容器/镜像/网络/卷编辑端点、`IDockerComposeService`、`DockerStackOperationStore` 与栈操作协调器（HostedService）、`IDockerEngineProxyConfigurator`/`IDockerDesktopProxyReader`/`IDockerProxyService`、引擎生命周期控制、`IDockerImageMirrorResolver`、`/api/v1.0/docker/*` 与 `server.docker`。
+- 端点分组原有的 `RequireHostFeature(ServerHostFeature.Docker)` 保留：模块启用但宿主模式不支持时仍然拒绝，模块不是特权能力的来源。
+
+命令行验证：`Tests/ServerModules` 96 项通过，新增断言包括「docker 模块从不注册共享引擎传输」（对比 `ConfigureServices` 前后的服务描述符计数）、compose/栈协调器/代理管理器的注册开关、`server.docker` 与 Host 布尔一致，以及 `/docker/status`、`/docker/proxy` 的 401/404。`RelaxKonOS.Server.Tests` 的 `--docker-control-only`、`--docker-resources-only`、`--stack-operations-only`、`--managed-outbound-proxy-only`、`--current-nginx-only`、`--deployment-definition-only`、`--deployment-progress-only`、`--settings-only`、`--alias-only` 通过。真实进程：默认 `docker/status` 与 `docker/proxy` 401；`Modules:Docker:Enabled=false` 时两者 404，而 `git/repositories`、`system/performance/info`、`server/capabilities` 仍 401、`healthz` 200。
+
+已知未解决：`--components-only` 在本机失败（`NginxPackagePlan` 对「卸载未安装包」的问题码序列断言），已在 `HEAD` 的独立工作树复现，属既有失败，与本轮迁移无关；`--mihomo-runtime-only` 需要 Linux x64，本机跳过。栈操作协调器属于恢复职责，当前配置开关没有「有待恢复操作时阻止停用」的门禁，因此禁用模块后中断的栈操作会停留在未协调状态；这是阶段 1 配置开关的已知限制，实施停用门禁前不得把该开关用于生产。
+
+### Certificate 与 WebServer 模块（2026-10-28）
+
+这两个域相互依赖，且都同时包含「基础设施」与「管理界面」：
+
+- **`relaxkonos.certificates`**：ACME 服务与 ARI 续期循环、证书操作/续期记录、`ICertificateManager`、`/api/v1.0/certificates`。Core 保留 `ICertificateStore`、`CertificateMetadataRepository`、`CertificateDeploymentRepository`、`KestrelCertificateRegistry`、`KestrelCertificateStartupService`——监听器能不能起来不属于任何可选模块。
+- **`relaxkonos.webserver`**：`/api/v1.0/webservers/*`、`/api/v1.0/website-publications/*`、`WebsitePublicationStore` 与其后台协调器。Core 保留 `IHostPrivilegeService`、`NginxManagedOptions`、`NginxInstallPackageStore`、`WebServerMetadataRepository`、`WebServerOperationStore`、`NginxWebServerManager`/`IWebServerManager`（部署的站点发布、组件中心的 Nginx 状态、安装域都直接用）。
+- **第一条真实硬依赖**：`relaxkonos.webserver` 声明 `Requires: relaxkonos.certificates`（发布事务要绑定证书）。单独关闭证书会让启动失败并打印 `Server module relaxkonos.webserver requires enabled module relaxkonos.certificates.`；两者一起关闭才允许。这正是设计要求的「缺失/禁用产生稳定诊断，不静默忽略」，也是「不得静默级联停用」的实现方式——不替操作者做决定。
+- **审计中被启动校验抓到的一处遗漏**：`FileHttp01ChallengeStore` 最初跟着 ACME 进了模块，但 Core 的 `NginxWebServerManager` 在构造时要读它的 challenge 根目录来生成 `location ^~ /.well-known/acme-challenge/`，于是 `Modules:Certificates:Enabled=false` 在 Development 的 `ValidateOnBuild` 下直接失败。已把它移回 Core。这条记录说明依赖审计必须覆盖**构造函数**，不能只看服务名。
+
+验证：`Tests/ServerModules` 119 项通过，新增默认集合、能力与 Host 布尔一致、`Requires` 拒绝与「一起关闭才允许」、证书/WebServer 模块不注册 Core 基座（对比描述符计数）、`/api/v1.0/certificates` 的 401/404；WebServer 模块改为无宿主断言（它的发布协调器绑定应用部署域）+ 真实进程验证。`RelaxKonOS.Server.Tests` 的 `--certificate-renewal-records-only`、`--certificate-binding-only`、`--certificate-replay-only`、`--webserver-only`、`--webserver-sites-only`、`--deployment-definition-only`、`--alias-only`、`--session-valid-only` 通过。真实进程：默认 `certificates`/`webservers` 401、`website-publications` 405（仅 POST）；`Modules:WebServer:Enabled=false` 时两者 404 而 `certificates` 仍 401；`certificates` 单独关闭启动即失败；两者一起关闭后 `healthz` 200、两个路由 404、`docker/status` 仍 401。
+
+### Proxy / GatewayProxy / ProxyServer 迁移（2026-10-28）
+
+审计结论：这一域没有「同一命名空间内管理面与传输面分层」的结构，而是 Core 的其它域直接反向依赖代理运行时。因此本轮沿用 Docker 的原则处理——Core 保留被其它域驱动的运行时与发布链路，模块只拿「只回答 HTTP 客户端」的部分。
+
+**Core 保留**（`Startup/ProxyRuntimeRegistration.cs`，由 Host 注册）：
+
+- mihomo 运行时传输：`IProxyPlatformPaths`、`MihomoControllerOptions`、`IProxyControllerSecretStore`、`IMihomoControllerClient`、`IProxyPrivilegedOperations`、`IProxyDiagnosticLogStore`、`MihomoRuntimeManifest`、`IMihomoRuntimeProbe`、`MihomoRuntimeManager`。
+- mihomo 发布台账：`MihomoPublicationStore`、`MihomoRuntimeAuthorizationProvider`、`MihomoSettingsPublicationFiles`、配置/安装/引导/移除四个发布服务，以及 `MihomoPublicationRecoveryService` 恢复循环。理由是 `Installations.MihomoRuntimeInstallationService` 在安装流程里直接驱动这条链路，且中断的发布是「未解决的权威」，不能随 UI 一起消失。
+- 代理设置与系统代理：`IProxySettingsService`/`MihomoSettingsService`、`IHostSystemProxyService`。两个 Core 消费者：安装引导从这些设置里选材；`Docker.DockerProxyResolver` 用它们推导受管出站代理——若随模块消失，禁用代理界面会让 Docker 构建静默回落到直连（正是本设计第 5 节点名的失败模式）。
+- sing-box：`SingBoxRuntimeService`、`ProxyServerStore`、`ProxyServerRuntimeAuthorizationProvider`、`IProxyServerCertificateSource`。`TaskOrchestration` 的 sing-box 观测/对账/恢复域、`Components.SingBoxComponentAdapter`、`RuntimeCatalogEndpoints` 与 `Installations.SingBoxInstallationService` 都直接依赖。
+- 存储适配：`IProxyProfileRepository`、`IProxySubscriptionRepository` 仍按存储提供程序注册在 `StorageStartup`；Core 的配置发布读取前者，缺失时以 `runtime.profile_publication_required` fail-closed。
+
+**`relaxkonos.proxy` 拥有**（`Startup/Modules/ProxyModule.cs`）：引擎适配（`IProxyEngine`/`MihomoEngine`、`IProxyEngineRegistry`）、`IProxyLifecycleService`、操作与审计台账、订阅下载及四个 HttpClient、TUN 安全与恢复入口、`IProxyPlatformService`、`ProxyServerService` 与凭据过期循环、Squid 网关、系统代理守卫、`/api/v1.0/proxy*`、`/api/v1.0/gateway-proxy/*`、`/api/v1.0/proxy-server/*`，以及 `server.proxy`/`server.gateway-proxy`/`server.proxy-server`。
+
+三个应用共享一个模块：Host 描述符只有一个 `Proxy` 布尔，三个平面能力由它投影——网关代理在全平台都回答（不支持时报 `Supported=false` 而不是让应用消失），代理服务器仍受部署模式限制（仅 System Mode）。
+
+**模块上下文新增 `StorageProvider`**：`ServerModuleContext` 现在携带已解析的存储提供程序（不是原始配置值），因为档案/订阅/配置事务服务只在 SQLite 下成立；模块据此注册，避免内存模式出现「服务存在但仓储缺失」的半成品。`Program.cs` 相应把上下文构造移到存储提供程序解析之后，模块因此不必重复「默认是 sqlite」这条规则。
+
+验证：`Tests/ServerModules` **157 项**通过，新增「默认启用 proxy」「能力撤回（三个一起消失）」「模块从不注册共享运行时骨干（对比 5 个服务类型的描述符计数）」「引擎注册表/生命周期/代理服务器/Squid/TUN 的注册开关」「发布恢复循环不随 UI 消失」「存储绑定服务随模块与提供程序双重门控」。`RelaxKonOS.Server.Tests` 的 `--proxy-configuration-only`、`--proxy-controller-only`、`--proxy-geodata-only`、`--proxy-tun-only`、`--system-proxy-only`、`--squid-only`、`--managed-outbound-proxy-only`、`--managed-component-cleanup-only`、`--official-component-releases-only`、`--alias-only`、`--session-valid-only`、`--settings-only`、`--docker-control-only`、`--docker-resources-only`、`--webserver-only`、`--terminal-contract-only` 通过。真实进程：默认配置 `/proxy`、`/proxy/settings`、`/gateway-proxy/squid/status`、`/proxy-server/status` 全部 401；`Modules:Proxy:Enabled=false` 时四者 404、`POST /proxy/runtime/external-detection` 也 404，而 `healthz` 200，`docker/status`、`git/repositories`、`certificates`、`system/performance/info` 仍 401。
+
+已知限制：
+
+- 禁用后 `SystemProxyGuardHostedService` 不再周期性重设系统代理，`ProxyServerExpiryService` 停止清理过期凭据。停用前应先在代理界面关闭系统代理与 TUN；「有待恢复操作时阻止停用」的门禁仍属阶段 1 配置开关的已知缺口，与其他模块一致。
+- `Storage:Provider=memory` 的启动在本机仍失败：`Git` 的 `LocalGitRepositoryService` 需要只有 sqlite 分支才注册的 `IDbContextFactory`。这是既有问题（本轮不新增该失败点），也说明内存模式目前不是可用的启动组合。

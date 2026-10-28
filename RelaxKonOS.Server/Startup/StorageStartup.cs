@@ -38,12 +38,12 @@ internal static class StorageStartup
             builder.Services.AddScoped<RelaxKonOS.Server.Secrets.ISecretStore, RelaxKonOS.Server.Secrets.DataProtectionSecretStore>();
             builder.Services.AddScoped<RelaxKonOS.Server.Tunnels.ITunnelService, RelaxKonOS.Server.Tunnels.TunnelService>();
             builder.Services.AddScoped<RelaxKonOS.Server.Tunnels.ITunnelAudit, RelaxKonOS.Server.Tunnels.TunnelAudit>();
+            // Proxy state repositories are storage adapters, so they stay with the provider choice.
+            // IProxyProfileRepository is also read by Core's mihomo configuration publication, which
+            // must keep working when the proxy module is disabled. The services layered on top are
+            // registered by relaxkonos.proxy (Startup/Modules/ProxyModule.cs).
             builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyProfileRepository, RelaxKonOS.Server.Proxy.SqliteProxyProfileRepository>();
-            builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyProfileService, RelaxKonOS.Server.Proxy.ProxyProfileService>();
             builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxySubscriptionRepository, RelaxKonOS.Server.Proxy.SqliteProxySubscriptionRepository>();
-            builder.Services.AddScoped<RelaxKonOS.Server.Proxy.IProxySubscriptionService, RelaxKonOS.Server.Proxy.ProxySubscriptionService>();
-            builder.Services.AddScoped<RelaxKonOS.Server.Proxy.IProxyConfigurationTransactionService, RelaxKonOS.Server.Proxy.ProxyConfigurationTransactionService>();
-            builder.Services.AddScoped<RelaxKonOS.Server.Proxy.IProxyConfigurationService, RelaxKonOS.Server.Proxy.ProxyConfigurationService>();
             // The Docker proxy preference opens its own connection per operation, so it is a Singleton
             // like the proxy subscription repository rather than bound to a request scope.
             builder.Services.AddSingleton<IDockerProxySettingsRepository, RelaxKonOS.Server.Storage.Sqlite.SqliteDockerProxySettingsRepository>();

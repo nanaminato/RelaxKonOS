@@ -1,5 +1,7 @@
 # RelaxKonOS GitClient 模块设计
 
+> **模块归属（2026-10-28）**：Git 客户端与源码构建归官方模块 `relaxkonos.git`，默认启用。设置 `Modules:Git:Enabled=false` 并重启后，`IGitRepositoryService`、`GitBuildService`、`/api/v1.0/git/*`（含 workspace/build 路由）与 `server.git` 能力一并消失，桌面项目编辑器因缺少该能力在启动前被拒绝。部署域通过 `IDeploymentImageBuildSource` 端口询问某次源码构建能否作为镜像来源，因此禁用 Git 时部署返回 `application-deployment.git_build_unavailable`(503)，不会误报「找不到镜像」，也不会改用归档来源。该开关不删除服务器上的仓库、构建账本或项目文件；详见[模块设计实施记录](../architecture/RelaxKonOS.ModulesAndExtensions.Design.md#git-模块与部署端口拆分2026-10-28)。
+
 > **项目编辑器首版已实现**：`relaxkonos.git` 已整合项目文件树、多标签编辑、Commit 侧栏、Diff 标签和底部 Git 工具区，显示名称为“项目编辑器”。入口、草稿保护、条件保存和实际验证范围见 [实施记录](./RelaxKonOS.GitEditor.Progress.md)，后续目标见 [改造设计](./RelaxKonOS.GitEditor.Design.md)。下文保留 Git 领域能力和协议说明；早期按页面切换的壳布局已由项目编辑器替代。
 
 > 内置项目编辑器：参考 IDEA 的项目工具窗口与 MyGit 的变更审阅流程，每个项目拥有独立窗口。文件编辑经 Files API，仓库选择、分支切换、提交、拉取（含冲突解决）、推送、历史和 Revert 等经 Git REST API；服务端以有效宿主身份执行，复用宿主权限。

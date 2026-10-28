@@ -246,6 +246,7 @@
     "application-deployment.runtime_mismatch": "运行时版本与归档不匹配。",
     "application-deployment.dependency_install_failed": "安装依赖失败。",
     "application-deployment.build_failed": "构建镜像失败。",
+    "application-deployment.git_build_unavailable": "这台服务器未启用 Git 模块，无法使用 Git 源码构建作为部署来源。",
     "application-deployment.secret_version_missing": "某个密钥尚无已存储的版本。",
     "application-deployment.container_create_failed": "无法创建容器。",
     "application-deployment.container_start_failed": "无法启动容器。",

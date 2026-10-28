@@ -2,6 +2,8 @@
 
 > 当前实现：2026-10-01。Server 统一性能采样、内存历史与 SignalR；进程列表独立按需查询。Android 行为与验收由 [Android 文档](../../Client/RelaxKonOS.Client.Android/docs/README.md) 管理。
 
+> 模块归属（2026-10-28）：性能采样与进程链路由官方模块 `relaxkonos.system-performance` 拥有并默认启用。设置 `Modules:SystemPerformance:Enabled=false` 并重启后，`PerformanceSampler` 后台采样、`/api/v1.0/system/performance/*`、`/api/v1.0/system/processes/*`、`/hubs/performance` 与 `server.metrics`/`server.processes` 能力同时消失；桌面端声明这两项能力，Server 未公布时拒绝启动而不是打开空窗口。宿主网络地址 `/api/v1.0/system/network-addresses` 属于 Core，不受该开关影响。详见[模块设计实施记录](../architecture/RelaxKonOS.ModulesAndExtensions.Design.md#firewall-与-system-performance-迁移2026-10-28)。
+
 ## 性能采样
 
 `ISystemPerformanceSource` 隔离 Windows 原生 API 与 Linux `/proc`、`/sys` 原始读取。`PerformanceSampler` 统一使用相邻计数器和实际单调时间间隔计算速率，每秒采样，保存最多 60 点内存历史；不接入数据库。至少一个订阅者存在或 REST 申请有界 demand 时才采样，无订阅者后清除基线与历史。首次原始读取只建立基线，不把差分未就绪显示为 0%。

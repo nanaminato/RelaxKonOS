@@ -2,6 +2,8 @@
 
 > 文档类型：应用设计与实现规范
 
+> 模块归属（2026-10-28）：本应用的 HTTP 面（`/api/v1.0/proxy*` 与 Squid 网关 `/api/v1.0/gateway-proxy/*`）以及引擎适配、生命周期、订阅下载、TUN 安全、操作/审计台账由 `relaxkonos.proxy` 提供（配置键 `Modules:Proxy:Enabled`，默认启用，能力 `server.proxy`/`server.gateway-proxy`）。mihomo 运行时与发布台账、代理设置、sing-box 运行时留在 Core：安装域、任务编排、组件中心与 Docker 出站代理直接依赖它们，所以禁用模块既不会改变 Docker 构建使用的代理，也不会停止中断发布的恢复。代价是系统代理守卫与代理服务器凭据过期循环随模块停止，停用前请先在界面里关闭系统代理与 TUN。
+
 > 2026-10-27 Windows 安装入口：组件中心直接从 MetaCubeX/mihomo 的 GitHub Releases 提供当前架构的正式版本，可选择服务器/本机下载、本机/服务器文件安装，也可打开官方下载链接自行取得文件。文件安装不要求签名目录注册，原生版本、解压边界和配置检查在后台完成。安装调用已有独立 SCM 宿主，保留配置/控制器凭据，失败进入既有恢复路径；不再把仅 Linux 的签名运行时页面显示给 Windows 用户。Linux 原有签名运行时不变。代码与界面/HTTP 测试通过，尚未实测本次 Windows 真实服务安装、跨版本或 TUN 行为，见[组件实施进度](../platform/RelaxKonOS.ComponentCenter.Progress.md)。
 > 模块名称：RelaxKonOS Proxy Manager
 > 首选代理核心：Mihomo  

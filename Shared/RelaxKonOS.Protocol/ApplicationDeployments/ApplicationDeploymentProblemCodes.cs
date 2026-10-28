@@ -56,6 +56,9 @@ public static class ApplicationDeploymentProblemCodes
     public const string RuntimeMismatch = "application-deployment.runtime_mismatch";
     public const string DependencyInstallFailed = "application-deployment.dependency_install_failed";
     public const string BuildFailed = "application-deployment.build_failed";
+    /// <summary>The requested source build cannot be resolved because the Git module is disabled on
+    /// this Server. Distinct from ImageNotFound so the client can name the real cause.</summary>
+    public const string GitBuildUnavailable = "application-deployment.git_build_unavailable";
     public const string SecretVersionMissing = "application-deployment.secret_version_missing";
 
     // Runtime.

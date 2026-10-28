@@ -1,6 +1,8 @@
 ﻿# RelaxKonOS DockerManager 设计
 
 > 内置 Docker 管理器。它管理 **RelaxKonOS.Server 所在宿主机** 的本地 Docker Engine；客户端只负责本地 UI 渲染，不直连 Docker socket、不保存 Docker 凭据，也不将守护进程 API 暴露到网络。
+
+> **模块归属（2026-10-28）**：容器/镜像/网络/卷编辑、Compose、栈操作协调器、引擎生命周期与 Docker 代理界面归官方模块 `relaxkonos.docker`，默认启用；设置 `Modules:Docker:Enabled=false` 并重启后，`/api/v1.0/docker/*` 与 `server.docker` 能力消失，桌面 Docker Manager 因缺少该能力在启动前被拒绝。**引擎传输本身留在 Core**：应用部署、Docker 运行时安装、Nginx/Mihomo/FRP 与受管运行时下载都直接使用 `IDockerEngineService`、`IDockerRuntimeInstaller`、`IDockerProxyResolver` 与 `IOutboundHttpClientFactory`，禁用管理界面既不会卸载 Docker，也不会让这些下载意外走直连。详见[模块设计实施记录](../architecture/RelaxKonOS.ModulesAndExtensions.Design.md#docker-模块与引擎传输边界2026-10-28)。
 >
 > 当前状态：**已实现**本机 Engine 状态、容器/镜像/网络/卷列表、容器生命周期与安全的原地重命名，以及网络、卷和容器的只读详情查看。Compose 编排支持项目列表、定义预览、`up` 部署、服务查看、项目级启动/停止/重启/删除，以及**持久 Stack 操作记录**（断开请求、App 被回收或服务端重启后仍可查询结果、按项目互斥、幂等重放与部分失败分类）。编排会展示 Compose 文件来源；点击来源可路由至内置文件浏览器。RelaxKonOS 部署的 Compose 文件与操作账本保存在服务器受管目录，停止后的项目仍会显示。桌面端已接入 Ubuntu Docker Engine 安装与可恢复任务进度；终端、流式统计和审计仍为**设计中**。
 >

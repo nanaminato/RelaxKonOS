@@ -20,7 +20,8 @@ internal static class WorkspaceServiceRegistration
         });
         builder.Services.AddSingleton<GuardianLogSubscriptionRegistry>();
         builder.Services.AddHostedService<GuardianLogBroadcastService>();
-        builder.Services.AddHostedService<PerformanceBroadcastService>();
+        // PerformanceBroadcastService belongs to the system-performance module: it only feeds that
+        // module's PerformanceHub and must stop sampling when the module is disabled.
         builder.Services.AddSingleton(sp => new RelaxKonOS.Server.Settings.ServerRuntimeSettingsStore(Path.Combine(builder.Environment.ContentRootPath, "data", "server-runtime-settings.json")));
         builder.Services.AddSingleton<SettingsSubscriptions>();
         builder.Services.AddHostedService<SettingsChangesBroadcastService>();

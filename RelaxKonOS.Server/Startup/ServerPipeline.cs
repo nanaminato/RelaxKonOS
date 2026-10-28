@@ -32,7 +32,8 @@ internal static class ServerPipeline
         app.UseMiddleware<RequestObservationMiddleware>();
     }
 
-    public static void MapServerApplication(this WebApplication app, RelaxKonOS.Server.EventAlerts.EventAlertsOptions eventAlertsOptions)
+    public static void MapServerApplication(this WebApplication app, RelaxKonOS.Server.EventAlerts.EventAlertsOptions eventAlertsOptions,
+        ServerModuleContext moduleContext)
     {
         if (app.Environment.IsDevelopment())
         {
@@ -63,35 +64,24 @@ internal static class ServerPipeline
         app.MapWorkspaceEndpoints();
         app.MapHostSettingsEndpoints();
         app.MapBrowserEndpoints();
-        app.MapSystemMonitorEndpoints();
-        app.MapDockerEndpoints();
-        app.MapDockerProxyEndpoints();
+        app.MapHostNetworkEndpoints();
         app.MapProcessGuardianEndpoints();
-        app.MapWebServerEndpoints();
-        app.MapWebsitePublicationEndpoints();
         app.MapFileServiceEndpoints();
-        app.MapCertificateEndpoints();
-        app.MapGitEndpoints();
-        app.MapGitBuildEndpoints();
         app.MapInstallationEndpoints();
         app.MapApplicationDeploymentEndpoints();
         app.MapBackupRecoveryEndpoints();
         app.MapTunnelEndpoints();
         if (eventAlertsOptions.Enabled) app.MapEventAlertEndpoints();
-        app.MapProxyEndpoints();
-        app.MapGatewayProxyEndpoints();
-        app.MapProxyServerEndpoints();
         app.MapRuntimeCatalogEndpoints();
         app.MapComponentEndpoints();
         app.MapTaskPlanningEndpoints();
         app.MapTaskExecutionEndpoints();
-        if (OperatingSystem.IsLinux() || OperatingSystem.IsWindows())
-            app.MapFirewallEndpoints();
-        app.Services.GetRequiredService<ServerModules>().MapEndpoints(app);
+        // Module-owned routes, HostedServices and Hubs come from the same frozen startup snapshot;
+        // a disabled module leaves nothing behind here.
+        app.Services.GetRequiredService<ServerModules>().MapEndpoints(app, moduleContext);
         app.MapHub<GuardianLogsHub>(RelaxKonOSEndpoints.GuardianLogsHubPath, options => options.CloseOnAuthenticationExpiration = true);
         app.MapHub<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentLogsHub>(RelaxKonOSEndpoints.ApplicationDeploymentLogsHubPath,
             options => options.CloseOnAuthenticationExpiration = true);
-        app.MapHub<PerformanceHub>(RelaxKonOSEndpoints.PerformanceHubPath, options => options.CloseOnAuthenticationExpiration = true);
         app.MapHub<SettingsChangesHub>(RelaxKonOSEndpoints.SettingsChangesHubPath, options => options.CloseOnAuthenticationExpiration = true);
         if (eventAlertsOptions.Enabled)
             app.MapHub<RelaxKonOS.Server.Hubs.EventAlertsHub>("/hubs/event-alerts", options => options.CloseOnAuthenticationExpiration = true);
