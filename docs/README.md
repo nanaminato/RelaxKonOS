@@ -13,6 +13,8 @@ Android 的设计、功能、支持范围和发布要求统一维护在 [Android
 - [虚拟系统盘实施计划](./architecture/RelaxKonOS.VirtualSystemDrive.Goal.md)
 - [虚拟系统盘契约](./architecture/RelaxKonOS.VirtualSystemDrive.Contracts.md)
 - [功能模块与双端应用扩展设计及实施路线（规划）](./architecture/RelaxKonOS.ModulesAndExtensions.Design.md)
+- [Server 模块闲时卸载与按需加载（首个运行时切片已实施）](./architecture/RelaxKonOS.ServerModuleResidency.Design.md)
+- [代码库优化与拆分计划](./architecture/RelaxKonOS.CodebaseOptimization.Design.md)
 - [注册表与配置同步](./architecture/RelaxKonOS.Registry.md)
 - [登录别名实施计划](./platform/RelaxKonOS.AliasLogin.Goal.md)
 - [权限模型与项目重构规范](./platform/RelaxKonOS.PermissionModel.Refactor.md)
@@ -492,3 +494,5 @@ RelaxKonOS.Server     = Cloud Backend
 | [`ManagedRuntimes.Design`](./platform/RelaxKonOS.ManagedRuntimes.Design.md) | 内置应用安装/卸载/多版本更新、可信发布源与补齐任务 |
 | [`Develop`](./development/RelaxKonOS.Develop.md) | 开发者快速上手、代码结构与调试指南 |
 | [`DeveloperMode`](./development/RelaxKonOS.DeveloperMode.md) | 开发模式、DevCli 与应用包发布 |
+
+Tailscale 管理器：桌面设备/条件控制/操作重开、未知操作人工核对关账与服务端控制链已实现；首次网页登录、真实宿主验收和运行时生命周期尚未完成，见 [设计与实施记录](applications/RelaxKonOS.Tailscale.Design.md)。

@@ -1,4 +1,4 @@
-﻿using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Server.BackupRecovery;
 using RelaxKonOS.Server.EventAlerts;
 
@@ -33,6 +33,7 @@ public static class ServerDescriptorFactory
             capabilities.Add(ServerCapabilities.Components);
         if (hostCapabilities.Metrics) capabilities.Add(ServerCapabilities.Metrics);
         if (hostCapabilities.Processes) capabilities.Add(ServerCapabilities.Processes);
+        if (enabledModuleCapabilities.Contains(ServerCapabilities.Tailscale)) capabilities.Add(ServerCapabilities.Tailscale);
         if (hostCapabilities.Git) capabilities.Add(ServerCapabilities.Git);
         if (hostCapabilities.Terminal) capabilities.Add(ServerCapabilities.Terminal);
         if (hostCapabilities.Guardian) capabilities.Add(ServerCapabilities.Guardian);

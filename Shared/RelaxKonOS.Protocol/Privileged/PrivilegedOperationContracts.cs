@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 using RelaxKonOS.Protocol.Settings;
 using RelaxKonOS.Protocol.Observability;
 using RelaxKonOS.Protocol.Proxy;
@@ -114,6 +114,13 @@ public enum PrivilegedOperationKind
     GitPackageInstall,
     DockerEngineInstall,
     HostTimeRead,
+    TailscaleStatus,
+    TailscaleControlRead,
+    TailscaleControlExecute,
+    TailscaleControlReceipt,
+    TailscaleRecoveryRead,
+    TailscaleRecoveryClose,
+    TailscaleRecoveryReceipt,
     HostNetworkRead,
     HostNetworkApply,
     HostNetworkConfirm,
@@ -351,6 +358,8 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("correlation")] CorrelationContext? Correlation = null,
     [property: JsonPropertyName("version")] string Version = PrivilegedOperationProtocol.Version,
     [property: JsonPropertyName("managedRuntime")] ManagedRuntimeRequest? ManagedRuntime = null,
+    [property: JsonPropertyName("tailscaleRecovery")] RelaxKonOS.Protocol.Tailscale.TailscaleRecoveryCommand? TailscaleRecovery = null,
+    [property: JsonPropertyName("tailscaleChange")] RelaxKonOS.Protocol.Tailscale.TailscalePrepareRequest? TailscaleChange = null,
     [property: JsonPropertyName("networkChange")] HostNetworkChange? NetworkChange = null,
     [property: JsonPropertyName("networkCheckpoint")] string? NetworkCheckpoint = null,
     [property: JsonPropertyName("processId")] int? ProcessId = null,
@@ -381,6 +390,11 @@ public sealed record PrivilegedOperationResult(
     [property: JsonPropertyName("hostEnvironment")] PrivilegedEnvironmentState? HostEnvironment = null,
     [property: JsonPropertyName("systemProxyCapabilities")] ProxySystemProxyCapabilities? SystemProxyCapabilities = null,
     [property: JsonPropertyName("hostTime")] HostTimeState? HostTime = null,
+    [property: JsonPropertyName("tailscaleRecovery")] RelaxKonOS.Protocol.Tailscale.TailscaleRecoverySnapshot? TailscaleRecovery = null,
+    [property: JsonPropertyName("tailscaleClosure")] RelaxKonOS.Protocol.Tailscale.TailscaleRecoveryClosure? TailscaleClosure = null,
+    [property: JsonPropertyName("tailscaleControl")] RelaxKonOS.Protocol.Tailscale.TailscaleControlSnapshot? TailscaleControl = null,
+    [property: JsonPropertyName("tailscaleResult")] RelaxKonOS.Protocol.Tailscale.TailscaleControlResult? TailscaleResult = null,
+    [property: JsonPropertyName("tailscaleStatus")] RelaxKonOS.Protocol.Tailscale.TailscaleStatusDto? TailscaleStatus = null,
     [property: JsonPropertyName("hostNetwork")] HostNetworkSnapshot? HostNetwork = null,
     [property: JsonPropertyName("networkCheckpoint")] string? NetworkCheckpoint = null,
     [property: JsonPropertyName("hostIdentity")] HostIdentityState? HostIdentity = null,

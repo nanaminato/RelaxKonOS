@@ -103,6 +103,9 @@ fun MobileNavHost(
                 onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_TUNNELS -> TunnelsScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_CERTIFICATES -> CertificatesScreen(onBack = { navigator.pop() }, active = true, initialOperationId = taskTarget, modifier = Modifier.fillMaxSize())
+            Routes.MANAGE_COMPONENTS -> app.relaxkonos.mobile.ui.manage.components.ComponentCenterScreen(
+                owner = session, onBack = { navigator.pop() },
+                onOpenRoute = { taskTarget = null; navigator.push(it) }, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_OPERATIONS -> OperationsScreen(owner = session, onBack = { navigator.pop() },
                 startOnAlerts = container.openAlertsOnNextScreen,
                 onStartOnAlertsConsumed = container::consumeAlertScreen,

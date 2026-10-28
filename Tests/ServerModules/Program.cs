@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using RelaxKonOS.Protocol.Common;
@@ -12,9 +13,11 @@ using RelaxKonOS.Server.BackupRecovery;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.EventAlerts;
 using RelaxKonOS.Server.HostMode;
+using RelaxKonOS.Server.Residency;
 using RelaxKonOS.Server.Startup;
 using RelaxKonOS.Server.Terminal;
 using RoyalTerminal.Terminal;
+using System.Security.Claims;
 using System.Text.Encodings.Web;
 
 // Fixture writer for the process-level deactivation check, so the ledger under test is produced by the
@@ -110,7 +113,7 @@ foreach (var disabled in new[] { ServerModules.TerminalId, ServerModules.Firewal
     var name = ServerModules.ConfigurationName(disabled);
     var modules = ServerModules.Create(Config(($"Modules:{name}:Enabled", "false")));
     Check(!modules.IsEnabled(disabled), $"explicit false disables {disabled}");
-    Check(modules.EnabledIds.Count == 7, $"other modules stay enabled when {disabled} is disabled");
+    Check(modules.EnabledIds.Count == defaults.EnabledIds.Count - 1, $"other modules stay enabled when {disabled} is disabled");
     Check(ServerModules.Create(Config(($"Modules:{name}:Enabled", "true"))).IsEnabled(disabled),
         $"explicit true keeps {disabled}");
 }
@@ -119,7 +122,7 @@ foreach (var disabled in new[] { ServerModules.TerminalId, ServerModules.Firewal
 Reject(() => ServerModules.Create(Config(("Modules:Certificates:Enabled", "false"))),
     "disabling a module that another enabled module requires stops startup");
 Check(ServerModules.Create(Config(("Modules:Certificates:Enabled", "false"), ("Modules:WebServer:Enabled", "false")))
-        .EnabledIds.Count == 6,
+        .EnabledIds.Count == defaults.EnabledIds.Count - 2,
     "the dependent module can be disabled together with its dependency");
 Check(ServerModules.Create(Config(("Modules:WebServer:Enabled", "false"))).IsEnabled(ServerModules.CertificatesId),
     "disabling the dependent module leaves the certificate module enabled");
@@ -131,7 +134,7 @@ Check(ServerModules.Create(Config(("Modules:Firewall:Enabled", "false")))
 // Capability sets follow the snapshot: a disabled module contributes nothing.
 Check(defaults.Capabilities.SetEquals([ServerCapabilities.Terminal, ServerCapabilities.Firewall,
         ServerCapabilities.Metrics, ServerCapabilities.Processes, ServerCapabilities.Git, ServerCapabilities.Docker,
-        ServerCapabilities.Certificates, ServerCapabilities.WebServer,
+        ServerCapabilities.Certificates, ServerCapabilities.WebServer, ServerCapabilities.Tailscale,
         ServerCapabilities.Proxy, ServerCapabilities.GatewayProxy, ServerCapabilities.ProxyServer]),
     "default capability set is exactly the declared module capabilities");
 
@@ -241,7 +244,7 @@ Check(defaults.Capabilities.SetEquals([ServerCapabilities.Terminal, ServerCapabi
 
         var inventory = await ServerModules.Create(new ConfigurationBuilder().Build())
             .DescribeAsync(services, context, CancellationToken.None);
-        Check(inventory.Count == 8 && inventory.All(item => item.Enabled && item.OrphanedWork.Count == 0),
+        Check(inventory.Count == defaults.EnabledIds.Count && inventory.All(item => item.Enabled && item.OrphanedWork.Count == 0),
             "every official module is listed as enabled with nothing outstanding");
         Check(inventory.Single(item => item.Id == ServerModules.CertificatesId).RequiredBy.SequenceEqual([ServerModules.WebServerId]),
             "an enabled dependent is reported as a reason its dependency cannot be disabled");
@@ -481,8 +484,14 @@ foreach (var enabled in new[] { true, false })
         $"performance broadcast background service enabled={enabled}");
     Check(builder.Services.Any(service => service.ServiceType == typeof(RelaxKonOS.Server.Git.IGitRepositoryService)) == enabled,
         $"git repository service registration enabled={enabled}");
-    Check(builder.Services.Any(service => service.ServiceType == typeof(RelaxKonOS.Server.Git.GitBuildService)) == enabled,
-        $"git build ledger registration enabled={enabled}");
+    Check(builder.Services.Any(service => service.ServiceType == typeof(RelaxKonOS.Server.Git.IGitBuildService)) == enabled,
+        $"git build ledger gate enabled={enabled}");
+    // Residency boundary: the Host holds lease-taking gates, never the releasable implementations, so
+    // one process can drop the module's object graph without rebuilding the root container.
+    Check(builder.Services.All(service => service.ServiceType != typeof(RelaxKonOS.Server.Git.GitBuildService)
+            && service.ServiceType != typeof(RelaxKonOS.Server.Git.LocalGitRepositoryService)
+            && service.ServiceType != typeof(RelaxKonOS.Server.Git.HostGitCli)),
+        $"releasable git implementations are not root singletons enabled={enabled}");
     // The deployment domain only knows the port; the Git module replaces the Host's unavailable
     // default. A disabled module must leave the default in place rather than a missing service.
     Check(builder.Services.Any(service => service.ServiceType == typeof(RelaxKonOS.Server.ApplicationDeployments.IDeploymentImageBuildSource)),
@@ -512,13 +521,15 @@ foreach (var enabled in new[] { true, false })
     await using var app = builder.Build();
     var imageBuilds = app.Services.GetRequiredService<RelaxKonOS.Server.ApplicationDeployments.IDeploymentImageBuildSource>();
     Check(imageBuilds.GetType() == (enabled
-            ? typeof(RelaxKonOS.Server.Git.GitDeploymentImageBuildSource)
+            ? typeof(RelaxKonOS.Server.Git.ResidentDeploymentImageBuildSource)
             : typeof(RelaxKonOS.Server.ApplicationDeployments.UnavailableDeploymentImageBuildSource)),
-        $"deployment git build port uses the module implementation only when enabled={enabled}");
+        $"deployment git build port uses the module gate only when enabled={enabled}");
     var unresolved = imageBuilds.Resolve(Guid.NewGuid(), Guid.NewGuid());
-    Check(enabled
-            ? unresolved.Status == RelaxKonOS.Server.ApplicationDeployments.DeploymentImageBuildStatus.NotFound
-            : unresolved.Status == RelaxKonOS.Server.ApplicationDeployments.DeploymentImageBuildStatus.Unavailable,
+    Check(unresolved.Status == (enabled
+            ? RelaxKonOS.Server.ApplicationDeployments.DeploymentImageBuildStatus.NotFound
+            : RelaxKonOS.Server.ApplicationDeployments.DeploymentImageBuildStatus.Unavailable),
+        $"deployment git build port distinguishes a missing build from a missing module enabled={enabled}");
+    Check(unresolved.Status != RelaxKonOS.Server.ApplicationDeployments.DeploymentImageBuildStatus.Available,
         $"unknown build never reports a deployable artifact enabled={enabled}");
     app.UseAuthentication();
     app.UseAuthorization();
@@ -554,6 +565,263 @@ foreach (var enabled in new[] { true, false })
     Check(await GetAsync(client, "/api/v1.0/certificates") == (enabled ? HttpStatusCode.Unauthorized : HttpStatusCode.NotFound),
         $"real certificate route and authorization enabled={enabled}");
     await app.StopAsync();
+}
+
+// Residency: the default rule, the state machine and the Git pilot lease gates
+{
+    var residencyIds = new HashSet<string>(StringComparer.Ordinal) { ServerModules.GitId };
+    var residencyContextBuilder = WebApplication.CreateBuilder();
+    var residencyContext = ServerModuleContext.Create(residencyContextBuilder.Configuration,
+        residencyContextBuilder.Environment, "sqlite");
+
+    var residencyDefaults = ModuleResidencyOptions.Parse(empty, residencyIds, residencyIds);
+    Check(residencyDefaults.Default.Strategy == ModuleResidencyStrategy.IdleDelayed
+          && residencyDefaults.Default.IdleGracePeriod == TimeSpan.FromMinutes(5),
+        "residency defaults to idle delayed release with a provisional five minute grace period");
+    Check(residencyDefaults.For(ServerModules.GitId).Strategy == ModuleResidencyStrategy.IdleDelayed,
+        "a module without an override inherits the server-level rule");
+
+    var overrideOptions = ModuleResidencyOptions.Parse(Config(
+        ("ModuleResidency:Strategy", "ReleaseOnLogout"),
+        ("ModuleResidency:IdleGraceSeconds", "30"),
+        ("ModuleResidency:Modules:relaxkonos.git:IdleGraceSeconds", "5")), residencyIds, residencyIds);
+    Check(overrideOptions.For(ServerModules.GitId) is { Strategy: ModuleResidencyStrategy.ReleaseOnLogout, IdleGracePeriod.TotalSeconds: 5 }
+          && overrideOptions.Default.IdleGracePeriod.TotalSeconds == 30,
+        "a per-module override inherits the strategy and changes only its own grace period");
+
+    Reject(() => ModuleResidencyOptions.Parse(Config(("ModuleResidency:Strategy", "Sometimes")), residencyIds, residencyIds),
+        "an unknown residency strategy is rejected");
+    Reject(() => ModuleResidencyOptions.Parse(Config(("ModuleResidency:IdleGraceSeconds", "-1")), residencyIds, residencyIds),
+        "a negative grace period is rejected");
+    Reject(() => ModuleResidencyOptions.Parse(Config(("ModuleResidency:IdleGrace", "1")), residencyIds, residencyIds),
+        "an unknown residency setting is rejected");
+    Reject(() => ModuleResidencyOptions.Parse(Config(
+            ("ModuleResidency:Modules:relaxkonos.unknown:IdleGraceSeconds", "1")), residencyIds, residencyIds),
+        "residency for an unknown module is rejected");
+    Reject(() => ModuleResidencyOptions.Parse(Config(
+            ("ModuleResidency:Modules:relaxkonos.terminal:IdleGraceSeconds", "1")),
+            new HashSet<string>(StringComparer.Ordinal) { ServerModules.GitId, ServerModules.TerminalId }, residencyIds),
+        "residency for a module without a release boundary is rejected");
+
+    // A coordinator that can merge concurrent first requests: the fake factory is slow on purpose.
+    var slowFactory = new FakeRuntimeFactory(ServerModules.GitId);
+    var residencyServices = new ServiceCollection().AddLogging().AddHttpContextAccessor().BuildServiceProvider();
+    var residencyLogger = residencyServices.GetRequiredService<ILogger<ModuleResidencyCoordinator>>();
+    var zeroGrace = ModuleResidencyOptions.Parse(Config(("ModuleResidency:IdleGraceSeconds", "0")), residencyIds, residencyIds);
+    await using (var coordinator = new ModuleResidencyCoordinator([slowFactory], zeroGrace, residencyServices,
+                     residencyContext, residencyLogger, sweepInterval: TimeSpan.FromMilliseconds(20)))
+    {
+        Check(coordinator.Describe(ServerModules.GitId)!.State == ModuleResidencyState.Dormant,
+            "a releasable module starts dormant");
+        Check(slowFactory.Created == 0, "reading residency state never loads the module");
+
+        var first = await Task.WhenAll(coordinator.AcquireAsync(ServerModules.GitId),
+            coordinator.AcquireAsync(ServerModules.GitId));
+        Check(slowFactory.Created == 1 && coordinator.Describe(ServerModules.GitId)!.State == ModuleResidencyState.Active,
+            "concurrent first leases are merged into one load");
+        Check(coordinator.Describe(ServerModules.GitId)!.ActiveLeases == 2,
+            "the residency snapshot reports the active lease count");
+
+        await coordinator.SweepAsync();
+        Check(coordinator.Describe(ServerModules.GitId)!.State == ModuleResidencyState.Active,
+            "a module with an active lease is never released");
+
+        first[0].Dispose();
+        first[1].Dispose();
+        await coordinator.SweepAsync();
+        Check(coordinator.Describe(ServerModules.GitId)!.State == ModuleResidencyState.Dormant
+              && slowFactory.Last!.Disposed == 1,
+            "the last lease plus the grace period releases the module runtime");
+
+        var second = await coordinator.AcquireAsync(ServerModules.GitId);
+        Check(slowFactory.Created == 2 && coordinator.Describe(ServerModules.GitId)!.LastWakeMilliseconds is >= 0,
+            "a dormant module wakes on the next request with a new instance and a recorded wake time");
+        second.Dispose();
+        await coordinator.SweepAsync();
+    }
+
+    // A blocked release keeps the module and reports why; a failing load fails closed with a retry hint.
+    var blockedFactory = new FakeRuntimeFactory(ServerModules.GitId)
+        { Blocker = new ModuleUnloadBlocker("one git build is still running") };
+    await using (var coordinator = new ModuleResidencyCoordinator([blockedFactory], zeroGrace, residencyServices,
+                     residencyContext, residencyLogger, sweepInterval: TimeSpan.FromMilliseconds(20)))
+    {
+        var lease = await coordinator.AcquireAsync(ServerModules.GitId);
+        lease.Dispose();
+        await coordinator.SweepAsync();
+        var snapshot = coordinator.Describe(ServerModules.GitId)!;
+        Check(snapshot.State == ModuleResidencyState.Active
+              && snapshot.BlockedBy == "one git build is still running"
+              && blockedFactory.Last!.Disposed == 0,
+            "a runtime that reports unfinished work is kept alive with the reason");
+    }
+
+    var failingFactory = new FakeRuntimeFactory(ServerModules.GitId) { Failure = new InvalidOperationException("boom") };
+    await using (var coordinator = new ModuleResidencyCoordinator([failingFactory], zeroGrace, residencyServices,
+                     residencyContext, residencyLogger, sweepInterval: TimeSpan.FromMilliseconds(20)))
+    {
+        var failure = await UnavailableAsync(() => coordinator.AcquireAsync(ServerModules.GitId));
+        Check(failure is { Code: "module-load-failed" } && failingFactory.Created == 1,
+            "a failed load surfaces exactly one attempt to the waiting requests");
+        Check(coordinator.Describe(ServerModules.GitId)!.State == ModuleResidencyState.Faulted
+              && coordinator.Describe(ServerModules.GitId)!.Failure!.Contains("boom", StringComparison.Ordinal),
+            "a failed load is reported as faulted with its cause");
+        Check(coordinator.TryAcquire(ServerModules.GitId, TimeSpan.FromMilliseconds(50)) is null,
+            "a synchronous cross-domain call fails closed instead of blocking on a broken module");
+    }
+
+    var hangSource = new TaskCompletionSource<IServerModuleRuntime>(TaskCreationOptions.RunContinuationsAsynchronously);
+    var hangingFactory = new FakeRuntimeFactory(ServerModules.GitId) { Pending = hangSource.Task };
+    var shortWake = ModuleResidencyOptions.Parse(Config(("ModuleResidency:WakeTimeoutSeconds", "0"),
+        ("ModuleResidency:IdleGraceSeconds", "0")), residencyIds, residencyIds);
+    await using (var coordinator = new ModuleResidencyCoordinator([hangingFactory], shortWake, residencyServices,
+                     residencyContext, residencyLogger, sweepInterval: TimeSpan.FromMilliseconds(20)))
+    {
+        var failure = await UnavailableAsync(() => coordinator.AcquireAsync(ServerModules.GitId));
+        Check(failure is { Code: "module-wake-timeout" },
+            "a wake that exceeds the timeout returns a stable unavailable result");
+        Check(hangingFactory.Created == 1, "a timed out wait does not cancel the shared load for the next caller");
+    }
+
+    var keepFactory = new FakeRuntimeFactory(ServerModules.GitId);
+    var keepOptions = ModuleResidencyOptions.Parse(Config(("ModuleResidency:Strategy", "KeepLoaded"),
+        ("ModuleResidency:IdleGraceSeconds", "0")), residencyIds, residencyIds);
+    await using (var coordinator = new ModuleResidencyCoordinator([keepFactory], keepOptions, residencyServices,
+                     residencyContext, residencyLogger, sweepInterval: TimeSpan.FromMilliseconds(20)))
+    {
+        var lease = await coordinator.AcquireAsync(ServerModules.GitId);
+        lease.Dispose();
+        await coordinator.SweepAsync();
+        Check(coordinator.Describe(ServerModules.GitId)!.State == ModuleResidencyState.Active
+              && keepFactory.Last!.Disposed == 0,
+            "keep-loaded keeps the object graph after the last lease");
+    }
+
+    // Logout releases only modules that session used, and only after the last lease ends.
+    var http = residencyServices.GetRequiredService<IHttpContextAccessor>();
+    var sessionId = Guid.NewGuid();
+    http.HttpContext = new DefaultHttpContext
+    {
+        User = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sid", sessionId.ToString("D"))], "test")),
+    };
+    var logoutFactory = new FakeRuntimeFactory(ServerModules.GitId);
+    var logoutOptions = ModuleResidencyOptions.Parse(Config(("ModuleResidency:Strategy", "ReleaseOnLogout"),
+        ("ModuleResidency:IdleGraceSeconds", "3600")), residencyIds, residencyIds);
+    await using (var coordinator = new ModuleResidencyCoordinator([logoutFactory], logoutOptions, residencyServices,
+                     residencyContext, residencyLogger, sweepInterval: TimeSpan.FromMilliseconds(20)))
+    {
+        var lease = await coordinator.AcquireAsync(ServerModules.GitId);
+        lease.Dispose();
+        await coordinator.SweepAsync();
+        Check(coordinator.Describe(ServerModules.GitId)!.State == ModuleResidencyState.Active,
+            "a release-on-logout module waits out its grace period while the session is open");
+        coordinator.OnSessionEnded(sessionId);
+        Check(await WaitForAsync(() => coordinator.Describe(ServerModules.GitId)!.State == ModuleResidencyState.Dormant),
+            "logout releases the modules that session used without waiting for the grace period");
+        Check(logoutFactory.Last!.Disposed == 1, "the released runtime is disposed exactly once");
+    }
+
+    // The inventory reports residency without waking anything.
+    var inventoryFactory = new FakeRuntimeFactory(ServerModules.GitId);
+    var inventoryServices = new ServiceCollection().AddSingleton(new ModuleResidencyCoordinator(
+        [inventoryFactory], zeroGrace, residencyServices, residencyContext, residencyLogger,
+        sweepInterval: TimeSpan.FromMilliseconds(20))).BuildServiceProvider();
+    var inventory = await ServerModules.Create(empty).DescribeAsync(inventoryServices, residencyContext, CancellationToken.None);
+    Check(inventory.Single(item => item.Id == ServerModules.GitId).Residency is { Releasable: true, State: "dormant" }
+          && inventoryFactory.Created == 0,
+        "the module inventory reports residency without loading the module");
+    Check(inventory.Where(item => item.Enabled && item.Id != ServerModules.GitId)
+            .All(item => item.Residency is { Releasable: false, State: "resident" }),
+        "a module without a release boundary is reported as resident, not as dormant");
+}
+
+// Git read-only pilot over real HTTP: load on a business request, release when idle, wake again
+{
+    var pilotRoot = Path.Combine(Path.GetTempPath(), "relaxkonos-residency-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(pilotRoot);
+    var pilotBuilder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = pilotRoot });
+    pilotBuilder.Logging.ClearProviders();
+    pilotBuilder.WebHost.UseUrls("http://127.0.0.1:0");
+    pilotBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+    {
+        ["ModuleResidency:IdleGraceSeconds"] = "0",
+        ["GitBuilds:RootDirectory"] = "builds",
+        // Only the pilot is part of this host: other modules bring their own recovery workers and
+        // Core dependencies that would test them, not residency.
+        ["Modules:Terminal:Enabled"] = "false",
+        ["Modules:Firewall:Enabled"] = "false",
+        ["Modules:SystemPerformance:Enabled"] = "false",
+        ["Modules:Docker:Enabled"] = "false",
+        ["Modules:Certificates:Enabled"] = "false",
+        ["Modules:WebServer:Enabled"] = "false",
+        ["Modules:Proxy:Enabled"] = "false",
+        ["Modules:Tailscale:Enabled"] = "false",
+    });
+    pilotBuilder.Services.AddDbContextFactory<RelaxKonOS.Server.Storage.Sqlite.RelaxKonOSDbContext>(options =>
+        options.UseSqlite("Data Source=" + Path.Combine(pilotRoot, "pilot.db")));
+    pilotBuilder.Services.AddDataProtection();
+    pilotBuilder.Services.AddHttpContextAccessor();
+    pilotBuilder.Services.AddSignalR();
+    pilotBuilder.Services.AddSingleton<RelaxKonOS.Server.UserExecution.IUserExecutionTransport, NoUserExecutionTransport>();
+    pilotBuilder.Services.AddSingleton(new RelaxKonOS.Server.UserExecution.UserExecutionBackendSelection(
+        RelaxKonOS.Server.UserExecution.UserExecutionBackend.Helper));
+    pilotBuilder.Services.AddSingleton<IServerModeResolver>(new ServerModeResolver(pilotBuilder.Configuration,
+        RelaxKonOS.Server.UserExecution.UserExecutionBackend.Helper));
+    pilotBuilder.Services.AddAuthentication("test")
+        .AddScheme<AuthenticationSchemeOptions, TestUserAuthentication>("test", _ => { });
+    pilotBuilder.Services.AddAuthorization();
+    var pilotContext = ServerModuleContext.Create(pilotBuilder.Configuration, pilotBuilder.Environment, "sqlite");
+    var pilotModules = ServerModules.Create(pilotBuilder.Configuration);
+    pilotModules.ConfigureServices(pilotBuilder, pilotContext);
+    await using var pilotApp = pilotBuilder.Build();
+    await using (var scope = pilotApp.Services.CreateAsyncScope())
+    {
+        await using var db = await scope.ServiceProvider
+            .GetRequiredService<IDbContextFactory<RelaxKonOS.Server.Storage.Sqlite.RelaxKonOSDbContext>>()
+            .CreateDbContextAsync();
+        await db.Database.EnsureCreatedAsync();
+    }
+    var pilotResidency = pilotApp.Services.GetRequiredService<ModuleResidencyCoordinator>();
+    pilotResidency.Start(pilotApp.Lifetime.ApplicationStopping);
+    pilotApp.UseAuthentication();
+    pilotApp.UseAuthorization();
+    pilotModules.MapEndpoints(pilotApp, pilotContext);
+    await pilotApp.StartAsync();
+    var pilotAddress = pilotApp.Services.GetRequiredService<IServer>().Features
+        .Get<IServerAddressesFeature>()!.Addresses.Single();
+    using var pilotClient = new HttpClient { BaseAddress = new Uri(pilotAddress) };
+
+    Check(pilotResidency.Describe(ServerModules.GitId)!.State == ModuleResidencyState.Dormant,
+        "the git pilot is dormant after startup");
+    var repositoriesRoute = $"/{RelaxKonOSEndpoints.ApiVersionPrefix}/git/repositories";
+    Check((await pilotClient.GetAsync(repositoriesRoute)).StatusCode == HttpStatusCode.OK,
+        "a git read-only request succeeds and loads the pilot");
+    Check(pilotResidency.Describe(ServerModules.GitId)!.State == ModuleResidencyState.Active,
+        "the pilot is active while it serves the request");
+    Check(await WaitForAsync(() => pilotResidency.Describe(ServerModules.GitId)!.State == ModuleResidencyState.Dormant),
+        "the idle sweep releases the pilot after the grace period");
+    Check((await pilotClient.GetAsync(repositoriesRoute)).StatusCode == HttpStatusCode.OK,
+        "the next git request after a release succeeds again");
+    Check(pilotResidency.Describe(ServerModules.GitId)!.Generation == 2,
+        "the wake after a release is a new runtime generation");
+    await pilotApp.StopAsync();
+}
+
+static async Task<bool> WaitForAsync(Func<bool> predicate)
+{
+    for (var attempt = 0; attempt < 100; attempt++)
+    {
+        if (predicate()) return true;
+        await Task.Delay(10);
+    }
+    return predicate();
+}
+
+/// <summary>Runs a residency call and returns the typed unavailable diagnostic, or null when it passed.</summary>
+static async Task<ModuleUnavailableException?> UnavailableAsync(Func<Task> action)
+{
+    try { await action(); return null; }
+    catch (ModuleUnavailableException exception) { return exception; }
 }
 
 Console.WriteLine("Server module checks passed.");
@@ -696,4 +964,66 @@ sealed class NoDockerEngine : RelaxKonOS.Server.Docker.IDockerEngineService
     public Task<RelaxKonOS.Protocol.Docker.DockerImageArchiveDto?> ExportImageAsync(string imageId, CancellationToken ct = default) => throw Missing();
     public Task<RelaxKonOS.Protocol.Docker.DockerOperationResult> ImportImageAsync(
         RelaxKonOS.Protocol.Docker.DockerImageArchiveDto archive, CancellationToken ct = default) => throw Missing();
+}
+
+sealed class FakeRuntimeFactory(string moduleId) : IServerModuleRuntimeFactory
+{
+    public string ModuleId { get; } = moduleId;
+    public int Created;
+    public FakeRuntime? Last;
+    public Exception? Failure;
+    public ModuleUnloadBlocker? Blocker;
+    public Task<IServerModuleRuntime>? Pending;
+    public TimeSpan CreateDelay = TimeSpan.FromMilliseconds(25);
+
+    public async ValueTask<IServerModuleRuntime> CreateAsync(IServiceProvider services, ServerModuleContext context,
+        CancellationToken cancellationToken)
+    {
+        Interlocked.Increment(ref Created);
+        if (Pending is not null) return await Pending;
+        if (CreateDelay > TimeSpan.Zero) await Task.Delay(CreateDelay, cancellationToken);
+        if (Failure is not null) throw Failure;
+        Last = new FakeRuntime(ModuleId) { Blocker = Blocker };
+        return Last;
+    }
+}
+
+sealed class FakeRuntime(string moduleId) : IServerModuleRuntime
+{
+    public string ModuleId { get; } = moduleId;
+    public int Disposed;
+    public ModuleUnloadBlocker? Blocker { get; init; }
+
+    public object Resolve(Type serviceType) => this;
+
+    public ValueTask<ModuleUnloadBlocker?> CanUnloadAsync(CancellationToken cancellationToken) =>
+        ValueTask.FromResult(Blocker);
+
+    public ValueTask DisposeAsync()
+    {
+        Interlocked.Increment(ref Disposed);
+        return ValueTask.CompletedTask;
+    }
+}
+
+sealed class TestUserAuthentication(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)
+    : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+{
+    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+    {
+        var claims = new[]
+        {
+            new Claim(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub, Guid.NewGuid().ToString()),
+            new Claim("sid", Guid.NewGuid().ToString()),
+        };
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, Scheme.Name));
+        return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(principal, Scheme.Name)));
+    }
+}
+
+sealed class NoUserExecutionTransport : RelaxKonOS.Server.UserExecution.IUserExecutionTransport
+{
+    public Task<RelaxKonOS.Protocol.UserExecution.UserExecutionResult> ExecuteAsync(
+        RelaxKonOS.Protocol.UserExecution.UserExecutionRequest request, CancellationToken cancellationToken = default)
+        => throw new InvalidOperationException("user execution is not available in this test host");
 }

@@ -79,6 +79,13 @@ public static class AuthEndpoints
                     sessions.Revoke(req.RefreshToken);
                 elevations.Revoke(http.User);
                 validity.ExpireSession(http.User);
+                // Logout is a reclamation trigger, not a global unload: only modules this session used
+                // are considered, and only when their strategy asks for it. The coordinator still
+                // checks leases, so another user or device keeps the module alive.
+                if (http.RequestServices.GetService(typeof(RelaxKonOS.Server.Residency.ModuleResidencyCoordinator))
+                        is RelaxKonOS.Server.Residency.ModuleResidencyCoordinator residency
+                    && Guid.TryParse(http.User.FindFirst("sid")?.Value, out var sessionId))
+                    residency.OnSessionEnded(sessionId);
                 return Results.NoContent();
             })
             .RequireAuthorization()

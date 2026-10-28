@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 
 namespace RelaxKonOS.Protocol.Common;
 
@@ -21,6 +21,7 @@ public static class ServerCapabilities
     public const string Terminal = "server.terminal";
     public const string PosixPermissions = "server.posix.permissions";
     public const string Firewall = "server.firewall";
+    public const string Tailscale = "server.tailscale";
     public const string Git = "server.git";
     public const string Guardian = "server.guardian";
     public const string Docker = "server.docker";

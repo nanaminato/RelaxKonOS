@@ -39,6 +39,7 @@ object Routes {
     const val MANAGE_GUARDIAN = "manage/guardian"
     const val MANAGE_SCRIPTS = "manage/scripts"
     const val MANAGE_OPERATIONS = "manage/operations"
+    const val MANAGE_COMPONENTS = "manage/components"
     const val MORE_ACCOUNT_SECURITY = "more/account-security"
     const val MORE_CONNECTIONS = "more/connections"
     const val MORE_SERVER_INFORMATION = "more/server-information"

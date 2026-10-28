@@ -22,4 +22,8 @@ public sealed record ServerModuleDto(
     [property: JsonPropertyName("capabilities")] IReadOnlyList<string> Capabilities,
     [property: JsonPropertyName("requires")] IReadOnlyList<string> Requires,
     [property: JsonPropertyName("requiredBy")] IReadOnlyList<string> RequiredBy,
-    [property: JsonPropertyName("orphanedWork")] IReadOnlyList<string> OrphanedWork);
+    [property: JsonPropertyName("orphanedWork")] IReadOnlyList<string> OrphanedWork,
+    /// <summary>
+    /// Load state of an enabled module, or null for a disabled one. Reading this never loads a module.
+    /// </summary>
+    [property: JsonPropertyName("residency")] ServerModuleResidencyDto? Residency = null);

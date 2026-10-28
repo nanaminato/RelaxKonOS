@@ -62,7 +62,7 @@ fun HomeScreen(
         } }
     })
     HomeContent(viewModel, session, onOpenHelp, modifier,
-        mobileApplications(session.capabilities, onOpenRoute), onSwitchLogin)
+        mobileApplications(session.capabilities, session.privilegedOperations, onOpenRoute), onSwitchLogin)
 }
 
 @Composable

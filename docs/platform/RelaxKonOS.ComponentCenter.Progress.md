@@ -1,4 +1,4 @@
-﻿# 组件中心实施进度
+# 组件中心实施进度
 
 更新：2026-10-25。本表记录源码实现与验收边界；领域生命周期要求见 [受管运行时设计](RelaxKonOS.ManagedRuntimes.Design.md)，入口与任务设计见 [组件中心设计](RelaxKonOS.ComponentCenter.Design.md)。
 
@@ -155,3 +155,13 @@ Nginx、Docker、Samba、Squid 使用已有组件状态/冻结计划与安装台
 2026-10-27（MR-03/04/05）：Windows 官方安装卡片调整为先选来源，再选择版本或文件，最后安装。本机文件通过系统文件选择器上传，服务器文件通过服务器文件浏览器建立文件引用，界面显示选中文件名或路径。文件来源在选择文件前禁用安装，隐藏在线版本列表并要求输入文件实际版本；切换来源或组件清空文件引用，异步选择完成后核对当前选择修订与权限。中英日文及主题使用公共资源。此改动不扩大运行时支持和实机生命周期验收范围。
 
 验证：组件安装入口专项通过，覆盖四组件文件必选、选中文件提交、取消及异步切换来源后丢弃旧结果；中英日文、明暗主题共 12 张在线/文件安装截图已生成，抽查中文浅色文件安装及英文深色在线安装无截断。未执行真实第三方服务安装。
+
+## Android 只读组件状态（2026-10-28）
+
+Android 新增“组件中心”入口与只读状态页，补上此前“Android UI 尚未迁移”的空缺，但不复制桌面生命周期。入口只在当前会话声明 `privilegedOperations` 时出现；页面按组件读取 `GET /api/v1.0/components/{componentId}/state`，展示所有权、实测版本、安装模式、目标平台、问题码与待处理操作，并把需要恢复的组件链接到“任务与恢复”、把组件链接到消费它的应用。
+
+范围限制：不安装、不更新、不修复、不回退、不卸载，不列版本目录、不冻结计划、不提交提权；`git` 不在 Android 目录中，因为 Android 没有 Git 工作流。单组件读取失败只影响该行；401/403 与全部传输失败按整页错误处理；会话切换取消读取并清空页面。
+
+验证：Android `:app:compileDebugKotlin` 通过；`ComponentWireTest` 5 项、`ComponentRepositoryTest` 6 项通过。完整 `:app:testDebugUnitTest` 1740 项中 12 项失败，全部位于 `ProxyViewModelTest` 与 `SingBoxRuntimeViewModelTest`，并在干净 `HEAD` 工作树上以同一清单复现，因此不是本轮引入；未执行真实宿主组件状态或安装验收。
+
+细节由 Android 文档维护：[组件中心（Android）](../../Client/RelaxKonOS.Client.Android/docs/features/ComponentCenter.md)。

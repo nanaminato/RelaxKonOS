@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.PrivilegedHelper;
@@ -122,6 +122,13 @@ public static partial class PrivilegedOperationExecutor
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "process fields require a dedicated operation");
         if (request.Operation != PrivilegedOperationKind.ManagedRuntime && request.ManagedRuntime is not null)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "runtime fields require a dedicated operation");
+        if (request.Operation is PrivilegedOperationKind.TailscaleControlRead or PrivilegedOperationKind.TailscaleControlExecute or PrivilegedOperationKind.TailscaleControlReceipt
+            or PrivilegedOperationKind.TailscaleRecoveryRead or PrivilegedOperationKind.TailscaleRecoveryClose or PrivilegedOperationKind.TailscaleRecoveryReceipt)
+            return await TailscaleControlOperations.ExecuteAsync(request);
+        if (request.TailscaleChange is not null || request.TailscaleRecovery is not null)
+            return Fail(64, PrivilegedProblemCode.InvalidRequest, "Tailscale fields require a dedicated operation");
+        if (request.Operation == PrivilegedOperationKind.TailscaleStatus)
+            return await TailscaleOperations.ExecuteAsync(request);
         if (request.Operation is PrivilegedOperationKind.HostNetworkRead or PrivilegedOperationKind.HostNetworkApply or PrivilegedOperationKind.HostNetworkConfirm)
             return await RelaxKonOS.PrivilegedHelper.HostNetworkOperations.ExecuteAsync(request);
         if (request.NetworkChange is not null || request.NetworkCheckpoint is not null)

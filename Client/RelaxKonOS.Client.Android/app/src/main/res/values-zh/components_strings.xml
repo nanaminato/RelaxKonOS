@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Read-only host component state. Keep this file aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="components_title">组件中心</string>
+    <string name="components_subtitle">这台服务器管理的宿主组件</string>
+    <string name="components_note">只读。安装、更新、修复、回退和卸载在桌面端或服务器端组件中心进行，那里有冻结计划与恢复台账。</string>
+
+    <string name="components_nginx">Nginx</string>
+    <string name="components_nginx_note">Web 服务器与站点发布</string>
+    <string name="components_mihomo_note">代理引擎运行时</string>
+    <string name="components_singbox_note">代理服务器入站</string>
+    <string name="components_docker_note">容器引擎</string>
+    <string name="components_samba_note">SMB 文件共享</string>
+    <string name="components_squid_note">网关代理</string>
+    <string name="components_frpc_note">隧道客户端</string>
+    <string name="components_frps_note">隧道服务端</string>
+
+    <string name="components_state_managed">受管</string>
+    <string name="components_state_external">外部</string>
+    <string name="components_state_absent">未安装</string>
+    <string name="components_state_unknown">未知</string>
+    <string name="components_state_unavailable">服务器无法读取该组件的状态。</string>
+
+    <string name="components_version">版本 %1$s</string>
+    <string name="components_version_unknown">未知</string>
+    <string name="components_version_label">版本</string>
+    <string name="components_mode">模式：%1$s</string>
+    <string name="components_mode_label">模式</string>
+    <string name="components_mode_managed_archive">受管归档</string>
+    <string name="components_mode_system_package">系统包</string>
+
+    <string name="components_recovery">该组件需要先恢复，之后才能再次变更。</string>
+    <string name="components_recovery_open">任务与恢复</string>
+    <string name="components_open_app">打开应用</string>
+    <string name="components_details">详情</string>
+
+    <string name="components_unavailable_reason">状态不可用（%1$s）</string>
+    <string name="components_unsupported">该服务器的平台不支持此组件</string>
+    <string name="components_error">无法从服务器读取组件状态。</string>
+    <string name="components_empty">这台服务器没有声明任何组件。</string>
+
+    <string name="components_ownership">所有权</string>
+    <string name="components_target">平台</string>
+    <string name="components_host">宿主</string>
+    <string name="components_revision">修订</string>
+    <string name="components_problems">问题</string>
+    <string name="components_pending_operation">待处理操作</string>
+</resources>

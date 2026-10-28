@@ -51,6 +51,9 @@ public sealed class WindowsNamedPipePrivilegedOperationTransport(PrivilegedHelpe
             var requestJson = JsonSerializer.SerializeToUtf8Bytes(request);
             var signed = new PipeEnvelope(Convert.ToBase64String(requestJson), Sign(secret, requestJson));
             await WriteFrameAsync(pipe, JsonSerializer.SerializeToUtf8Bytes(signed), CancellationToken.None);
+            using var statusResponseTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var isTailscaleRead = request.Operation is PrivilegedOperationKind.TailscaleStatus or PrivilegedOperationKind.TailscaleControlRead or PrivilegedOperationKind.TailscaleControlReceipt or PrivilegedOperationKind.TailscaleRecoveryRead or PrivilegedOperationKind.TailscaleRecoveryReceipt;
+            statusResponseTimeout.CancelAfter(TimeSpan.FromSeconds(request.Operation == PrivilegedOperationKind.TailscaleStatus ? 15 : 50));
             using var processResponseTimeout = new CancellationTokenSource();
             var isProcessOperation = request.Operation is PrivilegedOperationKind.ProcessSnapshot
                 or PrivilegedOperationKind.ProcessIcon or PrivilegedOperationKind.ProcessTerminate;
@@ -59,7 +62,8 @@ public sealed class WindowsNamedPipePrivilegedOperationTransport(PrivilegedHelpe
             for (var count = 0; count < PrivilegedOperationFrame.MaximumFrames; count++)
             {
                 // A submitted LocalSystem operation remains authoritative until its own deadline.
-                var responseBytes = await ReadFrameAsync(pipe, isProcessOperation ? processResponseTimeout.Token : CancellationToken.None);
+                var responseBytes = await ReadFrameAsync(pipe, isTailscaleRead
+                    ? statusResponseTimeout.Token : isProcessOperation ? processResponseTimeout.Token : CancellationToken.None);
                 var response = JsonSerializer.Deserialize<PipeEnvelope>(responseBytes);
                 if (response is null || !TryDecodeAndVerify(secret, response, out var payload))
                     return Complete(request, new(false, 65, ProblemCode: PrivilegedProblemCode.InvalidProtocol));

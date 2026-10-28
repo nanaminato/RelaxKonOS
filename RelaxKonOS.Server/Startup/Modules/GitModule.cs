@@ -2,6 +2,7 @@ using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Server.ApplicationDeployments;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Git;
+using RelaxKonOS.Server.Residency;
 
 namespace RelaxKonOS.Server.Startup.Modules;
 
@@ -9,26 +10,41 @@ namespace RelaxKonOS.Server.Startup.Modules;
 /// Git repository editing and source builds. The module owns the git CLI service, the repository
 /// service, the editor bridge, the build ledger and every Git route.
 ///
-/// The only thing that crosses the boundary is <see cref="IDeploymentImageBuildSource"/>: the
+/// <para>
+/// The module graph is releasable: the Host registers only lease-taking gates for
+/// <see cref="IGitRepositoryService"/> and <see cref="IGitBuildService"/>, and the real objects are
+/// created by <see cref="GitModuleRuntime"/> on the first business call. The stateless
+/// <see cref="GitTextEditor"/> bridge stays in the root graph because it owns no resources; every call
+/// it makes still goes through the gate.
+/// </para>
+///
+/// <para>
+/// The only thing that crosses the domain boundary is <see cref="IDeploymentImageBuildSource"/>: the
 /// deployment domain asks "is this build deployable" without referencing Git types, and this module
-/// registers the real implementation after the Host has registered the unavailable default.
+/// replaces the Host's unavailable default with a gate that can wake Git when it is dormant.
+/// </para>
 /// </summary>
-internal sealed class GitModule : IServerModule
+internal sealed class GitModule : IServerModule, IServerModuleResidency
 {
     public string Id => ServerModules.GitId;
     public IReadOnlyList<string> Capabilities => [ServerCapabilities.Git];
     public IReadOnlyList<string> Requires => [];
 
+    public IServerModuleRuntimeFactory RuntimeFactory { get; } = new GitModuleRuntimeFactory();
+
     public void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
     {
-        // Invokes the host git CLI as the host user; credentials are handled entirely by the host
-        // git credential helper. Singleton because it holds the per-repository write semaphore.
-        builder.Services.AddSingleton<IHostGitCli, HostGitCli>();
-        builder.Services.AddSingleton<IGitRepositoryService, LocalGitRepositoryService>();
+        // Gates, not implementations: a lease loads the runtime, the call runs, the lease releases and
+        // the idle sweep may then release the module.
+        builder.Services.AddSingleton<IGitRepositoryService>(services =>
+            ModuleServiceProxy<IGitRepositoryService>.Create(
+                services.GetRequiredService<ModuleResidencyCoordinator>(), Id));
+        builder.Services.AddSingleton<IGitBuildService>(services =>
+            ModuleServiceProxy<IGitBuildService>.Create(
+                services.GetRequiredService<ModuleResidencyCoordinator>(), Id));
+        builder.Services.AddSingleton<IDeploymentImageBuildSource, ResidentDeploymentImageBuildSource>();
+        // Stateless bridge over the two gates; it holds no module-owned resource itself.
         builder.Services.AddScoped<GitTextEditor>();
-        builder.Services.AddSingleton(context.Configuration.GetSection("GitBuilds").Get<GitBuildOptions>() ?? new GitBuildOptions());
-        builder.Services.AddSingleton<GitBuildService>();
-        builder.Services.AddSingleton<IDeploymentImageBuildSource, GitDeploymentImageBuildSource>();
     }
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)

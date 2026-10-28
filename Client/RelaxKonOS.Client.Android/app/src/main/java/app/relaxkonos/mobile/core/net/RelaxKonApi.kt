@@ -302,6 +302,11 @@ class RelaxKonApi(
         return installationCall(method, serverUrl, route, accessToken, body, key) { it }
     }
 
+    override suspend fun componentState(serverUrl: String, accessToken: String, componentId: String): ApiResult<ComponentStateView> =
+        webPublishingRead(serverUrl, accessToken, ComponentRoutes.state(componentId)) { payload ->
+            ComponentWire.stateView(payload, componentId)
+        }
+
     override suspend fun startInstallation(serverUrl: String, accessToken: String, kind: InstallationKind,
         request: InstallationRequest, idempotencyKey: String): ApiResult<InstallationOperation> =
         installationCall("POST", serverUrl, InstallationRoutes.start(request.service, kind), accessToken,

@@ -42,10 +42,7 @@ public sealed partial class LocalGitRepositoryService
     {
         if (!Path.IsPathRooted(path))
             path = Path.Combine(repoRoot, path);
-        var fullRepoRoot = Path.GetFullPath(repoRoot);
-        var fullTarget = Path.GetFullPath(path);
-        var relative = Path.GetRelativePath(fullRepoRoot, fullTarget);
-        return !relative.StartsWith("..", StringComparison.Ordinal) && !Path.IsPathRooted(relative);
+        return PathSafety.IsWithin(repoRoot, path);
     }
 
     private static bool ArePathsSafe(IReadOnlyList<string>? paths, out string? error)

@@ -39,6 +39,10 @@ class FakeGateway : RelaxKonGateway {
     override suspend fun managedRuntime(serverUrl: String, accessToken: String, method: String, route: String,
         body: JsonBody?, key: String?): ApiResult<String> = requireHandler(onManagedRuntime, "managedRuntime")(method, route, body, key)
 
+    var onComponentState: (suspend (String) -> ApiResult<ComponentStateView>)? = null
+    override suspend fun componentState(serverUrl: String, accessToken: String, componentId: String): ApiResult<ComponentStateView> =
+        requireHandler(onComponentState, "componentState")(componentId)
+
     var onHostTime: (suspend () -> ApiResult<HostTimeSettings>)? = null
     var onHostIdentity: (suspend () -> ApiResult<HostIdentitySettings>)? = null
     var onHostEnvironmentTarget: (suspend (HostEnvironmentScope) -> ApiResult<HostSettingsTarget>)? = null

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Read-only host component state. Keep this file aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="components_title">Components</string>
+    <string name="components_subtitle">Host software this server manages</string>
+    <string name="components_note">Read-only. Install, update, repair, rollback and uninstall run in the desktop or server component center, where the frozen plan and recovery ledger live.</string>
+
+    <string name="components_nginx">Nginx</string>
+    <string name="components_nginx_note">Web server and site publishing</string>
+    <string name="components_mihomo_note">Proxy engine runtime</string>
+    <string name="components_singbox_note">Proxy server inbounds</string>
+    <string name="components_docker_note">Container engine</string>
+    <string name="components_samba_note">SMB file sharing</string>
+    <string name="components_squid_note">Gateway proxy</string>
+    <string name="components_frpc_note">Tunnel client</string>
+    <string name="components_frps_note">Tunnel server</string>
+
+    <string name="components_state_managed">Managed</string>
+    <string name="components_state_external">External</string>
+    <string name="components_state_absent">Not installed</string>
+    <string name="components_state_unknown">Unknown</string>
+    <string name="components_state_unavailable">The server could not read this component\'s state.</string>
+
+    <string name="components_version">Version %1$s</string>
+    <string name="components_version_unknown">unknown</string>
+    <string name="components_version_label">Version</string>
+    <string name="components_mode">Mode: %1$s</string>
+    <string name="components_mode_label">Mode</string>
+    <string name="components_mode_managed_archive">Managed archive</string>
+    <string name="components_mode_system_package">System package</string>
+
+    <string name="components_recovery">This component needs recovery before it can change again.</string>
+    <string name="components_recovery_open">Tasks &amp; recovery</string>
+    <string name="components_open_app">Open app</string>
+    <string name="components_details">Details</string>
+
+    <string name="components_unavailable_reason">State unavailable (%1$s)</string>
+    <string name="components_unsupported">Not supported on this server\'s platform</string>
+    <string name="components_error">Could not read component state from the server.</string>
+    <string name="components_empty">No components are declared by this server.</string>
+
+    <string name="components_ownership">Ownership</string>
+    <string name="components_target">Platform</string>
+    <string name="components_host">Host</string>
+    <string name="components_revision">Revision</string>
+    <string name="components_problems">Problems</string>
+    <string name="components_pending_operation">Pending operation</string>
+</resources>

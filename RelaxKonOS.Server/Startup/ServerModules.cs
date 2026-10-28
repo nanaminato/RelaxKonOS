@@ -1,4 +1,5 @@
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Server.Residency;
 
 namespace RelaxKonOS.Server.Startup;
 
@@ -22,6 +23,15 @@ internal interface IServerModule
 
 /// <summary>One durable operation that only the owning module can bring to a conclusion.</summary>
 internal sealed record ServerModuleOrphanedWork(string ModuleId, string Description);
+
+/// <summary>
+/// Implemented by modules whose object graph can be released while the process keeps running. The
+/// registration phase still runs once, at startup; this only says where the releasable instances live.
+/// </summary>
+internal interface IServerModuleResidency
+{
+    IServerModuleRuntimeFactory RuntimeFactory { get; }
+}
 
 /// <summary>
 /// Implemented by modules that own durable, recoverable work. When such a module is disabled, the
@@ -71,7 +81,7 @@ internal sealed record ServerModuleContext(
 /// module can never leave half of itself behind: no services, no routes, no HostedService and no
 /// advertised capability.
 /// </summary>
-internal sealed class ServerModules
+internal sealed partial class ServerModules
 {
     internal const string TerminalId = "relaxkonos.terminal";
     internal const string FirewallId = "relaxkonos.firewall";
@@ -99,6 +109,9 @@ internal sealed class ServerModules
         _disabled = disabled;
         EnabledIds = enabled.Select(module => module.Id).ToHashSet(StringComparer.Ordinal);
         Capabilities = enabled.SelectMany(module => module.Capabilities).ToHashSet(StringComparer.Ordinal);
+        RuntimeFactories = enabled.OfType<IServerModuleResidency>().Select(module => module.RuntimeFactory).ToArray();
+        ReleasableModuleIds = RuntimeFactories.Select(factory => factory.ModuleId).ToHashSet(StringComparer.Ordinal);
+        KnownModuleIds = enabled.Concat(disabled).Select(module => module.Id).ToHashSet(StringComparer.Ordinal);
     }
 
     /// <summary>Effective module IDs for this process, in dependency order.</summary>
@@ -109,6 +122,15 @@ internal sealed class ServerModules
     /// can actually serve; this set only removes what a disabled module can no longer answer.
     /// </summary>
     internal IReadOnlySet<string> Capabilities { get; }
+
+    /// <summary>Runtimes of the enabled modules that declare a releasable object graph.</summary>
+    internal IReadOnlyList<IServerModuleRuntimeFactory> RuntimeFactories { get; }
+
+    /// <summary>Enabled modules the residency coordinator may release; the rest stay resident.</summary>
+    internal IReadOnlySet<string> ReleasableModuleIds { get; }
+
+    /// <summary>Every module in the compiled catalog, enabled or not. Used to validate configuration.</summary>
+    internal IReadOnlySet<string> KnownModuleIds { get; }
 
     internal bool IsEnabled(string moduleId) => EnabledIds.Contains(moduleId);
 
@@ -166,129 +188,28 @@ internal sealed class ServerModules
         return new ServerModules(ordered.AsReadOnly(), disabled);
     }
 
-    /// <summary>
-    /// The operator-facing name of a module is derived from its ID so a module cannot drift between
-    /// the two: <c>relaxkonos.system-performance</c> is configured as <c>Modules:SystemPerformance:Enabled</c>.
-    /// </summary>
-    internal static string ConfigurationName(string moduleId)
-    {
-        var name = moduleId.StartsWith("relaxkonos.", StringComparison.Ordinal) ? moduleId["relaxkonos.".Length..] : moduleId;
-        var builder = new System.Text.StringBuilder(name.Length);
-        var upper = true;
-        foreach (var character in name)
-        {
-            if (character is '-' or '_' or '.') { upper = true; continue; }
-            builder.Append(upper ? char.ToUpperInvariant(character) : character);
-            upper = false;
-        }
-        return builder.ToString();
-    }
-
-    private static HashSet<string> ResolveEnabledIds(IConfiguration configuration, IReadOnlyList<IServerModule> catalog)
-    {
-        var byName = catalog.ToDictionary(module => ConfigurationName(module.Id), StringComparer.OrdinalIgnoreCase);
-        // An empty configuration keeps every official module enabled: the default set must match the
-        // behaviour of a Server that predates the registry.
-        var enabled = catalog.Select(module => module.Id).ToHashSet(StringComparer.Ordinal);
-        var settings = configuration.GetSection("Modules");
-        if (settings.Value is not null)
-            throw new InvalidOperationException("Modules must be a configuration section.");
-        foreach (var moduleSettings in settings.GetChildren())
-        {
-            if (!byName.TryGetValue(moduleSettings.Key, out var module) || moduleSettings.Value is not null)
-                throw new InvalidOperationException($"Unknown server module configuration: {moduleSettings.Path}");
-            foreach (var setting in moduleSettings.GetChildren())
-            {
-                if (!string.Equals(setting.Key, "Enabled", StringComparison.OrdinalIgnoreCase) || setting.GetChildren().Any())
-                    throw new InvalidOperationException($"Unknown server module configuration: {setting.Path}");
-                if (!bool.TryParse(setting.Value, out var value))
-                    throw new InvalidOperationException($"{setting.Path} must be true or false.");
-                if (value) enabled.Add(module.Id); else enabled.Remove(module.Id);
-            }
-        }
-        return enabled;
-    }
-
-    private static IReadOnlyList<IServerModule> Catalog() =>
-    [
-        new Modules.TerminalModule(),
-        new Modules.FirewallModule(),
-        new Modules.SystemPerformanceModule(),
-        new Modules.GitModule(),
-        new Modules.DockerModule(),
-        new Modules.CertificateModule(),
-        new Modules.WebServerModule(),
-        new Modules.ProxyModule(),
-    ];
-
     internal void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
     {
+        // Residency registration belongs to the module framework, not to Program: any host that runs
+        // this snapshot (the real Server or a test host) gets the same coordinator, and configuration is
+        // validated here, before Build, so a bad rule stops startup instead of a half-configured sweep.
+        if (RuntimeFactories.Count > 0)
+        {
+            var residency = ModuleResidencyOptions.Parse(builder.Configuration, KnownModuleIds, ReleasableModuleIds);
+            builder.Services.AddSingleton(residency);
+            builder.Services.AddSingleton(services => new ModuleResidencyCoordinator(
+                RuntimeFactories,
+                residency,
+                services,
+                context,
+                services.GetRequiredService<ILogger<ModuleResidencyCoordinator>>()));
+        }
+
         foreach (var module in _enabled) module.ConfigureServices(builder, context);
     }
 
     internal void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)
     {
         foreach (var module in _enabled) module.MapEndpoints(endpoints, context);
-    }
-
-    /// <summary>
-    /// Read-only inventory for operators and clients. It never changes state; it answers "what would
-    /// happen if I disabled this module" with the same facts the startup gate uses.
-    /// </summary>
-    internal async Task<IReadOnlyList<ServerModuleDto>> DescribeAsync(IServiceProvider services,
-        ServerModuleContext context, CancellationToken cancellationToken)
-    {
-        var all = _enabled.Concat(_disabled).ToArray();
-        var enabled = _enabled.ToHashSet();
-        var inventory = new List<ServerModuleDto>(all.Length);
-        foreach (var module in all)
-        {
-            var isEnabled = enabled.Contains(module);
-            // A disabled module cannot be holding live work: that would have failed the startup gate.
-            IReadOnlyList<ServerModuleOrphanedWork> work;
-            if (!isEnabled || module is not IServerModuleDeactivationGuard guard)
-                work = [];
-            else
-            {
-                try { work = await guard.InspectOrphanedWorkAsync(services, context, cancellationToken); }
-                catch (Exception exception)
-                {
-                    // A diagnostic route must not fail because one guard is unhappy, and it must not
-                    // report "safe to disable" either. Reporting the failure is the fail-closed answer.
-                    work = [new(module.Id, $"the deactivation guard failed ({exception.GetType().Name}); "
-                        + "treat this module as not safe to disable until the cause is understood.")];
-                }
-            }
-            // Only an enabled dependent blocks a disable; a disabled one is already out of the process.
-            var requiredBy = all
-                .Where(other => enabled.Contains(other) && other.Requires.Contains(module.Id, StringComparer.Ordinal))
-                .Select(other => other.Id)
-                .ToArray();
-            inventory.Add(new ServerModuleDto(module.Id, isEnabled, module.Capabilities, module.Requires,
-                requiredBy, work.Select(item => item.Description).ToArray()));
-        }
-        return inventory;
-    }
-
-    /// <summary>
-    /// The deactivation gate. A module that owns durable work is asked what it would leave unresolved
-    /// while it is not part of this process; anything still queued, running or unknown stops startup
-    /// with the operation IDs an operator needs. This deliberately has no override: recovering or
-    /// finishing the work is the only way past it, and clearing a ledger to satisfy the gate would be
-    /// exactly the silent data loss this design forbids.
-    /// </summary>
-    internal async Task ValidateDeactivationAsync(IServiceProvider services, ServerModuleContext context,
-        CancellationToken cancellationToken)
-    {
-        var orphaned = new List<ServerModuleOrphanedWork>();
-        foreach (var module in _disabled.OfType<IServerModuleDeactivationGuard>())
-            orphaned.AddRange(await module.InspectOrphanedWorkAsync(services, context, cancellationToken));
-
-        if (orphaned.Count == 0) return;
-        var details = string.Join(" ", orphaned.Select(item => $"({item.ModuleId}) {item.Description}"));
-        var modules = string.Join(", ", orphaned.Select(item => item.ModuleId).Distinct(StringComparer.Ordinal));
-        throw new InvalidOperationException(
-            $"Refusing to start with unresolved durable work because {modules} is disabled: {details} " +
-            "Re-enable the module, let it reconcile or finish the operation through its normal recovery entry, then disable it again.");
     }
 }

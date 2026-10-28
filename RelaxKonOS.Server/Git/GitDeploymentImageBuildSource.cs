@@ -7,7 +7,7 @@ namespace RelaxKonOS.Server.Git;
 /// disabled module leaves <see cref="UnavailableDeploymentImageBuildSource"/> in place and the
 /// deployment domain reports "git build unavailable" instead of a misleading "image not found".
 /// </summary>
-internal sealed class GitDeploymentImageBuildSource(GitBuildService builds) : IDeploymentImageBuildSource
+internal sealed class GitDeploymentImageBuildSource(IGitBuildService builds) : IDeploymentImageBuildSource
 {
     public DeploymentImageBuildResult Resolve(Guid owner, Guid buildId)
     {

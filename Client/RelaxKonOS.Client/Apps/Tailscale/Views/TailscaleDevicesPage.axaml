@@ -1,0 +1,17 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Tailscale"
+ x:Class="RelaxKonOS.Client.Apps.Tailscale.Views.TailscaleDevicesPage" x:DataType="vm:TailscaleViewModel">
+ <Grid RowDefinitions="Auto,Auto,*" RowSpacing="10">
+  <StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="{Binding BackendState}" /><TextBlock Text="{Binding Version}" /></StackPanel>
+  <TextBlock Grid.Row="1" IsVisible="{Binding PeersRestricted}" Text="{loc:Loc tailscale.peers_restricted}" TextWrapping="Wrap" />
+  <DataGrid Grid.Row="2" ItemsSource="{Binding Peers}" AutoGenerateColumns="False" IsReadOnly="True" CanUserResizeColumns="True"
+    ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto">
+   <DataGrid.Columns>
+    <DataGridTextColumn Header="{loc:Loc tailscale.host_name}" Binding="{ReflectionBinding HostName}" Width="160" MinWidth="80" />
+    <DataGridTextColumn Header="{loc:Loc tailscale.dns_name}" Binding="{ReflectionBinding DnsName}" Width="220" MinWidth="80" />
+    <DataGridTextColumn Header="{loc:Loc tailscale.addresses}" Binding="{ReflectionBinding Addresses}" Width="220" MinWidth="100" />
+    <DataGridTextColumn Header="{loc:Loc tailscale.status}" Binding="{ReflectionBinding Status}" Width="100" MinWidth="60" />
+   </DataGrid.Columns>
+  </DataGrid>
+ </Grid>
+</UserControl>

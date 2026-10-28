@@ -1,4 +1,4 @@
-﻿using RelaxKonOS.Client.Services.WorkspaceSettings;
+using RelaxKonOS.Client.Services.WorkspaceSettings;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using RelaxKonOS.Client.Apps;
@@ -391,6 +391,10 @@ public static class Bootstrapper
         services.AddSingleton<RelaxKonOS.Client.Apps.Tunnels.TunnelManagerApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Proxy.ProxyManagerApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Git.GitClientApp>();
+        services.AddSingleton<RelaxKonOS.Client.Apps.Tailscale.TailscaleApp>();
+        services.AddHttpClient<RelaxKonOS.Client.Apps.Tailscale.RemoteTailscaleClient>().AddRelaxKonOSAuthentication();
+        services.AddTransient<RelaxKonOS.Client.Apps.Tailscale.ITailscaleClient>(services => services.GetRequiredService<RelaxKonOS.Client.Apps.Tailscale.RemoteTailscaleClient>());
+        services.AddSingleton<RelaxKonOS.Client.Apps.Tailscale.ITailscaleOperationReferences, RelaxKonOS.Client.Apps.Tailscale.TailscaleOperationReferences>();
         services.AddSingleton<RelaxKonOS.Client.Apps.AppInstaller.AppInstallerApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Registry.RegistryApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.ApplicationDeployments.ApplicationDeploymentsApp>();

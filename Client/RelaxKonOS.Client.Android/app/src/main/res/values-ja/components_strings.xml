@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Read-only host component state. Keep this file aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="components_title">コンポーネント</string>
+    <string name="components_subtitle">このサーバーが管理するホストソフトウェア</string>
+    <string name="components_note">読み取り専用です。インストール、更新、修復、ロールバック、アンインストールは、凍結プランと復旧台帳があるデスクトップまたはサーバーのコンポーネントセンターで行います。</string>
+
+    <string name="components_nginx">Nginx</string>
+    <string name="components_nginx_note">Web サーバーとサイト公開</string>
+    <string name="components_mihomo_note">プロキシエンジンのランタイム</string>
+    <string name="components_singbox_note">プロキシサーバーの受信</string>
+    <string name="components_docker_note">コンテナエンジン</string>
+    <string name="components_samba_note">SMB ファイル共有</string>
+    <string name="components_squid_note">ゲートウェイプロキシ</string>
+    <string name="components_frpc_note">トンネルクライアント</string>
+    <string name="components_frps_note">トンネルサーバー</string>
+
+    <string name="components_state_managed">管理対象</string>
+    <string name="components_state_external">外部</string>
+    <string name="components_state_absent">未インストール</string>
+    <string name="components_state_unknown">不明</string>
+    <string name="components_state_unavailable">サーバーがこのコンポーネントの状態を読み取れませんでした。</string>
+
+    <string name="components_version">バージョン %1$s</string>
+    <string name="components_version_unknown">不明</string>
+    <string name="components_version_label">バージョン</string>
+    <string name="components_mode">モード: %1$s</string>
+    <string name="components_mode_label">モード</string>
+    <string name="components_mode_managed_archive">管理アーカイブ</string>
+    <string name="components_mode_system_package">システムパッケージ</string>
+
+    <string name="components_recovery">このコンポーネントは変更前に復旧が必要です。</string>
+    <string name="components_recovery_open">タスクと復旧</string>
+    <string name="components_open_app">アプリを開く</string>
+    <string name="components_details">詳細</string>
+
+    <string name="components_unavailable_reason">状態を取得できません（%1$s）</string>
+    <string name="components_unsupported">このサーバーのプラットフォームではサポートされていません</string>
+    <string name="components_error">サーバーからコンポーネントの状態を読み取れませんでした。</string>
+    <string name="components_empty">このサーバーはコンポーネントを宣言していません。</string>
+
+    <string name="components_ownership">所有権</string>
+    <string name="components_target">プラットフォーム</string>
+    <string name="components_host">ホスト</string>
+    <string name="components_revision">リビジョン</string>
+    <string name="components_problems">問題</string>
+    <string name="components_pending_operation">保留中の操作</string>
+</resources>

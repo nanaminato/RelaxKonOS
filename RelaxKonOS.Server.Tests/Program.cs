@@ -1,4 +1,14 @@
 using RelaxKonOS.Protocol.Proxy;
+if (args.Contains("--path-safety-only"))
+{
+    PathSafetyChecks.Run();
+    return;
+}
+if (args.Contains("--problem-mapping-only"))
+{
+    await ProblemMappingChecks.RunAsync();
+    return;
+}
 if (args.Contains("--session-valid-only"))
 {
     var sessionValidRoot = Path.Combine(Environment.CurrentDirectory, ".tmp", "relaxkonos-session-valid-" + Guid.NewGuid().ToString("N"));

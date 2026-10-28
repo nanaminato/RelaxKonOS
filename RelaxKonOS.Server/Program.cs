@@ -1,5 +1,6 @@
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Identity;
+using RelaxKonOS.Server.Residency;
 using RelaxKonOS.Server.Secrets;
 using RelaxKonOS.Server.Startup;
 using RelaxKonOS.Server.Storage;
@@ -74,6 +75,12 @@ app.Logger.LogInformation("Server modules enabled: {ServerModules}", serverModul
 // before any hosted service starts, so the operator sees the reason instead of a half-working server
 // that never reconciles an interrupted operation.
 await serverModules.ValidateDeactivationAsync(app.Services, serverModuleContext, app.Lifetime.ApplicationStopping);
+// The sweep only decides when an idle module may be released; nothing is loaded here.
+if (app.Services.GetService<ModuleResidencyCoordinator>() is { } moduleResidency)
+{
+    app.Logger.LogInformation("Server module residency: {ModuleResidency}", moduleResidency.DescribeSettings());
+    moduleResidency.Start(app.Lifetime.ApplicationStopping);
+}
 if (eventAlertsOptions.Enabled)
     app.Services.GetRequiredService<RelaxKonOS.Server.Hubs.EventAlertNotificationHub>().Attach();
 
