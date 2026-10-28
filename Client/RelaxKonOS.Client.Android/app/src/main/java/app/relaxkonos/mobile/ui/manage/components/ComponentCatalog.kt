@@ -44,5 +44,11 @@ internal object ComponentCatalog {
 
     val ids: List<String> = entries.map { it.id }
 
+    /**
+     * Components whose changes the component center freezes through the component lifecycle routes.
+     * Mihomo and sing-box are excluded: their plan format belongs to the runtime pages.
+     */
+    val changeableIds: Set<String> = setOf("nginx", "docker", "samba", "squid", "frpc", "frps")
+
     fun definition(componentId: String): ComponentDefinition? = entries.firstOrNull { it.id == componentId }
 }

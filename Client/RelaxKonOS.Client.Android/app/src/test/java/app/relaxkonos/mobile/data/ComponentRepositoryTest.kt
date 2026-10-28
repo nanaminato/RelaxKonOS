@@ -5,12 +5,24 @@ import app.relaxkonos.mobile.loginSession
 import app.relaxkonos.mobile.core.auth.AuthSession
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.ApiResult
+import app.relaxkonos.mobile.core.net.ComponentChange
+import app.relaxkonos.mobile.core.net.ComponentFrozenInstallationRequest
 import app.relaxkonos.mobile.core.net.ComponentModeSupport
+import app.relaxkonos.mobile.core.net.ComponentPlanResult
 import app.relaxkonos.mobile.core.net.ComponentState
 import app.relaxkonos.mobile.core.net.ComponentStateView
+import app.relaxkonos.mobile.core.net.InstallationKind
+import app.relaxkonos.mobile.core.net.InstallationOperation
+import app.relaxkonos.mobile.core.net.InstallationRequest
+import app.relaxkonos.mobile.core.net.InstallationService
+import app.relaxkonos.mobile.core.net.InstallationStage
+import app.relaxkonos.mobile.core.net.InstallationState
+import app.relaxkonos.mobile.core.net.InstallationWire
+import app.relaxkonos.mobile.core.net.WebServer
 import app.relaxkonos.mobile.servercenter.ServerConnectionIdentityRules
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -19,7 +31,11 @@ import org.junit.Test
 class ComponentRepositoryTest {
     private val gateway = FakeGateway()
     private val session = AuthSession(gateway)
-    private val repository = ComponentRepository(gateway, session)
+    private var submitted: Pair<InstallationKind, InstallationRequest>? = null
+    private val repository = ComponentRepository(gateway, session) { _, kind, request, _ ->
+        submitted = kind to request
+        ApiResult.Success(operation(kind))
+    }
 
     private suspend fun signIn(privilegedOperations: Boolean = true): SessionState.Active {
         val login = loginSession().let {
@@ -47,6 +63,29 @@ class ComponentRepositoryTest {
             problems = emptyList(),
             pendingOperationId = null,
         )
+
+    private fun operation(kind: InstallationKind) = InstallationOperation(
+        operationId = "11111111-1111-1111-1111-111111111111",
+        service = InstallationService.Nginx,
+        kind = kind,
+        state = InstallationState.Running,
+        stage = InstallationStage.Preparing,
+        progress = null,
+        problemCode = null,
+        createdAtMillis = 0,
+        startedAtMillis = null,
+        completedAtMillis = null,
+        cancellable = true,
+    )
+
+    private fun plan(componentId: String, change: ComponentChange) = ComponentPlanResult(
+        componentId = componentId,
+        change = change,
+        problems = emptyList(),
+        notes = emptyList(),
+        requestJson = """{"componentId":"$componentId","change":"${change.wire}"}""",
+        targetJson = """{"mode":"systemPackage"}""",
+    )
 
     @Test
     fun `reads one state per component in request order`() = runTest {
@@ -135,4 +174,91 @@ class ComponentRepositoryTest {
         }
         assertTrue(cancelled)
     }
+
+    @Test
+    fun `plan freezes the state revision and mode the user was shown`() = runTest {
+        val owner = signIn()
+        gateway.onComponentPlan = { componentId, change, body ->
+            val json = JSONObject(String(body.toByteArray()))
+            assertEquals("nginx", componentId)
+            assertEquals(ComponentChange.Update, change)
+            assertEquals("host-1", json.getString("hostId"))
+            assertEquals(7L, json.getLong("expectedRevision"))
+            assertEquals("SystemPackage", json.getString("mode"))
+            assertTrue(json.getBoolean("keepData"))
+            ApiResult.Success(plan(componentId, change))
+        }
+        val result = repository.plan(owner, "nginx", ComponentChange.Update, view("nginx").state!!, keepData = true)
+        assertTrue(result is ApiResult.Success)
+        assertTrue((result as ApiResult.Success).value.allowed)
+    }
+
+    @Test
+    fun `apply submits the frozen package through the installation ledger`() = runTest {
+        val owner = signIn()
+        val frozen = plan("nginx", ComponentChange.Update)
+        val result = repository.apply(owner, frozen, ElevationAnswerProvider.Declines)
+        assertTrue(result is ApiResult.Success)
+        val (kind, request) = submitted!!
+        assertEquals(InstallationKind.Upgrade, kind)
+        assertTrue(request is ComponentFrozenInstallationRequest)
+        val body = JSONObject(String(InstallationWire.request(request, kind).toByteArray()))
+        assertTrue(body.getBoolean("confirmed"))
+        val packageValue = body.getJSONObject("frozenPackage")
+        assertEquals("nginx", packageValue.getString("componentId"))
+        assertTrue(packageValue.has("request") && packageValue.has("expected"))
+    }
+
+    @Test
+    fun `frp changes are submitted as a frozen archive`() = runTest {
+        val owner = signIn()
+        val result = repository.apply(owner, plan("frpc", ComponentChange.Install), ElevationAnswerProvider.Declines)
+        assertTrue(result is ApiResult.Success)
+        val (kind, request) = submitted!!
+        assertEquals(InstallationKind.Install, kind)
+        val body = JSONObject(String(InstallationWire.request(request, kind).toByteArray()))
+        assertTrue(body.has("frozenArchive"))
+        assertTrue(!body.has("frozenPackage"))
+    }
+
+    @Test
+    fun `a component without an installation owner is refused`() = runTest {
+        val owner = signIn()
+        val result = repository.apply(owner, plan("git", ComponentChange.Install), ElevationAnswerProvider.Declines)
+        assertTrue(result is ApiResult.Transport)
+        assertNull(submitted)
+    }
+
+    @Test
+    fun `nginx selection reads the host current instance and sets another one`() = runTest {
+        val owner = signIn()
+        gateway.onCurrentNginx = { ApiResult.Success("nginx-a") }
+        gateway.onWebServers = { ApiResult.Success(listOf(server("nginx-a"), server("nginx-b"))) }
+        assertEquals("nginx-a", (repository.currentNginx(owner) as ApiResult.Success).value)
+        val servers = (repository.nginxServers(owner) as ApiResult.Success).value
+        assertEquals(listOf("nginx-a", "nginx-b"), servers.map { it.id })
+
+        var selected: String? = null
+        gateway.onSelectCurrentNginx = { id -> selected = id; ApiResult.Success(id) }
+        assertEquals("nginx-b", (repository.selectCurrentNginx(owner, "nginx-b") as ApiResult.Success).value)
+        assertEquals("nginx-b", selected)
+    }
+
+    private fun server(id: String) = WebServer(
+        id = id,
+        type = "nginx",
+        managementMode = "integrated",
+        version = "1.26.3",
+        canRead = true,
+        canTestConfiguration = true,
+        providerId = "nginx",
+        executablePath = "/usr/sbin/nginx",
+        configurationPath = "/etc/nginx/nginx.conf",
+        detectedAtMillis = 0,
+        canReload = true,
+        canStart = true,
+        canStop = true,
+        canRestart = true,
+        canUninstall = false,
+    )
 }

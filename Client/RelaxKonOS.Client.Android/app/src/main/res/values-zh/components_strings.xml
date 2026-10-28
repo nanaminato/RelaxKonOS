@@ -3,7 +3,19 @@
 <resources>
     <string name="components_title">组件中心</string>
     <string name="components_subtitle">这台服务器管理的宿主组件</string>
-    <string name="components_note">只读。安装、更新、修复、回退和卸载在桌面端或服务器端组件中心进行，那里有冻结计划与恢复台账。</string>
+    <string name="components_note">安装、更新和卸载会在服务器端冻结变更，并走与应用页相同的安装台账。Mihomo 与 sing-box 的版本操作仍在各自运行时页面完成。</string>
+
+    <string name="components_action_install">安装</string>
+    <string name="components_action_update">更新</string>
+    <string name="components_action_uninstall">卸载</string>
+    <string name="components_change_title">%1$s组件</string>
+    <string name="components_change_target">目标：%1$s</string>
+    <string name="components_change_keep_data">保留业务数据与配置，只移除已安装程序。</string>
+    <string name="components_operation_title">变更已提交</string>
+    <string name="components_operation_submitted">服务器已接受该操作。操作 ID 为 %1$s，可在任务与恢复中查看进度和恢复入口。</string>
+    <string name="components_action_failed">变更未完成</string>
+    <string name="components_nginx_select">当前 Nginx</string>
+    <string name="components_nginx_empty">没有可用的受管或已集成 Nginx 实例。</string>
 
     <string name="components_nginx">Nginx</string>
     <string name="components_nginx_note">Web 服务器与站点发布</string>

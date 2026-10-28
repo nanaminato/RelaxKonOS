@@ -3,7 +3,19 @@
 <resources>
     <string name="components_title">Components</string>
     <string name="components_subtitle">Host software this server manages</string>
-    <string name="components_note">Read-only. Install, update, repair, rollback and uninstall run in the desktop or server component center, where the frozen plan and recovery ledger live.</string>
+    <string name="components_note">Install, update and uninstall freeze the change on the server and run through the same installation ledger as the application screens. Mihomo and sing-box versions stay in their runtime pages.</string>
+
+    <string name="components_action_install">Install</string>
+    <string name="components_action_update">Update</string>
+    <string name="components_action_uninstall">Uninstall</string>
+    <string name="components_change_title">%1$s component</string>
+    <string name="components_change_target">Target: %1$s</string>
+    <string name="components_change_keep_data">Business data and configuration are kept; the installed program is removed.</string>
+    <string name="components_operation_title">Change submitted</string>
+    <string name="components_operation_submitted">The server accepted the operation. Track progress and recovery by operation id %1$s.</string>
+    <string name="components_action_failed">Change not completed</string>
+    <string name="components_nginx_select">Current Nginx</string>
+    <string name="components_nginx_empty">No managed or integrated Nginx instance is available.</string>
 
     <string name="components_nginx">Nginx</string>
     <string name="components_nginx_note">Web server and site publishing</string>

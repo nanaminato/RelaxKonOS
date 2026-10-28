@@ -3,7 +3,19 @@
 <resources>
     <string name="components_title">コンポーネント</string>
     <string name="components_subtitle">このサーバーが管理するホストソフトウェア</string>
-    <string name="components_note">読み取り専用です。インストール、更新、修復、ロールバック、アンインストールは、凍結プランと復旧台帳があるデスクトップまたはサーバーのコンポーネントセンターで行います。</string>
+    <string name="components_note">インストール、更新、アンインストールはサーバー側で変更を凍結し、アプリ画面と同じインストール台帳で実行します。Mihomo と sing-box のバージョン操作は各ランタイムページで行います。</string>
+
+    <string name="components_action_install">インストール</string>
+    <string name="components_action_update">更新</string>
+    <string name="components_action_uninstall">アンインストール</string>
+    <string name="components_change_title">%1$sコンポーネント</string>
+    <string name="components_change_target">対象: %1$s</string>
+    <string name="components_change_keep_data">業務データと設定は保持し、インストール済みプログラムのみを削除します。</string>
+    <string name="components_operation_title">変更を受け付けました</string>
+    <string name="components_operation_submitted">サーバーが操作を受け付けました。操作 ID は %1$s です。進行状況と復旧はタスクと復旧で確認できます。</string>
+    <string name="components_action_failed">変更は完了していません</string>
+    <string name="components_nginx_select">現在の Nginx</string>
+    <string name="components_nginx_empty">管理対象または統合済みの Nginx インスタンスがありません。</string>
 
     <string name="components_nginx">Nginx</string>
     <string name="components_nginx_note">Web サーバーとサイト公開</string>

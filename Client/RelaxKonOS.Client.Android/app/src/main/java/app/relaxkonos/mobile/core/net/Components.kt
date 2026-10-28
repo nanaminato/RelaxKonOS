@@ -18,6 +18,18 @@ object ComponentRoutes {
         require(idRule.matches(componentId)) { "Invalid component id" }
         return "$ROOT/$componentId/state"
     }
+
+    fun plan(componentId: String): String {
+        require(idRule.matches(componentId)) { "Invalid component id" }
+        return "$ROOT/$componentId/plan"
+    }
+}
+
+/** The three changes the Android component center can freeze; repair/rollback stay in the runtime pages. */
+enum class ComponentChange(val wire: String) {
+    Install("Install"),
+    Update("Update"),
+    Uninstall("Uninstall"),
 }
 
 /** One declared install mode for this host, even when the state itself cannot be read. */
@@ -64,8 +76,17 @@ data class ComponentStateView(
 }
 
 object ComponentWire {
-    private val ownershipValues = setOf("unknown", "absent", "external", "managed")
-    private val modeValues = setOf("managedArchive", "systemPackage")
+    /** Server enums use JsonStringEnumConverter without a naming policy: "Managed", "SystemPackage". */
+    private fun componentOwnership(raw: String): String = when (raw.lowercase()) {
+        "unknown", "absent", "external", "managed" -> raw.lowercase()
+        else -> throw IllegalArgumentException("Unknown component ownership")
+    }
+
+    private fun componentMode(raw: String): String = when (raw.lowercase()) {
+        "systempackage" -> "systemPackage"
+        "managedarchive" -> "managedArchive"
+        else -> throw IllegalArgumentException("Unknown component mode")
+    }
 
     fun stateView(payload: String, expectedComponentId: String): ComponentStateView {
         val value = JSONObject(payload)
@@ -79,12 +100,8 @@ object ComponentWire {
                 componentId = expectedComponentId,
                 hostId = stateValue.getString("hostId"),
                 revision = stateValue.getLong("revision"),
-                ownership = stateValue.getString("ownership").also {
-                    require(it in ownershipValues) { "Unknown component ownership" }
-                },
-                mode = stateValue.getString("mode").also {
-                    require(it in modeValues) { "Unknown component mode" }
-                },
+                ownership = componentOwnership(stateValue.getString("ownership")),
+                mode = componentMode(stateValue.getString("mode")),
                 target = listOf("os", "architecture", "serviceHost").joinToString(" / ") { target.getString(it) },
                 activeVersion = stateValue.optNullableString("activeVersion"),
                 recoveryRequired = stateValue.getBoolean("recoveryRequired"),
@@ -95,7 +112,7 @@ object ComponentWire {
         val modes = (0 until modeArray.length()).map { index ->
             val mode = modeArray.getJSONObject(index)
             ComponentModeSupport(
-                mode = mode.getString("mode").also { require(it in modeValues) { "Unknown component mode support" } },
+                mode = componentMode(mode.getString("mode")),
                 platform = mode.getString("platform"),
                 available = mode.getBoolean("available"),
                 problemCode = mode.optNullableString("problemCode"),
@@ -113,4 +130,64 @@ object ComponentWire {
             pendingOperationId = value.optNullableString("pendingOperationId"),
         )
     }
+
+    /**
+     * Builds the freeze request from the state the user was shown. Package components freeze the
+     * host's own candidate, so no source/release id is invented on the client; the expected revision
+     * makes a concurrent host change a conflict instead of a silently different plan.
+     */
+    fun planBody(componentId: String, change: ComponentChange, state: ComponentState,
+        keepData: Boolean, idempotencyKey: String): JsonBody = JsonBody()
+        .string("componentId", componentId)
+        .string("hostId", state.hostId)
+        .string("change", change.wire)
+        .raw("expectedRevision", state.revision.toString())
+        .string("mode", if (state.mode == "systemPackage") "SystemPackage" else "ManagedArchive")
+        .raw("sourceId", "null")
+        .raw("expectedSourceRevision", "0")
+        .raw("expectedTrustRevision", "0")
+        .raw("releaseId", "null")
+        .raw("requestedVersion", "null")
+        .bool("keepData", keepData)
+        .string("idempotencyKey", idempotencyKey)
+
+    /**
+     * A frozen proposal. `request` and `target` are kept as the host returned them and are submitted
+     * back inside [ComponentFrozenInstallationRequest]; [problems] is empty only when the change is
+     * allowed.
+     */
+    fun plan(payload: String, expectedComponentId: String, expectedChange: ComponentChange): ComponentPlanResult {
+        val value = JSONObject(payload)
+        val request = if (value.isNull("request")) null else value.getJSONObject("request")
+        val target = if (value.isNull("target")) null else value.getJSONObject("target")
+        if (request != null) {
+            require(request.getString("componentId") == expectedComponentId) { "Planned component changed" }
+            require(request.getString("change").equals(expectedChange.wire, ignoreCase = true)) { "Planned change changed" }
+        }
+        val problemArray = value.optJSONArray("problems") ?: JSONArray()
+        val problems = (0 until problemArray.length()).map { problemArray.getString(it) }
+        val noteArray = value.optJSONArray("notes") ?: JSONArray()
+        val notes = (0 until noteArray.length()).map { noteArray.getString(it) }
+        return ComponentPlanResult(
+            componentId = expectedComponentId,
+            change = expectedChange,
+            problems = problems,
+            notes = notes,
+            requestJson = request?.toString(),
+            targetJson = target?.toString(),
+        )
+    }
 }
+
+/** One frozen component change; submission goes through the owning domain's installation ledger. */
+data class ComponentPlanResult(
+    val componentId: String,
+    val change: ComponentChange,
+    val problems: List<String>,
+    val notes: List<String>,
+    val requestJson: String?,
+    val targetJson: String?,
+) {
+    val allowed: Boolean get() = problems.isEmpty() && requestJson != null && targetJson != null
+}
+

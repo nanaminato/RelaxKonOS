@@ -37,6 +37,18 @@ interface RelaxKonGateway {
     suspend fun componentState(serverUrl: String, accessToken: String, componentId: String): ApiResult<ComponentStateView> =
         ApiResult.Transport("Component state unavailable.")
 
+    /** Freezes one component change; submitting the frozen target stays a separate domain call. */
+    suspend fun componentPlan(serverUrl: String, accessToken: String, componentId: String,
+        change: ComponentChange, body: JsonBody): ApiResult<ComponentPlanResult> =
+        ApiResult.Transport("Component planning unavailable.")
+
+    /** The host-global Nginx selection; null means no single instance is selected. */
+    suspend fun currentNginx(serverUrl: String, accessToken: String): ApiResult<String?> =
+        ApiResult.Transport("Nginx selection unavailable.")
+
+    suspend fun selectCurrentNginx(serverUrl: String, accessToken: String, serverId: String): ApiResult<String?> =
+        ApiResult.Transport("Nginx selection unavailable.")
+
     suspend fun hostTime(serverUrl: String, accessToken: String): ApiResult<HostTimeSettings>
     suspend fun hostIdentity(serverUrl: String, accessToken: String): ApiResult<HostIdentitySettings>
     suspend fun hostEnvironmentTarget(serverUrl: String, accessToken: String, scope: HostEnvironmentScope): ApiResult<HostSettingsTarget>

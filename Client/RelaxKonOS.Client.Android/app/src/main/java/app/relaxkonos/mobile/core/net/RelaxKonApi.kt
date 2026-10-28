@@ -307,6 +307,19 @@ class RelaxKonApi(
             ComponentWire.stateView(payload, componentId)
         }
 
+    override suspend fun componentPlan(serverUrl: String, accessToken: String, componentId: String,
+        change: ComponentChange, body: JsonBody): ApiResult<ComponentPlanResult> =
+        webPublishingCall("POST", serverUrl, ComponentRoutes.plan(componentId), accessToken, body) { payload ->
+            ComponentWire.plan(payload, componentId, change)
+        }
+
+    override suspend fun currentNginx(serverUrl: String, accessToken: String): ApiResult<String?> =
+        webPublishingRead(serverUrl, accessToken, WebPublishingRoutes.currentNginx(), WebPublishingWire::currentNginx)
+
+    override suspend fun selectCurrentNginx(serverUrl: String, accessToken: String, serverId: String): ApiResult<String?> =
+        webPublishingCall("PUT", serverUrl, WebPublishingRoutes.currentNginx(), accessToken,
+            JsonBody().string("serverId", serverId), WebPublishingWire::currentNginx)
+
     override suspend fun startInstallation(serverUrl: String, accessToken: String, kind: InstallationKind,
         request: InstallationRequest, idempotencyKey: String): ApiResult<InstallationOperation> =
         installationCall("POST", serverUrl, InstallationRoutes.start(request.service, kind), accessToken,

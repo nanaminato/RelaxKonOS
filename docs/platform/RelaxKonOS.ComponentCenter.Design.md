@@ -2,7 +2,7 @@
 
 > 当前逐组件实施状态与 Nginx 平台边界见[组件中心实施进度](RelaxKonOS.ComponentCenter.Progress.md)；下文历史切片的验收范围保持原记录。
 
-> 状态：桌面端首批接入实施中；目录已扩到全部已声明的宿主组件（sing-box 全流程、mihomo 运行时页面、其余仅目录与来源声明），完整 CC 验收尚未完成。Android 提供只读组件状态页（2026-10-28），生命周期变更仍只在桌面/服务器端，交互细节由 [Android 文档](../../Client/RelaxKonOS.Client.Android/docs/features/ComponentCenter.md)维护。
+> 状态：桌面端首批接入实施中；目录已扩到全部已声明的宿主组件（sing-box 全流程、mihomo 运行时页面、其余仅目录与来源声明），完整 CC 验收尚未完成。Android 提供组件状态、系统包组件的安装/更新/卸载与“当前 Nginx”选择（2026-10-28），托管归档与运行时版本仍由应用/运行时页管理，交互细节由 [Android 文档](../../Client/RelaxKonOS.Client.Android/docs/features/ComponentCenter.md)维护。
 > 更新：2026-10-28。
 > 定位：统一管理宿主组件的安装、版本、更新、修复、回退、卸载与发布源。借鉴 Windows 功能的树形选择，但提供完整生命周期管理。
 

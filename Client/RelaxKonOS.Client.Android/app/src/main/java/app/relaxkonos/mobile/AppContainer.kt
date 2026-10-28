@@ -367,7 +367,9 @@ class AppContainer(context: Context) {
         app.relaxkonos.mobile.data.HostSettingsJournal(app.relaxkonos.mobile.data.FileHostSettingsStorage(appContext.noBackupFilesDir)))
     val firewall = app.relaxkonos.mobile.data.FirewallRepository(gateway, session, elevations,
         app.relaxkonos.mobile.data.FirewallMutationJournal(app.relaxkonos.mobile.data.FileFirewallRequestStorage(appContext.noBackupFilesDir)))
-    val components = app.relaxkonos.mobile.data.ComponentRepository(gateway, session)
+    val components = app.relaxkonos.mobile.data.ComponentRepository(gateway, session) { owner, kind, request, provider ->
+        installations.submit(installations.prepare(owner, kind, request), provider)
+    }
     val smb = app.relaxkonos.mobile.data.SmbRepository(gateway, session, elevations,
         app.relaxkonos.mobile.data.SmbMutationJournal(app.relaxkonos.mobile.data.FileSmbMutationStorage(appContext.noBackupFilesDir)))
     private val dockerControlJournal = app.relaxkonos.mobile.data.DockerControlJournal(app.relaxkonos.mobile.data.FileDockerControlStorage(appContext.noBackupFilesDir))

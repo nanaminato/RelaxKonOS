@@ -1,27 +1,34 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using RelaxKonOS.Server.Tailscale;
 
 namespace RelaxKonOS.PrivilegedHelper;
 
 /// <summary>A transient secret container. Native login links are never serialized or printed implicitly.</summary>
-internal sealed class TailscaleLoginNativeResult(string state, string? authenticationUrl = null) : IDisposable
+internal sealed class TailscaleLoginNativeResult(string state, string? authenticationUrl = null, TailscaleLoginBaseline? observation = null) : IDisposable
 {
     private string? _authenticationUrl = authenticationUrl;
     public string State { get; } = state;
+    internal TailscaleLoginBaseline? Observation { get; } = observation;
     internal string? TakeAuthenticationUrl() => Interlocked.Exchange(ref _authenticationUrl, null);
     public override string ToString() => "TailscaleLoginNativeResult { State = " + State + " }";
     public void Dispose() => Interlocked.Exchange(ref _authenticationUrl, null);
 }
 
-internal static partial class TailscaleLoginOutput
+internal static class TailscaleLoginOutput
 {
-    // No credentials, ports, fragments, redirect parameters, percent escapes or custom control servers.
-    [GeneratedRegex(@"\Ahttps://login\.tailscale\.com/a/[A-Za-z0-9_-]{10,256}\z", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking)]
-    private static partial Regex OfficialLoginUrl();
-    internal static bool IsOfficialUrl(string? value) => value is { Length: <= 512 } && OfficialLoginUrl().IsMatch(value);
+    // Exact ASCII origin/path, with an opaque token. No URI normalization expands this allowlist.
+    internal static bool IsOfficialUrl(string? value)
+    {
+        const string prefix = "https://login.tailscale.com/a/";
+        if (value is null || !value.StartsWith(prefix, StringComparison.Ordinal)) return false;
+        var token = value.AsSpan(prefix.Length);
+        if (token.Length is < 10 or > 256) return false;
+        foreach (var character in token)
+            if (!char.IsAsciiLetterOrDigit(character) && character is not ('_' or '-')) return false;
+        return true;
+    }
 
     internal static TailscaleLoginNativeResult Parse(ReadOnlySpan<byte> bytes, int exitCode)
     {
@@ -77,6 +84,7 @@ internal sealed class TailscaleNativeLogin
 
     internal async Task<TailscaleLoginBaseline> ReadAsync(CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         _requireExecutable();
         var first = await Read("status", ct);
         var preferences = await Read("get", ct);
@@ -121,8 +129,13 @@ internal sealed class TailscaleNativeLogin
     }
     internal async Task<TailscaleLoginNativeResult> BeginAsync(string expectedRevision, CancellationToken ct)
     {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(TimeSpan.FromSeconds(45));
+        ct = deadline.Token;
+        if (expectedRevision is not { Length: 64 } || !expectedRevision.All(Uri.IsHexDigit)) throw new InvalidDataException("tailscale.login.state_changed");
         var baseline = await ReadAsync(ct);
         if (!baseline.CanStart || baseline.Revision != expectedRevision) throw new InvalidDataException("tailscale.login.state_changed");
+        _requireExecutable();
         var captured = await _run(["up", "--json", "--timeout=5s"], ct);
         if (captured.State != "exited" || captured.ExitCode is null || captured.Output is null) throw Invalid();
         var result = TailscaleLoginOutput.Parse(Encoding.UTF8.GetBytes(captured.Output), captured.ExitCode.Value);
@@ -130,23 +143,26 @@ internal sealed class TailscaleNativeLogin
         {
             var observed = await ReadAsync(ct);
             if (observed.PreferencesRevision != baseline.PreferencesRevision) throw Invalid();
-            if (result.State == "completed" && observed.BackendState != "Running") throw Invalid();
+            if (result.State == "completed" && observed.BackendState != "Running" || result.State == "approval-required" && observed.BackendState != "NeedsMachineAuth") throw Invalid();
             if (result.State == "awaiting-browser")
             {
                 // Re-read the daemon's current URL and bind it to this command's challenge, then return it once.
                 var secret = result.TakeAuthenticationUrl();
                 var status = await Read("status", ct);
                 using var json = JsonDocument.Parse(status);
+                TailscaleNativeControl.Canonical(json.RootElement);
                 if (json.RootElement.GetProperty("BackendState").GetString() != "NeedsLogin"
                     || json.RootElement.GetProperty("AuthURL").GetString() != secret || !TailscaleLoginOutput.IsOfficialUrl(secret)) throw Invalid();
-                return new("awaiting-browser", secret);
+                result.Dispose();
+                return new("awaiting-browser", secret, observed);
             }
-            return result;
+            var state = result.State; result.Dispose();
+            return new(state, observation: observed);
         }
-        catch
-        {
-            result.Dispose(); throw;
-        }
+        catch (OperationCanceledException) { result.Dispose(); throw; }
+        catch (Exception ex) when (ex is InvalidDataException or JsonException or IOException or InvalidOperationException
+            or KeyNotFoundException or UnauthorizedAccessException or ArgumentException)
+        { result.Dispose(); throw Invalid(); }
     }
     private static string Hash(string text) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
     private static InvalidDataException Invalid() => new("tailscale.login.invalid_output");

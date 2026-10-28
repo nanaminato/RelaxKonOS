@@ -39,7 +39,7 @@
 | [Mihomo 代理管理器](features/Proxy.md) | 运行时安装、配置、订阅、节点与操作恢复 |
 | [SMB 文件服务](features/Smb.md) | 安装、共享、权限、凭据与操作结果核实 |
 | [宿主防火墙](features/Firewall.md) | 状态、默认策略、规则、提权与变更结果核实 |
-| [组件中心](features/ComponentCenter.md) | 宿主组件只读状态、所有权、版本、平台支持与恢复入口 |
+| [组件中心](features/ComponentCenter.md) | 宿主组件状态、安装/更新/卸载、当前 Nginx 选择与恢复入口 |
 | [FRP 隧道与运行时](features/Tunnels.md) | 运行时安装、隧道与服务端配置、维护、审计与恢复 |
 | [网站发布](features/WebPublishing.md) | 诊断、HTTPS 确认、发布恢复与访问检查 |
 | [终端、脚本与守护](features/TerminalAutomation.md) | Server 与 SSH 会话、终端布局、脚本与远端任务 |

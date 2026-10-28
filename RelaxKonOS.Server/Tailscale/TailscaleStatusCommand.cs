@@ -2,8 +2,12 @@ using System.Diagnostics;
 
 namespace RelaxKonOS.Server.Tailscale;
 
-public sealed record TailscaleCommandResult(string State, string? Json = null);
-internal sealed record TailscaleCapturedResult(string State, int? ExitCode = null, string? Output = null)
+public sealed record TailscaleCommandResult(string State,
+    [property: System.Text.Json.Serialization.JsonIgnore] string? Json = null)
+{
+    public override string ToString() => "TailscaleCommandResult { State = " + State + " }";
+}
+internal sealed record TailscaleCapturedResult(string State, int? ExitCode = null, [property: System.Text.Json.Serialization.JsonIgnore] string? Output = null)
 {
     public override string ToString() => $"TailscaleCapturedResult {{ State = {State}, ExitCode = {ExitCode} }}";
 }

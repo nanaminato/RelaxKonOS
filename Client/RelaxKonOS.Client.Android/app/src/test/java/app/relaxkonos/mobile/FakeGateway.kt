@@ -43,6 +43,23 @@ class FakeGateway : RelaxKonGateway {
     override suspend fun componentState(serverUrl: String, accessToken: String, componentId: String): ApiResult<ComponentStateView> =
         requireHandler(onComponentState, "componentState")(componentId)
 
+    var onComponentPlan: (suspend (String, ComponentChange, JsonBody) -> ApiResult<ComponentPlanResult>)? = null
+    override suspend fun componentPlan(serverUrl: String, accessToken: String, componentId: String,
+        change: ComponentChange, body: JsonBody): ApiResult<ComponentPlanResult> =
+        requireHandler(onComponentPlan, "componentPlan")(componentId, change, body)
+
+    var onCurrentNginx: (suspend () -> ApiResult<String?>)? = null
+    override suspend fun currentNginx(serverUrl: String, accessToken: String): ApiResult<String?> =
+        requireHandler(onCurrentNginx, "currentNginx")()
+
+    var onSelectCurrentNginx: (suspend (String) -> ApiResult<String?>)? = null
+    override suspend fun selectCurrentNginx(serverUrl: String, accessToken: String, serverId: String): ApiResult<String?> =
+        requireHandler(onSelectCurrentNginx, "selectCurrentNginx")(serverId)
+
+    var onWebServers: (suspend () -> ApiResult<List<WebServer>>)? = null
+    override suspend fun webServers(serverUrl: String, accessToken: String): ApiResult<List<WebServer>> =
+        requireHandler(onWebServers, "webServers")()
+
     var onHostTime: (suspend () -> ApiResult<HostTimeSettings>)? = null
     var onHostIdentity: (suspend () -> ApiResult<HostIdentitySettings>)? = null
     var onHostEnvironmentTarget: (suspend (HostEnvironmentScope) -> ApiResult<HostSettingsTarget>)? = null

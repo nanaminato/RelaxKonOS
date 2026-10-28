@@ -162,6 +162,7 @@ await TailscaleHelperControlChecks.RunAsync();
 await TailscaleHelperBridgeChecks.RunAsync();
 await TailscaleRecoveryChecks.RunAsync();
 await TailscaleQuiescenceChecks.RunAsync();
+await TailscaleLoginChecks.RunAsync();
 var httpFolder = Directory.CreateTempSubdirectory("relaxkonos-tailscale-http-");
 var webBuilder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = httpFolder.FullName });
 webBuilder.Logging.ClearProviders();
@@ -306,5 +307,3 @@ sealed class HttpControlHost : ITailscaleControlHost
         return Task.FromResult(new TailscaleControlResult(request.OperationId, true, Snapshot));
     }
 }
-
-

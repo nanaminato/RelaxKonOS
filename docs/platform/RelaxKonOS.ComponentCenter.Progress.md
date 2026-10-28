@@ -156,12 +156,16 @@ Nginx、Docker、Samba、Squid 使用已有组件状态/冻结计划与安装台
 
 验证：组件安装入口专项通过，覆盖四组件文件必选、选中文件提交、取消及异步切换来源后丢弃旧结果；中英日文、明暗主题共 12 张在线/文件安装截图已生成，抽查中文浅色文件安装及英文深色在线安装无截断。未执行真实第三方服务安装。
 
-## Android 只读组件状态（2026-10-28）
+## Android 组件状态、安装与当前 Nginx（2026-10-28）
 
-Android 新增“组件中心”入口与只读状态页，补上此前“Android UI 尚未迁移”的空缺，但不复制桌面生命周期。入口只在当前会话声明 `privilegedOperations` 时出现；页面按组件读取 `GET /api/v1.0/components/{componentId}/state`，展示所有权、实测版本、安装模式、目标平台、问题码与待处理操作，并把需要恢复的组件链接到“任务与恢复”、把组件链接到消费它的应用。
+Android 新增“组件中心”入口，补上此前“Android UI 尚未迁移”的空缺。页面按组件读取 `GET /api/v1.0/components/{componentId}/state`，显示所有权、实测版本、安装模式、目标平台、问题码与待处理操作；对服务器报告为系统包的 nginx/docker/samba/squid 提供安装、更新、卸载，并把组件链接到消费它的应用。
 
-范围限制：不安装、不更新、不修复、不回退、不卸载，不列版本目录、不冻结计划、不提交提权；`git` 不在 Android 目录中，因为 Android 没有 Git 工作流。单组件读取失败只影响该行；401/403 与全部传输失败按整页错误处理；会话切换取消读取并清空页面。
+变更流程与桌面端一致：客户端用用户看到的宿主、模式与 `expectedRevision` 调 `POST /components/{componentId}/plan` 冻结目标，确认后把 `ComponentExecuteRequest` 作为 `frozenPackage` 交给该组件的安装台账（复用以至同一幂等键、提权和持久操作记录）；成功后显示操作 ID 并进入“任务与恢复”。托管归档（Windows Nginx、frpc/frps）不在此页选版本或文件，仍由应用/运行时页完成；Mihomo 与 sing-box 保持运行时页；`git` 不在 Android 目录中。
 
-验证：Android `:app:compileDebugKotlin` 通过；`ComponentWireTest` 5 项、`ComponentRepositoryTest` 6 项通过。完整 `:app:testDebugUnitTest` 1740 项中 12 项失败，全部位于 `ProxyViewModelTest` 与 `SingBoxRuntimeViewModelTest`，并在干净 `HEAD` 工作树上以同一清单复现，因此不是本轮引入；未执行真实宿主组件状态或安装验收。
+Nginx 卡片提供“当前 Nginx”：读取宿主全局选择与受管/已集成实例，写入 `GET/PUT /api/v1.0/webservers/current-nginx`；单实例无显式选择时由服务器解析，失效选择不自动切换。
+
+范围限制：本页不提供修复、回退、批量变更、TaskPlan 草稿、归档版本选择、安装包上传或数据删除；不绕过提权；卸载默认保留业务数据与配置。
+
+验证：Android `:app:compileDebugKotlin`、`:app:assembleDebug` 通过；`ComponentWireTest` 5 项、`ComponentRepositoryTest` 11 项通过。完整 `:app:testDebugUnitTest` 1745 项中 12 项失败，全部位于 `ProxyViewModelTest` 与 `SingBoxRuntimeViewModelTest`，并在干净 `HEAD` 工作树上以同一清单复现，因此不是本轮引入；未执行真实宿主组件安装、更新或卸载，也未在设备上完成 UI 复查。
 
 细节由 Android 文档维护：[组件中心（Android）](../../Client/RelaxKonOS.Client.Android/docs/features/ComponentCenter.md)。
