@@ -23,8 +23,10 @@ import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.ui.common.*
+import app.relaxkonos.mobile.ui.manage.components.ComponentDependencyAction
 import app.relaxkonos.mobile.ui.manage.proxy.proxyOperationLabel
 import app.relaxkonos.mobile.ui.manage.proxy.proxyStageLabel
+import app.relaxkonos.mobile.ui.nav.Routes
 import app.relaxkonos.mobile.ui.theme.Spacing
 import java.text.DateFormat
 import java.util.Date
@@ -44,17 +46,17 @@ private const val RECORDS = "records"
 /** Proxy Server management, inbound drafts, access credentials and exports. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ProxyServerScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun ProxyServerScreen(onBack: () -> Unit, modifier: Modifier = Modifier, onOpenComponents: () -> Unit = {}) {
     val container = appContainer()
     val model: ProxyServerViewModel = viewModel(factory = viewModelFactory {
         initializer { ProxyServerViewModel(container.session, container.proxyServer, container.operationIndex) }
     })
-    ProxyServerContent(model, container.activeSession, onBack, modifier)
+    ProxyServerContent(model, container.activeSession, onBack, modifier, onOpenComponents)
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun ProxyServerContent(model: ProxyServerViewModel, owner: SessionState.Active?,
-    onBack: () -> Unit, modifier: Modifier = Modifier) {
+    onBack: () -> Unit, modifier: Modifier = Modifier, onOpenComponents: () -> Unit = {}) {
     val state = model.state
     val disclosureVersion = model.disclosureVersion
     val available = owner?.capabilities?.contains(ServerCapabilities.PROXY_SERVER) == true
@@ -132,6 +134,8 @@ fun ProxyServerScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                 }
                 PageActionRow(refresh = {
                     TextButton(enabled = !state.busy, onClick = model::refresh) { ActionLabel(R.string.common_refresh) }
+                }, actions = {
+                    ComponentDependencyAction(Routes.MANAGE_PROXY_SERVER, onOpenComponents)
                 })
                 RefreshProgressIndicator(visible = state.busy)
                 state.observedAtMillis?.let {

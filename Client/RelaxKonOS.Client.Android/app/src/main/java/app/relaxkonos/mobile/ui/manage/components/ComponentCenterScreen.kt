@@ -1,11 +1,13 @@
 package app.relaxkonos.mobile.ui.manage.components
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -13,6 +15,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -20,30 +23,41 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.auth.SessionState
+import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.ComponentChange
+import app.relaxkonos.mobile.core.net.ComponentPinnedArchive
+import app.relaxkonos.mobile.core.net.InstallationFileReference
+import app.relaxkonos.mobile.core.net.InstallationService
 import app.relaxkonos.mobile.core.net.ServerCapabilities
 import app.relaxkonos.mobile.core.net.ComponentStateView
 import app.relaxkonos.mobile.data.ComponentRead
 import app.relaxkonos.mobile.ui.common.ActionLabel
 import app.relaxkonos.mobile.ui.common.EmptyState
 import app.relaxkonos.mobile.ui.common.PageActionRow
+import app.relaxkonos.mobile.ui.common.RemotePathField
+import app.relaxkonos.mobile.ui.common.RemotePathKind
+import app.relaxkonos.mobile.ui.common.rememberUsageOpenDocument
 import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionCard
 import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.nav.Routes
 import app.relaxkonos.mobile.ui.theme.Spacing
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 /**
  * Component lifecycle for this server: state, install, update, uninstall and the current Nginx
@@ -60,7 +74,10 @@ fun ComponentCenterScreen(
 ) {
     val container = appContainer()
     val model: ComponentCenterViewModel = viewModel(factory = viewModelFactory {
-        initializer { ComponentCenterViewModel(container.session, container.components) }
+        initializer {
+            ComponentCenterViewModel(container.session, container.components,
+                container.installations, container.elevationAnswers)
+        }
     })
     ComponentCenterContent(owner, model, onBack, onOpenRoute, modifier)
 }
@@ -76,6 +93,8 @@ internal fun ComponentCenterContent(
     val container = appContainer()
     val state by model.state.collectAsStateWithLifecycle()
     var selected by remember(owner) { mutableStateOf<ComponentRead?>(null) }
+    // A component whose archive is installed from a file already on the host; null closes the dialog.
+    var fileInstall by remember(owner) { mutableStateOf<String?>(null) }
     LaunchedEffect(owner) { model.load(owner) }
 
     selected?.let { read ->
@@ -120,6 +139,17 @@ internal fun ComponentCenterContent(
             confirmButton = { TextButton(onClick = model::dismissActionProblem) { Text(stringResource(R.string.common_close)) } },
         )
     }
+    fileInstall?.let { componentId ->
+        ArchiveFileInstallDialog(
+            componentId = componentId,
+            busy = state.busy,
+            onDismiss = { fileInstall = null },
+            onSubmit = { version, referenceId ->
+                fileInstall = null
+                model.installArchiveFromFile(owner, componentId, version, referenceId)
+            },
+        )
+    }
 
     Column(modifier.fillMaxSize().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         ScreenHeader(title = stringResource(R.string.components_title), onBack = onBack)
@@ -157,7 +187,8 @@ internal fun ComponentCenterContent(
                         busy = state.busy,
                         canManage = owner.controller && capabilityFor(read.componentId, owner.capabilities),
                         nginxLoading = state.nginxLoading,
-                        onChange = { change -> model.requestChange(owner, read.componentId, change) },
+                        onChange = { change, pin -> model.requestChange(owner, read.componentId, change, pin = pin) },
+                        onInstallFromFile = { fileInstall = read.componentId },
                         onNginx = { model.openNginxSelection(owner) },
                         onOpen = onOpenRoute,
                         onDetails = { selected = read },
@@ -174,7 +205,8 @@ private fun ComponentCard(
     busy: Boolean,
     canManage: Boolean,
     nginxLoading: Boolean,
-    onChange: (ComponentChange) -> Unit,
+    onChange: (ComponentChange, ComponentPinnedArchive?) -> Unit,
+    onInstallFromFile: () -> Unit,
     onNginx: () -> Unit,
     onOpen: (String) -> Unit,
     onDetails: () -> Unit,
@@ -182,14 +214,37 @@ private fun ComponentCard(
     val definition = ComponentCatalog.definition(read.componentId)
     val view = read.view
     val state = view?.state
-    // Package-backed components freeze install/update/uninstall. A managed archive (Windows Nginx,
-    // frpc/frps) is installed from an explicit version/file or its runtime page; this screen does not
-    // pretend it can pick a release the host has not offered.
+    // Package-backed components freeze install/update/uninstall. A managed archive the host offers as
+    // pinned releases (frpc/frps) is installed from one explicitly chosen version; other archives are
+    // observed and navigated only, because this build refuses their execution.
     val packageBacked = canManage && read.componentId in ComponentCatalog.changeableIds && state != null &&
         state.mode == "systemPackage" && view.problems.isEmpty()
     val installable = packageBacked && state?.ownership == "absent"
+    val archiveInstallable = canManage && read.componentId in ComponentCatalog.archiveInstallableIds && state != null &&
+        state.mode == "managedArchive" && state.ownership == "absent" && view.problems.isEmpty() &&
+        view.pinnedArchives.isNotEmpty() && !view.recoveryRequired
+    val archiveObservedOnly = canManage && read.componentId in ComponentCatalog.changeableIds && state != null &&
+        state.ownership == "absent" && state.mode == "managedArchive" && view.problems.isEmpty() &&
+        read.componentId !in ComponentCatalog.archiveInstallableIds &&
+        read.componentId !in ComponentCatalog.fileInstallableIds
+    // A file reference installs the same domain service from an archive the operator supplies.
+    val fileInstallable = canManage && read.componentId in ComponentCatalog.fileInstallableIds && state != null &&
+        state.ownership == "absent" && view.problems.isEmpty() && !view.recoveryRequired
     // Updating or removing an external installation would claim ownership the host did not grant.
     val manageable = packageBacked && state?.ownership == "managed" && view?.recoveryRequired != true
+    var pin by remember(read.componentId, view?.pinRevision) {
+        mutableStateOf(view?.pinnedArchives?.firstOrNull())
+    }
+    var pinDialog by remember(read.componentId) { mutableStateOf(false) }
+    if (pinDialog && view != null) {
+        ArchiveVersionDialog(
+            pins = view.pinnedArchives,
+            selected = pin,
+            busy = busy,
+            onSelect = { pin = it; pinDialog = false },
+            onDismiss = { pinDialog = false },
+        )
+    }
     SectionCard(
         title = stringResource(definition?.title ?: R.string.components_title),
         subtitle = definition?.let { stringResource(it.description) },
@@ -208,19 +263,42 @@ private fun ComponentCard(
         if (installable || manageable) {
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
                 if (installable) {
-                    TextButton(enabled = !busy, onClick = { onChange(ComponentChange.Install) }) {
+                    TextButton(enabled = !busy, onClick = { onChange(ComponentChange.Install, null) }) {
                         Text(stringResource(R.string.components_action_install))
                     }
                 }
                 if (manageable) {
-                    TextButton(enabled = !busy, onClick = { onChange(ComponentChange.Update) }) {
+                    TextButton(enabled = !busy, onClick = { onChange(ComponentChange.Update, null) }) {
                         Text(stringResource(R.string.components_action_update))
                     }
-                    TextButton(enabled = !busy, onClick = { onChange(ComponentChange.Uninstall) }) {
+                    TextButton(enabled = !busy, onClick = { onChange(ComponentChange.Uninstall, null) }) {
                         Text(stringResource(R.string.components_action_uninstall))
                     }
                 }
             }
+        }
+        if (archiveInstallable) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(enabled = !busy, onClick = { pinDialog = true }) {
+                    Text(stringResource(R.string.components_archive_pick))
+                }
+                Text(pin?.version ?: stringResource(R.string.components_archive_unavailable),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TextButton(enabled = !busy && pin != null, onClick = { pin?.let { onChange(ComponentChange.Install, it) } }) {
+                    Text(stringResource(R.string.components_action_install))
+                }
+            }
+        }
+        if (fileInstallable) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(enabled = !busy, onClick = onInstallFromFile) {
+                    Text(stringResource(R.string.components_archive_file_title))
+                }
+            }
+        }
+        if (archiveObservedOnly) {
+            Text(stringResource(R.string.components_archive_not_executable), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onDetails) { Text(stringResource(R.string.components_details)) }
@@ -243,6 +321,138 @@ private fun ComponentCard(
 }
 
 @Composable
+private fun ArchiveFileInstallDialog(
+    componentId: String,
+    busy: Boolean,
+    onDismiss: () -> Unit,
+    onSubmit: (version: String, referenceId: String) -> Unit,
+) {
+    val container = appContainer()
+    val owner = container.activeSession
+    val service = fileInstallService(componentId) ?: return
+    val scope = rememberCoroutineScope()
+    var version by remember { mutableStateOf("") }
+    var path by remember { mutableStateOf("") }
+    var reference by remember { mutableStateOf<InstallationFileReference?>(null) }
+    var creating by remember { mutableStateOf(false) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    val validVersion = version.trim().matches(Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,31}"))
+    fun clearReference() { reference = null; problem = null }
+    val localPicker = rememberLauncherForActivityResult(
+        rememberUsageOpenDocument("ComponentCenter.archive")) { uri ->
+        val active = owner
+        if (uri == null || active == null || busy || creating) return@rememberLauncherForActivityResult
+        val document = container.uploadDocuments.open(uri.toString())
+        if (document == null) { problem = "installation.file_unavailable"; return@rememberLauncherForActivityResult }
+        creating = true; problem = null
+        scope.launch {
+            val result = try {
+                container.installations.upload(active, service, document)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                ApiResult.Transport(null)
+            }
+            if (container.activeSession !== active) return@launch
+            when (result) {
+                is ApiResult.Success -> reference = result.value
+                is ApiResult.Problem -> problem = result.code ?: "installation.failed"
+                is ApiResult.Transport -> problem = "installation.unreachable"
+            }
+            creating = false
+        }
+    }
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text(stringResource(R.string.components_archive_file_title)) },
+        text = {
+            Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                Text(stringResource(R.string.components_archive_file_note), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                androidx.compose.material3.OutlinedTextField(version, { version = it; clearReference() },
+                    label = { Text(stringResource(R.string.components_archive_file_version)) },
+                    singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
+                RemotePathField(path, { path = it; clearReference() }, R.string.components_archive_file_path,
+                    RemotePathKind.File, enabled = !busy)
+                OutlinedButton(enabled = !busy && owner != null && path.isNotBlank() && !creating, onClick = {
+                    val active = owner ?: return@OutlinedButton
+                    creating = true; problem = null
+                    scope.launch {
+                        val result = try {
+                            container.installations.fileReference(active, service, path.trim())
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            ApiResult.Transport(null)
+                        }
+                        if (container.activeSession !== active) return@launch
+                        when (result) {
+                            is ApiResult.Success -> reference = result.value
+                            is ApiResult.Problem -> problem = result.code ?: "installation.failed"
+                            is ApiResult.Transport -> problem = "installation.unreachable"
+                        }
+                        creating = false
+                    }
+                }) {
+                    Text(stringResource(if (reference == null) R.string.components_archive_file_reference
+                        else R.string.components_archive_file_reference_ready))
+                }
+                reference?.let { ref ->
+                    Text(stringResource(R.string.components_archive_file_reference_note, ref.fileName),
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                OutlinedButton(enabled = !busy && owner != null && !creating, onClick = {
+                    localPicker.launch(arrayOf("application/zip", "application/gzip",
+                        "application/x-gzip", "application/octet-stream"))
+                }) {
+                    Text(stringResource(R.string.components_archive_file_local))
+                }
+                problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = !busy && validVersion && reference?.expired() == false,
+                onClick = { reference?.let { onSubmit(version.trim(), it.id) } }) {
+                Text(stringResource(R.string.components_action_install))
+            }
+        },
+        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
+    )
+}
+
+@Composable
+private fun ArchiveVersionDialog(
+    pins: List<ComponentPinnedArchive>,
+    selected: ComponentPinnedArchive?,
+    busy: Boolean,
+    onSelect: (ComponentPinnedArchive) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text(stringResource(R.string.components_archive_pick)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                Text(stringResource(R.string.components_archive_note), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                pins.forEach { pin ->
+                    val current = pin.releaseId == selected?.releaseId
+                    TextButton(enabled = !busy, onClick = { onSelect(pin) }, modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.fillMaxWidth()) {
+                            Text(if (current) "✓ ${pin.version}" else pin.version)
+                            Text("${pin.format} · ${pin.rid} · SHA-256 ${pin.sha256.take(12)}…",
+                                style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
+    )
+}
+
+@Composable
 private fun ChangeDialog(
     review: ComponentChangeReview,
     busy: Boolean,
@@ -257,6 +467,9 @@ private fun ChangeDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Text(stringResource(R.string.components_change_target, stringResource(definition?.title ?: R.string.components_title)))
+                review.targetVersion?.let {
+                    Text(stringResource(R.string.components_archive_candidate, it), style = MaterialTheme.typography.bodySmall)
+                }
                 if (review.change == ComponentChange.Uninstall) {
                     Text(stringResource(R.string.components_change_keep_data), style = MaterialTheme.typography.bodySmall)
                 }
@@ -364,7 +577,7 @@ private fun Fact(label: Int, value: String) {
     }
 }
 
-private fun ownershipLabel(view: ComponentStateView?): Int = when (view?.ownership) {
+internal fun ownershipLabel(view: ComponentStateView?): Int = when (view?.ownership) {
     "managed" -> R.string.components_state_managed
     "external" -> R.string.components_state_external
     "absent" -> R.string.components_state_absent

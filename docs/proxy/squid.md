@@ -1,6 +1,6 @@
-﻿# Squid HTTP 代理网关
+# Squid HTTP 代理网关
 
-状态：已实现后端 API、Avalonia 内置应用与 Android 管理应用。桌面与 Android 支持通过 APT 安装和卸载 Squid，主机恢复由管理员操作；Ubuntu 26.04 / Squid 7.2 的包管理、配置、服务控制与 HTTP/CONNECT 已实机验证；Debian 等其他发行版及故障恢复场景仍需分别验收。
+状态：已实现后端 API、Avalonia 内置应用与 Android 管理应用。Android 在应用内通过 APT 安装和卸载 Squid，桌面端的安装/卸载只在组件中心进行（2026-10-29 起应用内不再提供这两个动作），主机恢复由管理员操作；Ubuntu 26.04 / Squid 7.2 的包管理、配置、服务控制与 HTTP/CONNECT 已实机验证；Debian 等其他发行版及故障恢复场景仍需分别验收。
 
 ## 定位与架构
 
@@ -35,7 +35,7 @@ flowchart LR
 | 应用配置、备份、reload 失败回滚、未完成事务阻断 | 已实现；Ubuntu 26.04 配置应用已实测，回滚与中断故障注入待验收 |
 | start / stop / restart / reload / enable / disable | 已实现，固定 squid.service |
 | 操作 ID、幂等键、controller 写权限、observer 读权限、审计 | 复用现有基础设施 |
-| 软件包安装 / 卸载 | 桌面与 Android 支持 APT 安装和卸载；卸载保留配置 |
+| 软件包安装 / 卸载 | Android 在应用内提供 APT 安装和卸载；桌面只在组件中心提供；卸载保留配置 |
 | 编辑器读取结构化状态、desired/published 修订与磁盘漂移 | 已实现主机级持久化；尚未接入用户级 Configuration Registry，不宣称运行时 applied |
 | Avalonia / Android 独立应用入口与编辑器 | 已实现配置表单、预览、校验、发布、服务控制和操作查询；Android 文档见其自有目录 |
 | Basic 用户与密码哈希管理、凭据轮换 | 已实现独立账号创建、重置、启用／禁用、删除；桌面访问控制页 |
@@ -161,7 +161,7 @@ dotnet run --project RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no
 
 ### 桌面软件包控制
 
-运行状态页提供安装、卸载、启动、停止、重启、重载与开机启动切换。安装和卸载使用 `POST /lifecycle` 的 `install` / `uninstall` 动作，要求 `ProxyManage` 与 `Idempotency-Key`，通过现有操作队列查询结果并在完成后刷新状态。确认对话框期间锁定重复提交；取消不会发送请求。平台不支持、只读、已有待确认操作或恢复标记时不允许安装和卸载。
+服务端 `POST /lifecycle` 仍提供 `install` / `uninstall` 动作（要求 `ProxyManage` 与 `Idempotency-Key`，经现有操作队列查询结果）；2026-10-29 起桌面应用不再提供安装/卸载 UI，改由组件中心调用同一路由。运行状态页保留启动、停止、重启、重载与开机启动切换，并在完成后刷新状态。确认对话框期间锁定重复提交；取消不会发送请求。平台不支持、只读、已有待确认操作或恢复标记时不允许安装和卸载。
 
 自动包管理按 `/etc/os-release` 的 `ID`、`VERSION_ID` 和仓库共享的发行版清单判定，明确支持 Debian 12、13，Ubuntu 22.04、24.04、26.04，以及清单内的 Linux Mint 21.x、22.x。还须存在 `/usr/bin/apt-get` 和 `/usr/bin/systemctl`，不能仅凭 `ID_LIKE=debian` 将未知衍生版判为支持。状态契约的必需字段 `packageManagementSupported` 返回实际检测结果；桌面据此禁用安装、卸载并给出说明，配置与服务控制仍按各自条件判断。Helper 在执行时再次检查同一条件，仅调用固定 APT 路径和固定 `squid` 包名。安装先更新包索引，再以非交互方式安装并保留现有配置；单个包管理步骤最长十分钟。发行版安装脚本可能启动默认服务，安装后需检查实际状态，再预览和接管配置。其他发行版仍可通过管理员安装后使用现有配置与服务控制。
 
@@ -188,4 +188,4 @@ Squid 新增组件中心只读状态面板，显示领域安装/服务/待恢复
 
 ### 桌面安装入口（2026-10-26）
 
-本应用的宿主组件安装已移至组件中心，应用内改为“在组件中心管理依赖”跳转；保留业务配置与服务管理。各平台安装能力、冻结计划与台账路径见[组件中心实施进度](../platform/RelaxKonOS.ComponentCenter.Progress.md#桌面组件安装入口统一2026-10-26)。此项仅集中入口，不扩大运行时、信任来源、多版本更新或平台验收范围。
+本应用的宿主组件安装已移至组件中心，应用内不再提供安装、更新、修复、回退或卸载入口，也不保留常驻横幅；设置页的共享“组件依赖”区显示宿主实测状态并提供跳转（Project Editor 为“工具 → 组件依赖”）。业务配置与服务管理保留。各平台安装能力、冻结计划与台账路径见[组件中心实施进度](../platform/RelaxKonOS.ComponentCenter.Progress.md#桌面组件安装入口统一2026-10-26)。此项仅集中入口，不扩大运行时、信任来源、多版本更新或平台验收范围。

@@ -25,6 +25,11 @@ internal partial class GitClientWorkspace : UserControl
     private bool _navigating;
     private readonly DispatcherTimer _menuTimer = new() { Interval = TimeSpan.FromMilliseconds(600) };
 
+    /// <summary>Assigned by the application shell to open the settings dialog (component dependencies).</summary>
+    public Action? OpenSettings { get; set; }
+
+    private void ComponentSettings_Click(object? sender, RoutedEventArgs e) => OpenSettings?.Invoke();
+
     private GitClientWorkspace(GitClientViewModel viewModel, ProjectEditorViewModel project)
     {
         _viewModel = viewModel;

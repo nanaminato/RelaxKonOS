@@ -50,5 +50,19 @@ internal object ComponentCatalog {
      */
     val changeableIds: Set<String> = setOf("nginx", "docker", "samba", "squid", "frpc", "frps")
 
+    /**
+     * Archive components this screen can install from an explicit trusted version. FRP is a pinned
+     * archive pair and the host freezes it through the same component plan route as a package. Other
+     * archives (Nginx on Windows) are observed and navigated only: this build refuses their execution.
+     */
+    val archiveInstallableIds: Set<String> = setOf("frpc", "frps")
+
+    /**
+     * Components this build can install from a file reference (a version the operator states plus an
+     * archive already on the host). The domain installation service still verifies platform, identity
+     * and contents; Nginx supports this path on both of its platforms, FRP as a pinned archive pair.
+     */
+    val fileInstallableIds: Set<String> = setOf("nginx", "frpc", "frps")
+
     fun definition(componentId: String): ComponentDefinition? = entries.firstOrNull { it.id == componentId }
 }

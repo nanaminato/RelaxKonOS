@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" xmlns:proxy="clr-namespace:RelaxKonOS.Client.Apps.Proxy" x:Class="RelaxKonOS.Client.Apps.Proxy.Views.ProxySettingsView" x:DataType="proxy:ProxyManagerViewModel" Classes="builtin-app">
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" xmlns:proxy="clr-namespace:RelaxKonOS.Client.Apps.Proxy" xmlns:cc="clr-namespace:RelaxKonOS.Client.Apps.ComponentCenter" x:Class="RelaxKonOS.Client.Apps.Proxy.Views.ProxySettingsView" x:DataType="proxy:ProxyManagerViewModel" Classes="builtin-app">
   <UserControl.Styles>
     <Style Selector="ToggleButton.network-mode-tab"><Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}"/><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="8"/><Setter Property="Padding" Value="12,8"/><Setter Property="HorizontalContentAlignment" Value="Center"/></Style>
     <Style Selector="ToggleButton.network-mode-tab:checked"><Setter Property="Background" Value="{DynamicResource AccentBrush}"/><Setter Property="Foreground" Value="{DynamicResource TextOnAccentBrush}"/></Style>
@@ -12,9 +12,9 @@
           <TextBlock Text="{loc:Loc proxy.runtime_state}" Foreground="{DynamicResource TextSecondaryBrush}" />
           <TextBlock Grid.Column="1" Text="{Binding RuntimeState}" />
         </Grid>
-        <Button Content="{loc:Loc component_center.manage_dependency}" Command="{Binding OpenRuntimePageCommand}" HorizontalAlignment="Left" />
       </StackPanel>
     </Border>
+    <cc:ComponentDependencySettingsView DataContext="{Binding Dependency}" />
     <Border Padding="20" Classes="app-panel"><StackPanel Spacing="12"><TextBlock Text="{loc:Loc proxy.geodata}" FontSize="19" FontWeight="SemiBold" /><TextBlock Text="{loc:Loc proxy.geodata.hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" /><Grid ColumnDefinitions="*,Auto" ColumnSpacing="18"><TextBlock Text="{loc:Loc proxy.geodata.state}" VerticalAlignment="Center" /><TextBlock Grid.Column="1" Text="{Binding ResourceState}" VerticalAlignment="Center" /></Grid><TextBlock Text="{Binding ResourceDetails}" TextWrapping="Wrap" /><Button Content="{loc:Loc proxy.geodata.prepare}" Command="{Binding PrepareResourcesCommand}" HorizontalAlignment="Left" /></StackPanel></Border>
     <Border Padding="20" Classes="app-panel">
       <StackPanel Spacing="12">

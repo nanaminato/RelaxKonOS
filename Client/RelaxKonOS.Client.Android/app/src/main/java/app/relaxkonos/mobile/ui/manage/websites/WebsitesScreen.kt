@@ -3,6 +3,8 @@ package app.relaxkonos.mobile.ui.manage.websites
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import app.relaxkonos.mobile.ui.common.*
+import app.relaxkonos.mobile.ui.manage.components.ComponentDependencyAction
+import app.relaxkonos.mobile.ui.nav.Routes
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
@@ -35,7 +37,8 @@ import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.common.SectionCard
 
 @Composable
-fun WebsitesScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialApplicationId: String? = null) {
+fun WebsitesScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialApplicationId: String? = null,
+    onOpenComponents: () -> Unit = {}) {
     val dependencies = appContainer()
     val viewModel: WebsitesViewModel = viewModel(factory = viewModelFactory {
         initializer { WebsitesViewModel(dependencies.session, dependencies.webPublishing, dependencies.deployments,
@@ -61,6 +64,7 @@ fun WebsitesScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initial
             return@WorkspaceColumn
         }
         Text(stringResource(R.string.websites_publish_note), style = MaterialTheme.typography.bodySmall)
+        ComponentDependencyAction(Routes.MANAGE_WEBSITES, onOpenComponents)
         RefreshProgressIndicator(visible = state.loading)
         WorkspaceSection(section != "publish") { NginxManager(onChanged = viewModel::refresh, section = section, onRecords = { section = "records" }) }
         WorkspaceSection(section == "publish") { androidx.compose.runtime.key(viewModel.sessionEpoch) { WebsitePublisher(state, viewModel) { section = "records" } } }

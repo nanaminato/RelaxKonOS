@@ -75,7 +75,7 @@ class HomeFeedbackFlowTest {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
                 Box(Modifier.safeDrawingPadding().requiredSize(360.dp, 640.dp)) {
-                    (owner as? SessionState.Active)?.let { HomeContent(model, it, {}, applications = mobileApplications(it.capabilities) { route -> opened = route }) }
+                    (owner as? SessionState.Active)?.let { HomeContent(model, it, {}, applications = mobileApplications(it.capabilities, it.privilegedOperations) { route -> opened = route }) }
                 }
             }
         } }

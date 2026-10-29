@@ -83,6 +83,7 @@
                     </MenuItem>
                     <MenuItem Header="{loc:Loc git.workspace.tools}">
                         <MenuItem Header="{loc:Loc common.settings}" Click="Settings_Click"/>
+                        <MenuItem Header="{loc:Loc git.workspace.component_dependencies}" Click="ComponentSettings_Click"/>
                         <MenuItem Header="{loc:Loc git.refresh}" Click="RefreshProject_Click"/>
                     </MenuItem>
                     <MenuItem x:Name="GitMenu" Header="Git">

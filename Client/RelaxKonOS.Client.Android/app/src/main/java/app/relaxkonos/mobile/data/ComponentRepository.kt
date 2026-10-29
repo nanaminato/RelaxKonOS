@@ -5,6 +5,7 @@ import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.ComponentChange
 import app.relaxkonos.mobile.core.net.ComponentFrozenInstallationRequest
+import app.relaxkonos.mobile.core.net.ComponentPinnedArchive
 import app.relaxkonos.mobile.core.net.ComponentPlanResult
 import app.relaxkonos.mobile.core.net.ComponentState
 import app.relaxkonos.mobile.core.net.ComponentStateView
@@ -82,11 +83,15 @@ class ComponentRepository(
 
     /** Freezes install/update/uninstall against the exact state the user was shown. */
     suspend fun plan(owner: SessionState.Active, componentId: String, change: ComponentChange,
-        state: ComponentState, keepData: Boolean): ApiResult<ComponentPlanResult> {
+        state: ComponentState, keepData: Boolean, pin: ComponentPinnedArchive? = null,
+        pinRevision: Long = 0): ApiResult<ComponentPlanResult> {
         verify(owner)
         require(owner.privilegedOperations)
         require(change != ComponentChange.Uninstall || state.ownership != "absent") { "Nothing to uninstall" }
-        val body = ComponentWire.planBody(componentId, change, state, keepData, UUID.randomUUID().toString())
+        // Only a first install of an archive component names a pinned release; a package change never
+        // carries one, and an update or removal must not pretend to.
+        require(pin == null || change == ComponentChange.Install) { "A pinned archive is an install target only" }
+        val body = ComponentWire.planBody(componentId, change, state, keepData, UUID.randomUUID().toString(), pin, pinRevision)
         return call(owner) { url, token -> gateway.componentPlan(url, token, componentId, change, body) }
     }
 

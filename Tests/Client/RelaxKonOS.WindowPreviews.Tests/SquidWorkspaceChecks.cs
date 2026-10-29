@@ -146,29 +146,26 @@ internal static class SquidWorkspaceChecks
 
         fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { PackageManagementSupported = false } };
         Complete(vm.RefreshCommand.ExecuteAsync(null));
-        Check(!vm.CanInstall && !vm.CanUninstall && vm.ShowPackageUnsupported,
-            "A Linux host without supported package management explains why both package actions are disabled.");
+        Check(vm.ShowPackageUnsupported,
+            "A Linux host without supported package management explains the package limitation instead of offering an action.");
         var packageRequests = fake.Submissions.Count;
-        var navigations = 0;
-        vm.OpenComponentCenter = () => navigations++;
-        vm.ManageComponentCommand.Execute(null);
-        Check(navigations == 1 && fake.Submissions.Count == packageRequests,
-            "Squid installation navigates to Component Center without a package mutation.");
-        Check(typeof(SquidViewModel).GetProperty("InstallCommand") is null,
-            "Squid no longer exposes its former application installer.");
+        Check(typeof(SquidViewModel).GetProperty("InstallCommand") is null
+            && typeof(SquidViewModel).GetProperty("UninstallCommand") is null
+            && typeof(SquidViewModel).GetProperty("CanInstall") is null
+            && typeof(SquidViewModel).GetProperty("CanUninstall") is null,
+            "Squid no longer exposes installation or removal; both belong to Component Center.");
+        var navigations = new List<string>();
+        using (var dependency = new RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsViewModel(
+            "relaxkonos.squid", null, null, null!, componentId => navigations.Add(componentId)))
+        {
+            Check(dependency.Components.Count == 1 && dependency.Components[0].ComponentId == "squid",
+                "Squid settings observes the catalog's squid component dependency.");
+            dependency.Components[0].ManageCommand.Execute(null);
+        }
+        Check(navigations.Count == 1 && navigations[0] == "squid" && fake.Submissions.Count == packageRequests,
+            "Squid dependency settings navigate to Component Center without a package mutation.");
         fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { PackageManagementSupported = true } };
-        var beforePackage = fake.Submissions.Count;
-        fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { Installed = true, Managed = false } };
         Complete(vm.RefreshCommand.ExecuteAsync(null));
-        Check(vm.CanUninstall && !vm.CanInstall, "Unmanaged installed packages can be uninstalled.");
-        vm.ConfirmPackageAsync = _ => Task.FromResult(false);
-        beforePackage = fake.Submissions.Count;
-        Complete(vm.UninstallCommand.ExecuteAsync(null));
-        Check(fake.Submissions.Count == beforePackage, "Cancelling uninstall preserves the package.");
-        vm.ConfirmPackageAsync = _ => Task.FromResult(true);
-        Complete(vm.UninstallCommand.ExecuteAsync(null));
-        Check(fake.Submissions.Last().Body is SquidLifecycleRequest { Action: SquidServiceAction.Uninstall },
-            "Uninstall uses the typed lifecycle contract.");
 
         // Draft problems are reported in the card that owns the field, and they gate every publish action.
         vm.Port = "999";

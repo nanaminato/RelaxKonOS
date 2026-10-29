@@ -5,7 +5,8 @@ using RelaxKonOS.Protocol.Tailscale;
 namespace RelaxKonOS.PrivilegedHelper;
 
 /// <summary>Cross-process native mutation lock and immutable Helper-owned intent/result evidence.</summary>
-internal sealed class TailscaleControlOperations(string root, Action<string> protect, ITailscaleNativeControl native)
+internal sealed partial class TailscaleControlOperations(string root, Action<string> protect, ITailscaleNativeControl native,
+    TailscaleNativeLogin? login = null, TimeProvider? timeProvider = null)
 {
     internal static Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request) =>
         new TailscaleControlOperations(TailscaleControlProtection.Root, TailscaleControlProtection.PrepareRoot, new TailscaleNativeControl()).HandleAsync(request);
@@ -14,21 +15,43 @@ internal sealed class TailscaleControlOperations(string root, Action<string> pro
     {
         var execute = request.Operation == PrivilegedOperationKind.TailscaleControlExecute;
         var close = request.Operation == PrivilegedOperationKind.TailscaleRecoveryClose;
+        var loginBegin = request.Operation == PrivilegedOperationKind.TailscaleLoginBegin;
+        var loginClose = request.Operation == PrivilegedOperationKind.TailscaleLoginClose;
+        var loginIdentity = request.Operation is PrivilegedOperationKind.TailscaleLoginReceipt
+            or PrivilegedOperationKind.TailscaleLoginChallenge or PrivilegedOperationKind.TailscaleLoginRecoveryRead
+            or PrivilegedOperationKind.TailscaleLoginClose or PrivilegedOperationKind.TailscaleLoginRecoveryReceipt;
         var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
-            Correlation: request.Correlation, Version: request.Version, TailscaleChange: execute ? request.TailscaleChange : null, TailscaleRecovery: close ? request.TailscaleRecovery : null);
+            Correlation: request.Correlation, Version: request.Version, TailscaleChange: execute ? request.TailscaleChange : null,
+            TailscaleRecovery: close ? request.TailscaleRecovery : null, TailscaleLogin: loginBegin ? request.TailscaleLogin : null,
+            TailscaleLoginIdentity: loginIdentity ? request.TailscaleLoginIdentity : null,
+            TailscaleLoginClose: loginClose ? request.TailscaleLoginClose : null);
         if (request != clean || request.Operation is not (PrivilegedOperationKind.TailscaleControlRead or PrivilegedOperationKind.TailscaleControlExecute or PrivilegedOperationKind.TailscaleControlReceipt
-                or PrivilegedOperationKind.TailscaleRecoveryRead or PrivilegedOperationKind.TailscaleRecoveryClose or PrivilegedOperationKind.TailscaleRecoveryReceipt)
+                or PrivilegedOperationKind.TailscaleRecoveryRead or PrivilegedOperationKind.TailscaleRecoveryClose or PrivilegedOperationKind.TailscaleRecoveryReceipt
+                or PrivilegedOperationKind.TailscaleLoginBegin or PrivilegedOperationKind.TailscaleLoginObserve or PrivilegedOperationKind.TailscaleLoginReceipt or PrivilegedOperationKind.TailscaleLoginChallenge
+                or PrivilegedOperationKind.TailscaleLoginRecoveryRead or PrivilegedOperationKind.TailscaleLoginClose or PrivilegedOperationKind.TailscaleLoginRecoveryReceipt)
             || request.Version != PrivilegedOperationProtocol.Version || request.OperationId is not { } id || id == Guid.Empty
             || request.Correlation?.IsValid() != true || request.Correlation.OperationId != id || execute && (request.TailscaleChange is not { } change
                 || change.OperationId != id || !Valid(change))
             || close && (request.TailscaleRecovery is not { } recovery || recovery.Request is not { } closeRequest || closeRequest.OperationId != id
                 || !closeRequest.Confirmed || closeRequest.ExpectedRevision is not { Length: 64 }
-                || !closeRequest.ExpectedRevision.All(Uri.IsHexDigit) || !Guid.TryParseExact(recovery.Actor, "D", out var actor) || actor == Guid.Empty)) return Fail(PrivilegedProblemCode.InvalidRequest);
+                || !closeRequest.ExpectedRevision.All(Uri.IsHexDigit) || !Guid.TryParseExact(recovery.Actor, "D", out var actor) || actor == Guid.Empty)
+            || loginBegin && (request.TailscaleLogin is not { } login || !login.Confirmed || login.Intent.OperationId != id || !ValidLogin(login.Intent))
+            || loginIdentity && (request.TailscaleLoginIdentity is not { } identity || identity.OperationId != id || !ValidLogin(identity))
+            || loginClose && (request.TailscaleLoginClose is not { } loginCloseRequest || loginCloseRequest.OperationId != id
+                || !loginCloseRequest.Confirmed || loginCloseRequest.ExpectedRevision is not { Length: 64 }
+                || !loginCloseRequest.ExpectedRevision.All(Uri.IsHexDigit))) return Fail(PrivilegedProblemCode.InvalidRequest);
         try
         {
             protect(root);
+            if (request.Operation is PrivilegedOperationKind.TailscaleLoginBegin or PrivilegedOperationKind.TailscaleLoginObserve or PrivilegedOperationKind.TailscaleLoginReceipt
+                or PrivilegedOperationKind.TailscaleLoginChallenge or PrivilegedOperationKind.TailscaleLoginRecoveryRead
+                or PrivilegedOperationKind.TailscaleLoginClose or PrivilegedOperationKind.TailscaleLoginRecoveryReceipt)
+            {
+                // Login verbs take the same native lock inside their own methods; never nest it here.
+                using var loginLifetime = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+                return await HandleLoginAsync(request, loginLifetime.Token);
+            }
             using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(45));
-            using var gate = await AcquireAsync(lifetime.Token);
             protect(root);
             if (request.Operation == PrivilegedOperationKind.TailscaleControlRead)
             {
@@ -79,8 +102,47 @@ internal sealed class TailscaleControlOperations(string root, Action<string> pro
         catch (UnauthorizedAccessException) { return Fail(PrivilegedProblemCode.AccessDenied); }
         catch (PlatformNotSupportedException) { return Fail(PrivilegedProblemCode.UnsupportedOperation); }
         catch (OperationCanceledException) { return Fail(PrivilegedProblemCode.TimedOut); }
+        catch (InvalidDataException) { return Fail(PrivilegedProblemCode.Conflict); }
         catch (Exception ex) when (ex is IOException or JsonException or InvalidOperationException or KeyNotFoundException or FormatException)
         { return Fail(PrivilegedProblemCode.InternalError); }
+    }
+
+    private async Task<PrivilegedOperationResult> HandleLoginAsync(PrivilegedOperationRequest request, CancellationToken ct)
+    {
+        var id = request.OperationId!.Value;
+        switch (request.Operation)
+        {
+            case PrivilegedOperationKind.TailscaleLoginObserve:
+                return new(true, TailscaleLoginObservation: Observation(await Login.ReadAsync(ct)));
+            case PrivilegedOperationKind.TailscaleLoginBegin:
+            {
+                var command = request.TailscaleLogin!;
+                return new(true, TailscaleLoginReceipt: await BeginLoginAsync(command.Intent, command.Confirmed, ct));
+            }
+            case PrivilegedOperationKind.TailscaleLoginReceipt:
+                return new(true, TailscaleLoginReceipt: await ReadLoginReceiptAsync(request.TailscaleLoginIdentity!, ct));
+            case PrivilegedOperationKind.TailscaleLoginChallenge:
+            {
+                using var challenge = await ReadLoginChallengeAsync(request.TailscaleLoginIdentity!, ct);
+                var url = challenge.TakeAuthenticationUrl() ?? throw LoginConflict();
+                var observation = challenge.Observation is { } baseline ? Observation(baseline) : throw LoginConflict();
+                return new(true, TailscaleLoginChallenge: new(id, url, observation));
+            }
+            case PrivilegedOperationKind.TailscaleLoginRecoveryRead:
+            {
+                var observation = await ReadLoginRecoveryAsync(request.TailscaleLoginIdentity!, ct);
+                return new(true, TailscaleLoginRecovery: new(id, observation, true));
+            }
+            case PrivilegedOperationKind.TailscaleLoginClose:
+            {
+                var command = request.TailscaleLoginClose!;
+                var closure = await CloseLoginAsync(request.TailscaleLoginIdentity!, command.ExpectedRevision, command.Confirmed, ct);
+                return new(true, TailscaleLoginClosure: closure);
+            }
+            case PrivilegedOperationKind.TailscaleLoginRecoveryReceipt:
+                return new(true, TailscaleLoginClosure: await ReadLoginClosureAsync(request.TailscaleLoginIdentity!, ct));
+            default: throw LoginConflict();
+        }
     }
 
     private async Task<PrivilegedOperationResult> RecoverAsync(PrivilegedOperationRequest request, TailscalePrepareRequest? intent, CancellationToken ct)
@@ -114,6 +176,7 @@ internal sealed class TailscaleControlOperations(string root, Action<string> pro
 
     private bool HasUnresolved()
     {
+        if (HasUnresolvedLogin()) return true;
         foreach (var pending in Directory.EnumerateFiles(root, "*.intent.json"))
         {
             var id = Guid.ParseExact(Path.GetFileName(pending)[..32], "N");

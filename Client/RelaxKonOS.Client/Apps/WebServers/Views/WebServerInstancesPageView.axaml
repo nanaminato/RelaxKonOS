@@ -22,7 +22,6 @@
               ColumnDefinitions="*" ColumnSpacing="18" MinWidth="0" MinHeight="0" ClipToBounds="True">
             <Border x:Name="ActionsPanel" Grid.Column="0" Padding="24" MinWidth="0" Classes="app-panel">
                 <StackPanel Spacing="16" MinWidth="0">
-                    <Button Content="{loc:Loc webservers.current.manage}" Command="{Binding ManageComponentCommand}" />
                     <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" />
                     <StackPanel Spacing="3">
                         <TextBlock Text="{Binding ActionsTitle}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />

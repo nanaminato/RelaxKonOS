@@ -430,7 +430,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         if (!Runtime.CanManage) { Notice = LocalizedStatus.Key("proxy_server.runtime.requires_manage"); RefreshTree(); return; }
         if (Runtime.NeedsRecovery) { Notice = Runtime.RecoveryText; RefreshTree(); return; }
         if (Runtime.Installation?.PendingOperationId is not null)
-        { Notice = LocalizedStatus.Key("component_center.availability.Busy"); RefreshTree(); return; }
+        { Notice = LocalizedStatus.Key("component_center.notice.component_busy"); RefreshTree(); return; }
         // Current adapter is sing-box. Resolve all referenced requirements before making any local change.
         var pending = new Queue<string>(ids);
         while (pending.TryDequeue(out var id))

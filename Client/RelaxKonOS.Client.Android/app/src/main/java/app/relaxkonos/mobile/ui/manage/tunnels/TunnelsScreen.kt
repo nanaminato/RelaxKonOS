@@ -27,23 +27,26 @@ import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.data.*
 import app.relaxkonos.mobile.ui.common.*
+import app.relaxkonos.mobile.ui.manage.components.ComponentDependencyAction
 import app.relaxkonos.mobile.ui.manage.operations.*
+import app.relaxkonos.mobile.ui.nav.Routes
 import app.relaxkonos.mobile.ui.theme.Spacing
 import java.text.DateFormat
 import java.util.Date
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable fun TunnelsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
+@Composable fun TunnelsScreen(onBack: () -> Unit, modifier: Modifier = Modifier, onOpenComponents: () -> Unit = {}) {
     val container = appContainer()
     val model: TunnelsViewModel = viewModel(factory = viewModelFactory {
         initializer { TunnelsViewModel(container.session, container.tunnels, container.installations,
             container.operationIndex, container.elevationAnswers, container.uploadDocuments) }
     })
-    TunnelsContent(model, container.activeSession, onBack, modifier)
+    TunnelsContent(model, container.activeSession, onBack, modifier, onOpenComponents)
 }
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable internal fun TunnelsContent(model: TunnelsViewModel, owner: SessionState.Active?, onBack: () -> Unit, modifier: Modifier = Modifier) {
+@Composable internal fun TunnelsContent(model: TunnelsViewModel, owner: SessionState.Active?, onBack: () -> Unit,
+    modifier: Modifier = Modifier, onOpenComponents: () -> Unit = {}) {
     val state = model.state
     val epoch = model.sessionEpoch
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -92,6 +95,7 @@ import java.util.Date
         PageActionRow(refresh = {
             TextButton(enabled = !state.busy, onClick = { if (frpsSection) model.observeFrps() else model.refresh() }) { ActionLabel(R.string.common_refresh) }
         }, actions = {
+            ComponentDependencyAction(Routes.MANAGE_TUNNELS, onOpenComponents)
             if (canManage) {
                 if (section in setOf("overview", "profiles")) Button(enabled = !state.busy && state.pending.isEmpty(), onClick = { model.editProfile() }) { Text(stringResource(R.string.tunnels_profile_create)) }
             }

@@ -265,7 +265,7 @@
     },
     {
       "id": "tailscale-server",
-      "name": "Tailscale contracts, Helper receipts, conditional operations, manual recovery and HTTP authorization",
+      "name": "Tailscale contracts, Helper receipts, conditional operations, manual recovery, login privacy/ledger/coordinator and HTTP authorization",
       "project": "Tests/Tailscale/RelaxKonOS.Tailscale.Tests.csproj",
       "args": [],
       "default": true,

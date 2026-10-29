@@ -1,15 +1,13 @@
-﻿using System.Reflection;
+using System.Reflection;
 using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.ComponentCenter;
-using RelaxKonOS.Client.Apps.ProxyServer;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Identity;
 using RelaxKonOS.Protocol.ManagedRuntimes;
-using RelaxKonOS.Protocol.ProxyServer;
 using RelaxKonOS.Protocol.Workspace;
 using RelaxKonOS.Runtime;
 using RelaxKonOS.WindowManager;
@@ -24,44 +22,69 @@ internal static class ApplicationAvailabilityChecks
     }
     public static async Task RunAsync()
     {
-        // A catalog entry without an availability adapter must not gate its application, otherwise
-        // listing Docker or the Web Server here would make those applications unopenable.
-        Check(ComponentCatalog.LaunchGate("relaxkonos.proxy-server")?.ComponentId == "sing-box"
-            && ComponentCatalog.LaunchGate("relaxkonos.docker") is null
-            && ComponentCatalog.LaunchGate("relaxkonos.webservers") is null
-            && ComponentCatalog.LaunchGate("relaxkonos.proxy") is null,
-            "Only the component with an availability adapter may gate application launch");
-        var nginx = ComponentCatalog.Find("nginx")!;
-        Check(nginx.Sources.Any(source => source.Platforms.Contains("linux") && source.Kind == ComponentSourceKind.SystemPackage)
-            && nginx.Sources.Any(source => source.Platforms.Contains("windows") && source.Kind == ComponentSourceKind.ManagedArchive)
-            && nginx.Sources.Single(source => source.Kind == ComponentSourceKind.SystemPackage).AdapterAvailable
-            && nginx.Sources.Single(source => source.Kind == ComponentSourceKind.ManagedArchive).AdapterAvailable
-            && !nginx.Sources.Single(source => source.Kind == ComponentSourceKind.OfficialSource).AdapterAvailable,
-            "A component with different platform implementations declares one source set per platform");
-        var app = new AppId("relaxkonos.proxy-server");
-        var target = new RuntimeTarget("linux", "x64", null, null, RuntimeInstallMode.Archive, "systemd");
-        var installed = new RuntimeInstallationSnapshot(new(Guid.NewGuid(), "host-a", "sing-box", 1,
-            RuntimeOwnership.Managed, target, "release-a", false), "1.14.3", null, null, null, null, null);
-        var status = new ProxyServerStatus(true, true, false, false, "1.14.3", null, false, null);
-        ApplicationAvailability Classify(RuntimeInstallationSnapshot observation, ProxyServerStatus fact) =>
-            ApplicationAvailabilityService.Classify(app, "server-a", "sing-box", observation, fact);
-        Check(Classify(installed, status) is { State: ComponentAvailabilityKind.Stopped, CanOpen: true },
-            "Stopping a service never makes its application missing");
-        Check(Classify(installed, status with { Running = true }).State == ComponentAvailabilityKind.Running,
-            "Running is a separate measured state");
-        Check(Classify(installed, status with { ProblemCode = "health.failed" }) is { State: ComponentAvailabilityKind.Faulted, CanOpen: true },
-            "Installed faults can still open the business console");
-        Check(Classify(installed with { Installation = installed.Installation with { Ownership = RuntimeOwnership.External } }, status)
-            is { State: ComponentAvailabilityKind.External, CanOpen: false }, "External ownership never becomes automatic takeover");
-        Check(Classify(installed with { Installation = installed.Installation with { Ownership = RuntimeOwnership.Absent } }, status).State
-            == ComponentAvailabilityKind.Unknown, "Contradictory installed facts are unknown rather than an install prompt");
-        Check(Classify(installed with { Installation = installed.Installation with { RecoveryRequired = true } }, status).State
-            == ComponentAvailabilityKind.Recovery, "Recovery blocks normal activation");
-        Check(Classify(installed with { PendingOperationId = Guid.NewGuid() }, status).State == ComponentAvailabilityKind.Busy,
-            "An active transaction is separate from a missing component");
-        Check(Classify(installed, status with { Supported = false }).State == ComponentAvailabilityKind.Unsupported,
-            "An unsupported target never appears missing");
+        // The gate is derived from the catalog's own application association, so every component-backed
+        // application is gated and no application gains a dependency it does not declare.
+        Check(ComponentCatalog.LaunchGate("relaxkonos.proxy-server")?.ComponentIds.SequenceEqual(new[] { "sing-box" }) == true
+            && ComponentCatalog.LaunchGate("relaxkonos.proxy")?.ComponentIds.SequenceEqual(new[] { "mihomo" }) == true
+            && ComponentCatalog.LaunchGate("relaxkonos.docker")?.ComponentIds.SequenceEqual(new[] { "docker" }) == true
+            && ComponentCatalog.LaunchGate("relaxkonos.webservers")?.ComponentIds.SequenceEqual(new[] { "nginx" }) == true
+            && ComponentCatalog.LaunchGate("relaxkonos.file-services")?.ComponentIds.SequenceEqual(new[] { "samba" }) == true
+            && ComponentCatalog.LaunchGate("relaxkonos.squid")?.ComponentIds.SequenceEqual(new[] { "squid" }) == true
+            && ComponentCatalog.LaunchGate("relaxkonos.git")?.ComponentIds.SequenceEqual(new[] { "git" }) == true,
+            "Every component-backed application is gated through the catalog association");
+        Check(ComponentCatalog.LaunchGate("relaxkonos.tunnels")?.ComponentIds.Order().SequenceEqual(new[] { "frpc", "frps" }) == true,
+            "Tunnel Manager lists frpc and frps as alternatives instead of requiring both");
+        Check(ComponentCatalog.LaunchGate("relaxkonos.settings") is null
+            && ComponentCatalog.LaunchGate("relaxkonos.component-center") is null,
+            "An application without a component keeps no fake dependency");
 
+        var target = new RuntimeTarget("linux", "x64", null, null, RuntimeInstallMode.SystemPackage, "systemd");
+        static ComponentStateView View(string componentId, RuntimeOwnership ownership,
+            bool recovery = false, Guid? pending = null, RuntimeTarget? target = null) => new(componentId,
+            new(componentId, "host-a", 3, ownership, ComponentSourceMode.SystemPackage,
+                target ?? new RuntimeTarget("linux", "x64", null, null, RuntimeInstallMode.SystemPackage, "systemd"),
+                "1.24.0", recovery),
+            [new(ComponentSourceMode.SystemPackage, "linux", true, null, "apt")], [], null, 0, null, pending);
+        Check(ApplicationAvailabilityService.Classify(View("nginx", RuntimeOwnership.Managed)) == ComponentAvailabilityKind.Installed,
+            "An installed component is a measured state even while its service is stopped");
+        Check(ApplicationAvailabilityService.Classify(View("nginx", RuntimeOwnership.Managed, recovery: true))
+            == ComponentAvailabilityKind.Recovery, "Recovery blocks normal activation");
+        Check(ApplicationAvailabilityService.Classify(View("nginx", RuntimeOwnership.Managed, pending: Guid.NewGuid()))
+            == ComponentAvailabilityKind.Busy, "An active transaction is separate from a missing component");
+        Check(ApplicationAvailabilityService.Classify(View("nginx", RuntimeOwnership.External)) == ComponentAvailabilityKind.External,
+            "External ownership never becomes automatic takeover");
+        Check(ApplicationAvailabilityService.Classify(View("nginx", RuntimeOwnership.Absent)) == ComponentAvailabilityKind.Missing,
+            "An absent component is the only state that reports a missing dependency");
+        Check(ApplicationAvailabilityService.Classify(View("nginx", RuntimeOwnership.Unknown)) == ComponentAvailabilityKind.Unknown,
+            "Unknown ownership is never treated as not installed");
+        Check(ApplicationAvailabilityService.Classify(new("nginx", null,
+                [new(ComponentSourceMode.SystemPackage, "linux", false, ComponentProblemCodes.PlatformUnsupported, "apt")],
+                [ComponentProblemCodes.PlatformUnsupported])) == ComponentAvailabilityKind.NotRequired,
+            "A component the host platform cannot provide is not a missing dependency");
+        Check(ApplicationAvailabilityService.Classify(new("nginx", null,
+                [new(ComponentSourceMode.SystemPackage, "linux", true, null, "apt")], [ComponentProblemCodes.StateUnavailable]))
+            == ComponentAvailabilityKind.Unknown, "An unreadable state stays unknown rather than missing");
+        Check(ApplicationAvailabilityService.Classify(new("other", null, [], [])) == ComponentAvailabilityKind.Unknown,
+            "A component answer for a different identity is never accepted");
+
+        var tunnels = new AppId("relaxkonos.tunnels");
+        var installedAlternative = ApplicationAvailabilityService.Combine(tunnels, "server-a",
+        [
+            new("frpc", ComponentAvailabilityKind.Missing), new("frps", ComponentAvailabilityKind.Installed, "host-a", Guid.NewGuid())
+        ]);
+        Check(installedAlternative.CanOpen && installedAlternative.ComponentId == "frps",
+            "One installed alternative opens the application and names the component it observed");
+        Check(ApplicationAvailabilityService.Combine(tunnels, "server-a",
+        [
+            new("frpc", ComponentAvailabilityKind.Missing), new("frps", ComponentAvailabilityKind.Recovery)
+        ]).State == ComponentAvailabilityKind.Recovery,
+            "A missing alternative never hides a pending recovery on the other");
+        Check(ApplicationAvailabilityService.Combine(tunnels, "server-a",
+        [
+            new("frpc", ComponentAvailabilityKind.NotRequired), new("frps", ComponentAvailabilityKind.NotRequired)
+        ]).CanOpen, "Alternatives the host cannot provide never block the application");
+
+        var app = new AppId("relaxkonos.proxy-server");
         var server = "server-a";
         var user = new UserDto(Guid.NewGuid(), "operator", HostPlatformKind.Linux, "operator", DateTimeOffset.UtcNow, null);
         SessionDto Login() => new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), DateTimeOffset.UtcNow,
@@ -86,23 +109,25 @@ internal static class ApplicationAvailabilityChecks
             _ => throw new NotSupportedException(method.Name)
         });
         Task<AppPermissionStatus> AskPermission() { permissionPrompts++; return Task.FromResult(permission); }
-        var observed = installed;
-        var fact = status;
+        var observed = View("sing-box", RuntimeOwnership.Managed);
         var reads = 0;
         var fail = false;
-        TaskCompletionSource<RuntimeInstallationSnapshot>? held = null;
-        var runtime = Probe<IRuntimeCatalogClient>((method, _) => method.Name switch
+        var planned = 0;
+        TaskCompletionSource<ComponentStateView>? held = null;
+        var lifecycle = Probe<IComponentLifecycleClient>((method, args) => method.Name switch
         {
-            "InstallationAsync" => Read(),
+            "StateAsync" => Read((string)args![0]!),
+            "PlanAsync" => Plan(),
             _ => throw new InvalidOperationException("Availability must never mutate: " + method.Name)
         });
-        Task<RuntimeInstallationSnapshot> Read()
+        Task<ComponentStateView> Read(string componentId)
         {
             reads++;
-            return held?.Task ?? (fail ? Task.FromException<RuntimeInstallationSnapshot>(new HttpRequestException("offline")) : Task.FromResult(observed));
+            if (componentId != "sing-box") return Task.FromException<ComponentStateView>(new InvalidOperationException("component.unknown"));
+            return held?.Task ?? (fail ? Task.FromException<ComponentStateView>(new HttpRequestException("offline"))
+                : Task.FromResult(observed));
         }
-        var proxy = Probe<IProxyServerClient>((method, _) => method.Name == "StatusAsync"
-            ? Task.FromResult(fact) : throw new InvalidOperationException(method.Name));
+        object? Plan() { planned++; throw new InvalidOperationException("Availability must never freeze a plan"); }
         var activations = new List<Uri>();
         var activation = Probe<IAppActivationService>((method, args) =>
         {
@@ -110,14 +135,16 @@ internal static class ApplicationAvailabilityChecks
             return new AppActivationResult(AppActivationStatus.Activated);
         });
         var windows = new RelaxKonOS.WindowManager.WindowManager();
-        using var services = new ServiceCollection().AddSingleton<IWindowManager>(windows).AddSingleton(runtime).AddSingleton(proxy)
-            .AddSingleton(permissionApi).AddSingleton(activation).BuildServiceProvider();
+        using var services = new ServiceCollection().AddSingleton<IWindowManager>(windows)
+            .AddSingleton<IComponentLifecycleClient>(lifecycle).AddSingleton(permissionApi).AddSingleton(activation)
+            .BuildServiceProvider();
         var ui = new AvailabilityUiProbe();
         using var guard = new ApplicationAvailabilityService(session, services, ui);
         var context = new AppContext(app, windows, services);
         var observationChanges = 0;
         guard.Changed += (_, _) => observationChanges++;
         var manifest = new RelaxKonOS.Client.Apps.ProxyServer.ProxyServerApp().Manifest;
+        var dockerManifest = new RelaxKonOS.Client.Apps.Docker.DockerManagerApp().Manifest;
         permission = AppPermissionStatus.Undecided;
         var passiveDenied = await guard.RefreshAsync(manifest);
         Check(passiveDenied?.State == ComponentAvailabilityKind.NoPermission && reads == 0 && permissionPrompts == 0
@@ -125,19 +152,21 @@ internal static class ApplicationAvailabilityChecks
             "Passive status refresh never requests permission, observes without permission, redirects or opens UI");
         permission = AppPermissionStatus.Granted;
         var passive = await guard.RefreshAsync(manifest);
-        Check(passive is { State: ComponentAvailabilityKind.Stopped, CanOpen: true } && ui.Shown.Count == 0,
-            "Passive refresh reports stopped readiness without opening the application");
+        Check(passive is { State: ComponentAvailabilityKind.Installed, CanOpen: true } && ui.Shown.Count == 0 && reads == 1,
+            "Passive refresh reports installed readiness without opening the application");
         var unchangedBefore = observationChanges;
         await guard.RefreshAsync(manifest);
         Check(observationChanges == unchangedBefore,
             "Unchanged periodic observations do not rebuild application lists or disturb keyboard focus");
-        Check(await guard.CheckAsync(context, null) && ui.Shown.Count == 0, "A stopped installation opens after fresh read checks");
+        Check(await guard.CheckAsync(context, null) && ui.Shown.Count == 0, "An installed component opens after fresh read checks");
         Check(guard.GetCached(app)?.ActualHostId == "host-a", "Cached observations retain the actual installation identity");
-        observed = installed with { Installation = installed.Installation with { Ownership = RuntimeOwnership.Absent } };
-        fact = status with { Installed = false };
+        Check(guard.GetCached(new AppId("relaxkonos.docker")) is null,
+            "One component-backed application never inherits another application's readiness");
+        observed = View("sing-box", RuntimeOwnership.Absent);
         ui.OpenCenter = true;
         Check(!await guard.CheckAsync(context, null) && ui.Shown.Last().State == ComponentAvailabilityKind.Missing
-            && activations.Count == 1 && ComponentCenterNavigation.TryParse(activations[0], out _),
+            && activations.Count == 1 && ComponentCenterNavigation.TryParse(activations[0], out var navigation)
+            && navigation is { AppId: "relaxkonos.proxy-server", ComponentId: "sing-box" },
             "Missing dependencies route only to a controlled display link");
         fail = true;
         Check(!await guard.CheckAsync(context, null) && ui.Shown.Last().State == ComponentAvailabilityKind.Unknown
@@ -147,21 +176,30 @@ internal static class ApplicationAvailabilityChecks
         var beforeDenied = reads;
         Check(!await guard.CheckAsync(context, null) && reads == beforeDenied
             && ui.Shown.Last() is { State: ComponentAvailabilityKind.NoPermission, ServerIdentity: null },
-            "Denied read permission sends no observation and exposes no host detail");
+            "Denied component read permission sends no observation and exposes no host detail");
         permission = AppPermissionStatus.Granted;
         held = new();
         var staleAfterLifecycle = guard.CheckAsync(context, null);
         guard.Clear();
-        held.SetResult(installed);
+        held.SetResult(observed);
         Check(!await staleAfterLifecycle && guard.GetCached(app) is null,
             "Lifecycle invalidation rejects a response started before the installation changed");
         held = new();
         var checking = guard.CheckAsync(context, null);
         var dialogsBeforeSwitch = ui.Shown.Count;
         server = "server-b"; login = Login(); changed?.Invoke(session, new(AuthSessionState.Authenticated));
-        held.SetResult(installed);
+        held.SetResult(observed);
         Check(!await checking && ui.Shown.Count == dialogsBeforeSwitch && guard.GetCached(app) is null,
             "Switching servers discards the old response and clears readiness without opening anything");
+        server = "server-a"; login = Login();
+        held = null;
+        observed = new("sing-box", null,
+            [new(ComponentSourceMode.ManagedArchive, "linux", true, null)], [ComponentProblemCodes.PlatformUnsupported]);
+        Check(await guard.CheckAsync(context, null) && ui.Shown.Count == dialogsBeforeSwitch,
+            "A host that cannot provide the component never blocks its application");
+        Check(guard.RequiresCheck(manifest) && guard.RequiresCheck(dockerManifest),
+            "Every catalog-backed application asks the same host question");
+        Check(planned == 0, "Availability never freezes or executes a component change");
         VerifyRuntimeGate();
     }
 

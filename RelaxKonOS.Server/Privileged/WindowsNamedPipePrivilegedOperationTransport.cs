@@ -52,7 +52,9 @@ public sealed class WindowsNamedPipePrivilegedOperationTransport(PrivilegedHelpe
             var signed = new PipeEnvelope(Convert.ToBase64String(requestJson), Sign(secret, requestJson));
             await WriteFrameAsync(pipe, JsonSerializer.SerializeToUtf8Bytes(signed), CancellationToken.None);
             using var statusResponseTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            var isTailscaleRead = request.Operation is PrivilegedOperationKind.TailscaleStatus or PrivilegedOperationKind.TailscaleControlRead or PrivilegedOperationKind.TailscaleControlReceipt or PrivilegedOperationKind.TailscaleRecoveryRead or PrivilegedOperationKind.TailscaleRecoveryReceipt;
+            var isTailscaleRead = request.Operation is PrivilegedOperationKind.TailscaleStatus or PrivilegedOperationKind.TailscaleControlRead or PrivilegedOperationKind.TailscaleControlReceipt or PrivilegedOperationKind.TailscaleRecoveryRead or PrivilegedOperationKind.TailscaleRecoveryReceipt
+                or PrivilegedOperationKind.TailscaleLoginBegin or PrivilegedOperationKind.TailscaleLoginObserve or PrivilegedOperationKind.TailscaleLoginReceipt or PrivilegedOperationKind.TailscaleLoginChallenge
+                or PrivilegedOperationKind.TailscaleLoginRecoveryRead or PrivilegedOperationKind.TailscaleLoginClose or PrivilegedOperationKind.TailscaleLoginRecoveryReceipt;
             statusResponseTimeout.CancelAfter(TimeSpan.FromSeconds(request.Operation == PrivilegedOperationKind.TailscaleStatus ? 15 : 50));
             using var processResponseTimeout = new CancellationTokenSource();
             var isProcessOperation = request.Operation is PrivilegedOperationKind.ProcessSnapshot

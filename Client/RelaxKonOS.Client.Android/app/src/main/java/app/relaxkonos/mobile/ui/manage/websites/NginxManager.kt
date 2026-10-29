@@ -50,7 +50,6 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
     val lifecycleState by lifecycle.currentStateAsState()
     val resumed = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
     val canManage = owner?.privilegedOperations == true
-    var installDialog by remember(owner, sessionEpoch) { mutableStateOf(false) }
     var diagnostics by remember { mutableStateOf<String?>(null) }
     val clipboard = LocalClipboardManager.current
     var recoveryDialog by remember(owner, sessionEpoch) { mutableStateOf(false) }
@@ -67,10 +66,10 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
     LaunchedEffect(owner, sessionEpoch, section) { if (owner != null) model.refresh() }
     LaunchedEffect(owner, sessionEpoch, section, resumed, state.busy, state.requestVersion, state.operation, state.installation,
         state.operationVerified, state.installationVerified, state.uncertain, state.problemCode, state.siteDraft,
-        installDialog, recoveryDialog, confirmation, cancellation) {
-        if (resumed && section in setOf("instances", "sites", "records") && !installDialog && !recoveryDialog && confirmation == null && cancellation == null) {
+        recoveryDialog, confirmation, cancellation) {
+        if (resumed && section in setOf("instances", "sites", "records") && !recoveryDialog && confirmation == null && cancellation == null) {
             model.observeTasks {
-                lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && !installDialog && !recoveryDialog && confirmation == null && model.cancellation == null
+                lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && !recoveryDialog && confirmation == null && model.cancellation == null
             }
         }
     }
@@ -94,8 +93,6 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
         Text(stringResource(R.string.nginx_intro), style = MaterialTheme.typography.bodySmall)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             TextButton(onClick = model::refresh, enabled = !state.busy) { Text(stringResource(R.string.nginx_discover)) }
-            if (canManage && state.system != HostOperatingSystemKind.Unknown && state.servers.none { it.managementMode == "managed" } && (state.system !in NginxViewModel.aptSystems || (state.servers.isEmpty() && state.candidates.isEmpty())))
-                OutlinedButton(onClick = { installDialog = true }, enabled = !model.mutationsBlocked) { Text(stringResource(R.string.nginx_install)) }
         }
         }
         RefreshProgressIndicator(visible = state.busy || state.loading)
@@ -150,9 +147,6 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
                 }) { Text(stringResource(R.string.nginx_accept_facts)) }
             }
         }
-        if (model.hasIntent && canManage) TextButton(enabled = !state.busy, onClick = model::retryInstallation) {
-            ActionLabel(R.string.common_retry)
-        }
         if (state.pendingInstallation) Text(stringResource(R.string.nginx_pending_installation), style = MaterialTheme.typography.bodySmall)
         state.operation?.let { operation ->
             ManagementCard {
@@ -202,7 +196,6 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
             dismissButton = { TextButton(onClick = model::dismissCancellation) { Text(stringResource(R.string.common_cancel)) } })
     }
     WebSiteEditor(state, model)
-    if (installDialog) NginxInstallDialog(model, onSubmitted = { installDialog = false; onRecords() }) { installDialog = false }
     if (recoveryDialog) {
         var id by remember { mutableStateOf("") }
         AlertDialog(onDismissRequest = { recoveryDialog = false }, title = { Text(stringResource(R.string.nginx_recover)) },
@@ -253,7 +246,7 @@ WorkspaceSection(section == "instances") {
             state.busy || state.loading -> R.string.nginx_controls_refreshing
             state.installation?.state?.active == true -> R.string.nginx_controls_installation_running
             state.operation?.state?.active == true -> R.string.nginx_controls_operation_running
-            state.pending.any { it.target == server.id } || state.pendingInstallation || model.hasIntent -> R.string.nginx_controls_pending
+            state.pending.any { it.target == server.id } || state.pendingInstallation -> R.string.nginx_controls_pending
             state.uncertain -> R.string.nginx_controls_unverified
             else -> null
         }
@@ -266,76 +259,10 @@ WorkspaceSection(section == "instances") {
                 Text(nginxActionLabel(action))
             }
         }
-        if (server.canUninstall) OutlinedButton(enabled = !state.busy && !state.loading && state.operation?.state?.active != true && state.pending.none { it.target == server.id } && state.installation?.state?.active != true && !state.pendingInstallation && !model.hasIntent,
+        if (server.canUninstall) OutlinedButton(enabled = !state.busy && !state.loading && state.operation?.state?.active != true && state.pending.none { it.target == server.id } && state.installation?.state?.active != true && !state.pendingInstallation,
             onClick = { confirm(R.string.nginx_uninstall_confirm) { model.uninstall(server); onRecords() } }) { Text(stringResource(R.string.nginx_uninstall)) }
     }}
 
-}
-
-@Composable
-private fun NginxInstallDialog(model: NginxViewModel, onSubmitted: () -> Unit, dismiss: () -> Unit) {
-    val container = appContainer()
-    val owner = remember { container.activeSession }
-    val state = model.state
-    val picker = rememberLauncherForActivityResult(rememberUsageOpenDocument("NginxManager.archive")) { uri ->
-        if (uri != null && container.activeSession === owner && !model.hasIntent) model.upload(uri)
-    }
-    val initialOperationId = remember { state.installation?.operationId }
-    LaunchedEffect(state.installation?.operationId) {
-        if (state.installation != null && state.installation.operationId != initialOperationId) onSubmitted()
-    }
-    NginxInstallForm(state, model.hasIntent, model.intentVersion, model.intentUsesPackage,
-        model::clearReference, model::download, model::fileReference,
-        { picker.launch(arrayOf("application/zip", "application/octet-stream")) },
-        { version, packageSource -> model.install(version, packageSource) }, dismiss)
-}
-
-@Composable
-internal fun NginxInstallForm(state: NginxState, hasIntent: Boolean, intentVersion: String?, intentUsesPackage: Boolean,
-    onClearReference: () -> Unit, onDownload: (String) -> Unit, onFileReference: (String) -> Unit,
-    onSelectDevicePackage: () -> Unit, onInstall: (String?, Boolean) -> Unit, dismiss: () -> Unit) {
-    var version by remember { mutableStateOf(intentVersion.orEmpty()) }
-    var source by remember { mutableStateOf(if (intentUsesPackage) InstallationPackageSource.ServerFile else InstallationPackageSource.HostDownload) }
-    var remotePath by remember { mutableStateOf("") }
-    var confirmed by remember { mutableStateOf(false) }
-    val windows = state.system in NginxViewModel.windowsSystems
-    val locked = state.busy || hasIntent
-    LaunchedEffect(state.catalog) {
-        if (!hasIntent && version.isBlank()) {
-            version = state.catalog?.stableVersion ?: state.catalog?.mainlineVersion ?: state.catalog?.versions?.firstOrNull().orEmpty()
-        }
-    }
-    AlertDialog(onDismissRequest = { if (!state.busy) dismiss() }, modifier = Modifier.imePadding(), title = { Text(stringResource(R.string.nginx_install)) },
-        properties = androidx.compose.ui.window.DialogProperties(dismissOnBackPress = !state.busy, dismissOnClickOutside = !state.busy),
-        text = { Column(Modifier.heightIn(max = 430.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            if (!state.busy) {
-                state.problemCode?.let { Text(nginxProblemLabel(it), color = MaterialTheme.colorScheme.error) }
-                if (state.uncertain) Text(stringResource(R.string.nginx_uncertain), color = MaterialTheme.colorScheme.error)
-            }
-            Text(stringResource(if (windows) R.string.nginx_windows_install else R.string.nginx_linux_install))
-            if (windows) {
-                state.catalog?.versions.orEmpty().forEach { item ->
-                    TextButton(enabled = !locked, onClick = { version = item; onClearReference() }) { Text(item) }
-                }
-                OutlinedTextField(version, { version = it; onClearReference() }, enabled = !locked, modifier = Modifier.fillMaxWidth(),
-                    label = { Text(stringResource(R.string.nginx_version)) }, singleLine = true)
-                ManualPackageDownload(version.trim(), !locked, state.busy,
-                    (state.download as? ApiResult.Success)?.value?.takeIf { it.version == version.trim() }?.url,
-                    onRequest = { onDownload(version.trim()) })
-                InstallationPackagePicker(source, !locked, { source = it; onClearReference() },
-                    remotePath, { remotePath = it; onClearReference() }, { onFileReference(remotePath) },
-                    onSelectDevicePackage, state.reference)
-            }
-            RefreshProgressIndicator(visible = state.busy)
-            state.uploadBytes?.let { Text(stringResource(R.string.nginx_upload_bytes, it)) }
-
-            CheckboxOption(confirmed, stringResource(R.string.nginx_install_confirm), !state.busy) { confirmed = it }
-        } },
-        confirmButton = { Button(enabled = !state.busy && confirmed && (hasIntent || (!state.pendingInstallation &&
-            (!windows || (version.trim().matches(Regex("[0-9]+\\.[0-9]+\\.[0-9]+")) && (source == InstallationPackageSource.HostDownload || state.reference?.expired() == false))))),
-            onClick = { onInstall(if (windows) version.trim() else null, windows && source != InstallationPackageSource.HostDownload) }) {
-            Text(stringResource(if (hasIntent) R.string.common_retry else R.string.nginx_install))
-        } }, dismissButton = { TextButton(onClick = dismiss, enabled = !state.busy) { Text(stringResource(R.string.common_close)) } })
 }
 
 @Composable

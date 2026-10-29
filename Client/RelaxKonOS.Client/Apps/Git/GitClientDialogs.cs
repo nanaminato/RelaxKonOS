@@ -74,11 +74,12 @@ internal static partial class GitClientDialogs
             new RelaxKonOS.Core.Primitives.Size(420, 200));
     }
 
-    /// <summary>Show the "Git engine unavailable" dialog with install/refresh/cancel actions.</summary>
+    /// <summary>Shows the "Git engine unavailable" dialog. Installation belongs to Component Center,
+    /// so this only explains the state and offers a re-check or exit.</summary>
     public static Task<bool> ShowGitUnavailableAsync(AppContext context, ManagedWindow owner, GitClientViewModel vm) =>
         context.ShowDialogAsync<bool>(owner, LocalizedText.Get("git.dialog.git_unavailable.title"),
             dialog => BuildGitUnavailableDialog(vm, dialog),
-            new RelaxKonOS.Core.Primitives.Size(520, 320));
+            new RelaxKonOS.Core.Primitives.Size(520, 300));
 
     // ── 项目选择 / 探测 / 远程管理 ──
 
@@ -550,14 +551,6 @@ internal static partial class GitClientDialogs
             FontSize = 14,
         };
 
-        var installBtn = new Button
-        {
-            Content = LocalizedText.Get("component_center.manage_dependency"),
-            Classes = { "primary" },
-            IsEnabled = vm.OpenComponentCenter is not null,
-        };
-        installBtn.Click += (_, _) => { dialog.Close(false); vm.OpenComponentCenter?.Invoke(); };
-
         var refreshBtn = new Button { Content = LocalizedText.Get("git.dialog.unavailable.refresh") };
         refreshBtn.Click += async (_, _) =>
         {
@@ -572,10 +565,9 @@ internal static partial class GitClientDialogs
         {
             Orientation = Orientation.Horizontal,
             HorizontalAlignment = HorizontalAlignment.Right,
-            Children = { installBtn, refreshBtn, cancelBtn },
+            Children = { refreshBtn, cancelBtn },
             Spacing = 8,
         };
-
         return new StackPanel
         {
             Margin = new Thickness(20),

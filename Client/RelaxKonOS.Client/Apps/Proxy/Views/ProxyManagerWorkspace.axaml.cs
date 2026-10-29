@@ -14,7 +14,6 @@ internal partial class ProxyManagerWorkspace : UserControl
         Header.Attach(window, HeaderActions);
     }
 
-    public Action? OpenComponentCenter { get; set; }
     private Button? _selectedButton;
     public ProxyManagerWorkspace(ProxyManagerViewModel viewModel)
     {
@@ -32,10 +31,11 @@ internal partial class ProxyManagerWorkspace : UserControl
 
     private void ShowPage(string section, Button? button)
     {
-        if (section == "runtime") { OpenComponentCenter?.Invoke(); return; }
         if (_selectedButton is not null) _selectedButton.Classes.Remove("nav-selected");
         _selectedButton = button;
         _selectedButton?.Classes.Add("nav-selected");
+        if (section == "settings" && (DataContext as ProxyManagerViewModel)?.Dependency is { } dependency)
+            _ = dependency.RefreshAsync();
         ContentHost.Content = section switch
         {
             "profiles" => new ProxyProfilesView(),
@@ -51,7 +51,6 @@ internal partial class ProxyManagerWorkspace : UserControl
     {
         "profiles" => ProfilesButton,
         "proxies" => ProxiesButton,
-        "runtime" => RuntimeButton,
         "settings" => SettingsButton,
         _ => OverviewButton,
     };

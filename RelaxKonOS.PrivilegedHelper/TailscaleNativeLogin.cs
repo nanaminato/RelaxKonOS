@@ -164,6 +164,37 @@ internal sealed class TailscaleNativeLogin
             or KeyNotFoundException or UnauthorizedAccessException or ArgumentException)
         { result.Dispose(); throw Invalid(); }
     }
+    // The caller must authorize the original attempt and enforce its expiry before entering here.
+    // Only a fingerprint belongs in its durable receipt; this method never starts or resumes login.
+    internal async Task<TailscaleLoginNativeResult> ReadChallengeAsync(string challengeFingerprint, string preferencesRevision, CancellationToken ct)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(TimeSpan.FromSeconds(30));
+        ct = deadline.Token;
+        static bool Digest(string value) => value is { Length: 64 } && value.All(Uri.IsHexDigit);
+        if (!Digest(challengeFingerprint) || !Digest(preferencesRevision)) throw Invalid();
+        var before = await ReadAsync(ct);
+        if (before.BackendState != "NeedsLogin" || before.CanStart || before.PreferencesRevision != preferencesRevision) throw Invalid();
+        try
+        {
+            using var document = JsonDocument.Parse(await Read("status", ct));
+            TailscaleNativeControl.Canonical(document.RootElement);
+            var url = document.RootElement.GetProperty("AuthURL").GetString();
+            if (document.RootElement.GetProperty("BackendState").GetString() != "NeedsLogin"
+                || !TailscaleLoginOutput.IsOfficialUrl(url) || Hash(url!) != challengeFingerprint) throw Invalid();
+            var after = await ReadAsync(ct);
+            if (before != after) throw Invalid();
+            ct.ThrowIfCancellationRequested();
+            return new("awaiting-browser", url, after);
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or KeyNotFoundException or ArgumentException)
+        { throw Invalid(); }
+    }
+    internal static string FingerprintChallenge(string url)
+    {
+        if (!TailscaleLoginOutput.IsOfficialUrl(url)) throw Invalid();
+        return Hash(url);
+    }
     private static string Hash(string text) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
     private static InvalidDataException Invalid() => new("tailscale.login.invalid_output");
 }

@@ -17,7 +17,8 @@ namespace RelaxKonOS.Client.Apps.ProxyServer;
 public sealed class ProxyServerApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.proxy-server"), "Proxy Server", "1.0.0", "⇄", "sing-box proxy server",
-        [AppPermissions.ServerProxyRead, AppPermissions.ServerProxyManage, AppPermissions.ServerProxyServerExport],
+        [AppPermissions.ServerProxyRead, AppPermissions.ServerProxyManage, AppPermissions.ServerProxyServerExport,
+            AppPermissions.ServerComponentsRead],
         ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.ProxyServer]),
         InstancePolicy: ApplicationInstancePolicy.SingleWindow,
         IconPath: "avares://RelaxKonOS.Client/Assets/AppIcons/proxy-server.png");
@@ -27,14 +28,9 @@ public sealed class ProxyServerApp : RemoteApplicationBase
         var session = (IAuthSession?)context.Services.GetService(typeof(IAuthSession));
         var client = (IProxyServerClient?)context.Services.GetService(typeof(IProxyServerClient));
         if (session?.State != AuthSessionState.Authenticated || client is null) return;
-        var vm = new ProxyServerViewModel(client);
+        var dependency = RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsViewModel.Create(context, Manifest.Id.Value);
+        var vm = new ProxyServerViewModel(client) { Dependency = dependency };
         var view = new ProxyServerWorkspace(vm);
-        view.OpenComponentCenter = () =>
-        {
-            if (session.State == AuthSessionState.Authenticated && session.ServiceId is { } host)
-                context.Activations.Activate(RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterNavigation.Component(
-                    host, Manifest.Id.Value, "sing-box"));
-        };
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.proxy-server.display_name"), view,
             new Rect(80, 45, 1060, 800), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
@@ -60,6 +56,7 @@ public sealed class ProxyServerApp : RemoteApplicationBase
         {
             if (!ReferenceEquals(current, window)) return;
             context.WindowManager.WindowClosed -= closed; session.StateChanged -= sessionChanged;
+            dependency.Dispose();
             vm.Dispose();
         };
         context.WindowManager.WindowClosed += closed;

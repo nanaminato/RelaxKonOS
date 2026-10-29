@@ -30,7 +30,8 @@ namespace RelaxKonOS.Client.Apps.Proxy;
 public sealed class ProxyManagerApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.proxy"), "Proxy Manager", "1.0.0", "⇄", "Manage the host Proxy runtime and recovery state",
-        [AppPermissions.ServerProxyRead, AppPermissions.ServerProxyManage, AppPermissions.ServerProxyTunManage], ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.Proxy]), InstancePolicy: ApplicationInstancePolicy.SingleWindow);
+        [AppPermissions.ServerProxyRead, AppPermissions.ServerProxyManage, AppPermissions.ServerProxyTunManage,
+            AppPermissions.ServerComponentsRead], ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.Proxy]), InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
     public override void Activate(AppContext context)
     {
@@ -44,9 +45,9 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
         // Do not start a proxy operation with the initial Undecided permission snapshot.
         // ApplicationManager presents prompts after Activate returns, so this workspace owns
         // the first request and waits for its decision before enabling server actions.
-        var vm = new ProxyManagerViewModel(repository, canManage: false, canManageTun: false, systemMonitor);
+        var dependency = RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsViewModel.Create(context, "relaxkonos.proxy");
+        var vm = new ProxyManagerViewModel(repository, canManage: false, canManageTun: false, systemMonitor) { Dependency = dependency };
         var view = new ProxyManagerWorkspace(vm);
-        view.OpenComponentCenter = RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterEntry.Navigate(context, "relaxkonos.proxy", "mihomo");
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.proxy.display_name"), view, new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
         RelaxKonOS.WindowManager.ModalDialog<bool>? activeEditor = null;
@@ -93,6 +94,7 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
         {
             if (!ReferenceEquals(current, window)) return;
             context.WindowManager.WindowClosed -= closed;
+            dependency.Dispose();
         };
         context.WindowManager.WindowClosed += closed;
         _ = InitializeAfterPermissionDecisionAsync();

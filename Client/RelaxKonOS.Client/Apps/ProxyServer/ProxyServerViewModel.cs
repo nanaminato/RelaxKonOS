@@ -37,6 +37,9 @@ public sealed record ProtocolChoice(ProxyServerProtocol Protocol)
 
 public partial class ProxyServerViewModel(IProxyServerClient client) : ObservableObject, IDisposable
 {
+    /// <summary>sing-box installation lives in Component Center; settings only observes and navigates.</summary>
+    public ComponentCenter.ComponentDependencySettingsViewModel? Dependency { get; init; }
+
     private readonly CancellationTokenSource _lifetime = new();
     private ProxyServerSnapshot? _snapshot;
     private bool _invalidated;

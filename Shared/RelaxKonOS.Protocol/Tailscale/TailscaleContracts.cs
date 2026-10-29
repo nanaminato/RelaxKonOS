@@ -11,6 +11,13 @@ public static class TailscaleEndpoints
     public const string Recovery = Operation + "/recovery";
     public const string Close = Recovery + "/close";
     public const string Status = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/tailscale/status";
+    public const string Login = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/tailscale/login";
+    public const string LoginOperations = Login + "/operations";
+    public const string LoginOperation = LoginOperations + "/{operationId:guid}";
+    public const string LoginExecute = LoginOperation + "/execute";
+    public const string LoginChallenge = LoginOperation + "/challenge";
+    public const string LoginRecovery = LoginOperation + "/recovery";
+    public const string LoginClose = LoginRecovery + "/close";
 }
 
 public static class TailscaleAccess

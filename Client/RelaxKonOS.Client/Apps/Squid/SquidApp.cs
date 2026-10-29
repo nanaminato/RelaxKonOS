@@ -18,7 +18,7 @@ namespace RelaxKonOS.Client.Apps.Squid;
 public sealed class SquidApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.squid"), "Squid", "1.0.0", "⇥", "HTTP and HTTPS forward proxy gateway",
-        [AppPermissions.ServerProxyRead, AppPermissions.ServerProxyManage],
+        [AppPermissions.ServerProxyRead, AppPermissions.ServerProxyManage, AppPermissions.ServerComponentsRead],
         ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.GatewayProxy]),
         IconPath: "avares://RelaxKonOS.Client/Assets/AppIcons/squid.png", InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
@@ -27,8 +27,8 @@ public sealed class SquidApp : RemoteApplicationBase
         var session = (IAuthSession?)context.Services.GetService(typeof(IAuthSession));
         var client = (ISquidClient?)context.Services.GetService(typeof(ISquidClient));
         if (session?.State != AuthSessionState.Authenticated || client is null) return;
-        var vm = new SquidViewModel(client);
-        vm.OpenComponentCenter = RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterEntry.Navigate(context, "relaxkonos.squid", "squid");
+        var dependency = RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsViewModel.Create(context, "relaxkonos.squid");
+        var vm = new SquidViewModel(client) { Dependency = dependency };
         var view = new SquidWorkspace(vm);
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.squid.display_name"), view,
             new Rect(90, 55, 960, 760), Manifest.IconGlyph);
@@ -36,8 +36,6 @@ public sealed class SquidApp : RemoteApplicationBase
         RelaxKonOS.WindowManager.ModalDialog<bool>? activeEditor = null;
         view.ShowEditorAsync = (title, editor) => RelaxKonOS.Client.Controls.WorkspaceEditorDialogView.PresentAsync(context, window, title, editor, () => vm.IsBusy, active => activeEditor = active);
 
-        vm.ConfirmPackageAsync = uninstall => ConfirmAsync(uninstall ? "squid.uninstall" : "squid.install",
-            uninstall ? "squid.uninstall_message" : "squid.install_message");
         vm.ConfirmDeleteAccountAsync = username => ConfirmAsync("squid.account_delete", "squid.account_delete_message");
         vm.ConfirmApplyAsync = () => ConfirmAsync("squid.apply_title", "squid.apply_message");
         vm.ConfirmReloadAsync = () => ConfirmAsync("common.discard_title", "squid.reload_message");
@@ -54,7 +52,8 @@ public sealed class SquidApp : RemoteApplicationBase
         closed = (_, current) =>
         {
             if (!ReferenceEquals(current, window)) return;
-            context.WindowManager.WindowClosed -= closed; session.StateChanged -= sessionChanged; vm.Dispose();
+            context.WindowManager.WindowClosed -= closed; session.StateChanged -= sessionChanged;
+            dependency.Dispose(); vm.Dispose();
         };
         context.WindowManager.WindowClosed += closed;
         _ = InitializeAsync();

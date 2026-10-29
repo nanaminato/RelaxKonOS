@@ -11,11 +11,6 @@ namespace RelaxKonOS.Client.Apps.Tunnels;
 /// <summary>Shared state for the tunnel list, runtime page, and independent child windows.</summary>
 public sealed partial class TunnelManagerViewModel(IRemoteTunnelClient client, bool canManage) : LocalizedObservableObject, IDisposable
 {
-    public Action? OpenComponentCenter { get; set; }
-    [RelayCommand] private void ManageComponent() => OpenComponentCenter?.Invoke();
-
-    public InstallationTaskViewModel Installation { get; set; } = null!;
-
     private readonly CancellationTokenSource _lifetime = new();
     public ObservableCollection<TunnelServerProfileDto> Profiles { get; } = [];
     public ObservableCollection<TunnelDefinitionDto> Tunnels { get; } = [];
@@ -78,7 +73,8 @@ public sealed partial class TunnelManagerViewModel(IRemoteTunnelClient client, b
     public bool RuntimeIsInstalled => Runtime is { Mode: TunnelRuntimeMode.Managed, State: TunnelRuntimeState.Available };
     public bool RuntimeIsNotInstalled => !RuntimeIsInstalled;
     public string RuntimeInstalledVersion => Runtime?.Version ?? "—";
-    public bool CanUninstallRuntime => CanManage && RuntimeIsInstalled && !IsBusy;
+    /// <summary>frpc/frps installation, update, repair, rollback and removal live in Component Center.</summary>
+    public ComponentCenter.ComponentDependencySettingsViewModel? Dependency { get; init; }
     public string FrpsRevisionText => string.Format(LocalizedText.Get("tunnels.frps.revision"), FrpsRevision);
     public string FrpsApplicationText => FrpsState == ManagedFrpsState.Unknown ? LocalizedText.Get("tunnels.problem.tunnel.frps_process_unverified")
         : FrpsState is not (ManagedFrpsState.Starting or ManagedFrpsState.Running) ? LocalizedText.Get("tunnels.frps.saved_stopped")
@@ -138,12 +134,6 @@ public sealed partial class TunnelManagerViewModel(IRemoteTunnelClient client, b
 
     [RelayCommand(CanExecute = nameof(CanApplySelected))] private Task ApplySelectedAsync() => RunProfileOperationAsync(profile => client.ApplyAsync(profile.Id, _lifetime.Token));
     [RelayCommand(CanExecute = nameof(CanApplySelected))] private Task StopSelectedAsync() => RunProfileOperationAsync(profile => client.StopAsync(profile.Id, _lifetime.Token));
-    [RelayCommand(CanExecute = nameof(CanUninstallRuntime))]
-    private async Task UninstallRuntimeAsync()
-    {
-        if (!await ConfirmAsync("common.delete", "tunnels.runtime.uninstall_confirmation")) return;
-        await Installation.SubmitAsync(InstallationOperationKind.Uninstall, new FrpInstallationRequest(true));
-    }
     [RelayCommand(CanExecute = nameof(CanManage))]
     private async Task SaveManagedFrpsAsync()
     {
@@ -197,7 +187,6 @@ public sealed partial class TunnelManagerViewModel(IRemoteTunnelClient client, b
         }
         catch (Exception ex) { StatusText = ProblemText(ex); }
     }
-    [RelayCommand(CanExecute = nameof(CanManage))] private Task RollbackRuntimeAsync() => Installation.SubmitAsync(InstallationOperationKind.Repair, new FrpInstallationRequest(true, Rollback: true));
 
     public async Task LoadManagedFrpsForEditingAsync()
     {
@@ -226,14 +215,12 @@ public sealed partial class TunnelManagerViewModel(IRemoteTunnelClient client, b
         OnPropertyChanged(nameof(RuntimeIsInstalled));
         OnPropertyChanged(nameof(RuntimeIsNotInstalled));
         OnPropertyChanged(nameof(RuntimeInstalledVersion));
-        UninstallRuntimeCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnIsBusyChanged(bool value)
     {
         if (value) StatusText = LocalizedText.Ref("common.operation_running");
         NotifyProfileCommands(); EditTunnelCommand.NotifyCanExecuteChanged();
-        UninstallRuntimeCommand.NotifyCanExecuteChanged(); RollbackRuntimeCommand.NotifyCanExecuteChanged();
         ToggleManagedFrpsCommand.NotifyCanExecuteChanged();
     }
     partial void OnFrpsStateChanged(ManagedFrpsState value)

@@ -12,14 +12,10 @@
             </StackPanel>
           </Border>
           <TextBlock Text="{Binding RuntimeText}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"/>
-          <WrapPanel ItemHeight="34">
-            <Button Content="{loc:Loc common.delete}" Command="{Binding UninstallRuntimeCommand}" Foreground="{DynamicResource DangerBrush}"/>
-            <Button Content="{loc:Loc tunnels.rollback}" Command="{Binding RollbackRuntimeCommand}" Margin="10,0,0,0"/>
-          </WrapPanel>
         </StackPanel>
 
         <TextBlock Text="{Binding RuntimeText}" TextWrapping="Wrap" />
-        <Button Content="{loc:Loc component_center.manage_dependency}" Command="{Binding ManageComponentCommand}" />
+        <TextBlock Text="{loc:Loc tunnels.runtime.manage_hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
       </StackPanel>
     </Border>
   </StackPanel>

@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Http.Json;
 using System.Reflection;
 using Avalonia;
@@ -83,6 +83,7 @@ ComponentSelectionChecks.Run();
 ComponentDraftPersistenceChecks.Run();
 await RuntimeReattachmentChecks.RunAsync();
 await ApplicationAvailabilityChecks.RunAsync();
+await ComponentDependencySettingsChecks.RunAsync();
 await TaskPreviewClientChecks.RunAsync();
 await ComponentLifecycleClientChecks.RunAsync();
 await TaskExecutionClientChecks.RunAsync();

@@ -121,6 +121,20 @@ public enum PrivilegedOperationKind
     TailscaleRecoveryRead,
     TailscaleRecoveryClose,
     TailscaleRecoveryReceipt,
+    /// <summary>Publishes the confirmed first-login intent before the fixed native login command.</summary>
+    TailscaleLoginBegin,
+    /// <summary>Reads the URL-free login baseline so Server can prepare a confirmed plan.</summary>
+    TailscaleLoginObserve,
+    /// <summary>Reads the original login receipt. Missing evidence stays unknown, never success.</summary>
+    TailscaleLoginReceipt,
+    /// <summary>Re-reads the original challenge through the dedicated short-lived delivery path.</summary>
+    TailscaleLoginChallenge,
+    /// <summary>Reads a stable login observation for manual recovery preview.</summary>
+    TailscaleLoginRecoveryRead,
+    /// <summary>Closes one unresolved login attempt after explicit confirmation and revision agreement.</summary>
+    TailscaleLoginClose,
+    /// <summary>Reads the original login closure evidence.</summary>
+    TailscaleLoginRecoveryReceipt,
     HostNetworkRead,
     HostNetworkApply,
     HostNetworkConfirm,
@@ -360,6 +374,12 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("managedRuntime")] ManagedRuntimeRequest? ManagedRuntime = null,
     [property: JsonPropertyName("tailscaleRecovery")] RelaxKonOS.Protocol.Tailscale.TailscaleRecoveryCommand? TailscaleRecovery = null,
     [property: JsonPropertyName("tailscaleChange")] RelaxKonOS.Protocol.Tailscale.TailscalePrepareRequest? TailscaleChange = null,
+    /// <summary>Confirmed first-login plan. Only the begin verb reads it.</summary>
+    [property: JsonPropertyName("tailscaleLogin")] RelaxKonOS.Protocol.Tailscale.TailscaleLoginCommand? TailscaleLogin = null,
+    /// <summary>Original login identity for receipt, challenge and recovery verbs.</summary>
+    [property: JsonPropertyName("tailscaleLoginIdentity")] RelaxKonOS.Protocol.Tailscale.TailscaleLoginIntent? TailscaleLoginIdentity = null,
+    /// <summary>Confirmed login closure request. Only the close verb reads it.</summary>
+    [property: JsonPropertyName("tailscaleLoginClose")] RelaxKonOS.Protocol.Tailscale.TailscaleLoginCloseRequest? TailscaleLoginClose = null,
     [property: JsonPropertyName("networkChange")] HostNetworkChange? NetworkChange = null,
     [property: JsonPropertyName("networkCheckpoint")] string? NetworkCheckpoint = null,
     [property: JsonPropertyName("processId")] int? ProcessId = null,
@@ -394,6 +414,12 @@ public sealed record PrivilegedOperationResult(
     [property: JsonPropertyName("tailscaleClosure")] RelaxKonOS.Protocol.Tailscale.TailscaleRecoveryClosure? TailscaleClosure = null,
     [property: JsonPropertyName("tailscaleControl")] RelaxKonOS.Protocol.Tailscale.TailscaleControlSnapshot? TailscaleControl = null,
     [property: JsonPropertyName("tailscaleResult")] RelaxKonOS.Protocol.Tailscale.TailscaleControlResult? TailscaleResult = null,
+    [property: JsonPropertyName("tailscaleLoginReceipt")] RelaxKonOS.Protocol.Tailscale.TailscaleLoginReceipt? TailscaleLoginReceipt = null,
+    [property: JsonPropertyName("tailscaleLoginObservation")] RelaxKonOS.Protocol.Tailscale.TailscaleLoginObservation? TailscaleLoginObservation = null,
+    /// <summary>Transient browser challenge. The URL is delivered only by the dedicated challenge verb.</summary>
+    [property: JsonPropertyName("tailscaleLoginChallenge")] RelaxKonOS.Protocol.Tailscale.TailscaleLoginChallenge? TailscaleLoginChallenge = null,
+    [property: JsonPropertyName("tailscaleLoginRecovery")] RelaxKonOS.Protocol.Tailscale.TailscaleLoginRecoverySnapshot? TailscaleLoginRecovery = null,
+    [property: JsonPropertyName("tailscaleLoginClosure")] RelaxKonOS.Protocol.Tailscale.TailscaleLoginClosure? TailscaleLoginClosure = null,
     [property: JsonPropertyName("tailscaleStatus")] RelaxKonOS.Protocol.Tailscale.TailscaleStatusDto? TailscaleStatus = null,
     [property: JsonPropertyName("hostNetwork")] HostNetworkSnapshot? HostNetwork = null,
     [property: JsonPropertyName("networkCheckpoint")] string? NetworkCheckpoint = null,

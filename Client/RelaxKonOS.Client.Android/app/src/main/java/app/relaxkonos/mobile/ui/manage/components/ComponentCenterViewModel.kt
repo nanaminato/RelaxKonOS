@@ -6,11 +6,18 @@ import app.relaxkonos.mobile.core.auth.AuthSession
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.ComponentChange
+import app.relaxkonos.mobile.core.net.ComponentPinnedArchive
 import app.relaxkonos.mobile.core.net.ComponentPlanResult
 import app.relaxkonos.mobile.core.net.WebServer
 import app.relaxkonos.mobile.data.ComponentRead
 import app.relaxkonos.mobile.data.ComponentRepository
 import app.relaxkonos.mobile.data.ElevationAnswerProvider
+import app.relaxkonos.mobile.data.InstallationRepository
+import app.relaxkonos.mobile.core.net.FrpInstallationRequest
+import app.relaxkonos.mobile.core.net.InstallationKind
+import app.relaxkonos.mobile.core.net.InstallationRequest
+import app.relaxkonos.mobile.core.net.InstallationService
+import app.relaxkonos.mobile.core.net.NginxInstallationRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,11 +29,29 @@ data class ComponentChangeReview(
     val change: ComponentChange,
     val keepData: Boolean,
     val plan: ComponentPlanResult,
+    val targetVersion: String? = null,
 )
 
 data class ComponentOperationNotice(val operationId: String)
 
 data class NginxChoiceState(val current: String?, val servers: List<WebServer>)
+
+/**
+ * A file install needs the operator to name the version it contains and a live reference to an
+ * archive on this host. Nginx and the FRP bundle support this path; everything else is refused here
+ * rather than attempted and failing later.
+ */
+internal fun validFileInstall(componentId: String, version: String, referenceId: String): Boolean =
+    componentId in ComponentCatalog.fileInstallableIds &&
+        version.trim().matches(Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,31}")) &&
+        referenceId.isNotBlank()
+
+/** The owning domain service that executes a file-based install for this component. */
+internal fun fileInstallService(componentId: String): InstallationService? = when (componentId) {
+    "nginx" -> InstallationService.Nginx
+    "frpc", "frps" -> InstallationService.Frp
+    else -> null
+}
 
 data class ComponentCenterUiState(
     val loading: Boolean = false,
@@ -48,10 +73,16 @@ data class ComponentCenterUiState(
  * Loads component state and runs the three change actions the component center owns on Android:
  * install, update and uninstall. Plans are frozen by the host and applied through the domain
  * installation ledger; this class never invents a package, version or elevated command.
+ *
+ * A trusted archive may also be installed from a file that is already on the host. That path still
+ * enters the same ledger, with the same elevation and idempotency, and only names a version the user
+ * supplied and an operator-bound file reference.
  */
 class ComponentCenterViewModel(
     private val session: AuthSession,
     private val repository: ComponentRepository,
+    private val installations: InstallationRepository? = null,
+    private val elevationAnswers: ElevationAnswerProvider? = null,
 ) : ViewModel() {
     private val mutable = MutableStateFlow(ComponentCenterUiState())
     val state = mutable.asStateFlow()
@@ -103,9 +134,10 @@ class ComponentCenterViewModel(
 
     /** Freezes the change and opens the confirmation; a refused plan becomes a visible problem. */
     fun requestChange(active: SessionState.Active, componentId: String, change: ComponentChange,
-        keepData: Boolean = true) {
+        keepData: Boolean = true, pin: ComponentPinnedArchive? = null) {
         if (mutable.value.busy || session.state.value !== active) return
-        val component = mutable.value.rows.firstOrNull { it.componentId == componentId }?.view?.state ?: return
+        val view = mutable.value.rows.firstOrNull { it.componentId == componentId }?.view ?: return
+        val component = view.state ?: return
         // The host only grants changes to an absent (install) or managed (update/uninstall) component.
         if (change == ComponentChange.Install) { if (component.ownership != "absent") return }
         else if (component.ownership != "managed") return
@@ -113,16 +145,20 @@ class ComponentCenterViewModel(
         action = viewModelScope.launch {
             mutable.value = mutable.value.copy(busy = true, actionProblem = null)
             val result = try {
-                repository.plan(active, componentId, change, component, keepData)
+                repository.plan(active, componentId, change, component, keepData, pin, view.pinRevision)
             } catch (cancelled: CancellationException) {
                 throw cancelled
+            } catch (_: IllegalArgumentException) {
+                // A pinned archive is only an install target; the screen never sends it for another change.
+                ApiResult.Problem(409, "component.request_invalid", null)
             } catch (_: Exception) {
                 ApiResult.Transport(null)
             }
             if (session.state.value !== active) return@launch
             mutable.value = when (result) {
                 is ApiResult.Success -> if (result.value.allowed) {
-                    mutable.value.copy(busy = false, review = ComponentChangeReview(componentId, change, keepData, result.value))
+                    mutable.value.copy(busy = false,
+                        review = ComponentChangeReview(componentId, change, keepData, result.value, pin?.version))
                 } else {
                     mutable.value.copy(busy = false,
                         actionProblem = result.value.problems.firstOrNull() ?: "component.plan_refused")
@@ -158,9 +194,45 @@ class ComponentCenterViewModel(
         }
     }
 
-    fun dismissReview() { mutable.value = mutable.value.copy(review = null) }
+    /**
+     * Installs a pinned archive from a file already on the host. The version is what the operator
+     * says the archive contains; the domain still verifies the archive, its platform and identity.
+     */
+    fun installArchiveFromFile(active: SessionState.Active, componentId: String, version: String, referenceId: String) {
+        val installs = installations ?: return
+        val provider = elevationAnswers ?: return
+        if (mutable.value.busy || session.state.value !== active) return
+        if (!validFileInstall(componentId, version, referenceId)) return
+        val target = version.trim()
+        val request: InstallationRequest = when (componentId) {
+            "nginx" -> NginxInstallationRequest(true, target, referenceId)
+            "frpc", "frps" -> FrpInstallationRequest(true, target, fileReferenceId = referenceId)
+            else -> return
+        }
+        action?.cancel()
+        action = viewModelScope.launch {
+            mutable.value = mutable.value.copy(busy = true, actionProblem = null)
+            val result = try {
+                val intent = installs.prepare(active, InstallationKind.Install, request)
+                installs.submit(intent, provider)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: IllegalArgumentException) {
+                ApiResult.Problem(409, "installation.not_supported", null)
+            } catch (_: Exception) {
+                ApiResult.Transport(null)
+            }
+            if (session.state.value !== active) return@launch
+            mutable.value = when (result) {
+                is ApiResult.Success -> mutable.value.copy(busy = false, operation = ComponentOperationNotice(result.value.operationId))
+                is ApiResult.Problem -> mutable.value.copy(busy = false, actionProblem = result.code ?: "installation.failed")
+                is ApiResult.Transport -> mutable.value.copy(busy = false, actionProblem = "installation.unreachable")
+            }
+            if (result is ApiResult.Success) load(active)
+        }
+    }
 
-    fun dismissOperation() { mutable.value = mutable.value.copy(operation = null) }
+    fun dismissReview() { mutable.value = mutable.value.copy(review = null) }    fun dismissOperation() { mutable.value = mutable.value.copy(operation = null) }
 
     fun dismissActionProblem() { mutable.value = mutable.value.copy(actionProblem = null) }
 

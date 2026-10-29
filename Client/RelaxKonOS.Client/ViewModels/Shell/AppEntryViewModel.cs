@@ -37,13 +37,13 @@ public partial class AppEntryViewModel : ObservableObject, IDisposable
     public string? Description { get; }
     private ApplicationAvailability? _availability;
     /// <summary>
-    /// Launch readiness is only enforced where the availability adapter is registered, which today is
-    /// the batch-integrated component. A catalog entry that installs elsewhere must not turn its
-    /// application unready before that adapter exists.
+    /// Launch readiness is enforced for every application the catalog relates to a component. An
+    /// application whose component the connected host cannot provide at all is ready without a badge
+    /// instead of looking broken.
     /// </summary>
     public bool HasComponentDependency => ComponentCatalog.LaunchGate(Id.Value) is not null;
     public bool IsReady => !HasComponentDependency || _availability?.CanOpen == true;
-    public bool HasAvailabilityBadge => HasComponentDependency;
+    public bool HasAvailabilityBadge => HasComponentDependency && _availability?.State != ComponentAvailabilityKind.NotRequired;
     public string? AvailabilityState => HasComponentDependency ? (_availability?.State ?? ComponentAvailabilityKind.Unknown).ToString() : null;
     public LocalizedStatus AvailabilityText => HasComponentDependency
         ? LocalizedStatus.Key("component_center.badge." + (_availability?.State ?? ComponentAvailabilityKind.Unknown))

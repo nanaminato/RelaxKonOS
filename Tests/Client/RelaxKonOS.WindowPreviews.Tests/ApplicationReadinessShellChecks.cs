@@ -55,8 +55,12 @@ internal static class ApplicationReadinessShellChecks
                 "Readiness filtering neither unregisters the application nor removes pinned launch paths");
             vm.StartSearchQuery = "proxy";
             Check(!vm.StartSearchResults.Any(app => app.Id == appId), "Application search follows readiness filtering");
-            availability.Set(ComponentAvailabilityKind.Stopped); Dispatcher.UIThread.RunJobs();
-            Check(vm.StartApps.Any(app => app.Id == appId), "A stopped installed service returns to the ready list");
+            availability.Set(ComponentAvailabilityKind.Installed); Dispatcher.UIThread.RunJobs();
+            Check(vm.StartApps.Any(app => app.Id == appId), "An installed component returns to the ready list");
+            availability.Set(ComponentAvailabilityKind.NotRequired); Dispatcher.UIThread.RunJobs();
+            Check(vm.StartApps.Any(app => app.Id == appId)
+                && !vm.AllApplications.Single(app => app.Id == appId).HasAvailabilityBadge,
+                "A dependency the host cannot provide is ready without a misleading badge");
             availability.Set(null); Dispatcher.UIThread.RunJobs();
             Check(!vm.StartApps.Any(app => app.Id == appId), "Invalidating host observations removes stale readiness");
             settings.OnlyReadyApplications = false; Dispatcher.UIThread.RunJobs();

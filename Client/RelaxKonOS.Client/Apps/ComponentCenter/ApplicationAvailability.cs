@@ -1,22 +1,25 @@
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.AppSDK;
-using RelaxKonOS.Client.Apps.ProxyServer;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.ManagedRuntimes;
-using RelaxKonOS.Protocol.ProxyServer;
 using RelaxKonOS.WindowManager;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
 
 namespace RelaxKonOS.Client.Apps.ComponentCenter;
 
-public enum ComponentAvailabilityKind { Unknown, Missing, Running, Stopped, Faulted, External, Recovery, Busy, Unsupported, NoPermission }
+/// <summary>
+/// The one answer a launch check may act on. <see cref="NotRequired"/> exists because a component the
+/// connected host cannot provide (a Linux-only distribution package on Windows) is not a missing
+/// dependency: refusing to open the application would invent a prerequisite nobody can satisfy.
+/// </summary>
+public enum ComponentAvailabilityKind { Unknown, Missing, Installed, External, Recovery, Busy, NoPermission, NotRequired }
 
 public sealed record ApplicationAvailability(AppId ApplicationId, string? ServerIdentity, string ComponentId,
     ComponentAvailabilityKind State, string? ActualHostId = null, Guid? InstallationId = null)
 {
-    // An installed service being stopped or unhealthy is still a reason to open its business console.
-    public bool CanOpen => State is ComponentAvailabilityKind.Running or ComponentAvailabilityKind.Stopped or ComponentAvailabilityKind.Faulted;
+    /// <summary>An installed service being stopped or unhealthy is still a reason to open its business console.</summary>
+    public bool CanOpen => State is ComponentAvailabilityKind.Installed or ComponentAvailabilityKind.NotRequired;
 }
 
 public interface IApplicationAvailabilityUi
@@ -33,6 +36,10 @@ public interface IApplicationAvailabilityProvider
     Task<ApplicationAvailability?> RefreshAsync(ApplicationManifest manifest);
 }
 
+/// <summary>One component's contribution to a launch decision, before the alternatives are combined.</summary>
+public sealed record ComponentAvailabilityReading(string ComponentId, ComponentAvailabilityKind State,
+    string? ActualHostId = null, Guid? InstallationId = null);
+
 /// <summary>Fresh, permission-gated observation on every launch, including existing-window reuse.</summary>
 public sealed class ApplicationAvailabilityService : IApplicationLaunchGuard, IApplicationAvailabilityProvider, IDisposable
 {
@@ -47,16 +54,15 @@ public sealed class ApplicationAvailabilityService : IApplicationLaunchGuard, IA
     private void SessionChanged(object? sender, AuthSessionStateChangedEventArgs e) => Clear();
     private long _generation;
     private readonly object _cacheLock = new();
-    private readonly Dictionary<(string Server, Guid User, string Component), ApplicationAvailability> _observations = [];
+    private readonly Dictionary<(string Server, Guid User, string Application), ApplicationAvailability> _observations = [];
     public event EventHandler? Changed;
-    /// <summary>Only components with a registered availability adapter may gate an application.</summary>
+    /// <summary>Every component-backed application is checked through the same generic state route.</summary>
     public bool RequiresCheck(ApplicationManifest manifest) => ComponentCatalog.LaunchGate(manifest.Id.Value) is not null;
     public ApplicationAvailability? GetCached(AppId app)
     {
-        var component = ComponentCatalog.LaunchGate(app.Value);
-        if (component is null || session.State != AuthSessionState.Authenticated || session.ServiceId is not { } server || session.CurrentUser is not { } user)
-            return null;
-        lock (_cacheLock) return _observations.GetValueOrDefault((server, user.Id, component.ComponentId));
+        if (ComponentCatalog.LaunchGate(app.Value) is null || session.State != AuthSessionState.Authenticated
+            || session.ServiceId is not { } server || session.CurrentUser is not { } user) return null;
+        lock (_cacheLock) return _observations.GetValueOrDefault((server, user.Id, app.Value));
     }
 
     public async Task<bool> CheckAsync(AppContext context, ManagedWindow? existingWindow)
@@ -70,7 +76,8 @@ public sealed class ApplicationAvailabilityService : IApplicationLaunchGuard, IA
         if (result is null || !Current()) return false;
         if (result.CanOpen) return true;
         var openCenter = await ui.ShowAsync(result);
-        if (openCenter && Current() && result.State is ComponentAvailabilityKind.Missing or ComponentAvailabilityKind.External or ComponentAvailabilityKind.Recovery or ComponentAvailabilityKind.Busy)
+        if (openCenter && Current() && result.State is ComponentAvailabilityKind.Missing or ComponentAvailabilityKind.External
+            or ComponentAvailabilityKind.Recovery or ComponentAvailabilityKind.Busy)
             context.Activations.Activate(ComponentCenterNavigation.Component(server!, context.AppId.Value, result.ComponentId,
                 result.State is ComponentAvailabilityKind.Recovery or ComponentAvailabilityKind.Busy ? ComponentCenterPage.Tasks : ComponentCenterPage.All));
         return false;
@@ -85,8 +92,7 @@ public sealed class ApplicationAvailabilityService : IApplicationLaunchGuard, IA
 
     private async Task<ApplicationAvailability?> ObserveAsync(AppContext context, bool requestPermission)
     {
-        var component = ComponentCatalog.LaunchGate(context.AppId.Value);
-        if (component is null) return null;
+        if (ComponentCatalog.LaunchGate(context.AppId.Value) is not { } gate) return null;
         var login = session.CurrentSession;
         var server = session.ServiceId;
         var user = session.CurrentUser?.Id;
@@ -101,40 +107,41 @@ public sealed class ApplicationAvailabilityService : IApplicationLaunchGuard, IA
         ApplicationAvailability result;
         try
         {
-            var permission = context.Permissions.GetStatus(AppPermissions.ServerProxyRead);
+            // Reading component state is the only capability this check needs, so it asks for exactly
+            // that permission on the application's own scope and for nothing else.
+            var permission = context.Permissions.GetStatus(AppPermissions.ServerComponentsRead);
             if (requestPermission && permission == AppPermissionStatus.Undecided)
-                permission = await context.Permissions.RequestAsync(AppPermissions.ServerProxyRead, lifetime.Token);
+                permission = await context.Permissions.RequestAsync(AppPermissions.ServerComponentsRead, lifetime.Token);
             if (!Current()) return null;
             if (permission != AppPermissionStatus.Granted)
-                result = new(context.AppId, null, component.ComponentId, ComponentAvailabilityKind.NoPermission);
+                result = new(context.AppId, null, gate.ComponentIds[0], ComponentAvailabilityKind.NoPermission);
             else
             {
-                // Resolve typed clients after authentication, so they bind this login rather than process startup.
+                // Resolve the typed client after authentication, so it binds this login rather than process startup.
                 lifetime.CancelAfter(TimeSpan.FromSeconds(15));
-                var runtime = services.GetRequiredService<IRuntimeCatalogClient>();
-                var proxy = services.GetRequiredService<IProxyServerClient>();
-                var installation = runtime.InstallationAsync(lifetime.Token);
-                var status = proxy.StatusAsync(lifetime.Token);
-                await Task.WhenAll(installation, status);
-                result = Classify(context.AppId, server, component.ComponentId, await installation, await status);
+                var lifecycle = services.GetRequiredService<IComponentLifecycleClient>();
+                var readings = await Task.WhenAll(gate.ComponentIds.Select(componentId =>
+                    ComponentAvailabilityProbe.ReadAsync(lifecycle, componentId, lifetime.Token)));
+                if (!Current() || lifetime.IsCancellationRequested) return null;
+                result = Combine(context.AppId, server, readings);
             }
         }
-        catch (OperationCanceledException) { result = new(context.AppId, server, component.ComponentId, ComponentAvailabilityKind.Unknown); }
-        catch (HttpRequestException ex)
+        catch (OperationCanceledException)
         {
-            result = new(context.AppId, ex.StatusCode is System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.Unauthorized ? null : server,
-                component.ComponentId, ex.StatusCode is System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.Unauthorized
-                    ? ComponentAvailabilityKind.NoPermission : ComponentAvailabilityKind.Unknown);
+            return null; // A cancelled observation says nothing about the dependency, so it is not recorded.
         }
-        catch (Exception ex) when (ex is InvalidDataException or InvalidOperationException or FormatException)
-        { result = new(context.AppId, server, component.ComponentId, ComponentAvailabilityKind.Unknown); }
+        catch (Exception ex) when (ex is InvalidOperationException or InvalidDataException or FormatException
+            or HttpRequestException or System.Text.Json.JsonException)
+        {
+            result = new(context.AppId, server, gate.ComponentIds[0], ComponentAvailabilityKind.Unknown);
+        }
         finally { session.StateChanged -= changed; }
         if (!Current()) return null;
         bool didChange;
         lock (_cacheLock)
         {
             if (generation != _generation) return null;
-            var key = (server, user.Value, component.ComponentId);
+            var key = (server, user.Value, context.AppId.Value);
             didChange = !_observations.TryGetValue(key, out var previous) || previous != result;
             _observations[key] = result;
         }
@@ -142,26 +149,79 @@ public sealed class ApplicationAvailabilityService : IApplicationLaunchGuard, IA
         return result;
     }
 
-    public static ApplicationAvailability Classify(AppId app, string server, string component,
-        RuntimeInstallationSnapshot installation, ProxyServerStatus status)
+    /// <summary>
+    /// Reads the host's normalized component state. Recovery and an active operation are measured
+    /// facts and outrank every ownership answer; ownership then decides whether anything is installed.
+    /// A host that declares the component unsupported on its platform has no dependency to satisfy.
+    /// </summary>
+    public static ComponentAvailabilityKind Classify(ComponentStateView view)
     {
-        var state = installation.Installation.RuntimeId != component ? ComponentAvailabilityKind.Unknown
-            : !status.Supported ? ComponentAvailabilityKind.Unsupported
-            : installation.Installation.RecoveryRequired || status.RecoveryRequired ? ComponentAvailabilityKind.Recovery
-            : installation.PendingOperationId is not null ? ComponentAvailabilityKind.Busy
-            : installation.Installation.Ownership == RuntimeOwnership.Unknown ? ComponentAvailabilityKind.Unknown
-            : installation.Installation.Ownership == RuntimeOwnership.External ? ComponentAvailabilityKind.External
-            : installation.Installation.Ownership == RuntimeOwnership.Absent
-                ? status.Installed ? ComponentAvailabilityKind.Unknown : ComponentAvailabilityKind.Missing
-            : !status.Installed ? ComponentAvailabilityKind.Unknown
-            : status.ProblemCode is not null || installation.ProblemCode is not null ? ComponentAvailabilityKind.Faulted
-            : status.Running ? ComponentAvailabilityKind.Running : ComponentAvailabilityKind.Stopped;
-        return new(app, server, component, state, installation.Installation.HostId, installation.Installation.InstallationId);
+        if (view.State is not { } state || state.ComponentId != view.ComponentId)
+            return view.Problems.Contains(ComponentProblemCodes.PlatformUnsupported)
+                ? ComponentAvailabilityKind.NotRequired : ComponentAvailabilityKind.Unknown;
+        if (state.RecoveryRequired) return ComponentAvailabilityKind.Recovery;
+        if (view.PendingOperationId is not null) return ComponentAvailabilityKind.Busy;
+        return state.Ownership switch
+        {
+            RuntimeOwnership.Unknown => ComponentAvailabilityKind.Unknown,
+            RuntimeOwnership.External => ComponentAvailabilityKind.External,
+            RuntimeOwnership.Absent => ComponentAvailabilityKind.Missing,
+            _ => ComponentAvailabilityKind.Installed
+        };
     }
+
+    /// <summary>
+    /// Combines alternatives into the one state a launch acts on. An installed alternative opens the
+    /// application; otherwise the most decisive blocker is reported, in an order that never lets a
+    /// known absence hide a pending recovery or an unknown answer.
+    /// </summary>
+    public static ApplicationAvailability Combine(AppId app, string server, IReadOnlyList<ComponentAvailabilityReading> readings)
+    {
+        var chosen = readings.FirstOrDefault(reading => reading.State == ComponentAvailabilityKind.Installed)
+            ?? new[] { ComponentAvailabilityKind.Recovery, ComponentAvailabilityKind.Busy, ComponentAvailabilityKind.External,
+                    ComponentAvailabilityKind.NoPermission, ComponentAvailabilityKind.Unknown, ComponentAvailabilityKind.Missing,
+                    ComponentAvailabilityKind.NotRequired }
+                .Select(kind => readings.FirstOrDefault(reading => reading.State == kind))
+                .First(reading => reading is not null)!;
+        return new(app, server, chosen.ComponentId, chosen.State, chosen.ActualHostId, chosen.InstallationId);
+    }
+
     public void Clear()
     {
         lock (_cacheLock) { _generation++; _observations.Clear(); }
         Changed?.Invoke(this, EventArgs.Empty);
     }
     public void Dispose() { session.StateChanged -= SessionChanged; Clear(); }
+}
+
+/// <summary>
+/// The one read every dependency surface uses. It never turns a transport or permission problem into
+/// "not installed": an unreadable component is <see cref="ComponentAvailabilityKind.Unknown"/>, so a
+/// settings page and a launch check can never disagree about what absence means.
+/// </summary>
+public static class ComponentAvailabilityProbe
+{
+    public static async Task<ComponentAvailabilityReading> ReadAsync(IComponentLifecycleClient lifecycle,
+        string componentId, CancellationToken ct)
+    {
+        try
+        {
+            var view = await lifecycle.StateAsync(componentId, ct);
+            return new(componentId, ApplicationAvailabilityService.Classify(view), view.State?.HostId, view.CommittedOperationId);
+        }
+        catch (HttpRequestException ex)
+        {
+            return new(componentId, ex.StatusCode is System.Net.HttpStatusCode.Forbidden
+                or System.Net.HttpStatusCode.Unauthorized ? ComponentAvailabilityKind.NoPermission : ComponentAvailabilityKind.Unknown);
+        }
+        catch (InvalidOperationException ex) when (ex.Message == "component.permission_denied")
+        {
+            return new(componentId, ComponentAvailabilityKind.NoPermission);
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or InvalidOperationException
+            or InvalidDataException or FormatException or System.Text.Json.JsonException)
+        {
+            return new(componentId, ComponentAvailabilityKind.Unknown);
+        }
+    }
 }

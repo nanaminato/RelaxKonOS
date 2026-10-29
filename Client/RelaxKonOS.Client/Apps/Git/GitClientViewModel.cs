@@ -24,8 +24,8 @@ public sealed record GitLogFilterOption(string Value, string Label);
 /// Each window owns its own ViewModel instance — supports multiple projects open simultaneously (MultiWindow instance policy).</summary>
 public sealed partial class GitClientViewModel(IRemoteGitClient client) : ObservableObject
 {
-    public Action? OpenComponentCenter { get; set; }
-    [RelayCommand] private void ManageComponent() => OpenComponentCenter?.Invoke();
+    /// <summary>Git installation lives in Component Center; settings only observes and navigates.</summary>
+    public ComponentCenter.ComponentDependencySettingsViewModel? Dependency { get; init; }
 
     public Func<GitRepositoryDto, Task<bool>>? OpenEditorProjectAsync { get; set; }
     public Func<string, Task>? OpenPlainFolderAsync { get; set; }
@@ -166,7 +166,6 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
     // ── Host Git engine status & install flow (like DockerManagerViewModel) ──
     [ObservableProperty] private bool _isGitAvailable = true;
     [ObservableProperty] private bool _isGitInstallRequired;
-    [ObservableProperty] private bool _canAutoInstall;
     [ObservableProperty] private string _engineVersion = "—";
     [ObservableProperty] private string _enginePath = "—";
     [ObservableProperty] private string _problemCode = string.Empty;
@@ -415,7 +414,6 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             ProblemCode = status.ProblemCode ?? string.Empty;
             EngineVersion = string.IsNullOrWhiteSpace(status.Version) ? "—" : status.Version;
             EnginePath = string.IsNullOrWhiteSpace(status.ExecutablePath) ? "—" : status.ExecutablePath;
-            CanAutoInstall = status.CanAutoInstall;
             IsGitInstallRequired = IsInstallRequired(IsGitAvailable, ProblemCode);
             }
         catch (Exception ex)
@@ -424,7 +422,6 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             ProblemCode = "error";
             EngineVersion = "—";
             EnginePath = "—";
-            CanAutoInstall = false;
             IsGitInstallRequired = false;
             StatusText = LocalizedText.Ref("git.vm.engine_check_failed_format", ex.Message);
         }

@@ -57,4 +57,28 @@
     <string name="components_revision">Revision</string>
     <string name="components_problems">Problems</string>
     <string name="components_pending_operation">Pending operation</string>
+    <!-- Archive components: the host offers pinned releases; the client chooses one, never a URL. -->
+    <string name="components_archive_pick">Choose version</string>
+    <string name="components_archive_note">These are the trusted archive versions this server offers. A version the server did not pin cannot be selected.</string>
+    <string name="components_archive_unavailable">No trusted version selected</string>
+    <string name="components_archive_candidate">Target version: %1$s</string>
+    <string name="components_archive_not_executable">This build cannot install this archive from the component center; the corresponding application documents the supported path.</string>
+    <string name="components_archive_file_title">Install from a file</string>
+    <string name="components_archive_file_note">Pick an archive that already exists on this server and state the version it contains. The server still verifies the platform, identity and contents; the reference is bound to the operator and expires.</string>
+    <string name="components_archive_file_version">Version in the archive</string>
+    <string name="components_archive_file_path">Archive path on the server</string>
+    <string name="components_archive_file_reference">Create file reference</string>
+    <string name="components_archive_file_reference_ready">Reference created</string>
+    <string name="components_archive_file_reference_note">Referenced %1$s. The reference is bound to this operator and expires.</string>
+    <string name="components_archive_file_local">Choose a local file</string>
+    <!-- Application dependency entry and the entry prompt. The entry observes; it never installs. -->
+    <string name="components_dependency_entry">Component dependencies</string>
+    <string name="components_dependency_hint">Install, update, repair, rollback and removal happen only in Component Center. This summary reads the current host state.</string>
+    <string name="components_dependency_state">%1$s · version %2$s</string>
+    <string name="components_open_center">Open Component Center</string>
+    <string name="components_launch_missing_title">Component required</string>
+    <string name="components_launch_blocked_title">Component unavailable</string>
+    <string name="components_launch_missing_message">This application needs %1$s. Open Component Center to install it, then return here. Nothing was started.</string>
+    <string name="components_launch_recovery_message">%1$s has a transaction requiring recovery. Handle it in Tasks &amp; recovery first.</string>
+    <string name="components_launch_busy_message">A task for %1$s is running. Check its progress in Tasks &amp; recovery first.</string>
 </resources>

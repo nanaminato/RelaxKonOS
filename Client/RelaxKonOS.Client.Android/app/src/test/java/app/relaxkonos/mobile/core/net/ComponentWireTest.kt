@@ -93,4 +93,84 @@ class ComponentWireTest {
         }
         assertTrue(failed)
     }
+
+    @Test
+    fun `parses the host pinned archive list`() {
+        val view = ComponentWire.stateView(
+            """
+            {"componentId":"frpc","state":{"componentId":"frpc","hostId":"host-1","revision":9,
+            "ownership":"absent","mode":"managedArchive",
+            "target":{"os":"linux","architecture":"x64","serviceHost":"systemd"},
+            "activeVersion":null,"recoveryRequired":false},
+            "modes":[{"mode":"managedArchive","platform":"linux","available":true,"problemCode":null}],
+            "problems":[],"pendingOperationId":null,
+            "pinnedArchives":[{"releaseId":"rel-1","version":"v0.61.0","rid":"linux-x64",
+            "sourceUri":"https://github.com/fatedier/frp/releases/download/v0.61.0/frp.tar.gz",
+            "sha256":"${"a".repeat(64)}","format":"tar.gz","maximumBytes":1048576,
+            "affectedComponents":["frpc","frps"]}],
+            "pinRevision":42}
+            """.trimIndent(),
+            "frpc",
+        )
+        assertEquals(1, view.pinnedArchives.size)
+        assertEquals("v0.61.0", view.pinnedArchives.single().version)
+        assertEquals(42L, view.pinRevision)
+        assertTrue(view.installed.not())
+    }
+
+    @Test
+    fun `rejects a pinned archive that does not name this component`() {
+        var failed = false
+        try {
+            ComponentWire.stateView(
+                """
+                {"componentId":"frpc","state":null,"modes":[],"problems":[],"pendingOperationId":null,
+                "pinnedArchives":[{"releaseId":"rel-1","version":"v0.61.0","rid":"linux-x64",
+                "sourceUri":"https://github.com/fatedier/frp/releases/download/v0.61.0/frp.tar.gz",
+                "sha256":"${"a".repeat(64)}","format":"tar.gz","maximumBytes":1048576,
+                "affectedComponents":["frps"]}],"pinRevision":42}
+                """.trimIndent(),
+                "frpc",
+            )
+        } catch (_: IllegalArgumentException) {
+            failed = true
+        }
+        assertTrue(failed)
+    }
+
+    @Test
+    fun `a pinned install names the host release and its pin revision`() {
+        val state = ComponentState(
+            componentId = "frpc", hostId = "host-1", revision = 9, ownership = "absent",
+            mode = "managedArchive", target = "linux / x64 / systemd", activeVersion = null, recoveryRequired = false,
+        )
+        val pin = ComponentPinnedArchive(
+            releaseId = "rel-1", version = "v0.61.0", rid = "linux-x64",
+            sourceUri = "https://github.com/fatedier/frp/releases/download/v0.61.0/frp.tar.gz",
+            sha256 = "a".repeat(64), format = "tar.gz", maximumBytes = 1048576,
+            affectedComponents = listOf("frpc", "frps"),
+        )
+        val body = ComponentWire.planBody("frpc", ComponentChange.Install, state, true, "key", pin, 42)
+            .toByteArray().toString(Charsets.UTF_8)
+        assertTrue(body.contains("\"mode\":\"ManagedArchive\""))
+        assertTrue(body.contains("\"sourceId\":\"host-pins\""))
+        assertTrue(body.contains("\"expectedSourceRevision\":42"))
+        assertTrue(body.contains("\"releaseId\":\"rel-1\""))
+        assertTrue(body.contains("\"requestedVersion\":\"v0.61.0\""))
+        assertTrue(body.contains("\"keepData\":true"))
+    }
+
+    @Test
+    fun `a package install sends no pinned identity`() {
+        val state = ComponentState(
+            componentId = "docker", hostId = "host-1", revision = 3, ownership = "absent",
+            mode = "systemPackage", target = "linux / x64 / systemd", activeVersion = null, recoveryRequired = false,
+        )
+        val body = ComponentWire.planBody("docker", ComponentChange.Install, state, true, "key")
+            .toByteArray().toString(Charsets.UTF_8)
+        assertTrue(body.contains("\"mode\":\"SystemPackage\""))
+        assertFalse(body.contains("sourceId"))
+        assertFalse(body.contains("releaseId"))
+        assertTrue(body.contains("\"expectedSourceRevision\":0"))
+    }
 }

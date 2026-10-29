@@ -101,12 +101,30 @@ public static class ComponentCatalog
     public static HostComponentDefinition? Find(string id) => Components.SingleOrDefault(c => c.ComponentId == id);
 
     /// <summary>
-    /// The one component whose availability adapter gates application launch today. A catalog entry
-    /// without an adapter must never block its application, because it cannot prove anything about it.
+    /// What an application needs before it may open. Every listed component is an <em>alternative</em>:
+    /// one installed component satisfies the dependency, because frpc and frps are two ways to use
+    /// the same Tunnel Manager. The list comes from each component's own application association, so
+    /// an application appears here only because a component declares it, never because a caller
+    /// guessed a component id.
     /// </summary>
-    public static HostComponentDefinition? LaunchGate(string? applicationId) => applicationId is null
-        ? null : Components.FirstOrDefault(component =>
-            component.Integration == ComponentIntegration.Batch && component.Applications.Contains(applicationId));
+    public sealed record ApplicationLaunchGate(string ApplicationId, IReadOnlyList<string> ComponentIds);
+
+    /// <summary>
+    /// The single source of truth for launch gating. Every catalog component answers through the
+    /// generic component state route, so the gate covers exactly the applications the catalog relates
+    /// to a component; an application without a component never gains a fake dependency.
+    /// </summary>
+    public static IReadOnlyList<ApplicationLaunchGate> LaunchGates { get; } = Array.AsReadOnly(
+        Components.SelectMany(component => component.Applications.Select(application => (application, component.ComponentId)))
+            .GroupBy(pair => pair.application, StringComparer.Ordinal)
+            .Select(group => new ApplicationLaunchGate(group.Key,
+                Array.AsReadOnly(group.Select(pair => pair.ComponentId).Distinct(StringComparer.Ordinal).ToArray())))
+            .OrderBy(gate => gate.ApplicationId, StringComparer.Ordinal)
+            .ToArray());
+
+    /// <summary>The dependency an application must satisfy to open; null when it has no component.</summary>
+    public static ApplicationLaunchGate? LaunchGate(string? applicationId) => applicationId is null
+        ? null : LaunchGates.FirstOrDefault(gate => gate.ApplicationId == applicationId);
 }
 
 /// <summary>User intent only. This is neither a frozen plan nor an approval.</summary>

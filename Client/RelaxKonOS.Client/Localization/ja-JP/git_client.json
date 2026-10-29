@@ -18,7 +18,8 @@
         "git.workspace.patch_server_path": "サーバー上のパッチの絶対パス",
         "git.workspace.code": "コード",
         "git.workspace.refactor": "リファクタリング",
-        "git.workspace.tools": "ツール",
+        "git.workspace.tools": "ツール",
+    "git.workspace.component_dependencies": "コンポーネントの依存関係",
         "git.workspace.help": "ヘルプ",
         "git.workspace.rename_file": "選択したファイルの名前を変更…",
         "git.workspace.keyboard_shortcuts": "キーボードショートカット",
@@ -432,8 +433,8 @@
         "git.dialog.confirm.yes": "はい",
         "git.dialog.confirm.no": "いいえ",
 
-        "git.dialog.unavailable.message": "現在のサーバーで利用可能な Git コマンドラインツールが検出されませんでした。\nこのアプリを使用する前に Git をインストールしてください。",
-        "git.dialog.unavailable.install": "Git をインストール",
+        "git.dialog.unavailable.message": "現在のサーバーで利用可能な Git コマンドラインツールが検出されませんでした。\nインストールとバージョン管理はコンポーネントセンターでのみ行います。このアプリの「設定」からコンポーネントの依存関係を開き、Git をインストールしてから検出を更新してください。",
+        "git.dialog.unavailable.install": "コンポーネントセンターで依存関係を管理",
         "git.dialog.unavailable.refresh": "検出を更新",
         "git.dialog.unavailable.exit": "キャンセル / 終了",
 

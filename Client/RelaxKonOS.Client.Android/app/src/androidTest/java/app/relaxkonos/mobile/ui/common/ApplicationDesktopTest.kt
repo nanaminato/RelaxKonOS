@@ -23,7 +23,7 @@ class ApplicationDesktopTest {
         var terminal = ""
         rule.setContent { MaterialTheme {
             terminal = stringResource(R.string.nav_terminal)
-            ApplicationTiles(mobileApplications(setOf(ServerCapabilities.TERMINAL)) { navigator.push(it) })
+            ApplicationTiles(mobileApplications(setOf(ServerCapabilities.TERMINAL), privilegedOperations = false) { navigator.push(it) })
         } }
         rule.onNodeWithText(terminal).assertIsDisplayed().performClick()
         rule.runOnIdle {
@@ -37,7 +37,7 @@ class ApplicationDesktopTest {
     @Test fun directoryOnlyOffersCapabilitiesOfCurrentServer() {
         var routes = emptySet<String>()
         rule.setContent { MaterialTheme {
-            val applications = mobileApplications(setOf(ServerCapabilities.FILES)) {}
+            val applications = mobileApplications(setOf(ServerCapabilities.FILES), privilegedOperations = false) {}
             routes = applications.map { it.id }.toSet()
             Box(Modifier.width(360.dp)) { ApplicationTiles(applications) }
         } }

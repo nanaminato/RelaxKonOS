@@ -57,4 +57,28 @@
     <string name="components_revision">修订</string>
     <string name="components_problems">问题</string>
     <string name="components_pending_operation">待处理操作</string>
+    <!-- 受管归档：版本由服务器固定，客户端只选择其一，不提交 URL。 -->
+    <string name="components_archive_pick">选择版本</string>
+    <string name="components_archive_note">以下为当前服务器提供的可信归档版本；服务器未固定的版本无法选择。</string>
+    <string name="components_archive_unavailable">尚未选择可信版本</string>
+    <string name="components_archive_candidate">目标版本：%1$s</string>
+    <string name="components_archive_not_executable">当前版本尚不能从组件中心安装此归档；请按对应应用的说明处理。</string>
+    <string name="components_archive_file_title">从文件安装</string>
+    <string name="components_archive_file_note">选择服务器上已有的归档，并填写该归档包含的版本。服务器仍会校验平台、身份与内容；文件引用与当前操作者绑定并会过期。</string>
+    <string name="components_archive_file_version">归档中的版本</string>
+    <string name="components_archive_file_path">服务器上的归档路径</string>
+    <string name="components_archive_file_reference">建立文件引用</string>
+    <string name="components_archive_file_reference_ready">引用已建立</string>
+    <string name="components_archive_file_reference_note">已引用 %1$s；引用与当前操作者绑定并会过期。</string>
+    <string name="components_archive_file_local">选择本机文件</string>
+    <!-- 应用依赖入口与进入应用提示：只观察与跳转，不提供安装命令。 -->
+    <string name="components_dependency_entry">组件依赖</string>
+    <string name="components_dependency_hint">安装、更新、修复、回退和卸载只在组件中心进行；此处只读取当前服务器的状态。</string>
+    <string name="components_dependency_state">%1$s · 版本 %2$s</string>
+    <string name="components_open_center">前往组件中心</string>
+    <string name="components_launch_missing_title">需要组件</string>
+    <string name="components_launch_blocked_title">组件暂不可用</string>
+    <string name="components_launch_missing_message">此应用需要 %1$s。请前往组件中心安装后返回本应用；不会启动任何业务操作。</string>
+    <string name="components_launch_recovery_message">%1$s 有待恢复的事务，请先在“任务与恢复”中处理。</string>
+    <string name="components_launch_busy_message">%1$s 正在执行组件任务，请先在“任务与恢复”中查看进度。</string>
 </resources>

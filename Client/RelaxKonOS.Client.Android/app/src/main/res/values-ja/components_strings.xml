@@ -57,4 +57,28 @@
     <string name="components_revision">リビジョン</string>
     <string name="components_problems">問題</string>
     <string name="components_pending_operation">保留中の操作</string>
+    <!-- 管理アーカイブ: バージョンはホストが固定し、クライアントはその中から選ぶだけです。 -->
+    <string name="components_archive_pick">バージョンを選択</string>
+    <string name="components_archive_note">このサーバーが提供する信頼済みアーカイブのバージョンです。ホストが固定していないバージョンは選択できません。</string>
+    <string name="components_archive_unavailable">信頼済みバージョンが未選択です</string>
+    <string name="components_archive_candidate">対象バージョン: %1$s</string>
+    <string name="components_archive_not_executable">このビルドではコンポーネントセンターからこのアーカイブをインストールできません。対応するアプリの説明に従ってください。</string>
+    <string name="components_archive_file_title">ファイルからインストール</string>
+    <string name="components_archive_file_note">このサーバーに既にあるアーカイブを選び、その中のバージョンを入力してください。プラットフォーム、同一性、内容の検証はサーバーが行います。ファイル参照は操作者に紐づき、期限切れになります。</string>
+    <string name="components_archive_file_version">アーカイブ内のバージョン</string>
+    <string name="components_archive_file_path">サーバー上のアーカイブパス</string>
+    <string name="components_archive_file_reference">ファイル参照を作成</string>
+    <string name="components_archive_file_reference_ready">参照を作成済み</string>
+    <string name="components_archive_file_reference_note">%1$s を参照しました。参照はこの操作者に紐づき、期限切れになります。</string>
+    <string name="components_archive_file_local">ローカルファイルを選択</string>
+    <!-- アプリの依存関係入口と起動時の案内。参照と移動のみで、インストールは行いません。 -->
+    <string name="components_dependency_entry">コンポーネントの依存関係</string>
+    <string name="components_dependency_hint">インストール、更新、修復、ロールバック、アンインストールはコンポーネントセンターでのみ行います。ここでは現在のホスト状態だけを表示します。</string>
+    <string name="components_dependency_state">%1$s · バージョン %2$s</string>
+    <string name="components_open_center">コンポーネントセンターを開く</string>
+    <string name="components_launch_missing_title">コンポーネントが必要です</string>
+    <string name="components_launch_blocked_title">コンポーネントを利用できません</string>
+    <string name="components_launch_missing_message">このアプリには %1$s が必要です。コンポーネントセンターでインストールしてから戻ってください。業務操作は開始されていません。</string>
+    <string name="components_launch_recovery_message">%1$s に復旧が必要な処理があります。先に「タスクと復旧」で処理してください。</string>
+    <string name="components_launch_busy_message">%1$s のタスクが実行中です。先に「タスクと復旧」で進行状況を確認してください。</string>
 </resources>

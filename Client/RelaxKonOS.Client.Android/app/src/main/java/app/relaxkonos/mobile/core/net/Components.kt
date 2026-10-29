@@ -6,10 +6,10 @@ import org.json.JSONObject
 /**
  * Host component state, mirrored from `RelaxKonOS.Protocol.ManagedRuntimes.ComponentLifecycleContracts`.
  *
- * The component center is an observation surface on Android: it reads one normalized state per
- * component and never freezes a plan or executes a change. Installation, update, repair, rollback and
- * uninstall remain in the desktop/server component center, where the frozen plan and recovery ledger
- * are visible.
+ * The component center reads one normalized state per component, freezes the change the user chose and
+ * submits it through the owning domain's installation ledger. It never invents a package, version,
+ * download URL or executable path: a package change freezes the host's own candidate and an archive
+ * change names one of the host's pinned releases.
  */
 object ComponentRoutes {
     const val ROOT = "/api/v1.0/components"
@@ -52,10 +52,23 @@ data class ComponentState(
     val recoveryRequired: Boolean,
 )
 
+/** One trusted pinned archive the host offers for this component and platform. */
+data class ComponentPinnedArchive(
+    val releaseId: String,
+    val version: String,
+    val rid: String,
+    val sourceUri: String,
+    val sha256: String,
+    val format: String,
+    val maximumBytes: Long,
+    val affectedComponents: List<String>,
+)
+
 /**
  * Either the state or the reasons it is unavailable. [modes] is present even without a state, so the
  * screen can distinguish "this platform does not support the component" from "this build cannot read
- * it"; [problems] carries the stable `component.*` codes.
+ * it"; [problems] carries the stable `component.*` codes. [pinnedArchives] is the host's own trusted
+ * list for an archive component: the client never invents a version or a download location.
  */
 data class ComponentStateView(
     val componentId: String,
@@ -63,6 +76,9 @@ data class ComponentStateView(
     val modes: List<ComponentModeSupport>,
     val problems: List<String>,
     val pendingOperationId: String?,
+    val pinnedArchives: List<ComponentPinnedArchive> = emptyList(),
+    val pinRevision: Long = 0,
+    val committedOperationId: String? = null,
 ) {
     val recoveryRequired: Boolean get() = state?.recoveryRequired == true || pendingOperationId != null
 
@@ -122,32 +138,64 @@ object ComponentWire {
         val problemArray = value.optJSONArray("problems") ?: JSONArray()
         val problems = (0 until problemArray.length()).map { problemArray.getString(it) }
 
+        val pinArray = value.optJSONArray("pinnedArchives") ?: JSONArray()
+        val pins = (0 until pinArray.length()).map { index ->
+            val pin = pinArray.getJSONObject(index)
+            val releaseId = pin.getString("releaseId")
+            val version = pin.getString("version")
+            val sha256 = pin.getString("sha256")
+            val sourceUri = pin.getString("sourceUri")
+            require(releaseId.isNotBlank() && version.isNotBlank()) { "Pinned archive identity is incomplete" }
+            require(sha256.length == 64 && sha256.all { it in "0123456789abcdefABCDEF" }) { "Pinned archive digest is invalid" }
+            require(sourceUri.startsWith("https://")) { "Pinned archive source is not HTTPS" }
+            val affected = pin.optJSONArray("affectedComponents") ?: JSONArray()
+            ComponentPinnedArchive(
+                releaseId = releaseId,
+                version = version,
+                rid = pin.getString("rid"),
+                sourceUri = sourceUri,
+                sha256 = sha256.lowercase(),
+                format = pin.getString("format"),
+                maximumBytes = pin.optLong("maximumBytes", 0),
+                affectedComponents = (0 until affected.length()).map { affected.getString(it) },
+            )
+        }
+        // A pinned bundle may serve several components, but it may never be applied to one it does not name.
+        require(pins.all { expectedComponentId in it.affectedComponents }) {
+            "Pinned archive does not apply to this component"
+        }
+
         return ComponentStateView(
             componentId = expectedComponentId,
             state = state,
             modes = modes,
             problems = problems,
             pendingOperationId = value.optNullableString("pendingOperationId"),
+            pinnedArchives = pins,
+            pinRevision = value.optLong("pinRevision", 0),
+            committedOperationId = value.optNullableString("committedOperationId"),
         )
     }
 
     /**
      * Builds the freeze request from the state the user was shown. Package components freeze the
-     * host's own candidate, so no source/release id is invented on the client; the expected revision
-     * makes a concurrent host change a conflict instead of a silently different plan.
+     * host's own candidate, so no source/release id is invented on the client; an archive component
+     * names one of the host's pinned releases and the pin revision it was read from. The expected
+     * revision makes a concurrent host change a conflict instead of a silently different plan.
      */
     fun planBody(componentId: String, change: ComponentChange, state: ComponentState,
-        keepData: Boolean, idempotencyKey: String): JsonBody = JsonBody()
+        keepData: Boolean, idempotencyKey: String, pin: ComponentPinnedArchive? = null,
+        pinRevision: Long = 0): JsonBody = JsonBody()
         .string("componentId", componentId)
         .string("hostId", state.hostId)
         .string("change", change.wire)
         .raw("expectedRevision", state.revision.toString())
         .string("mode", if (state.mode == "systemPackage") "SystemPackage" else "ManagedArchive")
-        .raw("sourceId", "null")
-        .raw("expectedSourceRevision", "0")
+        .string("sourceId", pin?.let { "host-pins" })
+        .raw("expectedSourceRevision", (if (pin != null) pinRevision else 0).toString())
         .raw("expectedTrustRevision", "0")
-        .raw("releaseId", "null")
-        .raw("requestedVersion", "null")
+        .string("releaseId", pin?.releaseId)
+        .string("requestedVersion", pin?.version)
         .bool("keepData", keepData)
         .string("idempotencyKey", idempotencyKey)
 

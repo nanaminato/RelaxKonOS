@@ -10,7 +10,6 @@
             <TextBlock Text="{loc:Loc file_services.version}" />
             <TextBlock Text="{Binding VersionText}" />
             <WrapPanel>
-                <Button Content="{loc:Loc component_center.manage_dependency}" Command="{Binding ManageComponentCommand}" />
                 <Button Content="{loc:Loc file_services.start}" Command="{Binding StartServiceCommand}" />
                 <Button Content="{loc:Loc file_services.stop}" Command="{Binding StopCommand}" />
                 <Button Content="{loc:Loc file_services.restart}" Command="{Binding RestartCommand}" />

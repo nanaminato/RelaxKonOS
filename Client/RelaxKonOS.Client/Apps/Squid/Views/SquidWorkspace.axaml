@@ -3,6 +3,7 @@
              xmlns:common="clr-namespace:RelaxKonOS.Client.Controls"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:squid="clr-namespace:RelaxKonOS.Client.Apps.Squid"
+             xmlns:cc="clr-namespace:RelaxKonOS.Client.Apps.ComponentCenter"
              xmlns:protocol="clr-namespace:RelaxKonOS.Protocol.GatewayProxy;assembly=RelaxKonOS.Protocol"
              x:Class="RelaxKonOS.Client.Apps.Squid.Views.SquidWorkspace"
              x:DataType="squid:SquidViewModel"
@@ -54,6 +55,7 @@
           <Button x:Name="PageButton2" Classes="workspace-nav" Tag="2" Click="NavigationButton_Click" Content="{loc:Loc squid.section.domains}" HorizontalContentAlignment="Left" Padding="10,8" />
           <Button x:Name="PageButton3" Classes="workspace-nav" Tag="3" Click="NavigationButton_Click" Content="{loc:Loc squid.section.upstream}" HorizontalContentAlignment="Left" Padding="10,8" />
           <Button x:Name="PageButton4" Classes="workspace-nav" Tag="4" Click="NavigationButton_Click" Content="{loc:Loc squid.section.preview}" HorizontalContentAlignment="Left" Padding="10,8" />
+          <Button x:Name="PageButton6" Classes="workspace-nav" Tag="6" Click="NavigationButton_Click" Content="{loc:Loc common.settings}" HorizontalContentAlignment="Left" Padding="10,8" />
         </StackPanel>
       </Border>
       <ScrollViewer x:Name="BodyScroll" Grid.Column="1" Padding="20,16" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -98,8 +100,6 @@
               <TextBlock Classes="problem" Text="{loc:Loc squid.package_unsupported}" IsVisible="{Binding ShowPackageUnsupported}" />
               <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" />
               <WrapPanel>
-                <Button Content="{loc:Loc component_center.manage_dependency}" Command="{Binding ManageComponentCommand}" Margin="0,0,8,8" />
-                <Button Content="{loc:Loc squid.uninstall}" Command="{Binding UninstallCommand}" IsVisible="{Binding !ShowInstallRequired}" Margin="0,0,8,8" />
                 <Button Content="{loc:Loc squid.start}" Command="{Binding StartCommand}" Margin="0,0,8,8" />
                 <Button Content="{loc:Loc squid.stop}" Command="{Binding StopCommand}" Margin="0,0,8,8" />
                 <Button Content="{loc:Loc squid.restart}" Command="{Binding RestartCommand}" Margin="0,0,8,8" />
@@ -135,12 +135,6 @@
         <StackPanel Spacing="3">
           <TextBlock Classes="section-title" FontSize="13" Foreground="{DynamicResource WarningBrush}" Text="{loc:Loc squid.unsupported_title}" />
           <TextBlock Text="{loc:Loc squid.unsupported}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
-        </StackPanel>
-      </Border>
-      <Border Classes="notice warning" IsVisible="{Binding ShowInstallRequired}">
-        <StackPanel Spacing="3">
-          <TextBlock Classes="section-title" FontSize="13" Foreground="{DynamicResource WarningBrush}" Text="{loc:Loc squid.install_title}" />
-          <TextBlock Text="{loc:Loc squid.install_required}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
         </StackPanel>
       </Border>
       <Border Classes="notice danger" IsVisible="{Binding ShowAdoptionRequired}">
@@ -357,6 +351,9 @@
             </StackPanel>
           </StackPanel>
         </Border>
+          </StackPanel>
+          <StackPanel x:Name="Page6" Spacing="16" IsVisible="False">
+            <cc:ComponentDependencySettingsView DataContext="{Binding Dependency}" />
           </StackPanel>
         </StackPanel>
       </ScrollViewer>

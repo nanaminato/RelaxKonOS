@@ -18,7 +18,8 @@
         "git.workspace.patch_server_path": "补丁在服务器上的绝对路径",
         "git.workspace.code": "代码",
         "git.workspace.refactor": "重构",
-        "git.workspace.tools": "工具",
+        "git.workspace.tools": "工具",
+    "git.workspace.component_dependencies": "组件依赖",
         "git.workspace.help": "帮助",
         "git.workspace.rename_file": "重命名所选文件…",
         "git.workspace.keyboard_shortcuts": "键盘快捷键",
@@ -432,8 +433,8 @@
         "git.dialog.confirm.yes": "是",
         "git.dialog.confirm.no": "否",
 
-        "git.dialog.unavailable.message": "当前服务器未检测到可用的 Git 命令行工具。\n请安装 Git 后再使用本应用。",
-        "git.dialog.unavailable.install": "安装 Git",
+        "git.dialog.unavailable.message": "当前服务器未检测到可用的 Git 命令行工具。\n安装与版本管理只在组件中心进行：请在本应用的“设置”中打开组件依赖，前往组件中心安装 Git 后再刷新检测。",
+        "git.dialog.unavailable.install": "在组件中心管理依赖",
         "git.dialog.unavailable.refresh": "刷新检测",
         "git.dialog.unavailable.exit": "取消 / 退出",
 

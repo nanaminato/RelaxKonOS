@@ -66,11 +66,19 @@ internal partial class FileServicesWorkspace : UserControl
         _selectedButton?.Classes.Remove("nav-selected");
         _selectedButton = button;
         button.Classes.Add("nav-selected");
-        ContentHost.Content = page switch
+        if (page == "settings" && _viewModel.Dependency is { } dependency) _ = dependency.RefreshAsync();
+        Control pageContent = page switch
         {
             "shares" => new FileServicesSharesView(),
             "users" => new FileServicesUsersView(),
+            "settings" => new RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsView
+            {
+                DataContext = _viewModel.Dependency
+            },
             _ => new FileServicesOverviewView()
         };
+        ContentHost.Content = pageContent is RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsView settings
+            ? new ScrollViewer { Content = settings, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled }
+            : pageContent;
     }
 }

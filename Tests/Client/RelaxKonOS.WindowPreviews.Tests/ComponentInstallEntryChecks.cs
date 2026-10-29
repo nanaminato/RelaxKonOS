@@ -50,7 +50,7 @@ internal static class ComponentInstallEntryChecks
             lifecycle: new EntryLifecycle("git"), hostPlatform: "linux");
         using var gitHandler = new EntryHandler();
         using var gitHttp = new HttpClient(gitHandler);
-        gitCenter.GitEngine = new GitClientViewModel(null!) { CanAutoInstall = true, IsGitAvailable = false };
+        gitCenter.GitEngine = new GitClientViewModel(null!) { IsGitAvailable = false };
         gitCenter.AttachPackageInstallation("git", new(new InstallationClient(gitHttp, DispatchProxy.Create<IAuthSession, EntrySession>()), null!, InstallationServiceId.Git,
             "relaxkonos.component-center", () => Task.CompletedTask, () => Task.FromResult<string?>(null)));
         gitCenter.SelectedNode = gitCenter.VisibleRoots.SelectMany(root => root.DescendantsAndSelf()).Single(node => node.ComponentId == "git");
@@ -70,7 +70,7 @@ internal static class ComponentInstallEntryChecks
         using (var windowsGit = new ComponentCenterViewModel(gitRuntime, new(), "https://test.invalid", Guid.NewGuid(),
             lifecycle: new EntryLifecycle("git"), hostPlatform: "windows"))
         {
-            windowsGit.GitEngine = new GitClientViewModel(null!) { CanAutoInstall = true, IsGitAvailable = false };
+            windowsGit.GitEngine = new GitClientViewModel(null!) { IsGitAvailable = false };
             windowsGit.SelectedNode = windowsGit.VisibleRoots.SelectMany(root => root.DescendantsAndSelf()).Single(node => node.ComponentId == "git");
             Check(!windowsGit.ShowPackageFreeze && windowsGit.ShowGitInstallation,
                 "A Windows host reports the existing Git program instead of the Linux package plan.");

@@ -28,7 +28,7 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(
         new AppId("relaxkonos.webservers"), "Web Server Manager", "0.1.0", "🌐", "Manage web servers on the RelaxKonOS Server",
-        [AppPermissions.ServerWebServersRead, AppPermissions.ServerWebServersManage], ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.WebServer]),
+        [AppPermissions.ServerWebServersRead, AppPermissions.ServerWebServersManage, AppPermissions.ServerComponentsRead], ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.WebServer]),
         InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
     public override void Activate(AppContext context)
@@ -45,11 +45,10 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
                 new Rect(180, 160, 470, 180), Manifest.IconGlyph, false, false, false);
             return;
         }
-        var viewModel = new WebServerManagerViewModel(client, certificates, session, context.Permissions, elevations);
-        viewModel.OpenComponentCenter = () =>
+        var dependency = RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsViewModel.Create(context, Manifest.Id.Value);
+        var viewModel = new WebServerManagerViewModel(client, certificates, session, context.Permissions, elevations)
         {
-            if (session.ServiceId is { } host)
-                context.Activations.Activate(RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterNavigation.Component(host, Manifest.Id.Value, "nginx"));
+            Dependency = dependency
         };
         var view = WebServerManagerWorkspace.Create(viewModel);
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.webservers.display_name"),
@@ -149,6 +148,7 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
                 if (!ReferenceEquals(current, window)) return;
                 selectionTimer.Stop();
                 context.WindowManager.WindowClosed -= closed;
+                dependency.Dispose();
             };
             context.WindowManager.WindowClosed += closed;
             selectionTimer.Start();

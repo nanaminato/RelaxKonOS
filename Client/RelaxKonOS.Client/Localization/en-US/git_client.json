@@ -18,7 +18,8 @@
         "git.workspace.patch_server_path": "Absolute patch path on the server",
         "git.workspace.code": "Code",
         "git.workspace.refactor": "Refactor",
-        "git.workspace.tools": "Tools",
+        "git.workspace.tools": "Tools",
+    "git.workspace.component_dependencies": "Component dependencies",
         "git.workspace.help": "Help",
         "git.workspace.rename_file": "Rename selected file…",
         "git.workspace.keyboard_shortcuts": "Keyboard shortcuts",
@@ -432,8 +433,8 @@
         "git.dialog.confirm.yes": "Yes",
         "git.dialog.confirm.no": "No",
 
-        "git.dialog.unavailable.message": "No available Git command-line tool detected on the current server.\nPlease install Git before using this app.",
-        "git.dialog.unavailable.install": "Install Git",
+        "git.dialog.unavailable.message": "No available Git command-line tool detected on the current server.\nInstallation and version management happen only in Component Center: open Settings → component dependencies in this app, install Git there, then refresh detection.",
+        "git.dialog.unavailable.install": "Manage the dependency in Component Center",
         "git.dialog.unavailable.refresh": "Refresh detection",
         "git.dialog.unavailable.exit": "Cancel / Exit",
 

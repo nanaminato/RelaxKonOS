@@ -495,4 +495,4 @@ RelaxKonOS.Server     = Cloud Backend
 | [`Develop`](./development/RelaxKonOS.Develop.md) | 开发者快速上手、代码结构与调试指南 |
 | [`DeveloperMode`](./development/RelaxKonOS.DeveloperMode.md) | 开发模式、DevCli 与应用包发布 |
 
-Tailscale 管理器：桌面设备/条件控制/操作重开、未知操作人工核对关账与服务端控制链已实现；首次网页登录、真实宿主验收和运行时生命周期尚未完成，见 [设计与实施记录](applications/RelaxKonOS.Tailscale.Design.md)。
+Tailscale 管理器：桌面设备/条件控制/操作重开、未知操作人工核对关账与服务端控制链已实现；首次登录的 Helper 证据链、服务端协调器与受保护 HTTP 路由已实现，桌面入口与真实宿主验收尚未完成，见 [设计与实施记录](applications/RelaxKonOS.Tailscale.Design.md)。

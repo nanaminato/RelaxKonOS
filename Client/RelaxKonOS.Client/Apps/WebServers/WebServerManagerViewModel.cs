@@ -31,8 +31,8 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     public string ActionsTitle => LocalizedText.Get("webservers.current.server_management");
     public bool IsComponentCenter { get; set; }
     public bool ShowInstanceSelection => IsComponentCenter;
-    public Action? OpenComponentCenter { get; set; }
-    [RelayCommand] private void ManageComponent() => OpenComponentCenter?.Invoke();
+    /// <summary>Nginx installation lives in Component Center; settings only observes and navigates.</summary>
+    public ComponentCenter.ComponentDependencySettingsViewModel? Dependency { get; init; }
     [RelayCommand(CanExecute = nameof(CanSelectCurrentNginx))] private async Task SelectCurrentNginxAsync()
     {
         if (!CanSelectCurrentNginx || SelectedServer is not { } server) return;

@@ -1,6 +1,4 @@
 using RelaxKonOS.Client.Services;
-using RelaxKonOS.Client.Services.Installation;
-using RelaxKonOS.Protocol.Installations;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input.Platform;
 using RelaxKonOS.Client.Apps.Tunnels.Views;
@@ -22,7 +20,7 @@ namespace RelaxKonOS.Client.Apps.Tunnels;
 /// <summary>FRP administration workspace with separate editors and independently refreshable log windows.</summary>
 public sealed class TunnelManagerApp : RemoteApplicationBase
 {
-    public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.tunnels"), "Tunnel Manager", "1.1.0", "↔", "Manage FRP tunnel desired state and runtime status", [AppPermissions.ServerTunnelsRead, AppPermissions.ServerTunnelsManage], ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.Tunnels]), InstancePolicy: ApplicationInstancePolicy.SingleWindow);
+    public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.tunnels"), "Tunnel Manager", "1.1.0", "↔", "Manage FRP tunnel desired state and runtime status", [AppPermissions.ServerTunnelsRead, AppPermissions.ServerTunnelsManage, AppPermissions.ServerComponentsRead], ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.Tunnels]), InstancePolicy: ApplicationInstancePolicy.SingleWindow);
     public override void Activate(AppContext context)
     {
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
@@ -32,10 +30,10 @@ public sealed class TunnelManagerApp : RemoteApplicationBase
             context.ShowWindow(LocalizedText.Get("tunnels.title"), new TunnelLoginRequiredView(), new Rect(180, 160, 470, 180), Manifest.IconGlyph, false, false, false); return;
         }
         var canManage = context.Permissions.IsGranted(AppPermissions.ServerTunnelsManage);
-        var vm = new TunnelManagerViewModel(client, canManage);
-        var manageComponent = RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterEntry.Navigate(context, "relaxkonos.tunnels", "frpc");
-        vm.OpenComponentCenter = manageComponent;
-        vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Frp, "relaxkonos.tunnels", vm.RefreshAfterChildAsync); var view = new TunnelManagerView { DataContext = vm }; var window = context.ShowWindow(LocalizedText.Get("tunnels.title"), RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterEntry.Wrap(InstallationPanel.Wrap(view, vm.Installation), manageComponent), new Rect(90, 65, 1040, 680), Manifest.IconGlyph);
+        var dependency = ComponentCenter.ComponentDependencySettingsViewModel.Create(context, "relaxkonos.tunnels");
+        var vm = new TunnelManagerViewModel(client, canManage) { Dependency = dependency };
+        var view = new TunnelManagerView { DataContext = vm };
+        var window = context.ShowWindow(LocalizedText.Get("tunnels.title"), view, new Rect(90, 65, 1040, 680), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
         async Task<bool> ConfirmAsync(string title, string message, string confirmLabel)
         {
@@ -106,7 +104,7 @@ public sealed class TunnelManagerApp : RemoteApplicationBase
             return Task.CompletedTask;
         };
         EventHandler<RelaxKonOS.WindowManager.ManagedWindow>? closed = null;
-        closed = (_, item) => { if (!ReferenceEquals(item, window)) return; context.WindowManager.WindowClosed -= closed; vm.Dispose(); };
+        closed = (_, item) => { if (!ReferenceEquals(item, window)) return; context.WindowManager.WindowClosed -= closed; dependency.Dispose(); vm.Dispose(); };
         context.WindowManager.WindowClosed += closed; _ = vm.StartAsync();
 
     }

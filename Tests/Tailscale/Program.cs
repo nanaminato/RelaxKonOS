@@ -11,6 +11,7 @@ using RelaxKonOS.Server.Residency;
 using RelaxKonOS.Server.Startup;
 using System.Text.Json;
 using RelaxKonOS.Server.Tailscale;
+using RelaxKonOS.Server.Settings;
 using RelaxKonOS.Protocol.Tailscale;
 
 static void Check(bool value) { if (!value) throw new Exception("Assertion failed"); }
@@ -75,6 +76,7 @@ try
     residentBuilder.Services.AddDataProtection().UseEphemeralDataProtectionProvider();
     residentBuilder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport>(new StubTransport());
     residentBuilder.Services.AddScoped<RelaxKonOS.Server.Privileged.IHostElevationSessionStore>(_ => new StubGrants { Allowed = true });
+    residentBuilder.Services.AddSingleton(new ServerRuntimeSettingsStore(Path.Combine(residencyFolder.FullName, "settings.json")));
     var residentContext = ServerModuleContext.Create(residentBuilder.Configuration, residentBuilder.Environment, "Sqlite");
     module.ConfigureServices(residentBuilder, residentContext);
     residentBuilder.Services.AddSingleton(services => new ModuleResidencyCoordinator([module.RuntimeFactory], options, services,
@@ -82,15 +84,23 @@ try
     await using var residentRoot = residentBuilder.Services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
     var residentCoordinator = residentRoot.GetRequiredService<ModuleResidencyCoordinator>();
     var controlProxy = residentRoot.GetRequiredService<ITailscaleControl>();
+    var loginProxy = residentRoot.GetRequiredService<ITailscaleLogin>();
     Check(residentCoordinator.Describe(module.Id)!.State == ModuleResidencyState.Dormant);
     try { await controlProxy.ReadAsync(new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
         [new("sub", Guid.NewGuid().ToString())], "test")), default); throw new Exception("Missing Helper was accepted"); }
     catch (TailscaleControlException ex) { Check(ex.ProblemCode == "tailscale.control_unavailable"); }
+    try
+    {
+        await loginProxy.GetAsync(new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
+            [new("sub", Guid.NewGuid().ToString()), new("sid", Guid.NewGuid().ToString("D"))], "test")), Guid.NewGuid(), default);
+        throw new Exception("Missing login operation was accepted");
+    }
+    catch (TailscaleControlException ex) { Check(ex.ProblemCode == "tailscale.operation.not_found"); }
     await residentCoordinator.SweepAsync();
     Check(residentCoordinator.Describe(module.Id)!.State == ModuleResidencyState.Dormant);
 }
 finally { residencyFolder.Delete(true); }
-Console.WriteLine("3 Tailscale production control residency/scope checks passed.");
+Console.WriteLine("4 Tailscale production control/login residency/scope checks passed.");
 
 // Command outcomes never expose native diagnostics or malformed JSON.
 foreach (var state in new[] { "not-installed", "unavailable", "timeout", "unsupported" })
@@ -163,6 +173,9 @@ await TailscaleHelperBridgeChecks.RunAsync();
 await TailscaleRecoveryChecks.RunAsync();
 await TailscaleQuiescenceChecks.RunAsync();
 await TailscaleLoginChecks.RunAsync();
+await TailscaleLoginLedgerChecks.RunAsync();
+await TailscaleLoginBridgeChecks.RunAsync();
+await TailscaleLoginCoordinatorChecks.RunAsync();
 var httpFolder = Directory.CreateTempSubdirectory("relaxkonos-tailscale-http-");
 var webBuilder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = httpFolder.FullName });
 webBuilder.Logging.ClearProviders();
@@ -177,6 +190,11 @@ webBuilder.Services.AddSingleton<ITailscaleControlAuthorization, TailscaleContro
 var controlHost = new HttpControlHost();
 webBuilder.Services.AddSingleton<ITailscaleControl>(services => new TailscaleOperationCoordinator(
     new TailscaleOperationJournal(webBuilder.Environment, new EphemeralDataProtectionProvider()), controlHost, services.GetRequiredService<ITailscaleControlAuthorization>()));
+var loginHost = new HttpLoginHost();
+webBuilder.Services.AddSingleton(new ServerRuntimeSettingsStore(Path.Combine(httpFolder.FullName, "settings.json")));
+webBuilder.Services.AddSingleton<ITailscaleLogin>(services => new TailscaleLoginCoordinator(
+    new TailscaleLoginJournal(webBuilder.Environment, new EphemeralDataProtectionProvider()), loginHost,
+    services.GetRequiredService<ITailscaleControlAuthorization>(), services.GetRequiredService<ServerRuntimeSettingsStore>()));
 webBuilder.Services.AddSingleton<ITailscaleManager>(new TailscaleManager(new StubStatusCommand(new("observed", document.RootElement.GetRawText()))));
 await using (var web = webBuilder.Build())
 {
@@ -236,10 +254,40 @@ await using (var web = webBuilder.Build())
         && closedOperation.Closure.Actor == "b192be55-f4ea-4277-9b98-5c95b3be23af");
     using var repeatClose = await http.PostAsJsonAsync(unresolvedPath + "/recovery/close", closeRequest);
     Check(repeatClose.IsSuccessStatusCode && controlHost.Closures == 1 && controlHost.Executions == 2);
+    var loginId = Guid.NewGuid();
+    var loginPath = TailscaleEndpoints.LoginOperations + "/" + loginId.ToString("D");
+    grants.Allowed = false;
+    using var deniedLogin = await http.PostAsJsonAsync(TailscaleEndpoints.LoginOperations, new TailscaleLoginPrepareRequest(loginId));
+    Check(deniedLogin.StatusCode == System.Net.HttpStatusCode.Forbidden && loginHost.Observes == 0);
+    grants.Allowed = true;
+    using var preparedLogin = await http.PostAsJsonAsync(TailscaleEndpoints.LoginOperations, new TailscaleLoginPrepareRequest(loginId));
+    var preparedLoginOperation = JsonSerializer.Deserialize<TailscaleLoginOperation>(await preparedLogin.Content.ReadAsStringAsync(), new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+    Check(preparedLogin.IsSuccessStatusCode && preparedLoginOperation.State == TailscaleLoginState.Prepared && preparedLoginOperation.OperationId == loginId);
+    using var unconfirmedLogin = await http.PostAsJsonAsync(loginPath + "/execute", new TailscaleLoginExecuteRequest(false));
+    Check(unconfirmedLogin.StatusCode == System.Net.HttpStatusCode.BadRequest && loginHost.Begins == 0);
+    using var issuedLogin = await http.PostAsJsonAsync(loginPath + "/execute", new TailscaleLoginExecuteRequest(true));
+    var issuedOperation = JsonSerializer.Deserialize<TailscaleLoginOperation>(await issuedLogin.Content.ReadAsStringAsync(), new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+    Check(issuedLogin.IsSuccessStatusCode && issuedOperation.State == TailscaleLoginState.Issued && loginHost.Begins == 1);
+    using var challengeResponse = await http.GetAsync(loginPath + "/challenge");
+    var challenge = JsonSerializer.Deserialize<TailscaleLoginChallengeResponse>(await challengeResponse.Content.ReadAsStringAsync(), new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+    Check(challengeResponse.IsSuccessStatusCode && challenge.OperationId == loginId && challenge.AuthenticationUrl == HttpLoginHost.Url);
+    Check(challengeResponse.Headers.CacheControl?.NoStore == true);
+    http.DefaultRequestHeaders.Authorization = null;
+    Check((await http.GetAsync(loginPath + "/challenge")).StatusCode == System.Net.HttpStatusCode.Unauthorized);
+    http.DefaultRequestHeaders.Authorization = new("test");
+    loginHost.Observation = new(new('F', 64), new('B', 64), "Running", false);
+    var loginRecovery = JsonSerializer.Deserialize<TailscaleLoginRecoverySnapshot>(await http.GetStringAsync(loginPath + "/recovery"), new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+    Check(loginRecovery.CanClose && loginRecovery.OperationId == loginId && loginRecovery.Observation?.BackendState == "Running");
+    using var loginClose = await http.PostAsJsonAsync(loginPath + "/recovery/close", new TailscaleLoginCloseRequest(loginId, loginRecovery.Observation!.Revision, true));
+    Check(loginClose.IsSuccessStatusCode);
+    var closedLogin = JsonSerializer.Deserialize<TailscaleLoginOperation>(await http.GetStringAsync(loginPath), new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+    Check(closedLogin.State == TailscaleLoginState.Issued && closedLogin.Closure?.Observation.Revision == loginRecovery.Observation.Revision);
+    using var challengeAfterClose = await http.GetAsync(loginPath + "/challenge");
+    Check(challengeAfterClose.StatusCode == System.Net.HttpStatusCode.Conflict);
     await web.StopAsync();
 }
 httpFolder.Delete(true);
-Console.WriteLine("20 Tailscale HTTP authentication/control/recovery checks passed.");
+Console.WriteLine("31 Tailscale HTTP authentication/control/recovery/login checks passed.");
 
 sealed class StubStatusCommand(TailscaleCommandResult result) : ITailscaleStatusCommand
 {
@@ -275,13 +323,40 @@ sealed class TestAuthenticationHandler(Microsoft.Extensions.Options.IOptionsMoni
     protected override Task<Microsoft.AspNetCore.Authentication.AuthenticateResult> HandleAuthenticateAsync()
     {
         if (Request.Headers.Authorization != "test") return Task.FromResult(Microsoft.AspNetCore.Authentication.AuthenticateResult.NoResult());
-        var principal = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity([new("sub", "b192be55-f4ea-4277-9b98-5c95b3be23af")], "test"));
+        var principal = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity([new("sub", "b192be55-f4ea-4277-9b98-5c95b3be23af"), new("sid", "5f0b9c1e-6a1d-4c2e-8b3a-1d2e3f4a5b6c")], "test"));
         return Task.FromResult(Microsoft.AspNetCore.Authentication.AuthenticateResult.Success(new(principal, "test")));
     }
 }
 
 
 
+
+sealed class HttpLoginHost : ITailscaleLoginHost
+{
+    internal const string Url = "https://login.tailscale.com/a/0123456789abcdef";
+    public TailscaleLoginObservation Observation { get; set; } = new(new('A', 64), new('B', 64), "NeedsLogin", true);
+    public int Observes { get; private set; }
+    public int Begins { get; private set; }
+    public int Closes { get; private set; }
+    public Task<TailscaleLoginObservation> ObserveAsync(CancellationToken cancellationToken)
+    { Observes++; return Task.FromResult(Observation); }
+    public Task<TailscaleLoginReceipt> BeginAsync(TailscaleLoginCommand command, CancellationToken cancellationToken)
+    {
+        Begins++;
+        return Task.FromResult(new TailscaleLoginReceipt(command.Intent.OperationId, TailscaleLoginState.Issued, DateTimeOffset.UtcNow,
+            Observation.PreferencesRevision, Observation.Revision, new('C', 64)));
+    }
+    public Task<TailscaleLoginReceipt?> GetReceiptAsync(TailscaleLoginIntent intent, CancellationToken cancellationToken) =>
+        Task.FromResult<TailscaleLoginReceipt?>(null);
+    public Task<TailscaleLoginChallenge> ReadChallengeAsync(TailscaleLoginIntent intent, CancellationToken cancellationToken) =>
+        Task.FromResult(new TailscaleLoginChallenge(intent.OperationId, Url, Observation));
+    public Task<TailscaleLoginObservation> ReadRecoveryAsync(TailscaleLoginIntent intent, CancellationToken cancellationToken) =>
+        Task.FromResult(Observation);
+    public Task<TailscaleLoginClosure> CloseAsync(TailscaleLoginIntent intent, TailscaleLoginCloseRequest request, CancellationToken cancellationToken)
+    { Closes++; return Task.FromResult(new TailscaleLoginClosure(intent, Observation, DateTimeOffset.UtcNow)); }
+    public Task<TailscaleLoginClosure?> GetClosureAsync(TailscaleLoginIntent intent, CancellationToken cancellationToken) =>
+        Task.FromResult<TailscaleLoginClosure?>(null);
+}
 
 sealed class HttpControlHost : ITailscaleControlHost
 {

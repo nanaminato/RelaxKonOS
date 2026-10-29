@@ -17,6 +17,8 @@ internal sealed class TailscaleModule : IServerModule, IServerModuleResidency
             ModuleServiceProxy<ITailscaleManager>.Create(services.GetRequiredService<ModuleResidencyCoordinator>(), Id));
         builder.Services.AddSingleton<ITailscaleControl>(services =>
             ModuleServiceProxy<ITailscaleControl>.Create(services.GetRequiredService<ModuleResidencyCoordinator>(), Id));
+        builder.Services.AddSingleton<ITailscaleLogin>(services =>
+            ModuleServiceProxy<ITailscaleLogin>.Create(services.GetRequiredService<ModuleResidencyCoordinator>(), Id));
     }
     public void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)
     {
@@ -40,6 +42,23 @@ internal sealed class TailscaleModule : IServerModule, IServerModuleResidency
             .RequireAuthorization().WithTags("Tailscale");
         endpoints.MapGet(TailscaleEndpoints.Operation, (Guid operationId, ITailscaleControl control, HttpContext http, CancellationToken ct) =>
             Respond(() => control.GetAsync(http.User, operationId, ct))).RequireAuthorization().WithTags("Tailscale");
+        endpoints.MapPost(TailscaleEndpoints.LoginOperations, (TailscaleLoginPrepareRequest request, ITailscaleLogin login, HttpContext http, CancellationToken ct) =>
+            Respond(() => login.PrepareAsync(http.User, request, ct))).RequireAuthorization().WithTags("Tailscale");
+        endpoints.MapPost(TailscaleEndpoints.LoginExecute, (Guid operationId, TailscaleLoginExecuteRequest request, ITailscaleLogin login, HttpContext http, CancellationToken ct) =>
+            Respond(() => login.ExecuteAsync(http.User, operationId, request.Confirmed, ct))).RequireAuthorization().WithTags("Tailscale");
+        endpoints.MapGet(TailscaleEndpoints.LoginOperation, (Guid operationId, ITailscaleLogin login, HttpContext http, CancellationToken ct) =>
+            Respond(() => login.GetAsync(http.User, operationId, ct))).RequireAuthorization().WithTags("Tailscale");
+        endpoints.MapGet(TailscaleEndpoints.LoginChallenge, async (Guid operationId, ITailscaleLogin login, HttpContext http, CancellationToken ct) =>
+            {
+                // The challenge is delivered once and must not enter shared caches or history snapshots.
+                http.Response.Headers.CacheControl = "no-store";
+                return await Respond(() => login.ReadChallengeAsync(http.User, operationId, ct));
+            }).RequireAuthorization().WithTags("Tailscale");
+        endpoints.MapGet(TailscaleEndpoints.LoginRecovery, (Guid operationId, ITailscaleLogin login, HttpContext http, CancellationToken ct) =>
+            Respond(() => login.ReadRecoveryAsync(http.User, operationId, ct))).RequireAuthorization().WithTags("Tailscale");
+        endpoints.MapPost(TailscaleEndpoints.LoginClose, (Guid operationId, TailscaleLoginCloseRequest request, ITailscaleLogin login, HttpContext http, CancellationToken ct) =>
+            operationId != request.OperationId ? Task.FromResult<IResult>(Results.Problem(statusCode: 400, title: "tailscale.invalid_request", type: "https://relaxkonos.app/problems/tailscale.invalid_request"))
+                : Respond(() => login.CloseAsync(http.User, request, ct))).RequireAuthorization().WithTags("Tailscale");
     }
 
     private static async Task<IResult> Respond<T>(Func<Task<T>> action)

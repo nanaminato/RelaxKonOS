@@ -123,9 +123,12 @@ public static partial class PrivilegedOperationExecutor
         if (request.Operation != PrivilegedOperationKind.ManagedRuntime && request.ManagedRuntime is not null)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "runtime fields require a dedicated operation");
         if (request.Operation is PrivilegedOperationKind.TailscaleControlRead or PrivilegedOperationKind.TailscaleControlExecute or PrivilegedOperationKind.TailscaleControlReceipt
-            or PrivilegedOperationKind.TailscaleRecoveryRead or PrivilegedOperationKind.TailscaleRecoveryClose or PrivilegedOperationKind.TailscaleRecoveryReceipt)
+            or PrivilegedOperationKind.TailscaleRecoveryRead or PrivilegedOperationKind.TailscaleRecoveryClose or PrivilegedOperationKind.TailscaleRecoveryReceipt
+            or PrivilegedOperationKind.TailscaleLoginBegin or PrivilegedOperationKind.TailscaleLoginObserve or PrivilegedOperationKind.TailscaleLoginReceipt or PrivilegedOperationKind.TailscaleLoginChallenge
+            or PrivilegedOperationKind.TailscaleLoginRecoveryRead or PrivilegedOperationKind.TailscaleLoginClose or PrivilegedOperationKind.TailscaleLoginRecoveryReceipt)
             return await TailscaleControlOperations.ExecuteAsync(request);
-        if (request.TailscaleChange is not null || request.TailscaleRecovery is not null)
+        if (request.TailscaleChange is not null || request.TailscaleRecovery is not null
+            || request.TailscaleLogin is not null || request.TailscaleLoginIdentity is not null || request.TailscaleLoginClose is not null)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "Tailscale fields require a dedicated operation");
         if (request.Operation == PrivilegedOperationKind.TailscaleStatus)
             return await TailscaleOperations.ExecuteAsync(request);

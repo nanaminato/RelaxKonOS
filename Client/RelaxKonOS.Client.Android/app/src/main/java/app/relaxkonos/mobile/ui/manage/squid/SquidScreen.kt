@@ -14,10 +14,12 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.ui.common.*
+import app.relaxkonos.mobile.ui.manage.components.ComponentDependencyAction
+import app.relaxkonos.mobile.ui.nav.Routes
 import app.relaxkonos.mobile.ui.theme.Spacing
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable fun SquidScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
+@Composable fun SquidScreen(onBack: () -> Unit, modifier: Modifier = Modifier, onOpenComponents: () -> Unit = {}) {
     val container = appContainer()
     val model: SquidViewModel = viewModel(factory = viewModelFactory { initializer { SquidViewModel(container.session, container.squid) } })
     val owner = container.activeSession
@@ -33,7 +35,6 @@ import app.relaxkonos.mobile.ui.theme.Spacing
     val accountManage = normal && state.accountsKnown
     var editor by remember(owner) { mutableStateOf<String?>(null) }
     var section by rememberSaveable(owner) { mutableStateOf("overview") }
-    var packageAction by remember(owner) { mutableStateOf<SquidAction?>(null) }
     var deleteAccount by remember(owner) { mutableStateOf<SquidAccount?>(null) }
     var username by remember(owner) { mutableStateOf("") }
     var password by remember(owner) { mutableStateOf("") }
@@ -52,7 +53,8 @@ import app.relaxkonos.mobile.ui.theme.Spacing
             Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn
         }
         Text(stringResource(R.string.squid_intro))
-        PageActionRow(refresh = { TextButton(enabled = visible && !state.busy, onClick = model::refresh) { Text(stringResource(R.string.squid_refresh)) } })
+        PageActionRow(refresh = { TextButton(enabled = visible && !state.busy, onClick = model::refresh) { Text(stringResource(R.string.squid_refresh)) } },
+            actions = { ComponentDependencyAction(Routes.MANAGE_SQUID, onOpenComponents) })
         RefreshProgressIndicator(visible && state.busy)
         state.problem?.takeIf { visible }?.let { Text(squidProblem(it), color = MaterialTheme.colorScheme.error) }
         if (!owner.controller) Text(stringResource(R.string.squid_read_only))
@@ -70,10 +72,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
                         }
                     }
                     Text(stringResource(R.string.squid_package_note))
-                    if (status.packageManagementSupported) {
-                        val action = if (status.installed) SquidAction.Uninstall else SquidAction.Install
-                        OutlinedButton(enabled = manage && status.supported && !status.recoveryRequired, onClick = { packageAction = action }) { Text(stringResource(action.label())) }
-                    } else Text(stringResource(R.string.squid_package_unsupported))
+                    if (!status.packageManagementSupported) Text(stringResource(R.string.squid_package_unsupported))
                     Text(stringResource(R.string.squid_revisions, facts.desiredRevision, facts.publishedRevision?.toString() ?: "—"))
                     Text(stringResource(R.string.squid_runtime_note))
                     Text(stringResource(if (facts.matchesPublishedConfiguration) R.string.squid_matching else R.string.squid_unconfirmed))
@@ -195,10 +194,6 @@ import app.relaxkonos.mobile.ui.theme.Spacing
             }
         }
     } }
-    packageAction?.let { action -> AlertDialog(onDismissRequest = { packageAction = null },
-        title = { Text(stringResource(action.label())) }, text = { Text(stringResource(if (action == SquidAction.Install) R.string.squid_install_message else R.string.squid_uninstall_message)) },
-        confirmButton = { TextButton(enabled = manage, onClick = { packageAction = null; section = "records"; model.lifecycle(action) }) { Text(stringResource(R.string.squid_confirm)) } },
-        dismissButton = { TextButton(onClick = { packageAction = null }) { Text(stringResource(R.string.squid_cancel)) } }) }
     deleteAccount?.let { account -> AlertDialog(onDismissRequest = { deleteAccount = null },
         text = { Text(stringResource(R.string.squid_delete_message, account.username)) },
         confirmButton = { TextButton(enabled = normal, onClick = { deleteAccount = null; model.account(SquidAccountMutation(SquidAccountAction.Delete, account.username)) }) { Text(stringResource(R.string.squid_confirm)) } },

@@ -169,3 +169,61 @@ Nginx 卡片提供“当前 Nginx”：读取宿主全局选择与受管/已集�
 验证：Android `:app:compileDebugKotlin`、`:app:assembleDebug` 通过；`ComponentWireTest` 5 项、`ComponentRepositoryTest` 11 项通过。完整 `:app:testDebugUnitTest` 1745 项中 12 项失败，全部位于 `ProxyViewModelTest` 与 `SingBoxRuntimeViewModelTest`，并在干净 `HEAD` 工作树上以同一清单复现，因此不是本轮引入；未执行真实宿主组件安装、更新或卸载，也未在设备上完成 UI 复查。
 
 细节由 Android 文档维护：[组件中心（Android）](../../Client/RelaxKonOS.Client.Android/docs/features/ComponentCenter.md)。
+
+## 应用内组件入口与生命周期收口（2026-10-28）
+
+代理管理器移除了工作区里的“组件中心”标签页与订阅页的跳转按钮；Mihomo 运行时的安装/版本管理入口只保留在“设置 → 运行时 → 在组件中心管理依赖”。订阅页在运行时未安装时只显示说明（指向设置中的入口），不再直接跳转和选择组件。此改动只调整入口位置，不改变组件中心已有的 Mihomo 运行时页、安装台账或权限。
+
+验证：桌面 Client 构建通过；`WindowPreviews --component-installs-only` 37 项通过。其余应用的应用内安装/更新入口、设置页依赖跳转与“进入应用时提示”仍需逐应用迁移，见[应用组件入口迁移计划](RelaxKonOS.ComponentCenter.ApplicationEntryPlan.md)。
+
+## CC-01：通用组件启动门禁与共享依赖区（2026-10-29）
+
+`ComponentCatalog.LaunchGate` 不再只认批量接入（sing-box）：它由组件目录自身的 `Applications` 关联生成，同一应用的多个组件是**可替代**关系（Tunnel Manager 的 frpc/frps 任一已安装即满足），没有关联组件的应用不产生虚假依赖。`ApplicationAvailabilityService` 改用 `IComponentLifecycleClient.StateAsync` 读取通用组件状态，按“待恢复 / 执行中 / 所有权”的顺序分类，不再读取 sing-box 专属的运行时安装与服务状态；权限改用应用声明的 `server.components.read`。宿主声明该平台不提供组件时归为 `NotRequired` 并允许打开应用，避免把平台差异当成未安装；未知/读不到仍为 `Unknown`，不诱导入场安装。提示文案按应用名与组件名格式化，未知/无权限不提供组件中心跳转。
+
+新增共享 `ComponentDependencySettingsView`（组件名、宿主实测状态、前往组件中心、重新检查），放在应用设置页：代理管理器、代理服务端、Docker、SMB、Squid、FRP、Web 服务器新增或复用“设置”页；Project Editor 从“工具 → 组件依赖”打开同一区域。应用内遗留生命周期 UI 一并删除：FRP 的 `InstallationPanel` 与运行时卸载/回退、Squid 的安装提示与卸载、Docker 的顶部横幅与安装按钮、SMB 的跳转按钮、Git 安装对话框按钮、Web 服务器的跳转按钮、代理管理器工作区的“组件中心”导航项。服务启停、配置、站点、隧道、镜像等业务能力保持不变。
+
+验证：桌面 Client 构建通过；Client Installation 专项 **520 项 PASS**，新增 12 项共享依赖区检查（目录替代关系、逐组件状态、无安装/修复/回退/卸载命令、无权限/未知/平台不提供、导航、不冻结计划、未登录）与 40 项通用门禁检查（替代关系合并、`NotRequired`、未知/无权限、生命周期失效、切换宿主、不规划）；`WindowPreviews --component-installs-only` 37 项、`--component-center-only` 三语言×明暗、`--readiness-only`（含 `NotRequired` 无徽标）与 `--websites-only`、`--git-dock-only`、`--desktop-actions-only`、`--fused-apps-only` 通过。未执行任何真实宿主组件安装/卸载，也未在真实桌面逐应用点击缺失提示，因此不标记桌面实机验收完成。Android 迁移仍待进行。
+
+## 组件中心 Android 受管归档安装（2026-10-29）
+
+Android 组件中心现在能从服务器固定的受管归档版本安装 FRP（frpc/frps）。状态读取保留 `pinnedArchives`、`pinRevision` 与 `committedOperationId`；客户端校验每个固定版本的 `releaseId`/版本非空、SHA-256 为 64 位十六进制、来源为 HTTPS，并且该固定版本确实声明适用于当前组件，否则整份状态按不可信拒绝。计划请求带 `sourceId=host-pins`、`expectedSourceRevision=pinRevision`、所选 `releaseId` 与 `requestedVersion`，绝不上传 URL 或摘要；冻结请求仍原样提交并通过 `frozenArchive` 交给 FRP 安装台账，复用同一幂等键、提权与持久操作。未安装且服务器列出固定版本时才显示“选择版本 + 安装”；Windows Nginx 等本页不能执行的归档只显示状态与说明；更新与卸载仍按服务器能力显示。
+
+验证：Android `:app:compileDebugKotlin` 通过；`ComponentWireTest` 9 项（新增固定归档解析、跨组件固定版本拒绝、归档计划体、系统包计划不带归档身份）与 `ComponentRepositoryTest` 通过。未在设备或真实宿主上执行归档安装，也未删除应用内安装页；应用设置入口与进入应用提示、Mihomo/sing-box 运行时计划仍按[迁移计划](RelaxKonOS.ComponentCenter.ApplicationEntryPlan.md)待办。
+
+## 组件中心 Android 应用依赖入口与进入提示（2026-10-29）
+
+Android 的 7 个依赖宿主组件的应用（站点、SMB、Squid、代理管理器、代理服务端、隧道、Docker 工作区）在各自动作行增加共享“组件依赖”入口：只读取 `GET /components/{id}/state`，显示组件名称、所有权与实测版本，并提供一个前往组件中心的跳转，不安装、不修改、不上传文件。Squid 应用内的安装/卸载按钮与确认对话框已删除，改由组件中心执行。
+
+进入应用时读取同一状态路由：只有**实测未安装、待恢复或执行中**才拦截，未安装可前往组件中心、待恢复/执行中先处理“任务与恢复”，取消返回上一页而不打开应用；已安装（含服务停止）、外部安装、平台不支持和未知/读取失败都不拦截，避免把未知当作未安装或把用户锁在应用外。隧道把 frpc/frps 视为可替代依赖，任一就绪即可进入；同组件的待恢复/执行中优先于另一组件的缺失。
+
+验证：Android `:app:compileDebugKotlin`、`:app:assembleDebug` 通过；`ComponentWireTest` 9 项、`ComponentRepositoryTest` 11 项、新增 `ComponentDependencyRulesTest` 6 项全部通过（强制重跑）。未在设备上复查缺失提示与返回路径，也未删除 Docker/SMB/Nginx/代理运行时页中的应用内安装入口；这些仍按[迁移计划](RelaxKonOS.ComponentCenter.ApplicationEntryPlan.md)待办。
+
+## 组件中心 Android Docker 安装入口收口（2026-10-29）
+
+Docker 工作区删除了应用内安装入口：引擎管理页不再提供“安装/重试”按钮与安装确认对话框，记录页也不再提供安装重试；安装只由组件中心在服务器报告系统包且具备管理资格时提交同一 `DockerInstallationRequest`，应用侧保留镜像源、引擎启停、资源操作以及对组件中心已发起安装的进度、取消与恢复观察。`DockerControlViewModel.install()` 一并删除，避免保留第二条安装通道。
+
+验证：Android `:app:compileDebugKotlin` 通过；Docker 相关单元测试与组件测试重跑通过。仪器测试中与 SMB/Nginx 安装表单相关的用例仍针对尚未迁移的页面，未执行；未在设备上复查。
+
+## 组件中心 Android SMB 安装入口收口（2026-10-29）
+
+SMB 应用删除了安装按钮、安装确认对话框与“操作记录”中的安装重试；`SmbViewModel` 的安装审阅（`SmbInstallationReview`、`requestInstallation`、`install`）一并删除。Samba 安装只在组件中心进行，应用内保留状态、共享/账户管理、操作记录，以及对组件中心已发起安装的进度、取消与按 ID 恢复观察。同步更新了 Android SMB 文档与两条仅测试安装审阅的仪器测试；`SmbViewModelTest` 中安装审阅用例删除，取消与恢复用例保留。
+
+验证：Android `:app:compileDebugKotlin`、`:app:compileDebugAndroidTestKotlin` 通过（后者顺带修复了既有 `mobileApplications` 新参数未传入的三处仪器测试夹具）；SMB、Docker、组件规则/Wire/仓库单元测试重跑通过。未在设备上执行安装或取消流程。
+
+## 组件中心 Android FRP 服务器文件安装（2026-10-29）
+
+Android 组件中心在固定版本选择之外，为 FRP 增加“从文件安装”：操作者选择服务器上已有的归档、填写归档中的版本并建立文件引用（`POST /installations/FileReference`），随后以 `FrpInstallationRequest(confirmed, version, fileReferenceId)` 进入同一安装台账，沿用同一幂等键、提权与持久记录；成功后显示操作 ID 并可进入“任务与恢复”。引用与当前操作者绑定并会过期，服务器仍校验平台、身份和内容；本页不提供本机文件上传，也不为本页不能执行的归档（如 Windows Nginx）显示安装动作。新增 `validArchiveFileInstall` 规则测试（组件必须属于可执行归档、版本格式合法、引用非空）。
+
+验证：Android `:app:compileDebugKotlin` 通过；组件规则/Wire/仓库单元测试重跑通过（规则测试 7 项）。未在设备或真实宿主上执行文件安装；Tunnels 应用内仍保留本机文件上传的运行时安装页，因此该页尚未删除。
+
+## 组件中心 Android FRP 本机文件安装（2026-10-29）
+
+组件中心的“从文件安装”现在同时支持本机归档上传与服务器已有归档：本机文件经文档选择器交给同一操作者绑定的上传接口换取文件引用，服务器文件通过路径与文件引用接口建立引用；两者再以 `FrpInstallationRequest(confirmed, version, fileReferenceId)` 进入同一安装台账。引用过期、权限变化、会话切换或上传失败都只显示稳定问题码，不提交安装。至此 FRP 的固定版本、服务器文件与本机文件安装都在组件中心；FRP 的更新/修复/回退仍由服务端组件计划拒绝执行，因此 Tunnels 应用内运行时页暂时保留。
+
+验证：Android `:app:compileDebugKotlin` 通过；组件规则/Wire/仓库单元测试重跑通过。未在设备上选择真实文件或执行安装。
+
+## 组件中心 Android Nginx 文件安装与按组件服务分派（2026-10-29）
+
+组件中心的“从文件安装”不再只服务 FRP：Nginx 也可选择服务器归档或上传本机归档，并按组件选择所属安装服务（Nginx / FRP）提交 `NginxInstallationRequest(confirmed, version, fileReferenceId)` 或 `FrpInstallationRequest(confirmed, version, fileReferenceId)`。文件引用、上传、版本规则、引用过期与失败提示沿用同一实现；本页仍不解析归档内部版本，服务器继续校验平台、身份和内容。至此 Nginx 的两条安装路径（Linux 系统包冻结计划、Windows 固定归档计划）与文件安装都可在组件中心完成，应用内安装表单已具备移除条件。
+
+验证：Android `:app:compileDebugKotlin` 通过；组件规则/Wire/仓库单元测试重跑通过（文件安装规则覆盖 Nginx、FRP 与拒绝其他组件）。未在设备上选择真实归档或执行安装。

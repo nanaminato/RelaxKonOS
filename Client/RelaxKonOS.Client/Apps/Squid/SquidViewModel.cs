@@ -16,8 +16,8 @@ namespace RelaxKonOS.Client.Apps.Squid;
 /// </summary>
 public partial class SquidViewModel : ObservableObject, IDisposable
 {
-    public Action? OpenComponentCenter { get; set; }
-    [RelayCommand] private void ManageComponent() => OpenComponentCenter?.Invoke();
+    /// <summary>Squid package installation lives in Component Center; settings only observes and navigates.</summary>
+    public ComponentCenter.ComponentDependencySettingsViewModel? Dependency { get; init; }
     private readonly ISquidClient _client;
     private readonly CancellationTokenSource _lifetime = new();
     private bool _initialized;
@@ -95,7 +95,6 @@ public partial class SquidViewModel : ObservableObject, IDisposable
     public ObservableCollection<SquidProblem> DomainProblems { get; } = [];
     public ObservableCollection<SquidProblem> UpstreamProblems { get; } = [];
 
-    public Func<bool, Task<bool>>? ConfirmPackageAsync { get; set; }
     public Func<Task<bool>>? ConfirmApplyAsync { get; set; }
     public Func<Task<bool>>? ConfirmReloadAsync { get; set; }
 
@@ -128,7 +127,6 @@ public partial class SquidViewModel : ObservableObject, IDisposable
     /// <summary>Only a file carrying the RelaxKonOS header may be started, reloaded or enabled.</summary>
     public bool IsConfigurationAdopted => Snapshot?.Status is { Managed: true };
     public bool ShowUnsupported => Snapshot?.Status is { Supported: false };
-    public bool ShowInstallRequired => Snapshot?.Status is { Supported: true, Installed: false };
     public bool ShowRecoveryRequired => Snapshot?.Status is { RecoveryRequired: true };
     public bool ShowAdoptionRequired => Snapshot?.Status is { Supported: true, Installed: true, Managed: false };
     /// <summary>The unsupported notice already explains a host that cannot run Squid.</summary>
@@ -148,8 +146,6 @@ public partial class SquidViewModel : ObservableObject, IDisposable
     public bool CanPreview => CanEdit && IsConfigurationValid;
     public bool CanValidate => CanControlService && IsConfigurationValid;
     public bool CanApply => CanMutate && IsConfigurationValid && !NeedsAdoption && (!RequiresPassword || HasEnabledAccounts);
-    public bool CanInstall => CanEdit && Snapshot?.Status is { Supported: true, Installed: false, RecoveryRequired: false, PackageManagementSupported: true };
-    public bool CanUninstall => CanMutate && Snapshot?.Status.PackageManagementSupported == true;
     public bool ShowPackageUnsupported => Snapshot?.Status is { Supported: true, PackageManagementSupported: false };
     public bool CanStart => CanMutate && !IsRunning && IsConfigurationAdopted;
     public bool CanStopService => CanControlService && IsRunning;
@@ -165,13 +161,13 @@ public partial class SquidViewModel : ObservableObject, IDisposable
     [
         nameof(HasAccounts), nameof(IsLastEnabledAccountProtected), nameof(RequiresPassword), nameof(HasEnabledAccounts), nameof(ShowNoEnabledAccounts), nameof(CanManageAccounts),
         nameof(CanCreateAccount), nameof(CanResetAccountPassword), nameof(CanRemoveSelectedAccount), nameof(CanToggleAccount), nameof(ToggleAccountText),
-        nameof(ShowPackageUnsupported), nameof(CanInstall), nameof(CanUninstall), nameof(CanEdit), nameof(CanMutate), nameof(CanControlService), nameof(CanRefresh), nameof(CanResume),
+        nameof(ShowPackageUnsupported), nameof(CanEdit), nameof(CanMutate), nameof(CanControlService), nameof(CanRefresh), nameof(CanResume),
         nameof(CanLoadStored), nameof(CanPreview), nameof(CanValidate), nameof(CanApply), nameof(CanStart),
         nameof(CanStopService), nameof(CanRestartService), nameof(CanReloadService), nameof(CanEnableService),
         nameof(CanDisableService), nameof(CanToggleBoot), nameof(BootActionText),
         nameof(HasPending), nameof(HasUnsavedChanges),
         nameof(IsRunning), nameof(IsEnabled), nameof(IsConfigurationAdopted), nameof(ShowUnsupported),
-        nameof(ShowInstallRequired), nameof(ShowRecoveryRequired), nameof(ShowAdoptionRequired),
+        nameof(ShowRecoveryRequired), nameof(ShowAdoptionRequired),
         nameof(ShowReadOnly), nameof(NeedsAdoption)
     ];
 
@@ -217,7 +213,6 @@ public partial class SquidViewModel : ObservableObject, IDisposable
         ResetAccountPasswordCommand.NotifyCanExecuteChanged();
         ToggleAccountCommand.NotifyCanExecuteChanged();
         DeleteAccountCommand.NotifyCanExecuteChanged();
-        UninstallCommand.NotifyCanExecuteChanged();
         RefreshCommand.NotifyCanExecuteChanged();
         LoadStoredCommand.NotifyCanExecuteChanged();
         PreviewCommand.NotifyCanExecuteChanged();
@@ -440,20 +435,6 @@ public partial class SquidViewModel : ObservableObject, IDisposable
     });
 
 
-    [RelayCommand(CanExecute = nameof(CanUninstall))]
-    private Task UninstallAsync() => PackageAsync(true);
-
-    private async Task PackageAsync(bool uninstall)
-    {
-        if (!(uninstall ? CanUninstall : CanInstall)) return;
-        // Lock submission while the confirmation is open, then re-check permissions/facts.
-        IsBusy = true;
-        bool accepted;
-        try { accepted = ConfirmPackageAsync is not null && await ConfirmPackageAsync(uninstall); }
-        finally { IsBusy = false; }
-        if (accepted) await LifecycleAsync(uninstall ? SquidServiceAction.Uninstall : SquidServiceAction.Install);
-    }
-
     [RelayCommand(CanExecute = nameof(CanStart))] private Task StartAsync() => LifecycleAsync(SquidServiceAction.Start);
     [RelayCommand(CanExecute = nameof(CanStopService))] private Task StopAsync() => LifecycleAsync(SquidServiceAction.Stop);
     [RelayCommand(CanExecute = nameof(CanRestartService))] private Task RestartAsync() => LifecycleAsync(SquidServiceAction.Restart);
@@ -468,8 +449,6 @@ public partial class SquidViewModel : ObservableObject, IDisposable
     /// <summary>Re-checks the gate here as well: CanExecute alone must never authorize a host mutation.</summary>
     private bool Allows(SquidServiceAction action) => action switch
     {
-        SquidServiceAction.Install => CanInstall,
-        SquidServiceAction.Uninstall => CanUninstall,
         SquidServiceAction.Start => CanStart,
         SquidServiceAction.Stop => CanStopService,
         SquidServiceAction.Restart => CanRestartService,

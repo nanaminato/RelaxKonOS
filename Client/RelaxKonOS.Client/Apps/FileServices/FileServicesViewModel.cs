@@ -13,9 +13,8 @@ namespace RelaxKonOS.Client.Apps.FileServices;
 /// <summary>Window-local SMB control-plane state. It never retains Samba passwords or Helper output.</summary>
 public sealed partial class FileServicesViewModel(IRemoteFileServicesClient client, IAppPermissionScope permissions, Func<bool> isWindowSessionCurrent) : LocalizedObservableObject
 {
-    public Action? OpenComponentCenter { get; set; }
-    [RelayCommand] private void ManageComponent() => OpenComponentCenter?.Invoke();
-
+    /// <summary>Samba installation lives in Component Center; settings only observes and navigates.</summary>
+    public ComponentCenter.ComponentDependencySettingsViewModel? Dependency { get; init; }
 
     public ObservableCollection<FileShareDto> Shares { get; } = [];
     public ObservableCollection<FileServiceUserDto> Users { get; } = [];
@@ -77,7 +76,6 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
         return normalized.Split(separator).Contains("..") || !(normalized.Equals(root, comparison) || normalized.StartsWith(root + separator, comparison));
     }
     public Func<string, Task<bool>>? ConfirmDeleteAsync { get; set; }
-    private bool CanInstall() => isWindowSessionCurrent() && FactsAvailable && !IsBusy && !IsAwaitingInput && permissions.IsGranted(AppPermissions.ServerFileServicesManage) && SupportsInstall && RuntimeState == FileServiceRuntimeState.NotInstalled;
     private bool CanStart() => CanManage && RuntimeState == FileServiceRuntimeState.Stopped;
     private bool CanStop() => CanManage && RuntimeState == FileServiceRuntimeState.Running;
     private static string T(string key) => LocalizedText.Get("file_services." + key);
@@ -277,7 +275,7 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
     }
     private async Task<bool> Apply(Func<Task<FileServiceOperationResultDto>> action, Func<Task<bool>>? confirm = null, Func<bool>? targetCurrent = null, string targetFailure = "share_target_changed")
     {
-        if (!CanManage && !CanInstall()) return false;
+        if (!CanManage) return false;
         var awaitingReceipt = false;
         IsAwaitingInput = true;
         try

@@ -7,9 +7,8 @@ namespace RelaxKonOS.Client.Apps.ProxyServer.Views;
 /// <summary>Proxy Server workspace with compact page navigation and a pinned publication bar.</summary>
 public partial class ProxyServerWorkspace : UserControl
 {
-    private const int PageCount = 5;
+    private const int PageCount = 6;
     private ProxyServerViewModel? _viewModel;
-    public Action? OpenComponentCenter { get; set; }
 
     public Func<string, Control, Task>? ShowEditorAsync { get; set; }
 
@@ -35,8 +34,6 @@ public partial class ProxyServerWorkspace : UserControl
 
     public ProxyServerWorkspace(ProxyServerViewModel viewModel) : this() => DataContext = viewModel;
 
-    private void RuntimeEditor_Click(object? sender, RoutedEventArgs e) => OpenComponentCenter?.Invoke();
-
     private void NavigationButton_Click(object? sender, RoutedEventArgs e)
     {
         if (sender is Button { Tag: string tag } && int.TryParse(tag, out var page)) ShowPage(page);
@@ -49,6 +46,7 @@ public partial class ProxyServerWorkspace : UserControl
             this.FindControl<StackPanel>($"Page{i}")!.IsVisible = i == page;
             this.FindControl<Button>($"PageButton{i}")!.Classes.Set("nav-selected", i == page);
         }
+        if (page == 5 && _viewModel?.Dependency is { } dependency) _ = dependency.RefreshAsync();
         BodyScroll.Offset = default;
     }
 

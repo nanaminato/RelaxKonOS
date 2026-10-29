@@ -34,7 +34,7 @@ internal partial class DockerManagerWorkspace : UserControl
         _showCreateVolume = showCreateVolume;
         InitializeComponent();
         RelaxKonOS.Client.Controls.CompactWorkspaceNavigation.Install(this, WorkspaceBody);
-        SizeChanged += (_, e) => { HeaderStatusLabel.IsVisible = e.NewSize.Width >= 600; HeaderActions.Width = HeaderStatusLabel.IsVisible ? double.NaN : 32; HeaderActions.Padding = HeaderStatusLabel.IsVisible ? new Avalonia.Thickness(8, 0) : new Avalonia.Thickness(0); };
+        SizeChanged += (_, e) => { HeaderStatusLabel.IsVisible = e.NewSize.Width >= 600; HeaderActions.Width = HeaderStatusLabel.IsVisible ? double.NaN : 32; };
         DataContext = viewModel;
         ShowPage("overview", OverviewButton);
     }
@@ -59,6 +59,7 @@ internal partial class DockerManagerWorkspace : UserControl
         button.Classes.Add("nav-selected");
         if (section == "proxy") _ = _proxyViewModel.LoadAsync();
         if (section == "mirrors") _ = _imageMirrorsViewModel.LoadAsync();
+        if (_viewModel.Dependency is { } dependency) _ = dependency.RefreshAsync();
         Control page = section switch
         {
             "containers" => new DockerContainersView(_showCreateContainer),
@@ -68,6 +69,10 @@ internal partial class DockerManagerWorkspace : UserControl
             "proxy" => new DockerProxyView(_proxyViewModel),
             "networks" => new DockerNetworksView(_showCreateNetwork),
             "volumes" => new DockerVolumesView(_showCreateVolume),
+            "settings" => new RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsView
+            {
+                DataContext = _viewModel.Dependency
+            },
             _ => new DockerOverviewView()
         };
         // Resource lists fill the available workspace; overview, settings and the multi-table

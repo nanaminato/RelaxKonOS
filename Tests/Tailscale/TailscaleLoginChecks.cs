@@ -54,6 +54,40 @@ internal static class TailscaleLoginChecks
             Check(commands.UpCalls==1 && commands.TrustChecks>=4);
         }
         Check(!JsonSerializer.Serialize(await native.ReadAsync(default)).Contains("0123456789abcdef"));
+        var fingerprint=TailscaleNativeLogin.FingerprintChallenge(url);
+        Check(fingerprint.Length==64 && !fingerprint.Contains("0123456789abcdef"));
+        using(var challenge=await native.ReadChallengeAsync(fingerprint,baseline.PreferencesRevision,default))
+            Check(challenge.TakeAuthenticationUrl()==url && challenge.TakeAuthenticationUrl() is null && commands.UpCalls==1);
+        foreach(var digest in new[]{"",new string('Z',64),new string('F',64)})
+        {
+            try { using var ignored=await native.ReadChallengeAsync(digest,baseline.PreferencesRevision,default);throw new Exception("Foreign challenge fingerprint accepted"); }
+            catch(InvalidDataException ex) { Check(ex.Message=="tailscale.login.invalid_output" && !ex.ToString().Contains("0123456789abcdef")); }
+        }
+        try { using var ignored=await native.ReadChallengeAsync(fingerprint,new string('F',64),default);throw new Exception("Foreign preference revision accepted"); }
+        catch(InvalidDataException) { Check(commands.UpCalls==1); }
+        commands.WrongChallenge=true;
+        try { using var ignored=await native.ReadChallengeAsync(fingerprint,baseline.PreferencesRevision,default);throw new Exception("Rotated challenge accepted"); }
+        catch(InvalidDataException) { Check(commands.UpCalls==1); }
+        commands.WrongChallenge=false;
+        var reads=0;
+        var changing=new TailscaleNativeLogin((args,ct)=>
+        {
+            if(args[0]=="status" && ++reads==4) commands.WrongChallenge=true;
+            return commands.Run(args,ct);
+        },()=>{});
+        try { using var ignored=await changing.ReadChallengeAsync(fingerprint,baseline.PreferencesRevision,default);throw new Exception("Mid-read challenge change accepted"); }
+        catch(InvalidDataException) { Check(commands.UpCalls==1); }
+        commands.WrongChallenge=false;
+        using(var cancelledRead=new CancellationTokenSource())
+        {
+            cancelledRead.Cancel();
+            try { using var ignored=await native.ReadChallengeAsync(fingerprint,baseline.PreferencesRevision,cancelledRead.Token);throw new Exception("Cancelled challenge read accepted"); }
+            catch(OperationCanceledException) { Check(commands.UpCalls==1); }
+        }
+        commands.Complete=true;
+        try { using var ignored=await native.ReadChallengeAsync(fingerprint,baseline.PreferencesRevision,default);throw new Exception("Completed challenge exposed"); }
+        catch(InvalidDataException) { Check(commands.UpCalls==1); }
+        commands.Complete=false;
         var before=commands.UpCalls;
         try { await native.BeginAsync(baseline.Revision,default);throw new Exception("Existing challenge was replaced"); }
         catch(InvalidDataException ex) { Check(ex.Message=="tailscale.login.state_changed" && commands.UpCalls==before); }
@@ -85,7 +119,7 @@ internal static class TailscaleLoginChecks
         }
         Console.WriteLine($"{count} Tailscale first-login native/privacy checks passed.");
     }
-    private sealed class Commands(string output,string url)
+    internal sealed class Commands(string output,string url)
     {
         internal bool Started,ChangePreferences,WrongChallenge,Complete,CaptureTimedOut;
         internal CancellationTokenSource? CancelAfterUp;
