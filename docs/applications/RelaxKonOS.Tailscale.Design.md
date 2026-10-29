@@ -2,6 +2,8 @@
 
 状态：桌面、服务端条件控制与未知操作核对/关账、首次登录 Helper 证据链与服务端协调/HTTP 路由、桌面及 Android 登录确认/浏览器交接/关账、Android 宿主观察/条件控制/原操作恢复已实现；运行时生命周期与真实宿主验收尚未完成。
 
+Android 当前交互与生命周期规则由 [Android Tailscale 文档](../../Client/RelaxKonOS.Client.Android/docs/features/Tailscale.md) 维护，设备及前后台验证要求见 [Android 验证文档](../../Client/RelaxKonOS.Client.Android/docs/development/Verification.md)。
+
 使用当前 IServerModule 启动快照注册 relaxkonos.tailscale；禁用后不注册服务或路由，不启动后台工作。认证后的 GET /api/v1.0/tailscale/status 观察宿主 CLI 的 status --json。使用固定官方安装位置、不接受命令或路径输入，执行上限 10 秒、每流上限 1 MiB；失败与未安装分别表达。当前已有独立能力声明及桌面内置入口。
 
 官方 CLI 契约：https://tailscale.com/docs/reference/tailscale-cli
@@ -279,3 +281,52 @@ Helper 新增内部只读注册观察，使用 MsiEnumProductsEx 的 Everyone／
 专项 **598 项通过**，新增注册观察 22 项；覆盖机器／其他账户并存、advertised 差异、SID 隐私、无效或重复身份、枚举与属性失败、文本与产品数量边界、取消及晚到响应。Server／Helper 构建通过，既有警告保留。本机真实只读探针明确返回 component.tailscale_inventory_access_denied（当前进程非管理员令牌），没有报告未安装或取得所有权，也没有写入文件；此证据只覆盖原生访问拒绝路径，完整特权枚举仍待验收。
 
 日志为 `.tmp/tailscale-inventory-build.log`、`.tmp/tailscale-inventory-tests.log`、`.tmp/tailscale-inventory-helper-build.log`，探针输出为 `.tmp/tailscale-inventory-probe.json`。未注册 IPC／HTTP 生命周期入口，未执行真实安装／更新／修复／回滚／卸载；MR-11 与 Android 设备验收保持未完成。
+
+## Windows 安装前组合观察（2026-10-29）
+
+新增 Helper 内部组合观察，覆盖完整 MSI 注册、原生及 x86 Program Files 下的 Tailscale 对象、CommonApplicationData 下的保留数据对象和固定 Tailscale SCM 服务。只读工厂限 Windows x64／ARM64 操作系统和 64 位进程，不接受路径或服务名入参。目录父路径要求本地盘符及正常目录，拒绝 reparse 祖先；保留名称上出现任意对象（含链接或空目录）均视为已有对象，不遍历目录内容或读取私钥。不存在只根据明确 FileNotFound 判断，权限／路径／读取失败不通过 File.Exists 降级成不存在。
+
+SCM 仅取得本机 manager 的 CONNECT 和固定服务的 QUERY_STATUS 权限，由 SafeHandle 释放句柄；只有明确 ERROR_SERVICE_DOES_NOT_EXIST 才视为服务不存在，访问拒绝或其他错误报告不可用，不调用启动、停止或删除。各观察前后检查取消，取消不交付晚到结果。注册列表复制为只读快照，避免后续集合变化改写本次观察。
+
+任一来源不完整时整体为 Unavailable，即使其他来源均未发现；完整且有任意注册／程序／保留数据／服务时为 ExistingUnowned，不能因为注册 publisher、Windows Installer managed 上下文或服务名就接管。完整且全部未发现时为 NoKnownArtifacts，只证明当前支持路径和注册范围未发现相关对象，不证明其他布局不存在，也不授予创建目录或安装权限。观察不是宿主原子快照；安装仍须在实际事务内核对受保护自有台账、权限、文件／服务身份及当前修订，处理并发变化和保留数据所有权。
+
+专项 **616 项通过**，新增组合判断 18 项，覆盖每类已有对象、advertised／MSI managed 不授予所有权、单源失败不误报缺失、身份快照不可变、非法观察值和取消。本机只读探针取得 Programs=Absent、Data=Absent、Service=Absent，但全用户 MSI 查询访问拒绝，整体正确返回 Unavailable，未写入目录或变更服务。证据为 `.tmp/tailscale-installation-probe.json`；该探针只覆盖原生服务／固定路径未发现及注册拒绝，不能证明完整特权宿主验收或已具备安装许可。
+
+Server／Helper 构建通过，既有警告保留；日志为 `.tmp/tailscale-installation-observe-build.log`、`.tmp/tailscale-installation-observe-tests.log`、`.tmp/tailscale-installation-observe-helper-build.log`。未开放生命周期 IPC／HTTP，尚缺自有台账、原操作事务、来源信任及完整安装／多版本生命周期，MR-11 不收口。
+
+## MSI 同版本制品身份绑定（2026-10-29）
+
+暂存流程新增不可覆盖的制品观察记录，按明确 rid／version 保存官方描述、SHA-256、经 WinTrust 读取的发布者／证书摘要和已验证 MSI 产品属性。记录位于 Helper 私有暂存根的 pins 子目录，仅在摘要、签名及包属性全部通过之后创建；原有 staging.lock 覆盖检查和发布。先刷新临时文件内容，再不可覆盖移动至固定名称，不通过更新旧记录接受新摘要。
+
+后续重新解析同版本时，若描述或摘要与已观察记录不一致，在下载前返回 component.tailscale_artifact_conflict；摘要相同但本次验证所得签名／产品证据变化时同样拒绝。重复观察一致则保留原文件。记录读取限制 16 KiB／16 层并使用当前严格结构，拒绝重复／未知／遗漏字段、无效发布者／属性／摘要、损坏 JSON 和错配身份；拒绝后不删除或补写原记录。每次准备仍重新取得官方元数据及重新校验实际文件，不使用历史记录跳过当前签名或撤销检查。
+
+该记录只是已验证制品的身份绑定，不是发布源批准、自有安装台账或执行许可。没有管理员确认变更摘要的产品入口，不自动扩大信任；来源管理仍须单独实现。当前刷新与移动流程没有断电耐久性验收，不能由普通文件重开测试推断任意故障下记录必然保留。
+
+专项 **644 项通过**，新增身份绑定 28 项；覆盖首次有效证据发布、无效证据不创建目录、重新打开读取、相同观察不改写、摘要／证书冲突不覆盖、损坏记录保留及完整暂存流程在下载前拒绝同版本摘要变化。既有暂存测试改用完整结构的模拟签名证据，仍不代表真实 WinTrust 或生产目录验收。Server／Helper 构建通过，保留既有警告。日志为 `.tmp/tailscale-artifact-pin-build.log`、`.tmp/tailscale-artifact-pin-tests.log`、`.tmp/tailscale-artifact-pin-helper-build.log`。
+
+未执行系统安装或真实 daemon 操作。MR-11 继续跟踪来源信任、自有台账、原事务回执、生产权限与实包串联及完整生命周期；Android 当前流程与设备验证要求由 Android 文档维护。
+
+## ARM64 官方 MSI 实包与产品家族（2026-10-29）
+
+通过生产官方解析／传输下载 win-arm64 1.104.4 MSI，共 36,429,312 字节，SHA-256 为 `929fa96795d7fd8c1c1c7fa9060ae487c69095a89214c47e2e6a276fc847684c`。在当前 x64 Windows 宿主上只读验证 WinTrust、缓存撤销状态、发布者法律身份及 MSI 属性成功，模板为 Arm64;1033，ProductCode={67715B6E-1FF9-5805-8CE2-31E3C94E1334}、PackageCode={47D80D96-AB0B-4CED-A8EA-426C9B986C47}。证书 SHA-256 与已验证 x64 包相同，未安装或执行 ARM64 程序。
+
+两架构包的 UpgradeCode 均为 {C8F0A9CE-39DE-47FE-93B4-F33AC23790B5}；产品属性验证现在明确要求该已知产品家族，拒绝名称／厂商正确但升级标识属于其他家族的包。架构仍必须由明确 rid 和模板独立匹配；共同 UpgradeCode 不是跨架构升级授权，也不是既有实例的所有权证明。未知家族不猜测接受，来源批准和升级集合策略仍待实现。
+
+专项 **645 项通过**，新增错误产品家族拒绝检查。当前规则下 x64 和 ARM64 官方 1.104.4 均重新通过只读验证；以 win-x64 身份检查 ARM64 实包明确拒绝。只读 MSI 工具现要求显式 rid，签名／属性拒绝返回非零退出码，非法参数不再落入普通回归流程。当前命令为：
+
+```powershell
+dotnet run --project Tests/Tailscale/RelaxKonOS.Tailscale.Tests.csproj --no-build -- --stage-official-tailscale-msi win-arm64 1.104.4 .tmp/tailscale-1.104.4-arm64-validation.msi
+dotnet run --project Tests/Tailscale/RelaxKonOS.Tailscale.Tests.csproj --no-build -- --inspect-official-tailscale-msi win-arm64 1.104.4 .tmp/tailscale-1.104.4-arm64-validation.msi
+```
+
+下载目标必须尚不存在，不覆盖已有文件。证据为 `.tmp/tailscale-arm64-stage.json`、`.tmp/tailscale-arm64-inspect.json`、`.tmp/tailscale-x64-family-inspect.json`、`.tmp/tailscale-arm64-mismatch.json`；日志为 `.tmp/tailscale-arm64-build.log`、`.tmp/tailscale-arm64-regression.log`、`.tmp/tailscale-arm64-helper-build.log`。Server／Helper 构建通过，保留既有警告。
+
+以上不证明 ARM64 宿主上的 MSI 安装、驱动、服务或组网，不证明生产受保护目录的完整暂存／安装事务验收。没有运行真实 daemon、建立安装所有权或开放安装入口；MR-11 保持实施中。
+
+## 控制与关账读取后的期限复核（2026-10-29）
+
+修复控制协调器的两处等待边界：执行只在读取基线前检查计划期限，读取期间过期后仍可能写入 Applying 并提交；关账也只在读取当前恢复观察前检查预览期限。现在两条路径均在 await 完成、重新检查授权与取消之后，写入执行／关账意图之前再次检查期限，边界相等即拒绝。
+
+过期控制计划持久化为 Rejected／tailscale.plan_expired，原生 Execute 不被调用，读取原操作继续返回拒绝终态；过期关账预览返回 tailscale.recovery.preview_required，不写 ClosingRequest，也不产生 Helper 闭合证据。已被受理的原生操作仍沿用既有断线独立执行与原回执规则，不因这个检查承诺撤销。
+
+协调器时间读取统一经可注入 TimeProvider，生产默认系统 UTC；持久状态、计划及恢复期限使用同一时钟。专项 **649 项通过**，新增 4 项检查，使用可控时钟在宿主读取回调中推进到期限边界，验证拒绝结果及原生执行／关账意图未发生。日志为 `.tmp/tailscale-control-deadline-build.log` 与 `.tmp/tailscale-control-deadline-tests.log`；Server 及专项构建通过，保留既有 NuGet 元数据网络警告。不涉及新 HTTP 契约，不执行真实 daemon；安装生命周期及真机验收仍待完成。

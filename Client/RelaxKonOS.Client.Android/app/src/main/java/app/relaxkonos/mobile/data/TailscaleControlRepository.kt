@@ -85,6 +85,7 @@ class TailscaleControlRepository(private val gateway: RelaxKonGateway, private v
         verify(owner); check(operation.operationId == id)
         operation.closure?.let { check(it.operationId == id && operation.state == TailscaleOperationState.Unknown) }
         val reference = records(owner).single { it.operationId == id }
+        if (operation.state == TailscaleOperationState.Prepared) return
         val resolved = if (reference.phase == TailscaleReferencePhase.Closing) operation.closure != null else
             operation.closure != null || operation.state in setOf(TailscaleOperationState.Applied,TailscaleOperationState.Rejected,TailscaleOperationState.Prepared)
         if (resolved) references.mark(owner,id,TailscaleReferencePhase.Known)

@@ -280,3 +280,9 @@ Helper 私有暂存与持锁租约随后已实现，串联独立官方解析、�
 随后修复 Windows 祖先 ACL 未核对、NULL DACL 误判及创建目录后才收紧 ACL 的缺口。专项现共 576 项通过，本机 Program Files 及祖先链只读检查通过，未写入该目录或安装软件；私有根目录创建及完整实包串联验收仍待完成。见 [Windows ACL 修复](../applications/RelaxKonOS.Tailscale.Design.md#windows-保护目录-acl-缺口修复2026-10-29)。
 
 Windows Installer 全用户／全上下文只读注册观察已实现，错误不降级为未安装，注册不代表 RelaxKonOS 所有权。专项共 598 项通过，本机非管理员原生探针明确拒绝访问；完整特权枚举、文件／服务组合及自有台账尚未验收或实现，不开放生命周期入口。见 [注册观察边界](../applications/RelaxKonOS.Tailscale.Design.md#windows-installer-注册观察2026-10-29)。
+
+安装前组合观察已加入固定程序／保留数据路径及 SCM 服务；任一读取失败均阻止“未发现”结论，任何已有对象也不被取得所有权。专项现共 616 项通过，本机路径及服务未发现，但注册拒绝导致整体不可用，未写入系统或操作服务。仍无自有台账与安装事务。见 [组合观察范围](../applications/RelaxKonOS.Tailscale.Design.md#windows-安装前组合观察2026-10-29)。
+
+暂存已加入不可覆盖的同版本制品身份记录，验证完成后保存；后续摘要变化在下载前报冲突，签名／产品证据变化及损坏记录也拒绝且保留原记录。专项共 644 项通过，不构成来源批准、安装所有权或断电耐久性验收。见 [制品身份绑定](../applications/RelaxKonOS.Tailscale.Design.md#msi-同版本制品身份绑定2026-10-29)。
+
+官方 ARM64 1.104.4 MSI 现已通过 x64 宿主上的下载／摘要／WinTrust／产品属性只读验证，x64 实包也在固定产品家族校验下复核通过；两者共用 UpgradeCode，不能据此授予跨架构升级或所有权。专项 645 项通过，仍无 ARM64 原生安装／驱动／服务验收或完整生命周期。见 [ARM64 实包范围](../applications/RelaxKonOS.Tailscale.Design.md#arm64-官方-msi-实包与产品家族2026-10-29)。

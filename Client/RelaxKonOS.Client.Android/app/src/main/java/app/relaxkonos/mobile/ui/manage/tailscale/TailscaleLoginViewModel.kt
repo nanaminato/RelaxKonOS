@@ -20,6 +20,7 @@ internal class TailscaleLoginViewModel(private val session: AuthSession, private
     var review by mutableStateOf<TailscaleLoginReview?>(null); private set
     private var reviewActive by mutableStateOf(false)
     private var generation = 0
+    private var foregroundEpoch = 0L
     private var job: Job? = null
     val canStart get() = reviewActive && !state.busy && !state.storageFailed && state.owner?.privilegedOperations == true
         && state.records.none { it.phase != TailscaleReferencePhase.Known }
@@ -33,7 +34,7 @@ internal class TailscaleLoginViewModel(private val session: AuthSession, private
     init { viewModelScope.launch { session.state.collect { next ->
         if (state.owner !== next) { job?.cancel(); generation++; review = null; state = TailscaleLoginUiState(owner = next as? SessionState.Active) }
     } } }
-    fun setActive(active: Boolean) { reviewActive = active; if (!active) review = null }
+    fun setActive(active: Boolean) { reviewActive = active; if (!active) { foregroundEpoch++; review = null } }
     fun stop() { setActive(false); job?.cancel(); generation++; review = null; state = state.copy(busy = false,operation = null,recovery = null,browserOpened = false) }
     fun dismiss() { if (!state.busy) review = null }
     fun loadRecords() { work { owner -> loadReferences(owner) } }
@@ -43,13 +44,15 @@ internal class TailscaleLoginViewModel(private val session: AuthSession, private
     }
     fun prepare() {
         if (!canStart) return
+        val gesture = foregroundEpoch
         review = null
         work { owner ->
+            if (!reviewActive || foregroundEpoch != gesture) return@work
             val result = repository.prepare(owner,answers); verify(owner); loadReferences(owner)
             state = state.copy(operation = (result as? ApiResult.Success)?.value,recovery = null,browserOpened = false,problem = problem(result))
             if (result is ApiResult.Success) {
                 state = state.copy(selected = result.value.operationId)
-                if (reviewActive) review = TailscaleLoginReview(owner,result.value,null)
+                if (reviewActive && foregroundEpoch == gesture) review = TailscaleLoginReview(owner,result.value,null)
             }
         }
     }
@@ -80,11 +83,15 @@ internal class TailscaleLoginViewModel(private val session: AuthSession, private
         if (!canOpen) return
         val operation = state.operation ?: return
         val request = generation
+        val gesture = foregroundEpoch
         work { owner ->
+            if (!reviewActive || foregroundEpoch != gesture) return@work
+            state = state.copy(browserOpened = false)
             val result = repository.handoff(owner,operation,answers) { url ->
-                if (current(owner,request) && reviewActive && state.selected == operation.operationId) browser(url) else false
+                if (current(owner,request) && reviewActive && foregroundEpoch == gesture && state.selected == operation.operationId) browser(url) else false
             }
             verify(owner)
+            if (foregroundEpoch != gesture) return@work
             state = state.copy(browserOpened = result is ApiResult.Success && result.value,
                 problem = if (result is ApiResult.Problem && result.code == "tailscale.operation.not_found") "tailscale.login.challenge_unavailable"
                     else if (result is ApiResult.Success && !result.value && reviewActive) "tailscale.login.browser_failed" else problem(result))

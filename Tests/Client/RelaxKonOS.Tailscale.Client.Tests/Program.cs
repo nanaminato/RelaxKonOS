@@ -85,6 +85,9 @@ try
     await model.ReopenAsync(); await model.LoadControlAsync();
     Check(!model.CanConnect && !model.CanDisconnect, "unrelated receipt cannot clear an unresolved submission");
     model.SelectedReference = pendingReference;
+    client.PreparedRead = true; await model.ReopenAsync(); await model.LoadControlAsync();
+    Check(!model.CanConnect && !model.CanDisconnect,"prepared observation cannot settle a lost submission");
+    client.PreparedRead = false;
     await model.ReopenAsync();
     Check(client.Executions == executed && model.OperationText == language.Get("tailscale.operation_state.Applied", ""), "reopen reads original evidence only");
     model.Deactivate();
@@ -149,6 +152,9 @@ try
     await recoveryModel.LoadControlAsync(); await recoveryModel.DisconnectAsync(); await recoveryModel.InspectRecoveryAsync();
     recoveryClient.LoseCloseResponse=true; await recoveryModel.CloseRecoveryAsync();
     Check(recoveryModel.OperationText==language.Get("tailscale.recovery.awaiting_receipt",""),"lost closure response remains unproven");
+    recoveryClient.SuppressClosure=true; await recoveryModel.ReopenAsync();
+    Check(recoveryModel.OperationText==language.Get("tailscale.recovery.awaiting_receipt",""),"missing original closure cannot settle pending acknowledgement");
+    recoveryClient.SuppressClosure=false;
     recoveryClient.BadClosure=true; await recoveryModel.ReopenAsync();
     Check(recoveryModel.OperationText==language.Get("tailscale.recovery.awaiting_receipt",""),"foreign actor closure cannot clear pending acknowledgement");
     recoveryClient.BadClosure=false; recoveryClient.BadClosureTimestamp=true; await recoveryModel.ReopenAsync();
@@ -254,7 +260,7 @@ sealed class FakeClient : ITailscaleClient
     public HostSettingsConnection Connection = new("test-host", Guid.NewGuid(), Guid.NewGuid());
     public TailscaleControlSnapshot Control = new(new('A',64), false, true, new(true,false),true);
     public int ControlReads, Prepares, Executions;
-    public bool LoseResponse, BadPlan, UnknownResult, LoseCloseResponse, BadClosure, BadClosureTimestamp;
+    public bool LoseResponse, BadPlan, UnknownResult, LoseCloseResponse, BadClosure, BadClosureTimestamp, PreparedRead, SuppressClosure;
     public bool RecoveryReady = true;
     public int CloseCalls;
     public TaskCompletionSource<TailscaleOperation>? HoldPlan, HoldExecute;
@@ -285,6 +291,8 @@ sealed class FakeClient : ITailscaleClient
     public Task<TailscaleOperation> GetOperationAsync(HostSettingsConnection connection,Guid operationId,CancellationToken ct)
     {
         var operation=_operations[operationId];
+        if(PreparedRead) operation=operation with { State=TailscaleOperationState.Prepared,ObservedRevision=null,Closure=null };
+        if(SuppressClosure) operation=operation with { Closure=null };
         if(operation.Closure is { } closure)
         {
             if(BadClosure) operation=operation with { Closure=closure with { Actor=Guid.NewGuid().ToString("D") } };

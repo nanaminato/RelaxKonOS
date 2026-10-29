@@ -74,6 +74,13 @@ class TailscaleLoginTest {
         return (repository.execute(owner,plan,true,ElevationAnswerProvider.Declines) as ApiResult.Success).value
     }
     private suspend fun reject(action: suspend () -> Unit) { assertTrue(runCatching { action() }.isFailure) }
+    @Test fun `prepared read retains uncertain login submission until accepted evidence`() = runTest {
+        val owner = login(); val plan = plan(owner)
+        references.mark(owner,plan.operationId,TailscaleReferencePhase.Executing)
+        repository.read(owner,plan.operationId)
+        assertEquals(TailscaleReferencePhase.Executing,references.read(owner).single().phase)
+        reject { plan(owner) }
+    }
     @Test fun `unconfirmed and expired plans cannot issue a login`() = runTest {
         val owner = login(); val plan = plan(owner)
         reject { repository.execute(owner,plan,false,ElevationAnswerProvider.Declines) }

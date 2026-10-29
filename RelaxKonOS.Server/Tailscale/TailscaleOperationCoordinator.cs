@@ -33,8 +33,9 @@ public sealed class TailscaleControlException(int statusCode, string problemCode
 
 /// <summary>Serializes every mutation and journals intent before IPC. Interrupted writes are never replayed.</summary>
 public sealed class TailscaleOperationCoordinator(TailscaleOperationJournal journal, ITailscaleControlHost host,
-    ITailscaleControlAuthorization grants) : ITailscaleControl
+    ITailscaleControlAuthorization grants, TimeProvider? timeProvider = null) : ITailscaleControl
 {
+    private DateTimeOffset Now => (timeProvider ?? TimeProvider.System).GetUtcNow();
     public Task<TailscaleControlSnapshot> ReadAsync(ClaimsPrincipal principal, CancellationToken ct)
     {
         Actor(principal);
@@ -59,7 +60,7 @@ public sealed class TailscaleOperationCoordinator(TailscaleOperationJournal jour
         }
         var snapshot = await host.ReadAsync(ct);
         ValidateBaseline(snapshot, request);
-        var now = DateTimeOffset.UtcNow;
+        var now = Now;
         var operation = new TailscaleOperation(request.OperationId, request.Action, TailscaleOperationState.Prepared,
             request.ExpectedRevision, now.AddMinutes(5), now, request.Configuration);
         journal.Save(new(actor, operation, snapshot));
@@ -73,7 +74,7 @@ public sealed class TailscaleOperationCoordinator(TailscaleOperationJournal jour
         var stored = Owned(actor, operationId);
         if (stored.Operation.State != TailscaleOperationState.Prepared) return Normalize(stored).Operation;
         if (!confirmed) throw new TailscaleControlException(400, "tailscale.confirmation_required");
-        if (stored.Operation.ExpiresAt <= DateTimeOffset.UtcNow) return Save(stored, TailscaleOperationState.Rejected, "tailscale.plan_expired");
+        if (stored.Operation.ExpiresAt <= Now) return Save(stored, TailscaleOperationState.Rejected, "tailscale.plan_expired");
         RequireGrant(principal);
         var operation = stored.Operation;
         var request = new TailscalePrepareRequest(operationId, operation.ExpectedRevision, operation.Action, operation.Configuration);
@@ -81,6 +82,7 @@ public sealed class TailscaleOperationCoordinator(TailscaleOperationJournal jour
         // A prepared plan grants no authority: re-check after waiting for the lock and baseline read.
         RequireGrant(principal);
         ct.ThrowIfCancellationRequested();
+        if (stored.Operation.ExpiresAt <= Now) return Save(stored, TailscaleOperationState.Rejected, "tailscale.plan_expired");
         Save(stored, TailscaleOperationState.Applying);
         try
         {
@@ -124,7 +126,7 @@ public sealed class TailscaleOperationCoordinator(TailscaleOperationJournal jour
         if (recovery.OperationId != operationId || recovery.Closure is not null)
             throw new TailscaleControlException(409, "tailscale.recovery.receipt_mismatch");
         var plan = recovery.CanClose && recovery.Observation is { CanControl: true } observation && Revision(observation.Revision)
-            ? new TailscaleRecoveryPlan(observation.Revision, DateTimeOffset.UtcNow.AddMinutes(5)) : null;
+            ? new TailscaleRecoveryPlan(observation.Revision, Now.AddMinutes(5)) : null;
         journal.Save(stored with { RecoveryPlan = plan });
         return recovery with { CanClose = plan is not null, ExpiresAt = plan?.ExpiresAt };
     }
@@ -143,7 +145,7 @@ public sealed class TailscaleOperationCoordinator(TailscaleOperationJournal jour
             return stored.Operation;
         }
         if (stored.Operation.State != TailscaleOperationState.Unknown || stored.RecoveryPlan is not { } plan
-            || plan.ExpiresAt <= DateTimeOffset.UtcNow || plan.ExpectedRevision != request.ExpectedRevision)
+            || plan.ExpiresAt <= Now || plan.ExpectedRevision != request.ExpectedRevision)
             throw new TailscaleControlException(409, "tailscale.recovery.preview_required");
         var preview = await host.ReadRecoveryAsync(request.OperationId, ct);
         if (preview.OperationId != request.OperationId || !preview.CanClose || preview.Closure is not null
@@ -151,6 +153,7 @@ public sealed class TailscaleOperationCoordinator(TailscaleOperationJournal jour
             throw new TailscaleControlException(409, "tailscale.recovery.not_ready");
         RequireGrant(principal);
         ct.ThrowIfCancellationRequested();
+        if (plan.ExpiresAt <= Now) throw new TailscaleControlException(409, "tailscale.recovery.preview_required");
         stored = stored with { ClosingRequest = request };
         journal.Save(stored);
         var closure = await host.CloseAsync(request, actor, CancellationToken.None);
@@ -179,7 +182,7 @@ public sealed class TailscaleOperationCoordinator(TailscaleOperationJournal jour
     {
         if (stored.Operation.State == TailscaleOperationState.Applying)
             return stored with { Operation = Save(stored, TailscaleOperationState.Unknown, "tailscale.operation.interrupted") };
-        if (stored.Operation.State == TailscaleOperationState.Prepared && stored.Operation.ExpiresAt <= DateTimeOffset.UtcNow)
+        if (stored.Operation.State == TailscaleOperationState.Prepared && stored.Operation.ExpiresAt <= Now)
             return stored with { Operation = Save(stored, TailscaleOperationState.Rejected, "tailscale.plan_expired") };
         return stored;
     }
@@ -192,7 +195,7 @@ public sealed class TailscaleOperationCoordinator(TailscaleOperationJournal jour
 
     private TailscaleOperation Save(StoredTailscaleOperation stored, TailscaleOperationState state, string? problem = null, string? revision = null)
     {
-        var operation = stored.Operation with { State = state, ProblemCode = problem, ObservedRevision = revision, UpdatedAt = DateTimeOffset.UtcNow };
+        var operation = stored.Operation with { State = state, ProblemCode = problem, ObservedRevision = revision, UpdatedAt = Now };
         journal.Save(stored with { Operation = operation });
         return operation;
     }

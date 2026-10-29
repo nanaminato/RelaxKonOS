@@ -19,6 +19,7 @@ internal static class TailscaleMsiPropertyChecks
             valid with { Version = "1.104.2" },valid with { Template = "Arm64;1033" },valid with { Template = "Intel;1033" },
             valid with { Template = "x64;1033;extra" },valid with { ProductCode = Guid.Empty.ToString("B") },
             valid with { PackageCode = "invalid" },valid with { UpgradeCode = "" },
+            valid with { UpgradeCode = "{11111111-2222-3333-4444-555555555555}" },
             valid with { ProductCode = valid.ProductCode.ToLowerInvariant() },valid with { ProductCode = valid.UpgradeCode },
             valid with { PackageCode = valid.ProductCode },valid with { PackageCode = valid.UpgradeCode } })
         {

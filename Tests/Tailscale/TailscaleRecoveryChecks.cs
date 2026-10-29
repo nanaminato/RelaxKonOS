@@ -115,6 +115,13 @@ internal static class TailscaleRecoveryChecks
             Check(!(await reopened.ReadRecoveryAsync(principal,interrupted.OperationId,default)).CanClose);
             native.Quiet=true;
             var interruptedPreview=await reopened.ReadRecoveryAsync(principal,interrupted.OperationId,default);
+            var clock=new TailscaleControlTestClock();
+            var timed=new TailscaleOperationCoordinator(journal,host,grants,clock);
+            var expiringPreview=await timed.ReadRecoveryAsync(principal,interrupted.OperationId,default);
+            native.OnRead=()=>clock.UtcNow=expiringPreview.ExpiresAt!.Value;
+            await Reject(()=>timed.CloseAsync(principal,new(interrupted.OperationId,expiringPreview.Observation!.Revision,true),default),409,"tailscale.recovery.preview_required");
+            native.OnRead=null;
+            Check(journal.Read(interrupted.OperationId)!.ClosingRequest is null && !File.Exists(Path.Combine(helperRoot,interrupted.OperationId.ToString("N")+".closed.json")));
             var interruptedClosed=await reopened.CloseAsync(principal,new(interrupted.OperationId,interruptedPreview.Observation!.Revision,true),default);
             Check(interruptedClosed.State==TailscaleOperationState.Unknown && interruptedClosed.Closure is not null && native.Executions==2);
             Check(!File.Exists(Path.Combine(helperRoot,interrupted.OperationId.ToString("N")+".result.json")));

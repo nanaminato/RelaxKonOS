@@ -129,6 +129,17 @@ internal static class TailscaleControlChecks
             await coordinator.PrepareAsync(principal, unrelated, default);
             host.ChangeUnrelated = true;
             Check((await coordinator.ExecuteAsync(principal, unrelated.OperationId, true, default)).State == TailscaleOperationState.Unknown);
+            var clock = new TailscaleControlTestClock();
+            var timed = new TailscaleOperationCoordinator(journal,host,grants,clock);
+            host.ChangeUnrelated = false; host.Snapshot = host.Snapshot with { Connected = false };
+            var expiresDuringRead = Request();
+            var expiring = await timed.PrepareAsync(principal,expiresDuringRead,default);
+            var executionsBeforeExpiry = host.Executions;
+            host.OnRead = () => clock.UtcNow = expiring.ExpiresAt;
+            var expiredAfterRead = await timed.ExecuteAsync(principal,expiring.OperationId,true,default);
+            host.OnRead = null;
+            Check(expiredAfterRead.State == TailscaleOperationState.Rejected && expiredAfterRead.ProblemCode == "tailscale.plan_expired" && host.Executions == executionsBeforeExpiry);
+            Check((await timed.GetAsync(principal,expiring.OperationId,default)).State == TailscaleOperationState.Rejected);
             Console.WriteLine($"{count} Tailscale durable control checks passed.");
         }
         finally { folder.Delete(recursive: true); }
@@ -159,4 +170,10 @@ internal static class TailscaleControlChecks
             return Task.FromResult(new TailscaleControlResult(WrongIdentity ? Guid.NewGuid() : request.OperationId, true, Snapshot));
         }
     }
+}
+
+internal sealed class TailscaleControlTestClock : TimeProvider
+{
+    internal DateTimeOffset UtcNow = DateTimeOffset.UtcNow;
+    public override DateTimeOffset GetUtcNow() => UtcNow;
 }

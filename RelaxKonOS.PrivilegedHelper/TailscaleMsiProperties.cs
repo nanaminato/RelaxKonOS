@@ -8,6 +8,7 @@ namespace RelaxKonOS.PrivilegedHelper;
 // Database access only: no install session, transforms, actions, or writes.
 internal static class TailscaleMsiProperties
 {
+    internal const string KnownUpgradeCode = "{C8F0A9CE-39DE-47FE-93B4-F33AC23790B5}";
     internal sealed record Evidence(string ProductName, string Manufacturer, string Version, string ProductCode,
         string UpgradeCode, string PackageCode, string Template);
     internal static Evidence Read(string path)
@@ -30,11 +31,12 @@ internal static class TailscaleMsiProperties
     {
         RelaxKonOS.ManagedRuntimes.ComponentPackages.TailscaleMsiArtifactTransfer.Validate(release);
         if (data.ProductName != "Tailscale" || data.Manufacturer != "Tailscale Inc." || data.Version != release.Version
+            || data.UpgradeCode != KnownUpgradeCode
             || data.Template != (release.Rid switch { "win-x64" => "x64;1033", "win-arm64" => "Arm64;1033", _ => "" })
             || !GuidValue(data.ProductCode) || !GuidValue(data.PackageCode) || !GuidValue(data.UpgradeCode)
             || data.ProductCode == data.PackageCode || data.ProductCode == data.UpgradeCode || data.PackageCode == data.UpgradeCode)
             throw Invalid();
-        // The upgrade code is observed evidence only until the per-architecture lifecycle policy is registered.
+        // x64 and ARM64 share this family code. It proves neither architecture nor installation ownership.
         // Never enumerate/uninstall products on the basis of this value alone.
     }
     private static bool GuidValue(string value) => Guid.TryParseExact(value,"B",out var parsed) && parsed != Guid.Empty

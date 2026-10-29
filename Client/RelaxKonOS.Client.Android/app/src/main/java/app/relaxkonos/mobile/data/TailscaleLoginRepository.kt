@@ -96,6 +96,7 @@ class TailscaleLoginRepository(private val gateway: RelaxKonGateway, private val
             check(operation.state in recoverable && it.intent.operationId == id && it.intent.expectedRevision == operation.expectedRevision && it.intent.expiresAt == operation.expiresAt)
         }
         val reference = records(owner).single { it.operationId == id }
+        if (operation.state == TailscaleLoginState.Prepared) return
         val resolved = operation.closure != null || reference.phase != TailscaleReferencePhase.Closing
             && operation.state in setOf(TailscaleLoginState.Prepared,TailscaleLoginState.Completed,TailscaleLoginState.Rejected)
         if (resolved) references.mark(owner,id,TailscaleReferencePhase.Known)

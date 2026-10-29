@@ -15,6 +15,13 @@ using RelaxKonOS.Server.Settings;
 using RelaxKonOS.Protocol.Tailscale;
 
 static void Check(bool value) { if (!value) throw new Exception("Assertion failed"); }
+if (args.Length == 1 && args[0] == "--tailscale-installation-probe")
+{
+    var observed = RelaxKonOS.PrivilegedHelper.TailscaleWindowsInstallation.Create().Read(default);
+    var installationProbeJson = new JsonSerializerOptions(); installationProbeJson.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+    Console.WriteLine(JsonSerializer.Serialize(observed,installationProbeJson));
+    return;
+}
 if (args.Length == 1 && args[0] == "--tailscale-inventory-probe")
 {
     try
@@ -33,29 +40,29 @@ if (args.Length == 1 && args[0] == "--tailscale-protection-probe")
     Console.WriteLine(JsonSerializer.Serialize(new { Path = path, AncestorProtectionVerified = true, FilesWritten = false }));
     return;
 }
-if (args.Length == 3 && args[0] == "--inspect-official-tailscale-msi")
+if (args.Length == 4 && args[0] == "--inspect-official-tailscale-msi")
 {
     using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-    var release = await new RelaxKonOS.ManagedRuntimes.ComponentPackages.TailscaleOfficialReleases().ResolveAsync("win-x64",args[1],timeout.Token);
+    var release = await new RelaxKonOS.ManagedRuntimes.ComponentPackages.TailscaleOfficialReleases().ResolveAsync(args[1],args[2],timeout.Token);
     try
     {
-        var evidence = await RelaxKonOS.PrivilegedHelper.TailscaleMsiSignature.InspectAsync(args[2],release,timeout.Token);
+        var evidence = await RelaxKonOS.PrivilegedHelper.TailscaleMsiSignature.InspectAsync(args[3],release,timeout.Token);
         Console.WriteLine(JsonSerializer.Serialize(new { Evidence = evidence, SignatureVerified = true, Installed = false }));
     }
     catch (RelaxKonOS.ManagedRuntimes.RuntimePolicyException ex)
-    { Console.WriteLine(JsonSerializer.Serialize(new { ex.ProblemCode, SignatureVerified = false, Installed = false })); }
+    { Console.WriteLine(JsonSerializer.Serialize(new { ex.ProblemCode, SignatureVerified = false, Installed = false })); Environment.ExitCode = 1; }
     return;
 }
-if (args.Length == 3 && args[0] == "--stage-official-tailscale-msi")
+if (args.Length == 4 && args[0] == "--stage-official-tailscale-msi")
 {
     using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(4));
-    var release = await new RelaxKonOS.ManagedRuntimes.ComponentPackages.TailscaleOfficialReleases().ResolveAsync("win-x64",args[1],timeout.Token);
-    await using var file = new FileStream(args[2],FileMode.CreateNew,FileAccess.ReadWrite,FileShare.Read,65536,FileOptions.Asynchronous);
+    var release = await new RelaxKonOS.ManagedRuntimes.ComponentPackages.TailscaleOfficialReleases().ResolveAsync(args[1],args[2],timeout.Token);
+    await using var file = new FileStream(args[3],FileMode.CreateNew,FileAccess.ReadWrite,FileShare.Read,65536,FileOptions.Asynchronous);
     var length = await new RelaxKonOS.ManagedRuntimes.ComponentPackages.TailscaleMsiArtifactTransfer().CopyAsync(release,file,null,timeout.Token);
     Console.WriteLine(JsonSerializer.Serialize(new { Release = release, Length = length, Installed = false }));
     return;
 }
-if (args.Contains("--official-tailscale-source", StringComparer.Ordinal))
+if (args.Length is 1 or 2 && args[0] == "--official-tailscale-source")
 {
     using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
     var source = new RelaxKonOS.ManagedRuntimes.ComponentPackages.TailscaleOfficialReleases();
@@ -66,6 +73,7 @@ if (args.Contains("--official-tailscale-source", StringComparer.Ordinal))
     Console.WriteLine(JsonSerializer.Serialize(new { CheckedAt = DateTimeOffset.UtcNow, Latest = latest, ExplicitVersionMatches = true, Historical = historical }));
     return;
 }
+if (args.Length != 0) throw new ArgumentException("Unknown Tailscale test mode or invalid arguments.");
 using var document = JsonDocument.Parse("""
 {"BackendState":"Running","Version":"1.90.0","AuthURL":"secret","PrivateKey":"secret",
 "Self":{"ID":"self","HostName":"host","TailscaleIPs":["100.64.0.1"],"Online":true},
@@ -226,8 +234,10 @@ await TailscaleArtifactChecks.RunAsync();
 await TailscaleSignatureChecks.RunAsync();
 TailscaleMsiPropertyChecks.Run();
 await TailscaleStagingChecks.RunAsync();
+await TailscalePinChecks.RunAsync();
 TailscaleProtectionChecks.Run();
 TailscaleInventoryChecks.Run();
+TailscaleInstallationObservationChecks.Run();
 await TailscaleHelperBridgeChecks.RunAsync();
 await TailscaleRecoveryChecks.RunAsync();
 await TailscaleQuiescenceChecks.RunAsync();

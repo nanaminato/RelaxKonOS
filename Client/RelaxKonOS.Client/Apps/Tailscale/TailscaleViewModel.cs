@@ -219,7 +219,7 @@ public sealed partial class TailscaleViewModel : ObservableObject
             var result = await Elevated(() => _client.ExecuteAsync(connection, plan.OperationId, ct), ct);
             if (!Current(generation, connection, ct)) return;
             Verify(result, request);
-            _operation = result; _pendingReceipt = null;
+            _operation = result; if (result.State != TailscaleOperationState.Prepared) _pendingReceipt = null;
             _statusKey = "tailscale.operation_received"; Notify();
         });
     }
@@ -297,7 +297,10 @@ public sealed partial class TailscaleViewModel : ObservableObject
             var operation = await _client.GetOperationAsync(connection, id, ct);
             if (!Current(generation, connection, ct) || SelectedReference?.Id != id) return;
             VerifyIdentity(operation, id, connection);
-            _operation = operation; _recovery = null; if (_pendingClosure == id) _pendingClosure = null; if (_pendingReceipt == id) _pendingReceipt = null; _statusKey = "tailscale.operation_received"; Notify();
+            _operation = operation; _recovery = null;
+            if (_pendingClosure == id && operation.Closure is not null) _pendingClosure = null;
+            if (_pendingReceipt == id && operation.State != TailscaleOperationState.Prepared) _pendingReceipt = null;
+            _statusKey = "tailscale.operation_received"; Notify();
         });
     }
 }

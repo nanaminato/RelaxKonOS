@@ -22,6 +22,7 @@ public sealed partial class TailscaleLoginViewModel(ITailscaleLoginClient client
     private TailscaleLoginOperation? _operation;
     private TailscaleLoginRecoverySnapshot? _recovery;
     private Guid? _pending;
+    private bool _closingPending;
     private string _message = "";
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private TailscaleOperationItem? _selected;
@@ -125,12 +126,12 @@ public sealed partial class TailscaleLoginViewModel(ITailscaleLoginClient client
         var item = new TailscaleOperationItem(id); Operations.Insert(0, item); Selected = item; _operation = plan; Notify();
         if (ConfirmAsync is null || !await ConfirmAsync(connection.ServiceId, id, false) || !Current(generation, connection, ct)) return;
         if (plan.ExpiresAt <= DateTimeOffset.UtcNow) { _message = "tailscale.plan_expired"; return; }
-        _pending = id; _recovery = null; HostMayHaveChanged?.Invoke(); Notify();
+        _pending = id; _closingPending = false; _recovery = null; HostMayHaveChanged?.Invoke(); Notify();
         var result = await Elevated(() => client.ExecuteAsync(connection, id, ct), ct);
         if (!Current(generation, connection, ct)) return;
         Verify(result, id, connection);
         if (result.ExpectedRevision != plan.ExpectedRevision || result.ExpiresAt != plan.ExpiresAt) throw new InvalidDataException("tailscale.invalid_response");
-        _operation = result; _pending = null; _message = "tailscale.operation_received";
+        _operation = result; if (result.State != TailscaleLoginState.Prepared) _pending = null; _message = "tailscale.operation_received";
     });
     [RelayCommand(CanExecute = nameof(CanRead))]
     public Task ReadAsync()
@@ -142,7 +143,7 @@ public sealed partial class TailscaleLoginViewModel(ITailscaleLoginClient client
             var result = await client.GetAsync(connection, id, ct);
             if (!Current(generation, connection, ct) || Selected?.Id != id) return;
             Verify(result, id, connection); _operation = result; _recovery = null;
-            if (_pending == id) _pending = null;
+            if (_pending == id && result.State != TailscaleLoginState.Prepared && (!_closingPending || result.Closure is not null)) _pending = null;
             _message = "tailscale.operation_received";
         });
     }
@@ -195,7 +196,7 @@ public sealed partial class TailscaleLoginViewModel(ITailscaleLoginClient client
             if (ConfirmAsync is null || !await ConfirmAsync(connection.ServiceId, preview.OperationId, true)
                 || !Current(generation, connection, ct) || Selected?.Id != preview.OperationId) return;
             if (preview.ExpiresAt <= DateTimeOffset.UtcNow) { _recovery = null; _message = "tailscale.plan_expired"; return; }
-            _pending = preview.OperationId; _recovery = null; HostMayHaveChanged?.Invoke(); Notify();
+            _pending = preview.OperationId; _closingPending = true; _recovery = null; HostMayHaveChanged?.Invoke(); Notify();
             var result = await Elevated(() => client.CloseAsync(connection, new(preview.OperationId, preview.Observation!.Revision, true), ct), ct);
             if (!Current(generation, connection, ct) || Selected?.Id != preview.OperationId) return;
             Verify(result, preview.OperationId, connection);

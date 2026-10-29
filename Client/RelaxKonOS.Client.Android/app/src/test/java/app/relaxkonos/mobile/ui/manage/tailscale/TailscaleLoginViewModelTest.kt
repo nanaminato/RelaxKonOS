@@ -27,8 +27,10 @@ class TailscaleLoginViewModelTest {
     private var invalidations = 0
     private var loseResponse = false
     private var challengeWait: CompletableDeferred<Unit>? = null
+    private var prepareWait: CompletableDeferred<Unit>? = null
     private val gateway = object : RelaxKonGateway by base {
         override suspend fun prepareTailscaleLogin(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleLoginOperation> {
+            prepareWait?.await()
             val plan = TailscaleLoginOperation(id,TailscaleLoginState.Prepared,"A".repeat(64),Instant.now().plusSeconds(240),Instant.now(),null,null)
             operations[id] = plan; return ApiResult.Success(plan)
         }
@@ -97,6 +99,23 @@ class TailscaleLoginViewModelTest {
         challengeWait = CompletableDeferred(); model.open { opened++; true }; runCurrent()
         model.stop(); challengeWait!!.complete(Unit); advanceUntilIdle()
         assertEquals(0,opened); assertNull(model.state.operation); assertFalse(model.state.busy)
+    }
+    @Test fun `background and resume cannot revive pending login confirmation`() = runTest {
+        login(); advanceUntilIdle(); prepareWait = CompletableDeferred(); model.prepare(); runCurrent()
+        model.setActive(false); model.setActive(true); prepareWait!!.complete(Unit); advanceUntilIdle()
+        assertNull(model.review); assertFalse(model.state.busy); assertEquals(0,executes)
+        assertNotNull(model.state.operation)
+        prepareWait = null; model.prepare(); advanceUntilIdle()
+        assertNotNull(model.review); assertEquals(0,executes)
+    }
+    @Test fun `background and resume require a new browser gesture for a late challenge`() = runTest {
+        login(); advanceUntilIdle(); model.prepare(); advanceUntilIdle(); model.submit(requireNotNull(model.review)) {}; advanceUntilIdle()
+        challengeWait = CompletableDeferred(); model.open { opened++; true }; runCurrent()
+        model.setActive(false); model.setActive(true); challengeWait!!.complete(Unit); advanceUntilIdle()
+        assertEquals(0,opened); assertFalse(model.state.browserOpened); assertFalse(model.state.busy)
+        model.open { opened++; true }; advanceUntilIdle()
+        assertEquals(1,opened); assertTrue(model.state.browserOpened)
+        assertEquals(2,challenges)
     }
     @Test fun `corrupt operation references disable login instead of hiding unfinished tasks`() = runTest {
         login(); advanceUntilIdle(); storage.bytes = byteArrayOf(1,2,3)
