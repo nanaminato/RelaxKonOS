@@ -39,6 +39,15 @@ internal static class TailscaleQuiescenceChecks
                 await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
             }
         }
-        finally { folder.Delete(true); }
+        finally
+        {
+            // Windows can retain the exited image mapping briefly after WaitForExit completes.
+            for (var attempt = 0; ; attempt++)
+            {
+                try { folder.Delete(true); break; }
+                catch (UnauthorizedAccessException) when (OperatingSystem.IsWindows() && attempt < 7) { await Task.Delay(50); }
+                catch (IOException) when (OperatingSystem.IsWindows() && attempt < 7) { await Task.Delay(50); }
+            }
+        }
     }
 }

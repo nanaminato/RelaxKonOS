@@ -312,6 +312,10 @@ class AppContainer(context: Context) {
 
     val usageMemory = app.relaxkonos.mobile.data.UsageMemoryStore(app.relaxkonos.mobile.data.SharedPreferencesUsageMemoryStorage(appContext))
     val elevations = ElevationRepository(gateway, session, vault, usageMemory)
+    val tailscaleControl = app.relaxkonos.mobile.data.TailscaleControlRepository(gateway, session, elevations,
+        app.relaxkonos.mobile.data.TailscaleOperationReferences(app.relaxkonos.mobile.data.FileTailscaleReferenceStorage(appContext.noBackupFilesDir)))
+    val tailscaleLogin = app.relaxkonos.mobile.data.TailscaleLoginRepository(gateway, session, elevations,
+        app.relaxkonos.mobile.data.TailscaleOperationReferences(app.relaxkonos.mobile.data.FileTailscaleReferenceStorage(appContext.noBackupFilesDir,"tailscale-login-operations")))
 
     val guardian = app.relaxkonos.mobile.data.GuardianRepository(gateway, session)
 

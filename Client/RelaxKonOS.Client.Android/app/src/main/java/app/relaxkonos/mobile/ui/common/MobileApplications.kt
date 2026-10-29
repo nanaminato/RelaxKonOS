@@ -50,6 +50,9 @@ internal fun mobileApplications(capabilities: Set<String>, privilegedOperations:
         if (capabilities.contains(ServerCapabilities.FIREWALL)) {
             add(entry(R.string.firewall_title, R.string.firewall_intro, DesktopIcons.firewall, { onOpenRoute(Routes.MANAGE_FIREWALL) }))
         }
+        if (ServerCapabilities.TAILSCALE in capabilities) {
+            add(entry(R.string.tailscale_title, R.string.tailscale_intro, DesktopIcons.tunnels) { onOpenRoute(Routes.MANAGE_TAILSCALE) })
+        }
         if (capabilities.contains(ServerCapabilities.GATEWAY_PROXY)) {
             add(entry(R.string.squid_title, R.string.squid_intro, DesktopIcons.proxy, { onOpenRoute(Routes.MANAGE_SQUID) }))
         }

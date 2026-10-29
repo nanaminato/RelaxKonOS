@@ -53,6 +53,27 @@ internal fun fileInstallService(componentId: String): InstallationService? = whe
     else -> null
 }
 
+/** Nginx removal is a domain-ledger uninstall and names no other component. */
+internal fun validNginxUninstall(componentId: String): Boolean = componentId == "nginx"
+
+/**
+ * FRP maintenance is an explicit choice: an upgrade names a target version, a rollback repairs the
+ * previous one, and an uninstall removes the managed pair. A plain repair must name a version, so
+ * "repair" without a rollback or a version is never submitted.
+ */
+internal fun validFrpMaintenance(componentId: String, kind: InstallationKind, version: String,
+    rollback: Boolean): Boolean {
+    if (componentId !in setOf("frpc", "frps")) return false
+    val named = version.trim()
+    val versionValid = named.matches(Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,31}"))
+    return when (kind) {
+        InstallationKind.Upgrade -> versionValid
+        InstallationKind.Repair -> rollback || versionValid
+        InstallationKind.Uninstall -> !rollback
+        else -> false
+    }
+}
+
 data class ComponentCenterUiState(
     val loading: Boolean = false,
     val loaded: Boolean = false,
@@ -199,8 +220,6 @@ class ComponentCenterViewModel(
      * says the archive contains; the domain still verifies the archive, its platform and identity.
      */
     fun installArchiveFromFile(active: SessionState.Active, componentId: String, version: String, referenceId: String) {
-        val installs = installations ?: return
-        val provider = elevationAnswers ?: return
         if (mutable.value.busy || session.state.value !== active) return
         if (!validFileInstall(componentId, version, referenceId)) return
         val target = version.trim()
@@ -209,11 +228,30 @@ class ComponentCenterViewModel(
             "frpc", "frps" -> FrpInstallationRequest(true, target, fileReferenceId = referenceId)
             else -> return
         }
+        submit(active, InstallationKind.Install, request)
+    }
+
+    /**
+     * Changes an installed FRP runtime from the one entry the plan keeps. The version (or the explicit
+     * rollback) is the operator's choice; the domain service still verifies releases and integrity.
+     */
+    fun maintainFrp(active: SessionState.Active, componentId: String, kind: InstallationKind,
+        version: String? = null, rollback: Boolean = false) {
+        if (mutable.value.busy || session.state.value !== active) return
+        if (!validFrpMaintenance(componentId, kind, version.orEmpty(), rollback)) return
+        val request = FrpInstallationRequest(true, version?.trim()?.takeIf(String::isNotBlank), rollback)
+        submit(active, kind, request)
+    }
+
+    /** One submission path: prepare the ledger request, prompt for elevation and observe the result. */
+    private fun submit(active: SessionState.Active, kind: InstallationKind, request: InstallationRequest) {
+        val installs = installations ?: return
+        val provider = elevationAnswers ?: return
         action?.cancel()
         action = viewModelScope.launch {
             mutable.value = mutable.value.copy(busy = true, actionProblem = null)
             val result = try {
-                val intent = installs.prepare(active, InstallationKind.Install, request)
+                val intent = installs.prepare(active, kind, request)
                 installs.submit(intent, provider)
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -232,7 +270,18 @@ class ComponentCenterViewModel(
         }
     }
 
-    fun dismissReview() { mutable.value = mutable.value.copy(review = null) }    fun dismissOperation() { mutable.value = mutable.value.copy(operation = null) }
+    /**
+     * Removes a managed Nginx from the component center. The request enters the same Nginx
+     * installation ledger the application used, so approval, elevation and recovery do not change.
+     */
+    fun uninstallNginx(active: SessionState.Active, componentId: String) {
+        if (!validNginxUninstall(componentId) || mutable.value.busy || session.state.value !== active) return
+        submit(active, InstallationKind.Uninstall, NginxInstallationRequest(true))
+    }
+
+    fun dismissReview() { mutable.value = mutable.value.copy(review = null) }
+
+    fun dismissOperation() { mutable.value = mutable.value.copy(operation = null) }
 
     fun dismissActionProblem() { mutable.value = mutable.value.copy(actionProblem = null) }
 

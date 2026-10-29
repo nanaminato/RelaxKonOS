@@ -22,6 +22,7 @@ Nginx 与 FRP 接回领域安装器和归档导入；FRP Windows Helper 支持�
 | Squid | 系统包 | 未声明支持 | 目录、应用跳转与只读安装/服务/待恢复状态；领域已有 Linux 包/服务操作 | 仓库版本、所有权、冻结事务、更新预检与回退边界 |
 | Docker Engine | 官方源或系统包，需专属适配 | 未声明组件中心安装支持；外部 Desktop/Engine 单列 | 目录、应用跳转与只读 Engine API 观测；领域已有检测与受约束 Linux 安装 | Engine/Compose 分开建模，版本、卸载及数据保留、外部实例边界 |
 | Samba | 系统包 | 未声明 Samba 安装支持 | 目录与文件服务跳转 | 探测、所有权、可信包源与专属事务；不能将 Windows 文件共享当作 Samba 安装 |
+| Tailscale | 官方签名系统包适配器未接入 | 官方 MSI；专属系统安装器尚未接入 | releases 路由已发现稳定通道 MSI 元数据与摘要，支持内部明确版本解析；尚无组件目录／来源界面或 state/plan/execute 适配器 | 发布者签名、所有权、系统安装事务及完整多版本生命周期；MSI 不能按归档执行 |
 
 ## 本轮 Nginx 处理
 
@@ -227,3 +228,45 @@ Android 组件中心在固定版本选择之外，为 FRP 增加“从文件安�
 组件中心的“从文件安装”不再只服务 FRP：Nginx 也可选择服务器归档或上传本机归档，并按组件选择所属安装服务（Nginx / FRP）提交 `NginxInstallationRequest(confirmed, version, fileReferenceId)` 或 `FrpInstallationRequest(confirmed, version, fileReferenceId)`。文件引用、上传、版本规则、引用过期与失败提示沿用同一实现；本页仍不解析归档内部版本，服务器继续校验平台、身份和内容。至此 Nginx 的两条安装路径（Linux 系统包冻结计划、Windows 固定归档计划）与文件安装都可在组件中心完成，应用内安装表单已具备移除条件。
 
 验证：Android `:app:compileDebugKotlin` 通过；组件规则/Wire/仓库单元测试重跑通过（文件安装规则覆盖 Nginx、FRP 与拒绝其他组件）。未在设备上选择真实归档或执行安装。
+
+## 组件中心 Android Nginx 安装入口收口（2026-10-29）
+
+网站应用删除了 Nginx 安装表单、版本/文件选择、安装确认与“操作记录”中的安装重试；`NginxViewModel` 的安装意图、下载目录、文件引用/上传与安装提交一并删除，卸载改为直接提交一次 `NginxInstallationRequest(confirmed)` / Uninstall（Windows 受管归档与 Linux 系统包卸载仍只在应用内，待组件中心具备同等卸载能力再迁移）。应用保留实例发现、接管、生命周期、卸载，以及对组件中心已发起安装任务的观察与取消。组件中心的 Nginx 安装路径（Linux 系统包冻结计划、Windows 固定归档、服务器/本机文件引用）已在上一轮接通。
+
+验证：Android `:app:compileDebugKotlin`、`:app:compileDebugAndroidTestKotlin` 通过；网站与组件单元测试重跑通过；删除仅针对安装表单的 `NginxInstallFormTest` 仪器测试。未在设备上执行安装或卸载。
+
+## 组件中心 Android FRP 安装入口收口（2026-10-29）
+
+隧道应用的运行时编辑器不再提供“安装”类型、安装包来源或自行下载链接，未安装时只显示安装引导与“组件依赖”入口；已安装时仍可升级、修复、回退与卸载，并继续观察组件中心发起的安装任务、取消与按 ID 恢复。`TunnelsViewModel.install` 明确拒绝 `Install` 类型，防止应用内出现第二条安装通道。FRP 首次安装由组件中心承接（固定版本、服务器文件、本机文件三条路径均已在位）。
+
+验证：Android `:app:compileDebugKotlin`、`:app:compileDebugAndroidTestKotlin` 通过；组件与网站/隧道相关单元测试重跑通过。未在设备上执行安装或维护操作。
+
+## 应用内组件入口迁移收官（2026-10-29）
+
+按[应用组件入口迁移计划](RelaxKonOS.ComponentCenter.ApplicationEntryPlan.md)，桌面端与 Android 端的实现均已落地：
+
+- **桌面**：8 个组件应用统一由 `ComponentCatalog.LaunchGate` + `IComponentLifecycleClient` 状态门禁覆盖；共享 `ComponentDependencySettingsView` 进入各应用设置页（Git 为设置菜单对话框）；应用内安装/更新/修复/回退/卸载 UI 与常驻横幅全部删除；仅保留业务配置、服务启停、日志与恢复。
+- **Android**：7 个应用的动作行接入共享“组件依赖”入口；进入应用时检查状态并以“前往组件中心/任务与恢复/取消返回”处理；Docker、SMB、Squid、Nginx 安装与 FRP 首次安装从应用内删除；组件中心支持 FRP/Nginx 的固定版本归档、服务器文件与本机文件安装；Mihomo/sing-box 采用计划允许的运行时页唯一入口。
+- **边界**：FRP 的升级/修复/回退/卸载与 Nginx Windows 受管卸载仍保留在应用内——服务端组件计划当前只允许归档首次安装，此为用户可见的能力边界，不是入口重复。所有应用依赖区只观察与跳转。
+
+验证：桌面 Client 构建通过，Installation 专项 **520 项 PASS**；WindowPreviews `--component-installs-only` 37 项、`--component-center-only`（三语言×明暗）、`--readiness-only`、`--websites-only`、`--git-dock-only`、`--desktop-actions-only`、`--fused-apps-only` 通过；ApplicationLayout 105 组真实页面布局通过。Android `:app:compileDebugKotlin`、`:app:assembleDebug`、`:app:compileDebugAndroidTestKotlin` 通过；组件规则/Wire/仓库、SMB、Docker、网站、隧道相关单元测试通过；完整单元套件 1758 项中 12 项失败，全部位于 `ProxyViewModelTest` 与 `SingBoxRuntimeViewModelTest`，与本迁移无关且已在干净工作树上复现（见组件中心 Android 文档）。
+
+未执行：真实 Linux/Windows 宿主上的组件安装与卸载、Android 设备 UI 复查（缺失提示、取消返回、安装后返回、三语言）。这些不得写成已完成。
+
+## 组件中心承接 Android FRP 维护动作（2026-10-29）
+
+组件中心对已安装的受管 FRP 增加升级（输入目标版本）、回退（修复到上一版本）与卸载：动作通过领域安装台账提交 `FrpInstallationRequest(confirmed, version, rollback)`，沿用同一提权、幂等、待恢复与取消语义；新增 `validFrpMaintenance` 规则并覆盖升级版本、带版本修复、无版本回退、卸载及拒绝非 FRP 组件/安装类型。隧道应用删除运行时维护编辑器（`TunnelInstallEditor`）、安装/维护提交与重试方法，只保留状态、操作记录、按 ID 恢复与取消；应用内不再存在 FRP 生命周期入口。受管运行时的版本目录与冻结计划仍未实现，本文按“入口已集中、计划待补齐”记录，不声称完成多版本受管更新。
+
+验证：Android `:app:compileDebugKotlin`、`:app:assembleDebug`、`:app:compileDebugAndroidTestKotlin` 通过；组件规则测试 8 项通过（含新增维护规则）；隧道相关单元测试通过。未在设备或真实宿主上执行升级/回退/卸载。
+
+## 组件中心承接 Android Nginx 卸载（2026-10-29）
+
+网站应用删除受管 Nginx 的卸载按钮与 `NginxViewModel.uninstall`，受管实例的卸载改由组件中心发起：以 `NginxInstallationRequest(confirmed)` 的 Uninstall 进入同一领域安装台账，沿用提权、幂等、待恢复与取消语义；新增 `validNginxUninstall` 规则（仅 nginx）并覆盖测试。应用保留实例发现、接管、生命周期操作与安装任务观察。至此 Android 应用内不再存在任何组件的安装、升级、修复、回退或卸载入口。
+
+验证：Android `:app:compileDebugKotlin`、`:app:assembleDebug`、`:app:compileDebugAndroidTestKotlin` 通过；组件规则测试 9 项、网站与隧道相关单元测试通过。未在设备或真实宿主上执行卸载。
+
+## CC-05 / MR-11：Tailscale 官方 MSI 发现（2026-10-29）
+
+共享 releases 路由已接入 Tailscale Windows 官方 stable 元数据和 SHA-256 发现，按 OS 架构精确选择 MSI；内部可重新解析明确稳定版本。传输使用公共运行时网络与代理门禁，只有固定官方元数据查询参数被精确许可。在线只读核对 1.104.4 与 1.102.2 元数据及摘要通过，没有下载或执行安装包。
+
+当前没有 Tailscale 组件目录／来源界面、state/plan/execute 适配器、发布者签名验证或系统安装事务；不把 MSI 当 ZIP，也不因发现来源而开放安装或接管外部实例。生命周期缺口由 MR-11 跟踪。专项与证据边界见 [Tailscale 当前记录](../applications/RelaxKonOS.Tailscale.Design.md#helper-公共锁修复与-windows-官方来源发现2026-10-29)。

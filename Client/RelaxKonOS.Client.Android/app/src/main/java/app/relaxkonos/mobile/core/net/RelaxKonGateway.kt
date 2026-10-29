@@ -73,6 +73,19 @@ interface RelaxKonGateway {
     suspend fun squidPreview(serverUrl: String, accessToken: String, configuration: SquidConfiguration): ApiResult<SquidPreview>
     suspend fun squidValidate(serverUrl: String, accessToken: String, configuration: SquidConfiguration): ApiResult<SquidValidation>
     suspend fun squidQueue(serverUrl: String, accessToken: String, request: SquidRequest, key: String): ApiResult<String>
+    suspend fun tailscaleStatus(serverUrl: String, accessToken: String): ApiResult<TailscaleStatus>
+    suspend fun prepareTailscaleLogin(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleLoginOperation>
+    suspend fun executeTailscaleLogin(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleLoginOperation>
+    suspend fun tailscaleLoginOperation(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleLoginOperation>
+    suspend fun tailscaleLoginChallenge(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleLoginChallenge>
+    suspend fun tailscaleLoginRecovery(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleLoginRecovery>
+    suspend fun closeTailscaleLogin(serverUrl: String, accessToken: String, id: String, revision: String): ApiResult<TailscaleLoginOperation>
+    suspend fun tailscaleControl(serverUrl: String, accessToken: String): ApiResult<TailscaleControl>
+    suspend fun prepareTailscale(serverUrl: String, accessToken: String, request: TailscalePlanRequest): ApiResult<TailscaleOperation>
+    suspend fun executeTailscale(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleOperation>
+    suspend fun tailscaleOperation(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleOperation>
+    suspend fun tailscaleRecovery(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleRecovery>
+    suspend fun closeTailscale(serverUrl: String, accessToken: String, id: String, revision: String): ApiResult<TailscaleOperation>
     suspend fun firewallStatus(serverUrl: String, accessToken: String): ApiResult<FirewallStatus>
     suspend fun firewallRules(serverUrl: String, accessToken: String): ApiResult<List<FirewallRule>>
     suspend fun changeFirewall(serverUrl: String, accessToken: String, change: FirewallChange): ApiResult<FirewallResult>

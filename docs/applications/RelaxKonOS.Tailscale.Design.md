@@ -1,6 +1,6 @@
 # Tailscale 管理器
 
-状态：桌面、服务端条件控制与未知操作核对/关账、首次登录 Helper 证据链与服务端协调/HTTP 路由已实现；桌面登录入口、运行时生命周期与真实宿主验收尚未完成。
+状态：桌面、服务端条件控制与未知操作核对/关账、首次登录 Helper 证据链与服务端协调/HTTP 路由、桌面及 Android 登录确认/浏览器交接/关账、Android 宿主观察/条件控制/原操作恢复已实现；运行时生命周期与真实宿主验收尚未完成。
 
 使用当前 IServerModule 启动快照注册 relaxkonos.tailscale；禁用后不注册服务或路由，不启动后台工作。认证后的 GET /api/v1.0/tailscale/status 观察宿主 CLI 的 status --json。使用固定官方安装位置、不接受命令或路径输入，执行上限 10 秒、每流上限 1 MiB；失败与未安装分别表达。当前已有独立能力声明及桌面内置入口。
 
@@ -8,7 +8,7 @@
 
 运行时清单为 tailscale CLI 与 tailscaled（Windows 官方服务）。当前可观察外部实例并经授权变更其连接与 DNS/路由接收设置，不取得安装所有权，不安装、更新、修复、回滚或卸载。Linux /usr/bin 与 Windows Program Files/Tailscale 为当前探测位置，其他布局不在本切片范围。尚无真实平台或版本验收；不声明受支持版本范围。
 
-后续实施：首次网页登录、组件中心官方来源、平台制品验证和生命周期事务。安装来源限定官方签名系统仓库或已验证官方安装包，外部安装不得被自动接管。跨版本更新、同版本修复、保留数据卸载、回滚及故障恢复须分别实测；以下历史切片按追加记录阅读，以文末最新范围为准。
+后续实施与验收：组件中心来源界面、平台制品验证和生命周期事务，以及真实首次网页登录。Windows 官方 MSI 元数据与摘要发现已接入组件 releases 路由，尚不构成安装授权。安装来源限定官方签名系统仓库或已验证官方安装包，外部安装不得被自动接管。跨版本更新、同版本修复、保留数据卸载、回滚及故障恢复须分别实测；以下历史切片按追加记录阅读，以文末最新范围为准。
 
 当前验证以文末最新实施记录为准，真实 daemon 验证尚未完成。
 
@@ -163,3 +163,61 @@ CLI 进程检测及连续观察只用于安全关账准入，不表示对上游 
 验证：新增 Helper 登录桥 20 项、服务端登录协调 33 项、HTTP 登录 11 项，登录相关共 64 项；Server/Helper 专项 **379 项**通过（含 4 项生产模块图解析与登录代理驻留），桌面 130 项未变，共 **509 项**。统一验证入口 `./Tools/verify.ps1 -Suite tailscale-server -NoBuild -KeepLogs` 通过，日志为 `.tmp/verify/20261029-072023`。测试使用替代原生命令、真实文件锁、加密 SQLite 与真实回环 HTTP，不改变本机 Tailscale 状态。
 
 未完成：桌面尚无首次登录入口、风险确认、浏览器交接与关账界面；没有真实 daemon 或浏览器认证验收。已有挑战时不允许发起新登录，也不提供 auth-key、force-reauth 或 reset，因此重置尚未登录的旧挑战仍需上游完成或人工关账。组件中心官方来源与完整运行时生命周期仍未完成。
+
+## 登录交付边界修复与 Android 观察入口（2026-10-29）
+
+服务端在挑战交付前重新核对有效期、operationId、精确官方链接格式、NeedsLogin 状态、观察修订格式及原偏好摘要；等待 Helper 期间过期不得再交付链接。固定官方链接规则由 Shared Protocol 定义，Helper 原生解析复用同一规则，不扩大允许来源。HTTP 挑战 DTO 的 ToString 隐藏认证链接。原登录回执对账拒绝错配 operationId 或缺少记录时间的证据，不把错误回执升级为成功状态。登录执行和人工关账在等待宿主观察后再次检查计划有效期；过期时不调用 Begin/Close。协调器使用可注入时钟验证这些等待边界，生产默认使用系统 UTC 时钟。
+
+Android 新增按 server.tailscale 能力可见的只读入口。移动端当前流程和支持边界由 [Android Tailscale 文档](../../Client/RelaxKonOS.Client.Android/docs/features/Tailscale.md) 维护，不在此复制详细交互规范。
+
+验证：Server/Helper 专项 **390 项通过**，其中登录协调器由 33 项增至 44 项；Android 新增 **6 项单元测试通过**，覆盖当前状态解析、设备字段、受限设备过滤、未知状态拒绝、能力缺失和响应期间切换宿主。Server、Helper 和 Android 主代码/测试代码编译通过。日志为 `.tmp/tailscale-goal-build.log`、`.tmp/tailscale-goal-tests.log`、`.tmp/tailscale-helper-build.log`、`.tmp/tailscale-android-build.log` 和 `.tmp/tailscale-android-tests.log`。Android 使用专用 `.tmp/tailscale-build` 输出目录避开原构建产物占用。保留既有编译警告和 NuGet 元数据网络警告。
+
+以上测试使用替代宿主命令、临时文件与回环 HTTP，不操作真实 Tailscale。尚无本轮 Android 设备界面、真实 daemon 登录/浏览器交接或组网验收；桌面首次登录界面、移动端控制与持久操作恢复、组件生命周期和双平台真实验收继续未完成，目标不据此收口。
+
+## 桌面首次登录与原操作重开（2026-10-29）
+
+桌面新增独立首次登录页，使用会话绑定的 typed HTTP 客户端调用当前登录路由。只在用户发起后准备计划，经统一 HostNetworkChange/host/tailscale 提权入口、响应身份核对、本地耐久引用保存及明确风险确认后执行。未确认、保存失败、计划过期、宿主/账户/会话切换或窗口移除均不提交后续动作。原操作响应丢失保持待核验，读取其他历史不能解除该标记；重开只 GET 原 ID，不自动重放登录。登录页只加载本地引用，不在打开工作区时发起登录或提权。
+
+登录引用存于当前 OS 用户 LocalApplicationData/RelaxKonOS/tailscale-login-operations.json，复用排他写入、原子发布与保留上限，按宿主、账户和原登录会话隔离；仅保存身份引用，不含 URL、配置、授权或结果。普通控制历史保持原有宿主/账户作用范围，两个文件互不混用。重新登录后的新会话不能借用旧会话的登录挑战。
+
+仅 issued、未关账且未过期的原任务提供“打开官方登录页”。用户单独点击后重新向服务器请求短期挑战，复核原 operationId、计划期限及精确官方 HTTPS 来源，再交给当前设备的系统浏览器；不遵循把普通链接发送到远端宿主的偏好。不自动打开、不复制到剪贴板、不把链接放入 ViewModel 属性、磁盘或操作记录。网络诊断的采集与入库两层均排除此挑战接口，避免开发模式缓存认证链接。浏览器交接只说明已请求打开，不代表用户认证或 daemon 登录完成。
+
+原任务为 issued、unknown 或 approval-required 时可经新鲜授权读取稳定观察，再明确确认关账。修复了服务端只允许 issued/unknown 关账、但 Helper 将 approval-required 同样视为未决意图而导致永久阻断的缺口；该状态现在具有相同核对和关账入口。客户端检查原操作、操作者、会话、修订、期限与关闭证据；关账响应丢失只重读原回执。原状态不改写为 completed，取消等待或人工关账均不承诺撤销上游认证挑战。
+
+验证：Server/Helper 专项 **393 项**、桌面行为/HTTP/布局专项 **198 项通过**。服务端新增 3 项等待设备授权关账检查；桌面新增登录确认/取消、坏计划、本地引用失败、失去响应重开、历史隔离、浏览器来源与迟到响应、关闭证据及 approval-required 恢复、窗口移除、HTTP 路由/认证/会话绑定和诊断排除检查。桌面与专项工程编译通过，保留既有警告。日志为 `.tmp/tailscale-login-server-build.log`、`.tmp/tailscale-login-server-tests.log`、`.tmp/tailscale-login-client-build.log` 和 `.tmp/tailscale-login-client-tests.log`。
+
+实际 AXAML 渲染覆盖三语言、980/540 DIP 四页及登录发起/关账确认对话框；已检查窄屏导航、滚动正文和固定页脚，并修正重复介绍文字及关账观察的语言刷新。预览位于 `Tests/Client/RelaxKonOS.Tailscale.Client.Tests/bin/Debug/net10.0/layout-qa`。使用替代 HTTP/宿主与本地无界面渲染，没有打开真实浏览器或操作真实 Tailscale；不构成真实认证、远程断线、OS 权限或版本验收。移动端仍为只读观察，组件中心来源、完整运行时生命周期及真实双平台验收尚未完成。
+
+## Android 条件控制与原操作恢复（2026-10-29）
+
+Android 已接入当前条件控制、预览／明确确认、原操作回执读取及未知结果核对关账路由，使用统一宿主网络提权与耐久引用门禁。移动端界面、操作隔离、保留上限和当前不支持的功能以 [Android Tailscale 文档](../../Client/RelaxKonOS.Client.Android/docs/features/Tailscale.md) 为唯一详细规范；没有新增或保留旧格式 API。
+
+本轮 Android 主代码、测试代码编译及 **42 项 Tailscale 单元测试通过**（状态／会话 6、控制与存储 21、协议 7、界面状态机 8）。覆盖确认和期限、精确提权资源、提权等待期间过期、提交前存储、原回执错配、响应丢失及原 ID 读取、并发读取、取消后的迟到响应、跨账户隔离、原生临时文件排他锁与重开、保留期不淘汰未决引用，以及未知结果关账回执恢复。三语言资源各 56 个 key，已检查无重复。最终离线 Gradle 命令为 `:app:testDebugUnitTest --tests '*Tailscale*'`，使用 `.tmp/tailscale-build.init.gradle` 独立输出配置；日志为 `.tmp/tailscale-mobile-control-tests.log`。
+
+测试不操作真实 Tailscale；文件测试在 Windows 临时目录验证文件同步、原子发布和排他锁，Android 目录 fsync 使用可替换回调检查执行顺序与失败门禁，未宣称已经验证真实 Android 断电耐久性。ADB 当前无连接设备，没有执行本轮手机／平板、旋转、TalkBack、真实授权或断线交互验收。移动端首次登录、运行时来源及完整生命周期、真实双平台 daemon／版本／权限验收仍未完成，目标保持进行中。
+
+## Android 首次登录及新会话恢复（2026-10-29）
+
+Android 已接入首次登录计划、明确确认、原操作读取、显式浏览器交接和登录核对关账，详细规则由 [Android Tailscale 文档](../../Client/RelaxKonOS.Client.Android/docs/features/Tailscale.md) 维护。挑战不进入 ViewModel 状态或持久引用；移动端登录记录与普通控制记录分离，错误诊断隐藏认证 URL。
+
+修复登录恢复的会话门禁缺口：此前客户端重新登录会导致旧 sid 不再可用，原意图又可能继续阻止所有宿主变更。现行授权规则为：发起计划、执行以及挑战交付仍要求原账户及原会话；读取原操作允许同一账户的新认证会话，核对与关账另要求当前新鲜 HostNetworkChange/host/tailscale 授权及明确确认。Helper 继续读取原 intent，不替换原 SessionId，也不重新执行登录。其他账户不能读取原回执。同账户的新会话不能执行旧计划或领取旧链接。桌面和 Android 的本地登录引用均按宿主／账户保存以便恢复；界面明确告知挑战只可由原登录会话领取。
+
+验证：Server/Helper 专项 **401 项**、桌面行为／HTTP／布局专项 **198 项**、Android Tailscale 专项 **71 项通过**。服务端新增同账户新会话读取／关账、原会话专属执行／挑战、其他账户拒绝和当前授权门禁检查，含真实回环 HTTP、替代认证处理器。Android 增加登录协议 6 项、登录操作／隐私 15 项、登录界面状态机 8 项，覆盖原任务持久引用、响应丢失不重放、原链接来源和期限、会话切换、晚到响应、后台／离页不打开浏览器、等待设备授权关账及新会话恢复。三语言资源各 71 项。Server、桌面及 Android 主代码／测试代码编译通过，既有编译警告与 NuGet 元数据网络警告保留。
+
+日志为 `.tmp/tailscale-login-session-server-build.log`、`.tmp/tailscale-login-session-server-tests.log`、`.tmp/tailscale-login-session-client-build.log`、`.tmp/tailscale-login-session-client-tests.log`、`.tmp/tailscale-mobile-login-build.log` 和 `.tmp/tailscale-mobile-login-tests.log`。测试不打开真实认证页，不调用真实 daemon，不构成真实用户认证、Android 设备界面、权限保护、断电耐久性或远程断线验收。运行时来源、完整安装／多版本更新／修复／回滚／卸载，以及双平台真实 daemon／版本／中断验收仍未完成。
+
+## Helper 公共锁修复与 Windows 官方来源发现（2026-10-29）
+
+修复特权控制入口未获取已有 native.lock 的实现缺口。控制读取、连接／断开／配置、原回执读取和核对／关账现在实际持有与登录操作相同的跨进程文件锁；首次登录观察也纳入锁，并在存在未决意图时撤下 CanStart。读操作不会在同一 Helper 操作的原生执行中途读取意图并解除阻断，重复 operationId 在锁内读取原证据，竞争变更重新核对修订。该锁只约束 RelaxKonOS 的特权操作，不能代替上游 CLI 对其他宿主写入者的原子 CAS。
+
+控制回执读取改为严格当前 JSON 结构：拒绝重复属性、未知字段、遗漏必需字段、完成回执缺少有效观察／配置／修订，以及完成证据附带问题码的矛盾形状。损坏证据不会被视为已完成或解除未决门禁；不通过回填当前状态、覆盖原回执或删除意图恢复。
+
+Windows 官方 MSI 发现已接入认证组件 releases 路由 `/api/v1.0/components/tailscale/releases`：按 OS 架构选择 win-x64／win-arm64；未知平台或架构明确拒绝，不静默当作 x64。固定读取官方 stable 的 `MSIsVersion` 和 `MSIs` 当前结构，文件名须精确匹配版本及架构；另读取官方 `.sha256`。共享解析器内部支持明确历史版本重新解析，不从文件名猜测成功，不接受旧字段替代、任意 URL、预发布标签或奇数 minor 的不稳定版本。
+
+传输复用运行时 HTTPS 的 DNS／实际地址校验、大小和总时限、每跳重定向与重试策略，并使用服务端解析的宿主下载代理配置；代理不可用时不退回直连。只有固定官方元数据请求获得精确查询参数许可，普通签名目录及归档仍拒绝查询参数。元数据至多 64 KiB、摘要至多 128 字节，单次候选解析总预算 45 秒。组件列表仅提供当前稳定候选；内部明确版本解析已验证，不等于已有版本列表界面或可执行多版本更新。
+
+依据：[官方 stable 元数据](https://pkgs.tailscale.com/stable/?mode=json&os=windows)、[包服务器与摘要规则](https://pkgs.tailscale.com/stable/)、[Windows MSI 安装说明](https://tailscale.com/docs/install/windows/msi)、[版本与发行通道](https://tailscale.com/docs/reference/tailscale-client-versions)。HTTPS 元数据和摘要只用于发现制品身份，不代表独立发布者签名已验证或取得系统安装所有权。尚无 Tailscale 组件 state/plan/execute 适配器或组件中心来源界面；MSI 未套用归档安装路径，也不开放安装按钮。MR-11 继续跟踪官方签名验证、系统安装事务和完整生命周期。
+
+验证：Tailscale Server/Helper 专项 **476 项通过**，新增公共锁 20 项、官方来源 43 项、损坏控制回执 12 项。覆盖锁被占用时所有控制及登录观察入口等待、两个 Helper 实例重复／竞争／关账并发、原请求只执行一次、旧修订拒绝、格式／来源／架构／版本错配、摘要边界与取消，以及无效代理不得绕过。公共下载／代理专项 **60 项通过**；Windows 的可信传输探针因没有进程级测试 CA 覆盖按原规则跳过。测试代理的 407 响应已明确声明 Connection: close，与其立即关闭连接的行为一致，保留原凭据隔离断言。Server、Helper 与专项工程构建通过，既有编译和元数据网络警告保留。
+
+在线只读探测通过生产传输解析了 win-x64 的当前 1.104.4 和历史 1.102.2 官方 MSI 元数据与摘要，并核对当前版本的明确版本解析相同；没有下载 MSI、验证其签名、调用安装器或操作真实 Tailscale。证据为 `.tmp/tailscale-official-source-smoke.json`。专项日志为 `.tmp/tailscale-lock-source-build.log`、`.tmp/tailscale-lock-source-tests.log`、`.tmp/tailscale-lock-helper-build.log`、`.tmp/tailscale-source-runtime-build.log` 和 `.tmp/tailscale-source-runtime-tests.log`。真实 daemon、Android 交互、操作中断、OS 权限保护、完整安装／更新／修复／回滚／卸载验收仍未完成。

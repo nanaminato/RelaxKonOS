@@ -76,6 +76,7 @@ public sealed partial class TailscaleViewModel : ObservableObject
     public bool CanReopen => CanRefresh && SelectedReference is not null && CurrentConnection;
     private bool Editable => CanRefresh && _pendingReceipt is null && _pendingClosure is null && _control?.CanControl == true && CurrentConnection;
     private bool CurrentConnection => _connection is { } connection && _client.IsCurrent(connection);
+    public void InvalidateControl() { _control = null; Notify(); }
 
     public async Task ActivateAsync()
     {

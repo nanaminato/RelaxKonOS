@@ -11,6 +11,7 @@ internal interface IRuntimeDownloadScope
     void Validate();
     bool AllowsDownload(Uri uri);
     bool AllowsRedirect(Uri uri);
+    bool AllowsQuery(Uri uri);
 }
 public interface IPinnedArchiveTransfer
 {
@@ -39,6 +40,7 @@ public sealed class RuntimePinnedArchiveTransfer : IPinnedArchiveTransfer
                 throw new RuntimePolicyException("runtime.source_invalid");
         }
         public bool AllowsDownload(Uri uri) => uri.AbsoluteUri == pin.SourceUri;
+        public bool AllowsQuery(Uri uri) => false;
         public bool AllowsRedirect(Uri uri)
         {
             var original = new Uri(pin.SourceUri);

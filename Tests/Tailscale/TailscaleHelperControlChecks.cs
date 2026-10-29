@@ -3,6 +3,7 @@ using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Tailscale;
 using RelaxKonOS.Protocol.Observability;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 internal static class TailscaleHelperControlChecks
 {
@@ -53,6 +54,25 @@ internal static class TailscaleHelperControlChecks
             Check((await engine.HandleAsync(execute)).TailscaleResult == result.TailscaleResult && native.Executions == 1);
             var reopened = new TailscaleControlOperations(folder.FullName, _ => { }, native);
             Check((await reopened.HandleAsync(Envelope(PrivilegedOperationKind.TailscaleControlReceipt, target.OperationId))).TailscaleResult == result.TailscaleResult);
+            var resultPath = Path.Combine(folder.FullName,target.OperationId.ToString("N")+".result.json");
+            var originalResult = File.ReadAllText(resultPath);
+            string ChangedResult(Action<JsonObject> change)
+            {
+                var node = JsonNode.Parse(originalResult)!.AsObject(); change(node); return node.ToJsonString();
+            }
+            foreach (var corrupted in new[] {
+                ChangedResult(node=>node["Snapshot"]=null),
+                ChangedResult(node=>node["Snapshot"]!["Configuration"]=null),
+                ChangedResult(node=>node["Snapshot"]!["Revision"]="bad"),
+                ChangedResult(node=>node["unexpected"]=true),
+                ChangedResult(node=>node.Remove("Completed")),
+                originalResult.Replace("\"Completed\":true","\"Completed\":true,\"Completed\":false",StringComparison.Ordinal) })
+            {
+                File.WriteAllText(resultPath,corrupted);
+                Check(!(await reopened.HandleAsync(Envelope(PrivilegedOperationKind.TailscaleControlReceipt,target.OperationId))).Success);
+                Check(!(await reopened.HandleAsync(Envelope(PrivilegedOperationKind.TailscaleControlRead,Guid.NewGuid()))).Success && native.Executions == 1);
+            }
+            File.WriteAllText(resultPath,originalResult);
             Check(!(await reopened.HandleAsync(execute with { TailscaleChange = target with { Action = TailscaleAction.Disconnect } })).Success && native.Executions == 1);
             native.OnExecute = null;
             // A native failure never publishes completion and does not re-run when the same ID is retried.

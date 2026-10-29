@@ -34,6 +34,7 @@ fun capabilityLabel(capability: String): String = stringResource(
         FileElevationCapabilities.COPY -> R.string.capability_copy
         FileElevationCapabilities.UPLOAD -> R.string.capability_upload
         CAPABILITY_NATIVE_SERVICE_ACTION -> R.string.capability_native_service_action
+        "hostNetworkChange" -> R.string.tailscale_network_authorization
         else -> R.string.capability_unknown
     },
 )

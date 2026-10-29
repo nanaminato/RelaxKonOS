@@ -50,6 +50,7 @@ public sealed record RuntimeSource(string SourceId, string RuntimeId, string Pub
     }
 
     public bool AllowsDownload(Uri uri) => DownloadPrefixes.Any(p => RuntimeValidation.Within(p, uri));
+    public bool AllowsQuery(Uri uri) => false;
     public bool AllowsRedirect(Uri uri) => AllowsDownload(uri) || RedirectPrefixes.Any(p => RuntimeValidation.Within(p, uri));
 }
 

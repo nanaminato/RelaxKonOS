@@ -40,6 +40,7 @@ import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.ComponentChange
 import app.relaxkonos.mobile.core.net.ComponentPinnedArchive
 import app.relaxkonos.mobile.core.net.InstallationFileReference
+import app.relaxkonos.mobile.core.net.InstallationKind
 import app.relaxkonos.mobile.core.net.InstallationService
 import app.relaxkonos.mobile.core.net.ServerCapabilities
 import app.relaxkonos.mobile.core.net.ComponentStateView
@@ -95,6 +96,10 @@ internal fun ComponentCenterContent(
     var selected by remember(owner) { mutableStateOf<ComponentRead?>(null) }
     // A component whose archive is installed from a file already on the host; null closes the dialog.
     var fileInstall by remember(owner) { mutableStateOf<String?>(null) }
+    // FRP maintenance: an upgrade asks for a version, a rollback or uninstall only confirms.
+    var frpUpgrade by remember(owner) { mutableStateOf<String?>(null) }
+    var frpConfirm by remember(owner) { mutableStateOf<Pair<String, InstallationKind>?>(null) }
+    var nginxUninstall by remember(owner) { mutableStateOf(false) }
     LaunchedEffect(owner) { model.load(owner) }
 
     selected?.let { read ->
@@ -150,6 +155,52 @@ internal fun ComponentCenterContent(
             },
         )
     }
+    frpUpgrade?.let { componentId ->
+        FrpUpgradeDialog(
+            busy = state.busy,
+            onDismiss = { frpUpgrade = null },
+            onSubmit = { version ->
+                frpUpgrade = null
+                model.maintainFrp(owner, componentId, InstallationKind.Upgrade, version)
+            },
+        )
+    }
+    frpConfirm?.let { (componentId, kind) ->
+        val rollback = kind == InstallationKind.Repair
+        AlertDialog(
+            onDismissRequest = { if (!state.busy) frpConfirm = null },
+            title = {
+                Text(stringResource(if (rollback) R.string.components_frp_rollback_title
+                    else R.string.components_frp_uninstall_title))
+            },
+            text = {
+                Text(stringResource(if (rollback) R.string.components_frp_rollback_message
+                    else R.string.components_frp_uninstall_message))
+            },
+            confirmButton = {
+                TextButton(enabled = !state.busy, onClick = {
+                    frpConfirm = null
+                    model.maintainFrp(owner, componentId, kind, rollback = rollback)
+                }) { Text(stringResource(if (rollback) R.string.components_frp_rollback
+                    else R.string.components_action_uninstall)) }
+            },
+            dismissButton = { TextButton(enabled = !state.busy, onClick = { frpConfirm = null }) { Text(stringResource(R.string.common_cancel)) } },
+        )
+    }
+    if (nginxUninstall) {
+        AlertDialog(
+            onDismissRequest = { if (!state.busy) nginxUninstall = false },
+            title = { Text(stringResource(R.string.components_nginx_uninstall_title)) },
+            text = { Text(stringResource(R.string.components_nginx_uninstall_message)) },
+            confirmButton = {
+                TextButton(enabled = !state.busy, onClick = {
+                    nginxUninstall = false
+                    model.uninstallNginx(owner, "nginx")
+                }) { Text(stringResource(R.string.components_action_uninstall)) }
+            },
+            dismissButton = { TextButton(enabled = !state.busy, onClick = { nginxUninstall = false }) { Text(stringResource(R.string.common_cancel)) } },
+        )
+    }
 
     Column(modifier.fillMaxSize().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         ScreenHeader(title = stringResource(R.string.components_title), onBack = onBack)
@@ -189,6 +240,13 @@ internal fun ComponentCenterContent(
                         nginxLoading = state.nginxLoading,
                         onChange = { change, pin -> model.requestChange(owner, read.componentId, change, pin = pin) },
                         onInstallFromFile = { fileInstall = read.componentId },
+                        onFrpMaintenance = { kind ->
+                            when (kind) {
+                                InstallationKind.Upgrade -> frpUpgrade = read.componentId
+                                else -> frpConfirm = read.componentId to kind
+                            }
+                        },
+                        onNginxUninstall = { nginxUninstall = true },
                         onNginx = { model.openNginxSelection(owner) },
                         onOpen = onOpenRoute,
                         onDetails = { selected = read },
@@ -207,6 +265,8 @@ private fun ComponentCard(
     nginxLoading: Boolean,
     onChange: (ComponentChange, ComponentPinnedArchive?) -> Unit,
     onInstallFromFile: () -> Unit,
+    onFrpMaintenance: (InstallationKind) -> Unit,
+    onNginxUninstall: () -> Unit,
     onNginx: () -> Unit,
     onOpen: (String) -> Unit,
     onDetails: () -> Unit,
@@ -230,6 +290,12 @@ private fun ComponentCard(
     // A file reference installs the same domain service from an archive the operator supplies.
     val fileInstallable = canManage && read.componentId in ComponentCatalog.fileInstallableIds && state != null &&
         state.ownership == "absent" && view.problems.isEmpty() && !view.recoveryRequired
+    // FRP maintenance is the one lifecycle the center owns for an installed archive pair.
+    val frpMaintenance = canManage && read.componentId in setOf("frpc", "frps") && state?.ownership == "managed" &&
+        view.problems.isEmpty() && !view.recoveryRequired
+    // Nginx removal uses the same domain ledger the application used, from the single component entry.
+    val nginxUninstallable = canManage && read.componentId == "nginx" && state?.ownership == "managed" &&
+        view.problems.isEmpty() && !view.recoveryRequired
     // Updating or removing an external installation would claim ownership the host did not grant.
     val manageable = packageBacked && state?.ownership == "managed" && view?.recoveryRequired != true
     var pin by remember(read.componentId, view?.pinRevision) {
@@ -296,6 +362,26 @@ private fun ComponentCard(
                 }
             }
         }
+        if (frpMaintenance) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(enabled = !busy, onClick = { onFrpMaintenance(InstallationKind.Upgrade) }) {
+                    Text(stringResource(R.string.components_action_update))
+                }
+                TextButton(enabled = !busy, onClick = { onFrpMaintenance(InstallationKind.Repair) }) {
+                    Text(stringResource(R.string.components_frp_rollback))
+                }
+                TextButton(enabled = !busy, onClick = { onFrpMaintenance(InstallationKind.Uninstall) }) {
+                    Text(stringResource(R.string.components_action_uninstall))
+                }
+            }
+        }
+        if (nginxUninstallable) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(enabled = !busy, onClick = onNginxUninstall) {
+                    Text(stringResource(R.string.components_action_uninstall))
+                }
+            }
+        }
         if (archiveObservedOnly) {
             Text(stringResource(R.string.components_archive_not_executable), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -318,6 +404,30 @@ private fun ComponentCard(
             }
         }
     }
+}
+
+@Composable
+private fun FrpUpgradeDialog(busy: Boolean, onDismiss: () -> Unit, onSubmit: (String) -> Unit) {
+    var version by remember { mutableStateOf("") }
+    val valid = version.trim().matches(Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,31}"))
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text(stringResource(R.string.components_frp_upgrade_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                Text(stringResource(R.string.components_frp_upgrade_message), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedTextField(version, { version = it }, label = { Text(stringResource(R.string.components_frp_version)) },
+                    singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = !busy && valid, onClick = { onSubmit(version.trim()) }) {
+                Text(stringResource(R.string.components_action_update))
+            }
+        },
+        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
+    )
 }
 
 @Composable

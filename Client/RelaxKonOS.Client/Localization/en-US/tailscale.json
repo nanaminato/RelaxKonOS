@@ -90,7 +90,26 @@
     "tailscale.recovery.preview_required": "Recovery inspection is missing or expired. Inspect again.",
     "tailscale.recovery.state_invalid": "Only unresolved operations with an unknown outcome can be closed.",
     "tailscale.recovery.receipt_mismatch": "The closure receipt does not match the original operation or account.",
-    "tailscale.recovery.unavailable": "Recovery is unavailable. Reopen the original operation before trying again."
+    "tailscale.recovery.unavailable": "Recovery is unavailable. Reopen the original operation before trying again.",
+    "tailscale.login.title": "First login",
+    "tailscale.login.intro": "Start the first Tailscale login on this server. The browser opens on this device only when you choose to open it.",
+    "tailscale.login.start": "Start login",
+    "tailscale.login.records": "Login operations for this server and account; challenges require the original login session.",
+    "tailscale.login.open": "Open official login page",
+    "tailscale.login.waiting_boundary": "Closing this window stops waiting. It does not revoke a login challenge on the server. After browser login, refresh device status and inspect the original operation before closing it.",
+    "tailscale.login.start_risk": "This starts Tailscale on the selected server and may interrupt your remote connection. There is no automatic rollback. The official authentication page opens only after a separate click. Cancelling later does not revoke an already issued challenge.",
+    "tailscale.login.close_risk": "Accept the currently observed host state and release this login operation's pending-change block. This does not revoke the upstream login challenge, replay login, roll back changes or prove the original operation succeeded.",
+    "tailscale.login.closed": "Closed by operator. The original login outcome is unchanged.",
+    "tailscale.login.browser_opened": "Browser handoff requested. Complete login there, then refresh host status; this is not proof of completed login.",
+    "tailscale.login.browser_failed": "The browser could not be opened. Read the original receipt before trying the browser handoff again.",
+    "tailscale.login.state.Prepared": "Awaiting confirmation",
+    "tailscale.login.state.Applying": "Submission in progress",
+    "tailscale.login.state.Issued": "Login challenge issued; authentication is not yet confirmed",
+    "tailscale.login.state.Completed": "Native login command completed",
+    "tailscale.login.state.ApprovalRequired": "Device approval required",
+    "tailscale.login.state.Unknown": "Original outcome unknown; inspect before closing",
+    "tailscale.login.state.Rejected": "Login request rejected",
+    "tailscale.login.close": "Close login operation"
   },
   "Culture": "en-US"
 }

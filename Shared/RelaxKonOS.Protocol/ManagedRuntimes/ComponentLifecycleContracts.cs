@@ -17,7 +17,8 @@ public static class ComponentIds
     public const string Frpc = "frpc";
     public const string Frps = "frps";
     public const string Git = "git";
-    public static bool Known(string? componentId) => componentId is SingBox or Mihomo or Nginx or Squid or Samba or Docker or Frpc or Frps or Git;
+    public const string Tailscale = "tailscale";
+    public static bool Known(string? componentId) => componentId is SingBox or Mihomo or Nginx or Squid or Samba or Docker or Frpc or Frps or Git or Tailscale;
 }
 
 /// <summary>

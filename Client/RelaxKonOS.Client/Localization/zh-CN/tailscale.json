@@ -90,7 +90,26 @@
     "tailscale.recovery.preview_required": "缺少有效的恢复核对结果，或核对已过期，请重新核对。",
     "tailscale.recovery.state_invalid": "只能关账结果未知且尚未解决的操作。",
     "tailscale.recovery.receipt_mismatch": "关账回执与原操作或账户不匹配。",
-    "tailscale.recovery.unavailable": "暂时无法恢复，请先重开原操作核验再继续。"
+    "tailscale.recovery.unavailable": "暂时无法恢复，请先重开原操作核验再继续。",
+    "tailscale.login.title": "首次登录",
+    "tailscale.login.intro": "发起此服务器的首次 Tailscale 登录。只有点击打开时，认证页才会在当前设备浏览器中打开。",
+    "tailscale.login.start": "发起登录",
+    "tailscale.login.records": "当前服务器及账户的登录操作；认证挑战仅限原登录会话领取。",
+    "tailscale.login.open": "打开官方登录页",
+    "tailscale.login.waiting_boundary": "关闭窗口仅停止等待，不会撤销服务器上的登录挑战。在浏览器完成登录后，请刷新设备状态，并核对原操作后再关账。",
+    "tailscale.login.start_risk": "将在所选服务器上发起 Tailscale 登录，可能中断当前远程连接，没有自动回滚。官方认证页需另行点击打开。之后取消等待不会撤销已签发的挑战。",
+    "tailscale.login.close_risk": "接受当前观察到的宿主状态，解除此登录操作的未决变更阻断。这不会撤销上游登录挑战、重放登录、回滚变更，也不证明原操作成功。",
+    "tailscale.login.closed": "已由操作员关账，原登录结果保持不变。",
+    "tailscale.login.browser_opened": "已请求浏览器交接。请在那里完成认证，再刷新宿主状态；交接不代表登录完成。",
+    "tailscale.login.browser_failed": "无法打开浏览器。请先读取原回执，再重试浏览器交接。",
+    "tailscale.login.state.Prepared": "等待确认",
+    "tailscale.login.state.Applying": "正在提交",
+    "tailscale.login.state.Issued": "已签发登录挑战，尚未确认认证完成",
+    "tailscale.login.state.Completed": "原生登录命令已完成",
+    "tailscale.login.state.ApprovalRequired": "需要设备授权",
+    "tailscale.login.state.Unknown": "原结果未知，请核对后关账",
+    "tailscale.login.state.Rejected": "登录请求已拒绝",
+    "tailscale.login.close": "关闭登录操作"
   },
   "Culture": "zh-CN"
 }

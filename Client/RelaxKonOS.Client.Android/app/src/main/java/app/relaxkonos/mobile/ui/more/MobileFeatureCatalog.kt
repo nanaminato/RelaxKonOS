@@ -22,6 +22,7 @@ object MobileFeatureCatalog {
         MobileFeature(R.string.mihomo_title,R.string.mihomo_intro,Routes.MANAGE_PROXY,setOf(ServerCapabilities.PROXY)),
         MobileFeature(R.string.smb_title,R.string.smb_intro,Routes.MANAGE_SMB,setOf(ServerCapabilities.FILE_SERVICES)),
         MobileFeature(R.string.firewall_title,R.string.firewall_intro,Routes.MANAGE_FIREWALL,setOf(ServerCapabilities.FIREWALL)),
+        MobileFeature(R.string.tailscale_title,R.string.tailscale_intro,Routes.MANAGE_TAILSCALE,setOf(ServerCapabilities.TAILSCALE)),
         MobileFeature(R.string.guardian_title,R.string.guardian_subtitle,Routes.MANAGE_GUARDIAN,setOf(ServerCapabilities.GUARDIAN)),
         MobileFeature(R.string.scripts_title,R.string.scripts_subtitle,Routes.MANAGE_SCRIPTS,setOf(ServerCapabilities.GUARDIAN)),
         MobileFeature(R.string.manage_monitor_title,R.string.manage_monitor_subtitle,Routes.MANAGE_MONITOR,setOf(ServerCapabilities.METRICS)),

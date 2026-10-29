@@ -2,6 +2,20 @@ using System.Text.Json.Serialization;
 
 namespace RelaxKonOS.Protocol.Tailscale;
 
+public static class TailscaleLoginUrl
+{
+    public static bool IsOfficial(string? value)
+    {
+        const string prefix = "https://login.tailscale.com/a/";
+        if (value is null || !value.StartsWith(prefix, StringComparison.Ordinal)) return false;
+        var token = value.AsSpan(prefix.Length);
+        if (token.Length is < 10 or > 256) return false;
+        foreach (var character in token)
+            if (!char.IsAsciiLetterOrDigit(character) && character is not ('_' or '-')) return false;
+        return true;
+    }
+}
+
 /// <summary>
 /// One first-login attempt as bound by Server authorization. The Helper persists this identity
 /// before starting the native command; it is evidence, never an HTTP authorization body.
@@ -58,4 +72,7 @@ public sealed record TailscaleLoginOperation(Guid OperationId, TailscaleLoginSta
     DateTimeOffset ExpiresAt, DateTimeOffset UpdatedAt, string? ProblemCode = null, TailscaleLoginClosure? Closure = null);
 
 /// <summary>The authentication URL is delivered once through this dedicated response, not stored in the operation.</summary>
-public sealed record TailscaleLoginChallengeResponse(Guid OperationId, string AuthenticationUrl, DateTimeOffset ExpiresAt);
+public sealed record TailscaleLoginChallengeResponse(Guid OperationId, string AuthenticationUrl, DateTimeOffset ExpiresAt)
+{
+    public override string ToString() => "TailscaleLoginChallengeResponse { OperationId = " + OperationId + ", AuthenticationUrl = <redacted> }";
+}

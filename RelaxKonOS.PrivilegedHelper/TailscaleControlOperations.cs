@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Tailscale;
 
@@ -8,6 +9,13 @@ namespace RelaxKonOS.PrivilegedHelper;
 internal sealed partial class TailscaleControlOperations(string root, Action<string> protect, ITailscaleNativeControl native,
     TailscaleNativeLogin? login = null, TimeProvider? timeProvider = null)
 {
+    private static readonly JsonSerializerOptions ControlJson = new()
+    {
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+        RespectRequiredConstructorParameters = true,
+        RespectNullableAnnotations = true,
+        MaxDepth = 16
+    };
     internal static Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request) =>
         new TailscaleControlOperations(TailscaleControlProtection.Root, TailscaleControlProtection.PrepareRoot, new TailscaleNativeControl()).HandleAsync(request);
 
@@ -52,6 +60,7 @@ internal sealed partial class TailscaleControlOperations(string root, Action<str
                 return await HandleLoginAsync(request, loginLifetime.Token);
             }
             using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+            using var gate = await AcquireAsync(lifetime.Token);
             protect(root);
             if (request.Operation == PrivilegedOperationKind.TailscaleControlRead)
             {
@@ -113,7 +122,12 @@ internal sealed partial class TailscaleControlOperations(string root, Action<str
         switch (request.Operation)
         {
             case PrivilegedOperationKind.TailscaleLoginObserve:
-                return new(true, TailscaleLoginObservation: Observation(await Login.ReadAsync(ct)));
+            {
+                using var gate = await AcquireAsync(ct);
+                protect(root);
+                var observation = Observation(await Login.ReadAsync(ct));
+                return new(true, TailscaleLoginObservation: HasUnresolved() ? observation with { CanStart = false } : observation);
+            }
             case PrivilegedOperationKind.TailscaleLoginBegin:
             {
                 var command = request.TailscaleLogin!;
@@ -205,9 +219,15 @@ internal sealed partial class TailscaleControlOperations(string root, Action<str
         var path = PathFor(id, suffix);
         if (!File.Exists(path)) return null;
         if (new FileInfo(path).Length > 65536) throw new IOException("tailscale.receipt_invalid");
-        var value = JsonSerializer.Deserialize<T>(File.ReadAllBytes(path)) ?? throw new IOException("tailscale.receipt_invalid");
+        var bytes = File.ReadAllBytes(path);
+        using var document = JsonDocument.Parse(bytes,new JsonDocumentOptions { MaxDepth = 16 });
+        TailscaleNativeControl.Canonical(document.RootElement);
+        var value = JsonSerializer.Deserialize<T>(bytes,ControlJson) ?? throw new IOException("tailscale.receipt_invalid");
         if (value is TailscalePrepareRequest intent && (intent.OperationId != id || !Valid(intent))
-            || value is TailscaleControlResult result && result.OperationId != id
+            || value is TailscaleControlResult result && (result.OperationId != id
+                || result.Completed && (result.Snapshot is not { CanControl: true, Authenticated: true, Configuration: not null } observed
+                    || observed.Revision is not { Length: 64 } || !observed.Revision.All(Uri.IsHexDigit) || result.ProblemCode is not null)
+                || !result.Completed && result.Snapshot is not null)
             || value is TailscaleRecoveryClosure closure && (closure.OperationId != id || !Guid.TryParseExact(closure.Actor, "D", out var closureActor) || closureActor == Guid.Empty
                 || closure.ClosedAt == default || closure.Observation is null || closure.Observation.Configuration is null || !closure.Observation.CanControl
                 || closure.Observation.Revision is not { Length: 64 } || !closure.Observation.Revision.All(Uri.IsHexDigit))) throw new IOException("tailscale.receipt_identity");

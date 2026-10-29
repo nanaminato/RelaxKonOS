@@ -1,0 +1,24 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Tailscale"
+ x:Class="RelaxKonOS.Client.Apps.Tailscale.Views.TailscaleLoginPage" x:DataType="vm:TailscaleLoginViewModel">
+ <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+  <StackPanel Spacing="14">
+   <TextBlock Text="{loc:Loc tailscale.login.intro}" TextWrapping="Wrap" />
+   <TextBlock Text="{Binding Target}" TextWrapping="Wrap" />
+   <Button Content="{loc:Loc tailscale.login.start}" Command="{Binding StartCommand}" HorizontalAlignment="Left" />
+   <TextBlock Text="{loc:Loc tailscale.login.records}" TextWrapping="Wrap" />
+   <ComboBox ItemsSource="{Binding Operations}" SelectedItem="{Binding Selected}" IsEnabled="{Binding Ready}" HorizontalAlignment="Stretch" />
+   <WrapPanel ItemSpacing="8" LineSpacing="8">
+    <Button Content="{loc:Loc tailscale.reopen}" Command="{Binding ReadCommand}" />
+    <Button Content="{loc:Loc tailscale.login.open}" Command="{Binding OpenCommand}" />
+    <Button Content="{loc:Loc tailscale.recovery.inspect}" Command="{Binding InspectCommand}" />
+    <Button Content="{loc:Loc tailscale.login.close}" Command="{Binding CloseCommand}" />
+   </WrapPanel>
+   <TextBlock Text="{Binding Result}" TextWrapping="Wrap" />
+   <TextBlock Text="{Binding Observation}" TextWrapping="Wrap" />
+   <ProgressBar IsVisible="{Binding IsBusy}" IsIndeterminate="True" Height="3" />
+   <TextBlock Text="{Binding Message}" TextWrapping="Wrap" />
+   <TextBlock Text="{loc:Loc tailscale.login.waiting_boundary}" TextWrapping="Wrap" />
+  </StackPanel>
+ </ScrollViewer>
+</UserControl>

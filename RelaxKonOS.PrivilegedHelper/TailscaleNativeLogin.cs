@@ -21,13 +21,7 @@ internal static class TailscaleLoginOutput
     // Exact ASCII origin/path, with an opaque token. No URI normalization expands this allowlist.
     internal static bool IsOfficialUrl(string? value)
     {
-        const string prefix = "https://login.tailscale.com/a/";
-        if (value is null || !value.StartsWith(prefix, StringComparison.Ordinal)) return false;
-        var token = value.AsSpan(prefix.Length);
-        if (token.Length is < 10 or > 256) return false;
-        foreach (var character in token)
-            if (!char.IsAsciiLetterOrDigit(character) && character is not ('_' or '-')) return false;
-        return true;
+        return RelaxKonOS.Protocol.Tailscale.TailscaleLoginUrl.IsOfficial(value);
     }
 
     internal static TailscaleLoginNativeResult Parse(ReadOnlySpan<byte> bytes, int exitCode)

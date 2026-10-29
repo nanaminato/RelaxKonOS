@@ -3,6 +3,7 @@ package app.relaxkonos.mobile.ui.manage.components
 import app.relaxkonos.mobile.core.net.ComponentModeSupport
 import app.relaxkonos.mobile.core.net.ComponentState
 import app.relaxkonos.mobile.core.net.ComponentStateView
+import app.relaxkonos.mobile.core.net.InstallationKind
 import app.relaxkonos.mobile.data.ComponentRead
 import app.relaxkonos.mobile.ui.nav.Routes
 import org.junit.Assert.assertEquals
@@ -74,6 +75,26 @@ class ComponentDependencyRulesTest {
         assertFalse(validFileInstall("frpc", "", "reference-1"))
         assertFalse(validFileInstall("frpc", "-leading", "reference-1"))
         assertFalse(validFileInstall("frpc", "v0.61.0", ""))
+    }
+
+    @Test
+    fun `FRP maintenance requires the change that names its target`() {
+        assertTrue(validFrpMaintenance("frpc", InstallationKind.Upgrade, "v0.61.0", false))
+        assertFalse(validFrpMaintenance("frpc", InstallationKind.Upgrade, "", false))
+        assertTrue(validFrpMaintenance("frps", InstallationKind.Repair, "", true))
+        assertTrue(validFrpMaintenance("frps", InstallationKind.Repair, "0.61.0", false))
+        assertFalse(validFrpMaintenance("frps", InstallationKind.Repair, "", false))
+        assertTrue(validFrpMaintenance("frpc", InstallationKind.Uninstall, "", false))
+        assertFalse(validFrpMaintenance("frpc", InstallationKind.Uninstall, "", true))
+        assertFalse(validFrpMaintenance("nginx", InstallationKind.Uninstall, "", false))
+        assertFalse(validFrpMaintenance("frpc", InstallationKind.Install, "v0.61.0", false))
+    }
+
+    @Test
+    fun `Nginx removal is only offered for Nginx`() {
+        assertTrue(validNginxUninstall("nginx"))
+        assertFalse(validNginxUninstall("frpc"))
+        assertFalse(validNginxUninstall("docker"))
     }
 
     private fun read(componentId: String, view: ComponentStateView?, problem: String? = null) =

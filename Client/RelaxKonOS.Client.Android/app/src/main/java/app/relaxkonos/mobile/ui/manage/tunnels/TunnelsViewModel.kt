@@ -14,11 +14,11 @@ import kotlinx.coroutines.launch
 internal data class TunnelsState(val busy: Boolean = false, val facts: ApiResult<TunnelFacts>? = null, val runtime: ApiResult<TunnelRuntime>? = null,
     val selectedId: String? = null, val profileDraft: TunnelProfileDraft? = null, val initialProfile: TunnelProfileDraft? = null,
     val definitionDraft: TunnelDefinitionDraft? = null, val initialDefinition: TunnelDefinitionDraft? = null,
-    val detected: ApiResult<TunnelRuntime>? = null, val download: ApiResult<TunnelRuntimeDownload>? = null,
+    val detected: ApiResult<TunnelRuntime>? = null,
     val logs: ApiResult<List<TunnelLog>>? = null, val logsAtMillis: Long? = null, val action: ApiResult<TunnelResult>? = null,
     val pending: List<PendingTunnelMutation> = emptyList(), val installation: InstallationOperation? = null, val installationVerified: Boolean = false,
     val installationReadGeneration: Long = 0,
-    val pendingInstallation: Boolean = false, val reference: InstallationFileReference? = null, val uploadBytes: Long? = null,
+    val pendingInstallation: Boolean = false,
     val frps: ApiResult<ManagedFrps>? = null, val frpsAtMillis: Long? = null, val frpsDraft: ManagedFrpsDraft? = null,
     val initialFrps: ManagedFrpsDraft? = null, val frpsAction: ApiResult<TunnelResult>? = null,
     val frpsLogs: ApiResult<List<TunnelLog>>? = null, val frpsAudit: ApiResult<List<TunnelAudit>>? = null, val frpsDiagnosticsAtMillis: Long? = null,
@@ -62,7 +62,6 @@ internal class TunnelsViewModel(private val session: AuthSession, private val tu
 
     private val activeSession get() = session.state.value as? SessionState.Active
     private var owner: SessionState.Active? = null
-    private var intent: InstallationSubmission? = null
     private var workGeneration = 0L
     private var editorSequence = 0L
     var state by mutableStateOf(TunnelsState())
@@ -70,7 +69,7 @@ internal class TunnelsViewModel(private val session: AuthSession, private val tu
     var sessionEpoch by mutableIntStateOf(0)
         private set
     init { viewModelScope.launch { session.state.collect { next ->
-        if (next !== owner) { dismissInstallationCancellation(); owner = next as? SessionState.Active; intent = null; state = TunnelsState(); sessionEpoch++ }
+        if (next !== owner) { dismissInstallationCancellation(); owner = next as? SessionState.Active; state = TunnelsState(); sessionEpoch++ }
     } } }
     fun refresh() = work { active ->
         state = state.copy(installationVerified = false)
@@ -218,34 +217,13 @@ internal class TunnelsViewModel(private val session: AuthSession, private val tu
         work { active -> if (!profileIsCurrent(expected)) return@work; val result = tunnels.detect(active, expected.path.trim()); verify(active); state = state.copy(detected = result); failure(result) }
     }
     fun logs(profileId: String) = work { active -> val result = tunnels.logs(active, profileId); verify(active); state = state.copy(logs = result, logsAtMillis = System.currentTimeMillis()); failure(result) }
-    fun download(version: String) = work { active -> val result = tunnels.download(active, version); verify(active); state = state.copy(download = result); failure(result) }
-    fun clearReference() { if (!state.busy && intent == null) state = state.copy(reference = null) }
-    fun reference(path: String) = work { active -> val result = installations.fileReference(active, InstallationService.Frp, path); verify(active); state = state.copy(reference = (result as? ApiResult.Success)?.value); failure(result) }
-    fun upload(uri: Uri) = work { active ->
-        val document = uploadDocuments.open(uri.toString()) ?: run { state = state.copy(problemCode = InstallationProblemCodes.FILE_REFERENCE_UNAVAILABLE); return@work }
-        val result = installations.upload(active, InstallationService.Frp, document) { bytes -> viewModelScope.launch { if (activeSession === active && state.busy) state = state.copy(uploadBytes = bytes) } }
-        verify(active); state = state.copy(reference = (result as? ApiResult.Success)?.value, uploadBytes = null); failure(result)
-    }
-    fun install(kind: InstallationKind, version: String?, rollback: Boolean, packageSource: Boolean) = work { active ->
-        if (intent == null) {
-            if (packageSource && state.reference?.expired() != false) { state = state.copy(problemCode = InstallationProblemCodes.FILE_REFERENCE_UNAVAILABLE); return@work }
-            intent = installations.prepare(active, kind, FrpInstallationRequest(true, version?.trim()?.takeIf(String::isNotEmpty), rollback, if (packageSource) state.reference?.id else null))
-        }
-        val result = installations.submit(requireNotNull(intent), elevationAnswers); verify(active); failure(result)
-        state = state.copy(pendingInstallation = installations.pending(active).any { it.service == InstallationService.Frp })
-        if (result is ApiResult.Success) { intent = null; state = state.copy(installation = result.value, installationVerified = true, reference = null, pendingInstallation = false) }
-        else if (result is ApiResult.Problem && !state.pendingInstallation) intent = null
-    }
-    fun retryInstall() { val old = intent ?: return; val r = old.request as FrpInstallationRequest; install(old.kind, r.version, r.rollback, r.fileReferenceId != null) }
-    val hasIntent get() = intent != null
-    val currentIntent get() = intent
     fun recoverInstall(id: String, identified: Boolean) = work { active ->
         val pending = installations.pending(active).firstOrNull { it.service == InstallationService.Frp }
         if (pending != null && !identified) return@work
         val kinds = setOf(InstallationKind.Install, InstallationKind.Upgrade, InstallationKind.Repair, InstallationKind.Uninstall)
         val result = if (pending == null) installations.recoverById(active, id.trim(), InstallationService.Frp, kinds) else installations.identifyOriginal(active, pending, id.trim(), kinds)
         installationResult(active, result)
-        if (result is ApiResult.Success && result.value.service == InstallationService.Frp) intent = null
+        
     }
     fun pollInstall() = work { active ->
         val id = state.installation?.operationId ?: return@work
@@ -273,7 +251,7 @@ internal class TunnelsViewModel(private val session: AuthSession, private val tu
     private fun work(block: suspend (SessionState.Active) -> Unit) {
         dismissInstallationCancellation()
         val active = activeSession ?: return
-        if (owner !== active) { owner = active; intent = null; state = TunnelsState(); sessionEpoch++ }
+        if (owner !== active) { owner = active; state = TunnelsState(); sessionEpoch++ }
         if (state.busy) return
         workGeneration++
         state = state.copy(busy = true, problemCode = null, uncertain = false)

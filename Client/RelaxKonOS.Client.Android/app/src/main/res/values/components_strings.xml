@@ -71,6 +71,17 @@
     <string name="components_archive_file_reference_ready">Reference created</string>
     <string name="components_archive_file_reference_note">Referenced %1$s. The reference is bound to this operator and expires.</string>
     <string name="components_archive_file_local">Choose a local file</string>
+<!-- FRP maintenance in Component Center: the app no longer offers these lifecycle actions. -->
+    <string name="components_frp_rollback">Roll back</string>
+    <string name="components_frp_rollback_title">Roll back the FRP runtime</string>
+    <string name="components_frp_rollback_message">Repair the managed FRP runtime to its previous version? Tunnels may be briefly interrupted until the operation completes.</string>
+    <string name="components_frp_uninstall_title">Uninstall the managed FRP runtime</string>
+    <string name="components_frp_uninstall_message">Uninstall managed FRP? Configuration and business data are kept; tunnels are unavailable until it is installed again.</string>
+    <string name="components_frp_upgrade_title">Update the FRP runtime</string>
+    <string name="components_frp_upgrade_message">Enter the target version. The server still verifies the release and its integrity.</string>
+    <string name="components_frp_version">Target version</string>
+<string name="components_nginx_uninstall_title">Uninstall the managed Nginx</string>
+    <string name="components_nginx_uninstall_message">Uninstall managed Nginx? Site configuration and data are kept; the server is unavailable until it is installed again.</string>
     <!-- Application dependency entry and the entry prompt. The entry observes; it never installs. -->
     <string name="components_dependency_entry">Component dependencies</string>
     <string name="components_dependency_hint">Install, update, repair, rollback and removal happen only in Component Center. This summary reads the current host state.</string>

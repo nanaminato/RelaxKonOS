@@ -90,7 +90,26 @@
     "tailscale.recovery.preview_required": "復旧状態の確認が未実施、または期限切れです。再確認してください。",
     "tailscale.recovery.state_invalid": "結果が不明で未解決の操作のみクローズできます。",
     "tailscale.recovery.receipt_mismatch": "クローズ記録が元の操作またはアカウントと一致しません。",
-    "tailscale.recovery.unavailable": "復旧を利用できません。再試行する前に元の操作を開いて確認してください。"
+    "tailscale.recovery.unavailable": "復旧を利用できません。再試行する前に元の操作を開いて確認してください。",
+    "tailscale.login.title": "初回ログイン",
+    "tailscale.login.intro": "このサーバーで初回の Tailscale ログインを開始します。認証ページは、開く操作を選んだときだけ現在のデバイスで開きます。",
+    "tailscale.login.start": "ログインを開始",
+    "tailscale.login.records": "現在のサーバーとアカウントのログイン操作です。チャレンジの取得には元のログインセッションが必要です。",
+    "tailscale.login.open": "公式ログインページを開く",
+    "tailscale.login.waiting_boundary": "画面を閉じると待機を終了しますが、サーバーのログインチャレンジは取り消しません。ブラウザーで認証後、デバイスの状態を更新し、元の操作を確認してからクローズしてください。",
+    "tailscale.login.start_risk": "選択したサーバーで Tailscale ログインを開始し、リモート接続が切れる可能性があります。自動ロールバックはありません。公式認証ページは別の操作で開きます。後で待機を中止しても、発行済みチャレンジは取り消されません。",
+    "tailscale.login.close_risk": "現在観測したホストの状態を受け入れ、このログイン操作による変更のブロックを解除します。上流のチャレンジの取り消し、再実行、ロールバックは行わず、元の操作の成功を証明しません。",
+    "tailscale.login.closed": "操作員がクローズしました。元のログイン結果は変わりません。",
+    "tailscale.login.browser_opened": "ブラウザーへの引き渡しを要求しました。認証後にホストの状態を更新してください。引き渡しはログイン完了の証明ではありません。",
+    "tailscale.login.browser_failed": "ブラウザーを開けませんでした。元の応答を確認してから再試行してください。",
+    "tailscale.login.state.Prepared": "確認待ち",
+    "tailscale.login.state.Applying": "送信中",
+    "tailscale.login.state.Issued": "チャレンジ発行済み。認証完了は未確認です",
+    "tailscale.login.state.Completed": "ネイティブログインコマンド完了",
+    "tailscale.login.state.ApprovalRequired": "デバイスの承認が必要",
+    "tailscale.login.state.Unknown": "元の結果は不明。確認してからクローズしてください",
+    "tailscale.login.state.Rejected": "ログイン要求は拒否されました",
+    "tailscale.login.close": "ログイン操作をクローズ"
   },
   "Culture": "ja-JP"
 }

@@ -17,13 +17,15 @@ public sealed class OfficialComponentReleases
         client.DefaultRequestHeaders.UserAgent.ParseAdd("RelaxKonOS/1.0");
         return client;
     }
-    public async Task<ComponentDownloadRelease[]> ListAsync(string component, string rid, bool refresh, CancellationToken ct)
+    public async Task<ComponentDownloadRelease[]> ListAsync(string component, string rid, bool refresh, CancellationToken ct, RuntimeDownloadProxy? proxy = null)
     {
         var key = component + "|" + rid;
         if (!refresh && Cache.TryGetValue(key, out var cached) && cached.At.AddMinutes(15) > DateTimeOffset.UtcNow)
             return cached.Releases;
         ComponentDownloadRelease[] releases;
-        if (component == ComponentIds.Nginx)
+        if (component == ComponentIds.Tailscale)
+            releases = [await new TailscaleOfficialReleases().ResolveAsync(rid,null,ct,proxy)];
+        else if (component == ComponentIds.Nginx)
         {
             if (!rid.StartsWith("win-", StringComparison.Ordinal)) return [];
             releases = ParseNginx(await ReadAsync("https://nginx.org/en/download.html", ct), rid);
@@ -44,8 +46,9 @@ public sealed class OfficialComponentReleases
         Cache[key] = (DateTimeOffset.UtcNow, releases);
         return releases;
     }
-    public async Task<ComponentDownloadRelease> ResolveAsync(string component, string rid, string version, CancellationToken ct)
+    public async Task<ComponentDownloadRelease> ResolveAsync(string component, string rid, string version, CancellationToken ct, RuntimeDownloadProxy? proxy = null)
     {
+        if (component == ComponentIds.Tailscale) return await new TailscaleOfficialReleases().ResolveAsync(rid,version,ct,proxy);
         var expected = Describe(component, rid, version);
         if (component == ComponentIds.Nginx) return expected;
         var key = component + "|" + rid;

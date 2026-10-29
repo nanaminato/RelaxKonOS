@@ -69,10 +69,14 @@ internal static class RuntimeHttpsTransfer
         {
             for (var hop = 0; hop <= 3; hop++)
             {
+                // Query-bearing metadata requires an exact source-owned request policy. Ordinary
+                // manifests and archive sources continue to reject queries, including on redirects.
+                var queryAllowed = metadata && uri.Query.Length != 0 && source.AllowsQuery(uri)
+                    && uri.Fragment.Length == 0 && RuntimeValidation.Https(uri.OriginalString[..uri.OriginalString.IndexOf('?')],out _);
                 var allowed = hop == 0
-                    ? (metadata ? RuntimeValidation.Within(source.BaseUri, uri) : source.AllowsDownload(uri))
-                    : (metadata && RuntimeValidation.Within(source.BaseUri, uri) || source.AllowsRedirect(uri));
-                if (!RuntimeValidation.Https(uri.OriginalString, out _)
+                    ? (metadata ? queryAllowed || RuntimeValidation.Within(source.BaseUri, uri) : source.AllowsDownload(uri))
+                    : (queryAllowed || metadata && RuntimeValidation.Within(source.BaseUri, uri) || source.AllowsRedirect(uri));
+                if (!(queryAllowed || RuntimeValidation.Https(uri.OriginalString, out _))
                     || !allowed)
                     throw new RuntimePolicyException("runtime.redirect_forbidden");
                 // A tunnelled hop cannot have its resolved address checked, so a literal address in the

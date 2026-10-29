@@ -26,6 +26,28 @@ class RelaxKonApi(
     private val clientVersion: String,
     private val deviceName: String = defaultDeviceName(),
 ) : RelaxKonGateway {
+    override suspend fun tailscaleStatus(serverUrl: String, accessToken: String) = webPublishingRead(serverUrl, accessToken, TailscaleWire.STATUS, TailscaleWire::status)
+    override suspend fun prepareTailscaleLogin(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleLoginOperation> {
+        TailscaleWire.id(id)
+        return webPublishingCall("POST",serverUrl,accessToken,TailscaleLoginWire.OPERATIONS,JsonBody().string("operationId",id),TailscaleLoginWire::operation)
+    }
+    override suspend fun executeTailscaleLogin(serverUrl: String, accessToken: String, id: String) = webPublishingCall("POST",serverUrl,accessToken,TailscaleLoginWire.route(id)+"/execute",JsonBody().raw("confirmed","true"),TailscaleLoginWire::operation)
+    override suspend fun tailscaleLoginOperation(serverUrl: String, accessToken: String, id: String) = webPublishingRead(serverUrl,accessToken,TailscaleLoginWire.route(id),TailscaleLoginWire::operation)
+    override suspend fun tailscaleLoginChallenge(serverUrl: String, accessToken: String, id: String) = webPublishingRead(serverUrl,accessToken,TailscaleLoginWire.route(id)+"/challenge",TailscaleLoginWire::challenge)
+    override suspend fun tailscaleLoginRecovery(serverUrl: String, accessToken: String, id: String) = webPublishingRead(serverUrl,accessToken,TailscaleLoginWire.route(id)+"/recovery",TailscaleLoginWire::recovery)
+    override suspend fun closeTailscaleLogin(serverUrl: String, accessToken: String, id: String, revision: String): ApiResult<TailscaleLoginOperation> {
+        TailscaleWire.revision(revision)
+        return webPublishingCall("POST",serverUrl,accessToken,TailscaleLoginWire.route(id)+"/recovery/close",JsonBody().string("operationId",id).string("expectedRevision",revision).raw("confirmed","true"),TailscaleLoginWire::operation)
+    }
+    override suspend fun tailscaleControl(serverUrl: String, accessToken: String) = webPublishingRead(serverUrl, accessToken, TailscaleWire.ROOT + "/control", TailscaleWire::control)
+    override suspend fun prepareTailscale(serverUrl: String, accessToken: String, request: TailscalePlanRequest) = webPublishingCall("POST",serverUrl,accessToken,TailscaleWire.ROOT + "/operations",request.body(),TailscaleWire::operation)
+    override suspend fun executeTailscale(serverUrl: String, accessToken: String, id: String) = webPublishingCall("POST",serverUrl,accessToken,TailscaleWire.operationRoute(id) + "/execute",JsonBody().raw("confirmed","true"),TailscaleWire::operation)
+    override suspend fun tailscaleOperation(serverUrl: String, accessToken: String, id: String) = webPublishingRead(serverUrl,accessToken,TailscaleWire.operationRoute(id),TailscaleWire::operation)
+    override suspend fun tailscaleRecovery(serverUrl: String, accessToken: String, id: String) = webPublishingRead(serverUrl,accessToken,TailscaleWire.operationRoute(id) + "/recovery",TailscaleWire::recovery)
+    override suspend fun closeTailscale(serverUrl: String, accessToken: String, id: String, revision: String): ApiResult<TailscaleOperation> {
+        TailscaleWire.revision(revision)
+        return webPublishingCall("POST",serverUrl,accessToken,TailscaleWire.operationRoute(id) + "/recovery/close",JsonBody().string("operationId",id).string("expectedRevision",revision).raw("confirmed","true"),TailscaleWire::operation)
+    }
     override suspend fun hostTime(serverUrl: String, accessToken: String) = webPublishingRead(serverUrl, accessToken, HostSettingsRoutes.ROOT + "/time", HostSettingsWire::time)
     override suspend fun hostIdentity(serverUrl: String, accessToken: String) = webPublishingRead(serverUrl, accessToken, HostSettingsRoutes.ROOT + "/identity", HostSettingsWire::identity)
     override suspend fun hostEnvironmentTarget(serverUrl: String, accessToken: String, scope: HostEnvironmentScope) = webPublishingRead(serverUrl, accessToken, HostSettingsRoutes.target(scope), HostSettingsWire::target)

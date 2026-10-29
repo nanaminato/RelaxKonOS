@@ -31,6 +31,7 @@ object Routes {
     const val MANAGE_DOCKER_CONTROL = "manage/docker/control"
     const val MANAGE_SMB = "manage/smb"
     const val MANAGE_FIREWALL = "manage/firewall"
+    const val MANAGE_TAILSCALE = "manage/tailscale"
     const val MANAGE_SQUID = "manage/squid"
     const val MANAGE_PROXY = "manage/proxy"
     const val MANAGE_PROXY_SERVER = "manage/proxy-server"

@@ -118,6 +118,7 @@ fun MobileNavHost(
                 initialTaskId = taskTarget, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_SMB -> app.relaxkonos.mobile.ui.manage.smb.SmbScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize(), onOpenComponents = { navigator.push(Routes.MANAGE_COMPONENTS) })
             Routes.MANAGE_FIREWALL -> app.relaxkonos.mobile.ui.manage.firewall.FirewallScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
+            Routes.MANAGE_TAILSCALE -> app.relaxkonos.mobile.ui.manage.tailscale.TailscaleScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_SQUID -> app.relaxkonos.mobile.ui.manage.squid.SquidScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize(), onOpenComponents = { navigator.push(Routes.MANAGE_COMPONENTS) })
             Routes.MANAGE_PROXY -> ProxyScreen(onBack = { navigator.pop() }, initialOperationId = taskTarget, modifier = Modifier.fillMaxSize(), onOpenComponents = { navigator.push(Routes.MANAGE_COMPONENTS) })
             Routes.MANAGE_PROXY_SERVER -> app.relaxkonos.mobile.ui.manage.proxyserver.ProxyServerScreen(

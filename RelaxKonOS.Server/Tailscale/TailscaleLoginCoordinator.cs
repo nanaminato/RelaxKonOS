@@ -20,9 +20,10 @@ public interface ITailscaleLogin
 /// The challenge URL is returned once and never enters the durable operation record.
 /// </summary>
 public sealed class TailscaleLoginCoordinator(TailscaleLoginJournal journal, ITailscaleLoginHost host,
-    ITailscaleControlAuthorization grants, ServerRuntimeSettingsStore settings) : ITailscaleLogin
+    ITailscaleControlAuthorization grants, ServerRuntimeSettingsStore settings, TimeProvider? timeProvider = null) : ITailscaleLogin
 {
     private static readonly TimeSpan PlanLifetime = TimeSpan.FromMinutes(5);
+    private DateTimeOffset Now => (timeProvider ?? TimeProvider.System).GetUtcNow();
 
     public async Task<TailscaleLoginOperation> PrepareAsync(ClaimsPrincipal principal, TailscaleLoginPrepareRequest request, CancellationToken ct)
     {
@@ -38,7 +39,7 @@ public sealed class TailscaleLoginCoordinator(TailscaleLoginJournal journal, ITa
         var observation = await host.ObserveAsync(ct);
         if (!observation.CanStart || !Valid(observation))
             throw new TailscaleControlException(409, "tailscale.login.not_available");
-        var now = DateTimeOffset.UtcNow;
+        var now = Now;
         var operation = new TailscaleLoginOperation(request.OperationId, TailscaleLoginState.Prepared, observation.Revision,
             now.Add(PlanLifetime), now);
         journal.Save(new(actor, session, HostId(), operation, observation));
@@ -52,7 +53,7 @@ public sealed class TailscaleLoginCoordinator(TailscaleLoginJournal journal, ITa
         var stored = Owned(actor, session, operationId);
         if (stored.Operation.State != TailscaleLoginState.Prepared) return Normalize(stored).Operation;
         if (!confirmed) throw new TailscaleControlException(400, "tailscale.confirmation_required");
-        if (stored.Operation.ExpiresAt <= DateTimeOffset.UtcNow) return SaveState(stored, TailscaleLoginState.Rejected, "tailscale.plan_expired").Operation;
+        if (stored.Operation.ExpiresAt <= Now) return SaveState(stored, TailscaleLoginState.Rejected, "tailscale.plan_expired").Operation;
         RequireGrant(principal);
         // Observe before writing Applying: a changed host or an already-running login never starts a native command here.
         var observation = await host.ObserveAsync(ct);
@@ -60,6 +61,8 @@ public sealed class TailscaleLoginCoordinator(TailscaleLoginJournal journal, ITa
             return SaveState(stored, TailscaleLoginState.Rejected, "tailscale.login.state_changed").Operation;
         RequireGrant(principal);
         ct.ThrowIfCancellationRequested();
+        if (stored.Operation.ExpiresAt <= Now)
+            return SaveState(stored, TailscaleLoginState.Rejected, "tailscale.plan_expired").Operation;
         stored = SaveState(stored, TailscaleLoginState.Applying);
         TailscaleLoginReceipt receipt;
         try { receipt = await host.BeginAsync(new(Intent(stored), true), CancellationToken.None); }
@@ -73,7 +76,7 @@ public sealed class TailscaleLoginCoordinator(TailscaleLoginJournal journal, ITa
     {
         var (actor, session) = Identity(principal);
         using var lease = await journal.AcquireAsync(ct);
-        var stored = await ReconcileReceiptAsync(Normalize(Owned(actor, session, operationId)), ct);
+        var stored = await ReconcileReceiptAsync(Normalize(Owned(actor, session, operationId, sameSession: false)), ct);
         return (await ReconcileAsync(stored, ct)).Operation;
     }
 
@@ -85,11 +88,17 @@ public sealed class TailscaleLoginCoordinator(TailscaleLoginJournal journal, ITa
         var stored = Normalize(Owned(actor, session, operationId));
         if (stored.Operation.State != TailscaleLoginState.Issued || stored.Operation.Closure is not null)
             throw new TailscaleControlException(409, "tailscale.login.challenge_unavailable");
-        if (stored.Operation.ExpiresAt <= DateTimeOffset.UtcNow)
+        if (stored.Operation.ExpiresAt <= Now)
             throw new TailscaleControlException(409, "tailscale.plan_expired");
         var challenge = await host.ReadChallengeAsync(Intent(stored), ct);
         RequireGrant(principal);
         ct.ThrowIfCancellationRequested();
+        if (stored.Operation.ExpiresAt <= Now)
+            throw new TailscaleControlException(409, "tailscale.plan_expired");
+        if (challenge.OperationId != operationId || !TailscaleLoginUrl.IsOfficial(challenge.AuthenticationUrl)
+            || !Valid(challenge.Observation) || challenge.Observation.BackendState != "NeedsLogin"
+            || challenge.Observation.PreferencesRevision != stored.Baseline.PreferencesRevision)
+            throw new TailscaleControlException(409, "tailscale.login.challenge_unavailable");
         return new(operationId, challenge.AuthenticationUrl, stored.Operation.ExpiresAt);
     }
 
@@ -98,14 +107,14 @@ public sealed class TailscaleLoginCoordinator(TailscaleLoginJournal journal, ITa
         var (actor, session) = Identity(principal);
         RequireGrant(principal);
         using var lease = await journal.AcquireAsync(ct);
-        var stored = await ReconcileAsync(Normalize(Owned(actor, session, operationId)), ct);
+        var stored = await ReconcileAsync(Normalize(Owned(actor, session, operationId, sameSession: false)), ct);
         if (stored.Operation.Closure is { } closed) return new(operationId, closed.Observation, false, closed);
-        if (stored.Operation.State is not (TailscaleLoginState.Unknown or TailscaleLoginState.Issued))
+        if (stored.Operation.State is not (TailscaleLoginState.Unknown or TailscaleLoginState.Issued or TailscaleLoginState.ApprovalRequired))
             throw new TailscaleControlException(409, "tailscale.login.recovery.state_invalid");
         var observation = await host.ReadRecoveryAsync(Intent(stored), ct);
         RequireGrant(principal);
         if (!Valid(observation)) throw new TailscaleControlException(409, "tailscale.login.recovery.receipt_mismatch");
-        var plan = new TailscaleLoginRecoveryPlan(observation.Revision, DateTimeOffset.UtcNow.Add(PlanLifetime));
+        var plan = new TailscaleLoginRecoveryPlan(observation.Revision, Now.Add(PlanLifetime));
         journal.Save(stored with { RecoveryPlan = plan });
         return new(operationId, observation, true, ExpiresAt: plan.ExpiresAt);
     }
@@ -117,21 +126,23 @@ public sealed class TailscaleLoginCoordinator(TailscaleLoginJournal journal, ITa
             throw new TailscaleControlException(400, "tailscale.confirmation_required");
         RequireGrant(principal);
         using var lease = await journal.AcquireAsync(ct);
-        var stored = await ReconcileAsync(Normalize(Owned(actor, session, request.OperationId)), ct);
+        var stored = await ReconcileAsync(Normalize(Owned(actor, session, request.OperationId, sameSession: false)), ct);
         if (stored.Operation.Closure is { } existing)
         {
             if (existing.Observation.Revision != request.ExpectedRevision) throw new TailscaleControlException(409, "tailscale.revision_conflict");
             return stored.Operation;
         }
-        if (stored.Operation.State is not (TailscaleLoginState.Unknown or TailscaleLoginState.Issued))
+        if (stored.Operation.State is not (TailscaleLoginState.Unknown or TailscaleLoginState.Issued or TailscaleLoginState.ApprovalRequired))
             throw new TailscaleControlException(409, "tailscale.login.recovery.state_invalid");
-        if (stored.RecoveryPlan is not { } plan || plan.ExpiresAt <= DateTimeOffset.UtcNow || plan.ExpectedRevision != request.ExpectedRevision)
+        if (stored.RecoveryPlan is not { } plan || plan.ExpiresAt <= Now || plan.ExpectedRevision != request.ExpectedRevision)
             throw new TailscaleControlException(409, "tailscale.login.recovery.preview_required");
         var preview = await host.ReadRecoveryAsync(Intent(stored), ct);
         if (preview.Revision != request.ExpectedRevision)
             throw new TailscaleControlException(409, "tailscale.login.recovery.not_ready");
         RequireGrant(principal);
         ct.ThrowIfCancellationRequested();
+        if (plan.ExpiresAt <= Now)
+            throw new TailscaleControlException(409, "tailscale.login.recovery.preview_required");
         stored = stored with { ClosingRequest = request };
         journal.Save(stored);
         var closure = await host.CloseAsync(Intent(stored), request, CancellationToken.None);
@@ -152,7 +163,8 @@ public sealed class TailscaleLoginCoordinator(TailscaleLoginJournal journal, ITa
             || stored.Operation.State is not (TailscaleLoginState.Unknown or TailscaleLoginState.Issued or TailscaleLoginState.ApprovalRequired))
             return stored;
         var receipt = await host.GetReceiptAsync(Intent(stored), ct);
-        return receipt?.State is TailscaleLoginState.Issued or TailscaleLoginState.Completed or TailscaleLoginState.ApprovalRequired
+        return receipt is not null && receipt.OperationId == stored.Operation.OperationId && receipt.RecordedAt != default
+            && receipt.State is (TailscaleLoginState.Issued or TailscaleLoginState.Completed or TailscaleLoginState.ApprovalRequired)
             && receipt.State != stored.Operation.State ? SaveState(stored, receipt.State) : stored;
     }
 
@@ -175,7 +187,7 @@ public sealed class TailscaleLoginCoordinator(TailscaleLoginJournal journal, ITa
     {
         if (stored.Operation.State == TailscaleLoginState.Applying)
             return SaveState(stored, TailscaleLoginState.Unknown, "tailscale.operation.interrupted");
-        if (stored.Operation.State == TailscaleLoginState.Prepared && stored.Operation.ExpiresAt <= DateTimeOffset.UtcNow)
+        if (stored.Operation.State == TailscaleLoginState.Prepared && stored.Operation.ExpiresAt <= Now)
             return SaveState(stored, TailscaleLoginState.Rejected, "tailscale.plan_expired");
         return stored;
     }
@@ -184,15 +196,17 @@ public sealed class TailscaleLoginCoordinator(TailscaleLoginJournal journal, ITa
     {
         var updated = stored with
         {
-            Operation = stored.Operation with { State = state, ProblemCode = problem, UpdatedAt = DateTimeOffset.UtcNow },
+            Operation = stored.Operation with { State = state, ProblemCode = problem, UpdatedAt = Now },
             RecoveryPlan = state is TailscaleLoginState.Rejected ? null : stored.RecoveryPlan,
         };
         journal.Save(updated);
         return updated;
     }
 
-    private StoredTailscaleLoginOperation Owned(string actor, Guid session, Guid id) =>
-        journal.Read(id) is { } stored && stored.Actor == actor && stored.SessionId == session
+    // Only dispatch and challenge delivery require the original session. An owner may recover durable
+    // evidence after reconnecting; recovery still demands a fresh grant and preserves the original intent.
+    private StoredTailscaleLoginOperation Owned(string actor, Guid session, Guid id, bool sameSession = true) =>
+        journal.Read(id) is { } stored && stored.Actor == actor && (!sameSession || stored.SessionId == session)
             ? stored : throw NotFound();
 
     private TailscaleLoginIntent Intent(StoredTailscaleLoginOperation stored) =>

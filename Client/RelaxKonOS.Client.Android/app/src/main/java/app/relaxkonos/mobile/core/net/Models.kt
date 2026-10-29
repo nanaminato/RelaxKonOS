@@ -248,6 +248,7 @@ object ServerCapabilities {
     const val BACKUP_RECOVERY = "server.backup-recovery"
     const val FILE_SERVICES = "server.file-services"
     const val FIREWALL = "server.firewall"
+    const val TAILSCALE = "server.tailscale"
     const val GATEWAY_PROXY = "server.gateway-proxy"
     const val PROXY_SERVER = "server.proxy-server"
     const val PROXY = "server.proxy"

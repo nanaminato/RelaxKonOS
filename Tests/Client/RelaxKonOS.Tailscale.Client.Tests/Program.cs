@@ -165,6 +165,8 @@ try
     Check(store.Read(original).Count == 30 && store.Read(original)[0] == last, "reference duplicate does not grow history");
     Check(!File.ReadAllText(Path.Combine(folder.FullName, "refs.json")).Contains("Applied"), "outcomes never stored locally");
     checks += await TransportChecks.RunAsync();
+    checks += await LoginChecks.RunAsync(language, folder.FullName);
+    checks += await LoginTransportChecks.RunAsync();
 
     // Render the actual workspace pages and fixed-footer dialogs in every shipped language.
     var output = Path.Combine(System.AppContext.BaseDirectory, "layout-qa"); Directory.CreateDirectory(output);
@@ -173,15 +175,18 @@ try
         settings.Language = culture; settings.Appearance = settings.Appearance with { Mode = RelaxKonOS.Protocol.Desktop.ThemeKind.Light }; Dispatcher.UIThread.RunJobs();
         var layoutClient = new FakeClient();
         var layout = new TailscaleViewModel(layoutClient, new TailscaleOperationReferences(Path.Combine(folder.FullName, "layout.json")), broker, language);
-        var workspace = new TailscaleWorkspace(layout);
+        var loginLayout = new TailscaleLoginViewModel(new LoginFake { Connection = layoutClient.Connection }, new TailscaleOperationReferences(Path.Combine(folder.FullName, "login-layout.json")), broker, language);
+        var workspace = new TailscaleWorkspace(layout, loginLayout);
         var window = new Window { Content = workspace, Width = 980, Height = 640 }; window.Show(); Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
         await layout.LoadControlAsync();
+        loginLayout.ConfirmAsync = (_, _, _) => Task.FromResult(true);
+        await loginLayout.StartAsync();
         var oldText = layout.StatusText; var oldPeer = layout.Peers[0].Status; var reads = layoutClient.ControlReads;
         settings.Language = culture == "en-US" ? "zh-CN" : "en-US"; Dispatcher.UIThread.RunJobs();
         Check(layout.StatusText != oldText && layout.Peers[0].Status != oldPeer && layoutClient.ControlReads == reads, "live language switch does not reload host");
         settings.Language = culture; Dispatcher.UIThread.RunJobs();
         foreach (var width in new[] { 980, 540 })
-        foreach (var page in new[] { "Devices", "Control", "Operations" })
+        foreach (var page in new[] { "Devices", "Control", "Operations", "Login" })
         {
             window.Width = width;
             var button = workspace.FindControl<Button>(page)!;
@@ -202,14 +207,17 @@ try
         window.Close(); Dispatcher.UIThread.RunJobs();
         var plan = new TailscaleOperation(Guid.NewGuid(), TailscaleAction.Configure, TailscaleOperationState.Prepared, new('A',64),
             DateTimeOffset.UtcNow.AddMinutes(5), DateTimeOffset.UtcNow, new(false,true));
+        var dialogIndex = 0;
         foreach (var dialog in new Control[] { new TailscaleConfigurationDialog(new(true,false), _ => { }),
             new TailscaleConfirmationDialog(plan, layoutClient.Control, "test-host", language, _ => { }),
-            new TailscaleRecoveryDialog(new(plan.OperationId,layoutClient.Control,true,ExpiresAt:DateTimeOffset.UtcNow.AddMinutes(5)),"test-host",language,_=>{ }) })
+            new TailscaleRecoveryDialog(new(plan.OperationId,layoutClient.Control,true,ExpiresAt:DateTimeOffset.UtcNow.AddMinutes(5)),"test-host",language,_=>{ }),
+            new TailscaleLoginDialog("test-host", plan.OperationId, false, "", language, _=>{}),
+            new TailscaleLoginDialog("test-host", plan.OperationId, true, "Running", language, _=>{}) })
         {
             var host = new Window { Content = dialog, Width = 540, Height = 320 }; host.Show(); Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
             var buttons = dialog.GetVisualDescendants().OfType<Button>().ToArray();
             Check(buttons.All(button => button.TranslatePoint(default, dialog) is { } point && point.Y >= 0 && point.Y + button.Bounds.Height <= dialog.Bounds.Height + 1), "dialog buttons visible " + culture);
-            using var image = new RenderTargetBitmap(new PixelSize(540,320)); image.Render(host); image.Save(Path.Combine(output, culture + "-" + dialog.GetType().Name + ".png"), new PngBitmapEncoderOptions());
+            using var image = new RenderTargetBitmap(new PixelSize(540,320)); image.Render(host); image.Save(Path.Combine(output, culture + "-" + dialog.GetType().Name + "-" + dialogIndex++ + ".png"), new PngBitmapEncoderOptions());
             host.Close(); Dispatcher.UIThread.RunJobs();
         }
     }

@@ -220,23 +220,6 @@ internal class NginxViewModel(private val session: AuthSession, private val gate
         if (mutationsBlocked || state.candidates.none { it.id == candidate.id } || state.pending.any { it.target == candidate.id }) return
         webMutation { active -> webServers.integrate(active, candidate, elevationAnswers) }
     }
-    fun uninstall(server: WebServer) {
-        if (state.selectedId != server.id || state.servers.none { it.id == server.id && it.canUninstall } ||
-            state.busy || state.loading || state.operation?.state?.active == true ||
-            state.pending.any { it.target == server.id } || state.installation?.state?.active == true ||
-            state.pendingInstallation) return
-        // Removal stays here until the component center can remove the same Windows managed archive.
-        work { active ->
-            val intent = installations.prepare(active, InstallationKind.Uninstall, NginxInstallationRequest(true))
-            val result = installations.submit(intent, elevationAnswers)
-            verify(active); failure(result)
-            state = state.copy(pendingInstallation = installations.pending(active).any { it.service == InstallationService.Nginx })
-            if (result is ApiResult.Success) {
-                state = state.copy(installation = result.value, installationVerified = true, pendingInstallation = false)
-                if (!result.value.state.active) load(active)
-            }
-        }
-    }
     fun lifecycle(server: WebServer, action: WebServerAction) {
         if (mutationsBlocked || state.pending.any { it.target == server.id }) return
         val current = state.servers.firstOrNull { it.id == server.id } ?: return

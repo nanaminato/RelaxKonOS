@@ -35,6 +35,19 @@ import java.io.InputStream
  * returned a default.
  */
 class FakeGateway : RelaxKonGateway {
+    override suspend fun tailscaleStatus(serverUrl: String, accessToken: String): ApiResult<TailscaleStatus> = error("Unexpected Tailscale status")
+    override suspend fun prepareTailscaleLogin(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleLoginOperation> = error("Unexpected Tailscale login prepare")
+    override suspend fun executeTailscaleLogin(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleLoginOperation> = error("Unexpected Tailscale login execute")
+    override suspend fun tailscaleLoginOperation(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleLoginOperation> = error("Unexpected Tailscale login operation")
+    override suspend fun tailscaleLoginChallenge(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleLoginChallenge> = error("Unexpected Tailscale login challenge")
+    override suspend fun tailscaleLoginRecovery(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleLoginRecovery> = error("Unexpected Tailscale login recovery")
+    override suspend fun closeTailscaleLogin(serverUrl: String, accessToken: String, id: String, revision: String): ApiResult<TailscaleLoginOperation> = error("Unexpected Tailscale login close")
+    override suspend fun tailscaleControl(serverUrl: String, accessToken: String): ApiResult<TailscaleControl> = error("Unexpected Tailscale control")
+    override suspend fun prepareTailscale(serverUrl: String, accessToken: String, request: TailscalePlanRequest): ApiResult<TailscaleOperation> = error("Unexpected Tailscale prepare")
+    override suspend fun executeTailscale(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleOperation> = error("Unexpected Tailscale execute")
+    override suspend fun tailscaleOperation(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleOperation> = error("Unexpected Tailscale operation")
+    override suspend fun tailscaleRecovery(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleRecovery> = error("Unexpected Tailscale recovery")
+    override suspend fun closeTailscale(serverUrl: String, accessToken: String, id: String, revision: String): ApiResult<TailscaleOperation> = error("Unexpected Tailscale close")
     var onManagedRuntime: (suspend (String, String, JsonBody?, String?) -> ApiResult<String>)? = null
     override suspend fun managedRuntime(serverUrl: String, accessToken: String, method: String, route: String,
         body: JsonBody?, key: String?): ApiResult<String> = requireHandler(onManagedRuntime, "managedRuntime")(method, route, body, key)

@@ -259,8 +259,6 @@ WorkspaceSection(section == "instances") {
                 Text(nginxActionLabel(action))
             }
         }
-        if (server.canUninstall) OutlinedButton(enabled = !state.busy && !state.loading && state.operation?.state?.active != true && state.pending.none { it.target == server.id } && state.installation?.state?.active != true && !state.pendingInstallation,
-            onClick = { confirm(R.string.nginx_uninstall_confirm) { model.uninstall(server); onRecords() } }) { Text(stringResource(R.string.nginx_uninstall)) }
     }}
 
 }

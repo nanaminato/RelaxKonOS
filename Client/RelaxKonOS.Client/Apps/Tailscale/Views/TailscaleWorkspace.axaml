@@ -12,6 +12,7 @@
    <WrapPanel x:Name="Navigation" Orientation="Vertical" ItemSpacing="8" LineSpacing="8">
     <Button x:Name="Devices" Classes="workspace-nav" Content="{loc:Loc tailscale.devices}" Tag="devices" Click="Navigate" />
     <Button x:Name="Control" Classes="workspace-nav" Content="{loc:Loc tailscale.control}" Tag="control" Click="Navigate" />
+    <Button x:Name="Login" Classes="workspace-nav" Content="{loc:Loc tailscale.login.title}" Tag="login" Click="Navigate" />
     <Button x:Name="Operations" Classes="workspace-nav" Content="{loc:Loc tailscale.operations}" Tag="operations" Click="Navigate" />
    </WrapPanel>
    <ContentControl x:Name="Page" Grid.Column="1" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />

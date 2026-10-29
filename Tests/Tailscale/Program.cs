@@ -15,6 +15,26 @@ using RelaxKonOS.Server.Settings;
 using RelaxKonOS.Protocol.Tailscale;
 
 static void Check(bool value) { if (!value) throw new Exception("Assertion failed"); }
+if (args.Length == 3 && args[0] == "--stage-official-tailscale-msi")
+{
+    using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(4));
+    var release = await new RelaxKonOS.ManagedRuntimes.ComponentPackages.TailscaleOfficialReleases().ResolveAsync("win-x64",args[1],timeout.Token);
+    await using var file = new FileStream(args[2],FileMode.CreateNew,FileAccess.ReadWrite,FileShare.Read,65536,FileOptions.Asynchronous);
+    var length = await new RelaxKonOS.ManagedRuntimes.ComponentPackages.TailscaleMsiArtifactTransfer().CopyAsync(release,file,null,timeout.Token);
+    Console.WriteLine(JsonSerializer.Serialize(new { Release = release, Length = length, Installed = false }));
+    return;
+}
+if (args.Contains("--official-tailscale-source", StringComparer.Ordinal))
+{
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+    var source = new RelaxKonOS.ManagedRuntimes.ComponentPackages.TailscaleOfficialReleases();
+    var latest = await source.ResolveAsync("win-x64", null, timeout.Token);
+    var pinned = await source.ResolveAsync("win-x64", latest.Version, timeout.Token);
+    Check(latest == pinned && latest.Format == "msi" && latest.Sha256 is { Length: 64 });
+    var historical = args.Length == 2 ? await source.ResolveAsync("win-x64", args[1], timeout.Token) : null;
+    Console.WriteLine(JsonSerializer.Serialize(new { CheckedAt = DateTimeOffset.UtcNow, Latest = latest, ExplicitVersionMatches = true, Historical = historical }));
+    return;
+}
 using var document = JsonDocument.Parse("""
 {"BackendState":"Running","Version":"1.90.0","AuthURL":"secret","PrivateKey":"secret",
 "Self":{"ID":"self","HostName":"host","TailscaleIPs":["100.64.0.1"],"Online":true},
@@ -169,6 +189,9 @@ Console.WriteLine("14 Tailscale Helper boundary checks passed.");
 // Exercise the real mapped route and authorization middleware over loopback HTTP.
 await TailscaleControlChecks.RunAsync();
 await TailscaleHelperControlChecks.RunAsync();
+await TailscaleSerializationChecks.RunAsync();
+await TailscaleOfficialSourceChecks.RunAsync();
+await TailscaleArtifactChecks.RunAsync();
 await TailscaleHelperBridgeChecks.RunAsync();
 await TailscaleRecoveryChecks.RunAsync();
 await TailscaleQuiescenceChecks.RunAsync();
@@ -276,18 +299,29 @@ await using (var web = webBuilder.Build())
     Check((await http.GetAsync(loginPath + "/challenge")).StatusCode == System.Net.HttpStatusCode.Unauthorized);
     http.DefaultRequestHeaders.Authorization = new("test");
     loginHost.Observation = new(new('F', 64), new('B', 64), "Running", false);
+    http.DefaultRequestHeaders.Add("X-Test-Session", "reconnected");
+    Check((await http.GetAsync(loginPath)).IsSuccessStatusCode);
+    Check((await http.PostAsJsonAsync(loginPath + "/execute", new TailscaleLoginExecuteRequest(true))).StatusCode == System.Net.HttpStatusCode.NotFound);
+    Check((await http.GetAsync(loginPath + "/challenge")).StatusCode == System.Net.HttpStatusCode.NotFound);
+    grants.Allowed = false;
+    Check((await http.GetAsync(loginPath + "/recovery")).StatusCode == System.Net.HttpStatusCode.Forbidden);
+    grants.Allowed = true;
+    http.DefaultRequestHeaders.Add("X-Test-Actor", "other");
+    Check((await http.GetAsync(loginPath)).StatusCode == System.Net.HttpStatusCode.NotFound);
+    http.DefaultRequestHeaders.Remove("X-Test-Actor");
     var loginRecovery = JsonSerializer.Deserialize<TailscaleLoginRecoverySnapshot>(await http.GetStringAsync(loginPath + "/recovery"), new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
     Check(loginRecovery.CanClose && loginRecovery.OperationId == loginId && loginRecovery.Observation?.BackendState == "Running");
     using var loginClose = await http.PostAsJsonAsync(loginPath + "/recovery/close", new TailscaleLoginCloseRequest(loginId, loginRecovery.Observation!.Revision, true));
     Check(loginClose.IsSuccessStatusCode);
     var closedLogin = JsonSerializer.Deserialize<TailscaleLoginOperation>(await http.GetStringAsync(loginPath), new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
     Check(closedLogin.State == TailscaleLoginState.Issued && closedLogin.Closure?.Observation.Revision == loginRecovery.Observation.Revision);
+    http.DefaultRequestHeaders.Remove("X-Test-Session");
     using var challengeAfterClose = await http.GetAsync(loginPath + "/challenge");
     Check(challengeAfterClose.StatusCode == System.Net.HttpStatusCode.Conflict);
     await web.StopAsync();
 }
 httpFolder.Delete(true);
-Console.WriteLine("31 Tailscale HTTP authentication/control/recovery/login checks passed.");
+Console.WriteLine("36 Tailscale HTTP authentication/control/recovery/login checks passed.");
 
 sealed class StubStatusCommand(TailscaleCommandResult result) : ITailscaleStatusCommand
 {
@@ -323,7 +357,9 @@ sealed class TestAuthenticationHandler(Microsoft.Extensions.Options.IOptionsMoni
     protected override Task<Microsoft.AspNetCore.Authentication.AuthenticateResult> HandleAuthenticateAsync()
     {
         if (Request.Headers.Authorization != "test") return Task.FromResult(Microsoft.AspNetCore.Authentication.AuthenticateResult.NoResult());
-        var principal = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity([new("sub", "b192be55-f4ea-4277-9b98-5c95b3be23af"), new("sid", "5f0b9c1e-6a1d-4c2e-8b3a-1d2e3f4a5b6c")], "test"));
+        var actor = Request.Headers["X-Test-Actor"] == "other" ? "a192be55-f4ea-4277-9b98-5c95b3be23af" : "b192be55-f4ea-4277-9b98-5c95b3be23af";
+        var session = Request.Headers["X-Test-Session"] == "reconnected" ? "6f0b9c1e-6a1d-4c2e-8b3a-1d2e3f4a5b6c" : "5f0b9c1e-6a1d-4c2e-8b3a-1d2e3f4a5b6c";
+        var principal = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity([new("sub", actor), new("sid", session)], "test"));
         return Task.FromResult(Microsoft.AspNetCore.Authentication.AuthenticateResult.Success(new(principal, "test")));
     }
 }
