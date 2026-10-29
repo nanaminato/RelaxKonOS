@@ -22,7 +22,7 @@ Nginx 与 FRP 接回领域安装器和归档导入；FRP Windows Helper 支持�
 | Squid | 系统包 | 未声明支持 | 目录、应用跳转与只读安装/服务/待恢复状态；领域已有 Linux 包/服务操作 | 仓库版本、所有权、冻结事务、更新预检与回退边界 |
 | Docker Engine | 官方源或系统包，需专属适配 | 未声明组件中心安装支持；外部 Desktop/Engine 单列 | 目录、应用跳转与只读 Engine API 观测；领域已有检测与受约束 Linux 安装 | Engine/Compose 分开建模，版本、卸载及数据保留、外部实例边界 |
 | Samba | 系统包 | 未声明 Samba 安装支持 | 目录与文件服务跳转 | 探测、所有权、可信包源与专属事务；不能将 Windows 文件共享当作 Samba 安装 |
-| Tailscale | 官方签名系统包适配器未接入 | 官方 MSI；专属系统安装器尚未接入 | releases 路由已发现稳定通道 MSI 元数据与摘要，支持内部明确版本解析；尚无组件目录／来源界面或 state/plan/execute 适配器 | 发布者签名、所有权、系统安装事务及完整多版本生命周期；MSI 不能按归档执行 |
+| Tailscale | 官方签名系统包适配器未接入 | 官方 MSI；专属系统安装器尚未接入 | 官方 MSI 发现及签名／包属性校验已验证；Helper 私有暂存／持锁租约已实现，尚无组件目录／来源界面或 state/plan/execute 适配器 | 生产暂存正向权限及实包串联验收、来源信任、所有权、系统安装事务及完整生命周期；MSI 不能按归档执行 |
 
 ## 本轮 Nginx 处理
 
@@ -270,3 +270,13 @@ Android 组件中心在固定版本选择之外，为 FRP 增加“从文件安�
 共享 releases 路由已接入 Tailscale Windows 官方 stable 元数据和 SHA-256 发现，按 OS 架构精确选择 MSI；内部可重新解析明确稳定版本。传输使用公共运行时网络与代理门禁，只有固定官方元数据查询参数被精确许可。在线只读核对 1.104.4 与 1.102.2 元数据及摘要通过，没有下载或执行安装包。
 
 当前没有 Tailscale 组件目录／来源界面、state/plan/execute 适配器、发布者签名验证或系统安装事务；不把 MSI 当 ZIP，也不因发现来源而开放安装或接管外部实例。生命周期缺口由 MR-11 跟踪。专项与证据边界见 [Tailscale 当前记录](../applications/RelaxKonOS.Tailscale.Design.md#helper-公共锁修复与-windows-官方来源发现2026-10-29)。
+
+后续补入受限 MSI 暂存／摘要复核及 Helper 只读 WinTrust／发布者校验原语，win-x64 1.104.4 实包探测通过，未执行安装。此原语尚未注册产品安装入口，包属性、保护目录、来源信任登记和系统安装事务仍缺失；不能将其观察证据作为执行许可。专项共 512 项通过，详细边界见 [MSI 暂存与签名原语](../applications/RelaxKonOS.Tailscale.Design.md#windows-msi-受限暂存与只读签名原语2026-10-29)。
+
+包属性随后已纳入同一次只读验证，精确核对产品、厂商、目标版本及架构，拒绝无效或矛盾的产品／升级／包 GUID；原生 x64 实包路径通过。专项现共 529 项通过。升级 GUID 仅为包证据，仍缺保护暂存、来源信任登记、升级集合与所有权策略、系统安装事务。见 [MSI 产品属性校验](../applications/RelaxKonOS.Tailscale.Design.md#msi-产品属性校验接入2026-10-29)。
+
+Helper 私有暂存与持锁租约随后已实现，串联独立官方解析、受限下载、落盘与只读验证，拒绝覆盖原目录，失败仅清理已知文件及空目录。专项现共 555 项通过，包含真实 Windows ACL 拒绝普通用户可写目录；生产目录正向权限与官方实包完整串联尚未验收。仍无安装入口或系统安装事务。见 [暂存与租约边界](../applications/RelaxKonOS.Tailscale.Design.md#helper-私有-msi-暂存与租约2026-10-29)。
+
+随后修复 Windows 祖先 ACL 未核对、NULL DACL 误判及创建目录后才收紧 ACL 的缺口。专项现共 576 项通过，本机 Program Files 及祖先链只读检查通过，未写入该目录或安装软件；私有根目录创建及完整实包串联验收仍待完成。见 [Windows ACL 修复](../applications/RelaxKonOS.Tailscale.Design.md#windows-保护目录-acl-缺口修复2026-10-29)。
+
+Windows Installer 全用户／全上下文只读注册观察已实现，错误不降级为未安装，注册不代表 RelaxKonOS 所有权。专项共 598 项通过，本机非管理员原生探针明确拒绝访问；完整特权枚举、文件／服务组合及自有台账尚未验收或实现，不开放生命周期入口。见 [注册观察边界](../applications/RelaxKonOS.Tailscale.Design.md#windows-installer-注册观察2026-10-29)。

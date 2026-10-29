@@ -15,6 +15,37 @@ using RelaxKonOS.Server.Settings;
 using RelaxKonOS.Protocol.Tailscale;
 
 static void Check(bool value) { if (!value) throw new Exception("Assertion failed"); }
+if (args.Length == 1 && args[0] == "--tailscale-inventory-probe")
+{
+    try
+    {
+        var products = RelaxKonOS.PrivilegedHelper.TailscaleWindowsInventory.Create().Read(default);
+        Console.WriteLine(JsonSerializer.Serialize(new { Registrations = products, OwnershipProven = false, InstallationAbsenceProven = false, FilesWritten = false }));
+    }
+    catch (RelaxKonOS.ManagedRuntimes.RuntimePolicyException ex)
+    { Console.WriteLine(JsonSerializer.Serialize(new { ex.ProblemCode, OwnershipProven = false, InstallationAbsenceProven = false, FilesWritten = false })); }
+    return;
+}
+if (args.Length == 1 && args[0] == "--tailscale-protection-probe")
+{
+    var path = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+    RelaxKonOS.PrivilegedHelper.TailscaleControlProtection.Require(path);
+    Console.WriteLine(JsonSerializer.Serialize(new { Path = path, AncestorProtectionVerified = true, FilesWritten = false }));
+    return;
+}
+if (args.Length == 3 && args[0] == "--inspect-official-tailscale-msi")
+{
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+    var release = await new RelaxKonOS.ManagedRuntimes.ComponentPackages.TailscaleOfficialReleases().ResolveAsync("win-x64",args[1],timeout.Token);
+    try
+    {
+        var evidence = await RelaxKonOS.PrivilegedHelper.TailscaleMsiSignature.InspectAsync(args[2],release,timeout.Token);
+        Console.WriteLine(JsonSerializer.Serialize(new { Evidence = evidence, SignatureVerified = true, Installed = false }));
+    }
+    catch (RelaxKonOS.ManagedRuntimes.RuntimePolicyException ex)
+    { Console.WriteLine(JsonSerializer.Serialize(new { ex.ProblemCode, SignatureVerified = false, Installed = false })); }
+    return;
+}
 if (args.Length == 3 && args[0] == "--stage-official-tailscale-msi")
 {
     using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(4));
@@ -192,6 +223,11 @@ await TailscaleHelperControlChecks.RunAsync();
 await TailscaleSerializationChecks.RunAsync();
 await TailscaleOfficialSourceChecks.RunAsync();
 await TailscaleArtifactChecks.RunAsync();
+await TailscaleSignatureChecks.RunAsync();
+TailscaleMsiPropertyChecks.Run();
+await TailscaleStagingChecks.RunAsync();
+TailscaleProtectionChecks.Run();
+TailscaleInventoryChecks.Run();
 await TailscaleHelperBridgeChecks.RunAsync();
 await TailscaleRecoveryChecks.RunAsync();
 await TailscaleQuiescenceChecks.RunAsync();

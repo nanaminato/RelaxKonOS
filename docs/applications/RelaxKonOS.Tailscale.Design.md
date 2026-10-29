@@ -221,3 +221,61 @@ Windows 官方 MSI 发现已接入认证组件 releases 路由 `/api/v1.0/compon
 验证：Tailscale Server/Helper 专项 **476 项通过**，新增公共锁 20 项、官方来源 43 项、损坏控制回执 12 项。覆盖锁被占用时所有控制及登录观察入口等待、两个 Helper 实例重复／竞争／关账并发、原请求只执行一次、旧修订拒绝、格式／来源／架构／版本错配、摘要边界与取消，以及无效代理不得绕过。公共下载／代理专项 **60 项通过**；Windows 的可信传输探针因没有进程级测试 CA 覆盖按原规则跳过。测试代理的 407 响应已明确声明 Connection: close，与其立即关闭连接的行为一致，保留原凭据隔离断言。Server、Helper 与专项工程构建通过，既有编译和元数据网络警告保留。
 
 在线只读探测通过生产传输解析了 win-x64 的当前 1.104.4 和历史 1.102.2 官方 MSI 元数据与摘要，并核对当前版本的明确版本解析相同；没有下载 MSI、验证其签名、调用安装器或操作真实 Tailscale。证据为 `.tmp/tailscale-official-source-smoke.json`。专项日志为 `.tmp/tailscale-lock-source-build.log`、`.tmp/tailscale-lock-source-tests.log`、`.tmp/tailscale-lock-helper-build.log`、`.tmp/tailscale-source-runtime-build.log` 和 `.tmp/tailscale-source-runtime-tests.log`。真实 daemon、Android 交互、操作中断、OS 权限保护、完整安装／更新／修复／回滚／卸载验收仍未完成。
+
+## Windows MSI 受限暂存与只读签名原语（2026-10-29）
+
+新增专属 MSI 传输原语：严格复用官方解析器的稳定版本／架构／精确文件名规则，只接受对应固定 HTTPS 下载地址和完整 SHA-256，不接受查询参数、片段、任意重定向或归档格式替代。使用公共运行时 DNS／实际地址／宿主代理规则；目标必须是空的可读写、可定位流，下载上限 128 MiB、总预算三分钟。下载完成后重新读取暂存内容并以固定时间比较摘要；取消、空包、摘要错误或传输失败后清空暂存流，不返回可用制品。
+
+Helper 新增只读签名校验原语，未注册 IPC、HTTP 或组件安装入口。校验重新计算文件摘要，检查期间以同一文件句柄禁止写入和删除，调用 Windows WinVerifyTrust 验证明确的首个 Authenticode 签名，并从同一验证状态读取签名者证书；不通过另一次文件解析独立选择证书。禁用 UI 和 MD2／MD4，要求非根证书链撤销检查，仅使用本机缓存，不触发证书网络获取；缺少可用撤销证据时明确拒绝，不降级为仅摘要或跳过撤销检查。API 依据见 [WINTRUST_DATA](https://learn.microsoft.com/en-us/windows/win32/api/wintrust/ns-wintrust-wintrust_data) 与 [已验证签名者读取](https://learn.microsoft.com/en-us/windows/win32/api/wintrust/nf-wintrust-wthelpergetprovsignerfromchain)。
+
+发布者比较严格解析 DER RDN，逐项匹配加拿大注册实体 Tailscale Inc.、注册号 1131559-5、Toronto／Ontario、Private Organization 及注册国家 CA；拒绝遗漏、重复、附加或不匹配的字段，不能只凭显示名称授信。当前匹配基线来自官方 1.104.4 实包观察，不新增可由客户端提交的信任配置，也不代表生产发布源已登记或未来证书身份可自动扩大。返回的签名证据只是该次只读观察，不可持久化后当作执行许可；真实安装必须在 Helper 自有受保护暂存、来源信任修订和事务锁下重新核对制品。
+
+生产传输实际下载并校验 win-x64 1.104.4 MSI，共 38,796,288 字节，SHA-256 为 `1d12cd8b1d6dbb447da8579b1a5268ae2fc050967bebfaa02e32d2bb645ef6ee`；本机 WinTrust、撤销状态与发布者匹配均通过，证书 SHA-256 为 `E5A8E8BFF302C4690B693F0D437FBA183FB1ACC49EB00E551DD2705E003949E2`。另以 Windows Installer 数据库只读模式观察到 ProductName=Tailscale、Manufacturer=Tailscale Inc.、ProductVersion=1.104.4、Template=x64;1033；这些包属性尚未接入代码门禁。没有调用安装器、自定义动作、服务控制或真实 Tailscale。该结果不外推至 ARM64、其他版本、其他宿主或缺少有效撤销缓存的机器。
+
+验证：Tailscale Server/Helper 专项 **512 项通过**，本轮新增传输／摘要检查 19 项、发布者与 Windows 原生拒绝检查 17 项；覆盖固定制品身份、非空暂存保护、错误摘要、取消／部分传输清理、合法实体 RDN 排序、伪装显示名称／法律身份错配、重复／额外字段、无签名文件和哈希错误拒绝。构建通过，既有警告保留。证据为 `.tmp/tailscale-msi-stage-smoke.json`、`.tmp/tailscale-msi-signature-smoke.json`、`.tmp/tailscale-msi-properties.json`；日志为 `.tmp/tailscale-msi-signature-build.log`、`.tmp/tailscale-msi-signature-tests.log`、`.tmp/tailscale-msi-helper-build.log`。
+
+MR-11 仍未完成：需要 MSI 产品／升级标识及架构属性门禁、受保护暂存与来源信任登记、系统安装所有权及原事务回执、安装／多版本更新／修复／回滚／卸载／恢复，之后才可开放组件安装入口。Android 本轮无新增变化，真实设备与 daemon 验收仍待完成。
+
+## MSI 产品属性校验接入（2026-10-29）
+
+只读检查现已在同一文件锁的摘要、WinTrust 和发布者检查之后打开 MSI 数据库，明确使用 MSIDBOPEN_READONLY 及只读 summary，不打开安装会话、不加载 transform、不提交数据库、不执行自定义动作。每个属性查询要求恰好一条记录，文本上限 256 字符，summary 要求字符串类型；所有 MSI 数据库、视图、记录和 summary 句柄均在 finally 中关闭。API 依据见 [Microsoft MSI 数据库接口](https://learn.microsoft.com/en-us/windows/win32/msi/database-functions)。
+
+产品名精确要求 Tailscale、厂商 Tailscale Inc.、产品版本等于已解析的目标稳定版本，模板按 win-x64／win-arm64 分别要求 x64;1033／Arm64;1033。ProductCode、UpgradeCode 和 PackageCode 必须是规范的大写非空 GUID，且互不相同；缺失、错误架构、不同版本或非 MSI 数据库均拒绝。升级 GUID 只是原包观察，不单独作为已安装产品的所有权证明或卸载依据；后续事务仍须建立受保护台账和明确升级集合策略。
+
+Tailscale 专项 **529 项通过**，新增属性验证 17 项，包含错误产品／厂商／版本／架构、无效／空／非规范／重复标识、原生非数据库拒绝和句柄释放后的文件重命名。Server 与 Helper 构建通过，既有警告保留。官方 1.104.4 x64 实包经过新增代码路径验证成功，读取到 ProductCode={54939609-8ED7-550F-95F0-CDE77EC4499A}、UpgradeCode={C8F0A9CE-39DE-47FE-93B4-F33AC23790B5}、PackageCode={24386ABE-CC73-4964-9DFD-CC19646DC31B}、Template=x64;1033。证据为 `.tmp/tailscale-msi-properties-smoke.json`；日志为 `.tmp/tailscale-msi-properties-build.log`、`.tmp/tailscale-msi-properties-tests.log`、`.tmp/tailscale-msi-properties-helper-build.log`。
+
+没有安装 MSI 或运行真实 daemon；ARM64 当前只有纯属性规则检查，尚未进行实包验证。受保护暂存、来源信任登记、系统安装事务、所有权及多版本完整生命周期仍未实现，不因本次属性校验而开放安装入口或关闭 MR-11。
+
+## Helper 私有 MSI 暂存与租约（2026-10-29）
+
+新增 Helper 内部暂存组件，生产工厂固定使用控制根目录下的 msi-staging，复用现行目录保护规则，拒绝可重解析路径、非受信任所有者和普通用户可写对象。不接受客户端路径、URL 或摘要；明确版本／架构先做语法检查，再由 Helper 独立解析固定官方源的目标元数据与摘要。关键交接点重新核对保护。
+
+准备流程持有跨进程 staging.lock，按 operationId 的规范 GUID 创建专属目录，以 CreateNew 写入固定 package.msi，受限下载后 Flush(true)，在私有目录内关闭写句柄、打开并持续持有禁止写入删除的只读句柄，再检查签名及产品属性。返回租约保留文件与暂存锁，其他准备请求等待；准备过程使用五分钟协作取消预算，锁等待、解析、复制及检查后均检查取消，不交付晚到结果。锁路径损坏为目录时明确拒绝，不误当锁竞争。
+
+租约销毁后拒绝访问其路径／描述／证据，释放文件句柄，重新检查保护并仅删除本次 package.msi 和空操作目录，最后释放暂存锁。失败／取消走相同清理边界，不递归删除未知内容；清理异常仍释放锁。已有操作目录（包括中断遗留目录）拒绝覆盖，不自动恢复执行、更新证据或接管。暂存不是安装事务，租约不持久化为安装许可，也不代表安装所有权或允许跨重启执行。
+
+验证：Tailscale 专项 **555 项通过**，新增暂存 26 项。覆盖 Windows 文件读锁拒绝写入、跨实例等待／取消、持锁期间不重复解析、显式／重复释放、销毁后拒绝复用、原目录保留、检查失败／晚到结果清理、未知内容保留、清理失败后释放锁、损坏锁路径及非法选择器拒绝。真实 Windows ACL 检查拒绝了测试自建 Everyone 可写目录，且未调用源解析。下载／签名使用替身，不能据此声称生产 Program Files 目录正向权限或官方实包已在完整暂存流程中验收；前一阶段真实包证据保持原范围。
+
+Server 与 Helper 构建通过，既有警告保留。日志为 `.tmp/tailscale-msi-staging-build.log`、`.tmp/tailscale-msi-staging-tests.log`、`.tmp/tailscale-msi-staging-helper-build.log`。没有新增 IPC／HTTP 安装入口，没有安装或控制真实 Tailscale。MR-11 继续跟踪生产暂存正向权限与实包串联验收、来源信任修订、所有权／升级集合、原事务回执及完整安装／多版本更新／修复／回滚／卸载／恢复；Android 设备验收仍待完成。
+
+## Windows 保护目录 ACL 缺口修复（2026-10-29）
+
+修复通用于控制证据、CLI 路径和 MSI 暂存的 Windows 权限判断：此前只检查目标 ACL，祖先仅检查 reparse 标志；现在逐层核对受信任所有者及 ACL，拒绝普通身份删除／替换祖先、删除子项、更改权限／所有者以及 GENERIC_WRITE／ALL。目标对象继续拒绝普通身份的写权限；祖先仅允许创建其他同级项的权限不被误判为可替换已有受保护路径。InheritOnly ACE 不作用于当前对象，未知 ACE 形状明确拒绝，不把条件 allow 自动当成无效权限。
+
+原实现枚举 allow 规则，未识别没有 DACL／NULL DACL 的放行语义；现直接解析原始安全描述符，明确拒绝缺失或 NULL DACL，并与真正不授予访问的空 DACL 区分。依据见 [Microsoft NULL 与空 DACL 规则](https://learn.microsoft.com/en-us/windows/win32/secauthz/null-dacls-and-empty-dacls)。新建 Windows 控制根目录也改为创建时附带受限安全描述符，不再先继承宽松权限后调用 SetAccessControl。
+
+专项 **576 项通过**，新增 Windows ACL 21 项，覆盖 NULL／缺失／空 DACL、非受信任所有者、祖先删除／删除子项／权限更改／所有权／generic 写权限、仅继承项及同级创建权限差异。本机 C:\Program Files 与其完整祖先链通过生产 Require 的只读检查，证据为 `.tmp/tailscale-protection-probe.json`，没有写入该目录。该探针不证明新建私有根目录、其持久化或完整 MSI 暂存串联的正向权限已验收。
+
+Server／Helper 构建通过，保留既有 1／9 项警告；日志为 `.tmp/tailscale-protection-build.log`、`.tmp/tailscale-protection-tests.log`、`.tmp/tailscale-protection-helper-build.log`。未安装或控制真实 Tailscale，安装所有权、来源信任、事务及移动设备验收仍待完成，MR-11 保持实施中。
+
+## Windows Installer 注册观察（2026-10-29）
+
+Helper 新增内部只读注册观察，使用 MsiEnumProductsEx 的 Everyone／ALL 范围覆盖机器和其他账户上下文，不降级为当前账户枚举。按枚举取得的 productCode／用户 SID／上下文读取对应实例；已安装项查询 InstalledProductName、VersionString、Publisher，advertised 项读取 ProductName 并明确保留 advertised 状态，不把缺少已安装属性当作未安装。仅记录名称为 Tailscale 的注册项，发布者和版本字符串只是注册观察，不是制品验证或所有权证明。用户 SID 不进入输出产品记录，实例的 JSON 与 ToString 也不暴露 SID。
+
+全部枚举至多 512 个产品，文本／SID 长度分别限制 512／256 字符，并使用十秒协作检查预算和取消门禁。访问拒绝有专门安全问题码；其他枚举／属性错误、超限、重复实例、无效 GUID／上下文／SID 形状、控制字符或晚到结果均拒绝，不返回部分列表冒充完整观察。不访问缓存 MSI 路径，不调用配置、修复、安装或卸载 API。
+
+依据见 [Microsoft MSI 注册枚举](https://learn.microsoft.com/en-us/windows/win32/api/msi/nf-msi-msienumproductsexw) 与 [实例属性读取](https://learn.microsoft.com/en-us/windows/win32/api/msi/nf-msi-msigetproductinfoexw)。Windows Installer 的 managed 上下文不等于 RelaxKonOS 拥有该安装；空列表仅表示这次完整枚举未匹配注册名称，不能证明 CLI／服务／其他布局不存在。后续必须组合受保护安装台账、固定文件与 SCM 观察、原操作回执和当前修订，才能决定安装或变更准入，外部实例不得被接管。
+
+专项 **598 项通过**，新增注册观察 22 项；覆盖机器／其他账户并存、advertised 差异、SID 隐私、无效或重复身份、枚举与属性失败、文本与产品数量边界、取消及晚到响应。Server／Helper 构建通过，既有警告保留。本机真实只读探针明确返回 component.tailscale_inventory_access_denied（当前进程非管理员令牌），没有报告未安装或取得所有权，也没有写入文件；此证据只覆盖原生访问拒绝路径，完整特权枚举仍待验收。
+
+日志为 `.tmp/tailscale-inventory-build.log`、`.tmp/tailscale-inventory-tests.log`、`.tmp/tailscale-inventory-helper-build.log`，探针输出为 `.tmp/tailscale-inventory-probe.json`。未注册 IPC／HTTP 生命周期入口，未执行真实安装／更新／修复／回滚／卸载；MR-11 与 Android 设备验收保持未完成。
