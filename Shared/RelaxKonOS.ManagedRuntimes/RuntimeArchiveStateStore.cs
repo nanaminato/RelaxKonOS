@@ -3,7 +3,7 @@ using RelaxKonOS.Protocol.ManagedRuntimes;
 namespace RelaxKonOS.ManagedRuntimes;
 
 /// <summary>One protected per-instance state file is also the atomic active pointer. All mutations share its lock.</summary>
-public sealed class RuntimeArchiveStateStore(string directory, Action<string> protectDirectory)
+public sealed partial class RuntimeArchiveStateStore(string directory, Action<string> protectDirectory)
 {
     private const int MaximumBytes = 32 * 1024 * 1024;
     private string StatePath => Path.Combine(directory, "archive-state.json");
@@ -217,6 +217,8 @@ public sealed class RuntimeArchiveStateStore(string directory, Action<string> pr
                 || state.Installation.Target != previous.Installation.Target
                 || state.Installation.StateRevision != checked(previous.Installation.StateRevision + 1)))
                 throw new RuntimePolicyException("runtime.state_revision_conflict");
+            Validate(state);
+            store.PersistCommittedWitness(State, state);
             store.WriteCore(state);
             State = state;
         }

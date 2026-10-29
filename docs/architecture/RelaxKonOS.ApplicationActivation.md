@@ -24,9 +24,10 @@ relaxkonos://settings/personalization
 relaxkonos://settings/apps
 relaxkonos://settings/apps/{appId}/permissions
 relaxkonos://file/open?appId={appId}&path={encodedPath}
+relaxkonos://components/{componentId}?hostId={serverIdentity}&appId={associatedAppId}
 ```
 
-最后一条仅允许 `relaxkonos.explorer` 作为来源，以兼容现有内置文件打开模型；外置包不能用它
+文件打开路线允许 Shell、`relaxkonos.explorer` 和 `relaxkonos.ssh-files` 作为来源；外置包不能用它
 传递宿主路径，而应使用其受限的文件 capability。调用方应使用
 `RelaxKonOSActivationUris`，不能手工拼接字符串。
 
@@ -52,9 +53,15 @@ scheme 且 `CanHandleActivation` 返回真时才投递。若设置了该 scheme 
 第三方 handler 仅接收 host 已验证后的 URI 与受限 `IExternalAppContext`，不能获得另一个应用或
 宿主的实现对象。应用自身必须继续验证它所拥有的 authority、路径与 query 参数。
 
+组件路线由编译期组件目录检查路径和关联应用，可携带已登记的 `workloadId`。它只定位组件，不执行安装、提交计划或授权；宿主绑定和完整交互见[组件中心](../platform/RelaxKonOS.ComponentCenter.Design.md)。
+
 ## 3. 同 URI 与窗口策略
 
-`ApplicationManifest.InstancePolicy` 定义逻辑主窗口的复用行为：
+Host 可注册 `IApplicationLaunchGuard` 在窗口创建和复用前异步检查当前依赖。此门槛同时用于普通启动、URI、文件打开、文本回退及终端入口；拒绝和查询失败都不会执行后续激活。检查期间返回 `AvailabilityCheckPending`，`Succeeded` 为假，`IsAccepted` 为真；调用方不应将已受理误报为无法打开，也不能将其描述为窗口已经打开。多个 URI 处理程序的选择期间同样是已受理，状态为 `HandlerSelectionRequired`。
+
+同一应用检查期间的重复请求共用检查并保留最后一次导航。批准后仍复核应用注册身份和兼容性，再执行窗口策略；客户端检查器还必须在返回前核对会话和服务器身份。没有组件依赖的应用不人为增加安装状态。第一批依赖检查与验收跟踪见组件中心 CC-01。
+
+`ApplicationManifest.InstancePolicy` 定义通过依赖检查后的逻辑主窗口复用行为：
 
 | 策略 | 同一 URI/重复启动行为 |
 | --- | --- |

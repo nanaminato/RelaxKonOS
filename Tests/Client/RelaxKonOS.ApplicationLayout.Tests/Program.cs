@@ -61,7 +61,7 @@ if (args.Contains("--task-manager-only"))
 }
 if (args.Contains("--registry-only"))
 {
-    var checks = RegistryChecks.RunAsync();
+    var checks = RegistryChecks.RunAsync(settings);
     var deadline = DateTime.UtcNow.AddSeconds(15);
     while (!checks.IsCompleted && DateTime.UtcNow < deadline)
     {
@@ -76,6 +76,20 @@ if (args.Contains("--registry-only"))
 if (args.Contains("--browser-only"))
 {
     BrowserChecks.Run(host, settings, appearance, output);
+    host.Close();
+    return;
+}
+if (args.Contains("--modules-only"))
+{
+    var checks = ServerModuleCatalogChecks.RunAsync(settings);
+    var deadline = DateTime.UtcNow.AddSeconds(15);
+    while (!checks.IsCompleted && DateTime.UtcNow < deadline)
+    {
+        Dispatcher.UIThread.RunJobs();
+        Thread.Sleep(5);
+    }
+    if (!checks.IsCompleted) throw new TimeoutException("Module catalog checks did not finish.");
+    checks.GetAwaiter().GetResult();
     host.Close();
     return;
 }
@@ -316,20 +330,22 @@ foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
         bitmap.Save(Path.Combine(output, "Tunnels-compact.png"), PngBitmapEncoderOptions.Default);
     }
     cases++;
-    var installation = new RelaxKonOS.Client.Services.Installation.InstallationTaskViewModel(null!, null!, RelaxKonOS.Protocol.Installations.InstallationServiceId.Frp, "layout.test", () => Task.CompletedTask, () => Task.FromResult<string?>(null));
-    var wrapper = RelaxKonOS.Client.Services.Installation.InstallationPanel.Wrap(new Border(), installation);
-    host.Content = wrapper; Dispatcher.UIThread.RunJobs();
-    installation.ConnectionText = "";
-    installation.Operation = new RelaxKonOS.Protocol.Installations.InstallationOperationDto(Guid.NewGuid(), RelaxKonOS.Protocol.Installations.InstallationServiceId.Frp, RelaxKonOS.Protocol.Installations.InstallationOperationKind.Install, RelaxKonOS.Protocol.Installations.InstallationOperationState.Running, RelaxKonOS.Protocol.Installations.InstallationStage.Installing, 35, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, true);
-    Dispatcher.UIThread.RunJobs();
-    var installationLog = wrapper.GetVisualDescendants().OfType<TextBox>().Single();
-    var installationPanel = (Control)((DockPanel)wrapper).Children[0];
-    Check(installationPanel.Bounds.Height <= 38 && !installationLog.IsEffectivelyVisible, "Shared installation feedback is compact by default.");
-    var installationToggle = wrapper.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().Single();
-    installationToggle.IsChecked = true; Dispatcher.UIThread.RunJobs();
-    Check(installationLog.IsEffectivelyVisible && installationLog.Text!.Contains("35%"), "Installation output includes observed stage progress.");
-    installationToggle.IsChecked = false; Dispatcher.UIThread.RunJobs();
-    Check(installation.IsActive && installationPanel.Bounds.Height <= 38, "Hiding installation output does not cancel installation.");
+    // Applications no longer own an installation panel: the shared, observation-only dependency area
+    // is the one component surface they keep, so the compact layout check follows that control.
+    using (var dependency = new RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsViewModel(
+        "relaxkonos.tunnels", null, null, null!, _ => { }))
+    {
+        var dependencyView = new RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsView { DataContext = dependency };
+        host.Content = dependencyView; Dispatcher.UIThread.RunJobs();
+        var manageLabel = RelaxKonOS.Client.Localization.LocalizedText.Get("component_center.manage_dependency");
+        var manageButtons = dependencyView.GetVisualDescendants().OfType<Button>()
+            .Where(button => button.Content?.ToString() == manageLabel).ToList();
+        Check(manageButtons.Count == 2, "The shared dependency area offers one Component Center entry per declared component.");
+        Check(dependencyView.GetVisualDescendants().OfType<TextBlock>().Any(text =>
+                text.Text == RelaxKonOS.Client.Localization.LocalizedText.Get("component_center.dependency.title")),
+            "The dependency area names itself instead of reusing an application installation banner.");
+        Check(dependencyView.Bounds.Width <= host.Width, "The dependency area fits the application width without horizontal scrolling.");
+    }
     cases++;
 }
 BrowserChecks.Run(host, settings, appearance, output);

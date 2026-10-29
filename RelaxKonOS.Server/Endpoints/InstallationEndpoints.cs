@@ -17,72 +17,70 @@ public static class InstallationEndpoints
     {
         var group = app.MapGroup(InstallationApiRoutes.Root).RequireAuthorization().WithTags("Installations").RequireHostFeature(ServerHostFeature.AgentInstallation);
         group.MapPost(InstallationApiRoutes.StartPattern, (string service, string kind, JsonElement request,
-            HttpContext http, InstallationCoordinator coordinator, IHostElevationSessionStore elevations) => Handle(() =>
+            HttpContext http, InstallationCoordinator coordinator, IHostElevationSessionStore elevations) =>
         {
             if (!TryEnum(service, out InstallationServiceId id) || !TryEnum(kind, out InstallationOperationKind operationKind))
-                return Problem(InstallationProblemCodes.InvalidRequest, 400);
-            if (!CanInstall(http.User, id)) return Problem("installation.permission_denied", 403);
-            if (!elevations.IsGranted(http.User, Capability(id), Target(id))) return Problem("elevation-required", 403);
+                return ProblemMapping.Create(InstallationProblemCodes.InvalidRequest, 400);
+            if (!CanInstall(http.User, id)) return ProblemMapping.Create("installation.permission_denied", 403);
+            if (!elevations.IsGranted(http.User, Capability(id), Target(id))) return ProblemMapping.Create("elevation-required", 403);
             var operation = coordinator.Start(id, operationKind, request, Actor(http.User), http.Request.Headers["Idempotency-Key"].ToString());
             return Results.Accepted(InstallationApiRoutes.Operation(operation.OperationId), operation);
-        }));
+        });
         group.MapPost(InstallationApiRoutes.FileReferencePattern, (string service, CreateInstallationFileReferenceRequest request,
-            HttpContext http, InstallationFileReferenceStore references) => Handle(() =>
+            HttpContext http, InstallationFileReferenceStore references) =>
         {
             if (!TryEnum(service, out InstallationServiceId id) || !CanInstall(http.User, id))
-                return Problem("installation.permission_denied", 403);
+                return ProblemMapping.Create("installation.permission_denied", 403);
             return Results.Ok(references.Create(id, Actor(http.User), request.Path));
-        }));
+        });
         group.MapPost(InstallationApiRoutes.PackagePattern, async (string service, HttpContext http,
             InstallationFileReferenceStore references) =>
         {
             if (!TryEnum(service, out InstallationServiceId id) || !CanInstall(http.User, id))
-                return Problem("installation.permission_denied", 403);
+                return ProblemMapping.Create("installation.permission_denied", 403);
             if (!http.Request.HasFormContentType)
-                return Problem(InstallationProblemCodes.FileReferenceUnavailable, 400);
+                return ProblemMapping.Create(InstallationProblemCodes.FileReferenceUnavailable, 400);
             var maximumRequestBytes = InstallationFileReferenceStore.MaximumUploadedPackageBytes + 65536;
             if (http.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
                 limit.MaxRequestBodySize = maximumRequestBytes;
             if (http.Request.ContentLength > maximumRequestBytes || !MediaTypeHeaderValue.TryParse(http.Request.ContentType, out var mediaType))
-                return Problem(InstallationProblemCodes.FileReferenceUnavailable, 400);
+                return ProblemMapping.Create(InstallationProblemCodes.FileReferenceUnavailable, 400);
             var boundary = HeaderUtilities.RemoveQuotes(mediaType.Boundary).Value;
             if (string.IsNullOrEmpty(boundary) || boundary.Length > 128)
-                return Problem(InstallationProblemCodes.FileReferenceUnavailable, 400);
+                return ProblemMapping.Create(InstallationProblemCodes.FileReferenceUnavailable, 400);
             try
             {
                 var reader = new MultipartReader(boundary, http.Request.Body);
                 var section = await reader.ReadNextSectionAsync(http.RequestAborted);
                 if (section is null || !ContentDispositionHeaderValue.TryParse(section.ContentDisposition, out var disposition)
                     || HeaderUtilities.RemoveQuotes(disposition.Name).Value != "package")
-                    return Problem(InstallationProblemCodes.FileReferenceUnavailable, 400);
+                    return ProblemMapping.Create(InstallationProblemCodes.FileReferenceUnavailable, 400);
                 var fileName = HeaderUtilities.RemoveQuotes(disposition.FileNameStar.HasValue ? disposition.FileNameStar : disposition.FileName).Value;
                 if (string.IsNullOrWhiteSpace(fileName))
-                    return Problem(InstallationProblemCodes.FileReferenceUnavailable, 400);
+                    return ProblemMapping.Create(InstallationProblemCodes.FileReferenceUnavailable, 400);
                 return Results.Ok(await references.StageUploadAsync(id, Actor(http.User), fileName, section.Body,
                     declaredLength: null, cancellationToken: http.RequestAborted));
             }
-            catch (InstallationException error) { return Problem(error.ProblemCode, error.StatusCode); }
-            catch (InvalidDataException) { return Problem(InstallationProblemCodes.FileReferenceUnavailable, 400); }
+            catch (InvalidDataException) { return ProblemMapping.Create(InstallationProblemCodes.FileReferenceUnavailable, 400); }
         });
-        group.MapGet(InstallationApiRoutes.ActivePattern, (string service, HttpContext http, InstallationCoordinator coordinator) => Handle(() =>
+        group.MapGet(InstallationApiRoutes.ActivePattern, (string service, HttpContext http, InstallationCoordinator coordinator) =>
         {
-            if (!TryEnum(service, out InstallationServiceId id)) return Problem(InstallationProblemCodes.InvalidRequest, 400);
+            if (!TryEnum(service, out InstallationServiceId id)) return ProblemMapping.Create(InstallationProblemCodes.InvalidRequest, 400);
             var entry = coordinator.GetActive(id, Actor(http.User), CanInstall(http.User, id));
             return entry is null ? Results.NotFound() : Results.Ok(entry.Operation);
-        }));
-        group.MapGet(InstallationApiRoutes.OperationPattern, (Guid operationId, HttpContext http, InstallationCoordinator coordinator) => Handle(() =>
+        });
+        group.MapGet(InstallationApiRoutes.OperationPattern, (Guid operationId, HttpContext http, InstallationCoordinator coordinator) =>
         {
             var entry = coordinator.Get(operationId);
             return entry is null || !CanObserve(http.User, entry) ? Results.NotFound() : Results.Ok(entry.Operation);
-        }));
+        });
         group.MapPost(InstallationApiRoutes.CancelPattern, async (Guid operationId, HttpContext http, InstallationCoordinator coordinator) =>
         {
             var key = http.Request.Headers["Idempotency-Key"].ToString();
-            if (string.IsNullOrWhiteSpace(key) || key.Length > 128) return Problem(InstallationProblemCodes.IdempotencyRequired, 400);
+            if (string.IsNullOrWhiteSpace(key) || key.Length > 128) return ProblemMapping.Create(InstallationProblemCodes.IdempotencyRequired, 400);
             var entry = coordinator.Get(operationId);
             if (entry is null || !CanObserve(http.User, entry)) return Results.NotFound();
-            try { return Results.Ok(await coordinator.CancelAsync(operationId, http.RequestAborted)); }
-            catch (InstallationException error) { return Problem(error.ProblemCode, error.StatusCode); }
+            return Results.Ok(await coordinator.CancelAsync(operationId, http.RequestAborted));
         });
         return app;
     }
@@ -105,14 +103,8 @@ public static class InstallationEndpoints
         InstallationServiceId.Mihomo => HostElevationCapability.MihomoInstall,
         InstallationServiceId.SingBox => HostElevationCapability.SingBoxInstall,
         InstallationServiceId.Docker => HostElevationCapability.DockerInstall,
+        InstallationServiceId.Squid => HostElevationCapability.ProxyServiceAction,
         InstallationServiceId.Git => HostElevationCapability.GitPackageInstall,
         _ => throw new ArgumentOutOfRangeException(nameof(service))
     };
-    private static IResult Handle(Func<IResult> action)
-    {
-        try { return action(); }
-        catch (InstallationException error) { return Problem(error.ProblemCode, error.StatusCode); }
-    }
-    private static IResult Problem(string code, int status) => Results.Problem(statusCode: status, title: code,
-        type: "https://relaxkonos.app/problems/" + code, extensions: new Dictionary<string, object?> { ["problemCode"] = code });
 }

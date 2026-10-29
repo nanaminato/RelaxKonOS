@@ -96,6 +96,6 @@ internal static class FileReadElevationChecks
     private sealed class Administrator : IHostAdministratorAuthenticator
     {
         public HostAdministratorAuthenticationResult Authenticate(string currentUsername, string? administratorUsername, string? password)
-            => new(password == "password", "elevation-password-invalid", "system");
+            => new(password == "password", "elevation-password-invalid", "system", password == "password" ? "fixture:administrator" : null);
     }
 }

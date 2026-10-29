@@ -4,6 +4,7 @@
         "code_editor.find": "Find in document (Ctrl+F)",
         "code_editor.settings.title": "Code Editor settings",
         "code_editor.settings.font_size": "Editor font size",
+        "code_editor.settings.word_wrap": "Wrap long lines",
         "code_editor.settings.default_encoding": "Default encoding",
         "code_editor.settings.syntax_note": "Syntax highlighting is selected automatically from the remote file extension.",
         "code_editor.encoding.reopen_with": "Reopen with Encoding",

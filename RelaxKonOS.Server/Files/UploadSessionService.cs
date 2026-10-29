@@ -59,18 +59,18 @@ public sealed class UploadSessionService(
         var identityKey = IdentityKey(user);
         if (string.IsNullOrWhiteSpace(idempotencyKey) || idempotencyKey.Length > 128)
             throw new UploadSessionException(FileUploadProblemCodes.IdempotencyRequired, 400,
-                "创建上传会话必须携带 1–128 字符的 Idempotency-Key。");
+                "Creating an upload session requires an Idempotency-Key of 1–128 characters.");
 
         if (!FileUploadNamePolicy.IsValidFileName(request.FileName))
             throw new UploadSessionException(FileUploadProblemCodes.InvalidFileName, 400,
-                $"文件名必须是单一成分: {FileUploadNamePolicy.DescribeForLog(request.FileName)}");
+                $"The file name must be a single path segment: {FileUploadNamePolicy.DescribeForLog(request.FileName)}");
         if (string.IsNullOrWhiteSpace(request.TargetDirectoryPath) || !Path.IsPathFullyQualified(request.TargetDirectoryPath))
-            throw new UploadSessionException("invalid-path", 400, "目标目录必须是绝对路径。");
+            throw new UploadSessionException("invalid-path", 400, "The target directory must be an absolute path.");
         if (request.Length < 0)
-            throw new UploadSessionException("invalid-input", 400, "文件长度不能为负。");
+            throw new UploadSessionException("invalid-input", 400, "The file length cannot be negative.");
         if (request.Length > options.MaximumFileLengthBytes)
             throw new UploadSessionException("invalid-input", 400,
-                $"文件长度超出服务端上限 {options.MaximumFileLengthBytes} 字节。");
+                $"File length exceeds the server limit of {options.MaximumFileLengthBytes} bytes.");
 
         // The key check, quota check, and insertion are one operation. Two concurrent retries of the
         // same POST must not open two staging files before either request reaches the index.
@@ -91,13 +91,13 @@ public sealed class UploadSessionService(
                 // records must not make a fresh attempt resume a session that GET would reject with 410.
                 if (!await AbandonAsync(existing, cancellationToken))
                     throw new UploadSessionException("cleanup-unavailable", 503,
-                        "过期上传会话的暂存文件暂时无法清理，请稍后重试。");
+                        "Staging files of expired upload sessions cannot be cleaned up right now; try again later.");
             }
             else
             {
                 if (!string.Equals(existing.IdempotencyDigest, digest, StringComparison.Ordinal))
                     throw new UploadSessionException(FileUploadProblemCodes.IdempotencyConflict, 409,
-                        "Idempotency-Key 已用于内容不同的请求。");
+                        "That Idempotency-Key was already used for a request with different content.");
                 // The retry gets the same session back, so a lost response never leaks a staging file and a
                 // client can simply continue from the offset reported here.
                 return ToDto(existing);
@@ -106,7 +106,7 @@ public sealed class UploadSessionService(
 
         if (store.CountFor(identityKey) >= options.MaximumSessionsPerIdentity || store.Count >= options.MaximumSessions)
             throw new UploadSessionException(FileUploadProblemCodes.TooManyUploads, 429,
-                "未完成的上传会话过多，请等待现有上传结束或放弃其中一些。");
+                "Too many unfinished upload sessions; wait for one to finish or abandon some.");
 
         EnsureStagingVolumeHasRoom(request.TargetDirectoryPath, request.Length);
 
@@ -178,18 +178,18 @@ public sealed class UploadSessionService(
         var session = RequireLive(user, sessionId);
         if (contentLength is null)
             throw new UploadSessionException(FileUploadProblemCodes.LengthRequired, 411,
-                "分片必须声明 Content-Length：偏移算术要求正文长度已知。");
+                "Chunks must declare Content-Length; offset arithmetic needs a known body length.");
         if (contentLength.Value > session.ChunkSize)
             throw new UploadSessionException(FileUploadProblemCodes.ChunkTooLarge, 413,
-                $"单个分片不得超过 {session.ChunkSize} 字节。")
+                $"A single chunk must not exceed {session.ChunkSize} bytes.")
             { AuthoritativeOffset = session.Offset };
         if (offset is null || offset.Value != session.Offset)
             throw new UploadSessionException(FileUploadProblemCodes.OffsetMismatch, 409,
-                $"Upload-Offset 与服务端不一致，服务端当前为 {session.Offset}。")
+                $"Upload-Offset does not match the server offset ({session.Offset}).")
             { AuthoritativeOffset = session.Offset };
         if (offset.Value + contentLength.Value > session.Length)
             throw new UploadSessionException(FileUploadProblemCodes.LengthExceeded, 409,
-                "本次分片会超过会话声明的长度，数据已丢弃。")
+                "This chunk would exceed the declared session length; the data was discarded.")
             { AuthoritativeOffset = session.Offset };
 
         // A session-level latch, not just an offset comparison: two chunks racing on the same offset would
@@ -197,7 +197,7 @@ public sealed class UploadSessionService(
         var gate = concurrency.SessionGates.GetOrAdd(sessionId, _ => new SemaphoreSlim(1, 1));
         if (!await gate.WaitAsync(TimeSpan.Zero, cancellationToken))
             throw new UploadSessionException(FileUploadProblemCodes.ConcurrentChunk, 409,
-                "同一会话已有分片正在写入。")
+                "Another chunk is already being written to this session.")
             { AuthoritativeOffset = session.Offset };
 
         try
@@ -207,7 +207,7 @@ public sealed class UploadSessionService(
             var current = RequireLive(user, sessionId);
             if (offset.Value != current.Offset)
                 throw new UploadSessionException(FileUploadProblemCodes.OffsetMismatch, 409,
-                    $"Upload-Offset 与服务端不一致，服务端当前为 {current.Offset}。")
+                    $"Upload-Offset does not match the server offset ({current.Offset}).")
                 { AuthoritativeOffset = current.Offset };
             long newOffset;
             if (session.Elevated)
@@ -222,7 +222,7 @@ public sealed class UploadSessionService(
                     // HTTP request cannot produce this state; it is a guard, not a path.
                     await AbandonAsync(session, cancellationToken);
                     throw new UploadSessionException(FileUploadProblemCodes.SessionNotFound, 404,
-                        "暂存文件与服务端记录不一致，会话已作废，请重新开始。");
+                        "The staging file no longer matches the server record; the session was discarded. Start again.");
                 }
                 newOffset = appended;
             }
@@ -236,13 +236,13 @@ public sealed class UploadSessionService(
                 {
                     await AbandonAsync(session, cancellationToken);
                     throw new UploadSessionException(FileUploadProblemCodes.SessionNotFound, 404,
-                        "暂存文件已不存在，会话已作废，请重新开始。");
+                        "The staging file no longer exists; the session was discarded. Start again.");
                 }
                 catch (DirectoryNotFoundException)
                 {
                     await AbandonAsync(session, cancellationToken);
                     throw new UploadSessionException(FileUploadProblemCodes.SessionNotFound, 404,
-                        "目标目录已不存在，会话已作废，请重新开始。");
+                        "The target directory no longer exists; the session was discarded. Start again.");
                 }
             }
 
@@ -263,7 +263,7 @@ public sealed class UploadSessionService(
         var session = RequireLive(user, sessionId);
         if (session.Offset != session.Length)
             throw new UploadSessionException(FileUploadProblemCodes.Incomplete, 409,
-                $"会话仅收到 {session.Offset}/{session.Length} 字节。")
+                $"The session has received only {session.Offset}/{session.Length} bytes.")
             { AuthoritativeOffset = session.Offset };
 
         var source = session.Elevated ? RequireSessionAuthorization(user, session) : (PrivilegedFileAuthorizationSource?)null;
@@ -408,16 +408,16 @@ public sealed class UploadSessionService(
         }
         if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
             throw new UploadSessionException(FileUploadProblemCodes.HashMismatch, 409,
-                "声明的内容哈希与实收字节不符，目标文件未被替换。");
+                "The declared content hash does not match the received bytes; the target file was not replaced.");
     }
 
     private UploadSessionRecord RequireLive(ClaimsPrincipal user, string sessionId)
     {
         if (!store.TryGet(sessionId, out var session) || !OwnedBy(session, user))
             // Not found and not yours answer the same thing, so a session id cannot be probed for existence.
-            throw new UploadSessionException(FileUploadProblemCodes.SessionNotFound, 404, "上传会话不存在或不属于当前身份。");
+            throw new UploadSessionException(FileUploadProblemCodes.SessionNotFound, 404, "The upload session does not exist or belongs to another identity.");
         if (session.IsExpired(options, DateTimeOffset.UtcNow))
-            throw new UploadSessionException(FileUploadProblemCodes.SessionExpired, 410, "上传会话已过期，请重新开始。");
+            throw new UploadSessionException(FileUploadProblemCodes.SessionExpired, 410, "The upload session expired; start again.");
         return session;
     }
 
@@ -430,7 +430,7 @@ public sealed class UploadSessionService(
         {
             return authorizations.Authorize(user, FileElevationCapability.Upload, target)
                 ?? throw new UploadSessionException(FileUploadProblemCodes.ElevationRequired, 403,
-                    "目标目录需要管理员授权才能写入。");
+                    "Writing to the target directory needs administrator authorization.");
         }
         catch (InvalidOperationException ex)
         { throw new UploadSessionException("privileged-helper-unavailable", 503, ex.Message); }
@@ -454,7 +454,7 @@ public sealed class UploadSessionService(
         var source = RequireAuthorization(user, session.TargetDirectoryPath);
         if (source != session.AuthorizationSource)
             throw new UploadSessionException(FileUploadProblemCodes.ElevationRequired, 403,
-                "上传会话的管理员授权已失效，请重新认证。");
+                "The administrator authorization for this upload session expired; authenticate again.");
         return source;
     }
 
@@ -486,7 +486,7 @@ public sealed class UploadSessionService(
         }
         if (available.Value < length + options.StagingVolumeReserveBytes)
             throw new UploadSessionException(FileUploadProblemCodes.InsufficientStorage, 507,
-                "暂存卷可用空间不足（含保留量），已拒绝创建上传会话。");
+                "The staging volume does not have enough free space (including its reserve); the upload session was refused.");
     }
 
     private static long? AvailableFreeSpace(string directory)

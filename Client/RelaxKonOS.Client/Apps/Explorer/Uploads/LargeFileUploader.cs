@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Files;
 
 namespace RelaxKonOS.Client.Apps.Explorer.Uploads;
@@ -69,9 +70,9 @@ public sealed class LargeFileUploader(
         Action<LargeFileUploadProgress>? progress, CancellationToken ct = default)
     {
         if (!File.Exists(request.SourcePath))
-            throw new FileNotFoundException($"本地文件不存在: {request.SourcePath}", request.SourcePath);
+            throw new FileNotFoundException(LocalizedText.Format("explorer.upload.problem.local_file_missing", request.SourcePath), request.SourcePath);
         if (!FileUploadNamePolicyBridge.IsSingleComponent(request.FileName))
-            throw new ArgumentException($"文件名必须是单一成分: {request.FileName}", nameof(request));
+            throw new ArgumentException(LocalizedText.Format("explorer.upload.problem.invalid_file_name", request.FileName), nameof(request));
 
         var key = serverKey();
         UploadSessionDto session;
@@ -105,7 +106,7 @@ public sealed class LargeFileUploader(
             if (source.Length != request.Length)
             {
                 await AbandonAsync(uploadId);
-                throw new IOException("本地文件在上传期间发生变化，已放弃该会话。");
+                throw new IOException(LocalizedText.Get("explorer.upload.problem.local_file_changed"));
             }
 
             Record(key, request, uploadId);
@@ -128,7 +129,7 @@ public sealed class LargeFileUploader(
                         ?? (await channel.GetSessionAsync(uploadId, ct)).Offset;
                     confirmed = authoritative;
                     if (authoritative >= request.Length)
-                        throw new IOException("服务端长度与本地不一致，已保留会话；请重试以重新核对。");
+                        throw new IOException(LocalizedText.Get("explorer.upload.problem.server_length_mismatch"));
                     await PumpAsync();
                 }
                 catch (UploadChannelException exception) when (exception.IsElevationRequired)
@@ -136,7 +137,7 @@ public sealed class LargeFileUploader(
                     // The directory refused a write that succeeded at create time. Authorization is asked for
                     // once more here; a session that was created directly normally never reaches this branch.
                     if (!await requestElevation([request.TargetDirectoryPath], FileElevationCapability.Upload))
-                        throw new UnauthorizedAccessException("目标目录需要管理员授权。");
+                        throw new UnauthorizedAccessException(LocalizedText.Get("explorer.upload.problem.elevation_required"));
                 }
             }
         }
@@ -159,7 +160,7 @@ public sealed class LargeFileUploader(
                 {
                     var newOffset = await SendChunkAsync(uploadId, source, confirmed, length, progress, ct);
                     if (newOffset <= confirmed)
-                        throw new UploadChannelException(null, null, null, isTransport: true, "服务端未确认任何新字节。");
+                        throw new UploadChannelException(null, null, null, isTransport: true, LocalizedText.Get("explorer.upload.problem.server_confirmed_nothing"));
                     confirmed = newOffset;
                     failures = 0;
                     var ceiling = CeilingOf(session);
@@ -180,7 +181,7 @@ public sealed class LargeFileUploader(
                 catch (UploadChannelException exception) when (exception.IsUnauthorized)
                 {
                     if (!await channel.RefreshSessionAsync(ct))
-                        throw new UnauthorizedAccessException("登录状态已失效，请重新登录后重试。");
+                        throw new UnauthorizedAccessException(LocalizedText.Get("explorer.upload.problem.session_expired"));
                     confirmed = await ResynchroniseAsync(uploadId, exception.AuthoritativeOffset, progress, ct);
                 }
                 catch (UploadChannelException exception) when (exception.CanContinue)
@@ -199,7 +200,7 @@ public sealed class LargeFileUploader(
                     {
                         if (++failures >= MaximumTransportFailures)
                             throw new IOException(
-                                $"上传失败（服务端连续 {failures} 次未确认新字节），会话已保留，可稍后继续。", exception);
+                                LocalizedText.Format("explorer.upload.problem.retry_exhausted_consecutive", failures), exception);
                         await DelayAsync(failures, ct);
                     }
                 }
@@ -209,7 +210,7 @@ public sealed class LargeFileUploader(
                     if (ct.IsCancellationRequested) throw;
                     if (++failures >= MaximumTransportFailures)
                         // Keep the session and the journal entry: the user's retry continues from here.
-                        throw new IOException($"上传失败（已重试 {failures} 次），会话已保留，可稍后继续。", exception);
+                        throw new IOException(LocalizedText.Format("explorer.upload.problem.retry_exhausted", failures), exception);
                     await DelayAsync(failures, ct);
                     chunkSize = Math.Max(floor, chunkSize / 2);
                     confirmed = await ResynchroniseAsync(uploadId, null, progress, ct);
@@ -242,7 +243,7 @@ public sealed class LargeFileUploader(
                 // Cannot confirm the remembered session right now (offline, server restarting). Opening a
                 // second session for the same file would leak a staging file and split the transfer, so the
                 // failure is reported and the entry is kept for the next attempt.
-                throw new IOException("无法确认上次的上传进度，请检查网络后重试。", exception);
+                throw new IOException(LocalizedText.Get("explorer.upload.problem.progress_unknown"), exception);
             }
         }
 
@@ -264,7 +265,7 @@ public sealed class LargeFileUploader(
             // Elevation is settled once, here. The session then carries the decision, so no chunk can be
             // refused mid-transfer and no dialog appears after forty minutes of uploading.
             if (!await requestElevation([request.TargetDirectoryPath], FileElevationCapability.Upload))
-                throw new UnauthorizedAccessException("目标目录需要管理员授权。");
+                throw new UnauthorizedAccessException(LocalizedText.Get("explorer.upload.problem.elevation_required"));
             return await channel.CreateSessionAsync(body, idempotencyKey, ct);
         }
     }
@@ -291,7 +292,7 @@ public sealed class LargeFileUploader(
         {
             // The watchdog fired: the connection is half-dead and would otherwise hang forever, because the
             // upload client deliberately has no whole-request timeout.
-            throw new UploadChannelException(null, null, null, isTransport: true, "分片长时间无进展，已中止并重试。");
+            throw new UploadChannelException(null, null, null, isTransport: true, LocalizedText.Get("explorer.upload.problem.chunk_stalled"));
         }
     }
 

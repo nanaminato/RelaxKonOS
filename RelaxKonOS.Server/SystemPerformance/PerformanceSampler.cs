@@ -114,7 +114,7 @@ public sealed class PerformanceSampler(
         catch
         {
             // 不向 API 暴露异常细节或宿主路径；下一周期继续尝试采集。
-            lock (_stateGate) _lastError = "采样暂时不可用。";
+            lock (_stateGate) _lastError = "Sampling is temporarily unavailable.";
         }
     }
 

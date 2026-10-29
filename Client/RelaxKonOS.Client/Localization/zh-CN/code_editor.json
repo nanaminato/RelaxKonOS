@@ -4,6 +4,7 @@
         "code_editor.find": "在文档中查找 (Ctrl+F)",
         "code_editor.settings.title": "代码编辑器设置",
         "code_editor.settings.font_size": "编辑器字体大小",
+        "code_editor.settings.word_wrap": "自动换行",
         "code_editor.settings.default_encoding": "默认打开编码",
         "code_editor.settings.syntax_note": "语法高亮会根据远程文件的扩展名自动选择。",
         "code_editor.encoding.reopen_with": "使用编码重新打开",

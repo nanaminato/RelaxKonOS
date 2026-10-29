@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.DataProtection;
 using RelaxKonOS.Protocol.Git;
+using RelaxKonOS.Server.Endpoints;
 
 namespace RelaxKonOS.Server.Git;
 
@@ -21,15 +22,18 @@ public sealed class GitBuildOptions
     public int TimeoutMinutes { get; set; } = 20;
 }
 
-public sealed class GitBuildProblem(string code, int status = 409) : Exception(code)
+public sealed class GitBuildProblem(string code, int status = 409) : Exception(code), IProblemException
 {
     public string Code { get; } = code;
     public int Status { get; } = status;
+
+    string IProblemException.ProblemCode => Code;
+    int IProblemException.StatusCode => Status;
 }
 
 /// <summary>Protected credentials and a durable, bounded build ledger. An unfinished build becomes
 /// interrupted at startup; a retry with the same key returns that record and never reruns it.</summary>
-public sealed class GitBuildService : IDisposable
+public sealed class GitBuildService : IGitBuildService, IDisposable
 {
     private sealed record Credential(Guid Id, Guid Owner, string Name, string ProtectedToken);
     private sealed record BuildEntry(Guid Owner, string KeyHash, string RequestHash, GitBuildOperationDto Operation);
@@ -488,5 +492,15 @@ public sealed class GitBuildService : IDisposable
 
     private void Ensure() { if (unavailable) throw new GitBuildProblem("git-build.store-unavailable", 503); }
     private static string Hash(string value) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
+
+    /// <summary>
+    /// True while a build this process started is still running. The residency coordinator asks this
+    /// before releasing the module: cancelling an in-flight build to save idle memory would be a
+    /// silent failure, so the release waits instead.
+    /// </summary>
+    public bool HasActiveWork { get { lock (gate) return active.Count > 0; } }
+
+    public int ActiveBuildCount { get { lock (gate) return active.Count; } }
+
     public void Dispose() { lock (gate) { foreach (var source in active.Values) source.Cancel(); } }
 }

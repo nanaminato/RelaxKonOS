@@ -211,6 +211,25 @@ public sealed partial class LocalGitRepositoryService
         return (additions, deletions);
     }
 
+    /// <summary>NUL-separated commit record shared by every <c>git log</c> call that projects history as
+    /// <see cref="GitCommitDto"/>. Field separators keep multiline bodies from inventing records.</summary>
+    private const string CommitLogFormat = "%H%x00%h%x00%an%x00%ae%x00%aI%x00%s%x00%b%x00";
+
+    private static List<GitCommitDto> ParseCommitRecords(string output)
+    {
+        var commits = new List<GitCommitDto>();
+        var fields = output.Split('\0');
+        for (var i = 0; i + 6 < fields.Length; i += 7)
+        {
+            var sha = fields[i].Trim('\r', '\n');
+            if (sha.Length is not (40 or 64) || !sha.All(Uri.IsHexDigit))
+                throw new InvalidOperationException("Invalid Git history record.");
+            commits.Add(new GitCommitDto(sha, fields[i + 1], fields[i + 2], fields[i + 3], fields[i + 4], fields[i + 5],
+                string.IsNullOrEmpty(fields[i + 6]) ? null : fields[i + 6]));
+        }
+        return commits;
+    }
+
     private static IReadOnlyList<GitFileChangeDto> ParseChangedFiles(string output)
     {
         var files = new List<GitFileChangeDto>();

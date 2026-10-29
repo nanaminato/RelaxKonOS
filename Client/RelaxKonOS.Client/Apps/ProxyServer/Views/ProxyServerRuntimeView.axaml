@@ -15,10 +15,10 @@
   </UserControl.Styles>
 
   <StackPanel Spacing="16">
+    <StackPanel x:Name="StatePanel" Spacing="6">
+     <Expander Header="{loc:Loc proxy_server.runtime.state_title}" HorizontalAlignment="Stretch">
     <Border Classes="app-panel" Padding="18">
       <StackPanel Spacing="10">
-        <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.runtime.state_title}" />
-        <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.intro}" TextWrapping="Wrap" />
         <StackPanel Spacing="0">
           <Grid ColumnDefinitions="170,*">
             <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.fact.ownership}" />
@@ -27,6 +27,10 @@
           <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
             <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.fact.target}" />
             <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding TargetText}" />
+          </Grid></Border>
+          <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc component_center.install_mode}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding InstallModeText}" />
           </Grid></Border>
           <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
             <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.fact.measured}" />
@@ -49,12 +53,15 @@
             <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding PendingText}" />
           </Grid></Border>
         </StackPanel>
-        <TextBlock Classes="problem" Text="{Binding RecoveryText}" IsVisible="{Binding NeedsRecovery}" />
-        <TextBlock Classes="problem" Text="{Binding RuntimeProblemText}" IsVisible="{Binding HasRuntimeProblem}" />
       </StackPanel>
     </Border>
 
-    <Border Classes="app-panel" Padding="18" IsVisible="{Binding HasEnvironment}">
+     </Expander>
+        <TextBlock Classes="problem" Text="{Binding RecoveryText}" IsVisible="{Binding NeedsRecovery}" />
+        <TextBlock Classes="problem" Text="{Binding RuntimeProblemText}" IsVisible="{Binding HasRuntimeProblem}" />
+    </StackPanel>
+
+    <StackPanel x:Name="EnvironmentSection"><Expander Header="{loc:Loc proxy_server.runtime.environment_title}" HorizontalAlignment="Stretch" IsVisible="{Binding HasEnvironment}"><Border Classes="app-panel" Padding="18" IsVisible="{Binding HasEnvironment}">
       <StackPanel Spacing="10">
         <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.runtime.environment_title}" />
         <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.environment_hint}" TextWrapping="Wrap" />
@@ -84,7 +91,9 @@
       </StackPanel>
     </Border>
 
-    <Border Classes="app-panel" Padding="18" IsVisible="{Binding NeedsRecovery}">
+    </Expander></StackPanel>
+
+    <StackPanel x:Name="RecoverySection"><Border Classes="app-panel" Padding="18" IsVisible="{Binding NeedsRecovery}">
       <StackPanel Spacing="10">
         <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.runtime.recovery_title}" />
         <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.recovery_intro}" TextWrapping="Wrap" />
@@ -127,17 +136,22 @@
       </StackPanel>
     </Border>
 
-    <Border Classes="app-panel" Padding="18">
+    </StackPanel>
+
+    <Button x:Name="EditorButton" Content="{loc:Loc proxy_server.runtime.action_title}" Tag="RuntimeEditor" Click="EditorButton_Click" IsEnabled="{Binding CanManage}" HorizontalAlignment="Left" />
+<StackPanel x:Name="RuntimeEditor" IsVisible="False" Spacing="12">
+<Border x:Name="SourcesPanel" Classes="app-panel" Padding="18">
       <StackPanel Spacing="10">
         <DockPanel>
           <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
             <Button Content="{loc:Loc proxy_server.runtime.refresh_catalog}" Command="{Binding RefreshCatalogCommand}" IsEnabled="{Binding CanRefreshCatalog}" />
-            <Button Content="{loc:Loc proxy_server.refresh}" Command="{Binding RefreshSourcesCommand}" />
+            <Button Content="{loc:Loc proxy_server.refresh}" Command="{Binding RefreshSourcesCommand}" IsEnabled="{Binding CanRefreshSources}" />
           </StackPanel>
           <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.runtime.source_title}" />
         </DockPanel>
         <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.no_sources}" IsVisible="{Binding !HasSources}" />
-        <ComboBox ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource, Mode=TwoWay}" HorizontalAlignment="Stretch">
+        <ComboBox ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource, Mode=TwoWay}" HorizontalAlignment="Stretch"
+                  IsVisible="{Binding HasSources}">
           <ComboBox.ItemTemplate>
             <DataTemplate x:DataType="runtimes:RuntimeSourceView">
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
@@ -149,20 +163,23 @@
         </ComboBox>
         <TextBlock Classes="section-hint" Text="{Binding SourceSummary}" TextWrapping="Wrap" />
         <TextBlock Classes="section-hint" Text="{Binding CatalogText}" TextWrapping="Wrap" />
-        <TextBlock Classes="problem" Text="{Binding CatalogProblem}" TextWrapping="Wrap" />
+        <TextBlock Classes="problem" Text="{Binding CatalogProblem}" TextWrapping="Wrap" IsVisible="{Binding HasCatalogProblem}" />
         <CheckBox Content="{loc:Loc proxy_server.runtime.include_prerelease}" IsChecked="{Binding IncludePrerelease, Mode=TwoWay}" />
         <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.include_prerelease_hint}" TextWrapping="Wrap" />
       </StackPanel>
     </Border>
 
-    <Border Classes="app-panel" Padding="18">
+    <Border x:Name="ReleasesPanel" Classes="app-panel" Padding="18">
       <StackPanel Spacing="10">
         <DockPanel>
           <TextBlock DockPanel.Dock="Right" Classes="section-hint" VerticalAlignment="Center" Text="{Binding ReleaseCountText}" />
           <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.runtime.releases_title}" />
         </DockPanel>
+        <TextBlock Classes="section-hint" Text="{Binding SourceSummary}" TextWrapping="Wrap" />
+        <TextBlock Classes="section-hint" Text="{Binding CatalogText}" TextWrapping="Wrap" />
+        <TextBlock Classes="problem" Text="{Binding CatalogProblem}" TextWrapping="Wrap" IsVisible="{Binding HasCatalogProblem}" />
         <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.no_releases}" IsVisible="{Binding !HasReleases}" />
-        <ListBox ItemsSource="{Binding Releases}" SelectedItem="{Binding SelectedRelease, Mode=TwoWay}" MinHeight="120" MaxHeight="260">
+        <ListBox IsVisible="{Binding HasReleases}" x:Name="ReleaseList" ItemsSource="{Binding Releases}" SelectedItem="{Binding SelectedRelease, Mode=TwoWay}" MinHeight="120" MaxHeight="260">
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="vm:RuntimeReleaseOption">
               <StackPanel Spacing="2">
@@ -188,7 +205,7 @@
       </StackPanel>
     </Border>
 
-    <Border Classes="app-panel" Padding="18">
+    <Border x:Name="ChangesPanel" Classes="app-panel" Padding="18">
       <StackPanel Spacing="10">
         <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.runtime.action_title}" />
         <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.action_hint}" TextWrapping="Wrap" />
@@ -206,8 +223,8 @@
         <TextBlock Classes="problem" Text="{Binding DependencyText}" TextWrapping="Wrap" IsVisible="{Binding HasDependencyBlock}" />
         <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.hint}" TextWrapping="Wrap" />
         <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" />
+        <Expander Header="{loc:Loc proxy_server.runtime.uninstall_title}" HorizontalAlignment="Stretch">
         <StackPanel Spacing="6">
-          <TextBlock Classes="section-title" FontSize="14" Text="{loc:Loc proxy_server.runtime.uninstall_title}" />
           <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.uninstall_scope}" TextWrapping="Wrap" />
           <WrapPanel>
             <Button Content="{loc:Loc proxy_server.runtime.uninstall_keep}" Command="{Binding UninstallKeepDataCommand}"
@@ -216,7 +233,23 @@
                     IsEnabled="{Binding CanUninstall}" />
           </WrapPanel>
         </StackPanel>
+        </Expander>
       </StackPanel>
     </Border>
-  </StackPanel>
+
+</StackPanel>
+    <Border x:Name="ActivityPanel" IsVisible="False" Classes="app-panel" Padding="18">
+      <StackPanel Spacing="10">
+        <TextBlock Classes="section-title" Text="{loc:Loc component_center.page.Tasks}" />
+        <TextBlock Text="{Binding PendingText}" TextWrapping="Wrap" />
+        <TextBlock Text="{Binding OperationText}" TextWrapping="Wrap" />
+        <TextBlock Text="{loc:Loc component_center.stage_progress}" IsVisible="{Binding HasActiveOperation}" Classes="section-hint" />
+        <ProgressBar Minimum="0" Maximum="100" Value="{Binding OperationProgress}"
+                     IsIndeterminate="{Binding IsOperationIndeterminate}" IsVisible="{Binding HasActiveOperation}" />
+        <TextBlock Text="{Binding OutcomeText}" TextWrapping="Wrap" />
+        <Button Content="{loc:Loc proxy_server.runtime.cancel_download}" Command="{Binding CancelDownloadCommand}"
+                IsVisible="{Binding CanCancelDownload}" IsEnabled="{Binding CanCancelDownload}" HorizontalAlignment="Left" />
+      </StackPanel>
+    </Border>
+</StackPanel>
 </UserControl>

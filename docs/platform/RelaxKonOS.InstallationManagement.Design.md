@@ -1,10 +1,14 @@
 # 安装组件、设置与修复
 
-更新日期：2026-10-14。服务器中心安装管理的实施规范；Android 页面细节由 Android 自有文档维护。
+更新日期：2026-10-25。服务器中心安装管理的实施规范；Android 页面细节由 Android 自有文档维护。
+
+组件中心的统一入口设计见[组件中心](RelaxKonOS.ComponentCenter.Design.md)。其 CC-07 仅聚合自身组件的状态与维护入口；Server/Guardian/Helper 的部署、升级和修复仍由本文及服务器中心负责，不能依赖正在替换的 Server 执行自身升级。该聚合尚未实施。
 
 ## 产品入口
 
 管理安装分为详情、组件、安装设置和维护。首次安装提供 Guardian 可选项；后续在组件页补装或移除。进程守护应用的未安装状态链接到组件管理，同一个部署流程处理两个入口。
+
+桌面服务器中心的 SSH 系统安装向导不再要求选择文件范围或填写白名单，WindowsSystem / LinuxSystem 默认管理所有本地文件。Linux 向安装器同时提交手动授权、宿主管理员和 root 三类 `full` 策略，Windows 提交本地磁盘 `full` 策略；自动模式预检最终选择系统安装时也采用该设置。确认页显示全部本地文件及身份权限说明。普通操作继续遵循登录用户的 OS 权限，特权操作继续校验现有授权来源，不因扩大路径范围而跳过认证。LinuxUser 与 WindowsUser 保留原有用户模式权限策略；维护页及命令行仍可显式配置受限范围。
 
 WindowsSystem、LinuxSystem 和 LinuxUser 支持 Guardian；WindowsUser 当前不支持，界面不得提供不可执行选项。发布包继续携带同版本 Guardian 文件，选择决定是否部署与启动，不决定包内文件是否存在。
 
@@ -51,7 +55,7 @@ WindowsSystem、LinuxSystem 和 LinuxUser 支持 Guardian；WindowsUser 当前�
 
 部署成功时对所选 Guardian 执行宿主本地 `guardian-health` 认证 IPC 检查。配置失败恢复原监听地址、启动选择、组件选择与文件白名单，恢复核验失败明确要求处理，不发布目标状态。
 
-受控验证包括协议序列化、Linux 参数映射、Windows 注册 / 移除分支、三种模式配置失败恢复、跳过 Guardian 的安装记录恢复、本地配置提交前状态复核、桌面视图回归、Guardian IPC 读取及 Android 维护契约测试。桌面 / Server / Android 构建已通过；Server 存在既有 ImageSharp 依赖告警。
+受控验证包括协议序列化、Linux 参数映射、Windows 注册 / 移除分支、三种模式配置失败恢复、跳过 Guardian 的安装记录恢复、本地配置提交前状态复核、桌面视图回归、Guardian IPC 读取及 Android 维护契约测试。桌面 / Server / Android 构建已通过；图像编解码已迁至 SkiaSharp，Server 不再残留 ImageSharp 依赖告警。
 
 2026-10-14 在用户授权的 Debian 13 x64 主机验证：系统模式跳过 Guardian、补装认证 IPC、以普通 UID 运行工作负载、移除停止工作负载并保留定义、升级与普通修复保持选择、同版本 ZIP 恢复损坏 DLL；端口冲突后的监听、自动启动、组件与白名单恢复；独立 nft 删除仅移除受管规则且保留另一规则。通过 nanami 的 SSH 会话验证 Linux User 首次安装、Guardian 配置、连续维护与同版本程序恢复。测试使用独立业务数据目录，没有移除旧业务数据。
 

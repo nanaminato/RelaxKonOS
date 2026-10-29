@@ -232,7 +232,7 @@ public sealed partial class GitClientViewModel
             IsBusy = true;
             try
             {
-                var result = await client.PullAsync(SelectedRepository.Id, branchRequest with { Branch = branch.Name });
+                var result = await PullWithCredentialsAsync(branchRequest with { Branch = branch.Name });
                 if (result.Conflicts is { Count: > 0 })
                 {
                     await RefreshAllAsync();
@@ -256,7 +256,7 @@ public sealed partial class GitClientViewModel
         var slash = branch.Name.IndexOf('/');
         if (slash <= 0 || slash == branch.Name.Length - 1)
         {
-            await NotifyAsync(LocalizedText.Format("git.vm.failed_format", "远程分支名称无效。"));
+            await NotifyAsync(LocalizedText.Get("git.vm.invalid_remote_branch"));
             return;
         }
 
@@ -270,7 +270,7 @@ public sealed partial class GitClientViewModel
         IsBusy = true;
         try
         {
-            var result = await client.PullAsync(SelectedRepository.Id,
+            var result = await PullWithCredentialsAsync(
                 request with { Remote = branch.Name[..slash], Refspec = branch.Name[(slash + 1)..] });
             if (result.Success)
             {

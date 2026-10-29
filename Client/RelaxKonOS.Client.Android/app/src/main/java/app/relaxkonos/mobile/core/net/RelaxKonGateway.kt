@@ -33,6 +33,22 @@ interface RelaxKonGateway {
     suspend fun managedRuntime(serverUrl: String, accessToken: String, method: String, route: String,
         body: JsonBody? = null, key: String? = null): ApiResult<String> = ApiResult.Transport("Managed runtime unavailable.")
 
+    /** Normalized component state from the host's component lifecycle registry. */
+    suspend fun componentState(serverUrl: String, accessToken: String, componentId: String): ApiResult<ComponentStateView> =
+        ApiResult.Transport("Component state unavailable.")
+
+    /** Freezes one component change; submitting the frozen target stays a separate domain call. */
+    suspend fun componentPlan(serverUrl: String, accessToken: String, componentId: String,
+        change: ComponentChange, body: JsonBody): ApiResult<ComponentPlanResult> =
+        ApiResult.Transport("Component planning unavailable.")
+
+    /** The host-global Nginx selection; null means no single instance is selected. */
+    suspend fun currentNginx(serverUrl: String, accessToken: String): ApiResult<String?> =
+        ApiResult.Transport("Nginx selection unavailable.")
+
+    suspend fun selectCurrentNginx(serverUrl: String, accessToken: String, serverId: String): ApiResult<String?> =
+        ApiResult.Transport("Nginx selection unavailable.")
+
     suspend fun hostTime(serverUrl: String, accessToken: String): ApiResult<HostTimeSettings>
     suspend fun hostIdentity(serverUrl: String, accessToken: String): ApiResult<HostIdentitySettings>
     suspend fun hostEnvironmentTarget(serverUrl: String, accessToken: String, scope: HostEnvironmentScope): ApiResult<HostSettingsTarget>
@@ -52,10 +68,24 @@ interface RelaxKonGateway {
     suspend fun smbUsers(serverUrl: String, accessToken: String): ApiResult<List<SmbUser>>
     suspend fun smbConnection(serverUrl: String, accessToken: String): ApiResult<SmbConnection>
     suspend fun smbChange(serverUrl: String, accessToken: String, change: SmbChange, password: CharArray?): ApiResult<SmbReceipt>
+    suspend fun squidAccounts(serverUrl: String, accessToken: String): ApiResult<List<SquidAccount>>
     suspend fun squidConfiguration(serverUrl: String, accessToken: String): ApiResult<SquidSnapshot>
     suspend fun squidPreview(serverUrl: String, accessToken: String, configuration: SquidConfiguration): ApiResult<SquidPreview>
     suspend fun squidValidate(serverUrl: String, accessToken: String, configuration: SquidConfiguration): ApiResult<SquidValidation>
     suspend fun squidQueue(serverUrl: String, accessToken: String, request: SquidRequest, key: String): ApiResult<String>
+    suspend fun tailscaleStatus(serverUrl: String, accessToken: String): ApiResult<TailscaleStatus>
+    suspend fun prepareTailscaleLogin(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleLoginOperation>
+    suspend fun executeTailscaleLogin(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleLoginOperation>
+    suspend fun tailscaleLoginOperation(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleLoginOperation>
+    suspend fun tailscaleLoginChallenge(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleLoginChallenge>
+    suspend fun tailscaleLoginRecovery(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleLoginRecovery>
+    suspend fun closeTailscaleLogin(serverUrl: String, accessToken: String, id: String, revision: String): ApiResult<TailscaleLoginOperation>
+    suspend fun tailscaleControl(serverUrl: String, accessToken: String): ApiResult<TailscaleControl>
+    suspend fun prepareTailscale(serverUrl: String, accessToken: String, request: TailscalePlanRequest): ApiResult<TailscaleOperation>
+    suspend fun executeTailscale(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleOperation>
+    suspend fun tailscaleOperation(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleOperation>
+    suspend fun tailscaleRecovery(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleRecovery>
+    suspend fun closeTailscale(serverUrl: String, accessToken: String, id: String, revision: String): ApiResult<TailscaleOperation>
     suspend fun firewallStatus(serverUrl: String, accessToken: String): ApiResult<FirewallStatus>
     suspend fun firewallRules(serverUrl: String, accessToken: String): ApiResult<List<FirewallRule>>
     suspend fun changeFirewall(serverUrl: String, accessToken: String, change: FirewallChange): ApiResult<FirewallResult>
@@ -104,6 +134,7 @@ interface RelaxKonGateway {
     suspend fun proxyServerInstall(serverUrl: String, accessToken: String, idempotencyKey: String): ApiResult<String> = ProxyServerUnavailable
     suspend fun proxyServerUpgrade(serverUrl: String, accessToken: String, version: String, idempotencyKey: String): ApiResult<String> = ProxyServerUnavailable
     suspend fun proxyServerUninstall(serverUrl: String, accessToken: String, keepData: Boolean, idempotencyKey: String): ApiResult<String> = ProxyServerUnavailable
+    suspend fun proxyServerSaveConfiguration(serverUrl: String, accessToken: String, request: SaveProxyServerConfiguration, idempotencyKey: String): ApiResult<String>
     suspend fun proxyServerSavePrincipal(serverUrl: String, accessToken: String, id: String?, request: SaveProxyServerPrincipal, idempotencyKey: String): ApiResult<String> = ProxyServerUnavailable
     suspend fun proxyServerDeletePrincipal(serverUrl: String, accessToken: String, id: String, idempotencyKey: String): ApiResult<String> = ProxyServerUnavailable
     suspend fun proxyServerSaveCredential(serverUrl: String, accessToken: String, id: String?, request: SaveProxyServerCredential, idempotencyKey: String): ApiResult<String> = ProxyServerUnavailable

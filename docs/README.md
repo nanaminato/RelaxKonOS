@@ -12,6 +12,10 @@ Android 的设计、功能、支持范围和发布要求统一维护在 [Android
 - [移动端入口](./mobile/README.md)
 - [虚拟系统盘实施计划](./architecture/RelaxKonOS.VirtualSystemDrive.Goal.md)
 - [虚拟系统盘契约](./architecture/RelaxKonOS.VirtualSystemDrive.Contracts.md)
+- [功能模块与双端应用扩展设计及实施路线（规划）](./architecture/RelaxKonOS.ModulesAndExtensions.Design.md)
+- [Server 模块闲时卸载与按需加载（首个运行时切片已实施）](./architecture/RelaxKonOS.ServerModuleResidency.Design.md)
+- [代码库优化与拆分计划](./architecture/RelaxKonOS.CodebaseOptimization.Design.md)
+- [统一特权 Helper 架构（Linux v1 常驻服务已实施）](./architecture/privileged-helper.md)
 - [注册表与配置同步](./architecture/RelaxKonOS.Registry.md)
 - [登录别名实施计划](./platform/RelaxKonOS.AliasLogin.Goal.md)
 - [权限模型与项目重构规范](./platform/RelaxKonOS.PermissionModel.Refactor.md)
@@ -26,6 +30,8 @@ Android 的设计、功能、支持范围和发布要求统一维护在 [Android
 - [代理管理器实现说明（英文）](./applications/RelaxKonOS.ProxyManager.Discovery.en.md)
 - [代理管理器设计](./applications/RelaxKonOS.ProxyManager.Design.md)
 - [代理服务端应用设计（sing-box，首版实现与验收边界）](./applications/RelaxKonOS.ProxyServer.Design.md)
+- [组件中心（桌面首批接入中：统一安装、更新、卸载、版本与来源）](./platform/RelaxKonOS.ComponentCenter.Design.md)
+- [任务编排、冻结计划与统一审批（设计中）](./platform/RelaxKonOS.TaskOrchestration.Design.md)
 - [内置应用受管运行时、版本目录与发布源（设计中，含补齐清单）](./platform/RelaxKonOS.ManagedRuntimes.Design.md)
 - [代理管理运维指南](./proxy/)
 - [优化与验收记录](./development/RelaxKonOS.Optimization.Progress.md)
@@ -489,3 +495,5 @@ RelaxKonOS.Server     = Cloud Backend
 | [`ManagedRuntimes.Design`](./platform/RelaxKonOS.ManagedRuntimes.Design.md) | 内置应用安装/卸载/多版本更新、可信发布源与补齐任务 |
 | [`Develop`](./development/RelaxKonOS.Develop.md) | 开发者快速上手、代码结构与调试指南 |
 | [`DeveloperMode`](./development/RelaxKonOS.DeveloperMode.md) | 开发模式、DevCli 与应用包发布 |
+
+Tailscale 管理器：桌面设备/条件控制/操作重开、未知操作人工核对关账与服务端控制链已实现；首次登录的 Helper 证据链、服务端协调器与受保护 HTTP 路由已实现，桌面入口与真实宿主验收尚未完成，见 [设计与实施记录](applications/RelaxKonOS.Tailscale.Design.md)。

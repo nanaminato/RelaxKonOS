@@ -18,7 +18,7 @@
 
         <!-- MVVM / DI -->
         <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-        <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
+        <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.13" />
 
         <!-- Server -->
         <PackageVersion Include="YamlDotNet" Version="18.1.0" />
@@ -26,24 +26,24 @@
         <!-- ASP.NET Core OpenAPI 10.0.x requires Microsoft.OpenApi < 3.0. -->
         <PackageVersion Include="Microsoft.OpenApi" Version="2.12.2" />
         <PackageVersion Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
-        <!-- Server 端缩略图渲染。Six Labors Split License v1.0 第 2 条把「用于 Source Available 许可的软件」
-             明确划入 Apache-2.0 分支，本项目即 Source-Available（见 THIRD_PARTY_NOTICES.md）。
-             3.1.x 是首个提供 DecoderOptions.MaxFrames 的稳定线：动画图片只解一帧，内存上界才守得住。
-             **不要**升到 3.2.0 / 4.x：3.2.0 起包内多出一套 MSBuild 许可证校验
-             （SixLabors.ImageSharp.targets：No Six Labors license found / Release builds require a valid license），
-             会在 Server 与 PrivilegedHelper 上凭空引入警告，并要求为 Release 构建申请商业许可证，
-             与我们依赖的 Apache-2.0 分支互斥。3.1.12 是该线最后一个不带该校验的版本。
-             纯托管、无原生依赖，Windows/Linux/macOS 行为一致。 -->
-        <PackageVersion Include="SixLabors.ImageSharp" Version="3.1.12" />
+        <!-- Server / Helper 的图像解码与编码（GET /files/thumbnail、进程图标）。
+             SkiaSharp 绑定为 MIT，Skia 本身为 BSD-3-Clause，无条件可用于商业发布；
+             不再需要按「使用主体营收」或「发行许可」逐条判定。
+             版本与桌面端一致：Avalonia 12.1.4 已依赖 3.119.4，同一个发布树里只应存在一份 Skia。
+             纯 CPU 光栅，不需要 GPU 上下文或显示服务，无头 Linux Server 与 LocalSystem Helper 都能用。
+             Windows / macOS 原生库由 SkiaSharp 包自身传递引入；Linux 需显式引用 NoDependencies 变体
+             （静态链接，不依赖系统 libfontconfig/freetype，glibc 与 musl 都能跑）。 -->
+        <PackageVersion Include="SkiaSharp" Version="3.119.4" />
+        <PackageVersion Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.4" />
 
         <!-- Server Persistence: EF Core + SQLite（User/Workspace/Device 持久化，含 TerminalSettings） -->
         <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
         <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12" />
 
         <!-- Protocol / SignalR / JWT（为后续实现阶段预备，本次仅定义版本，未在任何 csproj 引用） -->
-        <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.12" />
+        <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.13" />
         <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.12" />
-        <PackageVersion Include="Microsoft.AspNetCore.Authentication.Negotiate" Version="10.0.12" />
+        <PackageVersion Include="Microsoft.AspNetCore.Authentication.Negotiate" Version="10.0.13" />
         <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.12" />
         <PackageVersion Include="Microsoft.Extensions.Hosting.Systemd" Version="10.0.12" />
         <PackageVersion Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.12" />

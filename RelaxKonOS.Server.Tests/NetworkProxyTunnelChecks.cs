@@ -1,4 +1,4 @@
-using RelaxKonOS.Protocol.Proxy;
+﻿using RelaxKonOS.Protocol.Proxy;
 internal static class NetworkProxyTunnelChecks
 {
 internal static void VerifyTunnelProtocolContract()
@@ -187,88 +187,10 @@ internal static async Task VerifyProxyDiagnosticLogsAsync(string root)
         "Proxy diagnostic logs were not exposed when the controller log was unavailable.");
 }
 
-internal static async Task VerifyMihomoRuntimeSafetyAsync(string root)
-{
-    if (MihomoRuntimeManifest.CurrentRid() != "linux-x64") return;
-    var archive = CreateMihomoFixtureArchive();
-    var digest = Convert.ToHexString(SHA256.HashData(archive)).ToLowerInvariant();
-    var release = new MihomoRuntimeRelease(MihomoRuntimeManifest.SupportedVersion, "linux-x64", "mihomo-linux-amd64-v1.19.30.gz", "gz", digest);
-    var paths = new TestProxyPaths(Path.Combine(root, "mihomo-runtime"));
-    var privileged = new TestProxyPrivilegedOperations();
-    var manager = new MihomoRuntimeManager(paths, new FixtureHttpClientFactory(archive, "https://release-assets.githubusercontent.com/fixture"), privileged, new TestMihomoRuntimeProbe(), new HealthyMihomoController(), new StaticProxySecretStore(), new MihomoControllerOptions(), new MihomoRuntimeManifest { Releases = [release] });
-
-    foreach (var redirect in new[] { "http://release-assets.githubusercontent.com/fixture", "https://untrusted.example/fixture", "https://github.com/loop" })
-    {
-        var rejectedPrivileges = new TestProxyPrivilegedOperations();
-        var rejectedManager = new MihomoRuntimeManager(new TestProxyPaths(Path.Combine(root, Guid.NewGuid().ToString("N"))),
-            new FixtureHttpClientFactory(archive, redirect), rejectedPrivileges, new TestMihomoRuntimeProbe(), new HealthyMihomoController(),
-            new StaticProxySecretStore(), new MihomoControllerOptions(), new MihomoRuntimeManifest { Releases = [release] });
-        var rejected = await rejectedManager.InstallManagedAsync(MihomoEngine.Id, release.Version, CancellationToken.None);
-        TestAssert.Assert(rejected.ProblemCode == ProxyProblemCodes.RuntimeIntegrityFailed && !rejectedPrivileges.InstalledService,
-            "Mihomo accepted an unsafe redirect or redirect loop.");
-    }
-
-    var missingExternal = await manager.DetectExternalAsync(MihomoEngine.Id, Path.Combine(root, "does-not-exist"), CancellationToken.None);
-    TestAssert.Assert(missingExternal.ProblemCode == ProxyProblemCodes.ExternalRuntimeInvalid && missingExternal.ExternalPathConfigured,
-        "A missing external runtime was accepted or exposed a host path.");
-
-    var installed = await manager.InstallManagedAsync(MihomoEngine.Id, MihomoRuntimeManifest.SupportedVersion, CancellationToken.None);
-    TestAssert.Assert(installed.State == ProxyRuntimeState.Running && installed.IntegrityVerified && installed.Version == MihomoRuntimeManifest.SupportedVersion,
-        "A verified Mihomo fixture did not activate only after controller health.");
-    TestAssert.Assert(privileged.InstalledService && privileged.RestartCount == 1, "Managed Mihomo did not use the constrained native-service operations.");
-    var restartCountBeforeStatusRead = privileged.RestartCount;
-    var statusRead = await manager.GetAsync(MihomoEngine.Id, CancellationToken.None);
-    TestAssert.Assert(statusRead.State == ProxyRuntimeState.Running && privileged.RestartCount == restartCountBeforeStatusRead,
-        "Reading Mihomo status restarted the runtime and could refresh subscriptions.");
-
-    var delayedPaths = new TestProxyPaths(Path.Combine(root, "mihomo-delayed-controller"));
-    var delayedPrivileged = new TestProxyPrivilegedOperations();
-    var delayedController = new DelayedHealthyMihomoController(unavailableResponses: 2);
-    var delayedManager = new MihomoRuntimeManager(delayedPaths, new FixtureHttpClientFactory(archive), delayedPrivileged,
-        new TestMihomoRuntimeProbe(), delayedController, new StaticProxySecretStore(),
-        new MihomoControllerOptions { StartupReadinessSeconds = 1 }, new MihomoRuntimeManifest { Releases = [release] });
-    var delayedInstall = await delayedManager.InstallManagedAsync(MihomoEngine.Id, MihomoRuntimeManifest.SupportedVersion, CancellationToken.None);
-    TestAssert.Assert(delayedInstall.State == ProxyRuntimeState.Running && delayedController.HealthChecks == 3,
-        "Managed Mihomo was rolled back before its loopback controller had time to bind.");
-
-    var crossFilesystemRoot = Path.Combine("/var/tmp", "relaxkonos-mihomo-runtime-tests-" + Guid.NewGuid().ToString("N"));
-    try
-    {
-        var crossFilesystemPrivileged = new TestProxyPrivilegedOperations();
-        var crossFilesystemManager = new MihomoRuntimeManager(new TestProxyPaths(crossFilesystemRoot), new FixtureHttpClientFactory(archive),
-            crossFilesystemPrivileged, new TestMihomoRuntimeProbe(), new HealthyMihomoController(), new StaticProxySecretStore(), new MihomoControllerOptions(), new MihomoRuntimeManifest { Releases = [release] });
-        var crossFilesystemInstall = await crossFilesystemManager.InstallManagedAsync(MihomoEngine.Id, MihomoRuntimeManifest.SupportedVersion, CancellationToken.None);
-        TestAssert.Assert(crossFilesystemInstall.State == ProxyRuntimeState.Running && crossFilesystemInstall.IntegrityVerified,
-            "A verified Mihomo archive could not be atomically installed when the runtime directory was on another filesystem from /tmp.");
-    }
-    finally
-    {
-        if (Directory.Exists(crossFilesystemRoot)) Directory.Delete(crossFilesystemRoot, recursive: true);
-    }
-
-    var firstInstallPrivileged = new TestProxyPrivilegedOperations { FailServiceInstallation = true, FailUninstalledServiceRemoval = true };
-    var firstInstallManager = new MihomoRuntimeManager(new TestProxyPaths(Path.Combine(root, "mihomo-first-install-failure")), new FixtureHttpClientFactory(archive),
-        firstInstallPrivileged, new TestMihomoRuntimeProbe(), new HealthyMihomoController(), new StaticProxySecretStore(), new MihomoControllerOptions(), new MihomoRuntimeManifest { Releases = [release] });
-    var firstInstallFailure = await firstInstallManager.InstallManagedAsync(MihomoEngine.Id, MihomoRuntimeManifest.SupportedVersion, CancellationToken.None);
-    TestAssert.Assert(firstInstallFailure.ProblemCode == ProxyProblemCodes.PrivilegedOperationUnavailable,
-        "A failed first-time service installation was incorrectly reported as a recovery-required failure.");
-
-    privileged.FailReplacement = true;
-    var failedUpdate = await manager.InstallManagedAsync(MihomoEngine.Id, MihomoRuntimeManifest.SupportedVersion, CancellationToken.None);
-    var afterFailedUpdate = await manager.GetAsync(MihomoEngine.Id, CancellationToken.None);
-    TestAssert.Assert(failedUpdate.ProblemCode == ProxyProblemCodes.PrivilegedOperationUnavailable && afterFailedUpdate.Version == MihomoRuntimeManifest.SupportedVersion
-        && afterFailedUpdate.State == ProxyRuntimeState.Running,
-        "A healthy managed Mihomo runtime was not reported as running after status refresh.");
-
-    var traversalArchive = CreateMihomoTraversalArchive();
-    var traversalDigest = Convert.ToHexString(SHA256.HashData(traversalArchive)).ToLowerInvariant();
-    var traversalManager = new MihomoRuntimeManager(new TestProxyPaths(Path.Combine(root, "mihomo-traversal")), new FixtureHttpClientFactory(traversalArchive),
-        new TestProxyPrivilegedOperations(), new TestMihomoRuntimeProbe(), new HealthyMihomoController(), new StaticProxySecretStore(), new MihomoControllerOptions(),
-        new MihomoRuntimeManifest { Releases = [release with { ArchiveFormat = "zip", AssetName = "mihomo-windows-amd64-v1.19.30.zip", Sha256 = traversalDigest, Rid = "linux-x64" }] });
-    var traversal = await traversalManager.InstallManagedAsync(MihomoEngine.Id, MihomoRuntimeManifest.SupportedVersion, CancellationToken.None);
-    TestAssert.Assert(traversal.ProblemCode == ProxyProblemCodes.RuntimeIntegrityFailed, "A path-traversal runtime archive was accepted.");
-}
-
+// The fixed-manifest Mihomo installer was deleted when the MR-03 ledger took over installing
+// Mihomo (MihomoRuntimeManager now only observes, detects and validates). Redirect refusal,
+// archive traversal and controller readiness are covered on the ledger path, so those old
+// fixed-manifest assertions were removed rather than kept as permanently failing stubs.
 internal static async Task VerifyLinuxMihomoRuntimeLinkActivationAsync(string root)
 {
     if (!OperatingSystem.IsLinux() || MihomoRuntimeManifest.CurrentRid() != "linux-x64") return;
@@ -295,26 +217,6 @@ internal static async Task VerifyLinuxMihomoRuntimeLinkActivationAsync(string ro
         "Managed Mihomo activation did not atomically replace the active runtime link.");
 }
 
-internal static byte[] CreateMihomoFixtureArchive()
-{
-    var binary = new byte[64]; binary[0] = 0x7f; binary[1] = (byte)'E'; binary[2] = (byte)'L'; binary[3] = (byte)'F'; binary[4] = 2; binary[5] = 1;
-    BitConverter.GetBytes((ushort)62).CopyTo(binary, 18);
-    using var output = new MemoryStream();
-    using (var gzip = new GZipStream(output, CompressionLevel.SmallestSize, leaveOpen: true)) gzip.Write(binary);
-    return output.ToArray();
-}
-
-internal static byte[] CreateMihomoTraversalArchive()
-{
-    using var output = new MemoryStream();
-    using (var archive = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
-    {
-        var traversal = archive.CreateEntry("../mihomo");
-        using var writer = traversal.Open(); writer.Write([1, 2, 3]);
-    }
-    return output.ToArray();
-}
-
 internal static void VerifyFrpTomlSafety()
 {
     TestAssert.Assert(TunnelValidation.ValidateDefinition("bad\nname", TunnelProtocol.Tcp, "127.0.0.1", 22, 6000, null) == "tunnel.definition_invalid",
@@ -335,15 +237,17 @@ internal static async Task VerifyFrpRuntimeInstallAndRollbackAsync(string root)
 {
     if (!OperatingSystem.IsLinux()) return;
     var archive = CreateFrpFixtureArchive();
+    var secondArchive = CreateFrpFixtureArchive("0.71.1");
+    var secondDigest = Convert.ToHexString(SHA256.HashData(secondArchive)).ToLowerInvariant();
     var digest = Convert.ToHexString(SHA256.HashData(archive)).ToLowerInvariant();
     var releases = new[]
     {
         new FrpRuntimeRelease { Version = "v0.71.0", Rid = "linux-x64", Url = "https://github.com/fatedier/frp/releases/download/v0.71.0/frp_0.71.0_linux_amd64.tar.gz", Sha256 = digest, ArchiveFormat = "tar.gz" },
-        new FrpRuntimeRelease { Version = "v0.71.1", Rid = "linux-x64", Url = "https://github.com/fatedier/frp/releases/download/v0.71.1/frp_0.71.1_linux_amd64.tar.gz", Sha256 = digest, ArchiveFormat = "tar.gz" },
+        new FrpRuntimeRelease { Version = "v0.71.1", Rid = "linux-x64", Url = "https://github.com/fatedier/frp/releases/download/v0.71.1/frp_0.71.1_linux_amd64.tar.gz", Sha256 = secondDigest, ArchiveFormat = "tar.gz" },
     };
     var runtimeRoot = Path.Combine(root, "frp-runtime"); Directory.CreateDirectory(runtimeRoot);
     var env = new TestHostEnvironment(runtimeRoot);
-    var manager = new FrpRuntimeManager(env, new FixtureHttpClientFactory(archive), Options.Create(new FrpRuntimeOptions { Releases = releases }), new RelaxKonOS.Server.Privileged.ManagedRuntimeOperations(new CapturingPrivilegedTransport()));
+    var manager = new FrpRuntimeManager(env, new FixtureHttpClientFactory(archive, pinnedPayloads: new Dictionary<string, byte[]> { ["v0.71.0"] = archive, ["v0.71.1"] = secondArchive }), Options.Create(new FrpRuntimeOptions { Releases = releases }), new RelaxKonOS.Server.Privileged.ManagedRuntimeOperations(new CapturingPrivilegedTransport()), new TestRuntimeDownloadProxyProvider());
     var first = await manager.InstallManagedFrpcAsync("v0.71.0", new SilentInstallationProgress(), CancellationToken.None);
     TestAssert.Assert(first.Succeeded, "Verified FRP fixture did not install.");
     await VerifyFrpApplyLifecycleAsync(root, env, manager);
@@ -365,7 +269,7 @@ internal static async Task VerifyFrpRuntimeInstallAndRollbackAsync(string root)
     var badChecksumManager = new FrpRuntimeManager(new TestHostEnvironment(badChecksumRoot), new FixtureHttpClientFactory(archive), Options.Create(new FrpRuntimeOptions
     {
         Releases = [new FrpRuntimeRelease { Version = "v0.71.0", Rid = "linux-x64", Url = "https://github.com/fatedier/frp/releases/download/v0.71.0/frp_0.71.0_linux_amd64.tar.gz", Sha256 = new string('0', 64), ArchiveFormat = "tar.gz" }],
-    }), new RelaxKonOS.Server.Privileged.ManagedRuntimeOperations(new CapturingPrivilegedTransport()));
+    }), new RelaxKonOS.Server.Privileged.ManagedRuntimeOperations(new CapturingPrivilegedTransport()), new TestRuntimeDownloadProxyProvider());
     var badChecksum = await badChecksumManager.InstallManagedFrpcAsync("v0.71.0", new SilentInstallationProgress(), CancellationToken.None);
     TestAssert.Assert(!badChecksum.Succeeded && badChecksum.ProblemCode == "tunnel.runtime_checksum_failed", "Wrong checksum was accepted.");
     TestAssert.Assert((await badChecksumManager.GetManagedFrpcStatusAsync(CancellationToken.None)).State == TunnelRuntimeState.NotInstalled, "Checksum failure changed the active runtime.");
@@ -376,21 +280,21 @@ internal static async Task VerifyFrpRuntimeInstallAndRollbackAsync(string root)
     var maliciousManager = new FrpRuntimeManager(new TestHostEnvironment(maliciousRoot), new FixtureHttpClientFactory(maliciousArchive), Options.Create(new FrpRuntimeOptions
     {
         Releases = [new FrpRuntimeRelease { Version = "v0.71.0", Rid = "linux-x64", Url = "https://github.com/fatedier/frp/releases/download/v0.71.0/frp_0.71.0_linux_amd64.tar.gz", Sha256 = maliciousDigest, ArchiveFormat = "tar.gz" }],
-    }), new RelaxKonOS.Server.Privileged.ManagedRuntimeOperations(new CapturingPrivilegedTransport()));
+    }), new RelaxKonOS.Server.Privileged.ManagedRuntimeOperations(new CapturingPrivilegedTransport()), new TestRuntimeDownloadProxyProvider());
     var malicious = await maliciousManager.InstallManagedFrpcAsync("v0.71.0", new SilentInstallationProgress(), CancellationToken.None);
     TestAssert.Assert(!malicious.Succeeded && malicious.ProblemCode == "tunnel.runtime_archive_unexpected_entry", "Unexpected archive content was accepted.");
     TestAssert.Assert((await maliciousManager.GetManagedFrpcStatusAsync(CancellationToken.None)).State == TunnelRuntimeState.NotInstalled, "Rejected archive changed the active runtime.");
 }
 
-internal static byte[] CreateFrpFixtureArchive()
+internal static byte[] CreateFrpFixtureArchive(string version = "0.71.0")
 {
     using var target = new MemoryStream();
     using (var gzip = new GZipStream(target, CompressionLevel.SmallestSize, leaveOpen: true))
     using (var writer = new TarWriter(gzip, leaveOpen: true))
     {
-        Write("frp/frpc", "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo frpc-fixture; exit 0; fi\nif [ \"$1\" = \"verify\" ]; then exit 0; fi\nif [ \"$1\" = \"-c\" ]; then echo 'login to server success'; sleep 30; fi\n");
-        Write("frp/frps", "#!/bin/sh\necho frps-fixture\n");
-        void Write(string name, string content) => writer.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, name) { DataStream = new MemoryStream(Encoding.UTF8.GetBytes(content)) });
+        Write("frp/frpc", "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo __VERSION__; exit 0; fi\nif [ \"$1\" = \"verify\" ]; then exit 0; fi\nif [ \"$1\" = \"-c\" ]; then echo 'login to server success'; sleep 30; fi\n");
+        Write("frp/frps", "#!/bin/sh\necho __VERSION__\n");
+        void Write(string name, string content) => writer.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, name) { DataStream = new MemoryStream(Encoding.UTF8.GetBytes(content.Replace("__VERSION__", version))) });
     }
     return target.ToArray();
 }

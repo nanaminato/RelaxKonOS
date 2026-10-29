@@ -16,6 +16,7 @@
                     <TextBlock Text="{loc:Loc file_services.shares}" TextWrapping="Wrap" />
                 </Button>
                 <Button Classes="workspace-nav" x:Name="UsersButton" Content="{loc:Loc file_services.users}" Tag="users" Click="Navigation_Click" IsVisible="{Binding SupportsSambaCredentials}" HorizontalAlignment="Stretch" />
+                <Button Classes="workspace-nav" x:Name="SettingsButton" Content="{loc:Loc common.settings}" Tag="settings" Click="Navigation_Click" HorizontalAlignment="Stretch" />
             </WrapPanel>
             <ContentControl x:Name="ContentHost" Grid.Column="1" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
         </Grid>

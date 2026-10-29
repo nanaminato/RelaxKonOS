@@ -463,7 +463,7 @@ internal static class DownloadProxyChecks
                     if (challengeCredentials && !head.Contains("Proxy-Authorization", StringComparison.OrdinalIgnoreCase))
                     {
                         await stream.WriteAsync(Encoding.ASCII.GetBytes(
-                            "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"relaxkonos\"\r\nContent-Length: 0\r\n\r\n"), stopped.Token);
+                            "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"relaxkonos\"\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"), stopped.Token);
                         return;
                     }
                     if (!tunnel)

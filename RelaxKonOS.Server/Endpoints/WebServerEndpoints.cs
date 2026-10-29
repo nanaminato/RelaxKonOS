@@ -11,6 +11,22 @@ public static class WebServerEndpoints
     public static IEndpointRouteBuilder MapWebServerEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup(WebServerApiRoutes.WebServers).RequireAuthorization().WithTags("WebServers").RequireHostFeature(ServerHostFeature.WebServer);
+        group.MapGet(WebServerApiRoutes.CurrentNginxPattern, async (RelaxKonOS.Server.WebServer.WebServerMetadataRepository metadata,
+            RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
+        {
+            var id = await metadata.ReadCurrentNginxAsync(ct);
+            // A sole installation needs no manual choice. A stale explicit selection remains unavailable.
+            return RelaxKonOS.Server.WebServer.WebServerMetadataRepository.ResolveCurrentNginx(id, await manager.ListAsync(ct));
+        });
+        group.MapPut(WebServerApiRoutes.CurrentNginxPattern, async (CurrentNginxDto request,
+            RelaxKonOS.Server.WebServer.WebServerMetadataRepository metadata,
+            RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
+        {
+            if (!(await manager.ListAsync(ct)).Any(server => server.Id == request.ServerId && server.ProviderId == "nginx"))
+                return Results.BadRequest(new { problemCode = "webserver.instance_not_found" });
+            await metadata.SelectCurrentNginxAsync(request.ServerId!, ct);
+            return Results.Ok(request);
+        });
         group.MapGet(WebServerApiRoutes.ManagedInstallCatalogPattern, (RelaxKonOS.Server.WebServer.NginxWebServerManager manager, CancellationToken ct) => manager.GetManagedInstallCatalogAsync(ct));
         group.MapGet(WebServerApiRoutes.ManagedInstallDownloadPattern, async (string? version, RelaxKonOS.Server.WebServer.NginxWebServerManager manager, CancellationToken ct) =>
             await manager.GetManagedInstallDownloadAsync(version, ct) is { } download ? Results.Ok(download) : Results.NotFound());
@@ -29,7 +45,7 @@ public static class WebServerEndpoints
             if (!elevations.IsGranted(context.User, HostElevationCapability.NginxConfigurationWrite, candidateId))
             {
                 loggers.CreateLogger("WebServerAuthorization").LogWarning("Nginx integration request was denied before execution because its elevation grant is missing. CandidateId={CandidateId}, User={User}", candidateId, Actor(context) ?? "<anonymous>");
-                return ElevationRequired("此 Nginx 配置操作需要当前会话对该实例的管理员授权。", "webserver.elevation_required");
+                return ElevationRequired("This Nginx configuration operation needs administrator authorization for the instance in this session.", "webserver.elevation_required");
             }
             return await StartAsync(context.Request, key => manager.IntegrateCandidateAsync(candidateId, key, request, Actor(context), ct));
         });
@@ -42,14 +58,14 @@ public static class WebServerEndpoints
                 ? HostElevationCapability.NginxConfigurationWrite
                 : HostElevationCapability.NginxLifecycle;
             if (!elevations.IsGranted(context.User, capability, id))
-                return ElevationRequired("此 Nginx 操作需要当前会话对该实例的管理员授权。");
+                return ElevationRequired("This Nginx operation needs administrator authorization for the instance in this session.");
             return await StartAsync(context.Request, key => manager.ApplyLifecycleAsync(id, lifecycle, key, Actor(context), ct));
         });
         group.MapPost(WebServerApiRoutes.ReloadPattern, async (string id, HttpContext context,
             IHostElevationSessionStore elevations, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
         {
             if (!elevations.IsGranted(context.User, HostElevationCapability.NginxLifecycle, id))
-                return ElevationRequired("此 Nginx reload 操作需要当前会话对该实例的管理员授权。");
+                return ElevationRequired("This Nginx reload needs administrator authorization for the instance in this session.");
             return await StartAsync(context.Request, key => manager.ReloadAsync(id, key, Actor(context), ct));
         });
         group.MapGet(WebServerApiRoutes.SitesPattern, async (string id, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
@@ -58,7 +74,7 @@ public static class WebServerEndpoints
             IHostElevationSessionStore elevations, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
         {
             if (!elevations.IsGranted(context.User, HostElevationCapability.NginxConfigurationWrite, id))
-                return ElevationRequired("此 Nginx 站点配置操作需要当前会话对该实例的管理员授权。");
+                return ElevationRequired("This Nginx site-configuration operation needs administrator authorization for the instance in this session.");
             try
             {
                 return await manager.UpsertSiteAsync(id, request, ct) is { } site
@@ -82,7 +98,7 @@ public static class WebServerEndpoints
             IHostElevationSessionStore elevations, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
         {
             if (!elevations.IsGranted(context.User, HostElevationCapability.NginxConfigurationWrite, id))
-                return ElevationRequired("此 Nginx 站点配置操作需要当前会话对该实例的管理员授权。");
+                return ElevationRequired("This Nginx site-configuration operation needs administrator authorization for the instance in this session.");
             try
             {
                 return await manager.DeleteSiteAsync(id, siteId, request, ct) switch { true => Results.NoContent(), false => Results.NotFound(), _ => Results.BadRequest(new { problemCode = "webserver.site_delete_failed" }) };
@@ -120,6 +136,6 @@ public static class WebServerEndpoints
         ?? context.User.Identity?.Name;
 
     private static IResult ElevationRequired(string detail, string problemCode = "webserver.elevation_required") => Results.Problem(statusCode: StatusCodes.Status403Forbidden,
-        title: "需要管理员权限", detail: detail, type: "https://relaxkonos.app/problems/elevation-required",
+        title: problemCode, detail: detail, type: "https://relaxkonos.app/problems/elevation-required",
         extensions: new Dictionary<string, object?> { ["problemCode"] = problemCode });
 }

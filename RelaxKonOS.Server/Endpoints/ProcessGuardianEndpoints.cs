@@ -86,7 +86,7 @@ public static class ProcessGuardianEndpoints
             IHostElevationSessionStore elevations, RelaxKonOS.Server.ProcessGuardian.INativeServiceAdapter services, CancellationToken ct) =>
         {
             if (!elevations.IsGranted(http.User, HostElevationCapability.NativeServiceAction, id))
-                return Results.Problem(statusCode: 403, title: "需要管理员权限", detail: "此服务操作需要当前会话的管理员授权。",
+                return Results.Problem(statusCode: 403, title: "elevation-required", detail: "This service operation needs administrator authorization for the current session.",
                     type: "https://relaxkonos.app/problems/elevation-required");
             return Results.Ok(await services.ApplyActionAsync(id, action, request, ct));
         }).AddEndpointFilter(new ServerModeEndpointFilter(ServerHostFeature.NativeServices));

@@ -6,7 +6,7 @@
 
 执行 `dotnet list RelaxKonOS.sln package --outdated` 检查更新，修改兼容版本后运行 `dotnet restore RelaxKonOS.sln` 和 `dotnet build RelaxKonOS.sln -c Release -m:1`。完整重建可追加 `-t:Rebuild`。
 
-ASP.NET Core OpenAPI 10.0.x 要求 Microsoft.OpenApi 小于 3；ImageSharp 暂留 3.1.12，跨主版本更新必须核对 API 与第三方许可。官网前端采用 Angular 22.2.1 与 TypeScript 6.0.3，具体环境、锁文件维护和调试步骤见[官网开发教程](https://relaxkon.com/docs/zh-CN/latest/getting-started/development)。
+ASP.NET Core OpenAPI 10.0.x 要求 Microsoft.OpenApi 小于 3；SkiaSharp 固定在 3.119.4，与桌面端 Avalonia 依赖的版本保持一致，跨主版本更新必须核对 API、原生库与第三方许可。官网前端采用 Angular 22.2.1 与 TypeScript 6.0.3，具体环境、锁文件维护和调试步骤见[官网开发教程](https://relaxkon.com/docs/zh-CN/latest/getting-started/development)。
 
 常规开发调试时**不要**运行部署脚本，也**不需要**注册 Windows 服务。直接在 Rider 中同时启动 Agent 和 Server 即可。需要受保护文件、Windows 受管 Nginx/FRP 或真实 Linux UFW 操作时，按对应章节配置特权 Helper。
 
@@ -155,11 +155,12 @@ SID/NTFS ACL、并发、token 释放与服务重启矩阵时，才可临时把 H
 
 ## Linux 特权 Helper 调试
 
-Linux Helper 是按请求启动的 root 进程，不是常驻服务：`RelaxKonOS.Server` 保持以普通用户运行，
-仅可通过 `sudo -n` 启动一条 sudoers 规则中**精确指定**的 `RelaxKonOS.PrivilegedHelper`。因此
-Server 不会继承 root 身份，UFW、受保护文件和受限服务操作才会在 Helper 内以 root 执行。
+Linux 生产与开发都使用以 root 常驻的 Helper：`RelaxKonOS.Server` 保持普通用户运行，通过
+`/run/relaxkonos/privileged.sock`（开发为 `privileged-development.sock`）发送封闭操作请求。Server 不继承
+root 身份，UFW、受保护文件、PAM 认证、受管运行时和服务操作才在 Helper 内以 root 执行。sudo 只保留给
+尚未迁移的 `--user-execution`/`--user-terminal` 一次性入口。
 
-要调试真实 Server → sudo → Helper 路径，先构建 Helper，然后由管理员安装其 root-owned 开发副本：
+要调试真实 Server → socket → Helper 路径，先构建 Helper，再由管理员安装其 root-owned 开发副本：
 
 ```bash
 dotnet build RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj
@@ -173,10 +174,14 @@ sudo deployment/linux/install-relaxkonos-privileged-helper-development.sh "$USER
 
 该脚本复制完整 Debug 输出（包括 PDB）到
 `/usr/local/lib/relaxkonos/privileged-helper-development/`，使其归 `root:root` 且开发账户不可写；
-再原子安装 Helper 所需的受管 `/etc/pam.d/relaxkonos`（仅 `common-auth` 与
-`common-account`）并创建只允许当前 IDE 用户启动该 apphost 的无密码 sudoers 规则。若同名 PAM
-文件不是 RelaxKonOS 受管文件，脚本会拒绝覆盖。它不会创建或启动 systemd 服务，也不会启动 Server、Guardian
-或 Client。每次改动 Helper 后，重新执行构建和该脚本以部署新副本。
+写入开发专用的 `/etc/relaxkonos/privileged-helper-development.json`（`allowedUids` 只含当前开发账户的
+uid），再原子安装 Helper 所需的受管 `/etc/pam.d/relaxkonos`（仅 `common-auth` 与 `common-account`）。
+它还会安装并重启 `relaxkonos-privileged-helper-development.service`，但不会启动 Server、Guardian 或
+Client。该单元与生产 Helper 使用不同 socket 与配置，不会改写生产部署。每次改动 Helper 后，重新执行
+构建和该脚本；脚本会重启单元以加载新二进制。
+
+开发脚本仍会创建只允许当前 IDE 用户启动该 apphost 的 sudoers 规则，用于过渡性的 user-execution；
+生产安装器不会为无参数特权协议写入 sudoers。绝不要把规则指向开发账户可写的 `bin/Debug`。
 
 该脚本默认安装三份独立的 `restricted` 文件策略（手动 grant、管理员、root；root 额外允许 `/root`）。如需调试由
 Helper 访问的受保护文件，请使用单独的无敏感数据夹具，并通过白名单显式授权：
@@ -193,19 +198,26 @@ sudo deployment/linux/install-relaxkonos-privileged-helper-development.sh "$USER
 [`RelaxKonOS.PrivilegedOperations.Operations.md`](../platform/RelaxKonOS.PrivilegedOperations.Operations.md#文件访问配置)。
 
 然后选择 Server 的 `http-linux-privileged` 启动配置。该配置的
-`PrivilegedHelper__HelperPath` 指向上述 root-owned 副本；`PrivilegedHelper__SudoPath` 仍必须为
-`/usr/bin/sudo`。普通 `http` 配置不包含此路径，因此适合 UI/API 调试；一旦发起真实 UFW 修改，
-它会稳定返回 `firewall.privileged_proxy_required`。
+`PrivilegedHelper__SocketPath` 指向开发 Helper 的 socket；`PrivilegedHelper__HelperPath`/`SudoPath`
+仅用于过渡性的 user-execution。普通 `http` 配置不包含这些路径，因此适合 UI/API 调试；一旦发起真实
+UFW 修改，它会稳定返回 `firewall.privileged_proxy_required`。
 
 ### `http-linux-privileged` 登录返回 503
 
-`http-linux-privileged` 的系统账户登录也走同一条 `Server → sudo → Helper → PAM` 链路。仅在 Rider
+`http-linux-privileged` 的系统账户登录走同一条 `Server → socket → Helper → PAM` 链路。仅在 Rider
 中切换到该启动配置不会安装或更新 Helper。因此若客户端登录提示
-`authentication-unavailable`（HTTP 503），首先重新构建并重新执行上面的开发安装命令；这会将当前
-Debug Helper 快照安装到它配置的路径，并同时恢复受管 PAM 文件和精确的 sudoers 规则。
+`authentication-unavailable`（HTTP 503），先检查：
 
-每次修改 `RelaxKonOS.PrivilegedHelper` 后都必须重复这两个步骤；仅重新启动 Rider 或 Server 不会更新
-root-owned 副本。若重新安装后仍失败，查看 Server 控制台中同一次请求的
+```text
+systemctl status relaxkonos-privileged-helper-development
+journalctl -u relaxkonos-privileged-helper-development -n 50
+ls -l /run/relaxkonos/privileged-development.sock
+```
+
+然后重新构建并重新执行上面的开发安装命令。这会将当前 Debug Helper 快照安装到配置路径、重建开发
+`allowedUids`/socket，并重启单元。每次修改 `RelaxKonOS.PrivilegedHelper` 后都必须重复这两个步骤；仅
+重新启动 Rider 或 Server 不会更新 root-owned 副本，也不会重启已运行的 Helper 进程。若重新安装后仍失败，
+查看 Server 控制台中同一次请求的
 `Privileged Helper operation completed`：`HelperUnavailable` 表示 Helper 路径或 sudo 授权未就绪，
 `InternalError` 则表示 Helper 已运行但专用 PAM service 或其依赖不可用。不要将 System Mode 改为
 `in-process` 作为绕过方式。

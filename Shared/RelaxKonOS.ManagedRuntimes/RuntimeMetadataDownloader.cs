@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Sockets;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 
@@ -24,7 +24,7 @@ public sealed class RuntimeMetadataDownloader
 
 internal static class RuntimeHttpsTransfer
 {
-    internal static async Task CopyAsync(RuntimeSource source, Uri uri, long maximumBytes, bool metadata,
+    internal static async Task CopyAsync(IRuntimeDownloadScope source, Uri uri, long maximumBytes, bool metadata,
         Stream output, RuntimeDownloadProxy? proxy, CancellationToken cancellationToken)
     {
         source.Validate();
@@ -61,7 +61,7 @@ internal static class RuntimeHttpsTransfer
     }
 
     /// <summary>One complete attempt, including every redirect hop. A retryable refusal is thrown as a signal.</summary>
-    private static async Task AttemptAsync(RuntimeSource source, Uri uri, long maximumBytes, bool metadata,
+    private static async Task AttemptAsync(IRuntimeDownloadScope source, Uri uri, long maximumBytes, bool metadata,
         Stream output, RuntimeDownloadProxy? proxy, CancellationToken deadline, CancellationToken cancellationToken)
     {
         using var clients = new TransferClients(source, proxy);
@@ -69,10 +69,14 @@ internal static class RuntimeHttpsTransfer
         {
             for (var hop = 0; hop <= 3; hop++)
             {
+                // Query-bearing metadata requires an exact source-owned request policy. Ordinary
+                // manifests and archive sources continue to reject queries, including on redirects.
+                var queryAllowed = metadata && uri.Query.Length != 0 && source.AllowsQuery(uri)
+                    && uri.Fragment.Length == 0 && RuntimeValidation.Https(uri.OriginalString[..uri.OriginalString.IndexOf('?')],out _);
                 var allowed = hop == 0
-                    ? (metadata ? RuntimeValidation.Within(source.BaseUri, uri) : source.AllowsDownload(uri))
-                    : (metadata && RuntimeValidation.Within(source.BaseUri, uri) || source.AllowsRedirect(uri));
-                if (!RuntimeValidation.Https(uri.OriginalString, out _)
+                    ? (metadata ? queryAllowed || RuntimeValidation.Within(source.BaseUri, uri) : source.AllowsDownload(uri))
+                    : (queryAllowed || metadata && RuntimeValidation.Within(source.BaseUri, uri) || source.AllowsRedirect(uri));
+                if (!(queryAllowed || RuntimeValidation.Https(uri.OriginalString, out _))
                     || !allowed)
                     throw new RuntimePolicyException("runtime.redirect_forbidden");
                 // A tunnelled hop cannot have its resolved address checked, so a literal address in the
@@ -156,12 +160,12 @@ internal static class RuntimeHttpsTransfer
     /// </summary>
     private sealed class TransferClients : IDisposable
     {
-        private readonly RuntimeSource source;
+        private readonly IRuntimeDownloadScope source;
         private readonly RuntimeDownloadProxy? proxy;
         private HttpClient? direct;
         private HttpClient? proxied;
 
-        internal TransferClients(RuntimeSource source, RuntimeDownloadProxy? proxy)
+        internal TransferClients(IRuntimeDownloadScope source, RuntimeDownloadProxy? proxy)
         {
             this.source = source;
             this.proxy = proxy;

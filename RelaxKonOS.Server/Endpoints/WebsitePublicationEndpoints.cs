@@ -37,7 +37,7 @@ public static class WebsitePublicationEndpoints
 
     private static string Key(HttpContext context) => context.Request.Headers["Idempotency-Key"].ToString();
     private static string Actor(ClaimsPrincipal user) => user.FindFirstValue(ClaimTypes.NameIdentifier) ?? user.FindFirstValue("sub") ?? throw new UnauthorizedAccessException();
-    private static IResult ElevationRequired() => Results.Problem(statusCode: StatusCodes.Status403Forbidden, title: "需要管理员权限",
+    private static IResult ElevationRequired() => Results.Problem(statusCode: StatusCodes.Status403Forbidden, title: "elevation-required",
         type: "https://relaxkonos.app/problems/elevation-required", extensions: new Dictionary<string, object?> { ["problemCode"] = "elevation-required" });
     private static IResult Handle(Func<IResult> action)
     {

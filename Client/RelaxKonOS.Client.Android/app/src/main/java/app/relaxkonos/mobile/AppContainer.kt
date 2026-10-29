@@ -312,6 +312,10 @@ class AppContainer(context: Context) {
 
     val usageMemory = app.relaxkonos.mobile.data.UsageMemoryStore(app.relaxkonos.mobile.data.SharedPreferencesUsageMemoryStorage(appContext))
     val elevations = ElevationRepository(gateway, session, vault, usageMemory)
+    val tailscaleControl = app.relaxkonos.mobile.data.TailscaleControlRepository(gateway, session, elevations,
+        app.relaxkonos.mobile.data.TailscaleOperationReferences(app.relaxkonos.mobile.data.FileTailscaleReferenceStorage(appContext.noBackupFilesDir)))
+    val tailscaleLogin = app.relaxkonos.mobile.data.TailscaleLoginRepository(gateway, session, elevations,
+        app.relaxkonos.mobile.data.TailscaleOperationReferences(app.relaxkonos.mobile.data.FileTailscaleReferenceStorage(appContext.noBackupFilesDir,"tailscale-login-operations")))
 
     val guardian = app.relaxkonos.mobile.data.GuardianRepository(gateway, session)
 
@@ -367,6 +371,9 @@ class AppContainer(context: Context) {
         app.relaxkonos.mobile.data.HostSettingsJournal(app.relaxkonos.mobile.data.FileHostSettingsStorage(appContext.noBackupFilesDir)))
     val firewall = app.relaxkonos.mobile.data.FirewallRepository(gateway, session, elevations,
         app.relaxkonos.mobile.data.FirewallMutationJournal(app.relaxkonos.mobile.data.FileFirewallRequestStorage(appContext.noBackupFilesDir)))
+    val components = app.relaxkonos.mobile.data.ComponentRepository(gateway, session) { owner, kind, request, provider ->
+        installations.submit(installations.prepare(owner, kind, request), provider)
+    }
     val smb = app.relaxkonos.mobile.data.SmbRepository(gateway, session, elevations,
         app.relaxkonos.mobile.data.SmbMutationJournal(app.relaxkonos.mobile.data.FileSmbMutationStorage(appContext.noBackupFilesDir)))
     private val dockerControlJournal = app.relaxkonos.mobile.data.DockerControlJournal(app.relaxkonos.mobile.data.FileDockerControlStorage(appContext.noBackupFilesDir))

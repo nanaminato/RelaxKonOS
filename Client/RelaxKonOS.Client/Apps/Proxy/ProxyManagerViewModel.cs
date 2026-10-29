@@ -288,8 +288,8 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
     [RelayCommand(CanExecute = nameof(CanRestartProxy))] private Task RestartProxyAsync() => LifecycleAsync(ProxyLifecycleAction.Restart);
     [RelayCommand(CanExecute = nameof(CanToggleProxy))]
     private Task ToggleProxyAsync() => LifecycleAsync(ProxyIsRunning ? ProxyLifecycleAction.Stop : ProxyLifecycleAction.Start);
-    /// <summary>Runtime version negotiation lives on its own page; this only navigates there.</summary>
-    [RelayCommand] private void OpenRuntimePage() => NavigateRequested?.Invoke("runtime");
+    /// <summary>Mihomo installation lives in the component center; settings only observes and navigates.</summary>
+    public ComponentCenter.ComponentDependencySettingsViewModel? Dependency { get; init; }
     [RelayCommand(CanExecute = nameof(CanEnableTun))]
     private Task EnableTunAsync() => (SelectedProfile ?? Overview?.ActiveProfile) is { } profile
         ? QueueAsync(() => repository.EnableTunAsync(profile.Id))

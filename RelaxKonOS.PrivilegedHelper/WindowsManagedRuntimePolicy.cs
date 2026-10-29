@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using RelaxKonOS.Protocol.Privileged;
 
@@ -9,11 +9,13 @@ public sealed record WindowsManagedRuntimePolicy(string NginxRoot, string Privat
     IReadOnlyList<string> ArchiveRoots, IReadOnlyList<string> ReaderSids,
     IReadOnlyList<WindowsFrpRelease> FrpReleases)
 {
+    public IReadOnlyList<WindowsNginxRelease> NginxReleases { get; init; } = [];
+
     public static WindowsManagedRuntimePolicy Create(string? nginxRoot, string? privateRoot,
-        IReadOnlyList<string>? archiveRoots, IReadOnlyList<string> readers, IReadOnlyList<WindowsFrpRelease>? releases)
+        IReadOnlyList<string>? archiveRoots, IReadOnlyList<string> readers, IReadOnlyList<WindowsFrpRelease>? releases, IReadOnlyList<WindowsNginxRelease>? nginxReleases = null)
         => new(Path.GetFullPath(nginxRoot ?? WindowsManagedRuntimeDefaults.NginxRoot),
             Path.GetFullPath(privateRoot ?? WindowsManagedRuntimeDefaults.PrivateRoot),
-            archiveRoots ?? [], readers, releases ?? WindowsManagedRuntimeDefaults.FrpReleases);
+            archiveRoots ?? [], readers, releases ?? WindowsManagedRuntimeDefaults.FrpReleases) { NginxReleases = nginxReleases ?? WindowsManagedRuntimeDefaults.NginxReleases };
 
     public void Validate()
     {
@@ -30,6 +32,10 @@ public sealed record WindowsManagedRuntimePolicy(string NginxRoot, string Privat
         if (ArchiveRoots.Any(root => Contains(root, NginxRoot) || Contains(root, PrivateRoot)
             || Contains(NginxRoot, root) || Contains(PrivateRoot, root)))
             throw new InvalidOperationException("Archive ingress must be separate from protected runtimes.");
+        if (NginxReleases.GroupBy(pin => pin.Version).Any(group => group.Count() != 1)
+            || NginxReleases.Any(pin => !Regex.IsMatch(pin.Version, @"\A[0-9]+\.[0-9]+\.[0-9]+\z", RegexOptions.CultureInvariant)
+                || !Regex.IsMatch(pin.Sha256, @"\A[0-9a-fA-F]{64}\z", RegexOptions.CultureInvariant)))
+            throw new InvalidOperationException("Nginx release pins are invalid.");
         if (FrpReleases.GroupBy(x => (x.Version, x.Rid)).Any(x => x.Count() != 1)
             || FrpReleases.Any(x => !IsTrustedRelease(x)))
             throw new InvalidOperationException("Windows FRP release pins are invalid.");

@@ -36,7 +36,10 @@ public sealed class ServerRuntimeSettingsStore
         {
             if (_document.Current.InstanceId != request.InstanceId || _document.Current.Revision != request.ExpectedRevision) return null;
             var json = (JsonObject)JsonSerializer.SerializeToNode(_document.Current.Settings, RelaxKonOSJsonOptions.Default)!;
-            if (!json.ContainsKey(request.Name) || request.Value.ValueKind != JsonValueKind.Number || !request.Value.TryGetInt32(out _))
+            var validType = request.Name == "sessionValid"
+                ? request.Value.ValueKind is JsonValueKind.True or JsonValueKind.False
+                : request.Value.ValueKind == JsonValueKind.Number && request.Value.TryGetInt32(out _);
+            if (!json.ContainsKey(request.Name) || !validType)
                 throw new ArgumentException("Invalid server runtime field.");
             json[request.Name] = JsonNode.Parse(request.Value.GetRawText());
             var settings = json.Deserialize<ServerRuntimeSettings>(RelaxKonOSJsonOptions.Default)!;

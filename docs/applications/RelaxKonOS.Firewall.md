@@ -2,6 +2,8 @@
 
 > 状态：**已实现（Linux UFW / Windows Defender Firewall）**。Windows 系统模式与 Windows 10/11 个人模式均支持。
 
+Firewall 已接入官方模块 `relaxkonos.firewall`，默认启用。受控 Server 配置设置 `Modules:Firewall:Enabled=false` 并重启后，`IHostFirewallService`、`/api/v1.0/firewall/*` 路由与 `server.firewall` 能力一并消失，桌面端因此在这台 Server 上阻止打开该应用。该开关不移除发布包中的代码，也不会卸载、停用或回滚宿主防火墙的现有规则与策略；需要修改宿主防火墙时必须使用应用内的显式操作与提权流程。详见[模块设计实施记录](../architecture/RelaxKonOS.ModulesAndExtensions.Design.md#firewall-与-system-performance-迁移2026-10-28)。
+
 ## 定位与范围
 
 Firewall 是 RelaxKonOS 的内置宿主防火墙编辑器。它读取并修改宿主防火墙的启用状态、默认入/出站策略和编号规则；Linux 使用 UFW，Windows 使用 Windows Defender Firewall。操作只接受结构化字段；Linux 不导入 iptables/nftables 配置，Windows 只编辑本应用管理的规则。

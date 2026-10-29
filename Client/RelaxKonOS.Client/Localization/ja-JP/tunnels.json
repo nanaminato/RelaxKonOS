@@ -3,6 +3,7 @@
   "Strings": {
     "tunnels.title": "トンネル マネージャー",
     "tunnels.subtitle": "独立した FRP Client プロセスを安全に管理します",
+    "tunnels.login_required": "トンネルを管理するにはサインインしてください。",
     "tunnels.workspace": "ワークスペース",
     "tunnels.overview": "概要",
     "tunnels.status.loading": "トンネル状態を読み込んでいます…",
@@ -16,7 +17,8 @@
     "tunnels.status.operation": "操作完了: {0}",
     "tunnels.status.external_available": "External FRP を検出しました: {0}",
     "tunnels.runtime": "FRP Runtime",
-    "tunnels.runtime_page": "Runtime",
+    "tunnels.runtime_page": "Runtime",
+    "tunnels.runtime.manage_hint": "FRP のインストール、更新、修復、ロールバック、アンインストールはコンポーネントセンターでのみ行います。ここには現在の Runtime の状態を表示します。",
     "tunnels.runtime_install_hint": "サーバー信頼マニフェスト内の固定バージョンだけをインストールできます。失敗しても active バージョンは置換されません。",
     "tunnels.runtime.install_confirmation": "固定版の公式 FRP Runtime {0} をインストールしますか？",
     "tunnels.runtime.uninstall_confirmation": "管理対象の FRP Runtime をアンインストールしますか？再インストールするまで、これを必要とするトンネルは利用できません。",

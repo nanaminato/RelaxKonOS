@@ -341,6 +341,21 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         return showIcons;
     }
 
+    protected static Control AppLabelWithAvailability(TextBlock name, AppEntryViewModel app, double width = double.PositiveInfinity)
+    {
+        if (!app.HasAvailabilityBadge) return name;
+        var status = new TextBlock { Text = app.AvailabilityText.Resolve(), FontSize = 10, MaxWidth = width,
+            TextTrimming = TextTrimming.CharacterEllipsis, HorizontalAlignment = name.HorizontalAlignment };
+        if (name.Classes.Contains("desktop-label"))
+        {
+            status.Classes.Add("desktop-label");
+            ThemeResources.Bind(status, TextBlock.ForegroundProperty, "DesktopItemLabelForegroundBrush");
+        }
+        else ThemeResources.Bind(status, TextBlock.ForegroundProperty, "TextSecondaryBrush");
+        ToolTip.SetTip(status, app.AvailabilityText.Resolve());
+        return new StackPanel { Spacing = 1, VerticalAlignment = VerticalAlignment.Center, Children = { name, status } };
+    }
+
     protected Control Launcher(DesktopShellViewModel vm, string label)
     {
         var panel = new Border
@@ -360,7 +375,7 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
             {
                 var button = new Button
                 {
-                    Content = app.DisplayName, Command = app.LaunchCommand, ContextMenu = ApplicationPinMenu(vm, app.Id), HorizontalContentAlignment = HorizontalAlignment.Left,
+                    Content = AppLabelWithAvailability(new TextBlock { Text = app.DisplayName }, app), Command = app.LaunchCommand, ContextMenu = ApplicationPinMenu(vm, app.Id), HorizontalContentAlignment = HorizontalAlignment.Left,
                 };
                 ThemeResources.Bind(button, Avalonia.Controls.Documents.TextElement.ForegroundProperty, "TextPrimaryBrush");
                 return button;
@@ -438,6 +453,16 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
                 HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom,
                 Child = new TextBlock { Text = "↗", Foreground = Brushes.Black, FontSize = 13, Margin = new Thickness(1, 0) },
             });
+            if (item is AppEntryViewModel { HasAvailabilityBadge: true } app)
+            {
+                var dependency = new Border { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top,
+                    CornerRadius = new CornerRadius(6), Padding = new Thickness(3, 0),
+                    Child = new TextBlock { Text = "•", FontSize = 14 } };
+                ThemeResources.BindSurface(dependency, "SurfaceRaisedBrush");
+                ToolTip.SetTip(dependency, app.AvailabilityText.Resolve());
+                badge.Children.Add(dependency);
+                ToolTip.SetTip(label, name + "\n" + app.AvailabilityText.Resolve());
+            }
             content.Children.Insert(0, badge);
         }
         content.Children.Add(label);
@@ -760,8 +785,9 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
             FontSize = 13,
         };
         ThemeResources.Bind(name, TextBlock.ForegroundProperty, "TextPrimaryBrush");
-        Grid.SetColumn(name, 1);
-        row.Children.Add(name);
+        var caption = AppLabelWithAvailability(name, app);
+        Grid.SetColumn(caption, 1);
+        row.Children.Add(caption);
 
         return new Button
         {
@@ -1122,7 +1148,7 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
         {
             Text = app.DisplayName,
             FontSize = 12,
-            MaxLines = 2,
+            MaxLines = app.HasAvailabilityBadge ? 1 : 2,
             MaxWidth = 100,
             TextAlignment = TextAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
@@ -1130,8 +1156,9 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
             HorizontalAlignment = HorizontalAlignment.Center,
         };
         name.Classes.Add("desktop-label");
-        Grid.SetRow(name, 1);
-        content.Children.Add(name);
+        var caption = AppLabelWithAvailability(name, app, 100);
+        Grid.SetRow(caption, 1);
+        content.Children.Add(caption);
         var button = new Button
         {
             Content = content,
@@ -1445,7 +1472,7 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
         {
             Text = app.DisplayName,
             FontSize = 12,
-            MaxLines = 2,
+            MaxLines = app.HasAvailabilityBadge ? 1 : 2,
             MaxWidth = 110,
             TextAlignment = TextAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
@@ -1453,8 +1480,9 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
             HorizontalAlignment = HorizontalAlignment.Center,
         };
         ThemeResources.Bind(name, TextBlock.ForegroundProperty, "TextPrimaryBrush");
-        Grid.SetRow(name, 1);
-        content.Children.Add(name);
+        var caption = AppLabelWithAvailability(name, app, 110);
+        Grid.SetRow(caption, 1);
+        content.Children.Add(caption);
         return new Button
         {
             Content = content,

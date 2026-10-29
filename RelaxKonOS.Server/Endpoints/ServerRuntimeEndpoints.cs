@@ -29,5 +29,7 @@ public static class ServerRuntimeEndpoints
         }).RequireAuthorization();
         return app;
     }
-    private static IResult Denied() => Results.Problem(statusCode: 403, title: "elevation-required", detail: "Server runtime management authorization is required.");
+    private static IResult Denied() => Results.Problem(statusCode: 403,
+        type: "https://relaxkonos.app/problems/elevation-required", title: "elevation-required",
+        detail: "Server runtime management authorization is required.");
 }

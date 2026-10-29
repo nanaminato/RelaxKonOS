@@ -39,8 +39,17 @@ internal partial class WebServerManagerWorkspace : UserControl
 
         _selectedButton = button;
         button.Classes.Add("nav-selected");
-        ContentHost.Content = page == "sites"
-            ? new WebServerSitesPageView()
-            : new WebServerInstancesPageView();
+        var dependency = (DataContext as WebServerManagerViewModel)?.Dependency;
+        if (page == "settings" && dependency is not null) _ = dependency.RefreshAsync();
+        ContentHost.Content = page switch
+        {
+            "sites" => new WebServerSitesPageView(),
+            "settings" => new ScrollViewer
+            {
+                HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+                Content = new RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsView { DataContext = dependency }
+            },
+            _ => new WebServerInstancesPageView()
+        };
     }
 }

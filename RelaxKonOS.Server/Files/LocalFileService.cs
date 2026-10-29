@@ -99,13 +99,13 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
         // 候选列表：(协议枚举, 显示名, 路径)。
         var candidates = new[]
         {
-            (SpecialFolderKind.Home,      "主目录", home),
-            (SpecialFolderKind.Desktop,   "桌面",   userDirectory("XDG_DESKTOP_DIR", "Desktop")),
-            (SpecialFolderKind.Documents, "文档",   userDirectory("XDG_DOCUMENTS_DIR", "Documents")),
-            (SpecialFolderKind.Downloads, "下载",   userDirectory("XDG_DOWNLOAD_DIR", "Downloads")),
-            (SpecialFolderKind.Pictures,  "图片",   userDirectory("XDG_PICTURES_DIR", "Pictures")),
-            (SpecialFolderKind.Music,      "音乐",   userDirectory("XDG_MUSIC_DIR", "Music")),
-            (SpecialFolderKind.Videos,     "视频",   userDirectory("XDG_VIDEOS_DIR", "Videos")),
+            (SpecialFolderKind.Home,      "Home", home),
+            (SpecialFolderKind.Desktop,   "Desktop",   userDirectory("XDG_DESKTOP_DIR", "Desktop")),
+            (SpecialFolderKind.Documents, "Documents",   userDirectory("XDG_DOCUMENTS_DIR", "Documents")),
+            (SpecialFolderKind.Downloads, "Downloads",   userDirectory("XDG_DOWNLOAD_DIR", "Downloads")),
+            (SpecialFolderKind.Pictures,  "Pictures",   userDirectory("XDG_PICTURES_DIR", "Pictures")),
+            (SpecialFolderKind.Music,      "Music",   userDirectory("XDG_MUSIC_DIR", "Music")),
+            (SpecialFolderKind.Videos,     "Videos",   userDirectory("XDG_VIDEOS_DIR", "Videos")),
         };
 
         var list = new List<SpecialLocationDto>();
@@ -386,7 +386,7 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
         EnsureUserModePath(path);
         // Directory.CreateDirectory 对已存在目录是 no-op；为产生 409 我们先检查
         if (Directory.Exists(path))
-            throw new IOException($"目录已存在: {path}");
+            throw new IOException($"Directory already exists: {path}");
         Directory.CreateDirectory(path);
     }
 
@@ -398,13 +398,13 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
         else if (File.Exists(path))
             File.Delete(path);
         else
-            throw new FileNotFoundException($"路径不存在: {path}", path);
+            throw new FileNotFoundException($"Path not found: {path}", path);
     }
 
     public FileSystemEntryDto Rename(string sourcePath, string newName)
     {
         EnsureUserModePath(sourcePath);
-        var info = GetInfo(sourcePath) ?? throw new FileNotFoundException($"源路径不存在: {sourcePath}", sourcePath);
+        var info = GetInfo(sourcePath) ?? throw new FileNotFoundException($"Source path not found: {sourcePath}", sourcePath);
         var parent = System.IO.Path.GetDirectoryName(sourcePath);
         var dest = string.IsNullOrEmpty(parent)
             ? newName
@@ -427,9 +427,9 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
     {
         EnsureUserModePath(sourcePath); EnsureUserModePath(destinationPath);
         if (!Exists(sourcePath))
-            throw new FileNotFoundException($"源路径不存在: {sourcePath}", sourcePath);
+            throw new FileNotFoundException($"Source path not found: {sourcePath}", sourcePath);
         if (Exists(destinationPath) && !overwrite)
-            throw new IOException($"目标已存在: {destinationPath}");
+            throw new IOException($"Destination already exists: {destinationPath}");
 
         if (Directory.Exists(sourcePath))
         {
@@ -447,9 +447,9 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
     {
         EnsureUserModePath(sourcePath); EnsureUserModePath(destinationPath);
         if (!Exists(sourcePath))
-            throw new FileNotFoundException($"源路径不存在: {sourcePath}", sourcePath);
+            throw new FileNotFoundException($"Source path not found: {sourcePath}", sourcePath);
         if (Exists(destinationPath) && !overwrite)
-            throw new IOException($"目标已存在: {destinationPath}");
+            throw new IOException($"Destination already exists: {destinationPath}");
 
         if (Directory.Exists(sourcePath))
         {
@@ -468,12 +468,12 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
     {
         EnsureUserModePath(targetDirectoryPath);
         if (!Directory.Exists(targetDirectoryPath))
-            throw new DirectoryNotFoundException($"目标目录不存在: {targetDirectoryPath}");
+            throw new DirectoryNotFoundException($"Target directory not found: {targetDirectoryPath}");
         // The name comes from Content-Disposition or a phone's document picker, so it is untrusted: a name
         // containing a separator or ".." would leave the destination directory. Validating here as well as
         // at the endpoint keeps the guarantee attached to the write itself.
         if (!FileUploadNamePolicy.IsValidFileName(fileName))
-            throw new ArgumentException($"文件名必须是单一成分: {FileUploadNamePolicy.DescribeForLog(fileName)}", nameof(fileName));
+            throw new ArgumentException($"The file name must be a single path segment: {FileUploadNamePolicy.DescribeForLog(fileName)}", nameof(fileName));
         var dest = System.IO.Path.Combine(targetDirectoryPath, fileName);
         return await WriteAtomicallyAsync(dest, content, cancellationToken);
     }
@@ -482,10 +482,10 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
     {
         EnsureUserModePath(stagingPath);
         if (!FileUploadNamePolicy.TryParseStagingFileName(System.IO.Path.GetFileName(stagingPath), out _))
-            throw new ArgumentException("暂存文件名不符合会话命名规则。", nameof(stagingPath));
+            throw new ArgumentException("The staging file name does not match the upload-session naming rule.", nameof(stagingPath));
         var directory = System.IO.Path.GetDirectoryName(stagingPath);
         if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
-            throw new DirectoryNotFoundException($"目标目录不存在: {directory}");
+            throw new DirectoryNotFoundException($"Target directory not found: {directory}");
         // CreateNew: a leftover file at this exact path means the session id was reused or the index lost an
         // entry. Refusing is safer than appending to bytes whose origin is unknown.
         using var created = new FileStream(stagingPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1, FileOptions.None);
@@ -505,7 +505,7 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
             await file.FlushAsync(cancellationToken);
         }
         if (file.Length != offset)
-            throw new IOException($"暂存文件长度 {file.Length} 与声明的偏移 {offset} 不一致。");
+            throw new IOException($"Staging file length {file.Length} does not match the declared offset {offset}.");
         file.Position = offset;
         try
         {
@@ -514,7 +514,7 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
             while (written < expectedBytes)
             {
                 var read = await content.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, expectedBytes - written)), cancellationToken);
-                if (read == 0) throw new IOException("请求正文短于其声明的长度。");
+                if (read == 0) throw new IOException("The request body is shorter than its declared length.");
                 await file.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
                 written += read;
             }
@@ -566,10 +566,10 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
         EnsureUserModePath(stagingPath);
         EnsureUserModePath(destinationPath);
         if (!File.Exists(stagingPath))
-            throw new FileNotFoundException($"暂存文件不存在: {stagingPath}", stagingPath);
+            throw new FileNotFoundException($"Staging file not found: {stagingPath}", stagingPath);
         var directory = System.IO.Path.GetDirectoryName(destinationPath);
         if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
-            throw new DirectoryNotFoundException($"目标目录不存在: {directory}");
+            throw new DirectoryNotFoundException($"Target directory not found: {directory}");
         // Same-directory rename: the destination is either the old file or the new one, never a partial
         // copy of the new one. This is the same terminal step WriteAtomicallyAsync performs after a
         // single-shot upload, which is why the two routes cannot disagree about overwrite semantics.

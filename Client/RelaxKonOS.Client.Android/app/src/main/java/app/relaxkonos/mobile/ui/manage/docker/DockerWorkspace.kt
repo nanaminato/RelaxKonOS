@@ -11,11 +11,14 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.DockerResourceKind
 import app.relaxkonos.mobile.ui.common.*
+import app.relaxkonos.mobile.ui.manage.components.ComponentDependencyAction
 import app.relaxkonos.mobile.ui.more.OutboundProxyScreen
+import app.relaxkonos.mobile.ui.nav.Routes
 
 @Composable
 fun DockerWorkspace(initialSection: String, initialStack: String?, onBack: () -> Unit,
-    onOpenApplication: (String) -> Unit, onOpenManagedProxy: () -> Unit, modifier: Modifier = Modifier) {
+    onOpenApplication: (String) -> Unit, onOpenManagedProxy: () -> Unit, modifier: Modifier = Modifier,
+    onOpenComponents: () -> Unit = {}) {
     val owner = appContainer().activeSession
     val control: DockerControlViewModel = dockerControlViewModel()
     var requestedStack by rememberSaveable(owner, initialSection, initialStack) { mutableStateOf(initialStack) }
@@ -42,6 +45,7 @@ fun DockerWorkspace(initialSection: String, initialStack: String?, onBack: () ->
     WorkspaceFrame(stringResource(R.string.docker_title), screenTitle = screenTitle,
         pages = pages, selected = section, onSelect = { section = it }, onBack = onBack, modifier = modifier) {
         val state = control.state
+        if (state.owner === owner && section != "records") ComponentDependencyAction(Routes.MANAGE_DOCKER, onOpenComponents)
         if (state.owner === owner && section != "records" &&
             (state.pending.isNotEmpty() || state.resourcePending || state.pendingInstallation || state.installation?.state?.active == true)) {
             TextButton(onClick = { section = "records" }) {

@@ -1,6 +1,6 @@
 # Squid HTTP 代理网关
 
-状态：已实现后端 API、Avalonia 内置应用与 Android 管理应用。桌面支持通过 APT 安装和卸载 Squid，主机恢复由管理员操作；Ubuntu 26.04 / Squid 7.2 的包管理、配置、服务控制与 HTTP/CONNECT 已实机验证；Debian 等其他发行版及故障恢复场景仍需分别验收。
+状态：已实现后端 API、Avalonia 内置应用与 Android 管理应用。Android 在应用内通过 APT 安装和卸载 Squid，桌面端的安装/卸载只在组件中心进行（2026-10-29 起应用内不再提供这两个动作），主机恢复由管理员操作；Ubuntu 26.04 / Squid 7.2 的包管理、配置、服务控制与 HTTP/CONNECT 已实机验证；Debian 等其他发行版及故障恢复场景仍需分别验收。
 
 ## 定位与架构
 
@@ -35,7 +35,7 @@ flowchart LR
 | 应用配置、备份、reload 失败回滚、未完成事务阻断 | 已实现；Ubuntu 26.04 配置应用已实测，回滚与中断故障注入待验收 |
 | start / stop / restart / reload / enable / disable | 已实现，固定 squid.service |
 | 操作 ID、幂等键、controller 写权限、observer 读权限、审计 | 复用现有基础设施 |
-| 软件包安装 / 卸载 | 桌面运行状态页支持 APT 安装和卸载；卸载保留配置 |
+| 软件包安装 / 卸载 | Android 在应用内提供 APT 安装和卸载；桌面只在组件中心提供；卸载保留配置 |
 | 编辑器读取结构化状态、desired/published 修订与磁盘漂移 | 已实现主机级持久化；尚未接入用户级 Configuration Registry，不宣称运行时 applied |
 | Avalonia / Android 独立应用入口与编辑器 | 已实现配置表单、预览、校验、发布、服务控制和操作查询；Android 文档见其自有目录 |
 | Basic 用户与密码哈希管理、凭据轮换 | 已实现独立账号创建、重置、启用／禁用、删除；桌面访问控制页 |
@@ -110,7 +110,7 @@ apply 请求体在外层包装为 `{"configuration": {上述字段}, "adoptExist
 
 Avalonia 应用目录中的 Squid 使用独立 `relaxkonos.squid` 应用 ID 和 `squid` 内置工厂键，在所有声明 `server.gateway-proxy` 的服务器上可见（Windows 与 Linux 系统模式；Linux 用户模式没有特权 Helper，不声明）。Windows 上打开只会看到"不支持该服务器"提示，配置与服务动作全部禁用（前提是特权 Helper 正常应答；Helper 缺失或不可达时窗口显示"不可用"，不把部署故障说成平台限制）。服务器预装发行版 Squid 后，打开应用，编辑监听地址、来源 CIDR、域名 ACL 和 HTTP parent，预览并按需原生校验，确认完整替换后应用；服务原本停止时，再点击启动。首次接管现有配置必须显式勾选接管。
 
-桌面窗口采用与 mihomo 管理器一致的侧栏导航，分为运行状态、代理入口、访问控制、域名规则、HTTP 上游和配置预览六页。阻断说明集中显示在运行状态页，不再占据所有页面顶部；底部状态栏始终保留当前状态。固定动作栏提供载入已保存配置、原生校验、预览和应用，生成预览后自动切到配置预览页（含配置接管）。切页保留编辑草稿；窗口宽度低于 620 像素时侧栏折叠为菜单。
+桌面窗口采用与 mihomo 管理器一致的侧栏导航，分为运行状态、代理入口、访问控制、域名规则、HTTP 上游和配置预览六页。阻断说明集中显示在运行状态页，不再占据所有页面顶部；底部状态栏始终保留当前状态。固定动作栏提供载入已保存配置、原生校验、预览和应用，生成预览后自动切到配置预览页（含配置接管）。监听、域名、上游、访问模式、账号和配置接管通过各页按钮打开独立可滚动弹窗，不在主页面铺开输入框。关闭弹窗保留本地配置草稿，账号密码清空；只有保存、应用或确认动作才提交。切页保留编辑草稿；窗口宽度低于 620 像素时侧栏折叠为菜单。
 
 桌面操作逻辑的约束：
 
@@ -161,7 +161,7 @@ dotnet run --project RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no
 
 ### 桌面软件包控制
 
-运行状态页提供安装、卸载、启动、停止、重启、重载与开机启动切换。安装和卸载使用 `POST /lifecycle` 的 `install` / `uninstall` 动作，要求 `ProxyManage` 与 `Idempotency-Key`，通过现有操作队列查询结果并在完成后刷新状态。确认对话框期间锁定重复提交；取消不会发送请求。平台不支持、只读、已有待确认操作或恢复标记时不允许安装和卸载。
+服务端 `POST /lifecycle` 仍提供 `install` / `uninstall` 动作（要求 `ProxyManage` 与 `Idempotency-Key`，经现有操作队列查询结果）；2026-10-29 起桌面应用不再提供安装/卸载 UI，改由组件中心调用同一路由。运行状态页保留启动、停止、重启、重载与开机启动切换，并在完成后刷新状态。确认对话框期间锁定重复提交；取消不会发送请求。平台不支持、只读、已有待确认操作或恢复标记时不允许安装和卸载。
 
 自动包管理按 `/etc/os-release` 的 `ID`、`VERSION_ID` 和仓库共享的发行版清单判定，明确支持 Debian 12、13，Ubuntu 22.04、24.04、26.04，以及清单内的 Linux Mint 21.x、22.x。还须存在 `/usr/bin/apt-get` 和 `/usr/bin/systemctl`，不能仅凭 `ID_LIKE=debian` 将未知衍生版判为支持。状态契约的必需字段 `packageManagementSupported` 返回实际检测结果；桌面据此禁用安装、卸载并给出说明，配置与服务控制仍按各自条件判断。Helper 在执行时再次检查同一条件，仅调用固定 APT 路径和固定 `squid` 包名。安装先更新包索引，再以非交互方式安装并保留现有配置；单个包管理步骤最长十分钟。发行版安装脚本可能启动默认服务，安装后需检查实际状态，再预览和接管配置。其他发行版仍可通过管理员安装后使用现有配置与服务控制。
 
@@ -180,3 +180,12 @@ dotnet run --project RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no
 Helper 在 root-owned `/etc/squid/relaxkonos-users.json`（0600）保存随机独立 salt、100000 轮 SHA-512 crypt 哈希；NCSA 文件 `/etc/squid/relaxkonos.passwd` 只包含启用账号，以 root:proxy 0640 供发行版 `/usr/lib/squid/basic_ncsa_auth` 读取。使用 `credentialsttl 1 seconds`，账号变更后重载，凭据空闲缓存设为一秒。已有已建立 CONNECT 隧道不会被密码重置主动终止，后续新请求重新认证。哈希实现与发行版 NCSA helper 兼容，不增加 Apache 或第三方密码工具依赖。原生行为参考 [Squid NCSA 认证](https://wiki.squid-cache.org/ConfigExamples/Authenticate/Ncsa) 与 [认证参数](https://www.squid-cache.org/Doc/config/auth_param/)。
 
 账号文件与 NCSA 文件发布共用 Squid 排他锁，生成 root-only 哈希备份，先写恢复标记再原子替换；重载失败时恢复原文件并重新重载，恢复失败保留标记。账号事务标记明确要求同时恢复 `relaxkonos-users.json.previous` 和 `relaxkonos.passwd.previous`（原先不存在的文件应删除），检查权限及认证行为后再移除标记。不可按单一 squid.conf 配置事务盲目处理账号事务。卸载保留这些文件与备份。
+
+### 组件中心只读接入（2026-10-25）
+
+Squid 新增组件中心只读状态面板，显示领域安装/服务/待恢复事实；无程序版本，也不将配置受管当成包所有权。 可信版本与安装事务尚未迁入，详见[组件实施进度](../platform/RelaxKonOS.ComponentCenter.Progress.md)。
+
+
+### 桌面安装入口（2026-10-26）
+
+本应用的宿主组件安装已移至组件中心，应用内不再提供安装、更新、修复、回退或卸载入口，也不保留常驻横幅；设置页的共享“组件依赖”区显示宿主实测状态并提供跳转（Project Editor 为“工具 → 组件依赖”）。业务配置与服务管理保留。各平台安装能力、冻结计划与台账路径见[组件中心实施进度](../platform/RelaxKonOS.ComponentCenter.Progress.md#桌面组件安装入口统一2026-10-26)。此项仅集中入口，不扩大运行时、信任来源、多版本更新或平台验收范围。

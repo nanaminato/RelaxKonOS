@@ -7,6 +7,8 @@
     <RootNamespace>RelaxKonOS.PrivilegedHelper</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="RelaxKonOS.WindowsGit.Tests" />
+    <Compile Include="../RelaxKonOS.Server/Tailscale/TailscaleManager.cs;../RelaxKonOS.Server/Tailscale/TailscaleStatusCommand.cs" Link="Tailscale/%(Filename)%(Extension)" />
     <Compile Include="../RelaxKonOS.Server/Files/FileArchiveService*.cs;../RelaxKonOS.Server/Files/LocalArchiveFileSystem.cs;../RelaxKonOS.Server/Files/IArchiveReader.cs;../RelaxKonOS.Server/Files/SevenZipArchiveProvider.cs;../RelaxKonOS.Server/Files/ArchivePasswordException.cs" Link="Files/%(Filename)%(Extension)" />
     <None Include="../RelaxKonOS.Server/Assets/SevenZip/**/*" Link="Assets/SevenZip/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Include="../RelaxKonOS.Server/Assets/Mihomo/GeoData/geoip.metadb;../RelaxKonOS.Server/Assets/Mihomo/GeoData/geoip.dat;../RelaxKonOS.Server/Assets/Mihomo/GeoData/geosite.dat;../RelaxKonOS.Server/Assets/Mihomo/GeoData/country.mmdb;../RelaxKonOS.Server/Assets/Mihomo/GeoData/GeoLite2-ASN.mmdb"
@@ -24,12 +26,27 @@
     <PackageReference Include="RoyalApps.RoyalTerminal.Terminal.Pty.Platform" />
     <PackageReference Include="System.ServiceProcess.ServiceController" />
     <PackageReference Include="System.Management" />
-    <PackageReference Include="SixLabors.ImageSharp" />
+    <PackageReference Include="SkiaSharp" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" />
   </ItemGroup>
   <Target Name="SetArchiveDecoderBuildPermissions" AfterTargets="Build" Condition="'$(OS)' != 'Windows_NT'">
     <Exec Command="chmod 755 &quot;$(TargetDir)Assets/SevenZip/linux-x64/7zz&quot; &quot;$(TargetDir)Assets/SevenZip/linux-arm64/7zz&quot; &quot;$(TargetDir)Assets/SevenZip/osx-x64/7zz&quot; &quot;$(TargetDir)Assets/SevenZip/osx-arm64/7zz&quot;" />
   </Target>
   <Target Name="SetArchiveDecoderPublishPermissions" AfterTargets="Publish" Condition="'$(OS)' != 'Windows_NT'">
     <Exec Command="chmod 755 &quot;$(PublishDir)Assets/SevenZip/linux-x64/7zz&quot; &quot;$(PublishDir)Assets/SevenZip/linux-arm64/7zz&quot; &quot;$(PublishDir)Assets/SevenZip/osx-x64/7zz&quot; &quot;$(PublishDir)Assets/SevenZip/osx-arm64/7zz&quot;" />
+  </Target>
+  <!-- SkiaSharp 的原生包里带一个 84 MB 的 libSkiaSharp.pdb：那是 Skia 自身的符号，不是本项目的，
+       既不该进发布包，也不该把 bin 撑大。 -->
+  <Target Name="DropSkiaNativeSymbols" AfterTargets="Build">
+    <ItemGroup>
+      <SkiaNativeSymbol Include="$(OutDir)runtimes/*/native/libSkiaSharp.pdb" />
+    </ItemGroup>
+    <Delete Files="@(SkiaNativeSymbol)" />
+  </Target>
+  <Target Name="DropSkiaNativeSymbolsFromPublish" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="'%(Filename)' == 'libSkiaSharp' and '%(Extension)' == '.pdb'" />
+    </ItemGroup>
   </Target>
 </Project>

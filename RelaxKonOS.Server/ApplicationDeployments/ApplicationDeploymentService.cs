@@ -32,7 +32,7 @@ internal sealed class ApplicationDeploymentService(
     ApplicationDeploymentOptions options,
     IHostEnvironment environment,
     ApplicationDeploymentLiveLogs liveLogs,
-    GitBuildService gitBuilds,
+    IDeploymentImageBuildSource imageBuilds,
     ILogger<ApplicationDeploymentService> logger)
 {
     /// <summary>Read-only secret delivery path inside the workload container.</summary>
@@ -171,14 +171,23 @@ internal sealed class ApplicationDeploymentService(
         var inputReference = ApplicationDeploymentValidation.Reference(Canonical(source));
         var template = ApplicationTemplateCatalog.Require(application.SourceKind);
         var plan = template.Validate(source, application, options, inputReference);
-        GitBuildOperationDto? gitArtifact = null;
+        // A git build is an alternative image source: it replaces the build stage, it is not a
+        // fallback. When the Git module is absent the request fails with its own problem instead of
+        // silently building an archive nobody asked for.
+        string? gitImageReference = null;
+        GitBuildOperationDto? gitBuild = null;
         if (source.GitBuildId is { } buildId)
         {
             if (template is not ImageTemplate || !Guid.TryParse(actor, out var owner))
                 throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.InvalidRequest, 400);
-            try { gitArtifact = gitBuilds.Artifact(owner, buildId); }
-            catch (GitBuildProblem) { throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ImageNotFound, 409); }
-            if (gitArtifact.ImageReference != plan.ImageReference)
+            var build = imageBuilds.Resolve(owner, buildId);
+            if (build.Status == DeploymentImageBuildStatus.Unavailable)
+                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.GitBuildUnavailable, 503);
+            if (build.Status != DeploymentImageBuildStatus.Available || build.Operation is not { ImageReference.Length: > 0 } operation)
+                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ImageNotFound, 409);
+            gitBuild = operation;
+            gitImageReference = operation.ImageReference;
+            if (gitImageReference != plan.ImageReference)
                 throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ImageReferenceInvalid, 400);
         }
 
@@ -200,16 +209,16 @@ internal sealed class ApplicationDeploymentService(
             (entryPoint, arguments) = await template.PrepareBuildContextAsync(plan, contextDirectory, application, options, cancellationToken);
         }
 
-        if (gitArtifact is null)
+        if (gitImageReference is null)
             await progress.ReportAsync(new(template is ImageTemplate ? DeploymentStage.Pulling : DeploymentStage.Building, null, true), cancellationToken);
-        if (gitArtifact is null)
+        if (gitImageReference is null)
             await ProduceImageAsync(template, plan, contextDirectory, operationId, cancellationToken);
 
         var identity = await runtime.ResolveImageIdentityAsync(plan.ImageReference, cancellationToken);
         if (identity.ImageId is null)
             throw new ApplicationDeploymentException(
                 template is ImageTemplate ? ApplicationDeploymentProblemCodes.ImageNotFound : ApplicationDeploymentProblemCodes.BuildFailed, 409);
-        if (gitArtifact is not null && !string.Equals(identity.ImageId, gitArtifact.ImageId, StringComparison.Ordinal))
+        if (gitBuild is not null && !string.Equals(identity.ImageId, gitBuild.ImageId, StringComparison.Ordinal))
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ImageReferenceInvalid, 409);
 
         var revision = catalog.AddRevision(new RevisionRecord(
@@ -221,8 +230,8 @@ internal sealed class ApplicationDeploymentService(
             application.SiteId,
             ApplicationDeploymentValidation.Reference(actor), DateTimeOffset.UtcNow,
             application.CatalogTemplateId, application.CatalogTemplateVersion,
-            gitArtifact?.Id, gitArtifact?.RepositoryUrl, gitArtifact?.Reference, gitArtifact?.CommitSha,
-            gitArtifact?.ContextDirectory, gitArtifact?.Dockerfile), out _);
+            gitBuild?.Id, gitBuild?.RepositoryUrl, gitBuild?.Reference, gitBuild?.CommitSha,
+            gitBuild?.ContextDirectory, gitBuild?.Dockerfile), out _);
 
         await ActivateRevisionAsync(application, operationId, revision, progress, cancellationToken, rollback: false);
     }

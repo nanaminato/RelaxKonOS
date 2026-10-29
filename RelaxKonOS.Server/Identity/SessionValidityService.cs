@@ -7,6 +7,19 @@ namespace RelaxKonOS.Server.Identity;
 
 public sealed class SessionValidityService(IServiceScopeFactory scopes)
 {
+    /// <summary>Logout expires the authenticated session so TaskPlan policy cannot reuse its live authority.</summary>
+    public void ExpireSession(ClaimsPrincipal principal)
+    {
+        if (principal.Identity?.IsAuthenticated != true
+            || !Guid.TryParse(principal.FindFirst("sub")?.Value ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId)
+            || !Guid.TryParse(principal.FindFirst("sid")?.Value, out var sessionId)) return;
+        using var scope = scopes.CreateScope();
+        var repository = scope.ServiceProvider.GetRequiredService<ISessionRepository>();
+        if (repository.FindById(sessionId) is not { } session || session.UserId != userId) return;
+        session.Status = RelaxKonOS.Protocol.Workspace.SessionStatus.Expired;
+        repository.Update(session);
+    }
+
     public bool IsValid(Guid userId, long version)
     {
         try
@@ -31,6 +44,23 @@ public sealed class SessionValidityService(IServiceScopeFactory scopes)
             && (!Guid.TryParse(principal.FindFirst("device_id")?.Value, out var deviceId) || !IsOwnerDeviceValid(userId, deviceId)))
             return false;
         return IsValid(userId, version);
+    }
+
+    /// <summary>Host elevation must also reject an expired persisted login session.</summary>
+    public bool IsLiveSession(ClaimsPrincipal principal)
+    {
+        if (!IsValid(principal)
+            || !Guid.TryParse(principal.FindFirstValue("sub") ?? principal.FindFirstValue(ClaimTypes.NameIdentifier), out var userId)
+            || !Guid.TryParse(principal.FindFirstValue("sid"), out var sessionId)) return false;
+        try
+        {
+            using var scope = scopes.CreateScope();
+            var session = scope.ServiceProvider.GetRequiredService<ISessionRepository>().FindById(sessionId);
+            return session is not null && session.UserId == userId
+                && session.Status != RelaxKonOS.Protocol.Workspace.SessionStatus.Expired
+                && session.AuthenticationMethod == principal.FindFirstValue("amr");
+        }
+        catch { return false; }
     }
 
     public bool IsOwnerDeviceValid(Guid userId, Guid deviceId)

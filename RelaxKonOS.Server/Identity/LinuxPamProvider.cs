@@ -19,7 +19,7 @@ public sealed class LinuxPamProvider(IPrivilegedOperationTransport? helper = nul
     public CredentialVerifyResult Verify(string username, string password)
     {
         if (string.IsNullOrWhiteSpace(username) || username.IndexOfAny(['\0', ':']) >= 0)
-            return CredentialVerifyResult.Failed("用户名不能为空或包含非法字符", CredentialError.InvalidInput);
+            return CredentialVerifyResult.Failed("The user name is required and may not contain invalid characters", CredentialError.InvalidInput);
 
         // Resolve before and after PAM so a concurrent rename/UID reuse cannot inherit the
         // prior RelaxKonOS mapping. This data is public NSS metadata, never /etc/shadow.

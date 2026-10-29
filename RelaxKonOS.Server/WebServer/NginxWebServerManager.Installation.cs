@@ -1,4 +1,4 @@
-using RelaxKonOS.Protocol.Installations;
+﻿using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Server.Installations;
 using System.Diagnostics;
 using System.IO.Compression;
@@ -19,12 +19,35 @@ namespace RelaxKonOS.Server.WebServer;
 
 internal sealed partial class NginxWebServerManager
 {
-    private async Task<WebServerOperationResult> InstallManagedCoreAsync(ManagedLayout layout, NginxManagedInstallRequest request, IWebServerOperationProgress progress, CancellationToken cancellationToken)
+    /// <summary>
+    /// Install entry used by the component center. It runs the same managed-install flow as the Web
+    /// Server page (package, layout verification, ownership marker, configuration test) but pins the
+    /// package to a caller-frozen identity, so what was shown is what gets installed.
+    /// </summary>
+    internal async Task<WebServerOperationResult> InstallComponentPackageAsync(
+        RelaxKonOS.Protocol.ManagedRuntimes.ComponentPackageTarget expectation, CancellationToken cancellationToken)
+    {
+        if (!OperatingSystem.IsLinux()) return new("webserver.platform_unsupported");
+        await ManagedInstallGate.WaitAsync(cancellationToken);
+        try
+        {
+            return await InstallManagedCoreAsync(GetManagedLayout(),
+                new NginxManagedInstallRequest(true, expectation.Version),
+                InstallationExecutionContext.Progress.Value is { } progress ? new InstallationStageReporter(progress) : SilentProgress.Instance,
+                cancellationToken, expectation);
+        }
+        finally { ManagedInstallGate.Release(); }
+    }
+
+    private async Task<WebServerOperationResult> InstallManagedCoreAsync(ManagedLayout layout, NginxManagedInstallRequest request,
+        IWebServerOperationProgress progress, CancellationToken cancellationToken,
+        RelaxKonOS.Protocol.ManagedRuntimes.ComponentPackageTarget? expectation = null)
     {
         if (OperatingSystem.IsWindows())
             return await InstallWindowsManagedAsync(layout, request, progress, cancellationToken);
         await progress.ReportAsync("installing_package", cancellationToken);
-        var install = await RunInstallerAsync(layout, null, cancellationToken);
+        // The Web Server page has never pinned a Linux version; only a frozen component identity does.
+        var install = await RunInstallerAsync(layout, null, cancellationToken, expectation);
         if (!install.Success) return new WebServerOperationResult(install.ProblemCode == PrivilegedProblemCode.AccessDenied
             ? "webserver.install_elevation_required" : ToWebServerProblem(install.ProblemCode, "webserver.install_failed"));
         await progress.ReportAsync("verifying_layout", cancellationToken);
@@ -201,10 +224,12 @@ internal sealed partial class NginxWebServerManager
 
     // Arbitrary host-configured installers are deliberately not supported. Package installation
     // uses the fixed, Helper-owned apt operation; other platforms report not-supported.
-    private Task<NginxInstallResult> RunInstallerAsync(ManagedLayout layout, string? version, CancellationToken cancellationToken) =>
-        RunBuiltInLinuxInstallerAsync(layout, version, cancellationToken);
+    private Task<NginxInstallResult> RunInstallerAsync(ManagedLayout layout, string? version, CancellationToken cancellationToken,
+        RelaxKonOS.Protocol.ManagedRuntimes.ComponentPackageTarget? expectation = null) =>
+        RunBuiltInLinuxInstallerAsync(layout, version, cancellationToken, expectation);
 
-    private async Task<NginxInstallResult> RunBuiltInLinuxInstallerAsync(ManagedLayout layout, string? version, CancellationToken cancellationToken)
+    private async Task<NginxInstallResult> RunBuiltInLinuxInstallerAsync(ManagedLayout layout, string? version,
+        CancellationToken cancellationToken, RelaxKonOS.Protocol.ManagedRuntimes.ComponentPackageTarget? expectation = null)
     {
         if (!CanUseBuiltInInstaller()) return new(false, PrivilegedProblemCode.UnsupportedOperation);
         // Check service-account storage before APT changes the host, so a missing marker
@@ -223,8 +248,11 @@ internal sealed partial class NginxWebServerManager
             logger.LogError(exception, "The service account cannot write the managed Nginx marker root. ManagedMarkerRoot={ManagedMarkerRoot}", layout.Root);
             return new(false, PrivilegedProblemCode.AccessDenied);
         }
-        logger.LogInformation("Installing the APT Nginx package. RequestedVersion={RequestedVersion}, ManagedMarkerRoot={ManagedMarkerRoot}", version ?? "<default>", layout.Root);
-        var package = await privilegedNginx.InstallPackageAsync(version, cancellationToken);
+        logger.LogInformation("Installing the APT Nginx package. RequestedVersion={RequestedVersion}, Frozen={Frozen}, ManagedMarkerRoot={ManagedMarkerRoot}",
+            version ?? "<default>", expectation is not null, layout.Root);
+        var package = expectation is null
+            ? await privilegedNginx.InstallPackageAsync(version, cancellationToken)
+            : await privilegedNginx.InstallFrozenPackageAsync(expectation, cancellationToken);
         if (!package.Success)
         {
             logger.LogWarning("APT Nginx package installation failed. ProblemCode={ProblemCode}, ExitCode={ExitCode}, Error={Error}", package.ProblemCode, package.ExitCode, package.Error);
@@ -324,13 +352,7 @@ internal sealed partial class NginxWebServerManager
 
     private ManagedLayout GetManagedLayout()
     {
-        var configuredRoot = managedOptions.InstallationRoot.Trim();
-        var root = string.IsNullOrWhiteSpace(configuredRoot)
-            ? OperatingSystem.IsWindows()
-                ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "RelaxKonOS", "webserver", "nginx")
-                : "/var/lib/relaxkonos/webserver/nginx"
-            : Environment.ExpandEnvironmentVariables(configuredRoot);
-        root = Path.GetFullPath(root);
+        var root = NginxManagedPaths.Root(managedOptions);
         // APT owns the Linux executable at /usr/sbin/nginx.  The old implementation copied
         // it into the RelaxKonOS data directory after installing the package, which produced a
         // second Nginx installation and a second discovered instance.
@@ -379,6 +401,13 @@ internal sealed partial class NginxWebServerManager
     private sealed record ManagedLayout(string Root, string ExecutablePath, string ConfigurationPath, string MarkerPath, string InstanceId);
     private sealed record NginxManagedInstallRequest(bool Confirmed, string? Version = null, InstallationFileSource? Source = null);
     private sealed record NginxInstallResult(bool Success, PrivilegedProblemCode ProblemCode);
+
+    /// <summary>A component-driven install has no Web Server operation ledger to publish stages to.</summary>
+    internal sealed class SilentProgress : IWebServerOperationProgress
+    {
+        public static readonly SilentProgress Instance = new();
+        public Task ReportAsync(string stage, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
 
     private static string ToWebServerProblem(PrivilegedProblemCode problemCode, string fallback) =>
         problemCode == PrivilegedProblemCode.HelperUnavailable ? "webserver.privileged_helper_unavailable" : fallback;

@@ -6,6 +6,7 @@ using RelaxKonOS.Protocol.Workspace;
 
 public class SiteEditorSession : DispatchProxy
 {
+    public HostPlatformKind Platform = HostPlatformKind.Linux;
     public string Service = "https://test.invalid";
     public string Transport = "https://test.invalid";
     public UserDto User = new(Guid.NewGuid(), "test", HostPlatformKind.Linux, "test", DateTimeOffset.UtcNow, null);
@@ -32,6 +33,7 @@ public class SiteEditorSession : DispatchProxy
     {
         switch (method!.Name)
         {
+            case "get_CurrentServer": return new ServerDescriptorDto(Platform, [ServerCapabilities.WebServer]);
             case "get_State": return AuthSessionState.Authenticated;
             case "get_ServiceId": return Service;
             case "get_EffectiveBaseUrl": return Transport;

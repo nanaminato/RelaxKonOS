@@ -4,6 +4,7 @@
         "code_editor.find": "文書内を検索 (Ctrl+F)",
         "code_editor.settings.title": "コード エディターの設定",
         "code_editor.settings.font_size": "エディターのフォント サイズ",
+        "code_editor.settings.word_wrap": "長い行を折り返す",
         "code_editor.settings.default_encoding": "既定のエンコーディング",
         "code_editor.settings.syntax_note": "構文の強調表示は、リモート ファイルの拡張子に基づいて自動的に選択されます。",
         "code_editor.encoding.reopen_with": "エンコーディングを指定して再度開く",

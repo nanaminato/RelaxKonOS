@@ -34,10 +34,11 @@ polling 模式额外按配置间隔读取配置并恢复桌面快照。manual �
 | `registryFlushDelayMilliseconds` | 5000 | 100–30000 | 首次修改后启动一次合并写回窗口 |
 | `notificationCoalesceMilliseconds` | 50 | 0–1000 | 合并短时间内的设置变更通知 |
 | `retryDelaySeconds` | 5 | 1–300 | 写回或通知失败后的重试间隔 |
+| `sessionValid` | true | true / false | 当前访问令牌通过宿主管理员验证后，在令牌有效期内免重复验证；关闭后恢复短期、按能力和目标授权 |
 
 读取和修改使用独立接口 `GET/PUT /api/v1.0/server/runtime-settings`，要求 `ServerRuntimeConfigure` 能力和精确目标 `server/runtime-settings`。当前宿主管理员自动授权；普通账户使用现有管理员提权流程。用户注册表管理授权不能代替服务器运行管理授权。
 
-服务器实例 ID、版本、参数及审计记录独立保存在 `data/server-runtime-settings.json`。文件原子替换并完成磁盘刷新后，运行时才采用新快照。PUT 必须携带 InstanceId 和 ExpectedRevision；实例不匹配、版本冲突、未知字段、非整数或越界值不能修改配置。审计记录真实操作者、修改前后参数、时间与版本，保留最近 64 条记录。初始默认配置的 UpdatedBy 为空，表示尚无用户修改。
+服务器实例 ID、版本、参数及审计记录独立保存在 `data/server-runtime-settings.json`。文件原子替换并完成磁盘刷新后，运行时才采用新快照。PUT 必须携带 InstanceId 和 ExpectedRevision；实例不匹配、版本冲突、未知字段、字段类型错误（数值字段要求整数、sessionValid 要求布尔值）或越界值不能修改配置。审计记录真实操作者、修改前后参数、时间与版本，保留最近 64 条记录。初始默认配置的 UpdatedBy 为空，表示尚无用户修改。
 
 参数修改用于随后调度的批次；已经等待中的批次仍按其启动时的延迟执行，不重启服务端或 PTY。
 
@@ -55,3 +56,9 @@ polling 模式额外按配置间隔读取配置并恢复桌面快照。manual �
 - 客户端：`RelaxKonOS.ApplicationLayout.Tests --registry-only`，验证默认无轮询、缓存复用、按文档读取、模式切换、设备隔离，以及服务器实例专用路由和编辑对话框。
 
 终端渲染和会话管理继续使用原有机制；本次修改只减少设置同步和注册表持久化的重复活动。
+
+
+2026-10-27：`sessionValid` 默认开启，桌面注册表的“服务器实例 → Server\Runtime”中使用布尔编辑器修改，管理员授权及乐观版本检查仍适用。关闭时立即清除已记忆的令牌授权，再开启不会恢复旧记忆；已有五分钟精确能力授权按原期限有效。该记忆只在服务器内存中保存，服务器重启清空。
+
+
+2026-10-27 修正：服务器运行配置拒绝授权时返回唯一 `elevation-required` 问题类型 URI，使桌面统一提权代理可在 sessionValid 关闭后重新验证并重读、再次开启设置。原先仅有 403/title 而缺少 type 的响应会导致无法触发验证。运行参数显示名、字段类型、布尔值和开关文字已补齐中英日文；原始参数键保留用于协议及编辑定位，语言切换刷新当前行。客户端以真实统一提权代理验证关闭→重新进入→再开启；服务器 HTTP 检查问题类型，三语言编辑器截图抽查通过。

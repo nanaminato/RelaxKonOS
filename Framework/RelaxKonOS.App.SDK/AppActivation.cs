@@ -20,6 +20,8 @@ public enum AppActivationStatus
     NoHandler,
     /// <summary>The Shell has asked the user to select one of several eligible handlers.</summary>
     HandlerSelectionRequired,
+    /// <summary>The host is checking current component availability before opening or reusing a window.</summary>
+    AvailabilityCheckPending,
     Unavailable,
 }
 
@@ -28,6 +30,16 @@ public sealed record AppActivationResult(AppActivationStatus Status, AppId? Targ
     public bool Succeeded => Status == AppActivationStatus.Activated;
     /// <summary>Whether the Shell accepted the request and may still complete it after user input.</summary>
     public bool IsPendingUserChoice => Status == AppActivationStatus.HandlerSelectionRequired;
+    public bool IsPendingAvailabilityCheck => Status == AppActivationStatus.AvailabilityCheckPending;
+    /// <summary>The runtime accepted dispatch; availability or handler selection may still be pending.</summary>
+    public bool IsAccepted => Succeeded || IsPendingUserChoice || IsPendingAvailabilityCheck;
+}
+
+/// <summary>Optional host-owned prerequisite check, shared by every application activation entry.</summary>
+public interface IApplicationLaunchGuard
+{
+    bool RequiresCheck(ApplicationManifest manifest);
+    Task<bool> CheckAsync(AppContext context, ManagedWindow? existingWindow);
 }
 
 /// <summary>

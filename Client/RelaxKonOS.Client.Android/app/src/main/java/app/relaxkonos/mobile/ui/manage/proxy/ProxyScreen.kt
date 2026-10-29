@@ -22,25 +22,28 @@ import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.ui.common.*
+import app.relaxkonos.mobile.ui.manage.components.ComponentDependencyAction
 import app.relaxkonos.mobile.ui.manage.operations.*
+import app.relaxkonos.mobile.ui.nav.Routes
 import app.relaxkonos.mobile.ui.theme.Spacing
 import java.text.DateFormat
 import java.util.Date
 
 private class ProxyEditRequest(val kind: String, val profile: ProxyProfile?) { var open = true }
 @OptIn(ExperimentalLayoutApi::class)
-@Composable fun ProxyScreen(onBack: () -> Unit, initialOperationId: String? = null, modifier: Modifier = Modifier) {
+@Composable fun ProxyScreen(onBack: () -> Unit, initialOperationId: String? = null, modifier: Modifier = Modifier,
+    onOpenComponents: () -> Unit = {}) {
     val container = appContainer()
     val model: ProxyViewModel = viewModel(factory = viewModelFactory {
         initializer { ProxyViewModel(container.session, container.proxy, container.installations,
             container.operationIndex, container.elevationAnswers) }
     })
-    ProxyContent(model, container.activeSession, onBack, modifier, initialOperationId)
+    ProxyContent(model, container.activeSession, onBack, modifier, initialOperationId, onOpenComponents)
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun ProxyContent(model: ProxyViewModel, owner: SessionState.Active?, onBack: () -> Unit,
-    modifier: Modifier = Modifier, initialOperationId: String? = null) {
+    modifier: Modifier = Modifier, initialOperationId: String? = null, onOpenComponents: () -> Unit = {}) {
     val state = model.state
     val interactionVersion = model.interactionVersion
     val adoption = model.adoptionReview?.takeIf { it.owner === owner }
@@ -122,6 +125,7 @@ WorkspaceSection(section == "overview") {
         PageActionRow(refresh = {
             TextButton(enabled = !state.busy, onClick = model::refresh) { ActionLabel(R.string.common_refresh) }
         }, actions = {
+            ComponentDependencyAction(Routes.MANAGE_PROXY, onOpenComponents)
             key(interactionVersion, state.requestVersion) { if (canManage) OutlinedButton(enabled = !state.busy && state.installation?.state?.active != true, onClick = {
                 if (owner != null && model.isCurrentInteraction(interactionVersion, owner) && model.state == state &&
                     !model.state.busy && model.state.installation?.state?.active != true && install == null && editor == null)

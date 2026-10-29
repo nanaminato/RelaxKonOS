@@ -1,5 +1,7 @@
 # RelaxKonOS GitClient 模块设计
 
+> **模块归属（2026-10-28）**：Git 客户端与源码构建归官方模块 `relaxkonos.git`，默认启用。设置 `Modules:Git:Enabled=false` 并重启后，`IGitRepositoryService`、`GitBuildService`、`/api/v1.0/git/*`（含 workspace/build 路由）与 `server.git` 能力一并消失，桌面项目编辑器因缺少该能力在启动前被拒绝。部署域通过 `IDeploymentImageBuildSource` 端口询问某次源码构建能否作为镜像来源，因此禁用 Git 时部署返回 `application-deployment.git_build_unavailable`(503)，不会误报「找不到镜像」，也不会改用归档来源。该开关不删除服务器上的仓库、构建账本或项目文件；详见[模块设计实施记录](../architecture/RelaxKonOS.ModulesAndExtensions.Design.md#git-模块与部署端口拆分2026-10-28)。
+
 > **项目编辑器首版已实现**：`relaxkonos.git` 已整合项目文件树、多标签编辑、Commit 侧栏、Diff 标签和底部 Git 工具区，显示名称为“项目编辑器”。入口、草稿保护、条件保存和实际验证范围见 [实施记录](./RelaxKonOS.GitEditor.Progress.md)，后续目标见 [改造设计](./RelaxKonOS.GitEditor.Design.md)。下文保留 Git 领域能力和协议说明；早期按页面切换的壳布局已由项目编辑器替代。
 
 > 内置项目编辑器：参考 IDEA 的项目工具窗口与 MyGit 的变更审阅流程，每个项目拥有独立窗口。文件编辑经 Files API，仓库选择、分支切换、提交、拉取（含冲突解决）、推送、历史和 Revert 等经 Git REST API；服务端以有效宿主身份执行，复用宿主权限。
@@ -25,7 +27,7 @@ GitClient 是项目编辑器的 Git 领域模块；项目壳与共享文件编�
 
 - **架构归属**：§6.2 Remote Service Application —— UI 完全在 Client 本地渲染；仓库状态、提交历史、分支列表与变更结果**数据来源在 Server 端通过 `git` 实时采集**（不持久化运行时状态，每次请求都是当下快照）。
 - **复用宿主 OS 权限**：Server 的 Git 操作使用有效身份执行；System/Helper 模式以登录账号绑定的宿主身份执行，User 模式使用当前进程身份。SSH 使用宿主 Git/SSH agent；HTTPS 的交互与保存范围见下述凭据说明。
-- **凭据边界**：不管理 SSH 私钥。现有 HTTPS 推送与本轮克隆可由用户输入凭据，经短期 askpass 传给子进程；只有用户选择保存时，才按用户和远程主机通过 Data Protection 加密存储。Helper 后端仍拒绝凭据化进程请求，不能由本地验证推定其支持此能力。
+- **凭据边界**：不管理 SSH 私钥。现有 HTTPS 推送与本轮克隆可由用户输入凭据，经短期 askpass 传给子进程；只有用户选择保存时，才按用户和远程主机通过 Data Protection 加密存储。System Mode 下凭据随 `GitExecute` 请求的 `gitCredentials` 交给 Helper，由其在完成身份降权后生成一次性 askpass 脚本（用户执行协议 `1.9`，Server 与 Helper 必须同版本部署）；Windows Helper 使用受限 S4U primary token 和 `CreateProcessAsUserW` 执行同一 `GitExecute` 合约。
 - **跨平台抽象**：与 `IIdentityProvider` / `ISystemMetricsProvider` 同模式——`IGitRepositoryService` 接口 + 平台无关的 `LocalGitRepositoryService`（`git` CLI 在 Windows/Linux 行为一致），仅在探测 `git` 可执行文件路径与 shell 启动环境时按宿主 OS 处理。平台差异封装在服务之后，Server 端单一代码库跨 Ubuntu + Windows Server。
 
 **核心功能（MVP 范围）**：
@@ -37,7 +39,8 @@ GitClient 是项目编辑器的 Git 领域模块；项目壳与共享文件编�
 | 分支管理 | 本地+远程分支列表、切换(checkout)、新建、删除 | `GET/POST/DELETE /api/v1.0/git/repositories/{id}/branches` |
 | 提交 | 对请求路径暂存并使用 `git commit --only` 提交，不附带其他已暂存文件 | `POST /api/v1.0/git/repositories/{id}/commit` |
 | 拉取 | 当前分支 fetch+merge/fetch+rebase；未检出分支可仅安全快进更新 | `POST /api/v1.0/git/repositories/{id}/pull` |
-| 推送 | 推送当前或指定本地分支到指定 remote/分支，无需 checkout | `POST /api/v1.0/git/repositories/{id}/push` |
+| 推送 | 推送当前或指定本地分支到指定 remote/分支，无需 checkout；目标分支不存在时由推送创建 | `POST /api/v1.0/git/repositories/{id}/push` |
+| 推送预览 | 待推送提交与文件；目标分支尚未存在于远端时同样可算出（用于推送对话框） | `GET /api/v1.0/git/repositories/{id}/push/preview` |
 | 提交历史 | log 列表（hash/作者/时间/消息）+ 单提交详情 | `GET /api/v1.0/git/repositories/{id}/log` |
 | Revert | 反向提交指定 commit | `POST /api/v1.0/git/repositories/{id}/revert` |
 | Diff | 单文件 diff（工作区/已暂存/某提交） | `GET /api/v1.0/git/repositories/{id}/diff` |
@@ -93,6 +96,7 @@ Checkout           = /api/v1.0/git/repositories/{id}/checkout          (POST)   
 Commit             = /api/v1.0/git/repositories/{id}/commit            (POST)        # 提交
 Pull               = /api/v1.0/git/repositories/{id}/pull              (POST)        # 拉取
 Push               = /api/v1.0/git/repositories/{id}/push              (POST)        # 推送
+PushPreview        = /api/v1.0/git/repositories/{id}/push/preview      (GET)         # ?localBranch=&remote=&remoteBranch= 待推送提交
 Log                = /api/v1.0/git/repositories/{id}/log              (GET)         # 历史
 Diff               = /api/v1.0/git/repositories/{id}/diff             (GET)         # 文件 diff
 Revert             = /api/v1.0/git/repositories/{id}/revert            (POST)        # 反向提交
@@ -115,12 +119,12 @@ Fetch              = /api/v1.0/git/repositories/{id}/fetch             (POST)   
 | `GitCommitDto` | Sha / ShortSha / Author / AuthorEmail / AuthorDate / Committer? / Subject / Body? | 提交项 |
 | `GitCommitDetailDto` | Sha / Author / Date / Subject / Body / Parents / ChangedFiles | 单提交详情 |
 | `GitDiffDto` | Path / OldPath? / Patch / Additions / Deletions / Binary (bool) | 单文件 diff 文本与统计 |
-| `GitOperationResult` | Success / Operation / Conflicts (list of path) / Message? / RequiresCredentials (bool) | 操作结果（pull/push/merge/revert 通用） |
+| `GitOperationResult` | Success / Operation / Conflicts (list of path) / Message? / RequiresCredentials (bool) / CredentialHost? | 操作结果（pull/push/merge/revert 通用） |
 | `GitConflictFileDto` | Path / Status / OursVersion? / TheirsVersion? | 冲突文件项 |
 | `GitRepositoryRegistration` | Name / Path | 注册仓库请求体 |
 | `GitCommitRequest` | Message / Paths (要暂存的文件) / Amend (bool) | 提交请求 |
 | `GitBranchCreateRequest` | Name / StartPoint? / Track (bool) | 新建分支 |
-| `GitPullRequest` | Strategy (Merge/Rebase) / Remote? / Refspec? / Branch? | 拉取策略；`Branch` 指定未检出的本地分支时，服务端 fetch 后仅允许快进该 ref |
+| `GitPullRequest` | Strategy (Merge/Rebase) / Remote? / Refspec? / Branch? / Credentials? | 拉取策略；`Branch` 指定未检出的本地分支时，服务端 fetch 后仅允许快进该 ref |
 | `GitPushRequest` | Credentials? / LocalBranch? / Remote? / RemoteBranch? | 推送选项；显式 refspec 支持在 HEAD 位于 a 时推送 b |
 | `GitCheckoutRequest` | Branch / CreateIfMissing (bool) | 切换请求 |
 | `GitRevertRequest` | Sha / NoCommit (bool) | 反向提交请求 |
@@ -169,12 +173,15 @@ builder.Services.AddSingleton<IGitRepositoryService, LocalGitRepositoryService>(
 | diff | 工作区：`git diff --no-color [--cached] -- <path>`；提交：`git show --format= --no-color <ref> -- <path>`；未跟踪：`git diff --no-index -- /dev/null <path>` | 原始 patch 文本 + `--stat` 计数；`ref` 始终表示该提交相对父提交（根提交相对空树） |
 | 当前分支 | `git rev-parse --abbrev-ref HEAD` / detached 用 `git rev-parse --short HEAD` | |
 | ahead/behind | `git rev-list --left-right --count <upstream>...HEAD` | `left\tRight` |
+| 推送预览 | `git rev-list --count <local> --not <目标引用>`；目标引用不存在时 `<local> --not --remotes=<remote>` | 目标 ref 缺失 ≠ 没有待推送提交；推送用显式 refspec，会创建该分支 |
 
 **写操作**（commit/checkout/pull/push/revert/merge）：捕获 exit code + stderr + 是否进入冲突状态（`git status --porcelain=v2` 含 `u` 行 = 冲突）。
 
+**推送预览的基线**（`GET .../push/preview` → `GitPushPreviewDto`）：先按 `branch.<name>.pushRemote`/`.remote`/唯一 remote/`origin` 解析目标 remote，再按 `branch.<name>.merge` 或本地分支名解析目标分支。目标 `refs/remotes/<remote>/<branch>` 存在 → 只算它缺少的提交；不存在 → 算该 remote 尚不包含的提交（`--not --remotes=<remote>`），因为推送会新建该分支。**不要用 `GitBranchDto.ahead` / `GitStatusDto.ahead` 判断"是否可推送"**：它们来自 `%(upstream:track)`，本地分支没有 upstream（从未推送过）时恒为 `ahead 0`，这正是"推送对话框显示 0 个提交"的成因。
+
 **并发与 index.lock**：同一仓库的写操作用 `SemaphoreSlim(1,1)`（按 repoId 缓存）串行化；读操作不串行（git 读不持锁）。3 秒 timeout 获取信号量失败返回 `Success=false, Message="仓库繁忙"`。
 
-**凭据**：Git 保持非交互环境。HTTPS 推送和克隆返回 `RequiresCredentials` 时，桌面可请求用户输入并重试；密码通过短期 askpass 环境传递，不进入命令行，按用户意愿加密保存。拉取/获取仍依赖相应现有宿主凭据路径；Helper 后端的显式凭据请求不受支持。
+**凭据**：Git 保持非交互环境。HTTPS 推送、克隆、抓取和拉取返回 `RequiresCredentials` 时，桌面可请求用户输入并重试；密码通过短期 askpass 环境传递，不进入命令行，按用户意愿加密保存。fetch、pull 及非当前分支更新复用同一用户为有效 HTTPS 下载地址保存的凭据；按分支 remote 或显式 remote/URL 解析，不使用单独的 pushurl，并计入 Git 的 insteadOf 重写。未保存的输入仍仅用于当次操作。System Mode（Helper 后端）的显式凭据随 `GitExecute` 请求的 `gitCredentials` 下发，Helper 在降权后生成一次性 askpass 脚本，因此推送对话框在该模式下同样可用。
 
 ### 4.3 危险操作预检
 
@@ -185,6 +192,8 @@ builder.Services.AddSingleton<IGitRepositoryService, LocalGitRepositoryService>(
 | checkout | 工作区有未提交变更且会覆盖时，`git checkout` 失败 → 返回冲突文件列表 | 客户端提示先提交或 stash（stash 见 §8） |
 | revert | 若会产生冲突，返回冲突文件，不自动提交 | 客户端提示冲突需手动解决 |
 | 删除仓库注册 | 仅删除注册记录，**不**删除磁盘仓库目录 | 客户端二次确认 |
+
+Windows 直接执行与 Linux 共用无 BOM、LF 换行的 `#!/bin/sh` askpass 脚本；Windows 由 Git for Windows 自带的 shell 执行，避免 CMD 的 BOM、代码页与特殊字符展开破坏凭据。回归测试通过真实 `git credential fill` 验证普通凭据、中文及 shell 特殊字符，禁用宿主 credential helper，不访问真实凭据库或远端。Windows Helper 同样使用该脚本，并在目标用户私有临时目录中创建；Git 以用户 primary token 启动，挂入 kill-on-close Job Object 后才运行，超时、输出超限或 Helper 退出时回收整个进程树。Helper 模式不以 Server 的 PATH 判定 Git 可用性；Windows Helper 从目标用户的 PATH 解析绝对 `git.exe` 路径，版本探测在其家目录执行。普通用户令牌原生集成测试，以及 Windows Server 2022 上普通用户与 Administrator 的真实 LocalService → LocalSystem → S4U Git 专项均已通过，详见 [Windows Helper Git 验收](RelaxKonOS.GitClient.WindowsAcceptance.md)。S4U 网络登录下的 OS Credential Manager 不可用，应用显式/加密保存凭据的 push/clone 已实测；不保证交互 SSH agent 或映射盘可用，HTTPS fetch/pull 已补齐应用保存凭据的复用，并通过同一测试主机的真实 HTTPS 拉取验收。
 
 **审计**：所有写操作记录操作者、时间、仓库、动作、结果（不记录 commit message 之外的文件内容、不记录凭据）。
 
@@ -207,6 +216,7 @@ builder.Services.AddSingleton<IGitRepositoryService, LocalGitRepositoryService>(
 | POST | `/api/v1.0/git/repositories/{id}/fetch` | 仅抓取 |
 | POST | `/api/v1.0/git/repositories/{id}/pull` | 拉取（merge/rebase） |
 | POST | `/api/v1.0/git/repositories/{id}/push` | 推送 |
+| GET | `/api/v1.0/git/repositories/{id}/push/preview` | 待推送提交预览（query: localBranch, remote, remoteBranch, limit） |
 | GET | `/api/v1.0/git/repositories/{id}/log` | 提交历史（query: limit, skip） |
 | GET | `/api/v1.0/git/repositories/{id}/diff` | 文件 diff（query: path, staged, ref） |
 | POST | `/api/v1.0/git/repositories/{id}/revert` | 反向提交 |
@@ -297,7 +307,7 @@ GitClientViewModel
 | `DeleteBranchCommand` | 二次确认 → `DELETE branches/{name}` | SelectedBranch != null && !IsCurrent |
 | `CommitCommand` | 弹提交对话框 → `POST commit` | SelectedRepository != null && StagedFiles 非空 && !IsBusy |
 | `PullCommand` | `POST pull` (Merge/Rebase 选择) → 冲突则进冲突视图 | HasUpstream && !IsBusy |
-| `PushCommand` | `POST push` → RequiresCredentials 则提示 | HasUpstream && !IsBusy |
+| `PushCommand` | 先 `GET push/preview` 再弹推送对话框 → `POST push`；无 upstream 的本地分支同样可推（远端据此新建分支） | CanManage && !IsBusy |
 | `FetchCommand` | `POST fetch` | SelectedRepository != null && !IsBusy |
 | `RevertCommand` | 二次确认 → `POST revert` → 冲突则进冲突视图 | SelectedCommit != null && !IsBusy |
 | `StageCommand`/`UnstageCommand` | `POST stage` / `POST unstage` 暂存调整 | SelectedFile != null |
@@ -412,7 +422,7 @@ GitOperationResult
     │     └── POST resolve(path, revision, choice, content) → POST conflicts/operation(operation, action)
     │           ├── Success → RefreshAllAsync
     │           └── 仍有冲突 → 继续显示冲突视图
-    └── RequiresCredentials=true → StatusText="需在宿主 OS 配置 Git 凭据"
+    └── RequiresCredentials=true → 显示 CredentialHost → 输入 HTTPS 账号与令牌 → 保留原目标重试一次；取消则停止
 ```
 
 ### 6.4 分支切换流
@@ -445,7 +455,7 @@ GitOperationResult
 
 ## 7. 关键技术坑
 
-1. **不存储 Git 凭据**：push/pull 的 SSH 私钥 / HTTPS 用户名密码完全由宿主 OS 的 git 凭据体系处理。RelaxKonOS 不代理、不收集、不存储。凭据缺失时 `RequiresCredentials=true`，引导用户在宿主 OS 配置（如 `git config --global credential.helper store` 或 SSH key）。符合约束 §5.2「不存储宿主 OS 密码/sudo 密码/私钥/明文 secret」。
+1. **保护 Git 凭据**：不处理 SSH 私钥；HTTPS 令牌仅经已认证连接用于短期 askpass，用户选择保存或在账号管理中显式保存时，使用 Data Protection 按用户、主机与账号绑定加密。账号列表不返回令牌，不写入命令行或诊断日志。
 2. **index.lock 并发**：同一仓库的写操作（commit/checkout/pull/push/revert/merge）用按 repoId 缓存的 `SemaphoreSlim(1,1)` 串行化，避免 `git` 因 `.git/index.lock` 失败。读操作（status/branches/log/diff）不串行。3 秒获取信号量超时返回「仓库繁忙」。
 3. **porcelain 解析而非人类文案**：所有 `git` 输出用 `--porcelain=v2` / `--pretty=format` / `--for-each-ref --format` 等机器可读格式，按 NUL/制表符切分，不解析人类文案（避免本地化 git 输出导致解析失败）。
 4. **路径越权防护**：所有 `git` 命令的 `cwd` 设为注册时记录的仓库 `Path`；diff/commit 的 `<path>` 参数必须 `Path.IsPathRooted` 后判断是否在仓库根下（`Path.GetRelativePath` 不抛异常即合法），禁止 `../` 越权到仓库外。
@@ -582,7 +592,7 @@ Server、Helper 使用当前 user-execution 1.5 协议，`FileReadText` 在实�
 - 简要模式为菜单按钮、前进/后退、项目按钮与分支按钮；点击展开详细菜单，离开且子菜单关闭后收起。窄窗口的详细菜单横向滚动，文件/编辑/视图/导航/代码/重命名文件/工具/Git/窗口/帮助入口使用实际能力。
 - 项目弹窗提供新建空目录项目、打开目录、从版本控制克隆、当前项目、会话内最近项目及其他已注册项目，显示路径和分支；切换前复用保存/放弃/取消保护。不是 Rider 的 `.sln` 模板生成器，也没有跨窗口项目激活列表。
 - 分支弹窗按截图提供操作搜索、更新/提交/推送、新建/检出、最近/本地/远程/标签树、路径分组、跟踪名称和会话收藏；叶节点打开以该分支为目标的菜单，Enter 可检出。项目与分支最近记录、收藏仅在当前窗口会话内保留。
-- Git 菜单按截图分组增加标签、普通变基、HEAD soft/mixed reset、工作树/stash 管理、日志、补丁和当前文件操作。GitLab/GitHub/Azure DevOps 子菜单在存在对应远程时启用，打开仓库或合并请求网页；不声称拥有应用内 PR/API 集成。
+- Git 菜单按截图分组增加标签、普通变基、HEAD soft/mixed reset、工作树/stash 管理、日志、补丁和当前文件操作。GitLab/GitHub/Gitee/Azure DevOps 子菜单在存在对应远程时启用，打开仓库或合并请求网页；不声称拥有应用内 PR/API 集成。
 
 新增契约位于 `GitWorkspaceContracts.cs`，路由均使用 `GitApiRoutes`：
 
@@ -610,3 +620,25 @@ Server、Helper 使用当前 user-execution 1.5 协议，`FileReadText` 在实�
 控制台显示服务端实际完成的 Git 领域命令及结果，支持换行、滚动到底部和清空。记录不含日常查询/配置输出，去除显式密码与 URL 凭据/查询参数；内存最多保留 500 条，每字段最多 8192 字符，客户端文本最多约 256k 字符。记录随服务端重启消失，不是交互终端或实时流式进度；清空和关闭不会回放已消费记录。
 
 布局参考 [IDEA Git 工具窗口](https://www.jetbrains.com/help/idea/version-control-tool-window.html) 与 [Log 页面](https://www.jetbrains.com.cn/en-us/help/idea/log-tab.html)。完整 IDE 的索引、跨重启标签恢复及所有历史操作不属于当前实现。
+
+
+### 多 Git 主机与账号
+
+桌面克隆、推送、拉取、抓取与非当前分支更新共用服务端 HTTPS 账号存储，支持 GitHub、GitLab、Gitee、Azure DevOps 及自建 Git 服务。账号按登录用户、规范化主机和端口隔离，每个主机保留多个用户名及一个默认账号；有效远程 URL 带用户名时精确选择该账号，缺失账号时不会切换为其他用户。用户名按大小写精确匹配。
+
+项目选择页、Git 菜单和远程管理页提供「Git 账号」入口，可新增账号、更新令牌、切换默认账号和删除；编辑时令牌留空表示保留已有密钥。删除默认账号后自动选择一个剩余账号。API 和客户端仅获取公开账号信息，令牌使用 Data Protection 加密，并绑定登录用户、主机及用户名；客户端不保留窗口令牌缓存。用户未勾选保存时只用于当次操作；网络操作成功后才保存勾选的凭据。账号管理中的显式保存直接写入账号存储，不声称验证了远端令牌。
+
+「抓取全部远程」逐个远程执行，每个目标独立解析账号并在需要时提示一次认证；失败或取消时停止，已成功抓取的结果保留。远程管理页可以单独抓取选中的远程。认证提示显示服务端实际解析出的 HTTPS 主机。fetch/pull 和 clone 通过 Git 的 `ls-remote --get-url` 解析 `insteadOf`；push 使用 `remote get-url --push --all` 解析推送目标，避免拿下载地址的令牌用于不同的 pushurl。单个 remote 的多个 pushurl 只有 HTTPS 主机、端口和用户名一致时才能共用凭据；不同身份的推送目标需配置为独立 remote。
+
+新增账号 API 位于 `/api/v1.0/git/credential-accounts`：`GET` 返回 `id/host/username/isDefault` 列表，`PUT` 接受 `host/username/password?/isDefault`，`DELETE /{accountId}` 删除账号。`POST /repositories/{id}/fetch` 必须提交 `GitFetchRequest(remote?, credentials?)`；`GitPullRequest` 新增 `credentials`，`GitOperationResult` 新增 `credentialHost`。保存格式直接升级为每主机多账号，旧单账号文档不会被读取或转换，需要重新录入；服务端与桌面应同步升级。不增加兼容路由或双格式解析。
+
+SSH 继续使用宿主 SSH 配置，HTTP 和本地传输不附带 HTTPS 令牌。GitHub、GitLab、Gitee、Azure DevOps 菜单打开对应仓库和 PR/MR 网页，Gitee 同时提供议题入口。自建服务使用通用 Git 传输；任意自建域名的品牌判断和应用内托管平台 API 集成不属于当前能力。
+
+验证入口：`Tests/Server/RelaxKonOS.GitWorkspace.Tests` 覆盖真实本地 Git、Helper 请求凭据、多主机/端口/用户隔离、多账号默认选择、更新删除、加密存储和重新创建服务后的复用；`Tests/Client/RelaxKonOS.WindowPreviews.Tests --project-editor-only` 覆盖逐远程抓取、认证重试/取消和账号管理；`Tests/Client/RelaxKonOS.GitDiff.Tests --all` 包含账号界面的浅色/深色渲染检查。这些自动化不代表各公网平台已逐一实机验收。
+
+
+### 桌面安装入口（2026-10-26）
+
+本应用的宿主组件安装已移至组件中心，应用内不再提供安装、更新、修复、回退或卸载入口，也不保留常驻横幅；设置页的共享“组件依赖”区显示宿主实测状态并提供跳转（Project Editor 为“工具 → 组件依赖”）。业务配置与服务管理保留。各平台安装能力、冻结计划与台账路径见[组件中心实施进度](../platform/RelaxKonOS.ComponentCenter.Progress.md#桌面组件安装入口统一2026-10-26)。此项仅集中入口，不扩大运行时、信任来源、多版本更新或平台验收范围。
+
+2026-10-29：Project Editor 没有设置页，依赖区从“工具 → 组件依赖”以对话框打开；“Git 引擎不可用”对话框不再有安装按钮，只保留重新检测与退出，并说明安装只在组件中心进行。进入应用时通用启动门禁读取 `GET /components/git/state`：缺失时提示并可跳转，未知/无权限不跳转。Windows 仍只观测已有 Git 程序，组件中心不声明可安装版本。

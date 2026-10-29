@@ -246,6 +246,7 @@
     "application-deployment.runtime_mismatch": "The runtime version does not match the archive.",
     "application-deployment.dependency_install_failed": "Installing dependencies failed.",
     "application-deployment.build_failed": "Building the image failed.",
+    "application-deployment.git_build_unavailable": "The Git module is disabled on this server, so a Git source build cannot be used as the deployment source.",
     "application-deployment.secret_version_missing": "A secret has no stored version yet.",
     "application-deployment.container_create_failed": "The container could not be created.",
     "application-deployment.container_start_failed": "The container could not be started.",

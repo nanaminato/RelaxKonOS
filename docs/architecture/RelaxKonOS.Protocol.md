@@ -195,8 +195,9 @@ Server MVC（`AddControllers().AddJsonOptions`）与 SignalR（`AddSignalR().Add
 缩略图（`files/thumbnail`）不是原图的替代品，而是「原图还在路上时先给一张认得出的图」：渲染在
 `ImageThumbnailRenderer`，响应体为 `image/jpeg`（含 alpha 通道时改用 `image/png`），`maxEdge` 越界返回
 400 `invalid-size`。内容不是本服务能解码的图像时返回 415 `thumbnail-unsupported` —— 这是**正常答复而非错误**，
-客户端应读作「没有缩略图」并照旧拉取原图。渲染顺序是先 `Identify` 读头（声明像素数超过 64M 直接拒绝，防解压炸弹），
-再单帧解码（`DecoderOptions.MaxFrames = 1`，防动画帧内存放大），并在缩放前应用 EXIF 方向。
+客户端应读作「没有缩略图」并照旧拉取原图。渲染顺序是先读文件头（声明像素数超过 64M 直接拒绝，防解压炸弹），
+再只解第一帧（动画帧不会按帧数放大内存），并在缩放前应用 EXIF 方向。解码与编码由 SkiaSharp 承担，
+本服务不自行实现任何图像编解码。
 
 ### Browser（浏览器）
 
@@ -330,6 +331,7 @@ Compose 编排的**每个变更都是持久操作，不是同步结果**（`stac
 | POST           | `/api/v1.0/git/repositories/{id}/fetch`                      | body: remote?                                        | 抓取结果                      | JWT |
 | POST           | `/api/v1.0/git/repositories/{id}/pull`                       | body: remote + branch + rebase?                      | 合并/变基结果 DTO               | JWT |
 | POST           | `/api/v1.0/git/repositories/{id}/push`                       | body: remote + branch + force? + setUpstream?        | 推送结果（含凭据请求 401）           | JWT |
+| GET            | `/api/v1.0/git/repositories/{id}/push/preview`               | query: localBranch/remote/remoteBranch/limit         | 待推送提交 DTO（目标分支不存在也可算）      | JWT |
 | GET            | `/api/v1.0/git/repositories/{id}/log`                        | query: limit/skip/branch/author                      | 提交摘要 DTO\[]（分页）           | JWT |
 | GET            | `/api/v1.0/git/repositories/{id}/commits/{sha}`              | —                                                    | 完整提交 DTO（含父提交、作者、消息、变更统计） | JWT |
 | GET            | `/api/v1.0/git/repositories/{id}/diff`                       | query: from/to/path/cached?                          | 统一差异 DTO\[]               | JWT |

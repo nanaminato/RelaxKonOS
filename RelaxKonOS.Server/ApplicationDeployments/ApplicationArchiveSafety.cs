@@ -34,7 +34,7 @@ internal static class ApplicationArchiveSafety
                 throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveUnsafeEntry, 400);
 
             var target = Path.GetFullPath(Path.Combine(root, relative));
-            if (!IsWithin(target, root))
+            if (!PathSafety.IsWithin(root, target))
                 throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveUnsafeEntry, 400);
 
             if (entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\'))
@@ -88,10 +88,4 @@ internal static class ApplicationArchiveSafety
     /// free of entries that only pretend to be files.
     /// </summary>
     private static bool IsLink(ZipArchiveEntry entry) => ((entry.ExternalAttributes >> 16) & 0xF000) == 0xA000;
-
-    private static bool IsWithin(string path, string root)
-    {
-        var relative = Path.GetRelativePath(root, path);
-        return relative != ".." && !relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal) && !Path.IsPathRooted(relative);
-    }
 }

@@ -26,7 +26,7 @@
     "proxy.subscriptions_hint": "Subscription configurations are presented as cards; only protected runtime metadata is shown.",
     "proxy.subscription_link": "Subscription link",
     "proxy.subscription_import": "Import",
-    "proxy.subscription_runtime_required": "Install the managed Mihomo runtime before importing a subscription so its configuration can be validated.",
+    "proxy.subscription_runtime_required": "Installing and versioning the Mihomo runtime happens in Component Center. Open it from this application\\u0027s Settings \u2192 Manage dependencies in Component Center, install the managed runtime, then return here to import a subscription and validate its configuration.",
     "proxy.subscription_system_proxy.title": "Download subscription through system proxy",
     "proxy.subscription_system_proxy.message": "RelaxKonOS Server has a system proxy configured. Use it to download this subscription? Choosing Cancel connects directly to the subscription source.",
     "proxy.subscription_system_proxy.confirm": "Use system proxy",

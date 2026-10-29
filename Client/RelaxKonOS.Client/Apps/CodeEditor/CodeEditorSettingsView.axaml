@@ -12,7 +12,7 @@
             <TextBlock Text="{loc:Loc code_editor.settings.font_size}" VerticalAlignment="Center" />
             <ComboBox Grid.Column="1" ItemsSource="{Binding FontSizes}" SelectedItem="{Binding FontSize, Mode=TwoWay}" />
         </Grid>
-        <CheckBox Grid.Row="2" Content="Wrap long lines" IsChecked="{Binding WordWrap, Mode=TwoWay}" />
+        <CheckBox Grid.Row="2" Content="{loc:Loc code_editor.settings.word_wrap}" IsChecked="{Binding WordWrap, Mode=TwoWay}" />
         <Grid Grid.Row="3" ColumnDefinitions="160,*" ColumnSpacing="12">
             <TextBlock Text="{loc:Loc code_editor.settings.default_encoding}" VerticalAlignment="Center" />
             <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableEncodings}" SelectedItem="{Binding DefaultEncodingName, Mode=TwoWay}" />

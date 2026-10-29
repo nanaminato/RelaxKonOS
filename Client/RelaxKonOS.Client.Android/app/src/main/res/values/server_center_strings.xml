@@ -38,6 +38,7 @@
     <string name="installation_service_docker">Docker</string>
     <string name="installation_service_frp">FRP</string>
     <string name="installation_service_singbox">sing-box</string>
+    <string name="installation_service_squid">Squid</string>
     <string name="installation_service_mihomo">Mihomo</string>
     <string name="installation_service_nginx">Nginx</string>
     <string name="installation_service_smb">SMB / Samba</string>

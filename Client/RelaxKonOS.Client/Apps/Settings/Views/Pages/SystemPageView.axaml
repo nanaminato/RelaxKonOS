@@ -126,6 +126,28 @@
                 </Grid>
             </StackPanel>
         </Border>
+        <Border Classes="card" nav:SettingsSearchTarget.Id="server.modules">
+            <StackPanel Spacing="10">
+                <TextBlock Text="{loc:Loc settings.server_modules.title}" Classes="title" />
+                <TextBlock Text="{loc:Loc settings.server_modules.description}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding ServerModulesStatus}" IsVisible="{Binding HasServerModulesStatus}" Opacity="0.7" TextWrapping="Wrap" />
+                <ItemsControl ItemsSource="{Binding ServerModules}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ServerModuleRow">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16" Margin="0,6,0,0">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="{Binding Id}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding CapabilitiesText}" IsVisible="{Binding HasCapabilities}" Opacity="0.65" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding NotesText}" IsVisible="{Binding HasNotes}" Opacity="0.8" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="1" Text="{Binding StateText}" VerticalAlignment="Center" Opacity="0.8" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <Button Content="{loc:Loc settings.server_modules.refresh}" Command="{Binding RefreshServerModulesCommand}" HorizontalAlignment="Left" />
+            </StackPanel>
+        </Border>
         <Border Classes="card">
             <StackPanel Spacing="10">
                 <TextBlock Text="{loc:Loc settings.usage_memory.title}" Classes="title" />

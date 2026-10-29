@@ -83,9 +83,11 @@
                     </MenuItem>
                     <MenuItem Header="{loc:Loc git.workspace.tools}">
                         <MenuItem Header="{loc:Loc common.settings}" Click="Settings_Click"/>
+                        <MenuItem Header="{loc:Loc git.workspace.component_dependencies}" Click="ComponentSettings_Click"/>
                         <MenuItem Header="{loc:Loc git.refresh}" Click="RefreshProject_Click"/>
                     </MenuItem>
                     <MenuItem x:Name="GitMenu" Header="Git">
+                        <MenuItem Header="{loc:Loc git.accounts.title}" Command="{Binding ManageCredentialAccountsCommand}" />
                         <MenuItem Header="{loc:Loc git.workspace.commit_action}" Click="ShowCommit_Click" InputGesture="Ctrl+K" IsEnabled="{Binding CanManage}"><MenuItem.Icon><ui:WorkspaceIcon Kind="Commit"/></MenuItem.Icon></MenuItem>
                         <MenuItem Header="{loc:Loc git.workspace.push}" Command="{Binding PushCommand}" InputGesture="Ctrl+Shift+K"><MenuItem.Icon><ui:WorkspaceIcon Kind="Push"/></MenuItem.Icon></MenuItem>
                         <MenuItem Header="{loc:Loc git.workspace.update}" Command="{Binding PullCommand}" InputGesture="Ctrl+T"><MenuItem.Icon><ui:WorkspaceIcon Kind="Download"/></MenuItem.Icon></MenuItem>
@@ -134,6 +136,11 @@
                         <MenuItem x:Name="GitHubMenu" Header="GitHub">
                             <MenuItem Header="{loc:Loc git.workspace.hosting_repo}" Tag="github:repo" Click="Hosting_Click"/>
                             <MenuItem Header="{loc:Loc git.workspace.hosting_pulls}" Tag="github:pulls" Click="Hosting_Click"/>
+                        </MenuItem>
+                        <MenuItem x:Name="GiteeMenu" Header="Gitee">
+                            <MenuItem Header="{loc:Loc git.workspace.hosting_repo}" Tag="gitee:repo" Click="Hosting_Click"/>
+                            <MenuItem Header="{loc:Loc git.workspace.hosting_pulls}" Tag="gitee:pulls" Click="Hosting_Click"/>
+                            <MenuItem Header="{loc:Loc git.workspace.hosting_issues}" Tag="gitee:issues" Click="Hosting_Click"/>
                         </MenuItem>
                         <MenuItem x:Name="AzureMenu" Header="Azure DevOps">
                             <MenuItem Header="{loc:Loc git.workspace.hosting_repo}" Tag="azure:repo" Click="Hosting_Click"/>

@@ -20,6 +20,8 @@ public static class GitApiRoutes
     public const string ExportPatch = $"/{V1}/git/repositories/{{id}}/patch";
     public const string ApplyPatch = $"/{V1}/git/repositories/{{id}}/patch/apply";
     public const string Clone = $"/{V1}/git/clone";
+    public const string CredentialAccounts = $"/{V1}/git/credential-accounts";
+    public const string CredentialAccount = CredentialAccounts + "/{accountId}";
     public const string EngineStatus = $"/{V1}/git/engine/status";
     public const string Repositories = $"/{V1}/git/repositories";
     public const string RepositoryById = $"/{V1}/git/repositories/{{id}}";
@@ -34,6 +36,7 @@ public static class GitApiRoutes
     public const string Merge = $"/{V1}/git/repositories/{{id}}/merge";
     public const string Pull = $"/{V1}/git/repositories/{{id}}/pull";
     public const string Push = $"/{V1}/git/repositories/{{id}}/push";
+    public const string PushPreview = $"/{V1}/git/repositories/{{id}}/push/preview";
     public const string Log = $"/{V1}/git/repositories/{{id}}/log";
     public const string CommitDetail = $"/{V1}/git/repositories/{{id}}/commits/{{sha}}";
     public const string Diff = $"/{V1}/git/repositories/{{id}}/diff";

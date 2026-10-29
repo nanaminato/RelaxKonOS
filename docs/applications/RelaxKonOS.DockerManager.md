@@ -1,6 +1,9 @@
 # RelaxKonOS DockerManager 设计
 
 > 内置 Docker 管理器。它管理 **RelaxKonOS.Server 所在宿主机** 的本地 Docker Engine；客户端只负责本地 UI 渲染，不直连 Docker socket、不保存 Docker 凭据，也不将守护进程 API 暴露到网络。
+
+> **模块归属（2026-10-28）**：容器/镜像/网络/卷编辑、Compose、栈操作协调器、引擎生命周期与 Docker 代理界面归官方模块 `relaxkonos.docker`，默认启用；设置 `Modules:Docker:Enabled=false` 并重启后，`/api/v1.0/docker/*` 与 `server.docker` 能力消失，桌面 Docker Manager 因缺少该能力在启动前被拒绝。**引擎传输本身留在 Core**：应用部署、Docker 运行时安装、Nginx/Mihomo/FRP 与受管运行时下载都直接使用 `IDockerEngineService`、`IDockerRuntimeInstaller`、`IDockerProxyResolver` 与 `IOutboundHttpClientFactory`，禁用管理界面既不会卸载 Docker，也不会让这些下载意外走直连。详见[模块设计实施记录](../architecture/RelaxKonOS.ModulesAndExtensions.Design.md#docker-模块与引擎传输边界2026-10-28)。
+> **停用门禁（2026-10-28）**：Compose 栈操作账本（`stack-operations.json`）留在 Core，并被 Host 的停用门禁读取。若账本里还有 `Queued`/`Running` 的操作，`Modules:Docker:Enabled=false` 会让 Server **拒绝启动**并打印具体操作 ID 与项目名——先启用模块让协调器把操作对账成 `interrupted`，再停用即可。账本不可读同样按「状态未知」阻止，不会为了允许停用而清账。
 >
 > 当前状态：**已实现**本机 Engine 状态、容器/镜像/网络/卷列表、容器生命周期与安全的原地重命名，以及网络、卷和容器的只读详情查看。Compose 编排支持项目列表、定义预览、`up` 部署、服务查看、项目级启动/停止/重启/删除，以及**持久 Stack 操作记录**（断开请求、App 被回收或服务端重启后仍可查询结果、按项目互斥、幂等重放与部分失败分类）。编排会展示 Compose 文件来源；点击来源可路由至内置文件浏览器。RelaxKonOS 部署的 Compose 文件与操作账本保存在服务器受管目录，停止后的项目仍会显示。桌面端已接入 Ubuntu Docker Engine 安装与可恢复任务进度；终端、流式统计和审计仍为**设计中**。
 >
@@ -322,3 +325,12 @@ Compose 操作轮询持久操作记录与诊断快照，阶段变化记入日志
 参考资料：
 - https://code.visualstudio.com/docs/editing/getting-started/userinterface
 - https://www.jetbrains.com/help/idea/using-services-tool-window.html
+
+### 组件中心只读状态（2026-10-25）
+
+组件中心通过既有 Docker 状态接口显示 API 可用性和实测版本，不推导系统包所有权，也不把 API 不可用显示成未安装。Windows 宿主上的 Linux 引擎仍使用宿主平台标记。组件安装迁入与版本事务仍未实现，跟踪见[组件实施进度](../platform/RelaxKonOS.ComponentCenter.Progress.md)。
+
+
+### 桌面安装入口（2026-10-26）
+
+本应用的宿主组件安装已移至组件中心，应用内不再提供安装、更新、修复、回退或卸载入口，也不保留常驻横幅；设置页的共享“组件依赖”区显示宿主实测状态并提供跳转（Project Editor 为“工具 → 组件依赖”）。业务配置与服务管理保留。各平台安装能力、冻结计划与台账路径见[组件中心实施进度](../platform/RelaxKonOS.ComponentCenter.Progress.md#桌面组件安装入口统一2026-10-26)。此项仅集中入口，不扩大运行时、信任来源、多版本更新或平台验收范围。

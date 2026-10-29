@@ -136,14 +136,14 @@ internal static class MihomoInstallationPublicationChecks
         {
             var domain = f.LedgerAdapter();
             JsonElement Options(RuntimeChangePlan plan, bool confirmed = true) => JsonSerializer.SerializeToElement(
-                new ManagedRuntimeInstallationRequest(confirmed, plan), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                new MihomoInstallationRequest(confirmed, plan), new JsonSerializerOptions(JsonSerializerDefaults.Web));
             foreach (var (kind, change) in new[] { (InstallationOperationKind.Install, RuntimeChange.Install),
                 (InstallationOperationKind.Upgrade, RuntimeChange.Update), (InstallationOperationKind.Repair, RuntimeChange.Repair),
                 (InstallationOperationKind.Rollback, RuntimeChange.Rollback), (InstallationOperationKind.Uninstall, RuntimeChange.Uninstall) })
             {
                 var plan = f.Plan with { Request = f.Plan.Request with { Change = change, ReleaseId = change == RuntimeChange.Uninstall ? null : f.Plan.Release!.ReleaseId },
                     Release = change == RuntimeChange.Uninstall ? null : f.Plan.Release };
-                Check(domain.Validate(kind, Options(plan), f.Plan.Request.IdempotencyKey) is ManagedRuntimeInstallationRequest,
+                Check(domain.Validate(kind, Options(plan), f.Plan.Request.IdempotencyKey) is MihomoInstallationRequest,
                     "Managed Mihomo ledger accepts the exact current plan contract: " + change);
             }
             void Refuse(string code, Func<object> call)
@@ -166,7 +166,7 @@ internal static class MihomoInstallationPublicationChecks
             var domain = f.LedgerAdapter();
             var coordinator = new InstallationCoordinator(ledger, [domain], lifetime);
             await coordinator.StartAsync(default);
-            var request = new ManagedRuntimeInstallationRequest(true, f.Plan);
+            var request = new MihomoInstallationRequest(true, f.Plan);
             var input = JsonSerializer.SerializeToElement(request, new JsonSerializerOptions(JsonSerializerDefaults.Web));
             var operation = coordinator.Start(InstallationServiceId.Mihomo, InstallationOperationKind.Install, input, "ledger-actor", f.Plan.Request.IdempotencyKey);
             var completed = await ManagedRuntimeLedgerFixture.TerminalAsync(coordinator, operation.OperationId);
@@ -203,7 +203,7 @@ internal static class MihomoInstallationPublicationChecks
             await coordinator.StartAsync(default);
             var repair = f.Plan with { Request = f.Plan.Request with { Change = RuntimeChange.Repair }, PreviousReleaseId = f.Plan.Release!.ReleaseId };
             var operation = coordinator.Start(InstallationServiceId.Mihomo, InstallationOperationKind.Repair,
-                JsonSerializer.SerializeToElement(new ManagedRuntimeInstallationRequest(true, repair), new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+                JsonSerializer.SerializeToElement(new MihomoInstallationRequest(true, repair), new JsonSerializerOptions(JsonSerializerDefaults.Web)),
                 "repair-actor", repair.Request.IdempotencyKey);
             var terminal = await ManagedRuntimeLedgerFixture.TerminalAsync(coordinator, operation.OperationId);
             var expected = mode switch
@@ -225,7 +225,7 @@ internal static class MihomoInstallationPublicationChecks
             var ledger = new InstallationOperationStore(new ManagedRuntimeLedgerFixture.Environment(f.LedgerRoot));
             var coordinator = new InstallationCoordinator(ledger, [f.LedgerAdapter()], lifetime);
             await coordinator.StartAsync(default);
-            var input = JsonSerializer.SerializeToElement(new ManagedRuntimeInstallationRequest(true, f.Plan), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            var input = JsonSerializer.SerializeToElement(new MihomoInstallationRequest(true, f.Plan), new JsonSerializerOptions(JsonSerializerDefaults.Web));
             var operation = coordinator.Start(InstallationServiceId.Mihomo, InstallationOperationKind.Install, input, "cancel-actor", f.Plan.Request.IdempotencyKey);
             await f.DownloadStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Check(coordinator.Get(operation.OperationId)!.Operation is { Stage: InstallationStage.Downloading, Cancellable: true },
@@ -287,7 +287,7 @@ internal static class MihomoInstallationPublicationChecks
             var provider = new MihomoRuntimeAuthorizationProvider(Store, this, this);
             var runtime = new MihomoRuntimeService(this, Store, provider, this, new DirectDownloads());
             return new(Store, runtime, new(Store, Service, this, this, new() { Endpoint = new("http://127.0.0.1:19090/") }), Service,
-                new(Store, runtime, this, MihomoRemovalHostFixture.Files(this)));
+                new(Store, runtime, this, MihomoRemovalHostFixture.Files(this)), null!, null!);
         }
 
         internal int SettingsReads, SecretCreations;

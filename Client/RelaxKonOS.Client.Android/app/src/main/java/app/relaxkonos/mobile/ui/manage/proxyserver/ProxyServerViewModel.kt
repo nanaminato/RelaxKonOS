@@ -111,6 +111,8 @@ internal class ProxyServerViewModel(private val session: AuthSession, private va
     fun upgrade(version: String) = operation { active -> repository.upgrade(active, version) }
     fun uninstall(keepData: Boolean) = operation { active -> repository.uninstall(active, keepData) }
 
+    fun saveConfiguration(request: SaveProxyServerConfiguration) = operation { active -> repository.saveConfiguration(active, request) }
+
     fun savePrincipal(id: String?, displayName: String, userId: String?) = operation { active ->
         repository.savePrincipal(active, id, SaveProxyServerPrincipal(id, displayName, userId))
     }

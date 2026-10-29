@@ -1,5 +1,6 @@
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Identity;
+using RelaxKonOS.Server.Residency;
 using RelaxKonOS.Server.Secrets;
 using RelaxKonOS.Server.Startup;
 using RelaxKonOS.Server.Storage;
@@ -26,6 +27,8 @@ var isDevelopment = environmentName.Equals(Environments.Development, StringCompa
 // The installer writes this optional host configuration before the mode boundary is evaluated.
 // It must not be possible for a later configuration provider to change an already-validated mode.
 builder.Configuration.AddJsonFile("appsettings.host.json", optional: true, reloadOnChange: false);
+var serverModules = ServerModules.Create(builder.Configuration);
+builder.Services.AddSingleton(serverModules);
 
 var eventAlertsOptions = builder.AddServerObservability(isDevelopment);
 // Deployment mode is an explicit security contract. In particular, Development must not turn a
@@ -39,7 +42,7 @@ var kestrelCertificates = builder.ConfigureHostListeners(serverModeResolver);
 
 // Persisted host secrets must survive upgrades that change the content root.
 builder.Services.AddHostDataProtection();
-builder.AddProxyServices();
+builder.AddProxyRuntimeServices();
 var forwardedHeaders = builder.AddServerAuthentication();
 builder.AddDeploymentServices();
 var (linuxPamTransport, privilegedHelperOptions) = builder.AddHostIdentity(serverModeResolver, userExecutionBackend);
@@ -55,16 +58,34 @@ using var identityHostLock = storageProvider == "sqlite"
     ? StorageStartup.AcquireIdentityHostLock(Path.Combine(builder.Environment.ContentRootPath, storageOpts.DatabasePath)) : null;
 builder.AddServerStorage(storageOpts, storageProvider);
 builder.AddWorkspaceServices();
+// Modules register after the storage provider is resolved: a module whose persistence exists for
+// one provider only must be able to say so without duplicating the "default is sqlite" rule.
+var serverModuleContext = ServerModuleContext.Create(builder.Configuration, builder.Environment, storageProvider);
+// The module inventory route reads the same snapshot the gate uses, so both answer with one source.
+builder.Services.AddSingleton(serverModuleContext);
+serverModules.ConfigureServices(builder, serverModuleContext);
 
 var app = builder.Build();
 if (await app.RunMaintenanceAsync(builder, serverModeResolver)) return;
 app.Logger.LogInformation("Authentication configuration loaded. ServerMode={ServerMode} LinuxPamTransport={LinuxPamTransport} PrivilegedHelperPathConfigured={PrivilegedHelperPathConfigured} UserExecutionBackend={UserExecutionBackend}",
     serverModeResolver.Mode, linuxPamTransport, !string.IsNullOrWhiteSpace(builder.Configuration["PrivilegedHelper:HelperPath"]), userExecutionBackend);
 IdentityServiceRegistration.ReportUserExecutionBackend(app.Logger, userExecutionBackend, serverModeResolver.Mode, privilegedHelperOptions);
+IdentityServiceRegistration.ReportPrivilegedTransport(app.Logger, serverModeResolver, privilegedHelperOptions);
+app.Logger.LogInformation("Server modules enabled: {ServerModules}", serverModules.Describe());
+// A disabled module must not leave durable work unresolved. This runs before the request pipeline and
+// before any hosted service starts, so the operator sees the reason instead of a half-working server
+// that never reconciles an interrupted operation.
+await serverModules.ValidateDeactivationAsync(app.Services, serverModuleContext, app.Lifetime.ApplicationStopping);
+// The sweep only decides when an idle module may be released; nothing is loaded here.
+if (app.Services.GetService<ModuleResidencyCoordinator>() is { } moduleResidency)
+{
+    app.Logger.LogInformation("Server module residency: {ModuleResidency}", moduleResidency.DescribeSettings());
+    moduleResidency.Start(app.Lifetime.ApplicationStopping);
+}
 if (eventAlertsOptions.Enabled)
     app.Services.GetRequiredService<RelaxKonOS.Server.Hubs.EventAlertNotificationHub>().Attach();
 
 app.UseServerRequestObservation(forwardedHeaders);
 await app.InitializeServerStorageAsync(storageProvider);
-app.MapServerApplication(eventAlertsOptions);
+app.MapServerApplication(eventAlertsOptions, serverModuleContext);
 app.Run();

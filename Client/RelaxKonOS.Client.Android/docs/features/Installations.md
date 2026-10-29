@@ -6,13 +6,15 @@
 
 请求没有服务器路径或命令字段；路由与共享 InstallationApiRoutes 一致，JSON 枚举遵循 Server 的 camelCase 配置。未知枚举、无效操作 ID、缺少必需字段或异常阶段进度均作为传输/契约不可用处理，不推断成功。
 
+受管运行时安装观察明确携带 `commitWitness`，没有原操作提交证据时为 null。Android 保留宿主返回的对象正文，缺少该字段或字段不是对象/null 时拒绝当前观察契约。提交证据是历史只读信息，不授予安装、推进或恢复权限；Android 不据此推断任务编排恢复成功。
+
 | 服务 | 公共安装动作 | 安装包与回滚 |
 | --- | --- | --- |
 | SMB、Docker | Install | 使用服务端安装来源 |
 | Nginx | Install / Upgrade / Repair / Uninstall | 包引用仅用于 Install |
 | FRP | Install / Upgrade / Repair / Uninstall | 包引用仅用于无回滚的 Install；回滚使用 Repair + rollback |
 | Mihomo | Install / Upgrade / Repair / Rollback / Uninstall | 只接受宿主冻结计划；不接受包引用、版本字符串或 rollback 标记 |
-| sing-box | 观察当前 Installations 记录（包括独立 Rollback），按宿主 Cancellable 状态提供通用取消 | 没有冻结版本计划的 Android 提交表单，不接受包引用或通用安装请求 |
+| sing-box | Install / Upgrade / Repair / Rollback / Uninstall；按宿主 Cancellable 状态提供取消 | 代理服务端的运行时页使用宿主冻结计划；不接受包引用或通用版本字符串 |
 
 这是当前 Android 的提交/观察范围，不代表所有宿主一定支持执行。登录响应的 `server.host.capabilities.privilegedOperations` 为真且相应服务能力存在时，Repository 才能准备提交、运维中心才自动发现安装任务。权限、宿主运行模式与实际安装条件继续由 Server 校验；服务专属界面仍需核对各领域当前能力。
 

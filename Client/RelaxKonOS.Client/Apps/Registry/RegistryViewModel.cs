@@ -584,6 +584,7 @@ public enum RegistryPaneState { Idle, Loading, Ready, Empty, Denied, Failed, Dis
 
 public sealed record RegistryEntryRow(RegistryEntryDto Source, string Name, string DesiredValue, string Type)
 {
+    public RegistryValueLabels Labels { get; } = new(Source, Name, DesiredValue, Type);
     public RegistryEntryDto? Document { get; init; }
     public IReadOnlyList<string> JsonPath { get; init; } = [];
     public static RegistryEntryRow From(RegistryEntryDto entry) => new(entry, entry.Name, Format(entry.DesiredValue), entry.ValueType.ToString());
@@ -592,6 +593,16 @@ public sealed record RegistryEntryRow(RegistryEntryDto Source, string Name, stri
         var text = value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : value.GetRawText();
         return text.Length > 240 ? text[..237] + "…" : text;
     }
+}
+
+/// <summary>Localized display labels; protocol field names and values remain unchanged.</summary>
+public sealed class RegistryValueLabels(RegistryEntryDto source, string name, string data, string type) : LocalizedObservableObject
+{
+    public string Name => source.Scope == RegistryScope.Server && source.Path == "Server\\Runtime"
+        ? LocalizedText.Get("registry.runtime." + name, name) : name;
+    public string Type => LocalizedText.Get("registry.type." + type, type);
+    public string Data => source.ValueType == RegistryValueType.Boolean
+        ? LocalizedText.Get(source.DesiredValue.GetBoolean() ? "registry.boolean.true" : "registry.boolean.false") : data;
 }
 
 public enum RegistryKeyKind { Root, CurrentUser, Users, User, Key, Json, Placeholder }

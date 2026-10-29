@@ -227,7 +227,7 @@ public sealed partial class GitClientViewModel
             var result = await client.CloneAsync(new(values[0], values[1]));
             if (result.Result.RequiresCredentials && ShowGitCredentialsDialogAsync is not null)
             {
-                var credentials = await ShowGitCredentialsDialogAsync(null);
+                var credentials = await ShowGitCredentialsDialogAsync(null, result.Result.CredentialHost);
                 if (credentials is null) return;
                 result = await client.CloneAsync(new(values[0], values[1], credentials));
             }

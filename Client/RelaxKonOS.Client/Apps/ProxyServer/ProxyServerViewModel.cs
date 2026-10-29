@@ -37,6 +37,9 @@ public sealed record ProtocolChoice(ProxyServerProtocol Protocol)
 
 public partial class ProxyServerViewModel(IProxyServerClient client) : ObservableObject, IDisposable
 {
+    /// <summary>sing-box installation lives in Component Center; settings only observes and navigates.</summary>
+    public ComponentCenter.ComponentDependencySettingsViewModel? Dependency { get; init; }
+
     private readonly CancellationTokenSource _lifetime = new();
     private ProxyServerSnapshot? _snapshot;
     private bool _invalidated;
@@ -399,39 +402,12 @@ public partial class ProxyServerViewModel(IProxyServerClient client) : Observabl
         await SubmitAsync(HttpMethod.Post, ProxyServerRoutes.Rollback, new { }, "proxy_server.rolled_back");
     });
 
-    [RelayCommand] private Task RecoverAsync() => RunAsync(async () =>
-    {
-        RequireManage();
-        await SubmitAsync(HttpMethod.Post, ProxyServerRoutes.Recovery, new { }, "proxy_server.recovered");
-    });
-
     [RelayCommand] private Task RuntimeAsync(string? action) => RunAsync(async () =>
     {
         RequireManage();
         if (!Enum.TryParse<ProxyServerAction>(action, true, out var parsed)) return;
         if (parsed is ProxyServerAction.Restart && !await ConfirmDestructiveAsync("proxy_server.restart", "proxy_server.restart_warning")) return;
         await SubmitAsync(HttpMethod.Post, ProxyServerRoutes.RuntimeActions + "/" + parsed.ToString().ToLowerInvariant(), new { }, "proxy_server.action_done");
-    });
-
-    [RelayCommand] private Task InstallAsync() => RunAsync(async () =>
-    {
-        RequireManage();
-        await SubmitAsync(HttpMethod.Post, ProxyServerRoutes.RuntimeInstall, new { }, "proxy_server.installed");
-    });
-
-    [RelayCommand] private Task UpgradeAsync() => RunAsync(async () =>
-    {
-        RequireManage();
-        await SubmitAsync(HttpMethod.Post, ProxyServerRoutes.RuntimeUpgrade, new ProxyServerUpgradeRequest(SingBoxManifest.Version), "proxy_server.installed");
-    });
-
-    [RelayCommand] private Task UninstallAsync(string? keepData) => RunAsync(async () =>
-    {
-        RequireManage();
-        var keep = keepData != "delete";
-        if (!await ConfirmDestructiveAsync(keep ? "proxy_server.uninstall" : "proxy_server.uninstall_delete",
-                keep ? "proxy_server.uninstall_warning" : "proxy_server.uninstall_delete_warning")) return;
-        await SubmitAsync(HttpMethod.Post, ProxyServerRoutes.RuntimeUninstall, new ProxyServerUninstallRequest(keep), "proxy_server.uninstalled");
     });
 
     [RelayCommand] private Task LoadExportFormatsAsync() => RunAsync(UpdateExportFormatsAsync);

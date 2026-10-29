@@ -72,11 +72,20 @@ public static class AuthEndpoints
             })
             .WithTags("Auth");
 
-        group.MapPost(AuthApiRoutes.Logout, (LogoutRequest? req, HttpContext http, AuthSessionStore sessions, IHostElevationSessionStore elevations) =>
+        group.MapPost(AuthApiRoutes.Logout, (LogoutRequest? req, HttpContext http, AuthSessionStore sessions,
+            IHostElevationSessionStore elevations, SessionValidityService validity) =>
             {
                 if (!string.IsNullOrEmpty(req?.RefreshToken))
                     sessions.Revoke(req.RefreshToken);
                 elevations.Revoke(http.User);
+                validity.ExpireSession(http.User);
+                // Logout is a reclamation trigger, not a global unload: only modules this session used
+                // are considered, and only when their strategy asks for it. The coordinator still
+                // checks leases, so another user or device keeps the module alive.
+                if (http.RequestServices.GetService(typeof(RelaxKonOS.Server.Residency.ModuleResidencyCoordinator))
+                        is RelaxKonOS.Server.Residency.ModuleResidencyCoordinator residency
+                    && Guid.TryParse(http.User.FindFirst("sid")?.Value, out var sessionId))
+                    residency.OnSessionEnded(sessionId);
                 return Results.NoContent();
             })
             .RequireAuthorization()
@@ -98,7 +107,17 @@ public static class AuthEndpoints
             .RequireAuthorization()
             .WithTags("Auth");
 
-        group.MapGet(ServerApiRoutes.Capabilities, (IServerModeResolver serverMode) => Results.Ok(serverMode.Describe()))
+        group.MapGet(ServerApiRoutes.Capabilities, (IServerModeResolver serverMode, RelaxKonOS.Server.Startup.ServerModules modules) =>
+                Results.Ok(ServerDescriptorFactory.ApplyModules(serverMode.Describe(), modules.Capabilities)))
+            .RequireAuthorization()
+            .WithTags("Server");
+
+        // Read-only module inventory. Disabling a module is still a configuration + restart decision;
+        // this route exists so that decision can be made with the two failure reasons in hand instead
+        // of discovering them when the next startup refuses.
+        group.MapGet(ServerApiRoutes.Modules, async (RelaxKonOS.Server.Startup.ServerModules modules, IServiceProvider services,
+                RelaxKonOS.Server.Startup.ServerModuleContext moduleContext, CancellationToken cancellationToken) =>
+                Results.Ok(await modules.DescribeAsync(services, moduleContext, cancellationToken)))
             .RequireAuthorization()
             .WithTags("Server");
 
@@ -245,7 +264,8 @@ public static class AuthEndpoints
                 RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? HostPlatformKind.Windows : HostPlatformKind.Linux,
                 serverMode,
                 http.RequestServices.GetRequiredService<RelaxKonOS.Server.EventAlerts.EventAlertsOptions>(),
-                http.RequestServices.GetRequiredService<RelaxKonOS.Server.BackupRecovery.IBackupRecoveryKeyProvider>()),
+                http.RequestServices.GetRequiredService<RelaxKonOS.Server.BackupRecovery.IBackupRecoveryKeyProvider>(),
+                http.RequestServices.GetRequiredService<RelaxKonOS.Server.Startup.ServerModules>().Capabilities),
             new ServerExecutionEligibilityDto(login.ExecutionEligibility.Available,
                 login.ExecutionEligibility.ReasonCode, serverMode.Mode == ServerMode.System && login.Method == "system"
                 && user.Platform == HostPlatformKind.Linux && user.PlatformIdentity == "0" && user.Username == "root")));

@@ -1,3 +1,4 @@
+using Avalonia.LogicalTree;
 using Avalonia.Controls;
 using System.Reflection;
 using System.Net;
@@ -145,43 +146,26 @@ internal static class SquidWorkspaceChecks
 
         fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { PackageManagementSupported = false } };
         Complete(vm.RefreshCommand.ExecuteAsync(null));
-        Check(!vm.CanInstall && !vm.CanUninstall && vm.ShowPackageUnsupported,
-            "A Linux host without supported package management explains why both package actions are disabled.");
-        var unavailablePackageRequests = fake.Submissions.Count;
-        Complete(vm.InstallCommand.ExecuteAsync(null));
-        Check(fake.Submissions.Count == unavailablePackageRequests, "Direct execution cannot bypass package capability gating.");
+        Check(vm.ShowPackageUnsupported,
+            "A Linux host without supported package management explains the package limitation instead of offering an action.");
+        var packageRequests = fake.Submissions.Count;
+        Check(typeof(SquidViewModel).GetProperty("InstallCommand") is null
+            && typeof(SquidViewModel).GetProperty("UninstallCommand") is null
+            && typeof(SquidViewModel).GetProperty("CanInstall") is null
+            && typeof(SquidViewModel).GetProperty("CanUninstall") is null,
+            "Squid no longer exposes installation or removal; both belong to Component Center.");
+        var navigations = new List<string>();
+        using (var dependency = new RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsViewModel(
+            "relaxkonos.squid", null, null, null!, componentId => navigations.Add(componentId)))
+        {
+            Check(dependency.Components.Count == 1 && dependency.Components[0].ComponentId == "squid",
+                "Squid settings observes the catalog's squid component dependency.");
+            dependency.Components[0].ManageCommand.Execute(null);
+        }
+        Check(navigations.Count == 1 && navigations[0] == "squid" && fake.Submissions.Count == packageRequests,
+            "Squid dependency settings navigate to Component Center without a package mutation.");
         fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { PackageManagementSupported = true } };
         Complete(vm.RefreshCommand.ExecuteAsync(null));
-        // Package actions do not depend on having an adopted configuration or valid editor draft.
-        Check(vm.CanInstall && !vm.CanUninstall, "A supported uninstalled host offers installation only.");
-        vm.CanManage = false;
-        Complete(vm.InstallCommand.ExecuteAsync(null));
-        Check(!vm.CanInstall, "Read-only users cannot install packages.");
-        vm.CanManage = true;
-        var beforePackage = fake.Submissions.Count;
-        vm.ConfirmPackageAsync = _ => Task.FromResult(false);
-        Complete(vm.InstallCommand.ExecuteAsync(null));
-        Check(fake.Submissions.Count == beforePackage, "Cancelling installation never submits a mutation.");
-        vm.ConfirmPackageAsync = _ => Task.FromResult(true);
-        fake.OperationFailed = true;
-        Complete(vm.InstallCommand.ExecuteAsync(null));
-        Check(vm.ShowOutcomeFailure && !vm.HasPending && vm.CanInstall,
-            "A failed package operation retains visible failure feedback and permits an explicit retry.");
-        fake.OperationFailed = false;
-        Complete(vm.InstallCommand.ExecuteAsync(null));
-        Check(fake.Submissions.Last().Body is SquidLifecycleRequest { Action: SquidServiceAction.Install },
-            "Installation uses the typed, idempotent lifecycle contract.");
-        fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { Installed = true, Managed = false } };
-        Complete(vm.RefreshCommand.ExecuteAsync(null));
-        Check(vm.CanUninstall && !vm.CanInstall, "Unmanaged installed packages can be uninstalled.");
-        vm.ConfirmPackageAsync = _ => Task.FromResult(false);
-        beforePackage = fake.Submissions.Count;
-        Complete(vm.UninstallCommand.ExecuteAsync(null));
-        Check(fake.Submissions.Count == beforePackage, "Cancelling uninstall preserves the package.");
-        vm.ConfirmPackageAsync = _ => Task.FromResult(true);
-        Complete(vm.UninstallCommand.ExecuteAsync(null));
-        Check(fake.Submissions.Last().Body is SquidLifecycleRequest { Action: SquidServiceAction.Uninstall },
-            "Uninstall uses the typed lifecycle contract.");
 
         // Draft problems are reported in the card that owns the field, and they gate every publish action.
         vm.Port = "999";
@@ -217,10 +201,30 @@ internal static class SquidWorkspaceChecks
         { image.Render(view); image.Save(Path.Combine(previewDirectory, "squid.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
         view.FindControl<Button>("PageButton5")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
         Dispatcher.UIThread.RunJobs();
-        Check(view.FindControl<StackPanel>("Page5")!.IsVisible && view.FindControl<ComboBox>("AccessModeBox")!.Bounds.Height > 0 && view.FindControl<TextBox>("AccountPasswordBox")!.PasswordChar != default,
-            "Access control has a dedicated page and a masked password input.");
+        Check(view.FindControl<StackPanel>("Page5")!.IsVisible && !view.FindControl<StackPanel>("AccessEditor")!.IsVisible && view.FindControl<TextBox>("AccountPasswordBox")!.PasswordChar != default,
+            "Access control lists accounts while keeping masked editing fields inside a closed modal.");
         using (var image = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(960, 760)))
         { image.Render(view); image.Save(Path.Combine(previewDirectory, "squid-access.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
+        foreach (var workspace in new UserControl[] { (UserControl)view, new RelaxKonOS.Client.Apps.ProxyServer.Views.ProxyServerWorkspace() })
+        {
+            foreach (var field in workspace.GetLogicalDescendants().OfType<TextBox>().Where(field => !field.IsReadOnly))
+                Check(field.GetLogicalAncestors().OfType<StackPanel>().Any(panel => panel.Name?.EndsWith("Editor", StringComparison.Ordinal) == true && !panel.IsVisible), "Editable text fields belong to an unopened editor, not the main workspace.");
+        }
+        var editorOwner = view.FindControl<StackPanel>("AccessEditor")!.Parent;
+        Complete(RelaxKonOS.Client.Controls.WorkspaceEditorDialogView.OpenAsync((UserControl)view, "AccessEditor", "Access", (title, editor) =>
+        {
+            Check(editor.IsVisible && editor.Parent is null && ReferenceEquals(editor.DataContext, vm), "Opening detaches the same draft and keeps its binding owner.");
+            var wrapper = new RelaxKonOS.Client.Controls.WorkspaceEditorDialogView { DataContext = vm };
+            wrapper.FindControl<ContentControl>("EditorHost")!.Content = editor;
+            var dialogWindow = new Window { Content = wrapper, Width = 420, Height = 640 };
+            dialogWindow.Show(); Dispatcher.UIThread.RunJobs();
+            Check(view.FindControl<ComboBox>("AccessModeBox")!.Bounds.Height > 0, "The modal measures its editor at compact width.");
+            using (var image = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(420, 640)))
+            { image.Render(dialogWindow); image.Save(Path.Combine(previewDirectory, "squid-access-editor.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
+            wrapper.FindControl<ContentControl>("EditorHost")!.Content = null; dialogWindow.Close();
+            return Task.CompletedTask;
+        }));
+        Check(!view.FindControl<StackPanel>("AccessEditor")!.IsVisible && ReferenceEquals(view.FindControl<StackPanel>("AccessEditor")!.Parent, editorOwner), "Closing restores the hidden editor for a later edit without duplicating controls.");
         view.FindControl<Button>("PageButton0")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
         var boxes = new[] { "BindAddressBox", "PortBox", "NetworksBox", "AllowedDomainsBox", "DeniedDomainsBox", "UpstreamHostBox", "UpstreamPortBox", "PreviewBox", "DetailBox" }.Select(name => view.FindControl<TextBox>(name)!).ToList();
         Check(boxes.Count == 9, "The workspace renders seven editor fields plus the preview and detail panes.");

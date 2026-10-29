@@ -72,6 +72,14 @@ public static class ServerApiRoutes
     public const string Capabilities = $"/{RelaxKonOSEndpoints.ApiVersionPrefix}/server/capabilities";
 
     /// <summary>
+    /// 本进程实际启用的官方模块清单，以及「现在能不能停用它」的两个依据。
+    ///
+    /// 只读：模块的启停仍然只能通过配置 + 重启决定，这条路由绝不改变运行状态。它存在的理由是让操作者
+    /// 在改配置之前就能看到会被拒绝的原因（未收尾的持久操作、依赖它的启用模块），而不是改完重启才发现。
+    /// </summary>
+    public const string Modules = $"/{RelaxKonOSEndpoints.ApiVersionPrefix}/server/modules";
+
+    /// <summary>
     /// 宿主系统类别（<see cref="HostOperatingSystemDto"/>）。
     ///
     /// 本路由是**唯一一个不需要凭据的 Server 信息面**，存在理由只有一个：连接管理要在用户尚未登录、

@@ -32,12 +32,29 @@ internal static class LocalizationResourceChecks
             }
             tables.Add(culture, table);
         }
+        // `}` belongs in the character class: a placeholder at the very end of a string
+        // (`"Failed: {0}"`) is as much a placeholder as `{0}` before punctuation, and a
+        // translation that drops it would otherwise lose data without any check failing.
+        // `(?<!\{)` keeps escaped `{{0}}` out.
         string Arguments(string value) => string.Join(",", Regex.Matches(value, @"(?<!\{)\{(\d+)[,:}]")
             .Select(match => match.Groups[1].Value).Order());
+        var englishTable = tables["en-US"];
         foreach (var culture in new[] { "zh-CN", "ja-JP" })
-            foreach (var entry in tables[culture])
-                if (tables["en-US"].TryGetValue(entry.Key, out var english) && Arguments(english) != Arguments(entry.Value))
+        {
+            var translatedTable = tables[culture];
+            // Key parity first: without it a key deleted from one culture (or a stray key that
+            // only exists there) passes silently, because the loops below only look at keys
+            // English happens to have.
+            var missing = englishTable.Keys.Where(key => !translatedTable.ContainsKey(key)).Order().ToArray();
+            var extra = translatedTable.Keys.Where(key => !englishTable.ContainsKey(key)).Order().ToArray();
+            if (missing.Length > 0)
+                throw new Exception($"{culture} is missing {missing.Length} key(s): " + string.Join(", ", missing.Take(10)));
+            if (extra.Length > 0)
+                throw new Exception($"{culture} has {extra.Length} key(s) absent from en-US: " + string.Join(", ", extra.Take(10)));
+            foreach (var entry in translatedTable)
+                if (Arguments(englishTable[entry.Key]) != Arguments(entry.Value))
                     throw new Exception("Format placeholders differ for " + culture + ": " + entry.Key);
+        }
         var previous = settings.Language;
         try
         {
@@ -56,6 +73,8 @@ internal static class LocalizationResourceChecks
             }
         }
         finally { settings.Language = previous; Dispatcher.UIThread.RunJobs(); }
-        Console.WriteLine("PASS LOCALIZATION: shipped resource schema, duplicate keys, format arguments and all 20 live context translations in three languages.");
+        Console.WriteLine("PASS LOCALIZATION: shipped resource schema, duplicate keys, "
+            + englishTable.Count + " keys present in all three languages, format arguments "
+            + "and all 20 live context translations.");
     }
 }

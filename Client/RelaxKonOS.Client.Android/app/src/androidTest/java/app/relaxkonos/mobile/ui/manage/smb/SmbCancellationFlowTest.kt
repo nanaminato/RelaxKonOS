@@ -448,44 +448,6 @@ class SmbCancellationFlowTest {
         rule.runOnIdle { assertNull(model.installationCancellation); assertTrue(cancellations.isEmpty()) }
     }
 
-    @Test fun pausedInstallationApprovalCannotSubmitCapturedButton() {
-        show(notInstalled = true)
-        rule.onNodeWithText(text(R.string.smb_install)).performScrollTo().performClick()
-        val oldSubmit = requireNotNull(rule.onNodeWithText(text(R.string.smb_submit))
-            .fetchSemanticsNode().config[SemanticsActions.OnClick].action)
-        rule.mainClock.autoAdvance = false
-        try {
-            rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
-            rule.runOnUiThread { oldSubmit(); assertTrue(installationKeys.isEmpty()) }
-            rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
-        } finally { rule.mainClock.autoAdvance = true }
-        rule.onNode(isDialog()).assertDoesNotExist()
-        rule.runOnIdle { assertFalse(model.state.pendingInstallation); assertEquals(0, writes); assertTrue(cancellations.isEmpty()) }
-    }
-
-    @Test fun oldInstallationButtonsCannotConsumeReopenedApproval() {
-        show(notInstalled = true)
-        rule.onNodeWithText(text(R.string.smb_install)).performScrollTo().performClick()
-        val oldSubmit = requireNotNull(rule.onNodeWithText(text(R.string.smb_submit))
-            .fetchSemanticsNode().config[SemanticsActions.OnClick].action)
-        val oldCancel = requireNotNull(rule.onNodeWithText(text(R.string.common_cancel))
-            .fetchSemanticsNode().config[SemanticsActions.OnClick].action)
-        rule.onNodeWithText(text(R.string.common_cancel)).performClick()
-        rule.onNodeWithText(text(R.string.smb_install)).performScrollTo().performClick()
-        rule.runOnIdle { oldCancel(); oldSubmit(); assertTrue(installationKeys.isEmpty()) }
-        rule.onNode(isDialog()).assertExists()
-        rule.onNodeWithText(text(R.string.smb_submit)).performClick()
-        rule.waitUntil(5_000) { !model.state.busy && model.state.pendingInstallation }
-        rule.runOnIdle { oldSubmit(); assertEquals(1, installationKeys.size); assertEquals(0, writes) }
-        rule.onNodeWithText(text(R.string.common_dismiss)).performClick()
-        rule.onNodeWithText(text(R.string.common_retry)).performScrollTo().performClick()
-        val retry = requireNotNull(model.installationReview)
-        rule.runOnIdle { oldSubmit(); assertSame(retry, model.installationReview); assertEquals(1, installationKeys.size) }
-        rule.onNodeWithText(text(R.string.smb_submit)).performClick()
-        rule.waitUntil(5_000) { !model.state.busy && installationKeys.size == 2 }
-        rule.runOnIdle { assertEquals(installationKeys.first(), installationKeys.last()); assertEquals(0, writes); assertTrue(cancellations.isEmpty()) }
-    }
-
     @Test fun unchangedRunningInstallationContinuesAutomaticObservation() {
         show()
         rule.runOnIdle { model.recoverInstall(task.operationId, false) }

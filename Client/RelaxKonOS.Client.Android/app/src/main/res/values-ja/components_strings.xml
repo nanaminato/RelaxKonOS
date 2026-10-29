@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Read-only host component state. Keep this file aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="components_title">コンポーネント</string>
+    <string name="components_subtitle">このサーバーが管理するホストソフトウェア</string>
+    <string name="components_note">インストール、更新、アンインストールはサーバー側で変更を凍結し、アプリ画面と同じインストール台帳で実行します。Mihomo と sing-box のバージョン操作は各ランタイムページで行います。</string>
+
+    <string name="components_action_install">インストール</string>
+    <string name="components_action_update">更新</string>
+    <string name="components_action_uninstall">アンインストール</string>
+    <string name="components_change_title">%1$sコンポーネント</string>
+    <string name="components_change_target">対象: %1$s</string>
+    <string name="components_change_keep_data">業務データと設定は保持し、インストール済みプログラムのみを削除します。</string>
+    <string name="components_operation_title">変更を受け付けました</string>
+    <string name="components_operation_submitted">サーバーが操作を受け付けました。操作 ID は %1$s です。進行状況と復旧はタスクと復旧で確認できます。</string>
+    <string name="components_action_failed">変更は完了していません</string>
+    <string name="components_nginx_select">現在の Nginx</string>
+    <string name="components_nginx_empty">管理対象または統合済みの Nginx インスタンスがありません。</string>
+
+    <string name="components_nginx">Nginx</string>
+    <string name="components_nginx_note">Web サーバーとサイト公開</string>
+    <string name="components_mihomo_note">プロキシエンジンのランタイム</string>
+    <string name="components_singbox_note">プロキシサーバーの受信</string>
+    <string name="components_docker_note">コンテナエンジン</string>
+    <string name="components_samba_note">SMB ファイル共有</string>
+    <string name="components_squid_note">ゲートウェイプロキシ</string>
+    <string name="components_frpc_note">トンネルクライアント</string>
+    <string name="components_frps_note">トンネルサーバー</string>
+
+    <string name="components_state_managed">管理対象</string>
+    <string name="components_state_external">外部</string>
+    <string name="components_state_absent">未インストール</string>
+    <string name="components_state_unknown">不明</string>
+    <string name="components_state_unavailable">サーバーがこのコンポーネントの状態を読み取れませんでした。</string>
+
+    <string name="components_version">バージョン %1$s</string>
+    <string name="components_version_unknown">不明</string>
+    <string name="components_version_label">バージョン</string>
+    <string name="components_mode">モード: %1$s</string>
+    <string name="components_mode_label">モード</string>
+    <string name="components_mode_managed_archive">管理アーカイブ</string>
+    <string name="components_mode_system_package">システムパッケージ</string>
+
+    <string name="components_recovery">このコンポーネントは変更前に復旧が必要です。</string>
+    <string name="components_recovery_open">タスクと復旧</string>
+    <string name="components_open_app">アプリを開く</string>
+    <string name="components_details">詳細</string>
+
+    <string name="components_unavailable_reason">状態を取得できません（%1$s）</string>
+    <string name="components_unsupported">このサーバーのプラットフォームではサポートされていません</string>
+    <string name="components_error">サーバーからコンポーネントの状態を読み取れませんでした。</string>
+    <string name="components_empty">このサーバーはコンポーネントを宣言していません。</string>
+
+    <string name="components_ownership">所有権</string>
+    <string name="components_target">プラットフォーム</string>
+    <string name="components_host">ホスト</string>
+    <string name="components_revision">リビジョン</string>
+    <string name="components_problems">問題</string>
+    <string name="components_pending_operation">保留中の操作</string>
+    <!-- 管理アーカイブ: バージョンはホストが固定し、クライアントはその中から選ぶだけです。 -->
+    <string name="components_archive_pick">バージョンを選択</string>
+    <string name="components_archive_note">このサーバーが提供する信頼済みアーカイブのバージョンです。ホストが固定していないバージョンは選択できません。</string>
+    <string name="components_archive_unavailable">信頼済みバージョンが未選択です</string>
+    <string name="components_archive_candidate">対象バージョン: %1$s</string>
+    <string name="components_archive_not_executable">このビルドではコンポーネントセンターからこのアーカイブをインストールできません。対応するアプリの説明に従ってください。</string>
+    <string name="components_archive_file_title">ファイルからインストール</string>
+    <string name="components_archive_file_note">このサーバーに既にあるアーカイブを選び、その中のバージョンを入力してください。プラットフォーム、同一性、内容の検証はサーバーが行います。ファイル参照は操作者に紐づき、期限切れになります。</string>
+    <string name="components_archive_file_version">アーカイブ内のバージョン</string>
+    <string name="components_archive_file_path">サーバー上のアーカイブパス</string>
+    <string name="components_archive_file_reference">ファイル参照を作成</string>
+    <string name="components_archive_file_reference_ready">参照を作成済み</string>
+    <string name="components_archive_file_reference_note">%1$s を参照しました。参照はこの操作者に紐づき、期限切れになります。</string>
+    <string name="components_archive_file_local">ローカルファイルを選択</string>
+<!-- コンポーネントセンターが FRP の保守を担当します。アプリ内では提供しません。 -->
+    <string name="components_frp_rollback">ロールバック</string>
+    <string name="components_frp_rollback_title">FRP ランタイムをロールバック</string>
+    <string name="components_frp_rollback_message">管理対象 FRP を前のバージョンに修復しますか。完了までトンネルが一時的に中断する場合があります。</string>
+    <string name="components_frp_uninstall_title">管理対象 FRP をアンインストール</string>
+    <string name="components_frp_uninstall_message">管理対象 FRP をアンインストールしますか。設定と業務データは保持され、再インストールまでトンネルは利用できません。</string>
+    <string name="components_frp_upgrade_title">FRP ランタイムを更新</string>
+    <string name="components_frp_upgrade_message">対象バージョンを入力してください。リリースと整合性の検証はサーバーが行います。</string>
+    <string name="components_frp_version">対象バージョン</string>
+<string name="components_nginx_uninstall_title">管理対象 Nginx をアンインストール</string>
+    <string name="components_nginx_uninstall_message">管理対象 Nginx をアンインストールしますか。サイト設定とデータは保持され、再インストールまでサーバーは利用できません。</string>
+    <!-- アプリの依存関係入口と起動時の案内。参照と移動のみで、インストールは行いません。 -->
+    <string name="components_dependency_entry">コンポーネントの依存関係</string>
+    <string name="components_dependency_hint">インストール、更新、修復、ロールバック、アンインストールはコンポーネントセンターでのみ行います。ここでは現在のホスト状態だけを表示します。</string>
+    <string name="components_dependency_state">%1$s · バージョン %2$s</string>
+    <string name="components_open_center">コンポーネントセンターを開く</string>
+    <string name="components_launch_missing_title">コンポーネントが必要です</string>
+    <string name="components_launch_blocked_title">コンポーネントを利用できません</string>
+    <string name="components_launch_missing_message">このアプリには %1$s が必要です。コンポーネントセンターでインストールしてから戻ってください。業務操作は開始されていません。</string>
+    <string name="components_launch_recovery_message">%1$s に復旧が必要な処理があります。先に「タスクと復旧」で処理してください。</string>
+    <string name="components_launch_busy_message">%1$s のタスクが実行中です。先に「タスクと復旧」で進行状況を確認してください。</string>
+</resources>

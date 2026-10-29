@@ -136,9 +136,9 @@ internal static class InstallationChecks
             var wire = JsonSerializer.Serialize(job with { Service = InstallationServiceId.SingBox, Kind = InstallationOperationKind.Rollback }, RelaxKonOSJsonOptions.Default);
             Check(wire.Contains("\"service\":\"singBox\"", StringComparison.Ordinal) && wire.Contains("\"kind\":\"rollback\"", StringComparison.Ordinal),
                 "Current REST enum spelling matches the Android sing-box/rollback observation contract");
-            Reject(InstallationProblemCodes.NotSupported, () => new FrpInstallationService(null!, null!, null!, null!).Validate(InstallationOperationKind.Rollback, Options(input), "install-fixture"));
+            Reject(InstallationProblemCodes.NotSupported, () => new FrpInstallationService(null!, null!, null!, null!, null!).Validate(InstallationOperationKind.Rollback, Options(input), "install-fixture"));
             // The Mihomo ledger entry now validates a frozen plan, so a plan-less rollback body is never accepted.
-            Reject(InstallationProblemCodes.InvalidRequest, () => new MihomoRuntimeInstallationService(null!, null!, null!, null!, null!)
+            Reject(InstallationProblemCodes.InvalidRequest, () => new MihomoRuntimeInstallationService(null!, null!, null!, null!, null!, null!, null!)
                 .Validate(InstallationOperationKind.Rollback, JsonSerializer.SerializeToElement(new { confirmed = true }), "install-fixture"));
 
             snapshot = snapshot with { Receipt = new(job.OperationId, RuntimeSwitchOutcome.Succeeded, null) };

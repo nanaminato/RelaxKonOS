@@ -71,6 +71,17 @@
         "registry.apply.immediate": "即時に反映",
         "registry.apply.reopen": "アプリを再度開くと反映",
         "registry.error.conflict": "編集中に設定が変更されました。現在の値：{0}。エディターを開き直して変更を確認してください。",
-        "registry.error.conflict_unknown": "設定のバージョンが変更されました。再読み込みしてください。"
+        "registry.error.conflict_unknown": "設定のバージョンが変更されました。再読み込みしてください。",
+        "registry.session_valid.hint": "管理者確認後、このトークンの期限まで再確認を省略します。新しいトークンには引き継がれません。無効にすると記憶を消去します。確認済みトークンが漏れると、許可された管理操作を実行される恐れがあります。",
+        "registry.runtime.sessionValid": "現在のトークンの管理者確認を記憶",
+        "registry.runtime.registryFlushDelayMilliseconds": "レジストリ書き込み遅延（ミリ秒）",
+        "registry.runtime.notificationCoalesceMilliseconds": "通知集約間隔（ミリ秒）",
+        "registry.runtime.retryDelaySeconds": "再試行間隔（秒）",
+        "registry.type.Boolean": "真偽値",
+        "registry.type.Number": "数値",
+        "registry.type.String": "文字列",
+        "registry.type.Json": "JSON",
+        "registry.boolean.true": "オン",
+        "registry.boolean.false": "オフ"
     }
 }

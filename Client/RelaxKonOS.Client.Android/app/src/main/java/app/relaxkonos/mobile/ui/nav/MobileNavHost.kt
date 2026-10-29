@@ -10,11 +10,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -37,6 +39,13 @@ import app.relaxkonos.mobile.ui.home.HomeScreen
 import app.relaxkonos.mobile.ui.manage.tunnels.TunnelsScreen
 import app.relaxkonos.mobile.ui.manage.proxy.ProxyScreen
 import app.relaxkonos.mobile.ui.manage.certificates.CertificatesScreen
+import app.relaxkonos.mobile.ui.manage.components.AppComponentDependencies
+import app.relaxkonos.mobile.ui.manage.components.ComponentCatalog
+import app.relaxkonos.mobile.ui.manage.components.ComponentDependencyPrompt
+import app.relaxkonos.mobile.ui.manage.components.ComponentDependencyVerdict
+import app.relaxkonos.mobile.ui.manage.components.componentVerdict
+import app.relaxkonos.mobile.ui.manage.components.dependencyVerdict
+import app.relaxkonos.mobile.ui.manage.components.readComponentDependencies
 import app.relaxkonos.mobile.ui.manage.ManageScreen
 import app.relaxkonos.mobile.ui.manage.ManageViewModel
 import app.relaxkonos.mobile.ui.manage.deployments.DeploymentsScreen
@@ -75,6 +84,18 @@ fun MobileNavHost(
     modifier: Modifier = Modifier,
 ) {
     var taskTarget by remember(session) { mutableStateOf<String?>(null) }
+    // Component-backed applications ask once per open, using the same state route the component center
+    // reads. Only a measured absence or a pending transaction blocks; an unreadable answer does not.
+    var dependencyPrompt by remember(session) { mutableStateOf<ComponentDependencyPrompt?>(null) }
+    LaunchedEffect(session, navigator.route) {
+        val componentIds = AppComponentDependencies.componentsFor(navigator.route) ?: return@LaunchedEffect
+        val rows = readComponentDependencies(session, container.components, componentIds)
+        val verdict = dependencyVerdict(rows)
+        if (verdict == ComponentDependencyVerdict.Missing || verdict == ComponentDependencyVerdict.Recovery
+            || verdict == ComponentDependencyVerdict.Busy) {
+            dependencyPrompt = ComponentDependencyPrompt(verdict, rows)
+        }
+    }
     Box(modifier.fillMaxSize()) {
         when (navigator.route) {
             Routes.MANAGE_DEPLOYMENTS, Routes.MANAGE_DEPLOYMENT_DETAIL -> DeploymentsScreen(
@@ -89,20 +110,24 @@ fun MobileNavHost(
                     initialSection = when (navigator.route) { Routes.MANAGE_DOCKER_RESOURCES -> "containers"; Routes.MANAGE_DOCKER_CONTROL -> "overview"; else -> "overview" },
                     initialStack = taskTarget, onBack = { navigator.pop() },
                     onOpenApplication = { taskTarget = it; navigator.push(Routes.MANAGE_DEPLOYMENT_DETAIL) },
-                    onOpenManagedProxy = { taskTarget = null; navigator.push(Routes.MANAGE_PROXY) }, modifier = Modifier.fillMaxSize())
+                    onOpenManagedProxy = { taskTarget = null; navigator.push(Routes.MANAGE_PROXY) }, modifier = Modifier.fillMaxSize(), onOpenComponents = { navigator.push(Routes.MANAGE_COMPONENTS) })
             Routes.MANAGE_WEBSITES -> WebsitesScreen(onBack = { navigator.pop() },
-                initialApplicationId = taskTarget, modifier = Modifier.fillMaxSize())
+                initialApplicationId = taskTarget, modifier = Modifier.fillMaxSize(), onOpenComponents = { navigator.push(Routes.MANAGE_COMPONENTS) })
             Routes.MANAGE_GUARDIAN -> GuardianScreen(owner = session, onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_SCRIPTS -> ScriptsScreen(owner = session, onBack = { navigator.pop() },
                 initialTaskId = taskTarget, modifier = Modifier.fillMaxSize())
-            Routes.MANAGE_SMB -> app.relaxkonos.mobile.ui.manage.smb.SmbScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
+            Routes.MANAGE_SMB -> app.relaxkonos.mobile.ui.manage.smb.SmbScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize(), onOpenComponents = { navigator.push(Routes.MANAGE_COMPONENTS) })
             Routes.MANAGE_FIREWALL -> app.relaxkonos.mobile.ui.manage.firewall.FirewallScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
-            Routes.MANAGE_SQUID -> app.relaxkonos.mobile.ui.manage.squid.SquidScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
-            Routes.MANAGE_PROXY -> ProxyScreen(onBack = { navigator.pop() }, initialOperationId = taskTarget, modifier = Modifier.fillMaxSize())
+            Routes.MANAGE_TAILSCALE -> app.relaxkonos.mobile.ui.manage.tailscale.TailscaleScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
+            Routes.MANAGE_SQUID -> app.relaxkonos.mobile.ui.manage.squid.SquidScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize(), onOpenComponents = { navigator.push(Routes.MANAGE_COMPONENTS) })
+            Routes.MANAGE_PROXY -> ProxyScreen(onBack = { navigator.pop() }, initialOperationId = taskTarget, modifier = Modifier.fillMaxSize(), onOpenComponents = { navigator.push(Routes.MANAGE_COMPONENTS) })
             Routes.MANAGE_PROXY_SERVER -> app.relaxkonos.mobile.ui.manage.proxyserver.ProxyServerScreen(
-                onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
-            Routes.MANAGE_TUNNELS -> TunnelsScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
+                onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize(), onOpenComponents = { navigator.push(Routes.MANAGE_COMPONENTS) })
+            Routes.MANAGE_TUNNELS -> TunnelsScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize(), onOpenComponents = { navigator.push(Routes.MANAGE_COMPONENTS) })
             Routes.MANAGE_CERTIFICATES -> CertificatesScreen(onBack = { navigator.pop() }, active = true, initialOperationId = taskTarget, modifier = Modifier.fillMaxSize())
+            Routes.MANAGE_COMPONENTS -> app.relaxkonos.mobile.ui.manage.components.ComponentCenterScreen(
+                owner = session, onBack = { navigator.pop() },
+                onOpenRoute = { taskTarget = null; navigator.push(it) }, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_OPERATIONS -> OperationsScreen(owner = session, onBack = { navigator.pop() },
                 startOnAlerts = container.openAlertsOnNextScreen,
                 onStartOnAlertsConsumed = container::consumeAlertScreen,
@@ -124,7 +149,7 @@ fun MobileNavHost(
             Routes.TERMINAL -> ServerTerminalScreen(owner = session, modifier = Modifier.fillMaxSize())
             Routes.FILES, Routes.FILES_DETAIL -> FilesDestination(navigator, layoutState)
             Routes.MANAGE, Routes.MANAGE_MONITOR, Routes.MANAGE_PROCESSES ->
-                ManageDestination(navigator, layoutState, clearTaskTarget = { taskTarget = null })
+                ManageDestination(navigator, clearTaskTarget = { taskTarget = null })
             Routes.MORE,
             Routes.MORE_NETWORK,
             Routes.MORE_ACCOUNT_SECURITY,
@@ -141,12 +166,57 @@ fun MobileNavHost(
 
             else -> HomeScreen(
                 session = session,
-                layoutState = layoutState,
                 onOpenHelp = { navigator.select(Routes.MORE); navigator.push(Routes.MORE_HELP) },
+                onOpenRoute = { taskTarget = null; if (it == Routes.FILES) navigator.select(it) else navigator.push(it) },
+                onSwitchLogin = { onSwitchLogin(null) },
                 modifier = Modifier.fillMaxSize(),
             )
         }
     }
+    dependencyPrompt?.let { prompt -> ComponentDependencyAlert(prompt, navigator, onResolved = { dependencyPrompt = null }) }
+}
+
+/**
+ * The entry prompt. "Cancel" never opens the application: it returns to the place the user came from,
+ * while the actionable state navigates to the one surface that can change it.
+ */
+@Composable
+private fun ComponentDependencyAlert(prompt: ComponentDependencyPrompt, navigator: MobileNavigator,
+    onResolved: () -> Unit) {
+    val context = LocalContext.current
+    val missing = prompt.verdict == ComponentDependencyVerdict.Missing
+    val names = prompt.rows.filter { componentVerdict(it) == prompt.verdict }
+        .mapNotNull { ComponentCatalog.definition(it.componentId)?.title }
+        .map { context.getString(it) }
+        .ifEmpty { listOf(context.getString(R.string.components_title)) }
+        .joinToString(", ")
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = { },
+        title = {
+            Text(stringResource(if (missing) R.string.components_launch_missing_title else R.string.components_launch_blocked_title))
+        },
+        text = {
+            Text(stringResource(when {
+                missing -> R.string.components_launch_missing_message
+                prompt.verdict == ComponentDependencyVerdict.Recovery -> R.string.components_launch_recovery_message
+                else -> R.string.components_launch_busy_message
+            }, names))
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = {
+                onResolved()
+                navigator.push(if (missing) Routes.MANAGE_COMPONENTS else Routes.MANAGE_OPERATIONS)
+            }) {
+                Text(stringResource(if (missing) R.string.components_open_center else R.string.components_recovery_open))
+            }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = {
+                onResolved()
+                if (!navigator.isAtDestinationRoot) navigator.pop()
+            }) { Text(stringResource(R.string.common_cancel)) }
+        },
+    )
 }
 
 /**
@@ -184,64 +254,14 @@ private fun FilesDestination(navigator: MobileNavigator, layoutState: LayoutStat
 }
 
 @Composable
-private fun ManageDestination(navigator: MobileNavigator, layoutState: LayoutState, clearTaskTarget: () -> Unit) {
-    val container = appContainer()
-    val viewModel: ManageViewModel = viewModel(factory = viewModelFactory {
-        initializer { ManageViewModel(container.session, container.system, container.recentOperations, container.elevations, container.elevationAnswers) }
-    })
-
-    if (layoutState == LayoutState.Expanded) {
-        Row(Modifier.fillMaxSize()) {
-            ManageScreen(
-                onOpenMonitor = { viewModel.openPane(Routes.MANAGE_MONITOR) },
-                onOpenDeployments = { clearTaskTarget(); navigator.push(Routes.MANAGE_DEPLOYMENTS) },
-                onOpenDocker = { clearTaskTarget(); navigator.push(Routes.MANAGE_DOCKER) },
-                onOpenWebsites = { clearTaskTarget(); navigator.push(Routes.MANAGE_WEBSITES) },
-            onOpenCertificates = { clearTaskTarget(); navigator.push(Routes.MANAGE_CERTIFICATES) },
-                onOpenTunnels = { clearTaskTarget(); navigator.push(Routes.MANAGE_TUNNELS) },
-            onOpenSmb = { clearTaskTarget(); navigator.push(Routes.MANAGE_SMB) },
-            onOpenFirewall = { clearTaskTarget(); navigator.push(Routes.MANAGE_FIREWALL) },
-            onOpenProxy = { clearTaskTarget(); navigator.push(Routes.MANAGE_PROXY) },
-            onOpenProxyServer = { clearTaskTarget(); navigator.push(Routes.MANAGE_PROXY_SERVER) },
-            onOpenSquid = { clearTaskTarget(); navigator.push(Routes.MANAGE_SQUID) },
-                onOpenGuardian = { navigator.push(Routes.MANAGE_GUARDIAN) },
-                onOpenScripts = { clearTaskTarget(); navigator.push(Routes.MANAGE_SCRIPTS) },
-                onOpenOperations = { navigator.push(Routes.MANAGE_OPERATIONS) },
-                modifier = Modifier.weight(1f),
-            )
-            when (viewModel.expandedPane) {
-                Routes.MANAGE_MONITOR -> app.relaxkonos.mobile.ui.manage.TaskManagerWorkspace("performance", null, Modifier.weight(1.2f))
-                Routes.MANAGE_PROCESSES -> app.relaxkonos.mobile.ui.manage.TaskManagerWorkspace("processes", null, Modifier.weight(1.2f))
-                else -> Text(
-                    text = stringResource(R.string.manage_select_domain),
-                    modifier = Modifier.weight(1.2f).padding(16.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        return
-    }
-
+private fun ManageDestination(navigator: MobileNavigator, clearTaskTarget: () -> Unit) {
     when (navigator.route) {
         Routes.MANAGE_MONITOR -> app.relaxkonos.mobile.ui.manage.TaskManagerWorkspace("performance", { navigator.pop() }, Modifier.fillMaxSize())
         Routes.MANAGE_PROCESSES -> app.relaxkonos.mobile.ui.manage.TaskManagerWorkspace("processes", { navigator.pop() }, Modifier.fillMaxSize())
-        else -> ManageScreen(
-            onOpenMonitor = { navigator.push(Routes.MANAGE_MONITOR) },
-            onOpenDeployments = { clearTaskTarget(); navigator.push(Routes.MANAGE_DEPLOYMENTS) },
-            onOpenDocker = { clearTaskTarget(); navigator.push(Routes.MANAGE_DOCKER) },
-            onOpenWebsites = { clearTaskTarget(); navigator.push(Routes.MANAGE_WEBSITES) },
-            onOpenCertificates = { clearTaskTarget(); navigator.push(Routes.MANAGE_CERTIFICATES) },
-            onOpenTunnels = { clearTaskTarget(); navigator.push(Routes.MANAGE_TUNNELS) },
-            onOpenSmb = { clearTaskTarget(); navigator.push(Routes.MANAGE_SMB) },
-            onOpenFirewall = { clearTaskTarget(); navigator.push(Routes.MANAGE_FIREWALL) },
-            onOpenProxy = { clearTaskTarget(); navigator.push(Routes.MANAGE_PROXY) },
-            onOpenProxyServer = { clearTaskTarget(); navigator.push(Routes.MANAGE_PROXY_SERVER) },
-            onOpenSquid = { clearTaskTarget(); navigator.push(Routes.MANAGE_SQUID) },
-            onOpenGuardian = { navigator.push(Routes.MANAGE_GUARDIAN) },
-            onOpenScripts = { clearTaskTarget(); navigator.push(Routes.MANAGE_SCRIPTS) },
-            onOpenOperations = { navigator.push(Routes.MANAGE_OPERATIONS) },
-            modifier = Modifier.fillMaxSize(),
-        )
+        else -> ManageScreen(onOpenRoute = { route ->
+            clearTaskTarget()
+            if (route == Routes.FILES) navigator.select(route) else navigator.push(route)
+        }, modifier = Modifier.fillMaxSize())
     }
 }
 

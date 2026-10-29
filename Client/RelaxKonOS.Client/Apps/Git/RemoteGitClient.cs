@@ -52,6 +52,17 @@ public sealed class RemoteGitClient(HttpClient http, IAuthSession session) : IRe
     public Task<GitCloneResult> CloneAsync(GitCloneRequest request, CancellationToken cancellationToken = default)
         => SendAsync<GitCloneResult>(HttpMethod.Post, GitApiRoutes.Clone, request, cancellationToken);
 
+    public Task<IReadOnlyList<GitCredentialAccountDto>> ListCredentialAccountsAsync(CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<GitCredentialAccountDto>>(HttpMethod.Get, GitApiRoutes.CredentialAccounts, null, cancellationToken);
+    public Task<GitCredentialAccountDto> SaveCredentialAccountAsync(GitCredentialAccountRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<GitCredentialAccountDto>(HttpMethod.Put, GitApiRoutes.CredentialAccounts, request, cancellationToken);
+    public async Task<bool> DeleteCredentialAccountAsync(string accountId, CancellationToken cancellationToken = default)
+    {
+        using var response = await SendRawAsync(HttpMethod.Delete, GitApiRoutes.CredentialAccount.Replace("{accountId}", Uri.EscapeDataString(accountId)), null, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
     // ── Host Git engine probe & install ──
     public Task<GitEngineStatusDto> GetEngineStatusAsync(CancellationToken cancellationToken = default)
         => SendAsync<GitEngineStatusDto>(HttpMethod.Get, GitApiRoutes.EngineStatus, null, cancellationToken);
@@ -108,14 +119,26 @@ public sealed class RemoteGitClient(HttpClient http, IAuthSession session) : IRe
     public Task<GitOperationResult> MergeBranchAsync(string id, GitMergeRequest request, CancellationToken cancellationToken = default)
         => SendAsync<GitOperationResult>(HttpMethod.Post, GitApiRoutes.Merge.Replace("{id}", Uri.EscapeDataString(id)), request, cancellationToken);
 
-    public Task<GitOperationResult> FetchAsync(string id, CancellationToken cancellationToken = default)
-        => SendAsync<GitOperationResult>(HttpMethod.Post, GitApiRoutes.Fetch.Replace("{id}", Uri.EscapeDataString(id)), null, cancellationToken);
+    public Task<GitOperationResult> FetchAsync(string id, GitFetchRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<GitOperationResult>(HttpMethod.Post, GitApiRoutes.Fetch.Replace("{id}", Uri.EscapeDataString(id)), request, cancellationToken);
 
     public Task<GitOperationResult> PullAsync(string id, GitPullRequest request, CancellationToken cancellationToken = default)
         => SendAsync<GitOperationResult>(HttpMethod.Post, GitApiRoutes.Pull.Replace("{id}", Uri.EscapeDataString(id)), request, cancellationToken);
 
     public Task<GitOperationResult> PushAsync(string id, GitPushRequest? request = null, CancellationToken cancellationToken = default)
         => SendAsync<GitOperationResult>(HttpMethod.Post, GitApiRoutes.Push.Replace("{id}", Uri.EscapeDataString(id)), request, cancellationToken);
+
+    public Task<GitPushPreviewDto> GetPushPreviewAsync(string id, string? localBranch = null, string? remote = null,
+        string? remoteBranch = null, CancellationToken cancellationToken = default)
+    {
+        var route = GitApiRoutes.PushPreview.Replace("{id}", Uri.EscapeDataString(id));
+        static string Add(string route, string key, string? value)
+            => string.IsNullOrWhiteSpace(value) ? route : $"{route}{(route.Contains('?') ? '&' : '?')}{key}={Uri.EscapeDataString(value)}";
+        route = Add(route, "localBranch", localBranch);
+        route = Add(route, "remote", remote);
+        route = Add(route, "remoteBranch", remoteBranch);
+        return SendAsync<GitPushPreviewDto>(HttpMethod.Get, route, null, cancellationToken);
+    }
 
     public async Task<IReadOnlyList<GitCommitDto>> GetLogAsync(string id, int limit = 200, int skip = 0,
         GitLogQuery? query = null, CancellationToken cancellationToken = default)

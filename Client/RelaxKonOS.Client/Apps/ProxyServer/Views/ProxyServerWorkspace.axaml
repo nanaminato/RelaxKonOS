@@ -5,6 +5,7 @@
              xmlns:vm="using:RelaxKonOS.Client.Apps.ProxyServer"
              xmlns:views="using:RelaxKonOS.Client.Apps.ProxyServer.Views"
              xmlns:protocol="clr-namespace:RelaxKonOS.Protocol.ProxyServer;assembly=RelaxKonOS.Protocol"
+             xmlns:cc="clr-namespace:RelaxKonOS.Client.Apps.ComponentCenter"
              x:Class="RelaxKonOS.Client.Apps.ProxyServer.Views.ProxyServerWorkspace"
              x:DataType="vm:ProxyServerViewModel"
              Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
@@ -60,7 +61,7 @@
           <Button x:Name="PageButton2" Classes="workspace-nav" Tag="2" Click="NavigationButton_Click" Content="{loc:Loc proxy_server.section.access}" HorizontalContentAlignment="Left" Padding="10,8" />
           <Button x:Name="PageButton3" Classes="workspace-nav" Tag="3" Click="NavigationButton_Click" Content="{loc:Loc proxy_server.section.connect}" HorizontalContentAlignment="Left" Padding="10,8" />
           <Button x:Name="PageButton4" Classes="workspace-nav" Tag="4" Click="NavigationButton_Click" Content="{loc:Loc proxy_server.section.subscriptions}" HorizontalContentAlignment="Left" Padding="10,8" />
-          <Button x:Name="PageButton5" Classes="workspace-nav" Tag="5" Click="NavigationButton_Click" Content="{loc:Loc proxy_server.section.runtime}" HorizontalContentAlignment="Left" Padding="10,8" />
+          <Button x:Name="PageButton5" Classes="workspace-nav" Tag="5" Click="NavigationButton_Click" Content="{loc:Loc common.settings}" HorizontalContentAlignment="Left" Padding="10,8" />
         </StackPanel>
       </Border>
 
@@ -103,20 +104,13 @@
                 </StackPanel>
                 <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" />
                 <WrapPanel>
-                  <Button Content="{loc:Loc proxy_server.install}" Command="{Binding InstallCommand}" IsVisible="{Binding ShowInstall}" Margin="0,0,8,8" />
-                  <Button Content="{loc:Loc proxy_server.upgrade}" Command="{Binding UpgradeCommand}" IsVisible="{Binding ShowUninstall}" Margin="0,0,8,8" />
                   <Button Content="{loc:Loc proxy_server.start}" Command="{Binding RuntimeCommand}" CommandParameter="Start" IsVisible="{Binding ShowRuntimeActions}" Margin="0,0,8,8" />
                   <Button Content="{loc:Loc proxy_server.stop}" Command="{Binding RuntimeCommand}" CommandParameter="Stop" IsVisible="{Binding ShowRuntimeActions}" Margin="0,0,8,8" />
                   <Button Content="{loc:Loc proxy_server.restart}" Command="{Binding RuntimeCommand}" CommandParameter="Restart" IsVisible="{Binding ShowRuntimeActions}" Margin="0,0,8,8" />
                   <Button Content="{loc:Loc proxy_server.enable}" Command="{Binding RuntimeCommand}" CommandParameter="Enable" IsVisible="{Binding ShowRuntimeActions}" Margin="0,0,8,8" />
                   <Button Content="{loc:Loc proxy_server.disable}" Command="{Binding RuntimeCommand}" CommandParameter="Disable" IsVisible="{Binding ShowRuntimeActions}" Margin="0,0,8,8" />
-                  <Button Content="{loc:Loc proxy_server.recover}" Command="{Binding RecoverCommand}" IsVisible="{Binding ShowRecovery}" Margin="0,0,8,8" />
                 </WrapPanel>
-                <WrapPanel IsVisible="{Binding ShowUninstall}">
-                  <Button Content="{loc:Loc proxy_server.uninstall}" Command="{Binding UninstallCommand}" CommandParameter="keep" Margin="0,0,8,0"
-                          ToolTip.Tip="{loc:Loc proxy_server.uninstall_hint}" />
-                  <Button Content="{loc:Loc proxy_server.uninstall_delete}" Command="{Binding UninstallCommand}" CommandParameter="delete" />
-                </WrapPanel>
+
               </StackPanel>
             </Border>
 
@@ -135,7 +129,7 @@
             <Border Classes="app-panel" Padding="18">
               <StackPanel Spacing="10">
                 <DockPanel>
-                  <Button DockPanel.Dock="Right" Content="{loc:Loc proxy_server.new}" Command="{Binding NewInboundCommand}" IsEnabled="{Binding CanEdit}" />
+                  <Button DockPanel.Dock="Right" Content="{loc:Loc proxy_server.new}" Tag="InboundEditor:new" Click="EditorButton_Click" IsEnabled="{Binding CanEdit}" />
                   <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.inbounds}" />
                 </DockPanel>
                 <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.inbound_hint}" TextWrapping="Wrap" />
@@ -151,7 +145,9 @@
               </StackPanel>
             </Border>
 
-            <Border Classes="app-panel" Padding="18" IsVisible="{Binding CanManage}">
+            <Button Content="{loc:Loc proxy_server.inbound_editor}" Tag="InboundEditor" Click="EditorButton_Click" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Left" />
+<StackPanel x:Name="InboundEditor" IsVisible="False" Spacing="12">
+<Border Classes="app-panel" Padding="18" IsVisible="{Binding CanManage}">
               <StackPanel Spacing="10">
                 <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.inbound_editor}" />
                 <Grid ColumnDefinitions="*,12,140" ColumnSpacing="0">
@@ -195,13 +191,14 @@
                 <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.inbound_note}" TextWrapping="Wrap" />
               </StackPanel>
             </Border>
+</StackPanel>
           </StackPanel>
 
           <StackPanel x:Name="Page2" Spacing="16" IsVisible="False">
             <Border Classes="app-panel" Padding="18">
               <StackPanel Spacing="10">
                 <DockPanel>
-                  <Button DockPanel.Dock="Right" Content="{loc:Loc proxy_server.new}" Command="{Binding NewPrincipalCommand}" IsEnabled="{Binding CanEdit}" />
+                  <Button DockPanel.Dock="Right" Content="{loc:Loc proxy_server.new}" Tag="PrincipalEditor:new" Click="EditorButton_Click" IsEnabled="{Binding CanEdit}" />
                   <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.principals}" />
                 </DockPanel>
                 <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.principal_hint}" TextWrapping="Wrap" />
@@ -214,19 +211,22 @@
                     </Grid>
                   </DataTemplate></ListBox.ItemTemplate>
                 </ListBox>
-                <StackPanel Spacing="4"><TextBlock Classes="field-label" Text="{loc:Loc proxy_server.principal_name}" /><TextBox Text="{Binding PrincipalName, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" MaxLength="128" /></StackPanel>
+                <Button Content="{loc:Loc proxy_server.principals}" Tag="PrincipalEditor" Click="EditorButton_Click" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Left" />
+<StackPanel x:Name="PrincipalEditor" IsVisible="False" Spacing="12">
+<StackPanel Spacing="4"><TextBlock Classes="field-label" Text="{loc:Loc proxy_server.principal_name}" /><TextBox Text="{Binding PrincipalName, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" MaxLength="128" /></StackPanel>
                 <StackPanel Spacing="4"><TextBlock Classes="field-label" Text="{loc:Loc proxy_server.principal_user}" /><TextBox Text="{Binding PrincipalUserId, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" /></StackPanel>
                 <WrapPanel>
                   <Button Content="{loc:Loc proxy_server.save}" Command="{Binding SavePrincipalCommand}" IsEnabled="{Binding CanEdit}" Margin="0,0,8,0" />
                   <Button Content="{loc:Loc proxy_server.delete}" Command="{Binding DeletePrincipalCommand}" IsEnabled="{Binding CanEdit}" />
                 </WrapPanel>
+</StackPanel>
               </StackPanel>
             </Border>
 
             <Border Classes="app-panel" Padding="18">
               <StackPanel Spacing="10">
                 <DockPanel>
-                  <Button DockPanel.Dock="Right" Content="{loc:Loc proxy_server.new}" Command="{Binding NewCredentialCommand}" IsEnabled="{Binding CanEdit}" />
+                  <Button DockPanel.Dock="Right" Content="{loc:Loc proxy_server.new}" Tag="CredentialEditor:new" Click="EditorButton_Click" IsEnabled="{Binding CanEdit}" />
                   <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.credentials}" />
                 </DockPanel>
                 <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.credential_hint}" TextWrapping="Wrap" />
@@ -243,7 +243,9 @@
                     </Grid>
                   </DataTemplate></ListBox.ItemTemplate>
                 </ListBox>
-                <StackPanel Spacing="4"><TextBlock Classes="field-label" Text="{loc:Loc proxy_server.name}" /><TextBox Text="{Binding CredentialName, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" MaxLength="128" /></StackPanel>
+                <Button Content="{loc:Loc proxy_server.credentials}" Tag="CredentialEditor" Click="EditorButton_Click" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Left" />
+<StackPanel x:Name="CredentialEditor" IsVisible="False" Spacing="12">
+<StackPanel Spacing="4"><TextBlock Classes="field-label" Text="{loc:Loc proxy_server.name}" /><TextBox Text="{Binding CredentialName, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" MaxLength="128" /></StackPanel>
                 <StackPanel Spacing="4">
                   <TextBlock Classes="field-label" Text="{loc:Loc proxy_server.principal}" />
                   <ComboBox ItemsSource="{Binding Principals}" SelectedItem="{Binding SelectedPrincipal, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Stretch">
@@ -269,6 +271,7 @@
                   <Button Content="{loc:Loc proxy_server.delete}" Command="{Binding DeleteCredentialCommand}" IsEnabled="{Binding CanEdit}" />
                 </WrapPanel>
                 <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.rotation_note}" TextWrapping="Wrap" />
+</StackPanel>
               </StackPanel>
             </Border>
           </StackPanel>
@@ -306,14 +309,19 @@
               <StackPanel Spacing="10">
                 <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.section.subscriptions}" />
                 <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.subscription_hint}" TextWrapping="Wrap" />
-                <StackPanel Spacing="4">
+                <Button Content="{loc:Loc proxy_server.subscription_base_url}" Tag="BaseUrlEditor" Click="EditorButton_Click" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Left" />
+<StackPanel x:Name="BaseUrlEditor" IsVisible="False" Spacing="12">
+<StackPanel Spacing="4">
                   <TextBlock Classes="field-label" Text="{loc:Loc proxy_server.subscription_base_url}" />
                   <TextBox Text="{Binding SubscriptionBaseUrl, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" Watermark="https://proxy.example.com" />
                   <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.subscription_base_url_hint}" TextWrapping="Wrap" />
                 </StackPanel>
                 <Button Content="{loc:Loc proxy_server.save}" Command="{Binding SaveBaseUrlCommand}" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Left" />
+</StackPanel>
                 <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" />
-                <TextBlock Classes="field-label" Text="{loc:Loc proxy_server.subscription_formats}" />
+                <Button Content="{loc:Loc proxy_server.subscription_issue}" Tag="SubscriptionEditor" Click="EditorButton_Click" IsEnabled="{Binding CanExport}" HorizontalAlignment="Left" />
+<StackPanel x:Name="SubscriptionEditor" IsVisible="False" Spacing="12">
+<TextBlock Classes="field-label" Text="{loc:Loc proxy_server.subscription_formats}" />
                 <ItemsControl ItemsSource="{Binding SubscriptionFormats}" IsEnabled="{Binding CanEdit}">
                   <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                   <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:FormatChoice">
@@ -322,6 +330,7 @@
                 </ItemsControl>
                 <Button Content="{loc:Loc proxy_server.subscription_issue}" Command="{Binding IssueSubscriptionCommand}"
                         IsEnabled="{Binding CanExport}" HorizontalAlignment="Left" />
+</StackPanel>
                 <StackPanel Spacing="4" IsVisible="{Binding HasIssuedToken}">
                   <TextBlock Classes="field-label" Text="{loc:Loc proxy_server.subscription_token_once}" />
                   <TextBox IsReadOnly="True" Text="{Binding IssuedToken}" FontFamily="Consolas" />
@@ -350,8 +359,10 @@
           </StackPanel>
 
           <StackPanel x:Name="Page5" Spacing="16" IsVisible="False">
-            <views:ProxyServerRuntimeView x:Name="RuntimeView" />
+            <cc:ComponentDependencySettingsView DataContext="{Binding Dependency}" />
           </StackPanel>
+
+
         </StackPanel>
       </ScrollViewer>
     </Grid>

@@ -6,22 +6,32 @@ using RelaxKonOS.Server.Proxy.Mihomo;
 
 namespace RelaxKonOS.Server.Installations;
 
-/// <summary>Managed-catalog ledger adapter. Production registration switches with the current clients;
-/// this adapter never invokes the fixed manifest, archive references, profile drafts, or controller reload.</summary>
+/// <summary>One installation ledger entry: Linux uses publication-aware signed plans;
+/// Windows uses the selected official version or user-supplied archive and its independent service host.</summary>
 public sealed class MihomoRuntimeInstallationService(MihomoPublicationStore store, MihomoRuntimeService runtime,
     MihomoInstallationBootstrapService bootstrap, MihomoInstallationPublicationService installation,
-    MihomoRemovalPublicationService removal) : InstallationService<ManagedRuntimeInstallationRequest>
+    MihomoRemovalPublicationService removal, MihomoRuntimeManager native, InstallationFileReferenceStore files) : InstallationService<MihomoInstallationRequest>
 {
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, CancellationTokenSource> nativeCancellations = new();
     public override InstallationServiceId Id => InstallationServiceId.Mihomo;
     public override IReadOnlyList<string> Resources => ["service:Mihomo", "runtime:mihomo"];
     public override bool CooperativeCancel => true;
-    protected override bool Confirmed(ManagedRuntimeInstallationRequest request) => request.Confirmed;
+    protected override bool Confirmed(MihomoInstallationRequest request) => request.Confirmed;
     protected override bool Supports(InstallationOperationKind kind) => kind is InstallationOperationKind.Install
         or InstallationOperationKind.Upgrade or InstallationOperationKind.Repair or InstallationOperationKind.Rollback
         or InstallationOperationKind.Uninstall;
 
-    protected override void ValidateRequest(InstallationOperationKind kind, ManagedRuntimeInstallationRequest request, string key)
+    protected override void ValidateRequest(InstallationOperationKind kind, MihomoInstallationRequest request, string key)
     {
+        if (request.Version is not null)
+        {
+            Check(OperatingSystem.IsWindows() && request.Plan is null && kind is InstallationOperationKind.Install or InstallationOperationKind.Upgrade or InstallationOperationKind.Repair,
+                InstallationProblemCodes.InvalidRequest);
+            _ = RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialComponentReleases.Describe("mihomo",
+                RelaxKonOS.Protocol.Proxy.MihomoRuntimeManifest.CurrentRid(), request.Version);
+            return;
+        }
+        Check(request.FileReferenceId is null, InstallationProblemCodes.InvalidRequest);
         var plan = request.Plan;
         if (plan is not { RuntimeId: "mihomo", Request: not null } || plan.Request.InstallationId == Guid.Empty
             || plan.Request.Change != Change(kind)) throw new InstallationException(InstallationProblemCodes.InvalidRequest, 400);
@@ -32,17 +42,32 @@ public sealed class MihomoRuntimeInstallationService(MihomoPublicationStore stor
         Check(plan.Request.IdempotencyKey == key, InstallationProblemCodes.IdempotencyConflict);
     }
 
-    protected override async Task ExecuteAsync(InstallationOperationKind kind, ManagedRuntimeInstallationRequest request,
+    protected override async Task ExecuteAsync(InstallationOperationKind kind, MihomoInstallationRequest request,
         string actor, IInstallationProgress progress, CancellationToken ct)
     {
+        if (request.Version is { } version)
+        {
+            using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            nativeCancellations[progress.OperationId] = cancellation;
+            try
+            {
+                using var source = request.FileReferenceId is { } reference ? files.Open(Id, actor, reference) : null;
+                var result = await native.InstallOfficialAsync(version, source, progress, cancellation.Token);
+                Check(result.IntegrityVerified && string.IsNullOrEmpty(result.ProblemCode), result.ProblemCode);
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            { throw new InstallationCancelledException(InstallationProblemCodes.Cancelled); }
+            finally { nativeCancellations.TryRemove(progress.OperationId, out _); }
+            return;
+        }
         await progress.ReportAsync(new(InstallationStage.Preflight, Cancellable: kind != InstallationOperationKind.Uninstall), ct);
         try
         {
             var result = kind switch
             {
-                InstallationOperationKind.Install => await bootstrap.InstallAsync(progress.OperationId, request.Plan, ct),
-                InstallationOperationKind.Uninstall => await removal.RemoveAsync(progress.OperationId, request.Plan, ct),
-                _ => await ExecuteProgramAsync(progress.OperationId, request.Plan, ct)
+                InstallationOperationKind.Install => await bootstrap.InstallAsync(progress.OperationId, request.Plan!, ct),
+                InstallationOperationKind.Uninstall => await removal.RemoveAsync(progress.OperationId, request.Plan!, ct),
+                _ => await ExecuteProgramAsync(progress.OperationId, request.Plan!, ct)
             };
             RequireCompleted(result, progress.OperationId);
         }
@@ -69,12 +94,18 @@ public sealed class MihomoRuntimeInstallationService(MihomoPublicationStore stor
 
     public override async Task RequestCancelAsync(InstallationOperationDto operation, CancellationToken ct)
     {
+        if (nativeCancellations.TryGetValue(operation.OperationId, out var nativeCancellation))
+        {
+            try { nativeCancellation.Cancel(); } catch (ObjectDisposedException) { }
+            return;
+        }
         try { await runtime.RequestCancelAsync(operation.OperationId, ct); }
         catch (RuntimeLifecycleException ex) { throw new InstallationException(ex.ProblemCode); }
     }
 
     public override Task<InstallationRecovery> RecoverAsync(InstallationOperationDto operation, CancellationToken ct) =>
-        RecoverCoreAsync(operation.OperationId, operation.Kind, ct);
+        native is not null && native.OwnsInstallationOperation(operation.OperationId) ? Task.FromResult(new InstallationRecovery(InstallationOperationState.Interrupted, InstallationProblemCodes.Interrupted))
+            : RecoverCoreAsync(operation.OperationId, operation.Kind, ct);
 
     private async Task<InstallationRecovery> RecoverCoreAsync(Guid operationId, InstallationOperationKind kind, CancellationToken ct)
     {

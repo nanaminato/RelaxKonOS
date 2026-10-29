@@ -10,17 +10,18 @@ enum class InstallationService(val wire: String, val capability: String, val ele
     Frp("frp", ServerCapabilities.TUNNELS, "frpInstall"),
     Mihomo("mihomo", ServerCapabilities.PROXY, "mihomoInstall"),
     Docker("docker", ServerCapabilities.DOCKER, "dockerInstall"),
-    SingBox("singBox", ServerCapabilities.PROXY_SERVER, "singBoxInstall");
+    SingBox("singBox", ServerCapabilities.PROXY_SERVER, "singBoxInstall"),
+    Squid("squid", ServerCapabilities.GATEWAY_PROXY, "proxyServiceAction");
 
     val kinds: Set<InstallationKind> get() = when (this) {
         Smb, Docker -> setOf(InstallationKind.Install)
         Nginx, Frp -> setOf(InstallationKind.Install, InstallationKind.Upgrade, InstallationKind.Repair, InstallationKind.Uninstall)
-        Mihomo -> InstallationKind.entries.toSet()
-        SingBox -> emptySet() // Current Android support observes these records; frozen-plan submission has no form.
+        Squid -> setOf(InstallationKind.Install, InstallationKind.Upgrade, InstallationKind.Uninstall)
+        Mihomo, SingBox -> InstallationKind.entries.toSet()
     }
     val elevationTarget: String get() = name.lowercase(java.util.Locale.ROOT)
     val acceptsPackage: Boolean get() = this == Nginx || this == Frp
-    val supportsRollback: Boolean get() = this == Frp || this == Mihomo
+    val supportsRollback: Boolean get() = this == Frp || this == Mihomo || this == SingBox
 }
 
 enum class InstallationKind(val wire: String) {
@@ -81,6 +82,9 @@ data class InstallationFileReference(val id: String, val fileName: String, val l
 sealed interface InstallationRequest {
     val confirmed: Boolean
     val service: InstallationService
+
+    /** Kinds this specific request may be submitted with; component-frozen requests add update/uninstall. */
+    val allowedKinds: Set<InstallationKind> get() = service.kinds
 }
 data class SmbInstallationRequest(override val confirmed: Boolean) : InstallationRequest { override val service = InstallationService.Smb }
 data class DockerInstallationRequest(override val confirmed: Boolean) : InstallationRequest { override val service = InstallationService.Docker }
@@ -89,6 +93,21 @@ data class NginxInstallationRequest(override val confirmed: Boolean, val version
 }
 data class FrpInstallationRequest(override val confirmed: Boolean, val version: String? = null, val rollback: Boolean = false,
     val fileReferenceId: String? = null) : InstallationRequest { override val service = InstallationService.Frp }
+
+/**
+ * A change already frozen by the host component planner. The execution request is submitted through
+ * the owning domain's installation ledger, so approval, elevation, idempotency and recovery stay the
+ * same as installing from that application; the component center never invents a package or version.
+ */
+data class ComponentFrozenInstallationRequest(
+    override val confirmed: Boolean,
+    override val service: InstallationService,
+    val componentId: String,
+    val planRequestJson: String,
+    val expectedTargetJson: String,
+    val archive: Boolean,
+    override val allowedKinds: Set<InstallationKind>,
+) : InstallationRequest
 
 
 object InstallationRoutes {
@@ -107,7 +126,7 @@ object InstallationRoutes {
 
 internal object InstallationWire {
     fun request(request: InstallationRequest, kind: InstallationKind): JsonBody {
-        require(kind in request.service.kinds)
+        require(kind in request.allowedKinds)
         val body = JsonBody().bool("confirmed", request.confirmed)
         when (request) {
             is NginxInstallationRequest -> {
@@ -117,6 +136,14 @@ internal object InstallationWire {
             is FrpInstallationRequest -> {
                 validateSource(kind, request.fileReferenceId, request.rollback)
                 body.string("version", request.version).bool("rollback", request.rollback).string("fileReferenceId", request.fileReferenceId)
+            }
+            is ComponentFrozenInstallationRequest -> {
+                require(kind in request.allowedKinds)
+                val execution = JSONObject()
+                    .put("componentId", request.componentId)
+                    .put("request", JSONObject(request.planRequestJson))
+                    .put("expected", JSONObject(request.expectedTargetJson))
+                body.raw(if (request.archive) "frozenArchive" else "frozenPackage", execution.toString())
             }
             is ManagedRuntimeInstallationRequest -> {
                 require(kind == request.kind)

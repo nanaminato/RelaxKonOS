@@ -25,6 +25,11 @@ internal partial class GitClientWorkspace : UserControl
     private bool _navigating;
     private readonly DispatcherTimer _menuTimer = new() { Interval = TimeSpan.FromMilliseconds(600) };
 
+    /// <summary>Assigned by the application shell to open the settings dialog (component dependencies).</summary>
+    public Action? OpenSettings { get; set; }
+
+    private void ComponentSettings_Click(object? sender, RoutedEventArgs e) => OpenSettings?.Invoke();
+
     private GitClientWorkspace(GitClientViewModel viewModel, ProjectEditorViewModel project)
     {
         _viewModel = viewModel;
@@ -157,6 +162,7 @@ internal partial class GitClientWorkspace : UserControl
         InitializeButton.IsVisible = _viewModel.SelectedRepository is null;
         GitHubMenu.IsEnabled = GitHostingLinks.Resolve(_viewModel.Remotes, "github", "repo") is not null;
         GitLabMenu.IsEnabled = GitHostingLinks.Resolve(_viewModel.Remotes, "gitlab", "repo") is not null;
+        GiteeMenu.IsEnabled = GitHostingLinks.Resolve(_viewModel.Remotes, "gitee", "repo") is not null;
         AzureMenu.IsEnabled = GitHostingLinks.Resolve(_viewModel.Remotes, "azure", "repo") is not null;
         CurrentFileMenu.IsEnabled = CurrentGitFile() is not null;
         RenameFileItem.IsEnabled = _project.Editor.SelectedFolderNode is { IsDirectory: false, IsPlaceholder: false } && _project.Editor.CanEditDocument;

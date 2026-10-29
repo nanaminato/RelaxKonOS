@@ -73,6 +73,28 @@ index 4bee98b..9a1c2f0 100644
                 throw new InvalidOperationException($"Diff render check failed: {message}");
         }
 
+        using var localization = BuildLocalization();
+
+        foreach (var variant in new[] { ThemeVariant.Light, ThemeVariant.Dark })
+        {
+            ApplyPalette(variant);
+            var accountsVm = new GitClientViewModel(null!);
+            accountsVm.CredentialAccounts.Add(new("first", "github.com", "alice", true));
+            accountsVm.CredentialAccounts.Add(new("second", "gitlab.example.com:8443", "work-account", true));
+            accountsVm.SelectedCredentialAccount = accountsVm.CredentialAccounts[1];
+            var accountsView = new GitCredentialAccountsView { DataContext = accountsVm };
+            var accountsWindow = new Window { Width = 760, Height = 600, Content = accountsView };
+            accountsWindow.Show(); Dispatcher.UIThread.RunJobs();
+            Check(accountsView.GetVisualDescendants().OfType<ListBox>().Single().ItemCount == 2, "account manager displays saved metadata");
+            var accountScroll = accountsView.GetVisualDescendants().OfType<ScrollViewer>().First();
+            Check(accountScroll.Extent.Width <= accountScroll.Viewport.Width + 1, "account manager wraps content without horizontal clipping");
+            Check(accountsView.GetVisualDescendants().OfType<TextBox>().Any(x => x.PasswordChar == '•'), "account token input is masked");
+            using var bitmap = new RenderTargetBitmap(new PixelSize(760, 600));
+            bitmap.Render(accountsWindow);
+            bitmap.Save(Path.Combine(output, "git-accounts-" + variant + ".png"), PngBitmapEncoderOptions.Default);
+            accountsWindow.Close();
+        }
+
         var document = DiffDocument.Parse(SamplePatch);
         Check(!document.IsEmpty && !document.IsIncomplete, "the sample patch parses completely");
         var rows = document.Files[0].Lines;
@@ -167,7 +189,6 @@ index 4bee98b..9a1c2f0 100644
         // reading — a renamed property would otherwise only show up as a blank header at runtime.
         // BuildLocalization() has to run first: the presentation resolves its captions the same way
         // every other view model does, through the application service provider.
-        using var localization = BuildLocalization();
         var presentation = new GitDiffPresentation(new GitDiffDto("src/map.ts", "v1", null, SamplePatch, 8, 1));
         var pane = new GitDiffPane { DataContext = presentation, CanClose = true };
         var paneWindow = new Window { Width = ViewWidth, Height = ViewHeight, Content = pane };

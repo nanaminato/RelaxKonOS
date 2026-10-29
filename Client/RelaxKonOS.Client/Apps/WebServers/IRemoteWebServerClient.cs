@@ -9,6 +9,8 @@ namespace RelaxKonOS.Client.Apps.WebServers;
 /// </summary>
 public interface IRemoteWebServerClient
 {
+    Task<CurrentNginxDto> GetCurrentNginxAsync(CancellationToken cancellationToken = default);
+    Task<CurrentNginxDto> SelectCurrentNginxAsync(CurrentNginxDto request, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<WebServerDto>> DiscoverAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<WebServerDto>> ListAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<WebServerIntegrationCandidateDto>> ListIntegrationCandidatesAsync(CancellationToken cancellationToken = default);

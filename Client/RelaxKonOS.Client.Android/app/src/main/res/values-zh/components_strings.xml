@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Read-only host component state. Keep this file aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="components_title">组件中心</string>
+    <string name="components_subtitle">这台服务器管理的宿主组件</string>
+    <string name="components_note">安装、更新和卸载会在服务器端冻结变更，并走与应用页相同的安装台账。Mihomo 与 sing-box 的版本操作仍在各自运行时页面完成。</string>
+
+    <string name="components_action_install">安装</string>
+    <string name="components_action_update">更新</string>
+    <string name="components_action_uninstall">卸载</string>
+    <string name="components_change_title">%1$s组件</string>
+    <string name="components_change_target">目标：%1$s</string>
+    <string name="components_change_keep_data">保留业务数据与配置，只移除已安装程序。</string>
+    <string name="components_operation_title">变更已提交</string>
+    <string name="components_operation_submitted">服务器已接受该操作。操作 ID 为 %1$s，可在任务与恢复中查看进度和恢复入口。</string>
+    <string name="components_action_failed">变更未完成</string>
+    <string name="components_nginx_select">当前 Nginx</string>
+    <string name="components_nginx_empty">没有可用的受管或已集成 Nginx 实例。</string>
+
+    <string name="components_nginx">Nginx</string>
+    <string name="components_nginx_note">Web 服务器与站点发布</string>
+    <string name="components_mihomo_note">代理引擎运行时</string>
+    <string name="components_singbox_note">代理服务器入站</string>
+    <string name="components_docker_note">容器引擎</string>
+    <string name="components_samba_note">SMB 文件共享</string>
+    <string name="components_squid_note">网关代理</string>
+    <string name="components_frpc_note">隧道客户端</string>
+    <string name="components_frps_note">隧道服务端</string>
+
+    <string name="components_state_managed">受管</string>
+    <string name="components_state_external">外部</string>
+    <string name="components_state_absent">未安装</string>
+    <string name="components_state_unknown">未知</string>
+    <string name="components_state_unavailable">服务器无法读取该组件的状态。</string>
+
+    <string name="components_version">版本 %1$s</string>
+    <string name="components_version_unknown">未知</string>
+    <string name="components_version_label">版本</string>
+    <string name="components_mode">模式：%1$s</string>
+    <string name="components_mode_label">模式</string>
+    <string name="components_mode_managed_archive">受管归档</string>
+    <string name="components_mode_system_package">系统包</string>
+
+    <string name="components_recovery">该组件需要先恢复，之后才能再次变更。</string>
+    <string name="components_recovery_open">任务与恢复</string>
+    <string name="components_open_app">打开应用</string>
+    <string name="components_details">详情</string>
+
+    <string name="components_unavailable_reason">状态不可用（%1$s）</string>
+    <string name="components_unsupported">该服务器的平台不支持此组件</string>
+    <string name="components_error">无法从服务器读取组件状态。</string>
+    <string name="components_empty">这台服务器没有声明任何组件。</string>
+
+    <string name="components_ownership">所有权</string>
+    <string name="components_target">平台</string>
+    <string name="components_host">宿主</string>
+    <string name="components_revision">修订</string>
+    <string name="components_problems">问题</string>
+    <string name="components_pending_operation">待处理操作</string>
+    <!-- 受管归档：版本由服务器固定，客户端只选择其一，不提交 URL。 -->
+    <string name="components_archive_pick">选择版本</string>
+    <string name="components_archive_note">以下为当前服务器提供的可信归档版本；服务器未固定的版本无法选择。</string>
+    <string name="components_archive_unavailable">尚未选择可信版本</string>
+    <string name="components_archive_candidate">目标版本：%1$s</string>
+    <string name="components_archive_not_executable">当前版本尚不能从组件中心安装此归档；请按对应应用的说明处理。</string>
+    <string name="components_archive_file_title">从文件安装</string>
+    <string name="components_archive_file_note">选择服务器上已有的归档，并填写该归档包含的版本。服务器仍会校验平台、身份与内容；文件引用与当前操作者绑定并会过期。</string>
+    <string name="components_archive_file_version">归档中的版本</string>
+    <string name="components_archive_file_path">服务器上的归档路径</string>
+    <string name="components_archive_file_reference">建立文件引用</string>
+    <string name="components_archive_file_reference_ready">引用已建立</string>
+    <string name="components_archive_file_reference_note">已引用 %1$s；引用与当前操作者绑定并会过期。</string>
+    <string name="components_archive_file_local">选择本机文件</string>
+<!-- 组件中心承接 FRP 维护动作；应用内不再提供这些生命周期操作。 -->
+    <string name="components_frp_rollback">回退</string>
+    <string name="components_frp_rollback_title">回退 FRP 运行时</string>
+    <string name="components_frp_rollback_message">将受管 FRP 修复到上一版本？操作完成前隧道可能短暂中断。</string>
+    <string name="components_frp_uninstall_title">卸载受管 FRP</string>
+    <string name="components_frp_uninstall_message">卸载受管 FRP？配置与业务数据保留；在重新安装前隧道不可用。</string>
+    <string name="components_frp_upgrade_title">升级 FRP 运行时</string>
+    <string name="components_frp_upgrade_message">输入目标版本；服务器仍会校验发布与完整性。</string>
+    <string name="components_frp_version">目标版本</string>
+<string name="components_nginx_uninstall_title">卸载受管 Nginx</string>
+    <string name="components_nginx_uninstall_message">卸载受管 Nginx？站点配置与数据保留；在重新安装前该服务器不可用。</string>
+    <!-- 应用依赖入口与进入应用提示：只观察与跳转，不提供安装命令。 -->
+    <string name="components_dependency_entry">组件依赖</string>
+    <string name="components_dependency_hint">安装、更新、修复、回退和卸载只在组件中心进行；此处只读取当前服务器的状态。</string>
+    <string name="components_dependency_state">%1$s · 版本 %2$s</string>
+    <string name="components_open_center">前往组件中心</string>
+    <string name="components_launch_missing_title">需要组件</string>
+    <string name="components_launch_blocked_title">组件暂不可用</string>
+    <string name="components_launch_missing_message">此应用需要 %1$s。请前往组件中心安装后返回本应用；不会启动任何业务操作。</string>
+    <string name="components_launch_recovery_message">%1$s 有待恢复的事务，请先在“任务与恢复”中处理。</string>
+    <string name="components_launch_busy_message">%1$s 正在执行组件任务，请先在“任务与恢复”中查看进度。</string>
+</resources>

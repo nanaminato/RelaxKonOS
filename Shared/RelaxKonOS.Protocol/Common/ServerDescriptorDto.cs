@@ -14,12 +14,14 @@ public sealed record ServerDescriptorDto(
 /// <summary>Stable server feature identifiers used by application package requirements.</summary>
 public static class ServerCapabilities
 {
+    public const string Components = "server.components";
     public const string Files = "server.files";
     public const string Metrics = "server.metrics";
     public const string Processes = "server.processes";
     public const string Terminal = "server.terminal";
     public const string PosixPermissions = "server.posix.permissions";
     public const string Firewall = "server.firewall";
+    public const string Tailscale = "server.tailscale";
     public const string Git = "server.git";
     public const string Guardian = "server.guardian";
     public const string Docker = "server.docker";

@@ -11,7 +11,7 @@ public static class ThemePaletteContract
         "AppBackground", "ShellBackground", "Surface", "SurfaceRaised", "SurfaceSunken", "SurfaceHover", "SurfacePressed",
         "TextPrimary", "TextSecondary", "TextTertiary", "TextDisabled", "TextOnAccent", "TextOnDanger",
         "BorderSubtle", "BorderDefault", "BorderStrong", "FocusBorder", "FocusRing",
-        "Accent", "AccentHover", "AccentPressed", "AccentMuted", "SelectionBackground", "SelectionForeground",
+        "Accent", "AccentHover", "AccentPressed", "AccentMuted", "SelectionBackground", "SelectionForeground", "TextSelection",
         "Success", "SuccessMuted", "Warning", "WarningMuted", "Danger", "DangerHover", "DangerPressed", "Info",
         "TaskbarBackground", "TaskbarForeground", "StartMenuBackground", "WindowFrameBackground", "WindowTitleBarBackground",
         "WindowTitleForeground", "WindowInactiveTitleForeground", "OverlayScrim", "Shadow", "DesktopIconHover", "DesktopIconSelected",

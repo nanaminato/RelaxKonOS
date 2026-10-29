@@ -103,6 +103,7 @@ object WebPublishingRoutes {
     fun candidates(): String = "$WEBSERVERS/integration-candidates"
     fun integrate(id: String): String = "${candidates()}/${segment(id)}/integrate"
     fun catalog(): String = "$WEBSERVERS/managed/catalog"
+    fun currentNginx(): String = "$WEBSERVERS/current-nginx"
     fun installDownload(version: String): String = "$WEBSERVERS/managed/download?version=" + java.net.URLEncoder.encode(version, "UTF-8")
     fun lifecycle(id: String, action: WebServerAction): String = "${server(id)}/lifecycle/${action.route}"
     fun operation(id: String): String = "$WEBSERVERS/operations/${InstallationRoutes.canonicalId(id)}"
@@ -116,6 +117,9 @@ object WebPublishingRoutes {
 
 /** Strict wire readers: a malformed host response is not mistaken for a healthy publication. */
 internal object WebPublishingWire {
+    /** Host-global Nginx selection: null means no single managed/integrated instance is current. */
+    fun currentNginx(payload: String): String? = JSONObject(payload).nullableText("serverId")
+
     fun servers(payload: String): List<WebServer> = JSONArray(payload).objects { json ->
         require(json.getString("type") == "nginx" && json.getString("managementMode") in setOf("integrated", "managed"))
         val capabilities = json.getJSONObject("capabilities")

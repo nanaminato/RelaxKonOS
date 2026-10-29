@@ -47,6 +47,7 @@ public sealed partial class ShellSettings : ObservableObject
     [ObservableProperty] private ShellSelectionDto _shellSelection = new(ShellApi.DefaultShellId);
 
     // ── 桌面显示配置 ──
+    [ObservableProperty] private bool _onlyReadyApplications;
     [ObservableProperty] private bool _showBuiltInApps = DesktopDisplaySettingsDto.Default.ShowBuiltInApps;
     [ObservableProperty] private List<string> _visibleAppIds = new(DesktopDisplaySettingsDto.Default.VisibleAppIds);
     [ObservableProperty] private List<string> _pinnedAppIds = [];
@@ -130,6 +131,7 @@ public sealed partial class ShellSettings : ObservableObject
     /// <summary>The style actually rendering; falls back to the shipped default profile.</summary>
     public string AppliedSystemStyleId => _appearanceService.AppliedStyleId;
 
+    partial void OnOnlyReadyApplicationsChanged(bool value) => NotifyDesktopDisplayChanged();
     partial void OnShowBuiltInAppsChanged(bool value) => NotifyDesktopDisplayChanged();
     partial void OnShowServerDesktopFilesChanged(bool value) => NotifyDesktopDisplayChanged();
     partial void OnShowServerDesktopShortcutsChanged(bool value) => NotifyDesktopDisplayChanged();
@@ -207,6 +209,7 @@ public sealed partial class ShellSettings : ObservableObject
         // ── 桌面显示配置 ──
         var dd = prefs.DesktopDisplay ?? DesktopDisplaySettingsDto.Default;
         ShowBuiltInApps = dd.ShowBuiltInApps;
+        OnlyReadyApplications = dd.OnlyReadyApplications;
         var visibleAppIds = dd.VisibleAppIds ?? [];
         // A polling read of unchanged preferences must not rebuild the entire desktop.
         if (!VisibleAppIds.SequenceEqual(visibleAppIds, StringComparer.Ordinal))
@@ -249,6 +252,7 @@ public sealed partial class ShellSettings : ObservableObject
             new DesktopDisplaySettingsDto
             {
                 ShowBuiltInApps = ShowBuiltInApps,
+                OnlyReadyApplications = OnlyReadyApplications,
                 VisibleAppIds = new(VisibleAppIds),
                 PinnedAppIds = new(PinnedAppIds),
                 ShowServerDesktopFiles = ShowServerDesktopFiles,

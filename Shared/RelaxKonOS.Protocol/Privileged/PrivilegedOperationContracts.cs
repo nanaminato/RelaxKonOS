@@ -83,7 +83,23 @@ public enum PrivilegedOperationKind
     NativeServiceAction,
     NginxSystemServiceAction,
     NginxPackageInstall,
+    /// <summary>
+    /// Installs the exact Debian package identity a caller froze. The Helper re-resolves the package
+    /// itself and refuses when the version, repository or digest moved, so a stale freeze can never
+    /// install something else. A package transaction has no supported rollback.
+    /// </summary>
     NginxPackageUninstall,
+    /// <summary>
+    /// Read-only resolution of the Nginx package the host's own package manager would install.
+    /// It reads signed repository metadata and never downloads, installs, or changes a source.
+    /// </summary>
+    ComponentPackageQuery,
+    ComponentPackageInstall,
+    ComponentPackageChange,
+    ComponentPackageRecover,
+    NginxArchiveQuery,
+    NginxArchiveInstall,
+    FrpArchiveCatalog,
     NginxConfigurationTest,
     NginxRuntimeStatus,
     NginxWriteManagedFile,
@@ -98,6 +114,27 @@ public enum PrivilegedOperationKind
     GitPackageInstall,
     DockerEngineInstall,
     HostTimeRead,
+    TailscaleStatus,
+    TailscaleControlRead,
+    TailscaleControlExecute,
+    TailscaleControlReceipt,
+    TailscaleRecoveryRead,
+    TailscaleRecoveryClose,
+    TailscaleRecoveryReceipt,
+    /// <summary>Publishes the confirmed first-login intent before the fixed native login command.</summary>
+    TailscaleLoginBegin,
+    /// <summary>Reads the URL-free login baseline so Server can prepare a confirmed plan.</summary>
+    TailscaleLoginObserve,
+    /// <summary>Reads the original login receipt. Missing evidence stays unknown, never success.</summary>
+    TailscaleLoginReceipt,
+    /// <summary>Re-reads the original challenge through the dedicated short-lived delivery path.</summary>
+    TailscaleLoginChallenge,
+    /// <summary>Reads a stable login observation for manual recovery preview.</summary>
+    TailscaleLoginRecoveryRead,
+    /// <summary>Closes one unresolved login attempt after explicit confirmation and revision agreement.</summary>
+    TailscaleLoginClose,
+    /// <summary>Reads the original login closure evidence.</summary>
+    TailscaleLoginRecoveryReceipt,
     HostNetworkRead,
     HostNetworkApply,
     HostNetworkConfirm,
@@ -289,7 +326,13 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("serviceId")] string? ServiceId = null,
     [property: JsonPropertyName("serviceAction")] PrivilegedServiceAction? ServiceAction = null,
     [property: JsonPropertyName("nginxServiceAction")] NginxSystemServiceAction? NginxServiceAction = null,
+    [property: JsonPropertyName("componentId")] string? ComponentId = null,
+    [property: JsonPropertyName("packageChange")] RelaxKonOS.Protocol.ManagedRuntimes.ComponentPackageChange? PackageChange = null,
+    [property: JsonPropertyName("packageRecovery")] RelaxKonOS.Protocol.ManagedRuntimes.ComponentRecoveryRequest? PackageRecovery = null,
+    [property: JsonPropertyName("archiveExpectation")] RelaxKonOS.Protocol.ManagedRuntimes.ComponentPinnedArchive? ArchiveExpectation = null,
     [property: JsonPropertyName("packageVersion")] string? PackageVersion = null,
+    /// <summary>The frozen package identity an install must honour. Only the frozen install kind reads it.</summary>
+    [property: JsonPropertyName("packageExpectation")] RelaxKonOS.Protocol.ManagedRuntimes.ComponentPackageTarget? PackageExpectation = null,
     [property: JsonPropertyName("proxyMihomoServiceAction")] ProxyMihomoServiceAction? ProxyMihomoServiceAction = null,
     [property: JsonPropertyName("linuxSystemProxy")] LinuxSystemProxyConfiguration? LinuxSystemProxy = null,
     [property: JsonPropertyName("firewallEnabled")] bool? FirewallEnabled = null,
@@ -329,6 +372,14 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("correlation")] CorrelationContext? Correlation = null,
     [property: JsonPropertyName("version")] string Version = PrivilegedOperationProtocol.Version,
     [property: JsonPropertyName("managedRuntime")] ManagedRuntimeRequest? ManagedRuntime = null,
+    [property: JsonPropertyName("tailscaleRecovery")] RelaxKonOS.Protocol.Tailscale.TailscaleRecoveryCommand? TailscaleRecovery = null,
+    [property: JsonPropertyName("tailscaleChange")] RelaxKonOS.Protocol.Tailscale.TailscalePrepareRequest? TailscaleChange = null,
+    /// <summary>Confirmed first-login plan. Only the begin verb reads it.</summary>
+    [property: JsonPropertyName("tailscaleLogin")] RelaxKonOS.Protocol.Tailscale.TailscaleLoginCommand? TailscaleLogin = null,
+    /// <summary>Original login identity for receipt, challenge and recovery verbs.</summary>
+    [property: JsonPropertyName("tailscaleLoginIdentity")] RelaxKonOS.Protocol.Tailscale.TailscaleLoginIntent? TailscaleLoginIdentity = null,
+    /// <summary>Confirmed login closure request. Only the close verb reads it.</summary>
+    [property: JsonPropertyName("tailscaleLoginClose")] RelaxKonOS.Protocol.Tailscale.TailscaleLoginCloseRequest? TailscaleLoginClose = null,
     [property: JsonPropertyName("networkChange")] HostNetworkChange? NetworkChange = null,
     [property: JsonPropertyName("networkCheckpoint")] string? NetworkCheckpoint = null,
     [property: JsonPropertyName("processId")] int? ProcessId = null,
@@ -359,12 +410,27 @@ public sealed record PrivilegedOperationResult(
     [property: JsonPropertyName("hostEnvironment")] PrivilegedEnvironmentState? HostEnvironment = null,
     [property: JsonPropertyName("systemProxyCapabilities")] ProxySystemProxyCapabilities? SystemProxyCapabilities = null,
     [property: JsonPropertyName("hostTime")] HostTimeState? HostTime = null,
+    [property: JsonPropertyName("tailscaleRecovery")] RelaxKonOS.Protocol.Tailscale.TailscaleRecoverySnapshot? TailscaleRecovery = null,
+    [property: JsonPropertyName("tailscaleClosure")] RelaxKonOS.Protocol.Tailscale.TailscaleRecoveryClosure? TailscaleClosure = null,
+    [property: JsonPropertyName("tailscaleControl")] RelaxKonOS.Protocol.Tailscale.TailscaleControlSnapshot? TailscaleControl = null,
+    [property: JsonPropertyName("tailscaleResult")] RelaxKonOS.Protocol.Tailscale.TailscaleControlResult? TailscaleResult = null,
+    [property: JsonPropertyName("tailscaleLoginReceipt")] RelaxKonOS.Protocol.Tailscale.TailscaleLoginReceipt? TailscaleLoginReceipt = null,
+    [property: JsonPropertyName("tailscaleLoginObservation")] RelaxKonOS.Protocol.Tailscale.TailscaleLoginObservation? TailscaleLoginObservation = null,
+    /// <summary>Transient browser challenge. The URL is delivered only by the dedicated challenge verb.</summary>
+    [property: JsonPropertyName("tailscaleLoginChallenge")] RelaxKonOS.Protocol.Tailscale.TailscaleLoginChallenge? TailscaleLoginChallenge = null,
+    [property: JsonPropertyName("tailscaleLoginRecovery")] RelaxKonOS.Protocol.Tailscale.TailscaleLoginRecoverySnapshot? TailscaleLoginRecovery = null,
+    [property: JsonPropertyName("tailscaleLoginClosure")] RelaxKonOS.Protocol.Tailscale.TailscaleLoginClosure? TailscaleLoginClosure = null,
+    [property: JsonPropertyName("tailscaleStatus")] RelaxKonOS.Protocol.Tailscale.TailscaleStatusDto? TailscaleStatus = null,
     [property: JsonPropertyName("hostNetwork")] HostNetworkSnapshot? HostNetwork = null,
     [property: JsonPropertyName("networkCheckpoint")] string? NetworkCheckpoint = null,
     [property: JsonPropertyName("hostIdentity")] HostIdentityState? HostIdentity = null,
     [property: JsonPropertyName("systemAuthenticationResult")] SystemAuthenticationResult? SystemAuthenticationResult = null,
     [property: JsonPropertyName("hostAdministratorEligible")] bool? HostAdministratorEligible = null,
     [property: JsonPropertyName("nginxRunning")] bool? NginxRunning = null,
+    /// <summary>Read-only package facts. Only <see cref="PrivilegedOperationKind.ComponentPackageQuery"/> sets it.</summary>
+    [property: JsonPropertyName("pinnedArchives")] IReadOnlyList<RelaxKonOS.Protocol.ManagedRuntimes.ComponentPinnedArchive>? PinnedArchives = null,
+    [property: JsonPropertyName("componentArchive")] RelaxKonOS.Protocol.ManagedRuntimes.ComponentArchiveHostSnapshot? ComponentArchive = null,
+    [property: JsonPropertyName("componentPackage")] RelaxKonOS.Protocol.ManagedRuntimes.ComponentPackageResolution? ComponentPackage = null,
     [property: JsonPropertyName("componentProcess")] ManagedProcessSnapshot? ComponentProcess = null,
     [property: JsonPropertyName("processSnapshot")] HostProcessSnapshotDto? ProcessSnapshot = null,
     [property: JsonPropertyName("processTermination")] KillProcessResultDto? ProcessTermination = null,

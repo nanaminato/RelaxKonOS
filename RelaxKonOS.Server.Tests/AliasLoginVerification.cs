@@ -64,6 +64,10 @@ internal static class AliasLoginVerification
         builder.Logging.ClearProviders();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         var services = builder.Services;
+        services.AddSingleton(RelaxKonOS.Server.Startup.ServerModules.Create(builder.Configuration));
+        // The module inventory route reads the same snapshot the startup gate uses.
+        services.AddSingleton(RelaxKonOS.Server.Startup.ServerModuleContext.Create(
+            builder.Configuration, builder.Environment, "sqlite"));
         services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
         services.AddDbContext<RelaxKonOSDbContext>(options => options.UseSqlite("Data Source=" + path));
         services.AddScoped<IUserRepository, SqliteUserRepository>();
@@ -156,6 +160,19 @@ internal static class AliasLoginVerification
         var token = system.Tokens.AccessToken;
         var parsed = new JwtSecurityTokenHandler().ReadJwtToken(token);
         Check(parsed.Claims.Single(x => x.Type == "sid").Value == system.Session.Id.ToString(), "domain session equals JWT sid");
+        // Module inventory: the facts the startup gate uses, readable before an operator edits
+        // configuration. This also proves the endpoint can be activated — a missing module context
+        // would surface here and nowhere else.
+        using (var inventoryResponse = await Send(HttpMethod.Get, ServerApiRoutes.Modules, token: token))
+        {
+            Check(inventoryResponse.StatusCode == HttpStatusCode.OK, "module inventory is authorized: " + inventoryResponse.StatusCode);
+            var inventory = (await inventoryResponse.Content.ReadFromJsonAsync<List<ServerModuleDto>>(Json))!;
+            Check(inventory.Count > 0
+                    && inventory.Any(item => item.Id == RelaxKonOS.Server.Startup.ServerModules.TerminalId && item.Enabled)
+                    && inventory.Single(item => item.Id == RelaxKonOS.Server.Startup.ServerModules.CertificatesId)
+                        .RequiredBy.Contains(RelaxKonOS.Server.Startup.ServerModules.WebServerId),
+                "module inventory reports the effective set and the dependency direction");
+        }
         if (app.Services.GetRequiredService<OwnerDeviceKeyService>().IsAvailable)
         {
             var ownerDevices = app.Services.GetRequiredService<OwnerDeviceKeyService>();

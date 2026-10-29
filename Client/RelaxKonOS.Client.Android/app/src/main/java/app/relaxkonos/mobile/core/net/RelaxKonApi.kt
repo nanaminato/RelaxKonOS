@@ -26,6 +26,28 @@ class RelaxKonApi(
     private val clientVersion: String,
     private val deviceName: String = defaultDeviceName(),
 ) : RelaxKonGateway {
+    override suspend fun tailscaleStatus(serverUrl: String, accessToken: String) = webPublishingRead(serverUrl, accessToken, TailscaleWire.STATUS, TailscaleWire::status)
+    override suspend fun prepareTailscaleLogin(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleLoginOperation> {
+        TailscaleWire.id(id)
+        return webPublishingCall("POST",serverUrl,accessToken,TailscaleLoginWire.OPERATIONS,JsonBody().string("operationId",id),TailscaleLoginWire::operation)
+    }
+    override suspend fun executeTailscaleLogin(serverUrl: String, accessToken: String, id: String) = webPublishingCall("POST",serverUrl,accessToken,TailscaleLoginWire.route(id)+"/execute",JsonBody().raw("confirmed","true"),TailscaleLoginWire::operation)
+    override suspend fun tailscaleLoginOperation(serverUrl: String, accessToken: String, id: String) = webPublishingRead(serverUrl,accessToken,TailscaleLoginWire.route(id),TailscaleLoginWire::operation)
+    override suspend fun tailscaleLoginChallenge(serverUrl: String, accessToken: String, id: String) = webPublishingRead(serverUrl,accessToken,TailscaleLoginWire.route(id)+"/challenge",TailscaleLoginWire::challenge)
+    override suspend fun tailscaleLoginRecovery(serverUrl: String, accessToken: String, id: String) = webPublishingRead(serverUrl,accessToken,TailscaleLoginWire.route(id)+"/recovery",TailscaleLoginWire::recovery)
+    override suspend fun closeTailscaleLogin(serverUrl: String, accessToken: String, id: String, revision: String): ApiResult<TailscaleLoginOperation> {
+        TailscaleWire.revision(revision)
+        return webPublishingCall("POST",serverUrl,accessToken,TailscaleLoginWire.route(id)+"/recovery/close",JsonBody().string("operationId",id).string("expectedRevision",revision).raw("confirmed","true"),TailscaleLoginWire::operation)
+    }
+    override suspend fun tailscaleControl(serverUrl: String, accessToken: String) = webPublishingRead(serverUrl, accessToken, TailscaleWire.ROOT + "/control", TailscaleWire::control)
+    override suspend fun prepareTailscale(serverUrl: String, accessToken: String, request: TailscalePlanRequest) = webPublishingCall("POST",serverUrl,accessToken,TailscaleWire.ROOT + "/operations",request.body(),TailscaleWire::operation)
+    override suspend fun executeTailscale(serverUrl: String, accessToken: String, id: String) = webPublishingCall("POST",serverUrl,accessToken,TailscaleWire.operationRoute(id) + "/execute",JsonBody().raw("confirmed","true"),TailscaleWire::operation)
+    override suspend fun tailscaleOperation(serverUrl: String, accessToken: String, id: String) = webPublishingRead(serverUrl,accessToken,TailscaleWire.operationRoute(id),TailscaleWire::operation)
+    override suspend fun tailscaleRecovery(serverUrl: String, accessToken: String, id: String) = webPublishingRead(serverUrl,accessToken,TailscaleWire.operationRoute(id) + "/recovery",TailscaleWire::recovery)
+    override suspend fun closeTailscale(serverUrl: String, accessToken: String, id: String, revision: String): ApiResult<TailscaleOperation> {
+        TailscaleWire.revision(revision)
+        return webPublishingCall("POST",serverUrl,accessToken,TailscaleWire.operationRoute(id) + "/recovery/close",JsonBody().string("operationId",id).string("expectedRevision",revision).raw("confirmed","true"),TailscaleWire::operation)
+    }
     override suspend fun hostTime(serverUrl: String, accessToken: String) = webPublishingRead(serverUrl, accessToken, HostSettingsRoutes.ROOT + "/time", HostSettingsWire::time)
     override suspend fun hostIdentity(serverUrl: String, accessToken: String) = webPublishingRead(serverUrl, accessToken, HostSettingsRoutes.ROOT + "/identity", HostSettingsWire::identity)
     override suspend fun hostEnvironmentTarget(serverUrl: String, accessToken: String, scope: HostEnvironmentScope) = webPublishingRead(serverUrl, accessToken, HostSettingsRoutes.target(scope), HostSettingsWire::target)
@@ -65,6 +87,7 @@ class RelaxKonApi(
     override suspend fun smbChange(serverUrl: String, accessToken: String, change: SmbChange, password: CharArray?): ApiResult<SmbReceipt> =
         webPublishingCall(SmbRoutes.method(change.kind), serverUrl, SmbRoutes.route(change), accessToken,
             if (change.kind == SmbChangeKind.Password) JsonBody().secret("password", requireNotNull(password)) else change.share?.body(), SmbWire::receipt)
+    override suspend fun squidAccounts(serverUrl: String, accessToken: String): ApiResult<List<SquidAccount>> = webPublishingRead(serverUrl, accessToken, SquidWire.ROOT + "/accounts", SquidWire::accounts)
     override suspend fun squidConfiguration(serverUrl: String, accessToken: String): ApiResult<SquidSnapshot> = webPublishingRead(serverUrl, accessToken, SquidWire.ROOT + "/configuration", SquidWire::snapshot)
     override suspend fun squidPreview(serverUrl: String, accessToken: String, configuration: SquidConfiguration): ApiResult<SquidPreview> = webPublishingCall("POST", serverUrl, SquidWire.ROOT + "/configuration/preview", accessToken, configuration.body(), SquidWire::preview)
     override suspend fun squidValidate(serverUrl: String, accessToken: String, configuration: SquidConfiguration): ApiResult<SquidValidation> = webPublishingCall("POST", serverUrl, SquidWire.ROOT + "/configuration/validate", accessToken, configuration.body(), SquidWire::validation)
@@ -121,6 +144,8 @@ class RelaxKonApi(
         proxyServerMutation("POST", serverUrl, ProxyServerRoutes.RUNTIME_UPGRADE, accessToken, JsonBody().string("version", version.trim()), idempotencyKey)
     override suspend fun proxyServerUninstall(serverUrl: String, accessToken: String, keepData: Boolean, idempotencyKey: String): ApiResult<String> =
         proxyServerMutation("POST", serverUrl, ProxyServerRoutes.RUNTIME_UNINSTALL, accessToken, JsonBody().bool("keepData", keepData), idempotencyKey)
+    override suspend fun proxyServerSaveConfiguration(serverUrl: String, accessToken: String, request: SaveProxyServerConfiguration, idempotencyKey: String): ApiResult<String> =
+        proxyServerMutation("PUT", serverUrl, ProxyServerRoutes.CONFIGURATION, accessToken, request.body(), idempotencyKey)
     override suspend fun proxyServerSavePrincipal(serverUrl: String, accessToken: String, id: String?, request: SaveProxyServerPrincipal, idempotencyKey: String): ApiResult<String> =
         proxyServerMutation(if (id == null) "POST" else "PUT", serverUrl,
             id?.let(ProxyServerRoutes::principal) ?: ProxyServerRoutes.PRINCIPALS, accessToken, request.body(), idempotencyKey)
@@ -292,12 +317,30 @@ class RelaxKonApi(
 
     override suspend fun managedRuntime(serverUrl: String, accessToken: String, method: String, route: String,
         body: JsonBody?, key: String?): ApiResult<String> {
-        require(route == ManagedRuntimeRoutes.SOURCES || route == ManagedRuntimeRoutes.INSTALLATION ||
+        require(route in listOf("installation", "plan", "recovery", "recovery/retry", "recovery/stop", "recovery/close").map { "${ManagedRuntimeRoutes.ROOT}/sing-box/$it" } || route == ManagedRuntimeRoutes.SOURCES || route == ManagedRuntimeRoutes.INSTALLATION ||
             route == ManagedRuntimeRoutes.PLAN || route == ManagedRuntimeRoutes.RECOVERY || route == ManagedRuntimeRoutes.RESOURCES ||
             route in listOf("retry", "stop", "close").map { "${ManagedRuntimeRoutes.RECOVERY}/$it" } ||
             route.matches(Regex("/api/v1.0/managed-runtimes/sources/[A-Za-z0-9_.-]{1,128}/(catalog|refresh)\\?includePrerelease=(true|false)")))
         return installationCall(method, serverUrl, route, accessToken, body, key) { it }
     }
+
+    override suspend fun componentState(serverUrl: String, accessToken: String, componentId: String): ApiResult<ComponentStateView> =
+        webPublishingRead(serverUrl, accessToken, ComponentRoutes.state(componentId)) { payload ->
+            ComponentWire.stateView(payload, componentId)
+        }
+
+    override suspend fun componentPlan(serverUrl: String, accessToken: String, componentId: String,
+        change: ComponentChange, body: JsonBody): ApiResult<ComponentPlanResult> =
+        webPublishingCall("POST", serverUrl, ComponentRoutes.plan(componentId), accessToken, body) { payload ->
+            ComponentWire.plan(payload, componentId, change)
+        }
+
+    override suspend fun currentNginx(serverUrl: String, accessToken: String): ApiResult<String?> =
+        webPublishingRead(serverUrl, accessToken, WebPublishingRoutes.currentNginx(), WebPublishingWire::currentNginx)
+
+    override suspend fun selectCurrentNginx(serverUrl: String, accessToken: String, serverId: String): ApiResult<String?> =
+        webPublishingCall("PUT", serverUrl, WebPublishingRoutes.currentNginx(), accessToken,
+            JsonBody().string("serverId", serverId), WebPublishingWire::currentNginx)
 
     override suspend fun startInstallation(serverUrl: String, accessToken: String, kind: InstallationKind,
         request: InstallationRequest, idempotencyKey: String): ApiResult<InstallationOperation> =

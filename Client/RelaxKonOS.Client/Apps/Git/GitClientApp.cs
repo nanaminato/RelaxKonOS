@@ -27,7 +27,9 @@ public sealed class GitClientApp : RemoteApplicationBase
     public override ApplicationManifest Manifest { get; } = new(
         new AppId("relaxkonos.git"), "Project Editor", "0.3.0", "\U0001f4bb",
         "Edit project files and manage Git repositories on the RelaxKonOS Server",
-        [AppPermissions.ServerGitRead, AppPermissions.ServerGitManage, AppPermissions.ServerFilesRead, AppPermissions.ServerFilesWrite],
+        [AppPermissions.ServerGitRead, AppPermissions.ServerGitManage, AppPermissions.ServerFilesRead,
+            AppPermissions.ServerFilesWrite, AppPermissions.ServerComponentsRead],
+        ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.Git]),
         InstancePolicy: ApplicationInstancePolicy.MultiWindow);
 
     public override void Activate(AppContext context)
@@ -44,11 +46,11 @@ public sealed class GitClientApp : RemoteApplicationBase
 
         // 复用 Explorer 的 IExplorerClient，用于远程文件夹选择对话框（与 Code Editor 同一模式）
         var files = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
-        var vm = new GitClientViewModel(client);
+        var dependency = RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsViewModel.Create(context, "relaxkonos.git");
+        var vm = new GitClientViewModel(client) { Dependency = dependency };
         var encodings = context.Services.GetService(typeof(TextEditorEncodingSettings)) as TextEditorEncodingSettings;
         var project = new ProjectEditorViewModel(vm, client, files,
             session.CurrentServer?.Platform != HostPlatformKind.Windows, encodings?.CodeEditorDefaultEncoding ?? "UTF-8");
-        vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Git, "relaxkonos.git", vm.RefreshInstallationAsync);
         ManagedWindow? window = null;
 
         // Wire dialog callbacks — the VM commands call these and handle the returned request objects.
@@ -93,10 +95,12 @@ public sealed class GitClientApp : RemoteApplicationBase
         vm.ShowSetTrackingDialogAsync = branch => GitClientDialogs.ShowSetTrackingDialogAsync(context, window!, branch, vm);
         vm.ShowPushDialogAsync = () => GitClientDialogs.ShowPushDialogAsync(context, window!, vm);
         vm.ShowFileDiffAsync = (owner, diff) => GitClientDialogs.ShowFileDiffAsync(context, owner ?? window!, diff);
-        vm.ShowGitCredentialsDialogAsync = owner => GitClientDialogs.ShowGitCredentialsDialogAsync(context, owner ?? window!);
+        vm.ShowCredentialAccountsAsync = () => GitClientDialogs.ShowCredentialAccountsAsync(context, window!, vm);
+        vm.ShowGitCredentialsDialogAsync = (owner, host) => GitClientDialogs.ShowGitCredentialsDialogAsync(context, owner ?? window!, host);
         vm.ShowRemoteBranchPickerDialogAsync = (owner, remote, branch) => GitClientDialogs.ShowRemoteBranchPickerDialogAsync(context, owner ?? window!, remote, branch, vm);
         vm.ConfigureLogSession = log =>
         {
+            log.ShowCredentialAccountsAsync = () => GitClientDialogs.ShowCredentialAccountsAsync(context, window!, log);
             log.ShowPushDialogAsync = () => GitClientDialogs.ShowPushDialogAsync(context, window!, log);
             log.ShowCreateBranchDialogAsync = branch => GitClientDialogs.ShowCreateBranchDialogAsync(context, window!, log, branch);
             log.ShowPullDialogAsync = () => GitClientDialogs.ShowPullDialogAsync(context, window!, log);
@@ -108,8 +112,9 @@ public sealed class GitClientApp : RemoteApplicationBase
 
 
         var view = GitClientWorkspace.Create(vm, project);
+        view.OpenSettings = () => RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsDialog.ShowAsync(context, window, dependency);
         window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.git.display_name"),
-            InstallationPanel.Wrap(view, vm.Installation), new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
+            view, new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
         var localization = context.Services.GetService(typeof(LocalizationService)) as LocalizationService;
         EventHandler<SystemLanguageChangedEventArgs> languageChanged = (_, _) => project.RefreshLocalization();
@@ -161,6 +166,7 @@ public sealed class GitClientApp : RemoteApplicationBase
             if (!ReferenceEquals(closedWindow, window)) return;
             context.WindowManager.WindowClosed -= closed;
             if (localization is not null) localization.LanguageChanged -= languageChanged;
+            dependency.Dispose();
             view.DisposeGitDock();
             project.Dispose();
         };

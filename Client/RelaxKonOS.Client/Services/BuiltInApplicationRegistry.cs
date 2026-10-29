@@ -20,6 +20,7 @@ public sealed class BuiltInApplicationRegistry : IBuiltInApplicationFactoryRegis
     {
         _inner = new BuiltInApplicationFactoryRegistry(new[]
         {
+            Define<RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterApp>("component-center", "relaxkonos.component-center", services),
             Define<WelcomeApp>("welcome", "relaxkonos.welcome", services),
             Define<NotepadApp>("notepad", "relaxkonos.notepad", services),
             Define<CodeEditorApp>("codeeditor", "relaxkonos.codeeditor", services),
@@ -42,6 +43,7 @@ public sealed class BuiltInApplicationRegistry : IBuiltInApplicationFactoryRegis
             Define<RelaxKonOS.Client.Apps.FileServices.FileServicesApp>("file-services", "relaxkonos.file-services", services),
             Define<RelaxKonOS.Client.Apps.Tunnels.TunnelManagerApp>("tunnels", "relaxkonos.tunnels", services),
             Define<RelaxKonOS.Client.Apps.Proxy.ProxyManagerApp>("proxy", "relaxkonos.proxy", services),
+            Define<RelaxKonOS.Client.Apps.Tailscale.TailscaleApp>("tailscale", "relaxkonos.tailscale", services),
             Define<RelaxKonOS.Client.Apps.Git.GitClientApp>("git", "relaxkonos.git", services),
             Define<RelaxKonOS.Client.Apps.AppInstaller.AppInstallerApp>("appinstaller", "relaxkonos.appinstaller", services),
             Define<RelaxKonOS.Client.Apps.Registry.RegistryApp>("registry", "relaxkonos.registry", services),

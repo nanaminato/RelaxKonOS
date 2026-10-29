@@ -1,4 +1,4 @@
-using RelaxKonOS.Server.Installations;
+﻿using RelaxKonOS.Server.Installations;
 using RelaxKonOS.Protocol.Installations;
 using System.Diagnostics;
 using System.Formats.Tar;
@@ -14,7 +14,7 @@ using RelaxKonOS.Protocol.Privileged;
 namespace RelaxKonOS.Server.Runtimes;
 
 /// <summary>Owns RelaxKonOS-managed FRP releases. Activation changes a private state pointer, never overwrites a release.</summary>
-public sealed class FrpRuntimeManager(IHostEnvironment environment, IOutboundProxyHttpClientFactory httpClients, IOptions<FrpRuntimeOptions> options, ManagedRuntimeOperations windowsRuntime) : IRuntimeManager
+public sealed class FrpRuntimeManager(IHostEnvironment environment, RelaxKonOS.ManagedRuntimes.IPinnedArchiveTransfer archiveTransfer, IOptions<FrpRuntimeOptions> options, ManagedRuntimeOperations windowsRuntime, RelaxKonOS.Server.ManagedRuntimes.IRuntimeDownloadProxyProvider downloadProxy) : IRuntimeManager
 {
     private const string RuntimeId = "frp";
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -36,9 +36,9 @@ public sealed class FrpRuntimeManager(IHostEnvironment environment, IOutboundPro
         var state = await ReadStateAsync(ct);
         if (state?.ActiveVersion is not { Length: > 0 } active) return new(RuntimeId, TunnelRuntimeMode.Managed, TunnelRuntimeState.NotInstalled, null, null, "tunnel.managed_runtime_not_installed");
         var executable = ExecutablePath(active);
-        return await RunVersionAsync(executable, ct) is not null
+        return await VerifyReleaseIntegrityAsync(active, ct) && VersionMatches(await RunVersionAsync(executable, ct), active)
             ? new(RuntimeId, TunnelRuntimeMode.Managed, TunnelRuntimeState.Available, active, executable, "", null, state.PreviousVersion, true)
-            : new(RuntimeId, TunnelRuntimeMode.Managed, TunnelRuntimeState.NotInstalled, active, null, "tunnel.managed_runtime_missing", null, state.PreviousVersion, false);
+            : new(RuntimeId, TunnelRuntimeMode.Managed, TunnelRuntimeState.Unknown, active, null, "tunnel.managed_runtime_missing", null, state.PreviousVersion, false);
     }
 
     public async Task<TunnelRuntimeDto> GetManagedFrpsStatusAsync(CancellationToken ct)
@@ -46,9 +46,9 @@ public sealed class FrpRuntimeManager(IHostEnvironment environment, IOutboundPro
         var state = await ReadStateAsync(ct);
         if (state?.ActiveVersion is not { Length: > 0 } active) return new(RuntimeId, TunnelRuntimeMode.Managed, TunnelRuntimeState.NotInstalled, null, null, "tunnel.managed_runtime_not_installed");
         var executable = Path.Combine(VersionDirectory(active), FrpsName());
-        return await RunVersionAsync(executable, ct) is not null
+        return await VerifyReleaseIntegrityAsync(active, ct) && VersionMatches(await RunVersionAsync(executable, ct), active)
             ? new(RuntimeId, TunnelRuntimeMode.Managed, TunnelRuntimeState.Available, active, executable, "", null, state.PreviousVersion, true)
-            : new(RuntimeId, TunnelRuntimeMode.Managed, TunnelRuntimeState.NotInstalled, active, null, "tunnel.managed_runtime_missing", null, state.PreviousVersion, false);
+            : new(RuntimeId, TunnelRuntimeMode.Managed, TunnelRuntimeState.Unknown, active, null, "tunnel.managed_runtime_missing", null, state.PreviousVersion, false);
     }
 
     public Task<TunnelRuntimeDownloadDto?> GetManagedFrpcDownloadAsync(string version, CancellationToken ct)
@@ -61,18 +61,27 @@ public sealed class FrpRuntimeManager(IHostEnvironment environment, IOutboundPro
         InstallManagedFrpcCoreAsync(version, (release, destination, token) => DownloadVerifiedAsync(release, destination, progress, token), progress, ct);
 
     public Task<TunnelOperationResultDto> InstallManagedFrpcFromArchiveAsync(string version, Stream archive, long length, IInstallationProgress progress, CancellationToken ct) =>
-        InstallManagedFrpcCoreAsync(version, (release, destination, token) => CopyVerifiedArchiveAsync(release, archive, destination, length, progress, token), progress, ct);
+        InstallManagedFrpcCoreAsync(version, (release, destination, token) => CopyVerifiedArchiveAsync(release, archive, destination, length, progress, token), progress, ct, local: true);
 
     private async Task<TunnelOperationResultDto> InstallManagedFrpcCoreAsync(string version,
-        Func<FrpRuntimeRelease, string, CancellationToken, Task> stageArchiveAsync, IInstallationProgress progress, CancellationToken ct)
+        Func<FrpRuntimeRelease, string, CancellationToken, Task> stageArchiveAsync, IInstallationProgress progress, CancellationToken ct, bool local = false)
     {
         if (string.IsNullOrWhiteSpace(version) || version.Length > 32)
         {
 
             return new(false, TunnelConnectionState.RuntimeUnavailable, "tunnel.runtime_version_invalid");
         }
-        var release = _options.Releases.SingleOrDefault(x => x.Version == version && x.Rid == CurrentRid());
-        if (!IsTrustedRelease(release))
+        FrpRuntimeRelease? release;
+        if (OperatingSystem.IsWindows())
+        {
+            var official = local
+                ? RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialComponentReleases.Describe("frpc", CurrentRid(), version)
+                : await new RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialComponentReleases().ResolveAsync("frpc", CurrentRid(), version, ct);
+            release = new() { Version = version, Rid = official.Rid, Url = official.DownloadUrl,
+                Sha256 = official.Sha256 ?? "", ArchiveFormat = official.Format };
+        }
+        else release = _options.Releases.SingleOrDefault(item => item.Version == version && item.Rid == CurrentRid());
+        if (release is null || release.Url != RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialComponentReleases.Describe("frpc", release.Rid, release.Version).DownloadUrl)
         {
 
             return new(false, TunnelConnectionState.RuntimeUnavailable, "tunnel.runtime_release_not_configured");
@@ -102,8 +111,9 @@ public sealed class FrpRuntimeManager(IHostEnvironment environment, IOutboundPro
                     await progress.ReportAsync(new(InstallationStage.Extracting, Cancellable: !OperatingSystem.IsWindows()), ct);
                     await ExtractExpectedExecutablesAsync(release, archive, staging, ct);
                     await progress.ReportAsync(new(InstallationStage.HealthChecking, Cancellable: !OperatingSystem.IsWindows()), ct);
-                    if (await RunVersionAsync(Path.Combine(staging, FrpcName()), ct) is null || await RunVersionAsync(Path.Combine(staging, FrpsName()), ct) is null) return CompleteInstallationFailure(release.Version, "tunnel.runtime_health_check_failed");
+                    if (!VersionMatches(await RunVersionAsync(Path.Combine(staging, FrpcName()), ct), release.Version) || !VersionMatches(await RunVersionAsync(Path.Combine(staging, FrpsName()), ct), release.Version)) return CompleteInstallationFailure(release.Version, "tunnel.runtime_health_check_failed");
                     Directory.CreateDirectory(Path.GetDirectoryName(finalDirectory)!);
+                    await WriteReleaseIntegrityAsync(staging, release.Version, ct);
                     Directory.Move(staging, finalDirectory);
                 }
                 catch (RuntimeInstallException ex) { return CompleteInstallationFailure(release.Version, ex.ProblemCode); }
@@ -113,7 +123,7 @@ public sealed class FrpRuntimeManager(IHostEnvironment environment, IOutboundPro
                 finally { if (File.Exists(archive)) File.Delete(archive); if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true); }
             }
             await progress.ReportAsync(new(InstallationStage.HealthChecking, Cancellable: !OperatingSystem.IsWindows()), ct);
-            if (await RunVersionAsync(ExecutablePath(release.Version), ct) is null) return CompleteInstallationFailure(release.Version, "tunnel.runtime_health_check_failed");
+            if (!await VerifyReleaseIntegrityAsync(release.Version, ct) || !VersionMatches(await RunVersionAsync(ExecutablePath(release.Version), ct), release.Version)) return CompleteInstallationFailure(release.Version, "tunnel.runtime_health_check_failed");
             if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
             {
                 await progress.ReportAsync(new(InstallationStage.Installing, Cancellable: false), ct);
@@ -145,7 +155,7 @@ public sealed class FrpRuntimeManager(IHostEnvironment environment, IOutboundPro
         {
             var before = await ReadStateAsync(ct);
             if (before?.PreviousVersion is not { Length: > 0 } previous) return new(false, TunnelConnectionState.RuntimeUnavailable, "tunnel.runtime_no_previous_version");
-            if (await RunVersionAsync(ExecutablePath(previous), ct) is null) return new(false, TunnelConnectionState.RuntimeUnavailable, "tunnel.runtime_previous_unhealthy");
+            if (!await VerifyReleaseIntegrityAsync(previous, ct) || !VersionMatches(await RunVersionAsync(ExecutablePath(previous), ct), previous)) return new(false, TunnelConnectionState.RuntimeUnavailable, "tunnel.runtime_previous_unhealthy");
             if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
             {
                 var restored = await windowsRuntime.ExecuteAsync(new(ManagedRuntime.Frpc, ManagedRuntimeAction.Install, previous), ct);
@@ -187,12 +197,25 @@ public sealed class FrpRuntimeManager(IHostEnvironment environment, IOutboundPro
     private async Task DownloadVerifiedAsync(FrpRuntimeRelease release, string destination, IInstallationProgress progress, CancellationToken ct)
     {
         await progress.ReportAsync(new(InstallationStage.Downloading, Cancellable: true), ct);
-        using var client = await httpClients.CreateAsync(OutboundProxyTarget.RuntimeDownloads, TimeSpan.FromMinutes(2), ct);
-        using var response = await client.GetAsync(release.Url, HttpCompletionOption.ResponseHeadersRead, ct);
-        if (!response.IsSuccessStatusCode) throw new RuntimeInstallException("tunnel.runtime_download_failed");
-        if (response.Content.Headers.ContentLength > _options.MaximumArchiveBytes) throw new RuntimeInstallException("tunnel.runtime_download_too_large");
-        await using var input = await response.Content.ReadAsStreamAsync(ct);
-        await CopyAndVerifyArchiveAsync(release, input, destination, response.Content.Headers.ContentLength, InstallationStage.Downloading, progress, ct);
+        var temporary = destination + ".transfer";
+        try
+        {
+            if (release.Sha256.Length == 0)
+            {
+                await using var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                await RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialComponentReleases.DownloadAsync(
+                    RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialComponentReleases.Describe("frpc", release.Rid, release.Version), output, ct);
+                return;
+            }
+            var pin = RelaxKonOS.ManagedRuntimes.ComponentPackages.PinnedArchives.Frp(new(release.Version, release.Rid,
+                release.Url, release.Sha256, release.ArchiveFormat), _options.MaximumArchiveBytes);
+            await using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                await archiveTransfer.CopyAsync(pin, output, await downloadProxy.ResolveAsync(ct), ct);
+            await using var input = File.OpenRead(temporary);
+            await CopyAndVerifyArchiveAsync(release, input, destination, input.Length, InstallationStage.Verifying, progress, ct);
+        }
+        catch (RelaxKonOS.ManagedRuntimes.RuntimePolicyException ex) { throw new RuntimeInstallException(ex.ProblemCode); }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 
     private async Task CopyVerifiedArchiveAsync(FrpRuntimeRelease release, Stream input, string destination, long length, IInstallationProgress progress, CancellationToken ct)
@@ -219,7 +242,7 @@ public sealed class FrpRuntimeManager(IHostEnvironment environment, IOutboundPro
         if (length is > 0 && total != length) throw new RuntimeInstallException("tunnel.runtime_length_invalid");
         await progress.ReportAsync(new(InstallationStage.Verifying, Cancellable: true), ct);
         var actual = Convert.ToHexString(hash.GetHashAndReset());
-        if (!CryptographicOperations.FixedTimeEquals(Convert.FromHexString(actual), Convert.FromHexString(release.Sha256))) throw new RuntimeInstallException("tunnel.runtime_checksum_failed");
+        if (release.Sha256.Length > 0 && !CryptographicOperations.FixedTimeEquals(Convert.FromHexString(actual), Convert.FromHexString(release.Sha256))) throw new RuntimeInstallException("tunnel.runtime_checksum_failed");
     }
 
     private static async Task ExtractExpectedExecutablesAsync(FrpRuntimeRelease release, string archivePath, string destination, CancellationToken ct)
@@ -251,10 +274,54 @@ public sealed class FrpRuntimeManager(IHostEnvironment environment, IOutboundPro
         var target = Path.Combine(destination, leaf); await using var input = source(); await using var output = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None); await input.CopyToAsync(output, ct); SetPrivateExecutable(target);
     }
 
-    private async Task<RuntimeState?> ReadStateAsync(CancellationToken ct) { var path = Path.Combine(_root, "state.json"); if (!File.Exists(path)) return null; try { await using var input = File.OpenRead(path); return await JsonSerializer.DeserializeAsync<RuntimeState>(input, cancellationToken: ct); } catch (JsonException) { throw new RuntimeInstallException("tunnel.runtime_state_invalid"); } }
+    private sealed record ReleaseIntegrity(string Version, string ClientSha256, string ServerSha256);
+    private static bool VersionMatches(string? actual, string version) => actual?.Trim() == version.TrimStart('v');
+    private static void RequirePlainRuntimePath(string path)
+    {
+        for (var current = Path.GetFullPath(path); current is not null; current = Path.GetDirectoryName(current))
+            if ((File.Exists(current) || Directory.Exists(current)) && File.GetAttributes(current).HasFlag(FileAttributes.ReparsePoint))
+                throw new UnauthorizedAccessException("FRP runtime paths cannot contain links.");
+    }
+    private static async Task WriteReleaseIntegrityAsync(string directory, string version, CancellationToken ct)
+    {
+        async Task<string> Hash(string name)
+        {
+            var path = Path.Combine(directory, name); RequirePlainRuntimePath(path);
+            await using var binary = File.OpenRead(path);
+            return Convert.ToHexString(await SHA256.HashDataAsync(binary, ct));
+        }
+        var integrity = new ReleaseIntegrity(version, await Hash(FrpcName()), await Hash(FrpsName()));
+        var manifest = Path.Combine(directory, ".relaxkonos-integrity.json");
+        await using var file = new FileStream(manifest, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        await JsonSerializer.SerializeAsync(file, integrity, cancellationToken: ct);
+        file.Flush(true);
+        SetPrivateFile(manifest);
+    }
+    private async Task<bool> VerifyReleaseIntegrityAsync(string version, CancellationToken ct)
+    {
+        try
+        {
+            var directory = VersionDirectory(version);
+            var manifest = Path.Combine(directory, ".relaxkonos-integrity.json"); RequirePlainRuntimePath(manifest);
+            if (!File.Exists(manifest) || new FileInfo(manifest).Length > 4096) return false;
+            var identity = JsonSerializer.Deserialize<ReleaseIntegrity>(await File.ReadAllBytesAsync(manifest, ct));
+            if (identity?.Version != version) return false;
+            foreach (var (name, expected) in new[] { (FrpcName(), identity.ClientSha256), (FrpsName(), identity.ServerSha256) })
+            {
+                var path = Path.Combine(directory, name); RequirePlainRuntimePath(path);
+                if (!File.Exists(path) || expected is not { Length: 64 }) return false;
+                await using var binary = File.OpenRead(path);
+                if (!Convert.ToHexString(await SHA256.HashDataAsync(binary, ct)).Equals(expected, StringComparison.Ordinal)) return false;
+            }
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { return false; }
+    }
+
+    private async Task<RuntimeState?> ReadStateAsync(CancellationToken ct) { var path = Path.Combine(_root, "state.json"); if (!File.Exists(path)) return null; try { await using var input = File.OpenRead(path); return await JsonSerializer.DeserializeAsync<RuntimeState>(input, cancellationToken: ct); } catch (JsonException ex) { throw new IOException("FRP state is invalid.", ex); } }
     private async Task WriteStateAsync(RuntimeState value, CancellationToken ct) { Directory.CreateDirectory(_root); SetPrivateDirectory(_root); var temporary = Path.Combine(_root, ".state-" + Guid.NewGuid().ToString("N")); var path = Path.Combine(_root, "state.json"); await using (var output = File.Create(temporary)) await JsonSerializer.SerializeAsync(output, value, cancellationToken: ct); SetPrivateFile(temporary); File.Move(temporary, path, overwrite: true); SetPrivateFile(path); }
     private static bool TryCanonicalExternalPath(string value, out string path) { path = ""; try { if (!string.IsNullOrWhiteSpace(value) && Path.IsPathFullyQualified(value)) { path = Path.GetFullPath(value); return true; } } catch { } return false; }
-    private static bool IsTrustedRelease(FrpRuntimeRelease? value) => value is not null && Path.GetFileName(value.Version) == value.Version && value.Version.StartsWith("v", StringComparison.Ordinal) && value.ArchiveFormat is "zip" or "tar.gz" && value.Sha256.Length == 64 && value.Sha256.All(Uri.IsHexDigit) && Uri.TryCreate(value.Url, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps && uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) && uri.AbsolutePath.StartsWith("/fatedier/frp/releases/download/", StringComparison.Ordinal);
+    private static bool IsTrustedRelease(FrpRuntimeRelease? value) => value is not null && Path.GetFileName(value.Version) == value.Version && value.Version.StartsWith("v", StringComparison.Ordinal) && value.ArchiveFormat is "zip" or "tar.gz" && value.Sha256.Length == 64 && value.Sha256.All(Uri.IsHexDigit) && Uri.TryCreate(value.Url, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps && uri.UserInfo.Length == 0 && uri.Query.Length == 0 && uri.Fragment.Length == 0 && uri.Port == 443 && uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) && uri.AbsolutePath.StartsWith("/fatedier/frp/releases/download/", StringComparison.Ordinal);
     private static void EnsureSafeEntry(string? name, long length) { if (string.IsNullOrWhiteSpace(name) || length < 0 || length > 128L * 1024 * 1024 || Path.IsPathRooted(name) || name.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries).Any(x => x is "." or "..")) throw new RuntimeInstallException("tunnel.runtime_archive_invalid"); }
     private static void EnsureAllowedEntry(string name) { var leaf = Path.GetFileName(name.Replace('\\', '/')); if (string.Equals(leaf, FrpcName(), StringComparison.Ordinal) || string.Equals(leaf, FrpsName(), StringComparison.Ordinal) || leaf.Equals("LICENSE", StringComparison.OrdinalIgnoreCase) || leaf.Equals("frpc.toml", StringComparison.OrdinalIgnoreCase) || leaf.Equals("frps.toml", StringComparison.OrdinalIgnoreCase)) return; throw new RuntimeInstallException("tunnel.runtime_archive_unexpected_entry"); }
     private static bool IsMetadataEntry(string? name) => string.IsNullOrEmpty(name) || name.EndsWith("/", StringComparison.Ordinal);

@@ -28,7 +28,7 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(
         new AppId("relaxkonos.webservers"), "Web Server Manager", "0.1.0", "🌐", "Manage web servers on the RelaxKonOS Server",
-        [AppPermissions.ServerWebServersRead, AppPermissions.ServerWebServersManage], ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.WebServer]),
+        [AppPermissions.ServerWebServersRead, AppPermissions.ServerWebServersManage, AppPermissions.ServerComponentsRead], ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.WebServer]),
         InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
     public override void Activate(AppContext context)
@@ -45,42 +45,24 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
                 new Rect(180, 160, 470, 180), Manifest.IconGlyph, false, false, false);
             return;
         }
-        var viewModel = new WebServerManagerViewModel(client, certificates, session, context.Permissions, elevations);
-        viewModel.Installation = InstallationPanel.Create(context, InstallationServiceId.Nginx, "relaxkonos.webservers", () => viewModel.RefreshCommand.ExecuteAsync(null));
+        var dependency = RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsViewModel.Create(context, Manifest.Id.Value);
+        var viewModel = new WebServerManagerViewModel(client, certificates, session, context.Permissions, elevations)
+        {
+            Dependency = dependency
+        };
         var view = WebServerManagerWorkspace.Create(viewModel);
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.webservers.display_name"),
-            InstallationPanel.Wrap(view, viewModel.Installation), new Rect(70, 55, 1080, 680), Manifest.IconGlyph);
+            view, new Rect(70, 55, 1080, 680), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
         viewModel.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window, problemCode);
         viewModel.RequestIntegrationConfirmationAsync = async () =>
         {
             return await ConfirmAsync("webservers.integration.confirmation.title", "webservers.integration.confirmation.message", "webservers.integration.confirmation.confirm");
         };
-        viewModel.RequestManagedInstallConfirmationAsync = () => ConfirmAsync("webservers.managed.install.title", "webservers.managed.install.message", "webservers.managed.install.confirm");
-        viewModel.RequestManagedUninstallConfirmationAsync = () => ConfirmAsync("webservers.managed.uninstall.title", "webservers.managed.uninstall.message", "webservers.managed.uninstall.confirm");
-        viewModel.RequestLocalNginxPackageAsync = async () =>
-        {
-            var topLevel = Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop ? desktop.MainWindow : null;
-            if (topLevel is null) return null;
-            var selected = await UsageFilePicker.OpenFilePickerAsync(topLevel.StorageProvider, new FilePickerOpenOptions
-            {
-                Title = LocalizedText.Get("webservers.managed.select_package"), AllowMultiple = false,
-                FileTypeFilter = [new FilePickerFileType(LocalizedText.Get("webservers.managed.package_file_type")) { Patterns = ["*.zip"] }],
-            }, UsageMemoryStore.Capture(context), "WebServerManager.archive");
-            return selected.FirstOrDefault()?.TryGetLocalPath();
-        };
-        viewModel.ShowManagedDownloadUrlAsync = url => context.ShowDialogAsync<bool?>(window, LocalizedText.Get("webservers.managed.download_title"), dialog => new DownloadUrlDialogView
-        {
-            DataContext = new DownloadUrlDialogViewModel(url, async value =>
-            {
-                var topLevel = Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop ? desktop.MainWindow : null;
-                if (topLevel?.Clipboard is not null) await topLevel.Clipboard.SetTextAsync(value);
-            }, () => dialog.Close(true)),
-        }, new Size(660, 210));
         viewModel.OpenFileBrowserAtPathAsync = path =>
         {
             var activation = context.Activations.Activate(RelaxKonOSActivationUris.ExplorerPath(path));
-            if (!activation.Succeeded && !activation.IsPendingUserChoice)
+            if (!activation.IsAccepted)
                 viewModel.SiteStatusText = LocalizedText.Get("webservers.site.file_browser_failed");
             return Task.CompletedTask;
         };
@@ -149,6 +131,27 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
                 return new NginxIntegrationConfirmationDialogView { DataContext = dialogViewModel };
             }, new Size(500, 220));
             return confirmed;
+        }
+        {
+            var selectionTimer = new Avalonia.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            var refreshing = false;
+            selectionTimer.Tick += async (_, _) =>
+            {
+                if (refreshing) return;
+                refreshing = true;
+                try { await viewModel.SynchronizeCurrentNginxAsync(); }
+                finally { refreshing = false; }
+            };
+            EventHandler<RelaxKonOS.WindowManager.ManagedWindow>? closed = null;
+            closed = (_, current) =>
+            {
+                if (!ReferenceEquals(current, window)) return;
+                selectionTimer.Stop();
+                context.WindowManager.WindowClosed -= closed;
+                dependency.Dispose();
+            };
+            context.WindowManager.WindowClosed += closed;
+            selectionTimer.Start();
         }
         _ = viewModel.StartAsync();
 

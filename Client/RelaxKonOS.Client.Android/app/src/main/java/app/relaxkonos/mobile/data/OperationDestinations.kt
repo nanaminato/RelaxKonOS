@@ -52,6 +52,9 @@ object OperationDestinations {
             InstallationService.Frp -> OperationTarget(OperationDestination.Tunnels)
             InstallationService.Mihomo -> OperationTarget(OperationDestination.Proxy)
             InstallationService.SingBox -> null
+            // Squid changes are started from the component center and reviewed in operations there;
+            // there is no separate Squid destination to deep-link to yet.
+            InstallationService.Squid -> null
         }
     }
 

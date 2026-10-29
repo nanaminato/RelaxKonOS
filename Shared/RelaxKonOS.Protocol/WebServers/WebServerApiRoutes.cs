@@ -7,6 +7,8 @@ public static class WebServerApiRoutes
 {
     private const string V1 = RelaxKonOSEndpoints.ApiVersionPrefix;
     public const string WebServers = $"/{V1}/webservers";
+    public const string CurrentNginx = $"{WebServers}/current-nginx";
+    public const string CurrentNginxPattern = "/current-nginx";
     public const string CollectionPattern = "";
     public const string Discover = $"{WebServers}/discover";
     public const string DiscoverPattern = "/discover";

@@ -7,6 +7,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.stringResource
@@ -22,14 +23,17 @@ import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.ui.common.*
+import app.relaxkonos.mobile.ui.manage.components.ComponentDependencyAction
 import app.relaxkonos.mobile.ui.manage.proxy.proxyOperationLabel
 import app.relaxkonos.mobile.ui.manage.proxy.proxyStageLabel
+import app.relaxkonos.mobile.ui.nav.Routes
 import app.relaxkonos.mobile.ui.theme.Spacing
 import java.text.DateFormat
 import java.util.Date
 
 private data class ProxyServerConfirmation(val action: () -> Unit)
 private data class CredentialDraft(val credential: ProxyServerCredential?)
+private data class InboundDraft(val configuration: ProxyServerConfiguration, val inbound: ProxyServerInbound?)
 private data class PrincipalDraft(val principal: ProxyServerPrincipal?)
 
 private const val OVERVIEW = "overview"
@@ -39,27 +43,20 @@ private const val CONNECT = "connect"
 private const val SUBSCRIPTIONS = "subscriptions"
 private const val RECORDS = "records"
 
-/**
- * Proxy Server workspace.
- *
- * The phone reviews the host state and hands out access: it publishes a saved draft, manages
- * credentials, exports a client configuration and issues subscriptions. Editing an inbound service
- * stays on the desktop, because the fields (listen address, public endpoint, SNI, REALITY handshake,
- * certificate id) are chosen against a form the phone cannot present honestly.
- */
+/** Proxy Server management, inbound drafts, access credentials and exports. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ProxyServerScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun ProxyServerScreen(onBack: () -> Unit, modifier: Modifier = Modifier, onOpenComponents: () -> Unit = {}) {
     val container = appContainer()
     val model: ProxyServerViewModel = viewModel(factory = viewModelFactory {
         initializer { ProxyServerViewModel(container.session, container.proxyServer, container.operationIndex) }
     })
-    ProxyServerContent(model, container.activeSession, onBack, modifier)
+    ProxyServerContent(model, container.activeSession, onBack, modifier, onOpenComponents)
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun ProxyServerContent(model: ProxyServerViewModel, owner: SessionState.Active?,
-    onBack: () -> Unit, modifier: Modifier = Modifier) {
+    onBack: () -> Unit, modifier: Modifier = Modifier, onOpenComponents: () -> Unit = {}) {
     val state = model.state
     val disclosureVersion = model.disclosureVersion
     val available = owner?.capabilities?.contains(ServerCapabilities.PROXY_SERVER) == true
@@ -70,11 +67,13 @@ fun ProxyServerScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     var confirm by remember(owner, epoch) { mutableStateOf<ProxyServerConfirmation?>(null) }
     var credentialDraft by remember(owner, epoch) { mutableStateOf<CredentialDraft?>(null) }
     var principalDraft by remember(owner, epoch) { mutableStateOf<PrincipalDraft?>(null) }
+    var inboundDraft by remember(owner, epoch) { mutableStateOf<InboundDraft?>(null) }
+    var baseUrlDraft by remember(owner, epoch) { mutableStateOf<ProxyServerConfiguration?>(null) }
     var recovering by remember(owner, epoch) { mutableStateOf(false) }
     var recoverId by remember(owner, epoch) { mutableStateOf("") }
 
     val facts = state.facts
-    val editorOpen = credentialDraft != null || principalDraft != null
+    val editorOpen = credentialDraft != null || principalDraft != null || inboundDraft != null || baseUrlDraft != null
 
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(model, owner, lifecycle) {
@@ -88,7 +87,6 @@ fun ProxyServerScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
         }
     }
     LaunchedEffect(owner, epoch) { if (available) model.refresh() }
-    LaunchedEffect(owner, epoch, facts?.status?.installed) { if (available && facts?.status?.installed == true) model.loadReleases() }
     LaunchedEffect(owner, epoch, state.operation?.operationId, state.operation?.state?.wire, state.busy, editorOpen) {
         if (!editorOpen) model.observeOperation()
     }
@@ -102,6 +100,7 @@ fun ProxyServerScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
         stringResource(R.string.proxy_server_title), onBack,
         listOf(
             WorkspaceDestination(OVERVIEW, R.string.workspace_overview),
+            WorkspaceDestination("runtime", R.string.proxy_server_runtime_title),
             WorkspaceDestination(INBOUNDS, R.string.proxy_server_inbounds_title),
             WorkspaceDestination(ACCESS, R.string.proxy_server_access_title),
             WorkspaceDestination(CONNECT, R.string.proxy_server_connect_title),
@@ -135,6 +134,8 @@ fun ProxyServerScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                 }
                 PageActionRow(refresh = {
                     TextButton(enabled = !state.busy, onClick = model::refresh) { ActionLabel(R.string.common_refresh) }
+                }, actions = {
+                    ComponentDependencyAction(Routes.MANAGE_PROXY_SERVER, onOpenComponents)
                 })
                 RefreshProgressIndicator(visible = state.busy)
                 state.observedAtMillis?.let {
@@ -145,17 +146,7 @@ fun ProxyServerScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             if (facts != null && canManage) ManagementCard {
                 Text(stringResource(R.string.proxy_server_runtime_title), style = MaterialTheme.typography.titleMedium)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    if (!facts.status.installed) {
-                        OutlinedButton(enabled = state.ready, onClick = model::install) { Text(stringResource(R.string.proxy_server_action_install)) }
-                    }
                     if (facts.status.installed) {
-                        // A newer verified release is whatever the server lists as not installed yet.
-                        val upgradeTo = (state.releases as? ApiResult.Success)?.value
-                            ?.firstOrNull { !it.installed }?.version
-                            ?.takeIf { it != facts.status.version }
-                        OutlinedButton(enabled = state.ready && upgradeTo != null, onClick = { upgradeTo?.let(model::upgrade) }) {
-                            Text(stringResource(R.string.proxy_server_action_upgrade))
-                        }
                         ProxyServerRuntimeAction.entries.forEach { action ->
                             OutlinedButton(enabled = state.ready && !facts.status.recoveryRequired, onClick = {
                                 if (action == ProxyServerRuntimeAction.Restart ||
@@ -169,16 +160,6 @@ fun ProxyServerScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                                 Text(stringResource(R.string.proxy_server_action_recover))
                             }
                         }
-                    }
-                }
-                if (facts.status.installed && facts.capabilities.uninstall) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                        TextButton(enabled = state.ready, onClick = {
-                            confirm = ProxyServerConfirmation { model.uninstall(true) }
-                        }) { Text(stringResource(R.string.proxy_server_action_uninstall_keep)) }
-                        TextButton(enabled = state.ready, onClick = {
-                            confirm = ProxyServerConfirmation { model.uninstall(false) }
-                        }) { Text(stringResource(R.string.proxy_server_action_uninstall_delete)) }
                     }
                 }
             }
@@ -207,10 +188,16 @@ fun ProxyServerScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             }
         }
 
+        WorkspaceSection(section == "runtime") { if (section == "runtime") SingBoxRuntimePanel() }
+
         WorkspaceSection(section == INBOUNDS) {
             ManagementCard {
                 Text(stringResource(R.string.proxy_server_inbounds_title), style = MaterialTheme.typography.titleMedium)
-                Text(stringResource(R.string.proxy_server_inbound_desktop_note), style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.proxy_server_inbound_draft_note), style = MaterialTheme.typography.bodySmall)
+                if (canManage && facts != null) {
+                    TextButton(enabled = state.ready, onClick = { inboundDraft = InboundDraft(facts.configuration, null) }) { Text(stringResource(R.string.proxy_server_inbound_add)) }
+                    TextButton(enabled = state.ready, onClick = { baseUrlDraft = facts.configuration }) { Text(stringResource(R.string.proxy_server_subscription_base)) }
+                }
                 val inbounds = facts?.configuration?.inbounds.orEmpty()
                 if (inbounds.isEmpty()) Text(stringResource(R.string.proxy_server_inbounds_empty))
                 inbounds.forEach { inbound ->
@@ -221,6 +208,13 @@ fun ProxyServerScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                         style = MaterialTheme.typography.bodySmall)
                     Text(stringResource(R.string.proxy_server_inbound_public, inbound.publicHost, inbound.publicPort),
                         style = MaterialTheme.typography.bodySmall)
+                    if (canManage && facts != null) FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                        TextButton(enabled = state.ready, onClick = { inboundDraft = InboundDraft(facts.configuration, inbound) }) { Text(stringResource(R.string.common_edit)) }
+                        TextButton(enabled = state.ready && facts.credentials.none { inbound.id in it.inboundIds }, onClick = {
+                            val config = facts.configuration
+                            confirm = ProxyServerConfirmation { model.saveConfiguration(SaveProxyServerConfiguration(config.revision, config.inbounds.filter { it.id != inbound.id }, config.subscriptionBaseUrl)) }
+                        }) { Text(stringResource(R.string.common_delete)) }
+                    }
                     if (!inbound.enabled) Text(stringResource(R.string.proxy_server_inbound_disabled), style = MaterialTheme.typography.bodySmall)
                 }
             }
@@ -306,6 +300,11 @@ fun ProxyServerScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                     }
                 }
                 state.export?.let { export ->
+                    val qr = remember(export) { ProxyServerQr.encode(export.format, export.content)?.let { matrix ->
+                        val pixels = IntArray(matrix.width * matrix.height) { index -> if (matrix[index % matrix.width, index / matrix.width]) android.graphics.Color.BLACK else android.graphics.Color.WHITE }
+                        android.graphics.Bitmap.createBitmap(pixels, matrix.width, matrix.height, android.graphics.Bitmap.Config.ARGB_8888).asImageBitmap()
+                    } }
+                    qr?.let { androidx.compose.foundation.Image(it, stringResource(R.string.proxy_server_connect_qr), Modifier.size(256.dp)) }
                     val clipboard = LocalClipboardManager.current
                     SelectionContainer {
                         Text(export.content, style = MaterialTheme.typography.bodySmall, modifier = Modifier.heightIn(max = 240.dp).verticalScroll(rememberScrollState()))
@@ -392,6 +391,12 @@ fun ProxyServerScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
         }
     }
 
+    inboundDraft?.let { draft -> key(owner, epoch, draft) {
+        ProxyServerInboundEditor(draft.configuration, draft.inbound, state.busy, { request -> model.saveConfiguration(request); inboundDraft = null }) { inboundDraft = null }
+    } }
+    baseUrlDraft?.let { config -> key(owner, epoch, config) {
+        ProxyServerBaseUrlEditor(config, state.busy, { request -> model.saveConfiguration(request); baseUrlDraft = null }) { baseUrlDraft = null }
+    } }
     credentialDraft?.let { draft -> key(owner, epoch, draft) {
         CredentialEditor(draft, facts, state.busy, { id, principalId, name, inboundIds, enabled, expiresMillis ->
             model.saveCredential(id, principalId, name, inboundIds, enabled, expiresMillis)
@@ -446,16 +451,18 @@ fun ProxyServerScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     TextButton(enabled = enabled, onClick = { expanded = !expanded }) {
         Text(stringResource(R.string.proxy_server_subscription_issue_for, credential.name))
     }
-    if (!expanded) return
-    ProxyServerExportFormats.all.forEach { format ->
-        CheckboxOption(formats.contains(format), proxyServerFormatLabel(format), enabled) { checked ->
-            formats = if (checked) formats + format else formats - format
+    LaunchedEffect(owner, disclosureVersion) { expanded = false }
+    if (expanded) WorkspaceEditorDialog(stringResource(R.string.proxy_server_subscription_issue), model.state.busy, { expanded = false }) {
+        ProxyServerExportFormats.all.forEach { format ->
+            CheckboxOption(formats.contains(format), proxyServerFormatLabel(format), enabled) { checked ->
+                formats = if (checked) formats + format else formats - format
+            }
         }
+        Button(enabled = enabled && formats.isNotEmpty(), onClick = {
+            model.issueSubscription(owner, disclosureVersion, credential.id, ProxyServerExportFormats.all.filter { it in formats }, null)
+            expanded = false
+        }) { Text(stringResource(R.string.proxy_server_subscription_issue)) }
     }
-    Button(enabled = enabled && formats.isNotEmpty(), onClick = {
-        model.issueSubscription(owner, disclosureVersion, credential.id, ProxyServerExportFormats.all.filter { it in formats }, null)
-        expanded = false
-    }) { Text(stringResource(R.string.proxy_server_subscription_issue)) }
 }
 
 /** Credential form. Required: a name, a proxy user and at least one authorized inbound. */

@@ -1,6 +1,10 @@
 # RelaxKonOS.PrivilegedHelper
 
-这是受限的本地特权边界，不是网络服务，也不是 Guardian Agent。Linux 通过标准输入/输出使用短生命周期 root 工作进程。Windows 的 LocalSystem 服务和开发者控制台宿主使用同一套经过认证的命名管道协议及封闭操作分派器。它绝不接受任意命令或可执行文件。
+这是受限的本地特权边界，不是网络服务，也不是 Guardian Agent。Linux 生产部署使用以 root 常驻的
+`relaxkonos-privileged-helper.service`，只监听本机 Unix Domain Socket；开发与尚未迁移的普通用户执行
+仍可使用标准输入/输出的一次性 root 工作进程。Windows 的 LocalSystem 服务和开发者控制台宿主使用同一套
+经过认证的命名管道协议及封闭操作分派器。它绝不接受任意命令或可执行文件。三种宿主共用同一个封闭操作
+分派器；传输层与生命周期不进入业务模块。
 
 ## 开发
 
@@ -10,17 +14,26 @@
 dotnet build RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj
 ```
 
-若要进行真实的 Server → sudo → Helper 集成测试，请将构建输出安装到 root 拥有的开发目录，并创建狭窄的 sudoers 规则：
+若要进行真实的 Server → Helper 集成测试，请将构建输出安装到 root 拥有的开发目录，并创建狭窄的
+sudoers 规则（仅用于过渡性的 user-execution 入口）：
 
 ```bash
 sudo deployment/linux/install-relaxkonos-privileged-helper-development.sh "$USER"
 ```
 
-该脚本会把完整的 Debug 输出复制到 `/usr/local/lib/relaxkonos/privileged-helper-development/RelaxKonOS.PrivilegedHelper`，再只允许开发账户以 root 身份运行该 apphost 的无参数协议、`--user-execution` 和 `--user-terminal` 三个精确入口。
+该脚本会把完整的 Debug 输出复制到 `/usr/local/lib/relaxkonos/privileged-helper-development/RelaxKonOS.PrivilegedHelper`，写入
+`/etc/relaxkonos/privileged-helper-development.json`，并以 systemd 单元
+`relaxkonos-privileged-helper-development.service` 启动一个以 root 常驻、只监听
+`/run/relaxkonos/privileged-development.sock` 的开发 Helper。开发账户是该 socket 的唯一
+`allowedUids` 条目。
 
-选择 Server 的 `http-linux-privileged` 配置，它将 `PrivilegedHelper__HelperPath` 设为该副本、`PrivilegedHelper__SudoPath` 设为 `/usr/bin/sudo`。每次重新构建 Helper 后都要重新运行脚本。
+选择 Server 的 `http-linux-privileged` 配置：它把 `PrivilegedHelper__SocketPath` 设为该开发 socket，
+`PrivilegedHelper__HelperPath`/`SudoPath` 仅用于过渡性的 user-execution。每次重新构建 Helper 后都要
+重新运行脚本，它会重启单元以加载新二进制。
 
-Server 本身仍是非特权进程：sudo 会针对每个结构化请求启动一个 Helper 进程，且 Helper 只允许封闭操作集。绝不可让 sudoers 规则指向开发账户可写的 `bin/Debug` 可执行文件；这会赋予账户等同 root 的控制权。
+Server 本身仍是非特权进程：socket 只接受该 Server 账户，Helper 只允许封闭操作集。绝不可让任何
+sudoers 规则指向开发账户可写的 `bin/Debug` 可执行文件；这会赋予账户等同 root 的控制权。开发配置与
+生产配置是两个文件/两个 socket，脚本不会改写已安装部署的调用者列表。
 
 开发安装默认仅允许 `/etc/relaxkonos` 和 `/var/lib/relaxkonos`。若需调试受保护文件目录，使用
 `--file-access whitelist --file-roots deployment/linux/privileged-helper-roots.example`，并从示例中只保留测试所需的绝对目录。
@@ -69,7 +82,7 @@ PrivilegedHelper__SharedSecret=<相同的 Base64 密钥>
 
 Server 侧的键（含 `userExecutionBackend`）出现在 Helper 配置里同样会让 Helper 启动失败：它只可能来自配置被复制错，静默忽略会让两侧对"谁在执行"产生分歧。发布前应通过 LocalSystem 服务测试一次，以覆盖 Session 0、用户配置文件、DPAPI、网络凭据和映射驱动器差异。
 
-Windows 普通用户文件执行使用派生管道 `<pipeName>-user` 和一次性本地账户 S4U token；Windows 普通终端通过受限 primary token 和 Helper 持有的 ConPTY 执行；管理员终端须由 Server 验证系统密码登录及 canonical 管理员身份，并由 Helper 再次验证完整管理员 token；域账户、Git 进程执行与 POSIX mode 均 fail closed。
+Windows 普通用户文件执行使用派生管道 `<pipeName>-user` 和一次性本地账户 S4U token；Windows 普通终端通过受限 primary token 和 Helper 持有的 ConPTY 执行；管理员终端须由 Server 验证系统密码登录及 canonical 管理员身份，并由 Helper 再次验证完整管理员 token；普通 Git 操作使用同样的受限 primary token，经 `CreateProcessAsUserW`、独立重定向管道和 kill-on-close Job Object 执行；仅目标用户 PATH 中的绝对 `git.exe` 可被选择，采用共享 Git allowlist，显式 HTTPS 凭据通过用户私有目录中的临时 askpass 和子进程环境传递。域账户与 POSIX mode 仍 fail closed。
 
 该路径需要 LocalSystem Helper 监听该管道（Helper 配置 `enableWindowsUserExecution: true`）**并且** Server 侧选 `helper` 后端。Windows System Mode 的 bootstrap 安装器显式传入 `-EnableWindowsUserExecution`，同时打开两侧，避免新安装后普通文件浏览不可用；直接调用服务安装脚本时仍需显式传入该开关，否则写入 `disabled`，永不写入 `local-identity`。
 
@@ -89,7 +102,21 @@ Windows 普通用户文件执行使用派生管道 `<pipeName>-user` 和一次�
 dotnet publish RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj -c Release -r linux-x64 --self-contained false
 ```
 
-将发布的 apphost 作为 [`install-relaxkonos-services.sh`](../deployment/linux/install-relaxkonos-services.sh) 的第四个参数传入。安装程序会将完整发布目录复制到 root 拥有的位置，并为 Server 服务账户创建狭窄的 sudoers 规则。
+将发布的 apphost 作为 [`install-relaxkonos-services.sh`](../deployment/linux/install-relaxkonos-services.sh) 的第四个参数传入。安装程序会将完整发布目录复制到 root 拥有的位置，写入 `privileged-helper.json`，安装并启用常驻的 `relaxkonos-privileged-helper.service`，再把 `PrivilegedHelper__SocketPath` 写入 `/etc/relaxkonos/server.env`。sudoers 只剩过渡性的 `--user-execution`/`--user-terminal` 两个入口；无参数特权协议不再经 sudo 启动。
+
+常驻 Helper 的启动参数是 `--linux-service --config /etc/relaxkonos/privileged-helper.json`。配置只包含 socket 路径、socket 组 gid、允许的调用者 uid 列表和并发上限；文件根与服务白名单仍只从 root 拥有的 `/etc/relaxkonos` 策略文件读取。运行日志写入 systemd journal，只包含事件类别、operation、operation id、调用者 uid、结果与耗时，不记录请求载荷、凭据或文件内容。
+
+首次安装或升级后检查：
+
+```text
+systemctl status relaxkonos-privileged-helper
+ls -l /run/relaxkonos/privileged.sock     # root:<Server group> 0660
+journalctl -u relaxkonos-privileged-helper -n 50
+```
+
+socket 缺失时 Server 仍可启动，特权功能返回 `privileged-helper-unavailable`；不要为此把 Server 改为
+root 运行，也不要恢复每次操作的 sudo 规则。v1 不启用 systemd socket activation，重启后由单元重新创建
+socket；遗留 socket 只有在确认是 socket、属主正确且无人监听时才会被替换。
 
 ## 设置系统时区操作（2026-09-08，实现待平台验收）
 

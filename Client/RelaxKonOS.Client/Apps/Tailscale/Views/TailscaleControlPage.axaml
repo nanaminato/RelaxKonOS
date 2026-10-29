@@ -1,0 +1,18 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Tailscale"
+ x:Class="RelaxKonOS.Client.Apps.Tailscale.Views.TailscaleControlPage" x:DataType="vm:TailscaleViewModel">
+ <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+  <StackPanel Spacing="16">
+   <TextBlock Text="{loc:Loc tailscale.control_intro}" TextWrapping="Wrap" />
+   <Button Content="{loc:Loc tailscale.load_control}" Command="{Binding LoadControlCommand}" HorizontalAlignment="Left" />
+   <TextBlock Text="{Binding ConnectionText}" TextWrapping="Wrap" />
+   <TextBlock Text="{Binding ConfigurationText}" TextWrapping="Wrap" />
+   <TextBlock Text="{Binding ControlProblem}" TextWrapping="Wrap" />
+   <WrapPanel ItemSpacing="8" LineSpacing="8">
+    <Button Content="{loc:Loc tailscale.connect}" Command="{Binding ConnectCommand}" />
+    <Button Content="{loc:Loc tailscale.disconnect}" Command="{Binding DisconnectCommand}" />
+    <Button Content="{loc:Loc tailscale.configure}" Command="{Binding ConfigureCommand}" />
+   </WrapPanel>
+  </StackPanel>
+ </ScrollViewer>
+</UserControl>

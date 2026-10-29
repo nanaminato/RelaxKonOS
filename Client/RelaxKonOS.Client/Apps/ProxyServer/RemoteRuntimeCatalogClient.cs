@@ -73,7 +73,7 @@ public class RemoteRuntimeCatalogClient(HttpClient http, IAuthSession session, I
             || plan.Release is { } release && release.RuntimeId != RuntimeId)
             throw new ArgumentException("runtime.request_invalid", nameof(request));
         return SendAsync<InstallationOperationDto?>(HttpMethod.Post, InstallationApiRoutes.Start(_service, kind),
-            request, key, ct);
+            _service == InstallationServiceId.Mihomo ? new MihomoInstallationRequest(request.Confirmed, request.Plan) : (object)request, key, ct);
     }
 
     public Task<InstallationOperationDto?> OperationAsync(Guid id, CancellationToken ct) =>
@@ -144,6 +144,20 @@ public class RemoteRuntimeCatalogClient(HttpClient http, IAuthSession session, I
             }
             catch (JsonException) { }
             throw new HttpRequestException(problem, null, response.StatusCode);
+        }
+        if (typeof(T) == typeof(RuntimeInstallationSnapshot))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+                RuntimeCommitWitnessRules.RequireWireMember(document.RootElement);
+                var snapshot = document.RootElement.Deserialize<T>(RelaxKonOSJsonOptions.Default);
+                if (snapshot is RuntimeInstallationSnapshot observed && observed.CommitWitness is { } witness
+                    && !RuntimeCommitWitnessRules.BoundToSnapshot(witness, observed)) throw new InvalidDataException("runtime.response_invalid");
+                Verify();
+                return snapshot ?? throw new InvalidDataException("runtime.response_invalid");
+            }
+            catch (JsonException ex) { throw new InvalidDataException("runtime.response_invalid", ex); }
         }
         return await response.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, ct)
             ?? throw new InvalidDataException("runtime.response_invalid");

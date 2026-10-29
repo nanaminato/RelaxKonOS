@@ -1,6 +1,12 @@
-# RelaxKonOS FRP 集成——当前实现边界
+﻿# RelaxKonOS FRP 集成——当前实现边界
 
 本文记录根据 FRP 集成 Goal 落地的代码级 V1 边界；它不改变 Goal 文档中的架构或安全约束。
+
+## Windows 多版本与文件安装（2026-10-27）
+
+组件中心的 frpc/frps 共用同一个上游发行归档，版本选择读取 fatedier/frp 的 GitHub Releases 并匹配 Windows x64/arm64。支持服务器下载、本机下载后上传、本机文件、服务器文件及官方下载链接；手动提供文件时不要求联网下载对照包或预登记版本摘要，输入的版本仍须与两个程序的原生版本一致。安装写入原有 FRP 台账，Helper 保存实际导入程序的完整性信息；启用服务继续使用既有配置验证、固定服务身份与应用授权。Linux 的固定归档能力范围未在本次扩展。
+
+官方目录与四种来源的客户端接线已经验证；没有执行本次 Windows 真实安装、跨版本切换、取消/补偿故障或协议互通，不扩大已有主机验收范围。详见[组件中心进度](../platform/RelaxKonOS.ComponentCenter.Progress.md)。
 
 ## 已实现的控制平面
 
@@ -58,3 +64,7 @@ Windows FRPS/FRPC 使用独立 SCM 服务，Linux 使用独立 systemd unit，�
 缺失/外部修改的服务配置拒绝覆盖，Running 仍不证明公网连通。详见 [独立服务进度](../services/RelaxKonOS.IndependentComponentServices.Progress.md)。
 
 `--frps-only` 使用隔离 SQLite/Data Protection 和独立服务传输替身，覆盖保存/应用版本、Server 退出后实例保留、重新创建管理器后的状态/版本恢复、显式停止、秘密审计及占用拒绝。`--independent-component-services-only` 检查实例命名隔离、路径边界和结构化应用证明。真实 SCM/systemd、FRP 协议与重启验收仍需要隔离主机。
+
+### 组件中心只读接入（2026-10-25）
+
+组件中心将 frpc 与 frps 分为独立目录项；frpc 读取程序探测，frps 只读服务状态，不能用 frpc 版本或保存配置代替 frps 程序安装证明。 可信版本与安装事务尚未迁入，详见[组件实施进度](../platform/RelaxKonOS.ComponentCenter.Progress.md)。

@@ -292,7 +292,12 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
         }
         try
         {
-            var value = JsonSerializer.Deserialize<T>(Convert.FromBase64String(result.OutputBase64 ?? ""));
+            using var document = JsonDocument.Parse(Convert.FromBase64String(result.OutputBase64 ?? ""));
+            if (typeof(T) == typeof(RuntimeInstallationSnapshot)) RuntimeCommitWitnessRules.RequireWireMember(document.RootElement, nameof(RuntimeInstallationSnapshot.CommitWitness));
+            var value = document.RootElement.Deserialize<T>();
+            if (value is RuntimeInstallationSnapshot witnessed && witnessed.CommitWitness is { } witness
+                && !RuntimeCommitWitnessRules.BoundToSnapshot(witness, witnessed))
+                throw new RuntimeLifecycleException("runtime.helper_response_invalid");
             if (value is RuntimeSwitchResult receipt && !ValidReceipt(receipt)
                 || value is RuntimeInstallationSnapshot snapshot && (snapshot.Installation is null
                     || snapshot.Receipt is { } observed && (!ValidReceipt(observed) || observed.OperationId != request.OperationId))

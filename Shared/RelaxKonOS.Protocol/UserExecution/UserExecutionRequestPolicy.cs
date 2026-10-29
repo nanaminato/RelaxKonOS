@@ -35,6 +35,9 @@ public static class UserExecutionRequestPolicy
             return false;
         var noStaging = request.Offset is null && request.ExpectedBytes is null;
         if (request.ArchiveCredentials is not null && request.Operation != UserExecutionOperationKind.FileExtractArchive) return false;
+        var noGitCredentials = request.GitCredentials is null;
+        // A credential is meaningful only to the one operation that dials a remote.
+        if (!noGitCredentials && request.Operation != UserExecutionOperationKind.GitExecute) return false;
 
         return request.Operation switch
         {
@@ -88,7 +91,8 @@ public static class UserExecutionRequestPolicy
                 && noTerminal && noStaging && !request.Overwrite,
             UserExecutionOperationKind.GitExecute => !terminal && request.Path is not null
                 && noDestination && noName && noContent && noMode && request.GitArguments is not null
-                && noTerminal && noStaging && !request.Overwrite,
+                && noTerminal && noStaging && !request.Overwrite
+                && (noGitCredentials || request.GitCredentials!.IsValid()),
             UserExecutionOperationKind.GitConflictSnapshot => !terminal && request.Path is not null
                 && noDestination && request.NewName is null && Git.GitConflictFileAccess.IsRelativePath(request.FileName)
                 && noContent && noMode && noGit && noTerminal && noStaging && !request.Overwrite,

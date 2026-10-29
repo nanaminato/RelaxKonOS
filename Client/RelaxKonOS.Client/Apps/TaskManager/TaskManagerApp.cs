@@ -26,11 +26,15 @@ public sealed class TaskManagerApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(
         Id: new AppId("relaxkonos.taskmanager"),
-        DisplayName: "任务管理器",
+        DisplayName: "Task Manager",
         Version: "1.0.0",
         IconGlyph: "📊",
-        Description: "查看 CPU/内存/磁盘/网络/GPU 占用与进程，可结束任务",
+        Description: "View CPU, memory, disk, network and GPU usage and the process list; end tasks here",
         RequestedPermissions: [AppPermissions.ServerMetricsRead, AppPermissions.ServerProcessesManage],
+        // Both tabs read the system-performance module; a Server without it has no route behind this
+        // application, so the Host refuses the launch instead of opening an empty window.
+        ServerRequirements: new ApplicationServerRequirements(
+            Capabilities: [RelaxKonOS.Protocol.Common.ServerCapabilities.Metrics, RelaxKonOS.Protocol.Common.ServerCapabilities.Processes]),
         InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
     public override void Activate(AppContext context)

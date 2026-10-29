@@ -8,9 +8,10 @@
     <Grid RowDefinitions="Auto,*,Auto">
         <Grid x:Name="HeaderHost" Grid.Row="0" ColumnDefinitions="*,Auto">
             <common:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc application.relaxkonos.docker.display_name}" Subtitle="{loc:Loc docker.subtitle}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/docker.png" />
-            <Button x:Name="HeaderActions" Grid.Column="1" Classes="header-action" Command="{Binding OpenInstallationCommand}" IsEnabled="{Binding IsDockerInstallRequired}" ToolTip.Tip="{Binding StatusText}" AutomationProperties.Name="{loc:Loc docker.status.open_installation}">
-                <StackPanel Orientation="Horizontal" Spacing="6"><PathIcon Width="16" Height="16" Data="M12 2 A10 10 0 1 0 12 22 A10 10 0 1 0 12 2 M11 6 H13 V13 H11 Z M11 16 H13 V18 H11 Z" /><TextBlock x:Name="HeaderStatusLabel" Text="{Binding StatusText}" MaxWidth="180" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" /></StackPanel>
-            </Button>
+            <StackPanel x:Name="HeaderActions" Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,0,8,0">
+                <PathIcon Width="16" Height="16" Data="M12 2 A10 10 0 1 0 12 22 A10 10 0 1 0 12 2 M11 6 H13 V13 H11 Z M11 16 H13 V18 H11 Z" />
+                <TextBlock x:Name="HeaderStatusLabel" Text="{Binding StatusText}" MaxWidth="180" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+            </StackPanel>
         </Grid>
 
         <docker:DockerOperationActivityView Grid.Row="2" />
@@ -28,6 +29,7 @@
                     <Button Classes="workspace-nav" Tag="proxy" Click="NavigationButton_Click" Content="{loc:Loc docker.proxy.title}" HorizontalContentAlignment="Left" Padding="10,8" />
                     <Button Classes="workspace-nav" Tag="networks" Click="NavigationButton_Click" Content="{loc:Loc docker.networks}" HorizontalContentAlignment="Left" Padding="10,8" />
                     <Button Classes="workspace-nav" Tag="volumes" Click="NavigationButton_Click" Content="{loc:Loc docker.volumes}" HorizontalContentAlignment="Left" Padding="10,8" />
+                    <Button Classes="workspace-nav" Tag="settings" Click="NavigationButton_Click" Content="{loc:Loc common.settings}" HorizontalContentAlignment="Left" Padding="10,8" />
                 </StackPanel>
                 </ScrollViewer>
             </Border>

@@ -19,11 +19,52 @@ public sealed partial class GitClientViewModel
 {
     // ── Push dialog state management ──
 
-    /// <summary>Prepares the push dialog state by loading ahead commits and setting defaults.
-    /// Called before showing the push dialog, or when navigating the dialog.</summary>
+    /// <summary>Total commits the pending push would upload. The preview list itself is capped by the
+    /// server, so the header must not report the materialized row count.</summary>
+    private int _pushAheadCount;
+
+    /// <summary>Prepares the push dialog state by resolving the default destination from the branch's
+    /// upstream (when it has one) and then loading the preview. Called before showing the push dialog.</summary>
     public async Task PreparePushPreviewAsync(string? localBranch = null)
     {
         if (SelectedRepository is null || Status is null) return;
+
+        PushLocalBranchName = localBranch ?? Status.Branch;
+        var branch = Branches.FirstOrDefault(candidate =>
+            !candidate.IsRemote && string.Equals(candidate.Name, PushLocalBranchName, StringComparison.Ordinal));
+
+        var upstream = branch?.Tracking ?? (branch?.IsCurrent == true ? Status.Upstream : null);
+        if (!string.IsNullOrWhiteSpace(upstream))
+        {
+            var parts = upstream.Split('/');
+            if (parts.Length >= 2)
+            {
+                PushSelectedRemote = parts[0];
+                PushSelectedBranch = string.Join("/", parts.Skip(1));
+            }
+            else
+            {
+                PushSelectedRemote = "origin";
+                PushSelectedBranch = upstream;
+            }
+        }
+        else
+        {
+            // No upstream is not "nothing to push": the destination is simply a branch this remote
+            // does not have yet, and the push creates it. Let the server decide what that transfers.
+            PushSelectedRemote = Remotes.Count > 0 ? Remotes[0].Name : "origin";
+            PushSelectedBranch = PushLocalBranchName;
+        }
+
+        await LoadPushPreviewAsync();
+    }
+
+    /// <summary>Loads the commits and changed files for the destination currently selected in the dialog.
+    /// The count comes from the server so an unpushed branch without an upstream still previews its
+    /// commits instead of reporting zero.</summary>
+    public async Task LoadPushPreviewAsync()
+    {
+        if (SelectedRepository is null) return;
 
         PushIsLoading = true;
         PushStatusMessage = LocalizedText.Get("git.dialog.push.loading_commits");
@@ -33,61 +74,35 @@ public sealed partial class GitClientViewModel
             PushCommits.Clear();
             ClearPushFilePreview();
             PushSelectedCommit = null;
+            _pushAheadCount = 0;
 
-            PushLocalBranchName = localBranch ?? Status.Branch;
-            var branch = Branches.FirstOrDefault(candidate =>
-                !candidate.IsRemote && string.Equals(candidate.Name, PushLocalBranchName, StringComparison.Ordinal));
+            var preview = await client.GetPushPreviewAsync(SelectedRepository.Id, PushLocalBranchName,
+                PushSelectedRemote, PushSelectedBranch);
 
-            var upstream = branch?.Tracking ?? (branch?.IsCurrent == true ? Status.Upstream : null);
-            if (!string.IsNullOrWhiteSpace(upstream))
-            {
-                var parts = upstream.Split('/');
-                if (parts.Length >= 2)
-                {
-                    PushSelectedRemote = parts[0];
-                    PushSelectedBranch = string.Join("/", parts.Skip(1));
-                }
-                else
-                {
-                    PushSelectedRemote = "origin";
-                    PushSelectedBranch = upstream;
-                }
-            }
-            else
-            {
-                PushSelectedRemote = Remotes.Count > 0 ? Remotes[0].Name : "origin";
-                PushSelectedBranch = PushLocalBranchName;
-            }
+            _pushAheadCount = preview.AheadCount;
+            foreach (var commit in preview.Commits) PushCommits.Add(commit);
 
-            var aheadCount = branch?.Ahead ?? (string.Equals(PushLocalBranchName, Status.Branch, StringComparison.Ordinal) ? Status.Ahead : 0);
-            if (aheadCount > 0)
-            {
-                var commits = await client.GetLogAsync(SelectedRepository.Id, limit: aheadCount + 50,
-                    query: new GitLogQuery(Reference: PushLocalBranchName));
-                var ahead = commits.Take(aheadCount).ToList();
-                foreach (var c in ahead) PushCommits.Add(c);
-            }
-
-            PushStatusMessage = PushCommits.Count == 0
-                ? LocalizedText.Get("git.dialog.push.no_commits_ahead")
-                : LocalizedText.Format("git.vm.push_n_commits_ahead_format", PushCommits.Count);
+            PushStatusMessage = !preview.RemoteBranchExists
+                ? LocalizedText.Format("git.dialog.push.new_remote_branch_format", $"{preview.Remote}/{preview.RemoteBranch}")
+                : preview.AheadCount == 0
+                    ? LocalizedText.Get("git.dialog.push.no_commits_ahead")
+                    : LocalizedText.Format("git.vm.push_n_commits_ahead_format", preview.AheadCount);
 
             var selectionVersion = BeginPushSelection();
             await LoadAllPushChangesAsync(selectionVersion);
-
-            OnPropertyChanged(nameof(PushBranchLineText));
-            OnPropertyChanged(nameof(PushFileCount));
-            OnPropertyChanged(nameof(PushCommitCount));
-            OnPropertyChanged(nameof(PushHasCommits));
         }
         catch (Exception ex)
         {
             PushStatusMessage = LocalizedText.Format("git.vm.push_dialog_prepare_failed", ex.Message);
-            Log($"PreparePushPreviewAsync 异常：{ex.GetType().Name} {ex.Message}");
+            Log($"LoadPushPreviewAsync 异常：{ex.GetType().Name} {ex.Message}");
         }
         finally
         {
             PushIsLoading = false;
+            OnPropertyChanged(nameof(PushBranchLineText));
+            OnPropertyChanged(nameof(PushFileCount));
+            OnPropertyChanged(nameof(PushCommitCount));
+            OnPropertyChanged(nameof(PushHasCommits));
         }
     }
 
@@ -229,6 +244,9 @@ public sealed partial class GitClientViewModel
             PushSelectedRemote = result.Value.Remote;
             PushSelectedBranch = result.Value.Branch;
             OnPropertyChanged(nameof(PushBranchLineText));
+            // A different destination has a different ahead set: a branch the remote does not have
+            // yet transfers commits that the previous destination already contained.
+            await LoadPushPreviewAsync();
         }
     }
 
@@ -298,6 +316,7 @@ public sealed partial class GitClientViewModel
         try
         {
             var pushRequest = new GitPushRequest(
+                SaveCredentials: false,
                 LocalBranch: PushLocalBranchName,
                 Remote: PushSelectedRemote,
                 RemoteBranch: PushSelectedBranch);
@@ -305,7 +324,7 @@ public sealed partial class GitClientViewModel
             if (result.RequiresCredentials)
             {
                 if (ShowGitCredentialsDialogAsync is null) return false;
-                var credentials = await ShowGitCredentialsDialogAsync(owner);
+                var credentials = await ShowGitCredentialsDialogAsync(owner, result.CredentialHost);
                 if (credentials is null)
                 {
                     PushStatusMessage = LocalizedText.Get("git.dialog.credentials.canceled");
@@ -336,11 +355,11 @@ public sealed partial class GitClientViewModel
                 {
                     if (!await PrepareEditorAsync()) return false;
                     PushStatusMessage = LocalizedText.Get("git.dialog.push_rejected.updating");
-                    var pull = await client.PullAsync(SelectedRepository.Id, integration with
+                    var pull = await PullWithCredentialsAsync(integration with
                     {
                         Remote = pushRequest.Remote,
                         Refspec = pushRequest.RemoteBranch,
-                    });
+                    }, owner);
                     await RefreshAllAsync();
                     if (pull.Conflicts is { Count: > 0 })
                     {

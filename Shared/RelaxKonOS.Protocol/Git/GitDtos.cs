@@ -112,7 +112,8 @@ public sealed record GitOperationResult(
     [property: JsonPropertyName("operation")] string Operation = "",
     [property: JsonPropertyName("conflicts")] IReadOnlyList<string>? Conflicts = null,
     [property: JsonPropertyName("message")] string? Message = null,
-    [property: JsonPropertyName("requiresCredentials")] bool RequiresCredentials = false);
+    [property: JsonPropertyName("requiresCredentials")] bool RequiresCredentials = false,
+    [property: JsonPropertyName("credentialHost")] string? CredentialHost = null);
 
 /// <summary>Conflict file item.</summary>
 public sealed record GitConflictFileDto(
@@ -183,10 +184,11 @@ public sealed record GitPullRequest(
     [property: JsonPropertyName("refspec")] string? Refspec = null,
     /// <summary>Optional local branch to update without checking it out. When supplied and it is not
     /// HEAD, the server fetches its upstream then advances it only when the update is fast-forward.</summary>
-    [property: JsonPropertyName("branch")] string? Branch = null);
+    [property: JsonPropertyName("branch")] string? Branch = null,
+    [property: JsonPropertyName("credentials")] GitCredentialRequest? Credentials = null);
 
 /// <summary>HTTPS credentials supplied only for the current Git operation. The server may retain them
-/// in its protected per-user credential store when <see cref="GitPushRequest.SaveCredentials"/> is set.</summary>
+/// in its protected per-user credential store when <see cref="SaveCredentials"/> is set.</summary>
 public sealed record GitCredentialRequest(
     [property: JsonPropertyName("username")] string Username,
     [property: JsonPropertyName("password")] string Password,
@@ -202,6 +204,22 @@ public sealed record GitPushRequest(
     [property: JsonPropertyName("remote")] string? Remote = null,
     /// <summary>Destination branch on <see cref="Remote"/>. Defaults to the local branch's upstream name, then its own name.</summary>
     [property: JsonPropertyName("remoteBranch")] string? RemoteBranch = null);
+
+/// <summary>What a push of <see cref="LocalBranch"/> to <see cref="Remote"/>/<see cref="RemoteBranch"/>
+/// would transfer right now.
+/// <para>Ahead commits are computed against the exact destination ref when it exists. When the
+/// destination does not exist yet — a brand-new remote branch, or a local branch that was never
+/// pushed and has no upstream — the count comes from the commits this remote is not known to
+/// contain instead. Both cases push successfully, so the dialog must not report "nothing to push"
+/// merely because <c>refs/remotes/&lt;remote&gt;/&lt;branch&gt;</c> is missing.</para>
+/// <para><c>AheadCount</c> is the total; <c>Commits</c> is capped for display.</para></summary>
+public sealed record GitPushPreviewDto(
+    [property: JsonPropertyName("localBranch")] string LocalBranch,
+    [property: JsonPropertyName("remote")] string Remote,
+    [property: JsonPropertyName("remoteBranch")] string RemoteBranch,
+    [property: JsonPropertyName("remoteBranchExists")] bool RemoteBranchExists,
+    [property: JsonPropertyName("aheadCount")] int AheadCount,
+    [property: JsonPropertyName("commits")] IReadOnlyList<GitCommitDto> Commits);
 
 /// <summary>Checkout request.</summary>
 public sealed record GitCheckoutRequest(

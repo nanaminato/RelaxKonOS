@@ -31,6 +31,9 @@
         "app_compatibility.client_platform": "{0} supports only these client platforms: {1}. This client is {2}.",
         "app_compatibility.server_platform": "{0} supports only these server platforms: {1}. The connected server is {2}.",
         "app_compatibility.missing_capability": "{0} requires a server capability that is unavailable: {1}.",
+        "app_compatibility.reason_module_disabled": "The server module that provides it ({0}) is disabled on this server.",
+        "app_compatibility.reason_module_enabled": "The module that provides it ({0}) is enabled, so the server's deployment mode or host platform withholds it.",
+        "app_compatibility.reason_no_module": "No official server module provides this capability; the server's deployment mode or platform withholds it.",
         "app_compatibility.server_unavailable": "{0} requires a connected RelaxKonOS Server before it can start.",
         "app_compatibility.generic": "This application cannot run in the current environment."
     }

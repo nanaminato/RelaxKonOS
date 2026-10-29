@@ -47,6 +47,29 @@ var localization = new LocalizationService(settings, new SshDesktopSession(null!
 using var services = new ServiceCollection().AddSingleton(localization).AddSingleton(new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!))).BuildServiceProvider();
 // The XAML localization extension resolves the host application's singleton provider.
 typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
+if (args.Contains("--windows11-only")) { Windows11DesktopChecks.RunAsync().GetAwaiter().GetResult(); return; }
+if (args.Contains("--readiness-only")) { ApplicationReadinessShellChecks.Run(settings, localization, services); return; }
+if (args.Contains("--websites-only")) { WebSiteEditorChecks.Run(); WebSiteReadRecoveryChecks.Run(); WebSiteScopeChecks.Run(); CurrentNginxChecks.Run(); return; }
+// Runs the settings interaction checks in isolation: the full suite stops at an unrelated
+// installer wizard failure before reaching them.
+if (args.Contains("--settings-only")) { SettingsInteractionChecks.Run(settings, localization); return; }
+if (args.Contains("--component-download-preview"))
+{
+    var downloadOutput = Path.Combine(AppContext.BaseDirectory, "preview-qa", "component-download");
+    Directory.CreateDirectory(downloadOutput);
+    foreach (var language in new[] { "zh-CN", "en-US", "ja-JP" })
+    foreach (var dark in new[] { false, true })
+    {
+        settings.Language = language;
+        settings.Appearance = settings.Appearance with { Mode = dark ? RelaxKonOS.Protocol.Desktop.ThemeKind.Dark : RelaxKonOS.Protocol.Desktop.ThemeKind.Light };
+        ComponentDownloadChecks.Render(downloadOutput, language + (dark ? "-dark-" : "-light-"));
+    }
+    Console.WriteLine(downloadOutput);
+    return;
+}
+if (args.Contains("--component-installs-only")) { ComponentInstallEntryChecks.Run(); return; }
+if (args.Contains("--current-nginx-only")) { CurrentNginxChecks.Run(); return; }
+if (args.Contains("--component-center-only")) { ComponentCenterWorkspaceChecks.Run(settings); return; }
 if (args.Contains("--git-dock-only")) { GitDockChecks.Run(settings); return; }
 if (args.Contains("--project-editor-only"))
 {
@@ -151,6 +174,8 @@ InstallationWizardDialogChecks.Run();
 LocalInstallationCloseChecks.Run();
 WebSiteEditorChecks.Run();
 WebSiteReadRecoveryChecks.Run();
+CurrentNginxChecks.Run();
+ComponentInstallEntryChecks.Run();
 WebSiteScopeChecks.Run();
 CertificateEditorChecks.Run();
 FileShareDialogChecks.Run();
@@ -435,7 +460,7 @@ static void RunDesktopShellInteractionRegression(Window host, ShellSettings sett
     // workspace persistence, application launch or desktop restoration operation is invoked.
     var vm = new DesktopShellViewModel(windows, new ApplicationManager(windows, services), settings,
         localization, session, new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)), () => { },
-        null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!);
+        null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null);
     var store = new ShellStateStore();
     store.Publish(vm);
     var surfaces = new PreviewSurfaceRegistry(windows);

@@ -30,7 +30,8 @@ public sealed class TerminalDesktopRestoreParticipant : IDesktopRestoreParticipa
     public Task RestoreAsync(DesktopRestoreContext context, CancellationToken cancellationToken)
     {
         if (context.Session.State != AuthSessionState.Authenticated
-            || !_services.GetRequiredService<DesktopDevicePreferences>().Value.RestoreTerminals)
+            || !_services.GetRequiredService<DesktopDevicePreferences>().Value.RestoreTerminals
+            || !_services.GetRequiredService<ApplicationCompatibilityService>().Evaluate(_terminal.Manifest).IsCompatible)
             return Task.CompletedTask;
 
         var appContext = new AppContext(_terminal.Manifest.Id, _windowManager, _services);

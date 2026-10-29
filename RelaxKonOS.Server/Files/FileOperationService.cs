@@ -24,8 +24,6 @@ public sealed partial class FileOperationService(IPrivilegedFileService privileg
     private bool _disposed;
     private readonly byte[] _credentialKey = RandomNumberGenerator.GetBytes(32);
     private static StringComparison Comparison => OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-    private static bool ContainsPath(string parent, string child) => string.Equals(parent, child, Comparison)
-        || child.StartsWith(parent.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, Comparison);
 
     public FileOperationDto Start(string owner, ClaimsPrincipal principal, StartFileOperationRequest request)
     {
@@ -56,23 +54,23 @@ public sealed partial class FileOperationService(IPrivilegedFileService privileg
             var source = Normalize(item.SourcePath);
             if (Path.GetPathRoot(source) == source) throw new ArgumentException("A filesystem root cannot be operated on.");
             var destination = request.Kind == FileOperationKind.Delete ? null : Normalize(item.DestinationPath!);
-            if (destination is not null && ((ContainsPath(source, destination) || ContainsPath(destination, source))
-                && !(request.Kind == FileOperationKind.Extract && !ContainsPath(source, destination))
+            if (destination is not null && ((PathSafety.IsWithin(source, destination) || PathSafety.IsWithin(destination, source))
+                && !(request.Kind == FileOperationKind.Extract && !PathSafety.IsWithin(source, destination))
                 && !(request.Kind == FileOperationKind.Copy && string.Equals(source, destination, Comparison))))
                 throw new ArgumentException("Cannot move or copy an item into itself or its descendants.");
             return new FileOperationItem(source, destination);
         }).ToArray();
-        if (items.Any(item => items.Any(other => other != item && ContainsPath(other.SourcePath, item.SourcePath))))
+        if (items.Any(item => items.Any(other => other != item && PathSafety.IsWithin(other.SourcePath, item.SourcePath))))
             throw new ArgumentException("Overlapping source selections must be normalized before submission.");
         if (items.Select(x => x.SourcePath).Distinct(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal).Count() != items.Length)
             throw new ArgumentException("Duplicate sources.");
         if (request.Kind == FileOperationKind.Compress && items.Select(i => i.DestinationPath).Distinct(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal).Count() != 1)
             throw new ArgumentException("Compression requires one shared destination.");
         if (!archive && items.Any(item => item.DestinationPath is { } destination && items.Any(other => other != item
-            && (ContainsPath(other.SourcePath, destination) || ContainsPath(destination, other.SourcePath)
-                || other.DestinationPath is { } d && (ContainsPath(d, destination) || ContainsPath(destination, d))))))
+            && (PathSafety.IsWithin(other.SourcePath, destination) || PathSafety.IsWithin(destination, other.SourcePath)
+                || other.DestinationPath is { } d && (PathSafety.IsWithin(d, destination) || PathSafety.IsWithin(destination, d))))))
             throw new ArgumentException("Overlapping source and destination selections.");
-        if (request.Kind == FileOperationKind.Compress && items.Any(item => items.Any(other => ContainsPath(other.SourcePath, item.DestinationPath!) || ContainsPath(item.DestinationPath!, other.SourcePath))))
+        if (request.Kind == FileOperationKind.Compress && items.Any(item => items.Any(other => PathSafety.IsWithin(other.SourcePath, item.DestinationPath!) || PathSafety.IsWithin(item.DestinationPath!, other.SourcePath))))
             throw new ArgumentException("Archive source and destination trees overlap.");
         request = request with { Items = items };
         lock (_gate)
@@ -167,7 +165,7 @@ public sealed partial class FileOperationService(IPrivilegedFileService privileg
                 ct.ThrowIfCancellationRequested();
                 lock (_gate)
                 {
-                    if (!_active.Any(other => Paths(job).Any(a => Paths(other).Any(b => ContainsPath(a, b) || ContainsPath(b, a)))))
+                    if (!_active.Any(other => Paths(job).Any(a => Paths(other).Any(b => PathSafety.IsWithin(a, b) || PathSafety.IsWithin(b, a)))))
                     { _active.Add(job); break; }
                 }
                 await Task.Delay(100, ct);

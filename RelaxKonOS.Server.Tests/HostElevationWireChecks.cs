@@ -28,6 +28,8 @@ public static class HostElevationWireChecks
         var store = new HostElevationSessionStore(privileges, mode, state);
         var administrator = new Administrator();
         var method = "system";
+        var rememberToken = false;
+        var rememberedExpiry = DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeSeconds().ToString();
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
@@ -48,8 +50,10 @@ public static class HostElevationWireChecks
         app.Use((context, next) =>
         {
             context.User = new ClaimsPrincipal(new ClaimsIdentity([
-                new Claim("sub", "wire-user"), new Claim("jti", method + "-token"), new Claim("name", "alice"),
-                new Claim("amr", method)], "test"));
+                new Claim("sub", "wire-user"), new Claim("jti", method + (rememberToken ? "-remembered-token" : "-token")), new Claim("name", "alice"),
+                new Claim("amr", method),
+                .. (rememberToken ? new[] { new Claim("sid", Guid.Parse("11111111-1111-1111-1111-111111111111").ToString()),
+                    new Claim("security_version", "1"), new Claim("exp", rememberedExpiry) } : Array.Empty<Claim>())], "test"));
             return next(context);
         });
         app.UseAuthorization(); app.MapPrivilegedEndpoints(); app.MapSystemMonitorEndpoints(); await app.StartAsync();
@@ -121,6 +125,18 @@ public static class HostElevationWireChecks
         method = "alias";
         using (var otherToken = await http.GetAsync(SystemMonitorApiRoutes.ProcessQuery + "?elevated=true"))
             Assert(otherToken.StatusCode == HttpStatusCode.Forbidden, "Process elevation cannot cross access-token identities");
+        rememberToken = true;
+        var beforeRemember = administrator.Calls;
+        await Grant(selfSignedRequest, HttpStatusCode.Forbidden);
+        await Grant(selfSignedRequest with { AdministratorUsername = "alice", Password = "test-password" }, HttpStatusCode.OK);
+        var afterRemember = administrator.Calls;
+        Assert(afterRemember == beforeRemember + 2, "Remembered mode still requires a successful first administrator verification");
+        await Grant(processGrant, HttpStatusCode.OK);
+        using (var rememberedProcess = await http.GetAsync(SystemMonitorApiRoutes.ProcessQuery + "?elevated=true"))
+            Assert(rememberedProcess.IsSuccessStatusCode && administrator.Calls == afterRemember,
+                "Same token reuses administrator verification across capabilities without a second password");
+        await Grant(processGrant with { Target = "host/other" }, HttpStatusCode.BadRequest);
+        await Grant(request with { Target = "host/environment/user/another-sid" }, HttpStatusCode.Forbidden);
         Console.WriteLine("Host elevation HTTP checks passed: administrator revalidation, alias challenge, exact grants and target ownership.");
     }
 
@@ -143,8 +159,8 @@ public static class HostElevationWireChecks
         public HostAdministratorAuthenticationResult Authenticate(string current, string? account, string? password)
         {
             Calls++;
-            return account == "alice" && password == "test-password" ? new(true, "", "test")
-                : new(false, "elevation-password-required", "none");
+            return account == "alice" && password == "test-password" ? new(true, "", "linux-pam-administrator", "fixture:alice")
+                : new(false, "elevation-password-required", "none", null);
         }
     }
     private sealed class EnvironmentTargets : IHostEnvironmentService

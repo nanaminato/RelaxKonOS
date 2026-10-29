@@ -77,6 +77,10 @@ public static class Bootstrapper
         services.AddSingleton<ApplicationManager>(sp =>
             new ApplicationManager(sp.GetRequiredService<IWindowManager>(), sp));
         services.AddSingleton<IAppActivationService>(sp => sp.GetRequiredService<ApplicationManager>());
+        services.AddSingleton<RelaxKonOS.Client.Apps.ComponentCenter.IApplicationAvailabilityUi, RelaxKonOS.Client.Apps.ComponentCenter.ApplicationAvailabilityUi>();
+        services.AddSingleton<RelaxKonOS.Client.Apps.ComponentCenter.ApplicationAvailabilityService>();
+        services.AddSingleton<RelaxKonOS.Client.Apps.ComponentCenter.IApplicationAvailabilityProvider>(sp => sp.GetRequiredService<RelaxKonOS.Client.Apps.ComponentCenter.ApplicationAvailabilityService>());
+        services.AddSingleton<IApplicationLaunchGuard>(sp => sp.GetRequiredService<RelaxKonOS.Client.Apps.ComponentCenter.ApplicationAvailabilityService>());
         services.AddSingleton<VirtualSystemDriveService>();
         services.AddSingleton<IBuiltInApplicationFactoryRegistry, BuiltInApplicationRegistry>();
         services.AddSingleton<BuiltInDescriptorSeeder>();
@@ -109,6 +113,16 @@ public static class Bootstrapper
         services.AddHttpClient<AccountSecurityClient>()
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddTransient<AuthenticatedHttpHandler>();
+        // 官方模块清单只读缓存：把「缺少某项能力」翻译成可操作的原因（模块被停用 / 被部署模式限制）。
+        // 单例持有缓存，所以用命名客户端 + 工厂，而不是 transient 的 typed client。
+        services.AddHttpClient(RelaxKonOS.Client.Services.Modules.ServerModuleCatalog.HttpClientName)
+            .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "server-modules"))
+            .AddHttpMessageHandler<AcceptLanguageHandler>()
+            .AddRelaxKonOSAuthentication();
+        services.AddSingleton<RelaxKonOS.Client.Services.Modules.IServerModuleCatalog>(sp =>
+            new RelaxKonOS.Client.Services.Modules.ServerModuleCatalog(
+                sp.GetRequiredService<IHttpClientFactory>().CreateClient(RelaxKonOS.Client.Services.Modules.ServerModuleCatalog.HttpClientName),
+                sp.GetRequiredService<IAuthSession>()));
         services.AddSingleton<ApplicationCompatibilityService>();
         services.AddSingleton<IApplicationCompatibilityEvaluator>(sp => sp.GetRequiredService<ApplicationCompatibilityService>());
         services.AddSingleton<IApplicationCompatibilityNotifier>(sp => sp.GetRequiredService<ApplicationCompatibilityService>());
@@ -207,6 +221,16 @@ public static class Bootstrapper
         services.AddHttpClient<RelaxKonOS.Client.Apps.WebServers.IRemoteWebServerClient, RelaxKonOS.Client.Apps.WebServers.RemoteWebServerClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "webservers"))
             .AddHttpMessageHandler<AcceptLanguageHandler>();
+        // 组件中心对该组件只读观测：Nginx 的安装仍由 Web 服务器管理器拥有，
+        // 且 Linux（发行版包 + 系统服务）与 Windows（受管归档 + 自有服务）来源不同。
+        services.AddTransient<RelaxKonOS.Client.Apps.ComponentCenter.IComponentHostObserver,
+            RelaxKonOS.Client.Apps.ComponentCenter.WebServerComponentObserver>();
+        services.AddTransient<RelaxKonOS.Client.Apps.ComponentCenter.IComponentHostObserver,
+            RelaxKonOS.Client.Apps.ComponentCenter.DockerComponentObserver>();
+        services.AddTransient<RelaxKonOS.Client.Apps.ComponentCenter.IComponentHostObserver,
+            RelaxKonOS.Client.Apps.ComponentCenter.SquidComponentObserver>();
+        services.AddTransient<RelaxKonOS.Client.Apps.ComponentCenter.IComponentHostObserver,
+            RelaxKonOS.Client.Apps.ComponentCenter.TunnelComponentObserver>();
         services.AddHttpClient<RelaxKonOS.Client.Services.Privileged.IHostElevationBroker, RelaxKonOS.Client.Services.Privileged.HostElevationBroker>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "host-elevation"))
             .AddHttpMessageHandler<AcceptLanguageHandler>();
@@ -342,7 +366,18 @@ public static class Bootstrapper
         services.AddSingleton<RelaxKonOS.Client.Apps.Firewall.FirewallApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Squid.SquidApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.ProxyServer.ProxyServerApp>();
+        services.AddSingleton<RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterApp>();
+        services.AddSingleton(new RelaxKonOS.Client.Apps.ComponentCenter.ComponentDraftStore(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "component-drafts")));
+        services.AddSingleton(new RelaxKonOS.Client.Apps.ComponentCenter.ComponentTaskReferenceStore(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "component-tasks")));
         services.AddHttpClient<RelaxKonOS.Client.Apps.ProxyServer.IProxyServerClient, RelaxKonOS.Client.Apps.ProxyServer.RemoteProxyServerClient>()
+            .RemoveAllLoggers();
+        services.AddHttpClient<RelaxKonOS.Client.Apps.ComponentCenter.ITaskPlanPreviewClient, RelaxKonOS.Client.Apps.ComponentCenter.TaskPlanPreviewClient>()
+            .RemoveAllLoggers();
+        services.AddHttpClient<RelaxKonOS.Client.Apps.ComponentCenter.ITaskExecutionClient, RelaxKonOS.Client.Apps.ComponentCenter.TaskExecutionClient>()
+            .RemoveAllLoggers();
+        services.AddHttpClient<RelaxKonOS.Client.Apps.ComponentCenter.IComponentLifecycleClient, RelaxKonOS.Client.Apps.ComponentCenter.ComponentLifecycleClient>()
             .RemoveAllLoggers();
         services.AddHttpClient<RelaxKonOS.Client.Apps.ProxyServer.IRuntimeCatalogClient, RelaxKonOS.Client.Apps.ProxyServer.SingBoxRuntimeCatalogClient>()
             .RemoveAllLoggers();
@@ -356,6 +391,12 @@ public static class Bootstrapper
         services.AddSingleton<RelaxKonOS.Client.Apps.Tunnels.TunnelManagerApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Proxy.ProxyManagerApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Git.GitClientApp>();
+        services.AddSingleton<RelaxKonOS.Client.Apps.Tailscale.TailscaleApp>();
+        services.AddHttpClient<RelaxKonOS.Client.Apps.Tailscale.RemoteTailscaleClient>().AddRelaxKonOSAuthentication();
+        services.AddHttpClient<RelaxKonOS.Client.Apps.Tailscale.RemoteTailscaleLoginClient>().AddRelaxKonOSAuthentication();
+        services.AddTransient<RelaxKonOS.Client.Apps.Tailscale.ITailscaleLoginClient>(services => services.GetRequiredService<RelaxKonOS.Client.Apps.Tailscale.RemoteTailscaleLoginClient>());
+        services.AddTransient<RelaxKonOS.Client.Apps.Tailscale.ITailscaleClient>(services => services.GetRequiredService<RelaxKonOS.Client.Apps.Tailscale.RemoteTailscaleClient>());
+        services.AddSingleton<RelaxKonOS.Client.Apps.Tailscale.ITailscaleOperationReferences, RelaxKonOS.Client.Apps.Tailscale.TailscaleOperationReferences>();
         services.AddSingleton<RelaxKonOS.Client.Apps.AppInstaller.AppInstallerApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Registry.RegistryApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.ApplicationDeployments.ApplicationDeploymentsApp>();
@@ -387,7 +428,8 @@ public static class Bootstrapper
                 sp.GetRequiredService<DesktopWelcomePreferenceStore>(),
                 sp.GetRequiredService<ShortcutStore>(),
                 sp.GetRequiredService<ShortcutActivationRouter>(),
-                sp.GetRequiredService<HostSettings.IHostTimeService>());
+                sp.GetRequiredService<HostSettings.IHostTimeService>(),
+                sp.GetRequiredService<RelaxKonOS.Client.Apps.ComponentCenter.IApplicationAvailabilityProvider>());
         });
 
         services.AddSingleton<DesktopRestoreOrchestrator>();

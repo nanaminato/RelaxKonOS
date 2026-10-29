@@ -3,6 +3,7 @@
   "Strings": {
     "tunnels.title": "Tunnel Manager",
     "tunnels.subtitle": "Manage independent FRP client processes safely",
+    "tunnels.login_required": "Sign in to manage tunnels.",
     "tunnels.workspace": "WORKSPACE",
     "tunnels.overview": "Overview",
     "tunnels.status.loading": "Loading tunnel state…",
@@ -16,7 +17,8 @@
     "tunnels.status.operation": "Operation completed: {0}",
     "tunnels.status.external_available": "External FRP detected: {0}",
     "tunnels.runtime": "FRP runtime",
-    "tunnels.runtime_page": "Runtime",
+    "tunnels.runtime_page": "Runtime",
+    "tunnels.runtime.manage_hint": "FRP installation, update, repair, rollback and removal happen only in Component Center; this page shows the current runtime state.",
     "tunnels.runtime_install_hint": "Only a pinned version in the server trust manifest can be installed. A download, verification, or health-check failure never replaces the active version.",
     "tunnels.runtime.install_confirmation": "Install the pinned official FRP Runtime version {0}?",
     "tunnels.runtime.uninstall_confirmation": "Uninstall the managed FRP Runtime? Tunnels that require it will not be available until a runtime is installed again.",

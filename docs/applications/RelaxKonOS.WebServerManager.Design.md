@@ -1,5 +1,13 @@
 # RelaxKonOS WebServerManager / Nginx 集成设计
 
+> **模块归属（2026-10-28）**：`/api/v1.0/webservers/*`、`/api/v1.0/website-publications/*`、站点发布事务与其后台协调器归官方模块 `relaxkonos.webserver`，默认启用，并硬依赖 `relaxkonos.certificates`。**Nginx 的读状态与 conf.d 集成实现留在 Core**（`IWebServerManager`/`NginxWebServerManager`），因为应用部署的站点发布、组件中心的 Nginx 组件状态与安装域都直接使用它；禁用本模块只是不再提供 Web Server Manager 界面与站点发布事务，不会停止或修改现有 Nginx 及其站点配置。详见[模块设计实施记录](../architecture/RelaxKonOS.ModulesAndExtensions.Design.md#certificate-与-webserver-模块2026-10-28)。
+
+> 当前逐组件实施状态与 Nginx 平台边界见[组件中心实施进度](../platform/RelaxKonOS.ComponentCenter.Progress.md)；下文历史切片的验收范围保持原记录。
+
+> **停用门禁（2026-10-28）**：站点发布账本（`data/website-publications.json`）里若还有 `Queued`/`Running` 的发布，`Modules:WebServer:Enabled=false` 会让 Server **拒绝启动**并打印发布 ID 与域名——先启用模块让协调器重新核验（结果是 `Interrupted` + `website.recheck_required`），再停用即可。门禁只读账本（`WebsitePublicationStore.Pending()`），不会因为被询问就把操作改成中断。运行中的进程可以先用 `GET /api/v1.0/server/modules` 查 `orphanedWork` 与 `requiredBy`，在改配置之前就知道会不会被拒。
+
+> 2026-10-27 当前 Windows 日常安装入口：组件中心从 nginx.org 下载页提供多版本选择，默认稳定分支；支持服务器下载、本机下载后上传、本机文件、服务器文件及官方下载链接。已有文件不要求建立签名目录或先联网重下归档；Helper 仍限制归档路径/大小并执行原生版本与配置检查。安装后版本由实际 `nginx -v` 报告，不依赖是否存在固定归档计划回执。旧的单一默认归档仍是原受保护固定归档路径的配置，不再限制日常版本选择。此次未新增覆盖已有 Nginx 的升级事务，真实服务安装/切换尚未验收，见[当前进度](../platform/RelaxKonOS.ComponentCenter.Progress.md)。
+
 > 状态：**Nginx Provider V3 已实现**。除发现、配置测试、集成、受管安装和生命周期管理外，一个 RelaxKonOS 站点现在可同时服务静态目录、SPA 回退和多个路径前缀的反向代理；创建、修改、删除都会先执行 `nginx -t`，再重载或回滚。站点可绑定证书管理器中已有的证书；私钥仍只保留在服务器本地。证书的签发与自动续期后触发重载仍可在后续阶段进一步自动化。
 
 ## 1. 设计背景
@@ -1643,3 +1651,27 @@ UI 必须使用 `webserver.*` 三语言本地化 key，显示管理模式、实�
 受管 HTTPS 站点保存还需证书 Issued/Active、处于有效期内且 SAN 覆盖全部域名绑定；规范化 IDN/IP，单层通配符不覆盖 apex、多层或 IP。校验在版本检查后、权限/include/配置副作用前执行，不可用返回 `webserver.site_certificate_not_usable`，不覆盖返回 `webserver.site_certificate_domain_mismatch`。宿主 PEM 路径模式不通过元数据推断有效期或客户端信任。
 
 Linux 静态目录自动授权依赖 `acl` 软件包（`/usr/bin/setfacl`）。保存时缺少依赖返回 `webserver.site_acl_package_required`，客户端提示管理员在服务器执行 `sudo apt-get install acl` 后重新保存并保留草稿。此失败不会写入站点配置或元数据。通过内置 APT 流程安装 Nginx 时一并安装 `acl`。
+
+### nginx 冻结安装接入台账（2026-10-25）
+
+Linux nginx 首次冻结安装从组件中心经产品提权进入统一安装台账，提供原键幂等提交、资源排他、阶段进度与重开观察。无台账 component execute 路由已删除；重启时不以当前健康推导原任务成功，返回中断待核对。Windows、包补偿及逐依赖制品证明尚未完成，详见[实施范围与验证](../platform/RelaxKonOS.ComponentCenter.Progress.md)。
+
+
+## Linux 当前 Nginx 与桌面入口（2026-10-26）
+
+CC-01：Linux 桌面组件中心提供当前 Nginx 的发现、外部实例显式集成与选择；安装沿用组件中心已有冻结包计划。选择通过 `GET/PUT /api/v1.0/webservers/current-nginx` 存入宿主全局 SQLite（迁移 17），同一宿主的客户端共享；只允许选择已受管或已集成的 Nginx。未显式选择且只有一个实例时直接使用；多个实例须选择，已保存实例消失后保持不可用，不切换到其他实例。
+
+Linux 桌面 Web 服务器管理器隐藏实例选择、发现、集成、安装和卸载入口，提供组件中心跳转；保留服务器状态、配置检查、启停/重载和站点管理。窗口打开与刷新时读取当前选择，并每三秒检查变化，变化时清空旧站点目标并重新读取。未配置或不可用时提示到组件中心处理。Windows 入口保持现有行为。此变更不增加系统包更新、回滚或补偿能力，也不改变外部实例的所有权。Android UI 尚未迁移，仍按 Android 自有文档追踪。当前验证范围为本地构建与自动化，尚无 Linux 桌面实机验收。
+
+验证：Server/Client 构建通过；`RelaxKonOS.Server.Tests --current-nginx-only` 的 8 项持久化/解析断言与桌面 `--current-nginx-only` 的 7 项联动/门禁断言通过，并检查 1060/520 宽度的四张布局预览。完整 `--webserver-only` 在既有 Windows 静态目录验证断言处失败，未据此宣称整组通过。
+
+
+### 桌面安装入口（2026-10-26）
+
+本应用的宿主组件安装已移至组件中心，应用内不再提供安装、更新、修复、回退或卸载入口，也不保留常驻横幅；设置页的共享“组件依赖”区显示宿主实测状态并提供跳转（Project Editor 为“工具 → 组件依赖”）。业务配置与服务管理保留。各平台安装能力、冻结计划与台账路径见[组件中心实施进度](../platform/RelaxKonOS.ComponentCenter.Progress.md#桌面组件安装入口统一2026-10-26)。此项仅集中入口，不扩大运行时、信任来源、多版本更新或平台验收范围。
+
+### Windows 可用版本修复（2026-10-27）
+
+未提供 `NginxReleases` 的 Helper 配置现在使用内置固定版本 1.30.6；显式空列表仍表示管理员禁用候选，显式列表仍完全替换默认列表。归档地址为 `https://nginx.org/download/nginx-1.30.6.zip`，SHA-256 为 `c6ee35edb0a861063323f709192ae50d1eefaf2ea7d00678bd2b22d8542dc61e`。已用 nginx.org 官方公开密钥核验归档分离签名，签名者指纹 `D6786CE303D9A9022998DC6CC8464D549AF75C0A`，并在 Windows 执行 `nginx.exe -v` 实测为 1.30.6。默认列表随本次构建发布，版本检查读取宿主批准列表，不抓取上游最新版或修改已部署的显式信任策略。
+
+客户端保留空列表的来源修订，清除失效版本选择；缺少批准版本显示宿主策略要求，检查失败撤下旧安装计划。此项只修复版本候选和计划准入，未实测服务安装、跨版本更新、卸载或回滚。部署需更新 Client、Server 和 Helper；仅更新客户端不能给旧 Helper 增加默认归档。

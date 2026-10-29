@@ -1,5 +1,7 @@
 # RelaxKonOS 证书管理器设计
 
+> **模块归属（2026-10-28）**：ACME 签发、ARI 续期循环、操作账本与 `/api/v1.0/certificates` 归官方模块 `relaxkonos.certificates`，默认启用。**Kestrel 启动证书不随模块走**：`ICertificateStore`、`CertificateDeploymentRepository`、`KestrelCertificateRegistry`、`KestrelCertificateStartupService` 与 HTTP-01 WebRoot 存储留在 Core，禁用模块不会让 HTTPS 监听起不来，已部署到 Kestrel 的证书继续生效。网站发布模块硬依赖本模块，因此单独设置 `Modules:Certificates:Enabled=false` 会让启动失败并给出「requires enabled module」诊断；需两者一起关闭。详见[模块设计实施记录](../architecture/RelaxKonOS.ModulesAndExtensions.Design.md#certificate-与-webserver-模块2026-10-28)。
+
 > 状态：**后端核心 V1 与基础管理界面已实现，待目标平台验收**。已提供 ACME v2、HTTP-01（Direct/WebRoot）、受保护的 PEM 存储、RSA/ECDSA、Kestrel 部署、ARI 优先的自动续期、HostGlobal SQLite 元数据，以及包含概览/证书列表和申请对话框的客户端界面。DNS-01、Wildcard、IIS/Nginx/Apache 部署仍属后续阶段；Ubuntu 24.04 与 Windows Server 的真实 CA/监听/ACL 验收仍须在目标主机执行。
 
 ## 1. 项目背景

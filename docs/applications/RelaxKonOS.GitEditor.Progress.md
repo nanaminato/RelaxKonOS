@@ -4,6 +4,8 @@
 
 ## 已实现
 
+- 多 Git 主机与账号管理已接入项目选择页、Git 菜单和远程页；克隆、推送、拉取、逐远程抓取及非当前分支更新统一使用服务端受保护账号存储。协议、保存选择及当前支持边界见 [Git 客户端](RelaxKonOS.GitClient.md#多-git-主机与账号)。
+
 - 原 `relaxkonos.git` 直接演进为“项目编辑器”，App ID 不变，Manifest 版本为 `0.3.0`，声明文件读写和 Git 权限。
 - `ProjectEditorViewModel` 协调一个窗口的项目、文档会话与 Git；使用原 `CodeEditorViewModel`、可嵌入的 `CodeEditorView.UseProjectLayout()` 和共享 `CodeEditorSessionDialogs`。独立 Code Editor 仍使用同一编辑面板与文件对话框。
 - 普通文件夹直接打开，不强制初始化 Git；仓库打开后可浏览完整文件树。项目树双击/Enter 打开文件；多标签保留独立文本缓冲区、撤销栈、光标和滚动位置。图片、SVG、二进制分类沿用原实现。
@@ -21,7 +23,7 @@
 
 新增契约为 `ConditionalFileWriteRequest(Path, Content, ExpectedVersion)` 和 `ConditionalFileWriteResult(Version)`；`Content` 是 JSON 中的字节数组（Base64）。版本由同一份原始字节计算，不用文本长度或时间戳代替。目标已存在时不能借新建请求覆盖；写入失败清理暂存文件。
 
-新增条件写入能力没有替换原 Files content API 或改变 Android 已用契约，因此本次无需 Android 调用升级，也没有增加兼容路由、旧格式适配或 Android 文档副本。独立编辑器的现有 HTTP/SFTP 文件传输策略仍由其入口选择；项目编辑器使用 HTTP Files 的条件写入能力，不增加 SSH 执行或 Git 凭据存储。
+新增条件写入能力没有替换原 Files content API 或改变 Android 已用契约，因此本次无需 Android 调用升级，也没有增加兼容路由、旧格式适配或 Android 文档副本。独立编辑器的现有 HTTP/SFTP 文件传输策略仍由其入口选择；项目编辑器使用 HTTP Files 的条件写入能力，不增加 SSH 执行；HTTPS Git 账号由独立服务端凭据存储管理。
 
 Windows 上完成本地构建、有效文件服务的临时目录测试和 Avalonia Headless 行为/截图验证。Linux/Windows 的有效用户文件服务复用现有实现；Ubuntu 实机权限、符号链接及并发外部写入的验证仍未完成，不能由 Windows 自动化结果推定通过。
 
@@ -125,7 +127,7 @@ Git Diff 原有解析 70 项与渲染 40 项通过。Client 与 Server 主项目
 
 ### 仍存在的差异与验收边界
 
-这不是完整 Rider：未提供构建/调试、语义代码分析/重构、交互式 rebase todo 编辑、标签删除/注释签名、远程分支删除、应用内 PR 工作流或跨窗口项目激活列表；“新建项目”创建普通目录，不生成 `.sln` 模板。最近记录/收藏仍限当前窗口会话，托管平台集成是浏览器链接。真实网络克隆/推送凭据、Ubuntu/Helper 有效身份、复杂并发外部 Git、高 DPI 与跨重启状态尚未验收；Helper 仍不支持带显式凭据的 Git 请求，克隆保留现有 30 秒进程超时。本轮没有修改 Git 引擎安装或其他托管运行时生命周期。
+这不是完整 Rider：未提供构建/调试、语义代码分析/重构、交互式 rebase todo 编辑、标签删除/注释签名、远程分支删除、应用内 PR 工作流或跨窗口项目激活列表；“新建项目”创建普通目录，不生成 `.sln` 模板。最近记录/收藏仍限当前窗口会话，托管平台集成是浏览器链接。真实网络克隆/推送凭据、Ubuntu/Helper 有效身份、复杂并发外部 Git、高 DPI 与跨重启状态尚未验收；Linux Helper 已接受带显式凭据的 `GitExecute`（协议 `1.9`，凭据经一次性 askpass 脚本下发），Windows Helper 也已接入受限 primary token + `CreateProcessAsUserW` 的 `GitExecute`、私有 askpass、Job Object 进程树回收和有界输出；原生用户令牌测试及 Windows Server 2022 普通用户/Administrator 的真实 S4U Git 专项通过，详见 [Windows Helper Git 验收](RelaxKonOS.GitClient.WindowsAcceptance.md)，克隆保留现有 30 秒进程超时。本轮没有修改 Git 引擎安装或其他托管运行时生命周期。
 
 ## 底部 Git 多标签与日志布局（2026-10-24）
 
@@ -151,3 +153,7 @@ Git Diff 原有解析 70 项与渲染 40 项通过。Client 与 Server 主项目
 ### 远程部署验收（2026-10-24）
 
 实际问题为客户端已更新而远程服务端仍未包含 Git Workspace 路由；仅缩小菜单请求范围无法解决标签接口的 404。Debian 13 x64 的现有 systemd 部署已同步发布当前 Server、Guardian 和 Helper，保留配置、数据备份及旧程序目录。通过真实 nanami 身份读取原有仓库：branches/tags/graph/stashes/worktrees 全部 HTTP 200，分别返回 5/0/44/0/1 项。该结果验证服务端接口与身份执行链路，不替代客户端交互验收。
+
+### Windows 保存凭据复用（2026-10-25）
+
+fetch、pull 及非当前分支更新已接入与 push/clone 相同的应用加密凭据存储。按有效下载地址（包括 insteadOf）和用户隔离，不使用 pushurl，也不让宿主 credential helper 替换或另行保存应用下发的令牌。Windows Server 2022 的普通用户与 Administrator 均在不重新输入 Git 凭据的情况下通过真实 HTTPS fetch/pull、实际内容 fast-forward、非当前分支与 URL 重写检查，详见 [验收记录](RelaxKonOS.GitClient.WindowsAcceptance.md)。

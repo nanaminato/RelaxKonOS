@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -11,7 +11,7 @@ using RelaxKonOS.Protocol.Installations;
 namespace RelaxKonOS.Client.Services.Installation;
 
 public sealed partial class InstallationTaskViewModel(InstallationClient client, IAppSettingsClient settings,
-    InstallationServiceId service, string appId, Func<Task> refresh, Func<Task<string?>> passwordPrompt) : ObservableObject, IDisposable
+    InstallationServiceId service, string appId, Func<Task> refresh, Func<Task<string?>> passwordPrompt, string workspaceKey = "installation") : ObservableObject, IDisposable
 {
     private readonly CancellationTokenSource lifetime = new();
     private readonly SemaphoreSlim submitGate = new(1, 1);
@@ -77,6 +77,12 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
             if (IsActive) return;
             // Retain the key after an uncertain response; retry can never start a duplicate installer.
             if (options is ManagedRuntimeInstallationRequest runtime) pendingKey = runtime.Plan.Request.IdempotencyKey;
+            if (options is MihomoInstallationRequest { Plan: { } mihomoPlan }) pendingKey = mihomoPlan.Request.IdempotencyKey;
+            else if (options is NginxInstallationRequest { FrozenPackage: { } package }) pendingKey = package.Request.IdempotencyKey;
+            else if (options is FrpInstallationRequest { FrozenArchive: { } bundle }) pendingKey = bundle.Request.IdempotencyKey;
+            else if (options is SquidInstallationRequest { FrozenPackage: { } squid }) pendingKey = squid.Request.IdempotencyKey;
+            else if (options is SmbInstallationRequest { FrozenPackage: { } samba }) pendingKey = samba.Request.IdempotencyKey;
+            else if (options is DockerInstallationRequest { FrozenPackage: { } docker }) pendingKey = docker.Request.IdempotencyKey;
             else pendingKey ??= Guid.NewGuid().ToString("N");
             InstallationOperationDto? submitted;
             try { submitted = await client.StartAsync(service, kind, options, pendingKey, lifetime.Token); }
@@ -172,13 +178,16 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
         try
         {
             InstallationOperationDto? remembered = null;
-            var saved = await settings.GetAsync(appId, AppSettingsScope.Workspace, "installation", lifetime.Token);
+            var saved = await settings.GetAsync(appId, AppSettingsScope.Workspace, workspaceKey, lifetime.Token);
             if (saved?.Value.TryGetProperty("operationId", out var value) == true && value.TryGetGuid(out var id))
                 remembered = await client.GetAsync(id, lifetime.Token);
+            if (remembered?.Service != service) remembered = null;
             var active = await client.GetActiveAsync(service, lifetime.Token);
             // A terminal task may be retained in workspace settings for recovery diagnostics, but
             // it must not reappear as the current app's installation banner after navigation.
-            Operation = active ?? (remembered?.State is InstallationOperationState.Queued or InstallationOperationState.Running ? remembered : null);
+            Operation = active ?? (remembered?.State is InstallationOperationState.Queued or InstallationOperationState.Running
+                || appId == "relaxkonos.component-center" && remembered?.State is InstallationOperationState.Interrupted or InstallationOperationState.Failed
+                ? remembered : null);
             if (Operation is not null)
             {
                 await RememberAsync(Operation.OperationId);
@@ -193,8 +202,8 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
     {
         try
         {
-            var existing = await settings.GetAsync(appId, AppSettingsScope.Workspace, "installation", lifetime.Token);
-            await settings.SaveAsync(appId, AppSettingsScope.Workspace, "installation", JsonSerializer.SerializeToElement(new { operationId = id }),
+            var existing = await settings.GetAsync(appId, AppSettingsScope.Workspace, workspaceKey, lifetime.Token);
+            await settings.SaveAsync(appId, AppSettingsScope.Workspace, workspaceKey, JsonSerializer.SerializeToElement(new { operationId = id }),
                 expectedRevision: existing?.Revision, cancellationToken: lifetime.Token);
         }
         catch (OperationCanceledException) { }

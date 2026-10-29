@@ -1,0 +1,283 @@
+{
+  "version": 1,
+  "suites": [
+    {
+      "id": "server-modules",
+      "name": "Server module framework, capabilities and residency",
+      "project": "Tests/ServerModules/RelaxKonOS.ServerModules.Tests.csproj",
+      "args": [],
+      "default": true,
+      "timeoutSeconds": 900
+    },
+    {
+      "id": "server-alias",
+      "name": "Alias login, sessions and module inventory",
+      "project": "RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj",
+      "args": ["--alias-only"],
+      "default": true,
+      "timeoutSeconds": 600
+    },
+    {
+      "id": "server-session-valid",
+      "name": "Session validity and host elevation wire contract",
+      "project": "RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj",
+      "args": ["--session-valid-only"],
+      "default": true,
+      "timeoutSeconds": 600
+    },
+    {
+      "id": "server-deployment-definition",
+      "name": "Deployment definition contract and HTTP authorization",
+      "project": "RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj",
+      "args": ["--deployment-definition-only"],
+      "default": true,
+      "timeoutSeconds": 600
+    },
+    {
+      "id": "server-git-conflicts",
+      "name": "Git conflict resolution",
+      "project": "RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj",
+      "args": ["--git-conflicts-only"],
+      "default": true,
+      "timeoutSeconds": 900
+    },
+    {
+      "id": "server-push-preview",
+      "name": "Git push preview",
+      "project": "RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj",
+      "args": ["--push-preview-only"],
+      "default": true,
+      "timeoutSeconds": 900
+    },
+    {
+      "id": "server-settings",
+      "name": "Server settings and identity presentation",
+      "project": "RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj",
+      "args": ["--settings-only"],
+      "default": true,
+      "timeoutSeconds": 600
+    },
+    {
+      "id": "server-terminal-contract",
+      "name": "Terminal hub contract",
+      "project": "RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj",
+      "args": ["--terminal-contract-only"],
+      "default": true,
+      "timeoutSeconds": 600
+    },
+    {
+      "id": "server-path-safety",
+      "name": "Path containment rule (files, archives, build contexts, Git)",
+      "project": "RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj",
+      "args": ["--path-safety-only"],
+      "default": true,
+      "timeoutSeconds": 300
+    },
+    {
+      "id": "server-problem-mapping",
+      "name": "Problem response shape (Git builds, installations)",
+      "project": "RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj",
+      "args": ["--problem-mapping-only"],
+      "default": true,
+      "timeoutSeconds": 300
+    },
+    {
+      "id": "client-layout-modules",
+      "name": "Client module attribution and layout",
+      "project": "Tests/Client/RelaxKonOS.ApplicationLayout.Tests/RelaxKonOS.ApplicationLayout.Tests.csproj",
+      "args": ["--modules-only"],
+      "default": true,
+      "timeoutSeconds": 900
+    },
+    {
+      "id": "client-settings",
+      "name": "Client settings page preview",
+      "project": "Tests/Client/RelaxKonOS.WindowPreviews.Tests/RelaxKonOS.WindowPreviews.Tests.csproj",
+      "args": ["--settings-only"],
+      "default": true,
+      "timeoutSeconds": 900
+    },
+    {
+      "id": "optional-docker-control",
+      "name": "Docker control plane",
+      "project": "RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj",
+      "args": ["--docker-control-only"],
+      "default": false,
+      "optional": true,
+      "timeoutSeconds": 900
+    },
+    {
+      "id": "optional-docker-resources",
+      "name": "Docker resources",
+      "project": "RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj",
+      "args": ["--docker-resources-only"],
+      "default": false,
+      "optional": true,
+      "timeoutSeconds": 900
+    },
+    {
+      "id": "optional-stack-operations",
+      "name": "Compose stack operations and recovery",
+      "project": "RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj",
+      "args": ["--stack-operations-only"],
+      "default": false,
+      "optional": true,
+      "timeoutSeconds": 900
+    },
+    {
+      "id": "optional-proxy-configuration",
+      "name": "Proxy configuration publication",
+      "project": "RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj",
+      "args": ["--proxy-configuration-only"],
+      "default": false,
+      "optional": true,
+      "timeoutSeconds": 900
+    },
+    {
+      "id": "optional-webserver",
+      "name": "Nginx and website publishing",
+      "project": "RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj",
+      "args": ["--webserver-only"],
+      "default": false,
+      "optional": true,
+      "timeoutSeconds": 900
+    },
+    {
+      "id": "optional-uploads",
+      "name": "Chunked upload sessions",
+      "project": "RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj",
+      "args": ["--uploads-only"],
+      "default": false,
+      "optional": true,
+      "timeoutSeconds": 900
+    },
+    {
+      "id": "optional-file-operations",
+      "name": "File operations and path safety",
+      "project": "RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj",
+      "args": ["--file-operations-only"],
+      "default": false,
+      "optional": true,
+      "timeoutSeconds": 900
+    },
+    {
+      "id": "optional-archives",
+      "name": "Archive parsing and extraction safety",
+      "project": "RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj",
+      "args": ["--archives-only"],
+      "default": false,
+      "optional": true,
+      "timeoutSeconds": 900
+    },
+    {
+      "id": "optional-managed-runtimes",
+      "name": "Managed runtimes unit checks",
+      "project": "Tests/ManagedRuntimes/RelaxKonOS.ManagedRuntimes.Tests.csproj",
+      "args": [],
+      "default": false,
+      "optional": true,
+      "timeoutSeconds": 900
+    },
+    {
+      "id": "optional-protocol-server-center",
+      "name": "ServerCenter protocol contract",
+      "project": "Tests/Protocol/RelaxKonOS.ServerCenter.Tests/RelaxKonOS.ServerCenter.Tests.csproj",
+      "args": [],
+      "default": false,
+      "optional": true,
+      "timeoutSeconds": 600
+    },
+    {
+      "id": "optional-proxy-server",
+      "name": "Proxy server credentials and export",
+      "project": "Tests/ProxyServer/RelaxKonOS.ProxyServer.Tests.csproj",
+      "args": [],
+      "default": false,
+      "optional": true,
+      "timeoutSeconds": 600
+    },
+    {
+      "id": "optional-task-orchestration",
+      "name": "Task orchestration and recovery",
+      "project": "Tests/TaskOrchestration/RelaxKonOS.TaskOrchestration.Tests.csproj",
+      "args": [],
+      "default": false,
+      "optional": true,
+      "timeoutSeconds": 600
+    },
+    {
+      "id": "optional-ownership",
+      "name": "File ownership and permission contract",
+      "project": "Tests/Files/RelaxKonOS.Ownership.Tests/RelaxKonOS.Ownership.Tests.csproj",
+      "args": [],
+      "default": false,
+      "optional": true,
+      "timeoutSeconds": 600
+    },
+    {
+      "id": "optional-deployment-independent",
+      "name": "Independent services deployment acceptance",
+      "project": "Tests/Deployment/IndependentServices.Acceptance/IndependentServices.Acceptance.csproj",
+      "args": [],
+      "default": false,
+      "optional": true,
+      "timeoutSeconds": 900
+    },
+    {
+      "id": "windows-terminal",
+      "name": "Windows Terminal installation checks",
+      "project": "RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj",
+      "args": ["--terminal-windows-only"],
+      "default": false,
+      "optional": true,
+      "platforms": ["windows"],
+      "timeoutSeconds": 600
+    },
+    {
+      "id": "windows-firewall",
+      "name": "Windows firewall read-only checks",
+      "project": "RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj",
+      "args": ["--windows-firewall-only"],
+      "default": false,
+      "optional": true,
+      "platforms": ["windows"],
+      "timeoutSeconds": 600
+    },
+    {
+      "id": "windows-personal-mode",
+      "name": "Windows personal mode checks",
+      "project": "RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj",
+      "args": ["--windows-personal-mode-only"],
+      "default": false,
+      "optional": true,
+      "platforms": ["windows"],
+      "timeoutSeconds": 600
+    },
+    {
+      "id": "linux-ownership",
+      "name": "Linux file ownership checks",
+      "project": "Tests/Files/RelaxKonOS.Ownership.Tests/RelaxKonOS.Ownership.Tests.csproj",
+      "args": [],
+      "default": false,
+      "optional": true,
+      "platforms": ["linux"],
+      "timeoutSeconds": 600
+    },
+    {
+      "id": "tailscale-server",
+      "name": "Tailscale contracts, Helper receipts, conditional operations, manual recovery, login privacy/ledger/coordinator and HTTP authorization",
+      "project": "Tests/Tailscale/RelaxKonOS.Tailscale.Tests.csproj",
+      "args": [],
+      "default": true,
+      "timeoutSeconds": 300
+    },
+    {
+      "id": "tailscale-client",
+      "name": "Tailscale desktop safety, manual recovery, connection binding, localization and rendered layouts",
+      "project": "Tests/Client/RelaxKonOS.Tailscale.Client.Tests/RelaxKonOS.Tailscale.Client.Tests.csproj",
+      "args": [],
+      "default": true,
+      "timeoutSeconds": 300
+    }
+  ]
+}

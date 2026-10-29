@@ -15,10 +15,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.test.platform.app.InstrumentationRegistry
+import app.relaxkonos.mobile.ui.common.mobileApplications
+import app.relaxkonos.mobile.ui.nav.Routes
+import app.relaxkonos.mobile.ui.theme.RelaxKonOSTheme
+import app.relaxkonos.mobile.ui.theme.ColorMode
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.core.auth.*
-import app.relaxkonos.mobile.core.layout.LayoutState
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.data.*
 import app.relaxkonos.mobile.servercenter.ServerConnectionIdentityRules
@@ -48,11 +51,12 @@ class HomeFeedbackFlowTest {
     private fun login() = runBlocking {
         session.login(ServerConnectionIdentityRules.direct("https://home-review.invalid"), "review", "test".toCharArray()) {}
     }
-    private fun show() {
+    private var opened: String? = null
+    private fun show(fontScale: Float = 1.6f) {
         val app = context.applicationContext as RelaxKonApplication
         val gateway = object : RelaxKonGateway by app.container.gateway {
             override suspend fun login(serverUrl: String, identifier: String, password: CharArray) = ApiResult.Success(
-                LoginSession("review", "review", ServerDescriptor("linux", setOf(ServerCapabilities.METRICS)),
+                LoginSession("review", "review", ServerDescriptor("linux", setOf(ServerCapabilities.METRICS, ServerCapabilities.FILES, ServerCapabilities.DOCKER, ServerCapabilities.WEB_SERVER, ServerCapabilities.APPLICATION_DEPLOYMENTS, ServerCapabilities.TUNNELS, ServerCapabilities.PROXY, ServerCapabilities.TERMINAL, ServerCapabilities.CERTIFICATES, ServerCapabilities.FIREWALL, ServerCapabilities.GUARDIAN)),
                     AuthTokens("test-access", "test-refresh", null, null), workspaceId = "11111111-1111-1111-1111-111111111111"))
             override suspend fun performanceSnapshot(serverUrl: String, accessToken: String): ApiResult<PerformanceSnapshot> {
                 reads++
@@ -66,12 +70,12 @@ class HomeFeedbackFlowTest {
             model = HomeViewModel(session, SystemRepository(gateway, session), RecentOperationJournal()) { "review connection" }
             store.put("home", model)
         }
-        rule.setContent { MaterialTheme {
+        rule.setContent { RelaxKonOSTheme(ColorMode.Light, false) {
             val owner by session.state.collectAsStateWithLifecycle()
             val density = LocalDensity.current
-            CompositionLocalProvider(LocalDensity provides Density(density.density, 1.6f)) {
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
                 Box(Modifier.safeDrawingPadding().requiredSize(360.dp, 640.dp)) {
-                    (owner as? SessionState.Active)?.let { HomeContent(model, it, LayoutState.Compact, {}) }
+                    (owner as? SessionState.Active)?.let { HomeContent(model, it, {}, applications = mobileApplications(it.capabilities, it.privilegedOperations) { route -> opened = route }) }
                 }
             }
         } }
@@ -115,4 +119,12 @@ class HomeFeedbackFlowTest {
         refresh(); rule.waitUntil(5_000) { reads == 2 && model.snapshot != null && !model.loading }
         assertSample(12.5)
     }
+    @Test fun desktopRendersRealMetricsAndOpensDocker() {
+        show(1f); rule.waitUntil(5_000) { model.snapshot != null && !model.loading }
+        rule.onNodeWithText(text(R.string.docker_title)).performScrollTo().assertIsDisplayed()
+        screenshot("application-desktop-home.png")
+        rule.onNodeWithText(text(R.string.docker_title)).performClick()
+        rule.runOnIdle { assertEquals(Routes.MANAGE_DOCKER, opened) }
+    }
+
 }

@@ -20,6 +20,9 @@ class ProxyServerRepository(private val gateway: RelaxKonGateway, private val se
     private val index: OperationIndex) {
     private val mutations = Mutex()
 
+    suspend fun runtimeCatalog(owner: SessionState.Active, method: String, route: String, body: JsonBody? = null, key: String? = null) =
+        read(owner) { u, t -> gateway.managedRuntime(u, t, method, route, body, key) }
+
     suspend fun snapshot(owner: SessionState.Active) = read(owner, gateway::proxyServerSnapshot)
     suspend fun releases(owner: SessionState.Active) = read(owner, gateway::proxyServerReleases)
     suspend fun validate(owner: SessionState.Active) = read(owner, gateway::proxyServerValidate)
@@ -59,6 +62,9 @@ class ProxyServerRepository(private val gateway: RelaxKonGateway, private val se
 
     suspend fun uninstall(owner: SessionState.Active, keepData: Boolean): ApiResult<ProxyOperation> =
         queued(owner, KIND_RUNTIME) { u, t, k -> gateway.proxyServerUninstall(u, t, keepData, k) }
+
+    suspend fun saveConfiguration(owner: SessionState.Active, request: SaveProxyServerConfiguration): ApiResult<ProxyOperation> =
+        queued(owner, "proxy_server.configuration") { u, t, k -> gateway.proxyServerSaveConfiguration(u, t, request, k) }
 
     suspend fun savePrincipal(owner: SessionState.Active, id: String?, request: SaveProxyServerPrincipal): ApiResult<ProxyOperation> =
         queued(owner, KIND_PRINCIPAL) { u, t, k -> gateway.proxyServerSavePrincipal(u, t, id, request, k) }

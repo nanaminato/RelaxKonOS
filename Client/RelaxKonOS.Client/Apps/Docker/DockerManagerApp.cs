@@ -19,7 +19,7 @@ namespace RelaxKonOS.Client.Apps.Docker;
 /// <summary>Built-in client for the server-local Docker Engine.</summary>
 public sealed class DockerManagerApp : RemoteApplicationBase
 {
-    public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.docker"), "Docker Manager", "0.2.0", "🐳", "Manage the local Docker Engine on the RelaxKonOS Server", [AppPermissions.ServerDockerRead, AppPermissions.ServerDockerManage], ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.Docker]), InstancePolicy: ApplicationInstancePolicy.SingleWindow);
+    public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.docker"), "Docker Manager", "0.2.0", "🐳", "Manage the local Docker Engine on the RelaxKonOS Server", [AppPermissions.ServerDockerRead, AppPermissions.ServerDockerManage, AppPermissions.ServerComponentsRead], ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.Docker]), InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
     public override void Activate(AppContext context)
     {
@@ -33,10 +33,10 @@ public sealed class DockerManagerApp : RemoteApplicationBase
             return;
         }
 
-        var vm = new DockerManagerViewModel(client);
+        var dependency = ComponentCenter.ComponentDependencySettingsViewModel.Create(context, "relaxkonos.docker");
+        var vm = new DockerManagerViewModel(client) { Dependency = dependency };
         var proxyViewModel = new DockerProxyViewModel(client, readOnly: true);
         var imageMirrorsViewModel = new DockerImageMirrorsViewModel(context.Services.GetRequiredService<IDockerImageMirrorClient>());
-        vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Docker, "relaxkonos.docker", () => vm.RefreshCommand.ExecuteAsync(null));
         ManagedWindow? window = null;
         var view = DockerManagerWorkspace.Create(vm, proxyViewModel, imageMirrorsViewModel,
             () => DockerManagerDialogs.ShowCreateContainerAsync(context, window!, vm),
@@ -44,8 +44,16 @@ public sealed class DockerManagerApp : RemoteApplicationBase
             () => DockerManagerDialogs.ShowPullImageAsync(context, window!, vm),
             () => DockerManagerDialogs.ShowCreateNetworkAsync(context, window!, vm),
             () => DockerManagerDialogs.ShowCreateVolumeAsync(context, window!, vm));
-        window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.docker.display_name"), InstallationPanel.Wrap(view, vm.Installation), new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
+        window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.docker.display_name"), view, new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
+        EventHandler<ManagedWindow>? closed = null;
+        closed = (_, current) =>
+        {
+            if (!ReferenceEquals(current, window)) return;
+            context.WindowManager.WindowClosed -= closed;
+            dependency.Dispose();
+        };
+        context.WindowManager.WindowClosed += closed;
         // Stopping or restarting the engine terminates every running container on the host, so it
         // gets its own confirmation wording instead of the deletion dialog's.
         vm.RequestEngineConfirmationAsync = async message =>
@@ -75,21 +83,9 @@ public sealed class DockerManagerApp : RemoteApplicationBase
         vm.OpenFileBrowserAtPathAsync = path =>
         {
             var activation = context.Activations.Activate(RelaxKonOSActivationUris.ExplorerPath(path));
-            if (!activation.Succeeded && !activation.IsPendingUserChoice)
+            if (!activation.IsAccepted)
                 vm.StatusText = LocalizedText.Get("docker.stack.explorer_unavailable");
             return Task.CompletedTask;
-        };
-        vm.Installation.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window!, problemCode);
-        vm.OpenDockerInstallationAsync = async () =>
-        {
-            if (session.CurrentServer?.Platform == HostPlatformKind.Linux)
-            {
-                if (vm.Installation.IsActive) return;
-                if (await vm.RequestEngineConfirmationAsync(LocalizedText.Get("docker.install.confirm")))
-                    await vm.Installation.SubmitAsync(InstallationOperationKind.Install, new DockerInstallationRequest(true));
-                return;
-            }
-            await DockerManagerDialogs.ShowWindowsSetupGuideAsync(context, window!, vm);
         };
         _ = vm.StartAsync();
     }

@@ -1,4 +1,4 @@
-namespace RelaxKonOS.Server.Startup;
+﻿namespace RelaxKonOS.Server.Startup;
 
 internal static class DeploymentServiceRegistration
 {
@@ -10,6 +10,7 @@ internal static class DeploymentServiceRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.GitInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.SmbInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.NginxInstallationService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.SquidInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.FrpInstallationService>();
         // Mihomo installs only through the managed catalog adapter. The fixed-manifest installer is gone,
         // so no request shape can reach the retired download/archive path.
@@ -35,6 +36,12 @@ internal static class DeploymentServiceRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentRuntime>();
         builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.IApplicationDeploymentProxyIntegration,
             RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentProxyIntegration>();
+        // The deployment domain only knows this port. The Git module registers the real
+        // implementation later in the startup sequence, which replaces this unavailable default; a
+        // disabled Git module therefore yields a stable "git build unavailable" problem instead of a
+        // missing service or a silent fallback to another deployment source.
+        builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.IDeploymentImageBuildSource,
+            RelaxKonOS.Server.ApplicationDeployments.UnavailableDeploymentImageBuildSource>();
         builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentManager>();
         builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentCoordinator>();

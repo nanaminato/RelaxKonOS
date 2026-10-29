@@ -162,8 +162,8 @@ PY
   install -d -o root -g root -m 0700 /var/lib/relaxkonos-deployment
   install -o root -g root -m 0600 "$receipt" /var/lib/relaxkonos-deployment/component-cleanup.json
 fi
-systemctl disable --now relaxkonos-server.service relaxkonos-guardian.service 2>/dev/null || true
-rm -f -- /etc/systemd/system/relaxkonos-server.service /etc/systemd/system/relaxkonos-guardian.service
+systemctl disable --now relaxkonos-server.service relaxkonos-guardian.service relaxkonos-privileged-helper.service 2>/dev/null || true
+rm -f -- /etc/systemd/system/relaxkonos-server.service /etc/systemd/system/relaxkonos-guardian.service /etc/systemd/system/relaxkonos-privileged-helper.service
 systemctl daemon-reload
 
 [[ ! -e "$INSTALL_ROOT" ]] || rm -rf -- "$INSTALL_ROOT"
@@ -182,7 +182,7 @@ if [[ "$REMOVE_DATA" == false && -f /etc/relaxkonos/server.env ]]; then
   install -d -o root -g root -m 0700 "$DATA_ROOT/deployment"
   install -o root -g root -m 0600 /etc/relaxkonos/server.env "$DATA_ROOT/deployment/server.env"
 fi
-rm -f -- /etc/relaxkonos/server.env /etc/relaxkonos/guardian.env
+rm -f -- /etc/relaxkonos/server.env /etc/relaxkonos/guardian.env /etc/relaxkonos/privileged-helper.json
 # /etc/relaxkonos/proxy is component data, not a Server deployment file.
 # Do not erase it when removing the Server.
 rmdir -- /etc/relaxkonos 2>/dev/null || true

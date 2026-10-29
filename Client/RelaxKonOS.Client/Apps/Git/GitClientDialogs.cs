@@ -17,7 +17,7 @@ namespace RelaxKonOS.Client.Apps.Git;
 
 /// <summary>Dialog factory for the Git RelaxKonOS.Client. Uses AppContext.ShowDialogAsync (same pattern as DockerManagerDialogs).
 /// All user-facing strings are resolved through <see cref="LocalizedText"/> using keys from git_client.json.</summary>
-internal static class GitClientDialogs
+internal static partial class GitClientDialogs
 {
     public static Task<GitCommitRequest?> ShowCommitDialogAsync(AppContext context, ManagedWindow owner, GitClientViewModel vm) =>
         context.ShowDialogAsync<GitCommitRequest?>(owner, LocalizedText.Get("git.dialog.commit.title"),
@@ -74,11 +74,12 @@ internal static class GitClientDialogs
             new RelaxKonOS.Core.Primitives.Size(420, 200));
     }
 
-    /// <summary>Show the "Git engine unavailable" dialog with install/refresh/cancel actions.</summary>
+    /// <summary>Shows the "Git engine unavailable" dialog. Installation belongs to Component Center,
+    /// so this only explains the state and offers a re-check or exit.</summary>
     public static Task<bool> ShowGitUnavailableAsync(AppContext context, ManagedWindow owner, GitClientViewModel vm) =>
         context.ShowDialogAsync<bool>(owner, LocalizedText.Get("git.dialog.git_unavailable.title"),
             dialog => BuildGitUnavailableDialog(vm, dialog),
-            new RelaxKonOS.Core.Primitives.Size(520, 320));
+            new RelaxKonOS.Core.Primitives.Size(520, 300));
 
     // ── 项目选择 / 探测 / 远程管理 ──
 
@@ -550,36 +551,6 @@ internal static class GitClientDialogs
             FontSize = 14,
         };
 
-        var statusBox = new TextBox
-        {
-            Margin = new Thickness(0, 8, 0, 0),
-            IsReadOnly = true,
-            MinHeight = 80,
-            AcceptsReturn = true,
-            TextWrapping = Avalonia.Media.TextWrapping.Wrap,
-        };
-        statusBox.Bind(TextBox.TextProperty, new Avalonia.Data.Binding
-        {
-            Path = nameof(GitClientViewModel.InstallMessage),
-            Mode = Avalonia.Data.BindingMode.OneWay,
-            FallbackValue = "",
-            TargetNullValue = "",
-        });
-
-        var installBtn = new Button
-        {
-            Content = LocalizedText.Get("git.dialog.unavailable.install"),
-            Classes = { "primary" },
-            IsEnabled = !vm.IsInstalling && vm.CanAutoInstall,
-        };
-        installBtn.Click += async (_, _) =>
-        {
-            installBtn.IsEnabled = false;
-            await vm.InstallEngineCommand.ExecuteAsync(null);
-            if (vm.IsGitAvailable) dialog.Close(true);
-            installBtn.IsEnabled = !vm.IsInstalling && vm.CanAutoInstall && !vm.IsGitAvailable;
-        };
-
         var refreshBtn = new Button { Content = LocalizedText.Get("git.dialog.unavailable.refresh") };
         refreshBtn.Click += async (_, _) =>
         {
@@ -594,15 +565,14 @@ internal static class GitClientDialogs
         {
             Orientation = Orientation.Horizontal,
             HorizontalAlignment = HorizontalAlignment.Right,
-            Children = { installBtn, refreshBtn, cancelBtn },
+            Children = { refreshBtn, cancelBtn },
             Spacing = 8,
         };
-
         return new StackPanel
         {
             Margin = new Thickness(20),
             Spacing = 12,
-            Children = { header, statusBox, footer }
+            Children = { header, footer }
         };
     }
 
@@ -867,17 +837,17 @@ internal static class GitClientDialogs
 
     /// <summary>Prompts for a HTTPS username and personal access token as a child of the push preview dialog.
     /// The dialog returns the secret to the active request only; it is never stored in the client.</summary>
-    public static Task<GitCredentialRequest?> ShowGitCredentialsDialogAsync(AppContext context, ManagedWindow owner)
+    public static Task<GitCredentialRequest?> ShowGitCredentialsDialogAsync(AppContext context, ManagedWindow owner, string? host)
         => context.ShowDialogAsync<GitCredentialRequest?>(owner,
             LocalizedText.Get("git.dialog.credentials.title"),
-            BuildGitCredentialsDialog,
-            new RelaxKonOS.Core.Primitives.Size(440, 285));
+            dialog => BuildGitCredentialsDialog(dialog, host),
+            new RelaxKonOS.Core.Primitives.Size(480, 380));
 
-    private static Control BuildGitCredentialsDialog(ModalDialog<GitCredentialRequest?> dialog)
+    private static Control BuildGitCredentialsDialog(ModalDialog<GitCredentialRequest?> dialog, string? host)
     {
         var notice = new TextBlock
         {
-            Text = LocalizedText.Get("git.dialog.credentials.notice"),
+            Text = (string.IsNullOrEmpty(host) ? "" : host + "\n") + LocalizedText.Get("git.dialog.credentials.notice"),
             TextWrapping = TextWrapping.Wrap,
             FontSize = 12,
             Foreground = ThemeBrushes.Get("TextTertiaryBrush"),

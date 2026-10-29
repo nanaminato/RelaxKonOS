@@ -18,9 +18,7 @@ internal data class NginxState(
     val servers: List<WebServer> = emptyList(), val candidates: List<WebServerCandidate> = emptyList(),
     val statuses: Map<String, WebServerStatus> = emptyMap(), val tests: Map<String, WebServerConfigTest> = emptyMap(),
     val selectedId: String? = null, val catalog: WebServerInstallCatalog? = null,
-    val download: ApiResult<WebServerInstallDownload>? = null,
     val system: HostOperatingSystemKind = HostOperatingSystemKind.Unknown,
-    val reference: InstallationFileReference? = null, val uploadBytes: Long? = null,
     val operation: WebServerOperation? = null, val installation: InstallationOperation? = null,
     val operationVerified: Boolean = false, val installationVerified: Boolean = false,
     val pending: List<PendingWebServerRequest> = emptyList(), val pendingInstallation: Boolean = false,
@@ -86,21 +84,16 @@ internal class NginxViewModel(private val session: AuthSession, private val gate
     private var owner: SessionState.Active? = null
     var sessionEpoch by mutableIntStateOf(0)
         private set
-    private var intent: InstallationSubmission? = null
     var state by mutableStateOf(NginxState())
         private set
     init {
         viewModelScope.launch {
             session.state.collect { active ->
-                if (active !== owner) { dismissCancellation(); owner = active as? SessionState.Active; intent = null; state = NginxState(); sessionEpoch++ }
+                if (active !== owner) { dismissCancellation(); owner = active as? SessionState.Active; state = NginxState(); sessionEpoch++ }
             }
         }
     }
     fun select(id: String?) { if (!state.busy) { dismissCancellation(); state = state.copy(selectedId = id) } }
-    fun clearReference() { if (!state.busy && intent == null) state = state.copy(reference = null) }
-    fun download(version: String) = work { active ->
-        val result = webServers.download(active, version); verify(active); failure(result); state = state.copy(download = result)
-    }
     fun refresh() = work { active -> load(active) }
     private suspend fun load(active: SessionState.Active) {
         NginxDiagnostics.event("load.begin epoch=$sessionEpoch web=${state.operation?.state} install=${state.installation?.state}")
@@ -143,7 +136,7 @@ internal class NginxViewModel(private val session: AuthSession, private val gate
                 factsVerified = servers is ApiResult.Success && candidates is ApiResult.Success && installation is ApiResult.Success &&
                     (webId == null || webOperation is ApiResult.Success),
                 tasksActive = refreshedWeb?.state?.active == true || refreshedInstallation?.state?.active == true ||
-                    installations.pending(active).any { it.service == InstallationService.Nginx } || intent != null)
+                    installations.pending(active).any { it.service == InstallationService.Nginx })
         }
         state = state.copy(loading = false, servers = values,
             sites = sites, certificates = certificates,
@@ -220,57 +213,12 @@ internal class NginxViewModel(private val session: AuthSession, private val gate
         val refreshed = WebSiteDraft.from(current)
         if (!state.busy && state.pendingSites.none { it.siteId == draft.id && it.serverId == draft.serverId }) state = state.copy(siteDraft = refreshed, initialSiteDraft = refreshed, problemCode = null, uncertain = false)
     }
-    fun fileReference(path: String) = work { active ->
-        val result = installations.fileReference(active, InstallationService.Nginx, path)
-        verify(active)
-        referenceResult(result)
-    }
-    fun upload(uri: Uri) = work { active ->
-        val document = uploadDocuments.open(uri.toString())
-        if (document == null) { state = state.copy(problemCode = InstallationProblemCodes.FILE_REFERENCE_UNAVAILABLE); return@work }
-        val result = installations.upload(active, InstallationService.Nginx, document) { bytes ->
-            // API progress runs on IO; marshal Compose state changes back to the ViewModel dispatcher.
-            viewModelScope.launch { if (activeSession === active && state.busy) state = state.copy(uploadBytes = bytes) }
-        }
-        verify(active); referenceResult(result)
-    }
-    private fun referenceResult(result: ApiResult<InstallationFileReference>) {
-        state = state.copy(reference = (result as? ApiResult.Success)?.value, uploadBytes = null)
-        failure(result)
-    }
-    fun install(version: String?, packageSource: Boolean, kind: InstallationKind = InstallationKind.Install) = work { active ->
-        if (intent == null) {
-            val reference = state.reference
-            if (packageSource && (reference == null || reference.expired())) {
-                state = state.copy(problemCode = InstallationProblemCodes.FILE_REFERENCE_UNAVAILABLE); return@work
-            }
-            intent = installations.prepare(active, kind, NginxInstallationRequest(true,
-                version?.trim()?.takeIf(String::isNotBlank), if (packageSource) reference?.id else null))
-        }
-        val result = installations.submit(requireNotNull(intent), elevationAnswers)
-        verify(active)
-        failure(result)
-        state = state.copy(pendingInstallation = installations.pending(active).any { it.service == InstallationService.Nginx })
-        if (result is ApiResult.Problem && !state.pendingInstallation) intent = null
-        if (result is ApiResult.Success) {
-            intent = null
-            state = state.copy(installation = result.value, installationVerified = true, reference = null, pendingInstallation = false)
-            if (!result.value.state.active) load(active)
-        }
-    }
     val mutationsBlocked get() = state.busy || state.loading || state.uncertain ||
         state.operation?.state?.active == true || state.installation?.state?.active == true ||
-        state.pendingInstallation || intent != null
+        state.pendingInstallation
     fun integrate(candidate: WebServerCandidate) {
         if (mutationsBlocked || state.candidates.none { it.id == candidate.id } || state.pending.any { it.target == candidate.id }) return
         webMutation { active -> webServers.integrate(active, candidate, elevationAnswers) }
-    }
-    fun uninstall(server: WebServer) {
-        if (state.selectedId != server.id || state.servers.none { it.id == server.id && it.canUninstall } ||
-            state.busy || state.loading || state.operation?.state?.active == true ||
-            state.pending.any { it.target == server.id } || state.installation?.state?.active == true ||
-            state.pendingInstallation || intent != null) return
-        install(null, false, InstallationKind.Uninstall)
     }
     fun lifecycle(server: WebServer, action: WebServerAction) {
         if (mutationsBlocked || state.pending.any { it.target == server.id }) return
@@ -279,7 +227,7 @@ internal class NginxViewModel(private val session: AuthSession, private val gate
         webMutation { active -> webServers.lifecycle(active, current, action, elevationAnswers) }
     }
     fun resume(pending: PendingWebServerRequest) {
-        if (state.busy || state.loading || state.operation?.state?.active == true || state.installation?.state?.active == true || state.pendingInstallation || intent != null) return
+        if (state.busy || state.loading || state.operation?.state?.active == true || state.installation?.state?.active == true || state.pendingInstallation) return
         webMutation { active -> webServers.resume(active, pending, elevationAnswers) }
     }
     fun acceptIntegrationFacts(pending: PendingWebServerRequest) = work { active ->
@@ -334,17 +282,13 @@ internal class NginxViewModel(private val session: AuthSession, private val gate
             if (!result.value.state.active) load(active)
         }
     }
-    fun retryInstallation() { if (intent != null) install(null, false) }
-    val intentVersion get() = (intent?.request as? NginxInstallationRequest)?.version
-    val intentUsesPackage get() = (intent?.request as? NginxInstallationRequest)?.fileReferenceId != null
-    val hasIntent get() = intent != null
     private fun failure(result: ApiResult<*>) {
         state = state.copy(problemCode = (result as? ApiResult.Problem)?.code, uncertain = result is ApiResult.Transport)
     }
     private fun work(block: suspend (SessionState.Active) -> Unit) {
         dismissCancellation()
         val active = activeSession ?: return
-        if (owner !== active) { owner = active; intent = null; state = NginxState(); sessionEpoch++ }
+        if (owner !== active) { owner = active; state = NginxState(); sessionEpoch++ }
         if (state.busy || state.loading) {
             NginxDiagnostics.event("work.skipped busy=${state.busy} loading=${state.loading} epoch=$sessionEpoch")
             return
@@ -362,7 +306,7 @@ internal class NginxViewModel(private val session: AuthSession, private val gate
             }
             finally {
                 if (activeSession === active) state = state.copy(busy = false, loading = false)
-                NginxDiagnostics.event("work.end ownerCurrent=${activeSession === active} busy=${state.busy} loading=${state.loading} uncertain=${state.uncertain} intent=${intent != null} web=${state.operation?.state} install=${state.installation?.state} pendingInstall=${state.pendingInstallation}")
+                NginxDiagnostics.event("work.end ownerCurrent=${activeSession === active} busy=${state.busy} loading=${state.loading} uncertain=${state.uncertain} web=${state.operation?.state} install=${state.installation?.state} pendingInstall=${state.pendingInstallation}")
                 state.pending.forEach { NginxDiagnostics.event("block.pending-web action=${it.action} target=${it.target} attempted=${it.attempted} operation=${it.operationId}") }
                 if (activeSession === active) installations.pending(active).filter { it.service == InstallationService.Nginx }.forEach {
                     NginxDiagnostics.event("block.pending-install kind=${it.kind} attempted=${it.attempted} operation=${it.operationId}")

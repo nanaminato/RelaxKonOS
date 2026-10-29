@@ -178,17 +178,6 @@ internal class DockerControlViewModel(private val session: AuthSession, private 
     fun accept(pending: PendingDockerControl) = work { owner ->
         val result = control.acceptFacts(owner, pending); verify(owner); showFacts(owner, result)
     }
-    fun install() = work { owner ->
-        require(owner.privilegedOperations && owner.serverPlatform.equals("linux", true) && state.pending.isEmpty() && !state.resourcePending)
-        require(state.pendingInstallation || state.facts?.status?.let { !it.available && it.problemCode == "docker.not_installed" } == true)
-        if (intent == null) intent = installations.prepare(owner, InstallationKind.Install, DockerInstallationRequest(true))
-        val result = mutationGate.mutex.withLock {
-            require(control.pending(owner).isEmpty() && resources.pending(owner).isEmpty())
-            installations.submit(requireNotNull(intent), elevationAnswers)
-        }; verify(owner)
-        installResult(owner, result)
-        if (result is ApiResult.Success || result is ApiResult.Problem && !state.pendingInstallation) intent = null
-    }
     fun pollInstall() = work { owner -> state.installation?.operationId?.let { installResult(owner, installations.operation(owner, it)) } }
     private fun canCancelInstallation(expectedOwner: SessionState.Active, operation: InstallationOperation): Boolean =
         state.owner === expectedOwner && session.state.value === expectedOwner && expectedOwner.privilegedOperations &&

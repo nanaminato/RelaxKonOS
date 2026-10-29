@@ -1,9 +1,10 @@
 using System.Text.Json;
 using RelaxKonOS.Protocol.Installations;
+using RelaxKonOS.Server.Endpoints;
 
 namespace RelaxKonOS.Server.Installations;
 
-public sealed class InstallationException(string problemCode, int statusCode = 409) : Exception(problemCode)
+public sealed class InstallationException(string problemCode, int statusCode = 409) : Exception(problemCode), IProblemException
 {
     public string ProblemCode { get; } = problemCode;
     public int StatusCode { get; } = statusCode;
@@ -13,15 +14,21 @@ public sealed class InstallationException(string problemCode, int statusCode = 4
 /// The root transaction stopped at its own cancellation boundary and left nothing behind. It is a distinct
 /// type so the ledger records Cancelled rather than Failed: "the operator stopped it" is not a failure.
 /// </summary>
-public sealed class InstallationCancelledException(string problemCode) : Exception(problemCode)
+public sealed class InstallationCancelledException(string problemCode) : Exception(problemCode), IProblemException
 {
     public string ProblemCode { get; } = problemCode;
+
+    /// <summary>Not a failure: the caller's request conflicts with the operation's final state.</summary>
+    public int StatusCode => 409;
 }
 
 /// <summary>The transaction was interrupted and reconciled; this is distinct from user cancellation or failure.</summary>
-public sealed class InstallationInterruptedException(string problemCode) : Exception(problemCode)
+public sealed class InstallationInterruptedException(string problemCode) : Exception(problemCode), IProblemException
 {
     public string ProblemCode { get; } = problemCode;
+
+    /// <summary>Not a failure: the operation needs reconciliation before it can be retried.</summary>
+    public int StatusCode => 409;
 }
 
 public sealed record InstallationProgress(InstallationStage Stage, int? Progress = null, bool Cancellable = false);

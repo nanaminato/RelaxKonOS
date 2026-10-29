@@ -31,6 +31,9 @@
         "app_compatibility.client_platform": "{0} は次のクライアントプラットフォームのみをサポートします: {1}。現在のクライアントは {2} です。",
         "app_compatibility.server_platform": "{0} は次のサーバープラットフォームのみをサポートします: {1}。接続中のサーバーは {2} です。",
         "app_compatibility.missing_capability": "{0} には現在のサーバーで利用できない機能が必要です: {1}。",
+        "app_compatibility.reason_module_disabled": "その機能を提供するサーバーモジュール（{0}）はこのサーバーで無効になっています。",
+        "app_compatibility.reason_module_enabled": "その機能を提供するモジュール（{0}）は有効です。サーバーの展開モードまたはホストプラットフォームによる制限です。",
+        "app_compatibility.reason_no_module": "この機能を提供する公式サーバーモジュールはありません。サーバーの展開モードまたはプラットフォームによる制限です。",
         "app_compatibility.server_unavailable": "{0} を開始するには RelaxKonOS Server への接続が必要です。",
         "app_compatibility.generic": "このアプリケーションは現在の環境では実行できません。"
     }

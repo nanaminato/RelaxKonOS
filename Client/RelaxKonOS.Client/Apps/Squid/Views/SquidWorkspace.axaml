@@ -3,6 +3,7 @@
              xmlns:common="clr-namespace:RelaxKonOS.Client.Controls"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:squid="clr-namespace:RelaxKonOS.Client.Apps.Squid"
+             xmlns:cc="clr-namespace:RelaxKonOS.Client.Apps.ComponentCenter"
              xmlns:protocol="clr-namespace:RelaxKonOS.Protocol.GatewayProxy;assembly=RelaxKonOS.Protocol"
              x:Class="RelaxKonOS.Client.Apps.Squid.Views.SquidWorkspace"
              x:DataType="squid:SquidViewModel"
@@ -54,6 +55,7 @@
           <Button x:Name="PageButton2" Classes="workspace-nav" Tag="2" Click="NavigationButton_Click" Content="{loc:Loc squid.section.domains}" HorizontalContentAlignment="Left" Padding="10,8" />
           <Button x:Name="PageButton3" Classes="workspace-nav" Tag="3" Click="NavigationButton_Click" Content="{loc:Loc squid.section.upstream}" HorizontalContentAlignment="Left" Padding="10,8" />
           <Button x:Name="PageButton4" Classes="workspace-nav" Tag="4" Click="NavigationButton_Click" Content="{loc:Loc squid.section.preview}" HorizontalContentAlignment="Left" Padding="10,8" />
+          <Button x:Name="PageButton6" Classes="workspace-nav" Tag="6" Click="NavigationButton_Click" Content="{loc:Loc common.settings}" HorizontalContentAlignment="Left" Padding="10,8" />
         </StackPanel>
       </Border>
       <ScrollViewer x:Name="BodyScroll" Grid.Column="1" Padding="20,16" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -98,8 +100,6 @@
               <TextBlock Classes="problem" Text="{loc:Loc squid.package_unsupported}" IsVisible="{Binding ShowPackageUnsupported}" />
               <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" />
               <WrapPanel>
-                <Button Content="{loc:Loc squid.install}" Command="{Binding InstallCommand}" IsVisible="{Binding ShowInstallRequired}" Margin="0,0,8,8" />
-                <Button Content="{loc:Loc squid.uninstall}" Command="{Binding UninstallCommand}" IsVisible="{Binding !ShowInstallRequired}" Margin="0,0,8,8" />
                 <Button Content="{loc:Loc squid.start}" Command="{Binding StartCommand}" Margin="0,0,8,8" />
                 <Button Content="{loc:Loc squid.stop}" Command="{Binding StopCommand}" Margin="0,0,8,8" />
                 <Button Content="{loc:Loc squid.restart}" Command="{Binding RestartCommand}" Margin="0,0,8,8" />
@@ -137,12 +137,6 @@
           <TextBlock Text="{loc:Loc squid.unsupported}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
         </StackPanel>
       </Border>
-      <Border Classes="notice warning" IsVisible="{Binding ShowInstallRequired}">
-        <StackPanel Spacing="3">
-          <TextBlock Classes="section-title" FontSize="13" Foreground="{DynamicResource WarningBrush}" Text="{loc:Loc squid.install_title}" />
-          <TextBlock Text="{loc:Loc squid.install_required}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
-        </StackPanel>
-      </Border>
       <Border Classes="notice danger" IsVisible="{Binding ShowAdoptionRequired}">
         <StackPanel Spacing="3">
           <TextBlock Classes="section-title" FontSize="13" Foreground="{DynamicResource WarningBrush}" Text="{loc:Loc squid.adoption_required_title}" />
@@ -163,7 +157,9 @@
       </Border>
     </StackPanel>
           </StackPanel>
-          <StackPanel x:Name="Page1" Spacing="16" IsVisible="False">
+          <StackPanel x:Name="Page1" Spacing="16" IsVisible="False"><Button Content="{loc:Loc squid.section.listener}" Tag="ListenerEditor" Click="EditorButton_Click" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Left" />
+<StackPanel x:Name="ListenerEditor" IsVisible="False" Spacing="12">
+
 <Border Classes="app-panel" Padding="18">
             <StackPanel Spacing="12">
               <StackPanel Spacing="2">
@@ -204,8 +200,11 @@
               </ItemsControl>
             </StackPanel>
           </Border>
-          </StackPanel>
-          <StackPanel x:Name="Page2" Spacing="16" IsVisible="False">
+
+</StackPanel></StackPanel>
+          <StackPanel x:Name="Page2" Spacing="16" IsVisible="False"><Button Content="{loc:Loc squid.section.domains}" Tag="DomainsEditor" Click="EditorButton_Click" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Left" />
+<StackPanel x:Name="DomainsEditor" IsVisible="False" Spacing="12">
+
 <Border Classes="app-panel" Padding="18">
             <StackPanel Spacing="12">
               <StackPanel Spacing="2">
@@ -231,8 +230,11 @@
               </ItemsControl>
             </StackPanel>
           </Border>
-          </StackPanel>
-          <StackPanel x:Name="Page3" Spacing="16" IsVisible="False">
+
+</StackPanel></StackPanel>
+          <StackPanel x:Name="Page3" Spacing="16" IsVisible="False"><Button Content="{loc:Loc squid.section.upstream}" Tag="UpstreamEditor" Click="EditorButton_Click" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Left" />
+<StackPanel x:Name="UpstreamEditor" IsVisible="False" Spacing="12">
+
 <Border Classes="app-panel" Padding="18">
             <StackPanel Spacing="12">
               <StackPanel Spacing="2">
@@ -258,9 +260,12 @@
               </ItemsControl>
             </StackPanel>
           </Border>
-          </StackPanel>
+
+</StackPanel></StackPanel>
           <StackPanel x:Name="Page5" Spacing="16" IsVisible="False">
-            <Border Classes="app-panel" Padding="18">
+            <Button Content="{loc:Loc squid.section.access}" Tag="AccessEditor" Click="EditorButton_Click" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Left" />
+<StackPanel x:Name="AccessEditor" IsVisible="False" Spacing="12">
+<Border Classes="app-panel" Padding="18">
               <StackPanel Spacing="12">
                 <TextBlock Classes="section-title" Text="{loc:Loc squid.section.access}" />
                 <TextBlock Classes="section-hint" Text="{loc:Loc squid.access_hint}" />
@@ -273,6 +278,7 @@
                 <TextBlock Classes="problem" Text="{loc:Loc squid.no_enabled_accounts}" IsVisible="{Binding ShowNoEnabledAccounts}" />
               </StackPanel>
             </Border>
+</StackPanel>
             <Border Classes="app-panel" Padding="18">
               <StackPanel Spacing="12">
                 <TextBlock Classes="section-title" Text="{loc:Loc squid.accounts}" />
@@ -290,7 +296,13 @@
                     </DataTemplate>
                   </ListBox.ItemTemplate>
                 </ListBox>
-                <StackPanel Spacing="4" IsEnabled="{Binding CanManageAccounts}">
+                <WrapPanel>
+  <Button Content="{loc:Loc squid.account_create}" Tag="AccountEditor:new" Click="EditorButton_Click" IsEnabled="{Binding CanManageAccounts}" Margin="0,0,8,0" />
+  <Button Content="{loc:Loc squid.edit_account}" Tag="AccountEditor" Click="EditorButton_Click" IsEnabled="{Binding CanManageAccounts}" />
+</WrapPanel>
+<StackPanel x:Name="AccountEditor" IsVisible="False" Spacing="12">
+<TextBlock Text="{Binding SelectedAccount.Username}" FontWeight="SemiBold" />
+<StackPanel Spacing="4" IsEnabled="{Binding CanManageAccounts}">
                   <TextBlock Classes="field-label" Text="{loc:Loc squid.account_name}" />
                   <TextBox x:Name="AccountNameBox" Text="{Binding NewAccountName, Mode=TwoWay}" MaxLength="64" />
                   <TextBlock Classes="field-label" Text="{loc:Loc squid.account_password}" />
@@ -302,10 +314,13 @@
                   <Button Content="{Binding ToggleAccountText}" Command="{Binding ToggleAccountCommand}" Margin="0,0,8,8" />
                   <Button Content="{loc:Loc squid.account_delete}" Command="{Binding DeleteAccountCommand}" Margin="0,0,8,8" />
                 </WrapPanel>
+</StackPanel>
               </StackPanel>
             </Border>
           </StackPanel>
           <StackPanel x:Name="Page4" Spacing="16" IsVisible="False">
+<Button Content="{loc:Loc squid.section.adoption}" Tag="AdoptionEditor" Click="EditorButton_Click" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Left" />
+<StackPanel x:Name="AdoptionEditor" IsVisible="False" Spacing="12">
 <Border Classes="app-panel" Padding="18">
             <StackPanel Spacing="10">
               <TextBlock Classes="section-title" Text="{loc:Loc squid.section.adoption}" />
@@ -316,6 +331,7 @@
               <TextBlock Classes="problem" Text="{loc:Loc squid.adopt_required}" IsVisible="{Binding NeedsAdoption}" />
             </StackPanel>
           </Border>
+</StackPanel>
 <Border x:Name="PreviewPanel" Classes="app-panel" Padding="18">
           <StackPanel Spacing="12">
             <StackPanel Spacing="2">
@@ -335,6 +351,9 @@
             </StackPanel>
           </StackPanel>
         </Border>
+          </StackPanel>
+          <StackPanel x:Name="Page6" Spacing="16" IsVisible="False">
+            <cc:ComponentDependencySettingsView DataContext="{Binding Dependency}" />
           </StackPanel>
         </StackPanel>
       </ScrollViewer>

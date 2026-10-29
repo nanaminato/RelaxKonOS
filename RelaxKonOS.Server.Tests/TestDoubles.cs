@@ -1,4 +1,4 @@
-sealed class CapturingPrivilegedTransport : IPrivilegedOperationTransport
+﻿sealed class CapturingPrivilegedTransport : IPrivilegedOperationTransport
 {
     public PrivilegedOperationRequest? LastRequest { get; private set; }
     public Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
@@ -27,7 +27,7 @@ sealed class CapturingLogger<T> : ILogger<T>
         => Entries.Add(formatter(state, exception));
 }
 
-sealed class FixtureHttpClientFactory(byte[] payload, string? redirect = null) : IHttpClientFactory, IOutboundProxyHttpClientFactory
+sealed class FixtureHttpClientFactory(byte[] payload, string? redirect = null, IReadOnlyDictionary<string, byte[]>? pinnedPayloads = null) : IHttpClientFactory, IOutboundProxyHttpClientFactory, RelaxKonOS.ManagedRuntimes.IPinnedArchiveTransfer
 {
     public string? LastClientName { get; private set; }
     public string? LastUserAgent { get; private set; }
@@ -45,6 +45,14 @@ sealed class FixtureHttpClientFactory(byte[] payload, string? redirect = null) :
         return Task.FromResult(client);
     }
 
+    public async Task CopyAsync(RelaxKonOS.Protocol.ManagedRuntimes.ComponentPinnedArchive pin, Stream destination,
+        RelaxKonOS.Protocol.ManagedRuntimes.RuntimeDownloadProxy? proxy, CancellationToken ct)
+    {
+        if (redirect is not null) throw new RelaxKonOS.ManagedRuntimes.RuntimePolicyException("runtime.redirect_forbidden");
+        var bytes = pinnedPayloads?.GetValueOrDefault(pin.Version) ?? payload;
+        if (bytes.Length > pin.MaximumBytes) throw new RelaxKonOS.ManagedRuntimes.RuntimePolicyException("runtime.archive_too_large");
+        await destination.WriteAsync(bytes, ct);
+    }
     private sealed class FixtureHandler(byte[] payload, Action<HttpRequestMessage> inspect, string? redirect) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -421,4 +429,10 @@ class StubDockerEngine : DispatchProxy
         nameof(IDockerEngineService.GetStatusAsync) => Task.FromResult(Status ?? new DockerStatusDto(true, string.Empty, "29.8.0", "linux", "x64")),
         _ => throw new NotSupportedException(targetMethod?.Name),
     };
+}
+
+sealed class TestRuntimeDownloadProxyProvider : RelaxKonOS.Server.ManagedRuntimes.IRuntimeDownloadProxyProvider
+{
+    public Task<RelaxKonOS.Protocol.ManagedRuntimes.RuntimeDownloadProxy?> ResolveAsync(CancellationToken ct) =>
+        Task.FromResult<RelaxKonOS.Protocol.ManagedRuntimes.RuntimeDownloadProxy?>(null);
 }

@@ -118,6 +118,7 @@ public sealed class NetworkDiagnosticsService : IDisposable
         if (uri is null || !uri.IsAbsoluteUri)
             return false;
         if (uri.AbsolutePath.Contains("/auth/", StringComparison.OrdinalIgnoreCase)) return false;
+        if (IsTailscaleLoginChallenge(uri.AbsolutePath)) return false;
         if (uri.IsLoopback && uri.Port == DeveloperModeService.BridgePort)
             return true;
         var serverUrl = GetSession().EffectiveBaseUrl;
@@ -130,6 +131,7 @@ public sealed class NetworkDiagnosticsService : IDisposable
     internal void Record(NetworkDiagnosticEntry entry)
     {
         if (entry.PathAndQuery.Contains("/auth/", StringComparison.OrdinalIgnoreCase)) return;
+        if (IsTailscaleLoginChallenge(entry.PathAndQuery)) return;
         entry = entry with { PathAndQuery = SafeUrl(new Uri(entry.PathAndQuery, UriKind.RelativeOrAbsolute)),
             RequestUrl = entry.RequestUrl is null ? null : SafeUrl(new Uri(entry.RequestUrl, UriKind.RelativeOrAbsolute)) };
         NetworkDiagnosticEntry stored;
@@ -155,6 +157,10 @@ public sealed class NetworkDiagnosticsService : IDisposable
         }
         EntryCompleted?.Invoke(this, stored);
     }
+
+    private static bool IsTailscaleLoginChallenge(string path) =>
+        path.Contains("/tailscale/login/operations/", StringComparison.OrdinalIgnoreCase)
+        && path.Split('?', '#')[0].EndsWith("/challenge", StringComparison.OrdinalIgnoreCase);
 
     internal static IReadOnlyDictionary<string, string> CaptureHeaders(params HttpHeaders?[] collections)
     {

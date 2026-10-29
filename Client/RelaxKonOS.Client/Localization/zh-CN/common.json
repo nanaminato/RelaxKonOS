@@ -3,6 +3,7 @@
     "DisplayName": "简体中文",
     "SortOrder": 0,
     "Strings": {
+        "common.editor_draft_hint": "关闭会保留本地草稿。只有保存、应用或确认操作才会提交到服务器。",
         "common.discard_title": "放弃修改？",
         "common.discard_message": "放弃未保存的修改并关闭编辑器？",
         "common.discard": "放弃修改",

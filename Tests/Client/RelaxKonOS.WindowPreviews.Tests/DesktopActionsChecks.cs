@@ -45,7 +45,7 @@ internal static class DesktopActionsChecks
         };
         var vm = new DesktopShellViewModel(manager, applications, settings, localization,
             DispatchProxy.Create<IAuthSession, UnusedPreviewServices>(), new SshDesktopSession(null!, new ShellSettings(null!)), () => { },
-            null!, files, null!, null!, null!, null!, null!, null!, null!, shortcuts, null!, null!);
+            null!, files, null!, null!, null!, null!, null!, null!, null!, shortcuts, null!, null!, null);
         vm.PopulateDesktop(); Dispatcher.UIThread.RunJobs();
         var first = vm.DesktopIcons.Single(app => app.Id == firstApp.Manifest.Id);
         var second = vm.DesktopIcons.Single(app => app.Id == secondApp.Manifest.Id);

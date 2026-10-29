@@ -97,29 +97,26 @@ RelaxKonOS 通过 NuGet 引用以下第三方包（版本声明集中于 [`Direc
 | `Microsoft.AspNetCore.OpenApi` | MIT | Server OpenAPI |
 | `RoyalApps.RoyalTerminal.Avalonia` / `RoyalApps.RoyalTerminal.Terminal.Pty.Platform` | Apache-2.0 | 终端控件 + 平台 PTY 工厂 |
 | `RoyalApps.RoyalTerminal.Terminal.Vt.Ghostty` / `RoyalApps.RoyalTerminal.GhosttySharp` / RID native packages | MIT | Ghostty VT 处理器、绑定与原生库（随 RID 选择） |
-| `SixLabors.ImageSharp` | Apache-2.0（见下） | Server 端缩略图渲染（`/files/thumbnail`） |
+| `SkiaSharp` / `SkiaSharp.NativeAssets.Linux.NoDependencies` | MIT（Skia 本体 BSD-3-Clause，见下） | Server 端缩略图渲染与进程图标（`/files/thumbnail`、`/system/processes/{id}/icon`） |
 | `Xaml.Behaviors.Avalonia` | MIT | Explorer 交互 behaviors（双击导航等） |
 | `Newtonsoft.Json` | MIT | Explorer 配置模型序列化（保留 Jaya 原依赖） |
 | AndroidX Activity / Jetpack Compose / Material 3 | Apache-2.0 | Kotlin Android 原生 UI |
+| [ZXing Core](https://github.com/zxing/zxing) | Apache-2.0 | Android 本地生成代理连接二维码 |
 | Kotlin / Kotlin Coroutines | Apache-2.0 | Kotlin Android 运行时与异步执行 |
 | Google Material Icons | Apache-2.0 | Android 矢量图标路径（密码可见性切换） |
 
-### `SixLabors.ImageSharp` 的许可判定
+### `SkiaSharp` 的许可
 
-ImageSharp 3.x 采用 **Six Labors Split License v1.0**（双分支许可），并非无条件的 Apache-2.0。该许可第 2 条明确：
-若软件被用于以 Open Source 或 **Source Available** 许可发布的软件，则按 **Apache License 2.0** 授权。
+SkiaSharp 是 Microsoft 维护的 Skia 绑定，绑定层为 **MIT**，随包分发的 Skia 原生库为 **BSD-3-Clause**，
+两者都不含按营收、用途或发行方式区分的收费条款，商业与非商业发行条件相同。
 
-RelaxKonOS 以 **Non-Commercial Source-Available License** 发布（见 [`LICENSE`](./LICENSE)），落在这个分支里，
-因此本仓库及其非商业衍生分发可依 Apache-2.0 使用 ImageSharp，无需单独购买商业许可。**注意**：若将来以本项目的
-商业许可对外提供 RelaxKonOS，ImageSharp 的适用条件需要重新评估。本项目自身的商业许可不自动授予第三方组件的使用权。
+- 用途：Server / PrivilegedHelper 的图像解码与编码 —— `GET /api/v1.0/files/thumbnail`
+  的缩略图（`RelaxKonOS.Server/Files/ImageThumbnailRenderer.cs`）与进程图标
+  （`RelaxKonOS.Server/SystemPerformance/ProcessIconProvider.cs`）。
+- 版本：`3.119.4`（声明与选型理由见 [`Directory.Packages.props`](./Directory.Packages.props)）。与桌面端
+  Avalonia 12.1.4 依赖的 SkiaSharp 版本一致，避免同一个发布树里出现两条 Skia 版本线。
+- 原生依赖：Windows / macOS 由 `SkiaSharp` 包自身传递引入；Linux 额外引用
+  `SkiaSharp.NativeAssets.Linux.NoDependencies`（静态链接，不依赖系统 fontconfig/freetype，glibc 与 musl 均可用）。
+- 许可全文：<https://github.com/mono/SkiaSharp/blob/main/LICENSE.md>（SkiaSharp）、
+  <https://skia.org/license/>（Skia）。
 
-第 2 条另有独立条件：年总营收（annual gross revenue）**低于 100 万美元**的营利公司或个人，
-即使作为直接包依赖使用，也可按 Apache-2.0 获得授权。这里计算的是使用主体的年总营收，
-不是 RelaxKonOS 单个产品的收入或利润。因此，满足此条件时商业发行也无需购买 ImageSharp 商业许可；
-达到该金额且不满足其他 Apache-2.0 分支条件时，应重新评估商业授权。
-
-- 用途：Server 端 `GET /api/v1.0/files/thumbnail` 的缩略图渲染（`RelaxKonOS.Server/Files/ImageThumbnailRenderer.cs`）。
-- 版本：`3.1.12`（版本声明与选型理由见 [`Directory.Packages.props`](./Directory.Packages.props)）。选 3.1.x 而非
-  2.1.x 的技术原因是 `DecoderOptions.MaxFrames`：缩略图必须只解一帧，否则动图会按帧数放大内存占用。
-- 纯托管实现、无原生依赖，Windows / Linux / macOS 行为一致。
-- 当前版本许可全文：<https://github.com/SixLabors/ImageSharp/blob/v3.1.12/LICENSE>

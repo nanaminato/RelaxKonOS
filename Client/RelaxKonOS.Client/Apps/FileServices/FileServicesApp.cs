@@ -16,7 +16,7 @@ namespace RelaxKonOS.Client.Apps.FileServices;
 public sealed class FileServicesApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.file-services"), "File Services", "1.0.0", "🗄", "Manage the host SMB control plane",
-        [AppPermissions.ServerFileServicesRead, AppPermissions.ServerFileServicesManage], ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.FileServices]), InstancePolicy: ApplicationInstancePolicy.SingleWindow);
+        [AppPermissions.ServerFileServicesRead, AppPermissions.ServerFileServicesManage, AppPermissions.ServerComponentsRead], ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.FileServices]), InstancePolicy: ApplicationInstancePolicy.SingleWindow);
     public override void Activate(AppContext context)
     {
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
@@ -32,8 +32,8 @@ public sealed class FileServicesApp : RemoteApplicationBase
         bool IsWindowSessionCurrent() => session.State == AuthSessionState.Authenticated
             && session.ServiceId == windowService && windowUser is not null && windowSession is not null
             && ReferenceEquals(session.CurrentUser, windowUser) && ReferenceEquals(session.CurrentSession, windowSession);
-        var vm = new FileServicesViewModel(client, context.Permissions, IsWindowSessionCurrent);
-        vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Smb, "relaxkonos.file-services", () => vm.RefreshCommand.ExecuteAsync(null));
+        var dependency = ComponentCenter.ComponentDependencySettingsViewModel.Create(context, "relaxkonos.file-services");
+        var vm = new FileServicesViewModel(client, context.Permissions, IsWindowSessionCurrent) { Dependency = dependency };
         var workspace = new FileServicesWorkspace(vm);
         void SessionChanged(object? sender, AuthSessionStateChangedEventArgs args)
         {
@@ -47,8 +47,8 @@ public sealed class FileServicesApp : RemoteApplicationBase
             session.StateChanged += SessionChanged;
             if (!IsWindowSessionCurrent()) vm.InvalidateWindowSession();
         };
-        workspace.DetachedFromVisualTree += (_, _) => session.StateChanged -= SessionChanged;
-        var window = context.ShowWindow(LocalizedText.Get("file_services.title"), InstallationPanel.Wrap(workspace, vm.Installation), new Rect(90, 80, 960, 720), Manifest.IconGlyph);
+        workspace.DetachedFromVisualTree += (_, _) => { session.StateChanged -= SessionChanged; dependency.Dispose(); };
+        var window = context.ShowWindow(LocalizedText.Get("file_services.title"), workspace, new Rect(90, 80, 960, 720), Manifest.IconGlyph);
         workspace.AttachWindowHeader(window);
         vm.RequestHostAdministratorCredentialsAsync = async error =>
         {

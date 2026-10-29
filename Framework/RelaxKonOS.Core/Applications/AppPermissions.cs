@@ -1,4 +1,4 @@
-namespace RelaxKonOS.Core.Applications;
+﻿namespace RelaxKonOS.Core.Applications;
 
 /// <summary>Capabilities an application can request from the RelaxKonOS host.</summary>
 public static class AppPermissions
@@ -34,6 +34,8 @@ public static class AppPermissions
     public const string ServerTunnelsManage = "server.tunnels.manage";
     public const string ServerRegistryRead = "server.registry.read";
     public const string ServerRegistryWrite = "server.registry.write";
+    public const string ServerComponentsRead = "server.components.read";
+    public const string ServerComponentsManage = "server.components.manage";
     public const string ServerProxyRead = "server.proxy.read";
     public const string ServerProxyServerExport = "server.proxy-server.export";
     public const string ServerProxyManage = "server.proxy.manage";
@@ -84,6 +86,8 @@ public static class AppPermissions
         new(ServerTunnelsManage, "Manage tunnels", "Create, change, apply, stop, and delete server tunnel configuration and FRP runtime settings.", "server_network"),
         new(ServerRegistryRead, "Read configuration registry", "Browse supported RelaxKonOS configuration values and their synchronization state.", "server_management"),
         new(ServerRegistryWrite, "Modify configuration registry", "Change supported RelaxKonOS configuration values through the registry workflow.", "server_management"),
+        new(ServerComponentsRead, "Read host components", "View component installation state, approved versions and operation records.", "server_management"),
+        new(ServerComponentsManage, "Manage host components", "Plan and submit authorized component installations and recovery actions.", "server_management"),
         new(ServerProxyRead, "Read proxy status", "View safe proxy runtime, health, and sanitized diagnostics.", "server_network"),
         new(ServerProxyServerExport, "Export proxy credentials", "Reveal proxy server connection credentials and client configurations.", "server_network"),
         new(ServerProxyManage, "Manage proxy", "Manage proxy lifecycle and safe engine configuration.", "server_network"),

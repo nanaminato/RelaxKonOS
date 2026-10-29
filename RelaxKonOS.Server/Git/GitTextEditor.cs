@@ -32,11 +32,9 @@ public sealed class GitTextEditor(IGitRepositoryService repositories, IFileServi
             || relativePath.Split('/').Any(part => part is "" or "." or ".."
                 || part.Equals(".git", StringComparison.OrdinalIgnoreCase)))
             throw new ArgumentException("Invalid Git text path.");
-        var root = Path.GetFullPath(repository.Path);
+        var root = PathSafety.Normalize(repository.Path);
         var target = Path.GetFullPath(Path.Combine(root, relativePath));
-        var resolvedRelative = Path.GetRelativePath(root, target);
-        if (resolvedRelative is "." or ".." || Path.IsPathRooted(resolvedRelative)
-            || resolvedRelative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+        if (string.Equals(root, PathSafety.Normalize(target), PathSafety.Comparison) || !PathSafety.IsWithin(root, target))
             throw new ArgumentException("Git text path leaves the repository.");
         // A repository entry may itself be a symlink; an edited child may not be. The actual
         // content read/write still goes through the effective-user file service.

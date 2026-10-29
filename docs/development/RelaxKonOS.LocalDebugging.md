@@ -18,7 +18,7 @@ Repo 里存在 **两条互相独立**的执行通道，它们对服务/提权的
 
 | 通道 | 承载功能 | Windows 机制 | Linux 机制 | 本地调试能否绕开服务 |
 | --- | --- | --- | --- | --- |
-| 特权通道 `IPrivilegedOperationTransport` | 防火墙、SMB、系统服务、主机名/时区/环境、软件包、提权文件 | 本机命名管道 → Service / `--console` Helper | 每个请求 `sudo -n <helper>` 一次性 root worker | **能**：只在需要验证特权功能时才启动 |
+| 特权通道 `IPrivilegedOperationTransport` | 防火墙、SMB、系统服务、主机名/时区/环境、软件包、提权文件 | 本机命名管道 → Service / `--console` Helper | 本机 Unix socket → 常驻 root Helper（systemd 单元）；未配置 socket 时回退到 `sudo -n` 一次性 worker | **能**：只在需要验证特权功能时才启动 Helper |
 | 有效用户通道 `IUserExecutionTransport` | 文件浏览/读写、上传、媒体租约、后台文件作业、Git、Terminal | `<pipe>-user` 管道 → **LocalSystem** Helper 的 MSV1_0 S4U 令牌 | `sudo -n <helper> --user-execution` 一次性降权 worker | Windows **不能**，Linux 能 |
 
 Linux 侧的"有效用户"通道是一条按请求派生的一次性降权进程，Server 不需要提权、也不需要有常驻进程，因此

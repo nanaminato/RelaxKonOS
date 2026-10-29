@@ -24,6 +24,9 @@ public sealed record GitLogFilterOption(string Value, string Label);
 /// Each window owns its own ViewModel instance — supports multiple projects open simultaneously (MultiWindow instance policy).</summary>
 public sealed partial class GitClientViewModel(IRemoteGitClient client) : ObservableObject
 {
+    /// <summary>Git installation lives in Component Center; settings only observes and navigates.</summary>
+    public ComponentCenter.ComponentDependencySettingsViewModel? Dependency { get; init; }
+
     public Func<GitRepositoryDto, Task<bool>>? OpenEditorProjectAsync { get; set; }
     public Func<string, Task>? OpenPlainFolderAsync { get; set; }
     public Func<Task<bool>>? PrepareEditorOperationAsync { get; set; }
@@ -39,7 +42,6 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
         try { return await (PrepareEditorOperationAsync?.Invoke() ?? Task.FromResult(true)); }
         finally { _preparingEditor = false; }
     }
-    public InstallationTaskViewModel Installation { get; set; } = null!;
 
     public ObservableCollection<GitRepositoryDto> Repositories { get; } = [];
     public ObservableCollection<GitBranchDto> Branches { get; } = [];
@@ -58,12 +60,8 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
     public ObservableCollection<GitLogFilterOption> LogBranchOptions { get; } = [];
     public ObservableCollection<GitLogFilterOption> LogAuthorOptions { get; } = [];
     public ObservableCollection<GitLogFilterOption> LogDateOptions { get; } =
-    [
-        new("all", "全部时间"),
-        new("today", "今天"),
-        new("week", "过去 7 天"),
-        new("month", "过去 30 天"),
-    ];
+        [.. new[] { "all", "today", "week", "month" }
+            .Select(range => new GitLogFilterOption(range, LocalizedText.Get($"git.editor.date_{range}")))];
 
     /// <summary>Files shown in the Changes list (union of unstaged + untracked, excluding .gitignored).</summary>
     public ObservableCollection<GitFileChangeItem> Changes { get; } = [];
@@ -146,7 +144,8 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
         ? string.Empty
         : LocalizedText.Format("git.dialog.push.branch_line_format", PushLocalBranchName, PushSelectedRemote, PushSelectedBranch);
     public int PushFileCount => PushChangedFiles.Count;
-    public int PushCommitCount => PushCommits.Count;
+    /// <summary>Ahead total reported by the server; the materialized <see cref="PushCommits"/> list is capped.</summary>
+    public int PushCommitCount => _pushAheadCount;
     public bool PushHasCommits => PushCommits.Count > 0;
 
     // ── 项目选择器状态：IsPickerMode=true 时显示项目选择视图而非工作区 ──
@@ -167,12 +166,9 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
     // ── Host Git engine status & install flow (like DockerManagerViewModel) ──
     [ObservableProperty] private bool _isGitAvailable = true;
     [ObservableProperty] private bool _isGitInstallRequired;
-    [ObservableProperty] private bool _canAutoInstall;
     [ObservableProperty] private string _engineVersion = "—";
     [ObservableProperty] private string _enginePath = "—";
     [ObservableProperty] private string _problemCode = string.Empty;
-    [ObservableProperty] private bool _isInstalling;
-    [ObservableProperty] private string _installMessage = string.Empty;
 
     private DispatcherTimer? _timer;
     private DispatcherTimer? _logFilterTimer;
@@ -230,7 +226,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
 
     /// <summary>Shows the credential prompt as a child of the push preview dialog. Returned credentials
     /// are used only by the retry request and are never retained by this view model.</summary>
-    public Func<ManagedWindow?, Task<GitCredentialRequest?>>? ShowGitCredentialsDialogAsync { get; set; }
+    public Func<ManagedWindow?, string?, Task<GitCredentialRequest?>>? ShowGitCredentialsDialogAsync { get; set; }
 
     public bool HasUpstream => Status?.Upstream is not null;
     public bool CanManage => SelectedRepository is not null && !IsBusy;
@@ -418,27 +414,20 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             ProblemCode = status.ProblemCode ?? string.Empty;
             EngineVersion = string.IsNullOrWhiteSpace(status.Version) ? "—" : status.Version;
             EnginePath = string.IsNullOrWhiteSpace(status.ExecutablePath) ? "—" : status.ExecutablePath;
-            CanAutoInstall = status.CanAutoInstall;
             IsGitInstallRequired = IsInstallRequired(IsGitAvailable, ProblemCode);
-            InstallEngineCommand.NotifyCanExecuteChanged();
-        }
+            }
         catch (Exception ex)
         {
             IsGitAvailable = false;
             ProblemCode = "error";
             EngineVersion = "—";
             EnginePath = "—";
-            CanAutoInstall = false;
             IsGitInstallRequired = false;
             StatusText = LocalizedText.Ref("git.vm.engine_check_failed_format", ex.Message);
         }
     }
 
-    private bool CanInstallEngine => !IsInstalling && CanAutoInstall && !IsGitAvailable;
 
-    [RelayCommand(CanExecute = nameof(CanInstallEngine))]
-    private Task InstallEngineAsync() => Installation.SubmitAsync(InstallationOperationKind.Install, new GitInstallationRequest(true));
-    public Task RefreshInstallationAsync() => RefreshEngineStatusAsync();
 
     private static bool IsInstallRequired(bool isAvailable, string problemCode)
     {

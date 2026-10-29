@@ -35,9 +35,43 @@ import java.io.InputStream
  * returned a default.
  */
 class FakeGateway : RelaxKonGateway {
+    override suspend fun tailscaleStatus(serverUrl: String, accessToken: String): ApiResult<TailscaleStatus> = error("Unexpected Tailscale status")
+    override suspend fun prepareTailscaleLogin(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleLoginOperation> = error("Unexpected Tailscale login prepare")
+    override suspend fun executeTailscaleLogin(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleLoginOperation> = error("Unexpected Tailscale login execute")
+    override suspend fun tailscaleLoginOperation(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleLoginOperation> = error("Unexpected Tailscale login operation")
+    override suspend fun tailscaleLoginChallenge(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleLoginChallenge> = error("Unexpected Tailscale login challenge")
+    override suspend fun tailscaleLoginRecovery(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleLoginRecovery> = error("Unexpected Tailscale login recovery")
+    override suspend fun closeTailscaleLogin(serverUrl: String, accessToken: String, id: String, revision: String): ApiResult<TailscaleLoginOperation> = error("Unexpected Tailscale login close")
+    override suspend fun tailscaleControl(serverUrl: String, accessToken: String): ApiResult<TailscaleControl> = error("Unexpected Tailscale control")
+    override suspend fun prepareTailscale(serverUrl: String, accessToken: String, request: TailscalePlanRequest): ApiResult<TailscaleOperation> = error("Unexpected Tailscale prepare")
+    override suspend fun executeTailscale(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleOperation> = error("Unexpected Tailscale execute")
+    override suspend fun tailscaleOperation(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleOperation> = error("Unexpected Tailscale operation")
+    override suspend fun tailscaleRecovery(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleRecovery> = error("Unexpected Tailscale recovery")
+    override suspend fun closeTailscale(serverUrl: String, accessToken: String, id: String, revision: String): ApiResult<TailscaleOperation> = error("Unexpected Tailscale close")
     var onManagedRuntime: (suspend (String, String, JsonBody?, String?) -> ApiResult<String>)? = null
     override suspend fun managedRuntime(serverUrl: String, accessToken: String, method: String, route: String,
         body: JsonBody?, key: String?): ApiResult<String> = requireHandler(onManagedRuntime, "managedRuntime")(method, route, body, key)
+
+    var onComponentState: (suspend (String) -> ApiResult<ComponentStateView>)? = null
+    override suspend fun componentState(serverUrl: String, accessToken: String, componentId: String): ApiResult<ComponentStateView> =
+        requireHandler(onComponentState, "componentState")(componentId)
+
+    var onComponentPlan: (suspend (String, ComponentChange, JsonBody) -> ApiResult<ComponentPlanResult>)? = null
+    override suspend fun componentPlan(serverUrl: String, accessToken: String, componentId: String,
+        change: ComponentChange, body: JsonBody): ApiResult<ComponentPlanResult> =
+        requireHandler(onComponentPlan, "componentPlan")(componentId, change, body)
+
+    var onCurrentNginx: (suspend () -> ApiResult<String?>)? = null
+    override suspend fun currentNginx(serverUrl: String, accessToken: String): ApiResult<String?> =
+        requireHandler(onCurrentNginx, "currentNginx")()
+
+    var onSelectCurrentNginx: (suspend (String) -> ApiResult<String?>)? = null
+    override suspend fun selectCurrentNginx(serverUrl: String, accessToken: String, serverId: String): ApiResult<String?> =
+        requireHandler(onSelectCurrentNginx, "selectCurrentNginx")(serverId)
+
+    var onWebServers: (suspend () -> ApiResult<List<WebServer>>)? = null
+    override suspend fun webServers(serverUrl: String, accessToken: String): ApiResult<List<WebServer>> =
+        requireHandler(onWebServers, "webServers")()
 
     var onHostTime: (suspend () -> ApiResult<HostTimeSettings>)? = null
     var onHostIdentity: (suspend () -> ApiResult<HostIdentitySettings>)? = null
@@ -183,6 +217,7 @@ class FakeGateway : RelaxKonGateway {
     override suspend fun squidPreview(serverUrl: String, accessToken: String, configuration: SquidConfiguration): ApiResult<SquidPreview> = onSquidPreview(configuration)
     var onSquidValidate: suspend (SquidConfiguration) -> ApiResult<SquidValidation> = { _ -> error("Unexpected Squid call") }
     override suspend fun squidValidate(serverUrl: String, accessToken: String, configuration: SquidConfiguration): ApiResult<SquidValidation> = onSquidValidate(configuration)
+    override suspend fun squidAccounts(serverUrl: String, accessToken: String): ApiResult<List<SquidAccount>> = ApiResult.Success(emptyList())
     var onSquidQueue: suspend (SquidRequest, String) -> ApiResult<String> = { _, _ -> error("Unexpected Squid call") }
     override suspend fun squidQueue(serverUrl: String, accessToken: String, request: SquidRequest, key: String): ApiResult<String> = onSquidQueue(request, key)
 
@@ -208,6 +243,8 @@ class FakeGateway : RelaxKonGateway {
     override suspend fun proxyServerUpgrade(serverUrl: String, accessToken: String, version: String, idempotencyKey: String): ApiResult<String> = onProxyServerUpgrade(version, idempotencyKey)
     var onProxyServerUninstall: suspend (Boolean, String) -> ApiResult<String> = { _, _ -> error("Unexpected Proxy Server call") }
     override suspend fun proxyServerUninstall(serverUrl: String, accessToken: String, keepData: Boolean, idempotencyKey: String): ApiResult<String> = onProxyServerUninstall(keepData, idempotencyKey)
+    var onProxyServerSaveConfiguration: suspend (SaveProxyServerConfiguration, String) -> ApiResult<String> = { _, _ -> error("Unexpected configuration save") }
+    override suspend fun proxyServerSaveConfiguration(serverUrl: String, accessToken: String, request: SaveProxyServerConfiguration, idempotencyKey: String) = onProxyServerSaveConfiguration(request, idempotencyKey)
     var onProxyServerSavePrincipal: suspend (String?, SaveProxyServerPrincipal, String) -> ApiResult<String> = { _, _, _ -> error("Unexpected Proxy Server call") }
     override suspend fun proxyServerSavePrincipal(serverUrl: String, accessToken: String, id: String?, request: SaveProxyServerPrincipal, idempotencyKey: String): ApiResult<String> = onProxyServerSavePrincipal(id, request, idempotencyKey)
     var onProxyServerDeletePrincipal: suspend (String, String) -> ApiResult<String> = { _, _ -> error("Unexpected Proxy Server call") }

@@ -8,6 +8,7 @@
 | --- | --- |
 | [产品、架构与交互](design/Product.Design.md) | 原生架构、导航、自适应布局、多语言、主题与无障碍 |
 | [Shell、认证与安全](design/Shell.Design.md) | 路由、返回栈、会话、提权与凭据安全 |
+| [应用桌面与最近服务器登录](design/ApplicationDesktop.md) | 登录摘要、应用图标网格与四项主导航 |
 | [登录与本地凭据](design/LoginCredentials.Design.md) | 身份识别、凭据保存与失效、密码生命周期 |
 | [移动端包方案](design/ApplicationPackages.Design.md) | 包类型、权限、版本、更新与移除，以及桌面包的支持范围 |
 | [移动端功能精简](design/MobileSimplification.md) | 精简判断、当前移除边界及待评估建议 |
@@ -33,11 +34,13 @@
 | [Nginx 管理](features/Nginx.md) | 安装来源、实例发现与接管、维护、卸载与恢复 |
 | [站点管理](features/WebSites.md) | 静态站点、SPA、反向代理、版本冲突与提交结果核实 |
 | [证书管理](features/Certificates.md) | ACME 与自签名证书、续期、部署与任务恢复 |
-| [Squid HTTP 代理网关](features/Squid.md) | 监听、ACL、HTTP parent、校验发布、服务控制与待确认操作恢复 |
-| [代理服务端](features/ProxyServer.md) | sing-box 运行时、发布与回滚、凭据、导出与订阅 |
+| [Squid HTTP 代理网关](features/Squid.md) | 监听、ACL、HTTP parent、代理账号、软件包安装／卸载、校验发布与操作恢复 |
+| [代理服务端](features/ProxyServer.md) | sing-box 入站、签名版本目录与计划、事务恢复、发布与回滚、凭据、二维码与订阅 |
 | [Mihomo 代理管理器](features/Proxy.md) | 运行时安装、配置、订阅、节点与操作恢复 |
 | [SMB 文件服务](features/Smb.md) | 安装、共享、权限、凭据与操作结果核实 |
 | [宿主防火墙](features/Firewall.md) | 状态、默认策略、规则、提权与变更结果核实 |
+| [Tailscale](features/Tailscale.md) | 远端宿主状态、设备列表、连接配置、首次登录与原操作恢复 |
+| [组件中心](features/ComponentCenter.md) | 宿主组件状态、安装/更新/卸载、当前 Nginx 选择与恢复入口 |
 | [FRP 隧道与运行时](features/Tunnels.md) | 运行时安装、隧道与服务端配置、维护、审计与恢复 |
 | [网站发布](features/WebPublishing.md) | 诊断、HTTPS 确认、发布恢复与访问检查 |
 | [终端、脚本与守护](features/TerminalAutomation.md) | Server 与 SSH 会话、终端布局、脚本与远端任务 |
@@ -55,11 +58,9 @@
 | --- | --- |
 | [构建、调试与发布](development/android-release.md) | 本地环境、签名机、APK/AAB、导入发布与渠道证书 |
 | [验证要求](development/Verification.md) | 设备、宿主、文件传输及故障场景的检查与预期行为 |
-| [界面与流程专项审查](development/UiReview.md) | 本次用户要求的逐页审查流程与总进度 |
+| [界面与流程复审要求](development/UiReview.md) | 当前界面重新审查的方法与范围 |
 
 ## 维护规则
-
-本次用户明确要求的界面审查与进度追踪是下述一般生命周期规则的专项例外，集中维护在 [UiReview.md](development/UiReview.md)。
 
 设计文档描述当前规则，功能文档描述实际入口、交互、授权和错误恢复，支持范围明确当前边界，开发文档描述构建、发布及验证方法。不维护目标表、阶段编号、推进顺序、完成率或测试执行流水账。功能变化时同步修改对应说明，历史由 Git 保存。共享 Protocol/Server 语义链接仓库领域文档，不复制 Android 详细文档到仓库级目录。
 

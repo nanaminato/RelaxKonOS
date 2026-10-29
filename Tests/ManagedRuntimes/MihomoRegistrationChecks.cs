@@ -18,7 +18,12 @@ internal static class MihomoRegistrationChecks
         using var temporary = new TemporaryDirectory();
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
             { ApplicationName = typeof(MihomoRegistrationChecks).Assembly.GetName().Name, ContentRootPath = temporary.Path, EnvironmentName = "Testing" });
-        builder.AddProxyServices();
+        // Host backbone first (runtime, publication ledger, settings), then the proxy module's own
+        // surface: the profile/subscription/configuration services moved there, so this fixture has to
+        // register the same pair the Host does instead of the old single AddProxyServices call.
+        builder.AddProxyRuntimeServices();
+        new RelaxKonOS.Server.Startup.Modules.ProxyModule().ConfigureServices(builder,
+            ServerModuleContext.Create(builder.Configuration, builder.Environment, "sqlite"));
         builder.AddDeploymentServices();
         var database = System.IO.Path.Combine(temporary.Path, "registration.db");
         builder.Services.Configure<RelaxKonOS.Server.Storage.StorageOptions>(options => options.DatabasePath = database);

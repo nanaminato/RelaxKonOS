@@ -14,34 +14,34 @@ public sealed class HostAdministratorAuthenticator(IIdentityProvider identities,
     public HostAdministratorAuthenticationResult Authenticate(string currentUsername, string? administratorUsername, string? password)
     {
         if (serverMode.Mode == ServerMode.User)
-            return new(false, "privileged-feature-unavailable", "none");
-        if (string.IsNullOrWhiteSpace(password)) return new(false, "elevation-password-required", "none");
+            return new(false, "privileged-feature-unavailable", "none", null);
+        if (string.IsNullOrWhiteSpace(password)) return new(false, "elevation-password-required", "none", null);
         if (OperatingSystem.IsWindows())
             return AuthenticateWindows(string.IsNullOrWhiteSpace(administratorUsername) ? currentUsername : administratorUsername.Trim(), password);
-        if (!OperatingSystem.IsLinux()) return new(false, "host-administrator-authentication-unsupported", "none");
+        if (!OperatingSystem.IsLinux()) return new(false, "host-administrator-authentication-unsupported", "none", null);
 
         var administrator = string.IsNullOrWhiteSpace(administratorUsername) ? currentUsername : administratorUsername.Trim();
         var verification = identities.Verify(administrator, password);
         if (verification.Error == CredentialError.Unknown)
-            return new(false, "host-administrator-authentication-unavailable", "none");
+            return new(false, "host-administrator-authentication-unavailable", "none", null);
         if (!verification.Success || verification.Identity is not { } identity)
-            return new(false, "elevation-password-invalid", "none");
+            return new(false, "elevation-password-invalid", "none", null);
         try
         {
             return privileges.Classify(identity) is HostAccountPrivilege.HostAdministrator or HostAccountPrivilege.HostRoot
-                ? new(true, string.Empty, "linux-pam-administrator")
-                : new(false, "elevation-account-not-administrator", "none");
+                ? new(true, string.Empty, "linux-pam-administrator", "linux:" + identity.Uid)
+                : new(false, "elevation-account-not-administrator", "none", null);
         }
         catch (InvalidOperationException)
         {
-            return new(false, "host-administrator-authentication-unavailable", "none");
+            return new(false, "host-administrator-authentication-unavailable", "none", null);
         }
     }
 
     [SupportedOSPlatform("windows")]
     private static HostAdministratorAuthenticationResult AuthenticateWindows(string username, string password)
     {
-        if (string.IsNullOrWhiteSpace(username)) return new(false, "elevation-administrator-username-required", "none");
+        if (string.IsNullOrWhiteSpace(username)) return new(false, "elevation-administrator-username-required", "none", null);
         ParseUsername(username, out var account, out var domain);
         IntPtr token = IntPtr.Zero;
         try
@@ -50,15 +50,17 @@ public sealed class HostAdministratorAuthenticator(IIdentityProvider identities,
             // strip local administrative membership without supplying a linked UAC token.
             // This validates credentials only; the token never starts a process or impersonates.
             if (!LogonUser(account, domain, password, Logon32LogonInteractive, Logon32ProviderDefault, out token))
-                return new(false, "elevation-password-invalid", "none");
+                return new(false, "elevation-password-invalid", "none", null);
             using var identity = new WindowsIdentity(token);
+            var sid = identity.User?.Value;
+            if (string.IsNullOrWhiteSpace(sid)) return new(false, "host-administrator-authentication-unavailable", "none", null);
             return WindowsAdministratorMembership.IsAdministratorOrCanElevate(identity)
-                ? new(true, string.Empty, "windows-logonuser-administrators")
-                : new(false, "elevation-account-not-administrator", "none");
+                ? new(true, string.Empty, "windows-logonuser-administrators", "windows:" + sid)
+                : new(false, "elevation-account-not-administrator", "none", null);
         }
         catch (Exception exception) when (exception is PlatformNotSupportedException or UnauthorizedAccessException)
         {
-            return new(false, "host-administrator-authentication-unavailable", "none");
+            return new(false, "host-administrator-authentication-unavailable", "none", null);
         }
         finally
         {

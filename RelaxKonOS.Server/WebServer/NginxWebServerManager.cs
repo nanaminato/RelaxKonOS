@@ -38,9 +38,9 @@ internal sealed partial class NginxWebServerManager(
     private const string OwnedFileName = "relaxkonos.conf";
     private const string AcmeEnabledFileName = "acme-http01.enabled";
     private const string OwnershipMarker = "# Managed by RelaxKonOS. Do not edit.";
-    private const string ManagedMarkerName = ".relaxkonos-managed";
+    private const string ManagedMarkerName = NginxManagedPaths.MarkerName;
     private const string LinuxSystemIncludeDirectory = "/etc/nginx/conf.d";
-    private const string ManagedMarkerContent = "RelaxKonOS owns this Nginx installation. Do not move this marker.\n";
+    private const string ManagedMarkerContent = NginxManagedPaths.MarkerContent;
     private static readonly JsonSerializerOptions SiteJson = new(JsonSerializerDefaults.Web) { WriteIndented = true };
     private static readonly string LegacyOwnedContent = $"{OwnershipMarker}\n# RelaxKonOS-owned Nginx integration anchor.\n";
     private static readonly string PreviousOwnedContent = $"{OwnershipMarker}\n# RelaxKonOS-owned Nginx integration anchor.\ninclude relaxkonos.d/*.conf;\n";

@@ -53,7 +53,7 @@ private class MirrorLeaveReview(val editor: Any, val draft: MirrorDraft, val act
     var draftEditor by remember(owner) { mutableStateOf(Any()) }
     val confirmation = model.confirmation?.takeIf { it.owner === owner }
     var leave by remember(owner) { mutableStateOf<MirrorLeaveReview?>(null) }
-    var install by remember(owner) { mutableStateOf(false) }; val cancel = model.installationCancellation?.takeIf { it.owner === owner }
+    val cancel = model.installationCancellation?.takeIf { it.owner === owner }
     val recovery = model.recoveryForm?.takeIf { it.owner === owner }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var lifecycleEpoch by remember(owner, lifecycle) { mutableIntStateOf(0) }
@@ -63,7 +63,7 @@ private class MirrorLeaveReview(val editor: Any, val draft: MirrorDraft, val act
     val currentInteraction = { currentActive.value && currentOwner.value === owner && model.state.owner === owner &&
         lifecycleEpoch == observationEpoch && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
     DisposableEffect(owner, lifecycle, active) {
-        fun withdraw() { model.withdrawReviews(owner); leave = null; install = false }
+        fun withdraw() { model.withdrawReviews(owner); leave = null }
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE) { withdraw(); lifecycleEpoch++ }
             if (event == Lifecycle.Event.ON_RESUME) lifecycleEpoch++
@@ -136,12 +136,6 @@ WorkspaceSection(!mirrorsOnly && !recordsOnly) {
                     OutlinedButton(enabled = ready && draft == null && (action == DockerEngineAction.Start || facts.status.available),
                         onClick = { model.requestChange(requireNotNull(owner), facts, DockerControlChange(kind)) }) { Text(controlActionLabel(kind)) }
                 }
-                if (manage && owner.serverPlatform.equals("linux", true) && (!facts.status.available && facts.status.problemCode == "docker.not_installed" || state.pendingInstallation)) {
-                    OutlinedButton(enabled = !state.busy && draft == null && state.pending.isEmpty() && state.installation?.state?.active != true &&
-                        (state.installation == null || state.installationVerified || state.pendingInstallation), onClick = { install = true }) {
-                        Text(stringResource(if (state.pendingInstallation) R.string.common_retry else R.string.docker_control_install))
-                    }
-                }
             }
         }
         }
@@ -173,8 +167,7 @@ WorkspaceSection(!mirrorsOnly && !recordsOnly) {
                 } }
             }
         }
-        if (visible && state.pendingInstallation && manage) OutlinedButton(enabled = !state.busy && state.pending.isEmpty() && state.installation?.state?.active != true && (state.installation == null || state.installationVerified || state.pendingInstallation), onClick = { install = true }) { ActionLabel(R.string.common_retry) }
-                if (visible && state.pendingInstallation) Text(stringResource(R.string.installation_pending, installationServiceLabel(InstallationService.Docker), installationKindLabel(InstallationKind.Install)), color = MaterialTheme.colorScheme.error)
+        if (visible && state.pendingInstallation) Text(stringResource(R.string.installation_pending, installationServiceLabel(InstallationService.Docker), installationKindLabel(InstallationKind.Install)), color = MaterialTheme.colorScheme.error)
         key(observationEpoch, state.feedbackVersion) {
             if (manage) TextButton(enabled = !state.busy, onClick = {
                 if (currentInteraction() && model.state.feedbackVersion == state.feedbackVersion) model.requestRecovery(requireNotNull(owner))
@@ -268,8 +261,6 @@ WorkspaceSection(mirrorsOnly) {
             }) { Text(stringResource(R.string.docker_control_confirm)) } },
             dismissButton = { TextButton(onClick = continueEditing) { Text(stringResource(R.string.common_cancel)) } })
     } }
-    if (active && install) AlertDialog(onDismissRequest = { install = false }, title = { Text(stringResource(R.string.docker_control_install)) }, text = { Text(stringResource(R.string.docker_control_install_note)) },
-        confirmButton = { Button(enabled = !state.busy, onClick = { install = false; model.install() }) { Text(stringResource(R.string.docker_control_confirm)) } }, dismissButton = { TextButton(onClick = { install = false }) { Text(stringResource(R.string.common_cancel)) } })
     if (active) cancel?.let { request -> AlertDialog(onDismissRequest = { model.dismissInstallationCancellation(request) }, title = { Text(stringResource(R.string.operations_request_cancel)) },
         text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text(request.operation.operationId); Text(stringResource(R.string.operations_cancel_explanation)) } },
         confirmButton = { Button(enabled = !state.busy && owner === request.owner && state.installationVerified && state.installation == request.operation && request.operation.state.active && request.operation.cancellable,

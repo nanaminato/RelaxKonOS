@@ -1,0 +1,419 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:web="clr-namespace:RelaxKonOS.Client.Apps.WebServers.Views"
+ xmlns:mr="clr-namespace:RelaxKonOS.Protocol.ManagedRuntimes;assembly=RelaxKonOS.Protocol"
+ xmlns:loc="using:RelaxKonOS.Client.Localization"
+ xmlns:views="using:RelaxKonOS.Client.Apps.ProxyServer.Views"
+ xmlns:vm="using:RelaxKonOS.Client.Apps.ComponentCenter"
+ x:Class="RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterWorkspace"
+ x:DataType="vm:ComponentCenterViewModel" Classes="builtin-app"
+ Background="{DynamicResource AppBackgroundBrush}">
+ <!-- One vocabulary for the whole page: a quiet surface, flat section labels, and tone-coloured
+      status text. Nothing here grants a capability; disabled actions stay visible and explained. -->
+ <UserControl.Styles>
+  <Style Selector="TextBlock.rail-label">
+   <Setter Property="FontSize" Value="11" /><Setter Property="FontWeight" Value="SemiBold" />
+   <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" />
+   <Setter Property="Margin" Value="2,0,0,4" />
+  </Style>
+  <Style Selector="Border.meta-chip">
+   <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+   <Setter Property="CornerRadius" Value="5" /><Setter Property="Padding" Value="7,2" />
+  </Style>
+  <Style Selector="Border.meta-chip TextBlock">
+   <Setter Property="FontSize" Value="11" /><Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="Border.meta-chip.accent TextBlock"><Setter Property="Foreground" Value="{DynamicResource AccentBrush}" /></Style>
+  <Style Selector="Border.status-chip">
+   <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+   <Setter Property="CornerRadius" Value="4" /><Setter Property="Padding" Value="6,1" />
+   <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.status-chip TextBlock">
+   <Setter Property="FontSize" Value="11" /><Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="Border.status-chip.ok TextBlock"><Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" /></Style>
+  <Style Selector="Border.status-chip.warn TextBlock"><Setter Property="Foreground" Value="{DynamicResource WarningBrush}" /></Style>
+  <Style Selector="Border.status-chip.bad TextBlock"><Setter Property="Foreground" Value="{DynamicResource DangerBrush}" /></Style>
+  <Style Selector="Border.status-chip.accent TextBlock"><Setter Property="Foreground" Value="{DynamicResource AccentBrush}" /></Style>
+  <Style Selector="TextBlock.field-label">
+   <Setter Property="FontSize" Value="11" /><Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" />
+  </Style>
+  <Style Selector="TextBlock.field-value">
+   <Setter Property="FontSize" Value="13" /><Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <Style Selector="TextBlock.section-title">
+   <Setter Property="FontSize" Value="15" /><Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="TextBlock.section-hint">
+   <Setter Property="FontSize" Value="12" /><Setter Property="TextWrapping" Value="Wrap" />
+   <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" />
+  </Style>
+  <Style Selector="Border.panel-card">
+   <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+   <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+   <Setter Property="BorderThickness" Value="1" />
+   <Setter Property="CornerRadius" Value="8" />
+   <Setter Property="Padding" Value="20,18" />
+  </Style>
+  <Style Selector="TreeView.tree-compact TreeViewItem">
+   <Setter Property="MinHeight" Value="0" /><Setter Property="Padding" Value="0" />
+  </Style>
+  <Style Selector="ListBox.page-nav">
+   <Setter Property="Background" Value="Transparent" /><Setter Property="Padding" Value="0" />
+   <Setter Property="BorderThickness" Value="0" />
+  </Style>
+  <Style Selector="ListBox.page-nav > ListBoxItem">
+   <Setter Property="MinHeight" Value="32" /><Setter Property="Padding" Value="10,0" />
+   <Setter Property="CornerRadius" Value="6" /><Setter Property="Margin" Value="0,1" />
+   <Setter Property="FontSize" Value="13" />
+  </Style>
+  <Style Selector="ListBox.page-nav > ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+   <Setter Property="Background" Value="{DynamicResource SelectionBackgroundBrush}" />
+  </Style>
+ </UserControl.Styles>
+
+ <Grid RowDefinitions="Auto,*">
+  <!-- App bar: identity on the left, exactly one refresh affordance on the right. -->
+  <Border Classes="app-header" Padding="20,14">
+   <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+    <Border Width="38" Height="38" CornerRadius="10" Background="{DynamicResource AccentMutedBrush}" VerticalAlignment="Center">
+     <TextBlock Text="⇄" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}"
+                HorizontalAlignment="Center" VerticalAlignment="Center" />
+    </Border>
+    <StackPanel Grid.Column="1" Spacing="5" VerticalAlignment="Center">
+     <TextBlock Text="{loc:Loc application.relaxkonos.component-center.display_name}" FontSize="18" FontWeight="SemiBold" />
+     <WrapPanel ItemSpacing="8" LineSpacing="4">
+      <TextBlock Text="{Binding HostIdentity}" FontSize="12" VerticalAlignment="Center"
+                 Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" MaxWidth="420" />
+      <Border Classes="meta-chip"><TextBlock Text="{Binding ConnectionText}" /></Border>
+      <Border Classes="meta-chip" IsVisible="{Binding HasTargetText}"><TextBlock Text="{Binding Runtime.TargetText}" /></Border>
+     </WrapPanel>
+     <TextBlock Text="{Binding HeaderOutcomeText}" TextWrapping="Wrap" IsVisible="{Binding HasHeaderOutcome}"
+                FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+    </StackPanel>
+    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+     <Button x:Name="OpenTasksButton" Content="{loc:Loc component_center.task_dialog.open}" Command="{Binding OpenTasksCommand}" />
+     <Button Classes="header-refresh" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc proxy_server.refresh}"
+             AutomationProperties.Name="{loc:Loc proxy_server.refresh}" IsEnabled="{Binding Runtime.CanRefreshSources}" />
+    </StackPanel>
+   </Grid>
+  </Border>
+
+  <Grid Grid.Row="1" ColumnDefinitions="272,*" RowDefinitions="Auto,*" x:Name="WorkspaceBody">
+   <ToggleButton x:Name="NavigationToggle" Grid.ColumnSpan="2" Content="{loc:Loc component_center.navigation_toggle}"
+                 IsVisible="False" IsCheckedChanged="NavigationToggle_Changed" Margin="12,8" HorizontalAlignment="Left" />
+   <Border x:Name="NavigationPane" Classes="app-sidebar" Padding="0" Grid.RowSpan="2">
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+     <Grid RowDefinitions="Auto,Auto,1,Auto,Auto,*" RowSpacing="0">
+      <Border Padding="12,14,12,4">
+       <TextBox x:Name="Search" PlaceholderText="{loc:Loc component_center.search}" Text="{Binding Search, Mode=TwoWay}" />
+      </Border>
+      <StackPanel Grid.Row="1" Margin="8,6,8,12" Spacing="1">
+       <TextBlock Classes="rail-label" Text="{loc:Loc component_center.browse}" Margin="10,0,0,6" />
+       <ListBox x:Name="PageNavigation" Classes="page-nav" ItemsSource="{Binding BrowsePages}" SelectedItem="{Binding SelectedNavigation, Mode=TwoWay}">
+        <ListBox.ItemTemplate>
+         <DataTemplate x:DataType="vm:ComponentCenterNavigationItem"><TextBlock Text="{Binding Label}" /></DataTemplate>
+        </ListBox.ItemTemplate>
+       </ListBox>
+      </StackPanel>
+      <Border Grid.Row="2" Background="{DynamicResource BorderSubtleBrush}" Margin="12,0" />
+      <StackPanel Grid.Row="3" Margin="14,12,14,6" Spacing="3">
+       <TextBlock Classes="rail-label" Text="{loc:Loc component_center.catalog_title}" />
+      </StackPanel>
+      <TextBlock Grid.Row="4" Text="{loc:Loc component_center.catalog_empty}" TextWrapping="Wrap" FontSize="11"
+                 Margin="12,0,12,6" Foreground="{DynamicResource TextTertiaryBrush}" IsVisible="{Binding !HasResults}" />
+      <TreeView Grid.Row="5" x:Name="ComponentTree" Classes="tree-compact" ItemsSource="{Binding VisibleRoots}"
+                SelectedItem="{Binding SelectedNode, Mode=TwoWay}" Background="Transparent">
+       <TreeView.Styles><Style Selector="TreeViewItem"><Setter Property="IsExpanded" Value="True" /></Style></TreeView.Styles>
+       <TreeView.ItemTemplate>
+        <TreeDataTemplate x:DataType="vm:ComponentTreeNode" ItemsSource="{Binding VisibleChildren}">
+         <Grid ColumnDefinitions="*" ColumnSpacing="6" Margin="0,5">
+          <StackPanel Spacing="3" HorizontalAlignment="Left">
+           <TextBlock Text="{Binding Label}" TextWrapping="Wrap" MaxWidth="164" FontSize="13" />
+           <WrapPanel ItemSpacing="6" LineSpacing="2" IsVisible="{Binding ShowStatus}">
+            <Border Classes="status-chip" Classes.ok="{Binding StatusOk}" Classes.warn="{Binding StatusWarning}" Classes.bad="{Binding StatusDanger}">
+             <TextBlock Text="{Binding Status}" />
+            </Border>
+            <Border Classes="status-chip accent" IsVisible="{Binding HasUpdate}">
+             <TextBlock Text="{loc:Loc component_center.badge.updates}" />
+            </Border>
+            <TextBlock Text="{Binding Version}" FontSize="11" FontFamily="Consolas" VerticalAlignment="Center"
+                       IsVisible="{Binding ShowVersion}" Foreground="{DynamicResource TextTertiaryBrush}" />
+           </WrapPanel>
+           <Border Classes="status-chip" IsVisible="{Binding ShowRequirement}" HorizontalAlignment="Left">
+            <TextBlock Text="{Binding Requirement}" />
+           </Border>
+          </StackPanel>
+         </Grid>
+        </TreeDataTemplate>
+       </TreeView.ItemTemplate>
+      </TreeView>
+     </Grid>
+    </ScrollViewer>
+   </Border>
+
+   <ScrollViewer x:Name="DetailsScroll" Grid.Column="1" Grid.RowSpan="2" Padding="20,16" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Spacing="14">
+     <!-- Component identity: what this is, what state the host reports, and where it is managed. -->
+     <Border Classes="panel-card" IsVisible="{Binding HasComponentDetails}">
+      <StackPanel Spacing="14">
+       <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+        <StackPanel Spacing="7">
+         <WrapPanel ItemSpacing="8" LineSpacing="4">
+          <TextBlock Text="{Binding SelectedComponentTitle}" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
+          <Border Classes="status-chip ok" IsVisible="{Binding SelectedToneOk}"><TextBlock Text="{Binding SelectedStatusText}" /></Border>
+          <Border Classes="status-chip warn" IsVisible="{Binding SelectedToneWarning}"><TextBlock Text="{Binding SelectedStatusText}" /></Border>
+          <Border Classes="status-chip bad" IsVisible="{Binding SelectedToneDanger}"><TextBlock Text="{Binding SelectedStatusText}" /></Border>
+          <Border Classes="status-chip" IsVisible="{Binding SelectedToneIdle}"><TextBlock Text="{Binding SelectedStatusText}" /></Border>
+          <Border Classes="status-chip accent" IsVisible="{Binding SelectedHasUpdate}"><TextBlock Text="{loc:Loc component_center.badge.updates}" /></Border>
+          <Border Classes="status-chip" IsVisible="{Binding HasSelectedVersion}">
+           <TextBlock Text="{Binding SelectedVersionText}" FontFamily="Consolas" />
+          </Border>
+         </WrapPanel>
+         <TextBlock Text="{Binding SelectedComponentDescription}" TextWrapping="Wrap"
+                    Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+        </StackPanel>
+        <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Top">
+         <Button Click="OpenApplication_Click" IsVisible="{Binding ShowHeaderOpenApplication}" HorizontalAlignment="Right"
+                 Content="{Binding SelectedApplicationOpenText}" />
+        </StackPanel>
+       </Grid>
+       <Expander Header="{loc:Loc component_center.details}" IsExpanded="False" HorizontalAlignment="Stretch">
+        <StackPanel Spacing="10">
+       <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" />
+       <Grid ColumnDefinitions="*,*,*" ColumnSpacing="18">
+        <StackPanel Spacing="3">
+         <TextBlock Classes="field-label" Text="{loc:Loc component_center.field.category}" />
+         <TextBlock Classes="field-value" Text="{Binding SelectedCategoryText}" />
+        </StackPanel>
+        <StackPanel Grid.Column="1" Spacing="3">
+         <TextBlock Classes="field-label" Text="{loc:Loc component_center.field.integration}" />
+         <TextBlock Classes="field-value" Text="{Binding SelectedIntegrationText}" />
+        </StackPanel>
+        <StackPanel Grid.Column="2" Spacing="3">
+         <TextBlock Classes="field-label" Text="{loc:Loc component_center.field.application}" />
+         <TextBlock Classes="field-value" Text="{Binding SelectedApplicationText}" />
+        </StackPanel>
+       </Grid>
+       <StackPanel Spacing="6" IsVisible="{Binding HasSelectedSources}">
+        <TextBlock Classes="field-label" Text="{loc:Loc component_center.field.sources}" />
+        <ItemsControl ItemsSource="{Binding SelectedHostSources}">
+         <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel ItemSpacing="6" LineSpacing="6" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+         <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:ComponentSourceChip">
+           <Border Classes="meta-chip" Classes.accent="{Binding Ready}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+             <TextBlock Text="{Binding Platform}" FontWeight="SemiBold" />
+             <TextBlock Text="{Binding Text}" />
+            </StackPanel>
+           </Border>
+          </DataTemplate>
+         </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+       </StackPanel>
+        </StackPanel>
+       </Expander>
+      </StackPanel>
+     </Border>
+
+     <Border Classes="panel-card" IsVisible="{Binding ShowNginxSelection}">
+      <ContentControl Content="{Binding NginxSelection}">
+       <ContentControl.ContentTemplate>
+        <DataTemplate>
+         <web:CurrentNginxSelectionView />
+        </DataTemplate>
+       </ContentControl.ContentTemplate>
+      </ContentControl>
+     </Border>
+     <Border Classes="panel-card" IsVisible="{Binding ShowGitInstallation}">
+      <StackPanel Spacing="10">
+       <TextBlock Text="Git" Classes="section-title" />
+       <TextBlock Text="{loc:Loc component_center.git.hint}" TextWrapping="Wrap" />
+       <TextBlock Text="{Binding GitEngine.EngineVersion}" />
+       <TextBlock Text="{Binding GitEngine.EnginePath}" TextWrapping="Wrap" />
+       <Button Content="{loc:Loc common.refresh}" Command="{Binding GitEngine.RefreshEngineStatusCommand}" />
+       <ProgressBar IsIndeterminate="{Binding PackageInstallation.IsIndeterminate}" Value="{Binding PackageInstallation.Progress}" IsVisible="{Binding PackageInstallation.IsActive}" />
+       <Button Content="{loc:Loc installation.cancel}" Command="{Binding PackageInstallation.CancelCommand}" IsVisible="{Binding PackageInstallation.IsActive}" />
+       <TextBlock Text="{Binding PackageInstallation.SummaryText}" TextWrapping="Wrap" />
+       <Expander Header="{loc:Loc common.operation_log}" HorizontalAlignment="Stretch"><TextBlock Text="{Binding PackageInstallation.OperationLog}" TextWrapping="Wrap" /></Expander>
+      </StackPanel>
+     </Border>
+     <!-- Honest stop sign for components whose lifecycle still lives in their own application. -->
+     <Border Classes="panel-card" IsVisible="{Binding ShowNotIntegrated}" BorderBrush="{DynamicResource WarningBrush}">
+      <StackPanel Spacing="10">
+       <TextBlock Classes="section-title" Text="{loc:Loc component_center.not_integrated_title}" />
+       <TextBlock Text="{Binding NotIntegratedMessage}" TextWrapping="Wrap" FontSize="12" />
+       <TextBlock Text="{loc:Loc component_center.not_integrated_scope}" TextWrapping="Wrap" FontSize="12"
+                  Foreground="{DynamicResource TextSecondaryBrush}" />
+       <Button Content="{Binding SelectedApplicationOpenText}" Click="OpenApplication_Click"
+               IsVisible="{Binding CanOpenSelectedApplication}" HorizontalAlignment="Left" />
+      </StackPanel>
+     </Border>
+
+     <!-- Read-only facts from the application that still owns this component's lifecycle. -->
+
+
+<Border Classes="panel-card" IsVisible="{Binding ShowHostObservation}">
+      <Expander Header="{loc:Loc component_center.observation.title}" HorizontalAlignment="Stretch"><StackPanel Spacing="10">
+       <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+        <TextBlock Classes="section-title" Text="{loc:Loc component_center.observation.title}" VerticalAlignment="Center" />
+        <Button Grid.Column="1" Content="{loc:Loc component_center.observation.read}" Command="{Binding ObserveHostCommand}"
+                IsEnabled="{Binding CanObserveHost}" />
+       </Grid>
+       <TextBlock Classes="section-hint" Text="{loc:Loc component_center.observation.hint}" TextWrapping="Wrap" />
+       <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsObservingHost}" />
+       <StackPanel Spacing="5" IsVisible="{Binding HasHostObservation}">
+        <TextBlock Text="{Binding HostObservationPlatformText}" FontSize="12" />
+        <TextBlock Text="{Binding HostObservationManagementText}" FontSize="12" />
+        <TextBlock Text="{Binding HostObservationVersionText}" FontSize="12" />
+        <TextBlock Text="{Binding HostObservationStateText}" FontSize="12" />
+        <TextBlock Text="{Binding HostObservationNoteText}" TextWrapping="Wrap" FontSize="12"
+                   Foreground="{DynamicResource TextSecondaryBrush}" />
+       </StackPanel>
+       <TextBlock Text="{Binding HostObservationNotice}" TextWrapping="Wrap" FontSize="12"
+                  Foreground="{DynamicResource TextTertiaryBrush}" />
+      </StackPanel></Expander>
+     </Border>
+     <Border Classes="panel-card" IsVisible="{Binding ShowOfficialDownloads}">
+      <StackPanel Spacing="12">
+       <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Classes="section-title" Text="{loc:Loc component_center.download.title}" />
+        <Button Grid.Column="1" Content="{loc:Loc common.refresh}" Command="{Binding RefreshOfficialReleasesCommand}" IsEnabled="{Binding CanRefreshOfficial}" />
+       </Grid>
+       <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoadingOfficialReleases}" />
+       <TextBlock Classes="section-hint" Text="{loc:Loc component_center.download.intro}" />
+       <StackPanel Spacing="6">
+        <TextBlock Text="{loc:Loc component_center.download.method}" FontWeight="SemiBold" />
+        <ComboBox ItemsSource="{Binding DownloadMethods}" SelectedItem="{Binding SelectedDownloadMethod, Mode=TwoWay}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsInstallingOfficial}">
+         <ComboBox.ItemTemplate><DataTemplate x:DataType="vm:ComponentDownloadMethodChoice"><TextBlock Text="{Binding Text}" /></DataTemplate></ComboBox.ItemTemplate>
+        </ComboBox>
+       </StackPanel>
+       <Border IsVisible="{Binding IsFileSource}" Padding="14" CornerRadius="6" BorderThickness="1" BorderBrush="{DynamicResource BorderSubtleBrush}">
+        <StackPanel Spacing="8">
+         <TextBlock Text="{loc:Loc component_center.download.file}" FontWeight="SemiBold" />
+         <TextBlock Text="{Binding SelectedPackageFileText}" TextWrapping="Wrap" />
+         <Button Content="{loc:Loc component_center.download.choose_file}" Command="{Binding SelectPackageFileCommand}" HorizontalAlignment="Left" />
+         <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsSelectingPackageFile}" />
+         <TextBlock Classes="section-hint" Text="{loc:Loc component_center.download.file_hint}" />
+        </StackPanel>
+       </Border>
+       <StackPanel Spacing="6" IsVisible="{Binding ShowOnlineVersions}">
+        <TextBlock Text="{loc:Loc component_center.download.version}" FontWeight="SemiBold" />
+        <ComboBox ItemsSource="{Binding OfficialReleases}" SelectedItem="{Binding SelectedOfficialRelease, Mode=TwoWay}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsInstallingOfficial}">
+         <ComboBox.ItemTemplate><DataTemplate x:DataType="mr:ComponentDownloadRelease"><TextBlock Text="{Binding Version}" /></DataTemplate></ComboBox.ItemTemplate>
+        </ComboBox>
+       </StackPanel>
+       <StackPanel Spacing="6" IsVisible="{Binding ShowManualVersion}">
+        <TextBlock Text="{loc:Loc component_center.download.version}" FontWeight="SemiBold" />
+        <TextBox Text="{Binding OfficialVersion, Mode=TwoWay}" PlaceholderText="{loc:Loc component_center.download.version}" IsEnabled="{Binding !IsInstallingOfficial}" />
+       </StackPanel>
+       <TextBlock Text="{Binding OfficialDownloadNotice}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+       <Expander Header="{loc:Loc component_center.download.manual}" HorizontalAlignment="Stretch">
+        <StackPanel Spacing="8">
+         <TextBlock Classes="section-hint" Text="{loc:Loc component_center.download.manual_hint}" />
+         <TextBlock Text="{Binding OfficialDownloadUrl}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+         <Button Content="{loc:Loc component_center.download.open}" Command="{Binding OpenOfficialDownloadCommand}" HorizontalAlignment="Left" />
+        </StackPanel>
+       </Expander>
+       <Button Content="{loc:Loc component_center.native.action.Install}" Command="{Binding InstallOfficialCommand}" IsEnabled="{Binding CanInstallOfficial}" HorizontalAlignment="Left" />
+       <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsInstallingOfficial}" />
+       <TextBlock Text="{Binding PackageInstallation.SummaryText}" TextWrapping="Wrap" />
+       <ProgressBar IsIndeterminate="{Binding PackageInstallation.IsIndeterminate}" Value="{Binding PackageInstallation.Progress}" IsVisible="{Binding PackageInstallation.IsActive}" />
+       <Button Content="{loc:Loc installation.cancel}" Command="{Binding PackageInstallation.CancelCommand}" IsVisible="{Binding PackageInstallation.IsActive}" />
+       <Expander Header="{loc:Loc common.operation_log}" HorizontalAlignment="Stretch"><TextBlock Text="{Binding PackageInstallation.OperationLog}" TextWrapping="Wrap" /></Expander>
+      </StackPanel>
+     </Border>
+     <!-- Platform install mode and the frozen candidate the host's own package manager resolves. -->
+     <Border Classes="panel-card" IsVisible="{Binding ShowPackageFreeze}">
+      <StackPanel Spacing="10">
+       <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+        <TextBlock Classes="section-title" Text="{Binding PackageMethodTitle}" VerticalAlignment="Center" />
+        <Button Grid.Column="1" Content="{loc:Loc component_center.package.resolve}" Command="{Binding ResolvePackageCommand}"
+                IsEnabled="{Binding CanResolvePackage}" />
+       </Grid>
+       <!-- One host, one method: state the platform's own install path instead of both. -->
+       <TextBlock Text="{Binding PlatformMethodText}" FontSize="12" FontWeight="SemiBold"
+                  Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap" />
+       <TextBlock Classes="section-hint" Text="{Binding PackageMethodHint}" TextWrapping="Wrap" />
+       <StackPanel IsVisible="{Binding IsSystemPackage}" Spacing="6">
+        <TextBlock Text="{loc:Loc component_center.native.manager}" />
+        <!-- A single connected manager is stated, not offered: a one-item selector looks like a
+             choice nobody has. A host that really reports several keeps the selector. -->
+        <TextBlock Text="{Binding SelectedPackageManagerText}" FontSize="13" FontWeight="SemiBold"
+                   IsVisible="{Binding !HasPackageManagerChoice}" />
+        <ComboBox ItemsSource="{Binding PackageManagers}" SelectedItem="{Binding SelectedPackageManager, Mode=TwoWay}"
+                  HorizontalAlignment="Stretch" IsVisible="{Binding HasPackageManagerChoice}" IsEnabled="{Binding CanResolvePackage}" />
+        <TextBlock Text="{loc:Loc component_center.native.manager_hint}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+       </StackPanel>
+       <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsResolvingPackage}" />
+       <Button Content="{loc:Loc component_center.package.recovery.RefreshSources}" Command="{Binding RefreshPackageSourcesCommand}"
+               IsVisible="{Binding CanRefreshPackageSources}" />
+       <TextBlock Text="{loc:Loc component_center.native.version_label}" IsVisible="{Binding HasPinnedArchiveCandidates}" />
+       <ComboBox ItemsSource="{Binding PinnedArchiveCandidates}" SelectedItem="{Binding SelectedPinnedArchive}"
+                 IsVisible="{Binding HasPinnedArchiveCandidates}" IsEnabled="{Binding CanResolvePackage}">
+        <ComboBox.ItemTemplate>
+         <DataTemplate x:DataType="mr:ComponentPinnedArchive"><TextBlock Text="{Binding Version}" /></DataTemplate>
+        </ComboBox.ItemTemplate>
+       </ComboBox>
+       <TextBlock Text="{loc:Loc component_center.native.install_only}" IsVisible="{Binding ShowInstallOnlyNote}"
+                  FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+       <TextBlock Text="{Binding PackageInstalledText}" FontSize="12" />
+       <TextBlock Text="{Binding PackageCandidateText}" FontSize="12" />
+       <StackPanel Spacing="5" IsVisible="{Binding HasPackageFreeze}">
+        <Expander Header="{loc:Loc component_center.details}" HorizontalAlignment="Stretch"><StackPanel Spacing="5">
+        <TextBlock Text="{Binding PackageRepositoryText}" FontSize="12" TextWrapping="Wrap" />
+        <TextBlock Text="{Binding PackageAlsoInstallsText}" FontSize="12" TextWrapping="Wrap" />
+        <TextBlock Text="{Binding PackageDigestText}" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap"
+                   Foreground="{DynamicResource TextTertiaryBrush}" />
+        </StackPanel></Expander>
+        <TextBlock Text="{Binding PackageVerdictText}" FontSize="12" TextWrapping="Wrap"
+                   Foreground="{DynamicResource WarningBrush}" />
+       </StackPanel>
+       <WrapPanel ItemSpacing="8">
+       <Button Content="{loc:Loc component_center.native.action.Install}" Command="{Binding InstallPackageCommand}"
+               IsEnabled="{Binding CanInstallPackage}" IsVisible="{Binding ShowPackageInstall}" />
+        <Button IsVisible="{Binding ShowPackageChangeActions}" Content="{loc:Loc component_center.native.action.Update}" Command="{Binding UpdatePackageCommand}" IsEnabled="{Binding CanChangeInstalledPackage}" />
+        <Button IsVisible="{Binding ShowPackageChangeActions}" Content="{loc:Loc component_center.native.action.Uninstall}" Command="{Binding UninstallPackageCommand}" IsEnabled="{Binding CanChangeInstalledPackage}" />
+       </WrapPanel>
+       <StackPanel Spacing="6" IsVisible="{Binding CanRecoverPackage}">
+        <TextBlock Text="{Binding PackageRecoveryText}" TextWrapping="Wrap" />
+        <WrapPanel>
+         <Button Content="{loc:Loc component_center.package.recovery.Stop}" Command="{Binding StopPackageRecoveryCommand}" />
+         <Button Content="{loc:Loc component_center.package.recovery.Close}" Command="{Binding ClosePackageRecoveryCommand}" />
+        </WrapPanel>
+       </StackPanel>
+       <StackPanel Spacing="6" IsVisible="{Binding PackageInstallation.HasMessage}">
+        <TextBlock Text="{Binding PackageInstallation.SummaryText}" TextWrapping="Wrap" />
+        <ProgressBar IsIndeterminate="{Binding PackageInstallation.IsIndeterminate}" Value="{Binding PackageInstallation.Progress}" IsVisible="{Binding PackageInstallation.IsActive}" />
+        <Button Content="{loc:Loc installation.cancel}" Command="{Binding PackageInstallation.CancelCommand}" IsVisible="{Binding PackageInstallation.IsActive}" />
+        <Expander Header="{loc:Loc common.operation_log}" HorizontalAlignment="Stretch"><TextBlock Text="{Binding PackageInstallation.OperationLog}" TextWrapping="Wrap" FontSize="11" /></Expander>
+       </StackPanel>
+       <TextBlock Text="{Binding PackageFreezeNotice}" TextWrapping="Wrap" FontSize="12"
+                  Foreground="{DynamicResource TextTertiaryBrush}" />
+      </StackPanel>
+     </Border>
+
+     <TextBlock Text="{Binding EmptyMessage}" IsVisible="{Binding !HasResults}" TextWrapping="Wrap"
+                Foreground="{DynamicResource TextSecondaryBrush}" />
+
+
+
+
+
+
+
+     <!-- Domain runtime page: sources, versions, actions, uninstall, recovery. -->
+     <StackPanel IsVisible="{Binding HasRuntimeDetails}">
+      <views:ProxyServerRuntimeView x:Name="RuntimeView" DataContext="{Binding DetailRuntime}" />
+     </StackPanel>
+
+
+    </StackPanel>
+   </ScrollViewer>
+  </Grid>
+
+
+ </Grid>
+</UserControl>

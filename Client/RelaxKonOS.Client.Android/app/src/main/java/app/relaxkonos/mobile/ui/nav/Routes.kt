@@ -31,6 +31,7 @@ object Routes {
     const val MANAGE_DOCKER_CONTROL = "manage/docker/control"
     const val MANAGE_SMB = "manage/smb"
     const val MANAGE_FIREWALL = "manage/firewall"
+    const val MANAGE_TAILSCALE = "manage/tailscale"
     const val MANAGE_SQUID = "manage/squid"
     const val MANAGE_PROXY = "manage/proxy"
     const val MANAGE_PROXY_SERVER = "manage/proxy-server"
@@ -39,6 +40,7 @@ object Routes {
     const val MANAGE_GUARDIAN = "manage/guardian"
     const val MANAGE_SCRIPTS = "manage/scripts"
     const val MANAGE_OPERATIONS = "manage/operations"
+    const val MANAGE_COMPONENTS = "manage/components"
     const val MORE_ACCOUNT_SECURITY = "more/account-security"
     const val MORE_CONNECTIONS = "more/connections"
     const val MORE_SERVER_INFORMATION = "more/server-information"
@@ -53,7 +55,7 @@ object Routes {
 }
 
 /**
- * The five fixed top-level destinations of `Product.Design.md` §5.1.
+ * The four top-level destinations of `Product.Design.md` §5.1.
  *
  * [implemented] marks what this build actually ships. An entry that is not implemented yet is not
  * rendered at all, matching the rule that the shell never shows an entry without a usable workflow.
@@ -69,7 +71,6 @@ enum class TopDestination(
 ) {
     Home(Routes.HOME, R.string.nav_home, DesktopIcons.navHome),
     Files(Routes.FILES, R.string.nav_files, DesktopIcons.navFiles, requiredCapability = ServerCapabilities.FILES),
-    Terminal(Routes.TERMINAL, R.string.nav_terminal, DesktopIcons.navTerminal, requiredCapability = ServerCapabilities.TERMINAL),
     Manage(Routes.MANAGE, R.string.nav_manage, DesktopIcons.navManage),
     More(Routes.MORE, R.string.nav_more, DesktopIcons.navMore);
 

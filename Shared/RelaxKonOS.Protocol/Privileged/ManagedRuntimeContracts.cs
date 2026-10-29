@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 using RelaxKonOS.Protocol.Tunnels;
 
 namespace RelaxKonOS.Protocol.Privileged;
@@ -32,6 +32,12 @@ public sealed record WindowsFrpRelease(string Version, string Rid, string Url, s
 
 public static class WindowsManagedRuntimeDefaults
 {
+    // nginx.org archive + detached signature verified with the publisher key
+    // D6786CE303D9A9022998DC6CC8464D549AF75C0A (2026-10-27).
+    public static IReadOnlyList<WindowsNginxRelease> NginxReleases { get; } =
+    [
+        new("1.30.6", "c6ee35edb0a861063323f709192ae50d1eefaf2ea7d00678bd2b22d8542dc61e"),
+    ];
     public static string NginxRoot => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "RelaxKonOS", "webserver", "nginx");
     public static string PrivateRoot => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "RelaxKonOS", "privileged-runtimes");
     public static IReadOnlyList<WindowsFrpRelease> FrpReleases { get; } =
@@ -40,3 +46,6 @@ public static class WindowsManagedRuntimeDefaults
         new("v0.71.0", "win-arm64", "https://github.com/fatedier/frp/releases/download/v0.71.0/frp_0.71.0_windows_arm64.zip", "b56a5c2a1a2a55d11bc27aeef6edabd39f3d194360ea66660cc27281b502cb1c", "zip"),
     ];
 }
+
+/// <summary>Explicit administrator-approved Windows nginx archive identity.</summary>
+public sealed record WindowsNginxRelease(string Version, string Sha256);

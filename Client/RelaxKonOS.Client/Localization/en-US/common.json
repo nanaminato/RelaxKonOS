@@ -3,6 +3,7 @@
     "DisplayName": "English",
     "SortOrder": 0,
     "Strings": {
+        "common.editor_draft_hint": "Closing keeps the local draft. Only Save, Apply or a confirmed action submits changes to the server.",
         "common.discard_title": "Discard changes?",
         "common.discard_message": "Discard unsaved changes and close this editor?",
         "common.discard": "Discard",

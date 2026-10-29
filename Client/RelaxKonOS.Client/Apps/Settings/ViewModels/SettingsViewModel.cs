@@ -82,7 +82,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         Pages = new SettingsPageViewModel[]
         {
             new SystemPageViewModel(settings, session, save,
-                new HostIdentityEditorViewModel(App.Services.GetRequiredService<Services.HostSettings.IHostIdentityService>(), session, localization)),
+                new HostIdentityEditorViewModel(App.Services.GetRequiredService<Services.HostSettings.IHostIdentityService>(), session, localization),
+                App.Services.GetRequiredService<RelaxKonOS.Client.Services.Modules.IServerModuleCatalog>()),
             new AccountSecurityPageViewModel(settings, App.Services.GetRequiredService<AccountSecurityClient>(), session,
                 App.Services.GetRequiredService<IRememberedSessionStore>(),
                 App.Services.GetRequiredService<IOwnerDevicePairingEndpointStore>()),

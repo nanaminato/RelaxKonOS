@@ -40,6 +40,10 @@ internal static class ProjectEditorChecks
             "Azure SSH remotes map to their HTTPS repository page.");
         Check(GitHostingLinks.Resolve([new("origin", "https://user:secret@gitlab.com/group/repo.git")], "gitlab", "pulls")?.AbsoluteUri == "https://gitlab.com/group/repo/-/merge_requests",
             "Hosting links never carry clone credentials to the browser.");
+        Check(GitHostingLinks.Resolve([new("origin", "ssh://git@gitee.com/owner/repo.git")], "gitee", "pulls")?.AbsoluteUri == "https://gitee.com/owner/repo/pulls",
+            "Gitee SSH remotes map to their pull request page.");
+        Check(GitHostingLinks.Resolve([new("origin", "https://user:secret@gitee.com/owner/repo.git?token=private#fragment")], "gitee", "issues")?.AbsoluteUri == "https://gitee.com/owner/repo/issues",
+            "Gitee issue links remove credentials, query strings and fragments.");
         var files = DispatchProxy.Create<IExplorerClient, ProjectFiles>();
         var store = (ProjectFiles)(object)files;
         store.Files["/work/app.cs"] = Encoding.UTF8.GetBytes("class App {}\r\n");
@@ -367,11 +371,46 @@ internal static class ProjectEditorChecks
             "Patch export opens an editable untitled document that can be saved as a patch.");
         git.ShowWorkspaceInputAsync = (_, _) => Task.FromResult<string[]?>(["https://example.invalid/project.git", "/cloned"]);
         store.Directories.Add("/cloned");
-        git.ShowGitCredentialsDialogAsync = _ => Task.FromResult<GitCredentialRequest?>(new("user", "test-password", false));
+        git.ShowGitCredentialsDialogAsync = (_, _) => Task.FromResult<GitCredentialRequest?>(new("user", "test-password", false));
         await git.CloneRepositoryCommand.ExecuteAsync(null);
         Check(remote.CloneRequests.Count == 2 && remote.CloneRequests[0].Credentials is null
             && remote.CloneRequests[1].Credentials?.Username == "user" && project.ProjectPath == "/cloned",
             "Clone retries with user-supplied credentials and opens its registered result.");
+        remote.Remotes = [new("origin", "https://github.com/org/repo"), new("mirror", "https://gitee.com/org/repo")];
+        var promptedHosts = new List<string?>();
+        git.ShowGitCredentialsDialogAsync = (_, hostName) =>
+        {
+            promptedHosts.Add(hostName);
+            return Task.FromResult<GitCredentialRequest?>(new("user", "one-operation-token", false));
+        };
+        await git.FetchCommand.ExecuteAsync(null);
+        Check(remote.FetchRequests.Select(x => x.Remote).SequenceEqual(new[] { "origin", "origin", "mirror", "mirror" })
+            && promptedHosts.SequenceEqual(new[] { "github.com", "gitee.com" }),
+            "Fetch all handles each remote separately and prompts with its effective HTTPS host.");
+        Check(remote.FetchRequests.Where(x => x.Credentials is not null).All(x => !x.Credentials!.SaveCredentials),
+            "Fetch retries preserve the user's save opt-out.");
+        git.ShowPullDialogAsync = () => Task.FromResult<GitPullRequest?>(new(Remote: "mirror"));
+        await git.PullCommand.ExecuteAsync(null);
+        Check(remote.PullRequests.Count == 2 && remote.PullRequests.All(x => x.Remote == "mirror")
+            && remote.PullRequests[1].Credentials?.Password == "one-operation-token", "Pull retries exactly the selected remote with the entered credential.");
+        var beforeCancel = remote.PullRequests.Count;
+        git.ShowGitCredentialsDialogAsync = (_, _) => Task.FromResult<GitCredentialRequest?>(null);
+        await git.PullCommand.ExecuteAsync(null);
+        Check(remote.PullRequests.Count == beforeCancel + 1, "Canceling authentication does not repeat the network operation.");
+        git.CredentialHost = "gitlab.example.com:8443"; git.CredentialUsername = "alice"; git.CredentialToken = "new-account-token";
+        await git.SaveCredentialAccountCommand.ExecuteAsync(null);
+        Check(git.CredentialToken.Length == 0 && git.CredentialAccounts.Single().Username == "alice", "Account save reloads public metadata and clears the token input.");
+        await git.DefaultCredentialAccountCommand.ExecuteAsync(null);
+        Check(remote.AccountRequests.Last().Password is null && remote.AccountRequests.Last().IsDefault, "Setting a default never requests or resubmits an existing token.");
+        remote.RejectAccountSave = true; git.CredentialToken = "failed-token";
+        await git.SaveCredentialAccountCommand.ExecuteAsync(null);
+        Check(git.CredentialToken.Length == 0 && !git.CredentialAccountsBusy && git.CredentialAccountsMessage.Contains("rejected"), "A failed save clears the token and leaves the account manager usable.");
+        remote.RejectAccountSave = false;
+        git.ShowConfirmAsync = _ => Task.FromResult(true);
+        await git.DeleteCredentialAccountCommand.ExecuteAsync(null);
+        Check(git.CredentialAccounts.Count == 0 && git.CredentialToken.Length == 0, "Deleting an account removes its metadata from the manager.");
+        remote.Remotes = [];
+
         var pendingStatus = new TaskCompletionSource<GitStatusDto>();
         remote.PendingStatuses[repository.Id] = pendingStatus;
         var openingFirst = git.OpenProjectCommand.ExecuteAsync(repository);
@@ -491,6 +530,12 @@ public class ProjectGit : DispatchProxy
     public int MaintenanceReads { get; private set; }
     public Dictionary<string, TaskCompletionSource<GitStatusDto>> PendingStatuses { get; } = [];
     public object? LastWorkspaceRequest { get; private set; }
+    public IReadOnlyList<GitRemoteDto> Remotes { get; set; } = [];
+    public List<GitFetchRequest> FetchRequests { get; } = [];
+    public List<GitPullRequest> PullRequests { get; } = [];
+    public List<GitCredentialAccountRequest> AccountRequests { get; } = [];
+    public List<GitCredentialAccountDto> Accounts { get; } = [];
+    public bool RejectAccountSave { get; set; }
     public List<GitCloneRequest> CloneRequests { get; } = [];
     public int Checkouts { get; private set; }
     public int Initializations { get; private set; }
@@ -500,6 +545,20 @@ public class ProjectGit : DispatchProxy
     {
         switch (method!.Name)
         {
+            case nameof(IRemoteGitClient.ListCredentialAccountsAsync): return Task.FromResult<IReadOnlyList<GitCredentialAccountDto>>(Accounts.ToArray());
+            case nameof(IRemoteGitClient.SaveCredentialAccountAsync):
+                var account = (GitCredentialAccountRequest)args![0]!; AccountRequests.Add(account);
+                if (RejectAccountSave) throw new HttpRequestException("Account save rejected");
+                var dto = new GitCredentialAccountDto("account", account.Host, account.Username, account.IsDefault);
+                Accounts.Clear(); Accounts.Add(dto); return Task.FromResult(dto);
+            case nameof(IRemoteGitClient.DeleteCredentialAccountAsync): Accounts.Clear(); return Task.FromResult(true);
+            case nameof(IRemoteGitClient.FetchAsync):
+                var fetch = (GitFetchRequest)args![1]!; FetchRequests.Add(fetch);
+                return Task.FromResult(new GitOperationResult(fetch.Credentials is not null, "fetch", RequiresCredentials: fetch.Credentials is null,
+                    CredentialHost: fetch.Remote == "mirror" ? "gitee.com" : "github.com"));
+            case nameof(IRemoteGitClient.PullAsync):
+                var pull = (GitPullRequest)args![1]!; PullRequests.Add(pull);
+                return Task.FromResult(new GitOperationResult(pull.Credentials is not null, "pull", RequiresCredentials: pull.Credentials is null, CredentialHost: "gitee.com"));
             case nameof(IRemoteGitClient.CreateTagAsync):
             case nameof(IRemoteGitClient.RebaseAsync):
             case nameof(IRemoteGitClient.StashAsync):
@@ -525,7 +584,7 @@ public class ProjectGit : DispatchProxy
                 MaintenanceReads++;
                 if (FailMaintenanceReads) throw new HttpRequestException("Not Found", null, System.Net.HttpStatusCode.NotFound);
                 return Task.FromResult<IReadOnlyList<GitWorktreeDto>>([]);
-            case nameof(IRemoteGitClient.ListRemotesAsync): return Task.FromResult<IReadOnlyList<GitRemoteDto>>([]);
+            case nameof(IRemoteGitClient.ListRemotesAsync): return Task.FromResult(Remotes);
             case nameof(IRemoteGitClient.GetConflictStateAsync): return Task.FromResult(new GitConflictStateDto(null, []));
             case nameof(IRemoteGitClient.GetDiffAsync): return PendingDiff?.Task ?? Task.FromResult(new GitDiffDto((string)args![1]!, "v", Patch: "@@ -1 +1 @@\n-old\n+new\n"));
             case nameof(IRemoteGitClient.CheckoutAsync): Checkouts++; return Task.FromResult(new GitOperationResult(true));

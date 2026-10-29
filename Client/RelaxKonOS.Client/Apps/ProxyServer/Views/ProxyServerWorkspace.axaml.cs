@@ -9,7 +9,21 @@ public partial class ProxyServerWorkspace : UserControl
 {
     private const int PageCount = 6;
     private ProxyServerViewModel? _viewModel;
-    private ProxyServerRuntimeViewModel? _runtime;
+
+    public Func<string, Control, Task>? ShowEditorAsync { get; set; }
+
+    private async void EditorButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string target } button || ShowEditorAsync is null) return;
+        var parts = target.Split(':');
+        if (parts.Length > 1 && _viewModel is { } model)
+        {
+            if (parts[0] == "InboundEditor") model.NewInboundCommand.Execute(null);
+            if (parts[0] == "PrincipalEditor") model.NewPrincipalCommand.Execute(null);
+            if (parts[0] == "CredentialEditor") model.NewCredentialCommand.Execute(null);
+        }
+        await RelaxKonOS.Client.Controls.WorkspaceEditorDialogView.OpenAsync(this, parts[0], button.Content?.ToString() ?? "", ShowEditorAsync);
+    }
 
     public ProxyServerWorkspace()
     {
@@ -19,12 +33,6 @@ public partial class ProxyServerWorkspace : UserControl
     }
 
     public ProxyServerWorkspace(ProxyServerViewModel viewModel) : this() => DataContext = viewModel;
-
-    public ProxyServerWorkspace(ProxyServerViewModel viewModel, ProxyServerRuntimeViewModel runtime) : this(viewModel)
-    {
-        _runtime = runtime;
-        RuntimeView.DataContext = runtime;
-    }
 
     private void NavigationButton_Click(object? sender, RoutedEventArgs e)
     {
@@ -38,9 +46,8 @@ public partial class ProxyServerWorkspace : UserControl
             this.FindControl<StackPanel>($"Page{i}")!.IsVisible = i == page;
             this.FindControl<Button>($"PageButton{i}")!.Classes.Set("nav-selected", i == page);
         }
+        if (page == 5 && _viewModel?.Dependency is { } dependency) _ = dependency.RefreshAsync();
         BodyScroll.Offset = default;
-        // Host state, not a cached list, decides what the page may offer.
-        if (page == 5) _ = _runtime?.EnsureLoadedAsync();
     }
 
     /// <summary>Copies the visible export text. The view owns the clipboard; the view model keeps no copy.</summary>

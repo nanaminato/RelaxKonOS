@@ -92,15 +92,19 @@ class InstallationRepository(
         require(action in setOf("retry", "stop", "close"))
         return runtimeWrite(owner, "${ManagedRuntimeRoutes.RECOVERY}/$action", body, provider)
     }
+    suspend fun singBoxRecovery(owner: SessionState.Active, action: String, body: JsonBody, provider: ElevationAnswerProvider): ApiResult<String> {
+        require(action in setOf("retry", "stop", "close"))
+        return runtimeWrite(owner, "${ManagedRuntimeRoutes.recovery("sing-box")}/$action", body, provider, InstallationService.SingBox)
+    }
     suspend fun prepareRuntimeResources(owner: SessionState.Active, provider: ElevationAnswerProvider) =
         runtimeWrite(owner, ManagedRuntimeRoutes.RESOURCES, JsonBody(), provider)
 
     private suspend fun runtimeWrite(owner: SessionState.Active, route: String, body: JsonBody,
-        provider: ElevationAnswerProvider): ApiResult<String> = mutations.withLock {
+        provider: ElevationAnswerProvider, service: InstallationService = InstallationService.Mihomo): ApiResult<String> = mutations.withLock {
         verify(owner)
-        require(owner.privilegedOperations && ServerCapabilities.PROXY in owner.capabilities)
+        require(owner.privilegedOperations && service.capability in owner.capabilities)
         val key = UUID.randomUUID().toString()
-        val result = elevations.withElevation(InstallationService.Mihomo.elevation, "mihomo", ElevationAnswerProvider { capability, target ->
+        val result = elevations.withElevation(service.elevation, service.elevationTarget, ElevationAnswerProvider { capability, target ->
             verify(owner)
             val answer = provider.answer(capability, target)
             if (session.state.value !== owner) { answer?.password?.fill('\u0000'); verify(owner) }

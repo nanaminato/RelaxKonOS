@@ -52,8 +52,36 @@ internal static void VerifySiteConcurrency()
     try { System.Text.Json.JsonSerializer.Deserialize<UpsertWebServerSiteRequest>(wire.TrimEnd('}') + ",\"legacyVersion\":1}", RelaxKonOSJsonOptions.Default); throw new InvalidOperationException("Unknown site request field was accepted."); }
     catch (System.Text.Json.JsonException) { }
 }
+internal static async Task VerifyCurrentNginxAsync(string root)
+{
+    var databasePath = Path.Combine(root, "current-nginx.db");
+    await HostGlobalMigrationRunner.MigrateAsync($"Data Source={databasePath}", CancellationToken.None);
+    await HostGlobalMigrationRunner.MigrateAsync($"Data Source={databasePath}", CancellationToken.None);
+    var environment = new TestHostEnvironment(root);
+    var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+    {
+        ["Storage:Provider"] = "sqlite",
+        ["Storage:DatabasePath"] = databasePath
+    }).Build();
+    var selection = new WebServerMetadataRepository(environment, configuration);
+    TestAssert.Assert(await selection.ReadCurrentNginxAsync(CancellationToken.None) is null, "A fresh host has no explicit Nginx selection.");
+    await selection.SelectCurrentNginxAsync("chosen", CancellationToken.None);
+    var reopened = new WebServerMetadataRepository(environment, configuration);
+    TestAssert.Assert(await reopened.ReadCurrentNginxAsync(CancellationToken.None) == "chosen", "Nginx selection must survive reopening host storage.");
+    await reopened.SelectCurrentNginxAsync("replacement", CancellationToken.None);
+    TestAssert.Assert(await selection.ReadCurrentNginxAsync(CancellationToken.None) == "replacement", "Nginx selection must be host-wide and replaceable.");
+    var first = new WebServerDto("first", "nginx", WebServerType.Nginx, WebServerManagementMode.Integrated, "/usr/sbin/nginx", "/etc/nginx/nginx.conf", "1.26", DateTimeOffset.UtcNow, new(true, true, true));
+    var second = first with { Id = "second" };
+    TestAssert.Assert(WebServerMetadataRepository.ResolveCurrentNginx(null, []).ServerId is null, "Missing Nginx must remain unavailable.");
+    TestAssert.Assert(WebServerMetadataRepository.ResolveCurrentNginx(null, [first]).ServerId == first.Id, "A sole Nginx should be selected automatically.");
+    TestAssert.Assert(WebServerMetadataRepository.ResolveCurrentNginx(null, [first, second]).ServerId is null, "Multiple Nginx instances require a selection.");
+    TestAssert.Assert(WebServerMetadataRepository.ResolveCurrentNginx(second.Id, [first, second]).ServerId == second.Id, "Explicit host selection must win.");
+    TestAssert.Assert(WebServerMetadataRepository.ResolveCurrentNginx("removed", [first]).ServerId is null, "A stale selection must never fall back to another Nginx.");
+    Console.WriteLine("Current Nginx persistence and resolution checks passed (8 assertions).");
+}
 internal static async Task VerifyDeploymentAndNginxSnapshotsAsync(string root)
 {
+    await VerifyCurrentNginxAsync(root);
     var databasePath = Path.Combine(root, "deployment-and-snapshots.db");
     await HostGlobalMigrationRunner.MigrateAsync($"Data Source={databasePath}", CancellationToken.None);
     var environment = new TestHostEnvironment(root);

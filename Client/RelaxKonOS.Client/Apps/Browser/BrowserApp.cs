@@ -28,7 +28,7 @@ public sealed class BrowserApp : RemoteApplicationBase
         DisplayName: "RemoteBrowser",
         Version: "1.0.0",
         IconGlyph: "🌐",
-        Description: "网页浏览器（书签 / 历史记录持久化到服务端）");
+        Description: "Web browser (bookmarks and history are stored on the server)");
 
     public override void Activate(AppContext context)
     {

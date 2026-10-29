@@ -1,0 +1,18 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Tailscale.Views"
+ x:Class="RelaxKonOS.Client.Apps.Tailscale.Views.TailscaleConfirmationDialog" x:DataType="vm:TailscaleConfirmationText"
+ Classes="builtin-app" Background="{DynamicResource SurfaceBrush}">
+ <Grid RowDefinitions="*,Auto" Margin="20" RowSpacing="16">
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+   <StackPanel Spacing="12">
+    <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
+    <TextBlock Text="{loc:Loc tailscale.network_risk}" TextWrapping="Wrap" />
+    <TextBlock Text="{Binding OperationId}" TextWrapping="Wrap" />
+   </StackPanel>
+  </ScrollViewer>
+  <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+   <Button Content="{loc:Loc common.cancel}" Click="Cancel" />
+   <Button Content="{loc:Loc tailscale.confirm_execute}" Classes="primary" Click="Confirm" />
+  </StackPanel>
+ </Grid>
+</UserControl>

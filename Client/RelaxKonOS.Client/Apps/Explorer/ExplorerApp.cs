@@ -49,7 +49,7 @@ public sealed partial class ExplorerApp : RemoteApplicationBase, IAppActivationH
         DisplayName: "RemoteExplorer",
         Version: "1.0.0",
         IconGlyph: "📁",
-        Description: "远端文件管理器",
+        Description: "Remote file manager",
         RequestedPermissions: [AppPermissions.ServerFilesRead, AppPermissions.ServerFilesWrite]);
 
     public override void Activate(AppContext context) => OpenExplorer(context, null);
@@ -539,7 +539,7 @@ public sealed partial class ExplorerApp : RemoteApplicationBase, IAppActivationH
             }
             else
                 result = new AppActivationResult(AppActivationStatus.Unavailable);
-            if (!result.Succeeded)
+            if (!result.IsAccepted)
                 await (vm.ShowMessageAsync?.Invoke(LocalizedText.Get("explorer.open_file"), LocalizedText.Get("explorer.no_file_opener")) ?? Task.CompletedTask);
         };
 
@@ -581,7 +581,7 @@ public sealed partial class ExplorerApp : RemoteApplicationBase, IAppActivationH
                 && !applications.SupportsFile(appId, entry.Path);
             var opened = isTextFallback
                 ? applications?.OpenFileAsText(appId, entry.Path) == true
-                : context.Activations.Activate(RelaxKonOSActivationUris.OpenFile(appId, entry.Path)).Succeeded;
+                : context.Activations.Activate(RelaxKonOSActivationUris.OpenFile(appId, entry.Path)).IsAccepted;
             if (!opened)
                 await (vm.ShowMessageAsync?.Invoke(LocalizedText.Get("explorer.open_file"), LocalizedText.Get("explorer.selected_app_unavailable")) ?? Task.CompletedTask);
         };

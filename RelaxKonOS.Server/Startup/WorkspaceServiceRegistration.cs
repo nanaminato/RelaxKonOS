@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.SignalR;
-using RoyalTerminal.Terminal;
 using RelaxKonOS.Server.Hubs;
 using RelaxKonOS.Server.Identity;
 using RelaxKonOS.Server.Observability;
@@ -11,11 +10,7 @@ internal static class WorkspaceServiceRegistration
 {
     public static void AddWorkspaceServices(this WebApplicationBuilder builder)
     {
-        // 终端：服务端 PTY 工厂（Windows ConPTY / Unix forkpty）+ 持久会话管理器 + SignalR Hub。
-        // AddSignalR 由 Microsoft.NET.Sdk.Web 隐式 FrameworkReference 提供，无需额外 NuGet。
-        builder.Services.AddSingleton<IPtyFactory, RelaxKonOS.Server.Terminal.PlatformPtyFactory>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.Terminal.TerminalSessionManager>();
-        // 以 JWT sub claim 作为 Hub UserIdentifier，供 TerminalHub 按用户索引/过滤持久会话。
+        // Shared by all hubs: JWT sub is their user identity, including when Terminal is disabled.
         builder.Services.AddSingleton<IUserIdProvider, RelaxKonOS.Server.Terminal.TerminalUserIdProvider>();
         builder.Services.AddSignalR(options =>
         {
@@ -25,7 +20,8 @@ internal static class WorkspaceServiceRegistration
         });
         builder.Services.AddSingleton<GuardianLogSubscriptionRegistry>();
         builder.Services.AddHostedService<GuardianLogBroadcastService>();
-        builder.Services.AddHostedService<PerformanceBroadcastService>();
+        // PerformanceBroadcastService belongs to the system-performance module: it only feeds that
+        // module's PerformanceHub and must stop sampling when the module is disabled.
         builder.Services.AddSingleton(sp => new RelaxKonOS.Server.Settings.ServerRuntimeSettingsStore(Path.Combine(builder.Environment.ContentRootPath, "data", "server-runtime-settings.json")));
         builder.Services.AddSingleton<SettingsSubscriptions>();
         builder.Services.AddHostedService<SettingsChangesBroadcastService>();

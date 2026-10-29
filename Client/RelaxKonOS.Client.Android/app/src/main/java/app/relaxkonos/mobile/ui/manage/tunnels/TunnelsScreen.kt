@@ -27,23 +27,26 @@ import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.data.*
 import app.relaxkonos.mobile.ui.common.*
+import app.relaxkonos.mobile.ui.manage.components.ComponentDependencyAction
 import app.relaxkonos.mobile.ui.manage.operations.*
+import app.relaxkonos.mobile.ui.nav.Routes
 import app.relaxkonos.mobile.ui.theme.Spacing
 import java.text.DateFormat
 import java.util.Date
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable fun TunnelsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
+@Composable fun TunnelsScreen(onBack: () -> Unit, modifier: Modifier = Modifier, onOpenComponents: () -> Unit = {}) {
     val container = appContainer()
     val model: TunnelsViewModel = viewModel(factory = viewModelFactory {
         initializer { TunnelsViewModel(container.session, container.tunnels, container.installations,
             container.operationIndex, container.elevationAnswers, container.uploadDocuments) }
     })
-    TunnelsContent(model, container.activeSession, onBack, modifier)
+    TunnelsContent(model, container.activeSession, onBack, modifier, onOpenComponents)
 }
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable internal fun TunnelsContent(model: TunnelsViewModel, owner: SessionState.Active?, onBack: () -> Unit, modifier: Modifier = Modifier) {
+@Composable internal fun TunnelsContent(model: TunnelsViewModel, owner: SessionState.Active?, onBack: () -> Unit,
+    modifier: Modifier = Modifier, onOpenComponents: () -> Unit = {}) {
     val state = model.state
     val epoch = model.sessionEpoch
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -62,25 +65,24 @@ import java.util.Date
         state.installation, state.installationVerified, state.installationReadGeneration, state.pending) { mutableStateOf<TunnelConfirmation?>(null) }
     var advanced by rememberSaveable(owner, epoch) { mutableStateOf(false) }
     val frpsSection = section == "frps"
-    var install by remember(owner, epoch) { mutableStateOf(false) }
     var tokenProfile by remember(owner, epoch) { mutableStateOf<TunnelProfile?>(null) }
     var secret by remember(owner, epoch) { mutableStateOf("") }
     var recover by remember(owner, epoch) { mutableStateOf(false) }
     var operationId by remember(owner, epoch) { mutableStateOf("") }
     var originalIdentified by remember(owner, epoch) { mutableStateOf(false) }
-    OperationMessageDialog(if (state.busy || state.editorOpen || install) null else state.problemCode?.let { tunnelProblemLabel(it) } ?: if (state.uncertain) stringResource(R.string.tunnels_uncertain) else null, tone = if (state.problemCode == null) StatusTone.Warning else StatusTone.Danger)
+    OperationMessageDialog(if (state.busy || state.editorOpen) null else state.problemCode?.let { tunnelProblemLabel(it) } ?: if (state.uncertain) stringResource(R.string.tunnels_uncertain) else null, tone = if (state.problemCode == null) StatusTone.Warning else StatusTone.Danger)
     LaunchedEffect(owner, epoch) { if (available) model.refresh() }
-    LaunchedEffect(owner, epoch, state.installation?.operationId, state.installation?.state, state.installationReadGeneration, state.busy, state.installationVerified, state.editorOpen, install, resumed, state.uncertain, state.problemCode, confirm != null, cancellation) {
-        if (resumed && !install && confirm == null && cancellation == null) model.observeInstallation {
-            lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && !install && confirm == null && model.installationCancellation == null
+    LaunchedEffect(owner, epoch, state.installation?.operationId, state.installation?.state, state.installationReadGeneration, state.busy, state.installationVerified, state.editorOpen, resumed, state.uncertain, state.problemCode, confirm != null, cancellation) {
+        if (resumed && confirm == null && cancellation == null) model.observeInstallation {
+            lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && confirm == null && model.installationCancellation == null
         }
     }
     val facts = (state.facts as? ApiResult.Success)?.value
     val runtime = (state.runtime as? ApiResult.Success)?.value
     val notInstalled = runtime?.state == TunnelRuntimeState.NotInstalled
-    LaunchedEffect(owner, epoch, frpsSection, state.selectedId, state.busy, facts?.observedAtMillis, state.editorOpen, install, resumed, state.uncertain, state.problemCode, confirm != null, cancellation) {
-        if (resumed && !frpsSection && !install && confirm == null && cancellation == null) model.observeConnection {
-            lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && !frpsSection && !install && confirm == null && model.installationCancellation == null
+    LaunchedEffect(owner, epoch, frpsSection, state.selectedId, state.busy, facts?.observedAtMillis, state.editorOpen, resumed, state.uncertain, state.problemCode, confirm != null, cancellation) {
+        if (resumed && !frpsSection && confirm == null && cancellation == null) model.observeConnection {
+            lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && !frpsSection && confirm == null && model.installationCancellation == null
         }
     }
     BackHandler(section in setOf("profiles", "logs") && state.selectedId != null && state.profileDraft == null && state.definitionDraft == null && !state.busy) { model.select(null) }
@@ -92,6 +94,7 @@ import java.util.Date
         PageActionRow(refresh = {
             TextButton(enabled = !state.busy, onClick = { if (frpsSection) model.observeFrps() else model.refresh() }) { ActionLabel(R.string.common_refresh) }
         }, actions = {
+            ComponentDependencyAction(Routes.MANAGE_TUNNELS, onOpenComponents)
             if (canManage) {
                 if (section in setOf("overview", "profiles")) Button(enabled = !state.busy && state.pending.isEmpty(), onClick = { model.editProfile() }) { Text(stringResource(R.string.tunnels_profile_create)) }
             }
@@ -100,7 +103,7 @@ import java.util.Date
         if (section != "records" && (state.uncertain || state.pending.isNotEmpty() || state.pendingInstallation || state.installation != null && !state.installationVerified)) TextButton(onClick = { section = "records" }) { Text(stringResource(R.string.tunnels_records_attention)) }
         // A gap-free container prevents retained, hidden tabs from adding blank rows.
         Column(Modifier.fillMaxWidth()) {
-        WorkspaceSection(frpsSection) { key(owner, epoch) { ManagedFrpsManager(model, state, canManage, active = frpsSection && !install) } }
+        WorkspaceSection(frpsSection) { key(owner, epoch) { ManagedFrpsManager(model, state, canManage, active = frpsSection) } }
 WorkspaceSection(section in setOf("overview", "runtime")) {
         TunnelCard {
         Text(stringResource(R.string.tunnels_runtime_title), style = MaterialTheme.typography.titleMedium)
@@ -117,7 +120,6 @@ WorkspaceSection(section in setOf("overview", "runtime")) {
             runtime.problemCode.takeIf(String::isNotBlank)?.let { Text(tunnelProblemLabel(it)) }
             }
         }
-        if (canManage) OutlinedButton(enabled = !state.busy && !state.pendingInstallation && state.installation?.state?.active != true, onClick = { install = true }) { Text(if (notInstalled) stringResource(R.string.runtime_install_action, "FRP") else stringResource(R.string.tunnels_runtime_manage)) }
         }
         if (section == "overview") facts?.let { observed -> TunnelCard {
             Text(stringResource(R.string.tunnels_profiles), style = MaterialTheme.typography.titleMedium)
@@ -149,7 +151,6 @@ WorkspaceSection(section in setOf("overview", "runtime")) {
         }
         if (state.pendingInstallation) TunnelCard {
             Text(stringResource(R.string.tunnels_install_pending), color = MaterialTheme.colorScheme.error)
-            if (model.hasIntent && canManage) TextButton(enabled = !state.busy, onClick = { confirm = TunnelConfirmation(R.string.tunnels_install_retry_confirm, "FRP", model::retryInstall) }) { ActionLabel(R.string.common_retry) }
         }
         TextButton(enabled = !state.busy, onClick = { operationId = ""; originalIdentified = false; recover = true }) { Text(stringResource(if (notInstalled) R.string.runtime_recovery_tools else R.string.tunnels_install_recover)) }
         state.pending.forEach { pending ->
@@ -191,7 +192,6 @@ WorkspaceSection(section in setOf("profiles", "logs")) {
 }
             }
     }
-    if (install) key(owner, epoch) { TunnelInstallEditor(model, onSubmitted = { section = "records" }) { install = false } }
     if (state.frpsDraft != null) key(owner, epoch) { ManagedFrpsEditor(model, state) }
     state.profileDraft?.let { draft -> key(owner, epoch, state.editorVersion) { TunnelProfileEditor(state,
         { model.updateProfile(draft, it) }, { model.closeProfile(draft) }, { model.saveProfile(draft) },

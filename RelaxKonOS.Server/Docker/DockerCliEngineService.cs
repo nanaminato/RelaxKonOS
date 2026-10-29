@@ -285,7 +285,7 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDock
         if (!string.IsNullOrWhiteSpace(request.Dockerfile))
         {
             var dockerfile = Path.GetFullPath(request.Dockerfile);
-            if (!File.Exists(dockerfile) || !IsPathWithin(dockerfile, contextDirectory)) return new DockerOperationResult(false, "docker.validation_failed");
+            if (!File.Exists(dockerfile) || !PathSafety.IsWithin(contextDirectory, dockerfile)) return new DockerOperationResult(false, "docker.validation_failed");
             arguments.Add("--file"); arguments.Add(dockerfile);
         }
         arguments.Add(contextDirectory);
@@ -466,12 +466,7 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDock
         try { fullPath = Path.GetFullPath(path); }
         catch (Exception) { return false; }
         var candidate = fullPath;
-        return Directory.Exists(candidate) && options.BuildRoots.Any(root => IsPathWithin(candidate, Path.GetFullPath(root)));
-    }
-    private static bool IsPathWithin(string path, string root)
-    {
-        var relative = Path.GetRelativePath(root, path);
-        return relative != ".." && !relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal) && !Path.IsPathRooted(relative);
+        return Directory.Exists(candidate) && options.BuildRoots.Any(root => PathSafety.IsWithin(Path.GetFullPath(root), candidate));
     }
     private static string ToProblemCode(CommandResult result)
     {

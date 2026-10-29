@@ -71,6 +71,17 @@
         "registry.apply.immediate": "立即生效",
         "registry.apply.reopen": "重新打开应用后生效",
         "registry.error.conflict": "此字段已被其他编辑更新。当前值：{0}。请关闭并重新打开编辑器以合并更改。",
-        "registry.error.conflict_unknown": "配置版本已改变；请重新读取后编辑。"
+        "registry.error.conflict_unknown": "配置版本已改变；请重新读取后编辑。",
+        "registry.session_valid.hint": "当前访问令牌通过管理员验证后，在该令牌到期前免重复验证。新令牌不继承。关闭会清除记忆；已验证的令牌泄露后，可直接执行获准的管理操作。",
+        "registry.runtime.sessionValid": "记住当前令牌的管理员验证",
+        "registry.runtime.registryFlushDelayMilliseconds": "注册表写回延迟（毫秒）",
+        "registry.runtime.notificationCoalesceMilliseconds": "通知合并间隔（毫秒）",
+        "registry.runtime.retryDelaySeconds": "失败重试间隔（秒）",
+        "registry.type.Boolean": "布尔值",
+        "registry.type.Number": "数值",
+        "registry.type.String": "字符串",
+        "registry.type.Json": "JSON",
+        "registry.boolean.true": "开启",
+        "registry.boolean.false": "关闭"
     }
 }
