@@ -21,6 +21,7 @@ internal class TailscaleViewModel(private val session: AuthSession, private val 
     var review by mutableStateOf<TailscaleReview?>(null); private set
     private var job: Job? = null
     private var generation = 0
+    private var foregroundEpoch = 0L
     private var reviewActive by mutableStateOf(false)
     val editable get() = reviewActive && !state.busy && !state.storageFailed && state.owner?.privilegedOperations == true && state.control?.canControl == true
         && state.records.none { it.phase != TailscaleReferencePhase.Known }
@@ -29,7 +30,7 @@ internal class TailscaleViewModel(private val session: AuthSession, private val 
             job?.cancel(); generation++; review = null; state = TailscaleState(owner = owner as? SessionState.Active)
         }
     } } }
-    fun setActive(value: Boolean) { reviewActive = value; if (!value) review = null }
+    fun setActive(value: Boolean) { reviewActive = value; if (!value) { foregroundEpoch++; review = null } }
     fun stop() { setActive(false); job?.cancel(); generation++; state = state.copy(busy = false,control = null,recovery = null); review = null }
     fun dismiss() { if (!state.busy) review = null }
     fun invalidateControl() { review = null; state = state.copy(control = null,recovery = null) }
@@ -47,13 +48,15 @@ internal class TailscaleViewModel(private val session: AuthSession, private val 
     fun prepare(action: TailscaleAction, configuration: TailscaleConfiguration? = null) {
         if (!editable) return
         val baseline = state.control ?: return
+        val gesture = foregroundEpoch
         review = null
         work { owner ->
+            if (!reviewActive || foregroundEpoch != gesture) return@work
             val result = repository.prepare(owner,baseline,action,configuration,answers); verify(owner)
             loadReferences(owner)
             if (result is ApiResult.Success) {
                 state = state.copy(selected = result.value.operationId,operation = result.value,recovery = null)
-                if (reviewActive) review = TailscaleReview(owner,baseline,result.value,null)
+                if (reviewActive && foregroundEpoch == gesture) review = TailscaleReview(owner,baseline,result.value,null)
             } else state = state.copy(problem = problem(result))
         }
     }

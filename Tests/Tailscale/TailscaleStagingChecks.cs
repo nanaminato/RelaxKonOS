@@ -16,8 +16,8 @@ internal static class TailscaleStagingChecks
         var release = new ComponentDownloadRelease("1.104.4","win-x64",TailscaleOfficialReleases.Root+"tailscale-setup-1.104.4-amd64.msi",
             "tailscale-setup-1.104.4-amd64.msi","msi",Convert.ToHexStringLower(SHA256.HashData(bytes)));
         var properties = new TailscaleMsiProperties.Evidence("Tailscale","Tailscale Inc.",release.Version,
-            Guid.NewGuid().ToString("B").ToUpperInvariant(),Guid.NewGuid().ToString("B").ToUpperInvariant(),Guid.NewGuid().ToString("B").ToUpperInvariant(),"x64;1033");
-        var evidence = new TailscaleMsiSignature.Evidence(release.Sha256!,"fixture","fixture",properties);
+            Guid.NewGuid().ToString("B").ToUpperInvariant(),TailscaleMsiProperties.KnownUpgradeCode,Guid.NewGuid().ToString("B").ToUpperInvariant(),"x64;1033");
+        var evidence = new TailscaleMsiSignature.Evidence(release.Sha256!,"Tailscale Inc. / CA / 1131559-5",new string('A',64),properties);
         Task<ComponentDownloadRelease> Resolve(string rid,string version,CancellationToken ct,RuntimeDownloadProxy? proxy)
         { ct.ThrowIfCancellationRequested(); calls++; return Task.FromResult(release); }
         var transfer = new TailscaleMsiArtifactTransfer(async (_,output,_,ct) => await output.WriteAsync(bytes,ct));
@@ -65,7 +65,7 @@ internal static class TailscaleStagingChecks
             using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
             try { await stage.PrepareAsync(Guid.NewGuid(),release.Rid,release.Version,null,cancelled.Token); throw new Exception("Cancelled stage accepted"); }
             catch (OperationCanceledException) { Check(calls == before); }
-            Check(Directory.GetDirectories(root).SequenceEqual(new[] { orphanPath }));
+            Check(Directory.GetDirectories(root).Where(p => Path.GetFileName(p) != "pins").SequenceEqual(new[] { orphanPath }));
             using var late = new CancellationTokenSource(); var lateId = Guid.NewGuid();
             try { await Stage((_,_,_) => { late.Cancel(); return Task.FromResult(evidence); }).PrepareAsync(lateId,release.Rid,release.Version,null,late.Token); throw new Exception("Late inspection accepted"); }
             catch (OperationCanceledException) { Check(!Directory.Exists(Path.Combine(root,lateId.ToString("N")))); }

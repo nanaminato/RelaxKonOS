@@ -79,6 +79,15 @@ class TailscaleViewModelTest {
         signIn("bob"); advanceUntilIdle(); model.submit(review); advanceUntilIdle()
         assertEquals(0,executions); assertNull(model.review); assertNull(model.state.control)
     }
+    @Test fun `background and resume cannot revive a pending preparation review`() = runTest {
+        signIn(); advanceUntilIdle(); model.loadControl(); advanceUntilIdle()
+        prepareHold = CompletableDeferred(); model.prepare(TailscaleAction.Connect); runCurrent()
+        model.setActive(false); model.setActive(true); prepareHold!!.complete(Unit); advanceUntilIdle()
+        assertNull(model.review); assertFalse(model.state.busy); assertEquals(0,executions)
+        assertNotNull(model.state.operation)
+        prepareHold = null; model.prepare(TailscaleAction.Connect); advanceUntilIdle()
+        assertNotNull(model.review); assertEquals(0,executions)
+    }
     @Test fun `lost response blocks changes until original receipt is read`() = runTest {
         signIn(); advanceUntilIdle(); model.loadControl(); advanceUntilIdle(); model.prepare(TailscaleAction.Connect); advanceUntilIdle()
         loseResponse = true; model.submit(requireNotNull(model.review)); advanceUntilIdle()

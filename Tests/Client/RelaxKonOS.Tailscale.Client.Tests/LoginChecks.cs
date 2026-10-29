@@ -30,7 +30,9 @@ internal static class LoginChecks
         var pending = model.Selected;
         model.Selected = model.Operations.Last(); await model.ReadAsync();
         Check(!model.CanStart && !model.CanOpen);
-        model.Selected = pending; await model.ReadAsync();
+        model.Selected = pending; client.PreparedRead = true; await model.ReadAsync();
+        Check(!model.CanStart && !model.CanOpen);
+        client.PreparedRead = false; await model.ReadAsync();
         Check(client.Executes == 1 && model.CanOpen);
         var opened = 0;
         model.OpenBrowserAsync = uri => { Check(uri.OriginalString == LoginFake.Url); opened++; return Task.FromResult(true); };
@@ -61,6 +63,8 @@ internal static class LoginChecks
         recovery.ConfirmAsync = (_, _, _) => Task.FromResult(true);
         recoveryClient.LoseClose = true;
         await recovery.CloseAsync(); Check(recoveryClient.Closes == 1 && !recovery.CanOpen);
+        recoveryClient.SuppressClosure = true; await recovery.ReadAsync(); Check(!recovery.CanOpen && !recovery.CanStart);
+        recoveryClient.SuppressClosure = false;
         await recovery.ReadAsync(); Check(recoveryClient.Closes == 1 && recovery.CanStart && !recovery.CanOpen);
         var id = recovery.Selected!.Id;
         recovery.Deactivate(); recovery.Activate();
@@ -93,7 +97,7 @@ internal sealed class LoginFake : ITailscaleLoginClient
     public event EventHandler<AuthSessionStateChangedEventArgs>? SessionChanged;
     internal HostSettingsConnection Connection = new("login-host", Guid.NewGuid(), Guid.NewGuid());
     internal int Prepares, Executes, Challenges, Closes;
-    internal bool BadPlan, BadChallenge, LoseExecute, LoseClose, SwitchOnChallenge;
+    internal bool BadPlan, BadChallenge, LoseExecute, LoseClose, SwitchOnChallenge, PreparedRead, SuppressClosure;
     internal TaskCompletionSource<TailscaleLoginOperation>? HoldPrepare;
     internal TailscaleLoginOperation? Last;
     internal TailscaleLoginState ResultState = TailscaleLoginState.Issued;
@@ -113,7 +117,7 @@ internal sealed class LoginFake : ITailscaleLoginClient
         if (LoseExecute) { LoseExecute = false; throw new HttpRequestException("private"); }
         return Task.FromResult(result);
     }
-    public Task<TailscaleLoginOperation> GetAsync(HostSettingsConnection connection, Guid id, CancellationToken ct) => Task.FromResult(_records[id]);
+    public Task<TailscaleLoginOperation> GetAsync(HostSettingsConnection connection, Guid id, CancellationToken ct) => Task.FromResult(PreparedRead ? _records[id] with { State = TailscaleLoginState.Prepared, Closure = null } : SuppressClosure ? _records[id] with { Closure = null } : _records[id]);
     public Task<TailscaleLoginChallengeResponse> ChallengeAsync(HostSettingsConnection connection, Guid id, CancellationToken ct)
     {
         Challenges++;

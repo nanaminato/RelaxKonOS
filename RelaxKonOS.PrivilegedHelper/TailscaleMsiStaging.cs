@@ -53,6 +53,7 @@ internal sealed class TailscaleMsiStaging(
             var release = await resolve(rid,version,token,proxy);
             token.ThrowIfCancellationRequested(); TailscaleMsiArtifactTransfer.Validate(release);
             if (release.Version != version || release.Rid != rid) throw new RuntimePolicyException("component.tailscale_artifact_invalid");
+            var pins = new TailscaleMsiPins(root,require); pins.Check(release);
             await using (var output = new FileStream(path,FileMode.CreateNew,FileAccess.ReadWrite,FileShare.Read,65536,FileOptions.Asynchronous))
             {
                 require(path);
@@ -65,6 +66,8 @@ internal sealed class TailscaleMsiStaging(
             held = new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read);
             var evidence = await inspect(path,release,token);
             token.ThrowIfCancellationRequested(); require(directory); require(path);
+            pins.Remember(release,evidence);
+            token.ThrowIfCancellationRequested();
             var lease = new Lease(path,release,evidence,held,gate,() => Cleanup(directory,path));
             held = null; gate = null; created = false;
             return lease;

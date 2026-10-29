@@ -89,6 +89,16 @@ class TailscaleControlTest {
         reject { repository.execute(owner,plan,true,ElevationAnswerProvider.Declines) }
         assertEquals(0,executions)
     }
+    @Test fun `prepared read cannot clear an uncertain submitted operation`() = runTest {
+        val owner = signIn(); val plan = plan(owner); loseResponse = true
+        repository.execute(owner,plan,true,ElevationAnswerProvider.Declines)
+        val applied = records.getValue(plan.operationId); records[plan.operationId] = plan
+        repository.read(owner,plan.operationId)
+        assertEquals(TailscaleReferencePhase.Executing,references.read(owner).single().phase)
+        reject { plan(owner) }; assertEquals(1,executions)
+        records[plan.operationId] = applied; repository.read(owner,plan.operationId)
+        assertEquals(TailscaleReferencePhase.Known,references.read(owner).single().phase)
+    }
     @Test fun `failed prepare reference persistence cannot create executable plan`() = runTest {
         val owner = signIn(); storage.failWrites = true
         reject { plan(owner) }; assertEquals(0,executions); assertTrue(references.read(owner).isEmpty())
@@ -206,6 +216,9 @@ class TailscaleControlTest {
             instant = plan.expiresAt.plusSeconds(1); ElevationAnswer("alice","admin".toCharArray())
         })
         assertEquals("tailscale.plan_expired",(result as ApiResult.Problem).code); assertEquals(0,executions)
+        repository.read(owner,plan.operationId)
+        assertEquals(TailscaleReferencePhase.Executing,references.read(owner).single().phase)
+        records[plan.operationId] = plan.copy(state = TailscaleOperationState.Rejected)
         repository.read(owner,plan.operationId)
         assertEquals(TailscaleReferencePhase.Known,references.read(owner).single().phase)
     }
