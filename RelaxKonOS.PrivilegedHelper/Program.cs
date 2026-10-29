@@ -11,6 +11,11 @@ using RelaxKonOS.PrivilegedHelper;
 if (args.FirstOrDefault() == "runtime-source")
     return await RuntimeSourceCommand.RunAsync(args[1..]);
 
+// Persistent Linux host: root-owned systemd service listening on a local Unix Domain Socket. It
+// shares the closed dispatcher with the one-shot worker and the Windows hosts.
+if (args.Contains("--linux-service", StringComparer.Ordinal))
+    return await LinuxPrivilegedHelperService.RunAsync(args);
+
 if (OperatingSystem.IsWindows() && args.Contains("--component-service", StringComparer.Ordinal))
 {
     WindowsComponentService.Run(args);
@@ -66,11 +71,7 @@ public static async Task<int> RunOneShotAsync()
 
     // A root-owned installation configures this list. An empty list deliberately fails closed: a
     // compromised Server account must not turn the file explorer into arbitrary root file I/O.
-    var policy = new PrivilegedOperationPolicy(
-        LoadAllowedRoots("/etc/relaxkonos/privileged-helper-roots"),
-        LoadAllowedRoots("/etc/relaxkonos/privileged-helper-roots-administrator"),
-        LoadAllowedRoots("/etc/relaxkonos/privileged-helper-roots-root"),
-        LoadAllowedServices());
+    var policy = LoadHostPolicy();
     PrivilegedOperationRequest? request;
     try
     {
@@ -349,6 +350,16 @@ static void ThrowIfReparsePoint(string path)
 
 static bool IsWithin(string path, string root) => string.Equals(path, root, GetPathComparison())
     || path.StartsWith(root.EndsWith(Path.DirectorySeparatorChar) ? root : root + Path.DirectorySeparatorChar, GetPathComparison());
+
+/// <summary>
+/// Reads the root-owned installation policy shared by the one-shot worker and the persistent Linux
+/// service. It is a method, not configuration, so a caller cannot supply or widen it.
+/// </summary>
+public static PrivilegedOperationPolicy LoadHostPolicy() => new(
+    LoadAllowedRoots("/etc/relaxkonos/privileged-helper-roots"),
+    LoadAllowedRoots("/etc/relaxkonos/privileged-helper-roots-administrator"),
+    LoadAllowedRoots("/etc/relaxkonos/privileged-helper-roots-root"),
+    LoadAllowedServices());
 
 static IReadOnlyList<string> LoadAllowedRoots(string policyPath)
 {

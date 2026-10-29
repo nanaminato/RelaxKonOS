@@ -15,11 +15,20 @@ Windows 当前用户自己的环境变量按 SID 归属授权，系统 store 单
 使用发布包中的 `deployment/linux/install-relaxkonos-services.sh` 安装。安装程序会：
 
 - 创建 `relaxkonos-server` 系统账户；
-- 将 Helper 发布目录、sudoers 与策略文件设为 root 所有且 Server 用户不可写；
+- 将 Helper 发布目录、`/etc/relaxkonos/privileged-helper.json` 与策略文件设为 root 所有且 Server 用户不可写；
 - 将手动 grant、管理员自动路由、root 会话的文件根分别写入
   `/etc/relaxkonos/privileged-helper-roots`、`privileged-helper-roots-administrator`、
   `privileged-helper-roots-root`；服务 ID 写入 `/etc/relaxkonos/privileged-services`；
-- 仅允许 Server 用户以 `sudo -n` 调用 Helper apphost 的三个精确入口：无参数特权协议、`--user-execution` 和 `--user-terminal`。
+- 安装并启用 `relaxkonos-privileged-helper.service`：以 root 常驻，只监听
+  `/run/relaxkonos/privileged.sock`（`root:relaxkonos-server`、`0660`）。Server 通过该 socket
+  发送带版本/能力握手的封闭操作请求，不再为每次特权操作启动 `sudo`；
+- `privileged-helper.json` 的 `allowedUids` 只包含 Server 服务账户的 uid，Helper 还会在每次连接上
+  用 `SO_PEERCRED` 重新核对调用者 uid；
+- sudoers 只剩两个过渡性入口：`--user-execution` 与 `--user-terminal`。普通文件/终端执行迁移前
+  仍按每次调用启动一次性 root worker；无参数特权协议不再写入生产 sudoers。
+
+`relaxkonos-server.service` 通过 `After=`/`Wants=relaxkonos-privileged-helper.service` 排序但不强依赖：
+Helper 停掉时普通 Server 功能继续运行，特权功能返回 `privileged-helper-unavailable`。
 
 ### Linux 系统代理
 
@@ -51,13 +60,15 @@ Docker 安装会在修改主机前拒绝执行。
 安装后检查：
 
 ```text
-systemctl status relaxkonos-server relaxkonos-guardian
-sudo -u relaxkonos-server sudo -n /usr/local/lib/relaxkonos/privileged-helper/<apphost>
+systemctl status relaxkonos-privileged-helper relaxkonos-server relaxkonos-guardian
+ls -l /run/relaxkonos/privileged.sock
+sudo -u relaxkonos-server sudo -n /usr/local/lib/relaxkonos/privileged-helper/<apphost> --user-execution
 ```
 
-第二个命令没有 JSON 请求时必须失败；它只能证明 sudoers 指向固定 apphost，不能用于
-执行命令。sudoers 中的 `""` 明确表示无参数，另外两条规则只匹配固定的 user-execution 入口。
-不要增加通配符、shell、额外参数或可由 Server 选择的命令路径。
+socket 必须是 `root:relaxkonos-server`、模式 `0660`；若为其它属主或 `0666`，不要启动 Server，
+先用安装脚本重建。第三条命令没有 JSON 请求时必须失败；它只证明 sudoers 仍指向固定 apphost 的
+过渡性 user-execution 入口，不能用于执行命令。sudoers 只匹配这两个固定入口，不要添加通配符、
+shell、额外参数或可由 Server 选择的命令路径。
 
 ### 文件访问配置
 
@@ -210,11 +221,13 @@ HTTP 请求中。
 
 ## 故障排查
 
-- `privileged-helper-unavailable`：检查 Helper 服务/系统单元、发布目录所有者、pipe ACL、
-  sudoers 和密钥配置。
+- `privileged-helper-unavailable`：检查 `relaxkonos-privileged-helper.service`、发布目录所有者、
+  socket 属主/模式、`privileged-helper.json`、策略文件与（仅 user-execution）sudoers 规则。
+- `invalid-protocol`：Server 与 Helper 协议版本或握手能力不匹配；同版本升级 Server/Helper，不要
+  放宽校验。
 - `elevation-required`：客户端需要为当前 JWT、相同 capability 和精确资源重新进行宿主管理员认证。
-- `access-denied` / `resource-not-allowed`：不要放宽 sudoers 或管道 ACL；检查 Helper 策略根、
-  allowlisted 服务 ID 和受管实例 ID。
+- `access-denied` / `resource-not-allowed`：不要放宽 socket ACL、调用者 uid 列表或 sudoers；
+  检查 Helper 策略根、allowlisted 服务 ID 和受管实例 ID。
 - `manual_host_action_required`：该能力尚未有安全的封闭模型，必须在宿主操作系统中按官方
   文档执行，不得把命令放入 Server 配置。
 

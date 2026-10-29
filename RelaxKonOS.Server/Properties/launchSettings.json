@@ -44,6 +44,7 @@
         "GuardianAgent__SharedSecret": "dev-guardian-secret-local-only",
         "Identity__LinuxPamTransport": "helper",
         "PrivilegedHelper__HelperPath": "/usr/local/lib/relaxkonos/privileged-helper-development/RelaxKonOS.PrivilegedHelper",
+        "PrivilegedHelper__SocketPath": "/run/relaxkonos/privileged-development.sock",
         "PrivilegedHelper__SudoPath": "/usr/bin/sudo"
       }
     },

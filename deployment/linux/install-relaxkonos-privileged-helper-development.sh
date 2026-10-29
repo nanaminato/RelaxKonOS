@@ -199,6 +199,45 @@ fi
 rm -rf -- "$INSTALL_BACKUP"
 chmod 0755 "$INSTALLED_HELPER"
 
+# Development transport config is separate from the production one so this script can never
+# silently widen (or narrow) an installed deployment's socket or caller list. The unit restarts
+# the persistent Helper from the freshly staged build.
+DEVELOPMENT_UID="$(id -u "$DEVELOPMENT_USER")"
+DEVELOPMENT_GID="$(id -g "$DEVELOPMENT_GROUP")"
+DEVELOPMENT_CONFIG=/etc/relaxkonos/privileged-helper-development.json
+cat >"$DEVELOPMENT_CONFIG" <<EOF
+{
+  "socketPath": "/run/relaxkonos/privileged-development.sock",
+  "socketGroupId": $DEVELOPMENT_GID,
+  "allowedUids": [$DEVELOPMENT_UID],
+  "maximumConcurrentRequests": 8
+}
+EOF
+chown root:root "$DEVELOPMENT_CONFIG"
+chmod 0600 "$DEVELOPMENT_CONFIG"
+cat >/etc/systemd/system/relaxkonos-privileged-helper-development.service <<EOF
+[Unit]
+Description=RelaxKonOS Privileged Helper (development)
+
+[Service]
+Type=simple
+ExecStart=$INSTALLED_HELPER --linux-service --config $DEVELOPMENT_CONFIG
+User=root
+Group=root
+RuntimeDirectory=relaxkonos
+RuntimeDirectoryMode=0750
+Restart=on-failure
+RestartSec=2s
+
+[Install]
+WantedBy=multi-user.target
+EOF
+chown root:root /etc/systemd/system/relaxkonos-privileged-helper-development.service
+chmod 0644 /etc/systemd/system/relaxkonos-privileged-helper-development.service
+systemctl daemon-reload
+systemctl enable relaxkonos-privileged-helper-development.service >/dev/null
+systemctl restart relaxkonos-privileged-helper-development.service
+
 SUDOERS_TEMP="$(mktemp /etc/sudoers.d/relaxkonos-privileged-helper-development.XXXXXX)"
 trap 'rm -f "$SUDOERS_TEMP"' EXIT
 cat >"$SUDOERS_TEMP" <<EOF
@@ -230,4 +269,6 @@ set -e
 [[ $REJECTED_STATUS -ne 64 ]] || { echo "The sudoers rule unexpectedly allowed an unlisted Helper argument." >&2; exit 1; }
 
 echo "Unified privileged Helper development access is ready for $DEVELOPMENT_USER."
-echo "Use PrivilegedHelper__HelperPath=$INSTALLED_HELPER in the Server launch profile."
+echo "The persistent Helper is running as relaxkonos-privileged-helper-development.service."
+echo "Use PrivilegedHelper__SocketPath=/run/relaxkonos/privileged-development.sock in the Server launch profile."
+echo "PrivilegedHelper__HelperPath=$INSTALLED_HELPER remains available for the transitional sudo worker and user execution."

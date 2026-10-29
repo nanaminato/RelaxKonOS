@@ -39,12 +39,18 @@ internal static class IdentityServiceRegistration
         // value is published once instead of each of them re-reading configuration.
         builder.Services.AddSingleton(new RelaxKonOS.Server.UserExecution.UserExecutionBackendSelection(userExecutionBackend));
         builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.LocalPrivilegedOperationRunner>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.UnixSocketPrivilegedOperationTransport>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport>(sp =>
             !serverModeResolver.Supports(ServerHostFeature.PrivilegedOperations)
                 ? new RelaxKonOS.Server.Privileged.DisabledPrivilegedOperationTransport()
                 : OperatingSystem.IsWindows()
                 ? ActivatorUtilities.CreateInstance<RelaxKonOS.Server.Privileged.WindowsNamedPipePrivilegedOperationTransport>(sp)
-                : sp.GetRequiredService<RelaxKonOS.Server.Privileged.LocalPrivilegedOperationRunner>());
+                // A configured socket is the production Linux path. Without one (a development
+                // profile that has not installed the unit yet) the transitional per-call sudo
+                // worker remains explicit configuration, not a silent fallback from the socket.
+                : !string.IsNullOrWhiteSpace(privilegedHelperOptions.SocketPath)
+                    ? sp.GetRequiredService<RelaxKonOS.Server.Privileged.UnixSocketPrivilegedOperationTransport>()
+                    : sp.GetRequiredService<RelaxKonOS.Server.Privileged.LocalPrivilegedOperationRunner>());
         builder.Services.AddSingleton<RelaxKonOS.Server.UserExecution.LinuxUserExecutionTransport>();
         builder.Services.AddSingleton<RelaxKonOS.Server.UserExecution.WindowsNamedPipeUserExecutionTransport>();
         builder.Services.AddSingleton<RelaxKonOS.Server.UserExecution.LocalIdentityUserExecutionTransport>();
@@ -128,6 +134,36 @@ internal static class IdentityServiceRegistration
                 + "development Helper (deployment/linux/install-relaxkonos-privileged-helper-development.sh), or set "
                 + "PrivilegedHelper:UserExecutionBackend=local-identity to execute in-process as this account while debugging.",
                 !string.IsNullOrWhiteSpace(options.HelperPath));
+    }
+
+    /// <summary>
+    /// Names the selected privileged transport once. The socket path is installation metadata, so it
+    /// is logged only as configured/missing; a missing socket is degraded, not a startup failure.
+    /// </summary>
+    public static void ReportPrivilegedTransport(ILogger logger, RelaxKonOS.Server.HostMode.ServerModeResolver serverModeResolver,
+        RelaxKonOS.Server.Privileged.PrivilegedHelperOptions options)
+    {
+        if (!serverModeResolver.Supports(ServerHostFeature.PrivilegedOperations))
+        {
+            logger.LogInformation("Privileged operations are disabled for this Server mode.");
+            return;
+        }
+        if (OperatingSystem.IsWindows())
+        {
+            logger.LogInformation("Privileged operations use the local named-pipe Helper.");
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(options.SocketPath))
+        {
+            logger.LogWarning("PrivilegedHelper:SocketPath is not configured, so privileged operations use the transitional "
+                + "per-call sudo worker. Install the persistent Helper service for production.");
+            return;
+        }
+        if (!Path.Exists(options.SocketPath))
+            logger.LogWarning("The privileged Helper socket is not present yet (SocketPathConfigured=True), so privileged "
+                + "operations will fail with 'privileged helper service is unavailable' until relaxkonos-privileged-helper.service starts.");
+        else
+            logger.LogInformation("Privileged operations use the persistent Helper socket.");
     }
 
     static bool NamedPipeExists(string pipeName)
