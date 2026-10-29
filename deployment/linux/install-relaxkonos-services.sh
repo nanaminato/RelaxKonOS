@@ -390,6 +390,7 @@ BackupRecovery__RootDirectory=$SERVER_DATA/backup-recovery
 DockerCompose__DataDirectory=$COMPOSE_DATA
 PrivilegedHelper__HelperPath=$PRIVILEGED_HELPER
 PrivilegedHelper__SudoPath=$(command -v sudo)
+PrivilegedHelper__SocketPath=/run/relaxkonos/privileged.sock
 Observability__InstanceId=$OBSERVABILITY_INSTANCE_ID
 Observability__LogDirectory=/var/log/relaxkonos/runtime
 Observability__AuditDatabasePath=$SERVER_DATA/security-audit.db
@@ -415,9 +416,10 @@ EOF
 chown root:root /etc/relaxkonos/privileged-services
 chmod 0600 /etc/relaxkonos/privileged-services
 
-# Helpers are root-owned and have no writable parent for the service account. Sudo permits only
-# the three actual entry points: the no-argument privileged-operation protocol and the two exact
-# user-execution modes. It does not permit arbitrary arguments or option combinations.
+# Helpers are root-owned and have no writable parent for the service account. Privileged
+# operations use the persistent socket service below. Sudo now covers only the two transitional
+# user-execution entry points, whose migration follows in a separate change; it never grants the
+# no-argument privileged-operation protocol any more.
 install -d -o root -g root -m 0755 /usr/local/lib/relaxkonos
 # The published .NET helper has a companion runtimeconfig/deps file (and may have managed
 # assemblies). Stage its whole publish directory and rename the complete snapshot into place;
@@ -450,17 +452,56 @@ else
   chmod -R go-w "$PRIVILEGED_HELPER_INSTALL_DIR"
 fi
 chmod 0755 "$PRIVILEGED_HELPER"
+# Root-owned transport configuration: the socket path, the Server group that may traverse the
+# runtime directory, and the exact Server uid authorized by SO_PEERCRED. The Helper re-checks
+# that this file is root-owned and not writable by another account before it starts.
+PRIVILEGED_HELPER_CONFIG=/etc/relaxkonos/privileged-helper.json
+PRIVILEGED_HELPER_SOCKET=/run/relaxkonos/privileged.sock
+cat >"$PRIVILEGED_HELPER_CONFIG" <<EOF
+{
+  "socketPath": "$PRIVILEGED_HELPER_SOCKET",
+  "socketGroupId": $(id -g "$SERVICE_GROUP"),
+  "allowedUids": [$(id -u "$SERVICE_USER")],
+  "maximumConcurrentRequests": 8
+}
+EOF
+chown root:root "$PRIVILEGED_HELPER_CONFIG"
+chmod 0600 "$PRIVILEGED_HELPER_CONFIG"
 SUDOERS_TEMP="$(mktemp /etc/sudoers.d/relaxkonos-helpers.XXXXXX)"
 trap 'rm -f "$SUDOERS_TEMP"' EXIT
 cat >"$SUDOERS_TEMP" <<EOF
 # Managed by RelaxKonOS. Do not edit: reinstall to regenerate.
-$SERVICE_USER ALL=(root) NOPASSWD: $PRIVILEGED_HELPER "", $PRIVILEGED_HELPER --user-execution, $PRIVILEGED_HELPER --user-terminal
+# Transitional: privileged operations use relaxkonos-privileged-helper.service, not sudo.
+$SERVICE_USER ALL=(root) NOPASSWD: $PRIVILEGED_HELPER --user-execution, $PRIVILEGED_HELPER --user-terminal
 EOF
 chmod 0440 "$SUDOERS_TEMP"
 visudo -cf "$SUDOERS_TEMP"
 install -o root -g root -m 0440 "$SUDOERS_TEMP" "$SUDOERS_FILE"
 rm -f "$SUDOERS_TEMP"
 trap - EXIT
+
+# The persistent Helper is a local-only root service. It is not a network listener and exposes
+# only the closed operation dispatcher over its 0660 socket.
+cat >/etc/systemd/system/relaxkonos-privileged-helper.service <<EOF
+[Unit]
+Description=RelaxKonOS Privileged Helper
+Before=relaxkonos-server.service
+
+[Service]
+Type=simple
+ExecStart=$PRIVILEGED_HELPER --linux-service --config $PRIVILEGED_HELPER_CONFIG
+User=root
+Group=root
+# systemd owns /run/relaxkonos. The Helper narrows traversal for the Server group and creates
+# the socket with 0660, so the Server account can connect but cannot list the directory.
+RuntimeDirectory=relaxkonos
+RuntimeDirectoryMode=0750
+Restart=on-failure
+RestartSec=2s
+
+[Install]
+WantedBy=multi-user.target
+EOF
 
 GUARDIAN_DEPENDENCY=
 if [[ "$GUARDIAN_ENABLED" == true ]]; then
@@ -491,8 +532,10 @@ fi
 cat >/etc/systemd/system/relaxkonos-server.service <<EOF
 [Unit]
 Description=RelaxKonOS Server
-After=network-online.target $GUARDIAN_DEPENDENCY
-Wants=network-online.target $GUARDIAN_DEPENDENCY
+# Ordering, not a hard dependency: an unavailable Helper degrades privileged features while
+# ordinary Server functionality keeps running.
+After=network-online.target relaxkonos-privileged-helper.service $GUARDIAN_DEPENDENCY
+Wants=network-online.target relaxkonos-privileged-helper.service $GUARDIAN_DEPENDENCY
 
 [Service]
 Type=simple
@@ -510,20 +553,27 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-chown root:root /etc/systemd/system/relaxkonos-server.service
-chmod 0644 /etc/systemd/system/relaxkonos-server.service
+chown root:root /etc/systemd/system/relaxkonos-server.service /etc/systemd/system/relaxkonos-privileged-helper.service
+chmod 0644 /etc/systemd/system/relaxkonos-server.service /etc/systemd/system/relaxkonos-privileged-helper.service
 if [[ "$GUARDIAN_ENABLED" == true ]]; then
   chown root:root /etc/systemd/system/relaxkonos-guardian.service
   chmod 0644 /etc/systemd/system/relaxkonos-guardian.service
 fi
 systemctl daemon-reload
-units=(relaxkonos-server.service)
+units=(relaxkonos-privileged-helper.service relaxkonos-server.service)
 [[ "$GUARDIAN_ENABLED" != true ]] || units+=(relaxkonos-guardian.service)
-if [[ "$AUTO_START" == true ]]; then systemctl enable "${units[@]}"; else systemctl disable "${units[@]}"; fi
-systemctl start "${units[@]}"
+if [[ "$AUTO_START" == true ]]; then
+  systemctl enable "${units[@]}"
+  # restart (not start) so an upgrade always runs the newly installed Helper binary.
+  systemctl restart relaxkonos-privileged-helper.service
+  systemctl start "${units[@]}"
+else
+  systemctl disable "${units[@]}"
+  systemctl stop relaxkonos-privileged-helper.service 2>/dev/null || true
+fi
 if [[ "$DOCKER_ACCESS" == true ]]; then
   # Supplementary groups are captured when systemd spawns the process. A restart is required
   # even when the account was already present in the docker group before this deployment.
   systemctl restart relaxkonos-server.service
 fi
-echo "Installed RelaxKonOS Server and Guardian services (Server user: $SERVICE_USER; listening on $SERVER_LISTEN_URL)."
+echo "Installed RelaxKonOS Server, Guardian and Privileged Helper services (Server user: $SERVICE_USER; listening on $SERVER_LISTEN_URL)."

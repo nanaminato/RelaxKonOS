@@ -557,6 +557,7 @@ try
         return;
     }
     if (args.Contains("--helper-allowlist-only")) { await DeveloperUserSidAllowListVerification.RunAsync(); return; }
+if (args.Contains("--privileged-helper-socket-only")) { await PrivilegedHelperSocketChecks.RunAsync(); return; }
     if (args.Contains("--host-os-only")) { HostOperatingSystemChecks.Run(); return; }
     if (args.Contains("--thumbnails-only")) { ImageThumbnailChecks.Run(root); Console.WriteLine("Thumbnail checks passed."); return; }
     if (args.Contains("--uploads-only")) { await UploadSessionChecks.RunAsync(root); Console.WriteLine("File upload session checks passed."); return; }
@@ -583,6 +584,7 @@ try
     await FileOperationChecks.RunAsync(root);
     await FileArchiveChecks.RunAsync(root);
     await ServerCoreChecks.VerifyPrivilegedOperationProtocolAsync();
+    await PrivilegedHelperSocketChecks.RunAsync();
     await WindowsPrivilegeChecks.RunAsync(root);
     await DeveloperUserSidAllowListVerification.RunAsync();
     ServerCoreChecks.VerifyLinuxSystemAuthenticationProvider();

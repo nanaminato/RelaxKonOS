@@ -15,6 +15,7 @@ Android 的设计、功能、支持范围和发布要求统一维护在 [Android
 - [功能模块与双端应用扩展设计及实施路线（规划）](./architecture/RelaxKonOS.ModulesAndExtensions.Design.md)
 - [Server 模块闲时卸载与按需加载（首个运行时切片已实施）](./architecture/RelaxKonOS.ServerModuleResidency.Design.md)
 - [代码库优化与拆分计划](./architecture/RelaxKonOS.CodebaseOptimization.Design.md)
+- [统一特权 Helper 架构（Linux v1 常驻服务已实施）](./architecture/privileged-helper.md)
 - [注册表与配置同步](./architecture/RelaxKonOS.Registry.md)
 - [登录别名实施计划](./platform/RelaxKonOS.AliasLogin.Goal.md)
 - [权限模型与项目重构规范](./platform/RelaxKonOS.PermissionModel.Refactor.md)

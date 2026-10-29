@@ -70,6 +70,7 @@ if (await app.RunMaintenanceAsync(builder, serverModeResolver)) return;
 app.Logger.LogInformation("Authentication configuration loaded. ServerMode={ServerMode} LinuxPamTransport={LinuxPamTransport} PrivilegedHelperPathConfigured={PrivilegedHelperPathConfigured} UserExecutionBackend={UserExecutionBackend}",
     serverModeResolver.Mode, linuxPamTransport, !string.IsNullOrWhiteSpace(builder.Configuration["PrivilegedHelper:HelperPath"]), userExecutionBackend);
 IdentityServiceRegistration.ReportUserExecutionBackend(app.Logger, userExecutionBackend, serverModeResolver.Mode, privilegedHelperOptions);
+IdentityServiceRegistration.ReportPrivilegedTransport(app.Logger, serverModeResolver, privilegedHelperOptions);
 app.Logger.LogInformation("Server modules enabled: {ServerModules}", serverModules.Describe());
 // A disabled module must not leave durable work unresolved. This runs before the request pipeline and
 // before any hosted service starts, so the operator sees the reason instead of a half-working server
