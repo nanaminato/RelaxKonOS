@@ -16,6 +16,31 @@ internal static class TailscaleSerializationChecks
         var native = new Native();
         try
         {
+            var packageRoot = Path.Combine(folder.FullName, "package-ledger");
+            var package = Directory.CreateDirectory(Path.Combine(packageRoot, "tailscale")).FullName;
+            var operation = Path.Combine(package, "operation.json");
+            var change = Path.Combine(package, "change.json");
+            var target = new RelaxKonOS.Protocol.ManagedRuntimes.ComponentPackageTarget("tailscale", "1.104.4", "amd64", "official|resolute|main|amd64",
+                "https://pkgs.tailscale.com/stable/ubuntu", "resolute", "main", "https://pkgs.tailscale.com/stable/ubuntu/pool/tailscale_1.104.4_amd64.deb", new('a', 64), 1024, []);
+            var committedOperation = System.Text.Json.JsonSerializer.Serialize(new { ComponentId = "tailscale", OperationId = Guid.NewGuid(), Target = target, Committed = true, ExecutableSha256 = new string('b', 64) });
+            var committedChange = System.Text.Json.JsonSerializer.Serialize(new { OperationId = Guid.NewGuid(), Target = target, Committed = true,
+                Change = new RelaxKonOS.Protocol.ManagedRuntimes.ComponentPackageChange(RelaxKonOS.Protocol.ManagedRuntimes.RuntimeChange.Update, Guid.NewGuid(), "1.104.2") });
+            Check(!TailscalePackageInterlock.HasPending(packageRoot, _ => { }));
+            File.WriteAllText(operation, "{\"Committed\":false}");
+            Check(TailscalePackageInterlock.HasPending(packageRoot, _ => { }));
+            File.WriteAllText(operation, committedOperation);
+            Check(!TailscalePackageInterlock.HasPending(packageRoot, _ => { }));
+            File.WriteAllText(change, "{\"Committed\":false}");
+            Check(TailscalePackageInterlock.HasPending(packageRoot, _ => { }));
+            File.WriteAllText(change, committedChange);
+            Check(!TailscalePackageInterlock.HasPending(packageRoot, _ => { }));
+            Check(TailscalePackageInterlock.HasPending(packageRoot, _ => throw new UnauthorizedAccessException()));
+            File.WriteAllText(change, "{\"Committed\":true,\"Committed\":false}");
+            Check(TailscalePackageInterlock.HasPending(packageRoot, _ => { }));
+            File.WriteAllText(change, "{}");
+            Check(TailscalePackageInterlock.HasPending(packageRoot, _ => { }));
+            File.WriteAllText(change, "{");
+            Check(TailscalePackageInterlock.HasPending(packageRoot, _ => { }));
             var commands = new TailscaleLoginChecks.Commands("{}","https://login.tailscale.com/a/0123456789abcdef");
             var engine = new TailscaleControlOperations(folder.FullName,_=>{},native,new(commands.Run,()=>{}));
             var actor = Guid.NewGuid().ToString("D");

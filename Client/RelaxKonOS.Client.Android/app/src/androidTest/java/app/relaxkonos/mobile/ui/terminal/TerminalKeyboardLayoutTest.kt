@@ -23,6 +23,7 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performClick
@@ -115,7 +116,12 @@ class TerminalKeyboardLayoutTest {
     @Test fun keyboardClosedRestoresSessionAndFontControls() {
         show(360.dp, 640.dp, 0.dp)
         assertReadableEditorAndOutput()
-        rule.onNodeWithText("A+").assertIsDisplayed()
+        // Phones keep the 48dp bar by default; font and session controls live in its menu.
+        rule.onNodeWithTag("terminal-topbar").assertIsDisplayed()
+        rule.onNodeWithContentDescription(InstrumentationRegistry.getInstrumentation().targetContext
+            .getString(R.string.terminal_session_actions)).performClick()
+        rule.onNodeWithText(InstrumentationRegistry.getInstrumentation().targetContext
+            .getString(R.string.terminal_font_larger)).assertIsDisplayed()
         rule.onNodeWithText(secondSessionLabel(), substring = true).assertIsDisplayed()
     }
 
@@ -136,7 +142,7 @@ class TerminalKeyboardLayoutTest {
         rule.runOnIdle { keyboard.value = 0.dp }
         closeSoftKeyboard()
         rule.onNodeWithText("unsent draft").assertIsDisplayed()
-        rule.onNodeWithText("A+").assertIsDisplayed()
+        rule.onNodeWithTag("terminal-topbar").assertIsDisplayed()
     }
 
     @Test fun actualSystemKeyboardKeepsDraftAndCursorAboveIme() {

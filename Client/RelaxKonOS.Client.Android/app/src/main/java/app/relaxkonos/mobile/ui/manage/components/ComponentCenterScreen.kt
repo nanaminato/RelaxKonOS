@@ -100,6 +100,7 @@ internal fun ComponentCenterContent(
     var frpUpgrade by remember(owner) { mutableStateOf<String?>(null) }
     var frpConfirm by remember(owner) { mutableStateOf<Pair<String, InstallationKind>?>(null) }
     var nginxUninstall by remember(owner) { mutableStateOf(false) }
+    var tailscaleMaintenance by remember(owner) { mutableStateOf<Triple<String, Long, String>?>(null) }
     LaunchedEffect(owner) { model.load(owner) }
 
     selected?.let { read ->
@@ -119,6 +120,30 @@ internal fun ComponentCenterContent(
         ChangeDialog(review, state.busy,
             onConfirm = { model.confirmChange(owner, container.elevationAnswers) },
             onDismiss = model::dismissReview)
+    }
+    tailscaleMaintenance?.let { review ->
+        val title = when (review.first) {
+            "ConfigureOfficialSource" -> R.string.components_tailscale_source_setup
+            "RefreshSources" -> R.string.components_tailscale_refresh
+            "Stop" -> R.string.components_tailscale_stop
+            else -> R.string.components_tailscale_close
+        }
+        AlertDialog(
+            onDismissRequest = { if (!state.busy) tailscaleMaintenance = null },
+            title = { Text(stringResource(title)) },
+            text = { Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                Text(review.third)
+                Text(stringResource(when (review.first) {
+                    "ConfigureOfficialSource" -> R.string.components_tailscale_source_confirm
+                    "RefreshSources" -> R.string.components_tailscale_refresh_confirm
+                    else -> R.string.components_tailscale_recovery_confirm
+                }))
+            } },
+            confirmButton = { TextButton(enabled = !state.busy, onClick = {
+                model.maintainTailscale(owner, review.first, review.second); tailscaleMaintenance = null
+            }) { Text(stringResource(title)) } },
+            dismissButton = { TextButton(enabled = !state.busy, onClick = { tailscaleMaintenance = null }) { Text(stringResource(R.string.common_cancel)) } },
+        )
     }
     state.operation?.let { notice ->
         AlertDialog(
@@ -239,6 +264,7 @@ internal fun ComponentCenterContent(
                         canManage = owner.controller && capabilityFor(read.componentId, owner.capabilities),
                         nginxLoading = state.nginxLoading,
                         onChange = { change, pin -> model.requestChange(owner, read.componentId, change, pin = pin) },
+                        onMaintenance = { action -> read.view?.state?.let { tailscaleMaintenance = Triple(action, it.revision, it.hostId) } },
                         onInstallFromFile = { fileInstall = read.componentId },
                         onFrpMaintenance = { kind ->
                             when (kind) {
@@ -264,6 +290,7 @@ private fun ComponentCard(
     canManage: Boolean,
     nginxLoading: Boolean,
     onChange: (ComponentChange, ComponentPinnedArchive?) -> Unit,
+    onMaintenance: (String) -> Unit,
     onInstallFromFile: () -> Unit,
     onFrpMaintenance: (InstallationKind) -> Unit,
     onNginxUninstall: () -> Unit,
@@ -278,7 +305,7 @@ private fun ComponentCard(
     // pinned releases (frpc/frps) is installed from one explicitly chosen version; other archives are
     // observed and navigated only, because this build refuses their execution.
     val packageBacked = canManage && read.componentId in ComponentCatalog.changeableIds && state != null &&
-        state.mode == "systemPackage" && view.problems.isEmpty()
+        state.mode in setOf("systemPackage", "nativeInstaller") && view.problems.isEmpty() && !view.recoveryRequired
     val installable = packageBacked && state?.ownership == "absent"
     val archiveInstallable = canManage && read.componentId in ComponentCatalog.archiveInstallableIds && state != null &&
         state.mode == "managedArchive" && state.ownership == "absent" && view.problems.isEmpty() &&
@@ -325,6 +352,18 @@ private fun ComponentCard(
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         } else {
             ComponentSummary(view)
+        }
+        if (canManage && read.componentId == "tailscale" && view != null && state?.mode == "systemPackage") {
+            val setup = "component.host_policy_required" in view.problems
+            TextButton(enabled = !busy, onClick = { onMaintenance(if (setup) "ConfigureOfficialSource" else "RefreshSources") }) {
+                Text(stringResource(if (setup) R.string.components_tailscale_source_setup else R.string.components_tailscale_refresh))
+            }
+        }
+        if (canManage && read.componentId == "tailscale" && view?.recoveryRequired == true && view.pendingOperationId != null) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                TextButton(enabled = !busy, onClick = { onMaintenance("Stop") }) { Text(stringResource(R.string.components_tailscale_stop)) }
+                TextButton(enabled = !busy, onClick = { onMaintenance("Close") }) { Text(stringResource(R.string.components_tailscale_close)) }
+            }
         }
         if (installable || manageable) {
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
@@ -563,7 +602,7 @@ private fun ArchiveVersionDialog(
 }
 
 @Composable
-private fun ChangeDialog(
+internal fun ChangeDialog(
     review: ComponentChangeReview,
     busy: Boolean,
     onConfirm: () -> Unit,
@@ -575,11 +614,15 @@ private fun ChangeDialog(
         onDismissRequest = { if (!busy) onDismiss() },
         title = { Text(stringResource(R.string.components_change_title, action)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Text(stringResource(R.string.components_change_target, stringResource(definition?.title ?: R.string.components_title)))
+                review.plan.hostId?.let { Text("${stringResource(R.string.components_host)}: $it") }
                 review.targetVersion?.let {
                     Text(stringResource(R.string.components_archive_candidate, it), style = MaterialTheme.typography.bodySmall)
                 }
+                review.plan.source?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                review.plan.sha256?.let { Text("SHA-256 $it", style = MaterialTheme.typography.bodySmall) }
+                if (review.componentId == "tailscale") Text(stringResource(R.string.components_tailscale_change_warning))
                 if (review.change == ComponentChange.Uninstall) {
                     Text(stringResource(R.string.components_change_keep_data), style = MaterialTheme.typography.bodySmall)
                 }
@@ -699,12 +742,14 @@ private fun capabilityFor(componentId: String, capabilities: Set<String>): Boole
     "docker" -> ServerCapabilities.DOCKER in capabilities
     "samba" -> ServerCapabilities.FILE_SERVICES in capabilities
     "squid" -> ServerCapabilities.GATEWAY_PROXY in capabilities
+    "tailscale" -> ServerCapabilities.TAILSCALE in capabilities
     "frpc", "frps" -> ServerCapabilities.TUNNELS in capabilities
     else -> false
 }
 
 private fun modeLabel(mode: String): Int = when (mode) {
     "systemPackage" -> R.string.components_mode_system_package
+    "nativeInstaller" -> R.string.components_mode_native_installer
     else -> R.string.components_mode_managed_archive
 }
 

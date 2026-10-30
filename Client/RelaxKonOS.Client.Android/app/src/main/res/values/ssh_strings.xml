@@ -116,7 +116,6 @@
     <string name="ssh_terminal_disconnected">SSH shell closed</string>
     <string name="ssh_terminal_empty">Create an SSH session to open a terminal.</string>
     <string name="ssh_terminal_failed">SSH terminal disconnected. Check the connection and trusted host key.</string>
-    <string name="ssh_terminal_hide_input">Hide input</string>
     <string name="ssh_terminal_input">Command or input</string>
     <string name="ssh_terminal_retry">Reconnect</string>
     <string name="ssh_terminal_send">Send</string>

@@ -254,6 +254,7 @@ data class ComponentPlanResult(
     val targetJson: String?,
 ) {
     val allowed: Boolean get() = problems.isEmpty() && requestJson != null && targetJson != null
+    val hostId: String? get() = requestJson?.let(::JSONObject)?.optNullableString("hostId")
     private val artifact: JSONObject? get() = targetJson?.let(::JSONObject)?.let {
         it.optJSONObject("installer") ?: it.optJSONObject("package") ?: it.optJSONObject("pin")
     }

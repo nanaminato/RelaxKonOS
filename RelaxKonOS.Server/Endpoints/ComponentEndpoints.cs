@@ -64,6 +64,7 @@ public static class ComponentEndpoints
         ComponentIds.Squid => InstallationEndpoints.CanInstall(user, InstallationServiceId.Squid),
         ComponentIds.Samba => InstallationEndpoints.CanInstall(user, InstallationServiceId.Smb),
         ComponentIds.Docker => InstallationEndpoints.CanInstall(user, InstallationServiceId.Docker),
+        ComponentIds.Tailscale => InstallationEndpoints.CanInstall(user, InstallationServiceId.Tailscale),
         ComponentIds.Frpc or ComponentIds.Frps => InstallationEndpoints.CanInstall(user, InstallationServiceId.Frp),
         _ => false
     };

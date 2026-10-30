@@ -45,6 +45,8 @@ public static partial class PrivilegedOperationExecutor
             || string.IsNullOrWhiteSpace(change.ExpectedInstalledVersion) || !AptPackageResolution.IsUsableExpectation(expected)
             || expected!.PackageName != definition.PackageName)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "invalid package change");
+        using var nativeGate = definition.ComponentId == ComponentIds.Tailscale
+            ? await RelaxKonOS.PrivilegedHelper.TailscaleControlOperations.AcquireLifecycleAsync() : null;
         var directory = Path.GetDirectoryName(PackageReceiptPath(definition))!; RequirePackagePath(directory);
         if (!Directory.Exists(directory)) return Fail(65, PrivilegedProblemCode.Conflict, "managed package absent");
         var lockPath = Path.Combine(directory, "lock"); RequirePackagePath(lockPath);
@@ -60,6 +62,8 @@ public static partial class PrivilegedOperationExecutor
                 ? replay : Fail(65, PrivilegedProblemCode.Conflict, "package change requires recovery");
         }
         if (priorChange is { Committed: false }) return Fail(65, PrivilegedProblemCode.Conflict, "package recovery required");
+        if (definition.ComponentId == ComponentIds.Tailscale && RelaxKonOS.PrivilegedHelper.TailscaleControlOperations.HasPendingOperations())
+            return Fail(65, PrivilegedProblemCode.Conflict, "Tailscale operation requires recovery");
         var before = await QueryComponentPackageAsync(componentId);
         var original = ReadPackageReceipt(definition);
         if (before.ComponentPackage is not { Managed: true, RecoveryRequired: false } state
@@ -123,6 +127,7 @@ public static partial class PrivilegedOperationExecutor
                 ComponentIds.Nginx => await RunFixedCommandAsync(definition.Executable, ["-t"], TimeSpan.FromSeconds(30), "Nginx configuration invalid"),
                 ComponentIds.Squid => await RunFixedCommandAsync(definition.Executable, ["-k", "parse"], TimeSpan.FromSeconds(30), "Squid configuration invalid"),
                 ComponentIds.Samba => await RunFixedCommandAsync("/usr/bin/testparm", ["-s"], TimeSpan.FromSeconds(30), "Samba configuration invalid"),
+                ComponentIds.Tailscale => await RunFixedCommandAsync(definition.Executable, ["version"], TimeSpan.FromSeconds(30), "Tailscale version unavailable"),
                 _ => await RunFixedCommandAsync(definition.Executable, ["--version"], TimeSpan.FromSeconds(30), "version unavailable")
             };
             if (!health.Success) return health;

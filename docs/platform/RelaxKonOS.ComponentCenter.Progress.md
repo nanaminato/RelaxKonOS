@@ -1,12 +1,20 @@
 # 组件中心实施进度
 
+## CC-05 / MR-11：Tailscale 进入组件中心（2026-10-30）
+
+桌面控制端已接入 Linux `systemPackage` 与 Windows `nativeInstaller` 的计划、确认、安装、较新版本更新和保留数据卸载；Windows MSI 使用独立冻结安装器目标。Linux 来源须显式确认固定签名密钥与官方发行版仓库，不自动覆盖管理员信任；受管卸载后的 Debian mask 仅凭自有卸载证明及系统标记识别。包事务与控制/登录操作共用原生锁，未决或损坏包记录阻止新变更。外部实例不会被隐式接管。
+
+移动控制端已复用同一 API 与领域安装台账，沿用冻结计划幂等键，并提供来源确认、索引刷新及绑定原操作的停止/关账；详细设计和验证规则只维护在 [Android 组件中心](../../Client/RelaxKonOS.Client.Android/docs/features/ComponentCenter.md)。移动端是控制端，目标宿主仍为 Linux 或 Windows。
+
+FRP 下载允许经过批准的 GitHub release 资产重定向携带签名查询串，初始归档查询串、任意域名与通用清单仍拒绝。通过显式配置代理真实下载 v0.71.0 的 13,932,092 字节并核对固定摘要；直连网络超时不计通过。Windows 原生 MSI 与完整移动设备矩阵尚未验收；Linux 实机操作、日志和具体边界见[本轮报告](../testing/RelaxKonOS.Tailscale.ComponentCenter.20261030.md)。
+
 ## CC-01 / CC-05、MR-05 / MR-11：Ubuntu 26.04 实机安装与控制（2026-10-30）
 
 192.168.1.11 的 Server 0.1.8 通过生产安装台账安装 Nginx `1.28.3-2ubuntu1.12`，原操作成功、受管所有权和提交操作 ID 一致，配置检查及 HTTP 200 通过。APT 解析现显式请求 `Acquire::ForceHash=SHA256`，保持既有 SHA-256 准入；已构建并部署修复后的 Linux Helper，撤下测试期间临时的全局 APT 设置。
 
 FRP 配置绑定现在以显式目录替换默认目录，避免数组追加造成重复条目和合法计划 500；新增回归验证配置不能保留未配置的默认目标。源码修复已构建；实机以移除重复的配置目录、保留同一内置与 Helper 批准 pin 的方式验证计划。服务器下载仍被 GitHub 签名重定向查询串拦截；通过官方归档上传、固定摘要校验和生产安装台账安装 frpc/frps v0.71.0 成功，同键重放返回原操作。不据此宣称服务器下载已修复、跨版本或穿透互通已验收。
 
-Tailscale 1.104.4 从官方签名 APT 仓库外部安装，用户完成账户授权；组件中心安装适配器仍未实现。修复 Linux socket / Windows pipe 将持久 Tailscale 操作 ID 的观察、执行重放和恢复误判为传输重放的问题：闭集动词交给既有受保护台账校验身份和幂等性，普通操作继续由传输层拒绝重放。Linux Helper 已部署，Windows 仅构建和共享策略回归，不作为 Windows 实机证据。
+Tailscale 1.104.4 从官方签名 APT 仓库外部安装，用户完成账户授权；该阶段尚未实现组件中心安装适配器；后续实现与实机结果见本文首节。修复 Linux socket / Windows pipe 将持久 Tailscale 操作 ID 的观察、执行重放和恢复误判为传输重放的问题：闭集动词交给既有受保护台账校验身份和幂等性，普通操作继续由传输层拒绝重放。Linux Helper 已部署，Windows 仅构建和共享策略回归，不作为 Windows 实机证据。
 
 首次登录原操作保留 Issued 及其原始回执，经正式恢复预览与确认关账解除门禁，没有将后来 Running 改写成原操作成功。真实 DNS 偏好变更/恢复、断开/重连、原回执读取及同 ID 重放均成功；Server/Helper 重启后只读复核四个 Applied 原操作、配置恢复及在线状态通过，设备间直连 ping 约 1 ms。完整范围、操作 ID、构建摘要与尚存限制见[实机测试记录](../testing/RelaxKonOS.Tailscale.ComponentCenter.20261030.md)。MR-05/MR-11 不因单版本安装和本次控制验收关闭。
 

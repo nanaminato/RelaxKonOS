@@ -80,14 +80,12 @@ class SshTerminalSessionsTest {
         val session = h.manager.state.value.selectedForHost("host-a")!!
         val shell = h.shells.single().second
         h.manager.updateDraft(session.sessionId, "unsent secret")
-        h.manager.concealInput(session.sessionId, true)
         shell.output.send("user:~$ "); runCurrent()
         repeat(4) { h.manager.enter("host-a"); runCurrent() }
         assertEquals(1, h.shells.size)
         assertFalse(shell.closed.isCompleted)
         assertEquals("user:~$ ", h.manager.state.value.sessions.single().output)
         assertEquals("unsent secret", h.manager.state.value.sessions.single().draft)
-        assertTrue(h.manager.state.value.sessions.single().concealInput)
     }
 
     @Test fun `multiple hosts and shells isolate input output resize and selection`() = runTest {

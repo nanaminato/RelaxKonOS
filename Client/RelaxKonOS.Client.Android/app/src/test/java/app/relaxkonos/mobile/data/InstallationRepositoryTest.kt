@@ -50,6 +50,23 @@ class InstallationRepositoryTest {
             ManagedRuntimeInstallationRequest(true, RUNTIME_PLAN.replace(RUNTIME_KEY, "other-plan-key"))) }.isFailure)
     }
 
+    @Test fun `Tailscale frozen component submission retains plan key on a lost response`() = runTest {
+        val owner = signIn(capability = ServerCapabilities.TAILSCALE)
+        val key = "tail-msi-frozen-plan-1"
+        val request = ComponentFrozenInstallationRequest(true, InstallationService.Tailscale, "tailscale",
+            """{"componentId":"tailscale","idempotencyKey":"$key"}""", "{}", false, setOf(InstallationKind.Install))
+        val intent = repository.prepare(owner, InstallationKind.Install, request)
+        val keys = mutableListOf<String>()
+        gateway.onStartInstallation = { _, _, sent -> keys += sent; ApiResult.Transport(null) }
+        repository.submit(intent, ElevationAnswerProvider { _, _ -> null })
+        gateway.onActiveInstallation = { ApiResult.Success(null) }
+        repository.submit(intent, ElevationAnswerProvider { _, _ -> null })
+        assertEquals(listOf(key, key), keys)
+        assertEquals(key, repository.pending(owner).single().key)
+        assertTrue(runCatching { repository.prepare(owner, InstallationKind.Install,
+            request.copy(planRequestJson = """{"idempotencyKey":""}""")) }.isFailure)
+    }
+
     @Test fun `explicit original ID identification validates service and kind before resolving pending request`() = runTest {
         val owner = signIn(); val pending = journal.begin(owner, InstallationService.Nginx, InstallationKind.Install, "digest")
         gateway.onInstallation = { ApiResult.Success(operation.copy(service = InstallationService.Frp)) }

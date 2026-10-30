@@ -44,6 +44,7 @@ object AppComponentDependencies {
         Routes.MANAGE_SMB to listOf("samba"),
         Routes.MANAGE_SQUID to listOf("squid"),
         Routes.MANAGE_TUNNELS to listOf("frpc", "frps"),
+        Routes.MANAGE_TAILSCALE to listOf("tailscale"),
     )
 
     fun componentsFor(route: String): List<String>? = byRoute[route]

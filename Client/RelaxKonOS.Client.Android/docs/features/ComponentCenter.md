@@ -27,10 +27,13 @@
 
 ## 3. 安装、更新与卸载
 
-只有状态可读、当前会话是 controller，并且对应模块能力存在时，卡片才显示变更动作。动作按所有权区分：只有未安装时显示“安装”，只有受管安装时显示“更新/卸载”；外部安装没有变更按钮，因为本页不能替宿主接管它。待恢复组件不显示变更按钮，应先进入“任务与恢复”。
+只有状态可读、当前会话是 controller，并且对应模块能力存在时，卡片才显示变更动作。动作按所有权区分：只有未安装时显示“安装”，只有受管安装时显示“更新/卸载”；外部安装没有变更按钮，因为本页不能替宿主接管它。待恢复组件不显示普通变更按钮；Tailscale 提供绑定原操作的停止与核对后关账，其余组件进入“任务与恢复”。
 
 - **系统包**（`systemPackage`）：安装/更新/卸载都由服务器自己的包管理器冻结，客户端不提交包名、版本或仓库。
 - **受管归档**（`managedArchive`）：FRP 的 frpc/frps 由服务器提供一组固定版本（`pinnedArchives`）。卡片显示“选择版本”，选中的版本连同其 `releaseId`、固定版本修订一并进入计划；客户端不提交 URL、摘要或任意版本号，服务器未固定的版本无法选择，冻结目标不是该固定版本时计划被拒绝。归档只提供首次安装；更新、修复、回退与卸载仍按服务器能力显示，当前 FRP 归档没有这些动作。
+- **系统安装程序**（`nativeInstaller`）：Windows Tailscale 使用宿主 Helper 执行官方 MSI，不走归档解压或手机本机安装。Linux Tailscale 使用官方签名 APT 仓库。两者均先读取宿主状态、冻结计划，再通过 `installations/tailscale` 台账提交安装、真正较新版本的更新或保留配置与登录数据的卸载；外部实例只能观察，不自动接管。
+- Tailscale 计划确认展示宿主、版本、来源和 SHA-256，提示网络服务变更可能中断连接。冻结计划的幂等键必须沿用到提交、持久请求索引与显式重试，不能另生成一个键。取消确认不发送安装请求。
+- Linux 来源缺失时，须显式确认 Tailscale 官方稳定版仓库与固定签名密钥指纹，再由宿主配置并刷新索引；已有冲突来源或密钥不会被替换。“刷新软件包索引”只刷新已授权来源。待恢复时可绑定原操作停止服务或核对后关账；关账不会伪造原安装成功。
 - Windows Nginx 等不能由本页执行的归档只显示状态与说明，不显示安装按钮。
 - 已安装的 FRP 还可在本页升级（输入目标版本）、回退（修复到上一版本）与卸载；受管 Nginx 可在本页卸载。动作经同一领域安装台账提交，沿用提权、幂等与待恢复语义。运行中的应用不再提供这些按钮。
 - FRP 与 Nginx 还提供“从文件安装”：可选用服务器上已有的归档或上传本机归档，填写归档包含的版本并建立文件引用，随后以 `FrpInstallationRequest` / `NginxInstallationRequest(confirmed, version, fileReferenceId)` 进入该组件所属服务的安装台账。引用与当前操作者绑定并会过期；服务器仍校验平台、身份与内容。归档版本以操作者填写和文件引用为准，本页不解析归档内部版本。
@@ -92,6 +95,7 @@ gradle :app:testDebugUnitTest --tests "app.relaxkonos.mobile.core.net.ComponentW
     --tests "app.relaxkonos.mobile.ui.manage.components.ComponentDependencyRulesTest"
 ```
 
+- `TailscaleComponentWireTest`：Windows x64/ARM64 官方 MSI 冻结元数据、拒绝篡改来源/摘要/架构、独立安装目标、维护请求及宿主提权目标。`TailscaleInstallationReviewTest` 使用生产确认框检查大字体滚动、取消不提交、卸载保留数据提示和忙碌门禁；模拟界面不代表 Windows 原生安装验收。
 - `ComponentWireTest`：受管状态、平台不支持、仅待处理操作表示恢复、组件身份不匹配、未知所有权、固定归档解析（身份/摘要/适用范围）与归档计划体（`host-pins`、固定版本修订、`releaseId`），以及系统包计划不带归档身份。
 - `ComponentRepositoryTest`：按请求顺序读取、单组件失败隔离、全部传输失败折叠、缺少 `privilegedOperations` 时发请求前拒绝、会话切换取消；计划请求携带用户看到的修订/模式；冻结包通过安装台账提交（`frozenPackage`）、FRP 使用 `frozenArchive`、未知组件无安装归属；当前 Nginx 读取与切换。
 - ComponentDependencyRulesTest：缺失仅指实测未安装、外部/未知/不支持的平台不拦截、待恢复与执行中优先于同组件的缺失、替代依赖任一就绪即通过、空或读取失败不拦截，以及路由到组件的映射（含隧道替代与 Docker 子路由）。

@@ -116,7 +116,6 @@
     <string name="ssh_terminal_disconnected">SSH 终端已关闭</string>
     <string name="ssh_terminal_empty">新建 SSH 会话以打开终端。</string>
     <string name="ssh_terminal_failed">SSH 终端连接已断开，请检查网络和已信任的主机密钥。</string>
-    <string name="ssh_terminal_hide_input">隐藏输入</string>
     <string name="ssh_terminal_input">命令或输入</string>
     <string name="ssh_terminal_retry">重新连接</string>
     <string name="ssh_terminal_send">发送</string>

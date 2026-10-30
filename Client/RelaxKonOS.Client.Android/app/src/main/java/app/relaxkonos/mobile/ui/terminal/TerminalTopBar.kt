@@ -42,11 +42,11 @@ internal fun TerminalTopBar(
     status: String,
     connected: Boolean,
     problem: Boolean,
-    onBack: () -> Unit,
     onExpand: () -> Unit,
     expandLabel: String,
     actions: @Composable () -> Unit,
     modifier: Modifier = Modifier,
+    onBack: (() -> Unit)? = null,
     onRetry: (() -> Unit)? = null,
     retryLabel: String = "",
 ) {
@@ -59,7 +59,9 @@ internal fun TerminalTopBar(
         modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("terminal-topbar"),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onBack) {
+        // A top-level destination has no page-level back affordance; the shell owns that rule.
+        val back = onBack
+        if (back != null) IconButton(onClick = back) {
             DesktopIcon(DesktopIcons.back, size = 22.dp,
                 contentDescription = stringResource(R.string.common_back))
         }

@@ -1,0 +1,12 @@
+<resources>
+    <string name="components_tailscale_note">接続先の Linux または Windows ホストで Tailscale をインストール・更新・削除します。</string>
+    <string name="components_mode_native_installer">Windows インストーラー（MSI）</string>
+    <string name="components_tailscale_source_setup">Tailscale 公式配布元を設定</string>
+    <string name="components_tailscale_refresh">パッケージ索引を更新</string>
+    <string name="components_tailscale_stop">復旧待ちサービスを停止</string>
+    <string name="components_tailscale_close">確認後に記録を閉じる</string>
+    <string name="components_tailscale_source_confirm">接続先ホストのディストリビューションに Tailscale Inc. の公式安定版署名リポジトリ https://pkgs.tailscale.com/stable/ を設定します。署名鍵の指紋：2596 A99E AAB3 3821 893C 0A79 458C A832 957F 5868。異なる既存の配布元や鍵は置き換えません。配布元の設定と索引の更新のみで、ソフトウェアはインストールしません。</string>
+    <string name="components_tailscale_refresh_confirm">接続先ホストで許可済みの配布元のパッケージ索引を更新します。インストールや信頼設定の変更は行いません。</string>
+    <string name="components_tailscale_recovery_confirm">元のインストール処理を指定して所有サービスを停止するか、確認済みの状態を承認します。停止によってリモート接続が中断される場合があります。記録を閉じても元の処理を成功に変更しません。</string>
+    <string name="components_tailscale_change_warning">接続先ホストのネットワークサービスを変更するため、接続が中断される場合があります。削除時もログインと設定データを保持します。</string>
+</resources>

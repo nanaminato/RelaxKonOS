@@ -15,7 +15,7 @@ namespace RelaxKonOS.PrivilegedHelper;
 internal static class TailscaleInstallerOperations
 {
     private sealed record Commit(Guid OperationId, ComponentExecuteRequest Request, ComponentDownloadRelease Release,
-        string ProductCode, string CliHash, string ServiceHash, bool Removed, bool Disowned = false);
+        string ProductCode, string CliHash, string ServiceHash, bool Removed, string? NodeId, bool Disowned = false);
     private sealed record Pending(Guid OperationId, ComponentExecuteRequest Request, Commit? Previous, string ProductCode);
     private sealed record Maintenance(Guid OperationId, ComponentRecoveryRequest Request, DateTimeOffset RecordedAt);
     private static string Root => Path.Combine(TailscaleControlProtection.Root, "installation");
@@ -42,6 +42,9 @@ internal static class TailscaleInstallerOperations
             using var lifetime = new CancellationTokenSource(TimeSpan.FromMinutes(12));
             using var gate = await AcquireAsync(lifetime.Token);
             var current = Read<Commit>("current.json"); var pending = Read<Pending>("pending.json");
+            if (current is not null && pending is not null && current.OperationId == pending.OperationId && current.Request == pending.Request
+                && (await ObserveAsync(current, pending, current.OperationId, lifetime.Token)).VerifiedOperationId == current.OperationId)
+            { Delete("pending.json"); pending = null; }
             if (request.Operation == PrivilegedOperationKind.TailscaleInstallerQuery)
             {
                 var snapshot = await ObserveAsync(current, pending, id, lifetime.Token);
@@ -78,26 +81,33 @@ internal static class TailscaleInstallerOperations
                 var intent = new Pending(id, frozen, current, product);
                 var wasRunning = current is { Removed: false } && IsRunning();
                 var boot = current is { Removed: false } ? StartMode() : ServiceStartMode.Automatic;
-                var preferences = current is { Removed: false } ? await PreferencesAsync(lifetime.Token) : null;
+                var preferences = wasRunning ? await PreferencesAsync(lifetime.Token) : null;
+                var identity = wasRunning ? await NodeIdAsync(lifetime.Token) : current?.NodeId;
                 Write("pending.json", intent); // Never replay an uncertain MSI invocation.
                 if (current is { Removed: false }) await StopAsync(lifetime.Token);
                 var data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Tailscale");
-                if (Directory.Exists(data)) BackupData(data, Path.Combine(Root, "data-" + id.ToString("N")), 0);
+                var identityPath = Path.Combine(data, "server-state.conf");
+                if (File.Exists(identityPath)) TailscaleControlProtection.Require(identityPath);
+                var identityHash = File.Exists(identityPath) ? Hash(identityPath) : null;
+                if (Directory.Exists(data)) BackupData(data, Path.Combine(Root, "data-" + id.ToString("N")), 0, new BackupBudget());
                 var exit = await RunAsync(Path.Combine(Environment.SystemDirectory, "msiexec.exe"),
                     frozen.Request.Change == RuntimeChange.Uninstall ? ["/x", product, "/qn", "/norestart"]
                         : ["/i", staged!.Path, "/qn", "/norestart"], lifetime.Token);
                 // A reboot request is pending recovery, never a verified successful install.
                 if (exit != 0) return Conflict(await ObserveAsync(current, intent, id, lifetime.Token));
                 var removed = frozen.Request.Change == RuntimeChange.Uninstall;
+                if (identityHash is not null && (!File.Exists(identityPath) || removed && Hash(identityPath) != identityHash))
+                    return Conflict(await ObserveAsync(current, intent, id, lifetime.Token));
                 if (!removed)
                 {
                     if (!await MatchesInstalledAsync(release.Version, product, lifetime.Token)) return Conflict(before);
                     await ConfigureServiceAsync(boot, current is { Removed: false } ? wasRunning : true, lifetime.Token);
                     if (preferences is not null && preferences != await PreferencesAsync(lifetime.Token)) return Conflict(before);
+                    if (identity is not null && (wasRunning || current is not { Removed: false }) && identity != await NodeIdAsync(lifetime.Token)) return Conflict(before);
                 }
                 else if (!IsAbsent() || Directory.Exists(Path.Combine(Root, "data-" + id.ToString("N"))) && !Directory.Exists(data))
                     return Conflict(before);
-                var commit = new Commit(id, frozen, release, product, removed ? "" : Hash(Cli), removed ? "" : Hash(Daemon), removed);
+                var commit = new Commit(id, frozen, release, product, removed ? "" : Hash(Cli), removed ? "" : Hash(Daemon), removed, identity);
                 Write(ReceiptName(id), commit, overwrite: false); // Publish immutable proof before the active pointer.
                 Write("current.json", commit);
                 Delete("pending.json");
@@ -150,8 +160,13 @@ internal static class TailscaleInstallerOperations
             PendingOperationId: recovery ? pending?.OperationId ?? current?.OperationId : null),
             verified && current!.OperationId == operation ? operation : null, verified && !current!.Removed ? current.Release : null);
     }
-    private static bool IsAbsent() => TailscaleWindowsInventory.Create().Read(default).Count == 0 && !File.Exists(Cli)
-        && ServiceController.GetServices().All(service => !string.Equals(service.ServiceName, "Tailscale", StringComparison.OrdinalIgnoreCase));
+    private static bool IsAbsent()
+    {
+        if (TailscaleWindowsInventory.Create().Read(default).Count != 0 || File.Exists(Cli) || File.Exists(Daemon)) return false;
+        var services = ServiceController.GetServices();
+        try { return services.All(service => !string.Equals(service.ServiceName, "Tailscale", StringComparison.OrdinalIgnoreCase)); }
+        finally { foreach (var service in services) service.Dispose(); }
+    }
     private static async Task<bool> MatchesInstalledAsync(string version, string product, CancellationToken ct)
     {
         var registrations = TailscaleWindowsInventory.Create().Read(ct);
@@ -171,13 +186,28 @@ internal static class TailscaleInstallerOperations
         using var json = JsonDocument.Parse(result.Json);
         return Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(TailscaleNativeControl.Canonical(json.RootElement))));
     }
+    private static async Task<string?> NodeIdAsync(CancellationToken ct)
+    {
+        var result = await RelaxKonOS.Server.Tailscale.TailscaleStatusCommand.RunFixedAsync(["status", "--json"], ct);
+        if (result.State != "observed" || result.Json is null) throw new IOException("Tailscale identity unavailable.");
+        using var json = JsonDocument.Parse(result.Json);
+        return json.RootElement.TryGetProperty("Self", out var self) && self.ValueKind == JsonValueKind.Object
+            && self.TryGetProperty("ID", out var id) && id.ValueKind == JsonValueKind.String ? id.GetString() : null;
+    }
     private static async Task<PrivilegedOperationResult> RecoverAsync(PrivilegedOperationRequest request, Commit? current, Pending? pending, CancellationToken ct)
     {
         var maintenanceName = "maintenance-" + request.OperationId!.Value.ToString("N") + ".json";
         if (Read<Maintenance>(maintenanceName) is { } original)
-            return original.OperationId == request.OperationId && original.Request == request.PackageRecovery ? new(true) : Conflict(null);
+        {
+            if (original.OperationId != request.OperationId || original.Request != request.PackageRecovery) return Conflict(null);
+            if (original.Request.Action == ComponentRecoveryAction.Close && pending?.OperationId == original.Request.OperationId) Delete("pending.json");
+            return new(true);
+        }
         if (pending is null || request.PackageRecovery is not { ComponentId: ComponentIds.Tailscale } recovery
             || recovery.OperationId != pending.OperationId || recovery.Action is not (ComponentRecoveryAction.Stop or ComponentRecoveryAction.Close)) return Conflict(null);
+        // A cancelled wait does not cancel Windows Installer. Even an idle MSI service process
+        // conservatively blocks recovery; never close or stop while an installer may still mutate.
+        if (!MsiQuiescent()) return Conflict(null);
         if (recovery.Action == ComponentRecoveryAction.Stop)
         {
             var permitted = current is { Removed: false } && await MatchesInstalledAsync(current.Release.Version, current.ProductCode, ct)
@@ -191,7 +221,7 @@ internal static class TailscaleInstallerOperations
         var observed = await ObserveAsync(current, pending, request.OperationId!.Value, ct);
         Write("closed-" + request.OperationId.Value.ToString("N") + ".json", new { Request = recovery, Observation = observed, ClosedAt = DateTimeOffset.UtcNow }, overwrite: false);
         if (current is not null && observed.View.State?.Ownership != RuntimeOwnership.Managed) Write("current.json", current with { Disowned = true });
-        if (current is null) Write("current.json", new Commit(pending.OperationId, pending.Request, pending.Request.Expected!.Installer!, "", "", "", false, true));
+        if (current is null) Write("current.json", new Commit(pending.OperationId, pending.Request, pending.Request.Expected!.Installer!, "", "", "", false, null, true));
         Write(maintenanceName, new Maintenance(request.OperationId.Value, recovery, DateTimeOffset.UtcNow), overwrite: false);
         Delete("pending.json"); return new(true);
     }
@@ -204,6 +234,12 @@ internal static class TailscaleInstallerOperations
             try { var file = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); TailscaleControlProtection.Require(path); return file; }
             catch (IOException) { await Task.Delay(100, ct); }
         }
+    }
+    private static bool MsiQuiescent()
+    {
+        var installers = System.Diagnostics.Process.GetProcessesByName("msiexec");
+        try { return installers.Length == 0; }
+        finally { foreach (var installer in installers) installer.Dispose(); }
     }
     private static string ReceiptName(Guid id) => "commit-" + id.ToString("N") + ".json";
     private static T? Read<T>(string name) where T : class
@@ -244,15 +280,22 @@ internal static class TailscaleInstallerOperations
         foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
         process.Start(); await process.WaitForExitAsync(ct); return process.ExitCode;
     }
-    private static void BackupData(string source, string destination, int depth)
+    private sealed class BackupBudget { public int Entries; public long Bytes; }
+    private static void BackupData(string source, string destination, int depth, BackupBudget budget)
     {
         if (depth > 16) throw new IOException("Tailscale data nesting exceeds limit.");
         TailscaleControlProtection.Require(source); Directory.CreateDirectory(destination); TailscaleControlProtection.Require(destination);
         foreach (var path in Directory.EnumerateFileSystemEntries(source))
         {
+            if (++budget.Entries > 4096) throw new IOException("Tailscale backup entry count exceeds limit.");
             TailscaleControlProtection.Require(path); var target = Path.Combine(destination, Path.GetFileName(path));
-            if (Directory.Exists(path)) BackupData(path, target, depth + 1);
-            else { if (new FileInfo(path).Length > 128L * 1024 * 1024) throw new IOException("Tailscale data file exceeds limit."); File.Copy(path, target, overwrite: false); TailscaleControlProtection.Require(target); }
+            if (Directory.Exists(path)) BackupData(path, target, depth + 1, budget);
+            else
+            {
+                var length = new FileInfo(path).Length; budget.Bytes += length;
+                if (length > 128L * 1024 * 1024 || budget.Bytes > 512L * 1024 * 1024) throw new IOException("Tailscale backup size exceeds limit.");
+                File.Copy(path, target, overwrite: false); TailscaleControlProtection.Require(target);
+            }
         }
     }
     private static PrivilegedOperationResult Conflict(TailscaleInstallerSnapshot? snapshot) => new(false, 65,

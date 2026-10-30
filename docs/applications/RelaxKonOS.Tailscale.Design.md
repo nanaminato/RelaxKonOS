@@ -1,5 +1,15 @@
 # Tailscale 管理器
 
+## 组件中心生命周期实现（2026-10-30，MR-11 / CC-05）
+
+桌面控制端和移动控制端通过同一组件中心契约管理宿主上的 Tailscale。支持 Linux 服务器的官方 APT 软件包与 Windows 11 用户模式宿主的特权 Helper / MSI；移动端的界面与实施规则归属 [Android Tailscale 文档](../../Client/RelaxKonOS.Client.Android/docs/features/Tailscale.md)，不在手机部署 VPN 运行时。
+
+Linux 使用闭集包名 `tailscale`、CLI `/usr/bin/tailscale`、服务 `tailscaled.service`。官方稳定来源按受支持的 Ubuntu / Debian 发行版固定，显式确认后安装 SHA-256 固定的官方签名密钥与 signed-by 源；冲突来源或密钥不覆盖。候选由宿主 APT 冻结版本、来源、完整下载 URI、大小和 SHA-256。解析使用 SHA-256 与独立的空缓存视图，避免已安装或缓存的软件包省略 URI。安装、真正较新版本更新、保留数据卸载共用组件包台账；不将外部安装自动标为受管。只有自有卸载证明与受保护的 Debian mask 标记一致，才允许安装器处理卸载后屏蔽的服务。包变更、控制、登录和服务恢复共用原生锁；未提交或损坏的包记录阻止新的控制或登录变更。
+
+Windows 使用独立 `nativeInstaller` 目标，冻结 `installer` 元数据，MSI 不作为归档解压。Helper 独立重新解析官方发行身份、校验固定摘要、WinTrust 发布者与 MSI 产品/升级代码/架构，再通过 Windows Installer 执行。受保护且不可覆盖的原操作提交证明、实际产品上下文、原生版本、CLI/daemon 摘要和 SCM 路径共同证明管理权。更新恢复原启动与运行状态，核对既有偏好及节点身份；卸载保留 ProgramData 登录与配置，并保存有界私有备份。超时、3010 重启要求或验证失败保持待恢复，不自动重放 MSI，也不从当前健康伪造原操作成功。停止与关账绑定原事务；只要仍有 Windows Installer 进程，保守地拒绝恢复动作，不终止进程，也不从服务暂时停止推断安装已结束。
+
+当前已完成桌面生命周期交互专项、Windows x64/ARM64 官方 MSI 的冻结计划规则及既有签名/属性/暂存专项。Windows 真实 MSI 安装、跨版本变更、驱动及系统重启恢复仍需独立宿主验收；现有外部 Windows Tailscale 没有被自动接管。Linux 实机证据及本次验证边界见[测试报告](../testing/RelaxKonOS.Tailscale.ComponentCenter.20261030.md)。
+
 ## Ubuntu 实机控制验收（2026-10-30，MR-11）
 
 Ubuntu 26.04 x64 从官方签名 APT 仓库外部安装 1.104.4，用户完成浏览器授权，设备在线。发现持久 Helper 传输层把领域 operationId 的后续读取/恢复误判为重放；Linux socket 和 Windows pipe 现让闭集 Tailscale 持久动词进入既有身份绑定台账，普通操作仍拒绝传输重放。新增真实 socket 回归通过；修复后的 Linux Helper 已部署，Windows 不计为实机验收。

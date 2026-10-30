@@ -72,7 +72,7 @@ class SshTerminalSessionsLayoutTest {
                             SshTerminalContent("host", "user@192.168.1.5:22", state,
                                 { manager.reconnect(state.sessionId) }, { manager.send(state.sessionId, it) },
                                 { c, r -> manager.resize(state.sessionId, c, r) }, {},
-                                { manager.updateDraft(state.sessionId, it) }, { manager.concealInput(state.sessionId, it) },
+                                { manager.updateDraft(state.sessionId, it) },
                                 { manager.fontSize(state.sessionId, it) }, all.sessions, true, manager::select,
                                 { manager.create("host") }, manager::end, readState = { manager.state.value.selectedForHost("host") }, imeInsets = WindowInsets(0, 0, 0, 0))
                         }

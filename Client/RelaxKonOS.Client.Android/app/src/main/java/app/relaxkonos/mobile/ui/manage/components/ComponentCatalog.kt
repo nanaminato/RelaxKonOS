@@ -40,6 +40,8 @@ internal object ComponentCatalog {
             DesktopIcons.tunnels, Routes.MANAGE_TUNNELS),
         ComponentDefinition("frps", R.string.tunnels_title, R.string.components_frps_note,
             DesktopIcons.tunnels, Routes.MANAGE_TUNNELS),
+        ComponentDefinition("tailscale", R.string.tailscale_title, R.string.components_tailscale_note,
+            DesktopIcons.proxy, Routes.MANAGE_TAILSCALE),
     )
 
     val ids: List<String> = entries.map { it.id }
@@ -48,7 +50,7 @@ internal object ComponentCatalog {
      * Components whose changes the component center freezes through the component lifecycle routes.
      * Mihomo and sing-box are excluded: their plan format belongs to the runtime pages.
      */
-    val changeableIds: Set<String> = setOf("nginx", "docker", "samba", "squid", "frpc", "frps")
+    val changeableIds: Set<String> = setOf("nginx", "docker", "samba", "squid", "frpc", "frps", "tailscale")
 
     /**
      * Archive components this screen can install from an explicit trusted version. FRP is a pinned

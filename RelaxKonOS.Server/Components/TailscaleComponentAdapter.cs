@@ -1,4 +1,5 @@
 using RelaxKonOS.ManagedRuntimes.ComponentPackages;
+using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Tailscale;
@@ -42,9 +43,16 @@ public sealed class TailscaleComponentAdapter(IPrivilegedOperationTransport help
         if (request.Change != RuntimeChange.Install && state.Ownership != RuntimeOwnership.Managed)
             problems.Add(ComponentProblemCodes.PackageOwnershipRequired);
         if (problems.Count != 0) return new(request, state, null, problems, []);
-        var release = request.Change == RuntimeChange.Uninstall ? snapshot.InstalledRelease
-            : await new TailscaleOfficialReleases().ResolveAsync("win-" + (state.Target.Architecture == "arm64" ? "arm64" : "x64"),
-                request.RequestedVersion, ct, await proxy.ResolveAsync(ct));
+        ComponentDownloadRelease? release;
+        try
+        {
+            release = request.Change == RuntimeChange.Uninstall ? snapshot.InstalledRelease
+                : await new TailscaleOfficialReleases().ResolveAsync("win-" + (state.Target.Architecture == "arm64" ? "arm64" : "x64"),
+                    request.RequestedVersion, ct, await proxy.ResolveAsync(ct));
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or RuntimePolicyException
+            || ex is OperationCanceledException && !ct.IsCancellationRequested)
+        { return new(request, state, null, [ComponentProblemCodes.PackageUnresolved], []); }
         if (release is null) return new(request, state, null, [ComponentProblemCodes.PackageUnresolved], []);
         if (request.Change == RuntimeChange.Update && (!Version.TryParse(release.Version, out var next)
             || !Version.TryParse(state.ActiveVersion, out var current) || next <= current))

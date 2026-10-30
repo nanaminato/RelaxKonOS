@@ -1,0 +1,12 @@
+<resources>
+    <string name="components_tailscale_note">Manage Tailscale installation, updates and removal on the connected Linux or Windows host.</string>
+    <string name="components_mode_native_installer">Windows Installer (MSI)</string>
+    <string name="components_tailscale_source_setup">Configure official Tailscale source</string>
+    <string name="components_tailscale_refresh">Refresh package indexes</string>
+    <string name="components_tailscale_stop">Stop pending service</string>
+    <string name="components_tailscale_close">Close after inspection</string>
+    <string name="components_tailscale_source_confirm">Enable the Tailscale Inc. stable signed repository at https://pkgs.tailscale.com/stable/ for the connected host distribution. Signing key fingerprint: 2596 A99E AAB3 3821 893C 0A79 458C A832 957F 5868. Conflicting existing sources or keys are refused. This step refreshes indexes without installing software.</string>
+    <string name="components_tailscale_refresh_confirm">Refresh the package indexes of sources already authorized on the connected host. This does not install software or change trust.</string>
+    <string name="components_tailscale_recovery_confirm">Use the original installation transaction to stop the owned service or acknowledge the inspected state. Stopping the service may interrupt remote access. Closing does not turn the original operation into a success.</string>
+    <string name="components_tailscale_change_warning">This changes the connected host network service and may interrupt remote access. Uninstall retains login and configuration data.</string>
+</resources>

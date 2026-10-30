@@ -37,7 +37,7 @@ class SshTerminalReviewFlowTest {
         rule.setContent { MaterialTheme { Box(Modifier.size(360.dp, 640.dp)) {
             val state = rendered.value
             SshTerminalContent("host", "user@host:22", state, {}, { sent += it }, { _, _ -> }, {},
-                ::edit, {}, {}, listOf(state), true, {}, {}, { ended += it }, readState = { live },
+                ::edit, {}, listOf(state), true, {}, {}, { ended += it }, readState = { live },
                 imeInsets = WindowInsets(0, 0, 0, 0), terminalType = TerminalType.Native)
         } } }
     }

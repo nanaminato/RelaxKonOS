@@ -23,7 +23,7 @@ import app.relaxkonos.mobile.ui.common.*
 import app.relaxkonos.mobile.ui.theme.Spacing
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable fun TailscaleScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
+@Composable fun TailscaleScreen(onBack: () -> Unit, modifier: Modifier = Modifier, onOpenComponents: () -> Unit = {}) {
     val container = appContainer()
     val model: TailscaleViewModel = viewModel(factory = viewModelFactory {
         initializer { TailscaleViewModel(container.session,container.tailscaleControl,container.elevationAnswers) }
@@ -55,6 +55,8 @@ import app.relaxkonos.mobile.ui.theme.Spacing
         if (owner == null || ServerCapabilities.TAILSCALE !in owner.capabilities) {
             Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn
         }
+        app.relaxkonos.mobile.ui.manage.components.ComponentDependencyAction(
+            app.relaxkonos.mobile.ui.nav.Routes.MANAGE_TAILSCALE, onOpenComponents)
         if (page == "devices") TailscaleDevicesContent()
         if (page == "login" && login.state.owner === owner) TailscaleLoginContent(login,model::invalidateControl)
         if (visible && page != "devices" && page != "login") {

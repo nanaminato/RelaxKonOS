@@ -18,6 +18,7 @@ import app.relaxkonos.mobile.core.net.InstallationKind
 import app.relaxkonos.mobile.core.net.InstallationRequest
 import app.relaxkonos.mobile.core.net.InstallationService
 import app.relaxkonos.mobile.core.net.NginxInstallationRequest
+import app.relaxkonos.mobile.core.net.ComponentMaintenanceInstallationRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -179,7 +180,7 @@ class ComponentCenterViewModel(
             mutable.value = when (result) {
                 is ApiResult.Success -> if (result.value.allowed) {
                     mutable.value.copy(busy = false,
-                        review = ComponentChangeReview(componentId, change, keepData, result.value, pin?.version))
+                        review = ComponentChangeReview(componentId, change, keepData, result.value, result.value.version ?: pin?.version))
                 } else {
                     mutable.value.copy(busy = false,
                         actionProblem = result.value.problems.firstOrNull() ?: "component.plan_refused")
@@ -280,6 +281,30 @@ class ComponentCenterViewModel(
     }
 
     fun dismissReview() { mutable.value = mutable.value.copy(review = null) }
+
+    fun maintainTailscale(active: SessionState.Active, maintenance: String, expectedRevision: Long) {
+        if (mutable.value.busy || session.state.value !== active || !active.controller) return
+        val view = mutable.value.rows.firstOrNull { it.componentId == "tailscale" }?.view ?: return
+        val component = view.state ?: return
+        if (component.revision != expectedRevision) return
+        val target = when (maintenance) {
+            "ConfigureOfficialSource" -> {
+                if (component.mode != "systemPackage" || "component.host_policy_required" !in view.problems) return
+                "00000000-0000-0000-0000-000000000000"
+            }
+            "RefreshSources" -> {
+                if (component.mode != "systemPackage") return
+                "00000000-0000-0000-0000-000000000000"
+            }
+            "Stop", "Close" -> {
+                if (!view.recoveryRequired) return
+                view.pendingOperationId ?: return
+            }
+            else -> return
+        }
+        submit(active, InstallationKind.Repair, ComponentMaintenanceInstallationRequest(true,
+            InstallationService.Tailscale, "tailscale", target, maintenance))
+    }
 
     fun dismissOperation() { mutable.value = mutable.value.copy(operation = null) }
 

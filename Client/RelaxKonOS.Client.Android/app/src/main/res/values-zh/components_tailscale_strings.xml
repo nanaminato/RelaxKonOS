@@ -1,0 +1,12 @@
+<resources>
+    <string name="components_tailscale_note">管理所连接 Linux 或 Windows 宿主上的 Tailscale 安装、更新和卸载。</string>
+    <string name="components_mode_native_installer">Windows 系统安装程序（MSI）</string>
+    <string name="components_tailscale_source_setup">配置 Tailscale 官方来源</string>
+    <string name="components_tailscale_refresh">刷新软件包索引</string>
+    <string name="components_tailscale_stop">停止待恢复服务</string>
+    <string name="components_tailscale_close">核对后关账</string>
+    <string name="components_tailscale_source_confirm">将为所连接宿主的发行版启用 Tailscale Inc. 官方稳定版签名仓库 https://pkgs.tailscale.com/stable/。签名密钥指纹：2596 A99E AAB3 3821 893C 0A79 458C A832 957F 5868。已有不同来源或密钥将被拒绝替换。本步骤只配置来源并刷新索引，不安装软件。</string>
+    <string name="components_tailscale_refresh_confirm">刷新所连接宿主已授权来源的软件包索引，不安装软件，也不更改来源信任。</string>
+    <string name="components_tailscale_recovery_confirm">通过原安装事务停止自有服务，或确认已核对的当前状态。停止服务可能中断远程连接；关账不会把原操作改写为成功。</string>
+    <string name="components_tailscale_change_warning">此操作变更所连接宿主的网络服务，可能中断远程连接。卸载保留登录与配置数据。</string>
+</resources>

@@ -116,7 +116,6 @@
     <string name="ssh_terminal_disconnected">SSH シェルを閉じました</string>
     <string name="ssh_terminal_empty">SSH セッションを作成してターミナルを開いてください。</string>
     <string name="ssh_terminal_failed">SSH ターミナルが切断されました。接続と信頼済みホストキーを確認してください。</string>
-    <string name="ssh_terminal_hide_input">入力を隠す</string>
     <string name="ssh_terminal_input">コマンドまたは入力</string>
     <string name="ssh_terminal_retry">再接続</string>
     <string name="ssh_terminal_send">送信</string>

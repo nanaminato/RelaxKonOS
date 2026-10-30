@@ -24,7 +24,6 @@ data class SshTerminalUiState(
     val output: String = "",
     val transcript: String = "",
     val draft: String = "",
-    val concealInput: Boolean = false,
     val fontSize: Int = 13,
     val inputRevision: Long = 0,
 )
@@ -98,7 +97,6 @@ class SshTerminalSessions(
     }
 
     fun updateDraft(id: String, value: String) { update(id) { if (it.draft == value) it else it.copy(draft = value, inputRevision = it.inputRevision + 1) } }
-    fun concealInput(id: String, value: Boolean) { update(id) { it.copy(concealInput = value) } }
     fun fontSize(id: String, value: Int) { update(id) { it.copy(fontSize = value.coerceIn(9, 24)) } }
 
     fun reconnect(id: String) {

@@ -56,7 +56,7 @@ class SshTerminalKeyboardLayoutTest {
         modifier: Modifier = Modifier, imeInsets: WindowInsets = WindowInsets.ime) {
         var state by remember { mutableStateOf(initial.copy(sessionId = "first")) }
         SshTerminalContent(hostId, label, state, reconnect, send, resize, close,
-            { state = state.copy(draft = it) }, { state = state.copy(concealInput = it) },
+            { state = state.copy(draft = it) },
             { state = state.copy(fontSize = it) }, emptyList(), true, {}, {}, {}, readState = { state }, modifier = modifier, imeInsets = imeInsets)
     }
 

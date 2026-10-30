@@ -1,6 +1,8 @@
 # RelaxKonOS FRP 内网穿透集成设计
 
-2026-10-30：Ubuntu 26.04 x64 的显式发布目录绑定改为替换默认目录，避免重复 pin 导致合法计划抛异常；生产安装台账通过官方归档上传安装 frpc/frps v0.71.0、核对固定 SHA-256、读取受管状态及同键重放成功。实机重复配置通过保留同一内置批准 pin 的宿主调整消除，源码修复已构建。服务器下载仍在 GitHub 带查询参数的重定向处拒绝，本轮文件安装不作为下载链修复或隧道业务互通证据。详见[实机记录](../testing/RelaxKonOS.Tailscale.ComponentCenter.20261030.md)。
+2026-10-30：显式发布目录绑定改为替换默认目录，避免重复 pin 导致合法计划抛异常。固定归档传输只允许原始 GitHub release 来源跳转至批准的 `release-assets.githubusercontent.com` / `objects.githubusercontent.com` HTTPS 资产端点携带签名查询串；初始归档查询串、任意域名、凭据、片段及通用清单仍拒绝。通过显式代理真实下载 v0.71.0 归档，13,932,092 字节与固定 SHA-256 一致；直连超时不计成功。
+
+Ubuntu 26.04 上已通过生产台账安装 frpc/frps v0.71.0，受管所有权与同键重放通过。未配置真实隧道业务，不据此宣称穿透互通已验收。详见[实机记录](../testing/RelaxKonOS.Tailscale.ComponentCenter.20261030.md)。
 
 > 当前实现、协议、运维与平台限制见 [FRP 实现](RelaxKonOS.FRP_Integration.Implementation.md)。本文定义产品和安全设计，未实施的扩展不作为可用能力。
 

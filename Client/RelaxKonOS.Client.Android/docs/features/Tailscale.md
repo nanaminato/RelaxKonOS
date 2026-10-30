@@ -34,6 +34,6 @@ issued、unknown 和 approval-required 的原登录任务均可读取稳定观�
 
 浏览器请求等待期间进入后台后，即使在挑战返回前已回到前台，旧点击也不能打开网页。再次交接必须由用户重新点击并重新读取短期挑战，不复用前一次被中断的交接手势。
 
-当前不提供运行时安装维护，也不在 Android 上建立本机 VPN。共享契约及宿主实现边界见 [Tailscale 设计](../../../../docs/applications/RelaxKonOS.Tailscale.Design.md)。
+运行时安装、更新和保留数据卸载由[组件中心](ComponentCenter.md)提供，目标是所连接的 Linux 服务器或 Windows 11 用户模式宿主。Android 只承担控制端，不在手机安装 Tailscale 或建立本机 VPN。应用内“组件”入口读取宿主状态并进入组件中心。共享契约及宿主实现边界见 [Tailscale 设计](../../../../docs/applications/RelaxKonOS.Tailscale.Design.md)。
 
 验证要求：检查能力隐藏、设备授权过滤、空列表、双栈地址、查询失败、请求中切换账户/宿主与离页；检查确认撤回、过期和后台切换、持久引用失败、原回执身份不符、断线重开、未知结果和关账回执恢复；检查原会话专属挑战、新会话同账户只读／关账、非官方链接拒绝、无浏览器、后台与离页时晚到挑战不打开；检查手机和平板、大字体、三语言、深浅主题和 TalkBack。模拟 HTTP 与单元测试不代表真实 Tailscale daemon 或设备交互验收。

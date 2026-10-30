@@ -1,5 +1,4 @@
 package app.relaxkonos.mobile.ui.servercenter
-import app.relaxkonos.mobile.ui.common.CheckboxOption
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
@@ -26,7 +25,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -60,8 +58,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
@@ -102,7 +98,7 @@ fun SshTerminalScreen(
     SshTerminalContent(hostId, target?.let { "${it.sshUserName}@${it.sshHost}:${it.sshPort}" },
         state, { model.reconnect(state.sessionId) }, { model.send(state.sessionId, it) },
         { columns, rows -> model.resize(state.sessionId, columns, rows) }, onClose,
-        { model.updateDraft(state.sessionId, it) }, { model.concealInput(state.sessionId, it) },
+        { model.updateDraft(state.sessionId, it) },
         { model.fontSize(state.sessionId, it) }, sessions, all.sessions.size < SshTerminalSessions.MAX_SESSIONS, model::select,
         { model.create(hostId) }, model::end,
         readState = { if (isPageCurrent() && container.serverCenter.sshFilesHostId == hostId && container.serverCenter.workspaceRevision == workspaceRevision)
@@ -123,7 +119,6 @@ internal fun SshTerminalContent(
     onResize: (Int, Int) -> Unit,
     onClose: () -> Unit,
     onDraftChange: (String) -> Unit,
-    onConcealChange: (Boolean) -> Unit,
     onFontSizeChange: (Int) -> Unit,
     sessions: List<SshTerminalUiState>,
     canCreate: Boolean,
@@ -140,7 +135,6 @@ internal fun SshTerminalContent(
     onInputCollapsedChange: (Boolean) -> Unit = {},
 ) {
     val input = state.draft
-    val concealInput = state.concealInput
     var pasteReview by remember(hostId, state.sessionId) { mutableStateOf<SshPasteReview?>(null) }
     var ctrlNext by remember(hostId, state.sessionId) { mutableStateOf(false) }
     var altNext by remember(hostId, state.sessionId) { mutableStateOf(false) }
@@ -255,9 +249,6 @@ internal fun SshTerminalContent(
                     DropdownMenuItem(text = { Text(stringResource(R.string.terminal_font_larger)) },
                         onClick = { menuOpen = false; onFontSizeChange((fontSize + 1).coerceAtMost(24)) },
                         enabled = fontSize < 24)
-                    DropdownMenuItem(text = { Text(if (concealInput) "${stringResource(R.string.ssh_terminal_hide_input)} ✓"
-                        else stringResource(R.string.ssh_terminal_hide_input)) },
-                        onClick = { menuOpen = false; onConcealChange(!concealInput) })
                 }
                 if (mode == TerminalChrome.Full) {
                     DropdownMenuItem(text = { Text(collapseChromeLabel) },
@@ -383,24 +374,20 @@ internal fun SshTerminalContent(
             OutlinedButton({ onSend("\u001b[C") }, enabled = state.connected) { Text("→") }
         }
     }, input = { compactInput ->
-        Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-            if (!compactInput) CheckboxOption(concealInput, stringResource(R.string.ssh_terminal_hide_input), onCheckedChange = onConcealChange)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-                verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = input,
-                    onValueChange = onDraftChange,
-                    modifier = Modifier.weight(1f).heightIn(min = 56.dp),
-                    label = { Text(stringResource(R.string.ssh_terminal_input)) },
-                    maxLines = if (compactInput) 1 else 3,
-                    enabled = state.connected,
-                    visualTransformation = if (concealInput) PasswordVisualTransformation() else VisualTransformation.None,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { sendLine() }),
-                )
-                Button(onClick = { sendLine() }, enabled = state.connected) {
-                    Text(stringResource(R.string.ssh_terminal_send))
-                }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+            verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = input,
+                onValueChange = onDraftChange,
+                modifier = Modifier.weight(1f).heightIn(min = 56.dp),
+                label = { Text(stringResource(R.string.ssh_terminal_input)) },
+                maxLines = if (compactInput) 1 else 3,
+                enabled = state.connected,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(onSend = { sendLine() }),
+            )
+            Button(onClick = { sendLine() }, enabled = state.connected) {
+                Text(stringResource(R.string.ssh_terminal_send))
             }
         }
     }, collapsedInput = {

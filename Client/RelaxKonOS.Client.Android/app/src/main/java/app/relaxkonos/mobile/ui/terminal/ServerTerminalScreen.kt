@@ -54,10 +54,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -97,6 +100,8 @@ import app.relaxkonos.mobile.ui.theme.TerminalType
 import app.relaxkonos.mobile.ui.common.appContainer
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.activity.compose.BackHandler
 import androidx.lifecycle.compose.LifecycleStartEffect
 
 @Composable
@@ -104,6 +109,8 @@ fun ServerTerminalScreen(owner: SessionState.Active, modifier: Modifier = Modifi
     val model: ServerTerminalViewModel = viewModel()
     val state by model.state.collectAsStateWithLifecycle()
     val inputSessionId = state.sessionId
+    var chrome by rememberSaveable { mutableStateOf(TerminalChrome.Compact) }
+    var inputCollapsed by rememberSaveable { mutableStateOf(false) }
     LifecycleStartEffect(owner) {
         model.connect(owner)
         onStopOrDispose { model.detach() }
@@ -112,7 +119,9 @@ fun ServerTerminalScreen(owner: SessionState.Active, modifier: Modifier = Modifi
             model::resize, model::close, model::closeSessions, modifier,
             presentation = model.presentation, onClearOutput = model::clearOutput,
             onReadSettings = { model.readSettings(owner) }, onSaveSettings = { model.saveSettings(owner, it) },
-            terminalType = appContainer().appearance.terminalType)
+            terminalType = appContainer().appearance.terminalType,
+            chrome = chrome, onChromeChange = { chrome = it },
+            inputCollapsed = inputCollapsed, onInputCollapsedChange = { inputCollapsed = it })
 }
 
 @Composable
@@ -132,9 +141,19 @@ internal fun ServerTerminalContent(
     onReadSettings: () -> Unit = {},
     onSaveSettings: (app.relaxkonos.mobile.core.net.TerminalSettings) -> Unit = {},
     terminalType: TerminalType = TerminalType.Native,
+    chrome: TerminalChrome = TerminalChrome.Compact,
+    onChromeChange: (TerminalChrome) -> Unit = {},
+    inputCollapsed: Boolean = false,
+    onInputCollapsedChange: (Boolean) -> Unit = {},
 ) {
     val input = presentation.input
     val fontSize = presentation.localFontSize ?: presentation.settings.fontSize
+    // The Server terminal is a shell destination, so immersive also asks the shell to drop its bar.
+    // A disconnected shell resolves back to Compact, and the bar must return with it.
+    val immersiveSlot = LocalTerminalImmersive.current
+    val immersive = chrome == TerminalChrome.Immersive && state.connected && !state.error
+    SideEffect { immersiveSlot?.value = immersive }
+    DisposableEffect(Unit) { onDispose { immersiveSlot?.value = false } }
     val waiting = state.connecting || state.busy && state.sessionId == null
     var outputReady by remember(owner) { mutableStateOf(false) }
     // Do not rebuild retained history behind a connection spinner, or build native glyphs for xterm.
@@ -252,6 +271,70 @@ internal fun ServerTerminalContent(
     val sessionNames = state.sessions.mapIndexed { index, session ->
         session.sessionId to stringResource(R.string.terminal_session_name, index + 1)
     }.toMap()
+    val compactStatus = stringResource(when {
+        state.connecting && state.retryAttempt > 0 -> R.string.terminal_recovering
+        state.connecting -> R.string.terminal_connecting
+        state.busy -> R.string.terminal_switching
+        state.error -> R.string.terminal_failed
+        state.sessionLost -> R.string.terminal_session_lost
+        state.connected -> R.string.terminal_connected
+        else -> R.string.terminal_detached
+    })
+    val expandChromeLabel = stringResource(R.string.terminal_chrome_expand)
+    val collapseChromeLabel = stringResource(R.string.terminal_chrome_collapse)
+    val immersiveChromeLabel = stringResource(R.string.terminal_chrome_immersive)
+    val exitImmersiveLabel = stringResource(R.string.terminal_chrome_exit_immersive)
+    val inputToggleLabel = stringResource(if (inputCollapsed) R.string.terminal_input_show else R.string.terminal_input_hide)
+    BackHandler(enabled = chrome == TerminalChrome.Immersive) { onChromeChange(TerminalChrome.Compact) }
+
+    /** The overflow carries what the full header draws as buttons, so the phone default can stay at 48dp. */
+    val actions: @Composable (TerminalChrome, Boolean) -> Unit = { mode, wide ->
+        Box {
+            IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.Default.MoreVert, contentDescription = sessionActionsLabel, modifier = Modifier.size(24.dp))
+            }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                if (!state.connected && !state.connecting) DropdownMenuItem(
+                    text = { Text(stringResource(R.string.terminal_reconnect)) },
+                    onClick = { menuOpen = false; onConnect() })
+                else DropdownMenuItem(
+                    text = { Text(stringResource(R.string.terminal_new)) },
+                    onClick = { menuOpen = false; onAttach(null) },
+                    enabled = state.connected && !state.busy)
+                state.sessions.forEach { session ->
+                    val stamp = terminalSessionLabel(session.createdAt, sessionNames[session.sessionId].orEmpty(), System.currentTimeMillis())
+                    DropdownMenuItem(text = { Text(stamp) }, onClick = {
+                        menuOpen = false
+                        if (session.sessionId != state.sessionId) onAttach(session.sessionId)
+                    })
+                }
+                if (state.sessions.size > 1) {
+                    val targets = state.sessions.filter { it.sessionId != state.sessionId }
+                    DropdownMenuItem(text = { Text(stringResource(R.string.terminal_close_others)) }, onClick = {
+                        menuOpen = false
+                        closeReview = targets.map { it.sessionId } to targets.joinToString("\n") {
+                            terminalSessionLabel(it.createdAt, sessionNames[it.sessionId].orEmpty(), System.currentTimeMillis())
+                        }
+                    })
+                }
+                if (mode == TerminalChrome.Compact) DropdownMenuItem(
+                    text = { Text(expandChromeLabel) },
+                    onClick = { menuOpen = false; onChromeChange(TerminalChrome.Full) })
+                DropdownMenuItem(text = { Text(stringResource(R.string.terminal_font_smaller)) },
+                    onClick = { menuOpen = false; fontChange(-1) }, enabled = fontSize > 8)
+                DropdownMenuItem(text = { Text(stringResource(R.string.terminal_font_larger)) },
+                    onClick = { menuOpen = false; fontChange(1) }, enabled = fontSize < 40)
+                if (mode == TerminalChrome.Full) DropdownMenuItem(
+                    text = { Text(collapseChromeLabel) },
+                    onClick = { menuOpen = false; onChromeChange(TerminalChrome.Compact) })
+                if (mode != TerminalChrome.Immersive && !wide) DropdownMenuItem(
+                    text = { Text(immersiveChromeLabel) },
+                    onClick = { menuOpen = false; onChromeChange(TerminalChrome.Immersive) })
+                DropdownMenuItem(text = { Text(inputToggleLabel) },
+                    onClick = { menuOpen = false; onInputCollapsedChange(!inputCollapsed) })
+            }
+        }
+    }
     closeReview?.let { (ids, target) -> AlertDialog(
         onDismissRequest = { closeReview = null },
         title = { Text(stringResource(R.string.terminal_close)) },
@@ -262,7 +345,11 @@ internal fun ServerTerminalContent(
         }) { Text(stringResource(R.string.terminal_close)) } },
         dismissButton = { TextButton(onClick = { closeReview = null }) { Text(stringResource(R.string.common_cancel)) } },
     ) }
-    TerminalScreenLayout(modifier = modifier, imeInsets = imeInsets, sidebar = {
+    TerminalScreenLayout(modifier = modifier, imeInsets = imeInsets,
+        chrome = chrome,
+        inputCollapsed = inputCollapsed,
+        immersiveAllowed = state.connected && !state.error,
+        sidebar = {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
             Text(stringResource(R.string.terminal_sessions_title), style = MaterialTheme.typography.titleSmall)
             if (!state.connected && !state.connecting) Button(onClick = onConnect) { Text(stringResource(R.string.terminal_reconnect)) }
@@ -277,7 +364,25 @@ internal fun ServerTerminalContent(
                 }
             }
         }
-    }, header = { _, compact, wide ->
+    }, header = { resolved, compact, wide ->
+        when (resolved) {
+            TerminalChrome.Immersive -> Unit
+            TerminalChrome.Compact -> {
+                TerminalTopBar(
+                    title = "${owner.userName} · ${owner.effectiveBaseUrl}",
+                    status = compactStatus,
+                    connected = state.connected && !state.error && !state.sessionLost,
+                    problem = state.error || state.sessionLost,
+                    expandLabel = expandChromeLabel,
+                    onExpand = { onChromeChange(TerminalChrome.Full) },
+                    onRetry = if (!state.connected && !state.connecting) onConnect else null,
+                    retryLabel = stringResource(R.string.terminal_reconnect),
+                    actions = { actions(TerminalChrome.Compact, wide) },
+                )
+                if (!inputCollapsed && !compact) TerminalOutputToolbar(presentation, state, matches.size, ::copyOutput, ::reviewClipboard, onClearOutput)
+                state.exitCode?.let { Text(stringResource(R.string.terminal_exit_code, it), style = MaterialTheme.typography.bodySmall) }
+            }
+            TerminalChrome.Full -> {
         // Keep long server addresses to one line so they cannot consume the terminal viewport.
         if (compact) {
             val selectedSession = state.sessions.firstOrNull { it.sessionId == state.sessionId }
@@ -316,22 +421,10 @@ internal fun ServerTerminalContent(
                 TextButton(onClick = { fontChange(1) }, enabled = fontSize < 40,
                     contentPadding = PaddingValues(horizontal = Spacing.xs),
                     modifier = Modifier.width(48.dp).semantics { contentDescription = increaseFontLabel }) { Text("A+") }
-                if (state.sessions.size > 1) Box {
-                    IconButton(onClick = { menuOpen = true }, enabled = state.connected && !state.busy,
-                        modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Default.MoreVert, contentDescription = sessionActionsLabel, modifier = Modifier.size(24.dp))
-                    }
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        val target = stringResource(R.string.terminal_close_others)
-                        DropdownMenuItem(text = { Text(target) }, onClick = {
-                            menuOpen = false
-                            val targets = state.sessions.filter { it.sessionId != state.sessionId }
-                            closeReview = targets.map { it.sessionId } to targets.joinToString("\n") {
-                                terminalSessionLabel(it.createdAt, sessionNames[it.sessionId].orEmpty(), System.currentTimeMillis())
-                            }
-                        })
-                    }
+                IconButton(onClick = { onChromeChange(TerminalChrome.Compact) }, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = collapseChromeLabel, modifier = Modifier.size(24.dp))
                 }
+                actions(TerminalChrome.Full, wide)
             }
             if (!wide && state.sessions.isNotEmpty()) {
                 // One scrolling row rather than a growing column. `Product.Design.md` gives a phone
@@ -356,8 +449,10 @@ internal fun ServerTerminalContent(
                 }
             }
         }
-        TerminalOutputToolbar(presentation, state, matches.size, ::copyOutput, ::reviewClipboard, onClearOutput)
+        if (!inputCollapsed && !compact) TerminalOutputToolbar(presentation, state, matches.size, ::copyOutput, ::reviewClipboard, onClearOutput)
         state.exitCode?.let { Text(stringResource(R.string.terminal_exit_code, it), style = MaterialTheme.typography.bodySmall) }
+            }
+        }
     }, output = {
         TerminalEntry(owner, Modifier.fillMaxSize().clipToBounds().testTag("terminal-output-region"), onReady = { outputReady = true }) {
         Box(Modifier.fillMaxSize()) {
@@ -405,8 +500,10 @@ internal fun ServerTerminalContent(
             if (state.connecting || state.busy && state.sessionId == null) TerminalLoading(connecting = state.connecting)
         }
         }
-    }, keys = { _ ->
+    }, keys = { immersive ->
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            if (immersive) OutlinedButton(onClick = { onChromeChange(TerminalChrome.Compact) },
+                modifier = Modifier.testTag("terminal-immersive-exit")) { Text(exitImmersiveLabel) }
             OutlinedButton(onClick = { presentation.ctrlNext = !presentation.ctrlNext }, enabled = state.canInput) {
                 Text(if (presentation.ctrlNext) "Ctrl ✓" else "Ctrl")
             }
@@ -435,6 +532,13 @@ internal fun ServerTerminalContent(
                 maxLines = if (compact) 1 else 3,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send), keyboardActions = KeyboardActions(onSend = { sendLine() }))
             Button(onClick = { sendLine() }, enabled = state.canInput) { Text(stringResource(R.string.terminal_send)) }
+        }
+    }, collapsedInput = {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = { onInputCollapsedChange(false) },
+                modifier = Modifier.testTag("terminal-input-collapsed")) {
+                Text(stringResource(R.string.terminal_input_show))
+            }
         }
     })
 }

@@ -14,6 +14,7 @@ internal fun installationServiceLabel(value: InstallationService): String = stri
     InstallationService.Docker -> R.string.installation_service_docker
     InstallationService.SingBox -> R.string.installation_service_singbox
     InstallationService.Squid -> R.string.installation_service_squid
+    InstallationService.Tailscale -> R.string.tailscale_title
 })
 
 @Composable

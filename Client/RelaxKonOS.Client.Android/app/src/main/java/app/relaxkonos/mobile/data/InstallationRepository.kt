@@ -32,7 +32,7 @@ class InstallationRepository(
             .joinToString("") { "%02x".format(it) }
         val frozenKey = when (request) {
             is ManagedRuntimeInstallationRequest -> request.key
-            is ComponentFrozenInstallationRequest -> org.json.JSONObject(request.planRequestJson).getString("idempotencyKey")
+            is ComponentFrozenInstallationRequest -> org.json.JSONObject(request.planRequestJson).getString("idempotencyKey").also { require(it.isNotBlank() && it.length <= 128) }
             else -> ""
         }
         return InstallationSubmission(owner, kind, request, journal.begin(owner, request.service, kind, digest, frozenKey))

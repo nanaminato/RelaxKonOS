@@ -25,6 +25,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.movableContentOf
@@ -41,6 +43,7 @@ import app.relaxkonos.mobile.core.layout.LayoutState
 import app.relaxkonos.mobile.core.layout.layoutStateFor
 import app.relaxkonos.mobile.ui.icons.DesktopIcon
 import app.relaxkonos.mobile.ui.icons.DesktopIcons
+import app.relaxkonos.mobile.ui.terminal.LocalTerminalImmersive
 import app.relaxkonos.mobile.ui.theme.Spacing
 
 /**
@@ -75,6 +78,10 @@ fun ShellScaffold(
                 modifier = modifier)
         }
     }
+    // A terminal page may ask the shell to hide the bottom bar while the user reads. The page owns
+    // the preference; the shell still owns whether a navigation surface exists at all.
+    val terminalImmersive = remember(session) { mutableStateOf(false) }
+    CompositionLocalProvider(LocalTerminalImmersive provides terminalImmersive) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val layoutState = layoutStateFor(maxWidth)
         val drawerContentLayout = layoutStateFor(maxWidth - 200.dp)
@@ -97,7 +104,7 @@ fun ShellScaffold(
             layoutState == LayoutState.Compact -> Scaffold(
                 containerColor = Color.Transparent,
                 bottomBar = {
-                    if (!terminalKeyboardOpen) Column {
+                    if (!terminalKeyboardOpen && !terminalImmersive.value) Column {
                         HorizontalDivider(
                             thickness = 1.dp,
                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
@@ -172,6 +179,7 @@ fun ShellScaffold(
                 host(drawerContentLayout, Modifier.weight(1f).fillMaxHeight().padding(horizontal = Spacing.sm))
             }
         }
+    }
     }
 }
 

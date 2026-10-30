@@ -9,7 +9,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
-import androidx.test.espresso.Espresso.pressBack
 import androidx.test.platform.app.InstrumentationRegistry
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.auth.SessionState
@@ -64,7 +63,11 @@ class TerminalSessionFlowTest {
             rule.onNodeWithText(label(R.string.terminal_close_others)).performClick()
         }
         openReview()
-        pressBack()
+        // The review is its own dialog window; drive the system back action instead of an Espresso
+        // root, which cannot pick a focused root while the dialog owns focus.
+        InstrumentationRegistry.getInstrumentation().uiAutomation
+            .performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+        rule.waitForIdle()
         rule.runOnIdle { assertTrue(closed.isEmpty()) }
         openReview()
         rule.runOnIdle { state.value = initial.copy(sessionId = "second", busy = true) }

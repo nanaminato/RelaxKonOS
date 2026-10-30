@@ -34,6 +34,7 @@ public static partial class PrivilegedOperationExecutor
             TailscaleControlProtection.Require(File.Exists(path) ? path : Path.GetDirectoryName(path)!);
         return File.Exists(TailscaleKeyPath) && File.Exists(TailscaleListPath)
             && new FileInfo(TailscaleKeyPath).Length is > 0 and <= 65536
+            && new FileInfo(TailscaleListPath).Length is > 0 and <= 4096
             && Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(TailscaleKeyPath))) == TailscaleKeySha256
             && File.ReadAllText(TailscaleListPath) == TailscaleSourceText(distribution, suite);
     }
@@ -55,8 +56,8 @@ public static partial class PrivilegedOperationExecutor
             TailscaleControlProtection.Require(File.Exists(path) ? path : Path.GetDirectoryName(path)!);
         var source = TailscaleSourceText(distribution, suite);
         // Existing administrator trust is never overwritten or silently rotated.
-        if (File.Exists(TailscaleListPath) && File.ReadAllText(TailscaleListPath) != source
-            || File.Exists(TailscaleKeyPath) && Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(TailscaleKeyPath))) != TailscaleKeySha256)
+        if (File.Exists(TailscaleListPath) && (new FileInfo(TailscaleListPath).Length > 4096 || File.ReadAllText(TailscaleListPath) != source)
+            || File.Exists(TailscaleKeyPath) && (new FileInfo(TailscaleKeyPath).Length > 65536 || Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(TailscaleKeyPath))) != TailscaleKeySha256))
             throw new IOException("Existing Tailscale source requires administrator review.");
         using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false })
         { Timeout = TimeSpan.FromSeconds(45), MaxResponseContentBufferSize = 65536 };

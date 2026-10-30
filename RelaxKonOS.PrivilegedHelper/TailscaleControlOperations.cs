@@ -190,6 +190,7 @@ internal sealed partial class TailscaleControlOperations(string root, Action<str
 
     private bool HasUnresolved()
     {
+        if (OperatingSystem.IsLinux() && TailscalePackageInterlock.HasPending(TailscalePackageInterlock.PackageRoot, TailscaleControlProtection.Require)) return true;
         if (File.Exists(Path.Combine(root, "installation", "pending.json"))) return true;
         if (HasUnresolvedLogin()) return true;
         foreach (var pending in Directory.EnumerateFiles(root, "*.intent.json"))
@@ -203,6 +204,16 @@ internal sealed partial class TailscaleControlOperations(string root, Action<str
 
     internal static bool HasPendingOperations() => new TailscaleControlOperations(TailscaleControlProtection.Root,
         TailscaleControlProtection.PrepareRoot, new TailscaleNativeControl()).HasUnresolved();
+
+    internal static async Task<FileStream> AcquireLifecycleAsync()
+    {
+        TailscaleControlProtection.PrepareRoot(TailscaleControlProtection.Root);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var owner = new TailscaleControlOperations(TailscaleControlProtection.Root, TailscaleControlProtection.PrepareRoot, new TailscaleNativeControl());
+        var gate = await owner.AcquireAsync(timeout.Token);
+        try { TailscaleControlProtection.Require(Path.Combine(TailscaleControlProtection.Root, "native.lock")); return gate; }
+        catch { gate.Dispose(); throw; }
+    }
 
     private static bool Valid(TailscalePrepareRequest change) => Enum.IsDefined(change.Action)
         && change.ExpectedRevision is { Length: 64 } && change.ExpectedRevision.All(Uri.IsHexDigit)

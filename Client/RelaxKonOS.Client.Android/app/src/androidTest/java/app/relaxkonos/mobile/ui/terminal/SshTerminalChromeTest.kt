@@ -41,7 +41,7 @@ class SshTerminalChromeTest {
                 Box(Modifier.size(412.dp, 907.dp)) {
                     SshTerminalContent("host", "user@host:22", state,
                         onConnect = {}, onSend = {}, onResize = { _, _ -> }, onClose = {},
-                        onDraftChange = {}, onConcealChange = {}, onFontSizeChange = {},
+                        onDraftChange = {}, onFontSizeChange = {},
                         sessions = listOf(state), canCreate = true,
                         onSelect = {}, onNew = {}, onEnd = {}, readState = { state },
                         imeInsets = WindowInsets(0, 0, 0, 0), terminalType = TerminalType.Native,

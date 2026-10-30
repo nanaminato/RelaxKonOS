@@ -7,7 +7,7 @@ using RelaxKonOS.Protocol.Privileged;
 
 public static partial class PrivilegedOperationExecutor
 {
-    private const string ComponentPackageRoot = "/var/lib/relaxkonos-component-packages";
+    private const string ComponentPackageRoot = TailscalePackageInterlock.PackageRoot;
     private sealed record PackageReceipt(string ComponentId, Guid OperationId, ComponentPackageTarget Target,
         bool Committed, string? ExecutableSha256);
 
@@ -133,6 +133,8 @@ public static partial class PrivilegedOperationExecutor
             || operationId is null || operationId == Guid.Empty || !AptPackageResolution.IsUsableExpectation(expected)
             || expected!.PackageName != definition.PackageName)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "component package installation request invalid");
+        using var nativeGate = definition.ComponentId == ComponentIds.Tailscale
+            ? await TailscaleControlOperations.AcquireLifecycleAsync() : null;
         RequirePackagePath(ComponentPackageRoot);
         Directory.CreateDirectory(ComponentPackageRoot, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         var directory = Path.GetDirectoryName(PackageReceiptPath(definition))!;
@@ -152,8 +154,11 @@ public static partial class PrivilegedOperationExecutor
                 ? replay : Fail(65, PrivilegedProblemCode.Conflict, "component package recovery required");
         }
         foreach (var systemDirectory in definition.Service.Length == 0 ? Array.Empty<string>() : new[] { "/etc/systemd/system", "/run/systemd/system" })
-            if (File.Exists(Path.Combine(systemDirectory, definition.Service)) || Directory.Exists(Path.Combine(systemDirectory, definition.Service + ".d")))
+            if (File.Exists(Path.Combine(systemDirectory, definition.Service)) && !IsOwnedRemovedPackageMask(definition, Path.Combine(systemDirectory, definition.Service))
+                || Directory.Exists(Path.Combine(systemDirectory, definition.Service + ".d")))
                 return Fail(65, PrivilegedProblemCode.Conflict, "external service overrides require review");
+        if (definition.ComponentId == ComponentIds.Tailscale && TailscaleControlOperations.HasPendingOperations())
+            return Fail(65, PrivilegedProblemCode.Conflict, "Tailscale operation requires recovery");
         if (definition.ComponentId == ComponentIds.Docker && !DockerPackagePolicyReady())
             return Fail(65, PrivilegedProblemCode.AccessDenied, "Docker trusted repository and access policy require setup");
         if (definition.ComponentId == ComponentIds.Tailscale && !TailscalePackagePolicyReady())
@@ -183,6 +188,7 @@ public static partial class PrivilegedOperationExecutor
             ComponentIds.Nginx => await RunFixedCommandAsync(definition.Executable, ["-t"], TimeSpan.FromSeconds(30), "Nginx configuration invalid"),
             ComponentIds.Squid => await RunFixedCommandAsync(definition.Executable, ["-k", "parse"], TimeSpan.FromSeconds(30), "Squid configuration invalid"),
             ComponentIds.Samba => await RunFixedCommandAsync("/usr/bin/testparm", ["-s"], TimeSpan.FromSeconds(30), "Samba configuration invalid"),
+            ComponentIds.Tailscale => await RunFixedCommandAsync(definition.Executable, ["version"], TimeSpan.FromSeconds(30), "Tailscale version unavailable"),
             _ => await RunFixedCommandAsync(definition.Executable, ["--version"], TimeSpan.FromSeconds(30), "Docker version unavailable")
         };
         if (!health.Success) return health;
@@ -255,6 +261,18 @@ public static partial class PrivilegedOperationExecutor
         owner = await RunFixedCommandWithOutputAsync("/usr/bin/dpkg-query", ["-S", alias], "service alias ownership unavailable");
         return owner.Success && owners.Any(package => DecodeUtf8(owner.OutputBase64).StartsWith(package + ":", StringComparison.Ordinal));
     }
+
+    private static bool IsOwnedRemovedPackageMask(HostPackageDefinition definition, string unit)
+    {
+        // Debian's postrm masks a removed package; its next preinst unsets that mask. Only our
+        // verified removal witness may authorize this shape. Administrator overrides remain refused.
+        if (definition.ComponentId != ComponentIds.Tailscale || unit != "/etc/systemd/system/" + definition.Service
+            || ReadPackageChange(definition) is not { Committed: true, Change.Change: RuntimeChange.Uninstall }) return false;
+        var marker = "/var/lib/systemd/deb-systemd-helper-masked/" + definition.Service;
+        RequirePackagePath(Path.GetDirectoryName(unit)!); RequirePackagePath(marker);
+        return File.Exists(marker) && new FileInfo(marker).Length == 0 && new FileInfo(unit).LinkTarget == "/dev/null";
+    }
+
     private static async Task<PrivilegedOperationResult> RecoverComponentPackageAsync(ComponentRecoveryRequest? request, Guid? operationId)
     {
         if (!OperatingSystem.IsLinux() || request is null || operationId is null || operationId == Guid.Empty
@@ -276,6 +294,8 @@ public static partial class PrivilegedOperationExecutor
         }
         if (request.OperationId == Guid.Empty || definition is null)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "component recovery request invalid");
+        using var nativeGate = definition.ComponentId == ComponentIds.Tailscale
+            ? await TailscaleControlOperations.AcquireLifecycleAsync() : null;
         var directory = Path.Combine(ComponentPackageRoot, definition.ComponentId);
         RequirePackagePath(directory);
         if (!Directory.Exists(directory)) return Fail(65, PrivilegedProblemCode.Conflict, "component recovery target absent");

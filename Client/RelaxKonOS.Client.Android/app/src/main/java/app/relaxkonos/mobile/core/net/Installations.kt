@@ -159,8 +159,8 @@ internal object InstallationWire {
             is ComponentMaintenanceInstallationRequest -> {
                 require(request.componentId == "tailscale" && request.service == InstallationService.Tailscale)
                 require(request.action in setOf("ConfigureOfficialSource", "RefreshSources", "Stop", "Close"))
-                body.raw("recovery", JsonBody().string("componentId", request.componentId)
-                    .string("operationId", request.operationId).string("action", request.action).toString())
+                body.raw("recovery", JSONObject().put("componentId", request.componentId)
+                    .put("operationId", request.operationId).put("action", request.action).toString())
             }
             is ManagedRuntimeInstallationRequest -> {
                 require(kind == request.kind)
