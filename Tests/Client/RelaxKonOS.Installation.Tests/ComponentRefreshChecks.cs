@@ -1,6 +1,7 @@
 using System.Reflection;
 using RelaxKonOS.Client.Apps.ComponentCenter;
 using RelaxKonOS.Client.Apps.ProxyServer;
+using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 
 internal static class ComponentRefreshChecks
@@ -23,6 +24,15 @@ internal static class ComponentRefreshChecks
                 Check(model.IsSystemPackage && !model.HasRuntimeDetails && model.ShowPackageFreeze, "Linux sing-box uses the package panel instead of the signed archive panel");
                 model.SelectedNode = model.VisibleRoots.SelectMany(root => root.DescendantsAndSelf()).Single(node => node.ComponentId == "mihomo");
                 Check(model.IsSystemPackage && !model.HasRuntimeDetails, "Linux mihomo uses the configured host package source");
+                model.SelectedNode = model.VisibleRoots.SelectMany(root => root.DescendantsAndSelf()).Single(node => node.ComponentId == "squid");
+                Check(model.ShowRegisterPackage && !model.HasExternalPackageChange && !model.CanRegisterPackage
+                    && model.RegisterPackageText.Resolve() == LocalizedText.Get("component_center.package.register"),
+                    "A verified external package offers explicit registration but no change acknowledgement");
+                model.SelectedNode = model.VisibleRoots.SelectMany(root => root.DescendantsAndSelf()).Single(node => node.ComponentId == "samba");
+                Check(model.HasExternalPackageChange && model.ShowRegisterPackage
+                    && model.ExternalPackageChangeText.Resolve() == LocalizedStatus.Format("component_center.package.external_change", "1.2.3", "1.2.4").Resolve()
+                    && model.RegisterPackageText.Resolve() == LocalizedText.Get("component_center.package.acknowledge"),
+                    "A managed package verified after an external update reports the change and offers acknowledgement");
             }
             lifecycle.Denied = true;
             await model.RefreshComponentStatesAsync();
@@ -38,8 +48,21 @@ internal static class ComponentRefreshChecks
         {
             Reads.Add(id);
             if (Denied || id == "nginx") throw new HttpRequestException("offline");
-            return Task.FromResult(new ComponentStateView(id, new(id, "host", 1, RuntimeOwnership.Managed, ComponentSourceMode.SystemPackage,
-                new(platform, "x64", null, null, RuntimeInstallMode.SystemPackage, "systemd"), "1.2.3", false), [], []));
+            var target = new RuntimeTarget(platform, "x64", null, null, RuntimeInstallMode.SystemPackage, "systemd");
+            var verified = new ComponentInstalledPackage(id, "1.2.3", "amd64", new('a', 64));
+            var managed = new ComponentStateView(id, new(id, "host", 1, RuntimeOwnership.Managed, ComponentSourceMode.SystemPackage,
+                target, "1.2.3", false), [], [], InstalledPackage: verified);
+            return Task.FromResult(id switch
+            {
+                "squid" => managed with { State = managed.State! with { Ownership = RuntimeOwnership.External } },
+                "samba" => managed with
+                {
+                    State = managed.State! with { ActiveVersion = "1.2.4" },
+                    InstalledPackage = verified with { Version = "1.2.4" },
+                    ExternalPackageChange = true, RecordedPackageVersion = "1.2.3"
+                },
+                _ => managed
+            });
         }
         public Task<ComponentPlanResult> PlanAsync(ComponentPlanRequest request, CancellationToken ct)
         { Plans++; throw new InvalidOperationException("Refresh must not plan"); }

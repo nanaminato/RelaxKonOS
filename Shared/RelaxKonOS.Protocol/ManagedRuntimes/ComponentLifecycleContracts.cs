@@ -36,6 +36,8 @@ public enum ComponentSourceMode { ManagedArchive, SystemPackage, NativeInstaller
 /// <paramref name="AlsoInstalls"/> is the rest of the transaction's own resolution (dependencies
 /// that would be installed with it), so the plan can state its full effect instead of one name.
 /// </summary>
+public sealed record ComponentInstalledPackage(string PackageName, string Version, string Architecture, string ExecutableSha256);
+
 public sealed record ComponentPackageArtifact(string FileName, string Uri, long Bytes, string Sha256);
 
 public sealed record ComponentPackageTarget(
@@ -55,7 +57,7 @@ public sealed record ComponentDownloadRelease(string Version, string Rid, string
     string Format, string? Sha256 = null);
 
 public sealed record ComponentFrozenTarget(ComponentSourceMode Mode, RuntimeRelease? Archive, ComponentPackageTarget? Package,
-    ComponentPinnedArchive? Pin = null, ComponentDownloadRelease? Installer = null)
+    ComponentPinnedArchive? Pin = null, ComponentDownloadRelease? Installer = null, ComponentInstalledPackage? InstalledPackage = null)
 {
     public static ComponentFrozenTarget FromPin(ComponentPinnedArchive pin) => new(ComponentSourceMode.ManagedArchive, null, null, pin);
     public static ComponentFrozenTarget FromArchive(RuntimeRelease release) => new(ComponentSourceMode.ManagedArchive, release, null);
@@ -79,7 +81,7 @@ public sealed record ComponentState(string ComponentId, string HostId, long Revi
 /// </summary>
 public sealed record ComponentStateView(string ComponentId, ComponentState? State,
     IReadOnlyList<ComponentModeSupport> Modes, IReadOnlyList<string> Problems,
-    IReadOnlyList<ComponentPinnedArchive>? PinnedArchives = null, long PinRevision = 0, Guid? CommittedOperationId = null, Guid? PendingOperationId = null);
+    IReadOnlyList<ComponentPinnedArchive>? PinnedArchives = null, long PinRevision = 0, Guid? CommittedOperationId = null, Guid? PendingOperationId = null, ComponentInstalledPackage? InstalledPackage = null, bool ExternalPackageChange = false, string? RecordedPackageVersion = null);
 
 /// <summary>
 /// A request to freeze one change. Archive changes name a release and its catalog/trust revisions;
@@ -108,7 +110,7 @@ public sealed record ComponentPlanResult(ComponentPlanRequest? Request, Componen
 /// </summary>
 public sealed record ComponentPackageResolution(string PackageName, string? InstalledVersion, ComponentPackageTarget? Candidate,
     bool Managed = false, bool RecoveryRequired = false, Guid? CommittedOperationId = null,
-    Guid? PendingOperationId = null, ComponentRecoveryReceipt? RecoveryReceipt = null, string? BlockingProblem = null, ComponentPackageTarget? InstalledTarget = null, string? CandidateVersion = null, bool UpdateAvailable = false);
+    Guid? PendingOperationId = null, ComponentRecoveryReceipt? RecoveryReceipt = null, string? BlockingProblem = null, ComponentPackageTarget? InstalledTarget = null, string? CandidateVersion = null, bool UpdateAvailable = false, ComponentInstalledPackage? InstalledPackage = null, bool ExternalPackageChange = false, string? RecordedPackageVersion = null);
 
 /// <summary>
 /// Asks the Host to carry out exactly the change it just froze. <paramref name="Expected"/> is what
@@ -166,6 +168,7 @@ public static class ComponentProblemCodes
     /// <summary>Freezing worked but the host refuses the change for a domain reason.</summary>
     public const string PackageAlreadyInstalled = "component.package_already_installed";
     public const string PackageNoUpdate = "component.package_no_update";
+    public const string PackageIdentityUnverified = "component.package_identity_unverified";
     public const string PackageOwnershipRequired = "component.package_ownership_required";
     public const string PackageAbsent = "component.package_absent";
     public const string PackageUnresolved = "component.package_unresolved";
@@ -196,9 +199,9 @@ public sealed record ComponentArchiveHostSnapshot(bool Installed, bool Managed, 
     IReadOnlyList<ComponentPinnedArchive> Releases, Guid? CommittedOperationId, bool RecoveryRequired);
 
 [JsonConverter(typeof(JsonStringEnumConverter<ComponentRecoveryAction>))]
-public enum ComponentRecoveryAction { Stop, Close, RefreshSources, ConfigureOfficialSource }
-public sealed record ComponentRecoveryRequest(string ComponentId, Guid OperationId, ComponentRecoveryAction Action);
+public enum ComponentRecoveryAction { Stop, Close, RefreshSources, ConfigureOfficialSource, RegisterPackage }
+public sealed record ComponentRecoveryRequest(string ComponentId, Guid OperationId, ComponentRecoveryAction Action, ComponentInstalledPackage? ExpectedInstalledPackage = null);
 public sealed record ComponentRecoveryReceipt(Guid OperationId, Guid TargetOperationId, ComponentRecoveryAction Action);
 
-/// <summary>Mutates an existing owned package at a measured prior commit.</summary>
-public sealed record ComponentPackageChange(RuntimeChange Change, Guid PreviousOperationId, string ExpectedInstalledVersion);
+/// <summary>Mutates an existing owned or verified external package at its measured prior identity.</summary>
+public sealed record ComponentPackageChange(RuntimeChange Change, ComponentInstalledPackage InstalledPackage);

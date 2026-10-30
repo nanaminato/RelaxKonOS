@@ -323,8 +323,10 @@ private fun ComponentCard(
     // Nginx removal uses the same domain ledger the application used, from the single component entry.
     val nginxUninstallable = canManage && read.componentId == "nginx" && state?.ownership == "managed" &&
         view.problems.isEmpty() && !view.recoveryRequired
-    // Updating or removing an external installation would claim ownership the host did not grant.
-    val manageable = packageBacked && state?.ownership == "managed" && view?.recoveryRequired != true
+    // An external package may be updated or removed only after the host verified its identity; this
+    // never grants long-term management, which still requires an explicit desktop registration.
+    val manageable = packageBacked && view?.recoveryRequired != true &&
+        (state?.ownership == "managed" || state?.ownership == "external" && view?.installedPackage != null)
     var pin by remember(read.componentId, view?.pinRevision) {
         mutableStateOf(view?.pinnedArchives?.firstOrNull())
     }
@@ -352,6 +354,8 @@ private fun ComponentCard(
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         } else {
             ComponentSummary(view)
+            if (view.externalPackageChange) Text(stringResource(R.string.components_external_package_change,
+                view.recordedPackageVersion ?: "—", view.version ?: "—"), style = MaterialTheme.typography.bodySmall)
         }
         if (canManage && read.componentId == "tailscale" && view != null && state?.mode == "systemPackage") {
             val setup = "component.host_policy_required" in view.problems

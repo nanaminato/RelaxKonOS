@@ -41,6 +41,33 @@ internal static class ComponentLifecycleClientChecks
 
         var request = new ComponentPlanRequest(ComponentIds.Nginx, "host", RuntimeChange.Install, 7,
             ComponentSourceMode.SystemPackage, null, 0, 0, null, null, KeepData: true, "component-center-freeze");
+        var installed = new ComponentInstalledPackage("nginx", "1.26.3-3+deb13u1", "amd64", new string('a', 64));
+        var external = state with
+        {
+            State = state.State! with { Ownership = RuntimeOwnership.Managed, ActiveVersion = "1.26.4-1" },
+            InstalledPackage = installed, ExternalPackageChange = true, RecordedPackageVersion = "1.26.3-3+deb13u1"
+        };
+        using (var http = new HttpClient(new Handler(_ => new(HttpStatusCode.OK)
+            { Content = JsonContent.Create(external, options: RelaxKonOSJsonOptions.Default) })))
+        {
+            var view = await new ComponentLifecycleClient(http, session).StateAsync(ComponentIds.Nginx, default);
+            Check(view.InstalledPackage == installed && view.ExternalPackageChange
+                && view.RecordedPackageVersion == "1.26.3-3+deb13u1",
+                "The state carries the verified package identity and the externally observed version change");
+        }
+
+        var removalRequest = request with { Change = RuntimeChange.Uninstall };
+        using (var http = new HttpClient(new Handler(_ => new(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new ComponentPlanResult(removalRequest, state.State,
+                    new ComponentFrozenTarget(ComponentSourceMode.SystemPackage, null, null, InstalledPackage: installed), [], []),
+                    options: RelaxKonOSJsonOptions.Default)
+            })))
+        {
+            var result = await new ComponentLifecycleClient(http, session).PlanAsync(removalRequest, default);
+            Check(result.Allowed && result.Target is { Package: null } removal && removal.InstalledPackage == installed,
+                "An external removal freezes only the verified installed identity, not a repository candidate");
+        }
         using (var http = new HttpClient(new Handler(message =>
         {
             Check(message.Method == HttpMethod.Post && message.RequestUri!.AbsolutePath == ComponentRoutes.Plan(ComponentIds.Nginx),

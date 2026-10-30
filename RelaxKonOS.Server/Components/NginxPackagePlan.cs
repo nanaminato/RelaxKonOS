@@ -1,4 +1,4 @@
-﻿using RelaxKonOS.ManagedRuntimes.ComponentPackages;
+using RelaxKonOS.ManagedRuntimes.ComponentPackages;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 
 namespace RelaxKonOS.Server.Components;
@@ -38,14 +38,19 @@ public static class NginxPackagePlan
             problems.Add(ComponentProblemCodes.PackageAlreadyInstalled);
         if (request.Change != RuntimeChange.Install && state.Ownership == RuntimeOwnership.Absent)
             problems.Add(ComponentProblemCodes.PackageAbsent);
-        if (request.Change is RuntimeChange.Update or RuntimeChange.Uninstall && state.Ownership != RuntimeOwnership.Managed)
-            problems.Add(ComponentProblemCodes.PackageOwnershipRequired);
+        if (request.Change is RuntimeChange.Update or RuntimeChange.Uninstall && !PackageIdentityPolicy.Valid(resolution.InstalledPackage))
+            problems.Add(ComponentProblemCodes.PackageIdentityUnverified);
+        if (request.Change == RuntimeChange.Uninstall)
+        {
+            if (!executionAvailable) problems.Add(ComponentProblemCodes.ExecutionUnavailable);
+            return new(request, state, new(ComponentSourceMode.SystemPackage, null, null, InstalledPackage: resolution.InstalledPackage), problems, []);
+        }
         if (request.Change == RuntimeChange.Update && !resolution.UpdateAvailable)
         {
             problems.Add(resolution.CandidateVersion is null ? ComponentProblemCodes.PackageUnresolved : ComponentProblemCodes.PackageNoUpdate);
             return new(request, state, null, problems, []);
         }
-        var candidate = request.Change == RuntimeChange.Uninstall ? resolution.InstalledTarget : resolution.Candidate;
+        var candidate = resolution.Candidate;
         if (candidate is null)
         {
             problems.Add(ComponentProblemCodes.PackageUnresolved);
@@ -54,10 +59,11 @@ public static class NginxPackagePlan
         if (!string.IsNullOrWhiteSpace(request.RequestedVersion)
             && !string.Equals(request.RequestedVersion, candidate.Version, StringComparison.Ordinal))
             problems.Add(ComponentProblemCodes.PackageVersionMismatch);
-        // Everything is frozen, but only a first install has a transaction that honours the freeze.
-        if (!executionAvailable || request.Change is not (RuntimeChange.Install or RuntimeChange.Update or RuntimeChange.Uninstall))
+        // A first install and a verified update both carry a frozen candidate; removal carries only
+        // the installed identity.
+        if (!executionAvailable || request.Change is not (RuntimeChange.Install or RuntimeChange.Update))
             problems.Add(ComponentProblemCodes.ExecutionUnavailable);
-        return new(request, state, ComponentFrozenTarget.FromPackage(candidate), problems, []);
+        return new(request, state, ComponentFrozenTarget.FromPackage(candidate) with { InstalledPackage = resolution.InstalledPackage }, problems, []);
     }
 
     public static string? HostArchitecture() => System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture switch
@@ -81,10 +87,18 @@ public static class NginxPackagePlan
         if (!linux) return Refuse([ComponentProblemCodes.PlatformUnsupported], null);
         if (request.Request.Mode != ComponentSourceMode.SystemPackage)
             return Refuse([ComponentProblemCodes.SourceModeUnsupported], null);
-        if (request.Expected is not { Mode: ComponentSourceMode.SystemPackage, Package: not null })
+        if (request.Expected is not { Mode: ComponentSourceMode.SystemPackage, Archive: null } expected)
             return Refuse([ComponentProblemCodes.ExecutionNotRequested], null);
-        // Only a first install has a transaction that honours a freeze; everything else stays refused.
-        return request.Request.Change is RuntimeChange.Install or RuntimeChange.Update or RuntimeChange.Uninstall ? null : Refuse([ComponentProblemCodes.ExecutionUnavailable], null);
+        // An uninstall freezes the verified installed identity only; install and update additionally
+        // freeze the resolved candidate and its dependencies.
+        var complete = request.Request.Change switch
+        {
+            RuntimeChange.Install => expected.Package is not null && expected.InstalledPackage is null,
+            RuntimeChange.Update => expected.Package is not null && PackageIdentityPolicy.Valid(expected.InstalledPackage),
+            RuntimeChange.Uninstall => expected.Package is null && PackageIdentityPolicy.Valid(expected.InstalledPackage),
+            _ => false
+        };
+        return complete ? null : Refuse([ComponentProblemCodes.ExecutionNotRequested], null);
     }
 
     /// <summary>The guards that need the host's own answer: a moved revision, plan or identity refuses.</summary>
@@ -95,7 +109,11 @@ public static class NginxPackagePlan
             return Refuse([ComponentProblemCodes.RequestInvalid], state);
         var plan = Evaluate(request.Request, state, resolution, executionAvailable: true);
         if (!plan.Allowed) return Refuse([.. plan.Problems], state);
-        var expected = request.Expected!.Package;
+        if (request.Expected?.InstalledPackage != plan.Target?.InstalledPackage)
+            return Refuse([ComponentProblemCodes.PackageExpectationChanged], state);
+        if (request.Request.Change == RuntimeChange.Uninstall)
+            return request.Expected is { Package: null } ? null : Refuse([ComponentProblemCodes.PackageExpectationChanged], state);
+        var expected = request.Expected?.Package;
         return AptPackageResolution.IsUsableExpectation(expected)
             && AptPackageResolution.MatchesExpectation(expected, plan.Target?.Package)
             ? null : Refuse([ComponentProblemCodes.PackageExpectationChanged], state);

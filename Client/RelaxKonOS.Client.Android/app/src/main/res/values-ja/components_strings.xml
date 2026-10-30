@@ -92,4 +92,5 @@
     <string name="components_launch_missing_message">このアプリには %1$s が必要です。コンポーネントセンターでインストールしてから戻ってください。業務操作は開始されていません。</string>
     <string name="components_launch_recovery_message">%1$s に復旧が必要な処理があります。先に「タスクと復旧」で処理してください。</string>
     <string name="components_launch_busy_message">%1$s のタスクが実行中です。先に「タスクと復旧」で進行状況を確認してください。</string>
+    <string name="components_external_package_change">外部パッケージ変更を検証しました：%1$s → %2$s。管理権限は保持されます。</string>
 </resources>

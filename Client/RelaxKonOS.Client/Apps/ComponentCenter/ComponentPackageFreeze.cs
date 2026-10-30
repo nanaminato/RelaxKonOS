@@ -155,14 +155,16 @@ public partial class ComponentCenterViewModel
         && (freeze.Target?.Package is not null
                 && (SelectedPackageManager is null || PackageManagers.Contains(SelectedPackageManager))
             || freeze.Target?.Pin is not null || freeze.Target?.Installer is not null
+            || freeze.Request.Change == RuntimeChange.Uninstall && IsSystemPackage && freeze.Target?.InstalledPackage is not null
             || freeze.Request is { ComponentId: "frpc" or "frps", Change: RuntimeChange.Uninstall });
     public bool ShowPackageInstall => IsSystemPackage || IsNativeInstaller || CanInstallPackage;
     public bool CanInstallPackage => CanApplyPackagePlan && SelectedComponentFreeze?.Request?.Change == RuntimeChange.Install;
     public bool CanChangeInstalledPackage => CanResolvePackage && Runtime.CanManage && PackageInstallation is not null
         && !_packageInstallations.Values.Any(task => task.IsActive)
-        && SelectedComponentState?.State is { Ownership: RuntimeOwnership.Managed, RecoveryRequired: false } installed
-        && (installed.Mode is ComponentSourceMode.SystemPackage or ComponentSourceMode.NativeInstaller
-            || installed.ComponentId is "frpc" or "frps");
+        && SelectedComponentState?.State is { RecoveryRequired: false } installed
+        && (installed.Mode == ComponentSourceMode.SystemPackage
+            ? SelectedComponentState.InstalledPackage is not null && installed.Ownership is RuntimeOwnership.Managed or RuntimeOwnership.External
+            : installed.Ownership == RuntimeOwnership.Managed && (installed.Mode == ComponentSourceMode.NativeInstaller || installed.ComponentId is "frpc" or "frps"));
     /// <summary>This host installs the component from its distribution's own package manager.</summary>
     public bool IsNativeInstaller => DeclaresSourceOnHost(ComponentSourceKind.NativeInstaller);
     public bool IsSystemPackage => HostPlatform == "linux" && DeclaresSourceOnHost(ComponentSourceKind.SystemPackage);
@@ -273,6 +275,34 @@ public partial class ComponentCenterViewModel
         NotifyPackage();
     }
 
+    public Func<ComponentInstalledPackage, Task<bool>>? ConfirmPackageRegistrationAsync { get; set; }
+    public bool ShowRegisterPackage => IsSystemPackage && SelectedComponentState?.InstalledPackage is not null
+        && (SelectedComponentState.State?.Ownership == RuntimeOwnership.External || SelectedComponentState.ExternalPackageChange);
+    public bool CanRegisterPackage => ShowRegisterPackage && CanChangeInstalledPackage && ConfirmPackageRegistrationAsync is not null;
+    public bool HasExternalPackageChange => IsSystemPackage && SelectedComponentState?.ExternalPackageChange == true;
+    public LocalizedStatus ExternalPackageChangeText => HasExternalPackageChange
+        ? LocalizedStatus.Format("component_center.package.external_change", SelectedComponentState?.RecordedPackageVersion ?? "—", SelectedComponentState?.State?.ActiveVersion ?? "—")
+        : LocalizedStatus.Literal("");
+    public LocalizedStatus RegisterPackageText => LocalizedStatus.Key(HasExternalPackageChange ? "component_center.package.acknowledge" : "component_center.package.register");
+    [RelayCommand] private async Task RegisterPackageAsync()
+    {
+        if (!CanRegisterPackage || SelectedComponentState?.InstalledPackage is not { } identity || SelectedDefinition is not { } definition) return;
+        if (!await ConfirmPackageRegistrationAsync!(identity) || !CanRegisterPackage
+            || SelectedDefinition?.ComponentId != definition.ComponentId || SelectedComponentState?.InstalledPackage != identity) return;
+        var request = new ComponentRecoveryRequest(definition.ComponentId, Guid.Empty, ComponentRecoveryAction.RegisterPackage, identity);
+        object body = definition.ComponentId switch {
+            "sing-box" => new ManagedRuntimeInstallationRequest(true, Recovery: request),
+            "mihomo" => new MihomoInstallationRequest(true, Recovery: request),
+            "nginx" => new NginxInstallationRequest(true, Recovery: request),
+            "squid" => new SquidInstallationRequest(true, Recovery: request),
+            "samba" => new SmbInstallationRequest(true, Recovery: request),
+            "docker" => new DockerInstallationRequest(true, Recovery: request),
+            "git" => new GitInstallationRequest(true, null, request),
+            "tailscale" => new TailscaleInstallationRequest(true, Recovery: request),
+            _ => throw new InvalidOperationException("component.unknown") };
+        await PackageInstallation!.SubmitAsync(InstallationOperationKind.Repair, body);
+    }
+
     public bool CanRefreshPackageSources => SelectedDefinition?.ComponentId is "nginx" or "squid" or "samba" or "docker" or "git" or "tailscale" or "sing-box" or "mihomo"
         && SelectedComponentState?.Modes.Any(mode => mode.Platform == "linux" && mode.Mode == ComponentSourceMode.SystemPackage && mode.Available) == true
         && !SelectedComponentState.Problems.Contains(ComponentProblemCodes.PlatformUnsupported) && Runtime.CanManage && !Runtime.IsInvalidated
@@ -379,6 +409,7 @@ public partial class ComponentCenterViewModel
         ComponentProblemCodes.PackageVersionMismatch => "component_center.package.problem.version_mismatch",
         ComponentProblemCodes.PackageAlreadyInstalled => "component_center.package.problem.already_installed",
         ComponentProblemCodes.PackageNoUpdate => "component_center.native.no_update",
+        ComponentProblemCodes.PackageIdentityUnverified => "component_center.package.identity_unverified",
         ComponentProblemCodes.PackageOwnershipRequired => "component_center.native.ownership_required",
         ComponentProblemCodes.PackageAbsent => "component_center.package.problem.absent",
         ComponentProblemCodes.StateRevisionConflict => "component_center.package.problem.revision_conflict",
@@ -455,7 +486,7 @@ public partial class ComponentCenterViewModel
 
     private void NotifyPackage()
     {
-        foreach (var property in new[] { nameof(PackageSourceActionText), nameof(ShowPackageInstall), nameof(CanApplyPackagePlan), nameof(CanChangeInstalledPackage), nameof(IsSystemPackage), nameof(IsNativeInstaller), nameof(IsDirectDownload), nameof(PackageManagers), nameof(HasPackageManagerChoice), nameof(SelectedPackageManagerText), nameof(PackageMethodTitle), nameof(PackageMethodHint), nameof(PlatformMethodText), nameof(ShowPackageChangeActions), nameof(ShowInstallOnlyNote), nameof(CanRefreshPackageSources), nameof(CanRecoverPackage), nameof(PackageRecoveryText), nameof(PinnedArchiveCandidates), nameof(HasPinnedArchiveCandidates), nameof(PackageInstallation), nameof(CanInstallPackage), nameof(ShowPackageFreeze), nameof(CanResolvePackage), nameof(HasPackageFreeze),
+        foreach (var property in new[] { nameof(ShowRegisterPackage), nameof(CanRegisterPackage), nameof(HasExternalPackageChange), nameof(ExternalPackageChangeText), nameof(RegisterPackageText), nameof(PackageSourceActionText), nameof(ShowPackageInstall), nameof(CanApplyPackagePlan), nameof(CanChangeInstalledPackage), nameof(IsSystemPackage), nameof(IsNativeInstaller), nameof(IsDirectDownload), nameof(PackageManagers), nameof(HasPackageManagerChoice), nameof(SelectedPackageManagerText), nameof(PackageMethodTitle), nameof(PackageMethodHint), nameof(PlatformMethodText), nameof(ShowPackageChangeActions), nameof(ShowInstallOnlyNote), nameof(CanRefreshPackageSources), nameof(CanRecoverPackage), nameof(PackageRecoveryText), nameof(PinnedArchiveCandidates), nameof(HasPinnedArchiveCandidates), nameof(PackageInstallation), nameof(CanInstallPackage), nameof(ShowPackageFreeze), nameof(CanResolvePackage), nameof(HasPackageFreeze),
             nameof(PackageInstalledText), nameof(PackageCandidateText), nameof(PackageRepositoryText),
             nameof(PackageDigestText), nameof(PackageAlsoInstallsText), nameof(PackageVerdictText) })
             OnPropertyChanged(property);

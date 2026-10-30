@@ -1,4 +1,5 @@
 using RelaxKonOS.PrivilegedHelper;
+using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Observability;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Tailscale;
@@ -8,7 +9,7 @@ internal static class TailscaleSerializationChecks
     internal static async Task RunAsync()
     {
         var count = 0;
-        void Check(bool value) { if (!value) throw new Exception("Tailscale serialization assertion " + count); count++; }
+        void Check(bool value, string? label = null) { if (!value) throw new Exception(label ?? "Tailscale serialization assertion " + count); count++; }
         PrivilegedOperationRequest Envelope(PrivilegedOperationKind kind, Guid id) => new(kind,OperationId:id,
             Correlation:CorrelationContext.Create(id,"privileged.operation"));
         var folder = Directory.CreateTempSubdirectory("tailscale-serialization-");
@@ -23,8 +24,11 @@ internal static class TailscaleSerializationChecks
             var target = new RelaxKonOS.Protocol.ManagedRuntimes.ComponentPackageTarget("tailscale", "1.104.4", "amd64", "official|resolute|main|amd64",
                 "https://pkgs.tailscale.com/stable/ubuntu", "resolute", "main", "https://pkgs.tailscale.com/stable/ubuntu/pool/tailscale_1.104.4_amd64.deb", new('a', 64), 1024, []);
             var committedOperation = System.Text.Json.JsonSerializer.Serialize(new { ComponentId = "tailscale", OperationId = Guid.NewGuid(), Target = target, Committed = true, ExecutableSha256 = new string('b', 64) });
+            var installed = new ComponentInstalledPackage("tailscale", "1.104.2", "amd64", new('c', 64));
             var committedChange = System.Text.Json.JsonSerializer.Serialize(new { OperationId = Guid.NewGuid(), Target = target, Committed = true,
-                Change = new RelaxKonOS.Protocol.ManagedRuntimes.ComponentPackageChange(RelaxKonOS.Protocol.ManagedRuntimes.RuntimeChange.Update, Guid.NewGuid(), "1.104.2") });
+                Change = new ComponentPackageChange(RuntimeChange.Update, installed) });
+            var committedRemoval = System.Text.Json.JsonSerializer.Serialize(new { OperationId = Guid.NewGuid(), Target = (ComponentPackageTarget?)null, Committed = true,
+                Change = new ComponentPackageChange(RuntimeChange.Uninstall, installed) });
             Check(!TailscalePackageInterlock.HasPending(packageRoot, _ => { }));
             File.WriteAllText(operation, "{\"Committed\":false}");
             Check(TailscalePackageInterlock.HasPending(packageRoot, _ => { }));
@@ -34,6 +38,18 @@ internal static class TailscaleSerializationChecks
             Check(TailscalePackageInterlock.HasPending(packageRoot, _ => { }));
             File.WriteAllText(change, committedChange);
             Check(!TailscalePackageInterlock.HasPending(packageRoot, _ => { }));
+            File.WriteAllText(change, committedRemoval);
+            Check(!TailscalePackageInterlock.HasPending(packageRoot, _ => { }),
+                "A committed external removal freezing only the installed identity is finished, not pending");
+            File.WriteAllText(change, System.Text.Json.JsonSerializer.Serialize(new { OperationId = Guid.NewGuid(), Target = (ComponentPackageTarget?)null, Committed = true,
+                Change = new ComponentPackageChange(RuntimeChange.Update, installed) }));
+            Check(TailscalePackageInterlock.HasPending(packageRoot, _ => { }),
+                "An update without its frozen candidate remains pending");
+            File.WriteAllText(change, System.Text.Json.JsonSerializer.Serialize(new { OperationId = Guid.NewGuid(), Target = target, Committed = true,
+                Change = new { Change = RuntimeChange.Update, InstalledPackage = (ComponentInstalledPackage?)null } }));
+            Check(TailscalePackageInterlock.HasPending(packageRoot, _ => { }),
+                "A change receipt without a verified installed identity remains pending");
+            File.WriteAllText(change, committedChange);
             Check(TailscalePackageInterlock.HasPending(packageRoot, _ => throw new UnauthorizedAccessException()));
             File.WriteAllText(change, "{\"Committed\":true,\"Committed\":false}");
             Check(TailscalePackageInterlock.HasPending(packageRoot, _ => { }));

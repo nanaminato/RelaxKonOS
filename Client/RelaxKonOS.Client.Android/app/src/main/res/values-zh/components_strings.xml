@@ -92,4 +92,5 @@
     <string name="components_launch_missing_message">此应用需要 %1$s。请前往组件中心安装后返回本应用；不会启动任何业务操作。</string>
     <string name="components_launch_recovery_message">%1$s 有待恢复的事务，请先在“任务与恢复”中处理。</string>
     <string name="components_launch_busy_message">%1$s 正在执行组件任务，请先在“任务与恢复”中查看进度。</string>
+    <string name="components_external_package_change">已核实系统包由外部更新：%1$s → %2$s，仍保留管理授权。</string>
 </resources>

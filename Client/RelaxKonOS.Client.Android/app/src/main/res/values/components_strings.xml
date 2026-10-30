@@ -92,4 +92,5 @@
     <string name="components_launch_missing_message">This application needs %1$s. Open Component Center to install it, then return here. Nothing was started.</string>
     <string name="components_launch_recovery_message">%1$s has a transaction requiring recovery. Handle it in Tasks &amp; recovery first.</string>
     <string name="components_launch_busy_message">A task for %1$s is running. Check its progress in Tasks &amp; recovery first.</string>
+    <string name="components_external_package_change">Verified external package change: %1$s → %2$s. Management authorization is retained.</string>
 </resources>

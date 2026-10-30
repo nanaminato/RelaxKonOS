@@ -32,6 +32,7 @@ using var services = new ServiceCollection()
     .BuildServiceProvider();
 typeof(App).GetProperty(nameof(App.Services))!.SetValue(null, services);
 if (args.Contains("--component-refresh-only")) { await ComponentRefreshChecks.RunAsync(); return; }
+if (args.Contains("--component-lifecycle-only")) { await ComponentLifecycleClientChecks.RunAsync(); return; }
 if (args.FirstOrDefault() == "--component-center-host")
 {
     Environment.ExitCode = await ComponentCenterHostAcceptance.RunAsync(args);

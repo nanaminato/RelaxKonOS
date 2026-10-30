@@ -101,14 +101,17 @@ public static partial class PrivilegedOperationExecutor
                         throw new IOException("Invalid recovery identity");
                 }
             }
-            var managed = false;
-            if (receipt is { Committed: true, ExecutableSha256: not null } && File.Exists(definition.Executable)
-                && resolution!.InstalledVersion == receipt.Target.Version)
-            {
-                RequirePackagePath(definition.Executable);
-                using var binary = File.OpenRead(definition.Executable);
-                managed = Convert.ToHexString(SHA256.HashData(binary)).Equals(receipt.ExecutableSha256, StringComparison.OrdinalIgnoreCase);
-            }
+            var identity = await VerifyInstalledPackageAsync(definition);
+            var registration = ReadPackageRegistration(definition);
+            var authorized = registration?.Identity ?? (receipt is { Committed: true, ExecutableSha256: not null }
+                ? new ComponentInstalledPackage(definition.PackageName, receipt.Target.Version, receipt.Target.Architecture, receipt.ExecutableSha256) : null);
+            var ownership = PackageIdentityPolicy.Assess(authorized, identity, receipt is { Committed: false } || change is { Committed: false });
+            var managed = ownership.Managed;
+            var externalChange = ownership.ExternalChange;
+            var exactCommit = receipt is { Committed: true, ExecutableSha256: not null }
+                && PackageIdentityPolicy.ProvesOriginalCommit(new(definition.PackageName, receipt.Target.Version, receipt.Target.Architecture, receipt.ExecutableSha256), identity);
+            if (receiptOperationId is { } registrationId && registration?.OperationId == registrationId)
+                recovered = new(registrationId, Guid.Empty, ComponentRecoveryAction.RegisterPackage);
             // A binary outside the selected package is external, never an absence proof.
             if (resolution!.InstalledVersion is null && File.Exists(definition.Executable))
                 resolution = resolution with { InstalledVersion = "external" };
@@ -121,11 +124,12 @@ public static partial class PrivilegedOperationExecutor
             return new(true, ComponentPackage: resolution with {
                 Candidate = policyMissing ? null : resolution.Candidate,
                 BlockingProblem = policyMissing ? ComponentProblemCodes.HostPolicyRequired : null,
-                InstalledTarget = managed ? receipt!.Target : null,
-                Managed = managed, RecoveryRequired = change is { Committed: false } || receipt is not null && !managed
+                InstalledTarget = exactCommit ? receipt!.Target : null,
+                InstalledPackage = identity, ExternalPackageChange = externalChange, RecordedPackageVersion = authorized?.Version,
+                Managed = managed, RecoveryRequired = ownership.RecoveryRequired
                     || definition.ComponentId == ComponentIds.Squid && File.Exists("/etc/squid/relaxkonos.pending"),
-                CommittedOperationId = change is { Committed: true, Change.Change: RuntimeChange.Uninstall } && resolution.InstalledVersion is null ? change.OperationId : managed ? receipt!.OperationId : null,
-                PendingOperationId = change is { Committed: false } ? change.OperationId : receipt is not null && !managed ? receipt.OperationId : null, RecoveryReceipt = recovered });
+                CommittedOperationId = change is { Committed: true, Change.Change: RuntimeChange.Uninstall } && resolution.InstalledVersion is null ? change.OperationId : exactCommit ? receipt!.OperationId : change is { Committed: true, ResultIdentity: not null } && change.ResultIdentity == identity ? change.OperationId : null,
+                PendingOperationId = change is { Committed: false } ? change.OperationId : (receipt is not null || registration is not null) && !managed ? (receipt?.OperationId ?? registration!.OperationId) : null, RecoveryReceipt = recovered });
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         { return Fail(65, PrivilegedProblemCode.Conflict, "component package ownership requires inspection"); }
@@ -285,6 +289,10 @@ public static partial class PrivilegedOperationExecutor
             || !Enum.IsDefined(request.Action))
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "component recovery request invalid");
         var definition = HostPackageDefinitions.Find(request.ComponentId);
+        if (request.Action == ComponentRecoveryAction.RegisterPackage)
+            return await RegisterComponentPackageAsync(request, operationId.Value);
+        if (request.ExpectedInstalledPackage is not null)
+            return Fail(64, PrivilegedProblemCode.InvalidRequest, "unexpected registration expectation");
         if (request.Action == ComponentRecoveryAction.ConfigureOfficialSource)
         {
             if (request.ComponentId != ComponentIds.Tailscale || request.OperationId != Guid.Empty)
@@ -347,6 +355,27 @@ public static partial class PrivilegedOperationExecutor
             using var changeProof = new FileStream(receiptPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
             File.SetUnixFileMode(receiptPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
             JsonSerializer.Serialize(changeProof, result); changeProof.Flush(true);
+            return new(true);
+        }
+        var registered = ReadPackageRegistration(definition);
+        if (ReadPackageReceipt(definition) is null && registered?.OperationId == request.OperationId)
+        {
+            var facts = await QueryComponentPackageAsync(request.ComponentId);
+            if (facts.ComponentPackage is not { RecoveryRequired: true })
+                return Fail(65, PrivilegedProblemCode.Conflict, "healthy registration cannot be closed as unfinished");
+            if (request.Action == ComponentRecoveryAction.Stop && definition.Service.Length != 0)
+            {
+                if (!await OwnsPackageServiceAsync(definition)) return Fail(65, PrivilegedProblemCode.Conflict, "service identity unverified");
+                var stop = await RunFixedCommandAsync("/usr/bin/systemctl", ["disable", "--now", definition.Service], TimeSpan.FromSeconds(90), "service stop failed");
+                if (!stop.Success) return stop;
+            }
+            if (definition.Service.Length != 0 && (await RunFixedCommandAsync("/usr/bin/systemctl", ["is-active", "--quiet", definition.Service], TimeSpan.FromSeconds(30), "service state unavailable")).Success)
+                return Fail(65, PrivilegedProblemCode.Conflict, "service must be stopped before closing");
+            if (request.Action == ComponentRecoveryAction.Close)
+                File.Move(RegistrationPath(definition), Path.Combine(directory, "closed-registration-" + request.OperationId.ToString("N") + ".json"));
+            using var proof = new FileStream(receiptPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+            File.SetUnixFileMode(receiptPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            JsonSerializer.Serialize(proof, result); proof.Flush(true);
             return new(true);
         }
         var pending = ReadPackageReceipt(definition);

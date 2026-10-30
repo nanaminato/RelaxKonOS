@@ -102,8 +102,8 @@ public sealed class SingBoxInstallationService(SingBoxRuntimeService runtime,
     {
         if (OperatingSystem.IsLinux() && helper is not null)
         {
-            var packages = await helper.ExecuteAsync(new(RelaxKonOS.Protocol.Privileged.PrivilegedOperationKind.ComponentPackageQuery, ComponentId: ComponentIds.SingBox), ct);
-            if (packages.ComponentPackage is { } facts && (facts.CommittedOperationId == operation.OperationId || facts.PendingOperationId == operation.OperationId))
+            var packages = await helper.ExecuteAsync(new(RelaxKonOS.Protocol.Privileged.PrivilegedOperationKind.ComponentPackageQuery, ComponentId: ComponentIds.SingBox, OperationId: operation.OperationId), ct);
+            if (packages.ComponentPackage is { } facts && (facts.CommittedOperationId == operation.OperationId || facts.PendingOperationId == operation.OperationId || facts.RecoveryReceipt?.OperationId == operation.OperationId))
                 return await ComponentPackageInstallations.RecoverAsync(ComponentIds.SingBox, operation.OperationId, helper, ct, operation.Kind);
         }
         while (true)

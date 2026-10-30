@@ -66,6 +66,7 @@ if (args.Contains("--archives-only"))
 }
 if (args.Contains("--components-only"))
 {
+    PackageOwnershipChecks.Run();
     TailscaleInstallerPlanningChecks.Run();
     await ComponentLifecycleChecks.RunAsync();
     await ComponentInstallationChecks.RunAsync();

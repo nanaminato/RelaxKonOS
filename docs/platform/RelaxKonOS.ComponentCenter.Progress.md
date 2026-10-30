@@ -1,5 +1,13 @@
 # 组件中心实施进度
 
+## 系统包外部生命周期与显式登记（PO-01～PO-05，2026-10-30）
+
+组件中心的 Linux APT/dpkg 入口按[系统包授权设计](RelaxKonOS.PackageOwnership.Design.md)接入外部包身份核验、外部更新/卸载、受管外部版本变化提示和显式“纳入管理”。Helper 只在 dpkg 状态、程序文件归属、`dpkg --verify`（仅允许配置文件变化）、服务归属和 `dpkg --audit` 全部成立时返回 `ComponentInstalledPackage`；查询失败保持未知，不降级为未安装。外部更新同时冻结候选/依赖与当前安装身份并在执行前复查；外部卸载只冻结当前身份，不依赖仓库候选或旧下载地址。受管包被外部 apt 更新后保留首次授权并提示版本变化，读取状态不把新版本当成原安装回执。
+
+“纳入管理”经统一安装台账的 `Repair` 操作和产品提权执行，不重装、不接管配置、不改变服务启停。`ComponentPackageRegistration` 的 `OperationId` 是首次授权且不被外部变化或再次确认改写，`Identity` 只记录最近一次核验/授权身份；登记成功写入绑定当前台账 operationId 的恢复证明，重复提交同键同身份幂等，身份变化冲突。桌面端新增三语“纳入管理/确认当前安装”入口与确认文案；Android 同步解析身份和外部变化，外部系统包在身份可核验时可更新/卸载但不取得管理权。台账以 `service:<组件>` 与 `linux:apt-dpkg` 资源键串行化，Helper 的 APT 调用另有跨组件全局独占锁，组件文件锁与统一台账顺序不变。
+
+本机验证：`dotnet build RelaxKonOS.sln --no-restore -m:1` 0 错误；Server.Tests `--components-only` 253 项通过；Tailscale 全量检查通过（新增外部卸载 `Target=null`、缺少安装身份/更新候选的 pending 判定）；Client Installation `--component-refresh-only` 12 项、`--component-lifecycle-only` 17 项通过；WindowPreviews `--component-installs-only` 121 项通过；Android `ComponentWireTest` 通过，新增外部包身份与变化解析。完整 Android 单测中 `ProxyViewModelTest` 与 `SingBoxRuntimeViewModelTest` 共 12 项失败在干净 `HEAD` 工作树同样复现，与本轮无关。未在真实 Linux 主机执行外部登记、受管外部更新、外部更新或保留数据卸载，也未验证真实 APT/dpkg 中断恢复、跨组件并发和 `dpkg --verify` 的真实文件损坏/usrmerge 场景；PO-05 保持未验收，不宣称实机交付。
+
 ## CC-05 / MR-11：Tailscale 进入组件中心（2026-10-30）
 
 桌面控制端已接入 Linux `systemPackage` 与 Windows `nativeInstaller` 的计划、确认、安装、较新版本更新和保留数据卸载；Windows MSI 使用独立冻结安装器目标。Linux 来源须显式确认固定签名密钥与官方发行版仓库，不自动覆盖管理员信任；受管卸载后的 Debian mask 仅凭自有卸载证明及系统标记识别。包事务与控制/登录操作共用原生锁，未决或损坏包记录阻止新变更。外部实例不会被隐式接管。

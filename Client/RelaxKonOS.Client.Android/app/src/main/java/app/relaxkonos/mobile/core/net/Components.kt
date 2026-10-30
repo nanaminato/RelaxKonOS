@@ -70,6 +70,8 @@ data class ComponentPinnedArchive(
  * it"; [problems] carries the stable `component.*` codes. [pinnedArchives] is the host's own trusted
  * list for an archive component: the client never invents a version or a download location.
  */
+data class ComponentInstalledPackage(val packageName: String, val version: String, val architecture: String, val executableSha256: String)
+
 data class ComponentStateView(
     val componentId: String,
     val state: ComponentState?,
@@ -79,6 +81,9 @@ data class ComponentStateView(
     val pinnedArchives: List<ComponentPinnedArchive> = emptyList(),
     val pinRevision: Long = 0,
     val committedOperationId: String? = null,
+    val installedPackage: ComponentInstalledPackage? = null,
+    val externalPackageChange: Boolean = false,
+    val recordedPackageVersion: String? = null,
 ) {
     val recoveryRequired: Boolean get() = state?.recoveryRequired == true || pendingOperationId != null
 
@@ -175,6 +180,11 @@ object ComponentWire {
             pinnedArchives = pins,
             pinRevision = value.optLong("pinRevision", 0),
             committedOperationId = value.optNullableString("committedOperationId"),
+            installedPackage = value.optJSONObject("installedPackage")?.let {
+                ComponentInstalledPackage(it.getString("packageName"), it.getString("version"), it.getString("architecture"), it.getString("executableSha256"))
+            },
+            externalPackageChange = value.optBoolean("externalPackageChange", false),
+            recordedPackageVersion = value.optNullableString("recordedPackageVersion"),
         )
     }
 
@@ -256,10 +266,10 @@ data class ComponentPlanResult(
     val allowed: Boolean get() = problems.isEmpty() && requestJson != null && targetJson != null
     val hostId: String? get() = requestJson?.let(::JSONObject)?.optNullableString("hostId")
     private val artifact: JSONObject? get() = targetJson?.let(::JSONObject)?.let {
-        it.optJSONObject("installer") ?: it.optJSONObject("package") ?: it.optJSONObject("pin")
+        it.optJSONObject("installer") ?: it.optJSONObject("package") ?: it.optJSONObject("pin") ?: it.optJSONObject("installedPackage")
     }
     val version: String? get() = artifact?.optNullableString("version")
     val source: String? get() = artifact?.let { it.optNullableString("downloadUrl") ?: it.optNullableString("sourceUri") ?: it.optNullableString("baseUri") }
-    val sha256: String? get() = artifact?.optNullableString("sha256")
+    val sha256: String? get() = artifact?.let { it.optNullableString("sha256") ?: it.optNullableString("executableSha256") }
 }
 

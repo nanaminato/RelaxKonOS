@@ -49,7 +49,7 @@ internal static class ComponentInstallationChecks
             try { ComponentPackageInstallations.Validate(id, InstallationOperationKind.Install, frozen, "different-key"); }
             catch (InstallationException ex) { rejected = ex.ProblemCode == InstallationProblemCodes.IdempotencyConflict; }
             Check(rejected, id + " frozen key is bound to ledger acceptance");
-            resolution = resolution with { InstalledVersion = target.Version, Managed = true, CommittedOperationId = operation };
+            resolution = resolution with { InstalledVersion = target.Version, Managed = true, CommittedOperationId = operation, InstalledPackage = new(definition.PackageName, target.Version, "amd64", new('a', 64)) };
             Check((await ComponentPackageInstallations.RecoverAsync(id, operation, transport, default, InstallationOperationKind.Install)).State
                 == InstallationOperationState.Succeeded, id + " original protected commit can reconcile its install");
             resolution = resolution with { CommittedOperationId = Guid.NewGuid() };

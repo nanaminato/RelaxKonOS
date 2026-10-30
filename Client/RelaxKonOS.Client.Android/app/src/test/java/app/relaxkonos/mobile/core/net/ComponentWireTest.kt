@@ -32,6 +32,31 @@ class ComponentWireTest {
     }
 
     @Test
+    fun `parses a verified external package and its version change`() {
+        val view = ComponentWire.stateView(
+            """
+            {"componentId":"squid","state":{"componentId":"squid","hostId":"host-1","revision":8,
+            "ownership":"external","mode":"systemPackage",
+            "target":{"os":"linux","architecture":"x64","serviceHost":"systemd"},
+            "activeVersion":"6.13-1","recoveryRequired":false},
+            "modes":[{"mode":"systemPackage","platform":"linux","available":true,"problemCode":null}],
+            "problems":[],"pendingOperationId":null,
+            "installedPackage":{"packageName":"squid","version":"6.13-1","architecture":"amd64",
+            "executableSha256":"${"a".repeat(64)}"},
+            "externalPackageChange":true,"recordedPackageVersion":"6.12-1"}
+            """.trimIndent(),
+            "squid",
+        )
+        assertEquals("squid", view.installedPackage?.packageName)
+        assertEquals("6.13-1", view.installedPackage?.version)
+        assertEquals("amd64", view.installedPackage?.architecture)
+        assertEquals("a".repeat(64), view.installedPackage?.executableSha256)
+        assertTrue(view.externalPackageChange)
+        assertEquals("6.12-1", view.recordedPackageVersion)
+        assertEquals("external", view.ownership)
+    }
+
+    @Test
     fun `parses an unsupported component with its declared modes`() {
         val view = ComponentWire.stateView(
             """

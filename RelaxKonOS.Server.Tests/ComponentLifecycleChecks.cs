@@ -1,4 +1,4 @@
-﻿using RelaxKonOS.ManagedRuntimes.ComponentPackages;
+using RelaxKonOS.ManagedRuntimes.ComponentPackages;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Server.Components;
 using RelaxKonOS.Server.Endpoints;
@@ -294,6 +294,7 @@ internal static class ComponentLifecycleChecks
     private static void VerifyStateMapping()
     {
         var candidate = Candidate();
+        var identity = new ComponentInstalledPackage("nginx", candidate.Version, "amd64", new('a', 64));
         var absent = NginxPackagePlan.BuildState(new("nginx", null, candidate), managed: false, "host", "amd64");
         Check(absent.Ownership == RuntimeOwnership.Absent && absent.ActiveVersion is null
             && absent.Mode == ComponentSourceMode.SystemPackage && absent.Target.InstallMode == RuntimeInstallMode.SystemPackage,
@@ -309,6 +310,7 @@ internal static class ComponentLifecycleChecks
     private static void VerifyPlanDecision()
     {
         var candidate = Candidate();
+        var identity = new ComponentInstalledPackage("nginx", candidate.Version, "amd64", new('a', 64));
         var absent = NginxPackagePlan.BuildState(new("nginx", null, candidate), managed: false, "host", "amd64");
         var installed = NginxPackagePlan.BuildState(new("nginx", "1.26.3-3+deb13u1", candidate), managed: true, "host", "amd64");
         ComponentPlanRequest Request(RuntimeChange change, long revision, string? version = null) => new("nginx", "host", change,
@@ -328,19 +330,18 @@ internal static class ComponentLifecycleChecks
             .Problems.SequenceEqual([ComponentProblemCodes.PackageAlreadyInstalled]),
             "An install over a managed package is refused instead of reinstalling it under a new name.");
         Check(NginxPackagePlan.Evaluate(Request(RuntimeChange.Uninstall, absent.Revision), absent, new("nginx", null, candidate), true)
-            .Problems.SequenceEqual([ComponentProblemCodes.PackageAbsent, ComponentProblemCodes.PackageOwnershipRequired,
-                ComponentProblemCodes.PackageUnresolved]),
+            .Problems.SequenceEqual([ComponentProblemCodes.PackageAbsent, ComponentProblemCodes.PackageIdentityUnverified]),
             "Removal requires an installed, owned package with its original frozen target.");
         Check(NginxPackagePlan.Evaluate(Request(RuntimeChange.Update, installed.Revision), installed,
-                new("nginx", "1.26.3-3+deb13u1", candidate, CandidateVersion: candidate.Version), true)
+                new("nginx", "1.26.3-3+deb13u1", candidate, CandidateVersion: candidate.Version, InstalledPackage: identity), true)
             .Problems.SequenceEqual([ComponentProblemCodes.PackageNoUpdate]),
             "An unchanged candidate cannot be presented as an update.");
         var newer = candidate with { Version = "1.26.4-1" };
         Check(NginxPackagePlan.Evaluate(Request(RuntimeChange.Update, installed.Revision), installed,
-                new("nginx", candidate.Version, newer, Managed: true, CandidateVersion: newer.Version, UpdateAvailable: true), true).Allowed,
+                new("nginx", candidate.Version, newer, Managed: true, CandidateVersion: newer.Version, UpdateAvailable: true, InstalledPackage: identity), true).Allowed,
             "An owned package with a newer resolved candidate can freeze an update.");
         Check(NginxPackagePlan.Evaluate(Request(RuntimeChange.Uninstall, installed.Revision), installed,
-                new("nginx", candidate.Version, candidate, Managed: true, InstalledTarget: candidate), true).Allowed,
+                new("nginx", candidate.Version, candidate, Managed: true, InstalledTarget: candidate, InstalledPackage: identity), true).Allowed,
             "An owned installed package with its original target can freeze removal.");
         foreach (var change in new[] { RuntimeChange.Repair, RuntimeChange.Rollback })
             Check(NginxPackagePlan.Evaluate(Request(change, installed.Revision), installed,
@@ -364,6 +365,8 @@ internal static class ComponentLifecycleChecks
         static ComponentExecuteRequest Execute(ComponentPlanRequest request, ComponentFrozenTarget? expected) =>
             new("nginx", request, expected);
         static ComponentFrozenTarget Frozen(ComponentPackageTarget target) => ComponentFrozenTarget.FromPackage(target);
+        static ComponentFrozenTarget FrozenRemoval(ComponentInstalledPackage identity) =>
+            new(ComponentSourceMode.SystemPackage, null, null, InstalledPackage: identity);
 
         Check(NginxPackagePlan.PrecheckExecute(Execute(Request(RuntimeChange.Install), null), true) is
             { Outcome: ComponentExecutionOutcome.Refused } noExpectation
@@ -372,8 +375,11 @@ internal static class ComponentLifecycleChecks
         Check(NginxPackagePlan.PrecheckExecute(Execute(Request(RuntimeChange.Install), Frozen(candidate)), false) is
             { Problems: [ComponentProblemCodes.PlatformUnsupported] },
             "Execute refuses on a host whose platform has no package mode");
-        Check(NginxPackagePlan.PrecheckExecute(Execute(Request(RuntimeChange.Uninstall), Frozen(candidate)), true) is null,
-            "Removal reaches the host guards that verify ownership and the installed target");
+        var installed = new ComponentInstalledPackage("nginx", "1.26.3-3+deb13u1", "amd64", new('d', 64));
+        Check(NginxPackagePlan.PrecheckExecute(Execute(Request(RuntimeChange.Uninstall), FrozenRemoval(installed)), true) is null
+            && NginxPackagePlan.PrecheckExecute(Execute(Request(RuntimeChange.Uninstall), Frozen(candidate)), true) is
+                { Problems: [ComponentProblemCodes.ExecutionNotRequested] },
+            "Removal carries only the verified installed identity; a candidate-only freeze is refused");
         Check(NginxPackagePlan.PrecheckExecute(Execute(Request(RuntimeChange.Install) with
             { Mode = ComponentSourceMode.ManagedArchive }, Frozen(candidate)), true) is
             { Problems: [ComponentProblemCodes.SourceModeUnsupported] },

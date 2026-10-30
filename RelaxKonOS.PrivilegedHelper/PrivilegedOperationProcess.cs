@@ -15,31 +15,61 @@ public static partial class PrivilegedOperationExecutor
 
     static async Task<PrivilegedOperationResult> RunAptAsync(IReadOnlyList<string> arguments, TimeSpan timeout, string failure)
     {
-        var stage = arguments[0] == "update" ? InstallationStage.UpdatingPackageLists : InstallationStage.Installing;
-        if (Progress.Value is { } initial) await initial(PrivilegedOperationFrame.Report(stage));
-        using var statusPipe = new System.IO.Pipes.AnonymousPipeServerStream(System.IO.Pipes.PipeDirection.In, HandleInheritability.Inheritable);
-        using var process = new System.Diagnostics.Process { StartInfo = new System.Diagnostics.ProcessStartInfo("/usr/bin/apt-get")
-            { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true } };
-        process.StartInfo.ArgumentList.Add("-o");
-        process.StartInfo.ArgumentList.Add("APT::Status-Fd=" + statusPipe.GetClientHandleAsString());
-        process.StartInfo.Environment["DEBIAN_FRONTEND"] = "noninteractive";
-        foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
-        if (!process.Start()) return Fail(69, PrivilegedProblemCode.HelperUnavailable, "package operation could not start");
-        statusPipe.DisposeLocalCopyOfClientHandle();
-        var output = DrainAsync(process.StandardOutput.BaseStream);
-        var error = DrainAsync(process.StandardError.BaseStream);
-        var status = ReadAptStatusAsync(statusPipe, stage);
         using var deadline = new CancellationTokenSource(timeout);
-        try { await process.WaitForExitAsync(deadline.Token); }
-        catch (OperationCanceledException)
+        FileStream? resourceLock;
+        try { resourceLock = OperatingSystem.IsLinux() ? await AcquirePackageResourceLockAsync(deadline.Token) : null; }
+        catch (OperationCanceledException) { return Fail(124, PrivilegedProblemCode.TimedOut, "package resource lock timed out"); }
+        using (resourceLock)
         {
-            try { process.Kill(entireProcessTree: true); } catch { }
-            await process.WaitForExitAsync();
+            var stage = arguments[0] == "update" ? InstallationStage.UpdatingPackageLists : InstallationStage.Installing;
+            if (Progress.Value is { } initial) await initial(PrivilegedOperationFrame.Report(stage));
+            using var statusPipe = new System.IO.Pipes.AnonymousPipeServerStream(System.IO.Pipes.PipeDirection.In, HandleInheritability.Inheritable);
+            using var process = new System.Diagnostics.Process { StartInfo = new System.Diagnostics.ProcessStartInfo("/usr/bin/apt-get")
+                { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true } };
+            process.StartInfo.ArgumentList.Add("-o");
+            process.StartInfo.ArgumentList.Add("APT::Status-Fd=" + statusPipe.GetClientHandleAsString());
+            process.StartInfo.Environment["DEBIAN_FRONTEND"] = "noninteractive";
+            foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
+            if (!process.Start()) return Fail(69, PrivilegedProblemCode.HelperUnavailable, "package operation could not start");
+            statusPipe.DisposeLocalCopyOfClientHandle();
+            var output = DrainAsync(process.StandardOutput.BaseStream);
+            var error = DrainAsync(process.StandardError.BaseStream);
+            var status = ReadAptStatusAsync(statusPipe, stage);
+            try { await process.WaitForExitAsync(deadline.Token); }
+            catch (OperationCanceledException)
+            {
+                try { process.Kill(entireProcessTree: true); } catch { }
+                await process.WaitForExitAsync();
+                await Task.WhenAll(output, error, status);
+                return Fail(124, PrivilegedProblemCode.TimedOut, "package operation timed out");
+            }
             await Task.WhenAll(output, error, status);
-            return Fail(124, PrivilegedProblemCode.TimedOut, "package operation timed out");
+            return process.ExitCode == 0 ? new(true) : Fail(process.ExitCode, PrivilegedProblemCode.InternalError, "package operation failed");
         }
-        await Task.WhenAll(output, error, status);
-        return process.ExitCode == 0 ? new(true) : Fail(process.ExitCode, PrivilegedProblemCode.InternalError, "package operation failed");
+    }
+
+    /// <summary>
+    /// One APT/dpkg mutation may run at a time across every component. Per-component locks remain
+    /// first so a component's own intent is serialized; this outer lock keeps APT and dpkg from
+    /// interleaving across components. dpkg's frontend lock is still the final backstop.
+    /// </summary>
+    static async Task<FileStream> AcquirePackageResourceLockAsync(CancellationToken ct)
+    {
+        RequirePackagePath(ComponentPackageRoot);
+        Directory.CreateDirectory(ComponentPackageRoot, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        File.SetUnixFileMode(ComponentPackageRoot, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var path = Path.Combine(ComponentPackageRoot, "apt.lock");
+        RequirePackagePath(path);
+        while (true)
+        {
+            try
+            {
+                var gate = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                return gate;
+            }
+            catch (IOException) when (!ct.IsCancellationRequested) { await Task.Delay(250, ct); }
+        }
     }
 
     static async Task DrainAsync(Stream stream)

@@ -131,8 +131,8 @@ public sealed class MihomoRuntimeInstallationService(MihomoPublicationStore stor
     {
         if (OperatingSystem.IsLinux() && helper is not null)
         {
-            var packages = await helper.ExecuteAsync(new(RelaxKonOS.Protocol.Privileged.PrivilegedOperationKind.ComponentPackageQuery, ComponentId: ComponentIds.Mihomo), ct);
-            if (packages.ComponentPackage is { } facts && (facts.CommittedOperationId == operation.OperationId || facts.PendingOperationId == operation.OperationId))
+            var packages = await helper.ExecuteAsync(new(RelaxKonOS.Protocol.Privileged.PrivilegedOperationKind.ComponentPackageQuery, ComponentId: ComponentIds.Mihomo, OperationId: operation.OperationId), ct);
+            if (packages.ComponentPackage is { } facts && (facts.CommittedOperationId == operation.OperationId || facts.PendingOperationId == operation.OperationId || facts.RecoveryReceipt?.OperationId == operation.OperationId))
                 return await ComponentPackageInstallations.RecoverAsync(ComponentIds.Mihomo, operation.OperationId, helper, ct, operation.Kind);
         }
         return native is not null && native.OwnsInstallationOperation(operation.OperationId)

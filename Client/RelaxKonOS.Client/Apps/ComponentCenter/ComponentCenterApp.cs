@@ -197,15 +197,20 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                 var package = freeze.Target!.Package;
                 var pin = freeze.Target.Pin;
                 var installer = freeze.Target.Installer;
+                var installedPackage = freeze.Target.InstalledPackage;
                 var dependencies = package is not null ? string.Join("\n", package.AlsoInstalls.Select(item =>
                     $"{item.FileName} · {item.Bytes} B · SHA-256 {item.Sha256}")) : installer is not null ? "Windows Installer (MSI) · Tailscale Inc."
-                        : string.Join(", ", pin?.AffectedComponents ?? new[] { "frpc", "frps" });
+                        : installedPackage is not null ? installedPackage.PackageName : string.Join(", ", pin?.AffectedComponents ?? new[] { "frpc", "frps" });
                 return ConfirmAsync(LocalizedText.Get("component_center.native.action." + freeze.Request!.Change),
                     LocalizedStatus.Format("component_center.native.confirm", LocalizedText.Get("component_center.native.action." + freeze.Request!.Change), freeze.State!.HostId,
                         package?.Version ?? installer?.Version ?? pin?.Version ?? freeze.State!.ActiveVersion ?? "—", package?.RepositoryId ?? installer?.DownloadUrl ?? pin?.SourceUri ?? "—",
                         package?.Sha256 ?? installer?.Sha256 ?? pin?.Sha256 ?? "—", dependencies, freeze.Request!.ComponentId).Resolve());
             };
         }
+        model.ConfirmPackageRegistrationAsync = identity => ConfirmAsync(
+            LocalizedText.Get(model.HasExternalPackageChange ? "component_center.package.acknowledge" : "component_center.package.register"),
+            LocalizedStatus.Format(model.HasExternalPackageChange ? "component_center.package.acknowledge_confirm" : "component_center.package.register_confirm",
+                model.HostIdentity, identity.PackageName, identity.Version, identity.Architecture, identity.ExecutableSha256).Resolve());
         model.ConfirmPackageRecoveryAsync = (component, operation, action) => ConfirmAsync(
             LocalizedText.Get("component_center.package.recovery." + action),
             LocalizedStatus.Format(action == RelaxKonOS.Protocol.ManagedRuntimes.ComponentRecoveryAction.ConfigureOfficialSource

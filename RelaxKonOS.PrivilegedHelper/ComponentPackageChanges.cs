@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text.Json;
 using RelaxKonOS.ManagedRuntimes.ComponentPackages;
 using RelaxKonOS.Protocol.ManagedRuntimes;
@@ -7,7 +6,7 @@ using RelaxKonOS.Protocol.Privileged;
 public static partial class PrivilegedOperationExecutor
 {
     private sealed record PackageChangeReceipt(Guid OperationId, ComponentPackageChange Change,
-        ComponentPackageTarget Target, bool WasRunning, bool WasEnabled, bool Committed);
+        ComponentPackageTarget? Target, bool WasRunning, bool WasEnabled, bool Committed, ComponentInstalledPackage? ResultIdentity = null);
     private static string PackageChangePath(HostPackageDefinition definition) => Path.Combine(ComponentPackageRoot, definition.ComponentId, "change.json");
     private static PackageChangeReceipt? ReadPackageChange(HostPackageDefinition definition)
     {
@@ -15,9 +14,12 @@ public static partial class PrivilegedOperationExecutor
         if (!File.Exists(path)) return null;
         if (new FileInfo(path).Length > 262144) throw new IOException("Invalid package change receipt.");
         var result = JsonSerializer.Deserialize<PackageChangeReceipt>(File.ReadAllBytes(path)) ?? throw new IOException("Invalid package change receipt.");
-        if (result.OperationId == Guid.Empty || result.Change.PreviousOperationId == Guid.Empty
+        if (result.OperationId == Guid.Empty || !PackageIdentityPolicy.Valid(result.Change.InstalledPackage)
+            || result.Change.InstalledPackage.PackageName != definition.PackageName
+            || result.ResultIdentity is { } resultIdentity
+                && (resultIdentity.PackageName != definition.PackageName || !PackageIdentityPolicy.Valid(resultIdentity))
             || result.Change.Change is not (RuntimeChange.Update or RuntimeChange.Uninstall)
-            || result.Target.PackageName != definition.PackageName || !AptPackageResolution.IsUsableExpectation(result.Target))
+            || result.Change.Change == RuntimeChange.Update && (result.Target?.PackageName != definition.PackageName || !AptPackageResolution.IsUsableExpectation(result.Target)))
             throw new IOException("Invalid package change identity.");
         return result;
     }
@@ -41,21 +43,25 @@ public static partial class PrivilegedOperationExecutor
     {
         if (!OperatingSystem.IsLinux() || HostPackageDefinitions.Find(componentId) is not { } definition
             || change is null || change.Change is not (RuntimeChange.Update or RuntimeChange.Uninstall)
-            || change.PreviousOperationId == Guid.Empty || operationId is null || operationId == Guid.Empty
-            || string.IsNullOrWhiteSpace(change.ExpectedInstalledVersion) || !AptPackageResolution.IsUsableExpectation(expected)
-            || expected!.PackageName != definition.PackageName)
+            || !PackageIdentityPolicy.Valid(change.InstalledPackage) || operationId is null || operationId == Guid.Empty
+            || change.Change == RuntimeChange.Update && (!AptPackageResolution.IsUsableExpectation(expected) || expected!.PackageName != definition.PackageName)
+            || change.InstalledPackage.PackageName != definition.PackageName)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "invalid package change");
         using var nativeGate = definition.ComponentId == ComponentIds.Tailscale
             ? await RelaxKonOS.PrivilegedHelper.TailscaleControlOperations.AcquireLifecycleAsync() : null;
+        RequirePackagePath(ComponentPackageRoot);
+        Directory.CreateDirectory(ComponentPackageRoot, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        File.SetUnixFileMode(ComponentPackageRoot, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         var directory = Path.GetDirectoryName(PackageReceiptPath(definition))!; RequirePackagePath(directory);
-        if (!Directory.Exists(directory)) return Fail(65, PrivilegedProblemCode.Conflict, "managed package absent");
+        Directory.CreateDirectory(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         var lockPath = Path.Combine(directory, "lock"); RequirePackagePath(lockPath);
         using var gate = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
         File.SetUnixFileMode(lockPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         var priorChange = ReadPackageChange(definition);
         if (priorChange?.OperationId == operationId)
         {
-            if (priorChange.Change != change || !AptPackageResolution.MatchesExpectation(priorChange.Target, expected))
+            if (priorChange.Change != change || (change.Change == RuntimeChange.Update && !AptPackageResolution.MatchesExpectation(priorChange.Target, expected)))
                 return Fail(65, PrivilegedProblemCode.Conflict, "package change identity changed");
             var replay = await QueryComponentPackageAsync(componentId);
             return priorChange.Committed && replay.ComponentPackage is { RecoveryRequired: false, CommittedOperationId: var id } && id == operationId
@@ -66,9 +72,9 @@ public static partial class PrivilegedOperationExecutor
             return Fail(65, PrivilegedProblemCode.Conflict, "Tailscale operation requires recovery");
         var before = await QueryComponentPackageAsync(componentId);
         var original = ReadPackageReceipt(definition);
-        if (before.ComponentPackage is not { Managed: true, RecoveryRequired: false } state
-            || original is not { Committed: true } || original.OperationId != change.PreviousOperationId
-            || state.InstalledVersion != change.ExpectedInstalledVersion || !await OwnsPackageServiceAsync(definition))
+        if (before.ComponentPackage is not { RecoveryRequired: false, InstalledPackage: not null } state
+            || state.InstalledPackage != change.InstalledPackage
+            || state.InstalledVersion != change.InstalledPackage.Version || !await OwnsPackageServiceAsync(definition))
             return Fail(65, PrivilegedProblemCode.Conflict, "package ownership or revision changed");
         if (change.Change == RuntimeChange.Update)
         {
@@ -79,8 +85,6 @@ public static partial class PrivilegedOperationExecutor
             var newer = await RunFixedCommandAsync("/usr/bin/dpkg", ["--compare-versions", expected.Version, "gt", state.InstalledVersion], TimeSpan.FromSeconds(30), "package is not an update");
             if (!newer.Success) return newer;
         }
-        else if (!AptPackageResolution.MatchesExpectation(expected, original.Target))
-            return Fail(65, PrivilegedProblemCode.Conflict, "installed package identity changed");
         var audit = await RunFixedCommandWithOutputAsync("/usr/bin/dpkg", ["--audit"], "package audit failed");
         if (!audit.Success || !string.IsNullOrWhiteSpace(DecodeUtf8(audit.OutputBase64)))
             return Fail(65, PrivilegedProblemCode.Conflict, "package database needs repair");
@@ -113,10 +117,11 @@ public static partial class PrivilegedOperationExecutor
             if (failure is not null || removed?.InstalledVersion is not null || File.Exists(definition.Executable))
                 return Fail(65, PrivilegedProblemCode.Conflict, "package removal verification failed");
             File.Delete(PackageReceiptPath(definition));
+            File.Delete(RegistrationPath(definition));
         }
         else
         {
-            var updateArguments = new List<string> { "install", "--yes", "--no-remove", "--no-install-recommends", "-o", "Dpkg::Options::=--force-confold", definition.PackageName + "=" + expected.Version };
+            var updateArguments = new List<string> { "install", "--yes", "--no-remove", "--no-install-recommends", "-o", "Dpkg::Options::=--force-confold", definition.PackageName + "=" + expected!.Version };
             updateArguments.AddRange(definition.ExtraPackages);
             var install = await RunAptAsync(updateArguments, TimeSpan.FromMinutes(10), "package update failed");
             if (!install.Success) return install;
@@ -143,10 +148,23 @@ public static partial class PrivilegedOperationExecutor
             var running = (await RunFixedCommandAsync("/usr/bin/systemctl", ["is-active", "--quiet", definition.Service], TimeSpan.FromSeconds(30), "service health unavailable")).Success;
             if (running != wasRunning) return Fail(65, PrivilegedProblemCode.Conflict, "service health mismatch");
             }
-            using var binary = File.OpenRead(definition.Executable);
-            WritePackageReceipt(definition, new(definition.ComponentId, operationId.Value, expected, true, Convert.ToHexString(SHA256.HashData(binary))));
         }
-        WritePackageChange(definition, pending with { Committed = true });
+        var resultIdentity = change.Change == RuntimeChange.Update ? await VerifyInstalledPackageAsync(definition) : null;
+        if (change.Change == RuntimeChange.Update && resultIdentity is null)
+            return Fail(65, PrivilegedProblemCode.Conflict, "updated package verification failed");
+        if (change.Change == RuntimeChange.Update && state.Managed)
+        {
+            var registration = ReadPackageRegistration(definition);
+            if (registration is not null)
+            {
+                if (!PackageIdentityPolicy.SamePackage(registration.Identity, resultIdentity!))
+                    return Fail(65, PrivilegedProblemCode.Conflict, "updated package identity changed");
+                WritePackageRegistration(definition, registration.Acknowledge(resultIdentity!));
+            }
+            // The receipt proves this operation's exact identity, never the externally observed one.
+            WritePackageReceipt(definition, new(definition.ComponentId, operationId.Value, expected!, true, resultIdentity!.ExecutableSha256));
+        }
+        WritePackageChange(definition, pending with { Committed = true, ResultIdentity = resultIdentity });
         return await QueryComponentPackageAsync(componentId);
     }
 }

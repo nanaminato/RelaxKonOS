@@ -53,7 +53,8 @@ internal sealed class NginxComponentAdapter(IPrivilegedNginxOperations nginx, Ng
             var resolution = await ResolveAsync(ct);
             var state = new HostPackageComponentAdapter(ComponentId, helper).Map(resolution);
             return new(ComponentId, state, Modes, [], CommittedOperationId: resolution.CommittedOperationId,
-                PendingOperationId: resolution.PendingOperationId);
+                PendingOperationId: resolution.PendingOperationId, InstalledPackage: resolution.InstalledPackage,
+                ExternalPackageChange: resolution.ExternalPackageChange, RecordedPackageVersion: resolution.RecordedPackageVersion);
         }
         catch (ComponentLifecycleException ex) { return new(ComponentId, null, Modes, [ex.ProblemCode]); }
         catch (RuntimeLifecycleException) { return new(ComponentId, null, Modes, [ComponentProblemCodes.StateUnavailable]); }

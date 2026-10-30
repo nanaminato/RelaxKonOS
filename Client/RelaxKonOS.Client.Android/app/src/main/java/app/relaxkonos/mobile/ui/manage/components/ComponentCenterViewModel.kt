@@ -160,9 +160,10 @@ class ComponentCenterViewModel(
         if (mutable.value.busy || session.state.value !== active) return
         val view = mutable.value.rows.firstOrNull { it.componentId == componentId }?.view ?: return
         val component = view.state ?: return
-        // The host only grants changes to an absent (install) or managed (update/uninstall) component.
+        // The host grants install to an absent component and update/uninstall to a managed package
+        // or to an external system package whose installed identity it independently verified.
         if (change == ComponentChange.Install) { if (component.ownership != "absent") return }
-        else if (component.ownership != "managed") return
+        else if (component.ownership != "managed" && !(component.mode == "systemPackage" && component.ownership == "external" && view.installedPackage != null && !view.recoveryRequired)) return
         action?.cancel()
         action = viewModelScope.launch {
             mutable.value = mutable.value.copy(busy = true, actionProblem = null)

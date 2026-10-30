@@ -377,6 +377,7 @@
        <Button Content="{loc:Loc component_center.native.action.Install}" Command="{Binding InstallPackageCommand}"
                IsEnabled="{Binding CanInstallPackage}" IsVisible="{Binding ShowPackageInstall}" />
         <Button IsVisible="{Binding ShowPackageChangeActions}" Content="{loc:Loc component_center.native.action.Update}" Command="{Binding UpdatePackageCommand}" IsEnabled="{Binding CanChangeInstalledPackage}" />
+        <Button IsVisible="{Binding ShowRegisterPackage}" Content="{Binding RegisterPackageText}" Command="{Binding RegisterPackageCommand}" IsEnabled="{Binding CanRegisterPackage}" />
         <Button IsVisible="{Binding ShowPackageChangeActions}" Content="{loc:Loc component_center.native.action.Uninstall}" Command="{Binding UninstallPackageCommand}" IsEnabled="{Binding CanChangeInstalledPackage}" />
        </WrapPanel>
        <StackPanel Spacing="6" IsVisible="{Binding CanRecoverPackage}">
@@ -392,6 +393,7 @@
         <Button Content="{loc:Loc installation.cancel}" Command="{Binding PackageInstallation.CancelCommand}" IsVisible="{Binding PackageInstallation.IsActive}" />
         <Expander Header="{loc:Loc common.operation_log}" HorizontalAlignment="Stretch"><TextBlock Text="{Binding PackageInstallation.OperationLog}" TextWrapping="Wrap" FontSize="11" /></Expander>
        </StackPanel>
+       <TextBlock Text="{Binding ExternalPackageChangeText}" IsVisible="{Binding HasExternalPackageChange}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource WarningBrush}" />
        <TextBlock Text="{Binding PackageFreezeNotice}" TextWrapping="Wrap" FontSize="12"
                   Foreground="{DynamicResource TextTertiaryBrush}" />
       </StackPanel>

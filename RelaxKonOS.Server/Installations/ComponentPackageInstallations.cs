@@ -14,9 +14,13 @@ internal static class ComponentPackageInstallations
         if (kind is not (InstallationOperationKind.Install or InstallationOperationKind.Upgrade or InstallationOperationKind.Uninstall) || frozen is null || frozen.ComponentId != componentId
             || frozen.Request is not { } request || request.ComponentId != componentId || !HostPackageComponentAdapter.ValidRequest(request)
             || string.IsNullOrWhiteSpace(request.HostId) || request.ExpectedRevision <= 0
-            || frozen.Expected is not { Mode: ComponentSourceMode.SystemPackage, Archive: null, Package: not null }
-            || frozen.Expected.Package.PackageName != HostPackageDefinitions.Find(componentId)?.PackageName
-            || !AptPackageResolution.IsUsableExpectation(frozen.Expected.Package))
+            || frozen.Expected is not { Mode: ComponentSourceMode.SystemPackage, Archive: null, Pin: null, Installer: null }
+            || kind == InstallationOperationKind.Install && frozen.Expected.InstalledPackage is not null
+            || (kind == InstallationOperationKind.Uninstall
+                ? !PackageIdentityPolicy.Valid(frozen.Expected.InstalledPackage) || frozen.Expected.Package is not null
+                : frozen.Expected.Package?.PackageName != HostPackageDefinitions.Find(componentId)?.PackageName || !AptPackageResolution.IsUsableExpectation(frozen.Expected.Package))
+            || kind != InstallationOperationKind.Install && (frozen.Expected.InstalledPackage?.PackageName != HostPackageDefinitions.Find(componentId)?.PackageName
+                || !PackageIdentityPolicy.Valid(frozen.Expected.InstalledPackage)))
             throw new InstallationException(InstallationProblemCodes.InvalidRequest, 400);
         if (request.Change != (kind == InstallationOperationKind.Install ? RuntimeChange.Install : kind == InstallationOperationKind.Upgrade ? RuntimeChange.Update : RuntimeChange.Uninstall))
             throw new InstallationException(InstallationProblemCodes.InvalidRequest, 400);
@@ -24,8 +28,11 @@ internal static class ComponentPackageInstallations
     }
     public static void ValidateRecovery(string componentId, InstallationOperationKind kind, ComponentRecoveryRequest request)
     {
-        if (kind != InstallationOperationKind.Repair || request.ComponentId != componentId || (request.Action is ComponentRecoveryAction.RefreshSources or ComponentRecoveryAction.ConfigureOfficialSource ? request.OperationId != Guid.Empty : request.OperationId == Guid.Empty)
+        if (kind != InstallationOperationKind.Repair || request.ComponentId != componentId || (request.Action is ComponentRecoveryAction.RefreshSources or ComponentRecoveryAction.ConfigureOfficialSource or ComponentRecoveryAction.RegisterPackage ? request.OperationId != Guid.Empty : request.OperationId == Guid.Empty)
             || request.Action == ComponentRecoveryAction.ConfigureOfficialSource && componentId != ComponentIds.Tailscale
+            || (request.Action == ComponentRecoveryAction.RegisterPackage
+                ? !PackageIdentityPolicy.Valid(request.ExpectedInstalledPackage) || request.ExpectedInstalledPackage!.PackageName != HostPackageDefinitions.Find(componentId)?.PackageName
+                : request.ExpectedInstalledPackage is not null)
             || !Enum.IsDefined(request.Action)) throw new InstallationException(InstallationProblemCodes.InvalidRequest, 400);
     }
     public static async Task ExecuteRecoveryAsync(ComponentRecoveryRequest request, IInstallationProgress progress,
@@ -59,7 +66,7 @@ internal static class ComponentPackageInstallations
         if (kind == InstallationOperationKind.Repair && result.Success && result.ComponentPackage?.RecoveryReceipt is { } recovery && recovery.OperationId == operationId)
             return new(InstallationOperationState.Succeeded);
         return kind is InstallationOperationKind.Install or InstallationOperationKind.Upgrade or InstallationOperationKind.Uninstall && result.Success && result.ComponentPackage is { RecoveryRequired: false } state
-            && (kind == InstallationOperationKind.Uninstall ? state.InstalledVersion is null : state.Managed) && state.CommittedOperationId == operationId
+            && (kind == InstallationOperationKind.Uninstall ? state.InstalledVersion is null : state.InstalledPackage is not null) && state.CommittedOperationId == operationId
             ? new(InstallationOperationState.Succeeded)
             : new(InstallationOperationState.Interrupted, InstallationProblemCodes.Interrupted);
     }
