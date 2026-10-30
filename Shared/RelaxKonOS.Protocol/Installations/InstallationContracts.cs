@@ -63,11 +63,12 @@ public sealed record DockerInstallationRequest(bool Confirmed, ManagedRuntimes.C
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record SquidInstallationRequest(bool Confirmed, ManagedRuntimes.ComponentExecuteRequest? FrozenPackage = null, ManagedRuntimes.ComponentRecoveryRequest? Recovery = null);
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-public sealed record ManagedRuntimeInstallationRequest(bool Confirmed, ManagedRuntimes.RuntimeChangePlan Plan);
+public sealed record ManagedRuntimeInstallationRequest(bool Confirmed, ManagedRuntimes.RuntimeChangePlan? Plan = null,
+    ManagedRuntimes.ComponentExecuteRequest? FrozenPackage = null, ManagedRuntimes.ComponentRecoveryRequest? Recovery = null);
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record MihomoInstallationRequest(bool Confirmed, ManagedRuntimes.RuntimeChangePlan? Plan = null,
-    string? Version = null, string? FileReferenceId = null);
+    string? Version = null, string? FileReferenceId = null, ManagedRuntimes.ComponentExecuteRequest? FrozenPackage = null, ManagedRuntimes.ComponentRecoveryRequest? Recovery = null);
 
 public static class InstallationProblemCodes
 {

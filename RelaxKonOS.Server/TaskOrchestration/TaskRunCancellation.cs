@@ -87,7 +87,7 @@ public sealed class TaskRunCancellationService(TaskPlanStore store, ITaskExecuti
                 var request = TaskPlanJson.ReadInputs<ManagedRuntimeInstallationRequest>(dispatch.Request);
                 ct.ThrowIfCancellationRequested();
                 if (installations.TryCloseUnacceptedTask(new(runId, step.StepId, dispatch.RequestDigest), dispatch.Kind, dispatch.Request,
-                    subject, request.Plan.Request.IdempotencyKey, () => store.CloseUnacceptedDispatchCancellation(runId, subject,
+                    subject, (request.Plan ?? throw new TaskApprovalException("task.dispatch_invalid")).Request.IdempotencyKey, () => store.CloseUnacceptedDispatchCancellation(runId, subject,
                         step.StepId, dispatch.RequestDigest, run.Revision)))
                 { run = store.GetRun(runId, subject)!; continue; }
                 operation = domain.Find(runId, dispatch, subject);

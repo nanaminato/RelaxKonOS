@@ -16,6 +16,7 @@
     "component_center.download.archive": "压缩安装包",
     "component_center.download.empty": "暂未取得版本列表，可刷新或选择文件并输入版本安装。",
     "component_center.download.failed": "版本列表获取失败。可重试，或选择已有安装包并输入版本。",
+    "component_center.package.no_configured_candidate": "服务器已配置的 APT 软件源没有此组件的可用软件包。请在服务器配置软件源后重试；组件中心不会自动添加来源。",
     "component_center.native.package_title": "系统包管理",
     "component_center.native.download_title": "直接下载",
     "component_center.native.manager": "包管理器",

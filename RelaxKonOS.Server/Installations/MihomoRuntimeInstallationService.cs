@@ -10,11 +10,13 @@ namespace RelaxKonOS.Server.Installations;
 /// Windows uses the selected official version or user-supplied archive and its independent service host.</summary>
 public sealed class MihomoRuntimeInstallationService(MihomoPublicationStore store, MihomoRuntimeService runtime,
     MihomoInstallationBootstrapService bootstrap, MihomoInstallationPublicationService installation,
-    MihomoRemovalPublicationService removal, MihomoRuntimeManager native, InstallationFileReferenceStore files) : InstallationService<MihomoInstallationRequest>
+    MihomoRemovalPublicationService removal, MihomoRuntimeManager native, InstallationFileReferenceStore files,
+    RelaxKonOS.Server.Components.ComponentLifecycleRegistry? components = null,
+    RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport? helper = null) : InstallationService<MihomoInstallationRequest>
 {
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, CancellationTokenSource> nativeCancellations = new();
     public override InstallationServiceId Id => InstallationServiceId.Mihomo;
-    public override IReadOnlyList<string> Resources => ["service:Mihomo", "runtime:mihomo"];
+    public override IReadOnlyList<string> Resources => ["service:Mihomo", "runtime:mihomo", .. OperatingSystem.IsLinux() ? new[] { "linux:apt-dpkg" } : Array.Empty<string>()];
     public override bool CooperativeCancel => true;
     protected override bool Confirmed(MihomoInstallationRequest request) => request.Confirmed;
     protected override bool Supports(InstallationOperationKind kind) => kind is InstallationOperationKind.Install
@@ -23,6 +25,18 @@ public sealed class MihomoRuntimeInstallationService(MihomoPublicationStore stor
 
     protected override void ValidateRequest(InstallationOperationKind kind, MihomoInstallationRequest request, string key)
     {
+        if (request.Recovery is { } packageRecovery)
+        {
+            Check(OperatingSystem.IsLinux() && request.FrozenPackage is null && request.Plan is null && request.Version is null && request.FileReferenceId is null, InstallationProblemCodes.InvalidRequest);
+            ComponentPackageInstallations.ValidateRecovery(ComponentIds.Mihomo, kind, packageRecovery);
+            return;
+        }
+        if (request.FrozenPackage is { } package)
+        {
+            Check(OperatingSystem.IsLinux() && request.Plan is null && request.Version is null && request.FileReferenceId is null, InstallationProblemCodes.InvalidRequest);
+            ComponentPackageInstallations.Validate(ComponentIds.Mihomo, kind, package, key);
+            return;
+        }
         if (request.Version is not null)
         {
             Check(OperatingSystem.IsWindows() && request.Plan is null && kind is InstallationOperationKind.Install or InstallationOperationKind.Upgrade or InstallationOperationKind.Repair,
@@ -45,6 +59,16 @@ public sealed class MihomoRuntimeInstallationService(MihomoPublicationStore stor
     protected override async Task ExecuteAsync(InstallationOperationKind kind, MihomoInstallationRequest request,
         string actor, IInstallationProgress progress, CancellationToken ct)
     {
+        if (request.Recovery is { } packageRecovery)
+        {
+            await ComponentPackageInstallations.ExecuteRecoveryAsync(packageRecovery, progress, helper!, ct);
+            return;
+        }
+        if (request.FrozenPackage is { } package)
+        {
+            await ComponentPackageInstallations.ExecuteAsync(components!, package, progress, ct);
+            return;
+        }
         if (request.Version is { } version)
         {
             using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -103,9 +127,18 @@ public sealed class MihomoRuntimeInstallationService(MihomoPublicationStore stor
         catch (RuntimeLifecycleException ex) { throw new InstallationException(ex.ProblemCode); }
     }
 
-    public override Task<InstallationRecovery> RecoverAsync(InstallationOperationDto operation, CancellationToken ct) =>
-        native is not null && native.OwnsInstallationOperation(operation.OperationId) ? Task.FromResult(new InstallationRecovery(InstallationOperationState.Interrupted, InstallationProblemCodes.Interrupted))
-            : RecoverCoreAsync(operation.OperationId, operation.Kind, ct);
+    public override async Task<InstallationRecovery> RecoverAsync(InstallationOperationDto operation, CancellationToken ct)
+    {
+        if (OperatingSystem.IsLinux() && helper is not null)
+        {
+            var packages = await helper.ExecuteAsync(new(RelaxKonOS.Protocol.Privileged.PrivilegedOperationKind.ComponentPackageQuery, ComponentId: ComponentIds.Mihomo), ct);
+            if (packages.ComponentPackage is { } facts && (facts.CommittedOperationId == operation.OperationId || facts.PendingOperationId == operation.OperationId))
+                return await ComponentPackageInstallations.RecoverAsync(ComponentIds.Mihomo, operation.OperationId, helper, ct, operation.Kind);
+        }
+        return native is not null && native.OwnsInstallationOperation(operation.OperationId)
+            ? new(InstallationOperationState.Interrupted, InstallationProblemCodes.Interrupted)
+            : await RecoverCoreAsync(operation.OperationId, operation.Kind, ct);
+    }
 
     private async Task<InstallationRecovery> RecoverCoreAsync(Guid operationId, InstallationOperationKind kind, CancellationToken ct)
     {

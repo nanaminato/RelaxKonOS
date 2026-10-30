@@ -49,16 +49,16 @@ public static class ComponentCatalog
     private const string Linux = "linux";
     private const string Windows = "windows";
 
-    /// <summary>Only the first two entries are backed by a Host runtime in this build.</summary>
+    /// <summary>Component identities and their platform-specific source declarations.</summary>
     public static IReadOnlyList<HostComponentDefinition> Components { get; } = Array.AsReadOnly<HostComponentDefinition>([
         new("sing-box", "sing-box", "network", "sing-box", "component_center.component.sing-box.description",
             ComponentIntegration.Batch, "relaxkonos.proxy-server", [], [], [],
             ["relaxkonos.proxy-server"], [Linux],
-            [new(ComponentSourceKind.ManagedArchive, true, [Linux])]),
+            [new(ComponentSourceKind.SystemPackage, true, [Linux])]),
         new("mihomo", "mihomo", "network", "mihomo", "component_center.component.mihomo.description",
             ComponentIntegration.Runtime, "relaxkonos.proxy", [], [], [],
             ["relaxkonos.proxy"], [Windows, Linux],
-            [new(ComponentSourceKind.ManagedArchive, true, [Windows, Linux])]),
+            [new(ComponentSourceKind.SystemPackage, true, [Linux]), new(ComponentSourceKind.ManagedArchive, true, [Windows])]),
         new("frpc", "frpc", "network", "frpc", "component_center.component.frpc.description",
             ComponentIntegration.Installation, "relaxkonos.tunnels", [], [], [],
             ["relaxkonos.tunnels"], [Windows, Linux],

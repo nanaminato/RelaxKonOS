@@ -87,7 +87,7 @@
       <TextBlock Text="{Binding HostIdentity}" FontSize="12" VerticalAlignment="Center"
                  Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" MaxWidth="420" />
       <Border Classes="meta-chip"><TextBlock Text="{Binding ConnectionText}" /></Border>
-      <Border Classes="meta-chip" IsVisible="{Binding HasTargetText}"><TextBlock Text="{Binding Runtime.TargetText}" /></Border>
+      <Border Classes="meta-chip" IsVisible="{Binding HasTargetText}"><TextBlock Text="{Binding HostTargetText}" /></Border>
      </WrapPanel>
      <TextBlock Text="{Binding HeaderOutcomeText}" TextWrapping="Wrap" IsVisible="{Binding HasHeaderOutcome}"
                 FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
@@ -124,13 +124,14 @@
       <TextBlock Grid.Row="4" Text="{loc:Loc component_center.catalog_empty}" TextWrapping="Wrap" FontSize="11"
                  Margin="12,0,12,6" Foreground="{DynamicResource TextTertiaryBrush}" IsVisible="{Binding !HasResults}" />
       <TreeView Grid.Row="5" x:Name="ComponentTree" Classes="tree-compact" ItemsSource="{Binding VisibleRoots}"
-                SelectedItem="{Binding SelectedNode, Mode=TwoWay}" Background="Transparent">
+                SelectedItem="{Binding SelectedNode, Mode=TwoWay}" Background="Transparent"
+                ScrollViewer.HorizontalScrollBarVisibility="Disabled">
        <TreeView.Styles><Style Selector="TreeViewItem"><Setter Property="IsExpanded" Value="True" /></Style></TreeView.Styles>
        <TreeView.ItemTemplate>
         <TreeDataTemplate x:DataType="vm:ComponentTreeNode" ItemsSource="{Binding VisibleChildren}">
          <Grid ColumnDefinitions="*" ColumnSpacing="6" Margin="0,5">
           <StackPanel Spacing="3" HorizontalAlignment="Left">
-           <TextBlock Text="{Binding Label}" TextWrapping="Wrap" MaxWidth="164" FontSize="13" />
+           <TextBlock Text="{Binding Label}" TextWrapping="Wrap" MaxWidth="164" FontSize="13" HorizontalAlignment="Left" />
            <WrapPanel ItemSpacing="6" LineSpacing="2" IsVisible="{Binding ShowStatus}">
             <Border Classes="status-chip" Classes.ok="{Binding StatusOk}" Classes.warn="{Binding StatusWarning}" Classes.bad="{Binding StatusDanger}">
              <TextBlock Text="{Binding Status}" />
@@ -139,6 +140,7 @@
              <TextBlock Text="{loc:Loc component_center.badge.updates}" />
             </Border>
             <TextBlock Text="{Binding Version}" FontSize="11" FontFamily="Consolas" VerticalAlignment="Center"
+                       MaxWidth="164" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Version}"
                        IsVisible="{Binding ShowVersion}" Foreground="{DynamicResource TextTertiaryBrush}" />
            </WrapPanel>
            <Border Classes="status-chip" IsVisible="{Binding ShowRequirement}" HorizontalAlignment="Left">

@@ -53,7 +53,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     /// <summary>The detail pane follows the selected component instead of assuming sing-box.</summary>
     public ProxyServerRuntimeViewModel? DetailRuntime => SelectedDefinition?.ComponentId is { } id && _runtimes.TryGetValue(id, out var runtime)
         ? runtime : null;
-    public bool HasRuntimeDetails => !ShowOfficialDownloads && HasResults && DetailRuntime is not null;
+    public bool HasRuntimeDetails => !ShowOfficialDownloads && !IsSystemPackage && HasResults && DetailRuntime is not null;
     public bool ShowRuntimeTaskActivity => HasRuntimeDetails && DetailRuntime is { } runtime
         && (runtime.HasActiveOperation || runtime.NeedsRecovery || !runtime.OperationText.IsEmpty || !runtime.OutcomeText.IsEmpty);
     public bool HasWorkloadDetails => HasResults && SelectedNode?.WorkloadId is not null && SelectedNode.ComponentId is null;
@@ -123,7 +123,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     public bool ShowHeaderOpenApplication => CanOpenSelectedApplication && !ShowNotIntegrated;
     public string? SelectedApplicationId => SelectedDefinition?.ApplicationId;
     /// <summary>True while the selected component still uses the batch draft and TaskPlan path.</summary>
-    public bool SelectedUsesBatch => SelectedDefinition?.Integration == ComponentIntegration.Batch;
+    public bool SelectedUsesBatch => !IsSystemPackage && SelectedDefinition?.Integration == ComponentIntegration.Batch;
     public ComponentStatusTone SelectedTone => Tone(SelectedDefinition);
     public bool SelectedToneOk => SelectedTone == ComponentStatusTone.Ok;
     public bool SelectedToneWarning => SelectedTone == ComponentStatusTone.Warning;
@@ -150,17 +150,19 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
             return runtime.OwnershipText;
         }
     }
-    public LocalizedStatus SelectedVersionText => SelectedDefinition?.ComponentId == "git"
+    public LocalizedStatus SelectedVersionText => SelectedDefinition?.ComponentId == "git" && GitEngine?.IsGitAvailable == true
         ? LocalizedStatus.Literal(GitEngine?.IsGitAvailable == true ? GitEngine.EngineVersion : "—") : SelectedComponentState?.State?.ActiveVersion is { } version
         ? LocalizedStatus.Literal(version) : DetailRuntime?.MeasuredVersionText ?? LocalizedStatus.Literal("—");
     public bool HasSelectedVersion => SelectedDefinition?.ComponentId == "git" && GitEngine?.IsGitAvailable == true || SelectedComponentState?.State?.ActiveVersion is { Length: > 0 }
         || DetailRuntime?.Installation?.MeasuredVersion is { Length: > 0 };
     public bool SelectedHasUpdate => DetailRuntime?.HasUpdates == true;
     /// <summary>The host target chip is only meaningful once the host reported a target.</summary>
-    public bool HasTargetText => Runtime.Installation?.Installation.Target is not null;
+    public string HostTargetText => _componentStates.Values.Select(view => view.State?.Target).FirstOrDefault(target => target is not null) is { } target
+        ? target.Os + " / " + target.Architecture : HostPlatform;
+    public bool HasTargetText => HostTargetText.Length > 0;
     public bool HasComponentDetails => HasResults && SelectedDefinition is not null;
     /// <summary>A runtime message belongs to the component that produced it, never to another row.</summary>
-    public LocalizedStatus HeaderOutcomeText => ShowOfficialDownloads ? LocalizedStatus.Literal("") : DetailRuntime?.OutcomeText ?? LocalizedStatus.Literal("");
+    public LocalizedStatus HeaderOutcomeText => ShowOfficialDownloads || IsSystemPackage ? LocalizedStatus.Literal("") : DetailRuntime?.OutcomeText ?? LocalizedStatus.Literal("");
     public bool HasHeaderOutcome => !HeaderOutcomeText.IsEmpty;
     public LocalizedStatus SelectedApplicationOpenText => LocalizedStatus.Format("component_center.open_application_named", SelectedApplicationText);
     public LocalizedStatus NotIntegratedMessage => LocalizedStatus.Format("component_center.not_integrated_message", SelectedApplicationText);
@@ -367,13 +369,13 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
                 node.CanSelect = !IsTaskBusy && !(runtime?.IsBusy ?? false) && definition.Integration == ComponentIntegration.Batch;
                 node.ShowStatus = true;
                 var packageState = _componentStates.GetValueOrDefault(id)?.State;
-                node.ShowVersion = id == "git" ? GitEngine?.IsGitAvailable == true : runtime?.Installation is not null || packageState?.ActiveVersion is not null;
-                node.Status = id == "git" ? GitStatusText : packageState is not null ? LocalizedStatus.Key("proxy_server.runtime.ownership." + packageState.Ownership)
+                node.ShowVersion = id == "git" && GitEngine?.IsGitAvailable == true ? true : runtime?.Installation is not null || packageState?.ActiveVersion is not null;
+                node.Status = id == "git" && GitEngine?.IsGitAvailable == true ? GitStatusText : packageState is not null ? LocalizedStatus.Key("proxy_server.runtime.ownership." + packageState.Ownership)
                     : runtime is null ? LocalizedStatus.Key(_packageInstallations.ContainsKey(id) ? "proxy_server.state.unknown" : "component_center.status.not_integrated")
                     : runtime.NeedsRecovery ? LocalizedStatus.Key("component_center.badge.Recovery")
                     : runtime.HasRuntimeProblem ? LocalizedStatus.Key("component_center.badge.Faulted")
                     : runtime.OwnershipText;
-                node.Version = id == "git" ? GitEngine?.IsGitAvailable == true ? GitEngine.EngineVersion : "" : packageState?.ActiveVersion ?? runtime?.MeasuredVersionText.Resolve() ?? "";
+                node.Version = id == "git" && GitEngine?.IsGitAvailable == true ? GitEngine.EngineVersion : packageState?.ActiveVersion ?? runtime?.MeasuredVersionText.Resolve() ?? "";
                 node.SetTone(Tone(definition));
                 node.HasUpdate = runtime?.HasUpdates == true;
             }
@@ -382,7 +384,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
             || ComponentCatalog.Find(componentId)?.Platforms.Contains(HostPlatform) == true) && (SelectedPage switch
         {
             ComponentCenterPage.Installed => node.ComponentId is { } installed
-                && (installed == "git" ? GitEngine?.IsGitAvailable == true : (RuntimeFor(installed)?.Installation?.Installation.Ownership ?? _componentStates.GetValueOrDefault(installed)?.State?.Ownership)
+                && (installed == "git" && GitEngine?.IsGitAvailable == true ? true : (RuntimeFor(installed)?.Installation?.Installation.Ownership ?? _componentStates.GetValueOrDefault(installed)?.State?.Ownership)
                     is RuntimeOwnership.Managed or RuntimeOwnership.External),
             ComponentCenterPage.Updates => node.ComponentId is { } updating && RuntimeFor(updating)?.HasUpdates == true,
             _ => true
@@ -452,24 +454,41 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         Stage(draft);
     }
     [RelayCommand] private void SelectWorkload() { if (SelectedNode is { } node) SelectTreeNode(node, true); }
-    /// <summary>Refreshes every component that has a runtime, not just the batch-integrated one.</summary>
-    [RelayCommand] private async Task RefreshAsync()
+    /// <summary>Reads all supported components without preparing plans or selecting tree rows.</summary>
+    [RelayCommand] private Task RefreshAsync() => RefreshComponentStatesAsync();
+    [ObservableProperty] private bool isRefreshingComponents;
+    public async Task RefreshComponentStatesAsync()
     {
-        if (HostPlatform == "windows")
+        if (IsRefreshingComponents || !Runtime.CanRead || Runtime.IsInvalidated || _inspectionLifetime.IsCancellationRequested) return;
+        IsRefreshingComponents = true;
+        NotifyPackage();
+        try
         {
-            if (ShowOfficialDownloads && SelectedDefinition is { } definition)
+            _componentFreezes.Clear();
+            foreach (var definition in ComponentCatalog.Components.Where(component =>
+                !HostPlatformKnown || component.Platforms.Contains(HostPlatform)))
             {
-                try { await RefreshPackageInstallationAsync(definition.ComponentId); }
+                if (_lifecycle is null || Runtime.IsInvalidated || _inspectionLifetime.IsCancellationRequested) break;
+                try
+                {
+                    using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_inspectionLifetime.Token);
+                    timeout.CancelAfter(TimeSpan.FromSeconds(20));
+                    var view = await _lifecycle.StateAsync(definition.ComponentId, timeout.Token);
+                    if (Runtime.IsInvalidated || !Runtime.CanRead || _inspectionLifetime.IsCancellationRequested) return;
+                    if (view.ComponentId != definition.ComponentId) throw new InvalidDataException("component.response_invalid");
+                    _componentStates[definition.ComponentId] = view;
+                }
                 catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or InvalidDataException or OperationCanceledException)
-                { OfficialDownloadNotice = LocalizedStatus.Key("component_center.package.problem.state_unavailable"); }
-                await LoadOfficialReleasesAsync(true);
+                {
+                    _componentStates.Remove(definition.ComponentId);
+                }
+                RefreshTree();
             }
-            else if (SelectedDefinition?.ComponentId == "git" && GitEngine is not null)
-                await GitEngine.RefreshEngineStatusCommand.ExecuteAsync(null);
-            return;
+            foreach (var runtime in _runtimes.Values.Distinct())
+                if (runtime.CanRead && !runtime.IsInvalidated && HostPlatform != "windows" && _lifecycle is null) await runtime.EnsureLoadedAsync();
+            RefreshTree();
         }
-        foreach (var runtime in _runtimes.Values.Distinct())
-            if (runtime.CanRead && !runtime.IsInvalidated) await runtime.EnsureLoadedAsync();
+        finally { IsRefreshingComponents = false; NotifyPackage(); OnPropertyChanged(nameof(HostTargetText)); OnPropertyChanged(nameof(HasTargetText)); }
     }
 
     public bool Stage(ComponentChangeDraft draft)

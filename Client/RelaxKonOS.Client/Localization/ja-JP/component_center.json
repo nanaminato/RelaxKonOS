@@ -16,6 +16,7 @@
     "component_center.download.archive": "ランタイムアーカイブ",
     "component_center.download.empty": "バージョンがありません。更新するか、ファイルを選択してバージョンを入力してください。",
     "component_center.download.failed": "バージョンを取得できませんでした。再試行するか、パッケージとバージョンを指定してください。",
+    "component_center.package.no_configured_candidate": "サーバーに設定済みの APT ソースには、このコンポーネントのインストール可能なパッケージがありません。サーバーでソースを設定して再試行してください。ソースは自動追加されません。",
     "component_center.native.package_title": "システムパッケージ管理",
     "component_center.native.download_title": "直接ダウンロード",
     "component_center.native.manager": "パッケージマネージャー",

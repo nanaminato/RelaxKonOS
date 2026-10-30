@@ -72,6 +72,8 @@ public static partial class PrivilegedOperationExecutor
             return Fail(65, PrivilegedProblemCode.Conflict, "package ownership or revision changed");
         if (change.Change == RuntimeChange.Update)
         {
+            if (!HostPackageDefinitions.SupportsVersion(definition.ComponentId, expected!.Version))
+                return Fail(65, PrivilegedProblemCode.Conflict, "package version is outside the supported native configuration range");
             if (!AptPackageResolution.MatchesExpectation(expected, state.Candidate))
                 return Fail(65, PrivilegedProblemCode.Conflict, "package candidate changed");
             var newer = await RunFixedCommandAsync("/usr/bin/dpkg", ["--compare-versions", expected.Version, "gt", state.InstalledVersion], TimeSpan.FromSeconds(30), "package is not an update");
@@ -127,6 +129,7 @@ public static partial class PrivilegedOperationExecutor
                 ComponentIds.Nginx => await RunFixedCommandAsync(definition.Executable, ["-t"], TimeSpan.FromSeconds(30), "Nginx configuration invalid"),
                 ComponentIds.Squid => await RunFixedCommandAsync(definition.Executable, ["-k", "parse"], TimeSpan.FromSeconds(30), "Squid configuration invalid"),
                 ComponentIds.Samba => await RunFixedCommandAsync("/usr/bin/testparm", ["-s"], TimeSpan.FromSeconds(30), "Samba configuration invalid"),
+                ComponentIds.SingBox or ComponentIds.Mihomo => await RunFixedCommandAsync(definition.Executable, ["version"], TimeSpan.FromSeconds(30), "runtime version unavailable"),
                 ComponentIds.Tailscale => await RunFixedCommandAsync(definition.Executable, ["version"], TimeSpan.FromSeconds(30), "Tailscale version unavailable"),
                 _ => await RunFixedCommandAsync(definition.Executable, ["--version"], TimeSpan.FromSeconds(30), "version unavailable")
             };

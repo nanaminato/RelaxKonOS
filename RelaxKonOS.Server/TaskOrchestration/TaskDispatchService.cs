@@ -25,7 +25,7 @@ public sealed class TaskDispatchService(TaskPlanStore store, ITaskApprovalPolicy
         if (dispatch is not null)
         {
             var request = TaskPlanJson.ReadInputs<ManagedRuntimeInstallationRequest>(dispatch.Request);
-            var existing = installations.FindByKey(dispatch.Service, dispatch.Kind, dispatch.Request, run.CanonicalSubject, request.Plan.Request.IdempotencyKey);
+            var existing = installations.FindByKey(dispatch.Service, dispatch.Kind, dispatch.Request, run.CanonicalSubject, (request.Plan ?? throw new TaskApprovalException("task.dispatch_invalid")).Request.IdempotencyKey);
             if (existing is not null)
             {
                 if (existing.TaskOwner != new InstallationTaskOwner(runId, stepId, dispatch.RequestDigest))
@@ -48,6 +48,6 @@ public sealed class TaskDispatchService(TaskPlanStore store, ITaskApprovalPolicy
             store.BindDomainOperation(runId, stepId, run.CanonicalSubject, dispatch.RequestDigest, operationId, current.Revision);
             return authorization.Bind(retained, runId, stepId, operationId, dispatch.RequestDigest);
         });
-        return installations.StartTask(dispatch.Kind, dispatch.Request, run.CanonicalSubject, frozen.Plan.Request.IdempotencyKey, binding);
+        return installations.StartTask(dispatch.Kind, dispatch.Request, run.CanonicalSubject, (frozen.Plan ?? throw new TaskApprovalException("task.dispatch_invalid")).Request.IdempotencyKey, binding);
     }
 }

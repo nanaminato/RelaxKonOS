@@ -64,13 +64,25 @@ public sealed class FrpComponentAdapter(string componentId, IRuntimeManager runt
         if (request.Mode != ComponentSourceMode.ManagedArchive) problems.Add(ComponentProblemCodes.SourceModeUnsupported);
         if (request.ExpectedRevision != state.Revision || request.ExpectedSourceRevision != view.PinRevision)
             problems.Add(ComponentProblemCodes.StateRevisionConflict);
-        if (request.Change != RuntimeChange.Install) problems.Add(ComponentProblemCodes.ExecutionUnavailable);
-        if (state.Ownership != RuntimeOwnership.Absent) problems.Add(state.RecoveryRequired ? ComponentProblemCodes.RecoveryRequired : ComponentProblemCodes.PackageAlreadyInstalled);
+        if (state.RecoveryRequired) problems.Add(ComponentProblemCodes.RecoveryRequired);
+        if (request.Change == RuntimeChange.Install && state.Ownership != RuntimeOwnership.Absent) problems.Add(ComponentProblemCodes.PackageAlreadyInstalled);
+        if (request.Change is RuntimeChange.Update or RuntimeChange.Uninstall && state.Ownership != RuntimeOwnership.Managed) problems.Add(ComponentProblemCodes.PackageOwnershipRequired);
+        if (request.Change is not (RuntimeChange.Install or RuntimeChange.Update or RuntimeChange.Uninstall)) problems.Add(ComponentProblemCodes.ExecutionUnavailable);
+        if (request.Change == RuntimeChange.Uninstall)
+        {
+            if (request.SourceId is not null || request.ReleaseId is not null || request.RequestedVersion is not null
+                || request.ExpectedTrustRevision != 0 || !request.KeepData) problems.Add(ComponentProblemCodes.RequestInvalid);
+            return new(request, state, new(ComponentSourceMode.ManagedArchive, null, null), problems, []);
+        }
         if (request.ExpectedTrustRevision != 0 || !request.KeepData
             || request.ReleaseId is not null && request.SourceId != "host-pins") problems.Add(ComponentProblemCodes.RequestInvalid);
         var pin = view.PinnedArchives!.SingleOrDefault(pin => pin.ReleaseId == request.ReleaseId && pin.Version == request.RequestedVersion);
         if (pin is null) problems.Add(view.PinnedArchives is not { Count: > 0 }
             ? ComponentProblemCodes.HostPolicyRequired : ComponentProblemCodes.PackageUnresolved);
+        if (request.Change == RuntimeChange.Update && pin is not null
+            && (!Version.TryParse(pin.Version.TrimStart('v'), out var target)
+                || !Version.TryParse(state.ActiveVersion?.TrimStart('v'), out var active) || target <= active))
+            problems.Add(ComponentProblemCodes.PackageNoUpdate);
         return new(request, state, pin is null ? null : ComponentFrozenTarget.FromPin(pin), problems, []);
     }
     public Task<ComponentExecutionResult> ExecuteAsync(ComponentExecuteRequest request, CancellationToken ct) =>

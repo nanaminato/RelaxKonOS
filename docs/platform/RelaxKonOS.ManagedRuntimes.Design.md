@@ -206,3 +206,7 @@ mihomo 新增通用组件状态/计划适配，复用发布感知领域服务；
 ### nginx 冻结安装接入台账（2026-10-25）
 
 Linux nginx 首次冻结安装从组件中心经产品提权进入统一安装台账，提供原键幂等提交、资源排他、阶段进度与重开观察。无台账 component execute 路由已删除；重启时不以当前健康推导原任务成功，返回中断待核对。Windows、包补偿及逐依赖制品证明尚未完成，详见[实施范围与验证](RelaxKonOS.ComponentCenter.Progress.md)。
+
+## 2026-10-30 桌面 Linux 包来源选择（MR-02/03/04）
+
+产品明确要求桌面 Linux sing-box、mihomo 使用服务器已配置的 APT 源，不自动加源，无候选包时提示；Windows 仍按既有独立平台来源处理。本轮接入通用冻结包计划与安装台账、受管更新/保留数据卸载和恢复。已有受管归档不通过 APT 自动覆盖或接管。FRP Linux 的已有可信 pin 路径补充受管更新和卸载，仍按整个 frpc/frps 包操作。此前签名归档能力不是新包路径的实机验收，MR-02/03/04 继续开放，详见[当前实施记录](RelaxKonOS.ComponentCenter.Progress.md)。

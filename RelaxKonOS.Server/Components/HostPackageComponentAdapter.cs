@@ -1,4 +1,4 @@
-﻿using RelaxKonOS.ManagedRuntimes.ComponentPackages;
+using RelaxKonOS.ManagedRuntimes.ComponentPackages;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.Installations;
@@ -49,6 +49,9 @@ public sealed class HostPackageComponentAdapter(string componentId, IPrivilegedO
         if (!ValidRequest(request)) return new(null, null, null, [ComponentProblemCodes.RequestInvalid], []);
         var resolution = await ResolveAsync(ct);
         var state = Map(resolution);
+        if (request.Change != RuntimeChange.Uninstall && resolution.Candidate is { } candidate
+            && !HostPackageDefinitions.SupportsVersion(ComponentId, candidate.Version))
+            return new(request, state, ComponentFrozenTarget.FromPackage(candidate), [ComponentProblemCodes.PackageVersionMismatch], []);
         if (request.Change != RuntimeChange.Uninstall && resolution.BlockingProblem is { } blocked) return new(request, state, null, [blocked], []);
         if (request.HostId != state.HostId) return new(null, state, null, [ComponentProblemCodes.RequestInvalid], []);
         return NginxPackagePlan.Evaluate(request, state, resolution, true);

@@ -1,4 +1,4 @@
-﻿# RelaxKonOS FRP 集成——当前实现边界
+# RelaxKonOS FRP 集成——当前实现边界
 
 本文记录根据 FRP 集成 Goal 落地的代码级 V1 边界；它不改变 Goal 文档中的架构或安全约束。
 
@@ -68,3 +68,7 @@ Windows FRPS/FRPC 使用独立 SCM 服务，Linux 使用独立 systemd unit，�
 ### 组件中心只读接入（2026-10-25）
 
 组件中心将 frpc 与 frps 分为独立目录项；frpc 读取程序探测，frps 只读服务状态，不能用 frpc 版本或保存配置代替 frps 程序安装证明。 可信版本与安装事务尚未迁入，详见[组件实施进度](../platform/RelaxKonOS.ComponentCenter.Progress.md)。
+
+## 组件中心 Linux 更新与卸载（2026-10-30，MR-04）
+
+frpc/frps 的 Linux 直接下载面板增加受管更新、保留业务配置卸载，复用 FRP 领域安装台账。两项都作用于整个 frpc/frps 包；更新要求所选 pin 的版本更高，Server 与 Helper 同时认可来源及摘要；卸载无需选择归档版本。执行先停止受管隧道及 frps，更新完成后由业务入口重新启动。旧版本默认 URL 并非缺少按钮的唯一原因，原计划与面板也只开放首次安装；本次不取消 pin 信任门禁、不自动扩大版本目录。新增包生命周期仍待真实 Linux 跨版本和中断恢复验收，MR-04 不关闭。详见[组件实施进度](../platform/RelaxKonOS.ComponentCenter.Progress.md)。

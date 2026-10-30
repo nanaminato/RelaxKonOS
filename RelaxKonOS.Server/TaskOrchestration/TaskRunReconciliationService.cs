@@ -18,7 +18,7 @@ public sealed class SingBoxTaskReconciliationDomain(InstallationCoordinator inst
     public InstallationOperationDto? Find(Guid runId, TaskDispatchIntent dispatch, string subject)
     {
         var request = TaskPlanJson.ReadInputs<ManagedRuntimeInstallationRequest>(dispatch.Request);
-        var entry = installations.FindByKey(dispatch.Service, dispatch.Kind, dispatch.Request, subject, request.Plan.Request.IdempotencyKey);
+        var entry = installations.FindByKey(dispatch.Service, dispatch.Kind, dispatch.Request, subject, (request.Plan ?? throw new TaskApprovalException("task.dispatch_invalid")).Request.IdempotencyKey);
         if (entry is not null && entry.TaskOwner != new InstallationTaskOwner(runId, dispatch.StepId, dispatch.RequestDigest))
             throw new TaskPlanStoreException("task.domain_operation_conflict", 409);
         return entry?.Operation;

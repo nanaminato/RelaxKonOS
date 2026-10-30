@@ -16,6 +16,7 @@
     "component_center.download.archive": "Runtime archive",
     "component_center.download.empty": "No versions found. Refresh or select a file and enter its version.",
     "component_center.download.failed": "Could not load versions. Retry or select an existing package and enter its version.",
+    "component_center.package.no_configured_candidate": "The server’s configured APT sources have no installable package for this component. Configure a source on the server and retry; Component Center does not add sources automatically.",
     "component_center.native.package_title": "System package manager",
     "component_center.native.download_title": "Direct download",
     "component_center.native.manager": "Package manager",

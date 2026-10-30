@@ -31,6 +31,7 @@ using var services = new ServiceCollection()
     .AddSingleton(new LocalizationService(new ShellSettings(null!), new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!))))
     .BuildServiceProvider();
 typeof(App).GetProperty(nameof(App.Services))!.SetValue(null, services);
+if (args.Contains("--component-refresh-only")) { await ComponentRefreshChecks.RunAsync(); return; }
 if (args.FirstOrDefault() == "--component-center-host")
 {
     Environment.ExitCode = await ComponentCenterHostAcceptance.RunAsync(args);
@@ -91,6 +92,7 @@ await TaskExecutionClientChecks.RunAsync();
 await RuntimeCommitWireChecks.RunAsync();
 await ComponentTaskExecutionChecks.RunAsync();
 await ComponentCenterAccessChecks.RunAsync();
+await ComponentRefreshChecks.RunAsync();
 ComponentCenterHostAcceptanceChecks.Run();
 // A frozen plan is the only installation body the ledger accepts for Mihomo.
 static ManagedRuntimeInstallationRequest RuntimePlanBody() => new(true, new RuntimeChangePlan(

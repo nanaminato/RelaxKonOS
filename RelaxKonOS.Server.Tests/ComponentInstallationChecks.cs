@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Configuration;
@@ -17,8 +17,12 @@ internal static class ComponentInstallationChecks
     public static async Task RunAsync()
     {
         Check(HostPackageDefinitions.Find("arbitrary-package") is null, "Package definitions form a closed product mapping");
+        Check(HostPackageDefinitions.SupportsVersion("sing-box", "1:1.14.3-1")
+            && !HostPackageDefinitions.SupportsVersion("sing-box", "1.15.0-1")
+            && !HostPackageDefinitions.SupportsVersion("sing-box", "1.14.3~beta1"),
+            "APT discovery cannot widen the supported sing-box native configuration range");
         var operation = Guid.NewGuid();
-        foreach (var id in new[] { "squid", "samba", "docker" })
+        foreach (var id in new[] { "squid", "samba", "docker", "sing-box", "mihomo" })
         {
             var definition = HostPackageDefinitions.Find(id)!;
             var target = Target(definition.PackageName);
@@ -109,6 +113,19 @@ internal static class ComponentInstallationChecks
             Check((await adapter.StateAsync(default)).State is { RecoveryRequired: true, Ownership: RuntimeOwnership.Unknown },
                 id + " a partial bundle is unknown and cannot be overwritten");
             probe.Partial = false;
+            probe.Managed = true;
+            var managed = await adapter.StateAsync(default);
+            var removal = request with { Change = RuntimeChange.Uninstall, ExpectedRevision = managed.State!.Revision,
+                SourceId = null, ReleaseId = null, RequestedVersion = null };
+            Check((await adapter.PlanAsync(removal, default)).Allowed, id + " managed bundle can be removed without an archive target");
+            var sameVersion = request with { Change = RuntimeChange.Update, ExpectedRevision = managed.State.Revision };
+            Check(!(await adapter.PlanAsync(sameVersion, default)).Allowed, id + " same-version reinstall is not an update");
+            probe.CurrentVersion = "v0.70.0";
+            var older = await adapter.StateAsync(default);
+            Check((await adapter.PlanAsync(request with { Change = RuntimeChange.Update, ExpectedRevision = older.State!.Revision }, default)).Allowed,
+                id + " a newer trusted bundle is a valid update");
+            probe.CurrentVersion = "v0.71.0";
+            probe.Managed = false;
         }
         pins = [pins.Single() with { Sha256 = new('b', 64) }];
         var blocked = await new FrpComponentAdapter("frpc", runtime, options, helper).StateAsync(default);
@@ -166,11 +183,13 @@ internal static class ComponentInstallationChecks
     public class RuntimeProbe : DispatchProxy
     {
         public bool Partial;
+        public bool Managed;
+        public string CurrentVersion = "v0.71.0";
         protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch {
             "GetManagedFrpcStatusAsync" => Task.FromResult(new TunnelRuntimeDto("frp", TunnelRuntimeMode.Managed,
-                Partial ? TunnelRuntimeState.Available : TunnelRuntimeState.NotInstalled, Partial ? "v0.71.0" : null,
-                null, IntegrityVerified: Partial)),
-            "GetManagedFrpsStatusAsync" => Task.FromResult(new TunnelRuntimeDto("frp", TunnelRuntimeMode.Managed, TunnelRuntimeState.NotInstalled, null, null)),
+                Partial || Managed ? TunnelRuntimeState.Available : TunnelRuntimeState.NotInstalled, Partial || Managed ? CurrentVersion : null,
+                null, IntegrityVerified: Partial || Managed)),
+            "GetManagedFrpsStatusAsync" => Task.FromResult(new TunnelRuntimeDto("frp", TunnelRuntimeMode.Managed, Managed ? TunnelRuntimeState.Available : TunnelRuntimeState.NotInstalled, Managed ? CurrentVersion : null, null, IntegrityVerified: Managed)),
             _ => throw new InvalidOperationException("Planning must never execute a runtime mutation") };
     }
     private sealed class Transport(Func<PrivilegedOperationRequest, PrivilegedOperationResult> response) : IPrivilegedOperationTransport

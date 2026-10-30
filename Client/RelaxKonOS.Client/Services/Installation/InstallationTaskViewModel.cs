@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -76,7 +76,9 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
         {
             if (IsActive) return;
             // Retain the key after an uncertain response; retry can never start a duplicate installer.
-            if (options is ManagedRuntimeInstallationRequest runtime) pendingKey = runtime.Plan.Request.IdempotencyKey;
+            if (options is ManagedRuntimeInstallationRequest { Plan: { } runtimePlan }) pendingKey = runtimePlan.Request.IdempotencyKey;
+            else if (options is ManagedRuntimeInstallationRequest { FrozenPackage: { } runtimePackage }) pendingKey = runtimePackage.Request.IdempotencyKey;
+            else if (options is MihomoInstallationRequest { FrozenPackage: { } mihomoPackage }) pendingKey = mihomoPackage.Request.IdempotencyKey;
             if (options is MihomoInstallationRequest { Plan: { } mihomoPlan }) pendingKey = mihomoPlan.Request.IdempotencyKey;
             else if (options is NginxInstallationRequest { FrozenPackage: { } package }) pendingKey = package.Request.IdempotencyKey;
             else if (options is FrpInstallationRequest { FrozenArchive: { } bundle }) pendingKey = bundle.Request.IdempotencyKey;

@@ -1,4 +1,4 @@
-﻿using RelaxKonOS.Protocol.Installations;
+using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Server.Components;
 using RelaxKonOS.Protocol.Proxy;
@@ -97,10 +97,12 @@ public sealed class FrpInstallationService(IRuntimeManager runtime, ITunnelProvi
     protected override void ValidateRequest(InstallationOperationKind kind, FrpInstallationRequest request, string key)
     {
         if (request.FrozenArchive is not { } frozen) return;
-        Check(kind == InstallationOperationKind.Install && request.Version is null && request.FileReferenceId is null && !request.Rollback
+        Check(kind is InstallationOperationKind.Install or InstallationOperationKind.Upgrade or InstallationOperationKind.Uninstall && request.Version is null && request.FileReferenceId is null && !request.Rollback
             && frozen.ComponentId is ComponentIds.Frpc or ComponentIds.Frps
-            && frozen.Request is { Change: RuntimeChange.Install, Mode: ComponentSourceMode.ManagedArchive }
-            && frozen.Request.ComponentId == frozen.ComponentId && frozen.Expected is { Archive: null, Package: null, Pin: not null },
+            && frozen.Request is { Mode: ComponentSourceMode.ManagedArchive }
+            && frozen.Request.Change == (kind == InstallationOperationKind.Install ? RuntimeChange.Install : kind == InstallationOperationKind.Upgrade ? RuntimeChange.Update : RuntimeChange.Uninstall)
+            && frozen.Request.ComponentId == frozen.ComponentId && frozen.Expected is { Mode: ComponentSourceMode.ManagedArchive, Archive: null, Package: null }
+            && (kind == InstallationOperationKind.Uninstall ? frozen.Expected.Pin is null : frozen.Expected.Pin is not null),
             InstallationProblemCodes.InvalidRequest);
         Check(frozen.Request.IdempotencyKey == key, InstallationProblemCodes.IdempotencyConflict);
     }
@@ -110,12 +112,27 @@ public sealed class FrpInstallationService(IRuntimeManager runtime, ITunnelProvi
         {
             await progress.ReportAsync(new(InstallationStage.Preflight, Cancellable: false), ct);
             var planned = await components.Require(frozen.ComponentId).PlanAsync(frozen.Request, ct);
+            if (kind == InstallationOperationKind.Uninstall)
+            {
+                Check(planned.Allowed, planned.Problems.FirstOrDefault() ?? ComponentProblemCodes.RequestInvalid);
+                await provider.StopManagedProcessesAsync(CancellationToken.None);
+                await frps.StopAsync(actor, CancellationToken.None);
+                var removed = await runtime.UninstallManagedFrpcAsync(CancellationToken.None);
+                Check(removed.Succeeded, removed.ProblemCode);
+                Check(await HealthyAsync(true, CancellationToken.None), "tunnel.runtime_health_check_failed");
+                return;
+            }
             var expected = frozen.Expected!.Pin!;
             Check(planned.Allowed && planned.Target?.Pin is { } current
                 && current.ReleaseId == expected.ReleaseId && current.SourceUri == expected.SourceUri
                 && current.Sha256 == expected.Sha256 && current.Rid == expected.Rid && current.Version == expected.Version
                 && current.MaximumBytes == expected.MaximumBytes && current.Format == expected.Format
                 && current.AffectedComponents.SequenceEqual(expected.AffectedComponents), ComponentProblemCodes.PackageExpectationChanged);
+            if (kind == InstallationOperationKind.Upgrade)
+            {
+                await provider.StopManagedProcessesAsync(CancellationToken.None);
+                await frps.StopAsync(actor, CancellationToken.None);
+            }
             var installed = await runtime.InstallManagedFrpcAsync(expected.Version, progress, ct);
             Check(installed.Succeeded, installed.ProblemCode);
             await progress.ReportAsync(new(InstallationStage.HealthChecking, Cancellable: false), CancellationToken.None);

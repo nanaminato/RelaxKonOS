@@ -172,6 +172,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                 is RelaxKonOS.Client.Services.AppSettings.IAppSettingsClient settings)
         {
             foreach (var (componentId, serviceId) in new[] {
+                ("sing-box", RelaxKonOS.Protocol.Installations.InstallationServiceId.SingBox),
                 ("git", RelaxKonOS.Protocol.Installations.InstallationServiceId.Git),
                 ("tailscale", RelaxKonOS.Protocol.Installations.InstallationServiceId.Tailscale),
                 ("nginx", RelaxKonOS.Protocol.Installations.InstallationServiceId.Nginx),
@@ -198,11 +199,11 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                 var installer = freeze.Target.Installer;
                 var dependencies = package is not null ? string.Join("\n", package.AlsoInstalls.Select(item =>
                     $"{item.FileName} · {item.Bytes} B · SHA-256 {item.Sha256}")) : installer is not null ? "Windows Installer (MSI) · Tailscale Inc."
-                        : string.Join(", ", pin!.AffectedComponents);
+                        : string.Join(", ", pin?.AffectedComponents ?? new[] { "frpc", "frps" });
                 return ConfirmAsync(LocalizedText.Get("component_center.native.action." + freeze.Request!.Change),
                     LocalizedStatus.Format("component_center.native.confirm", LocalizedText.Get("component_center.native.action." + freeze.Request!.Change), freeze.State!.HostId,
-                        package?.Version ?? installer?.Version ?? pin!.Version, package?.RepositoryId ?? installer?.DownloadUrl ?? pin!.SourceUri,
-                        package?.Sha256 ?? installer?.Sha256 ?? pin!.Sha256, dependencies, freeze.Request!.ComponentId).Resolve());
+                        package?.Version ?? installer?.Version ?? pin?.Version ?? freeze.State!.ActiveVersion ?? "—", package?.RepositoryId ?? installer?.DownloadUrl ?? pin?.SourceUri ?? "—",
+                        package?.Sha256 ?? installer?.Sha256 ?? pin?.Sha256 ?? "—", dependencies, freeze.Request!.ComponentId).Resolve());
             };
         }
         model.ConfirmPackageRecoveryAsync = (component, operation, action) => ConfirmAsync(
@@ -280,10 +281,11 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             runtime.Dispose();
         };
         var preparingDomain = false;
+        var initializing = true;
         string? preparedDomain = null;
         selectedDomainChanged = async (_, args) =>
         {
-            if (args.PropertyName != nameof(model.SelectedDefinition) || preparingDomain || !runtime.CanRead || runtime.IsInvalidated || preparedDomain == model.SelectedDefinition?.ComponentId) return;
+            if (args.PropertyName != nameof(model.SelectedDefinition) || initializing || model.IsRefreshingComponents || preparingDomain || !runtime.CanRead || runtime.IsInvalidated || preparedDomain == model.SelectedDefinition?.ComponentId) return;
             preparingDomain = true;
             preparedDomain = model.SelectedDefinition?.ComponentId;
             try
@@ -343,11 +345,8 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             runtime.CanManage = session.AssignedRole == RelaxKonOS.Protocol.Workspace.DeviceRole.Controller
                 && await PermissionAsync(AppPermissions.ServerComponentsManage);
             access.Synchronize();
-            if (model.HostPlatform != "windows")
-            {
-                await runtime.EnsureLoadedAsync();
-                if (mihomo is { CanRead: true }) await mihomo.EnsureLoadedAsync();
-            }
+            await model.RefreshComponentStatesAsync();
+            initializing = false;
             selectedDomainChanged?.Invoke(model, new(nameof(model.SelectedDefinition)));
         }
         async Task<bool> PermissionAsync(string permission)

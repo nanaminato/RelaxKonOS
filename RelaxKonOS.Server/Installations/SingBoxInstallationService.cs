@@ -6,10 +6,12 @@ using RelaxKonOS.Server.TaskOrchestration;
 namespace RelaxKonOS.Server.Installations;
 
 /// <summary>Uses the existing host ledger; channel secrets and binary paths never enter its request.</summary>
-public sealed class SingBoxInstallationService(SingBoxRuntimeService runtime) : InstallationService<ManagedRuntimeInstallationRequest>
+public sealed class SingBoxInstallationService(SingBoxRuntimeService runtime,
+    RelaxKonOS.Server.Components.ComponentLifecycleRegistry? components = null,
+    RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport? helper = null) : InstallationService<ManagedRuntimeInstallationRequest>
 {
     public override InstallationServiceId Id => InstallationServiceId.SingBox;
-    public static IReadOnlyList<string> ResourceKeys { get; } = Array.AsReadOnly<string>(["service:SingBox", "runtime:sing-box"]);
+    public static IReadOnlyList<string> ResourceKeys { get; } = Array.AsReadOnly<string>(["service:SingBox", "runtime:sing-box", .. OperatingSystem.IsLinux() ? new[] { "linux:apt-dpkg" } : Array.Empty<string>()]);
     public override IReadOnlyList<string> Resources => ResourceKeys;
     protected override bool Confirmed(ManagedRuntimeInstallationRequest request) => request.Confirmed;
     protected override bool Supports(InstallationOperationKind kind) => kind is InstallationOperationKind.Install
@@ -18,6 +20,18 @@ public sealed class SingBoxInstallationService(SingBoxRuntimeService runtime) : 
 
     protected override void ValidateRequest(InstallationOperationKind kind, ManagedRuntimeInstallationRequest request, string idempotencyKey)
     {
+        if (request.Recovery is { } recovery)
+        {
+            Check(OperatingSystem.IsLinux() && request.FrozenPackage is null && request.Plan is null, InstallationProblemCodes.InvalidRequest);
+            ComponentPackageInstallations.ValidateRecovery(ComponentIds.SingBox, kind, recovery);
+            return;
+        }
+        if (request.FrozenPackage is { } package)
+        {
+            Check(OperatingSystem.IsLinux() && request.Plan is null, InstallationProblemCodes.InvalidRequest);
+            ComponentPackageInstallations.Validate(ComponentIds.SingBox, kind, package, idempotencyKey);
+            return;
+        }
         var plan = request.Plan;
         if (plan is not { RuntimeId: "sing-box", Request: not null })
             throw new InstallationException(InstallationProblemCodes.InvalidRequest, 400);
@@ -46,14 +60,24 @@ public sealed class SingBoxInstallationService(SingBoxRuntimeService runtime) : 
     protected override async Task ExecuteAsync(InstallationOperationKind kind, ManagedRuntimeInstallationRequest options,
         string actor, IInstallationProgress progress, CancellationToken ct)
     {
+        if (options.Recovery is { } recovery)
+        {
+            await ComponentPackageInstallations.ExecuteRecoveryAsync(recovery, progress, helper!, ct);
+            return;
+        }
+        if (options.FrozenPackage is { } package)
+        {
+            await ComponentPackageInstallations.ExecuteAsync(components!, package, progress, ct);
+            return;
+        }
         // The Host decides which stages can still be abandoned; it reports that with each stage frame, and
         // this initial one matches its own Preflight.
         await progress.ReportAsync(new(InstallationStage.Preflight, Cancellable: true), ct);
         try
         {
             var result = progress is ITaskInstallationProgress task
-                ? await runtime.ExecuteTaskAsync(progress.OperationId, options.Plan, task.Authority, ct)
-                : await runtime.ExecuteAsync(progress.OperationId, options.Plan, ct);
+                ? await runtime.ExecuteTaskAsync(progress.OperationId, options.Plan!, task.Authority, ct)
+                : await runtime.ExecuteAsync(progress.OperationId, options.Plan!, ct);
             // A cancellation the Host actually performed is its own outcome, not a failure.
             if (result.Outcome == RuntimeSwitchOutcome.Cancelled)
                 throw new InstallationCancelledException(result.ProblemCode ?? "runtime.operation_cancelled");
@@ -76,6 +100,12 @@ public sealed class SingBoxInstallationService(SingBoxRuntimeService runtime) : 
 
     public override async Task<InstallationRecovery> RecoverAsync(InstallationOperationDto operation, CancellationToken ct)
     {
+        if (OperatingSystem.IsLinux() && helper is not null)
+        {
+            var packages = await helper.ExecuteAsync(new(RelaxKonOS.Protocol.Privileged.PrivilegedOperationKind.ComponentPackageQuery, ComponentId: ComponentIds.SingBox), ct);
+            if (packages.ComponentPackage is { } facts && (facts.CommittedOperationId == operation.OperationId || facts.PendingOperationId == operation.OperationId))
+                return await ComponentPackageInstallations.RecoverAsync(ComponentIds.SingBox, operation.OperationId, helper, ct, operation.Kind);
+        }
         while (true)
         {
             ct.ThrowIfCancellationRequested();

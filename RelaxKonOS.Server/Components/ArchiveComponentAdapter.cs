@@ -1,4 +1,4 @@
-﻿using RelaxKonOS.ManagedRuntimes;
+using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Server.ManagedRuntimes;
 
@@ -23,7 +23,7 @@ public abstract class ArchiveComponentAdapter : IComponentLifecycleAdapter
         this.plan = plan;
     }
 
-    public IReadOnlyList<ComponentModeSupport> Modes { get; } =
+    public virtual IReadOnlyList<ComponentModeSupport> Modes { get; } =
         [new(ComponentSourceMode.ManagedArchive, "linux", true, null), new(ComponentSourceMode.ManagedArchive, "windows", true, null)];
 
     public virtual async Task<ComponentStateView> StateAsync(CancellationToken ct)
@@ -32,7 +32,7 @@ public abstract class ArchiveComponentAdapter : IComponentLifecycleAdapter
         catch (RuntimeLifecycleException) { return new(ComponentId, null, Modes, [ComponentProblemCodes.StateUnavailable]); }
     }
 
-    public async Task<ComponentPlanResult> PlanAsync(ComponentPlanRequest request, CancellationToken ct)
+    public virtual async Task<ComponentPlanResult> PlanAsync(ComponentPlanRequest request, CancellationToken ct)
     {
         if (!string.Equals(request.ComponentId, ComponentId, StringComparison.Ordinal))
             throw new ComponentLifecycleException(ComponentProblemCodes.UnknownComponent);
@@ -65,7 +65,7 @@ public abstract class ArchiveComponentAdapter : IComponentLifecycleAdapter
     /// A ledgered runtime executes through its domain coordinator or approved task plan, never through
     /// this route. Saying so is better than accepting a request this adapter cannot honour.
     /// </summary>
-    public Task<ComponentExecutionResult> ExecuteAsync(ComponentExecuteRequest request, CancellationToken ct) =>
+    public virtual Task<ComponentExecutionResult> ExecuteAsync(ComponentExecuteRequest request, CancellationToken ct) =>
         Task.FromResult(new ComponentExecutionResult(ComponentId, ComponentExecutionOutcome.Refused,
             [ComponentProblemCodes.ExecutionUnavailable], [], null, null));
 

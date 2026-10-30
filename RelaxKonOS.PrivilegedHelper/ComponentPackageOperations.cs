@@ -112,6 +112,9 @@ public static partial class PrivilegedOperationExecutor
             // A binary outside the selected package is external, never an absence proof.
             if (resolution!.InstalledVersion is null && File.Exists(definition.Executable))
                 resolution = resolution with { InstalledVersion = "external" };
+            if (resolution.InstalledVersion is null && definition.ComponentId is ComponentIds.SingBox or ComponentIds.Mihomo
+                && File.Exists("/usr/local/bin/" + definition.PackageName))
+                resolution = resolution with { InstalledVersion = "external" };
             var policyMissing = definition.ComponentId == ComponentIds.Docker && !DockerPackagePolicyReady()
                 || definition.ComponentId == ComponentIds.Tailscale && (!TailscalePackagePolicyReady()
                     || resolution.Candidate is { } candidate && !TailscalePackageCandidateAllowed(candidate));
@@ -163,6 +166,8 @@ public static partial class PrivilegedOperationExecutor
             return Fail(65, PrivilegedProblemCode.AccessDenied, "Docker trusted repository and access policy require setup");
         if (definition.ComponentId == ComponentIds.Tailscale && !TailscalePackagePolicyReady())
             return Fail(65, PrivilegedProblemCode.AccessDenied, "Tailscale official repository requires setup");
+        if (!HostPackageDefinitions.SupportsVersion(definition.ComponentId, expected!.Version))
+            return Fail(65, PrivilegedProblemCode.Conflict, "package version is outside the supported native configuration range");
         var update = await RunAptAsync(["update"], TimeSpan.FromMinutes(10), "component package index refresh failed");
         if (!update.Success) return update;
         var before = await QueryComponentPackageAsync(componentId);
@@ -188,6 +193,7 @@ public static partial class PrivilegedOperationExecutor
             ComponentIds.Nginx => await RunFixedCommandAsync(definition.Executable, ["-t"], TimeSpan.FromSeconds(30), "Nginx configuration invalid"),
             ComponentIds.Squid => await RunFixedCommandAsync(definition.Executable, ["-k", "parse"], TimeSpan.FromSeconds(30), "Squid configuration invalid"),
             ComponentIds.Samba => await RunFixedCommandAsync("/usr/bin/testparm", ["-s"], TimeSpan.FromSeconds(30), "Samba configuration invalid"),
+            ComponentIds.SingBox or ComponentIds.Mihomo => await RunFixedCommandAsync(definition.Executable, ["version"], TimeSpan.FromSeconds(30), "runtime version unavailable"),
             ComponentIds.Tailscale => await RunFixedCommandAsync(definition.Executable, ["version"], TimeSpan.FromSeconds(30), "Tailscale version unavailable"),
             _ => await RunFixedCommandAsync(definition.Executable, ["--version"], TimeSpan.FromSeconds(30), "Docker version unavailable")
         };

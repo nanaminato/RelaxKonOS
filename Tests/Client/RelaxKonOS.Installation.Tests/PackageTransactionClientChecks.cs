@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using RelaxKonOS.Client.Services.Auth;
@@ -55,6 +55,7 @@ internal static class PackageTransactionClientChecks
     public static async Task RunAllComponentsAsync(IAuthSession session, IAppSettingsClient settings)
     {
         foreach (var (id, service) in new[] { ("squid", InstallationServiceId.Squid), ("samba", InstallationServiceId.Smb),
+            ("sing-box", InstallationServiceId.SingBox), ("mihomo", InstallationServiceId.Mihomo),
             ("docker", InstallationServiceId.Docker), ("tailscale", InstallationServiceId.Tailscale), ("frpc", InstallationServiceId.Frp), ("frps", InstallationServiceId.Frp) })
         {
             var bundle = id is "frpc" or "frps";
@@ -67,7 +68,9 @@ internal static class PackageTransactionClientChecks
                 "zip", 1024, ["frpc", "frps"])) : ComponentFrozenTarget.FromPackage(new(id, "1.2.3", "amd64",
                 "repo|stable|main|amd64", "https://repo.example", "stable", "main", "https://repo.example/package.deb", new('a', 64), 1024, []));
             var execution = new ComponentExecuteRequest(id, plan, frozen);
-            object options = id switch { "squid" => new SquidInstallationRequest(true, execution),
+            object options = id switch { "sing-box" => new ManagedRuntimeInstallationRequest(true, FrozenPackage: execution),
+                "mihomo" => new MihomoInstallationRequest(true, FrozenPackage: execution),
+                "squid" => new SquidInstallationRequest(true, execution),
                 "tailscale" => new TailscaleInstallationRequest(true, execution),
                 "samba" => new SmbInstallationRequest(true, execution), "docker" => new DockerInstallationRequest(true, execution),
                 _ => new FrpInstallationRequest(true, FrozenArchive: execution) };
