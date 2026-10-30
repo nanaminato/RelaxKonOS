@@ -27,7 +27,7 @@ public static class ComponentIds
 /// products with different service hosts).
 /// </summary>
 [JsonConverter(typeof(JsonStringEnumConverter<ComponentSourceMode>))]
-public enum ComponentSourceMode { ManagedArchive, SystemPackage }
+public enum ComponentSourceMode { ManagedArchive, SystemPackage, NativeInstaller }
 
 /// <summary>
 /// A Debian package identity frozen from the host's own package manager. It names the exact bytes
@@ -55,7 +55,7 @@ public sealed record ComponentDownloadRelease(string Version, string Rid, string
     string Format, string? Sha256 = null);
 
 public sealed record ComponentFrozenTarget(ComponentSourceMode Mode, RuntimeRelease? Archive, ComponentPackageTarget? Package,
-    ComponentPinnedArchive? Pin = null)
+    ComponentPinnedArchive? Pin = null, ComponentDownloadRelease? Installer = null)
 {
     public static ComponentFrozenTarget FromPin(ComponentPinnedArchive pin) => new(ComponentSourceMode.ManagedArchive, null, null, pin);
     public static ComponentFrozenTarget FromArchive(RuntimeRelease release) => new(ComponentSourceMode.ManagedArchive, release, null);
@@ -196,7 +196,7 @@ public sealed record ComponentArchiveHostSnapshot(bool Installed, bool Managed, 
     IReadOnlyList<ComponentPinnedArchive> Releases, Guid? CommittedOperationId, bool RecoveryRequired);
 
 [JsonConverter(typeof(JsonStringEnumConverter<ComponentRecoveryAction>))]
-public enum ComponentRecoveryAction { Stop, Close, RefreshSources }
+public enum ComponentRecoveryAction { Stop, Close, RefreshSources, ConfigureOfficialSource }
 public sealed record ComponentRecoveryRequest(string ComponentId, Guid OperationId, ComponentRecoveryAction Action);
 public sealed record ComponentRecoveryReceipt(Guid OperationId, Guid TargetOperationId, ComponentRecoveryAction Action);
 

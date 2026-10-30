@@ -8,6 +8,7 @@ internal static class DeploymentServiceRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.InstallationCoordinator>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<RelaxKonOS.Server.Installations.InstallationCoordinator>());
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.GitInstallationService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.TailscaleInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.SmbInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.NginxInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.SquidInstallationService>();

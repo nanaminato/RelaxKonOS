@@ -69,9 +69,9 @@ internal static class RuntimeHttpsTransfer
         {
             for (var hop = 0; hop <= 3; hop++)
             {
-                // Query-bearing metadata requires an exact source-owned request policy. Ordinary
-                // manifests and archive sources continue to reject queries, including on redirects.
-                var queryAllowed = metadata && uri.Query.Length != 0 && source.AllowsQuery(uri)
+                // Archive queries are allowed only on redirects explicitly approved by their source.
+                // Initial artifact identities and ordinary manifest scopes still reject queries.
+                var queryAllowed = (metadata || hop > 0) && uri.Query.Length != 0 && source.AllowsQuery(uri)
                     && uri.Fragment.Length == 0 && RuntimeValidation.Https(uri.OriginalString[..uri.OriginalString.IndexOf('?')],out _);
                 var allowed = hop == 0
                     ? (metadata ? queryAllowed || RuntimeValidation.Within(source.BaseUri, uri) : source.AllowsDownload(uri))

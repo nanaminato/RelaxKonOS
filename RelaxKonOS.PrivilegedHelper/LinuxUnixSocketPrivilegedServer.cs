@@ -266,12 +266,13 @@ internal sealed class LinuxUnixSocketPrivilegedServer : IAsyncDisposable
                 return;
             }
             PruneRecentOperationIds();
-            if (_recentOperationIds.Count >= MaximumRecentOperationIds)
+            var durableReceipt = PrivilegedOperationReplayPolicy.UsesDurableReceipt(request.Operation);
+            if (!durableReceipt && _recentOperationIds.Count >= MaximumRecentOperationIds)
             {
                 await WriteResultAsync(stream, new(false, 69, Error: "operation replay cache is full", ProblemCode: PrivilegedProblemCode.HelperUnavailable), cancellationToken);
                 return;
             }
-            if (!_recentOperationIds.TryAdd(operationId, DateTimeOffset.UtcNow.Add(RecentOperationLifetime)))
+            if (!durableReceipt && !_recentOperationIds.TryAdd(operationId, DateTimeOffset.UtcNow.Add(RecentOperationLifetime)))
             {
                 await WriteResultAsync(stream, new(false, 17, Error: "operation id was already processed", ProblemCode: PrivilegedProblemCode.Conflict), cancellationToken);
                 return;

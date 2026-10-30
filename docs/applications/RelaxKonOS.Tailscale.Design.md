@@ -1,5 +1,13 @@
 # Tailscale 管理器
 
+## Ubuntu 实机控制验收（2026-10-30，MR-11）
+
+Ubuntu 26.04 x64 从官方签名 APT 仓库外部安装 1.104.4，用户完成浏览器授权，设备在线。发现持久 Helper 传输层把领域 operationId 的后续读取/恢复误判为重放；Linux socket 和 Windows pipe 现让闭集 Tailscale 持久动词进入既有身份绑定台账，普通操作仍拒绝传输重放。新增真实 socket 回归通过；修复后的 Linux Helper 已部署，Windows 不计为实机验收。
+
+原登录挑战发出后保留 Issued，不从后来 Running 推导原操作成功；经原操作恢复预览及确认关账解除门禁。已实测生产 API 的 DNS 接收关闭/恢复、断开/重连、四个原 Applied 回执和幂等执行重放；Server/Helper 重启后只读复核通过，最终配置为接受 DNS、不接收路由，组网直连测试通过。初次链接经原生状态交付用户；修复后的新一轮浏览器挑战交付未重新注册验收。
+
+这证明该 Linux 版本的观察、控制与原任务恢复切片，不证明组件中心拥有 Tailscale 安装，也不关闭跨版本安装/更新/卸载、Windows 原生控制和故障中断验收。证据与构建摘要见[实机测试记录](../testing/RelaxKonOS.Tailscale.ComponentCenter.20261030.md)。
+
 状态：桌面、服务端条件控制与未知操作核对/关账、首次登录 Helper 证据链与服务端协调/HTTP 路由、桌面及 Android 登录确认/浏览器交接/关账、Android 宿主观察/条件控制/原操作恢复已实现；运行时生命周期与真实宿主验收尚未完成。
 
 Android 当前交互与生命周期规则由 [Android Tailscale 文档](../../Client/RelaxKonOS.Client.Android/docs/features/Tailscale.md) 维护，设备及前后台验证要求见 [Android 验证文档](../../Client/RelaxKonOS.Client.Android/docs/development/Verification.md)。

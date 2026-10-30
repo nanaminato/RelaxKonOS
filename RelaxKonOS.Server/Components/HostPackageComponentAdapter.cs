@@ -35,7 +35,7 @@ public sealed class HostPackageComponentAdapter(string componentId, IPrivilegedO
         try
         {
             var resolution = await ResolveAsync(ct);
-            return new(ComponentId, Map(resolution), Modes, [], CommittedOperationId: resolution.CommittedOperationId,
+            return new(ComponentId, Map(resolution), Modes, resolution.BlockingProblem is { } blocked ? [blocked] : [], CommittedOperationId: resolution.CommittedOperationId,
                 PendingOperationId: resolution.PendingOperationId);
         }
         catch (ComponentLifecycleException ex) { return new(ComponentId, null, Modes, [ex.ProblemCode]); }
@@ -49,7 +49,7 @@ public sealed class HostPackageComponentAdapter(string componentId, IPrivilegedO
         if (!ValidRequest(request)) return new(null, null, null, [ComponentProblemCodes.RequestInvalid], []);
         var resolution = await ResolveAsync(ct);
         var state = Map(resolution);
-        if (resolution.BlockingProblem is { } blocked) return new(request, state, null, [blocked], []);
+        if (request.Change != RuntimeChange.Uninstall && resolution.BlockingProblem is { } blocked) return new(request, state, null, [blocked], []);
         if (request.HostId != state.HostId) return new(null, state, null, [ComponentProblemCodes.RequestInvalid], []);
         return NginxPackagePlan.Evaluate(request, state, resolution, true);
     }

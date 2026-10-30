@@ -98,6 +98,7 @@ public sealed class InstallationClient(HttpClient http, IAuthSession session, IH
             InstallationServiceId.Frp => HostElevationCapability.FrpInstall, InstallationServiceId.Mihomo => HostElevationCapability.MihomoInstall,
             InstallationServiceId.Git => HostElevationCapability.GitPackageInstall, InstallationServiceId.Docker => HostElevationCapability.DockerInstall,
             InstallationServiceId.Squid => HostElevationCapability.ProxyServiceAction,
+            InstallationServiceId.Tailscale => HostElevationCapability.HostNetworkChange,
             InstallationServiceId.SingBox => HostElevationCapability.SingBoxInstall, _ => throw new ArgumentOutOfRangeException(nameof(service))
         };
         var result = await SendAsync<HostElevationResult>(HttpMethod.Post, PrivilegedApiRoutes.Elevation,

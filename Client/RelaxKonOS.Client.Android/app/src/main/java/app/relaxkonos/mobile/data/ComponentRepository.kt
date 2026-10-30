@@ -164,6 +164,7 @@ class ComponentRepository(
         "docker" -> InstallationService.Docker
         "samba" -> InstallationService.Smb
         "squid" -> InstallationService.Squid
+        "tailscale" -> InstallationService.Tailscale
         "frpc", "frps" -> InstallationService.Frp
         else -> null
     }

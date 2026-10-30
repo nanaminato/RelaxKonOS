@@ -120,6 +120,10 @@
     <string name="ssh_terminal_input">命令或输入</string>
     <string name="ssh_terminal_retry">重新连接</string>
     <string name="ssh_terminal_send">发送</string>
+    <string name="ssh_terminal_state_connected">已连接</string>
+    <string name="ssh_terminal_state_connecting">连接中…</string>
+    <string name="ssh_terminal_state_disconnected">已断开</string>
+    <string name="ssh_terminal_state_failed">连接失败</string>
     <string name="ssh_terminal_title">终端</string>
     <string name="ssh_workspace_cleanup_failed">SSH 工作区资源清理尚未确认。请在系统设置中强行停止本应用后重新连接。</string>
     <string name="ssh_workspace_deploy">部署</string>

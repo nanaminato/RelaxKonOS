@@ -4,7 +4,7 @@ using RelaxKonOS.Protocol.Common;
 namespace RelaxKonOS.Protocol.Installations;
 
 [JsonConverter(typeof(JsonStringEnumConverter<InstallationServiceId>))]
-public enum InstallationServiceId { Smb, Nginx, Frp, Mihomo, Docker, Git, SingBox, Squid }
+public enum InstallationServiceId { Smb, Nginx, Frp, Mihomo, Docker, Git, SingBox, Squid, Tailscale }
 [JsonConverter(typeof(JsonStringEnumConverter<InstallationOperationKind>))]
 public enum InstallationOperationKind { Install, Upgrade, Repair, Uninstall, Rollback }
 [JsonConverter(typeof(JsonStringEnumConverter<InstallationOperationState>))]
@@ -51,6 +51,8 @@ public static class InstallationApiRoutes
 public sealed record SmbInstallationRequest(bool Confirmed, ManagedRuntimes.ComponentExecuteRequest? FrozenPackage = null, ManagedRuntimes.ComponentRecoveryRequest? Recovery = null);
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record GitInstallationRequest(bool Confirmed, ManagedRuntimes.ComponentExecuteRequest? FrozenPackage, ManagedRuntimes.ComponentRecoveryRequest? Recovery = null);
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed record TailscaleInstallationRequest(bool Confirmed, ManagedRuntimes.ComponentExecuteRequest? FrozenPackage = null, ManagedRuntimes.ComponentRecoveryRequest? Recovery = null);
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record NginxInstallationRequest(bool Confirmed, string? Version = null, string? FileReferenceId = null,
     ManagedRuntimes.ComponentExecuteRequest? FrozenPackage = null, ManagedRuntimes.ComponentRecoveryRequest? Recovery = null);

@@ -11,11 +11,12 @@ enum class InstallationService(val wire: String, val capability: String, val ele
     Mihomo("mihomo", ServerCapabilities.PROXY, "mihomoInstall"),
     Docker("docker", ServerCapabilities.DOCKER, "dockerInstall"),
     SingBox("singBox", ServerCapabilities.PROXY_SERVER, "singBoxInstall"),
-    Squid("squid", ServerCapabilities.GATEWAY_PROXY, "proxyServiceAction");
+    Squid("squid", ServerCapabilities.GATEWAY_PROXY, "proxyServiceAction"),
+    Tailscale("tailscale", ServerCapabilities.TAILSCALE, "hostNetworkChange");
 
     val kinds: Set<InstallationKind> get() = when (this) {
         Smb, Docker -> setOf(InstallationKind.Install)
-        Nginx, Frp -> setOf(InstallationKind.Install, InstallationKind.Upgrade, InstallationKind.Repair, InstallationKind.Uninstall)
+        Nginx, Frp, Tailscale -> setOf(InstallationKind.Install, InstallationKind.Upgrade, InstallationKind.Repair, InstallationKind.Uninstall)
         Squid -> setOf(InstallationKind.Install, InstallationKind.Upgrade, InstallationKind.Uninstall)
         Mihomo, SingBox -> InstallationKind.entries.toSet()
     }
@@ -109,6 +110,16 @@ data class ComponentFrozenInstallationRequest(
     override val allowedKinds: Set<InstallationKind>,
 ) : InstallationRequest
 
+data class ComponentMaintenanceInstallationRequest(
+    override val confirmed: Boolean,
+    override val service: InstallationService,
+    val componentId: String,
+    val operationId: String,
+    val action: String,
+) : InstallationRequest {
+    override val allowedKinds: Set<InstallationKind> get() = setOf(InstallationKind.Repair)
+}
+
 
 object InstallationRoutes {
     const val ROOT = "/api/v1.0/installations"
@@ -144,6 +155,12 @@ internal object InstallationWire {
                     .put("request", JSONObject(request.planRequestJson))
                     .put("expected", JSONObject(request.expectedTargetJson))
                 body.raw(if (request.archive) "frozenArchive" else "frozenPackage", execution.toString())
+            }
+            is ComponentMaintenanceInstallationRequest -> {
+                require(request.componentId == "tailscale" && request.service == InstallationService.Tailscale)
+                require(request.action in setOf("ConfigureOfficialSource", "RefreshSources", "Stop", "Close"))
+                body.raw("recovery", JsonBody().string("componentId", request.componentId)
+                    .string("operationId", request.operationId).string("action", request.action).toString())
             }
             is ManagedRuntimeInstallationRequest -> {
                 require(kind == request.kind)

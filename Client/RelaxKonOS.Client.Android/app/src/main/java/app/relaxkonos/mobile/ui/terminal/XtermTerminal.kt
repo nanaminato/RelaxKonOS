@@ -20,6 +20,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.viewinterop.AndroidView
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
+import kotlin.math.hypot
 import app.relaxkonos.mobile.R
 import android.view.MotionEvent
 
@@ -39,6 +40,9 @@ internal class XtermView(context: android.content.Context) : WebView(context) {
     val bridge = TerminalBridge(this)
     private var ready = false
     var onReady: () -> Unit = {}
+    /** Pinch stepper shared with the Compose palette; +1 shrinks, -1 enlarges. */
+    var onZoom: (Int) -> Unit = { _ -> }
+    private val zoom = PinchZoomTracker()
     private var applied = ""
     private var output = ""
     private var fontSize = 13f
@@ -100,11 +104,24 @@ internal class XtermView(context: android.content.Context) : WebView(context) {
     override fun onTouchEvent(event: MotionEvent): Boolean {
         // Let the terminal handle its own vertical gesture instead of an outer Compose container.
         if (event.actionMasked == MotionEvent.ACTION_DOWN) parent?.requestDisallowInterceptTouchEvent(true)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_POINTER_DOWN -> if (event.pointerCount == 2) zoom.start(twoFingerSpan(event))
+            MotionEvent.ACTION_MOVE -> if (event.pointerCount == 2) {
+                val step = zoom.update(twoFingerSpan(event))
+                if (step != 0) onZoom(step)
+            }
+            MotionEvent.ACTION_POINTER_UP -> zoom.reset()
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> zoom.reset()
+        }
         val handled = super.onTouchEvent(event)
         if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL)
             parent?.requestDisallowInterceptTouchEvent(false)
         return handled
     }
+
+    private fun twoFingerSpan(event: MotionEvent): Float =
+        if (event.pointerCount < 2) 0f
+        else hypot(event.getX(0) - event.getX(1), event.getY(0) - event.getY(1))
 
     fun release() {
         onReady = {}
@@ -117,7 +134,8 @@ internal class XtermView(context: android.content.Context) : WebView(context) {
 
 @Composable
 internal fun XtermTerminal(sessionId: String, output: String, fontSize: Float, connected: Boolean,
-    onSend: (String) -> Unit, onResize: (Int, Int) -> Unit, modifier: Modifier = Modifier) {
+    onSend: (String) -> Unit, onResize: (Int, Int) -> Unit, modifier: Modifier = Modifier,
+    onZoom: (Int) -> Unit = {}) {
     key(sessionId) {
         var initialized by remember { mutableStateOf(false) }
         Box(modifier.clipToBounds()) {
@@ -125,6 +143,7 @@ internal fun XtermTerminal(sessionId: String, output: String, fontSize: Float, c
                 onRelease = { it.release() }, update = {
                     it.bridge.send = onSend
                     it.bridge.resize = onResize
+                    it.onZoom = onZoom
                     it.update(output, fontSize, connected)
                 })
             if (!initialized) TerminalLoading()

@@ -35,6 +35,10 @@
     <string name="scripts_verify">リクエストを確認</string>
     <string name="scripts_write_unknown">リクエストの結果は不明です。再実行やキャンセルの前に、タスク一覧を更新して実行状態を確認してください。</string>
     <string name="terminal_background">背景（#RRGGBB）</string>
+    <string name="terminal_chrome_collapse">管理パネルを折りたたむ</string>
+    <string name="terminal_chrome_exit_immersive">没入モードを終了</string>
+    <string name="terminal_chrome_expand">管理パネルを展開</string>
+    <string name="terminal_chrome_immersive">没入モード</string>
     <string name="terminal_clear_local">ローカルの表示を消去</string>
     <string name="terminal_clipboard_failed">クリップボードが使用できないか、16,384 文字を超えています。タップして閉じてください。</string>
     <string name="terminal_close">セッションを終了</string>
@@ -55,6 +59,8 @@
     <string name="terminal_font_smaller">ターミナルの文字を小さくする</string>
     <string name="terminal_foreground">文字（#RRGGBB）</string>
     <string name="terminal_input">入力</string>
+    <string name="terminal_input_hide">入力欄をたたむ</string>
+    <string name="terminal_input_show">入力欄を表示</string>
     <string name="terminal_latest">最新の出力 ↓</string>
     <string name="terminal_latest_output">最新の出力へ</string>
     <string name="terminal_new">新しいセッション</string>

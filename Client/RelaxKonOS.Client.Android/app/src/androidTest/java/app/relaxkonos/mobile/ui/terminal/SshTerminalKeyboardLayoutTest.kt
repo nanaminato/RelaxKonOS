@@ -30,6 +30,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.onRoot
@@ -41,6 +42,7 @@ import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 import androidx.test.espresso.Espresso.closeSoftKeyboard
+import app.relaxkonos.mobile.R
 import java.util.concurrent.atomic.AtomicInteger
 
 class SshTerminalKeyboardLayoutTest {
@@ -88,6 +90,7 @@ class SshTerminalKeyboardLayoutTest {
         show(360.dp, 640.dp, 330.dp, consumed = 24.dp)
         assertReadableEditor()
         rule.onNodeWithText("A+").assertDoesNotExist()
+        rule.onNodeWithTag("terminal-topbar").assertIsDisplayed()
         rule.onNode(hasSetTextAction()).performImeAction()
         rule.runOnIdle { assertEquals(listOf("echo 手机输入\r"), sent) }
         rule.onNode(hasSetTextAction()).assertIsDisplayed()
@@ -122,7 +125,10 @@ class SshTerminalKeyboardLayoutTest {
         rule.runOnIdle { keyboard.value = 0.dp }
         closeSoftKeyboard()
         rule.onNodeWithText("unsent draft").assertIsDisplayed()
-        rule.onNodeWithText("A+").assertIsDisplayed()
+        // The collapsed bar is the phone default; font controls live in the session actions menu.
+        rule.onNodeWithTag("terminal-topbar").assertIsDisplayed()
+        rule.onNodeWithContentDescription(rule.activity.getString(R.string.terminal_session_actions)).performClick()
+        rule.onNodeWithText(rule.activity.getString(R.string.terminal_font_larger)).assertIsDisplayed()
         rule.runOnIdle { assertTrue(sent.isEmpty()); assertTrue(reconnects.isEmpty()) }
     }
 

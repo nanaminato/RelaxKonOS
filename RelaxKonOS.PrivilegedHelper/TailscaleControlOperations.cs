@@ -190,6 +190,7 @@ internal sealed partial class TailscaleControlOperations(string root, Action<str
 
     private bool HasUnresolved()
     {
+        if (File.Exists(Path.Combine(root, "installation", "pending.json"))) return true;
         if (HasUnresolvedLogin()) return true;
         foreach (var pending in Directory.EnumerateFiles(root, "*.intent.json"))
         {
@@ -199,6 +200,9 @@ internal sealed partial class TailscaleControlOperations(string root, Action<str
         }
         return false;
     }
+
+    internal static bool HasPendingOperations() => new TailscaleControlOperations(TailscaleControlProtection.Root,
+        TailscaleControlProtection.PrepareRoot, new TailscaleNativeControl()).HasUnresolved();
 
     private static bool Valid(TailscalePrepareRequest change) => Enum.IsDefined(change.Action)
         && change.ExpectedRevision is { Length: 64 } && change.ExpectedRevision.All(Uri.IsHexDigit)

@@ -64,7 +64,11 @@ public static partial class PrivilegedOperationExecutor
         ComponentPackageTarget? target = null;
         if (policy.CandidateVersion is { } version)
         {
-            var arguments = new List<string> { "install", "--print-uris", "--yes", "--no-remove", "--no-install-recommends", definition.PackageName + "=" + version };
+            // Print the signed artifact identity even when the exact .deb is already cached/installed.
+            // --print-uris does not create this new, nonexistent cache directory or run dpkg.
+            var emptyCache = Path.Combine(ComponentPackageRoot, "resolution-" + Guid.NewGuid().ToString("N"));
+            var arguments = new List<string> { "-o", "Acquire::ForceHash=SHA256", "-o", "Dir::Cache::archives=" + emptyCache,
+                "install", "--print-uris", "--reinstall", "--yes", "--no-remove", "--no-install-recommends", definition.PackageName + "=" + version };
             arguments.AddRange(definition.ExtraPackages);
             var plan = await RunFixedCommandWithOutputAsync("/usr/bin/apt-get", arguments, "package resolution unavailable");
             if (plan.Success && AptPackageResolution.TryParseUriPlan(DecodeUtf8(plan.OutputBase64), definition.PackageName, version, out var main, out var dependencies))
@@ -108,7 +112,9 @@ public static partial class PrivilegedOperationExecutor
             // A binary outside the selected package is external, never an absence proof.
             if (resolution!.InstalledVersion is null && File.Exists(definition.Executable))
                 resolution = resolution with { InstalledVersion = "external" };
-            var policyMissing = definition.ComponentId == ComponentIds.Docker && !DockerPackagePolicyReady();
+            var policyMissing = definition.ComponentId == ComponentIds.Docker && !DockerPackagePolicyReady()
+                || definition.ComponentId == ComponentIds.Tailscale && (!TailscalePackagePolicyReady()
+                    || resolution.Candidate is { } candidate && !TailscalePackageCandidateAllowed(candidate));
             return new(true, ComponentPackage: resolution with {
                 Candidate = policyMissing ? null : resolution.Candidate,
                 BlockingProblem = policyMissing ? ComponentProblemCodes.HostPolicyRequired : null,
@@ -150,6 +156,8 @@ public static partial class PrivilegedOperationExecutor
                 return Fail(65, PrivilegedProblemCode.Conflict, "external service overrides require review");
         if (definition.ComponentId == ComponentIds.Docker && !DockerPackagePolicyReady())
             return Fail(65, PrivilegedProblemCode.AccessDenied, "Docker trusted repository and access policy require setup");
+        if (definition.ComponentId == ComponentIds.Tailscale && !TailscalePackagePolicyReady())
+            return Fail(65, PrivilegedProblemCode.AccessDenied, "Tailscale official repository requires setup");
         var update = await RunAptAsync(["update"], TimeSpan.FromMinutes(10), "component package index refresh failed");
         if (!update.Success) return update;
         var before = await QueryComponentPackageAsync(componentId);
@@ -253,6 +261,13 @@ public static partial class PrivilegedOperationExecutor
             || !Enum.IsDefined(request.Action))
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "component recovery request invalid");
         var definition = HostPackageDefinitions.Find(request.ComponentId);
+        if (request.Action == ComponentRecoveryAction.ConfigureOfficialSource)
+        {
+            if (request.ComponentId != ComponentIds.Tailscale || request.OperationId != Guid.Empty)
+                return Fail(64, PrivilegedProblemCode.InvalidRequest, "invalid official source request");
+            await ConfigureTailscalePackageSourceAsync();
+            return await RunAptAsync(["update"], TimeSpan.FromMinutes(10), "official package source refresh failed");
+        }
         if (request.Action == ComponentRecoveryAction.RefreshSources)
         {
             if (request.OperationId != Guid.Empty || definition is null && request.ComponentId != ComponentIds.Nginx)

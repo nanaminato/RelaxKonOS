@@ -100,7 +100,7 @@ public sealed class UnixSocketPrivilegedOperationTransport(PrivilegedHelperOptio
     /// </summary>
     private TimeSpan? ResponseTimeout(PrivilegedOperationKind operation) => operation switch
     {
-        PrivilegedOperationKind.TailscaleStatus => TimeSpan.FromSeconds(15),
+        PrivilegedOperationKind.TailscaleStatus or PrivilegedOperationKind.TailscaleInstallerQuery => TimeSpan.FromSeconds(15),
         PrivilegedOperationKind.TailscaleControlRead or PrivilegedOperationKind.TailscaleControlReceipt
             or PrivilegedOperationKind.TailscaleRecoveryRead or PrivilegedOperationKind.TailscaleRecoveryReceipt
             or PrivilegedOperationKind.TailscaleLoginBegin or PrivilegedOperationKind.TailscaleLoginObserve

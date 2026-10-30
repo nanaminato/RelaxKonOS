@@ -67,6 +67,7 @@ import app.relaxkonos.mobile.ui.common.SelectField
 import app.relaxkonos.mobile.ui.common.SelectOption
 import app.relaxkonos.mobile.ui.icons.DesktopIcon
 import app.relaxkonos.mobile.ui.icons.DesktopIcons
+import app.relaxkonos.mobile.ui.terminal.TerminalChrome
 import app.relaxkonos.mobile.ui.theme.Spacing
 
 /** Uses the authenticated shell's window classes and inset ownership. */
@@ -75,12 +76,25 @@ fun SshWorkspaceScreen(hostId: String, onClose: () -> Unit) {
     var page by rememberSaveable(hostId) { mutableIntStateOf(0) }
     var managementPage by rememberSaveable(hostId) { mutableIntStateOf(0) }
     var pageVisit by remember(hostId) { mutableIntStateOf(0) }
-    fun selectPage(next: Int) { if (next != page) { pageVisit++; page = next } }
+    // The terminal chrome belongs to the workspace, not to the terminal page instance, so visiting
+    // deployment or files and returning keeps the transcript-first layout the user picked.
+    var terminalChrome by rememberSaveable(hostId) { mutableStateOf(TerminalChrome.Compact) }
+    // Collapsing the editor is a viewing mode; keep it with the workspace so a trip to files or
+    // deployment returns to the same transcript-first layout.
+    var terminalInputCollapsed by rememberSaveable(hostId) { mutableStateOf(false) }
+    fun selectPage(next: Int) {
+        if (next == page) return
+        // Immersive hides the workspace navigation; leaving the terminal would strand the user.
+        if (next != 1 && terminalChrome == TerminalChrome.Immersive) terminalChrome = TerminalChrome.Compact
+        pageVisit++
+        page = next
+    }
     val host = (LocalContext.current.applicationContext as RelaxKonApplication)
         .container.serverCenter.hosts().firstOrNull { it.hostId == hostId }
     val terminalTyping = page == 1 && WindowInsets.ime.getBottom(LocalDensity.current) > 0
     androidx.activity.compose.BackHandler {
-        if (page != 3) { selectPage(3); managementPage = 0 }
+        if (page == 1 && terminalChrome == TerminalChrome.Immersive) terminalChrome = TerminalChrome.Compact
+        else if (page != 3) { selectPage(3); managementPage = 0 }
         else if (managementPage != 0) managementPage = 0
         else onClose()
     }
@@ -89,7 +103,9 @@ fun SshWorkspaceScreen(hostId: String, onClose: () -> Unit) {
             0 -> SshFilesScreen(hostId, contentModifier)
             1 -> {
                 val visit = pageVisit
-                key(visit) { SshTerminalScreen(hostId, onClose, isPageCurrent = { page == 1 && pageVisit == visit }, modifier = contentModifier) }
+                key(visit) { SshTerminalScreen(hostId, onClose, isPageCurrent = { page == 1 && pageVisit == visit },
+                    modifier = contentModifier, chrome = terminalChrome, onChromeChange = { terminalChrome = it },
+                    inputCollapsed = terminalInputCollapsed, onInputCollapsedChange = { terminalInputCollapsed = it }) }
             }
             2 -> ServerMaintenanceScreen(host, contentModifier)
             3 -> Column(contentModifier) {
@@ -104,7 +120,8 @@ fun SshWorkspaceScreen(hostId: String, onClose: () -> Unit) {
             }
         }
     }
-    SshWorkspaceLayout(page, ::selectPage, terminalTyping, content = content)
+    SshWorkspaceLayout(page, ::selectPage, terminalTyping,
+        immersive = page == 1 && terminalChrome == TerminalChrome.Immersive, content = content)
 }
 
 @Composable
@@ -124,6 +141,7 @@ internal fun SshWorkspaceLayout(
     onSelect: (Int) -> Unit,
     terminalTyping: Boolean,
     modifier: Modifier = Modifier,
+    immersive: Boolean = false,
     content: @Composable (Modifier) -> Unit,
 ) {
     val destinations = listOf(
@@ -137,7 +155,7 @@ internal fun SshWorkspaceLayout(
         if (layout == LayoutState.Compact) Scaffold(
             containerColor = androidx.compose.ui.graphics.Color.Transparent,
             bottomBar = {
-                if (!terminalTyping) NavigationBar(Modifier.testTag("ssh-workspace-bar")) {
+                if (!terminalTyping && !immersive) NavigationBar(Modifier.testTag("ssh-workspace-bar")) {
                     destinations.forEachIndexed { index, (label, icon) ->
                         NavigationBarItem(selected = page == index, onClick = { onSelect(index) },
                             icon = { DesktopIcon(icon, size = 26.dp) },

@@ -88,12 +88,13 @@ internal sealed class WindowsPrivilegedPipeServer(WindowsHelperPipeConfiguration
             return;
         }
         PruneRecentOperationIds();
-        if (_recentOperationIds.Count >= MaximumRecentOperationIds)
+        var durableReceipt = PrivilegedOperationReplayPolicy.UsesDurableReceipt(request.Operation);
+        if (!durableReceipt && _recentOperationIds.Count >= MaximumRecentOperationIds)
         {
             await WriteResultAsync(pipe, secret, new(false, 69, Error: "operation replay cache is full", ProblemCode: PrivilegedProblemCode.HelperUnavailable), cancellationToken);
             return;
         }
-        if (!_recentOperationIds.TryAdd(operationId, DateTimeOffset.UtcNow.AddMinutes(10)))
+        if (!durableReceipt && !_recentOperationIds.TryAdd(operationId, DateTimeOffset.UtcNow.AddMinutes(10)))
         {
             await WriteResultAsync(pipe, secret, new(false, 17, Error: "operation id was already processed", ProblemCode: PrivilegedProblemCode.Conflict), cancellationToken);
             return;

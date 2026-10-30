@@ -22,7 +22,7 @@ public enum ComponentIntegration
 }
 
 /// <summary>Declared install provenance. A declaration is a plan, not a granted or verified source.</summary>
-public enum ComponentSourceKind { ManagedArchive, SystemPackage, OfficialSource }
+public enum ComponentSourceKind { ManagedArchive, SystemPackage, OfficialSource, NativeInstaller }
 
 /// <summary>
 /// One declared source for one set of platforms. Linux and Windows genuinely differ here: a
@@ -92,7 +92,11 @@ public static class ComponentCatalog
         new("samba", "samba", "storage", "Samba", "component_center.component.samba.description",
             ComponentIntegration.Installation, "relaxkonos.file-services", [], [], [],
             ["relaxkonos.file-services"], [Linux],
-            [new(ComponentSourceKind.SystemPackage, true, [Linux])])
+            [new(ComponentSourceKind.SystemPackage, true, [Linux])]),
+        new("tailscale", "tailscale", "network", "Tailscale", "component_center.component.tailscale.description",
+            ComponentIntegration.Installation, "relaxkonos.tailscale", [], [], [],
+            ["relaxkonos.tailscale"], [Linux, Windows],
+            [new(ComponentSourceKind.SystemPackage, true, [Linux]), new(ComponentSourceKind.NativeInstaller, true, [Windows])])
     ]);
     public static IReadOnlyList<ComponentWorkloadDefinition> Workloads { get; } = Array.AsReadOnly<ComponentWorkloadDefinition>([
         new("proxy-server", "component_center.workload.proxy_server", ["sing-box"], []),

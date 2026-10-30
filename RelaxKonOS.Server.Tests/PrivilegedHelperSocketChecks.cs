@@ -139,6 +139,24 @@ internal static class PrivilegedHelperSocketChecks
             TestAssert.Assert(replay.Count == 1 && replay[0].Result is { Success: false, ProblemCode: PrivilegedProblemCode.Conflict },
                 "A replayed operation id was not rejected as a conflict.");
 
+            var durable = request with { Operation = PrivilegedOperationKind.TailscaleLoginBegin };
+            foreach (var verb in new[] { PrivilegedOperationKind.TailscaleLoginBegin,
+                PrivilegedOperationKind.TailscaleLoginChallenge, PrivilegedOperationKind.TailscaleLoginRecoveryRead,
+                PrivilegedOperationKind.TailscaleLoginClose, PrivilegedOperationKind.TailscaleControlExecute,
+                PrivilegedOperationKind.TailscaleControlReceipt, PrivilegedOperationKind.TailscaleRecoveryRead,
+                PrivilegedOperationKind.TailscaleInstallerExecute, PrivilegedOperationKind.TailscaleInstallerQuery,
+                PrivilegedOperationKind.TailscaleInstallerRecover, PrivilegedOperationKind.ComponentPackageInstall,
+                PrivilegedOperationKind.ComponentPackageQuery, PrivilegedOperationKind.ComponentPackageChange,
+                PrivilegedOperationKind.ComponentPackageRecover })
+            {
+                foreach (var attempt in new[] { 1, 2 })
+                {
+                    var observed = await ExchangeAsync(path, durable with { Operation = verb });
+                    TestAssert.Assert(observed.Last().Result is { Success: true },
+                        "Durable Tailscale verbs must reach their identity-bound ledger on repeat: " + verb);
+                }
+            }
+
             var incompatibleRequest = request with { OperationId = Guid.NewGuid(), Version = "0.0" };
             var incompatible = await ExchangeAsync(path, incompatibleRequest);
             TestAssert.Assert(incompatible.Count == 1

@@ -393,6 +393,12 @@
     "component_center.download.choose_file": "选择文件…",
     "component_center.download.no_file": "尚未选择文件",
     "component_center.download.file_hint": "请选择与服务器系统、架构匹配的安装包，并填写该文件的实际版本。",
-    "component_center.download.file_failed": "文件选择或上传失败，请重试。"
+    "component_center.download.file_failed": "文件选择或上传失败，请重试。",
+    "component_center.component.tailscale.description": "通过官方系统安装包管理 Tailscale 的安装、更新和保留数据卸载。",
+    "component_center.package.recovery.ConfigureOfficialSource": "配置 Tailscale 官方来源",
+    "component_center.package.tailscale_source_confirm": "将启用 Tailscale Inc. 官方稳定版签名仓库（https://pkgs.tailscale.com/stable/），签名密钥指纹 2596 A99E AAB3 3821 893C 0A79 458C A832 957F 5868。仅适用于宿主发行版，不替换已有不同来源或密钥；此步骤只配置来源并刷新索引，不安装软件。是否继续？",
+    "component_center.native.msi_title": "Windows 系统安装程序",
+    "component_center.native.msi_hint": "使用 Tailscale 官方签名 MSI 安装和更新。卸载保留登录与配置数据；安装或更新可能重启服务并中断远程连接。",
+    "component_center.source_kind.NativeInstaller": "官方系统安装程序"
   }
 }

@@ -348,7 +348,7 @@
         <TextBlock Text="{loc:Loc component_center.native.manager_hint}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
        </StackPanel>
        <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsResolvingPackage}" />
-       <Button Content="{loc:Loc component_center.package.recovery.RefreshSources}" Command="{Binding RefreshPackageSourcesCommand}"
+       <Button Content="{Binding PackageSourceActionText}" Command="{Binding RefreshPackageSourcesCommand}"
                IsVisible="{Binding CanRefreshPackageSources}" />
        <TextBlock Text="{loc:Loc component_center.native.version_label}" IsVisible="{Binding HasPinnedArchiveCandidates}" />
        <ComboBox ItemsSource="{Binding PinnedArchiveCandidates}" SelectedItem="{Binding SelectedPinnedArchive}"

@@ -23,16 +23,23 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 /**
  * Measure the command editor before the weighted body so chrome cannot compress its text/cursor.
  * IME padding respects insets consumed by the shell (including the tablet's safe drawing padding).
+ *
+ * [chrome] is the user's preference; [resolveTerminalChrome] may lower it for this window. The
+ * header is not composed at all while immersive, which is what hands the transcript the full body.
  */
 @Composable
 internal fun TerminalScreenLayout(
     modifier: Modifier = Modifier,
     imeInsets: WindowInsets = WindowInsets.ime,
-    header: @Composable (compact: Boolean, wide: Boolean) -> Unit,
+    chrome: TerminalChrome = TerminalChrome.Full,
+    immersiveAllowed: Boolean = true,
+    inputCollapsed: Boolean = false,
+    header: @Composable (chrome: TerminalChrome, compact: Boolean, wide: Boolean) -> Unit,
     sidebar: @Composable () -> Unit,
     output: @Composable () -> Unit,
-    keys: @Composable () -> Unit,
+    keys: @Composable (immersive: Boolean) -> Unit,
     input: @Composable (compact: Boolean) -> Unit,
+    collapsedInput: @Composable () -> Unit = {},
 ) {
     BoxWithConstraints(modifier.fillMaxSize().windowInsetsPadding(imeInsets)) {
         val density = LocalDensity.current
@@ -42,17 +49,20 @@ internal fun TerminalScreenLayout(
         val compact = imeInsets.getBottom(density) > 0 || maxHeight < 400.dp * fontScale
         val showKeys = maxHeight >= 200.dp * fontScale
         val wide = terminalTwoPane(maxWidth.value, maxHeight.value, fontScale)
+        val resolved = resolveTerminalChrome(chrome, wide, compact, immersiveAllowed)
         Row(Modifier.fillMaxSize().padding(horizontal = Spacing.lg, vertical = Spacing.sm),
             horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
             if (wide) Box(Modifier.width(240.dp).fillMaxSize().testTag("terminal-session-sidebar")) { sidebar() }
             Column(Modifier.weight(1f).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                 // The editor is measured before the weighted body on phone and tablet alike.
                 Column(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                    header(compact, wide)
-                    Box(Modifier.fillMaxWidth().weight(1f)) { output() }
-                    if (showKeys) keys()
+                    if (resolved != TerminalChrome.Immersive) header(resolved, compact, wide)
+                    Box(Modifier.fillMaxWidth().weight(1f)) {
+                        output()
+                    }
+                    if (showKeys && !inputCollapsed) keys(resolved == TerminalChrome.Immersive)
                 }
-                input(compact)
+                if (inputCollapsed) collapsedInput() else input(compact || resolved != TerminalChrome.Full)
             }
         }
     }

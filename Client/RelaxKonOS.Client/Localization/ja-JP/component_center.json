@@ -393,6 +393,12 @@
     "component_center.download.choose_file": "ファイルを選択…",
     "component_center.download.no_file": "ファイル未選択",
     "component_center.download.file_hint": "サーバーの OS とアーキテクチャに合うファイルを選び、実際のバージョンを入力してください。",
-    "component_center.download.file_failed": "ファイルの選択またはアップロードに失敗しました。再試行してください。"
+    "component_center.download.file_failed": "ファイルの選択またはアップロードに失敗しました。再試行してください。",
+    "component_center.component.tailscale.description": "公式システムパッケージで Tailscale をインストール・更新し、データを保持して削除します。",
+    "component_center.package.recovery.ConfigureOfficialSource": "Tailscale 公式配布元を設定",
+    "component_center.package.tailscale_source_confirm": "Tailscale Inc. の公式安定版署名リポジトリ https://pkgs.tailscale.com/stable/ をホストのディストリビューションに設定します。署名鍵の指紋：2596 A99E AAB3 3821 893C 0A79 458C A832 957F 5868。異なる既存の配布元や鍵は置き換えません。配布元の設定と索引の更新だけを行い、ソフトウェアはインストールしません。続行しますか？",
+    "component_center.native.msi_title": "Windows システムインストーラー",
+    "component_center.native.msi_hint": "Tailscale 公式署名付き MSI でインストールと更新を行います。削除時もログインと設定データを保持します。サービスの再起動で接続が中断される場合があります。",
+    "component_center.source_kind.NativeInstaller": "公式システムインストーラー"
   }
 }

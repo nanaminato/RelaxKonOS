@@ -5,6 +5,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="RelaxKonOS.Server.Tests" />
+    <InternalsVisibleTo Include="RelaxKonOS.ManagedRuntimes.Tests" />
     <PackageReference Include="YamlDotNet" />
     <ProjectReference Include="../RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj" />
     <None Update="ThirdPartyLicenses/YamlDotNet.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

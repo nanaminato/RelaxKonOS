@@ -35,6 +35,10 @@
     <string name="scripts_verify">核实请求</string>
     <string name="scripts_write_unknown">请求结果尚不明确。请刷新任务列表并核对执行状态，再决定是否重新运行或取消。</string>
     <string name="terminal_background">背景（#RRGGBB）</string>
+    <string name="terminal_chrome_collapse">收起管理面板</string>
+    <string name="terminal_chrome_exit_immersive">退出沉浸模式</string>
+    <string name="terminal_chrome_expand">展开管理面板</string>
+    <string name="terminal_chrome_immersive">沉浸模式</string>
     <string name="terminal_clear_local">清除本机显示</string>
     <string name="terminal_clipboard_failed">剪贴板不可用或超过 16,384 个字符，点击关闭提示。</string>
     <string name="terminal_close">结束会话</string>
@@ -55,6 +59,8 @@
     <string name="terminal_font_smaller">缩小终端字体</string>
     <string name="terminal_foreground">文字（#RRGGBB）</string>
     <string name="terminal_input">输入</string>
+    <string name="terminal_input_hide">收起输入区</string>
+    <string name="terminal_input_show">显示输入区</string>
     <string name="terminal_latest">最新输出 ↓</string>
     <string name="terminal_latest_output">回到最新输出</string>
     <string name="terminal_new">新建会话</string>

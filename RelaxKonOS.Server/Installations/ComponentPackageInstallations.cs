@@ -24,7 +24,8 @@ internal static class ComponentPackageInstallations
     }
     public static void ValidateRecovery(string componentId, InstallationOperationKind kind, ComponentRecoveryRequest request)
     {
-        if (kind != InstallationOperationKind.Repair || request.ComponentId != componentId || (request.Action == ComponentRecoveryAction.RefreshSources ? request.OperationId != Guid.Empty : request.OperationId == Guid.Empty)
+        if (kind != InstallationOperationKind.Repair || request.ComponentId != componentId || (request.Action is ComponentRecoveryAction.RefreshSources or ComponentRecoveryAction.ConfigureOfficialSource ? request.OperationId != Guid.Empty : request.OperationId == Guid.Empty)
+            || request.Action == ComponentRecoveryAction.ConfigureOfficialSource && componentId != ComponentIds.Tailscale
             || !Enum.IsDefined(request.Action)) throw new InstallationException(InstallationProblemCodes.InvalidRequest, 400);
     }
     public static async Task ExecuteRecoveryAsync(ComponentRecoveryRequest request, IInstallationProgress progress,
@@ -35,7 +36,7 @@ internal static class ComponentPackageInstallations
         var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.ComponentPackageRecover,
             PackageRecovery: request, OperationId: progress.OperationId), CancellationToken.None);
         if (!result.Success) throw new InstallationException(ComponentProblemCodes.RecoveryRequired);
-        if (request.Action == ComponentRecoveryAction.RefreshSources) return; // An uncertain refresh is Interrupted; never inferred from cached metadata.
+        if (request.Action is ComponentRecoveryAction.RefreshSources or ComponentRecoveryAction.ConfigureOfficialSource) return; // An uncertain refresh is Interrupted; never inferred from cached metadata.
         var observed = await helper.ExecuteAsync(new(PrivilegedOperationKind.ComponentPackageQuery,
             ComponentId: request.ComponentId, OperationId: progress.OperationId), CancellationToken.None);
         if (observed.ComponentPackage?.RecoveryReceipt is not { } receipt || receipt.OperationId != progress.OperationId

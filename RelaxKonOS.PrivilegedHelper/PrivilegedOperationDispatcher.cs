@@ -122,6 +122,9 @@ public static partial class PrivilegedOperationExecutor
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "process fields require a dedicated operation");
         if (request.Operation != PrivilegedOperationKind.ManagedRuntime && request.ManagedRuntime is not null)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "runtime fields require a dedicated operation");
+        if (request.Operation is PrivilegedOperationKind.TailscaleInstallerQuery or PrivilegedOperationKind.TailscaleInstallerExecute or PrivilegedOperationKind.TailscaleInstallerRecover)
+            return await TailscaleInstallerOperations.ExecuteAsync(request);
+        if (request.TailscaleInstaller is not null) return Fail(64, PrivilegedProblemCode.InvalidRequest, "Installer fields require a dedicated operation");
         if (request.Operation is PrivilegedOperationKind.TailscaleControlRead or PrivilegedOperationKind.TailscaleControlExecute or PrivilegedOperationKind.TailscaleControlReceipt
             or PrivilegedOperationKind.TailscaleRecoveryRead or PrivilegedOperationKind.TailscaleRecoveryClose or PrivilegedOperationKind.TailscaleRecoveryReceipt
             or PrivilegedOperationKind.TailscaleLoginBegin or PrivilegedOperationKind.TailscaleLoginObserve or PrivilegedOperationKind.TailscaleLoginReceipt or PrivilegedOperationKind.TailscaleLoginChallenge

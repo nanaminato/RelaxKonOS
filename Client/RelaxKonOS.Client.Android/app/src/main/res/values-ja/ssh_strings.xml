@@ -120,6 +120,10 @@
     <string name="ssh_terminal_input">コマンドまたは入力</string>
     <string name="ssh_terminal_retry">再接続</string>
     <string name="ssh_terminal_send">送信</string>
+    <string name="ssh_terminal_state_connected">接続済み</string>
+    <string name="ssh_terminal_state_connecting">接続中…</string>
+    <string name="ssh_terminal_state_disconnected">切断済み</string>
+    <string name="ssh_terminal_state_failed">接続に失敗</string>
     <string name="ssh_terminal_title">ターミナル</string>
     <string name="ssh_workspace_cleanup_failed">SSH ワークスペースの終了処理を確認できません。再接続する前にシステム設定でアプリを強制停止してください。</string>
     <string name="ssh_workspace_deploy">デプロイ</string>

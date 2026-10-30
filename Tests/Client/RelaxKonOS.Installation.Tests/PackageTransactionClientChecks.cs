@@ -55,7 +55,7 @@ internal static class PackageTransactionClientChecks
     public static async Task RunAllComponentsAsync(IAuthSession session, IAppSettingsClient settings)
     {
         foreach (var (id, service) in new[] { ("squid", InstallationServiceId.Squid), ("samba", InstallationServiceId.Smb),
-            ("docker", InstallationServiceId.Docker), ("frpc", InstallationServiceId.Frp), ("frps", InstallationServiceId.Frp) })
+            ("docker", InstallationServiceId.Docker), ("tailscale", InstallationServiceId.Tailscale), ("frpc", InstallationServiceId.Frp), ("frps", InstallationServiceId.Frp) })
         {
             var bundle = id is "frpc" or "frps";
             var plan = new ComponentPlanRequest(id, "host", RuntimeChange.Install, 1,
@@ -68,6 +68,7 @@ internal static class PackageTransactionClientChecks
                 "repo|stable|main|amd64", "https://repo.example", "stable", "main", "https://repo.example/package.deb", new('a', 64), 1024, []));
             var execution = new ComponentExecuteRequest(id, plan, frozen);
             object options = id switch { "squid" => new SquidInstallationRequest(true, execution),
+                "tailscale" => new TailscaleInstallationRequest(true, execution),
                 "samba" => new SmbInstallationRequest(true, execution), "docker" => new DockerInstallationRequest(true, execution),
                 _ => new FrpInstallationRequest(true, FrozenArchive: execution) };
             var seen = new List<string>();

@@ -120,6 +120,10 @@
     <string name="ssh_terminal_input">Command or input</string>
     <string name="ssh_terminal_retry">Reconnect</string>
     <string name="ssh_terminal_send">Send</string>
+    <string name="ssh_terminal_state_connected">Connected</string>
+    <string name="ssh_terminal_state_connecting">Connecting…</string>
+    <string name="ssh_terminal_state_disconnected">Disconnected</string>
+    <string name="ssh_terminal_state_failed">Connection failed</string>
     <string name="ssh_terminal_title">Terminal</string>
     <string name="ssh_workspace_cleanup_failed">SSH workspace cleanup could not be confirmed. Force stop this app in system settings before reconnecting.</string>
     <string name="ssh_workspace_deploy">Deploy</string>

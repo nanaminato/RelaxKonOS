@@ -25,7 +25,7 @@ public sealed class RuntimePinnedArchiveTransfer : IPinnedArchiveTransfer
         scope.Validate();
         return RuntimeHttpsTransfer.CopyAsync(scope, new Uri(pin.SourceUri), pin.MaximumBytes, false, destination, proxy, ct);
     }
-    private sealed class Scope(ComponentPinnedArchive pin) : IRuntimeDownloadScope
+    internal sealed class Scope(ComponentPinnedArchive pin) : IRuntimeDownloadScope
     {
         public string BaseUri => new Uri(pin.SourceUri).GetLeftPart(UriPartial.Authority) + "/";
         public bool Enabled => true;
@@ -40,7 +40,9 @@ public sealed class RuntimePinnedArchiveTransfer : IPinnedArchiveTransfer
                 throw new RuntimePolicyException("runtime.source_invalid");
         }
         public bool AllowsDownload(Uri uri) => uri.AbsoluteUri == pin.SourceUri;
-        public bool AllowsQuery(Uri uri) => false;
+        public bool AllowsQuery(Uri uri) => new Uri(pin.SourceUri).Host == "github.com"
+            && uri.Scheme == "https" && uri.Port == 443 && uri.UserInfo.Length == 0 && uri.Fragment.Length == 0
+            && uri.Host is "release-assets.githubusercontent.com" or "objects.githubusercontent.com";
         public bool AllowsRedirect(Uri uri)
         {
             var original = new Uri(pin.SourceUri);

@@ -1,11 +1,13 @@
 package app.relaxkonos.mobile.ui.servercenter
 import app.relaxkonos.mobile.ui.common.CheckboxOption
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.size
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -70,13 +72,24 @@ import app.relaxkonos.mobile.servercenter.SshTerminalSessions
 import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.icons.DesktopIcon
 import app.relaxkonos.mobile.ui.icons.DesktopIcons
+import app.relaxkonos.mobile.ui.terminal.TerminalChrome
 import app.relaxkonos.mobile.ui.terminal.TerminalScreenLayout
+import app.relaxkonos.mobile.ui.terminal.TerminalTopBar
 import app.relaxkonos.mobile.ui.theme.Spacing
 import app.relaxkonos.mobile.ui.theme.TerminalType
 import app.relaxkonos.mobile.ui.terminal.NativeTerminal
 
 @Composable
-fun SshTerminalScreen(hostId: String, onClose: () -> Unit, isPageCurrent: () -> Boolean, modifier: Modifier = Modifier) {
+fun SshTerminalScreen(
+    hostId: String,
+    onClose: () -> Unit,
+    isPageCurrent: () -> Boolean,
+    modifier: Modifier = Modifier,
+    chrome: TerminalChrome = TerminalChrome.Compact,
+    onChromeChange: (TerminalChrome) -> Unit = {},
+    inputCollapsed: Boolean = false,
+    onInputCollapsedChange: (Boolean) -> Unit = {},
+) {
     val container = (LocalContext.current.applicationContext as RelaxKonApplication).container
     val target = container.serverCenter.hosts().firstOrNull { it.hostId == hostId }
     val model = container.sshTerminals
@@ -94,7 +107,9 @@ fun SshTerminalScreen(hostId: String, onClose: () -> Unit, isPageCurrent: () -> 
         { model.create(hostId) }, model::end,
         readState = { if (isPageCurrent() && container.serverCenter.sshFilesHostId == hostId && container.serverCenter.workspaceRevision == workspaceRevision)
             model.state.value.selectedForHost(hostId) else null },
-        modifier = modifier, terminalType = container.appearance.terminalType)
+        modifier = modifier, terminalType = container.appearance.terminalType,
+        chrome = chrome, onChromeChange = onChromeChange,
+        inputCollapsed = inputCollapsed, onInputCollapsedChange = onInputCollapsedChange)
     }
 }
 
@@ -119,6 +134,10 @@ internal fun SshTerminalContent(
     modifier: Modifier = Modifier,
     imeInsets: WindowInsets = WindowInsets.ime,
     terminalType: TerminalType = TerminalType.Xterm,
+    chrome: TerminalChrome = TerminalChrome.Compact,
+    onChromeChange: (TerminalChrome) -> Unit = {},
+    inputCollapsed: Boolean = false,
+    onInputCollapsedChange: (Boolean) -> Unit = {},
 ) {
     val input = state.draft
     val concealInput = state.concealInput
@@ -197,8 +216,25 @@ internal fun SshTerminalContent(
         dismissButton = { TextButton(onClick = { if (endReview === expected) endReview = null }) { Text(stringResource(R.string.common_cancel)) } },
     ) }
 
-    val actions: @Composable () -> Unit = {
-        androidx.compose.foundation.layout.Box {
+    val shortStatus = stringResource(when {
+        state.connecting -> R.string.ssh_terminal_state_connecting
+        state.problem -> R.string.ssh_terminal_state_failed
+        state.connected -> R.string.ssh_terminal_state_connected
+        else -> R.string.ssh_terminal_state_disconnected
+    })
+    val expandChromeLabel = stringResource(R.string.terminal_chrome_expand)
+    val collapseChromeLabel = stringResource(R.string.terminal_chrome_collapse)
+    val immersiveChromeLabel = stringResource(R.string.terminal_chrome_immersive)
+    val exitImmersiveLabel = stringResource(R.string.terminal_chrome_exit_immersive)
+    val inputToggleLabel = stringResource(if (inputCollapsed) R.string.terminal_input_show else R.string.terminal_input_hide)
+    // Keep the multi-session position visible in the one-line bar; the menu still owns the switch.
+    val currentNumber = sessions.indexOfFirst { it.sessionId == state.sessionId } + 1
+    val statusLabel = if (sessions.size > 1 && currentNumber > 0) "$shortStatus · $currentNumber/${sessions.size}" else shortStatus
+
+    /** The overflow menu is the only management surface while collapsed, so it carries the controls
+     *  that the full header draws as buttons: font size, concealed input and the chrome switch. */
+    val actions: @Composable (TerminalChrome, Boolean) -> Unit = { mode, wide ->
+        Box {
             val actionsLabel = stringResource(R.string.terminal_session_actions)
             IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(48.dp)) {
                 Icon(Icons.Default.MoreVert, contentDescription = actionsLabel, modifier = Modifier.size(24.dp))
@@ -209,6 +245,30 @@ internal fun SshTerminalContent(
                 sessions.forEach { session ->
                     DropdownMenuItem(text = { Text(sshSessionLabel(session, sessions.indexOf(session) + 1)) },
                         onClick = { menuOpen = false; onSelect(session.sessionId) })
+                }
+                if (mode == TerminalChrome.Compact) {
+                    DropdownMenuItem(text = { Text(expandChromeLabel) },
+                        onClick = { menuOpen = false; onChromeChange(TerminalChrome.Full) })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.terminal_font_smaller)) },
+                        onClick = { menuOpen = false; onFontSizeChange((fontSize - 1).coerceAtLeast(9)) },
+                        enabled = fontSize > 9)
+                    DropdownMenuItem(text = { Text(stringResource(R.string.terminal_font_larger)) },
+                        onClick = { menuOpen = false; onFontSizeChange((fontSize + 1).coerceAtMost(24)) },
+                        enabled = fontSize < 24)
+                    DropdownMenuItem(text = { Text(if (concealInput) "${stringResource(R.string.ssh_terminal_hide_input)} ✓"
+                        else stringResource(R.string.ssh_terminal_hide_input)) },
+                        onClick = { menuOpen = false; onConcealChange(!concealInput) })
+                }
+                if (mode == TerminalChrome.Full) {
+                    DropdownMenuItem(text = { Text(collapseChromeLabel) },
+                        onClick = { menuOpen = false; onChromeChange(TerminalChrome.Compact) })
+                }
+                DropdownMenuItem(text = { Text(inputToggleLabel) },
+                    onClick = { menuOpen = false; onInputCollapsedChange(!inputCollapsed) })
+                // The two-pane layout always keeps the full header, so immersive is a phone-only tier.
+                if (mode != TerminalChrome.Immersive && !wide) {
+                    DropdownMenuItem(text = { Text(immersiveChromeLabel) },
+                        onClick = { menuOpen = false; onChromeChange(TerminalChrome.Immersive) })
                 }
                 if (state.sessionId.isNotEmpty()) DropdownMenuItem(text = { Text(stringResource(R.string.terminal_close)) },
                     onClick = {
@@ -221,53 +281,69 @@ internal fun SshTerminalContent(
         }
     }
 
-    TerminalScreenLayout(modifier = modifier, imeInsets = imeInsets, header = { compact, wide ->
-        if (compact) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = ::closePage) {
-                DesktopIcon(DesktopIcons.back, size = 22.dp, contentDescription = stringResource(R.string.common_back))
+    TerminalScreenLayout(modifier = modifier, imeInsets = imeInsets, chrome = chrome,
+        immersiveAllowed = state.connected && !state.problem,
+        inputCollapsed = inputCollapsed,
+        header = { resolved, compact, wide ->
+            when (resolved) {
+                TerminalChrome.Immersive -> Unit
+                TerminalChrome.Compact -> TerminalTopBar(
+                    title = hostLabel ?: stringResource(R.string.ssh_terminal_title),
+                    status = statusLabel,
+                    connected = state.connected,
+                    problem = state.problem,
+                    onBack = ::closePage,
+                    onRetry = if (!state.connected && !state.connecting) onConnect else null,
+                    retryLabel = stringResource(R.string.ssh_terminal_retry),
+                    expandLabel = expandChromeLabel,
+                    onExpand = { onChromeChange(TerminalChrome.Full) },
+                    actions = { actions(TerminalChrome.Compact, wide) },
+                )
+                TerminalChrome.Full -> {
+                    ScreenHeader(
+                        title = stringResource(R.string.ssh_terminal_title),
+                        subtitle = hostLabel,
+                        onBack = ::closePage,
+                    )
+                    if (!compact || !state.connected) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                        Text(
+                            stringResource(when {
+                                state.connecting -> R.string.ssh_terminal_connecting
+                                state.problem -> R.string.ssh_terminal_failed
+                                state.connected -> R.string.ssh_terminal_connected
+                                else -> R.string.ssh_terminal_disconnected
+                            }),
+                            modifier = Modifier.weight(1f),
+                            color = if (state.problem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (!state.connecting && !state.connected) OutlinedButton(onClick = onConnect) {
+                            Text(stringResource(R.string.ssh_terminal_retry))
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Button(onClick = onNew, enabled = canCreate, modifier = Modifier.weight(1f)) {
+                            Text(stringResource(R.string.terminal_new), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        OutlinedButton(onClick = { onFontSizeChange((fontSize - 1).coerceAtLeast(9)) }, modifier = Modifier.width(48.dp),
+                            contentPadding = PaddingValues(0.dp)) { Text("A−") }
+                        OutlinedButton(onClick = { onFontSizeChange((fontSize + 1).coerceAtMost(24)) }, modifier = Modifier.width(48.dp),
+                            contentPadding = PaddingValues(0.dp)) { Text("A+") }
+                        IconButton(onClick = { onChromeChange(TerminalChrome.Compact) }, modifier = Modifier.size(48.dp)) {
+                            Icon(Icons.Default.KeyboardArrowUp, contentDescription = collapseChromeLabel, modifier = Modifier.size(24.dp))
+                        }
+                        actions(TerminalChrome.Full, wide)
+                    }
+                    if (!compact && !wide && sessions.isNotEmpty()) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                        sessions.forEach { session -> FilterChip(selected = session.sessionId == state.sessionId,
+                            onClick = { onSelect(session.sessionId) }, label = { Text(sshSessionLabel(session, sessions.indexOf(session) + 1)) }) }
+                    }
+                    if (state.sessionId.isEmpty() && !compact) Text(stringResource(R.string.ssh_terminal_empty),
+                        style = MaterialTheme.typography.bodySmall)
+                }
             }
-            Text(hostLabel ?: stringResource(R.string.ssh_terminal_title), modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            actions()
-        } else ScreenHeader(
-            title = stringResource(R.string.ssh_terminal_title),
-            subtitle = hostLabel,
-            onBack = ::closePage,
-        )
-        if (!compact || !state.connected) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            Text(
-                stringResource(when {
-                    state.connecting -> R.string.ssh_terminal_connecting
-                    state.problem -> R.string.ssh_terminal_failed
-                    state.connected -> R.string.ssh_terminal_connected
-                    else -> R.string.ssh_terminal_disconnected
-                }),
-                modifier = Modifier.weight(1f),
-                color = if (state.problem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (!state.connecting && !state.connected) OutlinedButton(onClick = onConnect) {
-                Text(stringResource(R.string.ssh_terminal_retry))
-            }
-        }
-        if (!compact) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
-            verticalAlignment = Alignment.CenterVertically) {
-            Button(onClick = onNew, enabled = canCreate, modifier = Modifier.weight(1f)) {
-                Text(stringResource(R.string.terminal_new), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            OutlinedButton(onClick = { onFontSizeChange((fontSize - 1).coerceAtLeast(9)) }, modifier = Modifier.width(48.dp),
-                contentPadding = PaddingValues(0.dp)) { Text("A−") }
-            OutlinedButton(onClick = { onFontSizeChange((fontSize + 1).coerceAtMost(24)) }, modifier = Modifier.width(48.dp),
-                contentPadding = PaddingValues(0.dp)) { Text("A+") }
-            actions()
-        }
-        if (!compact && !wide && sessions.isNotEmpty()) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            sessions.forEach { session -> FilterChip(selected = session.sessionId == state.sessionId,
-                onClick = { onSelect(session.sessionId) }, label = { Text(sshSessionLabel(session, sessions.indexOf(session) + 1)) }) }
-        }
-        if (state.sessionId.isEmpty() && !compact) Text(stringResource(R.string.ssh_terminal_empty),
-            style = MaterialTheme.typography.bodySmall)
-    }, sidebar = {
+        }, sidebar = {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Text(stringResource(R.string.terminal_sessions_title), style = MaterialTheme.typography.titleMedium)
@@ -280,6 +356,7 @@ internal fun SshTerminalContent(
         if (terminalType == TerminalType.Native) NativeTerminal(
             state.sessionId, state.transcript, fontSize, onResize,
             Modifier.fillMaxSize().testTag("ssh-terminal-output"), connected = state.connected,
+            onZoom = { step -> onFontSizeChange((fontSize + step).coerceIn(9, 24)) },
         ) else
         Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF101820),
             shape = MaterialTheme.shapes.medium) {
@@ -287,11 +364,14 @@ internal fun SshTerminalContent(
                 sessionId = state.sessionId, output = state.output,
                 fontSize = fontSize * fontScale, connected = state.connected,
                 onSend = onSend, onResize = onResize,
+                onZoom = { step -> onFontSizeChange((fontSize + step).coerceIn(9, 24)) },
                 modifier = Modifier.fillMaxSize().clip(MaterialTheme.shapes.medium).testTag("ssh-terminal-output"),
             )
         }
-    }, keys = {
+    }, keys = { immersive ->
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            if (immersive) OutlinedButton(onClick = { onChromeChange(TerminalChrome.Compact) },
+                modifier = Modifier.testTag("terminal-immersive-exit")) { Text(exitImmersiveLabel) }
             OutlinedButton({ ctrlNext = !ctrlNext }, enabled = state.connected) { Text(if (ctrlNext) "Ctrl ✓" else "Ctrl") }
             OutlinedButton({ altNext = !altNext }, enabled = state.connected) { Text(if (altNext) "Alt ✓" else "Alt") }
             OutlinedButton({ onSend("\u001b") }, enabled = state.connected) { Text("Esc") }
@@ -302,9 +382,9 @@ internal fun SshTerminalContent(
             OutlinedButton({ onSend("\u001b[D") }, enabled = state.connected) { Text("←") }
             OutlinedButton({ onSend("\u001b[C") }, enabled = state.connected) { Text("→") }
         }
-    }, input = { compact ->
+    }, input = { compactInput ->
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-            if (!compact) CheckboxOption(concealInput, stringResource(R.string.ssh_terminal_hide_input), onCheckedChange = onConcealChange)
+            if (!compactInput) CheckboxOption(concealInput, stringResource(R.string.ssh_terminal_hide_input), onCheckedChange = onConcealChange)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                 verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
@@ -312,7 +392,7 @@ internal fun SshTerminalContent(
                     onValueChange = onDraftChange,
                     modifier = Modifier.weight(1f).heightIn(min = 56.dp),
                     label = { Text(stringResource(R.string.ssh_terminal_input)) },
-                    maxLines = if (compact) 1 else 3,
+                    maxLines = if (compactInput) 1 else 3,
                     enabled = state.connected,
                     visualTransformation = if (concealInput) PasswordVisualTransformation() else VisualTransformation.None,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -321,6 +401,13 @@ internal fun SshTerminalContent(
                 Button(onClick = { sendLine() }, enabled = state.connected) {
                     Text(stringResource(R.string.ssh_terminal_send))
                 }
+            }
+        }
+    }, collapsedInput = {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = { onInputCollapsedChange(false) },
+                modifier = Modifier.testTag("terminal-input-collapsed")) {
+                Text(stringResource(R.string.terminal_input_show))
             }
         }
     })

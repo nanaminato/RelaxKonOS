@@ -35,6 +35,10 @@
     <string name="scripts_verify">Verify request</string>
     <string name="scripts_write_unknown">The request result is unknown. Refresh the task list and check execution status before running or cancelling again.</string>
     <string name="terminal_background">Background (#RRGGBB)</string>
+    <string name="terminal_chrome_collapse">Collapse controls</string>
+    <string name="terminal_chrome_exit_immersive">Exit immersive mode</string>
+    <string name="terminal_chrome_expand">Expand controls</string>
+    <string name="terminal_chrome_immersive">Immersive mode</string>
     <string name="terminal_clear_local">Clear local output</string>
     <string name="terminal_clipboard_failed">Clipboard unavailable or exceeds 16,384 characters. Tap to dismiss.</string>
     <string name="terminal_close">End session</string>
@@ -55,6 +59,8 @@
     <string name="terminal_font_smaller">Decrease terminal font size</string>
     <string name="terminal_foreground">Text (#RRGGBB)</string>
     <string name="terminal_input">Input</string>
+    <string name="terminal_input_hide">Hide input area</string>
+    <string name="terminal_input_show">Show input area</string>
     <string name="terminal_latest">Latest output ↓</string>
     <string name="terminal_latest_output">Latest output</string>
     <string name="terminal_new">New session</string>

@@ -105,6 +105,7 @@ public static class InstallationEndpoints
         InstallationServiceId.Docker => HostElevationCapability.DockerInstall,
         InstallationServiceId.Squid => HostElevationCapability.ProxyServiceAction,
         InstallationServiceId.Git => HostElevationCapability.GitPackageInstall,
+        InstallationServiceId.Tailscale => HostElevationCapability.HostNetworkChange,
         _ => throw new ArgumentOutOfRangeException(nameof(service))
     };
 }

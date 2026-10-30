@@ -1,4 +1,19 @@
 using RelaxKonOS.Protocol.Proxy;
+if (args.Length is 2 or 3 && args[0] == "--download-frp-archive")
+{
+    var destination = args[1];
+    var pin = RelaxKonOS.ManagedRuntimes.ComponentPackages.PinnedArchives.Frp(
+        RelaxKonOS.ManagedRuntimes.ComponentPackages.PinnedArchives.LinuxFrp(false));
+    using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+    await using var output = new FileStream(destination, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
+    var proxy = args.Length == 3 ? RelaxKonOS.ManagedRuntimes.RuntimeDownloadPolicy.Create(args[2], null) : null;
+    await new RelaxKonOS.ManagedRuntimes.RuntimePinnedArchiveTransfer().CopyAsync(pin, output, proxy, timeout.Token);
+    output.Position = 0;
+    var hash = Convert.ToHexStringLower(await System.Security.Cryptography.SHA256.HashDataAsync(output, timeout.Token));
+    if (hash != pin.Sha256) throw new IOException("FRP official archive checksum mismatch.");
+    Console.WriteLine($"FRP official HTTPS/CDN transfer verified: {output.Length} bytes; SHA256 {hash}");
+    return;
+}
 if (args.Contains("--path-safety-only"))
 {
     PathSafetyChecks.Run();
@@ -51,6 +66,7 @@ if (args.Contains("--archives-only"))
 }
 if (args.Contains("--components-only"))
 {
+    TailscaleInstallerPlanningChecks.Run();
     await ComponentLifecycleChecks.RunAsync();
     await ComponentInstallationChecks.RunAsync();
     return;

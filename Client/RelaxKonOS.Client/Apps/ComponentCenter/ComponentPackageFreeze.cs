@@ -154,13 +154,15 @@ public partial class ComponentCenterViewModel
         && freeze.State?.Target.Os == HostPlatform
         && (freeze.Target?.Package is not null
                 && (SelectedPackageManager is null || PackageManagers.Contains(SelectedPackageManager))
-            || freeze.Target?.Pin is not null);
-    public bool ShowPackageInstall => IsSystemPackage || CanInstallPackage;
+            || freeze.Target?.Pin is not null || freeze.Target?.Installer is not null);
+    public bool ShowPackageInstall => IsSystemPackage || IsNativeInstaller || CanInstallPackage;
     public bool CanInstallPackage => CanApplyPackagePlan && SelectedComponentFreeze?.Request?.Change == RuntimeChange.Install;
     public bool CanChangeInstalledPackage => CanResolvePackage && Runtime.CanManage && PackageInstallation is not null
         && !_packageInstallations.Values.Any(task => task.IsActive)
-        && SelectedComponentState?.State is { Mode: ComponentSourceMode.SystemPackage, Ownership: RuntimeOwnership.Managed, RecoveryRequired: false };
+        && SelectedComponentState?.State is { Ownership: RuntimeOwnership.Managed, RecoveryRequired: false } installed
+        && installed.Mode is ComponentSourceMode.SystemPackage or ComponentSourceMode.NativeInstaller;
     /// <summary>This host installs the component from its distribution's own package manager.</summary>
+    public bool IsNativeInstaller => DeclaresSourceOnHost(ComponentSourceKind.NativeInstaller);
     public bool IsSystemPackage => HostPlatform == "linux" && DeclaresSourceOnHost(ComponentSourceKind.SystemPackage);
     /// <summary>This host installs the component by downloading one pinned, verified archive.</summary>
     public bool IsDirectDownload => DeclaresSourceOnHost(ComponentSourceKind.ManagedArchive) && !IsSystemPackage;
@@ -201,21 +203,21 @@ public partial class ComponentCenterViewModel
         NotifyPackage();
     }
     private bool _retargetingPackageManager;
-    public LocalizedStatus PackageMethodTitle => LocalizedStatus.Key(IsSystemPackage ? "component_center.native.package_title" : "component_center.native.download_title");
+    public LocalizedStatus PackageMethodTitle => LocalizedStatus.Key(IsNativeInstaller ? "component_center.native.msi_title" : IsSystemPackage ? "component_center.native.package_title" : "component_center.native.download_title");
     /// <summary>The method is platform-specific, so its explanation must be too.</summary>
-    public LocalizedStatus PackageMethodHint => LocalizedStatus.Key(IsSystemPackage
+    public LocalizedStatus PackageMethodHint => LocalizedStatus.Key(IsNativeInstaller ? "component_center.native.msi_hint" : IsSystemPackage
         ? "component_center.native.hint.package" : "component_center.native.hint.download");
     /// <summary>Names this host's own method once, instead of describing both platforms at once.</summary>
     public LocalizedStatus PlatformMethodText => !HostPlatformKnown
         ? LocalizedStatus.Key("component_center.native.platform_unknown")
-        : IsSystemPackage
+        : IsNativeInstaller ? LocalizedStatus.Literal("Windows Installer (MSI)") : IsSystemPackage
             ? LocalizedStatus.Format("component_center.native.platform_method.package",
                 LocalizedStatus.Literal(SelectedPackageManager ?? LocalizedText.Get("component_center.package.unresolved")))
             : IsDirectDownload
                 ? LocalizedStatus.Key("component_center.native.platform_method.download")
                 : LocalizedStatus.Key("component_center.native.platform_method.none");
     /// <summary>Update and uninstall are only frozen for distribution packages in this build.</summary>
-    public bool ShowPackageChangeActions => IsSystemPackage;
+    public bool ShowPackageChangeActions => IsSystemPackage || IsNativeInstaller;
     /// <summary>A direct download can only be installed here; saying so is part of the answer.</summary>
     public bool ShowInstallOnlyNote => IsDirectDownload;
     [RelayCommand] private async Task UpdatePackageAsync() => await PreparePackageChangeAsync(RuntimeChange.Update);
@@ -259,6 +261,7 @@ public partial class ComponentCenterViewModel
             "samba" => new SmbInstallationRequest(true, execution),
             "docker" => new DockerInstallationRequest(true, execution),
             "git" => new GitInstallationRequest(true, execution),
+            "tailscale" => new TailscaleInstallationRequest(true, execution),
             "frpc" or "frps" => new FrpInstallationRequest(true, FrozenArchive: execution),
             _ => throw new InvalidOperationException("component.unknown")
         };
@@ -266,27 +269,34 @@ public partial class ComponentCenterViewModel
         NotifyPackage();
     }
 
-    public bool CanRefreshPackageSources => SelectedDefinition?.ComponentId is "nginx" or "squid" or "samba" or "docker" or "git"
+    public bool CanRefreshPackageSources => SelectedDefinition?.ComponentId is "nginx" or "squid" or "samba" or "docker" or "git" or "tailscale"
         && SelectedComponentState?.Modes.Any(mode => mode.Platform == "linux" && mode.Mode == ComponentSourceMode.SystemPackage && mode.Available) == true
         && !SelectedComponentState.Problems.Contains(ComponentProblemCodes.PlatformUnsupported) && Runtime.CanManage && !Runtime.IsInvalidated
         && PackageInstallation is not null && !_packageInstallations.Values.Any(task => task.IsActive);
+    public LocalizedStatus PackageSourceActionText => LocalizedStatus.Key(SelectedDefinition?.ComponentId == "tailscale"
+        && SelectedComponentState?.Problems.Contains(ComponentProblemCodes.HostPolicyRequired) == true
+        ? "component_center.package.recovery.ConfigureOfficialSource" : "component_center.package.recovery.RefreshSources");
     [RelayCommand] private async Task RefreshPackageSourcesAsync()
     {
+        var sourceAction = SelectedDefinition?.ComponentId == "tailscale"
+            && SelectedComponentState?.Problems.Contains(ComponentProblemCodes.HostPolicyRequired) == true
+            ? ComponentRecoveryAction.ConfigureOfficialSource : ComponentRecoveryAction.RefreshSources;
         if (!CanRefreshPackageSources || SelectedDefinition is not { } component || ConfirmPackageRecoveryAsync is null
-            || !await ConfirmPackageRecoveryAsync(component.ComponentId, Guid.Empty, ComponentRecoveryAction.RefreshSources)) return;
+            || !await ConfirmPackageRecoveryAsync(component.ComponentId, Guid.Empty, sourceAction)) return;
         if (!CanRefreshPackageSources || SelectedDefinition.ComponentId != component.ComponentId) return;
-        var maintenance = new ComponentRecoveryRequest(component.ComponentId, Guid.Empty, ComponentRecoveryAction.RefreshSources);
+        var maintenance = new ComponentRecoveryRequest(component.ComponentId, Guid.Empty, sourceAction);
         object request = component.ComponentId switch {
             "nginx" => new NginxInstallationRequest(true, Recovery: maintenance),
             "squid" => new SquidInstallationRequest(true, Recovery: maintenance),
             "samba" => new SmbInstallationRequest(true, Recovery: maintenance),
             "docker" => new DockerInstallationRequest(true, Recovery: maintenance),
             "git" => new GitInstallationRequest(true, null, maintenance),
+            "tailscale" => new TailscaleInstallationRequest(true, Recovery: maintenance),
             _ => throw new InvalidOperationException("component.unknown") };
         await PackageInstallation!.SubmitAsync(InstallationOperationKind.Repair, request);
     }
 
-    public bool CanRecoverPackage => SelectedDefinition?.ComponentId is "nginx" or "squid" or "samba" or "docker" or "git"
+    public bool CanRecoverPackage => SelectedDefinition?.ComponentId is "nginx" or "squid" or "samba" or "docker" or "git" or "tailscale"
         && Runtime.CanManage && !Runtime.IsInvalidated && PackageInstallation is not null
         && !_packageInstallations.Values.Any(task => task.IsActive)
         && SelectedComponentState is { State.RecoveryRequired: true, PendingOperationId: not null };
@@ -307,6 +317,7 @@ public partial class ComponentCenterViewModel
             "samba" => new SmbInstallationRequest(true, Recovery: recovery),
             "docker" => new DockerInstallationRequest(true, Recovery: recovery),
             "git" => new GitInstallationRequest(true, null, recovery),
+            "tailscale" => new TailscaleInstallationRequest(true, Recovery: recovery),
             _ => throw new InvalidOperationException("component.unknown") };
         await PackageInstallation!.SubmitAsync(InstallationOperationKind.Repair, request);
     }
@@ -326,21 +337,21 @@ public partial class ComponentCenterViewModel
     /// worker, rather than treating a distribution package as a managed archive release.
     /// </summary>
     public bool ShowPackageFreeze => !ShowOfficialDownloads && _lifecycle is not null && HostPlatformKnown
-        && (DeclaresSourceOnHost(ComponentSourceKind.SystemPackage) || DeclaresSourceOnHost(ComponentSourceKind.ManagedArchive))
+        && (DeclaresSourceOnHost(ComponentSourceKind.SystemPackage) || DeclaresSourceOnHost(ComponentSourceKind.ManagedArchive) || IsNativeInstaller)
         && (SelectedDefinition?.ComponentId != "git" || IsSystemPackage)
-        && SelectedDefinition?.ComponentId is "nginx" or "squid" or "samba" or "docker" or "git" or "frpc" or "frps";
+        && SelectedDefinition?.ComponentId is "nginx" or "squid" or "samba" or "docker" or "git" or "tailscale" or "frpc" or "frps";
     public bool CanResolvePackage => ShowPackageFreeze && Runtime.CanRead && !IsResolvingPackage && PackageInstallation?.IsActive != true && !Runtime.IsInvalidated;
     public bool HasPackageFreeze => SelectedComponentFreeze is not null;
     public LocalizedStatus PackageInstalledText => LocalizedStatus.Format("component_center.package.installed",
         LocalizedStatus.Literal(SelectedComponentState?.State?.ActiveVersion ?? "—"));
     public LocalizedStatus PackageCandidateText => LocalizedStatus.Format("component_center.package.candidate",
-        LocalizedStatus.Literal(SelectedComponentFreeze?.Target?.Package?.Version ?? SelectedComponentFreeze?.Target?.Pin?.Version
+        LocalizedStatus.Literal(SelectedComponentFreeze?.Target?.Package?.Version ?? SelectedComponentFreeze?.Target?.Installer?.Version ?? SelectedComponentFreeze?.Target?.Pin?.Version
             ?? PinnedArchiveCandidates.FirstOrDefault(pin => pin.ReleaseId == SelectedPinnedArchive?.ReleaseId)?.Version ?? "—"));
     public LocalizedStatus PackageRepositoryText => LocalizedStatus.Format("component_center.package.repository",
         LocalizedStatus.Literal(SelectedComponentFreeze?.Target?.Package is { } package
-            ? package.BaseUri + " " + package.Suite + "/" + package.Area + " " + package.Architecture : "—"));
+            ? package.BaseUri + " " + package.Suite + "/" + package.Area + " " + package.Architecture : SelectedComponentFreeze?.Target?.Installer?.DownloadUrl ?? "—"));
     public LocalizedStatus PackageDigestText => LocalizedStatus.Format("component_center.package.digest",
-        LocalizedStatus.Literal(SelectedComponentFreeze?.Target?.Package?.Sha256 ?? SelectedComponentFreeze?.Target?.Pin?.Sha256 ?? "—"));
+        LocalizedStatus.Literal(SelectedComponentFreeze?.Target?.Package?.Sha256 ?? SelectedComponentFreeze?.Target?.Installer?.Sha256 ?? SelectedComponentFreeze?.Target?.Pin?.Sha256 ?? "—"));
     public LocalizedStatus PackageAlsoInstallsText => LocalizedStatus.Format("component_center.package.also",
         LocalizedStatus.Literal(SelectedComponentFreeze?.Target?.Package is { AlsoInstalls.Count: > 0 } package
             ? string.Join(", ", package.AlsoInstalls.Select(item => item.FileName)) : "—"));
@@ -435,7 +446,7 @@ public partial class ComponentCenterViewModel
 
     private void NotifyPackage()
     {
-        foreach (var property in new[] { nameof(ShowPackageInstall), nameof(CanApplyPackagePlan), nameof(CanChangeInstalledPackage), nameof(IsSystemPackage), nameof(IsDirectDownload), nameof(PackageManagers), nameof(HasPackageManagerChoice), nameof(SelectedPackageManagerText), nameof(PackageMethodTitle), nameof(PackageMethodHint), nameof(PlatformMethodText), nameof(ShowPackageChangeActions), nameof(ShowInstallOnlyNote), nameof(CanRefreshPackageSources), nameof(CanRecoverPackage), nameof(PackageRecoveryText), nameof(PinnedArchiveCandidates), nameof(HasPinnedArchiveCandidates), nameof(PackageInstallation), nameof(CanInstallPackage), nameof(ShowPackageFreeze), nameof(CanResolvePackage), nameof(HasPackageFreeze),
+        foreach (var property in new[] { nameof(PackageSourceActionText), nameof(ShowPackageInstall), nameof(CanApplyPackagePlan), nameof(CanChangeInstalledPackage), nameof(IsSystemPackage), nameof(IsNativeInstaller), nameof(IsDirectDownload), nameof(PackageManagers), nameof(HasPackageManagerChoice), nameof(SelectedPackageManagerText), nameof(PackageMethodTitle), nameof(PackageMethodHint), nameof(PlatformMethodText), nameof(ShowPackageChangeActions), nameof(ShowInstallOnlyNote), nameof(CanRefreshPackageSources), nameof(CanRecoverPackage), nameof(PackageRecoveryText), nameof(PinnedArchiveCandidates), nameof(HasPinnedArchiveCandidates), nameof(PackageInstallation), nameof(CanInstallPackage), nameof(ShowPackageFreeze), nameof(CanResolvePackage), nameof(HasPackageFreeze),
             nameof(PackageInstalledText), nameof(PackageCandidateText), nameof(PackageRepositoryText),
             nameof(PackageDigestText), nameof(PackageAlsoInstallsText), nameof(PackageVerdictText) })
             OnPropertyChanged(property);

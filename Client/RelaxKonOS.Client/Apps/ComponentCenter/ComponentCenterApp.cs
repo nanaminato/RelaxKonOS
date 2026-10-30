@@ -173,6 +173,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
         {
             foreach (var (componentId, serviceId) in new[] {
                 ("git", RelaxKonOS.Protocol.Installations.InstallationServiceId.Git),
+                ("tailscale", RelaxKonOS.Protocol.Installations.InstallationServiceId.Tailscale),
                 ("nginx", RelaxKonOS.Protocol.Installations.InstallationServiceId.Nginx),
                 ("mihomo", RelaxKonOS.Protocol.Installations.InstallationServiceId.Mihomo),
                 ("squid", RelaxKonOS.Protocol.Installations.InstallationServiceId.Squid),
@@ -194,17 +195,20 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             {
                 var package = freeze.Target!.Package;
                 var pin = freeze.Target.Pin;
+                var installer = freeze.Target.Installer;
                 var dependencies = package is not null ? string.Join("\n", package.AlsoInstalls.Select(item =>
-                    $"{item.FileName} · {item.Bytes} B · SHA-256 {item.Sha256}")) : string.Join(", ", pin!.AffectedComponents);
+                    $"{item.FileName} · {item.Bytes} B · SHA-256 {item.Sha256}")) : installer is not null ? "Windows Installer (MSI) · Tailscale Inc."
+                        : string.Join(", ", pin!.AffectedComponents);
                 return ConfirmAsync(LocalizedText.Get("component_center.native.action." + freeze.Request!.Change),
                     LocalizedStatus.Format("component_center.native.confirm", LocalizedText.Get("component_center.native.action." + freeze.Request!.Change), freeze.State!.HostId,
-                        package?.Version ?? pin!.Version, package?.RepositoryId ?? pin!.SourceUri,
-                        package?.Sha256 ?? pin!.Sha256, dependencies, freeze.Request!.ComponentId).Resolve());
+                        package?.Version ?? installer?.Version ?? pin!.Version, package?.RepositoryId ?? installer?.DownloadUrl ?? pin!.SourceUri,
+                        package?.Sha256 ?? installer?.Sha256 ?? pin!.Sha256, dependencies, freeze.Request!.ComponentId).Resolve());
             };
         }
         model.ConfirmPackageRecoveryAsync = (component, operation, action) => ConfirmAsync(
             LocalizedText.Get("component_center.package.recovery." + action),
-            LocalizedStatus.Format(action == RelaxKonOS.Protocol.ManagedRuntimes.ComponentRecoveryAction.RefreshSources
+            LocalizedStatus.Format(action == RelaxKonOS.Protocol.ManagedRuntimes.ComponentRecoveryAction.ConfigureOfficialSource
+                ? "component_center.package.tailscale_source_confirm" : action == RelaxKonOS.Protocol.ManagedRuntimes.ComponentRecoveryAction.RefreshSources
                 ? "component_center.package.refresh_confirm" : "component_center.package.recovery_confirm", component, operation,
                 LocalizedText.Get("component_center.package.recovery." + action)).Resolve());
         model.ConfirmTaskAsync = async plan => await ShowOwnedAsync<bool>(LocalizedText.Get("component_center.task_confirm_title"),

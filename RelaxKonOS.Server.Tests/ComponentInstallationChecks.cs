@@ -1,6 +1,7 @@
 ﻿using System.Reflection;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Configuration;
 using RelaxKonOS.ManagedRuntimes.ComponentPackages;
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.ManagedRuntimes;
@@ -74,6 +75,17 @@ internal static class ComponentInstallationChecks
         var platform = OperatingSystem.IsWindows() ? "win-" : "linux-";
         var arch = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture == System.Runtime.InteropServices.Architecture.Arm64 ? "arm64" : "x64";
         var release = options.Value.Releases.Single(pin => pin.Rid == platform + arch);
+        var configured = new FrpRuntimeOptions();
+        configured.BindConfiguration(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Releases:0:Version"] = release.Version,
+            ["Releases:0:Rid"] = release.Rid,
+            ["Releases:0:Url"] = release.Url,
+            ["Releases:0:Sha256"] = release.Sha256,
+            ["Releases:0:ArchiveFormat"] = release.ArchiveFormat
+        }).Build());
+        Check(configured.Releases.Count == 1 && configured.Releases.Single().Rid == release.Rid,
+            "Configured FRP releases replace defaults without duplicate or unconfigured targets");
         IReadOnlyList<ComponentPinnedArchive> pins = [PinnedArchives.Frp(new(release.Version, release.Rid, release.Url, release.Sha256, release.ArchiveFormat))];
         var helper = new Transport(request => {
             Check(request.Operation == PrivilegedOperationKind.FrpArchiveCatalog, "FRP planning consults the independent Helper pin directory");
@@ -123,8 +135,20 @@ internal static class ComponentInstallationChecks
     }
     private static async Task VerifyPinnedTransportAsync()
     {
+        var frp = PinnedArchives.Frp(PinnedArchives.LinuxFrp(false));
+        var frpScope = new RelaxKonOS.ManagedRuntimes.RuntimePinnedArchiveTransfer.Scope(frp);
+        frpScope.Validate();
+        foreach (var host in new[] { "release-assets.githubusercontent.com", "objects.githubusercontent.com" })
+            Check(frpScope.AllowsQuery(new Uri("https://" + host + "/asset?signature=opaque")),
+                "FRP permits signed queries on its approved GitHub artifact CDN");
+        foreach (var url in new[] { "https://github.com/asset?token=opaque", "https://release-assets.githubusercontent.com.evil.example/asset?token=x",
+            "http://release-assets.githubusercontent.com/asset?token=x", "https://release-assets.githubusercontent.com:444/asset?token=x",
+            "https://user@release-assets.githubusercontent.com/asset?token=x", "https://release-assets.githubusercontent.com/asset?token=x#fragment" })
+            Check(!frpScope.AllowsQuery(new Uri(url)), "FRP query scope refuses unapproved origin, credentials or fragment");
         var pin = new ComponentPinnedArchive("release", "1.28.0", "win-x64", "https://nginx.org/download/nginx-1.28.0.zip",
             new('a', 64), "zip", 1024, ["nginx"]);
+        Check(!new RelaxKonOS.ManagedRuntimes.RuntimePinnedArchiveTransfer.Scope(pin).AllowsQuery(
+            new Uri("https://release-assets.githubusercontent.com/asset?signature=x")), "Nginx does not inherit GitHub artifact query permissions");
         foreach (var invalid in new[] {
             pin with { SourceUri = "https://unapproved.example/nginx.zip" },
             pin with { SourceUri = "http://nginx.org/download/nginx-1.28.0.zip" },

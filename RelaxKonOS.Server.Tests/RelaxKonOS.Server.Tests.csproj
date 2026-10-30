@@ -32,6 +32,7 @@
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsPrivilegedPipeSecurity.cs" Link="WindowsPrivilegedPipeSecurity.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/LinuxPrivilegedHelperConfiguration.cs" Link="LinuxPrivilegedHelperConfiguration.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/LinuxUnixSocketPrivilegedServer.cs" Link="LinuxUnixSocketPrivilegedServer.cs" />
+    <Compile Include="../RelaxKonOS.PrivilegedHelper/PrivilegedOperationReplayPolicy.cs" Link="PrivilegedOperationReplayPolicy.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsFeatureInstallationState.cs" Link="WindowsFeatureInstallationState.cs" />
     <Compile Include="../Client/RelaxKonOS.Client/Apps/ProcessGuardian/GuardianDefinitionEditor.cs" Link="GuardianDefinitionEditor.cs" />
     <Compile Include="../Client/RelaxKonOS.Client/Apps/Git/GitConflictBlock.cs" Link="GitConflictBlock.cs" />

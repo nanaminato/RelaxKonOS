@@ -101,6 +101,7 @@ object ComponentWire {
     private fun componentMode(raw: String): String = when (raw.lowercase()) {
         "systempackage" -> "systemPackage"
         "managedarchive" -> "managedArchive"
+        "nativeinstaller" -> "nativeInstaller"
         else -> throw IllegalArgumentException("Unknown component mode")
     }
 
@@ -190,7 +191,12 @@ object ComponentWire {
         .string("hostId", state.hostId)
         .string("change", change.wire)
         .raw("expectedRevision", state.revision.toString())
-        .string("mode", if (state.mode == "systemPackage") "SystemPackage" else "ManagedArchive")
+        .string("mode", when (state.mode) {
+            "systemPackage" -> "SystemPackage"
+            "managedArchive" -> "ManagedArchive"
+            "nativeInstaller" -> "NativeInstaller"
+            else -> throw IllegalArgumentException("Unknown component mode")
+        })
         .string("sourceId", pin?.let { "host-pins" })
         .raw("expectedSourceRevision", (if (pin != null) pinRevision else 0).toString())
         .raw("expectedTrustRevision", "0")
@@ -211,6 +217,17 @@ object ComponentWire {
         if (request != null) {
             require(request.getString("componentId") == expectedComponentId) { "Planned component changed" }
             require(request.getString("change").equals(expectedChange.wire, ignoreCase = true)) { "Planned change changed" }
+            if (componentMode(request.getString("mode")) == "nativeInstaller" && target != null) {
+                require(expectedComponentId == "tailscale" && componentMode(target.getString("mode")) == "nativeInstaller")
+                require(target.optJSONObject("archive") == null && target.optJSONObject("package") == null && target.optJSONObject("pin") == null)
+                val installer = target.getJSONObject("installer")
+                val version = installer.getString("version")
+                val arch = when (installer.getString("rid")) { "win-x64" -> "amd64"; "win-arm64" -> "arm64"; else -> error("Unsupported MSI architecture") }
+                require(version.matches(Regex("[0-9]+\\.[0-9]+\\.[0-9]+")) && installer.getString("format") == "msi")
+                val file = "tailscale-setup-$version-$arch.msi"
+                require(installer.getString("fileName") == file && installer.getString("downloadUrl") == "https://pkgs.tailscale.com/stable/$file")
+                require(installer.getString("sha256").matches(Regex("[a-fA-F0-9]{64}")))
+            }
         }
         val problemArray = value.optJSONArray("problems") ?: JSONArray()
         val problems = (0 until problemArray.length()).map { problemArray.getString(it) }
@@ -237,5 +254,11 @@ data class ComponentPlanResult(
     val targetJson: String?,
 ) {
     val allowed: Boolean get() = problems.isEmpty() && requestJson != null && targetJson != null
+    private val artifact: JSONObject? get() = targetJson?.let(::JSONObject)?.let {
+        it.optJSONObject("installer") ?: it.optJSONObject("package") ?: it.optJSONObject("pin")
+    }
+    val version: String? get() = artifact?.optNullableString("version")
+    val source: String? get() = artifact?.let { it.optNullableString("downloadUrl") ?: it.optNullableString("sourceUri") ?: it.optNullableString("baseUri") }
+    val sha256: String? get() = artifact?.optNullableString("sha256")
 }
 

@@ -393,6 +393,12 @@
     "component_center.download.choose_file": "Choose file…",
     "component_center.download.no_file": "No file selected",
     "component_center.download.file_hint": "Choose a package matching the server OS and architecture, and enter the file’s actual version.",
-    "component_center.download.file_failed": "Could not select or upload the file. Try again."
+    "component_center.download.file_failed": "Could not select or upload the file. Try again.",
+    "component_center.component.tailscale.description": "Install, update and remove Tailscale using official system installers while retaining data.",
+    "component_center.package.recovery.ConfigureOfficialSource": "Configure official Tailscale source",
+    "component_center.package.tailscale_source_confirm": "Enable the Tailscale Inc. stable signed repository at https://pkgs.tailscale.com/stable/ for this host distribution. Signing key fingerprint: 2596 A99E AAB3 3821 893C 0A79 458C A832 957F 5868. Conflicting existing trust is refused. This step configures the source and refreshes indexes without installing software. Continue?",
+    "component_center.native.msi_title": "Windows system installer",
+    "component_center.native.msi_hint": "Install and update using official signed Tailscale MSI packages. Removal retains login and configuration data. Service restarts may interrupt remote connections.",
+    "component_center.source_kind.NativeInstaller": "Official system installer"
   }
 }

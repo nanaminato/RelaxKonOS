@@ -108,6 +108,7 @@ internal static class HostServiceRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter, RelaxKonOS.Server.Components.SingBoxComponentAdapter>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter, RelaxKonOS.Server.Components.NginxComponentAdapter>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter, RelaxKonOS.Server.Components.MihomoComponentAdapter>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter, RelaxKonOS.Server.Components.TailscaleComponentAdapter>();
         foreach (var componentId in new[] { "squid", "samba", "docker", "git" })
             builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter>(services =>
                 new RelaxKonOS.Server.Components.HostPackageComponentAdapter(componentId,
@@ -129,7 +130,10 @@ internal static class HostServiceRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.Tunnels.IManagedFrpsService, RelaxKonOS.Server.Tunnels.ManagedFrpsService>();
         builder.Services.AddHostedService(sp => (RelaxKonOS.Server.Tunnels.FrpTunnelProvider)sp.GetRequiredService<RelaxKonOS.Server.Tunnels.ITunnelProvider>());
         builder.Services.AddSingleton<RelaxKonOS.ManagedRuntimes.IPinnedArchiveTransfer, RelaxKonOS.ManagedRuntimes.RuntimePinnedArchiveTransfer>();
-        builder.Services.Configure<RelaxKonOS.Server.Runtimes.FrpRuntimeOptions>(builder.Configuration.GetSection("FrpRuntime"));
+        builder.Services.Configure<RelaxKonOS.Server.Runtimes.FrpRuntimeOptions>(options =>
+        {
+            options.BindConfiguration(builder.Configuration.GetSection("FrpRuntime"));
+        });
 
         // Certificate storage and the Kestrel boot path are host identity, not a management surface:
         // the TLS listener must start even when the certificate manager module is disabled. Only the

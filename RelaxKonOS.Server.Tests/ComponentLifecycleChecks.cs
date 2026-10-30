@@ -187,6 +187,8 @@ internal static class ComponentLifecycleChecks
             && ComponentRoutes.State("sing-box") == ComponentRoutes.Root + "/sing-box/state",
             "Component route builders must stay in step with the mapped patterns.");
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
+        builder.Services.AddSingleton<RelaxKonOS.Server.ManagedRuntimes.IRuntimeDownloadProxyProvider,
+            TestRuntimeDownloadProxyProvider>();
         builder.Services.AddSingleton<ComponentLifecycleRegistry>(new ComponentLifecycleRegistry(
             [new ProbeAdapter(ComponentIds.SingBox), new ProbeAdapter(ComponentIds.Nginx), new ProbeAdapter(ComponentIds.Mihomo)]));
         using var app = builder.Build();
@@ -326,12 +328,24 @@ internal static class ComponentLifecycleChecks
             .Problems.SequenceEqual([ComponentProblemCodes.PackageAlreadyInstalled]),
             "An install over a managed package is refused instead of reinstalling it under a new name.");
         Check(NginxPackagePlan.Evaluate(Request(RuntimeChange.Uninstall, absent.Revision), absent, new("nginx", null, candidate), true)
-            .Problems.SequenceEqual([ComponentProblemCodes.PackageAbsent, ComponentProblemCodes.ExecutionUnavailable]),
-            "Removing a package that is not installed must say so, and removal has no transaction here.");
-        foreach (var change in new[] { RuntimeChange.Update, RuntimeChange.Repair, RuntimeChange.Rollback })
+            .Problems.SequenceEqual([ComponentProblemCodes.PackageAbsent, ComponentProblemCodes.PackageOwnershipRequired,
+                ComponentProblemCodes.PackageUnresolved]),
+            "Removal requires an installed, owned package with its original frozen target.");
+        Check(NginxPackagePlan.Evaluate(Request(RuntimeChange.Update, installed.Revision), installed,
+                new("nginx", "1.26.3-3+deb13u1", candidate, CandidateVersion: candidate.Version), true)
+            .Problems.SequenceEqual([ComponentProblemCodes.PackageNoUpdate]),
+            "An unchanged candidate cannot be presented as an update.");
+        var newer = candidate with { Version = "1.26.4-1" };
+        Check(NginxPackagePlan.Evaluate(Request(RuntimeChange.Update, installed.Revision), installed,
+                new("nginx", candidate.Version, newer, Managed: true, CandidateVersion: newer.Version, UpdateAvailable: true), true).Allowed,
+            "An owned package with a newer resolved candidate can freeze an update.");
+        Check(NginxPackagePlan.Evaluate(Request(RuntimeChange.Uninstall, installed.Revision), installed,
+                new("nginx", candidate.Version, candidate, Managed: true, InstalledTarget: candidate), true).Allowed,
+            "An owned installed package with its original target can freeze removal.");
+        foreach (var change in new[] { RuntimeChange.Repair, RuntimeChange.Rollback })
             Check(NginxPackagePlan.Evaluate(Request(change, installed.Revision), installed,
                     new("nginx", "1.26.3-3+deb13u1", candidate), true).Problems.Contains(ComponentProblemCodes.ExecutionUnavailable),
-                change + " freezes but stays refused: only a first install has a transaction");
+                change + " stays refused because package repair and rollback are unavailable");
         var unresolved = NginxPackagePlan.Evaluate(Request(RuntimeChange.Install, absent.Revision), absent, new("nginx", null, null), true);
         Check(unresolved.Target is null && unresolved.Problems.SequenceEqual([ComponentProblemCodes.PackageUnresolved]),
             "With no candidate there is nothing to freeze, and the refusal must name that.");
@@ -358,9 +372,8 @@ internal static class ComponentLifecycleChecks
         Check(NginxPackagePlan.PrecheckExecute(Execute(Request(RuntimeChange.Install), Frozen(candidate)), false) is
             { Problems: [ComponentProblemCodes.PlatformUnsupported] },
             "Execute refuses on a host whose platform has no package mode");
-        Check(NginxPackagePlan.PrecheckExecute(Execute(Request(RuntimeChange.Uninstall), Frozen(candidate)), true) is
-            { Problems: [ComponentProblemCodes.ExecutionUnavailable] },
-            "Execute never pretends a removal has a transaction");
+        Check(NginxPackagePlan.PrecheckExecute(Execute(Request(RuntimeChange.Uninstall), Frozen(candidate)), true) is null,
+            "Removal reaches the host guards that verify ownership and the installed target");
         Check(NginxPackagePlan.PrecheckExecute(Execute(Request(RuntimeChange.Install) with
             { Mode = ComponentSourceMode.ManagedArchive }, Frozen(candidate)), true) is
             { Problems: [ComponentProblemCodes.SourceModeUnsupported] },

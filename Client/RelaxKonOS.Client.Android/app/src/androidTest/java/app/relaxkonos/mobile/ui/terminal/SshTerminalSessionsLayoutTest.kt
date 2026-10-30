@@ -94,6 +94,7 @@ class SshTerminalSessionsLayoutTest {
             rule.onNodeWithText("first draft").assertIsDisplayed()
             rule.onNodeWithTag("ssh-terminal-output").assertIsDisplayed()
             rule.runOnIdle { assertEquals(1, shells.size) }
+            rule.onNodeWithContentDescription(context.getString(R.string.terminal_session_actions)).performClick()
             rule.onNodeWithText(context.getString(R.string.terminal_new)).performClick()
             rule.onNode(hasSetTextAction()).performTextInput("second command")
             rule.onNode(hasSetTextAction()).performImeAction()
@@ -102,6 +103,7 @@ class SshTerminalSessionsLayoutTest {
                 assertTrue(shells.first().writes.isEmpty())
                 assertEquals(listOf("second command\r"), shells.last().writes)
             }
+            rule.onNodeWithContentDescription(context.getString(R.string.terminal_session_actions)).performClick()
             rule.onNodeWithText(context.getString(R.string.terminal_session_name, 1), substring = true).performClick()
             rule.onNodeWithText("first draft").assertIsDisplayed()
             rule.onNodeWithContentDescription(context.getString(R.string.terminal_session_actions)).performClick()

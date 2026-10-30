@@ -83,6 +83,7 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
             else if (options is SquidInstallationRequest { FrozenPackage: { } squid }) pendingKey = squid.Request.IdempotencyKey;
             else if (options is SmbInstallationRequest { FrozenPackage: { } samba }) pendingKey = samba.Request.IdempotencyKey;
             else if (options is DockerInstallationRequest { FrozenPackage: { } docker }) pendingKey = docker.Request.IdempotencyKey;
+            else if (options is TailscaleInstallationRequest { FrozenPackage: { } tailscale }) pendingKey = tailscale.Request.IdempotencyKey;
             else pendingKey ??= Guid.NewGuid().ToString("N");
             InstallationOperationDto? submitted;
             try { submitted = await client.StartAsync(service, kind, options, pendingKey, lifetime.Token); }

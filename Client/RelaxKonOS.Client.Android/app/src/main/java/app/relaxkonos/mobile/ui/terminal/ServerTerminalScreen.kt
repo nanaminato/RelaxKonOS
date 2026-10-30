@@ -277,7 +277,7 @@ internal fun ServerTerminalContent(
                 }
             }
         }
-    }, header = { compact, wide ->
+    }, header = { _, compact, wide ->
         // Keep long server addresses to one line so they cannot consume the terminal viewport.
         if (compact) {
             val selectedSession = state.sessions.firstOrNull { it.sessionId == state.sessionId }
@@ -365,7 +365,8 @@ internal fun ServerTerminalContent(
                 XtermTerminal(
                 sessionId = state.sessionId.orEmpty(), output = state.rawOutput,
                 fontSize = fontSize.toFloat() * fontScale, connected = state.canInput,
-                onSend = { onSend(it) }, onResize = onResize, modifier = Modifier.fillMaxSize(),
+                onSend = { onSend(it) }, onResize = onResize,
+                onZoom = { step -> fontChange(step) }, modifier = Modifier.fillMaxSize(),
             )
             } else {
             BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -404,7 +405,7 @@ internal fun ServerTerminalContent(
             if (state.connecting || state.busy && state.sessionId == null) TerminalLoading(connecting = state.connecting)
         }
         }
-    }, keys = {
+    }, keys = { _ ->
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             OutlinedButton(onClick = { presentation.ctrlNext = !presentation.ctrlNext }, enabled = state.canInput) {
                 Text(if (presentation.ctrlNext) "Ctrl ✓" else "Ctrl")

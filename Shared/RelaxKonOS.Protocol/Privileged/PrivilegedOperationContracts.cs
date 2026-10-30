@@ -22,6 +22,9 @@ public static class PrivilegedOperationProtocol
 [JsonConverter(typeof(JsonStringEnumConverter<PrivilegedOperationKind>))]
 public enum PrivilegedOperationKind
 {
+    TailscaleInstallerQuery,
+    TailscaleInstallerExecute,
+    TailscaleInstallerRecover,
     RuntimeSources,
     RuntimeCatalogGet,
     RuntimeCatalogRefresh,
@@ -380,6 +383,7 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("tailscaleLoginIdentity")] RelaxKonOS.Protocol.Tailscale.TailscaleLoginIntent? TailscaleLoginIdentity = null,
     /// <summary>Confirmed login closure request. Only the close verb reads it.</summary>
     [property: JsonPropertyName("tailscaleLoginClose")] RelaxKonOS.Protocol.Tailscale.TailscaleLoginCloseRequest? TailscaleLoginClose = null,
+    [property: JsonPropertyName("tailscaleInstaller")] RelaxKonOS.Protocol.ManagedRuntimes.ComponentExecuteRequest? TailscaleInstaller = null,
     [property: JsonPropertyName("networkChange")] HostNetworkChange? NetworkChange = null,
     [property: JsonPropertyName("networkCheckpoint")] string? NetworkCheckpoint = null,
     [property: JsonPropertyName("processId")] int? ProcessId = null,
@@ -410,6 +414,7 @@ public sealed record PrivilegedOperationResult(
     [property: JsonPropertyName("hostEnvironment")] PrivilegedEnvironmentState? HostEnvironment = null,
     [property: JsonPropertyName("systemProxyCapabilities")] ProxySystemProxyCapabilities? SystemProxyCapabilities = null,
     [property: JsonPropertyName("hostTime")] HostTimeState? HostTime = null,
+    [property: JsonPropertyName("tailscaleInstallerSnapshot")] RelaxKonOS.Protocol.Tailscale.TailscaleInstallerSnapshot? TailscaleInstallerSnapshot = null,
     [property: JsonPropertyName("tailscaleRecovery")] RelaxKonOS.Protocol.Tailscale.TailscaleRecoverySnapshot? TailscaleRecovery = null,
     [property: JsonPropertyName("tailscaleClosure")] RelaxKonOS.Protocol.Tailscale.TailscaleRecoveryClosure? TailscaleClosure = null,
     [property: JsonPropertyName("tailscaleControl")] RelaxKonOS.Protocol.Tailscale.TailscaleControlSnapshot? TailscaleControl = null,

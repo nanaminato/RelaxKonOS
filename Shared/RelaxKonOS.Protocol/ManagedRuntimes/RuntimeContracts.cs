@@ -9,7 +9,7 @@ public enum RuntimeTrust { Unconfirmed, Confirmed, Revoked, Conflict }
 [JsonConverter(typeof(JsonStringEnumConverter<RuntimeChannel>))]
 public enum RuntimeChannel { Stable, Prerelease }
 [JsonConverter(typeof(JsonStringEnumConverter<RuntimeInstallMode>))]
-public enum RuntimeInstallMode { Archive, SystemPackage }
+public enum RuntimeInstallMode { Archive, SystemPackage, NativeInstaller }
 [JsonConverter(typeof(JsonStringEnumConverter<RuntimeEvidence>))]
 public enum RuntimeEvidence { Unverified, NativeConfiguration, Interoperability }
 [JsonConverter(typeof(JsonStringEnumConverter<RuntimeChange>))]

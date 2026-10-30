@@ -30,7 +30,12 @@ class InstallationRepository(
         require(owner.privilegedOperations && request.service.capability in owner.capabilities)
         val digest = MessageDigest.getInstance("SHA-256").digest(InstallationWire.request(request, kind).toByteArray())
             .joinToString("") { "%02x".format(it) }
-        return InstallationSubmission(owner, kind, request, journal.begin(owner, request.service, kind, digest, (request as? ManagedRuntimeInstallationRequest)?.key.orEmpty()))
+        val frozenKey = when (request) {
+            is ManagedRuntimeInstallationRequest -> request.key
+            is ComponentFrozenInstallationRequest -> org.json.JSONObject(request.planRequestJson).getString("idempotencyKey")
+            else -> ""
+        }
+        return InstallationSubmission(owner, kind, request, journal.begin(owner, request.service, kind, digest, frozenKey))
     }
 
     fun pending(owner: SessionState.Active): List<PendingInstallationRequest> { verify(owner); return journal.pending(owner) }

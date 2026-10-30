@@ -78,6 +78,7 @@ await DomainComponentObservationChecks.RunAsync();
 if (args.Contains("--component-observers-only")) return;
 await PackageTransactionClientChecks.RunAsync(session, settings);
 await PackageTransactionClientChecks.RunAllComponentsAsync(session, settings);
+await TailscaleLifecycleClientChecks.RunAsync(session, settings);
 if (args.Contains("--package-transactions-only")) return;
 ComponentSelectionChecks.Run();
 ComponentDraftPersistenceChecks.Run();
