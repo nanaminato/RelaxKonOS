@@ -199,9 +199,9 @@ class ServerMaintenanceRecoveryFlowTest {
         rule.onNodeWithText(text(R.string.server_maintenance_repair)).performScrollTo().performClick()
         rule.onNode(hasText(text(R.string.server_maintenance_repair)) and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
         rule.onNodeWithText(text(R.string.server_maintenance_result_unknown)).assertIsDisplayed(); acknowledge()
-        rule.onNodeWithText(text(R.string.server_maintenance_check)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.server_maintenance_check_short)).performClick()
         rule.onNodeWithText(text(R.string.server_maintenance_repair)).performScrollTo().assertIsNotEnabled()
-        rule.onNodeWithText(text(R.string.installation_kind_upgrade)).performScrollTo().assertIsNotEnabled()
+        rule.onNodeWithText(text(R.string.server_maintenance_upgrade_title)).performScrollTo().assertIsNotEnabled()
         rule.runOnIdle { failRecovery = true }
         rule.onNodeWithText(text(R.string.server_maintenance_reconcile)).performScrollTo().performClick()
         rule.onNodeWithText(text(R.string.server_maintenance_read_failed)).assertIsDisplayed(); acknowledge()
@@ -211,7 +211,7 @@ class ServerMaintenanceRecoveryFlowTest {
         rule.onNodeWithText(text(R.string.server_maintenance_reconcile)).performScrollTo().performClick()
         rule.waitUntil(5_000) { model.state.value.pending == null && !model.state.value.busy }
         rule.onNodeWithText(text(R.string.server_maintenance_reconciled)).performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText(text(R.string.server_maintenance_check)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.server_maintenance_check_short)).performClick()
         rule.onNodeWithText(text(R.string.server_maintenance_repair)).performScrollTo().assertIsEnabled()
         rule.runOnIdle { assertEquals(1, calls.count { it == ServerDeploymentKind.Repair }) }
     }
@@ -255,7 +255,7 @@ class ServerMaintenanceRecoveryFlowTest {
         rule.onNodeWithText(text(R.string.server_maintenance_read_failed)).assertIsDisplayed()
         acknowledge()
         rule.runOnIdle { failRead = false }
-        rule.onNodeWithText(text(R.string.server_maintenance_check)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.server_maintenance_check_short)).performClick()
         rule.waitUntil(5_000) { model.state.value.snapshot != null && !model.state.value.busy }
         rule.runOnIdle { assertTrue(calls.all { it == ServerDeploymentKind.Status }); assertNull(model.state.value.error) }
         rule.onNodeWithText("private read detail").assertDoesNotExist()
@@ -273,7 +273,7 @@ class ServerMaintenanceRecoveryFlowTest {
             assertFalse(model.state.value.busy); assertFalse(model.state.value.complete); assertNull(model.state.value.snapshot)
             assertEquals(1, calls.count { it == ServerDeploymentKind.Repair })
         }
-        rule.onNodeWithText(text(R.string.server_maintenance_check)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.server_maintenance_check_short)).performClick()
         rule.waitUntil(5_000) { model.state.value.snapshot != null && !model.state.value.busy }
         rule.runOnIdle { assertEquals(1, calls.count { it == ServerDeploymentKind.Repair }) }
         rule.onNodeWithText("private maintenance detail").assertDoesNotExist()
