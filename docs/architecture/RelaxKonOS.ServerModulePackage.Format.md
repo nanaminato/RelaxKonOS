@@ -98,7 +98,7 @@ POST /api/v1.0/server/module-packages/install
 
 plan apply / direct install / rollback 都写 `package-operations.json` 的 `AwaitingRestart` 回执，并删除已消费的上传文件。安装成功不等于已启用或已生效；重启后的启动核实把操作标为 `Succeeded`/`Failed`。
 
-服务端提供 plans 与 plans/auto 路由；桌面组件中心已接入“安装模块包”按钮：选择 `.rkmodule` 后上传并 auto plan，再确认 apply。回退仍走 CLI。direct install 是无计划路径，优先使用 plans。
+服务端提供 plans 与 plans/auto 路由；桌面组件中心已接入“安装模块包”按钮：选择 `.rkmodule` 后上传并 auto plan，再确认 apply；已安装版本列表旁提供“回退到所选版本”。direct install 是无计划路径，优先使用 plans。
 
 ## 离线安装与移除命令
 

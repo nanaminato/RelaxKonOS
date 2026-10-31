@@ -499,4 +499,4 @@ Windows/Linux 的第三方组件安装由组件中心统一承载；业务应用
 
 ## 服务端模块分区
 
-组件中心包含独立的“服务端模块”分区，与宿主软件目录、授权和安装台账分离。桌面已接入模块事实、驻留详情、配置启停计划、只读安装版本/包操作事实，以及“安装模块包”按钮（选择 `.rkmodule` → upload → auto plan → 确认 apply）；回退写入 UI 尚未接入。移动端支持边界由 Android 自有文档拥有。完整入口、当前实现限制、部署配置和 MM 跟踪见[服务端模块管理设计 §12](../architecture/RelaxKonOS.ServerModuleManagement.Design.md#12-当前实现边界与部署配置)。服务端包安装/回退 API 与 CLI 已实现；模块商店、搜索/下载仍未实现。目标设计见[服务端独立模块分发与 v1/v2 宿主设计](../architecture/RelaxKonOS.ServerModuleDistribution.Design.md)和[包商店来源设计](RelaxKonOS.PackageStore.Design.md)，不改变本节现状。既有宿主组件状态和 CC/MR 验收不因模块分区而改变。
+组件中心包含独立的“服务端模块”分区，与宿主软件目录、授权和安装台账分离。桌面已接入模块事实、驻留详情、配置启停计划、只读安装版本/包操作事实，以及“安装模块包”按钮（选择 `.rkmodule` → upload → auto plan → 确认 apply）和“回退到所选版本”按钮。移动端支持边界由 Android 自有文档拥有。完整入口、当前实现限制、部署配置和 MM 跟踪见[服务端模块管理设计 §12](../architecture/RelaxKonOS.ServerModuleManagement.Design.md#12-当前实现边界与部署配置)。服务端包安装/回退 API 与 CLI 已实现；模块商店、搜索/下载仍未实现。目标设计见[服务端独立模块分发与 v1/v2 宿主设计](../architecture/RelaxKonOS.ServerModuleDistribution.Design.md)和[包商店来源设计](RelaxKonOS.PackageStore.Design.md)，不改变本节现状。既有宿主组件状态和 CC/MR 验收不因模块分区而改变。
