@@ -245,7 +245,8 @@ internal static class ServerModuleManagementEndpoints
             module.ManifestSha256, module.PackagePath, module.EntryAssembly, module.EntryType, module.Capabilities,
             module.Requires, module.InstalledAt,
             current is not null && current.ModuleId == module.ModuleId && current.Version == module.Version
-                && current.ArtifactSha256 == module.ArtifactSha256);
+                && current.ArtifactSha256 == module.ArtifactSha256,
+            module.Quarantined);
 
     private static ServerPackageOperationDto OperationDto(ModulePackageOperation operation) =>
         new(operation.OperationId, operation.Action, operation.ModuleId, operation.Version, operation.ReleaseId,

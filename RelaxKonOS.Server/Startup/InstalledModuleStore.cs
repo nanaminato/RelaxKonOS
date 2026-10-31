@@ -23,7 +23,8 @@ internal sealed record InstalledModuleRecord(
     string EntryType,
     string[] Capabilities,
     string[] Requires,
-    DateTimeOffset InstalledAt);
+    DateTimeOffset InstalledAt,
+    bool Quarantined = false);
 
 internal sealed record InstalledModuleDocument(int SchemaVersion, InstalledModuleRecord[] Modules);
 
@@ -244,18 +245,24 @@ internal sealed class InstalledServerModule : IServerModule, IInstalledModuleInf
     }
 
     public string Id => _record.ModuleId;
-    public IReadOnlyList<string> Capabilities => _record.Capabilities;
+    public IReadOnlyList<string> Capabilities => _record.Quarantined ? [] : _record.Capabilities;
     public IReadOnlyList<string> Requires => _record.Requires;
     public string InstalledVersion => _record.Version;
     public string ArtifactDigest => _record.ArtifactSha256;
     public string SourceId => _record.SourceId;
-    public string TrustState => "installed";
+    public string TrustState => _record.Quarantined ? "quarantined" : "installed";
 
-    public void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context) =>
+    public void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
+    {
+        if (_record.Quarantined) return;
         EnsureLoaded().ConfigureServices(builder.Services, CreateContext(context));
+    }
 
-    public void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context) =>
+    public void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)
+    {
+        if (_record.Quarantined) return;
         EnsureLoaded().MapEndpoints(endpoints, CreateContext(context));
+    }
 
     private InstalledModuleContext CreateContext(ServerModuleContext context)
     {

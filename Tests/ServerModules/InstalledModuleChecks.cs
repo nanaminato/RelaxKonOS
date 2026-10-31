@@ -170,6 +170,28 @@ internal static class InstalledModuleChecks
                 "a surviving startup marker restores the previous version and records the failed update");
             ModulePackageStartupGuard.Complete(root);
 
+            var quarantineOperation = ModulePackageOperationStore.Record(root, "install", fixtureRecord, null, now);
+            ModulePackageStartupGuard.Begin(root, "quarantine-a");
+            ModulePackageStartupGuard.Begin(root, "quarantine-b");
+            var quarantined = InstalledModuleStore.Read(root).Single(module => module.ModuleId == "fixture-module");
+            var quarantinedOperation = ModulePackageOperationStore.Read(root)
+                .Single(operation => operation.OperationId == quarantineOperation.OperationId);
+            check(quarantined.Quarantined && quarantinedOperation.State == ModulePackageOperationState.Failed
+                && quarantinedOperation.ProblemCode == "module-package-operation-startup-quarantined",
+                "a first install that never reached ApplicationStarted is quarantined instead of boot looping");
+            var quarantinedModules = InstalledModuleCatalog.Load(root);
+            var quarantinedModule = quarantinedModules.Single(module => module.Id == "fixture-module");
+            var quarantineBuilder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root, EnvironmentName = Environments.Development });
+            ServerModulesCatalog.CreateManaged(new HashSet<string>(StringComparer.Ordinal) { "fixture-module" }, quarantinedModules)
+                .ConfigureServices(quarantineBuilder, ServerModuleContext.Create(quarantineBuilder.Configuration, quarantineBuilder.Environment, "memory"));
+            check(quarantinedModule.Capabilities.Count == 0
+                && !quarantineBuilder.Services.Any(descriptor => descriptor.ServiceType.FullName == "FixtureModule.FixtureMarker"),
+                "a quarantined module publishes no capability and loads no assembly");
+            ModulePackageStartupGuard.Complete(root);
+            var restoredModules = InstalledModuleStore.Read(root).ToList();
+            restoredModules[restoredModules.FindIndex(module => module.ModuleId == "fixture-module")] = fixtureRecord;
+            InstalledModuleStore.Write(root, restoredModules);
+
             var fixtureEntryPath = Path.Combine(root, "data", "module-management", fixtureRecord.PackagePath, fixtureRecord.EntryAssembly);
             var originalFixture = await File.ReadAllBytesAsync(fixtureEntryPath);
             var tamperedFixture = originalFixture.ToArray();

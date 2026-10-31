@@ -47,11 +47,15 @@ internal static class ModulePackageStartupGuard
     private static void Recover(string contentRoot, string processGeneration)
     {
         var operations = ModulePackageOperationStore.Read(contentRoot)
-            .Where(operation => operation.State == ModulePackageOperationState.AwaitingRestart
-                && operation.PreviousVersion is not null)
+            .Where(operation => operation.State == ModulePackageOperationState.AwaitingRestart)
             .ToArray();
         foreach (var operation in operations)
         {
+            if (operation.PreviousVersion is null)
+            {
+                Quarantine(contentRoot, operation, "module-package-operation-startup-quarantined", processGeneration);
+                continue;
+            }
             try
             {
                 var previous = InstalledModuleStore.ReadInstallMetadata(contentRoot,
@@ -73,14 +77,27 @@ internal static class ModulePackageStartupGuard
             }
             catch (Exception error) when (error is ModulePackageException or IOException or UnauthorizedAccessException)
             {
-                try
-                {
-                    ModulePackageOperationStore.Update(contentRoot, operation.OperationId,
-                        ModulePackageOperationState.Failed, "module-package-operation-startup-rollback-failed",
-                        processGeneration, DateTimeOffset.UtcNow);
-                }
-                catch (ModulePackageException) { }
+                Quarantine(contentRoot, operation, "module-package-operation-startup-rollback-failed-quarantined",
+                    processGeneration);
             }
         }
+    }
+
+    private static void Quarantine(string contentRoot, ModulePackageOperation operation, string problemCode,
+        string processGeneration)
+    {
+        try
+        {
+            var modules = InstalledModuleStore.Read(contentRoot).ToList();
+            var index = modules.FindIndex(module => module.ModuleId == operation.ModuleId);
+            if (index >= 0)
+            {
+                modules[index] = modules[index] with { Quarantined = true };
+                InstalledModuleStore.Write(contentRoot, modules);
+            }
+            ModulePackageOperationStore.Update(contentRoot, operation.OperationId,
+                ModulePackageOperationState.Failed, problemCode, processGeneration, DateTimeOffset.UtcNow);
+        }
+        catch (Exception error) when (error is ModulePackageException or IOException or UnauthorizedAccessException) { }
     }
 }

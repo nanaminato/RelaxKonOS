@@ -47,7 +47,7 @@ public sealed record ServerInstalledModuleDto([property: JsonRequired] string Mo
     [property: JsonRequired] string ArtifactSha256, [property: JsonRequired] string ManifestSha256,
     [property: JsonRequired] string PackagePath, [property: JsonRequired] string EntryAssembly, [property: JsonRequired] string EntryType,
     [property: JsonRequired] IReadOnlyList<string> Capabilities, [property: JsonRequired] IReadOnlyList<string> Requires,
-    [property: JsonRequired] DateTimeOffset InstalledAt, [property: JsonRequired] bool Active);
+    [property: JsonRequired] DateTimeOffset InstalledAt, [property: JsonRequired] bool Active, bool Quarantined = false);
 public sealed record ServerInstalledModulePageDto([property: JsonRequired] IReadOnlyList<ServerInstalledModuleDto> Items);
 public sealed record ServerPackageOperationDto([property: JsonRequired] Guid OperationId, [property: JsonRequired] string Action,
     [property: JsonRequired] string ModuleId, [property: JsonRequired] string Version, [property: JsonRequired] string ReleaseId,
