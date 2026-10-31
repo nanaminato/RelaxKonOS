@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Mvc;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Server.Startup;
 using RelaxKonOS.ModulePackaging;
@@ -81,6 +82,8 @@ internal static class ServerModuleManagementEndpoints
         group.MapGet(ServerModuleManagementRoutes.ModuleHealth, async (ServerModules modules,
             CancellationToken cancellationToken) => Results.Ok(await modules.CheckHealthAsync(cancellationToken)))
             .RequireAuthorization(ManagePolicy);
+        group.MapGet(ServerModuleManagementRoutes.ModuleHosts, ([FromServices] ModuleHostSupervisor hosts) =>
+            Results.Ok(new ServerModuleHostPageDto(hosts.Snapshot()))).RequireAuthorization(ManagePolicy);
         group.MapGet(ServerModuleManagementRoutes.InstalledPackages, (ServerModuleContext context) => Respond(() =>
         {
             var current = InstalledModuleStore.Read(context.ContentRootPath);

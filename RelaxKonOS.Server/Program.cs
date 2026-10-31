@@ -50,6 +50,8 @@ try
     builder.Services.AddSingleton(serverModules);
     builder.Services.AddHostedService<ModuleHealthMonitor>();
     builder.Services.AddHostedService<ModuleCatalogRefreshMonitor>();
+    builder.Services.AddSingleton<ModuleHostSupervisor>();
+    builder.Services.AddHostedService(services => services.GetRequiredService<ModuleHostSupervisor>());
 
     var eventAlertsOptions = builder.AddServerObservability(isDevelopment);
     // Deployment mode is an explicit security contract. In particular, Development must not turn a

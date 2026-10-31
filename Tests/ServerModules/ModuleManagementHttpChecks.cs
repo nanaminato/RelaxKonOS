@@ -32,6 +32,8 @@ internal static class ModuleManagementHttpChecks
             builder.Services.AddHostedService(services => services.GetRequiredService<ModuleManagementExecutor>());
             builder.Services.AddSingleton(modules);
             builder.Services.AddSingleton(ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory"));
+            builder.Services.AddSingleton(new ModuleHostSupervisor(builder.Environment, builder.Configuration,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<ModuleHostSupervisor>.Instance));
             builder.Services.AddAuthentication("module-test").AddScheme<AuthenticationSchemeOptions, ModuleTestAuthentication>("module-test", _ => { });
             builder.Services.AddAuthorization(options => options.AddPolicy(ServerModuleManagementEndpoints.ManagePolicy,
                 policy => policy.RequireAuthenticatedUser().RequireAssertion(context => ServerModuleManagementEndpoints.CanManage(context.User, builder.Configuration))));
@@ -59,7 +61,8 @@ internal static class ModuleManagementHttpChecks
                     new ServerModuleStoreDownloadRequest("official", "release-1"))).StatusCode == HttpStatusCode.Unauthorized
                 && (await client.PostAsJsonAsync(ServerModuleManagementRoutes.ModuleStoreRefresh,
                     new ServerModuleCatalogRefreshRequest("official", "uninitialized", "refresh-1", null))).StatusCode == HttpStatusCode.Unauthorized
-                && (await client.GetAsync(ServerModuleManagementRoutes.ModuleHealth)).StatusCode == HttpStatusCode.Unauthorized,
+                && (await client.GetAsync(ServerModuleManagementRoutes.ModuleHealth)).StatusCode == HttpStatusCode.Unauthorized
+                && (await client.GetAsync(ServerModuleManagementRoutes.ModuleHosts)).StatusCode == HttpStatusCode.Unauthorized,
                 "module package read and write APIs reject unauthenticated requests");
             client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Observer);
             var observer = await client.GetFromJsonAsync<ServerModuleDto>(detail, RelaxKonOSJsonOptions.Default);
@@ -86,6 +89,9 @@ internal static class ModuleManagementHttpChecks
             check(health?.Healthy == true && health.Modules.Count > 0
                 && health.Modules.All(module => module.Status == "host"),
                 "module health reports the compiled Host set as healthy");
+            var hosts = await client.GetFromJsonAsync<ServerModuleHostPageDto>(
+                ServerModuleManagementRoutes.ModuleHosts, RelaxKonOSJsonOptions.Default);
+            check(hosts?.Hosts.Count == 0, "ModuleHost supervisor exposes no host when none is configured");
             check((await client.PostAsJsonAsync(ServerModuleManagementRoutes.ModuleStoreRefresh,
                     new ServerModuleCatalogRefreshRequest("official", "uninitialized", "refresh-1", null)))
                 .StatusCode == HttpStatusCode.BadRequest,

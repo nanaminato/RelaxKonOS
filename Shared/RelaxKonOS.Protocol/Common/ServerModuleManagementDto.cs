@@ -100,6 +100,9 @@ public sealed record ServerModuleHealthModuleDto([property: JsonRequired] string
 public sealed record ServerModuleHealthPageDto([property: JsonRequired] bool Healthy,
     [property: JsonRequired] DateTimeOffset CheckedAt,
     [property: JsonRequired] IReadOnlyList<ServerModuleHealthModuleDto> Modules);
+public sealed record ServerModuleHostStatusDto([property: JsonRequired] string ModuleId,
+    [property: JsonRequired] string Status, string? Version, string? HostApiVersion, string? ProblemCode);
+public sealed record ServerModuleHostPageDto([property: JsonRequired] IReadOnlyList<ServerModuleHostStatusDto> Hosts);
 
 public static class ServerModuleManagementRoutes
 {
@@ -124,4 +127,5 @@ public static class ServerModuleManagementRoutes
     public const string ModuleStoreSources = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-store/sources";
     public const string ModuleStoreRefresh = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-store/refresh";
     public const string ModuleHealth = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-health";
+    public const string ModuleHosts = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-hosts";
 }
