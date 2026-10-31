@@ -91,7 +91,7 @@ internal static class ModulePackageStore
                     !string.IsNullOrWhiteSpace(catalogUri), error.ProblemCode));
             }
         }
-        return new(sources);
+        return new(document.Revision, sources);
     }
 
     private static bool Matches(ModulePackageManifest manifest, string? query) =>

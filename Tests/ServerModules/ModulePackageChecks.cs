@@ -308,6 +308,18 @@ internal static class ModulePackageChecks
             File.Delete(markerPath);
             Reject(() => ModulePackageCatalogStore.Read(root, serviceId), "state-recovery-required", "missing initialization marker cannot silently adopt catalog state");
             File.WriteAllBytes(markerPath, markerBytes);
+
+            using (var liveHost = new ModuleManagementStore(new ConfigurationBuilder().AddInMemoryCollection(
+                new Dictionary<string, string?> { ["ModuleManagement:Authority"] = "managed" }).Build(), root))
+            {
+                using var online = new ModulePackageCatalogStore(root, serviceId, takeHostLock: false);
+                var onlineRevision = ModulePackageCatalogStore.Read(root, serviceId).Revision;
+                var onlineReceipt = online.Accept(Sign(nativeCatalog with { Sequence = 5 }), policy, nativeContext,
+                    onlineRevision, "online-actor", "online-refresh", now);
+                check(onlineReceipt.Sequence == 5
+                    && ModulePackageCatalogStore.Read(root, serviceId).Sources[policy.SourceId].History.Sequence == 5,
+                    "catalog acceptance can commit while a Host holds the host lock through the catalog lock");
+            }
         }
         finally { Directory.Delete(root, true); }
     }

@@ -57,6 +57,8 @@ internal static class ModuleManagementHttpChecks
                 && (await client.GetAsync(ServerModuleManagementRoutes.ModuleStoreSources)).StatusCode == HttpStatusCode.Unauthorized
                 && (await client.PostAsJsonAsync(ServerModuleManagementRoutes.ModuleStoreDownload,
                     new ServerModuleStoreDownloadRequest("official", "release-1"))).StatusCode == HttpStatusCode.Unauthorized
+                && (await client.PostAsJsonAsync(ServerModuleManagementRoutes.ModuleStoreRefresh,
+                    new ServerModuleCatalogRefreshRequest("official", "uninitialized", "refresh-1", null))).StatusCode == HttpStatusCode.Unauthorized
                 && (await client.GetAsync(ServerModuleManagementRoutes.ModuleHealth)).StatusCode == HttpStatusCode.Unauthorized,
                 "module package read and write APIs reject unauthenticated requests");
             client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Observer);
@@ -84,6 +86,10 @@ internal static class ModuleManagementHttpChecks
             check(health?.Healthy == true && health.Modules.Count > 0
                 && health.Modules.All(module => module.Status == "host"),
                 "module health reports the compiled Host set as healthy");
+            check((await client.PostAsJsonAsync(ServerModuleManagementRoutes.ModuleStoreRefresh,
+                    new ServerModuleCatalogRefreshRequest("official", "uninitialized", "refresh-1", null)))
+                .StatusCode == HttpStatusCode.BadRequest,
+                "catalog refresh rejects a source without a configured HTTPS URI before fetching");
             check((await client.PostAsync(ServerModuleManagementRoutes.PackageUpload, new ByteArrayContent([]))).StatusCode == HttpStatusCode.BadRequest,
                 "module package upload rejects an empty body before creating an install candidate");
             check((await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackagePlans,

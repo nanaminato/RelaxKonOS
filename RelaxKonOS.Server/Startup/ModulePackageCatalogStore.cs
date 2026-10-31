@@ -19,12 +19,13 @@ internal sealed class ModulePackageCatalogStore : IDisposable
     private readonly string _path;
     private readonly string _marker;
     private readonly string _identityPath;
-    private readonly FileStream _hostLock;
+    private readonly FileStream? _hostLock;
+    private readonly FileStream _catalogLock;
     private readonly string _serviceId;
     private string? _fileHash;
     private Document _document;
 
-    internal ModulePackageCatalogStore(string contentRoot, string expectedServiceId)
+    internal ModulePackageCatalogStore(string contentRoot, string expectedServiceId, bool takeHostLock = true)
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsWindows())
             throw new ModulePackageException("module-package-platform-unsupported");
@@ -33,17 +34,35 @@ internal sealed class ModulePackageCatalogStore : IDisposable
         _marker = Path.Combine(directory, "package-catalogs.initialized");
         _identityPath = Path.Combine(directory, "state.json");
         _serviceId = expectedServiceId;
-        try { _hostLock = new FileStream(Path.Combine(directory, "host.lock"), FileMode.Open, FileAccess.ReadWrite, FileShare.None); }
-        catch (IOException) { throw new ModulePackageException("module-package-host-lock-unavailable"); }
+        FileStream? hostLock = null;
+        FileStream? catalogLock = null;
         try
         {
+            if (takeHostLock)
+            {
+                try { hostLock = new FileStream(Path.Combine(directory, "host.lock"), FileMode.Open, FileAccess.ReadWrite, FileShare.None); }
+                catch (IOException) { throw new ModulePackageException("module-package-host-lock-unavailable"); }
+            }
+            try
+            {
+                catalogLock = new FileStream(Path.Combine(directory, "package-catalogs.lock"), FileMode.OpenOrCreate,
+                    FileAccess.ReadWrite, FileShare.None);
+            }
+            catch (IOException) { throw new ModulePackageException("module-package-catalog-lock-unavailable"); }
             if (ModuleManagementStore.ReadRecoveryReport(contentRoot).ServiceId != expectedServiceId)
                 throw new ModulePackageException("module-package-service-mismatch");
             var snapshot = ReadSnapshot(contentRoot, expectedServiceId);
             _document = snapshot.Document;
             _fileHash = snapshot.Hash;
+            _hostLock = hostLock;
+            _catalogLock = catalogLock;
         }
-        catch { _hostLock.Dispose(); throw; }
+        catch
+        {
+            hostLock?.Dispose();
+            catalogLock?.Dispose();
+            throw;
+        }
     }
 
     internal static Document Read(string contentRoot, string serviceId) => ReadSnapshot(contentRoot, serviceId).Document;
@@ -226,5 +245,5 @@ internal sealed class ModulePackageCatalogStore : IDisposable
     private static bool Identifier(string? value) => value is { Length: > 0 and <= 96 } && value[0] is >= 'a' and <= 'z'
         && value.All(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '.' or '-');
     private static string Hash(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
-    public void Dispose() => _hostLock.Dispose();
+    public void Dispose() { _hostLock?.Dispose(); _catalogLock.Dispose(); }
 }

@@ -51,6 +51,27 @@ internal static class ServerModuleManagementEndpoints
                 Respond(() => Task.FromResult<IResult>(Results.Ok(ModulePackageStore.Sources(context.ContentRootPath,
                     context.Configuration, context.Environment, DateTimeOffset.UtcNow)))))
             .RequireAuthorization(ManagePolicy);
+        group.MapPost(ServerModuleManagementRoutes.ModuleStoreRefresh, async (ServerModuleCatalogRefreshRequest request,
+            HttpContext http, ServerModuleContext context, CancellationToken cancellationToken) => await Respond(async () =>
+        {
+            if (!ModulePackageHostConfiguration.Identifier(request.SourceId)
+                || request.ExpectedRevision != ModulePackageCatalogStore.InitialRevision
+                && !Guid.TryParseExact(request.ExpectedRevision, "N", out _)
+                || request.IdempotencyKey is not { Length: > 0 and <= 128 }
+                || !request.IdempotencyKey.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.'))
+                return Problem("module-store-refresh-request-invalid", 400);
+            var uri = request.CatalogUri ?? context.Configuration["ModulePackages:Sources:" + request.SourceId + ":CatalogUri"];
+            if (string.IsNullOrWhiteSpace(uri)) return Problem("module-catalog-uri-invalid", 400);
+            var envelope = await ModulePackageCatalogFetcher.FetchAsync(uri, cancellationToken: cancellationToken);
+            var serviceId = ModuleManagementStore.ReadRecoveryReport(context.ContentRootPath).ServiceId;
+            var policy = ModulePackageHostConfiguration.Source(context.Configuration, request.SourceId);
+            using var catalog = new ModulePackageCatalogStore(context.ContentRootPath, serviceId, takeHostLock: false);
+            var receipt = catalog.Accept(envelope, policy, ModulePackageHostConfiguration.Context(serviceId,
+                    context.Configuration, context.Environment), request.ExpectedRevision, Actor(http.User),
+                request.IdempotencyKey, DateTimeOffset.UtcNow);
+            return Results.Ok(new ServerModuleCatalogReceiptDto(receipt.SourceId, receipt.Revision, receipt.Sequence,
+                receipt.PayloadSha256, receipt.AcceptedAt));
+        })).RequireAuthorization(ManagePolicy);
         group.MapPost(ServerModuleManagementRoutes.ModuleStoreDownload, async (ServerModuleStoreDownloadRequest request,
             ServerModuleContext context, CancellationToken cancellationToken) => await Respond(async () =>
             Results.Ok(await ModulePackageDownloader.DownloadAsync(context.ContentRootPath, context.Configuration,
