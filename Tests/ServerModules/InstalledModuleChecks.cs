@@ -97,6 +97,32 @@ internal static class InstalledModuleChecks
                 Hash(fixtureManifestBytes), Hash(packageBytes), new MemoryStream(packageBytes), now);
             check(fixtureRecord.ModuleId == "fixture-module", "verified installer accepts a real module assembly package");
 
+            var dependencyConfiguration = new ConfigurationBuilder().Build();
+            Variable("missing");
+            Variable("self");
+            InstalledModuleInstaller.ValidateDependencies(root, dependencyConfiguration, fixtureManifest with
+            {
+                Dependencies = [new ModulePackageDependency("relaxkonos.git", "1.0.0", "2.0.0")],
+            });
+            check(true, "dependency preflight accepts a known compiled module");
+            void Variable(string kind)
+            {
+                var manifest = kind == "missing"
+                    ? fixtureManifest with { Dependencies = [new ModulePackageDependency("missing-module", "1.0.0", "2.0.0")] }
+                    : fixtureManifest with { Dependencies = [new ModulePackageDependency("fixture-module", "1.0.0", "2.0.0")] };
+                try
+                {
+                    InstalledModuleInstaller.ValidateDependencies(root, dependencyConfiguration, manifest);
+                    check(false, "dependency preflight rejects " + kind);
+                }
+                catch (ModulePackageException error)
+                {
+                    check(error.ProblemCode == (kind == "missing"
+                        ? "module-package-dependency-missing" : "module-package-dependency-self"),
+                        "dependency preflight rejects " + kind);
+                }
+            }
+
             var secondManifest = fixtureManifest with { Version = "1.0.1", ReleaseId = "fixture-module-release-2" };
             var secondManifestBytes = JsonSerializer.SerializeToUtf8Bytes(secondManifest, ModulePackageJson.Options);
             using var secondPackage = new MemoryStream();

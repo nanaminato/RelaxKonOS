@@ -64,8 +64,44 @@ internal static class InstalledModuleInstaller
             policy, context, verified.NextHistory, releaseId, now, cancellationToken);
         if (ServerModules.Create(new ConfigurationBuilder().Build()).KnownModuleIds.Contains(candidate.Manifest.ModuleId))
             throw new ModulePackageException("module-package-module-id-conflict");
+        ValidateDependencies(contentRoot, configuration, candidate.Manifest);
         return new(candidate.Manifest, release.ManifestSha256, candidate.ArchiveSha256, candidate.ArchiveBytes,
             sourceId, releaseId);
+    }
+
+    internal static void ValidateDependencies(string contentRoot, IConfiguration configuration, ModulePackageManifest manifest)
+    {
+        var installed = InstalledModuleStore.Read(contentRoot).ToDictionary(module => module.ModuleId, StringComparer.Ordinal);
+        var known = ServerModules.Create(configuration, InstalledModuleCatalog.Load(contentRoot)).KnownModuleIds;
+        foreach (var dependency in manifest.Dependencies)
+        {
+            if (dependency.ModuleId == manifest.ModuleId)
+                throw new ModulePackageException("module-package-dependency-self");
+            if (!known.Contains(dependency.ModuleId))
+                throw new ModulePackageException("module-package-dependency-missing");
+            if (!installed.TryGetValue(dependency.ModuleId, out var installedDependency)) continue;
+            if (installedDependency.Quarantined)
+                throw new ModulePackageException("module-package-dependency-quarantined");
+            var version = System.Version.Parse(installedDependency.Version);
+            if (version < System.Version.Parse(dependency.MinimumVersion)
+                || version >= System.Version.Parse(dependency.MaximumVersionExclusive))
+                throw new ModulePackageException("module-package-dependency-version");
+        }
+        var graph = installed.ToDictionary(pair => pair.Key,
+            pair => pair.Value.Requires.ToHashSet(StringComparer.Ordinal), StringComparer.Ordinal);
+        graph[manifest.ModuleId] = manifest.Dependencies.Select(dependency => dependency.ModuleId)
+            .ToHashSet(StringComparer.Ordinal);
+        var visiting = new HashSet<string>(StringComparer.Ordinal);
+        bool Visit(string moduleId)
+        {
+            if (!visiting.Add(moduleId)) return moduleId == manifest.ModuleId;
+            if (graph.TryGetValue(moduleId, out var dependencies))
+                foreach (var dependency in dependencies)
+                    if (Visit(dependency)) return true;
+            visiting.Remove(moduleId);
+            return false;
+        }
+        if (Visit(manifest.ModuleId)) throw new ModulePackageException("module-package-dependency-cycle");
     }
 
     internal static async Task<InstalledModuleRecord> InstallVerifiedAsync(string contentRoot, string sourceId,
