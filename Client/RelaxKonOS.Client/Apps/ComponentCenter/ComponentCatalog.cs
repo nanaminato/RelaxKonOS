@@ -58,7 +58,9 @@ public static class ComponentCatalog
         new("mihomo", "mihomo", "network", "mihomo", "component_center.component.mihomo.description",
             ComponentIntegration.Runtime, "relaxkonos.proxy", [], [], [],
             ["relaxkonos.proxy"], [Windows, Linux],
-            [new(ComponentSourceKind.SystemPackage, true, [Linux]), new(ComponentSourceKind.ManagedArchive, true, [Windows])]),
+            // Mihomo has no distribution package and no upstream package repository, so the official
+            // release archive is its only install path on both platforms.
+            [new(ComponentSourceKind.ManagedArchive, true, [Windows, Linux])]),
         new("frpc", "frpc", "network", "frpc", "component_center.component.frpc.description",
             ComponentIntegration.Installation, "relaxkonos.tunnels", [], [], [],
             ["relaxkonos.tunnels"], [Windows, Linux],
@@ -129,6 +131,21 @@ public static class ComponentCatalog
     /// <summary>The dependency an application must satisfy to open; null when it has no component.</summary>
     public static ApplicationLaunchGate? LaunchGate(string? applicationId) => applicationId is null
         ? null : LaunchGates.FirstOrDefault(gate => gate.ApplicationId == applicationId);
+
+    /// <summary>
+    /// Components whose owning application resolves the executable itself, so an existing external
+    /// copy is already a usable dependency: the host probes <c>git</c> on PATH (Git/HostGitCli) and
+    /// never asks the component ledger where it came from. Refusing to open the application until
+    /// somebody adopts an installation into the ledger would claim a prerequisite this application
+    /// does not actually have. Component Center still reports the ownership and still offers "纳入管理",
+    /// because that is what makes update and uninstall possible — bookkeeping, not a precondition.
+    /// The set is closed and explicit so an external copy can never satisfy a dependency the
+    /// application genuinely needs the ledger for (nginx, docker, an archive runtime).
+    /// </summary>
+    public static IReadOnlyList<string> ExternalLaunchComponents { get; } = Array.AsReadOnly(["git"]);
+
+    public static bool AllowsExternalLaunch(string componentId) =>
+        ExternalLaunchComponents.Contains(componentId, StringComparer.Ordinal);
 }
 
 /// <summary>User intent only. This is neither a frozen plan nor an approval.</summary>

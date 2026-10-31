@@ -19,7 +19,10 @@ public sealed record ApplicationAvailability(AppId ApplicationId, string? Server
     ComponentAvailabilityKind State, string? ActualHostId = null, Guid? InstallationId = null)
 {
     /// <summary>An installed service being stopped or unhealthy is still a reason to open its business console.</summary>
-    public bool CanOpen => State is ComponentAvailabilityKind.Installed or ComponentAvailabilityKind.NotRequired;
+    public bool CanOpen => State is ComponentAvailabilityKind.Installed or ComponentAvailabilityKind.NotRequired
+        // An external copy is usable only where the application itself resolves the executable; the
+        // catalog owns that closed set so no dependency is waived by accident.
+        || State is ComponentAvailabilityKind.External && ComponentCatalog.AllowsExternalLaunch(ComponentId);
 }
 
 public interface IApplicationAvailabilityUi

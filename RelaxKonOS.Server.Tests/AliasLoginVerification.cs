@@ -168,7 +168,7 @@ internal static class AliasLoginVerification
             Check(inventoryResponse.StatusCode == HttpStatusCode.OK, "module inventory is authorized: " + inventoryResponse.StatusCode);
             var inventory = (await inventoryResponse.Content.ReadFromJsonAsync<List<ServerModuleDto>>(Json))!;
             Check(inventory.Count > 0
-                    && inventory.Any(item => item.Id == RelaxKonOS.Server.Startup.ServerModules.TerminalId && item.Enabled)
+                    && inventory.Any(item => item.Id == RelaxKonOS.Server.Startup.ServerModules.TerminalId && item.EffectiveEnabled)
                     && inventory.Single(item => item.Id == RelaxKonOS.Server.Startup.ServerModules.CertificatesId)
                         .RequiredBy.Contains(RelaxKonOS.Server.Startup.ServerModules.WebServerId),
                 "module inventory reports the effective set and the dependency direction");

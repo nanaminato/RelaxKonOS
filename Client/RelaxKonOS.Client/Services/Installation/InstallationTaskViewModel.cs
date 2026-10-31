@@ -265,6 +265,11 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
     {
         if (PrivilegedHelperProblemText.TryFormat(problemCode, out var helperMessage)) return helperMessage;
         if (string.IsNullOrWhiteSpace(problemCode)) return LocalizedText.Get("installation.problem.unknown");
+        // A component change is refused or fails with a component lifecycle code, and that code is the
+        // host's actual answer (package unresolved, candidate changed, install failed, version
+        // mismatch). The shared banner has no resource domain for it, so resolve it through the
+        // component center's own table instead of falling back to "installation failed".
+        if (ComponentProblemText.IsComponentCode(problemCode)) return LocalizedText.Get(ComponentProblemText.Key(problemCode));
 
         var candidates = new List<string>();
         if (problemCode.StartsWith("installation.", StringComparison.Ordinal))

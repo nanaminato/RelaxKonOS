@@ -68,7 +68,12 @@ public partial class ComponentCenterViewModel
     public IReadOnlyList<ComponentDownloadMethodChoice> DownloadMethods { get; } = Enum.GetValues<ComponentDownloadMethod>().Select(method => new ComponentDownloadMethodChoice(method)).ToArray();
     public IReadOnlyList<ComponentDownloadRelease> OfficialReleases => SelectedDefinition is { } definition
         ? _officialReleases.GetValueOrDefault(definition.ComponentId) ?? [] : [];
-    public bool ShowOfficialDownloads => _lifecycle is IComponentReleaseClient && HostPlatform == "windows"
+    /// <summary>
+    /// Nginx and FRP keep their official-release flow on Windows only. Mihomo has no package source at
+    /// all, so its official release archive is the only installation path on Linux as well.
+    /// </summary>
+    public bool ShowOfficialDownloads => _lifecycle is IComponentReleaseClient
+        && (HostPlatform == "windows" || HostPlatform == "linux" && SelectedDefinition?.ComponentId == "mihomo")
         && SelectedDefinition?.ComponentId is "nginx" or "mihomo" or "frpc" or "frps";
     public bool CanRefreshOfficial => ShowOfficialDownloads && Runtime.CanRead && !Runtime.IsInvalidated && !IsLoadingOfficialReleases && !IsInstallingOfficial && !IsSelectingPackageFile;
     public bool CanInstallOfficial => ShowOfficialDownloads && Runtime.CanManage && !Runtime.IsInvalidated && !IsInstallingOfficial && !IsLoadingOfficialReleases && !IsSelectingPackageFile

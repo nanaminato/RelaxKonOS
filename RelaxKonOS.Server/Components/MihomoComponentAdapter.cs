@@ -12,7 +12,9 @@ public sealed class MihomoComponentAdapter(MihomoRuntimeService runtime, RelaxKo
         runtime.QueryAsync, runtime.PlanAsync)
 {
     private readonly HostPackageComponentAdapter packages = new("mihomo", helper);
-    public override IReadOnlyList<RelaxKonOS.Protocol.ManagedRuntimes.ComponentModeSupport> Modes => OperatingSystem.IsLinux() ? packages.Modes : base.Modes;
+    public override IReadOnlyList<RelaxKonOS.Protocol.ManagedRuntimes.ComponentModeSupport> Modes => OperatingSystem.IsLinux()
+        ? [.. packages.Modes, new(RelaxKonOS.Protocol.ManagedRuntimes.ComponentSourceMode.ManagedArchive, "linux", true, null)]
+        : base.Modes;
     public override async Task<ComponentPlanResult> PlanAsync(ComponentPlanRequest request, CancellationToken ct)
     {
         if (!OperatingSystem.IsLinux()) return await base.PlanAsync(request, ct);
@@ -33,6 +35,9 @@ public sealed class MihomoComponentAdapter(MihomoRuntimeService runtime, RelaxKo
             var archive = await base.StateAsync(ct);
             if (archive.State is { Ownership: RelaxKonOS.Protocol.ManagedRuntimes.RuntimeOwnership.Managed } || archive.State?.RecoveryRequired == true)
                 return archive with { Problems = [RelaxKonOS.Protocol.ManagedRuntimes.ComponentProblemCodes.ExecutionUnavailable] };
+            // An official release archive installed here is a real managed installation even though
+            // it was not reached through the signed runtime-source path.
+            if (await OfficialInstallationAsync(ct) is { } installed) return installed;
             return await packages.StateAsync(ct);
         }
         if (!OperatingSystem.IsWindows()) return await base.StateAsync(ct);
@@ -44,5 +49,23 @@ public sealed class MihomoComponentAdapter(MihomoRuntimeService runtime, RelaxKo
             RelaxKonOS.Protocol.ManagedRuntimes.ComponentSourceMode.ManagedArchive,
             new("windows", System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant(), null, null,
                 RelaxKonOS.Protocol.ManagedRuntimes.RuntimeInstallMode.Archive, "scm"), status.Version, false), Modes, []);
+    }
+
+    /// <summary>
+    /// The official release archive is installed by the proxy runtime manager into its own engine
+    /// layout, not through the publication ledger, so the ledger cannot describe it. Reading it back
+    /// from that manager keeps "installed" an observed fact rather than an inference.
+    /// </summary>
+    private async Task<RelaxKonOS.Protocol.ManagedRuntimes.ComponentStateView?> OfficialInstallationAsync(CancellationToken ct)
+    {
+        var status = await native.GetAsync(ComponentId, ct);
+        if (status.Mode != RelaxKonOS.Protocol.Proxy.ProxyRuntimeMode.Managed || !status.IntegrityVerified
+            || string.IsNullOrEmpty(status.Version)) return null;
+        return new(ComponentId, new(ComponentId, Environment.MachineName,
+            ComponentRevision.Of(status.Version, status.State.ToString()),
+            RelaxKonOS.Protocol.ManagedRuntimes.RuntimeOwnership.Managed,
+            RelaxKonOS.Protocol.ManagedRuntimes.ComponentSourceMode.ManagedArchive,
+            new("linux", System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant(), null, null,
+                RelaxKonOS.Protocol.ManagedRuntimes.RuntimeInstallMode.Archive, "systemd"), status.Version, false), Modes, []);
     }
 }

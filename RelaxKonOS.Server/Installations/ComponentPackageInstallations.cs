@@ -29,7 +29,7 @@ internal static class ComponentPackageInstallations
     public static void ValidateRecovery(string componentId, InstallationOperationKind kind, ComponentRecoveryRequest request)
     {
         if (kind != InstallationOperationKind.Repair || request.ComponentId != componentId || (request.Action is ComponentRecoveryAction.RefreshSources or ComponentRecoveryAction.ConfigureOfficialSource or ComponentRecoveryAction.RegisterPackage ? request.OperationId != Guid.Empty : request.OperationId == Guid.Empty)
-            || request.Action == ComponentRecoveryAction.ConfigureOfficialSource && componentId != ComponentIds.Tailscale
+            || request.Action == ComponentRecoveryAction.ConfigureOfficialSource && componentId is not (ComponentIds.Tailscale or ComponentIds.SingBox)
             || (request.Action == ComponentRecoveryAction.RegisterPackage
                 ? !PackageIdentityPolicy.Valid(request.ExpectedInstalledPackage) || request.ExpectedInstalledPackage!.PackageName != HostPackageDefinitions.Find(componentId)?.PackageName
                 : request.ExpectedInstalledPackage is not null)

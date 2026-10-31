@@ -18,8 +18,25 @@ internal static class RuntimeSourceCommand
                 Console.WriteLine(JsonSerializer.Serialize(new { policy = candidate, confirmationFingerprint = candidate.ConfirmationFingerprint }));
                 return 0;
             }
+            if (args is ["show-official", var shownRuntime, var shownBase])
+            {
+                var shown = RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialRuntimeCatalog.Policy(shownRuntime, shownBase);
+                Console.WriteLine(JsonSerializer.Serialize(new { policy = shown, confirmationFingerprint = shown.ConfirmationFingerprint }));
+                return 0;
+            }
             if (!RuntimeSourceProtection.IsAdministrator()) throw new UnauthorizedAccessException();
             var store = RuntimeSourceProtection.Store();
+            // The publisher key and policy shape are compiled in, so the operator only names where the
+            // signed file is hosted. Trust is still bound to this exact policy, revision and actor.
+            if (args is ["confirm-official", var runtimeId, var baseUri, var officialRevisionText]
+                && long.TryParse(officialRevisionText, NumberStyles.None, CultureInfo.InvariantCulture, out var officialRevision))
+            {
+                var policy = RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialRuntimeCatalog.Policy(runtimeId, baseUri, officialRevision);
+                var actor = OperatingSystem.IsWindows() ? WindowsIdentity.GetCurrent().User!.Value : "uid:0";
+                var confirmed = store.Confirm(policy, officialRevision, policy.ConfirmationFingerprint, actor, DateTimeOffset.UtcNow);
+                Console.WriteLine(JsonSerializer.Serialize(RuntimeSourceOperations.Snapshot(confirmed, null)));
+                return 0;
+            }
             if (args is ["confirm", var path, var revisionText, var fingerprint]
                 && long.TryParse(revisionText, NumberStyles.None, CultureInfo.InvariantCulture, out var revision))
             {
@@ -34,7 +51,8 @@ internal static class RuntimeSourceCommand
                 Console.WriteLine(JsonSerializer.Serialize(store.List().Select(RuntimeSourceOperations.View)));
                 return 0;
             }
-            Console.Error.WriteLine("Usage: runtime-source inspect <policy.json> | confirm <policy.json> <expected-trust-revision> <fingerprint> | list");
+            Console.Error.WriteLine("Usage: runtime-source inspect <policy.json> | confirm <policy.json> <expected-trust-revision> <fingerprint> | list"
+                + " | show-official <runtimeId> <base-uri> | confirm-official <runtimeId> <base-uri> <expected-trust-revision>");
             return 64;
         }
         catch (RuntimePolicyException ex) { Console.Error.WriteLine(ex.ProblemCode); return 1; }

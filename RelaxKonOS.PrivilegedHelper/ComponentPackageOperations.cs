@@ -119,6 +119,7 @@ public static partial class PrivilegedOperationExecutor
                 && File.Exists("/usr/local/bin/" + definition.PackageName))
                 resolution = resolution with { InstalledVersion = "external" };
             var policyMissing = definition.ComponentId == ComponentIds.Docker && !DockerPackagePolicyReady()
+                || definition.ComponentId == ComponentIds.SingBox && !SingBoxPackagePolicyReady()
                 || definition.ComponentId == ComponentIds.Tailscale && (!TailscalePackagePolicyReady()
                     || resolution.Candidate is { } candidate && !TailscalePackageCandidateAllowed(candidate));
             return new(true, ComponentPackage: resolution with {
@@ -170,6 +171,8 @@ public static partial class PrivilegedOperationExecutor
             return Fail(65, PrivilegedProblemCode.AccessDenied, "Docker trusted repository and access policy require setup");
         if (definition.ComponentId == ComponentIds.Tailscale && !TailscalePackagePolicyReady())
             return Fail(65, PrivilegedProblemCode.AccessDenied, "Tailscale official repository requires setup");
+        if (definition.ComponentId == ComponentIds.SingBox && !SingBoxPackagePolicyReady())
+            return Fail(65, PrivilegedProblemCode.AccessDenied, "sing-box official repository requires setup");
         if (!HostPackageDefinitions.SupportsVersion(definition.ComponentId, expected!.Version))
             return Fail(65, PrivilegedProblemCode.Conflict, "package version is outside the supported native configuration range");
         var update = await RunAptAsync(["update"], TimeSpan.FromMinutes(10), "component package index refresh failed");
@@ -295,7 +298,13 @@ public static partial class PrivilegedOperationExecutor
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "unexpected registration expectation");
         if (request.Action == ComponentRecoveryAction.ConfigureOfficialSource)
         {
-            if (request.ComponentId != ComponentIds.Tailscale || request.OperationId != Guid.Empty)
+            if (request.OperationId != Guid.Empty) return Fail(64, PrivilegedProblemCode.InvalidRequest, "invalid official source request");
+            if (request.ComponentId == ComponentIds.SingBox)
+            {
+                await ConfigureSingBoxPackageSourceAsync();
+                return await RunAptAsync(["update"], TimeSpan.FromMinutes(10), "official package source refresh failed");
+            }
+            if (request.ComponentId != ComponentIds.Tailscale)
                 return Fail(64, PrivilegedProblemCode.InvalidRequest, "invalid official source request");
             await ConfigureTailscalePackageSourceAsync();
             return await RunAptAsync(["update"], TimeSpan.FromMinutes(10), "official package source refresh failed");

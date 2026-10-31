@@ -53,6 +53,18 @@ internal static class ApplicationAvailabilityChecks
             == ComponentAvailabilityKind.Busy, "An active transaction is separate from a missing component");
         Check(ApplicationAvailabilityService.Classify(View("nginx", RuntimeOwnership.External)) == ComponentAvailabilityKind.External,
             "External ownership never becomes automatic takeover");
+        // The launch gate is not the ownership report: an application that resolves the executable
+        // itself can open on an external copy, while one that needs the ledger still cannot.
+        Check(ComponentCatalog.AllowsExternalLaunch("git") && !ComponentCatalog.AllowsExternalLaunch("nginx")
+            && !ComponentCatalog.AllowsExternalLaunch("docker") && !ComponentCatalog.AllowsExternalLaunch("frpc"),
+            "Only components whose application resolves the executable are openable when installed externally");
+        Check(new ApplicationAvailability(new AppId("relaxkonos.git"), "server-a", "git", ComponentAvailabilityKind.External).CanOpen,
+            "An externally installed git opens the project editor instead of redirecting to Component Center");
+        Check(!new ApplicationAvailability(new AppId("relaxkonos.webservers"), "server-a", "nginx", ComponentAvailabilityKind.External).CanOpen,
+            "A component the ledger has to own still blocks its application when only an external copy exists");
+        Check(!new ApplicationAvailability(new AppId("relaxkonos.git"), "server-a", "git", ComponentAvailabilityKind.Missing).CanOpen
+            && !new ApplicationAvailability(new AppId("relaxkonos.git"), "server-a", "git", ComponentAvailabilityKind.Recovery).CanOpen,
+            "The waiver covers external ownership only, never a package that is absent or mid-recovery");
         Check(ApplicationAvailabilityService.Classify(View("nginx", RuntimeOwnership.Absent)) == ComponentAvailabilityKind.Missing,
             "An absent component is the only state that reports a missing dependency");
         Check(ApplicationAvailabilityService.Classify(View("nginx", RuntimeOwnership.Unknown)) == ComponentAvailabilityKind.Unknown,

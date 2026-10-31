@@ -39,7 +39,11 @@ public sealed class MihomoRuntimeInstallationService(MihomoPublicationStore stor
         }
         if (request.Version is not null)
         {
-            Check(OperatingSystem.IsWindows() && request.Plan is null && kind is InstallationOperationKind.Install or InstallationOperationKind.Upgrade or InstallationOperationKind.Repair,
+            // The official release archive is platform-neutral: GitHub publishes
+            // mihomo-windows-amd64-vX.zip and mihomo-linux-amd64-vX.gz, and both are installed by the
+            // same manager. Only freezing a distribution package stays Linux-only.
+            Check((OperatingSystem.IsWindows() || OperatingSystem.IsLinux()) && request.Plan is null
+                && kind is InstallationOperationKind.Install or InstallationOperationKind.Upgrade or InstallationOperationKind.Repair,
                 InstallationProblemCodes.InvalidRequest);
             _ = RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialComponentReleases.Describe("mihomo",
                 RelaxKonOS.Protocol.Proxy.MihomoRuntimeManifest.CurrentRid(), request.Version);

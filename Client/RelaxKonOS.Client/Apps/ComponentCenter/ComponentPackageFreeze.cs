@@ -307,12 +307,12 @@ public partial class ComponentCenterViewModel
         && SelectedComponentState?.Modes.Any(mode => mode.Platform == "linux" && mode.Mode == ComponentSourceMode.SystemPackage && mode.Available) == true
         && !SelectedComponentState.Problems.Contains(ComponentProblemCodes.PlatformUnsupported) && Runtime.CanManage && !Runtime.IsInvalidated
         && PackageInstallation is not null && !_packageInstallations.Values.Any(task => task.IsActive);
-    public LocalizedStatus PackageSourceActionText => LocalizedStatus.Key(SelectedDefinition?.ComponentId == "tailscale"
+    public LocalizedStatus PackageSourceActionText => LocalizedStatus.Key(SelectedDefinition?.ComponentId is "tailscale" or "sing-box"
         && SelectedComponentState?.Problems.Contains(ComponentProblemCodes.HostPolicyRequired) == true
         ? "component_center.package.recovery.ConfigureOfficialSource" : "component_center.package.recovery.RefreshSources");
     [RelayCommand] private async Task RefreshPackageSourcesAsync()
     {
-        var sourceAction = SelectedDefinition?.ComponentId == "tailscale"
+        var sourceAction = SelectedDefinition?.ComponentId is "tailscale" or "sing-box"
             && SelectedComponentState?.Problems.Contains(ComponentProblemCodes.HostPolicyRequired) == true
             ? ComponentRecoveryAction.ConfigureOfficialSource : ComponentRecoveryAction.RefreshSources;
         if (!CanRefreshPackageSources || SelectedDefinition is not { } component || ConfirmPackageRecoveryAsync is null
@@ -389,7 +389,9 @@ public partial class ComponentCenterViewModel
         LocalizedStatus.Literal(SelectedComponentFreeze?.Target?.Package is { } package
             ? package.BaseUri + " " + package.Suite + "/" + package.Area + " " + package.Architecture : SelectedComponentFreeze?.Target?.Installer?.DownloadUrl ?? "—"));
     public LocalizedStatus PackageDigestText => LocalizedStatus.Format("component_center.package.digest",
-        LocalizedStatus.Literal(SelectedComponentFreeze?.Target?.Package?.Sha256 ?? SelectedComponentFreeze?.Target?.Installer?.Sha256 ?? SelectedComponentFreeze?.Target?.Pin?.Sha256 ?? "—"));
+        LocalizedStatus.Literal(SelectedComponentFreeze?.Target?.Package is { } package
+            ? ComponentDigestText.Of(package.Sha256, package.Md5)
+            : SelectedComponentFreeze?.Target?.Installer?.Sha256 ?? SelectedComponentFreeze?.Target?.Pin?.Sha256 ?? "—"));
     public LocalizedStatus PackageAlsoInstallsText => LocalizedStatus.Format("component_center.package.also",
         LocalizedStatus.Literal(SelectedComponentFreeze?.Target?.Package is { AlsoInstalls.Count: > 0 } package
             ? string.Join(", ", package.AlsoInstalls.Select(item => item.FileName)) : "—"));
@@ -495,4 +497,16 @@ public partial class ComponentCenterViewModel
             nameof(HasSelectedVersion), nameof(SelectedHostSources), nameof(SelectedOtherSources) })
             OnPropertyChanged(property);
     }
+}
+
+/// <summary>
+/// A frozen package names exactly one digest algorithm. Debian-style repositories publish SHA-256;
+/// a flat vendor root may publish only MD5, so the label states which digest the host actually froze
+/// instead of leaving the reader to infer it from the string length.
+/// </summary>
+internal static class ComponentDigestText
+{
+    internal static string Of(string? sha256, string? md5) => sha256 is { Length: 64 }
+        ? "SHA-256 " + sha256
+        : md5 is { Length: 32 } ? "MD5 " + md5 : "—";
 }

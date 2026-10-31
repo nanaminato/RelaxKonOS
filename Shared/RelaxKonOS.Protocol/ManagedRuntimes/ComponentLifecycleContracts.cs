@@ -38,12 +38,18 @@ public enum ComponentSourceMode { ManagedArchive, SystemPackage, NativeInstaller
 /// </summary>
 public sealed record ComponentInstalledPackage(string PackageName, string Version, string Architecture, string ExecutableSha256);
 
-public sealed record ComponentPackageArtifact(string FileName, string Uri, long Bytes, string Sha256);
+public sealed record ComponentPackageArtifact(string FileName, string Uri, long Bytes, string Sha256, string? Md5 = null);
 
+/// <summary>
+/// A frozen package identity. <paramref name="Sha256"/> is the preferred digest; when the publishing
+/// repository's index only carries MD5, that digest is frozen in <paramref name="Md5"/> instead and
+/// <paramref name="Sha256"/> stays empty. Exactly one of them is populated.
+/// </summary>
 public sealed record ComponentPackageTarget(
     string PackageName, string Version, string Architecture,
     string RepositoryId, string BaseUri, string Suite, string Area,
-    string PoolUri, string Sha256, long Bytes, IReadOnlyList<ComponentPackageArtifact> AlsoInstalls);
+    string PoolUri, string Sha256, long Bytes, IReadOnlyList<ComponentPackageArtifact> AlsoInstalls,
+    string? Md5 = null);
 
 /// <summary>
 /// Exactly one member is populated, matching <paramref name="Mode"/>. A package freeze never

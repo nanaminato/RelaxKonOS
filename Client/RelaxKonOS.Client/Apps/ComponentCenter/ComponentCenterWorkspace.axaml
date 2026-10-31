@@ -71,6 +71,31 @@
   <Style Selector="ListBox.page-nav > ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
    <Setter Property="Background" Value="{DynamicResource SelectionBackgroundBrush}" />
   </Style>
+  <!-- The task entry is a labelled header command, not an icon. It borrows the refresh chip's
+       vocabulary so the two read as one row, and it keeps enough width for its text: the trailing
+       ellipsis is part of the label ("opens a dialog"), so a squeezed box would look like clipping. -->
+  <Style Selector="Button.header-tasks">
+   <Setter Property="Height" Value="28" />
+   <Setter Property="MinWidth" Value="88" />
+   <Setter Property="Padding" Value="10,0" />
+   <Setter Property="CornerRadius" Value="7" />
+   <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+   <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+   <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+   <Setter Property="BorderThickness" Value="1" />
+   <Setter Property="FontSize" Value="12" />
+   <Setter Property="HorizontalContentAlignment" Value="Center" />
+   <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.header-tasks:pointerover">
+   <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
+   <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+   <Setter Property="BorderBrush" Value="{DynamicResource BorderDefaultBrush}" />
+  </Style>
+  <Style Selector="Button.header-tasks:pressed">
+   <Setter Property="Background" Value="{DynamicResource SurfacePressedBrush}" />
+  </Style>
+  <Style Selector="Button.header-tasks:disabled"><Setter Property="Opacity" Value="0.45" /></Style>
  </UserControl.Styles>
 
  <Grid RowDefinitions="Auto,*">
@@ -93,7 +118,16 @@
                 FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
     </StackPanel>
     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-     <Button x:Name="OpenTasksButton" Content="{loc:Loc component_center.task_dialog.open}" Command="{Binding OpenTasksCommand}" />
+     <Button x:Name="OpenTasksButton" Classes="header-tasks" Command="{Binding OpenTasksCommand}"
+             AutomationProperties.Name="{loc:Loc component_center.task_dialog.title}"
+             ToolTip.Tip="{loc:Loc component_center.task_dialog.scope}">
+      <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+       <Path Width="14" Height="14" Stretch="Uniform" Stroke="{Binding $parent[Button].Foreground}"
+             StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
+             Data="M3 6 L5 8 L9 4 M3 12 L5 14 L9 10 M3 18 L5 20 L9 16 M13 6 H21 M13 12 H21 M13 18 H21" />
+       <TextBlock Text="{loc:Loc component_center.task_dialog.open}" VerticalAlignment="Center" />
+      </StackPanel>
+     </Button>
      <Button Classes="header-refresh" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc proxy_server.refresh}"
              AutomationProperties.Name="{loc:Loc proxy_server.refresh}" IsEnabled="{Binding Runtime.CanRefreshSources}" />
     </StackPanel>

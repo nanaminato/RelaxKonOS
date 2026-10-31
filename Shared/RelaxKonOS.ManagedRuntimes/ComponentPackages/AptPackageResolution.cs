@@ -14,8 +14,15 @@ public sealed record AptRepositoryLine(string Version, long Priority, string Bas
 /// </summary>
 public sealed record AptPolicy(string PackageName, string? InstalledVersion, string? CandidateVersion, IReadOnlyList<AptRepositoryLine> Repositories);
 
-/// <summary>One downloadable artifact as <c>apt-get --print-uris</c> printed it.</summary>
-public sealed record AptUriLine(string FileName, string Uri, long Bytes, string Sha256);
+/// <summary>
+/// One downloadable artifact as <c>apt-get --print-uris</c> printed it. apt prints whichever digest the
+/// publishing index carries; a flat vendor repository often carries only <c>MD5Sum</c>, so at least one
+/// of <paramref name="Sha256"/> / <paramref name="Md5"/> is populated and the other stays empty.
+/// </summary>
+public sealed record AptUriLine(string FileName, string Uri, long Bytes, string Sha256, string? Md5 = null)
+{
+    public bool HasDigest => Sha256.Length == 64 || Md5 is { Length: 32 };
+}
 
 /// <summary>
 /// Parses the two read-only answers apt gives about a package: which version it would install and
@@ -31,7 +38,9 @@ public static class AptPackageResolution
         RegexOptions.CultureInvariant);
     private static readonly Regex RepositoryLine = new(@"^\s+(?<priority>\d{1,9})\s+(?<uri>https?://\S+)\s+(?<suite>[^/\s]+)/(?<area>\S+)\s+(?<arch>[A-Za-z0-9\-]+)\s+\S+\s*$",
         RegexOptions.CultureInvariant);
-    private static readonly Regex UriLine = new(@"^'(?<uri>[^']+)'(?:\s+(?<file>\S+))?(?:\s+(?<size>\d{1,15}))?(?:\s+SHA256:(?<sha>[0-9a-fA-F]{64}))?\s*$",
+    // apt prints the digest its index carries: a Debian-style repository publishes SHA256, while a
+    // flat vendor repository (for example a Gemfury-hosted apt root) may publish only MD5Sum.
+    private static readonly Regex UriLine = new(@"^'(?<uri>[^']+)'(?:\s+(?<file>\S+))?(?:\s+(?<size>\d{1,15}))?(?:\s+(?:SHA256:(?<sha>[0-9a-fA-F]{64})|MD5Sum:(?<md5>[0-9a-fA-F]{32})))?\s*$",
         RegexOptions.CultureInvariant);
 
     public static bool TryParsePolicy(string? output, string packageName, out AptPolicy? policy)
@@ -105,18 +114,20 @@ public static class AptPackageResolution
                 return false;
             var name = Uri.UnescapeDataString(match.Groups["file"].Success ? match.Groups["file"].Value : parsed.Segments[^1]);
             if (name.Length == 0) continue;
+            var sha = match.Groups["sha"].Success ? match.Groups["sha"].Value.ToLowerInvariant() : "";
+            var md5 = match.Groups["md5"].Success ? match.Groups["md5"].Value.ToLowerInvariant() : null;
+            if (sha.Length == 0 && md5 is null) return false;
             if (main is null && name.StartsWith(packageName + "_", StringComparison.Ordinal)
                 && name.Contains("_" + version + "_", StringComparison.Ordinal)
-                && long.TryParse(match.Groups["size"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var bytes)
-                && match.Groups["sha"].Success)
+                && long.TryParse(match.Groups["size"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var bytes))
             {
-                main = new(name, uri, bytes, match.Groups["sha"].Value.ToLowerInvariant());
+                main = new(name, uri, bytes, sha, md5);
                 continue;
             }
             if (!long.TryParse(match.Groups["size"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var dependencyBytes)
-                || dependencyBytes is <= 0 or > 512L * 1024 * 1024 || !match.Groups["sha"].Success)
+                || dependencyBytes is <= 0 or > 512L * 1024 * 1024)
                 return false;
-            rest.Add(new(name, uri, dependencyBytes, match.Groups["sha"].Value.ToLowerInvariant()));
+            rest.Add(new(name, uri, dependencyBytes, sha, md5));
             if (rest.Count > 64) return false;
         }
         others = rest;
@@ -142,19 +153,18 @@ public static class AptPackageResolution
             .OrderByDescending(item => item.Priority)
             .FirstOrDefault();
         if (repository is null) { problemCode = ComponentProblemCodes.PackageIndexUnavailable; return false; }
-        if (!SafeRepository(repository) || main.Bytes is <= 0 or > 512L * 1024 * 1024
-            || main.Sha256.Length != 64 || !main.Sha256.All(Uri.IsHexDigit))
+        if (!SafeRepository(repository) || main.Bytes is <= 0 or > 512L * 1024 * 1024 || !main.HasDigest)
         { problemCode = ComponentProblemCodes.PackageUnresolved; return false; }
         var dependencies = (others ?? []).ToArray();
         if (dependencies.Length > 64 || dependencies.Any(item => item.FileName == main.FileName) || dependencies.Select(item => item.FileName).Distinct(StringComparer.Ordinal).Count() != dependencies.Length
             || dependencies.Any(item => item.FileName.Length is <= 0 or > 256
                 || !item.FileName.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.' or '+' or ':')
-                || item.Bytes is <= 0 or > 512L * 1024 * 1024 || item.Sha256.Length != 64 || !item.Sha256.All(Uri.IsHexDigit)))
+                || item.Bytes is <= 0 or > 512L * 1024 * 1024 || !item.HasDigest))
         { problemCode = ComponentProblemCodes.PackageUnresolved; return false; }
-        var alsoInstalls = dependencies.Select(item => new ComponentPackageArtifact(item.FileName, item.Uri, item.Bytes, item.Sha256)).ToArray();
+        var alsoInstalls = dependencies.Select(item => new ComponentPackageArtifact(item.FileName, item.Uri, item.Bytes, item.Sha256, item.Md5)).ToArray();
         target = new(policy.PackageName, version, repository.Architecture,
             RepositoryId(repository), repository.BaseUri, repository.Suite, repository.Area,
-            main.Uri, main.Sha256, main.Bytes, alsoInstalls);
+            main.Uri, main.Sha256, main.Bytes, alsoInstalls, main.Md5);
         if (!IsUsableExpectation(target)) { target = null; problemCode = ComponentProblemCodes.PackageUnresolved; return false; }
         return true;
     }
@@ -174,6 +184,7 @@ public static class AptPackageResolution
         && string.Equals(expected.Architecture, current.Architecture, StringComparison.Ordinal)
         && string.Equals(expected.RepositoryId, current.RepositoryId, StringComparison.Ordinal)
         && string.Equals(expected.Sha256, current.Sha256, StringComparison.OrdinalIgnoreCase)
+        && string.Equals(expected.Md5, current.Md5, StringComparison.OrdinalIgnoreCase)
         && expected.Bytes == current.Bytes
         && string.Equals(expected.BaseUri, current.BaseUri, StringComparison.Ordinal)
         && string.Equals(expected.Suite, current.Suite, StringComparison.Ordinal)
@@ -189,7 +200,7 @@ public static class AptPackageResolution
         && target.Version is { Length: > 0 and <= 128 }
         && target.Version.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '+' or '~' or ':' or '-')
         && target.Architecture is { Length: > 0 and <= 32 }
-        && target.Sha256 is { Length: 64 } && target.Sha256.All(Uri.IsHexDigit)
+        && DigestsUsable(target.Sha256, target.Md5)
         && target.Bytes is > 0 and <= 512L * 1024 * 1024
         && target.RepositoryId is not null && target.RepositoryId.Contains('|')
         && target.RepositoryId.Length <= 4096 && target.PoolUri is { Length: > 0 and <= 8192 }
@@ -197,7 +208,7 @@ public static class AptPackageResolution
         && target.AlsoInstalls is { Count: <= 64 } && target.AlsoInstalls.All(item => item is not null && !string.IsNullOrWhiteSpace(item.FileName)
             && item.FileName.Length <= 256 && item.Uri is { Length: > 0 and <= 8192 }
             && Uri.TryCreate(item.Uri, UriKind.Absolute, out var dependencyUri) && dependencyUri.Scheme is "http" or "https"
-            && item.Bytes is > 0 and <= 512L * 1024 * 1024 && item.Sha256 is { Length: 64 } && item.Sha256.All(Uri.IsHexDigit))
+            && item.Bytes is > 0 and <= 512L * 1024 * 1024 && DigestsUsable(item.Sha256, item.Md5))
         && Uri.TryCreate(target.BaseUri, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https"
         && System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(target).Length <= 196608;
 
@@ -208,6 +219,15 @@ public static class AptPackageResolution
         && repository.Architecture.Length is > 0 and <= 32
         && repository.Architecture.All(c => char.IsAsciiLetterOrDigit(c) || c == '-');
 
+    /// <summary>
+    /// SHA-256 is preferred, but a repository whose index publishes only MD5 is still fenced by the
+    /// digest it does publish: the frozen identity names exactly one algorithm, never "any hash".
+    /// </summary>
+    private static bool DigestsUsable(string? sha256, string? md5) =>
+        (sha256 is { Length: 64 } && sha256.All(Uri.IsHexDigit))
+        || (string.IsNullOrEmpty(sha256) && md5 is { Length: 32 } && md5.All(Uri.IsHexDigit));
+
+    /// <summary>A flat repository root reports its suite and area as <c>*</c>; both are still tokens.</summary>
     private static bool SafeToken(string text) => text.Length is > 0 and <= 64
-        && text.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-');
+        && text.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-' or '*');
 }

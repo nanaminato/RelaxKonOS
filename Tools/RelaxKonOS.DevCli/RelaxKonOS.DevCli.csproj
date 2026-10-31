@@ -10,6 +10,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../Shared/RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj" />
+    <ProjectReference Include="../../Shared/RelaxKonOS.ManagedRuntimes/RelaxKonOS.ManagedRuntimes.csproj" />
     <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
 </Project>

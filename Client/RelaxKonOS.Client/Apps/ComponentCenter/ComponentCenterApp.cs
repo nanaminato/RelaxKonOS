@@ -206,12 +206,13 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                 var installer = freeze.Target.Installer;
                 var installedPackage = freeze.Target.InstalledPackage;
                 var dependencies = package is not null ? string.Join("\n", package.AlsoInstalls.Select(item =>
-                    $"{item.FileName} · {item.Bytes} B · SHA-256 {item.Sha256}")) : installer is not null ? "Windows Installer (MSI) · Tailscale Inc."
+                    $"{item.FileName} · {item.Bytes} B · {ComponentDigestText.Of(item.Sha256, item.Md5)}")) : installer is not null ? "Windows Installer (MSI) · Tailscale Inc."
                         : installedPackage is not null ? installedPackage.PackageName : string.Join(", ", pin?.AffectedComponents ?? new[] { "frpc", "frps" });
                 return ConfirmAsync(LocalizedText.Get("component_center.native.action." + freeze.Request!.Change),
                     LocalizedStatus.Format("component_center.native.confirm", LocalizedText.Get("component_center.native.action." + freeze.Request!.Change), freeze.State!.HostId,
                         package?.Version ?? installer?.Version ?? pin?.Version ?? freeze.State!.ActiveVersion ?? "—", package?.RepositoryId ?? installer?.DownloadUrl ?? pin?.SourceUri ?? "—",
-                        package?.Sha256 ?? installer?.Sha256 ?? pin?.Sha256 ?? "—", dependencies, freeze.Request!.ComponentId).Resolve());
+                        package is not null ? ComponentDigestText.Of(package.Sha256, package.Md5) : installer?.Sha256 ?? pin?.Sha256 ?? "—",
+                        dependencies, freeze.Request!.ComponentId).Resolve());
             };
         }
         model.ConfirmPackageRegistrationAsync = identity => ConfirmAsync(

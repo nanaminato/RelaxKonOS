@@ -42,7 +42,11 @@ public sealed class MihomoRuntimeManager(
     public async Task<ProxyRuntimeDto> InstallOfficialAsync(string version, InstallationFileSource? source,
         IInstallationProgress progress, CancellationToken ct)
     {
-        if (!OperatingSystem.IsWindows()) return Unsupported(MihomoEngine.Id);
+        // Mihomo has no distribution package and no upstream APT repository, so the official
+        // release archive is the only install path on every platform. The Linux branches of the
+        // constrained Helper already exist (systemd unit + `current` link activation); only the
+        // selection of that archive used to be Windows-only.
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux()) return Unsupported(MihomoEngine.Id);
         var described = RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialComponentReleases.Describe("mihomo", MihomoRuntimeManifest.CurrentRid(), version);
         await _gate.WaitAsync(ct);
         try
@@ -273,6 +277,9 @@ public sealed class MihomoRuntimeManager(
                 throw new RuntimeInstallException(ProxyProblemCodes.RuntimeHealthCheckFailed);
             Directory.Move(staging, finalDirectory);
             MakePrivateDirectory(finalDirectory);
+            // The Linux unit runs `mihomo -d <data>`; systemd refuses to start a service whose
+            // working data directory is missing, so it is created with the release it belongs to.
+            if (OperatingSystem.IsLinux()) Directory.CreateDirectory(paths.GetEngineDataDirectory(MihomoEngine.Id));
         }
         finally
         {

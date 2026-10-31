@@ -1,6 +1,7 @@
 # 内置应用受管运行时、版本目录与发布源
 
 > 当前逐组件实施状态与 Nginx 平台边界见[组件中心实施进度](RelaxKonOS.ComponentCenter.Progress.md)；下文历史切片的验收范围保持原记录。
+> 签名目录的生产与登记流程见[发布签名运行时目录](RelaxKonOS.RuntimeCatalog.Publishing.md)。
 
 ## Windows 日常安装入口调整（2026-10-27，MR-03/04/05）
 

@@ -1,4 +1,6 @@
+using System.Reflection;
 using RelaxKonOS.ManagedRuntimes.ComponentPackages;
+using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Server.Components;
 using RelaxKonOS.Server.Endpoints;
@@ -35,10 +37,12 @@ internal static class ComponentLifecycleChecks
     {
         VerifyRoutes();
         VerifyRegistry();
+        VerifyManageRights();
         VerifyRevision();
         var policy = VerifyPolicyParsing();
         var target = VerifyUriPlan(policy);
         VerifyTargetGuards(policy, target);
+        VerifyFlatRepositoryDigests();
         VerifyStateMapping();
         VerifyPlanDecision();
         VerifyExecutionGuards();
@@ -221,6 +225,32 @@ internal static class ComponentLifecycleChecks
             "An adapter outside the known component ids must fail at composition, not at request time.");
     }
 
+    /// <summary>
+    /// The manage table is the only place that grants a component write. A component missing from it
+    /// is refused for every account — including the controller — and the client can only report that
+    /// as "this account may not install the component", which looks like a permissions problem and
+    /// is unfixable from the client. Enumerating the protocol constants keeps this check honest when
+    /// a component is added later.
+    /// </summary>
+    private static void VerifyManageRights()
+    {
+        var known = typeof(ComponentIds).GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(field => field is { IsLiteral: true } && field.FieldType == typeof(string))
+            .Select(field => (string)field.GetRawConstantValue()!)
+            .ToArray();
+        Check(known.Length >= 10 && known.All(ComponentIds.Known),
+            "Every component id constant must also be a known component, or the registry would reject it");
+        var missing = known.Where(id => !ComponentEndpoints.ManageRights.ContainsKey(id)).ToArray();
+        Check(missing.Length == 0,
+            "Every known component id must have a manage right; missing: " + string.Join(", ", missing));
+        Check(ComponentEndpoints.ManageRights.Count == known.Length,
+            "The manage table must not keep entries for components the host no longer knows");
+        Check(ComponentEndpoints.ManageRights[ComponentIds.Git] == InstallationServiceId.Git
+                && ComponentEndpoints.ManageRights[ComponentIds.Samba] == InstallationServiceId.Smb
+                && ComponentEndpoints.ManageRights[ComponentIds.Frpc] == InstallationServiceId.Frp,
+            "Each component must name the installation service whose installation:install claim decides it");
+    }
+
     private static void VerifyRevision()
     {
         var first = ComponentRevision.Of("1.26.3", "1.26.3", "abc", "managed");
@@ -289,6 +319,47 @@ internal static class ComponentLifecycleChecks
         Check(!AptPackageResolution.TryBuildTarget(policy,
                 new AptUriLine("nginx_1.26.3-3+deb13u1_amd64.deb", target.PoolUri, target.Bytes, "not-a-digest"), [], out _, out _),
             "A malformed digest must never be recorded as verification evidence.");
+    }
+
+    /// <summary>
+    /// A flat vendor apt root publishes no suite and, in sing-box's case, only MD5 in
+    /// <c>--print-uris</c>. Both facts must survive into one frozen identity instead of turning the
+    /// publisher's own repository into "no usable version".
+    /// </summary>
+    private static void VerifyFlatRepositoryDigests()
+    {
+        const string flatPolicy = """
+            sing-box:
+              Installed: (none)
+              Candidate: 1.14.4
+              Version table:
+                 1.14.4 500
+                    500 https://deb.sagernet.org */* amd64 Packages
+            """;
+        Check(AptPackageResolution.TryParsePolicy(flatPolicy, "sing-box", out var policy) && policy is not null
+            && policy.CandidateVersion == "1.14.4" && policy.Repositories is [{ Suite: "*", Area: "*", Architecture: "amd64" }],
+            "A flat repository root reports its suite and area as '*'; that is still a publishing repository.");
+
+        const string flatUris = """
+            'https://deb.sagernet.org/sing-box_1.14.4_amd64.deb' sing-box_1.14.4_amd64.deb 12800000 MD5Sum:1a2b3c4d5e6f708192a3b4c5d6e7f809
+            0 upgraded, 1 newly installed, 0 to remove and 0 not upgraded.
+            """;
+        Check(AptPackageResolution.TryParseUriPlan(flatUris, "sing-box", "1.14.4", out var main, out _)
+            && main is { Sha256: "", Md5: "1a2b3c4d5e6f708192a3b4c5d6e7f809", Bytes: 12800000 },
+            "apt prints MD5Sum when the index carries only MD5; that digest must be kept, not discarded.");
+
+        Check(AptPackageResolution.TryBuildTarget(policy, main, [], out var target, out var problem) && target is not null && problem is null,
+            "An MD5-only repository must still freeze into a usable package identity.");
+        Check(target!.Sha256 == "" && target.Md5 == "1a2b3c4d5e6f708192a3b4c5d6e7f809" && target.Suite == "*" && target.Area == "*"
+            && target.RepositoryId == "https://deb.sagernet.org|*|*|amd64" && AptPackageResolution.IsUsableExpectation(target),
+            "The frozen identity must name the one digest algorithm apt actually published.");
+        Check(AptPackageResolution.MatchesExpectation(target, target with { })
+            && !AptPackageResolution.MatchesExpectation(target, target with { Md5 = "00000000000000000000000000000000" }),
+            "A republished package with a different MD5 is a different identity, not the same install.");
+
+        Check(!AptPackageResolution.TryParseUriPlan("'https://deb.sagernet.org/sing-box_1.14.4_amd64.deb' sing-box_1.14.4_amd64.deb 12800000",
+            "sing-box", "1.14.4", out _, out _),
+            "A line without any digest is still not evidence of anything.");
     }
 
     private static void VerifyStateMapping()

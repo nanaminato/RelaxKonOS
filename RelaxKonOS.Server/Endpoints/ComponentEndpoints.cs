@@ -44,30 +44,45 @@ public static class ComponentEndpoints
             .RequireAuthorization(RuntimeCatalogEndpoints.ReadPolicy);
         group.MapPost(ComponentRoutes.PlanPattern, async (string componentId, ComponentPlanRequest request, HttpContext http,
             ComponentLifecycleRegistry registry, CancellationToken ct) =>
-        {
-            var adapter = registry.Require(componentId);
-            // A request for another component must not be answered under this path.
-            if (!string.Equals(request.ComponentId, componentId, StringComparison.Ordinal))
-                return Problem(ComponentProblemCodes.RequestInvalid, 400);
-            if (!CanManage(http.User, componentId)) return Results.Forbid();
-            return await RespondAsync(async () => Results.Ok(await adapter.PlanAsync(request, ct)));
-        }).RequireAuthorization(RuntimeCatalogEndpoints.ManagePolicy);
+            await RespondAsync(async () =>
+            {
+                // A request for another component must not be answered under this path.
+                if (!string.Equals(request.ComponentId, componentId, StringComparison.Ordinal))
+                    return Problem(ComponentProblemCodes.RequestInvalid, 400);
+                if (!CanManage(http.User, componentId)) return Results.Forbid();
+                // Resolving the adapter is inside the response scope so an unregistered component
+                // answers `component.unknown` (404) instead of escaping as an unhandled 500.
+                return Results.Ok(await registry.Require(componentId).PlanAsync(request, ct));
+            })).RequireAuthorization(RuntimeCatalogEndpoints.ManagePolicy);
         return app;
     }
 
-    /// <summary>Manage rights stay per product even though the route is shared.</summary>
-    private static bool CanManage(ClaimsPrincipal user, string componentId) => componentId switch
-    {
-        ComponentIds.SingBox => InstallationEndpoints.CanInstall(user, InstallationServiceId.SingBox),
-        ComponentIds.Mihomo => InstallationEndpoints.CanInstall(user, InstallationServiceId.Mihomo),
-        ComponentIds.Nginx => InstallationEndpoints.CanInstall(user, InstallationServiceId.Nginx),
-        ComponentIds.Squid => InstallationEndpoints.CanInstall(user, InstallationServiceId.Squid),
-        ComponentIds.Samba => InstallationEndpoints.CanInstall(user, InstallationServiceId.Smb),
-        ComponentIds.Docker => InstallationEndpoints.CanInstall(user, InstallationServiceId.Docker),
-        ComponentIds.Tailscale => InstallationEndpoints.CanInstall(user, InstallationServiceId.Tailscale),
-        ComponentIds.Frpc or ComponentIds.Frps => InstallationEndpoints.CanInstall(user, InstallationServiceId.Frp),
-        _ => false
-    };
+    /// <summary>
+    /// Manage rights stay per product even though the route is shared: a component names the
+    /// installation service whose <c>installation:install</c> claim decides it.
+    /// Every component the lifecycle registry answers for must appear here. A missing entry is not
+    /// "no rights needed" — it is a permanent 403 for every account, including the controller, and
+    /// the client can only report it as "this account may not install the component". That failure
+    /// is invisible until somebody tries to install, so <c>ComponentLifecycleChecks</c> asserts this
+    /// table covers every known component id.
+    /// </summary>
+    public static IReadOnlyDictionary<string, InstallationServiceId> ManageRights { get; } =
+        new Dictionary<string, InstallationServiceId>(StringComparer.Ordinal)
+        {
+            [ComponentIds.SingBox] = InstallationServiceId.SingBox,
+            [ComponentIds.Mihomo] = InstallationServiceId.Mihomo,
+            [ComponentIds.Nginx] = InstallationServiceId.Nginx,
+            [ComponentIds.Squid] = InstallationServiceId.Squid,
+            [ComponentIds.Samba] = InstallationServiceId.Smb,
+            [ComponentIds.Docker] = InstallationServiceId.Docker,
+            [ComponentIds.Tailscale] = InstallationServiceId.Tailscale,
+            [ComponentIds.Frpc] = InstallationServiceId.Frp,
+            [ComponentIds.Frps] = InstallationServiceId.Frp,
+            [ComponentIds.Git] = InstallationServiceId.Git
+        };
+
+    private static bool CanManage(ClaimsPrincipal user, string componentId) =>
+        ManageRights.TryGetValue(componentId, out var service) && InstallationEndpoints.CanInstall(user, service);
 
     private static async Task<IResult> RespondAsync(Func<Task<IResult>> action)
     {
