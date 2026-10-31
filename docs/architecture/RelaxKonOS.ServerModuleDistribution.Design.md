@@ -611,6 +611,7 @@ v2 的 `IModuleContext` 只提供：
 - `ModuleHostSupervisor`：配置 `ModuleHosts:Enabled=true` 和 `ModuleHosts:Entries[]` 后，在 Server 启动时为每个条目拉起隔离进程并记录 `running`/`faulted`；`GET /server/module-hosts` 只读报告状态。
 - HTTP 路由：ModuleHost 可选的 `IModuleHostHttp` 在自身 loopback 监听器上注册路由；`GET /server/module-hosts/{moduleId}/{**path}` 由 Server 认证后反向代理到对应 ModuleHost。按模块授权：`AllowedUsers` 为空时仅 `ModuleManagement:Administrators` 可访问，配置用户 ID 时仅这些用户可访问；代理只传递 `X-RelaxKonOS-Module-User`、`X-RelaxKonOS-Module-Role`、`X-RelaxKonOS-Module-Request-Id`，不转发 Authorization/Cookie。
 - 服务令牌：Server 启动每个 ModuleHost 时生成随机 256 位令牌，通过子进程环境变量 `RELAXKONOS_MODULE_HOST_TOKEN` 传递；ModuleHost 对所有 HTTP 请求校验 `X-RelaxKonOS-Module-Token`，Server 代理自动附加。令牌不写入命令行、日志或 ready 输出。
+- 存储/日志：`IModuleHostContext.Storage` 提供路径限定、单文件最大 4 MiB 的读写/删除，拒绝绝对路径、`..`、空段和 reparse/symlink；`IModuleHostContext.Logger` 写入 stderr，避免污染 stdout 行协议。
 - 当前不提供模块服务令牌、细粒度角色、存储/日志能力或提权 Broker；不能作为 v2 生产运行时使用。
 
 ## 13. 验收

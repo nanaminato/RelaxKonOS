@@ -13,7 +13,7 @@ Android 的设计、功能、支持范围和发布要求统一维护在 [Android
 - [虚拟系统盘实施计划](./architecture/RelaxKonOS.VirtualSystemDrive.Goal.md)
 - [虚拟系统盘契约](./architecture/RelaxKonOS.VirtualSystemDrive.Contracts.md)
 - [功能模块与双端应用扩展设计及实施路线（规划）](./architecture/RelaxKonOS.ModulesAndExtensions.Design.md)
-- [服务端独立模块分发与 v1/v2 宿主设计（v1 打包/安装/版本切换/重启核实/在线安装与回退 UI/启动失败回退与隔离/目录搜索下载、远程与周期刷新/模块健康报告与健康停机看门狗已实现；v2 ModuleHost SDK、行协议、进程骨架、监督、按模块授权与认证后 HTTP 代理已建立）](./architecture/RelaxKonOS.ServerModuleDistribution.Design.md)
+- [服务端独立模块分发与 v1/v2 宿主设计（v1 打包/安装/版本切换/重启核实/在线安装与回退 UI/启动失败回退与隔离/目录搜索下载、远程与周期刷新/模块健康报告与健康停机看门狗已实现；v2 ModuleHost SDK、行协议、进程骨架、监督、按模块授权、身份头、服务令牌与受限存储/日志已建立）](./architecture/RelaxKonOS.ServerModuleDistribution.Design.md)
 - [服务端模块提权 Broker（规划）](./architecture/RelaxKonOS.ServerModulePrivilegeBroker.Design.md)
 - [包商店来源设计（模块与桌面应用，规划）](./platform/RelaxKonOS.PackageStore.Design.md)
 - [Server 模块闲时卸载与按需加载（首个运行时切片已实施）](./architecture/RelaxKonOS.ServerModuleResidency.Design.md)
