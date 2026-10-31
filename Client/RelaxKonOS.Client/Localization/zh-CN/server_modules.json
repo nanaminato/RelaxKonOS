@@ -24,6 +24,10 @@
     "server_modules.strategy.ReleaseOnLogout": "退出后尝试释放",
     "server_modules.open_detail": "查看服务端模块",
     "server_modules.recovery_mode": "服务器处于恢复模式，业务模块未运行。可预览恢复完整内置集合；提交后需退出恢复模式并正常重启。",
-    "server_modules.restore_all": "预览恢复全部模块"
+    "server_modules.restore_all": "预览恢复全部模块",
+    "server_modules.packages": "安装事实",
+    "server_modules.package_versions": "所选模块的已安装版本",
+    "server_modules.package_operations": "包操作",
+    "server_modules.packages_unavailable": "服务端没有返回模块包安装事实。"
   }
 }

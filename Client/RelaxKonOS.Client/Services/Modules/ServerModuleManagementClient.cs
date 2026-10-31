@@ -73,12 +73,44 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         Require(page.Items.Select(x => x.OperationId).Distinct().Count() == page.Items.Count);
         return page;
     }
+    public async Task<ServerInstalledModulePageDto> InstalledPackagesAsync()
+    {
+        var page = await SendAsync<ServerInstalledModulePageDto>(HttpMethod.Get, ServerModuleManagementRoutes.InstalledPackages);
+        Require(page.Items is { Count: <= 128 }
+            && page.Items.All(module => module is not null && ValidIds([module.ModuleId]) && module.Version is { Length: > 0 and <= 32 }
+                && module.ReleaseId is { Length: > 0 and <= 128 } && ValidDigest(module.ArtifactSha256)
+                && ValidDigest(module.ManifestSha256) && module.InstalledAt != default)
+            && page.Items.Select(module => module.ModuleId).Distinct(StringComparer.Ordinal).Count() == page.Items.Count);
+        return page;
+    }
+    public async Task<ServerInstalledModulePageDto> PackageVersionsAsync(string moduleId)
+    {
+        Require(ValidIds([moduleId]));
+        var page = await SendAsync<ServerInstalledModulePageDto>(HttpMethod.Get,
+            ServerModuleManagementRoutes.PackageVersions.Replace("{moduleId}", Uri.EscapeDataString(moduleId)));
+        Require(page.Items is { Count: <= 128 }
+            && page.Items.All(module => module is not null && module.ModuleId == moduleId && module.Version is { Length: > 0 and <= 32 }
+                && ValidDigest(module.ArtifactSha256) && module.InstalledAt != default));
+        return page;
+    }
+    public async Task<ServerPackageOperationPageDto> PackageOperationsAsync()
+    {
+        var page = await SendAsync<ServerPackageOperationPageDto>(HttpMethod.Get, ServerModuleManagementRoutes.PackageOperations);
+        Require(page.Items is { Count: <= 128 }
+            && page.Items.All(operation => operation is not null && operation.OperationId != Guid.Empty
+                && operation.Action is "install" or "rollback" && ValidIds([operation.ModuleId])
+                && operation.Version is { Length: > 0 and <= 32 } && ValidDigest(operation.ArtifactSha256)
+                && operation.State is "AwaitingRestart" or "Succeeded" or "Failed"
+                && operation.CreatedAt != default && operation.UpdatedAt >= operation.CreatedAt));
+        return page;
+    }
 
     private static void Require([System.Diagnostics.CodeAnalysis.DoesNotReturnIf(false)] bool condition)
     { if (!condition) throw new InvalidOperationException("module-response-invalid"); }
     private static bool ValidIds(IReadOnlyList<string>? ids) => ids is { Count: <= 128 }
         && ids.All(id => id is { Length: > 0 and <= 128 } && id.All(character => char.IsAsciiLetterOrDigit(character) || character is '.' or '-'))
         && ids.Distinct(StringComparer.Ordinal).Count() == ids.Count;
+    private static bool ValidDigest(string? value) => value is { Length: 64 } && value.All(char.IsAsciiHexDigitLower);
     private static bool ValidCode(string? code) => code is null || code.Length is > 7 and <= 96 && code.StartsWith("module-", StringComparison.Ordinal)
         && code.All(character => char.IsAsciiLetterOrDigit(character) || character == '-');
     private void ValidatePlan(ServerModulePlanDto plan)

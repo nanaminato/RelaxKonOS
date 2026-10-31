@@ -24,6 +24,10 @@
     "server_modules.strategy.ReleaseOnLogout": "ログアウト後に解放を試行",
     "server_modules.open_detail": "サーバーモジュールを表示",
     "server_modules.recovery_mode": "サーバーは復旧モードで、業務モジュールは停止中です。全組み込みモジュールの復旧をプレビューし、適用後は復旧モードを終了して通常起動してください。",
-    "server_modules.restore_all": "全モジュールの復旧をプレビュー"
+    "server_modules.restore_all": "全モジュールの復旧をプレビュー",
+    "server_modules.packages": "インストール情報",
+    "server_modules.package_versions": "選択したモジュールのインストール済みバージョン",
+    "server_modules.package_operations": "パッケージ操作",
+    "server_modules.packages_unavailable": "サーバーはモジュールパッケージのインストール情報を返しませんでした。"
   }
 }

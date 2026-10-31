@@ -18,6 +18,13 @@
    </DataTemplate></ListBox.ItemTemplate>
   </ListBox>
   <TextBlock Text="{Binding Details}" TextWrapping="Wrap" />
+  <TextBlock Text="{loc:Loc server_modules.packages}" FontWeight="SemiBold" />
+  <TextBlock Text="{Binding PackageDetails}" TextWrapping="Wrap" />
+  <TextBlock Text="{loc:Loc server_modules.package_versions}" Opacity="0.7" />
+  <TextBlock Text="{Binding PackageVersionsText}" TextWrapping="Wrap" />
+  <TextBlock Text="{loc:Loc server_modules.package_operations}" Opacity="0.7" />
+  <TextBlock Text="{Binding PackageOperationText}" TextWrapping="Wrap" />
+  <TextBlock Text="{Binding PackageStatus}" TextWrapping="Wrap" />
   <WrapPanel ItemSpacing="8" LineSpacing="8">
    <Button Content="{loc:Loc server_modules.enable}" Command="{Binding EnableCommand}" />
    <Button Content="{loc:Loc server_modules.disable}" Command="{Binding DisableCommand}" />

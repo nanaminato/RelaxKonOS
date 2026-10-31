@@ -30,6 +30,11 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     [ObservableProperty] private bool busy;
     [ObservableProperty] private ServerModulePlanDto? plan;
     [ObservableProperty] private string operationText = "";
+    [ObservableProperty] private IReadOnlyList<ServerInstalledModuleDto> installedPackages = [];
+    [ObservableProperty] private IReadOnlyList<ServerInstalledModuleDto> selectedVersions = [];
+    [ObservableProperty] private IReadOnlyList<ServerPackageOperationDto> packageOperations = [];
+    [ObservableProperty] private string packageStatus = "";
+    private int _versionRequest;
     public IReadOnlyList<ServerModulePolicyChoice> PolicyChoices { get; } = [new("KeepLoaded"), new("IdleDelayed"), new("ReleaseOnLogout")];
     [ObservableProperty] private ServerModulePolicyChoice policyChoice = new("IdleDelayed");
     [ObservableProperty] private decimal idleGraceSeconds = 300;
@@ -95,6 +100,13 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         + $"{LocalizedText.Get("server_modules.restart")} {p.RestartRequired}\n{p.ExpiresAt}\n"
         + (p.Target.Action == ServerModuleAction.SetResidencyPolicy ? $"{p.Target.Strategy} · {p.Target.IdleGraceSeconds}s\n" : "")
         + string.Join("\n", p.BlockedBy.Select(x => x.ProblemCode + " " + x.ModuleId));
+    public string PackageDetails => InstalledPackages.Count == 0 ? "" :
+        string.Join("\n", InstalledPackages.Select(module => $"{module.ModuleId} · {module.Version} · {(module.Active ? "active" : "installed")} · {module.ReleaseId}"));
+    public string PackageVersionsText => SelectedVersions.Count == 0 ? "" :
+        string.Join("\n", SelectedVersions.Select(module => $"{module.Version} · {(module.Active ? "active" : "installed")} · {module.ArtifactSha256[..12]}"));
+    public string PackageOperationText => PackageOperations.Count == 0 ? "" :
+        string.Join("\n", PackageOperations.Take(20).Select(operation =>
+            $"{operation.Action} · {operation.ModuleId} {operation.Version} · {operation.State} · {operation.ProblemCode}"));
     public bool CanEnable => CanPreview(ServerModuleAction.Enable) && Targets.Any(x => !x.DesiredEnabled);
     public bool CanDisable => CanPreview(ServerModuleAction.Disable) && Targets.Any(x => x.DesiredEnabled);
     public bool CanWake => CanPreview(ServerModuleAction.Wake);
@@ -112,6 +124,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
             IdleGraceSeconds = policy.IdleGraceSeconds;
         }
         Notify();
+        _ = RefreshSelectedVersionsAsync();
     }
     partial void OnSelectedRowChanged(ServerModuleSelection? value) => Selected = value?.Fact;
     partial void OnModulesChanged(IReadOnlyList<ServerModuleDto> value)
@@ -124,17 +137,24 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     partial void OnOnlyPendingChanged(bool value) => OnPropertyChanged(nameof(VisibleModules));
     partial void OnBusyChanged(bool value) => Notify();
     partial void OnPlanChanged(ServerModulePlanDto? value) { OnPropertyChanged(nameof(PreviewText)); Notify(); }
+    partial void OnInstalledPackagesChanged(IReadOnlyList<ServerInstalledModuleDto> value) =>
+        OnPropertyChanged(nameof(PackageDetails));
+    partial void OnSelectedVersionsChanged(IReadOnlyList<ServerInstalledModuleDto> value) =>
+        OnPropertyChanged(nameof(PackageVersionsText));
+    partial void OnPackageOperationsChanged(IReadOnlyList<ServerPackageOperationDto> value) =>
+        OnPropertyChanged(nameof(PackageOperationText));
     private void Notify()
     {
         OnPropertyChanged(nameof(Details)); OnPropertyChanged(nameof(CanEnable)); OnPropertyChanged(nameof(CanDisable)); OnPropertyChanged(nameof(CanApply));
         OnPropertyChanged(nameof(CanWake)); OnPropertyChanged(nameof(CanSleep));
         OnPropertyChanged(nameof(CanSetPolicy));
+        OnPropertyChanged(nameof(PackageDetails)); OnPropertyChanged(nameof(PackageVersionsText)); OnPropertyChanged(nameof(PackageOperationText));
         EnableCommand.NotifyCanExecuteChanged(); DisableCommand.NotifyCanExecuteChanged(); ApplyCommand.NotifyCanExecuteChanged();
         WakeCommand.NotifyCanExecuteChanged(); SleepCommand.NotifyCanExecuteChanged();
         SetPolicyCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanRestoreAll)); RestoreAllCommand.NotifyCanExecuteChanged();
     }
-    public void Invalidate() { Modules = []; Selected = null; Plan = null; OperationText = ""; Status = "module-session-changed"; Notify(); }
+    public void Invalidate() { Modules = []; Selected = null; Plan = null; OperationText = ""; InstalledPackages = []; SelectedVersions = []; PackageOperations = []; PackageStatus = "module-session-changed"; Notify(); }
     [RelayCommand] private async Task RefreshAsync() => await Run(async () =>
     {
         // Clear before reading: failed refreshes show unknown instead of stale successful facts.
@@ -173,7 +193,44 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
             var operation = await client.OperationAsync(id);
             OperationText = $"{id} · {operation.State} · {operation.ProblemCode}\n" + OperationText;
         }
+        await RefreshPackageFactsAsync();
     });
+
+    private async Task RefreshPackageFactsAsync()
+    {
+        try
+        {
+            var installed = await client.InstalledPackagesAsync();
+            var operations = await client.PackageOperationsAsync();
+            InstalledPackages = installed.Items;
+            PackageOperations = operations.Items;
+            PackageStatus = "";
+            await RefreshSelectedVersionsAsync();
+        }
+        catch (Exception error) when (error is InvalidOperationException or HttpRequestException
+            or System.Text.Json.JsonException or TaskCanceledException or IOException or UnauthorizedAccessException)
+        {
+            InstalledPackages = []; SelectedVersions = []; PackageOperations = [];
+            PackageStatus = "server_modules.packages_unavailable";
+        }
+    }
+
+    private async Task RefreshSelectedVersionsAsync()
+    {
+        var moduleId = Selected?.Id;
+        var request = ++_versionRequest;
+        if (moduleId is null) { SelectedVersions = []; return; }
+        try
+        {
+            var versions = await client.PackageVersionsAsync(moduleId);
+            if (request == _versionRequest && Selected?.Id == moduleId) SelectedVersions = versions.Items;
+        }
+        catch (Exception error) when (error is InvalidOperationException or HttpRequestException
+            or System.Text.Json.JsonException or TaskCanceledException or IOException or UnauthorizedAccessException)
+        {
+            if (request == _versionRequest) SelectedVersions = [];
+        }
+    }
     [RelayCommand(CanExecute = nameof(CanEnable))] private Task EnableAsync() => PreviewAsync(true);
     [RelayCommand(CanExecute = nameof(CanDisable))] private Task DisableAsync() => PreviewAsync(false);
     [RelayCommand(CanExecute = nameof(CanWake))] private Task WakeAsync() => PreviewRuntimeAsync(ServerModuleAction.Wake);
