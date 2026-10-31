@@ -22,6 +22,10 @@
   <TextBlock Text="{Binding PackageDetails}" TextWrapping="Wrap" />
   <TextBlock Text="{loc:Loc server_modules.package_versions}" Opacity="0.7" />
   <TextBlock Text="{Binding PackageVersionsText}" TextWrapping="Wrap" />
+  <ComboBox ItemsSource="{Binding SelectedVersions}" SelectedItem="{Binding SelectedPackageVersion}">
+   <ComboBox.ItemTemplate><DataTemplate x:DataType="p:ServerInstalledModuleDto"><TextBlock Text="{Binding Version}" /></DataTemplate></ComboBox.ItemTemplate>
+  </ComboBox>
+  <Button Content="{loc:Loc server_modules.rollback_version}" Command="{Binding RollbackPackageCommand}" />
   <TextBlock Text="{loc:Loc server_modules.package_operations}" Opacity="0.7" />
   <TextBlock Text="{Binding PackageOperationText}" TextWrapping="Wrap" />
   <Button Content="{loc:Loc server_modules.install_package}" Click="InstallPackage_Click" IsEnabled="{Binding !Busy}" />

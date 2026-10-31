@@ -32,11 +32,13 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     [ObservableProperty] private string operationText = "";
     [ObservableProperty] private IReadOnlyList<ServerInstalledModuleDto> installedPackages = [];
     [ObservableProperty] private IReadOnlyList<ServerInstalledModuleDto> selectedVersions = [];
+    [ObservableProperty] private ServerInstalledModuleDto? selectedPackageVersion;
     [ObservableProperty] private IReadOnlyList<ServerPackageOperationDto> packageOperations = [];
     [ObservableProperty] private string packageStatus = "";
     [ObservableProperty] private ServerModulePackagePlanDto? packagePlan;
     public bool HasPackagePlan => PackagePlan is not null;
     public bool CanApplyPackagePlan => PackagePlan is not null && !Busy;
+    public bool CanRollbackPackage => !Busy && client.IsCurrent && SelectedPackageVersion is { Active: false };
     private int _versionRequest;
     public IReadOnlyList<ServerModulePolicyChoice> PolicyChoices { get; } = [new("KeepLoaded"), new("IdleDelayed"), new("ReleaseOnLogout")];
     [ObservableProperty] private ServerModulePolicyChoice policyChoice = new("IdleDelayed");
@@ -144,8 +146,18 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     partial void OnPlanChanged(ServerModulePlanDto? value) { OnPropertyChanged(nameof(PreviewText)); Notify(); }
     partial void OnInstalledPackagesChanged(IReadOnlyList<ServerInstalledModuleDto> value) =>
         OnPropertyChanged(nameof(PackageDetails));
-    partial void OnSelectedVersionsChanged(IReadOnlyList<ServerInstalledModuleDto> value) =>
+    partial void OnSelectedVersionsChanged(IReadOnlyList<ServerInstalledModuleDto> value)
+    {
         OnPropertyChanged(nameof(PackageVersionsText));
+        if (SelectedPackageVersion is null || !value.Any(module => module.ModuleId == SelectedPackageVersion.ModuleId
+                && module.Version == SelectedPackageVersion.Version))
+            SelectedPackageVersion = value.FirstOrDefault(module => module.Active) ?? value.FirstOrDefault();
+        OnPropertyChanged(nameof(CanRollbackPackage)); RollbackPackageCommand.NotifyCanExecuteChanged();
+    }
+    partial void OnSelectedPackageVersionChanged(ServerInstalledModuleDto? value)
+    {
+        OnPropertyChanged(nameof(CanRollbackPackage)); RollbackPackageCommand.NotifyCanExecuteChanged(); Notify();
+    }
     partial void OnPackageOperationsChanged(IReadOnlyList<ServerPackageOperationDto> value) =>
         OnPropertyChanged(nameof(PackageOperationText));
     partial void OnPackagePlanChanged(ServerModulePackagePlanDto? value)
@@ -162,9 +174,10 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         EnableCommand.NotifyCanExecuteChanged(); DisableCommand.NotifyCanExecuteChanged(); ApplyCommand.NotifyCanExecuteChanged();
         WakeCommand.NotifyCanExecuteChanged(); SleepCommand.NotifyCanExecuteChanged();
         SetPolicyCommand.NotifyCanExecuteChanged(); ApplyPackagePlanCommand.NotifyCanExecuteChanged();
+        RollbackPackageCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanRestoreAll)); RestoreAllCommand.NotifyCanExecuteChanged();
     }
-    public void Invalidate() { Modules = []; Selected = null; Plan = null; OperationText = ""; InstalledPackages = []; SelectedVersions = []; PackageOperations = []; PackagePlan = null; PackageStatus = "module-session-changed"; Notify(); }
+    public void Invalidate() { Modules = []; Selected = null; Plan = null; OperationText = ""; InstalledPackages = []; SelectedVersions = []; SelectedPackageVersion = null; PackageOperations = []; PackagePlan = null; PackageStatus = "module-session-changed"; Notify(); }
     [RelayCommand] private async Task RefreshAsync() => await Run(async () =>
     {
         // Clear before reading: failed refreshes show unknown instead of stale successful facts.
@@ -259,6 +272,17 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         await RefreshPackageFactsAsync();
         OperationText = $"package install · {result.OperationId} · {result.Record.ModuleId} {result.Record.Version}";
         PackageStatus = LocalizedText.Get("server_modules.package_installed_restart");
+    });
+
+    [RelayCommand(CanExecute = nameof(CanRollbackPackage))]
+    private async Task RollbackPackageAsync() => await Run(async () =>
+    {
+        if (SelectedPackageVersion is not { Active: false } target) return;
+        var result = await client.RollbackPackageAsync(target.ModuleId, target.Version);
+        await RefreshPackageFactsAsync();
+        await RefreshSelectedVersionsAsync();
+        OperationText = $"package rollback · {result.OperationId} · {result.Record.ModuleId} {result.Record.Version}";
+        PackageStatus = LocalizedText.Get("server_modules.package_rolled_back");
     });
     [RelayCommand(CanExecute = nameof(CanEnable))] private Task EnableAsync() => PreviewAsync(true);
     [RelayCommand(CanExecute = nameof(CanDisable))] private Task DisableAsync() => PreviewAsync(false);

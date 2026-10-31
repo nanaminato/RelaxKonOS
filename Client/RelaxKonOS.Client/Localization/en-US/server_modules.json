@@ -33,6 +33,8 @@
     "server_modules.apply_package": "Confirm package install",
     "server_modules.package_uploading": "Uploading and verifying the package…",
     "server_modules.package_plan_ready": "Package verified. Review the frozen plan, then confirm.",
-    "server_modules.package_installed_restart": "Installed. Restart the server to verify the package operation."
+    "server_modules.package_installed_restart": "Installed. Restart the server to verify the package operation.",
+    "server_modules.rollback_version": "Roll back to selected version",
+    "server_modules.package_rolled_back": "Rollback recorded. Restart the server to verify."
   }
 }
