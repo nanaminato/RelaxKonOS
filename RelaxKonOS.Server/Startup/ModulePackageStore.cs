@@ -56,6 +56,44 @@ internal static class ModulePackageStore
         return new(page, offset + page.Length < ordered.Length ? offset + page.Length : null, []);
     }
 
+    internal static ServerModuleStoreSourcePageDto Sources(string contentRoot, IConfiguration configuration,
+        IHostEnvironment environment, DateTimeOffset now)
+    {
+        var serviceId = ModuleManagementStore.ReadRecoveryReport(contentRoot).ServiceId;
+        var document = ModulePackageCatalogStore.Read(contentRoot, serviceId);
+        var context = ModulePackageHostConfiguration.Context(serviceId, configuration, environment);
+        var sources = new List<ServerModuleStoreSourceDto>();
+        foreach (var source in document.Sources.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+        {
+            var saved = source.Value;
+            var catalogUri = configuration["ModulePackages:Sources:" + source.Key + ":CatalogUri"];
+            try
+            {
+                var policy = ModulePackageHostConfiguration.Source(configuration, source.Key);
+                try
+                {
+                    var verified = ModulePackageCatalogStore.ReadCurrentCatalog(document, policy, context, now);
+                    sources.Add(new(policy.SourceId, policy.Purpose, "current", saved.History.Sequence,
+                        saved.History.PolicyRevision, verified.Catalog.Releases.Length, saved.History.RevokedReleaseIds.Length,
+                        !string.IsNullOrWhiteSpace(catalogUri), null));
+                }
+                catch (ModulePackageException error) when (error.ProblemCode == "module-package-source-refresh-required")
+                {
+                    sources.Add(new(policy.SourceId, policy.Purpose, "refresh-required", saved.History.Sequence,
+                        saved.History.PolicyRevision, 0, saved.History.RevokedReleaseIds.Length,
+                        !string.IsNullOrWhiteSpace(catalogUri), error.ProblemCode));
+                }
+            }
+            catch (ModulePackageException error)
+            {
+                sources.Add(new(source.Key, "unknown", "unavailable", saved.History.Sequence,
+                    saved.History.PolicyRevision, 0, saved.History.RevokedReleaseIds.Length,
+                    !string.IsNullOrWhiteSpace(catalogUri), error.ProblemCode));
+            }
+        }
+        return new(sources);
+    }
+
     private static bool Matches(ModulePackageManifest manifest, string? query) =>
         string.IsNullOrWhiteSpace(query)
         || manifest.ModuleId.Contains(query, StringComparison.OrdinalIgnoreCase)

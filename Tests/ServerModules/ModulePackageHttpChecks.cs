@@ -83,6 +83,11 @@ internal static class ModulePackageHttpChecks
             check(store?.Items.Count == 1 && store.Items[0].SourceId == "official"
                 && store.Items[0].ModuleId == "fixture-http" && store.Items[0].ArtifactSha256 == built.ArchiveSha256,
                 "module store search finds the accepted signed release without downloading it");
+            var sources = await client.GetFromJsonAsync<ServerModuleStoreSourcePageDto>(
+                ServerModuleManagementRoutes.ModuleStoreSources, RelaxKonOSJsonOptions.Default);
+            check(sources?.Sources.Count == 1 && sources.Sources[0].SourceId == "official"
+                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == 1,
+                "module store source inventory reports the accepted catalog revision");
 
             using var downloadHandler = new PackageDownloadHandler(await File.ReadAllBytesAsync(built.ArchivePath));
             var downloaded = await ModulePackageDownloader.DownloadAsync(root, builder.Configuration, builder.Environment,

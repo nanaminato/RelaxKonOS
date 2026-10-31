@@ -54,6 +54,7 @@ internal static class ModuleManagementHttpChecks
                 && (await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackageRollback,
                     new ServerModulePackageRollbackRequest(ServerModules.GitId, "9.9.9"))).StatusCode == HttpStatusCode.Unauthorized
                 && (await client.GetAsync(ServerModuleManagementRoutes.ModuleStoreSearch)).StatusCode == HttpStatusCode.Unauthorized
+                && (await client.GetAsync(ServerModuleManagementRoutes.ModuleStoreSources)).StatusCode == HttpStatusCode.Unauthorized
                 && (await client.PostAsJsonAsync(ServerModuleManagementRoutes.ModuleStoreDownload,
                     new ServerModuleStoreDownloadRequest("official", "release-1"))).StatusCode == HttpStatusCode.Unauthorized
                 && (await client.GetAsync(ServerModuleManagementRoutes.ModuleHealth)).StatusCode == HttpStatusCode.Unauthorized,
@@ -73,10 +74,12 @@ internal static class ModuleManagementHttpChecks
                 ServerModuleManagementRoutes.PackageVersions.Replace("{moduleId}", ServerModules.GitId), RelaxKonOSJsonOptions.Default);
             var storeSearch = await client.GetFromJsonAsync<ServerModuleStorePageDto>(
                 ServerModuleManagementRoutes.ModuleStoreSearch, RelaxKonOSJsonOptions.Default);
+            var storeSources = await client.GetFromJsonAsync<ServerModuleStoreSourcePageDto>(
+                ServerModuleManagementRoutes.ModuleStoreSources, RelaxKonOSJsonOptions.Default);
             var health = await client.GetFromJsonAsync<ServerModuleHealthPageDto>(
                 ServerModuleManagementRoutes.ModuleHealth, RelaxKonOSJsonOptions.Default);
             check(installedPackages?.Items.Count == 0 && packageOperations?.Items.Count == 0 && packageVersions?.Items.Count == 0
-                && storeSearch?.Items.Count == 0,
+                && storeSearch?.Items.Count == 0 && storeSources?.Sources.Count == 0,
                 "module package and store read APIs expose empty facts without inventing an installable release");
             check(health?.Healthy == true && health.Modules.Count > 0
                 && health.Modules.All(module => module.Status == "host"),

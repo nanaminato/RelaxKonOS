@@ -47,6 +47,10 @@ internal static class ServerModuleManagementEndpoints
                 context.ContentRootPath, context.Configuration, context.Environment, q, sourceId, offset ?? 0,
                 limit ?? 25, DateTimeOffset.UtcNow)))))
             .RequireAuthorization(ManagePolicy);
+        group.MapGet(ServerModuleManagementRoutes.ModuleStoreSources, (ServerModuleContext context) =>
+                Respond(() => Task.FromResult<IResult>(Results.Ok(ModulePackageStore.Sources(context.ContentRootPath,
+                    context.Configuration, context.Environment, DateTimeOffset.UtcNow)))))
+            .RequireAuthorization(ManagePolicy);
         group.MapPost(ServerModuleManagementRoutes.ModuleStoreDownload, async (ServerModuleStoreDownloadRequest request,
             ServerModuleContext context, CancellationToken cancellationToken) => await Respond(async () =>
             Results.Ok(await ModulePackageDownloader.DownloadAsync(context.ContentRootPath, context.Configuration,

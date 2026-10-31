@@ -83,6 +83,11 @@ public sealed record ServerModuleStorePageDto([property: JsonRequired] IReadOnly
     int? NextOffset, [property: JsonRequired] IReadOnlyList<ServerModuleBlocker> BlockedBy);
 public sealed record ServerModuleStoreDownloadRequest([property: JsonRequired] string SourceId,
     [property: JsonRequired] string ReleaseId);
+public sealed record ServerModuleStoreSourceDto([property: JsonRequired] string SourceId,
+    [property: JsonRequired] string Purpose, [property: JsonRequired] string Status, [property: JsonRequired] long Sequence,
+    [property: JsonRequired] long PolicyRevision, [property: JsonRequired] int ReleaseCount,
+    [property: JsonRequired] int RevokedCount, [property: JsonRequired] bool CatalogUriConfigured, string? ProblemCode);
+public sealed record ServerModuleStoreSourcePageDto([property: JsonRequired] IReadOnlyList<ServerModuleStoreSourceDto> Sources);
 public sealed record ServerModuleHealthModuleDto([property: JsonRequired] string ModuleId,
     [property: JsonRequired] bool Enabled, [property: JsonRequired] bool Installed, string? Version, string? SourceId,
     [property: JsonRequired] string Status, string? ProblemCode);
@@ -110,5 +115,6 @@ public static class ServerModuleManagementRoutes
     public const string PackageRollback = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-packages/rollback";
     public const string ModuleStoreSearch = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-store/search";
     public const string ModuleStoreDownload = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-store/download";
+    public const string ModuleStoreSources = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-store/sources";
     public const string ModuleHealth = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-health";
 }
