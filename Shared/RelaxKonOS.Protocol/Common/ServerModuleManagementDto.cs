@@ -68,6 +68,7 @@ public sealed record ServerModulePackagePlanDto([property: JsonRequired] Guid Pl
     Guid? AppliedOperationId);
 public sealed record ServerModulePackageRollbackRequest([property: JsonRequired] string ModuleId,
     [property: JsonRequired] string Version);
+public sealed record ServerModulePackageAutoPlanRequest([property: JsonRequired] string UploadId);
 
 public static class ServerModuleManagementRoutes
 {
@@ -85,5 +86,6 @@ public static class ServerModuleManagementRoutes
     public const string PackageInstall = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-packages/install";
     public const string PackagePlans = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-packages/plans";
     public const string PackagePlanApply = PackagePlans + "/{planId:guid}/apply";
+    public const string PackageAutoPlan = PackagePlans + "/auto";
     public const string PackageRollback = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-packages/rollback";
 }

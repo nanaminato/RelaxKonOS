@@ -137,6 +137,50 @@ internal static class ServerModuleManagementEndpoints
                 candidate, DateTimeOffset.UtcNow);
             return Results.Ok(PlanDto(plan));
         })).RequireAuthorization(ManagePolicy);
+        group.MapPost(ServerModuleManagementRoutes.PackageAutoPlan, async (ServerModulePackageAutoPlanRequest request,
+            HttpContext http, ServerModuleContext context, CancellationToken cancellationToken) => await Respond(async () =>
+        {
+            if (!Guid.TryParseExact(request.UploadId, "N", out _))
+                return Problem("module-package-plan-request-invalid", 400);
+            var path = Path.Combine(context.ContentRootPath, "data", "module-management", "staging", "uploads",
+                request.UploadId + ".rkmodule");
+            if (!File.Exists(path)) return Problem("module-package-upload-not-found", 404);
+            var info = new FileInfo(path);
+            await using var stream = File.OpenRead(path);
+            var digest = Convert.ToHexStringLower(await SHA256.HashDataAsync(stream, cancellationToken));
+            var serviceId = ModuleManagementStore.ReadRecoveryReport(context.ContentRootPath).ServiceId;
+            var document = ModulePackageCatalogStore.Read(context.ContentRootPath, serviceId);
+            var candidates = new List<AcceptedModulePackageCandidate>();
+            foreach (var sourceId in document.Sources.Keys.OrderBy(id => id == "official" ? 0 : 1).ThenBy(id => id, StringComparer.Ordinal))
+            {
+                try
+                {
+                    var policy = ModulePackageHostConfiguration.Source(context.Configuration, sourceId);
+                    var verified = ModulePackageCatalogStore.ReadCurrentCatalog(document, policy,
+                        ModulePackageHostConfiguration.Context(serviceId, context.Configuration, context.Environment), DateTimeOffset.UtcNow);
+                    foreach (var release in verified.Catalog.Releases.Where(release =>
+                                 release.ArchiveSha256 == digest && release.ArchiveBytes == info.Length))
+                    {
+                        try
+                        {
+                            candidates.Add(await InstalledModuleInstaller.InspectAsync(context.ContentRootPath,
+                                context.Configuration, context.Environment, sourceId, path, release.Manifest.ReleaseId,
+                                DateTimeOffset.UtcNow, takeHostLock: false, cancellationToken));
+                        }
+                        catch (ModulePackageException) { }
+                    }
+                }
+                catch (ModulePackageException) { }
+            }
+            var groups = candidates.GroupBy(candidate => (candidate.Manifest.ModuleId, candidate.Manifest.Version,
+                candidate.ArchiveSha256)).ToArray();
+            if (groups.Length == 0) return Problem("module-package-upload-not-authorized", 404);
+            if (groups.Length > 1) return Problem("module-package-upload-ambiguous", 409);
+            var selected = groups[0].OrderBy(candidate => candidate.SourceId == "official" ? 0 : 1).First();
+            var plan = ModulePackagePlanStore.Create(context.ContentRootPath, Actor(http.User), request.UploadId,
+                selected, DateTimeOffset.UtcNow);
+            return Results.Ok(PlanDto(plan));
+        })).RequireAuthorization(ManagePolicy);
         group.MapPost(ServerModuleManagementRoutes.PackagePlanApply, async (Guid planId, HttpContext http,
             ServerModuleContext context, CancellationToken cancellationToken) => await Respond(async () =>
         {

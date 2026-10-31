@@ -85,6 +85,14 @@ internal static class ModulePackageHttpChecks
             check(uploaded.Bytes == built.ArchiveBytes && uploaded.Sha256 == built.ArchiveSha256,
                 "HTTP upload stages the exact package bytes and digest");
 
+            var autoResponse = await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackageAutoPlan,
+                new ServerModulePackageAutoPlanRequest(uploaded.UploadId), RelaxKonOSJsonOptions.Default);
+            autoResponse.EnsureSuccessStatusCode();
+            var autoPlan = (await autoResponse.Content.ReadFromJsonAsync<ServerModulePackagePlanDto>(RelaxKonOSJsonOptions.Default))!;
+            check(autoPlan.ModuleId == "fixture-http" && autoPlan.Version == "1.0.0" && autoPlan.SourceId == "official"
+                && autoPlan.ArtifactSha256 == built.ArchiveSha256,
+                "HTTP auto plan resolves an uploaded archive through the accepted catalog without caller source hints");
+
             var planResponse = await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackagePlans,
                 new ServerModulePackageInstallRequest("official", releaseId, uploaded.UploadId), RelaxKonOSJsonOptions.Default);
             planResponse.EnsureSuccessStatusCode();
