@@ -1,6 +1,7 @@
 {
     "Culture": "zh-CN",
     "Strings": {
+        "application.relaxkonos.tailscale.display_name": "Tailscale 管理器",
         "application.relaxkonos.welcome.display_name": "欢迎",
         "application.relaxkonos.terminal.display_name": "终端",
         "application.relaxkonos.server-center.display_name": "安装或管理服务器",

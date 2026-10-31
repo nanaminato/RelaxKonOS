@@ -38,6 +38,7 @@ void Check(bool value, string message) { if (!value) throw new Exception(message
 var folder = Directory.CreateTempSubdirectory("relaxkonos-tailscale-client-");
 try
 {
+    Check(new TailscaleApp().Manifest.Permissions.Contains(RelaxKonOS.Core.Applications.AppPermissions.ServerComponentsRead), "launch dependency inspection permission is declared");
     var client = new FakeClient();
     var broker = new Broker();
     var store = new TailscaleOperationReferences(Path.Combine(folder.FullName, "refs.json"));
@@ -178,7 +179,9 @@ try
     var output = Path.Combine(System.AppContext.BaseDirectory, "layout-qa"); Directory.CreateDirectory(output);
     foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
     {
-        settings.Language = culture; settings.Appearance = settings.Appearance with { Mode = RelaxKonOS.Protocol.Desktop.ThemeKind.Light }; Dispatcher.UIThread.RunJobs();
+        settings.Language = culture;
+        Check(language.Get("application.relaxkonos.tailscale.display_name", "") == (culture switch { "zh-CN" => "Tailscale 管理器", "ja-JP" => "Tailscale マネージャー", _ => "Tailscale Manager" }), "localized launch guard application name");
+        settings.Appearance = settings.Appearance with { Mode = RelaxKonOS.Protocol.Desktop.ThemeKind.Light }; Dispatcher.UIThread.RunJobs();
         var layoutClient = new FakeClient();
         var layout = new TailscaleViewModel(layoutClient, new TailscaleOperationReferences(Path.Combine(folder.FullName, "layout.json")), broker, language);
         var loginLayout = new TailscaleLoginViewModel(new LoginFake { Connection = layoutClient.Connection }, new TailscaleOperationReferences(Path.Combine(folder.FullName, "login-layout.json")), broker, language);

@@ -589,7 +589,7 @@ Hub 路径 `/hubs/workspace`。Server 端实现 `WorkspaceHub : Hub<IWorkspaceHu
 
 服务端统一采样器（`PerformanceSampler`，Singleton，`ISystemPerformanceSource` 跨平台采样：Windows/Linux）在**至少一个客户端订阅期间每秒**广播 `PerformanceRealtimeSnapshotDto`，并保留最近 60 秒内存历史，供客户端以 REST `performance/history` 回补重连空洞。
 
-无人订阅时不读取性能计数器，并清空内存历史。详见 [`RelaxKonOS.TaskManager.Rewrite.md`](../applications/RelaxKonOS.TaskManager.Rewrite.md)。
+无人订阅时不读取性能计数器，并清空内存历史。详见 [`RelaxKonOS.TaskManager.md`](../applications/RelaxKonOS.TaskManager.md)。
 
 客户端通过 `Subscribe` / `Unsubscribe` 显式控制订阅；连接断开也会自动移除订阅。方法名集中在 `PerformanceHubMethods`。
 
@@ -734,8 +734,7 @@ RemoteTerminal 的 PTY 流传输**已在 Protocol 契约内**，走 SignalR Hub 
 | [`RelaxKonOS.Explorer.md`](../applications/RelaxKonOS.Explorer.md)                                                                                                                                                                                 | 文件管理端点实现、宿主 OS 权限复用、特殊目录/POSIX 权限                    |
 | [`RelaxKonOS.Browser.md`](../applications/RelaxKonOS.Browser.md)                                                                                                                                                                                   | 浏览器端点、BrowserSettings 持久化、loopback 端口转发              |
 | [`RelaxKonOS.Settings.md`](../desktop/RelaxKonOS.Settings.md)                                                                                                                                                                                      | Workspace 偏好端点、PreferencesSync 多设备同步、主题调色板导入         |
-| [`RelaxKonOS.TaskManager.md`](../applications/RelaxKonOS.TaskManager.md)                                                                                                                                                                           | 系统监控端点（兼容 metrics）、跨平台 ISystemMetricsProvider        |
-| [`RelaxKonOS.TaskManager.Rewrite.md`](../applications/RelaxKonOS.TaskManager.Rewrite.md)                                                                                                                                                           | Performance Hub 推送设计、跨平台 PerformanceSource、进程分页查询    |
+| [`RelaxKonOS.TaskManager.md`](../applications/RelaxKonOS.TaskManager.md)                                                                                                                                                           | Performance Hub、跨平台 PerformanceSource、进程分页与实例终止    |
 | [`RelaxKonOS.DockerManager.md`](../applications/RelaxKonOS.DockerManager.md)                                                                                                                                                                       | Docker 引擎/容器/镜像/网络/卷/Stack 端点、镜像源解析                  |
 | [`RelaxKonOS.Firewall.md`](../applications/RelaxKonOS.Firewall.md)                                                                                                                                                                                 | Linux UFW 防火墙状态、规则、默认策略、PAM 提权变更                     |
 | [`RelaxKonOS.GitClient.md`](../applications/RelaxKonOS.GitClient.md)                                                                                                                                                                               | Git 引擎、仓库、分支、提交、合并/变基、远程管理端点                         |

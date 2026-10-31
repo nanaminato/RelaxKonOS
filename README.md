@@ -172,6 +172,8 @@ RelaxKonOS/
 | **Image Viewer** | 图片文件浏览（缩放与滚动） | ✅ 可用 |
 | **Settings** | 设置中心（8 个分类页：系统/账户安全/网络/个性化/应用/时间语言/辅助功能/开发者；含全页搜索） | ✅ 可用 |
 | **Server Center** | 服务器中心：SSH 与主机密钥核对、预检、安装、更新、修复、回退与卸载 | ✅ 可用 |
+| **Component Center** | 组件中心：统一查看宿主组件依赖、安装状态、版本与来源，管理已接入组件的安装、更新、卸载及操作恢复 | 🚧 分组件接入中 |
+| **Tailscale** | 远端宿主 Tailscale 组网管理：设备与连接状态、浏览器登录授权、DNS/路由偏好、连接与断开、操作恢复；安装维护统一进入组件中心 | 🧪 MVP（Linux 已有实机验证，Windows 待实机验收） |
 | **Terminal** | 远端终端（SignalR + PTY 持久会话，VT 引擎可选 Auto/Managed/Native） | ✅ 可用 |
 | **Explorer** | 远端文件管理器（REST API + 宿主 OS 权限复用） | ✅ 可用 |
 | **Browser** | 内置浏览器（书签/历史、主页与链接打开位置持久化） | ✅ 可用 |
@@ -331,6 +333,9 @@ dotnet run
 | [RelaxKonOS.Browser.md](./docs/applications/RelaxKonOS.Browser.md) | 浏览器、书签/历史/偏好同步 |
 | [RelaxKonOS.PortForwarding.md](./docs/applications/RelaxKonOS.PortForwarding.md) | SSH 端口转发、本机 loopback 隧道 |
 | [RelaxKonOS.TaskManager.md](./docs/applications/RelaxKonOS.TaskManager.md) | 任务管理器、系统指标、进程管理、SignalR 推送重写 |
+| [RelaxKonOS.ComponentCenter.Design.md](./docs/platform/RelaxKonOS.ComponentCenter.Design.md) | 组件中心、逐组件接入与平台验收边界 |
+| [RelaxKonOS.ComponentCenter.Progress.md](./docs/platform/RelaxKonOS.ComponentCenter.Progress.md) | 组件中心、逐组件接入与平台验收边界 |
+| [RelaxKonOS.Tailscale.Design.md](./docs/applications/RelaxKonOS.Tailscale.Design.md) | Tailscale 设备、登录、连接控制与生命周期实施状态 |
 | [RelaxKonOS.DockerManager.md](./docs/applications/RelaxKonOS.DockerManager.md) | Docker 管理器、容器/镜像/Stack/网络/卷 |
 | [RelaxKonOS.ApplicationDeployment.Design.md](./docs/applications/RelaxKonOS.ApplicationDeployment.Design.md) | 容器化应用部署、模板契约、状态机与恢复语义 |
 | [RelaxKonOS.Firewall.md](./docs/applications/RelaxKonOS.Firewall.md) | Linux Server UFW 防火墙应用 |

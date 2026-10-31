@@ -2,7 +2,7 @@
 
 本索引介绍项目结构、模块职责和文档位置。架构原则见 [Architecture](./architecture/RelaxKonOS.Architecture.md)，具体功能和验收状态以对应领域文档为准。
 
-Android 的设计、功能、支持范围和发布要求统一维护在 [Android 文件传输](../Client/RelaxKonOS.Client.Android/docs/README.md)。
+Android 的设计、功能、支持范围和发布要求统一维护在 [Android 文档索引](../Client/RelaxKonOS.Client.Android/docs/README.md)。
 
 专题补充：
 
@@ -30,6 +30,7 @@ Android 的设计、功能、支持范围和发布要求统一维护在 [Android
 - [代理管理器实现说明（英文）](./applications/RelaxKonOS.ProxyManager.Discovery.en.md)
 - [代理管理器设计](./applications/RelaxKonOS.ProxyManager.Design.md)
 - [代理服务端应用设计（sing-box，首版实现与验收边界）](./applications/RelaxKonOS.ProxyServer.Design.md)
+- [Tailscale 管理器（设备、登录、连接控制与生命周期实施状态）](./applications/RelaxKonOS.Tailscale.Design.md)
 - [组件中心（桌面首批接入中：统一安装、更新、卸载、版本与来源）](./platform/RelaxKonOS.ComponentCenter.Design.md)
 - [任务编排、冻结计划与统一审批（设计中）](./platform/RelaxKonOS.TaskOrchestration.Design.md)
 - [内置应用受管运行时、版本目录与发布源（设计中，含补齐清单）](./platform/RelaxKonOS.ManagedRuntimes.Design.md)
@@ -84,13 +85,17 @@ RelaxKonOS 采用状态同步模式（非像素流）：Client 本地渲染 UI�
 
 服务端 loopback URL 由新的本机 Port Forwarding 应用通过 `ssh -L` 映射为有效 localhost 链接；该应用只绑定 loopback，SSH 设置与活动隧道都不会同步。详见 [`RelaxKonOS.Browser.md`](./applications/RelaxKonOS.Browser.md) 与 [`RelaxKonOS.PortForwarding.md`](./applications/RelaxKonOS.PortForwarding.md)。
 
-内置设置中心已实现（RemoteSettings）：Windows 11 / GNOME 风格，5 个分类页（系统 / 个性化 / 时间和语言 / 网络 / 应用）。用户偏好（壁纸 / 主题 / 时间格式 / 日期格式 / 语言 / 区域 / 默认程序）经 Server 端 REST API（`/api/v1.0/workspaces/{id}/preferences`）持久化到 Workspace（`OwnsOne + ToJson` 单列 JSON，多设备共享）；登录时 `PreferencesSync` 自动加载应用到桌面外壳（壁纸 / 任务栏底色 / 时钟格式即时生效），设置应用编辑后防抖 300ms 保存。
+内置设置中心已实现（RemoteSettings）：Windows 11 风格分类与详情导航，覆盖系统、网络、个性化、应用、账户、时间语言、辅助功能与开发者设置。用户偏好（壁纸 / 主题 / 时间格式 / 日期格式 / 语言 / 区域 / 默认程序）经 Server 端 REST API（`/api/v1.0/workspaces/{id}/preferences`）持久化到配置注册表 `Workspace\Desktop` 的 `(Default)` JSON 文档（revision 并发控制，多设备共享）；登录时 `PreferencesSync` 自动加载应用到桌面外壳（壁纸 / 任务栏底色 / 时钟格式即时生效），设置应用编辑后防抖 300ms 保存。
 
-宿主 OS 级设置（时区 / 网卡）只读展示（硬约束「权限提升委托宿主 OS」）。详见 [`RelaxKonOS.Settings.md`](./desktop/RelaxKonOS.Settings.md)。
+宿主时区、主机名、环境变量及受支持网卡的 IPv4 / DNS 已接入受限 Helper 写入；真实平台写入与断连恢复仍有待验收项，具体边界见设置文档。详见 [`RelaxKonOS.Settings.md`](./desktop/RelaxKonOS.Settings.md)。
 
-内置任务管理器正在重写（RemoteTaskManager）：性能页改由 Server 端在存在订阅时运行的统一 1 秒采样器、60 秒内存历史与 SignalR（`/hubs/performance`）推送驱动；CPU/内存/文件系统/网络/磁盘 I/O 跨 Windows/Linux 统一建模，宿主机或服务身份不支持的能力会明确降级而非显示伪造数值。
+内置任务管理器已实现统一采样与实时推送（RemoteTaskManager）：性能页改由 Server 端在存在订阅时运行的统一 1 秒采样器、60 秒内存历史与 SignalR（`/hubs/performance`）推送驱动；CPU/内存/文件系统/网络/磁盘 I/O 跨 Windows/Linux 统一建模，宿主机或服务身份不支持的能力会明确降级而非显示伪造数值。
 
-进程页使用查询驱动的低频采样缓存与分页查询；结束进程仍不自动提权。旧 REST metrics 契约已移除。详见 [`RelaxKonOS.TaskManager.Rewrite.md`](./applications/RelaxKonOS.TaskManager.Rewrite.md)。
+进程页使用查询驱动的低频采样缓存与分页查询；结束操作绑定 PID 与启动时间，普通模式权限不足时通过统一提升入口授权后重试原实例一次。旧 REST metrics 契约已移除。详见 [`RelaxKonOS.TaskManager.md`](./applications/RelaxKonOS.TaskManager.md)。
+
+内置组件中心（ComponentCenter）统一展示宿主组件依赖、安装状态、版本与来源，提供已接入组件的安装维护与操作恢复入口；业务配置、服务控制和日志仍由对应应用负责。当前按组件和平台逐步接入，完整支持与验收边界见[组件中心进度](./platform/RelaxKonOS.ComponentCenter.Progress.md)。
+
+内置 Tailscale 管理器提供远端宿主的设备与连接状态、浏览器登录授权、DNS/路由偏好、连接/断开和原操作恢复，安装维护跳转组件中心。Linux 已有实机验证；Windows MSI、跨版本变更及重启恢复仍待实机验收。详见[Tailscale 实施记录](./applications/RelaxKonOS.Tailscale.Design.md)。
 
 内置 Docker 管理器已实现（RemoteDocker）：本机 Docker Engine 检测与状态展示、容器启停重启、镜像拉取与镜像源、Compose 校验/部署/停止，以及网络与卷管理。Server 端通过 `IDockerEngineService` 调用 `docker` CLI，`IDockerComposeService` 处理 Compose 编排。详见 [`RelaxKonOS.DockerManager.md`](./applications/RelaxKonOS.DockerManager.md)。
 
@@ -141,7 +146,7 @@ Windows Server Test/             跨平台能力验证测试床（原生 API 探
 - **类型**：Class Library
 - **定位**：RelaxKonOS Shell，类似 `explorer.exe`。
 - **职责**：Desktop、Taskbar、StartMenu、MainWindow、Shell 生命周期。
-- **包含内置应用**：Welcome、Notepad、Code Editor、Image Viewer、Settings、Terminal、Explorer、Browser、TaskManager、DockerManager、ProcessGuardian、Firewall、PortForwarding、CertificateManager、GitClient、TunnelManager、WebServerManager、Registry、AppInstaller、TextEditor（编码支持）。
+- **包含内置应用**：Welcome、Notepad、Code Editor、Image Viewer、Settings、Terminal、Explorer、Browser、TaskManager、ComponentCenter、Tailscale、DockerManager、ProcessGuardian、Firewall、PortForwarding、CertificateManager、GitClient、TunnelManager、WebServerManager、Registry、AppInstaller、TextEditor（编码支持）。
 - **系统启动时装配**：`WindowManager`、`ApplicationManager`、Shell Services。
 
 ### 4.3 RelaxKonOS.Core
@@ -287,6 +292,8 @@ Application Package
 | **Explorer** | 远端文件管理器（Jaya UI 移植 + REST API + 宿主 OS 权限复用） | 已实现（浏览、基本操作、文件打开方式、属性与 Linux 权限编辑；大文件上传走可续传分块会话，见 [设计](./architecture/RelaxKonOS.FileUpload.Design.md)） |
 | **Browser** | 内置浏览器（Avalonia.Controls.WebView + 书签/历史持久化到 Server） | 已实现（导航 + 书签 + 历史 + 浏览器偏好） |
 | **TaskManager** | 远端宿主 OS 任务管理器（CPU/内存/文件系统/网络/磁盘 I/O/GPU 占用 + 进程列表，可结束任务） | 已实现（性能页订阅期间 SignalR 1Hz 推送、60s 历史、跨平台采集；进程页按需低频采样与分页） |
+| **ComponentCenter** | 宿主组件依赖、安装状态、版本与来源的统一入口；已接入组件的安装、更新、卸载及操作恢复 | 分组件接入中；支持的操作与平台验收范围分别见[组件中心进度](./platform/RelaxKonOS.ComponentCenter.Progress.md)，不代表全部组件均已具备完整生命周期。 |
+| **Tailscale** | 远端宿主设备与连接状态、浏览器登录授权、DNS/路由偏好、连接/断开及原操作恢复；安装维护进入组件中心 | 已实现基础管理与生命周期接线；Linux 已有实机验证，Windows MSI、跨版本变更及重启恢复仍待实机验收。见[Tailscale 实施记录](./applications/RelaxKonOS.Tailscale.Design.md)。 |
 | **DockerManager** | 本机 Docker Engine 的检测/安装引导、容器/镜像/镜像源/Stack/网络/卷管理 | 已实现（状态检测、资源只读列表、容器启停重启/拉取镜像/镜像源选择/Compose 校验部署停止/网络与卷管理；详见 [`RelaxKonOS.DockerManager.md`](./applications/RelaxKonOS.DockerManager.md)） |
 | **ApplicationDeployments** | 镜像/Java/.NET/Python 应用的定义、不可变发布版本、部署/启停/回滚、日志与可选反向代理 | 已实现基础工作流，已有 HTTP/传输专项测试及隔离 .NET 镜像验证；完整 Docker 平台场景尚未验收，单服务 Compose 项目部署未实现。见 [应用设计与验证](./applications/RelaxKonOS.ApplicationDeployment.Design.md)。 |
 | **ProcessGuardian** | 受守护工作负载、健康检查、自动恢复、日志与原生服务管理 | 已实现（独立 Agent、本机认证 IPC、工作负载声明持久化与启停重启；SignalR `/hubs/guardian-logs` 日志广播；健康/服务适配设计中，详见 [`RelaxKonOS.ProcessGuardian.md`](./applications/RelaxKonOS.ProcessGuardian.md)） |
@@ -495,5 +502,3 @@ RelaxKonOS.Server     = Cloud Backend
 | [`ManagedRuntimes.Design`](./platform/RelaxKonOS.ManagedRuntimes.Design.md) | 内置应用安装/卸载/多版本更新、可信发布源与补齐任务 |
 | [`Develop`](./development/RelaxKonOS.Develop.md) | 开发者快速上手、代码结构与调试指南 |
 | [`DeveloperMode`](./development/RelaxKonOS.DeveloperMode.md) | 开发模式、DevCli 与应用包发布 |
-
-Tailscale 管理器：桌面设备/条件控制/操作重开、未知操作人工核对关账与服务端控制链已实现；首次登录的 Helper 证据链、服务端协调器与受保护 HTTP 路由已实现，桌面入口与真实宿主验收尚未完成，见 [设计与实施记录](applications/RelaxKonOS.Tailscale.Design.md)。

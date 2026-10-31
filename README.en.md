@@ -172,6 +172,8 @@ Status legend: ✅ **Available** (dependable day to day) · 🧪 **MVP** (main f
 | **Image Viewer** | Image file browsing (zoom and scroll) | ✅ Available |
 | **Settings** | Settings center (8 category pages: System/Account security/Network/Personalization/Apps/Time & language/Accessibility/Developer, with full-page search) | ✅ Available |
 | **Server Center** | SSH and host-key verification, preflight, install, update, repair, rollback and uninstall | ✅ Available |
+| **Component Center** | View host component dependencies, installation status, versions and sources; install, update, uninstall and recover operations for integrated components | 🚧 Integration varies by component |
+| **Tailscale** | Manage Tailscale on the remote host: peers and connection status, browser sign-in, DNS/route preferences, connect/disconnect and operation recovery; installation is managed through Component Center | 🧪 MVP (Linux host checks recorded; Windows host acceptance pending) |
 | **Terminal** | Remote terminal (SignalR + PTY persistent sessions, selectable VT engine: Auto/Managed/Native) | ✅ Available |
 | **Explorer** | Remote File Manager (REST API + host OS permission reuse) | ✅ Available |
 | **Browser** | Built-in Browser (bookmarks/history, home page and link-open-location persistence) | ✅ Available |
@@ -331,6 +333,9 @@ The client will open a login dialog. Enter your host system username and passwor
 | [RelaxKonOS.Browser.md](./docs/applications/RelaxKonOS.Browser.md) | Browser, bookmarks/history/preference sync |
 | [RelaxKonOS.PortForwarding.md](./docs/applications/RelaxKonOS.PortForwarding.md) | SSH port forwarding, local loopback tunnels |
 | [RelaxKonOS.TaskManager.md](./docs/applications/RelaxKonOS.TaskManager.md) | Task manager, system metrics, process management, SignalR push rewrite |
+| [RelaxKonOS.ComponentCenter.Design.md](./docs/platform/RelaxKonOS.ComponentCenter.Design.md) | Component Center, per-component integration and platform acceptance boundaries |
+| [RelaxKonOS.ComponentCenter.Progress.md](./docs/platform/RelaxKonOS.ComponentCenter.Progress.md) | Component Center, per-component integration and platform acceptance boundaries |
+| [RelaxKonOS.Tailscale.Design.md](./docs/applications/RelaxKonOS.Tailscale.Design.md) | Tailscale peers, sign-in, connection controls and lifecycle implementation status |
 | [RelaxKonOS.DockerManager.md](./docs/applications/RelaxKonOS.DockerManager.md) | Docker manager, container/image/Stack/network/volume |
 | [RelaxKonOS.ApplicationDeployment.Design.md](./docs/applications/RelaxKonOS.ApplicationDeployment.Design.md) | Containerized app deployment, template contracts, state machine and recovery semantics |
 | [RelaxKonOS.Firewall.md](./docs/applications/RelaxKonOS.Firewall.md) | Linux Server UFW firewall app |

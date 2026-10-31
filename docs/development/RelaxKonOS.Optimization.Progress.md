@@ -82,9 +82,9 @@
 
 ### OPT-006：文档状态与仓库策略对齐
 
-依据：[任务管理器重写](../applications/RelaxKonOS.TaskManager.Rewrite.md) Goal 1、Goal 8 仍要求记录兼容期限和兼容期后删除旧路径，与根 `AGENTS.md` 的发布前直接升级策略冲突。[后端可观测性设计](../architecture/RelaxKonOS.BackendObservability.Goal.md) 2026-09-25 记录称 `TestAssert.Equal/True` 不存在；当前 [TestAssert.cs](../../RelaxKonOS.Server.Tests/TestAssert.cs) 已实现两者，且本次测试项目已构建成功。历史记录应保留日期，并追加当前状态，不把历史失败当作当前失败。
+当前状态（2026-10-31）：任务管理器重复的重写方案已清理，现行采样、协议、进程实例终止与权限边界统一见[任务管理器](../applications/RelaxKonOS.TaskManager.md)。不再将旧兼容期要求作为待办。后端可观测性设计中的历史测试失败与当前状态仍需分别阅读；`TestAssert.Equal/True` 已存在于 [TestAssert.cs](../../RelaxKonOS.Server.Tests/TestAssert.cs)。
 
-建议：清理当前实施要求中的兼容期，追加带日期的状态更正，并链接仍未覆盖的净化问题 OPT-002。
+后续：继续按各领域实现核对文档状态；仍未覆盖的日志净化问题见 OPT-002。
 
 验收：当前目标不再要求兼容 shim；原历史事实与本次构建事实区分清楚；文档不在未运行测试时宣称回归测试全部通过。
 

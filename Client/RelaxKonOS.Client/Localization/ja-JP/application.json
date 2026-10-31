@@ -1,6 +1,7 @@
 {
     "Culture": "ja-JP",
     "Strings": {
+        "application.relaxkonos.tailscale.display_name": "Tailscale マネージャー",
         "application.relaxkonos.welcome.display_name": "ようこそ",
         "application.relaxkonos.terminal.display_name": "ターミナル",
         "application.relaxkonos.server-center.display_name": "サーバーをインストールまたは管理",

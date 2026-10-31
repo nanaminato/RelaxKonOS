@@ -1,6 +1,7 @@
 {
     "Culture": "en-US",
     "Strings": {
+        "application.relaxkonos.tailscale.display_name": "Tailscale Manager",
         "application.relaxkonos.welcome.display_name": "Welcome",
         "application.relaxkonos.terminal.display_name": "Terminal",
         "application.relaxkonos.server-center.display_name": "Install or manage server",

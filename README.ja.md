@@ -172,6 +172,8 @@ RelaxKonOS/
 | **Image Viewer** | 画像ファイル閲覧（ズームとスクロール） | ✅ 利用可能 |
 | **Settings** | 設定センター（8カテゴリ：システム/アカウントセキュリティ/ネットワーク/個人設定/アプリ/時刻と言語/アクセシビリティ/開発者。全ページ検索つき） | ✅ 利用可能 |
 | **Server Center** | サーバーセンター：SSHとホスト鍵の確認、事前チェック、インストール、更新、修復、ロールバック、アンインストール | ✅ 利用可能 |
+| **Component Center** | ホストコンポーネントの依存関係、インストール状態、バージョンと配布元を確認。対応済みコンポーネントのインストール、更新、削除と操作復旧を集約 | 🚧 コンポーネント別に対応中 |
+| **Tailscale** | リモートホストの端末・接続状態、ブラウザー認証、DNS・ルート設定、接続・切断と操作復旧。インストール管理はコンポーネントセンターに集約 | 🧪 MVP（Linux 実機検証あり、Windows 実機検証は未完了） |
 | **Terminal** | リモートターミナル（SignalR + PTY永続セッション、VTエンジンは Auto/Managed/Native から選択） | ✅ 利用可能 |
 | **Explorer** | リモートファイルマネージャ（REST API + ホストOS権限活用） | ✅ 利用可能 |
 | **Browser** | 内蔵ブラウザ（ブックマーク/履歴、ホームページ & リンク開く位置の永続化） | ✅ 利用可能 |
@@ -331,6 +333,9 @@ dotnet run
 | [RelaxKonOS.Browser.md](./docs/applications/RelaxKonOS.Browser.md) | ブラウザ、ブックマーク/履歴/設定同期 |
 | [RelaxKonOS.PortForwarding.md](./docs/applications/RelaxKonOS.PortForwarding.md) | SSHポートフォワーディング、ローカルloopbackトンネル |
 | [RelaxKonOS.TaskManager.md](./docs/applications/RelaxKonOS.TaskManager.md) | タスクマネージャ、システムメトリクス、プロセス管理、SignalRプッシュ再実装 |
+| [RelaxKonOS.ComponentCenter.Design.md](./docs/platform/RelaxKonOS.ComponentCenter.Design.md) | コンポーネントセンター、個別対応状況とプラットフォーム検証範囲 |
+| [RelaxKonOS.ComponentCenter.Progress.md](./docs/platform/RelaxKonOS.ComponentCenter.Progress.md) | コンポーネントセンター、個別対応状況とプラットフォーム検証範囲 |
+| [RelaxKonOS.Tailscale.Design.md](./docs/applications/RelaxKonOS.Tailscale.Design.md) | Tailscale の端末、ログイン、接続制御とライフサイクル実装状況 |
 | [RelaxKonOS.DockerManager.md](./docs/applications/RelaxKonOS.DockerManager.md) | Dockerマネージャ、コンテナ/イメージ/Stack/ネットワーク/ボリューム |
 | [RelaxKonOS.ApplicationDeployment.Design.md](./docs/applications/RelaxKonOS.ApplicationDeployment.Design.md) | コンテナアプリのデプロイ、テンプレート契約、状態機械と復旧の意味論 |
 | [RelaxKonOS.Firewall.md](./docs/applications/RelaxKonOS.Firewall.md) | Linux Server UFWファイアウォールアプリ |

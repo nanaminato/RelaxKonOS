@@ -15,7 +15,7 @@ namespace RelaxKonOS.Client.Apps.Tailscale;
 public sealed class TailscaleApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.tailscale"),
-        "Tailscale", "0.1.0", "◉", "Tailscale", [],
+        "Tailscale", "0.1.0", "◉", "Tailscale", [AppPermissions.ServerComponentsRead],
         ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.Tailscale]),
         InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
