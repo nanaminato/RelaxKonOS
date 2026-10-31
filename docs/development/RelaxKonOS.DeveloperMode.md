@@ -121,6 +121,8 @@ dotnet run --project Tools/RelaxKonOS.DevCli -- pack .\examples\ServerMonitor --
 
 开发包使用保留的外部应用 ID，不能使用 `relaxkonos.*` 内置命名空间。它们安装在当前用户的本地应用数据下方，不会覆盖商店包。开发者模式不会自动授予清单权限；请在 **应用权限** 下授予或撤销每个请求的能力。
 
+商店来源、目录、搜索、下载和来源信任的统一设计见[包商店来源设计](../platform/RelaxKonOS.PackageStore.Design.md)；本文仍拥有 `.roapp` 清单、本地安装器和开发者桥接语义。
+
 应用安装状态会逐步迁移到 Virtual System Drive（VSD）；详见 [VSD 契约](../architecture/RelaxKonOS.VirtualSystemDrive.Contracts.md)。VSD 只是 RelaxKonOS 本地数据目录，不是宿主真实磁盘、文件系统沙箱、包签名或第三方代码信任边界。包中的 `manifest.json` 或派生的 descriptor 只能声明请求，不能把包提升为 BuiltIn、授予权限、请求 Host Elevation 或获得任意代码/命令执行。
 
 桥接没有局域网监听器。不要暴露其配对令牌。重新生成令牌会使现有的开发者工具会话失效。

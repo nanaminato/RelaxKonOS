@@ -9,6 +9,8 @@
 统一产品入口采用内置**组件中心 → 服务端模块**。组件中心分别呈现“宿主软件”和“服务端模块”，使用各自目录、权限、计划与台账。桌面设置 → 系统保留只读诊断摘要和“在组件中心管理”入口，不再建设另一套写入流程。无需新增独立的模块管理应用。Android 通过同一服务端协议接入；移动界面与支持边界由 [Android 文档](../../Client/RelaxKonOS.Client.Android/docs/design/ServerModules.Design.md)独立拥有。
 
 - [模块与扩展总设计](RelaxKonOS.ModulesAndExtensions.Design.md)拥有模块边界、包、官方信任及第三方扩展路线。
+- [服务端独立模块分发与 v1/v2 宿主设计](RelaxKonOS.ServerModuleDistribution.Design.md)拥有独立打包、安装、更新、回退及 v1/v2 运行模型；[模块提权 Broker 设计](RelaxKonOS.ServerModulePrivilegeBroker.Design.md)拥有第三方提权确认契约。
+- [包商店来源设计](../platform/RelaxKonOS.PackageStore.Design.md)拥有模块与桌面应用的来源、目录、搜索和下载契约。
 - 本文拥有跨端模块管理产品规则、操作契约与交付验收。
 - [驻留设计](RelaxKonOS.ServerModuleResidency.Design.md)拥有协调器、租约、运行时释放边界及实测证据。
 - [组件中心](../platform/RelaxKonOS.ComponentCenter.Design.md)拥有统一导航；[受管运行时](../platform/RelaxKonOS.ManagedRuntimes.Design.md)拥有 Docker Engine、Nginx、Mihomo 等软件生命周期。
@@ -185,7 +187,7 @@ sequenceDiagram
 | MM-03 | 精确集合原子提交、修订、幂等、原计划回执恢复、外部重启、生效核实、启动失败阶段记录和受限认证恢复宿主已实现；Git 构建停用台账门禁已接入；中断执行责任的受控关闭、独立健康探测、自动回退和部署宿主验收尚未完成 |
 | MM-04 | 同协议入口与计划/恢复链路已实现；界面和设备支持边界、验收要求由 [Android 文档](../../Client/RelaxKonOS.Client.Android/docs/design/ServerModules.Design.md)独立拥有 |
 | MM-05 | Git 对象边界、管理唤醒/尝试释放、过载及取消保护已接入；完整租约与跨平台资源循环测量待完成 |
-| MM-06 | 已实现服务端 `.rkmodule` v1 候选格式、Host 策略签名目录/归档纯校验及只读 `modules verify-package`，见[候选包契约](RelaxKonOS.ServerModulePackage.Format.md)；尚未实现可信目录持久接纳、安装事务或独立加载，当前所有目录项仍编译内置，包动作与版本目录明确返回不支持 |
+| MM-06 | 已实现服务端 `.rkmodule` v1 候选格式、Host 策略签名目录/归档纯校验、只读维护查询、管理员离线目录持久接纳，以及离线 `pack-package`/`install-package`/`list-installed`/`list-versions`/`list-package-operations`/`rollback-installed`/`remove-installed`、每版本 `install.json`、`package-operations.json` 启动核实、进程内独立加载器，以及在线 `upload`/`plans`/`apply`/`rollback`/`install` 路由，见[候选包契约](RelaxKonOS.ServerModulePackage.Format.md)和[分发设计](RelaxKonOS.ServerModuleDistribution.Design.md)；尚未实现组件中心安装/回退 UI、自动启动失败回退或自动重启；v1 官方包可独立打包/安装/切换版本/重启核实/加载，v2 ModuleHost 未实现 |
 | MM-07 | Firewall 已审计请求与引用边界并接入对象驻留；Docker/Proxy/Terminal 等其余模块保持常驻，逐模块职责及原生验收仍待完成 |
 
 共享 DTO 直接使用 `effectiveEnabled`，没有旧 `enabled` 别名；安装、期望、生效、进程代次、驻留、恢复、动作准入与观察时间分别表达。动作和操作状态只接受当前枚举名称，拒绝数字、数字字符串和大小写别名；关键回执字段必须显式出现。两端检查 Server/计划/操作身份及原冻结目标，拒绝目标替换或成功回执内的失败成员。Core 提供详情、冻结计划、提交和按操作者隔离的分页操作记录。`GET /server/module-plans/{planId}` 额外提供只读原计划及其回执查询，客户端恢复时不自动重发 apply。
@@ -204,7 +206,7 @@ Core 有界后台队列先持久化 Prepared，再进入 Applying 并逐模块�
 
 协调器配置 `MaxWaitingPerModule=128`、`MaxWaitingTotal=512`、`MaxParallelLoads=4`，均允许 1～65536。超限返回 `module-wake-overloaded`、503 与 Retry-After。单请求取消不取消共享加载，成功但无人等待的实例仍开始闲时计时；释放失败保留原实例并阻止新代次。Git 停用通过同一只读台账预检与 apply 重检，禁用启动也拒绝未收尾、interrupted、进程清理未确认或未知状态；检查不加载模块、不改写记录，32 MiB 容量及严格字段/状态校验同时约束业务读取与门禁。没有当前执行者负责的未收尾记录和未知台账只读显示为待恢复，并阻止手动 Wake/TrySleep；正在正常执行的任务按活动工作阻止停用，不混作未知恢复。运行时依赖租约覆盖父实例的整个寿命，常驻使用方固定保护依赖，初始化、回收及关闭按拓扑协调；业务等待名额与内部依赖等待的计数规则见[驻留设计 §10](RelaxKonOS.ServerModuleResidency.Design.md#10-运行时依赖保护)。当前真实领域组合及长连接/任务矩阵仍未完成。
 
-验证证据：Windows ServerModules 412 项、Ubuntu 26.04 x64 普通用户自包含构建 419 项检查通过，覆盖配置/策略原子提交、修订、幂等、权限、依赖/恢复阻止、原计划查询、重启核实、启动失败回执、受限恢复宿主、运行时事务、原生维护入口及真实 HTTP Git 唤醒/回收。合成依赖链及菱形图验证拓扑初始化、共享代次、实例寿命租约、部分失败回收、取消、常驻使用方保护、失败隔离、逆序关闭及同步超时不遗失租约。通用 Stream/异步序列门禁验证延迟加载、所有权转交、未结束读写保护、取消/提前退出、清理失败隔离，并通过合成模块的真实 HTTP 正常传输和客户端中断收尾；Git 构建已取得同代后台租约并验证进程取消后退出、幂等不重跑、HTTP 断连、取消清理及终态写入失败隔离；构建命令使用受控替身，不代替真实 Docker/BuildKit、Terminal/Hub 或其他持久后台任务接入。Git 目录、停用预览/apply 重检及禁用启动已共同验证未收尾/中断、清理未确认、字段缺失/重复、未知状态、超限及清理租约；检查不唤醒或改写台账。Firewall 使用各平台真实 facade 和受控 Helper 替身验证请求准入、单次调用、租约/取消、对象释放及新代次；真实模块容器的 Dispose 异常传播、隔离与不重复释放也已验证，未修改宿主防火墙。桌面编译与 `--modules-only`（含渲染、引用隔离、导航闭集、严格回执及完整集合恢复预览）通过；Android 界面编译和协议、持久恢复、策略及导航共 10 项专项实际执行通过。Linux 临时 SQLite/回环实例另外使用真实 PAM 登录，验证未授权 403、显式管理员完整集合计划/提交/原回执恢复和持续待重启。独立模块候选另有 39 项检查，覆盖真实 ECDSA 签名、Host 授权、开发实例绑定、目录/策略回放、密钥退休与换绑、发布/版本内容不可变、累积撤销、摘要/ZIP/严格 JSON、RID/API 和只读维护命令文件不变性；未加载候选代码，也未持久接纳目录。上述隔离测试不替代安装服务的 System/User Mode、真实设备、长连接及资源循环验收，也不证明其他模块或程序集可卸载。
+验证证据：Windows ServerModules 436 项、Ubuntu 26.04 x64 普通用户自包含构建 444 项检查通过，覆盖配置/策略原子提交、修订、幂等、权限、依赖/恢复阻止、原计划查询、重启核实、启动失败回执、受限恢复宿主、运行时事务、原生维护入口及真实 HTTP Git 唤醒/回收。合成依赖链及菱形图验证拓扑初始化、共享代次、实例寿命租约、部分失败回收、取消、常驻使用方保护、失败隔离、逆序关闭及同步超时不遗失租约。通用 Stream/异步序列门禁验证延迟加载、所有权转交、未结束读写保护、取消/提前退出、清理失败隔离，并通过合成模块的真实 HTTP 正常传输和客户端中断收尾；Git 构建已取得同代后台租约并验证进程取消后退出、幂等不重跑、HTTP 断连、取消清理及终态写入失败隔离；构建命令使用受控替身，不代替真实 Docker/BuildKit、Terminal/Hub 或其他持久后台任务接入。Git 目录、停用预览/apply 重检及禁用启动已共同验证未收尾/中断、清理未确认、字段缺失/重复、未知状态、超限及清理租约；检查不唤醒或改写台账。Firewall 使用各平台真实 facade 和受控 Helper 替身验证请求准入、单次调用、租约/取消、对象释放及新代次；真实模块容器的 Dispose 异常传播、隔离与不重复释放也已验证，未修改宿主防火墙。桌面编译与 `--modules-only`（含渲染、引用隔离、导航闭集、严格回执及完整集合恢复预览）通过；Android 界面编译和协议、持久恢复、策略及导航共 10 项专项实际执行通过。Linux 临时 SQLite/回环实例另外使用真实 PAM 登录，验证未授权 403、显式管理员完整集合计划/提交/原回执恢复和持续待重启。独立模块候选与离线目录接纳另有 Windows 63 / Linux 64 项检查，覆盖真实 ECDSA 签名、Host 授权、开发实例绑定、目录/策略回放、密钥退休与换绑、发布/版本内容不可变、累积撤销、摘要/ZIP/严格 JSON、RID/API 和只读维护命令文件不变性；另验证同宿主锁互斥、原子接纳/回执幂等、跨来源不可变内容与撤销、文件丢失/外改拒绝、聚合撤销容量边界。Linux 原生命令另有 6 项检查通过，覆盖普通用户拒绝、root 接纳后保留服务所有者及 0600/0700、原回执重放、过期修订拒绝和服务用户只读校验；均使用隔离临时目录，未加载候选代码或安装模块。上述隔离测试不替代安装服务的 System/User Mode、真实设备、长连接及资源循环验收，也不证明其他模块或程序集可卸载。
 
 补充验证边界：组件选择/导航专项单独通过；扩展 Installation 全套在既有 TaskPreviewClientChecks 的观察者归档预检断言处失败，当前目录已将 Linux sing-box 定义为系统包，相关夹具未同步。本实现不把该扩展全套宣称为通过。
 

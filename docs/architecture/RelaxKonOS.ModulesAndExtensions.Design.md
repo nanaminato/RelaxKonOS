@@ -122,7 +122,9 @@ public interface IServerModule
 
 ### 7.1 包结构与契约
 
-服务端独立候选包已单独定义 [`.rkmodule` v1](RelaxKonOS.ServerModulePackage.Format.md)：已实现签名目录与归档纯校验、只读维护命令，尚无安装事务及独立加载器。下述跨端统一包仍为后续草案，不作为该候选校验器的第二种输入格式。
+服务端独立候选包已单独定义 [`.rkmodule` v1](RelaxKonOS.ServerModulePackage.Format.md)：已实现签名目录与归档纯校验、只读维护命令和管理员离线目录持久接纳，尚无安装事务及独立加载器。下述跨端统一包仍为后续草案，不作为该候选校验器的第二种输入格式。
+
+独立安装器、v1 官方进程内 / v2 第三方 ModuleHost 的宿主边界、模块提权 Broker 及模块/桌面应用商店来源分别见[服务端独立模块分发与 v1/v2 宿主设计](RelaxKonOS.ServerModuleDistribution.Design.md)、[模块提权 Broker 设计](RelaxKonOS.ServerModulePrivilegeBroker.Design.md)和[包商店来源设计](../platform/RelaxKonOS.PackageStore.Design.md)。这些仍是设计，不改变本节“尚未实现安装/加载”的现状。
 
 最终包模型需要表达稳定包 ID、版本、发布者、格式版本、各端载荷及平台架构、Host API 兼容范围、硬依赖、可选集成、能力要求、权限请求、资源摘要和入口。一个包可仅有客户端、仅有服务端或两者都有。各端安装器分别选择可执行载荷，客户端安装不代表 Server 已安装，反之亦然。
 

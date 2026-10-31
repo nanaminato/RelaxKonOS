@@ -1,6 +1,8 @@
 # 服务端独立模块候选包 v1
 
-> 状态：2026-10-31，候选格式、纯校验器和只读维护命令已实现。可信目录持久接纳、下载、安装事务、加载器、更新、修复、回滚及移除仍待实施。本格式不适用于 Android、桌面或第三方隔离扩展。
+> 状态：2026-10-31，候选格式、纯校验器、只读维护命令、本机管理员离线目录接纳、离线打包/安装和进程内独立加载器已实现。在线版本查询、下载、更新、修复、回滚及移除事务、ModuleHost 仍待实施。本格式不适用于 Android、桌面或第三方隔离扩展。
+>
+> 独立模块安装、v1 官方进程内 / v2 第三方 ModuleHost 的宿主边界、模块商店与示例由[服务端独立模块分发与 v1/v2 宿主设计](RelaxKonOS.ServerModuleDistribution.Design.md)定义；第三方提权由[模块提权 Broker 设计](RelaxKonOS.ServerModulePrivilegeBroker.Design.md)定义。v2 实施时直接升级到唯一当前契约，不保留 v1 双解析或旧字段别名。
 
 本文件细化[模块总设计](RelaxKonOS.ModulesAndExtensions.Design.md)的服务端包边界；交付验收仍由[模块管理设计](RelaxKonOS.ServerModuleManagement.Design.md)拥有。软件安装器及受管运行时目录不处理本格式。
 
@@ -10,7 +12,7 @@
 
 清单唯一当前 JSON 契约为 `Shared/RelaxKonOS.ServerModules.Packaging/ModulePackageContracts.cs` 中 `ModulePackageManifest`，使用精确 camelCase 属性，拒绝未知、重复、缺失字段和大小写别名。`schemaVersion=1`、`packageKind=server-module`；声明模块/发布/发布者身份、purpose、版本、单一 RID、Host API 半开区间、入口程序集路径及类型、构建身份、源码提交、依赖、能力和每个文件的长度及 SHA-256。版本必须为无前导零的三段非负整数；不接受预发布、构建后缀或浮动版本。依赖版本使用相同的最小含端点、最大不含端点区间；当前仅校验声明，尚未实现已安装依赖解析。
 
-支持的候选 RID 为 linux-x64、linux-arm64、win-x64、win-arm64、osx-x64、osx-arm64；只接受与当前进程 `RuntimeInformation.RuntimeIdentifier` 完全一致的候选。这不表示这些平台已有安装或业务验收。当前候选 Host API 版本为 `1.0.0`，尚未交付可供独立程序集实现的公共加载接口；校验入口类型的语法不代表已加载或发现该类型。
+支持的候选 RID 为 linux-x64、linux-arm64、win-x64、win-arm64、osx-x64、osx-arm64；只接受与当前进程 `RuntimeInformation.RuntimeIdentifier` 完全一致的候选。这不表示这些平台已有安装或业务验收。当前候选 Host API 版本为 `1.0.0`；`Shared/RelaxKonOS.ServerModule.Abstractions` 已提供 `IInstalledServerModule` 加载接口，校验入口类型的语法不代表已加载或发现该类型。
 
 外部 `SignedModulePackageCatalog` envelope 使用 `schemaVersion=1`、`keyId`、Base64 `payload`、Base64 `signature`。签名输入为 UTF-8 `RelaxKonOS.ServerModuleCatalog.v1\n` 前缀（末尾为真实 LF）连接解码后的原始 payload 字节；算法 ECDSA NIST P-256 / SHA-256，签名编码为 64 字节 IEEE P1363。公钥为完整 DER SubjectPublicKeyInfo 的 Base64；拒绝尾随字节和其他曲线。不将 JSON 重新序列化后验签。
 
@@ -26,7 +28,13 @@ payload 为 `ModulePackageCatalog`，包含 sourceId、严格递增序号、UTC 
 
 纯校验器接受既有 `ModulePackageTrustHistory`，返回独立的 `NextHistory`，不改写输入、不写文件。历史绑定 sourceId、serviceId 和 purpose；保护策略修订、同序号目录内容、发布身份及 moduleId/version/rid 的不可变内容。移除的 keyId 永久退休，不能重新引入或换绑公钥；撤销 releaseId/digest 取历史并集，后续目录遗漏不会恢复信任。策略同修订内容变化、目录降序/同序号不同 payload、发布或版本内容变更均拒绝。历史证据容量有界，不能以静默裁剪历史解决超限。
 
-**接纳方必须先原子持久保存返回历史，再让任何发布可用于安装。** 当前尚无接纳方或持久写入实现，不能用一次纯校验替代持久防回放。后续安装、修复和回滚都必须依据当前信任及撤销状态重新检查；有效期过后，已有文件也不能凭缓存自动成为新的可安装候选。实际网络、崩溃恢复、跨来源冲突、信任目录 ACL/所有权和版本选择仍须在接纳与安装阶段完成。
+**接纳方必须先原子持久保存返回历史，再让任何发布可用于安装。** 本机离线接纳将完整签名 envelope、每来源历史、跨来源 moduleId/version/rid 内容身份和操作者/幂等键/精确摘要/修订/operationId 回执共同写入 `data/module-management/package-catalogs.json`。使用与 Host 相同的 host.lock，拒绝在 Host 运行时执行；精确 expectedRevision 冲突及文件外部修改均拒绝。相同操作者、幂等键和原始 envelope/目标修订只返回原回执，重签名文件或改目标不视为原请求。原回执是历史事实，不能绕过当前有效期检查。
+
+首次保存前持久写入绑定 serviceId 的 `package-catalogs.initialized` 标记，此后标记或状态单独丢失均要求恢复，不能当作空历史重新初始化。单个状态文档最多 32 MiB、来源最多 16、跨来源版本证据和接纳回执各最多 10000，不自动裁剪证据。文件 WriteThrough、Flush(true) 后原子替换；现阶段覆盖进程退出与原子文件可见性，尚无断电/文件系统故障注入验收。目录沿用模块管理的受保护 ACL/0700，Linux 文件为 0600，提权执行按现有服务 state.json 保留所有者；离线写入当前只支持 Windows/Linux。
+
+跨来源不能重新定义同一模块版本/RID 的清单或归档；相同内容可由另一已授权来源镜像。候选资格合并所有已接纳来源的 releaseId/digest 撤销，releaseId 的已知历史摘要也参与撤销，镜像不能恢复已撤销字节。来源停用或其目录过期不会清除既有撤销证据。读取已接纳目录仍重新验签、检查有效期及当前 Host 策略；策略修订变化须先持久接纳刷新，不能在只读查询中悄然接受新信任状态。
+
+后续安装、修复和回滚都必须依据当前信任及撤销状态重新检查；有效期过后，已有文件也不能凭缓存自动成为新的可安装候选。当前已实现离线安装与进程内加载；在线版本目录、自动重启核实、更新/回退事务仍须在后续阶段完成。安装成功不等于模块已启用或已生效。
 
 ## 只读维护命令
 
@@ -34,6 +42,76 @@ payload 为 `ModulePackageCatalog`，包含 sourceId、严格递增序号、UTC 
 RelaxKonOS.Server modules verify-package --content-root <绝对服务目录> --source-id <已配置来源> --catalog <本地签名目录> --archive <本地候选.rkmodule> --release-id <精确发布ID>
 ```
 
-命令读取已有模块管理 state.json 的稳定 serviceId，按照普通 Host 配置优先级及 appsettings.host.json 读取来源；不创建服务身份。若 `data/module-packages/trust-history/<sourceId>.json` 已存在则读取并校验其历史，缺失时只进行首次候选检查。结果显式包含 `readOnly=true`、trustHistoryPresent、`trustHistoryCommitted=false`、`installed=false`，不能作为已安装、已生效、健康或可信目录已持久接纳的回执。
+命令读取已有模块管理 state.json 的稳定 serviceId，按照普通 Host 配置优先级及 appsettings.host.json 读取来源；不创建服务身份。读取唯一 package-catalogs.json 中的既有历史和跨来源撤销；首次接纳前只进行候选检查。结果显式包含 `readOnly=true`、trustHistoryPresent、`trustHistoryCommitted=false`、`installed=false`，不能作为已安装、已生效、健康或可信目录已持久接纳的回执。
 
-命令不创建目录、保存历史、提取文件、加载程序集、初始化模块、下载、启动软件或修改运行中的服务。所有安装类管理动作仍维持不支持；当前 9 个目录项仍为编译内置模块。
+命令不创建目录、保存历史、提取文件、加载程序集、初始化模块、下载、启动软件或修改运行中的服务。安装类动作必须使用下面的独立命令；`verify-package` 本身不安装。
+
+## 离线接纳命令
+
+```text
+RelaxKonOS.Server modules catalog-status --content-root <绝对服务目录>
+RelaxKonOS.Server modules accept-catalog --content-root <绝对服务目录> --source-id <已配置来源> --catalog <本地签名目录> --service-id <精确本机身份> --expected-revision <catalog-status返回修订> --idempotency-key <本次请求键>
+```
+
+catalog-status 只读报告已保存目录及修订，首次为 `uninitialized`；观察范围为 persisted-catalogs，不把未重新验签的状态摘要作为可安装清单。accept-catalog 要求本机管理员/root、已有服务身份、Host 已停止和精确修订，不自动停服务或取得新信任根。成功仅返回 `trustHistoryCommitted=true`、`installed=false` 和原子保存的目录接纳回执。
+
+Linux 隔离进程验证入口为 `Tests/ServerModules/verify-linux-module-catalogs.sh <自包含构建目录>`；只使用随机临时目录和测试生成的签名候选，不修改生产配置、服务或信任根。
+
+## 离线打包命令
+
+```text
+RelaxKonOS.Server modules pack-package \
+  --publish-dir <dotnet publish输出目录> --output-dir <打包输出目录> \
+  --module-id <模块ID> --version <x.y.z> --release-id <发布ID> \
+  --publisher-id <发布者ID> --purpose official --rid <RID> \
+  --entry-assembly <publish内相对路径> --entry-type <入口类型> \
+  --build-id <构建ID> --source-commit <40或64位小写十六进制> \
+  --source-id <来源ID> --sequence <目录序号> --artifact-origin https://<origin>/ \
+  --private-key <ECDSA P-256 PKCS#8 PEM> --key-id <公钥ID> --validity-seconds <1..2678400>
+```
+
+可选参数：`--host-api-min`、`--host-api-max`、`--capabilities a,b`、`--dependencies id:min:max,...`。命令把 publish 目录下所有普通文件放到 `server/<rid>/`，生成 `manifest.json`、`.rkmodule`、`catalog.json` 和 `public-key.spki`；私钥只用于本次签名，不写入输出或日志。它不读取/写入 Host 状态，也不安装模块。
+
+## 在线上传与安装 API
+
+```text
+POST /api/v1.0/server/module-packages/upload
+Content-Type: application/octet-stream
+<body: .rkmodule>
+
+POST /api/v1.0/server/module-packages/plans
+{ "sourceId": "official", "releaseId": "…", "uploadId": "<32位十六进制>" }
+
+POST /api/v1.0/server/module-packages/plans/{planId}/apply
+
+POST /api/v1.0/server/module-packages/rollback
+{ "moduleId": "…", "version": "…" }
+
+POST /api/v1.0/server/module-packages/install
+{ "sourceId": "official", "releaseId": "…", "uploadId": "<32位十六进制>" }
+```
+
+上传要求服务器管理授权，原始 body 最大 1 GiB，返回 uploadId/字节数/SHA-256；上传本身不验证包。plans 重新按已接纳签名目录验证 sourceId/releaseId/上传文件，生成十分钟有效的冻结计划，绑定 module/version/publisher/归档摘要/manifest 摘要。plan apply 重新验证计划和上传文件仍为同一目标，然后安装；重复 apply 返回原 operationId，不重复安装。rollback 重新核对目标版本文件哈希，切换 `installed.json` 当前版本。
+
+plan apply / direct install / rollback 都写 `package-operations.json` 的 `AwaitingRestart` 回执，并删除已消费的上传文件。安装成功不等于已启用或已生效；重启后的启动核实把操作标为 `Succeeded`/`Failed`。
+
+当前没有独立安装计划/确认 UI；客户端在调用 plans 前负责展示版本、发布者、依赖、能力和提权项。direct install 是无计划路径，优先使用 plans。
+
+## 离线安装与移除命令
+
+```text
+RelaxKonOS.Server modules list-installed --content-root <绝对服务目录>
+RelaxKonOS.Server modules list-versions --content-root <绝对服务目录> --module-id <模块ID>
+RelaxKonOS.Server modules list-package-operations --content-root <绝对服务目录>
+RelaxKonOS.Server modules rollback-installed --content-root <绝对服务目录> --module-id <模块ID> --version <目标版本>
+RelaxKonOS.Server modules install-package --content-root <绝对服务目录> --source-id <已配置来源> --archive <本地候选.rkmodule> --release-id <精确发布ID>
+RelaxKonOS.Server modules remove-installed --content-root <绝对服务目录> --module-id <模块ID>
+```
+
+install-package 要求本机管理员/root、Host 已停止、目录已通过 accept-catalog 接纳；它重新验证签名目录/归档/清单，解包到 `data/module-management/packages/<moduleId>/<version>/`，写入每版本 `install.json` 和顶层 `installed.json`。它不修改 `state.json` 的期望启用集合，也不自动重启；`installed=true` 不代表 effective。同一 release 重装幂等；同版本不同摘要拒绝。模块被启用并加载前，Host 还会重新核对安装清单和每个文件的长度/SHA-256。
+
+安装/回退同时写入 `package-operations.json` 的 `AwaitingRestart` 回执；Server 启动完成、`ApplicationStarted` 后按 `installed.json` 的精确版本/releaseId/artifactSha256 核对为 `Succeeded` 或 `Failed`。这不是自动回退，也不是自动重启。
+
+list-versions 只读版本目录的 `install.json`，不加载程序集。rollback-installed 要求 Host 已停止、管理员/root，重新核对目标版本文件哈希后把 `installed.json` 当前版本切回该版本；不修改期望启用集合、不自动重启。
+
+remove-installed 只移除 `installed.json` 记录，默认保留版本文件；模块仍在期望启用集合中时拒绝移除。list-installed 是只读安装事实，不读出生效状态。
