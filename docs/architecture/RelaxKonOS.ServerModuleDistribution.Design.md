@@ -1,6 +1,6 @@
 # 服务端独立模块分发与 v1/v2 宿主设计
 
-> 状态：设计，2026-10-31。v1 首个可运行切片已实现：离线/在线安装官方 `.rkmodule` v1、不可变版本目录、`installed.json` 安装事实、进程内独立加载器、重启核实、启动失败回退/隔离、组件中心安装/回退 UI，以及已接纳目录的模块搜索/下载；v2 ModuleHost、完整商店服务、提权 Broker 未实现。本文其余内容仍是目标设计，不能按已实现功能读取。
+> 状态：设计，2026-10-31。v1 首个可运行切片已实现：离线/在线安装官方 `.rkmodule` v1、不可变版本目录、`installed.json` 安装事实、进程内独立加载器、重启核实、启动失败回退/隔离、组件中心安装/回退 UI、已接纳目录的模块搜索/下载/远程刷新，以及只读模块健康报告；v2 ModuleHost、完整商店服务、提权 Broker 未实现。本文其余内容仍是目标设计，不能按已实现功能读取。
 >
 > 范围：服务端模块的独立打包、信任、安装、更新、回退、加载、卸载，以及 v1/v2 两种宿主模式。桌面 `.roapp` 的包格式仍由[开发者模式](../development/RelaxKonOS.DeveloperMode.md)拥有；商店来源、搜索和下载的统一契约由[包商店来源设计](../platform/RelaxKonOS.PackageStore.Design.md)拥有；第三方模块的提权调用由[模块提权 Broker 设计](RelaxKonOS.ServerModulePrivilegeBroker.Design.md)拥有。
 >
@@ -593,8 +593,9 @@ v2 的 `IModuleContext` 只提供：
 - 离线命令：`install-package`、`list-installed`、`list-versions`、`list-package-operations`、`rollback-installed`、`remove-installed`。
 - 只读 HTTP：`/server/module-packages/installed`、`/server/module-packages/{moduleId}/versions`、`/server/module-package-operations`。
 - 模块搜索/下载 HTTP：`GET /server/module-store/search` 在已接纳签名目录中搜索，`POST /server/module-store/download` 按来源/发布下载并校验摘要到 staging；不暴露任意下载 URL。
+- 模块健康 HTTP：`GET /server/module-health` 报告内置/已安装模块的启用状态、版本和可选模块自检结果；隔离/加载失败可见，但接口不自动重启或改变启用集合。
 - 远程目录刷新：`modules refresh-catalog` 在 Host 停止时从配置的 `ModulePackages:Sources:<sourceId>:CatalogUri` 或显式 `--catalog-uri` 获取 HTTPS 签名目录，复用离线接纳；不是后台自动同步。
-- 桌面组件中心：显示已安装版本、所选模块版本和包操作回执；已接入“安装模块包”按钮（选择 `.rkmodule` → upload → auto plan → 确认 apply）、“回退到所选版本”按钮，以及已接纳模块商店搜索/发布详情/“从商店安装”。发布详情显示来源、发布者、信任状态、RID/Host API 兼容性、依赖、能力、摘要和阻塞原因。
+- 桌面组件中心：显示已安装版本、所选模块版本和包操作回执；已接入“安装模块包”按钮（选择 `.rkmodule` → upload → auto plan → 确认 apply）、“回退到所选版本”按钮、已接纳模块商店搜索/发布详情/“从商店安装”，以及“检查模块健康”。发布详情显示来源、发布者、信任状态、RID/Host API 兼容性、依赖、能力、摘要和阻塞原因。
 - 在线安装 HTTP：`POST /server/module-packages/upload`（原始 `.rkmodule` body，最大 1 GiB）、`POST /server/module-packages/plans`、`POST /server/module-packages/plans/{planId}/apply`、`POST /server/module-packages/rollback`；计划冻结 sourceId/releaseId/module/version/摘要，apply 重新校验后安装并写 `package-operations.json` 等待重启核实。直接 `POST /server/module-packages/install` 保留为无计划路径。
 - 测试：真实模块程序集加载、DI 注册、Endpoint 映射、安装幂等、移除保留文件、双版本切换、回退、篡改拒绝、启动核实和只读包 API；`Tests/ServerModules` 全套通过（Windows 开发机）。
 
