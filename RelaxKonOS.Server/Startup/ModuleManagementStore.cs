@@ -122,7 +122,7 @@ internal sealed partial class ModuleManagementStore : IDisposable
         catch { _hostLock.Dispose(); throw; }
     }
 
-    internal IReadOnlyList<ServerModuleActionAdmission> Admissions(bool runtimeSupported = false, ServerModuleResidencyDto? residency = null, bool desiredEnabled = true) =>
+    internal IReadOnlyList<ServerModuleActionAdmission> Admissions(bool runtimeSupported = false, ServerModuleResidencyDto? residency = null, bool desiredEnabled = true, bool recoveryRequired = false) =>
         Enum.GetValues<ServerModuleAction>().Select(action =>
         {
             var reason = action switch
@@ -132,6 +132,7 @@ internal sealed partial class ModuleManagementStore : IDisposable
                 ServerModuleAction.SetResidencyPolicy when !Writable => "module-configuration-read-only",
                 ServerModuleAction.SetResidencyPolicy => runtimeSupported ? null : "module-action-unsupported",
                 ServerModuleAction.Wake or ServerModuleAction.TrySleep when !runtimeSupported => "module-action-unsupported",
+                ServerModuleAction.Wake or ServerModuleAction.TrySleep when recoveryRequired => "module-recovery-blocked",
                 ServerModuleAction.Wake or ServerModuleAction.TrySleep when residency is null => "module-disabled",
                 ServerModuleAction.Wake or ServerModuleAction.TrySleep when !desiredEnabled => "module-pending-disable",
                 ServerModuleAction.TrySleep when !residency!.Releasable => residency.BlockedBy ?? "module-policy-keeps-loaded",

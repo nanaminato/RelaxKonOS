@@ -134,10 +134,20 @@ public partial class ComponentCenterViewModel
                 : releases.FirstOrDefault();
             if (releases.Length == 0) OfficialDownloadNotice = LocalizedStatus.Key("component_center.download.empty");
         }
-        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or InvalidDataException or OperationCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or IOException or InvalidDataException or OperationCanceledException or System.Text.Json.JsonException)
         {
             _officialReleases.Remove(component);
-            if (SelectedDefinition?.ComponentId == component) OfficialDownloadNotice = LocalizedStatus.Key("component_center.download.failed");
+            if (SelectedDefinition?.ComponentId == component) OfficialDownloadNotice = LocalizedStatus.Key(ex switch
+                {
+                    OperationCanceledException => "component_center.download.timeout",
+                    HttpRequestException { StatusCode: System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.TooManyRequests } => "component_center.download.rate_limited",
+                    HttpRequestException => "component_center.download.network_failed",
+                    InvalidOperationException { Message: "component.platform_unsupported" } => "component_center.download.unsupported",
+                    InvalidOperationException { Message: "component.package_index_unavailable" } => "component_center.download.index_unavailable",
+                    InvalidOperationException { Message: "component.permission_denied" } => "component_center.download.permission_denied",
+                    Exception { Message: "component.state_unavailable" } => "component_center.download.state_unavailable",
+                    _ => "component_center.download.failed"
+                });
         }
         finally { IsLoadingOfficialReleases = false; NotifyOfficialDownloads(); }
     }

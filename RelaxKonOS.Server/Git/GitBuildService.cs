@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -6,6 +5,8 @@ using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.DataProtection;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Server.Endpoints;
+using RelaxKonOS.Server.Residency;
+using RelaxKonOS.Server.Startup;
 
 namespace RelaxKonOS.Server.Git;
 
@@ -32,15 +33,18 @@ public sealed class GitBuildProblem(string code, int status = 409) : Exception(c
 }
 
 /// <summary>Protected credentials and a durable, bounded build ledger. An unfinished build becomes
-/// interrupted at startup; a retry with the same key returns that record and never reruns it.</summary>
+/// interrupted when its runtime opens the ledger; a retry with the same key never reruns it.</summary>
 public sealed class GitBuildService : IGitBuildService, IDisposable
 {
     private sealed record Credential(Guid Id, Guid Owner, string Name, string ProtectedToken);
     private sealed record BuildEntry(Guid Owner, string KeyHash, string RequestHash, GitBuildOperationDto Operation);
     private sealed record Ledger(Credential[] Credentials, BuildEntry[] Builds);
+    private const int MaximumLedgerBytes = 32 * 1024 * 1024;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
-        UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow
+        UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow,
+        PropertyNameCaseInsensitive = false,
+        RespectRequiredConstructorParameters = true,
     };
     private static readonly Regex Sha = new("\\A[a-fA-F0-9]{40}\\z", RegexOptions.Compiled);
     private static readonly Regex Ref = new("\\A(refs/(heads|tags)/)?[A-Za-z0-9][A-Za-z0-9._/-]{0,199}\\z", RegexOptions.Compiled);
@@ -52,20 +56,22 @@ public sealed class GitBuildService : IGitBuildService, IDisposable
     private readonly GitBuildOptions options;
     private Ledger ledger = new([], []);
     private bool unavailable;
+    private bool recoveryRequired;
+    private readonly IModuleWorkLeaseSource workLeases;
+    private readonly IGitBuildCommandRunner commands;
+    private readonly ILogger<GitBuildService> logger;
 
-    public GitBuildService(IHostEnvironment environment, IDataProtectionProvider protection, GitBuildOptions options)
+    public GitBuildService(IHostEnvironment environment, IDataProtectionProvider protection, GitBuildOptions options,
+        IModuleWorkLeaseSource workLeases, IGitBuildCommandRunner commands, ILogger<GitBuildService> logger)
     {
         this.options = options;
+        this.workLeases = workLeases; this.commands = commands; this.logger = logger;
         path = Path.Combine(environment.ContentRootPath, options.RootDirectory, "builds.json");
         protector = protection.CreateProtector("RelaxKonOS.GitBuild.Credentials.v1");
         try
         {
-            if (!File.Exists(path)) return;
-            ledger = JsonSerializer.Deserialize<Ledger>(File.ReadAllText(path), Json) ?? throw new JsonException();
-            if (ledger.Credentials is null || ledger.Builds is null
-                || ledger.Credentials.Select(x => x.Id).Distinct().Count() != ledger.Credentials.Length
-                || ledger.Builds.Select(x => x.Operation.Id).Distinct().Count() != ledger.Builds.Length)
-                throw new JsonException();
+            ledger = ReadLedger(path);
+            recoveryRequired = ledger.Builds.Any(entry => entry.Operation.State is "queued" or "running" || NeedsRecovery(entry.Operation));
             var interrupted = ledger.Builds.Select(entry => entry.Operation.State is "queued" or "running"
                 ? entry with { Operation = entry.Operation with
                     { State = "interrupted", ProblemCode = "git-build.interrupted", FinishedAt = DateTimeOffset.UtcNow } }
@@ -73,6 +79,71 @@ public sealed class GitBuildService : IGitBuildService, IDisposable
             if (!interrupted.SequenceEqual(ledger.Builds)) Save(new(ledger.Credentials, interrupted));
         }
         catch { unavailable = true; }
+    }
+
+    private static bool NeedsRecovery(GitBuildOperationDto operation) => operation.State == "interrupted"
+        || operation.ProblemCode == "git-build.process-cleanup-failed";
+
+    internal static IReadOnlyList<ServerModuleOrphanedWork> InspectLedger(string contentRoot, GitBuildOptions options, bool hasActiveWork = false)
+    {
+        try
+        {
+            return ReadLedger(Path.Combine(contentRoot, options.RootDirectory, "builds.json")).Builds
+                .Where(entry => entry.Operation.State is "queued" or "running" || NeedsRecovery(entry.Operation))
+                .Select(entry => new ServerModuleOrphanedWork(ServerModules.GitId,
+                    $"Git build {entry.Operation.Id} remains {entry.Operation.State}; its execution and recovery ownership must be established before disabling Git.",
+                    RecoveryRequired: !hasActiveWork || NeedsRecovery(entry.Operation)))
+                .ToArray();
+        }
+        catch (Exception error)
+        {
+            return [new(ServerModules.GitId, $"The Git build ledger cannot be verified ({error.GetType().Name}); its state is unknown.", RecoveryRequired: true)];
+        }
+    }
+
+    private static Ledger ReadLedger(string file)
+    {
+        byte[] bytes;
+        try
+        {
+            using var input = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            if (input.Length > MaximumLedgerBytes) throw new InvalidDataException("Git build ledger exceeds capacity.");
+            bytes = new byte[checked((int)input.Length)]; input.ReadExactly(bytes);
+            if (input.ReadByte() != -1) throw new InvalidDataException("Git build ledger changed while reading.");
+        }
+        catch (FileNotFoundException) { return new([], []); }
+        catch (DirectoryNotFoundException) { return new([], []); }
+        using var document = JsonDocument.Parse(bytes);
+        static void UniqueProperties(JsonElement element)
+        {
+            if (element.ValueKind == JsonValueKind.Object)
+            {
+                var names = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var property in element.EnumerateObject())
+                { if (!names.Add(property.Name)) throw new JsonException("Duplicate ledger property."); UniqueProperties(property.Value); }
+            }
+            else if (element.ValueKind == JsonValueKind.Array)
+                foreach (var item in element.EnumerateArray()) UniqueProperties(item);
+        }
+        UniqueProperties(document.RootElement);
+        var value = JsonSerializer.Deserialize<Ledger>(bytes, Json) ?? throw new JsonException();
+        static bool Digest(string? digest) => digest is { Length: 64 } && digest.All(char.IsAsciiHexDigit);
+        if (value.Credentials is null || value.Builds is null
+            || value.Credentials.Any(entry => entry is null || entry.Id == Guid.Empty || entry.Owner == Guid.Empty
+                || string.IsNullOrWhiteSpace(entry.Name) || string.IsNullOrWhiteSpace(entry.ProtectedToken))
+            || value.Credentials.Select(entry => entry.Id).Distinct().Count() != value.Credentials.Length
+            || value.Builds.Any(entry => entry is null || entry.Owner == Guid.Empty || !Digest(entry.KeyHash) || !Digest(entry.RequestHash)
+                || entry.Operation is not { } operation || operation.Id == Guid.Empty || operation.CreatedAt == default
+                || operation.State is not ("queued" or "running" or "succeeded" or "failed" or "cancelled" or "interrupted")
+                || (operation.State is "queued" or "running") != (operation.FinishedAt is null)
+                || operation.Logs is null || operation.Logs.Any(line => line is null)
+                || string.IsNullOrWhiteSpace(operation.RepositoryUrl) || string.IsNullOrWhiteSpace(operation.Reference)
+                || operation.CommitSha is null || !Sha.IsMatch(operation.CommitSha)
+                || string.IsNullOrWhiteSpace(operation.ContextDirectory) || string.IsNullOrWhiteSpace(operation.Dockerfile))
+            || value.Builds.Select(entry => entry.Operation.Id).Distinct().Count() != value.Builds.Length
+            || value.Builds.Select(entry => entry.KeyHash).Distinct(StringComparer.Ordinal).Count() != value.Builds.Length)
+            throw new JsonException("Invalid Git build ledger.");
+        return value;
     }
 
     public GitBuildCredentialDto[] Credentials(Guid owner)
@@ -180,12 +251,14 @@ public sealed class GitBuildService : IGitBuildService, IDisposable
                 if (replay.Owner != owner || replay.RequestHash != requestHash) throw new GitBuildProblem("git-build.idempotency-conflict");
                 return replay.Operation;
             }
+            if (recoveryRequired) throw new GitBuildProblem("git-build.recovery-required");
         }
         await CheckBuilderAsync(ct);
         var resolved = await ResolveAsync(owner, new(url, reference, canonical.CredentialId), ct);
         if (!string.Equals(resolved.CommitSha, canonical.CommitSha, StringComparison.Ordinal))
             throw new GitBuildProblem("git-build.ref-moved");
         GitBuildOperationDto operation;
+        IModuleWorkLease? workLease = null;
         lock (gate)
         {
             Ensure();
@@ -195,6 +268,7 @@ public sealed class GitBuildService : IGitBuildService, IDisposable
                 if (previous.Owner != owner || previous.RequestHash != requestHash) throw new GitBuildProblem("git-build.idempotency-conflict");
                 return previous.Operation;
             }
+            if (recoveryRequired) throw new GitBuildProblem("git-build.recovery-required");
             if (active.Count != 0) throw new GitBuildProblem("git-build.busy");
             _ = Token(owner, canonical.CredentialId);
             operation = new(Guid.NewGuid(), url, reference, canonical.CommitSha, context, dockerfile,
@@ -202,10 +276,28 @@ public sealed class GitBuildService : IGitBuildService, IDisposable
             // Keep minimal old entries so a delayed retry can never allocate a second build.
             var old = ledger.Builds.Select((entry, index) => index < ledger.Builds.Length - 199
                 ? entry with { Operation = entry.Operation with { Logs = [] } } : entry);
-            Save(new(ledger.Credentials, [.. old, new BuildEntry(owner, keyHash, requestHash, operation)]));
-            active.Add(operation.Id, new CancellationTokenSource());
+            workLease = workLeases.Acquire();
+            try
+            {
+                Save(new(ledger.Credentials, [.. old, new BuildEntry(owner, keyHash, requestHash, operation)]));
+                active.Add(operation.Id, CancellationTokenSource.CreateLinkedTokenSource(workLease.Stopping));
+            }
+            catch { workLease.Dispose(); throw; }
         }
-        _ = Task.Run(() => ExecuteAsync(owner, canonical, operation.Id), CancellationToken.None);
+        _ = Task.Run(async () =>
+        {
+            try { await ExecuteAsync(owner, canonical, operation.Id, workLease.Stopping); }
+            catch (Exception error)
+            {
+                workLease.RequireRecovery();
+                logger.LogError("Git build {BuildId} could not persist or clean up its execution. ExceptionType={ExceptionType}", operation.Id, error.GetType().Name);
+            }
+            finally
+            {
+                if (RequiresRecovery) workLease.RequireRecovery();
+                workLease.Dispose();
+            }
+        }, CancellationToken.None);
         return operation;
     }
 
@@ -221,7 +313,7 @@ public sealed class GitBuildService : IGitBuildService, IDisposable
         }
     }
 
-    private async Task ExecuteAsync(Guid owner, GitBuildRequest request, Guid id)
+    private async Task ExecuteAsync(Guid owner, GitBuildRequest request, Guid id, CancellationToken hostStopping)
     {
         var image = $"relaxkonos-git:build-{id:N}";
         var succeeded = false;
@@ -258,8 +350,8 @@ public sealed class GitBuildService : IGitBuildService, IDisposable
         catch (OperationCanceledException)
         {
             var cancelled = active.TryGetValue(id, out var source) && source.IsCancellationRequested;
-            Update(id, operation => operation with { State = cancelled ? "cancelled" : "failed",
-                ProblemCode = cancelled ? "git-build.cancelled" : "git-build.timeout", FinishedAt = DateTimeOffset.UtcNow });
+            Update(id, operation => operation with { State = hostStopping.IsCancellationRequested ? "interrupted" : cancelled ? "cancelled" : "failed",
+                ProblemCode = hostStopping.IsCancellationRequested ? "git-build.interrupted" : cancelled ? "git-build.cancelled" : "git-build.timeout", FinishedAt = DateTimeOffset.UtcNow });
         }
         catch (GitBuildProblem error)
         {
@@ -391,56 +483,16 @@ public sealed class GitBuildService : IGitBuildService, IDisposable
         return env;
     }
 
-    private static async Task<(int ExitCode, List<string> Lines)> RunAsync(string file, IReadOnlyList<string> args,
-        IReadOnlyDictionary<string, string> env, TimeSpan timeout, CancellationToken cancellationToken,
+    private async Task<(int ExitCode, List<string> Lines)> RunAsync(string file, IReadOnlyList<string> args,
+        IReadOnlyDictionary<string, string> environment, TimeSpan timeout, CancellationToken cancellationToken,
         Action<IReadOnlyList<string>>? onOutput = null)
     {
-        using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        limit.CancelAfter(timeout);
-        using var process = new Process { StartInfo = new ProcessStartInfo(file) { RedirectStandardOutput = true,
-            RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Path.GetTempPath() } };
-        foreach (var arg in args) process.StartInfo.ArgumentList.Add(arg);
-        foreach (var pair in env) process.StartInfo.Environment[pair.Key] = pair.Value;
-        try { if (!process.Start()) throw new GitBuildProblem("git-build.tool-unavailable", 503); }
-        catch (System.ComponentModel.Win32Exception) { throw new GitBuildProblem("git-build.tool-unavailable", 503); }
-        var lines = new List<string>();
-        var pending = new List<string>();
-        async Task drain(StreamReader reader)
+        try { return await commands.RunAsync(file, args, environment, timeout, cancellationToken, onOutput); }
+        catch (GitBuildProcessCleanupException)
         {
-            var buffer = new char[4096];
-            var current = new StringBuilder(1024);
-            void emit()
-            {
-                var line = current.ToString();
-                current.Clear();
-                string[]? batch = null;
-                lock (lines)
-                {
-                    if (lines.Count < 4000) lines.Add(line);
-                    if (onOutput is not null)
-                    {
-                        pending.Add(line);
-                        if (pending.Count >= 20) { batch = [.. pending]; pending.Clear(); }
-                    }
-                }
-                if (batch is not null) onOutput!(batch);
-            }
-            int count;
-            while ((count = await reader.ReadAsync(buffer.AsMemory(), limit.Token)) != 0)
-                for (var index = 0; index < count; index++)
-                {
-                    if (buffer[index] == '\n') emit();
-                    else if (buffer[index] != '\r' && current.Length < 1024) current.Append(buffer[index]);
-                }
-            if (current.Length != 0) emit();
+            lock (gate) recoveryRequired = true;
+            throw new GitBuildProblem("git-build.process-cleanup-failed", 503);
         }
-        try
-        {
-            await Task.WhenAll(drain(process.StandardOutput), drain(process.StandardError), process.WaitForExitAsync(limit.Token));
-            if (pending.Count != 0) onOutput?.Invoke([.. pending]);
-        }
-        catch (OperationCanceledException) { try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { } throw; }
-        return (process.ExitCode, lines);
     }
 
     private void Append(Guid id, IEnumerable<string> lines, string? token)
@@ -478,6 +530,7 @@ public sealed class GitBuildService : IGitBuildService, IDisposable
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             var bytes = JsonSerializer.SerializeToUtf8Bytes(next, Json);
+            if (bytes.Length > MaximumLedgerBytes) throw new IOException("Git build ledger exceeds capacity.");
             using (var file = new FileStream(path + ".tmp", FileMode.Create, FileAccess.Write, FileShare.None))
             { file.Write(bytes); file.Flush(flushToDisk: true); }
             File.Move(path + ".tmp", path, overwrite: true);
@@ -499,6 +552,8 @@ public sealed class GitBuildService : IGitBuildService, IDisposable
     /// silent failure, so the release waits instead.
     /// </summary>
     public bool HasActiveWork { get { lock (gate) return active.Count > 0; } }
+
+    public bool RequiresRecovery { get { lock (gate) return unavailable || recoveryRequired; } }
 
     public int ActiveBuildCount { get { lock (gate) return active.Count; } }
 

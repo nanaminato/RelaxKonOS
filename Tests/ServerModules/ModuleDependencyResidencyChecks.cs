@@ -121,6 +121,16 @@ internal static class ModuleDependencyResidencyChecks
                 "host shutdown tears down module instances in reverse dependency topology");
         }
 
+        events.Clear(); nodes = Factories("a", "b"); nodes[0].Pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using (var coordinator = Coordinator(nodes, Graph(("a", ["b"]))))
+        {
+            var waiting = coordinator.AcquireAsync("a");
+            await nodes[0].Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await coordinator.DisposeAsync(); await Refused(() => waiting);
+            check(nodes[0].Last is null && nodes[1].Last!.Disposals == 1,
+                "host cancellation finishes pending parent initialization and releases its dependencies before teardown");
+        }
+
         events.Clear(); nodes = Factories("b"); nodes[0].Pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
         await using (var coordinator = Coordinator(nodes, Graph()))
         {

@@ -34,6 +34,8 @@ internal sealed class ModuleResidencyCoordinator : IAsyncDisposable
     private CancellationTokenSource _shutdown;
     private Task? _sweepLoop;
     private bool _started;
+    private bool _disposing;
+    private CancellationTokenRegistration _applicationStopping;
     private int _waiting;
     private int _loading;
     private readonly Entry[] _releaseOrder;
@@ -57,10 +59,11 @@ internal sealed class ModuleResidencyCoordinator : IAsyncDisposable
         _sweepInterval = sweepInterval ?? TimeSpan.FromSeconds(1);
         _http = services.GetService(typeof(IHttpContextAccessor)) as IHttpContextAccessor;
         _shutdown = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        if (factories.Count > 128) throw new InvalidOperationException("Module runtime catalog exceeds capacity.");
         foreach (var factory in factories)
             if (string.IsNullOrWhiteSpace(factory.ModuleId) || !_entries.TryAdd(factory.ModuleId, new Entry(factory, options.For(factory.ModuleId))))
                 throw new InvalidOperationException("Duplicate or invalid module runtime factory.");
-        if (dependencies?.Keys.Any(id => !_entries.ContainsKey(id)) == true
+        if (dependencies?.Any(item => !_entries.ContainsKey(item.Key) || item.Value is null) == true
             || residentRequiredModuleIds?.Any(id => !_entries.ContainsKey(id)) == true)
             throw new InvalidOperationException("Unknown module in runtime dependency graph.");
         foreach (var entry in _entries.Values)
@@ -86,6 +89,9 @@ internal sealed class ModuleResidencyCoordinator : IAsyncDisposable
     }
 
     internal IReadOnlyList<string> ModuleIds => _entries.Keys.ToArray();
+    internal bool HasBackgroundWork(string moduleId)
+    { lock (_gate) return _entries.TryGetValue(moduleId, out var entry) && entry.WorkLeases > 0; }
+    internal CancellationToken StoppingToken => _lifetime.Token;
 
     internal bool IsReleasable(string moduleId) => _entries.ContainsKey(moduleId);
 
@@ -99,14 +105,31 @@ internal sealed class ModuleResidencyCoordinator : IAsyncDisposable
     {
         lock (_gate)
         {
-            if (_started) return;
+            if (_started || _disposing) return;
             _started = true;
-            var wasLifetime = _shutdown;
-            _shutdown = CancellationTokenSource.CreateLinkedTokenSource(applicationStopping);
-            wasLifetime.Dispose();
         }
+        // An already cancelled host token may invoke callbacks synchronously. Register outside the
+        // admission lock, because a domain cancellation callback may need to finish a work lease.
+        var registration = applicationStopping.Register(CancelLifetime);
+        var discard = false;
+        lock (_gate)
+        {
+            if (_disposing) discard = true;
+            else
+            {
+                _applicationStopping = registration;
+                _sweepLoop = Task.Run(() => SweepLoopAsync(_shutdown.Token));
+            }
+        }
+        if (discard) registration.Dispose();
+    }
 
-        _sweepLoop = Task.Run(() => SweepLoopAsync(_shutdown.Token));
+    private void CancelLifetime()
+    {
+        try { _lifetime.Cancel(); }
+        catch (ObjectDisposedException) { }
+        catch (Exception error)
+        { _logger.LogError("Module cancellation callbacks failed. ExceptionType={ExceptionType}", error.GetType().Name); }
     }
 
     /// <summary>
@@ -122,79 +145,79 @@ internal sealed class ModuleResidencyCoordinator : IAsyncDisposable
         var waiting = false;
         try
         {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(entry.Settings.WakeTimeout);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(entry.Settings.WakeTimeout);
 
-        while (true)
-        {
-            Task<IServerModuleRuntime>? loading = null;
-            Task? stateChanged = null;
-            ModuleLease? lease = null;
-            lock (_gate)
+            while (true)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (_shutdown.IsCancellationRequested) throw Stopping(moduleId);
-                if (!waiting && entry.State != ModuleResidencyState.Active)
+                Task<IServerModuleRuntime>? loading = null;
+                Task? stateChanged = null;
+                ModuleLease? lease = null;
+                lock (_gate)
                 {
-                    if (!dependency && _waiting >= _options.MaxWaitingTotal || entry.Waiting >= _options.MaxWaitingPerModule)
-                        throw Overloaded(moduleId);
-                    waiting = true; if (!dependency) _waiting++; entry.Waiting++;
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (_disposing || _shutdown.IsCancellationRequested) throw Stopping(moduleId);
+                    if (!waiting && entry.State != ModuleResidencyState.Active)
+                    {
+                        if ((!dependency && _waiting >= _options.MaxWaitingTotal) || entry.Waiting >= _options.MaxWaitingPerModule)
+                            throw Overloaded(moduleId);
+                        waiting = true; if (!dependency) _waiting++; entry.Waiting++;
+                    }
+                    switch (entry.State)
+                    {
+                        case ModuleResidencyState.Active:
+                            if (entry.Runtime is null) throw Stopping(moduleId);
+                            entry.Leases++;
+                            entry.IdleSince = null;
+                            entry.ReleaseRequested = false;
+                            entry.LastUsedAt = Now;
+                            RememberSessionLocked(entry);
+                            lease = new ModuleLease(this, entry.Runtime);
+                            break;
+                        case ModuleResidencyState.Loading:
+                            loading = entry.Load;
+                            break;
+                        case ModuleResidencyState.Dormant:
+                            loading = StartLoadLocked(entry);
+                            break;
+                        case ModuleResidencyState.Faulted:
+                            if (Now < entry.RetryAfter) throw Unavailable(entry);
+                            loading = StartLoadLocked(entry);
+                            break;
+                        default:
+                            // Draining / Unloading: the module will be dormant shortly. Wait for that
+                            // transition instead of reviving the instance that is being released.
+                            stateChanged = entry.StateChanged.Task;
+                            break;
+                    }
                 }
-                switch (entry.State)
+
+                if (lease is not null) return lease;
+
+                if (loading is not null)
                 {
-                    case ModuleResidencyState.Active:
-                        if (entry.Runtime is null) throw Stopping(moduleId);
-                        entry.Leases++;
-                        entry.IdleSince = null;
-                        entry.ReleaseRequested = false;
-                        entry.LastUsedAt = Now;
-                        RememberSessionLocked(entry);
-                        lease = new ModuleLease(this, entry.Runtime);
-                        break;
-                    case ModuleResidencyState.Loading:
-                        loading = entry.Load;
-                        break;
-                    case ModuleResidencyState.Dormant:
-                        loading = StartLoadLocked(entry);
-                        break;
-                    case ModuleResidencyState.Faulted:
-                        if (Now < entry.RetryAfter) throw Unavailable(entry);
-                        loading = StartLoadLocked(entry);
-                        break;
-                    default:
-                        // Draining / Unloading: the module will be dormant shortly. Wait for that
-                        // transition instead of reviving the instance that is being released.
-                        stateChanged = entry.StateChanged.Task;
-                        break;
+                    try { await loading.WaitAsync(timeout.Token).ConfigureAwait(false); }
+                    catch (TimeoutException) { throw WakeTimeout(entry); }
+                    catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+                    {
+                        throw WakeTimeout(entry, exception);
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (ModuleUnavailableException) { /* Faulted; the next pass reports the reason. */ }
+                    continue;
+                }
+
+                if (stateChanged is not null)
+                {
+                    try { await stateChanged.WaitAsync(timeout.Token).ConfigureAwait(false); }
+                    catch (TimeoutException) { throw WakeTimeout(entry); }
+                    catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+                    {
+                        throw WakeTimeout(entry, exception);
+                    }
+                    catch (OperationCanceledException) { throw; }
                 }
             }
-
-            if (lease is not null) return lease;
-
-            if (loading is not null)
-            {
-                try { await loading.WaitAsync(timeout.Token).ConfigureAwait(false); }
-                catch (TimeoutException) { throw WakeTimeout(entry); }
-                catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
-                {
-                    throw WakeTimeout(entry, exception);
-                }
-                catch (OperationCanceledException) { throw; }
-                catch (ModuleUnavailableException) { /* Faulted; the next pass reports the reason. */ }
-                continue;
-            }
-
-            if (stateChanged is not null)
-            {
-                try { await stateChanged.WaitAsync(timeout.Token).ConfigureAwait(false); }
-                catch (TimeoutException) { throw WakeTimeout(entry); }
-                catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
-                {
-                    throw WakeTimeout(entry, exception);
-                }
-                catch (OperationCanceledException) { throw; }
-            }
-        }
         }
         finally
         {
@@ -220,13 +243,41 @@ internal sealed class ModuleResidencyCoordinator : IAsyncDisposable
         }
     }
 
-    internal void Release(string moduleId)
+    internal void Release(string moduleId, bool backgroundWork = false)
     {
         lock (_gate)
         {
             if (!_entries.TryGetValue(moduleId, out var entry)) return;
             if (entry.Leases > 0) entry.Leases--;
+            if (backgroundWork && entry.WorkLeases > 0 && --entry.WorkLeases == 0) entry.WorkDrained.TrySetResult();
             if (entry.Leases == 0) entry.IdleSince = Now;
+        }
+    }
+
+    internal ModuleLease AcquireForRuntime(IServerModuleRuntime runtime)
+    {
+        lock (_gate)
+        {
+            if (_disposing || _shutdown.IsCancellationRequested) throw Stopping(runtime.ModuleId);
+            var entry = EntryFor(runtime.ModuleId);
+            if (entry.State != ModuleResidencyState.Active || !ReferenceEquals(entry.Runtime, runtime))
+                throw new ModuleUnavailableException("module-runtime-generation-mismatch", 30, "The work owner is not the active module generation.");
+            entry.Leases++; entry.IdleSince = null; entry.ReleaseRequested = false;
+            if (entry.WorkLeases++ == 0) entry.WorkDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            return new ModuleLease(this, runtime, backgroundWork: true);
+        }
+    }
+
+    internal void Quarantine(IServerModuleRuntime runtime, object resource, string problemCode)
+    {
+        lock (_gate)
+        {
+            if (!_entries.TryGetValue(runtime.ModuleId, out var entry) || !ReferenceEquals(entry.Runtime, runtime)) return;
+            entry.FailedResource ??= resource;
+            entry.Failure = problemCode;
+            entry.Blocker = "module-recovery-blocked";
+            entry.RetryAfter = DateTimeOffset.MaxValue;
+            SetStateLocked(entry, ModuleResidencyState.Faulted);
         }
     }
 
@@ -269,7 +320,7 @@ internal sealed class ModuleResidencyCoordinator : IAsyncDisposable
         Entry[] due;
         lock (_gate)
         {
-            if (_shutdown.IsCancellationRequested) return;
+            if (_disposing || _shutdown.IsCancellationRequested) return;
             var now = Now;
             List<Entry> candidates = [];
             foreach (var entry in _entries.Values)
@@ -326,7 +377,7 @@ internal sealed class ModuleResidencyCoordinator : IAsyncDisposable
         var entry = EntryFor(moduleId);
         lock (_gate)
         {
-            if (_shutdown.IsCancellationRequested) return "module-host-stopping";
+            if (_disposing || _shutdown.IsCancellationRequested) return "module-host-stopping";
             if (entry.State == ModuleResidencyState.Dormant) return null;
             if (entry.ResidentRequired) return "module-resident-dependent";
             if (!entry.Settings.IsReleasable) return "module-policy-keeps-loaded";
@@ -340,27 +391,33 @@ internal sealed class ModuleResidencyCoordinator : IAsyncDisposable
     {
         Entry[] entries;
         Task[] loads;
+        Task[] work;
         lock (_gate)
         {
-            if (_lifetime.IsCancellationRequested) return;
-            _lifetime.Cancel();
-            _shutdown.Cancel();
+            if (_disposing) return;
+            _disposing = true;
             entries = _releaseOrder;
             loads = entries.Select(entry => entry.Load).OfType<Task>().ToArray();
+            work = entries.Where(entry => entry.WorkLeases > 0).Select(entry => entry.WorkDrained.Task).ToArray();
         }
+        // Cancellation can invoke domain callbacks; never invoke those while holding admission locks.
+        CancelLifetime();
 
         try { if (_sweepLoop is not null) await _sweepLoop.WaitAsync(TimeSpan.FromSeconds(30)).ConfigureAwait(false); }
         catch (Exception exception) { _logger.LogWarning(exception, "Module sweep did not finish cleanly during shutdown"); }
 
         try { await Task.WhenAll(loads).WaitAsync(TimeSpan.FromSeconds(30)).ConfigureAwait(false); }
         catch (Exception exception) { _logger.LogWarning(exception, "Module loads did not all finish cleanly during shutdown"); }
+        try { await Task.WhenAll(work).WaitAsync(TimeSpan.FromSeconds(30)).ConfigureAwait(false); }
+        catch (Exception exception) { _logger.LogWarning(exception, "Module background work did not finish cleanly during shutdown"); }
 
         foreach (var entry in entries)
         {
             IServerModuleRuntime? runtime;
             lock (_gate)
             {
-                if (entry.Leases != 0 || entry.State is ModuleResidencyState.Draining or ModuleResidencyState.Unloading)
+                if (entry.Leases != 0 || entry.Blocker == "module-recovery-blocked"
+                    || entry.State is ModuleResidencyState.Draining or ModuleResidencyState.Unloading)
                 {
                     _logger.LogWarning("Retaining module {ModuleId} during shutdown because work or release is still active", entry.ModuleId);
                     continue;
@@ -381,6 +438,7 @@ internal sealed class ModuleResidencyCoordinator : IAsyncDisposable
             }
         }
 
+        _applicationStopping.Dispose();
         _shutdown.Dispose();
         _lifetime.Dispose();
     }
@@ -390,7 +448,7 @@ internal sealed class ModuleResidencyCoordinator : IAsyncDisposable
         IServerModuleRuntime? runtime;
         lock (_gate)
         {
-            if (_shutdown.IsCancellationRequested) return "module-host-stopping";
+            if (_disposing || _shutdown.IsCancellationRequested) return "module-host-stopping";
             if (entry.ResidentRequired) return "module-resident-dependent";
             if (entry.State != ModuleResidencyState.Active || entry.Leases != 0 || entry.Runtime is null) return "module-active-work";
             runtime = entry.Runtime;
@@ -500,7 +558,7 @@ internal sealed class ModuleResidencyCoordinator : IAsyncDisposable
                 dependencies.Add(await AcquireCoreAsync(dependency, _shutdown.Token, dependency: true).ConfigureAwait(false));
             lock (_gate)
             {
-                if (_shutdown.IsCancellationRequested) throw Stopping(entry.ModuleId);
+                if (_disposing || _shutdown.IsCancellationRequested) throw Stopping(entry.ModuleId);
                 if (_loading >= _options.MaxParallelLoads) throw Overloaded(entry.ModuleId);
                 _loading++; loading = true;
             }
@@ -509,7 +567,7 @@ internal sealed class ModuleResidencyCoordinator : IAsyncDisposable
             double wakeMilliseconds;
             lock (_gate)
             {
-                if (_shutdown.IsCancellationRequested || entry.Generation != generation) throw Stopping(entry.ModuleId);
+                if (_disposing || _shutdown.IsCancellationRequested || entry.Generation != generation) throw Stopping(entry.ModuleId);
                 entry.Runtime = runtime;
                 entry.DependencyLeases = dependencies.ToArray();
                 retained = true;
@@ -650,9 +708,12 @@ internal sealed class ModuleResidencyCoordinator : IAsyncDisposable
     private sealed class Entry(IServerModuleRuntimeFactory factory, ModuleResidencySettings settings)
     {
         internal int Waiting { get; set; }
+        internal int WorkLeases { get; set; }
+        internal TaskCompletionSource WorkDrained { get; set; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal string[] Dependencies { get; set; } = [];
         internal ModuleLease[] DependencyLeases { get; set; } = [];
         internal bool ResidentRequired { get; set; }
+        internal object? FailedResource { get; set; }
         internal IServerModuleRuntimeFactory Factory { get; } = factory;
         internal ModuleResidencySettings Settings { get; set; } = settings;
         internal string ModuleId => Factory.ModuleId;

@@ -22,7 +22,7 @@ internal interface IServerModule
 }
 
 /// <summary>One durable operation that only the owning module can bring to a conclusion.</summary>
-internal sealed record ServerModuleOrphanedWork(string ModuleId, string Description);
+internal sealed record ServerModuleOrphanedWork(string ModuleId, string Description, bool RecoveryRequired = false);
 
 /// <summary>
 /// Implemented by modules whose object graph can be released while the process keeps running. The
@@ -133,9 +133,9 @@ internal sealed partial class ServerModules
 
     /// <summary>Every module in the compiled catalog, enabled or not. Used to validate configuration.</summary>
     internal IReadOnlySet<string> KnownModuleIds { get; }
-    internal IReadOnlyDictionary<string, IReadOnlyList<string>> RuntimeDependencies => _enabled.OfType<IServerModuleResidency>()
-        .ToDictionary(module => module.RuntimeFactory.ModuleId, module => (IReadOnlyList<string>)_enabled.Single(item => item.Id == module.RuntimeFactory.ModuleId)
-            .Requires.Where(ReleasableModuleIds.Contains).Order(StringComparer.Ordinal).ToArray(), StringComparer.Ordinal);
+    internal IReadOnlyDictionary<string, IReadOnlyList<string>> RuntimeDependencies => _enabled.Where(module => module is IServerModuleResidency)
+        .ToDictionary(module => module.Id, module => (IReadOnlyList<string>)module.Requires.Where(ReleasableModuleIds.Contains)
+            .Order(StringComparer.Ordinal).ToArray(), StringComparer.Ordinal);
     internal IReadOnlySet<string> ResidentRequiredModuleIds
     {
         get

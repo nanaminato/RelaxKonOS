@@ -34,6 +34,7 @@
     <ItemGroup>
       <ProjectReference Include="..\Shared\RelaxKonOS.Protocol\RelaxKonOS.Protocol.csproj" />
       <ProjectReference Include="..\Shared\RelaxKonOS.ManagedRuntimes\RelaxKonOS.ManagedRuntimes.csproj" />
+      <ProjectReference Include="..\Shared\RelaxKonOS.ServerModules.Packaging\RelaxKonOS.ServerModules.Packaging.csproj" />
     </ItemGroup>
 
     <!-- Pack the pinned GEO data with the RelaxKonOS.Server. Mihomo receives these files in its private -d directory. -->

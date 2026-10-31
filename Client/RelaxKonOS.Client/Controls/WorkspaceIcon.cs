@@ -27,6 +27,7 @@ public sealed class WorkspaceIcon : TemplatedControl
         ["Commit"] = Geometry.Parse("M3 12 H8 M16 12 H21 M8 12 A4 4 0 1 0 16 12 A4 4 0 1 0 8 12"),
         ["Search"] = Geometry.Parse("M4 10 A6 6 0 1 0 16 10 A6 6 0 1 0 4 10 M15 15 L21 21"),
         ["Plus"] = Geometry.Parse("M12 5 V19 M5 12 H19"),
+        ["More"] = Geometry.Parse("M6 7 L11 12 L6 17 M13 7 L18 12 L13 17"),
         ["Download"] = Geometry.Parse("M12 3 V16 M7 11 L12 16 L17 11 M4 17 V21 H20 V17"),
         ["Refresh"] = Geometry.Parse("M20 10 A8 8 0 0 0 6 6 L3 9 M3 4 V9 H8 M4 14 A8 8 0 0 0 18 18 L21 15 M16 15 H21 V20"),
         ["Edit"] = Geometry.Parse("M5 16 L16 5 L20 9 L9 20 L4 21 Z M14 7 L18 11"),

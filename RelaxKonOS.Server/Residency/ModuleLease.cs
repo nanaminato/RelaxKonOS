@@ -8,18 +8,23 @@ namespace RelaxKonOS.Server.Residency;
 internal sealed class ModuleLease : IDisposable
 {
     private ModuleResidencyCoordinator? _coordinator;
+    private readonly bool _backgroundWork;
 
-    internal ModuleLease(ModuleResidencyCoordinator coordinator, IServerModuleRuntime runtime)
+    internal ModuleLease(ModuleResidencyCoordinator coordinator, IServerModuleRuntime runtime, bool backgroundWork = false)
     {
         _coordinator = coordinator;
         Runtime = runtime;
+        Stopping = coordinator.StoppingToken;
+        _backgroundWork = backgroundWork;
     }
 
     internal IServerModuleRuntime Runtime { get; }
+    internal CancellationToken Stopping { get; }
+    internal void Quarantine(object resource, string problemCode = "module-stream-cleanup-failed") => _coordinator?.Quarantine(Runtime, resource, problemCode);
 
     public void Dispose()
     {
         var coordinator = Interlocked.Exchange(ref _coordinator, null);
-        coordinator?.Release(Runtime.ModuleId);
+        coordinator?.Release(Runtime.ModuleId, _backgroundWork);
     }
 }

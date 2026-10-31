@@ -162,10 +162,82 @@ internal static class GitDockChecks
         finally { settings.Language = oldLanguage; settings.Appearance = oldAppearance; project.RefreshLocalization(); }
         view.SelectGitTab(primary); max.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
         Check(view.FindControl<Grid>("MainWorkspace")!.IsVisible, "Restoring Git dock size returns to the editor.");
-        foreach (var width in new[] { 860, 640, 320 })
+        host.Width = 1475; Dispatcher.UIThread.RunJobs(); host.UpdateLayout(); await Task.Delay(120);
+        Dispatcher.UIThread.RunJobs(); host.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+        var filterGroups = new[]
         {
-            host.Width = width; Dispatcher.UIThread.RunJobs(); host.UpdateLayout(); await Task.Delay(60); Dispatcher.UIThread.RunJobs(); using var frame = host.CaptureRenderedFrame();
+            log.FindControl<Control>("SearchFilterGroup")!, log.FindControl<Control>("BranchFilterGroup")!,
+            log.FindControl<Control>("AuthorFilterGroup")!, log.FindControl<Control>("DateFilterGroup")!,
+            log.FindControl<Control>("PathFilterGroup")!
+        };
+        var filterStrip = log.FindControl<StackPanel>("FilterStrip")!;
+        var filterStripHost = log.FindControl<Grid>("FilterStripHost")!;
+        var overflowPanel = log.FindControl<StackPanel>("FilterOverflowPanel")!;
+        var overflowButton = log.FindControl<Button>("FilterOverflowButton")!;
+        var overflowDot = log.FindControl<Border>("FilterOverflowDot")!;
+        Check(!overflowButton.IsVisible && filterStrip.Children.Count == filterGroups.Length,
+            "A wide log toolbar keeps every filter inline and hides the overflow entry.");
+        foreach (var width in new[] { 1385, 860, 640, 320 })
+        {
+            host.Width = width; Dispatcher.UIThread.RunJobs(); host.UpdateLayout(); await Task.Delay(60); Dispatcher.UIThread.RunJobs(); host.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            using var frame = host.CaptureRenderedFrame();
             using (var narrow = new RenderTargetBitmap(new PixelSize(width, 670))) { narrow.Render(host); narrow.Save(Path.Combine(outputDir, $"narrow-{width}.png")); }
+            var inline = filterStrip.Children.OfType<Control>().ToArray();
+            var folded = overflowPanel.Children.OfType<Control>().ToArray();
+            Check(inline.Length + folded.Length == filterGroups.Length
+                && filterGroups.All(group => inline.Contains(group) != folded.Contains(group)),
+                $"At {width} DIP every filter is either inline or in the overflow flyout, never both.");
+            Check(overflowButton.IsVisible == (folded.Length > 0) && ReferenceEquals(overflowPanel.DataContext, vm),
+                $"At {width} DIP the overflow entry only appears with folded filters and keeps the active session.");
+            Check(inline.Length == 0 || inline.Sum(group => group.Bounds.Width) + filterStrip.Spacing * (inline.Length - 1) <= filterStripHost.Bounds.Width + 1,
+                $"At {width} DIP the inline filters fit the strip without horizontal clipping.");
+            if (width == 320)
+                Check(folded.Length == filterGroups.Length, "The narrowest log width folds every filter into the flyout.");
+            if (width == 860)
+            {
+                overflowButton.Flyout!.ShowAt(overflowButton); Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
+                var pathButton = log.FindControl<Button>("PathFilterGroup")!;
+                var pathFlyout = (Flyout)pathButton.Flyout!;
+                Check(folded.Contains(pathButton), "The path filter is folded at a width where it cannot sit beside search.");
+                pathFlyout.ShowAt(pathButton); Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
+                Check(pathFlyout.IsOpen && ((Flyout)overflowButton.Flyout).IsOpen,
+                    "The path filter stays usable when it is opened from inside the overflow flyout.");
+                pathFlyout.Hide(); overflowButton.Flyout.Hide(); Dispatcher.UIThread.RunJobs();
+            }
+            if (width == 640)
+            {
+                var originalDate = vm.SelectedLogDate;
+                vm.SelectedLogDate = vm.LogDateOptions.Single(option => option.Value == "month");
+                Dispatcher.UIThread.RunJobs();
+                Check(folded.Contains(log.FindControl<Control>("DateFilterGroup")) && overflowDot.IsVisible,
+                    "An active filter hidden by the collapse marks the overflow entry.");
+                overflowButton.Flyout!.ShowAt(overflowButton); Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
+                Check(overflowPanel.Children.OfType<Control>().All(group => group.Bounds.Width > 0 && group.Bounds.Height > 0),
+                    "Folded filters keep their real, usable controls inside the flyout.");
+                var popupRoot = TopLevel.GetTopLevel(overflowPanel)!;
+                popupRoot.UpdateLayout();
+                using (var popup = new RenderTargetBitmap(new PixelSize(
+                    (int)Math.Ceiling(popupRoot.Bounds.Width), (int)Math.Ceiling(popupRoot.Bounds.Height))))
+                {
+                    popup.Render(popupRoot);
+                    popup.Save(Path.Combine(outputDir, $"filter-overflow-{width}.png"), new PngBitmapEncoderOptions());
+                }
+                overflowButton.Flyout.Hide();
+                var appearance = settings.Appearance;
+                settings.Appearance = appearance with { Mode = ThemeKind.Dark };
+                project.RefreshLocalization(); Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
+                overflowButton.Flyout.ShowAt(overflowButton); Dispatcher.UIThread.RunJobs();
+                var darkPopup = TopLevel.GetTopLevel(overflowPanel)!; darkPopup.UpdateLayout();
+                using (var popup = new RenderTargetBitmap(new PixelSize(
+                    (int)Math.Ceiling(darkPopup.Bounds.Width), (int)Math.Ceiling(darkPopup.Bounds.Height))))
+                {
+                    popup.Render(darkPopup);
+                    popup.Save(Path.Combine(outputDir, $"filter-overflow-{width}-dark.png"), new PngBitmapEncoderOptions());
+                }
+                overflowButton.Flyout.Hide();
+                settings.Appearance = appearance; project.RefreshLocalization(); Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
+                vm.SelectedLogDate = originalDate; Dispatcher.UIThread.RunJobs();
+            }
             foreach (var button in new[] { view.FindControl<Button>("NewGitLogButton")!, view.FindControl<Button>("MaximizeGitButton")!, view.FindControl<Button>("HideGitButton")! })
             {
                 var point = button.TranslatePoint(new Point(button.Bounds.Width / 2, button.Bounds.Height / 2), host)!.Value;
@@ -173,6 +245,10 @@ internal static class GitDockChecks
                     $"Git dock controls remain reachable at {width} DIP.");
             }
         }
+        host.Width = 1475; Dispatcher.UIThread.RunJobs(); host.UpdateLayout(); await Task.Delay(120);
+        Dispatcher.UIThread.RunJobs(); host.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+        Check(!overflowButton.IsVisible && filterStrip.Children.Count == filterGroups.Length,
+            "Widening the log toolbar restores every folded filter instead of latching the overflow entry.");
         view.CloseGitTab(second);
         Check(!view.GitTabs.Contains(second), "An idle secondary log can be closed independently.");
         max.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));

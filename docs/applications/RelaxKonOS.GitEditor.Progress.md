@@ -157,3 +157,9 @@ Git Diff 原有解析 70 项与渲染 40 项通过。Client 与 Server 主项目
 ### Windows 保存凭据复用（2026-10-25）
 
 fetch、pull 及非当前分支更新已接入与 push/clone 相同的应用加密凭据存储。按有效下载地址（包括 insteadOf）和用户隔离，不使用 pushurl，也不让宿主 credential helper 替换或另行保存应用下发的令牌。Windows Server 2022 的普通用户与 Administrator 均在不重新输入 Git 凭据的情况下通过真实 HTTPS fetch/pull、实际内容 fast-forward、非当前分支与 URL 重写检查，详见 [验收记录](RelaxKonOS.GitClient.WindowsAcceptance.md)。
+
+### 日志筛选条的窄窗口折叠（2026-10-31）
+
+提交列表上方的筛选条改为自适应折叠，不再横向滚动。日期、作者、分支、路径按顺序进入「更多筛选」浮层，搜索框优先保留并在必要时收窄；被折叠且已生效的条件在入口显示强调点。控件在工具条和浮层之间移动而非复制，筛选状态、下拉选项和路径弹层保持唯一。
+
+`--git-dock-only` 新增 1475/1385/860/640/320 DIP 断言：控件只出现在工具条或浮层之一、内联内容不超宽、1385 DIP 折叠日期条件、320 DIP 全部折叠、隐藏的日期筛选点亮入口指示点、浮层控件具有实际可交互尺寸、路径输入弹层可从浮层内打开且父浮层保持打开，以及从 320 恢复到 1475 时所有条件重新展开。预览新增 `narrow-1385.png`、`filter-overflow-640.png` 与 `filter-overflow-640-dark.png`；构建保留现有平台与弃用警告。

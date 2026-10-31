@@ -24,13 +24,24 @@ namespace RelaxKonOS.Server.Startup.Modules;
 /// replaces the Host's unavailable default with a gate that can wake Git when it is dormant.
 /// </para>
 /// </summary>
-internal sealed class GitModule : IServerModule, IServerModuleResidency
+internal sealed class GitModule : IServerModule, IServerModuleResidency, IServerModuleDeactivationGuard
 {
     public string Id => ServerModules.GitId;
     public IReadOnlyList<string> Capabilities => [ServerCapabilities.Git];
     public IReadOnlyList<string> Requires => [];
 
     public IServerModuleRuntimeFactory RuntimeFactory { get; } = new GitModuleRuntimeFactory();
+    public ValueTask<IReadOnlyList<ServerModuleOrphanedWork>> InspectOrphanedWorkAsync(
+        IServiceProvider services, ServerModuleContext context, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var active = services.GetService<ModuleResidencyCoordinator>()?.HasBackgroundWork(Id) == true;
+        var work = GitBuildService.InspectLedger(context.ContentRootPath,
+            context.Configuration.GetSection("GitBuilds").Get<GitBuildOptions>() ?? new(), active);
+        if (active)
+            work = [.. work, new(Id, "Git background execution or cleanup is still active.")];
+        return ValueTask.FromResult(work);
+    }
 
     public void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
     {

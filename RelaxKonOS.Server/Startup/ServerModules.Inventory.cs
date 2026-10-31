@@ -60,6 +60,7 @@ internal sealed partial class ServerModules
             var runtime = isEnabled ? DescribeResidency(module.Id, residency) : null;
             var desiredPolicy = managementState?.Policies.GetValueOrDefault(module.Id);
             var effectivePolicy = management?.EffectivePolicies.GetValueOrDefault(module.Id);
+            var recoveryRequired = runtime?.BlockedBy == "module-recovery-blocked" || work.Any(item => item.RecoveryRequired);
             inventory.Add(new ServerModuleDto(module.Id, isEnabled, module.Capabilities, module.Requires,
                 requiredBy, work.Select(item => item.Description).ToArray(),
                 runtime,
@@ -69,10 +70,10 @@ internal sealed partial class ServerModules
                 DesiredRevision: managementState?.Revision, EffectiveRevision: management?.EffectiveRevision,
                 RestartRequired: desired.Contains(module.Id) != isEnabled || desiredPolicy != effectivePolicy, ObservedAt: observedAt,
                 PendingOperationId: managementState?.PendingOperations.TryGetValue(module.Id, out var pendingId) == true ? pendingId : null,
-                RecoveryState: management?.RecoveryMode == true ? "host-recovery" : runtime?.BlockedBy == "module-recovery-blocked" ? "required" : "none",
+                RecoveryState: management?.RecoveryMode == true ? "host-recovery" : recoveryRequired ? "required" : "none",
                 ConfigurationOwner: management?.Writable == true ? "managed" : "deployment",
                 ConfigurationWritable: management?.Writable == true,
-                AllowedActions: management?.Admissions(module is IServerModuleResidency, runtime, desired.Contains(module.Id)), Name: ConfigurationName(module.Id),
+                AllowedActions: management?.Admissions(module is IServerModuleResidency, runtime, desired.Contains(module.Id), recoveryRequired), Name: ConfigurationName(module.Id),
                 Rid: System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier,
                 HostApiRequirement: version, ArtifactDigest: HostDigest.Value,
                 ResourceReleaseLevel: module is IServerModuleResidency ? "objects" : "none",

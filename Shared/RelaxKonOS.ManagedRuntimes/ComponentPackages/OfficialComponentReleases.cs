@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Net;
 using System.Net.Http;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -10,10 +11,12 @@ namespace RelaxKonOS.ManagedRuntimes.ComponentPackages;
 public sealed class OfficialComponentReleases
 {
     private static readonly HttpClient Client = CreateClient();
+    private readonly HttpClient metadataClient;
+    public OfficialComponentReleases(HttpClient? metadataClient = null) => this.metadataClient = metadataClient ?? Client;
     private static readonly ConcurrentDictionary<string, (DateTimeOffset At, ComponentDownloadRelease[] Releases)> Cache = new();
     private static HttpClient CreateClient()
     {
-        var client = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+        var client = new HttpClient(new HttpClientHandler { AutomaticDecompression = DecompressionMethods.All }) { Timeout = TimeSpan.FromMinutes(10) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("RelaxKonOS/1.0");
         return client;
     }
@@ -36,10 +39,11 @@ public sealed class OfficialComponentReleases
             var found = new List<ComponentDownloadRelease>();
             for (var page = 1; page <= 3; page++)
             {
-                var json = await ReadAsync($"https://api.github.com/repos/{repository}/releases?per_page=30&page={page}", ct);
+                var json = await ReadAsync($"https://api.github.com/repos/{repository}/releases?per_page=5&page={page}", ct);
                 found.AddRange(ParseGitHub(component, rid, json));
                 using var document = JsonDocument.Parse(json);
-                if (document.RootElement.GetArrayLength() < 30) break;
+                // Return the newest matching batch without downloading historical asset metadata.
+                if (found.Count > 0 || document.RootElement.GetArrayLength() < 5) break;
             }
             releases = found.DistinctBy(release => release.Version).OrderByDescending(release => SortVersion(release.Version)).ToArray();
         }
@@ -131,12 +135,12 @@ public sealed class OfficialComponentReleases
         ComponentIds.Mihomo => "MetaCubeX/mihomo",
         _ => throw new RuntimePolicyException("component.unknown")
     };
-    private static async Task<string> ReadAsync(string url, CancellationToken ct)
+    private async Task<string> ReadAsync(string url, CancellationToken ct)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(30));
         ct = timeout.Token;
-        using var response = await Client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+        using var response = await metadataClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
         await using var input = await response.Content.ReadAsStreamAsync(ct);
         using var output = new MemoryStream();

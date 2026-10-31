@@ -64,6 +64,7 @@ internal partial class GitLogView : UserControl
         ShowAuthors = AuthorsOption.IsChecked == true && center >= 400;
         ShowDates = DatesOption.IsChecked == true && center >= 550;
         ShowReferences = ReferencesOption.IsChecked == true && center >= 480;
+        QueueFilterBarLayout();
     }
     public void SetBranchesVisible(bool visible) { if (!visible && LogLayoutRoot.ColumnDefinitions[0].Width.Value > 0) _branchWidth = LogLayoutRoot.ColumnDefinitions[0].Width.Value; _showBranches = visible; ApplyResponsiveLayout(); }
     public GitLogView(GitClientViewModel vm) : this()
@@ -78,6 +79,7 @@ internal partial class GitLogView : UserControl
         if (_attached) return;
         _attached = true;
         if (_vm is null && DataContext is GitClientViewModel vm) _vm = vm;
+        InitializeFilterBar();
         if (_vm is null) return;
 
         // 把 ViewModel 的 Branches 扁平列表映射为「HEAD / 本地 / 远程 / 每个 remote」 树形结构
@@ -101,10 +103,19 @@ internal partial class GitLogView : UserControl
         UpdateActionButtons();
     }
 
+    protected override void OnDataContextChanged(EventArgs e)
+    {
+        base.OnDataContextChanged(e);
+        // Filters moved into the flyout leave this control's logical tree. They keep working
+        // because the flyout panel receives the same view model explicitly.
+        if (_filterBarReady) FilterOverflowPanel.DataContext = DataContext;
+    }
+
     protected override void OnUnloaded(RoutedEventArgs e)
     {
         base.OnUnloaded(e);
         _attached = false;
+        DetachFilterBar();
         if (LogLayoutRoot.ColumnDefinitions[0].Width.Value > 0) _branchWidth = LogLayoutRoot.ColumnDefinitions[0].Width.Value;
         if (LogLayoutRoot.ColumnDefinitions[4].Width.Value > 0) _filesWidth = LogLayoutRoot.ColumnDefinitions[4].Width.Value;
         if (_vm is not null)
@@ -122,6 +133,7 @@ internal partial class GitLogView : UserControl
             or nameof(GitClientViewModel.Status))
             RebuildBranchTree();
         if (e.PropertyName is nameof(GitClientViewModel.IsBusy) or nameof(GitClientViewModel.SelectedBranch) or nameof(GitClientViewModel.SelectedCommit)) UpdateActionButtons();
+        if (IsFilterProperty(e.PropertyName)) UpdateFilterOverflowIndicator();
         if (e.PropertyName == nameof(GitClientViewModel.SelectedLogBranch)) { _selectedBranchName = _vm?.SelectedLogBranch?.Value; RestoreBranchSelection(); }
         if (e.PropertyName == nameof(GitClientViewModel.SelectedCommit))
             CommitList.SelectedItem = LogRows.FirstOrDefault(row => row.Commit.Sha == _vm?.SelectedCommit?.Sha);

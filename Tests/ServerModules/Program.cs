@@ -21,6 +21,12 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 
 // Fixture writer for the process-level deactivation check, so the ledger under test is produced by the
+if (args is ["--git-build-command-child", var childMarker])
+{
+    File.WriteAllText(childMarker, Environment.ProcessId.ToString());
+    await Task.Delay(TimeSpan.FromSeconds(30));
+    return;
+}
 // real store instead of hand-written JSON:
 //   RelaxKonOS.ServerModules.Tests.exe --write-unresolved-stack <absolute directory>
 // Then start the Server with DockerCompose__DataDirectory=<directory> and Modules__Docker__Enabled=false:
@@ -91,6 +97,10 @@ await ModuleRecoveryChecks.RunAsync(Check);
 await ModuleRecoveryHostChecks.RunAsync(Check);
 await FirewallResidencyChecks.RunAsync(Check);
 await ModuleDependencyResidencyChecks.RunAsync(Check);
+await ModuleStreamingChecks.RunAsync(Check);
+await ModuleBackgroundWorkChecks.RunAsync(Check);
+await GitDeactivationChecks.RunAsync(Check);
+await ModulePackageChecks.RunAsync(Check);
 await ModuleManagementHttpChecks.RunAsync(Check);
 await ModuleRuntimeManagementChecks.RunAsync(Check);
 
@@ -1025,7 +1035,7 @@ sealed class FakeRuntimeFactory(string moduleId) : IServerModuleRuntimeFactory
         CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref Created);
-        if (Pending is not null) return await Pending;
+        if (Pending is not null) return await Pending.WaitAsync(cancellationToken);
         if (CreateDelay > TimeSpan.Zero) await Task.Delay(CreateDelay, cancellationToken);
         if (Failure is not null) throw Failure;
         Last = new FakeRuntime(ModuleId) { Blocker = Blocker };

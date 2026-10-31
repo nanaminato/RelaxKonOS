@@ -38,11 +38,14 @@ public sealed class ComponentLifecycleClient(HttpClient http, IAuthSession sessi
         var view = await StateAsync(componentId, ct);
         if (view.ComponentId != componentId || view.State is not { } state || view.Problems.Count != 0)
             throw new InvalidDataException("component.state_unavailable");
-        var rid = (state.Target.Os == "windows" ? "win" : state.Target.Os) + "-" + state.Target.Architecture;
+        // System-package targets use package-manager architecture names; release assets use .NET RIDs.
+        var architecture = state.Mode == ComponentSourceMode.SystemPackage && state.Target.Architecture == "amd64"
+            ? "x64" : state.Target.Architecture;
+        var rid = (state.Target.Os == "windows" ? "win" : state.Target.Os) + "-" + architecture;
         if (rid is not ("win-x64" or "win-arm64" or "linux-x64" or "linux-arm64"))
             throw new InvalidOperationException("component.platform_unsupported");
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        lifetime.CancelAfter(TimeSpan.FromSeconds(35));
+        lifetime.CancelAfter(TimeSpan.FromSeconds(95));
         var pending = new List<Task<ComponentDownloadRelease[]>>
         {
             SendAsync<ComponentDownloadRelease[]>(HttpMethod.Get, ComponentRoutes.Releases(componentId)
@@ -50,6 +53,7 @@ public sealed class ComponentLifecycleClient(HttpClient http, IAuthSession sessi
             new RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialComponentReleases()
                 .ListAsync(componentId, rid, refresh, lifetime.Token)
         };
+        Exception? failure = null;
         try
         {
             while (pending.Count > 0)
@@ -59,8 +63,8 @@ public sealed class ComponentLifecycleClient(HttpClient http, IAuthSession sessi
                 ComponentDownloadRelease[] releases;
                 try { releases = await completed; }
                 catch (Exception ex) when (ex is HttpRequestException or IOException or OperationCanceledException
-                    or System.Text.Json.JsonException) { continue; }
-                catch (InvalidOperationException ex) when (ex.Message == "component.state_unavailable") { continue; }
+                    or System.Text.Json.JsonException) { failure = ex; continue; }
+                catch (InvalidOperationException ex) when (ex.Message is "component.state_unavailable" or "component.package_index_unavailable") { failure ??= ex; continue; }
                 if (releases.Length == 0 || releases.Any(release => release.Rid != rid)) continue;
                 Verify();
                 ct.ThrowIfCancellationRequested();
@@ -68,7 +72,8 @@ public sealed class ComponentLifecycleClient(HttpClient http, IAuthSession sessi
             }
             ct.ThrowIfCancellationRequested();
             Verify();
-            throw new InvalidOperationException("component.state_unavailable");
+            if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+            throw new InvalidOperationException("component.package_index_unavailable");
         }
         finally
         {
@@ -98,6 +103,7 @@ public sealed class ComponentLifecycleClient(HttpClient http, IAuthSession sessi
                 : response.StatusCode is System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.Unauthorized
                     ? "component.permission_denied"
                 : response.StatusCode is System.Net.HttpStatusCode.Conflict ? "component.platform_unsupported"
+                : response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable ? "component.package_index_unavailable"
                 : "component.state_unavailable";
             throw new InvalidOperationException(code);
         }

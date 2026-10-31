@@ -29,6 +29,8 @@ internal sealed class GitModuleRuntime : IServerModuleRuntime
         _services.AddSingleton<GitBuildOptions>(_ =>
             context.Configuration.GetSection("GitBuilds").Get<GitBuildOptions>() ?? new GitBuildOptions());
         _services.AddSingleton<IHostGitCli>(_ => new HostGitCli());
+        _services.AddSingleton<IModuleWorkLeaseSource>(_ => new ModuleWorkLeaseSource(root.GetRequiredService<ModuleResidencyCoordinator>(), this));
+        _services.AddSingleton<IGitBuildCommandRunner>(_ => new GitBuildCommandRunner());
         _services.AddSingleton<IGitRepositoryService>(container => container.Create<LocalGitRepositoryService>());
         _services.AddSingleton<IGitBuildService>(container => container.Create<GitBuildService>());
     }
@@ -39,6 +41,9 @@ internal sealed class GitModuleRuntime : IServerModuleRuntime
 
     public ValueTask<ModuleUnloadBlocker?> CanUnloadAsync(CancellationToken cancellationToken)
     {
+        if (_services.TryGetSingleton(typeof(IGitBuildService), out var buildState)
+            && buildState is GitBuildService { RequiresRecovery: true })
+            return ValueTask.FromResult<ModuleUnloadBlocker?>(new("module-recovery-blocked"));
         // Nothing is disposed while a build is still writing to its ledger: the coordinator keeps the
         // module and retries after the grace period instead of cancelling the work silently.
         if (_services.TryGetSingleton(typeof(IGitBuildService), out var instance)

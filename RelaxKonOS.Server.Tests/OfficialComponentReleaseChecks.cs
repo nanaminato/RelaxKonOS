@@ -38,6 +38,15 @@ internal static class OfficialComponentReleaseChecks
         try { await OfficialComponentReleases.CopyAsync(input, output, new string('0', 64), default); }
         catch (IOException) { rejected = true; }
         Check(rejected, "an available upstream digest still detects incomplete or changed bytes automatically");
+        using (var handler = new DiscoveryHandler())
+        using (var http = new HttpClient(handler))
+        {
+            var discovered = await new OfficialComponentReleases(http).ListAsync("mihomo", "linux-x64", true, default);
+            Check(handler.Pages.SequenceEqual([1, 2]) && discovered is [{ Version: "v1.19.30", Rid: "linux-x64" }],
+                "small pages skip prereleases and stop after the first matching stable batch");
+            await new OfficialComponentReleases(http).ListAsync("mihomo", "linux-x64", false, default);
+            Check(handler.Pages.Count == 2, "successful release discovery is cached without another network request");
+        }
         if (live)
         {
             foreach (var id in new[] { "nginx", "mihomo", "frpc", "frps" })
@@ -46,6 +55,24 @@ internal static class OfficialComponentReleaseChecks
                 Check(releases.Length > 1, id + " official upstream returned " + releases.Length + " selectable Windows versions");
                 Console.WriteLine(id + ": " + string.Join(", ", releases.Take(5).Select(release => release.Version)));
             }
+        }
+    }
+    private sealed class DiscoveryHandler : HttpMessageHandler
+    {
+        internal List<int> Pages = [];
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            var query = request.RequestUri!.Query;
+            if (!query.Contains("per_page=5")) throw new Exception("Unbounded release page");
+            var page = int.Parse(query.Split("page=")[^1]);
+            Pages.Add(page);
+            var json = page == 1
+                ? "[" + string.Join(",", Enumerable.Repeat("{\"draft\":false,\"prerelease\":true}", 5)) + "]"
+                : """
+                  [{"draft":false,"prerelease":false,"tag_name":"v1.19.30","assets":[
+                  {"name":"mihomo-linux-amd64-v1.19.30.gz","browser_download_url":"https://github.com/MetaCubeX/mihomo/releases/download/v1.19.30/mihomo-linux-amd64-v1.19.30.gz"}]}]
+                  """;
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(json) });
         }
     }
     private static void Check(bool success, string message)

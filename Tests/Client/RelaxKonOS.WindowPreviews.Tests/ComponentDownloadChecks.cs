@@ -16,6 +16,15 @@ internal static class ComponentDownloadChecks
 {
     internal static void Run()
     {
+        foreach (var architecture in new[] { "amd64", "arm64" })
+        {
+            using var handler = new HostReleaseHandler(architecture);
+            using var http = new HttpClient(handler);
+            var client = new ComponentLifecycleClient(http, DispatchProxy.Create<IAuthSession, EntrySession>());
+            var found = client.ReleasesAsync("mihomo", true, default).GetAwaiter().GetResult();
+            Check(found.Single().Rid == (architecture == "amd64" ? "linux-x64" : "linux-arm64") && handler.ReleaseRequests == 1,
+                "Linux APT " + architecture + " state reaches official release discovery with the server RID");
+        }
         foreach (var id in new[] { "nginx", "mihomo", "frpc", "frps" })
         {
             using var runtime = new ProxyServerRuntimeViewModel(DispatchProxy.Create<IRuntimeCatalogClient, DisplayOnlyRuntime>()) { CanRead = true, CanManage = true };
@@ -79,6 +88,19 @@ internal static class ComponentDownloadChecks
             releases.Fail = true;
             model.LoadOfficialReleasesAsync(true).GetAwaiter().GetResult();
             Check(model.OfficialReleases.Count == 0 && !model.CanInstallOfficial, id + " failed refresh does not reuse an old selected version");
+            foreach (var (failure, key) in new (Exception, string)[] {
+                (new TaskCanceledException(), "timeout"),
+                (new HttpRequestException("denied", null, HttpStatusCode.TooManyRequests), "rate_limited"),
+                (new InvalidOperationException("component.platform_unsupported"), "unsupported"),
+                (new InvalidDataException("component.state_unavailable"), "state_unavailable"),
+                (new System.Text.Json.JsonException(), "failed") })
+            {
+                releases.Failure = failure;
+                model.LoadOfficialReleasesAsync(true).GetAwaiter().GetResult();
+                Check(model.OfficialDownloadNotice.Resolve() == RelaxKonOS.Client.Localization.LocalizedStatus.Key("component_center.download." + key).Resolve(),
+                    id + " reports " + key + " without displaying raw exception text");
+            }
+            releases.Failure = null;
             var officialPage = id switch
             {
                 "nginx" => "https://nginx.org/en/download.html",
@@ -125,6 +147,25 @@ internal static class ComponentDownloadChecks
         if (!task.IsCompleted) throw new TimeoutException("Installation test did not complete");
         task.GetAwaiter().GetResult();
     }
+    private sealed class HostReleaseHandler(string architecture) : HttpMessageHandler
+    {
+        internal int ReleaseRequests;
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            object body;
+            if (request.RequestUri!.AbsolutePath.EndsWith("/state"))
+                body = new ComponentStateView("mihomo", new("mihomo", "host", 1, RuntimeOwnership.Absent,
+                    ComponentSourceMode.SystemPackage, new("linux", architecture, null, null, RuntimeInstallMode.SystemPackage, "systemd"), null, false), [], []);
+            else
+            {
+                ReleaseRequests++;
+                var rid = architecture == "amd64" ? "linux-x64" : "linux-arm64";
+                body = new[] { RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialComponentReleases.Describe("mihomo", rid, "v1.19.30") };
+            }
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) {
+                Content = new StringContent(JsonSerializer.Serialize(body, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default)) });
+        }
+    }
     private sealed class InstallHandler : HttpMessageHandler
     {
         public string? Body, Path; public int Calls;
@@ -149,9 +190,10 @@ internal static class ComponentDownloadChecks
 internal sealed class OfficialEntryLifecycle : IComponentLifecycleClient, IComponentReleaseClient
 {
     public bool Fail;
+    public Exception? Failure;
     public Task<ComponentDownloadRelease[]> ReleasesAsync(string id, bool refresh, CancellationToken ct)
     {
-        if (Fail) throw new HttpRequestException();
+        if (Fail) throw Failure ?? new HttpRequestException();
         return Task.FromResult(new[] { Release(id, id == "nginx" ? "1.30.6" : id == "mihomo" ? "v1.19.30" : "v0.71.0"),
             Release(id, id == "nginx" ? "1.28.3" : id == "mihomo" ? "v1.19.29" : "v0.70.0") });
     }

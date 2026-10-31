@@ -2,6 +2,7 @@ using System.Text.Json;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Server.Identity;
 using RelaxKonOS.Server.UserExecution;
+using RelaxKonOS.ModulePackaging;
 
 namespace RelaxKonOS.Server.Startup;
 
@@ -11,6 +12,8 @@ internal static class ModuleMaintenanceCommand
     {
         try
         {
+            if (args.Length >= 2 && args[0] == "modules" && args[1] == "verify-package")
+                return await ModulePackageMaintenanceCommand.RunAsync(args);
             if (args.Length < 2 || args[0] != "modules" || args[1] is not ("diagnose" or "recover-enable-all"))
                 throw new ModuleManagementException("module-maintenance-command-invalid", 400);
             var values = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -53,6 +56,7 @@ internal static class ModuleMaintenanceCommand
         catch (Exception exception)
         {
             Console.Error.WriteLine(exception is ModuleManagementException management ? management.Code
+                : exception is ModulePackageException package ? package.ProblemCode
                 : exception is IOException ? "module-state-unavailable" : "module-maintenance-failed");
             return 1;
         }
