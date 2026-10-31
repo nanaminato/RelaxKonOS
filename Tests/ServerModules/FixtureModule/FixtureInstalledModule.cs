@@ -6,7 +6,7 @@ using RelaxKonOS.ServerModule.Abstractions;
 namespace FixtureModule;
 
 /// <summary>Test-only installed module proving the Host can load an external assembly through the ABI.</summary>
-public sealed class FixtureInstalledModule : IInstalledServerModule
+public sealed class FixtureInstalledModule : IInstalledServerModule, IInstalledServerModuleHealth
 {
     public string Id => "fixture-module";
     public IReadOnlyList<string> Capabilities => [];
@@ -17,6 +17,9 @@ public sealed class FixtureInstalledModule : IInstalledServerModule
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints, InstalledModuleContext context) =>
         endpoints.MapGet("/api/v1.0/fixture-module/ping", () => "pong");
+
+    public ValueTask<InstalledModuleHealth> CheckHealthAsync(CancellationToken cancellationToken) =>
+        ValueTask.FromResult(new InstalledModuleHealth(true));
 }
 
 public sealed record FixtureMarker(string ContentRootPath);

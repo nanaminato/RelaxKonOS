@@ -53,6 +53,9 @@ internal static class ServerModuleManagementEndpoints
                 context.Environment, request.SourceId, request.ReleaseId, DateTimeOffset.UtcNow,
                 cancellationToken: cancellationToken))))
             .RequireAuthorization(ManagePolicy);
+        group.MapGet(ServerModuleManagementRoutes.ModuleHealth, async (ServerModules modules,
+            CancellationToken cancellationToken) => Results.Ok(await modules.CheckHealthAsync(cancellationToken)))
+            .RequireAuthorization(ManagePolicy);
         group.MapGet(ServerModuleManagementRoutes.InstalledPackages, (ServerModuleContext context) => Respond(() =>
         {
             var current = InstalledModuleStore.Read(context.ContentRootPath);

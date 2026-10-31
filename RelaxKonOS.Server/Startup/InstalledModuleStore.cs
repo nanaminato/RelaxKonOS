@@ -231,7 +231,7 @@ internal static class InstalledModuleCatalog
 }
 
 /// <summary>Adapts the public installed-module ABI to the internal server-module lifecycle.</summary>
-internal sealed class InstalledServerModule : IServerModule, IInstalledModuleInfo
+internal sealed class InstalledServerModule : IServerModule, IInstalledModuleInfo, IServerModuleHealthProbe
 {
     private readonly InstalledModuleRecord _record;
     private readonly string _contentRoot;
@@ -262,6 +262,29 @@ internal sealed class InstalledServerModule : IServerModule, IInstalledModuleInf
     {
         if (_record.Quarantined) return;
         EnsureLoaded().MapEndpoints(endpoints, CreateContext(context));
+    }
+
+    public async ValueTask<ServerModuleHealthModuleDto> CheckHealthAsync(bool enabled, CancellationToken cancellationToken)
+    {
+        var fact = new ServerModuleHealthModuleDto(Id, enabled, true, _record.Version, _record.SourceId, "loaded", null);
+        if (_record.Quarantined)
+            return fact with { Status = "quarantined", ProblemCode = "module-package-quarantined" };
+        if (!enabled) return fact;
+        try
+        {
+            var module = EnsureLoaded();
+            if (module is IInstalledServerModuleHealth health)
+            {
+                var result = await health.CheckHealthAsync(cancellationToken);
+                return fact with { Status = result.Healthy ? "healthy" : "unhealthy", ProblemCode = result.ProblemCode };
+            }
+            return fact;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or BadImageFormatException
+            or InvalidOperationException or ModulePackageException)
+        {
+            return fact with { Status = "load-failed", ProblemCode = "module-package-load-failed" };
+        }
     }
 
     private InstalledModuleContext CreateContext(ServerModuleContext context)

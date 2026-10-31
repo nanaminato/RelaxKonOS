@@ -26,6 +26,18 @@ public interface IInstalledServerModule
     void MapEndpoints(IEndpointRouteBuilder endpoints, InstalledModuleContext context);
 }
 
+/// <summary>Result of an optional module-owned health probe. A false result is diagnostic, not a restart instruction.</summary>
+public sealed record InstalledModuleHealth(bool Healthy, string? ProblemCode = null);
+
+/// <summary>
+/// Optional ABI for an installed module that can answer a cheap health probe after startup. Modules
+/// without it are reported as loaded but health is not claimed.
+/// </summary>
+public interface IInstalledServerModuleHealth
+{
+    ValueTask<InstalledModuleHealth> CheckHealthAsync(CancellationToken cancellationToken);
+}
+
 /// <summary>
 /// The narrow Host surface an installed module may read. It deliberately has no built
 /// <c>WebApplication</c>, no service provider, no privileged transport and no arbitrary file paths.

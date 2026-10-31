@@ -33,6 +33,12 @@ internal interface IServerModuleResidency
     IServerModuleRuntimeFactory RuntimeFactory { get; }
 }
 
+/// <summary>Optional in-process health probe. It never changes enablement or restarts the Host.</summary>
+internal interface IServerModuleHealthProbe
+{
+    ValueTask<ServerModuleHealthModuleDto> CheckHealthAsync(bool enabled, CancellationToken cancellationToken);
+}
+
 /// <summary>
 /// Implemented by modules that own durable, recoverable work. When such a module is disabled, the
 /// Host asks it what it would leave behind before any route or background worker starts: the
@@ -158,6 +164,24 @@ internal sealed partial class ServerModules
     /// <summary>True when the module was discovered from the installed-module store rather than compiled into the Host.</summary>
     internal bool IsInstalled(string moduleId) => _enabled.Concat(_disabled)
         .Any(module => module.Id == moduleId && module is IInstalledModuleInfo);
+
+    internal async Task<ServerModuleHealthPageDto> CheckHealthAsync(CancellationToken cancellationToken)
+    {
+        var enabled = _enabled.Select(module => module.Id).ToHashSet(StringComparer.Ordinal);
+        var modules = new List<ServerModuleHealthModuleDto>();
+        foreach (var module in _enabled.Concat(_disabled).OrderBy(module => module.Id, StringComparer.Ordinal))
+        {
+            if (module is IServerModuleHealthProbe probe)
+                modules.Add(await probe.CheckHealthAsync(enabled.Contains(module.Id), cancellationToken));
+            else
+            {
+                var installed = module as IInstalledModuleInfo;
+                modules.Add(new(module.Id, enabled.Contains(module.Id), installed is not null, installed?.InstalledVersion,
+                    installed?.SourceId, "host", null));
+            }
+        }
+        return new(modules.All(module => module.Status is "host" or "loaded" or "healthy"), DateTimeOffset.UtcNow, modules);
+    }
 
     /// <summary>One line for the startup log: operators must be able to see the effective set.</summary>
     internal string Describe() => _enabled.Count == 0

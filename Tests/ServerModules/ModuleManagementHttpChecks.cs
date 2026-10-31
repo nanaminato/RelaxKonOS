@@ -55,7 +55,8 @@ internal static class ModuleManagementHttpChecks
                     new ServerModulePackageRollbackRequest(ServerModules.GitId, "9.9.9"))).StatusCode == HttpStatusCode.Unauthorized
                 && (await client.GetAsync(ServerModuleManagementRoutes.ModuleStoreSearch)).StatusCode == HttpStatusCode.Unauthorized
                 && (await client.PostAsJsonAsync(ServerModuleManagementRoutes.ModuleStoreDownload,
-                    new ServerModuleStoreDownloadRequest("official", "release-1"))).StatusCode == HttpStatusCode.Unauthorized,
+                    new ServerModuleStoreDownloadRequest("official", "release-1"))).StatusCode == HttpStatusCode.Unauthorized
+                && (await client.GetAsync(ServerModuleManagementRoutes.ModuleHealth)).StatusCode == HttpStatusCode.Unauthorized,
                 "module package read and write APIs reject unauthenticated requests");
             client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Observer);
             var observer = await client.GetFromJsonAsync<ServerModuleDto>(detail, RelaxKonOSJsonOptions.Default);
@@ -72,9 +73,14 @@ internal static class ModuleManagementHttpChecks
                 ServerModuleManagementRoutes.PackageVersions.Replace("{moduleId}", ServerModules.GitId), RelaxKonOSJsonOptions.Default);
             var storeSearch = await client.GetFromJsonAsync<ServerModuleStorePageDto>(
                 ServerModuleManagementRoutes.ModuleStoreSearch, RelaxKonOSJsonOptions.Default);
+            var health = await client.GetFromJsonAsync<ServerModuleHealthPageDto>(
+                ServerModuleManagementRoutes.ModuleHealth, RelaxKonOSJsonOptions.Default);
             check(installedPackages?.Items.Count == 0 && packageOperations?.Items.Count == 0 && packageVersions?.Items.Count == 0
                 && storeSearch?.Items.Count == 0,
                 "module package and store read APIs expose empty facts without inventing an installable release");
+            check(health?.Healthy == true && health.Modules.Count > 0
+                && health.Modules.All(module => module.Status == "host"),
+                "module health reports the compiled Host set as healthy");
             check((await client.PostAsync(ServerModuleManagementRoutes.PackageUpload, new ByteArrayContent([]))).StatusCode == HttpStatusCode.BadRequest,
                 "module package upload rejects an empty body before creating an install candidate");
             check((await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackagePlans,
