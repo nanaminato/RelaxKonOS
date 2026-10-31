@@ -21,6 +21,7 @@
   <Button Content="{loc:Loc server_modules.check_health}" Command="{Binding CheckHealthCommand}" />
   <TextBlock Text="{Binding HealthText}" TextWrapping="Wrap" />
   <TextBlock Text="{loc:Loc server_modules.store}" FontWeight="SemiBold" />
+  <TextBlock Text="{Binding StoreSourceText}" TextWrapping="Wrap" Opacity="0.7" />
   <WrapPanel ItemSpacing="8" LineSpacing="8">
    <TextBox Text="{Binding StoreQuery}" PlaceholderText="{loc:Loc server_modules.store_query}" Width="240" />
    <Button Content="{loc:Loc server_modules.store_search}" Command="{Binding SearchStoreCommand}" />

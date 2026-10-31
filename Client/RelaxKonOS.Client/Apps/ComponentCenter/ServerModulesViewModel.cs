@@ -39,6 +39,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     [ObservableProperty] private ServerModulePackagePlanDto? packagePlan;
     [ObservableProperty] private string storeQuery = "";
     [ObservableProperty] private IReadOnlyList<ServerModuleStoreItemDto> storeItems = [];
+    [ObservableProperty] private IReadOnlyList<ServerModuleStoreSourceDto> storeSources = [];
     [ObservableProperty] private ServerModuleStoreItemDto? selectedStoreItem;
     public bool HasPackagePlan => PackagePlan is not null;
     public bool CanApplyPackagePlan => PackagePlan is not null && !Busy;
@@ -122,6 +123,11 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
             $"{operation.Action} · {operation.ModuleId} {operation.Version} · {operation.State} · {operation.ProblemCode}"));
     public string PackagePlanText => PackagePlan is not { } plan ? "" :
         $"{plan.ModuleId} · {plan.Version} · {plan.PublisherId}\n{plan.ReleaseId}\n{plan.ArtifactSha256}\n{plan.ExpiresAt}";
+    public string StoreSourceText => StoreSources.Count == 0 ? "" :
+        string.Join("\n", StoreSources.Select(source =>
+            $"{source.SourceId} · {source.Status} · seq {source.Sequence} · policy {source.PolicyRevision}"
+            + $" · releases {source.ReleaseCount} · revoked {source.RevokedCount}"
+            + (source.CatalogUriConfigured ? " · refresh uri" : "") + (source.ProblemCode is null ? "" : " · " + source.ProblemCode)));
     public string StoreItemDetails => SelectedStoreItem is not { } item ? "" :
         $"{item.ModuleId} · {item.Version} · {item.ReleaseId}\n"
         + $"{item.SourceId} · {item.PublisherId} · {item.TrustState} · {item.Purpose}\n"
@@ -187,20 +193,22 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         OnPropertyChanged(nameof(StoreItemDetails)); OnPropertyChanged(nameof(CanInstallStoreItem));
         InstallStoreItemCommand.NotifyCanExecuteChanged(); Notify();
     }
+    partial void OnStoreSourcesChanged(IReadOnlyList<ServerModuleStoreSourceDto> value) =>
+        OnPropertyChanged(nameof(StoreSourceText));
     private void Notify()
     {
         OnPropertyChanged(nameof(Details)); OnPropertyChanged(nameof(CanEnable)); OnPropertyChanged(nameof(CanDisable)); OnPropertyChanged(nameof(CanApply));
         OnPropertyChanged(nameof(CanWake)); OnPropertyChanged(nameof(CanSleep));
         OnPropertyChanged(nameof(CanSetPolicy));
         OnPropertyChanged(nameof(PackageDetails)); OnPropertyChanged(nameof(PackageVersionsText)); OnPropertyChanged(nameof(PackageOperationText));
-        OnPropertyChanged(nameof(StoreItemDetails));
+        OnPropertyChanged(nameof(StoreItemDetails)); OnPropertyChanged(nameof(StoreSourceText));
         EnableCommand.NotifyCanExecuteChanged(); DisableCommand.NotifyCanExecuteChanged(); ApplyCommand.NotifyCanExecuteChanged();
         WakeCommand.NotifyCanExecuteChanged(); SleepCommand.NotifyCanExecuteChanged();
         SetPolicyCommand.NotifyCanExecuteChanged(); ApplyPackagePlanCommand.NotifyCanExecuteChanged();
         RollbackPackageCommand.NotifyCanExecuteChanged(); InstallStoreItemCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanRestoreAll)); RestoreAllCommand.NotifyCanExecuteChanged();
     }
-    public void Invalidate() { Modules = []; Selected = null; Plan = null; OperationText = ""; InstalledPackages = []; SelectedVersions = []; SelectedPackageVersion = null; PackageOperations = []; PackagePlan = null; StoreItems = []; SelectedStoreItem = null; HealthText = ""; PackageStatus = "module-session-changed"; Notify(); }
+    public void Invalidate() { Modules = []; Selected = null; Plan = null; OperationText = ""; InstalledPackages = []; SelectedVersions = []; SelectedPackageVersion = null; PackageOperations = []; PackagePlan = null; StoreItems = []; StoreSources = []; SelectedStoreItem = null; HealthText = ""; PackageStatus = "module-session-changed"; Notify(); }
     [RelayCommand] private async Task RefreshAsync() => await Run(async () =>
     {
         // Clear before reading: failed refreshes show unknown instead of stale successful facts.
@@ -310,6 +318,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
 
     [RelayCommand] private async Task SearchStoreAsync() => await Run(async () =>
     {
+        StoreSources = (await client.StoreSourcesAsync()).Sources;
         StoreItems = (await client.SearchStoreAsync(StoreQuery)).Items;
         SelectedStoreItem = StoreItems.FirstOrDefault();
         PackageStatus = StoreItems.Count == 0 ? LocalizedText.Get("server_modules.store_empty") : "";

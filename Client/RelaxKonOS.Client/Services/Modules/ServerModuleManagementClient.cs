@@ -122,6 +122,17 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         return page;
     }
 
+    public async Task<ServerModuleStoreSourcePageDto> StoreSourcesAsync()
+    {
+        var page = await SendAsync<ServerModuleStoreSourcePageDto>(HttpMethod.Get,
+            ServerModuleManagementRoutes.ModuleStoreSources);
+        Require(page.Sources is { Count: <= 16 } && page.Sources.All(source => source is not null
+            && ValidIds([source.SourceId]) && source.Status is "current" or "refresh-required" or "unavailable"
+            && source.Sequence >= 0 && source.PolicyRevision >= 0 && source.ReleaseCount >= 0
+            && source.RevokedCount >= 0 && ValidCode(source.ProblemCode)));
+        return page;
+    }
+
     public async Task<ServerModulePackageUploadDto> DownloadStorePackageAsync(string sourceId, string releaseId)
     {
         Require(ValidIds([sourceId]) && ValidIds([releaseId]));
