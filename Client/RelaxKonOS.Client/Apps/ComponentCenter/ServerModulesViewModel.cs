@@ -35,6 +35,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     [ObservableProperty] private ServerInstalledModuleDto? selectedPackageVersion;
     [ObservableProperty] private IReadOnlyList<ServerPackageOperationDto> packageOperations = [];
     [ObservableProperty] private string packageStatus = "";
+    [ObservableProperty] private string healthText = "";
     [ObservableProperty] private ServerModulePackagePlanDto? packagePlan;
     [ObservableProperty] private string storeQuery = "";
     [ObservableProperty] private IReadOnlyList<ServerModuleStoreItemDto> storeItems = [];
@@ -199,7 +200,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         RollbackPackageCommand.NotifyCanExecuteChanged(); InstallStoreItemCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanRestoreAll)); RestoreAllCommand.NotifyCanExecuteChanged();
     }
-    public void Invalidate() { Modules = []; Selected = null; Plan = null; OperationText = ""; InstalledPackages = []; SelectedVersions = []; SelectedPackageVersion = null; PackageOperations = []; PackagePlan = null; StoreItems = []; SelectedStoreItem = null; PackageStatus = "module-session-changed"; Notify(); }
+    public void Invalidate() { Modules = []; Selected = null; Plan = null; OperationText = ""; InstalledPackages = []; SelectedVersions = []; SelectedPackageVersion = null; PackageOperations = []; PackagePlan = null; StoreItems = []; SelectedStoreItem = null; HealthText = ""; PackageStatus = "module-session-changed"; Notify(); }
     [RelayCommand] private async Task RefreshAsync() => await Run(async () =>
     {
         // Clear before reading: failed refreshes show unknown instead of stale successful facts.
@@ -322,6 +323,14 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         var upload = await client.DownloadStorePackageAsync(item.SourceId, item.ReleaseId);
         PackagePlan = await client.AutoPlanPackageAsync(upload.UploadId);
         PackageStatus = LocalizedText.Get("server_modules.package_plan_ready");
+    });
+
+    [RelayCommand] private async Task CheckHealthAsync() => await Run(async () =>
+    {
+        var report = await client.CheckHealthAsync();
+        HealthText = $"{(report.Healthy ? "healthy" : "unhealthy")} · {report.CheckedAt}\n"
+            + string.Join("\n", report.Modules.Select(module =>
+                $"{module.ModuleId} · {(module.Enabled ? "enabled" : "disabled")} · {module.Status} · {module.ProblemCode}"));
     });
     [RelayCommand(CanExecute = nameof(CanEnable))] private Task EnableAsync() => PreviewAsync(true);
     [RelayCommand(CanExecute = nameof(CanDisable))] private Task DisableAsync() => PreviewAsync(false);

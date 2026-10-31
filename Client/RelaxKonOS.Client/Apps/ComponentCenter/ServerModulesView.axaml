@@ -18,6 +18,8 @@
    </DataTemplate></ListBox.ItemTemplate>
   </ListBox>
   <TextBlock Text="{Binding Details}" TextWrapping="Wrap" />
+  <Button Content="{loc:Loc server_modules.check_health}" Command="{Binding CheckHealthCommand}" />
+  <TextBlock Text="{Binding HealthText}" TextWrapping="Wrap" />
   <TextBlock Text="{loc:Loc server_modules.store}" FontWeight="SemiBold" />
   <WrapPanel ItemSpacing="8" LineSpacing="8">
    <TextBox Text="{Binding StoreQuery}" PlaceholderText="{loc:Loc server_modules.store_query}" Width="240" />

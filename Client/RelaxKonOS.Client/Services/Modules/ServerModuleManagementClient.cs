@@ -132,6 +132,17 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         return upload;
     }
 
+    public async Task<ServerModuleHealthPageDto> CheckHealthAsync()
+    {
+        var report = await SendAsync<ServerModuleHealthPageDto>(HttpMethod.Get, ServerModuleManagementRoutes.ModuleHealth);
+        Require(report is not null && report.CheckedAt != default && report.Modules is { Count: <= 256 }
+            && report.Modules.All(module => module is not null && ValidIds([module.ModuleId])
+                && module.Status is "host" or "loaded" or "healthy" or "unhealthy" or "quarantined" or "load-failed"
+                && ValidCode(module.ProblemCode))
+            && report.Modules.Select(module => module.ModuleId).Distinct(StringComparer.Ordinal).Count() == report.Modules.Count);
+        return report;
+    }
+
     public async Task<ServerModulePackageUploadDto> UploadPackageAsync(Stream content, long length)
     {
         Require(content.CanRead && length is > 0 and <= 1L << 30);

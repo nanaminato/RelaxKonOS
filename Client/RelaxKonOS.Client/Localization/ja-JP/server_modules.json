@@ -42,6 +42,7 @@
     "server_modules.store_install": "ストアからインストール",
     "server_modules.store_empty": "一致する受け入れ済みリリースがありません。",
     "server_modules.store_downloading": "受け入れ済みリリースをダウンロードしています…",
-    "server_modules.store_details": "リリース詳細"
+    "server_modules.store_details": "リリース詳細",
+    "server_modules.check_health": "モジュールのヘルスを確認"
   }
 }
