@@ -17,6 +17,9 @@ internal sealed class ModuleHealthMonitor(ServerModules modules, IHostApplicatio
         var interval = section.GetValue<int?>("ProbeIntervalSeconds") ?? 60;
         if (interval is < 10 or > 3600)
             throw new InvalidOperationException("ModuleHealth:ProbeIntervalSeconds must be between 10 and 3600.");
+        var exitCode = section.GetValue<int?>("StopExitCode") ?? 1;
+        if (exitCode is < 1 or > 255)
+            throw new InvalidOperationException("ModuleHealth:StopExitCode must be between 1 and 255.");
         if (!section.GetValue<bool>("StopOnUnhealthy")) return;
         await WaitForStartupAsync(lifetime, stoppingToken);
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(interval));
@@ -33,7 +36,8 @@ internal sealed class ModuleHealthMonitor(ServerModules modules, IHostApplicatio
             if (unhealthy.Length == 0) continue;
             logger.LogCritical("Module health requires a Host stop: {Modules}", string.Join(", ",
                 unhealthy.Select(module => module.ModuleId + ":" + module.Status + ":" + module.ProblemCode)));
-            await WriteEvidenceAsync(report, stoppingToken);
+            await WriteEvidenceAsync(report, exitCode, stoppingToken);
+            Environment.ExitCode = exitCode;
             lifetime.StopApplication();
             return;
         }
@@ -42,13 +46,14 @@ internal sealed class ModuleHealthMonitor(ServerModules modules, IHostApplicatio
     internal static bool ShouldStop(ServerModuleHealthModuleDto module) => module.Enabled
         && module.Status is "unhealthy" or "load-failed" or "quarantined";
 
-    private static async Task WaitForStartupAsync(IHostApplicationLifetime lifetime, CancellationToken cancellationToken)    {
+    private static async Task WaitForStartupAsync(IHostApplicationLifetime lifetime, CancellationToken cancellationToken)
+    {
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var registration = lifetime.ApplicationStarted.Register(() => started.TrySetResult());
         await started.Task.WaitAsync(cancellationToken);
     }
 
-    private async Task WriteEvidenceAsync(ServerModuleHealthPageDto report, CancellationToken cancellationToken)
+    private async Task WriteEvidenceAsync(ServerModuleHealthPageDto report, int exitCode, CancellationToken cancellationToken)
     {
         try
         {
@@ -58,6 +63,7 @@ internal sealed class ModuleHealthMonitor(ServerModules modules, IHostApplicatio
             {
                 schemaVersion = 1,
                 stoppedAt = DateTimeOffset.UtcNow,
+                exitCode,
                 report.Healthy,
                 report.CheckedAt,
                 report.Modules,
