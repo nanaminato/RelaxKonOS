@@ -7,13 +7,19 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../RelaxKonOS.Server/RelaxKonOS.Server.csproj" />
+    <ProjectReference Include="../../RelaxKonOS.ServerModuleHost/RelaxKonOS.ServerModuleHost.csproj" />
     <ProjectReference Include="../../Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj" />
     <ProjectReference Include="FixtureModule/FixtureModule.csproj" />
+    <ProjectReference Include="HostFixture/HostFixture.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="FixtureModule/**" />
+    <Compile Remove="HostFixture/**" />
     <Content Remove="FixtureModule/**" />
+    <Content Remove="HostFixture/**" />
     <None Remove="FixtureModule/**" />
+    <None Remove="HostFixture/**" />
     <EmbeddedResource Remove="FixtureModule/**" />
+    <EmbeddedResource Remove="HostFixture/**" />
   </ItemGroup>
 </Project>

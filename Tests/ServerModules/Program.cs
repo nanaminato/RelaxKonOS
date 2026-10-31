@@ -107,6 +107,7 @@ await ModuleBackgroundWorkChecks.RunAsync(Check);
 await GitDeactivationChecks.RunAsync(Check);
 await ModulePackageChecks.RunAsync(Check);
 await ModulePackageBuilderChecks.RunAsync(Check);
+await ModuleHostChecks.RunAsync(Check);
 await ModuleReleaseDirectoryChecks.RunAsync(Check);
 await InstalledModuleChecks.RunAsync(Check);
 await ModuleManagementHttpChecks.RunAsync(Check);
