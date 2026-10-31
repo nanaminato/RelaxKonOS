@@ -82,6 +82,9 @@ Content-Type: application/octet-stream
 POST /api/v1.0/server/module-packages/plans
 { "sourceId": "official", "releaseId": "…", "uploadId": "<32位十六进制>" }
 
+POST /api/v1.0/server/module-packages/plans/auto
+{ "uploadId": "<32位十六进制>" }
+
 POST /api/v1.0/server/module-packages/plans/{planId}/apply
 
 POST /api/v1.0/server/module-packages/rollback
@@ -91,11 +94,11 @@ POST /api/v1.0/server/module-packages/install
 { "sourceId": "official", "releaseId": "…", "uploadId": "<32位十六进制>" }
 ```
 
-上传要求服务器管理授权，原始 body 最大 1 GiB，返回 uploadId/字节数/SHA-256；上传本身不验证包。plans 重新按已接纳签名目录验证 sourceId/releaseId/上传文件，生成十分钟有效的冻结计划，绑定 module/version/publisher/归档摘要/manifest 摘要。plan apply 重新验证计划和上传文件仍为同一目标，然后安装；重复 apply 返回原 operationId，不重复安装。rollback 重新核对目标版本文件哈希，切换 `installed.json` 当前版本。
+上传要求服务器管理授权，原始 body 最大 1 GiB，返回 uploadId/字节数/SHA-256；上传本身不验证包。plans 重新按已接纳签名目录验证 sourceId/releaseId/上传文件，生成十分钟有效的冻结计划，绑定 module/version/publisher/归档摘要/manifest 摘要；plans/auto 通过上传摘要在所有已接纳来源中查找唯一 release，找到多个不同模块/版本时返回 `module-package-upload-ambiguous`。plan apply 重新验证计划和上传文件仍为同一目标，然后安装；重复 apply 返回原 operationId，不重复安装。rollback 重新核对目标版本文件哈希，切换 `installed.json` 当前版本。
 
 plan apply / direct install / rollback 都写 `package-operations.json` 的 `AwaitingRestart` 回执，并删除已消费的上传文件。安装成功不等于已启用或已生效；重启后的启动核实把操作标为 `Succeeded`/`Failed`。
 
-当前没有独立安装计划/确认 UI；客户端在调用 plans 前负责展示版本、发布者、依赖、能力和提权项。direct install 是无计划路径，优先使用 plans。
+服务端提供 plans 与 plans/auto 路由；桌面组件中心已接入“安装模块包”按钮：选择 `.rkmodule` 后上传并 auto plan，再确认 apply。回退仍走 CLI。direct install 是无计划路径，优先使用 plans。
 
 ## 离线安装与移除命令
 

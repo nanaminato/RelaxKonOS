@@ -591,11 +591,11 @@ v2 的 `IModuleContext` 只提供：
 - `ServerModules` / `ModuleManagementStore` 接入已安装模块目录；默认启用集合与 managed 状态可识别已安装模块。
 - 离线命令：`install-package`、`list-installed`、`list-versions`、`list-package-operations`、`rollback-installed`、`remove-installed`。
 - 只读 HTTP：`/server/module-packages/installed`、`/server/module-packages/{moduleId}/versions`、`/server/module-package-operations`。
-- 桌面组件中心：`ServerModulesView` 显示已安装版本、所选模块版本和包操作回执；当前只读，没有安装/回退按钮。
+- 桌面组件中心：显示已安装版本、所选模块版本和包操作回执；已接入“安装模块包”按钮（选择 `.rkmodule` → upload → auto plan → 确认 apply），回退写入 UI 仍未实现。
 - 在线安装 HTTP：`POST /server/module-packages/upload`（原始 `.rkmodule` body，最大 1 GiB）、`POST /server/module-packages/plans`、`POST /server/module-packages/plans/{planId}/apply`、`POST /server/module-packages/rollback`；计划冻结 sourceId/releaseId/module/version/摘要，apply 重新校验后安装并写 `package-operations.json` 等待重启核实。直接 `POST /server/module-packages/install` 保留为无计划路径。
 - 测试：真实模块程序集加载、DI 注册、Endpoint 映射、安装幂等、移除保留文件、双版本切换、回退、篡改拒绝、启动核实和只读包 API；`Tests/ServerModules` 全套通过（Windows 开发机）。
 
-未实现：组件中心安装/回退写入 UI、自动启动失败回退、ModuleHost、商店、提权 Broker。
+未实现：组件中心回退写入 UI、自动启动失败回退、ModuleHost、商店、提权 Broker。
 
 ## 13. 验收
 
