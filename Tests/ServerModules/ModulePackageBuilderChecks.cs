@@ -67,10 +67,31 @@ internal static class ModulePackageBuilderChecks
             check(exit == 0 && File.Exists(cli.RootElement.GetProperty("archivePath").GetString()!)
                 && File.Exists(cli.RootElement.GetProperty("catalogPath").GetString()!),
                 "pack-package CLI creates a verifiable archive and catalog without host state");
+
+            var catalogBytes = System.Text.Encoding.UTF8.GetBytes("{\"schemaVersion\":1}");
+            using var catalogHandler = new FixedHandler(catalogBytes);
+            var fetched = await ModulePackageCatalogFetcher.FetchAsync("https://modules.example/catalog.json", catalogHandler);
+            check(fetched.SequenceEqual(catalogBytes), "catalog fetch accepts a bounded HTTPS response");
+            using var redirectHandler = new FixedHandler([], System.Net.HttpStatusCode.Redirect);
+            try
+            {
+                await ModulePackageCatalogFetcher.FetchAsync("https://modules.example/catalog.json", redirectHandler);
+                check(false, "catalog fetch rejects redirects");
+            }
+            catch (ModulePackageException error)
+            {
+                check(error.ProblemCode == "module-catalog-fetch-failed", "catalog fetch rejects redirects");
+            }
         }
         finally
         {
             try { Directory.Delete(root, recursive: true); } catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         }
+    }
+
+    private sealed class FixedHandler(byte[] body, System.Net.HttpStatusCode status = System.Net.HttpStatusCode.OK) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(status) { Content = new ByteArrayContent(body) });
     }
 }

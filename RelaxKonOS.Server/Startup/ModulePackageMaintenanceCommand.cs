@@ -10,14 +10,14 @@ internal static class ModulePackageMaintenanceCommand
 {
     internal static async Task<int> RunAsync(string[] args)
     {
-        if (args.Length < 2 || args[1] is not ("verify-package" or "catalog-status" or "accept-catalog"
+        if (args.Length < 2 || args[1] is not ("verify-package" or "catalog-status" or "accept-catalog" or "refresh-catalog"
                 or "install-package" or "list-installed" or "list-versions" or "list-package-operations"
                 or "rollback-installed" or "remove-installed"))
             throw new ModulePackageException("module-package-command-invalid");
         var command = args[1];
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
         for (var i = 2; i < args.Length; i += 2)
-            if (i + 1 >= args.Length || args[i] is not ("--content-root" or "--source-id" or "--catalog" or "--archive" or "--release-id"
+            if (i + 1 >= args.Length || args[i] is not ("--content-root" or "--source-id" or "--catalog" or "--catalog-uri" or "--archive" or "--release-id"
                     or "--service-id" or "--expected-revision" or "--idempotency-key" or "--module-id" or "--version")
                 || !values.TryAdd(args[i], args[i + 1])) throw new ModulePackageException("module-package-command-invalid");
         if (!values.TryGetValue("--content-root", out var root)
@@ -85,16 +85,22 @@ internal static class ModulePackageMaintenanceCommand
         }
         var installing = command == "install-package";
         var accepting = command == "accept-catalog";
+        var refreshing = command == "refresh-catalog";
         var required = accepting
             ? new[] { "--content-root", "--source-id", "--catalog", "--service-id", "--expected-revision", "--idempotency-key" }
-            : installing
-                ? new[] { "--content-root", "--source-id", "--archive", "--release-id" }
-                : ["--content-root", "--source-id", "--catalog", "--archive", "--release-id"];
-        if (values.Count != required.Length || required.Any(key => !values.ContainsKey(key)))
+            : refreshing
+                ? new[] { "--content-root", "--source-id", "--expected-revision", "--idempotency-key" }
+                : installing
+                    ? new[] { "--content-root", "--source-id", "--archive", "--release-id" }
+                    : ["--content-root", "--source-id", "--catalog", "--archive", "--release-id"];
+        if (refreshing ? values.Count is < 4 or > 5 || required.Any(key => !values.ContainsKey(key))
+                || values.Keys.Any(key => !required.Contains(key, StringComparer.Ordinal) && key != "--catalog-uri")
+            : values.Count != required.Length || required.Any(key => !values.ContainsKey(key)))
             throw new ModulePackageException("module-package-command-invalid");
-        if ((accepting || installing) && !AuthMaintenanceCommand.IsAdministrator())
+        if ((accepting || installing || refreshing) && !AuthMaintenanceCommand.IsAdministrator())
             throw new ModulePackageException("module-package-local-administrator-required");
-        if (accepting && values["--service-id"] != identity.ServiceId)
+        if ((accepting || refreshing) && values.TryGetValue("--service-id", out var requestedServiceId)
+            && requestedServiceId != identity.ServiceId)
             throw new ModulePackageException("module-package-service-mismatch");
         var sourceId = values["--source-id"];
         if (!ModulePackageHostConfiguration.Identifier(sourceId))
@@ -106,6 +112,20 @@ internal static class ModulePackageMaintenanceCommand
         builder.Configuration.AddJsonFile("appsettings.host.json", optional: true, reloadOnChange: false);
         var policy = ModulePackageHostConfiguration.Source(builder.Configuration, sourceId);
         var context = ModulePackageHostConfiguration.Context(identity.ServiceId, builder.Configuration, builder.Environment);
+        if (refreshing)
+        {
+            var uri = values.TryGetValue("--catalog-uri", out var explicitUri) ? explicitUri
+                : builder.Configuration["ModulePackages:Sources:" + sourceId + ":CatalogUri"];
+            if (string.IsNullOrWhiteSpace(uri)) throw new ModulePackageException("module-catalog-uri-invalid");
+            var remoteEnvelope = await ModulePackageCatalogFetcher.FetchAsync(uri);
+            var actor = ServerProcessIdentity.CurrentStableIdentity() ?? throw new ModulePackageException("module-package-host-identity-unavailable");
+            using var store = new ModulePackageCatalogStore(root, identity.ServiceId);
+            var receipt = store.Accept(remoteEnvelope, policy, context, values["--expected-revision"], "remote-catalog:" + actor,
+                values["--idempotency-key"], DateTimeOffset.UtcNow);
+            Console.WriteLine(JsonSerializer.Serialize(new { trustHistoryCommitted = true, installed = false,
+                refreshed = true, receipt }, ModulePackageJson.Options));
+            return 0;
+        }
         if (installing)
         {
             var record = await InstalledModuleInstaller.InstallAsync(root, builder.Configuration, builder.Environment,
