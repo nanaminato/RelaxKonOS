@@ -128,9 +128,30 @@ internal sealed partial class ServerModules
 
     /// <summary>Enabled modules the residency coordinator may release; the rest stay resident.</summary>
     internal IReadOnlySet<string> ReleasableModuleIds { get; }
+    internal IReadOnlySet<string> KnownReleasableModuleIds => _enabled.Concat(_disabled).OfType<IServerModuleResidency>()
+        .Select(module => module.RuntimeFactory.ModuleId).ToHashSet(StringComparer.Ordinal);
 
     /// <summary>Every module in the compiled catalog, enabled or not. Used to validate configuration.</summary>
     internal IReadOnlySet<string> KnownModuleIds { get; }
+    internal IReadOnlyDictionary<string, IReadOnlyList<string>> RuntimeDependencies => _enabled.OfType<IServerModuleResidency>()
+        .ToDictionary(module => module.RuntimeFactory.ModuleId, module => (IReadOnlyList<string>)_enabled.Single(item => item.Id == module.RuntimeFactory.ModuleId)
+            .Requires.Where(ReleasableModuleIds.Contains).Order(StringComparer.Ordinal).ToArray(), StringComparer.Ordinal);
+    internal IReadOnlySet<string> ResidentRequiredModuleIds
+    {
+        get
+        {
+            var required = new HashSet<string>(StringComparer.Ordinal);
+            var byId = _enabled.ToDictionary(module => module.Id, StringComparer.Ordinal);
+            void Visit(string id)
+            {
+                if (!required.Add(id)) return;
+                foreach (var dependency in byId[id].Requires) Visit(dependency);
+            }
+            foreach (var module in _enabled.Where(module => module is not IServerModuleResidency))
+                foreach (var dependency in module.Requires) Visit(dependency);
+            return required.Where(ReleasableModuleIds.Contains).ToHashSet(StringComparer.Ordinal);
+        }
+    }
 
     internal bool IsEnabled(string moduleId) => EnabledIds.Contains(moduleId);
 
@@ -144,6 +165,8 @@ internal sealed partial class ServerModules
         var catalog = Catalog();
         return Resolve(catalog, ResolveEnabledIds(configuration, catalog));
     }
+
+    internal static ServerModules CreateManaged(IReadOnlySet<string> enabledIds) => Resolve(Catalog(), enabledIds);
 
     internal static ServerModules Resolve(IReadOnlyList<IServerModule> catalog, IReadOnlySet<string> enabledIds)
     {
@@ -188,21 +211,24 @@ internal sealed partial class ServerModules
         return new ServerModules(ordered.AsReadOnly(), disabled);
     }
 
-    internal void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
+    internal void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context,
+        IReadOnlyDictionary<string, ServerModuleResidencyPolicyDto>? policies = null)
     {
         // Residency registration belongs to the module framework, not to Program: any host that runs
         // this snapshot (the real Server or a test host) gets the same coordinator, and configuration is
         // validated here, before Build, so a bad rule stops startup instead of a half-configured sweep.
         if (RuntimeFactories.Count > 0)
         {
-            var residency = ModuleResidencyOptions.Parse(builder.Configuration, KnownModuleIds, ReleasableModuleIds);
+            var residency = ModuleResidencyOptions.Parse(builder.Configuration, KnownModuleIds, KnownReleasableModuleIds);
+            if (policies is not null) residency = residency.WithPolicies(policies, KnownReleasableModuleIds);
             builder.Services.AddSingleton(residency);
             builder.Services.AddSingleton(services => new ModuleResidencyCoordinator(
                 RuntimeFactories,
                 residency,
                 services,
                 context,
-                services.GetRequiredService<ILogger<ModuleResidencyCoordinator>>()));
+                services.GetRequiredService<ILogger<ModuleResidencyCoordinator>>(),
+                dependencies: RuntimeDependencies, residentRequiredModuleIds: ResidentRequiredModuleIds));
         }
 
         foreach (var module in _enabled) module.ConfigureServices(builder, context);

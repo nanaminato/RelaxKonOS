@@ -1,0 +1,29 @@
+{
+  "Culture": "ja-JP",
+  "Strings": {
+    "component_center.page.ServerModules": "サーバーモジュール",
+    "server_modules.title": "サーバーモジュール",
+    "server_modules.summary": "サーバー ID · 有効 / インストール済み · 読込済み。変更はサーバーの再起動後に有効になります。",
+    "server_modules.pending": "再起動待ちのみ",
+    "server_modules.enable": "有効化をプレビュー",
+    "server_modules.disable": "無効化をプレビュー",
+    "server_modules.apply": "この計画を確定",
+    "server_modules.restart": "再起動が必要：",
+    "server_modules.waiting": "再接続して元の操作を確認しています…",
+    "server_modules.unsubmitted": "未送信です。再試行前に元の計画を確認してください。",
+    "server_modules.states": "設定：{0} · 有効：{1} · 再起動が必要：{2}",
+    "server_modules.dependencies": "依存先：{0} · 依存元：{1}",
+    "server_modules.timing": "最終使用：{0} · 解放：{1} · 起動：{2} ms",
+    "server_modules.wake": "起動をプレビュー",
+    "server_modules.sleep": "メモリ解放を試す",
+    "server_modules.policy": "常駐ポリシー",
+    "server_modules.grace": "アイドル猶予期間（秒）",
+    "server_modules.policy_preview": "ポリシー変更を確認",
+    "server_modules.strategy.KeepLoaded": "読込状態を維持",
+    "server_modules.strategy.IdleDelayed": "アイドル後に解放",
+    "server_modules.strategy.ReleaseOnLogout": "ログアウト後に解放を試行",
+    "server_modules.open_detail": "サーバーモジュールを表示",
+    "server_modules.recovery_mode": "サーバーは復旧モードで、業務モジュールは停止中です。全組み込みモジュールの復旧をプレビューし、適用後は復旧モードを終了して通常起動してください。",
+    "server_modules.restore_all": "全モジュールの復旧をプレビュー"
+  }
+}

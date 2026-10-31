@@ -46,6 +46,7 @@
     "tailscale.exit_node.auto": "自動",
     "tailscale.exit_nodes_section": "出口ノード",
     "tailscale.exit_node_intro": "出口ノードを提供する別の端末を経由してインターネット通信を転送します。",
+    "tailscale.exit_node.empty": "利用可能な出口ノードを提供する他のデバイスがありません。別のデバイスで出口ノードを有効にし、Tailscale 管理コンソールで承認してください。このデバイス自身は選択できません。",
     "tailscale.exit_node.restricted": "利用可能な出口ノードを一覧するにはホストネットワークの認証が必要です。",
     "tailscale.preferences.title": "優先設定",
     "tailscale.preferences.edit": "優先設定を編集",

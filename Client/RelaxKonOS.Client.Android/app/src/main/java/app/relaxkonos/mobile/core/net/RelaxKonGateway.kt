@@ -28,6 +28,11 @@ private val ProxyServerUnavailable: ApiResult<Nothing> = ApiResult.Transport("Pr
  * The implementation is [RelaxKonApi]; route names and payload shapes stay owned by that class.
  */
 interface RelaxKonGateway {
+    suspend fun serverModules(serverUrl: String, accessToken: String): ApiResult<List<ServerModuleFact>> =
+        ApiResult.Transport("Server modules unavailable.")
+    suspend fun serverModulePlan(serverUrl: String, accessToken: String, body: JsonBody): ApiResult<ServerModulePlan> = ApiResult.Transport(null)
+    suspend fun applyServerModulePlan(serverUrl: String, accessToken: String, planId: String): ApiResult<ServerModuleOperation> = ApiResult.Transport(null)
+    suspend fun serverModulePlanStatus(serverUrl: String, accessToken: String, planId: String): ApiResult<ServerModulePlanStatus> = ApiResult.Transport(null)
     suspend fun runtimeResources(serverUrl: String, accessToken: String): ApiResult<ManagedRuntimeResources> = ApiResult.Transport("Runtime resources unavailable.")
 
     suspend fun managedRuntime(serverUrl: String, accessToken: String, method: String, route: String,

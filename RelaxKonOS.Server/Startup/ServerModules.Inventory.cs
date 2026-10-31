@@ -8,6 +8,13 @@ namespace RelaxKonOS.Server.Startup;
 // particular a status query never loads a module.
 internal sealed partial class ServerModules
 {
+    private static readonly Lazy<string?> HostDigest = new(() =>
+    {
+        var path = typeof(ServerModules).Assembly.Location;
+        if (string.IsNullOrEmpty(path)) return null;
+        using var file = File.OpenRead(path);
+        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(file)).ToLowerInvariant();
+    });
     /// <summary>
     /// Read-only inventory for operators and clients. It answers "what would happen if I disabled
     /// this module" with the same facts the startup gate uses.
@@ -19,6 +26,11 @@ internal sealed partial class ServerModules
         var enabled = _enabled.ToHashSet();
         // Reading residency must not load a module: the coordinator answers from its own state only.
         var residency = services.GetService(typeof(ModuleResidencyCoordinator)) as ModuleResidencyCoordinator;
+        var management = services.GetService<ModuleManagementStore>();
+        var managementState = management?.CaptureInventory();
+        var desired = managementState?.EnabledIds ?? EnabledIds;
+        var observedAt = DateTimeOffset.UtcNow;
+        var version = typeof(ServerModules).Assembly.GetName().Version?.ToString();
         var inventory = new List<ServerModuleDto>(all.Length);
         foreach (var module in all)
         {
@@ -38,14 +50,33 @@ internal sealed partial class ServerModules
                         + "treat this module as not safe to disable until the cause is understood.")];
                 }
             }
+            if (management?.RecoveryMode == true)
+                work = [new(module.Id, "module-recovery-host-work-unknown")];
             // Only an enabled dependent blocks a disable; a disabled one is already out of the process.
             var requiredBy = all
                 .Where(other => enabled.Contains(other) && other.Requires.Contains(module.Id, StringComparer.Ordinal))
                 .Select(other => other.Id)
                 .ToArray();
+            var runtime = isEnabled ? DescribeResidency(module.Id, residency) : null;
+            var desiredPolicy = managementState?.Policies.GetValueOrDefault(module.Id);
+            var effectivePolicy = management?.EffectivePolicies.GetValueOrDefault(module.Id);
             inventory.Add(new ServerModuleDto(module.Id, isEnabled, module.Capabilities, module.Requires,
                 requiredBy, work.Select(item => item.Description).ToArray(),
-                isEnabled ? DescribeResidency(module.Id, residency) : null));
+                runtime,
+                DesiredEnabled: desired.Contains(module.Id), InstalledVersion: version,
+                DesiredVersion: version, EffectiveVersion: isEnabled ? version : null,
+                ServiceId: management?.ServiceId, ProcessGeneration: management?.ProcessGeneration,
+                DesiredRevision: managementState?.Revision, EffectiveRevision: management?.EffectiveRevision,
+                RestartRequired: desired.Contains(module.Id) != isEnabled || desiredPolicy != effectivePolicy, ObservedAt: observedAt,
+                PendingOperationId: managementState?.PendingOperations.TryGetValue(module.Id, out var pendingId) == true ? pendingId : null,
+                RecoveryState: management?.RecoveryMode == true ? "host-recovery" : runtime?.BlockedBy == "module-recovery-blocked" ? "required" : "none",
+                ConfigurationOwner: management?.Writable == true ? "managed" : "deployment",
+                ConfigurationWritable: management?.Writable == true,
+                AllowedActions: management?.Admissions(module is IServerModuleResidency, runtime, desired.Contains(module.Id)), Name: ConfigurationName(module.Id),
+                Rid: System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier,
+                HostApiRequirement: version, ArtifactDigest: HostDigest.Value,
+                ResourceReleaseLevel: module is IServerModuleResidency ? "objects" : "none",
+                DesiredResidencyPolicy: desiredPolicy, EffectiveResidencyPolicy: effectivePolicy));
         }
         return inventory;
     }

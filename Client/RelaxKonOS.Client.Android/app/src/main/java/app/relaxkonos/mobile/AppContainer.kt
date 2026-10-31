@@ -300,6 +300,8 @@ class AppContainer(context: Context) {
     val ownerDevices = OwnerDeviceAuthenticationService(gateway, ownerDeviceKeys)
 
     val session = AuthSession(gateway, ownerDevices = ownerDevices)
+    val serverModules = app.relaxkonos.mobile.data.ServerModuleRepository(session, gateway,
+        app.relaxkonos.mobile.data.ServerModuleReferences(File(appContext.noBackupFilesDir, "module-plans")))
     init {
         appScope.launch {
             session.state.collect { state ->

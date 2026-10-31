@@ -35,6 +35,13 @@ async Task RunChecksAsync()
 {
 var checks = 0;
 void Check(bool value, string message) { if (!value) throw new Exception(message); checks++; }
+var emptyPreferences = new TailscalePreferences(true, false, false, null, false, false, false, false);
+var emptyEditor = new TailscalePreferencesEditor(emptyPreferences, [], "linux", false, language);
+Check(emptyEditor.NoCandidates && !emptyEditor.PeersRestricted, "authorized empty exit-node list is not a permission failure");
+var restrictedEditor = new TailscalePreferencesEditor(emptyPreferences, [], "linux", true, language);
+Check(!restrictedEditor.NoCandidates && restrictedEditor.PeersRestricted, "restricted exit-node list has a distinct explanation");
+Check(new TailscaleApp().Manifest.IconPath?.EndsWith("/tailscale.png") == true, "Tailscale uses a packaged application icon");
+
 var folder = Directory.CreateTempSubdirectory("relaxkonos-tailscale-client-");
 try
 {
@@ -89,7 +96,7 @@ try
     client.WithExitNodePeer = true;
     await model.RefreshAsync(); await model.LoadControlAsync();
     Check(model.ExitNodeCandidates.Count == 1 && model.ExitNodeCandidates[0].Ip == "100.64.0.9", "exit-node candidates come from approved peers");
-    model.EditPreferencesDialogAsync = (current, candidates, platform) =>
+    model.EditPreferencesDialogAsync = (current, candidates, platform, peersRestricted) =>
     {
         Check(current == model.Preferences && platform == "windows" && candidates.Count == 1, "preference editor receives the live snapshot and candidates");
         return Task.FromResult<TailscalePreferences?>(current with
@@ -315,7 +322,7 @@ try
         foreach (var dialog in new Control[] {
             new TailscaleConfirmationDialog(plan, layoutClient.Control, "test-host", language, _ => { }),
             new TailscaleConfirmationDialog(logoutPlan, layoutClient.Control, "test-host", language, _ => { }),
-            new TailscalePreferencesDialog(layoutClient.Control.Preferences!, [], "windows", language, _ => { }),
+            new TailscalePreferencesDialog(layoutClient.Control.Preferences!, [], "windows", false, language, _ => { }),
             new TailscaleAboutDialog(new TailscaleAboutText(language, "0.1.0", "test-host", "1.test", "host", "example.ts.net", "owner@example.com"), () => { }),
             new TailscaleRecoveryDialog(new(plan.OperationId,layoutClient.Control,true,ExpiresAt:DateTimeOffset.UtcNow.AddMinutes(5)),"test-host",language,_=>{ }),
             new TailscaleLoginDialog("test-host", plan.OperationId, false, "", language, _=>{}),

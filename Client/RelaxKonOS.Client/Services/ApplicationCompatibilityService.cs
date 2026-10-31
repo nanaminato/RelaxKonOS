@@ -6,6 +6,8 @@ using RelaxKonOS.Client.Services.Modules;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.WindowManager;
+using RelaxKonOS.AppSDK;
+using RelaxKonOS.Client.Apps.ComponentCenter;
 
 namespace RelaxKonOS.Client.Services;
 
@@ -28,14 +30,16 @@ public sealed class ApplicationCompatibilityService : IApplicationCompatibilityE
     private readonly IWindowManager _windows;
     private readonly LocalizationService _localization;
     private readonly IServerModuleCatalog _modules;
+    private readonly IAppActivationService _activations;
 
     public ApplicationCompatibilityService(IAuthSession session, IWindowManager windows, LocalizationService localization,
-        IServerModuleCatalog modules)
+        IServerModuleCatalog modules, IAppActivationService activations)
     {
         _session = session;
         _windows = windows;
         _localization = localization;
         _modules = modules;
+        _activations = activations;
     }
 
     public ApplicationCompatibilityResult Evaluate(ApplicationManifest manifest)
@@ -93,20 +97,29 @@ public sealed class ApplicationCompatibilityService : IApplicationCompatibilityE
             _ => T("app_compatibility.generic", "This application cannot run in the current environment."),
         };
 
+        var content = new StackPanel
+        {
+            Spacing = 12, Margin = new Thickness(24), VerticalAlignment = VerticalAlignment.Center,
+            Children = { new TextBlock { Text = title, FontSize = 20, FontWeight = Avalonia.Media.FontWeight.SemiBold },
+                new TextBlock { Text = message, TextWrapping = Avalonia.Media.TextWrapping.Wrap } }
+        };
+        var explanation = result.Status == ApplicationCompatibilityStatus.MissingServerCapability
+            ? ServerCapabilityExplanation.Explain(_modules.Cached, result.Expected ?? "") : ServerCapabilityExplanation.Unknown;
+        if (explanation.ModuleId is { } moduleId && _session.ServiceId is { } host)
+        {
+            var login = _session.CurrentSession;
+            var manage = new Button { Content = T("server_modules.open_detail", "View server module") };
+            manage.Click += (_, _) =>
+            {
+                if (_session.State == AuthSessionState.Authenticated && _session.ServiceId == host && ReferenceEquals(login, _session.CurrentSession))
+                    _activations.Activate(new AppActivationRequest(ComponentCenterNavigation.ServerModules(host, moduleId), SystemAppId));
+            };
+            content.Children.Add(manage);
+        }
         _windows.Create(new WindowCreateOptions(
             OwnerAppId: SystemAppId,
             Title: title,
-            Content: new StackPanel
-            {
-                Spacing = 12,
-                Margin = new Thickness(24),
-                VerticalAlignment = VerticalAlignment.Center,
-                Children =
-                {
-                    new TextBlock { Text = title, FontSize = 20, FontWeight = Avalonia.Media.FontWeight.SemiBold },
-                    new TextBlock { Text = message, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
-                },
-            },
+            Content: content,
             IconGlyph: "⚠",
             CanResize: false,
             CanMinimize: false,

@@ -9,26 +9,48 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.*
+import app.relaxkonos.mobile.data.TailscaleReferencePhase
 import app.relaxkonos.mobile.ui.common.*
 import app.relaxkonos.mobile.ui.theme.Spacing
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable internal fun TailscaleLoginContent(model: TailscaleLoginViewModel, hostMayHaveChanged: () -> Unit) {
+@Composable internal fun TailscaleLoginContent(model: TailscaleLoginViewModel, hostMayHaveChanged: () -> Unit,
+    status: TailscaleStatus?, statusBusy: Boolean, statusFailed: Boolean, onRefreshStatus: () -> Unit) {
     val state = model.state
     val context = LocalContext.current
+    val availability = tailscaleLoginAvailability(status)
     Text(stringResource(R.string.tailscale_login_intro))
     state.owner?.let { Text(it.workspaceName) }
-    RefreshProgressIndicator(visible = state.busy)
-    state.problem?.let { problem ->
-        Text(stringResource(when(problem) {
-            "tailscale.storage_failed" -> R.string.tailscale_storage_failed
-            "tailscale.plan_expired" -> R.string.tailscale_plan_expired
-            "tailscale.login.browser_failed" -> R.string.tailscale_login_browser_failed
-            "tailscale.login.challenge_unavailable" -> R.string.tailscale_login_challenge_unavailable
-            else -> R.string.tailscale_unverified
-        }),color = MaterialTheme.colorScheme.error)
+    ManagementCard {
+        Text(stringResource(R.string.tailscale_login_host_state), style = MaterialTheme.typography.titleMedium)
+        status?.account?.let {
+            Text(it.displayName.ifBlank { it.loginName })
+            if (it.loginName.isNotBlank()) Text(it.loginName)
+        }
+        status?.tailnetName?.let { Text(stringResource(R.string.tailscale_tailnet, it)) }
+        status?.backendState?.let { Text(stringResource(R.string.tailscale_backend, backendLabel(it))) }
+        if (status != null && status.state != "observed") {
+            Text(stringResource(when (status.state) {
+                "not-installed" -> R.string.tailscale_not_installed
+                "unsupported" -> R.string.tailscale_unsupported
+                else -> R.string.tailscale_unavailable
+            }), color = MaterialTheme.colorScheme.error)
+        }
+        if (statusFailed) Text(stringResource(R.string.tailscale_unavailable), color = MaterialTheme.colorScheme.error)
+        Text(availabilityText(availability))
+        RefreshProgressIndicator(visible = statusBusy)
+        TextButton(enabled = !statusBusy, onClick = onRefreshStatus) { Text(stringResource(R.string.common_refresh)) }
     }
-    Button(enabled = model.canStart,onClick = model::prepare) { Text(stringResource(R.string.tailscale_login_start)) }
+    RefreshProgressIndicator(visible = state.busy)
+    if (state.records.any { it.phase != TailscaleReferencePhase.Known }) {
+        Text(stringResource(R.string.tailscale_pending))
+    }
+    state.problem?.let { problem ->
+        Text(problemText(problem), color = MaterialTheme.colorScheme.error)
+    }
+    Button(enabled = model.canStart && availability.allowsStart, onClick = model::prepare) {
+        Text(stringResource(R.string.tailscale_login_start))
+    }
     Text(stringResource(R.string.tailscale_login_records))
     if (state.records.isEmpty()) Text(stringResource(R.string.tailscale_records_empty))
     state.records.forEach { reference ->
@@ -57,6 +79,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
             TailscaleLoginState.Unknown -> R.string.tailscale_operation_unknown
             TailscaleLoginState.Rejected -> R.string.tailscale_operation_rejected
         }))
+        operation.problemCode?.let { Text(problemText(it), color = MaterialTheme.colorScheme.error) }
     }
     state.recovery?.let { preview ->
         preview.observation?.let { LoginObservation(it.backendState) }
@@ -75,6 +98,43 @@ import app.relaxkonos.mobile.ui.theme.Spacing
             review.recovery?.observation?.let { LoginObservation(it.backendState) }
         })
 }
+
+@Composable private fun availabilityText(value: TailscaleLoginAvailability): String = stringResource(when(value) {
+    TailscaleLoginAvailability.Unknown -> R.string.tailscale_login_status_unknown
+    TailscaleLoginAvailability.NeedLogin -> R.string.tailscale_login_need_login
+    TailscaleLoginAvailability.DeviceApproval -> R.string.tailscale_login_device_approval
+    TailscaleLoginAvailability.AlreadyConnected -> R.string.tailscale_login_already_connected
+    TailscaleLoginAvailability.AlreadyStopped -> R.string.tailscale_login_already_stopped
+    TailscaleLoginAvailability.Starting -> R.string.tailscale_login_starting
+    TailscaleLoginAvailability.Unavailable -> R.string.tailscale_login_not_available
+})
+
+@Composable private fun problemText(problem: String): String = stringResource(when(problem) {
+    "tailscale.storage_failed" -> R.string.tailscale_storage_failed
+    "tailscale.plan_expired" -> R.string.tailscale_plan_expired
+    "tailscale.login.browser_failed" -> R.string.tailscale_login_browser_failed
+    "tailscale.login.challenge_unavailable" -> R.string.tailscale_login_challenge_unavailable
+    "tailscale.login.not_available", "tailscale.login.state_conflict" -> R.string.tailscale_login_not_available
+    "tailscale.login.state_changed" -> R.string.tailscale_login_state_changed
+    "tailscale.login.unavailable" -> R.string.tailscale_login_unavailable
+    "tailscale.login.outcome_unknown" -> R.string.tailscale_login_outcome_unknown
+    "tailscale.login.recovery.preview_required", "tailscale.login.recovery.state_invalid",
+    "tailscale.login.recovery.receipt_mismatch", "tailscale.login.recovery.not_ready" -> R.string.tailscale_login_recovery_failed
+    "tailscale.operation.not_found" -> R.string.tailscale_login_operation_not_found
+    "tailscale.unauthenticated" -> R.string.tailscale_login_session_expired
+    "tailscale.elevation_required", "elevation-required", "tailscale.authorization_required" -> R.string.tailscale_authorization_required
+    else -> R.string.tailscale_unverified
+})
+
+@Composable private fun backendLabel(state: String): String = stringResource(when(state) {
+    "Running" -> R.string.tailscale_connected
+    "Stopped" -> R.string.tailscale_disconnected
+    "Starting" -> R.string.tailscale_starting
+    "NeedsLogin" -> R.string.tailscale_needs_login
+    "NeedsMachineAuth" -> R.string.tailscale_needs_approval
+    else -> R.string.tailscale_unknown
+})
+
 @Composable private fun LoginObservation(state: String) {
     Text(stringResource(when(state) {
         "Running" -> R.string.tailscale_connected; "Stopped" -> R.string.tailscale_disconnected

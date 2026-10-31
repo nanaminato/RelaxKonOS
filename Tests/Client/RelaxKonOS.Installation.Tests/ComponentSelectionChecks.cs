@@ -37,12 +37,17 @@ internal static class ComponentSelectionChecks
         Check(RuntimeSemanticVersion.TryParse("1.10.0-rc.1", out var preview) && RuntimeSemanticVersion.TryParse("1.10.0", out var stable)
             && stable.CompareTo(preview) > 0 && !RuntimeSemanticVersion.TryParse("latest", out _),
             "Prerelease precedence and unknown version labels cannot be guessed as upgrades");
-        foreach (var page in Enum.GetValues<ComponentCenterPage>())
+        foreach (var page in Enum.GetValues<ComponentCenterPage>().Where(page => page != ComponentCenterPage.ServerModules))
         {
             var uri = ComponentCenterNavigation.Component("host-a", "relaxkonos.proxy-server", "sing-box", page);
             Check(ComponentCenterNavigation.TryParse(uri, out var target) && target!.Page == page,
                 "Controlled links bind the exact page " + page);
         }
+        Check(ComponentCenterNavigation.TryParse(ComponentCenterNavigation.ServerModules("host-a", "relaxkonos.git"), out var module)
+            && module is { ModuleId: "relaxkonos.git", Page: ComponentCenterPage.ServerModules },
+            "Module navigation uses its own catalog identity");
+        Check(!ComponentCenterNavigation.TryParse(new Uri("relaxkonos://components/sing-box?hostId=host-a&appId=relaxkonos.proxy-server&page=ServerModules"), out _),
+            "Host software routes cannot masquerade as module routes");
         foreach (var page in new[] { "Install", "1", "all", "Sources%20", "Tasks&execute=true" })
             Check(!ComponentCenterNavigation.TryParse(new Uri("relaxkonos://components/sing-box?hostId=host-a&appId=relaxkonos.proxy-server&page=" + page), out _),
                 "Unknown or executable navigation is refused: " + page);

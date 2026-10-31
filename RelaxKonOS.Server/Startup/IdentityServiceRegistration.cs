@@ -5,7 +5,7 @@ namespace RelaxKonOS.Server.Startup;
 
 internal static class IdentityServiceRegistration
 {
-    public static (string LinuxPamTransport, RelaxKonOS.Server.Privileged.PrivilegedHelperOptions HelperOptions) AddHostIdentity(this WebApplicationBuilder builder, ServerModeResolver serverModeResolver, RelaxKonOS.Server.UserExecution.UserExecutionBackend userExecutionBackend)
+    public static (string LinuxPamTransport, RelaxKonOS.Server.Privileged.PrivilegedHelperOptions HelperOptions) AddHostIdentity(this WebApplicationBuilder builder, ServerModeResolver serverModeResolver, RelaxKonOS.Server.UserExecution.UserExecutionBackend userExecutionBackend, bool authenticationOnly = false)
     {
         // Identity transport is a deployment decision, not a Development-environment shortcut.  A
         // no-sudo User Mode Server authenticates the account that owns the process through the host's
@@ -51,6 +51,7 @@ internal static class IdentityServiceRegistration
                 : !string.IsNullOrWhiteSpace(privilegedHelperOptions.SocketPath)
                     ? sp.GetRequiredService<RelaxKonOS.Server.Privileged.UnixSocketPrivilegedOperationTransport>()
                     : sp.GetRequiredService<RelaxKonOS.Server.Privileged.LocalPrivilegedOperationRunner>());
+        if (authenticationOnly) return (linuxPamTransport, privilegedHelperOptions);
         builder.Services.AddSingleton<RelaxKonOS.Server.UserExecution.LinuxUserExecutionTransport>();
         builder.Services.AddSingleton<RelaxKonOS.Server.UserExecution.WindowsNamedPipeUserExecutionTransport>();
         builder.Services.AddSingleton<RelaxKonOS.Server.UserExecution.LocalIdentityUserExecutionTransport>();

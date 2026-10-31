@@ -1,0 +1,29 @@
+{
+  "Culture": "zh-CN",
+  "Strings": {
+    "component_center.page.ServerModules": "服务端模块",
+    "server_modules.title": "服务端模块",
+    "server_modules.summary": "服务器身份 · 有效启用 / 已安装 · 当前加载。启停变更需由部署宿主重启后生效。",
+    "server_modules.pending": "仅待重启",
+    "server_modules.enable": "预览启用",
+    "server_modules.disable": "预览停用",
+    "server_modules.apply": "确认此计划",
+    "server_modules.restart": "需要重启：",
+    "server_modules.waiting": "等待重连并核实原操作…",
+    "server_modules.unsubmitted": "尚未提交；重试前请核对原计划。",
+    "server_modules.states": "期望启用：{0} · 当前生效：{1} · 待重启：{2}",
+    "server_modules.dependencies": "依赖：{0} · 依赖方：{1}",
+    "server_modules.timing": "最近使用：{0} · 最近释放：{1} · 唤醒：{2} ms",
+    "server_modules.wake": "预览唤醒",
+    "server_modules.sleep": "尝试释放内存",
+    "server_modules.policy": "驻留策略",
+    "server_modules.grace": "闲时宽限期（秒）",
+    "server_modules.policy_preview": "预览策略变更",
+    "server_modules.strategy.KeepLoaded": "保持加载",
+    "server_modules.strategy.IdleDelayed": "闲时延迟释放",
+    "server_modules.strategy.ReleaseOnLogout": "退出后尝试释放",
+    "server_modules.open_detail": "查看服务端模块",
+    "server_modules.recovery_mode": "服务器处于恢复模式，业务模块未运行。可预览恢复完整内置集合；提交后需退出恢复模式并正常重启。",
+    "server_modules.restore_all": "预览恢复全部模块"
+  }
+}

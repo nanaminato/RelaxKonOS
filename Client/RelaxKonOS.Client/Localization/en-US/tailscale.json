@@ -46,6 +46,7 @@
     "tailscale.exit_node.auto": "Automatic",
     "tailscale.exit_nodes_section": "Exit nodes",
     "tailscale.exit_node_intro": "Route internet traffic through another device that offers itself as an exit node.",
+    "tailscale.exit_node.empty": "No other device offers an available exit node. Enable an exit node on another device and approve it in the Tailscale admin console. This device cannot use itself as an exit node.",
     "tailscale.exit_node.restricted": "Authorize host network access to list available exit nodes.",
     "tailscale.preferences.title": "Preferences",
     "tailscale.preferences.edit": "Edit preferences",

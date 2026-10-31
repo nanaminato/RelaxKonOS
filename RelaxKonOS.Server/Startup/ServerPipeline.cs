@@ -118,6 +118,7 @@ internal static class ServerPipeline
         if (eventAlertsOptions.Enabled) app.MapEventAlertEndpoints();
         app.MapRuntimeCatalogEndpoints();
         app.MapComponentEndpoints();
+        app.MapServerModuleManagementEndpoints();
         app.MapTaskPlanningEndpoints();
         app.MapTaskExecutionEndpoints();
         // Module-owned routes, HostedServices and Hubs come from the same frozen startup snapshot;

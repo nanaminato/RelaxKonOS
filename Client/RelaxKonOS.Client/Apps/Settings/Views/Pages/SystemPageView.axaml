@@ -146,6 +146,7 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
                 <Button Content="{loc:Loc settings.server_modules.refresh}" Command="{Binding RefreshServerModulesCommand}" HorizontalAlignment="Left" />
+                <Button Content="{loc:Loc server_modules.title}" Command="{Binding OpenServerModulesCommand}" HorizontalAlignment="Left" />
             </StackPanel>
         </Border>
         <Border Classes="card">

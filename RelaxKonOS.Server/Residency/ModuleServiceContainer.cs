@@ -20,6 +20,7 @@ internal sealed class ModuleServiceContainer : IServiceProvider, IAsyncDisposabl
     private readonly HashSet<object> _tracked = new(ReferenceEqualityComparer.Instance);
     private readonly List<object> _created = new();
     private bool _disposed;
+    private Task? _disposal;
 
     internal ModuleServiceContainer(string moduleId, IServiceProvider root)
     {
@@ -101,12 +102,16 @@ internal sealed class ModuleServiceContainer : IServiceProvider, IAsyncDisposabl
         }
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
+    {
+        lock (_gate) return new ValueTask(_disposal ??= DisposeOwnedAsync());
+    }
+
+    private async Task DisposeOwnedAsync()
     {
         object[] created;
         lock (_gate)
         {
-            if (_disposed) return;
             _disposed = true;
             created = _created.ToArray();
             _created.Clear();
@@ -114,6 +119,8 @@ internal sealed class ModuleServiceContainer : IServiceProvider, IAsyncDisposabl
             _singletons.Clear();
         }
 
+        List<Exception> failures = [];
+        List<object> retained = [];
         for (var index = created.Length - 1; index >= 0; index--)
         {
             try
@@ -130,11 +137,18 @@ internal sealed class ModuleServiceContainer : IServiceProvider, IAsyncDisposabl
             }
             catch (Exception exception)
             {
-                // A failing release must not abort the rest of the teardown; the module is reported as
-                // dormant either way, and the failing type is named in the log.
+                // Continue tearing down independent resources, but preserve the failure and original
+                // object so the coordinator quarantines this generation instead of starting another.
+                failures.Add(exception);
+                retained.Add(created[index]);
                 _logger.LogError(exception, "Releasing {Type} for server module {ModuleId} failed",
                     created[index].GetType().FullName, _moduleId);
             }
+        }
+        if (failures.Count > 0)
+        {
+            lock (_gate) _created.AddRange(retained);
+            throw new AggregateException("Module resource release requires recovery.", failures);
         }
     }
 }

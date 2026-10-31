@@ -1,0 +1,27 @@
+<resources>
+    <string name="server_modules_title">Server modules</string>
+    <string name="server_modules_read_only">Read-only module facts. Changes are managed from the desktop component center.</string>
+    <string name="server_modules_search">Search modules</string>
+    <string name="server_modules_unknown">Module state is unknown. Retry to read the current server.</string>
+    <string name="server_modules_summary">%1$s · enabled %2$d / %3$d · loaded %4$d</string>
+    <string name="server_modules_states">Desired: %1$s · effective: %2$s · restart: %3$s</string>
+    <string name="server_modules_dependencies">Requires: %1$s · required by: %2$s</string>
+    <string name="server_modules_review">Review module plan</string>
+    <string name="server_modules_confirm">Confirm this plan</string>
+    <string name="server_modules_enable">Preview enable</string>
+    <string name="server_modules_disable">Preview disable</string>
+    <string name="server_modules_details">Details</string>
+    <string name="server_modules_restart_note">Module changes preserve business data and external software. Restart the server through its deployment host to take effect.</string>
+    <string name="server_modules_pending">Pending restart only</string>
+    <string name="server_modules_wake">Preview wake</string>
+    <string name="server_modules_sleep">Try to release memory</string>
+    <string name="server_modules_policy">Residency policy</string>
+    <string name="server_modules_grace">Idle grace period (seconds)</string>
+    <string name="server_modules_policy_preview">Preview policy change</string>
+    <string name="server_modules_strategy_keep_loaded">Keep loaded</string>
+    <string name="server_modules_strategy_idle_delayed">Release after idle delay</string>
+    <string name="server_modules_strategy_release_on_logout">Try releasing after logout</string>
+    <string name="server_modules_not_found">The server directory does not contain this module.</string>
+    <string name="server_modules_recovery_mode">The server is in recovery mode. Business modules are stopped. Preview restoring the complete bundled set, then leave recovery mode and restart normally.</string>
+    <string name="server_modules_restore_all">Preview restoring all modules</string>
+</resources>

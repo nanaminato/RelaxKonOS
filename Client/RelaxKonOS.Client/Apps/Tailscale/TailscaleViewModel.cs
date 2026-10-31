@@ -56,7 +56,7 @@ public sealed partial class TailscaleViewModel : ObservableObject
 
     public Func<TailscaleOperation, TailscaleControlSnapshot, string, Task<bool>>? ConfirmAsync { get; set; }
     public Func<TailscaleRecoverySnapshot, string, Task<bool>>? ConfirmCloseAsync { get; set; }
-    public Func<TailscalePreferences, IReadOnlyList<TailscaleExitNodeItem>, string?, Task<TailscalePreferences?>>? EditPreferencesDialogAsync { get; set; }
+    public Func<TailscalePreferences, IReadOnlyList<TailscaleExitNodeItem>, string?, bool, Task<TailscalePreferences?>>? EditPreferencesDialogAsync { get; set; }
     public Func<Task>? OpenAdminConsoleHandler { get; set; }
     public Func<Task>? ShowAboutHandler { get; set; }
     [ObservableProperty] private bool _isBusy;
@@ -528,7 +528,7 @@ public sealed partial class TailscaleViewModel : ObservableObject
         // same precise grant before listing it. Cancelling still opens the editor read-only.
         if (PeersRestricted) await AuthorizePeersAsync();
         if (_control is null || !CanEditPreferences) return;
-        var edited = await EditPreferencesDialogAsync(current, ExitNodeCandidates, _control.Platform);
+        var edited = await EditPreferencesDialogAsync(current, ExitNodeCandidates, _control.Platform, PeersRestricted);
         if (edited is null || edited == current || !CanEditPreferences) return;
         await ChangeAsync(TailscaleAction.ConfigurePreferences, preferences: edited);
     }

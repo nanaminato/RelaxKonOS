@@ -26,6 +26,14 @@ class RelaxKonApi(
     private val clientVersion: String,
     private val deviceName: String = defaultDeviceName(),
 ) : RelaxKonGateway {
+    override suspend fun serverModules(serverUrl: String, accessToken: String): ApiResult<List<ServerModuleFact>> =
+        webPublishingRead(serverUrl, accessToken, ServerModulesWire.ROOT, ServerModulesWire::facts)
+    override suspend fun serverModulePlan(serverUrl: String, accessToken: String, body: JsonBody): ApiResult<ServerModulePlan> =
+        webPublishingCall("POST", serverUrl, ServerModulesWire.PLANS, accessToken, body, ServerModulesWire::plan)
+    override suspend fun applyServerModulePlan(serverUrl: String, accessToken: String, planId: String): ApiResult<ServerModuleOperation> =
+        webPublishingCall("POST", serverUrl, ServerModulesWire.planRoute(planId) + "/apply", accessToken, JsonBody(), ServerModulesWire::operation)
+    override suspend fun serverModulePlanStatus(serverUrl: String, accessToken: String, planId: String): ApiResult<ServerModulePlanStatus> =
+        webPublishingRead(serverUrl, accessToken, ServerModulesWire.planRoute(planId), ServerModulesWire::status)
     override suspend fun tailscaleStatus(serverUrl: String, accessToken: String) = webPublishingRead(serverUrl, accessToken, TailscaleWire.STATUS, TailscaleWire::status)
     override suspend fun prepareTailscaleLogin(serverUrl: String, accessToken: String, id: String): ApiResult<TailscaleLoginOperation> {
         TailscaleWire.id(id)

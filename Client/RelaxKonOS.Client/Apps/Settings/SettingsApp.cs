@@ -227,6 +227,11 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         var hostIdentityService = context.Services.GetRequiredService<Services.HostSettings.IHostIdentityService>();
         var hostEnvironment = context.Services.GetRequiredService<Services.HostSettings.IHostEnvironmentService>();
         var systemPage = viewModel.Pages.OfType<SystemPageViewModel>().Single();
+        systemPage.RequestServerModules = () =>
+        {
+            if (session.State == AuthSessionState.Authenticated && session.ServiceId is { } host)
+                context.Activations.Activate(RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterNavigation.ServerModules(host));
+        };
         systemPage.RequestServerHttpsAsync = async () =>
         {
             var certificates = new RelaxKonOS.Client.Apps.Certificates.CertificateManagerViewModel(

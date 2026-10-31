@@ -1,0 +1,29 @@
+{
+  "Culture": "en-US",
+  "Strings": {
+    "component_center.page.ServerModules": "Server modules",
+    "server_modules.title": "Server modules",
+    "server_modules.summary": "Server identity · effective enabled / installed · loaded. Changes take effect after an external server restart.",
+    "server_modules.pending": "Pending restart only",
+    "server_modules.enable": "Preview enable",
+    "server_modules.disable": "Preview disable",
+    "server_modules.apply": "Confirm this plan",
+    "server_modules.restart": "Restart required:",
+    "server_modules.waiting": "Waiting to reconnect and verify the original operation…",
+    "server_modules.unsubmitted": "Not submitted; review the original plan before retrying.",
+    "server_modules.states": "Desired: {0} · effective: {1} · restart required: {2}",
+    "server_modules.dependencies": "Dependencies: {0} · required by: {1}",
+    "server_modules.timing": "Last used: {0} · released: {1} · wake: {2} ms",
+    "server_modules.wake": "Preview wake",
+    "server_modules.sleep": "Try to release memory",
+    "server_modules.policy": "Residency policy",
+    "server_modules.grace": "Idle grace period (seconds)",
+    "server_modules.policy_preview": "Preview policy change",
+    "server_modules.strategy.KeepLoaded": "Keep loaded",
+    "server_modules.strategy.IdleDelayed": "Release after idle delay",
+    "server_modules.strategy.ReleaseOnLogout": "Try releasing after logout",
+    "server_modules.open_detail": "View server module",
+    "server_modules.recovery_mode": "The server is in recovery mode. Business modules are stopped. Preview restoring the complete bundled set, then leave recovery mode and restart normally.",
+    "server_modules.restore_all": "Preview restoring all modules"
+  }
+}

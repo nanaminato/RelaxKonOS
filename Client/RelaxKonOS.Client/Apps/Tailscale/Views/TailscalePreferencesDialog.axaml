@@ -26,7 +26,8 @@
       <ComboBox ItemsSource="{Binding ExitNodeChoices}" SelectedItem="{Binding SelectedExitNode}" HorizontalAlignment="Stretch"
         AutomationProperties.Name="{loc:Loc tailscale.exit_nodes_section}" />
       <CheckBox Content="{loc:Loc tailscale.preference.lan_access}" IsChecked="{Binding LanAccess}" IsEnabled="{Binding HasExitNode}" />
-      <TextBlock Text="{loc:Loc tailscale.exit_node.restricted}" IsVisible="{Binding NoCandidates}" Foreground="{DynamicResource WarningBrush}"
+      <TextBlock Text="{loc:Loc tailscale.exit_node.empty}" IsVisible="{Binding NoCandidates}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" />
+      <TextBlock Text="{loc:Loc tailscale.exit_node.restricted}" IsVisible="{Binding PeersRestricted}" Foreground="{DynamicResource WarningBrush}"
         FontSize="12" TextWrapping="Wrap" />
      </StackPanel>
     </Border>

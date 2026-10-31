@@ -35,7 +35,7 @@ public readonly record struct ServerCapabilityExplanation(ServerCapabilityAvaila
         foreach (var module in inventory)
         {
             if (!module.Capabilities.Contains(capability, StringComparer.Ordinal)) continue;
-            if (module.Enabled)
+            if (module.EffectiveEnabled)
                 return new(ServerCapabilityAvailability.ProvidedByEnabledModule, module.Id);
             disabledProvider ??= module;
         }

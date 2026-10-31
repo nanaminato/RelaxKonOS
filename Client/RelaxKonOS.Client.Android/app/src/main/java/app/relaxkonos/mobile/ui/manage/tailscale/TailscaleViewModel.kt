@@ -19,6 +19,7 @@ internal class TailscaleViewModel(private val session: AuthSession, private val 
     private val answers: ElevationAnswerProvider) : ViewModel() {
     var state by mutableStateOf(TailscaleState()); private set
     var review by mutableStateOf<TailscaleReview?>(null); private set
+    var viewEpoch by mutableStateOf(0L); private set
     private var job: Job? = null
     private var generation = 0
     private var foregroundEpoch = 0L
@@ -45,14 +46,24 @@ internal class TailscaleViewModel(private val session: AuthSession, private val 
         if (state.busy || state.records.none { it.operationId == id }) return
         review = null; state = state.copy(selected = id,operation = null,recovery = null)
     }
-    fun prepare(action: TailscaleAction, configuration: TailscaleConfiguration? = null) {
+    fun authorizeView() {
+        work { owner ->
+            when (val result = repository.authorizeView(owner,answers)) {
+                is ApiResult.Success -> viewEpoch++
+                is ApiResult.Problem -> state = state.copy(problem = result.code)
+                is ApiResult.Transport -> state = state.copy(problem = "tailscale.unverified")
+            }
+        }
+    }
+    fun prepare(action: TailscaleAction, configuration: TailscaleConfiguration? = null,
+        preferences: TailscalePreferences? = null) {
         if (!editable) return
         val baseline = state.control ?: return
         val gesture = foregroundEpoch
         review = null
         work { owner ->
             if (!reviewActive || foregroundEpoch != gesture) return@work
-            val result = repository.prepare(owner,baseline,action,configuration,answers); verify(owner)
+            val result = repository.prepare(owner,baseline,action,configuration,answers,preferences); verify(owner)
             loadReferences(owner)
             if (result is ApiResult.Success) {
                 state = state.copy(selected = result.value.operationId,operation = result.value,recovery = null)
@@ -71,6 +82,7 @@ internal class TailscaleViewModel(private val session: AuthSession, private val 
                 else repository.close(owner,requireNotNull(expected.recovery),true,answers)
             verify(owner)
             state = state.copy(operation = (result as? ApiResult.Success)?.value,problem = problem(result))
+            if (result is ApiResult.Success) viewEpoch++
             loadReferences(owner)
         }
     }

@@ -57,6 +57,19 @@ class TailscaleLoginViewModelTest {
         base.onLogin = { _,_,_ -> ApiResult.Success(loginSession().let { it.copy(userName = account,server = it.server.copy(capabilities = setOf(ServerCapabilities.TAILSCALE),privilegedOperations = true)) }) }
         session.login(ServerConnectionIdentityRules.direct("https://example.test"),account,"pw".toCharArray()) {}
     }
+    @Test fun `login availability refuses already signed in and starting hosts`() {
+        fun observed(backend: String?) = TailscaleStatus("observed",null,backend,null,emptyList(),false)
+        assertEquals(TailscaleLoginAvailability.NeedLogin,tailscaleLoginAvailability(observed("NeedsLogin")))
+        assertEquals(TailscaleLoginAvailability.DeviceApproval,tailscaleLoginAvailability(observed("NeedsMachineAuth")))
+        assertEquals(TailscaleLoginAvailability.AlreadyConnected,tailscaleLoginAvailability(observed("Running")))
+        assertEquals(TailscaleLoginAvailability.AlreadyStopped,tailscaleLoginAvailability(observed("Stopped")))
+        assertEquals(TailscaleLoginAvailability.Starting,tailscaleLoginAvailability(observed("Starting")))
+        assertEquals(TailscaleLoginAvailability.Unknown,tailscaleLoginAvailability(null))
+        assertEquals(TailscaleLoginAvailability.Unavailable,tailscaleLoginAvailability(observed(null).copy(state = "not-installed")))
+        assertTrue(TailscaleLoginAvailability.NeedLogin.allowsStart)
+        assertFalse(TailscaleLoginAvailability.AlreadyConnected.allowsStart)
+        assertFalse(TailscaleLoginAvailability.Starting.allowsStart)
+    }
     @Test fun `opening page never issues login or reads a challenge`() = runTest {
         login(); advanceUntilIdle(); model.loadRecords(); advanceUntilIdle()
         assertTrue(model.canStart); assertNull(model.review); assertEquals(0,executes); assertEquals(0,challenges)

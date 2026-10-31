@@ -46,6 +46,7 @@
     "tailscale.exit_node.auto": "自动选择",
     "tailscale.exit_nodes_section": "出口节点",
     "tailscale.exit_node_intro": "使用其他设备作为出口节点，将公共互联网流量经该设备转发。",
+    "tailscale.exit_node.empty": "没有其他设备提供可用出口节点。请在另一台设备上启用出口节点，并在 Tailscale 管理控制台批准；本机提供的出口节点不会列在此处。",
     "tailscale.exit_node.restricted": "需要宿主网络授权后才能列出可用出口节点。",
     "tailscale.preferences.title": "偏好设置",
     "tailscale.preferences.edit": "编辑偏好设置",

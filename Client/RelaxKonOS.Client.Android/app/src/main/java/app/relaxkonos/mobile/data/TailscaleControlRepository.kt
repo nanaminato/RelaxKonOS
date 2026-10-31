@@ -14,20 +14,40 @@ class TailscaleControlRepository(private val gateway: RelaxKonGateway, private v
     private val changes = Mutex()
     fun records(owner: SessionState.Active) = references.read(owner.also(::verify))
     suspend fun control(owner: SessionState.Active, provider: ElevationAnswerProvider) = elevated(owner,provider,gateway::tailscaleControl)
+    /** Requests the same precise grant the peer list uses, without submitting a host change. */
+    suspend fun authorizeView(owner: SessionState.Active, provider: ElevationAnswerProvider): ApiResult<Unit> {
+        verify(owner)
+        val result = when (val outcome = elevations.elevateHost("hostNetworkChange","host/tailscale",provider,tryAutomatic = true)) {
+            is ElevationOutcome.Granted -> ApiResult.Success(Unit)
+            ElevationOutcome.Cancelled -> ApiResult.Problem(403,ProblemCodes.ELEVATION_REQUIRED,null)
+            is ElevationOutcome.Rejected -> ApiResult.Problem(403,outcome.code,null)
+            is ElevationOutcome.Transport -> ApiResult.Transport(outcome.detail)
+        }
+        currentCoroutineContext().ensureActive(); verify(owner)
+        return result
+    }
     suspend fun prepare(owner: SessionState.Active, baseline: TailscaleControl, action: TailscaleAction,
-        configuration: TailscaleConfiguration?, provider: ElevationAnswerProvider): ApiResult<TailscaleOperation> = changes.withLock {
+        configuration: TailscaleConfiguration?, provider: ElevationAnswerProvider,
+        preferences: TailscalePreferences? = null): ApiResult<TailscaleOperation> = changes.withLock {
         verify(owner); require(owner.privilegedOperations && baseline.canControl)
         require(records(owner).none { it.phase != TailscaleReferencePhase.Known })
+        require((action == TailscaleAction.Configure) == (configuration != null))
+        require((action == TailscaleAction.ConfigurePreferences) == (preferences != null))
+        require(configuration == null || action == TailscaleAction.Configure)
+        require(preferences == null || action == TailscaleAction.ConfigurePreferences)
         require(action != TailscaleAction.Connect || baseline.authenticated && !baseline.connected)
         require(action != TailscaleAction.Disconnect || baseline.connected)
         require(action != TailscaleAction.Configure || configuration != baseline.configuration)
-        val request = TailscalePlanRequest(UUID.randomUUID().toString(),baseline.revision,action,configuration)
+        require(action != TailscaleAction.ConfigurePreferences || preferences != baseline.preferences)
+        require(action != TailscaleAction.Logout || baseline.authenticated)
+        val request = TailscalePlanRequest(UUID.randomUUID().toString(),baseline.revision,action,configuration,preferences)
         request.body()
         val result = elevated(owner,provider) { url,token -> gateway.prepareTailscale(url,token,request) }
         if (result is ApiResult.Success) {
             val plan = result.value
             check(plan.operationId == request.operationId && plan.action == action && plan.expectedRevision == baseline.revision
-                && plan.configuration == configuration && plan.state == TailscaleOperationState.Prepared && plan.closure == null && plan.expiresAt > now())
+                && plan.configuration == configuration && plan.preferences == preferences
+                && plan.state == TailscaleOperationState.Prepared && plan.closure == null && plan.expiresAt > now())
             references.remember(owner,plan.operationId)
         }
         result
@@ -44,7 +64,8 @@ class TailscaleControlRepository(private val gateway: RelaxKonGateway, private v
             else gateway.executeTailscale(url,token,plan.operationId)
         }
         if (result is ApiResult.Success) {
-            check(result.value.action == plan.action && result.value.expectedRevision == plan.expectedRevision && result.value.configuration == plan.configuration
+            check(result.value.action == plan.action && result.value.expectedRevision == plan.expectedRevision
+                && result.value.configuration == plan.configuration && result.value.preferences == plan.preferences
                 && result.value.expiresAt == plan.expiresAt)
             accept(owner,plan.operationId,result.value)
         }

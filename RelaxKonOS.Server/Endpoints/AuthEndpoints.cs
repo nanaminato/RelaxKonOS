@@ -19,7 +19,7 @@ public static class AuthEndpoints
 {
     private const string ProblemBase = "https://relaxkonos.app/problems/";
 
-    public static IEndpointRouteBuilder MapAuthEndpoints(this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapAuthEndpoints(this IEndpointRouteBuilder app, bool recoveryMode = false)
     {
         var group = app.MapGroup("").AddEndpointFilter<AuthenticationEndpointFilter>();
         group.MapPost(AuthApiRoutes.Login, async (
@@ -73,11 +73,11 @@ public static class AuthEndpoints
             .WithTags("Auth");
 
         group.MapPost(AuthApiRoutes.Logout, (LogoutRequest? req, HttpContext http, AuthSessionStore sessions,
-            IHostElevationSessionStore elevations, SessionValidityService validity) =>
+            SessionValidityService validity) =>
             {
                 if (!string.IsNullOrEmpty(req?.RefreshToken))
                     sessions.Revoke(req.RefreshToken);
-                elevations.Revoke(http.User);
+                if (!recoveryMode) http.RequestServices.GetRequiredService<IHostElevationSessionStore>().Revoke(http.User);
                 validity.ExpireSession(http.User);
                 // Logout is a reclamation trigger, not a global unload: only modules this session used
                 // are considered, and only when their strategy asks for it. The coordinator still
@@ -108,7 +108,8 @@ public static class AuthEndpoints
             .WithTags("Auth");
 
         group.MapGet(ServerApiRoutes.Capabilities, (IServerModeResolver serverMode, RelaxKonOS.Server.Startup.ServerModules modules) =>
-                Results.Ok(ServerDescriptorFactory.ApplyModules(serverMode.Describe(), modules.Capabilities)))
+                Results.Ok(recoveryMode ? ServerDescriptorFactory.CreateRecovery(OperatingSystem.IsWindows() ? HostPlatformKind.Windows : HostPlatformKind.Linux, serverMode).Host
+                    : ServerDescriptorFactory.ApplyModules(serverMode.Describe(), modules.Capabilities)))
             .RequireAuthorization()
             .WithTags("Server");
 
@@ -116,47 +117,52 @@ public static class AuthEndpoints
         // this route exists so that decision can be made with the two failure reasons in hand instead
         // of discovering them when the next startup refuses.
         group.MapGet(ServerApiRoutes.Modules, async (RelaxKonOS.Server.Startup.ServerModules modules, IServiceProvider services,
-                RelaxKonOS.Server.Startup.ServerModuleContext moduleContext, CancellationToken cancellationToken) =>
-                Results.Ok(await modules.DescribeAsync(services, moduleContext, cancellationToken)))
+                RelaxKonOS.Server.Startup.ServerModuleContext moduleContext, HttpContext http, CancellationToken cancellationToken) =>
+                Results.Ok((await modules.DescribeAsync(services, moduleContext, cancellationToken))
+                    .Select(module => ServerModuleManagementEndpoints.ForActor(module, http.User, moduleContext.Configuration))))
             .RequireAuthorization()
             .WithTags("Server");
 
-        group.MapPost(OwnerDeviceKeyApiRoutes.LocalBootstrap, async (OwnerDeviceBootstrapRequest request, HttpContext http,
-                LoginAuthenticationService authentication, OwnerDeviceKeyService ownerDevices,
-                IUserRepository users, IWorkspaceRepository workspaces, IRegistryRepository registry, ISessionRepository sessions,
-                IDeviceRepository devices, JwtTokenService jwt, LoginProtectionService protection, IServerModeResolver serverMode,
-                CancellationToken ct) =>
-            {
-                if (http.Connection.RemoteIpAddress is not { } address || !System.Net.IPAddress.IsLoopback(address))
-                    throw new AliasAuthenticationException(403, "owner-device-loopback-required");
-                if (!ownerDevices.IsAvailable)
-                    throw new OwnerDeviceKeyException(404, "owner-device-unsupported-platform");
-                var login = authentication.AuthenticateWindowsWorkstationOwnerBootstrap(http.User);
-                var platform = request.Platform.Trim().ToLowerInvariant();
-                var device = devices.FindByNameAndPlatform(request.DeviceName.Trim(), platform) ?? devices.Add(new Device
+        if (!recoveryMode)
+        {
+            group.MapPost(OwnerDeviceKeyApiRoutes.LocalBootstrap, async (OwnerDeviceBootstrapRequest request, HttpContext http,
+                    LoginAuthenticationService authentication, OwnerDeviceKeyService ownerDevices,
+                    IUserRepository users, IWorkspaceRepository workspaces, IRegistryRepository registry, ISessionRepository sessions,
+                    IDeviceRepository devices, JwtTokenService jwt, LoginProtectionService protection, IServerModeResolver serverMode,
+                    CancellationToken ct) =>
                 {
-                    Id = Guid.NewGuid(), Name = request.DeviceName.Trim(), Platform = platform,
-                    ClientVersion = request.ClientVersion.Trim(),
-                });
-                ownerDevices.RegisterOrReplaceLocalWindowsDevice(login.User.Id, device.Id, request);
-                return await CompleteLoginAsync(login, OwnerClientPlatform(device.Platform), device.Name, device.ClientVersion, http,
-                    authentication, users, workspaces, registry, sessions, devices, jwt, protection, serverMode, ct, device);
-            })
-            .RequireAuthorization("WindowsOwnerDeviceBootstrap")
-            .WithTags("Owner devices");
+                    if (http.Connection.RemoteIpAddress is not { } address || !System.Net.IPAddress.IsLoopback(address))
+                        throw new AliasAuthenticationException(403, "owner-device-loopback-required");
+                    if (!ownerDevices.IsAvailable)
+                        throw new OwnerDeviceKeyException(404, "owner-device-unsupported-platform");
+                    var login = authentication.AuthenticateWindowsWorkstationOwnerBootstrap(http.User);
+                    var platform = request.Platform.Trim().ToLowerInvariant();
+                    var device = devices.FindByNameAndPlatform(request.DeviceName.Trim(), platform) ?? devices.Add(new Device
+                    {
+                        Id = Guid.NewGuid(), Name = request.DeviceName.Trim(), Platform = platform,
+                        ClientVersion = request.ClientVersion.Trim(),
+                    });
+                    ownerDevices.RegisterOrReplaceLocalWindowsDevice(login.User.Id, device.Id, request);
+                    return await CompleteLoginAsync(login, OwnerClientPlatform(device.Platform), device.Name, device.ClientVersion, http,
+                        authentication, users, workspaces, registry, sessions, devices, jwt, protection, serverMode, ct, device);
+                })
+                .RequireAuthorization("WindowsOwnerDeviceBootstrap")
+                .WithTags("Owner devices");
 
-        group.MapPost(OwnerDeviceKeyApiRoutes.Bootstrap, (OwnerDeviceBootstrapRequest request, ClaimsPrincipal principal,
-                IOwnerDeviceKeyRepository keys, OwnerDeviceKeyService ownerDevices) =>
-            {
-                var userId = Subject(principal);
-                var deviceId = DeviceId(principal);
-                if (keys.ListActive(userId).Count != 0)
-                    return Results.Conflict(new { problemCode = "owner-device-bootstrap-complete" });
-                var key = ownerDevices.Register(userId, deviceId, request);
-                return Results.Created(OwnerDeviceKeyApiRoutes.Device(key.Id), ToOwnerDeviceDto(key, key.Id));
-            })
-            .RequireAuthorization()
-            .WithTags("Owner devices");
+            group.MapPost(OwnerDeviceKeyApiRoutes.Bootstrap, (OwnerDeviceBootstrapRequest request, ClaimsPrincipal principal,
+                    IOwnerDeviceKeyRepository keys, OwnerDeviceKeyService ownerDevices) =>
+                {
+                    var userId = Subject(principal);
+                    var deviceId = DeviceId(principal);
+                    if (keys.ListActive(userId).Count != 0)
+                        return Results.Conflict(new { problemCode = "owner-device-bootstrap-complete" });
+                    var key = ownerDevices.Register(userId, deviceId, request);
+                    return Results.Created(OwnerDeviceKeyApiRoutes.Device(key.Id), ToOwnerDeviceDto(key, key.Id));
+                })
+                .RequireAuthorization()
+                .WithTags("Owner devices");
+
+        }
 
         group.MapPost(OwnerDeviceKeyApiRoutes.Challenge, (OwnerDeviceChallengeRequest request, OwnerDeviceKeyService ownerDevices) =>
             Results.Ok(ownerDevices.CreateChallenge(request.DeviceId)))
@@ -179,6 +185,8 @@ public static class AuthEndpoints
             })
             .RequireRateLimiting("login")
             .WithTags("Owner devices");
+
+        if (recoveryMode) return app;
 
         group.MapPost(OwnerDeviceKeyApiRoutes.Invitations, (ClaimsPrincipal principal, OwnerDeviceKeyService ownerDevices) =>
             Results.Ok(ownerDevices.CreateInvitation(principal)))
@@ -259,15 +267,17 @@ public static class AuthEndpoints
         var role = DeviceRole.Controller;
         var tokens = jwt.Issue(user, ws, device, role, session.Id, login.Method, now, login.SecurityVersion);
         await protection.RecordSuccessAsync(login.ProtectionKey, http.Connection.RemoteIpAddress, ct, user.Id);
+        var recovery = http.RequestServices.GetService<RelaxKonOS.Server.Startup.ModuleManagementStore>()?.RecoveryMode == true;
+        var hostPlatform = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? HostPlatformKind.Windows : HostPlatformKind.Linux;
         return Results.Ok(new LoginResponse(user.ToDto(), ws.ToDto(), session.ToDto(), device.ToDto(), tokens, role,
-            ServerDescriptorFactory.Create(
-                RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? HostPlatformKind.Windows : HostPlatformKind.Linux,
+            recovery ? ServerDescriptorFactory.CreateRecovery(hostPlatform, serverMode) : ServerDescriptorFactory.Create(
+                hostPlatform,
                 serverMode,
                 http.RequestServices.GetRequiredService<RelaxKonOS.Server.EventAlerts.EventAlertsOptions>(),
                 http.RequestServices.GetRequiredService<RelaxKonOS.Server.BackupRecovery.IBackupRecoveryKeyProvider>(),
                 http.RequestServices.GetRequiredService<RelaxKonOS.Server.Startup.ServerModules>().Capabilities),
-            new ServerExecutionEligibilityDto(login.ExecutionEligibility.Available,
-                login.ExecutionEligibility.ReasonCode, serverMode.Mode == ServerMode.System && login.Method == "system"
+            new ServerExecutionEligibilityDto(!recovery && login.ExecutionEligibility.Available,
+                recovery ? "module-recovery-mode" : login.ExecutionEligibility.ReasonCode, !recovery && serverMode.Mode == ServerMode.System && login.Method == "system"
                 && user.Platform == HostPlatformKind.Linux && user.PlatformIdentity == "0" && user.Username == "root")));
     }
 

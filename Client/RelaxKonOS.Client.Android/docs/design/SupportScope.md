@@ -20,7 +20,7 @@ Android 提供定义备份创建、清单和只读预检，没有恢复提交界
 
 ## 平台与验证
 
-[Tailscale](../features/Tailscale.md) 按 `server.tailscale` 能力提供远端宿主状态、设备列表、经授权的连接及 DNS／路由接收设置变更、首次登录与浏览器交接、原操作回执读取与核对关账；当前没有 Android 本机 VPN 或运行时维护入口。
+[Tailscale](../features/Tailscale.md) 按 `server.tailscale` 能力提供远端宿主账户/网络/设备详情、完整官方偏好（DNS、路由、传入连接、出口节点、本地网络访问、无人值守、自动更新、作为出口节点提供）、经授权的连接及退出登录、首次登录与浏览器交接、原操作回执读取与核对关账；当前没有 Android 本机 VPN 或运行时维护入口。
 
 Windows 设备密钥针对 Windows 10/11 工作站，不代表 Windows Server 支持同一授权流程。SMB 在 Windows 外部或漂移共享上为只读；防火墙管理按 `server.firewall` 能力门控，由宿主提供 UFW 或 Windows Defender Firewall 后端。能力可见不等于获得写入授权。
 

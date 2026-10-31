@@ -106,7 +106,7 @@
    <Border x:Name="NavigationPane" Classes="app-sidebar" Padding="0" Grid.RowSpan="2">
     <ScrollViewer HorizontalScrollBarVisibility="Disabled">
      <Grid RowDefinitions="Auto,Auto,1,Auto,Auto,*" RowSpacing="0">
-      <Border Padding="12,14,12,4">
+      <Border Padding="12,14,12,4" IsVisible="{Binding !ShowServerModules}">
        <TextBox x:Name="Search" PlaceholderText="{loc:Loc component_center.search}" Text="{Binding Search, Mode=TwoWay}" />
       </Border>
       <StackPanel Grid.Row="1" Margin="8,6,8,12" Spacing="1">
@@ -118,7 +118,7 @@
        </ListBox>
       </StackPanel>
       <Border Grid.Row="2" Background="{DynamicResource BorderSubtleBrush}" Margin="12,0" />
-      <StackPanel Grid.Row="3" Margin="14,12,14,6" Spacing="3">
+      <StackPanel Grid.Row="3" Margin="14,12,14,6" Spacing="3" IsVisible="{Binding !ShowServerModules}">
        <TextBlock Classes="rail-label" Text="{loc:Loc component_center.catalog_title}" />
       </StackPanel>
       <TextBlock Grid.Row="4" Text="{loc:Loc component_center.catalog_empty}" TextWrapping="Wrap" FontSize="11"
@@ -157,6 +157,8 @@
 
    <ScrollViewer x:Name="DetailsScroll" Grid.Column="1" Grid.RowSpan="2" Padding="20,16" HorizontalScrollBarVisibility="Disabled">
     <StackPanel Spacing="14">
+     <Border IsVisible="{Binding ShowServerModules}"><vm:ServerModulesView DataContext="{Binding ServerModules}" /></Border>
+     <StackPanel Spacing="14" IsVisible="{Binding !ShowServerModules}">
      <!-- Component identity: what this is, what state the host reports, and where it is managed. -->
      <Border Classes="panel-card" IsVisible="{Binding HasComponentDetails}">
       <StackPanel Spacing="14">
@@ -415,6 +417,7 @@
 
 
     </StackPanel>
+     </StackPanel>
    </ScrollViewer>
   </Grid>
 

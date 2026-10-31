@@ -499,4 +499,4 @@ Windows/Linux 的第三方组件安装由组件中心统一承载；业务应用
 
 ## 服务端模块分区
 
-组件中心的目标范围包含独立的“服务端模块”分区，负责 RelaxKonOS 功能模块的管理导航，与宿主软件目录、授权和安装台账分离。完整入口、状态、操作和 MM 跟踪见[服务端模块管理设计](../architecture/RelaxKonOS.ServerModuleManagement.Design.md)。该分区尚未实现；既有宿主组件状态和 CC/MR 验收不因本设计扩展而改变。
+组件中心包含独立的“服务端模块”分区，与宿主软件目录、授权和安装台账分离。桌面已接入模块事实、驻留详情和配置启停计划；移动端支持边界由 Android 自有文档拥有。完整入口、当前实现限制、部署配置和 MM 跟踪见[服务端模块管理设计 §12](../architecture/RelaxKonOS.ServerModuleManagement.Design.md#12-当前实现边界与部署配置)。既有宿主组件状态和 CC/MR 验收不因模块分区而改变。

@@ -1,0 +1,27 @@
+<resources>
+    <string name="server_modules_title">服务端模块</string>
+    <string name="server_modules_read_only">只读模块状态。启停变更请使用桌面组件中心。</string>
+    <string name="server_modules_search">搜索模块</string>
+    <string name="server_modules_unknown">模块状态未知，请重试读取当前服务器。</string>
+    <string name="server_modules_summary">%1$s · 有效启用 %2$d / %3$d · 已加载 %4$d</string>
+    <string name="server_modules_states">期望启用：%1$s · 当前生效：%2$s · 待重启：%3$s</string>
+    <string name="server_modules_dependencies">依赖：%1$s · 依赖方：%2$s</string>
+    <string name="server_modules_review">预览模块计划</string>
+    <string name="server_modules_confirm">确认此计划</string>
+    <string name="server_modules_enable">预览启用</string>
+    <string name="server_modules_disable">预览停用</string>
+    <string name="server_modules_details">详情</string>
+    <string name="server_modules_restart_note">模块变更保留业务数据和外部软件。启停提交后，请通过部署宿主重启服务器使其生效。</string>
+    <string name="server_modules_pending">仅待重启</string>
+    <string name="server_modules_wake">预览唤醒</string>
+    <string name="server_modules_sleep">尝试释放内存</string>
+    <string name="server_modules_policy">驻留策略</string>
+    <string name="server_modules_grace">闲时宽限期（秒）</string>
+    <string name="server_modules_policy_preview">预览策略变更</string>
+    <string name="server_modules_strategy_keep_loaded">保持加载</string>
+    <string name="server_modules_strategy_idle_delayed">闲时延迟释放</string>
+    <string name="server_modules_strategy_release_on_logout">退出后尝试释放</string>
+    <string name="server_modules_not_found">服务器目录中没有此模块。</string>
+    <string name="server_modules_recovery_mode">服务器处于恢复模式，业务模块未运行。可预览恢复完整内置集合；提交后需退出恢复模式并正常重启。</string>
+    <string name="server_modules_restore_all">预览恢复全部模块</string>
+</resources>

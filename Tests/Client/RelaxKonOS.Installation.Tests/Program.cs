@@ -33,6 +33,7 @@ using var services = new ServiceCollection()
 typeof(App).GetProperty(nameof(App.Services))!.SetValue(null, services);
 if (args.Contains("--component-refresh-only")) { await ComponentRefreshChecks.RunAsync(); return; }
 if (args.Contains("--component-lifecycle-only")) { await ComponentLifecycleClientChecks.RunAsync(); return; }
+if (args.Contains("--component-selection-only")) { ComponentSelectionChecks.Run(); return; }
 if (args.FirstOrDefault() == "--component-center-host")
 {
     Environment.ExitCode = await ComponentCenterHostAcceptance.RunAsync(args);

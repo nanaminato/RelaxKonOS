@@ -2,9 +2,11 @@
 
 本文描述设备、宿主与故障场景的检查方法和预期行为，不记录实现进度或历史执行结果。具体功能以 `features/` 为准；编译和 JVM 测试不能替代真实设备与宿主验证。
 
-Tailscale 前后台验证须使用延迟的计划／挑战响应：发起后进入后台，先回到前台，再放行响应。控制和首次登录均不得恢复旧确认，浏览器不得自动打开；用户重新发起后应能正常确认或交接，避免永久禁用。`TailscaleViewModelTest` 与 `TailscaleLoginViewModelTest` 覆盖此请求顺序，设备验收还须实际切换应用并核对系统网页应用交接；JVM 生命周期替身不替代该验证。
+Tailscale 前后台验证须使用延迟的计划／挑战响应：发起后进入后台，先回到前台，再放行响应。控制和首次登录均不得恢复旧确认，浏览器不得自动打开；用户重新发起后应能正常确认或交接，避免永久禁用。`TailscaleViewModelTest` 与 `TailscaleLoginViewModelTest` 覆盖此请求顺序，并覆盖完整偏好计划、退出登录与无配置计划；设备验收还须实际切换应用并核对系统网页应用交接；JVM 生命周期替身不替代该验证。
 
-Tailscale 原回执验证须包含已提交未决、读取仍 Prepared 的顺序，控制和首次登录均保留未决标记，不允许新计划或重放；原任务取得服务端拒绝／已受理证据后再核对对应阶段。提权期间本地到期不代表服务器已拒绝，测试必须保留标记直到模拟服务端返回原拒绝终态。`TailscaleControlTest` 与 `TailscaleLoginTest` 检查这些状态转换，真实设备还须验证 HTTP 请求延迟与原 ID 重开。
+Tailscale 首次登录可用性验证须包含：已登录并连接、已登录但断开、等待设备批准、正在启动时“发起登录”禁用并说明原因；只有 `NeedsLogin` 可发起；宿主状态读取失败或未取得观察时禁用并允许刷新；服务端 `login.not_available`/`state_changed`/`unavailable` 显示对应原因而非通用“无法核实”。`TailscaleLoginViewModelTest` 覆盖可用状态映射，设备验收还须切换到已登录宿主核对按钮与提示。
+
+Tailscale 完整偏好与退出登录验证须包含：偏好未变不生成计划、完整偏好字段与出口节点候选一致、具体出口节点仍由服务端核对、退出登录计划无配置/偏好、退出后控制快照只读且重新登录前拒绝新变更、未知退出登录从稳定观察核对关账。`TailscaleWireTest`、`TailscaleViewModelTest` 与 `TailscaleControlTest` 覆盖这些状态；真实宿主还须验证 `tailscale set`/`logout` 的实际回读。
 
 ## 设备与发布
 

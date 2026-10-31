@@ -22,10 +22,12 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
  * The class has no dependency on Compose beyond observable state, which keeps the rules testable on
  * the JVM.
  */
+data class ServerModuleNavigationTarget(val serviceId: String, val sessionInstanceId: String, val moduleId: String)
+
 class MobileNavigator(initialDestination: String) {
     // This must be observable as well as each individual stack. It preserves the stacks for
     // navigation rules and tests, while [route] below is the single state screens subscribe to.
-    private class Entry(val route: String, var dependencyChecked: Boolean = false)
+    private class Entry(val route: String, var dependencyChecked: Boolean = false, val moduleTarget: ServerModuleNavigationTarget? = null)
 
     private val stacks = mutableStateMapOf<String, SnapshotStateList<Entry>>()
 
@@ -38,6 +40,13 @@ class MobileNavigator(initialDestination: String) {
 
     /** True when the destination is showing a pushed sub-page rather than its own root. */
     val isAtDestinationRoot: Boolean get() = peek(currentDestination).isEmpty()
+    val currentModuleTarget: ServerModuleNavigationTarget? get() = peek(currentDestination).lastOrNull()?.moduleTarget
+    fun openServerModule(target: ServerModuleNavigationTarget) {
+        require(target.serviceId.isNotBlank() && target.sessionInstanceId.isNotBlank()
+            && target.moduleId.matches(Regex("[a-zA-Z0-9][a-zA-Z0-9.-]{0,127}")))
+        stackOf(currentDestination).add(Entry(Routes.MANAGE_SERVER_MODULES, moduleTarget = target))
+        route = Routes.MANAGE_SERVER_MODULES
+    }
 
     /** A retained application page checks once, including round trips through component/task pages. */
     fun beginComponentDependencyCheck(): Boolean {

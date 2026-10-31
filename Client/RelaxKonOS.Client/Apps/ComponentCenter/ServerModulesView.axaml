@@ -1,0 +1,38 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:vm="using:RelaxKonOS.Client.Apps.ComponentCenter" xmlns:p="using:RelaxKonOS.Protocol.Common"
+ xmlns:loc="using:RelaxKonOS.Client.Localization" x:Class="RelaxKonOS.Client.Apps.ComponentCenter.ServerModulesView"
+ x:DataType="vm:ServerModulesViewModel">
+ <StackPanel Spacing="12">
+  <TextBlock Text="{loc:Loc server_modules.title}" FontSize="20" FontWeight="SemiBold" />
+  <TextBlock Text="{loc:Loc server_modules.summary}" TextWrapping="Wrap" />
+  <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
+  <TextBlock Text="{loc:Loc server_modules.recovery_mode}" IsVisible="{Binding IsHostRecovery}" TextWrapping="Wrap" />
+  <Button Content="{loc:Loc server_modules.restore_all}" Command="{Binding RestoreAllCommand}" IsVisible="{Binding IsHostRecovery}" />
+  <TextBox Text="{Binding Search}" PlaceholderText="{loc:Loc component_center.search}" />
+  <CheckBox Content="{loc:Loc server_modules.pending}" IsChecked="{Binding OnlyPending}" />
+  <Button Content="{loc:Loc settings.server_modules.refresh}" Command="{Binding RefreshCommand}" IsEnabled="{Binding !Busy}" />
+  <TextBlock Text="{Binding Status}" TextWrapping="Wrap" />
+  <ListBox ItemsSource="{Binding VisibleModules}" SelectedItem="{Binding SelectedRow}" MaxHeight="280">
+   <ListBox.ItemTemplate><DataTemplate x:DataType="vm:ServerModuleSelection">
+    <StackPanel Spacing="3"><CheckBox Content="{Binding Fact.Id}" IsChecked="{Binding IsSelected}" /><TextBlock Text="{Binding Fact.Residency.State}" Opacity="0.7" /></StackPanel>
+   </DataTemplate></ListBox.ItemTemplate>
+  </ListBox>
+  <TextBlock Text="{Binding Details}" TextWrapping="Wrap" />
+  <WrapPanel ItemSpacing="8" LineSpacing="8">
+   <Button Content="{loc:Loc server_modules.enable}" Command="{Binding EnableCommand}" />
+   <Button Content="{loc:Loc server_modules.disable}" Command="{Binding DisableCommand}" />
+   <Button Content="{loc:Loc server_modules.wake}" Command="{Binding WakeCommand}" />
+   <Button Content="{loc:Loc server_modules.sleep}" Command="{Binding SleepCommand}" />
+  </WrapPanel>
+  <TextBlock Text="{loc:Loc server_modules.policy}" />
+  <ComboBox ItemsSource="{Binding PolicyChoices}" SelectedItem="{Binding PolicyChoice}">
+   <ComboBox.ItemTemplate><DataTemplate x:DataType="vm:ServerModulePolicyChoice"><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate>
+  </ComboBox>
+  <TextBlock Text="{loc:Loc server_modules.grace}" />
+  <NumericUpDown Value="{Binding IdleGraceSeconds}" Minimum="0" Maximum="604800" Increment="30" FormatString="0" />
+  <Button Content="{loc:Loc server_modules.policy_preview}" Command="{Binding SetPolicyCommand}" />
+  <TextBlock Text="{Binding PreviewText}" TextWrapping="Wrap" />
+  <Button Content="{loc:Loc server_modules.apply}" Command="{Binding ApplyCommand}" />
+  <TextBlock Text="{Binding OperationText}" TextWrapping="Wrap" />
+ </StackPanel>
+</UserControl>

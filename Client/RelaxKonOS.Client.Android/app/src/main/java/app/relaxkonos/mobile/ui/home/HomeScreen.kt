@@ -51,6 +51,7 @@ fun HomeScreen(
     modifier: Modifier = Modifier,
     onOpenRoute: (String) -> Unit = {},
     onSwitchLogin: () -> Unit = {},
+    onOpenModule: (String) -> Unit = {},
 ) {
     val container = appContainer()
     val viewModel: HomeViewModel = viewModel(factory = viewModelFactory {
@@ -62,7 +63,8 @@ fun HomeScreen(
         } }
     })
     HomeContent(viewModel, session, onOpenHelp, modifier,
-        mobileApplications(session.capabilities, session.privilegedOperations, onOpenRoute), onSwitchLogin)
+        mobileApplications(session.capabilities, session.privilegedOperations,
+            app.relaxkonos.mobile.ui.common.rememberServerModuleDirectory(session), onOpenModule, onOpenRoute), onSwitchLogin)
 }
 
 @Composable

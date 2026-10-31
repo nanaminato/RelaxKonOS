@@ -1,0 +1,27 @@
+<resources>
+    <string name="server_modules_title">サーバーモジュール</string>
+    <string name="server_modules_read_only">モジュール状態の読み取り専用画面です。変更はデスクトップのコンポーネントセンターで行います。</string>
+    <string name="server_modules_search">モジュールを検索</string>
+    <string name="server_modules_unknown">状態を確認できません。再度読み込んでください。</string>
+    <string name="server_modules_summary">%1$s · 有効 %2$d / %3$d · 読込済み %4$d</string>
+    <string name="server_modules_states">設定：%1$s · 有効：%2$s · 再起動：%3$s</string>
+    <string name="server_modules_dependencies">依存先：%1$s · 依存元：%2$s</string>
+    <string name="server_modules_review">モジュール計画の確認</string>
+    <string name="server_modules_confirm">この計画を確定</string>
+    <string name="server_modules_enable">有効化をプレビュー</string>
+    <string name="server_modules_disable">無効化をプレビュー</string>
+    <string name="server_modules_details">詳細</string>
+    <string name="server_modules_restart_note">業務データと外部ソフトウェアは保持されます。変更を反映するには配置ホストからサーバーを再起動してください。</string>
+    <string name="server_modules_pending">再起動待ちのみ</string>
+    <string name="server_modules_wake">起動をプレビュー</string>
+    <string name="server_modules_sleep">メモリ解放を試す</string>
+    <string name="server_modules_policy">常駐ポリシー</string>
+    <string name="server_modules_grace">アイドル猶予期間（秒）</string>
+    <string name="server_modules_policy_preview">ポリシー変更を確認</string>
+    <string name="server_modules_strategy_keep_loaded">読込状態を維持</string>
+    <string name="server_modules_strategy_idle_delayed">アイドル後に解放</string>
+    <string name="server_modules_strategy_release_on_logout">ログアウト後に解放を試行</string>
+    <string name="server_modules_not_found">このモジュールはサーバーの一覧にありません。</string>
+    <string name="server_modules_recovery_mode">サーバーは復旧モードで、業務モジュールは停止中です。全組み込みモジュールの復旧をプレビューし、適用後は復旧モードを終了して通常起動してください。</string>
+    <string name="server_modules_restore_all">全モジュールの復旧をプレビュー</string>
+</resources>

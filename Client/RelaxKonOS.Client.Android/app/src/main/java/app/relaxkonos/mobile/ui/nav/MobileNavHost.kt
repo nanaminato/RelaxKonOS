@@ -127,6 +127,12 @@ fun MobileNavHost(
                 onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize(), onOpenComponents = { navigator.push(Routes.MANAGE_COMPONENTS) })
             Routes.MANAGE_TUNNELS -> TunnelsScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize(), onOpenComponents = { navigator.push(Routes.MANAGE_COMPONENTS) })
             Routes.MANAGE_CERTIFICATES -> CertificatesScreen(onBack = { navigator.pop() }, active = true, initialOperationId = taskTarget, modifier = Modifier.fillMaxSize())
+            Routes.MANAGE_SERVER_MODULES -> {
+                val target = navigator.currentModuleTarget
+                if (target != null && target.serviceId == session.serviceId && target.sessionInstanceId == session.sessionInstanceId)
+                    app.relaxkonos.mobile.ui.manage.components.ServerModulesPanel(session, { navigator.pop() }, Modifier.fillMaxSize(), target.moduleId)
+                else Text(stringResource(R.string.server_modules_unknown))
+            }
             Routes.MANAGE_COMPONENTS -> app.relaxkonos.mobile.ui.manage.components.ComponentCenterScreen(
                 owner = session, onBack = { navigator.pop() },
                 onOpenRoute = { taskTarget = null; navigator.push(it) }, modifier = Modifier.fillMaxSize())
@@ -151,7 +157,9 @@ fun MobileNavHost(
             Routes.TERMINAL -> ServerTerminalScreen(owner = session, modifier = Modifier.fillMaxSize())
             Routes.FILES, Routes.FILES_DETAIL -> FilesDestination(navigator, layoutState)
             Routes.MANAGE, Routes.MANAGE_MONITOR, Routes.MANAGE_PROCESSES ->
-                ManageDestination(navigator, clearTaskTarget = { taskTarget = null })
+                ManageDestination(navigator, clearTaskTarget = { taskTarget = null }, onOpenModule = { moduleId ->
+                    navigator.openServerModule(ServerModuleNavigationTarget(session.serviceId, session.sessionInstanceId, moduleId))
+                })
             Routes.MORE,
             Routes.MORE_NETWORK,
             Routes.MORE_ACCOUNT_SECURITY,
@@ -171,6 +179,7 @@ fun MobileNavHost(
                 onOpenHelp = { navigator.select(Routes.MORE); navigator.push(Routes.MORE_HELP) },
                 onOpenRoute = { taskTarget = null; if (it == Routes.FILES) navigator.select(it) else navigator.push(it) },
                 onSwitchLogin = { onSwitchLogin(null) },
+                onOpenModule = { moduleId -> navigator.openServerModule(ServerModuleNavigationTarget(session.serviceId, session.sessionInstanceId, moduleId)) },
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -256,14 +265,14 @@ private fun FilesDestination(navigator: MobileNavigator, layoutState: LayoutStat
 }
 
 @Composable
-private fun ManageDestination(navigator: MobileNavigator, clearTaskTarget: () -> Unit) {
+private fun ManageDestination(navigator: MobileNavigator, clearTaskTarget: () -> Unit, onOpenModule: (String) -> Unit) {
     when (navigator.route) {
         Routes.MANAGE_MONITOR -> app.relaxkonos.mobile.ui.manage.TaskManagerWorkspace("performance", { navigator.pop() }, Modifier.fillMaxSize())
         Routes.MANAGE_PROCESSES -> app.relaxkonos.mobile.ui.manage.TaskManagerWorkspace("processes", { navigator.pop() }, Modifier.fillMaxSize())
         else -> ManageScreen(onOpenRoute = { route ->
             clearTaskTarget()
             if (route == Routes.FILES) navigator.select(route) else navigator.push(route)
-        }, modifier = Modifier.fillMaxSize())
+        }, modifier = Modifier.fillMaxSize(), onOpenModule = onOpenModule)
     }
 }
 

@@ -1,3 +1,5 @@
+using RelaxKonOS.Protocol.Common;
+
 namespace RelaxKonOS.Server.Residency;
 
 /// <summary>
@@ -73,6 +75,9 @@ internal sealed class ModuleResidencyOptions
     }
 
     internal ModuleResidencySettings Default { get; }
+    internal int MaxWaitingPerModule { get; private set; } = 128;
+    internal int MaxWaitingTotal { get; private set; } = 512;
+    internal int MaxParallelLoads { get; private set; } = 4;
 
     internal IReadOnlyDictionary<string, ModuleResidencySettings> Modules => _modules;
 
@@ -87,9 +92,17 @@ internal sealed class ModuleResidencyOptions
             throw new InvalidOperationException("ModuleResidency must be a configuration section.");
 
         var defaults = ModuleResidencySettings.Default;
+        var limits = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         IConfigurationSection? modulesSection = null;
         foreach (var setting in section.GetChildren())
         {
+            if (setting.Key is "MaxWaitingPerModule" or "MaxWaitingTotal" or "MaxParallelLoads")
+            {
+                if (setting.GetChildren().Any() || !int.TryParse(setting.Value, out var limit) || limit is < 1 or > 65536)
+                    throw new InvalidOperationException($"{setting.Path} must be between 1 and 65536.");
+                limits.Add(setting.Key, limit);
+                continue;
+            }
             if (string.Equals(setting.Key, "Modules", StringComparison.OrdinalIgnoreCase))
             {
                 if (!setting.GetChildren().Any())
@@ -120,12 +133,33 @@ internal sealed class ModuleResidencyOptions
             }
         }
 
-        return new ModuleResidencyOptions(defaults, overrides);
+        return new ModuleResidencyOptions(defaults, overrides)
+        {
+            MaxWaitingPerModule = limits.GetValueOrDefault("MaxWaitingPerModule", 128),
+            MaxWaitingTotal = limits.GetValueOrDefault("MaxWaitingTotal", 512),
+            MaxParallelLoads = limits.GetValueOrDefault("MaxParallelLoads", 4)
+        };
     }
 
     /// <summary>Resolved rule for one module. Unknown modules (non-residency ones) get the defaults.</summary>
     internal ModuleResidencySettings For(string moduleId) =>
         _modules.TryGetValue(moduleId, out var settings) ? settings : Default;
+
+    internal ModuleResidencyOptions WithPolicies(IReadOnlyDictionary<string, ServerModuleResidencyPolicyDto> policies,
+        IReadOnlySet<string> supported)
+    {
+        if (!supported.SetEquals(policies.Keys)) throw new InvalidOperationException("Managed residency policies must cover the exact supported catalog.");
+        var modules = new Dictionary<string, ModuleResidencySettings>(StringComparer.Ordinal);
+        foreach (var (id, policy) in policies)
+        {
+            if (policy.Strategy is not ("KeepLoaded" or "IdleDelayed" or "ReleaseOnLogout")
+                || !Enum.TryParse<ModuleResidencyStrategy>(policy.Strategy, out var strategy) || !Enum.IsDefined(strategy)
+                || policy.IdleGraceSeconds is < 0 or > MaxSeconds)
+                throw new InvalidOperationException("Invalid managed residency policy.");
+            modules[id] = For(id) with { Strategy = strategy, IdleGracePeriod = TimeSpan.FromSeconds(policy.IdleGraceSeconds) };
+        }
+        return new(Default, modules) { MaxWaitingPerModule = MaxWaitingPerModule, MaxWaitingTotal = MaxWaitingTotal, MaxParallelLoads = MaxParallelLoads };
+    }
 
     internal string Describe() =>
         $"strategy={Default.Strategy}, grace={Default.IdleGracePeriod.TotalSeconds:0}s, wakeTimeout={Default.WakeTimeout.TotalSeconds:0}s"

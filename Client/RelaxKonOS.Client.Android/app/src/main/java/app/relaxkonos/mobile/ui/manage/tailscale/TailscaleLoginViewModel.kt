@@ -13,6 +13,21 @@ internal data class TailscaleLoginUiState(val owner: SessionState.Active? = null
     val records: List<TailscaleReference> = emptyList(), val selected: String? = null,
     val operation: TailscaleLoginOperation? = null, val recovery: TailscaleLoginRecovery? = null,
     val problem: String? = null, val storageFailed: Boolean = false, val browserOpened: Boolean = false)
+internal enum class TailscaleLoginAvailability { Unknown, NeedLogin, DeviceApproval, AlreadyConnected, AlreadyStopped, Starting, Unavailable }
+/** The first-login page must refuse to start on a host that is already signed in or cannot run login. */
+internal fun tailscaleLoginAvailability(status: TailscaleStatus?): TailscaleLoginAvailability {
+    if (status == null) return TailscaleLoginAvailability.Unknown
+    if (status.state != "observed") return TailscaleLoginAvailability.Unavailable
+    return when (status.backendState) {
+        "NeedsLogin" -> TailscaleLoginAvailability.NeedLogin
+        "NeedsMachineAuth" -> TailscaleLoginAvailability.DeviceApproval
+        "Running" -> TailscaleLoginAvailability.AlreadyConnected
+        "Stopped" -> TailscaleLoginAvailability.AlreadyStopped
+        "Starting" -> TailscaleLoginAvailability.Starting
+        else -> TailscaleLoginAvailability.Unknown
+    }
+}
+internal val TailscaleLoginAvailability.allowsStart get() = this == TailscaleLoginAvailability.NeedLogin
 internal class TailscaleLoginReview(val owner: SessionState.Active, val plan: TailscaleLoginOperation?, val recovery: TailscaleLoginRecovery?)
 internal class TailscaleLoginViewModel(private val session: AuthSession, private val repository: TailscaleLoginRepository,
     private val answers: ElevationAnswerProvider) : ViewModel() {

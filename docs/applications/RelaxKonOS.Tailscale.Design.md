@@ -12,6 +12,8 @@
 
 仍未实现官方客户端的“添加其他账户”多档案切换、重置为默认值以及常驻 Windows 通知区域图标；账户切换路径是退出登录后重新登录。没有新增任意原生命令、登录密钥、自定义控制端或 Host 侧浏览入口。
 
+Android 控制端同步了同一组契约与行为：账户/网络/设备详情（所有者、系统、标签、最后在线、密钥到期、出口节点）、显式“授权查看账户与设备”、完整偏好与出口节点/自动选择、退出登录及退出后的只读控制快照；进入连接页自动读取快照，管理控制台在手机浏览器打开固定页面。Android 的界面规则、状态机与验证要求由 [Android Tailscale 文档](../../Client/RelaxKonOS.Client.Android/docs/features/Tailscale.md) 维护，本文件不重复其细节。Android 不提供桌面常驻通知区域、快捷账户菜单或多账户档案切换。
+
 验证：桌面行为/传输/布局专项 **243 项通过**；Server/Helper 专项 **689 项通过**，其中 HTTP 38 项。新增状态身份解析、受限字段裁剪、完整偏好参数/回读、出口节点候选限制、退出登录的完成与关账检查。三语言各 203 个 key，980/540 DIP、明暗主题、四页、账户卡片、设备详情及新增偏好/关于/退出确认对话框已重新渲染并人工检查。使用替代 HTTP/宿主与本地无界面渲染，没有连接真实 Tailscale daemon 或打开真实浏览器，不构成双平台实机验收。
 
 ## 桌面即时状态与首次登录重构（2026-10-31）
@@ -56,7 +58,7 @@ Ubuntu 26.04 x64 从官方签名 APT 仓库外部安装 1.104.4，用户完成�
 
 这证明该 Linux 版本的观察、控制与原任务恢复切片，不证明组件中心拥有 Tailscale 安装，也不关闭跨版本安装/更新/卸载、Windows 原生控制和故障中断验收。证据与构建摘要见[实机测试记录](../testing/RelaxKonOS.Tailscale.ComponentCenter.20261030.md)。
 
-状态：桌面即时状态/自动刷新、账户与设备详情、完整官方偏好（含出口节点/无人值守/自动更新）、连接与断开、首次登录的自动回执读取/浏览器交接/完成检测、退出登录与关账、服务端条件控制与未知操作核对/关账、桌面及 Android 登录确认/关账、Android 宿主观察/条件控制/原操作恢复已实现；多账户档案切换、重置默认值、常驻通知区域图标、重新认证、运行时生命周期与真实宿主验收尚未完成。
+状态：桌面即时状态/自动刷新、账户与设备详情、完整官方偏好（含出口节点/无人值守/自动更新）、连接与断开、首次登录的自动回执读取/浏览器交接/完成检测、退出登录与关账、服务端条件控制与未知操作核对/关账、桌面及 Android 登录确认/关账、Android 账户/设备详情、完整偏好与出口节点、退出登录、宿主观察/条件控制/原操作恢复已实现；多账户档案切换、重置默认值、常驻通知区域图标、重新认证、运行时生命周期与真实宿主验收尚未完成。
 
 Android 当前交互与生命周期规则由 [Android Tailscale 文档](../../Client/RelaxKonOS.Client.Android/docs/features/Tailscale.md) 维护，设备及前后台验证要求见 [Android 验证文档](../../Client/RelaxKonOS.Client.Android/docs/development/Verification.md)。
 
@@ -394,3 +396,10 @@ dotnet run --project Tests/Tailscale/RelaxKonOS.Tailscale.Tests.csproj --no-buil
 此改动不改变 HTTP 契约，不重放请求，也不把 Prepared 变成终态；服务端期限与原任务幂等规则继续适用。桌面引用文件仍只记录身份，当前视图的未决状态不因此宣称具备跨进程持久化。Android 当前规则及验证用例由 [Android Tailscale](../../Client/RelaxKonOS.Client.Android/docs/features/Tailscale.md) 和 [Android 验证要求](../../Client/RelaxKonOS.Client.Android/docs/development/Verification.md) 维护。
 
 桌面行为／传输／布局专项 **202 项通过**，新增控制／登录 Prepared 观察不解除门禁、控制／登录缺少原 Closure 不解除关账的检查；构建通过。日志为 `.tmp/tailscale-client-prepared-build.log` 与 `.tmp/tailscale-client-prepared-tests.log`。替身响应验证不等于真实网络排队、断线或 daemon 验收；完整运行时生命周期仍未完成。
+
+
+## 出口节点空状态与应用图标（2026-10-31）
+
+偏好编辑器显式接收设备列表是否受授权限制，不再将候选列表为空推断成缺少宿主网络授权。已授权且没有其他设备提供出口节点时，三语言提示在另一台设备启用并在管理控制台批准，本机不作为自己的候选。保留原有授权检查与候选过滤。应用清单使用打包的九点阵 PNG 图标，供桌面、窗口与任务栏加载。
+
+新增授权受限/已授权空列表和图标清单检查。当前整棵客户端构建被其他在途组件中心变更的 `ShowServerModules` XAML 绑定错误阻断，尚未完成本轮专项运行与桌面视觉验收；本次没有部署客户端。

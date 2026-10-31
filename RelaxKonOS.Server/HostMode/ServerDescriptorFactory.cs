@@ -16,6 +16,13 @@ namespace RelaxKonOS.Server.HostMode;
 /// </summary>
 public static class ServerDescriptorFactory
 {
+    public static ServerDescriptorDto CreateRecovery(HostPlatformKind platform, IServerModeResolver serverMode) => new(platform, [],
+        serverMode.Describe() with
+        {
+            Capabilities = new(false, false, false, false, false, false, false, false, false, false, false, false, false, false, false),
+            Limitations = ["module-recovery-mode"],
+        });
+
     public static ServerDescriptorDto Create(HostPlatformKind platform, IServerModeResolver serverMode,
         EventAlertsOptions eventAlerts, IBackupRecoveryKeyProvider backupRecovery, IReadOnlySet<string> enabledModuleCapabilities)
     {

@@ -4,7 +4,7 @@ using RelaxKonOS.Client.Localization;
 
 namespace RelaxKonOS.Client.Apps.ComponentCenter;
 
-public enum ComponentCenterPage { All, Installed, Updates, Workloads, Tasks, Sources }
+public enum ComponentCenterPage { All, Installed, Updates, Workloads, Tasks, Sources, ServerModules }
 public sealed record ComponentCenterNavigationItem(ComponentCenterPage Page)
 {
     public LocalizedStatus Label => LocalizedStatus.Key("component_center.page." + Page);

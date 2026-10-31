@@ -22,6 +22,8 @@ public sealed partial class SystemPageViewModel : SettingsPageViewModel
 {
     private readonly IAuthSession _session;
     private readonly IServerModuleCatalog _modules;
+    public Action? RequestServerModules { get; set; }
+    [RelayCommand] private void OpenServerModules() => RequestServerModules?.Invoke();
     public Func<Task>? RequestServerHttpsAsync { get; set; }
     [RelayCommand]
     private Task OpenServerHttpsAsync() => RequestServerHttpsAsync?.Invoke() ?? Task.CompletedTask;
@@ -100,8 +102,8 @@ public sealed partial class SystemPageViewModel : SettingsPageViewModel
                 notes.Add(string.Format(localize("settings.server_modules.orphaned",
                         "{0} unfinished operation(s): {1}"),
                     module.OrphanedWork.Count, string.Join("; ", module.OrphanedWork)));
-            rows.Add(new ServerModuleRow(module.Id, module.Enabled,
-                module.Enabled
+            rows.Add(new ServerModuleRow(module.Id, module.EffectiveEnabled,
+                module.EffectiveEnabled
                     ? localize("settings.server_modules.enabled", "Enabled")
                     : localize("settings.server_modules.disabled", "Disabled"),
                 string.Join(", ", module.Capabilities),

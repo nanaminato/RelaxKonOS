@@ -7,6 +7,7 @@ using Avalonia.VisualTree;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Modules;
+using RelaxKonOS.Client.Apps.ComponentCenter;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Identity;
@@ -25,12 +26,122 @@ internal static class ServerModuleCatalogChecks
     public static async Task RunAsync(ShellSettings settings)
     {
         ExplainMissingCapability();
+        Check(ComponentCenterNavigation.TryParse(ComponentCenterNavigation.ServerModules("connection-a", "relaxkonos.git"), out var target)
+            && target is { HostId: "connection-a", ModuleId: "relaxkonos.git", Page: ComponentCenterPage.ServerModules },
+            "Module navigation keeps server and module identity separate from host software.");
+        Check(!ComponentCenterNavigation.TryParse(new Uri("relaxkonos://components/server-modules?hostId=a&moduleId=relaxkonos.git&action=install"), out _)
+            && !ComponentCenterNavigation.TryParse(new Uri("relaxkonos://components/server-modules?hostId=a&hostId=b"), out _),
+            "Module navigation rejects action payloads and duplicate identity fields.");
         await ReadOncePerLoginAsync();
         await FailSoftAsync();
         await FollowLoginLifetimeAsync();
         LocalizeReasons(settings);
         await RenderSystemPageAsync(settings);
+        await ManagementClientAsync();
+        await ValidateManagementReceiptsAsync();
         Console.WriteLine("PASS: module inventory attributes missing server capabilities and stays diagnostic-only.");
+    }
+
+    private static async Task ValidateManagementReceiptsAsync()
+    {
+        var (session, control) = NewSession(); control.SignIn("connection", "https://server.test");
+        var id = Guid.NewGuid(); var planId = Guid.NewGuid();
+        var operation = new ServerModuleOperationDto(id, planId, "host-a", ServerModuleOperationState.Succeeded,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "revision", ["relaxkonos.git"]);
+        var payload = System.Text.Json.JsonSerializer.Serialize(operation, RelaxKonOSJsonOptions.Default);
+        using var handler = new ManagementHandler(request => request.RequestUri!.AbsolutePath == ServerApiRoutes.Modules
+            ? Inventory(new ServerModuleDto("relaxkonos.git", true, [], [], [], [], ServiceId: "host-a", DesiredRevision: "revision", ProcessGeneration: "process"))
+            : new(HttpStatusCode.OK) { Content = new StringContent(payload) });
+        var client = new ServerModuleManagementClient(new HttpClient(handler), session);
+        await client.ReadAsync();
+        Check((await client.OperationAsync(id)).OperationId == id, "A current-server operation receipt preserves its exact identity.");
+        async Task Rejected(string body, string message)
+        {
+            payload = body;
+            try { await client.OperationAsync(id); throw new Exception(message); }
+            catch (Exception error) when (error is System.Text.Json.JsonException or InvalidOperationException) { Check(true, message); }
+        }
+        await Rejected(System.Text.Json.JsonSerializer.Serialize(operation with { ServiceId = "other" }, RelaxKonOSJsonOptions.Default), "A receipt from another server cannot become a completed operation.");
+        await Rejected(System.Text.Json.JsonSerializer.Serialize(operation with { OperationId = Guid.NewGuid() }, RelaxKonOSJsonOptions.Default), "A receipt for another operation cannot satisfy the requested operation.");
+        var original = System.Text.Json.JsonSerializer.Serialize(operation, RelaxKonOSJsonOptions.Default);
+        var missing = System.Text.Json.Nodes.JsonNode.Parse(original)!.AsObject(); missing.Remove("state");
+        await Rejected(missing.ToJsonString(), "Missing operation state is unknown rather than a default success or progress state.");
+        foreach (var value in new[] { "0", "\"0\"", "\"succeeded\"" })
+        {
+            var malformed = System.Text.Json.Nodes.JsonNode.Parse(original)!.AsObject(); malformed["state"] = System.Text.Json.Nodes.JsonNode.Parse(value);
+            await Rejected(malformed.ToJsonString(), "Module operation enums reject numeric and noncanonical wire values: " + value);
+        }
+        await Rejected(System.Text.Json.JsonSerializer.Serialize(operation with { ModuleResults = [new("relaxkonos.git", false, "module-active-work")] }, RelaxKonOSJsonOptions.Default),
+            "A successful receipt cannot contain an unsuccessful member result.");
+        var request = new ServerModulePlanRequest("host-a", ServerModuleAction.Enable, ["relaxkonos.git"], ["relaxkonos.git"], "revision", "key");
+        payload = System.Text.Json.JsonSerializer.Serialize(new ServerModulePlanDto(planId, "host-a", request with { EnabledModuleIds = [] }, "revision",
+            DateTimeOffset.UtcNow.AddMinutes(5), true, [], [], []), RelaxKonOSJsonOptions.Default);
+        try { await client.PreviewAsync(request); throw new Exception("Accepted altered plan membership"); }
+        catch (InvalidOperationException) { Check(true, "A preview cannot silently replace the exact requested collection."); }
+    }
+
+    private static async Task ManagementClientAsync()
+    {
+        var (session, control) = NewSession(); control.SignIn("connection-a", "https://alpha.test");
+        var actor = Guid.NewGuid();
+        var admissions = new[] { new ServerModuleActionAdmission(ServerModuleAction.Enable, true, []), new ServerModuleActionAdmission(ServerModuleAction.Disable, true, []) };
+        var facts = new[] { "relaxkonos.git", "relaxkonos.proxy" }.Select(id =>
+            new ServerModuleDto(id, false, [], [], [], [], DesiredEnabled: false, ServiceId: "host-a", DesiredRevision: "revision",
+                ProcessGeneration: "process-a", AllowedActions: admissions)).ToArray();
+        ServerModulePlanRequest? captured = null;
+        ServerModulePlanDto? frozen = null;
+        var applies = 0;
+        using var handler = new ManagementHandler(request =>
+        {
+            if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath == ServerApiRoutes.Modules) return Inventory(facts);
+            if (request.Method == HttpMethod.Post && request.RequestUri!.AbsolutePath == ServerModuleManagementRoutes.Plans)
+            {
+                captured = request.Content!.ReadFromJsonAsync<ServerModulePlanRequest>(RelaxKonOSJsonOptions.Default).GetAwaiter().GetResult()!;
+                frozen = new(Guid.NewGuid(), "host-a", captured, "revision", DateTimeOffset.UtcNow.AddMinutes(5), true, [], captured.ModuleIds, []);
+                return new(HttpStatusCode.OK) { Content = JsonContent.Create(frozen, options: RelaxKonOSJsonOptions.Default) };
+            }
+            if (request.Method == HttpMethod.Post && request.RequestUri!.AbsolutePath.EndsWith("/apply", StringComparison.Ordinal))
+            {
+                applies++;
+                return new(HttpStatusCode.OK) { Content = JsonContent.Create(new ServerModuleOperationDto(Guid.NewGuid(), frozen!.PlanId,
+                    "host-a", ServerModuleOperationState.AwaitingRestart, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "next", captured!.EnabledModuleIds), options: RelaxKonOSJsonOptions.Default) };
+            }
+            return new(HttpStatusCode.OK) { Content = JsonContent.Create(new ServerModuleOperationPage([], null), options: RelaxKonOSJsonOptions.Default) };
+        });
+        var client = new ServerModuleManagementClient(new HttpClient(handler), session);
+        var root = Path.Combine(AppContext.BaseDirectory, "module-reference-test-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var references = new ServerModuleReferenceStore(root);
+            var model = new ServerModulesViewModel(client, references, "connection-a", actor);
+            await model.RefreshCommand.ExecuteAsync(null);
+            Check(model.Modules.Count == 2, "Management reads fresh facts for the current login.");
+            var view = new ServerModulesView { DataContext = model };
+            var window = new Window { Content = new ScrollViewer { Content = view }, Width = 680, Height = 1100 };
+            window.Show(); Dispatcher.UIThread.RunJobs(); view.UpdateLayout();
+            Check(view.GetVisualDescendants().OfType<CheckBox>().Count() >= 3, "Module management renders selectable members and pending-state filter.");
+            var output = Path.Combine(AppContext.BaseDirectory, "layout-qa"); Directory.CreateDirectory(output);
+            using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(680, 1100)))
+            { bitmap.Render(window); bitmap.Save(Path.Combine(output, "server-module-management.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
+            window.Close();
+            foreach (var row in model.VisibleModules) row.IsSelected = true;
+            await model.EnableCommand.ExecuteAsync(null);
+            Check(captured?.ModuleIds.Count == 2 && captured.EnabledModuleIds.Count == 2 && applies == 0,
+                "Multi-selection previews one exact collection without submitting it.");
+            await model.ApplyCommand.ExecuteAsync(null);
+            Check(applies == 1 && references.Read("connection-a", actor).Single().PlanId == frozen!.PlanId,
+                "Explicit apply persists the original plan reference before submitting.");
+            Check(references.Read("connection-b", actor).Count == 0 && references.Read("connection-a", Guid.NewGuid()).Count == 0,
+                "Module recovery references isolate connection and account.");
+            model.Modules = facts.Select(fact => fact with { RecoveryState = "host-recovery", DesiredEnabled = true }).ToArray();
+            Check(model.IsHostRecovery && model.CanRestoreAll, "The explicit recovery surface offers restoring the full set even when it is already desired.");
+            await model.RestoreAllCommand.ExecuteAsync(null);
+            Check(captured?.ModuleIds.Count == facts.Length && captured.EnabledModuleIds.Count == facts.Length && applies == 1,
+                "Recovery previews the complete set through the existing confirmation flow without submitting it.");
+            control.SignIn("connection-b", "https://beta.test");
+            Check(!client.IsCurrent && !model.CanApply, "A changed login revokes module submission eligibility.");
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }
 
     private static void ExplainMissingCapability()
@@ -268,6 +379,12 @@ internal static class ServerModuleCatalogChecks
     private static void Check(bool value, string message)
     {
         if (!value) throw new InvalidOperationException(message);
+    }
+
+    private sealed class ManagementHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => Task.FromResult(respond(request));
     }
 
     private sealed class InventoryHandler(Func<int, HttpResponseMessage> respond) : HttpMessageHandler

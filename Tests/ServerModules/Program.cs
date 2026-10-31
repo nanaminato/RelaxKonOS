@@ -25,6 +25,22 @@ using System.Text.Encodings.Web;
 //   RelaxKonOS.ServerModules.Tests.exe --write-unresolved-stack <absolute directory>
 // Then start the Server with DockerCompose__DataDirectory=<directory> and Modules__Docker__Enabled=false:
 // it must refuse to start and name the operation.
+if (args is ["--write-module-recovery-fixture", var recoveryDirectory])
+{
+    recoveryDirectory = Path.GetFullPath(recoveryDirectory);
+    Directory.CreateDirectory(recoveryDirectory);
+    File.WriteAllText(Path.Combine(recoveryDirectory, "appsettings.host.json"), "{\"ModuleManagement\":{\"Authority\":\"managed\"}}");
+    var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        { ["ModuleManagement:Authority"] = "managed" }).Build();
+    using var store = new ModuleManagementStore(configuration, recoveryDirectory);
+    var modules = ServerModules.Create(configuration);
+    var facts = modules.EnabledIds.Select(id => new ServerModuleDto(id, true, [], [], [], [])).ToArray();
+    var plan = store.Preview("fixture", new(store.ServiceId, ServerModuleAction.Disable, [ServerModules.GitId],
+        modules.EnabledIds.Where(id => id != ServerModules.GitId).ToArray(), store.Revision, "fixture-disable"), facts);
+    store.Apply("fixture", plan.PlanId, facts);
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(ModuleManagementStore.ReadRecoveryReport(recoveryDirectory), RelaxKonOSJsonOptions.Default));
+    return;
+}
 if (args is ["--write-unresolved-stack", var fixtureDirectory])
 {
     var fixtureBuilder = WebApplication.CreateBuilder();
@@ -69,6 +85,14 @@ static IConfiguration Config(params (string Key, string? Value)[] values) =>
 
 var empty = new ConfigurationBuilder().Build();
 var defaults = ServerModules.Create(empty);
+ModuleManagementChecks.Run(Check);
+ModulePolicyManagementChecks.Run(Check);
+await ModuleRecoveryChecks.RunAsync(Check);
+await ModuleRecoveryHostChecks.RunAsync(Check);
+await FirewallResidencyChecks.RunAsync(Check);
+await ModuleDependencyResidencyChecks.RunAsync(Check);
+await ModuleManagementHttpChecks.RunAsync(Check);
+await ModuleRuntimeManagementChecks.RunAsync(Check);
 
 // The default set must reproduce a Server that predates the registry: every official module on.
 Check(defaults.IsEnabled(ServerModules.TerminalId), "default enables terminal");
@@ -244,7 +268,7 @@ Check(defaults.Capabilities.SetEquals([ServerCapabilities.Terminal, ServerCapabi
 
         var inventory = await ServerModules.Create(new ConfigurationBuilder().Build())
             .DescribeAsync(services, context, CancellationToken.None);
-        Check(inventory.Count == defaults.EnabledIds.Count && inventory.All(item => item.Enabled && item.OrphanedWork.Count == 0),
+        Check(inventory.Count == defaults.EnabledIds.Count && inventory.All(item => item.EffectiveEnabled && item.OrphanedWork.Count == 0),
             "every official module is listed as enabled with nothing outstanding");
         Check(inventory.Single(item => item.Id == ServerModules.CertificatesId).RequiredBy.SequenceEqual([ServerModules.WebServerId]),
             "an enabled dependent is reported as a reason its dependency cannot be disabled");
@@ -252,7 +276,7 @@ Check(defaults.Capabilities.SetEquals([ServerCapabilities.Terminal, ServerCapabi
         var withoutWebServer = await ServerModules.Create(Config(("Modules:WebServer:Enabled", "false")))
             .DescribeAsync(services, context, CancellationToken.None);
         var webServer = withoutWebServer.Single(item => item.Id == ServerModules.WebServerId);
-        Check(!webServer.Enabled && webServer.OrphanedWork.Count == 0 && webServer.Capabilities.Count == 1,
+        Check(!webServer.EffectiveEnabled && webServer.OrphanedWork.Count == 0 && webServer.Capabilities.Count == 1,
             "a disabled module is reported as disabled, keeps its declared capability, and is not inspected");
         Check(withoutWebServer.Single(item => item.Id == ServerModules.CertificatesId).RequiredBy.Count == 0,
             "a disabled dependent stops being a reason to keep its dependency enabled");
@@ -608,6 +632,27 @@ foreach (var enabled in new[] { true, false })
     var residencyServices = new ServiceCollection().AddLogging().AddHttpContextAccessor().BuildServiceProvider();
     var residencyLogger = residencyServices.GetRequiredService<ILogger<ModuleResidencyCoordinator>>();
     var zeroGrace = ModuleResidencyOptions.Parse(Config(("ModuleResidency:IdleGraceSeconds", "0")), residencyIds, residencyIds);
+    var limited = ModuleResidencyOptions.Parse(Config(("ModuleResidency:MaxWaitingPerModule", "1")), residencyIds, residencyIds);
+    var ready = new TaskCompletionSource<IServerModuleRuntime>(TaskCreationOptions.RunContinuationsAsynchronously);
+    var queuedFactory = new FakeRuntimeFactory(ServerModules.GitId) { Pending = ready.Task };
+    await using (var bounded = new ModuleResidencyCoordinator([queuedFactory], limited, residencyServices, residencyContext, residencyLogger))
+    {
+        using var cancelled = new CancellationTokenSource();
+        var waiting = bounded.AcquireAsync(ServerModules.GitId, cancelled.Token);
+        var overload = await UnavailableAsync(() => bounded.AcquireAsync(ServerModules.GitId));
+        Check(overload?.Code == "module-wake-overloaded" && queuedFactory.Created == 1, "bounded wake queue rejects overload without a second load");
+        cancelled.Cancel();
+        try { await waiting; throw new Exception("cancelled waiter acquired a lease"); }
+        catch (OperationCanceledException) { }
+        var second = bounded.AcquireAsync(ServerModules.GitId);
+        ready.SetResult(new FakeRuntime(ServerModules.GitId));
+        using var lease = await second;
+        Check(queuedFactory.Created == 1, "cancelled wake waiter frees admission without cancelling shared initialization");
+        using var alreadyCancelled = new CancellationTokenSource();
+        alreadyCancelled.Cancel();
+        try { using var _ = await bounded.AcquireAsync(ServerModules.GitId, alreadyCancelled.Token); throw new Exception("cancelled request admitted"); }
+        catch (OperationCanceledException) { Check(bounded.Describe(ServerModules.GitId)!.ActiveLeases == 1, "cancelled request cannot acquire an active runtime lease"); }
+    }
     await using (var coordinator = new ModuleResidencyCoordinator([slowFactory], zeroGrace, residencyServices,
                      residencyContext, residencyLogger, sweepInterval: TimeSpan.FromMilliseconds(20)))
     {
@@ -730,7 +775,7 @@ foreach (var enabled in new[] { true, false })
     Check(inventory.Single(item => item.Id == ServerModules.GitId).Residency is { Releasable: true, State: "dormant" }
           && inventoryFactory.Created == 0,
         "the module inventory reports residency without loading the module");
-    Check(inventory.Where(item => item.Enabled && item.Id != ServerModules.GitId)
+    Check(inventory.Where(item => item.EffectiveEnabled && !defaults.KnownReleasableModuleIds.Contains(item.Id))
             .All(item => item.Residency is { Releasable: false, State: "resident" }),
         "a module without a release boundary is reported as resident, not as dormant");
 }

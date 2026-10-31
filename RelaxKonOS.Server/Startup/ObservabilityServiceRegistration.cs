@@ -4,7 +4,7 @@ namespace RelaxKonOS.Server.Startup;
 
 internal static class ObservabilityServiceRegistration
 {
-    public static RelaxKonOS.Server.EventAlerts.EventAlertsOptions AddServerObservability(this WebApplicationBuilder builder, bool isDevelopment)
+    public static RelaxKonOS.Server.EventAlerts.EventAlertsOptions AddServerObservability(this WebApplicationBuilder builder, bool isDevelopment, bool includeEventAlerts = true)
     {
         // Critical privileged operations fail closed when their security audit cannot be persisted. A
         // Rider/dotnet-run development process has no installer-managed audit path, so give it a stable,
@@ -28,6 +28,7 @@ internal static class ObservabilityServiceRegistration
         builder.Services.AddSingleton<IEventLogger, EventLogger>();
         builder.Services.AddSingleton<ISecurityAuditWriter, SecurityAuditWriter>();
         builder.Services.AddHostedService<ObservabilityStartupValidationService>();
+        if (!includeEventAlerts) return new() { Enabled = false };
         var eventAlertsOptions = builder.Configuration.GetSection(RelaxKonOS.Server.EventAlerts.EventAlertsOptions.SectionName)
             .Get<RelaxKonOS.Server.EventAlerts.EventAlertsOptions>() ?? new RelaxKonOS.Server.EventAlerts.EventAlertsOptions();
         eventAlertsOptions.Validate();

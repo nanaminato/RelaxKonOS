@@ -236,6 +236,9 @@ internal static class AuthenticationServiceRegistration
                 policy.RequireAuthenticatedUser().RequireAssertion(context =>
                     context.User.HasClaim("role", "controller")
                     || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")));
+            options.AddPolicy(RelaxKonOS.Server.Endpoints.ServerModuleManagementEndpoints.ManagePolicy, policy =>
+                policy.RequireAuthenticatedUser().RequireAssertion(context =>
+                    RelaxKonOS.Server.Endpoints.ServerModuleManagementEndpoints.CanManage(context.User, builder.Configuration)));
             options.AddPolicy("ProxyServerExport", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
                 context.User.HasClaim("role", "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")));
             options.AddPolicy("ProxyManage", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>

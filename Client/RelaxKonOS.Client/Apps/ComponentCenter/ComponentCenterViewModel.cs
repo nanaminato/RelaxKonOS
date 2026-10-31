@@ -18,6 +18,8 @@ public sealed record ComponentDraftItem(ComponentChangeDraft Draft)
 /// <summary>Local drafts, frozen previews, and separately approved, durably tracked task execution.</summary>
 public partial class ComponentCenterViewModel : ObservableObject, IDisposable
 {
+    public ServerModulesViewModel? ServerModules { get; set; }
+    public bool ShowServerModules => SelectedPage == ComponentCenterPage.ServerModules;
     private readonly ComponentDraftStore _store;
     private readonly string _server;
     private readonly Guid _actor;
@@ -277,6 +279,8 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     partial void OnSelectedNavigationChanged(ComponentCenterNavigationItem? value)
     {
         OnPropertyChanged(nameof(SelectedPage));
+        OnPropertyChanged(nameof(ShowServerModules));
+        if (ShowServerModules && ServerModules is { } modules) _ = modules.RefreshCommand.ExecuteAsync(null);
         SelectedNode = null;
         RefreshTree();
     }
@@ -357,6 +361,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     }
     private void RefreshTree()
     {
+        if (ShowServerModules) { VisibleRoots.Clear(); SelectedNode = null; NotifyContext(); return; }
         var selected = Drafts.Select(item => item.Draft.ComponentId).ToHashSet(StringComparer.Ordinal);
         foreach (var root in _componentRoots.Concat(_workloadRoots))
         {

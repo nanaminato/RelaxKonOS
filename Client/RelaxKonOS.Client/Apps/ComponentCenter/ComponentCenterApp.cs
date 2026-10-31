@@ -29,13 +29,15 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
     public void HandleActivation(AppContext context, AppActivationRequest request, RelaxKonOS.WindowManager.ManagedWindow? existingWindow)
     {
         if (_model is null || !ComponentCenterNavigation.TryParse(request.Uri, out var target)) return;
-        if (target!.HostId != _model.HostIdentity || _model.Runtime.IsInvalidated)
+        if (target!.HostId != _model.HostIdentity || (target.Page == ComponentCenterPage.ServerModules
+                ? _model.ServerModules?.IsCurrent != true : _model.Runtime.IsInvalidated))
         {
             _model.Notice = LocalizedStatus.Key("component_center.host_mismatch");
             return;
         }
         var taskTarget = target.Page is ComponentCenterPage.Tasks or ComponentCenterPage.Workloads;
         _model.Locate(taskTarget ? target with { Page = ComponentCenterPage.All, WorkloadId = null } : target);
+        if (target.Page == ComponentCenterPage.ServerModules) _model.ServerModules?.LocateModule(target.ModuleId);
         if (target.WorkloadId is { } workload)
             _model.TaskWorkload = _model.TaskWorkloads.FirstOrDefault(item => item.WorkloadId == workload);
         if (taskTarget) _ = _model.OpenTasksCommand.ExecuteAsync(null);
@@ -76,6 +78,11 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             model.GitEngine.PropertyChanged += (_, _) => model.RefreshGitState();
         }
         model.ConnectionAvailable = true;
+        if (context.Services.GetService(typeof(IHttpClientFactory)) is IHttpClientFactory moduleHttp)
+            model.ServerModules = new(new RelaxKonOS.Client.Services.Modules.ServerModuleManagementClient(
+                moduleHttp.CreateClient(RelaxKonOS.Client.Services.Modules.ServerModuleCatalog.HttpClientName), session),
+                context.Services.GetService(typeof(RelaxKonOS.Client.Services.Modules.ServerModuleReferenceStore)) as RelaxKonOS.Client.Services.Modules.ServerModuleReferenceStore,
+                session.ServiceId, session.CurrentUser!.Id);
         _model = model;
         if (context.Services.GetService(typeof(RelaxKonOS.Client.Apps.WebServers.IRemoteWebServerClient)) is RelaxKonOS.Client.Apps.WebServers.IRemoteWebServerClient web
             && context.Services.GetService(typeof(RelaxKonOS.Client.Apps.Certificates.IRemoteCertificateClient)) is RelaxKonOS.Client.Apps.Certificates.IRemoteCertificateClient certificates
@@ -248,12 +255,15 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
         EventHandler<AuthSessionStateChangedEventArgs> sessionChanged = (_, _) =>
         {
             Avalonia.Threading.Dispatcher.UIThread.Post(access.Synchronize);
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => model.ServerModules?.Invalidate());
         };
         session.StateChanged += sessionChanged;
         var taskRefresh = new Avalonia.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         taskRefresh.Tick += async (_, _) =>
         {
             access.Synchronize();
+            if (model.ShowServerModules && model.ServerModules is { ShouldObserveOperation: true } modules)
+                await modules.ObserveOperationAsync();
             var wasTaskActive = model.CurrentTaskRun?.State is RelaxKonOS.Protocol.TaskOrchestration.TaskRunState.Queued or RelaxKonOS.Protocol.TaskOrchestration.TaskRunState.Running or RelaxKonOS.Protocol.TaskOrchestration.TaskRunState.Cancelling;
             await model.TickTaskAsync();
             if (runtime.CanRead && !runtime.IsBusy && !model.IsTaskBusy && !runtime.IsInvalidated && (runtime.HasActiveOperation || wasTaskActive))

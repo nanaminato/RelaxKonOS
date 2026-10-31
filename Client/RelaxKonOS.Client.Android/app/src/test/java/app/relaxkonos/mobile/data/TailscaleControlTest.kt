@@ -25,7 +25,8 @@ class TailscaleControlTest {
     private val session = AuthSession(base)
     private val storage = Storage()
     private val references = TailscaleOperationReferences(storage)
-    private val baseline = TailscaleControl("A".repeat(64),false,true,TailscaleConfiguration(true,false),true,null)
+    private val baseline = TailscaleControl("A".repeat(64),false,true,TailscaleConfiguration(true,false),true,null,
+        TailscalePreferences(true,false,false,null,false,false,false,false),"linux")
     private var executions = 0
     private var closes = 0
     private var loseResponse = false
@@ -41,7 +42,7 @@ class TailscaleControlTest {
         override suspend fun tailscaleControl(serverUrl: String, accessToken: String): ApiResult<TailscaleControl> =
             if (needsAuthorization && !authorized) ApiResult.Problem(403,"tailscale.elevation_required",null) else ApiResult.Success(baseline)
         override suspend fun prepareTailscale(serverUrl: String, accessToken: String, request: TailscalePlanRequest): ApiResult<TailscaleOperation> {
-            val plan = TailscaleOperation(request.operationId,request.action,TailscaleOperationState.Prepared,request.expectedRevision,Instant.now().plusSeconds(240),Instant.now(),request.configuration,null,null)
+            val plan = TailscaleOperation(request.operationId,request.action,TailscaleOperationState.Prepared,request.expectedRevision,Instant.now().plusSeconds(240),Instant.now(),request.configuration,null,null,request.preferences)
             records[plan.operationId] = plan
             return ApiResult.Success(if (badPlan) plan.copy(operationId = UUID.randomUUID().toString()) else plan)
         }
@@ -73,6 +74,20 @@ class TailscaleControlTest {
     }
     private suspend fun plan(owner: SessionState.Active) = (repository.prepare(owner,baseline,TailscaleAction.Connect,null,ElevationAnswerProvider.Declines) as ApiResult.Success).value
     private suspend fun reject(action: suspend () -> Unit) { assertTrue(runCatching { action() }.isFailure) }
+    @Test fun `extended preferences and logout use closed no-argument plans`() = runTest {
+        val owner = signIn()
+        val preferences = requireNotNull(baseline.preferences).copy(shieldsUp = true, exitNode = "100.64.0.9",
+            exitNodeAllowLanAccess = true, autoUpdate = true, advertiseExitNode = true)
+        val prefPlan = (repository.prepare(owner,baseline,TailscaleAction.ConfigurePreferences,null,
+            ElevationAnswerProvider.Declines,preferences) as ApiResult.Success).value
+        assertEquals(TailscaleAction.ConfigurePreferences,prefPlan.action); assertEquals(preferences,prefPlan.preferences)
+        assertNull(prefPlan.configuration)
+        val logout = (repository.prepare(owner,baseline,TailscaleAction.Logout,null,
+            ElevationAnswerProvider.Declines) as ApiResult.Success).value
+        assertEquals(TailscaleAction.Logout,logout.action); assertNull(logout.configuration); assertNull(logout.preferences)
+        reject { repository.prepare(owner,baseline,TailscaleAction.ConfigurePreferences,null,
+            ElevationAnswerProvider.Declines) }
+    }
     @Test fun `lost response is discoverable without replay and unrelated reads do not resolve it`() = runTest {
         val owner = signIn(); val first = plan(owner); val second = plan(owner)
         loseResponse = true

@@ -1,6 +1,7 @@
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Firewall;
+using RelaxKonOS.Server.Residency;
 
 namespace RelaxKonOS.Server.Startup.Modules;
 
@@ -9,20 +10,17 @@ namespace RelaxKonOS.Server.Startup.Modules;
 /// runs through the Core-owned privileged Helper transport and the elevation grant check, so
 /// enabling or disabling it never widens the authorization surface.
 /// </summary>
-internal sealed class FirewallModule : IServerModule
+internal sealed class FirewallModule : IServerModule, IServerModuleResidency
 {
     public string Id => ServerModules.FirewallId;
     public IReadOnlyList<string> Capabilities => [ServerCapabilities.Firewall];
     public IReadOnlyList<string> Requires => [];
+    public IServerModuleRuntimeFactory RuntimeFactory { get; } = new FirewallModuleRuntimeFactory();
 
     public void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
     {
-        if (OperatingSystem.IsLinux())
-            builder.Services.AddSingleton<IHostFirewallService, LinuxUfwFirewallService>();
-        else if (OperatingSystem.IsWindows())
-            builder.Services.AddSingleton<IHostFirewallService, WindowsFirewallService>();
-        else
-            builder.Services.AddSingleton<IHostFirewallService, UnavailableHostFirewallService>();
+        builder.Services.AddSingleton<IHostFirewallService>(services => ModuleServiceProxy<IHostFirewallService>.Create(
+            services.GetRequiredService<ModuleResidencyCoordinator>(), Id));
     }
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)

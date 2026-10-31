@@ -20,7 +20,8 @@ class TailscaleViewModelTest {
     private val session = AuthSession(base)
     private val storage = TailscaleControlTest.Storage()
     private val references = TailscaleOperationReferences(storage)
-    private val baseline = TailscaleControl("A".repeat(64),false,true,TailscaleConfiguration(true,false),true,null)
+    private val baseline = TailscaleControl("A".repeat(64),false,true,TailscaleConfiguration(true,false),true,null,
+        TailscalePreferences(true,false,false,null,false,false,false,false),"linux")
     private var executions = 0
     private var loseResponse = false
     private var prepareHold: CompletableDeferred<Unit>? = null
@@ -29,7 +30,7 @@ class TailscaleViewModelTest {
         override suspend fun tailscaleControl(serverUrl: String, accessToken: String) = ApiResult.Success(baseline)
         override suspend fun prepareTailscale(serverUrl: String, accessToken: String, request: TailscalePlanRequest): ApiResult<TailscaleOperation> {
             prepareHold?.await()
-            val plan = TailscaleOperation(request.operationId,request.action,TailscaleOperationState.Prepared,request.expectedRevision,Instant.now().plusSeconds(240),Instant.now(),request.configuration,null,null)
+            val plan = TailscaleOperation(request.operationId,request.action,TailscaleOperationState.Prepared,request.expectedRevision,Instant.now().plusSeconds(240),Instant.now(),request.configuration,null,null,request.preferences)
             plans[plan.operationId] = plan
             return ApiResult.Success(plan)
         }
@@ -52,6 +53,24 @@ class TailscaleViewModelTest {
     private suspend fun signIn(account: String = "alice") {
         base.onLogin = { _,_,_ -> ApiResult.Success(loginSession().let { it.copy(userName = account,server = it.server.copy(capabilities = setOf(ServerCapabilities.TAILSCALE),privilegedOperations = true)) }) }
         session.login(ServerConnectionIdentityRules.direct("https://example.test"),account,"pw".toCharArray()) {}
+    }
+    @Test fun `extended preferences freeze one closed plan without executing`() = runTest {
+        signIn(); advanceUntilIdle(); model.loadControl(); advanceUntilIdle()
+        val preferences = requireNotNull(baseline.preferences).copy(shieldsUp = true, exitNode = "100.64.0.9",
+            exitNodeAllowLanAccess = true, autoUpdate = true, advertiseExitNode = true)
+        model.prepare(TailscaleAction.ConfigurePreferences,preferences = preferences); advanceUntilIdle()
+        val review = model.review
+        assertNotNull(review); assertEquals(TailscaleAction.ConfigurePreferences,review!!.plan!!.action)
+        assertEquals(preferences,review.plan!!.preferences); assertNull(review.plan!!.configuration)
+        assertEquals(0,executions)
+    }
+    @Test fun `logout plan has no configuration and still requires review`() = runTest {
+        signIn(); advanceUntilIdle(); model.loadControl(); advanceUntilIdle()
+        model.prepare(TailscaleAction.Logout); advanceUntilIdle()
+        val review = model.review
+        assertNotNull(review); assertEquals(TailscaleAction.Logout,review!!.plan!!.action)
+        assertNull(review.plan!!.configuration); assertNull(review.plan!!.preferences)
+        assertEquals(0,executions)
     }
     @Test fun `opening only reads local references and never requests control authorization`() = runTest {
         signIn(); advanceUntilIdle(); model.loadRecords(); advanceUntilIdle()

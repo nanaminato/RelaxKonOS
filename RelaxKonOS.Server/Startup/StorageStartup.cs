@@ -7,7 +7,7 @@ namespace RelaxKonOS.Server.Startup;
 
 internal static class StorageStartup
 {
-    public static void AddServerStorage(this WebApplicationBuilder builder, StorageOptions storageOpts, string storageProvider)
+    public static void AddServerStorage(this WebApplicationBuilder builder, StorageOptions storageOpts, string storageProvider, bool identityOnly = false)
     {
         if (storageProvider == "sqlite")
         {
@@ -34,19 +34,22 @@ internal static class StorageStartup
             builder.Services.AddSingleton<RelaxKonOS.Server.ConfigurationRegistry.CachedSqliteRegistryRepository>();
             builder.Services.AddSingleton<IRegistryRepository>(sp => sp.GetRequiredService<RelaxKonOS.Server.ConfigurationRegistry.CachedSqliteRegistryRepository>());
             builder.Services.AddHostedService(sp => sp.GetRequiredService<RelaxKonOS.Server.ConfigurationRegistry.CachedSqliteRegistryRepository>());
-            builder.Services.AddScoped<IImageMirrorRepository, SqliteImageMirrorRepository>();
-            builder.Services.AddScoped<RelaxKonOS.Server.Secrets.ISecretStore, RelaxKonOS.Server.Secrets.DataProtectionSecretStore>();
-            builder.Services.AddScoped<RelaxKonOS.Server.Tunnels.ITunnelService, RelaxKonOS.Server.Tunnels.TunnelService>();
-            builder.Services.AddScoped<RelaxKonOS.Server.Tunnels.ITunnelAudit, RelaxKonOS.Server.Tunnels.TunnelAudit>();
-            // Proxy state repositories are storage adapters, so they stay with the provider choice.
-            // IProxyProfileRepository is also read by Core's mihomo configuration publication, which
-            // must keep working when the proxy module is disabled. The services layered on top are
-            // registered by relaxkonos.proxy (Startup/Modules/ProxyModule.cs).
-            builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyProfileRepository, RelaxKonOS.Server.Proxy.SqliteProxyProfileRepository>();
-            builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxySubscriptionRepository, RelaxKonOS.Server.Proxy.SqliteProxySubscriptionRepository>();
-            // The Docker proxy preference opens its own connection per operation, so it is a Singleton
-            // like the proxy subscription repository rather than bound to a request scope.
-            builder.Services.AddSingleton<IDockerProxySettingsRepository, RelaxKonOS.Server.Storage.Sqlite.SqliteDockerProxySettingsRepository>();
+            if (!identityOnly)
+            {
+                builder.Services.AddScoped<IImageMirrorRepository, SqliteImageMirrorRepository>();
+                builder.Services.AddScoped<RelaxKonOS.Server.Secrets.ISecretStore, RelaxKonOS.Server.Secrets.DataProtectionSecretStore>();
+                builder.Services.AddScoped<RelaxKonOS.Server.Tunnels.ITunnelService, RelaxKonOS.Server.Tunnels.TunnelService>();
+                builder.Services.AddScoped<RelaxKonOS.Server.Tunnels.ITunnelAudit, RelaxKonOS.Server.Tunnels.TunnelAudit>();
+                // Proxy state repositories are storage adapters, so they stay with the provider choice.
+                // IProxyProfileRepository is also read by Core's mihomo configuration publication, which
+                // must keep working when the proxy module is disabled. The services layered on top are
+                // registered by relaxkonos.proxy (Startup/Modules/ProxyModule.cs).
+                builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyProfileRepository, RelaxKonOS.Server.Proxy.SqliteProxyProfileRepository>();
+                builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxySubscriptionRepository, RelaxKonOS.Server.Proxy.SqliteProxySubscriptionRepository>();
+                // The Docker proxy preference opens its own connection per operation, so it is a Singleton
+                // like the proxy subscription repository rather than bound to a request scope.
+                builder.Services.AddSingleton<IDockerProxySettingsRepository, RelaxKonOS.Server.Storage.Sqlite.SqliteDockerProxySettingsRepository>();
+            }
         }
         else
         {

@@ -17,6 +17,7 @@ public sealed class TailscaleApp : RemoteApplicationBase
     public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.tailscale"),
         "Tailscale", "0.1.0", "◉", "Tailscale", [AppPermissions.ServerComponentsRead],
         ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.Tailscale]),
+        IconPath: "avares://RelaxKonOS.Client/Assets/AppIcons/tailscale.png",
         InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
     public override void Activate(AppContext context)
@@ -67,11 +68,11 @@ public sealed class TailscaleApp : RemoteApplicationBase
                 new TailscaleRecoveryDialog(preview, target, language, value => { accepted = value; dialog.Close(value); }), new Size(580, 380));
             return accepted;
         };
-        model.EditPreferencesDialogAsync = async (preferences, exitNodes, platform) =>
+        model.EditPreferencesDialogAsync = async (preferences, exitNodes, platform, peersRestricted) =>
         {
             TailscalePreferences? result = null;
             await context.ShowDialogAsync<TailscalePreferences?>(window, LocalizedText.Get("tailscale.preferences.title"), dialog =>
-                new TailscalePreferencesDialog(preferences, exitNodes, platform, language, value => { result = value; dialog.Close(value); }), new Size(560, 600));
+                new TailscalePreferencesDialog(preferences, exitNodes, platform, peersRestricted, language, value => { result = value; dialog.Close(value); }), new Size(560, 600));
             return result;
         };
         model.OpenAdminConsoleHandler = () =>

@@ -12,11 +12,11 @@ public partial class TailscalePreferencesDialog : UserControl
 {
     private readonly Action<TailscalePreferences?> _complete;
     public TailscalePreferencesDialog(TailscalePreferences preferences, IReadOnlyList<TailscaleExitNodeItem> exitNodes,
-        string? platform, LocalizationService language, Action<TailscalePreferences?> complete)
+        string? platform, bool peersRestricted, LocalizationService language, Action<TailscalePreferences?> complete)
     {
         InitializeComponent();
         _complete = complete;
-        var model = new TailscalePreferencesEditor(preferences, exitNodes, platform, language);
+        var model = new TailscalePreferencesEditor(preferences, exitNodes, platform, peersRestricted, language);
         DataContext = model;
         AttachedToVisualTree += (_, _) => language.LanguageChanged += model.Changed;
         DetachedFromVisualTree += (_, _) => language.LanguageChanged -= model.Changed;
@@ -49,14 +49,16 @@ public sealed partial class TailscalePreferencesEditor : ObservableObject
     public IReadOnlyList<TailscaleExitNodeChoice> ExitNodeChoices { get; }
     public bool CanEditUnattended => _platform == "windows";
     public bool HasExitNode => SelectedExitNode?.Ip is { Length: > 0 };
-    public bool NoCandidates => _candidates.Count == 0;
+    public bool PeersRestricted { get; }
+    public bool NoCandidates => !PeersRestricted && _candidates.Count == 0;
     private readonly string? _platform;
 
     public TailscalePreferencesEditor(TailscalePreferences preferences, IReadOnlyList<TailscaleExitNodeItem> candidates,
-        string? platform, LocalizationService language)
+        string? platform, bool peersRestricted, LocalizationService language)
     {
         _language = language;
         _platform = platform;
+        PeersRestricted = peersRestricted;
         _candidates = candidates;
         _allowIncoming = !preferences.ShieldsUp;
         _acceptDns = preferences.AcceptDns;

@@ -79,13 +79,19 @@ fun ComponentCenterScreen(
     modifier: Modifier = Modifier,
 ) {
     val container = appContainer()
+    var modules by remember(owner) { mutableStateOf(!owner.privilegedOperations) }
+    if (modules) {
+        androidx.activity.compose.BackHandler { if (owner.privilegedOperations) modules = false else onBack() }
+        ServerModulesPanel(owner, { if (owner.privilegedOperations) modules = false else onBack() }, modifier)
+        return
+    }
     val model: ComponentCenterViewModel = viewModel(factory = viewModelFactory {
         initializer {
             ComponentCenterViewModel(container.session, container.components,
                 container.installations, container.elevationAnswers)
         }
     })
-    ComponentCenterContent(owner, model, onBack, onOpenRoute, modifier)
+    ComponentCenterContent(owner, model, onBack, onOpenRoute, modifier, onModules = { modules = true })
 }
 
 @Composable
@@ -95,6 +101,7 @@ internal fun ComponentCenterContent(
     onBack: () -> Unit,
     onOpenRoute: (String) -> Unit,
     modifier: Modifier = Modifier,
+    onModules: () -> Unit = {},
 ) {
     val container = appContainer()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -237,6 +244,7 @@ internal fun ComponentCenterContent(
 
     Column(modifier.fillMaxSize().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         ScreenHeader(title = stringResource(R.string.components_title), onBack = onBack)
+        OutlinedButton(onClick = onModules) { Text(stringResource(R.string.server_modules_title)) }
         Text(stringResource(R.string.components_note), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         PageActionRow(
