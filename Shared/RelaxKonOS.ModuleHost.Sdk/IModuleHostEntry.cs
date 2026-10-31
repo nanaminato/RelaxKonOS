@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Logging;
 
 namespace RelaxKonOS.ModuleHost.Sdk;
 
@@ -21,6 +22,16 @@ public interface IModuleHostContext
     string ModuleId { get; }
     string ModuleDataPath { get; }
     string HostApiVersion { get; }
+    IModuleHostStorage Storage { get; }
+    ILogger Logger { get; }
+}
+
+/// <summary>Bounded, path-confined storage owned by one ModuleHost process.</summary>
+public interface IModuleHostStorage
+{
+    ValueTask<byte[]?> ReadAsync(string relativePath, int maximumBytes, CancellationToken cancellationToken);
+    ValueTask WriteAsync(string relativePath, ReadOnlyMemory<byte> content, CancellationToken cancellationToken);
+    bool Delete(string relativePath);
 }
 
 public sealed record ModuleHostHealth(bool Healthy, string? ProblemCode = null);

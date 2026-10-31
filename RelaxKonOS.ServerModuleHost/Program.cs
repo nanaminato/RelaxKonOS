@@ -44,7 +44,10 @@ public static class ModuleHostProgram
             entry = Load(root, manifest);
             if (entry.Id != moduleId) throw new ModuleHostException("module-host-entry-id-mismatch");
             Directory.CreateDirectory(dataPath);
-            var context = new Context(moduleId, dataPath);
+            using var loggerFactory = LoggerFactory.Create(builder => builder.SetMinimumLevel(LogLevel.Information)
+                .AddProvider(new StderrLoggerProvider()));
+            var context = new Context(moduleId, dataPath, new ModuleHostStorage(dataPath),
+                loggerFactory.CreateLogger(moduleId));
             await entry.StartAsync(context, CancellationToken.None);
             var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = [], ContentRootPath = root });
             builder.Logging.ClearProviders();
@@ -192,7 +195,8 @@ public static class ModuleHostProgram
     private sealed record Manifest(int SchemaVersion, string ModuleId, string Version, string EntryAssembly,
         string EntryType, FileEntry[] Files);
     private sealed record FileEntry(string Path, long Length, string Sha256);
-    private sealed record Context(string ModuleId, string ModuleDataPath) : IModuleHostContext
+    private sealed record Context(string ModuleId, string ModuleDataPath, IModuleHostStorage Storage,
+        ILogger Logger) : IModuleHostContext
     {
         public string HostApiVersion => HostApiVersionValue;
         private const string HostApiVersionValue = "2.0.0";

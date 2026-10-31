@@ -54,9 +54,11 @@ internal static class ModuleHostChecks
                 "ModuleHost rejects a request without its service token");
             http.DefaultRequestHeaders.TryAddWithoutValidation(ModuleHostProtocol.ServiceTokenHeader, client.ServiceToken);
             var body = await http.GetStringAsync("/hello");
+            var storage = await http.GetStringAsync("/storage");
             var health = await client.HealthAsync();
             await client.ShutdownAsync();
-            check(ready.ModuleId == "fixture-host" && health.Healthy && body == "hello from module host",
+            check(ready.ModuleId == "fixture-host" && health.Healthy && body == "hello from module host"
+                && storage == "hello from module storage",
                 "Server can launch, route to and control an isolated ModuleHost over the line protocol");
 
             var adminId = Guid.NewGuid();
