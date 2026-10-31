@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using RelaxKonOS.ModuleHost.Protocol;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Modules;
@@ -20,6 +21,41 @@ public sealed record ServerModulePolicyChoice(string Value)
 public sealed partial class ServerModulesViewModel(ServerModuleManagementClient client,
     ServerModuleReferenceStore? references = null, string? connectionId = null, Guid actor = default) : ObservableObject
 {
+    [ObservableProperty] private string privilegePlanId = "";
+    [ObservableProperty] private string privilegeAdministrator = "";
+    [ObservableProperty] private string privilegePassword = "";
+    [ObservableProperty] private string privilegeText = "";
+    [ObservableProperty] private ModulePrivilegePlan? privilegePlan;
+    partial void OnPrivilegePlanIdChanged(string value) { PrivilegePlan = null; PrivilegeText = ""; }
+    [RelayCommand] private Task LoadPrivilegeAsync() => Run(async () =>
+    {
+        if (!Guid.TryParse(PrivilegePlanId, out var id)) throw new InvalidOperationException("module.privilege_plan_not_found");
+        var plan = await client.PrivilegePlanAsync(id);
+        PrivilegePlan = plan;
+        PrivilegeText = $"{plan.ModuleId} · {plan.Version} · {plan.PublisherId}\n{plan.ArtifactSha256}\n{plan.Kind} · {plan.Target}\n{plan.Reason}\n"
+            + string.Join("\n", plan.Effects.Concat(plan.Warnings)) + $"\n{plan.State} · {plan.ExpiresAt}";
+    });
+    [RelayCommand] private Task ApprovePrivilegeAsync() => Run(async () =>
+    {
+        if (PrivilegePlan is not { State: "AwaitingConfirmation" } plan || plan.ExpiresAt <= DateTimeOffset.UtcNow)
+            throw new InvalidOperationException("module.privilege_plan_expired");
+        try
+        {
+            var result = await client.ApprovePrivilegeAsync(plan.PlanId,
+                new(plan.PlanHash, plan.ConfirmationToken, PrivilegeAdministrator, PrivilegePassword));
+            PrivilegeText += $"\n{result.State} · {result.ProblemCode}";
+            PrivilegePlan = null;
+        }
+        finally { PrivilegePassword = ""; }
+    });
+    [RelayCommand] private Task CancelPrivilegeAsync() => Run(async () =>
+    {
+        if (PrivilegePlan is not { } plan) return;
+        var result = await client.CancelPrivilegeAsync(plan.PlanId);
+        PrivilegeText += $"\n{result.State}";
+        PrivilegePlan = null;
+        PrivilegePassword = "";
+    });
     [ObservableProperty] private IReadOnlyList<ServerModuleDto> modules = [];
     [ObservableProperty] private ServerModuleDto? selected;
     [ObservableProperty] private ServerModuleSelection? selectedRow;
@@ -123,7 +159,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         string.Join("\n", PackageOperations.Take(20).Select(operation =>
             $"{operation.Action} · {operation.ModuleId} {operation.Version} · {operation.State} · {operation.ProblemCode}"));
     public string PackagePlanText => PackagePlan is not { } plan ? "" :
-        $"{plan.ModuleId} · {plan.Version} · {plan.PublisherId}\n{plan.ReleaseId}\n{plan.ArtifactSha256}\n{plan.ExpiresAt}";
+        $"{plan.Name} · {plan.ModuleId} · {plan.Version} · {plan.PublisherId}\n{plan.Summary}\n{plan.Runtime}\n{string.Join("\n", plan.Privileges.Select(p => p.Kind + " · " + p.Target))}\n{plan.ReleaseId}\n{plan.ArtifactSha256}\n{plan.ExpiresAt}";
     public string StoreSourceText => StoreSources.Count == 0 ? "" :
         $"catalog {CatalogRevision}\n" + string.Join("\n", StoreSources.Select(source =>
             $"{source.SourceId} · {source.Status} · seq {source.Sequence} · policy {source.PolicyRevision}"
@@ -210,7 +246,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         RollbackPackageCommand.NotifyCanExecuteChanged(); InstallStoreItemCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanRestoreAll)); RestoreAllCommand.NotifyCanExecuteChanged();
     }
-    public void Invalidate() { Modules = []; Selected = null; Plan = null; OperationText = ""; InstalledPackages = []; SelectedVersions = []; SelectedPackageVersion = null; PackageOperations = []; PackagePlan = null; StoreItems = []; StoreSources = []; CatalogRevision = "uninitialized"; SelectedStoreItem = null; HealthText = ""; PackageStatus = "module-session-changed"; Notify(); }
+    public void Invalidate() { PrivilegePlan = null; PrivilegePassword = ""; PrivilegeAdministrator = ""; PrivilegeText = ""; PrivilegePlanId = ""; Modules = []; Selected = null; Plan = null; OperationText = ""; InstalledPackages = []; SelectedVersions = []; SelectedPackageVersion = null; PackageOperations = []; PackagePlan = null; StoreItems = []; StoreSources = []; CatalogRevision = "uninitialized"; SelectedStoreItem = null; HealthText = ""; PackageStatus = "module-session-changed"; Notify(); }
     [RelayCommand] private async Task RefreshAsync() => await Run(async () =>
     {
         // Clear before reading: failed refreshes show unknown instead of stale successful facts.

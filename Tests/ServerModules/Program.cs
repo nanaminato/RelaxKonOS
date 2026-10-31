@@ -20,6 +20,51 @@ using RoyalTerminal.Terminal;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 
+if (args is ["--module-host-checks"])
+{
+    await ModuleHostChecks.RunAsync((passed, message) =>
+    {
+        Console.WriteLine($"{(passed ? "PASS" : "FAIL")}: {message}");
+        if (!passed) throw new InvalidOperationException(message);
+    });
+    return;
+}
+
+if (args is ["--module-package-checks"])
+{
+    void Verify(bool passed, string message)
+    {
+        Console.WriteLine($"{(passed ? "PASS" : "FAIL")}: {message}");
+        if (!passed) throw new InvalidOperationException(message);
+    }
+    await ModulePackageChecks.RunAsync(Verify);
+    await ModulePackageBuilderChecks.RunAsync(Verify);
+    await ModuleReleaseDirectoryChecks.RunAsync(Verify);
+    await InstalledModuleChecks.RunAsync(Verify);
+    await InstalledIsolatedModuleChecks.RunAsync(Verify);
+    return;
+}
+
+if (args is ["--module-privilege-checks"])
+{
+    await ModulePrivilegeChecks.RunAsync((passed, message) =>
+    {
+        Console.WriteLine($"{(passed ? "PASS" : "FAIL")}: {message}");
+        if (!passed) throw new InvalidOperationException(message);
+    });
+    return;
+}
+
+if (args is ["--windows-module-host-checks"])
+{
+    await WindowsModuleHostChecks.RunAsync((passed, message) =>
+    {
+        Console.WriteLine($"{(passed ? "PASS" : "FAIL")}: {message}");
+        if (!passed) throw new InvalidOperationException(message);
+    });
+    return;
+}
+
 // Fixture writer for the process-level deactivation check, so the ledger under test is produced by the
 if (args is ["--write-module-package-fixture", var packageFixture])
 {
@@ -108,10 +153,14 @@ await GitDeactivationChecks.RunAsync(Check);
 await ModulePackageChecks.RunAsync(Check);
 await ModulePackageBuilderChecks.RunAsync(Check);
 await ModuleHostChecks.RunAsync(Check);
+await ModulePrivilegeChecks.RunAsync(Check);
+await WindowsModuleHostChecks.RunAsync(Check);
 await ModuleReleaseDirectoryChecks.RunAsync(Check);
 await InstalledModuleChecks.RunAsync(Check);
+await InstalledIsolatedModuleChecks.RunAsync(Check);
 await ModuleManagementHttpChecks.RunAsync(Check);
 await ModulePackageHttpChecks.RunAsync(Check);
+await ModulePackageHttpChecks.RunAsync(Check, isolated: true);
 await ModuleRuntimeManagementChecks.RunAsync(Check);
 
 // The default set must reproduce a Server that predates the registry: every official module on.

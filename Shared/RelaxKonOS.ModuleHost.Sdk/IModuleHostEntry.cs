@@ -24,6 +24,7 @@ public interface IModuleHostContext
     string HostApiVersion { get; }
     IModuleHostStorage Storage { get; }
     ILogger Logger { get; }
+    IModulePrivilegeBroker Privileges { get; }
 }
 
 /// <summary>Bounded, path-confined storage owned by one ModuleHost process.</summary>
@@ -45,4 +46,11 @@ public interface IModuleHostHealth
 public interface IModuleHostHttp
 {
     void MapEndpoints(IEndpointRouteBuilder endpoints, IModuleHostContext context);
+}
+
+public interface IModulePrivilegeBroker
+{
+    ValueTask<RelaxKonOS.ModuleHost.Protocol.ModulePrivilegePrepared> PrepareAsync(
+        RelaxKonOS.ModuleHost.Protocol.ModulePrivilegeRequest request, CancellationToken cancellationToken);
+    ValueTask<RelaxKonOS.ModuleHost.Protocol.ModulePrivilegeStatus> GetAsync(Guid planId, CancellationToken cancellationToken);
 }

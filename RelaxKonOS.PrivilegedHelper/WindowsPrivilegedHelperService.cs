@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.ServiceProcess;
@@ -16,6 +16,7 @@ public sealed class WindowsPrivilegedHelperService : ServiceBase
     private readonly WindowsHelperServiceConfiguration _configuration;
     private WindowsPrivilegedPipeServer? _pipeServer;
     private WindowsUserExecutionPipeServer? _userExecutionPipeServer;
+    private WindowsModuleHostPipeServer? _moduleHostPipeServer;
 
     private WindowsPrivilegedHelperService(WindowsHelperServiceConfiguration configuration)
     {
@@ -62,6 +63,12 @@ public sealed class WindowsPrivilegedHelperService : ServiceBase
         _pipeServer = new WindowsPrivilegedPipeServer(_configuration.ToPipeConfiguration(), exception =>
             EventLog.WriteEntry(ServiceName, $"Privileged Helper pipe request failed: {exception.GetType().Name}", EventLogEntryType.Warning));
         _pipeServer.Start();
+        if (_configuration.ModuleHosts is not null)
+        {
+            _moduleHostPipeServer = new WindowsModuleHostPipeServer(_configuration.ToPipeConfiguration(), exception =>
+                EventLog.WriteEntry(ServiceName, $"ModuleHost launch request failed: {exception.GetType().Name}", EventLogEntryType.Warning));
+            _moduleHostPipeServer.Start();
+        }
         if (_configuration.EnableWindowsUserExecution)
         {
             _userExecutionPipeServer = new WindowsUserExecutionPipeServer(_configuration.ToPipeConfiguration(), exception =>
@@ -72,12 +79,14 @@ public sealed class WindowsPrivilegedHelperService : ServiceBase
 
     protected override void OnStop()
     {
+        if (_moduleHostPipeServer is not null) _moduleHostPipeServer.StopAsync().GetAwaiter().GetResult();
         if (_pipeServer is not null) _pipeServer.StopAsync().GetAwaiter().GetResult();
         if (_userExecutionPipeServer is not null) _userExecutionPipeServer.StopAsync().GetAwaiter().GetResult();
     }
 
     protected override void Dispose(bool disposing)
     {
+        if (disposing && _moduleHostPipeServer is not null) _moduleHostPipeServer.DisposeAsync().AsTask().GetAwaiter().GetResult();
         if (disposing && _userExecutionPipeServer is not null) _userExecutionPipeServer.DisposeAsync().AsTask().GetAwaiter().GetResult();
         if (disposing && _pipeServer is not null) _pipeServer.DisposeAsync().AsTask().GetAwaiter().GetResult();
         base.Dispose(disposing);
@@ -90,7 +99,7 @@ public sealed record WindowsHelperServiceConfiguration(string PipeName, string S
     bool EnableWindowsUserExecution = false, int UserExecutionTimeoutSeconds = 25,
     string? NginxRoot = null, string? RuntimePrivateRoot = null,
     IReadOnlyList<string>? RuntimeArchiveRoots = null, IReadOnlyList<WindowsFrpRelease>? FrpReleases = null,
-    string ServiceName = "RelaxKonOSPrivilegedHelper", string? PersonalOwnerSid = null, string? PersonalProxyRoot = null, IReadOnlyList<WindowsNginxRelease>? NginxReleases = null)
+    string ServiceName = "RelaxKonOSPrivilegedHelper", string? PersonalOwnerSid = null, string? PersonalProxyRoot = null, IReadOnlyList<WindowsNginxRelease>? NginxReleases = null, WindowsModuleHostPolicy? ModuleHosts = null)
 {
     public void Validate()
     {
@@ -113,13 +122,14 @@ public sealed record WindowsHelperServiceConfiguration(string PipeName, string S
         else if (ServiceName != "RelaxKonOSPrivilegedHelper" || PersonalProxyRoot is not null)
             throw new InvalidOperationException("System Helper service identity cannot be changed.");
         WindowsManagedRuntimePolicy.Create(NginxRoot, RuntimePrivateRoot, RuntimeArchiveRoots, [], FrpReleases, NginxReleases).Validate();
+        ModuleHosts?.Validate();
     }
 
     internal WindowsHelperPipeConfiguration ToPipeConfiguration()
         => new(PipeName, SharedSecret, FileAllowedRoots, AllowedServiceIds, ServerServiceSid,
             UserExecutionTimeoutSeconds: UserExecutionTimeoutSeconds,
             WindowsRuntimes: WindowsManagedRuntimePolicy.Create(NginxRoot, RuntimePrivateRoot, RuntimeArchiveRoots, [ServerServiceSid], FrpReleases, NginxReleases),
-            PersonalOwnerSid: PersonalOwnerSid);
+            PersonalOwnerSid: PersonalOwnerSid, ModuleHosts: ModuleHosts);
 
     public void VerifyCurrentExecutable()
     {

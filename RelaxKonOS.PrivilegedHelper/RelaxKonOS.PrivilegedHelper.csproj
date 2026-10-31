@@ -8,6 +8,8 @@
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="RelaxKonOS.WindowsGit.Tests" />
+    <InternalsVisibleTo Include="RelaxKonOS.ServerModules.Tests" />
+    <InternalsVisibleTo Include="RelaxKonOS.ModuleHost.Windows.Tests" />
     <Compile Include="../RelaxKonOS.Server/Tailscale/TailscaleManager.cs;../RelaxKonOS.Server/Tailscale/TailscaleStatusCommand.cs" Link="Tailscale/%(Filename)%(Extension)" />
     <Compile Include="../RelaxKonOS.Server/Files/FileArchiveService*.cs;../RelaxKonOS.Server/Files/LocalArchiveFileSystem.cs;../RelaxKonOS.Server/Files/IArchiveReader.cs;../RelaxKonOS.Server/Files/SevenZipArchiveProvider.cs;../RelaxKonOS.Server/Files/ArchivePasswordException.cs" Link="Files/%(Filename)%(Extension)" />
     <None Include="../RelaxKonOS.Server/Assets/SevenZip/**/*" Link="Assets/SevenZip/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
@@ -21,6 +23,8 @@
     <Compile Include="../RelaxKonOS.Server/SystemPerformance/IProcessService.cs" Link="SystemPerformance/IProcessService.cs" />
     <Compile Include="../RelaxKonOS.Server/SystemPerformance/HostProcessSnapshotCollector.cs" Link="SystemPerformance/HostProcessSnapshotCollector.cs" />
     <Compile Include="../RelaxKonOS.Server/SystemMonitor/LinuxProcessMetadata.cs" Link="SystemMonitor/LinuxProcessMetadata.cs" />
+    <ProjectReference Include="../Shared/RelaxKonOS.ModuleHost.Protocol/RelaxKonOS.ModuleHost.Protocol.csproj" />
+    <ProjectReference Include="../Shared/RelaxKonOS.ServerModules.Packaging/RelaxKonOS.ServerModules.Packaging.csproj" />
     <ProjectReference Include="..\Shared\RelaxKonOS.Protocol\RelaxKonOS.Protocol.csproj" />
     <ProjectReference Include="../Shared/RelaxKonOS.ManagedRuntimes/RelaxKonOS.ManagedRuntimes.csproj" />
     <PackageReference Include="RoyalApps.RoyalTerminal.Terminal.Pty.Platform" />

@@ -6,3 +6,5 @@ using System.Runtime.CompilerServices;
 // configuration, so its native check is evidence about the generator rather than about a fixture.
 [assembly: InternalsVisibleTo("RelaxKonOS.ManagedRuntimes.Tests")]
 [assembly: InternalsVisibleTo("RelaxKonOS.Tailscale.Tests")]
+
+[assembly: InternalsVisibleTo("RelaxKonOS.ModuleHost.Windows.Tests")]

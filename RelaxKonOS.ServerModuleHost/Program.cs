@@ -1,4 +1,6 @@
 using System.Reflection;
+using RelaxKonOS.ModulePackaging;
+using System.Runtime.InteropServices;
 using System.Runtime.Loader;
 using System.Security.Cryptography;
 using System.Text;
@@ -7,6 +9,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.ModuleHost.Sdk;
 using ProtocolHealth = RelaxKonOS.ModuleHost.Protocol.ModuleHostHealth;
@@ -24,8 +27,21 @@ public static class ModuleHostProgram
     private const string HostApiVersion = "2.0.0";
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = false };
 
-    public static async Task<int> Main(string[] args) => await RunAsync(args, Console.In, Console.Out,
-        Environment.GetEnvironmentVariable(ModuleHostProtocol.ServiceTokenEnvironment));
+    public static async Task<int> Main(string[] args)
+    {
+        if (args is ["--isolated"] && OperatingSystem.IsLinux())
+        {
+            try { return await LinuxModuleHostIsolation.RunAsync(); }
+            catch (Exception error)
+            {
+                Console.Error.WriteLine("module-host-isolation error=" + error.GetType().Name);
+                await WriteAsync(Console.Out, new ModuleHostFaulted("faulted", "module-host-isolation-failed"));
+                return 77;
+            }
+        }
+        return await RunAsync(args, Console.In, Console.Out,
+            Environment.GetEnvironmentVariable(ModuleHostProtocol.ServiceTokenEnvironment));
+    }
 
     public static async Task<int> RunAsync(string[] args, TextReader input, TextWriter output,
         string? serviceToken = null)
@@ -46,11 +62,14 @@ public static class ModuleHostProgram
             Directory.CreateDirectory(dataPath);
             using var loggerFactory = LoggerFactory.Create(builder => builder.SetMinimumLevel(LogLevel.Information)
                 .AddProvider(new StderrLoggerProvider()));
+            var accessor = new HttpContextAccessor();
             var context = new Context(moduleId, dataPath, new ModuleHostStorage(dataPath),
-                loggerFactory.CreateLogger(moduleId));
+                loggerFactory.CreateLogger(moduleId), new ModuleHostPrivilegeClient(
+                    Environment.GetEnvironmentVariable(ModulePrivilegeProtocol.BrokerEnvironment), serviceToken, accessor));
             await entry.StartAsync(context, CancellationToken.None);
             var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = [], ContentRootPath = root });
             builder.Logging.ClearProviders();
+            builder.Services.AddSingleton<IHttpContextAccessor>(accessor);
             builder.WebHost.UseUrls("http://127.0.0.1:0");
             application = builder.Build();
             if (serviceToken is { Length: > 0 })
@@ -97,7 +116,7 @@ public static class ModuleHostProgram
             return 0;
         }
         catch (Exception error) when (error is ModuleHostException or IOException or UnauthorizedAccessException
-            or BadImageFormatException or JsonException)
+            or BadImageFormatException or JsonException or ModulePackageException)
         {
             await WriteAsync(output, new ModuleHostFaulted("faulted", error is ModuleHostException host
                 ? host.ProblemCode : "module-host-start-failed"));
@@ -141,23 +160,22 @@ public static class ModuleHostProgram
         return values;
     }
 
-    private static Manifest ReadManifest(string root, string moduleId)
+    private static ModulePackageManifest ReadManifest(string root, string moduleId)
     {
         var path = Path.Combine(root, "manifest.json");
         if (!File.Exists(path) || new FileInfo(path).Length is 0 or > 4 * 1024 * 1024)
             throw new ModuleHostException("module-host-package-invalid");
-        var manifest = JsonSerializer.Deserialize<Manifest>(File.ReadAllBytes(path), Json)
-            ?? throw new ModuleHostException("module-host-package-invalid");
-        if (manifest.SchemaVersion != 1 || manifest.ModuleId != moduleId || manifest.Files is not { Length: > 0 }
-            || string.IsNullOrWhiteSpace(manifest.Version) || string.IsNullOrWhiteSpace(manifest.EntryAssembly)
-            || string.IsNullOrWhiteSpace(manifest.EntryType))
-            throw new ModuleHostException("module-host-package-invalid");
-        if (manifest.Files.Any(file => file is null) || !manifest.Files.Any(file => file.Path == manifest.EntryAssembly))
+        var manifest = ModulePackageJson.Read<ModulePackageManifest>(File.ReadAllBytes(path));
+        ModulePackageVerifier.ValidateManifest(manifest);
+        if (manifest.Runtime != "module-host" || manifest.ModuleId != moduleId
+            || manifest.Rid != RuntimeInformation.RuntimeIdentifier
+            || Version.Parse(HostApiVersion) < Version.Parse(manifest.HostApiMinimum)
+            || Version.Parse(HostApiVersion) >= Version.Parse(manifest.HostApiMaximumExclusive))
             throw new ModuleHostException("module-host-package-invalid");
         return manifest;
     }
 
-    private static void VerifyFiles(string root, Manifest manifest)
+    private static void VerifyFiles(string root, ModulePackageManifest manifest)
     {
         foreach (var file in manifest.Files)
         {
@@ -167,13 +185,16 @@ public static class ModuleHostProgram
                 || !File.Exists(path) || new FileInfo(path).Length != file.Length
                 || file.Sha256 is not { Length: 64 } || !file.Sha256.All(char.IsAsciiHexDigitLower))
                 throw new ModuleHostException("module-host-package-invalid");
+            for (var current = path; current != root; current = Path.GetDirectoryName(current)!)
+                if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+                    throw new ModuleHostException("module-host-package-invalid");
             using var stream = File.OpenRead(path);
             if (Convert.ToHexStringLower(SHA256.HashData(stream)) != file.Sha256)
                 throw new ModuleHostException("module-host-package-invalid");
         }
     }
 
-    private static IModuleHostEntry Load(string root, Manifest manifest)
+    private static IModuleHostEntry Load(string root, ModulePackageManifest manifest)
     {
         var path = Path.GetFullPath(Path.Combine(root, manifest.EntryAssembly));
         var context = new LoadContext(path);
@@ -192,11 +213,8 @@ public static class ModuleHostProgram
         await output.FlushAsync();
     }
 
-    private sealed record Manifest(int SchemaVersion, string ModuleId, string Version, string EntryAssembly,
-        string EntryType, FileEntry[] Files);
-    private sealed record FileEntry(string Path, long Length, string Sha256);
     private sealed record Context(string ModuleId, string ModuleDataPath, IModuleHostStorage Storage,
-        ILogger Logger) : IModuleHostContext
+        ILogger Logger, IModulePrivilegeBroker Privileges) : IModuleHostContext
     {
         public string HostApiVersion => HostApiVersionValue;
         private const string HostApiVersionValue = "2.0.0";
@@ -204,12 +222,14 @@ public static class ModuleHostProgram
     private sealed class LoadContext(string entry) : AssemblyLoadContext("module-host")
     {
         private static readonly Assembly Sdk = typeof(IModuleHostEntry).Assembly;
+        private static readonly Assembly Protocol = typeof(ModuleHostReady).Assembly;
         private readonly AssemblyDependencyResolver _resolver = new(entry);
         private readonly string _directory = Path.GetDirectoryName(entry)!;
 
         protected override Assembly? Load(AssemblyName name)
         {
             if (name.Name == Sdk.GetName().Name) return Sdk;
+            if (name.Name == Protocol.GetName().Name) return Protocol;
             var path = _resolver.ResolveAssemblyToPath(name);
             if (path is null && name.Name is { } simple)
             {

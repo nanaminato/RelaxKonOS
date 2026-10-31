@@ -377,7 +377,7 @@ def extract(source, runtime, kind, destination, archive, request_path=None):
         if manifest.get('schemaVersion') != 1 or manifest.get('runtime') != runtime or manifest.get('packageKind') != kind or not re.fullmatch(r'[0-9A-Za-z][0-9A-Za-z._-]{0,63}',manifest.get('version','')): raise ValueError('package kind/runtime/version')
         if source == 'officialStable' and manifest['version'] != descriptor.get('version'): raise ValueError('official version mismatch')
         required = ['payload/linux/server/RelaxKonOS.Server','payload/linux/guardian/RelaxKonOS.Guardian.Agent','deployment/verify-release-inventory.py']
-        if kind == 'server': required += ['payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper','deployment/bootstrap/install-relaxkonos.sh','deployment/bootstrap/uninstall-relaxkonos.sh','deployment/linux/install-relaxkonos-services.sh']
+        if kind == 'server': required += ['payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper','deployment/bootstrap/install-relaxkonos.sh','deployment/bootstrap/uninstall-relaxkonos.sh','deployment/linux/install-relaxkonos-services.sh','deployment/linux/install-relaxkonos-module-host.sh','payload/linux/server/module-host/RelaxKonOS.ServerModuleHost']
         required += ['deployment/user/relaxkon']
         files = {e.filename:e for e in entries if not e.is_dir()}
         missing = [name for name in required if name not in files]

@@ -19,9 +19,9 @@ internal static class ModulePackageChecks
         string Hash(byte[] value) => Convert.ToHexStringLower(SHA256.HashData(value));
         var rid = System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier;
         var content = Encoding.UTF8.GetBytes("package fixture; not executable code");
-        var manifest = new ModulePackageManifest(1, "server-module", "example", "fixture-release", "1.0.0", "relaxkon", "official", rid,
+        var manifest = new ModulePackageManifest(2, "server-module", "example", "fixture-release", "1.0.0", "relaxkon", "official", rid,
             "1.0.0", "2.0.0", "server/" + rid + "/Fixture.dll", "Fixture.Module", "fixture-build", new string('a', 40), [], [],
-            [new("server/" + rid + "/Fixture.dll", content.Length, Hash(content))]);
+            [new("server/" + rid + "/Fixture.dll", content.Length, Hash(content))], "in-process", [], new("Example", "", "", null, "MIT"));
         var manifestBytes = Json(manifest);
         using var buffer = new MemoryStream();
         using (var zip = new ZipArchive(buffer, ZipArchiveMode.Create, true))
@@ -56,9 +56,9 @@ internal static class ModulePackageChecks
         var empty = ModulePackageTrustHistory.Empty(policy, context);
         var bytes = Encoding.UTF8.GetBytes("candidate bytes, never executed");
         string Hash(byte[] value) => Convert.ToHexStringLower(SHA256.HashData(value));
-        var manifest = new ModulePackageManifest(1, "server-module", "firewall", "firewall-1-linux-x64", "1.0.0", "relaxkon",
+        var manifest = new ModulePackageManifest(2, "server-module", "firewall", "firewall-1-linux-x64", "1.0.0", "relaxkon",
             "official", "linux-x64", "1.0.0", "2.0.0", "server/linux-x64/Firewall.dll", "RelaxKon.Firewall.Module", "build-1",
-            new string('a', 40), [], ["firewall"], [new("server/linux-x64/Firewall.dll", bytes.Length, Hash(bytes))]);
+            new string('a', 40), [], ["firewall"], [new("server/linux-x64/Firewall.dll", bytes.Length, Hash(bytes))], "in-process", [], new("Firewall", "", "", null, "MIT"));
         byte[] Json<T>(T value) => JsonSerializer.SerializeToUtf8Bytes(value, ModulePackageJson.Options);
         byte[] Archive(ModulePackageManifest m, Action<ZipArchive>? alter = null, byte[]? manifestBytes = null, byte[]? fileBytes = null)
         {
@@ -100,6 +100,22 @@ internal static class ModulePackageChecks
             { check(true, "module package " + name); return; }
             throw new Exception("module package archive rejection absent: " + name);
         }
+        Reject(() => Verify(catalog with { Releases = [release with { Manifest = manifest with { SchemaVersion = 1 } }] }),
+            "manifest-invalid", "v1 manifest rejected without fallback");
+        Reject(() => Verify(catalog with { Releases = [release with { Manifest = manifest with { Runtime = "other" } }] }),
+            "runtime-invalid", "unknown runtime rejected");
+        Reject(() => Verify(catalog with { Releases = [release with { Manifest = manifest with { Purpose = "third-party" } }] }),
+            "runtime-invalid", "third-party code cannot request in-process loading");
+        Reject(() => Verify(catalog with { Releases = [release with { Manifest = manifest with { Runtime = "module-host" } }] }),
+            "module-host-capability-forbidden", "isolated modules cannot publish Core capabilities");
+        Reject(() => Verify(catalog with { Releases = [release with { Manifest = manifest with { Privileges = [new("shell", "bash")] } }] }),
+            "privilege-invalid", "arbitrary privilege kinds rejected");
+        var legacyBytes = Json(manifest).ToArray();
+        using (var document = JsonDocument.Parse(legacyBytes))
+        {
+            var fields = document.RootElement.EnumerateObject().Where(p => p.Name != "runtime").ToDictionary(p => p.Name, p => p.Value.Clone());
+            Reject(() => ModulePackageJson.Read<ModulePackageManifest>(Json(fields)), "metadata-invalid", "missing runtime rejected");
+        }
         var accepted = Verify(catalog);
         check(accepted.NextHistory.Sequence == 1 && empty.Sequence == 0 && empty.KeyHashes.Count == 0,
             "module package verification returns isolated next history without mutating source");
@@ -140,7 +156,7 @@ internal static class ModulePackageChecks
         Reject(() => Verify(catalog, h: accepted.NextHistory with { ServiceId = "another-host" }), "history-identity-invalid", "trust history bound to server identity");
         var developmentPolicy = policy with { Purpose = "development", DevelopmentServiceId = context.ServiceId };
         Reject(() => Verify(catalog, developmentPolicy), "development-source-forbidden", "development source forbidden on production host");
-        var developmentCatalog = catalog with { Releases = [release with { Manifest = manifest with { Purpose = "development" } }] };
+        var developmentCatalog = catalog with { Releases = [release with { Manifest = manifest with { Purpose = "development", Runtime = "module-host", Capabilities = [] } }] };
         check(Verify(developmentCatalog, developmentPolicy, context with { DevelopmentInstance = true },
             ModulePackageTrustHistory.Empty(developmentPolicy, context)).Catalog.Releases[0].Manifest.Purpose == "development",
             "module package development source requires explicit bound development instance");
@@ -163,7 +179,7 @@ internal static class ModulePackageChecks
             linked = memory.ToArray();
         }
         await RejectArchive(linked, catalog with { Releases = [Release(manifest, linked)] }, "archive-entry-invalid", "symbolic links rejected");
-        var duplicateJson = Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(Json(manifest)).Replace("\"schemaVersion\":1", "\"schemaVersion\":1,\"schemaVersion\":1", StringComparison.Ordinal));
+        var duplicateJson = Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(Json(manifest)).Replace("\"schemaVersion\":2", "\"schemaVersion\":2,\"schemaVersion\":2", StringComparison.Ordinal));
         var duplicateManifest = Archive(manifest, manifestBytes: duplicateJson);
         await RejectArchive(duplicateManifest, catalog with { Releases = [Release(manifest, duplicateManifest, duplicateJson)] }, "metadata-invalid", "duplicate manifest json properties rejected");
         Reject(() => Verify(catalog with { Releases = [release with { Manifest = manifest with { EntryAssembly = "../evil.dll" } }] }), "entry-assembly-invalid", "entry assembly traversal rejected");

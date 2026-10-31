@@ -46,6 +46,13 @@
     "server_modules.store_empty": "没有匹配的已接纳发布。",
     "server_modules.store_downloading": "正在下载已接纳发布…",
     "server_modules.store_details": "发布详情",
-    "server_modules.check_health": "检查模块健康"
+    "server_modules.check_health": "检查模块健康",
+    "server_modules.privilege_title": "模块提权确认",
+    "server_modules.privilege_plan_id": "计划 ID",
+    "server_modules.privilege_load": "查看计划",
+    "server_modules.privilege_administrator": "管理员账户（需要时填写）",
+    "server_modules.privilege_password": "管理员密码（需要时填写）",
+    "server_modules.privilege_approve": "确认并执行此计划",
+    "server_modules.privilege_cancel": "拒绝此计划"
   }
 }

@@ -50,6 +50,8 @@ try
     builder.Services.AddSingleton(serverModules);
     builder.Services.AddHostedService<ModuleHealthMonitor>();
     builder.Services.AddHostedService<ModuleCatalogRefreshMonitor>();
+    builder.Services.AddSingleton<CoreModulePrivilegeBroker>();
+    builder.Services.AddHostedService(services => services.GetRequiredService<CoreModulePrivilegeBroker>());
     builder.Services.AddSingleton<ModuleHostSupervisor>();
     builder.Services.AddHostedService(services => services.GetRequiredService<ModuleHostSupervisor>());
 

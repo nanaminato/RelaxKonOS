@@ -35,6 +35,8 @@ class PackageSourceChecks(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(); self.root = Path(self.temp.name)
         self.archive = self.root/'server.zip'
         self.files = {'payload/linux/server/RelaxKonOS.Server':b'server',
+                      'payload/linux/server/module-host/RelaxKonOS.ServerModuleHost':b'module-host',
+                      'deployment/linux/install-relaxkonos-module-host.sh':b'#!/bin/bash\n',
                       'payload/linux/guardian/RelaxKonOS.Guardian.Agent':b'guardian',
                       'deployment/user/relaxkon':b'#!/bin/bash\n',
                       'deployment/verify-release-inventory.py':b'# verifier\n',

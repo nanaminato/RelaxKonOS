@@ -83,7 +83,9 @@ class ReleaseInventoryChecks(unittest.TestCase):
                          'deployment/user/relaxkon', 'deployment/verify-release-inventory.py',
                          'deployment/bootstrap/install-relaxkonos.sh',
                          'deployment/bootstrap/uninstall-relaxkonos.sh',
-                         'deployment/linux/install-relaxkonos-services.sh'):
+                         'deployment/linux/install-relaxkonos-services.sh',
+                         'deployment/linux/install-relaxkonos-module-host.sh',
+                         'payload/linux/server/module-host/RelaxKonOS.ServerModuleHost'):
             target = self.root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(b'fixture')
@@ -114,7 +116,8 @@ class ReleaseInventoryChecks(unittest.TestCase):
                 # All required files except the launcher, matching the reported release defect.
                 for relative in ('payload/linux/server/RelaxKonOS.Server',
                                  'payload/linux/guardian/RelaxKonOS.Guardian.Agent',
-                                 'payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper'):
+                                 'payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper',
+                                 'payload/linux/server/module-host/RelaxKonOS.ServerModuleHost'):
                     target = self.root / relative
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_bytes(b'fixture')

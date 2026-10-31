@@ -31,15 +31,16 @@ internal static class ModulePackageStore
                     if (!Matches(manifest, query)) continue;
                     var revoked = revokedIds.Contains(manifest.ReleaseId) || revokedDigests.Contains(release.ArchiveSha256);
                     var rid = string.Equals(manifest.Rid, context.Rid, StringComparison.Ordinal);
-                    var api = ParseVersion(manifest.HostApiMinimum) <= ParseVersion(context.HostApiVersion)
-                        && ParseVersion(context.HostApiVersion) < ParseVersion(manifest.HostApiMaximumExclusive);
+                    var hostApi = manifest.Runtime == "module-host" ? "2.0.0" : context.HostApiVersion;
+                    var api = ParseVersion(manifest.HostApiMinimum) <= ParseVersion(hostApi)
+                        && ParseVersion(hostApi) < ParseVersion(manifest.HostApiMaximumExclusive);
                     List<ServerModuleBlocker> blockers = [];
                     if (revoked) blockers.Add(new("module-package-release-revoked", manifest.ModuleId));
                     if (!rid) blockers.Add(new("module-package-rid-mismatch", manifest.ModuleId));
                     if (!api) blockers.Add(new("module-package-host-api-incompatible", manifest.ModuleId));
                     items.Add(new ServerModuleStoreItemDto(policy.SourceId, manifest.ModuleId, manifest.Version,
                         manifest.ReleaseId, manifest.Rid, manifest.PublisherId, policy.Purpose,
-                        revoked ? "revoked" : policy.Purpose == "official" ? "official" : "development",
+                        revoked ? "revoked" : policy.Purpose,
                         release.ArchiveSha256, release.ManifestSha256, release.ArchiveBytes,
                         manifest.HostApiMinimum, manifest.HostApiMaximumExclusive,
                         manifest.Dependencies.Select(dependency => new ServerModuleReleaseDependencyDto(dependency.ModuleId,

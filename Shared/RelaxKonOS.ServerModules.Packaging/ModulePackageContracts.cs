@@ -2,10 +2,13 @@ namespace RelaxKonOS.ModulePackaging;
 
 public sealed record ModulePackageFile(string Path, long Length, string Sha256);
 public sealed record ModulePackageDependency(string ModuleId, string MinimumVersion, string MaximumVersionExclusive);
+public sealed record ModulePackagePrivilege(string Kind, string Target);
+public sealed record ModulePackageUi(string Name, string Summary, string Description, string? Homepage, string License);
 public sealed record ModulePackageManifest(int SchemaVersion, string PackageKind, string ModuleId, string ReleaseId,
     string Version, string PublisherId, string Purpose, string Rid, string HostApiMinimum, string HostApiMaximumExclusive,
     string EntryAssembly, string EntryType, string BuildId, string SourceCommit,
-    ModulePackageDependency[] Dependencies, string[] Capabilities, ModulePackageFile[] Files);
+    ModulePackageDependency[] Dependencies, string[] Capabilities, ModulePackageFile[] Files,
+    string Runtime, ModulePackagePrivilege[] Privileges, ModulePackageUi Ui);
 public sealed record ModulePackageRelease(ModulePackageManifest Manifest, string ManifestSha256, string ArchiveSha256,
     long ArchiveBytes, string DownloadUri);
 public sealed record ModulePackageCatalog(int SchemaVersion, string SourceId, long Sequence, DateTimeOffset IssuedAt,

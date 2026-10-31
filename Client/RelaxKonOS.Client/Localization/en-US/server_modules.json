@@ -46,6 +46,13 @@
     "server_modules.store_empty": "No accepted release matched.",
     "server_modules.store_downloading": "Downloading the accepted release…",
     "server_modules.store_details": "Release details",
-    "server_modules.check_health": "Check module health"
+    "server_modules.check_health": "Check module health",
+    "server_modules.privilege_title": "Module privilege confirmation",
+    "server_modules.privilege_plan_id": "Plan ID",
+    "server_modules.privilege_load": "Review plan",
+    "server_modules.privilege_administrator": "Administrator account (if required)",
+    "server_modules.privilege_password": "Administrator password (if required)",
+    "server_modules.privilege_approve": "Confirm and execute this plan",
+    "server_modules.privilege_cancel": "Refuse this plan"
   }
 }

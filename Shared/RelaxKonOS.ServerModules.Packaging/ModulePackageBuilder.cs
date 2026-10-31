@@ -28,7 +28,8 @@ public sealed record ModulePackageBuildOptions(
     string HostApiMinimum = "1.0.0",
     string HostApiMaximumExclusive = "2.0.0",
     IReadOnlyList<string>? Capabilities = null,
-    IReadOnlyList<ModulePackageDependency>? Dependencies = null);
+    IReadOnlyList<ModulePackageDependency>? Dependencies = null,
+    string Runtime = "in-process", IReadOnlyList<ModulePackagePrivilege>? Privileges = null, ModulePackageUi? Ui = null);
 
 public sealed record ModulePackageBuildResult(ModulePackageManifest Manifest, string ManifestSha256,
     string ArchivePath, string ArchiveSha256, long ArchiveBytes, string CatalogPath, string PublicKeySpkiBase64);
@@ -49,7 +50,7 @@ public static class ModulePackageBuilder
         if (!ModulePackageRules.Id(options.ModuleId) || !ModulePackageRules.Id(options.ReleaseId)
             || !ModulePackageRules.Id(options.PublisherId) || !ModulePackageRules.Id(options.SourceId)
             || !ModulePackageRules.Id(options.KeyId) || !ModulePackageRules.Id(options.BuildId)
-            || options.Purpose is not ("official" or "development")
+            || options.Purpose is not ("official" or "development" or "third-party")
             || options.Rid is not ("linux-x64" or "linux-arm64" or "win-x64" or "win-arm64" or "osx-x64" or "osx-arm64")
             || options.ValiditySeconds is <= 0 or > 2678400 || options.Sequence <= 0
             || options.SourceCommit is not { Length: 40 or 64 } || !options.SourceCommit.All(char.IsAsciiHexDigitLower))
@@ -79,11 +80,12 @@ public static class ModulePackageBuilder
         }
         if (files.Count == 0 || !files.Any(file => file.Path == entryPath))
             throw new ModulePackageException("module-package-build-entry-not-found");
-        var manifest = new ModulePackageManifest(1, "server-module", options.ModuleId, options.ReleaseId,
+        var manifest = new ModulePackageManifest(2, "server-module", options.ModuleId, options.ReleaseId,
             options.Version, options.PublisherId, options.Purpose, options.Rid,
             options.HostApiMinimum, options.HostApiMaximumExclusive, entryPath, options.EntryType,
             options.BuildId, options.SourceCommit, options.Dependencies?.ToArray() ?? [],
-            options.Capabilities?.Distinct(StringComparer.Ordinal).ToArray() ?? [], files.ToArray());
+            options.Capabilities?.Distinct(StringComparer.Ordinal).ToArray() ?? [], files.ToArray(), options.Runtime, options.Privileges?.ToArray() ?? [],
+            options.Ui ?? new(options.ModuleId, "", "", null, "UNLICENSED"));
         ModulePackageRules.Manifest(manifest);
         var manifestBytes = JsonSerializer.SerializeToUtf8Bytes(manifest, ModulePackageJson.Options);
         var archivePath = Path.Combine(output, options.ModuleId + "-" + options.Version + "-" + options.Rid + ".rkmodule");

@@ -24,7 +24,21 @@ internal static class ModuleHostChecks
             var bytes = await File.ReadAllBytesAsync(path);
             var manifest = new
             {
-                schemaVersion = 1,
+                schemaVersion = 2,
+                packageKind = "server-module",
+                runtime = "module-host",
+                releaseId = "fixture-host-release",
+                publisherId = "fixture",
+                purpose = "third-party",
+                rid,
+                hostApiMinimum = "2.0.0",
+                hostApiMaximumExclusive = "3.0.0",
+                buildId = "fixture-build",
+                sourceCommit = new string('a', 40),
+                dependencies = Array.Empty<object>(),
+                capabilities = Array.Empty<string>(),
+                privileges = Array.Empty<object>(),
+                ui = new { name = "Fixture", summary = "", description = "", homepage = (string?)null, license = "MIT" },
                 moduleId = "fixture-host",
                 version = "1.0.0",
                 entryAssembly = relative,
@@ -65,6 +79,7 @@ internal static class ModuleHostChecks
             var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ModuleHosts:Enabled"] = "true",
+                ["ModuleHosts:ProbeIntervalSeconds"] = "1",
                 ["ModuleHosts:Entries:0:ModuleId"] = "fixture-host",
                 ["ModuleHosts:Entries:0:PackageRoot"] = root,
                 ["ModuleHosts:Entries:0:DataPath"] = Path.Combine(root, "supervisor-data"),
@@ -89,6 +104,13 @@ internal static class ModuleHostChecks
             check(supervisor.CanAccess("fixture-host", administrator, configuration)
                 && !supervisor.CanAccess("fixture-host", stranger, configuration),
                 "ModuleHost access defaults to configured server administrators");
+            using var unhealthy = await supervisedHttp.PostAsync("/unhealthy", null);
+            unhealthy.EnsureSuccessStatusCode();
+            for (var attempt = 0; attempt < 100 && supervisor.Snapshot().Single().Status == "running"; attempt++)
+                await Task.Delay(50);
+            check(supervisor.Snapshot().Single() is { Status: "faulted", ProblemCode: "module-host-unhealthy" }
+                && !supervisor.TryGetConnection("fixture-host", out _, out _),
+                "ModuleHost supervisor detects unhealthy modules and withdraws their proxy connection");
             await supervisor.StopAsync(CancellationToken.None);
         }
         finally

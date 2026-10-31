@@ -65,7 +65,9 @@ public sealed record ServerModulePackagePlanDto([property: JsonRequired] Guid Pl
     [property: JsonRequired] string ReleaseId, [property: JsonRequired] string ModuleId, [property: JsonRequired] string Version,
     [property: JsonRequired] string PublisherId, [property: JsonRequired] string ArtifactSha256,
     [property: JsonRequired] string ManifestSha256, [property: JsonRequired] DateTimeOffset ExpiresAt,
-    Guid? AppliedOperationId);
+    Guid? AppliedOperationId, [property: JsonRequired] string Runtime,
+    [property: JsonRequired] IReadOnlyList<ServerModulePrivilegeDeclarationDto> Privileges,
+    [property: JsonRequired] string Name, [property: JsonRequired] string Summary);
 public sealed record ServerModulePackageRollbackRequest([property: JsonRequired] string ModuleId,
     [property: JsonRequired] string Version);
 public sealed record ServerModulePackageAutoPlanRequest([property: JsonRequired] string UploadId);
@@ -130,3 +132,12 @@ public static class ServerModuleManagementRoutes
     public const string ModuleHosts = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-hosts";
     public const string ModuleHostProxy = ModuleHosts + "/{moduleId}/{**path}";
 }
+
+public sealed record ServerModulePrivilegeDeclarationDto(string Kind, string Target);
+
+public static class ServerModulePrivilegeRoutes
+{
+    public const string Plans = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-privileges/plans";
+    public const string Trust = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-trust/{moduleId}";
+}
+public sealed record ServerModuleTrustRequest(string ArtifactSha256, string ManifestSha256, bool Trusted);

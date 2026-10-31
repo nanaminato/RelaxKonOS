@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../../RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj" Aliases="modulehelper" />
     <ProjectReference Include="../../RelaxKonOS.Server/RelaxKonOS.Server.csproj" />
     <ProjectReference Include="../../RelaxKonOS.ServerModuleHost/RelaxKonOS.ServerModuleHost.csproj" />
     <ProjectReference Include="../../Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj" />

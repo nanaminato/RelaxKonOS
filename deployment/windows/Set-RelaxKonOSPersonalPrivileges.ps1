@@ -124,7 +124,11 @@ $bytes = New-Object byte[] 48
 $random = [Security.Cryptography.RandomNumberGenerator]::Create()
 try { $random.GetBytes($bytes) } finally { $random.Dispose() }
 $secret = if ($existing) { $existing.sharedSecret } else { [Convert]::ToBase64String($bytes) }
+. (Join-Path $PSScriptRoot 'RelaxKonOSModuleHostRuntime.ps1')
+$moduleHostSource = Join-Path (Split-Path -Parent $source) 'server\module-host'
+$moduleHostPolicy = Install-RelaxKonOSModuleHostRuntime $moduleHostSource (Join-Path $root 'module-host') (Join-Path $dataRoot 'server\module-management\packages')
 $config = [ordered]@{
+    moduleHosts = $moduleHostPolicy
     pipeName = ('relaxkonos-personal-' + $sid); sharedSecret = $secret; serverServiceSid = $sid
     personalOwnerSid = $sid; serviceName = $service; fileAllowedRoots = @($roots); fileAccess = [string]$request.fileAccess
     allowedServiceIds = @($service); helperExecutableSha256 = (Get-FileHash -LiteralPath $executable -Algorithm SHA256).Hash

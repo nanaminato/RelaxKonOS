@@ -169,7 +169,7 @@ internal static class InstalledModuleInstaller
             var record = new InstalledModuleRecord(manifest.ModuleId, manifest.Version, manifest.ReleaseId, sourceId,
                 manifest.PublisherId, artifactSha256, manifestSha256, packagePath, manifest.EntryAssembly, manifest.EntryType,
                 manifest.Capabilities, manifest.Dependencies.Select(dependency => dependency.ModuleId).Distinct(StringComparer.Ordinal).ToArray(),
-                now);
+                manifest.Runtime, now);
             InstalledModuleStore.WriteInstallMetadata(staging, record);
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             Directory.Move(staging, destination);

@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using RelaxKonOS.ModuleHost.Protocol;
 using System.Net.Http.Json;
 using System.Text.Json;
 using RelaxKonOS.Client.Services.Auth;
@@ -15,6 +16,20 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
     private bool _serverMismatch;
     public bool IsCurrent => session.State == AuthSessionState.Authenticated
         && !_serverMismatch && ReferenceEquals(_login, session.CurrentSession) && _service == session.ServiceId;
+    public async Task<ModulePrivilegePlan> PrivilegePlanAsync(Guid id)
+    {
+        var plan = await SendAsync<ModulePrivilegePlan>(HttpMethod.Get, ServerModulePrivilegeRoutes.Plans + "/" + id);
+        Require(plan.PlanId == id && ValidIds([plan.ModuleId]) && ValidDigest(plan.PlanHash)
+            && ValidDigest(plan.ArtifactSha256) && plan.Effects is { Length: <= 128 } && plan.Warnings is { Length: <= 128 }
+            && plan.State is "AwaitingConfirmation" or "Executing" or "Succeeded" or "Failed" or "Cancelled" or "Expired" or "RecoveryRequired"
+            && (plan.State != "AwaitingConfirmation" || ValidDigest(plan.ConfirmationToken)));
+        return plan;
+    }
+    public Task<ModulePrivilegeStatus> ApprovePrivilegeAsync(Guid id, ModulePrivilegeApproval approval) =>
+        SendAsync<ModulePrivilegeStatus>(HttpMethod.Post, ServerModulePrivilegeRoutes.Plans + "/" + id + "/approve", approval);
+    public Task<ModulePrivilegeStatus> CancelPrivilegeAsync(Guid id) =>
+        SendAsync<ModulePrivilegeStatus>(HttpMethod.Post, ServerModulePrivilegeRoutes.Plans + "/" + id + "/cancel");
+
     public async Task<IReadOnlyList<ServerModuleDto>> ReadAsync()
     {
         var facts = await SendAsync<IReadOnlyList<ServerModuleDto>>(HttpMethod.Get, ServerApiRoutes.Modules);
@@ -223,6 +238,8 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         Require(plan is not null && plan.PlanId != Guid.Empty && ValidIds([plan.ModuleId])
             && plan.Version is { Length: > 0 and <= 32 } && ValidDigest(plan.ArtifactSha256)
             && ValidDigest(plan.ManifestSha256) && plan.ExpiresAt != default
+            && plan.Runtime is "in-process" or "module-host" && plan.Privileges is { Count: <= 128 }
+            && plan.Name is { Length: > 0 and <= 128 } && plan.Summary is { Length: <= 512 }
             && (plan.AppliedOperationId is null || plan.AppliedOperationId != Guid.Empty));
     }
 

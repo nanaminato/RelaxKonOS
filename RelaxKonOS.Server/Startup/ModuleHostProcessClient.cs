@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using RelaxKonOS.Server.Privileged;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -9,12 +10,13 @@ namespace RelaxKonOS.Server.Startup;
 
 /// <summary>Server-owned launcher and line-protocol client for the isolated v2 ModuleHost skeleton.</summary>
 internal sealed class ModuleHostProcessClient(string packageRoot, string moduleId, string dataPath,
-    string? executablePath = null) : IAsyncDisposable
+    string? executablePath = null, Action<string>? logError = null, bool isolated = false, string? brokerUrl = null, PrivilegedHelperOptions? helperOptions = null) : IAsyncDisposable
 {
     private static readonly TimeSpan StartupTimeout = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(10);
     private Process? _process;
-    private Task<string>? _stderr;
+    private WindowsModuleHostClient? _windows;
+    private Task? _stderr;
     private ModuleHostReady? _ready;
     private readonly string _serviceToken = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
 
@@ -23,9 +25,22 @@ internal sealed class ModuleHostProcessClient(string packageRoot, string moduleI
 
     internal async Task<ModuleHostReady> StartAsync(CancellationToken cancellationToken = default)
     {
-        if (_process is not null) return Ready;
+        if (_process is not null || _windows is not null) return Ready;
+        if (isolated && OperatingSystem.IsWindows())
+        {
+            if (helperOptions is null) throw new ModulePackageException("module-host-helper-unconfigured");
+            var manifestBytes = await File.ReadAllBytesAsync(Path.Combine(packageRoot, "manifest.json"), cancellationToken);
+            var manifest = ModulePackageJson.Read<ModulePackageManifest>(manifestBytes);
+            _windows = new WindowsModuleHostClient(helperOptions, logError);
+            await _windows.StartAsync(new ModuleHostLaunchRequest(Guid.NewGuid(), moduleId, manifest.Version,
+                Convert.ToHexStringLower(SHA256.HashData(manifestBytes)), _serviceToken, brokerUrl), cancellationToken);
+        }
+        else
+        {
         var (file, arguments) = ResolveExecutable(executablePath);
-        var info = new ProcessStartInfo(file)
+        if (isolated && (!OperatingSystem.IsLinux() || arguments.Count != 0))
+            throw new ModulePackageException("module-host-isolation-unsupported");
+        var info = new ProcessStartInfo(isolated ? "/usr/bin/sudo" : file)
         {
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
@@ -35,17 +50,49 @@ internal sealed class ModuleHostProcessClient(string packageRoot, string moduleI
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
         };
-        foreach (var argument in arguments) info.ArgumentList.Add(argument);
-        info.ArgumentList.Add("--package-root"); info.ArgumentList.Add(packageRoot);
-        info.ArgumentList.Add("--module-id"); info.ArgumentList.Add(moduleId);
-        info.ArgumentList.Add("--data-path"); info.ArgumentList.Add(dataPath);
-        info.Environment[ModuleHostProtocol.ServiceTokenEnvironment] = _serviceToken;
+        if (isolated)
+        {
+            info.Environment.Clear();
+            info.Environment["PATH"] = "/usr/bin:/bin";
+            info.ArgumentList.Add("-n");
+            info.ArgumentList.Add("--");
+            info.ArgumentList.Add(file);
+            info.ArgumentList.Add("--isolated");
+        }
+        else
+        {
+            // Development-only unsandboxed probe. Never inherit Server credentials/configuration.
+            var systemRoot = Environment.GetEnvironmentVariable("SystemRoot");
+            var path = Environment.GetEnvironmentVariable("PATH");
+            info.Environment.Clear();
+            if (systemRoot is not null) info.Environment["SystemRoot"] = systemRoot;
+            if (path is not null) info.Environment["PATH"] = path;
+            foreach (var argument in arguments) info.ArgumentList.Add(argument);
+            info.ArgumentList.Add("--package-root"); info.ArgumentList.Add(packageRoot);
+            info.ArgumentList.Add("--module-id"); info.ArgumentList.Add(moduleId);
+            info.ArgumentList.Add("--data-path"); info.ArgumentList.Add(dataPath);
+            info.Environment[ModuleHostProtocol.ServiceTokenEnvironment] = _serviceToken;
+            if (brokerUrl is not null) info.Environment[ModulePrivilegeProtocol.BrokerEnvironment] = brokerUrl;
+        }
         try { _process = Process.Start(info) ?? throw new ModulePackageException("module-host-start-failed"); }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
             throw new ModulePackageException("module-host-start-failed");
         }
-        _stderr = _process.StandardError.ReadToEndAsync(cancellationToken);
+        _stderr = DrainErrorAsync(_process.StandardError);
+        if (isolated)
+        {
+            var manifestBytes = await File.ReadAllBytesAsync(Path.Combine(packageRoot, "manifest.json"), cancellationToken);
+            var manifest = ModulePackageJson.Read<ModulePackageManifest>(manifestBytes);
+            await _process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new
+            {
+                moduleId, manifest.Version,
+                manifestSha256 = Convert.ToHexStringLower(SHA256.HashData(manifestBytes)),
+                serviceToken = _serviceToken, brokerUrl,
+            }, ModulePackageJson.Options));
+            await _process.StandardInput.FlushAsync(cancellationToken);
+        }
+        }
         var line = await ReadLineAsync(StartupTimeout, cancellationToken);
         using var document = JsonDocument.Parse(line);
         var root = document.RootElement;
@@ -64,7 +111,7 @@ internal sealed class ModuleHostProcessClient(string packageRoot, string moduleI
 
     internal async Task<ModuleHostHealth> HealthAsync(CancellationToken cancellationToken = default)
     {
-        if (_process is null || _ready is null) throw new ModulePackageException("module-host-not-started");
+        if ((_process is null && _windows is null) || _ready is null) throw new ModulePackageException("module-host-not-started");
         await SendAsync(new ModuleHostCommand(ModuleHostProtocol.Health), cancellationToken);
         var line = await ReadLineAsync(CommandTimeout, cancellationToken);
         using var document = JsonDocument.Parse(line);
@@ -77,6 +124,11 @@ internal sealed class ModuleHostProcessClient(string packageRoot, string moduleI
 
     internal async Task ShutdownAsync(CancellationToken cancellationToken = default)
     {
+        if (_windows is not null)
+        {
+            await _windows.ShutdownAsync(cancellationToken);
+            return;
+        }
         if (_process is null) return;
         try
         {
@@ -92,8 +144,41 @@ internal sealed class ModuleHostProcessClient(string packageRoot, string moduleI
         }
     }
 
+    internal async Task AbortAsync()
+    {
+        if (_windows is not null)
+        {
+            await _windows.DisposeAsync();
+            _windows = null;
+            _ready = null;
+            return;
+        }
+        if (_process is null) return;
+        _process.StandardInput.Close();
+        try { await _process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15)); }
+        catch (TimeoutException) { if (!_process.HasExited) _process.Kill(true); }
+        _process.Dispose(); _process = null; _ready = null;
+    }
+
+    // Drain in bounded chunks: a module can emit unlimited stderr without a newline.
+    private async Task DrainErrorAsync(StreamReader reader)
+    {
+        var buffer = new char[2048];
+        int count;
+        while ((count = await reader.ReadAsync(buffer)) > 0)
+        {
+            var message = new string(buffer, 0, count).Replace(_serviceToken, "[redacted]", StringComparison.Ordinal);
+            logError?.Invoke(message);
+        }
+    }
+
     private async Task SendAsync(ModuleHostCommand command, CancellationToken cancellationToken)
     {
+        if (_windows is not null)
+        {
+            await _windows.SendAsync(JsonSerializer.Serialize(command, ModuleHostProtocol.Json), cancellationToken);
+            return;
+        }
         await _process!.StandardInput.WriteLineAsync(JsonSerializer.Serialize(command, ModuleHostProtocol.Json));
         await _process.StandardInput.FlushAsync(cancellationToken);
     }
@@ -104,7 +189,8 @@ internal sealed class ModuleHostProcessClient(string packageRoot, string moduleI
         source.CancelAfter(timeout);
         try
         {
-            var line = await _process!.StandardOutput.ReadLineAsync(source.Token);
+            var line = _windows is not null ? await _windows.ReadLineAsync(source.Token)
+                : await _process!.StandardOutput.ReadLineAsync(source.Token);
             if (string.IsNullOrWhiteSpace(line) || line.Length > 16384)
                 throw new ModulePackageException("module-host-response-invalid");
             return line;
@@ -123,6 +209,8 @@ internal sealed class ModuleHostProcessClient(string packageRoot, string moduleI
         var name = OperatingSystem.IsWindows() ? "RelaxKonOS.ServerModuleHost.exe" : "RelaxKonOS.ServerModuleHost";
         var native = Path.Combine(AppContext.BaseDirectory, name);
         if (File.Exists(native)) return (native, []);
+        var packaged = Path.Combine(AppContext.BaseDirectory, "module-host", name);
+        if (File.Exists(packaged)) return (packaged, []);
         var dll = Path.Combine(AppContext.BaseDirectory, "RelaxKonOS.ServerModuleHost.dll");
         if (File.Exists(dll)) return ("dotnet", [dll]);
         throw new ModulePackageException("module-host-executable-missing");
@@ -133,6 +221,10 @@ internal sealed class ModuleHostProcessClient(string packageRoot, string moduleI
         await ShutdownAsync();
         if (_stderr is not null)
             try { await _stderr; } catch (Exception) { }
+        if (_windows is not null) await _windows.DisposeAsync();
+        _windows = null;
         _process?.Dispose();
+        _process = null;
+        _ready = null;
     }
 }

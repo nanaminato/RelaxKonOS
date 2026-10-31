@@ -44,9 +44,9 @@ complete_package() {
   local kind="$1" payload="$2" hash files path length digest separator=
   if [[ $kind == server ]]; then
     for path in payload/linux/server/RelaxKonOS.Server payload/linux/guardian/RelaxKonOS.Guardian.Agent \
-      payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper deployment/user/relaxkon \
+      payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper payload/linux/server/module-host/RelaxKonOS.ServerModuleHost deployment/user/relaxkon \
       deployment/verify-release-inventory.py deployment/bootstrap/install-relaxkonos.sh \
-      deployment/bootstrap/uninstall-relaxkonos.sh deployment/linux/install-relaxkonos-services.sh; do
+      deployment/bootstrap/uninstall-relaxkonos.sh deployment/linux/install-relaxkonos-services.sh deployment/linux/install-relaxkonos-module-host.sh; do
       [[ -f "$BUNDLE/$path" && ! -L "$BUNDLE/$path" ]] \
         || { echo "Incomplete release package: missing or unsafe $path" >&2; return 65; }
     done
@@ -88,6 +88,7 @@ fi
 if [[ $PACKAGE_KIND == all || $PACKAGE_KIND == server ]]; then
   new_package server
   publish_component 'RelaxKonOS.Server/RelaxKonOS.Server.csproj' server RelaxKonOS.Server
+  publish_component 'RelaxKonOS.ServerModuleHost/RelaxKonOS.ServerModuleHost.csproj' server/module-host RelaxKonOS.ServerModuleHost
   publish_component 'RelaxKonOS.Guardian.Agent/RelaxKonOS.Guardian.Agent.csproj' guardian RelaxKonOS.Guardian.Agent
   publish_component 'RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj' privileged-helper RelaxKonOS.PrivilegedHelper
   mkdir -p "$BUNDLE/deployment"

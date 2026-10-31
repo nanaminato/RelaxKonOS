@@ -119,6 +119,7 @@ internal static class ServerPipeline
         app.MapRuntimeCatalogEndpoints();
         app.MapComponentEndpoints();
         app.MapServerModuleManagementEndpoints();
+        app.MapModulePrivilegeEndpoints();
         app.MapTaskPlanningEndpoints();
         app.MapTaskExecutionEndpoints();
         // Module-owned routes, HostedServices and Hubs come from the same frozen startup snapshot;

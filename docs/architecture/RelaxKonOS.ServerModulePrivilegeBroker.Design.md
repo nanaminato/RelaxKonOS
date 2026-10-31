@@ -1,10 +1,10 @@
 # 服务端模块提权 Broker 设计
 
-> 状态：设计，2026-10-31。未实现。本文定义 v2 ModuleHost 的第三方模块提权边界；v1 官方模块继续使用现有 `IHostElevationSessionStore` 和 `IPrivilegedOperationTransport`。
+> 状态：分阶段实施，2026-10-31。已实现服务启动/停止/重启的持久计划、单次确认门、私有回调和 SDK/Core/桌面接线；Linux HTTP/真实 Helper 正常闭环已实测；故障恢复及 Windows 验收未收口。本文定义 v2 ModuleHost 的第三方模块提权边界；v1 官方模块继续使用现有 `IHostElevationSessionStore` 和 `IPrivilegedOperationTransport`。
 >
 > 范围：第三方模块申请宿主特权时的计划、展示、确认、执行、审计和撤销。模块包格式与安装由[服务端独立模块分发设计](RelaxKonOS.ServerModuleDistribution.Design.md)拥有；商店来源由[包商店来源设计](../platform/RelaxKonOS.PackageStore.Design.md)拥有；Helper 的底层封闭操作仍由[统一特权 Helper 架构](privileged-helper.md)拥有。
 >
-> 本文不表示 Broker、确认界面、ModuleHost 或任何提权操作已实现。
+> 下文仍包含目标能力。已验证范围及剩余门槛以 [v2 实施记录](RelaxKonOS.ServerModuleV2.Progress.md) 为准，不能将计划存储单测视为真实提权验收。
 
 ## 1. 目标与边界
 
@@ -392,3 +392,16 @@ Broker 不新增“任意命令”Helper 操作。每个 `ModulePrivilegeKind` �
 - [包商店来源设计](../platform/RelaxKonOS.PackageStore.Design.md)
 - [统一特权 Helper 架构](privileged-helper.md)
 - [权限模型与项目重构规范](../platform/RelaxKonOS.PermissionModel.Refactor.md)
+
+
+## 13. 当前实现契约（2026-10-31）
+
+首个 Broker 操作集合为 service-start / service-stop / service-restart，映射现有 Helper NativeServiceAction。未开放的包、文件、防火墙、TUN、设置和 ProcessExecute 操作明确返回 unsupported，绝不转为命令行。
+
+ModuleHost SDK `context.Privileges` 通过 Core 拥有的临时 loopback listener 调用；每进程随机服务令牌确定模块身份，Server 代理为当前已认证业务请求生成短时不透明 context，并在代理请求结束时撤销。模块不能传 userId/JWT/密码来声明身份；没有活动 context 的后台 prepare 被拒绝。模块侧仅返回 planId/planHash/状态。
+
+Core 用户 API：GET `/api/v1.0/server/module-privileges/plans/{id}`、POST 同路径 `/approve` 或 `/cancel`。GET 的确认令牌只交给发起用户的同一会话；approve 提交 planHash、确认令牌及可选管理员账密。桌面组件中心可输入业务返回的 planId 查看并确认/拒绝。计划五分钟过期；服务授权不得跳过确认门。HostElevationSessionState 提供只读 IsAdministratorVerified，既有 sessionValid 控制免密码记忆。owner device 仍通过 Core OwnerDeviceKeyService 校验。
+
+privilege-plans.json 使用 schemaVersion=2，原子耐久保存计划、执行与终态，确认令牌仅保存哈希；Executing 在重启后变为 RecoveryRequired，响应丢失也进入 RecoveryRequired，不重放动作。module-trust.json 绑定精确版本/发布者/归档与清单摘要；Broker 执行前两次复查当前安装、启用、信任、来源目录/撤销、策略与 Host 服务白名单。Helper 再检查自己的 root 管理服务白名单。
+
+PB-01/02：核心契约及确认门的定向测试已通过；PB-03：桌面入口已编译；PB-04：Linux 权限隔离已有实机正向验收；PB-05 审计完善、真实 Helper 中断恢复、PB-06 常设许可、Windows 专用身份及跨平台验收仍未收口。默认不提供后台提权或常设自动执行。

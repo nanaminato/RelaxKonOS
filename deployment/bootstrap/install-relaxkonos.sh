@@ -391,6 +391,7 @@ if [[ "$ACTION" == install || "$ACTION" == upgrade ]]; then
   MANIFEST="$BUNDLE_PATH/manifest.json"
   [[ -f "$(dirname -- "${BASH_SOURCE[0]}")/../verify-release-inventory.py" ]] || { echo 'Release bundle is incomplete: deployment/verify-release-inventory.py is missing. Rebuild the release package.' >&2; exit 65; }
   [[ -f "$MANIFEST" && -f "$BUNDLE_PATH/payload/linux/server/RelaxKonOS.Server" && -f "$BUNDLE_PATH/payload/linux/guardian/RelaxKonOS.Guardian.Agent" && -f "$BUNDLE_PATH/payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper" && -f "$BUNDLE_PATH/deployment/bootstrap/install-relaxkonos.sh" && -f "$BUNDLE_PATH/deployment/bootstrap/uninstall-relaxkonos.sh" && -f "$BUNDLE_PATH/deployment/linux/install-relaxkonos-services.sh" ]] || { echo 'Release bundle is incomplete or has an unsupported layout.' >&2; exit 65; }
+  [[ -f "$BUNDLE_PATH/payload/linux/server/module-host/RelaxKonOS.ServerModuleHost" && -f "$BUNDLE_PATH/deployment/linux/install-relaxkonos-module-host.sh" ]] || { echo 'Release bundle is missing the v2 ModuleHost payload.' >&2; exit 65; }
   # The ZIP checksum only covers transport. The extracted bundle is additionally checked against the
   # packaged inventory, so a tampered or partially copied local bundle is rejected before staging.
   if [[ -n "$(find "$BUNDLE_PATH" -mindepth 1 \( -type l -o \( ! -type d -a ! -type f \) \) -print -quit)" ]]; then

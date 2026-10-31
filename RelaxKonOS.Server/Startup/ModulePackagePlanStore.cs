@@ -7,7 +7,8 @@ namespace RelaxKonOS.Server.Startup;
 
 internal sealed record ModulePackagePlan(Guid PlanId, string Actor, string SourceId, string ReleaseId, string UploadId,
     string ModuleId, string Version, string PublisherId, string ArtifactSha256, string ManifestSha256,
-    DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt, Guid? AppliedOperationId);
+    DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt, Guid? AppliedOperationId,
+    string Runtime, ModulePackagePrivilege[] Privileges, ModulePackageUi Ui);
 
 internal sealed record ModulePackagePlanDocument(int SchemaVersion, ModulePackagePlan[] Plans);
 
@@ -28,7 +29,7 @@ internal static class ModulePackagePlanStore
         if (plans.Count >= Maximum) throw new ModulePackageException("module-package-plan-capacity");
         var plan = new ModulePackagePlan(Guid.NewGuid(), actor, candidate.SourceId, candidate.ReleaseId, uploadId,
             candidate.Manifest.ModuleId, candidate.Manifest.Version, candidate.Manifest.PublisherId,
-            candidate.ArchiveSha256, candidate.ManifestSha256, now, now.Add(Lifetime), null);
+            candidate.ArchiveSha256, candidate.ManifestSha256, now, now.Add(Lifetime), null, candidate.Manifest.Runtime, candidate.Manifest.Privileges, candidate.Manifest.Ui);
         plans.Add(plan);
         Write(contentRoot, plans);
         return plan;
@@ -66,13 +67,14 @@ internal static class ModulePackagePlanStore
         ModulePackagePlanDocument? document;
         try { document = JsonSerializer.Deserialize<ModulePackagePlanDocument>(File.ReadAllBytes(path), RelaxKonOSJsonOptions.Default); }
         catch (JsonException) { throw Invalid(); }
-        if (document is null || document.SchemaVersion != 1 || document.Plans is not { Length: <= Maximum }
+        if (document is null || document.SchemaVersion != 2 || document.Plans is not { Length: <= Maximum }
             || document.Plans.Select(plan => plan.PlanId).Distinct().Count() != document.Plans.Length
             || document.Plans.Any(plan => plan is null || plan.PlanId == Guid.Empty || plan.Actor is not { Length: > 0 and <= 256 }
                 || !Identifier(plan.SourceId) || !Identifier(plan.ReleaseId) || plan.UploadId is not { Length: 32 }
                 || !plan.UploadId.All(char.IsAsciiHexDigitLower) || !Identifier(plan.ModuleId)
                 || !Version(plan.Version) || !Identifier(plan.PublisherId) || !Digest(plan.ArtifactSha256)
                 || !Digest(plan.ManifestSha256) || plan.ExpiresAt <= plan.CreatedAt
+                || plan.Runtime is not ("in-process" or "module-host") || plan.Privileges is not { Length: <= 128 } || plan.Ui is null
                 || plan.AppliedOperationId == Guid.Empty))
             throw Invalid();
         return document.Plans;
@@ -87,7 +89,7 @@ internal static class ModulePackagePlanStore
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            var bytes = JsonSerializer.SerializeToUtf8Bytes(new ModulePackagePlanDocument(1, plans.ToArray()), RelaxKonOSJsonOptions.Default);
+            var bytes = JsonSerializer.SerializeToUtf8Bytes(new ModulePackagePlanDocument(2, plans.ToArray()), RelaxKonOSJsonOptions.Default);
             if (bytes.Length > Limit) throw new ModulePackageException("module-package-plan-capacity");
             using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
                        65536, FileOptions.WriteThrough))

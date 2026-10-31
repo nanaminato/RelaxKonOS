@@ -10,13 +10,13 @@
 
 `.rkmodule` 是 ZIP，只允许根部 `manifest.json` 和清单逐一声明的 `server/<rid>/…` 普通文件。不接受显式目录、符号链接、设备、Windows reparse 标记、未声明文件或大小写冲突路径。路径只允许 ASCII 字母、数字、点、下划线、连字符和目录分隔符 `/`；拒绝空段、`.`、`..`、尾点、Windows 保留设备名及文件/目录冲突。包内没有可信公钥或可自行宣称的“官方”授权。
 
-清单唯一当前 JSON 契约为 `Shared/RelaxKonOS.ServerModules.Packaging/ModulePackageContracts.cs` 中 `ModulePackageManifest`，使用精确 camelCase 属性，拒绝未知、重复、缺失字段和大小写别名。`schemaVersion=1`、`packageKind=server-module`；声明模块/发布/发布者身份、purpose、版本、单一 RID、Host API 半开区间、入口程序集路径及类型、构建身份、源码提交、依赖、能力和每个文件的长度及 SHA-256。版本必须为无前导零的三段非负整数；不接受预发布、构建后缀或浮动版本。依赖版本使用相同的最小含端点、最大不含端点区间；当前仅校验声明，尚未实现已安装依赖解析。
+清单唯一当前 JSON 契约为 `Shared/RelaxKonOS.ServerModules.Packaging/ModulePackageContracts.cs` 中 `ModulePackageManifest`，使用精确 camelCase 属性，拒绝未知、重复、缺失字段和大小写别名。`schemaVersion=2`、`packageKind=server-module`；声明模块/发布/发布者身份、purpose、版本、单一 RID、Host API 半开区间、入口程序集路径及类型、构建身份、源码提交、依赖、能力和每个文件的长度及 SHA-256。版本必须为无前导零的三段非负整数；不接受预发布、构建后缀或浮动版本。依赖版本使用相同的最小含端点、最大不含端点区间；安装前解析已安装依赖、版本区间和依赖环。
 
 支持的候选 RID 为 linux-x64、linux-arm64、win-x64、win-arm64、osx-x64、osx-arm64；只接受与当前进程 `RuntimeInformation.RuntimeIdentifier` 完全一致的候选。这不表示这些平台已有安装或业务验收。当前候选 Host API 版本为 `1.0.0`；`Shared/RelaxKonOS.ServerModule.Abstractions` 已提供 `IInstalledServerModule` 加载接口，校验入口类型的语法不代表已加载或发现该类型。
 
 外部 `SignedModulePackageCatalog` envelope 使用 `schemaVersion=1`、`keyId`、Base64 `payload`、Base64 `signature`。签名输入为 UTF-8 `RelaxKonOS.ServerModuleCatalog.v1\n` 前缀（末尾为真实 LF）连接解码后的原始 payload 字节；算法 ECDSA NIST P-256 / SHA-256，签名编码为 64 字节 IEEE P1363。公钥为完整 DER SubjectPublicKeyInfo 的 Base64；拒绝尾随字节和其他曲线。不将 JSON 重新序列化后验签。
 
-payload 为 `ModulePackageCatalog`，包含 sourceId、严格递增序号、UTC 签发/过期时间、发布条目和撤销集合。每条发布绑定完整类型化清单、归档中原始 `manifest.json` 的 SHA-256、整个 ZIP 的 SHA-256/字节数及下载地址。目录签名成功后仍检查归档与每个展开文件。下载地址只能使用 Host 配置的 HTTPS origin，无用户信息或 fragment；当前没有下载器，尚未执行重定向和网络传输策略。
+payload 为 `ModulePackageCatalog`，包含 sourceId、严格递增序号、UTC 签发/过期时间、发布条目和撤销集合。每条发布绑定完整类型化清单、归档中原始 `manifest.json` 的 SHA-256、整个 ZIP 的 SHA-256/字节数及下载地址。目录签名成功后仍检查归档与每个展开文件。下载地址只能使用 Host 配置的 HTTPS origin，无用户信息或 fragment；下载器拒绝重定向并限制 origin、长度和摘要。
 
 边界：目录 payload/清单最多 4 MiB，envelope 最多 6 MiB，发布条目最多 2048，单清单文件最多 4096、单文件最多 256 MiB、展开合计最多 1 GiB、归档最多 1 GiB + 4 MiB；读取展开内容时重新累计长度，不能只信任 ZIP 头部。依赖和能力各最多 128；最大目录有效期由 Host 策略限制，不能超过 31 天。
 
@@ -34,7 +34,7 @@ payload 为 `ModulePackageCatalog`，包含 sourceId、严格递增序号、UTC 
 
 跨来源不能重新定义同一模块版本/RID 的清单或归档；相同内容可由另一已授权来源镜像。候选资格合并所有已接纳来源的 releaseId/digest 撤销，releaseId 的已知历史摘要也参与撤销，镜像不能恢复已撤销字节。来源停用或其目录过期不会清除既有撤销证据。读取已接纳目录仍重新验签、检查有效期及当前 Host 策略；策略修订变化须先持久接纳刷新，不能在只读查询中悄然接受新信任状态。
 
-后续安装、修复和回滚都必须依据当前信任及撤销状态重新检查；有效期过后，已有文件也不能凭缓存自动成为新的可安装候选。当前已实现离线安装与进程内加载；在线版本目录、自动重启核实、更新/回退事务仍须在后续阶段完成。安装成功不等于模块已启用或已生效。
+后续安装、修复和回滚都必须依据当前信任及撤销状态重新检查；有效期过后，已有文件也不能凭缓存自动成为新的可安装候选。当前已实现 v2 清单的离线安装与按 runtime 选择加载器；在线版本目录、自动重启核实、更新/回退事务仍须在后续阶段完成。安装成功不等于模块已启用或已生效。
 
 ## 只读维护命令
 
@@ -73,7 +73,7 @@ RelaxKonOS.Server modules pack-package \
   --private-key <ECDSA P-256 PKCS#8 PEM> --key-id <公钥ID> --validity-seconds <1..2678400>
 ```
 
-可选参数：`--host-api-min`、`--host-api-max`、`--capabilities a,b`、`--dependencies id:min:max,...`。命令把 publish 目录下所有普通文件放到 `server/<rid>/`，生成 `manifest.json`、`.rkmodule`、`catalog.json` 和 `public-key.spki`；私钥只用于本次签名，不写入输出或日志。它不读取/写入 Host 状态，也不安装模块。
+可选参数：`--runtime in-process|module-host`、`--metadata <JSON文件>`（严格包含 `privileges` 与 `ui`）、`--host-api-min`、`--host-api-max`、`--capabilities a,b`、`--dependencies id:min:max,...`。命令把 publish 目录下所有普通文件放到 `server/<rid>/`，生成 `manifest.json`、`.rkmodule`、`catalog.json` 和 `public-key.spki`；私钥只用于本次签名，不写入输出或日志。它不读取/写入 Host 状态，也不安装模块。
 
 ## 在线上传与安装 API
 
@@ -139,7 +139,7 @@ RelaxKonOS.Server modules host-probe --content-root <绝对服务目录> --packa
 
 install-package 要求本机管理员/root、Host 已停止、目录已通过 accept-catalog 接纳；它重新验证签名目录/归档/清单，解包到 `data/module-management/packages/<moduleId>/<version>/`，写入每版本 `install.json` 和顶层 `installed.json`。安装前还会检查依赖：未知/缺失依赖、自依赖、已安装依赖版本不满足范围、依赖被隔离或依赖成环都会拒绝。它不修改 `state.json` 的期望启用集合，也不自动重启；`installed=true` 不代表 effective。同一 release 重装幂等；同版本不同摘要拒绝。模块被启用并加载前，Host 还会重新核对安装清单和每个文件的长度/SHA-256。
 
-`host-probe` 是本机管理员诊断命令：要求 Host 已停止，启动独立 ModuleHost 骨架、完成 `ready`/`health`/`shutdown` 行协议后退出；不安装、不启用、不写 `installed.json`，当前也不提供 HTTP 路由或提权。缺少 ModuleHost 可执行文件时返回 `module-host-executable-missing`。
+`host-probe` 是本机管理员诊断命令（开发诊断不提供 OS 隔离承诺）：要求 Host 已停止，启动独立 ModuleHost 骨架、完成 `ready`/`health`/`shutdown` 行协议后退出；不安装、不启用、不写 `installed.json`，当前也不提供 HTTP 路由或提权。缺少 ModuleHost 可执行文件时返回 `module-host-executable-missing`。
 
 安装/回退同时写入 `package-operations.json` 的 `AwaitingRestart` 回执；Server 启动完成、`ApplicationStarted` 后按 `installed.json` 的精确版本/releaseId/artifactSha256 核对为 `Succeeded` 或 `Failed`。这不是自动重启；更新操作的启动崩溃回退见下。
 
@@ -148,3 +148,18 @@ Host 在加载已安装模块前写 `package-startup.json` 标记，成功到达
 list-versions 只读版本目录的 `install.json`，不加载程序集。rollback-installed 要求 Host 已停止、管理员/root，重新核对目标版本文件哈希后把 `installed.json` 当前版本切回该版本；不修改期望启用集合、不自动重启。
 
 remove-installed 只移除 `installed.json` 记录，默认保留版本文件；模块仍在期望启用集合中时拒绝移除。list-installed 是只读安装事实，不读出生效状态。
+
+
+## v2 唯一当前清单（2026-10-31）
+
+`ModulePackageManifest` 只接受 schemaVersion=2，新增必填 `runtime`、`privileges`、`ui`。旧 v1 清单、缺字段、未知运行模式或未知提权类型都拒绝；不保留双解析。发布者身份继续使用 `publisherId`，不接收 `publisher` 别名。签名目录 envelope/payload、来源策略仍是其各自的 schemaVersion=1 与 `ServerModuleCatalog.v1` 签名域；它们不是模块清单版本。
+
+- `runtime=in-process` 只接受 `purpose=official`，继续使用进程内 ABI 1.0.0。
+- `runtime=module-host` 使用 ModuleHost ABI 2.0.0，不能公布 Core capabilities；来源可为 Host 授权的 `third-party`、`development` 或 `official`。开发来源仍需绑定服务身份与开发环境；第三方不得使用 `relaxkonos.*` 前缀。
+- `privileges` 是 `{kind,target}` 数组；目前仅允许 `service-start`、`service-stop`、`service-restart`。执行时仍须 Broker 确认及 Host/Helper 双重服务白名单。
+- `ui` 必含 `name`、`summary`、`description`、可空 `homepage`、`license`。homepage 非空时只允许 HTTPS。它们不参与来源授信判断。
+- 安装事实 `installed.json` 与冻结安装计划 `package-plans.json` 同步升级 schemaVersion=2。每版本 install.json 必须保留 runtime；已安装清单按原始 manifest SHA-256 和全部文件摘要复查。旧安装事实不会静默转换。
+- 在线 ModuleHost 安装必须使用冻结计划；直接 install 路由拒绝它。apply 是对预览中精确版本、摘要、运行模式和提权声明的代码信任确认，写入独立的 module-trust.json。离线安装仅记录文件事实，不自动信任或执行代码。回退/更新不能借用其他摘要的代码信任。
+- `POST /api/v1.0/server/module-trust/{moduleId}` 使用 `{artifactSha256,manifestSha256,trusted}` 修改精确安装的代码信任；要求 ServerModulesManage 且 managed 管理模式。撤销立即阻断代理和 Broker，监督周期内关闭原进程。
+
+Linux 隔离启动、Broker 实施证据和未完成项见 [v2 实施记录](RelaxKonOS.ServerModuleV2.Progress.md)。

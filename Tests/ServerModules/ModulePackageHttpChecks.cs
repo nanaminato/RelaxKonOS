@@ -14,8 +14,13 @@ using RelaxKonOS.Server.Startup;
 
 internal static class ModulePackageHttpChecks
 {
-    internal static async Task RunAsync(Action<bool, string> check)
+    internal static async Task RunAsync(Action<bool, string> check, bool isolated = false)
     {
+        if (isolated)
+        {
+            var report = check;
+            check = (passed, message) => report(passed, "v2 third-party " + message);
+        }
         var root = Path.Combine(AppContext.BaseDirectory, "test-data", "package-http-" + Guid.NewGuid().ToString("N"));
         var publish = Path.Combine(root, "publish");
         var output = Path.Combine(root, "package");
@@ -23,7 +28,9 @@ internal static class ModulePackageHttpChecks
         Directory.CreateDirectory(output);
         try
         {
-            File.Copy(Path.Combine(AppContext.BaseDirectory, "FixtureModule.dll"), Path.Combine(publish, "FixtureModule.dll"));
+            var assembly = isolated ? "HostFixture.dll" : "FixtureModule.dll";
+            var purpose = isolated ? "third-party" : "official";
+            File.Copy(Path.Combine(AppContext.BaseDirectory, assembly), Path.Combine(publish, assembly));
             await File.WriteAllTextAsync(Path.Combine(publish, "asset.txt"), "http package asset");
             using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
             var keyPath = Path.Combine(root, "signing-key.pem");
@@ -32,10 +39,13 @@ internal static class ModulePackageHttpChecks
             var now = DateTimeOffset.UtcNow;
             var releaseId = "fixture-http-1.0.0-" + rid;
             var built = await ModulePackageBuilder.BuildAsync(new ModulePackageBuildOptions(publish, output, "fixture-http",
-                "1.0.0", releaseId, "fixture", "official", rid, "FixtureModule.dll",
-                "FixtureModule.FixtureInstalledModule", "fixture-build", new string('a', 40), "official", 1,
-                "https://modules.example/", keyPath, "builder-key", 3600), now);
-            var policy = new ModulePackageTrustPolicy(1, "official", 1, true, "fixture", "official",
+                "1.0.0", releaseId, "fixture", purpose, rid, assembly,
+                isolated ? "HostFixture.FixtureHttpHostEntry" : "FixtureModule.FixtureInstalledModule", "fixture-build", new string('a', 40), "official", 1,
+                "https://modules.example/", keyPath, "builder-key", 3600,
+                HostApiMinimum: isolated ? "2.0.0" : "1.0.0", HostApiMaximumExclusive: isolated ? "3.0.0" : "2.0.0",
+                Runtime: isolated ? "module-host" : "in-process",
+                Privileges: isolated ? [new("service-restart", "fixture.service")] : []), now);
+            var policy = new ModulePackageTrustPolicy(1, "official", 1, true, "fixture", purpose,
                 "https://modules.example/", ["fixture-http"],
                 new Dictionary<string, string> { ["builder-key"] = built.PublicKeySpkiBase64 }, 3600);
             await File.WriteAllTextAsync(Path.Combine(root, "appsettings.host.json"), JsonSerializer.Serialize(new
@@ -118,13 +128,29 @@ internal static class ModulePackageHttpChecks
                 && plan.ManifestSha256 == built.ManifestSha256,
                 "HTTP package plan binds the exact module release and archive identity");
 
+            if (isolated)
+            {
+                check(plan.Runtime == "module-host" && plan.Privileges.Single().Target == "fixture.service",
+                    "install preview exposes runtime and exact declared privileges");
+                using var direct = await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackageInstall,
+                    new ServerModulePackageInstallRequest("official", releaseId, uploaded.UploadId), RelaxKonOSJsonOptions.Default);
+                check(direct.StatusCode == System.Net.HttpStatusCode.Conflict && InstalledModuleStore.Read(root).Count == 0,
+                    "direct install cannot bypass frozen-plan code trust confirmation");
+            }
             var applyResponse = await client.PostAsync(
                 ServerModuleManagementRoutes.PackagePlanApply.Replace("{planId:guid}", plan.PlanId.ToString()), null);
-            applyResponse.EnsureSuccessStatusCode();
+            if (!applyResponse.IsSuccessStatusCode)
+                throw new InvalidOperationException("Package apply failed: " + (int)applyResponse.StatusCode + " " + await applyResponse.Content.ReadAsStringAsync());
             var applied = (await applyResponse.Content.ReadFromJsonAsync<ServerModulePackageInstallResultDto>(RelaxKonOSJsonOptions.Default))!;
             check(applied.Record.ModuleId == "fixture-http" && applied.Record.Version == "1.0.0",
                 "HTTP package plan apply installs the frozen release");
 
+            if (isolated)
+            {
+                var actual = InstalledModuleStore.Read(root).Single();
+                check(actual.Runtime == "module-host" && ModuleTrustStore.Read(root, actual)?.Trusted == true,
+                    "confirmed signed third-party installation writes exact code trust without loading code");
+            }
             var installed = (await client.GetFromJsonAsync<ServerInstalledModulePageDto>(
                 ServerModuleManagementRoutes.InstalledPackages, RelaxKonOSJsonOptions.Default))!;
             var operations = (await client.GetFromJsonAsync<ServerPackageOperationPageDto>(

@@ -559,6 +559,13 @@ if [[ "$GUARDIAN_ENABLED" == true ]]; then
   chown root:root /etc/systemd/system/relaxkonos-guardian.service
   chmod 0644 /etc/systemd/system/relaxkonos-guardian.service
 fi
+MODULE_HOST="$(dirname "$SERVER_EXECUTABLE")/module-host/RelaxKonOS.ServerModuleHost"
+MODULE_HOST_INSTALLER="$(dirname "${BASH_SOURCE[0]}")/install-relaxkonos-module-host.sh"
+[[ -f "$MODULE_HOST" && -f "$MODULE_HOST_INSTALLER" ]] || { echo 'Release is missing the v2 ModuleHost runtime or provisioner.' >&2; exit 65; }
+chmod 0755 "$MODULE_HOST"
+install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0700 "$SERVER_DATA/module-management"
+bash "$MODULE_HOST_INSTALLER" "$MODULE_HOST" "$SERVER_DATA/module-management/packages" "$SERVICE_USER"
+
 systemctl daemon-reload
 units=(relaxkonos-privileged-helper.service relaxkonos-server.service)
 [[ "$GUARDIAN_ENABLED" != true ]] || units+=(relaxkonos-guardian.service)

@@ -30,6 +30,13 @@ public sealed class HostElevationSessionState : IDisposable
             _enabled = enabled;
         }
     }
+    public bool IsAdministratorVerified(ClaimsPrincipal principal)
+    {
+        var token = principal.FindFirstValue(JwtRegisteredClaimNames.Jti);
+        var subject = principal.FindFirstValue(JwtRegisteredClaimNames.Sub) ?? principal.FindFirstValue(ClaimTypes.NameIdentifier);
+        return token is { Length: > 0 } && subject is { Length: > 0 } && IsSessionValid(principal)
+            && IsRemembered(principal, token, subject);
+    }
     internal bool IsSessionValid(ClaimsPrincipal principal) => _validity?.IsLiveSession(principal) ?? true;
     internal DateTimeOffset? Remember(ClaimsPrincipal principal, string tokenId, string subject, string authenticationMethod)
     {

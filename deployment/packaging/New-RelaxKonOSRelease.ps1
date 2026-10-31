@@ -88,7 +88,8 @@ function Complete-Package($Package, [hashtable] $Payload) {
     if ($Package.Kind -eq 'server' -and $platform -eq 'linux') {
         $required += @('deployment/user/relaxkon', 'deployment/verify-release-inventory.py',
             'deployment/bootstrap/install-relaxkonos.sh', 'deployment/bootstrap/uninstall-relaxkonos.sh',
-            'deployment/linux/install-relaxkonos-services.sh')
+            'deployment/linux/install-relaxkonos-services.sh', 'deployment/linux/install-relaxkonos-module-host.sh',
+            'payload/linux/server/module-host/RelaxKonOS.ServerModuleHost')
     }
     if ($Package.Kind -eq 'server' -and $platform -eq 'windows') {
         $required += 'deployment/windows/RelaxKonOSDeploymentVerification.ps1'
@@ -161,6 +162,9 @@ foreach ($target in @(
     Publish-Component $target.Project $destination $target.Executable
     $serverPayload[$target.ManifestName] = "payload/$platform/$($target.Name)/$($target.Executable)"
 }
+# ModuleHost ships with the Server inventory, while keeping its private runtime files separate.
+Publish-Component 'RelaxKonOS.ServerModuleHost\RelaxKonOS.ServerModuleHost.csproj' `
+    (Join-Path $serverPackage.Directory "payload\$platform\server\module-host") "RelaxKonOS.ServerModuleHost$extension"
 Copy-Item -LiteralPath (Join-Path $projectRoot 'deployment\bootstrap') -Destination (Join-Path $serverPackage.Directory 'deployment\bootstrap') -Recurse -Force
 if ($platform -eq 'linux') {
     Copy-Item -LiteralPath (Join-Path $projectRoot 'deployment\verify-release-inventory.py') -Destination (Join-Path $serverPackage.Directory 'deployment\verify-release-inventory.py') -Force

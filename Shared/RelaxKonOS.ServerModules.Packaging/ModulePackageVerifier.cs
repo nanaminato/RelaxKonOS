@@ -9,6 +9,8 @@ namespace RelaxKonOS.ModulePackaging;
 /// <summary>Pure verification: never downloads, extracts, executes, or writes trust state.</summary>
 public static class ModulePackageVerifier
 {
+    public static void ValidateManifest(ModulePackageManifest manifest) => Manifest(manifest);
+
     private const int MetadataLimit = 4 * 1024 * 1024;
     private static string Hash(ReadOnlySpan<byte> bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
     private static string ObjectHash<T>(T value) => Hash(JsonSerializer.SerializeToUtf8Bytes(value, ModulePackageJson.Options));
@@ -17,11 +19,11 @@ public static class ModulePackageVerifier
         ModulePackageTrustPolicy policy, ModulePackageContext context, ModulePackageTrustHistory history, DateTimeOffset now)
     {
         Require(policy.SchemaVersion == 1 && policy.Enabled && Id(policy.SourceId) && policy.Revision > 0
-            && Id(policy.PublisherId) && policy.Purpose is "official" or "development"
+            && Id(policy.PublisherId) && policy.Purpose is "official" or "development" or "third-party"
             && policy.MaximumValiditySeconds is > 0 and <= 2678400, "source-invalid");
         Require(!string.IsNullOrWhiteSpace(context.ServiceId) && context.ServiceId.Length <= 256, "service-identity-invalid");
         _ = Version(context.HostApiVersion);
-        Require(policy.Purpose == "official" ? policy.DevelopmentServiceId is null
+        Require(policy.Purpose != "development" ? policy.DevelopmentServiceId is null
             : context.DevelopmentInstance && policy.DevelopmentServiceId == context.ServiceId, "development-source-forbidden");
         Require(Uri.TryCreate(policy.ArtifactOrigin, UriKind.Absolute, out var origin) && origin.Scheme == "https"
             && origin.UserInfo.Length == 0 && origin.Query.Length == 0 && origin.Fragment.Length == 0
@@ -149,7 +151,7 @@ public static class ModulePackageVerifier
         Require(!verified.NextHistory.RevokedReleaseIds.Contains(releaseId, StringComparer.Ordinal)
             && !verified.NextHistory.RevokedDigests.Contains(release.ArchiveSha256, StringComparer.Ordinal), "release-revoked");
         Require(m.Rid == context.Rid, "rid-mismatch");
-        var hostVersion = Version(context.HostApiVersion);
+        var hostVersion = Version(release.Manifest.Runtime == "module-host" ? "2.0.0" : context.HostApiVersion);
         Require(hostVersion >= Version(m.HostApiMinimum) && hostVersion < Version(m.HostApiMaximumExclusive), "host-api-incompatible");
         Require(archive.CanRead && archive.CanSeek && archive.Length == release.ArchiveBytes, "archive-size");
         archive.Position = 0;

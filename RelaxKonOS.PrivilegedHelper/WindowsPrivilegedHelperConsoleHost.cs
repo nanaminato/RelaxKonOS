@@ -1,4 +1,4 @@
-﻿using System.Security.Principal;
+using System.Security.Principal;
 using System.Text.Json;
 using System.Runtime.Versioning;
 using RelaxKonOS.Protocol.UserExecution;
@@ -28,7 +28,8 @@ public static class WindowsPrivilegedHelperConsoleHost
             .Select(property => property.Name)
             .Where(name => name.Equals("serverServiceSid", StringComparison.OrdinalIgnoreCase)
                 || name.Equals("helperExecutableSha256", StringComparison.OrdinalIgnoreCase)
-                || name.Equals("userExecutionBackend", StringComparison.OrdinalIgnoreCase))
+                || name.Equals("userExecutionBackend", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("moduleHosts", StringComparison.OrdinalIgnoreCase))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
         if (foreignKeys.Length > 0)

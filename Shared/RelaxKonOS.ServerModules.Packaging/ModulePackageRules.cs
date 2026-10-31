@@ -29,11 +29,24 @@ internal static partial class ModulePackageRules
         or "LPT1" or "LPT2" or "LPT3" or "LPT4" or "LPT5" or "LPT6" or "LPT7" or "LPT8" or "LPT9";
     internal static void Manifest(ModulePackageManifest m)
     {
-        Require(m.SchemaVersion == 1 && m.PackageKind == "server-module" && Id(m.ModuleId) && Id(m.ReleaseId)
-            && m.ModuleId is not ("core" or "relaxkonos.core")
-            && Id(m.PublisherId) && m.Purpose is "official" or "development"
+        Require(m.SchemaVersion == 2 && m.PackageKind == "server-module" && Id(m.ModuleId) && Id(m.ReleaseId)
+            && m.ModuleId is not ("core" or "relaxkonos.core") && Path(m.ModuleId)
+            && Id(m.PublisherId) && m.Purpose is "official" or "development" or "third-party"
             && m.Rid is "linux-x64" or "linux-arm64" or "win-x64" or "win-arm64" or "osx-x64" or "osx-arm64",
             "manifest-invalid");
+        Require(m.Runtime is "in-process" or "module-host" && (m.Runtime != "in-process" || m.Purpose == "official"), "runtime-invalid");
+        Require(m.Purpose == "official" || !m.ModuleId.StartsWith("relaxkonos.", StringComparison.Ordinal), "module-id-reserved");
+        Require(m.Runtime != "module-host" || m.Capabilities is { Length: 0 }, "module-host-capability-forbidden");
+        Require(m.Privileges is { Length: <= 128 } && m.Privileges.All(p => p is not null
+            && p.Kind is "service-start" or "service-stop" or "service-restart"
+            && Id(p.Target)) && m.Privileges.Select(p => p.Kind + ":" + p.Target).Distinct(StringComparer.Ordinal).Count() == m.Privileges.Length,
+            "privilege-invalid");
+        Require(m.Runtime == "module-host" || m.Privileges.Length == 0, "privilege-invalid");
+        Require(m.Ui is not null && m.Ui.Name is { Length: > 0 and <= 128 }
+            && m.Ui.Summary is { Length: <= 512 } && m.Ui.Description is { Length: <= 8192 }
+            && m.Ui.License is { Length: > 0 and <= 128 }
+            && (m.Ui.Homepage is null || m.Ui.Homepage.Length <= 2048 && Uri.TryCreate(m.Ui.Homepage, UriKind.Absolute, out var homepage)
+                && homepage.Scheme == "https" && homepage.UserInfo.Length == 0), "ui-invalid");
         _ = Version(m.Version);
         Require(Version(m.HostApiMinimum) < Version(m.HostApiMaximumExclusive), "host-api-range-invalid");
         Require(Id(m.BuildId) && m.SourceCommit is { Length: 40 or 64 } && m.SourceCommit.All(c => char.IsAsciiHexDigitLower(c)), "build-identity-invalid");

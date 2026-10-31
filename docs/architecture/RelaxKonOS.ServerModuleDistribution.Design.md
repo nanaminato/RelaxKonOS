@@ -1,6 +1,6 @@
 # 服务端独立模块分发与 v1/v2 宿主设计
 
-> 状态：设计，2026-10-31。v1 首个可运行切片已实现：离线/在线安装官方 `.rkmodule` v1、不可变版本目录、`installed.json` 安装事实、进程内独立加载器、重启核实、启动失败回退/隔离、组件中心安装/回退 UI、已接纳目录的模块搜索/下载/远程刷新，以及只读模块健康报告；v2 已建立独立 ModuleHost SDK 与进程骨架（未接入 Server 代理/认证/提权 Broker）。完整商店服务、提权 Broker 未实现。本文其余内容仍是目标设计，不能按已实现功能读取。
+> 状态：分阶段实施，2026-10-31。当前只接受 schemaVersion=2 模块清单；已实现安装/回退与进程内官方模块、独立 ModuleHost 代理/授权、精确代码信任、Linux 专用身份及 Broker 服务操作切片。完整 ServerModules 回归通过；Linux 独立运行时有实机证据。完整发布安装、真实 Helper Broker 闭环、Windows 身份与故障验收未收口，详见 [v2 实施记录](RelaxKonOS.ServerModuleV2.Progress.md)。
 >
 > 范围：服务端模块的独立打包、信任、安装、更新、回退、加载、卸载，以及 v1/v2 两种宿主模式。桌面 `.roapp` 的包格式仍由[开发者模式](../development/RelaxKonOS.DeveloperMode.md)拥有；商店来源、搜索和下载的统一契约由[包商店来源设计](../platform/RelaxKonOS.PackageStore.Design.md)拥有；第三方模块的提权调用由[模块提权 Broker 设计](RelaxKonOS.ServerModulePrivilegeBroker.Design.md)拥有。
 >
@@ -13,7 +13,7 @@
 1. **v1 只承载官方模块，在 Server 进程内运行。**
 2. **v2 增加第三方 ModuleHost；官方模块继续在 Server 进程内运行，不移入 ModuleHost。**
 3. **不交付“第三方模块在 Server 进程内运行”的 v1 变体。**
-4. 目标包契约是 `schemaVersion=2`；v1 首个实现复用当前 `.rkmodule` v1 候选契约（`schemaVersion=1`），v2 阶段升级到唯一当前契约，不保留双解析。v1/v2 的差异是**宿主模式、信任策略和分发范围**，不是两套长期并存的解析器。
+4. 目标包契约是 `schemaVersion=2`；v1 首个实现复用当前 `.rkmodule` v1 候选契约（`schemaVersion=1`），当前已升级到唯一 schemaVersion=2 契约，不保留双解析。v1/v2 的差异是**宿主模式、信任策略和分发范围**，不是两套长期并存的解析器。
 5. 安装、更新、回退、移除都通过“计划 → 确认 → 应用 → 重启 → 核实”的持久事务完成，首版不支持热加载或运行中卸载。
 6. 模块文件放在持久数据根的不可变版本目录；Server 版本目录只放 Host 本身。
 7. 官方模块必须通过官方签名目录验证；第三方模块由用户显式信任，默认标记为未验证或社区发布者，不因安装而获得官方身份。
@@ -39,8 +39,8 @@
 | 包校验 | `.rkmodule` v1 的清单、签名目录、归档、路径、摘要、RID、Host API 纯校验 |
 | 维护命令 | `verify-package`、`catalog-status`、`accept-catalog`、`install-package`、`list-installed`、`remove-installed`；安装为离线管理员命令 |
 | 管理 API | 只读清单、启停/策略计划、操作查询；在线包动作与版本目录 API 仍返回不支持 |
-| 安装 | v1 离线/在线安装、不可变版本目录、`installed.json`、进程内独立加载器、重启核实和启动失败回退/隔离已实现；完整商店服务与第三方 ModuleHost 未实现 |
-| 第三方 | v2 ModuleHost SDK、行协议与独立进程骨架已建立；Server 代理、认证、路由和提权 Broker 未接入 |
+| 安装 | v1 离线/在线安装、不可变版本目录、`installed.json`、进程内独立加载器、重启核实和启动失败回退/隔离已实现；完整商店服务未实现；第三方 ModuleHost 按 v2 路径实施 |
+| 第三方 | v2 ModuleHost SDK、行协议与独立进程骨架已建立；Server 代理、认证、路由已接入；Linux 专用身份已有实机验证，Broker 首个服务操作集合已接线；完整闭环与 Windows 未收口 |
 
 相关入口：
 
@@ -69,7 +69,7 @@ v2 不把官方模块迁出 Server：官方模块继续走 v1 的进程内路径
 
 ### 3.2 迁移关系
 
-v1 是产品阶段，不是永久兼容层。v1 当前使用 `schemaVersion=1` 候选契约；v2 目标发布时：
+v1 是产品阶段，不是永久兼容层。当前已从 v1 候选契约直接升级到唯一 schemaVersion=2：
 
 - 官方模块升级到同一个 `schemaVersion=2` 契约，`runtime=in-process`；
 - 第三方模块使用 `runtime=module-host`；
@@ -78,7 +78,7 @@ v1 是产品阶段，不是永久兼容层。v1 当前使用 `schemaVersion=1` �
 
 ## 4. 目标包契约（schemaVersion=2）
 
-> v1 当前安装器读取 `schemaVersion=1`（见 §8.3）；本节是 v2 目标契约，尚未被 v1 安装器读取。
+> 当前安装器只读取 schemaVersion=2，字段以共享 ModulePackageManifest 为准；本文历史示例中的设计意图须与[当前包契约](RelaxKonOS.ServerModulePackage.Format.md#v2-唯一当前清单2026-10-31)对照。
 
 ### 4.1 归档结构
 
@@ -106,17 +106,13 @@ assets/...
   "runtime": "in-process",
   "moduleId": "relaxkonos.example.hello",
   "version": "1.0.0",
-  "publisher": {
-    "id": "relaxkonos",
-    "name": "RelaxKonOS"
-  },
   "purpose": "official",
   "rid": "linux-x64",
   "hostApiMinimum": "1.0.0",
   "hostApiMaximumExclusive": "2.0.0",
   "entryAssembly": "server/linux-x64/RelaxKonOS.Example.Hello.dll",
   "entryType": "RelaxKonOS.Example.Hello.HelloModule",
-  "buildId": "20261031.1",
+  "buildId": "build-20261031.1",
   "sourceCommit": "0000000000000000000000000000000000000000",
   "dependencies": [],
   "capabilities": [],
@@ -134,7 +130,9 @@ assets/...
       "length": 12345,
       "sha256": "…"
     }
-  ]
+  ],
+  "publisherId": "relaxkonos",
+  "releaseId": "relaxkonos.example.hello-1.0.0"
 }
 ```
 
@@ -350,7 +348,7 @@ v1 的 `InstalledModuleContext` 只暴露配置、环境、内容根、模块数
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "packageKind": "server-module",
   "moduleId": "relaxkonos.example.hello",
   "releaseId": "relaxkonos.example.hello-1.0.0-linux-x64",
@@ -362,7 +360,7 @@ v1 的 `InstalledModuleContext` 只暴露配置、环境、内容根、模块数
   "hostApiMaximumExclusive": "2.0.0",
   "entryAssembly": "server/linux-x64/RelaxKonOS.Example.Hello.dll",
   "entryType": "RelaxKonOS.Example.Hello.HelloModule",
-  "buildId": "20261031.1",
+  "buildId": "build-20261031.1",
   "sourceCommit": "0000000000000000000000000000000000000000",
   "dependencies": [],
   "capabilities": [],
@@ -372,11 +370,20 @@ v1 的 `InstalledModuleContext` 只暴露配置、环境、内容根、模块数
       "length": 12345,
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     }
-  ]
+  ],
+  "runtime": "in-process",
+  "privileges": [],
+  "ui": {
+    "name": "relaxkonos.example.hello",
+    "summary": "",
+    "description": "",
+    "homepage": null,
+    "license": "MIT"
+  }
 }
 ```
 
-> 这是 v1 安装器当前接受的 `.rkmodule` 契约；`schemaVersion=2`、`runtime`、`privileges` 和 `ui` 是 v2 目标字段，尚未被 v1 安装器读取。
+> 当前安装器只接受唯一 v2 清单；runtime、privileges、ui 为必填字段，详见包契约。
 
 > 示例中的长度和摘要仅用于展示字段形状；实际值必须由打包器逐文件生成，空 `files` 或占位摘要不能通过校验。
 
@@ -488,7 +495,6 @@ v2 的 `IModuleContext` 只提供：
   "runtime": "module-host",
   "moduleId": "com.example.hello",
   "version": "0.1.0",
-  "publisher": { "id": "com.example", "name": "Example" },
   "purpose": "community",
   "rid": "linux-x64",
   "hostApiMinimum": "2.0.0",
@@ -503,7 +509,10 @@ v2 的 `IModuleContext` 只提供：
     {
       "kind": "package.install",
       "target": "example-agent",
-      "constraints": { "source": "host-apt", "version": "1.*" },
+      "constraints": {
+        "source": "host-apt",
+        "version": "1.*"
+      },
       "reason": "安装模块依赖的代理程序"
     }
   ],
@@ -520,7 +529,9 @@ v2 的 `IModuleContext` 只提供：
       "length": 23456,
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     }
-  ]
+  ],
+  "publisherId": "com.example",
+  "releaseId": "com.example.hello-0.1.0"
 }
 ```
 
@@ -600,7 +611,7 @@ v2 的 `IModuleContext` 只提供：
 - 在线安装 HTTP：`POST /server/module-packages/upload`（原始 `.rkmodule` body，最大 1 GiB）、`POST /server/module-packages/plans`、`POST /server/module-packages/plans/{planId}/apply`、`POST /server/module-packages/rollback`；计划冻结 sourceId/releaseId/module/version/摘要，apply 重新校验后安装并写 `package-operations.json` 等待重启核实。直接 `POST /server/module-packages/install` 保留为无计划路径。
 - 测试：真实模块程序集加载、DI 注册、Endpoint 映射、安装幂等、移除保留文件、双版本切换、回退、篡改拒绝、启动核实和只读包 API；`Tests/ServerModules` 全套通过（Windows 开发机）。
 
-未实现：完整商店服务（远程源同步、评分/审核、搜索索引）、ModuleHost 与 Server 的代理/认证接线、提权 Broker。
+剩余：完整商店服务（评分/审核、搜索索引）、Windows 专用账户/ACL、v2 完整发布/部署验收、Broker 真实 Helper 闭环与故障注入。当前进度见下文。
 
 ### v2 ModuleHost 骨架（2026-10-31）
 
@@ -612,7 +623,10 @@ v2 的 `IModuleContext` 只提供：
 - HTTP 路由：ModuleHost 可选的 `IModuleHostHttp` 在自身 loopback 监听器上注册路由；`GET /server/module-hosts/{moduleId}/{**path}` 由 Server 认证后反向代理到对应 ModuleHost。按模块授权：`AllowedUsers` 为空时仅 `ModuleManagement:Administrators` 可访问，配置用户 ID 时仅这些用户可访问；代理只传递 `X-RelaxKonOS-Module-User`、`X-RelaxKonOS-Module-Role`、`X-RelaxKonOS-Module-Request-Id`，不转发 Authorization/Cookie。
 - 服务令牌：Server 启动每个 ModuleHost 时生成随机 256 位令牌，通过子进程环境变量 `RELAXKONOS_MODULE_HOST_TOKEN` 传递；ModuleHost 对所有 HTTP 请求校验 `X-RelaxKonOS-Module-Token`，Server 代理自动附加。令牌不写入命令行、日志或 ready 输出。
 - 存储/日志：`IModuleHostContext.Storage` 提供路径限定、单文件最大 4 MiB 的读写/删除，拒绝绝对路径、`..`、空段和 reparse/symlink；`IModuleHostContext.Logger` 写入 stderr，避免污染 stdout 行协议。
-- 当前不提供模块服务令牌、细粒度角色、存储/日志能力或提权 Broker；不能作为 v2 生产运行时使用。
+- 生命周期监督补齐：周期检查健康（`ModuleHosts:ProbeIntervalSeconds`，默认 10 秒，范围 1–3600 秒）；不健康、退出、协议错误或超时后标记 `faulted`，撤下代理连接并关闭子进程。不自动重启或重放模块工作；重复 moduleId 配置忽略并记录警告。
+- stderr 按最大 2048 字符分块持续排空并接入 Server 日志，不再无限缓存整个进程日志。
+- 本轮继续实现 v2 唯一清单安装链、精确代码信任、Linux 每模块专用账户/只读版本目录及 Broker 首个服务操作集合。生产不再允许继承 Server 账户启动；Windows 专用身份尚未实现，明确失败关闭。阶段证据与剩余项见 [v2 实施记录](RelaxKonOS.ServerModuleV2.Progress.md)。
+- 验证：构建及完整 ServerModules 回归已通过（含原先 HTTP apply 检查）；Linux 测试机已有独立运行时权限与生命周期验收。尚未据此宣称 v2 生产运行时整体收口。
 
 ## 13. 验收
 
@@ -630,3 +644,8 @@ v2 的 `IModuleContext` 只提供：
 - [模块提权 Broker 设计](RelaxKonOS.ServerModulePrivilegeBroker.Design.md)
 - [包商店来源设计](../platform/RelaxKonOS.PackageStore.Design.md)
 - [功能模块与双端应用扩展设计](RelaxKonOS.ModulesAndExtensions.Design.md)
+
+
+### v2 继续实施（2026-10-31）
+
+MD-01 已落地唯一 v2 清单；MD-05 Linux 专用 UID/GID、无附加组、no_new_privs、root 只读模块快照和受保护私有数据已有实机验收；MD-06 精确代码信任及更新失效已实现并回归；MD-07 首个 Broker 服务操作集合已接线且确认门测试通过。Windows、完整打包安装回归、Linux Core→ModuleHost→Broker→真实 Helper 正常闭环已实测；完整发布升级、故障注入及 Windows 验收仍待完成。详细状态由 [v2 实施记录](RelaxKonOS.ServerModuleV2.Progress.md) 跟踪。

@@ -330,7 +330,10 @@ if ([string]::IsNullOrWhiteSpace($serverServiceSid)) { throw "Could not resolve 
 & sc.exe config $ServerServiceName obj= 'NT AUTHORITY\LocalService' | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "Could not set '$ServerServiceName' to run as LocalService (sc.exe exit code $LASTEXITCODE)." }
 
+. (Join-Path $PSScriptRoot 'RelaxKonOSModuleHostRuntime.ps1')
+$moduleHostPolicy = Install-RelaxKonOSModuleHostRuntime (Join-Path (Split-Path -Parent $ServerExecutable) 'module-host') (Join-Path $privilegedData 'module-host') (Join-Path $serverData 'module-management\packages')
 $helperSettings = [ordered]@{
+    moduleHosts = $moduleHostPolicy
     pipeName = 'relaxkonos-privileged-helper'
     sharedSecret = $helperSecret
     serverServiceSid = $serverServiceSid

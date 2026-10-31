@@ -96,8 +96,14 @@ internal static class ServerModuleManagementEndpoints
             var target = new Uri(endpoint, (path ?? "") + http.Request.QueryString);
             using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
             { Timeout = TimeSpan.FromSeconds(100) };
+            var broker = http.RequestServices.GetService<CoreModulePrivilegeBroker>();
+            var requestContext = broker?.IssueRequestContext(moduleId, http.User);
+            try
+            {
             using var request = new HttpRequestMessage(new HttpMethod(http.Request.Method), target);
             request.Headers.TryAddWithoutValidation(ModuleHostProtocol.ServiceTokenHeader, serviceToken);
+            if (requestContext is not null)
+                request.Headers.TryAddWithoutValidation(ModulePrivilegeProtocol.RequestContextHeader, requestContext);
             if (http.Request.ContentLength is > 0 || http.Request.Headers.ContainsKey("Transfer-Encoding"))
             {
                 request.Content = new StreamContent(http.Request.Body);
@@ -124,6 +130,8 @@ internal static class ServerModuleManagementEndpoints
             http.Response.Headers.ContentLength = null;
             await response.Content.CopyToAsync(http.Response.Body, http.RequestAborted);
             return Results.Empty;
+            }
+            finally { if (requestContext is not null) broker!.ReleaseRequestContext(requestContext); }
         }).RequireAuthorization();
         group.MapGet(ServerModuleManagementRoutes.InstalledPackages, (ServerModuleContext context) => Respond(() =>
         {
@@ -196,6 +204,9 @@ internal static class ServerModuleManagementEndpoints
             var path = Path.Combine(context.ContentRootPath, "data", "module-management", "staging", "uploads",
                 request.UploadId + ".rkmodule");
             if (!File.Exists(path)) return Problem("module-package-upload-not-found", 404);
+            var inspected = await InstalledModuleInstaller.InspectAsync(context.ContentRootPath, context.Configuration,
+                context.Environment, request.SourceId, path, request.ReleaseId, DateTimeOffset.UtcNow, false, cancellationToken);
+            if (inspected.Manifest.Runtime == "module-host") return Problem("module-package-trust-plan-required", 409);
             var record = await InstalledModuleInstaller.InstallFromAcceptedCatalogAsync(context.ContentRootPath,
                 context.Configuration, context.Environment, request.SourceId, path, request.ReleaseId,
                 DateTimeOffset.UtcNow, cancellationToken);
@@ -295,6 +306,7 @@ internal static class ServerModuleManagementEndpoints
                 .SingleOrDefault(module => module.ModuleId == plan.ModuleId);
             var record = await InstalledModuleInstaller.InstallFromAcceptedCatalogAsync(context.ContentRootPath,
                 context.Configuration, context.Environment, plan.SourceId, path, plan.ReleaseId, now, cancellationToken);
+            if (record.Runtime == "module-host") ModuleTrustStore.Set(context.ContentRootPath, record, actor, trusted: true);
             var operation = ModulePackageOperationStore.Record(context.ContentRootPath, "install", record, previous?.Version, now);
             ModulePackagePlanStore.MarkApplied(context.ContentRootPath, plan.PlanId, operation.OperationId, now);
             try { File.Delete(path); } catch (IOException) { }
@@ -321,7 +333,8 @@ internal static class ServerModuleManagementEndpoints
 
     private static ServerModulePackagePlanDto PlanDto(ModulePackagePlan plan) =>
         new(plan.PlanId, plan.SourceId, plan.ReleaseId, plan.ModuleId, plan.Version, plan.PublisherId,
-            plan.ArtifactSha256, plan.ManifestSha256, plan.ExpiresAt, plan.AppliedOperationId);
+            plan.ArtifactSha256, plan.ManifestSha256, plan.ExpiresAt, plan.AppliedOperationId, plan.Runtime,
+            plan.Privileges.Select(p => new ServerModulePrivilegeDeclarationDto(p.Kind, p.Target)).ToArray(), plan.Ui.Name, plan.Ui.Summary);
 
     private static ServerInstalledModuleDto InstalledDto(InstalledModuleRecord module, InstalledModuleRecord? current) =>
         new(module.ModuleId, module.Version, module.ReleaseId, module.SourceId, module.PublisherId, module.ArtifactSha256,

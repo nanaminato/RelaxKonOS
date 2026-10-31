@@ -23,6 +23,7 @@ internal sealed record InstalledModuleRecord(
     string EntryType,
     string[] Capabilities,
     string[] Requires,
+    string Runtime,
     DateTimeOffset InstalledAt,
     bool Quarantined = false);
 
@@ -45,7 +46,7 @@ internal static class InstalledModuleStore
         InstalledModuleDocument? document;
         try { document = JsonSerializer.Deserialize<InstalledModuleDocument>(File.ReadAllBytes(path), RelaxKonOSJsonOptions.Default); }
         catch (JsonException) { throw Invalid(); }
-        if (document is null || document.SchemaVersion != 1 || document.Modules is not { Length: <= MaximumModules })
+        if (document is null || document.SchemaVersion != 2 || document.Modules is not { Length: <= MaximumModules })
             throw Invalid();
         var ids = new HashSet<string>(StringComparer.Ordinal);
         foreach (var module in document.Modules)
@@ -106,7 +107,7 @@ internal static class InstalledModuleStore
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            var bytes = JsonSerializer.SerializeToUtf8Bytes(new InstalledModuleDocument(1, modules.ToArray()), RelaxKonOSJsonOptions.Default);
+            var bytes = JsonSerializer.SerializeToUtf8Bytes(new InstalledModuleDocument(2, modules.ToArray()), RelaxKonOSJsonOptions.Default);
             if (bytes.Length > Limit) throw Invalid();
             using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
                        65536, FileOptions.WriteThrough))
@@ -162,10 +163,17 @@ internal static class InstalledModuleStore
         var info = new FileInfo(manifestPath);
         if (info.Length is <= 0 or > 4 * 1024 * 1024) throw new ModulePackageException("module-package-installed-integrity");
         ModulePackageManifest manifest;
-        try { manifest = ModulePackageJson.Read<ModulePackageManifest>(File.ReadAllBytes(manifestPath)); }
+        try
+        {
+            var bytes = File.ReadAllBytes(manifestPath);
+            if (Convert.ToHexStringLower(SHA256.HashData(bytes)) != record.ManifestSha256)
+                throw new ModulePackageException("module-package-installed-integrity");
+            manifest = ModulePackageJson.Read<ModulePackageManifest>(bytes);
+        }
         catch (ModulePackageException) { throw; }
         catch (Exception error) when (error is IOException or JsonException) { throw new ModulePackageException("module-package-installed-integrity"); }
-        if (manifest.ModuleId != record.ModuleId || manifest.Version != record.Version
+        ModulePackageVerifier.ValidateManifest(manifest);
+        if (manifest.Runtime != record.Runtime || manifest.ModuleId != record.ModuleId || manifest.Version != record.Version
             || manifest.ReleaseId != record.ReleaseId || manifest.PublisherId != record.PublisherId
             || manifest.EntryAssembly != record.EntryAssembly || manifest.EntryType != record.EntryType
             || !manifest.Files.Any(file => file.Path == record.EntryAssembly))
@@ -175,6 +183,9 @@ internal static class InstalledModuleStore
             var path = Path.GetFullPath(Path.Combine(root, file.Path));
             if (!path.StartsWith(root + Path.DirectorySeparatorChar, PathComparison)) throw new ModulePackageException("module-package-installed-path-invalid");
             RequireRegularFile(path);
+            for (var ancestor = Path.GetDirectoryName(path); ancestor is not null && ancestor.StartsWith(root, PathComparison); ancestor = Path.GetDirectoryName(ancestor))
+                if ((File.GetAttributes(ancestor) & FileAttributes.ReparsePoint) != 0)
+                    throw new ModulePackageException("module-package-installed-path-invalid");
             var fileInfo = new FileInfo(path);
             if (fileInfo.Length != file.Length) throw new ModulePackageException("module-package-installed-integrity");
             using var stream = File.OpenRead(path);
@@ -184,7 +195,7 @@ internal static class InstalledModuleStore
     }
 
     private static bool Valid(InstalledModuleRecord module) =>
-        Identifier(module.ModuleId) && Version(module.Version) && Identifier(module.ReleaseId)
+        module.Runtime is "in-process" or "module-host" && Identifier(module.ModuleId) && Version(module.Version) && Identifier(module.ReleaseId)
         && Identifier(module.SourceId) && Identifier(module.PublisherId) && Digest(module.ArtifactSha256)
         && Digest(module.ManifestSha256) && PackagePath(module.PackagePath) && EntryPath(module.EntryAssembly)
         && module.EntryType is { Length: > 0 and <= 256 } && module.Capabilities is { Length: <= 128 }
@@ -227,7 +238,8 @@ internal interface IInstalledModuleInfo
 internal static class InstalledModuleCatalog
 {
     internal static IReadOnlyList<IServerModule> Load(string contentRoot) =>
-        InstalledModuleStore.Read(contentRoot).Select(record => (IServerModule)new InstalledServerModule(record, contentRoot)).ToArray();
+        InstalledModuleStore.Read(contentRoot).Select(record => record.Runtime == "module-host"
+            ? (IServerModule)new InstalledIsolatedModule(record, contentRoot) : new InstalledServerModule(record, contentRoot)).ToArray();
 }
 
 /// <summary>Adapts the public installed-module ABI to the internal server-module lifecycle.</summary>
@@ -298,6 +310,7 @@ internal sealed class InstalledServerModule : IServerModule, IInstalledModuleInf
 
     private IInstalledServerModule EnsureLoaded()
     {
+        if (_record.Runtime != "in-process") throw new ModulePackageException("module-package-runtime-invalid");
         if (_module is not null) return _module;
         InstalledModuleStore.VerifyPackage(_contentRoot, _record);
         var packageRoot = InstalledModuleStore.ResolvePackageRoot(_contentRoot, _record.PackagePath);

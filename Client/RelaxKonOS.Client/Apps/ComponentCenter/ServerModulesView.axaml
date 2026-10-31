@@ -20,6 +20,16 @@
   <TextBlock Text="{Binding Details}" TextWrapping="Wrap" />
   <Button Content="{loc:Loc server_modules.check_health}" Command="{Binding CheckHealthCommand}" />
   <TextBlock Text="{Binding HealthText}" TextWrapping="Wrap" />
+  <TextBlock Text="{loc:Loc server_modules.privilege_title}" FontWeight="SemiBold" />
+  <TextBox Text="{Binding PrivilegePlanId}" PlaceholderText="{loc:Loc server_modules.privilege_plan_id}" />
+  <Button Content="{loc:Loc server_modules.privilege_load}" Command="{Binding LoadPrivilegeCommand}" />
+  <TextBlock Text="{Binding PrivilegeText}" TextWrapping="Wrap" />
+  <TextBox Text="{Binding PrivilegeAdministrator}" PlaceholderText="{loc:Loc server_modules.privilege_administrator}" />
+  <TextBox Text="{Binding PrivilegePassword}" PasswordChar="●" PlaceholderText="{loc:Loc server_modules.privilege_password}" />
+  <WrapPanel ItemSpacing="8" LineSpacing="8">
+   <Button Content="{loc:Loc server_modules.privilege_approve}" Command="{Binding ApprovePrivilegeCommand}" IsEnabled="{Binding !Busy}" />
+   <Button Content="{loc:Loc server_modules.privilege_cancel}" Command="{Binding CancelPrivilegeCommand}" IsEnabled="{Binding !Busy}" />
+  </WrapPanel>
   <TextBlock Text="{loc:Loc server_modules.store}" FontWeight="SemiBold" />
   <TextBlock Text="{Binding StoreSourceText}" TextWrapping="Wrap" Opacity="0.7" />
   <WrapPanel ItemSpacing="8" LineSpacing="8">
