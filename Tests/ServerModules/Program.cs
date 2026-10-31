@@ -21,6 +21,11 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 
 // Fixture writer for the process-level deactivation check, so the ledger under test is produced by the
+if (args is ["--write-module-package-fixture", var packageFixture])
+{
+    ModulePackageChecks.WriteFixture(packageFixture);
+    return;
+}
 if (args is ["--git-build-command-child", var childMarker])
 {
     File.WriteAllText(childMarker, Environment.ProcessId.ToString());
@@ -101,7 +106,11 @@ await ModuleStreamingChecks.RunAsync(Check);
 await ModuleBackgroundWorkChecks.RunAsync(Check);
 await GitDeactivationChecks.RunAsync(Check);
 await ModulePackageChecks.RunAsync(Check);
+await ModulePackageBuilderChecks.RunAsync(Check);
+await ModuleReleaseDirectoryChecks.RunAsync(Check);
+await InstalledModuleChecks.RunAsync(Check);
 await ModuleManagementHttpChecks.RunAsync(Check);
+await ModulePackageHttpChecks.RunAsync(Check);
 await ModuleRuntimeManagementChecks.RunAsync(Check);
 
 // The default set must reproduce a Server that predates the registry: every official module on.

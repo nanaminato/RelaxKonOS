@@ -61,11 +61,15 @@ internal sealed partial class ServerModules
             var desiredPolicy = managementState?.Policies.GetValueOrDefault(module.Id);
             var effectivePolicy = management?.EffectivePolicies.GetValueOrDefault(module.Id);
             var recoveryRequired = runtime?.BlockedBy == "module-recovery-blocked" || work.Any(item => item.RecoveryRequired);
+            var installed = module as IInstalledModuleInfo;
+            var moduleVersion = installed?.InstalledVersion ?? version;
             inventory.Add(new ServerModuleDto(module.Id, isEnabled, module.Capabilities, module.Requires,
                 requiredBy, work.Select(item => item.Description).ToArray(),
                 runtime,
-                DesiredEnabled: desired.Contains(module.Id), InstalledVersion: version,
-                DesiredVersion: version, EffectiveVersion: isEnabled ? version : null,
+                DesiredEnabled: desired.Contains(module.Id), Packaging: installed is null ? "bundled" : "independent",
+                InstalledVersion: moduleVersion, DesiredVersion: moduleVersion, EffectiveVersion: isEnabled ? moduleVersion : null,
+                ArtifactDigest: installed?.ArtifactDigest ?? HostDigest.Value,
+                SourceId: installed?.SourceId ?? "server-release", TrustState: installed?.TrustState ?? "host",
                 ServiceId: management?.ServiceId, ProcessGeneration: management?.ProcessGeneration,
                 DesiredRevision: managementState?.Revision, EffectiveRevision: management?.EffectiveRevision,
                 RestartRequired: desired.Contains(module.Id) != isEnabled || desiredPolicy != effectivePolicy, ObservedAt: observedAt,
@@ -75,7 +79,7 @@ internal sealed partial class ServerModules
                 ConfigurationWritable: management?.Writable == true,
                 AllowedActions: management?.Admissions(module is IServerModuleResidency, runtime, desired.Contains(module.Id), recoveryRequired), Name: ConfigurationName(module.Id),
                 Rid: System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier,
-                HostApiRequirement: version, ArtifactDigest: HostDigest.Value,
+                HostApiRequirement: version,
                 ResourceReleaseLevel: module is IServerModuleResidency ? "objects" : "none",
                 DesiredResidencyPolicy: desiredPolicy, EffectiveResidencyPolicy: effectivePolicy));
         }

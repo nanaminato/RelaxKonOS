@@ -44,6 +44,16 @@ internal static class ModuleManagementHttpChecks
             using var client = new HttpClient { BaseAddress = new Uri(address) };
             var detail = ServerModuleManagementRoutes.Detail.Replace("{moduleId}", ServerModules.GitId);
             check((await client.GetAsync(detail)).StatusCode == HttpStatusCode.Unauthorized, "module detail rejects unauthenticated requests");
+            check((await client.GetAsync(ServerModuleManagementRoutes.InstalledPackages)).StatusCode == HttpStatusCode.Unauthorized
+                && (await client.GetAsync(ServerModuleManagementRoutes.PackageOperations)).StatusCode == HttpStatusCode.Unauthorized
+                && (await client.PostAsync(ServerModuleManagementRoutes.PackageUpload, new ByteArrayContent([]))).StatusCode == HttpStatusCode.Unauthorized
+                && (await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackageInstall,
+                    new ServerModulePackageInstallRequest("official", "release-1", Guid.NewGuid().ToString("N")))).StatusCode == HttpStatusCode.Unauthorized
+                && (await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackagePlans,
+                    new ServerModulePackageInstallRequest("official", "release-1", Guid.NewGuid().ToString("N")))).StatusCode == HttpStatusCode.Unauthorized
+                && (await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackageRollback,
+                    new ServerModulePackageRollbackRequest(ServerModules.GitId, "9.9.9"))).StatusCode == HttpStatusCode.Unauthorized,
+                "module package read and write APIs reject unauthenticated requests");
             client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Observer);
             var observer = await client.GetFromJsonAsync<ServerModuleDto>(detail, RelaxKonOSJsonOptions.Default);
             check(observer?.AllowedActions?.All(x => !x.Allowed && x.BlockedBy.Any(reason => reason.ProblemCode == "module-forbidden")) == true,
@@ -53,6 +63,19 @@ internal static class ModuleManagementHttpChecks
             check((await client.PostAsJsonAsync(ServerModuleManagementRoutes.Plans, request)).StatusCode == HttpStatusCode.Forbidden,
                 "global module changes require explicit server administration grant");
             client.DefaultRequestHeaders.Remove("test-user"); client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Admin);
+            var installedPackages = await client.GetFromJsonAsync<ServerInstalledModulePageDto>(ServerModuleManagementRoutes.InstalledPackages, RelaxKonOSJsonOptions.Default);
+            var packageOperations = await client.GetFromJsonAsync<ServerPackageOperationPageDto>(ServerModuleManagementRoutes.PackageOperations, RelaxKonOSJsonOptions.Default);
+            var packageVersions = await client.GetFromJsonAsync<ServerInstalledModulePageDto>(
+                ServerModuleManagementRoutes.PackageVersions.Replace("{moduleId}", ServerModules.GitId), RelaxKonOSJsonOptions.Default);
+            check(installedPackages?.Items.Count == 0 && packageOperations?.Items.Count == 0 && packageVersions?.Items.Count == 0,
+                "module package read APIs expose empty installation facts without inventing an installed version");
+            check((await client.PostAsync(ServerModuleManagementRoutes.PackageUpload, new ByteArrayContent([]))).StatusCode == HttpStatusCode.BadRequest,
+                "module package upload rejects an empty body before creating an install candidate");
+            check((await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackagePlans,
+                    new ServerModulePackageInstallRequest("official", "release-1", Guid.NewGuid().ToString("N")))).StatusCode == HttpStatusCode.NotFound
+                && (await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackageRollback,
+                    new ServerModulePackageRollbackRequest(ServerModules.GitId, "9.9.9"))).StatusCode == HttpStatusCode.NotFound,
+                "package plan and rollback reject missing uploads or uninstalled modules without mutating state");
             var response = await client.PostAsJsonAsync(ServerModuleManagementRoutes.Plans, request, RelaxKonOSJsonOptions.Default);
             response.EnsureSuccessStatusCode();
             var plan = (await response.Content.ReadFromJsonAsync<ServerModulePlanDto>(RelaxKonOSJsonOptions.Default))!;

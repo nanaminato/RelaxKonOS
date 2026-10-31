@@ -42,6 +42,33 @@ public sealed record ServerModuleRecoveryReportDto(string ServiceId, string Desi
     IReadOnlyList<string> DesiredEnabledModuleIds, IReadOnlyDictionary<string, ServerModuleResidencyPolicyDto> DesiredPolicies,
     IReadOnlyList<ServerModuleOperationDto> UnresolvedOperations, DateTimeOffset ObservedAt, string ObservationScope);
 
+public sealed record ServerInstalledModuleDto([property: JsonRequired] string ModuleId, [property: JsonRequired] string Version,
+    [property: JsonRequired] string ReleaseId, [property: JsonRequired] string SourceId, [property: JsonRequired] string PublisherId,
+    [property: JsonRequired] string ArtifactSha256, [property: JsonRequired] string ManifestSha256,
+    [property: JsonRequired] string PackagePath, [property: JsonRequired] string EntryAssembly, [property: JsonRequired] string EntryType,
+    [property: JsonRequired] IReadOnlyList<string> Capabilities, [property: JsonRequired] IReadOnlyList<string> Requires,
+    [property: JsonRequired] DateTimeOffset InstalledAt, [property: JsonRequired] bool Active);
+public sealed record ServerInstalledModulePageDto([property: JsonRequired] IReadOnlyList<ServerInstalledModuleDto> Items);
+public sealed record ServerPackageOperationDto([property: JsonRequired] Guid OperationId, [property: JsonRequired] string Action,
+    [property: JsonRequired] string ModuleId, [property: JsonRequired] string Version, [property: JsonRequired] string ReleaseId,
+    [property: JsonRequired] string ArtifactSha256, string? PreviousVersion, [property: JsonRequired] string State,
+    string? ProblemCode, [property: JsonRequired] DateTimeOffset CreatedAt, [property: JsonRequired] DateTimeOffset UpdatedAt,
+    string? ProcessGeneration);
+public sealed record ServerPackageOperationPageDto([property: JsonRequired] IReadOnlyList<ServerPackageOperationDto> Items);
+public sealed record ServerModulePackageUploadDto([property: JsonRequired] string UploadId, [property: JsonRequired] long Bytes,
+    [property: JsonRequired] string Sha256);
+public sealed record ServerModulePackageInstallRequest([property: JsonRequired] string SourceId, [property: JsonRequired] string ReleaseId,
+    [property: JsonRequired] string UploadId);
+public sealed record ServerModulePackageInstallResultDto([property: JsonRequired] Guid OperationId,
+    [property: JsonRequired] ServerInstalledModuleDto Record);
+public sealed record ServerModulePackagePlanDto([property: JsonRequired] Guid PlanId, [property: JsonRequired] string SourceId,
+    [property: JsonRequired] string ReleaseId, [property: JsonRequired] string ModuleId, [property: JsonRequired] string Version,
+    [property: JsonRequired] string PublisherId, [property: JsonRequired] string ArtifactSha256,
+    [property: JsonRequired] string ManifestSha256, [property: JsonRequired] DateTimeOffset ExpiresAt,
+    Guid? AppliedOperationId);
+public sealed record ServerModulePackageRollbackRequest([property: JsonRequired] string ModuleId,
+    [property: JsonRequired] string Version);
+
 public static class ServerModuleManagementRoutes
 {
     public const string Detail = ServerApiRoutes.Modules + "/{moduleId}";
@@ -51,4 +78,12 @@ public static class ServerModuleManagementRoutes
     public const string Operations = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-operations";
     public const string Operation = Operations + "/{operationId:guid}";
     public const string Releases = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-releases";
+    public const string InstalledPackages = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-packages/installed";
+    public const string PackageVersions = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-packages/{moduleId}/versions";
+    public const string PackageOperations = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-package-operations";
+    public const string PackageUpload = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-packages/upload";
+    public const string PackageInstall = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-packages/install";
+    public const string PackagePlans = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-packages/plans";
+    public const string PackagePlanApply = PackagePlans + "/{planId:guid}/apply";
+    public const string PackageRollback = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-packages/rollback";
 }

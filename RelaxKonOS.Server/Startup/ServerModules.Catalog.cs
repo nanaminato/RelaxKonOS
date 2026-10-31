@@ -52,19 +52,23 @@ internal sealed partial class ServerModules
     }
 
     /// <summary>
-    /// The official modules compiled into this Host. Adding a module here is the only way to make its
-    /// configuration name known; arbitrary configuration values or assemblies cannot join the catalog.
+    /// The official modules compiled into this Host plus independently installed modules supplied by
+    /// the caller. Configuration can select only known modules; it cannot name a type or assembly.
     /// </summary>
-    private static IReadOnlyList<IServerModule> Catalog() =>
-    [
-        new Modules.TerminalModule(),
-        new Modules.FirewallModule(),
-        new Modules.SystemPerformanceModule(),
-        new Modules.GitModule(),
-        new Modules.TailscaleModule(),
-        new Modules.DockerModule(),
-        new Modules.CertificateModule(),
-        new Modules.WebServerModule(),
-        new Modules.ProxyModule(),
-    ];
+    private static IReadOnlyList<IServerModule> Catalog(IReadOnlyList<IServerModule>? installed = null)
+    {
+        IServerModule[] compiled =
+        [
+            new Modules.TerminalModule(),
+            new Modules.FirewallModule(),
+            new Modules.SystemPerformanceModule(),
+            new Modules.GitModule(),
+            new Modules.TailscaleModule(),
+            new Modules.DockerModule(),
+            new Modules.CertificateModule(),
+            new Modules.WebServerModule(),
+            new Modules.ProxyModule(),
+        ];
+        return installed is { Count: > 0 } ? [.. compiled, .. installed] : compiled;
+    }
 }

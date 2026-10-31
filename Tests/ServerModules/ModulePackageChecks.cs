@@ -8,6 +8,43 @@ using RelaxKonOS.Server.Startup;
 
 internal static class ModulePackageChecks
 {
+    internal static void WriteFixture(string directory)
+    {
+        directory = Path.GetFullPath(directory);
+        Directory.CreateDirectory(directory);
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var policy = new ModulePackageTrustPolicy(1, "official", 1, true, "relaxkon", "official", "https://modules.example/",
+            ["example"], new Dictionary<string, string> { ["fixture-key"] = Convert.ToBase64String(key.ExportSubjectPublicKeyInfo()) }, 3600);
+        byte[] Json<T>(T value) => JsonSerializer.SerializeToUtf8Bytes(value, ModulePackageJson.Options);
+        string Hash(byte[] value) => Convert.ToHexStringLower(SHA256.HashData(value));
+        var rid = System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier;
+        var content = Encoding.UTF8.GetBytes("package fixture; not executable code");
+        var manifest = new ModulePackageManifest(1, "server-module", "example", "fixture-release", "1.0.0", "relaxkon", "official", rid,
+            "1.0.0", "2.0.0", "server/" + rid + "/Fixture.dll", "Fixture.Module", "fixture-build", new string('a', 40), [], [],
+            [new("server/" + rid + "/Fixture.dll", content.Length, Hash(content))]);
+        var manifestBytes = Json(manifest);
+        using var buffer = new MemoryStream();
+        using (var zip = new ZipArchive(buffer, ZipArchiveMode.Create, true))
+        {
+            using (var entry = zip.CreateEntry("manifest.json").Open()) entry.Write(manifestBytes);
+            using (var entry = zip.CreateEntry(manifest.EntryAssembly).Open()) entry.Write(content);
+        }
+        var archive = buffer.ToArray();
+        var now = DateTimeOffset.UtcNow;
+        var catalog = new ModulePackageCatalog(1, "official", 1, now.AddMinutes(-1), now.AddMinutes(30),
+            [new(manifest, Hash(manifestBytes), Hash(archive), archive.Length, "https://modules.example/fixture.rkmodule")], [], []);
+        var payload = Json(catalog);
+        var signature = key.SignData(Encoding.UTF8.GetBytes("RelaxKonOS.ServerModuleCatalog.v1\n").Concat(payload).ToArray(),
+            HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+        File.WriteAllBytes(Path.Combine(directory, "catalog.json"), Json(new SignedModulePackageCatalog(1, "fixture-key",
+            Convert.ToBase64String(payload), Convert.ToBase64String(signature))));
+        File.WriteAllBytes(Path.Combine(directory, "candidate.rkmodule"), archive);
+        File.WriteAllBytes(Path.Combine(directory, "appsettings.host.json"), Json(new { ModuleManagement = new { Authority = "managed" },
+            ModulePackages = new { Sources = new Dictionary<string, ModulePackageTrustPolicy> { ["official"] = policy } } }));
+        using var store = new ModuleManagementStore(new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?> { ["ModuleManagement:Authority"] = "managed" }).Build(), directory);
+        Console.WriteLine(JsonSerializer.Serialize(new { store.ServiceId, revision = ModulePackageCatalogStore.InitialRevision, manifest.ReleaseId }, ModulePackageJson.Options));
+    }
     internal static async Task RunAsync(Action<bool, string> check)
     {
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
@@ -131,6 +168,9 @@ internal static class ModulePackageChecks
         await RejectArchive(duplicateManifest, catalog with { Releases = [Release(manifest, duplicateManifest, duplicateJson)] }, "metadata-invalid", "duplicate manifest json properties rejected");
         Reject(() => Verify(catalog with { Releases = [release with { Manifest = manifest with { EntryAssembly = "../evil.dll" } }] }), "entry-assembly-invalid", "entry assembly traversal rejected");
         Reject(() => Verify(catalog with { Releases = [release with { Manifest = manifest with { Version = "01.0.0" } }] }), "version-invalid", "noncanonical versions rejected");
+        Reject(() => Verify(catalog with { Releases = [release with { Manifest = manifest with { ModuleId = "firewall\n" } }] }), "manifest-invalid", "module identity trailing newline rejected");
+        Reject(() => Verify(catalog with { Releases = [release with { ArchiveSha256 = release.ArchiveSha256 + "\n" }] }), "archive-metadata-invalid", "digest trailing newline rejected");
+        Reject(() => Verify(catalog with { Releases = [release with { Manifest = manifest with { ModuleId = "relaxkonos.core" } }] }), "manifest-invalid", "Core cannot be represented as an installable module candidate");
         Reject(() => Verify(catalog with { Releases = [release with { Manifest = manifest with { Files = [manifest.Files[0], manifest.Files[0] with { Path = manifest.EntryAssembly.ToUpperInvariant() }] } }] }), "file-invalid", "case ambiguous file names rejected");
         foreach (var (changedContext, expectedCode) in new[] {
             (context with { Rid = "win-x64" }, "rid-mismatch"), (context with { HostApiVersion = "2.0.0" }, "host-api-incompatible") })
@@ -178,6 +218,96 @@ internal static class ModulePackageChecks
                 && before.All(p => Hash(File.ReadAllBytes(p.Key)) == p.Value)
                 && ModuleManagementStore.ReadRecoveryReport(root).ServiceId == serviceId,
                 "module package maintenance leaves state archive configuration and trust history unchanged");
+            var nativeContext = context with { ServiceId = serviceId, Rid = nativeManifest.Rid };
+            var catalogPathState = Path.Combine(root, "data", "module-management", "package-catalogs.json");
+            var markerPath = Path.Combine(root, "data", "module-management", "package-catalogs.initialized");
+            using (var liveHost = new ModuleManagementStore(new ConfigurationBuilder().AddInMemoryCollection(
+                new Dictionary<string, string?> { ["ModuleManagement:Authority"] = "managed" }).Build(), root))
+                Reject(() => { using var conflict = new ModulePackageCatalogStore(root, serviceId); }, "host-lock-unavailable", "catalog acceptance excludes a running Host");
+            Reject(() => { using var conflict = new ModulePackageCatalogStore(root, "another-host"); }, "service-mismatch", "catalog acceptance checks persisted server identity after locking");
+            check(ModulePackageCatalogStore.Read(root, serviceId).Revision == ModulePackageCatalogStore.InitialRevision
+                && !File.Exists(catalogPathState), "module package uninitialized catalog inspection creates no state");
+            ModulePackageCatalogStore.Receipt receipt;
+            using (var store = new ModulePackageCatalogStore(root, serviceId))
+            {
+                Reject(() => store.Accept(Sign(nativeCatalog), policy, nativeContext, "stale", "test-actor", "accept-1", now),
+                    "revision-conflict", "catalog acceptance requires exact revision");
+                Reject(() => store.Accept(Json(badEnvelope), policy, nativeContext, ModulePackageCatalogStore.InitialRevision, "test-actor", "bad-signature", now),
+                    "signature-invalid", "catalog invalid signature cannot initialize history");
+                check(!File.Exists(catalogPathState) && !File.Exists(markerPath), "module package failed catalog prechecks leave no durable state");
+                receipt = store.Accept(Sign(nativeCatalog), policy, nativeContext, ModulePackageCatalogStore.InitialRevision, "test-actor", "accept-1", now);
+                check(receipt.Sequence == 1 && File.Exists(catalogPathState) && File.ReadAllText(markerPath) == serviceId,
+                    "module package catalog acceptance commits history catalog receipt and bootstrap marker");
+                // Replay the exact envelope, not a fresh ECDSA signature over the same payload.
+                var saved = ModulePackageCatalogStore.Read(root, serviceId);
+                var exactEnvelope = Encoding.UTF8.GetBytes(saved.Sources[policy.SourceId].Envelope);
+                var stateHash = Hash(File.ReadAllBytes(catalogPathState));
+                var replay = store.Accept(exactEnvelope, policy, nativeContext, ModulePackageCatalogStore.InitialRevision, "test-actor", "accept-1", now.AddDays(2));
+                check(replay == receipt && Hash(File.ReadAllBytes(catalogPathState)) == stateHash,
+                    "module package catalog exact idempotent replay returns historical receipt without writes even after expiry");
+                Reject(() => store.Accept(Sign(nativeCatalog with { Sequence = 2 }), policy, nativeContext, receipt.Revision, "test-actor", "accept-1", now),
+                    "idempotency-conflict", "catalog idempotency key cannot change target");
+                Reject(() => store.Accept(Sign(nativeCatalog with { Sequence = 2 }), policy, nativeContext, ModulePackageCatalogStore.InitialRevision, "other-actor", "accept-1", now),
+                    "revision-conflict", "catalog actors cannot bypass stale revision");
+            }
+            var durable = ModulePackageCatalogStore.Read(root, serviceId);
+            check(durable.Receipts.Single() == receipt && durable.Sources[policy.SourceId].History.Sequence == 1,
+                "module package catalog history and receipt survive a fresh store read");
+            var current = ModulePackageCatalogStore.ReadCurrentCatalog(root, policy, nativeContext, now);
+            check(current.Catalog.Sequence == 1 && current.Catalog.Releases.Single().Manifest.Rid == nativeContext.Rid,
+                "module package accepted directory revalidates signature current policy and exact saved history");
+            Reject(() => ModulePackageCatalogStore.ReadCurrentCatalog(root, policy, nativeContext, now.AddDays(1)),
+                "catalog-expired", "persisted catalog is not usable after expiry");
+            Reject(() => ModulePackageCatalogStore.ReadCurrentCatalog(root, policy with { Revision = 2 }, nativeContext, now),
+                "source-refresh-required", "changed deployment policy requires durable source refresh before use");
+            var mirrorPolicy = policy with { SourceId = "mirror", ArtifactOrigin = "https://mirror.example/" };
+            var mirrorRelease = nativeCatalog.Releases[0] with { DownloadUri = "https://mirror.example/firewall.rkmodule" };
+            var mirrorCatalog = nativeCatalog with { SourceId = "mirror", Releases = [mirrorRelease] };
+            using (var store = new ModulePackageCatalogStore(root, serviceId))
+            {
+                Reject(() => store.Accept(Sign(mirrorCatalog with { Releases = [mirrorRelease with { ArchiveSha256 = new string('c', 64) }] }),
+                    mirrorPolicy, nativeContext, receipt.Revision, "test-actor", "mirror-conflict", now),
+                    "cross-source-equivocation", "catalog sources cannot redefine existing module version rid bytes");
+                var mirrorReceipt = store.Accept(Sign(mirrorCatalog), mirrorPolicy, nativeContext, receipt.Revision, "test-actor", "mirror-same", now);
+                check(ModulePackageCatalogStore.Read(root, serviceId).Sources.Count == 2,
+                    "module package separate source can advertise identical immutable bytes from its own origin");
+                var revokedReceipt = store.Accept(Sign(nativeCatalog with { Sequence = 2, RevokedReleaseIds = [nativeManifest.ReleaseId] }),
+                    policy, nativeContext, mirrorReceipt.Revision, "test-actor", "revoke", now);
+                store.Accept(Sign(nativeCatalog with { Sequence = 3 }), policy, nativeContext, revokedReceipt.Revision, "test-actor", "omit-revoke", now);
+                check(ModulePackageCatalogStore.Read(root, serviceId).Sources[policy.SourceId].History.RevokedReleaseIds.Contains(nativeManifest.ReleaseId),
+                    "module package durable revocation survives subsequent catalog omission");
+                check(ModulePackageCatalogStore.ReadCurrentCatalog(root, mirrorPolicy, nativeContext, now).NextHistory.RevokedDigests.Contains(mirrorRelease.ArchiveSha256),
+                    "module package accepted mirror cannot resurrect another accepted source revoked bytes");
+                var stateBytes = File.ReadAllBytes(catalogPathState);
+                File.AppendAllText(catalogPathState, " ");
+                Reject(() => store.Accept(Sign(nativeCatalog with { Sequence = 4 }), policy, nativeContext,
+                    ModulePackageCatalogStore.Read(root, serviceId).Revision, "test-actor", "external-edit", now),
+                    "revision-conflict", "catalog acceptance detects out of band file edits before writing");
+                File.WriteAllBytes(catalogPathState, stateBytes);
+                var boundary = store.Accept(Sign(nativeCatalog with { Sequence = 4,
+                    RevokedDigests = Enumerable.Range(1, 9999).Select(i => i.ToString("x64")).ToArray() }), policy, nativeContext,
+                    ModulePackageCatalogStore.Read(root, serviceId).Revision, "test-actor", "revocation-boundary", now);
+                check(ModulePackageCatalogStore.ReadCurrentCatalog(root, policy, nativeContext, now).NextHistory.RevokedDigests.Length == 10000,
+                    "module package aggregate revocation capacity permits the exact supported boundary");
+                var boundaryHash = Hash(File.ReadAllBytes(catalogPathState));
+                Reject(() => store.Accept(Sign(mirrorCatalog with { Sequence = 2,
+                    RevokedDigests = Enumerable.Range(10000, 3).Select(i => i.ToString("x64")).ToArray() }), mirrorPolicy, nativeContext,
+                    boundary.Revision, "test-actor", "revocation-overflow", now), "history-capacity", "catalog aggregate revocation overflow rejected before persistence");
+                check(Hash(File.ReadAllBytes(catalogPathState)) == boundaryHash,
+                    "module package aggregate overflow leaves prior usable directory and receipt intact");
+            }
+            if (!OperatingSystem.IsWindows())
+                check(File.GetUnixFileMode(markerPath) == (UnixFileMode.UserRead | UnixFileMode.UserWrite)
+                    && File.GetUnixFileMode(catalogPathState) == (UnixFileMode.UserRead | UnixFileMode.UserWrite),
+                    "module package catalog state and marker are private on Unix");
+            var preservedState = File.ReadAllBytes(catalogPathState);
+            File.Delete(catalogPathState);
+            Reject(() => ModulePackageCatalogStore.Read(root, serviceId), "state-recovery-required", "missing catalog state cannot reset trust after bootstrap marker");
+            File.WriteAllBytes(catalogPathState, preservedState);
+            var markerBytes = File.ReadAllBytes(markerPath);
+            File.Delete(markerPath);
+            Reject(() => ModulePackageCatalogStore.Read(root, serviceId), "state-recovery-required", "missing initialization marker cannot silently adopt catalog state");
+            File.WriteAllBytes(markerPath, markerBytes);
         }
         finally { Directory.Delete(root, true); }
     }

@@ -155,18 +155,23 @@ internal sealed partial class ServerModules
 
     internal bool IsEnabled(string moduleId) => EnabledIds.Contains(moduleId);
 
+    /// <summary>True when the module was discovered from the installed-module store rather than compiled into the Host.</summary>
+    internal bool IsInstalled(string moduleId) => _enabled.Concat(_disabled)
+        .Any(module => module.Id == moduleId && module is IInstalledModuleInfo);
+
     /// <summary>One line for the startup log: operators must be able to see the effective set.</summary>
     internal string Describe() => _enabled.Count == 0
         ? "(none)"
         : string.Join(", ", _enabled.Select(module => module.Id));
 
-    internal static ServerModules Create(IConfiguration configuration)
+    internal static ServerModules Create(IConfiguration configuration, IReadOnlyList<IServerModule>? installed = null)
     {
-        var catalog = Catalog();
+        var catalog = Catalog(installed);
         return Resolve(catalog, ResolveEnabledIds(configuration, catalog));
     }
 
-    internal static ServerModules CreateManaged(IReadOnlySet<string> enabledIds) => Resolve(Catalog(), enabledIds);
+    internal static ServerModules CreateManaged(IReadOnlySet<string> enabledIds, IReadOnlyList<IServerModule>? installed = null) =>
+        Resolve(Catalog(installed), enabledIds);
 
     internal static ServerModules Resolve(IReadOnlyList<IServerModule> catalog, IReadOnlySet<string> enabledIds)
     {

@@ -8,5 +8,12 @@
   <ItemGroup>
     <ProjectReference Include="../../RelaxKonOS.Server/RelaxKonOS.Server.csproj" />
     <ProjectReference Include="../../Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj" />
+    <ProjectReference Include="FixtureModule/FixtureModule.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="FixtureModule/**" />
+    <Content Remove="FixtureModule/**" />
+    <None Remove="FixtureModule/**" />
+    <EmbeddedResource Remove="FixtureModule/**" />
   </ItemGroup>
 </Project>

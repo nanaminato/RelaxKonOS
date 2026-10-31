@@ -55,10 +55,11 @@ internal sealed partial class ModuleManagementStore : IDisposable
         }
     }
 
-    internal ModuleManagementStore(IConfiguration configuration, string contentRoot) : this(configuration, contentRoot, true) { }
+    internal ModuleManagementStore(IConfiguration configuration, string contentRoot,
+        IReadOnlyList<IServerModule>? installedModules = null) : this(configuration, contentRoot, true, installedModules: installedModules) { }
 
     private ModuleManagementStore(IConfiguration configuration, string contentRoot, bool initializePermissions,
-        string? expectedServiceId = null, string? expectedRevision = null)
+        string? expectedServiceId = null, string? expectedRevision = null, IReadOnlyList<IServerModule>? installedModules = null)
     {
         var authority = configuration["ModuleManagement:Authority"] ?? "deployment";
         _preserveUnixOwner = !initializePermissions && OperatingSystem.IsLinux();
@@ -99,7 +100,7 @@ internal sealed partial class ModuleManagementStore : IDisposable
         _hostLock = new FileStream(Path.Combine(directory, "host.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
         try
         {
-            var configuredModules = ServerModules.Create(configuration);
+            var configuredModules = ServerModules.Create(configuration, installedModules);
             var configured = configuredModules.EnabledIds.Order(StringComparer.Ordinal).ToArray();
             var residency = ModuleResidencyOptions.Parse(configuration, configuredModules.KnownModuleIds, configuredModules.KnownReleasableModuleIds);
             var policies = configuredModules.KnownReleasableModuleIds.ToDictionary(id => id,

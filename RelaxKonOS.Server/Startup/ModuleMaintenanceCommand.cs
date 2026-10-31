@@ -12,7 +12,11 @@ internal static class ModuleMaintenanceCommand
     {
         try
         {
-            if (args.Length >= 2 && args[0] == "modules" && args[1] == "verify-package")
+            if (args.Length >= 2 && args[0] == "modules" && args[1] == "pack-package")
+                return await ModulePackageBuildCommand.RunAsync(args);
+            if (args.Length >= 2 && args[0] == "modules" && args[1] is "verify-package" or "catalog-status" or "accept-catalog"
+                    or "install-package" or "list-installed" or "list-versions" or "list-package-operations"
+                    or "rollback-installed" or "remove-installed")
                 return await ModulePackageMaintenanceCommand.RunAsync(args);
             if (args.Length < 2 || args[0] != "modules" || args[1] is not ("diagnose" or "recover-enable-all"))
                 throw new ModuleManagementException("module-maintenance-command-invalid", 400);
@@ -40,8 +44,9 @@ internal static class ModuleMaintenanceCommand
             using var configurationLifetime = (IDisposable)builder.Configuration;
             builder.Configuration.AddJsonFile("appsettings.host.json", optional: true, reloadOnChange: false);
             using var store = ModuleManagementStore.OpenForLocalRecovery(builder.Configuration, root, serviceId, revision);
-            var catalog = ServerModules.Create(new ConfigurationBuilder().Build());
-            var stopped = ServerModules.CreateManaged(new HashSet<string>(StringComparer.Ordinal));
+            var installedModules = InstalledModuleCatalog.Load(root);
+            var catalog = ServerModules.Create(new ConfigurationBuilder().Build(), installedModules);
+            var stopped = ServerModules.CreateManaged(new HashSet<string>(StringComparer.Ordinal), installedModules);
             using var services = new ServiceCollection().BuildServiceProvider();
             var context = ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory");
             var facts = await stopped.DescribeAsync(services, context, CancellationToken.None);

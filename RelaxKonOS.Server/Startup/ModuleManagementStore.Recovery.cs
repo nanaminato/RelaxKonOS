@@ -26,7 +26,7 @@ internal sealed partial class ModuleManagementStore
                 or "module-startup-build-failed" or "module-startup-deactivation-failed" or "module-startup-storage-failed"
                 or "module-startup-mapping-failed" or "module-startup-host-failed";
 
-    private static void PreserveUnixOwner(string temporary, string reference)
+    internal static void PreserveUnixOwner(string temporary, string reference)
     {
         var start = new System.Diagnostics.ProcessStartInfo("/bin/chown")
         { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };

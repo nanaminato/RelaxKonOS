@@ -28,7 +28,8 @@ var isDevelopment = environmentName.Equals(Environments.Development, StringCompa
 // The installer writes this optional host configuration before the mode boundary is evaluated.
 // It must not be possible for a later configuration provider to change an already-validated mode.
 builder.Configuration.AddJsonFile("appsettings.host.json", optional: true, reloadOnChange: false);
-using var moduleManagement = new ModuleManagementStore(builder.Configuration, builder.Environment.ContentRootPath);
+var installedModules = InstalledModuleCatalog.Load(builder.Environment.ContentRootPath);
+using var moduleManagement = new ModuleManagementStore(builder.Configuration, builder.Environment.ContentRootPath, installedModules);
 if (moduleManagement.RecoveryMode)
 {
     await using var recoveryHost = await ModuleRecoveryHost.BuildAsync(builder, moduleManagement);
@@ -40,8 +41,8 @@ var startupVerified = false;
 try
 {
     var serverModules = moduleManagement.Writable
-        ? ServerModules.CreateManaged(moduleManagement.DesiredIds)
-        : ServerModules.Create(builder.Configuration);
+        ? ServerModules.CreateManaged(moduleManagement.DesiredIds, installedModules)
+        : ServerModules.Create(builder.Configuration, installedModules);
     builder.Services.AddSingleton(moduleManagement);
     builder.Services.AddSingleton<ModuleManagementExecutor>();
     builder.Services.AddHostedService(services => services.GetRequiredService<ModuleManagementExecutor>());
@@ -114,6 +115,17 @@ try
     app.Lifetime.ApplicationStarted.Register(() =>
     {
         moduleManagement.VerifyStartup(serverModules.EnabledIds);
+        try
+        {
+            ModulePackageOperationStore.VerifyStartup(app.Environment.ContentRootPath,
+                InstalledModuleStore.Read(app.Environment.ContentRootPath), moduleManagement.ProcessGeneration, DateTimeOffset.UtcNow);
+        }
+        catch (Exception exception)
+        {
+            // A package-operation receipt is durable evidence, not a reason to present a healthy host
+            // as failed. Leave the pending intent for the next startup and keep the failure observable.
+            app.Logger.LogWarning(exception, "Module package operation verification was unavailable.");
+        }
         startupVerified = true;
     });
     startupStage = "host";
