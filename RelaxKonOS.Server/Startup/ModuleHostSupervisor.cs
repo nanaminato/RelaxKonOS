@@ -1,5 +1,7 @@
+using System.Security.Claims;
 using RelaxKonOS.ModulePackaging;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Server.Endpoints;
 
 namespace RelaxKonOS.Server.Startup;
 
@@ -38,6 +40,24 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
         return false;
     }
 
+    internal bool Exists(string moduleId)
+    {
+        lock (_gate) return _entries.Any(entry => entry.ModuleId == moduleId);
+    }
+
+    internal bool CanAccess(string moduleId, ClaimsPrincipal user, IConfiguration configuration)
+    {
+        Entry? entry;
+        lock (_gate) entry = _entries.FirstOrDefault(item => item.ModuleId == moduleId);
+        if (entry is null) return false;
+        if (entry.AllowedUsers.Count > 0)
+        {
+            var subject = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? user.FindFirstValue("sub");
+            return subject is not null && entry.AllowedUsers.Contains(subject);
+        }
+        return ServerModuleManagementEndpoints.CanManage(user, configuration);
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var section = configuration.GetSection("ModuleHosts");
@@ -52,10 +72,17 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
                 logger.LogWarning("Ignoring invalid ModuleHost entry.");
                 continue;
             }
+            var configuredUsers = option.AllowedUsers ?? [];
+            if (configuredUsers.Any(user => !Guid.TryParse(user, out _)))
+            {
+                logger.LogWarning("Ignoring ModuleHost {ModuleId} with an invalid AllowedUsers entry.", option.ModuleId);
+                continue;
+            }
+            var allowedUsers = configuredUsers.ToHashSet(StringComparer.Ordinal);
             var dataPath = string.IsNullOrWhiteSpace(option.DataPath)
                 ? Path.Combine(environment.ContentRootPath, "data", "module-data", option.ModuleId)
                 : Path.GetFullPath(option.DataPath);
-            var entry = new Entry(option.ModuleId);
+            var entry = new Entry(option.ModuleId, allowedUsers);
             lock (_gate) _entries.Add(entry);
             ModuleHostProcessClient? client = null;
             try
@@ -90,9 +117,10 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
             if (entry.Client is not null) await entry.Client.DisposeAsync();
     }
 
-    private sealed class Entry(string moduleId)
+    private sealed class Entry(string moduleId, HashSet<string> allowedUsers)
     {
         internal string ModuleId { get; } = moduleId;
+        internal HashSet<string> AllowedUsers { get; } = allowedUsers;
         internal string Status { get; set; } = "starting";
         internal string? Version { get; set; }
         internal string? HostApiVersion { get; set; }
@@ -100,5 +128,11 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
         internal ModuleHostProcessClient? Client { get; set; }
     }
 
-    private sealed record ModuleHostEntryOptions(string ModuleId, string PackageRoot, string? DataPath);
+    private sealed class ModuleHostEntryOptions
+    {
+        public string ModuleId { get; set; } = "";
+        public string PackageRoot { get; set; } = "";
+        public string? DataPath { get; set; }
+        public string[]? AllowedUsers { get; set; }
+    }
 }

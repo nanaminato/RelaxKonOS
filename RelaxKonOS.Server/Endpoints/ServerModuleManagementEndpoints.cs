@@ -85,8 +85,11 @@ internal static class ServerModuleManagementEndpoints
         group.MapGet(ServerModuleManagementRoutes.ModuleHosts, ([FromServices] ModuleHostSupervisor hosts) =>
             Results.Ok(new ServerModuleHostPageDto(hosts.Snapshot()))).RequireAuthorization(ManagePolicy);
         group.Map(ServerModuleManagementRoutes.ModuleHostProxy, async (string moduleId, string? path,
-            HttpContext http, [FromServices] ModuleHostSupervisor hosts) =>
+            HttpContext http, ServerModuleContext context, [FromServices] ModuleHostSupervisor hosts) =>
         {
+            if (!hosts.Exists(moduleId)) return Results.NotFound();
+            if (!hosts.CanAccess(moduleId, http.User, context.Configuration))
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
             if (!hosts.TryGetEndpoint(moduleId, out var endpoint)) return Results.NotFound();
             if (path is not null && path.Split('/').Any(part => part is ".." or ".")) return Results.BadRequest();
             var target = new Uri(endpoint, (path ?? "") + http.Request.QueryString);
@@ -101,6 +104,12 @@ internal static class ServerModuleManagementEndpoints
             }
             if (http.Request.Headers.Accept.Count > 0)
                 request.Headers.Accept.ParseAdd(string.Join(", ", http.Request.Headers.Accept));
+            var subject = http.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? http.User.FindFirstValue("sub");
+            if (subject is { Length: > 0 })
+                request.Headers.TryAddWithoutValidation("X-RelaxKonOS-Module-User", subject);
+            request.Headers.TryAddWithoutValidation("X-RelaxKonOS-Module-Role",
+                CanManage(http.User, context.Configuration) ? "admin" : "user");
+            request.Headers.TryAddWithoutValidation("X-RelaxKonOS-Module-Request-Id", http.TraceIdentifier);
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead,
                 http.RequestAborted);
             http.Response.StatusCode = (int)response.StatusCode;

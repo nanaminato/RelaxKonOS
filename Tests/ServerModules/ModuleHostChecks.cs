@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
@@ -53,12 +54,14 @@ internal static class ModuleHostChecks
             check(ready.ModuleId == "fixture-host" && health.Healthy && body == "hello from module host",
                 "Server can launch, route to and control an isolated ModuleHost over the line protocol");
 
+            var adminId = Guid.NewGuid();
             var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ModuleHosts:Enabled"] = "true",
                 ["ModuleHosts:Entries:0:ModuleId"] = "fixture-host",
                 ["ModuleHosts:Entries:0:PackageRoot"] = root,
                 ["ModuleHosts:Entries:0:DataPath"] = Path.Combine(root, "supervisor-data"),
+                ["ModuleManagement:Administrators:0"] = adminId.ToString(),
             }).Build();
             var environment = new TestEnvironment(root);
             using var supervisor = new ModuleHostSupervisor(environment, configuration,
@@ -68,10 +71,16 @@ internal static class ModuleHostChecks
                 await Task.Delay(50);
             check(supervisor.TryGetEndpoint("fixture-host", out var endpoint)
                 && supervisor.Snapshot().Single().Status == "running",
-                "ModuleHost supervisor starts a configured isolated process");
+                "ModuleHost supervisor starts a configured isolated process: "
+                + string.Join(",", supervisor.Snapshot().Select(host => host.Status + ":" + host.ProblemCode)));
             using var supervisedHttp = new HttpClient { BaseAddress = endpoint };
             check(await supervisedHttp.GetStringAsync("/hello") == "hello from module host",
                 "ModuleHost supervisor exposes the isolated HTTP endpoint");
+            var administrator = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", adminId.ToString())], "test"));
+            var stranger = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", Guid.NewGuid().ToString())], "test"));
+            check(supervisor.CanAccess("fixture-host", administrator, configuration)
+                && !supervisor.CanAccess("fixture-host", stranger, configuration),
+                "ModuleHost access defaults to configured server administrators");
             await supervisor.StopAsync(CancellationToken.None);
         }
         finally
