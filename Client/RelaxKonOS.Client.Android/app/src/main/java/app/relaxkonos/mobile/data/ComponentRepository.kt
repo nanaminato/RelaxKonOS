@@ -2,12 +2,14 @@ package app.relaxkonos.mobile.data
 
 import app.relaxkonos.mobile.core.auth.AuthSession
 import app.relaxkonos.mobile.core.auth.SessionState
+import app.relaxkonos.mobile.core.net.ComponentRelease
+import app.relaxkonos.mobile.core.net.ComponentReleases
+import app.relaxkonos.mobile.core.net.ComponentState
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.ComponentChange
 import app.relaxkonos.mobile.core.net.ComponentFrozenInstallationRequest
 import app.relaxkonos.mobile.core.net.ComponentPinnedArchive
 import app.relaxkonos.mobile.core.net.ComponentPlanResult
-import app.relaxkonos.mobile.core.net.ComponentState
 import app.relaxkonos.mobile.core.net.ComponentStateView
 import app.relaxkonos.mobile.core.net.ComponentWire
 import app.relaxkonos.mobile.core.net.InstallationKind
@@ -17,6 +19,7 @@ import app.relaxkonos.mobile.core.net.InstallationService
 import app.relaxkonos.mobile.core.net.RelaxKonGateway
 import app.relaxkonos.mobile.core.net.WebServer
 import java.util.UUID
+import kotlinx.coroutines.async
 import kotlinx.coroutines.CancellationException
 
 /**
@@ -36,9 +39,41 @@ data class ComponentRead(val componentId: String, val view: ComponentStateView?,
 class ComponentRepository(
     private val gateway: RelaxKonGateway,
     private val session: AuthSession,
+    private val officialReleases: suspend (String, String) -> List<ComponentRelease> =
+        ComponentReleases::official,
     private val submitChange: suspend (SessionState.Active, InstallationKind, InstallationRequest,
         ElevationAnswerProvider) -> ApiResult<InstallationOperation>,
 ) {
+    /** Both networks are tried independently, using the connected host platform. */
+    suspend fun releases(owner: SessionState.Active, componentId: String, state: ComponentState): ApiResult<List<ComponentRelease>> = kotlinx.coroutines.supervisorScope {
+        verify(owner)
+        require(owner.privilegedOperations && state.componentId == componentId && state.mode == "managedArchive")
+        val rid = ComponentReleases.rid(state)
+        val requests = mutableListOf(
+            async { try { kotlinx.coroutines.withTimeoutOrNull(35_000) { call(owner) { url, token -> gateway.componentReleases(url, token, componentId, rid) } } ?: ApiResult.Transport(null) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { ApiResult.Transport(null) } },
+            async { try { kotlinx.coroutines.withTimeoutOrNull(35_000) { ApiResult.Success(officialReleases(componentId, rid)) } ?: ApiResult.Transport(null) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { ApiResult.Transport(null) } }
+        )
+        var emptySuccess = false
+        try {
+            while (requests.isNotEmpty()) {
+                val (request, result) = kotlinx.coroutines.selects.select {
+                    requests.forEach { request -> request.onAwait { request to it } }
+                }
+                requests.remove(request)
+                verify(owner)
+                if (result is ApiResult.Success) {
+                    if (result.value.isNotEmpty()) return@supervisorScope result
+                    emptySuccess = true
+                }
+            }
+            if (emptySuccess) ApiResult.Success(emptyList()) else ApiResult.Problem(503, "component.package_index_unavailable", null)
+        } finally { requests.forEach { it.cancel() } }
+    }
+
     suspend fun read(owner: SessionState.Active, componentIds: List<String>): ApiResult<List<ComponentRead>> {
         verify(owner)
         require(owner.privilegedOperations) { "Component state needs the privileged-operations host surface" }

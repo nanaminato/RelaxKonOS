@@ -84,11 +84,13 @@ fun MobileNavHost(
     modifier: Modifier = Modifier,
 ) {
     var taskTarget by remember(session) { mutableStateOf<String?>(null) }
-    // Component-backed applications ask once per open, using the same state route the component center
+    // Component-backed applications ask once per retained navigation entry, using the same state route the component center
     // reads. Only a measured absence or a pending transaction blocks; an unreadable answer does not.
     var dependencyPrompt by remember(session) { mutableStateOf<ComponentDependencyPrompt?>(null) }
     LaunchedEffect(session, navigator.route) {
         val componentIds = AppComponentDependencies.componentsFor(navigator.route) ?: return@LaunchedEffect
+        dependencyPrompt = null
+        if (!navigator.beginComponentDependencyCheck()) return@LaunchedEffect
         val rows = readComponentDependencies(session, container.components, componentIds)
         val verdict = dependencyVerdict(rows)
         if (verdict == ComponentDependencyVerdict.Missing || verdict == ComponentDependencyVerdict.Recovery

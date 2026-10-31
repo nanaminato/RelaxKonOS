@@ -1,35 +1,53 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
-using Avalonia.Layout;
+using RelaxKonOS.Client.Controls;
 
 namespace RelaxKonOS.Client.Apps.Tailscale.Views;
 
+/// <summary>Tailscale workspace shell. Page switching and lifecycle live here, not in AXAML.</summary>
 public partial class TailscaleWorkspace : UserControl
 {
-    private Button? _selected;
     private readonly TailscaleLoginViewModel _login;
+    private Button? _selected;
     public TailscaleWorkspace(TailscaleViewModel model, TailscaleLoginViewModel login)
     {
         _login = login;
-        InitializeComponent(); DataContext = model;
+        InitializeComponent();
+        DataContext = model;
+        CompactWorkspaceNavigation.Install(this, WorkspaceBody);
         Show("devices", Devices);
-        AttachedToVisualTree += async (_, _) => { login.Activate(); await model.ActivateAsync(); };
-        DetachedFromVisualTree += (_, _) => { login.Deactivate(); model.Deactivate(); };
-        SizeChanged += (_, _) =>
+        AttachedToVisualTree += async (_, _) =>
         {
-            var compact = Bounds.Width < 720;
-            Body.ColumnDefinitions = new(compact ? "*" : "170,*");
-            Body.RowDefinitions = new(compact ? "Auto,*" : "*");
-            Body.RowSpacing = compact ? 10 : 0;
-            Navigation.Orientation = compact ? Orientation.Horizontal : Orientation.Vertical;
-            Grid.SetColumn(Page, compact ? 0 : 1); Grid.SetRow(Page, compact ? 1 : 0);
+            login.Activate();
+            await model.ActivateAsync();
+            login.SetVisible(_selected?.Tag is "login");
         };
+        DetachedFromVisualTree += (_, _) => { login.Deactivate(); model.Deactivate(); };
     }
-    private void Navigate(object? sender, RoutedEventArgs e)
-    { if (sender is Button { Tag: string page } button) Show(page, button); }
+
+    public void AttachWindowHeader(RelaxKonOS.WindowManager.ManagedWindow window)
+    {
+        Header.DataContext = DataContext;
+        Header.Attach(window, HeaderActions);
+    }
+
+    private void NavigationButton_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string page } button) Show(page, button);
+    }
     private void Show(string page, Button button)
     {
-        _selected?.Classes.Remove("nav-selected"); _selected = button; button.Classes.Add("nav-selected");
-        Page.Content = page switch { "login" => new TailscaleLoginPage { DataContext = _login }, "control" => new TailscaleControlPage(), "operations" => new TailscaleOperationsPage(), _ => new TailscaleDevicesPage() };
+        _selected?.Classes.Remove("nav-selected");
+        _selected = button;
+        button.Classes.Add("nav-selected");
+        Page.Content = page switch
+        {
+            "login" => new TailscaleLoginPage { DataContext = _login },
+            "control" => new TailscaleControlPage(),
+            "operations" => new TailscaleOperationsPage(),
+            _ => new TailscaleDevicesPage()
+        };
+        (DataContext as TailscaleViewModel)?.SetVisiblePage(page);
+        _login.SetVisible(page == "login");
     }
 }

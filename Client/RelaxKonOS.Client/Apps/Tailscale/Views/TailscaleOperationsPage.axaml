@@ -1,28 +1,38 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Tailscale"
  x:Class="RelaxKonOS.Client.Apps.Tailscale.Views.TailscaleOperationsPage" x:DataType="vm:TailscaleViewModel">
- <Grid RowDefinitions="Auto,Auto,*" RowSpacing="12">
-  <TextBlock Text="{loc:Loc tailscale.operations_intro}" TextWrapping="Wrap" />
-  <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="8">
-   <ComboBox ItemsSource="{Binding Operations}" SelectedItem="{Binding SelectedReference}" IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Stretch"
-     AutomationProperties.Name="{loc:Loc tailscale.operations}" />
-   <Button Grid.Column="1" Content="{loc:Loc tailscale.reopen}" Command="{Binding ReopenCommand}" />
-  </Grid>
-  <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-   <StackPanel Spacing="12">
-    <TextBlock Text="{Binding OperationText}" TextWrapping="Wrap" />
-    <TextBlock Text="{Binding OperationProblem}" TextWrapping="Wrap" />
-    <TextBlock Text="{loc:Loc tailscale.receipt_updated}" />
-    <TextBlock Text="{Binding OperationUpdatedAt}" />
-    <Separator />
-    <TextBlock Text="{loc:Loc tailscale.recovery.intro}" TextWrapping="Wrap" />
-    <WrapPanel ItemSpacing="8" LineSpacing="8">
-     <Button Content="{loc:Loc tailscale.recovery.inspect}" Command="{Binding InspectRecoveryCommand}" />
-     <Button Content="{loc:Loc tailscale.recovery.close}" Command="{Binding CloseRecoveryCommand}" />
-    </WrapPanel>
-    <TextBlock Text="{Binding RecoveryText}" TextWrapping="Wrap" />
-    <TextBlock Text="{Binding RecoveryProblem}" TextWrapping="Wrap" />
+ <Grid RowDefinitions="Auto,*" RowSpacing="16">
+  <Border Classes="app-panel" Padding="20">
+   <StackPanel Spacing="10">
+    <TextBlock Text="{loc:Loc tailscale.operations}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+    <TextBlock Text="{loc:Loc tailscale.operations_intro}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" />
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+     <ComboBox ItemsSource="{Binding Operations}" SelectedItem="{Binding SelectedReference}" IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Stretch"
+       AutomationProperties.Name="{loc:Loc tailscale.operations}" />
+     <Button Grid.Column="1" Content="{loc:Loc tailscale.reopen}" Command="{Binding ReopenCommand}" VerticalAlignment="Center" />
+    </Grid>
+    <TextBlock Text="{Binding OperationText}" FontSize="14" TextWrapping="Wrap" />
+    <TextBlock Text="{Binding OperationProblem}" Foreground="{DynamicResource WarningBrush}" TextWrapping="Wrap" />
+    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+     <TextBlock Text="{loc:Loc tailscale.receipt_updated}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+     <TextBlock Grid.Column="1" Text="{Binding OperationUpdatedAt}" FontSize="12" TextTrimming="CharacterEllipsis" />
+    </Grid>
    </StackPanel>
+  </Border>
+
+  <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+   <Border Classes="app-panel" Padding="20">
+    <StackPanel Spacing="10">
+     <TextBlock Text="{loc:Loc tailscale.recovery.intro}" TextWrapping="Wrap" />
+     <WrapPanel ItemSpacing="8" LineSpacing="8">
+      <Button Content="{loc:Loc tailscale.recovery.inspect}" Command="{Binding InspectRecoveryCommand}" />
+      <Button Content="{loc:Loc tailscale.recovery.close}" Command="{Binding CloseRecoveryCommand}" />
+     </WrapPanel>
+     <TextBlock Text="{Binding RecoveryText}" TextWrapping="Wrap" />
+     <TextBlock Text="{Binding RecoveryProblem}" Foreground="{DynamicResource WarningBrush}" TextWrapping="Wrap" />
+     <TextBlock Text="{loc:Loc tailscale.recovery.confirm_effect}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" />
+    </StackPanel>
+   </Border>
   </ScrollViewer>
  </Grid>
 </UserControl>

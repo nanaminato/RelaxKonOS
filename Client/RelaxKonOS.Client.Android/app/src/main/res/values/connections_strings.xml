@@ -27,4 +27,6 @@
     <string name="connections_use">Use</string>
     <string name="connections_windows_device">Windows 10/11 device</string>
     <string name="connections_windows_device_support">Windows 10/11 · paired device-key sign-in</string>
+    <string name="connections_remove_device">Remove connection</string>
+    <string name="connections_remove_device_message">Remove the connection and pairing key saved on this phone for %1$s? Pair again to reconnect. Server-side device authorization remains; revoke it on the server to remove that authorization.</string>
 </resources>

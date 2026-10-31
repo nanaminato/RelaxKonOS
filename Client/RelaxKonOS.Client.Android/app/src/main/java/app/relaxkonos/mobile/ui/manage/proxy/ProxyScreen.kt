@@ -117,7 +117,7 @@ private class ProxyEditRequest(val kind: String, val profile: ProxyProfile?) { v
     }
     BackHandler(section == "profiles" && selected != null && editor == null && !state.busy) { selected = null }
     // Retained sections own their item spacing; hidden sections must not add root gaps.
-    WorkspaceColumn(stringResource(R.string.mihomo_title), onBack, listOf(WorkspaceDestination("overview", R.string.workspace_overview), WorkspaceDestination("profiles", R.string.workspace_profiles), WorkspaceDestination("nodes", R.string.workspace_nodes), WorkspaceDestination("connections", R.string.workspace_connections), WorkspaceDestination("logs", R.string.workspace_logs), WorkspaceDestination("settings", R.string.workspace_settings), WorkspaceDestination("records", R.string.workspace_records)), section, { section = it }, modifier, stateKey = owner to epoch, contentSpacing = 0.dp, contentPadding = PaddingValues(horizontal = Spacing.lg, vertical = Spacing.sm)) {
+    WorkspaceColumn(stringResource(R.string.mihomo_title), onBack, listOf(WorkspaceDestination("overview", R.string.workspace_overview), WorkspaceDestination("profiles", R.string.workspace_profiles), WorkspaceDestination("nodes", R.string.workspace_nodes), WorkspaceDestination("connections", R.string.workspace_connections), WorkspaceDestination("logs", R.string.workspace_logs), WorkspaceDestination("settings", R.string.workspace_settings), WorkspaceDestination("records", R.string.workspace_records)), section, { section = it }, modifier, stateKey = owner to epoch, contentSpacing = 0.dp, contentPadding = PaddingValues(horizontal = Spacing.lg, vertical = Spacing.sm), titleActions = { ComponentDependencyAction(Routes.MANAGE_PROXY, onOpenComponents) }) {
         if (!available) { Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn }
 WorkspaceSection(section == "overview") {
         ManagementCard {
@@ -125,7 +125,7 @@ WorkspaceSection(section == "overview") {
         PageActionRow(refresh = {
             TextButton(enabled = !state.busy, onClick = model::refresh) { ActionLabel(R.string.common_refresh) }
         }, actions = {
-            ComponentDependencyAction(Routes.MANAGE_PROXY, onOpenComponents)
+
             key(interactionVersion, state.requestVersion) { if (canManage) OutlinedButton(enabled = !state.busy && state.installation?.state?.active != true, onClick = {
                 if (owner != null && model.isCurrentInteraction(interactionVersion, owner) && model.state == state &&
                     !model.state.busy && model.state.installation?.state?.active != true && install == null && editor == null)

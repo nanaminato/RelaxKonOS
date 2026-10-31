@@ -13,11 +13,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -92,12 +97,19 @@ internal fun ComponentCenterContent(
     modifier: Modifier = Modifier,
 ) {
     val container = appContainer()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(model, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) model.closeReleases()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer); model.closeReleases() }
+    }
     val state by model.state.collectAsStateWithLifecycle()
     var selected by remember(owner) { mutableStateOf<ComponentRead?>(null) }
     // A component whose archive is installed from a file already on the host; null closes the dialog.
     var fileInstall by remember(owner) { mutableStateOf<String?>(null) }
-    // FRP maintenance: an upgrade asks for a version, a rollback or uninstall only confirms.
-    var frpUpgrade by remember(owner) { mutableStateOf<String?>(null) }
+    // Archive updates select a discovered release; rollback and uninstall use separate confirmations.
     var frpConfirm by remember(owner) { mutableStateOf<Pair<String, InstallationKind>?>(null) }
     var nginxUninstall by remember(owner) { mutableStateOf(false) }
     var tailscaleMaintenance by remember(owner) { mutableStateOf<Triple<String, Long, String>?>(null) }
@@ -180,15 +192,11 @@ internal fun ComponentCenterContent(
             },
         )
     }
-    frpUpgrade?.let { componentId ->
-        FrpUpgradeDialog(
-            busy = state.busy,
-            onDismiss = { frpUpgrade = null },
-            onSubmit = { version ->
-                frpUpgrade = null
-                model.maintainFrp(owner, componentId, InstallationKind.Upgrade, version)
-            },
-        )
+    state.releases?.let { choice ->
+        OfficialUpgradeDialog(choice, state.busy,
+            onDismiss = { model.closeReleases(choice) },
+            onRefresh = { if (model.state.value.releases === choice) model.openReleases(owner, choice.componentId) },
+            onSubmit = { model.applyRelease(owner, choice, it) })
     }
     frpConfirm?.let { (componentId, kind) ->
         val rollback = kind == InstallationKind.Repair
@@ -268,7 +276,7 @@ internal fun ComponentCenterContent(
                         onInstallFromFile = { fileInstall = read.componentId },
                         onFrpMaintenance = { kind ->
                             when (kind) {
-                                InstallationKind.Upgrade -> frpUpgrade = read.componentId
+                                InstallationKind.Upgrade -> model.openReleases(owner, read.componentId)
                                 else -> frpConfirm = read.componentId to kind
                             }
                         },
@@ -318,10 +326,10 @@ private fun ComponentCard(
     val fileInstallable = canManage && read.componentId in ComponentCatalog.fileInstallableIds && state != null &&
         state.ownership == "absent" && view.problems.isEmpty() && !view.recoveryRequired
     // FRP maintenance is the one lifecycle the center owns for an installed archive pair.
-    val frpMaintenance = canManage && read.componentId in setOf("frpc", "frps") && state?.ownership == "managed" &&
+    val frpMaintenance = canManage && read.componentId in setOf("frpc", "frps") && state?.ownership == "managed" && state.mode == "managedArchive" &&
         view.problems.isEmpty() && !view.recoveryRequired
     // Nginx removal uses the same domain ledger the application used, from the single component entry.
-    val nginxUninstallable = canManage && read.componentId == "nginx" && state?.ownership == "managed" &&
+    val nginxUninstallable = canManage && read.componentId == "nginx" && state?.ownership == "managed" && state.mode == "managedArchive" &&
         view.problems.isEmpty() && !view.recoveryRequired
     // An external package may be updated or removed only after the host verified its identity; this
     // never grants long-term management, which still requires an explicit desktop registration.
@@ -420,6 +428,9 @@ private fun ComponentCard(
         }
         if (nginxUninstallable) {
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(enabled = !busy, onClick = { onFrpMaintenance(InstallationKind.Upgrade) }) {
+                    Text(stringResource(R.string.components_action_update))
+                }
                 TextButton(enabled = !busy, onClick = onNginxUninstall) {
                     Text(stringResource(R.string.components_action_uninstall))
                 }
@@ -450,25 +461,32 @@ private fun ComponentCard(
 }
 
 @Composable
-private fun FrpUpgradeDialog(busy: Boolean, onDismiss: () -> Unit, onSubmit: (String) -> Unit) {
-    var version by remember { mutableStateOf("") }
-    val valid = version.trim().matches(Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,31}"))
+private fun OfficialUpgradeDialog(choice: ComponentReleaseChoice, busy: Boolean, onDismiss: () -> Unit,
+    onRefresh: () -> Unit, onSubmit: (String) -> Unit) {
+    var selected by remember(choice) { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text(stringResource(R.string.components_frp_upgrade_title)) },
+        title = { Text(stringResource(R.string.components_official_versions)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                Text(stringResource(R.string.components_frp_upgrade_message), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                OutlinedTextField(version, { version = it }, label = { Text(stringResource(R.string.components_frp_version)) },
-                    singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                Text(stringResource(R.string.components_installed_version, choice.reviewed.activeVersion ?: "—"))
+                Text(stringResource(R.string.components_official_versions_note), style = MaterialTheme.typography.bodySmall)
+                when {
+                    choice.loading -> CircularProgressIndicator()
+                    choice.failed -> Text(stringResource(R.string.components_versions_failed))
+                    choice.releases.isEmpty() -> Text(stringResource(R.string.components_versions_empty))
+                    else -> choice.releases.forEach { release ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected == release.version, onClick = { selected = release.version }, enabled = !busy)
+                            Text(release.version)
+                        }
+                    }
+                }
+                TextButton(onClick = onRefresh, enabled = !busy && !choice.loading) { Text(stringResource(R.string.common_refresh)) }
             }
         },
-        confirmButton = {
-            TextButton(enabled = !busy && valid, onClick = { onSubmit(version.trim()) }) {
-                Text(stringResource(R.string.components_action_update))
-            }
-        },
+        confirmButton = { TextButton(enabled = !busy && !choice.loading && selected != null,
+            onClick = { selected?.let(onSubmit) }) { Text(stringResource(R.string.components_action_update)) } },
         dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }

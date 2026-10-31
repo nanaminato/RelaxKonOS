@@ -286,6 +286,7 @@ fun LoginScreen(
             onOwnerDeviceSelected = { viewModel.connectOwnerDevice(activity, it) },
             onForgetPassword = { viewModel.forgetPassword(it) },
             onDeleteLogin = { viewModel.deleteLogin(it) },
+            onDeleteOwnerDevice = { viewModel.deleteOwnerDevice(it) },
             onDismiss = { viewModel.closeConnections() },
         )
     }

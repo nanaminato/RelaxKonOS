@@ -25,7 +25,9 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 class MobileNavigator(initialDestination: String) {
     // This must be observable as well as each individual stack. It preserves the stacks for
     // navigation rules and tests, while [route] below is the single state screens subscribe to.
-    private val stacks = mutableStateMapOf<String, SnapshotStateList<String>>()
+    private class Entry(val route: String, var dependencyChecked: Boolean = false)
+
+    private val stacks = mutableStateMapOf<String, SnapshotStateList<Entry>>()
 
     var currentDestination: String by mutableStateOf(initialDestination)
         private set
@@ -37,10 +39,18 @@ class MobileNavigator(initialDestination: String) {
     /** True when the destination is showing a pushed sub-page rather than its own root. */
     val isAtDestinationRoot: Boolean get() = peek(currentDestination).isEmpty()
 
+    /** A retained application page checks once, including round trips through component/task pages. */
+    fun beginComponentDependencyCheck(): Boolean {
+        val entry = peek(currentDestination).lastOrNull() ?: return false
+        if (entry.dependencyChecked) return false
+        entry.dependencyChecked = true
+        return true
+    }
+
     /** Switches top-level destination. The previous destination keeps its own stack. */
     fun select(destination: String) {
         currentDestination = destination
-        route = peek(destination).lastOrNull() ?: destination
+        route = peek(destination).lastOrNull()?.route ?: destination
     }
 
     /** Pushes a sub-route onto the active destination's stack. */
@@ -49,14 +59,14 @@ class MobileNavigator(initialDestination: String) {
             select(Routes.HOME)
             return
         }
-        stackOf(currentDestination).add(route)
+        stackOf(currentDestination).add(Entry(route))
         this.route = route
     }
 
     /** Switch an application's category without growing its back stack. */
     fun replaceTop(route: String) {
         val stack = stackOf(currentDestination)
-        if (stack.isEmpty()) stack.add(route) else stack[stack.lastIndex] = route
+        if (stack.isEmpty()) stack.add(Entry(route)) else stack[stack.lastIndex] = Entry(route)
         this.route = route
     }
 
@@ -78,7 +88,7 @@ class MobileNavigator(initialDestination: String) {
             return false
         }
         stack.removeAt(stack.lastIndex)
-        route = stack.lastOrNull() ?: currentDestination
+        route = stack.lastOrNull()?.route ?: currentDestination
         return true
     }
 
@@ -105,7 +115,7 @@ class MobileNavigator(initialDestination: String) {
     fun isStackEmpty(destination: String = currentDestination): Boolean = peek(destination).isEmpty()
 
     /** Reads without creating, so composition never mutates navigation state. */
-    private fun peek(destination: String): List<String> = stacks[destination] ?: emptyList()
+    private fun peek(destination: String): List<Entry> = stacks[destination] ?: emptyList()
 
-    private fun stackOf(destination: String): SnapshotStateList<String> = stacks.getOrPut(destination) { mutableStateListOf() }
+    private fun stackOf(destination: String): SnapshotStateList<Entry> = stacks.getOrPut(destination) { mutableStateListOf() }
 }

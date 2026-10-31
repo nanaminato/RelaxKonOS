@@ -26,9 +26,12 @@ public sealed class TailscaleApp : RemoteApplicationBase
             context.Services.GetRequiredService<ITailscaleOperationReferences>(), context.Services.GetRequiredService<IHostElevationBroker>(), language);
         var login = new TailscaleLoginViewModel(context.Services.GetRequiredService<ITailscaleLoginClient>(),
             new TailscaleOperationReferences(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "tailscale-login-operations.json")),
-            context.Services.GetRequiredService<IHostElevationBroker>(), language) { HostMayHaveChanged = model.InvalidateControl };
-        var window = context.ShowWindow(LocalizedText.Get("tailscale.title"), new TailscaleWorkspace(model, login),
+            context.Services.GetRequiredService<IHostElevationBroker>(), language)
+            { HostMayHaveChanged = model.InvalidateControl, ReadBackendStateAsync = model.ReadBackendStateAsync };
+        var workspace = new TailscaleWorkspace(model, login);
+        var window = context.ShowWindow(LocalizedText.Get("tailscale.title"), workspace,
             new Rect(100, 80, 980, 640), Manifest.IconGlyph);
+        workspace.AttachWindowHeader(window);
         login.ConfirmAsync = async (target, id, close) =>
         {
             var accepted = false;
@@ -46,13 +49,6 @@ public sealed class TailscaleApp : RemoteApplicationBase
                 return Task.FromResult(true);
             }
             catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException) { return Task.FromResult(false); }
-        };
-        model.EditConfigurationAsync = async configuration =>
-        {
-            TailscaleConfiguration? result = null;
-            await context.ShowDialogAsync<TailscaleConfiguration?>(window, LocalizedText.Get("tailscale.configure"), dialog =>
-                new TailscaleConfigurationDialog(configuration, value => { result = value; dialog.Close(value); }), new Size(520, 340));
-            return result;
         };
         model.ConfirmAsync = async (operation, baseline, target) =>
         {

@@ -51,12 +51,12 @@ import app.relaxkonos.mobile.ui.theme.Spacing
     LaunchedEffect(owner,login.state.owner) { if (owner != null && login.state.owner === owner) login.loadRecords() }
     WorkspaceColumn(stringResource(R.string.tailscale_title),onBack,
         listOf(WorkspaceDestination("devices",R.string.tailscale_peers),WorkspaceDestination("control",R.string.tailscale_control),WorkspaceDestination("login",R.string.tailscale_login_title),WorkspaceDestination("records",R.string.tailscale_records)),
-        page,{ if (!state.busy && !login.state.busy) { model.dismiss(); login.dismiss(); page = it } },modifier,stateKey = owner) {
+        page,{ if (!state.busy && !login.state.busy) { model.dismiss(); login.dismiss(); page = it } },modifier,stateKey = owner, titleActions = { app.relaxkonos.mobile.ui.manage.components.ComponentDependencyAction(
+            app.relaxkonos.mobile.ui.nav.Routes.MANAGE_TAILSCALE, onOpenComponents) }) {
         if (owner == null || ServerCapabilities.TAILSCALE !in owner.capabilities) {
             Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn
         }
-        app.relaxkonos.mobile.ui.manage.components.ComponentDependencyAction(
-            app.relaxkonos.mobile.ui.nav.Routes.MANAGE_TAILSCALE, onOpenComponents)
+
         if (page == "devices") TailscaleDevicesContent()
         if (page == "login" && login.state.owner === owner) TailscaleLoginContent(login,model::invalidateControl)
         if (visible && page != "devices" && page != "login") {

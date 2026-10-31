@@ -111,7 +111,7 @@ fun ComponentDependencyAction(route: String, onOpenComponents: () -> Unit, modif
     val owner = container.activeSession ?: return
     var open by remember(owner) { mutableStateOf(false) }
     var rows by remember(owner, open) { mutableStateOf<List<ComponentRead>?>(null) }
-    OutlinedButton(onClick = { open = true }, modifier = modifier) {
+    TextButton(onClick = { open = true }, modifier = modifier) {
         Text(stringResource(R.string.components_dependency_entry))
     }
     if (!open) return

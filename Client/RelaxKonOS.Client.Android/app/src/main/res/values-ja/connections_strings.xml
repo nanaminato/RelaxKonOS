@@ -26,4 +26,6 @@
     <string name="connections_use">使用</string>
     <string name="connections_windows_device">Windows 10/11 デバイス</string>
     <string name="connections_windows_device_support">Windows 10/11 · ペアリング済みデバイスキーでサインイン</string>
+    <string name="connections_remove_device">接続を削除</string>
+    <string name="connections_remove_device_message">この端末に保存された %1$s の接続とペアリングキーを削除しますか？再接続には再ペアリングが必要です。サーバー側のデバイス認可は保持されます。認可の取り消しはサーバー側で行ってください。</string>
 </resources>

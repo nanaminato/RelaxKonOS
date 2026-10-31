@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.servercenter.ServerHostSnapshot
+import app.relaxkonos.mobile.servercenter.ServerInstallMode
 import app.relaxkonos.mobile.ui.common.CheckboxOption
 import java.net.URI
 import androidx.compose.ui.unit.dp
@@ -49,9 +50,26 @@ internal fun ServerConfigurationDialog(editor: MaintenanceConfiguration, busy: B
         title = { Text(stringResource(if (componentsOnly) R.string.server_configuration_components else R.string.server_configuration_settings)) },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(reviewed.listenUrl.orEmpty())
-            Text(stringResource(R.string.server_configuration_note))
-            if (componentsOnly) CheckboxOption(guardian, stringResource(R.string.server_guardian_choice), !busy) { guardian = it }
+            if (componentsOnly) {
+                Text(stringResource(when (reviewed.guardianEnabled) {
+                    true -> R.string.server_guardian_current_installed
+                    false -> R.string.server_guardian_current_absent
+                    null -> R.string.server_guardian_current_unknown
+                }))
+                if (reviewed.guardianEnabled != null) {
+                    val installed = reviewed.guardianEnabled == true
+                    CheckboxOption(guardian != installed, stringResource(if (installed) R.string.server_guardian_remove else R.string.server_guardian_choice), !busy) { guardian = if (installed) !it else it }
+                    Text(stringResource(if (guardian) R.string.server_guardian_target_installed else R.string.server_guardian_target_absent))
+                    if (installed && !guardian) Text(stringResource(R.string.server_guardian_remove_note))
+                }
+            }
             else {
+                Text(stringResource(when (reviewed.mode) {
+                    ServerInstallMode.LinuxUser -> R.string.server_configuration_mode_user
+                    ServerInstallMode.LinuxSystem, ServerInstallMode.WindowsSystem -> R.string.server_configuration_mode_system
+                    null -> R.string.server_configuration_mode_unknown
+                }))
+                Text(stringResource(R.string.server_configuration_note))
                 OutlinedTextField(port, { port = it }, enabled = !busy, label = { Text(stringResource(R.string.server_configuration_port)) })
                 if (reviewed.fileAccess != null) {
                     listOf("restricted" to R.string.ssh_workspace_deploy_restricted, "whitelist" to R.string.server_install_file_access_whitelist, "full" to R.string.ssh_workspace_deploy_full_access).forEach { (value, label) ->
@@ -59,11 +77,15 @@ internal fun ServerConfigurationDialog(editor: MaintenanceConfiguration, busy: B
                     }
                     if (access == "whitelist") OutlinedTextField(roots, { roots = it }, enabled = !busy, label = { Text(stringResource(R.string.server_install_file_roots)) })
                 }
-                if (reviewed.autoStart != null) CheckboxOption(autoStart, stringResource(R.string.server_configuration_auto_start), !busy) { autoStart = it }
+                if (reviewed.autoStart != null) CheckboxOption(autoStart, stringResource(when (reviewed.mode) {
+                    ServerInstallMode.LinuxUser -> R.string.server_configuration_auto_start_user
+                    ServerInstallMode.LinuxSystem, ServerInstallMode.WindowsSystem -> R.string.server_configuration_auto_start_system
+                    null -> R.string.server_configuration_auto_start
+                }), !busy) { autoStart = it }
                 CheckboxOption(lan, stringResource(R.string.server_configuration_lan), !busy) { lan = it }
             }
         } },
-        confirmButton = { key(interactionVersion) { TextButton(onClick = { onApply(ServerConfigurationDraft(reviewed, requireNotNull(port.toIntOrNull()), lan, guardian, if (reviewed.autoStart != null) autoStart else null, access, if (access == "whitelist") roots.lines().map(String::trim).filter(String::isNotEmpty) else null)) }, enabled = !busy && valid) {
+        confirmButton = { key(interactionVersion) { TextButton(onClick = { onApply(ServerConfigurationDraft(reviewed, requireNotNull(port.toIntOrNull()), lan, guardian, if (reviewed.autoStart != null) autoStart else null, access, if (access == "whitelist") roots.lines().map(String::trim).filter(String::isNotEmpty) else null)) }, enabled = !busy && valid && changed) {
             Text(stringResource(R.string.server_configuration_apply))
         } } },
         dismissButton = { key(interactionVersion) { TextButton(onClick = close, enabled = !busy) { Text(stringResource(R.string.common_cancel)) } } })

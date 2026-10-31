@@ -85,11 +85,15 @@ fun ConnectionListScreen(
     onForgetPassword: (SavedLogin) -> Unit,
     onDeleteLogin: (SavedLogin) -> Unit,
     onDismiss: () -> Unit,
+    onDeleteOwnerDevice: (String) -> Unit,
 ) {
     val currentOwnerDeviceServiceIds by rememberUpdatedState(ownerDeviceServiceIds)
     val currentLogins by rememberUpdatedState(logins)
     val currentCredentialStatus by rememberUpdatedState(credentialStatus)
     val currentForget by rememberUpdatedState(onForgetPassword)
+    val currentDeleteOwnerDevice by rememberUpdatedState(onDeleteOwnerDevice)
+    var ownerDeleteTarget by remember { mutableStateOf<String?>(null) }
+    var ownerMutationFailed by remember { mutableStateOf(false) }
     val currentDelete by rememberUpdatedState(onDeleteLogin)
     val lifecycleOwner = LocalLifecycleOwner.current
     var attached by remember { mutableStateOf(false) }
@@ -102,6 +106,8 @@ fun ConnectionListScreen(
 
     fun dismissActions() {
         confirmationToken = null
+        ownerDeleteTarget = null
+        ownerMutationFailed = false
         actionTarget = null
         forgetTarget = null
         deleteTarget = null
@@ -158,6 +164,10 @@ fun ConnectionListScreen(
         }
     }
 
+    LaunchedEffect(ownerDeviceServiceIds) {
+        if (ownerDeleteTarget != null && ownerDeleteTarget !in currentOwnerDeviceServiceIds) dismissActions()
+    }
+
     LaunchedEffect(logins) {
         if (currentRecord(actionTarget) == null) actionTarget = null
         if (forgetTarget != null && currentRecord(forgetTarget) == null) dismissActions()
@@ -177,7 +187,15 @@ fun ConnectionListScreen(
                 ) {
                     PlatformTrademarkLegend()
                     ownerDeviceServiceIds.forEach { serviceId ->
-                        OwnerDeviceEntry(serviceId = serviceId, onSelect = { if (serviceId in currentOwnerDeviceServiceIds) leave { onOwnerDeviceSelected(serviceId) } })
+                        OwnerDeviceEntry(serviceId = serviceId,
+                            onSelect = { if (serviceId in currentOwnerDeviceServiceIds) leave { onOwnerDeviceSelected(serviceId) } },
+                            onRemove = {
+                                if (canAct() && serviceId in currentOwnerDeviceServiceIds) {
+                                    dismissActions()
+                                    confirmationToken = Any()
+                                    ownerDeleteTarget = serviceId
+                                }
+                            })
                     }
                     logins.forEach { login ->
                         SwipeableSavedLoginEntry(
@@ -192,6 +210,33 @@ fun ConnectionListScreen(
         },
         confirmButton = { TextButton(onClick = { leave(onDismiss) }) { Text(stringResource(R.string.common_close)) } },
     )
+
+    ownerDeleteTarget?.takeIf { it in currentOwnerDeviceServiceIds }?.let { serviceId ->
+        val token = confirmationToken
+        ConfirmDangerousDialog(
+            title = stringResource(R.string.connections_remove_device),
+            message = stringResource(R.string.connections_remove_device_message, serviceId),
+            confirmLabel = stringResource(R.string.connections_remove_device),
+            extraContent = {
+                if (ownerMutationFailed) Text(stringResource(R.string.connections_mutation_failed), color = MaterialTheme.colorScheme.error)
+            },
+            onConfirm = {
+                if (token != null && confirmationToken === token && canAct() && serviceId in currentOwnerDeviceServiceIds) {
+                    confirmationToken = null
+                    try {
+                        currentDeleteOwnerDevice(serviceId)
+                        dismissActions()
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        ownerMutationFailed = true
+                        confirmationToken = Any()
+                    }
+                }
+            },
+            onDismiss = { if (confirmationToken === token && canAct()) dismissActions() },
+        )
+    }
 
     currentRecord(actionTarget)?.let { login ->
         AlertDialog(
@@ -248,11 +293,14 @@ fun ConnectionListScreen(
 }
 
 @Composable
-private fun OwnerDeviceEntry(serviceId: String, onSelect: () -> Unit) {
+private fun OwnerDeviceEntry(serviceId: String, onSelect: () -> Unit, onRemove: () -> Unit) {
     ListRow(
         title = stringResource(R.string.connections_windows_device),
         subtitle = serviceId,
         supporting = stringResource(R.string.connections_windows_device_support),
+        trailing = {
+            TextButton(onClick = onRemove) { Text(stringResource(R.string.connections_remove_device)) }
+        },
         leading = { ServerPlatformBadge(serviceId) },
         onClick = onSelect,
     )

@@ -59,7 +59,7 @@
     <string name="server_configuration_port">待受ポート</string>
     <string name="server_configuration_lan">LAN アクセスを許可</string>
     <string name="server_configuration_apply">適用して検証</string>
-    <string name="server_configuration_note">適用時にサービスを再起動します。監視を削除するとワークロードが停止し、定義とログは保持されます。証明書は保持されます。新しい接続先を確認してください。</string>
+    <string name="server_configuration_note">適用時にサービスを再起動します。証明書は保持されます。新しい接続先を確認してください。</string>
     <string name="server_configuration_discard">未保存の設定を破棄しますか？</string>
     <string name="server_configuration_discard_confirm">破棄</string>
     <string name="server_configuration_auto_start">自動起動（システムは起動時、個人モードはログイン時）</string>
@@ -77,4 +77,16 @@
     <string name="server_maintenance_pending">元の保守操作が未確認のため、新しい変更を停止しています。</string>
     <string name="server_maintenance_reconcile">元の操作を確認</string>
     <string name="server_maintenance_reconciled">元の操作記録を確認しました。新しい変更の前に現在の状態を確認してください。</string>
+    <string name="server_guardian_current_installed">現在の状態：インストール済み</string>
+    <string name="server_guardian_current_absent">現在の状態：未インストール</string>
+    <string name="server_guardian_current_unknown">現在の状態：不明。先に確認してください。</string>
+    <string name="server_guardian_remove">プロセス監視を削除</string>
+    <string name="server_guardian_target_installed">適用後：インストール済み</string>
+    <string name="server_guardian_target_absent">適用後：未インストール</string>
+    <string name="server_guardian_remove_note">監視を削除するとワークロードが停止し、定義とログは保持されます。</string>
+    <string name="server_configuration_mode_system">現在のインストール：システムモード</string>
+    <string name="server_configuration_mode_user">現在のインストール：個人モード</string>
+    <string name="server_configuration_mode_unknown">現在のインストールモード：不明</string>
+    <string name="server_configuration_auto_start_system">システム起動時に自動起動</string>
+    <string name="server_configuration_auto_start_user">ログイン時に自動起動</string>
 </resources>

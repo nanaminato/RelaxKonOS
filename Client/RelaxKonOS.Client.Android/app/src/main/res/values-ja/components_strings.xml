@@ -77,9 +77,6 @@
     <string name="components_frp_rollback_message">管理対象 FRP を前のバージョンに修復しますか。完了までトンネルが一時的に中断する場合があります。</string>
     <string name="components_frp_uninstall_title">管理対象 FRP をアンインストール</string>
     <string name="components_frp_uninstall_message">管理対象 FRP をアンインストールしますか。設定と業務データは保持され、再インストールまでトンネルは利用できません。</string>
-    <string name="components_frp_upgrade_title">FRP ランタイムを更新</string>
-    <string name="components_frp_upgrade_message">対象バージョンを入力してください。リリースと整合性の検証はサーバーが行います。</string>
-    <string name="components_frp_version">対象バージョン</string>
 <string name="components_nginx_uninstall_title">管理対象 Nginx をアンインストール</string>
     <string name="components_nginx_uninstall_message">管理対象 Nginx をアンインストールしますか。サイト設定とデータは保持され、再インストールまでサーバーは利用できません。</string>
     <!-- アプリの依存関係入口と起動時の案内。参照と移動のみで、インストールは行いません。 -->
@@ -93,4 +90,9 @@
     <string name="components_launch_recovery_message">%1$s に復旧が必要な処理があります。先に「タスクと復旧」で処理してください。</string>
     <string name="components_launch_busy_message">%1$s のタスクが実行中です。先に「タスクと復旧」で進行状況を確認してください。</string>
     <string name="components_external_package_change">外部パッケージ変更を検証しました：%1$s → %2$s。管理権限は保持されます。</string>
+    <string name="components_official_versions">更新可能なバージョン</string>
+    <string name="components_installed_version">現在のバージョン：%1$s</string>
+    <string name="components_official_versions_note">サーバーとこの端末が公式バージョンを同時に取得します。選択後はサーバーが検証してインストールします。サービスが再起動する場合があります。</string>
+    <string name="components_versions_failed">バージョンを取得できませんでした。再試行してください。</string>
+    <string name="components_versions_empty">対応する新しいバージョンは見つかりませんでした。</string>
 </resources>

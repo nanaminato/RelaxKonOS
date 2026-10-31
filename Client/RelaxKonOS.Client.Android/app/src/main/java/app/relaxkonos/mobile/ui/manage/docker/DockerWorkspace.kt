@@ -38,14 +38,14 @@ fun DockerWorkspace(initialSection: String, initialStack: String?, onBack: () ->
     )
     val screenTitle = stringResource(when (section) {
         "overview", "compose" -> R.string.docker_title
+        "records" -> R.string.workspace_records
         "mirrors" -> R.string.workspace_mirrors
         "proxy" -> R.string.proxy_title
         else -> R.string.docker_resources_title
     })
     WorkspaceFrame(stringResource(R.string.docker_title), screenTitle = screenTitle,
-        pages = pages, selected = section, onSelect = { section = it }, onBack = onBack, modifier = modifier) {
+        pages = pages, selected = section, onSelect = { section = it }, onBack = onBack, modifier = modifier, titleActions = { ComponentDependencyAction(Routes.MANAGE_DOCKER, onOpenComponents) }) {
         val state = control.state
-        if (state.owner === owner && section != "records") ComponentDependencyAction(Routes.MANAGE_DOCKER, onOpenComponents)
         if (state.owner === owner && section != "records" &&
             (state.pending.isNotEmpty() || state.resourcePending || state.pendingInstallation || state.installation?.state?.active == true)) {
             TextButton(onClick = { section = "records" }) {

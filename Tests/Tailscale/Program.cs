@@ -276,7 +276,14 @@ await using (var web = webBuilder.Build())
     http.DefaultRequestHeaders.Authorization = new("test");
     var restricted = JsonSerializer.Deserialize<TailscaleStatusDto>(await http.GetStringAsync(TailscaleEndpoints.Status), new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
     Check(restricted.PeersRestricted && restricted.Peers is null && restricted.Self?.Id == "self");
-    Check((await http.GetAsync(TailscaleEndpoints.Control)).StatusCode == System.Net.HttpStatusCode.Forbidden);
+    // Observing the connection snapshot needs authentication only; the peer list and every
+    // mutation still require the fresh HostNetworkChange/host/tailscale grant.
+    var unprivilegedControl = JsonSerializer.Deserialize<TailscaleControlSnapshot>(
+        await http.GetStringAsync(TailscaleEndpoints.Control), new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+    Check(unprivilegedControl.Revision == controlHost.Snapshot.Revision && unprivilegedControl.CanControl && controlHost.Reads == 1);
+    using (var unprivilegedPlan = await http.PostAsJsonAsync(TailscaleEndpoints.Operations,
+               new TailscalePrepareRequest(Guid.NewGuid(), unprivilegedControl.Revision, TailscaleAction.Connect)))
+        Check(unprivilegedPlan.StatusCode == System.Net.HttpStatusCode.Forbidden && controlHost.Executions == 0);
     grants.Allowed = true;
     var allowed = JsonSerializer.Deserialize<TailscaleStatusDto>(await http.GetStringAsync(TailscaleEndpoints.Status), new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
     Check(!allowed.PeersRestricted && allowed.Peers?.Count == 2);
@@ -445,6 +452,7 @@ sealed class HttpControlHost : ITailscaleControlHost
     public TailscaleControlSnapshot Snapshot { get; private set; } = new(new('D', 64), false, true, new(true, false), true);
     public int Executions { get; private set; }
     public int Closures { get; private set; }
+    public int Reads { get; private set; }
     public bool FailExecute { get; set; }
     private readonly Dictionary<Guid, TailscaleRecoveryClosure> _closures = new();
     public Task<TailscaleRecoverySnapshot> ReadRecoveryAsync(Guid operationId, CancellationToken cancellationToken) => Task.FromResult(new TailscaleRecoverySnapshot(operationId, Snapshot, true));
@@ -454,7 +462,7 @@ sealed class HttpControlHost : ITailscaleControlHost
         _closures[request.OperationId] = closure; return Task.FromResult(closure);
     }
     public Task<TailscaleRecoveryClosure?> GetClosureAsync(Guid operationId, CancellationToken cancellationToken) => Task.FromResult(_closures.GetValueOrDefault(operationId));
-    public Task<TailscaleControlSnapshot> ReadAsync(CancellationToken cancellationToken) => Task.FromResult(Snapshot);
+    public Task<TailscaleControlSnapshot> ReadAsync(CancellationToken cancellationToken) { Reads++; return Task.FromResult(Snapshot); }
     public Task<TailscaleControlResult?> GetResultAsync(Guid operationId, CancellationToken cancellationToken) => Task.FromResult<TailscaleControlResult?>(null);
     public Task<TailscaleControlResult> ExecuteAsync(TailscalePrepareRequest request, CancellationToken cancellationToken)
     {

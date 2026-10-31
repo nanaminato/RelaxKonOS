@@ -4,6 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.relaxkonos.mobile.core.auth.AuthSession
 import app.relaxkonos.mobile.core.auth.SessionState
+import app.relaxkonos.mobile.core.net.ComponentRelease
+import app.relaxkonos.mobile.core.net.ComponentReleases
+import app.relaxkonos.mobile.core.net.ComponentState
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.ComponentChange
 import app.relaxkonos.mobile.core.net.ComponentPinnedArchive
@@ -75,6 +78,14 @@ internal fun validFrpMaintenance(componentId: String, kind: InstallationKind, ve
     }
 }
 
+data class ComponentReleaseChoice(
+    val componentId: String,
+    val reviewed: ComponentState,
+    val loading: Boolean = true,
+    val releases: List<ComponentRelease> = emptyList(),
+    val failed: Boolean = false,
+)
+
 data class ComponentCenterUiState(
     val loading: Boolean = false,
     val loaded: Boolean = false,
@@ -87,6 +98,7 @@ data class ComponentCenterUiState(
     val actionProblem: String? = null,
     val nginx: NginxChoiceState? = null,
     val nginxLoading: Boolean = false,
+    val releases: ComponentReleaseChoice? = null,
 ) {
     val recoveryVisible: Boolean get() = rows.any { it.view?.recoveryRequired == true }
 }
@@ -109,6 +121,7 @@ class ComponentCenterViewModel(
     private val mutable = MutableStateFlow(ComponentCenterUiState())
     val state = mutable.asStateFlow()
 
+    private var releaseWork: Job? = null
     private var owner: SessionState.Active? = null
     private var work: Job? = null
     private var action: Job? = null
@@ -118,6 +131,7 @@ class ComponentCenterViewModel(
             session.state.collect { value ->
                 val active = value as? SessionState.Active
                 if (owner !== active) {
+                    releaseWork?.cancel()
                     work?.cancel()
                     action?.cancel()
                     owner = active
@@ -147,6 +161,49 @@ class ComponentCenterViewModel(
                 is ApiResult.Transport -> ComponentCenterUiState(error = true, loaded = true)
             }
         }
+    }
+
+    fun openReleases(active: SessionState.Active, componentId: String) {
+        if (mutable.value.busy || session.state.value !== active) return
+        val view = mutable.value.rows.firstOrNull { it.componentId == componentId }?.view ?: return
+        val state = view.state ?: return
+        if (componentId !in setOf("nginx", "frpc", "frps") || state.mode != "managedArchive" || state.ownership != "managed" ||
+            view.recoveryRequired || view.problems.isNotEmpty()) return
+        releaseWork?.cancel()
+        val choice = ComponentReleaseChoice(componentId, state)
+        mutable.value = mutable.value.copy(releases = choice)
+        releaseWork = viewModelScope.launch {
+            val result = try { repository.releases(active, componentId, state) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { ApiResult.Transport(null) }
+            if (session.state.value !== active || mutable.value.releases !== choice) return@launch
+            mutable.value = mutable.value.copy(releases = choice.copy(loading = false,
+                releases = (result as? ApiResult.Success)?.value.orEmpty().filter {
+                    ComponentReleases.newer(it.version, state.activeVersion)
+                }.sortedWith { left, right ->
+                    when {
+                        ComponentReleases.newer(left.version, right.version) -> -1
+                        ComponentReleases.newer(right.version, left.version) -> 1
+                        else -> 0
+                    }
+                }, failed = result !is ApiResult.Success))
+        }
+    }
+
+    fun closeReleases(choice: ComponentReleaseChoice? = null) {
+        if (choice != null && mutable.value.releases !== choice) return
+        releaseWork?.cancel()
+        mutable.value = mutable.value.copy(releases = null)
+    }
+
+    fun applyRelease(active: SessionState.Active, choice: ComponentReleaseChoice, version: String) {
+        if (session.state.value !== active || mutable.value.busy || mutable.value.releases !== choice || choice.loading || choice.failed ||
+            choice.releases.none { it.version == version }) return
+        val view = mutable.value.rows.firstOrNull { it.componentId == choice.componentId }?.view ?: return
+        if (view.state != choice.reviewed || view.recoveryRequired || view.problems.isNotEmpty()) return
+        closeReleases()
+        if (choice.componentId == "nginx") submit(active, InstallationKind.Install, NginxInstallationRequest(true, version))
+        else maintainFrp(active, choice.componentId, InstallationKind.Upgrade, version)
     }
 
     fun refresh(active: SessionState.Active) {

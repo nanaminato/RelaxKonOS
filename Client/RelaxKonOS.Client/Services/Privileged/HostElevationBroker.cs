@@ -22,6 +22,14 @@ public interface IHostElevationBroker
 {
     Task<T> ExecuteAsync<T>(HostElevationCapability capability, string target, Func<Task<T>> operation,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Requests the grant itself when the operation that needs it is only a read (for example a
+    /// host-scoped listing the Server restricts by grant). The Server still decides whether the
+    /// current account is an administrator or needs the password prompt.
+    /// </summary>
+    Task<bool> RequestGrantAsync(HostElevationCapability capability, string target,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class HostElevationBroker(HttpClient http, IAuthSession session, IWindowManager windows, UsageMemoryStore memory) : IHostElevationBroker
@@ -36,6 +44,10 @@ public sealed class HostElevationBroker(HttpClient http, IAuthSession session, I
             return await operation();
         }
     }
+
+    public async Task<bool> RequestGrantAsync(HostElevationCapability capability, string target,
+        CancellationToken cancellationToken = default)
+        => await EnsureGrantAsync(capability, target, cancellationToken);
 
     private async Task<bool> EnsureGrantAsync(HostElevationCapability capability, string target, CancellationToken cancellationToken)
     {

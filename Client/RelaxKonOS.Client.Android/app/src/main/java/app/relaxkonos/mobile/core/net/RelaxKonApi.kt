@@ -324,6 +324,11 @@ class RelaxKonApi(
         return installationCall(method, serverUrl, route, accessToken, body, key) { it }
     }
 
+    override suspend fun componentReleases(serverUrl: String, accessToken: String, componentId: String, rid: String): ApiResult<List<ComponentRelease>> =
+        webPublishingRead(serverUrl, accessToken, ComponentRoutes.state(componentId).removeSuffix("/state") + "/releases?refresh=true") {
+            ComponentReleases.server(it, componentId, rid)
+        }
+
     override suspend fun componentState(serverUrl: String, accessToken: String, componentId: String): ApiResult<ComponentStateView> =
         webPublishingRead(serverUrl, accessToken, ComponentRoutes.state(componentId)) { payload ->
             ComponentWire.stateView(payload, componentId)

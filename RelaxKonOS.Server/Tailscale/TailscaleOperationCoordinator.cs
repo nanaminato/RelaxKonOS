@@ -36,10 +36,13 @@ public sealed class TailscaleOperationCoordinator(TailscaleOperationJournal jour
     ITailscaleControlAuthorization grants, TimeProvider? timeProvider = null) : ITailscaleControl
 {
     private DateTimeOffset Now => (timeProvider ?? TimeProvider.System).GetUtcNow();
+    // Viewing the connection snapshot is an observation, not a host change: any authenticated
+    // account may read whether the daemon is connected and which preferences it uses. Peer
+    // identities stay restricted by the status route, and every mutation still requires a
+    // fresh HostNetworkChange/host/tailscale grant below.
     public Task<TailscaleControlSnapshot> ReadAsync(ClaimsPrincipal principal, CancellationToken ct)
     {
         Actor(principal);
-        RequireGrant(principal);
         return host.ReadAsync(ct);
     }
 

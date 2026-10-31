@@ -77,9 +77,6 @@
     <string name="components_frp_rollback_message">将受管 FRP 修复到上一版本？操作完成前隧道可能短暂中断。</string>
     <string name="components_frp_uninstall_title">卸载受管 FRP</string>
     <string name="components_frp_uninstall_message">卸载受管 FRP？配置与业务数据保留；在重新安装前隧道不可用。</string>
-    <string name="components_frp_upgrade_title">升级 FRP 运行时</string>
-    <string name="components_frp_upgrade_message">输入目标版本；服务器仍会校验发布与完整性。</string>
-    <string name="components_frp_version">目标版本</string>
 <string name="components_nginx_uninstall_title">卸载受管 Nginx</string>
     <string name="components_nginx_uninstall_message">卸载受管 Nginx？站点配置与数据保留；在重新安装前该服务器不可用。</string>
     <!-- 应用依赖入口与进入应用提示：只观察与跳转，不提供安装命令。 -->
@@ -93,4 +90,9 @@
     <string name="components_launch_recovery_message">%1$s 有待恢复的事务，请先在“任务与恢复”中处理。</string>
     <string name="components_launch_busy_message">%1$s 正在执行组件任务，请先在“任务与恢复”中查看进度。</string>
     <string name="components_external_package_change">已核实系统包由外部更新：%1$s → %2$s，仍保留管理授权。</string>
+    <string name="components_official_versions">可更新版本</string>
+    <string name="components_installed_version">当前版本：%1$s</string>
+    <string name="components_official_versions_note">服务器和手机同时请求官方版本列表。选择后仍由服务器校验并安装，期间服务可能重启。</string>
+    <string name="components_versions_failed">版本列表读取失败，请重试。</string>
+    <string name="components_versions_empty">未发现适配当前平台的更新版本。</string>
 </resources>

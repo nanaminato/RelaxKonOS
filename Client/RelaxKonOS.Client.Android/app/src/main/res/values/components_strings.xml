@@ -77,9 +77,6 @@
     <string name="components_frp_rollback_message">Repair the managed FRP runtime to its previous version? Tunnels may be briefly interrupted until the operation completes.</string>
     <string name="components_frp_uninstall_title">Uninstall the managed FRP runtime</string>
     <string name="components_frp_uninstall_message">Uninstall managed FRP? Configuration and business data are kept; tunnels are unavailable until it is installed again.</string>
-    <string name="components_frp_upgrade_title">Update the FRP runtime</string>
-    <string name="components_frp_upgrade_message">Enter the target version. The server still verifies the release and its integrity.</string>
-    <string name="components_frp_version">Target version</string>
 <string name="components_nginx_uninstall_title">Uninstall the managed Nginx</string>
     <string name="components_nginx_uninstall_message">Uninstall managed Nginx? Site configuration and data are kept; the server is unavailable until it is installed again.</string>
     <!-- Application dependency entry and the entry prompt. The entry observes; it never installs. -->
@@ -93,4 +90,9 @@
     <string name="components_launch_recovery_message">%1$s has a transaction requiring recovery. Handle it in Tasks &amp; recovery first.</string>
     <string name="components_launch_busy_message">A task for %1$s is running. Check its progress in Tasks &amp; recovery first.</string>
     <string name="components_external_package_change">Verified external package change: %1$s → %2$s. Management authorization is retained.</string>
+    <string name="components_official_versions">Available updates</string>
+    <string name="components_installed_version">Installed version: %1$s</string>
+    <string name="components_official_versions_note">Official versions are requested through both the server and this phone. The server verifies the selected version before installation. Services may restart.</string>
+    <string name="components_versions_failed">Could not load versions. Retry to check again.</string>
+    <string name="components_versions_empty">No newer compatible version was found.</string>
 </resources>

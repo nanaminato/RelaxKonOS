@@ -90,7 +90,7 @@ class OwnerDeviceKeyStore(
         keyStore().deleteEntry(keyAlias(serviceId))
         val retained = registrations().filterNot { it.serviceId == serviceId }
         if (retained.isEmpty()) {
-            storage.delete()
+            check(!storage.exists() || storage.delete()) { "Could not remove the owner-device registration." }
             return
         }
         val temporary = File(storage.parentFile, storage.name + ".tmp")

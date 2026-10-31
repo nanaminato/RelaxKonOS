@@ -46,7 +46,7 @@ try
     await model.ActivateAsync();
     Check(model.Peers.Count == 1 && !model.CanConnect && client.ControlReads == 0 && broker.Calls == 0, "launch only observes status");
     await model.LoadControlAsync();
-    Check(model.CanConnect && model.CanConfigure && !model.CanDisconnect, "controls depend on fresh baseline");
+    Check(model.CanConnect && model.CanEditPreferences && !model.CanDisconnect, "controls depend on fresh baseline");
     Check(broker.Capability == HostElevationCapability.HostNetworkChange && broker.Target == TailscaleAccess.Resource, "precise elevation resource");
     var original = client.Connection;
     model.ConfirmAsync = (_, _, _) => Task.FromResult(false);
@@ -64,18 +64,20 @@ try
     };
     await model.ConnectAsync();
     Check(client.Executions == 1 && !model.CanConnect && model.OperationText == language.Get("tailscale.operation_state.Applied", ""), "verified receipt without optimistic control baseline");
+    Check(model.CanDisconnect && model.HasControl, "applied change re-reads the live baseline");
     await model.LoadControlAsync();
     Check(model.CanDisconnect && !model.CanConnect, "fresh connected baseline");
+    // Preference switches use the same structured plan, confirmation and verified receipt.
     var preparations = client.Prepares;
-    model.EditConfigurationAsync = _ => Task.FromResult<TailscaleConfiguration?>(null);
-    await model.ConfigureAsync();
-    Check(client.Prepares == preparations, "cancel editor does not prepare");
-    model.EditConfigurationAsync = value => Task.FromResult<TailscaleConfiguration?>(value);
-    await model.ConfigureAsync();
-    Check(client.Prepares == preparations, "unchanged config does not prepare");
-    model.EditConfigurationAsync = _ => Task.FromResult<TailscaleConfiguration?>(new(false, true));
-    await model.ConfigureAsync();
-    Check(client.LastRequest?.Action == TailscaleAction.Configure && client.LastRequest.Configuration == new TailscaleConfiguration(false, true), "structured configuration only");
+    model.ConfirmAsync = (_, _, _) => Task.FromResult(false);
+    var cancelled = await model.SetAcceptDnsAsync(false);
+    Check(!cancelled && client.Executions == 1 && model.AcceptDnsEnabled, "cancelled preference change executes nothing and reverts");
+    model.ConfirmAsync = (_, _, _) => Task.FromResult(true);
+    var applied = await model.SetAcceptDnsAsync(false);
+    Check(applied && client.Executions == 2 && client.LastRequest?.Action == TailscaleAction.Configure
+        && client.LastRequest.Configuration == new TailscaleConfiguration(false, false), "structured preference change only");
+    Check(!model.AcceptDnsEnabled && model.HasControl, "applied preference re-reads the host");
+    Check(client.Prepares == preparations + 2, "each preference attempt is planned once");
     await model.LoadControlAsync();
     client.LoseResponse = true;
     await model.DisconnectAsync();
@@ -114,7 +116,8 @@ try
     Check(reopened.IsBusy, "pending preparation marks busy");
     client.SwitchHost(); Dispatcher.UIThread.RunJobs();
     client.HoldPlan.SetResult(client.LastPlan!); await pending; client.HoldPlan = null;
-    Check(client.Executions == executed && reopened.Peers.Count == 0 && !reopened.IsBusy, "late response cannot update new host");
+    Check(client.Executions == executed && !reopened.IsBusy && reopened.Target == client.Connection.ServiceId
+        && reopened.Operations.Count == 0, "late response cannot update new host");
     reopened.Deactivate();
     // A persistence failure must stop the mutation before it is submitted.
     var blocked = new TailscaleViewModel(client, new BrokenReferences(), broker, language) { ConfirmAsync = (_, _, _) => Task.FromResult(true) };
@@ -171,6 +174,48 @@ try
     var last = store.Read(original)[0]; store.Remember(original, last);
     Check(store.Read(original).Count == 30 && store.Read(original)[0] == last, "reference duplicate does not grow history");
     Check(!File.ReadAllText(Path.Combine(folder.FullName, "refs.json")).Contains("Applied"), "outcomes never stored locally");
+
+    // The connection page reads itself, keeps the last snapshot when a background refresh fails,
+    // and never asks for a mutation grant just to observe.
+    var probeClient = new FakeClient();
+    var probeBroker = new Broker();
+    var probe = new TailscaleViewModel(probeClient, new TailscaleOperationReferences(Path.Combine(folder.FullName, "probe.json")), probeBroker, language);
+    await probe.ActivateAsync();
+    probe.SetVisiblePage("control");
+    await probe.EnsureControlAsync();
+    Check(probe.HasControl && probeClient.ControlReads == 1 && probeBroker.Calls == 0 && probeBroker.GrantCalls == 0, "connection page loads itself without elevation");
+    probeClient.StatusError = true;
+    await probe.AutoRefreshOnceAsync();
+    Check(probe.HasControl && probe.Peers.Count == 1 && probe.StatusText == language.Get("tailscale.auto_refresh_failed", ""), "failed background refresh keeps the last snapshot");
+    probeClient.StatusError = false;
+    await probe.AutoRefreshOnceAsync();
+    Check(probe.StatusText == language.Get("tailscale.state.observed", ""), "recovered background refresh clears the failure");
+    probe.Deactivate();
+    var unreachable = new TailscaleViewModel(new FakeClient { ControlError = true },
+        new TailscaleOperationReferences(Path.Combine(folder.FullName, "unreachable.json")), new Broker(), language);
+    await unreachable.ActivateAsync();
+    await unreachable.EnsureControlAsync();
+    Check(!unreachable.HasControl && unreachable.ControlUnavailable && unreachable.HasControlProblem, "unreachable control read is reported instead of prompting");
+    Check(unreachable.ConnectionHint == language.Get("tailscale.control_unavailable", ""), "unreachable control read explains itself");
+    unreachable.Deactivate();
+
+    // Device identities stay grant-gated, but the page grants itself only after an explicit action.
+    var peersClient = new FakeClient { Restricted = true };
+    var peersBroker = new Broker();
+    var peers = new TailscaleViewModel(peersClient, new TailscaleOperationReferences(Path.Combine(folder.FullName, "peers.json")), peersBroker, language);
+    await peers.ActivateAsync();
+    Check(peers.PeersRestricted && peers.CanAuthorizePeers, "restricted device list offers explicit authorization");
+    peersClient.Restricted = false;
+    await peers.AuthorizePeersAsync();
+    Check(peersBroker.GrantCalls == 1 && peersBroker.Capability == HostElevationCapability.HostNetworkChange
+        && peersBroker.Target == TailscaleAccess.Resource && !peers.PeersRestricted
+        && peers.StatusText == language.Get("tailscale.authorization_granted", ""), "authorization refreshes the device list");
+    peers.PeerFilter = "no-such-device";
+    Check(peers.FilteredPeers.Count == 0 && peers.NoMatchingPeers, "device filter hides non-matches");
+    peers.PeerFilter = "host";
+    Check(peers.FilteredPeers.Count == 1, "device filter matches the host name");
+    peers.Deactivate();
+
     checks += await TransportChecks.RunAsync();
     checks += await LoginChecks.RunAsync(language, folder.FullName);
     checks += await LoginTransportChecks.RunAsync();
@@ -217,7 +262,7 @@ try
         var plan = new TailscaleOperation(Guid.NewGuid(), TailscaleAction.Configure, TailscaleOperationState.Prepared, new('A',64),
             DateTimeOffset.UtcNow.AddMinutes(5), DateTimeOffset.UtcNow, new(false,true));
         var dialogIndex = 0;
-        foreach (var dialog in new Control[] { new TailscaleConfigurationDialog(new(true,false), _ => { }),
+        foreach (var dialog in new Control[] {
             new TailscaleConfirmationDialog(plan, layoutClient.Control, "test-host", language, _ => { }),
             new TailscaleRecoveryDialog(new(plan.OperationId,layoutClient.Control,true,ExpiresAt:DateTimeOffset.UtcNow.AddMinutes(5)),"test-host",language,_=>{ }),
             new TailscaleLoginDialog("test-host", plan.OperationId, false, "", language, _=>{}),
@@ -248,9 +293,12 @@ public sealed class TestApp : Application
 }
 sealed class Broker : IHostElevationBroker
 {
-    public int Calls; public HostElevationCapability Capability; public string? Target;
+    public int Calls; public int GrantCalls; public bool GrantResult = true;
+    public HostElevationCapability Capability; public string? Target;
     public Task<T> ExecuteAsync<T>(HostElevationCapability capability, string target, Func<Task<T>> operation, CancellationToken cancellationToken = default)
     { Calls++; Capability = capability; Target = target; return operation(); }
+    public Task<bool> RequestGrantAsync(HostElevationCapability capability, string target, CancellationToken cancellationToken = default)
+    { GrantCalls++; Capability = capability; Target = target; return Task.FromResult(GrantResult); }
 }
 sealed class BrokenReferences : ITailscaleOperationReferences
 {
@@ -264,6 +312,7 @@ sealed class FakeClient : ITailscaleClient
     public TailscaleControlSnapshot Control = new(new('A',64), false, true, new(true,false),true);
     public int ControlReads, Prepares, Executions;
     public bool LoseResponse, BadPlan, UnknownResult, LoseCloseResponse, BadClosure, BadClosureTimestamp, PreparedRead, SuppressClosure;
+    public bool Restricted, StatusError, ControlError;
     public bool RecoveryReady = true;
     public int CloseCalls;
     public TaskCompletionSource<TailscaleOperation>? HoldPlan, HoldExecute;
@@ -274,8 +323,17 @@ sealed class FakeClient : ITailscaleClient
     public HostSettingsConnection CaptureConnection() => Connection;
     public bool IsCurrent(HostSettingsConnection connection) => connection == Connection;
     public Task<TailscaleStatusDto> GetStatusAsync(HostSettingsConnection connection, CancellationToken ct)
-        => Task.FromResult(new TailscaleStatusDto("observed","1.test","Stopped",new("node","host","host.example",["100.64.0.1"],true,false),[]));
-    public Task<TailscaleControlSnapshot> GetControlAsync(HostSettingsConnection connection, CancellationToken ct) { ControlReads++; return Task.FromResult(Control); }
+    {
+        if (StatusError) throw new HttpRequestException("tailscale.unavailable");
+        return Task.FromResult(new TailscaleStatusDto("observed","1.test","Stopped",new("node","host","host.example",["100.64.0.1"],true,false),
+            Restricted ? null : [], PeersRestricted: Restricted));
+    }
+    public Task<TailscaleControlSnapshot> GetControlAsync(HostSettingsConnection connection, CancellationToken ct)
+    {
+        ControlReads++;
+        if (ControlError) throw new HttpRequestException("tailscale.control_unavailable");
+        return Task.FromResult(Control);
+    }
     public Task<TailscaleOperation> PrepareAsync(HostSettingsConnection connection,TailscalePrepareRequest request,CancellationToken ct)
     {
         Prepares++; LastRequest=request;

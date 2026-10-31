@@ -18,6 +18,32 @@ import org.junit.Rule
 import org.junit.Test
 
 class ConnectionListReviewTest {
+    @Test fun pairedDeviceRemovalConfirmsRetriesAndKeepsPasswordLogin() {
+        val serviceId = "https://paired.invalid"
+        val devices = mutableStateOf(listOf(serviceId))
+        val login = SavedLogin(serviceId, "alice", 1L, "Password record")
+        var attempts = 0
+        val container = (InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as RelaxKonApplication).container
+        rule.setContent { CompositionLocalProvider(LocalAppContainer provides container) {
+            MaterialTheme { ConnectionListScreen(listOf(login), devices.value, { CredentialStatus.None }, {}, {}, {}, {}, {},
+                onDeleteOwnerDevice = {
+                    assertEquals(serviceId, it)
+                    attempts++
+                    if (attempts == 1) throw IllegalStateException("private key diagnostic")
+                    devices.value = emptyList()
+                }) }
+        } }
+        rule.onNodeWithText(text(R.string.connections_remove_device)).performClick()
+        rule.runOnIdle { assertEquals(0, attempts) }
+        rule.onAllNodesWithText(text(R.string.connections_remove_device)).filter(hasClickAction()).onLast().performClick()
+        rule.onNodeWithText(text(R.string.connections_mutation_failed)).assertExists()
+        rule.onNodeWithText("private key diagnostic").assertDoesNotExist()
+        rule.onAllNodesWithText(text(R.string.connections_remove_device)).filter(hasClickAction()).onLast().performClick()
+        rule.onNodeWithText(text(R.string.connections_windows_device)).assertDoesNotExist()
+        rule.onNodeWithText("Password record").assertExists()
+        rule.runOnIdle { assertEquals(2, attempts) }
+    }
+
     @Test fun failedDeletionKeepsConfirmationAndCanRetryWithoutExposingException() {
         val login = SavedLogin("https://test.invalid", "alice", 1L, "Review record")
         var attempts = 0
@@ -26,7 +52,7 @@ class ConnectionListReviewTest {
             MaterialTheme { ConnectionListScreen(listOf(login), emptyList(), { CredentialStatus.None }, {}, {}, {}, {
                 attempts++
                 if (attempts == 1) throw IllegalStateException("private storage diagnostic")
-            }, {}) }
+            }, {}, onDeleteOwnerDevice = {}) }
         } }
         rule.onNodeWithContentDescription(text(R.string.connections_actions_title)).performClick()
         rule.onAllNodesWithText(text(R.string.common_delete)).filter(hasClickAction()).onLast().performClick()
@@ -44,7 +70,7 @@ class ConnectionListReviewTest {
         var deleted = 0
         val container = (InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as RelaxKonApplication).container
         rule.setContent { CompositionLocalProvider(LocalAppContainer provides container) {
-            MaterialTheme { ConnectionListScreen(logins.value, emptyList(), { CredentialStatus.None }, {}, {}, {}, { deleted++ }, {}) }
+            MaterialTheme { ConnectionListScreen(logins.value, emptyList(), { CredentialStatus.None }, {}, {}, {}, { deleted++ }, {}, onDeleteOwnerDevice = {}) }
         } }
         rule.onNodeWithContentDescription(text(R.string.connections_actions_title)).performClick()
         rule.onAllNodesWithText(text(R.string.common_delete)).filter(hasClickAction()).onLast().performClick()
@@ -61,7 +87,7 @@ class ConnectionListReviewTest {
         var forgotten = 0
         val container = (InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as RelaxKonApplication).container
         rule.setContent { CompositionLocalProvider(LocalAppContainer provides container) {
-            MaterialTheme { ConnectionListScreen(listOf(login), emptyList(), { status.value }, {}, {}, { forgotten++ }, {}, {}) }
+            MaterialTheme { ConnectionListScreen(listOf(login), emptyList(), { status.value }, {}, {}, { forgotten++ }, {}, {}, onDeleteOwnerDevice = {}) }
         } }
         rule.onNodeWithContentDescription(text(R.string.connections_actions_title)).performClick()
         rule.onAllNodesWithText(text(R.string.connections_forget_password)).filter(hasClickAction()).onLast().assertIsNotEnabled()
@@ -78,7 +104,7 @@ class ConnectionListReviewTest {
         val container = (InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as RelaxKonApplication).container
         rule.setContent { CompositionLocalProvider(LocalAppContainer provides container) {
             MaterialTheme { ConnectionListScreen(logins, emptyList(), { CredentialStatus.None },
-                { selected = it }, {}, {}, {}, {}) }
+                { selected = it }, {}, {}, {}, {}, onDeleteOwnerDevice = {}) }
         } }
         rule.onNodeWithText("Record 24").performScrollTo().assertIsDisplayed().performClick()
         rule.runOnIdle { assertEquals(logins.last(), selected) }
@@ -97,7 +123,7 @@ class ConnectionListReviewTest {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, 1.5f), LocalAppContainer provides container) {
                 MaterialTheme { ConnectionListScreen(listOf(first, second), emptyList(), { CredentialStatus.SavedByFingerprint },
-                    { selected++ }, {}, { forgotten += it }, { deleted += it }, {}) }
+                    { selected++ }, {}, { forgotten += it }, { deleted += it }, {}, onDeleteOwnerDevice = {}) }
             }
         }
         rule.onAllNodesWithContentDescription(text(R.string.connections_actions_title)).onFirst().performClick()

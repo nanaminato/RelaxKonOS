@@ -58,13 +58,13 @@ fun WebsitesScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initial
             }) viewModel.selectApplication(initialApplicationId)
     }
 
-    WorkspaceColumn(stringResource(R.string.websites_title), onBack, listOf(WorkspaceDestination("instances", R.string.workspace_instances), WorkspaceDestination("sites", R.string.workspace_sites), WorkspaceDestination("publish", R.string.workspace_publish), WorkspaceDestination("records", R.string.workspace_records)), section, { section = it }, modifier, stateKey = container.activeSession to viewModel.sessionEpoch) {
+    WorkspaceColumn(stringResource(R.string.websites_title), onBack, listOf(WorkspaceDestination("instances", R.string.workspace_instances), WorkspaceDestination("sites", R.string.workspace_sites), WorkspaceDestination("publish", R.string.workspace_publish), WorkspaceDestination("records", R.string.workspace_records)), section, { section = it }, modifier, stateKey = container.activeSession to viewModel.sessionEpoch, titleActions = { ComponentDependencyAction(Routes.MANAGE_WEBSITES, onOpenComponents) }) {
         if (!available) {
             EmptyHint(stringResource(R.string.error_capability_missing))
             return@WorkspaceColumn
         }
         Text(stringResource(R.string.websites_publish_note), style = MaterialTheme.typography.bodySmall)
-        ComponentDependencyAction(Routes.MANAGE_WEBSITES, onOpenComponents)
+
         RefreshProgressIndicator(visible = state.loading)
         WorkspaceSection(section != "publish") { NginxManager(onChanged = viewModel::refresh, section = section, onRecords = { section = "records" }) }
         WorkspaceSection(section == "publish") { androidx.compose.runtime.key(viewModel.sessionEpoch) { WebsitePublisher(state, viewModel) { section = "records" } } }

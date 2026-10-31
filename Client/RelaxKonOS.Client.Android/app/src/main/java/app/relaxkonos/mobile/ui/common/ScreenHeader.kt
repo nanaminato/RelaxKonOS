@@ -40,6 +40,7 @@ fun ScreenHeader(
     subtitle: String? = null,
     onBack: (() -> Unit)? = null,
     backAlignment: Alignment.Vertical = Alignment.CenterVertically,
+    inlineTrailing: Boolean = false,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     val workspace = LocalWorkspaceHeader.current
@@ -77,7 +78,7 @@ fun ScreenHeader(
             }
         }
 
-        if (layoutStateFor(maxWidth) == LayoutState.Compact && trailing != null) {
+        if (layoutStateFor(maxWidth) == LayoutState.Compact && trailing != null && !inlineTrailing) {
             // A phone cannot reliably fit a back button, a localized title, and several text actions
             // on one row. Keep the title at its readable width and put the action group below it.
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {

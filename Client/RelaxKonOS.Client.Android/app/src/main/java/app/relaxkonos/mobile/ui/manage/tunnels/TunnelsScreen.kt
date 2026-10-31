@@ -87,14 +87,14 @@ import java.util.Date
     }
     BackHandler(section in setOf("profiles", "logs") && state.selectedId != null && state.profileDraft == null && state.definitionDraft == null && !state.busy) { model.select(null) }
     WorkspaceColumn(stringResource(R.string.tunnels_title), onBack, listOf(WorkspaceDestination("overview", R.string.workspace_overview), WorkspaceDestination("profiles", R.string.workspace_tunnels), WorkspaceDestination("runtime", R.string.workspace_runtime), WorkspaceDestination("logs", R.string.workspace_logs), WorkspaceDestination("frps", R.string.frps_server_tab), WorkspaceDestination("records", R.string.tunnels_records)), section, { section = it }, modifier, stateKey = owner to epoch,
-        contentSpacing = Spacing.sm, contentPadding = PaddingValues(Spacing.md)) {
+        contentSpacing = Spacing.sm, contentPadding = PaddingValues(Spacing.md), titleActions = { ComponentDependencyAction(Routes.MANAGE_TUNNELS, onOpenComponents) }) {
         if (!available) { Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn }
         if (section == "overview") Text(stringResource(R.string.tunnels_overview_help))
         if (!canManage) Text(stringResource(R.string.tunnels_observer), style = MaterialTheme.typography.bodySmall)
         PageActionRow(refresh = {
             TextButton(enabled = !state.busy, onClick = { if (frpsSection) model.observeFrps() else model.refresh() }) { ActionLabel(R.string.common_refresh) }
         }, actions = {
-            ComponentDependencyAction(Routes.MANAGE_TUNNELS, onOpenComponents)
+
             if (canManage) {
                 if (section in setOf("overview", "profiles")) Button(enabled = !state.busy && state.pending.isEmpty(), onClick = { model.editProfile() }) { Text(stringResource(R.string.tunnels_profile_create)) }
             }

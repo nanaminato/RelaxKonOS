@@ -3,16 +3,50 @@
  x:Class="RelaxKonOS.Client.Apps.Tailscale.Views.TailscaleControlPage" x:DataType="vm:TailscaleViewModel">
  <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
   <StackPanel Spacing="16">
-   <TextBlock Text="{loc:Loc tailscale.control_intro}" TextWrapping="Wrap" />
-   <Button Content="{loc:Loc tailscale.load_control}" Command="{Binding LoadControlCommand}" HorizontalAlignment="Left" />
-   <TextBlock Text="{Binding ConnectionText}" TextWrapping="Wrap" />
-   <TextBlock Text="{Binding ConfigurationText}" TextWrapping="Wrap" />
-   <TextBlock Text="{Binding ControlProblem}" TextWrapping="Wrap" />
-   <WrapPanel ItemSpacing="8" LineSpacing="8">
-    <Button Content="{loc:Loc tailscale.connect}" Command="{Binding ConnectCommand}" />
-    <Button Content="{loc:Loc tailscale.disconnect}" Command="{Binding DisconnectCommand}" />
-    <Button Content="{loc:Loc tailscale.configure}" Command="{Binding ConfigureCommand}" />
-   </WrapPanel>
+   <Border Classes="app-panel" Padding="20">
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+     <StackPanel Spacing="6">
+      <TextBlock Text="{loc:Loc tailscale.connection_section}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+      <StackPanel Orientation="Horizontal" Spacing="8">
+       <Ellipse Width="10" Height="10" VerticalAlignment="Center" Fill="{DynamicResource SuccessBrush}" IsVisible="{Binding IsConnected}" />
+       <Ellipse Width="10" Height="10" VerticalAlignment="Center" Fill="{DynamicResource TextTertiaryBrush}" IsVisible="{Binding IsDisconnected}" />
+       <Ellipse Width="10" Height="10" VerticalAlignment="Center" Fill="{DynamicResource WarningBrush}" IsVisible="{Binding IsAttention}" />
+       <TextBlock Text="{Binding ConnectionStateText}" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+      </StackPanel>
+      <TextBlock Text="{Binding ConnectionDetailText}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+      <TextBlock Text="{Binding ConnectionHint}" Foreground="{DynamicResource WarningBrush}" TextWrapping="Wrap" IsVisible="{Binding HasConnectionHint}" />
+      <TextBlock Text="{Binding ControlProblem}" Foreground="{DynamicResource WarningBrush}" TextWrapping="Wrap" IsVisible="{Binding HasControlProblem}" />
+     </StackPanel>
+     <StackPanel Grid.Column="1" Spacing="8" VerticalAlignment="Center" HorizontalAlignment="Right">
+      <Button Content="{loc:Loc tailscale.disconnect}" Command="{Binding DisconnectCommand}" IsVisible="{Binding CanDisconnect}" Classes="primary" MinWidth="96" />
+      <Button Content="{loc:Loc tailscale.connect}" Command="{Binding ConnectCommand}" IsVisible="{Binding CanConnect}" Classes="primary" MinWidth="96" />
+     </StackPanel>
+    </Grid>
+   </Border>
+
+   <Border Classes="app-panel" Padding="20">
+    <StackPanel Spacing="14">
+     <TextBlock Text="{loc:Loc tailscale.preferences_section}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+     <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" RowSpacing="2" ColumnSpacing="16">
+      <TextBlock Text="{loc:Loc tailscale.accept_dns}" FontSize="14" Foreground="{DynamicResource TextPrimaryBrush}" />
+      <TextBlock Grid.Row="1" Text="{loc:Loc tailscale.accept_dns_hint}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" />
+      <ToggleSwitch Grid.Column="1" Grid.RowSpan="2" IsChecked="{Binding AcceptDnsEnabled, Mode=TwoWay}" IsEnabled="{Binding CanEditPreferences}"
+        OnContent="{loc:Loc tailscale.enabled}" OffContent="{loc:Loc tailscale.disabled}" VerticalAlignment="Center" AutomationProperties.Name="{loc:Loc tailscale.accept_dns}" />
+     </Grid>
+     <Separator />
+     <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" RowSpacing="2" ColumnSpacing="16">
+      <TextBlock Text="{loc:Loc tailscale.accept_routes}" FontSize="14" Foreground="{DynamicResource TextPrimaryBrush}" />
+      <TextBlock Grid.Row="1" Text="{loc:Loc tailscale.accept_routes_hint}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" />
+      <ToggleSwitch Grid.Column="1" Grid.RowSpan="2" IsChecked="{Binding AcceptRoutesEnabled, Mode=TwoWay}" IsEnabled="{Binding CanEditPreferences}"
+        OnContent="{loc:Loc tailscale.enabled}" OffContent="{loc:Loc tailscale.disabled}" VerticalAlignment="Center" AutomationProperties.Name="{loc:Loc tailscale.accept_routes}" />
+     </Grid>
+     <TextBlock Text="{Binding PreferencesHint}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" />
+    </StackPanel>
+   </Border>
+
+   <Border Background="{DynamicResource AccentMutedBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" CornerRadius="12" Padding="16">
+    <TextBlock Text="{loc:Loc tailscale.boundary_note}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+   </Border>
   </StackPanel>
  </ScrollViewer>
 </UserControl>

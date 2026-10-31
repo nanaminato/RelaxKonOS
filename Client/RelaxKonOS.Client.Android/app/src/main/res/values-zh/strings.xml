@@ -59,7 +59,7 @@
     <string name="server_configuration_port">监听端口</string>
     <string name="server_configuration_lan">允许局域网访问</string>
     <string name="server_configuration_apply">应用并验证</string>
-    <string name="server_configuration_note">应用后会重启服务。移除守护会停止工作负载，保留定义和日志。现有证书保持不变；完成后请核对新的连接地址。</string>
+    <string name="server_configuration_note">应用后会重启服务。现有证书保持不变；完成后请核对新的连接地址。</string>
     <string name="server_configuration_discard">放弃未保存的设置？</string>
     <string name="server_configuration_discard_confirm">放弃</string>
     <string name="server_configuration_auto_start">自动启动（系统模式开机启动，个人模式登录后启动）</string>
@@ -77,4 +77,16 @@
     <string name="server_maintenance_pending">原维护操作尚未核实，新的变更已暂停。</string>
     <string name="server_maintenance_reconcile">核实原操作</string>
     <string name="server_maintenance_reconciled">已核实原操作记录。请检查当前状态后再开始新的变更。</string>
+    <string name="server_guardian_current_installed">当前状态：已安装</string>
+    <string name="server_guardian_current_absent">当前状态：未安装</string>
+    <string name="server_guardian_current_unknown">当前状态：未知，请先检查</string>
+    <string name="server_guardian_remove">移除进程守护</string>
+    <string name="server_guardian_target_installed">应用后状态：已安装</string>
+    <string name="server_guardian_target_absent">应用后状态：未安装</string>
+    <string name="server_guardian_remove_note">移除守护会停止工作负载，保留定义和日志。</string>
+    <string name="server_configuration_mode_system">当前安装：系统模式</string>
+    <string name="server_configuration_mode_user">当前安装：个人模式</string>
+    <string name="server_configuration_mode_unknown">当前安装模式：未知</string>
+    <string name="server_configuration_auto_start_system">开机自动启动</string>
+    <string name="server_configuration_auto_start_user">登录后自动启动</string>
 </resources>

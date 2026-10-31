@@ -23,6 +23,6 @@ public sealed class TailscaleLoginDialogText(string target, Guid id, bool close,
     public string OperationId => id.ToString("D");
     public string Observation => observation.Length == 0 ? "" : language.Get("tailscale.backend." + observation, language.Get("tailscale.backend_unknown", ""));
     public string Risk => language.Get(close ? "tailscale.login.close_risk" : "tailscale.login.start_risk", "");
-    public string Decision => language.Get(close ? "tailscale.recovery.confirm_close" : "tailscale.login.start", "");
+    public string Decision => language.Get(close ? "tailscale.recovery.confirm_close" : "tailscale.login.start_and_open", "");
     internal void Changed(object? sender, SystemLanguageChangedEventArgs e) { OnPropertyChanged(nameof(Risk)); OnPropertyChanged(nameof(Decision)); OnPropertyChanged(nameof(Observation)); }
 }

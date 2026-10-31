@@ -33,6 +33,9 @@ interface RelaxKonGateway {
     suspend fun managedRuntime(serverUrl: String, accessToken: String, method: String, route: String,
         body: JsonBody? = null, key: String? = null): ApiResult<String> = ApiResult.Transport("Managed runtime unavailable.")
 
+    suspend fun componentReleases(serverUrl: String, accessToken: String, componentId: String, rid: String): ApiResult<List<ComponentRelease>> =
+        ApiResult.Transport("Component releases unavailable.")
+
     /** Normalized component state from the host's component lifecycle registry. */
     suspend fun componentState(serverUrl: String, accessToken: String, componentId: String): ApiResult<ComponentStateView> =
         ApiResult.Transport("Component state unavailable.")

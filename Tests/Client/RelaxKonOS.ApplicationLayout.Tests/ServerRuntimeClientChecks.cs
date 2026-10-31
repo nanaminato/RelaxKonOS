@@ -135,6 +135,8 @@ internal static class ServerRuntimeClientChecks
                 "Server configuration must use a dedicated management capability.");
             return action();
         }
+        public Task<bool> RequestGrantAsync(HostElevationCapability capability, string target, CancellationToken ct = default)
+        { throw new NotSupportedException("Server runtime settings never request a read-only grant."); }
     }
     private sealed class Handler(Guid instance) : HttpMessageHandler
     {

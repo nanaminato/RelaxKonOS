@@ -48,13 +48,13 @@ import app.relaxkonos.mobile.ui.theme.Spacing
     BackHandler(dirty || state.busy || pending != null) { navigate(onBack) }
     WorkspaceColumn(stringResource(R.string.squid_title), { navigate(onBack) },
         listOf(WorkspaceDestination("overview", R.string.workspace_overview), WorkspaceDestination("access", R.string.squid_access), WorkspaceDestination("configuration", R.string.squid_preview), WorkspaceDestination("records", R.string.workspace_records)),
-        section, { section = it }, modifier, stateKey = owner) {
+        section, { section = it }, modifier, stateKey = owner, titleActions = { ComponentDependencyAction(Routes.MANAGE_SQUID, onOpenComponents) }) {
         if (owner?.capabilities?.contains(ServerCapabilities.GATEWAY_PROXY) != true) {
             Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn
         }
         Text(stringResource(R.string.squid_intro))
         PageActionRow(refresh = { TextButton(enabled = visible && !state.busy, onClick = model::refresh) { Text(stringResource(R.string.squid_refresh)) } },
-            actions = { ComponentDependencyAction(Routes.MANAGE_SQUID, onOpenComponents) })
+            actions = {  })
         RefreshProgressIndicator(visible && state.busy)
         state.problem?.takeIf { visible }?.let { Text(squidProblem(it), color = MaterialTheme.colorScheme.error) }
         if (!owner.controller) Text(stringResource(R.string.squid_read_only))

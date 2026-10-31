@@ -99,14 +99,12 @@ internal fun SmbContent(model: SmbViewModel, owner: SessionState.Active?, onBack
         add(WorkspaceDestination("records", R.string.smb_records))
     }
     LaunchedEffect(pages) { if (pages.none { it.id == section }) section = "overview" }
-    WorkspaceColumn(stringResource(R.string.smb_title), { navigate(onBack) }, pages, section, { destination -> navigate { draft = null; section = destination } }, modifier, stateKey = owner) {
+    WorkspaceColumn(stringResource(R.string.smb_title), { navigate(onBack) }, pages, section, { destination -> navigate { draft = null; section = destination } }, modifier, stateKey = owner, titleActions = { ComponentDependencyAction(Routes.MANAGE_SMB, onOpenComponents) }) {
         Text(stringResource(R.string.smb_intro))
         if (!canManage) Text(stringResource(R.string.smb_observer_help), style = MaterialTheme.typography.bodySmall)
         if (owner?.capabilities?.contains(ServerCapabilities.FILE_SERVICES) != true) { Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn }
         PageActionRow(refresh = {
             TextButton(enabled = !state.busy, onClick = { navigate { draft = null; model.refresh() } }) { ActionLabel(R.string.common_refresh) }
-        }, actions = {
-            ComponentDependencyAction(Routes.MANAGE_SMB, onOpenComponents)
         })
         RefreshProgressIndicator(visible = visible && state.busy)
         OperationMessageDialog(state.problem?.takeIf { visible && !state.busy }?.let { smbProblem(it) },

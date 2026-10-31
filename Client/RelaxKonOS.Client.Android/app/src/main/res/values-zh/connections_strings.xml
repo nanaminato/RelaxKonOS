@@ -26,4 +26,6 @@
     <string name="connections_use">使用</string>
     <string name="connections_windows_device">Windows 10/11 设备</string>
     <string name="connections_windows_device_support">Windows 10/11 · 已配对的设备密钥登录</string>
+    <string name="connections_remove_device">移除连接</string>
+    <string name="connections_remove_device_message">移除手机上保存的 %1$s 连接及配对密钥？再次连接需要重新配对。服务器端的设备授权仍保留，如需撤销，请在服务器端管理设备授权。</string>
 </resources>

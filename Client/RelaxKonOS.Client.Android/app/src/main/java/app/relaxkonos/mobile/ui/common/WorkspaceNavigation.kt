@@ -34,12 +34,13 @@ fun WorkspaceFrame(
     title: String, screenTitle: String = title, subtitle: String? = null,
     pages: List<WorkspaceDestination>, selected: String, onSelect: (String) -> Unit,
     onBack: (() -> Unit)?, modifier: Modifier = Modifier,
+    titleActions: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val header = remember(selected, screenTitle) { WorkspaceHeader(screenTitle, onBack) }
     Column(modifier.fillMaxSize().imePadding()) {
         ScreenHeader(title, subtitle = subtitle?.takeUnless { it == title }, onBack = if (header.hasBack) ({ header.back?.invoke() }) else null,
-            modifier = Modifier.padding(Spacing.lg))
+            modifier = Modifier.padding(Spacing.lg), trailing = titleActions, inlineTrailing = true)
         WorkspaceBody(pages, selected, onSelect, Modifier.weight(1f)) {
             CompositionLocalProvider(LocalWorkspaceHeader provides header) { content() }
         }
@@ -113,12 +114,13 @@ fun WorkspaceColumn(
     onSelect: (String) -> Unit, modifier: Modifier = Modifier, stateKey: Any? = null,
     contentSpacing: Dp = Spacing.md,
     contentPadding: PaddingValues = PaddingValues(Spacing.lg),
+    titleActions: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     key(stateKey) {
     val scrolls = rememberSaveable(saver = ScrollsSaver) { mutableMapOf<String, ScrollState>() }
     Column(modifier.fillMaxSize().imePadding()) {
-        ScreenHeader(title, onBack = onBack, modifier = Modifier.padding(Spacing.lg))
+        ScreenHeader(title, onBack = onBack, modifier = Modifier.padding(Spacing.lg), trailing = titleActions, inlineTrailing = true)
         WorkspaceBody(pages, selected, onSelect, Modifier.weight(1f)) {
             Column(Modifier.weight(1f).verticalScroll(scrolls.getOrPut(selected) { ScrollState(0) }).padding(contentPadding),
                 verticalArrangement = Arrangement.spacedBy(contentSpacing), content = content)

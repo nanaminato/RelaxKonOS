@@ -395,6 +395,16 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
     init { initialLogin?.let(::select) }
 
+    /** Removes only this phone's pairing, without contacting the server or deleting password logins. */
+    fun deleteOwnerDevice(serviceId: String) {
+        if (isLoggingIn) throw IllegalStateException("Sign-in is in progress.")
+        try {
+            container.ownerDeviceKeys.remove(serviceId)
+        } finally {
+            revision++
+        }
+    }
+
     /** "Forget the password": drops the credential, keeps the login (§6.3). */
     fun forgetPassword(login: SavedLogin) {
         container.vault.delete(VaultKind.Connection, login.serviceId, login.identifier)

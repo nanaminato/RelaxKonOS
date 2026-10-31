@@ -1,17 +1,40 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Tailscale"
  x:Class="RelaxKonOS.Client.Apps.Tailscale.Views.TailscaleDevicesPage" x:DataType="vm:TailscaleViewModel">
- <Grid RowDefinitions="Auto,Auto,*" RowSpacing="10">
-  <StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="{Binding BackendState}" /><TextBlock Text="{Binding Version}" /></StackPanel>
-  <TextBlock Grid.Row="1" IsVisible="{Binding PeersRestricted}" Text="{loc:Loc tailscale.peers_restricted}" TextWrapping="Wrap" />
-  <DataGrid Grid.Row="2" ItemsSource="{Binding Peers}" AutoGenerateColumns="False" IsReadOnly="True" CanUserResizeColumns="True"
-    ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto">
-   <DataGrid.Columns>
-    <DataGridTextColumn Header="{loc:Loc tailscale.host_name}" Binding="{ReflectionBinding HostName}" Width="160" MinWidth="80" />
-    <DataGridTextColumn Header="{loc:Loc tailscale.dns_name}" Binding="{ReflectionBinding DnsName}" Width="220" MinWidth="80" />
-    <DataGridTextColumn Header="{loc:Loc tailscale.addresses}" Binding="{ReflectionBinding Addresses}" Width="220" MinWidth="100" />
-    <DataGridTextColumn Header="{loc:Loc tailscale.status}" Binding="{ReflectionBinding Status}" Width="100" MinWidth="60" />
-   </DataGrid.Columns>
-  </DataGrid>
+ <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="12">
+  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+   <StackPanel Spacing="2">
+    <TextBlock Text="{loc:Loc tailscale.devices}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+    <TextBlock Text="{Binding PeerSummary}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" />
+   </StackPanel>
+   <TextBox Grid.Column="1" Width="220" VerticalAlignment="Center" Text="{Binding PeerFilter}"
+     PlaceholderText="{loc:Loc tailscale.search_devices}" AutomationProperties.Name="{loc:Loc tailscale.search_devices}" />
+  </Grid>
+
+  <Border Grid.Row="1" Classes="app-panel" Padding="14" IsVisible="{Binding PeersRestricted}">
+   <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+    <TextBlock Text="{loc:Loc tailscale.peers_restricted}" TextWrapping="Wrap" VerticalAlignment="Center" />
+    <Button Grid.Column="1" Content="{loc:Loc tailscale.authorize_peers}" Command="{Binding AuthorizePeersCommand}" VerticalAlignment="Center" />
+   </Grid>
+  </Border>
+
+  <Grid Grid.Row="2">
+   <DataGrid ItemsSource="{Binding FilteredPeers}" AutoGenerateColumns="False" IsReadOnly="True" CanUserResizeColumns="True"
+     ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto">
+    <DataGrid.Columns>
+     <DataGridTextColumn Header="{loc:Loc tailscale.host_name}" Binding="{ReflectionBinding HostName}" Width="150" MinWidth="80" />
+     <DataGridTextColumn Header="{loc:Loc tailscale.dns_name}" Binding="{ReflectionBinding DnsName}" Width="165" MinWidth="80" />
+     <DataGridTextColumn Header="{loc:Loc tailscale.addresses}" Binding="{ReflectionBinding Addresses}" Width="165" MinWidth="100" />
+     <DataGridTextColumn Header="{loc:Loc tailscale.status}" Binding="{ReflectionBinding Status}" Width="80" MinWidth="60" />
+     <DataGridTextColumn Header="{loc:Loc tailscale.role}" Binding="{ReflectionBinding Role}" Width="110" MinWidth="60" />
+    </DataGrid.Columns>
+   </DataGrid>
+   <TextBlock Text="{loc:Loc tailscale.no_peers}" IsVisible="{Binding NoPeers}" HorizontalAlignment="Center" VerticalAlignment="Center"
+     Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+   <TextBlock Text="{loc:Loc tailscale.no_matching_peers}" IsVisible="{Binding NoMatchingPeers}" HorizontalAlignment="Center" VerticalAlignment="Center"
+     Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+  </Grid>
+
+  <TextBlock Grid.Row="3" Text="{Binding ConnectionDetailText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" />
  </Grid>
 </UserControl>

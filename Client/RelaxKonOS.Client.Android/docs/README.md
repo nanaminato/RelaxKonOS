@@ -11,6 +11,7 @@
 | [应用桌面与最近服务器登录](design/ApplicationDesktop.md) | 登录摘要、应用图标网格与四项主导航 |
 | [登录与本地凭据](design/LoginCredentials.Design.md) | 身份识别、凭据保存与失效、密码生命周期 |
 | [移动端包方案](design/ApplicationPackages.Design.md) | 包类型、权限、版本、更新与移除，以及桌面包的支持范围 |
+| [服务端模块管理](design/ServerModules.Design.md) | 模块与软件边界、管理交互约束和当前不支持范围 |
 | [移动端功能精简](design/MobileSimplification.md) | 精简判断、当前移除边界及待评估建议 |
 | [支持范围](design/SupportScope.md) | 应用组织、部署范围、平台限制与验证要求 |
 | [Windows 设备密钥](design/OwnerDeviceKeys.Design.md) | 工作站配对、Keystore 签名登录与授权边界 |

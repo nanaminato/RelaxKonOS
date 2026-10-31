@@ -19,6 +19,27 @@ import org.junit.Test
  */
 class MobileNavigatorTest {
     @Test
+    fun `dependency check is retained on return but renewed when application is reopened`() {
+        val navigator = MobileNavigator(Routes.MANAGE)
+        navigator.push(Routes.MANAGE_PROXY)
+        assertTrue(navigator.beginComponentDependencyCheck())
+        navigator.push(Routes.MANAGE_COMPONENTS)
+        navigator.push(Routes.MANAGE_OPERATIONS)
+        navigator.pop()
+        navigator.pop()
+        assertFalse(navigator.beginComponentDependencyCheck())
+        navigator.select(Routes.HOME)
+        navigator.select(Routes.MANAGE)
+        assertFalse(navigator.beginComponentDependencyCheck())
+        navigator.pop()
+        navigator.push(Routes.MANAGE_PROXY)
+        assertTrue(navigator.beginComponentDependencyCheck())
+        navigator.resetTo(Routes.MANAGE)
+        navigator.push(Routes.MANAGE_PROXY)
+        assertTrue(navigator.beginComponentDependencyCheck())
+    }
+
+    @Test
     fun `HTTPS returns to host settings and repeated opening does not nest`() {
         val navigator = MobileNavigator(Routes.MORE)
         navigator.openSettings(Routes.MORE_HOST_SETTINGS)

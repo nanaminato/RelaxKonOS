@@ -63,7 +63,7 @@
     <string name="server_configuration_port">Listening port</string>
     <string name="server_configuration_lan">Allow LAN access</string>
     <string name="server_configuration_apply">Apply and verify</string>
-    <string name="server_configuration_note">Services restart when settings are applied. Removing Guardian stops its workloads and retains definitions and logs. TLS identity is preserved. Review the new connection address afterwards.</string>
+    <string name="server_configuration_note">Services restart when settings are applied. TLS identity is preserved. Review the new connection address afterwards.</string>
     <string name="server_configuration_discard">Discard unsaved settings?</string>
     <string name="server_configuration_discard_confirm">Discard</string>
     <string name="server_configuration_auto_start">Start automatically (at boot, or sign-in in personal mode)</string>
@@ -81,4 +81,16 @@
     <string name="server_maintenance_pending">The previous maintenance operation is unverified. New changes are paused.</string>
     <string name="server_maintenance_reconcile">Verify original operation</string>
     <string name="server_maintenance_reconciled">The original operation record is verified. Check current status before starting a new change.</string>
+    <string name="server_guardian_current_installed">Current state: installed</string>
+    <string name="server_guardian_current_absent">Current state: not installed</string>
+    <string name="server_guardian_current_unknown">Current state: unknown. Run a check first.</string>
+    <string name="server_guardian_remove">Remove process guardian</string>
+    <string name="server_guardian_target_installed">After applying: installed</string>
+    <string name="server_guardian_target_absent">After applying: not installed</string>
+    <string name="server_guardian_remove_note">Removing Guardian stops workloads and retains definitions and logs.</string>
+    <string name="server_configuration_mode_system">Current installation: system mode</string>
+    <string name="server_configuration_mode_user">Current installation: personal mode</string>
+    <string name="server_configuration_mode_unknown">Current installation mode: unknown</string>
+    <string name="server_configuration_auto_start_system">Start automatically at boot</string>
+    <string name="server_configuration_auto_start_user">Start automatically at sign-in</string>
 </resources>

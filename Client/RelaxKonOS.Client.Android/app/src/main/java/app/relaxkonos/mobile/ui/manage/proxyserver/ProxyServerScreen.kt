@@ -107,7 +107,7 @@ fun ProxyServerScreen(onBack: () -> Unit, modifier: Modifier = Modifier, onOpenC
             WorkspaceDestination(SUBSCRIPTIONS, R.string.proxy_server_subscriptions_title),
             WorkspaceDestination(RECORDS, R.string.workspace_records)),
         section, { if (section != it) model.clearSensitiveOutputs(); section = it }, modifier, stateKey = owner to epoch,
-        contentSpacing = Spacing.sm, contentPadding = PaddingValues(Spacing.lg)) {
+        contentSpacing = Spacing.sm, contentPadding = PaddingValues(Spacing.lg), titleActions = { ComponentDependencyAction(Routes.MANAGE_PROXY_SERVER, onOpenComponents) }) {
         if (!available) {
             Text(stringResource(R.string.error_capability_missing))
             return@WorkspaceColumn
@@ -134,8 +134,6 @@ fun ProxyServerScreen(onBack: () -> Unit, modifier: Modifier = Modifier, onOpenC
                 }
                 PageActionRow(refresh = {
                     TextButton(enabled = !state.busy, onClick = model::refresh) { ActionLabel(R.string.common_refresh) }
-                }, actions = {
-                    ComponentDependencyAction(Routes.MANAGE_PROXY_SERVER, onOpenComponents)
                 })
                 RefreshProgressIndicator(visible = state.busy)
                 state.observedAtMillis?.let {

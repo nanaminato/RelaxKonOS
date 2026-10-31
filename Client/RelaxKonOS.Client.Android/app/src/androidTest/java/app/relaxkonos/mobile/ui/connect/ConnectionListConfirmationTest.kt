@@ -27,7 +27,7 @@ class ConnectionListConfirmationTest {
         val container = (rule.activity.application as RelaxKonApplication).container
         rule.setContent { CompositionLocalProvider(LocalAppContainer provides container) { MaterialTheme {
             if (visible.value) ConnectionListScreen(records.value, emptyList(), { CredentialStatus.SavedByFingerprint },
-                {}, {}, { mutations++ }, { mutations++ }, { visible.value = false })
+                {}, {}, { mutations++ }, { mutations++ }, { visible.value = false }, onDeleteOwnerDevice = {})
         } } }
     }
     private fun open(deleting: Boolean) {
