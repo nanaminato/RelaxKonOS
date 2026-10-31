@@ -3,23 +3,30 @@ using System.Text.Json.Serialization;
 namespace RelaxKonOS.Protocol.Tailscale;
 
 [JsonConverter(typeof(JsonStringEnumConverter<TailscaleAction>))]
-public enum TailscaleAction { Connect, Disconnect, Configure }
+public enum TailscaleAction { Connect, Disconnect, Configure, ConfigurePreferences, Logout }
 
 [JsonConverter(typeof(JsonStringEnumConverter<TailscaleOperationState>))]
 public enum TailscaleOperationState { Prepared, Applying, Applied, Rejected, Unknown }
 
+/// <summary>Legacy DNS/route pair kept for the existing conditional Configure action.</summary>
 public sealed record TailscaleConfiguration(bool AcceptDns, bool AcceptRoutes);
 
-/// <summary>Revision covers daemon identity and native preferences, not the changing peer list.</summary>
+/// <summary>
+/// Revision covers daemon identity and every native preference, not the changing peer list.
+/// Preferences carries the official client's closed preference set; Configuration remains the
+/// two-switch view used by the older Configure action.
+/// </summary>
 public sealed record TailscaleControlSnapshot(string Revision, bool Connected, bool Authenticated,
-    TailscaleConfiguration Configuration, bool CanControl, string? ProblemCode = null);
+    TailscaleConfiguration Configuration, bool CanControl, string? ProblemCode = null,
+    TailscalePreferences? Preferences = null, string? Platform = null);
 
 public sealed record TailscalePrepareRequest(Guid OperationId, string ExpectedRevision, TailscaleAction Action,
-    TailscaleConfiguration? Configuration = null);
+    TailscaleConfiguration? Configuration = null, TailscalePreferences? Preferences = null);
 
 public sealed record TailscaleOperation(Guid OperationId, TailscaleAction Action, TailscaleOperationState State,
     string ExpectedRevision, DateTimeOffset ExpiresAt, DateTimeOffset UpdatedAt,
-    TailscaleConfiguration? Configuration = null, string? ObservedRevision = null, string? ProblemCode = null, TailscaleRecoveryClosure? Closure = null);
+    TailscaleConfiguration? Configuration = null, string? ObservedRevision = null, string? ProblemCode = null,
+    TailscaleRecoveryClosure? Closure = null, TailscalePreferences? Preferences = null);
 
 /// <summary>Completed is only set after the Helper observes this operation's own native result.</summary>
 public sealed record TailscaleControlResult(Guid OperationId, bool Completed,

@@ -173,7 +173,7 @@ Status legend: ✅ **Available** (dependable day to day) · 🧪 **MVP** (main f
 | **Settings** | Settings center (8 category pages: System/Account security/Network/Personalization/Apps/Time & language/Accessibility/Developer, with full-page search) | ✅ Available |
 | **Server Center** | SSH and host-key verification, preflight, install, update, repair, rollback and uninstall | ✅ Available |
 | **Component Center** | View host component dependencies, installation status, versions and sources; install, update, uninstall and recover operations for integrated components | 🚧 Integration varies by component |
-| **Tailscale** | Manage Tailscale on the remote host: peers and connection status, browser sign-in, DNS/route preferences, connect/disconnect and operation recovery; installation is managed through Component Center | 🧪 MVP (Linux host checks recorded; Windows host acceptance pending) |
+| **Tailscale** | Manage Tailscale on the remote host: account and peer details, automatically refreshed connection state, browser sign-in, full preferences (DNS/routes/incoming/exit node/unattended/auto-update), connect/disconnect, logout and operation recovery; installation is managed through Component Center | 🧪 MVP (Linux host checks recorded; Windows host acceptance pending) |
 | **Terminal** | Remote terminal (SignalR + PTY persistent sessions, selectable VT engine: Auto/Managed/Native) | ✅ Available |
 | **Explorer** | Remote File Manager (REST API + host OS permission reuse) | ✅ Available |
 | **Browser** | Built-in Browser (bookmarks/history, home page and link-open-location persistence) | ✅ Available |

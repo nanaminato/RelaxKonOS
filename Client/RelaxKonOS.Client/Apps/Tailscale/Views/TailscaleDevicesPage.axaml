@@ -18,21 +18,47 @@
    </Grid>
   </Border>
 
-  <Grid Grid.Row="2">
-   <DataGrid ItemsSource="{Binding FilteredPeers}" AutoGenerateColumns="False" IsReadOnly="True" CanUserResizeColumns="True"
-     ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto">
-    <DataGrid.Columns>
-     <DataGridTextColumn Header="{loc:Loc tailscale.host_name}" Binding="{ReflectionBinding HostName}" Width="150" MinWidth="80" />
-     <DataGridTextColumn Header="{loc:Loc tailscale.dns_name}" Binding="{ReflectionBinding DnsName}" Width="165" MinWidth="80" />
-     <DataGridTextColumn Header="{loc:Loc tailscale.addresses}" Binding="{ReflectionBinding Addresses}" Width="165" MinWidth="100" />
-     <DataGridTextColumn Header="{loc:Loc tailscale.status}" Binding="{ReflectionBinding Status}" Width="80" MinWidth="60" />
-     <DataGridTextColumn Header="{loc:Loc tailscale.role}" Binding="{ReflectionBinding Role}" Width="110" MinWidth="60" />
-    </DataGrid.Columns>
-   </DataGrid>
-   <TextBlock Text="{loc:Loc tailscale.no_peers}" IsVisible="{Binding NoPeers}" HorizontalAlignment="Center" VerticalAlignment="Center"
-     Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
-   <TextBlock Text="{loc:Loc tailscale.no_matching_peers}" IsVisible="{Binding NoMatchingPeers}" HorizontalAlignment="Center" VerticalAlignment="Center"
-     Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+  <Grid Grid.Row="2" RowDefinitions="*,Auto" RowSpacing="10">
+   <Grid>
+    <DataGrid ItemsSource="{Binding FilteredPeers}" SelectedItem="{Binding SelectedPeer}" AutoGenerateColumns="False" IsReadOnly="True"
+      CanUserResizeColumns="True" SelectionMode="Single" ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto">
+     <DataGrid.Columns>
+      <DataGridTextColumn Header="{loc:Loc tailscale.host_name}" Binding="{ReflectionBinding HostName}" Width="140" MinWidth="80" />
+      <DataGridTextColumn Header="{loc:Loc tailscale.owner}" Binding="{ReflectionBinding Owner}" Width="150" MinWidth="70" />
+      <DataGridTextColumn Header="{loc:Loc tailscale.os}" Binding="{ReflectionBinding OsLabel}" Width="80" MinWidth="50" />
+      <DataGridTextColumn Header="{loc:Loc tailscale.addresses}" Binding="{ReflectionBinding Addresses}" Width="130" MinWidth="90" />
+      <DataGridTextColumn Header="{loc:Loc tailscale.status}" Binding="{ReflectionBinding Status}" Width="85" MinWidth="60" />
+      <DataGridTextColumn Header="{loc:Loc tailscale.role}" Binding="{ReflectionBinding Role}" Width="115" MinWidth="70" />
+     </DataGrid.Columns>
+    </DataGrid>
+    <TextBlock Text="{loc:Loc tailscale.no_peers}" IsVisible="{Binding NoPeers}" HorizontalAlignment="Center" VerticalAlignment="Center"
+      Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+    <TextBlock Text="{loc:Loc tailscale.no_matching_peers}" IsVisible="{Binding NoMatchingPeers}" HorizontalAlignment="Center" VerticalAlignment="Center"
+      Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+   </Grid>
+
+   <Border Grid.Row="1" Classes="app-panel" Padding="14" IsVisible="{Binding SelectedPeerVisible}">
+    <StackPanel Spacing="8" DataContext="{Binding SelectedPeer}" x:DataType="vm:TailscalePeerItem">
+     <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="3">
+      <TextBlock Text="{loc:Loc tailscale.dns_name}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+      <TextBlock Grid.Column="1" Text="{Binding DnsName}" TextWrapping="Wrap" />
+      <TextBlock Grid.Row="1" Text="{loc:Loc tailscale.addresses}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+      <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Addresses}" TextWrapping="Wrap" />
+      <TextBlock Grid.Row="2" Text="{loc:Loc tailscale.os}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+      <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding OsLabel}" TextWrapping="Wrap" />
+      <TextBlock Grid.Row="3" Text="{loc:Loc tailscale.owner}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+      <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Owner}" TextWrapping="Wrap" />
+     </Grid>
+     <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="3">
+      <TextBlock Text="{loc:Loc tailscale.tags}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+      <TextBlock Grid.Column="1" Text="{Binding Tags}" TextWrapping="Wrap" />
+      <TextBlock Grid.Row="1" Text="{loc:Loc tailscale.last_seen}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+      <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding LastSeenText}" TextWrapping="Wrap" />
+      <TextBlock Grid.Row="2" Text="{loc:Loc tailscale.key_expiry}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+      <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding KeyExpiryText}" TextWrapping="Wrap" />
+     </Grid>
+    </StackPanel>
+   </Border>
   </Grid>
 
   <TextBlock Grid.Row="3" Text="{Binding ConnectionDetailText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" />

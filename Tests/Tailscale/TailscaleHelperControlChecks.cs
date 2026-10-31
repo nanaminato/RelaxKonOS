@@ -15,23 +15,83 @@ internal static class TailscaleHelperControlChecks
         const string prefs = """{"accept-dns":true,"accept-routes":false,"hostname":"host"}""";
         var snapshot = TailscaleNativeControl.Parse(stopped, prefs, stopped);
         Check(!snapshot.Connected && snapshot.Authenticated && snapshot.Configuration == new TailscaleConfiguration(true, false));
+        Check(snapshot.Preferences == new TailscalePreferences(true, false, false, null, false, false, false, false));
+        Check(snapshot.Platform is "windows" or "linux");
+        const string fullPrefs = """{"accept-dns":true,"accept-routes":false,"shields-up":true,"exit-node":"100.64.0.9","exit-node-allow-lan-access":true,"auto-update":true,"advertise-exit-node":true,"unattended":false}""";
+        var full = TailscaleNativeControl.Parse(stopped, fullPrefs, stopped);
+        Check(full.Preferences == new TailscalePreferences(true, false, true, "100.64.0.9", true, false, true, true));
         Check(snapshot.Revision == TailscaleNativeControl.Parse(stopped, """{"hostname":"host","accept-routes":false,"accept-dns":true}""", stopped).Revision);
         Check(snapshot.Revision != TailscaleNativeControl.Parse(stopped, prefs.Replace("host", "newhost"), stopped).Revision);
         Check(snapshot.Revision == TailscaleNativeControl.Parse(stopped.Replace("not used", "changed"), prefs, stopped).Revision);
-        foreach (var invalid in new[] { prefs.Replace("true", "\"true\""), "[]", "{", """{"accept-dns":true,"accept-dns":false,"accept-routes":false}""" })
+        foreach (var invalid in new[] { prefs.Replace("true", "\"true\""), "[]", "{", """{"accept-dns":true,"accept-dns":false,"accept-routes":false}""",
+            """{"accept-dns":true,"accept-routes":false,"exit-node":"not-an-ip"}""", """{"accept-dns":true,"accept-routes":false,"exit-node":5}""" })
         {
             try { TailscaleNativeControl.Parse(stopped, invalid, stopped); throw new Exception("Malformed preferences accepted"); }
             catch (Exception ex) when (ex is IOException or JsonException or InvalidOperationException or KeyNotFoundException) { Check(true); }
         }
         try { TailscaleNativeControl.Parse(stopped, prefs, stopped.Replace("Stopped", "Running")); throw new Exception("Changed identity accepted"); }
         catch (IOException) { Check(true); }
-        try { TailscaleNativeControl.Parse(stopped.Replace("Stopped", "NeedsLogin"), prefs, stopped); throw new Exception("Unauthenticated control accepted"); }
+        var loggedOutSnapshot = TailscaleNativeControl.Parse(stopped.Replace("Stopped", "NeedsLogin"), prefs, stopped.Replace("Stopped", "NeedsLogin"));
+        Check(!loggedOutSnapshot.Authenticated && !loggedOutSnapshot.CanControl && loggedOutSnapshot.Preferences is not null);
+        try { TailscaleNativeControl.Parse(stopped.Replace("Stopped", "NoState"), prefs, stopped.Replace("Stopped", "NoState")); throw new Exception("Unknown backend state accepted"); }
         catch (IOException) { Check(true); }
         var target = new TailscalePrepareRequest(Guid.NewGuid(), snapshot.Revision, TailscaleAction.Connect);
         Check(TailscaleNativeControl.Arguments(target).SequenceEqual(new[] { "up" }));
         Check(TailscaleNativeControl.Arguments(target with { Action = TailscaleAction.Disconnect }).SequenceEqual(new[] { "down" }));
+        Check(TailscaleNativeControl.Arguments(target with { Action = TailscaleAction.Logout }).SequenceEqual(new[] { "logout" }));
         Check(TailscaleNativeControl.Arguments(target with { Action = TailscaleAction.Configure, Configuration = new(false, true) })
             .SequenceEqual(new[] { "set", "--accept-dns=false", "--accept-routes=true" }));
+        var preferences = new TailscalePreferences(true, false, true, "100.64.0.9", true, OperatingSystem.IsWindows(), true, true);
+        var preferenceRequest = target with { Action = TailscaleAction.ConfigurePreferences, Preferences = preferences };
+        var expectedArguments = new List<string>
+        {
+            "set", "--accept-dns=true", "--accept-routes=false", "--shields-up=true", "--exit-node=100.64.0.9",
+            "--exit-node-allow-lan-access=true", "--auto-update=true", "--advertise-exit-node=true",
+        };
+        if (OperatingSystem.IsWindows()) expectedArguments.Add("--unattended=true");
+        Check(TailscaleNativeControl.Arguments(preferenceRequest).SequenceEqual(expectedArguments));
+        Check(TailscaleNativeControl.Arguments(preferenceRequest with { Preferences = preferences with { ExitNode = "auto:any" } })
+            .Contains("--exit-node=auto:any"));
+        // A preference plan commits only when the re-read snapshot reports the requested values.
+        var preferenceFolder = Directory.CreateTempSubdirectory("relaxkonos-tailscale-pref-");
+        try
+        {
+            var preferenceNative = new Native { Snapshot = full };
+            var preferenceEngine = new TailscaleControlOperations(preferenceFolder.FullName, _ => { }, preferenceNative);
+            var id = Guid.NewGuid();
+            var plan = new TailscalePrepareRequest(id, full.Revision, TailscaleAction.ConfigurePreferences, Preferences: preferences);
+            var envelope = new PrivilegedOperationRequest(PrivilegedOperationKind.TailscaleControlExecute, OperationId: id,
+                Correlation: CorrelationContext.Create(id, "privileged.operation")) { TailscaleChange = plan };
+            var outcome = await preferenceEngine.HandleAsync(envelope);
+            Check(outcome.Success && outcome.TailscaleResult?.Completed == true && preferenceNative.Executions == 1);
+            Check(preferenceNative.Snapshot.Preferences == preferences);
+            var invalid = plan with { OperationId = Guid.NewGuid(), Preferences = new(true, false, false, "not-an-ip", false, false, false, false) };
+            var invalidEnvelope = envelope with { OperationId = invalid.OperationId,
+                Correlation = CorrelationContext.Create(invalid.OperationId, "privileged.operation"), TailscaleChange = invalid };
+            Check(!(await preferenceEngine.HandleAsync(invalidEnvelope)).Success && preferenceNative.Executions == 1);
+            // Logout publishes a completed receipt only after the daemon reports a signed-out node.
+            var logoutId = Guid.NewGuid();
+            var logoutNative = new Native { Snapshot = full with { Connected = true, Authenticated = true, CanControl = true } };
+            var logoutEngine = new TailscaleControlOperations(preferenceFolder.FullName, _ => { }, logoutNative);
+            var logoutPlan = new TailscalePrepareRequest(logoutId, logoutNative.Snapshot.Revision, TailscaleAction.Logout);
+            var logoutEnvelope = new PrivilegedOperationRequest(PrivilegedOperationKind.TailscaleControlExecute, OperationId: logoutId,
+                Correlation: CorrelationContext.Create(logoutId, "privileged.operation")) { TailscaleChange = logoutPlan };
+            var loggedOut = await logoutEngine.HandleAsync(logoutEnvelope);
+            Check(loggedOut.Success && loggedOut.TailscaleResult?.Completed == true && !logoutNative.Snapshot.Authenticated);
+            // A logout whose result was lost can be closed from the logged-out observation.
+            var recoveryId = Guid.NewGuid();
+            File.WriteAllText(Path.Combine(preferenceFolder.FullName, recoveryId.ToString("N") + ".intent.json"),
+                JsonSerializer.Serialize(new TailscalePrepareRequest(recoveryId, full.Revision, TailscaleAction.Logout)));
+            var recoveryRead = await logoutEngine.HandleAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.TailscaleRecoveryRead,
+                OperationId: recoveryId, Correlation: CorrelationContext.Create(recoveryId, "privileged.operation")));
+            Check(recoveryRead.Success && recoveryRead.TailscaleRecovery?.CanClose == true && recoveryRead.TailscaleRecovery.Observation?.CanControl == false);
+            var actor = Guid.NewGuid().ToString("D");
+            var recoveryClose = await logoutEngine.HandleAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.TailscaleRecoveryClose,
+                OperationId: recoveryId, Correlation: CorrelationContext.Create(recoveryId, "privileged.operation"))
+                { TailscaleRecovery = new(new(recoveryId, recoveryRead.TailscaleRecovery!.Observation!.Revision, true), actor) });
+            Check(recoveryClose.Success && recoveryClose.TailscaleClosure?.Observation.CanControl == false);
+        }
+        finally { preferenceFolder.Delete(true); }
         var folder = Directory.CreateTempSubdirectory("relaxkonos-tailscale-helper-");
         try
         {
@@ -108,7 +168,10 @@ internal static class TailscaleHelperControlChecks
             Executions++; OnExecute?.Invoke();
             if (Throw) throw new IOException("private native diagnostic");
             Snapshot = Snapshot with { Connected = request.Action == TailscaleAction.Connect,
-                Revision = new('B', 64), Configuration = request.Configuration ?? Snapshot.Configuration };
+                Authenticated = request.Action == TailscaleAction.Logout ? false : Snapshot.Authenticated,
+                CanControl = request.Action == TailscaleAction.Logout ? false : Snapshot.CanControl,
+                Revision = new('B', 64), Configuration = request.Configuration ?? Snapshot.Configuration,
+                Preferences = request.Preferences ?? Snapshot.Preferences };
             return Task.FromResult(true);
         }
     }

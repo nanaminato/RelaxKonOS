@@ -398,5 +398,27 @@ FodyWeavers.xsd
 # Trae IDE internal plan/spec scratch
 .trae/
 
-# Local isolated-host orchestration and DPAPI-protected temporary credentials
-.codex-scratch/remote-acceptance/
+# Local build, debugging, and acceptance-test workspaces
+/.build/
+/.dsh-build/
+/.tmp/
+/.codex-scratch/
+
+# JetBrains workspace configuration
+.idea/
+*.sln.iml
+
+# Transient UI inspection dumps and SSH diagnostic host records
+.review-current.xml
+/.ssh-diagnostic-known-hosts
+
+# Local environment overrides (keep documented examples versioned)
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Operating-system metadata
+.DS_Store
+Thumbs.db
+[Dd]esktop.ini

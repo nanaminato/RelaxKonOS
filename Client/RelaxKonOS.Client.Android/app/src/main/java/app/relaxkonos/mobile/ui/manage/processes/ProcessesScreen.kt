@@ -6,8 +6,11 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.width
@@ -110,11 +113,15 @@ internal fun ProcessesContent(
     active: Boolean = true,
 ) {
     var sorting by remember { mutableStateOf(false) }
+    var showSearch by rememberSaveable { mutableStateOf(false) }
     val keyboard = LocalSoftwareKeyboardController.current
 
+    // The list is the page: every row of chrome above it costs a process entry on a phone, so the
+    // search field is expanded only on request (or while a filter is applied), and the sorting bar,
+    // the sample time and the execution mode share compact rows.
     Column(
-        modifier = modifier.fillMaxSize().padding(Spacing.lg),
-        verticalArrangement = Arrangement.spacedBy(Spacing.lg),
+        modifier = modifier.fillMaxSize().padding(horizontal = Spacing.lg, vertical = Spacing.md),
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
         ScreenHeader(
             title = stringResource(R.string.manage_processes_title),
@@ -132,35 +139,37 @@ internal fun ProcessesContent(
             return@Column
         }
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-        ) {
-            OutlinedTextField(
-                value = viewModel.processFilter,
-                onValueChange = { viewModel.updateProcessFilter(it) },
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = {
-                    if (!viewModel.processesLoading) { keyboard?.hide(); viewModel.searchProcesses() }
-                }),
-                trailingIcon = {
-                    if (viewModel.processFilter.isNotEmpty()) TextButton(onClick = {
-                        viewModel.updateProcessFilter("")
-                        viewModel.searchProcesses()
-                    }, enabled = !viewModel.processesLoading) { Text(stringResource(R.string.taskmanager_clear_filter)) }
-                },
-                label = { Text(stringResource(R.string.manage_processes_filter)) },
-                leadingIcon = { DesktopIcon(icon = DesktopIcons.search, size = 20.dp) },
-                shape = MaterialTheme.shapes.medium,
-            )
-            Button(onClick = { keyboard?.hide(); viewModel.searchProcesses() }, enabled = !viewModel.processesLoading) {
-                Text(stringResource(R.string.common_search))
+        if (showSearch || viewModel.processFilter.isNotEmpty()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+            ) {
+                OutlinedTextField(
+                    value = viewModel.processFilter,
+                    onValueChange = { viewModel.updateProcessFilter(it) },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = {
+                        if (!viewModel.processesLoading) { keyboard?.hide(); viewModel.searchProcesses() }
+                    }),
+                    trailingIcon = {
+                        if (viewModel.processFilter.isNotEmpty()) TextButton(onClick = {
+                            viewModel.updateProcessFilter("")
+                            viewModel.searchProcesses()
+                        }, enabled = !viewModel.processesLoading) { Text(stringResource(R.string.taskmanager_clear_filter)) }
+                    },
+                    label = { Text(stringResource(R.string.manage_processes_filter)) },
+                    leadingIcon = { DesktopIcon(icon = DesktopIcons.search, size = 20.dp) },
+                    shape = MaterialTheme.shapes.medium,
+                )
+                Button(onClick = { keyboard?.hide(); viewModel.searchProcesses() }, enabled = !viewModel.processesLoading) {
+                    Text(stringResource(R.string.common_search))
+                }
             }
         }
 
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
             androidx.compose.foundation.layout.Box {
                 TextButton(onClick = { sorting = true }, enabled = !viewModel.processesLoading) {
                     Text(stringResource(processSortLabel(viewModel.processSort)))
@@ -174,18 +183,35 @@ internal fun ProcessesContent(
                 Text(stringResource(if (viewModel.processDescending) R.string.manage_processes_descending else R.string.manage_processes_ascending))
             }
             androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+            IconButton(onClick = { showSearch = !showSearch }, enabled = !viewModel.processesLoading) {
+                DesktopIcon(DesktopIcons.search, size = 22.dp, contentDescription = stringResource(R.string.manage_processes_filter))
+            }
             FilledTonalIconButton(onClick = { viewModel.loadProcesses() }, enabled = !viewModel.processesLoading) {
                 DesktopIcon(DesktopIcons.refresh, size = 22.dp, contentDescription = stringResource(R.string.common_refresh))
             }
         }
 
-        viewModel.processSampledAt?.let { time -> Text(stringResource(R.string.manage_processes_sampled_at,
-            formatTimestamp(IsoInstant.toEpochMillis(time)).orEmpty()), style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        TextButton(onClick = { viewModel.toggleProcessMode() }, enabled = !viewModel.processesLoading) {
-            Text(stringResource(if (viewModel.processAdministratorMode) R.string.taskmanager_normal_mode else R.string.taskmanager_administrator_mode))
-        }
         RefreshProgressIndicator(visible = viewModel.processesLoading)
+
+        // Sample time and the execution mode share one line: both describe the list below, and two
+        // separate rows would take the height of a whole process entry away from it.
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            val sampledAt = viewModel.processSampledAt
+            if (sampledAt != null) {
+                Text(
+                    stringResource(R.string.manage_processes_sampled_at,
+                        formatTimestamp(IsoInstant.toEpochMillis(sampledAt)).orEmpty()),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f).padding(horizontal = Spacing.sm),
+                )
+            } else androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+            TextButton(onClick = { viewModel.toggleProcessMode() }, enabled = !viewModel.processesLoading) {
+                Text(stringResource(if (viewModel.processAdministratorMode) R.string.taskmanager_normal_mode else R.string.taskmanager_administrator_mode))
+            }
+        }
         if (viewModel.processItems.isEmpty()) {
             EmptyState(
                 text = stringResource(
@@ -214,25 +240,28 @@ internal fun ProcessesContent(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 TextButton(
                     onClick = { viewModel.loadProcesses(viewModel.processPage - 1) },
                     enabled = viewModel.processPage > 1 && !viewModel.processesLoading,
-                ) { Text(stringResource(R.string.manage_processes_previous)) }
+                ) { Text(stringResource(R.string.manage_processes_previous), maxLines = 1) }
                 Text(
                     stringResource(
                         R.string.manage_processes_page,
                         viewModel.processPage,
                         viewModel.processTotalCount.coerceAtLeast(viewModel.processItems.size),
                     ),
+                    modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 TextButton(
                     onClick = { viewModel.loadProcesses(viewModel.processPage + 1) },
                     enabled = viewModel.hasNextPage && !viewModel.processesLoading,
-                ) { Text(stringResource(R.string.manage_processes_next)) }
+                ) { Text(stringResource(R.string.manage_processes_next), maxLines = 1) }
             }
         }
     }
@@ -285,8 +314,14 @@ private fun ProcessList(model: ManageViewModel, modifier: Modifier) {
     SectionGroup(modifier) {
         LazyColumn(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
             items(model.processItems, key = { "${it.pid}:${it.startTime}" }) { process ->
-                ListRow(title = process.name, subtitle = stringResource(R.string.manage_processes_pid, process.pid),
-                    supporting = listOfNotNull(stringResource(R.string.manage_processes_cpu, process.cpuPercent), formatSize(process.memoryBytes), process.userName).joinToString(" · "),
+                // Two lines per entry: the name, then the sampled facts. A third line costs ~20dp of
+                // list height for every visible process, and the owner is already in the details.
+                ListRow(title = process.name,
+                    supporting = listOfNotNull(
+                        stringResource(R.string.manage_processes_pid, process.pid),
+                        stringResource(R.string.manage_processes_cpu, process.cpuPercent),
+                        formatSize(process.memoryBytes),
+                    ).joinToString(" · "),
                     leading = { IconBadge(icon = DesktopIcons.processes) },
                     onClick = { model.selectProcess(process) }, selected = model.processSelected?.let { it.pid == process.pid && it.startTime == process.startTime } == true)
             }

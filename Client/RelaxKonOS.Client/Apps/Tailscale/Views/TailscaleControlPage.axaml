@@ -14,6 +14,7 @@
        <TextBlock Text="{Binding ConnectionStateText}" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
       </StackPanel>
       <TextBlock Text="{Binding ConnectionDetailText}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+      <TextBlock Text="{Binding SelfLine}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" />
       <TextBlock Text="{Binding ConnectionHint}" Foreground="{DynamicResource WarningBrush}" TextWrapping="Wrap" IsVisible="{Binding HasConnectionHint}" />
       <TextBlock Text="{Binding ControlProblem}" Foreground="{DynamicResource WarningBrush}" TextWrapping="Wrap" IsVisible="{Binding HasControlProblem}" />
      </StackPanel>
@@ -25,21 +26,23 @@
    </Border>
 
    <Border Classes="app-panel" Padding="20">
-    <StackPanel Spacing="14">
-     <TextBlock Text="{loc:Loc tailscale.preferences_section}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
-     <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" RowSpacing="2" ColumnSpacing="16">
-      <TextBlock Text="{loc:Loc tailscale.accept_dns}" FontSize="14" Foreground="{DynamicResource TextPrimaryBrush}" />
-      <TextBlock Grid.Row="1" Text="{loc:Loc tailscale.accept_dns_hint}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" />
-      <ToggleSwitch Grid.Column="1" Grid.RowSpan="2" IsChecked="{Binding AcceptDnsEnabled, Mode=TwoWay}" IsEnabled="{Binding CanEditPreferences}"
-        OnContent="{loc:Loc tailscale.enabled}" OffContent="{loc:Loc tailscale.disabled}" VerticalAlignment="Center" AutomationProperties.Name="{loc:Loc tailscale.accept_dns}" />
+    <StackPanel Spacing="12">
+     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+      <TextBlock Text="{loc:Loc tailscale.preferences_section}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+      <Button Grid.Column="1" Content="{loc:Loc tailscale.preferences.edit}" Command="{Binding EditPreferencesCommand}"
+        Classes="command-action" Background="{DynamicResource SurfaceSunkenBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}"
+        BorderThickness="1" Padding="10,4" VerticalAlignment="Center" />
      </Grid>
-     <Separator />
-     <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" RowSpacing="2" ColumnSpacing="16">
-      <TextBlock Text="{loc:Loc tailscale.accept_routes}" FontSize="14" Foreground="{DynamicResource TextPrimaryBrush}" />
-      <TextBlock Grid.Row="1" Text="{loc:Loc tailscale.accept_routes_hint}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" />
-      <ToggleSwitch Grid.Column="1" Grid.RowSpan="2" IsChecked="{Binding AcceptRoutesEnabled, Mode=TwoWay}" IsEnabled="{Binding CanEditPreferences}"
-        OnContent="{loc:Loc tailscale.enabled}" OffContent="{loc:Loc tailscale.disabled}" VerticalAlignment="Center" AutomationProperties.Name="{loc:Loc tailscale.accept_routes}" />
-     </Grid>
+     <ItemsControl ItemsSource="{Binding PreferenceRows}">
+      <ItemsControl.ItemTemplate>
+       <DataTemplate x:DataType="vm:TailscalePreferenceRow">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="0,3">
+         <TextBlock Text="{Binding Label}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+         <TextBlock Grid.Column="1" Text="{Binding Value}" HorizontalAlignment="Right" FontWeight="SemiBold" TextWrapping="Wrap" />
+        </Grid>
+       </DataTemplate>
+      </ItemsControl.ItemTemplate>
+     </ItemsControl>
      <TextBlock Text="{Binding PreferencesHint}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" />
     </StackPanel>
    </Border>

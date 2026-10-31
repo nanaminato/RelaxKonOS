@@ -27,7 +27,13 @@ internal sealed class TailscaleModule : IServerModule, IServerModuleResidency
             {
                 var status = await manager.GetStatusAsync(ct);
                 return grants.IsGranted(http.User, RelaxKonOS.Protocol.Privileged.HostElevationCapability.HostNetworkChange,
-                    TailscaleAccess.Resource) ? status : status with { Peers = null, PeersRestricted = true };
+                    TailscaleAccess.Resource) ? status : status with
+                    {
+                        // Peer, account and tailnet identities stay behind the same host-network grant.
+                        Peers = null, PeersRestricted = true, Account = null, TailnetName = null,
+                        MagicDnsSuffix = null, ExitNode = null,
+                        Self = status.Self is { } self ? self with { Owner = null, Tags = null } : null,
+                    };
             }).RequireAuthorization().WithTags("Tailscale");
         endpoints.MapGet(TailscaleEndpoints.Control, (ITailscaleControl control, HttpContext http, CancellationToken ct) =>
             Respond(() => control.ReadAsync(http.User, ct))).RequireAuthorization().WithTags("Tailscale");

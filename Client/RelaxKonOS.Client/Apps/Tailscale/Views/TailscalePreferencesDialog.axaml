@@ -1,0 +1,41 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Tailscale.Views"
+ x:Class="RelaxKonOS.Client.Apps.Tailscale.Views.TailscalePreferencesDialog" x:DataType="vm:TailscalePreferencesEditor"
+ Classes="builtin-app" Background="{DynamicResource SurfaceBrush}">
+ <Grid RowDefinitions="*,Auto" Margin="20" RowSpacing="16">
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+   <StackPanel Spacing="14">
+    <TextBlock Text="{loc:Loc tailscale.preferences.dialog_intro}" TextWrapping="Wrap" />
+    <Border Classes="app-panel" Padding="14">
+     <StackPanel Spacing="10">
+      <TextBlock Text="{loc:Loc tailscale.preferences.switches}" FontSize="15" FontWeight="SemiBold" />
+      <CheckBox Content="{loc:Loc tailscale.preference.incoming}" IsChecked="{Binding AllowIncoming}" />
+      <CheckBox Content="{loc:Loc tailscale.accept_dns}" IsChecked="{Binding AcceptDns}" />
+      <CheckBox Content="{loc:Loc tailscale.accept_routes}" IsChecked="{Binding AcceptRoutes}" />
+      <CheckBox Content="{loc:Loc tailscale.preference.auto_update}" IsChecked="{Binding AutoUpdate}" />
+      <CheckBox Content="{loc:Loc tailscale.preference.unattended}" IsChecked="{Binding Unattended}" IsVisible="{Binding CanEditUnattended}" />
+      <CheckBox Content="{loc:Loc tailscale.preference.advertise_exit_node}" IsChecked="{Binding AdvertiseExitNode}" />
+      <TextBlock Text="{loc:Loc tailscale.preference.advertise_exit_node_hint}" Foreground="{DynamicResource TextSecondaryBrush}"
+        FontSize="11" TextWrapping="Wrap" Margin="28,0,0,0" />
+     </StackPanel>
+    </Border>
+    <Border Classes="app-panel" Padding="14">
+     <StackPanel Spacing="10">
+      <TextBlock Text="{loc:Loc tailscale.exit_nodes_section}" FontSize="15" FontWeight="SemiBold" />
+      <TextBlock Text="{loc:Loc tailscale.exit_node_intro}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" />
+      <ComboBox ItemsSource="{Binding ExitNodeChoices}" SelectedItem="{Binding SelectedExitNode}" HorizontalAlignment="Stretch"
+        AutomationProperties.Name="{loc:Loc tailscale.exit_nodes_section}" />
+      <CheckBox Content="{loc:Loc tailscale.preference.lan_access}" IsChecked="{Binding LanAccess}" IsEnabled="{Binding HasExitNode}" />
+      <TextBlock Text="{loc:Loc tailscale.exit_node.restricted}" IsVisible="{Binding NoCandidates}" Foreground="{DynamicResource WarningBrush}"
+        FontSize="12" TextWrapping="Wrap" />
+     </StackPanel>
+    </Border>
+    <TextBlock Text="{loc:Loc tailscale.preferences.apply_hint}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" />
+   </StackPanel>
+  </ScrollViewer>
+  <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+   <Button Content="{loc:Loc common.cancel}" Click="Cancel" />
+   <Button Content="{loc:Loc tailscale.preferences.apply}" Classes="primary" Click="Apply" />
+  </StackPanel>
+ </Grid>
+</UserControl>

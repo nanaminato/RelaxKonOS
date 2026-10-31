@@ -56,10 +56,12 @@ public sealed partial class TailscaleViewModel : ObservableObject
 
     public Func<TailscaleOperation, TailscaleControlSnapshot, string, Task<bool>>? ConfirmAsync { get; set; }
     public Func<TailscaleRecoverySnapshot, string, Task<bool>>? ConfirmCloseAsync { get; set; }
+    public Func<TailscalePreferences, IReadOnlyList<TailscaleExitNodeItem>, string?, Task<TailscalePreferences?>>? EditPreferencesDialogAsync { get; set; }
+    public Func<Task>? OpenAdminConsoleHandler { get; set; }
+    public Func<Task>? ShowAboutHandler { get; set; }
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private TailscaleOperationItem? _selectedReference;
-    [ObservableProperty] private bool _acceptDnsEnabled;
-    [ObservableProperty] private bool _acceptRoutesEnabled;
+    [ObservableProperty] private TailscalePeerItem? _selectedPeer;
     public ObservableCollection<TailscalePeerItem> Peers { get; } = [];
     public ObservableCollection<TailscalePeerItem> FilteredPeers { get; } = [];
     public ObservableCollection<TailscaleOperationItem> Operations { get; } = [];
@@ -79,16 +81,83 @@ public sealed partial class TailscaleViewModel : ObservableObject
         get => _peerFilter;
         set { if (_peerFilter == value) return; _peerFilter = value; OnPropertyChanged(); ApplyFilter(); Notify(); }
     }
-    public string ConnectionBadge => _control is { } control ? Text(control.Connected ? "tailscale.connected" : "tailscale.disconnected")
+    public TailscaleAccountDto? Account => _status?.Account;
+    public bool AccountRestricted => _status is { State: "observed" } && _status.Account is null;
+    public string AccountName => Account is { } account
+        ? account.DisplayName is { Length: > 0 } name ? name : account.LoginName : Text("tailscale.account_unknown");
+    public string AccountLogin => Account?.LoginName ?? "";
+    public string AccountLine => Account is { } account
+        ? account.DisplayName is { Length: > 0 } name ? name + " · " + account.LoginName : account.LoginName : "";
+    public string AccountInitials
+    {
+        get
+        {
+            var text = Account?.DisplayName is { Length: > 0 } name ? name : Account?.LoginName;
+            return string.IsNullOrEmpty(text) ? "?" : text[..1].ToUpper(CultureInfo.CurrentCulture);
+        }
+    }
+    public string AccountHeader => Account is { } account
+        ? account.DisplayName is { Length: > 0 } name ? name + " · " + account.LoginName : account.LoginName
+        : Text("tailscale.account_unknown");
+    public string TailnetDisplay => _status?.TailnetName is { Length: > 0 } tailnet ? tailnet
+        : _status?.MagicDnsSuffix is { Length: > 0 } suffix ? suffix : "";
+    public string SelfLine => _status?.Self is { } self
+        ? string.Format(CultureInfo.CurrentCulture, Text("tailscale.this_device_line"), self.HostName, self.Addresses.FirstOrDefault() ?? "")
+        : "";
+    public string HostVersion => _status?.Version ?? "";
+    public string DeviceName => _status?.Self?.HostName ?? "";
+    public string BackendStateText => _status?.BackendState is { Length: > 0 } backend ? BackendText(backend) : "";
+    public IReadOnlyList<TailscaleExitNodeItem> ExitNodeCandidates => Peers
+        .Where(peer => !peer.IsSelf && peer.CanBeExitNode)
+        .Select(peer => new TailscaleExitNodeItem(peer.IpAddress, peer.HostName, peer.Addresses))
+        .ToArray();
+    public TailscalePreferences? Preferences => _control?.Preferences;
+    public bool HasPreferences => Preferences is not null;
+    public string DnsPreferenceText => OnOff(Preferences?.AcceptDns);
+    public string RoutesPreferenceText => OnOff(Preferences?.AcceptRoutes);
+    public string IncomingPreferenceText => Preferences is { } preferences
+        ? Text(preferences.ShieldsUp ? "tailscale.blocked" : "tailscale.allowed") : "—";
+    public string ExitNodePreferenceText => Preferences?.ExitNode is { Length: > 0 } exitNode
+        ? exitNode == "auto:any" ? Text("tailscale.exit_node.auto") : Peers.FirstOrDefault(peer => peer.IpAddress == exitNode)?.HostName ?? exitNode
+        : Text("tailscale.exit_node.none");
+    public string LanAccessPreferenceText => Preferences is { ExitNode.Length: > 0 } and { ExitNodeAllowLanAccess: var allow }
+        ? OnOff(allow) : Text("tailscale.disabled");
+    public bool ShowUnattendedPreference => _control?.Platform == "windows";
+    public string UnattendedPreferenceText => OnOff(Preferences?.Unattended);
+    public string AutoUpdatePreferenceText => OnOff(Preferences?.AutoUpdate);
+    public string AdvertiseExitNodePreferenceText => OnOff(Preferences?.AdvertiseExitNode);
+    public bool SelectedPeerVisible => SelectedPeer is not null;
+    public IReadOnlyList<TailscalePreferenceRow> PreferenceRows
+    {
+        get
+        {
+            if (_control?.Preferences is not { } preferences) return [];
+            var rows = new List<TailscalePreferenceRow>
+            {
+                new(Text("tailscale.accept_dns"), OnOff(preferences.AcceptDns)),
+                new(Text("tailscale.accept_routes"), OnOff(preferences.AcceptRoutes)),
+                new(Text("tailscale.preference.incoming"), Text(preferences.ShieldsUp ? "tailscale.blocked" : "tailscale.allowed")),
+                new(Text("tailscale.exit_nodes_section"), ExitNodePreferenceText),
+                new(Text("tailscale.preference.lan_access"), LanAccessPreferenceText),
+                new(Text("tailscale.preference.auto_update"), OnOff(preferences.AutoUpdate)),
+            };
+            if (ShowUnattendedPreference) rows.Add(new(Text("tailscale.preference.unattended"), OnOff(preferences.Unattended)));
+            rows.Add(new(Text("tailscale.preference.advertise_exit_node"), OnOff(preferences.AdvertiseExitNode)));
+            return rows;
+        }
+    }
+    public string ConnectionBadge => IsLoginRequired ? BackendText("NeedsLogin")
+        : _control is { } control ? Text(control.Connected ? "tailscale.connected" : "tailscale.disconnected")
         : _status is null ? Text("tailscale.loading")
         : _status.State != "observed" ? StateText(_status.State)
         : BackendText(_status.BackendState);
-    public bool IsConnected => _control?.Connected ?? _status?.BackendState == "Running";
-    public bool IsDisconnected => _control is { Connected: false } || _control is null && _status?.BackendState == "Stopped";
-    public bool IsAttention => _status is not null && (_status.State != "observed"
-        || _status.BackendState is "NeedsLogin" or "NeedsMachineAuth" or "Starting");
-    public string ConnectionStateText => _control is { } control
-        ? Text(control.Connected ? "tailscale.connected" : "tailscale.disconnected")
+    public bool IsLoginRequired => _control is { Authenticated: false } || _status?.BackendState == "NeedsLogin";
+    public bool IsConnected => !IsLoginRequired && (_control?.Connected ?? _status?.BackendState == "Running");
+    public bool IsDisconnected => !IsLoginRequired && (_control is { Connected: false } || _control is null && _status?.BackendState == "Stopped");
+    public bool IsAttention => _status is not null && (_status.State != "observed" || IsLoginRequired
+        || _status.BackendState is "NeedsMachineAuth" or "Starting");
+    public string ConnectionStateText => IsLoginRequired ? BackendText("NeedsLogin")
+        : _control is { } control ? Text(control.Connected ? "tailscale.connected" : "tailscale.disconnected")
         : _status is { BackendState: { Length: > 0 } backend } ? BackendText(backend) : Text("tailscale.loading");
     public string ConnectionDetailText
     {
@@ -123,6 +192,7 @@ public sealed partial class TailscaleViewModel : ObservableObject
     public bool CanConnect => Editable && _control is { Connected: false, Authenticated: true };
     public bool CanDisconnect => Editable && _control is { Connected: true };
     public bool CanEditPreferences => Editable && _control is not null;
+    public bool CanLogout => Editable && _control is { Authenticated: true, CanControl: true } && !IsLoginRequired;
     public bool CanAuthorizePeers => CanRefresh && PeersRestricted && CurrentConnection;
     public string OperationText => _pendingClosure is not null && _pendingClosure == SelectedReference?.Id ? Text("tailscale.recovery.awaiting_receipt")
         : _operation?.Closure is not null ? Text("tailscale.recovery.closed")
@@ -147,7 +217,7 @@ public sealed partial class TailscaleViewModel : ObservableObject
     public void InvalidateControl()
     {
         _control = null; _controlReadAt = null; _controlProblem = null; _controlUnavailable = false;
-        SyncPreferences(); Notify();
+        Notify();
     }
 
     public async Task ActivateAsync()
@@ -225,8 +295,8 @@ public sealed partial class TailscaleViewModel : ObservableObject
         _connection = null; _status = null; _statusReadAt = null; _control = null; _controlReadAt = null;
         _controlProblem = null; _controlUnavailable = false; _operation = null; _pendingReceipt = null; _pendingClosure = null; _recovery = null;
         _operationReadId = null; _operationReadAt = null;
-        Peers.Clear(); FilteredPeers.Clear(); Operations.Clear(); SelectedReference = null;
-        SyncPreferences(); Notify();
+        Peers.Clear(); FilteredPeers.Clear(); Operations.Clear(); SelectedReference = null; SelectedPeer = null;
+        Notify();
     }
     private bool Current(int generation, HostSettingsConnection connection, CancellationToken ct)
         => generation == _generation && !ct.IsCancellationRequested && _lifetime is not null && _client.IsCurrent(connection);
@@ -236,39 +306,38 @@ public sealed partial class TailscaleViewModel : ObservableObject
         _operation = null; _recovery = null; _operationReadId = null; _operationReadAt = null; Notify();
         if (_visiblePage == "operations") _ = AutoReadOperationAsync();
     }
-    partial void OnAcceptDnsEnabledChanged(bool value) { if (!_syncingPreferences) _ = SetAcceptDnsAsync(value); }
-    partial void OnAcceptRoutesEnabledChanged(bool value) { if (!_syncingPreferences) _ = SetAcceptRoutesAsync(value); }
-    internal void SyncPreferences()
-    {
-        _syncingPreferences = true;
-        try
-        {
-            AcceptDnsEnabled = _control?.Configuration.AcceptDns == true;
-            AcceptRoutesEnabled = _control?.Configuration.AcceptRoutes == true;
-        }
-        finally { _syncingPreferences = false; }
-    }
+    partial void OnSelectedPeerChanged(TailscalePeerItem? value) => OnPropertyChanged(nameof(SelectedPeerVisible));
+    private string OnOff(bool? value) => value is null ? "—" : Text(value.Value ? "tailscale.enabled" : "tailscale.disabled");
     private void Notify()
     {
         foreach (var name in new[] { nameof(Target), nameof(StatusText), nameof(LastUpdatedText), nameof(HasStatus), nameof(PeersRestricted),
             nameof(PeerSummary), nameof(NoPeers), nameof(NoMatchingPeers), nameof(ConnectionBadge), nameof(IsConnected), nameof(IsDisconnected),
-            nameof(IsAttention), nameof(ConnectionStateText), nameof(ConnectionDetailText), nameof(HasControl), nameof(ControlUnavailable),
+            nameof(IsAttention), nameof(IsLoginRequired), nameof(ConnectionStateText), nameof(ConnectionDetailText), nameof(HasControl), nameof(ControlUnavailable),
             nameof(HasControlProblem), nameof(ControlProblem), nameof(ConnectionHint), nameof(HasConnectionHint), nameof(PreferencesHint),
             nameof(CanRefresh), nameof(CanConnect), nameof(CanDisconnect), nameof(CanEditPreferences), nameof(CanAuthorizePeers),
+            nameof(Account), nameof(AccountRestricted), nameof(AccountName), nameof(AccountLogin), nameof(AccountInitials), nameof(AccountHeader), nameof(AccountLine),
+            nameof(TailnetDisplay), nameof(SelfLine), nameof(HostVersion), nameof(DeviceName), nameof(BackendStateText), nameof(ExitNodeCandidates),
+            nameof(Preferences), nameof(HasPreferences), nameof(PreferenceRows),
+            nameof(HasAccount), nameof(DnsPreferenceText), nameof(RoutesPreferenceText), nameof(IncomingPreferenceText), nameof(ExitNodePreferenceText),
+            nameof(LanAccessPreferenceText), nameof(ShowUnattendedPreference), nameof(UnattendedPreferenceText), nameof(AutoUpdatePreferenceText),
+            nameof(AdvertiseExitNodePreferenceText), nameof(SelectedPeerVisible),
             nameof(OperationText), nameof(OperationProblem), nameof(OperationUpdatedAt), nameof(CanReopen), nameof(CanInspectRecovery),
             nameof(CanCloseRecovery), nameof(RecoveryText), nameof(RecoveryProblem) })
             OnPropertyChanged(name);
         RefreshCommand.NotifyCanExecuteChanged(); LoadControlCommand.NotifyCanExecuteChanged(); AuthorizePeersCommand.NotifyCanExecuteChanged();
-        ConnectCommand.NotifyCanExecuteChanged(); DisconnectCommand.NotifyCanExecuteChanged();
+        ConnectCommand.NotifyCanExecuteChanged(); DisconnectCommand.NotifyCanExecuteChanged(); EditPreferencesCommand.NotifyCanExecuteChanged();
+        LogoutCommand.NotifyCanExecuteChanged(); OpenAdminConsoleCommand.NotifyCanExecuteChanged(); ShowAboutCommand.NotifyCanExecuteChanged();
         ReopenCommand.NotifyCanExecuteChanged(); InspectRecoveryCommand.NotifyCanExecuteChanged(); CloseRecoveryCommand.NotifyCanExecuteChanged();
     }
     private void ApplyStatus(TailscaleStatusDto status)
     {
         _status = status;
         _statusReadAt = DateTimeOffset.UtcNow;
+        var selected = SelectedPeer?.Id;
         Peers.Clear();
         if (status.Self is { } self) Peers.Add(new(self, _language, true));
         foreach (var peer in status.Peers ?? []) Peers.Add(new(peer, _language, false));
+        SelectedPeer = selected is null ? null : Peers.FirstOrDefault(peer => peer.Id == selected);
         ApplyFilter();
         Notify();
     }
@@ -287,7 +356,6 @@ public sealed partial class TailscaleViewModel : ObservableObject
         _controlReadAt = DateTimeOffset.UtcNow;
         _controlUnavailable = false;
         _controlProblem = control.ProblemCode;
-        SyncPreferences();
         Notify();
     }
     private static bool Handled(Exception exception) => exception is HttpRequestException or RelaxKonOSAuthException or InvalidOperationException
@@ -439,24 +507,44 @@ public sealed partial class TailscaleViewModel : ObservableObject
     public Task ConnectAsync() => ChangeAsync(TailscaleAction.Connect);
     [RelayCommand(CanExecute = nameof(CanDisconnect))]
     public Task DisconnectAsync() => ChangeAsync(TailscaleAction.Disconnect);
-    public Task<bool> SetAcceptDnsAsync(bool value) => SetPreferenceAsync(value, null);
-    public Task<bool> SetAcceptRoutesAsync(bool value) => SetPreferenceAsync(null, value);
-    private async Task<bool> SetPreferenceAsync(bool? acceptDns, bool? acceptRoutes)
+    [RelayCommand(CanExecute = nameof(CanLogout))]
+    public Task LogoutAsync() => ChangeAsync(TailscaleAction.Logout);
+
+    /// <summary>Quick DNS/route toggles still route through the full preference plan.</summary>
+    public Task<bool> SetAcceptDnsAsync(bool value) => SetPreferenceAsync(current => current with { AcceptDns = value });
+    public Task<bool> SetAcceptRoutesAsync(bool value) => SetPreferenceAsync(current => current with { AcceptRoutes = value });
+    private async Task<bool> SetPreferenceAsync(Func<TailscalePreferences, TailscalePreferences> change)
     {
-        if (_control is null || !CanEditPreferences) { SyncPreferences(); return false; }
-        var configuration = new TailscaleConfiguration(acceptDns ?? _control.Configuration.AcceptDns,
-            acceptRoutes ?? _control.Configuration.AcceptRoutes);
-        if (configuration == _control.Configuration) return true;
-        var applied = await ChangeAsync(TailscaleAction.Configure, configuration);
-        SyncPreferences();
-        return applied;
+        if (_control?.Preferences is not { } current || !CanEditPreferences) return false;
+        var next = change(current);
+        return next == current || await ChangeAsync(TailscaleAction.ConfigurePreferences, preferences: next);
     }
-    private async Task<bool> ChangeAsync(TailscaleAction action, TailscaleConfiguration? configuration = null)
+
+    [RelayCommand(CanExecute = nameof(CanEditPreferences))]
+    public async Task EditPreferencesAsync()
+    {
+        if (!CanEditPreferences || EditPreferencesDialogAsync is null || _control?.Preferences is not { } current) return;
+        // The exit-node candidate list is part of the peer identity surface; ask once for the
+        // same precise grant before listing it. Cancelling still opens the editor read-only.
+        if (PeersRestricted) await AuthorizePeersAsync();
+        if (_control is null || !CanEditPreferences) return;
+        var edited = await EditPreferencesDialogAsync(current, ExitNodeCandidates, _control.Platform);
+        if (edited is null || edited == current || !CanEditPreferences) return;
+        await ChangeAsync(TailscaleAction.ConfigurePreferences, preferences: edited);
+    }
+    [RelayCommand(CanExecute = nameof(HasAccount))]
+    public Task OpenAdminConsoleAsync() => OpenAdminConsoleHandler is { } open ? open() : Task.CompletedTask;
+    [RelayCommand]
+    public Task ShowAboutAsync() => ShowAboutHandler is { } show ? show() : Task.CompletedTask;
+    private bool HasAccount => Account is not null;
+
+    private async Task<bool> ChangeAsync(TailscaleAction action, TailscaleConfiguration? configuration = null, TailscalePreferences? preferences = null)
     {
         if (!(action switch
             {
                 TailscaleAction.Connect => CanConnect,
                 TailscaleAction.Disconnect => CanDisconnect,
+                TailscaleAction.Logout => CanLogout,
                 _ => CanEditPreferences
             })) return false;
         var baseline = _control!;
@@ -466,7 +554,8 @@ public sealed partial class TailscaleViewModel : ObservableObject
         {
             if (connection != targetConnection || !Current(generation, connection, ct)) return;
             if (action == TailscaleAction.Configure && configuration is null) return;
-            var request = new TailscalePrepareRequest(Guid.NewGuid(), baseline.Revision, action, configuration);
+            if (action == TailscaleAction.ConfigurePreferences && preferences is null) return;
+            var request = new TailscalePrepareRequest(Guid.NewGuid(), baseline.Revision, action, configuration, preferences);
             var plan = await Elevated(() => _client.PrepareAsync(connection, request, ct), ct);
             if (!Current(generation, connection, ct)) return;
             Verify(plan, request);
@@ -496,7 +585,8 @@ public sealed partial class TailscaleViewModel : ObservableObject
     private static void Verify(TailscaleOperation operation, TailscalePrepareRequest request)
     {
         if (operation.OperationId != request.OperationId || operation.Action != request.Action || operation.ExpectedRevision != request.ExpectedRevision
-            || operation.Configuration != request.Configuration || !Enum.IsDefined(operation.State)) throw new InvalidDataException("tailscale.invalid_response");
+            || operation.Configuration != request.Configuration || operation.Preferences != request.Preferences
+            || !Enum.IsDefined(operation.State)) throw new InvalidDataException("tailscale.invalid_response");
     }
     private static void VerifyIdentity(TailscaleOperation operation, Guid id, HostSettingsConnection connection)
     {
@@ -610,17 +700,47 @@ public sealed record TailscaleOperationItem(Guid Id)
 {
     public override string ToString() => Id.ToString("D");
 }
+public sealed record TailscalePreferenceRow(string Label, string Value);
+public sealed record TailscaleExitNodeItem(string Ip, string HostName, string Addresses)
+{
+    public string Label => HostName.Length > 0 ? HostName + " · " + Addresses : Ip;
+    public override string ToString() => Label;
+}
 public sealed class TailscalePeerItem(TailscalePeerDto peer, LocalizationService language, bool self) : ObservableObject
 {
+    public string Id => peer.Id;
     public string HostName => peer.HostName;
     public string DnsName => peer.DnsName;
     public string Addresses => string.Join(", ", peer.Addresses);
-    public string Status => language.Get(peer.Online ? "tailscale.online" : "tailscale.offline", "");
-    public string Role => language.Get(self ? "tailscale.role_self" : peer.ExitNode ? "tailscale.role_exit_node" : "tailscale.role_peer", "");
+    public string IpAddress => peer.Addresses.FirstOrDefault() ?? "";
+    public string Owner => peer.Owner ?? "";
+    public string Os => peer.Os ?? "";
+    public string OsLabel => peer.Os switch
+    {
+        "windows" => "Windows", "linux" => "Linux", "macOS" => "macOS", "iOS" => "iOS", "android" => "Android",
+        "tvOS" => "tvOS", "freebsd" => "FreeBSD", "openbsd" => "OpenBSD", "illumos" => "illumos", "solaris" => "Solaris",
+        { Length: > 0 } os => os, _ => "",
+    };
+    public string Tags => string.Join("  ", (peer.Tags ?? []).Select(tag => "#" + tag));
+    public string Status => peer.Expired ? language.Get("tailscale.key_expired", "") : language.Get(peer.Online ? "tailscale.online" : "tailscale.offline", "");
+    public string Role => language.Get(self ? "tailscale.role_self" : peer.ExitNode ? "tailscale.role_exit_node"
+        : peer.ExitNodeOption ? "tailscale.role_exit_node_option" : "tailscale.role_peer", "");
+    public string LastSeenText => peer.Online ? language.Get("tailscale.last_seen_now", "")
+        : peer.LastSeen is { } seen ? string.Format(System.Globalization.CultureInfo.CurrentCulture,
+            language.Get("tailscale.last_seen_format", ""), seen.ToLocalTime().ToString("g", System.Globalization.CultureInfo.CurrentCulture)) : "";
+    public string KeyExpiryText => peer.KeyExpiry is { } expiry
+        ? expiry.ToLocalTime().ToString("g", System.Globalization.CultureInfo.CurrentCulture) : "";
     public bool Online => peer.Online;
+    public bool CanBeExitNode => peer.ExitNodeOption;
+    public bool IsExitNode => peer.ExitNode;
     internal bool IsSelf => self;
     internal bool Matches(string filter) => peer.HostName.Contains(filter, StringComparison.OrdinalIgnoreCase)
         || peer.DnsName.Contains(filter, StringComparison.OrdinalIgnoreCase)
+        || (peer.Owner ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase)
+        || (peer.Os ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase)
         || peer.Addresses.Any(address => address.Contains(filter, StringComparison.OrdinalIgnoreCase));
-    internal void RefreshLanguage() { OnPropertyChanged(nameof(Status)); OnPropertyChanged(nameof(Role)); }
+    internal void RefreshLanguage()
+    {
+        OnPropertyChanged(nameof(Status)); OnPropertyChanged(nameof(Role)); OnPropertyChanged(nameof(LastSeenText));
+    }
 }

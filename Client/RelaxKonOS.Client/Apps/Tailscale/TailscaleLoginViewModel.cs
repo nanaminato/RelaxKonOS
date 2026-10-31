@@ -50,8 +50,11 @@ public sealed partial class TailscaleLoginViewModel(ITailscaleLoginClient client
     public Func<string, Guid, bool, Task<bool>>? ConfirmAsync { get; set; }
     public Func<Uri, Task<bool>>? OpenBrowserAsync { get; set; }
     public Func<CancellationToken, Task<string?>>? ReadBackendStateAsync { get; set; }
+    public Func<string?>? AccountLineProvider { get; set; }
     public Action? HostMayHaveChanged { get; set; }
     public string Target => _connection?.ServiceId ?? "";
+    public string AccountLine => AccountLineProvider?.Invoke() ?? "";
+    public bool HasAccountLine => AccountLine.Length > 0;
     public string Message => _message.Length == 0 ? "" : ProblemText(_message);
     public bool MessageIsError => _message.Length > 0 && !InformationalMessages.Contains(_message);
     public bool MessageIsInfo => _message.Length > 0 && InformationalMessages.Contains(_message);
@@ -132,7 +135,7 @@ public sealed partial class TailscaleLoginViewModel(ITailscaleLoginClient client
     partial void OnIsBusyChanged(bool value) => Notify();
     private void Notify()
     {
-        foreach (var name in new[] { nameof(Target), nameof(Message), nameof(MessageIsError), nameof(MessageIsInfo), nameof(Result),
+        foreach (var name in new[] { nameof(Target), nameof(AccountLine), nameof(HasAccountLine), nameof(Message), nameof(MessageIsError), nameof(MessageIsInfo), nameof(Result),
             nameof(Observation), nameof(AvailabilityText), nameof(HasOperations), nameof(NoOperations), nameof(CompletionDetected),
             nameof(Ready), nameof(CanStart), nameof(CanRead), nameof(CanOpen), nameof(CanInspect), nameof(CanClose), nameof(CanFinish) }) OnPropertyChanged(name);
         StartCommand.NotifyCanExecuteChanged(); ReadCommand.NotifyCanExecuteChanged(); OpenCommand.NotifyCanExecuteChanged();

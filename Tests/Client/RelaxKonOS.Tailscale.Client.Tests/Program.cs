@@ -67,17 +67,43 @@ try
     Check(model.CanDisconnect && model.HasControl, "applied change re-reads the live baseline");
     await model.LoadControlAsync();
     Check(model.CanDisconnect && !model.CanConnect, "fresh connected baseline");
-    // Preference switches use the same structured plan, confirmation and verified receipt.
+    // Preference edits use the same structured plan, confirmation and verified receipt.
     var preparations = client.Prepares;
     model.ConfirmAsync = (_, _, _) => Task.FromResult(false);
     var cancelled = await model.SetAcceptDnsAsync(false);
-    Check(!cancelled && client.Executions == 1 && model.AcceptDnsEnabled, "cancelled preference change executes nothing and reverts");
+    Check(!cancelled && client.Executions == 1 && model.Preferences?.AcceptDns == true, "cancelled preference change executes nothing and keeps the host value");
     model.ConfirmAsync = (_, _, _) => Task.FromResult(true);
     var applied = await model.SetAcceptDnsAsync(false);
-    Check(applied && client.Executions == 2 && client.LastRequest?.Action == TailscaleAction.Configure
-        && client.LastRequest.Configuration == new TailscaleConfiguration(false, false), "structured preference change only");
-    Check(!model.AcceptDnsEnabled && model.HasControl, "applied preference re-reads the host");
+    Check(applied && client.Executions == 2 && client.LastRequest?.Action == TailscaleAction.ConfigurePreferences
+        && client.LastRequest.Preferences?.AcceptDns == false && client.LastRequest.Preferences?.AcceptRoutes == false,
+        "structured preference change only");
+    Check(model.Preferences?.AcceptDns == false && model.HasControl, "applied preference re-reads the host");
     Check(client.Prepares == preparations + 2, "each preference attempt is planned once");
+    Check(model.AccountLogin == "owner@example.com" && model.AccountName == "Owner Name" && model.TailnetDisplay == "example.ts.net",
+        "account and tailnet are displayed");
+    Check(model.SelfLine.Contains("host", StringComparison.Ordinal), "this-device line carries the host and address");
+    model.SelectedPeer = model.Peers[0];
+    Check(model.SelectedPeerVisible && model.Peers[0].OsLabel == "Linux" && model.Peers[0].Owner == "owner@example.com",
+        "device details carry OS and owner");
+    // Exit-node selection uses the closed preference plan and only offers daemon-approved candidates.
+    client.WithExitNodePeer = true;
+    await model.RefreshAsync(); await model.LoadControlAsync();
+    Check(model.ExitNodeCandidates.Count == 1 && model.ExitNodeCandidates[0].Ip == "100.64.0.9", "exit-node candidates come from approved peers");
+    model.EditPreferencesDialogAsync = (current, candidates, platform) =>
+    {
+        Check(current == model.Preferences && platform == "windows" && candidates.Count == 1, "preference editor receives the live snapshot and candidates");
+        return Task.FromResult<TailscalePreferences?>(current with
+        {
+            ShieldsUp = true, ExitNode = candidates[0].Ip, ExitNodeAllowLanAccess = true, AutoUpdate = true,
+        });
+    };
+    await model.EditPreferencesAsync();
+    Check(client.LastRequest?.Action == TailscaleAction.ConfigurePreferences
+        && client.LastRequest.Preferences?.ShieldsUp == true
+        && client.LastRequest.Preferences?.ExitNode == "100.64.0.9"
+        && client.LastRequest.Preferences?.ExitNodeAllowLanAccess == true
+        && client.Executions == 3, "exit node and extended preferences use one structured plan");
+    Check(model.Preferences?.ShieldsUp == true && model.ExitNodePreferenceText == "gateway", "applied exit node is shown by name");
     await model.LoadControlAsync();
     client.LoseResponse = true;
     await model.DisconnectAsync();
@@ -175,6 +201,19 @@ try
     Check(store.Read(original).Count == 30 && store.Read(original)[0] == last, "reference duplicate does not grow history");
     Check(!File.ReadAllText(Path.Combine(folder.FullName, "refs.json")).Contains("Applied"), "outcomes never stored locally");
 
+    // Logout is an explicit, journaled action; the host becomes signed out and must log in again.
+    var logoutClient = new FakeClient();
+    var logoutBroker = new Broker();
+    var logoutModel = new TailscaleViewModel(logoutClient, new TailscaleOperationReferences(Path.Combine(folder.FullName, "logout.json")),
+        logoutBroker, language) { ConfirmAsync = (_, _, _) => Task.FromResult(true) };
+    await logoutModel.ActivateAsync(); await logoutModel.LoadControlAsync();
+    Check(logoutModel.CanLogout && logoutModel.ConnectionStateText == language.Get("tailscale.disconnected", ""), "signed-in host offers logout");
+    await logoutModel.LogoutAsync();
+    Check(logoutClient.LoggedOut && !logoutModel.CanLogout && !logoutModel.CanConnect
+        && logoutModel.ConnectionStateText == language.Get("tailscale.backend.NeedsLogin", "")
+        && logoutModel.ConnectionHint == language.Get("tailscale.login_required", ""), "logout leaves the host signed out and points to login");
+    logoutModel.Deactivate();
+
     // The connection page reads itself, keeps the last snapshot when a background refresh fails,
     // and never asks for a mutation grant just to observe.
     var probeClient = new FakeClient();
@@ -229,13 +268,15 @@ try
         settings.Appearance = settings.Appearance with { Mode = RelaxKonOS.Protocol.Desktop.ThemeKind.Light }; Dispatcher.UIThread.RunJobs();
         var layoutClient = new FakeClient();
         var layout = new TailscaleViewModel(layoutClient, new TailscaleOperationReferences(Path.Combine(folder.FullName, "layout.json")), broker, language);
-        var loginLayout = new TailscaleLoginViewModel(new LoginFake { Connection = layoutClient.Connection }, new TailscaleOperationReferences(Path.Combine(folder.FullName, "login-layout.json")), broker, language);
+        var loginLayout = new TailscaleLoginViewModel(new LoginFake { Connection = layoutClient.Connection }, new TailscaleOperationReferences(Path.Combine(folder.FullName, "login-layout.json")), broker, language)
+            { AccountLineProvider = () => layout.AccountLine };
         var workspace = new TailscaleWorkspace(layout, loginLayout);
         var window = new Window { Content = workspace, Width = 980, Height = 640 }; window.Show(); Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
         await layout.LoadControlAsync();
         loginLayout.ConfirmAsync = (_, _, _) => Task.FromResult(true);
         await loginLayout.StartAsync();
         var oldText = layout.StatusText; var oldPeer = layout.Peers[0].Status; var reads = layoutClient.ControlReads;
+        layout.SelectedPeer = layout.Peers[0];
         settings.Language = culture == "en-US" ? "zh-CN" : "en-US"; Dispatcher.UIThread.RunJobs();
         Check(layout.StatusText != oldText && layout.Peers[0].Status != oldPeer && layoutClient.ControlReads == reads, "live language switch does not reload host");
         settings.Language = culture; Dispatcher.UIThread.RunJobs();
@@ -249,7 +290,14 @@ try
             var content = workspace.FindControl<ContentControl>("Page")!;
             Check(content.Bounds.Width > 200 && content.Bounds.Height > 200, "elastic page " + culture + width + page);
             Check(!workspace.GetVisualDescendants().OfType<TextBlock>().Any(x => x.Text?.Contains("[missing:") == true), "localized workspace " + culture + page);
-            if (page == "Devices") Check(workspace.GetVisualDescendants().OfType<DataGrid>().Single().CanUserResizeColumns, "resizable device columns");
+            if (page == "Devices")
+            {
+                var grid = workspace.GetVisualDescendants().OfType<DataGrid>().Single();
+                Check(grid.CanUserResizeColumns, "resizable device columns");
+                grid.SelectedItem = layout.Peers[0];
+                Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
+                Check(layout.SelectedPeerVisible, "selected device details are visible");
+            }
             using var image = new RenderTargetBitmap(new PixelSize(width, 640)); image.Render(window);
             image.Save(Path.Combine(output, culture + "-" + width + "-" + page + ".png"), new PngBitmapEncoderOptions());
         }
@@ -261,17 +309,22 @@ try
         window.Close(); Dispatcher.UIThread.RunJobs();
         var plan = new TailscaleOperation(Guid.NewGuid(), TailscaleAction.Configure, TailscaleOperationState.Prepared, new('A',64),
             DateTimeOffset.UtcNow.AddMinutes(5), DateTimeOffset.UtcNow, new(false,true));
+        var logoutPlan = new TailscaleOperation(Guid.NewGuid(), TailscaleAction.Logout, TailscaleOperationState.Prepared, new('A',64),
+            DateTimeOffset.UtcNow.AddMinutes(5), DateTimeOffset.UtcNow);
         var dialogIndex = 0;
         foreach (var dialog in new Control[] {
             new TailscaleConfirmationDialog(plan, layoutClient.Control, "test-host", language, _ => { }),
+            new TailscaleConfirmationDialog(logoutPlan, layoutClient.Control, "test-host", language, _ => { }),
+            new TailscalePreferencesDialog(layoutClient.Control.Preferences!, [], "windows", language, _ => { }),
+            new TailscaleAboutDialog(new TailscaleAboutText(language, "0.1.0", "test-host", "1.test", "host", "example.ts.net", "owner@example.com"), () => { }),
             new TailscaleRecoveryDialog(new(plan.OperationId,layoutClient.Control,true,ExpiresAt:DateTimeOffset.UtcNow.AddMinutes(5)),"test-host",language,_=>{ }),
             new TailscaleLoginDialog("test-host", plan.OperationId, false, "", language, _=>{}),
             new TailscaleLoginDialog("test-host", plan.OperationId, true, "Running", language, _=>{}) })
         {
-            var host = new Window { Content = dialog, Width = 540, Height = 320 }; host.Show(); Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
+            var host = new Window { Content = dialog, Width = 560, Height = 600 }; host.Show(); Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
             var buttons = dialog.GetVisualDescendants().OfType<Button>().ToArray();
             Check(buttons.All(button => button.TranslatePoint(default, dialog) is { } point && point.Y >= 0 && point.Y + button.Bounds.Height <= dialog.Bounds.Height + 1), "dialog buttons visible " + culture);
-            using var image = new RenderTargetBitmap(new PixelSize(540,320)); image.Render(host); image.Save(Path.Combine(output, culture + "-" + dialog.GetType().Name + "-" + dialogIndex++ + ".png"), new PngBitmapEncoderOptions());
+            using var image = new RenderTargetBitmap(new PixelSize(560,600)); image.Render(host); image.Save(Path.Combine(output, culture + "-" + dialog.GetType().Name + "-" + dialogIndex++ + ".png"), new PngBitmapEncoderOptions());
             host.Close(); Dispatcher.UIThread.RunJobs();
         }
     }
@@ -309,10 +362,11 @@ sealed class FakeClient : ITailscaleClient
 {
     public event EventHandler<AuthSessionStateChangedEventArgs>? SessionChanged;
     public HostSettingsConnection Connection = new("test-host", Guid.NewGuid(), Guid.NewGuid());
-    public TailscaleControlSnapshot Control = new(new('A',64), false, true, new(true,false),true);
+    public TailscaleControlSnapshot Control = new(new('A',64), false, true, new(true,false),true,
+        Preferences: new(true, false, false, null, false, false, false, false), Platform: "windows");
     public int ControlReads, Prepares, Executions;
     public bool LoseResponse, BadPlan, UnknownResult, LoseCloseResponse, BadClosure, BadClosureTimestamp, PreparedRead, SuppressClosure;
-    public bool Restricted, StatusError, ControlError;
+    public bool Restricted, StatusError, ControlError, WithExitNodePeer, LoggedOut;
     public bool RecoveryReady = true;
     public int CloseCalls;
     public TaskCompletionSource<TailscaleOperation>? HoldPlan, HoldExecute;
@@ -325,8 +379,15 @@ sealed class FakeClient : ITailscaleClient
     public Task<TailscaleStatusDto> GetStatusAsync(HostSettingsConnection connection, CancellationToken ct)
     {
         if (StatusError) throw new HttpRequestException("tailscale.unavailable");
-        return Task.FromResult(new TailscaleStatusDto("observed","1.test","Stopped",new("node","host","host.example",["100.64.0.1"],true,false),
-            Restricted ? null : [], PeersRestricted: Restricted));
+        var self = new TailscalePeerDto("node", "host", "host.example", ["100.64.0.1"], true, false,
+            Os: "linux", Tags: ["server"], KeyExpiry: DateTimeOffset.UtcNow.AddDays(60), Owner: "owner@example.com");
+        var peers = WithExitNodePeer
+            ? new[] { new TailscalePeerDto("exit", "gateway", "gateway.example", ["100.64.0.9"], true, false,
+                Os: "linux", ExitNodeOption: true, Tags: ["exit"], Owner: "owner@example.com") }
+            : [];
+        return Task.FromResult(new TailscaleStatusDto("observed","1.test",LoggedOut ? "NeedsLogin" : "Stopped",self,
+            Restricted ? null : peers, PeersRestricted: Restricted, TailnetName: LoggedOut ? null : "example.ts.net",
+            MagicDnsSuffix: "example.ts.net", Account: LoggedOut ? null : new("owner@example.com", "Owner Name")));
     }
     public Task<TailscaleControlSnapshot> GetControlAsync(HostSettingsConnection connection, CancellationToken ct)
     {
@@ -337,14 +398,18 @@ sealed class FakeClient : ITailscaleClient
     public Task<TailscaleOperation> PrepareAsync(HostSettingsConnection connection,TailscalePrepareRequest request,CancellationToken ct)
     {
         Prepares++; LastRequest=request;
-        LastPlan=new(request.OperationId,request.Action,TailscaleOperationState.Prepared,request.ExpectedRevision,DateTimeOffset.UtcNow.AddMinutes(5),DateTimeOffset.UtcNow,request.Configuration);
+        LastPlan=new(request.OperationId,request.Action,TailscaleOperationState.Prepared,request.ExpectedRevision,DateTimeOffset.UtcNow.AddMinutes(5),DateTimeOffset.UtcNow,request.Configuration, Preferences: request.Preferences);
         _operations[request.OperationId]=LastPlan;
         return HoldPlan?.Task ?? Task.FromResult(BadPlan ? LastPlan with { OperationId=Guid.NewGuid() } : LastPlan);
     }
     public Task<TailscaleOperation> ExecuteAsync(HostSettingsConnection connection,Guid operationId,CancellationToken ct)
     {
         Executions++; var plan=_operations[operationId];
-        Control=Control with { Connected=plan.Action==TailscaleAction.Configure ? Control.Connected : plan.Action==TailscaleAction.Connect, Configuration=plan.Configuration??Control.Configuration,Revision=new('B',64) };
+        if (plan.Action == TailscaleAction.Logout) LoggedOut = true;
+        Control=Control with { Connected=plan.Action is TailscaleAction.Configure or TailscaleAction.ConfigurePreferences ? Control.Connected : plan.Action==TailscaleAction.Connect,
+            Authenticated=plan.Action==TailscaleAction.Logout ? false : Control.Authenticated,
+            CanControl=plan.Action==TailscaleAction.Logout ? false : Control.CanControl,
+            Configuration=plan.Configuration??Control.Configuration, Preferences=plan.Preferences??Control.Preferences, Revision=new('B',64) };
         LastResult=plan with { State=UnknownResult ? TailscaleOperationState.Unknown : TailscaleOperationState.Applied,ObservedRevision=UnknownResult ? null : Control.Revision }; _operations[operationId]=LastResult;
         if(LoseResponse) { LoseResponse=false; throw new HttpRequestException("private transport detail"); }
         return HoldExecute?.Task ?? Task.FromResult(LastResult);

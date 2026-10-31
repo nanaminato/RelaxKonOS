@@ -27,7 +27,8 @@ public sealed class TailscaleApp : RemoteApplicationBase
         var login = new TailscaleLoginViewModel(context.Services.GetRequiredService<ITailscaleLoginClient>(),
             new TailscaleOperationReferences(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "tailscale-login-operations.json")),
             context.Services.GetRequiredService<IHostElevationBroker>(), language)
-            { HostMayHaveChanged = model.InvalidateControl, ReadBackendStateAsync = model.ReadBackendStateAsync };
+            { HostMayHaveChanged = model.InvalidateControl, ReadBackendStateAsync = model.ReadBackendStateAsync,
+              AccountLineProvider = () => model.AccountLine };
         var workspace = new TailscaleWorkspace(model, login);
         var window = context.ShowWindow(LocalizedText.Get("tailscale.title"), workspace,
             new Rect(100, 80, 980, 640), Manifest.IconGlyph);
@@ -53,7 +54,9 @@ public sealed class TailscaleApp : RemoteApplicationBase
         model.ConfirmAsync = async (operation, baseline, target) =>
         {
             var accepted = false;
-            await context.ShowDialogAsync<bool>(window, LocalizedText.Get("tailscale.preview"), dialog =>
+            var title = operation.Action == TailscaleAction.Logout
+                ? LocalizedText.Get("tailscale.menu.logout") : LocalizedText.Get("tailscale.preview");
+            await context.ShowDialogAsync<bool>(window, title, dialog =>
                 new TailscaleConfirmationDialog(operation, baseline, target, language, value => { accepted = value; dialog.Close(value); }), new Size(580, 380));
             return accepted;
         };
@@ -63,6 +66,30 @@ public sealed class TailscaleApp : RemoteApplicationBase
             await context.ShowDialogAsync<bool>(window, LocalizedText.Get("tailscale.recovery.close"), dialog =>
                 new TailscaleRecoveryDialog(preview, target, language, value => { accepted = value; dialog.Close(value); }), new Size(580, 380));
             return accepted;
+        };
+        model.EditPreferencesDialogAsync = async (preferences, exitNodes, platform) =>
+        {
+            TailscalePreferences? result = null;
+            await context.ShowDialogAsync<TailscalePreferences?>(window, LocalizedText.Get("tailscale.preferences.title"), dialog =>
+                new TailscalePreferencesDialog(preferences, exitNodes, platform, language, value => { result = value; dialog.Close(value); }), new Size(560, 600));
+            return result;
+        };
+        model.OpenAdminConsoleHandler = () =>
+        {
+            // A fixed official page opened on this client; the host is never asked to browse.
+            try
+            {
+                using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                    "https://login.tailscale.com/admin/machines") { UseShellExecute = true });
+                return Task.CompletedTask;
+            }
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException) { return Task.CompletedTask; }
+        };
+        model.ShowAboutHandler = async () =>
+        {
+            await context.ShowDialogAsync<bool>(window, LocalizedText.Get("tailscale.about.title"), dialog =>
+                new TailscaleAboutDialog(new TailscaleAboutText(language, Manifest.Version, model.Target, model.HostVersion,
+                    model.DeviceName, model.TailnetDisplay, model.AccountLogin), () => dialog.Close(true)), new Size(520, 360));
         };
 
     }

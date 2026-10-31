@@ -32,7 +32,7 @@ class AboutNavigationTest {
             }
         }
         val context = rule.activity
-        rule.onNodeWithText(context.getString(R.string.about_licenses_view)).performScrollTo().performClick()
+        rule.onNodeWithText(context.getString(R.string.about_licenses_title)).performScrollTo().performClick()
         rule.onNodeWithContentDescription(context.getString(R.string.common_back)).assertIsDisplayed()
         rule.runOnIdle { active.value = false }
         rule.onNodeWithText("Other category").assertIsDisplayed()
@@ -40,7 +40,7 @@ class AboutNavigationTest {
         rule.runOnIdle { assertEquals(1, shellBacks); active.value = true }
         rule.onNodeWithContentDescription(context.getString(R.string.common_back)).assertIsDisplayed()
         rule.runOnIdle { rule.activity.onBackPressedDispatcher.onBackPressed() }
-        rule.onNodeWithText(context.getString(R.string.about_licenses_view)).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(context.getString(R.string.about_licenses_title)).performScrollTo().assertIsDisplayed()
         rule.runOnIdle { assertEquals(1, shellBacks) }
     }
 }

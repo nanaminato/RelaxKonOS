@@ -85,7 +85,10 @@ internal sealed partial class TailscaleControlOperations(string root, Action<str
             // An interrupted old helper may have left a native command in flight. No new mutation may pass it.
             if (HasUnresolved()) return Fail(PrivilegedProblemCode.Conflict);
             var baseline = await native.ReadAsync(lifetime.Token);
-            if (!baseline.CanControl || baseline.Revision != target.ExpectedRevision || target.Action == TailscaleAction.Connect && !baseline.Authenticated)
+            if (!baseline.CanControl || baseline.Revision != target.ExpectedRevision
+                || target.Action == TailscaleAction.Connect && !baseline.Authenticated
+                || target.Action == TailscaleAction.ConfigurePreferences && baseline.Preferences is null
+                || target.Action == TailscaleAction.Logout && !baseline.Authenticated)
                 return Fail(PrivilegedProblemCode.Conflict);
             Write(id, "intent", target);
             TailscaleControlResult result;
@@ -98,6 +101,9 @@ internal sealed partial class TailscaleControlOperations(string root, Action<str
                     TailscaleAction.Connect => observed.Connected && observed.Authenticated && observed.Configuration == baseline.Configuration,
                     TailscaleAction.Disconnect => !observed.Connected && observed.Configuration == baseline.Configuration,
                     TailscaleAction.Configure => observed.Configuration == target.Configuration && observed.Connected == baseline.Connected,
+                    TailscaleAction.ConfigurePreferences => observed.Preferences == target.Preferences
+                        && observed.Connected == baseline.Connected && observed.Authenticated,
+                    TailscaleAction.Logout => !observed.Authenticated && !observed.Connected,
                     _ => false
                 };
                 result = completed && matches ? new(id, true, observed) : new(id, false, ProblemCode: "tailscale.operation.outcome_unknown");
@@ -174,7 +180,10 @@ internal sealed partial class TailscaleControlOperations(string root, Action<str
         if (!await native.IsQuiescentAsync(ct)) return RecoveryBlocked(id, "tailscale.recovery.cli_active");
         var before = await native.ReadAsync(ct);
         var after = await native.ReadAsync(ct);
-        if (before != after || !after.CanControl || after.Revision is not { Length: 64 } || !after.Revision.All(Uri.IsHexDigit) || !await native.IsQuiescentAsync(ct))
+        // A logout intent is closed from either a signed-in or signed-out observation; both are
+        // real states, and the operator explicitly accepts whichever one is observed.
+        var logout = intent.Action == TailscaleAction.Logout;
+        if (before != after || (!logout && !after.CanControl) || after.Revision is not { Length: 64 } || !after.Revision.All(Uri.IsHexDigit) || !await native.IsQuiescentAsync(ct))
             return RecoveryBlocked(id, "tailscale.recovery.observation_changed");
         if (request.Operation == PrivilegedOperationKind.TailscaleRecoveryRead)
             return new(true, TailscaleRecovery: new(id, after, true));
@@ -217,7 +226,11 @@ internal sealed partial class TailscaleControlOperations(string root, Action<str
 
     private static bool Valid(TailscalePrepareRequest change) => Enum.IsDefined(change.Action)
         && change.ExpectedRevision is { Length: 64 } && change.ExpectedRevision.All(Uri.IsHexDigit)
-        && (change.Action == TailscaleAction.Configure) == (change.Configuration is not null);
+        && (change.Action == TailscaleAction.Configure) == (change.Configuration is not null)
+        && (change.Action == TailscaleAction.ConfigurePreferences) == (change.Preferences is not null)
+        && (change.Preferences is not { } preferences || Valid(preferences));
+    private static bool Valid(TailscalePreferences preferences) => preferences.ExitNode is null or "" or "auto:any"
+        || System.Net.IPAddress.TryParse(preferences.ExitNode, out _);
     private static PrivilegedOperationResult Fail(PrivilegedProblemCode code) => new(false, 1, ProblemCode: code);
     private async Task<FileStream> AcquireAsync(CancellationToken ct)
     {

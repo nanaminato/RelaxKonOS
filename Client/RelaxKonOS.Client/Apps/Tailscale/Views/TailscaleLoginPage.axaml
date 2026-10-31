@@ -8,6 +8,7 @@
      <TextBlock Text="{loc:Loc tailscale.login.title}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
      <TextBlock Text="{loc:Loc tailscale.login.intro}" TextWrapping="Wrap" />
      <TextBlock Text="{Binding Target}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" />
+     <TextBlock Text="{Binding AccountLine}" IsVisible="{Binding HasAccountLine}" FontSize="12" TextWrapping="Wrap" />
      <Border Background="{DynamicResource SurfaceSunkenBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
       <TextBlock Text="{Binding AvailabilityText}" TextWrapping="Wrap" />
      </Border>

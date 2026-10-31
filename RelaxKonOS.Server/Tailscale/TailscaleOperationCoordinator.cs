@@ -50,14 +50,21 @@ public sealed class TailscaleOperationCoordinator(TailscaleOperationJournal jour
     {
         var actor = Actor(principal);
         if (request.OperationId == Guid.Empty || !Revision(request.ExpectedRevision) || !Enum.IsDefined(request.Action)
-            || (request.Action == TailscaleAction.Configure) != (request.Configuration is not null))
+            || (request.Action == TailscaleAction.Configure) != (request.Configuration is not null)
+            || (request.Action == TailscaleAction.ConfigurePreferences) != (request.Preferences is not null)
+            || request.Configuration is not null && request.Action != TailscaleAction.Configure
+            || request.Preferences is { } requested && !ValidPreferences(requested))
             throw new TailscaleControlException(400, "tailscale.invalid_request");
+        request = request.Preferences is { } preferences
+            ? request with { Preferences = preferences with { ExitNode = NormalizeExitNode(preferences.ExitNode) } }
+            : request;
         RequireGrant(principal);
         using var lease = await journal.AcquireAsync(ct);
         if (journal.Read(request.OperationId) is { } existing)
         {
             if (existing.Actor != actor || existing.Operation.Action != request.Action
-                || existing.Operation.ExpectedRevision != request.ExpectedRevision || existing.Operation.Configuration != request.Configuration)
+                || existing.Operation.ExpectedRevision != request.ExpectedRevision || existing.Operation.Configuration != request.Configuration
+                || existing.Operation.Preferences != request.Preferences)
                 throw new TailscaleControlException(409, "tailscale.idempotency_conflict");
             return Normalize(existing).Operation;
         }
@@ -65,7 +72,7 @@ public sealed class TailscaleOperationCoordinator(TailscaleOperationJournal jour
         ValidateBaseline(snapshot, request);
         var now = Now;
         var operation = new TailscaleOperation(request.OperationId, request.Action, TailscaleOperationState.Prepared,
-            request.ExpectedRevision, now.AddMinutes(5), now, request.Configuration);
+            request.ExpectedRevision, now.AddMinutes(5), now, request.Configuration, Preferences: request.Preferences);
         journal.Save(new(actor, operation, snapshot));
         return operation;
     }
@@ -80,7 +87,7 @@ public sealed class TailscaleOperationCoordinator(TailscaleOperationJournal jour
         if (stored.Operation.ExpiresAt <= Now) return Save(stored, TailscaleOperationState.Rejected, "tailscale.plan_expired");
         RequireGrant(principal);
         var operation = stored.Operation;
-        var request = new TailscalePrepareRequest(operationId, operation.ExpectedRevision, operation.Action, operation.Configuration);
+        var request = new TailscalePrepareRequest(operationId, operation.ExpectedRevision, operation.Action, operation.Configuration, operation.Preferences);
         ValidateBaseline(await host.ReadAsync(ct), request);
         // A prepared plan grants no authority: re-check after waiting for the lock and baseline read.
         RequireGrant(principal);
@@ -108,7 +115,7 @@ public sealed class TailscaleOperationCoordinator(TailscaleOperationJournal jour
         {
             var receipt = await host.GetResultAsync(operationId, ct);
             var operation = stored.Operation;
-            var request = new TailscalePrepareRequest(operationId, operation.ExpectedRevision, operation.Action, operation.Configuration);
+            var request = new TailscalePrepareRequest(operationId, operation.ExpectedRevision, operation.Action, operation.Configuration, operation.Preferences);
             if (receipt?.OperationId == operationId && receipt.Completed && receipt.Snapshot is { } observed
                 && Revision(observed.Revision) && Matches(request, stored.Baseline, observed))
                 return Save(stored, TailscaleOperationState.Applied, revision: observed.Revision);
@@ -128,7 +135,8 @@ public sealed class TailscaleOperationCoordinator(TailscaleOperationJournal jour
         RequireGrant(principal);
         if (recovery.OperationId != operationId || recovery.Closure is not null)
             throw new TailscaleControlException(409, "tailscale.recovery.receipt_mismatch");
-        var plan = recovery.CanClose && recovery.Observation is { CanControl: true } observation && Revision(observation.Revision)
+        var plan = recovery.CanClose && recovery.Observation is { } observation && Revision(observation.Revision)
+            && (stored.Operation.Action == TailscaleAction.Logout || observation.CanControl)
             ? new TailscaleRecoveryPlan(observation.Revision, Now.AddMinutes(5)) : null;
         journal.Save(stored with { RecoveryPlan = plan });
         return recovery with { CanClose = plan is not null, ExpiresAt = plan?.ExpiresAt };
@@ -152,7 +160,9 @@ public sealed class TailscaleOperationCoordinator(TailscaleOperationJournal jour
             throw new TailscaleControlException(409, "tailscale.recovery.preview_required");
         var preview = await host.ReadRecoveryAsync(request.OperationId, ct);
         if (preview.OperationId != request.OperationId || !preview.CanClose || preview.Closure is not null
-            || preview.Observation is not { CanControl: true } || preview.Observation.Revision != request.ExpectedRevision)
+            || preview.Observation is not { } closeObservation
+            || (!closeObservation.CanControl && stored.Operation.Action != TailscaleAction.Logout)
+            || closeObservation.Revision != request.ExpectedRevision)
             throw new TailscaleControlException(409, "tailscale.recovery.not_ready");
         RequireGrant(principal);
         ct.ThrowIfCancellationRequested();
@@ -172,7 +182,8 @@ public sealed class TailscaleOperationCoordinator(TailscaleOperationJournal jour
     private StoredTailscaleOperation AcceptClosure(StoredTailscaleOperation stored, TailscaleRecoveryClosure closure)
     {
         if (closure.OperationId != stored.Operation.OperationId || closure.Actor != stored.Actor
-            || closure.ClosedAt == default || closure.Observation is null || closure.Observation.Configuration is null || !closure.Observation.CanControl
+            || closure.ClosedAt == default || closure.Observation is null || closure.Observation.Configuration is null
+            || !closure.Observation.CanControl && stored.Operation.Action != TailscaleAction.Logout
             || stored.ClosingRequest?.ExpectedRevision != closure.Observation.Revision || !Revision(closure.Observation.Revision)
             || stored.Operation.State != TailscaleOperationState.Unknown)
             throw new TailscaleControlException(409, "tailscale.recovery.receipt_mismatch");
@@ -208,6 +219,10 @@ public sealed class TailscaleOperationCoordinator(TailscaleOperationJournal jour
         if (!snapshot.CanControl || !Revision(snapshot.Revision)) throw new TailscaleControlException(409, "tailscale.control_unavailable");
         if (snapshot.Revision != request.ExpectedRevision) throw new TailscaleControlException(409, "tailscale.revision_conflict");
         if (request.Action == TailscaleAction.Connect && !snapshot.Authenticated) throw new TailscaleControlException(409, "tailscale.login_required");
+        if (request.Action == TailscaleAction.ConfigurePreferences && snapshot.Preferences is null)
+            throw new TailscaleControlException(409, "tailscale.control_unavailable");
+        if (request.Action == TailscaleAction.Logout && !snapshot.Authenticated)
+            throw new TailscaleControlException(409, "tailscale.control_unavailable");
     }
 
     private static bool Matches(TailscalePrepareRequest request, TailscaleControlSnapshot baseline, TailscaleControlSnapshot snapshot) => request.Action switch
@@ -215,8 +230,15 @@ public sealed class TailscaleOperationCoordinator(TailscaleOperationJournal jour
         TailscaleAction.Connect => snapshot.Connected && snapshot.Authenticated && snapshot.Configuration == baseline.Configuration,
         TailscaleAction.Disconnect => !snapshot.Connected && snapshot.Configuration == baseline.Configuration,
         TailscaleAction.Configure => snapshot.Configuration == request.Configuration && snapshot.Connected == baseline.Connected,
+        TailscaleAction.ConfigurePreferences => snapshot.Preferences == request.Preferences
+            && snapshot.Connected == baseline.Connected && snapshot.Authenticated,
+        TailscaleAction.Logout => !snapshot.Authenticated && !snapshot.Connected,
         _ => false
     };
+    private static bool ValidPreferences(TailscalePreferences preferences) => preferences.ExitNode is null or "" or "auto:any"
+        || System.Net.IPAddress.TryParse(preferences.ExitNode, out _);
+    private static string? NormalizeExitNode(string? value) => value == "auto:any" ? "auto:any"
+        : value is { Length: > 0 } && System.Net.IPAddress.TryParse(value, out var address) ? address.ToString() : null;
     private void RequireGrant(ClaimsPrincipal principal)
     {
         if (!grants.IsGranted(principal))

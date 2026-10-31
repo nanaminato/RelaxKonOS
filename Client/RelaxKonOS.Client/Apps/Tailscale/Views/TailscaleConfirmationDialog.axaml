@@ -6,7 +6,10 @@
   <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
    <StackPanel Spacing="12">
     <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
-    <TextBlock Text="{loc:Loc tailscale.network_risk}" TextWrapping="Wrap" />
+    <Border Background="{DynamicResource SurfaceSunkenBrush}" CornerRadius="8" Padding="12" IsVisible="{Binding HasDetails}">
+     <TextBlock Text="{Binding Details}" TextWrapping="Wrap" FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12" />
+    </Border>
+    <TextBlock Text="{Binding Risk}" TextWrapping="Wrap" />
     <TextBlock Text="{Binding OperationId}" TextWrapping="Wrap" />
    </StackPanel>
   </ScrollViewer>

@@ -16,6 +16,26 @@
       <TextBlock Text="{Binding ConnectionBadge}" FontSize="12" VerticalAlignment="Center" MaxWidth="140" TextTrimming="CharacterEllipsis" />
      </StackPanel>
     </Border>
+    <Button x:Name="AccountMenuButton" Classes="header-action" Content="{Binding AccountInitials}" FontSize="12" FontWeight="SemiBold"
+      Background="{DynamicResource SurfaceSunkenBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1" CornerRadius="16"
+      ToolTip.Tip="{Binding AccountHeader}" AutomationProperties.Name="{loc:Loc tailscale.menu.account}">
+     <Button.Flyout>
+      <MenuFlyout>
+       <MenuItem Header="{Binding AccountHeader}" IsEnabled="False" />
+       <MenuItem Header="{Binding SelfLine}" IsEnabled="False" />
+       <Separator />
+       <MenuItem Header="{loc:Loc tailscale.menu.network_devices}" Click="OpenDevices" />
+       <MenuItem Header="{loc:Loc tailscale.menu.exit_nodes}" Command="{Binding EditPreferencesCommand}" />
+       <MenuItem Header="{loc:Loc tailscale.menu.preferences}" Command="{Binding EditPreferencesCommand}" />
+       <Separator />
+       <MenuItem Header="{loc:Loc tailscale.menu.admin_console}" Command="{Binding OpenAdminConsoleCommand}" />
+       <MenuItem Header="{loc:Loc tailscale.menu.about}" Command="{Binding ShowAboutCommand}" />
+       <Separator />
+       <MenuItem Header="{loc:Loc tailscale.menu.logout}" Command="{Binding LogoutCommand}" />
+       <MenuItem Header="{loc:Loc tailscale.menu.exit}" Click="ExitManager" />
+      </MenuFlyout>
+     </Button.Flyout>
+    </Button>
     <Button Classes="header-action header-refresh" Command="{Binding RefreshCommand}" VerticalAlignment="Center"
       ToolTip.Tip="{loc:Loc tailscale.refresh}" AutomationProperties.Name="{loc:Loc tailscale.refresh}" />
    </StackPanel>
@@ -24,7 +44,26 @@
   <Grid x:Name="WorkspaceBody" Grid.Row="1" ColumnDefinitions="210,*" ClipToBounds="True">
    <Border Classes="app-sidebar">
     <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-     <StackPanel Spacing="4" Margin="14,22">
+     <StackPanel Spacing="4" Margin="12,16">
+      <Border Classes="app-panel" Padding="10" Margin="0,0,0,12">
+       <StackPanel Spacing="8">
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+         <Border Width="34" Height="34" CornerRadius="17" Background="{DynamicResource AccentMutedBrush}" VerticalAlignment="Center">
+          <TextBlock Text="{Binding AccountInitials}" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"
+            Foreground="{DynamicResource AccentBrush}" />
+         </Border>
+         <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
+          <TextBlock Text="{Binding AccountName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding AccountName}" />
+          <TextBlock Text="{Binding AccountLogin}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"
+            ToolTip.Tip="{Binding AccountLogin}" />
+         </StackPanel>
+        </Grid>
+        <TextBlock Text="{Binding TailnetDisplay}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" TextTrimming="CharacterEllipsis" />
+        <TextBlock Text="{Binding SelfLine}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+        <Button Content="{loc:Loc tailscale.account_authorize}" Command="{Binding AuthorizePeersCommand}" IsVisible="{Binding AccountRestricted}"
+          HorizontalAlignment="Left" Padding="8,3" FontSize="11" />
+       </StackPanel>
+      </Border>
       <TextBlock Text="{loc:Loc tailscale.workspace}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="11" FontWeight="SemiBold" Margin="10,0,0,6" />
       <Button x:Name="Devices" Classes="workspace-nav" Tag="devices" Click="NavigationButton_Click"
         Content="{loc:Loc tailscale.devices}" HorizontalContentAlignment="Left" Padding="10,8" />

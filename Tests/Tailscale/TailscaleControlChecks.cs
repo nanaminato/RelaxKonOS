@@ -120,6 +120,17 @@ internal static class TailscaleControlChecks
             var config = Request(TailscaleAction.Configure) with { Configuration = new(false, true) };
             await coordinator.PrepareAsync(principal, config, default);
             Check((await coordinator.ExecuteAsync(principal, config.OperationId, true, default)).State == TailscaleOperationState.Applied && host.Snapshot.Configuration == config.Configuration);
+            // The extended official preference set shares the same revision and verified readback.
+            var preferences = new TailscalePreferences(true, false, true, "100.64.0.9", true, false, true, false);
+            var preferenceRequest = Request(TailscaleAction.ConfigurePreferences) with { Preferences = preferences };
+            await coordinator.PrepareAsync(principal, preferenceRequest, default);
+            Check((await coordinator.ExecuteAsync(principal, preferenceRequest.OperationId, true, default)).State == TailscaleOperationState.Applied
+                && host.Snapshot.Preferences == preferences);
+            await Reject(() => coordinator.PrepareAsync(principal, Request(TailscaleAction.ConfigurePreferences), default), 400, "tailscale.invalid_request");
+            await Reject(() => coordinator.PrepareAsync(principal, Request(TailscaleAction.Configure) with
+                { Configuration = new(true, true), Preferences = preferences }, default), 400, "tailscale.invalid_request");
+            await Reject(() => coordinator.PrepareAsync(principal, Request(TailscaleAction.ConfigurePreferences) with
+                { Preferences = preferences with { ExitNode = "not-an-ip" } }, default), 400, "tailscale.invalid_request");
             var wrongReadback = Request(TailscaleAction.Configure) with { Configuration = new(true, false) };
             await coordinator.PrepareAsync(principal, wrongReadback, default);
             host.WrongReadback = true;
@@ -140,6 +151,13 @@ internal static class TailscaleControlChecks
             host.OnRead = null;
             Check(expiredAfterRead.State == TailscaleOperationState.Rejected && expiredAfterRead.ProblemCode == "tailscale.plan_expired" && host.Executions == executionsBeforeExpiry);
             Check((await timed.GetAsync(principal,expiring.OperationId,default)).State == TailscaleOperationState.Rejected);
+            // Logout is a closed action that proves the signed-out post-state before completing.
+            host.Snapshot = host.Snapshot with { Connected = false, Authenticated = true, CanControl = true };
+            var logout = Request(TailscaleAction.Logout);
+            await coordinator.PrepareAsync(principal, logout, default);
+            var loggedOut = await coordinator.ExecuteAsync(principal, logout.OperationId, true, default);
+            Check(loggedOut.State == TailscaleOperationState.Applied && !host.Snapshot.Authenticated && !host.Snapshot.CanControl);
+            await Reject(() => coordinator.PrepareAsync(principal, Request(TailscaleAction.Logout), default), 409, "tailscale.control_unavailable");
             Console.WriteLine($"{count} Tailscale durable control checks passed.");
         }
         finally { folder.Delete(recursive: true); }
@@ -147,7 +165,8 @@ internal static class TailscaleControlChecks
 
     private sealed class ControlHost : ITailscaleControlHost
     {
-        public TailscaleControlSnapshot Snapshot = new(new('A', 64), false, true, new(true, false), true);
+        public TailscaleControlSnapshot Snapshot = new(new('A', 64), false, true, new(true, false), true,
+            Preferences: new(true, false, false, null, false, false, false, false), Platform: "linux");
         public int Reads, Executions;
         public CancellationToken LastToken;
         public Action? OnExecute, OnRead;
@@ -163,8 +182,11 @@ internal static class TailscaleControlChecks
             Executions++; LastToken = cancellationToken; OnExecute?.Invoke();
             if (Throw) throw new IOException("private native diagnostic");
             if (!WrongReadback) Snapshot = Snapshot with {
-                Connected = request.Action == TailscaleAction.Configure ? Snapshot.Connected : request.Action == TailscaleAction.Connect,
+                Connected = request.Action is TailscaleAction.Configure or TailscaleAction.ConfigurePreferences ? Snapshot.Connected : request.Action == TailscaleAction.Connect,
+                Authenticated = request.Action == TailscaleAction.Logout ? false : Snapshot.Authenticated,
+                CanControl = request.Action == TailscaleAction.Logout ? false : Snapshot.CanControl,
                 Configuration = request.Configuration ?? Snapshot.Configuration,
+                Preferences = request.Preferences ?? Snapshot.Preferences,
                 Revision = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Guid.NewGuid().ToByteArray())) };
             if (ChangeUnrelated) Snapshot = Snapshot with { Configuration = new(!Snapshot.Configuration.AcceptDns, !Snapshot.Configuration.AcceptRoutes) };
             return Task.FromResult(new TailscaleControlResult(WrongIdentity ? Guid.NewGuid() : request.OperationId, true, Snapshot));

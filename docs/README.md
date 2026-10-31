@@ -95,7 +95,7 @@ RelaxKonOS 采用状态同步模式（非像素流）：Client 本地渲染 UI�
 
 内置组件中心（ComponentCenter）统一展示宿主组件依赖、安装状态、版本与来源，提供已接入组件的安装维护与操作恢复入口；业务配置、服务控制和日志仍由对应应用负责。当前按组件和平台逐步接入，完整支持与验收边界见[组件中心进度](./platform/RelaxKonOS.ComponentCenter.Progress.md)。
 
-内置 Tailscale 管理器提供远端宿主的设备与连接状态、浏览器登录授权、DNS/路由偏好、连接/断开和原操作恢复，安装维护跳转组件中心。Linux 已有实机验证；Windows MSI、跨版本变更及重启恢复仍待实机验收。详见[Tailscale 实施记录](./applications/RelaxKonOS.Tailscale.Design.md)。
+内置 Tailscale 管理器提供远端宿主的账户与设备详情、自动刷新的连接状态、浏览器登录授权、完整偏好（DNS/路由/传入连接/出口节点/无人值守/自动更新）、连接/断开、退出登录和原操作恢复，安装维护跳转组件中心。Linux 已有实机验证；Windows MSI、跨版本变更及重启恢复仍待实机验收。详见[Tailscale 实施记录](./applications/RelaxKonOS.Tailscale.Design.md)。
 
 内置 Docker 管理器已实现（RemoteDocker）：本机 Docker Engine 检测与状态展示、容器启停重启、镜像拉取与镜像源、Compose 校验/部署/停止，以及网络与卷管理。Server 端通过 `IDockerEngineService` 调用 `docker` CLI，`IDockerComposeService` 处理 Compose 编排。详见 [`RelaxKonOS.DockerManager.md`](./applications/RelaxKonOS.DockerManager.md)。
 
@@ -293,7 +293,7 @@ Application Package
 | **Browser** | 内置浏览器（Avalonia.Controls.WebView + 书签/历史持久化到 Server） | 已实现（导航 + 书签 + 历史 + 浏览器偏好） |
 | **TaskManager** | 远端宿主 OS 任务管理器（CPU/内存/文件系统/网络/磁盘 I/O/GPU 占用 + 进程列表，可结束任务） | 已实现（性能页订阅期间 SignalR 1Hz 推送、60s 历史、跨平台采集；进程页按需低频采样与分页） |
 | **ComponentCenter** | 宿主组件依赖、安装状态、版本与来源的统一入口；已接入组件的安装、更新、卸载及操作恢复 | 分组件接入中；支持的操作与平台验收范围分别见[组件中心进度](./platform/RelaxKonOS.ComponentCenter.Progress.md)，不代表全部组件均已具备完整生命周期。 |
-| **Tailscale** | 远端宿主设备与连接状态、浏览器登录授权、DNS/路由偏好、连接/断开及原操作恢复；安装维护进入组件中心 | 已实现基础管理与生命周期接线；Linux 已有实机验证，Windows MSI、跨版本变更及重启恢复仍待实机验收。见[Tailscale 实施记录](./applications/RelaxKonOS.Tailscale.Design.md)。 |
+| **Tailscale** | 远端宿主账户与设备详情、自动刷新的连接状态、浏览器登录授权、完整偏好（DNS/路由/传入连接/出口节点/无人值守/自动更新）、连接/断开、退出登录及原操作恢复；安装维护进入组件中心 | 已实现基础管理与生命周期接线；Linux 已有实机验证，Windows MSI、跨版本变更及重启恢复仍待实机验收。见[Tailscale 实施记录](./applications/RelaxKonOS.Tailscale.Design.md)。 |
 | **DockerManager** | 本机 Docker Engine 的检测/安装引导、容器/镜像/镜像源/Stack/网络/卷管理 | 已实现（状态检测、资源只读列表、容器启停重启/拉取镜像/镜像源选择/Compose 校验部署停止/网络与卷管理；详见 [`RelaxKonOS.DockerManager.md`](./applications/RelaxKonOS.DockerManager.md)） |
 | **ApplicationDeployments** | 镜像/Java/.NET/Python 应用的定义、不可变发布版本、部署/启停/回滚、日志与可选反向代理 | 已实现基础工作流，已有 HTTP/传输专项测试及隔离 .NET 镜像验证；完整 Docker 平台场景尚未验收，单服务 Compose 项目部署未实现。见 [应用设计与验证](./applications/RelaxKonOS.ApplicationDeployment.Design.md)。 |
 | **ProcessGuardian** | 受守护工作负载、健康检查、自动恢复、日志与原生服务管理 | 已实现（独立 Agent、本机认证 IPC、工作负载声明持久化与启停重启；SignalR `/hubs/guardian-logs` 日志广播；健康/服务适配设计中，详见 [`RelaxKonOS.ProcessGuardian.md`](./applications/RelaxKonOS.ProcessGuardian.md)） |

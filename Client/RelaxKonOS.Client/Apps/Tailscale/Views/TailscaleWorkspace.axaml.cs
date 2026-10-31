@@ -9,6 +9,7 @@ public partial class TailscaleWorkspace : UserControl
 {
     private readonly TailscaleLoginViewModel _login;
     private Button? _selected;
+    private RelaxKonOS.WindowManager.ManagedWindow? _window;
     public TailscaleWorkspace(TailscaleViewModel model, TailscaleLoginViewModel login)
     {
         _login = login;
@@ -27,6 +28,7 @@ public partial class TailscaleWorkspace : UserControl
 
     public void AttachWindowHeader(RelaxKonOS.WindowManager.ManagedWindow window)
     {
+        _window = window;
         Header.DataContext = DataContext;
         Header.Attach(window, HeaderActions);
     }
@@ -35,6 +37,8 @@ public partial class TailscaleWorkspace : UserControl
     {
         if (sender is Button { Tag: string page } button) Show(page, button);
     }
+    private void OpenDevices(object? sender, RoutedEventArgs e) => Show("devices", Devices);
+    private void ExitManager(object? sender, RoutedEventArgs e) => _window?.CloseCommand.Execute(null);
     private void Show(string page, Button button)
     {
         _selected?.Classes.Remove("nav-selected");

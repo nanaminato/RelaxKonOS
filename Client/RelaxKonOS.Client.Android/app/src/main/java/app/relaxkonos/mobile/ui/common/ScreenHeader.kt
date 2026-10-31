@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,6 +41,7 @@ fun ScreenHeader(
     onBack: (() -> Unit)? = null,
     backAlignment: Alignment.Vertical = Alignment.CenterVertically,
     inlineTrailing: Boolean = false,
+    compact: Boolean = false,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     val workspace = LocalWorkspaceHeader.current
@@ -55,7 +56,8 @@ fun ScreenHeader(
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         val titleContent: @Composable (Modifier) -> Unit = { titleModifier ->
             Column(titleModifier, verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                Text(title, style = MaterialTheme.typography.headlineMedium,
+                Text(title, style = if (compact || workspace != null) MaterialTheme.typography.titleLarge
+                    else MaterialTheme.typography.headlineMedium,
                     modifier = Modifier.semantics { heading() })
                 if (subtitle != null) {
                     Text(
@@ -68,10 +70,10 @@ fun ScreenHeader(
         }
         val backButton: @Composable RowScope.() -> Unit = {
             if (onBack != null) {
-                FilledTonalIconButton(onClick = onBack, modifier = Modifier.align(backAlignment)) {
+                IconButton(onClick = onBack, modifier = Modifier.align(backAlignment)) {
                     DesktopIcon(
                         icon = DesktopIcons.back,
-                        size = 22.dp,
+                        size = 20.dp,
                         contentDescription = stringResource(R.string.common_back),
                     )
                 }

@@ -76,18 +76,29 @@ if (args.Length is 1 or 2 && args[0] == "--official-tailscale-source")
 if (args.Length != 0) throw new ArgumentException("Unknown Tailscale test mode or invalid arguments.");
 using var document = JsonDocument.Parse("""
 {"BackendState":"Running","Version":"1.90.0","AuthURL":"secret","PrivateKey":"secret",
-"Self":{"ID":"self","HostName":"host","TailscaleIPs":["100.64.0.1"],"Online":true},
-"Peer":{"b":{"ID":"b","HostName":"peer","Online":false},"a":{"ID":"a","Online":true,"ExitNode":true}}}
+"CurrentTailnet":{"Name":"example.ts.net","MagicDNSSuffix":"example.ts.net","MagicDNSEnabled":true},
+"ExitNodeStatus":{"ID":"a","Online":true,"TailscaleIPs":["100.64.0.9/32"]},
+"Self":{"ID":"self","HostName":"host","UserID":7,"OS":"linux","TailscaleIPs":["100.64.0.1"],"Online":true},
+"User":{"7":{"ID":7,"LoginName":"owner@example.com","DisplayName":"Owner"},"8":{"ID":8,"LoginName":"peerowner@example.com","DisplayName":"Peer Owner"}},
+"Peer":{"b":{"ID":"b","HostName":"peer","OS":"windows","UserID":8,"Tags":["server"],"ExitNodeOption":true,"Online":false,"LastSeen":"2026-01-02T03:04:05Z","TailscaleIPs":["100.64.0.2"]},
+"a":{"ID":"a","UserID":8,"OS":"linux","Online":true,"ExitNode":true,"ExitNodeOption":true,"KeyExpiry":"2026-12-31T00:00:00Z","TailscaleIPs":["100.64.0.9"]}}}
 """);
 var status = TailscaleManager.ParseStatus(document.RootElement);
 Check(status.State == "observed" && status.BackendState == "Running");
-Check(status.Self!.Addresses.Single() == "100.64.0.1");
+Check(status.Self!.Addresses.Single() == "100.64.0.1" && status.Self.Os == "linux");
 Check(status.Peers!.Count == 2 && status.Peers[0].Id == "a" && status.Peers[0].ExitNode);
+Check(status.Account?.LoginName == "owner@example.com" && status.Account.DisplayName == "Owner");
+Check(status.TailnetName == "example.ts.net" && status.MagicDnsSuffix == "example.ts.net");
+Check(status.ExitNode?.Id == "a");
+var peerB = status.Peers.First(peer => peer.Id == "b");
+Check(peerB.Owner == "peerowner@example.com" && peerB.Os == "windows" && peerB.Tags?.Contains("server") == true
+    && peerB.ExitNodeOption && peerB.LastSeen is not null);
+Check(status.Peers.First(peer => peer.Id == "a").KeyExpiry is not null);
 Check(!JsonSerializer.Serialize(status).Contains("secret"));
 using var invalid = JsonDocument.Parse("{}");
 Check(TailscaleManager.ParseStatus(invalid.RootElement).State == "invalid-response");
 Check(TailscaleEndpoints.Status == "/api/v1.0/tailscale/status");
-Console.WriteLine("6 Tailscale contract/parser checks passed.");
+Console.WriteLine("11 Tailscale contract/parser checks passed.");
 
 var builder = WebApplication.CreateBuilder();
 builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
@@ -276,6 +287,8 @@ await using (var web = webBuilder.Build())
     http.DefaultRequestHeaders.Authorization = new("test");
     var restricted = JsonSerializer.Deserialize<TailscaleStatusDto>(await http.GetStringAsync(TailscaleEndpoints.Status), new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
     Check(restricted.PeersRestricted && restricted.Peers is null && restricted.Self?.Id == "self");
+    Check(restricted.Account is null && restricted.TailnetName is null && restricted.ExitNode is null
+        && restricted.Self?.Owner is null && restricted.Self?.Tags is null);
     // Observing the connection snapshot needs authentication only; the peer list and every
     // mutation still require the fresh HostNetworkChange/host/tailscale grant.
     var unprivilegedControl = JsonSerializer.Deserialize<TailscaleControlSnapshot>(
@@ -287,6 +300,7 @@ await using (var web = webBuilder.Build())
     grants.Allowed = true;
     var allowed = JsonSerializer.Deserialize<TailscaleStatusDto>(await http.GetStringAsync(TailscaleEndpoints.Status), new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
     Check(!allowed.PeersRestricted && allowed.Peers?.Count == 2);
+    Check(allowed.Account?.LoginName == "owner@example.com" && allowed.TailnetName == "example.ts.net" && allowed.ExitNode?.Id == "a");
     Check(grants.Target == TailscaleAccess.Resource && grants.Capability == RelaxKonOS.Protocol.Privileged.HostElevationCapability.HostNetworkChange);
     var controlSnapshot = JsonSerializer.Deserialize<TailscaleControlSnapshot>(await http.GetStringAsync(TailscaleEndpoints.Control), new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
     Check(controlSnapshot.Revision == controlHost.Snapshot.Revision);
@@ -374,7 +388,7 @@ await using (var web = webBuilder.Build())
     await web.StopAsync();
 }
 httpFolder.Delete(true);
-Console.WriteLine("36 Tailscale HTTP authentication/control/recovery/login checks passed.");
+Console.WriteLine("38 Tailscale HTTP authentication/control/recovery/login checks passed.");
 
 sealed class StubStatusCommand(TailscaleCommandResult result) : ITailscaleStatusCommand
 {
