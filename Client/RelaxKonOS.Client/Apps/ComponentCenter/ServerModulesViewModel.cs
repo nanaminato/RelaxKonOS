@@ -121,6 +121,15 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
             $"{operation.Action} · {operation.ModuleId} {operation.Version} · {operation.State} · {operation.ProblemCode}"));
     public string PackagePlanText => PackagePlan is not { } plan ? "" :
         $"{plan.ModuleId} · {plan.Version} · {plan.PublisherId}\n{plan.ReleaseId}\n{plan.ArtifactSha256}\n{plan.ExpiresAt}";
+    public string StoreItemDetails => SelectedStoreItem is not { } item ? "" :
+        $"{item.ModuleId} · {item.Version} · {item.ReleaseId}\n"
+        + $"{item.SourceId} · {item.PublisherId} · {item.TrustState} · {item.Purpose}\n"
+        + $"{item.Rid} · rid {(item.RidCompatible ? "ok" : "blocked")} · api {item.HostApiMinimum}..<{item.HostApiMaximumExclusive}"
+        + $" · api {(item.HostApiCompatible ? "ok" : "blocked")}\n"
+        + $"{item.ArchiveBytes} bytes · {item.ArtifactSha256}\n"
+        + $"dependencies: {string.Join(", ", item.Dependencies.Select(dependency => $"{dependency.ModuleId} {dependency.MinimumVersion}..<{dependency.MaximumVersionExclusive}"))}\n"
+        + $"capabilities: {string.Join(", ", item.Capabilities)}\n"
+        + $"blocked: {string.Join(", ", item.BlockedBy.Select(blocker => blocker.ProblemCode))}";
     public bool CanEnable => CanPreview(ServerModuleAction.Enable) && Targets.Any(x => !x.DesiredEnabled);
     public bool CanDisable => CanPreview(ServerModuleAction.Disable) && Targets.Any(x => x.DesiredEnabled);
     public bool CanWake => CanPreview(ServerModuleAction.Wake);
@@ -174,7 +183,8 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     }
     partial void OnSelectedStoreItemChanged(ServerModuleStoreItemDto? value)
     {
-        OnPropertyChanged(nameof(CanInstallStoreItem)); InstallStoreItemCommand.NotifyCanExecuteChanged(); Notify();
+        OnPropertyChanged(nameof(StoreItemDetails)); OnPropertyChanged(nameof(CanInstallStoreItem));
+        InstallStoreItemCommand.NotifyCanExecuteChanged(); Notify();
     }
     private void Notify()
     {
@@ -182,6 +192,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         OnPropertyChanged(nameof(CanWake)); OnPropertyChanged(nameof(CanSleep));
         OnPropertyChanged(nameof(CanSetPolicy));
         OnPropertyChanged(nameof(PackageDetails)); OnPropertyChanged(nameof(PackageVersionsText)); OnPropertyChanged(nameof(PackageOperationText));
+        OnPropertyChanged(nameof(StoreItemDetails));
         EnableCommand.NotifyCanExecuteChanged(); DisableCommand.NotifyCanExecuteChanged(); ApplyCommand.NotifyCanExecuteChanged();
         WakeCommand.NotifyCanExecuteChanged(); SleepCommand.NotifyCanExecuteChanged();
         SetPolicyCommand.NotifyCanExecuteChanged(); ApplyPackagePlanCommand.NotifyCanExecuteChanged();

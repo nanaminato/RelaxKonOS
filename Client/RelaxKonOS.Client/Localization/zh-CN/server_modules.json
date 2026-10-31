@@ -41,6 +41,7 @@
     "server_modules.store_search": "搜索",
     "server_modules.store_install": "从商店安装",
     "server_modules.store_empty": "没有匹配的已接纳发布。",
-    "server_modules.store_downloading": "正在下载已接纳发布…"
+    "server_modules.store_downloading": "正在下载已接纳发布…",
+    "server_modules.store_details": "发布详情"
   }
 }

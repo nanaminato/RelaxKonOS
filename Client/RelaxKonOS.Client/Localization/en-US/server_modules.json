@@ -41,6 +41,7 @@
     "server_modules.store_search": "Search",
     "server_modules.store_install": "Install from store",
     "server_modules.store_empty": "No accepted release matched.",
-    "server_modules.store_downloading": "Downloading the accepted release…"
+    "server_modules.store_downloading": "Downloading the accepted release…",
+    "server_modules.store_details": "Release details"
   }
 }
