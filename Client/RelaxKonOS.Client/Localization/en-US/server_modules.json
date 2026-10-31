@@ -35,6 +35,12 @@
     "server_modules.package_plan_ready": "Package verified. Review the frozen plan, then confirm.",
     "server_modules.package_installed_restart": "Installed. Restart the server to verify the package operation.",
     "server_modules.rollback_version": "Roll back to selected version",
-    "server_modules.package_rolled_back": "Rollback recorded. Restart the server to verify."
+    "server_modules.package_rolled_back": "Rollback recorded. Restart the server to verify.",
+    "server_modules.store": "Module store",
+    "server_modules.store_query": "Search accepted modules…",
+    "server_modules.store_search": "Search",
+    "server_modules.store_install": "Install from store",
+    "server_modules.store_empty": "No accepted release matched.",
+    "server_modules.store_downloading": "Downloading the accepted release…"
   }
 }

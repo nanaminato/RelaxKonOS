@@ -35,6 +35,12 @@
     "server_modules.package_plan_ready": "パッケージを検証しました。固定された計画を確認してから確定してください。",
     "server_modules.package_installed_restart": "インストールしました。サーバー再起動後にパッケージ操作を確認します。",
     "server_modules.rollback_version": "選択したバージョンへ戻す",
-    "server_modules.package_rolled_back": "ロールバックを記録しました。サーバー再起動後に確認します。"
+    "server_modules.package_rolled_back": "ロールバックを記録しました。サーバー再起動後に確認します。",
+    "server_modules.store": "モジュールストア",
+    "server_modules.store_query": "受け入れ済みモジュールを検索…",
+    "server_modules.store_search": "検索",
+    "server_modules.store_install": "ストアからインストール",
+    "server_modules.store_empty": "一致する受け入れ済みリリースがありません。",
+    "server_modules.store_downloading": "受け入れ済みリリースをダウンロードしています…"
   }
 }

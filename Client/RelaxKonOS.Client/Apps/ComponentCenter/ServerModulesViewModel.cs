@@ -36,9 +36,14 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     [ObservableProperty] private IReadOnlyList<ServerPackageOperationDto> packageOperations = [];
     [ObservableProperty] private string packageStatus = "";
     [ObservableProperty] private ServerModulePackagePlanDto? packagePlan;
+    [ObservableProperty] private string storeQuery = "";
+    [ObservableProperty] private IReadOnlyList<ServerModuleStoreItemDto> storeItems = [];
+    [ObservableProperty] private ServerModuleStoreItemDto? selectedStoreItem;
     public bool HasPackagePlan => PackagePlan is not null;
     public bool CanApplyPackagePlan => PackagePlan is not null && !Busy;
     public bool CanRollbackPackage => !Busy && client.IsCurrent && SelectedPackageVersion is { Active: false };
+    public bool CanInstallStoreItem => !Busy && client.IsCurrent
+        && SelectedStoreItem is { Revoked: false, RidCompatible: true, HostApiCompatible: true };
     private int _versionRequest;
     public IReadOnlyList<ServerModulePolicyChoice> PolicyChoices { get; } = [new("KeepLoaded"), new("IdleDelayed"), new("ReleaseOnLogout")];
     [ObservableProperty] private ServerModulePolicyChoice policyChoice = new("IdleDelayed");
@@ -167,6 +172,10 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         OnPropertyChanged(nameof(PackagePlanText)); OnPropertyChanged(nameof(HasPackagePlan));
         OnPropertyChanged(nameof(CanApplyPackagePlan)); ApplyPackagePlanCommand.NotifyCanExecuteChanged(); Notify();
     }
+    partial void OnSelectedStoreItemChanged(ServerModuleStoreItemDto? value)
+    {
+        OnPropertyChanged(nameof(CanInstallStoreItem)); InstallStoreItemCommand.NotifyCanExecuteChanged(); Notify();
+    }
     private void Notify()
     {
         OnPropertyChanged(nameof(Details)); OnPropertyChanged(nameof(CanEnable)); OnPropertyChanged(nameof(CanDisable)); OnPropertyChanged(nameof(CanApply));
@@ -176,10 +185,10 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         EnableCommand.NotifyCanExecuteChanged(); DisableCommand.NotifyCanExecuteChanged(); ApplyCommand.NotifyCanExecuteChanged();
         WakeCommand.NotifyCanExecuteChanged(); SleepCommand.NotifyCanExecuteChanged();
         SetPolicyCommand.NotifyCanExecuteChanged(); ApplyPackagePlanCommand.NotifyCanExecuteChanged();
-        RollbackPackageCommand.NotifyCanExecuteChanged();
+        RollbackPackageCommand.NotifyCanExecuteChanged(); InstallStoreItemCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanRestoreAll)); RestoreAllCommand.NotifyCanExecuteChanged();
     }
-    public void Invalidate() { Modules = []; Selected = null; Plan = null; OperationText = ""; InstalledPackages = []; SelectedVersions = []; SelectedPackageVersion = null; PackageOperations = []; PackagePlan = null; PackageStatus = "module-session-changed"; Notify(); }
+    public void Invalidate() { Modules = []; Selected = null; Plan = null; OperationText = ""; InstalledPackages = []; SelectedVersions = []; SelectedPackageVersion = null; PackageOperations = []; PackagePlan = null; StoreItems = []; SelectedStoreItem = null; PackageStatus = "module-session-changed"; Notify(); }
     [RelayCommand] private async Task RefreshAsync() => await Run(async () =>
     {
         // Clear before reading: failed refreshes show unknown instead of stale successful facts.
@@ -285,6 +294,23 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         await RefreshSelectedVersionsAsync();
         OperationText = $"package rollback · {result.OperationId} · {result.Record.ModuleId} {result.Record.Version}";
         PackageStatus = LocalizedText.Get("server_modules.package_rolled_back");
+    });
+
+    [RelayCommand] private async Task SearchStoreAsync() => await Run(async () =>
+    {
+        StoreItems = (await client.SearchStoreAsync(StoreQuery)).Items;
+        SelectedStoreItem = StoreItems.FirstOrDefault();
+        PackageStatus = StoreItems.Count == 0 ? LocalizedText.Get("server_modules.store_empty") : "";
+    });
+
+    [RelayCommand(CanExecute = nameof(CanInstallStoreItem))]
+    private async Task InstallStoreItemAsync() => await Run(async () =>
+    {
+        if (SelectedStoreItem is not { } item) return;
+        PackageStatus = LocalizedText.Get("server_modules.store_downloading");
+        var upload = await client.DownloadStorePackageAsync(item.SourceId, item.ReleaseId);
+        PackagePlan = await client.AutoPlanPackageAsync(upload.UploadId);
+        PackageStatus = LocalizedText.Get("server_modules.package_plan_ready");
     });
     [RelayCommand(CanExecute = nameof(CanEnable))] private Task EnableAsync() => PreviewAsync(true);
     [RelayCommand(CanExecute = nameof(CanDisable))] private Task DisableAsync() => PreviewAsync(false);

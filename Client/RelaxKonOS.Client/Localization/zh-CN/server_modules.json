@@ -35,6 +35,12 @@
     "server_modules.package_plan_ready": "模块包已验证。核对冻结计划后确认安装。",
     "server_modules.package_installed_restart": "已安装。重启服务器后核实包操作。",
     "server_modules.rollback_version": "回退到所选版本",
-    "server_modules.package_rolled_back": "已记录回退。重启服务器后核实。"
+    "server_modules.package_rolled_back": "已记录回退。重启服务器后核实。",
+    "server_modules.store": "模块商店",
+    "server_modules.store_query": "搜索已接纳模块…",
+    "server_modules.store_search": "搜索",
+    "server_modules.store_install": "从商店安装",
+    "server_modules.store_empty": "没有匹配的已接纳发布。",
+    "server_modules.store_downloading": "正在下载已接纳发布…"
   }
 }

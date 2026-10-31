@@ -106,6 +106,32 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         return page;
     }
 
+    public async Task<ServerModuleStorePageDto> SearchStoreAsync(string? query, string? sourceId = null)
+    {
+        Require(query is null or { Length: <= 128 } && (sourceId is null || ValidIds([sourceId])));
+        var route = ServerModuleManagementRoutes.ModuleStoreSearch + "?limit=25";
+        if (!string.IsNullOrWhiteSpace(query)) route += "&q=" + Uri.EscapeDataString(query);
+        if (!string.IsNullOrWhiteSpace(sourceId)) route += "&sourceId=" + Uri.EscapeDataString(sourceId);
+        var page = await SendAsync<ServerModuleStorePageDto>(HttpMethod.Get, route);
+        Require(page.Items is { Count: <= 50 } && page.NextOffset is null or > 0
+            && page.BlockedBy is { Count: <= 64 }
+            && page.Items.All(item => item is not null && ValidIds([item.SourceId]) && ValidIds([item.ModuleId])
+                && item.Version is { Length: > 0 and <= 32 } && item.ReleaseId is { Length: > 0 and <= 128 }
+                && ValidDigest(item.ArtifactSha256) && ValidDigest(item.ManifestSha256) && item.ArchiveBytes > 0
+                && item.BlockedBy is { Count: <= 64 }));
+        return page;
+    }
+
+    public async Task<ServerModulePackageUploadDto> DownloadStorePackageAsync(string sourceId, string releaseId)
+    {
+        Require(ValidIds([sourceId]) && ValidIds([releaseId]));
+        var upload = await SendAsync<ServerModulePackageUploadDto>(HttpMethod.Post,
+            ServerModuleManagementRoutes.ModuleStoreDownload, new ServerModuleStoreDownloadRequest(sourceId, releaseId));
+        Require(upload is not null && upload.UploadId is { Length: 32 } && upload.UploadId.All(char.IsAsciiHexDigitLower)
+            && upload.Bytes > 0 && ValidDigest(upload.Sha256));
+        return upload;
+    }
+
     public async Task<ServerModulePackageUploadDto> UploadPackageAsync(Stream content, long length)
     {
         Require(content.CanRead && length is > 0 and <= 1L << 30);
