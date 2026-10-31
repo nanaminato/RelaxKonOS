@@ -1,6 +1,6 @@
 # RelaxKonOS 包商店来源设计
 
-> 状态：设计，2026-10-31。服务端模块商店的**已接纳目录搜索、受控下载**和**管理员离线远程目录刷新**已实现为 v1 切片；桌面应用商店、后台远程来源同步和完整商店服务未实现。本文统一服务端模块商店与桌面应用商店的**来源、目录、搜索、下载和信任契约**；安装事务分别由模块安装器和桌面应用安装器拥有。
+> 状态：设计，2026-10-31。服务端模块商店的**已接纳目录搜索、受控下载**、**管理员离线远程目录刷新**和**在线目录刷新**已实现为 v1 切片；桌面应用商店、后台远程来源同步和完整商店服务未实现。本文统一服务端模块商店与桌面应用商店的**来源、目录、搜索、下载和信任契约**；安装事务分别由模块安装器和桌面应用安装器拥有。
 >
 > 范围：官方/社区/用户添加的包来源、签名目录、目录条目、搜索分页、下载与暂存、撤销与反回退，以及服务端模块和桌面 `.roapp` 两类包。Android 的商店界面、设备支持和平台边界由 [Android 文档](../../Client/RelaxKonOS.Client.Android/docs/design/ApplicationPackages.Design.md)独立拥有。
 >
@@ -27,7 +27,7 @@
 
 | 能力 | 当前事实 |
 | --- | --- |
-| 服务端模块来源 | 部署配置中的 `ModulePackages:Sources:<sourceId>` 信任策略 + 已接纳的签名目录；支持管理员离线 `refresh-catalog`、已接纳目录搜索/下载，无后台自动同步、评分或审核 |
+| 服务端模块来源 | 部署配置中的 `ModulePackages:Sources:<sourceId>` 信任策略 + 已接纳的签名目录；支持管理员离线 `refresh-catalog`、在线 `module-store/refresh`、已接纳目录搜索/下载，无后台自动同步、评分或审核 |
 | 服务端模块安装 | 已实现；见[服务端模块分发设计](../architecture/RelaxKonOS.ServerModuleDistribution.Design.md)。商店搜索/下载只负责生成 staging upload，安装仍走计划/apply |
 | 桌面 `.roapp` 安装 | 已有本地文件、服务器文件、开发者桥接安装；无商店来源、无签名目录、无搜索 |
 | 桌面应用目录 | `DeveloperPackageManager` 维护本地 catalog；`AppPackageInstallerService` 负责用户选择包的暂存/安装 |

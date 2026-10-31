@@ -595,7 +595,7 @@ v2 的 `IModuleContext` 只提供：
 - 模块搜索/下载 HTTP：`GET /server/module-store/search` 在已接纳签名目录中搜索，`GET /server/module-store/sources` 报告已接纳来源状态，`POST /server/module-store/download` 按来源/发布下载并校验摘要到 staging；不暴露任意下载 URL。
 - 模块健康 HTTP：`GET /server/module-health` 报告内置/已安装模块的启用状态、版本和可选模块自检结果；隔离/加载失败可见，但接口不自动重启或改变启用集合。
 - 健康停机看门狗：配置 `ModuleHealth:Enabled=true`、`ModuleHealth:StopOnUnhealthy=true` 和 `ModuleHealth:ProbeIntervalSeconds` 后，Host 在启动后周期检查启用模块；发现 `unhealthy`/`load-failed`/`quarantined` 时写 `health-stop.json` 并请求 `StopApplication`，由外部服务监督器负责重启。Host 不自行重启、不改启用集合。
-- 远程目录刷新：`modules refresh-catalog` 在 Host 停止时从配置的 `ModulePackages:Sources:<sourceId>:CatalogUri` 或显式 `--catalog-uri` 获取 HTTPS 签名目录，复用离线接纳；不是后台自动同步。
+- 远程目录刷新：`modules refresh-catalog` 在 Host 停止时从配置的 `ModulePackages:Sources:<sourceId>:CatalogUri` 或显式 `--catalog-uri` 获取 HTTPS 签名目录，复用离线接纳；`POST /server/module-store/refresh` 通过独立目录锁在 Host 运行时接纳签名目录，要求精确 `catalogRevision` 和幂等键。两者都不是后台自动同步。
 - 桌面组件中心：显示已安装版本、所选模块版本和包操作回执；已接入“安装模块包”按钮（选择 `.rkmodule` → upload → auto plan → 确认 apply）、“回退到所选版本”按钮、已接纳模块商店搜索/发布详情/“从商店安装”，以及“检查模块健康”。发布详情显示来源、发布者、信任状态、RID/Host API 兼容性、依赖、能力、摘要和阻塞原因。
 - 在线安装 HTTP：`POST /server/module-packages/upload`（原始 `.rkmodule` body，最大 1 GiB）、`POST /server/module-packages/plans`、`POST /server/module-packages/plans/{planId}/apply`、`POST /server/module-packages/rollback`；计划冻结 sourceId/releaseId/module/version/摘要，apply 重新校验后安装并写 `package-operations.json` 等待重启核实。直接 `POST /server/module-packages/install` 保留为无计划路径。
 - 测试：真实模块程序集加载、DI 注册、Endpoint 映射、安装幂等、移除保留文件、双版本切换、回退、篡改拒绝、启动核实和只读包 API；`Tests/ServerModules` 全套通过（Windows 开发机）。
