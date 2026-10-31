@@ -24,6 +24,9 @@
   <TextBlock Text="{Binding PackageVersionsText}" TextWrapping="Wrap" />
   <TextBlock Text="{loc:Loc server_modules.package_operations}" Opacity="0.7" />
   <TextBlock Text="{Binding PackageOperationText}" TextWrapping="Wrap" />
+  <Button Content="{loc:Loc server_modules.install_package}" Click="InstallPackage_Click" IsEnabled="{Binding !Busy}" />
+  <TextBlock Text="{Binding PackagePlanText}" TextWrapping="Wrap" />
+  <Button Content="{loc:Loc server_modules.apply_package}" Command="{Binding ApplyPackagePlanCommand}" IsVisible="{Binding HasPackagePlan}" />
   <TextBlock Text="{Binding PackageStatus}" TextWrapping="Wrap" />
   <WrapPanel ItemSpacing="8" LineSpacing="8">
    <Button Content="{loc:Loc server_modules.enable}" Command="{Binding EnableCommand}" />

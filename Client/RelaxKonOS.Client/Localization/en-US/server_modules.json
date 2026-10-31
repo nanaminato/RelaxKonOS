@@ -28,6 +28,11 @@
     "server_modules.packages": "Installation facts",
     "server_modules.package_versions": "Installed versions for the selected module",
     "server_modules.package_operations": "Package operations",
-    "server_modules.packages_unavailable": "The server did not return module package installation facts."
+    "server_modules.packages_unavailable": "The server did not return module package installation facts.",
+    "server_modules.install_package": "Install package…",
+    "server_modules.apply_package": "Confirm package install",
+    "server_modules.package_uploading": "Uploading and verifying the package…",
+    "server_modules.package_plan_ready": "Package verified. Review the frozen plan, then confirm.",
+    "server_modules.package_installed_restart": "Installed. Restart the server to verify the package operation."
   }
 }

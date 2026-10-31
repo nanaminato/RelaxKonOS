@@ -28,6 +28,11 @@
     "server_modules.packages": "安装事实",
     "server_modules.package_versions": "所选模块的已安装版本",
     "server_modules.package_operations": "包操作",
-    "server_modules.packages_unavailable": "服务端没有返回模块包安装事实。"
+    "server_modules.packages_unavailable": "服务端没有返回模块包安装事实。",
+    "server_modules.install_package": "安装模块包…",
+    "server_modules.apply_package": "确认安装模块包",
+    "server_modules.package_uploading": "正在上传并验证模块包…",
+    "server_modules.package_plan_ready": "模块包已验证。核对冻结计划后确认安装。",
+    "server_modules.package_installed_restart": "已安装。重启服务器后核实包操作。"
   }
 }

@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using RelaxKonOS.Client.Services.Auth;
@@ -105,6 +106,59 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         return page;
     }
 
+    public async Task<ServerModulePackageUploadDto> UploadPackageAsync(Stream content, long length)
+    {
+        Require(content.CanRead && length is > 0 and <= 1L << 30);
+        using var body = new StreamContent(content);
+        body.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        body.Headers.ContentLength = length;
+        var upload = await SendAsync<ServerModulePackageUploadDto>(HttpMethod.Post, ServerModuleManagementRoutes.PackageUpload,
+            content: body);
+        Require(upload is not null && upload.UploadId is { Length: 32 } && upload.UploadId.All(char.IsAsciiHexDigitLower)
+            && upload.Bytes == length && ValidDigest(upload.Sha256));
+        return upload;
+    }
+
+    public async Task<ServerModulePackagePlanDto> AutoPlanPackageAsync(string uploadId)
+    {
+        Require(uploadId is { Length: 32 } && uploadId.All(char.IsAsciiHexDigitLower));
+        var plan = await SendAsync<ServerModulePackagePlanDto>(HttpMethod.Post, ServerModuleManagementRoutes.PackageAutoPlan,
+            new ServerModulePackageAutoPlanRequest(uploadId));
+        ValidatePackagePlan(plan);
+        return plan;
+    }
+
+    public async Task<ServerModulePackageInstallResultDto> ApplyPackagePlanAsync(Guid planId)
+    {
+        Require(planId != Guid.Empty);
+        var result = await SendAsync<ServerModulePackageInstallResultDto>(HttpMethod.Post,
+            ServerModuleManagementRoutes.PackagePlanApply.Replace("{planId:guid}", planId.ToString()));
+        Require(result is not null && result.OperationId != Guid.Empty && ValidInstalled(result.Record));
+        return result;
+    }
+
+    public async Task<ServerModulePackageInstallResultDto> RollbackPackageAsync(string moduleId, string version)
+    {
+        Require(ValidIds([moduleId]) && version is { Length: > 0 and <= 32 });
+        var result = await SendAsync<ServerModulePackageInstallResultDto>(HttpMethod.Post,
+            ServerModuleManagementRoutes.PackageRollback, new ServerModulePackageRollbackRequest(moduleId, version));
+        Require(result is not null && result.OperationId != Guid.Empty && ValidInstalled(result.Record));
+        return result;
+    }
+
+    private static bool ValidInstalled(ServerInstalledModuleDto? module) => module is not null
+        && ValidIds([module.ModuleId]) && module.Version is { Length: > 0 and <= 32 }
+        && module.ReleaseId is { Length: > 0 and <= 128 } && ValidDigest(module.ArtifactSha256)
+        && ValidDigest(module.ManifestSha256) && module.InstalledAt != default;
+
+    private static void ValidatePackagePlan(ServerModulePackagePlanDto plan)
+    {
+        Require(plan is not null && plan.PlanId != Guid.Empty && ValidIds([plan.ModuleId])
+            && plan.Version is { Length: > 0 and <= 32 } && ValidDigest(plan.ArtifactSha256)
+            && ValidDigest(plan.ManifestSha256) && plan.ExpiresAt != default
+            && (plan.AppliedOperationId is null || plan.AppliedOperationId != Guid.Empty));
+    }
+
     private static void Require([System.Diagnostics.CodeAnalysis.DoesNotReturnIf(false)] bool condition)
     { if (!condition) throw new InvalidOperationException("module-response-invalid"); }
     private static bool ValidIds(IReadOnlyList<string>? ids) => ids is { Count: <= 128 }
@@ -133,11 +187,12 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
             && operation.ModuleResults.Select(result => result.ModuleId).Distinct(StringComparer.Ordinal).Count() == operation.ModuleResults.Count);
         Require(operation.State != ServerModuleOperationState.Succeeded || operation.ProblemCode is null && operation.ModuleResults?.All(result => result.Succeeded) != false);
     }
-    private async Task<T> SendAsync<T>(HttpMethod method, string route, object? body = null)
+    private async Task<T> SendAsync<T>(HttpMethod method, string route, object? body = null, HttpContent? content = null)
     {
         if (!IsCurrent || session.EffectiveBaseUrl is not { } baseUrl) throw new InvalidOperationException("module-session-changed");
         using var request = new HttpRequestMessage(method, new Uri(new Uri(baseUrl), route.TrimStart('/')));
-        if (body is not null) request.Content = JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default);
+        if (content is not null) request.Content = content;
+        else if (body is not null) request.Content = JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default);
         using var response = await http.SendAsync(request);
         if (!IsCurrent) throw new InvalidOperationException("module-session-changed");
         if (!response.IsSuccessStatusCode)

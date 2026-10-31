@@ -34,6 +34,9 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     [ObservableProperty] private IReadOnlyList<ServerInstalledModuleDto> selectedVersions = [];
     [ObservableProperty] private IReadOnlyList<ServerPackageOperationDto> packageOperations = [];
     [ObservableProperty] private string packageStatus = "";
+    [ObservableProperty] private ServerModulePackagePlanDto? packagePlan;
+    public bool HasPackagePlan => PackagePlan is not null;
+    public bool CanApplyPackagePlan => PackagePlan is not null && !Busy;
     private int _versionRequest;
     public IReadOnlyList<ServerModulePolicyChoice> PolicyChoices { get; } = [new("KeepLoaded"), new("IdleDelayed"), new("ReleaseOnLogout")];
     [ObservableProperty] private ServerModulePolicyChoice policyChoice = new("IdleDelayed");
@@ -107,6 +110,8 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     public string PackageOperationText => PackageOperations.Count == 0 ? "" :
         string.Join("\n", PackageOperations.Take(20).Select(operation =>
             $"{operation.Action} · {operation.ModuleId} {operation.Version} · {operation.State} · {operation.ProblemCode}"));
+    public string PackagePlanText => PackagePlan is not { } plan ? "" :
+        $"{plan.ModuleId} · {plan.Version} · {plan.PublisherId}\n{plan.ReleaseId}\n{plan.ArtifactSha256}\n{plan.ExpiresAt}";
     public bool CanEnable => CanPreview(ServerModuleAction.Enable) && Targets.Any(x => !x.DesiredEnabled);
     public bool CanDisable => CanPreview(ServerModuleAction.Disable) && Targets.Any(x => x.DesiredEnabled);
     public bool CanWake => CanPreview(ServerModuleAction.Wake);
@@ -143,6 +148,11 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         OnPropertyChanged(nameof(PackageVersionsText));
     partial void OnPackageOperationsChanged(IReadOnlyList<ServerPackageOperationDto> value) =>
         OnPropertyChanged(nameof(PackageOperationText));
+    partial void OnPackagePlanChanged(ServerModulePackagePlanDto? value)
+    {
+        OnPropertyChanged(nameof(PackagePlanText)); OnPropertyChanged(nameof(HasPackagePlan));
+        OnPropertyChanged(nameof(CanApplyPackagePlan)); ApplyPackagePlanCommand.NotifyCanExecuteChanged(); Notify();
+    }
     private void Notify()
     {
         OnPropertyChanged(nameof(Details)); OnPropertyChanged(nameof(CanEnable)); OnPropertyChanged(nameof(CanDisable)); OnPropertyChanged(nameof(CanApply));
@@ -151,10 +161,10 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         OnPropertyChanged(nameof(PackageDetails)); OnPropertyChanged(nameof(PackageVersionsText)); OnPropertyChanged(nameof(PackageOperationText));
         EnableCommand.NotifyCanExecuteChanged(); DisableCommand.NotifyCanExecuteChanged(); ApplyCommand.NotifyCanExecuteChanged();
         WakeCommand.NotifyCanExecuteChanged(); SleepCommand.NotifyCanExecuteChanged();
-        SetPolicyCommand.NotifyCanExecuteChanged();
+        SetPolicyCommand.NotifyCanExecuteChanged(); ApplyPackagePlanCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanRestoreAll)); RestoreAllCommand.NotifyCanExecuteChanged();
     }
-    public void Invalidate() { Modules = []; Selected = null; Plan = null; OperationText = ""; InstalledPackages = []; SelectedVersions = []; PackageOperations = []; PackageStatus = "module-session-changed"; Notify(); }
+    public void Invalidate() { Modules = []; Selected = null; Plan = null; OperationText = ""; InstalledPackages = []; SelectedVersions = []; PackageOperations = []; PackagePlan = null; PackageStatus = "module-session-changed"; Notify(); }
     [RelayCommand] private async Task RefreshAsync() => await Run(async () =>
     {
         // Clear before reading: failed refreshes show unknown instead of stale successful facts.
@@ -231,6 +241,25 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
             if (request == _versionRequest) SelectedVersions = [];
         }
     }
+
+    public async Task InstallPackageAsync(Stream content, long length) => await Run(async () =>
+    {
+        PackageStatus = LocalizedText.Get("server_modules.package_uploading");
+        var upload = await client.UploadPackageAsync(content, length);
+        PackagePlan = await client.AutoPlanPackageAsync(upload.UploadId);
+        PackageStatus = LocalizedText.Get("server_modules.package_plan_ready");
+    });
+
+    [RelayCommand(CanExecute = nameof(CanApplyPackagePlan))]
+    private async Task ApplyPackagePlanAsync() => await Run(async () =>
+    {
+        if (PackagePlan is not { } plan) return;
+        var result = await client.ApplyPackagePlanAsync(plan.PlanId);
+        PackagePlan = null;
+        await RefreshPackageFactsAsync();
+        OperationText = $"package install · {result.OperationId} · {result.Record.ModuleId} {result.Record.Version}";
+        PackageStatus = LocalizedText.Get("server_modules.package_installed_restart");
+    });
     [RelayCommand(CanExecute = nameof(CanEnable))] private Task EnableAsync() => PreviewAsync(true);
     [RelayCommand(CanExecute = nameof(CanDisable))] private Task DisableAsync() => PreviewAsync(false);
     [RelayCommand(CanExecute = nameof(CanWake))] private Task WakeAsync() => PreviewRuntimeAsync(ServerModuleAction.Wake);

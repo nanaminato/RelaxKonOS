@@ -28,6 +28,11 @@
     "server_modules.packages": "インストール情報",
     "server_modules.package_versions": "選択したモジュールのインストール済みバージョン",
     "server_modules.package_operations": "パッケージ操作",
-    "server_modules.packages_unavailable": "サーバーはモジュールパッケージのインストール情報を返しませんでした。"
+    "server_modules.packages_unavailable": "サーバーはモジュールパッケージのインストール情報を返しませんでした。",
+    "server_modules.install_package": "パッケージをインストール…",
+    "server_modules.apply_package": "パッケージインストールを確定",
+    "server_modules.package_uploading": "パッケージをアップロードして検証しています…",
+    "server_modules.package_plan_ready": "パッケージを検証しました。固定された計画を確認してから確定してください。",
+    "server_modules.package_installed_restart": "インストールしました。サーバー再起動後にパッケージ操作を確認します。"
   }
 }
