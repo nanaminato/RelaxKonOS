@@ -126,7 +126,9 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
     {
         var page = await SendAsync<ServerModuleStoreSourcePageDto>(HttpMethod.Get,
             ServerModuleManagementRoutes.ModuleStoreSources);
-        Require(page.Sources is { Count: <= 16 } && page.Sources.All(source => source is not null
+        Require((page.CatalogRevision == "uninitialized" || page.CatalogRevision is { Length: 32 }
+                && page.CatalogRevision.All(char.IsAsciiHexDigitLower))
+            && page.Sources is { Count: <= 16 } && page.Sources.All(source => source is not null
             && ValidIds([source.SourceId]) && source.Status is "current" or "refresh-required" or "unavailable"
             && source.Sequence >= 0 && source.PolicyRevision >= 0 && source.ReleaseCount >= 0
             && source.RevokedCount >= 0 && ValidCode(source.ProblemCode)));
