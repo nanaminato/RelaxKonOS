@@ -52,7 +52,10 @@ internal static class ModuleManagementHttpChecks
                 && (await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackagePlans,
                     new ServerModulePackageInstallRequest("official", "release-1", Guid.NewGuid().ToString("N")))).StatusCode == HttpStatusCode.Unauthorized
                 && (await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackageRollback,
-                    new ServerModulePackageRollbackRequest(ServerModules.GitId, "9.9.9"))).StatusCode == HttpStatusCode.Unauthorized,
+                    new ServerModulePackageRollbackRequest(ServerModules.GitId, "9.9.9"))).StatusCode == HttpStatusCode.Unauthorized
+                && (await client.GetAsync(ServerModuleManagementRoutes.ModuleStoreSearch)).StatusCode == HttpStatusCode.Unauthorized
+                && (await client.PostAsJsonAsync(ServerModuleManagementRoutes.ModuleStoreDownload,
+                    new ServerModuleStoreDownloadRequest("official", "release-1"))).StatusCode == HttpStatusCode.Unauthorized,
                 "module package read and write APIs reject unauthenticated requests");
             client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Observer);
             var observer = await client.GetFromJsonAsync<ServerModuleDto>(detail, RelaxKonOSJsonOptions.Default);
@@ -67,8 +70,11 @@ internal static class ModuleManagementHttpChecks
             var packageOperations = await client.GetFromJsonAsync<ServerPackageOperationPageDto>(ServerModuleManagementRoutes.PackageOperations, RelaxKonOSJsonOptions.Default);
             var packageVersions = await client.GetFromJsonAsync<ServerInstalledModulePageDto>(
                 ServerModuleManagementRoutes.PackageVersions.Replace("{moduleId}", ServerModules.GitId), RelaxKonOSJsonOptions.Default);
-            check(installedPackages?.Items.Count == 0 && packageOperations?.Items.Count == 0 && packageVersions?.Items.Count == 0,
-                "module package read APIs expose empty installation facts without inventing an installed version");
+            var storeSearch = await client.GetFromJsonAsync<ServerModuleStorePageDto>(
+                ServerModuleManagementRoutes.ModuleStoreSearch, RelaxKonOSJsonOptions.Default);
+            check(installedPackages?.Items.Count == 0 && packageOperations?.Items.Count == 0 && packageVersions?.Items.Count == 0
+                && storeSearch?.Items.Count == 0,
+                "module package and store read APIs expose empty facts without inventing an installable release");
             check((await client.PostAsync(ServerModuleManagementRoutes.PackageUpload, new ByteArrayContent([]))).StatusCode == HttpStatusCode.BadRequest,
                 "module package upload rejects an empty body before creating an install candidate");
             check((await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackagePlans,

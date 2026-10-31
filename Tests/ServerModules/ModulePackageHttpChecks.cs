@@ -78,6 +78,18 @@ internal static class ModulePackageHttpChecks
             using var client = new HttpClient { BaseAddress = new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single()) };
             client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Admin);
 
+            var store = await client.GetFromJsonAsync<ServerModuleStorePageDto>(
+                ServerModuleManagementRoutes.ModuleStoreSearch + "?q=fixture-http", RelaxKonOSJsonOptions.Default);
+            check(store?.Items.Count == 1 && store.Items[0].SourceId == "official"
+                && store.Items[0].ModuleId == "fixture-http" && store.Items[0].ArtifactSha256 == built.ArchiveSha256,
+                "module store search finds the accepted signed release without downloading it");
+
+            using var downloadHandler = new PackageDownloadHandler(await File.ReadAllBytesAsync(built.ArchivePath));
+            var downloaded = await ModulePackageDownloader.DownloadAsync(root, builder.Configuration, builder.Environment,
+                "official", releaseId, now, downloadHandler);
+            check(downloaded.Bytes == built.ArchiveBytes && downloaded.Sha256 == built.ArchiveSha256,
+                "module store download writes the exact catalog artifact into staging");
+
             var upload = await client.PostAsync(ServerModuleManagementRoutes.PackageUpload,
                 new ByteArrayContent(await File.ReadAllBytesAsync(built.ArchivePath)));
             upload.EnsureSuccessStatusCode();
@@ -139,5 +151,14 @@ internal static class ModulePackageHttpChecks
             try { Directory.Delete(root, recursive: true); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         }
+    }
+
+    private sealed class PackageDownloadHandler(byte[] content) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(content),
+            });
     }
 }

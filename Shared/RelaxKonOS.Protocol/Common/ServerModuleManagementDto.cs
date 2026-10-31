@@ -69,6 +69,20 @@ public sealed record ServerModulePackagePlanDto([property: JsonRequired] Guid Pl
 public sealed record ServerModulePackageRollbackRequest([property: JsonRequired] string ModuleId,
     [property: JsonRequired] string Version);
 public sealed record ServerModulePackageAutoPlanRequest([property: JsonRequired] string UploadId);
+public sealed record ServerModuleStoreItemDto([property: JsonRequired] string SourceId, [property: JsonRequired] string ModuleId,
+    [property: JsonRequired] string Version, [property: JsonRequired] string ReleaseId, [property: JsonRequired] string Rid,
+    [property: JsonRequired] string PublisherId, [property: JsonRequired] string Purpose, [property: JsonRequired] string TrustState,
+    [property: JsonRequired] string ArtifactSha256, [property: JsonRequired] string ManifestSha256,
+    [property: JsonRequired] long ArchiveBytes, [property: JsonRequired] string HostApiMinimum,
+    [property: JsonRequired] string HostApiMaximumExclusive,
+    [property: JsonRequired] IReadOnlyList<ServerModuleReleaseDependencyDto> Dependencies,
+    [property: JsonRequired] IReadOnlyList<string> Capabilities, [property: JsonRequired] bool RidCompatible,
+    [property: JsonRequired] bool HostApiCompatible, [property: JsonRequired] bool Revoked,
+    [property: JsonRequired] IReadOnlyList<ServerModuleBlocker> BlockedBy);
+public sealed record ServerModuleStorePageDto([property: JsonRequired] IReadOnlyList<ServerModuleStoreItemDto> Items,
+    int? NextOffset, [property: JsonRequired] IReadOnlyList<ServerModuleBlocker> BlockedBy);
+public sealed record ServerModuleStoreDownloadRequest([property: JsonRequired] string SourceId,
+    [property: JsonRequired] string ReleaseId);
 
 public static class ServerModuleManagementRoutes
 {
@@ -88,4 +102,6 @@ public static class ServerModuleManagementRoutes
     public const string PackagePlanApply = PackagePlans + "/{planId:guid}/apply";
     public const string PackageAutoPlan = PackagePlans + "/auto";
     public const string PackageRollback = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-packages/rollback";
+    public const string ModuleStoreSearch = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-store/search";
+    public const string ModuleStoreDownload = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-store/download";
 }

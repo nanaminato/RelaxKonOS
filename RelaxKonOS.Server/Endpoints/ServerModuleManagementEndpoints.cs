@@ -42,6 +42,17 @@ internal static class ServerModuleManagementEndpoints
         group.MapGet(ServerModuleManagementRoutes.Releases, (string moduleId, string sourceId, int? offset, int? limit, string? expectedCatalogRevision,
             ModuleManagementStore store, ServerModules modules, ServerModuleContext context) => Respond(() => Task.FromResult<IResult>(
                 Results.Ok(ModulePackageReleaseDirectory.Read(context, store, modules, moduleId, sourceId, offset ?? 0, limit ?? 25, DateTimeOffset.UtcNow, expectedCatalogRevision)))));
+        group.MapGet(ServerModuleManagementRoutes.ModuleStoreSearch, (string? q, string? sourceId, int? offset, int? limit,
+            ServerModuleContext context) => Respond(() => Task.FromResult<IResult>(Results.Ok(ModulePackageStore.Search(
+                context.ContentRootPath, context.Configuration, context.Environment, q, sourceId, offset ?? 0,
+                limit ?? 25, DateTimeOffset.UtcNow)))))
+            .RequireAuthorization(ManagePolicy);
+        group.MapPost(ServerModuleManagementRoutes.ModuleStoreDownload, async (ServerModuleStoreDownloadRequest request,
+            ServerModuleContext context, CancellationToken cancellationToken) => await Respond(async () =>
+            Results.Ok(await ModulePackageDownloader.DownloadAsync(context.ContentRootPath, context.Configuration,
+                context.Environment, request.SourceId, request.ReleaseId, DateTimeOffset.UtcNow,
+                cancellationToken: cancellationToken))))
+            .RequireAuthorization(ManagePolicy);
         group.MapGet(ServerModuleManagementRoutes.InstalledPackages, (ServerModuleContext context) => Respond(() =>
         {
             var current = InstalledModuleStore.Read(context.ContentRootPath);
