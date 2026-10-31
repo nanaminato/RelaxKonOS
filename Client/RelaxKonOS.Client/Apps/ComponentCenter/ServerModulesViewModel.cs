@@ -106,9 +106,11 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         + (p.Target.Action == ServerModuleAction.SetResidencyPolicy ? $"{p.Target.Strategy} · {p.Target.IdleGraceSeconds}s\n" : "")
         + string.Join("\n", p.BlockedBy.Select(x => x.ProblemCode + " " + x.ModuleId));
     public string PackageDetails => InstalledPackages.Count == 0 ? "" :
-        string.Join("\n", InstalledPackages.Select(module => $"{module.ModuleId} · {module.Version} · {(module.Active ? "active" : "installed")} · {module.ReleaseId}"));
+        string.Join("\n", InstalledPackages.Select(module => $"{module.ModuleId} · {module.Version} · {(module.Active ? "active" : "installed")}"
+            + (module.Quarantined ? " · quarantined" : "") + $" · {module.ReleaseId}"));
     public string PackageVersionsText => SelectedVersions.Count == 0 ? "" :
-        string.Join("\n", SelectedVersions.Select(module => $"{module.Version} · {(module.Active ? "active" : "installed")} · {module.ArtifactSha256[..12]}"));
+        string.Join("\n", SelectedVersions.Select(module => $"{module.Version} · {(module.Active ? "active" : "installed")}"
+            + (module.Quarantined ? " · quarantined" : "") + $" · {module.ArtifactSha256[..12]}"));
     public string PackageOperationText => PackageOperations.Count == 0 ? "" :
         string.Join("\n", PackageOperations.Take(20).Select(operation =>
             $"{operation.Action} · {operation.ModuleId} {operation.Version} · {operation.State} · {operation.ProblemCode}"));
