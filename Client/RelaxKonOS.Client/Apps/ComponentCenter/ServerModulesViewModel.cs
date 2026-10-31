@@ -40,6 +40,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     [ObservableProperty] private string storeQuery = "";
     [ObservableProperty] private IReadOnlyList<ServerModuleStoreItemDto> storeItems = [];
     [ObservableProperty] private IReadOnlyList<ServerModuleStoreSourceDto> storeSources = [];
+    [ObservableProperty] private string catalogRevision = "uninitialized";
     [ObservableProperty] private ServerModuleStoreItemDto? selectedStoreItem;
     public bool HasPackagePlan => PackagePlan is not null;
     public bool CanApplyPackagePlan => PackagePlan is not null && !Busy;
@@ -124,7 +125,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     public string PackagePlanText => PackagePlan is not { } plan ? "" :
         $"{plan.ModuleId} · {plan.Version} · {plan.PublisherId}\n{plan.ReleaseId}\n{plan.ArtifactSha256}\n{plan.ExpiresAt}";
     public string StoreSourceText => StoreSources.Count == 0 ? "" :
-        string.Join("\n", StoreSources.Select(source =>
+        $"catalog {CatalogRevision}\n" + string.Join("\n", StoreSources.Select(source =>
             $"{source.SourceId} · {source.Status} · seq {source.Sequence} · policy {source.PolicyRevision}"
             + $" · releases {source.ReleaseCount} · revoked {source.RevokedCount}"
             + (source.CatalogUriConfigured ? " · refresh uri" : "") + (source.ProblemCode is null ? "" : " · " + source.ProblemCode)));
@@ -195,6 +196,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     }
     partial void OnStoreSourcesChanged(IReadOnlyList<ServerModuleStoreSourceDto> value) =>
         OnPropertyChanged(nameof(StoreSourceText));
+    partial void OnCatalogRevisionChanged(string value) => OnPropertyChanged(nameof(StoreSourceText));
     private void Notify()
     {
         OnPropertyChanged(nameof(Details)); OnPropertyChanged(nameof(CanEnable)); OnPropertyChanged(nameof(CanDisable)); OnPropertyChanged(nameof(CanApply));
@@ -208,7 +210,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         RollbackPackageCommand.NotifyCanExecuteChanged(); InstallStoreItemCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanRestoreAll)); RestoreAllCommand.NotifyCanExecuteChanged();
     }
-    public void Invalidate() { Modules = []; Selected = null; Plan = null; OperationText = ""; InstalledPackages = []; SelectedVersions = []; SelectedPackageVersion = null; PackageOperations = []; PackagePlan = null; StoreItems = []; StoreSources = []; SelectedStoreItem = null; HealthText = ""; PackageStatus = "module-session-changed"; Notify(); }
+    public void Invalidate() { Modules = []; Selected = null; Plan = null; OperationText = ""; InstalledPackages = []; SelectedVersions = []; SelectedPackageVersion = null; PackageOperations = []; PackagePlan = null; StoreItems = []; StoreSources = []; CatalogRevision = "uninitialized"; SelectedStoreItem = null; HealthText = ""; PackageStatus = "module-session-changed"; Notify(); }
     [RelayCommand] private async Task RefreshAsync() => await Run(async () =>
     {
         // Clear before reading: failed refreshes show unknown instead of stale successful facts.
@@ -318,10 +320,38 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
 
     [RelayCommand] private async Task SearchStoreAsync() => await Run(async () =>
     {
-        StoreSources = (await client.StoreSourcesAsync()).Sources;
+        var sources = await client.StoreSourcesAsync();
+        StoreSources = sources.Sources;
+        CatalogRevision = sources.CatalogRevision;
         StoreItems = (await client.SearchStoreAsync(StoreQuery)).Items;
         SelectedStoreItem = StoreItems.FirstOrDefault();
         PackageStatus = StoreItems.Count == 0 ? LocalizedText.Get("server_modules.store_empty") : "";
+    });
+
+    [RelayCommand] private async Task RefreshCatalogsAsync() => await Run(async () =>
+    {
+        var page = await client.StoreSourcesAsync();
+        var revision = page.CatalogRevision;
+        var refreshed = 0;
+        foreach (var source in page.Sources.Where(source => source.CatalogUriConfigured))
+        {
+            try
+            {
+                var receipt = await client.RefreshCatalogAsync(source.SourceId, revision,
+                    "ui-refresh-" + Guid.NewGuid().ToString("N"));
+                revision = receipt.Revision;
+                refreshed++;
+            }
+            catch (InvalidOperationException) { }
+        }
+        var current = await client.StoreSourcesAsync();
+        StoreSources = current.Sources;
+        CatalogRevision = current.CatalogRevision;
+        StoreItems = (await client.SearchStoreAsync(StoreQuery)).Items;
+        SelectedStoreItem = StoreItems.FirstOrDefault();
+        PackageStatus = refreshed == 0
+            ? LocalizedText.Get("server_modules.store_refresh_none")
+            : LocalizedText.Get("server_modules.store_refreshed");
     });
 
     [RelayCommand(CanExecute = nameof(CanInstallStoreItem))]

@@ -135,6 +135,23 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         return page;
     }
 
+    public async Task<ServerModuleCatalogReceiptDto> RefreshCatalogAsync(string sourceId, string expectedRevision,
+        string idempotencyKey)
+    {
+        Require(ValidIds([sourceId])
+            && (expectedRevision == "uninitialized" || expectedRevision is { Length: 32 }
+                && expectedRevision.All(char.IsAsciiHexDigitLower))
+            && idempotencyKey is { Length: > 0 and <= 128 }
+            && idempotencyKey.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.'));
+        var receipt = await SendAsync<ServerModuleCatalogReceiptDto>(HttpMethod.Post,
+            ServerModuleManagementRoutes.ModuleStoreRefresh, new ServerModuleCatalogRefreshRequest(sourceId,
+                expectedRevision, idempotencyKey, null));
+        Require(receipt is not null && receipt.SourceId == sourceId && receipt.Revision is { Length: 32 }
+            && receipt.Revision.All(char.IsAsciiHexDigitLower) && receipt.Sequence > 0
+            && ValidDigest(receipt.PayloadSha256) && receipt.AcceptedAt != default);
+        return receipt;
+    }
+
     public async Task<ServerModulePackageUploadDto> DownloadStorePackageAsync(string sourceId, string releaseId)
     {
         Require(ValidIds([sourceId]) && ValidIds([releaseId]));

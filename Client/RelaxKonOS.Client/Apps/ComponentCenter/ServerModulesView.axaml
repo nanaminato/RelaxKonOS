@@ -25,6 +25,7 @@
   <WrapPanel ItemSpacing="8" LineSpacing="8">
    <TextBox Text="{Binding StoreQuery}" PlaceholderText="{loc:Loc server_modules.store_query}" Width="240" />
    <Button Content="{loc:Loc server_modules.store_search}" Command="{Binding SearchStoreCommand}" />
+   <Button Content="{loc:Loc server_modules.store_refresh}" Command="{Binding RefreshCatalogsCommand}" />
    <Button Content="{loc:Loc server_modules.store_install}" Command="{Binding InstallStoreItemCommand}" />
   </WrapPanel>
   <ListBox ItemsSource="{Binding StoreItems}" SelectedItem="{Binding SelectedStoreItem}" MaxHeight="180">
