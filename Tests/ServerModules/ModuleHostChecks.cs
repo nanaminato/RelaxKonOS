@@ -5,6 +5,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
+using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.Server.Startup;
 using RelaxKonOS.ServerModuleHost;
 
@@ -48,6 +49,10 @@ internal static class ModuleHostChecks
             await using var client = new ModuleHostProcessClient(root, "fixture-host", Path.Combine(root, "process-data"));
             var ready = await client.StartAsync();
             using var http = new HttpClient { BaseAddress = new Uri(ready.Url) };
+            using var unauthenticated = new HttpClient { BaseAddress = new Uri(ready.Url) };
+            check((await unauthenticated.GetAsync("/hello")).StatusCode == System.Net.HttpStatusCode.Unauthorized,
+                "ModuleHost rejects a request without its service token");
+            http.DefaultRequestHeaders.TryAddWithoutValidation(ModuleHostProtocol.ServiceTokenHeader, client.ServiceToken);
             var body = await http.GetStringAsync("/hello");
             var health = await client.HealthAsync();
             await client.ShutdownAsync();
@@ -69,11 +74,12 @@ internal static class ModuleHostChecks
             await supervisor.StartAsync(CancellationToken.None);
             for (var attempt = 0; attempt < 100 && !supervisor.TryGetEndpoint("fixture-host", out _); attempt++)
                 await Task.Delay(50);
-            check(supervisor.TryGetEndpoint("fixture-host", out var endpoint)
+            check(supervisor.TryGetConnection("fixture-host", out var endpoint, out var serviceToken)
                 && supervisor.Snapshot().Single().Status == "running",
                 "ModuleHost supervisor starts a configured isolated process: "
                 + string.Join(",", supervisor.Snapshot().Select(host => host.Status + ":" + host.ProblemCode)));
             using var supervisedHttp = new HttpClient { BaseAddress = endpoint };
+            supervisedHttp.DefaultRequestHeaders.TryAddWithoutValidation(ModuleHostProtocol.ServiceTokenHeader, serviceToken);
             check(await supervisedHttp.GetStringAsync("/hello") == "hello from module host",
                 "ModuleHost supervisor exposes the isolated HTTP endpoint");
             var administrator = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", adminId.ToString())], "test"));

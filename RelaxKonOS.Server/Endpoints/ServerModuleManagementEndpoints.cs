@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Server.Startup;
+using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.ModulePackaging;
 
 namespace RelaxKonOS.Server.Endpoints;
@@ -90,12 +91,13 @@ internal static class ServerModuleManagementEndpoints
             if (!hosts.Exists(moduleId)) return Results.NotFound();
             if (!hosts.CanAccess(moduleId, http.User, context.Configuration))
                 return Results.StatusCode(StatusCodes.Status403Forbidden);
-            if (!hosts.TryGetEndpoint(moduleId, out var endpoint)) return Results.NotFound();
+            if (!hosts.TryGetConnection(moduleId, out var endpoint, out var serviceToken)) return Results.NotFound();
             if (path is not null && path.Split('/').Any(part => part is ".." or ".")) return Results.BadRequest();
             var target = new Uri(endpoint, (path ?? "") + http.Request.QueryString);
             using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
             { Timeout = TimeSpan.FromSeconds(100) };
             using var request = new HttpRequestMessage(new HttpMethod(http.Request.Method), target);
+            request.Headers.TryAddWithoutValidation(ModuleHostProtocol.ServiceTokenHeader, serviceToken);
             if (http.Request.ContentLength is > 0 || http.Request.Headers.ContainsKey("Transfer-Encoding"))
             {
                 request.Content = new StreamContent(http.Request.Body);

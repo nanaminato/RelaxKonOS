@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using RelaxKonOS.ModuleHost.Protocol;
@@ -15,8 +16,10 @@ internal sealed class ModuleHostProcessClient(string packageRoot, string moduleI
     private Process? _process;
     private Task<string>? _stderr;
     private ModuleHostReady? _ready;
+    private readonly string _serviceToken = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
 
     internal ModuleHostReady Ready => _ready ?? throw new ModulePackageException("module-host-not-started");
+    internal string ServiceToken => _serviceToken;
 
     internal async Task<ModuleHostReady> StartAsync(CancellationToken cancellationToken = default)
     {
@@ -36,6 +39,7 @@ internal sealed class ModuleHostProcessClient(string packageRoot, string moduleI
         info.ArgumentList.Add("--package-root"); info.ArgumentList.Add(packageRoot);
         info.ArgumentList.Add("--module-id"); info.ArgumentList.Add(moduleId);
         info.ArgumentList.Add("--data-path"); info.ArgumentList.Add(dataPath);
+        info.Environment[ModuleHostProtocol.ServiceTokenEnvironment] = _serviceToken;
         try { _process = Process.Start(info) ?? throw new ModulePackageException("module-host-start-failed"); }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
         {

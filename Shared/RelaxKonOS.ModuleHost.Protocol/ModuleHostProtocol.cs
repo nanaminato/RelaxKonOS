@@ -7,6 +7,8 @@ public static class ModuleHostProtocol
 {
     public const string Health = "health";
     public const string Shutdown = "shutdown";
+    public const string ServiceTokenHeader = "X-RelaxKonOS-Module-Token";
+    public const string ServiceTokenEnvironment = "RELAXKONOS_MODULE_HOST_TOKEN";
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = false };
 }
 

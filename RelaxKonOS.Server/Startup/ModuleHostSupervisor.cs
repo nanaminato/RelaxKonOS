@@ -23,7 +23,9 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
                 entry.Version, entry.HostApiVersion, entry.ProblemCode)).ToArray();
     }
 
-    internal bool TryGetEndpoint(string moduleId, out Uri endpoint)
+    internal bool TryGetEndpoint(string moduleId, out Uri endpoint) => TryGetConnection(moduleId, out endpoint, out _);
+
+    internal bool TryGetConnection(string moduleId, out Uri endpoint, out string serviceToken)
     {
         lock (_gate)
         {
@@ -33,10 +35,12 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
                 && parsed.Scheme == "http" && parsed.IsLoopback)
             {
                 endpoint = parsed;
+                serviceToken = entry.Client.ServiceToken;
                 return true;
             }
         }
         endpoint = null!;
+        serviceToken = "";
         return false;
     }
 

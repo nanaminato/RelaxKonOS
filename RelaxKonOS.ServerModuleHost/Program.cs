@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -23,9 +24,11 @@ public static class ModuleHostProgram
     private const string HostApiVersion = "2.0.0";
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = false };
 
-    public static async Task<int> Main(string[] args) => await RunAsync(args, Console.In, Console.Out);
+    public static async Task<int> Main(string[] args) => await RunAsync(args, Console.In, Console.Out,
+        Environment.GetEnvironmentVariable(ModuleHostProtocol.ServiceTokenEnvironment));
 
-    public static async Task<int> RunAsync(string[] args, TextReader input, TextWriter output)
+    public static async Task<int> RunAsync(string[] args, TextReader input, TextWriter output,
+        string? serviceToken = null)
     {
         IModuleHostEntry? entry = null;
         WebApplication? application = null;
@@ -47,6 +50,22 @@ public static class ModuleHostProgram
             builder.Logging.ClearProviders();
             builder.WebHost.UseUrls("http://127.0.0.1:0");
             application = builder.Build();
+            if (serviceToken is { Length: > 0 })
+            {
+                if (serviceToken is not { Length: 64 } || !serviceToken.All(char.IsAsciiHexDigitLower))
+                    throw new ModuleHostException("module-host-token-invalid");
+                application.Use(async (context, next) =>
+                {
+                    var presented = context.Request.Headers[ModuleHostProtocol.ServiceTokenHeader].ToString();
+                    if (!CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(presented),
+                            Encoding.UTF8.GetBytes(serviceToken)))
+                    {
+                        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                        return;
+                    }
+                    await next();
+                });
+            }
             application.MapGet("/module-host/health", () => Results.Ok(new { healthy = true }));
             if (entry is IModuleHostHttp http) http.MapEndpoints(application, context);
             await application.StartAsync();
