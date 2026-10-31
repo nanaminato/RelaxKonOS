@@ -258,6 +258,10 @@ internal static class InstalledModuleChecks
             var health = await fixtureModules.CheckHealthAsync(CancellationToken.None);
             check(health.Healthy && health.Modules.Single(module => module.ModuleId == "fixture-module").Status == "healthy",
                 "installed module health probe reports its module-owned healthy result");
+            check(ModuleHealthMonitor.ShouldStop(new("enabled-bad", true, true, "1.0.0", "official", "unhealthy", null))
+                && !ModuleHealthMonitor.ShouldStop(new("disabled-bad", false, true, "1.0.0", "official", "unhealthy", null))
+                && !ModuleHealthMonitor.ShouldStop(new("enabled-ok", true, true, "1.0.0", "official", "healthy", null)),
+                "health watchdog stops only for an enabled unhealthy module");
 
             InstalledModuleStore.Remove(root, "example", deleteFiles: false);
             InstalledModuleStore.Remove(root, "fixture-module", deleteFiles: false);
