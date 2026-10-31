@@ -2,6 +2,10 @@ using System.Reflection;
 using System.Runtime.Loader;
 using System.Security.Cryptography;
 using System.Text.Json;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.ModuleHost.Sdk;
 using ProtocolHealth = RelaxKonOS.ModuleHost.Protocol.ModuleHostHealth;
@@ -24,6 +28,7 @@ public static class ModuleHostProgram
     public static async Task<int> RunAsync(string[] args, TextReader input, TextWriter output)
     {
         IModuleHostEntry? entry = null;
+        WebApplication? application = null;
         var started = false;
         try
         {
@@ -36,9 +41,18 @@ public static class ModuleHostProgram
             entry = Load(root, manifest);
             if (entry.Id != moduleId) throw new ModuleHostException("module-host-entry-id-mismatch");
             Directory.CreateDirectory(dataPath);
-            await entry.StartAsync(new Context(moduleId, dataPath), CancellationToken.None);
+            var context = new Context(moduleId, dataPath);
+            await entry.StartAsync(context, CancellationToken.None);
+            var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = [], ContentRootPath = root });
+            builder.Logging.ClearProviders();
+            builder.WebHost.UseUrls("http://127.0.0.1:0");
+            application = builder.Build();
+            application.MapGet("/module-host/health", () => Results.Ok(new { healthy = true }));
+            if (entry is IModuleHostHttp http) http.MapEndpoints(application, context);
+            await application.StartAsync();
+            var url = application.Urls.Single();
             started = true;
-            await WriteAsync(output, new ModuleHostReady("ready", moduleId, manifest.Version, HostApiVersion));
+            await WriteAsync(output, new ModuleHostReady("ready", moduleId, manifest.Version, HostApiVersion, url));
             while (await input.ReadLineAsync() is { } line)
             {
                 var command = ParseCommand(line);
@@ -52,6 +66,7 @@ public static class ModuleHostProgram
                         break;
                     case ModuleHostProtocol.Shutdown:
                         await entry.StopAsync(CancellationToken.None);
+                        if (application is not null) await application.StopAsync();
                         started = false;
                         await WriteAsync(output, new ModuleHostStopped("stopped", moduleId));
                         return 0;
@@ -68,6 +83,11 @@ public static class ModuleHostProgram
         }
         finally
         {
+            if (application is not null)
+            {
+                try { await application.StopAsync(); } catch (Exception) { }
+                await application.DisposeAsync();
+            }
             if (started && entry is not null)
                 try { await entry.StopAsync(CancellationToken.None); } catch (Exception) { }
         }

@@ -21,6 +21,23 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
                 entry.Version, entry.HostApiVersion, entry.ProblemCode)).ToArray();
     }
 
+    internal bool TryGetEndpoint(string moduleId, out Uri endpoint)
+    {
+        lock (_gate)
+        {
+            var entry = _entries.FirstOrDefault(entry => entry.ModuleId == moduleId);
+            if (entry is { Status: "running", Client: not null }
+                && Uri.TryCreate(entry.Client.Ready.Url, UriKind.Absolute, out var parsed)
+                && parsed.Scheme == "http" && parsed.IsLoopback)
+            {
+                endpoint = parsed;
+                return true;
+            }
+        }
+        endpoint = null!;
+        return false;
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var section = configuration.GetSection("ModuleHosts");

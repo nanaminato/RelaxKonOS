@@ -1,6 +1,9 @@
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
 using RelaxKonOS.Server.Startup;
 using RelaxKonOS.ServerModuleHost;
 
@@ -43,15 +46,46 @@ internal static class ModuleHostChecks
 
             await using var client = new ModuleHostProcessClient(root, "fixture-host", Path.Combine(root, "process-data"));
             var ready = await client.StartAsync();
+            using var http = new HttpClient { BaseAddress = new Uri(ready.Url) };
+            var body = await http.GetStringAsync("/hello");
             var health = await client.HealthAsync();
             await client.ShutdownAsync();
-            check(ready.ModuleId == "fixture-host" && health.Healthy,
-                "Server can launch and control an isolated ModuleHost over the line protocol");
+            check(ready.ModuleId == "fixture-host" && health.Healthy && body == "hello from module host",
+                "Server can launch, route to and control an isolated ModuleHost over the line protocol");
+
+            var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ModuleHosts:Enabled"] = "true",
+                ["ModuleHosts:Entries:0:ModuleId"] = "fixture-host",
+                ["ModuleHosts:Entries:0:PackageRoot"] = root,
+                ["ModuleHosts:Entries:0:DataPath"] = Path.Combine(root, "supervisor-data"),
+            }).Build();
+            var environment = new TestEnvironment(root);
+            using var supervisor = new ModuleHostSupervisor(environment, configuration,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<ModuleHostSupervisor>.Instance);
+            await supervisor.StartAsync(CancellationToken.None);
+            for (var attempt = 0; attempt < 100 && !supervisor.TryGetEndpoint("fixture-host", out _); attempt++)
+                await Task.Delay(50);
+            check(supervisor.TryGetEndpoint("fixture-host", out var endpoint)
+                && supervisor.Snapshot().Single().Status == "running",
+                "ModuleHost supervisor starts a configured isolated process");
+            using var supervisedHttp = new HttpClient { BaseAddress = endpoint };
+            check(await supervisedHttp.GetStringAsync("/hello") == "hello from module host",
+                "ModuleHost supervisor exposes the isolated HTTP endpoint");
+            await supervisor.StopAsync(CancellationToken.None);
         }
         finally
         {
             try { Directory.Delete(root, recursive: true); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         }
+    }
+
+    private sealed class TestEnvironment(string root) : IHostEnvironment
+    {
+        public string EnvironmentName { get; set; } = Environments.Development;
+        public string ApplicationName { get; set; } = "ModuleHostChecks";
+        public string ContentRootPath { get; set; } = root;
+        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
     }
 }

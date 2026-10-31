@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="../../../Shared/RelaxKonOS.ModuleHost.Sdk/RelaxKonOS.ModuleHost.Sdk.csproj" />
   </ItemGroup>
 </Project>

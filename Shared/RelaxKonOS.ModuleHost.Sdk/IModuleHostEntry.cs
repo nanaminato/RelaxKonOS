@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Routing;
+
 namespace RelaxKonOS.ModuleHost.Sdk;
 
 /// <summary>
@@ -26,4 +28,10 @@ public sealed record ModuleHostHealth(bool Healthy, string? ProblemCode = null);
 public interface IModuleHostHealth
 {
     ValueTask<ModuleHostHealth> CheckHealthAsync(CancellationToken cancellationToken);
+}
+
+/// <summary>Optional HTTP surface. The ModuleHost owns the listener; the entry never receives Server middleware.</summary>
+public interface IModuleHostHttp
+{
+    void MapEndpoints(IEndpointRouteBuilder endpoints, IModuleHostContext context);
 }

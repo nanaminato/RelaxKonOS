@@ -49,8 +49,12 @@ internal sealed class ModuleHostProcessClient(string packageRoot, string moduleI
             throw new ModulePackageException(root.TryGetProperty("problemCode", out var code)
                 ? code.GetString() ?? "module-host-start-failed" : "module-host-start-failed");
         _ready = new ModuleHostReady("ready", root.GetProperty("moduleId").GetString() ?? "",
-            root.GetProperty("version").GetString() ?? "", root.GetProperty("hostApiVersion").GetString() ?? "");
+            root.GetProperty("version").GetString() ?? "", root.GetProperty("hostApiVersion").GetString() ?? "",
+            root.GetProperty("url").GetString() ?? "");
         if (_ready.ModuleId != moduleId) throw new ModulePackageException("module-host-entry-id-mismatch");
+        if (!Uri.TryCreate(_ready.Url, UriKind.Absolute, out var endpoint)
+            || endpoint.Scheme != "http" || !endpoint.IsLoopback)
+            throw new ModulePackageException("module-host-response-invalid");
         return _ready;
     }
 

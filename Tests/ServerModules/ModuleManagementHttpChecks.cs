@@ -62,7 +62,9 @@ internal static class ModuleManagementHttpChecks
                 && (await client.PostAsJsonAsync(ServerModuleManagementRoutes.ModuleStoreRefresh,
                     new ServerModuleCatalogRefreshRequest("official", "uninitialized", "refresh-1", null))).StatusCode == HttpStatusCode.Unauthorized
                 && (await client.GetAsync(ServerModuleManagementRoutes.ModuleHealth)).StatusCode == HttpStatusCode.Unauthorized
-                && (await client.GetAsync(ServerModuleManagementRoutes.ModuleHosts)).StatusCode == HttpStatusCode.Unauthorized,
+                && (await client.GetAsync(ServerModuleManagementRoutes.ModuleHosts)).StatusCode == HttpStatusCode.Unauthorized
+                && (await client.GetAsync(ServerModuleManagementRoutes.ModuleHostProxy.Replace("{moduleId}", "fixture-host")
+                    .Replace("{**path}", "hello"))).StatusCode == HttpStatusCode.Unauthorized,
                 "module package read and write APIs reject unauthenticated requests");
             client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Observer);
             var observer = await client.GetFromJsonAsync<ServerModuleDto>(detail, RelaxKonOSJsonOptions.Default);
@@ -92,6 +94,9 @@ internal static class ModuleManagementHttpChecks
             var hosts = await client.GetFromJsonAsync<ServerModuleHostPageDto>(
                 ServerModuleManagementRoutes.ModuleHosts, RelaxKonOSJsonOptions.Default);
             check(hosts?.Hosts.Count == 0, "ModuleHost supervisor exposes no host when none is configured");
+            check((await client.GetAsync(ServerModuleManagementRoutes.ModuleHostProxy.Replace("{moduleId}", "fixture-host")
+                .Replace("{**path}", "hello"))).StatusCode == HttpStatusCode.NotFound,
+                "ModuleHost proxy rejects an unknown isolated module");
             check((await client.PostAsJsonAsync(ServerModuleManagementRoutes.ModuleStoreRefresh,
                     new ServerModuleCatalogRefreshRequest("official", "uninitialized", "refresh-1", null)))
                 .StatusCode == HttpStatusCode.BadRequest,

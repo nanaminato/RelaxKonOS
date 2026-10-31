@@ -10,7 +10,7 @@ public static class ModuleHostProtocol
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = false };
 }
 
-public sealed record ModuleHostReady(string Type, string ModuleId, string Version, string HostApiVersion);
+public sealed record ModuleHostReady(string Type, string ModuleId, string Version, string HostApiVersion, string Url);
 public sealed record ModuleHostHealth(string Type, bool Healthy, string? ProblemCode);
 public sealed record ModuleHostStopped(string Type, string ModuleId);
 public sealed record ModuleHostFaulted(string Type, string ProblemCode);

@@ -128,4 +128,5 @@ public static class ServerModuleManagementRoutes
     public const string ModuleStoreRefresh = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-store/refresh";
     public const string ModuleHealth = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-health";
     public const string ModuleHosts = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-hosts";
+    public const string ModuleHostProxy = ModuleHosts + "/{moduleId}/{**path}";
 }

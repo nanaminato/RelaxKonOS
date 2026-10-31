@@ -84,6 +84,36 @@ internal static class ServerModuleManagementEndpoints
             .RequireAuthorization(ManagePolicy);
         group.MapGet(ServerModuleManagementRoutes.ModuleHosts, ([FromServices] ModuleHostSupervisor hosts) =>
             Results.Ok(new ServerModuleHostPageDto(hosts.Snapshot()))).RequireAuthorization(ManagePolicy);
+        group.Map(ServerModuleManagementRoutes.ModuleHostProxy, async (string moduleId, string? path,
+            HttpContext http, [FromServices] ModuleHostSupervisor hosts) =>
+        {
+            if (!hosts.TryGetEndpoint(moduleId, out var endpoint)) return Results.NotFound();
+            if (path is not null && path.Split('/').Any(part => part is ".." or ".")) return Results.BadRequest();
+            var target = new Uri(endpoint, (path ?? "") + http.Request.QueryString);
+            using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
+            { Timeout = TimeSpan.FromSeconds(100) };
+            using var request = new HttpRequestMessage(new HttpMethod(http.Request.Method), target);
+            if (http.Request.ContentLength is > 0 || http.Request.Headers.ContainsKey("Transfer-Encoding"))
+            {
+                request.Content = new StreamContent(http.Request.Body);
+                if (http.Request.ContentType is { Length: > 0 } contentType)
+                    request.Content.Headers.TryAddWithoutValidation("Content-Type", contentType);
+            }
+            if (http.Request.Headers.Accept.Count > 0)
+                request.Headers.Accept.ParseAdd(string.Join(", ", http.Request.Headers.Accept));
+            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead,
+                http.RequestAborted);
+            http.Response.StatusCode = (int)response.StatusCode;
+            foreach (var header in response.Headers)
+                if (!HopByHop(header.Key))
+                    http.Response.Headers[header.Key] = header.Value.ToArray();
+            foreach (var header in response.Content.Headers)
+                if (!HopByHop(header.Key))
+                    http.Response.Headers[header.Key] = header.Value.ToArray();
+            http.Response.Headers.ContentLength = null;
+            await response.Content.CopyToAsync(http.Response.Body, http.RequestAborted);
+            return Results.Empty;
+        }).RequireAuthorization();
         group.MapGet(ServerModuleManagementRoutes.InstalledPackages, (ServerModuleContext context) => Respond(() =>
         {
             var current = InstalledModuleStore.Read(context.ContentRootPath);
@@ -316,6 +346,9 @@ internal static class ServerModuleManagementEndpoints
         catch (Exception exception) when (exception is IOException or System.UnauthorizedAccessException)
         { return Problem("module-state-unavailable", 503); }
     }
+    private static bool HopByHop(string name) => name is "Connection" or "Keep-Alive" or "Proxy-Authenticate"
+        or "Proxy-Authorization" or "TE" or "Trailer" or "Transfer-Encoding" or "Upgrade";
+
     private static IResult Problem(string code, int status) => Results.Problem(statusCode: status,
         type: "https://relaxkonos.app/problems/" + code, title: code,
         extensions: new Dictionary<string, object?> { ["problemCode"] = code });
