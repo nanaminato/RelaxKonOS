@@ -1,6 +1,6 @@
 # 服务端独立模块分发与 v1/v2 宿主设计
 
-> 状态：设计，2026-10-31。v1 首个可运行切片已实现：离线/在线安装官方 `.rkmodule` v1、不可变版本目录、`installed.json` 安装事实、进程内独立加载器、重启核实、启动失败回退/隔离、组件中心安装/回退 UI、已接纳目录的模块搜索/下载/远程刷新，以及只读模块健康报告；v2 ModuleHost、完整商店服务、提权 Broker 未实现。本文其余内容仍是目标设计，不能按已实现功能读取。
+> 状态：设计，2026-10-31。v1 首个可运行切片已实现：离线/在线安装官方 `.rkmodule` v1、不可变版本目录、`installed.json` 安装事实、进程内独立加载器、重启核实、启动失败回退/隔离、组件中心安装/回退 UI、已接纳目录的模块搜索/下载/远程刷新，以及只读模块健康报告；v2 已建立独立 ModuleHost SDK 与进程骨架（未接入 Server 代理/认证/提权 Broker）。完整商店服务、提权 Broker 未实现。本文其余内容仍是目标设计，不能按已实现功能读取。
 >
 > 范围：服务端模块的独立打包、信任、安装、更新、回退、加载、卸载，以及 v1/v2 两种宿主模式。桌面 `.roapp` 的包格式仍由[开发者模式](../development/RelaxKonOS.DeveloperMode.md)拥有；商店来源、搜索和下载的统一契约由[包商店来源设计](../platform/RelaxKonOS.PackageStore.Design.md)拥有；第三方模块的提权调用由[模块提权 Broker 设计](RelaxKonOS.ServerModulePrivilegeBroker.Design.md)拥有。
 >
@@ -40,7 +40,7 @@
 | 维护命令 | `verify-package`、`catalog-status`、`accept-catalog`、`install-package`、`list-installed`、`remove-installed`；安装为离线管理员命令 |
 | 管理 API | 只读清单、启停/策略计划、操作查询；在线包动作与版本目录 API 仍返回不支持 |
 | 安装 | v1 离线/在线安装、不可变版本目录、`installed.json`、进程内独立加载器、重启核实和启动失败回退/隔离已实现；完整商店服务与第三方 ModuleHost 未实现 |
-| 第三方 | 无包、无 ModuleHost、无权限模型 |
+| 第三方 | v2 ModuleHost SDK/独立进程骨架已建立，未接入 Server 代理、认证或提权 Broker |
 
 相关入口：
 
@@ -600,7 +600,13 @@ v2 的 `IModuleContext` 只提供：
 - 在线安装 HTTP：`POST /server/module-packages/upload`（原始 `.rkmodule` body，最大 1 GiB）、`POST /server/module-packages/plans`、`POST /server/module-packages/plans/{planId}/apply`、`POST /server/module-packages/rollback`；计划冻结 sourceId/releaseId/module/version/摘要，apply 重新校验后安装并写 `package-operations.json` 等待重启核实。直接 `POST /server/module-packages/install` 保留为无计划路径。
 - 测试：真实模块程序集加载、DI 注册、Endpoint 映射、安装幂等、移除保留文件、双版本切换、回退、篡改拒绝、启动核实和只读包 API；`Tests/ServerModules` 全套通过（Windows 开发机）。
 
-未实现：完整商店服务（远程源同步、评分/审核、搜索索引）、ModuleHost、提权 Broker。
+未实现：完整商店服务（远程源同步、评分/审核、搜索索引）、ModuleHost 与 Server 的代理/认证接线、提权 Broker。
+
+### v2 ModuleHost 骨架（2026-10-31）
+
+- `Shared/RelaxKonOS.ModuleHost.Sdk`：`IModuleHostEntry`、`IModuleHostContext`、`IModuleHostHealth`，只暴露模块生命周期、私有数据路径和 Host API 版本。
+- `RelaxKonOS.ServerModuleHost`：独立控制台进程，读取 `manifest.json`，逐文件校验长度/SHA-256，使用独立 `AssemblyLoadContext` 加载入口，输出行协议 `ready` / `health` / `stopped` / `faulted`。
+- 当前不提供 HTTP 代理、Server 认证、模块路由注册、存储/日志能力或提权 Broker；不能作为 v2 生产运行时使用。
 
 ## 13. 验收
 
