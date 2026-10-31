@@ -587,7 +587,7 @@ v2 的 `IModuleContext` 只提供：
 - `InstalledModuleStore`：`installed.json` 原子读写、每版本 `install.json`、路径/摘要/ID 校验、移除记录。
 - `ModulePackageOperationStore`：`package-operations.json` 记录 install/rollback 的 `AwaitingRestart` 回执；`ApplicationStarted` 后按精确版本/摘要核为 `Succeeded` 或 `Failed`。
 - `ModulePackageStartupGuard`：`package-startup.json` 标记本次启动；若上次进程未到达 `ApplicationStarted`，把带 `previousVersion` 的更新操作回退到旧版本并标为 `Failed`（`module-package-operation-startup-rollback`）；没有历史版本的首次安装则把安装记录隔离为 `Quarantined`，不发布能力、不加载程序集，操作标记 `module-package-operation-startup-quarantined`，避免启动循环。
-- `InstalledModuleInstaller`：基于已接纳签名目录验证候选，解包到不可变版本目录，写安装事实；同一 release 幂等；支持切换到已安装版本。
+- `InstalledModuleInstaller`：基于已接纳签名目录验证候选，解包到不可变版本目录，写安装事实；同一 release 幂等；支持切换到已安装版本；安装前拒绝缺失/自依赖、已安装依赖版本不满足、依赖被隔离或依赖成环。
 - `InstalledModuleCatalog`：启动时发现已安装模块，按需加载程序集；加载前重新核对 `manifest.json` 与每个文件的长度/SHA-256，篡改文件拒绝加载；共享抽象/Protocol 使用 Host 类型身份；模块可注册 DI 和 Endpoint。
 - `ServerModules` / `ModuleManagementStore` 接入已安装模块目录；默认启用集合与 managed 状态可识别已安装模块。
 - 离线命令：`install-package`、`list-installed`、`list-versions`、`list-package-operations`、`rollback-installed`、`remove-installed`。
