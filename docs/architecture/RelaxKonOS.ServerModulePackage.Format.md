@@ -115,7 +115,7 @@ install-package 要求本机管理员/root、Host 已停止、目录已通过 ac
 
 安装/回退同时写入 `package-operations.json` 的 `AwaitingRestart` 回执；Server 启动完成、`ApplicationStarted` 后按 `installed.json` 的精确版本/releaseId/artifactSha256 核对为 `Succeeded` 或 `Failed`。这不是自动重启；更新操作的启动崩溃回退见下。
 
-Host 在加载已安装模块前写 `package-startup.json` 标记，成功到达 `ApplicationStarted` 后删除。若上次进程未删除标记，Host 会把带 `previousVersion` 的待重启更新回退到旧版本并标记 `module-package-operation-startup-rollback`，再加载旧版本；首次安装且没有历史版本的失败仍需要管理员恢复。
+Host 在加载已安装模块前写 `package-startup.json` 标记，成功到达 `ApplicationStarted` 后删除。若上次进程未删除标记，Host 会把带 `previousVersion` 的待重启更新回退到旧版本并标记 `module-package-operation-startup-rollback`；首次安装没有历史版本时把安装记录标为 `quarantined`，不发布能力、不加载程序集，并标记 `module-package-operation-startup-quarantined`，避免启动循环。
 
 list-versions 只读版本目录的 `install.json`，不加载程序集。rollback-installed 要求 Host 已停止、管理员/root，重新核对目标版本文件哈希后把 `installed.json` 当前版本切回该版本；不修改期望启用集合、不自动重启。
 

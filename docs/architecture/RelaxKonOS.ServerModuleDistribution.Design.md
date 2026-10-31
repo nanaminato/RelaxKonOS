@@ -289,7 +289,7 @@ Prepared -> Verified -> AwaitingApproval -> Staged
 - 回退是显式计划，不需要用户重新下载；不能凭客户端缓存安装新代码。
 - 卸载默认保留模块数据和配置；删除数据是独立计划。
 
-> v1 首版保留旧版本目录，并实现有 `previousVersion` 的更新自动回退：启动标记残留时先恢复旧版本再加载；首次安装且无历史版本的失败仍要求管理员处理。尚未实现自动重启或启动后的健康探测。
+> v1 首版保留旧版本目录，并实现启动失败恢复：有 `previousVersion` 的更新恢复旧版本；首次安装没有历史版本时隔离安装记录，不再加载其程序集。尚未实现自动重启或启动后的健康探测。
 
 ## 8. v1：如何添加一个官方模块
 
@@ -586,7 +586,7 @@ v2 的 `IModuleContext` 只提供：
 - `Shared/RelaxKonOS.ServerModule.Abstractions` 的 `IInstalledServerModule` / `InstalledModuleContext`。
 - `InstalledModuleStore`：`installed.json` 原子读写、每版本 `install.json`、路径/摘要/ID 校验、移除记录。
 - `ModulePackageOperationStore`：`package-operations.json` 记录 install/rollback 的 `AwaitingRestart` 回执；`ApplicationStarted` 后按精确版本/摘要核为 `Succeeded` 或 `Failed`。
-- `ModulePackageStartupGuard`：`package-startup.json` 标记本次启动；若上次进程未到达 `ApplicationStarted`，把带 `previousVersion` 的更新操作回退到旧版本并标为 `Failed`（`module-package-operation-startup-rollback`），避免坏更新反复启动失败。
+- `ModulePackageStartupGuard`：`package-startup.json` 标记本次启动；若上次进程未到达 `ApplicationStarted`，把带 `previousVersion` 的更新操作回退到旧版本并标为 `Failed`（`module-package-operation-startup-rollback`）；没有历史版本的首次安装则把安装记录隔离为 `Quarantined`，不发布能力、不加载程序集，操作标记 `module-package-operation-startup-quarantined`，避免启动循环。
 - `InstalledModuleInstaller`：基于已接纳签名目录验证候选，解包到不可变版本目录，写安装事实；同一 release 幂等；支持切换到已安装版本。
 - `InstalledModuleCatalog`：启动时发现已安装模块，按需加载程序集；加载前重新核对 `manifest.json` 与每个文件的长度/SHA-256，篡改文件拒绝加载；共享抽象/Protocol 使用 Host 类型身份；模块可注册 DI 和 Endpoint。
 - `ServerModules` / `ModuleManagementStore` 接入已安装模块目录；默认启用集合与 managed 状态可识别已安装模块。
@@ -596,7 +596,7 @@ v2 的 `IModuleContext` 只提供：
 - 在线安装 HTTP：`POST /server/module-packages/upload`（原始 `.rkmodule` body，最大 1 GiB）、`POST /server/module-packages/plans`、`POST /server/module-packages/plans/{planId}/apply`、`POST /server/module-packages/rollback`；计划冻结 sourceId/releaseId/module/version/摘要，apply 重新校验后安装并写 `package-operations.json` 等待重启核实。直接 `POST /server/module-packages/install` 保留为无计划路径。
 - 测试：真实模块程序集加载、DI 注册、Endpoint 映射、安装幂等、移除保留文件、双版本切换、回退、篡改拒绝、启动核实和只读包 API；`Tests/ServerModules` 全套通过（Windows 开发机）。
 
-未实现：首次安装且没有历史版本时的自动启动恢复、ModuleHost、商店、提权 Broker。
+未实现：ModuleHost、商店、提权 Broker。
 
 ## 13. 验收
 
