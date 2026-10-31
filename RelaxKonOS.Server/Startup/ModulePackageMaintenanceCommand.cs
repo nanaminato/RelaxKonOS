@@ -12,18 +12,38 @@ internal static class ModulePackageMaintenanceCommand
     {
         if (args.Length < 2 || args[1] is not ("verify-package" or "catalog-status" or "accept-catalog" or "refresh-catalog"
                 or "install-package" or "list-installed" or "list-versions" or "list-package-operations"
-                or "rollback-installed" or "remove-installed"))
+                or "rollback-installed" or "remove-installed" or "host-probe"))
             throw new ModulePackageException("module-package-command-invalid");
         var command = args[1];
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
         for (var i = 2; i < args.Length; i += 2)
             if (i + 1 >= args.Length || args[i] is not ("--content-root" or "--source-id" or "--catalog" or "--catalog-uri" or "--archive" or "--release-id"
-                    or "--service-id" or "--expected-revision" or "--idempotency-key" or "--module-id" or "--version")
+                    or "--service-id" or "--expected-revision" or "--idempotency-key" or "--module-id" or "--version"
+                    or "--package-root" or "--data-path" or "--host-executable")
                 || !values.TryAdd(args[i], args[i + 1])) throw new ModulePackageException("module-package-command-invalid");
         if (!values.TryGetValue("--content-root", out var root)
             || !Path.IsPathFullyQualified(root) || !Directory.Exists(root)) throw new ModulePackageException("module-package-command-invalid");
         root = Path.GetFullPath(root);
         var identity = ModuleManagementStore.ReadRecoveryReport(root);
+        if (command == "host-probe")
+        {
+            if (values.Count is < 3 or > 5 || !values.TryGetValue("--package-root", out var packageRoot)
+                || !values.TryGetValue("--module-id", out var hostModuleId)
+                || !Path.IsPathFullyQualified(packageRoot) || !Directory.Exists(packageRoot)
+                || !ModulePackageHostConfiguration.Identifier(hostModuleId))
+                throw new ModulePackageException("module-package-command-invalid");
+            if (!AuthMaintenanceCommand.IsAdministrator())
+                throw new ModulePackageException("module-package-local-administrator-required");
+            var dataPath = values.TryGetValue("--data-path", out var configuredData)
+                ? Path.GetFullPath(configuredData) : Path.Combine(root, "data", "module-data", hostModuleId);
+            values.TryGetValue("--host-executable", out var hostExecutable);
+            await using var client = new ModuleHostProcessClient(packageRoot, hostModuleId, dataPath, hostExecutable);
+            var ready = await client.StartAsync();
+            var health = await client.HealthAsync();
+            await client.ShutdownAsync();
+            Console.WriteLine(JsonSerializer.Serialize(new { hostProbe = true, ready, health }, ModulePackageJson.Options));
+            return health.Healthy ? 0 : 1;
+        }
         if (command == "catalog-status")
         {
             if (values.Count != 1) throw new ModulePackageException("module-package-command-invalid");

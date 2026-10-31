@@ -16,7 +16,7 @@ internal static class ModuleMaintenanceCommand
                 return await ModulePackageBuildCommand.RunAsync(args);
             if (args.Length >= 2 && args[0] == "modules" && args[1] is "verify-package" or "catalog-status" or "accept-catalog"
                     or "install-package" or "list-installed" or "list-versions" or "list-package-operations"
-                    or "rollback-installed" or "remove-installed")
+                    or "rollback-installed" or "remove-installed" or "host-probe")
                 return await ModulePackageMaintenanceCommand.RunAsync(args);
             if (args.Length < 2 || args[0] != "modules" || args[1] is not ("diagnose" or "recover-enable-all"))
                 throw new ModuleManagementException("module-maintenance-command-invalid", 400);

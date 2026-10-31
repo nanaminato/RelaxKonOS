@@ -2,7 +2,10 @@ using System.Reflection;
 using System.Runtime.Loader;
 using System.Security.Cryptography;
 using System.Text.Json;
+using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.ModuleHost.Sdk;
+using ProtocolHealth = RelaxKonOS.ModuleHost.Protocol.ModuleHostHealth;
+using SdkHealth = RelaxKonOS.ModuleHost.Sdk.ModuleHostHealth;
 
 namespace RelaxKonOS.ServerModuleHost;
 
@@ -35,21 +38,22 @@ public static class ModuleHostProgram
             Directory.CreateDirectory(dataPath);
             await entry.StartAsync(new Context(moduleId, dataPath), CancellationToken.None);
             started = true;
-            await WriteAsync(output, new { type = "ready", moduleId, manifest.Version, hostApiVersion = HostApiVersion });
+            await WriteAsync(output, new ModuleHostReady("ready", moduleId, manifest.Version, HostApiVersion));
             while (await input.ReadLineAsync() is { } line)
             {
-                switch (line.Trim())
+                var command = ParseCommand(line);
+                switch (command)
                 {
-                    case "health":
+                    case ModuleHostProtocol.Health:
                         var health = entry is IModuleHostHealth probe
                             ? await probe.CheckHealthAsync(CancellationToken.None)
-                            : new ModuleHostHealth(true);
-                        await WriteAsync(output, new { type = "health", health.Healthy, health.ProblemCode });
+                            : new SdkHealth(true);
+                        await WriteAsync(output, new ProtocolHealth("health", health.Healthy, health.ProblemCode));
                         break;
-                    case "shutdown":
+                    case ModuleHostProtocol.Shutdown:
                         await entry.StopAsync(CancellationToken.None);
                         started = false;
-                        await WriteAsync(output, new { type = "stopped", moduleId });
+                        await WriteAsync(output, new ModuleHostStopped("stopped", moduleId));
                         return 0;
                 }
             }
@@ -58,8 +62,8 @@ public static class ModuleHostProgram
         catch (Exception error) when (error is ModuleHostException or IOException or UnauthorizedAccessException
             or BadImageFormatException or JsonException)
         {
-            await WriteAsync(output, new { type = "faulted", problemCode = error is ModuleHostException host
-                ? host.ProblemCode : "module-host-start-failed" });
+            await WriteAsync(output, new ModuleHostFaulted("faulted", error is ModuleHostException host
+                ? host.ProblemCode : "module-host-start-failed"));
             return 1;
         }
         finally
@@ -67,6 +71,19 @@ public static class ModuleHostProgram
             if (started && entry is not null)
                 try { await entry.StopAsync(CancellationToken.None); } catch (Exception) { }
         }
+    }
+
+    private static string? ParseCommand(string line)
+    {
+        var trimmed = line.Trim();
+        if (trimmed is ModuleHostProtocol.Health or ModuleHostProtocol.Shutdown) return trimmed;
+        if (!trimmed.StartsWith('{')) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(trimmed);
+            return document.RootElement.TryGetProperty("type", out var type) ? type.GetString() : null;
+        }
+        catch (JsonException) { return null; }
     }
 
     private static Dictionary<string, string> Parse(string[] args)
@@ -129,7 +146,7 @@ public static class ModuleHostProgram
 
     private static async Task WriteAsync(TextWriter output, object value)
     {
-        await output.WriteLineAsync(JsonSerializer.Serialize(value, Json));
+        await output.WriteLineAsync(JsonSerializer.Serialize(value, ModuleHostProtocol.Json));
         await output.FlushAsync();
     }
 

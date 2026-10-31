@@ -7,5 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Shared/RelaxKonOS.ModuleHost.Sdk/RelaxKonOS.ModuleHost.Sdk.csproj" />
+    <ProjectReference Include="../Shared/RelaxKonOS.ModuleHost.Protocol/RelaxKonOS.ModuleHost.Protocol.csproj" />
   </ItemGroup>
 </Project>

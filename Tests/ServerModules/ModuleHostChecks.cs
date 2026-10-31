@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
+using RelaxKonOS.Server.Startup;
 using RelaxKonOS.ServerModuleHost;
 
 internal static class ModuleHostChecks
@@ -39,6 +40,13 @@ internal static class ModuleHostChecks
                 && text.Contains("\"healthy\":true", StringComparison.Ordinal)
                 && text.Contains("\"type\":\"stopped\"", StringComparison.Ordinal),
                 "ModuleHost skeleton verifies, loads and health-checks a package in isolation");
+
+            await using var client = new ModuleHostProcessClient(root, "fixture-host", Path.Combine(root, "process-data"));
+            var ready = await client.StartAsync();
+            var health = await client.HealthAsync();
+            await client.ShutdownAsync();
+            check(ready.ModuleId == "fixture-host" && health.Healthy,
+                "Server can launch and control an isolated ModuleHost over the line protocol");
         }
         finally
         {
