@@ -115,7 +115,7 @@ GET /api/v1.0/server/module-health
 
 `module-health` 返回内置模块和已安装模块的启用状态/版本/来源/health status。已安装模块可实现可选的 `IInstalledServerModuleHealth`；未实现时报告 `loaded`，不冒充健康。隔离模块报告 `quarantined`，加载失败报告 `load-failed`。该接口只读，不改变启用集合、不重启 Host。
 
-可选看门狗配置 `ModuleHealth:Enabled=true`、`ModuleHealth:StopOnUnhealthy=true`、`ModuleHealth:ProbeIntervalSeconds`（10–3600）：启动后周期检查启用模块，发现 `unhealthy`/`load-failed`/`quarantined` 时写 `health-stop.json` 并请求 Host 停止；外部服务监督器负责重启。
+可选看门狗配置 `ModuleHealth:Enabled=true`、`ModuleHealth:StopOnUnhealthy=true`、`ModuleHealth:ProbeIntervalSeconds`（10–3600）、`ModuleHealth:StopExitCode`（1–255，默认 1）：启动后周期检查启用模块，发现 `unhealthy`/`load-failed`/`quarantined` 时写 `health-stop.json`、设置非零退出码并请求 Host 停止；外部服务监督器负责重启。示例见[进程监督与健康停机恢复](../services/ServerProcessSupervision.md)。
 
 plan apply / direct install / rollback 都写 `package-operations.json` 的 `AwaitingRestart` 回执，并删除已消费的上传文件。安装成功不等于已启用或已生效；重启后的启动核实把操作标为 `Succeeded`/`Failed`。
 

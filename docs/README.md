@@ -25,6 +25,7 @@ Android 的设计、功能、支持范围和发布要求统一维护在 [Android
 - [文件管理器优化与验证记录](./applications/RelaxKonOS.Explorer.Progress.md)
 - [Android 文件传输](../Client/RelaxKonOS.Client.Android/docs/features/FileTransfers.md)
 - [受管服务安装计划](./services/RelaxKonOS.InstallationServices.Goal.md)
+- [服务端进程监督与健康停机恢复](./services/ServerProcessSupervision.md)
 - [SMB 文件服务](./services/file-services/RelaxKonOS.FileServices.Smb.md)
 - [文件服务设计规格](./services/file-services/RelaxKonOS.FileServices.Specification.md)
 - [FRP 设计](./applications/RelaxKonOS.FRP_Integration.Design.md)
