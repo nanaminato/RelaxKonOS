@@ -2,7 +2,7 @@
 
 > 状态：设计，2026-10-31。未实现。本文定义 v2 ModuleHost 的第三方模块提权边界；v1 官方模块继续使用现有 `IHostElevationSessionStore` 和 `IPrivilegedOperationTransport`。
 >
-> 范围：第三方模块申请宿主特权时的计划、展示、确认、执行、审计和撤销。模块包格式与安装由[服务端独立模块分发设计](RelaxKonOS.ServerModuleDistribution.Design.md)拥有；商店来源由[包商店来源设计](../platform/RelaxKonOS.PackageStore.Design.md)拥有；Helper 的底层封闭操作仍由[统一特权 Helper 架构](privileged-helper.md)拥有。
+> 范围：第三方模块申请宿主特权时的计划、展示、确认、执行、审计和撤销。模块包格式与安装由[服务端独立模块分发设计](RelaxKonOS.ServerModuleDistribution.Design.md)拥有；商店来源由[包商店来源设计](../platform/RelaxKonOS.PackageStore.Design.md)拥有；Helper 的底层封闭操作仍由[统一特权 Helper 架构](privileged-helper.md)拥有。通用能力类别、资源范围和软件安装/卸载的后续扩展方向见[第三方模块声明式特权能力](RelaxKonOS.ModuleDeclarativePrivileges.Direction.md)。
 >
 > 本文不表示 Broker、确认界面、ModuleHost 或任何提权操作已实现。
 
@@ -77,7 +77,7 @@ public sealed record ModulePrivilegeRequest(
 
 ### 3.3 操作类型
 
-首版建议只开放以下类型：
+以下为目标能力类别，逐类实现和验收。首个固定服务动作切片不是永久业务白名单；下一阶段按[声明式能力方向](RelaxKonOS.ModuleDeclarativePrivileges.Direction.md)把软件包安装/卸载等操作提升为通用类别，由模块声明资源范围，Host 解析精确计划，用户确认后交 Helper 复核执行。新增 MySQL 等应用通常不应要求新增应用专用 Core 操作。
 
 | 类型 | 用途 | 关键约束 |
 | --- | --- | --- |
@@ -91,7 +91,7 @@ public sealed record ModulePrivilegeRequest(
 | `HostSetting` | 主机设置 | 只允许 Host 定义的设置键 |
 | `ProcessExecute` | 运行模块声明的可执行文件 | 最后开放；必须签名清单、可执行文件 hash、参数 schema、固定环境/工作目录/超时 |
 
-现有 Helper 的包操作只覆盖 Nginx、Git、Docker、Samba、Squid、sing-box、Tailscale、Mihomo 等固定组件；第三方模块要安装任意包不是现成能力，必须新增产品级的固定包/白名单操作，或明确拒绝。不能把现有 `ComponentPackageInstall` 当成任意 apt 接口。
+现有 Helper 的包操作只覆盖 Nginx、Git、Docker、Samba、Squid、sing-box、Tailscale、Mihomo 等固定组件；这不是第三方通用安装能力已经交付的证据。下一阶段新增通用软件包能力及平台适配器，以 Host 批准来源、模块声明包集合、版本约束、依赖闭包和资源所有权为边界；安装与卸载均可声明。适配器交付前明确拒绝，不把现有 `ComponentPackageInstall` 当成任意 apt 接口，也不要求永久逐应用新增专用枚举。
 
 `ProcessExecute` 不是通用命令接口：
 
@@ -299,11 +299,11 @@ sequenceDiagram
 
 ## 6. 与 Helper 的映射
 
-Broker 不新增“任意命令”Helper 操作。每个 `ModulePrivilegeKind` 必须映射到现有或新增的封闭 `PrivilegedOperationKind`：
+Broker 不新增“任意命令”Helper 操作。封闭边界应位于软件包、服务、文件等通用能力类别，而不是写死每个第三方应用名称；模块通过声明限定可申请的资源。每个能力类别必须映射到现有或新增的类型化 Helper 操作，Helper 按受保护策略独立校验，不能仅信任模块清单或 Server 参数：
 
 | Broker 操作 | Helper 侧 |
 | --- | --- |
-| `PackageInstall/Remove/Update` | 既有 `ComponentPackageInstall`/`ComponentPackageChange` 或新增固定包操作 |
+| `PackageInstall/Remove/Update` | 既有固定组件操作仅作现状；后续新增通用包事务适配器，冻结来源、包、版本、依赖和移除集合 |
 | `ServiceStart/Stop/Restart/Reload` | 既有 `ManagedRuntime`/`NativeServiceAction` 等固定服务操作 |
 | `FileWrite/Delete/SetMode/SetOwner` | 既有受保护文件操作，限定根和路径 |
 | `FirewallRule` | 既有 `FirewallUfw*`/`FirewallWindows*` |
@@ -311,7 +311,7 @@ Broker 不新增“任意命令”Helper 操作。每个 `ModulePrivilegeKind` �
 | `HostSetting` | 既有 `HostTimeApply`/`HostIdentityApply`/`HostEnvironmentApply` 等 |
 | `ProcessExecute` | 新增受限操作；首版可不实现 |
 
-如果现有 Helper 没有合适的固定操作，先新增产品级 typed operation 和测试，不把 Broker 降级为通用命令代理。
+如果现有 Helper 没有合适的能力类别或平台适配器，先新增通用类型化操作和测试；已有类别覆盖的新模块通过声明资源接入。特殊操作可按独立的高信任扩展机制评审，不能隐式降级为通用命令代理。模块安装时的能力范围授权与执行时的具体计划确认分别校验；详见[两层授权与实施顺序](RelaxKonOS.ModuleDeclarativePrivileges.Direction.md)。
 
 ## 7. 审计与可观察性
 
@@ -366,7 +366,7 @@ Broker 不新增“任意命令”Helper 操作。每个 `ModulePrivilegeKind` �
 | PB-02 | Core Broker、计划存储、一次性 token、管理员验证复用 | 计划过期/重放/漂移/密码错误全部拒绝 |
 | PB-03 | 客户端确认 UI（三语言、计划步骤/影响/警告） | 管理员已验证只显示确认；未验证显示账密 |
 | PB-04 | ModuleHost IPC 与 Broker 调用 | ModuleHost 无法直连 Helper/Server 数据 |
-| PB-05 | 首批操作：包安装/移除、服务动作、文件写入 | 每个操作有固定 Helper 映射和审计 |
+| PB-05 | 首批通用类别：包安装/移除、服务动作、文件写入 | 模块声明资源；Host 冻结计划；Helper 独立复核和审计；后续按声明式方向 DC-01～DC-03 验收 |
 | PB-06 | 常设提权许可、撤销、后台任务 | 未授权后台提权 fail closed |
 | PB-07 | `ProcessExecute` 评估（可选，最后） | 签名清单、hash、参数 schema、真实隔离评估 |
 
