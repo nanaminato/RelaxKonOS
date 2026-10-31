@@ -1,6 +1,6 @@
 # 服务端独立模块候选包 v1
 
-> 状态：2026-10-31，候选格式、纯校验器、只读维护命令、本机管理员离线目录接纳、离线打包/安装和进程内独立加载器已实现。在线版本查询、下载、更新、修复、回滚及移除事务、ModuleHost 仍待实施。本格式不适用于 Android、桌面或第三方隔离扩展。
+> 状态：2026-10-31，候选格式、纯校验器、只读维护命令、本机管理员离线目录接纳/远程目录刷新、离线/在线打包安装、进程内独立加载器、重启核实和启动失败回退/隔离已实现。完整商店服务、自动重启/健康探测、ModuleHost 仍待实施。本格式不适用于 Android、桌面或第三方隔离扩展。
 >
 > 独立模块安装、v1 官方进程内 / v2 第三方 ModuleHost 的宿主边界、模块商店与示例由[服务端独立模块分发与 v1/v2 宿主设计](RelaxKonOS.ServerModuleDistribution.Design.md)定义；第三方提权由[模块提权 Broker 设计](RelaxKonOS.ServerModulePrivilegeBroker.Design.md)定义。v2 实施时直接升级到唯一当前契约，不保留 v1 双解析或旧字段别名。
 
@@ -51,9 +51,12 @@ RelaxKonOS.Server modules verify-package --content-root <绝对服务目录> --s
 ```text
 RelaxKonOS.Server modules catalog-status --content-root <绝对服务目录>
 RelaxKonOS.Server modules accept-catalog --content-root <绝对服务目录> --source-id <已配置来源> --catalog <本地签名目录> --service-id <精确本机身份> --expected-revision <catalog-status返回修订> --idempotency-key <本次请求键>
+RelaxKonOS.Server modules refresh-catalog --content-root <绝对服务目录> --source-id <已配置来源> --expected-revision <catalog-status返回修订> --idempotency-key <本次请求键> [--catalog-uri <HTTPS目录地址>]
 ```
 
 catalog-status 只读报告已保存目录及修订，首次为 `uninitialized`；观察范围为 persisted-catalogs，不把未重新验签的状态摘要作为可安装清单。accept-catalog 要求本机管理员/root、已有服务身份、Host 已停止和精确修订，不自动停服务或取得新信任根。成功仅返回 `trustHistoryCommitted=true`、`installed=false` 和原子保存的目录接纳回执。
+
+refresh-catalog 使用显式 `--catalog-uri` 或配置 `ModulePackages:Sources:<sourceId>:CatalogUri`，只接受 HTTPS、无用户信息/片段、无重定向、最大 6 MiB 的签名目录；要求同样的本机管理员、Host 停止和精确修订，下载后走与 accept-catalog 相同的验签/历史/撤销接纳路径。
 
 Linux 隔离进程验证入口为 `Tests/ServerModules/verify-linux-module-catalogs.sh <自包含构建目录>`；只使用随机临时目录和测试生成的签名候选，不修改生产配置、服务或信任根。
 
