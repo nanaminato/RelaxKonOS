@@ -40,7 +40,7 @@
 | 维护命令 | `verify-package`、`catalog-status`、`accept-catalog`、`install-package`、`list-installed`、`remove-installed`；安装为离线管理员命令 |
 | 管理 API | 只读清单、启停/策略计划、操作查询；在线包动作与版本目录 API 仍返回不支持 |
 | 安装 | v1 离线/在线安装、不可变版本目录、`installed.json`、进程内独立加载器、重启核实和启动失败回退/隔离已实现；完整商店服务与第三方 ModuleHost 未实现 |
-| 第三方 | v2 ModuleHost SDK/独立进程骨架已建立，未接入 Server 代理、认证或提权 Broker |
+| 第三方 | v2 ModuleHost SDK、行协议与独立进程骨架已建立；Server 代理、认证、路由和提权 Broker 未接入 |
 
 相关入口：
 
@@ -605,7 +605,9 @@ v2 的 `IModuleContext` 只提供：
 ### v2 ModuleHost 骨架（2026-10-31）
 
 - `Shared/RelaxKonOS.ModuleHost.Sdk`：`IModuleHostEntry`、`IModuleHostContext`、`IModuleHostHealth`，只暴露模块生命周期、私有数据路径和 Host API 版本。
-- `RelaxKonOS.ServerModuleHost`：独立控制台进程，读取 `manifest.json`，逐文件校验长度/SHA-256，使用独立 `AssemblyLoadContext` 加载入口，输出行协议 `ready` / `health` / `stopped` / `faulted`。
+- `Shared/RelaxKonOS.ModuleHost.Protocol`：行协议 `ready` / `health` / `stopped` / `faulted`，以及 `health` / `shutdown` 命令。
+- `RelaxKonOS.ServerModuleHost`：独立控制台进程，读取 `manifest.json`，逐文件校验长度/SHA-256，使用独立 `AssemblyLoadContext` 加载入口，输出行协议。
+- `ModuleHostProcessClient`：Server 侧启动/超时/健康/关闭客户端；`modules host-probe` 提供本机管理员诊断入口。
 - 当前不提供 HTTP 代理、Server 认证、模块路由注册、存储/日志能力或提权 Broker；不能作为 v2 生产运行时使用。
 
 ## 13. 验收

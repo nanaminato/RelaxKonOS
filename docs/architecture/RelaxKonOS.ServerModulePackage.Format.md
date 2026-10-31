@@ -130,9 +130,12 @@ RelaxKonOS.Server modules list-package-operations --content-root <绝对服务�
 RelaxKonOS.Server modules rollback-installed --content-root <绝对服务目录> --module-id <模块ID> --version <目标版本>
 RelaxKonOS.Server modules install-package --content-root <绝对服务目录> --source-id <已配置来源> --archive <本地候选.rkmodule> --release-id <精确发布ID>
 RelaxKonOS.Server modules remove-installed --content-root <绝对服务目录> --module-id <模块ID>
+RelaxKonOS.Server modules host-probe --content-root <绝对服务目录> --package-root <模块版本目录> --module-id <模块ID> [--data-path <私有数据目录>] [--host-executable <ModuleHost路径>]
 ```
 
 install-package 要求本机管理员/root、Host 已停止、目录已通过 accept-catalog 接纳；它重新验证签名目录/归档/清单，解包到 `data/module-management/packages/<moduleId>/<version>/`，写入每版本 `install.json` 和顶层 `installed.json`。安装前还会检查依赖：未知/缺失依赖、自依赖、已安装依赖版本不满足范围、依赖被隔离或依赖成环都会拒绝。它不修改 `state.json` 的期望启用集合，也不自动重启；`installed=true` 不代表 effective。同一 release 重装幂等；同版本不同摘要拒绝。模块被启用并加载前，Host 还会重新核对安装清单和每个文件的长度/SHA-256。
+
+`host-probe` 是本机管理员诊断命令：要求 Host 已停止，启动独立 ModuleHost 骨架、完成 `ready`/`health`/`shutdown` 行协议后退出；不安装、不启用、不写 `installed.json`，当前也不提供 HTTP 路由或提权。缺少 ModuleHost 可执行文件时返回 `module-host-executable-missing`。
 
 安装/回退同时写入 `package-operations.json` 的 `AwaitingRestart` 回执；Server 启动完成、`ApplicationStarted` 后按 `installed.json` 的精确版本/releaseId/artifactSha256 核对为 `Succeeded` 或 `Failed`。这不是自动重启；更新操作的启动崩溃回退见下。
 
