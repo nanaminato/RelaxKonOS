@@ -110,7 +110,10 @@ internal static class ModulePackageMaintenanceCommand
         {
             var record = await InstalledModuleInstaller.InstallAsync(root, builder.Configuration, builder.Environment,
                 sourceId, values["--archive"], values["--release-id"], DateTimeOffset.UtcNow);
-            var operation = ModulePackageOperationStore.Record(root, "install", record, null, DateTimeOffset.UtcNow);
+            var previous = InstalledModuleStore.ReadVersions(root, record.ModuleId)
+                .Where(module => module.Version != record.Version)
+                .OrderByDescending(module => System.Version.Parse(module.Version)).FirstOrDefault();
+            var operation = ModulePackageOperationStore.Record(root, "install", record, previous?.Version, DateTimeOffset.UtcNow);
             Console.WriteLine(JsonSerializer.Serialize(new { installed = true, effective = false,
                 operationId = operation.OperationId, record }, ModulePackageJson.Options));
             return 0;

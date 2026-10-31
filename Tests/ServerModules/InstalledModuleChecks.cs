@@ -157,6 +157,19 @@ internal static class InstalledModuleChecks
                 && operationsDocument.RootElement.GetProperty("operations").GetArrayLength() == 2,
                 "list-package-operations reports durable install and rollback receipts");
 
+            var currentModules = InstalledModuleStore.Read(root).ToList();
+            currentModules[currentModules.FindIndex(module => module.ModuleId == "fixture-module")] = newerRecord;
+            InstalledModuleStore.Write(root, currentModules);
+            var failedUpdate = ModulePackageOperationStore.Record(root, "install", newerRecord, "1.0.0", now);
+            ModulePackageStartupGuard.Begin(root, "startup-attempt-a");
+            ModulePackageStartupGuard.Begin(root, "startup-attempt-b");
+            var restored = InstalledModuleStore.Read(root).Single(module => module.ModuleId == "fixture-module");
+            var recovered = ModulePackageOperationStore.Read(root).Single(operation => operation.OperationId == failedUpdate.OperationId);
+            check(restored.Version == "1.0.0" && recovered.State == ModulePackageOperationState.Failed
+                && recovered.ProblemCode == "module-package-operation-startup-rollback",
+                "a surviving startup marker restores the previous version and records the failed update");
+            ModulePackageStartupGuard.Complete(root);
+
             var fixtureEntryPath = Path.Combine(root, "data", "module-management", fixtureRecord.PackagePath, fixtureRecord.EntryAssembly);
             var originalFixture = await File.ReadAllBytesAsync(fixtureEntryPath);
             var tamperedFixture = originalFixture.ToArray();

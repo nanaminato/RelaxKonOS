@@ -116,7 +116,11 @@ internal static class ServerModuleManagementEndpoints
             var record = await InstalledModuleInstaller.InstallFromAcceptedCatalogAsync(context.ContentRootPath,
                 context.Configuration, context.Environment, request.SourceId, path, request.ReleaseId,
                 DateTimeOffset.UtcNow, cancellationToken);
-            var operation = ModulePackageOperationStore.Record(context.ContentRootPath, "install", record, null, DateTimeOffset.UtcNow);
+            var previous = InstalledModuleStore.ReadVersions(context.ContentRootPath, record.ModuleId)
+                .Where(module => module.Version != record.Version)
+                .OrderByDescending(module => System.Version.Parse(module.Version)).FirstOrDefault();
+            var operation = ModulePackageOperationStore.Record(context.ContentRootPath, "install", record,
+                previous?.Version, DateTimeOffset.UtcNow);
             try { File.Delete(path); } catch (IOException) { }
             return Results.Ok(new ServerModulePackageInstallResultDto(operation.OperationId, InstalledDto(record, record)));
         })).RequireAuthorization(ManagePolicy);
@@ -204,9 +208,11 @@ internal static class ServerModuleManagementEndpoints
                 || candidate.Manifest.PublisherId != plan.PublisherId || candidate.ArchiveSha256 != plan.ArtifactSha256
                 || candidate.ManifestSha256 != plan.ManifestSha256)
                 return Problem("module-package-plan-target-changed", 409);
+            var previous = InstalledModuleStore.Read(context.ContentRootPath)
+                .SingleOrDefault(module => module.ModuleId == plan.ModuleId);
             var record = await InstalledModuleInstaller.InstallFromAcceptedCatalogAsync(context.ContentRootPath,
                 context.Configuration, context.Environment, plan.SourceId, path, plan.ReleaseId, now, cancellationToken);
-            var operation = ModulePackageOperationStore.Record(context.ContentRootPath, "install", record, null, now);
+            var operation = ModulePackageOperationStore.Record(context.ContentRootPath, "install", record, previous?.Version, now);
             ModulePackagePlanStore.MarkApplied(context.ContentRootPath, plan.PlanId, operation.OperationId, now);
             try { File.Delete(path); } catch (IOException) { }
             return Results.Ok(new ServerModulePackageInstallResultDto(operation.OperationId, InstalledDto(record, record)));
