@@ -34,17 +34,26 @@ public sealed record ModuleFilePlanIdentity(string Root, string Path, string Act
 public sealed record ModuleDataPlanIdentity(string Root, string Action, string BeforeKind, long BeforeFiles,
     long BeforeBytes, string BeforeDigest, string BackupRef);
 
+/// <summary>Display projection of one frozen database-management action. It names the instance, account,
+/// server version and an opaque secret revision; no password or credential path appears here.</summary>
+public sealed record ModuleApplicationPlanIdentity(string Instance, string Protocol, string Action, string Account,
+    string AccountHost, string ServerVersion, string SecretRevision);
+
 public sealed record ModulePrivilegePlan(Guid PlanId, string ModuleId, string Version, string PublisherId,
     string ArtifactSha256, string Kind, string Action, string Target, string Reason, string[] Effects, string[] Warnings,
     ModulePackagePlanIdentity? Package, ModuleFilePlanIdentity? File, ModuleDataPlanIdentity? Data,
+    ModuleApplicationPlanIdentity? Application,
     string PlanHash, DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt, string State,
     string? ProblemCode, string ConfirmationToken);
 public sealed record ModulePrivilegeApproval(string PlanHash, string ConfirmationToken,
     string? AdministratorUsername = null, string? Password = null);
 
+/// <summary>Standing permission request. A file write binds the exact content digest; no content value
+/// is accepted here. Other categories must leave it null.</summary>
 public sealed record ModulePrivilegeConsentRequest(string ModuleId, string Kind, string Action, string Target,
-    string Reason, DateTimeOffset ExpiresAt, string IdempotencyKey);
+    string Reason, DateTimeOffset ExpiresAt, string IdempotencyKey, string? ContentSha256 = null);
 public sealed record ModulePrivilegeConsent(Guid ConsentId, string ModuleId, string Version, string PublisherId,
     string ArtifactSha256, string Kind, string Action, string Target, string Reason, string GrantedBy,
-    DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt, string State, string PlanHash, string ConfirmationToken);
+    DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt, string State, string PlanHash, string ConfirmationToken,
+    string? ContentSha256 = null);
 public sealed record ModulePrivilegeBackgroundRequest(Guid ConsentId, ModulePrivilegeRequest Operation);

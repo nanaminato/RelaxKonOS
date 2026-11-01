@@ -45,6 +45,9 @@ internal sealed class ModulePrivilegeConsentStore
                 || consent.IdentityHash != Hash(consent.Identity) || consent.RequestHash != Hash(consent.Request)
                 || consent.Hash != Digest(consent.Id, consent.Session, consent.Actor, consent.IdentityHash, consent.RequestHash, consent.Created)
                 || consent.State is not ("AwaitingConfirmation" or "Active" or "Revoked" or "Cancelled")
+                || (consent.Request.Kind == ModuleCapabilityPolicy.FileManage
+                    ? consent.Request.Action != "write" || !DigestText(consent.Request.ContentSha256 ?? "")
+                    : consent.Request.ContentSha256 is not null)
                 || consent.Request.ExpiresAt <= consent.Created || consent.Request.ExpiresAt > consent.Created.AddDays(30)
                 || consent.TokenHash is not null && (consent.State != "AwaitingConfirmation" || !DigestText(consent.TokenHash))
                 || (consent.State is "Active" or "Revoked") != (consent.Administrator is not null && consent.ApprovedAt is not null)
@@ -64,7 +67,7 @@ internal sealed class ModulePrivilegeConsentStore
             if (!Text(session) || !Text(actor) || !Text(request.Reason) || request.IdempotencyKey is not { Length: > 0 and <= 128 }
                 || !request.IdempotencyKey.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.')) throw Error("consent_invalid", 400);
             var identity = _resolve(request.ModuleId);
-            ValidateAction(identity, request.Kind, request.Action, request.Target);
+            ValidateAction(identity, request);
             var fingerprint = Hash(request);
             var existing = _consents.SingleOrDefault(c => c.Session == session && c.Request.IdempotencyKey == request.IdempotencyKey);
             if (existing is not null)
@@ -156,6 +159,16 @@ internal sealed class ModulePrivilegeConsentStore
                 || consent.Request.Kind != request.Kind || consent.Request.Action != request.Action
                 || consent.Request.Target != request.Target)
                 throw Error("confirmation_required", 403);
+            if (consent.Request.Kind == ModuleCapabilityPolicy.FileManage)
+            {
+                if (consent.Request.ContentSha256 is not { } digest || !DigestText(digest)
+                    || request.ContentBase64 is null || !MatchesContent(request.ContentBase64, digest))
+                    throw Error("confirmation_required", 403);
+            }
+            else if (request.ContentBase64 is not null)
+            {
+                throw Error("confirmation_required", 403);
+            }
             Current(consent);
             // Hold the gate until dispatch completes: revocation is linearized with execution.
             // Existing durable operation IDs still prevent replay after a crash or lost response.
@@ -168,11 +181,15 @@ internal sealed class ModulePrivilegeConsentStore
     {
         if (Hash(_resolve(consent.Identity.ModuleId)) != consent.IdentityHash) throw Error("plan_changed");
     }
-    private static void ValidateAction(ModulePrivilegeIdentity identity, string kind, string action, string target)
+    private static void ValidateAction(ModulePrivilegeIdentity identity, ModulePrivilegeConsentRequest request)
     {
+        var (kind, action, target) = (request.Kind, request.Action, request.Target);
         if (!ModuleCapabilityPolicy.Kinds.Contains(kind, StringComparer.Ordinal)
             || !ModuleCapabilityPolicy.Actions(kind).Contains(action, StringComparer.Ordinal)
-            || !ModuleCapabilityPolicy.AllowsStandingConsent(kind)) throw Error("unsupported", 400);
+            || !ModuleCapabilityPolicy.AllowsStandingConsent(kind, action)) throw Error("unsupported", 400);
+        if (kind == ModuleCapabilityPolicy.FileManage
+            ? action != "write" || request.ContentSha256 is not { } contentDigest || !DigestText(contentDigest)
+            : request.ContentSha256 is not null) throw Error("consent_invalid", 400);
         if (!identity.Privileges.Any(capability => ModuleCapabilityPolicy.Allows(capability, action, target)))
             throw Error("not_declared", 403);
         if (kind == ModuleCapabilityPolicy.ServiceManage
@@ -196,7 +213,8 @@ internal sealed class ModulePrivilegeConsentStore
         consent.Identity.Version, consent.Identity.PublisherId, consent.Identity.ArtifactSha256, consent.Request.Kind,
         consent.Request.Action, consent.Request.Target, consent.Request.Reason, consent.Actor, consent.Created, consent.Request.ExpiresAt,
         consent.State is "AwaitingConfirmation" or "Active" && (consent.Request.ExpiresAt <= Now
-            || consent.State == "AwaitingConfirmation" && consent.Created.AddMinutes(5) <= Now) ? "Expired" : consent.State, consent.Hash, token);
+            || consent.State == "AwaitingConfirmation" && consent.Created.AddMinutes(5) <= Now) ? "Expired" : consent.State, consent.Hash, token,
+        consent.Request.ContentSha256);
     private void EnsureDocument()
     {
         if (_documentHash is null)
@@ -238,6 +256,16 @@ internal sealed class ModulePrivilegeConsentStore
     }
     private static bool Text(string? text) => text is { Length: > 0 and <= 512 } && !text.Any(char.IsControl);
     private static bool DigestText(string text) => text.Length == 64 && text.All(char.IsAsciiHexDigitLower);
+    private static bool MatchesContent(string contentBase64, string digest)
+    {
+        try
+        {
+            var bytes = Convert.FromBase64String(contentBase64);
+            return bytes.Length <= 8 * 1024 * 1024
+                && string.Equals(Convert.ToHexStringLower(SHA256.HashData(bytes)), digest, StringComparison.Ordinal);
+        }
+        catch (FormatException) { return false; }
+    }
     private static string Hash<T>(T value) => ModulePrivilegePlanStore.Hash(value);
     private static string HashText(string value) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     private static string Digest(Guid id, string session, string actor, string identityHash, string requestHash, DateTimeOffset created) =>

@@ -41,7 +41,8 @@ public static class ModuleCapabilityCatalog
     /// resolve the declared source and package; file.manage and data.manage still require a Helper whose
     /// root-owned resource policy approves the declared root. Each adapter can answer "unsupported" at
     /// plan time rather than degrade to a command.</summary>
-    public static bool IsExecutable(string kind) => kind is ServiceManage or PackageManage or FileManage or DataManage;
+    public static bool IsExecutable(string kind) =>
+        kind is ServiceManage or PackageManage or FileManage or DataManage or ApplicationManage;
 
     public static bool IsCategory(string? kind) => kind is not null && Kinds.Contains(kind, StringComparer.Ordinal);
 

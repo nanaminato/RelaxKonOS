@@ -56,6 +56,26 @@ if (args is ["--module-package-transaction-checks"])
     return;
 }
 
+if (args is ["--module-high-trust-checks"])
+{
+    ModuleHighTrustChecks.Run((passed, message) =>
+    {
+        Console.WriteLine($"{(passed ? "PASS" : "FAIL")}: {message}");
+        if (!passed) throw new InvalidOperationException(message);
+    });
+    return;
+}
+
+if (args is ["--module-application-checks"])
+{
+    await ModuleApplicationTransactionChecks.RunAsync((passed, message) =>
+    {
+        Console.WriteLine($"{(passed ? "PASS" : "FAIL")}: {message}");
+        if (!passed) throw new InvalidOperationException(message);
+    });
+    return;
+}
+
 if (args is ["--module-resource-checks"])
 {
     await ModuleResourceTransactionChecks.RunAsync((passed, message) =>
@@ -89,6 +109,16 @@ if (args is ["--module-resource-linux-acceptance", ..])
 if (args is ["--module-mysql-linux-acceptance", ..])
 {
     await ModuleMysqlLifecycleLinuxAcceptance.RunAsync(args[1..], (passed, message) =>
+    {
+        Console.WriteLine($"{(passed ? "PASS" : "FAIL")}: {message}");
+        if (!passed) throw new InvalidOperationException(message);
+    });
+    return;
+}
+
+if (args is ["--module-application-linux-acceptance", ..])
+{
+    await ModuleApplicationLinuxAcceptance.RunAsync(args[1..], (passed, message) =>
     {
         Console.WriteLine($"{(passed ? "PASS" : "FAIL")}: {message}");
         if (!passed) throw new InvalidOperationException(message);
@@ -206,7 +236,9 @@ await ModulePackageBuilderChecks.RunAsync(Check);
 await ModuleHostChecks.RunAsync(Check);
 await ModulePrivilegeChecks.RunAsync(Check);
 await ModuleResourceTransactionChecks.RunAsync(Check);
+await ModuleApplicationTransactionChecks.RunAsync(Check);
 await ModulePackageTransactionChecks.RunAsync(Check);
+ModuleHighTrustChecks.Run(Check);
 await WindowsModuleHostChecks.RunAsync(Check);
 await ModuleReleaseDirectoryChecks.RunAsync(Check);
 await InstalledModuleChecks.RunAsync(Check);

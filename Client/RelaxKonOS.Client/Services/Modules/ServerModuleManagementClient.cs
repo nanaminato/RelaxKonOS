@@ -24,10 +24,12 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
             && ModuleCapabilityCatalog.IsCategory(plan.Kind) && ModuleCapabilityCatalog.IsAction(plan.Kind, plan.Action)
             && (plan.Kind switch
             {
-                ModuleCapabilityCatalog.PackageManage => ValidPackageIdentity(plan.Package) && plan.File is null && plan.Data is null,
-                ModuleCapabilityCatalog.FileManage => ValidFileIdentity(plan.File) && plan.Package is null && plan.Data is null,
-                ModuleCapabilityCatalog.DataManage => ValidDataIdentity(plan.Data) && plan.Package is null && plan.File is null,
-                _ => plan.Package is null && plan.File is null && plan.Data is null,
+                ModuleCapabilityCatalog.PackageManage => ValidPackageIdentity(plan.Package) && plan.File is null && plan.Data is null && plan.Application is null,
+                ModuleCapabilityCatalog.FileManage => ValidFileIdentity(plan.File) && plan.Package is null && plan.Data is null && plan.Application is null,
+                ModuleCapabilityCatalog.DataManage => ValidDataIdentity(plan.Data) && plan.Package is null && plan.File is null && plan.Application is null,
+                ModuleCapabilityCatalog.ApplicationManage => ValidApplicationIdentity(plan.Application)
+                    && plan.Package is null && plan.File is null && plan.Data is null,
+                _ => plan.Package is null && plan.File is null && plan.Data is null && plan.Application is null,
             })
             && plan.State is "AwaitingConfirmation" or "Executing" or "Succeeded" or "Failed" or "Cancelled" or "Expired" or "RecoveryRequired"
             && (plan.State != "AwaitingConfirmation" || ValidDigest(plan.ConfirmationToken)));
@@ -68,7 +70,15 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         && (value.Action == "backup" ? ValidResourceIdentifier(value.BackupRef) : value.BackupRef == "");
     private static bool ValidResourceIdentifier(string? value) => value is { Length: > 0 and <= 64 }
         && value[0] is >= 'a' and <= 'z'
-        && value.All(character => character is >= 'a' and <= 'z' or >= '0' and <= '9' or '.' or '-');
+        && value.All(character => character is >= 'a' and <= 'z' or >= '0' and <= '9' or '.' or '-' or '_');
+    /// <summary>An application plan names one instance/account and an opaque secret revision. It must
+    /// never contain a password, a secret path or a raw SQL statement.</summary>
+    private static bool ValidApplicationIdentity(ModuleApplicationPlanIdentity? application) => application is { } value
+        && ValidResourceIdentifier(value.Instance) && value.Protocol == "mysql-admin"
+        && value.Action is "query" or "rotate-credential"
+        && ValidText(value.Account, 64) && ValidText(value.AccountHost, 255)
+        && ValidText(value.ServerVersion, 128)
+        && value.SecretRevision is { Length: 32 } && value.SecretRevision.All(char.IsAsciiHexDigitLower);
     public Task<ModulePrivilegeStatus> ApprovePrivilegeAsync(Guid id, ModulePrivilegeApproval approval) =>
         SendAsync<ModulePrivilegeStatus>(HttpMethod.Post, ServerModulePrivilegeRoutes.Plans + "/" + id + "/approve", approval);
     public Task<ModulePrivilegeStatus> CancelPrivilegeAsync(Guid id) =>
@@ -78,7 +88,8 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         var consent = await SendAsync<ModulePrivilegeConsent>(HttpMethod.Post, ServerModulePrivilegeRoutes.Consents, request);
         ValidateConsent(consent, false);
         Require(consent.ModuleId == request.ModuleId && consent.Kind == request.Kind && consent.Action == request.Action
-            && consent.Target == request.Target && consent.Reason == request.Reason && consent.ExpiresAt == request.ExpiresAt);
+            && consent.Target == request.Target && consent.Reason == request.Reason && consent.ExpiresAt == request.ExpiresAt
+            && consent.ContentSha256 == request.ContentSha256);
         return consent;
     }
     public async Task<ModulePrivilegeConsent> ReadConsentAsync(Guid id)
@@ -113,6 +124,9 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
             && consent.GrantedBy is { Length: > 0 and <= 512 } && consent.CreatedAt != default
             && consent.ExpiresAt > consent.CreatedAt && consent.ExpiresAt <= consent.CreatedAt.AddDays(30)
             && consent.State is "AwaitingConfirmation" or "Active" or "Revoked" or "Cancelled" or "Expired"
+            && (consent.Kind == ModuleCapabilityCatalog.FileManage
+                ? consent.Action == "write" && ValidDigest(consent.ContentSha256)
+                : consent.ContentSha256 is null)
             && (review && consent.State == "AwaitingConfirmation" ? ValidDigest(consent.ConfirmationToken) : consent.ConfirmationToken == ""));
     }
 

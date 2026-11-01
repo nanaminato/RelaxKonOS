@@ -150,10 +150,23 @@ public static class ModuleCapabilityPolicy
     /// whose adapter needs a live Helper or source policy may still answer "unsupported" at plan time.</summary>
     public static bool IsExecutable(string kind) => ModuleCapabilityCatalog.IsExecutable(kind);
 
-    /// <summary>Standing (background) consent stays limited to the first delivered slice. package.manage
-    /// needs its own revocation and drift evidence before DC-05 may extend it, so it is refused here even
-    /// though a single confirmed package plan can execute.</summary>
-    public static bool AllowsStandingConsent(string kind) => kind == ModuleCapabilityCatalog.ServiceManage;
+    /// <summary>
+    /// Standing (background) consent is limited by risk. Service lifecycle is established. Package
+    /// install/update/repair may run unattended because the exact artifacts are still frozen and the
+    /// Helper re-resolves them; package removal requires a fresh confirmation. File write is allowed
+    /// only when the permission binds the exact content digest (the Broker enforces that separately).
+    /// Data preservation is non-destructive; backup and delete require a fresh confirmation. Application
+    /// query is read-only; credential rotation requires a fresh confirmation.
+    /// </summary>
+    public static bool AllowsStandingConsent(string kind, string action) => kind switch
+    {
+        ModuleCapabilityCatalog.ServiceManage => action is "start" or "stop" or "restart",
+        ModuleCapabilityCatalog.PackageManage => action is "install" or "update" or "repair",
+        ModuleCapabilityCatalog.FileManage => action == "write",
+        ModuleCapabilityCatalog.DataManage => action == "preserve",
+        ModuleCapabilityCatalog.ApplicationManage => action == "query",
+        _ => false,
+    };
 
     public static string[] Actions(string kind) => ModuleCapabilityCatalog.Actions(kind);
 

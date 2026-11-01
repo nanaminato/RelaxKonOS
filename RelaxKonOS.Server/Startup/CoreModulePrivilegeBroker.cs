@@ -24,6 +24,7 @@ internal sealed class CoreModulePrivilegeBroker(IHostEnvironment environment, IC
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        ModuleHighTrustExtensionPolicy.Validate(configuration);
         Plans = new ModulePrivilegePlanStore(environment.ContentRootPath, Resolve);
         Consents = new ModulePrivilegeConsentStore(environment.ContentRootPath, Resolve);
         var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions { Args = [], EnvironmentName = Environments.Production });
@@ -40,7 +41,11 @@ internal sealed class CoreModulePrivilegeBroker(IHostEnvironment environment, IC
             return Results.Ok(await Consents.ExecuteAsync(request.ConsentId, moduleId, request.Operation, async authority =>
             {
                 var session = "consent:" + authority.Id.ToString("N");
-                var prepared = await Plans.PrepareAsync(moduleId, session, request.Operation, authority.Actor);
+                var prepared = await Plans.PrepareAsync(moduleId, session, request.Operation, authority.Actor,
+                    query => QueryPackageAsync(services, authority.Actor, query),
+                    query => QueryFileAsync(services, authority.Actor, query),
+                    query => QueryDataAsync(services, authority.Actor, query),
+                    query => QueryApplicationAsync(services, authority.Actor, query));
                 if (prepared.State != "AwaitingConfirmation") return await Plans.GetForModuleAsync(prepared.PlanId, moduleId);
                 var plan = await Plans.ReadForUserAsync(prepared.PlanId, session);
                 return await Plans.ApproveAsync(plan.PlanId, session, new(plan.PlanHash, plan.ConfirmationToken),
@@ -72,7 +77,8 @@ internal sealed class CoreModulePrivilegeBroker(IHostEnvironment environment, IC
             return Results.Ok(await Plans.PrepareAsync(moduleId, Session(context.User), request, actor,
                 query => QueryPackageAsync(services, actor, query),
                 query => QueryFileAsync(services, actor, query),
-                query => QueryDataAsync(services, actor, query)));
+                query => QueryDataAsync(services, actor, query),
+                query => QueryApplicationAsync(services, actor, query)));
         }));
         _application.MapGet("/plans/{id:guid}", async (Guid id, HttpContext http) => await Respond(async () =>
         {
@@ -147,6 +153,26 @@ internal sealed class CoreModulePrivilegeBroker(IHostEnvironment environment, IC
             return null;
         }
     }
+    private static async Task<ModuleApplicationState?> QueryApplicationAsync(IServiceProvider services, string actor,
+        ModuleApplicationQuery query)
+    {
+        try
+        {
+            using var scope = services.CreateScope();
+            using var auditActor = PrivilegedAuditActorScope.Enter(actor);
+            var operationId = Guid.NewGuid();
+            var outcome = await scope.ServiceProvider.GetRequiredService<IPrivilegedOperationTransport>()
+                .ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.ModuleApplicationQuery,
+                    OperationId: operationId, Correlation: CorrelationContext.Create(operationId),
+                    ModuleApplicationQuery: query), CancellationToken.None);
+            return outcome.Success ? outcome.ModuleApplication : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException
+            or System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
     internal static async Task<bool> ExecuteCapabilityAsync(IPrivilegedOperationTransport helper, Guid operationId,
         ModulePrivilegeExecution execution)
     {
@@ -170,6 +196,9 @@ internal sealed class CoreModulePrivilegeBroker(IHostEnvironment environment, IC
             ModuleCapabilityPolicy.DataManage => new PrivilegedOperationRequest(PrivilegedOperationKind.ModuleDataApply,
                 ModuleDataApply: DataTransaction(execution.Data), OperationId: operationId,
                 Correlation: CorrelationContext.Create(operationId)),
+            ModuleCapabilityPolicy.ApplicationManage => new PrivilegedOperationRequest(PrivilegedOperationKind.ModuleApplicationApply,
+                ModuleApplicationApply: ApplicationTransaction(execution.Application), OperationId: operationId,
+                Correlation: CorrelationContext.Create(operationId)),
             _ => throw new ModulePrivilegeException("module.privilege_unsupported", 400),
         };
         var outcome = await helper.ExecuteAsync(privilege, CancellationToken.None);
@@ -177,10 +206,21 @@ internal sealed class CoreModulePrivilegeBroker(IHostEnvironment environment, IC
             throw new IOException("module.privilege_helper_response_unknown");
         // The Helper refused after re-resolving: the frozen identity, source, root or path moved and
         // nothing ran. The plan is known to be stale, so it must not become an unknown retry.
-        if (request.Kind is ModuleCapabilityPolicy.PackageManage or ModuleCapabilityPolicy.FileManage or ModuleCapabilityPolicy.DataManage
+        if (request.Kind is ModuleCapabilityPolicy.PackageManage or ModuleCapabilityPolicy.FileManage
+            or ModuleCapabilityPolicy.DataManage or ModuleCapabilityPolicy.ApplicationManage
             && outcome.ProblemCode == PrivilegedProblemCode.PlanChanged)
             throw new ModulePrivilegeException("module.privilege_plan_changed");
+        // A rotation may have changed the database before its final evidence failed. That is unknown,
+        // not a known failure, and the plan must become RecoveryRequired.
+        if (request.Kind == ModuleCapabilityPolicy.ApplicationManage
+            && outcome.ProblemCode == PrivilegedProblemCode.RecoveryRequired)
+            throw new IOException("module.privilege_application_recovery_required");
         return outcome.Success;
+    }
+    private static ModuleApplicationTransaction ApplicationTransaction(ModulePrivilegeApplication? application)
+    {
+        if (application is null) throw new ModulePrivilegeException("module.privilege_unsupported", 400);
+        return new(application.Action, application.Instance, application.Expected);
     }
     /// <summary>The exact confirmed file transaction, including the confirmed bytes and frozen observation.</summary>
     private static ModuleFileTransaction FileTransaction(ModulePrivilegeFile? file, byte[]? content)

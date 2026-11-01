@@ -132,6 +132,8 @@ internal static class ModulePackageChecks
             "metadata-invalid", "unknown capability category rejected without fallback");
         RejectCapabilityJson(d => d["privileges"]![0]!["command"] = "bash",
             "metadata-invalid", "unknown field inside a capability scope rejected");
+        RejectCapabilityJson(d => d["highTrustExtensions"] = new JsonArray(),
+            "metadata-invalid", "unimplemented high-trust extension section is not accepted by the manifest");
         var duplicated = declared with { Privileges = [declared.Privileges[0], declared.Privileges[0]] };
         Reject(() => Verify(catalog with { Releases = [release with { Manifest = duplicated }] }),
             "privilege-invalid", "duplicate capability declaration rejected");

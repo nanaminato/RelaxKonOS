@@ -114,6 +114,10 @@ public enum PrivilegedOperationKind
     ModuleDataQuery,
     /// <summary>Preserves, backs up or deletes one data root after matching the frozen observation.</summary>
     ModuleDataApply,
+    /// <summary>Read-only observation of one Host-approved database-management instance.</summary>
+    ModuleApplicationQuery,
+    /// <summary>Runs one typed application-management action through the Helper's own credential store.</summary>
+    ModuleApplicationApply,
     NginxArchiveQuery,
     NginxArchiveInstall,
     FrpArchiveCatalog,
@@ -315,6 +319,9 @@ public enum PrivilegedProblemCode
     Conflict,
     /// <summary>A frozen target no longer matches what the Host resolves now. Nothing was executed.</summary>
     PlanChanged,
+    /// <summary>The operation may have changed host state but its final evidence could not be committed.
+    /// The Host must treat it as unknown and never replay it automatically.</summary>
+    RecoveryRequired,
     ContentTooLarge,
     HelperUnavailable,
     TimedOut,
@@ -364,6 +371,10 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("moduleDataQuery")] ModuleDataQuery? ModuleDataQuery = null,
     /// <summary>Frozen module data-lifecycle action. Only the apply verb reads it.</summary>
     [property: JsonPropertyName("moduleDataApply")] ModuleDataTransaction? ModuleDataApply = null,
+    /// <summary>Read-only application-management question. Only the query verb reads it.</summary>
+    [property: JsonPropertyName("moduleApplicationQuery")] ModuleApplicationQuery? ModuleApplicationQuery = null,
+    /// <summary>Frozen application-management action. Only the apply verb reads it.</summary>
+    [property: JsonPropertyName("moduleApplicationApply")] ModuleApplicationTransaction? ModuleApplicationApply = null,
     [property: JsonPropertyName("proxyMihomoServiceAction")] ProxyMihomoServiceAction? ProxyMihomoServiceAction = null,
     [property: JsonPropertyName("linuxSystemProxy")] LinuxSystemProxyConfiguration? LinuxSystemProxy = null,
     [property: JsonPropertyName("firewallEnabled")] bool? FirewallEnabled = null,
@@ -445,6 +456,8 @@ public sealed record PrivilegedOperationResult(
     [property: JsonPropertyName("moduleFile")] ModuleFileState? ModuleFile = null,
     /// <summary>Exact frozen data-root observation resolved by a read-only module data query.</summary>
     [property: JsonPropertyName("moduleData")] ModuleDataState? ModuleData = null,
+    /// <summary>Exact frozen application instance observation resolved by a read-only query.</summary>
+    [property: JsonPropertyName("moduleApplication")] ModuleApplicationState? ModuleApplication = null,
     [property: JsonPropertyName("hostEnvironment")] PrivilegedEnvironmentState? HostEnvironment = null,
     [property: JsonPropertyName("systemProxyCapabilities")] ProxySystemProxyCapabilities? SystemProxyCapabilities = null,
     [property: JsonPropertyName("hostTime")] HostTimeState? HostTime = null,

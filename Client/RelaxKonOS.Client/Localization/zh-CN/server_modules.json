@@ -55,9 +55,10 @@
     "server_modules.privilege_approve": "确认并执行此计划",
     "server_modules.privilege_cancel": "拒绝此计划",
     "server_modules.consent_title": "后台常设许可",
-    "server_modules.consent_summary": "选择模块，审查单一声明的服务动作和目标。在到期前，该模块可免去逐次提示执行此动作；模块更新或信任、策略变更会使许可失效。仅限主机管理员。",
-    "server_modules.consent_target": "模块声明的准确服务目标",
+    "server_modules.consent_summary": "选择模块，审查单一声明的动作和目标。在到期前，该模块可免去逐次提示执行此动作。文件写入绑定精确内容摘要；文件删除、数据备份/删除、包移除和凭据轮换仍需逐次确认。模块更新或信任、策略变更会使许可失效。仅限主机管理员。",
+    "server_modules.consent_target": "模块声明的准确目标",
     "server_modules.consent_reason": "允许后台执行的原因",
+    "server_modules.consent_content_sha256": "精确内容 SHA-256（仅文件写入）",
     "server_modules.consent_hours": "许可有效期（小时，最多 720）",
     "server_modules.consent_prepare": "审查后台许可",
     "server_modules.consent_approve": "确认授予此后台许可",
@@ -65,6 +66,12 @@
     "server_modules.consent_revoke": "撤销／拒绝所选许可",
     "server_modules.capability.service_manage.start": "启动服务",
     "server_modules.capability.service_manage.stop": "停止服务",
-    "server_modules.capability.service_manage.restart": "重启服务"
+    "server_modules.capability.service_manage.restart": "重启服务",
+    "server_modules.capability.package_manage.install": "安装软件包",
+    "server_modules.capability.package_manage.update": "更新软件包",
+    "server_modules.capability.package_manage.repair": "修复软件包",
+    "server_modules.capability.file_manage.write": "发布配置文件",
+    "server_modules.capability.data_manage.preserve": "保留数据根",
+    "server_modules.capability.app_manage.query": "查询数据库实例"
   }
 }

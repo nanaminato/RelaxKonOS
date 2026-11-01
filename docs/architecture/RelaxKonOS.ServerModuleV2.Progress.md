@@ -6,14 +6,15 @@
 | --- | --- | --- |
 | MD-01 唯一 v2 契约 | 已实现并回归 | manifest / installed / package-plans 使用 schemaVersion 当前值，拒绝旧格式；打包器、CLI、SDK、Server 与桌面同步 |
 | DC-01 声明式能力契约 | 已实现（契约冻结） | 清单 schemaVersion=3 能力类别 + 类型化资源范围；`ModuleCapabilityCatalog` 统一类别/动作/可执行矩阵；Broker 按声明范围匹配；秘密引用只保留引用；`service.manage` 与 apt `package.manage` 可执行（后者需 Helper 解析），其余明确拒绝 |
-| DC-02 通用包事务 | 进行中（apt 已实机验收；共享依赖/Windows 未交付） | 契约、apt 通用解析、root 拥有的包来源策略、`ModulePackageQuery`/`ModulePackageApply`（重解比对、持久回执、安装后核实）、Broker prepare 冻结 `ModulePackageResolution`、计划存储 schemaVersion=5（DC-03 起 6）、`planHash` 绑定冻结身份、approve 只发送来源引用与冻结身份、Helper `PlanChanged`→`module.privilege_plan_changed` 均已实现；Ubuntu 26.04 实机验证 mysql-server 与 redis-server 的安装/重放拒绝/摘要漂移拒绝/来源撤销拒绝/移除。Windows 适配器、共享依赖与外部安装接管未交付 |
+| DC-02 通用包事务 | 进行中（apt 已实机验收；共享依赖/Windows 未交付） | 契约、apt 通用解析、root 拥有的包来源策略、`ModulePackageQuery`/`ModulePackageApply`（重解比对、持久回执、安装后核实）、Broker prepare 冻结 `ModulePackageResolution`、计划存储 schemaVersion=5（DC-03 起 6、DC-04 起 7）、`planHash` 绑定冻结身份、approve 只发送来源引用与冻结身份、Helper `PlanChanged`→`module.privilege_plan_changed` 均已实现；Ubuntu 26.04 实机验证 mysql-server 与 redis-server 的安装/重放拒绝/摘要漂移拒绝/来源撤销拒绝/移除。Windows 适配器、共享依赖与外部安装接管未交付 |
 | MD-05 Linux 身份与权限 | 已实现；独立运行时实机验证 | 每模块稳定专用 UID/GID，无附加组、no_new_privs；root 拥有只读版本快照，模块拥有私有数据；root 监督器控制超时/断管清理 |
 | MD-05 Windows 身份与 ACL | 已实现；原生隔离及 System 整包验收通过 | LocalSystem Helper、独立账户/S4U、只读快照/私有数据 ACL、认证管道、跨模块拒绝和 Job 后代清理有实测；正式更新保留同一模块 SID |
 | MD-06 安装与代码信任 | 已实现并回归 | 冻结计划展示 runtime/privileges；精确信任绑定版本/发布者/归档与清单摘要；更新不继承，撤销立即阻断代理/Broker |
 | MD-07 / PB-01/02 Broker 核心 | 已实现并定向回归 | 服务启动/停止/重启；持久计划、确认、幂等、重放/过期/漂移拒绝、并发单执行、响应丢失进入 RecoveryRequired |
 | PB-03 Core/SDK/桌面 | 已接线、编译及定向验证 | 前台 prepare 绑定业务请求；后台执行须有显式常设许可；桌面审查单次计划、授予/撤销后台许可，不将密码发给模块 |
 | PB-05 审计 / 实机闭环 | 两平台主要故障闭环已实测 | 两平台正常HTTP/批准审计/Core与Helper执行中终止均有实测；Linux及Windows System正式发行安装、跨版本更新通过 |
-| PB-06 常设许可/后台提权 | 固定服务动作已实现并两平台实测 | 管理员显式确认，绑定模块精确身份/单一动作/目标/期限；后台到期/撤销拒绝，重启与重试不重放；其余动作仍未开放 |
+| PB-06 常设许可/后台提权 | 服务动作两平台实测；DC-05 扩展类别已定向验证 | 管理员显式确认，绑定模块精确身份/单一动作/目标/期限；服务动作两平台真实后台/到期/撤销/重启幂等通过；DC-05 开放 package install/update/repair、file write（内容摘要绑定）、data preserve、app query；删除/备份/包移除/凭据轮换仍逐次确认 |
+| PB-07 高信任扩展 | 评审完成，当前不实现执行 | 威胁模型与平台隔离缺口已记录；稳定拒绝码、启动守卫、清单/协议形状已锁定，满足重新评审门槛前不开放 |
 | 完整发布安装与更新 | Linux及Windows System整包安装、跨版本更新已实测 | 正式包/Bootstrap/三服务/原生登录/v2模块安装代理与跨版本保留已贯通；Windows Personal整包不在本轮通过范围 |
 
 ## 本地验证
@@ -298,7 +299,7 @@ Linux 脚本 `verify-linux-v2-standing-consent.py` 更新独立 `/opt/relaxkonos
 
 prepare 对 `package.manage` 先按声明的 apt 能力调用 Helper `ModulePackageQuery`，再按 Debian 版本序核对声明区间；Helper 不可用、来源/仓库未批准、包不在来源策略、解析失败、目标不一致或版本越界都不会生成计划。计划 DTO 新增 `ModulePackagePlanIdentity` 与服务影响/维护者脚本警告，桌面确认页展示来源、仓库、制品与依赖文件清单；客户端拒绝“包计划无冻结身份/服务计划带包身份”的响应。
 
-approve 只发送来源引用与冻结身份。Helper 先按 operationId 查持久回执（重放与中断不会被重新求解），再重解：主制品必须完全一致，apt 仍要下载的依赖必须属于冻结闭包，已安装而不再下载的冻结依赖不算漂移。重解失败、来源/仓库撤销或身份不一致统一返回 `PlanChanged`；Broker 映射为 `module.privilege_plan_changed`，把计划持久化为 `Failed`（已知未执行）并向调用方返回该错误，而不是 `RecoveryRequired`。响应丢失仍是 `RecoveryRequired`，不自动重放。常设许可继续只允许 `service.manage`（`ModuleCapabilityPolicy.AllowsStandingConsent`），包类别后台许可留到 DC-05。
+approve 只发送来源引用与冻结身份。Helper 先按 operationId 查持久回执（重放与中断不会被重新求解），再重解：主制品必须完全一致，apt 仍要下载的依赖必须属于冻结闭包，已安装而不再下载的冻结依赖不算漂移。重解失败、来源/仓库撤销或身份不一致统一返回 `PlanChanged`；Broker 映射为 `module.privilege_plan_changed`，把计划持久化为 `Failed`（已知未执行）并向调用方返回该错误，而不是 `RecoveryRequired`。响应丢失仍是 `RecoveryRequired`，不自动重放。DC-02 时常设许可只允许 `service.manage`；DC-05 起扩展到受控类别（见后节）。
 
 真实 Ubuntu 验收已执行（Tailscale 主机 `100.113.194.85`，Ubuntu 26.04 LTS，x86_64，2 vCPU / 5.2 GiB）：root 运行自包含 linux-x64 的 `--module-package-linux-acceptance`，`mysql-server` 8.4.11-0ubuntu0.26.04.1（8 项依赖）与 `redis-server` 5:8.0.5-1ubuntu0.1（2 项依赖）各 9 项 PASS——策略加载、精确解析、真实 apt 安装与版本/架构核实、同一 operationId 重放拒绝（`Conflict`）、摘要漂移拒绝、来源撤销拒绝（`PlanChanged`）与移除后 `dpkg-query` 核实。验收后已 purge 本次新增的全部包、删除验收载荷与 `/etc/relaxkonos`、`/var/lib/relaxkonos/module-packages`，nginx 等既有包未受影响。原始输出在仓库外 `.artifacts/module-package-ubuntu-acceptance-20261101.log`。
 
@@ -314,4 +315,30 @@ Helper 只读 root 拥有、非链接、group/other 不可写的 `/etc/relaxkono
 
 组合工作流按业务顺序逐项请求已有类型化能力，Host 不接受多步脚本或批量计划。MySQL 闭环顺序为停止实例 → 文件配置发布 → 启动并实测配置生效 → 停止实例 → 数据备份/保留 → 包卸载保留配置/数据 → 独立确认后删除数据。
 
-验证：`--module-resource-checks` **44 项 PASS**（策略边界、file/data 计划冻结、内容不落盘、重启过期、路径/状态/上限、`set-mode`/`restore` 拒绝、PlanChanged、持久化身份篡改与跨类别串用拒绝）；`--module-privilege-checks` 88 项、`--module-package-transaction-checks` 20 项继续通过；完整 ServerModules 回归 **722 项 PASS**；`dotnet build RelaxKonOS.sln` 0 错误。Ubuntu 24.04 root 容器 `--module-resource-linux-acceptance` **13 项 PASS**（配置原子发布、漂移/重放拒绝、数据摘要/备份/保留/清空、根撤销），日志 `.artifacts/module-resource-ubuntu-acceptance-20261101.log`；`--module-mysql-linux-acceptance --install` **14 项 PASS**（真实 MySQL 8.0、`max_connections=123` 生效、真实 `apt-get remove` 后配置/数据保留、随后确认删除），日志 `.artifacts/module-mysql-ubuntu-acceptance-20261101.log`。容器验收中的包/服务步骤由宿主 `apt-get`/`service` 执行，文件/数据步骤由 Helper 执行；不新增 Windows、Ubuntu 26.04 主机或 Helper `NativeServiceAction` 容器证据。Windows、`restore`、`set-mode`/`set-owner`、配置内秘密值和文件/数据常设许可仍未交付。
+验证：`--module-resource-checks` **44 项 PASS**（策略边界、file/data 计划冻结、内容不落盘、重启过期、路径/状态/上限、`set-mode`/`restore` 拒绝、PlanChanged、持久化身份篡改与跨类别串用拒绝）；`--module-privilege-checks` 88 项、`--module-package-transaction-checks` 20 项继续通过；完整 ServerModules 回归 **722 项 PASS**；`dotnet build RelaxKonOS.sln` 0 错误。Ubuntu 24.04 root 容器 `--module-resource-linux-acceptance` **13 项 PASS**（配置原子发布、漂移/重放拒绝、数据摘要/备份/保留/清空、根撤销），日志 `.artifacts/module-resource-ubuntu-acceptance-20261101.log`；`--module-mysql-linux-acceptance --install` **14 项 PASS**（真实 MySQL 8.0、`max_connections=123` 生效、真实 `apt-get remove` 后配置/数据保留、随后确认删除），日志 `.artifacts/module-mysql-ubuntu-acceptance-20261101.log`。容器验收中的包/服务步骤由宿主 `apt-get`/`service` 执行，文件/数据步骤由 Helper 执行；不新增 Windows、Ubuntu 26.04 主机或 Helper `NativeServiceAction` 容器证据。Windows、`restore`、`set-mode`/`set-owner` 和配置内秘密值仍未交付；文件/数据常设许可由后续 DC-05 交付。
+
+### DC-04 MySQL 有凭据改密与秘密存储（2026-11-01）
+
+`app.manage` 的 `query`/`rotate-credential` 已进入 Host 执行矩阵；`configure`/`recover-credential` 仍返回 unsupported。请求必须携带一个与清单 `app.manage` 实例/动作及 `secret.reference` purpose/target/permission 匹配的引用；引用不含秘密值、秘密路径、SQL、argv 或账户密码。prepare 调用 Helper `ModuleApplicationQuery` 冻结实例、协议、账户、账户主机、服务器版本、账户存在性和账户秘密的随机 revision；`privilege-plans.json` 升为 schemaVersion=7，`planHash` 绑定独立 `applicationHash`，计划/日志/客户端均不出现密码或秘密路径。
+
+Helper 只承认 root 拥有、非链接、group/other 不可写的 `/etc/relaxkonos/module-applications.json`（当前仅 `mysql-admin`/Unix socket），并读取 root-only 0600 的管理与业务凭据文件。执行时用管理凭据通过固定 `mysql` 客户端（SQL 经 stdin，密码仅走进程环境）执行 `ALTER USER`，用新凭据实测认证，再原子替换业务账户秘密文件并推进 revision。失败会用未变化的管理凭据尝试回滚；回滚失败或提交证据不完整返回 `RecoveryRequired`，Broker 置为待恢复且绝不自动重放。同一 operationId 的已完成改密重放返回待恢复，revision/实例策略/秘密文件漂移返回 `PlanChanged`。
+
+仍未交付：丢失管理凭据恢复（受限恢复启动、停机确认、配置恢复、健康核实和人工恢复均未实现，因此明确拒绝）、MySQL 以外的数据库协议、Windows 应用适配器、模块侧秘密读取/其他秘密值交付、HSM/KMS 或加密秘密存储（当前是 root-only 0600 文件）；应用类别常设许可由后续 DC-05 交付（仅 query）。
+
+验证：`--module-application-checks` **29 项 PASS**（策略/秘密文件格式与边界、query/rotate 冻结、秘密引用匹配、无密码落盘、schemaVersion=7、revision/账户篡改拒绝、Drift、Configure/Recover 拒绝与恢复状态）；Ubuntu 24.04 root 容器 `--module-application-linux-acceptance --install` **13 项 PASS**（真实 MySQL 管理/业务账户、Helper 查询、真实改密、旧密码拒绝、新密码认证、秘密文件原子更新、重放待恢复、revision 漂移拒绝、策略撤销），日志 `.artifacts/module-application-ubuntu-acceptance-20261101.log`；完整 ServerModules 回归 **751 项 PASS**；`dotnet build RelaxKonOS.sln` 0 错误。容器验收不代替 Ubuntu 26.04 或 Windows System/User Mode 实机结论。
+
+### DC-05 受控常设许可与后台执行（2026-11-01）
+
+常设范围扩展为 `service.manage` start/stop/restart、`package.manage` install/update/repair、`file.manage` write、`data.manage` preserve、`app.manage` query。`package.manage remove`、`file.manage delete`、`data.manage backup/delete`、`app.manage rotate-credential` 以及 `configure`/`recover-credential` 始终要求新的具体确认；数据删除永远不能由常设许可授权。文件写入许可新增可选 `contentSha256`（64 位十六进制），许可请求与计划均不携带内容；后台执行时 Broker 重新计算请求内容摘要，缺失、非法或不匹配返回 `module.privilege_confirmation_required`，其他类别携带该字段被拒绝。
+
+后台路径仍经 SDK 进程令牌认证，不使用业务请求 context 或管理员凭据；许可只放行状态 Active、未过期且模块/类别/动作/目标完全匹配的请求。随后仍进入原计划存储：package 重新解析冻结制品，file/data/app 重新调用 Helper 查询冻结当前状态，再由常设管理员身份批准计划。撤销与派发线性化：派发中撤销等待动作完成，不把已派发动作冒充为已取消，撤销完成后拒绝后续派发。到期、模块更新、信任/策略漂移继续使许可失效。`privilege-consents.json` 保持 schemaVersion=2，新增可选 `contentSha256`；桌面组件中心新增 package install/update/repair、file write、data preserve、app query 选项及内容摘要输入，三语言文案同步更新。
+
+验证：`--module-privilege-checks` **106 项 PASS**（原 88 项服务/包检查加 18 项 DC-05：范围矩阵、禁止动作、文件摘要绑定与不匹配拒绝、package/data-preserve/app-query 派发、撤销竞态、更新/信任失效、许可存储与审计）；`--module-resource-checks` 44 项、`--module-application-checks` 29 项、`--module-package-transaction-checks` 20 项继续通过；完整 ServerModules 回归 **769 项 PASS**；`dotnet build RelaxKonOS.sln` 0 错误。原有服务动作两平台真实后台 Helper/撤销/到期/重启幂等证据继续有效；DC-05 新增类别复用既有计划与 Helper 适配器，没有新增任意命令入口。Windows 新类别后台实测、数据备份/删除/文件删除/包移除/凭据轮换的常设许可（按设计不开放）以及 Ubuntu 26.04/Windows System/User Mode 组合仍未验收。
+
+### DC-06 高信任扩展评审结论（2026-11-01）
+
+完成威胁模型与平台隔离评审，结论为当前版本不实现高信任扩展执行。评审覆盖恶意/被攻陷模块、供应链替换、权限扩大、混淆代理、TOCTOU、秘密外泄、资源耗尽、持久化/横向移动、失败残留和审计误导；Linux 的 UID/capability/namespace/seccomp/cgroup/systemd 沙箱与 Windows 的受限令牌/AppContainer/Job Object 均被列为候选但未完成真实逃逸与失败终止实测，因此不作为已交付能力。完整内容见 [高信任扩展评审](RelaxKonOS.HighTrustModuleExtensions.Review.md)。
+
+拒绝边界已锁定：`process.execute`、`high-trust.extension`、`shell.execute`、`command.execute` 返回稳定错误 `module.privilege_high_trust_extension_unsupported`；能力目录不包含这些类别；清单 schemaVersion=3 拒绝未知 `highTrustExtensions` 字段；Helper 协议无 `ExecuteCommand`/`ProcessExecute`/`Shell` 操作，请求 DTO 无 executable/argv/command-line 字段；`ModuleHighTrustExtensions:Enabled=true`、非布尔值或 allowlist 设置使 Server 启动失败，缺省或显式 `Enabled=false` 保持拒绝。普通能力缺少适配器时不会自动升级到高信任执行。
+
+验证：`--module-high-trust-checks` **15 项 PASS**（配置守卫、稳定拒绝码、类别缺失、协议形状、清单未知字段）；完整 ServerModules 回归 **785 项 PASS**；`dotnet build RelaxKonOS.sln` 0 错误。未执行真实高信任程序，也未宣称隔离或失败终止已交付；只有满足评审文档中的重新评审门槛后才考虑实现。

@@ -1,6 +1,6 @@
 # 服务端独立模块分发与 v1/v2 宿主设计
 
-> 状态：分阶段实施，2026-11-01。当前只接受 schemaVersion=3 模块清单（能力类别 + 类型化资源范围）；安装/回退、独立 ModuleHost 代理/授权、精确代码信任、Linux/Windows 专用身份及 Broker 服务操作集合已实现。完整 ServerModules 回归通过；两平台真实 Helper、执行中断及 System 正式发行安装/跨版本更新已实测。固定服务动作的有期常设许可与后台 SDK 已两平台实测；Broker 包/文件动作及 Personal 整包仍不计为完成，详见 [v2 实施记录](RelaxKonOS.ServerModuleV2.Progress.md)。
+> 状态：分阶段实施，2026-11-01。当前只接受 schemaVersion=3 模块清单（能力类别 + 类型化资源范围）；安装/回退、独立 ModuleHost 代理/授权、精确代码信任、Linux/Windows 专用身份及 Broker 服务操作集合已实现。完整 ServerModules 回归通过；两平台真实 Helper、执行中断及 System 正式发行安装/跨版本更新已实测。固定服务动作的有期常设许可与后台 SDK 已两平台实测；DC-03/04/05 的包、文件、数据、MySQL 应用适配器与受控常设许可已有 Linux 证据；Windows 相应适配器及 Personal 整包仍不计为完成，详见 [v2 实施记录](RelaxKonOS.ServerModuleV2.Progress.md)。
 >
 > 范围：服务端模块的独立打包、信任、安装、更新、回退、加载、卸载，以及 v1/v2 两种宿主模式。桌面 `.roapp` 的包格式仍由[开发者模式](../development/RelaxKonOS.DeveloperMode.md)拥有；商店来源、搜索和下载的统一契约由[包商店来源设计](../platform/RelaxKonOS.PackageStore.Design.md)拥有；第三方模块的提权调用由[模块提权 Broker 设计](RelaxKonOS.ServerModulePrivilegeBroker.Design.md)拥有。
 >

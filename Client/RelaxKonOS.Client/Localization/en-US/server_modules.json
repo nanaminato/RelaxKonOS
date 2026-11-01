@@ -55,9 +55,10 @@
     "server_modules.privilege_approve": "Confirm and execute this plan",
     "server_modules.privilege_cancel": "Refuse this plan",
     "server_modules.consent_title": "Standing background permissions",
-    "server_modules.consent_summary": "Select a module and review one declared service action and target. Until expiry, that module can run this action without another prompt. Updates or trust/policy changes invalidate the permission. Host administrators only.",
-    "server_modules.consent_target": "Exact service target declared by the module",
+    "server_modules.consent_summary": "Select a module and review one declared action and target. Until expiry, that module can run this action without another prompt. File write binds the exact content digest; file deletion, data backup/delete, package removal and credential rotation still require explicit confirmation. Updates or trust/policy changes invalidate the permission. Host administrators only.",
+    "server_modules.consent_target": "Exact target declared by the module",
     "server_modules.consent_reason": "Reason for allowing background work",
+    "server_modules.consent_content_sha256": "Exact content SHA-256 (file write only)",
     "server_modules.consent_hours": "Permission lifetime (hours, up to 720)",
     "server_modules.consent_prepare": "Review background permission",
     "server_modules.consent_approve": "Confirm this background permission",
@@ -65,6 +66,12 @@
     "server_modules.consent_revoke": "Revoke / refuse selected permission",
     "server_modules.capability.service_manage.start": "Start service",
     "server_modules.capability.service_manage.stop": "Stop service",
-    "server_modules.capability.service_manage.restart": "Restart service"
+    "server_modules.capability.service_manage.restart": "Restart service",
+    "server_modules.capability.package_manage.install": "Install package",
+    "server_modules.capability.package_manage.update": "Update package",
+    "server_modules.capability.package_manage.repair": "Repair package",
+    "server_modules.capability.file_manage.write": "Publish configuration file",
+    "server_modules.capability.data_manage.preserve": "Preserve data root",
+    "server_modules.capability.app_manage.query": "Query database instance"
   }
 }

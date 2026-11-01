@@ -117,6 +117,24 @@ public static partial class PrivilegedOperationExecutor
         }
         if (request.ModuleDataApply is not null)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "module data transaction requires its dedicated operation");
+        if (request.Operation == PrivilegedOperationKind.ModuleApplicationQuery)
+        {
+            var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
+                Correlation: request.Correlation, Version: request.Version, ModuleApplicationQuery: request.ModuleApplicationQuery);
+            if (request != clean) return Fail(64, PrivilegedProblemCode.InvalidRequest, "unexpected module application query fields");
+            return await QueryModuleApplicationAsync(request.ModuleApplicationQuery);
+        }
+        if (request.ModuleApplicationQuery is not null)
+            return Fail(64, PrivilegedProblemCode.InvalidRequest, "module application query requires its dedicated operation");
+        if (request.Operation == PrivilegedOperationKind.ModuleApplicationApply)
+        {
+            var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
+                Correlation: request.Correlation, Version: request.Version, ModuleApplicationApply: request.ModuleApplicationApply);
+            if (request != clean) return Fail(64, PrivilegedProblemCode.InvalidRequest, "unexpected module application transaction fields");
+            return await ApplyModuleApplicationTransactionAsync(request.ModuleApplicationApply, operationId);
+        }
+        if (request.ModuleApplicationApply is not null)
+            return Fail(64, PrivilegedProblemCode.InvalidRequest, "module application transaction requires its dedicated operation");
         if (request.Operation == PrivilegedOperationKind.FrpArchiveCatalog)
         {
             var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,

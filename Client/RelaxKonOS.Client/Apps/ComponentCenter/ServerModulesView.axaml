@@ -38,6 +38,7 @@
   </ComboBox>
   <TextBox Text="{Binding ConsentTarget}" PlaceholderText="{loc:Loc server_modules.consent_target}" />
   <TextBox Text="{Binding ConsentReason}" PlaceholderText="{loc:Loc server_modules.consent_reason}" />
+  <TextBox Text="{Binding ConsentContentSha256}" PlaceholderText="{loc:Loc server_modules.consent_content_sha256}" IsVisible="{Binding ShowConsentContentSha256}" />
   <TextBlock Text="{loc:Loc server_modules.consent_hours}" />
   <NumericUpDown Value="{Binding ConsentHours}" Minimum="0.01" Maximum="720" Increment="1" />
   <Button Content="{loc:Loc server_modules.consent_prepare}" Command="{Binding PrepareConsentCommand}" IsEnabled="{Binding !Busy}" />

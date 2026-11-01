@@ -55,9 +55,10 @@
     "server_modules.privilege_approve": "確認して実行",
     "server_modules.privilege_cancel": "このプランを拒否",
     "server_modules.consent_title": "バックグラウンドの継続許可",
-    "server_modules.consent_summary": "モジュールを選び、宣言済みのサービス操作と対象を一つ確認します。有効期限までは毎回の確認なしで実行できます。更新や信頼・ポリシーの変更で無効になります。ホスト管理者のみ設定できます。",
-    "server_modules.consent_target": "モジュールが宣言した正確なサービス対象",
+    "server_modules.consent_summary": "モジュールを選び、宣言済みの操作と対象を一つ確認します。有効期限までは毎回の確認なしで実行できます。ファイル書き込みは内容の正確なダイジェストに拘束されます。ファイル削除、データのバックアップ／削除、パッケージ削除、資格情報のローテーションは引き続き個別確認が必要です。更新や信頼・ポリシーの変更で無効になります。ホスト管理者のみ設定できます。",
+    "server_modules.consent_target": "モジュールが宣言した正確な対象",
     "server_modules.consent_reason": "バックグラウンド実行を許可する理由",
+    "server_modules.consent_content_sha256": "内容の正確な SHA-256（ファイル書き込みのみ）",
     "server_modules.consent_hours": "有効期間（時間、最大 720）",
     "server_modules.consent_prepare": "バックグラウンド許可を確認",
     "server_modules.consent_approve": "このバックグラウンド許可を承認",
@@ -65,6 +66,12 @@
     "server_modules.consent_revoke": "選択した許可を撤回／拒否",
     "server_modules.capability.service_manage.start": "サービスを開始",
     "server_modules.capability.service_manage.stop": "サービスを停止",
-    "server_modules.capability.service_manage.restart": "サービスを再起動"
+    "server_modules.capability.service_manage.restart": "サービスを再起動",
+    "server_modules.capability.package_manage.install": "パッケージをインストール",
+    "server_modules.capability.package_manage.update": "パッケージを更新",
+    "server_modules.capability.package_manage.repair": "パッケージを修復",
+    "server_modules.capability.file_manage.write": "設定ファイルを公開",
+    "server_modules.capability.data_manage.preserve": "データルートを保持",
+    "server_modules.capability.app_manage.query": "データベースインスタンスを照会"
   }
 }

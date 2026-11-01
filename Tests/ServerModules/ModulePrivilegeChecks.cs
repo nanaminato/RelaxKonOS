@@ -200,7 +200,7 @@ internal static class ModulePrivilegeChecks
             transport.Result = new(true);
             await Reject(() => CoreModulePrivilegeBroker.ExecuteCapabilityAsync(transport, Guid.NewGuid(),
                 new ModulePrivilegeExecution(new(ModuleCapabilityCatalog.PackageManage, "install", PackageName,
-                    "No frozen identity", "unfrozen"), null, null, null, null)),
+                    "No frozen identity", "unfrozen"), null, null, null, null, null)),
                 "unsupported", "package execution without a frozen identity fails closed");
             var expired = await Prepare("expired");
             clock.Current = clock.Current.AddMinutes(6);
@@ -273,11 +273,11 @@ internal static class ModulePrivilegeChecks
                 && unknownAudit["confirmedAt"] is not null && unknownAudit["attemptCompletedAt"] is not null,
                 "Broker retains the verified administrator and attempt evidence when the Helper response is unknown");
             var packaged = records.Single(p => p!["id"]!.GetValue<Guid>() == packagePlan.PlanId)!;
-            check(persistedDocument["schemaVersion"]!.GetValue<int>() == 6
+            check(persistedDocument["schemaVersion"]!.GetValue<int>() == 7
                 && packaged["package"]!["sourceRef"]!.GetValue<string>() == PackageSource
                 && packaged["package"]!["resolution"]!["sha256"]!.GetValue<string>() == PackageSha
                 && packaged["packageHash"]!.GetValue<string>() is { Length: 64 },
-                "package plan store is schemaVersion 6 and persists the frozen identity under its own hash");
+                "package plan store is schemaVersion 7 and persists the frozen identity under its own hash");
             void RejectCorruption(Action<JsonObject> mutate, string message)
             {
                 var document = JsonNode.Parse(original)!.AsObject();
@@ -329,7 +329,7 @@ internal static class ModulePrivilegeChecks
                 "Broker rejects a frozen package version changed without the plan hash");
             RejectPackageCorruption(node => node["package"] = null,
                 "Broker rejects a package plan whose frozen identity disappeared");
-            RejectCorruption(d => d["schemaVersion"] = 5, "Broker rejects the previous plan store format");
+            RejectCorruption(d => d["schemaVersion"] = 6, "Broker rejects the previous plan store format");
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
     }

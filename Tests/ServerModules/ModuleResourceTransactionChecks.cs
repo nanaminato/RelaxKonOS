@@ -111,13 +111,13 @@ internal static class ModuleResourceTransactionChecks
             var document = JsonNode.Parse(persisted)!;
             var stored = document["plans"]!.AsArray()
                 .Single(node => node!["id"]!.GetValue<Guid>() == write.PlanId)!.AsObject();
-            check(document["schemaVersion"]!.GetValue<int>() == 6
+            check(document["schemaVersion"]!.GetValue<int>() == 7
                 && stored["file"]!["path"]!.GetValue<string>() == FilePath
                 && stored["fileHash"]!.GetValue<string>() is { Length: 64 }
                 && stored["request"]!["contentBase64"] is null
                 && !persisted.Contains(Content, StringComparison.Ordinal)
                 && !persisted.Contains(Convert.ToBase64String(Encoding.UTF8.GetBytes(Content)), StringComparison.Ordinal),
-                "file plan store is schemaVersion 6 and persists only the digest, never the configuration body");
+                "file plan store is schemaVersion 7 and persists only the digest, never the configuration body");
 
             byte[]? dispatched = null;
             var transport = new RecordingTransport();

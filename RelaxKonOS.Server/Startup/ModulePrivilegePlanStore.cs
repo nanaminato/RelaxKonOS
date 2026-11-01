@@ -25,9 +25,14 @@ internal sealed record ModulePrivilegeFile(string Root, string Path, ModuleFileA
 internal sealed record ModulePrivilegeData(string Root, ModuleDataAction Action, ModuleDataState Expected,
     string Scope, string? BackupRef);
 
+/// <summary>One frozen database-management action. It contains no credential: only the Helper's own
+/// root-owned secret store holds the password, and the plan binds its opaque revision.</summary>
+internal sealed record ModulePrivilegeApplication(string Instance, ModuleApplicationAction Action,
+    ModuleApplicationState Expected);
+
 /// <summary>What one confirmed plan dispatches. Content is the transient file body, if any.</summary>
 internal sealed record ModulePrivilegeExecution(ModulePrivilegeRequest Request, ModulePrivilegePackage? Package,
-    ModulePrivilegeFile? File, ModulePrivilegeData? Data, byte[]? Content);
+    ModulePrivilegeFile? File, ModulePrivilegeData? Data, ModulePrivilegeApplication? Application, byte[]? Content);
 
 internal sealed class ModulePrivilegeException(string code, int status = 409) : Exception(code)
 {
@@ -41,6 +46,7 @@ internal sealed class ModulePrivilegePlanStore
     private sealed record Plan(Guid Id, string Session, ModulePrivilegeIdentity Identity, string IdentityHash,
         ModulePrivilegeRequest Request, string RequestHash, ModulePrivilegePackage? Package, string PackageHash,
         ModulePrivilegeFile? File, string FileHash, ModulePrivilegeData? Data, string DataHash,
+        ModulePrivilegeApplication? Application, string ApplicationHash,
         string Hash, DateTimeOffset Created, DateTimeOffset Expires, string State, string? Problem, string? TokenHash,
         DateTimeOffset Updated, ApprovalAudit Audit);
     private sealed record ApprovalAudit(string InitiatingUser, string? ApprovingUser, ModulePrivilegeAdministrator? Administrator,
@@ -72,7 +78,7 @@ internal sealed class ModulePrivilegePlanStore
             Document document;
             try { document = ModulePackageJson.Read<Document>(stored, 8 * 1024 * 1024); }
             catch (ModulePackageException) { throw Error("recovery_required"); }
-            if (document.SchemaVersion != 6 || document.Plans is null || document.Plans.Length > 1000 || document.Plans.Any(p => p is null)
+            if (document.SchemaVersion != 7 || document.Plans is null || document.Plans.Length > 1000 || document.Plans.Any(p => p is null)
                 || document.Plans.Select(p => p.Id).Distinct().Count() != document.Plans.Length)
                 throw Error("recovery_required");
             foreach (var plan in document.Plans) ValidateStored(plan);
@@ -104,7 +110,7 @@ internal sealed class ModulePrivilegePlanStore
             using var document = JsonDocument.Parse(stored);
             if (document.RootElement.ValueKind != JsonValueKind.Object
                 || !document.RootElement.TryGetProperty("schemaVersion", out var version)
-                || version.ValueKind != JsonValueKind.Number || version.GetInt32() != 6)
+                || version.ValueKind != JsonValueKind.Number || version.GetInt32() != 7)
                 throw Error("recovery_required");
         }
         catch (JsonException) { throw Error("recovery_required"); }
@@ -117,13 +123,15 @@ internal sealed class ModulePrivilegePlanStore
             || plan.Expires != plan.Created.AddMinutes(5)
             || plan.IdentityHash != Hash(plan.Identity) || plan.RequestHash != RequestHash(plan.Request, ContentDigest(plan.File))
             || plan.Hash != PlanHash(plan.Id, plan.Session, plan.Audit.InitiatingUser, plan.IdentityHash, plan.RequestHash,
-                plan.PackageHash, plan.FileHash, plan.DataHash, plan.Created, plan.Expires)
+                plan.PackageHash, plan.FileHash, plan.DataHash, plan.ApplicationHash, plan.Created, plan.Expires)
             || plan.TokenHash is not null && (plan.State != "AwaitingConfirmation"
                 || plan.TokenHash.Length != 64 || !plan.TokenHash.All(char.IsAsciiHexDigitLower)))
             throw Error("recovery_required");
+        if (!SecretShape(plan.Request)) throw Error("recovery_required");
         ValidateStoredPackage(plan);
         ValidateStoredFile(plan);
         ValidateStoredData(plan);
+        ValidateStoredApplication(plan);
         var attempted = plan.State is "Executing" or "Succeeded" or "Failed" or "RecoveryRequired";
         if (attempted != (plan.Audit.Administrator is not null && plan.Audit.ConfirmedAt is not null
                 && plan.Audit.ApprovingUser == plan.Audit.InitiatingUser)
@@ -194,17 +202,56 @@ internal sealed class ModulePrivilegePlanStore
             throw Error("recovery_required");
         if (plan.DataHash != Hash(data)) throw Error("recovery_required");
     }
+    /// <summary>Only app.manage may carry exactly one purpose-bound secret reference. It names a secret;
+    /// it never carries a value. Every other category keeps the DC-01 refusal of request secrets.</summary>
+    private static bool SecretShape(ModulePrivilegeRequest request)
+    {
+        if (request.Kind != ModuleCapabilityPolicy.ApplicationManage)
+            return request.Secrets is not { Length: > 0 };
+        if (request.Secrets is not { Length: 1 } || request.Secrets[0] is not { } secret) return false;
+        return ModuleApplicationIdentity.Identifier(secret.Purpose)
+            && ModuleApplicationIdentity.Identifier(secret.Target)
+            && ModuleApplicationIdentity.Identifier(secret.Permission)
+            && secret.Target == request.Target
+            && request.Action switch
+            {
+                "query" => secret.Permission == "read",
+                "rotate-credential" => secret.Permission == "rotate",
+                _ => false,
+            };
+    }
+    private static void ValidateStoredApplication(Plan plan)
+    {
+        if (plan.Request.Kind != ModuleCapabilityPolicy.ApplicationManage)
+        {
+            if (plan.Application is not null || plan.ApplicationHash != "") throw Error("recovery_required");
+            return;
+        }
+        if (plan.Application is not { } application || !ModuleApplicationIdentity.Identifier(application.Instance)
+            || application.Instance != plan.Request.Target || ActionName(application.Action) != plan.Request.Action
+            || !ModuleApplicationIdentity.Usable(application.Expected)
+            || !plan.Identity.Privileges.OfType<ApplicationManageCapability>().Any(capability =>
+                ModuleCapabilityPolicy.Allows(capability, plan.Request.Action, plan.Request.Target))
+            || !plan.Identity.Privileges.OfType<SecretReferenceCapability>().Any(capability =>
+                capability.Secrets.Any(scope => scope.Purpose == plan.Request.Secrets![0].Purpose
+                    && scope.Target == plan.Request.Target
+                    && scope.Permissions.Contains(plan.Request.Secrets[0].Permission, StringComparer.Ordinal)))
+            || plan.ApplicationHash != Hash(application))
+            throw Error("recovery_required");
+    }
     private static bool AuditIdentity(string? value) => value is { Length: > 0 and <= 512 } && !value.Any(char.IsControl);
     private static bool Token(string? value) => value is { Length: > 0 and <= 96 }
         && value[0] is >= 'a' and <= 'z' && value.All(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '.' or '-');
     private static string PackageHash(ModulePrivilegePackage? package) => package is null ? "" : Hash(package);
     private static string FileHash(ModulePrivilegeFile? file) => file is null ? "" : Hash(file);
     private static string DataHash(ModulePrivilegeData? data) => data is null ? "" : Hash(data);
+    private static string ApplicationHash(ModulePrivilegeApplication? application) => application is null ? "" : Hash(application);
     private static string ContentDigest(ModulePrivilegeFile? file) =>
         file is { Action: ModuleFileAction.Write } ? file.ContentSha256 : "";
     private static string PlanHash(Guid id, string session, string initiatingUser, string identityHash, string requestHash,
-        string packageHash, string fileHash, string dataHash, DateTimeOffset created, DateTimeOffset expires) =>
-        Hash(new { id, session, initiatingUser, identityHash, requestHash, packageHash, fileHash, dataHash, created, expires });
+        string packageHash, string fileHash, string dataHash, string applicationHash, DateTimeOffset created,
+        DateTimeOffset expires) =>
+        Hash(new { id, session, initiatingUser, identityHash, requestHash, packageHash, fileHash, dataHash, applicationHash, created, expires });
     private static string ActionName(ModuleFileAction action) => action switch
     {
         ModuleFileAction.Write => "write",
@@ -218,10 +265,17 @@ internal sealed class ModulePrivilegePlanStore
         ModuleDataAction.Delete => "delete",
         _ => "",
     };
+    private static string ActionName(ModuleApplicationAction action) => action switch
+    {
+        ModuleApplicationAction.Query => "query",
+        ModuleApplicationAction.RotateCredential => "rotate-credential",
+        _ => "",
+    };
     internal async Task<ModulePrivilegePrepared> PrepareAsync(string moduleId, string session, ModulePrivilegeRequest request,
         string initiatingUser, Func<ModulePackageQuery, Task<ModulePackageResolution?>>? queryPackage = null,
         Func<ModuleFileQuery, Task<ModuleFileState?>>? queryFile = null,
-        Func<ModuleDataQuery, Task<ModuleDataState?>>? queryData = null)
+        Func<ModuleDataQuery, Task<ModuleDataState?>>? queryData = null,
+        Func<ModuleApplicationQuery, Task<ModuleApplicationState?>>? queryApplication = null)
     {
         await _gate.WaitAsync();
         try
@@ -253,6 +307,7 @@ internal sealed class ModulePrivilegePlanStore
             ModulePrivilegePackage? package = null;
             ModulePrivilegeFile? file = null;
             ModulePrivilegeData? data = null;
+            ModulePrivilegeApplication? application = null;
             switch (request.Kind)
             {
                 case ModuleCapabilityPolicy.PackageManage:
@@ -264,17 +319,22 @@ internal sealed class ModulePrivilegePlanStore
                 case ModuleCapabilityPolicy.DataManage:
                     data = await FreezeDataAsync(identity, request, queryData);
                     break;
+                case ModuleCapabilityPolicy.ApplicationManage:
+                    application = await FreezeApplicationAsync(identity, request, queryApplication);
+                    break;
             }
             var packageHash = PackageHash(package);
             var fileHash = FileHash(file);
             var dataHash = DataHash(data);
+            var applicationHash = ApplicationHash(application);
             var id = Guid.NewGuid();
             var created = Now;
             var expires = created.AddMinutes(5);
             var identityHash = Hash(identity);
-            var hash = PlanHash(id, session, initiatingUser, identityHash, requestHash, packageHash, fileHash, dataHash, created, expires);
+            var hash = PlanHash(id, session, initiatingUser, identityHash, requestHash, packageHash, fileHash, dataHash,
+                applicationHash, created, expires);
             var plan = new Plan(id, session, identity, identityHash, request with { ContentBase64 = null }, requestHash,
-                package, packageHash, file, fileHash, data, dataHash, hash, created, expires,
+                package, packageHash, file, fileHash, data, dataHash, application, applicationHash, hash, created, expires,
                 "AwaitingConfirmation", null, null, created, new(initiatingUser, null, null, null, null));
             _plans.Add(plan);
             if (content is not null)
@@ -368,6 +428,32 @@ internal sealed class ModulePrivilegePlanStore
             action == ModuleDataAction.Backup ? request.BackupRef : null);
     }
 
+    private static async Task<ModulePrivilegeApplication> FreezeApplicationAsync(ModulePrivilegeIdentity identity,
+        ModulePrivilegeRequest request, Func<ModuleApplicationQuery, Task<ModuleApplicationState?>>? queryApplication)
+    {
+        var declared = identity.Privileges.OfType<ApplicationManageCapability>()
+            .Where(capability => ModuleCapabilityPolicy.Allows(capability, request.Action, request.Target)).ToArray();
+        if (declared.Length == 0) throw Error("not_declared", 403);
+        if (declared.Length != 1 || !declared[0].Protocols.Contains("mysql-admin", StringComparer.Ordinal)
+            || queryApplication is null)
+            throw Error("unsupported", 400);
+        var action = request.Action switch
+        {
+            "query" => ModuleApplicationAction.Query,
+            "rotate-credential" => ModuleApplicationAction.RotateCredential,
+            _ => throw Error("unsupported", 400),
+        };
+        if (request.Secrets is not { Length: 1 } || request.Secrets[0] is not { } secret
+            || !identity.Privileges.OfType<SecretReferenceCapability>().Any(capability => capability.Secrets.Any(scope =>
+                scope.Purpose == secret.Purpose && scope.Target == request.Target
+                && scope.Permissions.Contains(secret.Permission, StringComparer.Ordinal))))
+            throw Error("not_declared", 403);
+        var state = await queryApplication(new(request.Target, action));
+        if (state is null || !ModuleApplicationIdentity.Usable(state) || state.Instance != request.Target)
+            throw Error("unsupported", 400);
+        return new(request.Target, action, state);
+    }
+
     internal async Task<ModulePrivilegePlan> ReadForUserAsync(Guid id, string session)
     {
         await _gate.WaitAsync();
@@ -383,7 +469,7 @@ internal sealed class ModulePrivilegePlanStore
             return new(plan.Id, plan.Identity.ModuleId, plan.Identity.Version, plan.Identity.PublisherId,
                 plan.Identity.ArtifactSha256, plan.Request.Kind, plan.Request.Action, plan.Request.Target, plan.Request.Reason,
                 Effects(plan.Request.Kind), Warnings(plan), PackageView(plan.Package), FileView(plan.File), DataView(plan.Data),
-                plan.Hash, plan.Created, plan.Expires, plan.State, plan.Problem, token);
+                ApplicationView(plan.Application), plan.Hash, plan.Created, plan.Expires, plan.State, plan.Problem, token);
         }
         finally { _gate.Release(); }
     }
@@ -442,7 +528,8 @@ internal sealed class ModulePrivilegePlanStore
             ForgetContent(plan.Id);
             try
             {
-                var execution = new ModulePrivilegeExecution(plan.Request, plan.Package, plan.File, plan.Data, content);
+                var execution = new ModulePrivilegeExecution(plan.Request, plan.Package, plan.File, plan.Data,
+                    plan.Application, content);
                 var success = await execute(plan.Id, execution);
                 plan = Replace(plan with { State = success ? "Succeeded" : "Failed",
                     Problem = success ? null : "module.privilege_helper_failed", Updated = Now,
@@ -471,22 +558,33 @@ internal sealed class ModulePrivilegePlanStore
     /// package.manage and file.manage/data.manage additionally need a Helper resolution before a plan exists.</summary>
     internal static void Validate(ModulePrivilegeRequest request)
     {
+        // DC-06: high-trust programs are reviewed but not implemented. Return a stable explicit
+        // refusal instead of a generic unknown-category error or any fallback to a command proxy.
+        if (ModuleHighTrustExtensions.RefusedKinds.Contains(request.Kind, StringComparer.Ordinal))
+            throw new ModulePrivilegeException(ModuleHighTrustExtensions.UnsupportedCode, 400);
         if (!ModuleCapabilityPolicy.Kinds.Contains(request.Kind, StringComparer.Ordinal)
             || !ModuleCapabilityPolicy.Actions(request.Kind).Contains(request.Action, StringComparer.Ordinal))
             throw Error("unsupported", 400);
-        if (request.Secrets is { Length: > 0 }) throw Error("unsupported", 400);
         if (request.Target is not { Length: > 0 and <= 512 } || request.Target.Any(char.IsControl))
             throw Error("target_invalid", 400);
         if (!ModuleCapabilityPolicy.IsExecutable(request.Kind)) throw Error("unsupported", 400);
-        // Delivered file/data actions are deliberately narrower than the declarable catalog. set-mode,
-        // set-owner and restore need adapters of their own and must not ride on this one.
+        // Delivered file/data/application actions are deliberately narrower than the declarable catalog.
+        // set-mode/set-owner/restore/configure/recover-credential need adapters of their own.
         if (request.Kind == ModuleCapabilityPolicy.FileManage && request.Action is not ("write" or "delete"))
             throw Error("unsupported", 400);
         if (request.Kind == ModuleCapabilityPolicy.DataManage && request.Action is not ("preserve" or "backup" or "delete"))
             throw Error("unsupported", 400);
+        if (request.Kind == ModuleCapabilityPolicy.ApplicationManage && request.Action is not ("query" or "rotate-credential"))
+            throw Error("unsupported", 400);
         if (request.Kind is ModuleCapabilityPolicy.FileManage or ModuleCapabilityPolicy.DataManage
             && !ModuleResourceIdentity.CanonicalPath(request.Target))
             throw Error("target_invalid", 400);
+        if (request.Kind == ModuleCapabilityPolicy.ApplicationManage)
+        {
+            if (!ModuleApplicationIdentity.Identifier(request.Target) || !SecretShape(request))
+                throw Error("target_invalid", 400);
+        }
+        else if (request.Secrets is { Length: > 0 }) throw Error("unsupported", 400);
         if (request.Kind == ModuleCapabilityPolicy.FileManage && request.Action == "write" ? request.ContentBase64 is null
             : request.ContentBase64 is not null)
             throw Error("target_invalid", 400);
@@ -510,6 +608,7 @@ internal sealed class ModulePrivilegePlanStore
         ModuleCapabilityPolicy.PackageManage => ["package-install", "package-remove", "package-modify"],
         ModuleCapabilityPolicy.FileManage => ["file-write", "file-delete"],
         ModuleCapabilityPolicy.DataManage => ["data-preserve", "data-backup", "data-delete"],
+        ModuleCapabilityPolicy.ApplicationManage => ["app-query", "app-rotate-credential"],
         _ => [],
     };
     private static string[] Warnings(Plan plan) => plan.Request.Kind switch
@@ -528,6 +627,14 @@ internal sealed class ModulePrivilegePlanStore
                 "Only the declared root is emptied; unrelated paths are untouched."],
             _ => ["The declared data root stays in place.", "A preservation receipt records its digest, file count and size."],
         },
+        ModuleCapabilityPolicy.ApplicationManage => plan.Request.Action switch
+        {
+            "rotate-credential" => ["The database account password is replaced by a Host-generated credential.",
+                "The module never receives the old or new password; the Helper stores it under its root-only secret root.",
+                "Lost-credential recovery is not supported by this adapter; a failed rotation is not retried automatically."],
+            _ => ["The Helper connects with a Host-owned administrative credential.",
+                "The module receives only the frozen instance, account, server version and opaque secret revision."],
+        },
         _ => [],
     };
     private static ModulePackagePlanIdentity? PackageView(ModulePrivilegePackage? package) => package is null ? null : new(
@@ -545,6 +652,10 @@ internal sealed class ModulePrivilegePlanStore
     private static ModuleDataPlanIdentity? DataView(ModulePrivilegeData? data) => data is null ? null : new(
         data.Root, ActionName(data.Action), data.Expected.Exists ? "directory" : "absent",
         data.Expected.Files, data.Expected.Bytes, data.Expected.Digest, data.BackupRef ?? "");
+    private static ModuleApplicationPlanIdentity? ApplicationView(ModulePrivilegeApplication? application) =>
+        application is null ? null : new(application.Instance, application.Expected.Protocol,
+            ActionName(application.Action), application.Expected.Account, application.Expected.AccountHost,
+            application.Expected.ServerVersion, application.Expected.SecretRevision);
     private static string FileName(string uri) => uri[(uri.LastIndexOf('/') + 1)..];
     private Plan Owned(Guid id, string session)
     {
@@ -567,12 +678,12 @@ internal sealed class ModulePrivilegePlanStore
     }
     private void Save()
     {
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(new Document(6, _plans.ToArray()), ModulePackageJson.Options);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(new Document(7, _plans.ToArray()), ModulePackageJson.Options);
         if (bytes.Length > 8 * 1024 * 1024) throw Error("capacity");
         var directory = Path.GetDirectoryName(_path)!;
         Directory.CreateDirectory(directory);
         if (OperatingSystem.IsLinux()) File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        if (!File.Exists(_marker)) WriteDurable(_marker, Encoding.UTF8.GetBytes("v6\n"));
+        if (!File.Exists(_marker)) WriteDurable(_marker, Encoding.UTF8.GetBytes("v7\n"));
         var temporary = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try { WriteDurable(temporary, bytes); File.Move(temporary, _path, true); }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }

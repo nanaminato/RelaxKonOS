@@ -36,6 +36,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
             + (plan.Package is { } package ? DescribeFrozenPackage(package) + "\n" : "")
             + (plan.File is { } file ? DescribeFrozenFile(file) + "\n" : "")
             + (plan.Data is { } data ? DescribeFrozenData(data) + "\n" : "")
+            + (plan.Application is { } application ? DescribeFrozenApplication(application) + "\n" : "")
             + string.Join("\n", plan.Effects.Concat(plan.Warnings)) + $"\n{plan.State} · {plan.ExpiresAt}";
     });
     /// <summary>Show exactly what the Host froze. The dependency closure is part of the confirmed identity,
@@ -57,6 +58,12 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         $"data: {data.Root} ({data.Action})\nbefore: {data.BeforeKind} {data.BeforeFiles} files {data.BeforeBytes} bytes\n"
         + $"digest: {data.BeforeDigest}" + (data.BackupRef.Length > 0 ? $"\nbackup: {data.BackupRef}" : "");
     private static string FormatDigest(string digest) => digest.Length == 0 ? "none" : "sha256:" + digest;
+    /// <summary>The database password and its path are never part of the plan. Only the instance,
+    /// account, server version and opaque secret revision are displayed.</summary>
+    private static string DescribeFrozenApplication(ModuleApplicationPlanIdentity application) =>
+        $"database: {application.Instance} ({application.Protocol}, {application.Action})\n"
+        + $"account: {application.Account}@{application.AccountHost}\n"
+        + $"server: {application.ServerVersion}\nsecret-revision: {application.SecretRevision}";
     [RelayCommand] private Task ApprovePrivilegeAsync() => Run(async () =>
     {
         if (PrivilegePlan is not { State: "AwaitingConfirmation" } plan || plan.ExpiresAt <= DateTimeOffset.UtcNow)
