@@ -600,7 +600,7 @@ public partial class SquidViewModel : ObservableObject, IDisposable
             {
                 var failed = operation.State is not ProxyOperationState.Succeeded;
                 OutcomeFailed = failed;
-                OutcomeText = failed ? L("outcome.failed", operation.ProblemCode ?? "") : L("outcome.succeeded");
+                OutcomeText = failed ? L("outcome.failed", ProblemCodeText(operation.ProblemCode)) : L("outcome.succeeded");
                 ClearPending();
                 AdoptExistingConfiguration = false;
                 // The outcome is already decided. A failed re-read must not overwrite it with a
@@ -648,6 +648,27 @@ public partial class SquidViewModel : ObservableObject, IDisposable
             ActivityText = HasPending ? L("activity.unconfirmed") : default;
         }
     }
+
+    /// <summary>
+    /// A host refusal is only useful when it says what to change. Known codes become one sentence
+    /// that names the address or port involved; an unknown code keeps its raw form so it can be
+    /// searched in the server log instead of being swallowed by a generic failure line.
+    /// </summary>
+    private LocalizedStatus ProblemCodeText(string? code) => code switch
+    {
+        SquidFailureAddressUnavailable => L("code.address_unavailable", BindAddress.Trim(), Port),
+        SquidFailurePortInUse => L("code.port_in_use", Port),
+        "squid.process.failed" => L("code.process_failed"),
+        "squid.configuration.parse_failed" => L("code.parse_failed"),
+        "squid.configuration.adoption_required" => L("code.adoption_required"),
+        "squid.recovery.required" => L("code.recovery_required"),
+        "squid.runtime.unavailable" => L("code.runtime_unavailable"),
+        null or "" => L("code.unknown"),
+        _ => LocalizedStatus.Literal(code)
+    };
+    // The two diagnoses the Helper can prove from the unit journal; shared with the Server contract.
+    private const string SquidFailureAddressUnavailable = RelaxKonOS.Protocol.GatewayProxy.SquidFailureClassifier.AddressUnavailable;
+    private const string SquidFailurePortInUse = RelaxKonOS.Protocol.GatewayProxy.SquidFailureClassifier.PortInUse;
 
     private static LocalizedStatus L(string key) => LocalizedText.Ref("squid." + key);
     private static LocalizedStatus L(string key, params object?[] arguments) => LocalizedText.Ref("squid." + key, arguments);

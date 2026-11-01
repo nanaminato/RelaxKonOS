@@ -74,6 +74,13 @@ flowchart LR
 
 出现 pending 时，在主机上先停止 Squid，检查当前配置、备份和 pending 内容。按标记恢复上一版或删除首次发布的配置，检查文件属主/权限，执行 `squid -k parse`；确认恢复状态后才删除 pending，并按需启动服务。不要仅删除标记来跳过恢复。
 
+## 启动失败诊断与监听地址预检
+
+- **发布前核对监听地址**：Helper 在渲染候选之前确认 `BindAddress` 属于本机——loopback、`0.0.0.0`、`::`，或当前处于启用状态的网卡上的地址；都不是就返回 `squid.listener.address_unavailable`，不写文件、不 reload。发布一份起不来的配置比直接拒绝更糟：变更看起来"已应用"，真正的问题要等到启动时才会出现。
+- **启动失败按证据命名**：`systemctl` 只报告 unit 失败，Squid 自己的 errno 在 unit 日志里。Helper 在动作失败时把 systemctl 输出与 `journalctl -u squid.service -n 40 -o cat` 一并作为证据回传（不把日志行交给客户端），Server 用 `SquidFailureClassifier` 判定：`EADDRINUSE` → `squid.listener.port_in_use`，`EADDRNOTAVAIL` → `squid.listener.address_unavailable`，其余保持 `squid.process.failed`。Squid 对两种失败都会打印同一句 `Unable to open HTTP Socket`，因此只在看到具体 errno 时才改名，绝不根据这句话猜测。
+- **客户端给可执行的一句话**：已知码渲染成点名地址或端口并给出下一步（例如"监听地址 192.168.1.4:3128 不属于这台主机……改成当前地址或 0.0.0.0 后重新应用"）；未识别的码原样保留，便于在服务器日志里检索，而不是被一句通用失败盖掉。
+- **边界**：诊断只解释失败，不自动改配置、不自动重启、不把 journal 文本返回给客户端。实机案例：宿主经 DHCP 从 `192.168.1.4` 变成 `192.168.1.9` 后，旧配置在新地址上无法绑定，Squid 启动即退出；现在同一情形在发布阶段被拦下，若已发布后才失去地址，启动阶段会明确点名该地址。
+
 ## API
 
 根路径：`/api/v1.0/gateway-proxy/squid`。使用现有登录令牌。

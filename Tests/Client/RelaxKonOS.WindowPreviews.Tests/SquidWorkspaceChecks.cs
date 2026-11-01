@@ -210,6 +210,21 @@ internal static class SquidWorkspaceChecks
         Check(vm.StatePillWarn && vm.StatePillText.Resolve() == LocalizedText.Get("squid.stopped")
             && vm.ServiceControlReasonText.Resolve() == LocalizedText.Get("squid.control_reason.stopped"),
             "A stopped service is a warning pill and states why restart and reload are missing.");
+
+        // The host proved the listener cannot bind; the window must name the address and the fix.
+        vm.BindAddress = "192.168.1.4"; vm.Port = "3128"; vm.AllowRemoteClients = true;
+        fake.OperationFailed = true; fake.FailureCode = SquidFailureClassifier.AddressUnavailable;
+        Complete(vm.StartCommand.ExecuteAsync(null));
+        var bindSentence = string.Format(LocalizedText.Get("squid.code.address_unavailable"), "192.168.1.4", "3128");
+        Check(vm.OutcomeFailed && vm.OutcomeText.Resolve().Contains(bindSentence, StringComparison.Ordinal),
+            "A bind rejection is reported as the listener address problem, naming the address and the way out.");
+        Check(!vm.OutcomeText.Resolve().Contains(SquidFailureClassifier.AddressUnavailable, StringComparison.Ordinal),
+            "The raw host code must not leak into the sentence shown to the operator.");
+        fake.FailureCode = "squid.port.unknown_failure";
+        Complete(vm.StartCommand.ExecuteAsync(null));
+        Check(vm.OutcomeText.Resolve().Contains("squid.port.unknown_failure", StringComparison.Ordinal),
+            "An unrecognized host code keeps its raw form so it can be searched in the server log.");
+        fake.OperationFailed = false;
         fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { Running = true, Enabled = true } };
         Complete(vm.RefreshCommand.ExecuteAsync(null));
         Check(vm.StatePillOk && vm.StatePillText.Resolve() == LocalizedText.Get("squid.running"),
@@ -352,6 +367,7 @@ internal static class SquidWorkspaceChecks
     {
         public SquidConfigurationSnapshot Snapshot = new(new(new SquidConfiguration { Port = 1270 }, 1, 1, "hash", null), new(true, true, true, true, true, "hash", true), true);
         public int Reads; public int OperationReads; public bool LoseFirstResponse; public bool OperationFailed;
+        public string FailureCode = "squid.package.install_failed";
         public List<(string Key, object Body)> Submissions = [];
         private readonly Guid _id = Guid.NewGuid();
         private SquidAccountMutation? _pendingAccount;
@@ -377,7 +393,7 @@ internal static class SquidWorkspaceChecks
                 else if (mutation.Action == SquidAccountAction.SetEnabled && existing >= 0) Accounts[existing] = Accounts[existing] with { Enabled = mutation.Enabled!.Value };
                 _pendingAccount = null;
             }
-            OperationReads++; return Task.FromResult(new ProxyOperationDto(id, "squid.configuration.apply", OperationFailed ? ProxyOperationState.Failed : ProxyOperationState.Succeeded, "completed", OperationFailed ? "squid.package.install_failed" : "", null, DateTimeOffset.UtcNow));
+            OperationReads++; return Task.FromResult(new ProxyOperationDto(id, "squid.configuration.apply", OperationFailed ? ProxyOperationState.Failed : ProxyOperationState.Succeeded, "completed", OperationFailed ? FailureCode : "", null, DateTimeOffset.UtcNow));
         }
     }
 }
