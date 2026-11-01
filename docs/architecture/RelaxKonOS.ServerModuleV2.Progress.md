@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | MD-01 唯一 v2 契约 | 已实现并回归 | manifest / installed / package-plans 使用 schemaVersion 当前值，拒绝旧格式；打包器、CLI、SDK、Server 与桌面同步 |
 | DC-01 声明式能力契约 | 已实现（契约冻结） | 清单 schemaVersion=3 能力类别 + 类型化资源范围；`ModuleCapabilityCatalog` 统一类别/动作/可执行矩阵；Broker 按声明范围匹配；秘密引用只保留引用；`service.manage` 与 apt `package.manage` 可执行（后者需 Helper 解析），其余明确拒绝 |
-| DC-02 通用包事务 | 进行中（Host 冻结/派发已实现，真实安装验收未执行） | 契约、apt 通用解析、root 拥有的包来源策略、`ModulePackageQuery`/`ModulePackageApply`（重解比对、持久回执、安装后核实）、Broker prepare 冻结 `ModulePackageResolution`、计划存储 schemaVersion=5、`planHash` 绑定冻结身份、approve 只发送来源引用与冻结身份、Helper `PlanChanged`→`module.privilege_plan_changed` 均已实现；Ubuntu 真实安装验收（`--module-package-linux-acceptance`）未执行，Windows 适配器未定义 |
+| DC-02 通用包事务 | 进行中（apt 已实机验收；共享依赖/Windows 未交付） | 契约、apt 通用解析、root 拥有的包来源策略、`ModulePackageQuery`/`ModulePackageApply`（重解比对、持久回执、安装后核实）、Broker prepare 冻结 `ModulePackageResolution`、计划存储 schemaVersion=5、`planHash` 绑定冻结身份、approve 只发送来源引用与冻结身份、Helper `PlanChanged`→`module.privilege_plan_changed` 均已实现；Ubuntu 26.04 实机验证 mysql-server 与 redis-server 的安装/重放拒绝/摘要漂移拒绝/来源撤销拒绝/移除。Windows 适配器、共享依赖与外部安装接管未交付 |
 | MD-05 Linux 身份与权限 | 已实现；独立运行时实机验证 | 每模块稳定专用 UID/GID，无附加组、no_new_privs；root 拥有只读版本快照，模块拥有私有数据；root 监督器控制超时/断管清理 |
 | MD-05 Windows 身份与 ACL | 已实现；原生隔离及 System 整包验收通过 | LocalSystem Helper、独立账户/S4U、只读快照/私有数据 ACL、认证管道、跨模块拒绝和 Job 后代清理有实测；正式更新保留同一模块 SID |
 | MD-06 安装与代码信任 | 已实现并回归 | 冻结计划展示 runtime/privileges；精确信任绑定版本/发布者/归档与清单摘要；更新不继承，撤销立即阻断代理/Broker |
@@ -298,6 +298,10 @@ Linux 脚本 `verify-linux-v2-standing-consent.py` 更新独立 `/opt/relaxkonos
 
 prepare 对 `package.manage` 先按声明的 apt 能力调用 Helper `ModulePackageQuery`，再按 Debian 版本序核对声明区间；Helper 不可用、来源/仓库未批准、包不在来源策略、解析失败、目标不一致或版本越界都不会生成计划。计划 DTO 新增 `ModulePackagePlanIdentity` 与服务影响/维护者脚本警告，桌面确认页展示来源、仓库、制品与依赖文件清单；客户端拒绝“包计划无冻结身份/服务计划带包身份”的响应。
 
-approve 只发送来源引用与冻结身份。Helper 在 apply 时重解失败、来源/仓库撤销或身份不一致统一返回 `PlanChanged`；Broker 映射为 `module.privilege_plan_changed`，把计划持久化为 `Failed`（已知未执行）并向调用方返回该错误，而不是 `RecoveryRequired`。响应丢失仍是 `RecoveryRequired`，不自动重放。常设许可继续只允许 `service.manage`（`ModuleCapabilityPolicy.AllowsStandingConsent`），包类别后台许可留到 DC-05。
+approve 只发送来源引用与冻结身份。Helper 先按 operationId 查持久回执（重放与中断不会被重新求解），再重解：主制品必须完全一致，apt 仍要下载的依赖必须属于冻结闭包，已安装而不再下载的冻结依赖不算漂移。重解失败、来源/仓库撤销或身份不一致统一返回 `PlanChanged`；Broker 映射为 `module.privilege_plan_changed`，把计划持久化为 `Failed`（已知未执行）并向调用方返回该错误，而不是 `RecoveryRequired`。响应丢失仍是 `RecoveryRequired`，不自动重放。常设许可继续只允许 `service.manage`（`ModuleCapabilityPolicy.AllowsStandingConsent`），包类别后台许可留到 DC-05。
 
-定向检查：`Tests/ServerModules --module-privilege-checks` 88 项 PASS（含包计划冻结、版本区间、冻结身份篡改、Drift 与响应丢失检查），`--module-package-transaction-checks` 17 项 PASS（含 Debian 版本序），完整 ServerModules 回归 **671 项 PASS**，`dotnet build RelaxKonOS.sln` 0 错误。**未执行**真实 Ubuntu 安装验收：新增 `--module-package-linux-acceptance`（root + Linux，Windows 明确 SKIP）驱动真实 apt 解析、安装、回执重放拒绝、摘要漂移拒绝、来源撤销拒绝与移除；本次环境的 Docker 镜像仓库代理 `http://127.0.0.1:65533` 拒绝连接且本地无 Ubuntu 镜像，未取得运行输出，因此不宣称 DC-02 关闭。Windows `windows-msi` 适配器仍未定义。
+真实 Ubuntu 验收已执行（Tailscale 主机 `100.113.194.85`，Ubuntu 26.04 LTS，x86_64，2 vCPU / 5.2 GiB）：root 运行自包含 linux-x64 的 `--module-package-linux-acceptance`，`mysql-server` 8.4.11-0ubuntu0.26.04.1（8 项依赖）与 `redis-server` 5:8.0.5-1ubuntu0.1（2 项依赖）各 9 项 PASS——策略加载、精确解析、真实 apt 安装与版本/架构核实、同一 operationId 重放拒绝（`Conflict`）、摘要漂移拒绝、来源撤销拒绝（`PlanChanged`）与移除后 `dpkg-query` 核实。验收后已 purge 本次新增的全部包、删除验收载荷与 `/etc/relaxkonos`、`/var/lib/relaxkonos/module-packages`，nginx 等既有包未受影响。原始输出在仓库外 `.artifacts/module-package-ubuntu-acceptance-20261101.log`。
+
+验收同时发现并修复两处缺陷：策略加载器缺少 camelCase 命名策略（文档格式实际不可读）；apply 把“依赖已安装、apt 不再列出”误判为闭包漂移。对应回归加入策略 camelCase/未知字段/PascalCase 拒绝与“依赖子集不是漂移、新增或变更制品是漂移”的检查。
+
+定向检查：`--module-privilege-checks` 88 项 PASS（含包计划冻结、版本区间、冻结身份篡改、Drift 与响应丢失），`--module-package-transaction-checks` 20 项 PASS（含 Debian 版本序、策略解析与依赖子集匹配），完整 ServerModules 回归 **674 项 PASS**，`dotnet build RelaxKonOS.sln` 0 错误。Windows `windows-msi` 适配器、共享依赖/外部安装接管与真实 MySQL 服务闭环仍未交付，因此 DC-02 不标记关闭。

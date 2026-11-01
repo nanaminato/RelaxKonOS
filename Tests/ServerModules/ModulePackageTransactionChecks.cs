@@ -1,3 +1,6 @@
+extern alias modulehelper;
+
+using System.Text;
 using RelaxKonOS.ManagedRuntimes.ComponentPackages;
 using RelaxKonOS.Protocol.Privileged;
 
@@ -62,6 +65,19 @@ internal static class ModulePackageTransactionChecks
             && !AptPackageResolution.MatchesModuleResolution(frozen, changedDigest)
             && !AptPackageResolution.MatchesModuleResolution(frozen, droppedDependency),
             "module package execution-time drift in version, digest or dependency closure is rejected");
+        var satisfiedDependency = frozen with { Dependencies = [frozen.Dependencies[0]] };
+        var unknownDependency = frozen with
+        {
+            Dependencies = [new ModulePackageArtifact("other.deb", "http://archive.ubuntu.com/ubuntu/other.deb", 1024, SecondDependencySha)],
+        };
+        var changedDependency = frozen with { Dependencies = [frozen.Dependencies[0] with { Sha256 = new string('5', 64) }] };
+        check(AptPackageResolution.MatchesModuleTransaction(frozen, satisfiedDependency)
+            && AptPackageResolution.MatchesModuleTransaction(frozen, frozen with { Dependencies = [] })
+            && !AptPackageResolution.MatchesModuleTransaction(frozen, unknownDependency)
+            && !AptPackageResolution.MatchesModuleTransaction(frozen, changedDependency)
+            && !AptPackageResolution.MatchesModuleTransaction(frozen, changedVersion),
+            "apply-time matching accepts only artifacts the plan froze: satisfied dependencies are not drift, "
+            + "but a new or changed artifact is");
 
         var traversal = frozen with
         {
@@ -104,6 +120,24 @@ internal static class ModulePackageTransactionChecks
             && !DebianVersion.IsWithin("7.9.9", "8.0.0", "9.0.0")
             && !DebianVersion.IsWithin("", "8.0.0", "9.0.0"),
             "module package version intervals accept only versions inside the declared minimum and maximum");
+        var documentedPolicy = Encoding.UTF8.GetBytes("""
+            {"schemaVersion":1,"sources":[{"sourceRef":"host-approved-mysql","baseUris":["http://archive.ubuntu.com/ubuntu"],"packages":["mysql-server"]}]}
+            """);
+        check(modulehelper::ModulePackageSourcePolicy.TryParse(documentedPolicy, out var parsedPolicy, out var policyProblem)
+            && policyProblem == "" && parsedPolicy is not null
+            && parsedPolicy.Sources.Length == 1 && parsedPolicy.Sources[0].SourceRef == "host-approved-mysql"
+            && parsedPolicy.Sources[0].Packages.Length == 1 && parsedPolicy.Sources[0].Packages[0] == "mysql-server",
+            "root-owned module package policy parses the documented camelCase source document");
+        check(!modulehelper::ModulePackageSourcePolicy.TryParse(
+                Encoding.UTF8.GetBytes("""{"schemaVersion":2,"sources":[{"sourceRef":"host-approved-mysql","baseUris":["http://archive.ubuntu.com/ubuntu"],"packages":["mysql-server"]}]}"""),
+                out _, out _)
+            && !modulehelper::ModulePackageSourcePolicy.TryParse(
+                Encoding.UTF8.GetBytes("""{"schemaVersion":1,"sources":[{"sourceRef":"host-approved-mysql","baseUris":["http://archive.ubuntu.com/ubuntu"],"packages":["mysql-server"],"extra":true}]}"""),
+                out _, out _)
+            && !modulehelper::ModulePackageSourcePolicy.TryParse(
+                Encoding.UTF8.GetBytes("""{"SchemaVersion":1,"Sources":[{"SourceRef":"host-approved-mysql","BaseUris":["http://archive.ubuntu.com/ubuntu"],"Packages":["mysql-server"]}]}"""),
+                out _, out _),
+            "module package policy rejects a changed schema, unknown members and non-camelCase fields");
         return Task.CompletedTask;
     }
 }

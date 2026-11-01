@@ -5,6 +5,7 @@ using System.Text.Json;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Observability;
 using RelaxKonOS.Protocol.Privileged;
+using LinuxOwnership = modulehelper::RelaxKonOS.PrivilegedHelper.LinuxFileOwnership;
 
 /// <summary>
 /// Real Linux acceptance for the module package adapter. It runs only as root on Linux and is expected to
@@ -52,10 +53,13 @@ internal static class ModulePackageLinuxAcceptance
     private static async Task AcceptAsync(string sourceRef, string[] baseUris, string[] packages, string package,
         Action<bool, string> check)
     {
+        check(modulehelper::ModulePackageSourcePolicy.TryLoad(PolicyPath, out _, out var policyProblem),
+            $"Helper loads the root-owned source policy before resolving {package} (problem={policyProblem})");
         var resolved = await ExecuteAsync(PrivilegedOperationKind.ModulePackageQuery,
             ModulePackageQuery: new(sourceRef, package));
         check(resolved.Success && resolved.ModulePackage is { } resolution && resolution.Package == package,
-            $"Helper resolves the declared {package} to one exact artifact from the approved source");
+            $"Helper resolves the declared {package} to one exact artifact from the approved source "
+            + $"(problem={resolved.ProblemCode}, error={resolved.Error})");
         var target = resolved.ModulePackage!;
         check(target.Sha256.Length == 64 && target.Bytes > 0 && target.Dependencies.All(item => item.Sha256.Length == 64),
             $"{package} resolution freezes a SHA-256 artifact identity with {target.Dependencies.Count} dependencies");
@@ -132,6 +136,8 @@ internal static class ModulePackageLinuxAcceptance
             RelaxKonOSJsonOptions.Default));
         File.SetUnixFileMode(temporary, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
         File.Move(temporary, PolicyPath, true);
+        var owner = LinuxOwnership.Read(PolicyPath).Owner;
+        Console.WriteLine($"POLICY size={new FileInfo(PolicyPath).Length} mode={File.GetUnixFileMode(PolicyPath)} owner={owner}");
     }
 
     private static string? Single(string[] arguments, string name)

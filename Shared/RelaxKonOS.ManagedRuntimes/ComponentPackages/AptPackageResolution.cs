@@ -277,6 +277,28 @@ public static class AptPackageResolution
     /// </summary>
     public static bool MatchesModuleResolution(RelaxKonOS.Protocol.Privileged.ModulePackageResolution? expected,
         RelaxKonOS.Protocol.Privileged.ModulePackageResolution? current) =>
+        SameMainArtifact(expected, current)
+        && expected!.Dependencies is not null && current!.Dependencies is not null
+        && expected.Dependencies.OrderBy(item => item.FileName, StringComparer.Ordinal)
+            .SequenceEqual(current.Dependencies.OrderBy(item => item.FileName, StringComparer.Ordinal));
+
+    /// <summary>
+    /// Apply-time comparison. The main artifact must still be identical; every artifact apt would fetch now
+    /// must be one the plan froze. A frozen dependency that is already installed is no longer downloaded,
+    /// so its absence is not drift; an artifact the plan never named is.
+    /// </summary>
+    public static bool MatchesModuleTransaction(RelaxKonOS.Protocol.Privileged.ModulePackageResolution? expected,
+        RelaxKonOS.Protocol.Privileged.ModulePackageResolution? current) =>
+        SameMainArtifact(expected, current)
+        && expected!.Dependencies is not null && current!.Dependencies is not null
+        && current.Dependencies.All(item => expected.Dependencies.Any(frozen =>
+            string.Equals(frozen.FileName, item.FileName, StringComparison.Ordinal)
+            && string.Equals(frozen.Uri, item.Uri, StringComparison.Ordinal)
+            && frozen.Bytes == item.Bytes
+            && string.Equals(frozen.Sha256, item.Sha256, StringComparison.OrdinalIgnoreCase)));
+
+    private static bool SameMainArtifact(RelaxKonOS.Protocol.Privileged.ModulePackageResolution? expected,
+        RelaxKonOS.Protocol.Privileged.ModulePackageResolution? current) =>
         expected is not null && current is not null
         && string.Equals(expected.Package, current.Package, StringComparison.Ordinal)
         && string.Equals(expected.Version, current.Version, StringComparison.Ordinal)
@@ -287,10 +309,7 @@ public static class AptPackageResolution
         && string.Equals(expected.Area, current.Area, StringComparison.Ordinal)
         && string.Equals(expected.PoolUri, current.PoolUri, StringComparison.Ordinal)
         && string.Equals(expected.Sha256, current.Sha256, StringComparison.OrdinalIgnoreCase)
-        && expected.Bytes == current.Bytes
-        && expected.Dependencies is not null && current.Dependencies is not null
-        && expected.Dependencies.OrderBy(item => item.FileName, StringComparer.Ordinal)
-            .SequenceEqual(current.Dependencies.OrderBy(item => item.FileName, StringComparer.Ordinal));
+        && expected.Bytes == current.Bytes;
 
     /// <summary>A module package identity must name a real artifact, a real repository and SHA-256 only.</summary>
     public static bool IsUsableModuleResolution(RelaxKonOS.Protocol.Privileged.ModulePackageResolution? target, out string? problemCode)

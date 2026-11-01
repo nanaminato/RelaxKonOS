@@ -13,7 +13,7 @@ public sealed record ModulePackageSourceEntry(string SourceRef, string[] BaseUri
 /// </summary>
 public sealed record ModulePackageSourcePolicy(int SchemaVersion, ModulePackageSourceEntry[] Sources)
 {
-    private static readonly JsonSerializerOptions Options = new()
+    private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = false,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
@@ -21,6 +21,8 @@ public sealed record ModulePackageSourcePolicy(int SchemaVersion, ModulePackageS
         MaxDepth = 16,
     };
 
+    /// <summary>Read and validate the protected file. Permission checks stay separate from parsing so the
+    /// documented camelCase document can be checked without a root-owned Linux file.</summary>
     public static bool TryLoad(string path, out ModulePackageSourcePolicy? policy, out string problem)
     {
         policy = null;
@@ -33,13 +35,28 @@ public sealed record ModulePackageSourcePolicy(int SchemaVersion, ModulePackageS
             var (owner, _) = LinuxFileOwnership.Read(path);
             if (owner != 0) return false;
             if ((File.GetUnixFileMode(path) & (UnixFileMode.GroupWrite | UnixFileMode.OtherWrite)) != 0) return false;
-            var parsed = JsonSerializer.Deserialize<ModulePackageSourcePolicy>(File.ReadAllBytes(path), Options);
+            return TryParse(File.ReadAllBytes(path), out policy, out problem);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or ArgumentException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Parse the exact documented policy shape: camelCase fields, no unknown members, schemaVersion=1.</summary>
+    public static bool TryParse(ReadOnlySpan<byte> json, out ModulePackageSourcePolicy? policy, out string problem)
+    {
+        policy = null;
+        problem = "module-package-policy-invalid";
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<ModulePackageSourcePolicy>(json, Options);
             if (parsed is null || parsed.SchemaVersion != 1 || !parsed.Valid()) return false;
             policy = parsed;
             problem = "";
             return true;
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or ArgumentException)
+        catch (Exception error) when (error is JsonException or ArgumentException)
         {
             return false;
         }
@@ -157,11 +174,8 @@ public static partial class PrivilegedOperationExecutor
             return Fail(65, PrivilegedProblemCode.PlanChanged, "module package repository is no longer approved");
         if (transaction.RemoveConfiguration && transaction.Action != ModulePackageTransactionAction.Remove)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "configuration removal requires the remove action");
-        var (failure, current) = await ResolveModulePackageAsync(policy, source, package);
-        if (failure is not null) return Fail(65, PrivilegedProblemCode.PlanChanged, "module package identity changed");
-        if (!AptPackageResolution.MatchesModuleResolution(transaction.Target, current))
-            return Fail(65, PrivilegedProblemCode.PlanChanged, "module package identity changed");
-
+        // A durable receipt is checked before apt is asked anything: a replay or an interrupted attempt
+        // must never become a new resolution, and its answer does not depend on the current index state.
         var expected = new ModulePackageReceipt(operationId, transaction.SourceRef, transaction.Action.ToString(),
             package, transaction.Target.Version, transaction.Target.Sha256, false);
         var receiptPath = Path.Combine(ModulePackageStateRoot, "operations", operationId.ToString("N") + ".json");
@@ -171,6 +185,12 @@ public static partial class PrivilegedOperationExecutor
             if (prior != expected) return Fail(65, PrivilegedProblemCode.Conflict, "module package operation key conflict");
             return Fail(65, PrivilegedProblemCode.Conflict, "module package operation requires recovery");
         }
+        var (failure, current) = await ResolveModulePackageAsync(policy, source, package);
+        if (failure is not null) return Fail(65, PrivilegedProblemCode.PlanChanged, "module package identity changed");
+        // The main artifact must be identical. A frozen dependency the package manager no longer needs to
+        // download is already satisfied on this host; an artifact the plan never named is drift.
+        if (!AptPackageResolution.MatchesModuleTransaction(transaction.Target, current))
+            return Fail(65, PrivilegedProblemCode.PlanChanged, "module package identity changed");
         WriteModulePackageReceipt(receiptPath, expected);
 
         var arguments = transaction.Action switch

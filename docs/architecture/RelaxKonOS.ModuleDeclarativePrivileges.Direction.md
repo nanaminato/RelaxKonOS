@@ -1,6 +1,6 @@
 # 第三方模块声明式特权能力：下一阶段方向
 
-> 状态：方向提案，2026-11-01。DC-01 契约冻结已实现；DC-02 的 apt 包事务已接线（Helper 解析/执行、Host 查询/冻结/审批、计划存储 v5）；DC-03～DC-06 未开始。当前可执行的提权为 `service.manage` 的启动/停止/重启与 `package.manage` 的安装/更新/修复/卸载（仅 apt 且 Helper 可解析时），其余能力类别可声明但执行时明确拒绝。本文不把设计目标当作已交付证据。
+> 状态：方向提案，2026-11-01。DC-01 契约冻结已实现；DC-02 的 apt 包事务已接线并在 Ubuntu 26.04 实机通过安装/漂移/来源撤销/移除验收（mysql-server 与 redis-server），Windows 适配器、共享依赖与外部安装接管仍未交付；DC-03～DC-06 未开始。当前可执行的提权为 `service.manage` 的启动/停止/重启与 `package.manage` 的安装/更新/修复/卸载（仅 apt 且 Helper 可解析时），其余能力类别可声明但执行时明确拒绝。本文不把设计目标当作已交付证据。
 >
 > 本文拥有声明式能力扩展方向；[Broker 设计](RelaxKonOS.ServerModulePrivilegeBroker.Design.md)继续拥有身份、确认、计划、审计和撤销机制。[受管运行时设计](../platform/RelaxKonOS.ManagedRuntimes.Design.md)继续拥有安装生命周期、资源所有权、来源信任和恢复规则。
 
@@ -114,7 +114,7 @@ Windows MSI/其他安装器的可支持范围须单独定义和实测；安装�
 | 编号 | 后续交付 | 关闭条件 | 状态 |
 | --- | --- | --- | --- |
 | DC-01 | 冻结能力类别、资源约束、两层授权、秘密引用及平台支持模型 | Protocol/SDK/manifest/Helper 策略与确认 UI 一致；拒绝未知字段和越权声明 | 已实现（契约冻结，见 §9） |
-| DC-02 | 首个通用包管理适配器，贯通安装/更新/修复/卸载 | 用 MySQL 与另一个第三方软件包验收，新增模块无需新增应用专用 Core 枚举；依赖漂移、来源撤销、脚本风险、共享资源和外部安装均有证据 | 进行中（apt 解析、Helper 查询/执行、Host 冻结计划、Broker 派发与 Drift/来源撤销拒绝已实现；真实 Ubuntu 安装验收未执行，Windows 适配器未实现） |
+| DC-02 | 首个通用包管理适配器，贯通安装/更新/修复/卸载 | 用 MySQL 与另一个第三方软件包验收，新增模块无需新增应用专用 Core 枚举；依赖漂移、来源撤销、脚本风险、共享资源和外部安装均有证据 | 进行中（apt 已实机验收 mysql-server 8.4.11 + redis-server 5:8.0.5；Host 冻结/派发、Drift 与来源撤销拒绝已实现；共享依赖、外部安装接管、脚本差异与 Windows MSI 未交付） |
 | DC-03 | 通用服务、配置和数据生命周期；组合工作流 | MySQL 配置发布与保留数据卸载闭环；无脚本旁路，失败可解释且能恢复 | 未开始 |
 | DC-04 | 数据库管理协议与秘密交付；密码恢复能力评估 | 有凭据改密实测；丢失凭据恢复须完成所需适配器、停机确认、秘密保护和恢复验收后才可宣称支持 | 未开始 |
 | DC-05 | 常设许可、撤销和后台执行 | 范围、有效期、更新失效、撤销竞态、数据删除强制确认全部验证 | 未开始 |
@@ -161,35 +161,42 @@ Windows MSI/其他安装器的可支持范围须单独定义和实测；安装�
   }
   ```
 
+  该文件是 camelCase、大小写敏感、拒绝未知字段的唯一当前格式；Host 与测试共用同一解析器。2026-11-01 的真实验收发现旧加载器缺少 camelCase 命名策略，实际只能读取 PascalCase，文档示例因此从未真正可读；现在 `TryParse` 明确按文档格式解析，并加入“改 schemaVersion / 未知字段 / PascalCase 均拒绝”的回归检查。
+
 以上只是解析与执行层；Host 侧计划生成、冻结与派发见下一节。解析层存在不等于 `package.manage` 可执行：没有 Helper 解析就没有计划。
 
-Helper 的 `ModulePackageApply` 执行动词已实现：只接受动词、来源引用与冻结身份，先按同一只读路径独立重解并比对版本/架构/仓库/制品/摘要/依赖闭包，不匹配即返回 `PlanChanged`；执行前写入持久回执，中断或响应丢失后同一操作返回 `Conflict` 待恢复而绝不自动重放；执行 `apt-get install pkg=version`、`--reinstall` 或 `remove [--purge]` 后再次用 `dpkg-query` 核实安装状态与版本/架构。
+Helper 的 `ModulePackageApply` 执行动词已实现：先查持久回执（同一操作绝不重解、不重跑），再按同一只读路径独立重解并比对。主制品必须完全一致；apt 现在仍要下载的每个依赖必须属于冻结闭包，已安装而不再下载的冻结依赖不算漂移，计划中从未出现的制品才算漂移；不一致即返回 `PlanChanged`。执行前写入持久回执，中断或响应丢失后同一操作返回 `Conflict` 待恢复而绝不自动重放；执行 `apt-get install pkg=version`、`--reinstall` 或 `remove [--purge]` 后再次用 `dpkg-query` 核实安装状态与版本/架构。
 
 ### DC-02 已接线的 Host 侧（2026-11-01）
 
 1. `ModuleCapabilityCatalog.IsExecutable` 把 `package.manage` 纳入 Host 适配器矩阵；`CoreModulePrivilegeBroker` 在 prepare 时调用 Helper `ModulePackageQuery`，Helper 不可用、来源未批准、包不在来源策略内或解析失败一律使计划创建失败（`module.privilege_unsupported`），不会退化为仅凭声明创建计划。
 2. 计划创建时冻结完整 `ModulePackageResolution`（包名、精确版本、架构、仓库、制品 URI、SHA-256、大小、依赖闭包）与来源引用；`privilege-plans.json` 升为 **schemaVersion=5**，旧格式拒绝读取且不迁移。`planHash` 绑定冻结身份的独立 `packageHash`，持久化记录缺失、串类别或摘要不符即 `module.privilege_recovery_required`。
 3. 计划 DTO 新增 `ModulePackagePlanIdentity`（含来源引用、仓库、制品文件名/摘要/大小与依赖文件清单）；桌面确认页展示这些字段以及 `ModulePackageDescription.Warnings` 的维护者脚本、服务影响与“无通用回滚”警告。客户端拒绝“包计划无冻结身份/服务计划带包身份”的响应。
-4. approve 把来源引用与冻结身份作为 `ModulePackageApply` 发出；Helper 重解后不一致、来源或仓库被撤销时返回 `PlanChanged`，Broker 映射为 `module.privilege_plan_changed` 并把计划持久化为 `Failed`（已知未执行），不进入 `RecoveryRequired`；响应丢失仍进入 `RecoveryRequired`，不自动重放。
+4. approve 把来源引用与冻结身份作为 `ModulePackageApply` 发出；Helper 先按 operationId 查持久回执（重放/中断不会被重新求解），再重解并比对主制品与仍将下载的依赖。不一致、来源或仓库被撤销时返回 `PlanChanged`，Broker 映射为 `module.privilege_plan_changed` 并把计划持久化为 `Failed`（已知未执行），不进入 `RecoveryRequired`；响应丢失仍进入 `RecoveryRequired`，不自动重放。已冻结但已安装的依赖不会被要求重新下载，因此第二次安装不会因闭包变小而误判漂移。
 5. 模块更新、信任撤销、来源目录/策略修订变化会使旧计划的 `identityHash` 失效；Helper 在 apply 时再按当前 root 策略复核来源与制品，因此 Host 侧策略修订与 Helper 侧来源撤销都会让旧计划不可执行。常设许可仍只允许 `service.manage`（`ModuleCapabilityPolicy.AllowsStandingConsent`），包类别的后台许可留到 DC-05。
 6. 版本范围按 Debian 版本序（epoch/upstream/revision）与声明区间比较；解析版本落在声明区间之外时拒绝计划，Windows MSI 声明仍返回 `unsupported`。
 
-验证：`dotnet build RelaxKonOS.sln` 通过；`Tests/ServerModules --module-privilege-checks` 覆盖包计划冻结、区间拒绝、类别/动作越界、冻结身份篡改拒绝、v5 旧格式拒绝、approve 只发送冻结身份、Helper Drift→`module.privilege_plan_changed`、响应丢失→`RecoveryRequired`；`--module-package-transaction-checks` 覆盖 apt 身份解析、漂移拒绝与 Debian 版本序。这些是确定性与解析层证据，不代替真实安装验收。
+验证：`dotnet build RelaxKonOS.sln` 通过；`Tests/ServerModules --module-privilege-checks` 覆盖包计划冻结、区间拒绝、类别/动作越界、冻结身份篡改拒绝、v5 旧格式拒绝、approve 只发送冻结身份、Helper Drift→`module.privilege_plan_changed`、响应丢失→`RecoveryRequired`；`--module-package-transaction-checks` 覆盖 apt 身份解析、依赖子集匹配、策略文件 camelCase 解析、漂移拒绝与 Debian 版本序。
+
+### DC-02 真实 Ubuntu 验收（2026-11-01，已执行）
+
+在 Tailscale 测试主机 `100.113.194.85`（Ubuntu 26.04 LTS，x86_64，2 vCPU / 5.2 GiB）以 root 运行自包含 linux-x64 验收二进制；命令与原始输出保存在仓库外的 `.artifacts/module-package-ubuntu-acceptance-20261101.log`：
+
+```bash
+RelaxKonOS.ServerModules.Tests --module-package-linux-acceptance \
+  --source-ref host-approved-mysql --base-uri http://cn.archive.ubuntu.com/ubuntu \
+  --package mysql-server --package redis-server
+```
+
+结果：两个软件包各 9 项检查全部 PASS，真实 `apt install` 得到 `mysql-server 8.4.11-0ubuntu0.26.04.1 amd64`（依赖闭包 8 项）与 `redis-server 5:8.0.5-1ubuntu0.1 amd64`（依赖闭包 2 项）；同一 operationId 重放被 `Conflict` 拒绝；摘要漂移与来源撤销均被 `PlanChanged` 拒绝且未执行；`apt remove` 后 `dpkg-query` 核实不存在。验收后已 purge 本次新增的全部包、删除验收载荷与 `/etc/relaxkonos`、`/var/lib/relaxkonos/module-packages`，nginx 等既有包未受影响。
+
+本次验收发现并修复两处真实缺陷：① 策略加载器缺少 camelCase 命名策略，文档示例格式实际不可读；② apply 时把“依赖已安装、apt 不再列出”误判为闭包漂移，导致同一包第二次事务被拒绝。现以主制品完全一致 + 仍将下载的依赖属于冻结集合的规则判定，并先查回执再重解。
 
 ### DC-02 尚未交付（下一步）
 
-1. **真实 Ubuntu 验收未执行**：仓库提供 `Tests/ServerModules --module-package-linux-acceptance --source-ref <ref> --base-uri <approved base> --package mysql-server --package <另一个包>`，它以 root 在 Linux 上写 `/etc/relaxkonos/module-packages.json`，真实解析、安装、回执重放拒绝、摘要漂移拒绝、来源撤销拒绝、移除并核对 `dpkg-query`；Windows 上明确 SKIP。需要在一次性 Ubuntu 容器中执行并记录两个软件包的实际结果：
-
-   ```bash
-   docker run --rm -it -v "$PWD:/src" -w /src mcr.microsoft.com/dotnet/sdk:10.0 \
-     bash -lc 'apt-get update && dotnet run --project Tests/ServerModules -- \
-       --module-package-linux-acceptance --source-ref host-approved-mysql \
-       --base-uri http://archive.ubuntu.com/ubuntu --package mysql-server --package nginx'
-   ```
-
-   该命令会覆盖容器内 `/etc/relaxkonos/module-packages.json` 并真实安装/移除两个软件包，只能在一次性容器中运行；Windows 上同一参数明确 SKIP。未取得该输出前，DC-02 关闭条件（依赖漂移、来源撤销、脚本风险、共享资源与外部安装的实际证据）仍未满足。
-2. **Windows 适配器未定义**：`windows-msi` 声明仍可解析，但执行时返回 `unsupported`；安装器属性、脚本和自定义动作的封闭参数模型须单独立项和实测。
-3. **维护者脚本与共享资源展示仍是静态警告**：Host 不解析 maintainer script 内容，也不计算共享依赖引用/影响；“外部已有安装接管”“卸载集合”“安装脚本差异”尚未生成可确认的数据。
+1. **Windows 适配器未定义**：`windows-msi` 声明仍可解析，但执行时返回 `unsupported`；安装器属性、脚本和自定义动作的封闭参数模型须单独立项和实测。
+2. **维护者脚本与共享资源展示仍是静态警告**：Host 不解析 maintainer script 内容，也不计算共享依赖引用/影响；“外部已有安装接管”“卸载集合”“安装脚本差异”尚未生成可确认的数据。Linux 上的安装脚本风险因此只以“可能以宿主权限运行”的警告呈现，不构成已核实的脚本差异证据。
+3. **真实 MySQL 服务与数据生命周期未验收**：本次只证明包事务，未启动/连接实例、未验证数据保留与卸载策略；DC-03/DC-04 才交付配置、数据与数据库协议闭环。
 
 ## 11. 关联文档
 
