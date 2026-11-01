@@ -39,7 +39,9 @@ internal sealed class CoreModulePrivilegeBroker(IHostEnvironment environment, IC
             using var scope = services.CreateScope();
             if (!scope.ServiceProvider.GetRequiredService<HostElevationSessionState>().IsSessionValid(context.User))
                 throw new ModulePrivilegeException("module.privilege_denied", 403);
-            return Results.Ok(await Plans.PrepareAsync(moduleId, Session(context.User), request));
+            var actor = context.User.FindFirstValue("sub") ?? context.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? throw new ModulePrivilegeException("module.privilege_denied", 403);
+            return Results.Ok(await Plans.PrepareAsync(moduleId, Session(context.User), request, actor));
         }));
         _application.MapGet("/plans/{id:guid}", async (Guid id, HttpContext http) => await Respond(async () =>
         {

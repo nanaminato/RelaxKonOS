@@ -8,6 +8,7 @@ namespace RelaxKonOS.Server.Startup;
 
 internal sealed record ModulePrivilegeIdentity(string ModuleId, string Version, string PublisherId, string ArtifactSha256,
     string ManifestSha256, string PolicyRevision, ModulePackagePrivilege[] Privileges, string[] AllowedServices);
+internal sealed record ModulePrivilegeAdministrator(string Identity, string AuthenticationMethod);
 internal sealed class ModulePrivilegeException(string code, int status = 409) : Exception(code)
 {
     internal string Code => Message;
@@ -19,7 +20,9 @@ internal sealed class ModulePrivilegePlanStore
 {
     private sealed record Plan(Guid Id, string Session, ModulePrivilegeIdentity Identity, string IdentityHash,
         ModulePrivilegeRequest Request, string RequestHash, string Hash, DateTimeOffset Created, DateTimeOffset Expires,
-        string State, string? Problem, string? TokenHash, DateTimeOffset Updated);
+        string State, string? Problem, string? TokenHash, DateTimeOffset Updated, ApprovalAudit Audit);
+    private sealed record ApprovalAudit(string InitiatingUser, string? ApprovingUser, ModulePrivilegeAdministrator? Administrator,
+        DateTimeOffset? ConfirmedAt, DateTimeOffset? AttemptCompletedAt);
     private sealed record Document(int SchemaVersion, Plan[] Plans);
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly string _path;
@@ -39,9 +42,10 @@ internal sealed class ModulePrivilegePlanStore
         else
         {
             var document = ModulePackageJson.Read<Document>(File.ReadAllBytes(_path), 8 * 1024 * 1024);
-            if (document.SchemaVersion != 2 || document.Plans.Length > 1000
+            if (document.SchemaVersion != 3 || document.Plans is null || document.Plans.Length > 1000 || document.Plans.Any(p => p is null)
                 || document.Plans.Select(p => p.Id).Distinct().Count() != document.Plans.Length)
                 throw Error("recovery_required");
+            foreach (var plan in document.Plans) ValidateStored(plan);
             _plans = document.Plans.ToList();
             for (var i = 0; i < _plans.Count; i++)
                 if (_plans[i].State == "Executing")
@@ -50,12 +54,34 @@ internal sealed class ModulePrivilegePlanStore
         }
     }
     private DateTimeOffset Now => _clock.GetUtcNow();
-    internal async Task<ModulePrivilegePrepared> PrepareAsync(string moduleId, string session, ModulePrivilegeRequest request)
+    private static void ValidateStored(Plan plan)
+    {
+        if (plan is null || plan.Id == Guid.Empty || string.IsNullOrEmpty(plan.Session)
+            || plan.Identity is null || plan.Request is null || plan.Audit is null || !AuditIdentity(plan.Audit.InitiatingUser)
+            || plan.State is not ("AwaitingConfirmation" or "Executing" or "Succeeded" or "Failed" or "Cancelled" or "Expired" or "RecoveryRequired")
+            || plan.Expires != plan.Created.AddMinutes(5)
+            || plan.IdentityHash != Hash(plan.Identity) || plan.RequestHash != Hash(plan.Request)
+            || plan.Hash != PlanHash(plan.Id, plan.Session, plan.Audit.InitiatingUser, plan.IdentityHash, plan.RequestHash, plan.Created, plan.Expires)
+            || plan.TokenHash is not null && (plan.State != "AwaitingConfirmation"
+                || plan.TokenHash.Length != 64 || !plan.TokenHash.All(char.IsAsciiHexDigitLower)))
+            throw Error("recovery_required");
+        var attempted = plan.State is "Executing" or "Succeeded" or "Failed" or "RecoveryRequired";
+        if (attempted != (plan.Audit.Administrator is not null && plan.Audit.ConfirmedAt is not null
+                && plan.Audit.ApprovingUser == plan.Audit.InitiatingUser)
+            || attempted && (!AuditIdentity(plan.Audit.Administrator!.Identity) || !AuditIdentity(plan.Audit.Administrator.AuthenticationMethod))
+            || !attempted && (plan.Audit.Administrator is not null || plan.Audit.ApprovingUser is not null || plan.Audit.ConfirmedAt is not null)
+            || plan.State is "Succeeded" or "Failed" && plan.Audit.AttemptCompletedAt is null)
+            throw Error("recovery_required");
+    }
+    private static bool AuditIdentity(string? value) => value is { Length: > 0 and <= 512 } && !value.Any(char.IsControl);
+    private static string PlanHash(Guid id, string session, string initiatingUser, string identityHash, string requestHash,
+        DateTimeOffset created, DateTimeOffset expires) => Hash(new { id, session, initiatingUser, identityHash, requestHash, created, expires });
+    internal async Task<ModulePrivilegePrepared> PrepareAsync(string moduleId, string session, ModulePrivilegeRequest request, string initiatingUser)
     {
         await _gate.WaitAsync();
         try
         {
-            if (string.IsNullOrEmpty(session) || request.Reason is not { Length: > 0 and <= 512 }
+            if (string.IsNullOrEmpty(session) || !AuditIdentity(initiatingUser) || request.Reason is not { Length: > 0 and <= 512 }
                 || request.IdempotencyKey is not { Length: > 0 and <= 128 }
                 || !request.IdempotencyKey.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.'))
                 throw Error("target_invalid", 400);
@@ -68,7 +94,7 @@ internal sealed class ModulePrivilegePlanStore
                 && p.Request.IdempotencyKey == request.IdempotencyKey);
             if (existing is not null)
             {
-                if (existing.RequestHash != requestHash) throw Error("idempotency_conflict");
+                if (existing.RequestHash != requestHash || existing.Audit.InitiatingUser != initiatingUser) throw Error("idempotency_conflict");
                 existing = Expire(existing);
                 return new(existing.Id, existing.Hash, existing.State);
             }
@@ -77,9 +103,9 @@ internal sealed class ModulePrivilegePlanStore
             var created = Now;
             var expires = created.AddMinutes(5);
             var identityHash = Hash(identity);
-            var hash = Hash(new { id, session, identityHash, requestHash, created, expires });
+            var hash = PlanHash(id, session, initiatingUser, identityHash, requestHash, created, expires);
             var plan = new Plan(id, session, identity, identityHash, request, requestHash, hash, created, expires,
-                "AwaitingConfirmation", null, null, created);
+                "AwaitingConfirmation", null, null, created, new(initiatingUser, null, null, null, null));
             _plans.Add(plan);
             Save();
             return new(id, hash, plan.State);
@@ -132,7 +158,7 @@ internal sealed class ModulePrivilegePlanStore
     }
 
     internal async Task<ModulePrivilegeStatus> ApproveAsync(Guid id, string session, ModulePrivilegeApproval approval,
-        Func<Task<bool>> verifyAdministrator, Func<Guid, string, string, Task<bool>> execute)
+        Func<Task<ModulePrivilegeAdministrator?>> verifyAdministrator, Func<Guid, string, string, Task<bool>> execute)
     {
         await _gate.WaitAsync();
         try
@@ -145,20 +171,24 @@ internal sealed class ModulePrivilegePlanStore
                 throw Error("approval_invalid");
             if (Hash(_resolve(plan.Identity.ModuleId)) != plan.IdentityHash) throw Error("plan_changed");
             // No capability grant or automatic administrator classification can skip this confirmation gate.
-            if (!await verifyAdministrator()) throw Error("admin_required", 403);
+            var administrator = await verifyAdministrator();
+            if (administrator is null || !AuditIdentity(administrator.Identity) || !AuditIdentity(administrator.AuthenticationMethod)) throw Error("admin_required", 403);
             if (plan.Expires <= Now) throw Error("plan_expired");
             if (Hash(_resolve(plan.Identity.ModuleId)) != plan.IdentityHash) throw Error("plan_changed");
-            plan = Replace(plan with { State = "Executing", TokenHash = null, Updated = Now });
+            plan = Replace(plan with { State = "Executing", TokenHash = null, Updated = Now,
+                Audit = plan.Audit with { ApprovingUser = plan.Audit.InitiatingUser, Administrator = administrator, ConfirmedAt = Now } });
             try
             {
                 var success = await execute(plan.Id, plan.Request.Kind, plan.Request.Target);
                 plan = Replace(plan with { State = success ? "Succeeded" : "Failed",
-                    Problem = success ? null : "module.privilege_helper_failed", Updated = Now });
+                    Problem = success ? null : "module.privilege_helper_failed", Updated = Now,
+                    Audit = plan.Audit with { AttemptCompletedAt = Now } });
             }
             catch (Exception)
             {
                 // A lost response cannot establish whether the Helper applied the action. Never retry automatically.
-                plan = Replace(plan with { State = "RecoveryRequired", Problem = "module.privilege_recovery_required", Updated = Now });
+                plan = Replace(plan with { State = "RecoveryRequired", Problem = "module.privilege_recovery_required", Updated = Now,
+                    Audit = plan.Audit with { AttemptCompletedAt = Now } });
             }
             return Status(plan);
         }
@@ -186,12 +216,12 @@ internal sealed class ModulePrivilegePlanStore
     }
     private void Save()
     {
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(new Document(2, _plans.ToArray()), ModulePackageJson.Options);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(new Document(3, _plans.ToArray()), ModulePackageJson.Options);
         if (bytes.Length > 8 * 1024 * 1024) throw Error("capacity");
         var directory = Path.GetDirectoryName(_path)!;
         Directory.CreateDirectory(directory);
         if (OperatingSystem.IsLinux()) File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        if (!File.Exists(_marker)) WriteDurable(_marker, Encoding.UTF8.GetBytes("v2\n"));
+        if (!File.Exists(_marker)) WriteDurable(_marker, Encoding.UTF8.GetBytes("v3\n"));
         var temporary = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try { WriteDurable(temporary, bytes); File.Move(temporary, _path, true); }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }

@@ -92,7 +92,9 @@ function Complete-Package($Package, [hashtable] $Payload) {
             'payload/linux/server/module-host/RelaxKonOS.ServerModuleHost')
     }
     if ($Package.Kind -eq 'server' -and $platform -eq 'windows') {
-        $required += 'deployment/windows/RelaxKonOSDeploymentVerification.ps1'
+        $required += @('deployment/windows/RelaxKonOSDeploymentVerification.ps1',
+            'deployment/windows/RelaxKonOSModuleHostRuntime.ps1',
+            'payload/windows/server/module-host/RelaxKonOS.ServerModuleHost.exe')
     }
     foreach ($relative in $required) {
         if (-not (Test-Path -LiteralPath (Join-Path $Package.Directory $relative) -PathType Leaf)) {

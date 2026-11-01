@@ -14,7 +14,7 @@ namespace RelaxKonOS.Server.Privileged;
 /// </summary>
 public sealed class WindowsNamedPipePrivilegedOperationTransport(PrivilegedHelperOptions options,
     ILogger<WindowsNamedPipePrivilegedOperationTransport> logger, ICorrelationContextAccessor? correlation = null,
-    ISecurityAuditWriter? securityAudit = null, ObservabilityOptions? observability = null) : IPrivilegedOperationTransport
+    ISecurityAuditWriter? securityAudit = null, ObservabilityOptions? observability = null, IHttpContextAccessor? http = null) : IPrivilegedOperationTransport
 {
     public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
     {
@@ -50,7 +50,10 @@ public sealed class WindowsNamedPipePrivilegedOperationTransport(PrivilegedHelpe
             await pipe.ConnectAsync(connectTimeout.Token);
             var requestJson = JsonSerializer.SerializeToUtf8Bytes(request);
             var signed = new PipeEnvelope(Convert.ToBase64String(requestJson), Sign(secret, requestJson));
-            await WriteFrameAsync(pipe, JsonSerializer.SerializeToUtf8Bytes(signed), CancellationToken.None);
+            using var serviceActionTimeout = new CancellationTokenSource();
+            var isServiceAction = request.Operation == PrivilegedOperationKind.NativeServiceAction;
+            if (isServiceAction) serviceActionTimeout.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(options.TimeoutSeconds, 1, 120)));
+            await WriteFrameAsync(pipe, JsonSerializer.SerializeToUtf8Bytes(signed), isServiceAction ? serviceActionTimeout.Token : CancellationToken.None);
             using var statusResponseTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             var isTailscaleRead = request.Operation is PrivilegedOperationKind.TailscaleInstallerQuery or PrivilegedOperationKind.TailscaleStatus or PrivilegedOperationKind.TailscaleControlRead or PrivilegedOperationKind.TailscaleControlReceipt or PrivilegedOperationKind.TailscaleRecoveryRead or PrivilegedOperationKind.TailscaleRecoveryReceipt
                 or PrivilegedOperationKind.TailscaleLoginBegin or PrivilegedOperationKind.TailscaleLoginObserve or PrivilegedOperationKind.TailscaleLoginReceipt or PrivilegedOperationKind.TailscaleLoginChallenge
@@ -65,7 +68,8 @@ public sealed class WindowsNamedPipePrivilegedOperationTransport(PrivilegedHelpe
             {
                 // A submitted LocalSystem operation remains authoritative until its own deadline.
                 var responseBytes = await ReadFrameAsync(pipe, isTailscaleRead
-                    ? statusResponseTimeout.Token : isProcessOperation ? processResponseTimeout.Token : CancellationToken.None);
+                    ? statusResponseTimeout.Token : isProcessOperation ? processResponseTimeout.Token
+                    : isServiceAction ? serviceActionTimeout.Token : CancellationToken.None);
                 var response = JsonSerializer.Deserialize<PipeEnvelope>(responseBytes);
                 if (response is null || !TryDecodeAndVerify(secret, response, out var payload))
                     return Complete(request, new(false, 65, ProblemCode: PrivilegedProblemCode.InvalidProtocol));
@@ -158,11 +162,14 @@ public sealed class WindowsNamedPipePrivilegedOperationTransport(PrivilegedHelpe
     {
         if (securityAudit is null) return true;
         var context = request.Correlation!;
+        var actor = PrivilegedAuditActorScope.Current
+            ?? http?.HttpContext?.User.FindFirst("sub")?.Value
+            ?? http?.HttpContext?.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         return securityAudit.TryWriteAsync(new SecurityAuditEvent(
             outcome == ObservabilityOutcome.Started ? ObservabilityEventCatalog.PrivilegedRequestAccepted.Id : ObservabilityEventCatalog.PrivilegedRequestCompleted.Id,
             outcome == ObservabilityOutcome.Started ? ObservabilityEventCatalog.PrivilegedRequestAccepted.Name : ObservabilityEventCatalog.PrivilegedRequestCompleted.Name,
             outcome, "server", context.CorrelationId, DateTimeOffset.UtcNow, observability?.InstanceId ?? "unconfigured",
-            "privileged.operation", request.OperationId, ResourceType: "privileged-operation", ResourceReference: request.Path ?? request.ServiceId ?? request.DestinationPath,
+            "privileged.operation", request.OperationId, ActorReference: actor, ResourceType: "privileged-operation", ResourceReference: request.Path ?? request.ServiceId ?? request.DestinationPath,
             ProblemCode: result?.ProblemCode.ToString())).GetAwaiter().GetResult();
     }
 

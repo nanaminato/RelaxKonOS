@@ -63,12 +63,15 @@ public class FixtureHostEntry : IModuleHostEntry, IModuleHostHealth, IModuleHost
             return Results.Json(new { user = Environment.UserName, sid, administrator, readable, writable, helper,
                 serverEnvironmentLeaked = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SERVER_SECRET") is not null });
         });
-        endpoints.MapPost("/spawn-child", () =>
+        endpoints.MapPost("/spawn-child", (bool? detached) =>
         {
-            var executable = OperatingSystem.IsWindows() ? Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe") : "/usr/bin/sleep";
+            var detach = detached == true && OperatingSystem.IsLinux();
+            var executable = OperatingSystem.IsWindows() ? Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe")
+                : detach ? "/usr/bin/setsid" : "/usr/bin/sleep";
             var info = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true,
                 RedirectStandardOutput = true, RedirectStandardError = true };
-            foreach (var argument in OperatingSystem.IsWindows() ? new[] { "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 120" } : new[] { "120" }) info.ArgumentList.Add(argument);
+            foreach (var argument in OperatingSystem.IsWindows() ? new[] { "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 120" }
+                : detach ? new[] { "/bin/sh", "-c", "trap '' TERM; exec /usr/bin/sleep 120" } : new[] { "120" }) info.ArgumentList.Add(argument);
             var process = Process.Start(info) ?? throw new IOException();
             lock (_spawned) _spawned.Add(process);
             _ = process.StandardOutput.BaseStream.CopyToAsync(Stream.Null);
@@ -90,4 +93,9 @@ public class FixtureHostEntry : IModuleHostEntry, IModuleHostHealth, IModuleHost
 public sealed class FixtureHttpHostEntry : FixtureHostEntry
 {
     public override string Id => "fixture-http";
+}
+
+public sealed class FixtureBrokerHostEntry : FixtureHostEntry
+{
+    public override string Id => "fixture-broker";
 }

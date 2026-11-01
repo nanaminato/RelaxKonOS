@@ -39,7 +39,7 @@ public sealed class HostAdministratorAuthenticator(IIdentityProvider identities,
     }
 
     [SupportedOSPlatform("windows")]
-    private static HostAdministratorAuthenticationResult AuthenticateWindows(string username, string password)
+    internal static HostAdministratorAuthenticationResult AuthenticateWindows(string username, string password)
     {
         if (string.IsNullOrWhiteSpace(username)) return new(false, "elevation-administrator-username-required", "none", null);
         ParseUsername(username, out var account, out var domain);

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Run as the configured Server caller after provisioning the fixed Linux ModuleHost launcher.
 
-Arguments: executable, source-root, isolation-root, fixture-dll, helper-socket, protected-file.
+Arguments: executable, source-root, isolation-root, fixture-dll, helper-socket, protected-file,
+optional peer-file, close mode (shutdown or disconnect), and descendant mode (plain or detached).
 Does not print file contents, tokens, credentials or Server configuration.
 """
 import hashlib
@@ -12,10 +13,16 @@ import select
 import subprocess
 import sys
 import threading
+import time
 import urllib.parse
 import urllib.request
 
-executable, source, isolated, fixture, helper_socket, protected = sys.argv[1:]
+executable, source, isolated, fixture, helper_socket, protected = sys.argv[1:7]
+peer = sys.argv[7] if len(sys.argv) > 7 else None
+mode = sys.argv[8] if len(sys.argv) > 8 else 'shutdown'
+assert mode in ('shutdown', 'disconnect')
+descendant = sys.argv[9] if len(sys.argv) > 9 else 'plain'
+assert descendant in ('plain', 'detached')
 source = pathlib.Path(source)
 content = pathlib.Path(fixture).read_bytes()
 relative = "server/linux-x64/HostFixture.dll"
@@ -60,6 +67,9 @@ try:
         return result
     result = inspect("/etc/shadow", immutable)
     inspect(protected, immutable)
+    if peer:
+        inspect(peer, immutable)
+        print("PASS another real module's private data is inaccessible")
     print("PASS dedicated account, immutable package, protected host/Server data, Helper socket, environment isolation:", result["user"])
     with urllib.request.urlopen(urllib.request.Request(ready["url"] + "/storage", headers={"X-RelaxKonOS-Module-Token": token})) as response:
         assert response.read() == b"hello from module storage"
@@ -67,11 +77,42 @@ try:
     process.stdin.write('{"type":"health"}\n')
     process.stdin.flush()
     assert receive()["healthy"] is True
-    process.stdin.write('{"type":"shutdown"}\n')
-    process.stdin.flush()
-    assert receive()["type"] == "stopped"
+    request = urllib.request.Request(ready["url"] + "/spawn-child?detached=" + str(descendant == 'detached').lower(), method="POST", data=b"",
+        headers={"X-RelaxKonOS-Module-Token": token})
+    with urllib.request.urlopen(request, timeout=10) as response:
+        child = json.load(response)['pid']
+    child_stat = pathlib.Path('/proc') / str(child) / 'stat'
+    assert child_stat.exists(), 'The real descendant must exist before cleanup'
+    if descendant == 'detached':
+        for _ in range(100):
+            fields = child_stat.read_text().rsplit(')', 1)[1].split()
+            status = (child_stat.parent / 'status').read_text().splitlines()
+            ignored = int(next(line.split()[1] for line in status if line.startswith('SigIgn:')), 16)
+            if int(fields[3]) == child and ignored & (1 << 14):
+                break
+            time.sleep(.01)
+        else:
+            raise AssertionError('The descendant did not detach and ignore SIGTERM')
+        print("PASS the actual descendant has its own session and ignores SIGTERM")
+    print("PASS a real module descendant exists before lifecycle cleanup")
+    if mode == 'shutdown':
+        process.stdin.write('{"type":"shutdown"}\n')
+        process.stdin.flush()
+        assert receive()["type"] == "stopped"
+    else:
+        process.stdin.close()
     assert process.wait(timeout=15) == 0
-    print("PASS isolated lifecycle ready/health/shutdown")
+    for _ in range(100):
+        try:
+            # Zombies have exited; their adoption/reaping belongs to the host init process.
+            running = child_stat.read_text().rsplit(')', 1)[1].split()[0] != 'Z'
+        except FileNotFoundError:
+            running = False
+        if not running:
+            break
+        time.sleep(.1)
+    assert not running, 'A module descendant outlived its launch channel'
+    print("PASS isolated lifecycle and descendant cleanup via " + mode)
 finally:
     if process.poll() is None:
         process.kill()

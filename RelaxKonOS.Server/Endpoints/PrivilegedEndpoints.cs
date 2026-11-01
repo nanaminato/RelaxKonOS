@@ -70,10 +70,12 @@ public static class PrivilegedEndpoints
                     })
                         environmentExpires = elevations.Grant(http.User, capability, target.ResourceId, includeDescendants: false,
                             authentication.AuthenticationMethod, http.TraceIdentifier);
+                    http.RequestServices.GetService<HostElevationSessionState>()?.RecordAdministratorVerification(http.User, authentication);
                     return Results.Ok(new HostElevationResult(true, environmentExpires));
                 }
                 var expires = elevations.Grant(http.User, request.Capability, request.Target, request.IncludeDescendants,
                     authentication.AuthenticationMethod, http.TraceIdentifier);
+                http.RequestServices.GetService<HostElevationSessionState>()?.RecordAdministratorVerification(http.User, authentication);
                 return Results.Ok(new HostElevationResult(true, expires));
             }
             catch (ArgumentException) { return Problem(400, "elevation-target-invalid", "The target resource is not valid."); }

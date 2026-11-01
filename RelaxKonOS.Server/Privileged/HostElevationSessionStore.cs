@@ -47,7 +47,7 @@ public sealed class HostElevationSessionState : IDisposable
         {
             if (!_enabled) return null;
             Prune();
-            _administrators[tokenId] = new(subject, session, version, expiry);
+            _administrators[tokenId] = new(subject, session, version, expiry, null);
             return expiry;
         }
     }
@@ -58,8 +58,25 @@ public sealed class HostElevationSessionState : IDisposable
         {
             Prune();
             return _enabled && _administrators.TryGetValue(tokenId, out var known)
-                && known == new RememberedAdministrator(subject, session, version, expiry);
+                && known.Subject == subject && known.Session == session && known.SecurityVersion == version && known.ExpiresAt == expiry;
         }
+    }
+    internal void RecordAdministratorVerification(ClaimsPrincipal principal, HostAdministratorAuthenticationResult verification)
+    {
+        if (!verification.Succeeded || string.IsNullOrEmpty(verification.AdministratorIdentity)) return;
+        var token = principal.FindFirstValue(JwtRegisteredClaimNames.Jti);
+        var subject = principal.FindFirstValue(JwtRegisteredClaimNames.Sub) ?? principal.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (token is null || subject is null) return;
+        lock (_gate)
+            if (IsRemembered(principal, token, subject))
+                _administrators[token] = _administrators[token] with { Verification = verification };
+    }
+    internal HostAdministratorAuthenticationResult? VerifiedAdministrator(ClaimsPrincipal principal)
+    {
+        var token = principal.FindFirstValue(JwtRegisteredClaimNames.Jti);
+        var subject = principal.FindFirstValue(JwtRegisteredClaimNames.Sub) ?? principal.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (token is null || subject is null || !IsSessionValid(principal)) return null;
+        lock (_gate) return IsRemembered(principal, token, subject) ? _administrators[token].Verification : null;
     }
     internal void Forget(string tokenId) { lock (_gate) _administrators.Remove(tokenId); }
     private void Prune()
@@ -81,7 +98,8 @@ public sealed class HostElevationSessionState : IDisposable
         return expiry > DateTimeOffset.UtcNow;
     }
     public void Dispose() { if (_settings is not null) _settings.Changed -= PolicyChanged; }
-    private sealed record RememberedAdministrator(string Subject, string Session, string SecurityVersion, DateTimeOffset ExpiresAt);
+    private sealed record RememberedAdministrator(string Subject, string Session, string SecurityVersion, DateTimeOffset ExpiresAt,
+        HostAdministratorAuthenticationResult? Verification);
 
     internal ConcurrentDictionary<string, ElevationGrant> Grants { get; } = new(StringComparer.Ordinal);
 

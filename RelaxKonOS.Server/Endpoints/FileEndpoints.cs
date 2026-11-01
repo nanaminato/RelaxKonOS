@@ -559,6 +559,7 @@ public static class FileEndpoints
             && fs.GetInfo(request.Path)?.Type == FileSystemEntryType.Directory)
             expires = elevations.Grant(http.User, capability, request.Path, includeDescendants: true,
                 authentication.AuthenticationMethod, http.TraceIdentifier);
+        http.RequestServices.GetService<HostElevationSessionState>()?.RecordAdministratorVerification(http.User, authentication);
         return Results.Ok(new FileElevationResult(true, true, expires));
     }
 

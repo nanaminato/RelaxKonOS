@@ -41,15 +41,19 @@ internal static class ModulePrivilegeEndpoints
                 var result = await broker.Plans.ApproveAsync(id, CoreModulePrivilegeBroker.Session(http.User), approval,
                     () =>
                     {
-                        if (owners.IsOwner(http.User) || state.IsAdministratorVerified(http.User)) return Task.FromResult(true);
+                        if (owners.IsOwner(http.User)) return Task.FromResult<ModulePrivilegeAdministrator?>(new(
+                            "owner-device:" + http.User.FindFirstValue("device_id"), "windows-owner-device"));
+                        if (state.VerifiedAdministrator(http.User) is { AdministratorIdentity: { } identity } remembered)
+                            return Task.FromResult<ModulePrivilegeAdministrator?>(new(identity, remembered.AuthenticationMethod));
                         var current = http.User.FindFirstValue("name") ?? http.User.Identity?.Name;
-                        if (string.IsNullOrEmpty(current)) return Task.FromResult(false);
+                        if (string.IsNullOrEmpty(current)) return Task.FromResult<ModulePrivilegeAdministrator?>(null);
                         var authentication = administrators.Authenticate(current, approval.AdministratorUsername, approval.Password);
-                        if (!authentication.Succeeded) return Task.FromResult(false);
+                        if (!authentication.Succeeded || string.IsNullOrEmpty(authentication.AdministratorIdentity)) return Task.FromResult<ModulePrivilegeAdministrator?>(null);
                         // Remember verified identity only. The durable plan gate still requires explicit consent every time.
                         elevations.Grant(http.User, HostElevationCapability.NativeServiceAction, "module-broker",
                             false, authentication.AuthenticationMethod, http.TraceIdentifier);
-                        return Task.FromResult(true);
+                        state.RecordAdministratorVerification(http.User, authentication);
+                        return Task.FromResult<ModulePrivilegeAdministrator?>(new(authentication.AdministratorIdentity, authentication.AuthenticationMethod));
                     }, async (operationId, kind, target) =>
                     {
                         var action = kind switch
@@ -60,7 +64,7 @@ internal static class ModulePrivilegeEndpoints
                             _ => throw new ModulePrivilegeException("module.privilege_unsupported", 400),
                         };
                         var outcome = await helper.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NativeServiceAction,
-                            ServiceId: target, ServiceAction: action, Correlation: CorrelationContext.Create(operationId)), CancellationToken.None);
+                            ServiceId: target, ServiceAction: action, OperationId: operationId, Correlation: CorrelationContext.Create(operationId)), CancellationToken.None);
                         if (outcome.ProblemCode is PrivilegedProblemCode.HelperUnavailable or PrivilegedProblemCode.TimedOut or PrivilegedProblemCode.InvalidProtocol)
                             throw new IOException("module.privilege_helper_response_unknown");
                         return outcome.Success;

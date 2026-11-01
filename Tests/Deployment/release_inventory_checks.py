@@ -139,6 +139,40 @@ class ReleaseInventoryChecks(unittest.TestCase):
             self.assertIn('deployment/user/relaxkon', result.stderr)
             self.assertFalse((self.root / 'manifest.json').exists())
 
+    def test_windows_packager_requires_module_host_runtime_and_installer(self):
+        powershell = shutil.which('pwsh') or shutil.which('powershell.exe')
+        if not powershell:
+            self.skipTest('PowerShell is required to execute the Windows release gate')
+        required = ('deployment/windows/RelaxKonOSDeploymentVerification.ps1',
+                    'deployment/windows/RelaxKonOSModuleHostRuntime.ps1',
+                    'payload/windows/server/module-host/RelaxKonOS.ServerModuleHost.exe')
+        source = ROOT / 'deployment/packaging/New-RelaxKonOSRelease.ps1'
+        # Extract only the real function AST: do not publish binaries or execute packaging entry points.
+        script = self.root / 'windows-gate.ps1'
+        script.write_text("""$ErrorActionPreference = 'Stop'
+$tokens = $null; $errors = $null
+$ast = [Management.Automation.Language.Parser]::ParseFile($args[0], [ref]$tokens, [ref]$errors)
+$definition = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Complete-Package' }, $true)
+Invoke-Expression $definition.Extent.Text
+$platform = 'windows'
+Complete-Package @{ Kind = 'server'; Directory = $args[1] } @{}
+""", encoding='utf-8-sig')
+        bundle = self.root / 'windows-bundle'
+        for missing in required:
+            with self.subTest(missing=missing):
+                for relative in required:
+                    target = bundle / relative
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    if relative == missing:
+                        target.unlink(missing_ok=True)
+                    else:
+                        target.write_bytes(b'fixture')
+                result = subprocess.run([powershell, '-NoProfile', '-File', str(script), str(source), str(bundle)],
+                                        text=True, capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('Incomplete release package: missing ' + missing, result.stderr)
+                self.assertFalse((bundle / 'manifest.json').exists())
+
 
 if __name__ == '__main__':
     unittest.main()

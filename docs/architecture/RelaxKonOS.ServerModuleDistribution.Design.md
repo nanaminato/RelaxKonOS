@@ -648,4 +648,4 @@ v2 的 `IModuleContext` 只提供：
 
 ### v2 继续实施（2026-10-31）
 
-MD-01 已落地唯一 v2 清单；MD-05 Linux 专用 UID/GID、无附加组、no_new_privs、root 只读模块快照和受保护私有数据已有实机验收；MD-06 精确代码信任及更新失效已实现并回归；MD-07 首个 Broker 服务操作集合已接线且确认门测试通过。Windows、完整打包安装回归、Linux Core→ModuleHost→Broker→真实 Helper 正常闭环已实测；完整发布升级、故障注入及 Windows 验收仍待完成。详细状态由 [v2 实施记录](RelaxKonOS.ServerModuleV2.Progress.md) 跟踪。
+MD-01 唯一 v2 安装清单、MD-05 Linux/Windows 专用身份与私有数据边界、MD-06 精确代码信任、MD-07 服务动作 Broker 已实现。两平台签名包安装与 Core→ModuleHost→Broker→真实 Helper 正常 HTTP 闭环、批准审计已有实机证据；Linux Helper 不可用/成功响应丢失及 Windows SessionValid/owner-device 也已实测。Windows 原生夹具已使用生产 ModuleHost 安装函数，其快照按复制前冻结的完整清单校验，拒绝额外文件、链接与内容漂移。完整发行服务安装/升级及执行中断仍待验收；具体结果和限制统一由 [v2 实施记录](RelaxKonOS.ServerModuleV2.Progress.md) 跟踪。

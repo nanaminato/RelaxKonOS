@@ -1,4 +1,16 @@
 # Shared elevated deployment helper for System and Personal Mode.
+function Get-RelaxKonOSModuleHostFiles([string] $Root) {
+    $pending = [Collections.Generic.Stack[string]]::new()
+    $pending.Push($Root)
+    while ($pending.Count) {
+        $directory = Get-Item -LiteralPath $pending.Pop() -Force
+        if (-not $directory.PSIsContainer -or ($directory.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'ModuleHost runtime cannot contain links.' }
+        foreach ($entry in Get-ChildItem -LiteralPath $directory.FullName -Force) {
+            if ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'ModuleHost runtime cannot contain links.' }
+            if ($entry.PSIsContainer) { $pending.Push($entry.FullName) } else { $entry }
+        }
+    }
+}
 function Install-RelaxKonOSModuleHostRuntime([string] $Source, [string] $ProtectedRoot, [string] $PackageRoot) {
     $Source = [IO.Path]::GetFullPath($Source)
     $ProtectedRoot = [IO.Path]::GetFullPath($ProtectedRoot)
@@ -11,9 +23,13 @@ function Install-RelaxKonOSModuleHostRuntime([string] $Source, [string] $Protect
             $current = Split-Path -Parent $current
         }
     }
-    $files = @(Get-ChildItem -LiteralPath $Source -Recurse -File -Force | Sort-Object FullName)
-    if (@(Get-ChildItem -LiteralPath $Source -Recurse -Force | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }).Count) { throw 'ModuleHost runtime cannot contain links.' }
-    $inventory = @($files | ForEach-Object { $_.FullName.Substring($Source.TrimEnd('\').Length + 1) + '|' + $_.Length + '|' + (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash }) -join "`n"
+    $files = @(Get-RelaxKonOSModuleHostFiles $Source | Sort-Object FullName)
+    $entries = @($files | ForEach-Object { [PSCustomObject]@{
+        Relative = $_.FullName.Substring($Source.TrimEnd('\').Length + 1)
+        Length = $_.Length
+        Sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+    } })
+    $inventory = @($entries | ForEach-Object { $_.Relative + '|' + $_.Length + '|' + $_.Sha256 }) -join "`n"
     $hash = [Security.Cryptography.SHA256]::Create()
     try { $digest = ([BitConverter]::ToString($hash.ComputeHash([Text.Encoding]::UTF8.GetBytes($inventory)))).Replace('-', '').ToLowerInvariant() } finally { $hash.Dispose() }
     New-Item -ItemType Directory -Force -Path $ProtectedRoot | Out-Null
@@ -44,9 +60,10 @@ function Install-RelaxKonOSModuleHostRuntime([string] $Source, [string] $Protect
         }
     }
     # Existing content-addressed snapshots must still match every source file, never silently repair in place.
-    foreach ($file in $files) {
-        $target = Join-Path $destination $file.FullName.Substring($Source.TrimEnd('\').Length + 1)
-        if (-not (Test-Path -LiteralPath $target -PathType Leaf) -or (Get-Item -LiteralPath $target -Force).Attributes -band [IO.FileAttributes]::ReparsePoint -or (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash) { throw 'ModuleHost runtime snapshot identity changed.' }
+    if (@(Get-RelaxKonOSModuleHostFiles $destination).Count -ne $entries.Count) { throw 'ModuleHost runtime snapshot inventory changed.' }
+    foreach ($entry in $entries) {
+        $target = Join-Path $destination $entry.Relative
+        if (-not (Test-Path -LiteralPath $target -PathType Leaf) -or (Get-Item -LiteralPath $target -Force).Length -ne $entry.Length -or (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ne $entry.Sha256) { throw 'ModuleHost runtime snapshot identity changed.' }
     }
     return [ordered]@{ executablePath = (Join-Path $destination 'RelaxKonOS.ServerModuleHost.exe'); sourceRoot = $PackageRoot; isolationRoot = (Join-Path $ProtectedRoot 'modules') }
 }

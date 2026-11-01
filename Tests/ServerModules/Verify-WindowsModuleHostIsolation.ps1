@@ -2,9 +2,11 @@
 param(
     [string] $RunnerDirectory,
     [string] $RuntimeDirectory,
+    [string] $ServerDirectory,
     [ValidateSet('install','cleanup')][string] $ElevatedAction,
     [string] $RequestPath,
-    [switch] $ConfirmMachineChanges
+    [switch] $ConfirmMachineChanges,
+    [switch] $ConfirmTestAdministrator
 )
 $ErrorActionPreference = 'Stop'
 
@@ -41,19 +43,31 @@ if ($ElevatedAction) {
     $baseRoot = Join-Path $env:ProgramFiles 'RelaxKonOS-ModuleHost-Acceptance'
     $testRoot = Join-Path $baseRoot $request.id
     $serviceName = 'RelaxKonOSModuleHostAcceptance-' + $request.id
+    $actionServiceName = 'relaxkonos-module-action-acceptance-' + $request.id
+    $administratorName = 'rktest-' + $request.id.Substring(0, 12)
+    $administratorMarker = Join-Path $testRoot 'administrator.json'
     $configPath = Join-Path $testRoot 'configuration.json'
     $runner = Join-Path $testRoot 'runner\RelaxKonOS.ModuleHost.Windows.Tests.exe'
     Assert-NoTestLinks $testRoot
     if ($ElevatedAction -eq 'cleanup') {
-        $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-        if ($service) {
-            if ($service.Status -ne 'Stopped') { Stop-Service -Name $serviceName -Force; $service.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30)) }
-            & sc.exe delete $serviceName | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw 'Cannot remove the dedicated test service.' }
+        foreach ($testServiceName in @($serviceName, $actionServiceName)) {
+            $service = Get-Service -Name $testServiceName -ErrorAction SilentlyContinue
+            if ($service) {
+                if ($service.Status -ne 'Stopped') { Stop-Service -Name $testServiceName -Force; $service.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30)) }
+                & sc.exe delete $testServiceName | Out-Null
+                if ($LASTEXITCODE -ne 0) { throw 'Cannot remove the dedicated test service.' }
+            }
         }
         if (Test-Path -LiteralPath $configPath -PathType Leaf) {
             & $runner --cleanup $configPath
             if ($LASTEXITCODE -ne 0) { throw 'Recorded test account cleanup failed.' }
+        }
+        if (Test-Path -LiteralPath $administratorMarker -PathType Leaf) {
+            $recorded = Get-Content -LiteralPath $administratorMarker -Raw | ConvertFrom-Json
+            $account = Get-LocalUser -Name $administratorName -ErrorAction SilentlyContinue
+            if ($recorded.name -ne $administratorName -or -not $account -or $account.SID.Value -ne $recorded.sid) { throw 'Test administrator identity changed; refusing cleanup by name.' }
+            Remove-LocalUser -SID $account.SID
+            if (Get-LocalUser -Name $administratorName -ErrorAction SilentlyContinue) { throw 'Test administrator cleanup failed.' }
         }
         $workerReport = Join-Path $testRoot 'reports\worker.json'
         if (Test-Path -LiteralPath $workerReport) { Copy-Item -LiteralPath $workerReport -Destination (Join-Path $request.workRoot 'worker-report.json') -Force }
@@ -72,37 +86,81 @@ if ($ElevatedAction) {
     if ($LASTEXITCODE -ne 0) { throw 'Cannot protect test parent.' }
     & icacls $baseRoot /setowner '*S-1-5-32-544' | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Cannot protect test ownership.' }
-    foreach ($component in @('runner','runtime','reports','modules')) { New-Item -ItemType Directory -Path (Join-Path $testRoot $component) -Force | Out-Null }
+    foreach ($component in @('runner','reports')) { New-Item -ItemType Directory -Path (Join-Path $testRoot $component) -Force | Out-Null }
     Get-ChildItem -LiteralPath $request.runnerSource -Force | Copy-Item -Destination (Join-Path $testRoot 'runner') -Recurse -Force
-    Get-ChildItem -LiteralPath $request.runtimeSource -Force | Copy-Item -Destination (Join-Path $testRoot 'runtime') -Recurse -Force
     & icacls $testRoot /reset /T | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Cannot protect the test runtime.' }
     & icacls $testRoot /setowner '*S-1-5-32-544' /T | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Cannot protect test runtime ownership.' }
     Set-TestAcl (Join-Path $testRoot 'reports') $request.callerSid
+    . (Join-Path $PSScriptRoot '../../deployment/windows/RelaxKonOSModuleHostRuntime.ps1')
+    $runtimeRoot = Join-Path $testRoot 'module-host'
+    $moduleHostPolicy = Install-RelaxKonOSModuleHostRuntime $request.runtimeSource $runtimeRoot $request.sourceRoot
+    $reusedPolicy = Install-RelaxKonOSModuleHostRuntime $request.runtimeSource $runtimeRoot $request.sourceRoot
+    if ($reusedPolicy.executablePath -ne $moduleHostPolicy.executablePath) { throw 'Identical runtime did not reuse its immutable snapshot.' }
+    $snapshot = Split-Path -Parent $moduleHostPolicy.executablePath
+    $unexpected = Join-Path $snapshot 'unexpected-acceptance-file.txt'
+    if (-not [IO.Path]::GetFullPath($unexpected).StartsWith([IO.Path]::GetFullPath($testRoot).TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase) -or (Test-Path -LiteralPath $unexpected)) { throw 'Invalid runtime corruption probe path.' }
+    try {
+        [IO.File]::WriteAllText($unexpected, 'fixed test-only unexpected snapshot file')
+        $rejectedUnexpected = $false
+        try { $null = Install-RelaxKonOSModuleHostRuntime $request.runtimeSource $runtimeRoot $request.sourceRoot }
+        catch { if ($_.Exception.Message -ne 'ModuleHost runtime snapshot inventory changed.') { throw }; $rejectedUnexpected = $true }
+        if (-not $rejectedUnexpected) { throw 'Runtime installer accepted an unexpected snapshot file.' }
+    } finally { [IO.File]::Delete($unexpected) }
+    $runtimeBytes = [IO.File]::ReadAllBytes($moduleHostPolicy.executablePath)
+    try {
+        [IO.File]::WriteAllBytes($moduleHostPolicy.executablePath, [byte[]]@(1,2,3))
+        $rejectedCorruption = $false
+        try { $null = Install-RelaxKonOSModuleHostRuntime $request.runtimeSource $runtimeRoot $request.sourceRoot }
+        catch { if ($_.Exception.Message -ne 'ModuleHost runtime snapshot identity changed.') { throw }; $rejectedCorruption = $true }
+        if (-not $rejectedCorruption) { throw 'Runtime installer accepted a corrupted executable.' }
+    } finally { [IO.File]::WriteAllBytes($moduleHostPolicy.executablePath, $runtimeBytes) }
+    $null = Install-RelaxKonOSModuleHostRuntime $request.runtimeSource $runtimeRoot $request.sourceRoot
+    [IO.File]::WriteAllText((Join-Path $request.workRoot 'installation-report.json'), '{"productionInstaller":true,"reusedSnapshot":true,"rejectedUnexpectedFile":true,"rejectedCorruption":true}', [Text.UTF8Encoding]::new($false))
+    if ([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne $request.callerSid) { throw 'Test credential provisioning requires the same approving Windows account.' }
+    if (Get-LocalUser -Name $administratorName -ErrorAction SilentlyContinue) { throw 'Unique test administrator already exists.' }
+    $randomPasswordBytes = New-Object byte[] 48
+    $passwordGenerator = [Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $passwordGenerator.GetBytes($randomPasswordBytes) } finally { $passwordGenerator.Dispose() }
+    $securePassword = ConvertTo-SecureString ('Aa1!' + [Convert]::ToBase64String($randomPasswordBytes)) -AsPlainText -Force
+    $administrator = New-LocalUser -Name $administratorName -Password $securePassword -AccountNeverExpires -PasswordNeverExpires -UserMayNotChangePassword
+    try {
+        [IO.File]::WriteAllText($administratorMarker, (@{ name = $administratorName; sid = $administrator.SID.Value } | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+    } catch { Remove-LocalUser -SID $administrator.SID; throw }
+    Add-LocalGroupMember -SID 'S-1-5-32-544' -Member $administrator
+    $credentialPath = Join-Path $testRoot 'administrator-credential.clixml'
+    [Management.Automation.PSCredential]::new($administratorName, $securePassword) | Export-Clixml -LiteralPath $credentialPath
+    & icacls $credentialPath /grant:r ("*" + $request.callerSid + ':R') | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot protect encrypted test credential.' }
+    $securePassword.Dispose()
     $configuration = [ordered]@{
-        serviceName = $serviceName; pipeName = ('relaxkonos-module-test-' + $request.id); sharedSecret = [string]$request.sharedSecret; callerSid = [string]$request.callerSid
-        policy = @{ executablePath = (Join-Path $testRoot 'runtime\RelaxKonOS.ServerModuleHost.exe'); sourceRoot = [string]$request.sourceRoot; isolationRoot = (Join-Path $testRoot 'modules') }
+        serviceName = $serviceName; actionServiceName = $actionServiceName; administratorName = $administratorName; serverDirectory = [string]$request.serverSource; pipeName = ('relaxkonos-module-test-' + $request.id); sharedSecret = [string]$request.sharedSecret; callerSid = [string]$request.callerSid
+        policy = $moduleHostPolicy
         serverMarker = [string]$request.serverMarker; workerReport = (Join-Path $testRoot 'reports\worker.json'); clientReport = (Join-Path $request.workRoot 'client-report.json')
     }
     [IO.File]::WriteAllText($configPath, ($configuration | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
     & icacls $configPath /inheritance:r /grant:r '*S-1-5-18:F' '*S-1-5-32-544:F' ("*" + $request.callerSid + ':R') | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Cannot protect test configuration.' }
     New-Service -Name $serviceName -DisplayName $serviceName -BinaryPathName ('"' + $runner + '" --service "' + $configPath + '"') -StartupType Manual | Out-Null
+    New-Service -Name $actionServiceName -DisplayName $actionServiceName -BinaryPathName ('"' + $runner + '" --action-fixture "' + $configPath + '"') -StartupType Manual | Out-Null
+    Start-Service -Name $actionServiceName
     Start-Service -Name $serviceName
     (Get-Service -Name $serviceName).WaitForStatus('Running', [TimeSpan]::FromSeconds(30))
     exit 0
 }
 
 if (-not $ConfirmMachineChanges) { throw 'Use -ConfirmMachineChanges to authorize a unique temporary LocalSystem test service and its own dedicated module accounts, followed by cleanup.' }
-if (-not $RunnerDirectory -or -not $RuntimeDirectory) { throw 'RunnerDirectory and RuntimeDirectory are required publish outputs.' }
+if (-not $ConfirmTestAdministrator) { throw 'Use -ConfirmTestAdministrator to authorize a temporary administrator with a random encrypted test credential, removed during cleanup.' }
+if (-not $RunnerDirectory -or -not $RuntimeDirectory -or -not $ServerDirectory) { throw 'RunnerDirectory, RuntimeDirectory and ServerDirectory are required publish outputs.' }
+if (-not (Test-Path -LiteralPath (Join-Path $ServerDirectory 'RelaxKonOS.Server.exe') -PathType Leaf)) { throw 'ServerDirectory must contain the published Windows Server.' }
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $id = [Guid]::NewGuid().ToString('N')
 $workRoot = Join-Path $repository ('artifacts\modulehost-windows-native\' + $id)
 New-Item -ItemType Directory -Path $workRoot -Force | Out-Null
 $callerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 Set-TestAcl $workRoot $callerSid -CallerWrite
-$sourceRoot = Join-Path $workRoot 'packages'
+$sourceRoot = Join-Path $workRoot 'core\data\module-management\packages'
 $fixture = Join-Path ([IO.Path]::GetFullPath($RunnerDirectory)) 'HostFixture.dll'
 if (-not (Test-Path -LiteralPath $fixture -PathType Leaf)) { throw 'The runner publish must contain HostFixture.dll.' }
 $rid = if ([Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture -eq 'Arm64') { 'win-arm64' } else { 'win-x64' }
@@ -128,21 +186,27 @@ $generator = [Security.Cryptography.RandomNumberGenerator]::Create()
 try { $generator.GetBytes($bytes) } finally { $generator.Dispose() }
 $request = [ordered]@{
     id = $id; callerSid = $callerSid; workRoot = $workRoot; sourceRoot = $sourceRoot; serverMarker = $serverMarker
-    runnerSource = [IO.Path]::GetFullPath($RunnerDirectory); runtimeSource = [IO.Path]::GetFullPath($RuntimeDirectory); sharedSecret = [Convert]::ToBase64String($bytes)
+    runnerSource = [IO.Path]::GetFullPath($RunnerDirectory); runtimeSource = [IO.Path]::GetFullPath($RuntimeDirectory); serverSource = [IO.Path]::GetFullPath($ServerDirectory); sharedSecret = [Convert]::ToBase64String($bytes)
 }
 $requestPath = Join-Path $workRoot 'request.json'
 [IO.File]::WriteAllText($requestPath, ($request | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
+$script:nativeProvisioningStarted = $false
 function Invoke-NativeElevation([string] $Action) {
     $arguments = @('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File', ('"' + $PSCommandPath + '"'), '-ElevatedAction', $Action, '-RequestPath', ('"' + $requestPath + '"'))
     $process = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -ArgumentList $arguments -Verb RunAs -WindowStyle Hidden -PassThru
+    # A cancelled UAC prompt did not launch provisioning and needs no second prompt.
+    # Once launched, even a failed installation must run cleanup for partial changes.
+    if ($Action -eq 'install') { $script:nativeProvisioningStarted = $true }
     $process.WaitForExit()
     if ($process.ExitCode -ne 0) { throw "Native test elevation failed during $Action (exit $($process.ExitCode))." }
 }
 try {
     Invoke-NativeElevation install
     $configurationPath = Join-Path $env:ProgramFiles ('RelaxKonOS-ModuleHost-Acceptance\' + $id + '\configuration.json')
-    & (Join-Path $RunnerDirectory 'RelaxKonOS.ModuleHost.Windows.Tests.exe') --client $configurationPath
+    $testCredential = Import-Clixml -LiteralPath (Join-Path (Split-Path -Parent $configurationPath) 'administrator-credential.clixml')
+    try { $testCredential.GetNetworkCredential().Password | & (Join-Path $RunnerDirectory 'RelaxKonOS.ModuleHost.Windows.Tests.exe') --client $configurationPath }
+    finally { $testCredential.Password.Dispose(); $testCredential = $null }
     if ($LASTEXITCODE -ne 0) { throw 'Native ModuleHost acceptance client failed.' }
-} finally { Invoke-NativeElevation cleanup }
+} finally { if ($script:nativeProvisioningStarted) { Invoke-NativeElevation cleanup } }
 Get-Content -LiteralPath (Join-Path $workRoot 'client-report.json') -Raw
 Write-Output ('Native acceptance reports: ' + $workRoot)

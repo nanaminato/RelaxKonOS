@@ -6,6 +6,12 @@ using System.Security.Principal;
 using System.Text;
 using RelaxKonOS.ModuleHost.Protocol;
 using modulehelper::RelaxKonOS.PrivilegedHelper;
+using RelaxKonOS.Server.Privileged;
+using RelaxKonOS.Protocol.Privileged;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.AspNetCore.Http;
+using RelaxKonOS.Server.Observability;
+using RelaxKonOS.Protocol.Observability;
 
 internal static class WindowsModuleHostChecks
 {
@@ -57,6 +63,7 @@ internal static class WindowsModuleHostChecks
             return;
         }
         CheckAcl(check);
+        await CheckServiceActionDeadline(check);
         using var current = WindowsIdentity.GetCurrent();
         if (current.User != WindowsModuleHostSecurity.System)
         {
@@ -66,6 +73,67 @@ internal static class WindowsModuleHostChecks
         }
     }
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static async Task CheckServiceActionDeadline(Action<bool, string> check)
+    {
+        var pipeName = "relaxkonos-stalled-service-test-" + Guid.NewGuid().ToString("N");
+        await using var pipe = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1,
+            PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var received = false;
+        var peer = Task.Run(async () =>
+        {
+            await pipe.WaitForConnectionAsync(stop.Token);
+            var header = new byte[4];
+            await pipe.ReadExactlyAsync(header, stop.Token);
+            var length = BinaryPrimitives.ReadInt32LittleEndian(header);
+            if (length is <= 0 or > 65536) throw new InvalidDataException();
+            await pipe.ReadExactlyAsync(new byte[length], stop.Token);
+            received = true;
+            // A connected Helper accepted the request but never returns a result.
+            try { await Task.Delay(Timeout.Infinite, stop.Token); }
+            catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+        });
+        try
+        {
+            var audit = new CapturedAudit();
+            var context = new HttpContextAccessor { HttpContext = new DefaultHttpContext() };
+            context.HttpContext.User = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
+                [new System.Security.Claims.Claim("sub", "http-test-actor")], "test"));
+            var transport = new WindowsNamedPipePrivilegedOperationTransport(new PrivilegedHelperOptions
+            {
+                PipeName = pipeName, SharedSecret = Convert.ToBase64String(new byte[48]), TimeoutSeconds = 1,
+            }, NullLogger<WindowsNamedPipePrivilegedOperationTransport>.Instance, securityAudit: audit, http: context);
+            using (PrivilegedAuditActorScope.Enter("background-test-actor"))
+            {
+                var result = await transport.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NativeServiceAction,
+                ServiceId: "fixed-stalled-fixture", ServiceAction: PrivilegedServiceAction.Restart)).WaitAsync(TimeSpan.FromSeconds(5));
+            check(received && !result.Success && result.ProblemCode == PrivilegedProblemCode.TimedOut,
+                "Windows native service action has a bounded deadline after a real pipe accepts but never answers");
+            check(audit.Events.Count == 2 && audit.Events.All(entry => entry.ActorReference == "background-test-actor")
+                && audit.Events[0].OperationId == audit.Events[1].OperationId && audit.Events[0].OperationId != Guid.Empty,
+                "Windows Helper accepted and terminal audit records preserve the explicit actor and same operation identity");
+            }
+            audit.Events.Clear();
+            var unavailable = new WindowsNamedPipePrivilegedOperationTransport(new PrivilegedHelperOptions { PipeName = "" },
+                NullLogger<WindowsNamedPipePrivilegedOperationTransport>.Instance, securityAudit: audit, http: context);
+            await unavailable.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NativeServiceAction,
+                ServiceId: "fixed-stalled-fixture", ServiceAction: PrivilegedServiceAction.Restart));
+            check(audit.Events.Count == 2 && audit.Events.All(entry => entry.ActorReference == "http-test-actor"),
+                "Windows Helper audit falls back to the authenticated HTTP subject when no background actor scope exists");
+        }
+        finally { stop.Cancel(); await peer; }
+    }
+
+    private sealed class CapturedAudit : ISecurityAuditWriter
+    {
+        internal List<SecurityAuditEvent> Events { get; } = [];
+        public Task<bool> TryWriteAsync(SecurityAuditEvent entry, CancellationToken cancellationToken = default)
+        {
+            Events.Add(entry);
+            return Task.FromResult(true);
+        }
+    }
+
     private static void CheckAcl(Action<bool, string> check)
     {
         var module = new SecurityIdentifier("S-1-5-21-111-222-333-1007");

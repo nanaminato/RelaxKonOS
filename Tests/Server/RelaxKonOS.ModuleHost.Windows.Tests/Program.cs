@@ -12,6 +12,8 @@ using RelaxKonOS.ModulePackaging;
 using RelaxKonOS.Server.Privileged;
 using RelaxKonOS.Server.Startup;
 using modulehelper::RelaxKonOS.PrivilegedHelper;
+using RelaxKonOS.Protocol.Privileged;
+using Microsoft.Extensions.Logging.Abstractions;
 
 if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Windows native acceptance requires Windows.");
 if (args is ["--cleanup", var cleanupPath])
@@ -19,7 +21,7 @@ if (args is ["--cleanup", var cleanupPath])
     var cleanup = NativeConfiguration.Read(cleanupPath);
     using var identity = WindowsIdentity.GetCurrent();
     if (!new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator)) throw new UnauthorizedAccessException();
-    foreach (var id in new[] { "fixture-host", "fixture-http" })
+    foreach (var id in new[] { "fixture-host", "fixture-http", "fixture-broker" })
     {
         var moduleRoot = Path.Combine(cleanup.Policy.IsolationRoot, id);
         if (File.Exists(Path.Combine(moduleRoot, "identity.json")))
@@ -35,8 +37,17 @@ if (args is ["--service", var serviceConfiguration])
     ServiceBase.Run(new AcceptanceService(configuration) { ServiceName = configuration.ServiceName, AutoLog = false, CanStop = true });
     return;
 }
+if (args is ["--action-fixture", var fixtureConfig])
+{
+    var fixture = NativeConfiguration.Read(fixtureConfig);
+    ServiceBase.Run(new ActionFixtureService(Path.Combine(Path.GetDirectoryName(fixture.WorkerReport)!, "action-pid.txt"),
+        Path.Combine(Path.GetDirectoryName(fixture.ClientReport)!, "service-stop-delay.flag"))
+        { ServiceName = fixture.ActionServiceName, AutoLog = false, CanStop = true });
+    return;
+}
 if (args is not ["--client", var configurationPath]) throw new ArgumentException("--client <protected configuration> or --service <protected configuration> is required.");
 var config = NativeConfiguration.Read(configurationPath);
+var administratorPassword = Console.ReadLine() ?? throw new InvalidDataException("Missing test administrator credential on stdin.");
 var checks = new List<string>();
 void Check(bool passed, string label)
 {
@@ -52,9 +63,92 @@ await using var second = new ModuleHostProcessClient(Path.Combine(source, "fixtu
     isolated: true, helperOptions: options);
 try
 {
+    var installation = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(Path.GetDirectoryName(config.ClientReport)!, "installation-report.json")));
+    using (installation)
+    {
+        Check(installation.RootElement.GetProperty("productionInstaller").GetBoolean()
+            && installation.RootElement.GetProperty("reusedSnapshot").GetBoolean(),
+            "the production Windows installer provisions and reuses the immutable runtime snapshot");
+        Check(installation.RootElement.GetProperty("rejectedUnexpectedFile").GetBoolean()
+            && installation.RootElement.GetProperty("rejectedCorruption").GetBoolean(),
+            "the production Windows installer rejects extra snapshot files and corrupted executables");
+    }
     using (var authorized = new NamedPipeClientStream(".", config.PipeName, PipeDirection.InOut))
         authorized.Connect(3000);
     Check(true, "the real protected Helper probe pipe accepts the configured Server caller");
+    var transport = new WindowsNamedPipePrivilegedOperationTransport(options,
+        NullLogger<WindowsNamedPipePrivilegedOperationTransport>.Instance);
+    var wrongAdministrator = HostAdministratorAuthenticator.AuthenticateWindows(config.AdministratorName, "invalid-acceptance-password");
+    Check(!wrongAdministrator.Succeeded, "real Windows administrator authentication rejects an incorrect password");
+    var administrator = HostAdministratorAuthenticator.AuthenticateWindows(config.AdministratorName, administratorPassword);
+    Check(administrator.Succeeded && administrator.AdministratorIdentity?.StartsWith("windows:S-1-5-21-", StringComparison.Ordinal) == true,
+        "real Windows LogonUser verifies the temporary administrator and returns a canonical SID");
+    var brokerRoot = Path.Combine(Path.GetDirectoryName(config.ClientReport)!, "broker");
+    var brokerIdentity = new ModulePrivilegeIdentity("fixture-host", "1.0.0", "fixture", new string('a', 64), new string('b', 64),
+        "native-test", [new("service-restart", config.ActionServiceName)], [config.ActionServiceName]);
+    var plans = new ModulePrivilegePlanStore(brokerRoot, _ => brokerIdentity);
+    static Task<ModulePrivilegeAdministrator?> Verification(HostAdministratorAuthenticationResult authentication) =>
+        Task.FromResult<ModulePrivilegeAdministrator?>(authentication.Succeeded && authentication.AdministratorIdentity is { } id
+            ? new(id, authentication.AuthenticationMethod) : null);
+    var prepared = await plans.PrepareAsync("fixture-host", "native-windows-session",
+        new("service-restart", config.ActionServiceName, "Restart only the unique Windows acceptance service", Guid.NewGuid().ToString("N")), "native-test-user");
+    var plan = await plans.ReadForUserAsync(prepared.PlanId, "native-windows-session");
+    var approval = new ModulePrivilegeApproval(plan.PlanHash, plan.ConfirmationToken);
+    var executed = 0;
+    async Task<bool> Execute(Guid id, string kind, string target)
+    {
+        executed++;
+        var result = await transport.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NativeServiceAction,
+            ServiceId: target, ServiceAction: PrivilegedServiceAction.Restart, OperationId: id));
+        return result.Success;
+    }
+    try
+    {
+        await plans.ApproveAsync(plan.PlanId, "native-windows-session", approval, () => Verification(wrongAdministrator), Execute);
+        throw new InvalidOperationException("Bad administrator credentials reached execution.");
+    }
+    catch (ModulePrivilegeException error) when (error.Code == "module.privilege_admin_required") { }
+    Check(executed == 0, "Broker confirmation rejects real failed administrator verification without dispatch");
+    var brokerPidPath = Path.Combine(Path.GetDirectoryName(config.WorkerReport)!, "action-pid.txt");
+    var beforeBroker = await File.ReadAllTextAsync(brokerPidPath);
+    var approved = await plans.ApproveAsync(plan.PlanId, "native-windows-session", approval,
+        () => Verification(HostAdministratorAuthenticator.AuthenticateWindows(config.AdministratorName, administratorPassword)), Execute);
+    Check(approved.State == "Succeeded" && executed == 1 && await File.ReadAllTextAsync(brokerPidPath) != beforeBroker,
+        "explicit Broker confirmation with real administrator verification executes one real Helper service restart");
+    try
+    {
+        await plans.ApproveAsync(plan.PlanId, "native-windows-session", approval, () => Verification(administrator), Execute);
+        throw new InvalidOperationException("An old confirmation was replayed.");
+    }
+    catch (ModulePrivilegeException error) when (error.Code == "module.privilege_approval_invalid") { }
+    Check(executed == 1, "Broker rejects replay after the real Windows privileged action");
+    await WindowsCoreAcceptance.RunAsync(config, administratorPassword, Check);
+    administratorPassword = "";
+    var denied = await transport.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NativeServiceAction,
+        ServiceId: config.ActionServiceName + "-outside-policy", ServiceAction: PrivilegedServiceAction.Restart));
+    Check(!denied.Success && denied.ProblemCode == PrivilegedProblemCode.ResourceNotAllowed,
+        "the real LocalSystem Helper rejects service targets outside its fixed allowlist");
+    async Task ChangeService(PrivilegedServiceAction action)
+    {
+        var result = await transport.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NativeServiceAction,
+            ServiceId: config.ActionServiceName, ServiceAction: action));
+        Check(result.Success, "the real LocalSystem Helper completes the allowed service " + action);
+    }
+    using (var fixture = new ServiceController(config.ActionServiceName))
+    {
+        await ChangeService(PrivilegedServiceAction.Stop);
+        fixture.Refresh();
+        Check(fixture.Status == ServiceControllerStatus.Stopped, "SCM confirms the actual fixture stopped");
+        await ChangeService(PrivilegedServiceAction.Start);
+        fixture.Refresh();
+        Check(fixture.Status == ServiceControllerStatus.Running, "SCM confirms the actual fixture started");
+        var pidPath = Path.Combine(Path.GetDirectoryName(config.WorkerReport)!, "action-pid.txt");
+        var beforeRestart = await File.ReadAllTextAsync(pidPath);
+        await ChangeService(PrivilegedServiceAction.Restart);
+        fixture.Refresh();
+        Check(fixture.Status == ServiceControllerStatus.Running, "SCM confirms the actual fixture restarted");
+        Check(await File.ReadAllTextAsync(pidPath) != beforeRestart, "the real service restart creates a different native process PID");
+    }
     var ready = await first.StartAsync();
     using var http = new HttpClient(new HttpClientHandler { UseProxy = false }) { BaseAddress = new Uri(ready.Url) };
     using var unauthenticated = new HttpClient(new HttpClientHandler { UseProxy = false }) { BaseAddress = new Uri(ready.Url) };
@@ -114,7 +208,7 @@ catch (Exception error)
 }
 
 internal sealed record NativeConfiguration(string ServiceName, string PipeName, string SharedSecret, string CallerSid,
-    WindowsModuleHostPolicy Policy, string ServerMarker, string WorkerReport, string ClientReport)
+    WindowsModuleHostPolicy Policy, string ServerMarker, string WorkerReport, string ClientReport, string ActionServiceName, string AdministratorName, string ServerDirectory)
 {
     internal static NativeConfiguration Read(string path) => ModuleHostPipeProtocol.Read<NativeConfiguration>(File.ReadAllBytes(path));
 }
@@ -123,8 +217,7 @@ internal sealed record NativeConfiguration(string ServiceName, string PipeName, 
 internal sealed class AcceptanceService(NativeConfiguration configuration) : ServiceBase
 {
     private WindowsModuleHostPipeServer? _host;
-    private readonly CancellationTokenSource _stopping = new();
-    private Task? _probe;
+    private WindowsPrivilegedPipeServer? _helper;
     protected override void OnStart(string[] args)
     {
         try
@@ -133,37 +226,33 @@ internal sealed class AcceptanceService(NativeConfiguration configuration) : Ser
             _host = new WindowsModuleHostPipeServer(new WindowsHelperPipeConfiguration(configuration.PipeName,
                 configuration.SharedSecret, [], [], configuration.CallerSid, ModuleHosts: configuration.Policy), error => Report(false, error));
             _host.Start();
-            var initialProbe = CreateProbe();
-            _probe = Task.Run(async () =>
-            {
-                var first = initialProbe;
-                while (!_stopping.IsCancellationRequested)
-                {
-                    await using var pipe = first ?? CreateProbe();
-                    first = null;
-                    try { await pipe.WaitForConnectionAsync(_stopping.Token); }
-                    catch (OperationCanceledException) when (_stopping.IsCancellationRequested) { }
-                }
-            });
+            _helper = new WindowsPrivilegedPipeServer(new WindowsHelperPipeConfiguration(configuration.PipeName,
+                configuration.SharedSecret, [], [configuration.ActionServiceName], configuration.CallerSid), error => Report(false, error));
+            _helper.Start();
             Report(true, null);
         }
         catch (Exception error) { Report(false, error); throw; }
     }
-    private NamedPipeServerStream CreateProbe() => NamedPipeServerStreamAcl.Create(configuration.PipeName,
-        PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 0, 0,
-        WindowsPrivilegedPipeSecurity.Build(configuration.CallerSid, []));
     private void Report(bool ready, Exception? error) => File.WriteAllText(configuration.WorkerReport,
         JsonSerializer.Serialize(new { ready, identity = WindowsIdentity.GetCurrent().User?.Value,
             failureType = error?.GetType().Name, nativeCode = error is System.ComponentModel.Win32Exception native ? native.NativeErrorCode : (int?)null }, ModuleHostPipeProtocol.Json));
     protected override void OnStop()
     {
-        _stopping.Cancel();
         _host?.StopAsync().GetAwaiter().GetResult();
-        if (_probe is not null) _probe.GetAwaiter().GetResult();
+        _helper?.StopAsync().GetAwaiter().GetResult();
     }
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { _host?.DisposeAsync().AsTask().GetAwaiter().GetResult(); _stopping.Dispose(); }
+        if (disposing) { _host?.DisposeAsync().AsTask().GetAwaiter().GetResult(); _helper?.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
         base.Dispose(disposing);
+    }
+}
+
+internal sealed class ActionFixtureService(string pidPath, string delayMarker) : ServiceBase
+{
+    protected override void OnStart(string[] args) => File.WriteAllText(pidPath, Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+    protected override void OnStop()
+    {
+        if (File.Exists(delayMarker)) Thread.Sleep(TimeSpan.FromSeconds(8));
     }
 }

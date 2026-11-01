@@ -392,6 +392,7 @@ static async Task<PrivilegedOperationResult> ApplyNativeServiceActionAsync(strin
 {
     if (string.IsNullOrWhiteSpace(serviceId) || action is null || !IsServiceId(serviceId) || !allowedServiceIds.Contains(serviceId, StringComparer.OrdinalIgnoreCase))
         return Fail(64, PrivilegedProblemCode.ResourceNotAllowed, "service action is not allowed");
+    if (OperatingSystem.IsWindows()) return await WindowsNativeServiceActions.ApplyAsync(serviceId, action.Value);
     var command = action.Value switch
     {
         PrivilegedServiceAction.Start => "start",
@@ -399,8 +400,8 @@ static async Task<PrivilegedOperationResult> ApplyNativeServiceActionAsync(strin
         PrivilegedServiceAction.Restart => "restart",
         _ => throw new ArgumentOutOfRangeException(nameof(action)),
     };
-    var fileName = OperatingSystem.IsWindows() ? Path.Combine(Environment.SystemDirectory, "sc.exe") : "/usr/bin/systemctl";
-    var arguments = OperatingSystem.IsWindows() ? new[] { command, serviceId } : new[] { command, serviceId };
+    const string fileName = "/usr/bin/systemctl";
+    var arguments = new[] { command, serviceId };
     using var process = new System.Diagnostics.Process
     {
         StartInfo = new System.Diagnostics.ProcessStartInfo(fileName)

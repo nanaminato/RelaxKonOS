@@ -394,7 +394,7 @@ Broker 不新增“任意命令”Helper 操作。每个 `ModulePrivilegeKind` �
 - [权限模型与项目重构规范](../platform/RelaxKonOS.PermissionModel.Refactor.md)
 
 
-## 13. 当前实现契约（2026-10-31）
+## 13. 当前实现契约（2026-11-01）
 
 首个 Broker 操作集合为 service-start / service-stop / service-restart，映射现有 Helper NativeServiceAction。未开放的包、文件、防火墙、TUN、设置和 ProcessExecute 操作明确返回 unsupported，绝不转为命令行。
 
@@ -402,6 +402,6 @@ ModuleHost SDK `context.Privileges` 通过 Core 拥有的临时 loopback listene
 
 Core 用户 API：GET `/api/v1.0/server/module-privileges/plans/{id}`、POST 同路径 `/approve` 或 `/cancel`。GET 的确认令牌只交给发起用户的同一会话；approve 提交 planHash、确认令牌及可选管理员账密。桌面组件中心可输入业务返回的 planId 查看并确认/拒绝。计划五分钟过期；服务授权不得跳过确认门。HostElevationSessionState 提供只读 IsAdministratorVerified，既有 sessionValid 控制免密码记忆。owner device 仍通过 Core OwnerDeviceKeyService 校验。
 
-privilege-plans.json 使用 schemaVersion=2，原子耐久保存计划、执行与终态，确认令牌仅保存哈希；Executing 在重启后变为 RecoveryRequired，响应丢失也进入 RecoveryRequired，不重放动作。module-trust.json 绑定精确版本/发布者/归档与清单摘要；Broker 执行前两次复查当前安装、启用、信任、来源目录/撤销、策略与 Host 服务白名单。Helper 再检查自己的 root 管理服务白名单。
+privilege-plans.json 内部存储使用 schemaVersion=3，原子耐久保存计划、执行与终态，确认令牌仅保存哈希；新增发起用户、同会话批准用户、实际验证管理员身份、验证方式、确认时间与执行尝试结束时间，初始发起者绑定进计划摘要。拒绝旧的审计不完整存储格式，不进行自动迁移；升级前必须显式处理旧状态及其证据。安装清单、installed.json 和 package-plans.json 仍使用 schemaVersion=2，二者是不同契约。Executing 在重启后变为 RecoveryRequired，响应丢失也进入 RecoveryRequired，不重放动作。管理员验证记忆保留原始规范身份；owner-device 记录实际设备 ID，不记录密码、私钥或令牌。module-trust.json 绑定精确版本/发布者/归档与清单摘要；Broker 执行前两次复查当前安装、启用、信任、来源目录/撤销、策略与 Host 服务白名单。Helper 再检查自己的 root 管理服务白名单。
 
 PB-01/02：核心契约及确认门的定向测试已通过；PB-03：桌面入口已编译；PB-04：Linux 权限隔离已有实机正向验收；PB-05 审计完善、真实 Helper 中断恢复、PB-06 常设许可、Windows 专用身份及跨平台验收仍未收口。默认不提供后台提权或常设自动执行。
