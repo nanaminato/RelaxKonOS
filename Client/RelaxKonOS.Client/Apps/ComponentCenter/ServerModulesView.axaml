@@ -3,99 +3,203 @@
  xmlns:loc="using:RelaxKonOS.Client.Localization" x:Class="RelaxKonOS.Client.Apps.ComponentCenter.ServerModulesView"
  xmlns:mp="using:RelaxKonOS.ModuleHost.Protocol"
  x:DataType="vm:ServerModulesViewModel">
- <StackPanel Spacing="12">
-  <TextBlock Text="{loc:Loc server_modules.title}" FontSize="20" FontWeight="SemiBold" />
-  <TextBlock Text="{loc:Loc server_modules.summary}" TextWrapping="Wrap" />
-  <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
-  <TextBlock Text="{loc:Loc server_modules.recovery_mode}" IsVisible="{Binding IsHostRecovery}" TextWrapping="Wrap" />
-  <Button Content="{loc:Loc server_modules.restore_all}" Command="{Binding RestoreAllCommand}" IsVisible="{Binding IsHostRecovery}" />
-  <TextBox Text="{Binding Search}" PlaceholderText="{loc:Loc component_center.search}" />
-  <CheckBox Content="{loc:Loc server_modules.pending}" IsChecked="{Binding OnlyPending}" />
-  <Button Content="{loc:Loc settings.server_modules.refresh}" Command="{Binding RefreshCommand}" IsEnabled="{Binding !Busy}" />
-  <TextBlock Text="{Binding Status}" TextWrapping="Wrap" />
-  <ListBox ItemsSource="{Binding VisibleModules}" SelectedItem="{Binding SelectedRow}" MaxHeight="280">
-   <ListBox.ItemTemplate><DataTemplate x:DataType="vm:ServerModuleSelection">
-    <StackPanel Spacing="3"><CheckBox Content="{Binding Fact.Id}" IsChecked="{Binding IsSelected}" /><TextBlock Text="{Binding Fact.Residency.State}" Opacity="0.7" /></StackPanel>
-   </DataTemplate></ListBox.ItemTemplate>
-  </ListBox>
-  <TextBlock Text="{Binding Details}" TextWrapping="Wrap" />
-  <Button Content="{loc:Loc server_modules.check_health}" Command="{Binding CheckHealthCommand}" />
-  <TextBlock Text="{Binding HealthText}" TextWrapping="Wrap" />
-  <TextBlock Text="{loc:Loc server_modules.privilege_title}" FontWeight="SemiBold" />
-  <TextBox Text="{Binding PrivilegePlanId}" PlaceholderText="{loc:Loc server_modules.privilege_plan_id}" />
-  <Button Content="{loc:Loc server_modules.privilege_load}" Command="{Binding LoadPrivilegeCommand}" />
-  <TextBlock Text="{Binding PrivilegeText}" TextWrapping="Wrap" />
-  <TextBox Text="{Binding PrivilegeAdministrator}" PlaceholderText="{loc:Loc server_modules.privilege_administrator}" />
-  <TextBox Text="{Binding PrivilegePassword}" PasswordChar="●" PlaceholderText="{loc:Loc server_modules.privilege_password}" />
-  <WrapPanel ItemSpacing="8" LineSpacing="8">
-   <Button Content="{loc:Loc server_modules.privilege_approve}" Command="{Binding ApprovePrivilegeCommand}" IsEnabled="{Binding !Busy}" />
-   <Button Content="{loc:Loc server_modules.privilege_cancel}" Command="{Binding CancelPrivilegeCommand}" IsEnabled="{Binding !Busy}" />
-  </WrapPanel>
-  <TextBlock Text="{loc:Loc server_modules.consent_title}" FontWeight="SemiBold" />
-  <TextBlock Text="{loc:Loc server_modules.consent_summary}" TextWrapping="Wrap" />
-  <ComboBox ItemsSource="{Binding ConsentKinds}" SelectedItem="{Binding ConsentKind}">
-   <ComboBox.ItemTemplate><DataTemplate x:DataType="vm:ServerModuleConsentKindChoice"><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate>
-  </ComboBox>
-  <TextBox Text="{Binding ConsentTarget}" PlaceholderText="{loc:Loc server_modules.consent_target}" />
-  <TextBox Text="{Binding ConsentReason}" PlaceholderText="{loc:Loc server_modules.consent_reason}" />
-  <TextBlock Text="{loc:Loc server_modules.consent_hours}" />
-  <NumericUpDown Value="{Binding ConsentHours}" Minimum="0.01" Maximum="720" Increment="1" />
-  <Button Content="{loc:Loc server_modules.consent_prepare}" Command="{Binding PrepareConsentCommand}" IsEnabled="{Binding !Busy}" />
-  <TextBlock Text="{Binding ConsentText}" TextWrapping="Wrap" />
-  <WrapPanel ItemSpacing="8" LineSpacing="8">
-   <Button Content="{loc:Loc server_modules.consent_approve}" Command="{Binding ApproveConsentCommand}" IsEnabled="{Binding !Busy}" />
-   <Button Content="{loc:Loc server_modules.consent_refresh}" Command="{Binding RefreshConsentsCommand}" IsEnabled="{Binding !Busy}" />
-   <Button Content="{loc:Loc server_modules.consent_revoke}" Command="{Binding RevokeConsentCommand}" IsEnabled="{Binding !Busy}" />
-  </WrapPanel>
-  <ListBox ItemsSource="{Binding Consents}" SelectedItem="{Binding SelectedConsent}" MaxHeight="180">
-   <ListBox.ItemTemplate><DataTemplate x:DataType="mp:ModulePrivilegeConsent"><StackPanel>
-    <TextBlock Text="{Binding ModuleId}" /><TextBlock Text="{Binding Target}" /><TextBlock Text="{Binding State}" />
-   </StackPanel></DataTemplate></ListBox.ItemTemplate>
-  </ListBox>
-  <TextBlock Text="{loc:Loc server_modules.store}" FontWeight="SemiBold" />
-  <TextBlock Text="{Binding StoreSourceText}" TextWrapping="Wrap" Opacity="0.7" />
-  <WrapPanel ItemSpacing="8" LineSpacing="8">
-   <TextBox Text="{Binding StoreQuery}" PlaceholderText="{loc:Loc server_modules.store_query}" Width="240" />
-   <Button Content="{loc:Loc server_modules.store_search}" Command="{Binding SearchStoreCommand}" />
-   <Button Content="{loc:Loc server_modules.store_refresh}" Command="{Binding RefreshCatalogsCommand}" />
-   <Button Content="{loc:Loc server_modules.store_install}" Command="{Binding InstallStoreItemCommand}" />
-  </WrapPanel>
-  <ListBox ItemsSource="{Binding StoreItems}" SelectedItem="{Binding SelectedStoreItem}" MaxHeight="180">
-   <ListBox.ItemTemplate><DataTemplate x:DataType="p:ServerModuleStoreItemDto">
-    <StackPanel><TextBlock Text="{Binding ModuleId}" /><TextBlock Text="{Binding Version}" Opacity="0.7" /><TextBlock Text="{Binding SourceId}" Opacity="0.7" /></StackPanel>
-   </DataTemplate></ListBox.ItemTemplate>
-  </ListBox>
-  <TextBlock Text="{loc:Loc server_modules.store_details}" Opacity="0.7" />
-  <TextBlock Text="{Binding StoreItemDetails}" TextWrapping="Wrap" />
-  <TextBlock Text="{loc:Loc server_modules.packages}" FontWeight="SemiBold" />
-  <TextBlock Text="{Binding PackageDetails}" TextWrapping="Wrap" />
-  <TextBlock Text="{loc:Loc server_modules.package_versions}" Opacity="0.7" />
-  <TextBlock Text="{Binding PackageVersionsText}" TextWrapping="Wrap" />
-  <ComboBox ItemsSource="{Binding SelectedVersions}" SelectedItem="{Binding SelectedPackageVersion}">
-   <ComboBox.ItemTemplate><DataTemplate x:DataType="p:ServerInstalledModuleDto"><TextBlock Text="{Binding Version}" /></DataTemplate></ComboBox.ItemTemplate>
-  </ComboBox>
-  <Button Content="{loc:Loc server_modules.rollback_version}" Command="{Binding RollbackPackageCommand}" />
-  <TextBlock Text="{loc:Loc server_modules.package_operations}" Opacity="0.7" />
-  <TextBlock Text="{Binding PackageOperationText}" TextWrapping="Wrap" />
-  <Button Content="{loc:Loc server_modules.install_package}" Click="InstallPackage_Click" IsEnabled="{Binding !Busy}" />
-  <TextBlock Text="{Binding PackagePlanText}" TextWrapping="Wrap" />
-  <Button Content="{loc:Loc server_modules.apply_package}" Command="{Binding ApplyPackagePlanCommand}" IsVisible="{Binding HasPackagePlan}" />
-  <TextBlock Text="{Binding PackageStatus}" TextWrapping="Wrap" />
-  <WrapPanel ItemSpacing="8" LineSpacing="8">
-   <Button Content="{loc:Loc server_modules.enable}" Command="{Binding EnableCommand}" />
-   <Button Content="{loc:Loc server_modules.disable}" Command="{Binding DisableCommand}" />
-   <Button Content="{loc:Loc server_modules.wake}" Command="{Binding WakeCommand}" />
-   <Button Content="{loc:Loc server_modules.sleep}" Command="{Binding SleepCommand}" />
-  </WrapPanel>
-  <TextBlock Text="{loc:Loc server_modules.policy}" />
-  <ComboBox ItemsSource="{Binding PolicyChoices}" SelectedItem="{Binding PolicyChoice}">
-   <ComboBox.ItemTemplate><DataTemplate x:DataType="vm:ServerModulePolicyChoice"><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate>
-  </ComboBox>
-  <TextBlock Text="{loc:Loc server_modules.grace}" />
-  <NumericUpDown Value="{Binding IdleGraceSeconds}" Minimum="0" Maximum="604800" Increment="30" FormatString="0" />
-  <Button Content="{loc:Loc server_modules.policy_preview}" Command="{Binding SetPolicyCommand}" />
-  <TextBlock Text="{Binding PreviewText}" TextWrapping="Wrap" />
-  <Button Content="{loc:Loc server_modules.apply}" Command="{Binding ApplyCommand}" />
-  <TextBlock Text="{Binding OperationText}" TextWrapping="Wrap" />
+ <!-- Every host-module capability is one card: a heading, the facts it acts on, then its commands. -->
+ <UserControl.Styles>
+  <StyleInclude Source="avares://RelaxKonOS.Client/Apps/ComponentCenter/ComponentCenterStyles.axaml" />
+ </UserControl.Styles>
+ <StackPanel Spacing="16">
+  <StackPanel Spacing="4">
+   <TextBlock Text="{loc:Loc server_modules.title}" Classes="section-title" FontSize="20" />
+   <TextBlock Text="{loc:Loc server_modules.summary}" Classes="section-hint" />
+  </StackPanel>
+
+  <Border Classes="panel-card">
+   <StackPanel Spacing="12">
+    <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" FontSize="12" LineHeight="18"
+               Foreground="{DynamicResource TextSecondaryBrush}" />
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" IsVisible="{Binding IsHostRecovery}">
+     <TextBlock Text="{loc:Loc server_modules.recovery_mode}" TextWrapping="Wrap" FontSize="12"
+                VerticalAlignment="Center" Foreground="{DynamicResource WarningBrush}" />
+     <Button Grid.Column="1" Classes="ghost-action" VerticalAlignment="Center"
+             Content="{loc:Loc server_modules.restore_all}" Command="{Binding RestoreAllCommand}" />
+    </Grid>
+    <StackPanel Orientation="Horizontal" Spacing="10">
+     <TextBox Classes="search-field" Padding="12,6" MinWidth="220" Text="{Binding Search}"
+              PlaceholderText="{loc:Loc component_center.search}" />
+     <CheckBox Content="{loc:Loc server_modules.pending}" IsChecked="{Binding OnlyPending}" VerticalAlignment="Center" />
+     <Button Classes="ghost-action" Content="{loc:Loc settings.server_modules.refresh}" Command="{Binding RefreshCommand}"
+             IsEnabled="{Binding !Busy}" VerticalAlignment="Center" />
+    </StackPanel>
+    <TextBlock Text="{Binding Status}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+    <ListBox ItemsSource="{Binding VisibleModules}" SelectedItem="{Binding SelectedRow}" MaxHeight="280">
+     <ListBox.ItemTemplate><DataTemplate x:DataType="vm:ServerModuleSelection">
+      <StackPanel Spacing="3">
+       <CheckBox Content="{Binding Fact.Id}" IsChecked="{Binding IsSelected}" />
+       <TextBlock Text="{Binding Fact.Residency.State}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" />
+      </StackPanel>
+     </DataTemplate></ListBox.ItemTemplate>
+    </ListBox>
+    <TextBlock Text="{Binding Details}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+   </StackPanel>
+  </Border>
+
+  <Border Classes="panel-card">
+   <StackPanel Spacing="12">
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+     <TextBlock Classes="section-title" Text="{loc:Loc server_modules.check_health}" />
+     <Button Grid.Column="1" Classes="ghost-action" Content="{loc:Loc server_modules.check_health}"
+             Command="{Binding CheckHealthCommand}" VerticalAlignment="Center" />
+    </Grid>
+    <TextBlock Text="{Binding HealthText}" TextWrapping="Wrap" FontSize="12"
+               Foreground="{DynamicResource TextSecondaryBrush}" />
+   </StackPanel>
+  </Border>
+
+  <Border Classes="panel-card">
+   <StackPanel Spacing="12">
+    <StackPanel Spacing="3">
+     <TextBlock Classes="section-title" Text="{loc:Loc server_modules.privilege_title}" />
+     <TextBlock Text="{Binding PrivilegeText}" TextWrapping="Wrap" FontSize="12" Classes="mono"
+                Foreground="{DynamicResource TextSecondaryBrush}" />
+    </StackPanel>
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+     <TextBox Text="{Binding PrivilegePlanId}" PlaceholderText="{loc:Loc server_modules.privilege_plan_id}" />
+     <Button Grid.Column="1" Classes="ghost-action" Content="{loc:Loc server_modules.privilege_load}"
+             Command="{Binding LoadPrivilegeCommand}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+     <TextBox Text="{Binding PrivilegeAdministrator}" PlaceholderText="{loc:Loc server_modules.privilege_administrator}" />
+     <TextBox Grid.Column="1" Text="{Binding PrivilegePassword}" PasswordChar="●"
+              PlaceholderText="{loc:Loc server_modules.privilege_password}" />
+    </Grid>
+    <WrapPanel ItemSpacing="8" LineSpacing="8">
+     <Button Classes="ghost-action" Content="{loc:Loc server_modules.privilege_approve}" Command="{Binding ApprovePrivilegeCommand}" IsEnabled="{Binding !Busy}" />
+     <Button Classes="ghost-action" Content="{loc:Loc server_modules.privilege_cancel}" Command="{Binding CancelPrivilegeCommand}" IsEnabled="{Binding !Busy}" />
+    </WrapPanel>
+   </StackPanel>
+  </Border>
+
+  <Border Classes="panel-card">
+   <StackPanel Spacing="12">
+    <StackPanel Spacing="3">
+     <TextBlock Classes="section-title" Text="{loc:Loc server_modules.consent_title}" />
+     <TextBlock Classes="section-hint" Text="{loc:Loc server_modules.consent_summary}" />
+    </StackPanel>
+    <Grid ColumnDefinitions="*,*,*,Auto" ColumnSpacing="10">
+     <ComboBox ItemsSource="{Binding ConsentKinds}" SelectedItem="{Binding ConsentKind}" HorizontalAlignment="Stretch">
+      <ComboBox.ItemTemplate><DataTemplate x:DataType="vm:ServerModuleConsentKindChoice"><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate>
+     </ComboBox>
+     <TextBox Grid.Column="1" Text="{Binding ConsentTarget}" PlaceholderText="{loc:Loc server_modules.consent_target}" />
+     <TextBox Grid.Column="2" Text="{Binding ConsentReason}" PlaceholderText="{loc:Loc server_modules.consent_reason}" />
+     <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+      <TextBlock Text="{loc:Loc server_modules.consent_hours}" VerticalAlignment="Center" FontSize="12"
+                 Foreground="{DynamicResource TextSecondaryBrush}" />
+      <NumericUpDown Value="{Binding ConsentHours}" Minimum="0.01" Maximum="720" Increment="1" Width="120" />
+     </StackPanel>
+    </Grid>
+    <WrapPanel ItemSpacing="8" LineSpacing="8">
+     <Button Classes="ghost-action" Content="{loc:Loc server_modules.consent_prepare}" Command="{Binding PrepareConsentCommand}" IsEnabled="{Binding !Busy}" />
+     <Button Classes="ghost-action" Content="{loc:Loc server_modules.consent_approve}" Command="{Binding ApproveConsentCommand}" IsEnabled="{Binding !Busy}" />
+     <Button Classes="ghost-action" Content="{loc:Loc server_modules.consent_refresh}" Command="{Binding RefreshConsentsCommand}" IsEnabled="{Binding !Busy}" />
+     <Button Classes="ghost-action" Content="{loc:Loc server_modules.consent_revoke}" Command="{Binding RevokeConsentCommand}" IsEnabled="{Binding !Busy}" />
+    </WrapPanel>
+    <TextBlock Text="{Binding ConsentText}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+    <ListBox ItemsSource="{Binding Consents}" SelectedItem="{Binding SelectedConsent}" MaxHeight="180">
+     <ListBox.ItemTemplate><DataTemplate x:DataType="mp:ModulePrivilegeConsent"><StackPanel Spacing="2">
+      <TextBlock Text="{Binding ModuleId}" FontSize="13" />
+      <TextBlock Text="{Binding Target}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" />
+      <TextBlock Text="{Binding State}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" />
+     </StackPanel></DataTemplate></ListBox.ItemTemplate>
+    </ListBox>
+   </StackPanel>
+  </Border>
+
+  <Border Classes="panel-card">
+   <StackPanel Spacing="12">
+    <StackPanel Spacing="3">
+     <TextBlock Classes="section-title" Text="{loc:Loc server_modules.store}" />
+     <TextBlock Text="{Binding StoreSourceText}" TextWrapping="Wrap" FontSize="11" FontFamily="Consolas"
+                Foreground="{DynamicResource TextTertiaryBrush}" />
+    </StackPanel>
+    <WrapPanel ItemSpacing="8" LineSpacing="8">
+     <TextBox Width="240" Text="{Binding StoreQuery}" PlaceholderText="{loc:Loc server_modules.store_query}" />
+     <Button Classes="ghost-action" Content="{loc:Loc server_modules.store_search}" Command="{Binding SearchStoreCommand}" />
+     <Button Classes="ghost-action" Content="{loc:Loc server_modules.store_refresh}" Command="{Binding RefreshCatalogsCommand}" />
+     <Button Classes="ghost-action" Content="{loc:Loc server_modules.store_install}" Command="{Binding InstallStoreItemCommand}" />
+    </WrapPanel>
+    <ListBox ItemsSource="{Binding StoreItems}" SelectedItem="{Binding SelectedStoreItem}" MaxHeight="180">
+     <ListBox.ItemTemplate><DataTemplate x:DataType="p:ServerModuleStoreItemDto"><StackPanel Spacing="2">
+      <TextBlock Text="{Binding ModuleId}" FontSize="13" />
+      <TextBlock Text="{Binding Version}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" />
+      <TextBlock Text="{Binding SourceId}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" />
+     </StackPanel></DataTemplate></ListBox.ItemTemplate>
+    </ListBox>
+    <StackPanel Spacing="4">
+     <TextBlock Classes="field-label" Text="{loc:Loc server_modules.store_details}" />
+     <TextBlock Text="{Binding StoreItemDetails}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+    </StackPanel>
+   </StackPanel>
+  </Border>
+
+  <Border Classes="panel-card">
+   <StackPanel Spacing="12">
+    <TextBlock Classes="section-title" Text="{loc:Loc server_modules.packages}" />
+    <TextBlock Text="{Binding PackageDetails}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+    <StackPanel Spacing="6">
+     <TextBlock Classes="field-label" Text="{loc:Loc server_modules.package_versions}" />
+     <TextBlock Text="{Binding PackageVersionsText}" TextWrapping="Wrap" FontSize="12" />
+     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+      <ComboBox ItemsSource="{Binding SelectedVersions}" SelectedItem="{Binding SelectedPackageVersion}" HorizontalAlignment="Stretch">
+       <ComboBox.ItemTemplate><DataTemplate x:DataType="p:ServerInstalledModuleDto"><TextBlock Text="{Binding Version}" /></DataTemplate></ComboBox.ItemTemplate>
+      </ComboBox>
+      <Button Grid.Column="1" Classes="ghost-action" Content="{loc:Loc server_modules.rollback_version}"
+              Command="{Binding RollbackPackageCommand}" VerticalAlignment="Center" />
+     </Grid>
+    </StackPanel>
+    <Border Classes="rule" />
+    <StackPanel Spacing="6">
+     <TextBlock Classes="field-label" Text="{loc:Loc server_modules.package_operations}" />
+     <TextBlock Text="{Binding PackageOperationText}" TextWrapping="Wrap" FontSize="12" />
+    </StackPanel>
+    <WrapPanel ItemSpacing="8" LineSpacing="8">
+     <Button Classes="ghost-action" Content="{loc:Loc server_modules.install_package}" Click="InstallPackage_Click" IsEnabled="{Binding !Busy}" />
+     <Button Classes="primary" Content="{loc:Loc server_modules.apply_package}" Command="{Binding ApplyPackagePlanCommand}"
+             IsVisible="{Binding HasPackagePlan}" />
+    </WrapPanel>
+    <TextBlock Text="{Binding PackagePlanText}" TextWrapping="Wrap" FontSize="11" Classes="mono"
+               Foreground="{DynamicResource TextTertiaryBrush}" />
+    <TextBlock Text="{Binding PackageStatus}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+   </StackPanel>
+  </Border>
+
+  <Border Classes="panel-card">
+   <StackPanel Spacing="12">
+    <TextBlock Classes="section-title" Text="{loc:Loc server_modules.policy}" />
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+     <ComboBox ItemsSource="{Binding PolicyChoices}" SelectedItem="{Binding PolicyChoice}" HorizontalAlignment="Stretch">
+      <ComboBox.ItemTemplate><DataTemplate x:DataType="vm:ServerModulePolicyChoice"><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate>
+     </ComboBox>
+     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+      <TextBlock Text="{loc:Loc server_modules.grace}" VerticalAlignment="Center" FontSize="12"
+                 Foreground="{DynamicResource TextSecondaryBrush}" />
+      <NumericUpDown Value="{Binding IdleGraceSeconds}" Minimum="0" Maximum="604800" Increment="30" FormatString="0" Width="130" />
+     </StackPanel>
+    </Grid>
+    <WrapPanel ItemSpacing="8" LineSpacing="8">
+     <Button Classes="ghost-action" Content="{loc:Loc server_modules.policy_preview}" Command="{Binding SetPolicyCommand}" />
+     <Button Classes="primary" Content="{loc:Loc server_modules.apply}" Command="{Binding ApplyCommand}" />
+    </WrapPanel>
+    <TextBlock Text="{Binding PreviewText}" TextWrapping="Wrap" FontSize="12" />
+    <TextBlock Text="{Binding OperationText}" TextWrapping="Wrap" FontSize="12"
+               Foreground="{DynamicResource TextSecondaryBrush}" />
+    <Border Classes="rule" />
+    <WrapPanel ItemSpacing="8" LineSpacing="8">
+     <Button Classes="ghost-action" Content="{loc:Loc server_modules.enable}" Command="{Binding EnableCommand}" />
+     <Button Classes="ghost-action" Content="{loc:Loc server_modules.disable}" Command="{Binding DisableCommand}" />
+     <Button Classes="ghost-action" Content="{loc:Loc server_modules.wake}" Command="{Binding WakeCommand}" />
+     <Button Classes="ghost-action" Content="{loc:Loc server_modules.sleep}" Command="{Binding SleepCommand}" />
+    </WrapPanel>
+   </StackPanel>
+  </Border>
  </StackPanel>
 </UserControl>

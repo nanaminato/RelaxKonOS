@@ -55,7 +55,13 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     /// <summary>The detail pane follows the selected component instead of assuming sing-box.</summary>
     public ProxyServerRuntimeViewModel? DetailRuntime => SelectedDefinition?.ComponentId is { } id && _runtimes.TryGetValue(id, out var runtime)
         ? runtime : null;
-    public bool HasRuntimeDetails => !ShowOfficialDownloads && !IsSystemPackage && HasResults && DetailRuntime is not null;
+    /// <summary>
+    /// The runtime page stands in for the package panel only when this build can actually run that
+    /// panel. Without an installation channel the frozen-package card does not exist, so hiding the
+    /// runtime page as well would leave the component with no usable surface at all.
+    /// </summary>
+    private bool PackagePathOwnsInstall => IsSystemPackage && _lifecycle is not null;
+    public bool HasRuntimeDetails => !ShowOfficialDownloads && !PackagePathOwnsInstall && HasResults && DetailRuntime is not null;
     public bool ShowRuntimeTaskActivity => HasRuntimeDetails && DetailRuntime is { } runtime
         && (runtime.HasActiveOperation || runtime.NeedsRecovery || !runtime.OperationText.IsEmpty || !runtime.OutcomeText.IsEmpty);
     public bool HasWorkloadDetails => HasResults && SelectedNode?.WorkloadId is not null && SelectedNode.ComponentId is null;
@@ -85,6 +91,13 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     public IReadOnlyList<ComponentSourceChip> SelectedOtherSources => SourceChips(hostPlatformOnly: false);
     public bool HasSelectedSources => SelectedHostSources.Count + SelectedOtherSources.Count > 0;
     public bool HasOtherPlatformSources => SelectedOtherSources.Count > 0;
+    /// <summary>
+    /// What this host can install from, and what the same component needs elsewhere. Before the host
+    /// platform is known every declaration is "elsewhere", so the second group would claim a
+    /// distinction that does not exist yet and both groups stay hidden.
+    /// </summary>
+    public bool HasHostPlatformSources => SelectedHostSources.Count > 0;
+    public bool ShowOtherPlatformSources => HostPlatformKnown && SelectedOtherSources.Count > 0;
     /// <summary>
     /// Declared provenance for this host's own platform. A declaration that this build has not wired
     /// yet still belongs here and is marked as planned; the package panel names the method that is
@@ -125,7 +138,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     public bool ShowHeaderOpenApplication => CanOpenSelectedApplication && !ShowNotIntegrated;
     public string? SelectedApplicationId => SelectedDefinition?.ApplicationId;
     /// <summary>True while the selected component still uses the batch draft and TaskPlan path.</summary>
-    public bool SelectedUsesBatch => !IsSystemPackage && SelectedDefinition?.Integration == ComponentIntegration.Batch;
+    public bool SelectedUsesBatch => !PackagePathOwnsInstall && SelectedDefinition?.Integration == ComponentIntegration.Batch;
     public ComponentStatusTone SelectedTone => Tone(SelectedDefinition);
     public bool SelectedToneOk => SelectedTone == ComponentStatusTone.Ok;
     public bool SelectedToneWarning => SelectedTone == ComponentStatusTone.Warning;
@@ -323,7 +336,8 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
             nameof(SelectedComponentTitle), nameof(ShowNginxSelection), nameof(ShowGitInstallation),
             nameof(DetailRuntime), nameof(ShowRuntimeTaskActivity), nameof(SelectedComponent), nameof(SelectedDefinition), nameof(ShowNotIntegrated),
             nameof(SelectedComponentDescription), nameof(SelectedHostSources), nameof(SelectedOtherSources),
-            nameof(HasSelectedSources), nameof(HasOtherPlatformSources), nameof(HostPlatform), nameof(HostPlatformKnown),
+            nameof(HasSelectedSources), nameof(HasOtherPlatformSources), nameof(HasHostPlatformSources),
+            nameof(ShowOtherPlatformSources), nameof(HostPlatform), nameof(HostPlatformKnown),
             nameof(HasHostObservation), nameof(HostObservation), nameof(ShowHostObservation), nameof(CanObserveHost),
             nameof(HostObservationPlatformText), nameof(HostObservationManagementText), nameof(HostObservationVersionText),
             nameof(HostObservationStateText), nameof(HostObservationNoteText),

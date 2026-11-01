@@ -105,6 +105,10 @@ internal static class ComponentCenterWorkspaceChecks
                 }
                 // The catalog now carries the whole host component set; only runtime-backed entries
                 // explain themselves with a host page, the rest point back at their owning application.
+                // The loop above ends on whichever page sorts last, so the catalog assertion returns to
+                // the page that actually lists every component before reading the tree.
+                model.Navigate(ComponentCenterPage.All);
+                Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
                 var catalogNodes = model.VisibleRoots.SelectMany(root => root.DescendantsAndSelf())
                     .Where(node => node.ComponentId is not null).ToArray();
                 Check(catalogNodes.Any(node => node.ComponentId == "mihomo") && catalogNodes.Any(node => node.ComponentId == "nginx")
@@ -286,6 +290,10 @@ internal static class ComponentCenterWorkspaceChecks
                         && linuxModel.PackageMethodTitle.Resolve() == RelaxKonOS.Client.Localization.LocalizedText.Get("component_center.native.package_title"),
                         "A Linux host describes the package manager and offers install, update and uninstall in " + language);
                 }
+                // The narrow checks below open the navigation and then leave it by choosing the
+                // catalog page, so the run parks on another page first: selecting the page it is
+                // already on is not a selection and would leave the navigation open.
+                model.Navigate(ComponentCenterPage.Installed);
                 window.Width = 640; window.Height = 720;
                 Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
                 var navigationToggle = view.FindControl<Avalonia.Controls.Primitives.ToggleButton>("NavigationToggle")!;
