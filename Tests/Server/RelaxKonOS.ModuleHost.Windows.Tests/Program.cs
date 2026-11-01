@@ -218,6 +218,8 @@ internal sealed class AcceptanceService(NativeConfiguration configuration) : Ser
 {
     private WindowsModuleHostPipeServer? _host;
     private WindowsPrivilegedPipeServer? _helper;
+    private readonly CancellationTokenSource _watchdogStopping = new();
+    private Task? _watchdog;
     protected override void OnStart(string[] args)
     {
         try
@@ -229,21 +231,47 @@ internal sealed class AcceptanceService(NativeConfiguration configuration) : Ser
             _helper = new WindowsPrivilegedPipeServer(new WindowsHelperPipeConfiguration(configuration.PipeName,
                 configuration.SharedSecret, [], [configuration.ActionServiceName], configuration.CallerSid), error => Report(false, error));
             _helper.Start();
+            _watchdog = Task.Run(async () =>
+            {
+                var marker = Path.Combine(Path.GetDirectoryName(configuration.ClientReport)!, "helper-stop-pending-crash.flag");
+                try
+                {
+                    while (!_watchdogStopping.IsCancellationRequested)
+                    {
+                        if (File.Exists(marker))
+                        {
+                            using var target = new ServiceController(configuration.ActionServiceName);
+                            if (target.Status == ServiceControllerStatus.StopPending)
+                            {
+                                // Test-only self-termination of this unique acceptance service.
+                                // No PID, command or executable comes from the marker.
+                                File.Delete(marker);
+                                Process.GetCurrentProcess().Kill();
+                                return;
+                            }
+                        }
+                        await Task.Delay(50, _watchdogStopping.Token);
+                    }
+                }
+                catch (OperationCanceledException) when (_watchdogStopping.IsCancellationRequested) { }
+            });
             Report(true, null);
         }
         catch (Exception error) { Report(false, error); throw; }
     }
     private void Report(bool ready, Exception? error) => File.WriteAllText(configuration.WorkerReport,
-        JsonSerializer.Serialize(new { ready, identity = WindowsIdentity.GetCurrent().User?.Value,
+        JsonSerializer.Serialize(new { ready, processId = Environment.ProcessId, identity = WindowsIdentity.GetCurrent().User?.Value,
             failureType = error?.GetType().Name, nativeCode = error is System.ComponentModel.Win32Exception native ? native.NativeErrorCode : (int?)null }, ModuleHostPipeProtocol.Json));
     protected override void OnStop()
     {
+        _watchdogStopping.Cancel();
+        _watchdog?.GetAwaiter().GetResult();
         _host?.StopAsync().GetAwaiter().GetResult();
         _helper?.StopAsync().GetAwaiter().GetResult();
     }
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { _host?.DisposeAsync().AsTask().GetAwaiter().GetResult(); _helper?.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
+        if (disposing) { _host?.DisposeAsync().AsTask().GetAwaiter().GetResult(); _helper?.DisposeAsync().AsTask().GetAwaiter().GetResult(); _watchdogStopping.Dispose(); }
         base.Dispose(disposing);
     }
 }

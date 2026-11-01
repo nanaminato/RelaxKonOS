@@ -20,7 +20,13 @@ with sqlite3.connect('file:' + str(root/'audit.db') + '?mode=ro', uri=True) as d
     for plan in attempts:
         audit = plan['audit']
         assert audit['initiatingUser'] and audit['approvingUser'] == audit['initiatingUser']
-        assert audit['administrator'] == dict(identity=administrator, authenticationMethod='linux-pam-administrator')
+        method = 'standing-consent:linux-pam-administrator' if plan['session'].startswith('consent:') else 'linux-pam-administrator'
+        assert audit['administrator'] == dict(identity=administrator, authenticationMethod=method)
+        if plan['session'].startswith('consent:'):
+            consents = json.loads((root/'module-management/privilege-consents.json').read_text())['consents']
+            consent = next(c for c in consents if c['id'].replace('-', '') == plan['session'].removeprefix('consent:'))
+            assert consent['actor'] == audit['initiatingUser'] and consent['approvedAt']
+            assert consent['administrator'] == dict(identity=administrator, authenticationMethod='linux-pam-administrator')
         assert audit['confirmedAt']
         # A process killed in flight cannot observe completion or write a terminal
         # Helper audit event. Recovery must preserve that uncertainty, not invent it.

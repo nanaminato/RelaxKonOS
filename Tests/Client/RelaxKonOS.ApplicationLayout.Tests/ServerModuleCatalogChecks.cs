@@ -11,6 +11,7 @@ using RelaxKonOS.Client.Apps.ComponentCenter;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Identity;
+using RelaxKonOS.ModuleHost.Protocol;
 
 /// <summary>
 /// Checks the client-side answer to "why is this application unavailable". The inventory is
@@ -39,7 +40,32 @@ internal static class ServerModuleCatalogChecks
         await RenderSystemPageAsync(settings);
         await ManagementClientAsync();
         await ValidateManagementReceiptsAsync();
+        await ValidateStandingConsentsAsync();
         Console.WriteLine("PASS: module inventory attributes missing server capabilities and stays diagnostic-only.");
+    }
+
+    private static async Task ValidateStandingConsentsAsync()
+    {
+        var (session, control) = NewSession(); control.SignIn("connection", "https://server.test");
+        var now = DateTimeOffset.UtcNow; var id = Guid.NewGuid();
+        var request = new ModulePrivilegeConsentRequest("fixture", "service-restart", "fixture.service", "Scheduled maintenance", now.AddHours(1), "request");
+        var consent = new ModulePrivilegeConsent(id, "fixture", "1.0.0", "publisher", new string('a', 64), request.Kind, request.Target,
+            request.Reason, "administrator", now, request.ExpiresAt, "AwaitingConfirmation", new string('b', 64), "");
+        var payload = System.Text.Json.JsonSerializer.Serialize(consent, RelaxKonOSJsonOptions.Default); var calls = 0;
+        using var handler = new ManagementHandler(_ => { calls++; return new(HttpStatusCode.OK) { Content = new StringContent(payload) }; });
+        var client = new ServerModuleManagementClient(new HttpClient(handler), session);
+        Check((await client.PrepareConsentAsync(request)).ConsentId == id, "Standing consent preview preserves the exact requested action, target and deadline.");
+        payload = System.Text.Json.JsonSerializer.Serialize(consent with { Target = "other.service" }, RelaxKonOSJsonOptions.Default);
+        try { await client.PrepareConsentAsync(request); throw new Exception("Scope substitution accepted"); }
+        catch (InvalidOperationException) { Check(true, "Standing consent UI client rejects server scope substitution before approval."); }
+        payload = System.Text.Json.JsonSerializer.Serialize(consent with { ConfirmationToken = new string('c', 64) }, RelaxKonOSJsonOptions.Default);
+        Check((await client.ReadConsentAsync(id)).ConfirmationToken.Length == 64, "Only explicit standing-consent review accepts a confirmation token.");
+        payload = System.Text.Json.JsonSerializer.Serialize(new[] { consent with { ConfirmationToken = new string('c', 64) } }, RelaxKonOSJsonOptions.Default);
+        try { await client.ReadConsentsAsync(); throw new Exception("List token disclosure accepted"); }
+        catch (InvalidOperationException) { Check(true, "Standing consent list responses cannot expose review tokens."); }
+        var before = calls; control.SignIn("another-connection", "https://another.test");
+        try { await client.ApproveConsentAsync(id, new(consent.PlanHash, new string('c', 64))); throw new Exception("Stale consent client accepted"); }
+        catch (InvalidOperationException) { Check(calls == before, "Changing login prevents stale standing-consent approval before any network request."); }
     }
 
     private static async Task ValidateManagementReceiptsAsync()
@@ -117,12 +143,16 @@ internal static class ServerModuleCatalogChecks
             await model.RefreshCommand.ExecuteAsync(null);
             Check(model.Modules.Count == 2, "Management reads fresh facts for the current login.");
             var view = new ServerModulesView { DataContext = model };
-            var window = new Window { Content = new ScrollViewer { Content = view }, Width = 680, Height = 1100 };
+            var moduleScroll = new ScrollViewer { Content = view, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
+            var window = new Window { Content = moduleScroll, Width = 680, Height = 1100 };
             window.Show(); Dispatcher.UIThread.RunJobs(); view.UpdateLayout();
             Check(view.GetVisualDescendants().OfType<CheckBox>().Count() >= 3, "Module management renders selectable members and pending-state filter.");
             var output = Path.Combine(AppContext.BaseDirectory, "layout-qa"); Directory.CreateDirectory(output);
             using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(680, 1100)))
             { bitmap.Render(window); bitmap.Save(Path.Combine(output, "server-module-management.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
+            moduleScroll.Offset = new Avalonia.Vector(0, 700); Dispatcher.UIThread.RunJobs(); view.UpdateLayout();
+            using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(680, 1100)))
+            { bitmap.Render(window); bitmap.Save(Path.Combine(output, "server-module-consents.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
             window.Close();
             foreach (var row in model.VisibleModules) row.IsSelected = true;
             await model.EnableCommand.ExecuteAsync(null);

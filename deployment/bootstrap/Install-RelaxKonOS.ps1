@@ -402,6 +402,10 @@ if ($Action -eq 'install') {
     if (-not $existingState -or (Get-StateValue $existingState 'installed') -ne $true) {
         throw "RelaxKonOS is not installed on this host; -Action $Action is not available."
     }
+    if ((Get-StateValue $existingState 'installRoot') -ne $InstallRoot -or
+        (Get-StateValue $existingState 'dataRoot') -ne $DataRoot) {
+        throw 'The installation record belongs to different install/data directories; pass the recorded directories explicitly.'
+    }
     $recordedInstallationId = Get-StateValue $existingState 'installationId'
     if ($ExpectedInstallationId) {
         if (-not $recordedInstallationId) { throw 'The host has no managed installation id to compare against.' }

@@ -12,6 +12,7 @@ param(
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'RelaxKonOSPersonalRuntime.ps1')
 . (Join-Path $PSScriptRoot 'RelaxKonOSPersonalPrivileges.ps1')
+. (Join-Path $PSScriptRoot 'RelaxKonOSModuleHostRuntime.ps1')
 $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
 if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Personal installation must run without elevation.' }
 $build = [int](Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').CurrentBuildNumber
@@ -76,7 +77,7 @@ if ($CertificateMode -ne 'none') {
     } elseif ([IO.Path]::GetFullPath($CertificatePath) -ne [IO.Path]::GetFullPath($pfx)) { Copy-Item -LiteralPath $CertificatePath -Destination $pfx -Force }
     $config.Kestrel = @{ Certificates = @{ Default = @{ Path = $pfx; Password = $CertificatePassword } } }
 }
-[IO.File]::WriteAllText($configPath, ($config | ConvertTo-Json -Depth 8), [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText($configPath, (ConvertTo-RelaxKonOSModuleHostConfigurationJson $config $settings), [Text.UTF8Encoding]::new($false))
 Stop-PersonalServer $InstallRoot $DataRoot
 $startup = Join-Path $InstallRoot 'Start-PersonalServer.ps1'
 $body = ". '" + (Join-Path $InstallRoot 'deployment\windows\RelaxKonOSPersonalRuntime.ps1').Replace("'", "''") + "'`nStart-PersonalServer '" + $InstallRoot.Replace("'", "''") + "' '" + $DataRoot.Replace("'", "''") + "'"

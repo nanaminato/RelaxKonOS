@@ -53,6 +53,18 @@
     "server_modules.privilege_administrator": "Administrator account (if required)",
     "server_modules.privilege_password": "Administrator password (if required)",
     "server_modules.privilege_approve": "Confirm and execute this plan",
-    "server_modules.privilege_cancel": "Refuse this plan"
+    "server_modules.privilege_cancel": "Refuse this plan",
+    "server_modules.consent_title": "Standing background permissions",
+    "server_modules.consent_summary": "Select a module and review one declared service action and target. Until expiry, that module can run this action without another prompt. Updates or trust/policy changes invalidate the permission. Host administrators only.",
+    "server_modules.consent_target": "Exact service target declared by the module",
+    "server_modules.consent_reason": "Reason for allowing background work",
+    "server_modules.consent_hours": "Permission lifetime (hours, up to 720)",
+    "server_modules.consent_prepare": "Review background permission",
+    "server_modules.consent_approve": "Confirm this background permission",
+    "server_modules.consent_refresh": "Refresh permissions",
+    "server_modules.consent_revoke": "Revoke / refuse selected permission",
+    "server_modules.consent_kind.service-start": "Start service",
+    "server_modules.consent_kind.service-stop": "Stop service",
+    "server_modules.consent_kind.service-restart": "Restart service"
   }
 }

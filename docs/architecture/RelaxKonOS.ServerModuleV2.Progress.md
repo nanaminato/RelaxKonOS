@@ -6,15 +6,17 @@
 | --- | --- | --- |
 | MD-01 唯一 v2 契约 | 已实现并回归 | manifest / installed / package-plans 使用 schemaVersion=2，拒绝 v1；打包器、CLI、SDK、Server 与桌面同步 |
 | MD-05 Linux 身份与权限 | 已实现；独立运行时实机验证 | 每模块稳定专用 UID/GID，无附加组、no_new_privs；root 拥有只读版本快照，模块拥有私有数据；root 监督器控制超时/断管清理 |
-| MD-05 Windows 身份与 ACL | 已实现；原生隔离验收通过 | LocalSystem Helper、两个真实专用账户/S4U、只读快照/私有数据 ACL、认证管道、跨模块拒绝和 Job 后代清理共 14 项实测通过；完整安装/更新仍待验收 |
+| MD-05 Windows 身份与 ACL | 已实现；原生隔离及 System 整包验收通过 | LocalSystem Helper、独立账户/S4U、只读快照/私有数据 ACL、认证管道、跨模块拒绝和 Job 后代清理有实测；正式更新保留同一模块 SID |
 | MD-06 安装与代码信任 | 已实现并回归 | 冻结计划展示 runtime/privileges；精确信任绑定版本/发布者/归档与清单摘要；更新不继承，撤销立即阻断代理/Broker |
 | MD-07 / PB-01/02 Broker 核心 | 已实现并定向回归 | 服务启动/停止/重启；持久计划、确认、幂等、重放/过期/漂移拒绝、并发单执行、响应丢失进入 RecoveryRequired |
-| PB-03 Core/SDK/桌面 | 已接线并编译 | SDK 仅在 Server 代理签发的当前请求上下文中 prepare；Core 用户 API 查看/批准/拒绝；桌面输入 planId 审查和提交，不将密码发给模块 |
-| PB-05 审计 / 实机闭环 | 部分收口 | 两平台正常 HTTP 闭环和完整批准审计、Linux Helper 停止/响应丢失已实测；执行中断与发行安装仍待验收 |
-| PB-06 常设许可/后台提权 | 未实现 | 无当前请求 context 一律拒绝 prepare；没有自动执行或后台队列 |
-| 完整发布安装与更新 | 运行时安装路径已实测，整包升级待验收 | Linux provisioner 与 Windows 生产 ModuleHost 安装函数已实测；整包服务安装/更新仍不能由独立验收实例推定完成 |
+| PB-03 Core/SDK/桌面 | 已接线、编译及定向验证 | 前台 prepare 绑定业务请求；后台执行须有显式常设许可；桌面审查单次计划、授予/撤销后台许可，不将密码发给模块 |
+| PB-05 审计 / 实机闭环 | 两平台主要故障闭环已实测 | 两平台正常HTTP/批准审计/Core与Helper执行中终止均有实测；Linux及Windows System正式发行安装、跨版本更新通过 |
+| PB-06 常设许可/后台提权 | 固定服务动作已实现并两平台实测 | 管理员显式确认，绑定模块精确身份/单一动作/目标/期限；后台到期/撤销拒绝，重启与重试不重放；其余动作仍未开放 |
+| 完整发布安装与更新 | Linux及Windows System整包安装、跨版本更新已实测 | 正式包/Bootstrap/三服务/原生登录/v2模块安装代理与跨版本保留已贯通；Windows Personal整包不在本轮通过范围 |
 
 ## 本地验证
+
+正式升级审查发现 Linux Bootstrap 未携带版本目录中的 `appsettings.host.json`，会丢失宿主模块管理员与发布源配置。现已在升级和回滚切换前复制当前配置，并保留原文件所有者与权限；源或目标为符号链接时拒绝操作。`Tests/Deployment/host_config_upgrade_checks.py` 实际执行生产 Bash 函数，配置往返、缺省配置和两端链接拒绝共 3 项通过。这是本地回归证据，尚不构成正式包跨版本升级验收。
 
 构建命令：
 
@@ -23,7 +25,7 @@ dotnet build Tests/ServerModules/RelaxKonOS.ServerModules.Tests.csproj -p:NuGetA
 dotnet Tests/ServerModules/bin/Debug/net10.0/RelaxKonOS.ServerModules.Tests.dll
 ```
 
-完整 ServerModules 回归 **566 项 PASS**，包括包 HTTP 上传/计划/apply、签名/撤销/路径攻击、安装/更新/回退/启动核实、第三方不进 Core、精确信任、Broker 门控及独立进程路由。此前一次 HTTP apply 503 未在本轮完整回归中再现；本记录不将其隐去或作为已定位根因。
+完整 ServerModules 回归 **601 项 PASS**，包括包 HTTP 上传/计划/apply、签名/撤销/路径攻击、安装/更新/回退/启动核实、第三方不进 Core、精确信任、Broker 门控及独立进程路由。此前一次 HTTP apply 503 未在本轮完整回归中再现；本记录不将其隐去或作为已定位根因。
 
 可单独运行 `--module-host-checks`、`--module-package-checks`、`--module-privilege-checks`。Windows 沙箱不允许所需 loopback/临时文件原子替换，以上实际检查在获准的沙箱外执行。现有编译警告尚在；没有将“零错误”表述为“零警告”。
 
@@ -206,8 +208,84 @@ Windows 正常 Core HTTP 授权闭环至此已有证据；owner-device/SessionVa
 
 脚本完整退出并确认恢复私有 Helper 路由、撤销模块信任、停止代理及删除固定服务的测试覆盖。Windows 对应崩溃与完整发行安装/更新仍待验收。
 
+### Windows Core 崩溃夹具与当前审批限制（2026-11-01）
+
+Windows 原生夹具已增加真实 SCM StopPending 期间终止独立 Core 的路径：固定测试服务仅在调用者工作目录的标记存在时延迟停止 8 秒；确认持久计划为 Executing 后终止 Core，独立 LocalSystem Helper 继续完成动作。待验收断言包括恢复为 RecoveryRequired、不发新确认令牌、旧批准拒绝且 PID 不变、重新登录后的新确认可执行，以及保留原批准身份但不虚构 AttemptCompletedAt。另检查原计划在 SQLite 中恰有一条 Helper 接受记录，防止仅凭 PID 推测未派发重放。
+
+夹具构建和发布通过，但启动原生验收的提权命令被自动审批额度限制挡住，命令未执行；审批提示 13:25 后可重试。这是审批无法完成，不是安全判定拒绝；没有绕过审批，也没有把新崩溃路径计为通过。此前 50 项原生通过仍是此前版本夹具的证据。
+
+当前可执行的 `WindowsServicePayloadChecks.ps1` 本地 28 项通过，使用模拟 SCM/进程事实核实部署载荷身份，不修改真实服务，不能代替完整发行服务安装/更新。当前 System Helper 有固定生产服务身份约束，后续整包验收不能通过随意改名来冒充等价部署。
+
+### Windows Core 执行中崩溃复测通过（2026-11-01）
+
+审批提示的恢复时间过去后重新提交相同验收请求，实际运行完成 **61 项原生/HTTP 检查**，退出码 0。确认实际 SCM 服务处于 StopPending、计划已耐久写为 Executing 后终止独立 Core；原 HTTP 连接中断，LocalSystem Helper 独立完成服务重启且 PID 变化。新 Core 将计划恢复为 RecoveryRequired，不发新确认令牌；三次查询与旧确认拒绝均不改变 PID，数据库中该原计划的 Helper 接受记录恰为一条。
+
+恢复记录保留原批准用户、owner-device 身份和确认时间，AttemptCompletedAt 仍为 null，不伪造观察到的终态。真实重新登录后，新计划显式确认可执行一次新动作。测试停止延迟标记在 finally 删除，Core 进程按夹具清理，模块信任撤销。
+
+报告 `artifacts/modulehost-windows-native/42f7b031848c409c81740de3b66af994/`；独立核对 succeeded=true/checks=61、cleaned=true、临时管理员数量 0、无两类临时服务。前述审批限制已解除，Windows Core 崩溃验收不再列为未验证；Windows Helper 执行中终止及完整发行服务安装/更新仍有剩余。
+
+### Linux 正式发行包安装实测（2026-11-01）
+
+PowerShell 正式打包入口新增与 Bash 对等的 `-PackageKind all|client|server`，清理旧输出前校验最终绝对路径仍在选定输出目录内。本轮用 `-Version 0.2.2-v2-acceptance -Runtime linux-x64 -PackageKind server` 生成完整服务端包；文件清单验证通过，传输 SHA-256 为 `a0b4813a0fde8c0bed8d3c832ed171129c5034b8befc4f8930574bf34c9ed0b5`。发行包自身的 schemaVersion=1 与模块安装清单 schemaVersion=2 是不同契约。
+
+新增 `verify-linux-v2-release-install.py`，在 root 专用目录保存原配置、Helper 运行时及服务状态，使用新安装根 `/opt/relaxkonos-v2-release-install` 和新数据根 `/var/lib/relaxkonos-v2-release-install`。实际调用包内正式 Bootstrap System 安装入口，核对 Server/Helper/Guardian 三项活动进程的真实可执行路径和 ModuleHost 配置；随后真实 PAM 登录，接纳新生成的临时签名目录，经 HTTP 上传、计划、确认安装、受管启用及重启，生产 ModuleHost 代理 hello 成功。不是手工注册服务或仅运行独立探针。
+
+完整流程退出并恢复原三项服务及独立验收两项服务。root-only 证据 `/opt/relaxkonos-v2-release-evidence/6c2af4b065ed4325aa6b9bdc74dab73b`，包含 installed/restored 断言和未导出的安装日志。独立复核 installed=true、originalServices=true，七项受保护配置逐字节摘要与备份一致，原五项服务均 active。原配置曾为验收暂时切换，不能再表述为整轮始终未改写。
+
+新安装根和数据作为不活动证据保留，不是当前运行的默认服务实例。本轮新实例的测试代码信任未在停机前撤销；脚本已补上撤销及 403 检查供后续运行，该补充尚未重新执行。没有将初次安装或同版本重装记为跨版本更新，更新仍需单独验收。Windows 完整服务安装也仍待验收。
+
+### Windows Helper 执行中终止与 SCM 恢复（2026-11-01）
+
+测试项目的临时 LocalSystem 宿主新增固定标记触发的自身终止：仅当唯一测试目标处于实际 StopPending 才终止当前宿主进程，不接受 PID/命令/路径指令；注入逻辑不在生产 Helper 项目。临时服务配置 1 秒 SCM 恢复动作，清理前先禁用测试服务，避免删除过程中再次恢复。
+
+实际运行 **67 项原生/HTTP 检查通过**：Helper 在执行停止阶段终止后，Core 返回 RecoveryRequired；SCM 恢复出新的 Helper PID，目标最终保持 Stopped、没有新目标 PID，证明原 Restart 只部分执行而非已完整成功。重复查询及旧批准均不补做启动；显式重启 Core 恢复 ModuleHost、真实重新登录后，新计划确认才启动目标并返回成功。完整原生隔离、Core 崩溃、审计和安装函数检查继续通过。
+
+报告 `artifacts/modulehost-windows-native/5cd3ecf286b949b1a3fbce79b31d14bd/`；独立核对 succeeded=true/checks=67、cleaned=true、临时管理员 0、无两类测试服务。此项解除 Windows Helper 中断的验收缺口；完整 Windows 发行服务安装与跨版本更新仍待完成。
+
 ### Windows Helper 审计发起身份（2026-11-01）
 
 修正 Windows transport 的安全审计缺少 ActorReference：与 Linux 一致，优先使用后台 `PrivilegedAuditActorScope`，否则读取已认证 HTTP 用户 subject（支持标准 sub/NameIdentifier）。接受与完成事件保留同一 operationId；正式写入器仍对身份引用做摘要化，不在报告暴露原始用户标识。
 
 真实静默管道测试增加两个审计检查：显式后台身份优先于 HTTP 身份，起止事件操作 ID 一致；无后台作用域时回退至 HTTP subject。当前完整回归 **595 项 PASS**、退出码 0。此处使用捕获式 audit writer 检查事件内容，尚未将该修复重新发布到完整 Windows HTTP 夹具。该修复补齐发起者引用，不代表已补齐实际验证管理员身份、批准时间及待恢复状态的完整审计链。
+
+### Linux 正式跨版本更新及目录身份防护（2026-11-01）
+
+PowerShell/Bash 发行构建器现在将发行版本写入程序集 InformationalVersion，避免仅更换归档名和安装记录。正式包 `0.2.4-v2-acceptance` SHA-256 为 `4ce02d5e621657d2b075a707841d485f8017946b8a11d8e4698328c85dc17116`。真实验收从正式 `0.2.2-v2-acceptance` 包安装，经 PAM 登录、签名 v2 模块安装与启用，再调用新包内 Bootstrap upgrade。核对新旧 Server DLL 摘要不同、Server/Guardian 实际进程路径切换、宿主配置逐字节保留、已安装包清单不变、隔离模块自动恢复和代理 hello 成功；随后撤销测试代码信任并验证代理 403。
+
+成功验收使用 `/opt/relaxkonos-v2-release-upgrade-2` 和 `/var/lib/relaxkonos-v2-release-upgrade-2`。root-only 证据 `/opt/relaxkonos-v2-release-evidence/6feea430c43948f89520a0889b627897`，独立复核 upgraded=true、distinctServerBinary=true、hostPolicyPreserved=true、actualServicePayloads=true、restored=true；本次原安装记录与快照逐字节一致，五项原服务 active。该结论只覆盖 Linux；Windows 正式整包安装与更新仍待执行。
+
+首次升级验收脚本漏传 `--data-root`，导致读取原实例记录，并将原记录安装根写成测试根。该次失败现场保留于 `/opt/relaxkonos-v2-release-evidence/e8af2726a26c4e088ca4836cdd43a969`。原服务/配置已恢复，安装记录依据实际运行 `/opt/relaxkonos/versions/0.2.2/server/RelaxKonOS.Server` 修复；无法确认的原 previousVersion 置 null，不臆造回滚历史，修复时间和原因另有 root-only 记录。因此不能声称该次原安装记录逐字节恢复。
+
+修复后的脚本显式传递安装根和数据根，备份/恢复范围补入原安装记录。Linux 与 Windows Bootstrap 对非首次安装操作均核对记录中的 installRoot/dataRoot，拒绝把另一安装的数据根用于当前安装根。生产函数/AST 回归分别 4 项、3 项通过；发行清单 9 项、相邻证书策略 4 项通过。测试不将失败尝试计为升级成功。
+
+### Windows 模块宿主配置保留修复（2026-11-01）
+
+审查发现仅在 Bootstrap 复制 `appsettings.host.json` 不足以保留策略：System/Personal 安装器随后重新生成配置，遗漏模块管理员、发布源与 Broker 白名单。两个入口现在共用 `ConvertTo-RelaxKonOSModuleHostConfigurationJson`，保留 ModuleManagement/ModulePackages/ModulePrivileges/ModuleHosts/ModuleHealth/ModuleResidency/Modules，并以深度 32 序列化完整策略；程序路径、传输秘密等由安装器重新生成，不从旧配置覆盖。System 遇到无法读取的既有宿主配置时拒绝替换，不再吞掉错误并丢失策略。
+
+`ModuleHostConfigurationChecks.ps1` 三项、既有运行时快照四项与 Windows 服务载荷二十八项本地回归通过。新增 `Verify-WindowsReleaseInstallation.ps1` 使用正式两个包、三项固定生产服务身份及真实 SCM，拒绝接管已有服务，临时管理员密码仅在内存中，最后按 SID 清理管理员和模块账户，恢复既有 Proxy ACL。当前实际验收已走过正式 System 安装、健康及原生管理员登录；签名包夹具类型引用已修复，正在继续完整安装/更新链，尚未将整条链记为通过。夹具通过 Windows PowerShell 5.1 调用正式包内安装器。
+
+### Windows 正式 System 整包与跨版本验收通过（2026-11-01）
+
+正式包 `0.2.4-v2-windows-acceptance`（SHA-256 `2c26d6a8b59423cb3bdde6e5e8c1032a7ca98ca9a5e6c9e1d103c0551d66da67`）安装后，调用 `0.2.5-v2-windows-acceptance`（SHA-256 `e151bb823aed6f73db3c3034329875263895a20c202bf3b247e636bfff233f2e`）包内正式 Bootstrap 升级。两包清单验证通过。实际走通三项固定生产 SCM 服务、健康及载荷身份核验、临时管理员原生登录、临时签名目录接纳、HTTP v2 上传/计划/安装、受管启用及生产独立账户代理；升级后 Server DLL 摘要不同，发布源/管理员/Broker 服务白名单、已安装包和精确信任保留，代理继续成功。
+
+最终复测额外核对同一模块账户 SID 跨版本稳定；通过 HTTP 撤销代码信任后代理返回 403。报告 `artifacts/windows-release-install/e348d7cae53c453bae5e894d62bc49d1/result.json` succeeded=true、cleaned=true；受保护原始证据位于 `C:\Program Files\RelaxKonOS-Release-Acceptance\e348d7cae53c453bae5e894d62bc49d1`。清理前禁用并删除三项测试服务，使用生产身份记录核对后清理模块账户，按原 SID 删除临时管理员，既有 Proxy 根 ACL 的 SDDL 与测试前精确一致。
+
+独立提升权限的 NetUserGetInfo 复核返回管理员及模块账户均为 NERR_UserNotFound（2221），三项服务数量 0，见同目录 `independent-cleanup-audit.json`。普通会话 NetAPI 返回 AccessDenied（5），未将其冒充账户不存在。此轮为 Windows System Mode 完整实测；Personal Mode 只覆盖本地配置保留修复，不能据此声称 Personal 整包验收完成。
+
+Broker 当前仍只开放 service-start/stop/restart。设计中包/文件动作和 PB-06 常设许可/后台任务仍为后续项，未因两平台生产服务验收通过而改写为已实现。
+
+### PB-06 固定服务后台许可与两平台实测（2026-11-01）
+
+新增 `ModulePrivilegeConsentStore`，使用独立 `privilege-consents.json` schemaVersion=1（不是模块清单格式）。许可绑定模块版本/发布者/归档与清单摘要、源/信任/管理修订、单一服务动作和目标、授予用户、有效期及幂等键。确认计划五分钟失效；许可期限最长三十天。只有当前 `ServerModulesManage` 主机管理员能创建、审查或批准；批准仍须实际管理员验证或已验证身份，并提交一次性确认令牌。其他主机管理员可撤销已有许可或拒绝待确认许可。记录保留实际管理员身份/验证方式、确认和撤销证据，不保存管理员密码或原始确认令牌。
+
+公共 Core API：POST/GET `/api/v1.0/server/module-privileges/consents`，GET 同路径 `/{id}` 仅向原会话签发审查令牌，POST `/{id}/approve` 与 `/{id}/revoke`。列表不返回确认令牌。SDK 新增 `ExecuteBackgroundAsync(consentId, request, cancellationToken)`，走私有 `/background`；模块身份只从当前进程服务令牌得到，不接受用户/JWT/密码自报身份，也不依赖已经结束的业务请求 context。无许可、目标越界、到期、撤销或模块/信任漂移均在派发前拒绝，不排队。
+
+每次后台操作仍进入原 `ModulePrivilegePlanStore`，以 `consent:<许可ID的N格式>` 会话关联原许可，记录授予用户和 `standing-consent:<原验证方式>`；原许可记录保存实际确认时间。原 operationId 直接关联真实 Helper 审计。相同幂等键返回原结果；Core 重启和响应丢失不自动重放未知结果。许可撤销与派发串行化：已经授权的在途动作不冒充已取消，撤销返回后不再接收后续动作。后台许可不替代前台 `PrepareAsync` 的逐次确认流程。
+
+本地：完整 ServerModules 回归 **623 项 PASS**；其后新增的未知后台结果不重放、过期后的创建幂等回执有定向检查。桌面组件中心接入三语言的审查、显式授予、许可列表与撤销，显示精确模块/版本/发布者/摘要、操作/目标及期限。客户端拒绝审查范围替换、列表泄露令牌和登录切换后的旧客户端提交；`--modules-only` 通过。已检查 Headless 图 `server-module-consents.png`，按实际工作区的禁用横向滚动设置核验换行及控件；不将 Headless 渲染冒充真实桌面交互验收。
+
+Windows 最新报告 `artifacts/modulehost-windows-native/0c48588c2c3446feaa4df2872bf27bdd/`：succeeded=true，**74 项**原生/HTTP检查通过，cleaned=true。新增实测包括：无许可后台任务不派发、真实错误管理员密码拒绝、业务请求结束后的实际后台 SCM 动作、Core 重启后同一任务不重放、后台 Helper 审计有原授予者归属、撤销及实际十二秒到期后任务拒绝；原有隔离、Core/Helper 执行中崩溃和审计检查继续通过。
+
+Linux 脚本 `verify-linux-v2-standing-consent.py` 更新独立 `/opt/relaxkonos-v2-test`，使用新签名源与新模块版本，不接管原三项服务。运行时归档 SHA-256 `d4af306ac3f8e3508a1430a66fcb10f0bcb8d3d6f47925b3374242c5d880df84`。实测 PAM 确认、真实后台 Helper 派发、Core 重启幂等、撤销及实际十二秒到期后拒绝；最后两项许可和测试代码信任均撤销，SessionValid 恢复。root-only 证据 `/opt/relaxkonos-v2-standing-evidence/c98eb71d3d8040d9b5c814ba6ad36494` 的独立审计核对确认两项许可、一次后台派发、真实 PAM 身份及 Helper 操作者记录；通用 Linux 审计脚本也已复核通过。
+
+许可当前仅覆盖 service-start/stop/restart，采用明确到期日并在模块更新后失效；不表示已经实现任意包、文件、网络、任意进程操作，也不表示已有系统后台任务调度器。模块自己调度任务，Core 只验证并执行获准的封闭动作。

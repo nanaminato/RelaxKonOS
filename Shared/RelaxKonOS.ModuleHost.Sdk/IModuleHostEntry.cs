@@ -53,4 +53,6 @@ public interface IModulePrivilegeBroker
     ValueTask<RelaxKonOS.ModuleHost.Protocol.ModulePrivilegePrepared> PrepareAsync(
         RelaxKonOS.ModuleHost.Protocol.ModulePrivilegeRequest request, CancellationToken cancellationToken);
     ValueTask<RelaxKonOS.ModuleHost.Protocol.ModulePrivilegeStatus> GetAsync(Guid planId, CancellationToken cancellationToken);
+    ValueTask<RelaxKonOS.ModuleHost.Protocol.ModulePrivilegeStatus> ExecuteBackgroundAsync(
+        Guid consentId, RelaxKonOS.ModuleHost.Protocol.ModulePrivilegeRequest request, CancellationToken cancellationToken);
 }

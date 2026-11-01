@@ -7,7 +7,9 @@ param(
     [ValidateSet('Release', 'Debug')]
     [string] $Configuration = 'Release',
     [string] $DownloadBaseUri = 'https://downloads.relaxkon.com/relaxkonos/stable',
-    [string] $OutputDirectory = 'artifacts'
+    [string] $OutputDirectory = 'artifacts',
+    [ValidateSet('all', 'client', 'server')]
+    [string] $PackageKind = 'all'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -25,6 +27,8 @@ function New-PackageDirectory([string] $PackageKind) {
     $directory = Join-Path $OutputDirectory $name
     $archive = Join-Path $OutputDirectory ($name + '.zip')
     foreach ($path in @($directory, $archive, ($archive + '.sha256'), ($archive + '.json'), ($archive + '.json.sig'))) {
+        if (-not [IO.Path]::GetFullPath($path).StartsWith($OutputDirectory.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar,
+            [StringComparison]::OrdinalIgnoreCase)) { throw 'Release output escaped its selected directory.' }
         if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
     }
     New-Item -ItemType Directory -Path $directory -Force | Out-Null
@@ -32,7 +36,7 @@ function New-PackageDirectory([string] $PackageKind) {
 }
 
 function Publish-Component([string] $Project, [string] $Destination, [string] $Executable) {
-    & dotnet publish (Join-Path $projectRoot $Project) --configuration $Configuration --runtime $Runtime --self-contained true --output $Destination
+    & dotnet publish (Join-Path $projectRoot $Project) --configuration $Configuration --runtime $Runtime --self-contained true --output $Destination "-p:InformationalVersion=$Version"
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $Project." }
     if (-not (Test-Path -LiteralPath (Join-Path $Destination $Executable) -PathType Leaf)) { throw "Publish output did not contain $Executable." }
 }
@@ -148,11 +152,14 @@ function Complete-Package($Package, [hashtable] $Payload) {
 # Export launchers for manual SSH use. Desktop embeds them and Android packages them as assets.
 Publish-DeploymentTools
 
+if ($PackageKind -in @('all', 'client')) {
 $clientPackage = New-PackageDirectory 'client'
 $clientDestination = Join-Path $clientPackage.Directory "payload\$platform\client"
 Publish-Component 'Client\RelaxKonOS.Client.Desktop\RelaxKonOS.Client.Desktop.csproj' $clientDestination "RelaxKonOS$extension"
 Complete-Package $clientPackage @{ client = "payload/$platform/client/RelaxKonOS$extension" }
+}
 
+if ($PackageKind -in @('all', 'server')) {
 $serverPackage = New-PackageDirectory 'server'
 $serverPayload = @{}
 foreach ($target in @(
@@ -178,3 +185,4 @@ if ($platform -eq 'linux') {
     Convert-LinuxShellScriptsToLf $serverPackage.Directory
 }
 Complete-Package $serverPackage $serverPayload
+}

@@ -29,6 +29,48 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         SendAsync<ModulePrivilegeStatus>(HttpMethod.Post, ServerModulePrivilegeRoutes.Plans + "/" + id + "/approve", approval);
     public Task<ModulePrivilegeStatus> CancelPrivilegeAsync(Guid id) =>
         SendAsync<ModulePrivilegeStatus>(HttpMethod.Post, ServerModulePrivilegeRoutes.Plans + "/" + id + "/cancel");
+    public async Task<ModulePrivilegeConsent> PrepareConsentAsync(ModulePrivilegeConsentRequest request)
+    {
+        var consent = await SendAsync<ModulePrivilegeConsent>(HttpMethod.Post, ServerModulePrivilegeRoutes.Consents, request);
+        ValidateConsent(consent, false);
+        Require(consent.ModuleId == request.ModuleId && consent.Kind == request.Kind && consent.Target == request.Target
+            && consent.Reason == request.Reason && consent.ExpiresAt == request.ExpiresAt);
+        return consent;
+    }
+    public async Task<ModulePrivilegeConsent> ReadConsentAsync(Guid id)
+    {
+        var consent = await SendAsync<ModulePrivilegeConsent>(HttpMethod.Get, ServerModulePrivilegeRoutes.Consents + "/" + id);
+        ValidateConsent(consent, true); Require(consent.ConsentId == id); return consent;
+    }
+    public async Task<ModulePrivilegeConsent[]> ReadConsentsAsync()
+    {
+        var consents = await SendAsync<ModulePrivilegeConsent[]>(HttpMethod.Get, ServerModulePrivilegeRoutes.Consents);
+        Require(consents is { Length: <= 1000 } && consents.All(c => c is not null) && consents.Select(c => c.ConsentId).Distinct().Count() == consents.Length);
+        foreach (var consent in consents) ValidateConsent(consent, false);
+        return consents;
+    }
+    public async Task<ModulePrivilegeConsent> ApproveConsentAsync(Guid id, ModulePrivilegeApproval approval)
+    {
+        var consent = await SendAsync<ModulePrivilegeConsent>(HttpMethod.Post, ServerModulePrivilegeRoutes.Consents + "/" + id + "/approve", approval);
+        ValidateConsent(consent, false); Require(consent.ConsentId == id && consent.State == "Active"); return consent;
+    }
+    public async Task<ModulePrivilegeConsent> RevokeConsentAsync(Guid id)
+    {
+        var consent = await SendAsync<ModulePrivilegeConsent>(HttpMethod.Post, ServerModulePrivilegeRoutes.Consents + "/" + id + "/revoke");
+        ValidateConsent(consent, false); Require(consent.ConsentId == id && consent.State is "Revoked" or "Cancelled"); return consent;
+    }
+    private static void ValidateConsent(ModulePrivilegeConsent consent, bool review)
+    {
+        Require(consent is not null && consent.ConsentId != Guid.Empty && ValidIds([consent.ModuleId])
+            && consent.Version is { Length: > 0 and <= 32 } && consent.PublisherId is { Length: > 0 and <= 128 }
+            && ValidDigest(consent.ArtifactSha256) && ValidDigest(consent.PlanHash)
+            && consent.Kind is "service-start" or "service-stop" or "service-restart"
+            && consent.Target is { Length: > 0 and <= 256 } && consent.Reason is { Length: > 0 and <= 512 }
+            && consent.GrantedBy is { Length: > 0 and <= 512 } && consent.CreatedAt != default
+            && consent.ExpiresAt > consent.CreatedAt && consent.ExpiresAt <= consent.CreatedAt.AddDays(30)
+            && consent.State is "AwaitingConfirmation" or "Active" or "Revoked" or "Cancelled" or "Expired"
+            && (review && consent.State == "AwaitingConfirmation" ? ValidDigest(consent.ConfirmationToken) : consent.ConfirmationToken == ""));
+    }
 
     public async Task<IReadOnlyList<ServerModuleDto>> ReadAsync()
     {

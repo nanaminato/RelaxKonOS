@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:vm="using:RelaxKonOS.Client.Apps.ComponentCenter" xmlns:p="using:RelaxKonOS.Protocol.Common"
  xmlns:loc="using:RelaxKonOS.Client.Localization" x:Class="RelaxKonOS.Client.Apps.ComponentCenter.ServerModulesView"
+ xmlns:mp="using:RelaxKonOS.ModuleHost.Protocol"
  x:DataType="vm:ServerModulesViewModel">
  <StackPanel Spacing="12">
   <TextBlock Text="{loc:Loc server_modules.title}" FontSize="20" FontWeight="SemiBold" />
@@ -30,6 +31,27 @@
    <Button Content="{loc:Loc server_modules.privilege_approve}" Command="{Binding ApprovePrivilegeCommand}" IsEnabled="{Binding !Busy}" />
    <Button Content="{loc:Loc server_modules.privilege_cancel}" Command="{Binding CancelPrivilegeCommand}" IsEnabled="{Binding !Busy}" />
   </WrapPanel>
+  <TextBlock Text="{loc:Loc server_modules.consent_title}" FontWeight="SemiBold" />
+  <TextBlock Text="{loc:Loc server_modules.consent_summary}" TextWrapping="Wrap" />
+  <ComboBox ItemsSource="{Binding ConsentKinds}" SelectedItem="{Binding ConsentKind}">
+   <ComboBox.ItemTemplate><DataTemplate x:DataType="vm:ServerModuleConsentKindChoice"><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate>
+  </ComboBox>
+  <TextBox Text="{Binding ConsentTarget}" PlaceholderText="{loc:Loc server_modules.consent_target}" />
+  <TextBox Text="{Binding ConsentReason}" PlaceholderText="{loc:Loc server_modules.consent_reason}" />
+  <TextBlock Text="{loc:Loc server_modules.consent_hours}" />
+  <NumericUpDown Value="{Binding ConsentHours}" Minimum="0.01" Maximum="720" Increment="1" />
+  <Button Content="{loc:Loc server_modules.consent_prepare}" Command="{Binding PrepareConsentCommand}" IsEnabled="{Binding !Busy}" />
+  <TextBlock Text="{Binding ConsentText}" TextWrapping="Wrap" />
+  <WrapPanel ItemSpacing="8" LineSpacing="8">
+   <Button Content="{loc:Loc server_modules.consent_approve}" Command="{Binding ApproveConsentCommand}" IsEnabled="{Binding !Busy}" />
+   <Button Content="{loc:Loc server_modules.consent_refresh}" Command="{Binding RefreshConsentsCommand}" IsEnabled="{Binding !Busy}" />
+   <Button Content="{loc:Loc server_modules.consent_revoke}" Command="{Binding RevokeConsentCommand}" IsEnabled="{Binding !Busy}" />
+  </WrapPanel>
+  <ListBox ItemsSource="{Binding Consents}" SelectedItem="{Binding SelectedConsent}" MaxHeight="180">
+   <ListBox.ItemTemplate><DataTemplate x:DataType="mp:ModulePrivilegeConsent"><StackPanel>
+    <TextBlock Text="{Binding ModuleId}" /><TextBlock Text="{Binding Target}" /><TextBlock Text="{Binding State}" />
+   </StackPanel></DataTemplate></ListBox.ItemTemplate>
+  </ListBox>
   <TextBlock Text="{loc:Loc server_modules.store}" FontWeight="SemiBold" />
   <TextBlock Text="{Binding StoreSourceText}" TextWrapping="Wrap" Opacity="0.7" />
   <WrapPanel ItemSpacing="8" LineSpacing="8">

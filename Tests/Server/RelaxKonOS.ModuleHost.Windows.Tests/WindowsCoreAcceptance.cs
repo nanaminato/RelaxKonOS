@@ -221,6 +221,79 @@ internal static class WindowsCoreAcceptance
             check(await File.ReadAllTextAsync(pidPath) == beforeUnremembered, "reenabling SessionValid never resurrects administrator authority cleared by a policy change");
             await Api(HttpMethod.Post, reenabled.Path + "/cancel");
             await SetSessionValid(false);
+            const string consentsRoot = "/api/v1.0/server/module-privileges/consents";
+            async Task<JsonNode> Schedule(Guid consentId, string key)
+            {
+                var scheduled = await Api(HttpMethod.Post, "/api/v1.0/server/module-hosts/fixture-broker/schedule-background", new
+                {
+                    consentId, operation = new { kind = "service-restart", target = native.ActionServiceName, reason = "Native standing consent acceptance", idempotencyKey = key },
+                });
+                for (var attempt = 0; attempt < 100; attempt++)
+                {
+                    var status = await Api(HttpMethod.Get, "/api/v1.0/server/module-hosts/fixture-broker/background-results/" + scheduled["jobId"]!.GetValue<string>());
+                    if (status["state"]!.GetValue<string>() != "Scheduled") return status;
+                    await Task.Delay(500);
+                }
+                throw new TimeoutException("Background consent fixture did not finish.");
+            }
+            var beforeStanding = await File.ReadAllTextAsync(pidPath);
+            var noConsent = await Schedule(Guid.NewGuid(), Guid.NewGuid().ToString("N"));
+            check(noConsent["state"]!.GetValue<string>() == "Rejected" && await File.ReadAllTextAsync(pidPath) == beforeStanding,
+                "real Windows background SDK work without a standing consent never dispatches a service action");
+            var pendingConsent = await Api(HttpMethod.Post, consentsRoot, new
+            {
+                moduleId = "fixture-broker", kind = "service-restart", target = native.ActionServiceName,
+                reason = "Approve scheduled fixture maintenance", expiresAt = DateTimeOffset.UtcNow.AddMinutes(10), idempotencyKey = Guid.NewGuid().ToString("N"),
+            });
+            var standingPath = consentsRoot + "/" + pendingConsent["consentId"]!.GetValue<string>();
+            var standingPlan = await Api(HttpMethod.Get, standingPath);
+            await Api(HttpMethod.Post, standingPath + "/approve", Consent(standingPlan, "incorrect-standing-consent-password"), HttpStatusCode.Forbidden);
+            check(await File.ReadAllTextAsync(pidPath) == beforeStanding, "standing consent rejects a real incorrect administrator password without dispatch");
+            await Api(HttpMethod.Post, standingPath + "/approve", Consent(standingPlan, password));
+            var standingId = Guid.Parse(pendingConsent["consentId"]!.GetValue<string>());
+            var standingKey = Guid.NewGuid().ToString("N");
+            var backgroundResult = await Schedule(standingId, standingKey);
+            check(backgroundResult["state"]!.GetValue<string>() == "Succeeded" && await File.ReadAllTextAsync(pidPath) != beforeStanding,
+                "a real scheduled Windows module task uses explicitly approved fixed-target consent after the business request ends");
+            var afterStanding = await File.ReadAllTextAsync(pidPath);
+            await Stop(); await Start(); await Login();
+            for (var attempt = 0; attempt < 40; attempt++)
+            {
+                var hosts = (await Api(HttpMethod.Get, "/api/v1.0/server/module-hosts"))["hosts"]!.AsArray();
+                if (hosts.Any(host => host!["moduleId"]!.GetValue<string>() == "fixture-broker" && host["status"]!.GetValue<string>() == "running")) break;
+                if (attempt == 39) throw new TimeoutException("Core ModuleHost did not resume for standing consent recovery.");
+                await Task.Delay(500);
+            }
+            var repeatedBackground = await Schedule(standingId, standingKey);
+            check(repeatedBackground["planId"]!.GetValue<string>() == backgroundResult["planId"]!.GetValue<string>()
+                && await File.ReadAllTextAsync(pidPath) == afterStanding, "Core restart and repeated real background work return the original operation without another SCM restart");
+            await using (var standingAudit = new SqliteConnection("Data Source=" + Path.Combine(root, "data", "audit.db") + ";Mode=ReadOnly"))
+            {
+                await standingAudit.OpenAsync(); await using var query = standingAudit.CreateCommand();
+                query.CommandText = "SELECT COUNT(*) FROM security_audit_entries WHERE operation_id=$operation AND actor_reference IS NOT NULL AND actor_reference<>''";
+                query.Parameters.AddWithValue("$operation", backgroundResult["planId"]!.GetValue<string>());
+                check(Convert.ToInt64(await query.ExecuteScalarAsync()) >= 2,
+                    "real background Helper audit retains the original granting actor despite having no active user request");
+            }
+            await Api(HttpMethod.Post, standingPath + "/revoke");
+            var revokedBackground = await Schedule(standingId, Guid.NewGuid().ToString("N"));
+            check(revokedBackground["state"]!.GetValue<string>() == "Rejected" && await File.ReadAllTextAsync(pidPath) == afterStanding,
+                "revoking real standing consent immediately blocks later Windows background work");
+            var deadline = DateTimeOffset.UtcNow.AddSeconds(12);
+            var expiryPending = await Api(HttpMethod.Post, consentsRoot, new
+            {
+                moduleId = "fixture-broker", kind = "service-restart", target = native.ActionServiceName,
+                reason = "Actual standing consent deadline acceptance", expiresAt = deadline, idempotencyKey = Guid.NewGuid().ToString("N"),
+            });
+            var expiryPath = consentsRoot + "/" + expiryPending["consentId"]!.GetValue<string>();
+            var expiryPlan = await Api(HttpMethod.Get, expiryPath);
+            await Api(HttpMethod.Post, expiryPath + "/approve", Consent(expiryPlan, password));
+            var remaining = deadline - DateTimeOffset.UtcNow + TimeSpan.FromMilliseconds(100);
+            if (remaining > TimeSpan.Zero) await Task.Delay(remaining);
+            var expiredBackground = await Schedule(Guid.Parse(expiryPending["consentId"]!.GetValue<string>()), Guid.NewGuid().ToString("N"));
+            check(expiredBackground["state"]!.GetValue<string>() == "Rejected" && await File.ReadAllTextAsync(pidPath) == afterStanding,
+                "the real Windows standing consent deadline rejects later work without another SCM action");
+            await Api(HttpMethod.Post, expiryPath + "/revoke");
             using var ownerKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
             const string ownerRoot = "/api/v1.0/auth/owner-devices";
             var enrollment = await Api(HttpMethod.Post, ownerRoot + "/bootstrap", new
@@ -329,6 +402,22 @@ internal static class WindowsCoreAcceptance
                 check(replay.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.Conflict,
                     "the old Windows approval is rejected after a real Core crash");
             check(await File.ReadAllTextAsync(pidPath) == afterCrash, "rejected Windows crash-recovery consent leaves the native PID unchanged");
+            var recoveredDocument = JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(root, "data", "module-management", "privilege-plans.json")))!;
+            var recoveredAudit = recoveredDocument["plans"]!.AsArray().Single(item => item!["id"]!.GetValue<string>() == interrupted.Plan["planId"]!.GetValue<string>())!["audit"]!;
+            check(recoveredAudit["initiatingUser"]!.GetValue<string>() == userId
+                && recoveredAudit["approvingUser"]!.GetValue<string>() == userId
+                && recoveredAudit["administrator"]!["identity"]!.GetValue<string>() == "owner-device:" + ownerDevice
+                && recoveredAudit["confirmedAt"] is not null && recoveredAudit["attemptCompletedAt"] is null,
+                "Windows crash recovery preserves the actual approver evidence without inventing an observed completion timestamp");
+            await using (var crashAudit = new SqliteConnection("Data Source=" + Path.Combine(root, "data", "audit.db") + ";Mode=ReadOnly"))
+            {
+                await crashAudit.OpenAsync();
+                await using var query = crashAudit.CreateCommand();
+                query.CommandText = "SELECT COUNT(*) FROM security_audit_entries WHERE operation_id=$operation AND event_id=1300";
+                query.Parameters.AddWithValue("$operation", interrupted.Plan["planId"]!.GetValue<string>());
+                check(Convert.ToInt64(await query.ExecuteScalarAsync()) == 1,
+                    "the recovered Windows operation has exactly one durable Helper acceptance after queries and rejected replay");
+            }
             await Login();
             for (var attempt = 0; attempt < 40; attempt++)
             {
@@ -341,6 +430,57 @@ internal static class WindowsCoreAcceptance
             var recoveredResult = await Api(HttpMethod.Post, afterRecovery.Path + "/approve", Consent(afterRecovery.Plan, password));
             check(recoveredResult["state"]!.GetValue<string>() == "Succeeded" && await File.ReadAllTextAsync(pidPath) != afterCrash,
                 "fresh native login and new explicit confirmation permit a new real Windows action after Core crash recovery");
+            var helperPlan = await FreshPlan();
+            var helperPid = JsonNode.Parse(await File.ReadAllTextAsync(native.WorkerReport))!["processId"]!.GetValue<int>();
+            var beforeHelperCrash = await File.ReadAllTextAsync(pidPath);
+            var helperMarker = Path.Combine(work, "helper-stop-pending-crash.flag");
+            await File.WriteAllTextAsync(delayMarker, "fixed test-only SCM stop delay");
+            await File.WriteAllTextAsync(helperMarker, "terminate only the test Helper itself during StopPending");
+            try
+            {
+                var unknown = await Api(HttpMethod.Post, helperPlan.Path + "/approve", Consent(helperPlan.Plan, password));
+                check(unknown["state"]!.GetValue<string>() == "RecoveryRequired",
+                    "terminating the actual LocalSystem Helper during SCM stop leaves Core with an unknown result");
+                using var target = new ServiceController(native.ActionServiceName);
+                using var helperService = new ServiceController(native.ServiceName);
+                for (var attempt = 0; attempt < 150; attempt++)
+                {
+                    target.Refresh(); helperService.Refresh();
+                    var restarted = false;
+                    try
+                    {
+                        var report = JsonNode.Parse(await File.ReadAllTextAsync(native.WorkerReport))!;
+                        restarted = report["ready"]!.GetValue<bool>() && report["processId"]!.GetValue<int>() != helperPid;
+                    }
+                    catch (Exception error) when (error is IOException or JsonException) { }
+                    if (target.Status == ServiceControllerStatus.Stopped && helperService.Status == ServiceControllerStatus.Running && restarted) break;
+                    if (attempt == 149) throw new TimeoutException("SCM did not restore the test Helper or complete the partial service stop.");
+                    await Task.Delay(200);
+                }
+                check(await File.ReadAllTextAsync(pidPath) == beforeHelperCrash,
+                    "Helper failure after StopPending leaves the actual target stopped rather than silently completing its restart");
+                for (var attempt = 0; attempt < 3; attempt++)
+                {
+                    var observed = await Api(HttpMethod.Get, helperPlan.Path);
+                    target.Refresh();
+                    check(observed["state"]!.GetValue<string>() == "RecoveryRequired" && target.Status == ServiceControllerStatus.Stopped,
+                        "Helper SCM recovery and repeated Core queries never replay the partially executed Windows restart");
+                }
+                await Api(HttpMethod.Post, helperPlan.Path + "/approve", Consent(helperPlan.Plan, password), HttpStatusCode.Conflict);
+            }
+            finally { File.Delete(delayMarker); File.Delete(helperMarker); }
+            await Stop(); await Start(); await Login();
+            for (var attempt = 0; attempt < 40; attempt++)
+            {
+                var hosts = (await Api(HttpMethod.Get, "/api/v1.0/server/module-hosts"))["hosts"]!.AsArray();
+                if (hosts.Any(host => host!["moduleId"]!.GetValue<string>() == "fixture-broker" && host["status"]!.GetValue<string>() == "running")) break;
+                if (attempt == 39) throw new TimeoutException("Managed ModuleHost did not return after test Helper recovery.");
+                await Task.Delay(500);
+            }
+            var afterHelperRecovery = await FreshPlan();
+            var helperRecoveredResult = await Api(HttpMethod.Post, afterHelperRecovery.Path + "/approve", Consent(afterHelperRecovery.Plan, password));
+            check(helperRecoveredResult["state"]!.GetValue<string>() == "Succeeded" && await File.ReadAllTextAsync(pidPath) != beforeHelperCrash,
+                "a new explicit confirmation restores the stopped fixture through the recovered real Windows Helper");
             await Api(HttpMethod.Post, "/api/v1.0/server/module-trust/fixture-broker", new { artifactSha256 = package.ArchiveSha256, manifestSha256 = package.ManifestSha256, trusted = false });
             await Api(HttpMethod.Get, "/api/v1.0/server/module-hosts/fixture-broker/hello", expected: HttpStatusCode.Forbidden);
             check(true, "Windows Core trust revocation immediately denies the installed module proxy");

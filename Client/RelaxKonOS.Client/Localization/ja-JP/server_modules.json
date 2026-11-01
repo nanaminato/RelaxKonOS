@@ -53,6 +53,18 @@
     "server_modules.privilege_administrator": "管理者アカウント（必要な場合）",
     "server_modules.privilege_password": "管理者パスワード（必要な場合）",
     "server_modules.privilege_approve": "確認して実行",
-    "server_modules.privilege_cancel": "このプランを拒否"
+    "server_modules.privilege_cancel": "このプランを拒否",
+    "server_modules.consent_title": "バックグラウンドの継続許可",
+    "server_modules.consent_summary": "モジュールを選び、宣言済みのサービス操作と対象を一つ確認します。有効期限までは毎回の確認なしで実行できます。更新や信頼・ポリシーの変更で無効になります。ホスト管理者のみ設定できます。",
+    "server_modules.consent_target": "モジュールが宣言した正確なサービス対象",
+    "server_modules.consent_reason": "バックグラウンド実行を許可する理由",
+    "server_modules.consent_hours": "有効期間（時間、最大 720）",
+    "server_modules.consent_prepare": "バックグラウンド許可を確認",
+    "server_modules.consent_approve": "このバックグラウンド許可を承認",
+    "server_modules.consent_refresh": "許可を更新",
+    "server_modules.consent_revoke": "選択した許可を撤回／拒否",
+    "server_modules.consent_kind.service-start": "サービスを開始",
+    "server_modules.consent_kind.service-stop": "サービスを停止",
+    "server_modules.consent_kind.service-restart": "サービスを再起動"
   }
 }

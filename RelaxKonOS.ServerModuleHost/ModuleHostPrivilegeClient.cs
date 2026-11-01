@@ -33,4 +33,13 @@ internal sealed class ModuleHostPrivilegeClient(string? url, string? token, IHtt
         client.DefaultRequestHeaders.Add(ModuleHostProtocol.ServiceTokenHeader, token);
         return client;
     }
+    public async ValueTask<ModulePrivilegeStatus> ExecuteBackgroundAsync(Guid consentId, ModulePrivilegeRequest request, CancellationToken cancellationToken)
+    {
+        using var client = CreateClient();
+        client.Timeout = TimeSpan.FromSeconds(120);
+        using var response = await client.PostAsJsonAsync("/background", new ModulePrivilegeBackgroundRequest(consentId, request), cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<ModulePrivilegeStatus>(cancellationToken)
+            ?? throw new IOException("module.privilege_response_invalid");
+    }
 }

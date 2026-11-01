@@ -2,6 +2,7 @@ using System.Text;
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Security.Principal;
+using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -15,6 +16,8 @@ public class FixtureHostEntry : IModuleHostEntry, IModuleHostHealth, IModuleHost
 {
     private volatile bool _healthy = true;
     private readonly List<Process> _spawned = [];
+    private sealed record BackgroundResult(string State, Guid? PlanId = null, int? StatusCode = null);
+    private readonly ConcurrentDictionary<Guid, BackgroundResult> _background = new();
     public virtual string Id => "fixture-host";
     public async ValueTask StartAsync(IModuleHostContext context, CancellationToken cancellationToken)
     {
@@ -81,6 +84,25 @@ public class FixtureHostEntry : IModuleHostEntry, IModuleHostHealth, IModuleHost
         endpoints.MapPost("/unhealthy", () => { _healthy = false; return Results.Ok(); });
         endpoints.MapPost("/privilege", async (RelaxKonOS.ModuleHost.Protocol.ModulePrivilegeRequest request) =>
             Results.Json(await context.Privileges.PrepareAsync(request, CancellationToken.None)));
+        endpoints.MapPost("/schedule-background", (RelaxKonOS.ModuleHost.Protocol.ModulePrivilegeBackgroundRequest request) =>
+        {
+            if (_background.Count >= 100) return Results.StatusCode(429);
+            var job = Guid.NewGuid(); _background[job] = new("Scheduled");
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(250);
+                try
+                {
+                    var result = await context.Privileges.ExecuteBackgroundAsync(request.ConsentId, request.Operation, CancellationToken.None);
+                    _background[job] = new(result.State, result.PlanId);
+                }
+                catch (HttpRequestException error) { _background[job] = new("Rejected", StatusCode: (int?)error.StatusCode); }
+                catch { _background[job] = new("Failed"); }
+            });
+            return Results.Json(new { jobId = job });
+        });
+        endpoints.MapGet("/background-results/{id:guid}", (Guid id) => _background.TryGetValue(id, out var result)
+            ? Results.Json(result) : Results.NotFound());
         endpoints.MapGet("/hello", () => "hello from module host");
         endpoints.MapGet("/storage", async () =>
         {

@@ -1,4 +1,14 @@
 # Shared elevated deployment helper for System and Personal Mode.
+function ConvertTo-RelaxKonOSModuleHostConfigurationJson([Collections.IDictionary] $Settings, $Previous) {
+    # These are installation policy, not installer-generated paths or transport secrets.
+    foreach ($section in @('ModuleManagement', 'ModulePackages', 'ModulePrivileges', 'ModuleHosts', 'ModuleHealth', 'ModuleResidency', 'Modules')) {
+        if ($Previous -and $Previous.PSObject.Properties[$section]) {
+            $Settings[$section] = $Previous.$section
+        }
+    }
+    return ConvertTo-Json -InputObject $Settings -Depth 32
+}
+
 function Get-RelaxKonOSModuleHostFiles([string] $Root) {
     $pending = [Collections.Generic.Stack[string]]::new()
     $pending.Push($Root)

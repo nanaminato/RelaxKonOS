@@ -274,6 +274,10 @@ if [[ "$ACTION" == install ]]; then
   [[ "$(state_flag installed)" != true ]] || { echo 'RelaxKonOS is already installed on this host; use --action upgrade or --action repair.' >&2; exit 65; }
 else
   [[ "$(state_flag installed)" == true ]] || { echo "RelaxKonOS is not installed on this host; --action $ACTION is not available." >&2; exit 65; }
+  [[ "$(state_field installRoot)" == "$INSTALL_ROOT" && "$(state_field dataRoot)" == "$DATA_ROOT" ]] || {
+    echo 'The installation record belongs to different install/data directories; pass the recorded directories explicitly.' >&2
+    exit 65
+  }
   if [[ -n "$EXPECTED_INSTALLATION_ID" ]]; then
     recorded_id="$(state_field installationId)"
     [[ -n "$recorded_id" ]] || { echo 'The host has no managed installation id to compare against.' >&2; exit 65; }
@@ -452,6 +456,18 @@ INSTALLATION_ID="$(state_field installationId)"
 # --- activate ------------------------------------------------------------------------------------
 # The engine only ever passes its own versioned paths to the services installer; no caller-supplied
 # path, service name or command reaches the system service manager.
+copy_host_config() { # fromVersion toVersion
+  local from=$1 to=$2 source destination
+  [[ -n "$from" && "$from" != "$to" ]] || return 0
+  source="$(version_root "$from")/server/appsettings.host.json"
+  destination="$(version_root "$to")/server/appsettings.host.json"
+  # Host policy belongs to the installation, not the release payload. Never follow
+  # links while carrying administrator/source policy across version directories.
+  [[ ! -L "$source" && ! -L "$destination" ]] || { echo 'Host configuration must not be a symbolic link.' >&2; return 1; }
+  [[ -e "$source" ]] || return 0
+  [[ -f "$source" ]] || { echo 'Host configuration must be a regular file.' >&2; return 1; }
+  cp --preserve=mode,ownership -- "$source" "$destination"
+}
 run_services_installer() { # version listenUrl
   local version=$1 listen=$2 root engine status=0
   root="$(version_root "$version")"
@@ -516,6 +532,7 @@ case "$ACTION" in
     ;;
   upgrade)
     publish_payload "$BUNDLE_PATH" "$TARGET_VERSION"
+    copy_host_config "$PREVIOUS_VERSION" "$TARGET_VERSION"
     systemctl stop relaxkonos-server.service relaxkonos-guardian.service 2>/dev/null || true
     activate_version "$TARGET_VERSION"
     if ! { run_services_installer "$TARGET_VERSION" "$LISTEN_URL" && verify_health; }; then
@@ -605,6 +622,7 @@ REPAIR_FILES
     verify_health || { echo 'The repaired installation did not pass its health check.' >&2; exit 70; }
     ;;
   rollback)
+    copy_host_config "$FROM_VERSION" "$TARGET_VERSION"
     systemctl stop relaxkonos-server.service relaxkonos-guardian.service 2>/dev/null || true
     activate_version "$TARGET_VERSION"
     if ! { run_services_installer "$TARGET_VERSION" "$LISTEN_URL" && verify_health; }; then

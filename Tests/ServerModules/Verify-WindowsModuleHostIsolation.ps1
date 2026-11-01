@@ -53,6 +53,7 @@ if ($ElevatedAction) {
         foreach ($testServiceName in @($serviceName, $actionServiceName)) {
             $service = Get-Service -Name $testServiceName -ErrorAction SilentlyContinue
             if ($service) {
+                Set-Service -Name $testServiceName -StartupType Disabled
                 if ($service.Status -ne 'Stopped') { Stop-Service -Name $testServiceName -Force; $service.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30)) }
                 & sc.exe delete $testServiceName | Out-Null
                 if ($LASTEXITCODE -ne 0) { throw 'Cannot remove the dedicated test service.' }
@@ -143,6 +144,8 @@ if ($ElevatedAction) {
     & icacls $configPath /inheritance:r /grant:r '*S-1-5-18:F' '*S-1-5-32-544:F' ("*" + $request.callerSid + ':R') | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Cannot protect test configuration.' }
     New-Service -Name $serviceName -DisplayName $serviceName -BinaryPathName ('"' + $runner + '" --service "' + $configPath + '"') -StartupType Manual | Out-Null
+    & sc.exe failure $serviceName reset= 86400 actions= restart/1000 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot configure the unique test Helper recovery action.' }
     New-Service -Name $actionServiceName -DisplayName $actionServiceName -BinaryPathName ('"' + $runner + '" --action-fixture "' + $configPath + '"') -StartupType Manual | Out-Null
     Start-Service -Name $actionServiceName
     Start-Service -Name $serviceName

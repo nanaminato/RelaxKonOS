@@ -32,6 +32,40 @@ internal static class ModulePrivilegeEndpoints
         app.MapPost(Root + "/{id:guid}/cancel", (Guid id, HttpContext http, CoreModulePrivilegeBroker broker) =>
             CoreModulePrivilegeBroker.Respond(async () => Results.Ok(await broker.Plans.CancelAsync(id,
                 CoreModulePrivilegeBroker.Session(http.User))))).RequireAuthorization();
+        app.MapPost(ServerModulePrivilegeRoutes.Consents, (ModulePrivilegeConsentRequest request, HttpContext http,
+            CoreModulePrivilegeBroker broker, ModuleManagementStore management, HostElevationSessionState state) =>
+            CoreModulePrivilegeBroker.Respond(async () =>
+            {
+                EnsureConsentManagement(http, management, state);
+                return Results.Ok(await broker.Consents.PrepareAsync(CoreModulePrivilegeBroker.Session(http.User), Actor(http.User), request));
+            })).RequireAuthorization(ServerModuleManagementEndpoints.ManagePolicy);
+        app.MapGet(ServerModulePrivilegeRoutes.Consents, (HttpContext http, CoreModulePrivilegeBroker broker,
+            ModuleManagementStore management, HostElevationSessionState state) => CoreModulePrivilegeBroker.Respond(async () =>
+            {
+                EnsureConsentManagement(http, management, state);
+                return Results.Ok(await broker.Consents.ListAsync());
+            })).RequireAuthorization(ServerModuleManagementEndpoints.ManagePolicy);
+        app.MapGet(ServerModulePrivilegeRoutes.Consents + "/{id:guid}", (Guid id, HttpContext http, CoreModulePrivilegeBroker broker,
+            ModuleManagementStore management, HostElevationSessionState state) => CoreModulePrivilegeBroker.Respond(async () =>
+            {
+                EnsureConsentManagement(http, management, state);
+                return Results.Ok(await broker.Consents.ReadAsync(id, CoreModulePrivilegeBroker.Session(http.User)));
+            })).RequireAuthorization(ServerModuleManagementEndpoints.ManagePolicy);
+        app.MapPost(ServerModulePrivilegeRoutes.Consents + "/{id:guid}/revoke", (Guid id, HttpContext http, CoreModulePrivilegeBroker broker,
+            ModuleManagementStore management, HostElevationSessionState state) => CoreModulePrivilegeBroker.Respond(async () =>
+            {
+                EnsureConsentManagement(http, management, state);
+                return Results.Ok(await broker.Consents.RevokeAsync(id, Actor(http.User)));
+            })).RequireAuthorization(ServerModuleManagementEndpoints.ManagePolicy);
+        app.MapPost(ServerModulePrivilegeRoutes.Consents + "/{id:guid}/approve", (Guid id, ModulePrivilegeApproval approval, HttpContext http,
+            CoreModulePrivilegeBroker broker, ModuleManagementStore management, IHostAdministratorAuthenticator administrators,
+            IHostElevationSessionStore elevations, OwnerDeviceKeyService owners, HostElevationSessionState state) =>
+            CoreModulePrivilegeBroker.Respond(async () =>
+            {
+                EnsureConsentManagement(http, management, state);
+                return Results.Ok(await broker.Consents.ApproveAsync(id, CoreModulePrivilegeBroker.Session(http.User), approval,
+                    () => VerifyAdministrator(http, approval, administrators, elevations, owners, state)));
+            })).RequireAuthorization(ServerModuleManagementEndpoints.ManagePolicy);
         app.MapPost(Root + "/{id:guid}/approve", (Guid id, ModulePrivilegeApproval approval, HttpContext http,
             CoreModulePrivilegeBroker broker, IHostAdministratorAuthenticator administrators, IHostElevationSessionStore elevations,
             OwnerDeviceKeyService owners, HostElevationSessionState state, IPrivilegedOperationTransport helper) =>
@@ -39,38 +73,32 @@ internal static class ModulePrivilegeEndpoints
             {
                 if (!state.IsSessionValid(http.User)) throw new ModulePrivilegeException("module.privilege_denied", 403);
                 var result = await broker.Plans.ApproveAsync(id, CoreModulePrivilegeBroker.Session(http.User), approval,
-                    () =>
-                    {
-                        if (owners.IsOwner(http.User)) return Task.FromResult<ModulePrivilegeAdministrator?>(new(
-                            "owner-device:" + http.User.FindFirstValue("device_id"), "windows-owner-device"));
-                        if (state.VerifiedAdministrator(http.User) is { AdministratorIdentity: { } identity } remembered)
-                            return Task.FromResult<ModulePrivilegeAdministrator?>(new(identity, remembered.AuthenticationMethod));
-                        var current = http.User.FindFirstValue("name") ?? http.User.Identity?.Name;
-                        if (string.IsNullOrEmpty(current)) return Task.FromResult<ModulePrivilegeAdministrator?>(null);
-                        var authentication = administrators.Authenticate(current, approval.AdministratorUsername, approval.Password);
-                        if (!authentication.Succeeded || string.IsNullOrEmpty(authentication.AdministratorIdentity)) return Task.FromResult<ModulePrivilegeAdministrator?>(null);
-                        // Remember verified identity only. The durable plan gate still requires explicit consent every time.
-                        elevations.Grant(http.User, HostElevationCapability.NativeServiceAction, "module-broker",
-                            false, authentication.AuthenticationMethod, http.TraceIdentifier);
-                        state.RecordAdministratorVerification(http.User, authentication);
-                        return Task.FromResult<ModulePrivilegeAdministrator?>(new(authentication.AdministratorIdentity, authentication.AuthenticationMethod));
-                    }, async (operationId, kind, target) =>
-                    {
-                        var action = kind switch
-                        {
-                            "service-start" => PrivilegedServiceAction.Start,
-                            "service-stop" => PrivilegedServiceAction.Stop,
-                            "service-restart" => PrivilegedServiceAction.Restart,
-                            _ => throw new ModulePrivilegeException("module.privilege_unsupported", 400),
-                        };
-                        var outcome = await helper.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NativeServiceAction,
-                            ServiceId: target, ServiceAction: action, OperationId: operationId, Correlation: CorrelationContext.Create(operationId)), CancellationToken.None);
-                        if (outcome.ProblemCode is PrivilegedProblemCode.HelperUnavailable or PrivilegedProblemCode.TimedOut or PrivilegedProblemCode.InvalidProtocol)
-                            throw new IOException("module.privilege_helper_response_unknown");
-                        return outcome.Success;
-                    });
+                    () => VerifyAdministrator(http, approval, administrators, elevations, owners, state),
+                    (operationId, kind, target) => CoreModulePrivilegeBroker.ExecuteServiceActionAsync(helper, operationId, kind, target));
                 return Results.Ok(result);
             })).RequireAuthorization();
         return app;
+    }
+    private static string Actor(ClaimsPrincipal user) => user.FindFirstValue("sub") ?? user.FindFirstValue(ClaimTypes.NameIdentifier)
+        ?? throw new ModulePrivilegeException("module.privilege_denied", 403);
+    private static void EnsureConsentManagement(HttpContext http, ModuleManagementStore management, HostElevationSessionState state)
+    {
+        if (!management.Writable || !state.IsSessionValid(http.User)) throw new ModulePrivilegeException("module.privilege_denied", 403);
+    }
+    private static Task<ModulePrivilegeAdministrator?> VerifyAdministrator(HttpContext http, ModulePrivilegeApproval approval,
+        IHostAdministratorAuthenticator administrators, IHostElevationSessionStore elevations, OwnerDeviceKeyService owners,
+        HostElevationSessionState state)
+    {
+        if (owners.IsOwner(http.User)) return Task.FromResult<ModulePrivilegeAdministrator?>(new(
+            "owner-device:" + http.User.FindFirstValue("device_id"), "windows-owner-device"));
+        if (state.VerifiedAdministrator(http.User) is { AdministratorIdentity: { } identity } remembered)
+            return Task.FromResult<ModulePrivilegeAdministrator?>(new(identity, remembered.AuthenticationMethod));
+        var current = http.User.FindFirstValue("name") ?? http.User.Identity?.Name;
+        if (string.IsNullOrEmpty(current)) return Task.FromResult<ModulePrivilegeAdministrator?>(null);
+        var authentication = administrators.Authenticate(current, approval.AdministratorUsername, approval.Password);
+        if (!authentication.Succeeded || string.IsNullOrEmpty(authentication.AdministratorIdentity)) return Task.FromResult<ModulePrivilegeAdministrator?>(null);
+        elevations.Grant(http.User, HostElevationCapability.NativeServiceAction, "module-broker", false, authentication.AuthenticationMethod, http.TraceIdentifier);
+        state.RecordAdministratorVerification(http.User, authentication);
+        return Task.FromResult<ModulePrivilegeAdministrator?>(new(authentication.AdministratorIdentity, authentication.AuthenticationMethod));
     }
 }

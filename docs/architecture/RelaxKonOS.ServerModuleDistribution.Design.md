@@ -1,6 +1,6 @@
 # 服务端独立模块分发与 v1/v2 宿主设计
 
-> 状态：分阶段实施，2026-10-31。当前只接受 schemaVersion=2 模块清单；已实现安装/回退与进程内官方模块、独立 ModuleHost 代理/授权、精确代码信任、Linux 专用身份及 Broker 服务操作切片。完整 ServerModules 回归通过；Linux 独立运行时有实机证据。完整发布安装、真实 Helper Broker 闭环、Windows 身份与故障验收未收口，详见 [v2 实施记录](RelaxKonOS.ServerModuleV2.Progress.md)。
+> 状态：分阶段实施，2026-11-01。当前只接受 schemaVersion=2 模块清单；安装/回退、独立 ModuleHost 代理/授权、精确代码信任、Linux/Windows 专用身份及 Broker 服务操作集合已实现。完整 ServerModules 回归通过；两平台真实 Helper、执行中断及 System 正式发行安装/跨版本更新已实测。固定服务动作的有期常设许可与后台 SDK 已两平台实测；Broker 包/文件动作及 Personal 整包仍不计为完成，详见 [v2 实施记录](RelaxKonOS.ServerModuleV2.Progress.md)。
 >
 > 范围：服务端模块的独立打包、信任、安装、更新、回退、加载、卸载，以及 v1/v2 两种宿主模式。桌面 `.roapp` 的包格式仍由[开发者模式](../development/RelaxKonOS.DeveloperMode.md)拥有；商店来源、搜索和下载的统一契约由[包商店来源设计](../platform/RelaxKonOS.PackageStore.Design.md)拥有；第三方模块的提权调用由[模块提权 Broker 设计](RelaxKonOS.ServerModulePrivilegeBroker.Design.md)拥有。
 >
@@ -648,4 +648,4 @@ v2 的 `IModuleContext` 只提供：
 
 ### v2 继续实施（2026-10-31）
 
-MD-01 唯一 v2 安装清单、MD-05 Linux/Windows 专用身份与私有数据边界、MD-06 精确代码信任、MD-07 服务动作 Broker 已实现。两平台签名包安装与 Core→ModuleHost→Broker→真实 Helper 正常 HTTP 闭环、批准审计已有实机证据；Linux Helper 不可用/成功响应丢失及 Windows SessionValid/owner-device 也已实测。Windows 原生夹具已使用生产 ModuleHost 安装函数，其快照按复制前冻结的完整清单校验，拒绝额外文件、链接与内容漂移。完整发行服务安装/升级及执行中断仍待验收；具体结果和限制统一由 [v2 实施记录](RelaxKonOS.ServerModuleV2.Progress.md) 跟踪。
+MD-01 唯一 v2 安装清单、MD-05 Linux/Windows 专用身份与私有数据边界、MD-06 精确代码信任、MD-07 服务动作 Broker 已实现。两平台签名包安装与 Core→ModuleHost→Broker→真实 Helper 正常 HTTP 闭环、批准审计已有实机证据；Linux Helper 不可用/成功响应丢失及 Windows SessionValid/owner-device 也已实测。Windows 原生夹具已使用生产 ModuleHost 安装函数，其快照按复制前冻结的完整清单校验，拒绝额外文件、链接与内容漂移。两平台执行中断、System 完整发行服务安装/跨版本升级已于 2026-11-01 验收；Personal 完整发行与后续 Broker 操作仍待实现/验收，具体结果和限制统一由 [v2 实施记录](RelaxKonOS.ServerModuleV2.Progress.md) 跟踪。

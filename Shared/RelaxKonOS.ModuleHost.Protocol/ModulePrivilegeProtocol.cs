@@ -16,3 +16,10 @@ public sealed record ModulePrivilegePlan(Guid PlanId, string ModuleId, string Ve
     string ConfirmationToken);
 public sealed record ModulePrivilegeApproval(string PlanHash, string ConfirmationToken,
     string? AdministratorUsername = null, string? Password = null);
+
+public sealed record ModulePrivilegeConsentRequest(string ModuleId, string Kind, string Target,
+    string Reason, DateTimeOffset ExpiresAt, string IdempotencyKey);
+public sealed record ModulePrivilegeConsent(Guid ConsentId, string ModuleId, string Version, string PublisherId,
+    string ArtifactSha256, string Kind, string Target, string Reason, string GrantedBy, DateTimeOffset CreatedAt,
+    DateTimeOffset ExpiresAt, string State, string PlanHash, string ConfirmationToken);
+public sealed record ModulePrivilegeBackgroundRequest(Guid ConsentId, ModulePrivilegeRequest Operation);

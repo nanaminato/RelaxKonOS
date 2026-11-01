@@ -138,6 +138,7 @@ public sealed record ServerModulePrivilegeDeclarationDto(string Kind, string Tar
 public static class ServerModulePrivilegeRoutes
 {
     public const string Plans = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-privileges/plans";
+    public const string Consents = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-privileges/consents";
     public const string Trust = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-trust/{moduleId}";
 }
 public sealed record ServerModuleTrustRequest(string ArtifactSha256, string ManifestSha256, bool Trusted);

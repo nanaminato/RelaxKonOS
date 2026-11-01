@@ -184,6 +184,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         && Plan is { BlockedBy.Count: 0 } p && p.ExpiresAt > DateTimeOffset.UtcNow;
     partial void OnSelectedChanged(ServerModuleDto? value)
     {
+        ClearConsentReview();
         Plan = null;
         if (value?.DesiredResidencyPolicy is { } policy)
         {
@@ -246,7 +247,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         RollbackPackageCommand.NotifyCanExecuteChanged(); InstallStoreItemCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanRestoreAll)); RestoreAllCommand.NotifyCanExecuteChanged();
     }
-    public void Invalidate() { PrivilegePlan = null; PrivilegePassword = ""; PrivilegeAdministrator = ""; PrivilegeText = ""; PrivilegePlanId = ""; Modules = []; Selected = null; Plan = null; OperationText = ""; InstalledPackages = []; SelectedVersions = []; SelectedPackageVersion = null; PackageOperations = []; PackagePlan = null; StoreItems = []; StoreSources = []; CatalogRevision = "uninitialized"; SelectedStoreItem = null; HealthText = ""; PackageStatus = "module-session-changed"; Notify(); }
+    public void Invalidate() { InvalidateConsents(); PrivilegePlan = null; PrivilegePassword = ""; PrivilegeAdministrator = ""; PrivilegeText = ""; PrivilegePlanId = ""; Modules = []; Selected = null; Plan = null; OperationText = ""; InstalledPackages = []; SelectedVersions = []; SelectedPackageVersion = null; PackageOperations = []; PackagePlan = null; StoreItems = []; StoreSources = []; CatalogRevision = "uninitialized"; SelectedStoreItem = null; HealthText = ""; PackageStatus = "module-session-changed"; Notify(); }
     [RelayCommand] private async Task RefreshAsync() => await Run(async () =>
     {
         // Clear before reading: failed refreshes show unknown instead of stale successful facts.

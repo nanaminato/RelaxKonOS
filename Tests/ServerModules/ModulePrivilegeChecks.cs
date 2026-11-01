@@ -12,6 +12,7 @@ internal static class ModulePrivilegeChecks
     }
     internal static async Task RunAsync(Action<bool, string> check)
     {
+        await ModulePrivilegeConsentChecks.RunAsync(check);
         var root = Path.Combine(Path.GetTempPath(), "module-privileges-" + Guid.NewGuid().ToString("N"));
         try
         {

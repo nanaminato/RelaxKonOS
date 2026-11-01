@@ -1,6 +1,6 @@
 # 服务端模块提权 Broker 设计
 
-> 状态：分阶段实施，2026-10-31。已实现服务启动/停止/重启的持久计划、单次确认门、私有回调和 SDK/Core/桌面接线；Linux HTTP/真实 Helper 正常闭环已实测；故障恢复及 Windows 验收未收口。本文定义 v2 ModuleHost 的第三方模块提权边界；v1 官方模块继续使用现有 `IHostElevationSessionStore` 和 `IPrivilegedOperationTransport`。
+> 状态：分阶段实施，2026-11-01。服务启动/停止/重启的持久计划、单次确认门、私有回调和 SDK/Core/桌面接线已实现；Linux/Windows HTTP/真实 Helper、批准审计、Core/Helper 执行中断及 System 整包安装/更新已有实测。固定服务动作的有期常设许可、后台 SDK 执行、撤销/到期及重启幂等也已两平台实测。包/文件动作尚未实现，Personal 整包未验收。本文定义 v2 ModuleHost 的第三方模块提权边界；v1 官方模块继续使用现有 `IHostElevationSessionStore` 和 `IPrivilegedOperationTransport`。
 >
 > 范围：第三方模块申请宿主特权时的计划、展示、确认、执行、审计和撤销。模块包格式与安装由[服务端独立模块分发设计](RelaxKonOS.ServerModuleDistribution.Design.md)拥有；商店来源由[包商店来源设计](../platform/RelaxKonOS.PackageStore.Design.md)拥有；Helper 的底层封闭操作仍由[统一特权 Helper 架构](privileged-helper.md)拥有。
 >
@@ -404,4 +404,14 @@ Core 用户 API：GET `/api/v1.0/server/module-privileges/plans/{id}`、POST 同
 
 privilege-plans.json 内部存储使用 schemaVersion=3，原子耐久保存计划、执行与终态，确认令牌仅保存哈希；新增发起用户、同会话批准用户、实际验证管理员身份、验证方式、确认时间与执行尝试结束时间，初始发起者绑定进计划摘要。拒绝旧的审计不完整存储格式，不进行自动迁移；升级前必须显式处理旧状态及其证据。安装清单、installed.json 和 package-plans.json 仍使用 schemaVersion=2，二者是不同契约。Executing 在重启后变为 RecoveryRequired，响应丢失也进入 RecoveryRequired，不重放动作。管理员验证记忆保留原始规范身份；owner-device 记录实际设备 ID，不记录密码、私钥或令牌。module-trust.json 绑定精确版本/发布者/归档与清单摘要；Broker 执行前两次复查当前安装、启用、信任、来源目录/撤销、策略与 Host 服务白名单。Helper 再检查自己的 root 管理服务白名单。
 
-PB-01/02：核心契约及确认门的定向测试已通过；PB-03：桌面入口已编译；PB-04：Linux 权限隔离已有实机正向验收；PB-05 审计完善、真实 Helper 中断恢复、PB-06 常设许可、Windows 专用身份及跨平台验收仍未收口。默认不提供后台提权或常设自动执行。
+PB-01/02：核心契约及确认门的定向测试已通过；PB-03：桌面入口已编译；PB-04：Linux/Windows 专用身份与权限隔离已有实机验收；PB-05 服务动作、审计及两平台真实 Helper 中断恢复已实测。PB-06 已实现固定服务动作的有期常设许可与后台 SDK 执行，两平台真实撤销/到期和重启幂等已实测；无显式许可仍拒绝后台派发。包/文件动作仍未实现，Personal 整包未验收。
+
+### PB-06 当前后台许可契约（2026-11-01）
+
+已交付范围为 service-start/stop/restart 的有期、固定目标许可。Core 管理 API 为 `/api/v1.0/server/module-privileges/consents` 的创建/列表、`/{id}` 原会话审查及 `/{id}/approve`、`/{id}/revoke`；均要求 `ServerModulesManage`，部署托管只读模式拒绝写入。创建不授予权力、不执行动作；审查令牌仅交原会话，五分钟内经管理员显式确认后生效。最长三十天，到期、撤销和模块/信任/策略漂移拒绝新的派发。
+
+SDK `ExecuteBackgroundAsync` 通过进程令牌认证模块身份，不复用业务请求 context，不接受管理员凭据。许可 ID 不是认证令牌；它不能让其他模块调用。每个操作仍落原耐久计划与 Helper 审计，`consent:<ID>` 关联授予记录；响应丢失或 Core 重启不会借常设许可自动重放。撤销与派发线性化，已经派发的动作不冒充被取消，撤销完成后拒绝新动作。普通前台 Prepare 仍要求当前业务上下文及单次确认。
+
+`privilege-consents.json` 独立使用 schemaVersion=1，严格读取当前结构，检查冻结身份/请求/组合摘要与审批/撤销证据；活进程发现文件丢失或被外部改写时拒绝使用，不用内存缓存掩盖磁盘未知。模块安装清单仍为 schemaVersion=2，原单次操作审计仍为内部 schemaVersion=3。
+
+两平台真实 PAM/LogonUser、后台 Helper 动作、撤销/实际到期、重启幂等与操作者审计已验证。最新 Windows 原生/HTTP 74 项、ServerModules 完整 623 项及补充定向检查，证据统一链接到 [v2 实施记录](RelaxKonOS.ServerModuleV2.Progress.md)。后台计划由模块自己调度；本次没有新增主机任务调度器，也没有开放包/文件/网络/任意进程动作。

@@ -205,6 +205,7 @@ $observabilityInstanceId = $null
 $observabilityAuditHmacKey = $null
 $parsedObservabilityInstanceId = [guid]::Empty
 $identityHostConfig = $serverHostConfig
+$existingServerSettings = $null
 if (-not (Test-Path -LiteralPath $identityHostConfig -PathType Leaf)) {
     $identityHostConfig = Join-Path $DataRoot 'deployment\appsettings.host.json'
 }
@@ -224,7 +225,7 @@ if (Test-Path -LiteralPath $identityHostConfig -PathType Leaf) {
                 }
             } catch { }
         }
-    } catch { }
+    } catch { throw 'Existing host configuration could not be read; refusing to replace installation policy.' }
 }
 if ([string]::IsNullOrWhiteSpace($jwtSecret)) {
     $jwtSecretBytes = New-Object byte[] 48
@@ -346,7 +347,7 @@ $helperSettings = [ordered]@{
     runtimePrivateRoot = (Join-Path $env:ProgramData 'RelaxKonOS\privileged-runtimes')
     runtimeArchiveRoots = @((Join-Path $serverData 'runtimes\frp'), (Join-Path $serverData 'webserver-packages'))
 }
-[IO.File]::WriteAllText($serverHostConfig, ($serverSettings | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText($serverHostConfig, (ConvertTo-RelaxKonOSModuleHostConfigurationJson $serverSettings $existingServerSettings), [Text.UTF8Encoding]::new($false))
 [IO.File]::WriteAllText($privilegedConfig, ($helperSettings | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
 & icacls $serverHostConfig /inheritance:r /grant:r 'SYSTEM:F' 'Administrators:F' ("*" + $serverServiceSid + ':R') | Out-Null
 if ($bootstrapCertificate) {

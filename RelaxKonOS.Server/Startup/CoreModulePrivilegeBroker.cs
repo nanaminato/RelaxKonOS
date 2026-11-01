@@ -5,6 +5,8 @@ using System.Text;
 using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.ModulePackaging;
 using RelaxKonOS.Server.Privileged;
+using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Protocol.Observability;
 
 namespace RelaxKonOS.Server.Startup;
 
@@ -17,16 +19,42 @@ internal sealed class CoreModulePrivilegeBroker(IHostEnvironment environment, IC
     private readonly ConcurrentDictionary<string, RequestContext> _contexts = new(StringComparer.Ordinal);
     private WebApplication? _application;
     internal ModulePrivilegePlanStore Plans { get; private set; } = null!;
+    internal ModulePrivilegeConsentStore Consents { get; private set; } = null!;
     internal string? Url { get; private set; }
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         Plans = new ModulePrivilegePlanStore(environment.ContentRootPath, Resolve);
+        Consents = new ModulePrivilegeConsentStore(environment.ContentRootPath, Resolve);
         var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions { Args = [], EnvironmentName = Environments.Production });
         builder.Logging.ClearProviders();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 8192);
         _application = builder.Build();
+        _application.MapPost("/background", async (ModulePrivilegeBackgroundRequest request, HttpContext http) => await Respond(async () =>
+        {
+            var moduleId = services.GetRequiredService<ModuleHostSupervisor>()
+                .Authenticate(http.Request.Headers[ModuleHostProtocol.ServiceTokenHeader].ToString())
+                ?? throw new ModulePrivilegeException("module.privilege_denied", 403);
+            if (request.Operation is null) throw new ModulePrivilegeException("module.privilege_target_invalid", 400);
+            return Results.Ok(await Consents.ExecuteAsync(request.ConsentId, moduleId, request.Operation, async authority =>
+            {
+                var session = "consent:" + authority.Id.ToString("N");
+                var prepared = await Plans.PrepareAsync(moduleId, session, request.Operation, authority.Actor);
+                if (prepared.State != "AwaitingConfirmation") return await Plans.GetForModuleAsync(prepared.PlanId, moduleId);
+                var plan = await Plans.ReadForUserAsync(prepared.PlanId, session);
+                return await Plans.ApproveAsync(plan.PlanId, session, new(plan.PlanHash, plan.ConfirmationToken),
+                    () => Task.FromResult<ModulePrivilegeAdministrator?>(authority.ExpiresAt > DateTimeOffset.UtcNow
+                        ? authority.Administrator with { AuthenticationMethod = "standing-consent:" + authority.Administrator.AuthenticationMethod } : null),
+                    async (operationId, kind, target) =>
+                    {
+                        if (authority.ExpiresAt <= DateTimeOffset.UtcNow) return false;
+                        using var scope = services.CreateScope();
+                        using var actor = PrivilegedAuditActorScope.Enter(authority.Actor);
+                        return await ExecuteServiceActionAsync(scope.ServiceProvider.GetRequiredService<IPrivilegedOperationTransport>(), operationId, kind, target);
+                    });
+            }));
+        }));
         _application.MapPost("/prepare", async (ModulePrivilegeRequest request, HttpContext http) => await Respond(async () =>
         {
             var hosts = services.GetRequiredService<ModuleHostSupervisor>();
@@ -52,6 +80,21 @@ internal sealed class CoreModulePrivilegeBroker(IHostEnvironment environment, IC
         }));
         await _application.StartAsync(cancellationToken);
         Url = _application.Urls.Single();
+    }
+    internal static async Task<bool> ExecuteServiceActionAsync(IPrivilegedOperationTransport helper, Guid operationId, string kind, string target)
+    {
+        var action = kind switch
+        {
+            "service-start" => PrivilegedServiceAction.Start,
+            "service-stop" => PrivilegedServiceAction.Stop,
+            "service-restart" => PrivilegedServiceAction.Restart,
+            _ => throw new ModulePrivilegeException("module.privilege_unsupported", 400),
+        };
+        var outcome = await helper.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NativeServiceAction,
+            ServiceId: target, ServiceAction: action, OperationId: operationId, Correlation: CorrelationContext.Create(operationId)), CancellationToken.None);
+        if (outcome.ProblemCode is PrivilegedProblemCode.HelperUnavailable or PrivilegedProblemCode.TimedOut or PrivilegedProblemCode.InvalidProtocol)
+            throw new IOException("module.privilege_helper_response_unknown");
+        return outcome.Success;
     }
     internal string IssueRequestContext(string moduleId, ClaimsPrincipal principal)
     {

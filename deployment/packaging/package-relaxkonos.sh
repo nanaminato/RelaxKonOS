@@ -28,7 +28,7 @@ new_package() {
 publish_component() {
   local project="$1" name="$2" executable="$3" destination
   destination="$BUNDLE/payload/linux/$name"
-  dotnet publish "$PROJECT_ROOT/$project" --configuration "$CONFIGURATION" --runtime "$RUNTIME" --self-contained true --output "$destination"
+  dotnet publish "$PROJECT_ROOT/$project" --configuration "$CONFIGURATION" --runtime "$RUNTIME" --self-contained true --output "$destination" "-p:InformationalVersion=$VERSION"
   [[ -f "$destination/$executable" ]] || { echo "Publish output does not contain $executable." >&2; exit 1; }
 }
 
