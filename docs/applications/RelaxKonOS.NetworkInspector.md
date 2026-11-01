@@ -48,25 +48,37 @@
 
 ## 3. 交互与信息架构
 
-检查器是独立可缩放窗口，建议初始尺寸 `1180 × 720`。界面只做开发调试需要的最小集合：
+检查器是独立可缩放窗口，初始尺寸 `1180 × 720`。界面按 Chrome DevTools Network 面板的四层结构组织：工具栏、类型筛选行、请求表、详情面板。
 
 ```text
-┌ Network Inspector ─ Record ●  Clear  Preserve log  Filter ─────────────┐
-│ All  Fetch/XHR  Media  SignalR  Errors       42 requests · 3 failed     │
-├────┬────────┬────────┬──────────────┬──────┬────────┬─────────┬────────┤
-│ #  │ Time   │ Source │ Method / Name│ Type │ Status │ Duration│ Size   │
-├────┴────────┴────────┴──────────────┴──────┴────────┴─────────┴────────┤
-│ Request list (virtualized; one row per completed REST request or Hub event) │
-├──────────────────────────────────────────────────────────────────────────┤
-│ Details: Overview | Request | Response | Timeline                         │
-│ method, sanitized URL, status/error, timings, allowed headers, preview     │
-└──────────────────────────────────────────────────────────────────────────┘
+┌ 网络检查器 ─────────────────────────────────────────────────────────────┐
+│ ● 开始录制   ⊘   筛选请求 [ method:GET ]                    已暂停      │
+│ [全部] [HTTP] [SignalR] [媒体] [失败]                     6 / 48 条请求  │
+├────┬──────────┬──────┬──────────┬────────┬──────┬────────┬────────┬────┤
+│    │ 名称     │ 状态 │ 类型     │ 大小   │ 耗时 │ 瀑布   │ 来源   │    │
+│    │ GET works│ ●200 │ json     │ 512 B  │ 32ms │ ▮▬▬▬   │ layout │    │
+├────┴──────────┴──────┴──────────┴────────┴──────┴────────┴────────┴────┤
+│ GET  workspaces       200 · 32 ms · 512 B                            ×  │
+│ https://…/api/v1.0/workspaces/current                                   │
+│ 概览 | 请求标头 | 请求体 | 响应标头 | 响应体                              │
+│   ☑ 美化 JSON                              application/json; charset=utf-8 │
+│   {                                                                     │
+│     "workspaceId": "ws-1"                                               │
+│   }                                                                     │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-- 筛选支持文本、`status:>=400`、`type:media`、`source:terminal`、`signalr`；V1 不做 HAR 导入/导出、瀑布图、请求重放、请求阻断或编辑。
-- 颜色只作为辅助：2xx/3xx 成功、4xx/5xx 失败、取消、传输异常；同时显示文本状态，保证主题与无障碍可用。
-- 选择一条媒体记录时，Details 只显示结果摘要与安全 Header，不显示 Request/Response 正文 Tab。
-- “Preserve log”默认关闭；开启后仅允许跨检查器窗口存活，仍会在登出、关开发者模式或达到环形缓冲区上限时清空/淘汰。
+- 详情面板占用表格下方的高度（分隔条可拖动，比例随窗口缩放保留），**不再隐藏任何表格列**：打开详情仍然能看到完整请求列表。
+- 类型筛选行是记录器的查询条件（`Kind` / `IsMedia` / `FailuresOnly`），不是界面端过滤，因此列表长度、状态栏与缓冲区始终一致。文本筛选复用记录器语法：`method:`、`status-code:`、`mime-type:`、`larger-than:`、`is:failed`、`is:media`。
+- 颜色只作为辅助：方法徽标按动词着色，状态列显示状态点与文本（2xx 成功、3xx 信息、4xx 警告、5xx/无状态码 危险）。状态点保留颜色，选中行内文本统一使用选中前景色，保证在两种主题下都可读。
+- 瀑布列把耗时按 `sqrt(耗时 / 当前最慢)` 归一化到 `84 px` 轨道，仅作相对快慢的提示，不代表绝对时间轴。
+- 交互：整行可选中并立即打开详情；`Esc` 关闭详情；`Ctrl+F` 聚焦筛选框；录制过程中新记录追加到表尾，不重建列表，因此选中的请求、详情页签与滚动位置都保持不变。用户向上滚动或选中历史记录后停止自动跟随，重新开始录制时恢复。
+- 空态区分「尚未录制」与「筛选无结果」；不可用时由 `NetworkDiagnosticsUnavailableReason` 提供本地化说明（开发者模式未开启 / 未登录），同时禁用录制、清空与筛选。
+- 详情页签固定为五个：概览（URL、方法、状态、类型、大小、耗时、开始时间、来源、错误）、请求标头、请求体、响应标头、响应体。标头各自独占一页（名称/值网格），正文独占一页，避免「七个标头把正文挤成几十像素」；正文页顶部只有「美化 JSON」开关与 Content-Type。
+- 请求体与响应体的 JSON **默认美化**（`JToken.Parse(...).ToString(Indented)`），开关即时切回原文；非 JSON 正文原样显示并隐藏开关，解析失败时回退为原文而不是用提示语盖住内容。
+- 选中请求后页签保持不变（例如停在「响应体」看连续几条响应），只有关闭详情或换语言才重绘。
+- V1 不做 HAR 导入/导出、请求重放、请求阻断或编辑；媒体记录只显示结果摘要与安全标头，正文不缓存。
+
 
 ---
 
@@ -90,6 +102,8 @@ public sealed class NetworkDiagnosticsService
 ```
 
 每个 `NetworkDiagnosticEntry` 为已完成的不可变摘要，至少包含：`Id`、`StartedAt`、`Duration`、`Kind`（`Http` / `SignalR`）、`Source`、`Name`、`Method`、已净化的 `PathAndQuery`、`Outcome`、可空 `StatusCode`、`ContentType`、`DeclaredContentLength`、`IsMedia`、`ErrorKind` 和受限的 Header/预览字段。
+
+`NetworkDiagnosticsState` 另外携带 `NetworkDiagnosticsUnavailableReason`（`DeveloperModeDisabled` / `SignedOut`）：记录器只产出稳定代码，检查器把它映射成当前语言的说明。`UnavailableReason` 仍是英文诊断串，仅在没有匹配代码时兜底显示。
 
 `Source` 由调用方显式给出（如 `auth`、`explorer`、`terminal`、`settings`），不能从未受信任的 URL 推断。
 

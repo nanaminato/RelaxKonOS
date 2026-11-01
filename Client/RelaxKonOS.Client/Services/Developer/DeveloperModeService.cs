@@ -12,9 +12,16 @@ public sealed class DeveloperModeService
     private DeveloperModeState _state;
 
     public DeveloperModeService()
+        : this(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "RelaxKonOS", "developer-mode.json"))
     {
-        var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS");
-        _path = Path.Combine(root, "developer-mode.json");
+    }
+
+    /// <summary>Store-path seam. Rendering checks must be able to switch Developer Mode on without
+    /// rewriting the developer's own <c>developer-mode.json</c>.</summary>
+    internal DeveloperModeService(string storePath)
+    {
+        _path = storePath;
         _state = Load(_path);
     }
 
