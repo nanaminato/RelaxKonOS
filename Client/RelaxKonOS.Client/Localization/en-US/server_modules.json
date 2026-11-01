@@ -63,8 +63,8 @@
     "server_modules.consent_approve": "Confirm this background permission",
     "server_modules.consent_refresh": "Refresh permissions",
     "server_modules.consent_revoke": "Revoke / refuse selected permission",
-    "server_modules.consent_kind.service-start": "Start service",
-    "server_modules.consent_kind.service-stop": "Stop service",
-    "server_modules.consent_kind.service-restart": "Restart service"
+    "server_modules.capability.service_manage.start": "Start service",
+    "server_modules.capability.service_manage.stop": "Stop service",
+    "server_modules.capability.service_manage.restart": "Restart service"
   }
 }

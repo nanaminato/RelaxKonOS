@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Drop one successful real Helper restart response in the dedicated v2 instance.
 
 The unprivileged proxy never logs payloads, PAM passwords or responses. Its receipt
@@ -119,7 +119,7 @@ def trust(value):
         manifestSha256=installed['manifestSha256'], trusted=value))
 
 def prepare():
-    result = api('POST', '/api/v1.0/server/module-hosts/fixture-http/privilege', dict(kind='service-restart', target=TARGET,
+    result = api('POST', '/api/v1.0/server/module-hosts/fixture-http/privilege', dict(kind='service.manage', action='restart', target=TARGET,
         reason='Real Helper successful-response-loss acceptance', idempotencyKey=str(uuid.uuid4())))
     return api('GET', '/api/v1.0/server/module-privileges/plans/' + result['planId'])
 

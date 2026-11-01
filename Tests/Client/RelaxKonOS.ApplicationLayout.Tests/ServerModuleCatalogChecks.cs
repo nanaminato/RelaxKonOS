@@ -48,9 +48,11 @@ internal static class ServerModuleCatalogChecks
     {
         var (session, control) = NewSession(); control.SignIn("connection", "https://server.test");
         var now = DateTimeOffset.UtcNow; var id = Guid.NewGuid();
-        var request = new ModulePrivilegeConsentRequest("fixture", "service-restart", "fixture.service", "Scheduled maintenance", now.AddHours(1), "request");
-        var consent = new ModulePrivilegeConsent(id, "fixture", "1.0.0", "publisher", new string('a', 64), request.Kind, request.Target,
-            request.Reason, "administrator", now, request.ExpiresAt, "AwaitingConfirmation", new string('b', 64), "");
+        var request = new ModulePrivilegeConsentRequest("fixture", ModuleCapabilityCatalog.ServiceManage, "restart",
+            "fixture.service", "Scheduled maintenance", now.AddHours(1), "request");
+        var consent = new ModulePrivilegeConsent(id, "fixture", "1.0.0", "publisher", new string('a', 64), request.Kind,
+            request.Action, request.Target, request.Reason, "administrator", now, request.ExpiresAt, "AwaitingConfirmation",
+            new string('b', 64), "");
         var payload = System.Text.Json.JsonSerializer.Serialize(consent, RelaxKonOSJsonOptions.Default); var calls = 0;
         using var handler = new ManagementHandler(_ => { calls++; return new(HttpStatusCode.OK) { Content = new StringContent(payload) }; });
         var client = new ServerModuleManagementClient(new HttpClient(handler), session);

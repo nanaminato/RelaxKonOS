@@ -10,7 +10,7 @@
 
 `.rkmodule` 是 ZIP，只允许根部 `manifest.json` 和清单逐一声明的 `server/<rid>/…` 普通文件。不接受显式目录、符号链接、设备、Windows reparse 标记、未声明文件或大小写冲突路径。路径只允许 ASCII 字母、数字、点、下划线、连字符和目录分隔符 `/`；拒绝空段、`.`、`..`、尾点、Windows 保留设备名及文件/目录冲突。包内没有可信公钥或可自行宣称的“官方”授权。
 
-清单唯一当前 JSON 契约为 `Shared/RelaxKonOS.ServerModules.Packaging/ModulePackageContracts.cs` 中 `ModulePackageManifest`，使用精确 camelCase 属性，拒绝未知、重复、缺失字段和大小写别名。`schemaVersion=2`、`packageKind=server-module`；声明模块/发布/发布者身份、purpose、版本、单一 RID、Host API 半开区间、入口程序集路径及类型、构建身份、源码提交、依赖、能力和每个文件的长度及 SHA-256。版本必须为无前导零的三段非负整数；不接受预发布、构建后缀或浮动版本。依赖版本使用相同的最小含端点、最大不含端点区间；安装前解析已安装依赖、版本区间和依赖环。
+清单唯一当前 JSON 契约为 `Shared/RelaxKonOS.ServerModules.Packaging/ModulePackageContracts.cs` 中 `ModulePackageManifest`，使用精确 camelCase 属性，拒绝未知、重复、缺失字段和大小写别名。`schemaVersion=3`、`packageKind=server-module`；声明模块/发布/发布者身份、purpose、版本、单一 RID、Host API 半开区间、入口程序集路径及类型、构建身份、源码提交、依赖、能力、能力类别声明和每个文件的长度及 SHA-256。版本必须为无前导零的三段非负整数；不接受预发布、构建后缀或浮动版本。依赖版本使用相同的最小含端点、最大不含端点区间；安装前解析已安装依赖、版本区间和依赖环。
 
 支持的候选 RID 为 linux-x64、linux-arm64、win-x64、win-arm64、osx-x64、osx-arm64；只接受与当前进程 `RuntimeInformation.RuntimeIdentifier` 完全一致的候选。这不表示这些平台已有安装或业务验收。当前候选 Host API 版本为 `1.0.0`；`Shared/RelaxKonOS.ServerModule.Abstractions` 已提供 `IInstalledServerModule` 加载接口，校验入口类型的语法不代表已加载或发现该类型。
 
@@ -150,16 +150,26 @@ list-versions 只读版本目录的 `install.json`，不加载程序集。rollba
 remove-installed 只移除 `installed.json` 记录，默认保留版本文件；模块仍在期望启用集合中时拒绝移除。list-installed 是只读安装事实，不读出生效状态。
 
 
-## v2 唯一当前清单（2026-10-31）
+## 当前唯一清单（schemaVersion=3，2026-11-01）
 
-`ModulePackageManifest` 只接受 schemaVersion=2，新增必填 `runtime`、`privileges`、`ui`。旧 v1 清单、缺字段、未知运行模式或未知提权类型都拒绝；不保留双解析。发布者身份继续使用 `publisherId`，不接收 `publisher` 别名。签名目录 envelope/payload、来源策略仍是其各自的 schemaVersion=1 与 `ServerModuleCatalog.v1` 签名域；它们不是模块清单版本。
+`ModulePackageManifest` 只接受 schemaVersion=3，必填 `runtime`、`privileges`、`ui`。旧 v1/v2 清单、缺字段、未知运行模式、未知能力类别或未知字段都拒绝；不保留双解析。发布者身份继续使用 `publisherId`，不接收 `publisher` 别名。签名目录 envelope/payload、来源策略仍是其各自的 schemaVersion=1 与 `ServerModuleCatalog.v1` 签名域；它们不是模块清单版本。
 
 - `runtime=in-process` 只接受 `purpose=official`，继续使用进程内 ABI 1.0.0。
-- `runtime=module-host` 使用 ModuleHost ABI 2.0.0，不能公布 Core capabilities；来源可为 Host 授权的 `third-party`、`development` 或 `official`。开发来源仍需绑定服务身份与开发环境；第三方不得使用 `relaxkonos.*` 前缀。
-- `privileges` 是 `{kind,target}` 数组；目前仅允许 `service-start`、`service-stop`、`service-restart`。执行时仍须 Broker 确认及 Host/Helper 双重服务白名单。
+- `runtime=module-host` 使用 ModuleHost ABI 2.0.0，不能公布 Core capabilities；来源可为 Host 授权的 `third-party`、`development` 或 `official`。开发来源仍需绑定服务身份与开发环境；第三方不得使用 `relaxkonos.*` 前缀。module-host 允许不声明任何提权能力。
+- `privileges` 是 **能力类别 + 类型化资源范围** 的数组，最多 64 项，由 `kind` 判别。类别、字段、动作枚举和范围都按共享 `ModuleCapabilityCatalog` 校验；未知类别或未知字段直接拒绝。
+  - 每个声明必须带 `platforms`（`linux`/`windows`/`macos`），且必须包含清单 `rid` 对应的平台。
+  - `service.manage`：`services[{serviceId, actions}]`，动作限 `start`/`stop`/`restart`。当前唯一已实现的类别。
+  - `package.manage`：`manager`（`apt`/`windows-msi`）、`sourceRef`（Host 已独立批准的来源引用，不接受 URL/公钥/摘要）、`packages`、`versions{minimum, maximumExclusive}`、`actions`（`install`/`update`/`repair`/`remove`）。
+  - `file.manage`/`data.manage`：绝对限定根 `root`、`actions`，文件另带 `maximumBytes`。
+  - `account.manage`：`accounts`、`groups`、`actions`（`create`/`delete`/`grant`）。
+  - `network.manage`：`interfaces`、`ports[{minimum, maximumExclusive}]`、`actions`。
+  - `secret.reference`：`secrets[{purpose, target, permissions}]`；只声明引用，清单不含秘密值。
+  - `setting.manage`：Host 定义的 `keys`、`registryRoots`、`scheduledTasks` 和 `actions`。
+  - `app.manage`：`protocols`、`instances`、`actions`；数据库管理等协议适配器的声明位。
+  - 除 `service.manage` 外，其余类别只作为冻结的声明契约接受，执行时明确返回 `module.privilege_unsupported`，不退化为 shell 或逐应用专用枚举。
 - `ui` 必含 `name`、`summary`、`description`、可空 `homepage`、`license`。homepage 非空时只允许 HTTPS。它们不参与来源授信判断。
-- 安装事实 `installed.json` 与冻结安装计划 `package-plans.json` 同步升级 schemaVersion=2。每版本 install.json 必须保留 runtime；已安装清单按原始 manifest SHA-256 和全部文件摘要复查。旧安装事实不会静默转换。
-- 在线 ModuleHost 安装必须使用冻结计划；直接 install 路由拒绝它。apply 是对预览中精确版本、摘要、运行模式和提权声明的代码信任确认，写入独立的 module-trust.json。离线安装仅记录文件事实，不自动信任或执行代码。回退/更新不能借用其他摘要的代码信任。
+- 安装事实 `installed.json` 保持 schemaVersion=2；冻结安装计划 `package-plans.json` 升级为 schemaVersion=3，Broker 计划存储为 schemaVersion=4，后台许可存储为 schemaVersion=2。这些都是不同契约。每版本 install.json 必须保留 runtime；已安装清单按原始 manifest SHA-256 和全部文件摘要复查。旧安装事实与旧计划不会静默转换。
+- 在线 ModuleHost 安装必须使用冻结计划；直接 install 路由拒绝它。apply 是对预览中精确版本、摘要、运行模式和结构化能力声明的代码信任确认，写入独立的 module-trust.json。离线安装仅记录文件事实，不自动信任或执行代码。回退/更新不能借用其他摘要的代码信任。
 - `POST /api/v1.0/server/module-trust/{moduleId}` 使用 `{artifactSha256,manifestSha256,trusted}` 修改精确安装的代码信任；要求 ServerModulesManage 且 managed 管理模式。撤销立即阻断代理和 Broker，监督周期内关闭原进程。
 
-Linux 隔离启动、Broker 实施证据和未完成项见 [v2 实施记录](RelaxKonOS.ServerModuleV2.Progress.md)。
+能力类别与资源范围的扩展方向见[第三方模块声明式特权能力](RelaxKonOS.ModuleDeclarativePrivileges.Direction.md)。Linux 隔离启动、Broker 实施证据和未完成项见 [v2 实施记录](RelaxKonOS.ServerModuleV2.Progress.md)。

@@ -334,7 +334,11 @@ internal static class ServerModuleManagementEndpoints
     private static ServerModulePackagePlanDto PlanDto(ModulePackagePlan plan) =>
         new(plan.PlanId, plan.SourceId, plan.ReleaseId, plan.ModuleId, plan.Version, plan.PublisherId,
             plan.ArtifactSha256, plan.ManifestSha256, plan.ExpiresAt, plan.AppliedOperationId, plan.Runtime,
-            plan.Privileges.Select(p => new ServerModulePrivilegeDeclarationDto(p.Kind, p.Target)).ToArray(), plan.Ui.Name, plan.Ui.Summary);
+            plan.Privileges.Select(DeclarationDto).ToArray(), plan.Ui.Name, plan.Ui.Summary);
+
+    private static ServerModulePrivilegeDeclarationDto DeclarationDto(ModulePackageCapability capability) =>
+        new(capability.Kind, capability.Platforms, ModuleCapabilityPolicy.Describe(capability),
+            ModuleCapabilityPolicy.IsExecutable(capability.Kind));
 
     private static ServerInstalledModuleDto InstalledDto(InstalledModuleRecord module, InstalledModuleRecord? current) =>
         new(module.ModuleId, module.Version, module.ReleaseId, module.SourceId, module.PublisherId, module.ArtifactSha256,

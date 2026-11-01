@@ -63,8 +63,8 @@
     "server_modules.consent_approve": "确认授予此后台许可",
     "server_modules.consent_refresh": "刷新许可",
     "server_modules.consent_revoke": "撤销／拒绝所选许可",
-    "server_modules.consent_kind.service-start": "启动服务",
-    "server_modules.consent_kind.service-stop": "停止服务",
-    "server_modules.consent_kind.service-restart": "重启服务"
+    "server_modules.capability.service_manage.start": "启动服务",
+    "server_modules.capability.service_manage.stop": "停止服务",
+    "server_modules.capability.service_manage.restart": "重启服务"
   }
 }

@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.Options;
+using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.ModulePackaging;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Server.Endpoints;
@@ -44,7 +45,7 @@ internal static class ModulePackageHttpChecks
                 "https://modules.example/", keyPath, "builder-key", 3600,
                 HostApiMinimum: isolated ? "2.0.0" : "1.0.0", HostApiMaximumExclusive: isolated ? "3.0.0" : "2.0.0",
                 Runtime: isolated ? "module-host" : "in-process",
-                Privileges: isolated ? [new("service-restart", "fixture.service")] : []), now);
+                Privileges: isolated ? [ModuleCapabilityFixtures.Service("fixture.service", "restart")] : []), now);
             var policy = new ModulePackageTrustPolicy(1, "official", 1, true, "fixture", purpose,
                 "https://modules.example/", ["fixture-http"],
                 new Dictionary<string, string> { ["builder-key"] = built.PublicKeySpkiBase64 }, 3600);
@@ -130,8 +131,10 @@ internal static class ModulePackageHttpChecks
 
             if (isolated)
             {
-                check(plan.Runtime == "module-host" && plan.Privileges.Single().Target == "fixture.service",
-                    "install preview exposes runtime and exact declared privileges");
+                check(plan.Runtime == "module-host" && plan.Privileges.Single().Kind == ModuleCapabilityCatalog.ServiceManage
+                    && plan.Privileges.Single().Executable
+                    && plan.Privileges.Single().Resources.Single().Contains("fixture.service", StringComparison.Ordinal),
+                    "install preview exposes runtime and the structured declared capability scope");
                 using var direct = await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackageInstall,
                     new ServerModulePackageInstallRequest("official", releaseId, uploaded.UploadId), RelaxKonOSJsonOptions.Default);
                 check(direct.StatusCode == System.Net.HttpStatusCode.Conflict && InstalledModuleStore.Read(root).Count == 0,

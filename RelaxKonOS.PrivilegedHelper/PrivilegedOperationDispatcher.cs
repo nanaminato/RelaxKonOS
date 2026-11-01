@@ -63,6 +63,24 @@ public static partial class PrivilegedOperationExecutor
         }
         if (request.PackageChange is not null && request.Operation != PrivilegedOperationKind.ComponentPackageChange)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "package change requires its dedicated operation");
+        if (request.Operation == PrivilegedOperationKind.ModulePackageQuery)
+        {
+            var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
+                Correlation: request.Correlation, Version: request.Version, ModulePackageQuery: request.ModulePackageQuery);
+            if (request != clean) return Fail(64, PrivilegedProblemCode.InvalidRequest, "unexpected module package query fields");
+            return await QueryModulePackageAsync(request.ModulePackageQuery);
+        }
+        if (request.ModulePackageQuery is not null)
+            return Fail(64, PrivilegedProblemCode.InvalidRequest, "module package query requires its dedicated operation");
+        if (request.Operation == PrivilegedOperationKind.ModulePackageApply)
+        {
+            var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
+                Correlation: request.Correlation, Version: request.Version, ModulePackageApply: request.ModulePackageApply);
+            if (request != clean) return Fail(64, PrivilegedProblemCode.InvalidRequest, "unexpected module package transaction fields");
+            return await ApplyModulePackageTransactionAsync(request.ModulePackageApply, operationId);
+        }
+        if (request.ModulePackageApply is not null)
+            return Fail(64, PrivilegedProblemCode.InvalidRequest, "module package transaction requires its dedicated operation");
         if (request.Operation == PrivilegedOperationKind.FrpArchiveCatalog)
         {
             var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,

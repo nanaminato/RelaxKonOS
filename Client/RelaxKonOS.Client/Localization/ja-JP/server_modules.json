@@ -63,8 +63,8 @@
     "server_modules.consent_approve": "このバックグラウンド許可を承認",
     "server_modules.consent_refresh": "許可を更新",
     "server_modules.consent_revoke": "選択した許可を撤回／拒否",
-    "server_modules.consent_kind.service-start": "サービスを開始",
-    "server_modules.consent_kind.service-stop": "サービスを停止",
-    "server_modules.consent_kind.service-restart": "サービスを再起動"
+    "server_modules.capability.service_manage.start": "サービスを開始",
+    "server_modules.capability.service_manage.stop": "サービスを停止",
+    "server_modules.capability.service_manage.restart": "サービスを再起動"
   }
 }

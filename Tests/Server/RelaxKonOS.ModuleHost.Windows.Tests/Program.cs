@@ -85,21 +85,23 @@ try
         "real Windows LogonUser verifies the temporary administrator and returns a canonical SID");
     var brokerRoot = Path.Combine(Path.GetDirectoryName(config.ClientReport)!, "broker");
     var brokerIdentity = new ModulePrivilegeIdentity("fixture-host", "1.0.0", "fixture", new string('a', 64), new string('b', 64),
-        "native-test", [new("service-restart", config.ActionServiceName)], [config.ActionServiceName]);
+        "native-test", [new ServiceManageCapability { Platforms = ["windows"], Services = [new(config.ActionServiceName, ["restart"])] }],
+        [config.ActionServiceName]);
     var plans = new ModulePrivilegePlanStore(brokerRoot, _ => brokerIdentity);
     static Task<ModulePrivilegeAdministrator?> Verification(HostAdministratorAuthenticationResult authentication) =>
         Task.FromResult<ModulePrivilegeAdministrator?>(authentication.Succeeded && authentication.AdministratorIdentity is { } id
             ? new(id, authentication.AuthenticationMethod) : null);
     var prepared = await plans.PrepareAsync("fixture-host", "native-windows-session",
-        new("service-restart", config.ActionServiceName, "Restart only the unique Windows acceptance service", Guid.NewGuid().ToString("N")), "native-test-user");
+        new(ModuleCapabilityCatalog.ServiceManage, "restart", config.ActionServiceName,
+            "Restart only the unique Windows acceptance service", Guid.NewGuid().ToString("N")), "native-test-user");
     var plan = await plans.ReadForUserAsync(prepared.PlanId, "native-windows-session");
     var approval = new ModulePrivilegeApproval(plan.PlanHash, plan.ConfirmationToken);
     var executed = 0;
-    async Task<bool> Execute(Guid id, string kind, string target)
+    async Task<bool> Execute(Guid id, ModulePrivilegeRequest request)
     {
         executed++;
         var result = await transport.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NativeServiceAction,
-            ServiceId: target, ServiceAction: PrivilegedServiceAction.Restart, OperationId: id));
+            ServiceId: request.Target, ServiceAction: PrivilegedServiceAction.Restart, OperationId: id));
         return result.Success;
     }
     try

@@ -45,6 +45,17 @@ if (args is ["--module-package-checks"])
     return;
 }
 
+if (args is ["--module-package-transaction-checks"])
+{
+    void TransactionVerify(bool passed, string message)
+    {
+        Console.WriteLine($"{(passed ? "PASS" : "FAIL")}: {message}");
+        if (!passed) throw new InvalidOperationException(message);
+    }
+    await ModulePackageTransactionChecks.RunAsync(TransactionVerify);
+    return;
+}
+
 if (args is ["--module-privilege-checks"])
 {
     await ModulePrivilegeChecks.RunAsync((passed, message) =>
@@ -154,6 +165,7 @@ await ModulePackageChecks.RunAsync(Check);
 await ModulePackageBuilderChecks.RunAsync(Check);
 await ModuleHostChecks.RunAsync(Check);
 await ModulePrivilegeChecks.RunAsync(Check);
+await ModulePackageTransactionChecks.RunAsync(Check);
 await WindowsModuleHostChecks.RunAsync(Check);
 await ModuleReleaseDirectoryChecks.RunAsync(Check);
 await InstalledModuleChecks.RunAsync(Check);

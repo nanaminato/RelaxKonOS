@@ -1,4 +1,4 @@
-using System.IO.Compression;
+﻿using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -81,7 +81,7 @@ internal static class InstalledModuleChecks
             var fixturePath = Path.Combine(AppContext.BaseDirectory, "FixtureModule.dll");
             var fixtureBytes = await File.ReadAllBytesAsync(fixturePath);
             var entryAssembly = "server/" + rid + "/FixtureModule.dll";
-            var fixtureManifest = new ModulePackageManifest(2, "server-module", "fixture-module", "fixture-module-release",
+            var fixtureManifest = new ModulePackageManifest(3, "server-module", "fixture-module", "fixture-module-release",
                 "1.0.0", "fixture", "official", rid, "1.0.0", "2.0.0", entryAssembly,
                 "FixtureModule.FixtureInstalledModule", "fixture-build", new string('a', 40), [], [],
                 [new(entryAssembly, fixtureBytes.Length, Hash(fixtureBytes))], "in-process", [], new("Fixture", "", "", null, "MIT"));

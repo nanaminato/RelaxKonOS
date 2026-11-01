@@ -46,12 +46,12 @@ internal sealed class CoreModulePrivilegeBroker(IHostEnvironment environment, IC
                 return await Plans.ApproveAsync(plan.PlanId, session, new(plan.PlanHash, plan.ConfirmationToken),
                     () => Task.FromResult<ModulePrivilegeAdministrator?>(authority.ExpiresAt > DateTimeOffset.UtcNow
                         ? authority.Administrator with { AuthenticationMethod = "standing-consent:" + authority.Administrator.AuthenticationMethod } : null),
-                    async (operationId, kind, target) =>
+                    async (operationId, operation) =>
                     {
                         if (authority.ExpiresAt <= DateTimeOffset.UtcNow) return false;
                         using var scope = services.CreateScope();
                         using var actor = PrivilegedAuditActorScope.Enter(authority.Actor);
-                        return await ExecuteServiceActionAsync(scope.ServiceProvider.GetRequiredService<IPrivilegedOperationTransport>(), operationId, kind, target);
+                        return await ExecuteCapabilityAsync(scope.ServiceProvider.GetRequiredService<IPrivilegedOperationTransport>(), operationId, operation);
                     });
             }));
         }));
@@ -81,17 +81,19 @@ internal sealed class CoreModulePrivilegeBroker(IHostEnvironment environment, IC
         await _application.StartAsync(cancellationToken);
         Url = _application.Urls.Single();
     }
-    internal static async Task<bool> ExecuteServiceActionAsync(IPrivilegedOperationTransport helper, Guid operationId, string kind, string target)
+    internal static async Task<bool> ExecuteCapabilityAsync(IPrivilegedOperationTransport helper, Guid operationId, ModulePrivilegeRequest request)
     {
-        var action = kind switch
+        if (request.Kind != ModuleCapabilityPolicy.ServiceManage)
+            throw new ModulePrivilegeException("module.privilege_unsupported", 400);
+        var action = request.Action switch
         {
-            "service-start" => PrivilegedServiceAction.Start,
-            "service-stop" => PrivilegedServiceAction.Stop,
-            "service-restart" => PrivilegedServiceAction.Restart,
+            "start" => PrivilegedServiceAction.Start,
+            "stop" => PrivilegedServiceAction.Stop,
+            "restart" => PrivilegedServiceAction.Restart,
             _ => throw new ModulePrivilegeException("module.privilege_unsupported", 400),
         };
         var outcome = await helper.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NativeServiceAction,
-            ServiceId: target, ServiceAction: action, OperationId: operationId, Correlation: CorrelationContext.Create(operationId)), CancellationToken.None);
+            ServiceId: request.Target, ServiceAction: action, OperationId: operationId, Correlation: CorrelationContext.Create(operationId)), CancellationToken.None);
         if (outcome.ProblemCode is PrivilegedProblemCode.HelperUnavailable or PrivilegedProblemCode.TimedOut or PrivilegedProblemCode.InvalidProtocol)
             throw new IOException("module.privilege_helper_response_unknown");
         return outcome.Success;

@@ -1,4 +1,4 @@
-using RelaxKonOS.ModuleHost.Protocol;
+﻿using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.ModulePackaging;
 using RelaxKonOS.Server.Startup;
 using System.Text.Json.Nodes;
@@ -17,12 +17,12 @@ internal static class ModulePrivilegeConsentChecks
         {
             var clock = new Clock(); var trusted = true;
             var identity = new ModulePrivilegeIdentity("fixture", "1.0.0", "publisher", new string('a', 64), new string('b', 64),
-                "revision-1", [new("service-restart", "fixture.service")], ["fixture.service"]);
+                "revision-1", [ModuleCapabilityFixtures.Service("fixture.service", "restart")], ["fixture.service"]);
             ModulePrivilegeIdentity Resolve(string module) => trusted && module == identity.ModuleId ? identity
                 : throw new ModulePrivilegeException("module.privilege_denied", 403);
             var consents = new ModulePrivilegeConsentStore(root, Resolve, clock);
             var operations = new ModulePrivilegePlanStore(root, Resolve, clock);
-            ModulePrivilegeConsentRequest Request(string key) => new("fixture", "service-restart", "fixture.service", "Scheduled test service maintenance", clock.Current.AddHours(1), key);
+            ModulePrivilegeConsentRequest Request(string key) => new("fixture", ModuleCapabilityCatalog.ServiceManage, "restart", "fixture.service", "Scheduled test service maintenance", clock.Current.AddHours(1), key);
             static Task<ModulePrivilegeAdministrator?> Verify() => Task.FromResult<ModulePrivilegeAdministrator?>(new("linux:1000", "linux-pam-administrator"));
             async Task Reject(Func<Task> action, string code, string message)
             {
@@ -39,7 +39,7 @@ internal static class ModulePrivilegeConsentChecks
             var executions = 0;
             Task<ModulePrivilegeStatus> Execute(Guid consentId, string key, string target = "fixture.service", string module = "fixture", bool responseLost = false)
             {
-                var request = new ModulePrivilegeRequest("service-restart", target, "Scheduled maintenance", key);
+                var request = new ModulePrivilegeRequest(ModuleCapabilityCatalog.ServiceManage, "restart", target, "Scheduled maintenance", key);
                 return consents.ExecuteAsync(consentId, module, request, async authority =>
                 {
                     var session = "consent:" + authority.Id.ToString("N");
@@ -47,7 +47,7 @@ internal static class ModulePrivilegeConsentChecks
                     if (prepared.State != "AwaitingConfirmation") return await operations.GetForModuleAsync(prepared.PlanId, module);
                     var plan = await operations.ReadForUserAsync(prepared.PlanId, session);
                     return await operations.ApproveAsync(plan.PlanId, session, new(plan.PlanHash, plan.ConfirmationToken),
-                        () => Task.FromResult<ModulePrivilegeAdministrator?>(authority.Administrator), (_, _, _) =>
+                        () => Task.FromResult<ModulePrivilegeAdministrator?>(authority.Administrator), (_, _) =>
                         {
                             executions++;
                             if (responseLost) throw new IOException("test response lost after dispatch");

@@ -32,7 +32,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         if (!Guid.TryParse(PrivilegePlanId, out var id)) throw new InvalidOperationException("module.privilege_plan_not_found");
         var plan = await client.PrivilegePlanAsync(id);
         PrivilegePlan = plan;
-        PrivilegeText = $"{plan.ModuleId} · {plan.Version} · {plan.PublisherId}\n{plan.ArtifactSha256}\n{plan.Kind} · {plan.Target}\n{plan.Reason}\n"
+        PrivilegeText = $"{plan.ModuleId} · {plan.Version} · {plan.PublisherId}\n{plan.ArtifactSha256}\n{plan.Kind} · {plan.Action} · {plan.Target}\n{plan.Reason}\n"
             + string.Join("\n", plan.Effects.Concat(plan.Warnings)) + $"\n{plan.State} · {plan.ExpiresAt}";
     });
     [RelayCommand] private Task ApprovePrivilegeAsync() => Run(async () =>
@@ -159,7 +159,13 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         string.Join("\n", PackageOperations.Take(20).Select(operation =>
             $"{operation.Action} · {operation.ModuleId} {operation.Version} · {operation.State} · {operation.ProblemCode}"));
     public string PackagePlanText => PackagePlan is not { } plan ? "" :
-        $"{plan.Name} · {plan.ModuleId} · {plan.Version} · {plan.PublisherId}\n{plan.Summary}\n{plan.Runtime}\n{string.Join("\n", plan.Privileges.Select(p => p.Kind + " · " + p.Target))}\n{plan.ReleaseId}\n{plan.ArtifactSha256}\n{plan.ExpiresAt}";
+        $"{plan.Name} · {plan.ModuleId} · {plan.Version} · {plan.PublisherId}\n{plan.Summary}\n{plan.Runtime}\n"
+        + string.Join("\n", plan.Privileges.Select(DescribePrivilege))
+        + $"\n{plan.ReleaseId}\n{plan.ArtifactSha256}\n{plan.ExpiresAt}";
+    private static string DescribePrivilege(ServerModulePrivilegeDeclarationDto declaration) =>
+        $"{declaration.Kind} · {string.Join(',', declaration.Platforms)}"
+        + (declaration.Executable ? "" : " · unsupported")
+        + $"\n  {string.Join("\n  ", declaration.Resources)}";
     public string StoreSourceText => StoreSources.Count == 0 ? "" :
         $"catalog {CatalogRevision}\n" + string.Join("\n", StoreSources.Select(source =>
             $"{source.SourceId} · {source.Status} · seq {source.Sequence} · policy {source.PolicyRevision}"

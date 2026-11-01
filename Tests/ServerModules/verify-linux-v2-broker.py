@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Real PAM + signed third-party installation + ModuleHost + Broker + Helper acceptance.
 
 Run as the SSH test operator after prepare-linux-v2-broker-fixture.py. Password is read with getpass,
@@ -54,7 +54,7 @@ assert api('GET','/api/v1.0/server/module-hosts/fixture-http/hello') == 'hello f
 print('PASS enabled signed third-party module starts under dedicated identity and authenticates via Server proxy')
 
 def prepare():
-    result = api('POST','/api/v1.0/server/module-hosts/fixture-http/privilege',dict(kind='service-restart',
+    result = api('POST','/api/v1.0/server/module-hosts/fixture-http/privilege',dict(kind='service.manage', action='restart',
         target='relaxkonos-module-broker-fixture.service',reason='Restart only the fixed acceptance service',idempotencyKey=str(uuid.uuid4())))
     assert result['state'] == 'AwaitingConfirmation'
     return api('GET','/api/v1.0/server/module-privileges/plans/'+result['planId'])

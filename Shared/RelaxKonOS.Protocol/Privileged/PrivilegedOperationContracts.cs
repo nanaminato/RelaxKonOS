@@ -100,6 +100,12 @@ public enum PrivilegedOperationKind
     ComponentPackageInstall,
     ComponentPackageChange,
     ComponentPackageRecover,
+    /// <summary>Read-only resolution of one module-declared package against the Helper's own approved
+    /// source policy. It never downloads, installs or changes a package.</summary>
+    ModulePackageQuery,
+    /// <summary>Applies one frozen module package transaction after the Helper re-resolves and matches
+    /// the exact frozen identity. Never a free-form package manager invocation.</summary>
+    ModulePackageApply,
     NginxArchiveQuery,
     NginxArchiveInstall,
     FrpArchiveCatalog,
@@ -336,6 +342,10 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("packageVersion")] string? PackageVersion = null,
     /// <summary>The frozen package identity an install must honour. Only the frozen install kind reads it.</summary>
     [property: JsonPropertyName("packageExpectation")] RelaxKonOS.Protocol.ManagedRuntimes.ComponentPackageTarget? PackageExpectation = null,
+    /// <summary>Read-only module package resolution question. Only the query verb reads it.</summary>
+    [property: JsonPropertyName("modulePackageQuery")] ModulePackageQuery? ModulePackageQuery = null,
+    /// <summary>Frozen module package transaction. Only the apply verb reads it.</summary>
+    [property: JsonPropertyName("modulePackageApply")] ModulePackageTransaction? ModulePackageApply = null,
     [property: JsonPropertyName("proxyMihomoServiceAction")] ProxyMihomoServiceAction? ProxyMihomoServiceAction = null,
     [property: JsonPropertyName("linuxSystemProxy")] LinuxSystemProxyConfiguration? LinuxSystemProxy = null,
     [property: JsonPropertyName("firewallEnabled")] bool? FirewallEnabled = null,
@@ -411,6 +421,8 @@ public sealed record PrivilegedOperationResult(
     [property: JsonPropertyName("offset")] long? Offset = null,
     [property: JsonPropertyName("error")] string? Error = null,
     [property: JsonPropertyName("problemCode")] PrivilegedProblemCode ProblemCode = PrivilegedProblemCode.None,
+    /// <summary>Exact frozen artifact identity resolved by a read-only module package query.</summary>
+    [property: JsonPropertyName("modulePackage")] ModulePackageResolution? ModulePackage = null,
     [property: JsonPropertyName("hostEnvironment")] PrivilegedEnvironmentState? HostEnvironment = null,
     [property: JsonPropertyName("systemProxyCapabilities")] ProxySystemProxyCapabilities? SystemProxyCapabilities = null,
     [property: JsonPropertyName("hostTime")] HostTimeState? HostTime = null,

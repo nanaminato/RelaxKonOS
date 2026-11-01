@@ -5,16 +5,21 @@ using RelaxKonOS.ModuleHost.Protocol;
 
 namespace RelaxKonOS.Client.Apps.ComponentCenter;
 
-public sealed record ServerModuleConsentKindChoice(string Value)
+public sealed record ServerModuleConsentKindChoice(string Kind, string Action, string LabelKey)
 {
-    public LocalizedStatus Label => LocalizedStatus.Key("server_modules.consent_kind." + Value);
+    public LocalizedStatus Label => LocalizedStatus.Key(LabelKey);
 }
 
 public sealed partial class ServerModulesViewModel
 {
     public IReadOnlyList<ServerModuleConsentKindChoice> ConsentKinds { get; } =
-        [new("service-start"), new("service-stop"), new("service-restart")];
-    [ObservableProperty] private ServerModuleConsentKindChoice consentKind = new("service-restart");
+    [
+        new(ModuleCapabilityCatalog.ServiceManage, "start", "server_modules.capability.service_manage.start"),
+        new(ModuleCapabilityCatalog.ServiceManage, "stop", "server_modules.capability.service_manage.stop"),
+        new(ModuleCapabilityCatalog.ServiceManage, "restart", "server_modules.capability.service_manage.restart"),
+    ];
+    [ObservableProperty] private ServerModuleConsentKindChoice consentKind =
+        new(ModuleCapabilityCatalog.ServiceManage, "restart", "server_modules.capability.service_manage.restart");
     [ObservableProperty] private string consentTarget = "";
     [ObservableProperty] private string consentReason = "";
     [ObservableProperty] private decimal consentHours = 1;
@@ -35,14 +40,14 @@ public sealed partial class ServerModulesViewModel
     private void InvalidateConsents() { ClearConsentReview(); Consents = []; SelectedConsent = null; ConsentTarget = ""; ConsentReason = ""; }
     private static string DescribeConsent(ModulePrivilegeConsent consent) =>
         $"{consent.ModuleId} · {consent.Version} · {consent.PublisherId}\n{consent.ArtifactSha256}\n"
-        + $"{consent.Kind} · {consent.Target}\n{consent.Reason}\n{consent.State} · {consent.ExpiresAt:g}\n{consent.ConsentId}";
+        + $"{consent.Kind} · {consent.Action} · {consent.Target}\n{consent.Reason}\n{consent.State} · {consent.ExpiresAt:g}\n{consent.ConsentId}";
 
     [RelayCommand] private Task PrepareConsentAsync() => Run(async () =>
     {
         if (Selected is not { } module || ConsentHours is <= 0 or > 720 || string.IsNullOrWhiteSpace(ConsentTarget)
             || string.IsNullOrWhiteSpace(ConsentReason)) throw new InvalidOperationException("module.privilege_consent_invalid");
-        var prepared = await client.PrepareConsentAsync(new(module.Id, ConsentKind.Value, ConsentTarget.Trim(), ConsentReason.Trim(),
-            DateTimeOffset.UtcNow.AddHours((double)ConsentHours), Guid.NewGuid().ToString("N")));
+        var prepared = await client.PrepareConsentAsync(new(module.Id, ConsentKind.Kind, ConsentKind.Action, ConsentTarget.Trim(),
+            ConsentReason.Trim(), DateTimeOffset.UtcNow.AddHours((double)ConsentHours), Guid.NewGuid().ToString("N")));
         var review = await client.ReadConsentAsync(prepared.ConsentId);
         ConsentPlan = review;
         Consents = Consents.Where(c => c.ConsentId != review.ConsentId).Append(review).ToArray();

@@ -7,7 +7,7 @@ using RelaxKonOS.ModulePackaging;
 namespace RelaxKonOS.Server.Startup;
 
 internal sealed record ModulePrivilegeIdentity(string ModuleId, string Version, string PublisherId, string ArtifactSha256,
-    string ManifestSha256, string PolicyRevision, ModulePackagePrivilege[] Privileges, string[] AllowedServices);
+    string ManifestSha256, string PolicyRevision, ModulePackageCapability[] Privileges, string[] AllowedServices);
 internal sealed record ModulePrivilegeAdministrator(string Identity, string AuthenticationMethod);
 internal sealed class ModulePrivilegeException(string code, int status = 409) : Exception(code)
 {
@@ -41,8 +41,10 @@ internal sealed class ModulePrivilegePlanStore
         if (!File.Exists(_path)) _plans = [];
         else
         {
-            var document = ModulePackageJson.Read<Document>(File.ReadAllBytes(_path), 8 * 1024 * 1024);
-            if (document.SchemaVersion != 3 || document.Plans is null || document.Plans.Length > 1000 || document.Plans.Any(p => p is null)
+            var stored = File.ReadAllBytes(_path);
+            RequireCurrentSchema(stored);
+            var document = ModulePackageJson.Read<Document>(stored, 8 * 1024 * 1024);
+            if (document.SchemaVersion != 4 || document.Plans is null || document.Plans.Length > 1000 || document.Plans.Any(p => p is null)
                 || document.Plans.Select(p => p.Id).Distinct().Count() != document.Plans.Length)
                 throw Error("recovery_required");
             foreach (var plan in document.Plans) ValidateStored(plan);
@@ -54,6 +56,18 @@ internal sealed class ModulePrivilegePlanStore
         }
     }
     private DateTimeOffset Now => _clock.GetUtcNow();
+    private static void RequireCurrentSchema(byte[] stored)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(stored);
+            if (document.RootElement.ValueKind != JsonValueKind.Object
+                || !document.RootElement.TryGetProperty("schemaVersion", out var version)
+                || version.ValueKind != JsonValueKind.Number || version.GetInt32() != 4)
+                throw Error("recovery_required");
+        }
+        catch (JsonException) { throw Error("recovery_required"); }
+    }
     private static void ValidateStored(Plan plan)
     {
         if (plan is null || plan.Id == Guid.Empty || string.IsNullOrEmpty(plan.Session)
@@ -85,10 +99,12 @@ internal sealed class ModulePrivilegePlanStore
                 || request.IdempotencyKey is not { Length: > 0 and <= 128 }
                 || !request.IdempotencyKey.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.'))
                 throw Error("target_invalid", 400);
-            _ = Action(request.Kind);
+            Validate(request);
             var identity = _resolve(moduleId);
-            if (!identity.Privileges.Any(p => p.Kind == request.Kind && p.Target == request.Target)) throw Error("not_declared", 403);
-            if (!identity.AllowedServices.Contains(request.Target, StringComparer.Ordinal)) throw Error("target_invalid", 403);
+            if (!identity.Privileges.Any(capability => ModuleCapabilityPolicy.Allows(capability, request.Action, request.Target)))
+                throw Error("not_declared", 403);
+            if (request.Kind == ModuleCapabilityPolicy.ServiceManage
+                && !identity.AllowedServices.Contains(request.Target, StringComparer.Ordinal)) throw Error("target_invalid", 403);
             var requestHash = Hash(request);
             var existing = _plans.SingleOrDefault(p => p.Session == session && p.Identity.ModuleId == moduleId
                 && p.Request.IdempotencyKey == request.IdempotencyKey);
@@ -126,8 +142,8 @@ internal sealed class ModulePrivilegePlanStore
                 plan = Replace(plan with { TokenHash = HashText(token), Updated = Now });
             }
             return new(plan.Id, plan.Identity.ModuleId, plan.Identity.Version, plan.Identity.PublisherId,
-                plan.Identity.ArtifactSha256, plan.Request.Kind, plan.Request.Target, plan.Request.Reason,
-                [$"{plan.Request.Kind}: {plan.Request.Target}"], ["Service availability and dependent workloads may be interrupted."],
+                plan.Identity.ArtifactSha256, plan.Request.Kind, plan.Request.Action, plan.Request.Target, plan.Request.Reason,
+                Effects(plan.Request.Kind), Warnings(plan.Request.Kind),
                 plan.Hash, plan.Created, plan.Expires, plan.State, plan.Problem, token);
         }
         finally { _gate.Release(); }
@@ -158,7 +174,7 @@ internal sealed class ModulePrivilegePlanStore
     }
 
     internal async Task<ModulePrivilegeStatus> ApproveAsync(Guid id, string session, ModulePrivilegeApproval approval,
-        Func<Task<ModulePrivilegeAdministrator?>> verifyAdministrator, Func<Guid, string, string, Task<bool>> execute)
+        Func<Task<ModulePrivilegeAdministrator?>> verifyAdministrator, Func<Guid, ModulePrivilegeRequest, Task<bool>> execute)
     {
         await _gate.WaitAsync();
         try
@@ -179,7 +195,7 @@ internal sealed class ModulePrivilegePlanStore
                 Audit = plan.Audit with { ApprovingUser = plan.Audit.InitiatingUser, Administrator = administrator, ConfirmedAt = Now } });
             try
             {
-                var success = await execute(plan.Id, plan.Request.Kind, plan.Request.Target);
+                var success = await execute(plan.Id, plan.Request);
                 plan = Replace(plan with { State = success ? "Succeeded" : "Failed",
                     Problem = success ? null : "module.privilege_helper_failed", Updated = Now,
                     Audit = plan.Audit with { AttemptCompletedAt = Now } });
@@ -194,10 +210,31 @@ internal sealed class ModulePrivilegePlanStore
         }
         finally { _gate.Release(); }
     }
-    internal static string Action(string kind) => kind switch
+    /// <summary>Reject anything outside the frozen category catalog before planning. Only categories with a
+    /// delivered Host adapter may execute; everything else fails closed instead of degrading to a command.</summary>
+    internal static void Validate(ModulePrivilegeRequest request)
     {
-        "service-start" => "start", "service-stop" => "stop", "service-restart" => "restart",
-        _ => throw Error("unsupported", 400),
+        if (!ModuleCapabilityPolicy.Kinds.Contains(request.Kind, StringComparer.Ordinal)
+            || !ModuleCapabilityPolicy.Actions(request.Kind).Contains(request.Action, StringComparer.Ordinal))
+            throw Error("unsupported", 400);
+        if (request.Secrets is { Length: > 0 }) throw Error("unsupported", 400);
+        if (request.Target is not { Length: > 0 and <= 512 } || request.Target.Any(char.IsControl))
+            throw Error("target_invalid", 400);
+        if (!ModuleCapabilityPolicy.IsExecutable(request.Kind)) throw Error("unsupported", 400);
+    }
+    private static string[] Effects(string kind) => kind switch
+    {
+        ModuleCapabilityPolicy.ServiceManage => ["service-start", "service-stop", "service-restart"],
+        ModuleCapabilityPolicy.PackageManage => ["package-install", "package-remove", "package-modify"],
+        ModuleCapabilityPolicy.FileManage => ["file-write", "file-delete"],
+        ModuleCapabilityPolicy.DataManage => ["data-delete", "data-restore"],
+        _ => [],
+    };
+    private static string[] Warnings(string kind) => kind switch
+    {
+        ModuleCapabilityPolicy.ServiceManage => ["Service availability and dependent workloads may be interrupted."],
+        ModuleCapabilityPolicy.PackageManage => ["Package maintainer scripts may run with host privileges."],
+        _ => [],
     };
     private Plan Owned(Guid id, string session)
     {
@@ -216,12 +253,12 @@ internal sealed class ModulePrivilegePlanStore
     }
     private void Save()
     {
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(new Document(3, _plans.ToArray()), ModulePackageJson.Options);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(new Document(4, _plans.ToArray()), ModulePackageJson.Options);
         if (bytes.Length > 8 * 1024 * 1024) throw Error("capacity");
         var directory = Path.GetDirectoryName(_path)!;
         Directory.CreateDirectory(directory);
         if (OperatingSystem.IsLinux()) File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        if (!File.Exists(_marker)) WriteDurable(_marker, Encoding.UTF8.GetBytes("v3\n"));
+        if (!File.Exists(_marker)) WriteDurable(_marker, Encoding.UTF8.GetBytes("v4\n"));
         var temporary = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try { WriteDurable(temporary, bytes); File.Move(temporary, _path, true); }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }

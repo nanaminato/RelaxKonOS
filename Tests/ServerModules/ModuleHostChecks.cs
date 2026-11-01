@@ -24,7 +24,7 @@ internal static class ModuleHostChecks
             var bytes = await File.ReadAllBytesAsync(path);
             var manifest = new
             {
-                schemaVersion = 2,
+                schemaVersion = 3,
                 packageKind = "server-module",
                 runtime = "module-host",
                 releaseId = "fixture-host-release",

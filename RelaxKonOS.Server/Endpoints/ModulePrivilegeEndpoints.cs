@@ -74,7 +74,7 @@ internal static class ModulePrivilegeEndpoints
                 if (!state.IsSessionValid(http.User)) throw new ModulePrivilegeException("module.privilege_denied", 403);
                 var result = await broker.Plans.ApproveAsync(id, CoreModulePrivilegeBroker.Session(http.User), approval,
                     () => VerifyAdministrator(http, approval, administrators, elevations, owners, state),
-                    (operationId, kind, target) => CoreModulePrivilegeBroker.ExecuteServiceActionAsync(helper, operationId, kind, target));
+                    (operationId, operation) => CoreModulePrivilegeBroker.ExecuteCapabilityAsync(helper, operationId, operation));
                 return Results.Ok(result);
             })).RequireAuthorization();
         return app;

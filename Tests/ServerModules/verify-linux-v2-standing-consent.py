@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Private Linux acceptance: durable standing consent, true background SDK work, real PAM/Helper.
 
 Run SCRIPT RUNTIME_ZIP SHA256. Login/password stay in support's getpass-backed memory.
@@ -127,7 +127,7 @@ fixture = pathlib.Path.home()/'modulehost-v2-test/standing-fixtures'/identifier
 shutil.copyfile(pathlib.Path.home()/'modulehost-v2-test/HostFixture.dll', fixture/'publish/HostFixture.dll')
 key = fixture/'temporary-signing.pem'
 metadata = fixture/'metadata.json'
-metadata.write_text(json.dumps(dict(privileges=[dict(kind='service-restart', target=TARGET)],
+metadata.write_text(json.dumps(dict(privileges=[dict(kind='service.manage', platforms=['linux'], services=[dict(serviceId=TARGET, actions=['restart'])])],
     ui=dict(name='Standing consent fixture', summary='Test-only scheduled service action', description='Acceptance fixture', homepage=None, license='test'))))
 os.umask(0o077)
 source_id = 'standing-' + identifier[:12]; release_id = 'standing-' + identifier
@@ -151,7 +151,7 @@ try:
     wait_ready(); login()
     upload = api('POST', '/api/v1.0/server/module-packages/upload', binary=pathlib.Path(package['archivePath']).read_bytes())
     plan = api('POST', '/api/v1.0/server/module-packages/plans', dict(sourceId=source_id, releaseId=release_id, uploadId=upload['uploadId']))
-    assert plan['runtime'] == 'module-host' and plan['privileges'] == [dict(kind='service-restart', target=TARGET)]
+    assert plan['runtime'] == 'module-host' and plan['privileges'] == [dict(kind='service.manage', platforms=['linux'], services=[dict(serviceId=TARGET, actions=['restart'])])]
     api('POST', '/api/v1.0/server/module-packages/plans/'+plan['planId']+'/apply')
     restart(); login()
     inventory = api('GET', '/api/v1.0/server/modules'); fact = next(m for m in inventory if m['id'] == 'fixture-http')
@@ -170,7 +170,7 @@ try:
     api('PUT', '/api/v1.0/server/runtime-settings', dict(instanceId=settings['instanceId'], name='sessionValid', value=False, expectedRevision=settings['revision']))
     def schedule(consent_id, operation_key):
         job = api('POST', '/api/v1.0/server/module-hosts/fixture-http/schedule-background',
-            dict(consentId=consent_id, operation=dict(kind='service-restart', target=TARGET, reason=identifier, idempotencyKey=operation_key)))
+            dict(consentId=consent_id, operation=dict(kind='service.manage', action='restart', target=TARGET, reason=identifier, idempotencyKey=operation_key)))
         for _ in range(100):
             result = api('GET', '/api/v1.0/server/module-hosts/fixture-http/background-results/'+job['jobId'])
             if result['state'] != 'Scheduled': return result
@@ -179,7 +179,7 @@ try:
     path = '/api/v1.0/server/module-privileges/consents'
     def prepare(seconds):
         expiry = datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(seconds=seconds)
-        pending = api('POST', path, dict(moduleId='fixture-http', kind='service-restart', target=TARGET, reason=identifier,
+        pending = api('POST', path, dict(moduleId='fixture-http', kind='service.manage', action='restart', target=TARGET, reason=identifier,
             expiresAt=expiry.isoformat(), idempotencyKey=uuid.uuid4().hex))
         consent_ids.append(pending['consentId'])
         return api('GET', path+'/'+pending['consentId'])

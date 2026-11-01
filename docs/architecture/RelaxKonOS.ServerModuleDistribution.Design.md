@@ -1,6 +1,6 @@
 # 服务端独立模块分发与 v1/v2 宿主设计
 
-> 状态：分阶段实施，2026-11-01。当前只接受 schemaVersion=2 模块清单；安装/回退、独立 ModuleHost 代理/授权、精确代码信任、Linux/Windows 专用身份及 Broker 服务操作集合已实现。完整 ServerModules 回归通过；两平台真实 Helper、执行中断及 System 正式发行安装/跨版本更新已实测。固定服务动作的有期常设许可与后台 SDK 已两平台实测；Broker 包/文件动作及 Personal 整包仍不计为完成，详见 [v2 实施记录](RelaxKonOS.ServerModuleV2.Progress.md)。
+> 状态：分阶段实施，2026-11-01。当前只接受 schemaVersion=3 模块清单（能力类别 + 类型化资源范围）；安装/回退、独立 ModuleHost 代理/授权、精确代码信任、Linux/Windows 专用身份及 Broker 服务操作集合已实现。完整 ServerModules 回归通过；两平台真实 Helper、执行中断及 System 正式发行安装/跨版本更新已实测。固定服务动作的有期常设许可与后台 SDK 已两平台实测；Broker 包/文件动作及 Personal 整包仍不计为完成，详见 [v2 实施记录](RelaxKonOS.ServerModuleV2.Progress.md)。
 >
 > 范围：服务端模块的独立打包、信任、安装、更新、回退、加载、卸载，以及 v1/v2 两种宿主模式。桌面 `.roapp` 的包格式仍由[开发者模式](../development/RelaxKonOS.DeveloperMode.md)拥有；商店来源、搜索和下载的统一契约由[包商店来源设计](../platform/RelaxKonOS.PackageStore.Design.md)拥有；第三方模块的提权调用由[模块提权 Broker 设计](RelaxKonOS.ServerModulePrivilegeBroker.Design.md)拥有。
 >
@@ -13,7 +13,7 @@
 1. **v1 只承载官方模块，在 Server 进程内运行。**
 2. **v2 增加第三方 ModuleHost；官方模块继续在 Server 进程内运行，不移入 ModuleHost。**
 3. **不交付“第三方模块在 Server 进程内运行”的 v1 变体。**
-4. 目标包契约是 `schemaVersion=2`；v1 首个实现复用当前 `.rkmodule` v1 候选契约（`schemaVersion=1`），当前已升级到唯一 schemaVersion=2 契约，不保留双解析。v1/v2 的差异是**宿主模式、信任策略和分发范围**，不是两套长期并存的解析器。
+4. 目标包契约是 `schemaVersion=3`；v1 首个实现复用当前 `.rkmodule` v1 候选契约（`schemaVersion=1`），当前已升级到唯一 schemaVersion=3 契约（能力类别 + 类型化资源范围），不保留双解析。v1/v2 的差异是**宿主模式、信任策略和分发范围**，不是两套长期并存的解析器。
 5. 安装、更新、回退、移除都通过“计划 → 确认 → 应用 → 重启 → 核实”的持久事务完成，首版不支持热加载或运行中卸载。
 6. 模块文件放在持久数据根的不可变版本目录；Server 版本目录只放 Host 本身。
 7. 官方模块必须通过官方签名目录验证；第三方模块由用户显式信任，默认标记为未验证或社区发布者，不因安装而获得官方身份。
@@ -69,16 +69,16 @@ v2 不把官方模块迁出 Server：官方模块继续走 v1 的进程内路径
 
 ### 3.2 迁移关系
 
-v1 是产品阶段，不是永久兼容层。当前已从 v1 候选契约直接升级到唯一 schemaVersion=2：
+v1 是产品阶段，不是永久兼容层。当前已从 v1 候选契约直接升级到唯一 schemaVersion=3：
 
-- 官方模块升级到同一个 `schemaVersion=2` 契约，`runtime=in-process`；
+- 官方模块升级到同一个 `schemaVersion=3` 契约，`runtime=in-process`；
 - 第三方模块使用 `runtime=module-host`；
 - Host 只保留一个当前解析器，不新增旧格式别名、双格式解析或回退路由；
-- 如果 v1 期间还存在当前候选包 v1 的产物，按 `schemaVersion=2` 重新签发/重新验证，不做静默降级或“看起来还在运行”的假兼容。
+- 如果 v1 期间还存在当前候选包 v1 的产物，按 `schemaVersion=3` 重新签发/重新验证，不做静默降级或“看起来还在运行”的假兼容。
 
-## 4. 目标包契约（schemaVersion=2）
+## 4. 目标包契约（schemaVersion=3）
 
-> 当前安装器只读取 schemaVersion=2，字段以共享 ModulePackageManifest 为准；本文历史示例中的设计意图须与[当前包契约](RelaxKonOS.ServerModulePackage.Format.md#v2-唯一当前清单2026-10-31)对照。
+> 当前安装器只读取 schemaVersion=3，字段以共享 ModulePackageManifest 为准；能力类别与资源范围见[当前包契约](RelaxKonOS.ServerModulePackage.Format.md#当前唯一清单schemaversion32026-11-01)。
 
 ### 4.1 归档结构
 
@@ -101,7 +101,7 @@ assets/...
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "packageKind": "server-module",
   "runtime": "in-process",
   "moduleId": "relaxkonos.example.hello",
@@ -348,7 +348,7 @@ v1 的 `InstalledModuleContext` 只暴露配置、环境、内容根、模块数
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "packageKind": "server-module",
   "moduleId": "relaxkonos.example.hello",
   "releaseId": "relaxkonos.example.hello-1.0.0-linux-x64",
@@ -383,7 +383,7 @@ v1 的 `InstalledModuleContext` 只暴露配置、环境、内容根、模块数
 }
 ```
 
-> 当前安装器只接受唯一 v2 清单；runtime、privileges、ui 为必填字段，详见包契约。
+> 当前安装器只接受唯一 schemaVersion=3 清单；runtime、privileges、ui 为必填字段。`privileges` 是能力类别加类型化资源范围，`package.manage` 等未交付适配器的类别可声明但执行时明确拒绝，详见包契约。
 
 > 示例中的长度和摘要仅用于展示字段形状；实际值必须由打包器逐文件生成，空 `files` 或占位摘要不能通过校验。
 
@@ -490,7 +490,7 @@ v2 的 `IModuleContext` 只提供：
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "packageKind": "server-module",
   "runtime": "module-host",
   "moduleId": "com.example.hello",
@@ -507,13 +507,13 @@ v2 的 `IModuleContext` 只提供：
   "capabilities": [],
   "privileges": [
     {
-      "kind": "package.install",
-      "target": "example-agent",
-      "constraints": {
-        "source": "host-apt",
-        "version": "1.*"
-      },
-      "reason": "安装模块依赖的代理程序"
+      "kind": "package.manage",
+      "platforms": ["linux"],
+      "manager": "apt",
+      "sourceRef": "host-approved-example-repository",
+      "packages": ["example-agent"],
+      "versions": { "minimum": "1.0.0", "maximumExclusive": "2.0.0" },
+      "actions": ["install", "remove"]
     }
   ],
   "ui": {
@@ -578,7 +578,7 @@ v2 的 `IModuleContext` 只提供：
 
 | 编号 | 交付 | 完成门槛 |
 | --- | --- | --- |
-| MD-01 | 冻结 `schemaVersion=2` manifest、共享抽象、错误码、状态 schema | 共享 Protocol/Server/打包工具/文档同步，无旧格式别名 |
+| MD-01 | 冻结 `schemaVersion=3` manifest、能力类别与资源范围、共享抽象、错误码、状态 schema | 共享 Protocol/Server/打包工具/文档同步，无旧格式别名 |
 | MD-02 | v1 官方模块安装事务、不可变版本目录、state/lastKnownGood | 安装/更新/回退/移除在 Windows/Linux 可重复 |
 | MD-03 | v1 独立加载器、启动守卫、失败隔离 | 坏模块不发布能力；连续启动失败可回退/恢复 |
 | MD-04 | v1 组件中心安装/信任/进度/回退 UI | 中英日渲染、断线/重启后原操作可查 |

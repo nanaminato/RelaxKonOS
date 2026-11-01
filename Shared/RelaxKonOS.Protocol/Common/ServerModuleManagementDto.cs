@@ -133,7 +133,12 @@ public static class ServerModuleManagementRoutes
     public const string ModuleHostProxy = ModuleHosts + "/{moduleId}/{**path}";
 }
 
-public sealed record ServerModulePrivilegeDeclarationDto(string Kind, string Target);
+/// <summary>One declared capability category. Executable is false when the Host has no adapter yet; such a
+/// declaration never executes and must stay visible as a limitation rather than a promise.</summary>
+public sealed record ServerModulePrivilegeDeclarationDto([property: JsonRequired] string Kind,
+    [property: JsonRequired] IReadOnlyList<string> Platforms,
+    [property: JsonRequired] IReadOnlyList<string> Resources,
+    [property: JsonRequired] bool Executable);
 
 public static class ServerModulePrivilegeRoutes
 {

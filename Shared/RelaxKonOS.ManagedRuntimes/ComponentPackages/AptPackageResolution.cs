@@ -1,6 +1,7 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using RelaxKonOS.Protocol.ManagedRuntimes;
+using RelaxKonOS.Protocol.Privileged;
 
 namespace RelaxKonOS.ManagedRuntimes.ComponentPackages;
 
@@ -230,4 +231,96 @@ public static class AptPackageResolution
     /// <summary>A flat repository root reports its suite and area as <c>*</c>; both are still tokens.</summary>
     private static bool SafeToken(string text) => text.Length is > 0 and <= 64
         && text.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-' or '*');
+
+    /// <summary>
+    /// Generalizes the frozen identity to a module-declared package. The only differences from the fixed
+    /// component path are the caller-supplied package allowance and the stricter SHA-256 requirement;
+    /// resolution, repository fencing and dependency closure come from the same apt answers.
+    /// </summary>
+    public static bool TryBuildModuleResolution(AptPolicy? policy, AptUriLine? main, IReadOnlyList<AptUriLine>? others,
+        IReadOnlyCollection<string> allowedPackages, out ModulePackageResolution? resolution, out string? problemCode)
+    {
+        resolution = null; problemCode = null;
+        if (policy is null || main is null || !allowedPackages.Contains(policy.PackageName, StringComparer.Ordinal))
+        { problemCode = ComponentProblemCodes.PackageUnresolved; return false; }
+        var version = policy.CandidateVersion;
+        if (version is null || !Uri.UnescapeDataString(main.FileName).Contains("_" + version + "_", StringComparison.Ordinal))
+        { problemCode = ComponentProblemCodes.PackageVersionMismatch; return false; }
+        var repository = policy.Repositories
+            .Where(item => string.Equals(item.Version, version, StringComparison.Ordinal)
+                && main.Uri.StartsWith(item.BaseUri.TrimEnd('/') + "/", StringComparison.Ordinal))
+            .OrderByDescending(item => item.Priority)
+            .FirstOrDefault();
+        if (repository is null || !SafeRepository(repository))
+        { problemCode = ComponentProblemCodes.PackageIndexUnavailable; return false; }
+        if (main.Sha256.Length != 64 || !main.Sha256.All(Uri.IsHexDigit) || main.Bytes is <= 0 or > 536870912)
+        { problemCode = ComponentProblemCodes.PackageUnresolved; return false; }
+        var dependencies = (others ?? []).ToArray();
+        if (dependencies.Length > 64
+            || dependencies.Any(item => !SafeFileName(item.FileName) || !HasSha256(item) || item.Bytes is <= 0 or > 536870912)
+            || dependencies.Any(item => item.FileName == main.FileName)
+            || dependencies.Select(item => item.FileName).Distinct(StringComparer.Ordinal).Count() != dependencies.Length)
+        { problemCode = ComponentProblemCodes.PackageUnresolved; return false; }
+        var built = new ModulePackageResolution(policy.PackageName, version, repository.Architecture,
+            RepositoryId(repository), repository.BaseUri, repository.Suite, repository.Area, main.Uri,
+            main.Sha256.ToLowerInvariant(), main.Bytes,
+            dependencies.Select(item => new ModulePackageArtifact(
+                item.FileName, item.Uri, item.Bytes, item.Sha256.ToLowerInvariant())).ToArray());
+        if (!IsUsableModuleResolution(built, out problemCode)) return false;
+        resolution = built;
+        return true;
+    }
+
+    /// <summary>
+    /// True only when a fresh resolution is still the exact identity the Host froze: package, version,
+    /// architecture, repository, artifact URI, digest, size and the whole dependency closure must agree.
+    /// </summary>
+    public static bool MatchesModuleResolution(RelaxKonOS.Protocol.Privileged.ModulePackageResolution? expected,
+        RelaxKonOS.Protocol.Privileged.ModulePackageResolution? current) =>
+        expected is not null && current is not null
+        && string.Equals(expected.Package, current.Package, StringComparison.Ordinal)
+        && string.Equals(expected.Version, current.Version, StringComparison.Ordinal)
+        && string.Equals(expected.Architecture, current.Architecture, StringComparison.Ordinal)
+        && string.Equals(expected.RepositoryId, current.RepositoryId, StringComparison.Ordinal)
+        && string.Equals(expected.BaseUri, current.BaseUri, StringComparison.Ordinal)
+        && string.Equals(expected.Suite, current.Suite, StringComparison.Ordinal)
+        && string.Equals(expected.Area, current.Area, StringComparison.Ordinal)
+        && string.Equals(expected.PoolUri, current.PoolUri, StringComparison.Ordinal)
+        && string.Equals(expected.Sha256, current.Sha256, StringComparison.OrdinalIgnoreCase)
+        && expected.Bytes == current.Bytes
+        && expected.Dependencies is not null && current.Dependencies is not null
+        && expected.Dependencies.OrderBy(item => item.FileName, StringComparer.Ordinal)
+            .SequenceEqual(current.Dependencies.OrderBy(item => item.FileName, StringComparer.Ordinal));
+
+    /// <summary>A module package identity must name a real artifact, a real repository and SHA-256 only.</summary>
+    public static bool IsUsableModuleResolution(RelaxKonOS.Protocol.Privileged.ModulePackageResolution? target, out string? problemCode)
+    {
+        problemCode = null;
+        if (target is null || !RuntimeValidation.Identifier(target.Package)
+            || target.Version is not { Length: > 0 and <= 128 }
+            || !target.Version.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '+' or '~' or ':' or '-')
+            || target.Architecture is not { Length: > 0 and <= 32 }
+            || !target.Architecture.All(c => char.IsAsciiLetterOrDigit(c) || c == '-')
+            || target.Sha256 is not { Length: 64 } || !target.Sha256.All(Uri.IsHexDigit)
+            || target.Bytes is <= 0 or > 536870912
+            || target.RepositoryId is not { Length: > 0 and <= 4096 } || !target.RepositoryId.Contains('|')
+            || !SafeRepositoryUri(target.BaseUri) || !SafeRepositoryUri(target.PoolUri)
+            || !SafeToken(target.Suite) || !SafeToken(target.Area)
+            || target.Dependencies is not { Count: <= 64 }
+            || target.Dependencies.Any(item => item is null || !SafeFileName(item.FileName) || !SafeRepositoryUri(item.Uri)
+                || item.Bytes is <= 0 or > 536870912 || item.Sha256 is not { Length: 64 } || !item.Sha256.All(Uri.IsHexDigit))
+            || target.Dependencies.Select(item => item.FileName).Distinct(StringComparer.Ordinal).Count() != target.Dependencies.Count
+            || System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(target).Length > 196608)
+        { problemCode = ComponentProblemCodes.PackageUnresolved; return false; }
+        return true;
+    }
+
+    private static bool HasSha256(AptUriLine line) => line.Sha256 is { Length: 64 } && line.Sha256.All(Uri.IsHexDigit);
+
+    private static bool SafeFileName(string? name) => name is { Length: > 0 and <= 256 }
+        && name.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.' or '+' or ':');
+
+    private static bool SafeRepositoryUri(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https"
+        && string.IsNullOrEmpty(uri.UserInfo) && string.IsNullOrEmpty(uri.Query) && string.IsNullOrEmpty(uri.Fragment);
 }

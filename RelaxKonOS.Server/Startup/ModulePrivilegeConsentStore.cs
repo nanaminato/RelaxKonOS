@@ -32,14 +32,16 @@ internal sealed class ModulePrivilegeConsentStore
         if (!File.Exists(_path)) { _consents = []; return; }
         var stored = File.ReadAllBytes(_path);
         _documentHash = Convert.ToHexStringLower(SHA256.HashData(stored));
+        RequireCurrentSchema(stored);
         var document = ModulePackageJson.Read<Document>(stored, 8 * 1024 * 1024);
-        if (document.SchemaVersion != 1 || document.Consents is null || document.Consents.Length > 1000
+        if (document.SchemaVersion != 2 || document.Consents is null || document.Consents.Length > 1000
             || document.Consents.Any(c => c is null) || document.Consents.Select(c => c.Id).Distinct().Count() != document.Consents.Length)
             throw Error("recovery_required");
         foreach (var consent in document.Consents)
         {
             if (consent.Id == Guid.Empty || !Text(consent.Actor) || !Text(consent.Session) || consent.Identity is null
-                || consent.Request is null || consent.Identity.ModuleId != consent.Request.ModuleId
+                || consent.Request is null || !Text(consent.Request.Kind) || !Text(consent.Request.Action)
+                || consent.Identity.ModuleId != consent.Request.ModuleId
                 || consent.IdentityHash != Hash(consent.Identity) || consent.RequestHash != Hash(consent.Request)
                 || consent.Hash != Digest(consent.Id, consent.Session, consent.Actor, consent.IdentityHash, consent.RequestHash, consent.Created)
                 || consent.State is not ("AwaitingConfirmation" or "Active" or "Revoked" or "Cancelled")
@@ -62,7 +64,7 @@ internal sealed class ModulePrivilegeConsentStore
             if (!Text(session) || !Text(actor) || !Text(request.Reason) || request.IdempotencyKey is not { Length: > 0 and <= 128 }
                 || !request.IdempotencyKey.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.')) throw Error("consent_invalid", 400);
             var identity = _resolve(request.ModuleId);
-            ValidateAction(identity, request.Kind, request.Target);
+            ValidateAction(identity, request.Kind, request.Action, request.Target);
             var fingerprint = Hash(request);
             var existing = _consents.SingleOrDefault(c => c.Session == session && c.Request.IdempotencyKey == request.IdempotencyKey);
             if (existing is not null)
@@ -151,7 +153,8 @@ internal sealed class ModulePrivilegeConsentStore
             EnsureDocument();
             var consent = Find(id);
             if (consent.Identity.ModuleId != moduleId || consent.State != "Active" || consent.Request.ExpiresAt <= Now
-                || consent.Request.Kind != request.Kind || consent.Request.Target != request.Target)
+                || consent.Request.Kind != request.Kind || consent.Request.Action != request.Action
+                || consent.Request.Target != request.Target)
                 throw Error("confirmation_required", 403);
             Current(consent);
             // Hold the gate until dispatch completes: revocation is linearized with execution.
@@ -165,11 +168,15 @@ internal sealed class ModulePrivilegeConsentStore
     {
         if (Hash(_resolve(consent.Identity.ModuleId)) != consent.IdentityHash) throw Error("plan_changed");
     }
-    private static void ValidateAction(ModulePrivilegeIdentity identity, string kind, string target)
+    private static void ValidateAction(ModulePrivilegeIdentity identity, string kind, string action, string target)
     {
-        _ = ModulePrivilegePlanStore.Action(kind);
-        if (!identity.Privileges.Any(p => p.Kind == kind && p.Target == target)) throw Error("not_declared", 403);
-        if (!identity.AllowedServices.Contains(target, StringComparer.Ordinal)) throw Error("target_invalid", 403);
+        if (!ModuleCapabilityPolicy.Kinds.Contains(kind, StringComparer.Ordinal)
+            || !ModuleCapabilityPolicy.Actions(kind).Contains(action, StringComparer.Ordinal)
+            || !ModuleCapabilityPolicy.IsExecutable(kind)) throw Error("unsupported", 400);
+        if (!identity.Privileges.Any(capability => ModuleCapabilityPolicy.Allows(capability, action, target)))
+            throw Error("not_declared", 403);
+        if (kind == ModuleCapabilityPolicy.ServiceManage
+            && !identity.AllowedServices.Contains(target, StringComparer.Ordinal)) throw Error("target_invalid", 403);
     }
     private Consent Find(Guid id) => _consents.SingleOrDefault(c => c.Id == id) ?? throw Error("consent_not_found", 404);
     private Consent Owned(Guid id, string session)
@@ -187,7 +194,7 @@ internal sealed class ModulePrivilegeConsentStore
     }
     private ModulePrivilegeConsent View(Consent consent, string token) => new(consent.Id, consent.Identity.ModuleId,
         consent.Identity.Version, consent.Identity.PublisherId, consent.Identity.ArtifactSha256, consent.Request.Kind,
-        consent.Request.Target, consent.Request.Reason, consent.Actor, consent.Created, consent.Request.ExpiresAt,
+        consent.Request.Action, consent.Request.Target, consent.Request.Reason, consent.Actor, consent.Created, consent.Request.ExpiresAt,
         consent.State is "AwaitingConfirmation" or "Active" && (consent.Request.ExpiresAt <= Now
             || consent.State == "AwaitingConfirmation" && consent.Created.AddMinutes(5) <= Now) ? "Expired" : consent.State, consent.Hash, token);
     private void EnsureDocument()
@@ -201,12 +208,12 @@ internal sealed class ModulePrivilegeConsentStore
     }
     private void Save()
     {
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(new Document(1, _consents.ToArray()), ModulePackageJson.Options);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(new Document(2, _consents.ToArray()), ModulePackageJson.Options);
         if (bytes.Length > 8 * 1024 * 1024) throw Error("capacity");
         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
         if (OperatingSystem.IsLinux()) File.SetUnixFileMode(Path.GetDirectoryName(_path)!, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         var marker = _path + ".initialized";
-        if (!File.Exists(marker)) Write(marker, Encoding.UTF8.GetBytes("v1\n"));
+        if (!File.Exists(marker)) Write(marker, Encoding.UTF8.GetBytes("v2\n"));
         var temporary = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try { Write(temporary, bytes); File.Move(temporary, _path, true); _documentHash = Convert.ToHexStringLower(SHA256.HashData(bytes)); }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
@@ -216,6 +223,18 @@ internal sealed class ModulePrivilegeConsentStore
         using var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough);
         if (OperatingSystem.IsLinux()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         output.Write(bytes); output.Flush(true);
+    }
+    private static void RequireCurrentSchema(byte[] stored)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(stored);
+            if (document.RootElement.ValueKind != JsonValueKind.Object
+                || !document.RootElement.TryGetProperty("schemaVersion", out var version)
+                || version.ValueKind != JsonValueKind.Number || version.GetInt32() != 2)
+                throw Error("recovery_required");
+        }
+        catch (JsonException) { throw Error("recovery_required"); }
     }
     private static bool Text(string? text) => text is { Length: > 0 and <= 512 } && !text.Any(char.IsControl);
     private static bool DigestText(string text) => text.Length == 64 && text.All(char.IsAsciiHexDigitLower);

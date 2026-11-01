@@ -18,15 +18,15 @@ internal static class ModulePrivilegeChecks
         {
             var clock = new Clock();
             var identity = new ModulePrivilegeIdentity("fixture", "1.0.0", "publisher", new string('a', 64), new string('b', 64),
-                "revision-1", [new("service-restart", "fixture.service")], ["fixture.service"]);
+                "revision-1", [ModuleCapabilityFixtures.Service("fixture.service", "restart")], ["fixture.service"]);
             var trusted = true;
             static Task<ModulePrivilegeAdministrator?> Verify() => Task.FromResult<ModulePrivilegeAdministrator?>(new("linux:1000", "linux-pam-administrator"));
             ModulePrivilegeIdentity Resolve(string module) => trusted && module == identity.ModuleId
                 ? identity : throw new ModulePrivilegeException("module.privilege_denied", 403);
             var store = new ModulePrivilegePlanStore(root, Resolve, clock);
             Task<ModulePrivilegePrepared> PrepareRequest(ModulePrivilegeRequest request) => store.PrepareAsync("fixture", "session-1", request, "test-user");
-            ModulePrivilegeRequest Request(string key, string target = "fixture.service", string kind = "service-restart") =>
-                new(kind, target, "Restart the fixture service", key);
+            ModulePrivilegeRequest Request(string key, string target = "fixture.service", string action = "restart") =>
+                new(ModuleCapabilityCatalog.ServiceManage, action, target, "Restart the fixture service", key);
             async Task Reject(Func<Task> action, string code, string message)
             {
                 try { await action(); }
@@ -41,9 +41,11 @@ internal static class ModulePrivilegeChecks
             }
             static ModulePrivilegeApproval Approval(ModulePrivilegePlan plan) => new(plan.PlanHash, plan.ConfirmationToken);
             var executions = 0;
-            Task<bool> Execute(Guid id, string kind, string target)
+            Task<bool> Execute(Guid id, ModulePrivilegeRequest request)
             {
-                check(id != Guid.Empty && kind == "service-restart" && target == "fixture.service", "Broker executes the exact frozen typed action");
+                check(id != Guid.Empty && request.Kind == ModuleCapabilityCatalog.ServiceManage
+                    && request.Action == "restart" && request.Target == "fixture.service",
+                    "Broker executes the exact frozen typed action");
                 executions++;
                 return Task.FromResult(true);
             }
@@ -56,7 +58,15 @@ internal static class ModulePrivilegeChecks
                 "idempotency_conflict", "Broker rejects idempotency key reuse with changed content");
             await Reject(() => PrepareRequest(Request("undeclared", "other.service")),
                 "not_declared", "Broker rejects undeclared targets");
-            await Reject(() => PrepareRequest(Request("shell", kind: "shell")),
+            await Reject(() => PrepareRequest(Request("undeclared-action", action: "stop")),
+                "not_declared", "Broker rejects actions outside the declared service scope");
+            await Reject(() => PrepareRequest(new(ModuleCapabilityCatalog.PackageManage, "install", "mysql-server",
+                "Install a package", "package")),
+                "unsupported", "Broker rejects capability categories without a Host adapter");
+            await Reject(() => PrepareRequest(new(ModuleCapabilityCatalog.ServiceManage, "restart", "fixture.service",
+                "Use a secret", "secret", [new("database-password", "mysql", "read")])),
+                "unsupported", "Broker rejects secret references until a delivery adapter exists");
+            await Reject(() => PrepareRequest(new("shell", "restart", "fixture.service", "Run a command", "shell")),
                 "unsupported", "Broker rejects arbitrary command kinds");
             await Reject(() => store.ReadForUserAsync(plan.PlanId, "other-session"), "denied", "Broker binds plans to the initiating session");
             await Reject(() => store.GetForModuleAsync(plan.PlanId, "other-module"), "denied", "Broker prevents cross-module result reads");
@@ -96,7 +106,7 @@ internal static class ModulePrivilegeChecks
             check(results.Count(s => s == "Succeeded") == 1 && executions == 2, "Broker serializes concurrent approvals and executes only once");
             var interrupted = await Prepare("interrupted");
             var unknown = await store.ApproveAsync(interrupted.PlanId, "session-1", Approval(interrupted), Verify,
-                (_, _, _) => throw new IOException("lost Helper response"));
+                (_, _) => throw new IOException("lost Helper response"));
             check(unknown.State == "RecoveryRequired", "Broker treats a lost Helper response as unknown, without replay");
             var reopened = new ModulePrivilegePlanStore(root, Resolve, clock);
             check((await reopened.GetForModuleAsync(plan.PlanId, "fixture")).State == "Succeeded"
@@ -110,7 +120,7 @@ internal static class ModulePrivilegeChecks
             await Reject(() => reopened.ApproveAsync(interrupted.PlanId, "session-1", Approval(interrupted),
                 Verify, Execute), "approval_invalid", "Broker rejects replay after a lost Helper response and restart");
             var crash = await Prepare("crash-before-response");
-            await store.ApproveAsync(crash.PlanId, "session-1", Approval(crash), Verify, async (_, _, _) =>
+            await store.ApproveAsync(crash.PlanId, "session-1", Approval(crash), Verify, async (_, _) =>
             {
                 // Reopen while the durable record is Executing, before any completion response exists.
                 var recovering = new ModulePrivilegePlanStore(root, Resolve, clock);
@@ -165,7 +175,7 @@ internal static class ModulePrivilegeChecks
                 "Broker rejects a persisted approval attributed to another user");
             RejectCorruption(d => d["plans"]![0]!["audit"]!["administrator"] = null,
                 "Broker rejects a completed action missing its verified administrator evidence");
-            RejectCorruption(d => d["schemaVersion"] = 2, "Broker rejects the previous audit-incomplete internal store format");
+            RejectCorruption(d => d["schemaVersion"] = 3, "Broker rejects the previous inner-section internal store format");
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
     }

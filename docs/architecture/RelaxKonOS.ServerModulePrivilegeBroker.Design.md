@@ -2,7 +2,7 @@
 
 > 状态：分阶段实施，2026-11-01。服务启动/停止/重启的持久计划、单次确认门、私有回调和 SDK/Core/桌面接线已实现；Linux/Windows HTTP/真实 Helper、批准审计、Core/Helper 执行中断及 System 整包安装/更新已有实测。固定服务动作的有期常设许可、后台 SDK 执行、撤销/到期及重启幂等也已两平台实测。包/文件动作尚未实现，Personal 整包未验收。本文定义 v2 ModuleHost 的第三方模块提权边界；v1 官方模块继续使用现有 `IHostElevationSessionStore` 和 `IPrivilegedOperationTransport`。
 >
-> 范围：第三方模块申请宿主特权时的计划、展示、确认、执行、审计和撤销。模块包格式与安装由[服务端独立模块分发设计](RelaxKonOS.ServerModuleDistribution.Design.md)拥有；商店来源由[包商店来源设计](../platform/RelaxKonOS.PackageStore.Design.md)拥有；Helper 的底层封闭操作仍由[统一特权 Helper 架构](privileged-helper.md)拥有。
+> 范围：第三方模块申请宿主特权时的计划、展示、确认、执行、审计和撤销。模块包格式与安装由[服务端独立模块分发设计](RelaxKonOS.ServerModuleDistribution.Design.md)拥有；商店来源由[包商店来源设计](../platform/RelaxKonOS.PackageStore.Design.md)拥有；Helper 的底层封闭操作仍由[统一特权 Helper 架构](privileged-helper.md)拥有。通用能力类别、资源范围和软件安装/卸载的后续扩展方向见[第三方模块声明式特权能力](RelaxKonOS.ModuleDeclarativePrivileges.Direction.md)。
 >
 > 下文仍包含目标能力。已验证范围及剩余门槛以 [v2 实施记录](RelaxKonOS.ServerModuleV2.Progress.md) 为准，不能将计划存储单测视为真实提权验收。
 
@@ -67,17 +67,21 @@ public interface IModulePrivilegeBroker
 
 ```csharp
 public sealed record ModulePrivilegeRequest(
-    ModulePrivilegeKind Kind,
-    JsonElement Parameters,
+    string Kind,
+    string Action,
+    string Target,
     string Reason,
-    ModulePrivilegeConsentScope Scope);
+    string IdempotencyKey,
+    ModuleSecretReference[]? Secrets = null);
+
+public sealed record ModuleSecretReference(string Purpose, string Target, string Permission);
 ```
 
-`Parameters` 是强类型操作参数，不是命令行字符串。每个 `Kind` 在共享 Protocol 中有自己的 DTO、校验规则和稳定错误码。
+`Kind` 是冻结的能力类别，`Action` 是该类别允许的动作，`Target` 是声明的资源标识；三者都不是命令行字符串。未知类别、类别外动作、未声明目标或携带秘密值都会在规划前拒绝。`Secrets` 只承载目的限定的引用，不承载秘密值；在其交付适配器实现前，带引用的请求明确返回 unsupported。
 
 ### 3.3 操作类型
 
-首版建议只开放以下类型：
+以下为目标能力类别，逐类实现和验收。首个固定服务动作切片不是永久业务白名单；下一阶段按[声明式能力方向](RelaxKonOS.ModuleDeclarativePrivileges.Direction.md)把软件包安装/卸载等操作提升为通用类别，由模块声明资源范围，Host 解析精确计划，用户确认后交 Helper 复核执行。新增 MySQL 等应用通常不应要求新增应用专用 Core 操作。
 
 | 类型 | 用途 | 关键约束 |
 | --- | --- | --- |
@@ -91,7 +95,7 @@ public sealed record ModulePrivilegeRequest(
 | `HostSetting` | 主机设置 | 只允许 Host 定义的设置键 |
 | `ProcessExecute` | 运行模块声明的可执行文件 | 最后开放；必须签名清单、可执行文件 hash、参数 schema、固定环境/工作目录/超时 |
 
-现有 Helper 的包操作只覆盖 Nginx、Git、Docker、Samba、Squid、sing-box、Tailscale、Mihomo 等固定组件；第三方模块要安装任意包不是现成能力，必须新增产品级的固定包/白名单操作，或明确拒绝。不能把现有 `ComponentPackageInstall` 当成任意 apt 接口。
+现有 Helper 的包操作只覆盖 Nginx、Git、Docker、Samba、Squid、sing-box、Tailscale、Mihomo 等固定组件；这不是第三方通用安装能力已经交付的证据。下一阶段新增通用软件包能力及平台适配器，以 Host 批准来源、模块声明包集合、版本约束、依赖闭包和资源所有权为边界；安装与卸载均可声明。适配器交付前明确拒绝，不把现有 `ComponentPackageInstall` 当成任意 apt 接口，也不要求永久逐应用新增专用枚举。
 
 `ProcessExecute` 不是通用命令接口：
 
@@ -299,11 +303,11 @@ sequenceDiagram
 
 ## 6. 与 Helper 的映射
 
-Broker 不新增“任意命令”Helper 操作。每个 `ModulePrivilegeKind` 必须映射到现有或新增的封闭 `PrivilegedOperationKind`：
+Broker 不新增“任意命令”Helper 操作。封闭边界应位于软件包、服务、文件等通用能力类别，而不是写死每个第三方应用名称；模块通过声明限定可申请的资源。每个能力类别必须映射到现有或新增的类型化 Helper 操作，Helper 按受保护策略独立校验，不能仅信任模块清单或 Server 参数：
 
 | Broker 操作 | Helper 侧 |
 | --- | --- |
-| `PackageInstall/Remove/Update` | 既有 `ComponentPackageInstall`/`ComponentPackageChange` 或新增固定包操作 |
+| `PackageInstall/Remove/Update` | 既有固定组件操作仅作现状；后续新增通用包事务适配器，冻结来源、包、版本、依赖和移除集合 |
 | `ServiceStart/Stop/Restart/Reload` | 既有 `ManagedRuntime`/`NativeServiceAction` 等固定服务操作 |
 | `FileWrite/Delete/SetMode/SetOwner` | 既有受保护文件操作，限定根和路径 |
 | `FirewallRule` | 既有 `FirewallUfw*`/`FirewallWindows*` |
@@ -311,7 +315,7 @@ Broker 不新增“任意命令”Helper 操作。每个 `ModulePrivilegeKind` �
 | `HostSetting` | 既有 `HostTimeApply`/`HostIdentityApply`/`HostEnvironmentApply` 等 |
 | `ProcessExecute` | 新增受限操作；首版可不实现 |
 
-如果现有 Helper 没有合适的固定操作，先新增产品级 typed operation 和测试，不把 Broker 降级为通用命令代理。
+如果现有 Helper 没有合适的能力类别或平台适配器，先新增通用类型化操作和测试；已有类别覆盖的新模块通过声明资源接入。特殊操作可按独立的高信任扩展机制评审，不能隐式降级为通用命令代理。模块安装时的能力范围授权与执行时的具体计划确认分别校验；详见[两层授权与实施顺序](RelaxKonOS.ModuleDeclarativePrivileges.Direction.md)。
 
 ## 7. 审计与可观察性
 
@@ -366,7 +370,7 @@ Broker 不新增“任意命令”Helper 操作。每个 `ModulePrivilegeKind` �
 | PB-02 | Core Broker、计划存储、一次性 token、管理员验证复用 | 计划过期/重放/漂移/密码错误全部拒绝 |
 | PB-03 | 客户端确认 UI（三语言、计划步骤/影响/警告） | 管理员已验证只显示确认；未验证显示账密 |
 | PB-04 | ModuleHost IPC 与 Broker 调用 | ModuleHost 无法直连 Helper/Server 数据 |
-| PB-05 | 首批操作：包安装/移除、服务动作、文件写入 | 每个操作有固定 Helper 映射和审计 |
+| PB-05 | 首批通用类别：包安装/移除、服务动作、文件写入 | 模块声明资源；Host 冻结计划；Helper 独立复核和审计；后续按声明式方向 DC-01～DC-03 验收 |
 | PB-06 | 常设提权许可、撤销、后台任务 | 未授权后台提权 fail closed |
 | PB-07 | `ProcessExecute` 评估（可选，最后） | 签名清单、hash、参数 schema、真实隔离评估 |
 
@@ -387,6 +391,7 @@ Broker 不新增“任意命令”Helper 操作。每个 `ModulePrivilegeKind` �
 
 ## 12. 关联文档
 
+- [第三方模块声明式特权能力](RelaxKonOS.ModuleDeclarativePrivileges.Direction.md)
 - [服务端独立模块分发与 v1/v2 宿主设计](RelaxKonOS.ServerModuleDistribution.Design.md)
 - [服务端模块管理设计](RelaxKonOS.ServerModuleManagement.Design.md)
 - [包商店来源设计](../platform/RelaxKonOS.PackageStore.Design.md)
@@ -396,22 +401,22 @@ Broker 不新增“任意命令”Helper 操作。每个 `ModulePrivilegeKind` �
 
 ## 13. 当前实现契约（2026-11-01）
 
-首个 Broker 操作集合为 service-start / service-stop / service-restart，映射现有 Helper NativeServiceAction。未开放的包、文件、防火墙、TUN、设置和 ProcessExecute 操作明确返回 unsupported，绝不转为命令行。
+首个 Broker 操作集合为 `service.manage` 的 `start`/`stop`/`restart`：请求携带类别、动作和目标，且必须落在模块声明的服务与动作范围内，再映射现有 Helper NativeServiceAction。能力类别目录已冻结为 `service.manage`、`package.manage`、`file.manage`、`data.manage`、`account.manage`、`network.manage`、`secret.reference`、`setting.manage`、`app.manage`；除 `service.manage` 外均明确返回 unsupported，绝不转为命令行或逐应用专用操作。
 
 ModuleHost SDK `context.Privileges` 通过 Core 拥有的临时 loopback listener 调用；每进程随机服务令牌确定模块身份，Server 代理为当前已认证业务请求生成短时不透明 context，并在代理请求结束时撤销。模块不能传 userId/JWT/密码来声明身份；没有活动 context 的后台 prepare 被拒绝。模块侧仅返回 planId/planHash/状态。
 
 Core 用户 API：GET `/api/v1.0/server/module-privileges/plans/{id}`、POST 同路径 `/approve` 或 `/cancel`。GET 的确认令牌只交给发起用户的同一会话；approve 提交 planHash、确认令牌及可选管理员账密。桌面组件中心可输入业务返回的 planId 查看并确认/拒绝。计划五分钟过期；服务授权不得跳过确认门。HostElevationSessionState 提供只读 IsAdministratorVerified，既有 sessionValid 控制免密码记忆。owner device 仍通过 Core OwnerDeviceKeyService 校验。
 
-privilege-plans.json 内部存储使用 schemaVersion=3，原子耐久保存计划、执行与终态，确认令牌仅保存哈希；新增发起用户、同会话批准用户、实际验证管理员身份、验证方式、确认时间与执行尝试结束时间，初始发起者绑定进计划摘要。拒绝旧的审计不完整存储格式，不进行自动迁移；升级前必须显式处理旧状态及其证据。安装清单、installed.json 和 package-plans.json 仍使用 schemaVersion=2，二者是不同契约。Executing 在重启后变为 RecoveryRequired，响应丢失也进入 RecoveryRequired，不重放动作。管理员验证记忆保留原始规范身份；owner-device 记录实际设备 ID，不记录密码、私钥或令牌。module-trust.json 绑定精确版本/发布者/归档与清单摘要；Broker 执行前两次复查当前安装、启用、信任、来源目录/撤销、策略与 Host 服务白名单。Helper 再检查自己的 root 管理服务白名单。
+privilege-plans.json 内部存储使用 schemaVersion=4，原子耐久保存计划、执行与终态，确认令牌仅保存哈希；计划绑定类别、动作、目标和模块声明的资源范围；新增发起用户、同会话批准用户、实际验证管理员身份、验证方式、确认时间与执行尝试结束时间，初始发起者绑定进计划摘要。拒绝旧的审计不完整存储格式，不进行自动迁移；升级前必须显式处理旧状态及其证据。模块安装清单使用 schemaVersion=3，package-plans.json 使用 schemaVersion=3，installed.json 仍使用 schemaVersion=2；它们是不同契约。Executing 在重启后变为 RecoveryRequired，响应丢失也进入 RecoveryRequired，不重放动作。管理员验证记忆保留原始规范身份；owner-device 记录实际设备 ID，不记录密码、私钥或令牌。module-trust.json 绑定精确版本/发布者/归档与清单摘要；Broker 执行前两次复查当前安装、启用、信任、来源目录/撤销、策略与 Host 服务白名单。Helper 再检查自己的 root 管理服务白名单。
 
 PB-01/02：核心契约及确认门的定向测试已通过；PB-03：桌面入口已编译；PB-04：Linux/Windows 专用身份与权限隔离已有实机验收；PB-05 服务动作、审计及两平台真实 Helper 中断恢复已实测。PB-06 已实现固定服务动作的有期常设许可与后台 SDK 执行，两平台真实撤销/到期和重启幂等已实测；无显式许可仍拒绝后台派发。包/文件动作仍未实现，Personal 整包未验收。
 
 ### PB-06 当前后台许可契约（2026-11-01）
 
-已交付范围为 service-start/stop/restart 的有期、固定目标许可。Core 管理 API 为 `/api/v1.0/server/module-privileges/consents` 的创建/列表、`/{id}` 原会话审查及 `/{id}/approve`、`/{id}/revoke`；均要求 `ServerModulesManage`，部署托管只读模式拒绝写入。创建不授予权力、不执行动作；审查令牌仅交原会话，五分钟内经管理员显式确认后生效。最长三十天，到期、撤销和模块/信任/策略漂移拒绝新的派发。
+已交付范围为 `service.manage` 启动/停止/重启的有期、固定目标许可。Core 管理 API 为 `/api/v1.0/server/module-privileges/consents` 的创建/列表、`/{id}` 原会话审查及 `/{id}/approve`、`/{id}/revoke`；均要求 `ServerModulesManage`，部署托管只读模式拒绝写入。创建不授予权力、不执行动作；审查令牌仅交原会话，五分钟内经管理员显式确认后生效。最长三十天，到期、撤销和模块/信任/策略漂移拒绝新的派发。
 
 SDK `ExecuteBackgroundAsync` 通过进程令牌认证模块身份，不复用业务请求 context，不接受管理员凭据。许可 ID 不是认证令牌；它不能让其他模块调用。每个操作仍落原耐久计划与 Helper 审计，`consent:<ID>` 关联授予记录；响应丢失或 Core 重启不会借常设许可自动重放。撤销与派发线性化，已经派发的动作不冒充被取消，撤销完成后拒绝新动作。普通前台 Prepare 仍要求当前业务上下文及单次确认。
 
-`privilege-consents.json` 独立使用 schemaVersion=1，严格读取当前结构，检查冻结身份/请求/组合摘要与审批/撤销证据；活进程发现文件丢失或被外部改写时拒绝使用，不用内存缓存掩盖磁盘未知。模块安装清单仍为 schemaVersion=2，原单次操作审计仍为内部 schemaVersion=3。
+`privilege-consents.json` 独立使用 schemaVersion=2，严格读取当前结构，检查冻结身份/请求/组合摘要与审批/撤销证据；活进程发现文件丢失或被外部改写时拒绝使用，不用内存缓存掩盖磁盘未知。模块安装清单为 schemaVersion=3，原单次操作审计为内部 schemaVersion=4。
 
 两平台真实 PAM/LogonUser、后台 Helper 动作、撤销/实际到期、重启幂等与操作者审计已验证。最新 Windows 原生/HTTP 74 项、ServerModules 完整 623 项及补充定向检查，证据统一链接到 [v2 实施记录](RelaxKonOS.ServerModuleV2.Progress.md)。后台计划由模块自己调度；本次没有新增主机任务调度器，也没有开放包/文件/网络/任意进程动作。

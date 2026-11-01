@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
@@ -31,7 +31,7 @@ internal static class ModuleReleaseDirectoryChecks
             byte[] Json<T>(T value) => JsonSerializer.SerializeToUtf8Bytes(value, ModulePackageJson.Options);
             ModulePackageRelease Release(int version, string targetRid, string apiMinimum = "1.0.0", string apiMaximum = "2.0.0", bool dependency = false)
             {
-                var m = new ModulePackageManifest(2, "server-module", ServerModules.FirewallId, "release-" + version, version + ".0.0",
+                var m = new ModulePackageManifest(3, "server-module", ServerModules.FirewallId, "release-" + version, version + ".0.0",
                     "relaxkon", "official", targetRid, apiMinimum, apiMaximum, "server/" + targetRid + "/Module.dll", "Module.Entry",
                     "build-" + version, new string('a', 40), dependency ? [new(ServerModules.GitId, "1.0.0", "2.0.0")] : [], ["firewall"],
                     [new("server/" + targetRid + "/Module.dll", 1, new string('b', 64))], "in-process", [], new("Fixture", "", "", null, "MIT"));

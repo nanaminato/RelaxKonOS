@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Real Helper interruption acceptance for the dedicated v2 test instance only."""
 import json
 import pathlib
@@ -18,7 +18,7 @@ def trust(value):
 
 def prepare(key):
     prepared = api('POST', '/api/v1.0/server/module-hosts/fixture-http/privilege', dict(
-        kind='service-restart', target='relaxkonos-module-broker-fixture.service',
+        kind='service.manage', action='restart', target='relaxkonos-module-broker-fixture.service',
         reason='Dedicated Helper interruption acceptance', idempotencyKey=key))
     return api('GET', '/api/v1.0/server/module-privileges/plans/' + prepared['planId'])
 

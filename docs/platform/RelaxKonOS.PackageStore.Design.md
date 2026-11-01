@@ -163,7 +163,11 @@
           "manifestSha256": "…",
           "dependencies": [],
           "privileges": [
-            { "kind": "service.restart", "target": "example.service" }
+            {
+              "kind": "service.manage",
+              "platforms": ["linux"],
+              "services": [{ "serviceId": "example.service", "actions": ["restart"] }]
+            }
           ],
           "releaseNotes": "…"
         }

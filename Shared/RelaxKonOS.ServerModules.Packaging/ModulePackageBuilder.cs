@@ -29,7 +29,7 @@ public sealed record ModulePackageBuildOptions(
     string HostApiMaximumExclusive = "2.0.0",
     IReadOnlyList<string>? Capabilities = null,
     IReadOnlyList<ModulePackageDependency>? Dependencies = null,
-    string Runtime = "in-process", IReadOnlyList<ModulePackagePrivilege>? Privileges = null, ModulePackageUi? Ui = null);
+    string Runtime = "in-process", IReadOnlyList<ModulePackageCapability>? Privileges = null, ModulePackageUi? Ui = null);
 
 public sealed record ModulePackageBuildResult(ModulePackageManifest Manifest, string ManifestSha256,
     string ArchivePath, string ArchiveSha256, long ArchiveBytes, string CatalogPath, string PublicKeySpkiBase64);
@@ -80,7 +80,7 @@ public static class ModulePackageBuilder
         }
         if (files.Count == 0 || !files.Any(file => file.Path == entryPath))
             throw new ModulePackageException("module-package-build-entry-not-found");
-        var manifest = new ModulePackageManifest(2, "server-module", options.ModuleId, options.ReleaseId,
+        var manifest = new ModulePackageManifest(3, "server-module", options.ModuleId, options.ReleaseId,
             options.Version, options.PublisherId, options.Purpose, options.Rid,
             options.HostApiMinimum, options.HostApiMaximumExclusive, entryPath, options.EntryType,
             options.BuildId, options.SourceCommit, options.Dependencies?.ToArray() ?? [],

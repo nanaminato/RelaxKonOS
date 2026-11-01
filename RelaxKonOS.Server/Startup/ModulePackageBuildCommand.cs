@@ -6,7 +6,7 @@ namespace RelaxKonOS.Server.Startup;
 /// <summary>Offline build tool for an official `.rkmodule` and its signed catalog. No Host state is read or written.</summary>
 internal static class ModulePackageBuildCommand
 {
-    private sealed record BuildMetadata(ModulePackagePrivilege[] Privileges, ModulePackageUi Ui);
+    private sealed record BuildMetadata(ModulePackageCapability[] Privileges, ModulePackageUi Ui);
     private static readonly string[] Required =
     [
         "--publish-dir", "--output-dir", "--module-id", "--version", "--release-id", "--publisher-id",

@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -33,7 +33,11 @@ internal static class WindowsCoreAcceptance
                 "fixture-broker", "1.0.0", "fixture-broker-1", "fixture", "third-party", RuntimeInformation.RuntimeIdentifier,
                 "HostFixture.dll", "HostFixture.FixtureBrokerHostEntry", "native-test", new string('a', 40), "native-test", 1,
                 "https://modules.example/", keyPath, "native-test", 3600, HostApiMinimum: "2.0.0", HostApiMaximumExclusive: "3.0.0",
-                Runtime: "module-host", Privileges: [new("service-restart", native.ActionServiceName)]), DateTimeOffset.UtcNow);
+                Runtime: "module-host", Privileges: [new ServiceManageCapability
+                {
+                    Platforms = ["windows"],
+                    Services = [new(native.ActionServiceName, ["restart"])],
+                }]), DateTimeOffset.UtcNow);
         }
         finally { File.Delete(keyPath); }
         var policy = new ModulePackageTrustPolicy(1, "native-test", 1, true, "fixture", "third-party", "https://modules.example/",
@@ -159,7 +163,7 @@ internal static class WindowsCoreAcceptance
             }
             check((await Api(HttpMethod.Get, "/api/v1.0/server/module-hosts/fixture-broker/hello")).GetValue<string>() == "hello from module host",
                 "the Windows production supervisor starts the installed package and the authenticated Core proxy reaches it");
-            var prepared = await Api(HttpMethod.Post, "/api/v1.0/server/module-hosts/fixture-broker/privilege", new { kind = "service-restart",
+            var prepared = await Api(HttpMethod.Post, "/api/v1.0/server/module-hosts/fixture-broker/privilege", new { kind = "service.manage", action = "restart",
                 target = native.ActionServiceName, reason = "Full Windows Core acceptance", idempotencyKey = Guid.NewGuid().ToString("N") });
             var planPath = "/api/v1.0/server/module-privileges/plans/" + prepared["planId"]!.GetValue<string>();
             var plan = await Api(HttpMethod.Get, planPath);
@@ -177,7 +181,7 @@ internal static class WindowsCoreAcceptance
             check(await File.ReadAllTextAsync(pidPath) == after, "Core HTTP approval replay cannot repeat the real Windows service action");
             async Task<(string Path, JsonNode Plan)> FreshPlan()
             {
-                var next = await Api(HttpMethod.Post, "/api/v1.0/server/module-hosts/fixture-broker/privilege", new { kind = "service-restart",
+                var next = await Api(HttpMethod.Post, "/api/v1.0/server/module-hosts/fixture-broker/privilege", new { kind = "service.manage", action = "restart",
                     target = native.ActionServiceName, reason = "SessionValid policy acceptance", idempotencyKey = Guid.NewGuid().ToString("N") });
                 var path = "/api/v1.0/server/module-privileges/plans/" + next["planId"]!.GetValue<string>();
                 return (path, await Api(HttpMethod.Get, path));
@@ -226,7 +230,7 @@ internal static class WindowsCoreAcceptance
             {
                 var scheduled = await Api(HttpMethod.Post, "/api/v1.0/server/module-hosts/fixture-broker/schedule-background", new
                 {
-                    consentId, operation = new { kind = "service-restart", target = native.ActionServiceName, reason = "Native standing consent acceptance", idempotencyKey = key },
+                    consentId, operation = new { kind = "service.manage", action = "restart", target = native.ActionServiceName, reason = "Native standing consent acceptance", idempotencyKey = key },
                 });
                 for (var attempt = 0; attempt < 100; attempt++)
                 {
@@ -242,7 +246,7 @@ internal static class WindowsCoreAcceptance
                 "real Windows background SDK work without a standing consent never dispatches a service action");
             var pendingConsent = await Api(HttpMethod.Post, consentsRoot, new
             {
-                moduleId = "fixture-broker", kind = "service-restart", target = native.ActionServiceName,
+                moduleId = "fixture-broker", kind = "service.manage", action = "restart", target = native.ActionServiceName,
                 reason = "Approve scheduled fixture maintenance", expiresAt = DateTimeOffset.UtcNow.AddMinutes(10), idempotencyKey = Guid.NewGuid().ToString("N"),
             });
             var standingPath = consentsRoot + "/" + pendingConsent["consentId"]!.GetValue<string>();
@@ -282,7 +286,7 @@ internal static class WindowsCoreAcceptance
             var deadline = DateTimeOffset.UtcNow.AddSeconds(12);
             var expiryPending = await Api(HttpMethod.Post, consentsRoot, new
             {
-                moduleId = "fixture-broker", kind = "service-restart", target = native.ActionServiceName,
+                moduleId = "fixture-broker", kind = "service.manage", action = "restart", target = native.ActionServiceName,
                 reason = "Actual standing consent deadline acceptance", expiresAt = deadline, idempotencyKey = Guid.NewGuid().ToString("N"),
             });
             var expiryPath = consentsRoot + "/" + expiryPending["consentId"]!.GetValue<string>();
@@ -336,7 +340,7 @@ internal static class WindowsCoreAcceptance
             var persisted = JsonNode.Parse(persistedText)!;
             var completed = persisted["plans"]!.AsArray().Where(item => item!["state"]!.GetValue<string>() == "Succeeded").ToArray();
             var administratorSid = ((SecurityIdentifier)new NTAccount(Environment.MachineName, native.AdministratorName).Translate(typeof(SecurityIdentifier))).Value;
-            check(persisted["schemaVersion"]!.GetValue<int>() == 3 && completed.Length >= 4
+            check(persisted["schemaVersion"]!.GetValue<int>() == 4 && completed.Length >= 4
                 && completed.All(item => item!["audit"]!["initiatingUser"]!.GetValue<string>() == userId
                     && item["audit"]!["approvingUser"]!.GetValue<string>() == userId
                     && item["audit"]!["confirmedAt"] is not null && item["audit"]!["attemptCompletedAt"] is not null)

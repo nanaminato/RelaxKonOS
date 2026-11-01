@@ -21,6 +21,7 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         var plan = await SendAsync<ModulePrivilegePlan>(HttpMethod.Get, ServerModulePrivilegeRoutes.Plans + "/" + id);
         Require(plan.PlanId == id && ValidIds([plan.ModuleId]) && ValidDigest(plan.PlanHash)
             && ValidDigest(plan.ArtifactSha256) && plan.Effects is { Length: <= 128 } && plan.Warnings is { Length: <= 128 }
+            && ModuleCapabilityCatalog.IsCategory(plan.Kind) && ModuleCapabilityCatalog.IsAction(plan.Kind, plan.Action)
             && plan.State is "AwaitingConfirmation" or "Executing" or "Succeeded" or "Failed" or "Cancelled" or "Expired" or "RecoveryRequired"
             && (plan.State != "AwaitingConfirmation" || ValidDigest(plan.ConfirmationToken)));
         return plan;
@@ -33,8 +34,8 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
     {
         var consent = await SendAsync<ModulePrivilegeConsent>(HttpMethod.Post, ServerModulePrivilegeRoutes.Consents, request);
         ValidateConsent(consent, false);
-        Require(consent.ModuleId == request.ModuleId && consent.Kind == request.Kind && consent.Target == request.Target
-            && consent.Reason == request.Reason && consent.ExpiresAt == request.ExpiresAt);
+        Require(consent.ModuleId == request.ModuleId && consent.Kind == request.Kind && consent.Action == request.Action
+            && consent.Target == request.Target && consent.Reason == request.Reason && consent.ExpiresAt == request.ExpiresAt);
         return consent;
     }
     public async Task<ModulePrivilegeConsent> ReadConsentAsync(Guid id)
@@ -64,7 +65,7 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         Require(consent is not null && consent.ConsentId != Guid.Empty && ValidIds([consent.ModuleId])
             && consent.Version is { Length: > 0 and <= 32 } && consent.PublisherId is { Length: > 0 and <= 128 }
             && ValidDigest(consent.ArtifactSha256) && ValidDigest(consent.PlanHash)
-            && consent.Kind is "service-start" or "service-stop" or "service-restart"
+            && ModuleCapabilityCatalog.IsCategory(consent.Kind) && ModuleCapabilityCatalog.IsAction(consent.Kind, consent.Action)
             && consent.Target is { Length: > 0 and <= 256 } && consent.Reason is { Length: > 0 and <= 512 }
             && consent.GrantedBy is { Length: > 0 and <= 512 } && consent.CreatedAt != default
             && consent.ExpiresAt > consent.CreatedAt && consent.ExpiresAt <= consent.CreatedAt.AddDays(30)
@@ -280,7 +281,10 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         Require(plan is not null && plan.PlanId != Guid.Empty && ValidIds([plan.ModuleId])
             && plan.Version is { Length: > 0 and <= 32 } && ValidDigest(plan.ArtifactSha256)
             && ValidDigest(plan.ManifestSha256) && plan.ExpiresAt != default
-            && plan.Runtime is "in-process" or "module-host" && plan.Privileges is { Count: <= 128 }
+            && plan.Runtime is "in-process" or "module-host" && plan.Privileges is { Count: <= 64 }
+            && plan.Privileges.All(declaration => declaration is not null && ModuleCapabilityCatalog.IsCategory(declaration.Kind)
+                && declaration.Platforms is { Count: > 0 and <= 3 } && declaration.Platforms.All(ModuleCapabilityCatalog.IsPlatform)
+                && declaration.Resources is { Count: <= 128 } && declaration.Resources.All(resource => resource is { Length: > 0 and <= 1024 }))
             && plan.Name is { Length: > 0 and <= 128 } && plan.Summary is { Length: <= 512 }
             && (plan.AppliedOperationId is null || plan.AppliedOperationId != Guid.Empty));
     }
