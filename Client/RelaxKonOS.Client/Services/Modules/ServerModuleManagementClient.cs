@@ -22,8 +22,13 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         Require(plan.PlanId == id && ValidIds([plan.ModuleId]) && ValidDigest(plan.PlanHash)
             && ValidDigest(plan.ArtifactSha256) && plan.Effects is { Length: <= 128 } && plan.Warnings is { Length: <= 128 }
             && ModuleCapabilityCatalog.IsCategory(plan.Kind) && ModuleCapabilityCatalog.IsAction(plan.Kind, plan.Action)
-            && (plan.Kind == ModuleCapabilityCatalog.PackageManage
-                ? ValidPackageIdentity(plan.Package) : plan.Package is null)
+            && (plan.Kind switch
+            {
+                ModuleCapabilityCatalog.PackageManage => ValidPackageIdentity(plan.Package) && plan.File is null && plan.Data is null,
+                ModuleCapabilityCatalog.FileManage => ValidFileIdentity(plan.File) && plan.Package is null && plan.Data is null,
+                ModuleCapabilityCatalog.DataManage => ValidDataIdentity(plan.Data) && plan.Package is null && plan.File is null,
+                _ => plan.Package is null && plan.File is null && plan.Data is null,
+            })
             && plan.State is "AwaitingConfirmation" or "Executing" or "Succeeded" or "Failed" or "Cancelled" or "Expired" or "RecoveryRequired"
             && (plan.State != "AwaitingConfirmation" || ValidDigest(plan.ConfirmationToken)));
         return plan;
@@ -39,6 +44,31 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         && value.Dependencies.All(dependency => dependency is not null && ValidText(dependency.FileName, 256)
             && ValidDigest(dependency.Sha256) && dependency.Bytes is > 0 and <= 536870912)
         && value.Dependencies.Select(dependency => dependency.FileName).Distinct(StringComparer.Ordinal).Count() == value.Dependencies.Length;
+    /// <summary>A file plan names one canonical path inside its declared root and the exact before/after
+    /// state the user confirms. The body itself never crosses this contract.</summary>
+    private static bool ValidFileIdentity(ModuleFilePlanIdentity? file) => file is { } value
+        && ValidText(value.Root, 512) && ValidText(value.Path, 512)
+        && value.Path.StartsWith(value.Root + "/", StringComparison.Ordinal)
+        && value.Action is "write" or "delete"
+        && value.BeforeKind is "file" or "absent"
+        && value.BeforeBytes is >= 0 and <= 1073741824
+        && (value.BeforeKind == "file" ? ValidDigest(value.BeforeSha256) : value.BeforeSha256 == "" && value.BeforeBytes == 0)
+        && value.AfterKind is "file" or "absent"
+        && value.AfterBytes is >= 0 and <= 1073741824
+        && (value.AfterKind == "file" ? ValidDigest(value.AfterSha256) : value.AfterSha256 == "" && value.AfterBytes == 0)
+        && value.Mode is >= 0 and <= 0x1ff
+        && (value.Action == "write" ? value.AfterKind == "file" : value.AfterKind == "absent");
+    /// <summary>A data plan names the exact declared root and its structural digest; it carries no file
+    /// name or content and never a backup path on this host.</summary>
+    private static bool ValidDataIdentity(ModuleDataPlanIdentity? data) => data is { } value
+        && ValidText(value.Root, 512) && value.BeforeKind == "directory"
+        && value.Action is "preserve" or "backup" or "delete"
+        && value.BeforeFiles is >= 0 and <= 100000 && value.BeforeBytes is >= 0 and <= 1073741824
+        && ValidDigest(value.BeforeDigest)
+        && (value.Action == "backup" ? ValidResourceIdentifier(value.BackupRef) : value.BackupRef == "");
+    private static bool ValidResourceIdentifier(string? value) => value is { Length: > 0 and <= 64 }
+        && value[0] is >= 'a' and <= 'z'
+        && value.All(character => character is >= 'a' and <= 'z' or >= '0' and <= '9' or '.' or '-');
     public Task<ModulePrivilegeStatus> ApprovePrivilegeAsync(Guid id, ModulePrivilegeApproval approval) =>
         SendAsync<ModulePrivilegeStatus>(HttpMethod.Post, ServerModulePrivilegeRoutes.Plans + "/" + id + "/approve", approval);
     public Task<ModulePrivilegeStatus> CancelPrivilegeAsync(Guid id) =>

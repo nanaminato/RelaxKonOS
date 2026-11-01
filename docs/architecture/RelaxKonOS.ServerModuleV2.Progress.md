@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | MD-01 唯一 v2 契约 | 已实现并回归 | manifest / installed / package-plans 使用 schemaVersion 当前值，拒绝旧格式；打包器、CLI、SDK、Server 与桌面同步 |
 | DC-01 声明式能力契约 | 已实现（契约冻结） | 清单 schemaVersion=3 能力类别 + 类型化资源范围；`ModuleCapabilityCatalog` 统一类别/动作/可执行矩阵；Broker 按声明范围匹配；秘密引用只保留引用；`service.manage` 与 apt `package.manage` 可执行（后者需 Helper 解析），其余明确拒绝 |
-| DC-02 通用包事务 | 进行中（apt 已实机验收；共享依赖/Windows 未交付） | 契约、apt 通用解析、root 拥有的包来源策略、`ModulePackageQuery`/`ModulePackageApply`（重解比对、持久回执、安装后核实）、Broker prepare 冻结 `ModulePackageResolution`、计划存储 schemaVersion=5、`planHash` 绑定冻结身份、approve 只发送来源引用与冻结身份、Helper `PlanChanged`→`module.privilege_plan_changed` 均已实现；Ubuntu 26.04 实机验证 mysql-server 与 redis-server 的安装/重放拒绝/摘要漂移拒绝/来源撤销拒绝/移除。Windows 适配器、共享依赖与外部安装接管未交付 |
+| DC-02 通用包事务 | 进行中（apt 已实机验收；共享依赖/Windows 未交付） | 契约、apt 通用解析、root 拥有的包来源策略、`ModulePackageQuery`/`ModulePackageApply`（重解比对、持久回执、安装后核实）、Broker prepare 冻结 `ModulePackageResolution`、计划存储 schemaVersion=5（DC-03 起 6）、`planHash` 绑定冻结身份、approve 只发送来源引用与冻结身份、Helper `PlanChanged`→`module.privilege_plan_changed` 均已实现；Ubuntu 26.04 实机验证 mysql-server 与 redis-server 的安装/重放拒绝/摘要漂移拒绝/来源撤销拒绝/移除。Windows 适配器、共享依赖与外部安装接管未交付 |
 | MD-05 Linux 身份与权限 | 已实现；独立运行时实机验证 | 每模块稳定专用 UID/GID，无附加组、no_new_privs；root 拥有只读版本快照，模块拥有私有数据；root 监督器控制超时/断管清理 |
 | MD-05 Windows 身份与 ACL | 已实现；原生隔离及 System 整包验收通过 | LocalSystem Helper、独立账户/S4U、只读快照/私有数据 ACL、认证管道、跨模块拒绝和 Job 后代清理有实测；正式更新保留同一模块 SID |
 | MD-06 安装与代码信任 | 已实现并回归 | 冻结计划展示 runtime/privileges；精确信任绑定版本/发布者/归档与清单摘要；更新不继承，撤销立即阻断代理/Broker |
@@ -305,3 +305,13 @@ approve 只发送来源引用与冻结身份。Helper 先按 operationId 查持�
 验收同时发现并修复两处缺陷：策略加载器缺少 camelCase 命名策略（文档格式实际不可读）；apply 把“依赖已安装、apt 不再列出”误判为闭包漂移。对应回归加入策略 camelCase/未知字段/PascalCase 拒绝与“依赖子集不是漂移、新增或变更制品是漂移”的检查。
 
 定向检查：`--module-privilege-checks` 88 项 PASS（含包计划冻结、版本区间、冻结身份篡改、Drift 与响应丢失），`--module-package-transaction-checks` 20 项 PASS（含 Debian 版本序、策略解析与依赖子集匹配），完整 ServerModules 回归 **674 项 PASS**，`dotnet build RelaxKonOS.sln` 0 错误。Windows `windows-msi` 适配器、共享依赖/外部安装接管与真实 MySQL 服务闭环仍未交付，因此 DC-02 不标记关闭。
+
+### DC-03 Linux 配置、数据与 MySQL 闭环（2026-11-01）
+
+`file.manage` 的 write/delete 与 `data.manage` 的 preserve/backup/delete 已进入 Host 执行矩阵，但仅 Linux。prepare 先调用 Helper `ModuleFileQuery`/`ModuleDataQuery`，把规范路径、前置状态、内容摘要/大小/模式（文件）或结构摘要（数据根）冻结进计划；approve 只发送冻结的根、路径、前置状态、摘要和确认过的内容。`privilege-plans.json` 升为 schemaVersion=6，`planHash` 分别绑定 `fileHash`/`dataHash`；文件内容不落盘，Core 重启后待确认 write 明确变为 `Expired`；`set-mode`/`set-owner`/`restore` 在 prepare 前返回 unsupported。
+
+Helper 只读 root 拥有、非链接、group/other 不可写的 `/etc/relaxkonos/module-resources.json`，文件根另带 mode/owner/group。文件写入使用同目录暂存加原子 rename，再核对摘要/大小/模式/属主；数据操作递归冻结常规文件相对名、长度和 SHA-256，拒绝符号链接/特殊文件；`preserve` 写保留回执，`backup` 在 Helper 保护状态根生成副本与 manifest，`delete` 在摘要复核后只清空精确根。每个操作在变更前写耐久回执，重放/中断返回 `Conflict`，观察漂移返回 `PlanChanged`。没有脚本、shell、声明根外路径或任意属主名入口。
+
+组合工作流按业务顺序逐项请求已有类型化能力，Host 不接受多步脚本或批量计划。MySQL 闭环顺序为停止实例 → 文件配置发布 → 启动并实测配置生效 → 停止实例 → 数据备份/保留 → 包卸载保留配置/数据 → 独立确认后删除数据。
+
+验证：`--module-resource-checks` **44 项 PASS**（策略边界、file/data 计划冻结、内容不落盘、重启过期、路径/状态/上限、`set-mode`/`restore` 拒绝、PlanChanged、持久化身份篡改与跨类别串用拒绝）；`--module-privilege-checks` 88 项、`--module-package-transaction-checks` 20 项继续通过；完整 ServerModules 回归 **722 项 PASS**；`dotnet build RelaxKonOS.sln` 0 错误。Ubuntu 24.04 root 容器 `--module-resource-linux-acceptance` **13 项 PASS**（配置原子发布、漂移/重放拒绝、数据摘要/备份/保留/清空、根撤销），日志 `.artifacts/module-resource-ubuntu-acceptance-20261101.log`；`--module-mysql-linux-acceptance --install` **14 项 PASS**（真实 MySQL 8.0、`max_connections=123` 生效、真实 `apt-get remove` 后配置/数据保留、随后确认删除），日志 `.artifacts/module-mysql-ubuntu-acceptance-20261101.log`。容器验收中的包/服务步骤由宿主 `apt-get`/`service` 执行，文件/数据步骤由 Helper 执行；不新增 Windows、Ubuntu 26.04 主机或 Helper `NativeServiceAction` 容器证据。Windows、`restore`、`set-mode`/`set-owner`、配置内秘密值和文件/数据常设许可仍未交付。

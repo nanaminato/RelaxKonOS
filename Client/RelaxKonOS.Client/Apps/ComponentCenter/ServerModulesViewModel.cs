@@ -34,6 +34,8 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         PrivilegePlan = plan;
         PrivilegeText = $"{plan.ModuleId} · {plan.Version} · {plan.PublisherId}\n{plan.ArtifactSha256}\n{plan.Kind} · {plan.Action} · {plan.Target}\n{plan.Reason}\n"
             + (plan.Package is { } package ? DescribeFrozenPackage(package) + "\n" : "")
+            + (plan.File is { } file ? DescribeFrozenFile(file) + "\n" : "")
+            + (plan.Data is { } data ? DescribeFrozenData(data) + "\n" : "")
             + string.Join("\n", plan.Effects.Concat(plan.Warnings)) + $"\n{plan.State} · {plan.ExpiresAt}";
     });
     /// <summary>Show exactly what the Host froze. The dependency closure is part of the confirmed identity,
@@ -43,6 +45,18 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         + $"source: {package.SourceRef}\nrepository: {package.Repository}\n"
         + $"artifact: {package.ArtifactFileName} sha256:{package.Sha256} ({package.Bytes} bytes)\n"
         + $"dependencies ({package.Dependencies.Length}): " + string.Join(", ", package.Dependencies.Select(dependency => dependency.FileName));
+    /// <summary>The content body is not part of the plan; only the path and the exact before/after state
+    /// are displayed so the user never confirms hidden bytes.</summary>
+    private static string DescribeFrozenFile(ModuleFilePlanIdentity file) =>
+        $"file: {file.Path} ({file.Action})\nroot: {file.Root}\n"
+        + $"before: {file.BeforeKind} {FormatDigest(file.BeforeSha256)} ({file.BeforeBytes} bytes)\n"
+        + $"after: {file.AfterKind} {FormatDigest(file.AfterSha256)} ({file.AfterBytes} bytes) mode:{Convert.ToString(file.Mode, 8)}";
+    /// <summary>A data plan carries a structural digest of the exact declared root, never file names or
+    /// content. The backup reference is an opaque module-scoped name, not a path on this host.</summary>
+    private static string DescribeFrozenData(ModuleDataPlanIdentity data) =>
+        $"data: {data.Root} ({data.Action})\nbefore: {data.BeforeKind} {data.BeforeFiles} files {data.BeforeBytes} bytes\n"
+        + $"digest: {data.BeforeDigest}" + (data.BackupRef.Length > 0 ? $"\nbackup: {data.BackupRef}" : "");
+    private static string FormatDigest(string digest) => digest.Length == 0 ? "none" : "sha256:" + digest;
     [RelayCommand] private Task ApprovePrivilegeAsync() => Run(async () =>
     {
         if (PrivilegePlan is not { State: "AwaitingConfirmation" } plan || plan.ExpiresAt <= DateTimeOffset.UtcNow)

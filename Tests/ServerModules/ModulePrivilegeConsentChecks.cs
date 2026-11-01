@@ -1,4 +1,4 @@
-﻿using RelaxKonOS.ModuleHost.Protocol;
+using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.ModulePackaging;
 using RelaxKonOS.Server.Startup;
 using System.Text.Json.Nodes;
@@ -47,7 +47,7 @@ internal static class ModulePrivilegeConsentChecks
                     if (prepared.State != "AwaitingConfirmation") return await operations.GetForModuleAsync(prepared.PlanId, module);
                     var plan = await operations.ReadForUserAsync(prepared.PlanId, session);
                     return await operations.ApproveAsync(plan.PlanId, session, new(plan.PlanHash, plan.ConfirmationToken),
-                        () => Task.FromResult<ModulePrivilegeAdministrator?>(authority.Administrator), (_, _, _) =>
+                        () => Task.FromResult<ModulePrivilegeAdministrator?>(authority.Administrator), (_, _) =>
                         {
                             executions++;
                             if (responseLost) throw new IOException("test response lost after dispatch");

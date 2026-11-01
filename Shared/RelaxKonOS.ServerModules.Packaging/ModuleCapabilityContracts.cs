@@ -166,8 +166,10 @@ public static class ModuleCapabilityPolicy
             && package.Actions.Contains(action, StringComparer.Ordinal),
         FileManageCapability file => file.Actions.Contains(action, StringComparer.Ordinal)
             && RootContains(file.Root, target),
+        // Data lifecycle names one exact resource. Allowing a descendant would let a module aim a
+        // recursive backup or delete at a sibling tree the declaration never described.
         DataManageCapability data => data.Actions.Contains(action, StringComparer.Ordinal)
-            && RootContains(data.Root, target),
+            && data.Root.Replace('\\', '/').TrimEnd('/') == target.Replace('\\', '/').TrimEnd('/'),
         AccountManageCapability account => account.Actions.Contains(action, StringComparer.Ordinal)
             && (account.Accounts.Contains(target, StringComparer.Ordinal) || account.Groups.Contains(target, StringComparer.Ordinal)),
         NetworkManageCapability network => network.Actions.Contains(action, StringComparer.Ordinal)

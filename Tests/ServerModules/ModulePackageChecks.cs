@@ -149,6 +149,38 @@ internal static class ModulePackageChecks
             && ModuleCapabilityPolicy.Describe(secret).Single().Contains("database-password", StringComparison.Ordinal)
             && !ModuleCapabilityPolicy.IsExecutable(secret.Kind),
             "secret references are declarable, describable without values and not executable before an adapter exists");
+        var resourceManifest = declared with
+        {
+            Privileges =
+            [
+                new FileManageCapability
+                {
+                    Platforms = ["linux"], Root = "/etc/fixture", Actions = ["write", "delete"], MaximumBytes = 4096,
+                },
+                new DataManageCapability
+                {
+                    Platforms = ["linux"], Root = "/var/lib/fixture", Actions = ["preserve", "backup", "delete"],
+                },
+            ],
+        };
+        var resourceAccepted = Verify(catalog with { Releases = [release with { Manifest = resourceManifest }] });
+        check(resourceAccepted.Catalog.Releases.Single().Manifest.Privileges.Length == 2
+            && ModuleCapabilityPolicy.IsExecutable(ModuleCapabilityCatalog.FileManage)
+            && ModuleCapabilityPolicy.IsExecutable(ModuleCapabilityCatalog.DataManage)
+            && ModuleCapabilityPolicy.Allows(resourceManifest.Privileges[0], "write", "/etc/fixture/mysql.cnf")
+            && !ModuleCapabilityPolicy.Allows(resourceManifest.Privileges[0], "write", "/etc/other/mysql.cnf")
+            && ModuleCapabilityPolicy.Allows(resourceManifest.Privileges[1], "delete", "/var/lib/fixture")
+            && !ModuleCapabilityPolicy.Allows(resourceManifest.Privileges[1], "delete", "/var/lib/fixture/child"),
+            "file and data capabilities parse with a confined root, closed actions and the delivered adapter matrix");
+        Reject(() => Verify(catalog with { Releases = [release with { Manifest = resourceManifest with { Privileges =
+            [new FileManageCapability { Platforms = ["linux"], Root = "etc/fixture", Actions = ["write"], MaximumBytes = 4096 }] } }] }),
+            "privilege-invalid", "file root must be absolute");
+        Reject(() => Verify(catalog with { Releases = [release with { Manifest = resourceManifest with { Privileges =
+            [new FileManageCapability { Platforms = ["linux"], Root = "/etc/fixture", Actions = ["write"], MaximumBytes = 0 }] } }] }),
+            "privilege-invalid", "file maximum size must be positive");
+        Reject(() => Verify(catalog with { Releases = [release with { Manifest = resourceManifest with { Privileges =
+            [new DataManageCapability { Platforms = ["linux"], Root = "/var/lib/fixture", Actions = ["shell"] }] } }] }),
+            "privilege-invalid", "data actions outside the frozen catalog are rejected");
         var legacyBytes = Json(manifest).ToArray();
         using (var document = JsonDocument.Parse(legacyBytes))
         {

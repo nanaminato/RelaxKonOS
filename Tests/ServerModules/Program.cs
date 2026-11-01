@@ -56,9 +56,39 @@ if (args is ["--module-package-transaction-checks"])
     return;
 }
 
+if (args is ["--module-resource-checks"])
+{
+    await ModuleResourceTransactionChecks.RunAsync((passed, message) =>
+    {
+        Console.WriteLine($"{(passed ? "PASS" : "FAIL")}: {message}");
+        if (!passed) throw new InvalidOperationException(message);
+    });
+    return;
+}
+
 if (args is ["--module-package-linux-acceptance", ..])
 {
     await ModulePackageLinuxAcceptance.RunAsync(args[1..], (passed, message) =>
+    {
+        Console.WriteLine($"{(passed ? "PASS" : "FAIL")}: {message}");
+        if (!passed) throw new InvalidOperationException(message);
+    });
+    return;
+}
+
+if (args is ["--module-resource-linux-acceptance", ..])
+{
+    await ModuleResourceLinuxAcceptance.RunAsync(args[1..], (passed, message) =>
+    {
+        Console.WriteLine($"{(passed ? "PASS" : "FAIL")}: {message}");
+        if (!passed) throw new InvalidOperationException(message);
+    });
+    return;
+}
+
+if (args is ["--module-mysql-linux-acceptance", ..])
+{
+    await ModuleMysqlLifecycleLinuxAcceptance.RunAsync(args[1..], (passed, message) =>
     {
         Console.WriteLine($"{(passed ? "PASS" : "FAIL")}: {message}");
         if (!passed) throw new InvalidOperationException(message);
@@ -175,6 +205,7 @@ await ModulePackageChecks.RunAsync(Check);
 await ModulePackageBuilderChecks.RunAsync(Check);
 await ModuleHostChecks.RunAsync(Check);
 await ModulePrivilegeChecks.RunAsync(Check);
+await ModuleResourceTransactionChecks.RunAsync(Check);
 await ModulePackageTransactionChecks.RunAsync(Check);
 await WindowsModuleHostChecks.RunAsync(Check);
 await ModuleReleaseDirectoryChecks.RunAsync(Check);

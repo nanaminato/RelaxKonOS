@@ -81,6 +81,42 @@ public static partial class PrivilegedOperationExecutor
         }
         if (request.ModulePackageApply is not null)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "module package transaction requires its dedicated operation");
+        if (request.Operation == PrivilegedOperationKind.ModuleFileQuery)
+        {
+            var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
+                Correlation: request.Correlation, Version: request.Version, ModuleFileQuery: request.ModuleFileQuery);
+            if (request != clean) return Fail(64, PrivilegedProblemCode.InvalidRequest, "unexpected module file query fields");
+            return await QueryModuleFileAsync(request.ModuleFileQuery);
+        }
+        if (request.ModuleFileQuery is not null)
+            return Fail(64, PrivilegedProblemCode.InvalidRequest, "module file query requires its dedicated operation");
+        if (request.Operation == PrivilegedOperationKind.ModuleFileApply)
+        {
+            var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
+                Correlation: request.Correlation, Version: request.Version, ModuleFileApply: request.ModuleFileApply);
+            if (request != clean) return Fail(64, PrivilegedProblemCode.InvalidRequest, "unexpected module file transaction fields");
+            return await ApplyModuleFileTransactionAsync(request.ModuleFileApply, operationId);
+        }
+        if (request.ModuleFileApply is not null)
+            return Fail(64, PrivilegedProblemCode.InvalidRequest, "module file transaction requires its dedicated operation");
+        if (request.Operation == PrivilegedOperationKind.ModuleDataQuery)
+        {
+            var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
+                Correlation: request.Correlation, Version: request.Version, ModuleDataQuery: request.ModuleDataQuery);
+            if (request != clean) return Fail(64, PrivilegedProblemCode.InvalidRequest, "unexpected module data query fields");
+            return await QueryModuleDataAsync(request.ModuleDataQuery);
+        }
+        if (request.ModuleDataQuery is not null)
+            return Fail(64, PrivilegedProblemCode.InvalidRequest, "module data query requires its dedicated operation");
+        if (request.Operation == PrivilegedOperationKind.ModuleDataApply)
+        {
+            var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
+                Correlation: request.Correlation, Version: request.Version, ModuleDataApply: request.ModuleDataApply);
+            if (request != clean) return Fail(64, PrivilegedProblemCode.InvalidRequest, "unexpected module data transaction fields");
+            return await ApplyModuleDataTransactionAsync(request.ModuleDataApply, operationId);
+        }
+        if (request.ModuleDataApply is not null)
+            return Fail(64, PrivilegedProblemCode.InvalidRequest, "module data transaction requires its dedicated operation");
         if (request.Operation == PrivilegedOperationKind.FrpArchiveCatalog)
         {
             var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,

@@ -78,10 +78,11 @@ internal static class ModulePrivilegeChecks
                     "http://archive.ubuntu.com/ubuntu/pool/main/m/mysql-server-8.0/mysql-server-8.0_" + version + "_amd64.deb",
                     4096, DependencySha)]);
             var executions = 0;
-            Task<bool> Execute(Guid id, ModulePrivilegeRequest request, ModulePrivilegePackage? package)
+            Task<bool> Execute(Guid id, ModulePrivilegeExecution execution)
             {
-                check(id != Guid.Empty && request.Kind == ModuleCapabilityCatalog.ServiceManage
-                    && request.Action == "restart" && request.Target == "fixture.service" && package is null,
+                check(id != Guid.Empty && execution.Request.Kind == ModuleCapabilityCatalog.ServiceManage
+                    && execution.Request.Action == "restart" && execution.Request.Target == "fixture.service"
+                    && execution.Package is null && execution.File is null && execution.Data is null && execution.Content is null,
                     "Broker executes the exact frozen typed action");
                 executions++;
                 return Task.FromResult(true);
@@ -174,7 +175,7 @@ internal static class ModulePrivilegeChecks
                 "unsupported", "windows-msi package declarations stay unsupported until their adapter exists");
             var transport = new RecordingTransport();
             var packageApproved = await store.ApproveAsync(packagePlan.PlanId, "session-1", Approval(packagePlan), Verify,
-                (operationId, request, package) => CoreModulePrivilegeBroker.ExecuteCapabilityAsync(transport, operationId, request, package));
+                (operationId, execution) => CoreModulePrivilegeBroker.ExecuteCapabilityAsync(transport, operationId, execution));
             var applied = transport.Requests.Single().ModulePackageApply;
             check(packageApproved.State == "Succeeded" && applied is not null
                 && transport.Requests.Single().Operation == PrivilegedOperationKind.ModulePackageApply
@@ -185,7 +186,7 @@ internal static class ModulePrivilegeChecks
             var driftPlan = await PreparePackage("package-drift");
             transport.Result = new(false, 65, ProblemCode: PrivilegedProblemCode.PlanChanged);
             await Reject(() => store.ApproveAsync(driftPlan.PlanId, "session-1", Approval(driftPlan), Verify,
-                (operationId, request, package) => CoreModulePrivilegeBroker.ExecuteCapabilityAsync(transport, operationId, request, package)),
+                (operationId, execution) => CoreModulePrivilegeBroker.ExecuteCapabilityAsync(transport, operationId, execution)),
                 "plan_changed", "Helper re-resolution drift is reported as a changed plan");
             var driftStatus = await store.GetForModuleAsync(driftPlan.PlanId, "fixture");
             check(driftStatus.State == "Failed" && driftStatus.ProblemCode == "module.privilege_plan_changed",
@@ -193,12 +194,13 @@ internal static class ModulePrivilegeChecks
             var lostPlan = await PreparePackage("package-lost");
             transport.Result = new(false, 69, ProblemCode: PrivilegedProblemCode.HelperUnavailable);
             var lost = await store.ApproveAsync(lostPlan.PlanId, "session-1", Approval(lostPlan), Verify,
-                (operationId, request, package) => CoreModulePrivilegeBroker.ExecuteCapabilityAsync(transport, operationId, request, package));
+                (operationId, execution) => CoreModulePrivilegeBroker.ExecuteCapabilityAsync(transport, operationId, execution));
             check(lost.State == "RecoveryRequired",
                 "a lost Helper response after a package transaction stays unknown and never becomes success");
             transport.Result = new(true);
             await Reject(() => CoreModulePrivilegeBroker.ExecuteCapabilityAsync(transport, Guid.NewGuid(),
-                new(ModuleCapabilityCatalog.PackageManage, "install", PackageName, "No frozen identity", "unfrozen"), null),
+                new ModulePrivilegeExecution(new(ModuleCapabilityCatalog.PackageManage, "install", PackageName,
+                    "No frozen identity", "unfrozen"), null, null, null, null)),
                 "unsupported", "package execution without a frozen identity fails closed");
             var expired = await Prepare("expired");
             clock.Current = clock.Current.AddMinutes(6);
@@ -226,7 +228,7 @@ internal static class ModulePrivilegeChecks
             check(results.Count(s => s == "Succeeded") == 1 && executions == 2, "Broker serializes concurrent approvals and executes only once");
             var interrupted = await Prepare("interrupted");
             var unknown = await store.ApproveAsync(interrupted.PlanId, "session-1", Approval(interrupted), Verify,
-                (_, _, _) => throw new IOException("lost Helper response"));
+                (_, _) => throw new IOException("lost Helper response"));
             check(unknown.State == "RecoveryRequired", "Broker treats a lost Helper response as unknown, without replay");
             var reopened = new ModulePrivilegePlanStore(root, Resolve, clock);
             check((await reopened.GetForModuleAsync(plan.PlanId, "fixture")).State == "Succeeded"
@@ -244,7 +246,7 @@ internal static class ModulePrivilegeChecks
             await Reject(() => reopened.ApproveAsync(interrupted.PlanId, "session-1", Approval(interrupted),
                 Verify, Execute), "approval_invalid", "Broker rejects replay after a lost Helper response and restart");
             var crash = await Prepare("crash-before-response");
-            await store.ApproveAsync(crash.PlanId, "session-1", Approval(crash), Verify, async (_, _, _) =>
+            await store.ApproveAsync(crash.PlanId, "session-1", Approval(crash), Verify, async (_, _) =>
             {
                 // Reopen while the durable record is Executing, before any completion response exists.
                 var recovering = new ModulePrivilegePlanStore(root, Resolve, clock);
@@ -271,11 +273,11 @@ internal static class ModulePrivilegeChecks
                 && unknownAudit["confirmedAt"] is not null && unknownAudit["attemptCompletedAt"] is not null,
                 "Broker retains the verified administrator and attempt evidence when the Helper response is unknown");
             var packaged = records.Single(p => p!["id"]!.GetValue<Guid>() == packagePlan.PlanId)!;
-            check(persistedDocument["schemaVersion"]!.GetValue<int>() == 5
+            check(persistedDocument["schemaVersion"]!.GetValue<int>() == 6
                 && packaged["package"]!["sourceRef"]!.GetValue<string>() == PackageSource
                 && packaged["package"]!["resolution"]!["sha256"]!.GetValue<string>() == PackageSha
                 && packaged["packageHash"]!.GetValue<string>() is { Length: 64 },
-                "package plan store is schemaVersion 5 and persists the frozen identity under its own hash");
+                "package plan store is schemaVersion 6 and persists the frozen identity under its own hash");
             void RejectCorruption(Action<JsonObject> mutate, string message)
             {
                 var document = JsonNode.Parse(original)!.AsObject();
@@ -327,7 +329,7 @@ internal static class ModulePrivilegeChecks
                 "Broker rejects a frozen package version changed without the plan hash");
             RejectPackageCorruption(node => node["package"] = null,
                 "Broker rejects a package plan whose frozen identity disappeared");
-            RejectCorruption(d => d["schemaVersion"] = 4, "Broker rejects the previous plan store format");
+            RejectCorruption(d => d["schemaVersion"] = 5, "Broker rejects the previous plan store format");
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
     }
