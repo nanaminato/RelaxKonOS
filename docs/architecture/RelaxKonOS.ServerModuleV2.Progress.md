@@ -5,8 +5,8 @@
 | 跟踪项 | 当前状态 | 已有证据 / 余项 |
 | --- | --- | --- |
 | MD-01 唯一 v2 契约 | 已实现并回归 | manifest / installed / package-plans 使用 schemaVersion 当前值，拒绝旧格式；打包器、CLI、SDK、Server 与桌面同步 |
-| DC-01 声明式能力契约 | 已实现（契约冻结） | 清单 schemaVersion=3 能力类别 + 类型化资源范围；`ModuleCapabilityCatalog` 统一类别/动作/可执行矩阵；Broker 按声明范围匹配；秘密引用只保留引用；仅 service.manage 可执行，其余明确拒绝 |
-| DC-02 通用包事务 | 进行中（Helper 查询与执行已实现） | 契约、apt 通用解析、root 拥有的包来源策略、`ModulePackageQuery` 与 `ModulePackageApply`（重解比对、持久回执、安装后核实）已实现，Windows/linux-x64 均编译通过；Host 计划生成、Broker 接线与真实安装验收未交付 |
+| DC-01 声明式能力契约 | 已实现（契约冻结） | 清单 schemaVersion=3 能力类别 + 类型化资源范围；`ModuleCapabilityCatalog` 统一类别/动作/可执行矩阵；Broker 按声明范围匹配；秘密引用只保留引用；`service.manage` 与 apt `package.manage` 可执行（后者需 Helper 解析），其余明确拒绝 |
+| DC-02 通用包事务 | 进行中（Host 冻结/派发已实现，真实安装验收未执行） | 契约、apt 通用解析、root 拥有的包来源策略、`ModulePackageQuery`/`ModulePackageApply`（重解比对、持久回执、安装后核实）、Broker prepare 冻结 `ModulePackageResolution`、计划存储 schemaVersion=5、`planHash` 绑定冻结身份、approve 只发送来源引用与冻结身份、Helper `PlanChanged`→`module.privilege_plan_changed` 均已实现；Ubuntu 真实安装验收（`--module-package-linux-acceptance`）未执行，Windows 适配器未定义 |
 | MD-05 Linux 身份与权限 | 已实现；独立运行时实机验证 | 每模块稳定专用 UID/GID，无附加组、no_new_privs；root 拥有只读版本快照，模块拥有私有数据；root 监督器控制超时/断管清理 |
 | MD-05 Windows 身份与 ACL | 已实现；原生隔离及 System 整包验收通过 | LocalSystem Helper、独立账户/S4U、只读快照/私有数据 ACL、认证管道、跨模块拒绝和 Job 后代清理有实测；正式更新保留同一模块 SID |
 | MD-06 安装与代码信任 | 已实现并回归 | 冻结计划展示 runtime/privileges；精确信任绑定版本/发布者/归档与清单摘要；更新不继承，撤销立即阻断代理/Broker |
@@ -172,7 +172,7 @@ Windows 正常 Core HTTP 授权闭环至此已有证据；owner-device/SessionVa
 
 持久计划新增发起用户、同会话批准用户、规范管理员身份/验证方式、确认与执行尝试结束时间；发起者绑定冻结摘要。管理员记忆保留最初实际验证身份，文件及通用提权入口也记录该身份，Broker 不以缺失身份的记忆代替验证。owner-device 记录实际设备 ID。Executing 崩溃恢复仍保留已确认身份，不自动重放。
 
-内部 `privilege-plans.json` 升为 schemaVersion=3，拒绝旧的审计不完整格式；当时安装清单/installed/package-plans 仍为 schemaVersion=2。未添加迁移或双格式读取。Linux 验收实例仍运行此前二进制及旧内部记录，更新前必须显式归档其测试证据，不能直接重启新二进制并假称升级成功。DC-01 起清单与 `package-plans.json` 升为 schemaVersion=3、计划存储升为 4、许可存储升为 2；见下表 DC-01 行。
+内部 `privilege-plans.json` 升为 schemaVersion=3，拒绝旧的审计不完整格式；当时安装清单/installed/package-plans 仍为 schemaVersion=2。未添加迁移或双格式读取。Linux 验收实例仍运行此前二进制及旧内部记录，更新前必须显式归档其测试证据，不能直接重启新二进制并假称升级成功。DC-01 起清单与 `package-plans.json` 升为 schemaVersion=3、计划存储升为 4、许可存储升为 2；DC-02 起计划存储再升为 5（冻结包来源与制品身份），见下表 DC-01 / DC-02 行。
 
 定向审计检查新增六项，Broker 共 **40 项 PASS**；完整回归 **601 项 PASS**。Windows 原生/HTTP **48 项 PASS**，实际读取计划文件核实原生 SID、owner-device、用户、时间和不含凭据；读取实际 SQLite 安全审计核实同一计划 ID 的 Helper 起止事件及发起者引用。此轮发现并修复批准请求未传 OperationId、导致 transport 另生成 ID 的关联缺口。另一次停机接纳目录时锁尚不可用，夹具改为在进程退出后有界检查独占锁，未绕过锁。
 
@@ -291,3 +291,13 @@ Windows 最新报告 `artifacts/modulehost-windows-native/0c48588c2c3446feaa4df2
 Linux 脚本 `verify-linux-v2-standing-consent.py` 更新独立 `/opt/relaxkonos-v2-test`，使用新签名源与新模块版本，不接管原三项服务。运行时归档 SHA-256 `d4af306ac3f8e3508a1430a66fcb10f0bcb8d3d6f47925b3374242c5d880df84`。实测 PAM 确认、真实后台 Helper 派发、Core 重启幂等、撤销及实际十二秒到期后拒绝；最后两项许可和测试代码信任均撤销，SessionValid 恢复。root-only 证据 `/opt/relaxkonos-v2-standing-evidence/c98eb71d3d8040d9b5c814ba6ad36494` 的独立审计核对确认两项许可、一次后台派发、真实 PAM 身份及 Helper 操作者记录；通用 Linux 审计脚本也已复核通过。
 
 许可当前仅覆盖 `service.manage` 的启动/停止/重启，采用明确到期日并在模块更新后失效；不表示已经实现任意包、文件、网络、任意进程操作，也不表示已有系统后台任务调度器。模块自己调度任务，Core 只验证并执行获准的封闭动作。
+
+### DC-02 apt 包计划接线（2026-11-01）
+
+新增 `ModulePrivilegePackage` 内部记录，把 Host 批准的来源引用与 Helper 解析出的 `ModulePackageResolution` 一起冻结；`privilege-plans.json` 升为 schemaVersion=5，旧格式拒绝读取且不迁移。`planHash` 增加独立的 `packageHash`，持久化记录的来源、仓库、版本、架构、制品摘要、大小或依赖闭包被改写即 `module.privilege_recovery_required`；服务计划携带包身份、包计划缺失身份同样拒绝。
+
+prepare 对 `package.manage` 先按声明的 apt 能力调用 Helper `ModulePackageQuery`，再按 Debian 版本序核对声明区间；Helper 不可用、来源/仓库未批准、包不在来源策略、解析失败、目标不一致或版本越界都不会生成计划。计划 DTO 新增 `ModulePackagePlanIdentity` 与服务影响/维护者脚本警告，桌面确认页展示来源、仓库、制品与依赖文件清单；客户端拒绝“包计划无冻结身份/服务计划带包身份”的响应。
+
+approve 只发送来源引用与冻结身份。Helper 在 apply 时重解失败、来源/仓库撤销或身份不一致统一返回 `PlanChanged`；Broker 映射为 `module.privilege_plan_changed`，把计划持久化为 `Failed`（已知未执行）并向调用方返回该错误，而不是 `RecoveryRequired`。响应丢失仍是 `RecoveryRequired`，不自动重放。常设许可继续只允许 `service.manage`（`ModuleCapabilityPolicy.AllowsStandingConsent`），包类别后台许可留到 DC-05。
+
+定向检查：`Tests/ServerModules --module-privilege-checks` 88 项 PASS（含包计划冻结、版本区间、冻结身份篡改、Drift 与响应丢失检查），`--module-package-transaction-checks` 17 项 PASS（含 Debian 版本序），完整 ServerModules 回归 **671 项 PASS**，`dotnet build RelaxKonOS.sln` 0 错误。**未执行**真实 Ubuntu 安装验收：新增 `--module-package-linux-acceptance`（root + Linux，Windows 明确 SKIP）驱动真实 apt 解析、安装、回执重放拒绝、摘要漂移拒绝、来源撤销拒绝与移除；本次环境的 Docker 镜像仓库代理 `http://127.0.0.1:65533` 拒绝连接且本地无 Ubuntu 镜像，未取得运行输出，因此不宣称 DC-02 关闭。Windows `windows-msi` 适配器仍未定义。

@@ -97,9 +97,10 @@ try
     var plan = await plans.ReadForUserAsync(prepared.PlanId, "native-windows-session");
     var approval = new ModulePrivilegeApproval(plan.PlanHash, plan.ConfirmationToken);
     var executed = 0;
-    async Task<bool> Execute(Guid id, ModulePrivilegeRequest request)
+    async Task<bool> Execute(Guid id, ModulePrivilegeRequest request, ModulePrivilegePackage? package)
     {
         executed++;
+        if (package is not null) throw new InvalidOperationException("A service plan must not carry a package identity.");
         var result = await transport.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NativeServiceAction,
             ServiceId: request.Target, ServiceAction: PrivilegedServiceAction.Restart, OperationId: id));
         return result.Success;

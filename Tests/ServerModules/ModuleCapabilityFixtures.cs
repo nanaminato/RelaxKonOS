@@ -18,6 +18,16 @@ internal static class ModuleCapabilityFixtures
         Services = [new ModuleServiceScope(serviceId, actions)],
     };
 
+    internal static PackageManageCapability Package(string sourceRef, string package, params string[] actions) => new()
+    {
+        Platforms = [Platform],
+        Manager = "apt",
+        SourceRef = sourceRef,
+        Packages = [package],
+        Versions = new ModuleVersionInterval("8.0.0", "9.0.0"),
+        Actions = actions,
+    };
+
     internal static ModulePrivilegeRequest Request(string kind, string action, string target, string key,
         string reason = "Fixture module request") => new(kind, action, target, reason, key);
 }

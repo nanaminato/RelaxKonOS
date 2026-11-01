@@ -158,17 +158,17 @@ remove-installed 只移除 `installed.json` 记录，默认保留版本文件；
 - `runtime=module-host` 使用 ModuleHost ABI 2.0.0，不能公布 Core capabilities；来源可为 Host 授权的 `third-party`、`development` 或 `official`。开发来源仍需绑定服务身份与开发环境；第三方不得使用 `relaxkonos.*` 前缀。module-host 允许不声明任何提权能力。
 - `privileges` 是 **能力类别 + 类型化资源范围** 的数组，最多 64 项，由 `kind` 判别。类别、字段、动作枚举和范围都按共享 `ModuleCapabilityCatalog` 校验；未知类别或未知字段直接拒绝。
   - 每个声明必须带 `platforms`（`linux`/`windows`/`macos`），且必须包含清单 `rid` 对应的平台。
-  - `service.manage`：`services[{serviceId, actions}]`，动作限 `start`/`stop`/`restart`。当前唯一已实现的类别。
-  - `package.manage`：`manager`（`apt`/`windows-msi`）、`sourceRef`（Host 已独立批准的来源引用，不接受 URL/公钥/摘要）、`packages`、`versions{minimum, maximumExclusive}`、`actions`（`install`/`update`/`repair`/`remove`）。
+  - `service.manage`：`services[{serviceId, actions}]`，动作限 `start`/`stop`/`restart`。已验证可执行的类别。
+  - `package.manage`：`manager`（`apt`/`windows-msi`）、`sourceRef`（Host 已独立批准的来源引用，不接受 URL/公钥/摘要）、`packages`、`versions{minimum, maximumExclusive}`、`actions`（`install`/`update`/`repair`/`remove`）。apt 已接线：Host 在计划阶段通过 Helper 解析并冻结精确版本/架构/仓库/制品摘要/依赖闭包，Helper 执行前再独立重解；版本区间按 Debian 版本序比较。`windows-msi` 仍只可声明。
   - `file.manage`/`data.manage`：绝对限定根 `root`、`actions`，文件另带 `maximumBytes`。
   - `account.manage`：`accounts`、`groups`、`actions`（`create`/`delete`/`grant`）。
   - `network.manage`：`interfaces`、`ports[{minimum, maximumExclusive}]`、`actions`。
   - `secret.reference`：`secrets[{purpose, target, permissions}]`；只声明引用，清单不含秘密值。
   - `setting.manage`：Host 定义的 `keys`、`registryRoots`、`scheduledTasks` 和 `actions`。
   - `app.manage`：`protocols`、`instances`、`actions`；数据库管理等协议适配器的声明位。
-  - 除 `service.manage` 外，其余类别只作为冻结的声明契约接受，执行时明确返回 `module.privilege_unsupported`，不退化为 shell 或逐应用专用枚举。
+  - 除 `service.manage` 与 apt `package.manage` 外，其余类别只作为冻结的声明契约接受，执行时明确返回 `module.privilege_unsupported`，不退化为 shell 或逐应用专用枚举。
 - `ui` 必含 `name`、`summary`、`description`、可空 `homepage`、`license`。homepage 非空时只允许 HTTPS。它们不参与来源授信判断。
-- 安装事实 `installed.json` 保持 schemaVersion=2；冻结安装计划 `package-plans.json` 升级为 schemaVersion=3，Broker 计划存储为 schemaVersion=4，后台许可存储为 schemaVersion=2。这些都是不同契约。每版本 install.json 必须保留 runtime；已安装清单按原始 manifest SHA-256 和全部文件摘要复查。旧安装事实与旧计划不会静默转换。
+- 安装事实 `installed.json` 保持 schemaVersion=2；冻结安装计划 `package-plans.json` 升级为 schemaVersion=3，Broker 计划存储为 schemaVersion=5（含包计划的冻结来源与制品身份），后台许可存储为 schemaVersion=2。这些都是不同契约。每版本 install.json 必须保留 runtime；已安装清单按原始 manifest SHA-256 和全部文件摘要复查。旧安装事实与旧计划不会静默转换。
 - 在线 ModuleHost 安装必须使用冻结计划；直接 install 路由拒绝它。apply 是对预览中精确版本、摘要、运行模式和结构化能力声明的代码信任确认，写入独立的 module-trust.json。离线安装仅记录文件事实，不自动信任或执行代码。回退/更新不能借用其他摘要的代码信任。
 - `POST /api/v1.0/server/module-trust/{moduleId}` 使用 `{artifactSha256,manifestSha256,trusted}` 修改精确安装的代码信任；要求 ServerModulesManage 且 managed 管理模式。撤销立即阻断代理和 Broker，监督周期内关闭原进程。
 

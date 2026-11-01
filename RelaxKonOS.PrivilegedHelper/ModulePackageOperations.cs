@@ -149,16 +149,18 @@ public static partial class PrivilegedOperationExecutor
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "module package identity is invalid");
         if (!ModulePackageSourcePolicy.TryLoad(ModulePackagePolicyPath, out var policy, out _) || policy is null)
             return Fail(64, PrivilegedProblemCode.UnsupportedOperation, "module package source policy unavailable");
+        // An apply-time source or repository mismatch means the confirmed premise no longer holds, not that
+        // the caller aimed at something new: the answer is a plan change, and nothing runs.
         if (!policy.TryFind(transaction.SourceRef, package, out var source) || source is null)
-            return Fail(64, PrivilegedProblemCode.AccessDenied, "module package source is not approved");
+            return Fail(65, PrivilegedProblemCode.PlanChanged, "module package source is no longer approved");
         if (!policy.AllowsRepository(transaction.SourceRef, transaction.Target))
-            return Fail(65, PrivilegedProblemCode.AccessDenied, "module package repository is not approved");
+            return Fail(65, PrivilegedProblemCode.PlanChanged, "module package repository is no longer approved");
         if (transaction.RemoveConfiguration && transaction.Action != ModulePackageTransactionAction.Remove)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "configuration removal requires the remove action");
         var (failure, current) = await ResolveModulePackageAsync(policy, source, package);
-        if (failure is not null) return failure;
+        if (failure is not null) return Fail(65, PrivilegedProblemCode.PlanChanged, "module package identity changed");
         if (!AptPackageResolution.MatchesModuleResolution(transaction.Target, current))
-            return Fail(65, PrivilegedProblemCode.Conflict, "module package identity changed");
+            return Fail(65, PrivilegedProblemCode.PlanChanged, "module package identity changed");
 
         var expected = new ModulePackageReceipt(operationId, transaction.SourceRef, transaction.Action.ToString(),
             package, transaction.Target.Version, transaction.Target.Sha256, false);

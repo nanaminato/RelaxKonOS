@@ -146,8 +146,14 @@ public static class ModuleCapabilityPolicy
 
     public static string[] Kinds => ModuleCapabilityCatalog.Kinds;
 
-    /// <summary>The only category the current Host can execute. Everything else fails closed.</summary>
+    /// <summary>True only for categories the Host can execute after one explicit confirmation. A category
+    /// whose adapter needs a live Helper or source policy may still answer "unsupported" at plan time.</summary>
     public static bool IsExecutable(string kind) => ModuleCapabilityCatalog.IsExecutable(kind);
+
+    /// <summary>Standing (background) consent stays limited to the first delivered slice. package.manage
+    /// needs its own revocation and drift evidence before DC-05 may extend it, so it is refused here even
+    /// though a single confirmed package plan can execute.</summary>
+    public static bool AllowsStandingConsent(string kind) => kind == ModuleCapabilityCatalog.ServiceManage;
 
     public static string[] Actions(string kind) => ModuleCapabilityCatalog.Actions(kind);
 

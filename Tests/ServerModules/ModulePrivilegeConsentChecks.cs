@@ -47,7 +47,7 @@ internal static class ModulePrivilegeConsentChecks
                     if (prepared.State != "AwaitingConfirmation") return await operations.GetForModuleAsync(prepared.PlanId, module);
                     var plan = await operations.ReadForUserAsync(prepared.PlanId, session);
                     return await operations.ApproveAsync(plan.PlanId, session, new(plan.PlanHash, plan.ConfirmationToken),
-                        () => Task.FromResult<ModulePrivilegeAdministrator?>(authority.Administrator), (_, _) =>
+                        () => Task.FromResult<ModulePrivilegeAdministrator?>(authority.Administrator), (_, _, _) =>
                         {
                             executions++;
                             if (responseLost) throw new IOException("test response lost after dispatch");
@@ -56,6 +56,10 @@ internal static class ModulePrivilegeConsentChecks
                 });
             }
             var initialRequest = Request("first");
+            await Reject(() => consents.PrepareAsync("session", "granting-user",
+                    new("fixture", ModuleCapabilityCatalog.PackageManage, "install", "mysql-server", "Background package install",
+                        clock.Current.AddHours(1), "package-consent")),
+                "unsupported", "standing consent stays limited to the delivered service slice until DC-05");
             var pending = await Prepare("first");
             check(pending.State == "AwaitingConfirmation" && pending.ConfirmationToken.Length == 64 && executions == 0,
                 "standing consent preparation never executes or grants authority");

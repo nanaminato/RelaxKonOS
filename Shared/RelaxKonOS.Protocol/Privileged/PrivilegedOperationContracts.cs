@@ -305,6 +305,8 @@ public enum PrivilegedProblemCode
     NotFound,
     AccessDenied,
     Conflict,
+    /// <summary>A frozen target no longer matches what the Host resolves now. Nothing was executed.</summary>
+    PlanChanged,
     ContentTooLarge,
     HelperUnavailable,
     TimedOut,

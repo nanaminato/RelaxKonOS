@@ -383,7 +383,7 @@ v1 的 `InstalledModuleContext` 只暴露配置、环境、内容根、模块数
 }
 ```
 
-> 当前安装器只接受唯一 schemaVersion=3 清单；runtime、privileges、ui 为必填字段。`privileges` 是能力类别加类型化资源范围，`package.manage` 等未交付适配器的类别可声明但执行时明确拒绝，详见包契约。
+> 当前安装器只接受唯一 schemaVersion=3 清单；runtime、privileges、ui 为必填字段。`privileges` 是能力类别加类型化资源范围；`service.manage` 与 apt `package.manage` 已有执行适配器（包类别还要求 Helper 解析并冻结精确制品），其余类别可声明但执行时明确拒绝，详见包契约。
 
 > 示例中的长度和摘要仅用于展示字段形状；实际值必须由打包器逐文件生成，空 `files` 或占位摘要不能通过校验。
 

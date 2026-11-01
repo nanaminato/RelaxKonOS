@@ -172,7 +172,7 @@ internal sealed class ModulePrivilegeConsentStore
     {
         if (!ModuleCapabilityPolicy.Kinds.Contains(kind, StringComparer.Ordinal)
             || !ModuleCapabilityPolicy.Actions(kind).Contains(action, StringComparer.Ordinal)
-            || !ModuleCapabilityPolicy.IsExecutable(kind)) throw Error("unsupported", 400);
+            || !ModuleCapabilityPolicy.AllowsStandingConsent(kind)) throw Error("unsupported", 400);
         if (!identity.Privileges.Any(capability => ModuleCapabilityPolicy.Allows(capability, action, target)))
             throw Error("not_declared", 403);
         if (kind == ModuleCapabilityPolicy.ServiceManage

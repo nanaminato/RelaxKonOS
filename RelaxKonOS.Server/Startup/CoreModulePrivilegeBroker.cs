@@ -46,12 +46,12 @@ internal sealed class CoreModulePrivilegeBroker(IHostEnvironment environment, IC
                 return await Plans.ApproveAsync(plan.PlanId, session, new(plan.PlanHash, plan.ConfirmationToken),
                     () => Task.FromResult<ModulePrivilegeAdministrator?>(authority.ExpiresAt > DateTimeOffset.UtcNow
                         ? authority.Administrator with { AuthenticationMethod = "standing-consent:" + authority.Administrator.AuthenticationMethod } : null),
-                    async (operationId, operation) =>
+                    async (operationId, operation, _) =>
                     {
                         if (authority.ExpiresAt <= DateTimeOffset.UtcNow) return false;
                         using var scope = services.CreateScope();
                         using var actor = PrivilegedAuditActorScope.Enter(authority.Actor);
-                        return await ExecuteCapabilityAsync(scope.ServiceProvider.GetRequiredService<IPrivilegedOperationTransport>(), operationId, operation);
+                        return await ExecuteCapabilityAsync(scope.ServiceProvider.GetRequiredService<IPrivilegedOperationTransport>(), operationId, operation, null);
                     });
             }));
         }));
@@ -69,7 +69,8 @@ internal sealed class CoreModulePrivilegeBroker(IHostEnvironment environment, IC
                 throw new ModulePrivilegeException("module.privilege_denied", 403);
             var actor = context.User.FindFirstValue("sub") ?? context.User.FindFirstValue(ClaimTypes.NameIdentifier)
                 ?? throw new ModulePrivilegeException("module.privilege_denied", 403);
-            return Results.Ok(await Plans.PrepareAsync(moduleId, Session(context.User), request, actor));
+            return Results.Ok(await Plans.PrepareAsync(moduleId, Session(context.User), request, actor,
+                query => QueryPackageAsync(services, actor, query)));
         }));
         _application.MapGet("/plans/{id:guid}", async (Guid id, HttpContext http) => await Respond(async () =>
         {
@@ -81,22 +82,62 @@ internal sealed class CoreModulePrivilegeBroker(IHostEnvironment environment, IC
         await _application.StartAsync(cancellationToken);
         Url = _application.Urls.Single();
     }
-    internal static async Task<bool> ExecuteCapabilityAsync(IPrivilegedOperationTransport helper, Guid operationId, ModulePrivilegeRequest request)
+    /// <summary>Read-only Helper resolution through the module's own approved source policy. Failure of any
+    /// kind grants nothing: no plan is created, so a module can never turn an unavailable adapter into an
+    /// unconfirmed or approximated package transaction.</summary>
+    private static async Task<ModulePackageResolution?> QueryPackageAsync(IServiceProvider services, string actor, ModulePackageQuery query)
     {
-        if (request.Kind != ModuleCapabilityPolicy.ServiceManage)
-            throw new ModulePrivilegeException("module.privilege_unsupported", 400);
-        var action = request.Action switch
+        try
         {
-            "start" => PrivilegedServiceAction.Start,
-            "stop" => PrivilegedServiceAction.Stop,
-            "restart" => PrivilegedServiceAction.Restart,
+            using var scope = services.CreateScope();
+            using var auditActor = PrivilegedAuditActorScope.Enter(actor);
+            var operationId = Guid.NewGuid();
+            var outcome = await scope.ServiceProvider.GetRequiredService<IPrivilegedOperationTransport>()
+                .ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.ModulePackageQuery,
+                    OperationId: operationId, Correlation: CorrelationContext.Create(operationId), ModulePackageQuery: query),
+                    CancellationToken.None);
+            return outcome.Success ? outcome.ModulePackage : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException
+            or System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
+    internal static async Task<bool> ExecuteCapabilityAsync(IPrivilegedOperationTransport helper, Guid operationId,
+        ModulePrivilegeRequest request, ModulePrivilegePackage? package)
+    {
+        var privilege = request.Kind switch
+        {
+            ModuleCapabilityPolicy.ServiceManage => new PrivilegedOperationRequest(PrivilegedOperationKind.NativeServiceAction,
+                ServiceId: request.Target, ServiceAction: request.Action switch
+                {
+                    "start" => PrivilegedServiceAction.Start,
+                    "stop" => PrivilegedServiceAction.Stop,
+                    "restart" => PrivilegedServiceAction.Restart,
+                    _ => throw new ModulePrivilegeException("module.privilege_unsupported", 400),
+                }, OperationId: operationId, Correlation: CorrelationContext.Create(operationId)),
+            ModuleCapabilityPolicy.PackageManage => new PrivilegedOperationRequest(PrivilegedOperationKind.ModulePackageApply,
+                ModulePackageApply: PackageTransaction(request, package), OperationId: operationId,
+                Correlation: CorrelationContext.Create(operationId)),
             _ => throw new ModulePrivilegeException("module.privilege_unsupported", 400),
         };
-        var outcome = await helper.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NativeServiceAction,
-            ServiceId: request.Target, ServiceAction: action, OperationId: operationId, Correlation: CorrelationContext.Create(operationId)), CancellationToken.None);
+        var outcome = await helper.ExecuteAsync(privilege, CancellationToken.None);
         if (outcome.ProblemCode is PrivilegedProblemCode.HelperUnavailable or PrivilegedProblemCode.TimedOut or PrivilegedProblemCode.InvalidProtocol)
             throw new IOException("module.privilege_helper_response_unknown");
+        // The Helper refused after re-resolving: the frozen identity or its approved source moved and
+        // nothing ran. The plan is known to be stale, so it must not become an unknown retry.
+        if (request.Kind == ModuleCapabilityPolicy.PackageManage && outcome.ProblemCode == PrivilegedProblemCode.PlanChanged)
+            throw new ModulePrivilegeException("module.privilege_plan_changed");
         return outcome.Success;
+    }
+    /// <summary>The exact confirmed transaction: one verb, one Host source reference and the frozen artifact.</summary>
+    private static ModulePackageTransaction PackageTransaction(ModulePrivilegeRequest request, ModulePrivilegePackage? package)
+    {
+        if (package is null) throw new ModulePrivilegeException("module.privilege_unsupported", 400);
+        var action = ModulePrivilegePlanStore.PackageAction(request.Action)
+            ?? throw new ModulePrivilegeException("module.privilege_unsupported", 400);
+        return new(action, package.SourceRef, package.Resolution);
     }
     internal string IssueRequestContext(string moduleId, ClaimsPrincipal principal)
     {

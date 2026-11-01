@@ -401,15 +401,15 @@ Broker 不新增“任意命令”Helper 操作。封闭边界应位于软件包
 
 ## 13. 当前实现契约（2026-11-01）
 
-首个 Broker 操作集合为 `service.manage` 的 `start`/`stop`/`restart`：请求携带类别、动作和目标，且必须落在模块声明的服务与动作范围内，再映射现有 Helper NativeServiceAction。能力类别目录已冻结为 `service.manage`、`package.manage`、`file.manage`、`data.manage`、`account.manage`、`network.manage`、`secret.reference`、`setting.manage`、`app.manage`；除 `service.manage` 外均明确返回 unsupported，绝不转为命令行或逐应用专用操作。
+首个 Broker 操作集合为 `service.manage` 的 `start`/`stop`/`restart`：请求携带类别、动作和目标，且必须落在模块声明的服务与动作范围内，再映射现有 Helper NativeServiceAction。DC-02 起 `package.manage` 的 `install`/`update`/`repair`/`remove` 也进入矩阵：prepare 先向 Helper 发出只读 `ModulePackageQuery(sourceRef, package)`，把返回的 `ModulePackageResolution` 冻结进计划；Helper 不可用、来源未批准、包不在来源策略内、解析失败或版本不在声明区间时，计划创建直接失败（`module.privilege_unsupported` / `module.privilege_not_declared`），不会只凭声明生成计划。执行时 Broker 只发送来源引用与冻结身份，Helper 再独立重解并比对，不一致返回 `PlanChanged`，Broker 映射为 `module.privilege_plan_changed` 并把计划记为 `Failed`（已知未执行），响应丢失仍进入 `RecoveryRequired`。能力类别目录已冻结为 `service.manage`、`package.manage`、`file.manage`、`data.manage`、`account.manage`、`network.manage`、`secret.reference`、`setting.manage`、`app.manage`；除 `service.manage` 与 apt `package.manage` 外均明确返回 unsupported，绝不转为命令行或逐应用专用操作。`windows-msi` 声明仍只可声明、不可执行。
 
 ModuleHost SDK `context.Privileges` 通过 Core 拥有的临时 loopback listener 调用；每进程随机服务令牌确定模块身份，Server 代理为当前已认证业务请求生成短时不透明 context，并在代理请求结束时撤销。模块不能传 userId/JWT/密码来声明身份；没有活动 context 的后台 prepare 被拒绝。模块侧仅返回 planId/planHash/状态。
 
 Core 用户 API：GET `/api/v1.0/server/module-privileges/plans/{id}`、POST 同路径 `/approve` 或 `/cancel`。GET 的确认令牌只交给发起用户的同一会话；approve 提交 planHash、确认令牌及可选管理员账密。桌面组件中心可输入业务返回的 planId 查看并确认/拒绝。计划五分钟过期；服务授权不得跳过确认门。HostElevationSessionState 提供只读 IsAdministratorVerified，既有 sessionValid 控制免密码记忆。owner device 仍通过 Core OwnerDeviceKeyService 校验。
 
-privilege-plans.json 内部存储使用 schemaVersion=4，原子耐久保存计划、执行与终态，确认令牌仅保存哈希；计划绑定类别、动作、目标和模块声明的资源范围；新增发起用户、同会话批准用户、实际验证管理员身份、验证方式、确认时间与执行尝试结束时间，初始发起者绑定进计划摘要。拒绝旧的审计不完整存储格式，不进行自动迁移；升级前必须显式处理旧状态及其证据。模块安装清单使用 schemaVersion=3，package-plans.json 使用 schemaVersion=3，installed.json 仍使用 schemaVersion=2；它们是不同契约。Executing 在重启后变为 RecoveryRequired，响应丢失也进入 RecoveryRequired，不重放动作。管理员验证记忆保留原始规范身份；owner-device 记录实际设备 ID，不记录密码、私钥或令牌。module-trust.json 绑定精确版本/发布者/归档与清单摘要；Broker 执行前两次复查当前安装、启用、信任、来源目录/撤销、策略与 Host 服务白名单。Helper 再检查自己的 root 管理服务白名单。
+privilege-plans.json 内部存储使用 schemaVersion=5，原子耐久保存计划、执行与终态，确认令牌仅保存哈希；计划绑定类别、动作、目标和模块声明的资源范围，`package.manage` 计划还持久化 Host 已批准来源引用与 Helper 解析出的完整 `ModulePackageResolution`，两者各自带摘要并计入 `planHash`；来源、仓库、版本、架构、制品摘要、大小或依赖闭包被改写即 `module.privilege_recovery_required`。计划同时记录发起用户、同会话批准用户、实际验证管理员身份、验证方式、确认时间与执行尝试结束时间，初始发起者绑定进计划摘要。拒绝旧的审计不完整存储格式，不进行自动迁移；升级前必须显式处理旧状态及其证据。模块安装清单使用 schemaVersion=3，package-plans.json 使用 schemaVersion=3，installed.json 仍使用 schemaVersion=2；它们是不同契约。Executing 在重启后变为 RecoveryRequired，响应丢失也进入 RecoveryRequired，不重放动作。管理员验证记忆保留原始规范身份；owner-device 记录实际设备 ID，不记录密码、私钥或令牌。module-trust.json 绑定精确版本/发布者/归档与清单摘要；Broker 执行前两次复查当前安装、启用、信任、来源目录/撤销、策略与 Host 服务白名单。Helper 再检查自己的 root 管理服务白名单与来源策略。
 
-PB-01/02：核心契约及确认门的定向测试已通过；PB-03：桌面入口已编译；PB-04：Linux/Windows 专用身份与权限隔离已有实机验收；PB-05 服务动作、审计及两平台真实 Helper 中断恢复已实测。PB-06 已实现固定服务动作的有期常设许可与后台 SDK 执行，两平台真实撤销/到期和重启幂等已实测；无显式许可仍拒绝后台派发。包/文件动作仍未实现，Personal 整包未验收。
+PB-01/02：核心契约及确认门的定向测试已通过；PB-03：桌面入口已编译；PB-04：Linux/Windows 专用身份与权限隔离已有实机验收；PB-05 服务动作、审计及两平台真实 Helper 中断恢复已实测，DC-02 的 apt 包计划冻结/派发/漂移拒绝已有确定性测试，真实 Ubuntu 安装验收仍未执行。PB-06 已实现固定服务动作的有期常设许可与后台 SDK 执行，两平台真实撤销/到期和重启幂等已实测；无显式许可仍拒绝后台派发。文件动作与数据库协议仍未实现，Personal 整包未验收。
 
 ### PB-06 当前后台许可契约（2026-11-01）
 
@@ -417,6 +417,6 @@ PB-01/02：核心契约及确认门的定向测试已通过；PB-03：桌面入�
 
 SDK `ExecuteBackgroundAsync` 通过进程令牌认证模块身份，不复用业务请求 context，不接受管理员凭据。许可 ID 不是认证令牌；它不能让其他模块调用。每个操作仍落原耐久计划与 Helper 审计，`consent:<ID>` 关联授予记录；响应丢失或 Core 重启不会借常设许可自动重放。撤销与派发线性化，已经派发的动作不冒充被取消，撤销完成后拒绝新动作。普通前台 Prepare 仍要求当前业务上下文及单次确认。
 
-`privilege-consents.json` 独立使用 schemaVersion=2，严格读取当前结构，检查冻结身份/请求/组合摘要与审批/撤销证据；活进程发现文件丢失或被外部改写时拒绝使用，不用内存缓存掩盖磁盘未知。模块安装清单为 schemaVersion=3，原单次操作审计为内部 schemaVersion=4。
+`privilege-consents.json` 独立使用 schemaVersion=2，严格读取当前结构，检查冻结身份/请求/组合摘要与审批/撤销证据；活进程发现文件丢失或被外部改写时拒绝使用，不用内存缓存掩盖磁盘未知。模块安装清单为 schemaVersion=3，原单次操作审计为内部 schemaVersion=5。
 
 两平台真实 PAM/LogonUser、后台 Helper 动作、撤销/实际到期、重启幂等与操作者审计已验证。最新 Windows 原生/HTTP 74 项、ServerModules 完整 623 项及补充定向检查，证据统一链接到 [v2 实施记录](RelaxKonOS.ServerModuleV2.Progress.md)。后台计划由模块自己调度；本次没有新增主机任务调度器，也没有开放包/文件/网络/任意进程动作。

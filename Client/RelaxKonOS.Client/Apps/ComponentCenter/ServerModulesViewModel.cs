@@ -33,8 +33,16 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         var plan = await client.PrivilegePlanAsync(id);
         PrivilegePlan = plan;
         PrivilegeText = $"{plan.ModuleId} · {plan.Version} · {plan.PublisherId}\n{plan.ArtifactSha256}\n{plan.Kind} · {plan.Action} · {plan.Target}\n{plan.Reason}\n"
+            + (plan.Package is { } package ? DescribeFrozenPackage(package) + "\n" : "")
             + string.Join("\n", plan.Effects.Concat(plan.Warnings)) + $"\n{plan.State} · {plan.ExpiresAt}";
     });
+    /// <summary>Show exactly what the Host froze. The dependency closure is part of the confirmed identity,
+    /// so it is listed rather than summarized as a count.</summary>
+    private static string DescribeFrozenPackage(ModulePackagePlanIdentity package) =>
+        $"package: {package.Package} {package.Version} {package.Architecture}\n"
+        + $"source: {package.SourceRef}\nrepository: {package.Repository}\n"
+        + $"artifact: {package.ArtifactFileName} sha256:{package.Sha256} ({package.Bytes} bytes)\n"
+        + $"dependencies ({package.Dependencies.Length}): " + string.Join(", ", package.Dependencies.Select(dependency => dependency.FileName));
     [RelayCommand] private Task ApprovePrivilegeAsync() => Run(async () =>
     {
         if (PrivilegePlan is not { State: "AwaitingConfirmation" } plan || plan.ExpiresAt <= DateTimeOffset.UtcNow)

@@ -340,7 +340,7 @@ internal static class WindowsCoreAcceptance
             var persisted = JsonNode.Parse(persistedText)!;
             var completed = persisted["plans"]!.AsArray().Where(item => item!["state"]!.GetValue<string>() == "Succeeded").ToArray();
             var administratorSid = ((SecurityIdentifier)new NTAccount(Environment.MachineName, native.AdministratorName).Translate(typeof(SecurityIdentifier))).Value;
-            check(persisted["schemaVersion"]!.GetValue<int>() == 4 && completed.Length >= 4
+            check(persisted["schemaVersion"]!.GetValue<int>() == 5 && completed.Length >= 4
                 && completed.All(item => item!["audit"]!["initiatingUser"]!.GetValue<string>() == userId
                     && item["audit"]!["approvingUser"]!.GetValue<string>() == userId
                     && item["audit"]!["confirmedAt"] is not null && item["audit"]!["attemptCompletedAt"] is not null)

@@ -22,10 +22,23 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         Require(plan.PlanId == id && ValidIds([plan.ModuleId]) && ValidDigest(plan.PlanHash)
             && ValidDigest(plan.ArtifactSha256) && plan.Effects is { Length: <= 128 } && plan.Warnings is { Length: <= 128 }
             && ModuleCapabilityCatalog.IsCategory(plan.Kind) && ModuleCapabilityCatalog.IsAction(plan.Kind, plan.Action)
+            && (plan.Kind == ModuleCapabilityCatalog.PackageManage
+                ? ValidPackageIdentity(plan.Package) : plan.Package is null)
             && plan.State is "AwaitingConfirmation" or "Executing" or "Succeeded" or "Failed" or "Cancelled" or "Expired" or "RecoveryRequired"
             && (plan.State != "AwaitingConfirmation" || ValidDigest(plan.ConfirmationToken)));
         return plan;
     }
+    /// <summary>The frozen package identity is display-only on this side; a plan that names a package without
+    /// one, or a service plan that carries one, is a protocol error rather than something to render.</summary>
+    private static bool ValidPackageIdentity(ModulePackagePlanIdentity? package) => package is { } value
+        && ValidText(value.SourceRef, 96) && ValidText(value.Package, 128) && ValidText(value.Version, 128)
+        && value.Architecture is { Length: > 0 and <= 32 } && value.Architecture.All(c => char.IsAsciiLetterOrDigit(c) || c == '-')
+        && ValidText(value.Repository, 8192) && ValidText(value.ArtifactFileName, 256)
+        && ValidDigest(value.Sha256) && value.Bytes is > 0 and <= 536870912
+        && value.Dependencies is { Length: <= 64 }
+        && value.Dependencies.All(dependency => dependency is not null && ValidText(dependency.FileName, 256)
+            && ValidDigest(dependency.Sha256) && dependency.Bytes is > 0 and <= 536870912)
+        && value.Dependencies.Select(dependency => dependency.FileName).Distinct(StringComparer.Ordinal).Count() == value.Dependencies.Length;
     public Task<ModulePrivilegeStatus> ApprovePrivilegeAsync(Guid id, ModulePrivilegeApproval approval) =>
         SendAsync<ModulePrivilegeStatus>(HttpMethod.Post, ServerModulePrivilegeRoutes.Plans + "/" + id + "/approve", approval);
     public Task<ModulePrivilegeStatus> CancelPrivilegeAsync(Guid id) =>
@@ -295,6 +308,8 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         && ids.All(id => id is { Length: > 0 and <= 128 } && id.All(character => char.IsAsciiLetterOrDigit(character) || character is '.' or '-'))
         && ids.Distinct(StringComparer.Ordinal).Count() == ids.Count;
     private static bool ValidDigest(string? value) => value is { Length: 64 } && value.All(char.IsAsciiHexDigitLower);
+    private static bool ValidText(string? value, int maximum) => value is { Length: > 0 } && value.Length <= maximum
+        && !value.Any(char.IsControl);
     private static bool ValidCode(string? code) => code is null || code.Length is > 7 and <= 96 && code.StartsWith("module-", StringComparison.Ordinal)
         && code.All(character => char.IsAsciiLetterOrDigit(character) || character == '-');
     private void ValidatePlan(ServerModulePlanDto plan)

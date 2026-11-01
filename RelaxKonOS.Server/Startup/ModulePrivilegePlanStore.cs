@@ -1,14 +1,21 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using RelaxKonOS.ManagedRuntimes.ComponentPackages;
 using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.ModulePackaging;
+using RelaxKonOS.Protocol.Privileged;
 
 namespace RelaxKonOS.Server.Startup;
 
 internal sealed record ModulePrivilegeIdentity(string ModuleId, string Version, string PublisherId, string ArtifactSha256,
     string ManifestSha256, string PolicyRevision, ModulePackageCapability[] Privileges, string[] AllowedServices);
 internal sealed record ModulePrivilegeAdministrator(string Identity, string AuthenticationMethod);
+
+/// <summary>The Host-approved source reference plus the exact artifact identity the Helper resolved. Both are
+/// frozen at prepare time: the Helper re-resolves and compares them before executing, never re-planning.</summary>
+internal sealed record ModulePrivilegePackage(string SourceRef, ModulePackageResolution Resolution);
+
 internal sealed class ModulePrivilegeException(string code, int status = 409) : Exception(code)
 {
     internal string Code => Message;
@@ -19,8 +26,9 @@ internal sealed class ModulePrivilegeException(string code, int status = 409) : 
 internal sealed class ModulePrivilegePlanStore
 {
     private sealed record Plan(Guid Id, string Session, ModulePrivilegeIdentity Identity, string IdentityHash,
-        ModulePrivilegeRequest Request, string RequestHash, string Hash, DateTimeOffset Created, DateTimeOffset Expires,
-        string State, string? Problem, string? TokenHash, DateTimeOffset Updated, ApprovalAudit Audit);
+        ModulePrivilegeRequest Request, string RequestHash, ModulePrivilegePackage? Package, string PackageHash,
+        string Hash, DateTimeOffset Created, DateTimeOffset Expires, string State, string? Problem, string? TokenHash,
+        DateTimeOffset Updated, ApprovalAudit Audit);
     private sealed record ApprovalAudit(string InitiatingUser, string? ApprovingUser, ModulePrivilegeAdministrator? Administrator,
         DateTimeOffset? ConfirmedAt, DateTimeOffset? AttemptCompletedAt);
     private sealed record Document(int SchemaVersion, Plan[] Plans);
@@ -44,7 +52,7 @@ internal sealed class ModulePrivilegePlanStore
             var stored = File.ReadAllBytes(_path);
             RequireCurrentSchema(stored);
             var document = ModulePackageJson.Read<Document>(stored, 8 * 1024 * 1024);
-            if (document.SchemaVersion != 4 || document.Plans is null || document.Plans.Length > 1000 || document.Plans.Any(p => p is null)
+            if (document.SchemaVersion != 5 || document.Plans is null || document.Plans.Length > 1000 || document.Plans.Any(p => p is null)
                 || document.Plans.Select(p => p.Id).Distinct().Count() != document.Plans.Length)
                 throw Error("recovery_required");
             foreach (var plan in document.Plans) ValidateStored(plan);
@@ -63,7 +71,7 @@ internal sealed class ModulePrivilegePlanStore
             using var document = JsonDocument.Parse(stored);
             if (document.RootElement.ValueKind != JsonValueKind.Object
                 || !document.RootElement.TryGetProperty("schemaVersion", out var version)
-                || version.ValueKind != JsonValueKind.Number || version.GetInt32() != 4)
+                || version.ValueKind != JsonValueKind.Number || version.GetInt32() != 5)
                 throw Error("recovery_required");
         }
         catch (JsonException) { throw Error("recovery_required"); }
@@ -75,10 +83,12 @@ internal sealed class ModulePrivilegePlanStore
             || plan.State is not ("AwaitingConfirmation" or "Executing" or "Succeeded" or "Failed" or "Cancelled" or "Expired" or "RecoveryRequired")
             || plan.Expires != plan.Created.AddMinutes(5)
             || plan.IdentityHash != Hash(plan.Identity) || plan.RequestHash != Hash(plan.Request)
-            || plan.Hash != PlanHash(plan.Id, plan.Session, plan.Audit.InitiatingUser, plan.IdentityHash, plan.RequestHash, plan.Created, plan.Expires)
+            || plan.Hash != PlanHash(plan.Id, plan.Session, plan.Audit.InitiatingUser, plan.IdentityHash, plan.RequestHash,
+                plan.PackageHash, plan.Created, plan.Expires)
             || plan.TokenHash is not null && (plan.State != "AwaitingConfirmation"
                 || plan.TokenHash.Length != 64 || !plan.TokenHash.All(char.IsAsciiHexDigitLower)))
             throw Error("recovery_required");
+        ValidateStoredPackage(plan);
         var attempted = plan.State is "Executing" or "Succeeded" or "Failed" or "RecoveryRequired";
         if (attempted != (plan.Audit.Administrator is not null && plan.Audit.ConfirmedAt is not null
                 && plan.Audit.ApprovingUser == plan.Audit.InitiatingUser)
@@ -87,10 +97,30 @@ internal sealed class ModulePrivilegePlanStore
             || plan.State is "Succeeded" or "Failed" && plan.Audit.AttemptCompletedAt is null)
             throw Error("recovery_required");
     }
+    /// <summary>A stored plan carries a frozen package identity exactly when its category is package.manage,
+    /// and that identity must still be a usable artifact bound by the plan hash.</summary>
+    private static void ValidateStoredPackage(Plan plan)
+    {
+        if (plan.Request.Kind != ModuleCapabilityPolicy.PackageManage)
+        {
+            if (plan.Package is not null || plan.PackageHash != "") throw Error("recovery_required");
+            return;
+        }
+        if (plan.Package is not { } package || !Token(package.SourceRef)
+            || !AptPackageResolution.IsUsableModuleResolution(package.Resolution, out _)
+            || package.Resolution.Package != plan.Request.Target
+            || plan.PackageHash != PackageHash(package))
+            throw Error("recovery_required");
+    }
     private static bool AuditIdentity(string? value) => value is { Length: > 0 and <= 512 } && !value.Any(char.IsControl);
+    private static bool Token(string? value) => value is { Length: > 0 and <= 96 }
+        && value[0] is >= 'a' and <= 'z' && value.All(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '.' or '-');
+    private static string PackageHash(ModulePrivilegePackage? package) => package is null ? "" : Hash(package);
     private static string PlanHash(Guid id, string session, string initiatingUser, string identityHash, string requestHash,
-        DateTimeOffset created, DateTimeOffset expires) => Hash(new { id, session, initiatingUser, identityHash, requestHash, created, expires });
-    internal async Task<ModulePrivilegePrepared> PrepareAsync(string moduleId, string session, ModulePrivilegeRequest request, string initiatingUser)
+        string packageHash, DateTimeOffset created, DateTimeOffset expires) =>
+        Hash(new { id, session, initiatingUser, identityHash, requestHash, packageHash, created, expires });
+    internal async Task<ModulePrivilegePrepared> PrepareAsync(string moduleId, string session, ModulePrivilegeRequest request,
+        string initiatingUser, Func<ModulePackageQuery, Task<ModulePackageResolution?>>? queryPackage = null)
     {
         await _gate.WaitAsync();
         try
@@ -115,18 +145,44 @@ internal sealed class ModulePrivilegePlanStore
                 return new(existing.Id, existing.Hash, existing.State);
             }
             if (_plans.Count >= 1000) throw Error("capacity");
+            // The frozen package identity is part of the plan, not a later approximation: a re-query that
+            // moved is a different plan and can never be approved under the hash the user saw.
+            var package = request.Kind == ModuleCapabilityPolicy.PackageManage
+                ? await FreezePackageAsync(identity, request, queryPackage) : null;
+            var packageHash = PackageHash(package);
             var id = Guid.NewGuid();
             var created = Now;
             var expires = created.AddMinutes(5);
             var identityHash = Hash(identity);
-            var hash = PlanHash(id, session, initiatingUser, identityHash, requestHash, created, expires);
-            var plan = new Plan(id, session, identity, identityHash, request, requestHash, hash, created, expires,
+            var hash = PlanHash(id, session, initiatingUser, identityHash, requestHash, packageHash, created, expires);
+            var plan = new Plan(id, session, identity, identityHash, request, requestHash, package, packageHash, hash, created, expires,
                 "AwaitingConfirmation", null, null, created, new(initiatingUser, null, null, null, null));
             _plans.Add(plan);
             Save();
             return new(id, hash, plan.State);
         }
         finally { _gate.Release(); }
+    }
+    /// <summary>Resolve the declared package against the Helper's own approved source policy. A category,
+    /// manager, source or version that cannot be resolved here never becomes a plan.</summary>
+    private static async Task<ModulePrivilegePackage> FreezePackageAsync(ModulePrivilegeIdentity identity,
+        ModulePrivilegeRequest request, Func<ModulePackageQuery, Task<ModulePackageResolution?>>? queryPackage)
+    {
+        var declared = identity.Privileges.OfType<PackageManageCapability>()
+            .Where(capability => ModuleCapabilityPolicy.Allows(capability, request.Action, request.Target)).ToArray();
+        if (declared.Length == 0) throw Error("not_declared", 403);
+        // Only the apt adapter is delivered. A windows-msi declaration stays a declaration until its own
+        // adapter and acceptance exist; it never degrades to an installer command line. More than one apt
+        // match is ambiguous, so it fails closed instead of picking a source reference.
+        var apt = declared.Where(capability => capability.Manager == "apt").ToArray();
+        if (apt.Length != 1 || queryPackage is null) throw Error("unsupported", 400);
+        var capability = apt[0];
+        var resolution = await queryPackage(new(capability.SourceRef, request.Target));
+        if (resolution is null || !AptPackageResolution.IsUsableModuleResolution(resolution, out _)
+            || resolution.Package != request.Target) throw Error("unsupported", 400);
+        if (!DebianVersion.IsWithin(resolution.Version, capability.Versions.Minimum, capability.Versions.MaximumExclusive))
+            throw Error("not_declared", 403);
+        return new(capability.SourceRef, resolution);
     }
 
     internal async Task<ModulePrivilegePlan> ReadForUserAsync(Guid id, string session)
@@ -143,7 +199,7 @@ internal sealed class ModulePrivilegePlanStore
             }
             return new(plan.Id, plan.Identity.ModuleId, plan.Identity.Version, plan.Identity.PublisherId,
                 plan.Identity.ArtifactSha256, plan.Request.Kind, plan.Request.Action, plan.Request.Target, plan.Request.Reason,
-                Effects(plan.Request.Kind), Warnings(plan.Request.Kind),
+                Effects(plan.Request.Kind), Warnings(plan), PackageView(plan.Package),
                 plan.Hash, plan.Created, plan.Expires, plan.State, plan.Problem, token);
         }
         finally { _gate.Release(); }
@@ -174,7 +230,8 @@ internal sealed class ModulePrivilegePlanStore
     }
 
     internal async Task<ModulePrivilegeStatus> ApproveAsync(Guid id, string session, ModulePrivilegeApproval approval,
-        Func<Task<ModulePrivilegeAdministrator?>> verifyAdministrator, Func<Guid, ModulePrivilegeRequest, Task<bool>> execute)
+        Func<Task<ModulePrivilegeAdministrator?>> verifyAdministrator,
+        Func<Guid, ModulePrivilegeRequest, ModulePrivilegePackage?, Task<bool>> execute)
     {
         await _gate.WaitAsync();
         try
@@ -195,10 +252,18 @@ internal sealed class ModulePrivilegePlanStore
                 Audit = plan.Audit with { ApprovingUser = plan.Audit.InitiatingUser, Administrator = administrator, ConfirmedAt = Now } });
             try
             {
-                var success = await execute(plan.Id, plan.Request);
+                var success = await execute(plan.Id, plan.Request, plan.Package);
                 plan = Replace(plan with { State = success ? "Succeeded" : "Failed",
                     Problem = success ? null : "module.privilege_helper_failed", Updated = Now,
                     Audit = plan.Audit with { AttemptCompletedAt = Now } });
+            }
+            catch (ModulePrivilegeException error) when (error.Code == "module.privilege_plan_changed")
+            {
+                // The Helper refused before executing because the frozen identity, source or policy moved.
+                // That is a known non-execution, not an unknown outcome, so the plan cannot be retried.
+                plan = Replace(plan with { State = "Failed", Problem = error.Code, Updated = Now,
+                    Audit = plan.Audit with { AttemptCompletedAt = Now } });
+                throw;
             }
             catch (Exception)
             {
@@ -211,7 +276,8 @@ internal sealed class ModulePrivilegePlanStore
         finally { _gate.Release(); }
     }
     /// <summary>Reject anything outside the frozen category catalog before planning. Only categories with a
-    /// delivered Host adapter may execute; everything else fails closed instead of degrading to a command.</summary>
+    /// delivered Host adapter may be planned; everything else fails closed instead of degrading to a command.
+    /// package.manage additionally needs a Helper resolution, which is requested before a plan exists.</summary>
     internal static void Validate(ModulePrivilegeRequest request)
     {
         if (!ModuleCapabilityPolicy.Kinds.Contains(request.Kind, StringComparer.Ordinal)
@@ -222,6 +288,14 @@ internal sealed class ModulePrivilegePlanStore
             throw Error("target_invalid", 400);
         if (!ModuleCapabilityPolicy.IsExecutable(request.Kind)) throw Error("unsupported", 400);
     }
+    internal static ModulePackageTransactionAction? PackageAction(string action) => action switch
+    {
+        "install" => ModulePackageTransactionAction.Install,
+        "update" => ModulePackageTransactionAction.Update,
+        "repair" => ModulePackageTransactionAction.Repair,
+        "remove" => ModulePackageTransactionAction.Remove,
+        _ => null,
+    };
     private static string[] Effects(string kind) => kind switch
     {
         ModuleCapabilityPolicy.ServiceManage => ["service-start", "service-stop", "service-restart"],
@@ -230,12 +304,21 @@ internal sealed class ModulePrivilegePlanStore
         ModuleCapabilityPolicy.DataManage => ["data-delete", "data-restore"],
         _ => [],
     };
-    private static string[] Warnings(string kind) => kind switch
+    private static string[] Warnings(Plan plan) => plan.Request.Kind switch
     {
         ModuleCapabilityPolicy.ServiceManage => ["Service availability and dependent workloads may be interrupted."],
-        ModuleCapabilityPolicy.PackageManage => ["Package maintainer scripts may run with host privileges."],
+        ModuleCapabilityPolicy.PackageManage => PackageAction(plan.Request.Action) is { } action
+            ? ModulePackageDescription.Warnings(action, false)
+            : ["Package maintainer scripts may run with host privileges."],
         _ => [],
     };
+    private static ModulePackagePlanIdentity? PackageView(ModulePrivilegePackage? package) => package is null ? null : new(
+        package.SourceRef, package.Resolution.Package, package.Resolution.Version, package.Resolution.Architecture,
+        package.Resolution.BaseUri.TrimEnd('/') + "/" + package.Resolution.Suite + "/" + package.Resolution.Area,
+        FileName(package.Resolution.PoolUri), package.Resolution.Sha256, package.Resolution.Bytes,
+        package.Resolution.Dependencies.Select(dependency => new ModulePackagePlanDependency(
+            dependency.FileName, dependency.Bytes, dependency.Sha256)).ToArray());
+    private static string FileName(string uri) => uri[(uri.LastIndexOf('/') + 1)..];
     private Plan Owned(Guid id, string session)
     {
         var plan = Find(id);
@@ -253,12 +336,12 @@ internal sealed class ModulePrivilegePlanStore
     }
     private void Save()
     {
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(new Document(4, _plans.ToArray()), ModulePackageJson.Options);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(new Document(5, _plans.ToArray()), ModulePackageJson.Options);
         if (bytes.Length > 8 * 1024 * 1024) throw Error("capacity");
         var directory = Path.GetDirectoryName(_path)!;
         Directory.CreateDirectory(directory);
         if (OperatingSystem.IsLinux()) File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        if (!File.Exists(_marker)) WriteDurable(_marker, Encoding.UTF8.GetBytes("v4\n"));
+        if (!File.Exists(_marker)) WriteDurable(_marker, Encoding.UTF8.GetBytes("v5\n"));
         var temporary = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try { WriteDurable(temporary, bytes); File.Move(temporary, _path, true); }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }

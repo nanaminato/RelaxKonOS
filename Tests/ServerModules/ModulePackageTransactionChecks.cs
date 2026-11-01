@@ -95,6 +95,15 @@ internal static class ModulePackageTransactionChecks
             && ModulePackageDescription.Warnings(ModulePackageTransactionAction.Install, false)
                 .Any(line => line.Contains("Maintainer scripts", StringComparison.Ordinal)),
             "module package warnings distinguish preserved configuration, purge and maintainer-script risk");
+        check(DebianVersion.Compare("1.0", "1.0") == 0 && DebianVersion.Compare("1.0~rc1", "1.0") < 0
+            && DebianVersion.Compare("1:0.1", "2.0") > 0 && DebianVersion.Compare("1.0", "1.0-1") < 0
+            && DebianVersion.Compare("8.0.39-0ubuntu0.24.04.1", "8.0.39-0ubuntu0.24.04.2") < 0,
+            "module package version ordering follows dpkg epoch, upstream and revision rules");
+        check(DebianVersion.IsWithin("8.0.39-0ubuntu0.24.04.2", "8.0.0", "9.0.0")
+            && !DebianVersion.IsWithin("9.0.0-0ubuntu1", "8.0.0", "9.0.0")
+            && !DebianVersion.IsWithin("7.9.9", "8.0.0", "9.0.0")
+            && !DebianVersion.IsWithin("", "8.0.0", "9.0.0"),
+            "module package version intervals accept only versions inside the declared minimum and maximum");
         return Task.CompletedTask;
     }
 }

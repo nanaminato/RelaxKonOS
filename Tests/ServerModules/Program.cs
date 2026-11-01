@@ -56,6 +56,16 @@ if (args is ["--module-package-transaction-checks"])
     return;
 }
 
+if (args is ["--module-package-linux-acceptance", ..])
+{
+    await ModulePackageLinuxAcceptance.RunAsync(args[1..], (passed, message) =>
+    {
+        Console.WriteLine($"{(passed ? "PASS" : "FAIL")}: {message}");
+        if (!passed) throw new InvalidOperationException(message);
+    });
+    return;
+}
+
 if (args is ["--module-privilege-checks"])
 {
     await ModulePrivilegeChecks.RunAsync((passed, message) =>

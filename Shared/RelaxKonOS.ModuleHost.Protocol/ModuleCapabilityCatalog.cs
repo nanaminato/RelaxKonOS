@@ -37,8 +37,9 @@ public static class ModuleCapabilityCatalog
         _ => [],
     };
 
-    /// <summary>The only category the current Host has an adapter for. Everything else fails closed.</summary>
-    public static bool IsExecutable(string kind) => kind == ServiceManage;
+    /// <summary>Categories with a delivered Host adapter. package.manage still requires a Helper that can
+    /// resolve the declared source and package, so the adapter can answer "unsupported" at plan time.</summary>
+    public static bool IsExecutable(string kind) => kind is ServiceManage or PackageManage;
 
     public static bool IsCategory(string? kind) => kind is not null && Kinds.Contains(kind, StringComparer.Ordinal);
 
