@@ -130,14 +130,29 @@ public sealed class ApplicationCatalogScanner
         return new ApplicationCatalogScanResult(entries, problems);
     }
 
+    /// <summary>
+    /// The catalog is a disposable acceleration index (see the VSD contract); descriptor
+    /// directories and the compiled registry are the real sources of truth. A read-only or
+    /// sandboxed LocalApplicationData must not turn a cache refresh into a startup failure.
+    /// </summary>
     private async Task WriteCacheAsync(ApplicationCatalogScanResult result, CancellationToken cancellationToken)
     {
-        var path = _drive.ResolveRootChild("System/catalog.json");
-        var cache = new ApplicationCatalogCache(
-            CatalogSchemaVersion,
-            DateTimeOffset.UtcNow,
-            result.Entries.Select(entry => new ApplicationCatalogCacheEntry(entry.AppId, "builtin", entry.Source)).ToArray());
-        await _drive.WriteJsonAtomicallyAsync(path, cache, cancellationToken);
+        try
+        {
+            var path = _drive.ResolveRootChild("System/catalog.json");
+            var cache = new ApplicationCatalogCache(
+                CatalogSchemaVersion,
+                DateTimeOffset.UtcNow,
+                result.Entries.Select(entry => new ApplicationCatalogCacheEntry(entry.AppId, "builtin", entry.Source)).ToArray());
+            await _drive.WriteJsonAtomicallyAsync(path, cache, cancellationToken);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+            or VirtualSystemDriveException or System.Text.Json.JsonException or NotSupportedException)
+        {
+            var code = exception is VirtualSystemDriveException driveException
+                ? driveException.ProblemCode : "vsd-catalog-cache-unavailable";
+            _diagnostics.Record($"VSD catalog cache not written: code={code}.");
+        }
     }
 
     private static string? SafeAppId(string? value) => ApplicationDescriptorValidator.IsValidAppId(value) ? value : null;

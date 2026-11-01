@@ -307,7 +307,17 @@ public sealed class DeveloperPackageManager
     private async Task DiscoverExternalPackagesAsync(CancellationToken cancellationToken)
     {
         _catalog.Clear();
-        foreach (var rawDirectory in Directory.EnumerateDirectories(_root))
+        string[] directories;
+        try
+        {
+            directories = Directory.EnumerateDirectories(_root).ToArray();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            RecordActivationDiagnostic($"VSD package discovery unavailable: code=vsd-package-root-unreadable, error={exception.GetType().Name}.");
+            return;
+        }
+        foreach (var rawDirectory in directories)
         {
             var appId = Path.GetFileName(rawDirectory);
             if (appId.Equals(".staging", StringComparison.Ordinal) || !ApplicationDescriptorValidator.IsValidAppId(appId))
@@ -505,7 +515,17 @@ public sealed class DeveloperPackageManager
     private void CleanupDeferredUninstalls()
     {
         if (!Directory.Exists(_root)) return;
-        foreach (var directory in Directory.EnumerateDirectories(_root))
+        string[] directories;
+        try
+        {
+            directories = Directory.EnumerateDirectories(_root).ToArray();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            RecordActivationDiagnostic($"VSD deferred cleanup unavailable: code=vsd-package-root-unreadable, error={exception.GetType().Name}.");
+            return;
+        }
+        foreach (var directory in directories)
         {
             var appId = Path.GetFileName(directory);
             if (appId.Equals(".staging", StringComparison.OrdinalIgnoreCase) || _catalog.ContainsKey(appId))
@@ -568,12 +588,32 @@ public sealed class DeveloperPackageManager
         return new Dictionary<string, DeveloperAppRecord>(StringComparer.Ordinal);
     }
 
-    private static void SaveCatalog(string path, Dictionary<string, DeveloperAppRecord> catalog)
+    /// <summary>
+    /// The external-package catalog is rebuilt from fixed <c>current.json</c> pointers and validated
+    /// descriptors on every startup, so it is a cache. A read-only or sandboxed VSD may deny this
+    /// write; keep the in-memory registry usable and let the next startup rebuild the file.
+    /// </summary>
+    private void SaveCatalog(string path, Dictionary<string, DeveloperAppRecord> catalog)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temporaryPath = path + ".tmp";
-        File.WriteAllText(temporaryPath, JsonSerializer.Serialize(catalog, new JsonSerializerOptions { WriteIndented = true }));
-        File.Move(temporaryPath, path, overwrite: true);
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(temporaryPath, JsonSerializer.Serialize(catalog, new JsonSerializerOptions { WriteIndented = true }));
+            File.Move(temporaryPath, path, overwrite: true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+            or JsonException or NotSupportedException)
+        {
+            try
+            {
+                if (File.Exists(temporaryPath))
+                    File.Delete(temporaryPath);
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            RecordActivationDiagnostic($"VSD external catalog not written: code=vsd-external-catalog-unavailable, error={exception.GetType().Name}.");
+        }
     }
 
     private sealed class DeveloperAssemblyLoadContext(string mainAssemblyPath) : AssemblyLoadContext(isCollectible: true)

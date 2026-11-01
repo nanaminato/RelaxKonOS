@@ -10,6 +10,7 @@ using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Modules;
 using RelaxKonOS.Client.Apps.ComponentCenter;
 using RelaxKonOS.Client.Services.ServerCenter;
+using RelaxKonOS.Client.Services.VirtualSystemDrive;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Identity;
 using RelaxKonOS.ModuleHost.Protocol;
@@ -34,6 +35,7 @@ internal static class ServerModuleCatalogChecks
         Check(!ComponentCenterNavigation.TryParse(new Uri("relaxkonos://components/server-modules?hostId=a&moduleId=relaxkonos.git&action=install"), out _)
             && !ComponentCenterNavigation.TryParse(new Uri("relaxkonos://components/server-modules?hostId=a&hostId=b"), out _),
             "Module navigation rejects action payloads and duplicate identity fields.");
+        await ValidateCatalogCacheAsync();
         await ReadOncePerLoginAsync();
         await FailSoftAsync();
         await FollowLoginLifetimeAsync();
@@ -43,6 +45,34 @@ internal static class ServerModuleCatalogChecks
         await ValidateManagementReceiptsAsync();
         await ValidateStandingConsentsAsync();
         Console.WriteLine("PASS: module inventory attributes missing server capabilities and stays diagnostic-only.");
+    }
+
+    /// <summary>
+    /// Startup must survive a VSD that is readable but not writable. The catalog file is a
+    /// disposable cache, so a denied create is recorded as a skipped cache rather than escaping
+    /// through ApplicationCatalogScanner into Bootstrapper.
+    /// </summary>
+    private static async Task ValidateCatalogCacheAsync()
+    {
+        var root = Path.Combine(AppContext.BaseDirectory, "cache-failure-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        // A file with the cache directory's name makes the write fail before any file is created.
+        File.WriteAllText(Path.Combine(root, "System"), "file blocks the cache directory");
+        try
+        {
+            var drive = new VirtualSystemDrive();
+            typeof(VirtualSystemDrive).GetField("<Root>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .SetValue(drive, root);
+            var diagnostics = new RecordingDiagnostics();
+            var scanner = new ApplicationCatalogScanner(drive, null!, null!, null!, diagnostics);
+            var writeCache = typeof(ApplicationCatalogScanner).GetMethod("WriteCacheAsync",
+                BindingFlags.Instance | BindingFlags.NonPublic)!;
+            var task = (Task)writeCache.Invoke(scanner, [new ApplicationCatalogScanResult([], []), CancellationToken.None])!;
+            await task;
+            Check(diagnostics.Messages.Any(message => message.Contains("vsd-catalog-cache-unavailable", StringComparison.Ordinal)),
+                "A denied catalog-cache write is skipped and recorded instead of failing client startup.");
+        }
+        finally { Directory.Delete(root, recursive: true); }
     }
 
     private static async Task ValidateStandingConsentsAsync()
@@ -575,6 +605,12 @@ internal static class ServerModuleCatalogChecks
     private static void Check(bool value, string message)
     {
         if (!value) throw new InvalidOperationException(message);
+    }
+
+    private sealed class RecordingDiagnostics : RelaxKonOS.AppSDK.IAppActivationDiagnostics
+    {
+        public List<string> Messages { get; } = [];
+        public void Record(string message) => Messages.Add(message);
     }
 
     private sealed class ManagementHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
