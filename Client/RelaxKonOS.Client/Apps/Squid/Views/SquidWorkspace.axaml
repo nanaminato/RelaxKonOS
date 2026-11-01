@@ -9,18 +9,52 @@
              x:DataType="squid:SquidViewModel"
              Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
   <UserControl.Styles>
-    <Style Selector="TextBlock.section-title"><Setter Property="FontSize" Value="16" /><Setter Property="FontWeight" Value="SemiBold" /></Style>
+    <Style Selector="TextBlock.section-title"><Setter Property="FontSize" Value="15" /><Setter Property="FontWeight" Value="SemiBold" /></Style>
     <Style Selector="TextBlock.section-hint"><Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" /><Setter Property="FontSize" Value="12" /><Setter Property="TextWrapping" Value="Wrap" /></Style>
     <Style Selector="TextBlock.field-label"><Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" /><Setter Property="FontSize" Value="12" /></Style>
     <Style Selector="TextBlock.fact-label"><Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" /><Setter Property="TextWrapping" Value="Wrap" /><Setter Property="VerticalAlignment" Value="Center" /><Setter Property="Margin" Value="0,0,12,0" /></Style>
     <Style Selector="TextBlock.fact-value"><Setter Property="FontWeight" Value="SemiBold" /><Setter Property="VerticalAlignment" Value="Center" /><Setter Property="TextWrapping" Value="Wrap" /></Style>
     <Style Selector="TextBlock.problem"><Setter Property="Foreground" Value="{DynamicResource DangerBrush}" /><Setter Property="FontSize" Value="12" /><Setter Property="TextWrapping" Value="Wrap" /></Style>
-    <Style Selector="Border.notice"><Setter Property="Padding" Value="20,10" /><Setter Property="BorderThickness" Value="0,0,0,1" /></Style>
+    <Style Selector="Border.notice"><Setter Property="Padding" Value="18,10" /><Setter Property="BorderThickness" Value="0,0,0,1" /></Style>
     <Style Selector="Border.notice.warning"><Setter Property="Background" Value="{DynamicResource WarningMutedBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource WarningBrush}" /></Style>
     <Style Selector="Border.notice.danger"><Setter Property="Background" Value="{DynamicResource WarningMutedBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" /></Style>
     <Style Selector="Border.notice.neutral"><Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" /></Style>
     <Style Selector="Border.badge"><Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" /><Setter Property="CornerRadius" Value="9" /><Setter Property="Padding" Value="8,2" /><Setter Property="VerticalAlignment" Value="Center" /></Style>
     <Style Selector="Border.fact-row"><Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" /><Setter Property="BorderThickness" Value="0,1,0,0" /><Setter Property="Padding" Value="0,7" /></Style>
+    <!-- One state pill, four tones. "Running" and "not installed" must not look alike, so the tone
+         comes from a host fact rather than from decoration. -->
+    <Style Selector="Border.pill">
+      <Setter Property="CornerRadius" Value="10" /><Setter Property="Padding" Value="10,3" />
+      <Setter Property="BorderThickness" Value="1" /><Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+      <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+    </Style>
+    <Style Selector="Border.pill > TextBlock"><Setter Property="FontSize" Value="12" /><Setter Property="FontWeight" Value="SemiBold" /><Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" /></Style>
+    <Style Selector="Border.pill.ok"><Setter Property="Background" Value="{DynamicResource SuccessMutedBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource SuccessBrush}" /></Style>
+    <Style Selector="Border.pill.ok > TextBlock"><Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" /></Style>
+    <Style Selector="Border.pill.warn"><Setter Property="Background" Value="{DynamicResource WarningMutedBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource WarningBrush}" /></Style>
+    <Style Selector="Border.pill.warn > TextBlock"><Setter Property="Foreground" Value="{DynamicResource WarningBrush}" /></Style>
+    <Style Selector="Border.pill.bad"><Setter Property="Background" Value="{DynamicResource WarningMutedBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" /></Style>
+    <Style Selector="Border.pill.bad > TextBlock"><Setter Property="Foreground" Value="{DynamicResource DangerBrush}" /></Style>
+    <!-- Card actions stay quiet but must look clickable: a bare Button renders as plain text in this
+         theme, which made "编辑…" indistinguishable from a heading. -->
+    <Style Selector="Button.card-action">
+      <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+      <Setter Property="Padding" Value="12,5" /><Setter Property="MinHeight" Value="30" />
+      <Setter Property="FontSize" Value="12" /><Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.card-action:pointerover"><Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" /></Style>
+    <Style Selector="Button.card-action:disabled">
+      <Setter Property="Opacity" Value="1" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+    </Style>
+    <!-- The dialog holds the real controls; the page only reads the draft back. -->
+    <Style Selector="TextBlock.summary-label"><Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" /><Setter Property="FontSize" Value="12" /><Setter Property="Width" Value="116" /><Setter Property="VerticalAlignment" Value="Top" /></Style>
+    <Style Selector="TextBlock.summary-value"><Setter Property="FontSize" Value="12" /><Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" /><Setter Property="TextWrapping" Value="Wrap" /></Style>
     <!-- A refused publish is the normal state on a read-only or recovering host; the accent colour
          must not keep promising that the button is clickable. -->
     <Style Selector="Button.primary:disabled">
@@ -48,124 +82,176 @@
 
     <Grid x:Name="WorkspaceBody" Grid.Row="2" ColumnDefinitions="190,*" ClipToBounds="True">
       <Border Classes="app-sidebar">
-        <StackPanel Spacing="4" Margin="14,22">
+        <StackPanel Spacing="2" Margin="14,22">
           <Button x:Name="PageButton0" Classes="workspace-nav" Tag="0" Click="NavigationButton_Click" Content="{loc:Loc squid.section.runtime}" HorizontalContentAlignment="Left" Padding="10,8" />
           <Button x:Name="PageButton1" Classes="workspace-nav" Tag="1" Click="NavigationButton_Click" Content="{loc:Loc squid.section.listener}" HorizontalContentAlignment="Left" Padding="10,8" />
-          <Button x:Name="PageButton5" Classes="workspace-nav" Tag="5" Click="NavigationButton_Click" Content="{loc:Loc squid.section.access}" HorizontalContentAlignment="Left" Padding="10,8" />
           <Button x:Name="PageButton2" Classes="workspace-nav" Tag="2" Click="NavigationButton_Click" Content="{loc:Loc squid.section.domains}" HorizontalContentAlignment="Left" Padding="10,8" />
           <Button x:Name="PageButton3" Classes="workspace-nav" Tag="3" Click="NavigationButton_Click" Content="{loc:Loc squid.section.upstream}" HorizontalContentAlignment="Left" Padding="10,8" />
-          <Button x:Name="PageButton4" Classes="workspace-nav" Tag="4" Click="NavigationButton_Click" Content="{loc:Loc squid.section.preview}" HorizontalContentAlignment="Left" Padding="10,8" />
+          <Button x:Name="PageButton5" Classes="workspace-nav" Tag="5" Click="NavigationButton_Click" Content="{loc:Loc squid.section.access}" HorizontalContentAlignment="Left" Padding="10,8" />
+          <Button x:Name="PageButton4" Classes="workspace-nav" Tag="4" Click="NavigationButton_Click" Content="{loc:Loc squid.section.publish}" HorizontalContentAlignment="Left" Padding="10,8" />
           <Button x:Name="PageButton6" Classes="workspace-nav" Tag="6" Click="NavigationButton_Click" Content="{loc:Loc common.settings}" HorizontalContentAlignment="Left" Padding="10,8" />
         </StackPanel>
       </Border>
       <ScrollViewer x:Name="BodyScroll" Grid.Column="1" Padding="20,16" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Spacing="16">
-          <StackPanel x:Name="Page0" Spacing="16" IsVisible="True">
-<Border Classes="app-panel" Padding="18">
-            <StackPanel Spacing="12">
-              <StackPanel Spacing="2">
-                <TextBlock Classes="section-title" Text="{loc:Loc squid.section.runtime}" />
-                <TextBlock Classes="section-hint" Text="{loc:Loc squid.section.runtime_hint}" />
-              </StackPanel>
-              <StackPanel Spacing="0">
-                <Grid ColumnDefinitions="130,*">
-                  <TextBlock Classes="fact-label" Text="{loc:Loc squid.fact.service}" />
-                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                    <Ellipse Width="9" Height="9" Fill="{DynamicResource SuccessBrush}" IsVisible="{Binding IsRunning}" VerticalAlignment="Center" />
-                    <Ellipse Width="9" Height="9" Fill="{DynamicResource TextTertiaryBrush}" IsVisible="{Binding !IsRunning}" VerticalAlignment="Center" />
-                    <TextBlock Classes="fact-value" Text="{Binding ServiceStateText}" />
+        <StackPanel Spacing="14">
+          <!-- Runtime: what the host reports, then the lifecycle actions that follow from it. -->
+          <StackPanel x:Name="Page0" Spacing="14" IsVisible="True">
+            <!-- A state that blocks the whole page is stated before any fact is read. -->
+            <StackPanel Spacing="0">
+              <Border Classes="notice warning" IsVisible="{Binding HasPending}">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                  <StackPanel Spacing="3">
+                    <TextBlock Classes="section-title" FontSize="13" Foreground="{DynamicResource WarningBrush}" Text="{loc:Loc squid.pending_title}" />
+                    <TextBlock Text="{loc:Loc squid.pending}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <TextBlock Classes="section-hint" Text="{loc:Loc squid.operation}" />
+                      <TextBlock Text="{Binding PendingReference}" FontFamily="Consolas" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </StackPanel>
                   </StackPanel>
+                  <Button Grid.Column="1" Classes="card-action" VerticalAlignment="Center" Content="{loc:Loc squid.resume}" Command="{Binding ResumeCommand}" />
                 </Grid>
-                <Border Classes="fact-row">
-                  <Grid ColumnDefinitions="130,*">
-                    <TextBlock Classes="fact-label" Text="{loc:Loc squid.fact.boot}" />
-                    <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding BootStateText}" />
-                  </Grid>
-                </Border>
-                <Border Classes="fact-row">
-                  <Grid ColumnDefinitions="130,*">
-                    <TextBlock Classes="fact-label" Text="{loc:Loc squid.fact.revisions}" />
-                    <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding RevisionText}" />
-                  </Grid>
-                </Border>
-                <Border Classes="fact-row">
-                  <Grid ColumnDefinitions="130,*">
-                    <TextBlock Classes="fact-label" Text="{loc:Loc squid.fact.disk}" />
-                    <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding DiskStateText}" />
-                  </Grid>
-                </Border>
-              </StackPanel>
-              <TextBlock Classes="section-hint" Text="{loc:Loc squid.runtime_note}" />
-              <TextBlock Classes="section-hint" Text="{loc:Loc squid.package_support}" />
-              <TextBlock Classes="problem" Text="{loc:Loc squid.package_unsupported}" IsVisible="{Binding ShowPackageUnsupported}" />
-              <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" />
-              <WrapPanel>
-                <Button Content="{loc:Loc squid.start}" Command="{Binding StartCommand}" Margin="0,0,8,8" />
-                <Button Content="{loc:Loc squid.stop}" Command="{Binding StopCommand}" Margin="0,0,8,8" />
-                <Button Content="{loc:Loc squid.restart}" Command="{Binding RestartCommand}" Margin="0,0,8,8" />
-                <Button Content="{loc:Loc squid.reload}" Command="{Binding ReloadCommand}" Margin="0,0,8,8" />
-                <Button Content="{Binding BootActionText}" Command="{Binding ToggleBootCommand}" Margin="0,0,8,8" />
-              </WrapPanel>
+              </Border>
+              <Border Classes="notice danger" IsVisible="{Binding IsUnavailable}">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                  <StackPanel Spacing="3">
+                    <TextBlock Classes="section-title" FontSize="13" Foreground="{DynamicResource DangerBrush}" Text="{loc:Loc squid.unavailable_title}" />
+                    <TextBlock Text="{loc:Loc squid.unavailable}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                  </StackPanel>
+                  <Button Grid.Column="1" Classes="card-action" VerticalAlignment="Center" Content="{loc:Loc common.refresh}" Command="{Binding RefreshCommand}" />
+                </Grid>
+              </Border>
+              <Border Classes="notice warning" IsVisible="{Binding ShowUnsupported}">
+                <StackPanel Spacing="3">
+                  <TextBlock Classes="section-title" FontSize="13" Foreground="{DynamicResource WarningBrush}" Text="{loc:Loc squid.unsupported_title}" />
+                  <TextBlock Text="{loc:Loc squid.unsupported}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                </StackPanel>
+              </Border>
+              <!-- A supported host without the package used to show dashes and disabled buttons only. -->
+              <Border Classes="notice warning" IsVisible="{Binding ShowInstallRequired}">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                  <StackPanel Spacing="3">
+                    <TextBlock Classes="section-title" FontSize="13" Foreground="{DynamicResource WarningBrush}" Text="{loc:Loc squid.install_title}" />
+                    <TextBlock Text="{loc:Loc squid.install_required}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                  </StackPanel>
+                  <Button Grid.Column="1" Classes="card-action" VerticalAlignment="Center" Content="{loc:Loc squid.open_component_center}"
+                          Command="{Binding OpenComponentCenterCommand}" IsVisible="{Binding CanOpenComponentCenter}" />
+                </Grid>
+              </Border>
+              <Border Classes="notice danger" IsVisible="{Binding ShowAdoptionRequired}">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                  <StackPanel Spacing="3">
+                    <TextBlock Classes="section-title" FontSize="13" Foreground="{DynamicResource WarningBrush}" Text="{loc:Loc squid.adoption_required_title}" />
+                    <TextBlock Text="{loc:Loc squid.adoption_required}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                  </StackPanel>
+                  <Button Grid.Column="1" Classes="card-action" VerticalAlignment="Center" Content="{loc:Loc squid.go_publish}" Click="GoToPublishButton_Click" />
+                </Grid>
+              </Border>
+              <Border Classes="notice danger" IsVisible="{Binding ShowRecoveryRequired}">
+                <StackPanel Spacing="3">
+                  <TextBlock Classes="section-title" FontSize="13" Foreground="{DynamicResource DangerBrush}" Text="{loc:Loc squid.recovery_title}" />
+                  <TextBlock Text="{loc:Loc squid.recovery_required}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                </StackPanel>
+              </Border>
+              <Border Classes="notice neutral" IsVisible="{Binding ShowReadOnly}">
+                <StackPanel Spacing="3">
+                  <TextBlock Classes="section-title" FontSize="13" Text="{loc:Loc squid.read_only_title}" />
+                  <TextBlock Text="{loc:Loc squid.read_only}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                </StackPanel>
+              </Border>
             </StackPanel>
-          </Border>
-<StackPanel Spacing="0">
-      <Border Classes="notice warning" IsVisible="{Binding HasPending}">
-        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-          <StackPanel Spacing="3">
-            <TextBlock Classes="section-title" FontSize="13" Foreground="{DynamicResource WarningBrush}" Text="{loc:Loc squid.pending_title}" />
-            <TextBlock Text="{loc:Loc squid.pending}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <TextBlock Classes="section-hint" Text="{loc:Loc squid.operation}" />
-              <TextBlock Text="{Binding PendingReference}" FontFamily="Consolas" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
-            </StackPanel>
-          </StackPanel>
-          <Button Grid.Column="1" VerticalAlignment="Center" Content="{loc:Loc squid.resume}" Command="{Binding ResumeCommand}" />
-        </Grid>
-      </Border>
-      <Border Classes="notice danger" IsVisible="{Binding IsUnavailable}">
-        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-          <StackPanel Spacing="3">
-            <TextBlock Classes="section-title" FontSize="13" Foreground="{DynamicResource DangerBrush}" Text="{loc:Loc squid.unavailable_title}" />
-            <TextBlock Text="{loc:Loc squid.unavailable}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
-          </StackPanel>
-          <Button Grid.Column="1" VerticalAlignment="Center" Content="{loc:Loc common.refresh}" Command="{Binding RefreshCommand}" />
-        </Grid>
-      </Border>
-      <Border Classes="notice warning" IsVisible="{Binding ShowUnsupported}">
-        <StackPanel Spacing="3">
-          <TextBlock Classes="section-title" FontSize="13" Foreground="{DynamicResource WarningBrush}" Text="{loc:Loc squid.unsupported_title}" />
-          <TextBlock Text="{loc:Loc squid.unsupported}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
-        </StackPanel>
-      </Border>
-      <Border Classes="notice danger" IsVisible="{Binding ShowAdoptionRequired}">
-        <StackPanel Spacing="3">
-          <TextBlock Classes="section-title" FontSize="13" Foreground="{DynamicResource WarningBrush}" Text="{loc:Loc squid.adoption_required_title}" />
-          <TextBlock Text="{loc:Loc squid.adoption_required}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
-        </StackPanel>
-      </Border>
-      <Border Classes="notice danger" IsVisible="{Binding ShowRecoveryRequired}">
-        <StackPanel Spacing="3">
-          <TextBlock Classes="section-title" FontSize="13" Foreground="{DynamicResource DangerBrush}" Text="{loc:Loc squid.recovery_title}" />
-          <TextBlock Text="{loc:Loc squid.recovery_required}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
-        </StackPanel>
-      </Border>
-      <Border Classes="notice neutral" IsVisible="{Binding ShowReadOnly}">
-        <StackPanel Spacing="3">
-          <TextBlock Classes="section-title" FontSize="13" Text="{loc:Loc squid.read_only_title}" />
-          <TextBlock Text="{loc:Loc squid.read_only}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
-        </StackPanel>
-      </Border>
-    </StackPanel>
-          </StackPanel>
-          <StackPanel x:Name="Page1" Spacing="16" IsVisible="False"><Button Content="{loc:Loc squid.section.listener}" Tag="ListenerEditor" Click="EditorButton_Click" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Left" />
-<StackPanel x:Name="ListenerEditor" IsVisible="False" Spacing="12">
 
-<Border Classes="app-panel" Padding="18">
-            <StackPanel Spacing="12">
-              <StackPanel Spacing="2">
-                <TextBlock Classes="section-title" Text="{loc:Loc squid.section.listener}" />
-                <TextBlock Classes="section-hint" Text="{loc:Loc squid.section.listener_hint}" />
+            <Border Classes="app-panel" Padding="18">
+              <StackPanel Spacing="12">
+                <StackPanel Spacing="4">
+                  <StackPanel Orientation="Horizontal" Spacing="10">
+                    <Border Classes="pill ok" IsVisible="{Binding StatePillOk}"><TextBlock Text="{Binding StatePillText}" /></Border>
+                    <Border Classes="pill warn" IsVisible="{Binding StatePillWarn}"><TextBlock Text="{Binding StatePillText}" /></Border>
+                    <Border Classes="pill bad" IsVisible="{Binding StatePillBad}"><TextBlock Text="{Binding StatePillText}" /></Border>
+                    <Border Classes="pill" IsVisible="{Binding StatePillNeutral}"><TextBlock Text="{Binding StatePillText}" /></Border>
+                  </StackPanel>
+                  <TextBlock Classes="section-hint" Text="{loc:Loc squid.section.runtime_hint}" />
+                </StackPanel>
+                <StackPanel Spacing="0">
+                  <Border Classes="fact-row">
+                    <Grid ColumnDefinitions="130,*">
+                      <TextBlock Classes="fact-label" Text="{loc:Loc squid.fact.boot}" />
+                      <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding BootStateText}" />
+                    </Grid>
+                  </Border>
+                  <Border Classes="fact-row">
+                    <Grid ColumnDefinitions="130,*">
+                      <TextBlock Classes="fact-label" Text="{loc:Loc squid.fact.revisions}" />
+                      <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding RevisionText}" />
+                    </Grid>
+                  </Border>
+                  <Border Classes="fact-row">
+                    <Grid ColumnDefinitions="130,*">
+                      <TextBlock Classes="fact-label" Text="{loc:Loc squid.fact.disk}" />
+                      <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding DiskStateText}" />
+                    </Grid>
+                  </Border>
+                  <Border Classes="fact-row">
+                    <Grid ColumnDefinitions="130,*">
+                      <TextBlock Classes="fact-label" Text="{loc:Loc squid.fact.draft}" />
+                      <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding DraftStateText}" />
+                    </Grid>
+                  </Border>
+                </StackPanel>
+                <TextBlock Classes="section-hint" Text="{loc:Loc squid.runtime_note}" />
               </StackPanel>
+            </Border>
+
+            <Border Classes="app-panel" Padding="18">
+              <StackPanel Spacing="12">
+                <StackPanel Spacing="2">
+                  <TextBlock Classes="section-title" Text="{loc:Loc squid.section.service}" />
+                  <TextBlock Classes="section-hint" Text="{loc:Loc squid.section.service_hint}" />
+                </StackPanel>
+                <WrapPanel>
+                  <Button Classes="card-action" Classes.primary="{Binding CanStart}" Margin="0,0,8,8" Content="{loc:Loc squid.start}" Command="{Binding StartCommand}" />
+                  <Button Classes="card-action" Margin="0,0,8,8" Content="{loc:Loc squid.stop}" Command="{Binding StopCommand}" />
+                  <Button Classes="card-action" Margin="0,0,8,8" Content="{loc:Loc squid.restart}" Command="{Binding RestartCommand}" />
+                  <Button Classes="card-action" Margin="0,0,8,8" Content="{loc:Loc squid.reload}" Command="{Binding ReloadCommand}" />
+                  <Button Classes="card-action" Margin="0,0,8,8" Content="{Binding BootActionText}" Command="{Binding ToggleBootCommand}" />
+                </WrapPanel>
+                <TextBlock Classes="section-hint" Text="{Binding ServiceControlReasonText}" IsVisible="{Binding HasServiceControlReason}" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+          <!-- Proxy listener: the page reads the draft back; the dialog owns the inputs. -->
+          <StackPanel x:Name="Page1" Spacing="14" IsVisible="False">
+            <Border Classes="app-panel" Padding="18">
+              <StackPanel Spacing="12">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                  <StackPanel Spacing="2">
+                    <TextBlock Classes="section-title" Text="{loc:Loc squid.section.listener}" />
+                    <TextBlock Classes="section-hint" Text="{loc:Loc squid.section.listener_hint}" />
+                  </StackPanel>
+                  <Button Grid.Column="1" Classes="card-action" Content="{loc:Loc squid.edit}" Tag="ListenerEditor" CommandParameter="{loc:Loc squid.section.listener}" Click="EditorButton_Click"
+                          IsEnabled="{Binding CanEdit}" VerticalAlignment="Top" />
+                </Grid>
+                <StackPanel Spacing="8">
+                  <Grid ColumnDefinitions="Auto,*"><TextBlock Classes="summary-label" Text="{loc:Loc squid.short.endpoint}" /><TextBlock Grid.Column="1" Classes="summary-value" Text="{Binding ListenerSummary}" /></Grid>
+                  <Grid ColumnDefinitions="Auto,*"><TextBlock Classes="summary-label" Text="{loc:Loc squid.short.remote}" /><TextBlock Grid.Column="1" Classes="summary-value" Text="{Binding RemoteClientsSummary}" /></Grid>
+                  <Grid ColumnDefinitions="Auto,*"><TextBlock Classes="summary-label" Text="{loc:Loc squid.short.networks}" /><TextBlock Grid.Column="1" Classes="summary-value" Text="{Binding NetworksSummary}" /></Grid>
+                </StackPanel>
+                <StackPanel Spacing="2" IsVisible="{Binding HasListenerProblems}">
+                  <ItemsControl ItemsSource="{Binding ListenerProblems}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="squid:SquidProblem"><TextBlock Classes="problem" Text="{Binding Message}" /></DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+                <ItemsControl ItemsSource="{Binding SourceProblems}" IsVisible="{Binding HasSourceProblems}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="squid:SquidProblem"><TextBlock Classes="problem" Text="{Binding Message}" /></DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
+            <StackPanel x:Name="ListenerEditor" IsVisible="False" Spacing="12">
+              <TextBlock Classes="section-hint" Text="{loc:Loc squid.section.listener_hint}" />
               <Grid ColumnDefinitions="*,140" ColumnSpacing="12" IsEnabled="{Binding CanEdit}">
                 <StackPanel Spacing="4">
                   <TextBlock Classes="field-label" Text="{loc:Loc squid.bind_address}" />
@@ -199,18 +285,33 @@
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
             </StackPanel>
-          </Border>
+          </StackPanel>
 
-</StackPanel></StackPanel>
-          <StackPanel x:Name="Page2" Spacing="16" IsVisible="False"><Button Content="{loc:Loc squid.section.domains}" Tag="DomainsEditor" Click="EditorButton_Click" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Left" />
-<StackPanel x:Name="DomainsEditor" IsVisible="False" Spacing="12">
-
-<Border Classes="app-panel" Padding="18">
-            <StackPanel Spacing="12">
-              <StackPanel Spacing="2">
-                <TextBlock Classes="section-title" Text="{loc:Loc squid.section.domains}" />
-                <TextBlock Classes="section-hint" Text="{loc:Loc squid.section.domains_hint}" />
+          <!-- Domain rules. -->
+          <StackPanel x:Name="Page2" Spacing="14" IsVisible="False">
+            <Border Classes="app-panel" Padding="18">
+              <StackPanel Spacing="12">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                  <StackPanel Spacing="2">
+                    <TextBlock Classes="section-title" Text="{loc:Loc squid.section.domains}" />
+                    <TextBlock Classes="section-hint" Text="{loc:Loc squid.section.domains_hint}" />
+                  </StackPanel>
+                  <Button Grid.Column="1" Classes="card-action" Content="{loc:Loc squid.edit}" Tag="DomainsEditor" CommandParameter="{loc:Loc squid.section.domains}" Click="EditorButton_Click"
+                          IsEnabled="{Binding CanEdit}" VerticalAlignment="Top" />
+                </Grid>
+                <StackPanel Spacing="8">
+                  <Grid ColumnDefinitions="Auto,*"><TextBlock Classes="summary-label" Text="{loc:Loc squid.short.allow}" /><TextBlock Grid.Column="1" Classes="summary-value" Text="{Binding AllowedDomainsSummary}" /></Grid>
+                  <Grid ColumnDefinitions="Auto,*"><TextBlock Classes="summary-label" Text="{loc:Loc squid.short.deny}" /><TextBlock Grid.Column="1" Classes="summary-value" Text="{Binding DeniedDomainsSummary}" /></Grid>
+                </StackPanel>
+                <ItemsControl ItemsSource="{Binding DomainProblems}" IsVisible="{Binding HasDomainProblems}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="squid:SquidProblem"><TextBlock Classes="problem" Text="{Binding Message}" /></DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
               </StackPanel>
+            </Border>
+            <StackPanel x:Name="DomainsEditor" IsVisible="False" Spacing="12">
+              <TextBlock Classes="section-hint" Text="{loc:Loc squid.section.domains_hint}" />
               <StackPanel Spacing="4" IsEnabled="{Binding CanEdit}">
                 <TextBlock Classes="field-label" Text="{loc:Loc squid.allowed_domains}" />
                 <TextBox x:Name="AllowedDomainsBox" Text="{Binding AllowedDomains, Mode=TwoWay}" AcceptsReturn="True"
@@ -229,18 +330,30 @@
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
             </StackPanel>
-          </Border>
+          </StackPanel>
 
-</StackPanel></StackPanel>
-          <StackPanel x:Name="Page3" Spacing="16" IsVisible="False"><Button Content="{loc:Loc squid.section.upstream}" Tag="UpstreamEditor" Click="EditorButton_Click" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Left" />
-<StackPanel x:Name="UpstreamEditor" IsVisible="False" Spacing="12">
-
-<Border Classes="app-panel" Padding="18">
-            <StackPanel Spacing="12">
-              <StackPanel Spacing="2">
-                <TextBlock Classes="section-title" Text="{loc:Loc squid.section.upstream}" />
-                <TextBlock Classes="section-hint" Text="{loc:Loc squid.section.upstream_hint}" />
+          <!-- HTTP upstream. -->
+          <StackPanel x:Name="Page3" Spacing="14" IsVisible="False">
+            <Border Classes="app-panel" Padding="18">
+              <StackPanel Spacing="12">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                  <StackPanel Spacing="2">
+                    <TextBlock Classes="section-title" Text="{loc:Loc squid.section.upstream}" />
+                    <TextBlock Classes="section-hint" Text="{loc:Loc squid.section.upstream_hint}" />
+                  </StackPanel>
+                  <Button Grid.Column="1" Classes="card-action" Content="{loc:Loc squid.edit}" Tag="UpstreamEditor" CommandParameter="{loc:Loc squid.section.upstream}" Click="EditorButton_Click"
+                          IsEnabled="{Binding CanEdit}" VerticalAlignment="Top" />
+                </Grid>
+                <Grid ColumnDefinitions="Auto,*"><TextBlock Classes="summary-label" Text="{loc:Loc squid.short.upstream}" /><TextBlock Grid.Column="1" Classes="summary-value" Text="{Binding UpstreamSummary}" /></Grid>
+                <ItemsControl ItemsSource="{Binding UpstreamProblems}" IsVisible="{Binding HasUpstreamProblems}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="squid:SquidProblem"><TextBlock Classes="problem" Text="{Binding Message}" /></DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
               </StackPanel>
+            </Border>
+            <StackPanel x:Name="UpstreamEditor" IsVisible="False" Spacing="12">
+              <TextBlock Classes="section-hint" Text="{loc:Loc squid.section.upstream_hint}" />
               <Grid ColumnDefinitions="*,140" ColumnSpacing="12" IsEnabled="{Binding CanEdit}">
                 <StackPanel Spacing="4">
                   <TextBlock Classes="field-label" Text="{loc:Loc squid.upstream_host}" />
@@ -259,101 +372,136 @@
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
             </StackPanel>
-          </Border>
+          </StackPanel>
 
-</StackPanel></StackPanel>
-          <StackPanel x:Name="Page5" Spacing="16" IsVisible="False">
-            <Button Content="{loc:Loc squid.section.access}" Tag="AccessEditor" Click="EditorButton_Click" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Left" />
-<StackPanel x:Name="AccessEditor" IsVisible="False" Spacing="12">
-<Border Classes="app-panel" Padding="18">
-              <StackPanel Spacing="12">
-                <TextBlock Classes="section-title" Text="{loc:Loc squid.section.access}" />
-                <TextBlock Classes="section-hint" Text="{loc:Loc squid.access_hint}" />
-                <ComboBox x:Name="AccessModeBox" SelectedIndex="{Binding AccessModeIndex, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Stretch">
-                  <ComboBoxItem Content="{loc:Loc squid.mode_ip}" />
-                  <ComboBoxItem Content="{loc:Loc squid.mode_password}" />
-                  <ComboBoxItem Content="{loc:Loc squid.mode_both}" />
-                </ComboBox>
-                <TextBlock Classes="section-hint" Text="{loc:Loc squid.basic_transport_hint}" IsVisible="{Binding RequiresPassword}" />
-                <TextBlock Classes="problem" Text="{loc:Loc squid.no_enabled_accounts}" IsVisible="{Binding ShowNoEnabledAccounts}" />
-              </StackPanel>
-            </Border>
-</StackPanel>
+          <!-- Access control: the mode decides whether the listener page's networks matter, so it is
+               read back here instead of living only inside the account editor. -->
+          <StackPanel x:Name="Page5" Spacing="14" IsVisible="False">
             <Border Classes="app-panel" Padding="18">
               <StackPanel Spacing="12">
-                <TextBlock Classes="section-title" Text="{loc:Loc squid.accounts}" />
-                <TextBlock Classes="section-hint" Text="{loc:Loc squid.accounts_hint}" />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                  <StackPanel Spacing="2">
+                    <TextBlock Classes="section-title" Text="{loc:Loc squid.section.access}" />
+                    <TextBlock Classes="section-hint" Text="{loc:Loc squid.access_hint}" />
+                  </StackPanel>
+                  <Button Grid.Column="1" Classes="card-action" Content="{loc:Loc squid.change}" Tag="AccessEditor" CommandParameter="{loc:Loc squid.section.access}" Click="EditorButton_Click"
+                          IsEnabled="{Binding CanEdit}" VerticalAlignment="Top" />
+                </Grid>
+                <Grid ColumnDefinitions="Auto,*"><TextBlock Classes="summary-label" Text="{loc:Loc squid.short.mode}" /><TextBlock Grid.Column="1" Classes="summary-value" Text="{Binding AccessModeSummary}" /></Grid>
+                <TextBlock Classes="section-hint" Text="{loc:Loc squid.basic_transport_hint}" IsVisible="{Binding RequiresPassword}" />
+                <TextBlock Classes="problem" Text="{loc:Loc squid.no_enabled_accounts}" IsVisible="{Binding ShowNoEnabledAccounts}" />
+                <StackPanel x:Name="AccessEditor" IsVisible="False" Spacing="12">
+                  <TextBlock Classes="section-hint" Text="{loc:Loc squid.access_hint}" />
+                  <ComboBox x:Name="AccessModeBox" SelectedIndex="{Binding AccessModeIndex, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Stretch">
+                    <ComboBoxItem Content="{loc:Loc squid.mode_ip}" />
+                    <ComboBoxItem Content="{loc:Loc squid.mode_password}" />
+                    <ComboBoxItem Content="{loc:Loc squid.mode_both}" />
+                  </ComboBox>
+                  <TextBlock Classes="section-hint" Text="{loc:Loc squid.mode_ip_hint}" IsVisible="{Binding IsIpWhitelistMode}" />
+                  <TextBlock Classes="section-hint" Text="{loc:Loc squid.mode_password_hint}" IsVisible="{Binding IsPasswordMode}" />
+                  <TextBlock Classes="section-hint" Text="{loc:Loc squid.mode_both_hint}" IsVisible="{Binding IsCombinedMode}" />
+                  <TextBlock Classes="section-hint" Text="{loc:Loc squid.basic_transport_hint}" IsVisible="{Binding RequiresPassword}" />
+                  <StackPanel x:Name="AccountEditor" IsVisible="False" Spacing="12">
+                    <TextBlock Text="{Binding SelectedAccount.Username}" FontWeight="SemiBold" />
+                    <StackPanel Spacing="4" IsEnabled="{Binding CanManageAccounts}">
+                      <TextBlock Classes="field-label" Text="{loc:Loc squid.account_name}" />
+                      <TextBox x:Name="AccountNameBox" Text="{Binding NewAccountName, Mode=TwoWay}" MaxLength="64" />
+                      <TextBlock Classes="field-label" Text="{loc:Loc squid.account_password}" />
+                      <TextBox x:Name="AccountPasswordBox" Text="{Binding AccountPassword, Mode=TwoWay}" PasswordChar="●" MaxLength="128" />
+                    </StackPanel>
+                    <WrapPanel>
+                      <Button Margin="0,0,8,8" Content="{loc:Loc squid.account_create}" Command="{Binding CreateAccountCommand}" />
+                      <Button Margin="0,0,8,8" Content="{loc:Loc squid.account_reset}" Command="{Binding ResetAccountPasswordCommand}" />
+                      <Button Margin="0,0,8,8" Content="{Binding ToggleAccountText}" Command="{Binding ToggleAccountCommand}" />
+                      <Button Margin="0,0,8,8" Content="{loc:Loc squid.account_delete}" Command="{Binding DeleteAccountCommand}" />
+                    </WrapPanel>
+                  </StackPanel>
+                </StackPanel>
+              </StackPanel>
+            </Border>
+            <Border Classes="app-panel" Padding="18">
+              <StackPanel Spacing="12">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                  <StackPanel Spacing="2">
+                    <TextBlock Classes="section-title" Text="{loc:Loc squid.accounts}" />
+                    <TextBlock Classes="section-hint" Text="{loc:Loc squid.accounts_hint}" />
+                  </StackPanel>
+                  <WrapPanel Grid.Column="1" VerticalAlignment="Top">
+                    <Button Classes="card-action" Margin="0,0,8,0" Content="{loc:Loc squid.account_create}" Tag="AccountEditor:new" CommandParameter="{loc:Loc squid.accounts}" Click="EditorButton_Click" IsEnabled="{Binding CanManageAccounts}" />
+                    <Button Classes="card-action" Content="{loc:Loc squid.edit_account}" Tag="AccountEditor" CommandParameter="{loc:Loc squid.accounts}" Click="EditorButton_Click" IsEnabled="{Binding CanEditSelectedAccount}" />
+                  </WrapPanel>
+                </Grid>
+                <TextBlock Classes="summary-value" Text="{Binding AccountsSummary}" IsVisible="{Binding HasAccounts}" />
                 <TextBlock Classes="section-hint" Text="{loc:Loc squid.accounts_empty}" IsVisible="{Binding !HasAccounts}" />
                 <TextBlock Classes="section-hint" Text="{loc:Loc squid.last_account_protected}" IsVisible="{Binding IsLastEnabledAccountProtected}" />
-                <ListBox IsVisible="{Binding HasAccounts}" x:Name="AccountsList" ItemsSource="{Binding Accounts}" SelectedItem="{Binding SelectedAccount, Mode=TwoWay}" MinHeight="80" MaxHeight="200">
+                <ListBox Classes="app-list" IsVisible="{Binding HasAccounts}" x:Name="AccountsList" ItemsSource="{Binding Accounts}"
+                         SelectedItem="{Binding SelectedAccount, Mode=TwoWay}" MinHeight="80" MaxHeight="200">
                   <ListBox.ItemTemplate>
                     <DataTemplate x:DataType="protocol:SquidAccount">
                       <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                        <TextBlock Text="{Binding Username}" />
-                        <TextBlock Grid.Column="1" Text="{loc:Loc squid.account_enabled}" IsVisible="{Binding Enabled}" />
-                        <TextBlock Grid.Column="1" Text="{loc:Loc squid.account_disabled}" IsVisible="{Binding !Enabled}" />
+                        <TextBlock Text="{Binding Username}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="11"
+                                   Text="{loc:Loc squid.account_enabled}" IsVisible="{Binding Enabled}"
+                                   Foreground="{DynamicResource SuccessBrush}" />
+                        <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="11"
+                                   Text="{loc:Loc squid.account_disabled}" IsVisible="{Binding !Enabled}"
+                                   Foreground="{DynamicResource TextTertiaryBrush}" />
                       </Grid>
                     </DataTemplate>
                   </ListBox.ItemTemplate>
                 </ListBox>
-                <WrapPanel>
-  <Button Content="{loc:Loc squid.account_create}" Tag="AccountEditor:new" Click="EditorButton_Click" IsEnabled="{Binding CanManageAccounts}" Margin="0,0,8,0" />
-  <Button Content="{loc:Loc squid.edit_account}" Tag="AccountEditor" Click="EditorButton_Click" IsEnabled="{Binding CanManageAccounts}" />
-</WrapPanel>
-<StackPanel x:Name="AccountEditor" IsVisible="False" Spacing="12">
-<TextBlock Text="{Binding SelectedAccount.Username}" FontWeight="SemiBold" />
-<StackPanel Spacing="4" IsEnabled="{Binding CanManageAccounts}">
-                  <TextBlock Classes="field-label" Text="{loc:Loc squid.account_name}" />
-                  <TextBox x:Name="AccountNameBox" Text="{Binding NewAccountName, Mode=TwoWay}" MaxLength="64" />
-                  <TextBlock Classes="field-label" Text="{loc:Loc squid.account_password}" />
-                  <TextBox x:Name="AccountPasswordBox" Text="{Binding AccountPassword, Mode=TwoWay}" PasswordChar="●" MaxLength="128" />
-                </StackPanel>
-                <WrapPanel>
-                  <Button Content="{loc:Loc squid.account_create}" Command="{Binding CreateAccountCommand}" Margin="0,0,8,8" />
-                  <Button Content="{loc:Loc squid.account_reset}" Command="{Binding ResetAccountPasswordCommand}" Margin="0,0,8,8" />
-                  <Button Content="{Binding ToggleAccountText}" Command="{Binding ToggleAccountCommand}" Margin="0,0,8,8" />
-                  <Button Content="{loc:Loc squid.account_delete}" Command="{Binding DeleteAccountCommand}" Margin="0,0,8,8" />
-                </WrapPanel>
-</StackPanel>
               </StackPanel>
             </Border>
           </StackPanel>
-          <StackPanel x:Name="Page4" Spacing="16" IsVisible="False">
-<Button Content="{loc:Loc squid.section.adoption}" Tag="AdoptionEditor" Click="EditorButton_Click" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Left" />
-<StackPanel x:Name="AdoptionEditor" IsVisible="False" Spacing="12">
-<Border Classes="app-panel" Padding="18">
-            <StackPanel Spacing="10">
-              <TextBlock Classes="section-title" Text="{loc:Loc squid.section.adoption}" />
-              <TextBlock Classes="section-hint" Text="{loc:Loc squid.section.adoption_hint}" />
-              <CheckBox x:Name="AdoptBox" IsEnabled="{Binding CanEdit}" IsChecked="{Binding AdoptExistingConfiguration, Mode=TwoWay}">
-                <TextBlock Text="{loc:Loc squid.adopt}" TextWrapping="Wrap" />
-              </CheckBox>
-              <TextBlock Classes="problem" Text="{loc:Loc squid.adopt_required}" IsVisible="{Binding NeedsAdoption}" />
-            </StackPanel>
-          </Border>
-</StackPanel>
-<Border x:Name="PreviewPanel" Classes="app-panel" Padding="18">
-          <StackPanel Spacing="12">
-            <StackPanel Spacing="2">
-              <TextBlock Classes="section-title" Text="{loc:Loc squid.section.preview}" />
-              <TextBlock Classes="section-hint" Text="{loc:Loc squid.section.preview_hint}" />
-            </StackPanel>
-            <TextBlock Classes="section-hint" Text="{loc:Loc squid.apply_hint}" />
-            <TextBlock Classes="problem" Text="{loc:Loc squid.preview_stale}" IsVisible="{Binding IsPreviewStale}" />
-            <TextBlock Classes="section-hint" Text="{loc:Loc squid.preview_empty}" IsVisible="{Binding !HasPreview}" />
-            <TextBox x:Name="PreviewBox" IsReadOnly="True" AcceptsReturn="True" MinHeight="170" MaxHeight="320"
-                     TextWrapping="Wrap" FontFamily="Consolas" Text="{Binding PreviewText}"
-                     IsVisible="{Binding HasPreview}" BorderBrush="{DynamicResource BorderSubtleBrush}" />
-            <StackPanel Spacing="4" IsVisible="{Binding HasDetail}">
-              <TextBlock Classes="field-label" Text="{loc:Loc squid.detail_title}" />
-              <TextBox x:Name="DetailBox" IsReadOnly="True" AcceptsReturn="True" MinHeight="54" MaxHeight="130"
-                       TextWrapping="Wrap" Text="{Binding DetailText}" BorderBrush="{DynamicResource BorderSubtleBrush}" />
-            </StackPanel>
+
+          <!-- Publishing: adoption, the rendered file, and one line that says whether apply can run. -->
+          <StackPanel x:Name="Page4" Spacing="14" IsVisible="False">
+            <Border Classes="app-panel" Padding="18">
+              <StackPanel Spacing="10">
+                <TextBlock Classes="section-title" Text="{loc:Loc squid.section.adoption}" />
+                <TextBlock Classes="section-hint" Text="{loc:Loc squid.section.adoption_hint}" />
+                <CheckBox x:Name="AdoptBox" IsEnabled="{Binding CanEdit}" IsChecked="{Binding AdoptExistingConfiguration, Mode=TwoWay}">
+                  <TextBlock Text="{loc:Loc squid.adopt}" TextWrapping="Wrap" />
+                </CheckBox>
+                <TextBlock Classes="problem" Text="{loc:Loc squid.adopt_required}" IsVisible="{Binding NeedsAdoption}" />
+              </StackPanel>
+            </Border>
+            <Border x:Name="PreviewPanel" Classes="app-panel" Padding="18">
+              <StackPanel Spacing="12">
+                <StackPanel Spacing="2">
+                  <TextBlock Classes="section-title" Text="{loc:Loc squid.section.preview}" />
+                  <TextBlock Classes="section-hint" Text="{loc:Loc squid.section.preview_hint}" />
+                </StackPanel>
+                <TextBlock Text="{Binding ApplyReadinessText}" FontSize="12" TextWrapping="Wrap"
+                           Foreground="{DynamicResource SuccessBrush}" IsVisible="{Binding IsReadyToApply}" />
+                <TextBlock Text="{Binding ApplyReadinessText}" FontSize="12" TextWrapping="Wrap"
+                           Foreground="{DynamicResource WarningBrush}" IsVisible="{Binding !IsReadyToApply}" />
+                <TextBlock Classes="problem" Text="{Binding DraftProblemText}" IsVisible="{Binding HasDraftProblem}" />
+                <TextBlock Classes="section-hint" Text="{loc:Loc squid.apply_hint}" />
+                <TextBlock Classes="problem" Text="{loc:Loc squid.preview_stale}" IsVisible="{Binding IsPreviewStale}" />
+                <TextBlock Classes="section-hint" Text="{loc:Loc squid.preview_empty}" IsVisible="{Binding !HasPreview}" />
+                <TextBox x:Name="PreviewBox" IsReadOnly="True" AcceptsReturn="True" MinHeight="170" MaxHeight="320"
+                         TextWrapping="Wrap" FontFamily="Consolas" Text="{Binding PreviewText}"
+                         IsVisible="{Binding HasPreview}" BorderBrush="{DynamicResource BorderSubtleBrush}" />
+                <StackPanel Spacing="4" IsVisible="{Binding HasDetail}">
+                  <TextBlock Classes="field-label" Text="{loc:Loc squid.detail_title}" />
+                  <TextBox x:Name="DetailBox" IsReadOnly="True" AcceptsReturn="True" MinHeight="54" MaxHeight="130"
+                           TextWrapping="Wrap" Text="{Binding DetailText}" BorderBrush="{DynamicResource BorderSubtleBrush}" />
+                </StackPanel>
+              </StackPanel>
+            </Border>
           </StackPanel>
-        </Border>
-          </StackPanel>
-          <StackPanel x:Name="Page6" Spacing="16" IsVisible="False">
+
+          <!-- Settings: the component dependency area owns installation and package state. -->
+          <StackPanel x:Name="Page6" Spacing="14" IsVisible="False">
             <cc:ComponentDependencySettingsView DataContext="{Binding Dependency}" />
+            <Border Classes="app-panel" Padding="18">
+              <StackPanel Spacing="6">
+                <TextBlock Classes="section-title" Text="{loc:Loc squid.section.package}" />
+                <TextBlock Classes="section-hint" Text="{loc:Loc squid.package_support}" />
+                <TextBlock Classes="problem" Text="{loc:Loc squid.package_unsupported}" IsVisible="{Binding ShowPackageUnsupported}" />
+              </StackPanel>
+            </Border>
           </StackPanel>
         </StackPanel>
       </ScrollViewer>
@@ -373,9 +521,9 @@
                      FontSize="12" TextTrimming="CharacterEllipsis" />
         </Grid>
         <WrapPanel HorizontalAlignment="Right">
-          <Button Content="{loc:Loc squid.load}" Command="{Binding LoadStoredCommand}" Margin="0,0,8,0" />
-          <Button Content="{loc:Loc squid.validate}" Command="{Binding ValidateCommand}" Margin="0,0,8,0" />
-          <Button Content="{loc:Loc squid.preview}" Command="{Binding PreviewCommand}" Margin="0,0,8,0" />
+          <Button Classes="card-action" Margin="0,0,8,0" Content="{loc:Loc squid.discard}" Command="{Binding LoadStoredCommand}" ToolTip.Tip="{loc:Loc squid.load}" />
+          <Button Classes="card-action" Margin="0,0,8,0" Content="{loc:Loc squid.validate}" Command="{Binding ValidateCommand}" />
+          <Button Classes="card-action" Margin="0,0,8,0" Content="{loc:Loc squid.preview}" Command="{Binding PreviewCommand}" />
           <Button Classes="primary" Content="{loc:Loc squid.apply}" Command="{Binding ApplyCommand}"
                   ToolTip.Tip="{loc:Loc squid.apply_hint}" />
         </WrapPanel>

@@ -10,6 +10,7 @@ using RelaxKonOS.Protocol.Workspace;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using RelaxKonOS.Client.Apps.Squid;
+using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.GatewayProxy;
 using RelaxKonOS.Protocol.Proxy;
 
@@ -192,6 +193,52 @@ internal static class SquidWorkspaceChecks
         fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { Managed = true, Running = true, Enabled = true } };
         Complete(vm.RefreshCommand.ExecuteAsync(null));
         Complete(vm.PreviewCommand.ExecuteAsync(null));
+
+        // Presentation must follow the same facts the actions do, and a closed editor must not be the
+        // only place the current draft can be read.
+        fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { Supported = true, Installed = false, Running = false, Enabled = false } };
+        Complete(vm.RefreshCommand.ExecuteAsync(null));
+        Check(vm.ShowInstallRequired && !vm.HasServiceState && !vm.StatePillOk && vm.StatePillNeutral
+            && vm.StatePillText.Resolve() == LocalizedText.Get("squid.state.not_installed"),
+            "A supported host without the package says so instead of showing a running pill over dashes.");
+        Check(vm.ServiceControlReasonText.Resolve() == LocalizedText.Get("squid.control_reason.not_installed")
+            && !vm.CanStart && !vm.CanToggleBoot,
+            "The lifecycle card names the missing package as the reason its actions are unavailable.");
+        Check(!vm.CanOpenComponentCenter, "Without a component dependency area no installation shortcut is offered.");
+        fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { Installed = true, Managed = true, Running = false, Enabled = false } };
+        Complete(vm.RefreshCommand.ExecuteAsync(null));
+        Check(vm.StatePillWarn && vm.StatePillText.Resolve() == LocalizedText.Get("squid.stopped")
+            && vm.ServiceControlReasonText.Resolve() == LocalizedText.Get("squid.control_reason.stopped"),
+            "A stopped service is a warning pill and states why restart and reload are missing.");
+        fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { Running = true, Enabled = true } };
+        Complete(vm.RefreshCommand.ExecuteAsync(null));
+        Check(vm.StatePillOk && vm.StatePillText.Resolve() == LocalizedText.Get("squid.running"),
+            "A running service is the only green pill.");
+
+        vm.BindAddress = "127.0.0.1"; vm.Port = "8080"; vm.AllowedNetworks = "127.0.0.1/32\n10.0.0.0/8";
+        Check(vm.ListenerSummary.Resolve() == "127.0.0.1:8080" && vm.NetworksSummary.Resolve().Contains('2'),
+            "The listener page reads the draft back instead of hiding every value in the dialog.");
+        vm.AllowedDomains = ""; vm.DeniedDomains = ".example.org";
+        Check(vm.AllowedDomainsSummary.Resolve() == LocalizedText.Get("squid.summary.all_allowed")
+            && vm.DeniedDomainsSummary.Resolve().Contains('1'),
+            "Domain counts are shown per list, and an empty allow list says what it means.");
+        vm.UpstreamHost = ""; Check(vm.UpstreamSummary.Resolve() == LocalizedText.Get("squid.summary.direct"),
+            "An empty upstream is reported as a direct connection rather than a blank field.");
+        vm.AccessModeIndex = (int)SquidAccessMode.IpWhitelist;
+        Check(vm.AccessModeSummary.Resolve() == LocalizedText.Get("squid.mode_ip"),
+            "The access page names the active mode outside the editor.");
+        Check(vm.DraftStateText.Resolve() == LocalizedText.Get("squid.draft.dirty"),
+            "The runtime card reports an unsaved draft without opening the action bar notice.");
+        Check(!vm.CanEditSelectedAccount, "Editing an account needs a selection; an empty form is never opened.");
+
+        // Password mode without an enabled account is the classic silent refusal: name it up front.
+        vm.AccessModeIndex = (int)SquidAccessMode.Password; vm.AllowedNetworks = "";
+        Check(vm.IsConfigurationValid && !vm.IsReadyToApply
+            && vm.ApplyReadinessText.Resolve().Contains(LocalizedText.Get("squid.blocker.accounts"), StringComparison.Ordinal),
+            "The publishing card states which gate keeps apply disabled.");
+        vm.AccessModeIndex = (int)SquidAccessMode.IpWhitelist; vm.AllowedNetworks = "127.0.0.1/32";
+        Check(vm.IsReadyToApply && vm.ApplyReadinessText.Resolve() == LocalizedText.Get("squid.ready.apply"),
+            "With every gate open the publishing card says the configuration can be applied.");
 
         var view = SquidApp.CreateView(vm);
         var window = new Window { Width = 960, Height = 760, Content = view };

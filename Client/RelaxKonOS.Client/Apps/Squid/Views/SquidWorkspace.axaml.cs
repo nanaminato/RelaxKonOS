@@ -18,9 +18,14 @@ public partial class SquidWorkspace : UserControl
         var parts = target.Split(':');
         if (parts.Length > 1 && _viewModel is { } accountModel)
         { accountModel.SelectedAccount = null; accountModel.NewAccountName = ""; accountModel.AccountPassword = ""; }
-        await RelaxKonOS.Client.Controls.WorkspaceEditorDialogView.OpenAsync(this, parts[0], button.Content?.ToString() ?? "", ShowEditorAsync);
+        // The trigger says "编辑…"; the dialog is titled after the card it edits.
+        var title = button.CommandParameter?.ToString() ?? button.Content?.ToString() ?? "";
+        await RelaxKonOS.Client.Controls.WorkspaceEditorDialogView.OpenAsync(this, parts[0], title, ShowEditorAsync);
         if (_viewModel is { } model) model.AccountPassword = "";
     }
+
+    /// <summary>The adoption notice can only be resolved where the checkbox and apply button live.</summary>
+    private void GoToPublishButton_Click(object? sender, RoutedEventArgs e) => ShowPage(4);
 
     public SquidWorkspace()
     {
