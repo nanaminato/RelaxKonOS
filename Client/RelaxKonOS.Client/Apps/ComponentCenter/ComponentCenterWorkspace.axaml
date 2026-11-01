@@ -396,6 +396,9 @@
          <!-- One host, one method: state the platform's own install path instead of both. -->
          <TextBlock Text="{Binding PlatformMethodText}" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap"
                     Foreground="{DynamicResource AccentBrush}" />
+         <!-- A host that answered with a problem is not a form nobody has touched: name it here. -->
+         <TextBlock Text="{Binding PackageStateText}" IsVisible="{Binding HasPackageStateProblem}" TextWrapping="Wrap"
+                    FontSize="12" Foreground="{DynamicResource WarningBrush}" />
          <StackPanel IsVisible="{Binding IsSystemPackage}" Spacing="6">
           <TextBlock Classes="field-label" Text="{loc:Loc component_center.native.manager}" />
           <!-- A single connected manager is stated, not offered: a one-item selector looks like a

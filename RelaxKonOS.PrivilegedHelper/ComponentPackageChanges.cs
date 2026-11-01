@@ -126,17 +126,17 @@ public static partial class PrivilegedOperationExecutor
             var install = await RunAptAsync(updateArguments, TimeSpan.FromMinutes(10), "package update failed");
             if (!install.Success) return install;
             var (failure, updated) = await ResolveComponentPackageAsync(definition);
-            if (failure is not null || updated?.InstalledVersion != expected.Version || !File.Exists(definition.Executable) || !await OwnsPackageServiceAsync(definition))
+            if (failure is not null || updated?.InstalledVersion != expected.Version
+                || VerifiedPackageExecutable(definition) is not { } executable || !await OwnsPackageServiceAsync(definition))
                 return Fail(65, PrivilegedProblemCode.Conflict, "package update identity mismatch");
-            RequirePackagePath(definition.Executable);
             var health = definition.ComponentId switch
             {
-                ComponentIds.Nginx => await RunFixedCommandAsync(definition.Executable, ["-t"], TimeSpan.FromSeconds(30), "Nginx configuration invalid"),
-                ComponentIds.Squid => await RunFixedCommandAsync(definition.Executable, ["-k", "parse"], TimeSpan.FromSeconds(30), "Squid configuration invalid"),
+                ComponentIds.Nginx => await RunFixedCommandAsync(executable, ["-t"], TimeSpan.FromSeconds(30), "Nginx configuration invalid"),
+                ComponentIds.Squid => await RunFixedCommandAsync(executable, ["-k", "parse"], TimeSpan.FromSeconds(30), "Squid configuration invalid"),
                 ComponentIds.Samba => await RunFixedCommandAsync("/usr/bin/testparm", ["-s"], TimeSpan.FromSeconds(30), "Samba configuration invalid"),
-                ComponentIds.SingBox or ComponentIds.Mihomo => await RunFixedCommandAsync(definition.Executable, ["version"], TimeSpan.FromSeconds(30), "runtime version unavailable"),
-                ComponentIds.Tailscale => await RunFixedCommandAsync(definition.Executable, ["version"], TimeSpan.FromSeconds(30), "Tailscale version unavailable"),
-                _ => await RunFixedCommandAsync(definition.Executable, ["--version"], TimeSpan.FromSeconds(30), "version unavailable")
+                ComponentIds.SingBox or ComponentIds.Mihomo => await RunFixedCommandAsync(executable, ["version"], TimeSpan.FromSeconds(30), "runtime version unavailable"),
+                ComponentIds.Tailscale => await RunFixedCommandAsync(executable, ["version"], TimeSpan.FromSeconds(30), "Tailscale version unavailable"),
+                _ => await RunFixedCommandAsync(executable, ["--version"], TimeSpan.FromSeconds(30), "version unavailable")
             };
             if (!health.Success) return health;
             if (definition.Service.Length != 0)

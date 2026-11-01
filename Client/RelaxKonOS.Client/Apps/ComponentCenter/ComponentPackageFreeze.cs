@@ -187,7 +187,10 @@ public partial class ComponentCenterViewModel
     {
         get
         {
-            var managers = SelectedComponentState is { State: not null, Problems.Count: 0 } view
+            // The mode list is the host's own declaration for this platform, so it stays true even
+            // when the state behind it could not be read. Requiring a problem-free state here made a
+            // failed package query look like a form nobody had touched yet.
+            var managers = SelectedComponentState is { } view
                 ? view.Modes.Where(mode => mode.Available && mode.Platform == HostPlatform && mode.PackageManager is not null)
                     .Select(mode => mode.PackageManager!).Distinct().ToArray()
                 : [];
@@ -407,6 +410,16 @@ public partial class ComponentCenterViewModel
         : LocalizedStatus.Format("component_center.package.blocked",
             LocalizedStatus.Join(" · ", freeze.Problems.Select(code => IsSystemPackage && code == ComponentProblemCodes.PackageUnresolved
                 ? LocalizedStatus.Key("component_center.package.no_configured_candidate") : ProblemText(code))));
+    /// <summary>
+    /// A host that answers with a problem instead of a state is not "not checked yet". Naming the
+    /// problem here keeps an unreadable package index from looking like a form nobody has touched,
+    /// which is exactly how a host-side refusal used to become invisible.
+    /// </summary>
+    public LocalizedStatus PackageStateText => SelectedComponentState is { Problems.Count: > 0 } view
+        ? LocalizedStatus.Format("component_center.package.blocked",
+            LocalizedStatus.Join(" · ", view.Problems.Select(ProblemText)))
+        : LocalizedStatus.Literal("");
+    public bool HasPackageStateProblem => !PackageStateText.IsEmpty;
 
     private static LocalizedStatus ProblemText(string code) => LocalizedStatus.Key(code switch
     {
@@ -475,8 +488,10 @@ public partial class ComponentCenterViewModel
             else
             {
                 _componentFreezes.Remove(componentId);
-                PackageFreezeNotice = LocalizedStatus.Format("component_center.package.blocked",
-                    LocalizedStatus.Join(" · ", view.Problems.Select(ProblemText)));
+                // A state-less answer keeps its problem on the panel itself (PackageStateText), so the
+                // notice only speaks for a host that answered with neither a state nor a problem.
+                PackageFreezeNotice = view.Problems.Count == 0
+                    ? LocalizedStatus.Key("component_center.package.failed") : LocalizedStatus.Literal("");
             }
         }
         catch (OperationCanceledException) when (_inspectionLifetime.IsCancellationRequested) { }
@@ -496,7 +511,7 @@ public partial class ComponentCenterViewModel
     {
         foreach (var property in new[] { nameof(ShowRegisterPackage), nameof(CanRegisterPackage), nameof(HasExternalPackageChange), nameof(ExternalPackageChangeText), nameof(RegisterPackageText), nameof(PackageSourceActionText), nameof(ShowPackageInstall), nameof(CanApplyPackagePlan), nameof(CanChangeInstalledPackage), nameof(IsSystemPackage), nameof(IsNativeInstaller), nameof(IsDirectDownload), nameof(PackageManagers), nameof(HasPackageManagerChoice), nameof(SelectedPackageManagerText), nameof(PackageMethodTitle), nameof(PackageMethodHint), nameof(PlatformMethodText), nameof(ShowPackageChangeActions), nameof(ShowInstallOnlyNote), nameof(CanRefreshPackageSources), nameof(CanRecoverPackage), nameof(PackageRecoveryText), nameof(PinnedArchiveCandidates), nameof(HasPinnedArchiveCandidates), nameof(PackageInstallation), nameof(CanInstallPackage), nameof(ShowPackageFreeze), nameof(CanResolvePackage), nameof(HasPackageFreeze),
             nameof(PackageInstalledText), nameof(PackageCandidateText), nameof(PackageRepositoryText),
-            nameof(PackageDigestText), nameof(PackageAlsoInstallsText), nameof(PackageVerdictText) })
+            nameof(PackageDigestText), nameof(PackageAlsoInstallsText), nameof(PackageVerdictText), nameof(PackageStateText), nameof(HasPackageStateProblem) })
             OnPropertyChanged(property);
         InstallPackageCommand.NotifyCanExecuteChanged();
         foreach (var property in new[] { nameof(ShowNotIntegrated), nameof(ShowHeaderOpenApplication), nameof(SelectedStatusText), nameof(SelectedVersionText),

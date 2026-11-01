@@ -192,17 +192,16 @@ public static partial class PrivilegedOperationExecutor
         var install = await RunAptAsync(arguments, TimeSpan.FromMinutes(10), "component package install failed");
         if (!install.Success) return install;
         var (failure, after) = await ResolveComponentPackageAsync(definition);
-        if (failure is not null || after?.InstalledVersion != expected.Version || !File.Exists(definition.Executable))
+        if (failure is not null || after?.InstalledVersion != expected.Version || VerifiedPackageExecutable(definition) is not { } executable)
             return Fail(66, PrivilegedProblemCode.InternalError, "component package installed identity mismatch");
-        RequirePackagePath(definition.Executable);
         var health = definition.ComponentId switch
         {
-            ComponentIds.Nginx => await RunFixedCommandAsync(definition.Executable, ["-t"], TimeSpan.FromSeconds(30), "Nginx configuration invalid"),
-            ComponentIds.Squid => await RunFixedCommandAsync(definition.Executable, ["-k", "parse"], TimeSpan.FromSeconds(30), "Squid configuration invalid"),
+            ComponentIds.Nginx => await RunFixedCommandAsync(executable, ["-t"], TimeSpan.FromSeconds(30), "Nginx configuration invalid"),
+            ComponentIds.Squid => await RunFixedCommandAsync(executable, ["-k", "parse"], TimeSpan.FromSeconds(30), "Squid configuration invalid"),
             ComponentIds.Samba => await RunFixedCommandAsync("/usr/bin/testparm", ["-s"], TimeSpan.FromSeconds(30), "Samba configuration invalid"),
-            ComponentIds.SingBox or ComponentIds.Mihomo => await RunFixedCommandAsync(definition.Executable, ["version"], TimeSpan.FromSeconds(30), "runtime version unavailable"),
-            ComponentIds.Tailscale => await RunFixedCommandAsync(definition.Executable, ["version"], TimeSpan.FromSeconds(30), "Tailscale version unavailable"),
-            _ => await RunFixedCommandAsync(definition.Executable, ["--version"], TimeSpan.FromSeconds(30), "Docker version unavailable")
+            ComponentIds.SingBox or ComponentIds.Mihomo => await RunFixedCommandAsync(executable, ["version"], TimeSpan.FromSeconds(30), "runtime version unavailable"),
+            ComponentIds.Tailscale => await RunFixedCommandAsync(executable, ["version"], TimeSpan.FromSeconds(30), "Tailscale version unavailable"),
+            _ => await RunFixedCommandAsync(executable, ["--version"], TimeSpan.FromSeconds(30), "Docker version unavailable")
         };
         if (!health.Success) return health;
         if (!await OwnsPackageServiceAsync(definition)) return Fail(65, PrivilegedProblemCode.Conflict, "component service is external");
@@ -219,8 +218,8 @@ public static partial class PrivilegedOperationExecutor
                 TimeSpan.FromSeconds(30), "Docker access grant failed");
             if (!grant.Success) return grant;
         }
-        using var executable = File.OpenRead(definition.Executable);
-        WritePackageReceipt(definition, pending with { Committed = true, ExecutableSha256 = Convert.ToHexString(SHA256.HashData(executable)) });
+        using var executableBytes = File.OpenRead(executable);
+        WritePackageReceipt(definition, pending with { Committed = true, ExecutableSha256 = Convert.ToHexString(SHA256.HashData(executableBytes)) });
         return await QueryComponentPackageAsync(componentId);
     }
     private static bool DockerPackagePolicyReady()

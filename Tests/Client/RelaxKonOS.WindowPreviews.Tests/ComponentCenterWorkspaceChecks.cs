@@ -290,6 +290,36 @@ internal static class ComponentCenterWorkspaceChecks
                         && linuxModel.PackageMethodTitle.Resolve() == RelaxKonOS.Client.Localization.LocalizedText.Get("component_center.native.package_title"),
                         "A Linux host describes the package manager and offers install, update and uninstall in " + language);
                 }
+                // A host that answers with a problem instead of a state is not an untouched form: the
+                // manager it declared stays visible and its own problem code is named, so a package
+                // query the host refused never looks like "nobody checked yet".
+                using (var unreadableRuntime = new ProxyServerRuntimeViewModel(DispatchProxy.Create<IRuntimeCatalogClient, DisplayOnlyRuntime>()) { CanRead = true, CanManage = true })
+                using (var unreadableModel = new ComponentCenterViewModel(unreadableRuntime, new(), "https://host.example/", Guid.NewGuid(),
+                    lifecycle: new UnreadablePackageLifecycleClient(), hostPlatform: "linux"))
+                {
+                    unreadableModel.SelectedNode = unreadableModel.VisibleRoots.SelectMany(root => root.VisibleDescendantsAndSelf())
+                        .Single(node => node.ComponentId == "squid");
+                    unreadableModel.AttachPackageInstallation("squid", new(null!, null!, InstallationServiceId.Squid,
+                        "layout", () => Task.CompletedTask, () => Task.FromResult<string?>(null)));
+                    unreadableModel.ResolvePackageCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+                    Check(unreadableModel.PackageManagers.SequenceEqual(["apt"]) && unreadableModel.SelectedPackageManagerText.Resolve() == "apt",
+                        "A refused package query still names the manager the host declared in " + language);
+                    Check(unreadableModel.HasPackageStateProblem && unreadableModel.PackageStateText.Resolve().Length > 0
+                        && !unreadableModel.PackageStateText.Resolve().StartsWith("component_center.", StringComparison.Ordinal)
+                        && unreadableModel.PackageStateText.Resolve() != RelaxKonOS.Client.Localization.LocalizedText.Get("component_center.package.unresolved"),
+                        "The host's own refusal is named instead of reading as an unchecked form in " + language);
+                    Check(!unreadableModel.HasPackageFreeze && !unreadableModel.CanInstallPackage,
+                        "No install action is offered from a state the host could not report in " + language);
+                    var unreadableView = new ComponentCenterWorkspace(unreadableModel);
+                    var unreadableViewWindow = new Window { Width = 1060, Height = 800, Content = unreadableView };
+                    unreadableViewWindow.Show(); Dispatcher.UIThread.RunJobs(); unreadableViewWindow.UpdateLayout();
+                    using (var bitmap = new RenderTargetBitmap(new PixelSize(1060, 800)))
+                    {
+                        bitmap.Render(unreadableViewWindow);
+                        bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light-") + "PackageUnreadable.png"));
+                    }
+                    unreadableViewWindow.Close(); Dispatcher.UIThread.RunJobs();
+                }
                 // The narrow checks below open the navigation and then leave it by choosing the
                 // catalog page, so the run parks on another page first: selecting the page it is
                 // already on is not a selection and would leave the navigation open.
@@ -588,8 +618,23 @@ internal sealed class LayoutLifecycleClient : IComponentLifecycleClient
             Ready ? [] : [RelaxKonOS.Protocol.ManagedRuntimes.ComponentProblemCodes.ExecutionUnavailable], []);
 }
 
-internal sealed class WindowsArchiveLifecycleClient : IComponentLifecycleClient
+/// <summary>
+/// Fixture for the shape a real host produced: the adapter is registered and its declared modes are
+/// known, but the state query itself was refused, so the answer is modes plus a problem code and no
+/// state at all. This is what must never be presented as "nothing was checked yet".
+/// </summary>
+internal sealed class UnreadablePackageLifecycleClient : IComponentLifecycleClient
 {
+    public Task<ComponentStateView> StateAsync(string componentId, CancellationToken ct) =>
+        Task.FromResult(new ComponentStateView(componentId, null,
+            [new ComponentModeSupport(ComponentSourceMode.SystemPackage, "linux", true, null, "apt")],
+            [ComponentProblemCodes.PackageIndexUnavailable]));
+
+    public Task<ComponentPlanResult> PlanAsync(ComponentPlanRequest request, CancellationToken ct) =>
+        throw new InvalidOperationException("A refused state must not be planned from");
+}
+
+internal sealed class WindowsArchiveLifecycleClient : IComponentLifecycleClient{
     public bool Empty { get; set; }
     public bool Fail { get; set; }
     public ComponentPlanRequest? LastRequest { get; private set; }

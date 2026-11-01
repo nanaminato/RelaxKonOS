@@ -28,6 +28,8 @@
 
 **身份与状态。** 公共契约新增 `ComponentInstalledPackage`，`ComponentStateView`/`ComponentPackageResolution` 带 `InstalledPackage`、`ExternalPackageChange`、`RecordedPackageVersion`。Helper 的 `VerifyInstalledPackageAsync` 只在程序存在且以下全部成立时报告身份：`dpkg-query` 状态为 `install ok installed`、架构与版本可解析、程序文件唯一属于固定包、`dpkg --verify` 仅有配置文件变化、原生服务归属该包、`dpkg --audit` 为空、程序 SHA-256 可读，并再次核对 dpkg 状态未变化。查询失败返回未知并使变更不可用，不降级为未安装。受管登记与外部身份比较由 `PackageIdentityPolicy.Assess` 决定“受管/外部变化/待核对”，版本变化不单独撤销授权。
 
+**发行版的程序入口可以是替代链接。** 固定映射里的程序路径是发行版启动服务时用的那一个，它不必是普通文件：Ubuntu 26.04 的 `squid` 包把 `/usr/sbin/squid` 做成 update-alternatives 链接（`/etc/alternatives/squid → /usr/sbin/squid-gnutls`），链接本身不由包登记，`dpkg-query -S /usr/sbin/squid` 也无匹配。因此 Helper 只把该路径当作**定位器**：先解析到最终目标，再要求目标存在、其自身路径不含链接、`dpkg-query -S` 唯一归属固定包、`dpkg --verify` 只有配置变化、`dpkg --audit` 为空，并在目标文件上计算 SHA-256；安装、更新后的复核与配置检查同样在解析后的路径上执行，保证执行的就是被核验的字节。无法这样解析时返回“无法核验”，与程序缺失同一语义——既不是未安装，也不得升级为整份组件状态读取失败。
+
 **外部更新与卸载。** `ComponentFrozenTarget` 保存当前安装身份。更新计划还冻结候选、依赖、仓库与摘要；卸载计划只冻结身份，`Package` 为空。Helper 在执行前重新测量 `InstalledPackage` 并要求与冻结值完全相等，服务归属、包审计、候选与真实更新关系均再次核对。外部更新成功后写入 `ResultIdentity` 作为本操作的终态证明；它不等于原安装回执。受管包经产品更新才写新的安装回执并推进登记身份。卸载只调用 `dpkg --remove`，保留配置与数据。
 
 **纳入管理与幂等。** 新增 `ComponentPackageRegistration`：`OperationId` 保存首次显式授权且不因外部变化或再次确认而改写，`Identity` 仅保存最近一次授权/确认的核验身份。外部包的首次登记使用当前台账 operationId；受管包已有安装回执时沿用原回执 operationId，确认外部版本变化只推进身份。登记在组件锁内重读安装身份、拒绝待处理包事务与 Tailscale 未决操作，成功后原子写 `registration.json` 和绑定当前 operationId 的恢复证明。重复提交同一 operationId 返回同身份，身份变化则冲突。

@@ -1,5 +1,17 @@
 # 组件中心实施进度
 
+## Squid 系统包状态可读（2026-11-01）
+
+Ubuntu 26.04 实机上组件中心的 Squid 读不到版本也无法安装：`GET /components/squid/state` 返回 `state` 为空的视图，面板据此显示「包管理器：尚未检查，或本机无法提供安装方式」、hero 与目录都回落「未知」，安装/更新/卸载全部禁用。
+
+根因在 Helper 的程序身份核验，不在客户端、平台、权限或部署版本：`HostPackageDefinitions` 声明的 `/usr/sbin/squid` 在该发行版是 update-alternatives 链接（`→ /etc/alternatives/squid → /usr/sbin/squid-gnutls`），链接不由 `squid` 包登记（`dpkg-query -S /usr/sbin/squid` 无匹配）。`VerifyInstalledPackageAsync` 的 `RequirePackagePath` 因此抛 `UnauthorizedAccessException`（“paths cannot contain links”），被 `ComponentPackageQuery` 的台账读取兜底捕获为 `Conflict`，服务端再按 `component.package_index_unavailable` 作答——`HostPackageComponentAdapter.ResolveAsync` 只把 `platform_unsupported` 与 `package_index_unavailable` 变成无状态视图，于是整块面板失效。Server 日志里每个刷新周期恒有 1 次 `Operation=ComponentPackageQuery ... Success=False ProblemCode=Conflict`，而同一适配器下的 Samba（未安装）与 Docker（外部安装）状态正常，正是该组件特有的路径问题。
+
+修复：Helper 新增 `VerifiedPackageExecutable`，只把固定映射里的路径当定位器，解析到最终目标后要求在目标上成立「存在、路径无链接、`dpkg-query -S` 唯一归属固定包、`dpkg --verify` 仅配置变化、`dpkg --audit` 为空」，并在目标文件上算 SHA-256；安装后复核、更新后复核与配置检查（`squid -k parse`）同时改用解析后的路径，保证执行的就是被核验的字节。无法解析时返回“无法核验”，与程序缺失同义，不再升级为整份状态读取失败。
+
+客户端同时补两处可见性：`PackageManagers` 改为只看宿主声明的 `Modes`（不再要求状态非空且无问题），宿主拒绝查询时仍能列出 `apt`；新增 `PackageStateText`，状态为空且带问题码时在「系统包管理」面板直接显示宿主报告的问题（例如「暂时无法执行：读不到包索引」），不再让宿主拒绝看起来像“还没点过检查版本”。WindowPreviews 新增 `UnreadablePackageLifecycleClient` 检查与 `PackageUnreadable` 预览。
+
+验证：`RelaxKonOS.PrivilegedHelper` 构建 0 错误；WindowPreviews `--component-center-only` 中英日 × 明暗通过（含上述新断言）。缺陷需重新部署 Linux Server+Helper 才会在实机消失；本机未执行真实 APT 安装/更新/卸载，Squid 的实机生命周期仍按 MR-05/CC-01 保持未验收。
+
 ## 系统包外部生命周期与显式登记（PO-01～PO-05，2026-10-30）
 
 组件中心的 Linux APT/dpkg 入口按[系统包授权设计](RelaxKonOS.PackageOwnership.Design.md)接入外部包身份核验、外部更新/卸载、受管外部版本变化提示和显式“纳入管理”。Helper 只在 dpkg 状态、程序文件归属、`dpkg --verify`（仅允许配置文件变化）、服务归属和 `dpkg --audit` 全部成立时返回 `ComponentInstalledPackage`；查询失败保持未知，不降级为未安装。外部更新同时冻结候选/依赖与当前安装身份并在执行前复查；外部卸载只冻结当前身份，不依赖仓库候选或旧下载地址。受管包被外部 apt 更新后保留首次授权并提示版本变化，读取状态不把新版本当成原安装回执。
