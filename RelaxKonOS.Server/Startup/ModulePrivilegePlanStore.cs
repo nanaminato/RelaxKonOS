@@ -78,7 +78,7 @@ internal sealed class ModulePrivilegePlanStore
             Document document;
             try { document = ModulePackageJson.Read<Document>(stored, 8 * 1024 * 1024); }
             catch (ModulePackageException) { throw Error("recovery_required"); }
-            if (document.SchemaVersion != 7 || document.Plans is null || document.Plans.Length > 1000 || document.Plans.Any(p => p is null)
+            if (document.SchemaVersion != 8 || document.Plans is null || document.Plans.Length > 1000 || document.Plans.Any(p => p is null)
                 || document.Plans.Select(p => p.Id).Distinct().Count() != document.Plans.Length)
                 throw Error("recovery_required");
             foreach (var plan in document.Plans) ValidateStored(plan);
@@ -110,7 +110,7 @@ internal sealed class ModulePrivilegePlanStore
             using var document = JsonDocument.Parse(stored);
             if (document.RootElement.ValueKind != JsonValueKind.Object
                 || !document.RootElement.TryGetProperty("schemaVersion", out var version)
-                || version.ValueKind != JsonValueKind.Number || version.GetInt32() != 7)
+                || version.ValueKind != JsonValueKind.Number || version.GetInt32() != 8)
                 throw Error("recovery_required");
         }
         catch (JsonException) { throw Error("recovery_required"); }
@@ -655,7 +655,7 @@ internal sealed class ModulePrivilegePlanStore
     private static ModuleApplicationPlanIdentity? ApplicationView(ModulePrivilegeApplication? application) =>
         application is null ? null : new(application.Instance, application.Expected.Protocol,
             ActionName(application.Action), application.Expected.Account, application.Expected.AccountHost,
-            application.Expected.ServerVersion, application.Expected.SecretRevision);
+            application.Expected.ServerVersion, application.Expected.SecretRevision, application.Expected.PolicyRevision);
     private static string FileName(string uri) => uri[(uri.LastIndexOf('/') + 1)..];
     private Plan Owned(Guid id, string session)
     {
@@ -678,12 +678,12 @@ internal sealed class ModulePrivilegePlanStore
     }
     private void Save()
     {
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(new Document(7, _plans.ToArray()), ModulePackageJson.Options);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(new Document(8, _plans.ToArray()), ModulePackageJson.Options);
         if (bytes.Length > 8 * 1024 * 1024) throw Error("capacity");
         var directory = Path.GetDirectoryName(_path)!;
         Directory.CreateDirectory(directory);
         if (OperatingSystem.IsLinux()) File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        if (!File.Exists(_marker)) WriteDurable(_marker, Encoding.UTF8.GetBytes("v7\n"));
+        if (!File.Exists(_marker)) WriteDurable(_marker, Encoding.UTF8.GetBytes("v8\n"));
         var temporary = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try { WriteDurable(temporary, bytes); File.Move(temporary, _path, true); }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }

@@ -67,7 +67,7 @@ internal static class ModuleApplicationTransactionChecks
                 throw new Exception("Expected module application rejection: " + message);
             }
             ModuleApplicationState state = new("mysql", "mysql-admin", "relaxkonos_app", "localhost", true,
-                Revision, "8.0.39-0ubuntu0.24.04.2");
+                Revision, "8.0.39-0ubuntu0.24.04.2", new string('c', 64));
             ModuleApplicationQuery? lastQuery = null;
             Task<ModuleApplicationState?> Query(ModuleApplicationQuery query)
             {
@@ -90,6 +90,7 @@ internal static class ModuleApplicationTransactionChecks
                 && queried.Instance == "mysql" && queried.Protocol == "mysql-admin" && queried.Action == "query"
                 && queried.Account == "relaxkonos_app" && queried.AccountHost == "localhost"
                 && queried.ServerVersion == state.ServerVersion && queried.SecretRevision == Revision
+                && queried.PolicyRevision == state.PolicyRevision
                 && queryPlan.Package is null && queryPlan.File is null && queryPlan.Data is null
                 && queryPlan.Effects.Contains("app-query", StringComparer.Ordinal),
                 "Host freezes the instance, account, server version and opaque secret revision for a query plan");
@@ -117,13 +118,14 @@ internal static class ModuleApplicationTransactionChecks
             var document = JsonNode.Parse(persisted)!;
             var stored = document["plans"]!.AsArray()
                 .Single(node => node!["id"]!.GetValue<Guid>() == rotatePlan.PlanId)!.AsObject();
-            check(document["schemaVersion"]!.GetValue<int>() == 7
+            check(document["schemaVersion"]!.GetValue<int>() == 8
                 && stored["application"]!["instance"]!.GetValue<string>() == "mysql"
                 && stored["application"]!["expected"]!["secretRevision"]!.GetValue<string>() == Revision
+                && stored["application"]!["expected"]!["policyRevision"]!.GetValue<string>() == state.PolicyRevision
                 && stored["applicationHash"]!.GetValue<string>() is { Length: 64 }
                 && !persisted.Contains("password", StringComparison.OrdinalIgnoreCase)
                 && !persisted.Contains("/etc/relaxkonos/secrets", StringComparison.Ordinal),
-                "application plan store is schemaVersion 7 and persists no password or secret path");
+                "application plan store is schemaVersion 8 and persists no password or secret path");
 
             var rotateTransport = new RecordingTransport();
             var rotateApproved = await store.ApproveAsync(rotatePlan.PlanId, "session-1", Approval(rotatePlan), Verify,
@@ -214,6 +216,20 @@ internal static class ModuleApplicationTransactionChecks
                     .Single(item => item!["id"]!.GetValue<Guid>() == rotatePlan.PlanId)!.AsObject();
                 node["application"]!["expected"]!["account"] = "other";
             }, "Broker rejects a persisted account changed without the frozen hash");
+            RejectCorruption(changed =>
+            {
+                changed["schemaVersion"] = 7;
+            }, "Broker rejects the previous application policy revision storage contract");
+            RejectCorruption(changed =>
+            {
+                var node = changed["plans"]!.AsArray()
+                    .Single(item => item!["id"]!.GetValue<Guid>() == rotatePlan.PlanId)!;
+                node["application"]!["expected"]!["policyRevision"] = new string('d', 64);
+            }, "Broker rejects a persisted policy revision changed without the frozen hash");
+            state = state with { PolicyRevision = "" };
+            await Reject(() => Prepare("app-policy-missing", "query"), "unsupported",
+                "Host rejects application observations without a frozen policy revision");
+            state = state with { PolicyRevision = new string('c', 64) };
             trusted = false;
             await Reject(() => Prepare("app-revoked", "query"), "denied",
                 "code trust revocation also blocks new application plans");
@@ -239,6 +255,21 @@ internal static class ModuleApplicationTransactionChecks
             && parsed.TryFind("mysql", ModuleApplicationAction.RotateCredential, out var rotateInstance)
             && rotateInstance is { AdminUser: "root", Account: "relaxkonos_app" },
             "root-owned application policy parses one mysql-admin instance and its two credential files");
+        var originalInstance = parsed!.Instances.Single();
+        var originalRevision = modulehelper::PrivilegedOperationExecutor.ApplicationPolicyRevision(originalInstance, Revision, Revision);
+        foreach (var changed in new[]
+        {
+            originalInstance with { Socket = "/run/other/mysql.sock" },
+            originalInstance with { AdminUser = "other_admin" },
+            originalInstance with { AdminSecret = "/etc/relaxkonos/secrets/other-admin.json" },
+            originalInstance with { AccountSecret = "/etc/relaxkonos/secrets/other-app.json" },
+            originalInstance with { Actions = ["query"] },
+        })
+            check(modulehelper::PrivilegedOperationExecutor.ApplicationPolicyRevision(changed, Revision, Revision) != originalRevision,
+                "application policy revision binds socket, administrator, secret paths and allowed actions");
+        check(modulehelper::PrivilegedOperationExecutor.ApplicationPolicyRevision(originalInstance, NextRevision, Revision) != originalRevision
+            && modulehelper::PrivilegedOperationExecutor.ApplicationPolicyRevision(originalInstance, Revision, NextRevision) != originalRevision,
+            "application policy revision binds both administrative and account secret revisions");
         var secret = Encoding.UTF8.GetBytes(
             """{"schemaVersion":1,"revision":"11111111111111111111111111111111","user":"root","password":"fixture-password"}""");
         check(modulehelper::ModuleApplicationSecret.TryParse(secret, "root", out var parsedSecret, out var secretProblem)

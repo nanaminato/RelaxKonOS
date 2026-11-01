@@ -3,6 +3,7 @@ extern alias modulehelper;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using RelaxKonOS.Protocol.Observability;
 using RelaxKonOS.Protocol.Privileged;
 
@@ -17,6 +18,9 @@ internal static class ModuleApplicationLinuxAcceptance
     private const string SecretRoot = "/etc/relaxkonos/secrets";
     private const string AdminSecretPath = SecretRoot + "/mysql-admin.json";
     private const string AccountSecretPath = SecretRoot + "/mysql-app.json";
+    private const string AlternateSocket = "/run/mysqld/relaxkonos-dc04-review.sock";
+    private const string AlternateAdminSecret = SecretRoot + "/dc04-review-admin.json";
+    private const string AlternateAccountSecret = SecretRoot + "/dc04-review-app.json";
     private const string Socket = "/run/mysqld/mysqld.sock";
     private const string Instance = "mysql";
     private const string AdminUser = "relaxkonos_admin";
@@ -33,6 +37,10 @@ internal static class ModuleApplicationLinuxAcceptance
         foreach (var binary in new[] { "/usr/bin/apt-get", "/usr/sbin/service", "/usr/bin/mysql" })
             if (!File.Exists(binary) && !args.Contains("--install", StringComparer.Ordinal))
                 throw new InvalidOperationException("Application acceptance requires " + binary + "; pass --install.");
+        foreach (var path in new[] { PolicyPath, AdminSecretPath, AccountSecretPath, AlternateSocket,
+            AlternateAdminSecret, AlternateAccountSecret })
+            if (File.Exists(path) || new FileInfo(path).LinkTarget is not null)
+                throw new InvalidOperationException("Application acceptance resource already exists: " + path);
         try
         {
             if (args.Contains("--install", StringComparer.Ordinal))
@@ -69,6 +77,39 @@ internal static class ModuleApplicationLinuxAcceptance
                 && state.SecretRevision == accountRevision && state.ServerVersion.Length > 0,
                 "Helper observes the exact instance, account, server version and secret revision without a password");
 
+            File.CreateSymbolicLink(AlternateSocket, Socket);
+            WriteSecret(AlternateAdminSecret, adminRevision, AdminUser, AdminPassword);
+            WriteSecret(AlternateAccountSecret, accountRevision, Account, OldPassword);
+            check((await RunSqlAsync(AlternateSocket, Account, OldPassword, "SELECT 1;")).ExitCode == 0,
+                "alternate socket resolves the same database version, account and secret revisions");
+            var originalPolicy = await File.ReadAllTextAsync(PolicyPath);
+            foreach (var (field, value) in new[]
+            {
+                ("socket", AlternateSocket),
+                ("adminUser", "other_admin"),
+                ("adminSecret", AlternateAdminSecret),
+                ("accountSecret", AlternateAccountSecret),
+            })
+            {
+                var changed = JsonNode.Parse(originalPolicy)!;
+                changed["instances"]![0]![field] = value;
+                await File.WriteAllTextAsync(PolicyPath, changed.ToJsonString());
+                var rejected = await ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.ModuleApplicationApply,
+                    OperationId: Guid.NewGuid(), Correlation: CorrelationContext.Create(),
+                    ModuleApplicationApply: new(ModuleApplicationAction.RotateCredential, Instance, state!)));
+                check(!rejected.Success && rejected.ProblemCode == PrivilegedProblemCode.PlanChanged
+                    && (await RunSqlAsync(Socket, Account, OldPassword, "SELECT 1;")).ExitCode == 0,
+                    "Helper rejects changed " + field + " before touching either database");
+            }
+            await File.WriteAllTextAsync(PolicyPath, originalPolicy);
+            WriteSecret(AdminSecretPath, Revision(), AdminUser, AdminPassword);
+            var adminDrift = await ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.ModuleApplicationApply,
+                OperationId: Guid.NewGuid(), Correlation: CorrelationContext.Create(),
+                ModuleApplicationApply: new(ModuleApplicationAction.RotateCredential, Instance, state!)));
+            check(!adminDrift.Success && adminDrift.ProblemCode == PrivilegedProblemCode.PlanChanged,
+                "Helper rejects an administrative secret revision change even with the same password");
+            WriteSecret(AdminSecretPath, adminRevision, AdminUser, AdminPassword);
+
             var rotationId = Guid.NewGuid();
             var rotation = await ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.ModuleApplicationApply,
                 OperationId: rotationId, Correlation: CorrelationContext.Create(rotationId),
@@ -99,6 +140,42 @@ internal static class ModuleApplicationLinuxAcceptance
             check(!stale.Success && stale.ProblemCode == PrivilegedProblemCode.PlanChanged,
                 "a stale rotation plan is refused as a changed plan before touching the database");
 
+            // Execute the real ALTER USER, then discard its successful response. This is the same
+            // unknown-outcome boundary as a client timeout after the database committed.
+            var lostResponseId = Guid.NewGuid();
+            var lostResponse = await modulehelper::PrivilegedOperationExecutor.ApplyModuleApplicationTransactionAsync(
+                new(ModuleApplicationAction.RotateCredential, Instance, newest!), lostResponseId,
+                async (socket, user, password, sql) =>
+                {
+                    var changed = await RunSqlAsync(socket, user, password, sql);
+                    if (changed.ExitCode != 0) throw new InvalidOperationException("Fault injection did not commit ALTER USER.");
+                    return (false, "");
+                });
+            check(!lostResponse.Success && lostResponse.ProblemCode == PrivilegedProblemCode.RecoveryRequired
+                && (await RunSqlAsync(Socket, Account, rotated.Password, "SELECT 1;")).ExitCode != 0
+                && modulehelper::ModuleApplicationSecret.TryLoad(AccountSecretPath, Account, out var unchanged, out _)
+                && unchanged!.Revision == rotated.Revision,
+                "committed ALTER USER with a lost response requires recovery and never reports ordinary failure");
+            var unknownReplay = await ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.ModuleApplicationApply,
+                OperationId: lostResponseId, Correlation: CorrelationContext.Create(lostResponseId),
+                ModuleApplicationApply: new(ModuleApplicationAction.RotateCredential, Instance, newest!)));
+            check(!unknownReplay.Success && unknownReplay.ProblemCode == PrivilegedProblemCode.RecoveryRequired,
+                "an unknown credential change cannot be replayed");
+
+            var reset = await RunSqlAsync(Socket, AdminUser, AdminPassword,
+                $"ALTER USER '{Account}'@'localhost' IDENTIFIED BY '{rotated.Password}';");
+            if (reset.ExitCode != 0) throw new InvalidOperationException("Could not reset the fault fixture.");
+            var timeoutResult = await modulehelper::PrivilegedOperationExecutor.ApplyModuleApplicationTransactionAsync(
+                new(ModuleApplicationAction.RotateCredential, Instance, newest!), Guid.NewGuid(),
+                async (socket, user, password, sql) =>
+                {
+                    var changed = await RunSqlAsync(socket, user, password, sql);
+                    if (changed.ExitCode != 0) throw new InvalidOperationException("Timeout injection did not commit ALTER USER.");
+                    throw new OperationCanceledException("Simulated timeout after commit");
+                });
+            check(!timeoutResult.Success && timeoutResult.ProblemCode == PrivilegedProblemCode.RecoveryRequired,
+                "timeout after a committed credential change remains recovery-required");
+
             await WritePolicyAsync(revoke: true);
             var revoked = await ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.ModuleApplicationQuery,
                 OperationId: Guid.NewGuid(), Correlation: CorrelationContext.Create(),
@@ -115,6 +192,9 @@ internal static class ModuleApplicationLinuxAcceptance
         }
         finally
         {
+            File.Delete(AlternateSocket);
+            File.Delete(AlternateAdminSecret);
+            File.Delete(AlternateAccountSecret);
             File.Delete(PolicyPath);
             File.Delete(AdminSecretPath);
             File.Delete(AccountSecretPath);

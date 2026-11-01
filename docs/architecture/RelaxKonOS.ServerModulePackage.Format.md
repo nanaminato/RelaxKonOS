@@ -168,7 +168,7 @@ remove-installed 只移除 `installed.json` 记录，默认保留版本文件；
   - `app.manage`：`protocols`、`instances`、`actions`；MySQL `mysql-admin` 的 `query`/`rotate-credential` 已执行，`configure`/`recover-credential` 及其他协议仍只可声明。实例与凭据由 Host 的 root 应用策略拥有，模块只提交目的限定的 `secret.reference`。
   - 除 `service.manage`、apt `package.manage`、上述 Linux `file.manage`/`data.manage` 子集与 MySQL `app.manage` 的 `query`/`rotate-credential` 外，其余类别和动作只作为冻结的声明契约接受，执行时明确返回 `module.privilege_unsupported`，不退化为 shell 或逐应用专用枚举。
 - `ui` 必含 `name`、`summary`、`description`、可空 `homepage`、`license`。homepage 非空时只允许 HTTPS。它们不参与来源授信判断。
-- 安装事实 `installed.json` 保持 schemaVersion=2；冻结安装计划 `package-plans.json` 升级为 schemaVersion=3，Broker 计划存储为 schemaVersion=7（含包计划的冻结来源与制品身份、文件/数据冻结身份、应用实例/秘密 revision），后台许可存储为 schemaVersion=2。这些都是不同契约。每版本 install.json 必须保留 runtime；已安装清单按原始 manifest SHA-256 和全部文件摘要复查。旧安装事实与旧计划不会静默转换。
+- 安装事实 `installed.json` 保持 schemaVersion=2；冻结安装计划 `package-plans.json` 升级为 schemaVersion=3，Broker 计划存储为 schemaVersion=8（含包计划的冻结来源与制品身份、文件/数据冻结身份、应用实例/秘密 revision/策略摘要 policyRevision），后台许可存储为 schemaVersion=2。这些都是不同契约。每版本 install.json 必须保留 runtime；已安装清单按原始 manifest SHA-256 和全部文件摘要复查。旧安装事实与旧计划不会静默转换。
 - 在线 ModuleHost 安装必须使用冻结计划；直接 install 路由拒绝它。apply 是对预览中精确版本、摘要、运行模式和结构化能力声明的代码信任确认，写入独立的 module-trust.json。离线安装仅记录文件事实，不自动信任或执行代码。回退/更新不能借用其他摘要的代码信任。
 - `POST /api/v1.0/server/module-trust/{moduleId}` 使用 `{artifactSha256,manifestSha256,trusted}` 修改精确安装的代码信任；要求 ServerModulesManage 且 managed 管理模式。撤销立即阻断代理和 Broker，监督周期内关闭原进程。
 

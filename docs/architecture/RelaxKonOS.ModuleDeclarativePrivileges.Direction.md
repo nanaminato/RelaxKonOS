@@ -132,13 +132,13 @@ Windows MSI/其他安装器的可支持范围须单独定义和实测；安装�
 - **秘密引用**：`ModuleSecretReference(purpose, target, permission)` 形状已冻结；计划与界面只出现引用，绝不出现秘密值。交付适配器（DC-04）实现前，携带非空引用的请求返回 `module.privilege_unsupported`。
 - **平台模型**：`platforms` 取 `linux`/`windows`/`macos`，必须包含清单 `rid` 对应的平台；运行时不匹配的声明不会进入计划。
 - **执行矩阵**：`service.manage` 的 `start`/`stop`/`restart` 映射 Helper `NativeServiceAction`；`package.manage` 的 `install`/`update`/`repair`/`remove` 映射 Helper `ModulePackageApply`，但只在 Helper 能按 root 拥有的来源策略解析出精确制品时成立；DC-03 起 `file.manage` 的 `write`/`delete` 映射 `ModuleFileApply`、`data.manage` 的 `preserve`/`backup`/`delete` 映射 `ModuleDataApply`，同样只在 Helper 按 root 拥有的资源策略批准声明根时成立；DC-04 起 `app.manage` 的 `query`/`rotate-credential` 映射 `ModuleApplicationApply`，只在 Helper 的 root 应用策略、两个 root-only 凭据文件和 mysql-admin 适配器都成立时执行。`set-mode`/`set-owner`/`restore`/`configure`/`recover-credential` 及其余类别明确 unsupported，不退化为 shell，也不要求逐应用新增枚举。
-- **存储**：安装清单、`package-plans.json` 为 schemaVersion=3，`privilege-plans.json` 为 schemaVersion=7（DC-02 时为 5，DC-03 时为 6），`privilege-consents.json` 为 schemaVersion=2；旧格式拒绝读取，不做静默迁移。
+- **存储**：安装清单、`package-plans.json` 为 schemaVersion=3，`privilege-plans.json` 为 schemaVersion=8（DC-02 时为 5，DC-03 时为 6、DC-04 初版为 7），`privilege-consents.json` 为 schemaVersion=2；旧格式拒绝读取，不做静默迁移。
 
 验证：`dotnet build RelaxKonOS.sln` 通过；ServerModules 定向回归覆盖类别/动作越界、未交付类别拒绝、秘密引用拒绝、声明平台不符、计划漂移与升级后旧存储拒绝。DC-01 的类别目录不因 DC-02 接线而扩大到未交付动作：`file.manage` 只执行 write/delete，`data.manage` 只执行 preserve/backup/delete，`set-mode`/`set-owner`/`restore` 仍只可声明、不可执行。DC-03 的 Helper 根策略与计划冻结、DC-04 的应用协议与秘密存储另见 §10。
 
 ## 10. 待实施边界
 
-上表其余阶段仍未实现：DC-02 的 apt 适配器已接线，但真实 Ubuntu 安装验收与 Windows 适配器范围仍未交付；DC-03 的 Linux 配置/数据适配器已交付，Windows 与 restore/set-mode/set-owner 仍未交付；DC-04 的 MySQL 有凭据改密与 root-only 秘密存储已交付，但丢失凭据恢复、其他数据库协议和模块侧秘密读取仍未交付；DC-05 的受控常设许可与后台执行已交付，但 Windows 和更多类别仍需逐项评估；DC-06 已完成评审并保持明确拒绝，只有满足[重新评审门槛](RelaxKonOS.HighTrustModuleExtensions.Review.md#7-重新评审门槛)后才考虑执行实现。在此之前，任何未列出的命令、脚本或逐应用旁路都不属于本方向允许的实现方式。
+各阶段剩余边界：DC-02 的 apt 适配器已接线并已有 Ubuntu 26.04 MySQL/Redis 安装与移除验收；共享依赖、外部安装接管、脚本差异与 Windows 适配器仍未交付；DC-03 的 Linux 配置/数据适配器已交付，Windows 与 restore/set-mode/set-owner 仍未交付；DC-04 的 MySQL 有凭据改密与 root-only 秘密存储已交付，但丢失凭据恢复、其他数据库协议和模块侧秘密读取仍未交付；DC-05 的受控常设许可与后台执行已交付，但 Windows 和更多类别仍需逐项评估；DC-06 已完成评审并保持明确拒绝，只有满足[重新评审门槛](RelaxKonOS.HighTrustModuleExtensions.Review.md#7-重新评审门槛)后才考虑执行实现。在此之前，任何未列出的命令、脚本或逐应用旁路都不属于本方向允许的实现方式。
 
 ### DC-02 第一层：Helper 解析与执行（2026-11-01）
 
@@ -270,16 +270,17 @@ RelaxKonOS.ServerModules.Tests --module-package-linux-acceptance \
    }
    ```
 
-4. **计划与执行**：prepare 先调用 Helper `ModuleApplicationQuery` 冻结实例、协议、账户、账户主机、服务器版本、账户存在性和账户秘密的随机 revision；approve 只发送该冻结身份，不发送密码。`privilege-plans.json` 升为 **schemaVersion=7**，`planHash` 绑定独立的 `applicationHash`。执行时 Helper 用管理凭据通过固定的 `mysql` 客户端（SQL 经 stdin，密码仅走进程环境，不进入 argv 或日志）执行 `ALTER USER`，用新凭据实测认证，再原子替换账户秘密文件并推进 revision。失败会尝试用未变化的管理凭据回滚到旧密码；回滚失败或提交证据不完整返回 `RecoveryRequired`，Broker 把计划置为待恢复，绝不自动重放。同一 operationId 的已完成改密重放返回待恢复，而不是重新执行。
-5. **漂移与撤销**：账户秘密 revision、账户存在性、服务器版本、实例策略或秘密文件在批准后变化会使旧计划变为 `PlanChanged`，不触碰数据库。Helper 在每次执行前重新读取策略和两个秘密文件；模块更新、信任撤销或策略删除同样使旧计划不可执行。
+4. **计划与执行**：prepare 先调用 Helper `ModuleApplicationQuery` 冻结实例、协议、账户、账户主机、服务器版本、账户存在性、账户秘密的随机 revision 和非秘密 `policyRevision`；后者绑定完整实例策略（含 socket、管理员、两份秘密路径及允许动作）与两个秘密文件的随机 revision，摘要不包含密码；approve 只发送该冻结身份，不发送密码。`privilege-plans.json` 升为 **schemaVersion=8**，`planHash` 绑定独立的 `applicationHash`。执行时 Helper 用管理凭据通过固定的 `mysql` 客户端（SQL 经 stdin，密码仅走进程环境，不进入 argv 或日志）执行 `ALTER USER`，用新凭据实测认证，再原子替换账户秘密文件并推进 revision。改密命令派发后超时、非成功退出或响应丢失不能证明数据库未提交，直接返回 `RecoveryRequired`，不重放。命令成功但新凭据验证或提交前复核失败时，会尝试用原管理凭据回滚到旧密码；回滚失败或提交证据不完整返回 `RecoveryRequired`，Broker 把计划置为待恢复，绝不自动重放。同一 operationId 的已完成改密重放返回待恢复，而不是重新执行。
+5. **漂移与撤销**：账户秘密 revision、管理员秘密 revision、账户存在性、服务器版本或实例策略在批准后变化会使旧计划变为 `PlanChanged`，不触碰数据库。Helper 在每次执行前重新读取策略和两个秘密文件，并复核 `policyRevision`；凭据文件变更必须推进随机 revision。改密提交秘密文件前再复核策略与两个秘密修订；模块更新、信任撤销或策略删除同样使旧计划不可执行。
 6. **秘密交付边界**：当前 `secret.reference` 仍是“用途声明 + 授权引用”，不是把秘密值交给模块的通道。模块通过 `app.manage` 请求 Host 完成操作，自己永不接收数据库密码；模块侧读取秘密值、向其他实例交付、轮换撤销后的缓存失效仍属于后续工作。
 7. **丢失凭据恢复**：`recover-credential` 明确返回 `module.privilege_unsupported`。没有实现受限恢复启动、停机确认、配置恢复、健康核实和失败后人工恢复，因此不把“可以改密”表述为“可以恢复丢失的 root/管理凭据”。
 
 **验证**：
 
-- `--module-application-checks`：**29 项 PASS**，覆盖应用策略/秘密文件的 camelCase、未知字段、协议/路径/账户边界、query/rotate 计划冻结、秘密引用 purpose/target/permission 匹配、无秘密值落盘、schemaVersion=7、持久化 revision/账户篡改拒绝、Drift、Configure/Recover 拒绝和恢复状态映射。
+- `--module-application-checks`：**38 项 PASS**，覆盖应用策略/秘密文件的 camelCase、未知字段、协议/路径/账户边界、query/rotate 计划冻结、秘密引用 purpose/target/permission 匹配、无秘密值落盘、schemaVersion=8、旧存储拒绝、持久化策略摘要/revision/账户篡改拒绝、Drift、Configure/Recover 拒绝和恢复状态映射。
 - Ubuntu 24.04 root 容器 `--module-application-linux-acceptance --install`：**13 项 PASS**，覆盖真实 MySQL 管理/业务账户、Helper 查询、真实改密、旧密码拒绝、新密码认证、秘密文件原子更新、重放返回待恢复、revision 漂移拒绝和策略撤销。日志：`.artifacts/module-application-ubuntu-acceptance-20261101.log`。
-- 完整 ServerModules 回归 **751 项 PASS**，`dotnet build RelaxKonOS.sln` 0 错误。
+- 历史完整 ServerModules 回归 **751 项 PASS**，历史 `dotnet build RelaxKonOS.sln` 0 错误；本轮策略修订修复后完整 ServerModules 回归 **794 项 PASS**，解决方案构建 0 错误（103 个警告，含 NU1900）；实机验收结果见下项。
+- 2026-11-01 审查修复实测：当前源码发布产物在 Ubuntu 26.04 x86_64 通过 223 项定向回归（包 20、资源 44、应用 38、许可 106、高信任拒绝 15）与 21 项 MySQL 8.4.11 真实验收。覆盖同一数据库的另一 socket、秘密路径与管理员秘密 revision 漂移拒绝，以及真实 ALTER USER 已提交后的响应丢失/超时进入 RecoveryRequired、原 operationId 重放拒绝。验收直接调用 Helper 执行器，不代替生产 IPC 或完整 System/User Mode 验收。日志：`.artifacts/declarative-fix-application-ubuntu2604.log`。
 - 仍未交付：不是 MySQL 的数据库协议；Windows 应用适配器；模块侧秘密读取/交付；HSM/KMS 或加密秘密存储（当前是 root-only 0600 文件）；丢失凭据恢复。应用 query 的常设许可由 DC-05 交付，credential rotation 仍需逐次确认。容器验收不能代替 Ubuntu 26.04 或 Windows System/User Mode 实机结论。
 
 ### DC-05 已交付的受控常设许可与后台执行（2026-11-01）

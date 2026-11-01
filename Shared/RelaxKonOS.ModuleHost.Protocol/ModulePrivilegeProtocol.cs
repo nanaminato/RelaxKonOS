@@ -37,7 +37,7 @@ public sealed record ModuleDataPlanIdentity(string Root, string Action, string B
 /// <summary>Display projection of one frozen database-management action. It names the instance, account,
 /// server version and an opaque secret revision; no password or credential path appears here.</summary>
 public sealed record ModuleApplicationPlanIdentity(string Instance, string Protocol, string Action, string Account,
-    string AccountHost, string ServerVersion, string SecretRevision);
+    string AccountHost, string ServerVersion, string SecretRevision, string PolicyRevision);
 
 public sealed record ModulePrivilegePlan(Guid PlanId, string ModuleId, string Version, string PublisherId,
     string ArtifactSha256, string Kind, string Action, string Target, string Reason, string[] Effects, string[] Warnings,

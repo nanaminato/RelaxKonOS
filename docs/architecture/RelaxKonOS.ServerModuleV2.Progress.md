@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | MD-01 唯一 v2 契约 | 已实现并回归 | manifest / installed / package-plans 使用 schemaVersion 当前值，拒绝旧格式；打包器、CLI、SDK、Server 与桌面同步 |
 | DC-01 声明式能力契约 | 已实现（契约冻结） | 清单 schemaVersion=3 能力类别 + 类型化资源范围；`ModuleCapabilityCatalog` 统一类别/动作/可执行矩阵；Broker 按声明范围匹配；秘密引用只保留引用；`service.manage` 与 apt `package.manage` 可执行（后者需 Helper 解析），其余明确拒绝 |
-| DC-02 通用包事务 | 进行中（apt 已实机验收；共享依赖/Windows 未交付） | 契约、apt 通用解析、root 拥有的包来源策略、`ModulePackageQuery`/`ModulePackageApply`（重解比对、持久回执、安装后核实）、Broker prepare 冻结 `ModulePackageResolution`、计划存储 schemaVersion=5（DC-03 起 6、DC-04 起 7）、`planHash` 绑定冻结身份、approve 只发送来源引用与冻结身份、Helper `PlanChanged`→`module.privilege_plan_changed` 均已实现；Ubuntu 26.04 实机验证 mysql-server 与 redis-server 的安装/重放拒绝/摘要漂移拒绝/来源撤销拒绝/移除。Windows 适配器、共享依赖与外部安装接管未交付 |
+| DC-02 通用包事务 | 进行中（apt 已实机验收；共享依赖/Windows 未交付） | 契约、apt 通用解析、root 拥有的包来源策略、`ModulePackageQuery`/`ModulePackageApply`（重解比对、持久回执、安装后核实）、Broker prepare 冻结 `ModulePackageResolution`、计划存储 schemaVersion=5（DC-03 起 6、DC-04 初版 7、审查修复后 8）、`planHash` 绑定冻结身份、approve 只发送来源引用与冻结身份、Helper `PlanChanged`→`module.privilege_plan_changed` 均已实现；Ubuntu 26.04 实机验证 mysql-server 与 redis-server 的安装/重放拒绝/摘要漂移拒绝/来源撤销拒绝/移除。Windows 适配器、共享依赖与外部安装接管未交付 |
 | MD-05 Linux 身份与权限 | 已实现；独立运行时实机验证 | 每模块稳定专用 UID/GID，无附加组、no_new_privs；root 拥有只读版本快照，模块拥有私有数据；root 监督器控制超时/断管清理 |
 | MD-05 Windows 身份与 ACL | 已实现；原生隔离及 System 整包验收通过 | LocalSystem Helper、独立账户/S4U、只读快照/私有数据 ACL、认证管道、跨模块拒绝和 Job 后代清理有实测；正式更新保留同一模块 SID |
 | MD-06 安装与代码信任 | 已实现并回归 | 冻结计划展示 runtime/privileges；精确信任绑定版本/发布者/归档与清单摘要；更新不继承，撤销立即阻断代理/Broker |
@@ -342,3 +342,12 @@ Helper 只承认 root 拥有、非链接、group/other 不可写的 `/etc/relaxk
 拒绝边界已锁定：`process.execute`、`high-trust.extension`、`shell.execute`、`command.execute` 返回稳定错误 `module.privilege_high_trust_extension_unsupported`；能力目录不包含这些类别；清单 schemaVersion=3 拒绝未知 `highTrustExtensions` 字段；Helper 协议无 `ExecuteCommand`/`ProcessExecute`/`Shell` 操作，请求 DTO 无 executable/argv/command-line 字段；`ModuleHighTrustExtensions:Enabled=true`、非布尔值或 allowlist 设置使 Server 启动失败，缺省或显式 `Enabled=false` 保持拒绝。普通能力缺少适配器时不会自动升级到高信任执行。
 
 验证：`--module-high-trust-checks` **15 项 PASS**（配置守卫、稳定拒绝码、类别缺失、协议形状、清单未知字段）；完整 ServerModules 回归 **785 项 PASS**；`dotnet build RelaxKonOS.sln` 0 错误。未执行真实高信任程序，也未宣称隔离或失败终止已交付；只有满足评审文档中的重新评审门槛后才考虑实现。
+
+
+## DC-04 审查修复（2026-11-01）
+
+本轮修复应用策略漂移与改密未知结果：`ModuleApplicationState` 和计划视图新增必需的 `policyRevision`，以非秘密摘要绑定完整实例策略与管理员/业务秘密随机 revision；执行前及秘密提交前复核。摘要不包含密码，路径只在 Helper 内参与摘要。`privilege-plans.json` 当前为 schemaVersion=8，拒绝版本 7，不提供兼容读取或迁移。
+
+改密命令超时、非成功退出、响应未知及变更阶段提交异常均进入 RecoveryRequired；不以普通 Failed 表示数据库未变更，不自动重放。新增策略/socket/秘密修订漂移、存储版本/摘要篡改和真实 ALTER USER 已提交后丢失响应的故障验收。本轮 `dotnet build RelaxKonOS.sln --no-restore -m:1 -p:UseSharedCompilation=false` 通过（0 错误，103 个警告，含 NuGet 漏洞服务不可达的 NU1900）；Linux x64 自包含发布通过。Ubuntu 26.04 上完整 ServerModules 回归 **794 项 PASS**，定向回归 **223 项 PASS**（应用 38、包 20、资源 44、许可 106、高信任拒绝 15），MySQL 8.4.11 实际协议验收 **21 项 PASS**。真实验收包括同一数据库的 socket 别名与秘密路径漂移、管理员秘密修订变化、正常改密、原密码失效、新密码认证，以及真实 ALTER USER 提交后丢失响应和超时均进入待恢复、原操作重放拒绝。
+
+证据：`.artifacts/declarative-fix-solution-build.log`、`.artifacts/declarative-fix-full-regression.log`、`.artifacts/declarative-fix-summary.log`、`.artifacts/declarative-fix-application-ubuntu2604.log`、`.artifacts/declarative-fix-cleanup.log`。完整回归初次因缺少 dotnet、随后因 ZIP 解压未保留 ModuleHost 执行权限中断；补齐运行时和权限后重跑通过。测试账户、秘密、策略及 socket 别名均已清理，原四个 Server/Helper 服务仍 active。为测试安装的 MySQL 与 ASP.NET Core 10 运行时保留，独立发布产物位于 `/home/nanami/declarative-fix-20261101/`。直接调用执行器的真实验收不代替生产 IPC、Windows 或完整 System/User Mode 验收。

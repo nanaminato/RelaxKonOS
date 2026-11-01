@@ -34,7 +34,13 @@ public static partial class PrivilegedOperationExecutor
     }
 
     private static async Task<PrivilegedOperationResult> ApplyModuleApplicationTransactionAsync(
-        ModuleApplicationTransaction? transaction, Guid operationId)
+        ModuleApplicationTransaction? transaction, Guid operationId) =>
+        await ApplyModuleApplicationTransactionAsync(transaction, operationId, RunMysqlAsync);
+
+    // Internal execution seam permits lost-response fault injection without a configurable executable.
+    internal static async Task<PrivilegedOperationResult> ApplyModuleApplicationTransactionAsync(
+        ModuleApplicationTransaction? transaction, Guid operationId,
+        Func<string, string, string, string, Task<(bool Success, string Output)>> changeCredential)
     {
         if (!OperatingSystem.IsLinux())
             return Fail(69, PrivilegedProblemCode.UnsupportedOperation, "module application host is unsupported");
@@ -43,7 +49,7 @@ public static partial class PrivilegedOperationExecutor
             || transaction.Instance != transaction.Expected.Instance)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "module application transaction is invalid");
         if (!ModuleApplicationPolicy.TryLoad(ModuleApplicationPolicyPath, out var policy, out _) || policy is null)
-            return Fail(64, PrivilegedProblemCode.UnsupportedOperation, "module application policy unavailable");
+            return Fail(65, PrivilegedProblemCode.PlanChanged, "module application policy unavailable");
         if (!policy.TryFind(transaction.Instance, transaction.Action, out var instance) || instance is null)
             return Fail(65, PrivilegedProblemCode.PlanChanged, "module application instance is no longer approved");
         var receiptPath = Path.Combine(ModuleApplicationStateRoot, "operations", operationId.ToString("N") + ".json");
@@ -52,6 +58,8 @@ public static partial class PrivilegedOperationExecutor
         // than being mistaken for an ordinary stale plan.
         if (transaction.Action == ModuleApplicationAction.RotateCredential && File.Exists(receiptPath))
             return Fail(65, PrivilegedProblemCode.RecoveryRequired, "module application operation requires recovery");
+        if (ApplicationPolicyRevision(instance) != transaction.Expected.PolicyRevision)
+            return Fail(65, PrivilegedProblemCode.PlanChanged, "module application policy or secrets changed");
         var current = ReadApplicationState(instance);
         if (current is null || !SameApplicationState(current, transaction.Expected))
             return Fail(65, PrivilegedProblemCode.PlanChanged, "module application state changed");
@@ -61,7 +69,8 @@ public static partial class PrivilegedOperationExecutor
             || adminSecret is null)
             return Fail(65, PrivilegedProblemCode.PlanChanged, "module application administrative secret is unavailable");
         if (!ModuleApplicationSecret.TryLoad(instance.AccountSecret, instance.Account, out var accountSecret, out _)
-            || accountSecret is null || accountSecret.Revision != transaction.Expected.SecretRevision)
+            || accountSecret is null || accountSecret.Revision != transaction.Expected.SecretRevision
+            || !CurrentApplicationPolicyMatches(transaction))
             return Fail(65, PrivilegedProblemCode.PlanChanged, "module application account secret changed");
         var newRevision = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
         var newPassword = NewPassword();
@@ -70,10 +79,11 @@ public static partial class PrivilegedOperationExecutor
         try
         {
             WriteApplicationReceipt(receiptPath, receipt);
-            var alter = await RunMysqlAsync(instance.Socket, instance.AdminUser, adminSecret.Password,
+            var alter = await changeCredential(instance.Socket, instance.AdminUser, adminSecret.Password,
                 $"ALTER USER '{instance.Account}'@'{instance.AccountHost}' IDENTIFIED BY '{newPassword}';");
             if (!alter.Success)
-                return Fail(65, PrivilegedProblemCode.Conflict, "module application credential change failed");
+                // A non-successful client result cannot prove ALTER USER did not commit.
+                return Fail(65, PrivilegedProblemCode.RecoveryRequired, "module application credential change outcome is unknown");
             if (!(await RunMysqlAsync(instance.Socket, instance.Account, newPassword, "SELECT 1;")).Success)
             {
                 var rolledBack = await RollbackAsync(instance, adminSecret.Password, accountSecret.Password);
@@ -84,7 +94,10 @@ public static partial class PrivilegedOperationExecutor
             // Re-read the account secret immediately before committing. If another operation changed it
             // while the database password was being changed, the database must be rolled back.
             if (!ModuleApplicationSecret.TryLoad(instance.AccountSecret, instance.Account, out var latest, out _)
-                || latest is null || latest.Revision != accountSecret.Revision)
+                || latest is null || latest.Revision != accountSecret.Revision
+                || !ModuleApplicationPolicy.TryLoad(ModuleApplicationPolicyPath, out var latestPolicy, out _)
+                || latestPolicy is null || !latestPolicy.TryFind(transaction.Instance, transaction.Action, out var latestInstance)
+                || latestInstance is null || ApplicationPolicyRevision(latestInstance) != transaction.Expected.PolicyRevision)
             {
                 var rolledBack = await RollbackAsync(instance, adminSecret.Password, accountSecret.Password);
                 return rolledBack
@@ -97,9 +110,9 @@ public static partial class PrivilegedOperationExecutor
         }
         catch (UnauthorizedAccessException)
         {
-            return Fail(77, PrivilegedProblemCode.AccessDenied, "module application access denied");
+            return Fail(65, PrivilegedProblemCode.RecoveryRequired, "module application operation could not be committed");
         }
-        catch (Exception error) when (error is IOException or ArgumentException)
+        catch (Exception error) when (error is IOException or ArgumentException or System.ComponentModel.Win32Exception or OperationCanceledException)
         {
             return Fail(65, PrivilegedProblemCode.RecoveryRequired, "module application operation could not be committed");
         }
@@ -113,15 +126,16 @@ public static partial class PrivilegedOperationExecutor
         if (!ModuleApplicationSecret.TryLoad(instance.AccountSecret, instance.Account, out var accountSecret, out _)
             || accountSecret is null)
             return null;
+        var policyRevision = ApplicationPolicyRevision(instance, adminSecret.Revision, accountSecret.Revision);
         var query = RunMysqlAsync(instance.Socket, instance.AdminUser, adminSecret.Password,
             $"SELECT VERSION(), COUNT(*) FROM mysql.user WHERE user='{instance.Account}' AND host='{instance.AccountHost}';")
             .GetAwaiter().GetResult();
-        if (!query.Success) return null;
+        if (!query.Success || ApplicationPolicyRevision(instance) != policyRevision) return null;
         var fields = query.Output.Trim().Split('\t', StringSplitOptions.TrimEntries);
         if (fields.Length < 2 || !int.TryParse(fields[^1], out var count))
             return null;
         return new(instance.Instance, instance.Protocol, instance.Account, instance.AccountHost,
-            count == 1, accountSecret.Revision, fields[0]);
+            count == 1, accountSecret.Revision, fields[0], policyRevision);
     }
 
     private static async Task<bool> RollbackAsync(ModuleApplicationInstance instance, string adminPassword,
@@ -178,10 +192,30 @@ public static partial class PrivilegedOperationExecutor
     private static string NewPassword() =>
         Convert.ToBase64String(RandomNumberGenerator.GetBytes(24)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
+    private static bool CurrentApplicationPolicyMatches(ModuleApplicationTransaction transaction) =>
+        ModuleApplicationPolicy.TryLoad(ModuleApplicationPolicyPath, out var policy, out _) && policy is not null
+        && policy.TryFind(transaction.Instance, transaction.Action, out var instance) && instance is not null
+        && ApplicationPolicyRevision(instance) == transaction.Expected.PolicyRevision;
+
+    // Hash only non-secret policy metadata and random revisions, never credential values.
+    internal static string? ApplicationPolicyRevision(ModuleApplicationInstance instance)
+    {
+        if (!ModuleApplicationSecret.TryLoad(instance.AdminSecret, instance.AdminUser, out var admin, out _)
+            || admin is null
+            || !ModuleApplicationSecret.TryLoad(instance.AccountSecret, instance.Account, out var account, out _)
+            || account is null) return null;
+        return ApplicationPolicyRevision(instance, admin.Revision, account.Revision);
+    }
+
+    internal static string ApplicationPolicyRevision(ModuleApplicationInstance instance, string adminRevision,
+        string accountRevision) => Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(
+            new { instance, adminRevision, accountRevision })));
+
     private static bool SameApplicationState(ModuleApplicationState left, ModuleApplicationState right) =>
         left.Instance == right.Instance && left.Protocol == right.Protocol && left.Account == right.Account
         && left.AccountHost == right.AccountHost && left.AccountExists == right.AccountExists
-        && left.SecretRevision == right.SecretRevision && left.ServerVersion == right.ServerVersion;
+        && left.SecretRevision == right.SecretRevision && left.ServerVersion == right.ServerVersion
+        && left.PolicyRevision == right.PolicyRevision;
 
     private static void WriteApplicationSecret(string path, string revision, string user, string password)
     {

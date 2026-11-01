@@ -19,7 +19,8 @@ public sealed record ModuleApplicationState(
     string AccountHost,
     bool AccountExists,
     string SecretRevision,
-    string ServerVersion);
+    string ServerVersion,
+    string PolicyRevision);
 
 /// <summary>Read-only protocol question about one Host-approved application instance.</summary>
 public sealed record ModuleApplicationQuery(string Instance, ModuleApplicationAction Action);
@@ -53,5 +54,6 @@ public static class ModuleApplicationIdentity
     public static bool Usable(ModuleApplicationState? state) => state is not null
         && Identifier(state.Instance) && state.Protocol == "mysql-admin"
         && MySQLAccount(state.Account) && MySQLHost(state.AccountHost)
-        && state.AccountExists && Revision(state.SecretRevision) && ServerVersion(state.ServerVersion);
+        && state.AccountExists && Revision(state.SecretRevision) && ServerVersion(state.ServerVersion)
+        && state.PolicyRevision is { Length: 64 } && state.PolicyRevision.All(char.IsAsciiHexDigitLower);
 }

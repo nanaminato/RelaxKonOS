@@ -273,11 +273,11 @@ internal static class ModulePrivilegeChecks
                 && unknownAudit["confirmedAt"] is not null && unknownAudit["attemptCompletedAt"] is not null,
                 "Broker retains the verified administrator and attempt evidence when the Helper response is unknown");
             var packaged = records.Single(p => p!["id"]!.GetValue<Guid>() == packagePlan.PlanId)!;
-            check(persistedDocument["schemaVersion"]!.GetValue<int>() == 7
+            check(persistedDocument["schemaVersion"]!.GetValue<int>() == 8
                 && packaged["package"]!["sourceRef"]!.GetValue<string>() == PackageSource
                 && packaged["package"]!["resolution"]!["sha256"]!.GetValue<string>() == PackageSha
                 && packaged["packageHash"]!.GetValue<string>() is { Length: 64 },
-                "package plan store is schemaVersion 7 and persists the frozen identity under its own hash");
+                "package plan store is schemaVersion 8 and persists the frozen identity under its own hash");
             void RejectCorruption(Action<JsonObject> mutate, string message)
             {
                 var document = JsonNode.Parse(original)!.AsObject();
