@@ -184,14 +184,17 @@ function Set-CurrentVersion([string] $Version) {
     New-Item -ItemType Junction -Path $link -Target $target | Out-Null
 }
 
-function Copy-ReleasePayload([string] $BundleRoot, $Manifest, [string] $Version) {
+function Copy-ReleasePayload([string] $BundleRoot, $Manifest, [string] $Version, [switch] $ReplacePublishedVersion) {
     $versionRoot = Get-VersionRoot $Version
     if (Test-Path -LiteralPath $versionRoot) {
         $link = Get-CurrentLink
         if (Test-Path -LiteralPath $link) {
             $target = (Get-Item -LiteralPath $link -Force).Target
             if ($target -and ([IO.Path]::GetFullPath($target)).TrimEnd('\') -eq $versionRoot.TrimEnd('\')) {
-                throw "Version $Version is already the published version on this host; use -Action repair to re-apply it."
+                if (-not $ReplacePublishedVersion) { throw "Version $Version is already the published version on this host; use -Action repair to re-apply it." }
+                # A failed install can leave this junction behind without an installed record.
+                # Detach it so the same version can be staged again instead of blocking retries.
+                [IO.Directory]::Delete($link, $false)
             }
         }
         $versionsRoot = [IO.Path]::GetFullPath((Get-VersionsRoot)).TrimEnd('\') + '\'
@@ -574,7 +577,7 @@ try {
         }
         if ($Action -eq 'install') {
             New-Item -ItemType Directory -Path (Get-VersionsRoot) -Force | Out-Null
-            Copy-ReleasePayload $BundlePath $manifest $targetVersion | Out-Null
+            Copy-ReleasePayload $BundlePath $manifest $targetVersion -ReplacePublishedVersion | Out-Null
             Set-CurrentVersion $targetVersion
             Invoke-ServicesInstaller $targetVersion $effectiveListenUrl
         } else {
