@@ -18,10 +18,14 @@ internal static partial class SquidOperations
     private const string PendingPath = DirectoryPath + "/relaxkonos.pending";
     private const string Binary = "/usr/sbin/squid";
     private const string Systemctl = "/usr/bin/systemctl";
+    private const string Journalctl = "/usr/bin/journalctl";
     // Squid drains connections for 30 seconds by default. Allow systemd its stop/start
     // budget instead of reporting a successful graceful restart as a 30-second timeout.
     private static readonly TimeSpan ServiceActionTimeout = TimeSpan.FromMinutes(3);
     private const UnixFileMode PublicRead = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead;
+    // Wire code, mirrored by SquidFailureClassifier in the protocol contract. Spelled out here so a
+    // Helper deploy cannot fail to load a type the installed Server does not ship yet.
+    private const string ListenerAddressUnavailable = "squid.listener.address_unavailable";
 
     public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request)
     {
@@ -69,7 +73,7 @@ internal static partial class SquidOperations
                 return Failure("squid.configuration.adoption_required");
             var command = action.ToString().ToLowerInvariant();
             var result = await RunAsync(Systemctl, [command, "squid.service"], ServiceActionTimeout);
-            return result.Success ? new(true) : result;
+            return result.Success ? new(true) : await WithFailureOutputAsync(result);
         }
         catch (UnauthorizedAccessException) { return Failure("squid.path.denied", PrivilegedProblemCode.ResourceNotAllowed); }
         catch (IOException) { return Failure("squid.io_or_busy"); }
@@ -160,6 +164,10 @@ internal static partial class SquidOperations
         if (!preview.Valid) return Failure("squid.configuration.invalid: " + string.Join(", ", preview.Errors), PrivilegedProblemCode.InvalidRequest);
         if (File.Exists(ConfigurationPath) && !await IsManagedAsync() && !request!.AdoptExistingConfiguration)
             return Failure("squid.configuration.adoption_required");
+        // A published file that cannot bind is worse than a refusal: the operator would only learn
+        // about it when the service fails to start, long after the change looked applied.
+        if (!IsLocalBindAddress(request!.Configuration.BindAddress))
+            return Failure(ListenerAddressUnavailable);
         // Keep the original untouched until Squid has parsed the complete candidate.
         var candidate = DirectoryPath + "/relaxkonos-" + Guid.NewGuid().ToString("N") + ".conf";
         try
@@ -266,6 +274,50 @@ internal static partial class SquidOperations
         return new(process.ExitCode == 0, process.ExitCode, Convert.ToBase64String(Encoding.UTF8.GetBytes(output)),
             Error: process.ExitCode == 0 ? null : "squid.process.failed",
             ProblemCode: process.ExitCode == 0 ? PrivilegedProblemCode.None : PrivilegedProblemCode.InternalError);
+    }
+
+    /// <summary>
+    /// systemctl only reports that the unit failed; Squid's own reason lives in the unit journal.
+    /// The Helper attaches it as evidence and lets the Server name the cause: a privileged binary
+    /// must not fail to load because a protocol type it merely classifies with has not been
+    /// deployed yet.
+    /// </summary>
+    private static async Task<PrivilegedOperationResult> WithFailureOutputAsync(PrivilegedOperationResult result)
+    {
+        var output = Decode(result.OutputBase64) ?? "";
+        if (File.Exists(Journalctl))
+        {
+            var journal = await RunAsync(Journalctl, ["-u", "squid.service", "-n", "40", "--no-pager", "-o", "cat"], TimeSpan.FromSeconds(20));
+            output += "\n" + (Decode(journal.OutputBase64) ?? "");
+        }
+        return result with { OutputBase64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(output)) };
+    }
+
+    private static string? Decode(string? base64)
+    {
+        if (string.IsNullOrEmpty(base64)) return null;
+        try { return Encoding.UTF8.GetString(Convert.FromBase64String(base64)); }
+        catch (FormatException) { return null; }
+    }
+
+    /// <summary>
+    /// Loopback, a wildcard bind, or an address some interface currently carries. A stale LAN
+    /// address (DHCP moved the host) is exactly the case that used to reach Squid as a bind error.
+    /// </summary>
+    private static bool IsLocalBindAddress(string? address)
+    {
+        if (!System.Net.IPAddress.TryParse(address, out var parsed)) return false;
+        if (System.Net.IPAddress.IsLoopback(parsed) || parsed.Equals(System.Net.IPAddress.Any)
+            || parsed.Equals(System.Net.IPAddress.IPv6Any)) return true;
+        try
+        {
+            return System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+                .Where(network => network.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up)
+                .SelectMany(network => network.GetIPProperties().UnicastAddresses)
+                .Any(unicast => unicast.Address.Equals(parsed));
+        }
+        catch (Exception ex) when (ex is System.Net.NetworkInformation.NetworkInformationException or PlatformNotSupportedException)
+        { return false; }
     }
 
     private static async Task<string> ReadBoundedAsync(StreamReader reader)

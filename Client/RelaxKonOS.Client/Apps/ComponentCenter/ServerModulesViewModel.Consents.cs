@@ -49,6 +49,13 @@ public sealed partial class ServerModulesViewModel
     {
         if (value?.ConsentId != ConsentPlan?.ConsentId) ConsentPlan = null;
         ConsentText = value is null ? "" : DescribeConsent(value);
+        OnPropertyChanged(nameof(CanRevokeConsent));
+        RevokeConsentCommand.NotifyCanExecuteChanged();
+    }
+    partial void OnConsentPlanChanged(ModulePrivilegeConsent? value)
+    {
+        OnPropertyChanged(nameof(CanApproveConsent));
+        ApproveConsentCommand.NotifyCanExecuteChanged();
     }
     private void ClearConsentReview() { ConsentPlan = null; ConsentText = ""; }
     private void InvalidateConsents() { ClearConsentReview(); Consents = []; SelectedConsent = null; ConsentTarget = ""; ConsentReason = ""; ConsentContentSha256 = ""; }
@@ -58,7 +65,7 @@ public sealed partial class ServerModulesViewModel
         + (consent.ContentSha256 is { Length: 64 } digest ? $"content sha256: {digest}\n" : "")
         + $"{consent.State} · {consent.ExpiresAt:g}\n{consent.ConsentId}";
 
-    [RelayCommand] private Task PrepareConsentAsync() => Run(async () =>
+    [RelayCommand(CanExecute = nameof(CanPrepareConsent))] private Task PrepareConsentAsync() => Run(async () =>
     {
         if (Selected is not { } module || ConsentHours is <= 0 or > 720 || string.IsNullOrWhiteSpace(ConsentTarget)
             || string.IsNullOrWhiteSpace(ConsentReason)) throw new InvalidOperationException("module.privilege_consent_invalid");
@@ -74,7 +81,7 @@ public sealed partial class ServerModulesViewModel
         Consents = Consents.Where(c => c.ConsentId != review.ConsentId).Append(review).ToArray();
         SelectedConsent = review;
     });
-    [RelayCommand] private Task ApproveConsentAsync() => Run(async () =>
+    [RelayCommand(CanExecute = nameof(CanApproveConsent))] private Task ApproveConsentAsync() => Run(async () =>
     {
         if (ConsentPlan is not { State: "AwaitingConfirmation" } plan || plan.ExpiresAt <= DateTimeOffset.UtcNow
             || plan.CreatedAt.AddMinutes(5) <= DateTimeOffset.UtcNow) throw new InvalidOperationException("module.privilege_plan_expired");
@@ -94,7 +101,7 @@ public sealed partial class ServerModulesViewModel
         SelectedConsent = null;
     });
     private static bool Digest(string value) => value is { Length: 64 } && value.All(char.IsAsciiHexDigitLower);
-    [RelayCommand] private Task RevokeConsentAsync() => Run(async () =>
+    [RelayCommand(CanExecute = nameof(CanRevokeConsent))] private Task RevokeConsentAsync() => Run(async () =>
     {
         if (SelectedConsent is not { } consent) return;
         SelectedConsent = await client.RevokeConsentAsync(consent.ConsentId);

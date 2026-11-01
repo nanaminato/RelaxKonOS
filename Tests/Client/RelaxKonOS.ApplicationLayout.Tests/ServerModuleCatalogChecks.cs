@@ -4,11 +4,13 @@ using System.Reflection;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Modules;
 using RelaxKonOS.Client.Apps.ComponentCenter;
 using RelaxKonOS.Client.Services.ServerCenter;
+using RelaxKonOS.Client.Services.VirtualSystemDrive;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Identity;
 using RelaxKonOS.ModuleHost.Protocol;
@@ -33,15 +35,44 @@ internal static class ServerModuleCatalogChecks
         Check(!ComponentCenterNavigation.TryParse(new Uri("relaxkonos://components/server-modules?hostId=a&moduleId=relaxkonos.git&action=install"), out _)
             && !ComponentCenterNavigation.TryParse(new Uri("relaxkonos://components/server-modules?hostId=a&hostId=b"), out _),
             "Module navigation rejects action payloads and duplicate identity fields.");
+        await ValidateCatalogCacheAsync();
         await ReadOncePerLoginAsync();
         await FailSoftAsync();
         await FollowLoginLifetimeAsync();
         LocalizeReasons(settings);
         await RenderSystemPageAsync(settings);
-        await ManagementClientAsync();
+        await ManagementClientAsync(settings);
         await ValidateManagementReceiptsAsync();
         await ValidateStandingConsentsAsync();
         Console.WriteLine("PASS: module inventory attributes missing server capabilities and stays diagnostic-only.");
+    }
+
+    /// <summary>
+    /// Startup must survive a VSD that is readable but not writable. The catalog file is a
+    /// disposable cache, so a denied create is recorded as a skipped cache rather than escaping
+    /// through ApplicationCatalogScanner into Bootstrapper.
+    /// </summary>
+    private static async Task ValidateCatalogCacheAsync()
+    {
+        var root = Path.Combine(AppContext.BaseDirectory, "cache-failure-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        // A file with the cache directory's name makes the write fail before any file is created.
+        File.WriteAllText(Path.Combine(root, "System"), "file blocks the cache directory");
+        try
+        {
+            var drive = new VirtualSystemDrive();
+            typeof(VirtualSystemDrive).GetField("<Root>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .SetValue(drive, root);
+            var diagnostics = new RecordingDiagnostics();
+            var scanner = new ApplicationCatalogScanner(drive, null!, null!, null!, diagnostics);
+            var writeCache = typeof(ApplicationCatalogScanner).GetMethod("WriteCacheAsync",
+                BindingFlags.Instance | BindingFlags.NonPublic)!;
+            var task = (Task)writeCache.Invoke(scanner, [new ApplicationCatalogScanResult([], []), CancellationToken.None])!;
+            await task;
+            Check(diagnostics.Messages.Any(message => message.Contains("vsd-catalog-cache-unavailable", StringComparison.Ordinal)),
+                "A denied catalog-cache write is skipped and recorded instead of failing client startup.");
+        }
+        finally { Directory.Delete(root, recursive: true); }
     }
 
     private static async Task ValidateStandingConsentsAsync()
@@ -108,14 +139,31 @@ internal static class ServerModuleCatalogChecks
         catch (InvalidOperationException) { Check(true, "A preview cannot silently replace the exact requested collection."); }
     }
 
-    private static async Task ManagementClientAsync()
+    private static async Task ManagementClientAsync(ShellSettings settings)
     {
         var (session, control) = NewSession(); control.SignIn("connection-a", "https://alpha.test");
         var actor = Guid.NewGuid();
         var admissions = new[] { new ServerModuleActionAdmission(ServerModuleAction.Enable, true, []), new ServerModuleActionAdmission(ServerModuleAction.Disable, true, []) };
-        var facts = new[] { "relaxkonos.git", "relaxkonos.proxy" }.Select(id =>
-            new ServerModuleDto(id, false, [], [], [], [], DesiredEnabled: false, ServiceId: "host-a", DesiredRevision: "revision",
-                ProcessGeneration: "process-a", AllowedActions: admissions)).ToArray();
+        // One dormant module and one disabled module: the page has to keep installation, effective
+        // enablement and residency as three separate facts, and the batch preview still spans both.
+        var now = DateTimeOffset.UtcNow;
+        var facts = new[]
+        {
+            new ServerModuleDto("relaxkonos.git", true, ["server.git"], [], [], [],
+                Residency: new("dormant", true, "IdleDelayed", 300, 0, now.AddMinutes(-5), null, null, null, now.AddMinutes(-6)),
+                DesiredEnabled: true, Packaging: "independent", InstalledVersion: "1.4.0", DesiredVersion: "1.4.0",
+                EffectiveVersion: "1.4.0", SourceId: "official", TrustState: "host", ServiceId: "host-a",
+                ProcessGeneration: "process-a", DesiredRevision: "revision", ConfigurationOwner: "managed",
+                ConfigurationWritable: true, AllowedActions: admissions, Name: "Git", Rid: "linux-x64",
+                HostApiRequirement: "10.0.0", ResourceReleaseLevel: "objects",
+                DesiredResidencyPolicy: new("IdleDelayed", 300), EffectiveResidencyPolicy: new("IdleDelayed", 300)),
+            new ServerModuleDto("relaxkonos.proxy", false, ["server.proxy"], [], [], [],
+                DesiredEnabled: false, Packaging: "bundled", InstalledVersion: "1.4.0", DesiredVersion: "1.4.0",
+                EffectiveVersion: null, SourceId: "server-release", TrustState: "host", ServiceId: "host-a",
+                ProcessGeneration: "process-a", DesiredRevision: "revision", ConfigurationOwner: "deployment",
+                ConfigurationWritable: false, AllowedActions: admissions, Name: "Proxy", Rid: "linux-x64",
+                HostApiRequirement: "10.0.0", ResourceReleaseLevel: "none"),
+        };
         ServerModulePlanRequest? captured = null;
         ServerModulePlanDto? frozen = null;
         var applies = 0;
@@ -134,29 +182,182 @@ internal static class ServerModuleCatalogChecks
                 return new(HttpStatusCode.OK) { Content = JsonContent.Create(new ServerModuleOperationDto(Guid.NewGuid(), frozen!.PlanId,
                     "host-a", ServerModuleOperationState.AwaitingRestart, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "next", captured!.EnabledModuleIds), options: RelaxKonOSJsonOptions.Default) };
             }
+            if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath == ServerModuleManagementRoutes.InstalledPackages)
+                return new(HttpStatusCode.OK) { Content = JsonContent.Create(new ServerInstalledModulePageDto([]), options: RelaxKonOSJsonOptions.Default) };
+            if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath == ServerModuleManagementRoutes.PackageOperations)
+                return new(HttpStatusCode.OK) { Content = JsonContent.Create(new ServerPackageOperationPageDto([]), options: RelaxKonOSJsonOptions.Default) };
+            if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath.EndsWith("/versions", StringComparison.Ordinal))
+                return new(HttpStatusCode.OK) { Content = JsonContent.Create(new ServerInstalledModulePageDto([]), options: RelaxKonOSJsonOptions.Default) };
             return new(HttpStatusCode.OK) { Content = JsonContent.Create(new ServerModuleOperationPage([], null), options: RelaxKonOSJsonOptions.Default) };
         });
         var client = new ServerModuleManagementClient(new HttpClient(handler), session);
         var root = Path.Combine(AppContext.BaseDirectory, "module-reference-test-" + Guid.NewGuid().ToString("N"));
+        var languageBefore = settings.Language;
         try
         {
             var references = new ServerModuleReferenceStore(root);
             var model = new ServerModulesViewModel(client, references, "connection-a", actor);
             await model.RefreshCommand.ExecuteAsync(null);
             Check(model.Modules.Count == 2, "Management reads fresh facts for the current login.");
+            Check(model.HasSelectedModule && model.ActionRows.Count == 4 && model.IsModulesTab,
+                "The module page selects the first module and exposes one row per previewable action.");
+            Check(model.ActionRows.All(row => !string.IsNullOrWhiteSpace(row.Label.Resolve())
+                    && !row.Hint.Resolve().Contains("server_modules.", StringComparison.Ordinal))
+                && model.Filters.Count == 4,
+                "Action rows and catalog filters resolve their labels and reasons.");
+
             var view = new ServerModulesView { DataContext = model };
             var moduleScroll = new ScrollViewer { Content = view, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
             var window = new Window { Content = moduleScroll, Width = 680, Height = 1100 };
             window.Show(); Dispatcher.UIThread.RunJobs(); view.UpdateLayout();
-            Check(view.GetVisualDescendants().OfType<CheckBox>().Count() >= 3, "Module management renders selectable members and pending-state filter.");
+            var detail = view.FindControl<StackPanel>("ModuleDetail")!;
+            Check(Grid.GetColumn(detail) == 0 && Grid.GetRow(detail) == 1,
+                "A narrow module page stacks the catalog above the detail instead of squeezing both panes.");
+            Check(view.GetVisualDescendants().OfType<CheckBox>().Count(box => box.DataContext is ServerModuleSelection) == model.VisibleModules.Count(),
+                "Every visible catalog row has its own batch selector.");
+            Check(view.FindControl<ListBox>("ModuleList") is not null && view.FindControl<ListBox>("SectionTabs") is not null,
+                "The module page renders a catalog list and a page-level tab strip.");
+            var tabs = view.FindControl<ListBox>("SectionTabs")!;
+            tabs.SelectedIndex = 1; Dispatcher.UIThread.RunJobs(); view.UpdateLayout();
+            Check(model.IsPackagesTab, "The tab strip switches to installation and update surfaces.");
+            tabs.SelectedIndex = 2; Dispatcher.UIThread.RunJobs(); view.UpdateLayout();
+            Check(model.IsSecurityTab, "The tab strip switches to security and diagnostics surfaces.");
+            model.ConsentKind = model.ConsentKinds.Single(choice => choice.Kind == ModuleCapabilityCatalog.FileManage);
+            Dispatcher.UIThread.RunJobs(); view.UpdateLayout();
+            var digestInput = view.FindControl<TextBox>("ConsentContentDigest")!;
+            Check(digestInput.IsEffectivelyVisible,
+                "The redesigned security tab exposes the required content digest for standing file permission.");
+            model.ConsentContentSha256 = new string('a', 64);
+            model.ConsentKind = model.ConsentKinds.Single(choice => choice.Kind == ModuleCapabilityCatalog.ApplicationManage);
+            Dispatcher.UIThread.RunJobs(); view.UpdateLayout();
+            Check(!digestInput.IsEffectivelyVisible && model.ConsentContentSha256.Length == 0,
+                "Switching to database permission hides and clears the file-specific content digest.");
+            tabs.SelectedIndex = 0; Dispatcher.UIThread.RunJobs(); view.UpdateLayout();
+            window.Width = 1000; Dispatcher.UIThread.RunJobs(); view.UpdateLayout();
+            Check(Grid.GetColumn(detail) == 1 && Grid.GetRow(detail) == 0,
+                "A wide module page keeps the catalog and detail side by side.");
+            window.Width = 680; Dispatcher.UIThread.RunJobs(); view.UpdateLayout();
+            Check(Grid.GetColumn(detail) == 0 && Grid.GetRow(detail) == 1,
+                "Narrowing the module page restores the stacked layout without losing state.");
+            window.Close(); Dispatcher.UIThread.RunJobs();
+
+            model.SelectedFilter = model.Filters.Single(filter => filter.Filter == ServerModuleFilter.PendingRestart);
+            Check(!model.VisibleModules.Any() && model.IsFilteredEmpty,
+                "The restart-pending filter hides catalog rows that do not need a restart.");
+            model.SelectedFilter = model.Filters[0];
+            model.SelectedRow = model.VisibleModules.FirstOrDefault();
+            Check(model.HasSelectedModule && model.SelectedTitle.Resolve() == "Git"
+                    && model.SelectedResidencyStateText.Resolve().Length > 0,
+                "The selected module exposes identity and residency facts without raw server enum names.");
+
+            // Render each shipped language: the page must not leak resource keys or unresolved text.
+            // New views are created because static {loc:Loc} labels resolve when the XAML loads.
             var output = Path.Combine(AppContext.BaseDirectory, "layout-qa"); Directory.CreateDirectory(output);
-            using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(680, 1100)))
-            { bitmap.Render(window); bitmap.Save(Path.Combine(output, "server-module-management.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
-            moduleScroll.Offset = new Avalonia.Vector(0, 700); Dispatcher.UIThread.RunJobs(); view.UpdateLayout();
-            using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(680, 1100)))
-            { bitmap.Render(window); bitmap.Save(Path.Combine(output, "server-module-consents.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
-            window.Close();
+            foreach (var language in new[] { "en-US", "zh-CN", "ja-JP" })
+            {
+                settings.Language = language;
+                model.SelectedTab = model.Tabs[0];
+                var localized = new ServerModulesView { DataContext = model };
+                var localizedScroll = new ScrollViewer { Content = localized, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
+                var localizedWindow = new Window { Content = localizedScroll, Width = 680, Height = 1100 };
+                localizedWindow.Show(); Dispatcher.UIThread.RunJobs(); localized.UpdateLayout();
+                var labels = localized.GetVisualDescendants().OfType<TextBlock>().Select(block => block.Text).Where(text => text is not null).ToArray();
+                Check(labels.All(text => text?.Contains("server_modules.", StringComparison.Ordinal) != true
+                        && text?.Contains("[missing:", StringComparison.Ordinal) != true),
+                    "Every visible module label resolves in " + language);
+                Check(localized.GetVisualDescendants().OfType<CheckBox>().Any(box => box.DataContext is ServerModuleSelection),
+                    "Catalog batch selectors survive language rendering in " + language);
+                if (language == "zh-CN")
+                {
+                    using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(680, 1100)))
+                    { bitmap.Render(localizedWindow); bitmap.Save(Path.Combine(output, "server-module-management.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
+                    var wide = new ServerModulesView { DataContext = model };
+                    var wideWindow = new Window { Content = wide, Width = 1000, Height = 900 };
+                    wideWindow.Show(); Dispatcher.UIThread.RunJobs(); wide.UpdateLayout();
+                    using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(1000, 900)))
+                    { bitmap.Render(wideWindow); bitmap.Save(Path.Combine(output, "server-module-wide.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
+                    wideWindow.Close(); Dispatcher.UIThread.RunJobs();
+                    localizedScroll.Offset = new Avalonia.Vector(0, 700); Dispatcher.UIThread.RunJobs(); localized.UpdateLayout();
+                    using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(680, 1100)))
+                    { bitmap.Render(localizedWindow); bitmap.Save(Path.Combine(output, "server-module-actions.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
+                    localizedScroll.Offset = default; Dispatcher.UIThread.RunJobs(); localized.UpdateLayout();
+                    localized.FindControl<ListBox>("SectionTabs")!.SelectedIndex = 1;
+                    Dispatcher.UIThread.RunJobs(); localized.UpdateLayout();
+                    using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(680, 1100)))
+                    { bitmap.Render(localizedWindow); bitmap.Save(Path.Combine(output, "server-module-packages.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
+                    localized.FindControl<ListBox>("SectionTabs")!.SelectedIndex = 2;
+                    Dispatcher.UIThread.RunJobs(); localized.UpdateLayout();
+                    Check(localized.GetVisualDescendants().OfType<TextBlock>().Any(block => block.IsEffectivelyVisible
+                            && block.Text == LocalizedText.Get("server_modules.health.title")),
+                        "The security tab renders module health and its later permission surfaces.");
+                    using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(680, 1100)))
+                    { bitmap.Render(localizedWindow); bitmap.Save(Path.Combine(output, "server-module-security.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
+                    localizedScroll.Offset = new Avalonia.Vector(0, 760); Dispatcher.UIThread.RunJobs(); localized.UpdateLayout();
+                    using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(680, 1100)))
+                    { bitmap.Render(localizedWindow); bitmap.Save(Path.Combine(output, "server-module-consents.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
+                }
+                localizedWindow.Close(); Dispatcher.UIThread.RunJobs();
+            }
+            settings.Language = languageBefore;
+
+            // A server that refuses every action is not a form with eight dead buttons: the page
+            // states the read-only boundary once and leaves the action rows visible but silent.
+            var forbidden = facts.Select(fact => fact with
+            {
+                AllowedActions = Enum.GetValues<ServerModuleAction>().Select(action =>
+                    new ServerModuleActionAdmission(action, false, [new("module-forbidden")])).ToArray()
+            }).ToArray();
+            using var forbiddenHandler = new ManagementHandler(request => request.RequestUri!.AbsolutePath == ServerApiRoutes.Modules
+                ? Inventory(forbidden) : new(HttpStatusCode.ServiceUnavailable));
+            var forbiddenClient = new ServerModuleManagementClient(new HttpClient(forbiddenHandler), session);
+            var forbiddenModel = new ServerModulesViewModel(forbiddenClient, references, "connection-a", actor);
+            await forbiddenModel.RefreshCommand.ExecuteAsync(null);
+            Check(forbiddenModel.IsReadOnly && forbiddenModel.SelectedReadOnly && !forbiddenModel.CanManage
+                    && forbiddenModel.VisibleTabs.Count == 1,
+                "A server that refuses every management action produces one read-only boundary.");
+            Check(forbiddenModel.ActionRows.Count == 4 && forbiddenModel.ActionRows.All(row => !row.Allowed)
+                && forbiddenModel.ActionRows.All(row => !row.HasHint),
+                "Refused actions stay visible but the page states the boundary once instead of repeating it per row.");
+            settings.Language = "zh-CN";
+            var forbiddenView = new ServerModulesView { DataContext = forbiddenModel };
+            var forbiddenWindow = new Window { Content = new ScrollViewer { Content = forbiddenView }, Width = 1000, Height = 900 };
+            forbiddenWindow.Show(); Dispatcher.UIThread.RunJobs(); forbiddenView.UpdateLayout();
+            var readonlyText = LocalizedText.Get("server_modules.read_only");
+            Check(forbiddenView.GetVisualDescendants().OfType<TextBlock>().Count(block => block.IsEffectivelyVisible
+                    && block.Text == readonlyText) == 1,
+                "A fully read-only module page renders one management-boundary sentence.");
+            var readonlyLabels = forbiddenView.GetVisualDescendants().OfType<TextBlock>()
+                .Where(block => block.IsEffectivelyVisible).Select(block => block.Text).ToHashSet();
+            Check(new[] { "enable", "disable", "wake", "sleep" }.All(action =>
+                    readonlyLabels.Contains(LocalizedText.Get("server_modules.action." + action))),
+                "The read-only page keeps every action name visible even though none can be submitted.");
+            using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(1000, 900)))
+            { bitmap.Render(forbiddenWindow); bitmap.Save(Path.Combine(output, "server-module-readonly.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
+            forbiddenWindow.Close(); Dispatcher.UIThread.RunJobs();
+            settings.Language = languageBefore;
+
             foreach (var row in model.VisibleModules) row.IsSelected = true;
+            Check(model.SelectedCount == 2 && model.HasSelection, "Checking catalog rows forms one exact batch target set.");
+            await model.EnableCommand.ExecuteAsync(null);
+            Check(model.HasPlan && model.PlanTargetText.Resolve().Contains("Git", StringComparison.Ordinal),
+                $"A batch preview renders the frozen plan with resolved module names. hasPlan={model.HasPlan} "
+                + $"target='{model.PlanTargetText.Resolve()}' status='{model.Status}' busy={model.Busy} "
+                + $"canEnable={model.CanEnable} selected={model.SelectedCount} tab={model.SelectedTab?.Tab}");
+            settings.Language = "zh-CN";
+            model.SelectedTab = model.Tabs[0];
+            var planView = new ServerModulesView { DataContext = model };
+            var planScroll = new ScrollViewer { Content = planView, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
+            var planWindow = new Window { Content = planScroll, Width = 1000, Height = 900 };
+            planWindow.Show(); Dispatcher.UIThread.RunJobs(); planView.UpdateLayout();
+            Check(planView.FindControl<Border>("PlanCard") is { IsVisible: true }
+                    && planView.GetVisualDescendants().OfType<TextBlock>().Any(block => block.IsEffectivelyVisible
+                        && block.Text == LocalizedText.Get("server_modules.plan.title")),
+                "A frozen plan renders as a decision card instead of raw plan text.");
+            planScroll.Offset = new Avalonia.Vector(0, 1050); Dispatcher.UIThread.RunJobs(); planView.UpdateLayout();
+            using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(1000, 900)))
+            { bitmap.Render(planWindow); bitmap.Save(Path.Combine(output, "server-module-plan.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
+            planWindow.Close(); Dispatcher.UIThread.RunJobs();
+            settings.Language = languageBefore;
             await model.EnableCommand.ExecuteAsync(null);
             Check(captured?.ModuleIds.Count == 2 && captured.EnabledModuleIds.Count == 2 && applies == 0,
                 "Multi-selection previews one exact collection without submitting it.");
@@ -171,9 +372,14 @@ internal static class ServerModuleCatalogChecks
             Check(captured?.ModuleIds.Count == facts.Length && captured.EnabledModuleIds.Count == facts.Length && applies == 1,
                 "Recovery previews the complete set through the existing confirmation flow without submitting it.");
             control.SignIn("connection-b", "https://beta.test");
-            Check(!client.IsCurrent && !model.CanApply, "A changed login revokes module submission eligibility.");
+            Check(!client.IsCurrent && !model.CanManage && !model.CanApply,
+                "A changed login revokes module management and submission eligibility.");
         }
-        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        finally
+        {
+            settings.Language = languageBefore;
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
     }
 
     private static void ExplainMissingCapability()
@@ -411,6 +617,12 @@ internal static class ServerModuleCatalogChecks
     private static void Check(bool value, string message)
     {
         if (!value) throw new InvalidOperationException(message);
+    }
+
+    private sealed class RecordingDiagnostics : RelaxKonOS.AppSDK.IAppActivationDiagnostics
+    {
+        public List<string> Messages { get; } = [];
+        public void Record(string message) => Messages.Add(message);
     }
 
     private sealed class ManagementHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler

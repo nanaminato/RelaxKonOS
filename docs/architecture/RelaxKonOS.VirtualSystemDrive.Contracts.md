@@ -35,7 +35,7 @@ SystemDrive/
 | 运行时可启动应用 | `ApplicationManager` | Catalog/安装器仅通过其 API | `catalog.json` 不是 launch registry。 |
 | 窗口状态 | `WindowManager` | WindowManager | Shell 不直接写入窗口私有状态。 |
 | 默认 Shell/图标布局 | Workspace 偏好；VSD 保存本机物化 | Settings/用户 | Device 值只作离线回退；不得覆盖已同步的 Workspace 选择。 |
-| catalog 与关联缓存 | 经过验证的 descriptor/目录布局 | Host | 可删除并重建。 |
+| catalog 与关联缓存 | 经过验证的 descriptor/目录布局 | Host | 可删除并重建；写入失败只记录诊断，不阻断启动。 |
 | 快捷方式与脚本 | 用户 VSD 目录 | 用户经 Host API | 只能引用允许的相对目标/受控 URI。 |
 
 ## DTO/schema 草案

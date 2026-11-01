@@ -11,10 +11,20 @@ public sealed class ShortcutStore
 
     public async Task<IReadOnlyList<RelaxKonOSShortcut>> ListAsync(CancellationToken cancellationToken = default)
     {
-        _drive.EnsureCreated();
-        var desktop = _drive.ResolveRootChild($"Users/{_drive.LocalProfileId}/Desktop");
         var links = new List<RelaxKonOSShortcut>();
-        foreach (var file in Directory.EnumerateFiles(desktop, "*.relaxkonos-link.json", SearchOption.TopDirectoryOnly))
+        string[] files;
+        try
+        {
+            _drive.EnsureCreated();
+            var desktop = _drive.ResolveRootChild($"Users/{_drive.LocalProfileId}/Desktop");
+            files = Directory.EnumerateFiles(desktop, "*.relaxkonos-link.json", SearchOption.TopDirectoryOnly).ToArray();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or VirtualSystemDriveException)
+        {
+            // Shortcut links are local decoration; an unreadable VSD must not take the desktop down.
+            return links;
+        }
+        foreach (var file in files)
         {
             try
             {

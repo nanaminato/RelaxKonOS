@@ -48,6 +48,10 @@ public partial class SquidViewModel : ObservableObject, IDisposable
     public ObservableCollection<SquidAccount> Accounts { get; } = [];
     public Func<string, Task<bool>>? ConfirmDeleteAccountAsync { get; set; }
     public bool RequiresPassword => AccessModeIndex != (int)SquidAccessMode.IpWhitelist;
+    /// <summary>The three modes differ in more than a name; the dialog explains the selected one.</summary>
+    public bool IsIpWhitelistMode => AccessModeIndex == (int)SquidAccessMode.IpWhitelist;
+    public bool IsPasswordMode => AccessModeIndex == (int)SquidAccessMode.Password;
+    public bool IsCombinedMode => AccessModeIndex == (int)SquidAccessMode.PasswordAndIpWhitelist;
     public bool HasAccountDraft => AccountPassword.Length > 0;
     public bool HasAccounts => Accounts.Count > 0;
     public bool IsLastEnabledAccountProtected => SelectedAccount is { Enabled: true } && Accounts.Count(x => x.Enabled) == 1
@@ -55,6 +59,8 @@ public partial class SquidViewModel : ObservableObject, IDisposable
     public bool HasEnabledAccounts => Accounts.Any(x => x.Enabled);
     public bool ShowNoEnabledAccounts => RequiresPassword && !HasEnabledAccounts;
     public bool CanManageAccounts => CanMutate;
+    /// <summary>The account editor edits a selection; without one it would open an empty form.</summary>
+    public bool CanEditSelectedAccount => CanManageAccounts && SelectedAccount is not null;
     public bool CanCreateAccount => CanManageAccounts && SquidAccountValidation.ValidUsername(NewAccountName) && SquidAccountValidation.ValidPassword(AccountPassword);
     public bool CanResetAccountPassword => CanManageAccounts && SelectedAccount is not null && SquidAccountValidation.ValidPassword(AccountPassword);
     public bool CanRemoveSelectedAccount => CanManageAccounts && SelectedAccount is not null
@@ -124,15 +130,96 @@ public partial class SquidViewModel : ObservableObject, IDisposable
 
     public bool IsRunning => Snapshot?.Status is { Running: true };
     public bool IsEnabled => Snapshot?.Status is { Enabled: true };
+    /// <summary>The host reported a usable Squid; every lifecycle fact is meaningful only then.</summary>
+    public bool HasServiceState => Snapshot?.Status is { Supported: true, Installed: true };
     /// <summary>Only a file carrying the RelaxKonOS header may be started, reloaded or enabled.</summary>
     public bool IsConfigurationAdopted => Snapshot?.Status is { Managed: true };
     public bool ShowUnsupported => Snapshot?.Status is { Supported: false };
     public bool ShowRecoveryRequired => Snapshot?.Status is { RecoveryRequired: true };
     public bool ShowAdoptionRequired => Snapshot?.Status is { Supported: true, Installed: true, Managed: false };
+    /// <summary>A supported host without the package: the window can only point at Component Center.</summary>
+    public bool ShowInstallRequired => Snapshot?.Status is { Supported: true, Installed: false };
     /// <summary>The unsupported notice already explains a host that cannot run Squid.</summary>
     public bool ShowReadOnly => CanRead && !CanManage && Snapshot?.Status is { Supported: true };
     /// <summary>Replacing an unmanaged file requires the explicit ownership opt-in.</summary>
     public bool NeedsAdoption => Snapshot?.Status is { Installed: true, Managed: false } && !AdoptExistingConfiguration;
+
+    /// <summary>
+    /// One label answers "is the gateway up?" for the whole page. It follows the same facts the
+    /// service-action buttons use, so a green dot can never sit next to an unknown service.
+    /// </summary>
+    public LocalizedStatus StatePillText => ShowUnsupported ? L("state.unsupported")
+        : IsUnavailable ? L("state.unavailable")
+        : ShowRecoveryRequired ? L("state.recovery")
+        : !HasServiceState ? L("state.not_installed")
+        : IsRunning ? L("running") : L("stopped");
+    public bool StatePillOk => HasServiceState && IsRunning && !ShowRecoveryRequired && !IsUnavailable;
+    public bool StatePillWarn => HasServiceState && !IsRunning && !ShowRecoveryRequired && !IsUnavailable;
+    public bool StatePillBad => ShowUnsupported || ShowRecoveryRequired || IsUnavailable;
+    public bool StatePillNeutral => !StatePillOk && !StatePillWarn && !StatePillBad;
+    /// <summary>Why the lifecycle buttons are not offered, stated once instead of left to inference.</summary>
+    public LocalizedStatus ServiceControlReasonText => ShowUnsupported ? L("control_reason.unsupported")
+        : IsUnavailable ? L("control_reason.unavailable")
+        : ShowInstallRequired ? L("control_reason.not_installed")
+        : HasPending ? L("control_reason.pending")
+        : !CanManage ? L("control_reason.read_only")
+        : ShowRecoveryRequired ? L("control_reason.recovery")
+        : HasServiceState && !IsConfigurationAdopted ? L("control_reason.adoption")
+        : HasServiceState && !IsRunning ? L("control_reason.stopped")
+        : LocalizedStatus.Literal("");
+    public bool HasServiceControlReason => !ServiceControlReasonText.IsEmpty;
+
+    // Read-back of the draft on the page that owns it: a closed editor must not be the only place
+    // the current configuration can be seen. None of these is an input.
+    public LocalizedStatus ListenerSummary => L("summary.endpoint", BindAddress.Trim(), Port);
+    public LocalizedStatus RemoteClientsSummary => L(AllowRemoteClients ? "summary.remote_allowed" : "summary.remote_local");
+    public LocalizedStatus NetworksSummary => L("summary.count", Lines(AllowedNetworks).Length);
+    public LocalizedStatus AllowedDomainsSummary => Lines(AllowedDomains).Length == 0
+        ? L("summary.all_allowed") : L("summary.count", Lines(AllowedDomains).Length);
+    public LocalizedStatus DeniedDomainsSummary => L("summary.count", Lines(DeniedDomains).Length);
+    public LocalizedStatus UpstreamSummary => string.IsNullOrWhiteSpace(UpstreamHost)
+        ? L("summary.direct") : L("summary.endpoint", UpstreamHost.Trim(), UpstreamPort);
+    public LocalizedStatus AccessModeSummary => L(AccessModeIndex switch
+    {
+        (int)SquidAccessMode.Password => "mode_password",
+        (int)SquidAccessMode.PasswordAndIpWhitelist => "mode_both",
+        _ => "mode_ip"
+    });
+    public LocalizedStatus AccountsSummary => Accounts.Count == 0
+        ? L("accounts_empty") : L("summary.accounts", Accounts.Count, Accounts.Count(account => account.Enabled));
+    public bool HasListenerProblems => ListenerProblems.Count > 0;
+    public bool HasSourceProblems => SourceProblems.Count > 0;
+    public bool HasDomainProblems => DomainProblems.Count > 0;
+    public bool HasUpstreamProblems => UpstreamProblems.Count > 0;
+    /// <summary>Which of the four draft cards a reader has to open before publishing.</summary>
+    public LocalizedStatus DraftProblemText => IsConfigurationValid ? L("draft.ok")
+        : L("draft.blocked", LocalizedStatus.Join(" · ", ListenerProblems.Concat(SourceProblems)
+            .Concat(DomainProblems).Concat(UpstreamProblems).Select(problem => problem.Message)));
+    public bool HasDraftProblem => !IsConfigurationValid;
+    /// <summary>The runtime card states whether the draft still matches what the server has.</summary>
+    public LocalizedStatus DraftStateText => HasUnsavedChanges ? L("draft.dirty") : L("draft.saved");
+    /// <summary>
+    /// One line states whether the primary action can run and, when it cannot, which gate is closed.
+    /// The buttons already know this; a reader should not have to try them to find out.
+    /// </summary>
+    public bool IsReadyToApply => CanApply;
+    public LocalizedStatus ApplyReadinessText => CanApply ? L("ready.apply")
+        : L("ready.blocked", LocalizedStatus.Join("；", ApplyBlockers()));
+    private IEnumerable<LocalizedStatus> ApplyBlockers()
+    {
+        if (ShowUnsupported) { yield return L("blocker.unsupported"); yield break; }
+        if (IsUnavailable) { yield return L("blocker.unavailable"); yield break; }
+        if (ShowInstallRequired) { yield return L("blocker.not_installed"); yield break; }
+        if (ShowRecoveryRequired) { yield return L("blocker.recovery"); yield break; }
+        if (!CanManage) { yield return L("blocker.read_only"); yield break; }
+        if (HasPending) yield return L("blocker.pending");
+        if (!IsConfigurationValid) yield return L("blocker.invalid");
+        if (!IsConfigurationAdopted && !AdoptExistingConfiguration) yield return L("blocker.adoption");
+        if (RequiresPassword && !HasEnabledAccounts) yield return L("blocker.accounts");
+    }
+    /// <summary>The component centre owns installation; this window only points at it.</summary>
+    public IRelayCommand? OpenComponentCenterCommand => Dependency?.Components.FirstOrDefault()?.ManageCommand;
+    public bool CanOpenComponentCenter => OpenComponentCenterCommand is not null;
 
     /// <summary>A host that cannot run Squid offers no draft to edit; the notice explains why instead.</summary>
     public bool CanEdit => !_disposed && !_lifetime.IsCancellationRequested && CanRead && CanManage && !IsBusy && !HasPending
@@ -159,8 +246,9 @@ public partial class SquidViewModel : ObservableObject, IDisposable
 
     private static readonly string[] DerivedState =
     [
-        nameof(HasAccounts), nameof(IsLastEnabledAccountProtected), nameof(RequiresPassword), nameof(HasEnabledAccounts), nameof(ShowNoEnabledAccounts), nameof(CanManageAccounts),
-        nameof(CanCreateAccount), nameof(CanResetAccountPassword), nameof(CanRemoveSelectedAccount), nameof(CanToggleAccount), nameof(ToggleAccountText),
+        nameof(HasAccounts), nameof(IsLastEnabledAccountProtected), nameof(RequiresPassword),
+        nameof(IsIpWhitelistMode), nameof(IsPasswordMode), nameof(IsCombinedMode), nameof(HasEnabledAccounts), nameof(ShowNoEnabledAccounts), nameof(CanManageAccounts),
+        nameof(CanCreateAccount), nameof(CanEditSelectedAccount), nameof(CanResetAccountPassword), nameof(CanRemoveSelectedAccount), nameof(CanToggleAccount), nameof(ToggleAccountText),
         nameof(ShowPackageUnsupported), nameof(CanEdit), nameof(CanMutate), nameof(CanControlService), nameof(CanRefresh), nameof(CanResume),
         nameof(CanLoadStored), nameof(CanPreview), nameof(CanValidate), nameof(CanApply), nameof(CanStart),
         nameof(CanStopService), nameof(CanRestartService), nameof(CanReloadService), nameof(CanEnableService),
@@ -168,7 +256,14 @@ public partial class SquidViewModel : ObservableObject, IDisposable
         nameof(HasPending), nameof(HasUnsavedChanges),
         nameof(IsRunning), nameof(IsEnabled), nameof(IsConfigurationAdopted), nameof(ShowUnsupported),
         nameof(ShowRecoveryRequired), nameof(ShowAdoptionRequired),
-        nameof(ShowReadOnly), nameof(NeedsAdoption)
+        nameof(ShowReadOnly), nameof(NeedsAdoption),
+        nameof(HasServiceState), nameof(ShowInstallRequired), nameof(StatePillText), nameof(StatePillOk),
+        nameof(StatePillWarn), nameof(StatePillBad), nameof(StatePillNeutral), nameof(ServiceControlReasonText),
+        nameof(HasServiceControlReason), nameof(ListenerSummary), nameof(RemoteClientsSummary), nameof(NetworksSummary),
+        nameof(AllowedDomainsSummary), nameof(DeniedDomainsSummary), nameof(UpstreamSummary), nameof(AccessModeSummary),
+        nameof(AccountsSummary), nameof(HasListenerProblems), nameof(HasSourceProblems), nameof(HasDomainProblems),
+        nameof(HasUpstreamProblems), nameof(DraftProblemText), nameof(HasDraftProblem), nameof(DraftStateText),
+        nameof(IsReadyToApply), nameof(ApplyReadinessText), nameof(OpenComponentCenterCommand), nameof(CanOpenComponentCenter)
     ];
 
     partial void OnIsBusyChanged(bool value) => NotifyActions();
@@ -287,6 +382,9 @@ public partial class SquidViewModel : ObservableObject, IDisposable
             }
         }
         IsConfigurationValid = preview.Valid;
+        // The card summaries, the draft verdict and the readiness line all read these collections,
+        // so a keystroke that changes any of them must refresh the derived surface too.
+        NotifyActions();
     }
 
     private static void Add(ObservableCollection<SquidProblem> problems, LocalizedStatus message) =>
@@ -502,7 +600,7 @@ public partial class SquidViewModel : ObservableObject, IDisposable
             {
                 var failed = operation.State is not ProxyOperationState.Succeeded;
                 OutcomeFailed = failed;
-                OutcomeText = failed ? L("outcome.failed", operation.ProblemCode ?? "") : L("outcome.succeeded");
+                OutcomeText = failed ? L("outcome.failed", ProblemCodeText(operation.ProblemCode)) : L("outcome.succeeded");
                 ClearPending();
                 AdoptExistingConfiguration = false;
                 // The outcome is already decided. A failed re-read must not overwrite it with a
@@ -550,6 +648,27 @@ public partial class SquidViewModel : ObservableObject, IDisposable
             ActivityText = HasPending ? L("activity.unconfirmed") : default;
         }
     }
+
+    /// <summary>
+    /// A host refusal is only useful when it says what to change. Known codes become one sentence
+    /// that names the address or port involved; an unknown code keeps its raw form so it can be
+    /// searched in the server log instead of being swallowed by a generic failure line.
+    /// </summary>
+    private LocalizedStatus ProblemCodeText(string? code) => code switch
+    {
+        SquidFailureAddressUnavailable => L("code.address_unavailable", BindAddress.Trim(), Port),
+        SquidFailurePortInUse => L("code.port_in_use", Port),
+        "squid.process.failed" => L("code.process_failed"),
+        "squid.configuration.parse_failed" => L("code.parse_failed"),
+        "squid.configuration.adoption_required" => L("code.adoption_required"),
+        "squid.recovery.required" => L("code.recovery_required"),
+        "squid.runtime.unavailable" => L("code.runtime_unavailable"),
+        null or "" => L("code.unknown"),
+        _ => LocalizedStatus.Literal(code)
+    };
+    // The two diagnoses the Helper can prove from the unit journal; shared with the Server contract.
+    private const string SquidFailureAddressUnavailable = RelaxKonOS.Protocol.GatewayProxy.SquidFailureClassifier.AddressUnavailable;
+    private const string SquidFailurePortInUse = RelaxKonOS.Protocol.GatewayProxy.SquidFailureClassifier.PortInUse;
 
     private static LocalizedStatus L(string key) => LocalizedText.Ref("squid." + key);
     private static LocalizedStatus L(string key, params object?[] arguments) => LocalizedText.Ref("squid." + key, arguments);

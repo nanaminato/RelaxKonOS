@@ -262,8 +262,11 @@ public sealed class NetworkDiagnosticsService : IDisposable
 
     private NetworkDiagnosticsState GetStateLocked() => IsAvailableLocked()
         ? new NetworkDiagnosticsState(true, _recording)
-        : new NetworkDiagnosticsState(false, false, !_developerMode.IsEnabled ? "Developer Mode is disabled."
-            : "Sign in to use Network Inspector.");
+        : !_developerMode.IsEnabled
+            ? new NetworkDiagnosticsState(false, false, "Developer Mode is disabled.",
+                NetworkDiagnosticsUnavailableReason.DeveloperModeDisabled)
+            : new NetworkDiagnosticsState(false, false, "Sign in to use Network Inspector.",
+                NetworkDiagnosticsUnavailableReason.SignedOut);
 
     private IAuthSession GetSession()
     {

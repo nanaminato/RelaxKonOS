@@ -31,6 +31,7 @@ internal static class SquidGatewayChecks
             Check(!RelaxKonOS.PrivilegedHelper.LinuxDistributionSupport.IsSquidPackageSupported(unsupported),
                 "Unknown, unsupported or ambiguous distributions must not advertise package control.");
         VerifyGatewayCapabilityContract();
+        VerifyFailureClassification();
         VerifyAccessControl();
         var defaults = new SquidConfiguration();
         var result = SquidConfigurationRenderer.Preview(defaults);
@@ -153,6 +154,30 @@ internal static class SquidGatewayChecks
         Directory.Delete(directory, recursive: true);
         await VerifyEndpointMetadataAsync();
         Console.WriteLine("Squid gateway configuration, injection, ACL ordering, wire and Helper boundary checks passed.");
+    }
+
+    /// <summary>
+    /// A failed start must stay generic unless the host printed a diagnosable reason: claiming
+    /// "address unavailable" for a daemon that died of an unreadable configuration would send the
+    /// operator to the wrong field.
+    /// </summary>
+    private static void VerifyFailureClassification()
+    {
+        const string addressLine = "ERROR: commBind Cannot bind socket FD 10 to 192.168.1.4:3128: (99) Cannot assign requested address";
+        Check(SquidFailureClassifier.Classify(addressLine) == SquidFailureClassifier.AddressUnavailable,
+            "A bind rejection must become the listener-address diagnosis.");
+        Check(SquidFailureClassifier.Classify("(98) Address already in use\nFATAL: Unable to open HTTP Socket") == SquidFailureClassifier.PortInUse,
+            "An occupied port must beat the generic socket line Squid prints for both cases.");
+        Check(SquidFailureClassifier.Classify("FATAL: Unable to open HTTP Socket") == SquidFailureClassifier.ProcessFailed,
+            "The shared socket line alone proves nothing and must keep the generic code.");
+        Check(SquidFailureClassifier.Classify("FATAL: Squid configuration error") == SquidFailureClassifier.ProcessFailed
+            && SquidFailureClassifier.Classify(null) == SquidFailureClassifier.ProcessFailed
+            && SquidFailureClassifier.Classify("  ") == SquidFailureClassifier.ProcessFailed,
+            "Unrelated or empty output must never be classified as a bind problem.");
+        Check(SquidFailureClassifier.AddressUnavailable == "squid.listener.address_unavailable"
+            && SquidFailureClassifier.PortInUse == "squid.listener.port_in_use"
+            && SquidFailureClassifier.ProcessFailed == "squid.process.failed",
+            "Classifications are stable wire codes; the Helper spells the address code out itself and must match.");
     }
 
     private static void VerifyAccessControl()

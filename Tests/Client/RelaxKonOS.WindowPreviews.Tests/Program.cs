@@ -77,6 +77,11 @@ if (args.Contains("--project-editor-only"))
     EditorDraftStateChecks.Run();
     return;
 }
+if (args.Contains("--network-inspector-only"))
+{
+    NetworkInspectorChecks.Run(settings, localization);
+    return;
+}
 if (args.Contains("--squid-only"))
 {
     SquidWorkspaceChecks.Run();

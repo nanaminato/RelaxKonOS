@@ -33,7 +33,7 @@ public partial class ComponentCenterWorkspace : UserControl
         if (compact == _compact) return;
         var toggleFocused = NavigationToggle.IsKeyboardFocusWithin;
         _compact = compact;
-        WorkspaceBody.ColumnDefinitions = new ColumnDefinitions(compact ? "*" : "260,*");
+        WorkspaceBody.ColumnDefinitions = new ColumnDefinitions(compact ? "*" : "288,*");
         Grid.SetColumn(DetailsScroll, compact ? 0 : 1);
         Grid.SetRow(DetailsScroll, compact ? 1 : 0);
         Grid.SetRowSpan(DetailsScroll, compact ? 1 : 2);

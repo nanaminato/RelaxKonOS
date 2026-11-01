@@ -1,5 +1,17 @@
 # 组件中心实施进度
 
+## Squid 系统包状态可读（2026-11-01）
+
+Ubuntu 26.04 实机上组件中心的 Squid 读不到版本也无法安装：`GET /components/squid/state` 返回 `state` 为空的视图，面板据此显示「包管理器：尚未检查，或本机无法提供安装方式」、hero 与目录都回落「未知」，安装/更新/卸载全部禁用。
+
+根因在 Helper 的程序身份核验，不在客户端、平台、权限或部署版本：`HostPackageDefinitions` 声明的 `/usr/sbin/squid` 在该发行版是 update-alternatives 链接（`→ /etc/alternatives/squid → /usr/sbin/squid-gnutls`），链接不由 `squid` 包登记（`dpkg-query -S /usr/sbin/squid` 无匹配）。`VerifyInstalledPackageAsync` 的 `RequirePackagePath` 因此抛 `UnauthorizedAccessException`（“paths cannot contain links”），被 `ComponentPackageQuery` 的台账读取兜底捕获为 `Conflict`，服务端再按 `component.package_index_unavailable` 作答——`HostPackageComponentAdapter.ResolveAsync` 只把 `platform_unsupported` 与 `package_index_unavailable` 变成无状态视图，于是整块面板失效。Server 日志里每个刷新周期恒有 1 次 `Operation=ComponentPackageQuery ... Success=False ProblemCode=Conflict`，而同一适配器下的 Samba（未安装）与 Docker（外部安装）状态正常，正是该组件特有的路径问题。
+
+修复：Helper 新增 `VerifiedPackageExecutable`，只把固定映射里的路径当定位器，解析到最终目标后要求在目标上成立「存在、路径无链接、`dpkg-query -S` 唯一归属固定包、`dpkg --verify` 仅配置变化、`dpkg --audit` 为空」，并在目标文件上算 SHA-256；安装后复核、更新后复核与配置检查（`squid -k parse`）同时改用解析后的路径，保证执行的就是被核验的字节。无法解析时返回“无法核验”，与程序缺失同义，不再升级为整份状态读取失败。
+
+客户端同时补两处可见性：`PackageManagers` 改为只看宿主声明的 `Modes`（不再要求状态非空且无问题），宿主拒绝查询时仍能列出 `apt`；新增 `PackageStateText`，状态为空且带问题码时在「系统包管理」面板直接显示宿主报告的问题（例如「暂时无法执行：读不到包索引」），不再让宿主拒绝看起来像“还没点过检查版本”。WindowPreviews 新增 `UnreadablePackageLifecycleClient` 检查与 `PackageUnreadable` 预览。
+
+验证：`RelaxKonOS.PrivilegedHelper` 构建 0 错误；WindowPreviews `--component-center-only` 中英日 × 明暗通过（含上述新断言）。缺陷需重新部署 Linux Server+Helper 才会在实机消失；本机未执行真实 APT 安装/更新/卸载，Squid 的实机生命周期仍按 MR-05/CC-01 保持未验收。
+
 ## 系统包外部生命周期与显式登记（PO-01～PO-05，2026-10-30）
 
 组件中心的 Linux APT/dpkg 入口按[系统包授权设计](RelaxKonOS.PackageOwnership.Design.md)接入外部包身份核验、外部更新/卸载、受管外部版本变化提示和显式“纳入管理”。Helper 只在 dpkg 状态、程序文件归属、`dpkg --verify`（仅允许配置文件变化）、服务归属和 `dpkg --audit` 全部成立时返回 `ComponentInstalledPackage`；查询失败保持未知，不降级为未安装。外部更新同时冻结候选/依赖与当前安装身份并在执行前复查；外部卸载只冻结当前身份，不依赖仓库候选或旧下载地址。受管包被外部 apt 更新后保留首次授权并提示版本变化，读取状态不把新版本当成原安装回执。
@@ -343,3 +355,18 @@ Mihomo/FRP GitHub Releases 元数据启用 HTTP 压缩，每页由 30 条缩为 
 桌面组件中心服务端模块页新增后台常设许可的审查、授予、列表与撤销，支持中英日三语言。选择模块后，审查单一服务动作、固定目标、原因和期限；授予按钮与普通单次计划按钮分开，不把安装代码信任当作后台提权授权。界面显示冻结的模块/版本/摘要和到期时间；切换登录后旧客户端不能提交，列表不携带确认令牌。
 
 客户端构建与 ApplicationLayout `--modules-only` 通过，已检查 Headless 许可区图像的换行及滚动布局。服务端仅开放固定服务动作，两平台真实许可、后台执行、撤销/到期、重启幂等和审计证据由[ModuleHost v2 实施记录](../architecture/RelaxKonOS.ServerModuleV2.Progress.md)拥有。包/文件动作仍未实现；本节不代替真实桌面交互验收。
+
+## 服务端模块页信息架构与操作拆分（2026-11-01）
+
+服务端模块页从“一个卡片里放列表、原始文本详情和纵向堆叠的管理卡片”改为按任务组织的界面：
+
+- 页头显示服务端身份、只读边界、已安装/有效启用/当前加载/待重启四项计数；服务器处于恢复模式时保留独立提示和恢复入口。
+- 页面分为“模块”“安装与更新”“安全与诊断”三个分区。模块分区采用目录 + 详情的两栏布局，窄窗口（< 900 px）自动改为目录在上、详情在下，不使用压缩两栏。服务器拒绝全部管理动作时，页头显示只读状态、页面顶部只写一条权限边界，并隐藏另外两个管理分区；动作行仍可见但不再逐行重复同一原因。
+- 目录行显示本地化模块名、状态点、状态文案、版本和待重启标记；搜索同时匹配名称与 ID，筛选项为全部、已启用、已停用、待重启；勾选行形成整组操作目标，并在目录底部显示已选数量。
+- 详情拆成身份与安装、运行与驻留、可用操作、驻留策略、待确认计划、最近操作六块。启停、唤醒、尝试释放内存改为逐项操作行，分别显示可预览状态和阻止原因；不再把 `allowedActions` 与 `blockedBy` 拼成一段原始文本。
+- 冻结计划单独成卡，显示目标模块、目标服务端、新增/移除集合、重启要求、有效期和结构化阻断项；提交前可放弃计划。驻留策略仍通过同一计划协议预览。
+- 包安装、版本回退、包操作、模块商店、模块健康、提权确认与后台常设许可移入对应分区并改为结构化行；管理员凭据集中到安全分区，避免与许可表单分离。
+- 新增本地化键覆盖模块状态、驻留状态、打包/信任/配置所有者、动作、计划、健康、包、商店来源、错误码和官方模块名称，中英日三语言同步。已知服务端 problemCode 映射为可读原因，未知代码保留原文。
+- 表格化测试改为断言新的主从布局、窄/宽切换、分区切换、筛选、只读边界、动作行原因、计划目标名称及三语言无未解析键；截图更新为 `server-module-management.png`、`server-module-wide.png`、`server-module-actions.png`、`server-module-plan.png`、`server-module-packages.png`、`server-module-security.png`、`server-module-consents.png` 和 `server-module-readonly.png`。
+
+验证：桌面客户端构建通过；ApplicationLayout `--modules-only` 通过。自动布局检查不代替 150%/200% DPI、真实 Linux 主机与真实只读管理员账户的人工验收。

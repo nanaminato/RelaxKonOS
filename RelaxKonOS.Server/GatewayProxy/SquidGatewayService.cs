@@ -65,7 +65,12 @@ public sealed class SquidGatewayService(IPrivilegedOperationTransport helper, Sq
     public async Task<string?> ExecuteAsync(SquidServiceAction action, CancellationToken ct)
     {
         if (!Enum.IsDefined(action)) return "squid.action.invalid";
-        return Problem(await helper.ExecuteAsync(new(PrivilegedOperationKind.SquidServiceAction, SquidServiceAction: action), ct));
+        var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.SquidServiceAction, SquidServiceAction: action), ct);
+        if (result.Success) return null;
+        // The Helper attaches the unit journal to a failed lifecycle action; only a message the host
+        // actually printed may replace the generic "the daemon exited" code.
+        var classified = SquidFailureClassifier.Classify(Evidence(result));
+        return classified != SquidFailureClassifier.ProcessFailed ? classified : Problem(result);
     }
 
     public async Task<SquidAccount[]?> GetAccountsAsync(CancellationToken ct)
@@ -82,6 +87,14 @@ public sealed class SquidGatewayService(IPrivilegedOperationTransport helper, Sq
         await configurations.Gate.WaitAsync(ct);
         try { return Problem(await helper.ExecuteAsync(new(PrivilegedOperationKind.SquidAccountMutate, SquidAccount: request), ct)); }
         finally { configurations.Gate.Release(); }
+    }
+
+    /// <summary>The Helper's attached unit output, or nothing when it is absent or not base64.</summary>
+    private static string? Evidence(PrivilegedOperationResult result)
+    {
+        if (result.OutputBase64 is not { Length: > 0 } base64) return null;
+        try { return Encoding.UTF8.GetString(Convert.FromBase64String(base64)); }
+        catch (FormatException) { return null; }
     }
 
     private static string? Problem(PrivilegedOperationResult result) => result.Success ? null :

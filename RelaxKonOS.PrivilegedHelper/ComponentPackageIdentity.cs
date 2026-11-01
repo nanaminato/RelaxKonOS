@@ -54,16 +54,35 @@ public static partial class PrivilegedOperationExecutor
             JsonSerializer.Serialize(stream, proof); stream.Flush(true);
         }
     }
-    private static async Task<ComponentInstalledPackage?> VerifyInstalledPackageAsync(HostPackageDefinition definition)
+    /// <summary>
+    /// The file a package is verified through. A distribution may publish a service binary as an
+    /// update-alternatives link — Ubuntu's squid is <c>/usr/sbin/squid → /etc/alternatives/squid →
+    /// /usr/sbin/squid-gnutls</c>, and neither link is recorded by the package. The link is never
+    /// trusted on its own: it only locates the target, and the link-free path rule, the dpkg owner
+    /// query and the digest are all measured on that final target. A path that cannot be resolved
+    /// this way is "cannot verify", which stays indistinguishable from a missing binary instead of
+    /// turning into a failure of the whole component state.
+    /// </summary>
+    private static string? VerifiedPackageExecutable(HostPackageDefinition definition)
     {
         if (!File.Exists(definition.Executable)) return null;
-        RequirePackagePath(definition.Executable);
+        string path;
+        try { path = File.ResolveLinkTarget(definition.Executable, returnFinalTarget: true)?.FullName ?? definition.Executable; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException
+            or System.Security.SecurityException) { return null; }
+        try { RequirePackagePath(path); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return null; }
+        return File.Exists(path) ? path : null;
+    }
+    private static async Task<ComponentInstalledPackage?> VerifyInstalledPackageAsync(HostPackageDefinition definition)
+    {
+        if (VerifiedPackageExecutable(definition) is not { } executable) return null;
         RequirePackagePath("/var/lib/dpkg/status");
         var metadata = await RunFixedCommandWithOutputAsync("/usr/bin/dpkg-query",
             ["-W", "-f=${Status}\t${Version}\t${Architecture}\n", definition.PackageName], "package identity unavailable");
         var fields = (DecodeUtf8(metadata.OutputBase64) ?? "").TrimEnd('\r', '\n').Split('\t');
         if (!metadata.Success || fields.Length != 3 || fields[0] != "install ok installed") return null;
-        var owner = await RunFixedCommandWithOutputAsync("/usr/bin/dpkg-query", ["-S", definition.Executable], "binary owner unavailable");
+        var owner = await RunFixedCommandWithOutputAsync("/usr/bin/dpkg-query", ["-S", executable], "binary owner unavailable");
         var owned = (DecodeUtf8(owner.OutputBase64) ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries);
         if (!owner.Success || owned.Length != 1 || !(owned[0].StartsWith(definition.PackageName + ": ", StringComparison.Ordinal)
             || owned[0].StartsWith(definition.PackageName + ":" + fields[2] + ": ", StringComparison.Ordinal))) return null;
@@ -73,7 +92,7 @@ public static partial class PrivilegedOperationExecutor
             || !await OwnsPackageServiceAsync(definition)) return null;
         var audit = await RunFixedCommandWithOutputAsync("/usr/bin/dpkg", ["--audit"], "package audit unavailable");
         if (!audit.Success || !string.IsNullOrWhiteSpace(DecodeUtf8(audit.OutputBase64))) return null;
-        using var binary = File.OpenRead(definition.Executable);
+        using var binary = File.OpenRead(executable);
         var identity = new ComponentInstalledPackage(definition.PackageName, fields[1], fields[2], Convert.ToHexString(SHA256.HashData(binary)));
         var confirmed = await RunFixedCommandWithOutputAsync("/usr/bin/dpkg-query",
             ["-W", "-f=${Status}\t${Version}\t${Architecture}\n", definition.PackageName], "package identity changed");

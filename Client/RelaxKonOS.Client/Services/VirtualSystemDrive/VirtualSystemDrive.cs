@@ -111,8 +111,15 @@ public sealed class VirtualSystemDrive
         }
         finally
         {
-            if (File.Exists(temporary))
-                File.Delete(temporary);
+            // A failed cleanup must not mask the write error that caused it, and a read-only
+            // directory can deny deletion just as it denies creation.
+            try
+            {
+                if (File.Exists(temporary))
+                    File.Delete(temporary);
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
         }
     }
 
