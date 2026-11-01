@@ -263,14 +263,14 @@ function Invoke-ServicesInstaller([string] $Version, [string] $ListenUrl) {
     $server = Join-Path $versionRoot 'server\RelaxKonOS.Server.exe'
     $guardian = Join-Path $versionRoot 'guardian\RelaxKonOS.Guardian.Agent.exe'
     $helper = Join-Path $versionRoot 'privileged-helper\RelaxKonOS.PrivilegedHelper.exe'
-    $requiredPayload = @($server, $helper); if ($GuardianEnabled) { $requiredPayload += $guardian }
+    $requiredPayload = @($server, $helper); if ($GuardianSelected) { $requiredPayload += $guardian }
     foreach ($file in $requiredPayload) {
         if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "The payload for version $Version is incomplete: $file" }
     }
     & $engine -InstallRoot $InstallRoot -ServerExecutable $server -GuardianExecutable $guardian -PrivilegedHelperExecutable $helper `
         -ServerPort $ServerPort -ServerListenUrl $ListenUrl -DataRoot $DataRoot -CertificateMode $CertificateMode -CertificatePath $CertificatePath `
         -CertificatePassword $CertificatePassword -SelfSignedIdentities $SelfSignedIdentities -FileAccess $FileAccess -FileRootsFile $FileRootsFile `
-        -EnableWindowsUserExecution -GuardianEnabled ([bool]$GuardianEnabled) -AutoStart ([bool]$AutoStart)
+        -EnableWindowsUserExecution -GuardianEnabled $GuardianSelected -AutoStart $AutoStartSelected
     if ($LASTEXITCODE -ne 0) { throw "Service installer failed with exit code $LASTEXITCODE." }
 }
 
@@ -315,12 +315,12 @@ public static class RelaxKonOSDeploymentHealthProbe {
         if ([RelaxKonOSDeploymentHealthProbe]::Check($endpoint.Uri.AbsoluteUri)) {
             try {
                 . (Get-InstalledEnginePath 'deployment\windows\RelaxKonOSDeploymentVerification.ps1')
-                Assert-WindowsDeploymentPayload (Get-VersionRoot $targetVersion) $Mode $DataRoot ([bool]$GuardianEnabled)
+                Assert-WindowsDeploymentPayload (Get-VersionRoot $targetVersion) $Mode $DataRoot $GuardianSelected
             } catch {
                 Write-Warning ('Deployment runtime verification failed: ' + $_.Exception.Message)
                 return $false
             }
-            if (-not $GuardianEnabled) { return $true }
+            if (-not $GuardianSelected) { return $true }
             $guardianCheckServer = Join-Path (Get-VersionRoot $targetVersion) 'server\RelaxKonOS.Server.exe'
             $guardianCheckConfig = Join-Path (Split-Path -Parent $guardianCheckServer) 'appsettings.host.json'
             & $guardianCheckServer guardian-health --host-config $guardianCheckConfig | Out-Null
@@ -416,11 +416,13 @@ if ($Action -eq 'install') {
 if ($Action -ne 'install' -and (Get-StateValue $existingState 'guardianEnabled') -isnot [bool]) {
     throw 'The installation record lacks Guardian selection; redeploy using the current installation contract.'
 }
-$AutoStart = [string](Resolve-Setting 'AutoStart' $AutoStart (Get-StateValue $existingState 'autoStart') $true)
-$AutoStart = $AutoStart -eq 'true'
-$GuardianEnabled = [string](Resolve-Setting 'GuardianEnabled' $GuardianEnabled (Get-StateValue $existingState 'guardianEnabled') ($Mode -ne 'windowsUser'))
-$GuardianEnabled = $GuardianEnabled -eq 'true'
-if ($Mode -eq 'windowsUser' -and $GuardianEnabled) { throw 'Guardian is unavailable in Windows personal mode.' }
+# The command line carries "true"/"false" strings. Resolve them into real booleans in new
+# variables: assigning the comparison back into a [string]-typed parameter re-coerces the value to
+# "False"/"True", and a non-empty string is truthy. That made -GuardianEnabled false behave as
+# enabled (aborting Windows personal mode) and would silently force auto-start on.
+$AutoStartSelected = [string](Resolve-Setting 'AutoStart' $AutoStart (Get-StateValue $existingState 'autoStart') $true) -eq 'true'
+$GuardianSelected = [string](Resolve-Setting 'GuardianEnabled' $GuardianEnabled (Get-StateValue $existingState 'guardianEnabled') ($Mode -ne 'windowsUser')) -eq 'true'
+if ($Mode -eq 'windowsUser' -and $GuardianSelected) { throw 'Guardian is unavailable in Windows personal mode.' }
 $NetworkProfile = Resolve-Setting 'NetworkProfile' $NetworkProfile (Get-StateValue $existingState 'networkProfile') 'local'
 $CertificateMode = Resolve-Setting 'CertificateMode' $CertificateMode (Get-StateValue $existingState 'certificateMode') 'none'
 $FileAccess = Resolve-Setting 'FileAccess' $FileAccess (Get-StateValue $existingState 'fileAccess') 'restricted'
@@ -603,7 +605,7 @@ try {
                 schemaVersion = 1; installed = $true; mode = $Mode; installationId = $installationId
                 version = $targetVersion; previousVersion = $previousVersion; installedAtUtc = [DateTime]::UtcNow.ToString('O')
                 installRoot = $InstallRoot; dataRoot = $DataRoot; networkProfile = $NetworkProfile; listenUrl = $effectiveListenUrl
-                certificateMode = $CertificateMode; fileAccess = $FileAccess; guardianEnabled = [bool]$GuardianEnabled; autoStart = [bool]$AutoStart
+                certificateMode = $CertificateMode; fileAccess = $FileAccess; guardianEnabled = $GuardianSelected; autoStart = $AutoStartSelected
             })
             Write-Host "$($M.done) $effectiveListenUrl" -ForegroundColor Green
             exit 0
@@ -621,7 +623,7 @@ try {
             if (-not (Test-LoopbackHealth $effectiveListenUrl)) { throw 'Configured Server is unhealthy.' }
         } catch {
             $configurationError = $_
-            $GuardianEnabled = (Get-StateValue $existingState 'guardianEnabled') -eq $true
+            $GuardianSelected = (Get-StateValue $existingState 'guardianEnabled') -eq $true
             $FileAccess = $originalFileAccess
             $FileRootsFile = $null
             if ($FileAccess -eq 'whitelist') {
@@ -632,7 +634,7 @@ try {
                 $FileRootsFile = Join-Path $maintenancePolicyDirectory 'previous-roots.json'
                 [IO.File]::WriteAllText($FileRootsFile, (ConvertTo-Json -InputObject @($originalRoots)), [Text.UTF8Encoding]::new($false))
             }
-            $AutoStart = (Get-StateValue $existingState 'autoStart') -eq $true
+            $AutoStartSelected = (Get-StateValue $existingState 'autoStart') -eq $true
             $ServerPort = ([Uri](Get-StateValue $existingState 'listenUrl')).Port
             Stop-RelaxKonOSServices
             Invoke-ServicesInstaller $targetVersion (Get-StateValue $existingState 'listenUrl')
@@ -689,7 +691,7 @@ try {
             schemaVersion = 1; installed = $true; mode = $Mode; installationId = $installationId
             version = $targetVersion; previousVersion = $fromVersion; installedAtUtc = [DateTime]::UtcNow.ToString('O')
             installRoot = $InstallRoot; dataRoot = $DataRoot; networkProfile = $NetworkProfile; listenUrl = $effectiveListenUrl
-            certificateMode = $CertificateMode; fileAccess = $FileAccess; guardianEnabled = [bool]$GuardianEnabled; autoStart = [bool]$AutoStart
+            certificateMode = $CertificateMode; fileAccess = $FileAccess; guardianEnabled = $GuardianSelected; autoStart = $AutoStartSelected
         })
         Write-Host "$($M.done) $effectiveListenUrl" -ForegroundColor Green
         exit 0
@@ -700,7 +702,7 @@ try {
         schemaVersion = 1; installed = $true; mode = $Mode; installationId = $installationId
         version = $targetVersion; previousVersion = (Get-StateValue $existingState 'previousVersion'); installedAtUtc = [DateTime]::UtcNow.ToString('O')
         installRoot = $InstallRoot; dataRoot = $DataRoot; networkProfile = $NetworkProfile; listenUrl = $effectiveListenUrl
-        certificateMode = $CertificateMode; fileAccess = $FileAccess; guardianEnabled = [bool]$GuardianEnabled; autoStart = [bool]$AutoStart
+        certificateMode = $CertificateMode; fileAccess = $FileAccess; guardianEnabled = $GuardianSelected; autoStart = $AutoStartSelected
     })
     Write-Host $M.health -ForegroundColor Green
     Write-Host "$($M.done) $effectiveListenUrl" -ForegroundColor Green

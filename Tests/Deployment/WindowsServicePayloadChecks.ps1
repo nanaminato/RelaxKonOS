@@ -101,7 +101,7 @@ Invoke-Expression $health.Extent.Text
 if (-not ('RelaxKonOSDeploymentHealthProbe' -as [type])) { Add-Type 'public static class RelaxKonOSDeploymentHealthProbe { public static bool Check(string url) { return true; } }' }
 function Get-InstalledEnginePath { $verification }
 function Get-VersionRoot { $root }
-$Mode = 'windowsSystem'; $GuardianEnabled = $false; $DataRoot = 'C:\Data'; $targetVersion = '0.1.5'
+$Mode = 'windowsSystem'; $GuardianSelected = $false; $DataRoot = 'C:\Data'; $targetVersion = '0.1.5'
 Set-Fixture RelaxKonOSServer $server 101
 $script:processes[101].ExecutablePath = $server.Replace('0.1.5', 'gitfix')
 $WarningPreference = 'SilentlyContinue'
