@@ -19,6 +19,7 @@
         "app_installer.status.updated": "Updated {0} {1}.",
         "app_installer.status.installed": "Installed {0} {1}.",
         "app_installer.status.install_failed": "Installation failed: {0}",
+        "app_installer.status.storage_unavailable": "Installation failed: the package folder {0} is not writable. Check the folder's permissions, or run RelaxKonOS from a location that a sandbox does not restrict.",
         "app_installer.error.install_title": "Installation failed",
         "app_installer.status.skipped": "Package skipped.",
         "app_installer.status.confirm_update": "Confirm the update for this application.",

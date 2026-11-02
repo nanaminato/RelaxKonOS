@@ -93,6 +93,7 @@ public sealed class DeveloperPackageManager
         // from running the file I/O continuations and stops the login window from being created.
         await DiscoverExternalPackagesAsync(cancellationToken);
         await MigrateLegacyPackagesAsync(cancellationToken);
+        CleanupStagingDebris();
         CleanupDeferredUninstalls();
         foreach (var record in _catalog.Values.ToArray())
         {
@@ -119,7 +120,15 @@ public sealed class DeveloperPackageManager
     public async Task<DeveloperAppInfo> InstallAsync(Stream package, bool launch, CancellationToken cancellationToken = default)
     {
         var staging = _drive.ResolveUnder(_root, $".staging/{Guid.NewGuid():N}");
-        Directory.CreateDirectory(staging);
+        try
+        {
+            Directory.CreateDirectory(staging);
+        }
+        catch (Exception exception) when (exception is UnauthorizedAccessException or DirectoryNotFoundException)
+        {
+            RecordActivationDiagnostic($"VSD package storage unavailable: code={VirtualSystemDriveProblemCode.PackageStorageUnavailable}, folder={_root}, error={exception.GetType().Name}.");
+            throw new PackageStorageUnavailableException(_root, exception);
+        }
         try
         {
             var manifest = await ExtractAndReadManifestAsync(package, staging, cancellationToken);
@@ -159,10 +168,26 @@ public sealed class DeveloperPackageManager
                 await Dispatcher.UIThread.InvokeAsync(() => _applications.Launch(new AppId(appId)));
             return new DeveloperAppInfo(record.Id, record.DisplayName, record.Version, record.Path);
         }
+        catch (Exception exception) when (exception is UnauthorizedAccessException or DirectoryNotFoundException)
+        {
+            // Every remaining write of this install lives below the package root: the version folder,
+            // the extracted files, the descriptor and the current pointer. A denial here is the same
+            // problem as a denial on the staging folder, so name it once for the user.
+            RecordActivationDiagnostic($"VSD package storage unavailable: code={VirtualSystemDriveProblemCode.PackageStorageUnavailable}, folder={_root}, error={exception.GetType().Name}.");
+            throw new PackageStorageUnavailableException(_root, exception);
+        }
         finally
         {
+            // A refusal to create is not a reason to fail the cleanup as well, and a denied delete must
+            // never replace the error that the install is already reporting.
             if (!string.IsNullOrWhiteSpace(staging) && Directory.Exists(staging))
-                Directory.Delete(staging, recursive: true);
+            {
+                try { Directory.Delete(staging, recursive: true); }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    RecordActivationDiagnostic($"VSD staging not removed: error={exception.GetType().Name}.");
+                }
+            }
         }
     }
 
@@ -510,6 +535,32 @@ public sealed class DeveloperPackageManager
         && versionId.Length <= 128
         && !versionId.Contains('/')
         && ApplicationDescriptorValidator.IsSafeRelativePath(versionId);
+
+    /// <summary>
+    /// Removes staging folders abandoned by an installation that the process never finished.
+    /// </summary>
+    /// <remarks>
+    /// Each attempt uses its own <c>.staging/&lt;id&gt;</c> folder and deletes it in a <c>finally</c>, so
+    /// anything still there at startup belongs to a crashed or killed client. Left alone they would
+    /// accumulate unpacked packages forever, and a read-only root must not turn this into a failure.
+    /// </remarks>
+    private void CleanupStagingDebris()
+    {
+        string staging;
+        string[] directories;
+        try
+        {
+            staging = _drive.ResolveUnder(_root, ".staging");
+            if (!Directory.Exists(staging)) return;
+            directories = Directory.EnumerateDirectories(staging).ToArray();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or VirtualSystemDriveException)
+        {
+            RecordActivationDiagnostic($"VSD staging cleanup unavailable: error={exception.GetType().Name}.");
+            return;
+        }
+        foreach (var directory in directories) TryDeleteDirectory(directory);
+    }
 
     /// <summary>Removes package directories left behind by a prior successful logical uninstall.</summary>
     private void CleanupDeferredUninstalls()
