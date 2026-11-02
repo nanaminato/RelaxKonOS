@@ -182,14 +182,15 @@ async Task WatchPackageAsync(string packagePath)
 async Task<string> PackAsync(PackOptions options)
 {
     var manifest = ReadManifest(options.ManifestPath);
-    var temporaryRoot = Path.Combine(Path.GetTempPath(), "RelaxKonOS.DevCli", Guid.NewGuid().ToString("N"));
+    var scratchRoot = ResolveScratchRoot(options);
+    var temporaryRoot = Path.Combine(scratchRoot, Guid.NewGuid().ToString("N"));
     var publishDirectory = Path.Combine(temporaryRoot, "publish");
     var stagingDirectory = Path.Combine(temporaryRoot, "package");
     var temporaryPackage = Path.Combine(temporaryRoot, "package.roapp");
     try
     {
         Directory.CreateDirectory(publishDirectory);
-        await PublishAsync(options, publishDirectory);
+        await PublishAsync(options, publishDirectory, scratchRoot);
 
         var libraryDirectory = Path.Combine(stagingDirectory, manifest.TargetFramework.Replace('/', Path.DirectorySeparatorChar));
         Directory.CreateDirectory(libraryDirectory);
@@ -214,7 +215,7 @@ async Task<string> PackAsync(PackOptions options)
     }
 }
 
-async Task PublishAsync(PackOptions options, string outputDirectory)
+async Task PublishAsync(PackOptions options, string outputDirectory, string scratchRoot)
 {
     var startInfo = new ProcessStartInfo("dotnet")
     {
@@ -222,8 +223,20 @@ async Task PublishAsync(PackOptions options, string outputDirectory)
         RedirectStandardOutput = true,
         RedirectStandardError = true,
     };
+    // MSBuild keeps its own scratch folder under the process temp, so a host that denies %TEMP% to
+    // this toolchain fails inside MSBuild before a single file is compiled. Hand the child the same
+    // scratch root that was already proven writable rather than letting it inherit an unusable one.
+    var childTemp = Path.Combine(Path.GetDirectoryName(outputDirectory)!, "tmp");
+    Directory.CreateDirectory(childTemp);
+    startInfo.Environment["TMP"] = childTemp;
+    startInfo.Environment["TEMP"] = childTemp;
+    ApplyWritablePackageCache(startInfo, scratchRoot);
     startInfo.ArgumentList.Add("publish");
     startInfo.ArgumentList.Add(options.ProjectPath);
+    // Avalonia's build telemetry task writes into the user profile, which a restricted host denies and
+    // then fails the whole build with MSB4018. The repository already documents `UsedAvaloniaProducts=`
+    // as the way to skip that write; packaging never depends on it.
+    startInfo.ArgumentList.Add("-p:UsedAvaloniaProducts=");
     startInfo.ArgumentList.Add("--configuration");
     startInfo.ArgumentList.Add(options.Configuration);
     startInfo.ArgumentList.Add("--output");
@@ -297,6 +310,7 @@ static PackOptions ParsePackOptions(List<string> packArguments)
     var runtimeIdentifier = ReadOption(packArguments, "--runtime");
     var output = ReadOption(packArguments, "--output");
     var manifest = ReadOption(packArguments, "--manifest");
+    var workDirectory = ReadOption(packArguments, "--work-dir");
     if (packArguments.Count != 1)
         throw new ArgumentException("pack and project watch require exactly one project file or project directory.");
 
@@ -310,7 +324,97 @@ static PackOptions ParsePackOptions(List<string> packArguments)
     if (!outputPath.EndsWith(".roapp", StringComparison.OrdinalIgnoreCase))
         throw new ArgumentException("--output must end in .roapp.");
 
-    return new PackOptions(projectPath, manifestPath, outputPath, configuration, runtimeIdentifier, noBuild);
+    return new PackOptions(projectPath, manifestPath, outputPath, configuration, runtimeIdentifier, noBuild, workDirectory);
+}
+
+/// <summary>
+/// Picks a directory the *current process* can actually write. packages are staged under the system
+/// temp by default, but a restricted host (an app container, a locked-down terminal, or an
+/// antivirus policy) can deny that path to this process while leaving the project tree writable, and
+/// a bare <see cref="Directory.CreateDirectory(string)"/> then fails with an access error that says
+/// nothing about packaging. Probe each candidate instead of guessing, and say which one won when it
+/// is not the default.
+/// </summary>
+static string ResolveScratchRoot(PackOptions options)
+{
+    var projectDirectory = Path.GetDirectoryName(options.ProjectPath)!;
+    var candidates = new List<(string Path, string Source)>
+    {
+        (options.WorkDirectory ?? string.Empty, "--work-dir"),
+        (Environment.GetEnvironmentVariable("RELAXKONOS_DEVCLI_TMP") ?? string.Empty, "RELAXKONOS_DEVCLI_TMP"),
+        (Path.Combine(Path.GetTempPath(), "RelaxKonOS.DevCli"), "system temp"),
+        (Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "DevCli"), "local application data"),
+        (Path.Combine(projectDirectory, ".tmp", "devcli"), "project folder"),
+    };
+
+    var rejected = new List<string>();
+    foreach (var (candidate, source) in candidates)
+    {
+        if (string.IsNullOrWhiteSpace(candidate))
+            continue;
+
+        string root;
+        try { root = Path.GetFullPath(candidate); }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            rejected.Add($"{source}: '{candidate}' is not a usable path");
+            continue;
+        }
+
+        if (!TryProbeWritableRoot(root))
+        {
+            rejected.Add($"{source}: '{root}' is not writable");
+            continue;
+        }
+
+        if (source != "system temp")
+            Console.WriteLine($"Scratch: {root} ({source})");
+        return root;
+    }
+
+    throw new InvalidOperationException(
+        "No writable scratch directory for packaging. Pass --work-dir <path> or set RELAXKONOS_DEVCLI_TMP. Tried: " +
+        string.Join("; ", rejected));
+}
+
+static bool TryProbeWritableRoot(string root)
+{
+    var probe = Path.Combine(root, "probe-" + Guid.NewGuid().ToString("N"));
+    try
+    {
+        Directory.CreateDirectory(probe);
+        Directory.Delete(probe);
+        return true;
+    }
+    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or NotSupportedException)
+    {
+        return false;
+    }
+}
+
+/// <summary>
+/// Restore writes the package cache and the NuGet HTTP cache into the user profile, which a restricted
+/// host can deny to this toolchain. When the default package folder is not writable and the caller did
+/// not choose one, point both caches at the scratch root, which was already proven writable, and say so:
+/// a cold cache is slow but a denied one cannot package at all.
+/// </summary>
+static void ApplyWritablePackageCache(ProcessStartInfo startInfo, string scratchRoot)
+{
+    if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("NUGET_PACKAGES")))
+        return;
+
+    var defaultPackages = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".nuget", "packages");
+    if (TryProbeWritableRoot(defaultPackages))
+        return;
+
+    var packages = Path.Combine(scratchRoot, "nuget", "packages");
+    var httpCache = Path.Combine(scratchRoot, "nuget", "http");
+    Directory.CreateDirectory(packages);
+    Directory.CreateDirectory(httpCache);
+    startInfo.Environment["NUGET_PACKAGES"] = packages;
+    startInfo.Environment["NUGET_HTTP_CACHE_PATH"] = httpCache;
+    Console.WriteLine($"NuGet cache: {packages} (the default package folder is not writable here)");
 }
 
 static string ResolveProjectPath(string projectOrDirectory)
@@ -451,8 +555,8 @@ static void PrintUsage()
 Usage: relaxkonos-dev [--token <pairing-token>] [--endpoint <url>] <command>
 
 Commands:
-  pack <project.csproj|directory> [--configuration <Debug|Release>] [--runtime <rid>] [--manifest <path>] [--output <package.roapp>] [--no-build] [--install]
-  watch <project.csproj|directory> [--configuration <Debug|Release>] [--runtime <rid>] [--manifest <path>] [--output <package.roapp>] [--no-install]
+  pack <project.csproj|directory> [--configuration <Debug|Release>] [--runtime <rid>] [--manifest <path>] [--output <package.roapp>] [--work-dir <path>] [--no-build] [--install]
+  watch <project.csproj|directory> [--configuration <Debug|Release>] [--runtime <rid>] [--manifest <path>] [--output <package.roapp>] [--work-dir <path>] [--no-install]
   watch <package.roapp>
   apps
   install <package.roapp>
@@ -465,10 +569,13 @@ Commands:
 pack publishes the project and packages all publish output beneath the manifest's lib/<TFM>/ directory.
 Use --no-build to package the selected configuration's existing build output without recompiling it.
 Use --runtime only for an application with runtime-specific native dependencies. pack does not require a token unless --install is used.
+pack stages the publish output in a scratch directory: --work-dir, then RELAXKONOS_DEVCLI_TMP, then the system temp,
+then local application data, then <project>/.tmp/devcli. The first one this process can write wins, and a fallback is reported.
 watch <project> rebuilds, packages, and installs on source changes; use --no-install to only rebuild packages.
 Set RELAXKONOS_DEV_TOKEN to avoid passing the pairing token on each install or watch command.
 """);
 }
 
-sealed record PackOptions(string ProjectPath, string ManifestPath, string OutputPath, string Configuration, string? RuntimeIdentifier, bool NoBuild);
+sealed record PackOptions(string ProjectPath, string ManifestPath, string OutputPath, string Configuration,
+    string? RuntimeIdentifier, bool NoBuild, string? WorkDirectory = null);
 sealed record PackageManifest(string EntryAssembly, string TargetFramework, string? IconPath);

@@ -76,7 +76,7 @@ dotnet build examples/Windows11DesktopShell -p:UsedAvaloniaProducts=
 
 安装预览读取经过清单校验的 `iconPath` 对应 ZIP 条目，最多读取 2 MiB，按 72 像素宽解码。图片不可用时显示清单字形；未声明字形时显示通用包图标。远端包完成本地暂存后使用同一流程；切换包、跳过或关闭预览时释放图片。
 
-Windows 11 示例包和工厂版本同步为 1.5.1。`--desktop-clipboard-only` 同时覆盖真实开始菜单按钮点击、命令调用前关闭状态、普通／系统模态输入和安装预览图片与回退。`--windows11-only` 覆盖窗口内右键不外溢到桌面菜单、窗口边界截断未处理上下文请求，以及壁纸右键仍正常打开菜单。真实服务复查可设置 `RK_REVIEW_EXTERNAL_PACKAGE` 为待测 `.roapp` 路径后运行 `--desktop-live-review`，它检查安装图标、安装测试包、暂时切换外壳，并确认显示设置的复选框命中及取消后遮罩移除。
+Windows 11 示例包和工厂版本同步为 1.5.1。`--desktop-clipboard-only` 同时覆盖真实开始菜单按钮点击、命令调用前关闭状态、普通／系统模态输入和安装预览图片与回退。`--windows11-only` 覆盖窗口内右键不外溢到桌面菜单、窗口边界截断未处理上下文请求，以及壁纸右键仍正常打开菜单；`--desktop-shell-switch-only` 对三个内置外壳各两轮断言同一条归属（壁纸答、应用窗口不答），因为内置外壳的桌面菜单本来就挂在 `WindowHost` 的兄弟节点 `_backdrop` 上。真实服务复查可设置 `RK_REVIEW_EXTERNAL_PACKAGE` 为待测 `.roapp` 路径后运行 `--desktop-live-review`，它检查安装图标、安装测试包、暂时切换外壳，并确认显示设置的复选框命中及取消后遮罩移除。
 
 ### 选择布局、快捷方式删除与任务栏固定
 
