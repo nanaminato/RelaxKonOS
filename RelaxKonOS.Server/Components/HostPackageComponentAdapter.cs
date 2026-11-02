@@ -35,11 +35,25 @@ public sealed class HostPackageComponentAdapter(string componentId, IPrivilegedO
         try
         {
             var resolution = await ResolveAsync(ct);
-            return new(ComponentId, Map(resolution), Modes, resolution.BlockingProblem is { } blocked ? [blocked] : [], CommittedOperationId: resolution.CommittedOperationId,
+            return new(ComponentId, Map(resolution), Modes, StateProblems(resolution), CommittedOperationId: resolution.CommittedOperationId,
                 PendingOperationId: resolution.PendingOperationId, InstalledPackage: resolution.InstalledPackage,
                 ExternalPackageChange: resolution.ExternalPackageChange, RecordedPackageVersion: resolution.RecordedPackageVersion);
         }
         catch (ComponentLifecycleException ex) { return new(ComponentId, null, Modes, [ex.ProblemCode]); }
+    }
+
+    /// <summary>
+    /// Problems that explain an action the center cannot offer. A version without a verified package
+    /// identity hides "纳入管理", update and uninstall by design, so the state says why instead of
+    /// leaving those actions silently missing.
+    /// </summary>
+    public static IReadOnlyList<string> StateProblems(ComponentPackageResolution resolution)
+    {
+        var problems = new List<string>();
+        if (resolution.BlockingProblem is { } blocked) problems.Add(blocked);
+        if (resolution.InstalledVersion is not null && resolution.InstalledPackage is null)
+            problems.Add(ComponentProblemCodes.PackageIdentityUnverified);
+        return problems;
     }
     public async Task<ComponentPlanResult> PlanAsync(ComponentPlanRequest request, CancellationToken ct)
     {

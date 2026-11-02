@@ -161,10 +161,8 @@ public static partial class PrivilegedOperationExecutor
             return replay.ComponentPackage is { Managed: true, CommittedOperationId: var committed } && committed == operationId
                 ? replay : Fail(65, PrivilegedProblemCode.Conflict, "component package recovery required");
         }
-        foreach (var systemDirectory in definition.Service.Length == 0 ? Array.Empty<string>() : new[] { "/etc/systemd/system", "/run/systemd/system" })
-            if (File.Exists(Path.Combine(systemDirectory, definition.Service)) && !IsOwnedRemovedPackageMask(definition, Path.Combine(systemDirectory, definition.Service))
-                || Directory.Exists(Path.Combine(systemDirectory, definition.Service + ".d")))
-                return Fail(65, PrivilegedProblemCode.Conflict, "external service overrides require review");
+        if (HasForeignServiceOverride(definition))
+            return Fail(65, PrivilegedProblemCode.Conflict, "external service overrides require review");
         if (definition.ComponentId == ComponentIds.Tailscale && TailscaleControlOperations.HasPendingOperations())
             return Fail(65, PrivilegedProblemCode.Conflict, "Tailscale operation requires recovery");
         if (definition.ComponentId == ComponentIds.Docker && !DockerPackagePolicyReady())
@@ -255,8 +253,7 @@ public static partial class PrivilegedOperationExecutor
             var binaryOwner = await RunFixedCommandWithOutputAsync("/usr/bin/dpkg-query", ["-S", definition.Executable], "binary ownership unavailable");
             return binaryOwner.Success && DecodeUtf8(binaryOwner.OutputBase64).StartsWith(definition.PackageName + ":", StringComparison.Ordinal);
         }
-        foreach (var systemDirectory in definition.Service.Length == 0 ? Array.Empty<string>() : new[] { "/etc/systemd/system", "/run/systemd/system" })
-            if (File.Exists(Path.Combine(systemDirectory, definition.Service)) || Directory.Exists(Path.Combine(systemDirectory, definition.Service + ".d"))) return false;
+        if (HasForeignServiceOverride(definition)) return false;
         var show = await RunFixedCommandWithOutputAsync("/usr/bin/systemctl", ["show", "--property=FragmentPath", "--value", definition.Service], "service ownership unavailable");
         var path = DecodeUtf8(show.OutputBase64).Trim();
         if (!show.Success || !(path.StartsWith("/usr/lib/systemd/system/", StringComparison.Ordinal)
@@ -274,7 +271,47 @@ public static partial class PrivilegedOperationExecutor
         return owner.Success && owners.Any(package => DecodeUtf8(owner.OutputBase64).StartsWith(package + ":", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// True when an administrator override leaves the packaged unit unverifiable. A unit file outside
+    /// the package is always foreign. A drop-in directory is foreign unless every entry it holds is a
+    /// <c>.conf</c> that only assigns proxy environment values.
+    /// </summary>
+    private static bool HasForeignServiceOverride(HostPackageDefinition definition)
+    {
+        if (definition.Service.Length == 0) return false;
+        foreach (var systemDirectory in new[] { "/etc/systemd/system", "/run/systemd/system" })
+        {
+            var unit = Path.Combine(systemDirectory, definition.Service);
+            if (File.Exists(unit) && !IsOwnedRemovedPackageMask(definition, unit)) return true;
+            var dropIn = unit + ".d";
+            if (Directory.Exists(dropIn) && !IsOwnedDropInDirectory(definition, dropIn)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Accepts only a docker drop-in directory that changes nothing beyond proxy environment values:
+    /// the exact directory the Helper writes, no subdirectory or link, and only <c>*.conf</c> files
+    /// whose contents are proxy assignments. Anything else stays an administrator override.
+    /// </summary>
+    private static bool IsOwnedDropInDirectory(HostPackageDefinition definition, string directory)
+    {
+        if (definition.ComponentId != ComponentIds.Docker
+            || !string.Equals(directory, ManagedServiceOverride.DockerDropInDirectory, StringComparison.Ordinal)) return false;
+        try
+        {
+            if ((File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0) return false;
+            var entries = Directory.EnumerateFileSystemEntries(directory).ToArray();
+            foreach (var entry in entries)
+                if (Directory.Exists(entry) || (File.GetAttributes(entry) & FileAttributes.ReparsePoint) != 0) return false;
+            return ManagedServiceOverride.IsProxyOnlyDropInSet(entries.Select(Path.GetFileName)!,
+                name => File.ReadAllText(Path.Combine(directory, name!)));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { return false; }
+    }
+
     private static bool IsOwnedRemovedPackageMask(HostPackageDefinition definition, string unit)
+
     {
         // Debian's postrm masks a removed package; its next preinst unsets that mask. Only our
         // verified removal witness may authorize this shape. Administrator overrides remain refused.

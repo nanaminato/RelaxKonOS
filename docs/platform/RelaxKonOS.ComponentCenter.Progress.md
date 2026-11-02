@@ -370,3 +370,19 @@ Mihomo/FRP GitHub Releases 元数据启用 HTTP 压缩，每页由 30 条缩为 
 - 表格化测试改为断言新的主从布局、窄/宽切换、分区切换、筛选、只读边界、动作行原因、计划目标名称及三语言无未解析键；截图更新为 `server-module-management.png`、`server-module-wide.png`、`server-module-actions.png`、`server-module-plan.png`、`server-module-packages.png`、`server-module-security.png`、`server-module-consents.png` 和 `server-module-readonly.png`。
 
 验证：桌面客户端构建通过；ApplicationLayout `--modules-only` 通过。自动布局检查不代替 150%/200% DPI、真实 Linux 主机与真实只读管理员账户的人工验收。
+
+## Docker 无法纳入管理：代理 drop-in 使包身份永久不可核验（2026-11-02）
+
+症状：Docker Engine 在宿主上可正常使用，组件中心却始终没有“纳入管理”，更新与卸载也不出现。
+
+根因在 Helper 的服务归属核验，不在客户端、权限或 Docker 本身。`OwnsPackageServiceAsync` 把 `/etc/systemd/system/<unit>.d` 与 `/run/systemd/system/<unit>.d` 一律当作管理员覆盖而拒绝；而 Docker 的代理只能通过单元的启动环境变量配置（`daemon.json` 对原生 Linux 守护进程无效），Helper 自己的 `ConfigureDockerEngineProxyAsync` 就会写 `/etc/systemd/system/docker.service.d/http-proxy.conf`，官方文档给出的手写做法也是同一路径。结果是“配置过代理”的引擎 `VerifyInstalledPackageAsync` 返回 null → `InstalledPackage` 为空 → 桌面端 `ShowRegisterPackage`/`CanChangeInstalledPackage` 全部为 false：受管包既不能纳入管理，也不能更新或卸载，且界面不给原因。关闭代理时只删除文件、不删除变空的目录，因此即使撤销代理也无法恢复。
+
+处理：
+
+- 判据改为“会不会改变执行”。`ManagedServiceOverride` 成为 drop-in 形状的唯一来源：只接受 Helper 写的那一个固定路径、无子目录/链接、每个 `*.conf` 仅由 `[Service]` 下的 `Environment=` 组成且变量名限定为 `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`/`ALL_PROXY`（大小写两套）。出现 `ExecStart=`、`EnvironmentFile=`、其它 section 或非代理变量仍按管理员覆盖拒绝，因此接受代理配置不会掩盖被替换的字节或启动命令。`OwnsPackageServiceAsync` 与 `InstallComponentPackageAsync` 共用同一判定，更新/卸载不再与状态读取分叉。
+- 关闭代理时一并删除变空的 `docker.service.d`，不留无法解释的空 drop-in 目录。
+- 身份不可核验但版本可读时，`ComponentStateView.Problems` 新增 `component.package_identity_unverified`（`HostPackageComponentAdapter.StateProblems`），桌面端三语已有文案，用户能看到“为什么不能纳入管理”，而不是动作静默消失。
+
+验证（本机 Windows）：`Tests/ManagedRuntimes -- docker-service-override-only` 13 项通过，覆盖 Helper 自有形状、手写代理 drop-in、空目录，以及 `ExecStart=`／其它 section／`LD_PRELOAD=`／`EnvironmentFile=`／无 section 赋值／不可读文件六种拒绝；`RelaxKonOS.Server.Tests -- --components-only` 267 项通过，新增 4 项状态问题断言。整库构建因桌面客户端正在运行而无法覆盖 `RelaxKonOS.Client.Desktop`，受影响项目（ManagedRuntimes、PrivilegedHelper、Server、两个测试工程）单独构建 0 错误。
+
+未验证：未在真实 Linux 宿主上复核“配置代理后状态带身份、可纳入管理”的完整链路，也未执行真实登记；`/run/systemd/system/docker.service.d` 运行时 drop-in 仍按管理员覆盖拒绝（有意保守）。
