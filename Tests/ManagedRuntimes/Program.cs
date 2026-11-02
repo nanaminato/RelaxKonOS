@@ -7,6 +7,12 @@ if (args is ["docker-service-override-only"])
     return;
 }
 
+if (args is ["component-package-resolution-only"])
+{
+    Console.WriteLine($"Component package resolution checks passed: {ComponentPackageResolutionChecks.Run()}");
+    return;
+}
+
 if (args is ["runtime-commit-witness-only"])
 {
     Console.WriteLine($"Runtime archive/commit witness checks passed: {await SwitchChecks.RunAsync()}");

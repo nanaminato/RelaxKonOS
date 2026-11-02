@@ -97,7 +97,7 @@ public static partial class PrivilegedOperationExecutor
                 {
                     if (new FileInfo(recoveryPath).Length > 4096) throw new IOException("Invalid recovery receipt");
                     recovered = JsonSerializer.Deserialize<ComponentRecoveryReceipt>(await File.ReadAllBytesAsync(recoveryPath));
-                    if (recovered?.OperationId != recoveryId || recovered.TargetOperationId == Guid.Empty || !Enum.IsDefined(recovered.Action))
+                    if (!PackageIdentityPolicy.ValidRecoveryReceipt(recovered, recoveryId))
                         throw new IOException("Invalid recovery identity");
                 }
             }

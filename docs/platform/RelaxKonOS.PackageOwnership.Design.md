@@ -34,7 +34,7 @@
 
 **外部更新与卸载。** `ComponentFrozenTarget` 保存当前安装身份。更新计划还冻结候选、依赖、仓库与摘要；卸载计划只冻结身份，`Package` 为空。Helper 在执行前重新测量 `InstalledPackage` 并要求与冻结值完全相等，服务归属、包审计、候选与真实更新关系均再次核对。外部更新成功后写入 `ResultIdentity` 作为本操作的终态证明；它不等于原安装回执。受管包经产品更新才写新的安装回执并推进登记身份。卸载只调用 `dpkg --remove`，保留配置与数据。
 
-**纳入管理与幂等。** 新增 `ComponentPackageRegistration`：`OperationId` 保存首次显式授权且不因外部变化或再次确认而改写，`Identity` 仅保存最近一次授权/确认的核验身份。外部包的首次登记使用当前台账 operationId；受管包已有安装回执时沿用原回执 operationId，确认外部版本变化只推进身份。登记在组件锁内重读安装身份、拒绝待处理包事务与 Tailscale 未决操作，成功后原子写 `registration.json` 和绑定当前 operationId 的恢复证明。重复提交同一 operationId 返回同身份，身份变化则冲突。
+**纳入管理与幂等。** 新增 `ComponentPackageRegistration`：`OperationId` 保存首次显式授权且不因外部变化或再次确认而改写，`Identity` 仅保存最近一次授权/确认的核验身份。外部包的首次登记使用当前台账 operationId；受管包已有安装回执时沿用原回执 operationId，确认外部版本变化只推进身份。登记在组件锁内重读安装身份、拒绝待处理包事务与 Tailscale 未决操作，成功后原子写 `registration.json` 和绑定当前 operationId 的恢复证明。重复提交同一 operationId 返回同身份，身份变化则冲突。登记是唯一**没有原操作**的恢复动作，因此它的恢复证明 `TargetOperationId` 恒为 `Guid.Empty`；读取方必须按动作区分（`PackageIdentityPolicy.ValidRecoveryReceipt`），不得要求非空——否则刚写入的证明会被判为无效，登记以 `component.package_recovery_required` 结束，组件随后只能手工清理台账。
 
 **入口与调用者。** 桌面端在外部系统包或受管外部版本变化时显示“纳入管理/确认当前安装”，确认后经 `ComponentRecoveryAction.RegisterPackage` 进入统一安装台账；三语文案分别说明“不重装、不接管配置、不改变服务启停”和“保留原授权、只记录核验身份”。Android 同步解析身份与变化字段，外部系统包在身份可核验时允许更新/卸载，但不提供纳入管理，也不因更新取得管理权。安装路由继续要求 controller、产品提权与 `installation:install`。
 

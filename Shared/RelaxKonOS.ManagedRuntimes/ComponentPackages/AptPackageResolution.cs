@@ -159,7 +159,7 @@ public static class AptPackageResolution
         var dependencies = (others ?? []).ToArray();
         if (dependencies.Length > 64 || dependencies.Any(item => item.FileName == main.FileName) || dependencies.Select(item => item.FileName).Distinct(StringComparer.Ordinal).Count() != dependencies.Length
             || dependencies.Any(item => item.FileName.Length is <= 0 or > 256
-                || !item.FileName.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.' or '+' or ':')
+                || !item.FileName.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.' or '+' or ':' or '~')
                 || item.Bytes is <= 0 or > 512L * 1024 * 1024 || !item.HasDigest))
         { problemCode = ComponentProblemCodes.PackageUnresolved; return false; }
         var alsoInstalls = dependencies.Select(item => new ComponentPackageArtifact(item.FileName, item.Uri, item.Bytes, item.Sha256, item.Md5)).ToArray();
@@ -336,8 +336,14 @@ public static class AptPackageResolution
 
     private static bool HasSha256(AptUriLine line) => line.Sha256 is { Length: 64 } && line.Sha256.All(Uri.IsHexDigit);
 
+    /// <summary>
+    /// A <c>.deb</c> file name as apt prints it. Debian's upstream version may contain <c>~</c> (a
+    /// pre-release marker), so vendor repositories publish names such as
+    /// <c>docker-ce_5:29.9.2-1~ubuntu.26.04~resolute_amd64.deb</c>; refusing the tilde made every
+    /// dependency of such a package unparseable and left the component without a candidate version.
+    /// </summary>
     private static bool SafeFileName(string? name) => name is { Length: > 0 and <= 256 }
-        && name.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.' or '+' or ':');
+        && name.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.' or '+' or ':' or '~');
 
     private static bool SafeRepositoryUri(string? value) =>
         Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https"
