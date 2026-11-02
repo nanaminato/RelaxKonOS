@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using RelaxKonOS.ManagedRuntimes.Catalog;
 using System.Net;
 using System.Net.Http;
 using System.Text.Json;
@@ -10,13 +11,14 @@ namespace RelaxKonOS.ManagedRuntimes.ComponentPackages;
 /// <summary>Official release discovery. No custom signing catalog or user-provided URL is required.</summary>
 public sealed class OfficialComponentReleases
 {
-    private static readonly HttpClient Client = CreateClient();
+    private static readonly HttpClient Client = CreateClient(allowRedirect: true);
+    private static readonly HttpClient MetadataClient = CreateClient(allowRedirect: false);
     private readonly HttpClient metadataClient;
-    public OfficialComponentReleases(HttpClient? metadataClient = null) => this.metadataClient = metadataClient ?? Client;
+    public OfficialComponentReleases(HttpClient? metadataClient = null) => this.metadataClient = metadataClient ?? MetadataClient;
     private static readonly ConcurrentDictionary<string, (DateTimeOffset At, ComponentDownloadRelease[] Releases)> Cache = new();
-    private static HttpClient CreateClient()
+    private static HttpClient CreateClient(bool allowRedirect)
     {
-        var client = new HttpClient(new HttpClientHandler { AutomaticDecompression = DecompressionMethods.All }) { Timeout = TimeSpan.FromMinutes(10) };
+        var client = new HttpClient(new HttpClientHandler { AutomaticDecompression = DecompressionMethods.All, AllowAutoRedirect = allowRedirect }) { Timeout = TimeSpan.FromMinutes(10) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("RelaxKonOS/1.0");
         return client;
     }
@@ -25,28 +27,21 @@ public sealed class OfficialComponentReleases
         var key = component + "|" + rid;
         if (!refresh && Cache.TryGetValue(key, out var cached) && cached.At.AddMinutes(15) > DateTimeOffset.UtcNow)
             return cached.Releases;
-        ComponentDownloadRelease[] releases;
-        if (component == ComponentIds.Tailscale)
-            releases = [await new TailscaleOfficialReleases().ResolveAsync(rid,null,ct,proxy)];
-        else if (component == ComponentIds.Nginx)
+        var (manifest, target, environment) = CatalogTarget(component, rid);
+        var providers = new ComponentReleaseProviderRegistry([
+            new GitHubComponentReleaseProvider(ReadAsync, Approve),
+            new NginxOfficialReleaseProvider(ReadAsync, Approve),
+            new TailscaleReleaseProvider((rid, token) => new TailscaleOfficialReleases().ResolveAsync(rid, null, token, proxy))
+        ]);
+        var found = await providers.Require(target.Releases.Type).GetReleasesAsync(manifest, target, environment, refresh, ct);
+        var selectors = new ComponentArtifactSelectorRegistry([new PatternArtifactSelector(), new NativeArtifactSelector()]);
+        var releases = found.Select(release =>
         {
-            if (!rid.StartsWith("win-", StringComparison.Ordinal)) return [];
-            releases = ParseNginx(await ReadAsync("https://nginx.org/en/download.html", ct), rid);
-        }
-        else
-        {
-            var repository = Repository(component);
-            var found = new List<ComponentDownloadRelease>();
-            for (var page = 1; page <= 3; page++)
-            {
-                var json = await ReadAsync($"https://api.github.com/repos/{repository}/releases?per_page=5&page={page}", ct);
-                found.AddRange(ParseGitHub(component, rid, json));
-                using var document = JsonDocument.Parse(json);
-                // Return the newest matching batch without downloading historical asset metadata.
-                if (found.Count > 0 || document.RootElement.GetArrayLength() < 5) break;
-            }
-            releases = found.DistinctBy(release => release.Version).OrderByDescending(release => SortVersion(release.Version)).ToArray();
-        }
+            var artifact = selectors.Require(target.Artifact.Selector).Select(release, target, environment);
+            var selected = new ComponentDownloadRelease(release.Version, rid, artifact.DownloadUrl!, artifact.Id, artifact.Format, artifact.Sha256);
+            if (component != ComponentIds.Tailscale) VerifyIdentity(selected, Describe(component, rid, release.Version));
+            return selected;
+        }).OrderByDescending(release => SortVersion(release.Version)).ToArray();
         Cache[key] = (DateTimeOffset.UtcNow, releases);
         return releases;
     }
@@ -90,23 +85,50 @@ public sealed class OfficialComponentReleases
 
     public static ComponentDownloadRelease[] ParseGitHub(string component, string rid, string json)
     {
-        using var document = JsonDocument.Parse(json);
-        var results = new List<ComponentDownloadRelease>();
-        foreach (var item in document.RootElement.EnumerateArray())
+        var (manifest, target, environment) = CatalogTarget(component, rid);
+        Approve(manifest, target, environment);
+        var selector = new PatternArtifactSelector();
+        return GitHubComponentReleaseProvider.Parse(json, target, environment).Select(release =>
         {
-            if (item.GetProperty("draft").GetBoolean() || item.GetProperty("prerelease").GetBoolean()) continue;
-            var tag = item.GetProperty("tag_name").GetString() ?? "";
-            if (!Regex.IsMatch(tag, @"\Av[0-9]+\.[0-9]+\.[0-9]+\z")) continue;
-            var expected = Describe(component, rid, tag);
-            foreach (var asset in item.GetProperty("assets").EnumerateArray())
-            {
-                if (asset.GetProperty("name").GetString() != expected.FileName
-                    || asset.GetProperty("browser_download_url").GetString() != expected.DownloadUrl) continue;
-                var digest = asset.TryGetProperty("digest", out var hash) ? hash.GetString() : null;
-                results.Add(expected with { Sha256 = digest is not null && Regex.IsMatch(digest, @"\Asha256:[0-9a-fA-F]{64}\z") ? digest[7..].ToLowerInvariant() : null });
-            }
-        }
-        return results.ToArray();
+            var artifact = selector.Select(release, target, environment);
+            var selected = new ComponentDownloadRelease(release.Version, rid, artifact.DownloadUrl!, artifact.Id, artifact.Format, artifact.Sha256);
+            VerifyIdentity(selected, Describe(component, rid, release.Version));
+            return selected;
+        }).ToArray();
+    }
+
+    private static (ComponentManifest Manifest, ComponentInstallTarget Target, ComponentHostEnvironment Environment) CatalogTarget(string component, string rid)
+    {
+        var parts = rid.Split('-');
+        if (parts.Length != 2 || parts[0] is not ("win" or "linux") || parts[1] is not ("x64" or "arm64"))
+            throw new RuntimePolicyException("component.platform_unsupported");
+        var environment = new ComponentHostEnvironment(parts[0] == "win" ? "windows" : "linux", parts[1]);
+        var manifest = BundledComponentCatalog.Current.Components.SingleOrDefault(value => value.Id == component)
+            ?? throw new RuntimePolicyException("component.unknown");
+        var candidates = manifest.Targets.Where(value => value.Os == environment.Os && value.Architectures.Contains(environment.Architecture)
+            && value.Installer.Available && value.Installer.Type is "archive" or "download").ToArray();
+        if (candidates.Length != 1) throw new RuntimePolicyException("component.release_provider_unavailable");
+        return (manifest, candidates[0], environment);
+    }
+
+    private static void Approve(ComponentManifest component, ComponentInstallTarget target, ComponentHostEnvironment environment)
+    {
+        // The local description cannot widen the existing domain publisher/artifact policy.
+        // New publishers still require an independent host-owned trust implementation.
+        var version = component.Id == ComponentIds.Nginx ? "1.2.3" : "v1.2.3";
+        var expected = Describe(component.Id, environment.Rid, version);
+        if (target.Os != environment.Os || !target.Architectures.Contains(environment.Architecture)
+            || target.Artifact.Selector != "pattern" || target.Artifact.Format != expected.Format
+            || PatternArtifactSelector.FileName(target.Artifact, version, environment) != expected.FileName
+            || (component.Id == ComponentIds.Nginx ? target.Releases.Type != "nginx-official"
+                : target.Releases.Type != "github-releases" || target.Releases.Repository != Repository(component.Id)))
+            throw new RuntimePolicyException("component.artifact_source_invalid");
+    }
+
+    private static void VerifyIdentity(ComponentDownloadRelease selected, ComponentDownloadRelease expected)
+    {
+        if (selected.DownloadUrl != expected.DownloadUrl || selected.FileName != expected.FileName || selected.Format != expected.Format || selected.Rid != expected.Rid)
+            throw new RuntimePolicyException("component.artifact_source_invalid");
     }
     private static Version SortVersion(string version) => Version.Parse(version.TrimStart('v'));
     public static async Task DownloadAsync(ComponentDownloadRelease release, Stream destination, CancellationToken ct)

@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "id": "squid",
+  "runtimeId": "squid",
+  "category": "web",
+  "name": "Squid",
+  "descriptionKey": "component_center.component.squid.description",
+  "integration": "Installation",
+  "applicationId": "relaxkonos.squid",
+  "requiredComponents": [],
+  "optionalComponents": [],
+  "conflicts": [],
+  "applications": [
+    "relaxkonos.squid"
+  ],
+  "targets": [
+    {
+      "os": "linux",
+      "architectures": [
+        "x64",
+        "arm64"
+      ],
+      "installer": {
+        "type": "apt",
+        "available": true
+      },
+      "sourceKind": "SystemPackage",
+      "officialDownloads": false,
+      "releases": {
+        "type": "apt"
+      },
+      "artifact": {
+        "selector": "package"
+      }
+    }
+  ]
+}

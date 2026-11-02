@@ -420,6 +420,17 @@
     "component_center.package.tailscale_source_confirm": "将启用 Tailscale Inc. 官方稳定版签名仓库（https://pkgs.tailscale.com/stable/），签名密钥指纹 2596 A99E AAB3 3821 893C 0A79 458C A832 957F 5868。仅适用于宿主发行版，不替换已有不同来源或密钥；此步骤只配置来源并刷新索引，不安装软件。是否继续？",
     "component_center.native.msi_title": "Windows 系统安装程序",
     "component_center.native.msi_hint": "使用 Tailscale 官方签名 MSI 安装和更新。卸载保留登录与配置数据；安装或更新可能重启服务并中断远程连接。",
+    "component_center.desktop.compatibility.Supported": "可以检查并准备安装",
+    "component_center.desktop.compatibility.UnsupportedPlatform": "不支持当前桌面平台或架构",
+    "component_center.desktop.compatibility.ProviderUnavailable": "当前安装器不可用",
+    "component_center.desktop.compatibility.PolicyBlocked": "策略不允许安装",
+    "component_center.desktop.compatibility.Unknown": "尚无法确定桌面兼容性",
+    "component_center.desktop.hint": "安装到当前桌面。安装前请检查软件包和所申请的权限。",
+    "component_center.desktop.review": "检查软件包…",
+    "component_center.desktop.failed": "无法准备本地目录中的软件包。",
+    "component_center.desktop.absent": "当前桌面未安装",
+    "component_center.desktop.installed": "已安装到当前桌面",
+    "component_center.source_kind.DesktopApp": "桌面应用包",
     "component_center.source_kind.NativeInstaller": "官方系统安装程序"
   }
 }

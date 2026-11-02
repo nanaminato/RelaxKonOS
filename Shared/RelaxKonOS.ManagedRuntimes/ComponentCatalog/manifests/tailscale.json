@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "id": "tailscale",
+  "runtimeId": "tailscale",
+  "category": "network",
+  "name": "Tailscale",
+  "descriptionKey": "component_center.component.tailscale.description",
+  "integration": "Installation",
+  "applicationId": "relaxkonos.tailscale",
+  "requiredComponents": [],
+  "optionalComponents": [],
+  "conflicts": [],
+  "applications": [
+    "relaxkonos.tailscale"
+  ],
+  "targets": [
+    {
+      "os": "linux",
+      "architectures": [
+        "x64",
+        "arm64"
+      ],
+      "installer": {
+        "type": "apt",
+        "available": true
+      },
+      "sourceKind": "SystemPackage",
+      "officialDownloads": false,
+      "releases": {
+        "type": "apt"
+      },
+      "artifact": {
+        "selector": "package"
+      }
+    },
+    {
+      "os": "windows",
+      "architectures": [
+        "x64",
+        "arm64"
+      ],
+      "installer": {
+        "type": "download",
+        "available": true
+      },
+      "sourceKind": "NativeInstaller",
+      "officialDownloads": false,
+      "releases": {
+        "type": "tailscale-official"
+      },
+      "artifact": {
+        "selector": "native",
+        "format": "msi"
+      }
+    }
+  ]
+}

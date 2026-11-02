@@ -69,12 +69,14 @@ public partial class ComponentCenterViewModel
     public IReadOnlyList<ComponentDownloadRelease> OfficialReleases => SelectedDefinition is { } definition
         ? _officialReleases.GetValueOrDefault(definition.ComponentId) ?? [] : [];
     /// <summary>
-    /// Nginx and FRP keep their official-release flow on Windows only. Mihomo has no package source at
-    /// all, so its official release archive is the only installation path on Linux as well.
+    /// The bundled target declares the existing official-release surface. A declaration never
+    /// replaces the domain installer's source, file validation or authorization checks.
     /// </summary>
     public bool ShowOfficialDownloads => _lifecycle is IComponentReleaseClient
-        && (HostPlatform == "windows" || HostPlatform == "linux" && SelectedDefinition?.ComponentId == "mihomo")
-        && SelectedDefinition?.ComponentId is "nginx" or "mihomo" or "frpc" or "frps";
+        && SelectedDefinition is { } definition
+        && RelaxKonOS.ManagedRuntimes.Catalog.BundledComponentCatalog.Current.Components
+            .Single(component => component.Id == definition.ComponentId).Targets.Any(target =>
+                target.Os == HostPlatform && target.OfficialDownloads && target.Installer.Available);
     public bool CanRefreshOfficial => ShowOfficialDownloads && Runtime.CanRead && !Runtime.IsInvalidated && !IsLoadingOfficialReleases && !IsInstallingOfficial && !IsSelectingPackageFile;
     public bool CanInstallOfficial => ShowOfficialDownloads && Runtime.CanManage && !Runtime.IsInvalidated && !IsInstallingOfficial && !IsLoadingOfficialReleases && !IsSelectingPackageFile
         && !string.IsNullOrWhiteSpace(OfficialVersion) && PackageInstallation is not null && !_packageInstallations.Values.Any(task => task.IsActive)

@@ -66,7 +66,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         && (runtime.HasActiveOperation || runtime.NeedsRecovery || !runtime.OperationText.IsEmpty || !runtime.OutcomeText.IsEmpty);
     public bool HasWorkloadDetails => HasResults && SelectedNode?.WorkloadId is not null && SelectedNode.ComponentId is null;
     /// <summary>True when the selected component has no runtime page to drive, whatever the reason.</summary>
-    public bool ShowNotIntegrated => !ShowOfficialDownloads && HasResults && SelectedDefinition is { } definition
+    public bool ShowNotIntegrated => !ShowDesktopPackage && !ShowOfficialDownloads && HasResults && SelectedDefinition is { } definition
         && (definition.Integration == ComponentIntegration.Application || DetailRuntime is null)
         && !(definition.Integration == ComponentIntegration.Installation && PackageInstallation is not null);
     public int SelectedSourceKindCount => SelectedDefinition?.Sources.Count ?? 0;
@@ -106,7 +106,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     private IReadOnlyList<ComponentSourceChip> SourceChips(bool hostPlatformOnly)
     {
         if (SelectedDefinition is not { } definition) return [];
-        var host = HostPlatform;
+        var host = ShowDesktopPackage ? RoappComponentInstallerProvider.Desktop.Os : HostPlatform;
         return definition.Sources
             .Where(source => (host.Length != 0 && source.Platforms.Contains(host)) == hostPlatformOnly)
             .Select(source => new ComponentSourceChip(
@@ -149,6 +149,8 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         get
         {
             if (SelectedDefinition is not { } definition) return LocalizedStatus.Literal("");
+            if (definition.IsDesktop) return LocalizedStatus.Key(SelectedDesktopVersion is null
+                ? "component_center.desktop.absent" : "component_center.desktop.installed");
             if (definition.ComponentId == "git" && HostPlatform == "windows") return GitStatusText;
             if (SelectedComponentState?.State is { } packageState)
                 return packageState.RecoveryRequired ? LocalizedStatus.Key("component_center.badge.Recovery")
@@ -165,10 +167,10 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
             return runtime.OwnershipText;
         }
     }
-    public LocalizedStatus SelectedVersionText => SelectedDefinition?.ComponentId == "git" && GitEngine?.IsGitAvailable == true
+    public LocalizedStatus SelectedVersionText => ShowDesktopPackage ? LocalizedStatus.Literal(SelectedDesktopVersion ?? "—") : SelectedDefinition?.ComponentId == "git" && GitEngine?.IsGitAvailable == true
         ? LocalizedStatus.Literal(GitEngine?.IsGitAvailable == true ? GitEngine.EngineVersion : "—") : SelectedComponentState?.State?.ActiveVersion is { } version
         ? LocalizedStatus.Literal(version) : DetailRuntime?.MeasuredVersionText ?? LocalizedStatus.Literal("—");
-    public bool HasSelectedVersion => SelectedDefinition?.ComponentId == "git" && GitEngine?.IsGitAvailable == true || SelectedComponentState?.State?.ActiveVersion is { Length: > 0 }
+    public bool HasSelectedVersion => SelectedDesktopVersion is not null || SelectedDefinition?.ComponentId == "git" && GitEngine?.IsGitAvailable == true || SelectedComponentState?.State?.ActiveVersion is { Length: > 0 }
         || DetailRuntime?.Installation?.MeasuredVersion is { Length: > 0 };
     public bool SelectedHasUpdate => DetailRuntime?.HasUpdates == true;
     /// <summary>The host target chip is only meaningful once the host reported a target.</summary>
@@ -352,6 +354,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         NotifyPackage();
         NotifyGit();
         NotifyOfficialDownloads();
+        NotifyDesktopPackages();
     }
     private void BuildTrees()
     {
@@ -387,6 +390,16 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
                 // Only the batch-integrated component stages drafts here; other rows stay read-only.
                 node.CanSelect = !IsTaskBusy && !(runtime?.IsBusy ?? false) && definition.Integration == ComponentIntegration.Batch;
                 node.ShowStatus = true;
+                if (definition?.IsDesktop == true)
+                {
+                    var localVersion = DesktopInstalledVersion?.Invoke(definition.ApplicationId ?? id);
+                    node.ShowVersion = localVersion is not null;
+                    node.Version = localVersion ?? "";
+                    node.Status = LocalizedStatus.Key(localVersion is null ? "component_center.desktop.absent" : "component_center.desktop.installed");
+                    node.SetTone(localVersion is null ? ComponentStatusTone.Idle : ComponentStatusTone.Ok);
+                    node.HasUpdate = false;
+                    continue;
+                }
                 var packageState = _componentStates.GetValueOrDefault(id)?.State;
                 node.ShowVersion = id == "git" && GitEngine?.IsGitAvailable == true ? true : runtime?.Installation is not null || packageState?.ActiveVersion is not null;
                 node.Status = id == "git" && GitEngine?.IsGitAvailable == true ? GitStatusText : packageState is not null ? LocalizedStatus.Key("proxy_server.runtime.ownership." + packageState.Ownership)
@@ -400,10 +413,13 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
             }
         }
         bool Eligible(ComponentTreeNode node) => (HostPlatform.Length == 0 || node.ComponentId is not { } componentId
-            || ComponentCatalog.Find(componentId)?.Platforms.Contains(HostPlatform) == true) && (SelectedPage switch
+            || ComponentCatalog.Find(componentId) is { } componentDefinition
+                && componentDefinition.Platforms.Contains(componentDefinition.IsDesktop ? RoappComponentInstallerProvider.Desktop.Os : HostPlatform)) && (SelectedPage switch
         {
             ComponentCenterPage.Installed => node.ComponentId is { } installed
-                && (installed == "git" && GitEngine?.IsGitAvailable == true ? true : (RuntimeFor(installed)?.Installation?.Installation.Ownership ?? _componentStates.GetValueOrDefault(installed)?.State?.Ownership)
+                && (ComponentCatalog.Find(installed) is { IsDesktop: true } desktopDefinition
+                    ? DesktopInstalledVersion?.Invoke(desktopDefinition.ApplicationId ?? installed) is not null
+                    : installed == "git" && GitEngine?.IsGitAvailable == true ? true : (RuntimeFor(installed)?.Installation?.Installation.Ownership ?? _componentStates.GetValueOrDefault(installed)?.State?.Ownership)
                     is RuntimeOwnership.Managed or RuntimeOwnership.External),
             ComponentCenterPage.Updates => node.ComponentId is { } updating && RuntimeFor(updating)?.HasUpdates == true,
             _ => true
@@ -485,7 +501,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         {
             _componentFreezes.Clear();
             foreach (var definition in ComponentCatalog.Components.Where(component =>
-                !HostPlatformKnown || component.Platforms.Contains(HostPlatform)))
+                !component.IsDesktop && (!HostPlatformKnown || component.Platforms.Contains(HostPlatform))))
             {
                 if (_lifecycle is null || Runtime.IsInvalidated || _inspectionLifetime.IsCancellationRequested) break;
                 try

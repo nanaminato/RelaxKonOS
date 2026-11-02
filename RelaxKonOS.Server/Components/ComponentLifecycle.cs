@@ -57,6 +57,24 @@ public sealed class ComponentLifecycleRegistry
             throw new ComponentLifecycleException(ComponentProblemCodes.UnknownComponent);
         return adapter;
     }
+
+    public async Task<ComponentPlanResult> PlanAsync(ComponentPlanRequest request, CancellationToken ct)
+    {
+        var domain = Require(request.ComponentId);
+        var (provider, problem) = ComponentInstallerProviderRegistry.Host.Resolve(domain, request);
+        return provider is null ? new(request, null, null, [problem!], [])
+            : await provider.PlanAsync(domain, request, ct);
+    }
+
+    public async Task<ComponentExecutionResult> ExecuteAsync(ComponentExecuteRequest frozen, CancellationToken ct)
+    {
+        if (frozen.ComponentId != frozen.Request.ComponentId)
+            return new(frozen.ComponentId, ComponentExecutionOutcome.Refused, [ComponentProblemCodes.RequestInvalid], [], null, null);
+        var domain = Require(frozen.ComponentId);
+        var (provider, problem) = ComponentInstallerProviderRegistry.Host.Resolve(domain, frozen.Request);
+        return provider is null ? new(frozen.ComponentId, ComponentExecutionOutcome.Refused, [problem!], [], null, null)
+            : await provider.ExecuteAsync(domain, frozen, ct);
+    }
 }
 
 public static class ComponentRevision

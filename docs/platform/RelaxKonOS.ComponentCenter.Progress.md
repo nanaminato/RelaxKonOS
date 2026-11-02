@@ -1,5 +1,17 @@
 # 组件中心实施进度
 
+## 本地声明式目录与安装链路（2026-11-02，CC-05 / MR-01 集成）
+
+已将桌面十个宿主组件与两个工作负载迁入随部署复制的 `ComponentCatalog/catalog.json` 和相对 manifest；无网站依赖、无旧 C# 目录回退。严格 schema、大小/深度限制、重复属性/身份拒绝、相对路径根边界及 symlink/reparse 拒绝已落地。兼容性解析区分 OS/架构不支持、provider 缺失、策略拒绝及环境未知；通用 plan、系统包/Nginx 执行和 FRP 冻结复核经机制 provider 交给原领域实现，保留冻结身份、审批、台账、所有权和 Helper 检查。
+
+本地阶段已经接通宿主 `apt/archive/download` 与桌面 `roapp`。版本发现/制品选择分别使用注册表，当前有 GitHub Releases、Nginx 官方页、APT 冻结候选、本地 catalog/static 和原 Tailscale 原生解析适配；有限文件名模板不执行脚本，歧义资源/来源替换拒绝。桌面 `.roapp` 先冻结版本/摘要并暂存，转交原 AppInstaller 检查身份、版本和权限，显式安装时复核同一文件句柄及已安装版本；不授予 BuiltIn、商店可信身份或新权限。状态与卸载/修复/回退保持领域权威。完整当前契约见[本地目录设计](RelaxKonOS.ComponentCatalog.Design.md)。HTTP(S) Catalog Source、第三方来源和其信任 UI 仍属于 Phase 2/3，不据本次结果关闭 MR-03/04/05 的真实第三方运行时升级/恢复验收。
+
+验证：Client、Server、Server.Tests 与 WindowPreviews 构建通过（已有无关警告保留）。Windows 上真实调用本地 `.roapp` 领域安装、更新、卸载，覆盖计划不自动安装、暂存后字节变化拒绝、安装版本变化拒绝、目录移除后使用冻结制品及权限重置；Component Center 中英日 × 明暗主题检查通过。Ubuntu 26.04 x64 上 `--components-only`（259 条原有 PASS 输出，加新增目录/版本/selector 专项）（含目录/provider/selector、路径与 symlink 拒绝、所有权、冻结身份、台账及恢复）和 `--official-component-releases-only`（11 项）通过。Linux 首次运行暴露既有 Nginx 恢复测试把 Helper 传 null 的夹具问题，已改为只允许查询的 transport；未改生产恢复语义。
+
+指定测试机 `100.113.194.85` 已按用户授权直接覆盖 `/opt/relaxkonos/versions/0.2.5/server`，未创建旧版本备份，保留现有部署配置和受管组件数据。该次使用 framework-dependent Linux 发布，初次启动被旧自包含目录残留的宿主库阻止；移除三个旧运行时入口后使用机器已安装的 .NET 10，Server、Helper、Guardian、Mihomo 均 active。部署后的生产 HTTP 验收 13 项通过：PAM 登录、四组件状态、Mihomo/FRP 实际上游版本发现、Nginx 计划/过期修订拒绝与注销。Nginx 返回 `component.package_no_update`，没有把同版本当升级，也没有执行第三方组件安装/更新/卸载或机器重启恢复。
+
+复现脚本：`Tests/ComponentCatalog/phase1_host_acceptance.py`（通过 SSH 在回环 HTTP 上执行，密码只读 stdin，不保存）；远端日志位于 `/home/nanami/component-catalog-20261102/{components-linux,releases-linux,http-deployed}.log`。本地发布/验证产物位于 `.artifacts/component-catalog-phase1/`。上述证据区分程序覆盖更新、本地桌面包事务与真实宿主组件生命周期，不互相替代。
+
 ## Squid 系统包状态可读（2026-11-01）
 
 Ubuntu 26.04 实机上组件中心的 Squid 读不到版本也无法安装：`GET /components/squid/state` 返回 `state` 为空的视图，面板据此显示「包管理器：尚未检查，或本机无法提供安装方式」、hero 与目录都回落「未知」，安装/更新/卸载全部禁用。

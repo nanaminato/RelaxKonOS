@@ -35,6 +35,7 @@ internal static class ComponentLifecycleChecks
 
     public static async Task RunAsync()
     {
+        await ComponentCatalogChecks.RunAsync();
         VerifyRoutes();
         VerifyRegistry();
         VerifyManageRights();
@@ -130,7 +131,7 @@ internal static class ComponentLifecycleChecks
             == RelaxKonOS.Protocol.Installations.InstallationOperationState.Interrupted,
             "Interrupted package status persists across a second ledger reload.");
         var service = new RelaxKonOS.Server.Installations.NginxInstallationService(null!, null!,
-            new ComponentLifecycleRegistry([new ProbeAdapter(ComponentIds.Nginx)]), null!);
+            new ComponentLifecycleRegistry([new ProbeAdapter(ComponentIds.Nginx)]), new RecoveryQueryTransport());
         var state = NginxPackagePlan.BuildState(new("nginx", null, Candidate()), false, "host", "amd64");
         var request = new ComponentPlanRequest("nginx", "host", RuntimeChange.Install, state.Revision,
             ComponentSourceMode.SystemPackage, null, 0, 0, null, null, true, "frozen-key");
@@ -557,6 +558,18 @@ internal static class ComponentLifecycleChecks
         public Task<ComponentExecutionResult> ExecuteAsync(ComponentExecuteRequest request, CancellationToken ct) =>
             Task.FromResult(new ComponentExecutionResult(componentId, ComponentExecutionOutcome.Refused,
                 [ComponentProblemCodes.ExecutionUnavailable], [], null, null));
+    }
+
+    private sealed class RecoveryQueryTransport : RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport
+    {
+        public Task<RelaxKonOS.Protocol.Privileged.PrivilegedOperationResult> ExecuteAsync(
+            RelaxKonOS.Protocol.Privileged.PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
+        {
+            if (request.Operation != RelaxKonOS.Protocol.Privileged.PrivilegedOperationKind.ComponentPackageQuery)
+                throw new InvalidOperationException("Recovery may only query; it must never rerun an installation.");
+            return Task.FromResult(new RelaxKonOS.Protocol.Privileged.PrivilegedOperationResult(true,
+                ComponentPackage: new("nginx", null, null)));
+        }
     }
 
 }

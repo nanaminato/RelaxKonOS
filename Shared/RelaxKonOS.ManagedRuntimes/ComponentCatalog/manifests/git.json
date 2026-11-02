@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "id": "git",
+  "runtimeId": "git",
+  "category": "system",
+  "name": "Git",
+  "descriptionKey": "component_center.component.git.description",
+  "integration": "Installation",
+  "applicationId": "relaxkonos.git",
+  "requiredComponents": [],
+  "optionalComponents": [],
+  "conflicts": [],
+  "applications": [
+    "relaxkonos.git"
+  ],
+  "targets": [
+    {
+      "os": "linux",
+      "architectures": [
+        "x64",
+        "arm64"
+      ],
+      "installer": {
+        "type": "apt",
+        "available": true
+      },
+      "sourceKind": "SystemPackage",
+      "officialDownloads": false,
+      "releases": {
+        "type": "apt"
+      },
+      "artifact": {
+        "selector": "package"
+      }
+    },
+    {
+      "os": "windows",
+      "architectures": [
+        "x64",
+        "arm64"
+      ],
+      "installer": {
+        "type": "download",
+        "available": false
+      },
+      "sourceKind": "OfficialSource",
+      "officialDownloads": false,
+      "releases": {
+        "type": "unavailable"
+      },
+      "artifact": {
+        "selector": "unavailable"
+      }
+    }
+  ]
+}

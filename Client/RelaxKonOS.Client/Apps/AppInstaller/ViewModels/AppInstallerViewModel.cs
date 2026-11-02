@@ -26,6 +26,7 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
     }
 
     public Func<Task<IReadOnlyList<string>>>? RequestLocalPackagesAsync { get; set; }
+    public bool AllowPackageSelection { get; init; } = true;
     public Func<Task<IReadOnlyList<string>>>? RequestServerPackagesAsync { get; set; }
     public Func<string, string, Task>? ShowMessageAsync { get; set; }
 
@@ -68,6 +69,12 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
             catch (Exception exception) { await ReportAsync(LocalizedText.Get("app_installer.error.read_title"), LocalizedText.Format("app_installer.error.package", Path.GetFileName(path), exception.Message)); }
         }
         ShowNext();
+    }
+
+    public void QueueCatalogPlan(RelaxKonOS.Client.Apps.ComponentCenter.RoappComponentInstallPlan plan)
+    {
+        _pending.Enqueue(plan.Package);
+        ShowNext(); // Always wait for the existing explicit Install/Update command.
     }
 
     public async Task QueueServerPackagesAsync(IEnumerable<string> paths)

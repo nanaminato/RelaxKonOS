@@ -22,7 +22,7 @@ public enum ComponentIntegration
 }
 
 /// <summary>Declared install provenance. A declaration is a plan, not a granted or verified source.</summary>
-public enum ComponentSourceKind { ManagedArchive, SystemPackage, OfficialSource, NativeInstaller }
+public enum ComponentSourceKind { ManagedArchive, SystemPackage, OfficialSource, NativeInstaller, DesktopApp }
 
 /// <summary>
 /// One declared source for one set of platforms. Linux and Windows genuinely differ here: a
@@ -39,71 +39,27 @@ public sealed record HostComponentDefinition(string ComponentId, string RuntimeI
     string DisplayName, string DescriptionKey, ComponentIntegration Integration, string? ApplicationId,
     IReadOnlyList<string> RequiredComponents, IReadOnlyList<string> OptionalComponents,
     IReadOnlyList<string> Conflicts, IReadOnlyList<string> Applications, IReadOnlyList<string> Platforms,
-    IReadOnlyList<ComponentSourceDeclaration> Sources);
+    IReadOnlyList<ComponentSourceDeclaration> Sources, bool IsDesktop);
 
 public sealed record ComponentWorkloadDefinition(string WorkloadId, string DisplayNameKey,
     IReadOnlyList<string> RequiredComponents, IReadOnlyList<string> OptionalComponents);
 
 public static class ComponentCatalog
 {
-    private const string Linux = "linux";
-    private const string Windows = "windows";
-
-    /// <summary>Component identities and their platform-specific source declarations.</summary>
-    public static IReadOnlyList<HostComponentDefinition> Components { get; } = Array.AsReadOnly<HostComponentDefinition>([
-        new("sing-box", "sing-box", "network", "sing-box", "component_center.component.sing-box.description",
-            ComponentIntegration.Batch, "relaxkonos.proxy-server", [], [], [],
-            ["relaxkonos.proxy-server"], [Linux],
-            [new(ComponentSourceKind.SystemPackage, true, [Linux])]),
-        new("mihomo", "mihomo", "network", "mihomo", "component_center.component.mihomo.description",
-            ComponentIntegration.Runtime, "relaxkonos.proxy", [], [], [],
-            ["relaxkonos.proxy"], [Windows, Linux],
-            // Mihomo has no distribution package and no upstream package repository, so the official
-            // release archive is its only install path on both platforms.
-            [new(ComponentSourceKind.ManagedArchive, true, [Windows, Linux])]),
-        new("frpc", "frpc", "network", "frpc", "component_center.component.frpc.description",
-            ComponentIntegration.Installation, "relaxkonos.tunnels", [], [], [],
-            ["relaxkonos.tunnels"], [Windows, Linux],
-            [new(ComponentSourceKind.ManagedArchive, true, [Windows, Linux]), new(ComponentSourceKind.OfficialSource, false, [Windows, Linux])]),
-        new("frps", "frps", "network", "frps", "component_center.component.frps.description",
-            ComponentIntegration.Installation, "relaxkonos.tunnels", [], [], [],
-            ["relaxkonos.tunnels"], [Windows, Linux],
-            [new(ComponentSourceKind.ManagedArchive, true, [Windows, Linux]), new(ComponentSourceKind.OfficialSource, false, [Windows, Linux])]),
-        // Linux installs the distribution package behind nginx.service; Windows has no such package
-        // and uses a pinned archive. Both platform adapters use durable installation workers.
-        new("nginx", "nginx", "web", "Nginx", "component_center.component.nginx.description",
-            ComponentIntegration.Installation, "relaxkonos.webservers", [], [], [],
-            ["relaxkonos.webservers"], [Linux, Windows],
-            [
-                new(ComponentSourceKind.SystemPackage, true, [Linux]),
-                new(ComponentSourceKind.OfficialSource, false, [Linux]),
-                new(ComponentSourceKind.ManagedArchive, true, [Windows])
-            ]),
-        new("squid", "squid", "web", "Squid", "component_center.component.squid.description",
-            ComponentIntegration.Installation, "relaxkonos.squid", [], [], [],
-            ["relaxkonos.squid"], [Linux],
-            [new(ComponentSourceKind.SystemPackage, true, [Linux])]),
-        new("docker", "docker", "system", "Docker Engine", "component_center.component.docker.description",
-            ComponentIntegration.Installation, "relaxkonos.docker", [], [], [],
-            ["relaxkonos.docker"], [Linux],
-            [new(ComponentSourceKind.OfficialSource, false, [Linux]), new(ComponentSourceKind.SystemPackage, true, [Linux])]),
-        new("git", "git", "system", "Git", "component_center.component.git.description",
-            ComponentIntegration.Installation, "relaxkonos.git", [], [], [],
-            ["relaxkonos.git"], [Linux, Windows],
-            [new(ComponentSourceKind.SystemPackage, true, [Linux]), new(ComponentSourceKind.OfficialSource, false, [Windows])]),
-        new("samba", "samba", "storage", "Samba", "component_center.component.samba.description",
-            ComponentIntegration.Installation, "relaxkonos.file-services", [], [], [],
-            ["relaxkonos.file-services"], [Linux],
-            [new(ComponentSourceKind.SystemPackage, true, [Linux])]),
-        new("tailscale", "tailscale", "network", "Tailscale", "component_center.component.tailscale.description",
-            ComponentIntegration.Installation, "relaxkonos.tailscale", [], [], [],
-            ["relaxkonos.tailscale"], [Linux, Windows],
-            [new(ComponentSourceKind.SystemPackage, true, [Linux]), new(ComponentSourceKind.NativeInstaller, true, [Windows])])
-    ]);
-    public static IReadOnlyList<ComponentWorkloadDefinition> Workloads { get; } = Array.AsReadOnly<ComponentWorkloadDefinition>([
-        new("proxy-server", "component_center.workload.proxy_server", ["sing-box"], []),
-        new("proxy-manager", "component_center.workload.proxy_manager", ["mihomo"], [])
-    ]);
+    public static IReadOnlyList<HostComponentDefinition> Components { get; } = Array.AsReadOnly(
+        RelaxKonOS.ManagedRuntimes.Catalog.BundledComponentCatalog.Current.Components.Select(component =>
+            new HostComponentDefinition(component.Id, component.RuntimeId, component.Category, component.Name,
+                component.DescriptionKey, Enum.Parse<ComponentIntegration>(component.Integration), component.ApplicationId,
+                component.RequiredComponents, component.OptionalComponents, component.Conflicts, component.Applications,
+                component.Targets.Select(target => target.Os).Distinct().ToArray(),
+                component.Targets.GroupBy(target => (target.SourceKind, target.Installer.Available))
+                    .Select(group => new ComponentSourceDeclaration(Enum.Parse<ComponentSourceKind>(group.Key.SourceKind),
+                        group.Key.Available, group.Select(target => target.Os).Distinct().ToArray())).ToArray(),
+                component.Targets.All(target => target.Installer.Type == "roapp"))).ToArray());
+    public static IReadOnlyList<ComponentWorkloadDefinition> Workloads { get; } = Array.AsReadOnly(
+        RelaxKonOS.ManagedRuntimes.Catalog.BundledComponentCatalog.Current.Workloads.Select(workload =>
+            new ComponentWorkloadDefinition(workload.WorkloadId, workload.DisplayNameKey,
+                workload.RequiredComponents, workload.OptionalComponents)).ToArray());
     public static HostComponentDefinition? Find(string id) => Components.SingleOrDefault(c => c.ComponentId == id);
 
     /// <summary>
@@ -121,7 +77,7 @@ public static class ComponentCatalog
     /// to a component; an application without a component never gains a fake dependency.
     /// </summary>
     public static IReadOnlyList<ApplicationLaunchGate> LaunchGates { get; } = Array.AsReadOnly(
-        Components.SelectMany(component => component.Applications.Select(application => (application, component.ComponentId)))
+        Components.Where(component => !component.IsDesktop).SelectMany(component => component.Applications.Select(application => (application, component.ComponentId)))
             .GroupBy(pair => pair.application, StringComparer.Ordinal)
             .Select(group => new ApplicationLaunchGate(group.Key,
                 Array.AsReadOnly(group.Select(pair => pair.ComponentId).Distinct(StringComparer.Ordinal).ToArray())))

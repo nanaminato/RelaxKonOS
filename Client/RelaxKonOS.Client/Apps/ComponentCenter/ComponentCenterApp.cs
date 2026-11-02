@@ -108,6 +108,28 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
         var taskDialogOpen = false;
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.component-center.display_name"),
             view, new Rect(80, 45, 1060, 800), Manifest.IconGlyph);
+        if (context.Services.GetService(typeof(RelaxKonOS.Client.Services.AppPackages.AppPackageInstallerService))
+                is RelaxKonOS.Client.Services.AppPackages.AppPackageInstallerService desktopInstaller
+            && context.Services.GetService(typeof(RelaxKonOS.Client.Services.Developer.DeveloperPackageManager))
+                is RelaxKonOS.Client.Services.Developer.DeveloperPackageManager desktopPackages)
+        {
+            model.DesktopInstalledVersion = id => desktopPackages.FindInstalled(id)?.Version;
+            model.ReviewDesktopPackageAsync = async id =>
+            {
+                var plan = await new RoappComponentInstallerProvider(desktopInstaller).PlanAsync(
+                    RelaxKonOS.ManagedRuntimes.Catalog.BundledComponentCatalog.Source, id);
+                using var review = new RelaxKonOS.Client.Apps.AppInstaller.ViewModels.AppInstallerViewModel(desktopInstaller)
+                    { AllowPackageSelection = false };
+                review.QueueCatalogPlan(plan);
+                await context.ShowDialogAsync<bool>(window, LocalizedText.Get("app_installer.title"), dialog =>
+                {
+                    dialog.CanCancelAsync = () => Task.FromResult(!review.IsBusy);
+                    return new RelaxKonOS.Client.Apps.AppInstaller.Views.AppInstallerView { DataContext = review };
+                }, new Size(720, 650));
+                model.RefreshDesktopPackages();
+            };
+            model.RefreshDesktopPackages();
+        }
         model.SelectLocalComponentPackageAsync = async task =>
         {
             var top = TopLevel.GetTopLevel(view);

@@ -224,6 +224,16 @@
         </StackPanel>
        </Border>
 
+       <Border Classes="panel-card" IsVisible="{Binding ShowDesktopPackage}">
+        <StackPanel Spacing="12">
+         <TextBlock Classes="section-title" Text="{loc:Loc component_center.source_kind.DesktopApp}" />
+         <TextBlock Classes="section-hint" Text="{loc:Loc component_center.desktop.hint}" TextWrapping="Wrap" />
+         <TextBlock Classes="section-hint" Text="{Binding DesktopCompatibilityText}" TextWrapping="Wrap" />
+         <Button Classes="primary" Content="{loc:Loc component_center.desktop.review}"
+                 Command="{Binding ReviewDesktopCatalogPackageCommand}" HorizontalAlignment="Left" />
+        </StackPanel>
+       </Border>
+
        <Border Classes="panel-card" IsVisible="{Binding ShowNginxSelection}">
         <ContentControl Content="{Binding NginxSelection}">
          <ContentControl.ContentTemplate>

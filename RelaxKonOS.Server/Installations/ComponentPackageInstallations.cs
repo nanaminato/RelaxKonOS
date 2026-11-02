@@ -54,7 +54,7 @@ internal static class ComponentPackageInstallations
         IInstallationProgress progress, CancellationToken ct)
     {
         await progress.ReportAsync(new(InstallationStage.Preflight, Cancellable: false), ct);
-        var result = await registry.Require(frozen.ComponentId).ExecuteAsync(frozen, CancellationToken.None);
+        var result = await registry.ExecuteAsync(frozen, CancellationToken.None);
         if (result.Outcome != ComponentExecutionOutcome.Succeeded)
             throw new InstallationException(result.Detail ?? result.Problems.FirstOrDefault() ?? ComponentProblemCodes.InstallFailed);
         await progress.ReportAsync(new(InstallationStage.HealthChecking, Cancellable: false), CancellationToken.None);

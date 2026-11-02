@@ -51,7 +51,7 @@ internal sealed class NginxInstallationService(NginxWebServerManager manager, In
             await progress.ReportAsync(new(InstallationStage.Preflight, Cancellable: false), ct);
             // The ledger holds service:Nginx and linux:apt-dpkg for the full worker lifetime.
             await progress.ReportAsync(new(InstallationStage.Installing, Cancellable: false), ct);
-            var result = await components.Require(ComponentIds.Nginx).ExecuteAsync(frozen, CancellationToken.None);
+            var result = await components.ExecuteAsync(frozen, CancellationToken.None);
             Check(result.Outcome == ComponentExecutionOutcome.Succeeded,
                 result.Detail ?? result.Problems.FirstOrDefault() ?? ComponentProblemCodes.InstallFailed);
             await progress.ReportAsync(new(InstallationStage.HealthChecking), CancellationToken.None);
@@ -111,7 +111,7 @@ public sealed class FrpInstallationService(IRuntimeManager runtime, ITunnelProvi
         if (options.FrozenArchive is { } frozen)
         {
             await progress.ReportAsync(new(InstallationStage.Preflight, Cancellable: false), ct);
-            var planned = await components.Require(frozen.ComponentId).PlanAsync(frozen.Request, ct);
+            var planned = await components.PlanAsync(frozen.Request, ct);
             if (kind == InstallationOperationKind.Uninstall)
             {
                 Check(planned.Allowed, planned.Problems.FirstOrDefault() ?? ComponentProblemCodes.RequestInvalid);

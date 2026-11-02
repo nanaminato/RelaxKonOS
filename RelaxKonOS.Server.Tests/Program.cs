@@ -1,4 +1,9 @@
 using RelaxKonOS.Protocol.Proxy;
+if (args.Contains("--component-catalog-only"))
+{
+    await ComponentCatalogChecks.RunAsync();
+    return;
+}
 if (args.Length is 2 or 3 && args[0] == "--download-frp-archive")
 {
     var destination = args[1];

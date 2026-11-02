@@ -1,5 +1,7 @@
 # RelaxKonOS 内置代理管理器实现规范
 
+> 2026-11-02：组件中心的 Mihomo 列表、平台/架构与官方归档入口已由[本地 manifest](../platform/RelaxKonOS.ComponentCatalog.Design.md) 声明；GitHub Releases 与制品选择已经过通用注册表，固定仓库与资产身份仍独立核对；安装仍走原代理运行时/发布协调器和安装台账，不由 manifest 执行命令或授信。未新增真实安装、跨版本和恢复验收。
+
 > 文档类型：应用设计与实现规范
 
 > 模块归属（2026-10-28）：本应用的 HTTP 面（`/api/v1.0/proxy*` 与 Squid 网关 `/api/v1.0/gateway-proxy/*`）以及引擎适配、生命周期、订阅下载、TUN 安全、操作/审计台账由 `relaxkonos.proxy` 提供（配置键 `Modules:Proxy:Enabled`，默认启用，能力 `server.proxy`/`server.gateway-proxy`）。mihomo 运行时与发布台账、代理设置、sing-box 运行时留在 Core：安装域、任务编排、组件中心与 Docker 出站代理直接依赖它们，所以禁用模块既不会改变 Docker 构建使用的代理，也不会停止中断发布的恢复。代价是系统代理守卫与代理服务器凭据过期循环随模块停止，停用前请先在界面里关闭系统代理与 TUN。

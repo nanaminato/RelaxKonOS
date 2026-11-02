@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "id": "mihomo",
+  "runtimeId": "mihomo",
+  "category": "network",
+  "name": "mihomo",
+  "descriptionKey": "component_center.component.mihomo.description",
+  "integration": "Runtime",
+  "applicationId": "relaxkonos.proxy",
+  "requiredComponents": [],
+  "optionalComponents": [],
+  "conflicts": [],
+  "applications": [
+    "relaxkonos.proxy"
+  ],
+  "targets": [
+    {
+      "os": "windows",
+      "architectures": [
+        "x64",
+        "arm64"
+      ],
+      "installer": {
+        "type": "archive",
+        "available": true
+      },
+      "sourceKind": "ManagedArchive",
+      "officialDownloads": true,
+      "releases": {
+        "type": "github-releases",
+        "repository": "MetaCubeX/mihomo"
+      },
+      "artifact": {
+        "selector": "pattern",
+        "fileName": "mihomo-{os}-{arch}-{version}.zip",
+        "format": "zip"
+      }
+    },
+    {
+      "os": "linux",
+      "architectures": [
+        "x64",
+        "arm64"
+      ],
+      "installer": {
+        "type": "archive",
+        "available": true
+      },
+      "sourceKind": "ManagedArchive",
+      "officialDownloads": true,
+      "releases": {
+        "type": "github-releases",
+        "repository": "MetaCubeX/mihomo"
+      },
+      "artifact": {
+        "selector": "pattern",
+        "fileName": "mihomo-{os}-{arch}-{version}.gz",
+        "format": "gz"
+      }
+    }
+  ]
+}

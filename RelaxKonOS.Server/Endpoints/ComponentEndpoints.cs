@@ -1,4 +1,4 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Server.Components;
@@ -52,7 +52,7 @@ public static class ComponentEndpoints
                 if (!CanManage(http.User, componentId)) return Results.Forbid();
                 // Resolving the adapter is inside the response scope so an unregistered component
                 // answers `component.unknown` (404) instead of escaping as an unhandled 500.
-                return Results.Ok(await registry.Require(componentId).PlanAsync(request, ct));
+                return Results.Ok(await registry.PlanAsync(request, ct));
             })).RequireAuthorization(RuntimeCatalogEndpoints.ManagePolicy);
         return app;
     }
@@ -100,6 +100,8 @@ public static class ComponentEndpoints
         catch (RuntimeLifecycleException) { return Problem(ComponentProblemCodes.StateUnavailable, 503); }
         catch (RuntimeCatalogException) { return Problem(ComponentProblemCodes.StateUnavailable, 503); }
         catch (IOException) { return Problem(ComponentProblemCodes.StateUnavailable, 503); }
+        catch (InvalidDataException) { return Problem(ComponentProblemCodes.StateUnavailable, 503); }
+        catch (System.Text.Json.JsonException) { return Problem(ComponentProblemCodes.StateUnavailable, 503); }
     }
 
     private static IResult Problem(string code, int status) => Results.Problem(statusCode: status,

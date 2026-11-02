@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "id": "frpc",
+  "runtimeId": "frpc",
+  "category": "network",
+  "name": "frpc",
+  "descriptionKey": "component_center.component.frpc.description",
+  "integration": "Installation",
+  "applicationId": "relaxkonos.tunnels",
+  "requiredComponents": [],
+  "optionalComponents": [],
+  "conflicts": [],
+  "applications": [
+    "relaxkonos.tunnels"
+  ],
+  "targets": [
+    {
+      "os": "windows",
+      "architectures": [
+        "x64",
+        "arm64"
+      ],
+      "installer": {
+        "type": "archive",
+        "available": true
+      },
+      "sourceKind": "ManagedArchive",
+      "officialDownloads": true,
+      "releases": {
+        "type": "github-releases",
+        "repository": "fatedier/frp"
+      },
+      "artifact": {
+        "selector": "pattern",
+        "fileName": "frp_{versionNumber}_{os}_{arch}.zip",
+        "format": "zip"
+      }
+    },
+    {
+      "os": "linux",
+      "architectures": [
+        "x64",
+        "arm64"
+      ],
+      "installer": {
+        "type": "archive",
+        "available": true
+      },
+      "sourceKind": "ManagedArchive",
+      "officialDownloads": false,
+      "releases": {
+        "type": "github-releases",
+        "repository": "fatedier/frp"
+      },
+      "artifact": {
+        "selector": "pattern",
+        "fileName": "frp_{versionNumber}_{os}_{arch}.tar.gz",
+        "format": "tar.gz"
+      }
+    },
+    {
+      "os": "windows",
+      "architectures": [
+        "x64",
+        "arm64"
+      ],
+      "installer": {
+        "type": "download",
+        "available": false
+      },
+      "sourceKind": "OfficialSource",
+      "officialDownloads": false,
+      "releases": {
+        "type": "unavailable"
+      },
+      "artifact": {
+        "selector": "unavailable"
+      }
+    },
+    {
+      "os": "linux",
+      "architectures": [
+        "x64",
+        "arm64"
+      ],
+      "installer": {
+        "type": "download",
+        "available": false
+      },
+      "sourceKind": "OfficialSource",
+      "officialDownloads": false,
+      "releases": {
+        "type": "unavailable"
+      },
+      "artifact": {
+        "selector": "unavailable"
+      }
+    }
+  ]
+}

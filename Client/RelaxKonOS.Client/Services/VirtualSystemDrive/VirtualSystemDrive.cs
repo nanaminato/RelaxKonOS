@@ -19,10 +19,12 @@ public sealed class VirtualSystemDrive
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
     };
 
-    public VirtualSystemDrive()
+    public VirtualSystemDrive() : this(Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "SystemDrive")) { }
+
+    internal VirtualSystemDrive(string root)
     {
-        Root = Path.GetFullPath(Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "SystemDrive"));
+        Root = Path.GetFullPath(root);
     }
 
     public string Root { get; }

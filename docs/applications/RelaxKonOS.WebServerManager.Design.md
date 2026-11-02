@@ -1,5 +1,7 @@
 # RelaxKonOS WebServerManager / Nginx 集成设计
 
+> 2026-11-02：Nginx 的组件中心元数据已迁入[本地 manifest](../platform/RelaxKonOS.ComponentCatalog.Design.md)，Linux APT 与 Windows 归档通过既有领域路径处理。官方页版本发现/有限模板选择及通用冻结计划/执行经 provider 派发，仓库、制品、冻结期望、所有权与 Helper 校验保持权威；目录不是新的可信来源，也不代表新增实机生命周期验收。
+
 2026-10-30（MR-05）：Ubuntu 26.04 x64 经组件冻结计划与生产安装台账安装 `1.28.3-2ubuntu1.12` 成功，受管提交操作 ID、原回执、`nginx -t` 与默认站点 HTTP 200 验证通过。Helper APT 解算明确要求 SHA-256，修复默认 MD5 URI 计划被拒绝的问题，未降低验证要求；修复已部署到本次测试宿主。此证据仅为首次安装，不覆盖跨版本更新、卸载或补偿，详见[实机记录](../testing/RelaxKonOS.Tailscale.ComponentCenter.20261030.md)。
 
 > **模块归属（2026-10-28）**：`/api/v1.0/webservers/*`、`/api/v1.0/website-publications/*`、站点发布事务与其后台协调器归官方模块 `relaxkonos.webserver`，默认启用，并硬依赖 `relaxkonos.certificates`。**Nginx 的读状态与 conf.d 集成实现留在 Core**（`IWebServerManager`/`NginxWebServerManager`），因为应用部署的站点发布、组件中心的 Nginx 组件状态与安装域都直接使用它；禁用本模块只是不再提供 Web Server Manager 界面与站点发布事务，不会停止或修改现有 Nginx 及其站点配置。详见[模块设计实施记录](../architecture/RelaxKonOS.ModulesAndExtensions.Design.md#certificate-与-webserver-模块2026-10-28)。

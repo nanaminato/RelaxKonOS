@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "components": [
+    {
+      "id": "sing-box",
+      "manifest": "./manifests/sing-box.json"
+    },
+    {
+      "id": "mihomo",
+      "manifest": "./manifests/mihomo.json"
+    },
+    {
+      "id": "frpc",
+      "manifest": "./manifests/frpc.json"
+    },
+    {
+      "id": "frps",
+      "manifest": "./manifests/frps.json"
+    },
+    {
+      "id": "nginx",
+      "manifest": "./manifests/nginx.json"
+    },
+    {
+      "id": "squid",
+      "manifest": "./manifests/squid.json"
+    },
+    {
+      "id": "docker",
+      "manifest": "./manifests/docker.json"
+    },
+    {
+      "id": "git",
+      "manifest": "./manifests/git.json"
+    },
+    {
+      "id": "samba",
+      "manifest": "./manifests/samba.json"
+    },
+    {
+      "id": "tailscale",
+      "manifest": "./manifests/tailscale.json"
+    }
+  ],
+  "workloads": [
+    {
+      "workloadId": "proxy-server",
+      "displayNameKey": "component_center.workload.proxy_server",
+      "requiredComponents": [
+        "sing-box"
+      ],
+      "optionalComponents": []
+    },
+    {
+      "workloadId": "proxy-manager",
+      "displayNameKey": "component_center.workload.proxy_manager",
+      "requiredComponents": [
+        "mihomo"
+      ],
+      "optionalComponents": []
+    }
+  ]
+}

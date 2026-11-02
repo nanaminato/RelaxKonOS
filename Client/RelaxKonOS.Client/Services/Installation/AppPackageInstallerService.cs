@@ -1,6 +1,7 @@
 using RelaxKonOS.Client.Apps.Explorer;
 using System.IO.Compression;
 using RelaxKonOS.Client.Services.Developer;
+using System.Security.Cryptography;
 
 namespace RelaxKonOS.Client.Services.AppPackages;
 
@@ -12,6 +13,7 @@ public sealed class AppPackageInstallerService
 {
     private readonly DeveloperPackageManager _packages;
     private readonly IExplorerClient _files;
+    private readonly SemaphoreSlim _installLock = new(1, 1);
 
     public AppPackageInstallerService(DeveloperPackageManager packages, IExplorerClient files)
     {
@@ -69,14 +71,30 @@ public sealed class AppPackageInstallerService
 
     public async Task<DeveloperAppInfo> InstallAsync(AppPackageCandidate candidate, CancellationToken cancellationToken = default)
     {
-        DeveloperAppInfo installed;
-        await using (var package = File.OpenRead(candidate.LocalPath))
-            installed = await _packages.InstallAsync(package, launch: false, cancellationToken);
+        await _installLock.WaitAsync(cancellationToken);
+        try
+        {
+            DeveloperAppInfo installed;
+            await using (var package = new FileStream(candidate.LocalPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                await VerifyFrozenAsync(package, candidate.ExpectedSha256, cancellationToken);
+                if (candidate.ExpectedSha256 is not null && _packages.FindInstalled(candidate.Manifest.Id)?.Version != candidate.InstalledVersion)
+                    throw new InvalidOperationException("component.state_revision_conflict");
+                installed = await _packages.InstallAsync(package, launch: false, cancellationToken);
+            }
+            // Dispose before deleting a staged file on Windows.
+            if (candidate.DeleteWhenFinished && File.Exists(candidate.LocalPath)) File.Delete(candidate.LocalPath);
+            return installed;
+        }
+        finally { _installLock.Release(); }
+    }
 
-        // The stream must be disposed before Windows permits deleting the staged server package.
-        if (candidate.DeleteWhenFinished && File.Exists(candidate.LocalPath))
-            File.Delete(candidate.LocalPath);
-        return installed;
+    public static async Task VerifyFrozenAsync(Stream package, string? expectedSha256, CancellationToken ct)
+    {
+        if (expectedSha256 is null) return;
+        if (!package.CanSeek || !Convert.ToHexStringLower(await SHA256.HashDataAsync(package, ct)).Equals(expectedSha256, StringComparison.Ordinal))
+            throw new InvalidOperationException("component.package_expectation_changed");
+        package.Position = 0; // The domain installer consumes the very same verified handle.
     }
 
     public void Discard(AppPackageCandidate candidate)
@@ -92,7 +110,7 @@ public sealed record AppPackageCandidate(
     DeveloperPackageManifest Manifest,
     string? InstalledVersion,
     bool DeleteWhenFinished,
-    byte[]? IconData = null)
+    byte[]? IconData = null, string? ExpectedSha256 = null, string? CatalogSourceId = null)
 {
     public bool IsUpdate => InstalledVersion is not null;
 }

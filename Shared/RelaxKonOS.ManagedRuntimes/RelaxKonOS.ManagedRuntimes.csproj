@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Content Include="ComponentCatalog/**/*.json;ComponentCatalog/**/*.roapp" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <InternalsVisibleTo Include="RelaxKonOS.Server.Tests" />
     <InternalsVisibleTo Include="RelaxKonOS.ManagedRuntimes.Tests" />
     <PackageReference Include="YamlDotNet" />

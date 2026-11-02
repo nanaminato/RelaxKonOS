@@ -14,7 +14,7 @@
                 <TextBlock Text="{loc:Loc app_installer.security_warning}" Opacity="0.82" TextWrapping="Wrap" />
             </StackPanel>
 
-            <WrapPanel>
+            <WrapPanel IsVisible="{Binding AllowPackageSelection}">
                 <Button Content="{loc:Loc app_installer.choose_local}" Command="{Binding ChooseLocalCommand}" Padding="16,8" Margin="0,0,8,8" />
                 <Button Content="{loc:Loc app_installer.choose_server}" Command="{Binding ChooseServerCommand}" Padding="16,8" Margin="0,0,8,8" />
             </WrapPanel>
