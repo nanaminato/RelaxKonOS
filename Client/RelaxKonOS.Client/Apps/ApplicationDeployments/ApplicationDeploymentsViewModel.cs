@@ -25,11 +25,18 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     private CancellationTokenSource? polling;
     /// <summary>Set while this view model rewrites the selection itself, so the change handler does not reload twice.</summary>
     private bool suppressSelectionReload;
+    /// <summary>The application whose snapshot is on screen, so a refresh of the same row does not
+    /// blank the detail before the new snapshot arrives.</summary>
+    private Guid? loadedApplicationId;
 
     public ApplicationDeploymentsViewModel(IRemoteApplicationDeploymentClient client, IAppPermissionScope permissions)
     {
         this.client = client;
         this.permissions = permissions;
+        // The empty states and counts are computed from the collections, so they have to follow them.
+        Applications.CollectionChanged += (_, _) => RefreshCollections();
+        Revisions.CollectionChanged += (_, _) => RefreshCollections();
+        Operations.CollectionChanged += (_, _) => RefreshCollections();
     }
 
     public ObservableCollection<ApplicationRowViewModel> Applications { get; } = [];
@@ -83,9 +90,41 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     public bool HasError => !ErrorText.IsEmpty;
     public bool HasStatus => !StatusText.IsEmpty;
 
+    /// <summary>
+    /// A write is never offered while another one is in flight: the server queues durable operations,
+    /// but two clicks would still queue two of them, and the second would replace an instance the
+    /// first is still building.
+    /// </summary>
+    public bool CanAct => CanManage && !IsBusy && !IsLoading && !IsOperationRunning;
+    public bool CanActOnSelection => CanAct && SelectedApplication is not null;
+    public bool IsWorking => IsBusy || IsLoading;
+
+    /// <summary>The bar stays visible after an operation finishes, so "is it running" is asked of the
+    /// operation itself rather than of the bar's presence.</summary>
+    public bool IsOperationRunning => ActiveOperation?.IsActive is true;
+
+    public bool HasApplications => Applications.Count > 0;
+    public bool HasRevisions => Revisions.Count > 0;
+    public bool HasOperations => Operations.Count > 0;
+    public string ApplicationCountText => LocalizedText.Format(DeploymentText.Prefix + ".application_count", Applications.Count);
+
+    /// <summary>Rollback is reached from the revision it returns to, not from a menu that only works
+    /// after selecting a row in a tab the operator may not have opened.</summary>
+    public bool HasRevisionSelection => SelectedRevision is not null;
+
+    /// <summary>Selecting the live revision must not read as a rollback that is merely disabled.</summary>
+    public bool SelectedRevisionIsCurrent => SelectedRevision is not null
+        && SelectedRevision.Id == SelectedApplication?.Model.CurrentRevisionId;
+    public bool ShowRollbackHint => HasRevisions && !HasRevisionSelection;
+    /// <summary>The rollback line only names a target when one was chosen and it is not the live one.</summary>
+    public bool ShowRollbackTarget => HasRevisionSelection && !SelectedRevisionIsCurrent;
+    public string RollbackActionText => LocalizedText.Format(DeploymentText.Prefix + ".rollback_to",
+        SelectedRevision?.NumberText ?? string.Empty);
+    public bool CanCancelActiveOperation => CanManage && !IsLoading && ActiveOperation is { CanCancel: true };
+
     /// <summary>Start, stop, and restart only make sense once a revision has been published.</summary>
     public bool CanControlLifecycle => CanManage && SelectedApplication?.Model.CurrentRevisionId is not null;
-    public bool CanRollback => CanManage && SelectedRevision is not null
+    public bool CanRollback => CanAct && SelectedRevision is not null
         && SelectedApplication is not null && SelectedRevision.Id != SelectedApplication.Model.CurrentRevisionId;
 
     public string CurrentRevisionText => SelectedApplication?.Model.CurrentRevisionNumber is { } number
@@ -511,20 +550,47 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
 
     partial void OnSelectedApplicationChanged(ApplicationRowViewModel? value)
     {
+        // A refresh rebuilds the rows, so the selection is a new instance with the same id. Clearing
+        // the detail then would replace loaded revisions with "none yet" until the snapshot returns —
+        // and a refused snapshot would leave that false statement on screen.
+        var sameApplication = value is not null && loadedApplicationId == value.Id;
+        loadedApplicationId = value?.Id;
         SelectedRevision = null;
-        Revisions.Clear();
-        Operations.Clear();
-        LogLines.Clear();
-        IsLogTruncated = false;
-        ActiveOperation = null;
+        if (!sameApplication)
+        {
+            Revisions.Clear();
+            Operations.Clear();
+            LogLines.Clear();
+            IsLogTruncated = false;
+            ActiveOperation = null;
+        }
         RefreshDerived();
-        if (value is null || suppressSelectionReload) return;
+        if (value is null || suppressSelectionReload || sameApplication) return;
         _ = SelectAsync(value.Id);
     }
 
-    partial void OnSelectedRevisionChanged(RevisionRowViewModel? value) => OnPropertyChanged(nameof(CanRollback));
+    partial void OnSelectedRevisionChanged(RevisionRowViewModel? value)
+    {
+        OnPropertyChanged(nameof(CanRollback));
+        OnPropertyChanged(nameof(HasRevisionSelection));
+        OnPropertyChanged(nameof(ShowRollbackHint));
+        OnPropertyChanged(nameof(RollbackActionText));
+        OnPropertyChanged(nameof(SelectedRevisionIsCurrent));
+        OnPropertyChanged(nameof(ShowRollbackTarget));
+    }
 
-    partial void OnActiveOperationChanged(OperationRowViewModel? value) => OnPropertyChanged(nameof(HasActiveOperation));
+    // Both busy flags gate every write, so they invalidate the same derived set.
+    partial void OnIsBusyChanged(bool value) => RefreshWorkState();
+    partial void OnIsLoadingChanged(bool value) => RefreshWorkState();
+
+    partial void OnActiveOperationChanged(OperationRowViewModel? value)
+    {
+        OnPropertyChanged(nameof(HasActiveOperation));
+        OnPropertyChanged(nameof(IsOperationRunning));
+        OnPropertyChanged(nameof(CanCancelActiveOperation));
+        OnPropertyChanged(nameof(CanAct));
+        OnPropertyChanged(nameof(CanActOnSelection));
+    }
 
     partial void OnErrorTextChanged(LocalizedStatus value) => OnPropertyChanged(nameof(HasError));
 
@@ -560,6 +626,27 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
         }
     }
 
+    private void RefreshWorkState()
+    {
+        OnPropertyChanged(nameof(CanAct));
+        OnPropertyChanged(nameof(CanActOnSelection));
+        OnPropertyChanged(nameof(IsWorking));
+        OnPropertyChanged(nameof(IsOperationRunning));
+        OnPropertyChanged(nameof(CanControlLifecycle));
+        OnPropertyChanged(nameof(CanRollback));
+        OnPropertyChanged(nameof(CanCancelActiveOperation));
+    }
+
+    /// <summary>Counts and empty states derive from the collections, not from a property change.</summary>
+    private void RefreshCollections()
+    {
+        OnPropertyChanged(nameof(HasApplications));
+        OnPropertyChanged(nameof(HasRevisions));
+        OnPropertyChanged(nameof(HasOperations));
+        OnPropertyChanged(nameof(ApplicationCountText));
+        OnPropertyChanged(nameof(ShowRollbackHint));
+    }
+
     private void RefreshDerived()
     {
         OnPropertyChanged(nameof(HasSelection));
@@ -585,6 +672,13 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
         OnPropertyChanged(nameof(ShowStartAction));
         OnPropertyChanged(nameof(ShowStopAction));
         OnPropertyChanged(nameof(ShowRestartAction));
+        OnPropertyChanged(nameof(CanAct));
+        OnPropertyChanged(nameof(CanActOnSelection));
+        OnPropertyChanged(nameof(CanRollback));
+        OnPropertyChanged(nameof(CanCancelActiveOperation));
+        OnPropertyChanged(nameof(HasRevisionSelection));
+        OnPropertyChanged(nameof(ShowRollbackHint));
+        OnPropertyChanged(nameof(RollbackActionText));
     }
 
     private static bool IsExpected(Exception exception) => exception

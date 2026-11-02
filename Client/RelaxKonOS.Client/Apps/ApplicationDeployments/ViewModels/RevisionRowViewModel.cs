@@ -39,6 +39,11 @@ public sealed class RevisionRowViewModel(ApplicationRevisionDto revision, Guid? 
     /// <summary>Image ids are long digests; the full value stays available in the tooltip.</summary>
     public string ImageTooltip => Model.ImageId ?? Model.ImageReference;
 
+    /// <summary>A revision without environment entries or volumes should not print an empty "—" line
+    /// under a label that promises content.</summary>
+    public bool HasConfiguration => Model.Configuration.Count > 0;
+    public bool HasVolumes => Model.Volumes.Count > 0;
+
     public string ConfigurationText => Model.Configuration.Count == 0
         ? "—"
         : string.Join(", ", Model.Configuration.Select(entry => $"{entry.Name}={entry.Value}"));
