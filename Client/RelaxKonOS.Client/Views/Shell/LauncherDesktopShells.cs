@@ -612,8 +612,10 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
     private void OnRootPointerPressed(object? sender, PointerPressedEventArgs args)
     {
         if (args.Handled) return;
-        for (var current = args.Source as Control; current is not null; current = current.Parent as Control)
-            if (current is Control { Tag: var tag } && ReferenceEquals(tag, DesktopEntryMarker)) return;
+        // Selection belongs to the desktop surface: a press inside a managed window, on a desktop
+        // entry or on taskbar chrome must keep it. The backdrop is the only control that means
+        // "empty desktop", and it answers both buttons the way the platform does.
+        if (!ReferenceEquals(args.Source, _backdrop)) return;
         _vm?.ClearDesktopSelectionCommand.Execute(null);
     }
 

@@ -208,6 +208,14 @@ recipe 只是「选择」，真正产生差异的是宿主审查过的模板。�
   多行头部仍是单一宿主头部，内容区域从整个头部下方开始；全屏时整个头部隐藏。
 - **头部内的响应式行为仍由内容控件负责。** 文件浏览器窄窗口把搜索收进可展开按钮；
   代码编辑器收缩菜单和侧栏。标签列表提供所有标签菜单及 Ctrl+Tab / Ctrl+Shift+Tab，溢出时操作仍可达。
+- **标题栏右键给出窗口菜单，Alt+Space 是它的键盘入口。** 宿主把它挂在 `PART_TitleBar` 上，每次打开时重建：
+  最大化状态下是「还原」、普通状态下是「最大化」，然后是「最小化」，分隔线后是「关闭」；文案复用
+  `WindowCaptionLabels`（宿主按显示语言注入），命令直接走 `ManagedWindow` 已有的三枚命令。
+  `Alt+Space` 在 `WindowManager.HandleWindowKeyDown` 里作为应用未处理后的兜底，与 `Alt+F4` 同一处；
+  指针打开时菜单落在指针处，键盘打开时没有指针可依，改为贴标题栏下缘左对齐（无标题栏的全屏窗口退到内容区左上角）。
+  移动/大小故意缺席——本外壳的移动与缩放是指针驱动，没有可启动的键盘模态循环，写一条点不动的项只会骗人。
+  窗口内容区未处理的上下文请求在窗口边界终止，所以应用要自己的右键菜单只需在自己的控件上声明，
+  不需要与桌面争这条路径。
 - **覆盖检查不变**：`SystemStyleChecks.VerifyRecipeCoverage` 仍只要求 `:chrome-<值>` 在
   `RemoteWindowTheme.axaml` 里留有实现痕迹；模板显式定义角色与按钮组，recipe 与角色组合共同决定标题、标签及导航行的位置。
 - **验证落点**：`Tests/Client/RelaxKonOS.WindowPreviews.Tests/FusedWindowHeaderChecks.cs`

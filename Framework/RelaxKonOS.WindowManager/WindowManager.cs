@@ -734,6 +734,17 @@ public sealed class WindowManager : IWindowManager
             return;
         }
 
+        // The window menu is a host gesture, so the platform's keyboard route to it stays open even
+        // when the application's own content has taken the pointer and every other key.
+        if (!e.IsRepeat
+            && e.Key == RemoteKey.Space
+            && e.Modifiers == RemoteKeyModifiers.Alt)
+        {
+            window.View.OpenWindowMenu();
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key != RemoteKey.Escape)
             return;
 

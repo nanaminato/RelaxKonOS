@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Input.Raw;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using RelaxKonOS.Example.Windows11DesktopShell.Services;
@@ -208,7 +209,79 @@ internal static class Windows11DesktopChecks
         Check(input.IsKeyboardFocusWithin, "system dialog text field can receive focus.");
         modal!.Close(true);
         SpinWait.SpinUntil(() => { Dispatcher.UIThread.RunJobs(); return result.IsCompleted && !manager.IsSystemModalOpen; }, 2000);
+        // The desktop menu belongs to the wallpaper surface. Hanging it on the desktop area instead
+        // made every right click inside a managed window answer with the wallpaper menu.
+        var desktopBackdrop = (Border)view.DesktopBackdropSurface;
+        Check(desktopBackdrop.ContextMenu is not null, "the wallpaper surface owns the desktop context menu.");
+        Check(!view.WindowHostSurface.GetVisualAncestors().Contains(desktopBackdrop),
+            "the desktop context menu surface sits outside the window host.");
+        var desktopMenusOpened = 0;
+        desktopBackdrop.ContextMenu!.Opening += (_, _) => desktopMenusOpened++;
+        var probeContent = new TextBlock { Text = "content", Margin = new Thickness(24) };
+        var menuProbe = manager.Create(new RelaxKonOS.WindowManager.WindowCreateOptions(
+            new RelaxKonOS.Core.Applications.AppId("test.window.menu"), "Window menu", probeContent));
+        host.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+        var titleBar = menuProbe.View.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "PART_TitleBar");
+        var windowMenu = titleBar.ContextMenu;
+        Check(windowMenu is not null, "the title bar offers the window menu.");
+        var contentPoint = menuProbe.View.TranslatePoint(new Point(400, 300), host)!.Value;
+        host.MouseDown(contentPoint, MouseButton.Right); host.MouseUp(contentPoint, MouseButton.Right);
+        host.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+        Check(desktopMenusOpened == 0, "right-clicking a managed window never opens the desktop menu.");
+        Check(!windowMenu!.IsOpen, "the window menu belongs to the title bar, not to the window content.");
+        // A shell that owns its menu on an ancestor of the window host still cannot answer a window
+        // right click: the window ends the request before the shell sees it.
+        var shellSawRequest = 0;
+        ((Control)view.WindowHostSurface.GetVisualParent()!)
+            .AddHandler(InputElement.ContextRequestedEvent, (_, _) => shellSawRequest++, RoutingStrategies.Bubble);
+        host.MouseDown(contentPoint, MouseButton.Right); host.MouseUp(contentPoint, MouseButton.Right);
+        host.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+        Check(shellSawRequest == 0, "an unclaimed context request stops at the window instead of reaching the shell.");
+        var titlePoint = menuProbe.View.TranslatePoint(new Point(200, 15), host)!.Value;
+        host.MouseDown(titlePoint, MouseButton.Right); host.MouseUp(titlePoint, MouseButton.Right);
+        host.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+        Check(windowMenu.IsOpen, "right-clicking a title bar opens the window menu.");
+        var windowActions = windowMenu.ItemsSource!.OfType<MenuItem>().ToArray();
+        Check(windowActions.Length == 4 && ReferenceEquals(windowActions[^1].Command, menuProbe.CloseCommand) &&
+              windowActions[0].Header as string == RelaxKonOS.WindowManager.WindowCaptionLabels.Current.Restore,
+            "the window menu lists restore, maximize, minimize and close in the host's language.");
+        windowMenu.Close();
+        // Alt+Space is the pointer-free route to the same menu. A keyboard open has no pointer to
+        // anchor to, so the host places it under the caption instead.
+        host.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+        manager.Focus(menuProbe);
+        host.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+        host.KeyPress(Key.Space, RawInputModifiers.Alt, PhysicalKey.Space, null);
+        host.KeyRelease(Key.Space, RawInputModifiers.Alt, PhysicalKey.Space, null);
+        host.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+        Check(windowMenu.IsOpen && windowMenu.Placement == PlacementMode.BottomEdgeAlignedLeft,
+            "Alt+Space opens the window menu under the title bar.");
+        windowMenu.Close();
+        // An application's own menu inside the window keeps working: the boundary only stops
+        // requests nobody claimed.
+        var appContent = new Border { Background = Avalonia.Media.Brushes.DimGray, Margin = new Thickness(24) };
+        var appProbe = manager.Create(new RelaxKonOS.WindowManager.WindowCreateOptions(
+            new RelaxKonOS.Core.Applications.AppId("test.window.app.menu"), "Application menu", appContent));
+        var appMenuOpened = 0;
+        var appMenu = new ContextMenu { ItemsSource = new object[] { new MenuItem { Header = "Application action" } } };
+        appMenu.Opening += (_, _) => appMenuOpened++;
+        appContent.ContextMenu = appMenu;
+        host.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+        var appPoint = appContent.TranslatePoint(new Point(8, 8), host)!.Value;
+        host.MouseDown(appPoint, MouseButton.Right); host.MouseUp(appPoint, MouseButton.Right);
+        host.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+        Check(appMenuOpened == 1 && desktopMenusOpened == 0,
+            "an application menu inside a window still opens and stays inside the window.");
+        appMenu.Close();
+        manager.ForceClose(appProbe);
+        manager.ForceClose(menuProbe);
         manager.ForceClose(owner);
+        host.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+        var wallpaperPoint = desktopBackdrop.TranslatePoint(new Point(600, 320), host)!.Value;
+        host.MouseDown(wallpaperPoint, MouseButton.Right); host.MouseUp(wallpaperPoint, MouseButton.Right);
+        host.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+        Check(desktopMenusOpened == 1, "right-clicking empty wallpaper still opens the desktop menu.");
+        desktopBackdrop.ContextMenu.Close();
         manager.Detach();
         host.Close();
         return Task.CompletedTask;
