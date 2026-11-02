@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '../../deployment/windows/RelaxKonOSModuleHostRuntime.ps1')
 $previous = @'
-{"ModuleManagement":{"Authority":"managed","Administrators":["admin"]},"ModulePackages":{"Sources":{"test":{"publicKeysSpki":{"key":"public-key"},"authorizedModuleIds":["fixture"],"enabled":true}}},"ModulePrivileges":{"Services":["fixed-service"]},"ModuleHosts":{"ProbeIntervalSeconds":2},"ModuleHealth":{"IntervalSeconds":3},"ModuleResidency":{"Strategy":"Resident"},"Modules":{"fixture":true},"PrivilegedHelper":{"SharedSecret":"old-test-secret"},"Storage":{"DatabasePath":"old-path"}}
+{"ModuleManagement":{"Authority":"managed"},"ModulePackages":{"Sources":{"test":{"publicKeysSpki":{"key":"public-key"},"authorizedModuleIds":["fixture"],"enabled":true}}},"ModulePrivileges":{"Services":["fixed-service"]},"ModuleHosts":{"ProbeIntervalSeconds":2},"ModuleHealth":{"IntervalSeconds":3},"ModuleResidency":{"Strategy":"Resident"},"Modules":{"fixture":true},"PrivilegedHelper":{"SharedSecret":"old-test-secret"},"Storage":{"DatabasePath":"old-path"}}
 '@ | ConvertFrom-Json
 foreach ($mode in @('system', 'personal')) {
     $settings = [ordered]@{ Server = @{ Mode = $mode }; Storage = @{ DatabasePath = 'new-path' }; PrivilegedHelper = @{ SharedSecret = 'new-test-secret' } }

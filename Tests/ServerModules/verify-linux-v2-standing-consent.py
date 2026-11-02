@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Private Linux acceptance: durable standing consent, true background SDK work, real PAM/Helper.
 
 Run SCRIPT RUNTIME_ZIP SHA256. Login/password stay in support's getpass-backed memory.
@@ -83,7 +83,6 @@ if sys.argv[1:2] == ['--root']:
         run('systemctl', 'stop', SERVICE)
         host = ROOT/'appsettings.host.json'
         settings = json.loads(host.read_text())
-        settings['ModuleManagement']['Administrators'] = sorted(set(settings['ModuleManagement'].get('Administrators', []) + [user_id]))
         settings['ModulePackages']['Sources'][source_id] = dict(schemaVersion=1, sourceId=source_id, revision=1,
             enabled=True, publisherId='fixture', purpose='third-party', artifactOrigin='https://modules.example/',
             authorizedModuleIds=['fixture-http'], publicKeysSpki={'standing-key':package['publicKeySpki']}, maximumValiditySeconds=86400)

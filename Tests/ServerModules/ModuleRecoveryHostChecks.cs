@@ -40,7 +40,6 @@ internal static class ModuleRecoveryHostChecks
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ModuleManagement:Authority"] = "managed", ["ModuleManagement:Mode"] = "recovery",
-                ["ModuleManagement:Administrators:0"] = ModuleTestAuthentication.Admin,
                 ["Jwt:Secret"] = new string('r', 48), ["Storage:Provider"] = "memory",
                 ["PrivilegedHelper:UserExecutionBackend"] = "disabled",
                 ["urls"] = "http://127.0.0.1:0",
@@ -75,7 +74,7 @@ internal static class ModuleRecoveryHostChecks
             var request = new ServerModulePlanRequest(serviceId, ServerModuleAction.Enable, facts.Select(module => module.Id).ToArray(),
                 facts.Select(module => module.Id).ToArray(), store.Revision, "recovery-all");
             check((await client.PostAsJsonAsync(ServerModuleManagementRoutes.Plans, request, RelaxKonOSJsonOptions.Default)).StatusCode == HttpStatusCode.Forbidden,
-                "recovery writes still require explicit module administrator grant");
+                "recovery writes still require the existing controller role");
             client.DefaultRequestHeaders.Remove("test-user"); client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Admin);
             facts = (await client.GetFromJsonAsync<ServerModuleDto[]>(ServerApiRoutes.Modules, RelaxKonOSJsonOptions.Default))!;
             var host = (await client.GetFromJsonAsync<ServerCapabilitiesDto>(ServerApiRoutes.Capabilities, RelaxKonOSJsonOptions.Default))!;

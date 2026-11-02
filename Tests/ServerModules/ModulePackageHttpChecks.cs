@@ -51,7 +51,7 @@ internal static class ModulePackageHttpChecks
                 new Dictionary<string, string> { ["builder-key"] = built.PublicKeySpkiBase64 }, 3600);
             await File.WriteAllTextAsync(Path.Combine(root, "appsettings.host.json"), JsonSerializer.Serialize(new
             {
-                ModuleManagement = new { Authority = "managed", Administrators = new[] { ModuleTestAuthentication.Admin } },
+                ModuleManagement = new { Authority = "managed" },
                 ModulePackages = new { Sources = new Dictionary<string, ModulePackageTrustPolicy> { ["official"] = policy } },
             }, RelaxKonOSJsonOptions.Default));
 
@@ -79,7 +79,7 @@ internal static class ModulePackageHttpChecks
             builder.Services.AddAuthentication("module-test").AddScheme<AuthenticationSchemeOptions, ModuleTestAuthentication>("module-test", _ => { });
             builder.Services.AddAuthorization(options => options.AddPolicy(ServerModuleManagementEndpoints.ManagePolicy,
                 item => item.RequireAuthenticatedUser().RequireAssertion(context =>
-                    ServerModuleManagementEndpoints.CanManage(context.User, builder.Configuration))));
+                    ServerModuleManagementEndpoints.CanManage(context.User))));
 
             await using var app = builder.Build();
             app.UseAuthentication(); app.UseAuthorization();

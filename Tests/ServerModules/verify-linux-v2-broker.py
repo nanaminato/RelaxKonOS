@@ -14,8 +14,6 @@ wait_ready()
 user_id = login()
 print('PASS real PAM login through the private Helper')
 privileged('systemctl','stop','relaxkonos-v2-test.service')
-privileged('python3','-c',
-    'import json,pathlib,sys; p=pathlib.Path("/opt/relaxkonos-v2-test/appsettings.host.json"); d=json.loads(p.read_text()); d["ModuleManagement"]["Administrators"]=[sys.argv[1]]; p.write_text(json.dumps(d))',user_id)
 identity = json.loads(privileged(root+'/RelaxKonOS.Server','modules','diagnose','--content-root',root))
 privileged(root+'/RelaxKonOS.Server','modules','accept-catalog','--content-root',root,'--source-id','v2-test',
     '--catalog',str(fixtures/'package/catalog.json'),'--service-id',identity['serviceId'],'--expected-revision','uninitialized',

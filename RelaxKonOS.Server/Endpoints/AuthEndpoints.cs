@@ -119,7 +119,7 @@ public static class AuthEndpoints
         group.MapGet(ServerApiRoutes.Modules, async (RelaxKonOS.Server.Startup.ServerModules modules, IServiceProvider services,
                 RelaxKonOS.Server.Startup.ServerModuleContext moduleContext, HttpContext http, CancellationToken cancellationToken) =>
                 Results.Ok((await modules.DescribeAsync(services, moduleContext, cancellationToken))
-                    .Select(module => ServerModuleManagementEndpoints.ForActor(module, http.User, moduleContext.Configuration))))
+                    .Select(module => ServerModuleManagementEndpoints.ForActor(module, http.User))))
             .RequireAuthorization()
             .WithTags("Server");
 

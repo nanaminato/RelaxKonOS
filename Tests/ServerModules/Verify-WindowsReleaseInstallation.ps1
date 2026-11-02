@@ -121,7 +121,7 @@ try {
     Stop-Service RelaxKonOSGuardian -Force; Stop-Service RelaxKonOSServer -Force
     $settings = Get-Content -LiteralPath $hostPath -Raw | ConvertFrom-Json
     $policy = @{ schemaVersion = 1; sourceId = 'release-acceptance'; revision = 1; enabled = $true; publisherId = 'fixture'; purpose = 'third-party'; artifactOrigin = 'https://modules.example/'; authorizedModuleIds = @('fixture-http'); publicKeysSpki = @{ 'release-key' = $package.publicKeySpki }; maximumValiditySeconds = 86400 }
-    $settings | Add-Member -NotePropertyName ModuleManagement -NotePropertyValue @{ Authority = 'managed'; Administrators = @($userId) } -Force
+    $settings | Add-Member -NotePropertyName ModuleManagement -NotePropertyValue @{ Authority = 'managed' } -Force
     $settings | Add-Member -NotePropertyName ModulePackages -NotePropertyValue @{ Sources = @{ 'release-acceptance' = $policy } } -Force
     $settings | Add-Member -NotePropertyName ModulePrivileges -NotePropertyValue @{ Services = @('RelaxKonOSGuardian') } -Force
     [IO.File]::WriteAllText($hostPath, ($settings | ConvertTo-Json -Depth 32))

@@ -20,6 +20,18 @@ using RoyalTerminal.Terminal;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 
+if (args is ["--module-authorization-checks"])
+{
+    void VerifyAuthorization(bool passed, string message)
+    {
+        Console.WriteLine($"{(passed ? "PASS" : "FAIL")}: {message}");
+        if (!passed) throw new InvalidOperationException(message);
+    }
+    await ModuleManagementHttpChecks.RunAsync(VerifyAuthorization);
+    await ModuleRecoveryHostChecks.RunAsync(VerifyAuthorization);
+    return;
+}
+
 if (args is ["--module-host-checks"])
 {
     await ModuleHostChecks.RunAsync((passed, message) =>

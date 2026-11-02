@@ -40,7 +40,7 @@ configuration = dict(Server=dict(Mode='system'), Storage=dict(Provider='sqlite',
         AuditHmacKey=base64.b64encode(secrets.token_bytes(32)).decode(), AuditRetentionDays=365),
     Identity=dict(LinuxPamTransport='helper', LinuxPamService='login'), Privileges=dict(Backend='helper'),
     PrivilegedHelper=dict(SocketPath='/run/relaxkonos-v2-test/privileged.sock', UserExecutionBackend='disabled'),
-    ModuleManagement=dict(Authority='managed', Administrators=[]), ModulePackages=dict(Sources={'v2-test':policy}),
+    ModuleManagement=dict(Authority='managed'), ModulePackages=dict(Sources={'v2-test':policy}),
     ModulePrivileges=dict(Services=['relaxkonos-module-broker-fixture.service']), ModuleHosts=dict(ProbeIntervalSeconds=1))
 path = root/'appsettings.host.json'
 path.write_text(json.dumps(configuration))

@@ -83,7 +83,6 @@ internal static class ModuleHostChecks
                 ["ModuleHosts:Entries:0:ModuleId"] = "fixture-host",
                 ["ModuleHosts:Entries:0:PackageRoot"] = root,
                 ["ModuleHosts:Entries:0:DataPath"] = Path.Combine(root, "supervisor-data"),
-                ["ModuleManagement:Administrators:0"] = adminId.ToString(),
             }).Build();
             var environment = new TestEnvironment(root);
             using var supervisor = new ModuleHostSupervisor(environment, configuration,
@@ -99,11 +98,11 @@ internal static class ModuleHostChecks
             supervisedHttp.DefaultRequestHeaders.TryAddWithoutValidation(ModuleHostProtocol.ServiceTokenHeader, serviceToken);
             check(await supervisedHttp.GetStringAsync("/hello") == "hello from module host",
                 "ModuleHost supervisor exposes the isolated HTTP endpoint");
-            var administrator = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", adminId.ToString())], "test"));
+            var administrator = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", adminId.ToString()), new Claim(ClaimTypes.Role, "controller")], "test"));
             var stranger = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", Guid.NewGuid().ToString())], "test"));
-            check(supervisor.CanAccess("fixture-host", administrator, configuration)
-                && !supervisor.CanAccess("fixture-host", stranger, configuration),
-                "ModuleHost access defaults to configured server administrators");
+            check(supervisor.CanAccess("fixture-host", administrator)
+                && !supervisor.CanAccess("fixture-host", stranger),
+                "ModuleHost access defaults to authenticated controllers without an administrator allowlist");
             using var unhealthy = await supervisedHttp.PostAsync("/unhealthy", null);
             unhealthy.EnsureSuccessStatusCode();
             for (var attempt = 0; attempt < 100 && supervisor.Snapshot().Single().Status == "running"; attempt++)

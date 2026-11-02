@@ -67,7 +67,7 @@ internal sealed class CoreModulePrivilegeBroker(IHostEnvironment environment, IC
                 ?? throw new ModulePrivilegeException("module.privilege_denied", 403);
             var key = http.Request.Headers[ModulePrivilegeProtocol.RequestContextHeader].ToString();
             if (!_contexts.TryGetValue(key, out var context) || context.ModuleId != moduleId || context.ExpiresAt <= DateTimeOffset.UtcNow
-                || !hosts.CanAccess(moduleId, context.User, configuration))
+                || !hosts.CanAccess(moduleId, context.User))
                 throw new ModulePrivilegeException("module.privilege_background_denied", 403);
             using var scope = services.CreateScope();
             if (!scope.ServiceProvider.GetRequiredService<HostElevationSessionState>().IsSessionValid(context.User))

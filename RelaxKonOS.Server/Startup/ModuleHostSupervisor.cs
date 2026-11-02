@@ -58,7 +58,7 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
         lock (_gate) return _entries.Any(entry => entry.ModuleId == moduleId);
     }
 
-    internal bool CanAccess(string moduleId, ClaimsPrincipal user, IConfiguration configuration)
+    internal bool CanAccess(string moduleId, ClaimsPrincipal user)
     {
         Entry? entry;
         lock (_gate) entry = _entries.FirstOrDefault(item => item.ModuleId == moduleId);
@@ -68,7 +68,7 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
             var subject = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? user.FindFirstValue("sub");
             return subject is not null && entry.AllowedUsers.Contains(subject);
         }
-        return ServerModuleManagementEndpoints.CanManage(user, configuration);
+        return ServerModuleManagementEndpoints.CanManage(user);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

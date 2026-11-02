@@ -81,7 +81,7 @@ def root_phase():
         version = json.loads((stage/'release-version.json').read_text())['version']
         content = ROOT/'versions'/version/'server'
         run('systemctl', 'stop', PRIMARY[2], PRIMARY[1])
-        config = dict(ModuleManagement=dict(Authority='managed', Administrators=[user_id]), ModuleHosts=dict(ProbeIntervalSeconds=1),
+        config = dict(ModuleManagement=dict(Authority='managed'), ModuleHosts=dict(ProbeIntervalSeconds=1),
             ModulePackages=dict(Sources={'release-acceptance':dict(schemaVersion=1, sourceId='release-acceptance', revision=1,
                 enabled=True, publisherId='fixture', purpose='third-party', artifactOrigin='https://modules.example/',
                 authorizedModuleIds=['fixture-http'], publicKeysSpki={'release-key':package['publicKeySpki']}, maximumValiditySeconds=86400)}))

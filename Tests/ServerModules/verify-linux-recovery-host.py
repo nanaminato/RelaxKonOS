@@ -65,63 +65,54 @@ def main():
                 body = error.read()
                 return error.code, json.loads(body) if body else None
 
-        user_id = None
-        for administrator in (False, True):
-            if administrator:
-                configuration['ModuleManagement']['Administrators'] = [user_id]
-            (root / 'appsettings.host.json').write_text(json.dumps(configuration))
-            with (root / 'host.log').open('wb') as log:
-                process = subprocess.Popen([str(build / 'RelaxKonOS.Server'), '--contentRoot', str(root)],
-                                           env=environment, stdout=log, stderr=log)
-                try:
-                    for _ in range(100):
-                        if process.poll() is not None:
-                            raise RuntimeError('Recovery process exited; inspect configuration or native prerequisites')
-                        try:
-                            status, ready = call('/ready')
-                            if status == 503 and ready['status'] == 'recovery-required':
-                                break
-                        except (OSError, urllib.error.URLError):
-                            pass
-                        time.sleep(0.1)
-                    else:
-                        raise RuntimeError('Recovery listener did not become available')
-                    assert call(API + '/server/modules')[0] == 401
-                    status, login = call(API + '/auth/login', {
-                        'identifier': args.username, 'password': password, 'clientPlatform': 'linux',
-                        'deviceName': 'isolated-recovery-check', 'clientVersion': 'test'})
-                    assert status == 200, f'PAM login refused: HTTP {status}'
-                    assert login['server']['capabilities'] == []
-                    assert login['server']['host']['limitations'] == ['module-recovery-mode']
-                    assert not login['executionEligibility']['available']
-                    user_id = login['user']['id']
-                    token = login['tokens']['accessToken']
-                    status, facts = call(API + '/server/modules', token=token)
-                    assert status == 200 and len(facts) == 9
-                    assert all(not fact['effectiveEnabled'] and fact['recoveryState'] == 'host-recovery' for fact in facts)
-                    request = {'serviceId': facts[0]['serviceId'], 'action': 'Enable',
-                               'moduleIds': [fact['id'] for fact in facts],
-                               'enabledModuleIds': [fact['id'] for fact in facts],
-                               'expectedRevision': facts[0]['desiredRevision'], 'idempotencyKey': 'native-recovery'}
-                    status, plan = call(API + '/server/module-plans', request, token)
-                    if not administrator:
-                        assert status == 403
-                        print('PASS native recovery PAM login preserves explicit administrator boundary')
-                    else:
-                        assert status == 200 and plan['blockedBy'] == [] and plan['restartRequired']
-                        status, operation = call(API + '/server/module-plans/' + plan['planId'] + '/apply', {}, token)
-                        assert status == 200 and operation['state'] == 'AwaitingRestart'
-                        assert len(operation['enabledModuleIds']) == 9
-                        status, recovered = call(API + '/server/module-plans/' + plan['planId'], token=token)
-                        assert status == 200 and recovered['operation']['operationId'] == operation['operationId']
-                        print('PASS native recovery administrator freezes, applies and queries original exact-set receipt; normal restart still required')
-                finally:
-                    process.terminate()
+        (root / 'appsettings.host.json').write_text(json.dumps(configuration))
+        with (root / 'host.log').open('wb') as log:
+            process = subprocess.Popen([str(build / 'RelaxKonOS.Server'), '--contentRoot', str(root)],
+                                       env=environment, stdout=log, stderr=log)
+            try:
+                for _ in range(100):
+                    if process.poll() is not None:
+                        raise RuntimeError('Recovery process exited; inspect configuration or native prerequisites')
                     try:
-                        process.wait(timeout=15)
-                    except subprocess.TimeoutExpired:
-                        process.kill()
-                        process.wait()
+                        status, ready = call('/ready')
+                        if status == 503 and ready['status'] == 'recovery-required':
+                            break
+                    except (OSError, urllib.error.URLError):
+                        pass
+                    time.sleep(0.1)
+                else:
+                    raise RuntimeError('Recovery listener did not become available')
+                assert call(API + '/server/modules')[0] == 401
+                status, login = call(API + '/auth/login', {
+                    'identifier': args.username, 'password': password, 'clientPlatform': 'linux',
+                    'deviceName': 'isolated-recovery-check', 'clientVersion': 'test'})
+                assert status == 200, f'PAM login refused: HTTP {status}'
+                assert login['server']['capabilities'] == []
+                assert login['server']['host']['limitations'] == ['module-recovery-mode']
+                assert not login['executionEligibility']['available']
+                token = login['tokens']['accessToken']
+                status, facts = call(API + '/server/modules', token=token)
+                assert status == 200 and len(facts) == 9
+                assert all(not fact['effectiveEnabled'] and fact['recoveryState'] == 'host-recovery' for fact in facts)
+                request = {'serviceId': facts[0]['serviceId'], 'action': 'Enable',
+                           'moduleIds': [fact['id'] for fact in facts],
+                           'enabledModuleIds': [fact['id'] for fact in facts],
+                           'expectedRevision': facts[0]['desiredRevision'], 'idempotencyKey': 'native-recovery'}
+                status, plan = call(API + '/server/module-plans', request, token)
+                assert status == 200 and plan['blockedBy'] == [] and plan['restartRequired']
+                status, operation = call(API + '/server/module-plans/' + plan['planId'] + '/apply', {}, token)
+                assert status == 200 and operation['state'] == 'AwaitingRestart'
+                assert len(operation['enabledModuleIds']) == 9
+                status, recovered = call(API + '/server/module-plans/' + plan['planId'], token=token)
+                assert status == 200 and recovered['operation']['operationId'] == operation['operationId']
+                print('PASS native recovery controller without an allowlist freezes, applies and queries original exact-set receipt; normal restart still required')
+            finally:
+                process.terminate()
+                try:
+                    process.wait(timeout=15)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
 
 
 if __name__ == '__main__':

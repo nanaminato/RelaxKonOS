@@ -19,7 +19,7 @@ internal static class ServerModuleManagementEndpoints
             ServerModules modules, ServerModuleContext context, CancellationToken ct) => await Respond(async () =>
         {
             var module = (await modules.DescribeAsync(http.RequestServices, context, ct)).SingleOrDefault(x => x.Id == moduleId);
-            return module is null ? Problem("module-not-found", 404) : Results.Ok(ForActor(module, http.User, context.Configuration));
+            return module is null ? Problem("module-not-found", 404) : Results.Ok(ForActor(module, http.User));
         }));
         group.MapPost(ServerModuleManagementRoutes.Plans, async (ServerModulePlanRequest request, HttpContext http,
             ModuleManagementStore store, ServerModules modules, ServerModuleContext context, CancellationToken ct) =>
@@ -89,7 +89,7 @@ internal static class ServerModuleManagementEndpoints
             HttpContext http, ServerModuleContext context, [FromServices] ModuleHostSupervisor hosts) =>
         {
             if (!hosts.Exists(moduleId)) return Results.NotFound();
-            if (!hosts.CanAccess(moduleId, http.User, context.Configuration))
+            if (!hosts.CanAccess(moduleId, http.User))
                 return Results.StatusCode(StatusCodes.Status403Forbidden);
             if (!hosts.TryGetConnection(moduleId, out var endpoint, out var serviceToken)) return Results.NotFound();
             if (path is not null && path.Split('/').Any(part => part is ".." or ".")) return Results.BadRequest();
@@ -116,7 +116,7 @@ internal static class ServerModuleManagementEndpoints
             if (subject is { Length: > 0 })
                 request.Headers.TryAddWithoutValidation("X-RelaxKonOS-Module-User", subject);
             request.Headers.TryAddWithoutValidation("X-RelaxKonOS-Module-Role",
-                CanManage(http.User, context.Configuration) ? "admin" : "user");
+                CanManage(http.User) ? "admin" : "user");
             request.Headers.TryAddWithoutValidation("X-RelaxKonOS-Module-Request-Id", http.TraceIdentifier);
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead,
                 http.RequestAborted);
@@ -353,13 +353,9 @@ internal static class ServerModuleManagementEndpoints
             operation.ArtifactSha256, operation.PreviousVersion, operation.State, operation.ProblemCode,
             operation.CreatedAt, operation.UpdatedAt, operation.ProcessGeneration);
 
-    internal static bool CanManage(ClaimsPrincipal user, IConfiguration configuration)
-    {
-        var subject = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? user.FindFirstValue("sub");
-        return Guid.TryParse(subject, out var id) && configuration.GetSection("ModuleManagement:Administrators")
-            .GetChildren().Any(entry => Guid.TryParse(entry.Value, out var administrator) && administrator == id);
-    }
-    internal static ServerModuleDto ForActor(ServerModuleDto module, ClaimsPrincipal actor, IConfiguration configuration) => CanManage(actor, configuration) ? module :
+    internal static bool CanManage(ClaimsPrincipal user) => user.Identity?.IsAuthenticated == true
+        && (user.HasClaim("role", "controller") || user.HasClaim(ClaimTypes.Role, "controller"));
+    internal static ServerModuleDto ForActor(ServerModuleDto module, ClaimsPrincipal actor) => CanManage(actor) ? module :
         module with { AllowedActions = Enum.GetValues<ServerModuleAction>().Select(action =>
             new ServerModuleActionAdmission(action, false, [new("module-forbidden")])).ToArray() };
     private static string Actor(ClaimsPrincipal user) => user.FindFirstValue(ClaimTypes.NameIdentifier)

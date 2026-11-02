@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -132,7 +132,6 @@ internal static class WindowsCoreAcceptance
             var userId = await Login();
             check(true, "full Windows Core HTTP login verifies the temporary native administrator account");
             await Stop();
-            configuration["ModuleManagement"]!["Administrators"] = new JsonArray(userId);
             await Save();
             var serviceId = ModuleManagementStore.ReadRecoveryReport(root).ServiceId;
             using (var catalogs = new ModulePackageCatalogStore(root, serviceId))

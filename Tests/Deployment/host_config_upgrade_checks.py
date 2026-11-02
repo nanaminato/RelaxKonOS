@@ -43,7 +43,7 @@ class HostConfigurationUpgradeChecks(unittest.TestCase):
                 (root / version / 'server').mkdir(parents=True)
             old = root / 'old/server/appsettings.host.json'
             new = root / 'new/server/appsettings.host.json'
-            old.write_bytes(b'{"ModuleManagement":{"Administrators":["admin"]},"ModulePackages":{"Sources":{}}}')
+            old.write_bytes(b'{"ModuleManagement":{"Authority":"managed"},"ModulePackages":{"Sources":{}}}')
             self.assertEqual(self.invoke(root).returncode, 0)
             self.assertEqual(new.read_bytes(), old.read_bytes())
             new.write_bytes(b'{"ModulePackages":{"Sources":{"new-source":{}}}}')

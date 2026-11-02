@@ -178,6 +178,8 @@ sequenceDiagram
 
 ## 12. 当前实现边界与部署配置
 
+2026-11-02：移除模块管理员 UUID 白名单，管理准入、目录动作与默认 ModuleHost 访问统一复用已认证的 Controller 角色；Observer 保持只读，宿主提权验证保持独立。已通过 Windows 本机构建、模块管理/恢复模式 HTTP 权限回归与隔离 ModuleHost 测试；尚未部署远端服务器或执行本次 Linux 原生验收。
+
 以下是实施事实，不代替 §10 的完整验收。MM-01～07 均未关闭。
 
 | 条目 | 当前实现与剩余门槛 |
@@ -192,7 +194,7 @@ sequenceDiagram
 
 共享 DTO 直接使用 `effectiveEnabled`，没有旧 `enabled` 别名；安装、期望、生效、进程代次、驻留、恢复、动作准入与观察时间分别表达。动作和操作状态只接受当前枚举名称，拒绝数字、数字字符串和大小写别名；关键回执字段必须显式出现。两端检查 Server/计划/操作身份及原冻结目标，拒绝目标替换或成功回执内的失败成员。Core 提供详情、冻结计划、提交和按操作者隔离的分页操作记录。`GET /server/module-plans/{planId}` 额外提供只读原计划及其回执查询，客户端恢复时不自动重发 apply。
 
-默认 `ModuleManagement:Authority=deployment`，启停及策略由部署控制，配置管理只读。`ModuleManagement:Administrators` 是允许管理的服务器用户 UUID 数组；Controller 或业务应用权限不自动授予全局管理权。部署只读不禁止显式管理员唤醒或尝试释放已启用且支持的模块。
+默认 `ModuleManagement:Authority=deployment`，启停及策略由部署控制，配置管理只读。模块管理复用现有 Controller 角色，Observer 仅可查看，不再配置模块管理员 UUID 白名单。涉及宿主特权的操作仍须通过原有提权和能力授权验证，Controller 身份不代替宿主管理员验证。Linux 与 Windows 使用相同规则。部署只读不禁止显式管理员唤醒或尝试释放已启用且支持的模块。
 
 显式改为 `managed` 时必须移除全部 `Modules:*` 配置及部署指定的驻留策略/闲时宽限期。唯一期望状态存储为 ContentRoot 下 `data/module-management/state.json`；初次受管启动启用完整官方集合，之后读取精确集合及完整受管策略，不合并部署开关。策略仅接受 KeepLoaded、IdleDelayed、ReleaseOnLogout 和 0～604800 秒宽限期；唤醒超时与过载上限仍由部署设置。Windows 目录 ACL 限宿主身份、SYSTEM、Administrators；Linux 目录 0700、文件 0600。部署仍需保护父目录。当前状态格式不保留缺字段兼容解析。
 
@@ -214,7 +216,7 @@ Core 有界后台队列先持久化 Prepared，再进入 Applying 并逐模块�
 
 部署人员停止正常宿主后，使用相同安装身份、ContentRoot、身份库、认证和监听配置，显式设置 `ModuleManagement:Mode=recovery` 启动原 Server。默认值为 `normal`；恢复只接受已经初始化的 managed 状态，不创建新的可信集合，也不绕过损坏存储、认证配置或 System/User Mode 约束。没有自动切入恢复模式或放宽部署权限。
 
-恢复进程不注册业务模块、受管软件安装器或领域后台协调器，仅启动认证、身份库/配置注册表、安全审计和 HTTP 基础服务。开放原登录、已有设备密钥的挑战/登录、刷新、退出、当前用户、宿主类别、能力、模块目录及模块管理路由；不开放普通文件、业务、Hub、软件安装、设备注册/邀请或账号配置端点。原用户身份与 `ModuleManagement:Administrators` 仍决定访问权限，不因处于恢复进程而授予管理权。
+恢复进程不注册业务模块、受管软件安装器或领域后台协调器，仅启动认证、身份库/配置注册表、安全审计和 HTTP 基础服务。开放原登录、已有设备密钥的挑战/登录、刷新、退出、当前用户、宿主类别、能力、模块目录及模块管理路由；不开放普通文件、业务、Hub、软件安装、设备注册/邀请或账号配置端点。原用户身份与 Controller/Observer 角色仍决定访问权限，不因处于恢复进程而授予管理权。
 
 能力清单为空，宿主能力布尔值均为 false，限制码为 `module-recovery-mode`；模块事实保留原稳定 Server 身份与期望状态，实际启用集合为空，`recoveryState=host-recovery`，未运行的领域工作明确未知。有效修订使用恢复进程代次，不伪装为期望修订。回环 `/ready` 与 `/healthz` 返回 503 和 `recovery-required`，恢复启动不能核实原候选为健康成功。
 

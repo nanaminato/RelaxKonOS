@@ -14,6 +14,13 @@ internal static class ModuleManagementHttpChecks
 {
     internal static async Task RunAsync(Action<bool, string> check)
     {
+        check(!ServerModuleManagementEndpoints.CanManage(new ClaimsPrincipal(new ClaimsIdentity(
+                [new Claim("role", "controller")]))), "unauthenticated controller claims cannot manage modules");
+        check(ServerModuleManagementEndpoints.CanManage(new ClaimsPrincipal(new ClaimsIdentity(
+                [new Claim("role", "controller")], "test")))
+            && ServerModuleManagementEndpoints.CanManage(new ClaimsPrincipal(new ClaimsIdentity(
+                [new Claim(ClaimTypes.Role, "controller")], "test"))),
+            "raw and mapped authenticated controller roles need no module administrator configuration");
         var root = Path.Combine(AppContext.BaseDirectory, "test-data", "management-http-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         try
@@ -23,7 +30,6 @@ internal static class ModuleManagementHttpChecks
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ModuleManagement:Authority"] = "managed",
-                ["ModuleManagement:Administrators:0"] = ModuleTestAuthentication.Admin,
             });
             using var store = new ModuleManagementStore(builder.Configuration, root);
             var modules = ServerModules.CreateManaged(store.DesiredIds);
@@ -36,7 +42,7 @@ internal static class ModuleManagementHttpChecks
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<ModuleHostSupervisor>.Instance));
             builder.Services.AddAuthentication("module-test").AddScheme<AuthenticationSchemeOptions, ModuleTestAuthentication>("module-test", _ => { });
             builder.Services.AddAuthorization(options => options.AddPolicy(ServerModuleManagementEndpoints.ManagePolicy,
-                policy => policy.RequireAuthenticatedUser().RequireAssertion(context => ServerModuleManagementEndpoints.CanManage(context.User, builder.Configuration))));
+                policy => policy.RequireAuthenticatedUser().RequireAssertion(context => ServerModuleManagementEndpoints.CanManage(context.User))));
             await using var app = builder.Build();
             app.UseAuthentication(); app.UseAuthorization();
             app.MapServerModuleManagementEndpoints();
@@ -73,7 +79,7 @@ internal static class ModuleManagementHttpChecks
             var target = store.DesiredIds.Where(id => id != ServerModules.GitId).Order(StringComparer.Ordinal).ToArray();
             var request = new ServerModulePlanRequest(store.ServiceId, ServerModuleAction.Disable, [ServerModules.GitId], target, store.Revision, "http-one");
             check((await client.PostAsJsonAsync(ServerModuleManagementRoutes.Plans, request)).StatusCode == HttpStatusCode.Forbidden,
-                "global module changes require explicit server administration grant");
+                "global module changes require the existing controller role");
             client.DefaultRequestHeaders.Remove("test-user"); client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Admin);
             var installedPackages = await client.GetFromJsonAsync<ServerInstalledModulePageDto>(ServerModuleManagementRoutes.InstalledPackages, RelaxKonOSJsonOptions.Default);
             var packageOperations = await client.GetFromJsonAsync<ServerPackageOperationPageDto>(ServerModuleManagementRoutes.PackageOperations, RelaxKonOSJsonOptions.Default);
@@ -149,7 +155,7 @@ internal sealed class ModuleTestAuthentication(IOptionsMonitor<AuthenticationSch
     {
         var id = Request.Headers["test-user"].ToString();
         if (id != Admin && id != Observer) return Task.FromResult(AuthenticateResult.NoResult());
-        var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", id)], Scheme.Name));
+        var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", id), new Claim("role", id == Admin ? "controller" : "observer")], Scheme.Name));
         return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(principal, Scheme.Name)));
     }
 }
