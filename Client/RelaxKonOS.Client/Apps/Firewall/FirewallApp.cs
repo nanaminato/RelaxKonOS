@@ -1,26 +1,24 @@
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
-using Avalonia.Layout;
-using Avalonia.Media;
-using RelaxKonOS.Client.Services.Theming;
+using RelaxKonOS.AppSDK;
+using RelaxKonOS.Client.Apps.Explorer.Dialogs;
+using RelaxKonOS.Client.Apps.Firewall.Views;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Client.Services.Dialogs;
 using RelaxKonOS.Client.Services.Privileged;
-using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
 using RelaxKonOS.Protocol.Common;
-using RelaxKonOS.Protocol.Firewall;
-using Rect = RelaxKonOS.Core.Primitives.Rect;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
+using Rect = RelaxKonOS.Core.Primitives.Rect;
 
 namespace RelaxKonOS.Client.Apps.Firewall;
 
-/// <summary>Built-in Linux Server UFW editor.</summary>
+/// <summary>Built-in host firewall editor (UFW on Linux, Defender Firewall on Windows).</summary>
 public sealed class FirewallApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(
-        new AppId("relaxkonos.firewall"), "Firewall", "0.2.0", "🧱", "Manage host firewall policies and rules",
+        new AppId("relaxkonos.firewall"), "Firewall", "0.3.0", "🧱", "Manage host firewall policies and rules",
         [AppPermissions.ServerFirewallRead, AppPermissions.ServerFirewallManage],
         ServerRequirements: new ApplicationServerRequirements(Platforms: [ApplicationPlatformNames.Linux, ApplicationPlatformNames.Windows], Capabilities: [ServerCapabilities.Firewall]),
         InstancePolicy: ApplicationInstancePolicy.SingleWindow);
@@ -31,150 +29,47 @@ public sealed class FirewallApp : RemoteApplicationBase
         var client = context.Services.GetService(typeof(IRemoteFirewallClient)) as IRemoteFirewallClient;
         if (session is null || client is null || session.State != AuthSessionState.Authenticated)
         {
-            context.ShowWindow(LocalizedText.Get("application.relaxkonos.firewall.display_name"), new TextBlock { Text = LocalizedText.Get("firewall.login_required"), Margin = new Avalonia.Thickness(24), TextWrapping = Avalonia.Media.TextWrapping.Wrap }, new Rect(180, 160, 470, 180), Manifest.IconGlyph, false, false, false);
+            context.ShowWindow(LocalizedText.Get("application.relaxkonos.firewall.display_name"),
+                new TextBlock { Text = LocalizedText.Get("firewall.login_required"), Margin = new Avalonia.Thickness(24), TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                new Rect(180, 160, 470, 180), Manifest.IconGlyph, false, false, false);
             return;
         }
+
         var viewModel = new FirewallViewModel(client, context.Permissions);
-        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.firewall.display_name"), CreateView(viewModel), new Rect(70, 55, 1160, 760), Manifest.IconGlyph);
+        var view = new FirewallWorkspace(viewModel);
+        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.firewall.display_name"), view, new Rect(70, 55, 1120, 780), Manifest.IconGlyph);
+        view.AttachWindowHeader(window);
         viewModel.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window, problemCode);
         viewModel.ShowRuleEditorAsync = editing => ShowRuleEditorAsync(context, window, viewModel, editing);
+        viewModel.ConfirmAsync = (title, message) => ConfirmAsync(context, window, title, message);
         _ = viewModel.StartAsync();
     }
 
-    private static Control CreateView(FirewallViewModel vm)
-    {
-        var root = new DockPanel { Classes = { "builtin-app" }, Margin = new Avalonia.Thickness(18), LastChildFill = true, DataContext = vm };
-        var refresh = new Button { Content = LocalizedText.Get("common.refresh"), Command = vm.RefreshCommand, HorizontalAlignment = HorizontalAlignment.Right };
-        DockPanel.SetDock(refresh, Dock.Top); root.Children.Add(refresh);
-        var status = new TextBlock { Margin = new Avalonia.Thickness(0, 0, 0, 12), TextWrapping = Avalonia.Media.TextWrapping.Wrap, Foreground = ThemeBrushes.Get("TextSecondaryBrush") };
-        status.Bind(TextBlock.TextProperty, new Avalonia.Data.Binding(nameof(vm.StatusText))); DockPanel.SetDock(status, Dock.Top); root.Children.Add(status);
+    /// <summary>Used by the window-preview checks to render the real workspace without a window host.</summary>
+    internal static Control CreateView(FirewallViewModel viewModel) => new FirewallWorkspace(viewModel);
 
-        var settings = new StackPanel { Spacing = 8, Margin = new Avalonia.Thickness(0, 0, 0, 14) };
-        settings.Children.Add(new TextBlock { Text = LocalizedText.Get("firewall.warning"), TextWrapping = Avalonia.Media.TextWrapping.Wrap });
-        var settingsRow = new WrapPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Bottom };
-        settingsRow.Children.Add(new Button { Content = LocalizedText.Get("firewall.enable"), Command = vm.EnableCommand });
-        settingsRow.Children.Add(new Button { Content = LocalizedText.Get("firewall.disable"), Command = vm.DisableCommand });
-        settingsRow.Children.Add(ChoiceField(vm, nameof(vm.SelectedIncomingPolicy), vm.Policies, "firewall.default_incoming", 150));
-        settingsRow.Children.Add(ChoiceField(vm, nameof(vm.SelectedOutgoingPolicy), vm.Policies, "firewall.default_outgoing", 150));
-        settingsRow.Children.Add(new Button { Content = LocalizedText.Get("firewall.save_defaults"), Command = vm.SaveDefaultsCommand });
-        foreach (Control field in settingsRow.Children)
-            field.Margin = new Avalonia.Thickness(0, 0, 10, 8);
-        settings.Children.Add(settingsRow);
-        DockPanel.SetDock(settings, Dock.Top); root.Children.Add(settings);
-
-        var rules = new DockPanel { DataContext = vm };
-        var ruleActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Avalonia.Thickness(0, 0, 0, 10) };
-        ruleActions.Children.Add(new Button { Content = LocalizedText.Get("firewall.rule.add"), Command = vm.ShowAddRuleEditorCommand, Classes = { "primary" } });
-        ruleActions.Children.Add(new Button { Content = LocalizedText.Get("firewall.rule.update"), Command = vm.ShowEditRuleEditorCommand });
-        DockPanel.SetDock(ruleActions, Dock.Top); rules.Children.Add(ruleActions);
-
-        var delete = new Button { Foreground = ThemeBrushes.Get("DangerBrush"), Content = LocalizedText.Get("firewall.rule.delete"), Command = vm.DeleteRuleCommand, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Avalonia.Thickness(0, 8, 0, 0) };
-        DockPanel.SetDock(delete, Dock.Bottom); rules.Children.Add(delete);
-        rules.Children.Add(CreateRuleTable(vm));
-        root.Children.Add(rules);
-        return root;
-    }
-
-    private static DataGrid CreateRuleTable(FirewallViewModel vm)
-    {
-        var table = new DataGrid
-        {
-            Classes = { "resource-table" },
-            CanUserResizeColumns = true,
-            AutoGenerateColumns = false,
-            IsReadOnly = true,
-            CanUserReorderColumns = false,
-            SelectionMode = DataGridSelectionMode.Single,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-            ItemsSource = vm.Rules
-        };
-        table.Columns.Add(Column("firewall.rule.number", nameof(FirewallRuleDto.Number), 70));
-        table.Columns.Add(Column("firewall.rule.action", nameof(FirewallRuleDto.Action), 100));
-        table.Columns.Add(Column("firewall.rule.direction", nameof(FirewallRuleDto.Direction), 100));
-        table.Columns.Add(Column("firewall.rule.protocol", nameof(FirewallRuleDto.Protocol), 100));
-        table.Columns.Add(Column("firewall.rule.address_family", nameof(FirewallRuleDto.AddressFamily), 120));
-        table.Columns.Add(Column("firewall.rule.source", nameof(FirewallRuleDto.Source), 210));
-        table.Columns.Add(Column("firewall.rule.destination", nameof(FirewallRuleDto.Destination), 210));
-        table.Columns.Add(Column("firewall.rule.port", nameof(FirewallRuleDto.Port), 140));
-        table.SelectionChanged += (_, _) => vm.SelectedRule = table.SelectedItem as FirewallRuleDto;
-        return table;
-    }
-
-    private static Task ShowRuleEditorAsync(AppContext context, RelaxKonOS.WindowManager.ManagedWindow owner, FirewallViewModel vm, bool editing) =>
+    private static Task ShowRuleEditorAsync(AppContext context, RelaxKonOS.WindowManager.ManagedWindow owner, FirewallViewModel viewModel, bool editing) =>
         context.ShowDialogAsync<bool>(owner,
             LocalizedText.Get(editing ? "firewall.rule.edit_dialog_title" : "firewall.rule.add_dialog_title"), dialog =>
             {
-                var original = (vm.SelectedAction, vm.SelectedDirection, vm.SelectedProtocol, vm.Source, vm.Destination, vm.Port);
-                RelaxKonOS.Client.Services.Dialogs.DraftDialogGuard.Attach(dialog, () => vm.IsLoading,
-                    () => original != (vm.SelectedAction, vm.SelectedDirection, vm.SelectedProtocol, vm.Source, vm.Destination, vm.Port));
-                var content = new DockPanel { Margin = new Avalonia.Thickness(20), LastChildFill = true, DataContext = vm };
-                var help = new TextBlock { Text = LocalizedText.Get("firewall.rule.help"), TextWrapping = Avalonia.Media.TextWrapping.Wrap, Margin = new Avalonia.Thickness(0, 0, 0, 12) };
-                DockPanel.SetDock(help, Dock.Top);
-                content.Children.Add(help);
-                var status = new TextBlock { TextWrapping = Avalonia.Media.TextWrapping.Wrap };
-                status.Bind(TextBlock.TextProperty, new Avalonia.Data.Binding(nameof(vm.StatusText)));
-                status.Margin = new Avalonia.Thickness(0, 0, 0, 12);
-                DockPanel.SetDock(status, Dock.Top);
-                content.Children.Add(status);
+                var original = viewModel.DraftSnapshot();
+                DraftDialogGuard.Attach(dialog, () => viewModel.IsLoading, () => original != viewModel.DraftSnapshot());
+                return new FirewallRuleEditorView(viewModel, dialog);
+            }, new RelaxKonOS.Core.Primitives.Size(520, 620));
 
-                var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Avalonia.Thickness(0, 12, 0, 0) };
-                var cancel = new Button { Content = LocalizedText.Get("common.cancel") };
-                cancel.Click += (_, _) => dialog.Cancel();
-                var save = new Button { Content = LocalizedText.Get(editing ? "firewall.rule.update" : "firewall.rule.add"), Classes = { "primary" } };
-                save.Click += async (_, _) =>
-                {
-                    var success = editing ? await vm.UpdateRuleAsync() : await vm.AddRuleAsync();
-                    if (success) dialog.Close(true);
-                };
-                actions.Children.Add(cancel);
-                actions.Children.Add(save);
-                save.Bind(Control.IsEnabledProperty, new Avalonia.Data.Binding("!IsLoading"));
-                cancel.Bind(Control.IsEnabledProperty, new Avalonia.Data.Binding("!IsLoading"));
-                DockPanel.SetDock(actions, Dock.Bottom);
-                content.Children.Add(actions);
-
-                var fields = new StackPanel { Spacing = 12 };
-                fields.Bind(Control.IsEnabledProperty, new Avalonia.Data.Binding("!IsLoading"));
-                fields.Children.Add(ChoiceField(vm, nameof(vm.SelectedAction), vm.Actions, "firewall.rule.action", 360));
-                fields.Children.Add(ChoiceField(vm, nameof(vm.SelectedDirection), vm.Directions, "firewall.rule.direction", 360));
-                fields.Children.Add(ChoiceField(vm, nameof(vm.SelectedProtocol), vm.Protocols, "firewall.rule.protocol", 360));
-                fields.Children.Add(TextField(vm, nameof(vm.Source), "firewall.rule.source", "firewall.rule.source_hint", 360, "firewall.rule.source_tooltip"));
-                fields.Children.Add(TextField(vm, nameof(vm.Destination), "firewall.rule.destination", "firewall.rule.destination_hint", 360, "firewall.rule.destination_tooltip"));
-                fields.Children.Add(TextField(vm, nameof(vm.Port), "firewall.rule.port", "firewall.rule.port_hint", 360));
-                content.Children.Add(new ScrollViewer
-                {
-                    Content = fields,
-                    HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                });
-                return content;
-            }, new RelaxKonOS.Core.Primitives.Size(460, 560));
-
-    private static DataGridTextColumn Column(string headerKey, string property, double width) => new()
+    /// <summary>A host change asks first. The dialog stays owned by the firewall window so it can
+    /// never land behind another application.</summary>
+    private static async Task<bool> ConfirmAsync(AppContext context, RelaxKonOS.WindowManager.ManagedWindow owner, string title, string message)
     {
-        Header = LocalizedText.Get(headerKey), Binding = new Avalonia.Data.Binding(property), Width = new DataGridLength(width, DataGridLengthUnitType.Pixel)
-    };
-
-    private static Control ChoiceField(FirewallViewModel vm, string property, IEnumerable<FirewallOption> choices, string labelKey, double width)
-    {
-        var field = new StackPanel { Spacing = 4, Width = width, DataContext = vm, HorizontalAlignment = HorizontalAlignment.Left };
-        field.Children.Add(new TextBlock { Text = LocalizedText.Get(labelKey) });
-        var box = new ComboBox { ItemsSource = choices, DisplayMemberBinding = new Avalonia.Data.Binding(nameof(FirewallOption.Label)) };
-        box.Bind(SelectingItemsControl.SelectedItemProperty, new Avalonia.Data.Binding(property) { Mode = Avalonia.Data.BindingMode.TwoWay });
-        field.Children.Add(box);
-        return field;
+        var accepted = false;
+        await context.ShowDialogAsync<bool>(owner, title, dialog => new ConfirmDialogView
+        {
+            DataContext = new ConfirmDialogViewModel(message, value =>
+            {
+                accepted = value;
+                dialog.Close(value);
+            }),
+        }, new RelaxKonOS.Core.Primitives.Size(520, 280));
+        return accepted;
     }
-
-    private static Control TextField(FirewallViewModel vm, string property, string labelKey, string hintKey, double width, string? tooltipKey = null)
-    {
-        var field = new StackPanel { Spacing = 4, Width = width, DataContext = vm, HorizontalAlignment = HorizontalAlignment.Left };
-        var label = new TextBlock { Text = LocalizedText.Get(labelKey) };
-        if (tooltipKey is not null) ToolTip.SetTip(label, LocalizedText.Get(tooltipKey));
-        field.Children.Add(label);
-        var box = new TextBox { PlaceholderText = LocalizedText.Get(hintKey) };
-        box.Bind(TextBox.TextProperty, new Avalonia.Data.Binding(property) { Mode = Avalonia.Data.BindingMode.TwoWay });
-        field.Children.Add(box);
-        return field;
-    }
-
 }

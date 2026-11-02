@@ -87,6 +87,12 @@ if (args.Contains("--squid-only"))
     SquidWorkspaceChecks.Run();
     return;
 }
+if (args.Contains("--firewall-only"))
+{
+    FirewallSubmissionChecks.Run();
+    FirewallWorkspaceChecks.Run(settings);
+    return;
+}
 if (args.Contains("--desktop-actions-only"))
 {
     var checks = DesktopActionsChecks.RunAsync(new ShellSettings(appearance), localization, services);
