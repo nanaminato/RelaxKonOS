@@ -195,9 +195,10 @@ owner 拖动/Resize ──→ OnDrag/OnResize ──→ UpdateDialogs(owner) ─
 | 对话框调 `dialog.Cancel()` / Esc / 取消按钮 | 经 `CanCancelAsync` 守卫；允许后 `TrySetResult(default)`，返回默认结果 |
 | owner 被 `Close()` | `Close` 遍历 `_modalSessions` 取消相关 session |
 | owner 被 `Minimize()` | 最小化前取消该 owner 的 session（避免遮罩悬空） |
+| owner 在请求到达前已关闭（例如 handler 先 await 网络探测，其间用户关掉工作区窗口） | 不创建窗口与遮罩，直接返回 `default`；不得抛异常 |
 | 对话框标题栏关闭 / Alt+F4 | 同样请求取消守卫，拒绝时窗口和结果保持未完成 |
 
-`ModalDialog<TResult>.CanCancelAsync` 可冻结忙碌关闭或异步确认放弃草稿；重复取消请求只进行一次检查。成功 `Close(result)` 不经过取消守卫。owner 的关闭、最小化及宿主销毁继续强制结束所属模态，避免留下失去 owner 的窗口。业务编辑器可复用客户端 `DraftDialogGuard`，确认窗口作为编辑器的子模态，取消确认返回原编辑器。
+`ModalDialog<TResult>.CanCancelAsync` 可冻结忙碌关闭或异步确认放弃草稿；重复取消请求只进行一次检查。成功 `Close(result)` 不经过取消守卫。owner 的关闭、最小化及宿主销毁继续强制结束所属模态，避免留下失去 owner 的窗口。请求到达时 owner 已经不在桌面上（典型来源：`async void` 点击处理器先 await 了 SSH/网络操作，期间用户关掉工作区窗口）按取消处理——不建窗、不建遮罩、返回 `default`，不得抛异常，否则异常会从该处理器逃逸并终止进程。业务编辑器可复用客户端 `DraftDialogGuard`，确认窗口作为编辑器的子模态，取消确认返回原编辑器。
 
 ### 3.6 嵌套模态
 
