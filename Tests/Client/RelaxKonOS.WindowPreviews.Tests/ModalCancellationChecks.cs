@@ -78,7 +78,7 @@ internal static class ModalCancellationChecks
             created++;
             return new TextBlock();
         });
-        Check(orphaned.IsCompletedSuccessfully && orphaned.Result is null,
+        Check(orphaned.IsCompletedSuccessfully && orphaned.Result == false,
             "A dialog requested for a closed owner resolves to the default result.");
         Check(created == 0 && manager.Windows.Count == 0,
             "A dialog requested for a closed owner creates no window and no blocker.");
