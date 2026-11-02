@@ -69,8 +69,8 @@ if (args.Contains("--component-download-preview"))
 }
 if (args.Contains("--component-installs-only")) { ComponentInstallEntryChecks.Run(); return; }
 if (args.Contains("--current-nginx-only")) { CurrentNginxChecks.Run(); return; }
-if (args.Contains("--roapp-catalog-only")) { RoappCatalogChecks.Run(); return; }
-if (args.Contains("--component-center-only")) { RoappCatalogChecks.Run(); ComponentCenterWorkspaceChecks.Run(settings); return; }
+if (args.Contains("--roapp-catalog-only")) { RoappCatalogChecks.Run(settings); return; }
+if (args.Contains("--component-center-only")) { RoappCatalogChecks.Run(settings); ComponentCenterWorkspaceChecks.Run(settings); return; }
 if (args.Contains("--git-dock-only")) { GitDockChecks.Run(settings); return; }
 if (args.Contains("--project-editor-only"))
 {

@@ -1,4 +1,19 @@
 using RelaxKonOS.Protocol.Proxy;
+if (args is ["--component-sources-live", var catalogHostAddress])
+{
+    await RemoteComponentCatalogLiveChecks.RunAsync(catalogHostAddress);
+    return;
+}
+if (args is ["--component-sources-http-child", var catalogPolicyPath, var catalogTestRoot])
+{
+    await RemoteComponentCatalogLiveChecks.RunChildAsync(catalogPolicyPath, catalogTestRoot);
+    return;
+}
+if (args.Contains("--component-sources-only"))
+{
+    await RemoteComponentCatalogChecks.RunAsync();
+    return;
+}
 if (args.Contains("--component-catalog-only"))
 {
     await ComponentCatalogChecks.RunAsync();

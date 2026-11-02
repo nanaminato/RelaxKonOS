@@ -20,6 +20,9 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
 {
     public ServerModulesViewModel? ServerModules { get; set; }
     public bool ShowServerModules => SelectedPage == ComponentCenterPage.ServerModules;
+    public CatalogSourcesViewModel? CatalogSources { get; set; }
+    public bool ShowCatalogSources => SelectedPage == ComponentCenterPage.Sources;
+    public bool ShowComponentBrowser => !ShowServerModules && !ShowCatalogSources;
     private readonly ComponentDraftStore _store;
     private readonly string _server;
     private readonly Guid _actor;
@@ -71,7 +74,9 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         && !(definition.Integration == ComponentIntegration.Installation && PackageInstallation is not null);
     public int SelectedSourceKindCount => SelectedDefinition?.Sources.Count ?? 0;
     public LocalizedStatus SelectedComponentDescription => SelectedDefinition is { } definition
-        ? LocalizedStatus.Key(definition.DescriptionKey) : LocalizedStatus.Literal("");
+        ? ComponentCatalog.RemoteSourceId(definition.ComponentId) is null ? LocalizedStatus.Key(definition.DescriptionKey)
+            : LocalizedStatus.Literal(definition.DescriptionKey) : LocalizedStatus.Literal("");
+    public string SelectedCatalogProvenance => SelectedDefinition is { } definition ? ComponentCatalog.Provenance(definition.ComponentId) : "";
     /// <summary>The platform the login descriptor reported for the Server host, when it answered.</summary>
     private readonly string? _declaredHostPlatform;
     /// <summary>
@@ -265,6 +270,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         _runtimes = runtimes;
         _inspectionInstallation = runtime.Installation;
         _inspectionCatalog = runtime.CatalogSnapshot;
+        ComponentCatalog.Changed += CatalogChanged;
         BuildTrees();
         TaskWorkload = _workloadRoots.FirstOrDefault();
         foreach (var draft in store.Read(server, actor)) Drafts.Add(new(draft));
@@ -295,6 +301,8 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     {
         OnPropertyChanged(nameof(SelectedPage));
         OnPropertyChanged(nameof(ShowServerModules));
+        OnPropertyChanged(nameof(ShowCatalogSources));
+        OnPropertyChanged(nameof(ShowComponentBrowser));
         if (ShowServerModules && ServerModules is { } modules) _ = modules.RefreshCommand.ExecuteAsync(null);
         SelectedNode = null;
         RefreshTree();
@@ -355,6 +363,13 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
         NotifyGit();
         NotifyOfficialDownloads();
         NotifyDesktopPackages();
+    }
+    private void CatalogChanged(object? sender, EventArgs args)
+    {
+        var selected = SelectedDefinition?.ComponentId;
+        _componentRoots.Clear(); _workloadRoots.Clear(); BuildTrees();
+        TaskWorkload = _workloadRoots.FirstOrDefault(); RefreshTree();
+        if (selected is not null) SelectedNode = VisibleRoots.SelectMany(root => root.VisibleDescendantsAndSelf()).FirstOrDefault(node => node.ComponentId == selected);
     }
     private void BuildTrees()
     {
@@ -567,6 +582,8 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     }
     public void Dispose()
     {
+        ComponentCatalog.Changed -= CatalogChanged;
+        CatalogSources?.Dispose();
         foreach (var installation in _packageInstallations.Values)
         {
             installation.PropertyChanged -= PackageInstallationChanged;

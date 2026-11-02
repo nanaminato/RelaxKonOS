@@ -1,6 +1,6 @@
 # 内置应用受管运行时、版本目录与发布源
 
-> 2026-11-02（MR-01 / CC-05）：已接入[本地声明式组件目录与机制派发](RelaxKonOS.ComponentCatalog.Design.md)。目录只描述平台/架构和已注册机制，源信任、冻结计划、领域安装/恢复与 Helper 复核继续由原实现负责；已在指定 Ubuntu 主机覆盖更新 Server 并通过只读生产 HTTP 验收；这不构成新的第三方运行时安装/跨版本/恢复验收。
+> 2026-11-02（MR-01 / CC-05）：已接入[声明式组件目录与机制派发](RelaxKonOS.ComponentCatalog.Design.md)，并实现可选签名 HTTPS 组件来源与桌面用户信任登记。第三方目录只描述平台/架构和已注册机制，不能登记新的宿主领域适配器或 Helper 授权；远程实际安装接入 `.roapp`，宿主冻结计划、领域安装/恢复与 Helper 复核继续由原实现负责。这不构成第三方宿主运行时安装/跨版本/恢复验收。
 
 > 当前逐组件实施状态与 Nginx 平台边界见[组件中心实施进度](RelaxKonOS.ComponentCenter.Progress.md)；下文历史切片的验收范围保持原记录。
 > 签名目录的生产与登记流程见[发布签名运行时目录](RelaxKonOS.RuntimeCatalog.Publishing.md)。

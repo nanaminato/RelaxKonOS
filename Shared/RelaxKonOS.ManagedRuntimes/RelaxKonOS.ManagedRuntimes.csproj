@@ -10,6 +10,7 @@
     <InternalsVisibleTo Include="RelaxKonOS.ManagedRuntimes.Tests" />
     <PackageReference Include="YamlDotNet" />
     <ProjectReference Include="../RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj" />
+    <ProjectReference Include="../RelaxKonOS.ServerModules.Packaging/RelaxKonOS.ServerModules.Packaging.csproj" />
     <None Update="ThirdPartyLicenses/YamlDotNet.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

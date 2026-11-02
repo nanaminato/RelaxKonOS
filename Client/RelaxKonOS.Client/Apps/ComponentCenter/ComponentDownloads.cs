@@ -73,9 +73,8 @@ public partial class ComponentCenterViewModel
     /// replaces the domain installer's source, file validation or authorization checks.
     /// </summary>
     public bool ShowOfficialDownloads => _lifecycle is IComponentReleaseClient
-        && SelectedDefinition is { } definition
-        && RelaxKonOS.ManagedRuntimes.Catalog.BundledComponentCatalog.Current.Components
-            .Single(component => component.Id == definition.ComponentId).Targets.Any(target =>
+        && SelectedDefinition is { } definition && ComponentCatalog.RemoteSourceId(definition.ComponentId) is null
+        && ComponentCatalog.Manifest(definition.ComponentId)!.Targets.Any(target =>
                 target.Os == HostPlatform && target.OfficialDownloads && target.Installer.Available);
     public bool CanRefreshOfficial => ShowOfficialDownloads && Runtime.CanRead && !Runtime.IsInvalidated && !IsLoadingOfficialReleases && !IsInstallingOfficial && !IsSelectingPackageFile;
     public bool CanInstallOfficial => ShowOfficialDownloads && Runtime.CanManage && !Runtime.IsInvalidated && !IsInstallingOfficial && !IsLoadingOfficialReleases && !IsSelectingPackageFile

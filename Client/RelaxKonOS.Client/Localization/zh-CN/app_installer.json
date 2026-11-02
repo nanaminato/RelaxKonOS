@@ -1,6 +1,9 @@
 {
     "Culture": "zh-CN",
     "Strings": {
+        "app_installer.action.repair": "修复或重装",
+        "app_installer.status.repaired": "已重新安装 {0} {1}。",
+        "app_installer.status.confirm_repair": "此版本已经安装，请确认执行同版本修复或重装。",
         "app_installer.title": "应用安装程序",
         "app_installer.description": "安装前，请查看应用信息及其请求的 RelaxKonOS 权限。",
         "app_installer.security_warning": "软件包来源未经验证。权限只能约束正常的 SDK 调用，不能沙箱化恶意代码；请仅安装你已审查来源和代码的软件包。",

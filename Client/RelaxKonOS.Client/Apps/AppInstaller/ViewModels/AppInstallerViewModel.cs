@@ -38,7 +38,8 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
     public bool HasPackageIcon => PackageIcon is not null;
     public string PackageIconGlyph => string.IsNullOrWhiteSpace(CurrentPackage?.Manifest.IconGlyph) ? "📦" : CurrentPackage.Manifest.IconGlyph;
     public bool HasPackage => CurrentPackage is not null;
-    public string ActionLabel => CurrentPackage?.IsUpdate == true ? LocalizedText.Get("common.update") : LocalizedText.Get("common.install");
+    public string ActionLabel => CurrentPackage?.IsRepair == true ? LocalizedText.Get("app_installer.action.repair")
+        : CurrentPackage?.IsUpdate == true ? LocalizedText.Get("common.update") : LocalizedText.Get("common.install");
     public string CurrentVersionText => CurrentPackage?.InstalledVersion is null ? LocalizedText.Get("app_installer.not_installed") : LocalizedText.Format("app_installer.current_version", CurrentPackage.InstalledVersion);
     public int PendingCount => _pending.Count;
     public IReadOnlyList<LocalizedPermissionInfo> RequestedPermissions => CurrentPackage?.Manifest.RequestedPermissions
@@ -101,7 +102,8 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
         try
         {
             var installed = await _installer.InstallAsync(CurrentPackage);
-            Status = LocalizedText.Ref(CurrentPackage.IsUpdate ? "app_installer.status.updated" : "app_installer.status.installed", installed.DisplayName, installed.Version);
+            Status = LocalizedText.Ref(CurrentPackage.IsRepair ? "app_installer.status.repaired"
+                : CurrentPackage.IsUpdate ? "app_installer.status.updated" : "app_installer.status.installed", installed.DisplayName, installed.Version);
             CurrentPackage = null;
             ShowNext();
         }
@@ -160,7 +162,8 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
     {
         if (CurrentPackage is not null || _pending.Count == 0) return;
         CurrentPackage = _pending.Dequeue();
-        Status = CurrentPackage.IsUpdate ? LocalizedText.Ref("app_installer.status.confirm_update") : LocalizedText.Ref("app_installer.status.confirm_install");
+        Status = CurrentPackage.IsRepair ? LocalizedText.Ref("app_installer.status.confirm_repair")
+            : CurrentPackage.IsUpdate ? LocalizedText.Ref("app_installer.status.confirm_update") : LocalizedText.Ref("app_installer.status.confirm_install");
         OnPropertyChanged(nameof(PendingCount));
     }
 

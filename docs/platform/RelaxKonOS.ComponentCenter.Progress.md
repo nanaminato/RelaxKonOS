@@ -1,10 +1,18 @@
 # 组件中心实施进度
 
+## 签名 HTTPS 来源与显式发布者信任（2026-11-02，CC-05 / MR-01，Phase 2/3）
+
+组件中心「来源」已接入当前桌面用户拥有的来源日志与两步审查：固定 HTTPS 根、发布者、P-256 公钥指纹、provider 白名单、最长有效期及可选私网 CIDR/端口。表单变化撤销待确认策略；登记、刷新不触发安装。来源可禁用、移除、轮换密钥，移除不删除退休密钥/序号/不可变版本/撤销历史。签名索引、manifest 与制品资源表整体接纳，失败保留已接纳缓存；过期/禁用缓存只显示。日志丢失或损坏阻断远程信任，不重置为全新来源。本地内置目录仍可离线工作。
+
+当前远程执行路径为桌面 `.roapp`，冻结来源实例/策略/序号/摘要后进入原安装审查，在安装锁内复核授权、摘要与已安装版本。相同版本重装明确为修复。第三方命名空间不能覆盖内置组件、launch gate 或其他应用，不能通过 manifest 执行 shell、动态加载 provider 或获得宿主/Helper 权限。第三方宿主适配器、完整商店网站/搜索、来源同步、自动周期刷新和历史多版本选择 UI 仍未实现。契约与离线生产步骤见[目录设计](RelaxKonOS.ComponentCatalog.Design.md)及[发布说明](RelaxKonOS.ComponentCatalog.Publishing.md)。
+
+已验证：Windows/Linux 信任专项 40 项，覆盖策略确认、序号回退、同版本换字节、密钥复用/退休、跨镜像撤销、缓存删除及日志丢失恢复阻断。指定 Ubuntu 26.04 x64 主机的真实 HTTPS 专项 12 项通过，覆盖 TLS、摘要、私网、跨源重定向、大小、取消与失败保留缓存；CA 仅限子测试进程，不改系统信任库。Windows 真实 `.roapp` 领域安装/更新/卸载及远程来源审查/发现/安装/禁用拒绝通过；来源确认页中英日 × 明暗截图检查通过。测试产物在 `.artifacts/component-catalog-phase23/`。这些测试不代表第三方宿主软件实际升级、跨架构或重启恢复验收。
+
 ## 本地声明式目录与安装链路（2026-11-02，CC-05 / MR-01 集成）
 
 已将桌面十个宿主组件与两个工作负载迁入随部署复制的 `ComponentCatalog/catalog.json` 和相对 manifest；无网站依赖、无旧 C# 目录回退。严格 schema、大小/深度限制、重复属性/身份拒绝、相对路径根边界及 symlink/reparse 拒绝已落地。兼容性解析区分 OS/架构不支持、provider 缺失、策略拒绝及环境未知；通用 plan、系统包/Nginx 执行和 FRP 冻结复核经机制 provider 交给原领域实现，保留冻结身份、审批、台账、所有权和 Helper 检查。
 
-本地阶段已经接通宿主 `apt/archive/download` 与桌面 `roapp`。版本发现/制品选择分别使用注册表，当前有 GitHub Releases、Nginx 官方页、APT 冻结候选、本地 catalog/static 和原 Tailscale 原生解析适配；有限文件名模板不执行脚本，歧义资源/来源替换拒绝。桌面 `.roapp` 先冻结版本/摘要并暂存，转交原 AppInstaller 检查身份、版本和权限，显式安装时复核同一文件句柄及已安装版本；不授予 BuiltIn、商店可信身份或新权限。状态与卸载/修复/回退保持领域权威。完整当前契约见[本地目录设计](RelaxKonOS.ComponentCatalog.Design.md)。HTTP(S) Catalog Source、第三方来源和其信任 UI 仍属于 Phase 2/3，不据本次结果关闭 MR-03/04/05 的真实第三方运行时升级/恢复验收。
+本地阶段已经接通宿主 `apt/archive/download` 与桌面 `roapp`。版本发现/制品选择分别使用注册表，当前有 GitHub Releases、Nginx 官方页、APT 冻结候选、本地 catalog/static 和原 Tailscale 原生解析适配；有限文件名模板不执行脚本，歧义资源/来源替换拒绝。桌面 `.roapp` 先冻结版本/摘要并暂存，转交原 AppInstaller 检查身份、版本和权限，显式安装时复核同一文件句柄及已安装版本；不授予 BuiltIn、商店可信身份或新权限。状态与卸载/修复/回退保持领域权威。完整当前契约见[目录设计](RelaxKonOS.ComponentCatalog.Design.md)。Phase 2/3 的后续实现见上节，不据目录测试关闭 MR-03/04/05 的真实第三方运行时升级/恢复验收。
 
 验证：Client、Server、Server.Tests 与 WindowPreviews 构建通过（已有无关警告保留）。Windows 上真实调用本地 `.roapp` 领域安装、更新、卸载，覆盖计划不自动安装、暂存后字节变化拒绝、安装版本变化拒绝、目录移除后使用冻结制品及权限重置；Component Center 中英日 × 明暗主题检查通过。Ubuntu 26.04 x64 上 `--components-only`（259 条原有 PASS 输出，加新增目录/版本/selector 专项）（含目录/provider/selector、路径与 symlink 拒绝、所有权、冻结身份、台账及恢复）和 `--official-component-releases-only`（11 项）通过。Linux 首次运行暴露既有 Nginx 恢复测试把 Helper 传 null 的夹具问题，已改为只允许查询的 transport；未改生产恢复语义。
 

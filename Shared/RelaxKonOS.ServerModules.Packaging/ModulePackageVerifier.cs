@@ -57,47 +57,19 @@ public static class ModulePackageVerifier
             PublicKeysSpki = new SortedDictionary<string, string>(policy.PublicKeysSpki.ToDictionary(p => p.Key, p => p.Value), StringComparer.Ordinal)
         });
         Require(policy.Revision >= history.PolicyRevision && (policy.Revision != history.PolicyRevision || policyHash == history.PolicyHash), "policy-replay");
-        var keys = new Dictionary<string, string>(history.KeyHashes, StringComparer.Ordinal);
-        var retired = new HashSet<string>(history.RetiredKeyIds, StringComparer.Ordinal);
-        foreach (var previous in keys.Keys)
-            if (!policy.PublicKeysSpki.ContainsKey(previous)) retired.Add(previous);
         var envelope = ModulePackageJson.Read<SignedModulePackageCatalog>(envelopeBytes, 6 * 1024 * 1024);
         Require(envelope.SchemaVersion == 1 && Id(envelope.KeyId), "signature-envelope-invalid");
-        byte[] payload;
-        byte[] signature;
+        VerifiedPackageCatalogSignature signed;
         try
         {
-            Require(envelope.Payload is { Length: > 0 and <= 5592408 } && envelope.Signature is { Length: 88 }, "signature-envelope-invalid");
-            payload = Convert.FromBase64String(envelope.Payload!);
-            signature = Convert.FromBase64String(envelope.Signature!);
+            signed = PackageCatalogSignature.Verify(envelope.KeyId, envelope.Payload, envelope.Signature,
+                policy.PublicKeysSpki, history.KeyHashes, history.RetiredKeyIds,
+                "RelaxKonOS.ServerModuleCatalog.v1\n", MetadataLimit);
         }
-        catch (FormatException) { throw new ModulePackageException("module-package-signature-envelope-invalid"); }
-        Require(payload.Length <= MetadataLimit && signature.Length == 64, "signature-envelope-invalid");
-        bool verified = false;
-        foreach (var key in policy.PublicKeysSpki)
-        {
-            Require(Id(key.Key) && !retired.Contains(key.Key) && key.Value is { Length: > 0 and <= 512 }, "key-invalid");
-            try
-            {
-                var spki = Convert.FromBase64String(key.Value);
-                using var crypto = ECDsa.Create();
-                crypto.ImportSubjectPublicKeyInfo(spki, out var consumed);
-                Require(consumed == spki.Length && crypto.ExportParameters(false).Curve.Oid.Value == "1.2.840.10045.3.1.7", "key-invalid");
-                var keyHash = Hash(spki);
-                Require(!keys.TryGetValue(key.Key, out var oldHash) || oldHash == keyHash, "key-id-reused");
-                keys[key.Key] = keyHash;
-                if (key.Key == envelope.KeyId)
-                {
-                    var domain = Encoding.UTF8.GetBytes("RelaxKonOS.ServerModuleCatalog.v1\n");
-                    var signed = new byte[domain.Length + payload.Length];
-                    domain.CopyTo(signed, 0); payload.CopyTo(signed, domain.Length);
-                    verified = crypto.VerifyData(signed, signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
-                }
-            }
-            catch (Exception e) when (e is FormatException or CryptographicException or ArgumentException)
-            { throw new ModulePackageException("module-package-key-invalid"); }
-        }
-        Require(verified, "signature-invalid");
+        catch (PackageCatalogVerificationException error) { throw new ModulePackageException("module-package-" + error.Code); }
+        var payload = signed.Payload;
+        var keys = signed.Keys.Hashes;
+        var retired = signed.Keys.RetiredIds;
         var catalog = ModulePackageJson.Read<ModulePackageCatalog>(payload);
         var payloadHash = Hash(payload);
         Require(catalog.SchemaVersion == 1 && catalog.SourceId == policy.SourceId && catalog.Sequence > 0
@@ -134,7 +106,7 @@ public static class ModulePackageVerifier
             releases[m.ReleaseId] = identity; versions[versionId] = identity; digests[m.ReleaseId] = release.ArchiveSha256;
         }
         Require(releases.Count <= 10000 && versions.Count <= 10000 && digests.Count <= 10000
-            && keys.Count <= 256 && retired.Count <= 256 && revokedIds.Count <= 10000 && revokedDigests.Count <= 10000, "history-capacity");
+            && keys.Count <= 256 && retired.Length <= 256 && revokedIds.Count <= 10000 && revokedDigests.Count <= 10000, "history-capacity");
         return new(catalog, new(policy.SourceId, context.ServiceId, policy.Purpose, policy.Revision, policyHash, keys,
             retired.Order(StringComparer.Ordinal).ToArray(), catalog.Sequence, payloadHash, releases, versions, digests,
             revokedIds.Order(StringComparer.Ordinal).ToArray(), revokedDigests.Order(StringComparer.Ordinal).ToArray()), payloadHash);

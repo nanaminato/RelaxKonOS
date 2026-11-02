@@ -26,6 +26,8 @@ try
             return await SettingsCommands.RunAsync(arguments);
         case "runtime-catalog":
             return await RuntimeCatalogCommands.RunAsync(arguments);
+        case "component-catalog":
+            return await ComponentCatalogCommands.RunAsync(arguments);
         case "apps" when arguments.Count == 0:
             await SendAsync(new HttpRequestMessage(HttpMethod.Get, "apps"));
             break;

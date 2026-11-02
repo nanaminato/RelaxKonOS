@@ -15,7 +15,7 @@ public sealed class RoappComponentInstallerProvider(AppPackageInstallerService i
         : OperatingSystem.IsLinux() ? "linux" : OperatingSystem.IsMacOS() ? "macos" : "unknown",
         System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant());
 
-    public async Task<RoappComponentInstallPlan> PlanAsync(LocalCatalogSource source, string componentId, CancellationToken ct = default)
+    public async Task<RoappComponentInstallPlan> PlanAsync(IComponentCatalogSource source, string componentId, CancellationToken ct = default)
     {
         var component = source.Load().Components.SingleOrDefault(value => value.Id == componentId)
             ?? throw new RuntimePolicyException("component.unknown");
@@ -28,20 +28,23 @@ public sealed class RoappComponentInstallerProvider(AppPackageInstallerService i
         var releases = await providers.Require(target.Releases.Type).GetReleasesAsync(component, target, Desktop, false, ct);
         var release = releases.Single();
         var artifact = new CatalogArtifactSelector().Select(release, target, Desktop);
+        var authorization = (source as IAuthenticatedComponentCatalogSource)?.Authorize(componentId, Desktop);
         var stagingRoot = Path.Combine(Path.GetTempPath(), "RelaxKonOS", "app-installer");
         Directory.CreateDirectory(stagingRoot);
         var staging = Path.Combine(stagingRoot, Guid.NewGuid().ToString("N") + ".roapp");
         try
         {
-            await using (var input = source.Open(artifact.Reference!, source.ManifestReference(componentId)))
+            await using (var input = await source.OpenAsync(artifact.Reference!, source.ManifestReference(componentId), ct))
             await using (var output = new FileStream(staging, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                 await RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialComponentReleases.CopyAsync(input, output, artifact.Sha256, ct);
             var candidate = await installer.InspectLocalAsync(staging, source.SourceId + " / " + artifact.Reference,
                 deleteWhenFinished: true, cancellationToken: ct);
             if (candidate.Manifest.Id != (component.ApplicationId ?? component.Id) || candidate.Manifest.Version != release.Version)
                 throw new RuntimePolicyException("component.package_expectation_changed");
+            if (authorization is not null && ((IAuthenticatedComponentCatalogSource)source).Authorize(componentId, Desktop) != authorization)
+                throw RemoteCatalogRules.Error("authorization_changed");
             return new(source.SourceId, component.Id, release.ReleaseId, Desktop,
-                candidate with { ExpectedSha256 = artifact.Sha256, CatalogSourceId = source.SourceId });
+                candidate with { ExpectedSha256 = artifact.Sha256, CatalogSourceId = source.SourceId, CatalogAuthorization = authorization });
         }
         catch
         {

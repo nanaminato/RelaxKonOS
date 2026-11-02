@@ -1,0 +1,76 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:loc="using:RelaxKonOS.Client.Localization" xmlns:vm="using:RelaxKonOS.Client.Apps.ComponentCenter"
+ x:Class="RelaxKonOS.Client.Apps.ComponentCenter.CatalogSourcesView" x:DataType="vm:CatalogSourcesViewModel">
+ <StackPanel Spacing="18" MaxWidth="820" HorizontalAlignment="Left">
+  <TextBlock Text="{loc:Loc component_center.sources.title}" FontSize="22" FontWeight="SemiBold" />
+  <TextBlock Text="{loc:Loc component_center.sources.scope}" TextWrapping="Wrap" />
+  <TextBlock Text="{loc:Loc component_center.sources.local}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+  <ItemsControl ItemsSource="{Binding Sources}" IsEnabled="{Binding !IsBusy}">
+   <ItemsControl.ItemTemplate>
+    <DataTemplate x:DataType="vm:CatalogSourceRow">
+     <Border Classes="card" Padding="16" Margin="0,0,0,12">
+      <StackPanel Spacing="8">
+       <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" />
+       <WrapPanel ItemSpacing="10"><TextBlock Text="{Binding Trust}" /><TextBlock Text="{Binding Status}" /><TextBlock Text="{Binding Sequence}" /></WrapPanel>
+       <TextBlock Text="{Binding Id}" TextWrapping="Wrap" /><TextBlock Text="{Binding Publisher}" TextWrapping="Wrap" />
+       <TextBlock Text="{Binding Origin}" TextWrapping="Wrap" /><TextBlock Text="{Binding Fingerprints}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="11" />
+       <TextBlock Text="{Binding Providers}" TextWrapping="Wrap" /><TextBlock Text="{Binding Problem}" TextWrapping="Wrap" FontSize="11" />
+       <WrapPanel ItemSpacing="8" LineSpacing="6">
+        <Button Content="{loc:Loc common.refresh}" Command="{Binding $parent[UserControl].((vm:CatalogSourcesViewModel)DataContext).RefreshCommand}" CommandParameter="{Binding}" />
+        <Button Content="{loc:Loc component_center.sources.edit}" Command="{Binding $parent[UserControl].((vm:CatalogSourcesViewModel)DataContext).EditCommand}" CommandParameter="{Binding}" />
+        <Button Content="{loc:Loc component_center.sources.disable}" Command="{Binding $parent[UserControl].((vm:CatalogSourcesViewModel)DataContext).DisableCommand}" CommandParameter="{Binding}" />
+        <Button Content="{loc:Loc common.delete}" Command="{Binding $parent[UserControl].((vm:CatalogSourcesViewModel)DataContext).RemoveCommand}" CommandParameter="{Binding}" />
+       </WrapPanel>
+      </StackPanel>
+     </Border>
+    </DataTemplate>
+   </ItemsControl.ItemTemplate>
+  </ItemsControl>
+  <Border Classes="card" Padding="18">
+   <StackPanel Spacing="12">
+    <TextBlock Text="{loc:Loc component_center.sources.add}" FontSize="16" FontWeight="SemiBold" />
+    <StackPanel Spacing="8" IsVisible="{Binding !IsReviewing}" IsEnabled="{Binding CanEdit}">
+     <TextBlock Text="{loc:Loc component_center.sources.id}" /><TextBox Text="{Binding SourceId, Mode=TwoWay}" />
+     <TextBlock Text="{loc:Loc component_center.sources.name}" /><TextBox Text="{Binding DisplayName, Mode=TwoWay}" />
+     <TextBlock Text="{loc:Loc component_center.sources.publisher}" /><TextBox Text="{Binding PublisherId, Mode=TwoWay}" />
+     <TextBlock Text="{loc:Loc component_center.sources.origin}" /><TextBox Text="{Binding BaseUri, Mode=TwoWay}" />
+     <TextBlock Text="{loc:Loc component_center.sources.path}" /><TextBox Text="{Binding CatalogPath, Mode=TwoWay}" />
+     <TextBlock Text="{loc:Loc component_center.sources.key_id}" /><TextBox Text="{Binding KeyId, Mode=TwoWay}" />
+     <TextBlock Text="{loc:Loc component_center.sources.key}" /><TextBox Text="{Binding PublicKeySpki, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64" />
+     <TextBlock Text="{loc:Loc component_center.sources.validity}" /><TextBox Text="{Binding MaximumValiditySeconds, Mode=TwoWay}" />
+     <TextBlock Text="{loc:Loc component_center.sources.providers}" FontWeight="SemiBold" />
+     <WrapPanel ItemSpacing="16" LineSpacing="8">
+      <CheckBox Content="{loc:Loc component_center.source_kind.DesktopApp}" IsChecked="{Binding AllowRoapp, Mode=TwoWay}" />
+      <CheckBox Content="{loc:Loc component_center.source_kind.SystemPackage}" IsChecked="{Binding AllowApt, Mode=TwoWay}" />
+      <CheckBox Content="{loc:Loc component_center.source_kind.ManagedArchive}" IsChecked="{Binding AllowArchive, Mode=TwoWay}" />
+      <CheckBox Content="{loc:Loc component_center.source_kind.NativeInstaller}" IsChecked="{Binding AllowDownload, Mode=TwoWay}" />
+     </WrapPanel>
+     <TextBlock Text="{loc:Loc component_center.sources.provider_scope}" TextWrapping="Wrap" FontSize="12" />
+     <Expander>
+      <Expander.Header><TextBlock Text="{loc:Loc component_center.sources.private_network}" /></Expander.Header>
+      <StackPanel Spacing="8">
+       <TextBlock Text="{loc:Loc component_center.sources.private_hint}" TextWrapping="Wrap" FontSize="12" />
+       <TextBox Text="{Binding PrivateNetwork, Mode=TwoWay}" PlaceholderText="192.168.1.10/32" />
+       <TextBox Text="{Binding PrivatePort, Mode=TwoWay}" />
+      </StackPanel>
+     </Expander>
+     <Button Content="{loc:Loc component_center.sources.review}" Command="{Binding ReviewCommand}" HorizontalAlignment="Left" />
+    </StackPanel>
+    <StackPanel Spacing="10" IsVisible="{Binding IsReviewing}">
+     <TextBlock Text="{Binding ReviewIdentity}" FontWeight="SemiBold" TextWrapping="Wrap" />
+     <TextBlock Text="{Binding ReviewTrust}" /><TextBlock Text="{Binding ReviewOrigin}" TextWrapping="Wrap" />
+     <TextBlock Text="{Binding ReviewKeys}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="11" />
+     <TextBlock Text="{Binding ReviewProviders}" TextWrapping="Wrap" /><TextBlock Text="{Binding ReviewNetworks}" TextWrapping="Wrap" />
+     <TextBlock Text="{Binding ReviewValidity}" />
+     <TextBlock Text="{Binding ReviewFingerprint}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="11" />
+     <TextBlock Text="{loc:Loc component_center.sources.review_notice}" TextWrapping="Wrap" />
+     <WrapPanel ItemSpacing="10">
+      <Button Classes="primary" Content="{loc:Loc component_center.sources.confirm}" Command="{Binding ConfirmCommand}" />
+      <Button Content="{loc:Loc common.cancel}" Command="{Binding CancelReviewCommand}" />
+     </WrapPanel>
+    </StackPanel>
+   </StackPanel>
+  </Border>
+  <TextBlock Text="{Binding Notice}" TextWrapping="Wrap" />
+ </StackPanel>
+</UserControl>

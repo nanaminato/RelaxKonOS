@@ -9,15 +9,18 @@ public partial class ComponentCenterViewModel
     public Func<string, string?>? DesktopInstalledVersion { get; set; }
     public bool ShowDesktopPackage => SelectedDefinition?.IsDesktop == true;
     public RelaxKonOS.ManagedRuntimes.Catalog.ComponentCompatibility DesktopCompatibility => SelectedDefinition is { IsDesktop: true } definition
-        ? RelaxKonOS.ManagedRuntimes.Catalog.CompatibilityResolver.Resolve(
-            RelaxKonOS.ManagedRuntimes.Catalog.BundledComponentCatalog.Current.Components.Single(component => component.Id == definition.ComponentId),
+        ? !ComponentCatalog.CanInstall(definition.ComponentId) && ComponentCatalog.RemoteSourceId(definition.ComponentId) is not null
+            ? RelaxKonOS.ManagedRuntimes.Catalog.ComponentCompatibility.PolicyBlocked
+            : RelaxKonOS.ManagedRuntimes.Catalog.CompatibilityResolver.Resolve(
+            ComponentCatalog.Manifest(definition.ComponentId)!,
             RoappComponentInstallerProvider.Desktop.Os, RoappComponentInstallerProvider.Desktop.Architecture,
             target => target.Installer.Type == "roapp").Status
         : RelaxKonOS.ManagedRuntimes.Catalog.ComponentCompatibility.ProviderUnavailable;
     public LocalizedStatus DesktopCompatibilityText => LocalizedStatus.Key("component_center.desktop.compatibility." + DesktopCompatibility);
     private bool _reviewingDesktopPackage;
     public bool CanReviewDesktopPackage => ShowDesktopPackage && ReviewDesktopPackageAsync is not null && !_reviewingDesktopPackage
-        && DesktopCompatibility == RelaxKonOS.ManagedRuntimes.Catalog.ComponentCompatibility.Supported;
+        && DesktopCompatibility == RelaxKonOS.ManagedRuntimes.Catalog.ComponentCompatibility.Supported
+        && ComponentCatalog.CanInstall(SelectedDefinition!.ComponentId);
     public string? SelectedDesktopVersion => SelectedDefinition is { IsDesktop: true } definition
         ? DesktopInstalledVersion?.Invoke(definition.ApplicationId ?? definition.ComponentId) : null;
     public void RefreshDesktopPackages() => RefreshTree();
@@ -40,6 +43,7 @@ public partial class ComponentCenterViewModel
         OnPropertyChanged(nameof(CanReviewDesktopPackage));
         OnPropertyChanged(nameof(SelectedDesktopVersion));
         OnPropertyChanged(nameof(DesktopCompatibilityText));
+        OnPropertyChanged(nameof(SelectedCatalogProvenance));
         ReviewDesktopCatalogPackageCommand.NotifyCanExecuteChanged();
     }
 }

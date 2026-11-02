@@ -1,6 +1,9 @@
 {
     "Culture": "en-US",
     "Strings": {
+        "app_installer.action.repair": "Repair / reinstall",
+        "app_installer.status.repaired": "Reinstalled {0} {1}.",
+        "app_installer.status.confirm_repair": "This version is already installed. Confirm a same-version repair or reinstall.",
         "app_installer.title": "App Installer",
         "app_installer.description": "Review the application information and requested RelaxKonOS permissions before installing.",
         "app_installer.security_warning": "Package origin is unverified. Permissions guide normal SDK calls but do not sandbox malicious code; install only packages whose source and code you trust.",

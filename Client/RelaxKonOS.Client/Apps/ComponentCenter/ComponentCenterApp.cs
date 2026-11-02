@@ -90,6 +90,12 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
         {
             model.NginxSelection = new(web, certificates, session, context.Permissions, elevations) { IsComponentCenter = true };
         }
+        if (context.Services.GetService(typeof(RelaxKonOS.ManagedRuntimes.Catalog.ComponentCatalogSourceStore))
+            is RelaxKonOS.ManagedRuntimes.Catalog.ComponentCatalogSourceStore componentSources)
+        {
+            ComponentCatalog.UseSources(componentSources);
+            model.CatalogSources = new CatalogSourcesViewModel(componentSources);
+        }
         var view = new ComponentCenterWorkspace(model);
         var availability = context.Services.GetService(typeof(ApplicationAvailabilityService)) as ApplicationAvailabilityService;
         RelaxKonOS.Protocol.ManagedRuntimes.RuntimeInstallationSnapshot? lastObservation = null;
@@ -117,7 +123,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             model.ReviewDesktopPackageAsync = async id =>
             {
                 var plan = await new RoappComponentInstallerProvider(desktopInstaller).PlanAsync(
-                    RelaxKonOS.ManagedRuntimes.Catalog.BundledComponentCatalog.Source, id);
+                    ComponentCatalog.SourceFor(id), id);
                 using var review = new RelaxKonOS.Client.Apps.AppInstaller.ViewModels.AppInstallerViewModel(desktopInstaller)
                     { AllowPackageSelection = false };
                 review.QueueCatalogPlan(plan);

@@ -1,5 +1,6 @@
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.ManagedRuntimes;
+using RelaxKonOS.ManagedRuntimes.Catalog;
 
 namespace RelaxKonOS.Client.Apps.ComponentCenter;
 
@@ -46,15 +47,78 @@ public sealed record ComponentWorkloadDefinition(string WorkloadId, string Displ
 
 public static class ComponentCatalog
 {
-    public static IReadOnlyList<HostComponentDefinition> Components { get; } = Array.AsReadOnly(
-        RelaxKonOS.ManagedRuntimes.Catalog.BundledComponentCatalog.Current.Components.Select(component =>
+    private static readonly IReadOnlyList<ComponentManifest> Bundled = BundledComponentCatalog.Current.Components;
+    private static IReadOnlyDictionary<string, ComponentManifest> _manifests = Bundled.ToDictionary(component => component.Id, StringComparer.Ordinal);
+    private static IReadOnlyDictionary<string, string> _remoteSources = new Dictionary<string, string>();
+    private static ComponentCatalogSourceStore? _sourceStore;
+    private static IReadOnlyList<HostComponentDefinition> _components = Project(Bundled, false);
+    public static event EventHandler? Changed;
+    public static IReadOnlyList<HostComponentDefinition> Components => _components;
+    public static ComponentManifest? Manifest(string componentId) => _manifests.GetValueOrDefault(componentId);
+    public static string? RemoteSourceId(string componentId) => _remoteSources.GetValueOrDefault(componentId);
+    public static string Provenance(string componentId)
+    {
+        if (RemoteSourceId(componentId) is not { } sourceId || _sourceStore is not { } store) return "";
+        try
+        {
+            var snapshot = store.Snapshot(sourceId);
+            return snapshot.Policy.DisplayName + " · " + snapshot.Policy.PublisherId + " · " + sourceId + "\n"
+                + snapshot.Policy.BaseUri + "\n" + string.Join("\n", snapshot.Policy.KeyFingerprints);
+        }
+        catch (Exception error) when (error is IOException or InvalidDataException or InvalidOperationException
+            or RelaxKonOS.ManagedRuntimes.RuntimePolicyException) { return sourceId; }
+    }
+    public static IComponentCatalogSource SourceFor(string componentId) => RemoteSourceId(componentId) is { } sourceId && _sourceStore is { } store
+        ? new HttpCatalogSource(store, sourceId) : BundledComponentCatalog.Source;
+    public static bool CanInstall(string componentId)
+    {
+        if (RemoteSourceId(componentId) is not { } sourceId) return true;
+        try { _sourceStore!.Authorize(sourceId, componentId, RoappComponentInstallerProvider.Desktop); return true; }
+        catch (Exception error) when (error is IOException or InvalidDataException or InvalidOperationException
+            or RelaxKonOS.ManagedRuntimes.RuntimePolicyException) { return false; }
+    }
+    public static void UseSources(ComponentCatalogSourceStore? store)
+    {
+        if (_sourceStore is not null) _sourceStore.Changed -= SourcesChanged;
+        _sourceStore = store; if (store is not null) store.Changed += SourcesChanged;
+        ReloadSources();
+    }
+    private static void SourcesChanged(object? sender, EventArgs args) => Avalonia.Threading.Dispatcher.UIThread.Post(ReloadSources);
+    private static void ReloadSources()
+    {
+        var manifests = Bundled.ToDictionary(component => component.Id, StringComparer.Ordinal);
+        var sources = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (_sourceStore is { } store)
+        {
+            IReadOnlyList<ComponentCatalogSourceView> views;
+            try { views = store.Sources(includeRemoved: true); }
+            catch (Exception error) when (error is IOException or InvalidDataException or InvalidOperationException
+                or RelaxKonOS.ManagedRuntimes.RuntimePolicyException) { views = []; }
+            foreach (var view in views.OrderBy(view => view.Status != "ready")
+                .ThenBy(view => view.Policy.Trust != "official").ThenBy(view => view.Policy.SourceId, StringComparer.Ordinal))
+            {
+                try
+                {
+                    foreach (var component in store.Snapshot(view.Policy.SourceId).Catalog.Components)
+                        if (manifests.TryAdd(component.Id, component)) sources[component.Id] = view.Policy.SourceId;
+                }
+                catch (Exception error) when (error is IOException or InvalidDataException or InvalidOperationException
+                    or RelaxKonOS.ManagedRuntimes.RuntimePolicyException) { }
+            }
+        }
+        _manifests = manifests; _remoteSources = sources;
+        _components = Array.AsReadOnly(Project(Bundled, false).Concat(Project(manifests.Values.Where(component => sources.ContainsKey(component.Id)), true)).ToArray());
+        Changed?.Invoke(null, EventArgs.Empty);
+    }
+    private static IReadOnlyList<HostComponentDefinition> Project(IEnumerable<ComponentManifest> components, bool remote) => Array.AsReadOnly(
+        components.Select(component =>
             new HostComponentDefinition(component.Id, component.RuntimeId, component.Category, component.Name,
                 component.DescriptionKey, Enum.Parse<ComponentIntegration>(component.Integration), component.ApplicationId,
                 component.RequiredComponents, component.OptionalComponents, component.Conflicts, component.Applications,
                 component.Targets.Select(target => target.Os).Distinct().ToArray(),
                 component.Targets.GroupBy(target => (target.SourceKind, target.Installer.Available))
                     .Select(group => new ComponentSourceDeclaration(Enum.Parse<ComponentSourceKind>(group.Key.SourceKind),
-                        group.Key.Available, group.Select(target => target.Os).Distinct().ToArray())).ToArray(),
+                        group.Key.Available && (!remote || component.Targets.All(target => target.Installer.Type == "roapp")), group.Select(target => target.Os).Distinct().ToArray())).ToArray(),
                 component.Targets.All(target => target.Installer.Type == "roapp"))).ToArray());
     public static IReadOnlyList<ComponentWorkloadDefinition> Workloads { get; } = Array.AsReadOnly(
         RelaxKonOS.ManagedRuntimes.Catalog.BundledComponentCatalog.Current.Workloads.Select(workload =>
@@ -77,7 +141,7 @@ public static class ComponentCatalog
     /// to a component; an application without a component never gains a fake dependency.
     /// </summary>
     public static IReadOnlyList<ApplicationLaunchGate> LaunchGates { get; } = Array.AsReadOnly(
-        Components.Where(component => !component.IsDesktop).SelectMany(component => component.Applications.Select(application => (application, component.ComponentId)))
+        Project(Bundled, false).Where(component => !component.IsDesktop).SelectMany(component => component.Applications.Select(application => (application, component.ComponentId)))
             .GroupBy(pair => pair.application, StringComparer.Ordinal)
             .Select(group => new ApplicationLaunchGate(group.Key,
                 Array.AsReadOnly(group.Select(pair => pair.ComponentId).Distinct(StringComparer.Ordinal).ToArray())))

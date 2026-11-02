@@ -1,6 +1,9 @@
 {
     "Culture": "ja-JP",
     "Strings": {
+        "app_installer.action.repair": "修復・再インストール",
+        "app_installer.status.repaired": "{0} {1} を再インストールしました。",
+        "app_installer.status.confirm_repair": "このバージョンはインストール済みです。同じバージョンの修復または再インストールを確認してください。",
         "app_installer.title": "アプリ インストーラー",
         "app_installer.description": "インストールする前に、アプリケーション情報と要求されている RelaxKonOS のアクセス許可を確認してください。",
         "app_installer.security_warning": "パッケージの出所は検証されていません。アクセス許可は通常の SDK 呼び出しを管理するだけで、悪意のあるコードをサンドボックス化しません。出所とコードを確認したパッケージだけをインストールしてください。",

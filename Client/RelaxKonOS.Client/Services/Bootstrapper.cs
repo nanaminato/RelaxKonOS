@@ -336,6 +336,8 @@ public static class Bootstrapper
         services.AddSingleton<ISettingsNavigation, SettingsNavigationService>();
         services.AddSingleton<ExternalAppContextFactory>();
         services.AddSingleton<DeveloperPackageManager>();
+        services.AddSingleton(_ => new RelaxKonOS.ManagedRuntimes.Catalog.ComponentCatalogSourceStore(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "component-catalog-sources"), "desktop-user"));
         services.AddSingleton<AppPackageInstallerService>();
         services.AddSingleton<DeveloperBridgeService>();
         // Port forwarding owns local ssh processes and a device-local, non-secret settings file.
