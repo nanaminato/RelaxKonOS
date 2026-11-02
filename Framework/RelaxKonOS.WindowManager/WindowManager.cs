@@ -187,6 +187,14 @@ public sealed class WindowManager : IWindowManager
         return managed;
     }
 
+    /// <summary>
+    /// Shows a modal dialog owned by <paramref name="owner"/>. A request whose owner has already
+    /// been closed resolves to the default result without creating a window: the application that
+    /// asked is no longer on the desktop, so there is nothing to block and nothing to report to.
+    /// It must not throw — these requests arrive from application handlers that awaited network
+    /// work first, and an exception there would escape an async-void click handler and end the
+    /// process instead of ending a dialog that can never appear.
+    /// </summary>
     public Task<TResult?> ShowDialogAsync<TResult>(
         ManagedWindow owner,
         string title,
@@ -196,7 +204,7 @@ public sealed class WindowManager : IWindowManager
         if (_host == null)
             throw new InvalidOperationException("WindowManager is not attached to a host canvas.");
         if (!_windows.Contains(owner))
-            throw new InvalidOperationException("The dialog owner is no longer open.");
+            return Task.FromResult<TResult?>(default);
 
         var dialog = new ModalDialog<TResult>(this, owner);
         var ownerBounds = owner.Info.Bounds;
