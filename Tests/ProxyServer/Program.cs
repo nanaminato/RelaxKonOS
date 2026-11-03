@@ -20,6 +20,7 @@ try
     var store = new ProxyServerStore(new Paths(root), new EphemeralDataProtectionProvider());
     var helper = new Helper();
     var service = new ProxyServerService(store, helper, new TestMode(), new Engines());
+    var queue = new ProxyServerOperationQueue(store);
     var realityId = Guid.NewGuid();
     var reality = new ProxyServerInbound(realityId, "Edge", ProxyServerProtocol.VlessReality, "127.0.0.1", 24443,
         "proxy.example.com", 24443, "proxy.example.com", HandshakeHost: "www.example.com", HandshakePort: 443);
@@ -223,7 +224,7 @@ try
         "Save an unrelated draft edit");
     Check(await service.SaveCredentialAsync(new(phone.Id, alice, "Phone", [realityId], ExpiresAt: DateTimeOffset.UtcNow.AddMinutes(-1)), default) is null,
         "Expire credential");
-    await service.ReconcileExpiryAsync(default);
+    await new ProxyServerPublicationService(store, helper, new TestMode()).ReconcileExpiryAsync(default);
     Check(await service.RollbackAsync(default) == "proxy_server.credential_unavailable", "Rollback cannot resurrect an expired credential");
     var afterExpiry = await store.ReadAsync(default);
     Check(afterExpiry.Published!.Credentials.Count == 0, "Expired credential removed from the published grant set");
@@ -242,11 +243,11 @@ try
 
     var operations = new ProxyOperationStore(new Paths(root), NullLogger<ProxyOperationStore>.Instance);
     var count = 0;
-    var first = await service.EnqueueAsync("actor", "same-key", "check", new { Value = 1 }, operations, _ => { Interlocked.Increment(ref count); return Task.FromResult<string?>(null); }, default);
-    var replay = await service.EnqueueAsync("actor", "same-key", "check", new { Value = 1 }, operations, _ => throw new Exception("Must not run twice"), default);
+    var first = await queue.EnqueueAsync("actor", "same-key", "check", new { Value = 1 }, operations, _ => { Interlocked.Increment(ref count); return Task.FromResult<string?>(null); }, default);
+    var replay = await queue.EnqueueAsync("actor", "same-key", "check", new { Value = 1 }, operations, _ => throw new Exception("Must not run twice"), default);
     Check(first.OperationId == replay.OperationId && count == 1, "Idempotent replay");
-    await ThrowsAsync(() => service.EnqueueAsync("actor", "same-key", "check", new { Value = 2 }, operations, _ => Task.FromResult<string?>(null), default), "proxy_server.idempotency_conflict");
-    await ThrowsAsync(() => service.EnqueueAsync("actor", " ", "check", new { Value = 1 }, operations, _ => Task.FromResult<string?>(null), default), "proxy_server.idempotency_key_required");
+    await ThrowsAsync(() => queue.EnqueueAsync("actor", "same-key", "check", new { Value = 2 }, operations, _ => Task.FromResult<string?>(null), default), "proxy_server.idempotency_conflict");
+    await ThrowsAsync(() => queue.EnqueueAsync("actor", " ", "check", new { Value = 1 }, operations, _ => Task.FromResult<string?>(null), default), "proxy_server.idempotency_key_required");
 
     Check(await service.UninstallAsync(keepData: true, default) is null, "Uninstall keeping data");
     var kept = await service.ReadAsync(default);
@@ -256,6 +257,7 @@ try
     var wiped = await service.ReadAsync(default);
     Check(wiped.Credentials.Count == 0 && wiped.Configuration.Revision == 0, "Discarding data wipes every record");
     await ExpiryBoundaryChecks.RunAsync();
+    await QueueBoundaryChecks.RunAsync();
     Console.WriteLine("Proxy server configuration, principals, credentials, subscriptions, encryption, publication, rollback, expiry, export and idempotency checks passed.");
 }
 finally { Directory.Delete(root, true); }

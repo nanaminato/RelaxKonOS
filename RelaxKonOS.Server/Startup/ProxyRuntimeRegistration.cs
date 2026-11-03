@@ -9,10 +9,9 @@ namespace RelaxKonOS.Server.Startup;
 /// and reconciles sing-box, the component center and runtime catalog report both runtimes, and the
 /// Docker proxy resolver reads the saved proxy settings to derive the managed outbound proxy.
 ///
-/// The management surface (engine adapters, lifecycle, subscriptions, TUN safety, proxy server
-/// operations, Squid gateway and every <c>/proxy*</c> route) lives in
-/// <see cref="Modules.ProxyModule"/>. Keeping recovery and publication here means disabling that
-/// module cannot leave an interrupted publication unrecovered or change what a Docker build uses.
+/// Management facades/routes belong to <see cref="Modules.ProxyModule"/>. Core retains the one
+/// durable safety owner for system-proxy reconciliation, TUN startup restoration, grant expiry
+/// and publication recovery. No management engine registry or subscription parser is registered here.
 /// </summary>
 internal static class ProxyRuntimeRegistration
 {
@@ -54,7 +53,8 @@ internal static class ProxyRuntimeRegistration
         builder.Services.AddTransient<RelaxKonOS.Server.Proxy.Mihomo.MihomoInstallationPublicationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoInstallationBootstrapService>();
         builder.Services.AddTransient<RelaxKonOS.Server.Proxy.Mihomo.MihomoRemovalPublicationService>();
-        builder.Services.AddHostedService<RelaxKonOS.Server.Proxy.Mihomo.MihomoPublicationRecoveryService>();
+        builder.Services.AddTransient<RelaxKonOS.Server.Proxy.Mihomo.MihomoPublicationRecoveryService>();
+        builder.Services.AddHostedService<RelaxKonOS.Server.Proxy.Mihomo.MihomoPublicationRecoveryScheduler>();
 
         // ------------------------------------------------------------------ settings and system proxy
         // Shared by two Core consumers: the installation bootstrap selects material from these
@@ -65,14 +65,21 @@ internal static class ProxyRuntimeRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxySettingsReader, RelaxKonOS.Server.Proxy.ProxySettingsReader>();
         builder.Services.AddTransient<RelaxKonOS.Server.Proxy.Mihomo.MihomoSettingsService>();
         builder.Services.AddTransient<RelaxKonOS.Server.Proxy.IProxySettingsWriter>(services => services.GetRequiredService<RelaxKonOS.Server.Proxy.Mihomo.MihomoSettingsService>());
-        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxySystemProxyReconciler, RelaxKonOS.Server.Proxy.Mihomo.MihomoSystemProxyReconciler>();
+        builder.Services.AddTransient<RelaxKonOS.Server.Proxy.IProxySystemProxyReconciler, RelaxKonOS.Server.Proxy.Mihomo.MihomoSystemProxyReconciler>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Platform.IProxyTunDeviceObserver, RelaxKonOS.Server.Proxy.Platform.HostProxyTunDeviceObserver>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyTunRuntimeController, RelaxKonOS.Server.Proxy.Mihomo.MihomoTunRuntimeController>();
+
+        // Durable safety promises survive disabling the management surface. Exactly one owner.
+        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Platform.IProxyNetworkSafetyPlatform, RelaxKonOS.Server.Proxy.Platform.HostProxyNetworkSafetyPlatform>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyTunSafetyService, RelaxKonOS.Server.Proxy.ProxyTunSafetyService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyRecoveryService>(services => services.GetRequiredService<RelaxKonOS.Server.Proxy.IProxyTunSafetyService>());
+        builder.Services.AddHostedService<RelaxKonOS.Server.Proxy.ProxyRecoveryHostedService>();
+        builder.Services.AddHostedService<RelaxKonOS.Server.Proxy.Mihomo.SystemProxyGuardHostedService>();
 
         // Managed runtime lifecycle: the component center and the installation domain install and
         // switch mihomo/sing-box releases through these services.
         builder.Services.AddSingleton<RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeService>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeRecoveryService>();
+        builder.Services.AddTransient<RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeRecoveryService>();
 
         // --------------------------------------------------------------------- sing-box (proxy server)
         // Task orchestration's sing-box observer, reconciliation and recovery domains, plus the
@@ -82,5 +89,7 @@ internal static class ProxyRuntimeRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.ProxyServer.ProxyServerRuntimeAuthorizationProvider>();
         builder.Services.AddSingleton<RelaxKonOS.Server.ProxyServer.IProxyServerCertificateSource, RelaxKonOS.Server.ProxyServer.ProxyServerCertificateSource>();
         builder.Services.AddSingleton<RelaxKonOS.Server.ManagedRuntimes.SingBoxRuntimeService>();
+        builder.Services.AddTransient<RelaxKonOS.Server.ProxyServer.IProxyServerExpiryExecutor, RelaxKonOS.Server.ProxyServer.ProxyServerPublicationService>();
+        builder.Services.AddHostedService<RelaxKonOS.Server.ProxyServer.ProxyServerExpiryService>();
     }
 }

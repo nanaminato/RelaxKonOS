@@ -62,8 +62,8 @@ internal static class MihomoServerRemovalAcceptance
             var runtime = Runtime(); var authorization = new MihomoRuntimeAuthorizationProvider(store, paths, paths);
             hostProxy.Failures = 1;
             using var recoveryServices1 = new PublicationRecoveryServices(store, () => new(store, authorization, runtime, paths), () => new(store, authorization, runtime, paths), () => Service());
-            using var startup = new MihomoPublicationRecoveryService(recoveryServices1.Scopes, NullLogger<MihomoPublicationRecoveryService>.Instance);
-            await startup.StartAsync(default); await startup.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(15));
+            var startup = new MihomoPublicationRecoveryService(recoveryServices1.Scopes, NullLogger<MihomoPublicationRecoveryService>.Instance);
+            await startup.ReconcileAsync(default).WaitAsync(TimeSpan.FromSeconds(15));
             Check((await store.ReadAsync(default)).Pending?.Settings is not null && hostProxy.Calls == 1
                 && (await SettingsAsync()).SystemProxyEnabled && transport.Removals == 1,
                 "Real runtime absence plus rejected host cleanup keeps Server removal pending");

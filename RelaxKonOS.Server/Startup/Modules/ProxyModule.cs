@@ -26,9 +26,9 @@ namespace RelaxKonOS.Server.Startup.Modules;
 /// outbound proxy, and the mihomo installation bootstrap reads the same saved intent,
 /// so the lightweight reader remains in Core while the settings writer can be migrated separately.</item>
 /// </list>
-/// This module owns management surfaces and the existing TUN/system-proxy/expiry workers. Core
-/// publication recovery survives module disable; the other durable duties have not been handed off.
-/// Until that handoff is verified, this aggregate module must not claim dynamic memory release.
+/// This module owns management surfaces and scoped execution facades. Core owns TUN recovery,
+/// system-proxy reconciliation, grant expiry and durable publication recovery across module disable.
+/// The aggregate remains resident; scoped object release is not collectible code or module sleep.
 /// </summary>
 internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuard
 {
@@ -48,10 +48,9 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
 
     public void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
     {
-        // Engine adapters. The registry is what lets the proxy server and the lifecycle service ask
-        // "which engine speaks this protocol" without naming Mihomo.
-        builder.Services.AddSingleton<IProxyEngine, MihomoEngine>();
-        builder.Services.AddSingleton<IProxyEngineRegistry, ProxyEngineRegistry>();
+        // Management engine graphs are owned by request or independent operation scopes.
+        builder.Services.AddScoped<IProxyEngine, MihomoEngine>();
+        builder.Services.AddScoped<IProxyEngineRegistry, ProxyEngineRegistry>();
         builder.Services.AddSingleton<IProxyPlatformService, ProxyPlatformService>();
 
         // Operation and audit ledgers are the durable record of what the operator asked for; they
@@ -59,15 +58,11 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
         builder.Services.AddSingleton<ProxyOperationStore>();
         builder.Services.AddHostedService(services => services.GetRequiredService<ProxyOperationStore>());
         builder.Services.AddSingleton<ProxySubscriptionOperations>();
+        builder.Services.AddSingleton<ProxyLifecycleOperations>();
         builder.Services.AddSingleton<ProxyAuditStore>();
-        builder.Services.AddSingleton<IProxyLifecycleService, ProxyLifecycleService>();
-        builder.Services.AddHostedService<ProxyRecoveryHostedService>();
+        builder.Services.AddScoped<IProxyLifecycleService, ProxyLifecycleService>();
 
-        // TUN safety: one service backs both the routes and the engine's recovery hook, so enabling
-        // TUN cannot be confirmed by a code path that the emergency exit does not know about.
-        builder.Services.AddSingleton<IProxyNetworkSafetyPlatform, HostProxyNetworkSafetyPlatform>();
-        builder.Services.AddSingleton<IProxyTunSafetyService, ProxyTunSafetyService>();
-        builder.Services.AddSingleton<IProxyRecoveryService>(services => services.GetRequiredService<IProxyTunSafetyService>());
+        // Core provides the one shared TUN safety owner to both routes and engine recovery hooks.
 
         // Subscriptions: four clients, because "direct" vs "through the saved system proxy" and
         // "verify TLS" vs "accept the mirror certificate" are independent operator choices.
@@ -124,21 +119,18 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
             });
         builder.Services.AddSingleton<IProxySubscriptionDownloader, ProxySubscriptionDownloader>();
 
-        // The guard re-asserts the system proxy the operator asked for; it is a UI-owned promise,
-        // not a recovery duty, so it stops with the module.
-        builder.Services.AddHostedService<SystemProxyGuardHostedService>();
+        // Core owns system-proxy/TUN recovery and expiry independently of this management surface.
 
         // Proxy server operations (sing-box inbound). The runtime, its store and its authorization
         // provider stay in Core because task orchestration and installation drive them directly.
         // Operations retain their own instance until completion; the expiry timer resolves a
         // fresh executor per pass. The singleton store remains the sole serialization gate.
         builder.Services.AddTransient<ProxyServerService>();
-        builder.Services.AddTransient<IProxyServerExpiryExecutor>(services => services.GetRequiredService<ProxyServerService>());
-        builder.Services.AddHostedService<ProxyServerExpiryService>();
+        builder.Services.AddSingleton<ProxyServerOperationQueue>();
 
         // Squid gateway: configuration plus lifecycle through the privileged Helper.
         builder.Services.AddSingleton<SquidConfigurationStore>();
-        builder.Services.AddSingleton<SquidGatewayService>();
+        builder.Services.AddTransient<SquidGatewayService>();
 
         // Profile/subscription/configuration services. Their repositories are registered with the
         // storage provider (SQLite only today), so a memory-storage host keeps exactly the state it
@@ -147,7 +139,7 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
         // IProxyProfileRepository and fails closed when it is absent.
         if (string.Equals(context.StorageProvider, "sqlite", StringComparison.OrdinalIgnoreCase))
         {
-            builder.Services.AddSingleton<IProxyProfileService, ProxyProfileService>();
+            builder.Services.AddTransient<IProxyProfileService, ProxyProfileService>();
             builder.Services.AddScoped<IProxySubscriptionService, ProxySubscriptionService>();
             builder.Services.AddScoped<IProxyConfigurationTransactionService, ProxyConfigurationTransactionService>();
             builder.Services.AddScoped<IProxyConfigurationService, ProxyConfigurationService>();
@@ -156,9 +148,9 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
 
     /// <summary>
     /// A runtime publication that was begun but never confirmed is an unresolved authority: the
-    /// recovery worker (Core-owned, see Startup/ProxyRuntimeRegistration.cs) is the only thing that can
-    /// confirm or roll it back. Refusing to start with the module disabled is the difference between
-    /// "the proxy UI is off" and "we silently lost track of which runtime is authorized".
+    /// Core recovery owner (see Startup/ProxyRuntimeRegistration.cs) can confirm or roll it back.
+    /// Deactivation remains blocked while authority is unknown; management disablement never
+    /// removes the Core safety, expiry or publication recovery owners.
     /// </summary>
     public async ValueTask<IReadOnlyList<ServerModuleOrphanedWork>> InspectOrphanedWorkAsync(
         IServiceProvider services, ServerModuleContext context, CancellationToken cancellationToken)
@@ -168,7 +160,8 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
             ? await ProxyOperationStore.InspectPersistedResponsibilitiesAsync(services.GetRequiredService<IProxyPlatformPaths>(), cancellationToken)
             : await operations.InspectResponsibilitiesAsync(cancellationToken);
         var publication = await InspectPublicationAsync(services, cancellationToken);
-        return [.. facts.Select(fact => new ServerModuleOrphanedWork(Id, fact)), .. publication];
+        var safety = await ProxySafetyResponsibilities.InspectAsync(services, services.GetRequiredService<IProxyPlatformPaths>(), cancellationToken);
+        return [.. facts.Concat(safety).Select(fact => new ServerModuleOrphanedWork(Id, fact)), .. publication];
     }
 
     private async Task<IReadOnlyList<ServerModuleOrphanedWork>> InspectPublicationAsync(IServiceProvider services, CancellationToken cancellationToken)
@@ -181,7 +174,7 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
                 ?
                 [
                     new(Id, $"the mihomo runtime publication for operation {pending.OperationId} is unresolved; "
-                        + "re-enable the module so the publication recovery worker can confirm or roll it back."),
+                        + "Core retains recovery ownership; reconcile the durable publication before deactivation."),
                 ]
                 : [];
         }

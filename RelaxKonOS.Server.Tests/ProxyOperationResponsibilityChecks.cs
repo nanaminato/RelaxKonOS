@@ -87,8 +87,52 @@ internal static class ProxyOperationResponsibilityChecks
             try { await guard.InspectOrphanedWorkAsync(provider, context, cancelled.Token); }
             catch (OperationCanceledException) { refused = true; }
             Check(refused, "Cancelled inspection propagates cancellation instead of reporting safe deactivation");
+            await File.WriteAllTextAsync(file, "[]");
+            foreach (var name in new[] { "proxy-tun-recovery.json", "mihomo-settings.json", "proxy-server.protected", "squid-configuration.json" })
+            {
+                var duty = Path.Combine(paths.GetStateDirectory(), name);
+                await File.WriteAllTextAsync(duty, "{");
+                Check(await Blocked(), "Unreadable persistent safety responsibility blocks deactivation without constructing management: " + name);
+                File.Delete(duty);
+            }
+            var inboundStore = new RelaxKonOS.Server.ProxyServer.ProxyServerStore(paths, provider.GetRequiredService<IDataProtectionProvider>());
+            await inboundStore.WriteAsync(RelaxKonOS.Server.ProxyServer.ProxyServerState.Empty with
+                { PendingPublication = new(new(1, []), [], []) }, default);
+            Check(await Blocked(), "Unconfirmed inbound publication remains visible to the combined deactivation gate");
+            File.Delete(Path.Combine(paths.GetStateDirectory(), "proxy-server.protected"));
+            await File.WriteAllTextAsync(Path.Combine(paths.GetStateDirectory(), "squid-configuration.json"),
+                JsonSerializer.Serialize(new RelaxKonOS.Protocol.GatewayProxy.SquidConfigurationState(null, 1, null, null, "squid.publication.unconfirmed")));
+            Check(await Blocked(), "Unconfirmed Squid intent cannot be discarded by disabling management");
+            File.Delete(Path.Combine(paths.GetStateDirectory(), "squid-configuration.json"));
+            var historyId = await SeedHistoryAsync(file);
+            var retainedStore = new ProxyOperationStore(paths, NullLogger<ProxyOperationStore>.Instance);
+            var historical = await ReadWeakHistoryAsync(retainedStore, historyId);
+            var retainedRead = retainedStore.GetAsync(Guid.Empty, default);
+            Check(await retainedRead is null, "A missing historical operation remains missing");
+            for (var pass = 0; pass < 10 && historical.IsAlive; pass++)
+            { await Task.Delay(20); GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect(); }
+            Check(!historical.IsAlive,
+                "Root ledger and a retained completed lookup do not retain previously returned history objects");
+            GC.KeepAlive(retainedStore); GC.KeepAlive(retainedRead);
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
         Console.WriteLine($"Proxy task responsibility checks passed: {count}");
+    }
+
+    private static async Task<Guid> SeedHistoryAsync(string file)
+    {
+        var id = Guid.NewGuid(); var text = new string('m', 8192);
+        var history = Enumerable.Range(0, 1024).Select(index => new
+        {
+            IdempotencyKey = "history-" + index,
+            Operation = new ProxyOperationDto(index == 0 ? id : Guid.NewGuid(), "subscription.refresh", ProxyOperationState.Succeeded,
+                text, "", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)
+        }).ToArray();
+        await File.WriteAllBytesAsync(file, JsonSerializer.SerializeToUtf8Bytes(history)); return id;
+    }
+    private static async Task<WeakReference> ReadWeakHistoryAsync(ProxyOperationStore store, Guid id)
+    {
+        var operation = await store.GetAsync(id, default) ?? throw new Exception("Missing seeded history");
+        return new WeakReference(operation);
     }
 }

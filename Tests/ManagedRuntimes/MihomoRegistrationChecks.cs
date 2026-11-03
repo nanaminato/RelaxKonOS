@@ -54,9 +54,9 @@ internal static class MihomoRegistrationChecks
             && services.GetRequiredService<MihomoInstallationBootstrapService>() is not null
             && services.GetRequiredService<MihomoRemovalPublicationService>() is not null,
             "Default runtime and publication coordinators resolve with the current contracts");
-        Check(new[] { typeof(MihomoConfigurationPublicationService), typeof(MihomoInstallationPublicationService), typeof(MihomoRemovalPublicationService) }
+        Check(new[] { typeof(MihomoConfigurationPublicationService), typeof(MihomoInstallationPublicationService), typeof(MihomoRemovalPublicationService), typeof(MihomoRuntimeRecoveryService) }
             .All(type => builder.Services.Single(x => x.ServiceType == type).Lifetime == ServiceLifetime.Transient),
-            "Publication coordinators have per-resolution instances and retain the singleton publication authority");
+            "Publication coordinators and manual recovery have per-resolution instances and retain the singleton publication authority");
         Check(scope.ServiceProvider.GetRequiredService<IProxyConfigurationTransactionService>() is ProxyConfigurationTransactionService
             && services.GetRequiredService<IProxySettingsReader>() is ProxySettingsReader,
             "Default profile transactions and lightweight settings reader resolve their current contracts");
@@ -69,7 +69,7 @@ internal static class MihomoRegistrationChecks
             "The root container does not retain a singleton settings writer");
         Check(builder.Services.Count(item => item.ServiceType == typeof(IHostedService)
                 && item.ImplementationType == typeof(SystemProxyGuardHostedService)) == 1,
-            "Proxy registration keeps exactly one system proxy guard with its existing module ownership");
+            "Proxy registration keeps exactly one Core system proxy guard");
         Check(services.GetRequiredService<ProxySubscriptionOperations>() is not null
             && proxyHostedFactories.Count(item => ReferenceEquals(item.ImplementationFactory!(services),
                 services.GetRequiredService<ProxyOperationStore>())) == 1,
@@ -90,7 +90,7 @@ internal static class MihomoRegistrationChecks
         Check(ledger.Id == RelaxKonOS.Protocol.Installations.InstallationServiceId.Mihomo
             && ReferenceEquals(ledger, services.GetRequiredService<RelaxKonOS.Server.Installations.MihomoRuntimeInstallationService>()),
             "Mihomo installs only through the managed catalog adapter, registered once");
-        Check(builder.Services.Any(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType == typeof(MihomoPublicationRecoveryService)),
+        Check(builder.Services.Any(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType == typeof(MihomoPublicationRecoveryScheduler)),
             "Default startup registers pending publication recovery");
         // Resolving the runtime service while the real Docker proxy resolver is registered is the assertion:
         // an eager resolver dependency closes the cycle this fixture used to hide with a stub.

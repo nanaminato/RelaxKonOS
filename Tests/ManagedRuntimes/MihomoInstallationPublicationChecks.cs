@@ -76,8 +76,8 @@ internal static class MihomoInstallationPublicationChecks
             using var recoveryServices1 = new PublicationRecoveryServices(f.Store,
                 () => throw new Exception("Installation recovery constructed configuration coordinator"), () => f.Service,
                 () => throw new Exception("Installation recovery constructed removal coordinator"));
-            using var startup = new MihomoPublicationRecoveryService(recoveryServices1.Scopes, NullLogger<MihomoPublicationRecoveryService>.Instance);
-            await startup.StartAsync(default); await startup.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(10));
+            var startup = new MihomoPublicationRecoveryService(recoveryServices1.Scopes, NullLogger<MihomoPublicationRecoveryService>.Instance);
+            await startup.ReconcileAsync(default).WaitAsync(TimeSpan.FromSeconds(10));
             Check((await f.Store.ReadAsync(default)) is { Pending: null, Published: not null } && f.Installs == 0,
                 "Startup dispatches installation Pending and confirms the exact mirror-write crash window");
         }

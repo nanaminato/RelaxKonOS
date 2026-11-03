@@ -12,10 +12,21 @@ public sealed class SquidConfigurationStore(IProxyPlatformPaths paths)
 
     internal async Task<SquidConfigurationState> ReadAsync(CancellationToken ct)
     {
-        if (!File.Exists(FilePath)) return new(null, 0, null, null, null);
-        await using var stream = File.OpenRead(FilePath);
-        return await JsonSerializer.DeserializeAsync<SquidConfigurationState>(stream, cancellationToken: ct)
-            ?? throw new InvalidDataException("Invalid Squid configuration state.");
+        RelaxKonOS.ManagedRuntimes.RuntimeSourceStore.RequireNoLinks(FilePath);
+        try
+        {
+            await using var stream = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+            if (stream.Length is 0 or > 2 * 1024 * 1024) throw new InvalidDataException("Invalid Squid configuration state size.");
+            var state = await JsonSerializer.DeserializeAsync<SquidConfigurationState>(stream,
+                new JsonSerializerOptions { RespectRequiredConstructorParameters = true,
+                    UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow }, ct)
+                ?? throw new InvalidDataException("Invalid Squid configuration state.");
+            if (state.DesiredRevision < 0 || state.PublishedRevision is { } revision && (revision < 0 || revision > state.DesiredRevision))
+                throw new InvalidDataException("Invalid Squid configuration revision.");
+            return state;
+        }
+        catch (FileNotFoundException) { return new(null, 0, null, null, null); }
+        catch (DirectoryNotFoundException) { return new(null, 0, null, null, null); }
     }
 
     internal async Task WriteAsync(SquidConfigurationState state, CancellationToken ct)

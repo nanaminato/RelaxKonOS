@@ -43,11 +43,11 @@ internal static class ProxyTunBoundaryChecks
                 && File.Exists(f.Marker) && f.Reloads == 0,
                 "Unavailable controller never reloads or discards unresolved recovery responsibility");
             var marker = await File.ReadAllTextAsync(f.Marker);
-            Check(await f.NewSafety().EvaluateRecoveryAsync(default) == ProxyProblemCodes.RecoveryRequired
+            Check(await f.RecoverAsync() == ProxyProblemCodes.RecoveryRequired
                 && await File.ReadAllTextAsync(f.Marker) == marker,
                 "A reopened safety owner retains the same unresolved operation marker");
             f.Reachable = true;
-            Check(await f.NewSafety().EvaluateRecoveryAsync(default) is null && !File.Exists(f.Marker),
+            Check(await f.RecoverAsync() is null && !File.Exists(f.Marker),
                 "Startup recovery retries teardown after the controller becomes available");
         }
         using (var f = new Fixture())
@@ -56,7 +56,7 @@ internal static class ProxyTunBoundaryChecks
             f.ObservationFails = true;
             Check(await f.Safety.EnableAsync(Guid.NewGuid(), null, default) == ProxyProblemCodes.RecoveryRequired && File.Exists(f.Marker),
                 "An unobserved engine cannot invalidate the active durable marker");
-            Check(await f.NewSafety().EvaluateRecoveryAsync(default) is null && !File.Exists(f.Marker),
+            Check(await f.RecoverAsync() is null && !File.Exists(f.Marker),
                 "Restart recovery tears down an active session even when live observation fails");
         }
         foreach (var published in new[] { false, true })
@@ -80,7 +80,7 @@ internal static class ProxyTunBoundaryChecks
             Check(await f.Safety.EnableAsync(Guid.NewGuid(), null, default) == ProxyProblemCodes.RecoveryRequired
                 && File.Exists(f.Marker), "Failed route compensation retains the durable recovery marker");
             f.Platform.RestoreSucceeds = true;
-            Check(await f.NewSafety().EvaluateRecoveryAsync(default) is null && !File.Exists(f.Marker),
+            Check(await f.RecoverAsync() is null && !File.Exists(f.Marker),
                 "A reopened safety owner completes the previously failed platform compensation");
         }
         using (var f = new Fixture())
@@ -94,7 +94,7 @@ internal static class ProxyTunBoundaryChecks
             try { await enable; throw new Exception("Cancelled activation succeeded"); }
             catch (OperationCanceledException) { }
             Check(File.Exists(f.Marker), "Cancellation after YAML replacement retains the unresolved activation marker");
-            Check(await f.NewSafety().EvaluateRecoveryAsync(default) is null && !File.Exists(f.Marker),
+            Check(await f.RecoverAsync() is null && !File.Exists(f.Marker),
                 "Recovery after cancelled activation reacquires both gates and tears down the runtime");
         }
         using (var f = new Fixture())
@@ -129,6 +129,29 @@ internal static class ProxyTunBoundaryChecks
             Check(await enable is null && await write is null && await disable is null && !File.Exists(f.Marker)
                 && !MihomoManagedConfiguration.ReadTunActivation(await File.ReadAllTextAsync(f.Active)).Enabled,
                 "Competing settings and teardown drain without deadlock or stale TUN reactivation");
+        }
+        using (var f = new Fixture())
+        {
+            await f.Safety.EnableAsync(Guid.NewGuid(), null, default);
+            var old = (await f.Safety.CaptureRecoveryAsync(default))!;
+            await f.Safety.DisableAsync(default);
+            await f.Safety.EnableAsync(Guid.NewGuid(), null, default);
+            var reloads = f.Reloads;
+            Check(await f.Safety.RecoverAsync(old, default) is null && f.Reloads == reloads
+                && (await f.Safety.GetStatusAsync(default)).HasRecoveryMarker
+                && MihomoManagedConfiguration.ReadTunActivation(await File.ReadAllTextAsync(f.Active)).Enabled,
+                "A delayed recovery for an old operation cannot tear down a newly established TUN session");
+            Check((await f.Safety.CaptureRecoveryAsync(default))!.OperationId != old.OperationId,
+                "A new TUN activation has its own durable recovery identity");
+        }
+        foreach (var corrupt in new[] { "", "{", "null", "{}" })
+        {
+            using var f = new Fixture(); Directory.CreateDirectory(f.Paths.GetStateDirectory());
+            await File.WriteAllTextAsync(f.Marker, corrupt);
+            var reference = (await f.Safety.CaptureRecoveryAsync(default))!;
+            Check(await f.Safety.RecoverAsync(reference, default) == ProxyProblemCodes.RecoveryRequired && f.Reloads == 0
+                && await File.ReadAllTextAsync(f.Marker) == corrupt,
+                "Unknown TUN markers remain blocked without native changes or synthetic success");
         }
         Console.WriteLine($"TUN execution boundary checks passed: {count}");
     }
@@ -187,6 +210,12 @@ internal static class ProxyTunBoundaryChecks
             if (block is not null) await block(ct);
             if (FailReloads > 0) { FailReloads--; return ProxyProblemCodes.TunActivationFailed; }
             return null;
+        }
+        public async Task<string?> RecoverAsync()
+        {
+            var safety = NewSafety();
+            var reference = await safety.CaptureRecoveryAsync(default);
+            return reference is null ? null : await safety.RecoverAsync(reference, default);
         }
         public ProxyTunSafetyService NewSafety() => new(Paths, Platform, Tun);
         public MihomoSettingsService Writer() => new(Paths, Controller, new StaticProxySecretStore(),

@@ -70,8 +70,8 @@ internal static class MihomoRemovalPublicationChecks
             using var recoveryServices1 = new PublicationRecoveryServices(f.Store,
                 () => throw new Exception("Removal recovery constructed configuration coordinator"),
                 () => throw new Exception("Removal recovery constructed installation coordinator"), () => f.Service);
-            using var startup = new MihomoPublicationRecoveryService(recoveryServices1.Scopes, NullLogger<MihomoPublicationRecoveryService>.Instance);
-            await startup.StartAsync(default); await startup.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(10));
+            var startup = new MihomoPublicationRecoveryService(recoveryServices1.Scopes, NullLogger<MihomoPublicationRecoveryService>.Instance);
+            await startup.ReconcileAsync(default).WaitAsync(TimeSpan.FromSeconds(10));
             Check((await f.Store.ReadAsync(default)) is { Pending: null, LastRemoval.Confirmed: true }
                 && File.Exists(f.Active) == keep && f.Removals == 1 && f.Recoveries == 0,
                 "Startup reconciles a completed removal without reinstalling or rerunning deletion: " + keep);

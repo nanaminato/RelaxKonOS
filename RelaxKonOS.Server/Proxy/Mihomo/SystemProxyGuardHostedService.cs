@@ -6,7 +6,7 @@ using RelaxKonOS.Server.Proxy;
 namespace RelaxKonOS.Server.Proxy.Mihomo;
 
 /// <summary>Recovers interrupted host proxy writes on startup and maintains the configured Windows/Linux proxy guard.</summary>
-public sealed class SystemProxyGuardHostedService(IProxySettingsReader settings, IProxySystemProxyReconciler reconciler, ILogger<SystemProxyGuardHostedService> logger) : BackgroundService
+public sealed class SystemProxyGuardHostedService(IProxySettingsReader settings, IServiceScopeFactory scopes, ILogger<SystemProxyGuardHostedService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -19,7 +19,7 @@ public sealed class SystemProxyGuardHostedService(IProxySettingsReader settings,
                 var current = await settings.GetAsync(stoppingToken);
                 var options = current.SystemProxy ?? ProxySystemProxyOptionsDto.Default;
                 delay = TimeSpan.FromSeconds(Math.Clamp(options.GuardIntervalSeconds, 5, 3_600));
-                var problem = await reconciler.ReconcileSystemProxyAsync(startup, stoppingToken);
+                var problem = await ReconcileAsync(startup, stoppingToken);
                 if (problem is null) startup = false;
                 if (problem is not null) logger.LogWarning("System proxy reconciliation failed. ProblemCode={ProblemCode}", problem);
             }
@@ -29,5 +29,11 @@ public sealed class SystemProxyGuardHostedService(IProxySettingsReader settings,
             try { await Task.Delay(delay, stoppingToken); }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
         }
+    }
+
+    private async Task<string?> ReconcileAsync(bool startup, CancellationToken ct)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<IProxySystemProxyReconciler>().ReconcileSystemProxyAsync(startup, ct);
     }
 }

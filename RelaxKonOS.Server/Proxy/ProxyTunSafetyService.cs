@@ -18,7 +18,7 @@ public sealed class ProxyTunSafetyService(
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            var existing = await ReadMarkerAsync(cancellationToken);
+            var existing = await ReadMarkerAsync(paths, cancellationToken);
             if (existing is not null && !await DiscardStaleSessionMarkerAsync(existing, cancellationToken))
             {
                 logger?.LogWarning("Refused TUN activation because a previous recovery marker is still present. ProfileId={ProfileId}", profileId);
@@ -53,20 +53,38 @@ public sealed class ProxyTunSafetyService(
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            var marker = await ReadMarkerAsync(cancellationToken);
+            var marker = await ReadMarkerAsync(paths, cancellationToken);
             if (marker is null) return null;
             return await RestoreAndReportAsync(marker, cancellationToken, ProxyProblemCodes.RecoveryFailed);
         }
         finally { _gate.Release(); }
     }
-    public async Task<string?> EvaluateRecoveryAsync(CancellationToken cancellationToken)
+    public async Task<ProxyTunRecoveryReference?> CaptureRecoveryAsync(CancellationToken cancellationToken)
     {
-        var marker = await ReadMarkerAsync(cancellationToken);
-        return marker is null ? null : await EmergencyDisableAsync(cancellationToken);
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var marker = await ReadMarkerAsync(paths, cancellationToken);
+            return marker is null ? null : new(marker.OperationId, marker.CreatedAt);
+        }
+        finally { _gate.Release(); }
+    }
+    public async Task<string?> RecoverAsync(ProxyTunRecoveryReference reference, CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var marker = await ReadMarkerAsync(paths, cancellationToken);
+            if (marker is null) return null;
+            if (marker.OperationId == Guid.Empty) return ProxyProblemCodes.RecoveryRequired;
+            if (marker.OperationId != reference.OperationId || marker.CreatedAt != reference.CreatedAt) return null;
+            return await RestoreAndReportAsync(marker, cancellationToken, ProxyProblemCodes.RecoveryFailed);
+        }
+        finally { _gate.Release(); }
     }
     public async Task<ProxyRecoveryStatusDto> GetStatusAsync(CancellationToken cancellationToken)
     {
-        var marker = await ReadMarkerAsync(cancellationToken);
+        var marker = await ReadMarkerAsync(paths, cancellationToken);
         return marker is null
             ? new(false, false, null)
             : marker.ActivationCompleted
@@ -107,12 +125,28 @@ public sealed class ProxyTunSafetyService(
         logger?.LogWarning("TUN was disabled and the protected management route was restored. OperationId={OperationId} Cause={Cause}", marker.OperationId, failedCode);
         return failedCode == ProxyProblemCodes.RecoveryFailed ? null : failedCode;
     }
-    private async Task<RecoveryMarker?> ReadMarkerAsync(CancellationToken cancellationToken)
+    private static async Task<RecoveryMarker?> ReadMarkerAsync(IProxyPlatformPaths paths, CancellationToken cancellationToken)
     {
-        var path = MarkerPath(); if (!File.Exists(path)) return null;
-        try { await using var input = File.OpenRead(path); return await JsonSerializer.DeserializeAsync<RecoveryMarker>(input, cancellationToken: cancellationToken); }
-        catch (JsonException) { return new RecoveryMarker(Guid.Empty, Guid.Empty, new("corrupt", DateTimeOffset.UtcNow, false, "", "", [], []), DateTimeOffset.UtcNow, false); }
+        var path = Path.Combine(paths.GetStateDirectory(), "proxy-tun-recovery.json");
+        RelaxKonOS.ManagedRuntimes.RuntimeSourceStore.RequireNoLinks(path);
+        try
+        {
+            await using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+            if (input.Length is 0 or > 65536) return UnknownMarker();
+            var marker = await JsonSerializer.DeserializeAsync<RecoveryMarker>(input, cancellationToken: cancellationToken);
+            return marker is not null && marker.OperationId != Guid.Empty && marker.CreatedAt != default && marker.Snapshot is not null
+                && marker.Snapshot.SystemBypass is not null && marker.Snapshot.ManagementAddresses is not null ? marker : UnknownMarker();
+        }
+        catch (FileNotFoundException) { return null; }
+        catch (DirectoryNotFoundException) { return null; }
+        catch (JsonException) { return UnknownMarker(); }
     }
+    internal static async Task<bool> HasUnknownRecoveryAsync(IProxyPlatformPaths paths, CancellationToken ct)
+    {
+        var marker = await ReadMarkerAsync(paths, ct);
+        return marker is not null && marker.OperationId == Guid.Empty;
+    }
+    private static RecoveryMarker UnknownMarker() => new(Guid.Empty, Guid.Empty, new("corrupt", default, false, "", "", [], []), default, false);
     private async Task WriteMarkerAsync(RecoveryMarker marker, CancellationToken cancellationToken)
     {
         var dir = paths.GetStateDirectory(); Directory.CreateDirectory(dir); if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(dir, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);

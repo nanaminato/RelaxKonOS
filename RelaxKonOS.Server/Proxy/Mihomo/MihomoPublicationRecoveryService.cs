@@ -6,19 +6,23 @@ namespace RelaxKonOS.Server.Proxy.Mihomo;
 /// <summary>Startup reconciliation for accepted configuration, installation and removal publications. It never installs, prepares,
 /// adopts an old file, or generates credentials. Domain writers keep pending state blocked independently.</summary>
 public sealed class MihomoPublicationRecoveryService(IServiceScopeFactory scopes,
-    ILogger<MihomoPublicationRecoveryService> logger) : BackgroundService
+    ILogger<MihomoPublicationRecoveryService> logger)
 {
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    public async Task<Guid?> ReconcileAsync(CancellationToken stoppingToken)
     {
-        while (!stoppingToken.IsCancellationRequested && await ReconcileAsync(stoppingToken))
+        while (!stoppingToken.IsCancellationRequested)
         {
-            try { await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken); }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
+            var result = await ReconcilePassAsync(stoppingToken);
+            stoppingToken.ThrowIfCancellationRequested();
+            if (!result.Retry) return result.Blocked;
+            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
         }
+        stoppingToken.ThrowIfCancellationRequested();
+        return null;
     }
 
     // Completed scopes and coordinator locals never live in the retry timer's state machine.
-    private async Task<bool> ReconcileAsync(CancellationToken stoppingToken)
+    private async Task<(bool Retry, Guid? Blocked)> ReconcilePassAsync(CancellationToken stoppingToken)
     {
         await using var scope = scopes.CreateAsyncScope();
         var store = scope.ServiceProvider.GetRequiredService<MihomoPublicationStore>();
@@ -26,12 +30,12 @@ public sealed class MihomoPublicationRecoveryService(IServiceScopeFactory scopes
         try
         {
             var state = await store.ReadAsync(stoppingToken);
-            if (state.Pending is not { } pending) return false;
+            if (state.Pending is not { } pending) return (false, null);
             if (pending.ConfigurationPlan is null && pending.InstallationPlan is null && pending.RemovalPlan is null)
             {
                 logger.LogWarning("Mihomo installation publication remains pending. OperationId={OperationId} ProblemCode={ProblemCode}",
                     pending.OperationId, "runtime.installation_publication_required");
-                return false;
+                return (false, pending.OperationId);
             }
             operation = pending.OperationId;
             var result = pending.RemovalPlan is not null ? await scope.ServiceProvider.GetRequiredService<MihomoRemovalPublicationService>().RecoverAsync(pending.OperationId, stoppingToken)
@@ -42,9 +46,9 @@ public sealed class MihomoPublicationRecoveryService(IServiceScopeFactory scopes
                 logger.LogWarning("Mihomo publication needs operator recovery. OperationId={OperationId} ProblemCode={ProblemCode}",
                     operation, result.Receipt?.ProblemCode ?? "runtime.recovery_required");
             else logger.LogInformation("Mihomo publication reconciled at startup. OperationId={OperationId} Outcome={Outcome}", operation, result.Outcome);
-            return false;
+            return (false, result.Outcome == MihomoPublicationOutcome.RecoveryRequired ? pending.OperationId : null);
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return false; }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return (false, null); }
         catch (Exception ex) when (ex is RuntimePolicyException or RuntimeLifecycleException or IOException or UnauthorizedAccessException)
         {
             var code = ex switch { RuntimePolicyException policy => policy.ProblemCode,
@@ -53,10 +57,10 @@ public sealed class MihomoPublicationRecoveryService(IServiceScopeFactory scopes
             // nor be mislabeled as a terminal transaction. Retry the same durable operation only.
             if (code is "runtime.instance_busy" or "runtime.helper_unavailable")
             {
-                return true;
+                return (true, null);
             }
             logger.LogWarning("Mihomo startup reconciliation left publication pending. OperationId={OperationId} ProblemCode={ProblemCode}", operation, code);
-            return false;
+            return (false, operation);
         }
     }
 }

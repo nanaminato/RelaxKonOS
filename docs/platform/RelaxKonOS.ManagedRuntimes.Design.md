@@ -225,3 +225,7 @@ Linux nginx 首次冻结安装从组件中心经产品提权进入统一安装�
 ## 系统包外部生命周期与登记（2026-10-30）
 
 产品授权对已验证的外部系统包提供明确确认后的更新、保留数据卸载和独立纳入管理；受管包经外部包管理器更新后应核验同一软件包身份并提示变化，不仅因版本/摘要变化撤销管理。此决定替代本文对系统包一律禁止外部更新/卸载的旧规则；归档、MSI 及业务配置所有权边界不变。实现与接续清单见[系统包授权设计](RelaxKonOS.PackageOwnership.Design.md)，未完成项不得视为交付。2026-10-30 状态：PO-01～PO-04 的代码与自动化检查已完成，PO-05 的真实 Linux APT 生命周期尚未执行；证据与限制见该设计的实施状态和[组件中心实施进度](RelaxKonOS.ComponentCenter.Progress.md)。
+
+## 2026-11-03 Proxy 发布恢复所有权收尾
+
+Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending，按类型在独立 async scope 中执行配置/安装/移除恢复；busy/Helper 不可用仍重试同一意图，operator-required 身份保留并不自动重放，新操作身份可再次扫描。原冻结计划、共享 publication gate、摘要/回执核实、补偿和原生生命周期 authority 不变；不重复 prepare/install 或以当前健康认定原任务成功。sing-box 到期的 Core 窄执行器也沿用原 protected state 与 Helper 证明。MR-02/03/04 及真实 OS 服务验收不因 scope/注册检查而关闭；当前 Proxy 仍 resident，完整证据与限制见[边界设计 §19](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#19-proxy-常驻责任与完整执行寿命收尾2026-11-03)。

@@ -12,14 +12,13 @@ public delegate Task ProxyOperationStageReporter(string stage);
 public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<ProxyOperationStore> logger) : IHostedService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private readonly Dictionary<string, ProxyOperationDto> _byKey = new(StringComparer.Ordinal);
-    private readonly Dictionary<Guid, ProxyOperationDto> _byId = [];
-    private bool _loaded;
+    private static readonly JsonSerializerOptions Json = new()
+        { UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow };
     private bool _stopping;
     private bool _recoveryBlocked;
     private readonly Dictionary<Guid, TaskCompletionSource> _running = [];
     // Separate retention survives a second failure while writing the failed terminal record.
-    private readonly Dictionary<Guid, ProxySubscriptionCleanupException> _cleanupFailures = [];
+    private readonly Dictionary<Guid, ProxyOperationCleanupException> _cleanupFailures = [];
 
     public async Task<IReadOnlyList<string>> InspectResponsibilitiesAsync(CancellationToken ct)
     {
@@ -51,9 +50,10 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
     public Task StartAsync(CancellationToken ct) => Task.CompletedTask;
     public async Task StopAsync(CancellationToken ct)
     {
+        Volatile.Write(ref _stopping, true);
         Task[] pending;
         await _gate.WaitAsync(ct);
-        try { _stopping = true; pending = _running.Values.Select(item => item.Task).ToArray(); }
+        try { pending = _running.Values.Select(item => item.Task).ToArray(); }
         finally { _gate.Release(); }
         await Task.WhenAll(pending).WaitAsync(ct);
     }
@@ -66,19 +66,13 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
         ProxyOperationDto item;
         try
         {
-            await LoadAsync(cancellationToken);
-            if (_byKey.TryGetValue(idempotencyKey, out item!)) return item;
-            if (_stopping || _recoveryBlocked) throw new ProxyOperationValidationException(ProxyProblemCodes.OperationInterrupted);
-            var persisted = await ReadEntriesAsync(paths, cancellationToken);
-            if (persisted.Length != _byKey.Count || persisted.Any(entry => !_byKey.TryGetValue(entry.IdempotencyKey, out var known) || known != entry.Operation))
-            {
-                _recoveryBlocked = true;
+            var entries = await ReadEntriesAsync(paths, cancellationToken);
+            var prior = entries.FirstOrDefault(entry => entry.IdempotencyKey == idempotencyKey);
+            if (prior is not null) return Visible(prior.Operation);
+            if (Volatile.Read(ref _stopping) || _recoveryBlocked || entries.Any(entry => IsUnresolved(entry.Operation) && !_running.ContainsKey(entry.Operation.OperationId)))
                 throw new ProxyOperationValidationException(ProxyProblemCodes.OperationInterrupted);
-            }
             item = new ProxyOperationDto(Guid.NewGuid(), kind, ProxyOperationState.Queued, "queued", "", null, null);
-            _byKey.Add(idempotencyKey, item); _byId.Add(item.OperationId, item);
-            try { await SaveAsync(cancellationToken); }
-            catch { _byKey.Remove(idempotencyKey); _byId.Remove(item.OperationId); throw; }
+            await SaveAsync([.. entries, new Entry(idempotencyKey, item)], cancellationToken);
             _running.Add(item.OperationId, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
         }
         finally { _gate.Release(); }
@@ -110,9 +104,20 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
     public async Task<ProxyOperationDto?> GetAsync(Guid id, CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken);
-        try { await LoadAsync(cancellationToken); return _byId.GetValueOrDefault(id); }
-        finally { _gate.Release(); }
+        Entry[]? entries = null;
+        try
+        {
+            entries = await ReadEntriesAsync(paths, cancellationToken);
+            var found = Array.Find(entries, entry => entry.Operation.OperationId == id);
+            return found is null ? null : Visible(found.Operation);
+        }
+        finally { entries = null; _gate.Release(); }
     }
+
+    private ProxyOperationDto Visible(ProxyOperationDto operation) =>
+        operation.State is ProxyOperationState.Queued or ProxyOperationState.Running && !_running.ContainsKey(operation.OperationId)
+            ? operation with { State = ProxyOperationState.Interrupted, Stage = "interrupted", ProblemCode = ProxyProblemCodes.OperationInterrupted, CompletedAt = DateTimeOffset.UtcNow }
+            : operation;
 
     private async Task ExecuteAsync(Guid id, Func<ProxyOperationStageReporter, CancellationToken, Task<string?>> operation)
     {
@@ -137,7 +142,7 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
         }
         catch (Exception exception)
         {
-            if (exception is ProxySubscriptionCleanupException cleanup)
+            if (exception is ProxyOperationCleanupException cleanup)
             {
                 await _gate.WaitAsync();
                 try { _recoveryBlocked = true; _cleanupFailures[id] = cleanup; }
@@ -145,7 +150,7 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
             }
             logger.LogWarning(exception, "Proxy operation {OperationId} failed.", id);
             await UpdateAsync(id, item => item with { State = ProxyOperationState.Failed, Stage = "failed", ProblemCode = ProxyProblemCodes.OperationInterrupted, CompletedAt = DateTimeOffset.UtcNow });
-            if (exception is ProxySubscriptionCleanupException) throw;
+            if (exception is ProxyOperationCleanupException) throw;
         }
     }
 
@@ -154,28 +159,13 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
         await _gate.WaitAsync();
         try
         {
-            await LoadAsync(CancellationToken.None);
-            if (!_byId.TryGetValue(id, out var prior)) return;
-            var next = update(prior); _byId[id] = next;
-            foreach (var key in _byKey.Where(pair => pair.Value.OperationId == id).Select(pair => pair.Key).ToArray()) _byKey[key] = next;
-            await SaveAsync(CancellationToken.None);
+            var entries = await ReadEntriesAsync(paths, CancellationToken.None);
+            var index = Array.FindIndex(entries, entry => entry.Operation.OperationId == id);
+            if (index < 0) throw new InvalidDataException("Proxy operation responsibility disappeared before terminal confirmation.");
+            entries[index] = entries[index] with { Operation = update(entries[index].Operation) };
+            await SaveAsync(entries, CancellationToken.None);
         }
         finally { _gate.Release(); }
-    }
-
-    private async Task LoadAsync(CancellationToken cancellationToken)
-    {
-        if (_loaded) return;
-        var entries = await ReadEntriesAsync(paths, cancellationToken);
-        foreach (var entry in entries)
-        {
-            if (IsUnresolved(entry.Operation)) _recoveryBlocked = true;
-            var restored = entry.Operation.State is ProxyOperationState.Queued or ProxyOperationState.Running
-                ? entry.Operation with { State = ProxyOperationState.Interrupted, Stage = "interrupted", ProblemCode = ProxyProblemCodes.OperationInterrupted, CompletedAt = DateTimeOffset.UtcNow }
-                : entry.Operation;
-            _byKey[entry.IdempotencyKey] = restored; _byId[restored.OperationId] = restored;
-        }
-        _loaded = true;
     }
 
     private static bool IsUnresolved(ProxyOperationDto operation) =>
@@ -198,8 +188,7 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
         catch (DirectoryNotFoundException) { return []; }
         using var document = JsonDocument.Parse(bytes);
         RejectDuplicates(document.RootElement);
-        var entries = JsonSerializer.Deserialize<Entry[]>(bytes, new JsonSerializerOptions
-            { UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow })
+        var entries = JsonSerializer.Deserialize<Entry[]>(bytes, Json)
             ?? throw new InvalidDataException("Invalid Proxy operation ledger.");
         var keys = new HashSet<string>(StringComparer.Ordinal); var ids = new HashSet<Guid>();
         foreach (var entry in entries)
@@ -226,12 +215,15 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
             foreach (var item in value.EnumerateArray()) RejectDuplicates(item);
     }
 
-    private async Task SaveAsync(CancellationToken cancellationToken)
+    private async Task SaveAsync(Entry[] entries, CancellationToken cancellationToken)
     {
         var dir = paths.GetStateDirectory(); Directory.CreateDirectory(dir); SetPrivateDirectory(dir);
         var path = Path.Combine(dir, "proxy-operations.json"); var temporary = path + ".new";
         await using (var stream = File.Create(temporary))
-            await JsonSerializer.SerializeAsync(stream, _byKey.Select(pair => new Entry(pair.Key, pair.Value)).ToArray(), cancellationToken: cancellationToken);
+        {
+            await JsonSerializer.SerializeAsync(stream, entries, cancellationToken: cancellationToken);
+            if (stream.Length > 32 * 1024 * 1024) throw new InvalidDataException("Proxy operation ledger requires retention maintenance.");
+        }
         if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(temporary, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         File.Move(temporary, path, overwrite: true);
     }

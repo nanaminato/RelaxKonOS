@@ -213,6 +213,12 @@ if (args.Contains("--proxy-subscription-boundary-only"))
     await ProxySubscriptionBoundaryChecks.RunAsync();
     return;
 }
+if (args.Contains("--proxy-core-safety-only"))
+{
+    await ProxyCoreSafetyChecks.RunAsync();
+    await ProxyLifecycleScopeChecks.RunAsync();
+    return;
+}
 if (args.Contains("--proxy-controller-only"))
 {
     await NetworkProxyTunnelChecks.VerifyMihomoControllerSafetyAsync();
@@ -665,6 +671,8 @@ if (args.Contains("--privileged-helper-socket-only")) { await PrivilegedHelperSo
     await ProxyConfigurationChecks.VerifyProxyTunSafetyAsync(root);
     await ProxySubscriptionBoundaryChecks.RunAsync();
     await ProxyOperationResponsibilityChecks.RunAsync();
+    await ProxyCoreSafetyChecks.RunAsync();
+    await ProxyLifecycleScopeChecks.RunAsync();
     await ProxyConfigurationChecks.VerifyMihomoTunActivationPreservationAsync(root);
     await ProxyConfigurationChecks.VerifyHostNetworkSafetyDiscoveryAsync();
     WebServerChecks.VerifyStaticSiteRootValidation();

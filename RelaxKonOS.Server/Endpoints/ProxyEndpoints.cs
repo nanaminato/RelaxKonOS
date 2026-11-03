@@ -25,44 +25,25 @@ public static class ProxyEndpoints
         app.MapGet(ProxyApiRoutes.RuntimeReleases, (RelaxKonOS.Protocol.Proxy.MihomoRuntimeManifest manifest) => manifest.Available())
             .RequireAuthorization("ProxyRead").WithTags("Proxy");
 
-        app.MapPost(ProxyApiRoutes.Lifecycle, (string action, HttpContext context, ProxyOperationStore operations, IProxyLifecycleService lifecycle, ProxyAuditStore audit, CancellationToken ct) =>
+        app.MapPost(ProxyApiRoutes.Lifecycle, (string action, HttpContext context, ProxyLifecycleOperations operations, CancellationToken ct) =>
         {
-            if (!Enum.TryParse<ProxyLifecycleAction>(action, true, out var parsed)) return Task.FromResult<IResult>(Problem(ProxyProblemCodes.NotSupported, StatusCodes.Status400BadRequest));
-            return QueueAsync(context, operations, "lifecycle." + action.ToLowerInvariant(), async (actor, token) =>
-            {
-                var problem = await lifecycle.ExecuteLifecycleAsync(parsed, token);
-                await audit.RecordAsync(actor, "lifecycle." + action.ToLowerInvariant(), string.IsNullOrEmpty(problem) ? "succeeded" : "failed", problem, token);
-                return problem;
-            }, ct);
+            if (!Enum.TryParse<ProxyLifecycleAction>(action, true, out var parsed) || !Enum.IsDefined(parsed))
+                return Task.FromResult<IResult>(Problem(ProxyProblemCodes.NotSupported, StatusCodes.Status400BadRequest));
+            return QueueValueAsync(context, (key, actor, token) => operations.EnqueueLifecycleAsync(key, parsed, actor, token), ct);
         }).RequireAuthorization("ProxyManage").WithTags("Proxy");
 
         app.MapGet(ProxyApiRoutes.Tun, (IProxyTunSafetyService tun, CancellationToken ct) => tun.GetStatusAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
-        app.MapPost(ProxyApiRoutes.TunEnable, (ProxyTunRequest request, HttpContext context, ProxyOperationStore operations, IProxyTunSafetyService tun, ProxyAuditStore audit, CancellationToken ct) =>
+        app.MapPost(ProxyApiRoutes.TunEnable, (ProxyTunRequest request, HttpContext context, ProxyLifecycleOperations operations, CancellationToken ct) =>
         {
-            // The queued operation may outlive this HTTP request. Capture the Server-observed
-            // remote address now; never trust a client-supplied management-route value.
-            var managementAddress = context.Connection.RemoteIpAddress;
-            return QueueAsync(context, operations, "tun.enable", async (actor, token) =>
-            {
-                var problem = await tun.EnableAsync(request.ProfileId, managementAddress, token);
-                await audit.RecordAsync(actor, "tun.enable", string.IsNullOrEmpty(problem) ? "succeeded" : "failed", problem, token);
-                return problem;
-            }, ct);
+            var address = context.Connection.RemoteIpAddress;
+            return QueueValueAsync(context, (key, actor, token) => operations.EnqueueTunAsync(key, ProxyTunOperation.Enable, request.ProfileId, address, actor, token), ct);
         }).RequireAuthorization("ProxyDangerous").WithTags("Proxy");
-        app.MapPost(ProxyApiRoutes.TunDisable, (HttpContext context, ProxyOperationStore operations, IProxyTunSafetyService tun, ProxyAuditStore audit, CancellationToken ct) =>
-            QueueAsync(context, operations, "tun.disable", async (actor, token) =>
-            {
-                var problem = await tun.DisableAsync(token);
-                await audit.RecordAsync(actor, "tun.disable", string.IsNullOrEmpty(problem) ? "succeeded" : "failed", problem, token);
-                return problem;
-            }, ct)).RequireAuthorization("ProxyDangerous").WithTags("Proxy");
-        app.MapPost(ProxyApiRoutes.TunEmergencyDisable, (HttpContext context, ProxyOperationStore operations, IProxyTunSafetyService tun, ProxyAuditStore audit, CancellationToken ct) =>
-            QueueAsync(context, operations, "tun.emergency-disable", async (actor, token) =>
-            {
-                var problem = await tun.EmergencyDisableAsync(token);
-                await audit.RecordAsync(actor, "tun.emergency-disable", string.IsNullOrEmpty(problem) ? "succeeded" : "failed", problem, token);
-                return problem;
-            }, ct)).RequireAuthorization("ProxyDangerous").WithTags("Proxy");
+        app.MapPost(ProxyApiRoutes.TunDisable, (HttpContext context, ProxyLifecycleOperations operations, CancellationToken ct) =>
+            QueueValueAsync(context, (key, actor, token) => operations.EnqueueTunAsync(key, ProxyTunOperation.Disable, Guid.Empty, null, actor, token), ct))
+            .RequireAuthorization("ProxyDangerous").WithTags("Proxy");
+        app.MapPost(ProxyApiRoutes.TunEmergencyDisable, (HttpContext context, ProxyLifecycleOperations operations, CancellationToken ct) =>
+            QueueValueAsync(context, (key, actor, token) => operations.EnqueueTunAsync(key, ProxyTunOperation.EmergencyDisable, Guid.Empty, null, actor, token), ct))
+            .RequireAuthorization("ProxyDangerous").WithTags("Proxy");
         app.MapGet(ProxyApiRoutes.Recovery, (IProxyRecoveryService recovery, CancellationToken ct) => recovery.GetStatusAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
 
         app.MapGet(ProxyApiRoutes.Profiles, (IProxyProfileService service, CancellationToken ct) => service.ListAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
@@ -160,16 +141,19 @@ public static class ProxyEndpoints
         return app;
     }
 
-    private static async Task<IResult> QueueAsync(HttpContext context, ProxyOperationStore store, string kind, Func<string, CancellationToken, Task<string?>> action, CancellationToken ct)
-        => await QueueAsync(context, store, kind, (actor, _, token) => action(actor, token), ct);
-
-    private static async Task<IResult> QueueAsync(HttpContext context, ProxyOperationStore store, string kind, Func<string, ProxyOperationStageReporter, CancellationToken, Task<string?>> action, CancellationToken ct)
+    private static async Task<IResult> QueueValueAsync(HttpContext context,
+        Func<string, string, CancellationToken, Task<ProxyOperationDto>> enqueue, CancellationToken ct)
     {
         var actor = Actor(context.User);
-        var idempotencyKey = context.Request.Headers["Idempotency-Key"].ToString();
-        try { var item = await store.EnqueueAsync(idempotencyKey, kind, (reportStage, token) => action(actor, reportStage, token), ct); return Results.Accepted(ProxyApiRoutes.Proxy + "/operations/" + item.OperationId, new ProxyOperationAcceptedDto(item.OperationId)); }
+        var key = context.Request.Headers["Idempotency-Key"].ToString();
+        try
+        {
+            var item = await enqueue(key, actor, ct);
+            return Results.Accepted(ProxyApiRoutes.Proxy + "/operations/" + item.OperationId, new ProxyOperationAcceptedDto(item.OperationId));
+        }
         catch (ProxyOperationValidationException error) { return Problem(error.ProblemCode, StatusCodes.Status400BadRequest); }
     }
+
     internal static void MapSubscriptionOperationEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost(ProxyApiRoutes.SubscriptionsRefresh, (HttpContext context, ProxySubscriptionOperations operations, CancellationToken ct) =>

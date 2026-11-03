@@ -430,10 +430,10 @@ Check(defaults.Capabilities.SetEquals([ServerCapabilities.Terminal, ServerCapabi
             $"proxy server operations registration enabled={enabled}");
         Check(builder.Services.Any(service => service.ServiceType == typeof(RelaxKonOS.Server.GatewayProxy.SquidGatewayService)) == enabled,
             $"squid gateway registration enabled={enabled}");
-        Check(builder.Services.Any(service => service.ServiceType == typeof(RelaxKonOS.Server.Proxy.IProxyTunSafetyService)) == enabled,
+        Check(builder.Services.Any(service => service.ServiceType == typeof(RelaxKonOS.Server.Proxy.IProxyTunSafetyService)),
             $"tun safety registration enabled={enabled}");
         // Interrupted publications are recovered by Core, so the worker must not follow the UI.
-        Check(builder.Services.Any(service => service.ImplementationType == typeof(RelaxKonOS.Server.Proxy.Mihomo.MihomoPublicationRecoveryService)),
+        Check(builder.Services.Any(service => service.ImplementationType == typeof(RelaxKonOS.Server.Proxy.Mihomo.MihomoPublicationRecoveryScheduler)),
             $"publication recovery stays registered enabled={enabled}");
     }
 }

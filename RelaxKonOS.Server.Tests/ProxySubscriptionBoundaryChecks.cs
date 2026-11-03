@@ -49,7 +49,7 @@ internal static class ProxySubscriptionBoundaryChecks
             var accepted = await f.Queue.EnqueueAsync("fail", ProxySubscriptionOperation.Refresh, Guid.NewGuid(), "actor", default);
             f.State.Release.TrySetResult(); f.State.ReleaseDisposal.TrySetResult();
             try { await f.Store.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(5)); }
-            catch (ProxySubscriptionCleanupException) when (failure == "dispose") { }
+            catch (ProxyOperationCleanupException) when (failure == "dispose") { }
             var item = await f.Store.GetAsync(accepted.OperationId, default);
             Check(item!.State == ProxyOperationState.Failed && f.State.Disposed == 1,
                 "Failure is terminal only after scope cleanup and never silently succeeds: " + failure);
@@ -60,6 +60,13 @@ internal static class ProxySubscriptionBoundaryChecks
             }
             if (failure is "domain" or "exception")
                 Check(File.ReadAllText(f.Audit).Contains("failed", StringComparison.Ordinal), "Domain and thrown failures preserve failure audit: " + failure);
+        }
+        await using (var f = new Fixture())
+        {
+            using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+            try { await f.Store.StopAsync(cancelled.Token); } catch (OperationCanceledException) { }
+            try { await f.Queue.EnqueueAsync("after-expired-stop", ProxySubscriptionOperation.RefreshAll, Guid.Empty, "actor", default); throw new Exception("Expired shutdown budget left admission open"); }
+            catch (ProxyOperationValidationException) { Check(f.State.Created == 0, "Even an already-cancelled shutdown wait closes new admission without constructing work"); }
         }
         await using (var f = new Fixture())
         {

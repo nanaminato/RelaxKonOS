@@ -39,10 +39,9 @@ public static class ProxyServerEndpoints
         app.MapGet(ProxyServerRoutes.RuntimeReleases, async (ProxyServerService service, CancellationToken ct) =>
                 Results.Ok(await service.ReleasesAsync(ct)))
             .RequireAuthorization(ReadPolicy).WithTags("Proxy Server");
-        app.MapGet(ProxyServerRoutes.OperationPattern, async (Guid id, ProxyServerService service,
-                ProxyOperationStore operations, CancellationToken ct) =>
+        app.MapGet(ProxyServerRoutes.OperationPattern, async (Guid id, ProxyOperationStore operations, CancellationToken ct) =>
             {
-                var operation = await service.OperationAsync(id, operations, ct);
+                var operation = await operations.GetAsync(id, ct);
                 return operation is null || !operation.Kind.StartsWith("proxy_server.", StringComparison.Ordinal)
                     ? Results.NotFound()
                     : Results.Ok(operation);
@@ -50,10 +49,10 @@ public static class ProxyServerEndpoints
             .RequireAuthorization(ReadPolicy).WithTags("Proxy Server");
 
         app.MapPut(ProxyServerRoutes.Configuration, (SaveProxyServerConfiguration? request, HttpContext context,
-                ProxyServerService service, ProxyOperationStore operations, ProxyAuditStore audit, CancellationToken ct) =>
+                ProxyServerOperationQueue queue, ProxyOperationStore operations, CancellationToken ct) =>
                 request is null ? Task.FromResult(BadRequest("proxy_server.request_invalid"))
-                    : QueueAsync(context, service, operations, audit, "configuration.save", request,
-                        token => service.SaveAsync(request, token), ct))
+                    : QueueAsync(context, queue, operations, "configuration.save", request,
+                        (execution, token) => execution.SaveAsync(request, token), ct))
             .RequireAuthorization(ManagePolicy).WithTags("Proxy Server");
 
         app.MapPost(ProxyServerRoutes.Validate, async (ProxyServerService service, CancellationToken ct) =>
@@ -62,92 +61,92 @@ public static class ProxyServerEndpoints
             catch (ProxyServerException ex) { return Problem(ex.Message); }
         }).RequireAuthorization(ManagePolicy).WithTags("Proxy Server");
 
-        app.MapPost(ProxyServerRoutes.Apply, (HttpContext context, ProxyServerService service,
-                ProxyOperationStore operations, ProxyAuditStore audit, CancellationToken ct) =>
-                QueueAsync(context, service, operations, audit, "configuration.apply", new { },
-                    service.ApplyAsync, ct))
+        app.MapPost(ProxyServerRoutes.Apply, (HttpContext context, ProxyServerOperationQueue queue,
+                ProxyOperationStore operations, CancellationToken ct) =>
+                QueueAsync(context, queue, operations, "configuration.apply", new { },
+                    (execution, token) => execution.ApplyAsync(token), ct))
             .RequireAuthorization(ManagePolicy).WithTags("Proxy Server");
-        app.MapPost(ProxyServerRoutes.Rollback, (HttpContext context, ProxyServerService service,
-                ProxyOperationStore operations, ProxyAuditStore audit, CancellationToken ct) =>
-                QueueAsync(context, service, operations, audit, "configuration.rollback", new { },
-                    service.RollbackAsync, ct))
+        app.MapPost(ProxyServerRoutes.Rollback, (HttpContext context, ProxyServerOperationQueue queue,
+                ProxyOperationStore operations, CancellationToken ct) =>
+                QueueAsync(context, queue, operations, "configuration.rollback", new { },
+                    (execution, token) => execution.RollbackAsync(token), ct))
             .RequireAuthorization(ManagePolicy).WithTags("Proxy Server");
-        app.MapPost(ProxyServerRoutes.Recovery, (HttpContext context, ProxyServerService service,
-                ProxyOperationStore operations, ProxyAuditStore audit, CancellationToken ct) =>
-                QueueAsync(context, service, operations, audit, "recovery", new { },
-                    service.RecoverAsync, ct))
+        app.MapPost(ProxyServerRoutes.Recovery, (HttpContext context, ProxyServerOperationQueue queue,
+                ProxyOperationStore operations, CancellationToken ct) =>
+                QueueAsync(context, queue, operations, "recovery", new { },
+                    (execution, token) => execution.RecoverAsync(token), ct))
             .RequireAuthorization(ManagePolicy).WithTags("Proxy Server");
 
-        app.MapPost(ProxyServerRoutes.RuntimeInstall, (HttpContext context, ProxyServerService service,
-                ProxyOperationStore operations, ProxyAuditStore audit, CancellationToken ct) =>
-                QueueAsync(context, service, operations, audit, "runtime.install", new { },
-                    service.InstallAsync, ct))
+        app.MapPost(ProxyServerRoutes.RuntimeInstall, (HttpContext context, ProxyServerOperationQueue queue,
+                ProxyOperationStore operations, CancellationToken ct) =>
+                QueueAsync(context, queue, operations, "runtime.install", new { },
+                    (execution, token) => execution.InstallAsync(token), ct))
             .RequireAuthorization(ManagePolicy).WithTags("Proxy Server");
         app.MapPost(ProxyServerRoutes.RuntimeUpgrade, (ProxyServerUpgradeRequest? request, HttpContext context,
-                ProxyServerService service, ProxyOperationStore operations, ProxyAuditStore audit, CancellationToken ct) =>
+                ProxyServerOperationQueue queue, ProxyOperationStore operations, CancellationToken ct) =>
                 request is null ? Task.FromResult(BadRequest("proxy_server.request_invalid"))
-                    : QueueAsync(context, service, operations, audit, "runtime.upgrade", request,
-                        token => service.UpgradeAsync(request.Version, token), ct))
+                    : QueueAsync(context, queue, operations, "runtime.upgrade", request,
+                        (execution, token) => execution.UpgradeAsync(request.Version, token), ct))
             .RequireAuthorization(ManagePolicy).WithTags("Proxy Server");
         app.MapPost(ProxyServerRoutes.RuntimeUninstall, (ProxyServerUninstallRequest? request, HttpContext context,
-                ProxyServerService service, ProxyOperationStore operations, ProxyAuditStore audit, CancellationToken ct) =>
+                ProxyServerOperationQueue queue, ProxyOperationStore operations, CancellationToken ct) =>
             {
                 var keepData = request?.KeepData ?? true;
-                return QueueAsync(context, service, operations, audit, "runtime.uninstall", new { keepData },
-                    token => service.UninstallAsync(keepData, token), ct);
+                return QueueAsync(context, queue, operations, "runtime.uninstall", new { keepData },
+                    (execution, token) => execution.UninstallAsync(keepData, token), ct);
             })
             .RequireAuthorization(ManagePolicy).WithTags("Proxy Server");
         app.MapPost(Route(ProxyServerRoutes.RuntimeActionPattern), (string? action, HttpContext context,
-                ProxyServerService service, ProxyOperationStore operations, ProxyAuditStore audit, CancellationToken ct) =>
+                ProxyServerOperationQueue queue, ProxyOperationStore operations, CancellationToken ct) =>
             {
                 if (!Enum.TryParse<ProxyServerAction>(action, true, out var parsed) || !Enum.IsDefined(parsed))
                     return Task.FromResult(BadRequest("proxy_server.action_invalid"));
-                return QueueAsync(context, service, operations, audit, "runtime.action." + parsed.ToString().ToLowerInvariant(),
-                    new { action = parsed }, token => service.ActionAsync(parsed, token), ct);
+                return QueueAsync(context, queue, operations, "runtime.action." + parsed.ToString().ToLowerInvariant(),
+                    new { action = parsed }, (execution, token) => execution.ActionAsync(parsed, token), ct);
             })
             .RequireAuthorization(ManagePolicy).WithTags("Proxy Server");
 
         app.MapPost(ProxyServerRoutes.Principals, (SaveProxyServerPrincipal? request, HttpContext context,
-                ProxyServerService service, ProxyOperationStore operations, ProxyAuditStore audit, CancellationToken ct) =>
+                ProxyServerOperationQueue queue, ProxyOperationStore operations, CancellationToken ct) =>
                 request is null ? Task.FromResult(BadRequest("proxy_server.request_invalid"))
-                    : QueueAsync(context, service, operations, audit, "principal.save", request,
-                        token => service.SavePrincipalAsync(request, token), ct))
+                    : QueueAsync(context, queue, operations, "principal.save", request,
+                        (execution, token) => execution.SavePrincipalAsync(request, token), ct))
             .RequireAuthorization(ManagePolicy).WithTags("Proxy Server");
         app.MapPut(Route(ProxyServerRoutes.PrincipalPattern), (Guid id, SaveProxyServerPrincipal? request, HttpContext context,
-                ProxyServerService service, ProxyOperationStore operations, ProxyAuditStore audit, CancellationToken ct) =>
+                ProxyServerOperationQueue queue, ProxyOperationStore operations, CancellationToken ct) =>
                 request is null ? Task.FromResult(BadRequest("proxy_server.request_invalid"))
-                    : QueueAsync(context, service, operations, audit, "principal.save", request with { Id = id },
-                        token => service.SavePrincipalAsync(request with { Id = id }, token), ct))
+                    : QueueAsync(context, queue, operations, "principal.save", request with { Id = id },
+                        (execution, token) => execution.SavePrincipalAsync(request with { Id = id }, token), ct))
             .RequireAuthorization(ManagePolicy).WithTags("Proxy Server");
-        app.MapDelete(Route(ProxyServerRoutes.PrincipalPattern), (Guid id, HttpContext context, ProxyServerService service,
-                ProxyOperationStore operations, ProxyAuditStore audit, CancellationToken ct) =>
-                QueueAsync(context, service, operations, audit, "principal.delete", new { id },
-                    token => service.DeletePrincipalAsync(id, token), ct))
+        app.MapDelete(Route(ProxyServerRoutes.PrincipalPattern), (Guid id, HttpContext context, ProxyServerOperationQueue queue,
+                ProxyOperationStore operations, CancellationToken ct) =>
+                QueueAsync(context, queue, operations, "principal.delete", new { id },
+                    (execution, token) => execution.DeletePrincipalAsync(id, token), ct))
             .RequireAuthorization(ManagePolicy).WithTags("Proxy Server");
 
         app.MapPost(ProxyServerRoutes.Credentials, (ProxyServerCredentialRequest? request, HttpContext context,
-                ProxyServerService service, ProxyOperationStore operations, ProxyAuditStore audit, CancellationToken ct) =>
+                ProxyServerOperationQueue queue, ProxyOperationStore operations, CancellationToken ct) =>
                 request is null ? Task.FromResult(BadRequest("proxy_server.request_invalid"))
-                    : QueueAsync(context, service, operations, audit, "credential.save", request,
-                        token => service.SaveCredentialAsync(request, token), ct))
+                    : QueueAsync(context, queue, operations, "credential.save", request,
+                        (execution, token) => execution.SaveCredentialAsync(request, token), ct))
             .RequireAuthorization(ManagePolicy).WithTags("Proxy Server");
         app.MapPut(Route(ProxyServerRoutes.CredentialPattern), (Guid id, ProxyServerCredentialRequest? request,
-                HttpContext context, ProxyServerService service, ProxyOperationStore operations, ProxyAuditStore audit,
+                HttpContext context, ProxyServerOperationQueue queue, ProxyOperationStore operations,
                 CancellationToken ct) =>
                 request is null ? Task.FromResult(BadRequest("proxy_server.request_invalid"))
-                    : QueueAsync(context, service, operations, audit, "credential.save", request with { Id = id },
-                        token => service.SaveCredentialAsync(request with { Id = id }, token), ct))
+                    : QueueAsync(context, queue, operations, "credential.save", request with { Id = id },
+                        (execution, token) => execution.SaveCredentialAsync(request with { Id = id }, token), ct))
             .RequireAuthorization(ManagePolicy).WithTags("Proxy Server");
-        app.MapDelete(Route(ProxyServerRoutes.CredentialPattern), (Guid id, HttpContext context, ProxyServerService service,
-                ProxyOperationStore operations, ProxyAuditStore audit, CancellationToken ct) =>
-                QueueAsync(context, service, operations, audit, "credential.delete", new { id },
-                    token => service.DeleteCredentialAsync(id, token), ct))
+        app.MapDelete(Route(ProxyServerRoutes.CredentialPattern), (Guid id, HttpContext context, ProxyServerOperationQueue queue,
+                ProxyOperationStore operations, CancellationToken ct) =>
+                QueueAsync(context, queue, operations, "credential.delete", new { id },
+                    (execution, token) => execution.DeleteCredentialAsync(id, token), ct))
             .RequireAuthorization(ManagePolicy).WithTags("Proxy Server");
         app.MapPost(Route(ProxyServerRoutes.CredentialRotatePattern), (Guid id, ProxyServerCredentialRotation? request,
-                HttpContext context, ProxyServerService service, ProxyOperationStore operations, ProxyAuditStore audit,
+                HttpContext context, ProxyServerOperationQueue queue, ProxyOperationStore operations,
                 CancellationToken ct) =>
-                QueueAsync(context, service, operations, audit, "credential.rotate", new { id, request },
-                    token => service.RotateCredentialAsync(id, request, token), ct))
+                QueueAsync(context, queue, operations, "credential.rotate", new { id, request },
+                    (execution, token) => execution.RotateCredentialAsync(id, request, token), ct))
             .RequireAuthorization(ManagePolicy).WithTags("Proxy Server");
 
         app.MapGet(Route(ProxyServerRoutes.CredentialExportFormatsPattern), async (Guid id, ProxyServerService service,
@@ -195,10 +194,10 @@ public static class ProxyServerEndpoints
                 }
             })
             .RequireAuthorization(ExportPolicy).WithTags("Proxy Server");
-        app.MapDelete(Route(ProxyServerRoutes.SubscriptionPattern), (Guid id, HttpContext context, ProxyServerService service,
-                ProxyOperationStore operations, ProxyAuditStore audit, CancellationToken ct) =>
-                QueueAsync(context, service, operations, audit, "subscription.revoke", new { id },
-                    token => service.RevokeSubscriptionAsync(id, token), ct))
+        app.MapDelete(Route(ProxyServerRoutes.SubscriptionPattern), (Guid id, HttpContext context, ProxyServerOperationQueue queue,
+                ProxyOperationStore operations, CancellationToken ct) =>
+                QueueAsync(context, queue, operations, "subscription.revoke", new { id },
+                    (execution, token) => execution.RevokeSubscriptionAsync(id, token), ct))
             .RequireAuthorization(ManagePolicy).WithTags("Proxy Server");
 
         // Anonymous download. The token is the only credential; the format is an explicit route value
@@ -225,23 +224,22 @@ public static class ProxyServerEndpoints
         return app;
     }
 
-    private static async Task<IResult> QueueAsync(HttpContext context, ProxyServerService service, ProxyOperationStore operations,
-        ProxyAuditStore audit, string kind, object request, Func<CancellationToken, Task<string?>> action, CancellationToken ct)
+    private static async Task<IResult> QueueAsync(HttpContext context, ProxyServerOperationQueue queue, ProxyOperationStore operations, string kind, object request, Func<ProxyServerService, CancellationToken, Task<string?>> action, CancellationToken ct)
     {
         var actor = Actor(context);
+        var scopes = context.RequestServices.GetRequiredService<IServiceScopeFactory>();
         try
         {
-            var item = await service.EnqueueAsync(actor, context.Request.Headers["Idempotency-Key"].ToString(), kind, request, operations, async token =>
-            {
-                string? problem;
-                try { problem = await action(token); }
-                catch (ProxyServerException ex) { problem = ex.Message; }
-                await audit.RecordAsync(actor, "proxy_server." + kind, problem is null ? "succeeded" : "failed", problem, token);
-                return problem;
-            }, ct);
+            var item = await queue.EnqueueAsync(actor, context.Request.Headers["Idempotency-Key"].ToString(), kind, request, operations,
+                token => ProxyOperationScope.RunAsync(scopes, actor, "proxy_server." + kind, async (services, executionToken) =>
+                {
+                    try { return await action(services.GetRequiredService<ProxyServerService>(), executionToken); }
+                    catch (ProxyServerException ex) { return ex.Message; }
+                }, token), ct);
             return Results.Accepted(ProxyServerRoutes.Root + "/operations/" + item.OperationId, new ProxyOperationAcceptedDto(item.OperationId));
         }
         catch (ProxyServerException ex) { return Problem(ex.Message); }
+        catch (ProxyOperationValidationException ex) { return Problem(ex.ProblemCode); }
     }
 
     private static string ContentType(string format) => format switch
