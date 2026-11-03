@@ -17,7 +17,7 @@ Android 的设计、功能、支持范围和发布要求统一维护在 [Android
 - [服务端模块提权 Broker（规划）](./architecture/RelaxKonOS.ServerModulePrivilegeBroker.Design.md)
 - [包商店来源设计（模块与桌面应用，规划）](./platform/RelaxKonOS.PackageStore.Design.md)
 - [Server 模块闲时卸载与按需加载（首个运行时切片已实施）](./architecture/RelaxKonOS.ServerModuleResidency.Design.md)
-- [Server 模块边界与内存回收设计（Git 仓库/CLI/构建实现已验证真实 ALC 回收；其他边界、Proxy 和第三方按需运行待实施）](./architecture/RelaxKonOS.ServerModuleBoundaries.Design.md)
+- [Server 模块边界与内存回收设计（Git 已验证真实 ALC 回收，Proxy 共享读取边界已拆出；Proxy 休眠与第三方按需运行待实施）](./architecture/RelaxKonOS.ServerModuleBoundaries.Design.md)
 - [代码库优化与拆分计划](./architecture/RelaxKonOS.CodebaseOptimization.Design.md)
 - [统一特权 Helper 架构（Linux v1 常驻服务已实施）](./architecture/privileged-helper.md)
 - [注册表与配置同步](./architecture/RelaxKonOS.Registry.md)

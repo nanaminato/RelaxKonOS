@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text;
 using System.Reflection;
@@ -162,7 +162,7 @@ internal static class MihomoPublicationTransactionChecks
             var profiles = new PublicationProfiles(databaseProfiles, mode);
             var engine = Stub<IProxyEngine>(method => method.Name == "get_EngineId" ? "mihomo"
                 : throw new Exception("Managed application called the fixed runtime engine"));
-            var settings = Stub<IProxySettingsService>(method => method.Name == "GetAsync"
+            var settings = Stub<IProxySettingsReader>(method => method.Name == "GetAsync"
                 ? Task.FromResult(new ProxySettingsDto(false, false, false, false, false, "warning", 18889, false, "127.0.0.1", ProxyTunSettingsDto.Default))
                 : throw new Exception("Unexpected settings mutation"));
             f.Profiles = profiles; f.RecreateService();
@@ -234,11 +234,12 @@ internal static class MihomoPublicationTransactionChecks
             var state = await f.Store.ReadAsync(default);
             if (mode is "success" or "metadata-only")
             {
-                Check(problem is null && state.Pending is null && (await service.GetAsync(default)).MixedPort == request.MixedPort,
+                Check(problem is null && state.Pending is null && (await new ProxySettingsReader(f).GetAsync(default)).MixedPort == request.MixedPort,
                     "Managed settings commit runtime, host intent and settings together: " + mode);
                 Check(f.ConfigureCalls == (metadataOnly ? 0 : 1) && f.HostProxy.Calls == 1,
                     "Unchanged YAML settings avoid native restarts and fabricated receipts: " + mode);
-                Check(await service.ReconcileSystemProxyAsync(true, default) is null && f.HostProxy.Calls == 2,
+                Check(await new MihomoSystemProxyReconciler(f, new ProxySettingsReader(f), f, f.HostProxy, f.Store,
+                    new(f, f.Store, f.Provider, f, new DirectDownloads()), settingsFiles).ReconcileSystemProxyAsync(true, default) is null && f.HostProxy.Calls == 2,
                     "Confirmed managed settings can reconcile the system proxy at startup: " + mode);
             }
             else if (mode is "revoked" or "corrupt-settings")
@@ -265,7 +266,7 @@ internal static class MihomoPublicationTransactionChecks
                     var recovered = await f.RecreateService().RecoverAsync(operation, default);
                     Check(recovered.Outcome == MihomoPublicationOutcome.Confirmed && f.ConfigureCalls == calls
                         && (await f.Store.ReadAsync(default)).Pending is null
-                        && (await service.GetAsync(default)).MixedPort == request.MixedPort,
+                        && (await new ProxySettingsReader(f).GetAsync(default)).MixedPort == request.MixedPort,
                         "Restart resumes exact settings intent without another native apply: " + mode);
                 }
             }
@@ -308,6 +309,25 @@ internal static class MihomoPublicationTransactionChecks
             node["pending"]!.AsObject().Remove("profile");
             await File.WriteAllBytesAsync(statePath, f.Protect(Encoding.UTF8.GetBytes(node.ToJsonString())));
             await Denied("metadata_invalid", () => f.Store.ReadAsync(default));
+        }
+        foreach (var failure in new[] { "revoked", "yaml-drift", "settings-corrupt", "pending", "helper-recovery", "ownership" })
+        {
+            using var f = await Fixture.CreateAsync();
+            var reconciler = new MihomoSystemProxyReconciler(f, new ProxySettingsReader(f), f, f.HostProxy, f.Store,
+                new(f, f.Store, f.Provider, f, new DirectDownloads()), new(f, f.HostProxy));
+            if (failure == "revoked") f.Secret = null;
+            if (failure == "yaml-drift") await File.WriteAllTextAsync(f.Active, "# unrelated YAML");
+            if (failure == "settings-corrupt") await File.WriteAllTextAsync(f.SettingsPath, "corrupt");
+            if (failure == "pending") await f.StageAsync();
+            if (failure == "helper-recovery") f.Snapshot = f.Snapshot with
+                { Installation = f.Snapshot.Installation with { RecoveryRequired = true } };
+            if (failure == "ownership") f.Snapshot = f.Snapshot with
+                { Installation = f.Snapshot.Installation with { Ownership = RuntimeOwnership.External } };
+            Check(await reconciler.ReconcileSystemProxyAsync(true, default) == ProxyProblemCodes.RecoveryRequired
+                && f.HostProxy.Calls == 0 && f.ConfigureCalls == 0,
+                "Narrow guard refuses unsafe publication without a host write or native apply: " + failure);
+            Check(await f.Store.Gate.WaitAsync(TimeSpan.FromSeconds(1)), "Guard refusal releases the publication gate: " + failure);
+            f.Store.Gate.Release();
         }
         return count;
     }
@@ -378,7 +398,7 @@ internal static class MihomoPublicationTransactionChecks
         internal MihomoPublishedRuntime Previous { get; private set; } = null!;
         internal MihomoPublishedRuntime Candidate { get; private set; } = null!;
         internal RuntimeConfigurationPlan Plan { get; private set; } = null!;
-        internal RuntimeInstallationSnapshot Snapshot { get; private set; } = null!;
+        internal RuntimeInstallationSnapshot Snapshot { get; set; } = null!;
         internal long InitialRevision;
         internal IProxyProfileRepository? Profiles;
         internal HostProxy HostProxy { get; } = new();

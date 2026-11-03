@@ -119,6 +119,13 @@ internal static class MihomoInstallationPublicationChecks
         }
         using (var f = new Fixture())
         {
+            var selection = new MihomoInstallationBootstrapService(f.Store, f.Service, new CorruptSettings(), f, new());
+            await Denied("settings_drift", () => selection.InstallAsync(f.Operation, f.Plan, default));
+            Check(f.Installs == 0 && f.SecretCreations == 0 && (await f.Store.ReadAsync(default)).Pending is null,
+                "Unreadable initial settings cannot create credentials, native work or a publication intent");
+        }
+        using (var f = new Fixture())
+        {
             f.AllowInitialMaterial = true;
             f.Material = MihomoInstallationBootstrapService.CreateMaterial(f.Settings,
                 new() { Endpoint = new("http://127.0.0.1:19090/") }, f.Secret);
@@ -258,14 +265,19 @@ internal static class MihomoInstallationPublicationChecks
         return count;
     }
 
-    private sealed class UnreadableSettings : IProxySettingsService
+    private sealed class CorruptSettings : IProxySettingsReader
     {
-        public Task<ProxySettingsDto> GetAsync(CancellationToken ct) => throw new Exception("Replay read settings");
-        public Task<string?> UpdateAsync(UpdateProxySettingsRequest request, CancellationToken ct) => throw new Exception("Bootstrap changed settings");
-        public Task<string?> ReconcileSystemProxyAsync(bool startup, CancellationToken ct) => throw new Exception("Bootstrap activated host proxy");
+        public Task<ProxySettingsDto> GetAsync(CancellationToken ct) => throw new InvalidDataException("fixture corrupt metadata");
     }
 
-    private sealed class Fixture : IDisposable, IProxyPlatformPaths, IProxyControllerSecretStore, IPrivilegedOperationTransport, IServerModeResolver, IProxySettingsService
+    private sealed class UnreadableSettings : IProxySettingsReader
+    {
+        public Task<ProxySettingsDto> GetAsync(CancellationToken ct) => throw new Exception("Replay read settings");
+
+
+    }
+
+    private sealed class Fixture : IDisposable, IProxyPlatformPaths, IProxyControllerSecretStore, IPrivilegedOperationTransport, IServerModeResolver, IProxySettingsReader
     {
         private readonly string root = Path.Combine(Path.GetTempPath(), "mihomo-install-publication-" + Guid.NewGuid().ToString("N"));
         private readonly IDataProtectionProvider protection = new EphemeralDataProtectionProvider();
@@ -437,8 +449,8 @@ internal static class MihomoInstallationPublicationChecks
             if (!AllowInitialMaterial || Store.Gate.CurrentCount != 0) throw new Exception("Install reconciliation read settings");
             SettingsReads++; return Task.FromResult(Settings);
         }
-        public Task<string?> UpdateAsync(UpdateProxySettingsRequest request, CancellationToken ct) => throw new Exception("Bootstrap changed settings");
-        public Task<string?> ReconcileSystemProxyAsync(bool startup, CancellationToken ct) => throw new Exception("Bootstrap activated host proxy");
+
+
         ServerMode IServerModeResolver.Mode => ServerMode.System;
         public bool Supports(ServerHostFeature feature) => true;
         public ServerCapabilitiesDto Describe() => throw new NotSupportedException();

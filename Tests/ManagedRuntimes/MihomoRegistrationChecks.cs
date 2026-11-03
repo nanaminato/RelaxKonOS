@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -53,8 +53,26 @@ internal static class MihomoRegistrationChecks
             && services.GetRequiredService<MihomoRemovalPublicationService>() is not null,
             "Default runtime and publication coordinators resolve with the current contracts");
         Check(scope.ServiceProvider.GetRequiredService<IProxyConfigurationTransactionService>() is ProxyConfigurationTransactionService
-            && services.GetRequiredService<IProxySettingsService>() is MihomoSettingsService,
-            "Default profile and settings writers resolve the shared publication authority");
+            && services.GetRequiredService<IProxySettingsReader>() is ProxySettingsReader,
+            "Default profile transactions and lightweight settings reader resolve their current contracts");
+        Check(services.GetRequiredService<IProxySystemProxyReconciler>() is MihomoSystemProxyReconciler
+            && services.GetRequiredService<IProxyTunRuntimeController>() is MihomoTunRuntimeController
+            && !ReferenceEquals(services.GetRequiredService<IProxySettingsWriter>(), services.GetRequiredService<IProxySettingsWriter>()),
+            "Guard and TUN have narrow executors while settings writers are created per invocation");
+        Check(builder.Services.Single(x => x.ServiceType == typeof(MihomoSettingsService)).Lifetime == ServiceLifetime.Transient
+            && builder.Services.Single(x => x.ServiceType == typeof(IProxySettingsWriter)).Lifetime == ServiceLifetime.Transient,
+            "The root container does not retain a singleton settings writer");
+        Check(builder.Services.Count(item => item.ServiceType == typeof(IHostedService)
+                && item.ImplementationType == typeof(SystemProxyGuardHostedService)) == 1,
+            "Proxy registration keeps exactly one system proxy guard with its existing module ownership");
+        Check(builder.Services.Single(item => item.ServiceType == typeof(RelaxKonOS.Server.ProxyServer.ProxyServerService)).Lifetime
+                == ServiceLifetime.Transient
+            && builder.Services.Single(item => item.ServiceType == typeof(RelaxKonOS.Server.ProxyServer.IProxyServerExpiryExecutor)).Lifetime
+                == ServiceLifetime.Transient,
+            "Inbound management and expiry executors are not rooted as singleton services");
+        Check(builder.Services.Count(item => item.ServiceType == typeof(IHostedService)
+                && item.ImplementationType == typeof(RelaxKonOS.Server.ProxyServer.ProxyServerExpiryService)) == 1,
+            "Proxy registration keeps exactly one expiry scheduler");
         // Only the Mihomo ledger entry is factory-registered; instantiate exactly that one so the
         // fixture never has to construct unrelated package installers.
         var descriptor = builder.Services.Single(x => x.ServiceType == typeof(RelaxKonOS.Server.Installations.IInstallationService)
@@ -69,6 +87,19 @@ internal static class MihomoRegistrationChecks
         // an eager resolver dependency closes the cycle this fixture used to hide with a stub.
         Check(services.GetRequiredService<RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeService>() is not null,
             "Runtime service resolves alongside the real download-proxy resolver without a construction cycle");
+        builder.Services.AddSingleton<MihomoSettingsService>(_ => throw new Exception("Safety executor constructed the settings writer"));
+        using (var tunServices = builder.Services.BuildServiceProvider())
+        {
+            using var recovery = ActivatorUtilities.CreateInstance<ProxyRecoveryHostedService>(tunServices);
+            Check(tunServices.GetRequiredService<IProxyTunSafetyService>() is ProxyTunSafetyService
+                && tunServices.GetRequiredService<IProxyTunRuntimeController>() is MihomoTunRuntimeController,
+                "Production TUN startup recovery constructs without the settings writer");
+        }
+        builder.Services.AddSingleton<IMihomoControllerClient>(_ => throw new Exception("Guard constructed a controller client"));
+        using var guardServices = builder.Services.BuildServiceProvider();
+        using var guard = ActivatorUtilities.CreateInstance<SystemProxyGuardHostedService>(guardServices);
+        Check(guardServices.GetRequiredService<IProxySystemProxyReconciler>() is MihomoSystemProxyReconciler,
+            "Production guard constructs without the settings writer, TUN controller or direct controller client");
         return count;
     }
     private sealed class TemporaryDirectory : IDisposable

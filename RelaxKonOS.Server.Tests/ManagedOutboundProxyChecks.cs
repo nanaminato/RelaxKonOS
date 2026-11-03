@@ -59,12 +59,12 @@ internal static class ManagedOutboundProxyChecks
         Console.WriteLine("Managed outbound proxy HTTP, bypass, scope, live address and stopped-listener checks passed.");
     }
 
-    private sealed class MutableProxySettings(int port) : IProxySettingsService
+    private sealed class MutableProxySettings(int port) : IProxySettingsReader
     {
         internal ProxySettingsDto Current { get; set; } = new(false, false, true, true, false, "warning", port);
         public Task<ProxySettingsDto> GetAsync(CancellationToken cancellationToken) => Task.FromResult(Current);
-        public Task<string?> ReconcileSystemProxyAsync(bool startup, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
-    public Task<string?> UpdateAsync(UpdateProxySettingsRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+
     }
 
     private sealed class LocalHttpResponder : IAsyncDisposable
@@ -99,6 +99,7 @@ internal static class ManagedOutboundProxyChecks
             }
             catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
             catch (SocketException) when (_stop.IsCancellationRequested) { }
+            catch (ObjectDisposedException) when (_stop.IsCancellationRequested) { }
         }
         public async ValueTask DisposeAsync()
         {

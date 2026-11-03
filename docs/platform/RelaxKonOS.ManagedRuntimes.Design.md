@@ -5,6 +5,12 @@
 > 当前逐组件实施状态与 Nginx 平台边界见[组件中心实施进度](RelaxKonOS.ComponentCenter.Progress.md)；下文历史切片的验收范围保持原记录。
 > 签名目录的生产与登记流程见[发布签名运行时目录](RelaxKonOS.RuntimeCatalog.Publishing.md)。
 
+2026-11-03（MB-04 / MR-01 边界）：安装引导与宿主下载只依赖轻量设置 reader，写入/对账权威保持原实现；损坏初始设置在生成凭据或冻结发布前返回 `runtime.settings_drift`，已有操作继续按冻结材料重放。冻结、Helper、回执及补偿规则未放宽，未扩展真实运行时生命周期验收；代码与证据由[模块边界 §12](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#12-proxy-共享读取与写入安全边界2026-11-03mb-04-部分)追踪。
+
+2026-11-03（MB-04 / MR-03 续核）：guard 对账已拆为窄实现，仍在原发布锁内复用 writer 的既有身份核验，不重新授信、不生成凭据，也不承担安装/移除/配置补偿执行权。Core 原发布恢复及 TUN 标记恢复继续保留，MR-03 未新增真实生命周期验收；两平台夹具结果和引用审计见[模块边界 §14](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#14-系统代理-guard-窄执行边界与安全责任审计2026-11-03mb-04-部分)。
+
+2026-11-03（MB-04 / MR-03 TUN 边界）：TUN runtime controller 与设置 writer 已分离，继续共用 publication gate；原受管 publication 对直接 TUN 转换的拒绝保持，未新增受管 TUN 事务支持。安装/移除/配置发布补偿执行权未转移，MR-03 不关闭，详见[边界设计 §15](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#15-tun-运行控制与设置写入执行边界2026-11-03mb-04-部分)。
+
 ## Windows 日常安装入口调整（2026-10-27，MR-03/04/05）
 
 按产品要求，Windows Nginx、Mihomo、frpc/frps 的日常安装采用官方版本列表和文件安装，不再要求管理员先部署签名目录、录入摘要或确认发布源。Nginx 解析 nginx.org 下载页，Mihomo/FRP 解析固定官方 GitHub 仓库的 Releases API（最多三页、每页 5 条，取得首批匹配当前宿主架构的稳定版即返回；启用 HTTP 压缩，排除 draft/prerelease），选择具体版本后走既有安装台账。sing-box 的组件及来源平台配置仅声明 Linux，不支持 Windows；组件中心按通用平台配置过滤，不为 sing-box 编写隐藏特例。此配置描述 RelaxKonOS 的组件支持范围，不表示上游没有 Windows 二进制。

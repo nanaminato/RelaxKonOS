@@ -202,6 +202,11 @@ if (args.Contains("--system-proxy-only"))
     catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
     return;
 }
+if (args.Contains("--proxy-tun-boundary-only"))
+{
+    await ProxyTunBoundaryChecks.RunAsync();
+    return;
+}
 if (args.Contains("--proxy-controller-only"))
 {
     await NetworkProxyTunnelChecks.VerifyMihomoControllerSafetyAsync();
@@ -423,6 +428,12 @@ if (args.Contains("--firewall-read-only"))
     await FirewallReadChecks.RunAsync();
     return;
 }
+if (args.Contains("--proxy-settings-boundary-only"))
+{
+    await ProxySettingsBoundaryChecks.RunAsync();
+    await SystemProxyChecks.RunAsync();
+    return;
+}
 if (args.Contains("--managed-outbound-proxy-only"))
 {
     var proxyRoot = Path.Combine(Path.GetTempPath(), $"relaxkonos-managed-outbound-{Guid.NewGuid():N}");
@@ -562,6 +573,7 @@ try
     }
     if (args.Contains("--proxy-tun-only"))
     {
+        await ProxyTunBoundaryChecks.RunAsync();
         await ProxyConfigurationChecks.VerifyProxyConfigurationTransactionAsync(root);
         await ProxyConfigurationChecks.VerifyProxyTunSafetyAsync(root);
         await ProxyConfigurationChecks.VerifyMihomoTunActivationPreservationAsync(root);
@@ -643,6 +655,7 @@ if (args.Contains("--privileged-helper-socket-only")) { await PrivilegedHelperSo
     await DockerChecks.VerifyStackOperationsAsync(root);
     await ProxyConfigurationChecks.VerifyProxyConfigurationTransactionAsync(root);
     await SquidGatewayChecks.RunAsync();
+    await ProxyTunBoundaryChecks.RunAsync();
     await ProxyConfigurationChecks.VerifyProxyTunSafetyAsync(root);
     await ProxyConfigurationChecks.VerifyMihomoTunActivationPreservationAsync(root);
     await ProxyConfigurationChecks.VerifyHostNetworkSafetyDiscoveryAsync();
@@ -656,6 +669,7 @@ if (args.Contains("--privileged-helper-socket-only")) { await PrivilegedHelperSo
     NetworkProxyTunnelChecks.VerifyTunnelProtocolContract();
     NetworkProxyTunnelChecks.VerifyProxyProtocolContract();
     await HostDataProtectionChecks.RunAsync(Path.Combine(root, "host-data-protection"));
+    await ProxySettingsBoundaryChecks.RunAsync();
     await SystemProxyChecks.RunAsync();
     await NetworkProxyTunnelChecks.VerifyMihomoControllerSafetyAsync();
     await NetworkProxyTunnelChecks.VerifyMihomoLiveStreamsAsync();

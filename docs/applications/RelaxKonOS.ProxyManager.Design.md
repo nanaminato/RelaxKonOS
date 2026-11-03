@@ -1,5 +1,7 @@
 # RelaxKonOS 内置代理管理器实现规范
 
+> 2026-11-03：共享设置观察已改为 Core 的 `IProxySettingsReader` / `ProxySettingsReader`，Docker、运行时下载和安装材料选择不再依赖设置管理实现；系统代理对账与 TUN 控制分别由 `MihomoSystemProxyReconciler`、`MihomoTunRuntimeController` 执行，设置 writer 按调用创建；三者继续共用原发布锁，受管写入/对账仍核验当前身份。损坏元数据拒绝回落默认值，首次安装在凭据/发布意图前以 `runtime.settings_drift` 拒绝。Proxy 的 guard、TUN 恢复与授权到期职责未交接，聚合模块仍常驻，未宣称休眠或生产内存收益。接口与共享读取见边界设计 §12；guard 审计见 §14，当前 TUN/writer 引用、恢复/补偿及锁竞争验证见[边界实施记录 §15](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#15-tun-运行控制与设置写入执行边界2026-11-03mb-04-部分)。
+
 > 2026-11-02：组件中心的 Mihomo 列表、平台/架构与官方归档入口已由[本地 manifest](../platform/RelaxKonOS.ComponentCatalog.Design.md) 声明；GitHub Releases 与制品选择已经过通用注册表，固定仓库与资产身份仍独立核对；安装仍走原代理运行时/发布协调器和安装台账，不由 manifest 执行命令或授信。未新增真实安装、跨版本和恢复验收。
 
 > 文档类型：应用设计与实现规范
@@ -27,7 +29,7 @@
 
 首版按朴素注入在默认 DI 里接到 `MihomoRuntimeService` 上，实测启动即失败：`MihomoRuntimeService → IRuntimeDownloadProxyProvider → IDockerProxyResolver → IProxySettingsService(MihomoSettingsService) → MihomoConfigurationPublicationService → MihomoRuntimeService` 形成构造环。改为在组合根以工厂延迟取得 resolver（路由只在受理操作时读取），并把默认注册检查改成同时注册真实 `DockerProxyResolver`，让该环一旦回归就会在构造期失败。
 
-指定 `192.168.1.7` Debian 13 x64 上，受管运行时常规检查 **1344 项**通过，其中下载专项 **60 项**（真实 CONNECT 代理与真实 HTTPS 源站，见[下载路由与自动重试](../../platform/RelaxKonOS.ManagedRuntimes.Transactions.md#下载路由与自动重试)）。测试机已升级为 `0.1.0-dev20261020-mr03e`（system 模式、LAN、自签证书含 `192.168.1.7`、三类文件策略 full、Guardian 与自启开启、`/healthz` 200、LAN `host-operating-system` 200）。成功路径的两条断言需要进程能采纳测试 CA，本机不具备该环境，按 SKIP 记录。
+指定 `192.168.1.7` Debian 13 x64 上，受管运行时常规检查 **1344 项**通过，其中下载专项 **60 项**（真实 CONNECT 代理与真实 HTTPS 源站，见[下载路由与自动重试](../platform/RelaxKonOS.ManagedRuntimes.Transactions.md#下载路由与自动重试)）。测试机已升级为 `0.1.0-dev20261020-mr03e`（system 模式、LAN、自签证书含 `192.168.1.7`、三类文件策略 full、Guardian 与自启开启、`/healthz` 200、LAN `host-operating-system` 200）。成功路径的两条断言需要进程能采纳测试 CA，本机不具备该环境，按 SKIP 记录。
 
 ### 2026-10-20：生产 HTTP/独立 Helper 全生命周期与资源包
 

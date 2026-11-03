@@ -34,6 +34,12 @@ if (args is ["mihomo-installation-publication-only"])
     return;
 }
 
+if (args is ["mihomo-registration-only"])
+{
+    Console.WriteLine($"Mihomo default publication registration checks passed: {await MihomoRegistrationChecks.RunAsync()}");
+    return;
+}
+
 if (args is ["mihomo-profile-only"])
 {
     Console.WriteLine($"Mihomo profile publication checks passed: {await MihomoProfilePublicationChecks.RunAsync()}");

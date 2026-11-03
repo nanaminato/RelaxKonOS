@@ -22,7 +22,7 @@ public sealed class ProxyConfigurationTransactionService(
     IProxyControllerSecretStore controllerSecrets,
     MihomoControllerOptions controllerOptions,
     MihomoPublicationStore publication,
-    IProxySettingsService? settingsService = null,
+    IProxySettingsReader? settingsService = null,
     ILogger<ProxyConfigurationTransactionService>? logger = null,
     MihomoConfigurationPublicationService? managedPublication = null,
     MihomoRuntimeService? managedRuntime = null) : IProxyConfigurationTransactionService

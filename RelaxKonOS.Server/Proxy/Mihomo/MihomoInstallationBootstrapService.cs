@@ -8,7 +8,7 @@ namespace RelaxKonOS.Server.Proxy.Mihomo;
 /// <summary>Server-owned material selection for the installation ledger. It does not read profile drafts,
 /// stage unverified resources, start a service, or activate host proxy/TUN state.</summary>
 public sealed class MihomoInstallationBootstrapService(MihomoPublicationStore store, MihomoInstallationPublicationService installation,
-    IProxySettingsService settings, IProxyControllerSecretStore secrets, MihomoControllerOptions options)
+    IProxySettingsReader settings, IProxyControllerSecretStore secrets, MihomoControllerOptions options)
 {
     public async Task<MihomoPublicationResult> InstallAsync(Guid operationId, RuntimeChangePlan plan, CancellationToken ct)
     {
@@ -31,7 +31,9 @@ public sealed class MihomoInstallationBootstrapService(MihomoPublicationStore st
             {
                 if (state.LastInstallation?.OperationId == operationId)
                     throw new RuntimePolicyException("runtime.operation_already_completed");
-                var current = await settings.GetAsync(ct);
+                ProxySettingsDto current;
+                try { current = await settings.GetAsync(ct); }
+                catch (InvalidDataException) { throw new RuntimePolicyException("runtime.settings_drift"); }
                 string secret;
                 try { secret = await secrets.GetOrCreateAsync(ct); }
                 catch (ProxyControllerSecretException) { throw new RuntimePolicyException("runtime.credentials_revoked"); }

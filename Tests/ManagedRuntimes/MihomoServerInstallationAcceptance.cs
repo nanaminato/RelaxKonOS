@@ -62,7 +62,7 @@ internal static class MihomoServerInstallationAcceptance
                 && !File.Exists(active), "Real installed receipt precedes Server confirmation even when its response is lost");
             store = new(paths, DataProtectionProvider.Create(keys));
             var restarted = Compose(store);
-            var unusedSettings = MihomoPublicationTransactionChecks.Stub<IProxySettingsService>(_ => throw new Exception("Ledger recovery read settings"));
+            var unusedSettings = MihomoPublicationTransactionChecks.Stub<IProxySettingsReader>(_ => throw new Exception("Ledger recovery read settings"));
             var domain = new MihomoRuntimeInstallationService(store, restarted.Runtime,
                 new(store, restarted.Install, unusedSettings, paths, new()), restarted.Install, new(store, restarted.Runtime, paths, MihomoRemovalHostFixture.Files(paths)), null!, null!);
             var coordinator = new InstallationCoordinator(ledger, [domain], lifetime);

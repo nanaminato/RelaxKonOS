@@ -59,11 +59,15 @@ internal static class ProxyRuntimeRegistration
         // ------------------------------------------------------------------ settings and system proxy
         // Shared by two Core consumers: the installation bootstrap selects material from these
         // settings, and DockerProxyResolver derives the managed outbound proxy endpoint from them.
-        // Moving this into the module would make a Docker build silently fall back to a direct
-        // connection whenever the proxy module is disabled.
+        // Observation and guard reconciliation do not depend on the settings writer/controller graph.
+        // Mutation, TUN and reconciliation still serialize through the same publication store gate.
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Platform.IHostSystemProxyService, RelaxKonOS.Server.Proxy.Platform.HostSystemProxyService>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxySettingsService, RelaxKonOS.Server.Proxy.Mihomo.MihomoSettingsService>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyTunRuntimeController>(services => (RelaxKonOS.Server.Proxy.Mihomo.MihomoSettingsService)services.GetRequiredService<RelaxKonOS.Server.Proxy.IProxySettingsService>());
+        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxySettingsReader, RelaxKonOS.Server.Proxy.ProxySettingsReader>();
+        builder.Services.AddTransient<RelaxKonOS.Server.Proxy.Mihomo.MihomoSettingsService>();
+        builder.Services.AddTransient<RelaxKonOS.Server.Proxy.IProxySettingsWriter>(services => services.GetRequiredService<RelaxKonOS.Server.Proxy.Mihomo.MihomoSettingsService>());
+        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxySystemProxyReconciler, RelaxKonOS.Server.Proxy.Mihomo.MihomoSystemProxyReconciler>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Platform.IProxyTunDeviceObserver, RelaxKonOS.Server.Proxy.Platform.HostProxyTunDeviceObserver>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyTunRuntimeController, RelaxKonOS.Server.Proxy.Mihomo.MihomoTunRuntimeController>();
 
         // Managed runtime lifecycle: the component center and the installation domain install and
         // switch mihomo/sing-box releases through these services.

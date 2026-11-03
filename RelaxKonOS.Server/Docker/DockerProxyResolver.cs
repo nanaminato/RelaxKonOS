@@ -51,7 +51,7 @@ public interface IDockerProxyResolver
 /// Reads the saved preference and turns it into concrete values. The public API never sends a proxy
 /// endpoint, mirroring the image mirror resolver: the value is a server-side decision.
 /// </summary>
-public sealed class DockerProxyResolver(IDockerProxySettingsRepository settings, IProxySettingsService proxySettings) : IDockerProxyResolver
+public sealed class DockerProxyResolver(IDockerProxySettingsRepository settings, IProxySettingsReader proxySettings) : IDockerProxyResolver
 {
     private static readonly TimeSpan CacheLifetime = TimeSpan.FromSeconds(5);
     private readonly object _gate = new();
@@ -137,7 +137,7 @@ public sealed class DockerProxyResolver(IDockerProxySettingsRepository settings,
             var endpoint = $"http://{FormatHost(host)}:{current.MixedPort.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
             return (endpoint, IsListening(host, current.MixedPort));
         }
-        catch (Exception exception) when (exception is InvalidOperationException or IOException)
+        catch (Exception exception) when (exception is InvalidOperationException or IOException or InvalidDataException)
         {
             return (string.Empty, false);
         }
@@ -149,9 +149,15 @@ public sealed class DockerProxyResolver(IDockerProxySettingsRepository settings,
     {
         try
         {
-            // A wildcard listener accepts loopback traffic too, so both are treated as reachable.
+            // A local listener cannot prove that an unrelated remote address is a managed proxy.
+            if (!IPAddress.TryParse(host, out var address)) return false;
+            if (!IPAddress.IsLoopback(address) && !NetworkInterface.GetAllNetworkInterfaces()
+                .Where(network => network.OperationalStatus == OperationalStatus.Up)
+                .SelectMany(network => network.GetIPProperties().UnicastAddresses)
+                .Any(unicast => unicast.Address.Equals(address))) return false;
+            // Wildcard listeners accept local addresses; explicit listeners must match the saved address.
             return IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners()
-                .Any(endpoint => endpoint.Port == port && (IPAddress.IsLoopback(endpoint.Address) || endpoint.Address.Equals(IPAddress.Any) || endpoint.Address.Equals(IPAddress.IPv6Any)));
+                .Any(endpoint => endpoint.Port == port && (endpoint.Address.Equals(address) || endpoint.Address.Equals(IPAddress.Any) || endpoint.Address.Equals(IPAddress.IPv6Any)));
         }
         catch (NetworkInformationException) { return false; }
         catch (SocketException) { return false; }

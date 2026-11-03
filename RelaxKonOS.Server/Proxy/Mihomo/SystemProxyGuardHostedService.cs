@@ -6,7 +6,7 @@ using RelaxKonOS.Server.Proxy;
 namespace RelaxKonOS.Server.Proxy.Mihomo;
 
 /// <summary>Recovers interrupted host proxy writes on startup and maintains the configured Windows/Linux proxy guard.</summary>
-public sealed class SystemProxyGuardHostedService(IProxySettingsService settings, ILogger<SystemProxyGuardHostedService> logger) : BackgroundService
+public sealed class SystemProxyGuardHostedService(IProxySettingsReader settings, IProxySystemProxyReconciler reconciler, ILogger<SystemProxyGuardHostedService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -19,7 +19,7 @@ public sealed class SystemProxyGuardHostedService(IProxySettingsService settings
                 var current = await settings.GetAsync(stoppingToken);
                 var options = current.SystemProxy ?? ProxySystemProxyOptionsDto.Default;
                 delay = TimeSpan.FromSeconds(Math.Clamp(options.GuardIntervalSeconds, 5, 3_600));
-                var problem = await settings.ReconcileSystemProxyAsync(startup, stoppingToken);
+                var problem = await reconciler.ReconcileSystemProxyAsync(startup, stoppingToken);
                 if (problem is null) startup = false;
                 if (problem is not null) logger.LogWarning("System proxy reconciliation failed. ProblemCode={ProblemCode}", problem);
             }

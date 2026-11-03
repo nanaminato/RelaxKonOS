@@ -255,6 +255,7 @@ try
     Check(await service.UninstallAsync(keepData: false, default) is null, "Uninstall discarding data");
     var wiped = await service.ReadAsync(default);
     Check(wiped.Credentials.Count == 0 && wiped.Configuration.Revision == 0, "Discarding data wipes every record");
+    await ExpiryBoundaryChecks.RunAsync();
     Console.WriteLine("Proxy server configuration, principals, credentials, subscriptions, encryption, publication, rollback, expiry, export and idempotency checks passed.");
 }
 finally { Directory.Delete(root, true); }

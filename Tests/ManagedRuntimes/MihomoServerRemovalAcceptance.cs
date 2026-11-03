@@ -114,11 +114,11 @@ internal static class MihomoServerRemovalAcceptance
             return result;
         }
     }
-    private sealed class UnreadableSettings : IProxySettingsService
+    private sealed class UnreadableSettings : IProxySettingsReader
     {
         public Task<ProxySettingsDto> GetAsync(CancellationToken ct) => throw new Exception("Retained reinstall read current settings");
-        public Task<string?> UpdateAsync(UpdateProxySettingsRequest request, CancellationToken ct) => throw new Exception("Retained reinstall changed settings");
-        public Task<string?> ReconcileSystemProxyAsync(bool startup, CancellationToken ct) => throw new Exception("Retained reinstall changed host proxy");
+
+
     }
     private sealed class Paths(string root, string secret) : IProxyPlatformPaths, IProxyControllerSecretStore, IServerModeResolver
     {

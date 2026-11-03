@@ -113,7 +113,7 @@ public sealed record ProxySubscriptionDownload(Uri Uri, string Content);
 /// <summary>Bounded subscription downloader that always rejects loopback, private and link-local targets.</summary>
 public sealed class ProxySubscriptionDownloader(
     IHttpClientFactory httpClientFactory,
-    IProxySettingsService settingsService,
+    IProxySettingsReader settingsService,
     ILogger<ProxySubscriptionDownloader>? logger = null) : IProxySubscriptionDownloader
 {
     private const int MaximumBytes = 1_048_576;

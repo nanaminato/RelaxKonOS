@@ -1,3 +1,5 @@
+using System.Net;
+using Microsoft.Win32;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.Privileged;
@@ -38,7 +40,43 @@ public sealed class HostSystemProxyService(IPrivilegedOperationTransport transpo
             };
         }
         if (!settings.SystemProxyEnabled && !previous.SystemProxyEnabled) return null;
-        return Mihomo.MihomoSettingsService.ApplyWindowsSystemProxy(settings.SystemProxyEnabled,
+        return ApplyWindowsSystemProxy(settings.SystemProxyEnabled,
             settings.SystemProxyHost, settings.MixedPort, options) ? null : ProxyProblemCodes.PrivilegedOperationUnavailable;
     }
+    private static bool ApplyWindowsSystemProxy(bool enabled, string host, int port, ProxySystemProxyOptionsDto options)
+    {
+        if (!OperatingSystem.IsWindows()) return !enabled;
+        // HKCU belongs to the Server service account in System Mode, not the signed-in desktop
+        // user.  Silently changing it is both ineffective and surprising.  A future per-user
+        // companion must apply this setting in that user's session.
+        if (!Environment.UserInteractive) return false;
+        try
+        {
+            using var key = Registry.CurrentUser.CreateSubKey("Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings", writable: true);
+            if (key is null) return false;
+            key.SetValue("ProxyEnable", enabled ? 1 : 0, RegistryValueKind.DWord);
+            key.SetValue("AutoDetect", enabled && options.UsePac ? 1 : 0, RegistryValueKind.DWord);
+            if (enabled)
+            {
+                var proxyHost = IPAddress.TryParse(host, out var address) && address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
+                    ? "[" + host + "]"
+                    : host;
+                key.SetValue("ProxyServer", proxyHost + ":" + port.ToString(System.Globalization.CultureInfo.InvariantCulture), RegistryValueKind.String);
+                key.SetValue("ProxyOverride", BuildBypassList(options), RegistryValueKind.String);
+            }
+            return true;
+        }
+        catch (UnauthorizedAccessException) { return false; }
+        catch (System.Security.SecurityException) { return false; }
+    }
+
+    private static string BuildBypassList(ProxySystemProxyOptionsDto options)
+    {
+        const string defaults = "<local>;localhost;127.*;10.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;172.21.*;172.22.*;172.23.*;172.24.*;172.25.*;172.26.*;172.27.*;172.28.*;172.29.*;172.30.*;172.31.*;192.168.*";
+        var custom = options.BypassList.Trim().Trim(';');
+        return options.UseDefaultBypass
+            ? string.IsNullOrWhiteSpace(custom) ? defaults : defaults + ";" + custom
+            : custom;
+    }
+
 }

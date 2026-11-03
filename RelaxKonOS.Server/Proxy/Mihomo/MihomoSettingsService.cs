@@ -1,9 +1,7 @@
 using System.Text.Json;
 using System.Net;
 using System.Net.NetworkInformation;
-using System.Diagnostics;
 using System.Text.RegularExpressions;
-using Microsoft.Win32;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.ManagedRuntimes;
@@ -22,13 +20,10 @@ public sealed class MihomoSettingsService(
     ILogger<MihomoSettingsService>? logger = null,
     MihomoConfigurationPublicationService? managedPublication = null,
     MihomoRuntimeService? managedRuntime = null,
-    MihomoSettingsPublicationFiles? settingsFiles = null) : IProxySettingsService, IProxyTunRuntimeController
+    MihomoSettingsPublicationFiles? settingsFiles = null) : IProxySettingsWriter
 {
     private static readonly HashSet<string> LogLevels = new(StringComparer.OrdinalIgnoreCase) { "silent", "error", "warning", "info", "debug" };
     private SemaphoreSlim _gate => publication.Gate;
-
-    public async Task<ProxySettingsDto> GetAsync(CancellationToken cancellationToken) =>
-        await ReadAsync(cancellationToken) ?? Defaults;
 
     public async Task<string?> UpdateAsync(UpdateProxySettingsRequest request, CancellationToken cancellationToken)
     {
@@ -51,7 +46,7 @@ public sealed class MihomoSettingsService(
         {
             var state = await publication.ReadAsync(cancellationToken);
             if (state.Pending is not null) return ProxyProblemCodes.RecoveryRequired;
-            var previous = await ReadAsync(cancellationToken) ?? Defaults;
+            var previous = await ReadAsync(cancellationToken);
             if (state.Published is not null)
                 return await UpdateManagedUnderGateAsync(settings, previous, state, cancellationToken);
             if (await publication.UncoordinatedWriteProblemAsync(cancellationToken) is { } publicationProblem) return publicationProblem;
@@ -123,6 +118,7 @@ public sealed class MihomoSettingsService(
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
         }
         catch (RuntimePolicyException) { return ProxyProblemCodes.RecoveryRequired; }
+        catch (InvalidDataException) { return ProxyProblemCodes.RecoveryRequired; }
         catch (IOException) { return ProxyProblemCodes.ConfigApplyFailed; }
         catch (UnauthorizedAccessException) { return ProxyProblemCodes.PrivilegedOperationUnavailable; }
         catch (ArgumentException) { return ProxyProblemCodes.ConfigInvalid; }
@@ -135,7 +131,7 @@ public sealed class MihomoSettingsService(
         if (managedPublication is null || managedRuntime is null || settingsFiles is null) return ProxyProblemCodes.NotSupported;
         try
         {
-            var observed = await VerifyManagedAsync(state, ct);
+            var observed = await MihomoManagedPublicationVerification.VerifyAsync(paths, controllerSecrets, managedRuntime, state, ct);
             var candidate = MihomoSettingsPublicationFiles.Candidate(state.Published!, settings);
             if (MihomoConfigurationPolicy.Validate(candidate).Material.NetworkTransitionRequired)
                 return ProxyProblemCodes.NotSupported;
@@ -148,148 +144,12 @@ public sealed class MihomoSettingsService(
             return result.Outcome == MihomoPublicationOutcome.Confirmed ? null
                 : result.Outcome == MihomoPublicationOutcome.RecoveryRequired ? ProxyProblemCodes.RecoveryRequired : ProxyProblemCodes.ConfigApplyFailed;
         }
-        catch (Exception ex) when (ex is RuntimePolicyException or RuntimeLifecycleException or IOException or ProxyControllerSecretException)
+        catch (Exception ex) when (ex is RuntimePolicyException or RuntimeLifecycleException or IOException or InvalidDataException or ProxyControllerSecretException)
         { return ProxyProblemCodes.RecoveryRequired; }
     }
 
-    private async Task<RuntimeInstallationSnapshot> VerifyManagedAsync(MihomoPublicationState state, CancellationToken ct)
-    {
-        if (managedRuntime is null || state.Published is null || state.Pending is not null)
-            throw new RuntimePolicyException("runtime.publication_unconfirmed");
-        // ReadExisting never repairs or regenerates a revoked credential.
-        if (await controllerSecrets.ReadExistingAsync(ct) != state.Published.ControllerSecret)
-            throw new RuntimePolicyException("runtime.credentials_revoked");
-        if (await new MihomoPublicationFiles(paths).IdentityAsync(ct) != state.Identity)
-            throw new RuntimePolicyException("runtime.configuration_drift");
-        var observed = await managedRuntime.QueryHelperAsync(ct);
-        if (observed.Installation.Ownership != RuntimeOwnership.Managed || observed.ActiveRevisionId is null
-            || observed.PendingOperationId is not null || observed.Installation.RecoveryRequired || observed.ConfigurationIdentity != state.Identity)
-            throw new RuntimePolicyException("runtime.publication_unconfirmed");
-        return observed;
-    }
-
-    public async Task<string?> ReconcileSystemProxyAsync(bool startup, CancellationToken cancellationToken)
-    {
-        await _gate.WaitAsync(cancellationToken);
-        try
-        {
-            var state = await publication.ReadAsync(cancellationToken);
-            if (state.Pending is not null) return ProxyProblemCodes.RecoveryRequired;
-            if (state.Published is not null) await VerifyManagedAsync(state, cancellationToken);
-            else if (await publication.UncoordinatedWriteProblemAsync(cancellationToken) is { } publicationProblem) return publicationProblem;
-            var settings = await ReadAsync(cancellationToken) ?? Defaults;
-            if (state.Published is not null && settingsFiles is not null)
-                await settingsFiles.CaptureAsync(settings, settings, cancellationToken);
-            var guarded = settings.SystemProxyEnabled && settings.SystemProxy?.GuardEnabled == true;
-            if (!startup && !guarded) return null;
-            return await systemProxyService.ApplyAsync(settings, settings, enforce: guarded, cancellationToken);
-        }
-        catch (Exception ex) when (ex is RuntimePolicyException or RuntimeLifecycleException or IOException or ProxyControllerSecretException)
-        { return ProxyProblemCodes.RecoveryRequired; }
-        finally { _gate.Release(); }
-    }
-
-    public async Task<string?> SetEnabledAsync(RelaxKonOS.Server.Proxy.Platform.ProxyManagementRouteSnapshot snapshot, bool enabled, CancellationToken cancellationToken)
-    {
-        await _gate.WaitAsync(cancellationToken);
-        try
-        {
-            if (await publication.UncoordinatedWriteProblemAsync(cancellationToken) is { } publicationProblem) return publicationProblem;
-            var active = Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml");
-            if (!File.Exists(active)) return ProxyProblemCodes.RuntimeNotInstalled;
-            var settings = await ReadAsync(cancellationToken) ?? Defaults;
-            var original = await File.ReadAllTextAsync(active, cancellationToken);
-            var exclusions = enabled ? BuildTunRouteExclusions(snapshot) : [];
-            var updated = MihomoManagedConfiguration.WithManagedTunSettings(original, settings, enabled, exclusions);
-            var temporary = active + ".tun-" + Guid.NewGuid().ToString("N");
-            try
-            {
-                await File.WriteAllTextAsync(temporary, updated, cancellationToken);
-                SetPrivateFile(temporary);
-                File.Move(temporary, active, overwrite: true);
-                // A recovery transition can run while Mihomo is intentionally stopped (for
-                // example after the Windows Server process was restarted). Do not send a reload
-                // to a controller that was already unavailable: ReloadAsync correctly gives an
-                // in-flight reload up to 30 seconds to reconnect, but that wait is incorrect
-                // when there was no running controller before the transition began.
-                var controllerAvailable = await controller.IsReachableAsync(cancellationToken);
-                if (!controllerAvailable.Succeeded)
-                {
-                    logger?.LogWarning("Mihomo TUN configuration was persisted but not reloaded because its controller was already unavailable. Enabled={Enabled} ProblemCode={ProblemCode}",
-                        enabled, controllerAvailable.ProblemCode);
-                    return controllerAvailable.ProblemCode;
-                }
-                var reload = await controller.ReloadAsync(cancellationToken);
-                if (string.IsNullOrEmpty(reload))
-                {
-                    // Mihomo's reload endpoint acknowledges the configuration before the TUN
-                    // adapter is necessarily created.  On Windows, accepting that acknowledgement
-                    // alone used to report a successful activation even after Wintun logged
-                    // "Access is denied".  Require the configured adapter to become active.
-                    var tunDeviceName = (settings.Tun ?? ProxyTunSettingsDto.Default).DeviceName;
-                    if (enabled && !await WaitForWindowsTunDeviceAsync(tunDeviceName, cancellationToken))
-                    {
-                        await File.WriteAllTextAsync(active, original, cancellationToken);
-                        SetPrivateFile(active);
-                        await controller.ReloadAsync(CancellationToken.None);
-                        logger?.LogWarning("Mihomo TUN configuration transition was rolled back because the Windows TUN adapter did not become active. DeviceName={DeviceName}", tunDeviceName);
-                        return ProxyProblemCodes.TunActivationFailed;
-                    }
-                    logger?.LogInformation("Mihomo TUN configuration transition completed. Enabled={Enabled} EgressInterface={EgressInterface} ExclusionCount={ExclusionCount}",
-                        enabled, snapshot.EgressInterface, exclusions.Count);
-                    return null;
-                }
-
-                await File.WriteAllTextAsync(active, original, cancellationToken);
-                SetPrivateFile(active);
-                await controller.ReloadAsync(CancellationToken.None);
-                logger?.LogWarning("Mihomo TUN configuration transition was rolled back after controller reload failed. Enabled={Enabled} ProblemCode={ProblemCode}", enabled, reload);
-                return reload;
-            }
-            finally { if (File.Exists(temporary)) File.Delete(temporary); }
-        }
-        catch (IOException exception)
-        {
-            logger?.LogWarning(exception, "Mihomo TUN configuration transition failed because its protected configuration could not be written.");
-            return ProxyProblemCodes.ConfigApplyFailed;
-        }
-        catch (UnauthorizedAccessException exception)
-        {
-            logger?.LogWarning(exception, "Mihomo TUN configuration transition was denied access to its protected configuration.");
-            return ProxyProblemCodes.PrivilegedOperationUnavailable;
-        }
-        catch (ArgumentException) { return ProxyProblemCodes.ConfigInvalid; }
-        finally { _gate.Release(); }
-    }
-
-    /// <summary>Reports the engine's own view of its TUN flag.  A controller that cannot answer
-    /// yields an unobserved result rather than a false "disabled", because callers use a negative
-    /// answer to discard durable state.</summary>
-    public async Task<ProxyTunRuntimeObservation> IsEnabledAsync(CancellationToken cancellationToken)
-    {
-        var observation = await controller.GetTunEnabledAsync(cancellationToken);
-        return observation.Succeeded
-            ? new ProxyTunRuntimeObservation(true, observation.Value!)
-            : new ProxyTunRuntimeObservation(false, false, observation.ProblemCode);
-    }
-
-    private async Task<ProxySettingsDto?> ReadAsync(CancellationToken cancellationToken)
-    {
-        var path = Path.Combine(paths.GetStateDirectory(), "mihomo-settings.json");
-        if (!File.Exists(path)) return null;
-        try
-        {
-            await using var input = File.OpenRead(path);
-            var settings = await JsonSerializer.DeserializeAsync<ProxySettingsDto>(input, cancellationToken: cancellationToken);
-            return settings is null ? null : settings with
-            {
-                Tun = settings.Tun ?? ProxyTunSettingsDto.Default,
-                SystemProxy = settings.SystemProxy ?? ProxySystemProxyOptionsDto.Default,
-            };
-        }
-        catch (JsonException) { return null; }
-    }
-
+    private Task<ProxySettingsDto> ReadAsync(CancellationToken cancellationToken) =>
+        ProxySettingsReader.ReadAsync(paths, cancellationToken);
 
     private async Task WriteAsync(ProxySettingsDto settings, CancellationToken cancellationToken)
     {
@@ -298,33 +158,6 @@ public sealed class MihomoSettingsService(
         var temporary = path + ".new";
         await using (var output = File.Create(temporary)) await JsonSerializer.SerializeAsync(output, settings, cancellationToken: cancellationToken);
         File.Move(temporary, path, overwrite: true);
-    }
-
-    internal static bool ApplyWindowsSystemProxy(bool enabled, string host, int port, ProxySystemProxyOptionsDto options)
-    {
-        if (!OperatingSystem.IsWindows()) return !enabled;
-        // HKCU belongs to the Server service account in System Mode, not the signed-in desktop
-        // user.  Silently changing it is both ineffective and surprising.  A future per-user
-        // companion must apply this setting in that user's session.
-        if (!Environment.UserInteractive) return false;
-        try
-        {
-            using var key = Registry.CurrentUser.CreateSubKey("Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings", writable: true);
-            if (key is null) return false;
-            key.SetValue("ProxyEnable", enabled ? 1 : 0, RegistryValueKind.DWord);
-            key.SetValue("AutoDetect", enabled && options.UsePac ? 1 : 0, RegistryValueKind.DWord);
-            if (enabled)
-            {
-                var proxyHost = IPAddress.TryParse(host, out var address) && address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
-                    ? "[" + host + "]"
-                    : host;
-                key.SetValue("ProxyServer", proxyHost + ":" + port.ToString(System.Globalization.CultureInfo.InvariantCulture), RegistryValueKind.String);
-                key.SetValue("ProxyOverride", BuildBypassList(options), RegistryValueKind.String);
-            }
-            return true;
-        }
-        catch (UnauthorizedAccessException) { return false; }
-        catch (System.Security.SecurityException) { return false; }
     }
 
     private static bool CanPersistWithoutRuntime(ProxySettingsDto previous, ProxySettingsDto updated) =>
@@ -363,71 +196,16 @@ public sealed class MihomoSettingsService(
         && options.BypassList.Length <= 4_096
         && options.BypassList.All(character => !char.IsControl(character));
 
-    private static string BuildBypassList(ProxySystemProxyOptionsDto options)
-    {
-        const string defaults = "<local>;localhost;127.*;10.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;172.21.*;172.22.*;172.23.*;172.24.*;172.25.*;172.26.*;172.27.*;172.28.*;172.29.*;172.30.*;172.31.*;192.168.*";
-        var custom = options.BypassList.Trim().Trim(';');
-        return options.UseDefaultBypass
-            ? string.IsNullOrWhiteSpace(custom) ? defaults : defaults + ";" + custom
-            : custom;
-    }
-
     private static bool IsValidDnsHijack(string value)
     {
         var match = Regex.Match(value, "^(?:(?:tcp|udp)://)?(?:any|[0-9A-Fa-f:.]+):(\\d{1,5})$", RegexOptions.CultureInvariant);
         return match.Success && int.TryParse(match.Groups[1].Value, out var port) && port is > 0 and <= 65535;
     }
 
-    private static ProxySettingsDto Defaults => MihomoSettingsPublicationFiles.Defaults;
-
-    internal static IReadOnlyList<string> BuildTunRouteExclusions(RelaxKonOS.Server.Proxy.Platform.ProxyManagementRouteSnapshot snapshot)
-    {
-        var values = new List<string> { "127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16" };
-        if (IPAddress.TryParse(snapshot.DefaultGateway, out var gateway))
-            values.Add(ToRoutePrefix(gateway));
-        foreach (var value in snapshot.ManagementAddresses)
-            if (IPAddress.TryParse(value, out var address) && !IPAddress.IsLoopback(address))
-                values.Add(ToRoutePrefix(address));
-        return values;
-    }
-
-    private static string ToRoutePrefix(IPAddress address)
-    {
-        if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork) return address + "/32";
-
-        // Windows represents a link-local IPv6 address as e.g. fe80::1%11. The
-        // scope identifies a local interface, but it is not part of an IP prefix
-        // and Mihomo correctly rejects fe80::1%11/128 as invalid CIDR syntax.
-        var unscoped = address.ScopeId == 0 ? address : new IPAddress(address.GetAddressBytes());
-        return unscoped + "/128";
-    }
-
-    private static void SetPrivateFile(string path)
-    {
-        if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-    }
 
     private static void SetPrivateDirectory(string path)
     {
         if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
     }
 
-    private static async Task<bool> WaitForWindowsTunDeviceAsync(string deviceName, CancellationToken cancellationToken)
-    {
-        if (!OperatingSystem.IsWindows()) return true;
-        var deadline = Stopwatch.GetTimestamp() + Stopwatch.Frequency * 10;
-        while (Stopwatch.GetTimestamp() < deadline)
-        {
-            try
-            {
-                if (NetworkInterface.GetAllNetworkInterfaces().Any(network =>
-                    string.Equals(network.Name, deviceName, StringComparison.OrdinalIgnoreCase)
-                    && network.OperationalStatus == OperationalStatus.Up))
-                    return true;
-            }
-            catch (NetworkInformationException) { return false; }
-            await Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken);
-        }
-        return false;
-    }
 }

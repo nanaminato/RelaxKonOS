@@ -69,23 +69,21 @@ sealed class FixtureHttpClientFactory(byte[] payload, string? redirect = null, I
     }
 }
 
-sealed class StaticProxySettingsService : IProxySettingsService
+sealed class StaticProxySettingsService : IProxySettingsReader
 {
     public Task<ProxySettingsDto> GetAsync(CancellationToken cancellationToken) =>
         Task.FromResult(new ProxySettingsDto(false, false, true, true, false, "warning", 7890));
 
-    public Task<string?> ReconcileSystemProxyAsync(bool startup, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
-    public Task<string?> UpdateAsync(UpdateProxySettingsRequest request, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
+
 }
 
 /// <summary>Proxy settings whose mixed port is chosen by the test, so listener probing is deterministic.</summary>
-sealed class TestProxySettingsService(int mixedPort) : IProxySettingsService
+sealed class TestProxySettingsService(int mixedPort) : IProxySettingsReader
 {
     public Task<ProxySettingsDto> GetAsync(CancellationToken cancellationToken) =>
         Task.FromResult(new ProxySettingsDto(false, false, true, true, false, "warning", mixedPort));
 
-    public Task<string?> ReconcileSystemProxyAsync(bool startup, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
-    public Task<string?> UpdateAsync(UpdateProxySettingsRequest request, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
+
 }
 
 sealed class StaticProxySecretStore : IProxyControllerSecretStore
@@ -232,6 +230,7 @@ sealed class TransactionTestEngine : IProxyEngine
 
 sealed class TestProxyNetworkSafetyPlatform : IProxyNetworkSafetyPlatform
 {
+    public bool RestoreSucceeds { get; set; } = true;
     public bool SnapshotSafe { get; set; }
     public bool ApplySucceeds { get; set; } = true;
     public bool ManagementRouteVerifies { get; set; } = true;
@@ -240,7 +239,7 @@ sealed class TestProxyNetworkSafetyPlatform : IProxyNetworkSafetyPlatform
     public Task<ProxyManagementRouteSnapshot?> CaptureManagementRouteAsync(IPAddress? managementAddress, CancellationToken cancellationToken) => Task.FromResult<ProxyManagementRouteSnapshot?>(new("test", DateTimeOffset.UtcNow, SnapshotSafe, "eth0", "192.0.2.1", ["loopback", "relaxkonos-listeners"], managementAddress is null ? [] : [managementAddress.ToString()]));
     public Task<bool> ApplyTunAsync(ProxyManagementRouteSnapshot snapshot, CancellationToken cancellationToken) { ApplyCount++; return Task.FromResult(ApplySucceeds); }
     public Task<bool> VerifyManagementRouteAsync(ProxyManagementRouteSnapshot snapshot, CancellationToken cancellationToken) => Task.FromResult(ManagementRouteVerifies);
-    public Task<bool> RestoreAsync(ProxyManagementRouteSnapshot snapshot, CancellationToken cancellationToken) { RestoreCount++; return Task.FromResult(true); }
+    public Task<bool> RestoreAsync(ProxyManagementRouteSnapshot snapshot, CancellationToken cancellationToken) { RestoreCount++; return Task.FromResult(RestoreSucceeds); }
 }
 
 sealed class TestProxyTunRuntimeController : IProxyTunRuntimeController

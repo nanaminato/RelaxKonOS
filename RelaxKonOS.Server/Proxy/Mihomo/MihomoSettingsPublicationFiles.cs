@@ -19,12 +19,7 @@ public sealed record MihomoSettingsPublication([property: JsonRequired] string? 
 /// Every caller owns the publication gate; failures leave the encrypted intent pending for recovery.</summary>
 public sealed class MihomoSettingsPublicationFiles(IProxyPlatformPaths paths, IHostSystemProxyService systemProxy)
 {
-    internal static readonly ProxySettingsDto Defaults = new(false, false, true, true, false, "warning", 7890,
-        false, "127.0.0.1", ProxyTunSettingsDto.Default, ProxySystemProxyOptionsDto.Default);
     private string SettingsPath => Path.Combine(paths.GetStateDirectory(), "mihomo-settings.json");
-    private const int MaximumBytes = 64 * 1024;
-    internal static ProxySettingsDto Normalize(ProxySettingsDto settings) => settings with
-    { Tun = settings.Tun ?? ProxyTunSettingsDto.Default, SystemProxy = settings.SystemProxy ?? ProxySystemProxyOptionsDto.Default };
 
     internal async Task<MihomoSettingsPublication> CaptureAsync(ProxySettingsDto previous, ProxySettingsDto candidate, CancellationToken ct)
     {
@@ -33,13 +28,13 @@ public sealed class MihomoSettingsPublicationFiles(IProxyPlatformPaths paths, IH
         {
             try
             {
-                var current = JsonSerializer.Deserialize<ProxySettingsDto>(bytes);
-                if (current is null || Normalize(current) != Normalize(previous)) Fail();
+                var current = ProxySettingsReader.Decode(bytes);
+                if (current != ProxySettingsReader.Normalize(previous)) Fail();
             }
-            catch (JsonException) { Fail(); }
+            catch (InvalidDataException) { Fail(); }
         }
-        else if (Normalize(previous) != Defaults) Fail();
-        var intent = new MihomoSettingsPublication(bytes is null ? null : Identity(bytes), Normalize(previous), Normalize(candidate));
+        else if (ProxySettingsReader.Normalize(previous) != ProxySettingsReader.Defaults) Fail();
+        var intent = new MihomoSettingsPublication(bytes is null ? null : Identity(bytes), ProxySettingsReader.Normalize(previous), ProxySettingsReader.Normalize(candidate));
         Validate(intent);
         return intent;
     }
@@ -47,11 +42,11 @@ public sealed class MihomoSettingsPublicationFiles(IProxyPlatformPaths paths, IH
     internal async Task<MihomoSettingsPublication> CaptureRemovalAsync(CancellationToken ct)
     {
         var bytes = await ReadBytesAsync(ct);
-        var previous = Defaults;
+        var previous = ProxySettingsReader.Defaults;
         if (bytes is not null)
         {
-            try { previous = Normalize(JsonSerializer.Deserialize<ProxySettingsDto>(bytes) ?? throw new JsonException()); }
-            catch (JsonException) { Fail(); }
+            try { previous = ProxySettingsReader.Decode(bytes); }
+            catch (InvalidDataException) { Fail(); }
         }
         var intent = await CaptureAsync(previous, previous with { SystemProxyEnabled = false }, ct);
         ValidateRemoval(intent);
@@ -92,7 +87,7 @@ public sealed class MihomoSettingsPublicationFiles(IProxyPlatformPaths paths, IH
         foreach (var value in new[] { settings.Previous, settings.Candidate })
             if (value.MixedPort is < 1 or > 65535 || value.SystemProxyHost is not { Length: > 0 and <= 128 }
                 || value.LogLevel is not ("silent" or "error" or "warning" or "info" or "debug")
-                || value.Tun is null || value.SystemProxy is null || JsonSerializer.SerializeToUtf8Bytes(value).Length > MaximumBytes) Fail();
+                || value.Tun is null || value.SystemProxy is null || JsonSerializer.SerializeToUtf8Bytes(value).Length > ProxySettingsReader.MaximumBytes) Fail();
     }
 
     internal async Task VerifyAsync(MihomoSettingsPublication intent, bool allowCandidate, CancellationToken ct)
@@ -142,7 +137,7 @@ public sealed class MihomoSettingsPublicationFiles(IProxyPlatformPaths paths, IH
         if (Directory.Exists(SettingsPath)) Fail();
         if (!File.Exists(SettingsPath)) return null;
         await using var input = new FileStream(SettingsPath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
-        if (input.Length is 0 or > MaximumBytes) Fail();
+        if (input.Length is 0 or > ProxySettingsReader.MaximumBytes) Fail();
         var bytes = new byte[checked((int)input.Length)]; await input.ReadExactlyAsync(bytes, ct);
         return bytes;
     }

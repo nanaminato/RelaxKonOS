@@ -10,7 +10,7 @@ internal static class SystemProxyChecks
         using (var fixture = new Fixture())
         {
             var original = await File.ReadAllTextAsync(fixture.Active);
-            var current = await fixture.Service.GetAsync(default);
+            var current = await fixture.Reader.GetAsync(default);
             fixture.Host.Capabilities = new(false, false, false, false);
             TestAssert.Assert(await fixture.Service.UpdateAsync(Request(current with { SystemProxyEnabled = true }), default) == ProxyProblemCodes.NotSupported,
                 "Unavailable writer was enabled.");
@@ -21,19 +21,19 @@ internal static class SystemProxyChecks
             fixture.Host.Problem = ProxyProblemCodes.SystemProxyConflict;
             TestAssert.Assert(await fixture.Service.UpdateAsync(Request(current with { SystemProxyEnabled = true, MixedPort = 8123 }), default) == ProxyProblemCodes.SystemProxyConflict,
                 "Host conflict was discarded.");
-            TestAssert.Assert(await File.ReadAllTextAsync(fixture.Active) == original && !(await fixture.Service.GetAsync(default)).SystemProxyEnabled,
+            TestAssert.Assert(await File.ReadAllTextAsync(fixture.Active) == original && !(await fixture.Reader.GetAsync(default)).SystemProxyEnabled,
                 "Failed host application did not roll back YAML and saved settings.");
             fixture.Host.Problem = ProxyProblemCodes.PrivilegedOperationUnavailable;
             TestAssert.Assert(await fixture.Service.UpdateAsync(Request(current with { MixedPort = 8123 }), default) is null,
                 "Absent helper blocked an unrelated setting while the proxy was disabled.");
-            TestAssert.Assert(await fixture.Service.ReconcileSystemProxyAsync(true, default) == ProxyProblemCodes.PrivilegedOperationUnavailable,
+            TestAssert.Assert(await fixture.Reconciler.ReconcileSystemProxyAsync(true, default) == ProxyProblemCodes.PrivilegedOperationUnavailable,
                 "Startup hid unavailable recovery.");
         }
         using (var fixture = new Fixture())
         {
-            var current = await fixture.Service.GetAsync(default);
+            var current = await fixture.Reader.GetAsync(default);
             var original = await File.ReadAllTextAsync(fixture.Active);
-            Directory.CreateDirectory(Path.Combine(fixture.Paths.GetStateDirectory(), "mihomo-settings.json")); // Inject persistence failure.
+            fixture.Host.BeforeApply = () => Directory.CreateDirectory(Path.Combine(fixture.Paths.GetStateDirectory(), "mihomo-settings.json")); // Fail persistence after the valid read and host apply.
             TestAssert.Assert(await fixture.Service.UpdateAsync(Request(current with { SystemProxyEnabled = true }), default) == ProxyProblemCodes.ConfigApplyFailed,
                 "Failed persistence was reported as a successful proxy enable.");
             TestAssert.Assert(fixture.Host.Calls.Count == 2 && !fixture.Host.Calls[1].Settings.SystemProxyEnabled && fixture.Host.Calls[1].Enforce,
@@ -42,35 +42,48 @@ internal static class SystemProxyChecks
         }
         using (var fixture = new Fixture())
         {
-            var current = await fixture.Service.GetAsync(default);
+            var current = await fixture.Reader.GetAsync(default);
             var enabled = current with { SystemProxyEnabled = true, MixedPort = 8123, SystemProxy = ProxySystemProxyOptionsDto.Default with { GuardEnabled = true } };
             TestAssert.Assert(await fixture.Service.UpdateAsync(Request(enabled), default) is null, "Supported Linux writer was rejected.");
-            TestAssert.Assert((await fixture.Service.GetAsync(default)).SystemProxyEnabled, "Applied settings were not saved.");
-            await fixture.Service.ReconcileSystemProxyAsync(false, default);
+            TestAssert.Assert((await fixture.Reader.GetAsync(default)).SystemProxyEnabled, "Applied settings were not saved.");
+            await fixture.Reconciler.ReconcileSystemProxyAsync(false, default);
             TestAssert.Assert(fixture.Host.Calls[^1].Enforce, "Configured guard did not enforce the host proxy.");
             var before = fixture.Host.Calls.Count;
             fixture.Host.BlockNext = true;
             var disable = fixture.Service.UpdateAsync(Request(enabled with { SystemProxyEnabled = false }), default);
             await fixture.Host.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            var guard = fixture.Service.ReconcileSystemProxyAsync(false, default);
+            var guard = fixture.Reconciler.ReconcileSystemProxyAsync(false, default);
+            TestAssert.Assert(!guard.IsCompleted, "Guard must wait on the writer's shared publication gate.");
             fixture.Host.Release.TrySetResult();
             TestAssert.Assert(await disable is null && await guard is null, "Concurrent disable/guard failed.");
             TestAssert.Assert(fixture.Host.Calls.Count == before + 1 && !fixture.Host.Calls[^1].Settings.SystemProxyEnabled,
                 "Stale guard reapplied the proxy after it was disabled.");
-            await fixture.Service.ReconcileSystemProxyAsync(true, default);
+            await fixture.Reconciler.ReconcileSystemProxyAsync(true, default);
             TestAssert.Assert(!fixture.Host.Calls[^1].Settings.SystemProxyEnabled, "Startup did not attempt root-side cleanup while disabled.");
         }
         using (var fixture = new Fixture())
         {
-            var current = await fixture.Service.GetAsync(default);
+            var current = await fixture.Reader.GetAsync(default);
             var original = await File.ReadAllTextAsync(fixture.Active);
             await fixture.Publication.BeginAsync(Guid.NewGuid(), 0,
                 new RelaxKonOS.Protocol.ManagedRuntimes.MihomoPublishedRuntime("# pending publication\n", [], 9090,
                     "pending-controller-secret", [new("127.0.0.1", 7890)]), default);
             TestAssert.Assert(await fixture.Service.UpdateAsync(Request(current with { MixedPort = 8123 }), default) == ProxyProblemCodes.RecoveryRequired
-                && await fixture.Service.ReconcileSystemProxyAsync(true, default) == ProxyProblemCodes.RecoveryRequired
+                && await fixture.Reconciler.ReconcileSystemProxyAsync(true, default) == ProxyProblemCodes.RecoveryRequired
                 && await File.ReadAllTextAsync(fixture.Active) == original && fixture.Host.Calls.Count == 0,
                 "Settings or the system-proxy guard bypassed a pending managed publication.");
+        }
+        using (var fixture = new Fixture())
+        {
+            await fixture.Publication.Gate.WaitAsync();
+            using var cancelled = new CancellationTokenSource();
+            var guard = fixture.Reconciler.ReconcileSystemProxyAsync(true, cancelled.Token);
+            cancelled.Cancel();
+            try { await guard; throw new Exception("Cancelled guard acquired a busy publication gate."); }
+            catch (OperationCanceledException) { }
+            finally { fixture.Publication.Gate.Release(); }
+            TestAssert.Assert(fixture.Host.Calls.Count == 0 && await fixture.Reconciler.ReconcileSystemProxyAsync(true, default) is null,
+                "Cancelled guard must not write or release another owner's gate; a later pass remains usable.");
         }
         Console.WriteLine("System proxy capability, PAC gating, apply/persist rollback, concurrent guard and pending publication checks passed.");
     }
@@ -83,6 +96,8 @@ internal static class SystemProxyChecks
         public TestProxyPaths Paths { get; }
         public HostWriter Host { get; } = new();
         public MihomoSettingsService Service { get; }
+        public IProxySystemProxyReconciler Reconciler => new MihomoSystemProxyReconciler(Paths, Reader, new StaticProxySecretStore(), Host, Publication);
+        public IProxySettingsReader Reader => new ProxySettingsReader(Paths);
         public MihomoPublicationStore Publication { get; }
         public string Active => Path.Combine(Paths.GetProtectedConfigurationDirectory(), "active.yaml");
         public Fixture()
@@ -102,12 +117,14 @@ internal static class SystemProxyChecks
         public readonly List<(ProxySettingsDto Settings, bool Enforce)> Calls = [];
         public string? Problem;
         public bool BlockNext;
+        public Action? BeforeApply;
         public TaskCompletionSource Started = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Task<ProxySystemProxyCapabilities> GetCapabilitiesAsync(CancellationToken cancellationToken) => Task.FromResult(Capabilities);
         public async Task<string?> ApplyAsync(ProxySettingsDto settings, ProxySettingsDto previous, bool enforce, CancellationToken cancellationToken)
         {
             Calls.Add((settings, enforce));
+            var before = BeforeApply; BeforeApply = null; before?.Invoke();
             if (BlockNext) { BlockNext = false; Started.TrySetResult(); await Release.Task.WaitAsync(cancellationToken); }
             return Problem;
         }

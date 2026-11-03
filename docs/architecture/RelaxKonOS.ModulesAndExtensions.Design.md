@@ -339,7 +339,7 @@ Docker 不能像 Terminal/Git 那样整体迁入：审计发现同一个 `RelaxK
 
 - mihomo 运行时传输：`IProxyPlatformPaths`、`MihomoControllerOptions`、`IProxyControllerSecretStore`、`IMihomoControllerClient`、`IProxyPrivilegedOperations`、`IProxyDiagnosticLogStore`、`MihomoRuntimeManifest`、`IMihomoRuntimeProbe`、`MihomoRuntimeManager`。
 - mihomo 发布台账：`MihomoPublicationStore`、`MihomoRuntimeAuthorizationProvider`、`MihomoSettingsPublicationFiles`、配置/安装/引导/移除四个发布服务，以及 `MihomoPublicationRecoveryService` 恢复循环。理由是 `Installations.MihomoRuntimeInstallationService` 在安装流程里直接驱动这条链路，且中断的发布是「未解决的权威」，不能随 UI 一起消失。
-- 代理设置与系统代理：`IProxySettingsService`/`MihomoSettingsService`、`IHostSystemProxyService`。两个 Core 消费者：安装引导从这些设置里选材；`Docker.DockerProxyResolver` 用它们推导受管出站代理——若随模块消失，禁用代理界面会让 Docker 构建静默回落到直连（正是本设计第 5 节点名的失败模式）。
+- 代理设置与系统代理（2026-11-03 边界更新）：Core 只读 `IProxySettingsReader`/`ProxySettingsReader`；写入/对账为 `IProxySettingsWriter`/`IProxySystemProxyReconciler`，继续由同一 `MihomoSettingsService` 与 `IHostSystemProxyService` 承担。两个 Core 消费者：安装引导从这些设置里选材；`Docker.DockerProxyResolver` 用它们推导受管出站代理——若随模块消失，禁用代理界面会让 Docker 构建静默回落到直连（正是本设计第 5 节点名的失败模式）。
 - sing-box：`SingBoxRuntimeService`、`ProxyServerStore`、`ProxyServerRuntimeAuthorizationProvider`、`IProxyServerCertificateSource`。`TaskOrchestration` 的 sing-box 观测/对账/恢复域、`Components.SingBoxComponentAdapter`、`RuntimeCatalogEndpoints` 与 `Installations.SingBoxInstallationService` 都直接依赖。
 - 存储适配：`IProxyProfileRepository`、`IProxySubscriptionRepository` 仍按存储提供程序注册在 `StorageStartup`；Core 的配置发布读取前者，缺失时以 `runtime.profile_publication_required` fail-closed。
 
@@ -432,3 +432,5 @@ Docker 不能像 Terminal/Git 那样整体迁入：审计发现同一个 `RelaxK
 ## 服务端模块管理关联设计
 
 “组件中心 → 服务端模块”的目标入口、启用集合、计划/操作协议、重启核实及实施跟踪由[服务端模块管理完整设计](RelaxKonOS.ServerModuleManagement.Design.md)统一规定。本文的包信任与模块边界继续有效；管理界面和新增写入路由均未因设计发布而实现。
+
+2026-11-03 MB-04 已完成 Proxy 共享读取与写入/对账接口分离和 Host 平台原语归属调整；恢复/guard/到期职责交接及 Proxy 休眠仍开放，见[边界实施记录](RelaxKonOS.ServerModuleBoundaries.Design.md#12-proxy-共享读取与写入安全边界2026-11-03mb-04-部分)。

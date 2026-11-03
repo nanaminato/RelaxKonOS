@@ -110,7 +110,7 @@ internal static class MihomoServerPublicationAcceptance
             var profileId = profile.Id;
             var engine = MihomoPublicationTransactionChecks.Stub<IProxyEngine>(method => method.Name == "get_EngineId"
                 ? "mihomo" : throw new Exception("Application used fixed runtime engine"));
-            var settings = MihomoPublicationTransactionChecks.Stub<IProxySettingsService>(method => method.Name == "GetAsync"
+            var settings = MihomoPublicationTransactionChecks.Stub<IProxySettingsReader>(method => method.Name == "GetAsync"
                 ? Task.FromResult(new ProxySettingsDto(false, false, false, false, false, "warning", originalPort + 2, false, "127.0.0.1", ProxyTunSettingsDto.Default))
                 : throw new Exception("Unexpected settings call"));
             var application = new ProxyConfigurationTransactionService(paths, new ProxyEngineRegistry([engine]), profiles, paths,
@@ -181,13 +181,13 @@ internal static class MihomoServerPublicationAcceptance
                 await startup.StartAsync(default);
                 await startup.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(15));
             }
-            Check((await store.ReadAsync(default)).Pending is null && (await SettingsService().GetAsync(default)).MixedPort == originalPort + 4
+            Check((await store.ReadAsync(default)).Pending is null && (await new ProxySettingsReader(paths).GetAsync(default)).MixedPort == originalPort + 4
                 && transport.ConfigureCalls == beforeRecovery && await probe(originalPort + 4),
                 "Startup settings recovery confirms real Helper receipt and resumes settings without native replay");
             var beforeMetadata = await lifecycle.QueryAsync(default);
             Check(await SettingsService().UpdateAsync(settingsRequest with { AllowInsecureSubscriptionSources = true }, default) is null
                 && transport.ConfigureCalls == beforeRecovery && (await lifecycle.QueryAsync(default)).Installation.StateRevision == beforeMetadata.Installation.StateRevision
-                && (await SettingsService().GetAsync(default)).AllowInsecureSubscriptionSources && await probe(originalPort + 4),
+                && (await new ProxySettingsReader(paths).GetAsync(default)).AllowInsecureSubscriptionSources && await probe(originalPort + 4),
                 "Host-only settings persist without a real runtime transaction or service restart");
             restore = await PlanAsync(original);
             if ((await Service(store).PublishAsync(restore.Operation, restore.Revision, restore.Plan, original, default)).Outcome != MihomoPublicationOutcome.Confirmed)

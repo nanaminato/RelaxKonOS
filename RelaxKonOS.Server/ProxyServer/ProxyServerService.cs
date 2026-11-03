@@ -22,7 +22,7 @@ public sealed class ProxyServerService(
     IPrivilegedOperationTransport helper,
     IServerModeResolver mode,
     IProxyEngineRegistry engines,
-    IProxyServerCertificateSource? certificates = null)
+    IProxyServerCertificateSource? certificates = null) : IProxyServerExpiryExecutor
 {
     private static readonly TimeSpan ReceiptLifetime = TimeSpan.FromDays(7);
 
@@ -628,19 +628,4 @@ public sealed class ProxyServerService(
     }
 
     internal static string Hash(string text) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
-}
-
-public sealed class ProxyServerExpiryService(ProxyServerService service, ILogger<ProxyServerExpiryService> logger) : BackgroundService
-{
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
-        do
-        {
-            try { await service.ReconcileExpiryAsync(stoppingToken); }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
-            catch (ProxyServerException) { logger.LogInformation("Proxy server credential expiry is not applied yet; the runtime or a pending transaction reported a problem."); }
-            catch (Exception) { logger.LogWarning("Proxy server credential expiry could not be applied; inspect runtime and recovery state."); }
-        } while (await timer.WaitForNextTickAsync(stoppingToken));
-    }
 }

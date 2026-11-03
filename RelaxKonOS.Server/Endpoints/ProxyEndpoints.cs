@@ -12,8 +12,8 @@ public static class ProxyEndpoints
     {
         app.MapGet(ProxyApiRoutes.Overview, (IProxyLifecycleService service, CancellationToken ct) => service.GetOverviewAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
         app.MapGet(ProxyApiRoutes.Runtime, (IProxyRuntimeManager runtime, CancellationToken ct) => runtime.GetAsync("mihomo", ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
-        app.MapGet(ProxyApiRoutes.Settings, (IProxySettingsService settings, CancellationToken ct) => settings.GetAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
-        app.MapPut(ProxyApiRoutes.Settings, async (UpdateProxySettingsRequest request, IProxySettingsService settings, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
+        app.MapGet(ProxyApiRoutes.Settings, (IProxySettingsReader settings, CancellationToken ct) => settings.GetAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
+        app.MapPut(ProxyApiRoutes.Settings, async (UpdateProxySettingsRequest request, IProxySettingsWriter settings, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
         {
             var problem = await settings.UpdateAsync(request, ct);
             await audit.RecordAsync(Actor(context.User), "settings.update", string.IsNullOrEmpty(problem) ? "succeeded" : "failed", problem, ct);

@@ -406,7 +406,9 @@ Check(defaults.Capabilities.SetEquals([ServerCapabilities.Terminal, ServerCapabi
         builder.AddProxyRuntimeServices();
         var backbone = new[]
         {
-            typeof(RelaxKonOS.Server.Proxy.IProxySettingsService),
+            typeof(RelaxKonOS.Server.Proxy.IProxySettingsReader),
+            typeof(RelaxKonOS.Server.Proxy.IProxySettingsWriter),
+            typeof(RelaxKonOS.Server.Proxy.IProxySystemProxyReconciler),
             typeof(RelaxKonOS.Server.Proxy.Mihomo.MihomoPublicationStore),
             typeof(RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeManager),
             typeof(RelaxKonOS.Server.ManagedRuntimes.SingBoxRuntimeService),

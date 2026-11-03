@@ -22,14 +22,13 @@ namespace RelaxKonOS.Server.Startup.Modules;
 /// <item><c>TaskOrchestration</c> runs sing-box recovery/reconciliation, and
 /// <c>Components.SingBoxComponentAdapter</c> / <c>RuntimeCatalogEndpoints</c> report it, so
 /// <c>SingBoxRuntimeService</c> and the proxy-server store it reads stay in Core.</item>
-/// <item><c>Docker.DockerProxyResolver</c> reads <c>IProxySettingsService</c> to derive the managed
-/// outbound proxy, and the mihomo installation bootstrap writes through the same settings service,
-/// so the settings service itself cannot move without silently changing what a Docker build uses.</item>
+/// <item><c>Docker.DockerProxyResolver</c> reads <c>IProxySettingsReader</c> to derive the managed
+/// outbound proxy, and the mihomo installation bootstrap reads the same saved intent,
+/// so the lightweight reader remains in Core while the settings writer can be migrated separately.</item>
 /// </list>
-/// This module therefore owns the parts that only answer HTTP clients: engine adapters, lifecycle,
-/// operations/audit ledgers, subscription downloading, TUN safety, the proxy server operations and
-/// the Squid gateway. Recovery workers keep running from Core when the module is disabled, which is
-/// the ordering this design requires: recovery first, then optional surfaces.
+/// This module owns management surfaces and the existing TUN/system-proxy/expiry workers. Core
+/// publication recovery survives module disable; the other durable duties have not been handed off.
+/// Until that handoff is verified, this aggregate module must not claim dynamic memory release.
 /// </summary>
 internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuard
 {
@@ -129,7 +128,10 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
 
         // Proxy server operations (sing-box inbound). The runtime, its store and its authorization
         // provider stay in Core because task orchestration and installation drive them directly.
-        builder.Services.AddSingleton<ProxyServerService>();
+        // Operations retain their own instance until completion; the expiry timer resolves a
+        // fresh executor per pass. The singleton store remains the sole serialization gate.
+        builder.Services.AddTransient<ProxyServerService>();
+        builder.Services.AddTransient<IProxyServerExpiryExecutor>(services => services.GetRequiredService<ProxyServerService>());
         builder.Services.AddHostedService<ProxyServerExpiryService>();
 
         // Squid gateway: configuration plus lifecycle through the privileged Helper.

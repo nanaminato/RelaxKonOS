@@ -25,7 +25,7 @@
 - `Startup/ServerModules.cs` 在启动时固定模块集合，依次注册 DI 和映射 Endpoint；`DescribeAsync` 报告依赖与停用阻止项，`ValidateDeactivationAsync` 检查持久工作。
 - `Identity/AuthSessionStore.cs` 保存刷新令牌并支持轮换和吊销；不能直接将其中记录数量当成模块使用人数。`SessionValidityService` 与认证端点已有会话过期处理，需要在成功提交退出后接入统一活动通知，不能把刷新轮换当成退出。
 - `Startup/Modules/ProxyModule.cs` 合并 Mihomo 管理、订阅、TUN、sing-box 管理和 Squid 网关，并拥有恢复、系统代理守护及到期处理等后台工作。它并非只有 HTTP 表面，不能整体视为随时可释放。
-- `Startup/ProxyRuntimeRegistration.cs` 已把运行时发布、共享设置及部分恢复保留在 Core。`DockerProxyResolver` 直接读取 `IProxySettingsService`；当前并不是 Docker 通过模块 `Requires` 依赖整个 Proxy。需要处理的是服务所有权和实例引用，而不仅是模块清单。
+- `Startup/ProxyRuntimeRegistration.cs` 已把运行时发布、共享设置及部分恢复保留在 Core。`DockerProxyResolver` 已通过 `IProxySettingsReader` 读取轻量设置快照（2026-11-03，边界设计 §12）；当前并不是 Docker 通过模块 `Requires` 依赖整个 Proxy。需要处理的是服务所有权和实例引用，而不仅是模块清单。
 
 ## 3. 生命周期与并发
 
@@ -272,3 +272,9 @@ Git 命令端口保留结构化文件名、参数、环境与超时规则，取�
 2026-11-03 后续：Git CLI/构建执行器已移入可回收的独立程序集，原模块租约继续拥有业务调用和后台责任；真实 ALC 循环验证、打包边界及未完成项由[边界设计 §10](RelaxKonOS.ServerModuleBoundaries.Design.md#10-git-执行切片实施2026-11-03mb-0203-部分)拥有。§13 的合成对象测试仍是原范围，不替代后续代码回收记录。
 
 2026-11-03 仓库后续：Git 仓库全部 partial 实现已移入同一可回收程序集，以窄存储/身份/文件端口保持 Host 权威；真实仓库/凭据/控制台后的 100 轮代码回收与保留完成请求验证通过，详见[边界设计 §11](RelaxKonOS.ServerModuleBoundaries.Design.md#11-git-仓库实现与-host-端口2026-11-03mb-0203-后续)。这不扩大真实 BuildKit、生产内存或其他模块的验收范围。
+
+2026-11-03 Proxy 后续：共享读取与设置写入/系统代理对账接口已分离，Host 平台原语不再引用管理类；Proxy 尚未取得动态释放边界，安全/恢复 worker 的所有权和执行时机未改变。详见[边界设计 §12](RelaxKonOS.ServerModuleBoundaries.Design.md#12-proxy-共享读取与写入安全边界2026-11-03mb-04-部分)。
+
+2026-11-03 MB-04 续核：到期 worker 的真实异步释放检查已补跑 Linux；系统代理 guard 对账已与设置 writer/控制器客户端分离，仍使用原发布 gate 与身份核验。TUN marker 恢复及发布补偿保持原单一责任方和根引用，Proxy 继续 resident，不声明代码回收或生产内存收益；详见[边界设计 §14](RelaxKonOS.ServerModuleBoundaries.Design.md#14-系统代理-guard-窄执行边界与安全责任审计2026-11-03mb-04-部分)。
+
+2026-11-03 MB-04 TUN 续核：运行控制已脱离 settings writer，后者按调用创建；安全 owner、marker、两级锁和 Core 发布恢复仍保留。验证覆盖生产执行器的启停/补偿/恢复与竞争夹具，不扩大为实机网络事务、代码回收或生产内存收益。当前事实见[边界设计 §15](RelaxKonOS.ServerModuleBoundaries.Design.md#15-tun-运行控制与设置写入执行边界2026-11-03mb-04-部分)。
