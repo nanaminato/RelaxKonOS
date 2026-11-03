@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using RelaxKonOS.Client.Services.AppPackages;
+using RelaxKonOS.Client.Services.Developer;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -106,6 +107,13 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
                 : CurrentPackage.IsUpdate ? "app_installer.status.updated" : "app_installer.status.installed", installed.DisplayName, installed.Version);
             CurrentPackage = null;
             ShowNext();
+        }
+        catch (PackageStorageUnavailableException exception)
+        {
+            // The drive keeps a single fixed package folder, so this failure is environmental rather
+            // than a broken package: name the folder and what to do about it.
+            Status = LocalizedText.Ref("app_installer.status.storage_unavailable", exception.Folder);
+            await ReportAsync(LocalizedText.Get("app_installer.error.install_title"), Status);
         }
         catch (Exception exception)
         {

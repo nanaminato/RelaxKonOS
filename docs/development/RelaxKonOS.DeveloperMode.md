@@ -59,6 +59,19 @@ dotnet run --project /path/to/RelaxKonOS/Tools/RelaxKonOS.DevCli -- pack ./MyApp
 
 对原生应用每个运行时标识符使用一个包，例如 `--runtime win-x64` 和 `--runtime linux-x64`，并在清单中声明兼容的客户端平台。纯托管应用通常省略 `--runtime` 并生成一个跨平台包。当清单不在项目旁边时使用 `--manifest <path>`，使用 `--output <file.roapp>` 覆盖制品位置，并在 `watch` 命令中使用 `--no-install` 在不联系 Shell 的情况下重建包。
 
+`pack` 需要一个当前进程能写的中转目录，按 `--work-dir` → `RELAXKONOS_DEVCLI_TMP` → 系统临时目录 → `%LOCALAPPDATA%\RelaxKonOS\DevCli` → `<项目>/.tmp/devcli` 的顺序取第一个通过写入探测的位置，并在使用非默认项时打印 `Scratch:`。受限宿主（应用容器、收紧的终端、杀软策略）会把系统临时目录和用户级 NuGet 缓存对 .NET 进程关闭；此时 CLI 会把子进程的 `TMP`/`TEMP` 指向同一中转根，并在默认包目录不可写时把 `NUGET_PACKAGES`、`NUGET_HTTP_CACHE_PATH` 改到 `<中转根>/nuget` 下并打印 `NuGet cache:`，因此打包会在工作区内完成而不是以权限错误终止。中转根可随时删除，代价是下次重新下载包。
+
+安装包与运行客户端同样受这层边界限制：VSD 根固定为 `%LOCALAPPDATA%\RelaxKonOS\SystemDrive`，若客户端是从被沙箱限制的位置（例如仓库内的 `bin/<Configuration>/<TFM>`）启动的，写入 `Programs/External` 会被拒绝，安装以 `vsd.package.storage-unavailable` 失败并在安装器里指名该目录。要自测安装，请把构建输出复制到不受限的目录后再从那里启动客户端：
+
+```bash
+dotnet build Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj -c Debug
+robocopy Client/RelaxKonOS.Client.Desktop/bin/Debug/net10.0 %LOCALAPPDATA%\RelaxKonOS\ClientDev /E
+```
+
+`ClientDev` 只是客户端数据根下的一个普通副本目录，与 VSD 的 `SystemDrive` 并列，随时可以删除。
+
+两个客户端实例共用同一份 VSD，因此从副本安装的包在 IDE 里启动时同样可见；反过来，被限制的实例仍然无法安装。
+
 ## 开发包格式
 
 `.roapp` 文件是一个 ZIP 归档，具有以下最小结构：

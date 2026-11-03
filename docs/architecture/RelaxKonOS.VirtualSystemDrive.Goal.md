@@ -111,6 +111,9 @@ SystemDrive/
 - `current.json` 仅含 Host 生成的版本标识。它的目标必须是同一 AppId 下的现有版本目录，且没有路径穿越。
 - 内置应用目录只有 descriptor，不能出现可由 descriptor 选择的本地 DLL 入口。
 - 删除外置包是逻辑卸载（从 Catalog 注销、关闭其窗口、撤销可加载状态）；文件被锁定时允许下次启动清理，不报告为应用仍已安装。
+- 安装是一次 VSD 写入，因此 `Programs/External` 不可写（只读、被其他账户占用或被沙箱策略拒绝）时安装必须失败，且失败必须指名该目录，而不是宿主内部的 `.staging/<id>` 路径。诊断码固定为 `vsd.package.storage-unavailable`，安装器据此提示“修正目录权限，或在不受限制的位置运行客户端”。
+- VSD Root 固定为 `{LocalApplicationData}/RelaxKonOS/SystemDrive`，安装不得为了绕过拒绝而改写到临时目录、工作区或其它盘符；只有可重建的索引和诊断文件可以静默降级。
+- 每次安装的中转目录是 `.staging/<id>`，在安装结束（成功或失败）后删除；启动时清理上次进程被终止而遗留的 `.staging/*`，清理失败只记录诊断。
 
 ## 4. 应用描述文件与可信来源
 

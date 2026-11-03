@@ -390,3 +390,43 @@ Mihomo/FRP GitHub Releases 元数据启用 HTTP 压缩，每页由 30 条缩为 
 - 表格化测试改为断言新的主从布局、窄/宽切换、分区切换、筛选、只读边界、动作行原因、计划目标名称及三语言无未解析键；截图更新为 `server-module-management.png`、`server-module-wide.png`、`server-module-actions.png`、`server-module-plan.png`、`server-module-packages.png`、`server-module-security.png`、`server-module-consents.png` 和 `server-module-readonly.png`。
 
 验证：桌面客户端构建通过；ApplicationLayout `--modules-only` 通过。自动布局检查不代替 150%/200% DPI、真实 Linux 主机与真实只读管理员账户的人工验收。
+
+## Docker 无法纳入管理：代理 drop-in 使包身份永久不可核验（2026-11-02）
+
+症状：Docker Engine 在宿主上可正常使用，组件中心却始终没有“纳入管理”，更新与卸载也不出现。
+
+根因在 Helper 的服务归属核验，不在客户端、权限或 Docker 本身。`OwnsPackageServiceAsync` 把 `/etc/systemd/system/<unit>.d` 与 `/run/systemd/system/<unit>.d` 一律当作管理员覆盖而拒绝；而 Docker 的代理只能通过单元的启动环境变量配置（`daemon.json` 对原生 Linux 守护进程无效），Helper 自己的 `ConfigureDockerEngineProxyAsync` 就会写 `/etc/systemd/system/docker.service.d/http-proxy.conf`，官方文档给出的手写做法也是同一路径。结果是“配置过代理”的引擎 `VerifyInstalledPackageAsync` 返回 null → `InstalledPackage` 为空 → 桌面端 `ShowRegisterPackage`/`CanChangeInstalledPackage` 全部为 false：受管包既不能纳入管理，也不能更新或卸载，且界面不给原因。关闭代理时只删除文件、不删除变空的目录，因此即使撤销代理也无法恢复。
+
+处理：
+
+- 判据改为“会不会改变执行”。`ManagedServiceOverride` 成为 drop-in 形状的唯一来源：只接受 Helper 写的那一个固定路径、无子目录/链接、每个 `*.conf` 仅由 `[Service]` 下的 `Environment=` 组成且变量名限定为 `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`/`ALL_PROXY`（大小写两套）。出现 `ExecStart=`、`EnvironmentFile=`、其它 section 或非代理变量仍按管理员覆盖拒绝，因此接受代理配置不会掩盖被替换的字节或启动命令。`OwnsPackageServiceAsync` 与 `InstallComponentPackageAsync` 共用同一判定，更新/卸载不再与状态读取分叉。
+- 关闭代理时一并删除变空的 `docker.service.d`，不留无法解释的空 drop-in 目录。
+- 身份不可核验但版本可读时，`ComponentStateView.Problems` 新增 `component.package_identity_unverified`（`HostPackageComponentAdapter.StateProblems`），桌面端三语已有文案，用户能看到“为什么不能纳入管理”，而不是动作静默消失。
+
+验证（本机 Windows）：`Tests/ManagedRuntimes -- docker-service-override-only` 13 项通过，覆盖 Helper 自有形状、手写代理 drop-in、空目录，以及 `ExecStart=`／其它 section／`LD_PRELOAD=`／`EnvironmentFile=`／无 section 赋值／不可读文件六种拒绝；`RelaxKonOS.Server.Tests -- --components-only` 267 项通过，新增 4 项状态问题断言。整库构建因桌面客户端正在运行而无法覆盖 `RelaxKonOS.Client.Desktop`，受影响项目（ManagedRuntimes、PrivilegedHelper、Server、两个测试工程）单独构建 0 错误。
+
+未验证：未在真实 Linux 宿主上复核“配置代理后状态带身份、可纳入管理”的完整链路，也未执行真实登记；`/run/systemd/system/docker.service.d` 运行时 drop-in 仍按管理员覆盖拒绝（有意保守）。
+
+### 实机日志：登记成功后卡在“存在未完成的恢复操作”（2026-11-02，Ubuntu 26.04 / Docker CE 29.8.2）
+
+宿主 `/etc/systemd/system/docker.service.d/http-proxy.conf` 真实存在（`HTTP(S)_PROXY=http://127.0.0.1:7890`，正是 drop-in 被一刀切拒绝的那份），部署新的 Helper 后组件状态立刻从“身份不可核验”变成“已安装 5:29.8.2-1~ubuntu26.04~resolute”。随后点“纳入管理”，Server 日志（UTC）为：
+
+```
+14:39:25-28  ComponentPackageQuery   Success=True   (四次状态刷新，docker 身份已可核验)
+14:39:31     ComponentPackageRecover Success=True   (registration.json + 恢复证明已落盘)
+14:39:32     ComponentPackageQuery   Success=False  ProblemCode=Conflict   ← 同一个 OperationId 的证明回读失败
+```
+
+根因是恢复证明的读写不对称：`WriteRegistrationRecovery` 写 `ComponentRecoveryReceipt(operationId, Guid.Empty, RegisterPackage)`，而 `QueryComponentPackageAsync` 读回时要求 `TargetOperationId != Guid.Empty`，于是自己刚写的证明被判为 `Invalid recovery identity` → `Conflict` → `ExecuteRecoveryAsync` 拿不到 receipt，抛 `component.package_recovery_required`，台账把这次 Repair 记为失败并显示“存在未完成的恢复操作”。登记本身其实已经成功，只是成功证明读不回来。
+
+处理：判定抽成 `PackageIdentityPolicy.ValidRecoveryReceipt(receipt, operationId)` —— 登记（唯一没有原操作的动作）允许空 `TargetOperationId`，其余动作仍要求非空；Helper 回读走同一判定。Server 侧 `ExecuteRecoveryAsync`/`RecoverAsync` 的既有比较（`TargetOperationId == request.OperationId`，登记的 request.OperationId 也是空）本来就与之一致，无需改动。
+
+验证：`RelaxKonOS.Server.Tests -- --components-only` **272 项**通过（新增 5 条：登记证明有效、证明不能顶替别的操作、Stop 缺目标被拒、Close 带目标有效、缺失证明被拒）。已核验宿主侧 `dpkg --verify docker-ce` 与 `dpkg --audit` 均为空、`/usr/lib/systemd/system/docker.service` 归属 docker-ce，因此修复后重试登记应当成功；未在宿主重放该次登记。
+
+### 同一宿主上的第三个问题：`~` 版本让候选无法冻结（可用版本显示“—”）
+
+宿主 `apt-cache policy docker-ce` 与 `apt-get install --print-uris` 都能正常给出 `5:29.9.2-1~ubuntu.26.04~resolute`，但 Helper 返回的 `Candidate` 为 null（只有 `CandidateVersion`），桌面端因此显示“可用版本: —”、更新按钮不可用。原因是 `AptPackageResolution` 的**版本**字符集允许 `~`（Debian 上游版本的前置标记），**文件名**字符集却没有：`TryBuildTarget` 拒绝所有依赖文件，`problemCode = component.package_unresolved`。Docker 的四个依赖文件名全部含 `~`（`containerd.io_2.4.2-3~ubuntu.26.04~resolute_amd64.deb` 等），于是整份候选被丢弃。Debian 的 nginx/squid 版本不含 `~`，所以这个缺陷只在厂商仓库（Docker、Tailscale、sing-box）上暴露。
+
+处理：`AptPackageResolution` 的两处 `.deb` 文件名白名单（`TryBuildTarget` 的依赖循环、`SafeFileName`）加入 `~`，并用真实 apt 输出加回归（`Tests/ManagedRuntimes -- component-package-resolution-only`，5 项：policy 解析、5 行 URI 计划解析、候选冻结、仓库/池路径/依赖闭包核对、含 `;` 的文件名仍拒绝）。反向验证：去掉白名单里的 `~` 后该组第 3 项立即变红。
+
+未验证：未在宿主重新冻结候选或执行真实更新；`Candidate` 变可用后，更新仍受 `DockerPackagePolicyReady`（受授权仓库 + 访问用户）与冻结/执行流程约束。

@@ -12,6 +12,7 @@ public static class VirtualSystemDriveProblemCode
     public const string DuplicateAppId = "vsd.app-id.duplicate";
     public const string BuiltInMismatch = "vsd.builtin.mismatch";
     public const string PackageLayoutInvalid = "vsd.package.layout.invalid";
+    public const string PackageStorageUnavailable = "vsd.package.storage-unavailable";
     public const string ShortcutInvalid = "vsd.shortcut.invalid";
     public const string ScriptInvalid = "vsd.script.invalid";
 }

@@ -19,9 +19,15 @@ internal static class LocalInstallationCloseChecks
         var center = new ServerCenterViewModel(null!, null!, null!, null!, null!, null!, null!, localization);
         // Any accidental installation would fail instead of invoking a real launcher.
         var installer = new LocalWindowsServerInstaller(null!, null!, null!);
-        using var provider = new ServiceCollection().AddSingleton(localization).AddSingleton(center).AddSingleton(installer).BuildServiceProvider();
         var property = typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!;
-        var previous = property.GetValue(null);
+        var previous = (IServiceProvider?)property.GetValue(null);
+        var services = new ServiceCollection().AddSingleton(localization).AddSingleton(center).AddSingleton(installer);
+        // The wizard's XAML resolves its labels through LocExtension, which asks the host service
+        // provider for the client LocalizationService. This check swaps the host provider for a
+        // minimal one, so the host's instance has to be carried over or the XAML fails to load.
+        services.AddSingleton(previous?.GetService<LocalizationService>()
+            ?? new LocalizationService(new ShellSettings(null!), new SshDesktopSession(null!, new ShellSettings(null!))));
+        using var provider = services.BuildServiceProvider();
         property.SetValue(null, provider);
         try
         {

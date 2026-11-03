@@ -35,25 +35,31 @@
 
     <Grid RowDefinitions="*,Auto" PointerPressed="Desktop_OnPointerPressed">
         <Grid x:Name="DesktopArea" Focusable="True" Grid.Row="0" ClipToBounds="True" Background="{Binding Wallpaper}">
-            <Grid.ContextMenu>
-                <ContextMenu>
-                    <MenuItem Header="{Binding View}">
-                        <MenuItem Header="{Binding ShowDesktopIcons}" ToggleType="CheckBox"
-                                  IsChecked="{Binding AreDesktopIconsVisible}"
-                                  Command="{Binding ToggleDesktopIconsCommand}" />
-                    </MenuItem>
-                    <MenuItem Header="{Binding RefreshDesktop}" Command="{Binding RefreshDesktopCommand}" />
-                    <MenuItem Header="{Binding Paste}" Command="{Binding PasteDesktopCommand}" />
-                    <Separator />
-                    <MenuItem Header="{Binding ConfigureDesktopDisplay}" Command="{Binding OpenDisplaySettingsCommand}" />
-                    <Separator />
-                    <MenuItem Header="{Binding OpenDesktopFolder}" Command="{Binding OpenDesktopFolderCommand}" />
-                    <MenuItem Header="{Binding OpenFileExplorer}" Command="{Binding OpenFileExplorerCommand}" />
-                    <MenuItem Header="{Binding OpenTerminal}" Command="{Binding OpenTerminalCommand}" />
-                    <Separator />
-                    <MenuItem Header="{Binding Personalization}" Command="{Binding OpenPersonalizationCommand}" />
-                </ContextMenu>
-            </Grid.ContextMenu>
+            <!-- The desktop menu belongs to the wallpaper surface, not to DesktopArea: DesktopArea is
+                 an ancestor of WindowHost, so a menu hung on it would also answer a right click that
+                 happens inside an application window. This border sits below the icons and windows,
+                 exactly where the empty desktop is. -->
+            <Border x:Name="DesktopBackdrop" Background="Transparent">
+                <Border.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="{Binding View}">
+                            <MenuItem Header="{Binding ShowDesktopIcons}" ToggleType="CheckBox"
+                                      IsChecked="{Binding AreDesktopIconsVisible}"
+                                      Command="{Binding ToggleDesktopIconsCommand}" />
+                        </MenuItem>
+                        <MenuItem Header="{Binding RefreshDesktop}" Command="{Binding RefreshDesktopCommand}" />
+                        <MenuItem Header="{Binding Paste}" Command="{Binding PasteDesktopCommand}" />
+                        <Separator />
+                        <MenuItem Header="{Binding ConfigureDesktopDisplay}" Command="{Binding OpenDisplaySettingsCommand}" />
+                        <Separator />
+                        <MenuItem Header="{Binding OpenDesktopFolder}" Command="{Binding OpenDesktopFolderCommand}" />
+                        <MenuItem Header="{Binding OpenFileExplorer}" Command="{Binding OpenFileExplorerCommand}" />
+                        <MenuItem Header="{Binding OpenTerminal}" Command="{Binding OpenTerminalCommand}" />
+                        <Separator />
+                        <MenuItem Header="{Binding Personalization}" Command="{Binding OpenPersonalizationCommand}" />
+                    </ContextMenu>
+                </Border.ContextMenu>
+            </Border>
             <!-- This is a required surface for shell-hosted modal input. It must not consume
                  ordinary desktop clicks while no modal dialog is active. -->
             <Border x:Name="InputBackdrop" IsHitTestVisible="False" />

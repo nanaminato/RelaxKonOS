@@ -22,6 +22,7 @@
         "app_installer.status.updated": "{0} {1} を更新しました。",
         "app_installer.status.installed": "{0} {1} をインストールしました。",
         "app_installer.status.install_failed": "インストールに失敗しました: {0}",
+        "app_installer.status.storage_unavailable": "インストールに失敗しました: パッケージフォルダー {0} に書き込めません。フォルダーのアクセス許可を確認するか、サンドボックスで制限されていない場所から RelaxKonOS を実行してください。",
         "app_installer.error.install_title": "インストールに失敗しました",
         "app_installer.status.skipped": "パッケージをスキップしました。",
         "app_installer.status.confirm_update": "このアプリケーションの更新を確認してください。",

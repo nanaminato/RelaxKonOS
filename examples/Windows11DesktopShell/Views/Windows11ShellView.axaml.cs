@@ -138,11 +138,16 @@ public partial class Windows11ShellView : UserControl
     public Panel ShellOverlaySurface => ShellOverlayHost;
     public Control InputBackdropSurface => InputBackdrop;
 
+    /// <summary>The wallpaper surface that owns the desktop menu, below icons and managed windows.</summary>
+    public Control DesktopBackdropSurface => DesktopBackdrop;
+
     private void Desktop_OnPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (e.Handled) return;
-        for (var current = e.Source as Control; current is not null; current = current.Parent as Control)
-            if (current is DesktopShortcutsView) return;
+        // Selection belongs to the wallpaper: a press inside a managed window, on a shortcut, on the
+        // display-style panel or on the taskbar must keep it. Only the empty desktop surface itself
+        // replaces the selection, which is what the platform does on both buttons.
+        if (!ReferenceEquals(e.Source, DesktopBackdrop)) return;
         if (DataContext is Windows11ShellViewModel viewModel) viewModel.ClearDesktopSelection();
     }
 }

@@ -147,6 +147,7 @@ public class RemoteWindow : TemplatedControl
     private Border? _titleDrag;
     private Grid? _resizeLayer;
     private ContentPresenter? _contentHost;
+    private ContextMenu? _windowMenu;
 
     private readonly Dictionary<ResizeEdge, Border> _resizeBorders = new();
 
@@ -204,6 +205,11 @@ public class RemoteWindow : TemplatedControl
         // Child controls commonly handle pointer presses. Focus must run before them, otherwise
         // clicking a background window's input, tab or file list never raises that window.
         AddHandler(PointerPressedEvent, OnRootPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
+        // A window is an input boundary. A context request the application and the window chrome
+        // did not claim stops here: shells own their desktop menu on a surface the window host is
+        // nested in, so letting the request bubble would answer a right click inside an
+        // application with the wallpaper's menu, and would also clear the desktop selection.
+        AddHandler(ContextRequestedEvent, OnContextRequested, RoutingStrategies.Bubble, handledEventsToo: true);
         AttachedToVisualTree += (_, _) =>
         {
             _keyReleaseRoot = TopLevel.GetTopLevel(this);
@@ -236,6 +242,8 @@ public class RemoteWindow : TemplatedControl
             _titleDrag.PointerReleased += OnTitleDragReleased;
             _titleDrag.PointerCaptureLost += OnPointerCaptureLost;
             _titleDrag.DoubleTapped += OnTitleDragDoubleTapped;
+            _windowMenu = CreateWindowMenu();
+            _titleDrag.ContextMenu = _windowMenu;
         }
 
         foreach (var (edge, name) in new[]
@@ -271,6 +279,77 @@ public class RemoteWindow : TemplatedControl
         // Activate an inactive window before its child handles the click. Re-activating an
         // already active window would focus the frame and blur inputs such as the address draft.
         if (ViewModel?.IsActive != true) FocusRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Ends the desktop's menus at the window's edge. An application that wants a context menu
+    /// opens it from its own control, which handles the request before it reaches this window.
+    /// </summary>
+    private static void OnContextRequested(object? sender, ContextRequestedEventArgs e) => e.Handled = true;
+
+    /// <summary>
+    /// The window menu a title bar offers on every platform. It carries only the caption actions the
+    /// chrome already owns, so it needs no application contract and no strings of its own, and it is
+    /// rebuilt on each open so the maximize/restore pair follows the current state and language.
+    /// Moving and resizing are deliberately absent: this shell moves and resizes with the pointer,
+    /// and an entry that started a keyboard-driven modal loop nobody implemented would be a lie.
+    /// </summary>
+    private ContextMenu CreateWindowMenu()
+    {
+        var menu = new ContextMenu();
+        menu.Opening += (_, _) => menu.ItemsSource = BuildWindowMenuItems();
+        return menu;
+    }
+
+    /// <summary>
+    /// Opens the window menu without a pointer, for the platform's keyboard gesture (Alt+Space).
+    /// A titled window hangs it under the caption, the same edge the title bar's own click uses; a
+    /// full-screen window has no caption, so the menu takes the leading corner instead, which is
+    /// where the platform puts it there too.
+    /// </summary>
+    public void OpenWindowMenu()
+    {
+        if (_windowMenu is null) return;
+
+        if (_titleDrag is { IsEffectivelyVisible: true } titleBar)
+        {
+            OpenWindowMenuAt(titleBar, PlacementMode.BottomEdgeAlignedLeft);
+            return;
+        }
+
+        if (_contentHost is { } content)
+            OpenWindowMenuAt(content, PlacementMode.TopEdgeAlignedLeft);
+        else
+            OpenWindowMenuAt(this, PlacementMode.BottomEdgeAlignedLeft);
+    }
+
+    private void OpenWindowMenuAt(Control anchor, PlacementMode placement)
+    {
+        _windowMenu!.Placement = placement;
+        _windowMenu.Open(anchor);
+    }
+
+    private object[] BuildWindowMenuItems()
+    {
+        if (ViewModel is not { } window) return [];
+
+        var labels = WindowCaptionLabels.Current;
+        return
+        [
+            new MenuItem
+            {
+                Header = labels.Restore, Command = window.ToggleMaximizeCommand,
+                IsVisible = window.IsMaximized, IsEnabled = window.CanMaximize,
+            },
+            new MenuItem
+            {
+                Header = labels.Maximize, Command = window.ToggleMaximizeCommand,
+                IsVisible = !window.IsMaximized, IsEnabled = window.CanMaximize,
+            },
+            new MenuItem { Header = labels.Minimize, Command = window.MinimizeCommand, IsEnabled = window.CanMinimize },
+            new Separator(),
+            new MenuItem { Header = labels.Close, Command = window.CloseCommand },
+        ];
     }
 
     private void OnKeyDown(object? sender, KeyEventArgs e)

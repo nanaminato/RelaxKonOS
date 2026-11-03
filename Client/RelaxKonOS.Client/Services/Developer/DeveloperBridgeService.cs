@@ -149,6 +149,13 @@ public sealed class DeveloperBridgeService : IDisposable
         {
             await WriteJsonAsync(context.Response, HttpStatusCode.BadRequest, new { error = exception.Message });
         }
+        catch (PackageStorageUnavailableException exception)
+        {
+            // A developer pushing packages from the CLI needs the same answer the installer shows:
+            // which folder refused the write, not a generic bridge failure.
+            await WriteJsonAsync(context.Response, HttpStatusCode.ServiceUnavailable,
+                new { error = exception.Message, code = exception.ProblemCode, folder = exception.Folder });
+        }
         catch (Exception)
         {
             await WriteJsonAsync(context.Response, HttpStatusCode.InternalServerError, new { error = "Developer Bridge command failed." });

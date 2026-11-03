@@ -1,5 +1,6 @@
 using RelaxKonOS.PrivilegedHelper;
 using System.Runtime.InteropServices;
+using RelaxKonOS.ManagedRuntimes.ComponentPackages;
 using RelaxKonOS.Protocol.Privileged;
 
 public static partial class PrivilegedOperationExecutor
@@ -113,11 +114,12 @@ public static partial class PrivilegedOperationExecutor
 
     // Docker Desktop ignores daemon.json proxies, but a native Linux daemon reads its proxy from
     // the unit's start-up environment. This drop-in is therefore the only supported Linux
-    // mechanism, and both its path and its contents are owned by the Helper.
-    private const string DockerProxyDropInDirectory = "/etc/systemd/system/docker.service.d";
-    private const string DockerProxyDropInPath = DockerProxyDropInDirectory + "/http-proxy.conf";
-    private const int MaximumProxyValueLength = 512;
-    private const int MaximumProxyBypassLength = 1024;
+    // mechanism, and both its path and its contents are owned by the Helper. The same shape is what
+    // package ownership verification accepts, so the file is serialized in exactly one place.
+    private const string DockerProxyDropInDirectory = ManagedServiceOverride.DockerDropInDirectory;
+    private const string DockerProxyDropInPath = DockerProxyDropInDirectory + "/" + ManagedServiceOverride.DockerDropInFile;
+    private const int MaximumProxyValueLength = ManagedServiceOverride.MaximumProxyValueLength;
+    private const int MaximumProxyBypassLength = ManagedServiceOverride.MaximumProxyBypassLength;
 
     static async Task<PrivilegedOperationResult> ConfigureDockerEngineProxyAsync(DockerProxyConfiguration? configuration)
     {
@@ -131,7 +133,7 @@ public static partial class PrivilegedOperationExecutor
         {
             if (configuration.Enabled)
             {
-                var content = SerializeDockerProxyDropIn(httpProxy, httpsProxy, noProxy);
+                var content = ManagedServiceOverride.SerializeDockerProxy(httpProxy, httpsProxy, noProxy);
                 Directory.CreateDirectory(DockerProxyDropInDirectory);
                 File.SetUnixFileMode(DockerProxyDropInDirectory,
                     UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
@@ -148,6 +150,11 @@ public static partial class PrivilegedOperationExecutor
             else if (File.Exists(DockerProxyDropInPath))
             {
                 File.Delete(DockerProxyDropInPath);
+                // Do not leave an empty drop-in directory behind: it is not this product's file set
+                // any more, and an unexplained directory invites the next reader to guess what wrote it.
+                if (Directory.Exists(DockerProxyDropInDirectory)
+                    && !Directory.EnumerateFileSystemEntries(DockerProxyDropInDirectory).Any())
+                    Directory.Delete(DockerProxyDropInDirectory);
             }
 
             var reload = await RunFixedCommandAsync("/usr/bin/systemctl", ["daemon-reload"], TimeSpan.FromSeconds(60), "docker proxy daemon reload failed");
@@ -192,20 +199,6 @@ public static partial class PrivilegedOperationExecutor
     /// <summary>Rejects quotes, backslashes, control characters, and non-ASCII, so a value cannot
     /// terminate the systemd unit line or inject a second directive.</summary>
     private static bool IsSafeUnitValueCharacter(char character) => character is >= '!' and <= '~' && character is not ('"' or '\\');
-
-    private static string SerializeDockerProxyDropIn(string httpProxy, string httpsProxy, string noProxy)
-    {
-        var builder = new System.Text.StringBuilder();
-        builder.Append("# RelaxKonOS managed Docker daemon proxy - do not edit\n");
-        builder.Append("[Service]\n");
-        builder.Append("Environment=\"HTTP_PROXY=").Append(EscapeUnitValue(httpProxy)).Append("\"\n");
-        builder.Append("Environment=\"HTTPS_PROXY=").Append(EscapeUnitValue(httpsProxy)).Append("\"\n");
-        if (noProxy.Length > 0) builder.Append("Environment=\"NO_PROXY=").Append(EscapeUnitValue(noProxy)).Append("\"\n");
-        return builder.ToString();
-    }
-
-    /// <summary>systemd treats '%' as a specifier introducer, so a literal percent must be doubled.</summary>
-    private static string EscapeUnitValue(string value) => value.Replace("%", "%%", StringComparison.Ordinal);
 
     private static bool IsManageableProxyTarget()
     {

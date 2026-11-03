@@ -1,0 +1,308 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:common="clr-namespace:RelaxKonOS.Client.Controls"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:fw="clr-namespace:RelaxKonOS.Client.Apps.Firewall"
+             x:Class="RelaxKonOS.Client.Apps.Firewall.Views.FirewallWorkspace"
+             x:DataType="fw:FirewallViewModel"
+             Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
+  <UserControl.Styles>
+    <Style Selector="TextBlock.section-title"><Setter Property="FontSize" Value="15" /><Setter Property="FontWeight" Value="SemiBold" /></Style>
+    <Style Selector="TextBlock.section-hint"><Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" /><Setter Property="FontSize" Value="12" /><Setter Property="TextWrapping" Value="Wrap" /></Style>
+    <Style Selector="TextBlock.field-label"><Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" /><Setter Property="FontSize" Value="12" /></Style>
+    <Style Selector="TextBlock.fact-label"><Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" /><Setter Property="TextWrapping" Value="Wrap" /><Setter Property="VerticalAlignment" Value="Center" /><Setter Property="Margin" Value="0,0,12,0" /></Style>
+    <Style Selector="TextBlock.fact-value"><Setter Property="FontWeight" Value="SemiBold" /><Setter Property="VerticalAlignment" Value="Center" /><Setter Property="TextWrapping" Value="Wrap" /></Style>
+    <Style Selector="TextBlock.problem"><Setter Property="Foreground" Value="{DynamicResource DangerBrush}" /><Setter Property="FontSize" Value="12" /><Setter Property="TextWrapping" Value="Wrap" /></Style>
+    <Style Selector="Border.notice"><Setter Property="Padding" Value="18,10" /><Setter Property="BorderThickness" Value="0,0,0,1" /></Style>
+    <Style Selector="Border.notice.warning"><Setter Property="Background" Value="{DynamicResource WarningMutedBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource WarningBrush}" /></Style>
+    <Style Selector="Border.notice.danger"><Setter Property="Background" Value="{DynamicResource WarningMutedBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" /></Style>
+    <Style Selector="Border.notice.neutral"><Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" /></Style>
+    <!-- One state pill, four tones. "Active" and "unavailable" must not look alike, so the tone
+         comes from a host fact rather than from decoration. -->
+    <Style Selector="Border.pill">
+      <Setter Property="CornerRadius" Value="10" /><Setter Property="Padding" Value="10,3" />
+      <Setter Property="BorderThickness" Value="1" /><Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+      <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+    </Style>
+    <Style Selector="Border.pill > TextBlock"><Setter Property="FontSize" Value="12" /><Setter Property="FontWeight" Value="SemiBold" /><Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" /></Style>
+    <Style Selector="Border.pill.ok"><Setter Property="Background" Value="{DynamicResource SuccessMutedBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource SuccessBrush}" /></Style>
+    <Style Selector="Border.pill.ok > TextBlock"><Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" /></Style>
+    <Style Selector="Border.pill.warn"><Setter Property="Background" Value="{DynamicResource WarningMutedBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource WarningBrush}" /></Style>
+    <Style Selector="Border.pill.warn > TextBlock"><Setter Property="Foreground" Value="{DynamicResource WarningBrush}" /></Style>
+    <Style Selector="Border.pill.bad"><Setter Property="Background" Value="{DynamicResource WarningMutedBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" /></Style>
+    <Style Selector="Border.pill.bad > TextBlock"><Setter Property="Foreground" Value="{DynamicResource DangerBrush}" /></Style>
+    <!-- The rule action reads as one compact tag; allow and deny must not share a tone. -->
+    <Style Selector="Border.tag">
+      <Setter Property="CornerRadius" Value="8" /><Setter Property="Padding" Value="7,1" />
+      <Setter Property="BorderThickness" Value="1" /><Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+    </Style>
+    <Style Selector="Border.tag > TextBlock"><Setter Property="FontSize" Value="11" /><Setter Property="FontWeight" Value="SemiBold" /><Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" /></Style>
+    <Style Selector="Border.tag.ok"><Setter Property="Background" Value="{DynamicResource SuccessMutedBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource SuccessBrush}" /></Style>
+    <Style Selector="Border.tag.ok > TextBlock"><Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" /></Style>
+    <Style Selector="Border.tag.bad"><Setter Property="Background" Value="{DynamicResource WarningMutedBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" /></Style>
+    <Style Selector="Border.tag.bad > TextBlock"><Setter Property="Foreground" Value="{DynamicResource DangerBrush}" /></Style>
+    <Style Selector="Border.tag.warn"><Setter Property="Background" Value="{DynamicResource WarningMutedBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource WarningBrush}" /></Style>
+    <Style Selector="Border.tag.warn > TextBlock"><Setter Property="Foreground" Value="{DynamicResource WarningBrush}" /></Style>
+    <!-- A bare Button renders as plain text in this theme, which made secondary actions look like
+         headings. Card actions stay quiet but keep an edge and a hit target. -->
+    <Style Selector="Button.card-action">
+      <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+      <Setter Property="Padding" Value="12,5" /><Setter Property="MinHeight" Value="30" />
+      <Setter Property="FontSize" Value="12" /><Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.card-action:pointerover"><Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" /></Style>
+    <Style Selector="Button.card-action:disabled">
+      <Setter Property="Opacity" Value="1" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+    </Style>
+    <Style Selector="Button.danger.card-action">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+    </Style>
+    <Style Selector="Button.danger.card-action:pointerover"><Setter Property="Background" Value="{DynamicResource WarningMutedBrush}" /></Style>
+    <Style Selector="Button.danger.card-action:disabled">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+    </Style>
+    <Style Selector="TextBlock.summary-label"><Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" /><Setter Property="FontSize" Value="12" /><Setter Property="Width" Value="96" /><Setter Property="VerticalAlignment" Value="Top" /></Style>
+    <Style Selector="TextBlock.summary-value"><Setter Property="FontSize" Value="12" /><Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" /><Setter Property="TextWrapping" Value="Wrap" /></Style>
+    <Style Selector="Button.primary:disabled">
+      <Setter Property="Background" Value="{DynamicResource AccentMutedBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+    </Style>
+    <Style Selector="Button.primary:disabled /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AccentMutedBrush}" />
+      <Setter Property="TextElement.Foreground" Value="{DynamicResource TextDisabledBrush}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*,Auto">
+    <!-- Identity lives in the window chrome when the host attaches it; the header stays in place
+         for embedded/preview rendering. -->
+    <Grid x:Name="HeaderHost" ColumnDefinitions="*,Auto">
+      <common:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc application.relaxkonos.firewall.display_name}"
+                                    Subtitle="{loc:Loc firewall.intro}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/firewall.png" />
+      <Button x:Name="HeaderActions" Grid.Column="1" Classes="header-action header-refresh" Command="{Binding RefreshCommand}"
+              ToolTip.Tip="{loc:Loc common.refresh}" AutomationProperties.Name="{loc:Loc common.refresh}" VerticalAlignment="Center" />
+    </Grid>
+
+    <Grid Grid.Row="1" x:Name="WorkspaceBody" ColumnDefinitions="184,*" ClipToBounds="True">
+      <Border Classes="app-sidebar">
+        <StackPanel Spacing="2" Margin="14,22">
+          <Button x:Name="PageButton0" Classes="workspace-nav" Tag="0" Click="NavigationButton_Click"
+                  Content="{loc:Loc firewall.nav.overview}" HorizontalContentAlignment="Left" Padding="10,8" />
+          <Button x:Name="PageButton1" Classes="workspace-nav" Tag="1" Click="NavigationButton_Click"
+                  Content="{loc:Loc firewall.nav.rules}" HorizontalContentAlignment="Left" Padding="10,8" />
+        </StackPanel>
+      </Border>
+
+      <Grid Grid.Column="1">
+        <!-- Overview: what the host reports, then the decisions that follow from it. -->
+        <ScrollViewer x:Name="Page0" Padding="22,18" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="14">
+            <StackPanel Spacing="0">
+              <Border Classes="notice danger" IsVisible="{Binding ShowUnavailable}">
+                <StackPanel Spacing="3">
+                  <TextBlock Classes="section-title" FontSize="13" Foreground="{DynamicResource DangerBrush}" Text="{loc:Loc firewall.unavailable_title}" />
+                  <TextBlock Text="{Binding UnavailableReason}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                </StackPanel>
+              </Border>
+              <Border Classes="notice neutral" IsVisible="{Binding ShowNoPermission}">
+                <TextBlock Text="{loc:Loc firewall.permission.read_required}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+              </Border>
+              <Border Classes="notice neutral" IsVisible="{Binding ShowReadOnly}">
+                <StackPanel Spacing="3">
+                  <TextBlock Classes="section-title" FontSize="13" Text="{loc:Loc firewall.read_only_title}" />
+                  <TextBlock Text="{loc:Loc firewall.read_only}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                </StackPanel>
+              </Border>
+              <Border Classes="notice warning" IsVisible="{Binding ShowWindowsNote}">
+                <TextBlock Text="{loc:Loc firewall.note.windows}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+              </Border>
+            </StackPanel>
+
+            <Border Classes="app-panel" Padding="18">
+              <StackPanel Spacing="12">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                  <StackPanel Spacing="4">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                      <Border Classes="pill ok" IsVisible="{Binding StatePillOk}"><TextBlock Text="{Binding StatePillText}" /></Border>
+                      <Border Classes="pill warn" IsVisible="{Binding StatePillWarn}"><TextBlock Text="{Binding StatePillText}" /></Border>
+                      <Border Classes="pill bad" IsVisible="{Binding StatePillBad}"><TextBlock Text="{Binding StatePillText}" /></Border>
+                      <Border Classes="pill" IsVisible="{Binding StatePillNeutral}"><TextBlock Text="{Binding StatePillText}" /></Border>
+                      <TextBlock Classes="section-title" Text="{loc:Loc firewall.section.protection}" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <TextBlock Classes="section-hint" Text="{loc:Loc firewall.section.protection_hint}" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Top">
+                    <Button Classes="primary" Content="{loc:Loc firewall.protection.enable}" Command="{Binding EnableCommand}" IsVisible="{Binding ShowEnableAction}" />
+                    <Button Classes="danger card-action" Content="{loc:Loc firewall.protection.disable}" Command="{Binding DisableCommand}" IsVisible="{Binding ShowDisableAction}" />
+                  </StackPanel>
+                </Grid>
+                <TextBlock Classes="section-hint" Text="{Binding ProtectionActionHint}" IsVisible="{Binding HasProtectionActionHint}" />
+                <StackPanel Spacing="0">
+                  <Border BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,1,0,0" Padding="0,7">
+                    <Grid ColumnDefinitions="130,*">
+                      <TextBlock Classes="fact-label" Text="{loc:Loc firewall.fact.backend}" />
+                      <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding BackendLabel}" />
+                    </Grid>
+                  </Border>
+                  <Border BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,1,0,0" Padding="0,7">
+                    <Grid ColumnDefinitions="130,*">
+                      <TextBlock Classes="fact-label" Text="{loc:Loc firewall.fact.version}" />
+                      <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding VersionLabel}" />
+                    </Grid>
+                  </Border>
+                  <Border BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,1,0,0" Padding="0,7">
+                    <Grid ColumnDefinitions="130,*">
+                      <TextBlock Classes="fact-label" Text="{loc:Loc firewall.fact.incoming}" />
+                      <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding HostIncomingLabel}" />
+                    </Grid>
+                  </Border>
+                  <Border BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,1,0,0" Padding="0,7">
+                    <Grid ColumnDefinitions="130,*">
+                      <TextBlock Classes="fact-label" Text="{loc:Loc firewall.fact.outgoing}" />
+                      <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding HostOutgoingLabel}" />
+                    </Grid>
+                  </Border>
+                </StackPanel>
+              </StackPanel>
+            </Border>
+
+            <Border Classes="app-panel" Padding="18">
+              <StackPanel Spacing="12">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                  <StackPanel Spacing="2">
+                    <TextBlock Classes="section-title" Text="{loc:Loc firewall.section.defaults}" />
+                    <TextBlock Classes="section-hint" Text="{loc:Loc firewall.section.defaults_hint}" />
+                  </StackPanel>
+                  <Border Grid.Column="1" Classes="pill warn" VerticalAlignment="Top" IsVisible="{Binding HasDefaultChanges}">
+                    <TextBlock Text="{loc:Loc firewall.defaults.pending}" />
+                  </Border>
+                </Grid>
+                <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="14" IsEnabled="{Binding CanEditDefaults}">
+                  <StackPanel Spacing="4" MinWidth="240" MaxWidth="320">
+                    <TextBlock Classes="field-label" Text="{loc:Loc firewall.default_incoming}" />
+                    <ComboBox x:Name="IncomingPolicyBox" ItemsSource="{Binding Policies}" SelectedItem="{Binding SelectedIncomingPolicy, Mode=TwoWay}"
+                              DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="1" Spacing="4" MinWidth="240" MaxWidth="320">
+                    <TextBlock Classes="field-label" Text="{loc:Loc firewall.default_outgoing}" />
+                    <ComboBox x:Name="OutgoingPolicyBox" ItemsSource="{Binding Policies}" SelectedItem="{Binding SelectedOutgoingPolicy, Mode=TwoWay}"
+                              DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch" />
+                  </StackPanel>
+                </Grid>
+                <TextBlock Classes="section-hint" Text="{Binding DefaultsSummary}" />
+                <TextBlock Classes="problem" Text="{loc:Loc firewall.defaults.lockout_warning}" IsVisible="{Binding ShowLockoutWarning}" />
+                <Button x:Name="SaveDefaultsButton" Classes="card-action" HorizontalAlignment="Left" Content="{loc:Loc firewall.save_defaults}" Command="{Binding SaveDefaultsCommand}" />
+              </StackPanel>
+            </Border>
+
+            <Border Classes="app-panel" Padding="18">
+              <StackPanel Spacing="6">
+                <TextBlock Classes="section-title" Text="{loc:Loc firewall.section.safety}" />
+                <TextBlock Text="{loc:Loc firewall.warning}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                <TextBlock Classes="section-hint" Text="{loc:Loc firewall.section.safety_hint}" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+
+        <!-- Rules: the table owns its scrolling so a large rule set never pushes the actions away. -->
+        <Grid x:Name="Page1" RowDefinitions="Auto,Auto,*,Auto" Margin="22,18" RowSpacing="10" IsVisible="False">
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <StackPanel Spacing="2">
+              <TextBlock Classes="section-title" Text="{loc:Loc firewall.section.rules}" />
+              <TextBlock Classes="section-hint" Text="{loc:Loc firewall.section.rules_hint}" />
+            </StackPanel>
+            <Button x:Name="AddRuleButton" Grid.Column="1" Classes="primary" VerticalAlignment="Top" Content="{loc:Loc firewall.rule.add}" Command="{Binding ShowAddRuleEditorCommand}" />
+          </Grid>
+
+          <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="10">
+            <TextBox x:Name="RuleFilterBox" Text="{Binding RuleFilter, Mode=TwoWay}" PlaceholderText="{loc:Loc firewall.rules.filter_hint}" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+              <TextBlock Text="{Binding RuleCountText}" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource TextTertiaryBrush}" />
+              <Button Classes="card-action" Content="{loc:Loc firewall.rules.clear_filter}" Command="{Binding ClearFilterCommand}" IsVisible="{Binding HasFilter}" />
+            </StackPanel>
+          </Grid>
+
+          <Grid Grid.Row="2">
+            <DataGrid x:Name="RuleTable" Classes="resource-table" AutoGenerateColumns="False" IsReadOnly="True"
+                      CanUserReorderColumns="False" CanUserResizeColumns="True"
+                      HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                      ItemsSource="{Binding Rules}" SelectedItem="{Binding SelectedRow, Mode=TwoWay}">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="{loc:Loc firewall.rule.number}" Width="94" Binding="{Binding Number}" />
+                <DataGridTemplateColumn Header="{loc:Loc firewall.rule.action}" Width="104">
+                  <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate x:DataType="fw:FirewallRuleRow">
+                      <Border Classes="tag" Classes.ok="{Binding ActionAllow}" Classes.bad="{Binding ActionDeny}" Classes.warn="{Binding ActionLimit}">
+                        <TextBlock Text="{Binding ActionLabel}" />
+                      </Border>
+                    </DataTemplate>
+                  </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="{loc:Loc firewall.rule.direction}" Width="120" Binding="{Binding DirectionLabel}" />
+                <DataGridTextColumn Header="{loc:Loc firewall.rule.protocol}" Width="96" Binding="{Binding ProtocolLabel}" />
+                <DataGridTextColumn Header="{loc:Loc firewall.rule.address_family}" Width="120" Binding="{Binding AddressFamilyLabel}" />
+                <DataGridTextColumn Header="{loc:Loc firewall.rule.source}" Width="*" MinWidth="110" Binding="{Binding SourceLabel}" />
+                <DataGridTextColumn Header="{loc:Loc firewall.rule.destination}" Width="*" MinWidth="110" Binding="{Binding DestinationLabel}" />
+                <DataGridTextColumn Header="{loc:Loc firewall.rule.port}" Width="88" Binding="{Binding PortLabel}" />
+              </DataGrid.Columns>
+            </DataGrid>
+            <Border x:Name="EmptyRulesPanel" Classes="app-panel" IsVisible="{Binding ShowRulesEmpty}" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="26,20">
+              <StackPanel Spacing="6" MaxWidth="360">
+                <TextBlock Classes="section-title" Text="{loc:Loc firewall.rules.empty_title}" />
+                <TextBlock Classes="section-hint" Text="{loc:Loc firewall.rules.empty}" />
+              </StackPanel>
+            </Border>
+            <Border x:Name="EmptyFilterPanel" Classes="app-panel" IsVisible="{Binding ShowFilterEmpty}" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="26,20">
+              <StackPanel Spacing="8" MaxWidth="360">
+                <TextBlock Classes="section-title" Text="{loc:Loc firewall.rules.filter_empty_title}" />
+                <TextBlock Classes="section-hint" Text="{loc:Loc firewall.rules.filter_empty}" />
+                <Button Classes="card-action" HorizontalAlignment="Left" Content="{loc:Loc firewall.rules.clear_filter}" Command="{Binding ClearFilterCommand}" />
+              </StackPanel>
+            </Border>
+          </Grid>
+
+          <Border Grid.Row="3" Classes="app-panel" Padding="14,10">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+              <StackPanel Spacing="2" VerticalAlignment="Center">
+                <TextBlock Text="{Binding SelectedRuleNumberText}" FontSize="12" FontWeight="SemiBold" IsVisible="{Binding HasSelection}" />
+                <TextBlock Text="{Binding SelectedRuleSentence}" FontSize="12" TextWrapping="Wrap" IsVisible="{Binding HasSelection}"
+                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                <TextBlock Classes="section-hint" Text="{loc:Loc firewall.rules.select_one}" IsVisible="{Binding !HasSelection}" />
+              </StackPanel>
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Button x:Name="EditRuleButton" Classes="card-action" Content="{loc:Loc firewall.rule.update}" Command="{Binding ShowEditRuleEditorCommand}" />
+                <Button x:Name="DeleteRuleButton" Classes="danger card-action" Content="{loc:Loc firewall.rule.delete}" Command="{Binding DeleteRuleCommand}" />
+              </StackPanel>
+            </Grid>
+          </Border>
+        </Grid>
+      </Grid>
+    </Grid>
+
+    <Border Grid.Row="2" Classes="app-statusbar">
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+        <TextBlock Text="{Binding StatusText}" ToolTip.Tip="{Binding StatusText}" TextTrimming="CharacterEllipsis"
+                   FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+          <Border Classes="pill warn" IsVisible="{Binding HasDefaultChanges}">
+            <TextBlock Text="{loc:Loc firewall.defaults.pending}" />
+          </Border>
+          <ProgressBar IsIndeterminate="True" Width="80" Height="3" VerticalAlignment="Center" IsVisible="{Binding IsLoading}" />
+        </StackPanel>
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

@@ -68,6 +68,20 @@ internal static class ModalCancellationChecks
         Check(dialog!.Result.IsCompleted, "Owner teardown cancels even a busy dialog without prompting.");
         SpinWait.SpinUntil(() => { Dispatcher.UIThread.RunJobs(); return manager.Windows.Count == 0; }, 2000);
         Check(manager.Windows.Count == 0, "Owner teardown releases the modal chain.");
+
+        // A handler can await network work between the click and the dialog request, so the
+        // owner may already be gone. That must resolve to the default result, not throw:
+        // the caller is an async-void click handler whose exception would end the process.
+        var created = 0;
+        var orphaned = manager.ShowDialogAsync<bool>(owner, "Orphan", _ =>
+        {
+            created++;
+            return new TextBlock();
+        });
+        Check(orphaned.IsCompletedSuccessfully && orphaned.Result == false,
+            "A dialog requested for a closed owner resolves to the default result.");
+        Check(created == 0 && manager.Windows.Count == 0,
+            "A dialog requested for a closed owner creates no window and no blocker.");
         Console.WriteLine("Modal cancellation checks passed.");
     }
 

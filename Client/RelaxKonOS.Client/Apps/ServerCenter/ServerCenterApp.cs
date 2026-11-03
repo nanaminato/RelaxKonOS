@@ -34,9 +34,17 @@ public sealed class ServerCenterApp : RemoteApplicationBase
         view.AttachWindowHeader(window);
         viewModel.ConfirmRollbackAsync = review => context.ShowDialogAsync<bool>(window, viewModel.RollbackText,
             dialog => new ServerRollbackConfirmationView(review, dialog), new Size(560, 420));
-        viewModel.ShowManagementDialogAsync = section => context.ShowDialogAsync<bool>(window,
-            section switch { "components" => viewModel.ComponentsText, "settings" => viewModel.SettingsText, "repair" => viewModel.RepairText, "uninstall" => viewModel.UninstallText, _ => viewModel.InstallationInfoTitle },
-            dialog => new ServerCenterManagementDialog(viewModel, section, dialog), new Size(640, 600));
+        viewModel.ShowManagementDialogAsync = async section =>
+        {
+            // Opening the dialog runs after the page probed the host over SSH, which takes a
+            // network round trip. The user can close this workspace in the meantime (Alt+F4,
+            // taskbar preview, window overview), so the captured window is re-checked here
+            // instead of assuming the probe returned to a live desktop.
+            if (!context.WindowManager.Windows.Contains(window)) return;
+            await context.ShowDialogAsync<bool>(window,
+                section switch { "components" => viewModel.ComponentsText, "settings" => viewModel.SettingsText, "repair" => viewModel.RepairText, "uninstall" => viewModel.UninstallText, _ => viewModel.InstallationInfoTitle },
+                dialog => new ServerCenterManagementDialog(viewModel, section, dialog), new Size(640, 600));
+        };
         viewModel.ShowInstallationWizardAsync = () => context.ShowDialogAsync<bool>(window, viewModel.DeployText,
             dialog => new ServerInstallationWizardView(
                 new ServerInstallationWizardViewModel(viewModel, () => dialog.Close(true),

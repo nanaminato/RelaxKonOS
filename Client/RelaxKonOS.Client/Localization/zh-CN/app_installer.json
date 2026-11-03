@@ -22,6 +22,7 @@
         "app_installer.status.updated": "已更新 {0} {1}。",
         "app_installer.status.installed": "已安装 {0} {1}。",
         "app_installer.status.install_failed": "安装失败：{0}",
+        "app_installer.status.storage_unavailable": "安装失败：无法写入应用包目录 {0}。请检查该目录的权限，或在不受沙箱限制的位置运行 RelaxKonOS。",
         "app_installer.error.install_title": "安装失败",
         "app_installer.status.skipped": "已跳过软件包。",
         "app_installer.status.confirm_update": "确认更新此应用。",

@@ -1,5 +1,8 @@
 using System.Reflection;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Headless;
+using Avalonia.Input;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using RelaxKonOS.Client.Services;
@@ -58,6 +61,44 @@ internal static class DesktopShellSwitchChecks
                     Dispatcher.UIThread.RunJobs();
                 }
                 if (windows.Windows.Count != 2) throw new Exception("Shell switching lost a running window.");
+                // Right-click ownership is the same in every built-in shell: the title bar answers with
+                // the host window menu, the application body answers with nothing of its own, and only
+                // the empty wallpaper answers with the desktop menu.
+                var shellId = next.Descriptor.Id;
+                var desktopMenu = registry.Surfaces!.InputBackdrop.ContextMenu
+                    ?? throw new Exception($"{shellId}: the shell has no desktop context menu.");
+                var desktopMenuOpened = 0;
+                desktopMenu.Opening += (_, _) => desktopMenuOpened++;
+                var activeView = (windows.ActiveWindow ?? first).View;
+                var titleBar = activeView.GetVisualDescendants().OfType<Border>()
+                    .Single(control => control.Name == "PART_TitleBar");
+                var windowMenu = titleBar.ContextMenu
+                    ?? throw new Exception($"{shellId}: the title bar has no window menu.");
+                var windowMenuOpened = 0;
+                windowMenu.Opening += (_, _) => windowMenuOpened++;
+                var titlePoint = activeView.TranslatePoint(new Point(160, 15), host)!.Value;
+                host.MouseDown(titlePoint, MouseButton.Right); host.MouseUp(titlePoint, MouseButton.Right);
+                host.UpdateLayout();
+                Dispatcher.UIThread.RunJobs();
+                if (!windowMenu.IsOpen || desktopMenuOpened != 0)
+                    throw new Exception($"{shellId}: a title-bar right click did not answer with the window menu alone.");
+                windowMenu.Close();
+                host.UpdateLayout();
+                Dispatcher.UIThread.RunJobs();
+                var bodyPoint = activeView.TranslatePoint(new Point(160, 120), host)!.Value;
+                host.MouseDown(bodyPoint, MouseButton.Right); host.MouseUp(bodyPoint, MouseButton.Right);
+                host.UpdateLayout();
+                Dispatcher.UIThread.RunJobs();
+                if (desktopMenuOpened != 0 || windowMenu.IsOpen || windowMenuOpened != 1)
+                    throw new Exception($"{shellId}: a right click inside an application window opened a menu it does not own.");
+                var wallpaper = registry.Surfaces!.InputBackdrop.TranslatePoint(new Point(4, 4), host)!.Value;
+                host.MouseDown(wallpaper, MouseButton.Right); host.MouseUp(wallpaper, MouseButton.Right);
+                host.UpdateLayout();
+                Dispatcher.UIThread.RunJobs();
+                if (desktopMenuOpened != 1)
+                    throw new Exception($"{shellId}: a right click on the wallpaper did not open the desktop menu.");
+                desktopMenu.Close();
+                Console.WriteLine($"PASS: {shellId}: title bar answers with the window menu, the application body with nothing, the wallpaper with the desktop menu.");
                 Console.WriteLine($"PASS: {next.Descriptor.Id}: switch round {round + 1} preserves image/glyph application windows and renders running-app buttons.");
             }
             // Opening another application while Ubuntu is already attached exercises live template creation.

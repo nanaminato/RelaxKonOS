@@ -52,6 +52,13 @@ public sealed partial class OperationRowViewModel(
     public bool IsActive => Model.State is DeploymentOperationState.Queued or DeploymentOperationState.Running;
     public bool CanCancel => Model.Cancellable && IsActive;
 
+    /// <summary>Tone flags for the state pill. A cancelled or interrupted run is not a success, and an
+    /// in-flight one is neither, so three tones cover the six states without a fourth colour family.</summary>
+    public bool StateRunning => IsActive;
+    public bool StateSucceeded => Model.State == DeploymentOperationState.Succeeded;
+    public bool StateFailed => Model.State is DeploymentOperationState.Failed
+        or DeploymentOperationState.Cancelled or DeploymentOperationState.Interrupted;
+
     public string IdentifierText => Model.OperationId.ToString("D", CultureInfo.InvariantCulture);
 
     /// <summary>Only a terminal operation with a recorded outcome can have output to show, and only a

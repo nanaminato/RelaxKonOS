@@ -47,7 +47,11 @@ public interface IWindowManager
     /// <summary>Creates, lays out and shows a new window for the given application content.</summary>
     ManagedWindow Create(WindowCreateOptions options);
 
-    /// <summary>Shows a modal dialog over an application window and asynchronously returns its result.</summary>
+    /// <summary>
+    /// Shows a modal dialog over an application window and asynchronously returns its result.
+    /// When the owner has already been closed, no dialog is created and the default result is
+    /// returned; this is a normal outcome for handlers that await work before asking for one.
+    /// </summary>
     Task<TResult?> ShowDialogAsync<TResult>(
         ManagedWindow owner,
         string title,

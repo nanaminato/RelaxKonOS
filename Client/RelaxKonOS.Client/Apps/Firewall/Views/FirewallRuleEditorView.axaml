@@ -1,0 +1,84 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:fw="clr-namespace:RelaxKonOS.Client.Apps.Firewall"
+             x:Class="RelaxKonOS.Client.Apps.Firewall.Views.FirewallRuleEditorView"
+             x:DataType="fw:FirewallViewModel"
+             Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
+  <UserControl.Styles>
+    <Style Selector="TextBlock.field-label"><Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" /><Setter Property="FontSize" Value="12" /></Style>
+    <Style Selector="TextBlock.section-hint"><Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" /><Setter Property="FontSize" Value="12" /><Setter Property="TextWrapping" Value="Wrap" /></Style>
+    <Style Selector="TextBlock.section-title"><Setter Property="FontSize" Value="13" /><Setter Property="FontWeight" Value="SemiBold" /></Style>
+    <Style Selector="TextBlock.problem"><Setter Property="Foreground" Value="{DynamicResource DangerBrush}" /><Setter Property="FontSize" Value="12" /><Setter Property="TextWrapping" Value="Wrap" /></Style>
+    <Style Selector="Button.primary:disabled">
+      <Setter Property="Background" Value="{DynamicResource AccentMutedBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+    </Style>
+    <Style Selector="Button.primary:disabled /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AccentMutedBrush}" />
+      <Setter Property="TextElement.Foreground" Value="{DynamicResource TextDisabledBrush}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="*,Auto" Margin="18">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Spacing="14">
+        <TextBlock Classes="section-hint" Text="{loc:Loc firewall.rule.help}" />
+
+        <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+          <StackPanel Spacing="4">
+            <TextBlock Classes="field-label" Text="{loc:Loc firewall.rule.action}" />
+            <ComboBox x:Name="ActionBox" ItemsSource="{Binding Actions}" SelectedItem="{Binding SelectedAction, Mode=TwoWay}"
+                      DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch" />
+          </StackPanel>
+          <StackPanel Grid.Column="1" Spacing="4">
+            <TextBlock Classes="field-label" Text="{loc:Loc firewall.rule.direction}" />
+            <ComboBox x:Name="DirectionBox" ItemsSource="{Binding Directions}" SelectedItem="{Binding SelectedDirection, Mode=TwoWay}"
+                      DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch" />
+          </StackPanel>
+        </Grid>
+
+        <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+          <StackPanel Spacing="4">
+            <TextBlock Classes="field-label" Text="{loc:Loc firewall.rule.protocol}" />
+            <ComboBox x:Name="ProtocolBox" ItemsSource="{Binding Protocols}" SelectedItem="{Binding SelectedProtocol, Mode=TwoWay}"
+                      DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch" />
+          </StackPanel>
+          <StackPanel Grid.Column="1" Spacing="4">
+            <TextBlock Classes="field-label" Text="{loc:Loc firewall.rule.port}" />
+            <TextBox x:Name="PortBox" Text="{Binding Port, Mode=TwoWay}" PlaceholderText="{loc:Loc firewall.rule.port_hint}" />
+            <TextBlock Classes="problem" Text="{Binding PortProblem}" IsVisible="{Binding PortProblem, Converter={x:Static ObjectConverters.IsNotNull}}" />
+          </StackPanel>
+        </Grid>
+
+        <StackPanel Spacing="4">
+          <TextBlock Classes="field-label" Text="{loc:Loc firewall.rule.source}" ToolTip.Tip="{loc:Loc firewall.rule.source_tooltip}" />
+          <TextBox x:Name="SourceBox" Text="{Binding Source, Mode=TwoWay}" PlaceholderText="{loc:Loc firewall.rule.source_hint}" />
+          <TextBlock Classes="problem" Text="{Binding SourceProblem}" IsVisible="{Binding SourceProblem, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        </StackPanel>
+
+        <StackPanel Spacing="4">
+          <TextBlock Classes="field-label" Text="{loc:Loc firewall.rule.destination}" ToolTip.Tip="{loc:Loc firewall.rule.destination_tooltip}" />
+          <TextBox x:Name="DestinationBox" Text="{Binding Destination, Mode=TwoWay}" PlaceholderText="{loc:Loc firewall.rule.destination_hint}" />
+          <TextBlock Classes="problem" Text="{Binding DestinationProblem}" IsVisible="{Binding DestinationProblem, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        </StackPanel>
+
+        <!-- The draft is read back as the rule the host would receive, phrased exactly like the table. -->
+        <Border Classes="app-panel" Padding="14,10">
+          <StackPanel Spacing="4">
+            <TextBlock Classes="field-label" Text="{loc:Loc firewall.editor.preview}" />
+            <TextBlock Text="{Binding DraftSummary}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
+          </StackPanel>
+        </Border>
+
+        <TextBlock Classes="section-hint" Text="{loc:Loc firewall.editor.invalid_hint}" IsVisible="{Binding !IsDraftValid}" />
+        <TextBlock Classes="problem" Text="{Binding EditorMessage}" IsVisible="{Binding HasEditorMessage}" />
+      </StackPanel>
+    </ScrollViewer>
+
+    <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,14,0,0">
+      <Button x:Name="CancelButton" Content="{loc:Loc common.cancel}" IsEnabled="{Binding !IsLoading}" />
+      <Button x:Name="SubmitButton" Classes="primary" Content="{Binding SubmitText}" IsEnabled="{Binding CanSubmitDraft}" />
+    </StackPanel>
+  </Grid>
+</UserControl>

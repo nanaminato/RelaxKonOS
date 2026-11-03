@@ -24,6 +24,23 @@ internal static class PackageOwnershipChecks
         var registration = ComponentPackageRegistration.Authorize(authorization, "nginx", old);
         Check(registration.OperationId == authorization && registration.Identity == old && registration.Valid("nginx", "nginx"),
             "Explicit registration records the first authorization and the verified identity");
+        // Registration writes its proof with an empty target, because it recovers no earlier operation.
+        // The reader used to require a non-empty target for every action, so the proof the Helper had
+        // just written came back invalid and the whole registration ended as "存在未完成的恢复操作".
+        Check(PackageIdentityPolicy.ValidRecoveryReceipt(
+                new ComponentRecoveryReceipt(authorization, Guid.Empty, ComponentRecoveryAction.RegisterPackage), authorization),
+            "A registration proof with no original operation is valid for its own operation");
+        Check(!PackageIdentityPolicy.ValidRecoveryReceipt(
+                new ComponentRecoveryReceipt(Guid.NewGuid(), Guid.Empty, ComponentRecoveryAction.RegisterPackage), authorization),
+            "A registration proof cannot answer for another operation");
+        Check(!PackageIdentityPolicy.ValidRecoveryReceipt(
+                new ComponentRecoveryReceipt(authorization, Guid.Empty, ComponentRecoveryAction.Stop), authorization),
+            "A recovery action that must recover an earlier operation needs its target");
+        Check(PackageIdentityPolicy.ValidRecoveryReceipt(
+                new ComponentRecoveryReceipt(authorization, Guid.NewGuid(), ComponentRecoveryAction.Close), authorization),
+            "A close proof that names its original operation is valid");
+        Check(!PackageIdentityPolicy.ValidRecoveryReceipt(null, authorization),
+            "A missing proof is never a valid recovery");
         var acknowledged = registration.Acknowledge(newer);
         Check(acknowledged.OperationId == authorization && acknowledged.Identity == newer,
             "Acknowledging a verified external change keeps the first authorization and advances only the identity");

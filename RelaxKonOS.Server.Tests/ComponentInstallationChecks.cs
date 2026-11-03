@@ -64,8 +64,21 @@ internal static class ComponentInstallationChecks
             Check((await ComponentPackageInstallations.RecoverAsync(id, operation, transport, default, InstallationOperationKind.Install)).State
                 == InstallationOperationState.Interrupted, id + " closing an intent never converts original installation into success");
         }
-        await VerifyPinnedFrpAsync();
-        await VerifyWindowsPinsAsync();
+        // "纳入管理", update and uninstall all require a verified installed identity. When the engine exists
+        // but its package cannot be verified, the state has to say so instead of hiding the actions.
+        var unverified = new ComponentPackageResolution("docker-ce", "28.0.5", null);
+        Check(HostPackageComponentAdapter.StateProblems(unverified).SequenceEqual([ComponentProblemCodes.PackageIdentityUnverified]),
+            "an installed package without a verified identity reports why adoption is unavailable");
+        Check(HostPackageComponentAdapter.StateProblems(unverified with {
+                InstalledPackage = new("docker-ce", "28.0.5", "amd64", new('a', 64)) }).Count == 0,
+            "a verified installed identity reports no identity problem");
+        Check(HostPackageComponentAdapter.StateProblems(new("docker-ce", null, null)).Count == 0,
+            "an absent package is not reported as an unverified one");
+        Check(HostPackageComponentAdapter.StateProblems(new("docker-ce", null, null) {
+                BlockingProblem = ComponentProblemCodes.HostPolicyRequired })
+            .SequenceEqual([ComponentProblemCodes.HostPolicyRequired]),
+            "a policy blocker is reported without a false identity claim");
+        await VerifyPinnedFrpAsync();        await VerifyWindowsPinsAsync();
         await VerifyPinnedTransportAsync();
     }
     private static ComponentPackageTarget Target(string package) => new(package, "1.2.3-1", "amd64",
