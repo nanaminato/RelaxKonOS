@@ -20,6 +20,21 @@ using RoyalTerminal.Terminal;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 
+if (args is ["--module-residency-checks"])
+{
+    void VerifyResidency(bool passed, string message)
+    {
+        Console.WriteLine($"{(passed ? "PASS" : "FAIL")}: {message}");
+        if (!passed) throw new InvalidOperationException(message);
+    }
+    await ModuleMemoryRetentionChecks.RunAsync(VerifyResidency);
+    await FirewallResidencyChecks.RunAsync(VerifyResidency);
+    await ModuleDependencyResidencyChecks.RunAsync(VerifyResidency);
+    await ModuleStreamingChecks.RunAsync(VerifyResidency);
+    await ModuleBackgroundWorkChecks.RunAsync(VerifyResidency);
+    return;
+}
+
 if (args is ["--module-authorization-checks"])
 {
     void VerifyAuthorization(bool passed, string message)
@@ -238,6 +253,7 @@ ModuleManagementChecks.Run(Check);
 ModulePolicyManagementChecks.Run(Check);
 await ModuleRecoveryChecks.RunAsync(Check);
 await ModuleRecoveryHostChecks.RunAsync(Check);
+await ModuleMemoryRetentionChecks.RunAsync(Check);
 await FirewallResidencyChecks.RunAsync(Check);
 await ModuleDependencyResidencyChecks.RunAsync(Check);
 await ModuleStreamingChecks.RunAsync(Check);

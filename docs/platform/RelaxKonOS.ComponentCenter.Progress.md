@@ -6,7 +6,15 @@
 
 当前远程执行路径为桌面 `.roapp`，冻结来源实例/策略/序号/摘要后进入原安装审查，在安装锁内复核授权、摘要与已安装版本。相同版本重装明确为修复。第三方命名空间不能覆盖内置组件、launch gate 或其他应用，不能通过 manifest 执行 shell、动态加载 provider 或获得宿主/Helper 权限。第三方宿主适配器、完整商店网站/搜索、来源同步、自动周期刷新和历史多版本选择 UI 仍未实现。契约与离线生产步骤见[目录设计](RelaxKonOS.ComponentCatalog.Design.md)及[发布说明](RelaxKonOS.ComponentCatalog.Publishing.md)。
 
-已验证：Windows/Linux 信任专项 40 项，覆盖策略确认、序号回退、同版本换字节、密钥复用/退休、跨镜像撤销、缓存删除及日志丢失恢复阻断。指定 Ubuntu 26.04 x64 主机的真实 HTTPS 专项 12 项通过，覆盖 TLS、摘要、私网、跨源重定向、大小、取消与失败保留缓存；CA 仅限子测试进程，不改系统信任库。Windows 真实 `.roapp` 领域安装/更新/卸载及远程来源审查/发现/安装/禁用拒绝通过；来源确认页中英日 × 明暗截图检查通过。测试产物在 `.artifacts/component-catalog-phase23/`。这些测试不代表第三方宿主软件实际升级、跨架构或重启恢复验收。
+已验证：2026-11-03 最终发布测试程序在 Windows 通过信任专项 44 项，新增覆盖安装租约期间界面读取不阻塞、策略变更拒绝；最终发布程序在 Ubuntu 26.04 x64 同样通过 44 项。其余覆盖策略确认、序号回退、同版本换字节、密钥复用/退休、跨镜像撤销、缓存删除及日志丢失恢复阻断。指定 Ubuntu 26.04 x64 主机的真实 HTTPS 专项 12 项通过，覆盖 TLS、摘要、私网、跨源重定向、大小、取消与失败保留缓存；CA 仅限子测试进程，不改系统信任库。Windows 真实 `.roapp` 领域安装/更新/卸载及远程来源审查/发现/安装/禁用拒绝通过；来源确认页中英日 × 明暗截图检查通过。测试产物在 `.artifacts/component-catalog-phase23/`。这些测试不代表第三方宿主软件实际升级、跨架构或重启恢复验收。
+
+### 最终产物与部署核实（2026-11-03）
+
+租约修复后的 Server 与 Server.Tests 已重新以 Release / linux-x64 / framework-dependent .NET 10 发布，日志为 `.artifacts/component-catalog-phase23/publish-{server,tests}-final.log`，Windows 44 项结果为 `trust-tests-final.log`。本轮桌面本地/远程 `.roapp` 安装回归及三语言 × 明暗布局检查再次通过（`component-center-final.log`）。最终 Server DLL SHA-256 为 `261c9f5b6324b8ee3ef4eccc1a53fb18680ff9b39a82a3e0169dd7e360ff8e49`，ManagedRuntimes DLL 为 `4595095122d2a7f1813e974e8abe608a64aedee50ad5ef44bfb99e78344a5810`。`server-final.tar.gz` 排除 `appsettings*`，保留部署配置与组件数据的要求不变。
+
+本轮最初通过 `100.113.194.85:22` 超时，本机 Tailscale 报告已登出、协调服务器连接失败（NoState）。随后按用户指定改用 `192.168.1.9`，原 SSH 指纹匹配；服务器端 Tailscale 为 Running。最终 Linux 44 项信任与真实 HTTPS 12 项通过（`linux-regression-final.log` / `linux-source-final.log`）；组件与官方版本发现回归通过，合计 279 条 PASS 输出；当前发布的模块包回归以测试进程 `DOTNET_RUNTIME_ID=linux-x64` 执行，通过 141 条 PASS（`linux-modules-final.log`）。Windows 目录删除失败及此前未设置 RID 的 Linux 失败日志不作为通过证据。
+
+最终 `server-final.tar.gz` SHA-256 为 `872a3ac1fa5acde8714473fcc9abe78129b970a4a29e56b882bf4755b2b9cfeb`，已直接覆盖 `/opt/relaxkonos/versions/0.2.5/server`，无旧版本备份；未操作组件数据，部署前后 appsettings 文件摘要一致。部署后核对两份程序集摘要与上述最终产物一致，11 份目录 JSON 就位，Server / Helper / Guardian / Mihomo 均 active（`deployed-final.log`）。生产 HTTP 验收 13 项通过，组件变更数为 0，Nginx 计划返回 `component.package_no_update`（`http-deployed-final.log`）。远端产物位于 `/home/nanami/component-catalog-20261102/phase23/`，本次本地 `*-final.log` 才是租约修复后最终版本的验证证据；旧 `deployed.log` / `http-deployed.log` 仅对应此前构建。这次 Server 程序覆盖不代表第三方宿主软件安装、升级、补偿或重启恢复验收。
 
 ## 本地声明式目录与安装链路（2026-11-02，CC-05 / MR-01 集成）
 

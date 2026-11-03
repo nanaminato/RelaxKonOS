@@ -4,6 +4,9 @@ namespace RelaxKonOS.Server.Residency;
 internal sealed class ModuleLeasedStream(Stream inner, ModuleLease lease) : Stream
 {
     private readonly object _gate = new();
+    private Stream? _inner = inner;
+    private Stream Inner => _inner ?? throw new ObjectDisposedException(nameof(ModuleLeasedStream));
+    private bool _cleanupSucceeded;
     private ModuleLease? _lease = lease;
     private int _operations;
     private bool _closing;
@@ -25,7 +28,11 @@ internal sealed class ModuleLeasedStream(Stream inner, ModuleLease lease) : Stre
         lock (_gate)
         {
             _operations--;
-            if (_cleaned && _operations == 0) { release = _lease; _lease = null; }
+            if (_cleaned && _operations == 0)
+            {
+                if (_cleanupSucceeded) _inner = null;
+                release = _lease; _lease = null;
+            }
         }
         release?.Dispose();
     }
@@ -43,8 +50,9 @@ internal sealed class ModuleLeasedStream(Stream inner, ModuleLease lease) : Stre
     {
         try
         {
-            if (asynchronous) await inner.DisposeAsync().ConfigureAwait(false);
-            else inner.Dispose();
+            if (asynchronous) await Inner.DisposeAsync().ConfigureAwait(false);
+            else Inner.Dispose();
+            lock (_gate) _cleanupSucceeded = true;
         }
         catch
         {
@@ -57,7 +65,13 @@ internal sealed class ModuleLeasedStream(Stream inner, ModuleLease lease) : Stre
             lock (_gate)
             {
                 _cleaned = true;
-                if (_operations == 0) { release = _lease; _lease = null; }
+                if (_operations == 0)
+                {
+                    // Keep failed cleanup resources for quarantine; successful wrappers must not
+                    // root a module stream/buffer after callers retain the disposed wrapper.
+                    if (_cleanupSucceeded) _inner = null;
+                    release = _lease; _lease = null;
+                }
             }
             release?.Dispose();
         }
@@ -72,34 +86,34 @@ internal sealed class ModuleLeasedStream(Stream inner, ModuleLease lease) : Stre
         await Cleanup(true).ConfigureAwait(false);
         GC.SuppressFinalize(this);
     }
-    public override bool CanRead { get { lock (_gate) return !_closing && inner.CanRead; } }
-    public override bool CanWrite { get { lock (_gate) return !_closing && inner.CanWrite; } }
-    public override bool CanSeek { get { lock (_gate) return !_closing && inner.CanSeek; } }
-    public override bool CanTimeout { get { lock (_gate) return !_closing && inner.CanTimeout; } }
-    public override long Length { get { using var operation = Enter(); return inner.Length; } }
+    public override bool CanRead { get { lock (_gate) return !_closing && Inner.CanRead; } }
+    public override bool CanWrite { get { lock (_gate) return !_closing && Inner.CanWrite; } }
+    public override bool CanSeek { get { lock (_gate) return !_closing && Inner.CanSeek; } }
+    public override bool CanTimeout { get { lock (_gate) return !_closing && Inner.CanTimeout; } }
+    public override long Length { get { using var operation = Enter(); return Inner.Length; } }
     public override long Position
-    { get { using var operation = Enter(); return inner.Position; } set { using var operation = Enter(); inner.Position = value; } }
+    { get { using var operation = Enter(); return Inner.Position; } set { using var operation = Enter(); Inner.Position = value; } }
     public override int ReadTimeout
-    { get { using var operation = Enter(); return inner.ReadTimeout; } set { using var operation = Enter(); inner.ReadTimeout = value; } }
+    { get { using var operation = Enter(); return Inner.ReadTimeout; } set { using var operation = Enter(); Inner.ReadTimeout = value; } }
     public override int WriteTimeout
-    { get { using var operation = Enter(); return inner.WriteTimeout; } set { using var operation = Enter(); inner.WriteTimeout = value; } }
-    public override void Flush() { using var operation = Enter(); inner.Flush(); }
-    public override int Read(byte[] buffer, int offset, int count) { using var operation = Enter(); return inner.Read(buffer, offset, count); }
-    public override int Read(Span<byte> buffer) { using var operation = Enter(); return inner.Read(buffer); }
-    public override int ReadByte() { using var operation = Enter(); return inner.ReadByte(); }
-    public override void Write(byte[] buffer, int offset, int count) { using var operation = Enter(); inner.Write(buffer, offset, count); }
-    public override void Write(ReadOnlySpan<byte> buffer) { using var operation = Enter(); inner.Write(buffer); }
-    public override void WriteByte(byte value) { using var operation = Enter(); inner.WriteByte(value); }
-    public override long Seek(long offset, SeekOrigin origin) { using var operation = Enter(); return inner.Seek(offset, origin); }
-    public override void SetLength(long value) { using var operation = Enter(); inner.SetLength(value); }
+    { get { using var operation = Enter(); return Inner.WriteTimeout; } set { using var operation = Enter(); Inner.WriteTimeout = value; } }
+    public override void Flush() { using var operation = Enter(); Inner.Flush(); }
+    public override int Read(byte[] buffer, int offset, int count) { using var operation = Enter(); return Inner.Read(buffer, offset, count); }
+    public override int Read(Span<byte> buffer) { using var operation = Enter(); return Inner.Read(buffer); }
+    public override int ReadByte() { using var operation = Enter(); return Inner.ReadByte(); }
+    public override void Write(byte[] buffer, int offset, int count) { using var operation = Enter(); Inner.Write(buffer, offset, count); }
+    public override void Write(ReadOnlySpan<byte> buffer) { using var operation = Enter(); Inner.Write(buffer); }
+    public override void WriteByte(byte value) { using var operation = Enter(); Inner.WriteByte(value); }
+    public override long Seek(long offset, SeekOrigin origin) { using var operation = Enter(); return Inner.Seek(offset, origin); }
+    public override void SetLength(long value) { using var operation = Enter(); Inner.SetLength(value); }
     public override async Task FlushAsync(CancellationToken cancellationToken)
-    { using var operation = Enter(); await inner.FlushAsync(cancellationToken).ConfigureAwait(false); }
+    { using var operation = Enter(); await Inner.FlushAsync(cancellationToken).ConfigureAwait(false); }
     public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
-    { using var operation = Enter(); return await inner.ReadAsync(buffer.AsMemory(offset, count), cancellationToken).ConfigureAwait(false); }
+    { using var operation = Enter(); return await Inner.ReadAsync(buffer.AsMemory(offset, count), cancellationToken).ConfigureAwait(false); }
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
-    { using var operation = Enter(); return await inner.ReadAsync(buffer, cancellationToken).ConfigureAwait(false); }
+    { using var operation = Enter(); return await Inner.ReadAsync(buffer, cancellationToken).ConfigureAwait(false); }
     public override async Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
-    { using var operation = Enter(); await inner.WriteAsync(buffer.AsMemory(offset, count), cancellationToken).ConfigureAwait(false); }
+    { using var operation = Enter(); await Inner.WriteAsync(buffer.AsMemory(offset, count), cancellationToken).ConfigureAwait(false); }
     public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
-    { using var operation = Enter(); await inner.WriteAsync(buffer, cancellationToken).ConfigureAwait(false); }
+    { using var operation = Enter(); await Inner.WriteAsync(buffer, cancellationToken).ConfigureAwait(false); }
 }

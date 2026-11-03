@@ -117,6 +117,8 @@ internal sealed class ModuleServiceContainer : IServiceProvider, IAsyncDisposabl
             _created.Clear();
             _tracked.Clear();
             _singletons.Clear();
+            // Factories may close over module state even when their singleton was never resolved.
+            _factories.Clear();
         }
 
         List<Exception> failures = [];

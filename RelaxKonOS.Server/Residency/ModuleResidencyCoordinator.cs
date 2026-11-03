@@ -540,7 +540,10 @@ internal sealed class ModuleResidencyCoordinator : IAsyncDisposable
         var generation = entry.Generation;
         var startedAt = _time.GetTimestamp();
         var load = LoadCoreAsync(entry, generation, startedAt);
-        entry.Load = load;
+        // A synchronous factory can finish LoadCoreAsync (and clear entry.Load) before
+        // this assignment. Never retain its completed Task<TResult>: its result owns the
+        // entire generation even after entry.Runtime is cleared during sleep.
+        entry.Load = load.IsCompleted ? null : load;
         return load;
     }
 
