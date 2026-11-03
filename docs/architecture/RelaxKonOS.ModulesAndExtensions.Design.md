@@ -14,12 +14,14 @@
 
 本设计不改变系统既有认证、宿主模式、Helper 授权、用户权限、受管运行时生命周期或 Android 原生应用发布方式。包元数据、能力声明与数字签名均不能自行授予权限或提升为内置身份。
 
+2026-11-03 补充：[Server 模块边界与内存回收设计](RelaxKonOS.ServerModuleBoundaries.Design.md)细化 Core 最小职责、官方进程内独立程序集、第三方 ModuleHost 按需运行和领域迁移顺序。该方案不改变官方/第三方信任边界及版本变更重启规则；MB 跟踪项均为待实施，现有对象回收测试不代表代码卸载或生产内存收益。
+
 ## 2. 当前基础与约束
 
 | 现状 | 设计含义 |
 | --- | --- |
 | [Program.cs](../../RelaxKonOS.Server/Program.cs) 统一注册服务，[ServerPipeline](../../RelaxKonOS.Server/Startup/ServerPipeline.cs) 统一映射路由和 Hub。 | 模块化必须同时覆盖 DI、HostedService、Endpoint 和 Hub。 |
-| [HostServiceRegistration](../../RelaxKonOS.Server/Startup/HostServiceRegistration.cs)、[ProxyServiceRegistration](../../RelaxKonOS.Server/Startup/ProxyServiceRegistration.cs) 与 [DeploymentServiceRegistration](../../RelaxKonOS.Server/Startup/DeploymentServiceRegistration.cs) 含多领域注册及后台工作。 | 注册函数的拆分要先检查跨域依赖、初始化与恢复顺序，不能直接按目录机械搬迁。 |
+| [HostServiceRegistration](../../RelaxKonOS.Server/Startup/HostServiceRegistration.cs)、[ProxyRuntimeRegistration](../../RelaxKonOS.Server/Startup/ProxyRuntimeRegistration.cs) 与 [DeploymentServiceRegistration](../../RelaxKonOS.Server/Startup/DeploymentServiceRegistration.cs) 含多领域注册及后台工作。 | 注册函数的拆分要先检查跨域依赖、初始化与恢复顺序，不能直接按目录机械搬迁。 |
 | [ServerDescriptorFactory](../../RelaxKonOS.Server/HostMode/ServerDescriptorFactory.cs) 根据宿主模式、配置及领域条件产生能力。 | 加入有效模块集合后，同步更新能力和 Host 描述的相关字段，避免两个描述互相矛盾。 |
 | [DeveloperPackageManager](../../Client/RelaxKonOS.Client/Services/Developer/DeveloperPackageManager.cs) 对桌面 `.roapp` 先注册元数据、启动时加载入口；[兼容性设计](../development/RelaxKonOS.ApplicationCompatibility.md) 先检查客户端平台和 Server 能力。 | 复用桌面应用发现、`ApplicationManager` 和兼容性机制；当前加载器不是 Server 模块管理器。 |
 | [Server 项目](../../RelaxKonOS.Server/RelaxKonOS.Server.csproj) 集中引用 PTY、ACME 等依赖并发布 7-Zip、Mihomo 资源。 | 只加开关不会移除程序集和资源；需要独立项目、发布清单与实测才能证明磁盘收益。 |

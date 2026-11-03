@@ -24,6 +24,8 @@
 - Android 的模块/应用界面与平台边界；由 [Android 文档](../../Client/RelaxKonOS.Client.Android/docs/design/ApplicationPackages.Design.md)独立拥有。
 - 受管软件（Nginx、Docker、Mihomo、sing-box 等）的安装、版本和回退；仍由[受管运行时设计](../platform/RelaxKonOS.ManagedRuntimes.Design.md)拥有。模块安装不得顺手安装或启动这些软件。
 
+内存生命周期的后续边界由[模块边界与内存回收设计](RelaxKonOS.ServerModuleBoundaries.Design.md)拥有：官方继续进程内，计划先独立程序集和按代次容器，再验证代码回收；第三方继续 ModuleHost，计划增加闲时退出与请求启动。这里的同版本回收/再唤醒不等于在线更新；安装、启用集合、更新、回退与移除继续遵循本文事务和重启规则。运行 ABI 的未来变更须直接更新唯一当前契约和全部包/调用者，不保留启动注册 ABI 的兼容桥。
+
 ### 1.1 为什么不交付进程内第三方模块
 
 把第三方模块放进 Server 进程，等于把 Server 的完整信任交给模块：它可以解析 Host 的 DI、读取配置和数据库连接、拿到 JWT/数据保护密钥、调用 `IPrivilegedOperationTransport`，甚至直接用 Server 的 OS 身份连接 Helper 的 Unix socket 或命名管道。此时“每次确认提权”只能约束诚实模块，恶意模块可以直接绕过。

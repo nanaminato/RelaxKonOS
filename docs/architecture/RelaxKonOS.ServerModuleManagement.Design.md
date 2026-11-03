@@ -13,6 +13,7 @@
 - [包商店来源设计](../platform/RelaxKonOS.PackageStore.Design.md)拥有模块与桌面应用的来源、目录、搜索和下载契约。
 - 本文拥有跨端模块管理产品规则、操作契约与交付验收。
 - [驻留设计](RelaxKonOS.ServerModuleResidency.Design.md)拥有协调器、租约、运行时释放边界及实测证据。
+- [模块边界与内存回收设计](RelaxKonOS.ServerModuleBoundaries.Design.md)拥有为回收调整的程序集/进程边界、Core 与领域所有权及 MB 迁移验收。对象休眠、代码回收与进程退出须独立观察；新增诊断 DTO 随管理协议实施项统一升级，本文尚未声明已实现这些新字段。
 - [组件中心](../platform/RelaxKonOS.ComponentCenter.Design.md)拥有统一导航；[受管运行时](../platform/RelaxKonOS.ManagedRuntimes.Design.md)拥有 Docker Engine、Nginx、Mihomo 等软件生命周期。
 
 模块管理不增加受管软件安装后端，不改变 MR 各项支持范围。模块安装、启用、唤醒不自动安装或启动其管理的软件；休眠和移除模块不自动停止外部服务或删除业务数据。
