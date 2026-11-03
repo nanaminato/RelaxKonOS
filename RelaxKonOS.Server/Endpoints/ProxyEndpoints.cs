@@ -96,27 +96,7 @@ public static class ProxyEndpoints
                 return Problem(error.ProblemCode, StatusCodes.Status400BadRequest);
             }
         }).RequireAuthorization("ProxyManage").WithTags("Proxy");
-        app.MapPost(ProxyApiRoutes.SubscriptionsRefresh, (HttpContext context, ProxyOperationStore operations, IProxySubscriptionService service, ProxyAuditStore audit, CancellationToken ct) =>
-            QueueAsync(context, operations, "subscription.refresh_all", async (actor, token) =>
-            {
-                var problem = await service.RefreshAllAsync(token);
-                await audit.RecordAsync(actor, "subscription.refresh_all", string.IsNullOrEmpty(problem) ? "succeeded" : "failed", problem, token);
-                return problem;
-            }, ct)).RequireAuthorization("ProxyManage").WithTags("Proxy");
-        app.MapPost(Route(ProxyApiRoutes.SubscriptionRefreshPattern), (Guid subscriptionId, HttpContext context, ProxyOperationStore operations, IProxySubscriptionService service, ProxyAuditStore audit, CancellationToken ct) =>
-            QueueAsync(context, operations, "subscription.refresh", async (actor, token) =>
-            {
-                var problem = await service.RefreshAsync(subscriptionId, token);
-                await audit.RecordAsync(actor, "subscription.refresh", string.IsNullOrEmpty(problem) ? "succeeded" : "failed", problem, token);
-                return problem;
-            }, ct)).RequireAuthorization("ProxyManage").WithTags("Proxy");
-        app.MapPost(Route(ProxyApiRoutes.SubscriptionActivatePattern), (Guid subscriptionId, HttpContext context, ProxyOperationStore operations, IProxySubscriptionService service, ProxyAuditStore audit, CancellationToken ct) =>
-            QueueAsync(context, operations, "subscription.activate", async (actor, token) =>
-            {
-                var problem = await service.ActivateAsync(subscriptionId, token);
-                await audit.RecordAsync(actor, "subscription.activate", string.IsNullOrEmpty(problem) ? "succeeded" : "failed", problem, token);
-                return problem;
-            }, ct)).RequireAuthorization("ProxyManage").WithTags("Proxy");
+        app.MapSubscriptionOperationEndpoints();
         app.MapGet(Route(ProxyApiRoutes.ProfilePattern), async (Guid profileId, IProxyProfileService service, CancellationToken ct) =>
             await service.GetAsync(profileId, ct) is { } profile ? Results.Ok(profile) : Results.NotFound()).RequireAuthorization("ProxyRead").WithTags("Proxy");
         app.MapPost(ProxyApiRoutes.Profiles, async (UpsertProxyProfileRequest request, IProxyProfileRepository profiles, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
@@ -188,6 +168,31 @@ public static class ProxyEndpoints
         var actor = Actor(context.User);
         var idempotencyKey = context.Request.Headers["Idempotency-Key"].ToString();
         try { var item = await store.EnqueueAsync(idempotencyKey, kind, (reportStage, token) => action(actor, reportStage, token), ct); return Results.Accepted(ProxyApiRoutes.Proxy + "/operations/" + item.OperationId, new ProxyOperationAcceptedDto(item.OperationId)); }
+        catch (ProxyOperationValidationException error) { return Problem(error.ProblemCode, StatusCodes.Status400BadRequest); }
+    }
+    internal static void MapSubscriptionOperationEndpoints(this IEndpointRouteBuilder app)
+    {
+        app.MapPost(ProxyApiRoutes.SubscriptionsRefresh, (HttpContext context, ProxySubscriptionOperations operations, CancellationToken ct) =>
+            QueueSubscriptionAsync(context, operations, ProxySubscriptionOperation.RefreshAll, Guid.Empty, ct))
+            .RequireAuthorization("ProxyManage").WithTags("Proxy");
+        app.MapPost(Route(ProxyApiRoutes.SubscriptionRefreshPattern), (Guid subscriptionId, HttpContext context, ProxySubscriptionOperations operations, CancellationToken ct) =>
+            QueueSubscriptionAsync(context, operations, ProxySubscriptionOperation.Refresh, subscriptionId, ct))
+            .RequireAuthorization("ProxyManage").WithTags("Proxy");
+        app.MapPost(Route(ProxyApiRoutes.SubscriptionActivatePattern), (Guid subscriptionId, HttpContext context, ProxySubscriptionOperations operations, CancellationToken ct) =>
+            QueueSubscriptionAsync(context, operations, ProxySubscriptionOperation.Activate, subscriptionId, ct))
+            .RequireAuthorization("ProxyManage").WithTags("Proxy");
+    }
+
+    private static async Task<IResult> QueueSubscriptionAsync(HttpContext context, ProxySubscriptionOperations operations,
+        ProxySubscriptionOperation operation, Guid id, CancellationToken ct)
+    {
+        var actor = Actor(context.User);
+        var key = context.Request.Headers["Idempotency-Key"].ToString();
+        try
+        {
+            var item = await operations.EnqueueAsync(key, operation, id, actor, ct);
+            return Results.Accepted(ProxyApiRoutes.Proxy + "/operations/" + item.OperationId, new ProxyOperationAcceptedDto(item.OperationId));
+        }
         catch (ProxyOperationValidationException error) { return Problem(error.ProblemCode, StatusCodes.Status400BadRequest); }
     }
     private static string Route(string pattern) => ProxyApiRoutes.Proxy + pattern;

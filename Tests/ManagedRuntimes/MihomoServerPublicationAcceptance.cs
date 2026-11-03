@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging.Abstractions;
 using RelaxKonOS.ManagedRuntimes;
@@ -85,8 +85,8 @@ internal static class MihomoServerPublicationAcceptance
             Check((await store.ReadAsync(default)).Pending?.OperationId == second.Operation && await probe(originalPort),
                 "Real Helper commits while the lost Server response leaves publication pending");
             store = new(paths, DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(root, "keys"))));
-            using (var startup = new MihomoPublicationRecoveryService(store, Service(store),
-                new(store, new(store, paths, paths), Runtime(store), paths), new(store, Runtime(store), paths, new(paths, systemProxy)), NullLogger<MihomoPublicationRecoveryService>.Instance))
+            using var recoveryServices1 = new PublicationRecoveryServices(store, () => Service(store), () => new(store, new(store, paths, paths), Runtime(store), paths), () => new(store, Runtime(store), paths, new(paths, systemProxy)));
+            using (var startup = new MihomoPublicationRecoveryService(recoveryServices1.Scopes, NullLogger<MihomoPublicationRecoveryService>.Instance))
             {
                 await startup.StartAsync(default);
                 await startup.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(15));
@@ -141,8 +141,8 @@ internal static class MihomoServerPublicationAcceptance
             var beforeProfileRecovery = transport.ConfigureCalls;
             store = new(paths, DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(root, "keys"))));
             publicationProfiles = await MihomoProfilePublicationChecks.CreateAsync(root);
-            using (var startup = new MihomoPublicationRecoveryService(store, Service(store),
-                new(store, new(store, paths, paths), Runtime(store), paths), new(store, Runtime(store), paths, new(paths, systemProxy)), NullLogger<MihomoPublicationRecoveryService>.Instance))
+            using var recoveryServices2 = new PublicationRecoveryServices(store, () => Service(store), () => new(store, new(store, paths, paths), Runtime(store), paths), () => new(store, Runtime(store), paths, new(paths, systemProxy)));
+            using (var startup = new MihomoPublicationRecoveryService(recoveryServices2.Scopes, NullLogger<MihomoPublicationRecoveryService>.Instance))
             {
                 await startup.StartAsync(default);
                 await startup.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(15));
@@ -175,8 +175,8 @@ internal static class MihomoServerPublicationAcceptance
                 "Real runtime commit plus failed host-settings effect leaves exact intent pending");
             var beforeRecovery = transport.ConfigureCalls;
             store = new(paths, DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(root, "keys"))));
-            using (var startup = new MihomoPublicationRecoveryService(store, Service(store),
-                new(store, new(store, paths, paths), Runtime(store), paths), new(store, Runtime(store), paths, new(paths, systemProxy)), NullLogger<MihomoPublicationRecoveryService>.Instance))
+            using var recoveryServices3 = new PublicationRecoveryServices(store, () => Service(store), () => new(store, new(store, paths, paths), Runtime(store), paths), () => new(store, Runtime(store), paths, new(paths, systemProxy)));
+            using (var startup = new MihomoPublicationRecoveryService(recoveryServices3.Scopes, NullLogger<MihomoPublicationRecoveryService>.Instance))
             {
                 await startup.StartAsync(default);
                 await startup.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(15));

@@ -9,12 +9,27 @@ public delegate Task ProxyOperationStageReporter(string stage);
 /// Durable, host-global operation ledger for typed Proxy mutations.  It queues delegates supplied
 /// by domain services only; it is deliberately not a generic command executor.
 /// </summary>
-public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<ProxyOperationStore> logger)
+public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<ProxyOperationStore> logger) : IHostedService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Dictionary<string, ProxyOperationDto> _byKey = new(StringComparer.Ordinal);
     private readonly Dictionary<Guid, ProxyOperationDto> _byId = [];
     private bool _loaded;
+    private bool _stopping;
+    private bool _recoveryBlocked;
+    private readonly Dictionary<Guid, TaskCompletionSource> _running = [];
+    // Separate retention survives a second failure while writing the failed terminal record.
+    private readonly Dictionary<Guid, ProxySubscriptionCleanupException> _cleanupFailures = [];
+
+    public Task StartAsync(CancellationToken ct) => Task.CompletedTask;
+    public async Task StopAsync(CancellationToken ct)
+    {
+        Task[] pending;
+        await _gate.WaitAsync(ct);
+        try { _stopping = true; pending = _running.Values.Select(item => item.Task).ToArray(); }
+        finally { _gate.Release(); }
+        await Task.WhenAll(pending).WaitAsync(ct);
+    }
 
     public async Task<ProxyOperationDto> EnqueueAsync(string idempotencyKey, string kind, Func<ProxyOperationStageReporter, CancellationToken, Task<string?>> operation, CancellationToken cancellationToken)
     {
@@ -26,15 +41,37 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
         {
             await LoadAsync(cancellationToken);
             if (_byKey.TryGetValue(idempotencyKey, out item!)) return item;
+            if (_stopping || _recoveryBlocked) throw new ProxyOperationValidationException(ProxyProblemCodes.OperationInterrupted);
             item = new ProxyOperationDto(Guid.NewGuid(), kind, ProxyOperationState.Queued, "queued", "", null, null);
             _byKey.Add(idempotencyKey, item); _byId.Add(item.OperationId, item);
-            await SaveAsync(cancellationToken);
+            try { await SaveAsync(cancellationToken); }
+            catch { _byKey.Remove(idempotencyKey); _byId.Remove(item.OperationId); throw; }
+            _running.Add(item.OperationId, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
         }
         finally { _gate.Release(); }
 
         logger.LogInformation("Proxy operation {OperationId} queued: {OperationKind}.", item.OperationId, kind);
-        _ = ExecuteAsync(item.OperationId, operation);
+        _ = ExecuteTrackedAsync(item.OperationId, operation);
         return item;
+    }
+
+    private async Task ExecuteTrackedAsync(Guid id, Func<ProxyOperationStageReporter, CancellationToken, Task<string?>> operation)
+    {
+        Exception? failure = null;
+        try { await ExecuteAsync(id, operation); }
+        catch (Exception exception)
+        {
+            failure = exception;
+            logger.LogError(exception, "Proxy operation did not finish cleanly; recovery ownership is retained. OperationId={OperationId}", id);
+        }
+        await _gate.WaitAsync();
+        try
+        {
+            var completion = _running[id];
+            if (failure is null) { _running.Remove(id); completion.TrySetResult(); }
+            else { _recoveryBlocked = true; completion.TrySetException(failure); _ = completion.Task.Exception; }
+        }
+        finally { _gate.Release(); }
     }
 
     public async Task<ProxyOperationDto?> GetAsync(Guid id, CancellationToken cancellationToken)
@@ -67,8 +104,15 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
         }
         catch (Exception exception)
         {
+            if (exception is ProxySubscriptionCleanupException cleanup)
+            {
+                await _gate.WaitAsync();
+                try { _recoveryBlocked = true; _cleanupFailures[id] = cleanup; }
+                finally { _gate.Release(); }
+            }
             logger.LogWarning(exception, "Proxy operation {OperationId} failed.", id);
             await UpdateAsync(id, item => item with { State = ProxyOperationState.Failed, Stage = "failed", ProblemCode = ProxyProblemCodes.OperationInterrupted, CompletedAt = DateTimeOffset.UtcNow });
+            if (exception is ProxySubscriptionCleanupException) throw;
         }
     }
 

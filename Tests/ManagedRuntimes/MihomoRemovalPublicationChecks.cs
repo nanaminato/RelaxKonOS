@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging.Abstractions;
 using RelaxKonOS.ManagedRuntimes;
@@ -67,8 +67,10 @@ internal static class MihomoRemovalPublicationChecks
             Check((await f.Store.ReadAsync(default)).Pending?.RemovalPlan is not null && File.Exists(f.Active),
                 "Lost Helper response leaves durable removal pending before mirror cleanup");
             f.Recreate();
-            using var startup = new MihomoPublicationRecoveryService(f.Store, f.Configuration, f.Installation, f.Service,
-                NullLogger<MihomoPublicationRecoveryService>.Instance);
+            using var recoveryServices1 = new PublicationRecoveryServices(f.Store,
+                () => throw new Exception("Removal recovery constructed configuration coordinator"),
+                () => throw new Exception("Removal recovery constructed installation coordinator"), () => f.Service);
+            using var startup = new MihomoPublicationRecoveryService(recoveryServices1.Scopes, NullLogger<MihomoPublicationRecoveryService>.Instance);
             await startup.StartAsync(default); await startup.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(10));
             Check((await f.Store.ReadAsync(default)) is { Pending: null, LastRemoval.Confirmed: true }
                 && File.Exists(f.Active) == keep && f.Removals == 1 && f.Recoveries == 0,

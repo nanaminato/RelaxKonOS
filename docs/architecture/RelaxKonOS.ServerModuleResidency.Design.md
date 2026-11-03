@@ -278,3 +278,7 @@ Git 命令端口保留结构化文件名、参数、环境与超时规则，取�
 2026-11-03 MB-04 续核：到期 worker 的真实异步释放检查已补跑 Linux；系统代理 guard 对账已与设置 writer/控制器客户端分离，仍使用原发布 gate 与身份核验。TUN marker 恢复及发布补偿保持原单一责任方和根引用，Proxy 继续 resident，不声明代码回收或生产内存收益；详见[边界设计 §14](RelaxKonOS.ServerModuleBoundaries.Design.md#14-系统代理-guard-窄执行边界与安全责任审计2026-11-03mb-04-部分)。
 
 2026-11-03 MB-04 TUN 续核：运行控制已脱离 settings writer，后者按调用创建；安全 owner、marker、两级锁和 Core 发布恢复仍保留。验证覆盖生产执行器的启停/补偿/恢复与竞争夹具，不扩大为实机网络事务、代码回收或生产内存收益。当前事实见[边界设计 §15](RelaxKonOS.ServerModuleBoundaries.Design.md#15-tun-运行控制与设置写入执行边界2026-11-03mb-04-部分)。
+
+2026-11-03 MB-04 发布恢复续核：Core worker 改为每轮临时 scope 与按 pending 类型选择执行，原补偿/重试和 publication gate 保留；profile 与订阅后台图及独立根引用审计见[边界设计 §16](RelaxKonOS.ServerModuleBoundaries.Design.md#16-发布恢复临时作用域与-profile-执行图审计2026-11-03mb-04-部分)。这不构成整个 Proxy 回收、后台工作租约或生产内存收益验收，Proxy 仍 resident。
+
+2026-11-03 MB-04 订阅续核：排队订阅已具有独立后台 scope，Proxy 操作台账跟踪完整任务并在停机排空，scope 清理或终态确认失败保留责任；这不是驻留工作租约，Proxy 继续 resident，详见[边界设计 §17](RelaxKonOS.ServerModuleBoundaries.Design.md#17-订阅后台任务独立作用域与完整寿命2026-11-03mb-04-部分)。

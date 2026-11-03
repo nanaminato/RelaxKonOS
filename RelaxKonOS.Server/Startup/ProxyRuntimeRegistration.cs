@@ -50,10 +50,10 @@ internal static class ProxyRuntimeRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoPublicationStore>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeAuthorizationProvider>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoSettingsPublicationFiles>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoConfigurationPublicationService>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoInstallationPublicationService>();
+        builder.Services.AddTransient<RelaxKonOS.Server.Proxy.Mihomo.MihomoConfigurationPublicationService>();
+        builder.Services.AddTransient<RelaxKonOS.Server.Proxy.Mihomo.MihomoInstallationPublicationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoInstallationBootstrapService>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoRemovalPublicationService>();
+        builder.Services.AddTransient<RelaxKonOS.Server.Proxy.Mihomo.MihomoRemovalPublicationService>();
         builder.Services.AddHostedService<RelaxKonOS.Server.Proxy.Mihomo.MihomoPublicationRecoveryService>();
 
         // ------------------------------------------------------------------ settings and system proxy

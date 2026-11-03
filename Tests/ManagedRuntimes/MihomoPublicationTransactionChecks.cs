@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text;
@@ -116,7 +117,8 @@ internal static class MihomoPublicationTransactionChecks
         }
         using (var f = await Fixture.CreateAsync())
         {
-            using var startup = new MihomoPublicationRecoveryService(f.Store, f.Service, f.Installation, f.Removal, NullLogger<MihomoPublicationRecoveryService>.Instance);
+            using var recoveryServices1 = new PublicationRecoveryServices(f.Store, () => f.Service, () => f.Installation, () => f.Removal);
+            using var startup = new MihomoPublicationRecoveryService(recoveryServices1.Scopes, NullLogger<MihomoPublicationRecoveryService>.Instance);
             await startup.StartAsync(default);
             await startup.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(10));
             Check(f.ConfigureCalls == 0 && f.RecoverCalls == 0 && f.QueryCalls == 0,
@@ -127,7 +129,8 @@ internal static class MihomoPublicationTransactionChecks
         using (var f = await Fixture.CreateAsync())
         {
             f.Mode = "recovery"; await f.PublishAsync();
-            using var startup = new MihomoPublicationRecoveryService(f.Store, f.Service, f.Installation, f.Removal, NullLogger<MihomoPublicationRecoveryService>.Instance);
+            using var recoveryServices2 = new PublicationRecoveryServices(f.Store, () => f.Service, () => f.Installation, () => f.Removal);
+            using var startup = new MihomoPublicationRecoveryService(recoveryServices2.Scopes, NullLogger<MihomoPublicationRecoveryService>.Instance);
             await startup.StartAsync(default);
             await startup.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(10));
             Check(f.RecoverCalls == 1 && f.ConfigureCalls == 1 && (await f.Store.ReadAsync(default)).Pending is null,
@@ -136,7 +139,8 @@ internal static class MihomoPublicationTransactionChecks
         using (var f = await Fixture.CreateAsync())
         {
             f.Mode = "recovery"; await f.PublishAsync(); f.TransientRecoveryFailures = 1;
-            using var startup = new MihomoPublicationRecoveryService(f.Store, f.Service, f.Installation, f.Removal, NullLogger<MihomoPublicationRecoveryService>.Instance);
+            using var recoveryServices3 = new PublicationRecoveryServices(f.Store, () => f.Service, () => f.Installation, () => f.Removal);
+            using var startup = new MihomoPublicationRecoveryService(recoveryServices3.Scopes, NullLogger<MihomoPublicationRecoveryService>.Instance);
             await startup.StartAsync(default);
             await startup.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(15));
             Check(f.RecoverCalls == 2 && f.ConfigureCalls == 1 && (await f.Store.ReadAsync(default)).Pending is null,
@@ -145,7 +149,8 @@ internal static class MihomoPublicationTransactionChecks
         using (var f = await Fixture.CreateAsync())
         {
             f.Mode = "recovery"; await f.PublishAsync(); f.RemainRecoveryRequired = true;
-            using var startup = new MihomoPublicationRecoveryService(f.Store, f.Service, f.Installation, f.Removal, NullLogger<MihomoPublicationRecoveryService>.Instance);
+            using var recoveryServices4 = new PublicationRecoveryServices(f.Store, () => f.Service, () => f.Installation, () => f.Removal);
+            using var startup = new MihomoPublicationRecoveryService(recoveryServices4.Scopes, NullLogger<MihomoPublicationRecoveryService>.Instance);
             await startup.StartAsync(default);
             await startup.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(10));
             Check(f.RecoverCalls == 1 && (await f.Store.ReadAsync(default)).Pending is not null,
@@ -329,6 +334,7 @@ internal static class MihomoPublicationTransactionChecks
             Check(await f.Store.Gate.WaitAsync(TimeSpan.FromSeconds(1)), "Guard refusal releases the publication gate: " + failure);
             f.Store.Gate.Release();
         }
+        await CheckRecoveryBoundaryAsync(Check);
         return count;
     }
 
@@ -377,6 +383,89 @@ internal static class MihomoPublicationTransactionChecks
         ((MethodStub)(object)value).Handler = handler;
         return value;
     }
+
+    private static async Task CheckRecoveryBoundaryAsync(Action<bool, string> check)
+    {
+        using (var f = await Fixture.CreateAsync())
+        {
+            using var services = new PublicationRecoveryServices(f.Store,
+                () => throw new Exception("No pending work must not construct configuration recovery"),
+                () => throw new Exception("No pending work must not construct installation recovery"),
+                () => throw new Exception("No pending work must not construct removal recovery"));
+            using var worker = new MihomoPublicationRecoveryService(services.Scopes, NullLogger<MihomoPublicationRecoveryService>.Instance);
+            await worker.StartAsync(default); await worker.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(5));
+            check(f.QueryCalls == 0, "Idle recovery constructs no publication executor or Helper graph");
+        }
+        using (var f = await Fixture.CreateAsync())
+        {
+            f.Mode = "recovery"; await f.PublishAsync(); f.TransientRecoveryFailures = 1;
+            var disposing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var disposed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var created = 0; var cleaned = 0;
+            var instances = new List<WeakReference>();
+            var services = new ServiceCollection(); services.AddSingleton(f.Store);
+            services.AddScoped(_ => new RecoveryScopeProbe(async () =>
+            {
+                if (Interlocked.Increment(ref cleaned) == 1)
+                { disposing.TrySetResult(); await release.Task; disposed.TrySetResult(); }
+            }));
+            services.AddTransient<MihomoConfigurationPublicationService>(scope =>
+            {
+                scope.GetRequiredService<RecoveryScopeProbe>(); Interlocked.Increment(ref created);
+                var executor = new MihomoConfigurationPublicationService(f.Store, f.Provider,
+                    new(f, f.Store, f.Provider, f, new DirectDownloads()), f, new(f, f.HostProxy));
+                instances.Add(new WeakReference(executor)); return executor;
+            });
+            services.AddTransient<MihomoInstallationPublicationService>(_ => throw new Exception("Wrong recovery kind: installation"));
+            services.AddTransient<MihomoRemovalPublicationService>(_ => throw new Exception("Wrong recovery kind: removal"));
+            await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+            using var worker = new MihomoPublicationRecoveryService(provider.GetRequiredService<IServiceScopeFactory>(),
+                NullLogger<MihomoPublicationRecoveryService>.Instance);
+            check(created == 0, "Creating a recovery scheduler does not construct a coordinator");
+            await worker.StartAsync(default);
+            try
+            {
+                await disposing.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                check(created == 1 && !worker.ExecuteTask!.IsCompleted && (await f.Store.ReadAsync(default)).Pending is not null,
+                    "Busy recovery waits for asynchronous scope disposal and keeps the durable operation pending");
+            }
+            finally { release.TrySetResult(); }
+            await disposed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            for (var attempt = 0; attempt < 10 && instances[0].IsAlive; attempt++)
+            { await Task.Delay(20); GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect(); }
+            check(!instances[0].IsAlive, "The five-second retry timer does not retain the completed coordinator");
+            await worker.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(10));
+            check(created == 2 && cleaned == 2 && f.ConfigureCalls == 1 && f.RecoverCalls == 2
+                && (await f.Store.ReadAsync(default)).Pending is null,
+                "Retry selects only a fresh configuration executor and reconciles the original operation without reapplying");
+        }
+        using (var f = await Fixture.CreateAsync())
+        {
+            f.Mode = "recovery"; await f.PublishAsync();
+            var resolved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var disposed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var services = new ServiceCollection(); services.AddSingleton(f.Store);
+            services.AddScoped(_ => new RecoveryScopeProbe(() => { disposed.TrySetResult(); return Task.CompletedTask; }));
+            services.AddTransient<MihomoConfigurationPublicationService>(scope =>
+            { scope.GetRequiredService<RecoveryScopeProbe>(); resolved.TrySetResult(); return f.Service; });
+            await using var provider = services.BuildServiceProvider();
+            using var worker = new MihomoPublicationRecoveryService(provider.GetRequiredService<IServiceScopeFactory>(),
+                NullLogger<MihomoPublicationRecoveryService>.Instance);
+            await f.Store.Gate.WaitAsync();
+            try
+            {
+                await worker.StartAsync(default); await resolved.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                await worker.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(5));
+                check(disposed.Task.IsCompletedSuccessfully && f.Store.Gate.CurrentCount == 0
+                    && (await f.Store.ReadAsync(default)).Pending is not null,
+                    "Stopping a recovery pass waiting for publication ownership disposes its scope without stealing the gate or clearing pending");
+            }
+            finally { f.Store.Gate.Release(); }
+        }
+    }
+    private sealed class RecoveryScopeProbe(Func<Task> dispose) : IAsyncDisposable
+    { public async ValueTask DisposeAsync() => await dispose(); }
 
     private sealed class Fixture : IDisposable, IPrivilegedOperationTransport, IProxyControllerSecretStore, IProxyPlatformPaths, IServerModeResolver
     {

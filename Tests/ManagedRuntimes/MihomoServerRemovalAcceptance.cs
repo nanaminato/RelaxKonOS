@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging.Abstractions;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.PrivilegedHelper;
@@ -61,8 +61,8 @@ internal static class MihomoServerRemovalAcceptance
             store = new(paths, protection);
             var runtime = Runtime(); var authorization = new MihomoRuntimeAuthorizationProvider(store, paths, paths);
             hostProxy.Failures = 1;
-            using var startup = new MihomoPublicationRecoveryService(store, new(store, authorization, runtime, paths),
-                new(store, authorization, runtime, paths), Service(), NullLogger<MihomoPublicationRecoveryService>.Instance);
+            using var recoveryServices1 = new PublicationRecoveryServices(store, () => new(store, authorization, runtime, paths), () => new(store, authorization, runtime, paths), () => Service());
+            using var startup = new MihomoPublicationRecoveryService(recoveryServices1.Scopes, NullLogger<MihomoPublicationRecoveryService>.Instance);
             await startup.StartAsync(default); await startup.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(15));
             Check((await store.ReadAsync(default)).Pending?.Settings is not null && hostProxy.Calls == 1
                 && (await SettingsAsync()).SystemProxyEnabled && transport.Removals == 1,

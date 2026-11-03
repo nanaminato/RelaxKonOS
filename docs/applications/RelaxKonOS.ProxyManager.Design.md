@@ -2,6 +2,10 @@
 
 > 2026-11-03：共享设置观察已改为 Core 的 `IProxySettingsReader` / `ProxySettingsReader`，Docker、运行时下载和安装材料选择不再依赖设置管理实现；系统代理对账与 TUN 控制分别由 `MihomoSystemProxyReconciler`、`MihomoTunRuntimeController` 执行，设置 writer 按调用创建；三者继续共用原发布锁，受管写入/对账仍核验当前身份。损坏元数据拒绝回落默认值，首次安装在凭据/发布意图前以 `runtime.settings_drift` 拒绝。Proxy 的 guard、TUN 恢复与授权到期职责未交接，聚合模块仍常驻，未宣称休眠或生产内存收益。接口与共享读取见边界设计 §12；guard 审计见 §14，当前 TUN/writer 引用、恢复/补偿及锁竞争验证见[边界实施记录 §15](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#15-tun-运行控制与设置写入执行边界2026-11-03mb-04-部分)。
 
+> 2026-11-03 订阅后台边界：排队刷新/激活仅传值，独立 scope 覆盖业务、审计与异步释放，原台账跟踪至终态持久化；Host 停机等待已受理工作，清理/终态确认失败保留恢复责任。发布补偿与权限不变，Proxy 仍 resident；模块工作租约尚未实现，见[边界设计 §17](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#17-订阅后台任务独立作用域与完整寿命2026-11-03mb-04-部分)。
+
+> 2026-11-03 发布恢复续核：Core worker 每轮临时解析对应发布协调器，完整等待恢复与异步 scope 释放后再重试；profile 持久选择、SQLite 操作标记和原补偿权威不变。安装/人工恢复仍有独立根引用，订阅排队执行尚无模块工作租约，Proxy 保持 resident。详见[边界设计 §16](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#16-发布恢复临时作用域与-profile-执行图审计2026-11-03mb-04-部分)。
+
 > 2026-11-02：组件中心的 Mihomo 列表、平台/架构与官方归档入口已由[本地 manifest](../platform/RelaxKonOS.ComponentCatalog.Design.md) 声明；GitHub Releases 与制品选择已经过通用注册表，固定仓库与资产身份仍独立核对；安装仍走原代理运行时/发布协调器和安装台账，不由 manifest 执行命令或授信。未新增真实安装、跨版本和恢复验收。
 
 > 文档类型：应用设计与实现规范

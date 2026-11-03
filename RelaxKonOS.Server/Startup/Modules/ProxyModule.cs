@@ -57,6 +57,8 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
         // Operation and audit ledgers are the durable record of what the operator asked for; they
         // outlive the HTTP request that started it.
         builder.Services.AddSingleton<ProxyOperationStore>();
+        builder.Services.AddHostedService(services => services.GetRequiredService<ProxyOperationStore>());
+        builder.Services.AddSingleton<ProxySubscriptionOperations>();
         builder.Services.AddSingleton<ProxyAuditStore>();
         builder.Services.AddSingleton<IProxyLifecycleService, ProxyLifecycleService>();
         builder.Services.AddHostedService<ProxyRecoveryHostedService>();

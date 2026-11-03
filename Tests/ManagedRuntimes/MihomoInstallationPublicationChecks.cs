@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging.Abstractions;
 using RelaxKonOS.ManagedRuntimes;
@@ -73,7 +73,10 @@ internal static class MihomoInstallationPublicationChecks
             Directory.CreateDirectory(Path.GetDirectoryName(f.Active)!);
             await File.WriteAllTextAsync(f.Active, f.Material.Yaml);
             f.Recreate();
-            using var startup = new MihomoPublicationRecoveryService(f.Store, f.Configuration, f.Service, f.Removal, NullLogger<MihomoPublicationRecoveryService>.Instance);
+            using var recoveryServices1 = new PublicationRecoveryServices(f.Store,
+                () => throw new Exception("Installation recovery constructed configuration coordinator"), () => f.Service,
+                () => throw new Exception("Installation recovery constructed removal coordinator"));
+            using var startup = new MihomoPublicationRecoveryService(recoveryServices1.Scopes, NullLogger<MihomoPublicationRecoveryService>.Instance);
             await startup.StartAsync(default); await startup.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(10));
             Check((await f.Store.ReadAsync(default)) is { Pending: null, Published: not null } && f.Installs == 0,
                 "Startup dispatches installation Pending and confirms the exact mirror-write crash window");

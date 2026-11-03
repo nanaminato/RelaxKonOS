@@ -24,6 +24,8 @@ internal static class MihomoRegistrationChecks
         builder.AddProxyRuntimeServices();
         new RelaxKonOS.Server.Startup.Modules.ProxyModule().ConfigureServices(builder,
             ServerModuleContext.Create(builder.Configuration, builder.Environment, "sqlite"));
+        var proxyHostedFactories = builder.Services.Where(item => item.ServiceType == typeof(IHostedService)
+            && item.ImplementationFactory is not null).ToArray();
         builder.AddDeploymentServices();
         var database = System.IO.Path.Combine(temporary.Path, "registration.db");
         builder.Services.Configure<RelaxKonOS.Server.Storage.StorageOptions>(options => options.DatabasePath = database);
@@ -52,6 +54,9 @@ internal static class MihomoRegistrationChecks
             && services.GetRequiredService<MihomoInstallationBootstrapService>() is not null
             && services.GetRequiredService<MihomoRemovalPublicationService>() is not null,
             "Default runtime and publication coordinators resolve with the current contracts");
+        Check(new[] { typeof(MihomoConfigurationPublicationService), typeof(MihomoInstallationPublicationService), typeof(MihomoRemovalPublicationService) }
+            .All(type => builder.Services.Single(x => x.ServiceType == type).Lifetime == ServiceLifetime.Transient),
+            "Publication coordinators have per-resolution instances and retain the singleton publication authority");
         Check(scope.ServiceProvider.GetRequiredService<IProxyConfigurationTransactionService>() is ProxyConfigurationTransactionService
             && services.GetRequiredService<IProxySettingsReader>() is ProxySettingsReader,
             "Default profile transactions and lightweight settings reader resolve their current contracts");
@@ -65,6 +70,10 @@ internal static class MihomoRegistrationChecks
         Check(builder.Services.Count(item => item.ServiceType == typeof(IHostedService)
                 && item.ImplementationType == typeof(SystemProxyGuardHostedService)) == 1,
             "Proxy registration keeps exactly one system proxy guard with its existing module ownership");
+        Check(services.GetRequiredService<ProxySubscriptionOperations>() is not null
+            && proxyHostedFactories.Count(item => ReferenceEquals(item.ImplementationFactory!(services),
+                services.GetRequiredService<ProxyOperationStore>())) == 1,
+            "The subscription queue uses the same singleton operation ledger registered once for shutdown drain");
         Check(builder.Services.Single(item => item.ServiceType == typeof(RelaxKonOS.Server.ProxyServer.ProxyServerService)).Lifetime
                 == ServiceLifetime.Transient
             && builder.Services.Single(item => item.ServiceType == typeof(RelaxKonOS.Server.ProxyServer.IProxyServerExpiryExecutor)).Lifetime

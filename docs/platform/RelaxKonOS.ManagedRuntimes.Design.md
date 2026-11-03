@@ -11,6 +11,8 @@
 
 2026-11-03（MB-04 / MR-03 TUN 边界）：TUN runtime controller 与设置 writer 已分离，继续共用 publication gate；原受管 publication 对直接 TUN 转换的拒绝保持，未新增受管 TUN 事务支持。安装/移除/配置发布补偿执行权未转移，MR-03 不关闭，详见[边界设计 §15](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#15-tun-运行控制与设置写入执行边界2026-11-03mb-04-部分)。
 
+2026-11-03（MB-04 / MR-03 发布恢复作用域）：startup worker 每轮按 pending 类型临时解析协调器；原共享 gate、冻结计划、受理后收尾、Helper 同操作证明、profile/settings 提交与补偿规则不变。安装/人工恢复的独立根引用仍保留，未增加真实生命周期验收，MR-03 不关闭，见[边界设计 §16](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#16-发布恢复临时作用域与-profile-执行图审计2026-11-03mb-04-部分)。
+
 ## Windows 日常安装入口调整（2026-10-27，MR-03/04/05）
 
 按产品要求，Windows Nginx、Mihomo、frpc/frps 的日常安装采用官方版本列表和文件安装，不再要求管理员先部署签名目录、录入摘要或确认发布源。Nginx 解析 nginx.org 下载页，Mihomo/FRP 解析固定官方 GitHub 仓库的 Releases API（最多三页、每页 5 条，取得首批匹配当前宿主架构的稳定版即返回；启用 HTTP 压缩，排除 draft/prerelease），选择具体版本后走既有安装台账。sing-box 的组件及来源平台配置仅声明 Linux，不支持 Windows；组件中心按通用平台配置过滤，不为 sing-box 编写隐藏特例。此配置描述 RelaxKonOS 的组件支持范围，不表示上游没有 Windows 二进制。
