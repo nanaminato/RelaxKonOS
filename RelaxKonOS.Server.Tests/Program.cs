@@ -209,6 +209,7 @@ if (args.Contains("--proxy-tun-boundary-only"))
 }
 if (args.Contains("--proxy-subscription-boundary-only"))
 {
+    await ProxyOperationResponsibilityChecks.RunAsync();
     await ProxySubscriptionBoundaryChecks.RunAsync();
     return;
 }
@@ -663,6 +664,7 @@ if (args.Contains("--privileged-helper-socket-only")) { await PrivilegedHelperSo
     await ProxyTunBoundaryChecks.RunAsync();
     await ProxyConfigurationChecks.VerifyProxyTunSafetyAsync(root);
     await ProxySubscriptionBoundaryChecks.RunAsync();
+    await ProxyOperationResponsibilityChecks.RunAsync();
     await ProxyConfigurationChecks.VerifyMihomoTunActivationPreservationAsync(root);
     await ProxyConfigurationChecks.VerifyHostNetworkSafetyDiscoveryAsync();
     WebServerChecks.VerifyStaticSiteRootValidation();

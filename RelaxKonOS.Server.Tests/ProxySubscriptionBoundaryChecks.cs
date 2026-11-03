@@ -56,7 +56,7 @@ internal static class ProxySubscriptionBoundaryChecks
             if (failure == "dispose")
             {
                 try { await f.Queue.EnqueueAsync("after-cleanup-failure", ProxySubscriptionOperation.RefreshAll, Guid.Empty, "actor", default); throw new Exception("Failed cleanup owner accepted more work"); }
-                catch (ProxyOperationValidationException) { Check(true, "Failed cleanup retains the scope and blocks new execution rather than retrying partial disposal"); }
+                catch (ProxyOperationValidationException) { Check((await f.Store.InspectResponsibilitiesAsync(default)).Count != 0, "Failed cleanup retains the scope and blocks new execution rather than retrying partial disposal"); }
             }
             if (failure is "domain" or "exception")
                 Check(File.ReadAllText(f.Audit).Contains("failed", StringComparison.Ordinal), "Domain and thrown failures preserve failure audit: " + failure);

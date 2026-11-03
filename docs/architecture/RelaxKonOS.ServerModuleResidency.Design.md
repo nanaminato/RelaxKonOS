@@ -282,3 +282,5 @@ Git 命令端口保留结构化文件名、参数、环境与超时规则，取�
 2026-11-03 MB-04 发布恢复续核：Core worker 改为每轮临时 scope 与按 pending 类型选择执行，原补偿/重试和 publication gate 保留；profile 与订阅后台图及独立根引用审计见[边界设计 §16](RelaxKonOS.ServerModuleBoundaries.Design.md#16-发布恢复临时作用域与-profile-执行图审计2026-11-03mb-04-部分)。这不构成整个 Proxy 回收、后台工作租约或生产内存收益验收，Proxy 仍 resident。
 
 2026-11-03 MB-04 订阅续核：排队订阅已具有独立后台 scope，Proxy 操作台账跟踪完整任务并在停机排空，scope 清理或终态确认失败保留责任；这不是驻留工作租约，Proxy 继续 resident，详见[边界设计 §17](RelaxKonOS.ServerModuleBoundaries.Design.md#17-订阅后台任务独立作用域与完整寿命2026-11-03mb-04-部分)。
+
+2026-11-03 MB-04 任务责任续核：禁用门禁联合只读检查内存执行/清理 owner、持久 operation ledger 与原 publication pending；未知责任拒绝新任务，不据只读快照新增休眠许可。持续安全责任交接与租约仍开放，详见[边界设计 §18](RelaxKonOS.ServerModuleBoundaries.Design.md#18-proxy-任务准入停机与禁用责任门禁2026-11-03mb-04-部分)。

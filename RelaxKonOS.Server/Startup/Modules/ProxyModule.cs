@@ -163,6 +163,16 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
     public async ValueTask<IReadOnlyList<ServerModuleOrphanedWork>> InspectOrphanedWorkAsync(
         IServiceProvider services, ServerModuleContext context, CancellationToken cancellationToken)
     {
+        var operations = services.GetService<ProxyOperationStore>();
+        var facts = operations is null
+            ? await ProxyOperationStore.InspectPersistedResponsibilitiesAsync(services.GetRequiredService<IProxyPlatformPaths>(), cancellationToken)
+            : await operations.InspectResponsibilitiesAsync(cancellationToken);
+        var publication = await InspectPublicationAsync(services, cancellationToken);
+        return [.. facts.Select(fact => new ServerModuleOrphanedWork(Id, fact)), .. publication];
+    }
+
+    private async Task<IReadOnlyList<ServerModuleOrphanedWork>> InspectPublicationAsync(IServiceProvider services, CancellationToken cancellationToken)
+    {
         var store = services.GetRequiredService<MihomoPublicationStore>();
         try
         {
