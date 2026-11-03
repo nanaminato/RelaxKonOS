@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="../RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj" />
+    <ProjectReference Include="../RelaxKonOS.ServerModule.Abstractions/RelaxKonOS.ServerModule.Abstractions.csproj" />
+  </ItemGroup>
+  <Target Name="ValidateGitContractBoundary" BeforeTargets="ResolveReferences">
+    <ItemGroup>
+      <InvalidGitContractProject Include="@(ProjectReference)" Condition="'%(ProjectReference.Filename)' != 'RelaxKonOS.Protocol' and '%(ProjectReference.Filename)' != 'RelaxKonOS.ServerModule.Abstractions'" />
+    </ItemGroup>
+    <Error Condition="'@(InvalidGitContractProject)' != ''" Text="Git contracts may reference only Protocol and module abstractions." />
+  </Target>
+</Project>

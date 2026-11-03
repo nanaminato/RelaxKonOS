@@ -4,15 +4,10 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.EntityFrameworkCore;
 using RelaxKonOS.Protocol.AppSettings;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.UserExecution;
-using RelaxKonOS.Server.Domain;
-using RelaxKonOS.Server.Storage.Sqlite;
-using RelaxKonOS.Server.UserExecution;
-using RelaxKonOS.Server.HostMode;
 
 namespace RelaxKonOS.Server.Git;
 
@@ -38,11 +33,11 @@ public sealed partial class LocalGitRepositoryService
         return "git_failed";
     }
 
-    private static bool IsPathSafe(string repoRoot, string path)
+    private bool IsPathSafe(string repoRoot, string path)
     {
         if (!Path.IsPathRooted(path))
             path = Path.Combine(repoRoot, path);
-        return PathSafety.IsWithin(repoRoot, path);
+        return host.IsPathWithin(repoRoot, path);
     }
 
     private static bool ArePathsSafe(IReadOnlyList<string>? paths, out string? error)
@@ -105,30 +100,8 @@ public sealed partial class LocalGitRepositoryService
         // available to a developer working as themselves.
         if (UsesHelper)
         {
-            var principal = http.HttpContext?.User;
-            if (principal is null) return new CommandResult(false, "", "user_execution_context_unavailable");
-            try
-            {
-                UserExecutionContext context;
-                using (var scope = executionScopes.CreateScope())
-                    context = scope.ServiceProvider.GetRequiredService<IUserExecutionContextResolver>().Resolve(principal);
-                // Credentials travel with the one operation that needs them. The Helper applies them to a
-                // short-lived askpass process after it has dropped to the effective identity, and refuses
-                // them for every other operation kind, so the closed contract stays closed.
-                var response = await executionTransport.ExecuteAsync(new RelaxKonOS.Protocol.UserExecution.UserExecutionRequest(
-                    context.Identity, RelaxKonOS.Protocol.UserExecution.UserExecutionOperationKind.GitExecute, Path: workingDir,
-                    GitArguments: arguments,
-                    GitCredentials: credentials is null ? null : new RelaxKonOS.Protocol.UserExecution.GitExecutionCredentials(credentials.Username, credentials.Password),
-                    OperationId: Guid.NewGuid()), cancellationToken);
-                if (!response.Success || string.IsNullOrWhiteSpace(response.OutputBase64))
-                    return new CommandResult(false, "", response.ProblemCode == RelaxKonOS.Protocol.UserExecution.UserExecutionProblemCode.NotFound
-                        ? PathNotFoundCode
-                        : "user_execution_unavailable");
-                var result = JsonSerializer.Deserialize<GitExecutionResult>(Convert.FromBase64String(response.OutputBase64), RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default);
-                return result is null ? new CommandResult(false, "", "user_execution_invalid_result") : new CommandResult(result.Success, result.Output, result.Error, result.ExitCode);
-            }
-            catch (Exception exception) when (exception is UserExecutionException or InvalidOperationException or JsonException or FormatException)
-            { return new CommandResult(false, "", "user_execution_unavailable"); }
+            var result = await host.ExecuteHelperAsync(workingDir, arguments, credentials, cancellationToken);
+            return new(result.Success, result.Output, result.Error, result.ExitCode);
         }
         try
         {
@@ -196,5 +169,4 @@ public sealed partial class LocalGitRepositoryService
     }
 
     private sealed record CommandResult(bool Success, string Output, string Error, int ExitCode = -1);
-    private sealed record GitExecutionResult(bool Success, int ExitCode, string Output, string Error);
 }

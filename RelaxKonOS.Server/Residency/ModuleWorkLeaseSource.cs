@@ -1,15 +1,6 @@
 namespace RelaxKonOS.Server.Residency;
 
 /// <summary>A running module takes protection before publishing work that outlives its caller.</summary>
-public interface IModuleWorkLeaseSource
-{
-    IModuleWorkLease Acquire();
-}
-public interface IModuleWorkLease : IDisposable
-{
-    CancellationToken Stopping { get; }
-    void RequireRecovery();
-}
 internal sealed class ModuleWorkLeaseSource(ModuleResidencyCoordinator coordinator, IServerModuleRuntime runtime) : IModuleWorkLeaseSource
 {
     public IModuleWorkLease Acquire()

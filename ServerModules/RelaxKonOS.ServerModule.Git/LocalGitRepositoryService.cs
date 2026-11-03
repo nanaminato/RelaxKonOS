@@ -4,16 +4,11 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.EntityFrameworkCore;
 using RelaxKonOS.Protocol.AppSettings;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.UserExecution;
-using RelaxKonOS.Server.Domain;
-using RelaxKonOS.Server.Storage.Sqlite;
-using RelaxKonOS.Server.UserExecution;
-using RelaxKonOS.Server.HostMode;
 
 namespace RelaxKonOS.Server.Git;
 
@@ -21,22 +16,17 @@ namespace RelaxKonOS.Server.Git;
 /// Write operations are serialized per-repository via SemaphoreSlim to avoid index.lock conflicts.
 /// Runtime state (status/branches/log/diff) is never persisted—only GitRepository registration records.</summary>
 public sealed partial class LocalGitRepositoryService(
-    IDbContextFactory<RelaxKonOSDbContext> dbFactory,
+    IGitRepositoryStorage storage,
     IHostGitCli gitCli,
     IDataProtectionProvider dataProtection,
     ILogger<LocalGitRepositoryService> logger,
-    IServiceScopeFactory executionScopes,
-    IUserExecutionTransport executionTransport,
-    IServerModeResolver serverMode,
-    RelaxKonOS.Server.UserExecution.UserExecutionBackendSelection userExecution,
-    IHttpContextAccessor http) : IGitRepositoryService
+    IGitRepositoryHost host) : IGitRepositoryService, IDisposable
 {
     private const int MaxDiffPatchSize = 200 * 1024; // 200KB
     private static readonly TimeSpan SemaphoreTimeout = TimeSpan.FromSeconds(3);
 
     private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _writeLocks = new();
     private readonly IDataProtector _credentialProtector = dataProtection.CreateProtector("RelaxKonOS.GitCredentials.v2");
-    private const string CredentialAppId = "relaxkonos.git.internal";
 
     // ── Host Git engine probe & install ──
 
@@ -53,12 +43,7 @@ public sealed partial class LocalGitRepositoryService(
     private async Task<string?> GetGitVersionAsync(string gitPath, CancellationToken cancellationToken)
     {
         var directory = Environment.CurrentDirectory;
-        if (UsesHelper)
-        {
-            using var scope = executionScopes.CreateScope();
-            directory = scope.ServiceProvider.GetRequiredService<IUserExecutionContextResolver>().Resolve(
-                http.HttpContext?.User ?? throw new InvalidOperationException("User execution context is unavailable.")).Identity.HomeDirectory;
-        }
+        if (UsesHelper) directory = host.UserHomeDirectory;
         var r = await RunGitAsync(gitPath, directory, ["--version"], cancellationToken);
         if (!r.Success) return null;
         var line = r.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim();
@@ -78,18 +63,13 @@ public sealed partial class LocalGitRepositoryService(
 
     public async Task<IReadOnlyList<GitRepositoryDto>> ListRepositoriesAsync(Guid userId, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repos = await db.Set<GitRepository>()
-            .Where(r => r.UserId == userId)
-            .OrderBy(r => r.Name)
-            .ToListAsync(cancellationToken);
-        return repos.Count > 0 ? repos.Select(r => r.ToDto()).ToArray() : Array.Empty<GitRepositoryDto>();
+        var repos = await storage.ListAsync(userId, cancellationToken);
+        return repos.Select(repo => repo.ToDto()).ToArray();
     }
 
     public async Task<GitRepositoryDto?> GetRepositoryAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await db.Set<GitRepository>().FirstOrDefaultAsync(r => r.Id == id && r.UserId == userId, cancellationToken);
+        var repo = await storage.FindAsync(id, userId, cancellationToken);
         if (repo is null) return null;
         var (branch, upstream, ahead, behind, isDetached, uncommitted) = await GetBranchSummaryAsync(repo.Path, cancellationToken);
         return repo.ToDto(branch, null, ahead, behind, !string.IsNullOrEmpty(upstream), uncommitted);
@@ -109,7 +89,7 @@ public sealed partial class LocalGitRepositoryService(
         if (!revParse.Output.Trim().Equals("true", StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException("The path is not a Git repository.", nameof(registration.Path));
 
-        var repo = new GitRepository
+        var repo = new GitRepositoryRecord
         {
             Id = Guid.NewGuid(),
             UserId = userId,
@@ -117,28 +97,18 @@ public sealed partial class LocalGitRepositoryService(
             Path = registration.Path,
             CreatedAt = DateTimeOffset.UtcNow
         };
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        db.Set<GitRepository>().Add(repo);
-        await db.SaveChangesAsync(cancellationToken);
+        await storage.AddAsync(repo, cancellationToken);
         return repo.ToDto();
     }
 
-    public async Task<bool> UnregisterRepositoryAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
-    {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await db.Set<GitRepository>().FirstOrDefaultAsync(r => r.Id == id && r.UserId == userId, cancellationToken);
-        if (repo is null) return false;
-        db.Set<GitRepository>().Remove(repo);
-        await db.SaveChangesAsync(cancellationToken);
-        return true;
-    }
+    public Task<bool> UnregisterRepositoryAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
+        => storage.RemoveAsync(id, userId, cancellationToken);
 
     // ── Real-time git operations ──
 
     public async Task<GitStatusDto> GetStatusAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var gitPath = ResolveGitPathOrThrow();
         var result = await RunGitAsync(gitPath, repo.Path, ["status", "--porcelain=v2", "--branch", "-uall"], cancellationToken);
         if (!result.Success)
@@ -148,8 +118,7 @@ public sealed partial class LocalGitRepositoryService(
 
     public async Task<GitOperationResult> CommitAsync(Guid id, Guid userId, GitCommitRequest request, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var gitPath = ResolveGitPathOrThrow();
         return await WithWriteLockAsync(id, async () =>
         {
@@ -180,8 +149,7 @@ public sealed partial class LocalGitRepositoryService(
     {
         if (string.IsNullOrWhiteSpace(request.Source))
             return new GitOperationResult(false, "merge", Message: "Source branch is required.");
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var gitPath = ResolveGitPathOrThrow();
         return await WithWriteLockAsync(id, async () =>
         {
@@ -285,16 +253,16 @@ public sealed partial class LocalGitRepositoryService(
 
     // ── Helpers ──
 
-    private bool UsesHelper => serverMode.Mode == ServerMode.System && userExecution.Backend == UserExecutionBackend.Helper;
+    private bool UsesHelper => host.UsesHelper;
     // The label is never launched locally in Helper mode: the Helper resolves the executable
     // under the effective user's environment. The service's PATH must not gate that execution.
     private string ResolveGitPath() => UsesHelper ? "git" : gitCli.ResolveGitPath() ?? "";
     private string ResolveGitPathOrThrow() => ResolveGitPath() is { Length: > 0 } path ? path
         : throw new InvalidOperationException("Git executable not found on the host.");
 
-    private static async Task<GitRepository> GetRepoOrThrowAsync(RelaxKonOSDbContext db, Guid id, Guid userId, CancellationToken cancellationToken)
+    private async Task<GitRepositoryRecord> GetRepoOrThrowAsync(Guid id, Guid userId, CancellationToken cancellationToken)
     {
-        return await db.Set<GitRepository>().FirstOrDefaultAsync(r => r.Id == id && r.UserId == userId, cancellationToken)
+        return await storage.FindAsync(id, userId, cancellationToken)
             ?? throw new InvalidOperationException($"Repository {id} not found.");
     }
 
@@ -316,6 +284,13 @@ public sealed partial class LocalGitRepositoryService(
         // Includes all fetch/push URLs, branch mappings and refspecs. Raw config can contain credentials;
         // only an opaque digest leaves the ordinary execution boundary through the HTTP status DTO.
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(config.Output))).ToLowerInvariant();
+    }
+
+    public void Dispose()
+    {
+        foreach (var gate in _writeLocks.Values) gate.Dispose();
+        _writeLocks.Clear();
+        _consoleRecords.Clear();
     }
 
 }

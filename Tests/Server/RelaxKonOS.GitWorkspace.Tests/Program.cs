@@ -19,8 +19,8 @@ var factory = new Factory(new DbContextOptionsBuilder<RelaxKonOSDbContext>().Use
 await using (var db = factory.CreateDbContext()) await db.Database.EnsureCreatedAsync();
 using var scopes = new ServiceCollection().BuildServiceProvider();
 var http = new Microsoft.AspNetCore.Http.HttpContextAccessor();
-var service = new LocalGitRepositoryService(factory, new HostGitCli(), new EphemeralDataProtectionProvider(), NullLogger<LocalGitRepositoryService>.Instance,
-    scopes.GetRequiredService<IServiceScopeFactory>(), DispatchProxy.Create<IUserExecutionTransport, RejectProxy>(), new UserMode(), new UserExecutionBackendSelection(UserExecutionBackend.Helper), http);
+var service = new LocalGitRepositoryService(new HostGitRepositoryStorage(factory), new HostGitCli(), new EphemeralDataProtectionProvider(), NullLogger<LocalGitRepositoryService>.Instance,
+            new HostGitRepositoryAccess(scopes.GetRequiredService<IServiceScopeFactory>(), DispatchProxy.Create<IUserExecutionTransport, RejectProxy>(), new UserMode(), new UserExecutionBackendSelection(UserExecutionBackend.Helper), http));
 var user = Guid.NewGuid();
 http.HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext { User = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity([new System.Security.Claims.Claim("sub", user.ToString())], "test")) };
 var count = 0;

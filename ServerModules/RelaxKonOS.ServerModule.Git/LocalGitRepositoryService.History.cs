@@ -4,15 +4,10 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.EntityFrameworkCore;
 using RelaxKonOS.Protocol.AppSettings;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.UserExecution;
-using RelaxKonOS.Server.Domain;
-using RelaxKonOS.Server.Storage.Sqlite;
-using RelaxKonOS.Server.UserExecution;
-using RelaxKonOS.Server.HostMode;
 
 namespace RelaxKonOS.Server.Git;
 
@@ -21,8 +16,7 @@ public sealed partial class LocalGitRepositoryService
     public async Task<IReadOnlyList<GitCommitDto>> GetLogAsync(Guid id, Guid userId, int limit = 200, int skip = 0,
         GitLogQuery? query = null, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var gitPath = ResolveGitPathOrThrow();
         // NUL fields preserve multiline bodies and avoid inventing records from body lines.
         var format = CommitLogFormat;
@@ -91,8 +85,7 @@ public sealed partial class LocalGitRepositoryService
         if (string.IsNullOrWhiteSpace(sha) || sha.StartsWith("-", StringComparison.Ordinal))
             throw new ArgumentException("A commit SHA is required.", nameof(sha));
 
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var gitPath = ResolveGitPathOrThrow();
 
         var format = "%H%x00%an%x00%aI%x00%s%x00%b%x00%P";
@@ -119,8 +112,7 @@ public sealed partial class LocalGitRepositoryService
 
     public async Task<GitDiffDto> GetDiffAsync(Guid id, Guid userId, string path, bool staged = false, string? @ref = null, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var gitPath = ResolveGitPathOrThrow();
         if (!IsPathSafe(repo.Path, path))
             throw new ArgumentException("Path outside repository.", nameof(path));

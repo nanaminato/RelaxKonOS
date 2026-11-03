@@ -19,12 +19,8 @@ public static class GitConflictChecks
         using var executionScopeProvider = new ServiceCollection()
             .AddSingleton(DispatchProxy.Create<IUserExecutionContextResolver, RejectProxy>())
             .BuildServiceProvider();
-        var service = new LocalGitRepositoryService(factory, new HostGitCli(), new EphemeralDataProtectionProvider(),
-            NullLogger<LocalGitRepositoryService>.Instance,
-            executionScopeProvider.GetRequiredService<IServiceScopeFactory>(),
-            DispatchProxy.Create<IUserExecutionTransport, RejectProxy>(),
-            new TestUserModeResolver(), new UserExecutionBackendSelection(UserExecutionBackend.Helper),
-            new Microsoft.AspNetCore.Http.HttpContextAccessor());
+        var service = new LocalGitRepositoryService(new HostGitRepositoryStorage(factory), new HostGitCli(), new EphemeralDataProtectionProvider(), NullLogger<LocalGitRepositoryService>.Instance,
+            new HostGitRepositoryAccess(executionScopeProvider.GetRequiredService<IServiceScopeFactory>(), DispatchProxy.Create<IUserExecutionTransport, RejectProxy>(), new TestUserModeResolver(), new UserExecutionBackendSelection(UserExecutionBackend.Helper), new Microsoft.AspNetCore.Http.HttpContextAccessor()));
         var user = Guid.NewGuid();
         var count = 0;
         void Check(bool value, string name) { if (!value) throw new Exception(name); Console.WriteLine($"PASS GIT {++count}: {name}"); }

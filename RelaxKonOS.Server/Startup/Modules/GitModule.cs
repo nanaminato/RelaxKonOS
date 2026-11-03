@@ -19,7 +19,7 @@ namespace RelaxKonOS.Server.Startup.Modules;
 /// </para>
 ///
 /// <para>
-/// The only thing that crosses the domain boundary is <see cref="IDeploymentImageBuildSource"/>: the
+/// The deployment-facing cross-domain contract is <see cref="IDeploymentImageBuildSource"/>: the
 /// deployment domain asks "is this build deployable" without referencing Git types, and this module
 /// replaces the Host's unavailable default with a gate that can wake Git when it is dormant.
 /// </para>
@@ -36,8 +36,9 @@ internal sealed class GitModule : IServerModule, IServerModuleResidency, IServer
     {
         cancellationToken.ThrowIfCancellationRequested();
         var active = services.GetService<ModuleResidencyCoordinator>()?.HasBackgroundWork(Id) == true;
-        var work = GitBuildService.InspectLedger(context.ContentRootPath,
+        var facts = GitBuildLedger.InspectLedger(context.ContentRootPath,
             context.Configuration.GetSection("GitBuilds").Get<GitBuildOptions>() ?? new(), active);
+        IReadOnlyList<ServerModuleOrphanedWork> work = facts.Select(fact => new ServerModuleOrphanedWork(fact.ModuleId, fact.Description, fact.RecoveryRequired)).ToArray();
         if (active)
             work = [.. work, new(Id, "Git background execution or cleanup is still active.")];
         return ValueTask.FromResult(work);
@@ -45,6 +46,9 @@ internal sealed class GitModule : IServerModule, IServerModuleResidency, IServer
 
     public void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
     {
+        // Deferred Host ports: build-only usage and residency metadata never open repository storage.
+        builder.Services.AddSingleton<IGitRepositoryStorage>(services => ActivatorUtilities.CreateInstance<HostGitRepositoryStorage>(services));
+        builder.Services.AddSingleton<IGitRepositoryHost>(services => ActivatorUtilities.CreateInstance<HostGitRepositoryAccess>(services));
         // Gates, not implementations: a lease loads the runtime, the call runs, the lease releases and
         // the idle sweep may then release the module.
         builder.Services.AddSingleton<IGitRepositoryService>(services =>

@@ -186,7 +186,7 @@ internal static class ModuleBackgroundWorkChecks
         internal Runtime(ModuleResidencyCoordinator coordinator, IHostEnvironment environment, Runner runner, IDataProtectionProvider protection, IServiceProvider services)
         {
             Source = new ModuleWorkLeaseSource(coordinator, this);
-            Service = new(environment, protection, new GitBuildOptions { RootDirectory = "builds", BuilderName = "test-builder", BuilderContainer = "test-container", BuilderNetwork = "test-network" },
+            Service = new(environment.ContentRootPath, protection, new GitBuildOptions { RootDirectory = "builds", BuilderName = "test-builder", BuilderContainer = "test-container", BuilderNetwork = "test-network" },
                 Source, runner, services.GetRequiredService<ILogger<GitBuildService>>());
         }
         public string ModuleId => ServerModules.GitId;

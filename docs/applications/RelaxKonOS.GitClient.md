@@ -1,5 +1,7 @@
 # RelaxKonOS GitClient 模块设计
 
+> 2026-11-03 内存边界：Git 仓库、CLI 与构建实现已迁到 `ServerModules/RelaxKonOS.ServerModule.Git/`，由原 `relaxkonos.git` 运行时按代次加载/释放；台账格式、权限、静态路由和后台租约沿用当前契约。Host 通过窄端口持有元数据存储、当前身份、Helper 和冲突文件访问，仓库业务代码不再引用 EF/Server 实现。真实仓库与执行 DLL 的循环回收已验证，未宣称生产内存收益或真实 BuildKit 生命周期已验收。发布必须包含 `Modules/Git/RelaxKonOS.ServerModule.Git.dll` 及共享契约，缺失时调用明确失败；详见[边界实施记录](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#11-git-仓库实现与-host-端口2026-11-03mb-0203-后续)。
+
 > **模块归属（2026-10-28）**：Git 客户端与源码构建归官方模块 `relaxkonos.git`，默认启用。设置 `Modules:Git:Enabled=false` 并重启后，`IGitRepositoryService`、`GitBuildService`、`/api/v1.0/git/*`（含 workspace/build 路由）与 `server.git` 能力一并消失，桌面项目编辑器因缺少该能力在启动前被拒绝。部署域通过 `IDeploymentImageBuildSource` 端口询问某次源码构建能否作为镜像来源，因此禁用 Git 时部署返回 `application-deployment.git_build_unavailable`(503)，不会误报「找不到镜像」，也不会改用归档来源。该开关不删除服务器上的仓库、构建账本或项目文件；详见[模块设计实施记录](../architecture/RelaxKonOS.ModulesAndExtensions.Design.md#git-模块与部署端口拆分2026-10-28)。
 
 > **项目编辑器首版已实现**：`relaxkonos.git` 已整合项目文件树、多标签编辑、Commit 侧栏、Diff 标签和底部 Git 工具区，显示名称为“项目编辑器”。入口、草稿保护、条件保存和实际验证范围见 [实施记录](./RelaxKonOS.GitEditor.Progress.md)，后续目标见 [改造设计](./RelaxKonOS.GitEditor.Design.md)。下文保留 Git 领域能力和协议说明；早期按页面切换的壳布局已由项目编辑器替代。

@@ -4,15 +4,10 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.EntityFrameworkCore;
 using RelaxKonOS.Protocol.AppSettings;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.UserExecution;
-using RelaxKonOS.Server.Domain;
-using RelaxKonOS.Server.Storage.Sqlite;
-using RelaxKonOS.Server.UserExecution;
-using RelaxKonOS.Server.HostMode;
 
 namespace RelaxKonOS.Server.Git;
 
@@ -43,13 +38,10 @@ public sealed partial class LocalGitRepositoryService
         return uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ? uri : null;
     }
 
-    // Account mutations are serialized per authenticated user, across repository service instances.
-    private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> CredentialLocks = new();
 
     public async Task<IReadOnlyList<GitCredentialAccountDto>> ListCredentialAccountsAsync(Guid userId, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var settings = await CredentialSettings(db, userId).ToListAsync(cancellationToken);
+        var settings = await storage.CredentialsAsync(userId, cancellationToken);
         return settings.Select(ReadHost).OfType<StoredGitHostCredentials>().SelectMany(stored =>
             stored.Accounts.Select(account => ToDto(stored.Host, account))).OrderBy(x => x.Host, StringComparer.Ordinal)
             .ThenBy(x => x.Username, StringComparer.Ordinal).ToArray();
@@ -65,13 +57,10 @@ public sealed partial class LocalGitRepositoryService
             throw new ArgumentException("A valid username is required.");
         if (request.Password is not null && (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length > 16384 || request.Password.Any(char.IsControl)))
             throw new ArgumentException("A valid access token is required.");
-        var gate = CredentialLocks.GetOrAdd(userId, _ => new(1, 1));
-        await gate.WaitAsync(cancellationToken);
-        try
+        var key = CredentialKey(uri);
+        await using var edit = await storage.BeginCredentialUpdateAsync(userId, key, cancellationToken);
         {
-            await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-            var key = CredentialKey(uri);
-            var setting = await CredentialSettings(db, userId).SingleOrDefaultAsync(x => x.Key == key, cancellationToken);
+            var setting = edit.Settings.SingleOrDefault(x => x.Key == key);
             var stored = setting is null ? null : ReadHost(setting);
             var accounts = stored?.Accounts ?? [];
             var existing = accounts.FindIndex(x => x.Username == username);
@@ -84,49 +73,33 @@ public sealed partial class LocalGitRepositoryService
             var account = new StoredGitCredential(username, secret, isDefault);
             if (existing < 0) accounts.Add(account); else accounts[existing] = account;
             var value = JsonSerializer.Serialize(new StoredGitHostCredentials(host, accounts));
-            if (setting is null)
-            {
-                db.Add(new AppSetting { UserId = userId, Scope = AppSettingsScope.User, ScopeId = userId,
-                    AppId = CredentialAppId, Key = key, ValueJson = value, SchemaVersion = 2,
-                    Revision = 1, UpdatedAt = DateTimeOffset.UtcNow });
-            }
-            else { setting.ValueJson = value; setting.SchemaVersion = 2; setting.Revision++; setting.UpdatedAt = DateTimeOffset.UtcNow; }
-            await db.SaveChangesAsync(cancellationToken);
+            await edit.SaveAsync(key, value, cancellationToken);
             return ToDto(host, account);
         }
-        finally { gate.Release(); }
     }
 
     public async Task<bool> DeleteCredentialAccountAsync(Guid userId, string accountId, CancellationToken cancellationToken = default)
     {
-        var gate = CredentialLocks.GetOrAdd(userId, _ => new(1, 1));
-        await gate.WaitAsync(cancellationToken);
-        try
+        await using var edit = await storage.BeginCredentialUpdateAsync(userId, null, cancellationToken);
         {
-            await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-            var settings = await CredentialSettings(db, userId).ToListAsync(cancellationToken);
+            var settings = edit.Settings;
             foreach (var setting in settings)
             {
                 var stored = ReadHost(setting);
                 if (stored is null || stored.Accounts.RemoveAll(x => ToDto(stored.Host, x).Id == accountId) == 0) continue;
-                if (stored.Accounts.Count == 0) db.Remove(setting);
+                if (stored.Accounts.Count == 0) await edit.SaveAsync(setting.Key, null, cancellationToken);
                 else
                 {
                     if (!stored.Accounts.Any(x => x.IsDefault)) stored.Accounts[0] = stored.Accounts[0] with { IsDefault = true };
-                    setting.ValueJson = JsonSerializer.Serialize(stored); setting.Revision++; setting.UpdatedAt = DateTimeOffset.UtcNow;
+                    await edit.SaveAsync(setting.Key, JsonSerializer.Serialize(stored), cancellationToken);
                 }
-                await db.SaveChangesAsync(cancellationToken);
                 return true;
             }
             return false;
         }
-        finally { gate.Release(); }
     }
 
-    private static IQueryable<AppSetting> CredentialSettings(RelaxKonOSDbContext db, Guid userId) => db.Set<AppSetting>().Where(item =>
-        item.UserId == userId && item.Scope == AppSettingsScope.User && item.ScopeId == userId && item.AppId == CredentialAppId && item.Key.StartsWith("accounts-"));
-
-    private static StoredGitHostCredentials? ReadHost(AppSetting setting) => JsonSerializer.Deserialize<StoredGitHostCredentials>(setting.ValueJson);
+    private static StoredGitHostCredentials? ReadHost(GitCredentialSetting setting) => JsonSerializer.Deserialize<StoredGitHostCredentials>(setting.ValueJson);
 
     private IDataProtector AccountProtector(Guid userId, string host, string username) =>
         _credentialProtector.CreateProtector(userId.ToString("N"), host, username);
@@ -148,9 +121,8 @@ public sealed partial class LocalGitRepositoryService
     private async Task<GitCredentialRequest?> GetStoredCredentialsAsync(Guid userId, Uri remoteUri, CancellationToken cancellationToken)
     {
         if (remoteUri.Scheme != Uri.UriSchemeHttps) return null;
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var key = CredentialKey(remoteUri);
-        var setting = await CredentialSettings(db, userId).SingleOrDefaultAsync(x => x.Key == key, cancellationToken);
+        var setting = await storage.FindCredentialAsync(userId, key, cancellationToken);
         if (setting is null) return null;
         try
         {
@@ -178,6 +150,4 @@ public sealed partial class LocalGitRepositoryService
         return "accounts-" + Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(identity))).TrimEnd('=').Replace('+', '-').Replace('/', '_');
     }
 
-    private sealed record StoredGitCredential(string Username, string ProtectedPassword, bool IsDefault);
-    private sealed record StoredGitHostCredentials(string Host, List<StoredGitCredential> Accounts);
 }

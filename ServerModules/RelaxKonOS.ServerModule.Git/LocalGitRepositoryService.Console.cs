@@ -27,9 +27,8 @@ public sealed partial class LocalGitRepositoryService
     {
         var result = await RunGitCoreAsync(gitPath, workingDir, arguments, cancellationToken, credentials);
         var commandIndex = arguments.FirstOrDefault() == "--literal-pathspecs" ? 1 : 0;
-        var principal = http.HttpContext?.User;
-        var identity = principal?.FindFirst("sub")?.Value ?? principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (commandIndex < arguments.Count && ConsoleCommands.Contains(arguments[commandIndex]) && Guid.TryParse(identity, out var user))
+        var identity = host.CurrentUserId;
+        if (commandIndex < arguments.Count && ConsoleCommands.Contains(arguments[commandIndex]) && identity is { } user)
         {
             var command = "git " + string.Join(' ', arguments.Select(arg => arg.Any(char.IsWhiteSpace) ? JsonSerializer.Serialize(arg, new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }) : arg));
             var safeCommand = SafeConsoleText(command, credentials); var output = SafeConsoleText(result.Output, credentials); var error = SafeConsoleText(result.Error, credentials);
@@ -44,8 +43,7 @@ public sealed partial class LocalGitRepositoryService
     }
     public async Task<IReadOnlyList<GitConsoleEntryDto>> GetConsoleAsync(Guid id, Guid userId, long after = 0, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         var root = Path.GetFullPath(repo.Path);
         return _consoleRecords.Where(record => record.User == userId && record.Entry.Sequence > after && string.Equals(record.Root, root, comparison))
@@ -53,8 +51,7 @@ public sealed partial class LocalGitRepositoryService
     }
     public async Task<IReadOnlyList<GitGraphCommitDto>> GetGraphAsync(Guid id, Guid userId, string? reference = null, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var git = ResolveGitPathOrThrow();
         List<string> args = ["log", "--topo-order", "--format=%H%x09%P", "-n", "500"];
         var head = await RunGitAsync(git, repo.Path, ["rev-parse", "--verify", "HEAD"], cancellationToken);

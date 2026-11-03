@@ -4,15 +4,10 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.EntityFrameworkCore;
 using RelaxKonOS.Protocol.AppSettings;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.UserExecution;
-using RelaxKonOS.Server.Domain;
-using RelaxKonOS.Server.Storage.Sqlite;
-using RelaxKonOS.Server.UserExecution;
-using RelaxKonOS.Server.HostMode;
 
 namespace RelaxKonOS.Server.Git;
 
@@ -22,16 +17,14 @@ public sealed partial class LocalGitRepositoryService
 
     public async Task<IReadOnlyList<GitRemoteDto>> ListRemotesAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var gitPath = ResolveGitPathOrThrow();
         return await GetRemotesAsync(gitPath, repo.Path, cancellationToken);
     }
 
     public async Task<GitOperationResult> AddRemoteAsync(Guid id, Guid userId, GitRemoteRequest request, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var gitPath = ResolveGitPathOrThrow();
         if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Url))
             return new GitOperationResult(false, "add-remote", Message: "Remote name and URL are required.");
@@ -53,8 +46,7 @@ public sealed partial class LocalGitRepositoryService
 
     public async Task<GitOperationResult> UpdateRemoteAsync(Guid id, Guid userId, string name, GitRemoteRequest request, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var gitPath = ResolveGitPathOrThrow();
         if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(request.Url))
             return new GitOperationResult(false, "update-remote", Message: "Remote name and URL are required.");
@@ -84,8 +76,7 @@ public sealed partial class LocalGitRepositoryService
 
     public async Task<GitOperationResult> RemoveRemoteAsync(Guid id, Guid userId, string name, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var gitPath = ResolveGitPathOrThrow();
         if (string.IsNullOrWhiteSpace(name))
             return new GitOperationResult(false, "remove-remote", Message: "Remote name is required.");

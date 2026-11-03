@@ -22,8 +22,7 @@ public sealed partial class LocalGitRepositoryService
 
     public async Task<IReadOnlyList<GitTagDto>> ListTagsAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var result = await RunGitAsync(ResolveGitPathOrThrow(), repo.Path, ["for-each-ref", "--format=%(refname:strip=2)%09%(objectname)%09%(*objectname)", "refs/tags"], cancellationToken);
         if (!result.Success) throw new InvalidOperationException(result.Error);
         return result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line => line.TrimEnd('\r').Split('\t'))
@@ -32,8 +31,7 @@ public sealed partial class LocalGitRepositoryService
 
     public async Task<GitOperationResult> CreateTagAsync(Guid id, Guid userId, GitTagCreateRequest request, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var git = ResolveGitPathOrThrow();
         return await WithWriteLockAsync(id, async () =>
         {
@@ -53,8 +51,7 @@ public sealed partial class LocalGitRepositoryService
 
     private async Task<GitOperationResult> IntegrateReferenceAsync(Guid id, Guid userId, GitReferenceRequest request, string operation, CancellationToken ct)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, ct);
+        var repo = await GetRepoOrThrowAsync(id, userId, ct);
         var git = ResolveGitPathOrThrow();
         return await WithWriteLockAsync(id, async () =>
         {
@@ -68,8 +65,7 @@ public sealed partial class LocalGitRepositoryService
 
     public async Task<IReadOnlyList<GitStashDto>> ListStashesAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         return await ReadStashesAsync(ResolveGitPathOrThrow(), repo.Path, cancellationToken);
     }
     private async Task<IReadOnlyList<GitStashDto>> ReadStashesAsync(string git, string root, CancellationToken ct)
@@ -83,8 +79,7 @@ public sealed partial class LocalGitRepositoryService
     {
         if (request.Action is not ("save" or "apply" or "pop" or "drop")) throw new ArgumentException("Invalid stash action.");
         if (request.Message is { Length: > 1024 } || request.Message?.Any(char.IsControl) == true) throw new ArgumentException("Invalid stash message.");
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var git = ResolveGitPathOrThrow();
         return await WithWriteLockAsync(id, async () =>
         {
@@ -116,8 +111,7 @@ public sealed partial class LocalGitRepositoryService
 
     public async Task<IReadOnlyList<GitWorktreeDto>> ListWorktreesAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var result = await RunGitAsync(ResolveGitPathOrThrow(), repo.Path, ["worktree", "list", "--porcelain", "-z"], cancellationToken);
         if (!result.Success) throw new InvalidOperationException(result.Error);
         var trees = new List<GitWorktreeDto>();
@@ -140,8 +134,7 @@ public sealed partial class LocalGitRepositoryService
     public async Task<GitOperationResult> CreateWorktreeAsync(Guid id, Guid userId, GitWorktreeCreateRequest request, CancellationToken cancellationToken = default)
     {
         var path = CheckedAbsolutePath(request.Path);
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var git = ResolveGitPathOrThrow();
         return await WithWriteLockAsync(id, async () =>
         {
@@ -163,8 +156,7 @@ public sealed partial class LocalGitRepositoryService
     public async Task<GitOperationResult> RemoveWorktreeAsync(Guid id, Guid userId, GitWorktreeRemoveRequest request, CancellationToken cancellationToken = default)
     {
         var path = CheckedAbsolutePath(request.Path);
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         return await WithWriteLockAsync(id, async () =>
         {
             // Git refuses the main, dirty and locked worktrees; never bypass it with --force.
@@ -174,8 +166,7 @@ public sealed partial class LocalGitRepositoryService
     }
     public async Task<GitPatchDto> ExportPatchAsync(Guid id, Guid userId, GitPatchRequest request, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var git = ResolveGitPathOrThrow();
         List<string> args;
         if (request.Reference is { Length: > 0 })
@@ -190,8 +181,7 @@ public sealed partial class LocalGitRepositoryService
     public async Task<GitOperationResult> ApplyPatchAsync(Guid id, Guid userId, GitPatchApplyRequest request, CancellationToken cancellationToken = default)
     {
         var path = CheckedAbsolutePath(request.Path);
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var git = ResolveGitPathOrThrow();
         return await WithWriteLockAsync(id, async () =>
         {

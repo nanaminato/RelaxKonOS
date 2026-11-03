@@ -1,6 +1,6 @@
 # Server 模块闲时卸载与按需加载
 
-> 状态：协调器、三种策略、会话退出触发、驻留契约、Git 与 Firewall 对象边界和运行时依赖租约已落地。Git 历史试点见 §8，Firewall 当前边界见 §9，依赖机制见 §10；跨端管理现状由[服务端模块管理设计](RelaxKonOS.ServerModuleManagement.Design.md) §12 拥有。程序集卸载、Terminal/Hub 等长连接的完整租约、Proxy 拆分、独立进程宿主的闲时退出/按需重启和完整多平台故障矩阵仍未交付。本文补充[模块与扩展设计](RelaxKonOS.ModulesAndExtensions.Design.md)，不表示已有内存收益：§7 的测量早于驻留代码，尚未证明真实业务休眠/唤醒循环的内存收益；2026-11-03 的引用回收修复及合成循环验证见 §13。
+> 状态：协调器、三种策略、会话退出触发、驻留契约、Git 与 Firewall 对象边界和运行时依赖租约已落地。Git 历史试点见 §8，Firewall 当前边界见 §9，依赖机制见 §10；跨端管理现状由[服务端模块管理设计](RelaxKonOS.ServerModuleManagement.Design.md) §12 拥有。Git 仓库/CLI/构建实现已具备真实程序集回收（见边界设计 §10/11），其他模块的代码回收、Terminal/Hub 完整租约、Proxy 拆分、第三方宿主闲时退出和完整多平台故障矩阵仍未交付。本文补充[模块与扩展设计](RelaxKonOS.ModulesAndExtensions.Design.md)，不表示已有内存收益：§7 的测量早于驻留代码，尚未证明真实业务休眠/唤醒循环的内存收益；2026-11-03 的引用回收修复及合成循环验证见 §13。
 
 已采纳的决策：采用内存休眠与请求唤醒，提供保持加载、闲时延迟释放和退出后立即尝试释放三种策略，以租约保护多用户、长连接、任务及恢复职责；按窄职责拆分 Proxy 共享能力，先以 Git 只读操作验证动态生命周期，再推进 Proxy 拆分。默认采用闲时延迟释放，具体宽限期通过实测确定。模块边界与宿主选择已在[边界调整设计](RelaxKonOS.ServerModuleBoundaries.Design.md)细化，具体契约与项目通过试点冻结；采纳方向不表示已经实施。
 
@@ -268,3 +268,7 @@ Git 命令端口保留结构化文件名、参数、环境与超时规则，取�
 ### 审计结果的设计归属
 
 本轮审计确认：Git/Firewall/Tailscale 已有对象边界；Proxy、Docker、Certificate、WebServer 仍有根服务和持续职责；SystemPerformance 的有界历史/静态缓存及 Terminal 的 PTY/可重连会话不能直接按请求结束释放；官方安装包和第三方宿主分别受到根注册和进程常驻限制。目标责任表、ABI、迁移顺序和验收条件已提升为[模块边界与内存回收设计](RelaxKonOS.ServerModuleBoundaries.Design.md)，MB-01～MB-08 均待实施。此前合成回收结果不关闭真实业务内存测量、Proxy 职责迁移或代码/进程卸载验收。
+
+2026-11-03 后续：Git CLI/构建执行器已移入可回收的独立程序集，原模块租约继续拥有业务调用和后台责任；真实 ALC 循环验证、打包边界及未完成项由[边界设计 §10](RelaxKonOS.ServerModuleBoundaries.Design.md#10-git-执行切片实施2026-11-03mb-0203-部分)拥有。§13 的合成对象测试仍是原范围，不替代后续代码回收记录。
+
+2026-11-03 仓库后续：Git 仓库全部 partial 实现已移入同一可回收程序集，以窄存储/身份/文件端口保持 Host 权威；真实仓库/凭据/控制台后的 100 轮代码回收与保留完成请求验证通过，详见[边界设计 §11](RelaxKonOS.ServerModuleBoundaries.Design.md#11-git-仓库实现与-host-端口2026-11-03mb-0203-后续)。这不扩大真实 BuildKit、生产内存或其他模块的验收范围。

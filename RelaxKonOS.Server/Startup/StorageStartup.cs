@@ -17,7 +17,7 @@ internal static class StorageStartup
             if (!string.IsNullOrEmpty(dbDir))
                 Directory.CreateDirectory(dbDir);
             // AddDbContextFactory: 注册 IDbContextFactory<RelaxKonOSDbContext>（Singleton）供 Singleton 消费者
-            // （如 LocalGitRepositoryService）按操作创建短生命周期 DbContext；同时保留 RelaxKonOSDbContext 为
+            // （如 HostGitRepositoryStorage）按操作创建短生命周期 DbContext；同时保留 RelaxKonOSDbContext 为
             // Scoped，使既有 Scoped 仓储（SqliteUserRepository 等）直接注入不变。
             builder.Services.AddDbContextFactory<RelaxKonOSDbContext>(o => o.UseSqlite($"Data Source={dbPath}"));
             // 仓储为 Scoped（依赖 Scoped 的 DbContext）；Minimal API [FromServices] 每请求创建 scope，兼容

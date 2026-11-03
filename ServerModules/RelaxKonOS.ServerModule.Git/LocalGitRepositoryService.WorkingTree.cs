@@ -4,15 +4,10 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.EntityFrameworkCore;
 using RelaxKonOS.Protocol.AppSettings;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.UserExecution;
-using RelaxKonOS.Server.Domain;
-using RelaxKonOS.Server.Storage.Sqlite;
-using RelaxKonOS.Server.UserExecution;
-using RelaxKonOS.Server.HostMode;
 
 namespace RelaxKonOS.Server.Git;
 
@@ -20,8 +15,7 @@ public sealed partial class LocalGitRepositoryService
 {
     public async Task<GitOperationResult> RevertAsync(Guid id, Guid userId, GitRevertRequest request, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var gitPath = ResolveGitPathOrThrow();
         return await WithWriteLockAsync(id, async () =>
         {
@@ -44,8 +38,7 @@ public sealed partial class LocalGitRepositoryService
         if (mode is not ("soft" or "mixed"))
             return new GitOperationResult(false, "reset", Message: "Only soft and mixed reset modes are supported.");
 
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var gitPath = ResolveGitPathOrThrow();
         return await WithWriteLockAsync(id, async () =>
         {
@@ -62,8 +55,7 @@ public sealed partial class LocalGitRepositoryService
         if (!ArePathsSafe(request.Paths, out var pathError))
             return new GitOperationResult(false, "restore", Message: pathError);
 
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         if (request.Paths.Any(path => !IsPathSafe(repo.Path, path)))
             return new GitOperationResult(false, "restore", Message: "Path outside repository.");
 
@@ -84,8 +76,7 @@ public sealed partial class LocalGitRepositoryService
         if (!ArePathsSafe(request.Paths, out var pathError))
             return new GitOperationResult(false, "stage", Message: pathError);
 
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         if (request.Paths.Any(path => !IsPathSafe(repo.Path, path)))
             return new GitOperationResult(false, "stage", Message: "Path outside repository.");
 
@@ -104,8 +95,7 @@ public sealed partial class LocalGitRepositoryService
         if (!ArePathsSafe(request.Paths, out var pathError))
             return new GitOperationResult(false, "unstage", Message: pathError);
 
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         if (request.Paths.Any(path => !IsPathSafe(repo.Path, path)))
             return new GitOperationResult(false, "unstage", Message: "Path outside repository.");
 

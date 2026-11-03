@@ -28,11 +28,9 @@ public static class GitRegistrationChecks
         await using (var db = factory.CreateDbContext()) await db.Database.EnsureCreatedAsync();
         var transport = new Transport();
         var protection = new EphemeralDataProtectionProvider();
-        var service = new LocalGitRepositoryService(factory, new ForbiddenServiceGit(), protection,
-            NullLogger<LocalGitRepositoryService>.Instance, services.GetRequiredService<IServiceScopeFactory>(),
-            transport, new HelperMode(), new UserExecutionBackendSelection(UserExecutionBackend.Helper),
-            new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity(
-                [new Claim("sub", user.ToString())], "test")) } });
+        var service = new LocalGitRepositoryService(new HostGitRepositoryStorage(factory), new ForbiddenServiceGit(), protection, NullLogger<LocalGitRepositoryService>.Instance,
+            new HostGitRepositoryAccess(services.GetRequiredService<IServiceScopeFactory>(), transport, new HelperMode(), new UserExecutionBackendSelection(UserExecutionBackend.Helper), new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity(
+                [new Claim("sub", user.ToString())], "test")) } }));
         // Deliberately unavailable to the Server process; only the execution transport can inspect it.
         var path = Path.GetFullPath(Path.Combine(root, "private-user-home", "repository"));
         Assert(!Directory.Exists(path), "Fixture must be invisible to service-side directory checks");
@@ -189,10 +187,8 @@ public static class GitRegistrationChecks
         await service.PullAsync(repoId, user, new(Branch: "topic", Credentials: new("topic-user", "topic-secret")));
         Assert((await service.ListCredentialAccountsAsync(user)).Any(x => x.Username == "topic-user"), "Non-current branch fetch can save its supplied credential");
         await service.SaveCredentialAccountAsync(user, new(second.Host, second.Username, "rotated-secret", true));
-        var restarted = new LocalGitRepositoryService(factory, new ForbiddenServiceGit(), protection,
-            NullLogger<LocalGitRepositoryService>.Instance, services.GetRequiredService<IServiceScopeFactory>(), transport,
-            new HelperMode(), new UserExecutionBackendSelection(UserExecutionBackend.Helper),
-            new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", user.ToString())], "test")) } });
+        var restarted = new LocalGitRepositoryService(new HostGitRepositoryStorage(factory), new ForbiddenServiceGit(), protection, NullLogger<LocalGitRepositoryService>.Instance,
+            new HostGitRepositoryAccess(services.GetRequiredService<IServiceScopeFactory>(), transport, new HelperMode(), new UserExecutionBackendSelection(UserExecutionBackend.Helper), new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", user.ToString())], "test")) } }));
         await restarted.FetchAsync(repoId, user, new("multi"));
         Assert(transport.Requests.Last().GitCredentials is { Password: "rotated-secret" }, "A fresh service resolves the rotated token from persistent protected storage");
         Assert(await service.DeleteCredentialAccountAsync(user, second.Id), "A saved account can be deleted");

@@ -27,6 +27,8 @@ if (args is ["--module-residency-checks"])
         Console.WriteLine($"{(passed ? "PASS" : "FAIL")}: {message}");
         if (!passed) throw new InvalidOperationException(message);
     }
+    await GitRepositoryAssemblyChecks.RunAsync(VerifyResidency);
+    await GitAssemblyResidencyChecks.RunAsync(VerifyResidency);
     await ModuleMemoryRetentionChecks.RunAsync(VerifyResidency);
     await FirewallResidencyChecks.RunAsync(VerifyResidency);
     await ModuleDependencyResidencyChecks.RunAsync(VerifyResidency);
@@ -253,6 +255,8 @@ ModuleManagementChecks.Run(Check);
 ModulePolicyManagementChecks.Run(Check);
 await ModuleRecoveryChecks.RunAsync(Check);
 await ModuleRecoveryHostChecks.RunAsync(Check);
+await GitRepositoryAssemblyChecks.RunAsync(Check);
+await GitAssemblyResidencyChecks.RunAsync(Check);
 await ModuleMemoryRetentionChecks.RunAsync(Check);
 await FirewallResidencyChecks.RunAsync(Check);
 await ModuleDependencyResidencyChecks.RunAsync(Check);

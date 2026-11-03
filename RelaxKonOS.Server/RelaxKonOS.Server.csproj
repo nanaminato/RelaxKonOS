@@ -73,4 +73,9 @@
       </ItemGroup>
     </Target>
 
+  <ItemGroup>
+    <ProjectReference Include="../Shared/RelaxKonOS.ServerModule.Git.Contracts/RelaxKonOS.ServerModule.Git.Contracts.csproj" />
+    <ProjectReference Include="../ServerModules/RelaxKonOS.ServerModule.Git/RelaxKonOS.ServerModule.Git.csproj" ReferenceOutputAssembly="false" />
+    <Content Include="../ServerModules/RelaxKonOS.ServerModule.Git/bin/$(Configuration)/net10.0/$(RuntimeIdentifier)/RelaxKonOS.ServerModule.Git.dll" Link="Modules/Git/RelaxKonOS.ServerModule.Git.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

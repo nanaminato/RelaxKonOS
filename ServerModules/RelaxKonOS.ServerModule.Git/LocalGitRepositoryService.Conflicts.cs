@@ -4,9 +4,6 @@ using System.Text.Json;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.Protocol.UserExecution;
-using RelaxKonOS.Server.UserExecution;
-using RelaxKonOS.Server.Files;
-using Microsoft.EntityFrameworkCore;
 using RelaxKonOS.Protocol.Git;
 
 namespace RelaxKonOS.Server.Git;
@@ -15,8 +12,7 @@ public sealed partial class LocalGitRepositoryService
 {
     public async Task<GitConflictStateDto> GetConflictStateAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var git = ResolveGitPathOrThrow();
         return new(await ConflictOperationNameAsync(git, repo.Path, cancellationToken),
             await TryGetConflictPathsAsync(git, repo.Path, cancellationToken) ?? []);
@@ -35,7 +31,7 @@ public sealed partial class LocalGitRepositoryService
         return null;
     }
 
-    private static string ConflictTarget(string root, string path)
+    private string ConflictTarget(string root, string path)
     {
         if (string.IsNullOrWhiteSpace(path) || Path.IsPathRooted(path) || !IsPathSafe(root, path) ||
             path.Split('/', '\\').Any(p => p is ".git" or ".."))
@@ -46,8 +42,7 @@ public sealed partial class LocalGitRepositoryService
 
     public async Task<GitConflictFileDto> GetConflictAsync(Guid id, Guid userId, string path, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         return await ReadConflictAsync(ResolveGitPathOrThrow(), repo.Path, path, cancellationToken);
     }
 
@@ -85,8 +80,7 @@ public sealed partial class LocalGitRepositoryService
 
     public async Task<GitOperationResult> ResolveConflictsAsync(Guid id, Guid userId, GitResolveRequest request, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var git = ResolveGitPathOrThrow();
         return await WithWriteLockAsync(id, async () =>
         {
@@ -136,8 +130,7 @@ public sealed partial class LocalGitRepositoryService
 
     public async Task<GitOperationResult> ConflictOperationAsync(Guid id, Guid userId, GitConflictOperationRequest request, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var git = ResolveGitPathOrThrow();
         return await WithWriteLockAsync(id, async () =>
         {
@@ -154,26 +147,13 @@ public sealed partial class LocalGitRepositoryService
     private async Task<T> ConflictFileCallAsync<T>(UserExecutionOperationKind operation, string root, string? relative,
         string? content, string? expectedHash, CancellationToken ct)
     {
-        if (serverMode.Mode == ServerMode.System)
-        {
-            var principal = http.HttpContext?.User ?? throw new InvalidOperationException("Authenticated identity required.");
-            UserExecutionContext context;
-            using (var scope = executionScopes.CreateScope())
-                context = scope.ServiceProvider.GetRequiredService<IUserExecutionContextResolver>().Resolve(principal);
-            var response = await executionTransport.ExecuteAsync(new UserExecutionRequest(context.Identity, operation,
-                Path: root, FileName: relative, ContentBase64: content, ExpectedSha256: expectedHash, OperationId: Guid.NewGuid()), ct);
-            if (!response.Success || response.OutputBase64 is null) throw new InvalidOperationException("Conflict file access is unavailable.");
-            return JsonSerializer.Deserialize<T>(Convert.FromBase64String(response.OutputBase64), RelaxKonOSJsonOptions.Default)!;
-        }
-        ct.ThrowIfCancellationRequested();
         object? value = operation switch
         {
-            UserExecutionOperationKind.FileGetInfo => new LocalFileService(serverMode).GetInfo(root),
-            UserExecutionOperationKind.GitConflictSnapshot => GitConflictFileAccess.Read(root, relative!),
-            UserExecutionOperationKind.GitConflictWrite => GitConflictFileAccess.Write(root, relative!, Convert.FromBase64String(content!), expectedHash!),
+            UserExecutionOperationKind.FileGetInfo => await host.GetInfoAsync(root, ct),
+            UserExecutionOperationKind.GitConflictSnapshot => await host.ReadConflictAsync(root, relative!, ct),
+            UserExecutionOperationKind.GitConflictWrite => await host.WriteConflictAsync(root, relative!, content!, expectedHash!, ct),
             _ => throw new ArgumentException("Invalid conflict I/O operation."),
         };
         return (T)value!;
     }
-
 }

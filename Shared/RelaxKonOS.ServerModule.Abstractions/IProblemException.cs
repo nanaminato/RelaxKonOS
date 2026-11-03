@@ -6,7 +6,7 @@ namespace RelaxKonOS.Server.Endpoints;
 /// problem shape (status, <c>title=code</c>, <c>type=problems/{code}</c>, <c>problemCode</c>).
 ///
 /// <para>
-/// The type lives in the Server, not in <c>RelaxKonOS.Protocol</c>: it describes how this Host reports
+/// The type lives in shared module abstractions, not in <c>RelaxKonOS.Protocol</c>: it describes how the Host reports
 /// a failure, not a wire contract by itself.
 /// </para>
 /// </summary>

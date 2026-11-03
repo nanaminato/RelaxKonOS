@@ -98,4 +98,7 @@
           CopyToOutputDirectory="PreserveNewest"
           Condition="'$(UsePrebuiltServerAssembly)' == 'true' and '$(OS)' == 'Windows_NT' and !Exists('../RelaxKonOS.Server/bin/Debug/net10.0/libSkiaSharp.dll')" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../ServerModules/RelaxKonOS.ServerModule.Git/RelaxKonOS.ServerModule.Git.csproj" />
+  </ItemGroup>
 </Project>

@@ -4,15 +4,10 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.EntityFrameworkCore;
 using RelaxKonOS.Protocol.AppSettings;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.UserExecution;
-using RelaxKonOS.Server.Domain;
-using RelaxKonOS.Server.Storage.Sqlite;
-using RelaxKonOS.Server.UserExecution;
-using RelaxKonOS.Server.HostMode;
 
 namespace RelaxKonOS.Server.Git;
 
@@ -20,8 +15,7 @@ public sealed partial class LocalGitRepositoryService
 {
     public async Task<IReadOnlyList<GitBranchDto>> ListBranchesAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var gitPath = ResolveGitPathOrThrow();
         // Keep the full refname in addition to its display name.  A branch name is
         // allowed to contain '/', so it cannot tell us whether the ref is local or
@@ -59,8 +53,7 @@ public sealed partial class LocalGitRepositoryService
         if (string.IsNullOrWhiteSpace(name) || name.StartsWith("-", StringComparison.Ordinal))
             throw new ArgumentException("A valid branch name is required.", nameof(name));
 
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var gitPath = ResolveGitPathOrThrow();
 
         // Resolve first so the branch name is never interpreted as a command option
@@ -80,8 +73,7 @@ public sealed partial class LocalGitRepositoryService
 
     public async Task<GitOperationResult> CreateBranchAsync(Guid id, Guid userId, GitBranchCreateRequest request, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var gitPath = ResolveGitPathOrThrow();
         return await WithWriteLockAsync(id, async () =>
         {
@@ -109,8 +101,7 @@ public sealed partial class LocalGitRepositoryService
 
     public async Task<GitOperationResult> DeleteBranchAsync(Guid id, Guid userId, string name, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var gitPath = ResolveGitPathOrThrow();
         return await WithWriteLockAsync(id, async () =>
         {
@@ -128,8 +119,7 @@ public sealed partial class LocalGitRepositoryService
             return new GitOperationResult(false, "rename-branch", Message: "Source branch name is required.");
         if (string.IsNullOrWhiteSpace(request.NewName))
             return new GitOperationResult(false, "rename-branch", Message: "New branch name is required.");
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var gitPath = ResolveGitPathOrThrow();
         return await WithWriteLockAsync(id, async () =>
         {
@@ -142,8 +132,7 @@ public sealed partial class LocalGitRepositoryService
     {
         if (string.IsNullOrWhiteSpace(name))
             return new GitOperationResult(false, "set-upstream", Message: "Branch name is required.");
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var gitPath = ResolveGitPathOrThrow();
         return await WithWriteLockAsync(id, async () =>
         {
@@ -170,8 +159,7 @@ public sealed partial class LocalGitRepositoryService
 
     public async Task<GitOperationResult> CheckoutAsync(Guid id, Guid userId, GitCheckoutRequest request, CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
+        var repo = await GetRepoOrThrowAsync(id, userId, cancellationToken);
         var gitPath = ResolveGitPathOrThrow();
         return await WithWriteLockAsync(id, async () =>
         {

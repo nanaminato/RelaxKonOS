@@ -64,7 +64,7 @@ internal static class GitDeactivationChecks
                 System.Text.Encoding.UTF8.GetString(Ledger(operation with { State = "mystery" })) })
             {
                 File.WriteAllText(file, malformed);
-                var result = GitBuildService.InspectLedger(root, new GitBuildOptions { RootDirectory = "builds" });
+                var result = GitBuildLedger.InspectLedger(root, new GitBuildOptions { RootDirectory = "builds" });
                 check(await StartupRefused() && result.Count == 1 && !result[0].Description.Contains("not-a-real-secret")
                     && File.ReadAllText(file) == malformed && factory.Created == 0,
                     "unreadable or invalid Git ledger blocks deactivation without exposing content or rewriting it");
