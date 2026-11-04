@@ -312,3 +312,5 @@ Git 命令端口保留结构化文件名、参数、环境与超时规则，取�
 2026-11-04 MB-07 REST 续核：ReadSnapshotAsync 的缓存命中与等待者均取得真实工作租约，owner 关闭能唤醒纯等待并清理需求/订阅；等待者结束不提前释放仍在采集的独立 tick。Windows/Linux 驻留检查累计各 42 项与原性能专项通过，Windows 默认模块回归通过，详见[边界设计 §31](RelaxKonOS.ServerModuleBoundaries.Design.md#31-rest-快照等待者的完整调用保护2026-11-04mb-07-部分)。Hub 订阅/网络发送、同步历史读取与整个模块释放仍开放，不以调用保护声称生产内存收益。
 
 2026-11-04 MB-07 广播续核：实际 typed Hub 发送已取得真实工作租约，Stop/Dispose 不提前释放非合作发送 Task；最多 4 条排队快照在循环实际结束时清空，不持连续工作租约。Windows/Linux 新增广播各 15 项、性能驻留各 42 项及原专项通过，Windows 默认模块回归与 Linux Proxy28 通过，用户授权后直接复用测试机固定工作目录。行为和验收限制见[边界设计 §32](RelaxKonOS.ServerModuleBoundaries.Design.md#32-hub-广播实际发送的工作寿命2026-11-04mb-07-部分)。连续连接/组成员、同步历史读取、模块释放及生产收益继续开放，目录仍 resident。
+
+2026-11-04 MB-07 连续连接续核：PerformanceHubConnections 取得从 OnConnected 到真实组清理结束的连续工作租约，未订阅和已退订连接也受保护；组操作串行，断线/停止不让晚到 Add 复活需求，未知 Remove 失败保留故障与租约且 Stop 可见。Windows/Linux 最终连接各 25 项、原广播15/性能驻留42及专项通过，Windows 默认模块回归、Linux Proxy28 通过。详见[边界设计 §33](RelaxKonOS.ServerModuleBoundaries.Design.md#33-连续-hub-连接与组成员-owner2026-11-04mb-07-部分)；同步历史读取、整体资源清单、连接压力、真实传输/未知结果恢复和生产内存收益仍开放，SystemPerformance 仍 resident。

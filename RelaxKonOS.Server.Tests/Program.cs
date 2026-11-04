@@ -332,6 +332,7 @@ if (args.Contains("--process-termination-only"))
 }
 if (args.Contains("--performance-only"))
 {
+    await PerformanceHubConnectionChecks.RunAsync();
     await PerformanceBroadcastResidencyChecks.RunAsync();
     await PerformanceResidencyChecks.RunAsync();
     await ProcessRequestResidencyChecks.RunAsync();
@@ -722,6 +723,7 @@ await NetworkProxyTunnelChecks.VerifyFrpRuntimeInstallAndRollbackAsync(root);
     HostOperatingSystemChecks.Run();
     await ServerCoreChecks.VerifyTrackedWorkspaceWallpaperUpdateAsync(root);
     await ServerCoreChecks.VerifyRegistryRuntimeCacheAsync(root);
+    await PerformanceHubConnectionChecks.RunAsync();
     await PerformanceBroadcastResidencyChecks.RunAsync();
     await PerformanceResidencyChecks.RunAsync();
     await ProcessRequestResidencyChecks.RunAsync();

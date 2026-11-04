@@ -701,6 +701,20 @@ Windows `PerformanceResidencyChecks` 从 28 项扩至 **42 项**，覆盖缓存�
 
 新增 `PerformanceBroadcastResidencyChecks` 使用真实模块注册、协调器及生产租约源，受控 typed Hub 客户端仅替换外部发送。Windows/Ubuntu 26.04 各 **15 项**通过：空闲零发送/租约、发送期间真实保护、排队不取租约且不并行发送、4 条 DropOldest、Stop 后退订和拒绝事件、非合作发送的协调器排空与 Stop 超时、完成后清空队列、关闭准入无回退、同步 Dispose 保留在途保护，以及发送失败归还、不重放、退订并清空。原性能驻留各 **42 项**、进程/图标/性能专项与 Linux Proxy 驻留 **28 项**通过；Windows 默认模块全量回归通过。Server.Tests、ServerModules.Tests Release 构建与 Server.Tests linux-x64 发布通过，既有告警保留。
 
-证据位于 `.artifacts/performance-broadcast-residency-20261104/`，包含 Windows、Linux、默认模块日志及环境/上传 SHA256/远端路径。用户明确授权后直接复用 `/home/nanami/relaxkonos-tests`，不使用隔离环境、不部署服务；没有读取或输出本地配置中的凭据。子 agent 实现测试，另一子 agent 只读复核生产寿命边界，无实质问题；`git diff --check` 通过，全部既有实现保留。
+证据位于 `.artifacts/performance-broadcast-residency-20261104/`，包含 Windows、Linux、默认模块日志及环境/上传 SHA256/远端路径。用户明确授权后直接复用 `/home/nanami/relaxkonos-tests`，不使用隔离环境、不部署服务；凭据仅由本地脚本读取用于认证，没有输出或加入 Git。子 agent 实现测试，另一子 agent 只读复核生产寿命边界，无实质问题；`git diff --check` 通过，全部既有实现保留。
 
-协调器单独关闭且广播空闲时，没有连续工作租约或独立停止通知；广播在下一次发送准入拒绝或 Host Stop 时退出。连续 Hub 连接/组成员、同步历史读取及 HTTP/SignalR 传输更底层的物理收尾并不因此完成保护；不将受控发送 Task 夹具当成真实慢网络故障验收。SystemPerformance 仍 resident/KeepLoaded/不可释放，MB-07、RES-01/03/04/07 继续开放，未声明代码回收或生产内存/延迟收益。本节后续改动尚未提交、推送或部署。
+协调器单独关闭且广播空闲时，没有连续工作租约或独立停止通知；广播在下一次发送准入拒绝或 Host Stop 时退出。连续 Hub 连接/组成员、同步历史读取及 HTTP/SignalR 传输更底层的物理收尾并不因此完成保护；不将受控发送 Task 夹具当成真实慢网络故障验收。SystemPerformance 仍 resident/KeepLoaded/不可释放，MB-07、RES-01/03/04/07 继续开放，未声明代码回收或生产内存/延迟收益。§31/32 实现随后提交并推送为 `15630840`，未部署。
+
+## 33. 连续 Hub 连接与组成员 owner（2026-11-04，MB-07 部分）
+
+新增单例 `PerformanceHubConnections`，使用现有模块注册和同一协调器租约源，以同一实例注册 HostedService。`PerformanceHub.OnConnectedAsync` 在接受业务调用前取得连续工作租约；连接尚未订阅或已经退订但仍连接时继续持有，不因此产生采样 demand。Subscribe/Unsubscribe/OnDisconnected 均委托该 owner，Hub 方法名、认证和 wire 契约保持当前接口，不保留旧构造或无租约回退。组管理器与 Abort 委托随连接由 owner 持有，正常清理后移除条目，不另建采样器。
+
+每个连接串行执行组操作：成功 Add 且仍开放后才登记采样需求，重复订阅不重复 Add；成功 Remove 才结束正常退订，退订后连接租约仍在。Add 开始前记录可能已入组，失败或晚到结束不能复活已关闭连接，最后清理使用独立令牌 Remove。已开始的 Remove 不传递关闭令牌，必须等待实际 Task；真实 Remove 失败不自动重放，保留该连接条目、工作租约与 Stop 可见故障。
+
+断线、连接取消、Host Stop/Dispose 和协调器停止共用每个连接唯一的关闭任务。先关闭连接并 Abort，再等待实际组操作，撤销采样需求并清理可能的组成员，成功后才归还连续工作租约、请求跟踪和条目引用。Abort 异常仍尝试撤销需求及组清理，然后保留故障责任。Stop 先关闭新连接准入，等待所有关闭任务与已准入连接构建；等待预算耗尽不能把在途 Add/Remove 或未知清理故障视为完成。没有新增连接/组操作并发数量或字节预算。
+
+新增 `PerformanceHubConnectionChecks` 接入默认和性能专项。Windows/Ubuntu 26.04 最终各 **25 项**通过：实际 Hub 生命周期回调、连接未订阅持租约、重复订阅/退订、多连接独立需求、清理后同 ID 重连、重复/预取消准入、晚到 Add、Stop 超时与拒绝准入、协调器关闭、进行中 Remove 使用独立令牌并等待、连接取消、Add 失败补偿、普通退订和最终断线 Remove 失败不重放且保留责任。正常路径使用真实模块注册、协调器和生产租约源，仅替换组传输与连接上下文；未知 Remove 故障夹具使用计数租约，避免将真实协调器的故障等待伪造为已恢复，不据此宣称未知结果恢复已实现。
+
+原 Windows/Linux 广播各 **15 项**、性能驻留各 **42 项**、进程/图标/性能专项及 Linux Proxy 驻留 **28 项**通过；Windows 默认模块全量回归通过。Server/Server.Tests/ServerModules.Tests Release 构建与 Server.Tests linux-x64 发布通过，既有告警保留。首轮连接 21 项和最终补强 25 项均保留证据，最终测试仅补强夹具，生产代码未再变化。目录为 `.artifacts/performance-connections-residency-20261104/`，最终平台日志是 `performance-windows-final.log`、`performance-linux-final.log`；Linux 用户授权后直接复用 `/home/nanami/relaxkonos-tests`，环境、整包及最终测试程序集上传 SHA256 核验均记录。子 agent 实现测试，另一子 agent 只读审查并促成在途 Remove 与 Abort 异常两项修复；最终未发现进一步实质问题。`git diff --check` 通过，测试机配置仍在 Git 追踪之外。
+
+目录 activeLeases 现在包含所有连续 Hub 连接（不只订阅者）、实际采样/广播/REST/进程工作，不等于 OS 并发读取数。此处不证明真实 SignalR 传输故障、远端组存储或 HTTP/网络底层物理清理；组任务失败的保留责任需要后续显式恢复设计，不能以 Abort 当作清理已确认。同步历史读取的完整保护、整体资源清单、连接压力及数量预算、程序集释放及生产进程树内存/延迟仍开放。SystemPerformance 保持 resident/KeepLoaded/不可释放，MB-07、RES-01/03/04/07 不关闭；本节实现尚未提交、推送或部署，全部既有成果保留。

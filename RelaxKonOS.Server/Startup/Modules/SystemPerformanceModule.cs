@@ -44,6 +44,8 @@ internal sealed class SystemPerformanceModule : IServerModule, IServerModuleWork
         builder.Services.AddHostedService(services => services.GetRequiredService<PerformanceSampler>());
         builder.Services.AddSingleton<ProcessSampler>();
         builder.Services.AddSingleton<ISystemPerformanceWorkLeaseSource, SystemPerformanceWorkLeaseSource>();
+        builder.Services.AddSingleton<PerformanceHubConnections>();
+        builder.Services.AddHostedService(services => services.GetRequiredService<PerformanceHubConnections>());
         builder.Services.AddSingleton<IProcessService>(services => services.GetRequiredService<ProcessSampler>());
         builder.Services.AddHostedService(services => services.GetRequiredService<ProcessSampler>());
         // 订阅推送只服务本模块映射的 Hub；禁用时随模块一起消失。
