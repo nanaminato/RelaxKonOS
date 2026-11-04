@@ -241,7 +241,7 @@ try
     Check((await service.ReadAsync(default)).PublishedRevision == rollbackBase, "Rollback restores the previous publication");
     Check(await service.RollbackAsync(default) == "proxy_server.rollback_unavailable", "Rollback only goes back one step");
 
-    var operations = new ProxyOperationStore(new Paths(root), NullLogger<ProxyOperationStore>.Instance);
+    var operations = new ProxyOperationStore(new Paths(root), NullLogger<ProxyOperationStore>.Instance, new TestProxyWorkLeases());
     var count = 0;
     var first = await queue.EnqueueAsync("actor", "same-key", "check", new { Value = 1 }, operations, _ => { Interlocked.Increment(ref count); return Task.FromResult<string?>(null); }, default);
     var replay = await queue.EnqueueAsync("actor", "same-key", "check", new { Value = 1 }, operations, _ => throw new Exception("Must not run twice"), default);

@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
@@ -24,7 +24,7 @@ internal static class ModuleReleaseDirectoryChecks
                 { ["ModuleManagement:Authority"] = "managed" }).Build();
             string serviceId;
             using (var initial = new ModuleManagementStore(configuration, root)) serviceId = initial.ServiceId;
-            var rid = System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier;
+            var rid = RelaxKonOS.ModulePackaging.ModulePackagePlatform.CurrentRid;
             var otherRid = rid == "linux-arm64" ? "win-x64" : "linux-arm64";
             var policy = new ModulePackageTrustPolicy(1, "official", 1, true, "relaxkon", "official", "https://unreachable.invalid/",
                 [ServerModules.FirewallId, "relaxkonos.future"], new Dictionary<string, string> { ["key-1"] = Convert.ToBase64String(key.ExportSubjectPublicKeyInfo()) }, 3600);

@@ -22,6 +22,6 @@ internal static class ModulePackageHostConfiguration
         return policy;
     }
     internal static ModulePackageContext Context(string serviceId, IConfiguration configuration, IHostEnvironment environment) =>
-        new(serviceId, RuntimeInformation.RuntimeIdentifier, HostApiVersion,
+        new(serviceId, RelaxKonOS.ModulePackaging.ModulePackagePlatform.CurrentRid, HostApiVersion,
             environment.IsDevelopment() && configuration.GetValue<bool>("ModulePackages:DevelopmentInstance"));
 }

@@ -168,7 +168,7 @@ public static class ModuleHostProgram
         var manifest = ModulePackageJson.Read<ModulePackageManifest>(File.ReadAllBytes(path));
         ModulePackageVerifier.ValidateManifest(manifest);
         if (manifest.Runtime != "module-host" || manifest.ModuleId != moduleId
-            || manifest.Rid != RuntimeInformation.RuntimeIdentifier
+            || manifest.Rid != RelaxKonOS.ModulePackaging.ModulePackagePlatform.CurrentRid
             || Version.Parse(HostApiVersion) < Version.Parse(manifest.HostApiMinimum)
             || Version.Parse(HostApiVersion) >= Version.Parse(manifest.HostApiMaximumExclusive))
             throw new ModuleHostException("module-host-package-invalid");

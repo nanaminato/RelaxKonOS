@@ -40,7 +40,7 @@ internal static class ProxyOperationResponsibilityChecks
                 await File.WriteAllTextAsync(file, invalid);
                 Check(await Blocked(), "Malformed, duplicate or unknown ledger content blocks deactivation");
                 var rejected = false;
-                var store = new ProxyOperationStore(paths, NullLogger<ProxyOperationStore>.Instance);
+                var store = new ProxyOperationStore(paths, NullLogger<ProxyOperationStore>.Instance, new TestProxyWorkLeases());
                 try { await store.EnqueueAsync("new", "test", (_, _) => throw new Exception("Corrupt ledger executed work"), default); }
                 catch (Exception error) when (error is InvalidDataException or JsonException) { rejected = true; }
                 Check(rejected && await File.ReadAllTextAsync(file) == invalid, "Admission cannot replace unknown history with a fresh successful ledger");
@@ -52,7 +52,7 @@ internal static class ProxyOperationResponsibilityChecks
                 var target = Path.Combine(root, "other.json"); await File.WriteAllTextAsync(target, "[]"); File.CreateSymbolicLink(file, target);
                 Check(await Blocked(), "A linked operation ledger is rejected without following it"); File.Delete(file);
             }
-            var live = new ProxyOperationStore(paths, NullLogger<ProxyOperationStore>.Instance);
+            var live = new ProxyOperationStore(paths, NullLogger<ProxyOperationStore>.Instance, new TestProxyWorkLeases());
             var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var operationTask = await live.EnqueueAsync("active", "subscription.refresh", async (_, _) => { started.TrySetResult(); await release.Task; return null; }, default);
@@ -66,7 +66,7 @@ internal static class ProxyOperationResponsibilityChecks
             await live.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(5));
             Check((await live.InspectResponsibilitiesAsync(default)).Count == 0 && !await Blocked(),
                 "Completed cleanup and confirmed success leave no task responsibility; stopping alone is not a blocker");
-            var cached = new ProxyOperationStore(paths, NullLogger<ProxyOperationStore>.Instance);
+            var cached = new ProxyOperationStore(paths, NullLogger<ProxyOperationStore>.Instance, new TestProxyWorkLeases());
             await cached.GetAsync(operationTask.OperationId, default);
             await File.WriteAllTextAsync(file, "{");
             Check((await cached.InspectResponsibilitiesAsync(default)).Count != 0, "A loaded in-memory cache cannot hide later disk corruption from inspection");
@@ -75,7 +75,7 @@ internal static class ProxyOperationResponsibilityChecks
             catch (JsonException) { refused = true; }
             Check(refused && await File.ReadAllTextAsync(file) == "{", "Live admission also refuses corrupted disk state without replacing it");
             await File.WriteAllTextAsync(file, wire);
-            var reopened = new ProxyOperationStore(paths, NullLogger<ProxyOperationStore>.Instance);
+            var reopened = new ProxyOperationStore(paths, NullLogger<ProxyOperationStore>.Instance, new TestProxyWorkLeases());
             refused = false;
             try { await reopened.EnqueueAsync("after-interruption", "test", (_, _) => Task.FromResult<string?>(null), default); }
             catch (ProxyOperationValidationException) { refused = true; }
@@ -105,7 +105,7 @@ internal static class ProxyOperationResponsibilityChecks
             Check(await Blocked(), "Unconfirmed Squid intent cannot be discarded by disabling management");
             File.Delete(Path.Combine(paths.GetStateDirectory(), "squid-configuration.json"));
             var historyId = await SeedHistoryAsync(file);
-            var retainedStore = new ProxyOperationStore(paths, NullLogger<ProxyOperationStore>.Instance);
+            var retainedStore = new ProxyOperationStore(paths, NullLogger<ProxyOperationStore>.Instance, new TestProxyWorkLeases());
             var historical = await ReadWeakHistoryAsync(retainedStore, historyId);
             var retainedRead = retainedStore.GetAsync(Guid.Empty, default);
             Check(await retainedRead is null, "A missing historical operation remains missing");

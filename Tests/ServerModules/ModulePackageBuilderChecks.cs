@@ -20,7 +20,7 @@ internal static class ModulePackageBuilderChecks
             using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
             var keyPath = Path.Combine(root, "signing-key.pem");
             await File.WriteAllTextAsync(keyPath, key.ExportPkcs8PrivateKeyPem());
-            var rid = RuntimeInformation.RuntimeIdentifier;
+            var rid = RelaxKonOS.ModulePackaging.ModulePackagePlatform.CurrentRid;
             var now = DateTimeOffset.UtcNow;
             var options = new ModulePackageBuildOptions(publish, output, "fixture-builder", "1.0.0",
                 "fixture-builder-1.0.0-" + rid, "fixture", "official", rid, "FixtureModule.dll",

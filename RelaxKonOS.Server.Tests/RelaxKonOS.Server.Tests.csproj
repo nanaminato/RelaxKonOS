@@ -101,4 +101,5 @@
   <ItemGroup>
     <ProjectReference Include="../ServerModules/RelaxKonOS.ServerModule.Git/RelaxKonOS.ServerModule.Git.csproj" />
   </ItemGroup>
+<ItemGroup><Compile Include="../Tests/Shared/TestProxyWorkLeases.cs" Link="TestProxyWorkLeases.cs" /></ItemGroup>
 </Project>

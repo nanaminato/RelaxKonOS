@@ -1,4 +1,4 @@
-﻿using System.IO.Compression;
+using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -77,7 +77,7 @@ internal static class InstalledModuleChecks
                 && document.RootElement.GetProperty("modules").GetArrayLength() == 1,
                 "list-installed reports installation facts without claiming effective state");
 
-            var rid = RuntimeInformation.RuntimeIdentifier;
+            var rid = RelaxKonOS.ModulePackaging.ModulePackagePlatform.CurrentRid;
             var fixturePath = Path.Combine(AppContext.BaseDirectory, "FixtureModule.dll");
             var fixtureBytes = await File.ReadAllBytesAsync(fixturePath);
             var entryAssembly = "server/" + rid + "/FixtureModule.dll";

@@ -19,7 +19,7 @@ internal static class ModulePackageChecks
             ["example"], new Dictionary<string, string> { ["fixture-key"] = Convert.ToBase64String(key.ExportSubjectPublicKeyInfo()) }, 3600);
         byte[] Json<T>(T value) => JsonSerializer.SerializeToUtf8Bytes(value, ModulePackageJson.Options);
         string Hash(byte[] value) => Convert.ToHexStringLower(SHA256.HashData(value));
-        var rid = System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier;
+        var rid = RelaxKonOS.ModulePackaging.ModulePackagePlatform.CurrentRid;
         var content = Encoding.UTF8.GetBytes("package fixture; not executable code");
         var manifest = new ModulePackageManifest(3, "server-module", "example", "fixture-release", "1.0.0", "relaxkon", "official", rid,
             "1.0.0", "2.0.0", "server/" + rid + "/Fixture.dll", "Fixture.Module", "fixture-build", new string('a', 40), [], [],
@@ -277,9 +277,9 @@ internal static class ModulePackageChecks
             using (var store = new ModuleManagementStore(new ConfigurationBuilder().AddInMemoryCollection(
                 new Dictionary<string, string?> { ["ModuleManagement:Authority"] = "managed" }).Build(), root))
                 serviceId = store.ServiceId;
-            var nativeManifest = manifest with { Rid = System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier,
-                EntryAssembly = "server/" + System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier + "/Firewall.dll",
-                Files = [manifest.Files[0] with { Path = "server/" + System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier + "/Firewall.dll" }] };
+            var nativeManifest = manifest with { Rid = RelaxKonOS.ModulePackaging.ModulePackagePlatform.CurrentRid,
+                EntryAssembly = "server/" + RelaxKonOS.ModulePackaging.ModulePackagePlatform.CurrentRid + "/Firewall.dll",
+                Files = [manifest.Files[0] with { Path = "server/" + RelaxKonOS.ModulePackaging.ModulePackagePlatform.CurrentRid + "/Firewall.dll" }] };
             var nativeArchive = Archive(nativeManifest);
             var nativeCatalog = catalog with { Releases = [Release(nativeManifest, nativeArchive)] };
             await File.WriteAllBytesAsync(Path.Combine(root, "appsettings.host.json"), Json(new { ModuleManagement = new { Authority = "managed" },

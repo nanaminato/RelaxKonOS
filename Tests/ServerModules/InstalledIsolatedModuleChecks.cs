@@ -14,9 +14,9 @@ internal static class InstalledIsolatedModuleChecks
         try
         {
             var bytes = await File.ReadAllBytesAsync(Path.Combine(AppContext.BaseDirectory, "HostFixture.dll"));
-            var entry = "server/" + RuntimeInformation.RuntimeIdentifier + "/HostFixture.dll";
+            var entry = "server/" + RelaxKonOS.ModulePackaging.ModulePackagePlatform.CurrentRid + "/HostFixture.dll";
             var manifest = new ModulePackageManifest(3, "server-module", "fixture-host", "fixture-host-release", "1.0.0",
-                "fixture", "third-party", RuntimeInformation.RuntimeIdentifier, "2.0.0", "3.0.0", entry,
+                "fixture", "third-party", RelaxKonOS.ModulePackaging.ModulePackagePlatform.CurrentRid, "2.0.0", "3.0.0", entry,
                 "HostFixture.FixtureHostEntry", "fixture-build", new string('a', 40), [], [],
                 [new(entry, bytes.Length, Hash(bytes))], "module-host", [ModuleCapabilityFixtures.Service("fixture.service", "restart")],
                 new("Fixture", "Isolation test", "", null, "MIT"));

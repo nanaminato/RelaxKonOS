@@ -1,6 +1,6 @@
 # Server 模块边界与内存回收设计
 
-> 状态：分阶段实施，2026-11-03。已落地 MB-02/03 的 Git 仓库、CLI 与构建实现独立程序集及真实 ALC 回收，初始执行切片见 §10，仓库后续见 §11；MB-04 的 Proxy 共享读取、到期实例、guard/TUN 与发布恢复作用域边界已拆出，见 §12～19。完整安装包 ABI、Proxy 动态休眠、其余领域拆分与第三方 ModuleHost 闲时退出仍未实现。当前对象回收修复与测试证据由[驻留设计 §13](RelaxKonOS.ServerModuleResidency.Design.md#13-休眠内存引用审计与首批修复2026-11-03)拥有，不能作为本文整体完成的证明。
+> 状态：分阶段实施，2026-11-04。已落地 MB-02/03 的 Git 仓库、CLI 与构建实现独立程序集及真实 ALC 回收，初始执行切片见 §10，仓库后续见 §11；MB-04 的 Proxy 共享读取、到期实例、guard/TUN 与发布恢复作用域边界已拆出，见 §12～20。完整安装包 ABI、Proxy 动态休眠、其余领域拆分与第三方 ModuleHost 闲时退出仍未实现。当前对象回收修复与测试证据由[驻留设计 §13](RelaxKonOS.ServerModuleResidency.Design.md#13-休眠内存引用审计与首批修复2026-11-03)拥有，不能作为本文整体完成的证明。
 >
 > 本文拥有为内存回收调整模块边界的目标、程序集依赖、资源所有权和迁移验收。[模块总设计](RelaxKonOS.ModulesAndExtensions.Design.md)拥有总体架构；[驻留设计](RelaxKonOS.ServerModuleResidency.Design.md)拥有状态机、租约与测量证据；[分发设计](RelaxKonOS.ServerModuleDistribution.Design.md)拥有安装和版本事务；[模块管理设计](RelaxKonOS.ServerModuleManagement.Design.md)拥有跨端产品和操作协议。Android 细节只在 Android 工程文档维护。
 
@@ -136,7 +136,7 @@ IPC 请求、响应流、模块回调、批准中的 Broker 操作和持久后�
 
 ## 8. 实施顺序与跟踪项
 
-以下 MB 条目按依赖依次推进；MB-02/03 已完成 §10/11 的 Git 有限切片，MB-04 已完成 §12～18 的共享读取、到期实例、guard/TUN、发布恢复、订阅任务与任务责任门禁切片，整体仍开放，其余待实施。独立验证完成后才更新状态。可实施的对象回收不必等待代码卸载，但不能据此关闭整个条目。
+以下 MB 条目按依赖依次推进；MB-02/03 已完成 §10/11 的 Git 有限切片，MB-04 已完成 §12～20 的共享读取、到期实例、guard/TUN、发布恢复、任务责任门禁、常驻工作租约与订阅转换独立代码边界，整体仍开放，其余待实施。独立验证完成后才更新状态。可实施的对象回收不必等待代码卸载，但不能据此关闭整个条目。
 
 | 编号 | 交付范围 | 前置与完成条件 |
 | --- | --- | --- |
@@ -350,6 +350,8 @@ TUN marker 仍在接触引擎前落盘。reload、设备确认或管理路由核
 
 Windows/Linux Release 新边界各 **24 项**、完整 TUN 与系统代理专项、默认注册各 **13 项**、配置发布事务分别 **96/97 项**通过。Server.Tests/ManagedRuntimes.Tests 构建和 framework-dependent Linux 发布成功；存在既有 nullable/未使用参数/平台分析警告，Helper 构建另有无法取得 NuGet 漏洞数据的 NU1900 警告，不宣称完成漏洞检查。Linux 在已确认测试机的 `/home/nanami/component-catalog-20261102/phase23/proxy-tun-boundary-20261103/` 独立目录执行。证据目录 `.artifacts/proxy-tun-boundary-20261103/`：`tun-windows-final.log`、`tun-linux.log`、`system-proxy-{windows,linux}.log`、`registration-{windows,linux}.log`、`publication-{windows,linux}.log` 以及构建/发布日志；复跑命令见 `verification.txt`，源码与 Linux 产物摘要见 `provenance.json`。本轮保留全部未提交实现，未提交、推送或部署，也未更改生产配置/组件数据。
 
+最终结果：完整 solution Release 构建通过（0 错误、2 个既有 Server 告警）。Windows 模块默认全量及最终 ModuleHost 定向检查通过；Linux 模块默认全量在已补齐 Git 的隔离镜像通过，包含真实子进程和异架构包拒绝。最小 ASP.NET 镜像首轮缺少 Git 的失败保留，不作为产品回归失败或通过证据。新增工作租约/独立代码专项 Windows/Linux 各 **23** 项；原 Core 安全所有权各 **17**、lifecycle/TUN scope 各 **31**、责任 **45/46**、订阅各 **37**、TUN 执行各 **30**、settings **31/32**、Mihomo 注册各 **15**、配置发布 **107/108**、安装发布各 **88**、移除发布各 **92**、profile 各 **19**、runtime HTTP 各 **46** 项通过，Squid、出站代理、入站原回归与到期/HTTP 队列专项均通过。本轮不重复原生归档/固定系统服务验收；保留 §19 已有证据的原范围。
+
 Proxy 仍为 **resident**，MB-04/RES-05 保持开放。配置档案事务、引擎注册表、controller、TUN 安全 owner 与 Core 发布恢复仍有独立根引用；还没有按需执行租约、持久调度和跨禁用安全责任交接，也没有 collectible Proxy 或生产内存基线。下个切片须先审计发布协调器与 profile 执行图的持久意图和请求/后台所有权，不能因为 writer 已 transient 就移除补偿 worker 或给整个 Proxy 添加可释放标记。
 
 ## 16. 发布恢复临时作用域与 profile 执行图审计（2026-11-03，MB-04 部分）
@@ -463,3 +465,37 @@ Proxy 仍 **resident**，MB-04/RES-05 不关闭。本切片只是任务责任观
 Windows/Linux 专项结果：Core 安全所有权各 **17**、lifecycle/TUN scope 各 **31**、任务责任 **45/46**、订阅寿命各 **37**、TUN 执行各 **30**、settings 边界 **31/32**、注册各 **15**、配置发布 **107/108**、安装发布各 **88**、移除发布各 **92**、profile 各 **19**、runtime HTTP 各 **46**。入站原回归及新增生产 HTTP 队列、guard、Squid 和出站代理均通过。原生归档 Linux **65** 项通过。构建沿用既有编译/平台告警，未将其算作已解决；Windows 模块默认全量回归通过。额外 Linux 模块默认全量回归未通过：上传 apphost 执行位修正后，父测试进程的 `DOTNET_RUNTIME_ID=linux-x64` 与清理环境后的子进程实际 `ubuntu.26.04-x64` 不一致，ModuleHost 夹具报 package-invalid；不将该额外全量套件计为通过，不修改生产启动器来绕过包 RID 核验。Proxy 各 Linux 专项独立执行并通过，完整日志见证据清单。
 
 当前常驻 Proxy 的管理执行作用域、安全责任交接、持久发布扫描及根历史缓存边界已实现。Proxy 仍为 **resident**；MB-04/RES-05 的完整目标不因此关闭：独立可回收程序集、驻留协调器工作租约、collectible ALC、原生系统代理/TUN/SCM/systemd 真实进程中断联合验收、生产内存/延迟测量仍未交付。Linux 测试机已有固定 Mihomo unit，真实 systemd 验收的空白机前提不满足；本轮未停止或覆盖该服务。未知任务的人工核实/关账产品流程与历史保留维护仍需独立设计，不通过删除记录或自动重放实现“完成”。后续验收分别跟踪上述独立事项，不能将本节表述为整个 Proxy 已可休眠或 DLL 已卸载。
+
+## 20. Linux ModuleHost 目标修复、Proxy 工作租约与订阅独立代码（2026-11-04）
+
+基于已提交并推送的 `c7c02ea5` 继续，§19 为上一阶段记录；当前事实以本节为准。保留原安全恢复、到期与发布补偿 owner，未新增原生权限或自动重放。
+
+### ModuleHost 的严格目标身份
+
+模块包目标不再使用发行版相关、可受父进程环境影响的 `RuntimeInformation.RuntimeIdentifier`。新增共享 `ModulePackagePlatform.CurrentRid`，Host 候选上下文/目录、ModuleHost、Windows Helper 和所有内仓夹具统一从实际 OS、进程架构及 libc 计算目标。Linux glibc 返回 `linux-x64/arm64`；musl 保持独立目标，当前六种候选列表仍不支持 musl，不能当成 glibc 接受。Windows/macOS 仍按原可移植目标；不支持的 OS/架构明确拒绝。
+
+原候选清单、签名、逐文件证明、入口、版本和 RID 精确相等规则保留；没有发行版别名、双格式解析或向子进程传递父进程 RID 覆盖。测试核对环境覆盖不影响目标、完整异架构包仍被拒绝、真实清理环境子进程的启动/认证/健康/退出。此修复只统一目标判定，不扩大平台验收声明。
+
+### 常驻工作租约
+
+`ProxyModule` 通过 `IServerModuleWorkResidency` 加入原唯一 `ModuleResidencyCoordinator`，与可释放图的 `IServerModuleResidency` 分开。该 owner 不创建第二个管理容器，不解析业务服务或持有解析器；目录仍报告 **resident**、KeepLoaded、不可释放，休眠入口拒绝，配置不能据此打开 Proxy idle release。原其他模块的依赖与排空行为保持原规则。
+
+`ProxyOperationStore` 在新键持久 queued 之前取得真实 coordinator work lease；取得失败不写假受理，首次落盘失败释放未转交租约，幂等重放不创建第二份租约。所有排队订阅、运行启停、TUN、入站与 Squid 共用该台账，因此租约覆盖独立 scope 的业务、审计、异步释放及终态持久确认。受理后仍不继承请求取消或改成宿主取消撤销；停机等待取消不终止已受理领域事务。ledger 和 coordinator 都等待完整工作，原宿主等待预算不扩大为无限完成承诺。
+
+scope 清理或终态落盘失败时，原失败 scope/未确认记录继续由台账保留，同时将同一 coordinator owner 隔离为 recovery-blocked，再结束计数租约；不把“计数归零”解释为资源已确认或可重新加载。后续新键拒绝，原键仍可查询。持久未知责任继续由原只读禁用门禁核实，不自动关账。Core 的 guard、同代 TUN 启动恢复、sing-box 到期和 Mihomo 持久发布恢复继续独立运行，不因为管理 owner 停止准入而失去安全责任。
+
+### 独立程序集边界
+
+新增 `Shared/RelaxKonOS.ServerModule.Proxy.Contracts` 与 `ServerModules/RelaxKonOS.ServerModule.Proxy`；先将完整订阅文本转换实现从 Server 移出。唯一 ABI 是 `IProxySubscriptionNormalizer.Normalize(string)`，仅文本进出，无 Server 项目引用、服务容器、数据库、Helper、网络或锁权限。原 YAML、通用 Base64 和 vmess/vless/trojan/ss/hysteria2/tuic 转换逻辑原样迁移，没有新协议别名或旧实现回退。
+
+Server 仅静态引用共享契约，使用固定 bundled `Modules/Proxy/RelaxKonOS.ServerModule.Proxy.dll`，拒绝链接/缺失文件；项目已加入 solution 与 build/publish 内容，不从任意路径或类型配置加载。每次转换在独立 collectible ALC 中同步执行，完成后卸载请求并丢弃私有对象；私有异常不通过根日志/操作台账保留实现栈，Host 返回固定中性失败。这里是订阅转换代码边界，并非整个 Proxy 管理图、独立安装包 ABI 或整个模块的 collectible 验收。
+
+### 验证与范围
+
+新增 `ProxyResidencyChecks` 使用真实模块注册、coordinator 与原台账，验证 resident 目录、休眠拒绝、请求取消后的独立租约、回执重放、ledger/coordinator 双排空、scope 清理/终态落盘故障隔离与租约受理失败。独立程序集检查验证 Server 无实现静态引用、各订阅格式、原 YAML/无效输入行为及根 Host 存活时 ALC 弱引用回收；强制 GC 仅用于测试观察，生产不增加 GC 调用。
+
+构建、Windows/Linux 日志、镜像身份、复跑命令与源文件/产物摘要统一保存 `.artifacts/proxy-residency-20261104/`，最终平台结果以 `verification.txt` 和 `provenance.json` 为准。远端 `192.168.1.9:22` 经重试仍超时，Linux 改用本机 Docker 隔离容器，产物只读挂载并复制到临时目录，运行结束删除容器。此环境不代替原 Ubuntu 26.04 测试机或真实 systemd/Windows OS 故障验收。
+
+最终结果：完整 solution Release 构建通过（0 错误、2 个既有 Server 告警）。Windows 模块默认全量及最终 ModuleHost 定向检查通过；Linux 模块默认全量在已补齐 Git 的隔离镜像通过，包含真实子进程和异架构包拒绝。最小 ASP.NET 镜像首轮缺少 Git 的失败保留，不作为产品回归失败或通过证据。新增工作租约/独立代码专项 Windows/Linux 各 **23** 项；原 Core 安全所有权各 **17**、lifecycle/TUN scope 各 **31**、责任 **45/46**、订阅各 **37**、TUN 执行各 **30**、settings **31/32**、Mihomo 注册各 **15**、配置发布 **107/108**、安装发布各 **88**、移除发布各 **92**、profile 各 **19**、runtime HTTP 各 **46** 项通过，Squid、出站代理、入站原回归与到期/HTTP 队列专项均通过。本轮不重复原生归档/固定系统服务验收；保留 §19 已有证据的原范围。
+
+Proxy 仍为 **resident**，MB-04/RES-05 保持开放。已实现真实管理后台工作租约及订阅转换代码回收；其余管理、引擎、profile/发布和原生 authority 尚未作为整体独立可回收程序集。未宣称生产内存收益、全模块休眠或真实 TUN/系统代理/SCM/systemd 联合故障矩阵完成。未知历史的人工核实/关账与保留维护仍没有自动绕过入口。

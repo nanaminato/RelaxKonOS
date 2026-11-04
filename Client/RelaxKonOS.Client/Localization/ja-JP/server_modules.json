@@ -286,6 +286,7 @@
     "server_modules.problem.module_recovery_blocked": "モジュールには未完了の復旧作業があります。",
     "server_modules.problem.module_active_work": "モジュールにはアクティブな接続またはバックグラウンド作業があります。",
     "server_modules.problem.module_policy_keeps_loaded": "常駐ポリシーが読み込み状態の維持を要求しています。",
+    "server_modules.problem.module_resident_work_owner": "このモジュールは常駐が必要です。バックグラウンド処理は完了または復旧確認まで追跡されます。",
     "server_modules.problem.module_resident_dependent": "他の読み込み済みモジュールがこのモジュールに依存しています。",
     "server_modules.problem.module_disabled": "モジュールは無効です。",
     "server_modules.problem.module_pending_disable": "モジュールは再起動後に無効になります。",

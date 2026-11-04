@@ -16,7 +16,15 @@ internal static class ModuleHostChecks
         var root = Path.Combine(Path.GetTempPath(), "module-host-" + Guid.NewGuid().ToString("N"));
         try
         {
-            var rid = RuntimeInformation.RuntimeIdentifier;
+            var rid = RelaxKonOS.ModulePackaging.ModulePackagePlatform.CurrentRid;
+            var priorRid = Environment.GetEnvironmentVariable("DOTNET_RUNTIME_ID");
+            try
+            {
+                Environment.SetEnvironmentVariable("DOTNET_RUNTIME_ID", "different-distro-wrong-arch");
+                check(RelaxKonOS.ModulePackaging.ModulePackagePlatform.CurrentRid == rid,
+                    "Module target identity is independent of a parent runtime RID environment override");
+            }
+            finally { Environment.SetEnvironmentVariable("DOTNET_RUNTIME_ID", priorRid); }
             var relative = "server/" + rid + "/HostFixture.dll";
             var path = Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar));
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
@@ -59,6 +67,16 @@ internal static class ModuleHostChecks
                 && text.Contains("\"healthy\":true", StringComparison.Ordinal)
                 && text.Contains("\"type\":\"stopped\"", StringComparison.Ordinal),
                 "ModuleHost skeleton verifies, loads and health-checks a package in isolation");
+
+            var wrongRid = rid.EndsWith("x64", StringComparison.Ordinal) ? rid[..^3] + "arm64" : rid[..^5] + "x64";
+            var wrongEntry = Path.Combine(root, "server", wrongRid, "HostFixture.dll");
+            Directory.CreateDirectory(Path.GetDirectoryName(wrongEntry)!); File.Copy(path, wrongEntry);
+            await File.WriteAllTextAsync(Path.Combine(root, "manifest.json"), JsonSerializer.Serialize(manifest).Replace(rid, wrongRid, StringComparison.Ordinal));
+            var refused = new StringWriter();
+            var refusedExit = await ModuleHostProgram.RunAsync(["--package-root", root, "--module-id", "fixture-host"], new StringReader("shutdown\n"), refused);
+            check(refusedExit == 1 && refused.ToString().Contains("module-host-package-invalid", StringComparison.Ordinal),
+                "Portable RID normalization still refuses a complete package for a different architecture");
+            await File.WriteAllTextAsync(Path.Combine(root, "manifest.json"), JsonSerializer.Serialize(manifest));
 
             await using var client = new ModuleHostProcessClient(root, "fixture-host", Path.Combine(root, "process-data"));
             var ready = await client.StartAsync();

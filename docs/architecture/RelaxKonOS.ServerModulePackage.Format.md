@@ -12,7 +12,7 @@
 
 清单唯一当前 JSON 契约为 `Shared/RelaxKonOS.ServerModules.Packaging/ModulePackageContracts.cs` 中 `ModulePackageManifest`，使用精确 camelCase 属性，拒绝未知、重复、缺失字段和大小写别名。`schemaVersion=3`、`packageKind=server-module`；声明模块/发布/发布者身份、purpose、版本、单一 RID、Host API 半开区间、入口程序集路径及类型、构建身份、源码提交、依赖、能力、能力类别声明和每个文件的长度及 SHA-256。版本必须为无前导零的三段非负整数；不接受预发布、构建后缀或浮动版本。依赖版本使用相同的最小含端点、最大不含端点区间；安装前解析已安装依赖、版本区间和依赖环。
 
-支持的候选 RID 为 linux-x64、linux-arm64、win-x64、win-arm64、osx-x64、osx-arm64；只接受与当前进程 `RuntimeInformation.RuntimeIdentifier` 完全一致的候选。这不表示这些平台已有安装或业务验收。当前候选 Host API 版本为 `1.0.0`；`Shared/RelaxKonOS.ServerModule.Abstractions` 已提供 `IInstalledServerModule` 加载接口，校验入口类型的语法不代表已加载或发现该类型。
+支持的候选 RID 为 linux-x64、linux-arm64、win-x64、win-arm64、osx-x64、osx-arm64；只接受与 `ModulePackagePlatform.CurrentRid` 完全一致的候选；Host、ModuleHost 和 Windows Helper 共用从实际 OS、进程架构及 libc 得到的可移植目标，不使用发行版 RID 或父进程环境覆盖。musl 与 glibc 保持区分，当前候选列表不支持 musl，不能将其映射成 glibc 目标。这不表示这些平台已有安装或业务验收。当前候选 Host API 版本为 `1.0.0`；`Shared/RelaxKonOS.ServerModule.Abstractions` 已提供 `IInstalledServerModule` 加载接口，校验入口类型的语法不代表已加载或发现该类型。
 
 外部 `SignedModulePackageCatalog` envelope 使用 `schemaVersion=1`、`keyId`、Base64 `payload`、Base64 `signature`。签名输入为 UTF-8 `RelaxKonOS.ServerModuleCatalog.v1\n` 前缀（末尾为真实 LF）连接解码后的原始 payload 字节；算法 ECDSA NIST P-256 / SHA-256，签名编码为 64 字节 IEEE P1363。公钥为完整 DER SubjectPublicKeyInfo 的 Base64；拒绝尾随字节和其他曲线。不将 JSON 重新序列化后验签。
 

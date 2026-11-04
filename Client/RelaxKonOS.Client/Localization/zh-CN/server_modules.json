@@ -286,6 +286,7 @@
     "server_modules.problem.module_recovery_blocked": "模块仍有未收尾的恢复工作。",
     "server_modules.problem.module_active_work": "模块仍有活动连接或后台工作。",
     "server_modules.problem.module_policy_keeps_loaded": "驻留策略要求保持加载。",
+    "server_modules.problem.module_resident_work_owner": "此模块仍需常驻，后台工作会持续跟踪到完成或恢复确认。",
     "server_modules.problem.module_resident_dependent": "其他已加载模块依赖此模块。",
     "server_modules.problem.module_disabled": "模块已停用。",
     "server_modules.problem.module_pending_disable": "模块将在重启后停用。",

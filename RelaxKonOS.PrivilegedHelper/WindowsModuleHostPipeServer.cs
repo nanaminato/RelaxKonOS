@@ -199,7 +199,7 @@ internal sealed class WindowsModuleHostPipeServer(WindowsHelperPipeConfiguration
         var manifest = ModulePackageJson.Read<ModulePackageManifest>(manifestBytes);
         ModulePackageVerifier.ValidateManifest(manifest);
         if (manifest.Runtime != "module-host" || manifest.ModuleId != launch.ModuleId || manifest.Version != launch.Version
-            || manifest.Rid != RuntimeInformation.RuntimeIdentifier) throw new InvalidDataException();
+            || manifest.Rid != RelaxKonOS.ModulePackaging.ModulePackagePlatform.CurrentRid) throw new InvalidDataException();
         var runtime = Path.GetDirectoryName(policy.ExecutablePath)!;
         WindowsModuleHostSecurity.RequireProtected(policy.ExecutablePath);
         WindowsModuleHostSecurity.CreateProtectedDirectory(policy.IsolationRoot);

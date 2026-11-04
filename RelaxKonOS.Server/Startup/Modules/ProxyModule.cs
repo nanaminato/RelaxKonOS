@@ -30,9 +30,10 @@ namespace RelaxKonOS.Server.Startup.Modules;
 /// system-proxy reconciliation, grant expiry and durable publication recovery across module disable.
 /// The aggregate remains resident; scoped object release is not collectible code or module sleep.
 /// </summary>
-internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuard
+internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuard, IServerModuleWorkResidency
 {
     public string Id => ServerModules.ProxyId;
+    public RelaxKonOS.Server.Residency.IServerModuleRuntimeFactory RuntimeFactory { get; } = new ProxyWorkRuntimeFactory();
 
     // One module, three applications: the client engine, the Squid gateway and the sing-box proxy
     // server share the same engine/platform plumbing, and the host gates all three on the same
@@ -55,6 +56,7 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
 
         // Operation and audit ledgers are the durable record of what the operator asked for; they
         // outlive the HTTP request that started it.
+        builder.Services.AddSingleton<IProxyWorkLeaseSource, ProxyWorkLeaseSource>();
         builder.Services.AddSingleton<ProxyOperationStore>();
         builder.Services.AddHostedService(services => services.GetRequiredService<ProxyOperationStore>());
         builder.Services.AddSingleton<ProxySubscriptionOperations>();

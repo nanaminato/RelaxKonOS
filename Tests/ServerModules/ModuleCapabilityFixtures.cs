@@ -5,7 +5,7 @@ using RelaxKonOS.ModulePackaging;
 /// <summary>Declarative capability fixtures shared by the module tests.</summary>
 internal static class ModuleCapabilityFixtures
 {
-    internal static string Platform => RuntimeInformation.RuntimeIdentifier.Split('-')[0] switch
+    internal static string Platform => RelaxKonOS.ModulePackaging.ModulePackagePlatform.CurrentRid.Split('-')[0] switch
     {
         "win" => "windows",
         "osx" => "macos",

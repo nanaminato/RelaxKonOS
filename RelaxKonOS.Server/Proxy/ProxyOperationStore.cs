@@ -9,7 +9,7 @@ public delegate Task ProxyOperationStageReporter(string stage);
 /// Durable, host-global operation ledger for typed Proxy mutations.  It queues delegates supplied
 /// by domain services only; it is deliberately not a generic command executor.
 /// </summary>
-public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<ProxyOperationStore> logger) : IHostedService
+public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<ProxyOperationStore> logger, IProxyWorkLeaseSource workLeases) : IHostedService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private static readonly JsonSerializerOptions Json = new()
@@ -64,6 +64,7 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
             throw new ProxyOperationValidationException(ProxyProblemCodes.IdempotencyKeyRequired);
         await _gate.WaitAsync(cancellationToken);
         ProxyOperationDto item;
+        RelaxKonOS.Server.Residency.IModuleWorkLease? work = null;
         try
         {
             var entries = await ReadEntriesAsync(paths, cancellationToken);
@@ -71,18 +72,20 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
             if (prior is not null) return Visible(prior.Operation);
             if (Volatile.Read(ref _stopping) || _recoveryBlocked || entries.Any(entry => IsUnresolved(entry.Operation) && !_running.ContainsKey(entry.Operation.OperationId)))
                 throw new ProxyOperationValidationException(ProxyProblemCodes.OperationInterrupted);
+            work = await workLeases.AcquireAsync(cancellationToken);
             item = new ProxyOperationDto(Guid.NewGuid(), kind, ProxyOperationState.Queued, "queued", "", null, null);
             await SaveAsync([.. entries, new Entry(idempotencyKey, item)], cancellationToken);
             _running.Add(item.OperationId, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
         }
+        catch { work?.Dispose(); throw; }
         finally { _gate.Release(); }
 
         logger.LogInformation("Proxy operation {OperationId} queued: {OperationKind}.", item.OperationId, kind);
-        _ = ExecuteTrackedAsync(item.OperationId, operation);
+        _ = ExecuteTrackedAsync(item.OperationId, operation, work!);
         return item;
     }
 
-    private async Task ExecuteTrackedAsync(Guid id, Func<ProxyOperationStageReporter, CancellationToken, Task<string?>> operation)
+    private async Task ExecuteTrackedAsync(Guid id, Func<ProxyOperationStageReporter, CancellationToken, Task<string?>> operation, RelaxKonOS.Server.Residency.IModuleWorkLease work)
     {
         Exception? failure = null;
         try { await ExecuteAsync(id, operation); }
@@ -95,6 +98,9 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
         try
         {
             var completion = _running[id];
+            // Publication/scope cleanup and terminal persistence finish before releasing the work claim.
+            if (failure is not null) work.RequireRecovery();
+            work.Dispose();
             if (failure is null) { _running.Remove(id); completion.TrySetResult(); }
             else { _recoveryBlocked = true; completion.TrySetException(failure); _ = completion.Task.Exception; }
         }

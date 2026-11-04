@@ -49,7 +49,8 @@ internal sealed class ModuleResidencyCoordinator : IAsyncDisposable
         TimeProvider? time = null,
         TimeSpan? sweepInterval = null,
         IReadOnlyDictionary<string, IReadOnlyList<string>>? dependencies = null,
-        IReadOnlySet<string>? residentRequiredModuleIds = null)
+        IReadOnlySet<string>? residentRequiredModuleIds = null,
+        IReadOnlySet<string>? residentWorkModuleIds = null)
     {
         _options = options;
         _services = services;
@@ -64,14 +65,16 @@ internal sealed class ModuleResidencyCoordinator : IAsyncDisposable
             if (string.IsNullOrWhiteSpace(factory.ModuleId) || !_entries.TryAdd(factory.ModuleId, new Entry(factory, options.For(factory.ModuleId))))
                 throw new InvalidOperationException("Duplicate or invalid module runtime factory.");
         if (dependencies?.Any(item => !_entries.ContainsKey(item.Key) || item.Value is null) == true
-            || residentRequiredModuleIds?.Any(id => !_entries.ContainsKey(id)) == true)
+            || residentRequiredModuleIds?.Any(id => !_entries.ContainsKey(id)) == true
+            || residentWorkModuleIds?.Any(id => !_entries.ContainsKey(id)) == true)
             throw new InvalidOperationException("Unknown module in runtime dependency graph.");
         foreach (var entry in _entries.Values)
         {
             entry.Dependencies = dependencies?.GetValueOrDefault(entry.ModuleId)?.ToArray() ?? [];
             if (entry.Dependencies.Any(id => !_entries.ContainsKey(id)) || entry.Dependencies.Distinct(StringComparer.Ordinal).Count() != entry.Dependencies.Length)
                 throw new InvalidOperationException("Invalid module runtime dependency.");
-            entry.ResidentRequired = residentRequiredModuleIds?.Contains(entry.ModuleId) == true;
+            entry.ResidentWorkOnly = residentWorkModuleIds?.Contains(entry.ModuleId) == true;
+            entry.ResidentRequired = entry.ResidentWorkOnly || residentRequiredModuleIds?.Contains(entry.ModuleId) == true;
         }
         List<Entry> ordered = [];
         var visited = new Dictionary<string, bool>(StringComparer.Ordinal);
@@ -93,7 +96,7 @@ internal sealed class ModuleResidencyCoordinator : IAsyncDisposable
     { lock (_gate) return _entries.TryGetValue(moduleId, out var entry) && entry.WorkLeases > 0; }
     internal CancellationToken StoppingToken => _lifetime.Token;
 
-    internal bool IsReleasable(string moduleId) => _entries.ContainsKey(moduleId);
+    internal bool IsReleasable(string moduleId) => _entries.TryGetValue(moduleId, out var entry) && !entry.ResidentWorkOnly;
 
     internal string DescribeSettings() => _options.Describe();
 
@@ -378,6 +381,7 @@ internal sealed class ModuleResidencyCoordinator : IAsyncDisposable
         lock (_gate)
         {
             if (_disposing || _shutdown.IsCancellationRequested) return "module-host-stopping";
+            if (entry.ResidentWorkOnly) return entry.State == ModuleResidencyState.Faulted ? "module-recovery-blocked" : "module-resident-work-owner";
             if (entry.State == ModuleResidencyState.Dormant) return null;
             if (entry.ResidentRequired) return "module-resident-dependent";
             if (!entry.Settings.IsReleasable) return "module-policy-keeps-loaded";
@@ -656,14 +660,14 @@ internal sealed class ModuleResidencyCoordinator : IAsyncDisposable
 
     private ModuleResidencySnapshot SnapshotLocked(Entry entry) => new(
         entry.ModuleId,
-        entry.State,
+        entry.ResidentWorkOnly && entry.State != ModuleResidencyState.Faulted ? ModuleResidencyState.Resident : entry.State,
         entry.Settings.IsReleasable && !entry.ResidentRequired,
-        entry.Settings.Strategy,
-        entry.Settings.IdleGracePeriod,
+        entry.ResidentWorkOnly ? ModuleResidencyStrategy.KeepLoaded : entry.Settings.Strategy,
+        entry.ResidentWorkOnly ? TimeSpan.Zero : entry.Settings.IdleGracePeriod,
         entry.Leases,
         entry.LastUsedAt,
         entry.LastWakeMilliseconds,
-        entry.Blocker ?? (entry.ResidentRequired ? "module-resident-dependent" : null),
+        entry.Blocker ?? (entry.ResidentWorkOnly ? "module-resident-work-owner" : entry.ResidentRequired ? "module-resident-dependent" : null),
         entry.Failure,
         entry.Generation,
         entry.LastReleasedAt);
@@ -716,6 +720,7 @@ internal sealed class ModuleResidencyCoordinator : IAsyncDisposable
         internal string[] Dependencies { get; set; } = [];
         internal ModuleLease[] DependencyLeases { get; set; } = [];
         internal bool ResidentRequired { get; set; }
+        internal bool ResidentWorkOnly { get; set; }
         internal object? FailedResource { get; set; }
         internal IServerModuleRuntimeFactory Factory { get; } = factory;
         internal ModuleResidencySettings Settings { get; set; } = settings;

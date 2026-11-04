@@ -1,4 +1,9 @@
 using RelaxKonOS.Protocol.Proxy;
+if (args.Contains("--proxy-residency-only"))
+{
+    await ProxyResidencyChecks.RunAsync();
+    return;
+}
 if (args is ["--component-sources-live", var catalogHostAddress])
 {
     await RemoteComponentCatalogLiveChecks.RunAsync(catalogHostAddress);
@@ -216,6 +221,7 @@ if (args.Contains("--proxy-subscription-boundary-only"))
 if (args.Contains("--proxy-core-safety-only"))
 {
     await ProxyCoreSafetyChecks.RunAsync();
+    await ProxyResidencyChecks.RunAsync();
     await ProxyLifecycleScopeChecks.RunAsync();
     return;
 }
@@ -672,6 +678,7 @@ if (args.Contains("--privileged-helper-socket-only")) { await PrivilegedHelperSo
     await ProxySubscriptionBoundaryChecks.RunAsync();
     await ProxyOperationResponsibilityChecks.RunAsync();
     await ProxyCoreSafetyChecks.RunAsync();
+    await ProxyResidencyChecks.RunAsync();
     await ProxyLifecycleScopeChecks.RunAsync();
     await ProxyConfigurationChecks.VerifyMihomoTunActivationPreservationAsync(root);
     await ProxyConfigurationChecks.VerifyHostNetworkSafetyDiscoveryAsync();

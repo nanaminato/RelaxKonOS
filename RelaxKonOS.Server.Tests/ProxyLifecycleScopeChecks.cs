@@ -9,7 +9,7 @@ internal static class ProxyLifecycleScopeChecks
             var root = Path.Combine(Path.GetTempPath(), "proxy-lifecycle-scope-" + Guid.NewGuid().ToString("N"));
             var paths = new TestProxyPaths(root); var state = new State();
             var services = new ServiceCollection(); services.AddLogging(); services.AddSingleton<IProxyPlatformPaths>(paths);
-            services.AddSingleton<ProxyOperationStore>(); services.AddSingleton<ProxyAuditStore>(); services.AddSingleton<ProxyLifecycleOperations>();
+            services.AddSingleton<IProxyWorkLeaseSource, TestProxyWorkLeases>(); services.AddSingleton<ProxyOperationStore>(); services.AddSingleton<ProxyAuditStore>(); services.AddSingleton<ProxyLifecycleOperations>();
             services.AddScoped<IProxyLifecycleService>(_ => Create<IProxyLifecycleService>(state));
             services.AddScoped<IProxyTunSafetyService>(_ => Create<IProxyTunSafetyService>(state));
             await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });

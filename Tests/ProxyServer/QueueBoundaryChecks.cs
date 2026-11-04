@@ -30,7 +30,7 @@ internal static class QueueBoundaryChecks
         { foreach (var name in new[] { "ProxyRead", "ProxyManage", "ProxyServerExport" }) options.AddPolicy(name, policy => policy.RequireAssertion(_ => true)); });
         builder.Services.AddSingleton<IProxyPlatformPaths>(new Paths(root)); builder.Services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
         builder.Services.AddSingleton<IPrivilegedOperationTransport>(new Helper()); builder.Services.AddSingleton<IServerModeResolver>(new TestMode());
-        builder.Services.AddSingleton<ProxyServerStore>(); builder.Services.AddSingleton<ProxyOperationStore>(); builder.Services.AddSingleton<ProxyAuditStore>();
+        builder.Services.AddSingleton<ProxyServerStore>(); builder.Services.AddSingleton<IProxyWorkLeaseSource, TestProxyWorkLeases>(); builder.Services.AddSingleton<ProxyOperationStore>(); builder.Services.AddSingleton<ProxyAuditStore>();
         builder.Services.AddHostedService(services => services.GetRequiredService<ProxyOperationStore>());
         builder.Services.AddSingleton<ProxyServerOperationQueue>(); builder.Services.AddTransient<ProxyServerService>();
         builder.Services.AddScoped<IProxyEngineRegistry>(_ => new Engines(state));

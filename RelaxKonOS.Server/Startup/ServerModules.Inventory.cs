@@ -78,7 +78,7 @@ internal sealed partial class ServerModules
                 ConfigurationOwner: management?.Writable == true ? "managed" : "deployment",
                 ConfigurationWritable: management?.Writable == true,
                 AllowedActions: management?.Admissions(module is IServerModuleResidency, runtime, desired.Contains(module.Id), recoveryRequired), Name: ConfigurationName(module.Id),
-                Rid: System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier,
+                Rid: RelaxKonOS.ModulePackaging.ModulePackagePlatform.CurrentRid,
                 HostApiRequirement: version,
                 ResourceReleaseLevel: module is IServerModuleResidency ? "objects" : "none",
                 DesiredResidencyPolicy: desiredPolicy, EffectiveResidencyPolicy: effectivePolicy));

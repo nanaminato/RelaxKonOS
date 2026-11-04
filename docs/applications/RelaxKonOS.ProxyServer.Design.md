@@ -312,3 +312,5 @@ sing-box 成功归档操作保存不可变原操作提交证明；查询指定�
 ## 2026-11-03 常驻到期责任与后台 scope
 
 Core 唯一到期 worker 每轮独立 scope 使用 `ProxyServerPublicationService`，只依赖 protected store、Helper 与模式；不持有管理 facade、引擎注册表或证书加载图。管理共用同一 store gate、pending 及候选/前态摘要证明，保留发布响应丢失后的对账和补偿。HTTP 排队受理使用 store-only `ProxyServerOperationQueue` 保存原操作者/幂等回执，后台独立 scope 才解析 facade，并完成审计和异步清理后确认终态；幂等重放不构造第二份管理图。Core 到期责任跨管理禁用保留，未知 published state 阻止不安全禁用。Proxy 仍 resident，未证明代码卸载或原生服务进程中断联合验收，详见[Server 边界设计 §19](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#19-proxy-常驻责任与完整执行寿命收尾2026-11-03)。
+
+2026-11-04：入站排队操作经共用 `ProxyOperationStore` 取得 coordinator 后台工作租约，直到业务、审计、异步 scope 清理与终态确认完成；清理/落盘失败隔离原 owner。Core 到期及 protected publication 恢复仍按原 gate 和摘要证明执行，管理租约不代替其常驻责任。Proxy 继续 resident；详见[边界设计 §20](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#20-linux-modulehost-目标修复proxy-工作租约与订阅独立代码2026-11-04)。

@@ -22,7 +22,7 @@ internal static class MihomoRegistrationChecks
         // surface: the profile/subscription/configuration services moved there, so this fixture has to
         // register the same pair the Host does instead of the old single AddProxyServices call.
         builder.AddProxyRuntimeServices();
-        new RelaxKonOS.Server.Startup.Modules.ProxyModule().ConfigureServices(builder,
+        ServerModules.CreateManaged(new HashSet<string> { ServerModules.ProxyId }).ConfigureServices(builder,
             ServerModuleContext.Create(builder.Configuration, builder.Environment, "sqlite"));
         var proxyHostedFactories = builder.Services.Where(item => item.ServiceType == typeof(IHostedService)
             && item.ImplementationFactory is not null).ToArray();
@@ -41,7 +41,7 @@ internal static class MihomoRegistrationChecks
         builder.Services.AddSingleton<RelaxKonOS.Server.ManagedRuntimes.IRuntimeDownloadProxyProvider>(container =>
             new RelaxKonOS.Server.ManagedRuntimes.RuntimeDownloadProxyProvider(
                 () => container.GetRequiredService<RelaxKonOS.Server.Docker.IDockerProxyResolver>()));
-        using var services = builder.Services.BuildServiceProvider();
+        await using var services = builder.Services.BuildServiceProvider();
         using var scope = services.CreateScope();
         var count = 0;
         void Check(bool ok, string name) { if (!ok) throw new Exception(name); count++; }

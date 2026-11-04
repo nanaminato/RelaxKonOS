@@ -36,7 +36,7 @@ internal static class ModulePackageHttpChecks
             using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
             var keyPath = Path.Combine(root, "signing-key.pem");
             await File.WriteAllTextAsync(keyPath, key.ExportPkcs8PrivateKeyPem());
-            var rid = RuntimeInformation.RuntimeIdentifier;
+            var rid = RelaxKonOS.ModulePackaging.ModulePackagePlatform.CurrentRid;
             var now = DateTimeOffset.UtcNow;
             var releaseId = "fixture-http-1.0.0-" + rid;
             var built = await ModulePackageBuilder.BuildAsync(new ModulePackageBuildOptions(publish, output, "fixture-http",

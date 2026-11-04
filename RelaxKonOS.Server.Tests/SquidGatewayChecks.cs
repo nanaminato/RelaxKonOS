@@ -219,7 +219,7 @@ internal static class SquidGatewayChecks
         builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase)));
         builder.Services.AddSingleton<SquidConfigurationStore>();
         builder.Services.AddSingleton<SquidGatewayService>();
-        builder.Services.AddSingleton<ProxyOperationStore>();
+        builder.Services.AddSingleton<IProxyWorkLeaseSource, TestProxyWorkLeases>(); builder.Services.AddSingleton<ProxyOperationStore>();
         builder.Services.AddSingleton<ProxyAuditStore>();
         var directory = Path.Combine(Path.GetTempPath(), "squid-route-check-" + Guid.NewGuid().ToString("N"));
         builder.Services.AddSingleton<IProxyPlatformPaths>(new TestProxyPaths(directory));

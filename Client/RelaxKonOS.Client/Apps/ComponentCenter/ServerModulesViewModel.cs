@@ -1228,6 +1228,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
             "module-recovery-blocked" => LocalizedStatus.Key("server_modules.problem.module_recovery_blocked"),
             "module-active-work" => LocalizedStatus.Key("server_modules.problem.module_active_work"),
             "module-policy-keeps-loaded" => LocalizedStatus.Key("server_modules.problem.module_policy_keeps_loaded"),
+            "module-resident-work-owner" => LocalizedStatus.Key("server_modules.problem.module_resident_work_owner"),
             "module-resident-dependent" => LocalizedStatus.Key("server_modules.problem.module_resident_dependent"),
             "module-disabled" => LocalizedStatus.Key("server_modules.problem.module_disabled"),
             "module-pending-disable" => LocalizedStatus.Key("server_modules.problem.module_pending_disable"),

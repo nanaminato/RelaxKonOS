@@ -33,6 +33,12 @@ internal interface IServerModuleResidency
     IServerModuleRuntimeFactory RuntimeFactory { get; }
 }
 
+/// <summary>Resident modules may join work admission/drain without advertising a releasable graph.</summary>
+internal interface IServerModuleWorkResidency
+{
+    IServerModuleRuntimeFactory RuntimeFactory { get; }
+}
+
 /// <summary>Optional in-process health probe. It never changes enablement or restarts the Host.</summary>
 internal interface IServerModuleHealthProbe
 {
@@ -115,8 +121,9 @@ internal sealed partial class ServerModules
         _disabled = disabled;
         EnabledIds = enabled.Select(module => module.Id).ToHashSet(StringComparer.Ordinal);
         Capabilities = enabled.SelectMany(module => module.Capabilities).ToHashSet(StringComparer.Ordinal);
-        RuntimeFactories = enabled.OfType<IServerModuleResidency>().Select(module => module.RuntimeFactory).ToArray();
-        ReleasableModuleIds = RuntimeFactories.Select(factory => factory.ModuleId).ToHashSet(StringComparer.Ordinal);
+        RuntimeFactories = enabled.OfType<IServerModuleResidency>().Select(module => module.RuntimeFactory)
+            .Concat(enabled.OfType<IServerModuleWorkResidency>().Select(module => module.RuntimeFactory)).ToArray();
+        ReleasableModuleIds = enabled.OfType<IServerModuleResidency>().Select(module => module.RuntimeFactory.ModuleId).ToHashSet(StringComparer.Ordinal);
         KnownModuleIds = enabled.Concat(disabled).Select(module => module.Id).ToHashSet(StringComparer.Ordinal);
     }
 
@@ -129,7 +136,7 @@ internal sealed partial class ServerModules
     /// </summary>
     internal IReadOnlySet<string> Capabilities { get; }
 
-    /// <summary>Runtimes of the enabled modules that declare a releasable object graph.</summary>
+    /// <summary>Enabled release runtimes and explicitly resident work owners, sharing one coordinator.</summary>
     internal IReadOnlyList<IServerModuleRuntimeFactory> RuntimeFactories { get; }
 
     /// <summary>Enabled modules the residency coordinator may release; the rest stay resident.</summary>
@@ -257,7 +264,8 @@ internal sealed partial class ServerModules
                 services,
                 context,
                 services.GetRequiredService<ILogger<ModuleResidencyCoordinator>>(),
-                dependencies: RuntimeDependencies, residentRequiredModuleIds: ResidentRequiredModuleIds));
+                dependencies: RuntimeDependencies, residentRequiredModuleIds: ResidentRequiredModuleIds,
+                residentWorkModuleIds: _enabled.OfType<IServerModuleWorkResidency>().Select(module => module.RuntimeFactory.ModuleId).ToHashSet(StringComparer.Ordinal)));
         }
 
         foreach (var module in _enabled) module.ConfigureServices(builder, context);

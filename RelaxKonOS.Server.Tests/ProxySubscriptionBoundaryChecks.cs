@@ -96,7 +96,7 @@ internal static class ProxySubscriptionBoundaryChecks
                 "Combined disposal and terminal persistence failures retain the unresolved business scope");
             try { await f.Queue.EnqueueAsync("after-loss", ProxySubscriptionOperation.RefreshAll, Guid.Empty, "actor", default); throw new Exception("Unconfirmed owner accepted more work"); }
             catch (ProxyOperationValidationException) { count++; }
-            var reopened = new ProxyOperationStore(f.Paths, NullLogger<ProxyOperationStore>.Instance);
+            var reopened = new ProxyOperationStore(f.Paths, NullLogger<ProxyOperationStore>.Instance, new TestProxyWorkLeases());
             Check((await reopened.GetAsync(accepted.OperationId, default))!.State == ProxyOperationState.Interrupted,
                 "Reopening the durable running ledger reports interruption and does not replay or infer publication success");
         }
@@ -113,7 +113,7 @@ internal static class ProxySubscriptionBoundaryChecks
         builder.Services.AddAuthentication("boundary").AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, Authentication>("boundary", _ => { });
         builder.Services.AddAuthorization(options => options.AddPolicy("ProxyManage", policy => policy.RequireAuthenticatedUser()));
         builder.Services.AddSingleton<IProxyPlatformPaths>(new TestProxyPaths(root));
-        builder.Services.AddSingleton<ProxyOperationStore>(); builder.Services.AddSingleton<ProxyAuditStore>();
+        builder.Services.AddSingleton<IProxyWorkLeaseSource, TestProxyWorkLeases>(); builder.Services.AddSingleton<ProxyOperationStore>(); builder.Services.AddSingleton<ProxyAuditStore>();
         builder.Services.AddSingleton<ProxySubscriptionOperations>();
         builder.Services.AddHostedService(services => services.GetRequiredService<ProxyOperationStore>());
         builder.Services.AddScoped<IProxySubscriptionService>(_ => new Subscription(state));
@@ -184,7 +184,7 @@ internal static class ProxySubscriptionBoundaryChecks
         {
             Paths = new(root); Directory.CreateDirectory(Paths.GetStateDirectory());
             var services = new ServiceCollection(); services.AddLogging(); services.AddSingleton<IProxyPlatformPaths>(Paths);
-            services.AddSingleton<ProxyOperationStore>(); services.AddSingleton<ProxyAuditStore>(); services.AddSingleton<ProxySubscriptionOperations>();
+            services.AddSingleton<IProxyWorkLeaseSource, TestProxyWorkLeases>(); services.AddSingleton<ProxyOperationStore>(); services.AddSingleton<ProxyAuditStore>(); services.AddSingleton<ProxySubscriptionOperations>();
             services.AddScoped<IProxySubscriptionService>(_ => new Subscription(State));
             Provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
         }

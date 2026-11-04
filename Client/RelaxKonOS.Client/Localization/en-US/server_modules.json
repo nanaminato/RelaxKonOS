@@ -286,6 +286,7 @@
     "server_modules.problem.module_recovery_blocked": "The module still has unfinished recovery work.",
     "server_modules.problem.module_active_work": "The module still has active connections or background work.",
     "server_modules.problem.module_policy_keeps_loaded": "The residency policy requires this module to stay loaded.",
+    "server_modules.problem.module_resident_work_owner": "This module must remain resident. Background work stays tracked through completion or recovery confirmation.",
     "server_modules.problem.module_resident_dependent": "Another loaded module depends on this module.",
     "server_modules.problem.module_disabled": "The module is disabled.",
     "server_modules.problem.module_pending_disable": "The module will be disabled after a restart.",
