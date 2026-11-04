@@ -304,3 +304,5 @@ Git 命令端口保留结构化文件名、参数、环境与超时规则，取�
 2026-11-04 MB-07 租约续核：SystemPerformance 已注册同一协调器的常驻工作 owner；完成准入的图标等待项和在途读取取得真实工作租约，协调器停止能撤销等待但不提前释放已开始的读取。Windows/Linux 各 14 项真实协调器检查、原专项及 Windows 默认模块全量回归最终通过，详见[边界设计 §27](RelaxKonOS.ServerModuleBoundaries.Design.md#27-图标工作接入常驻协调器租约2026-11-04mb-07-部分)。缓存仍归 Host owner，采样/Hub/查询/终止的完整租约和模块释放未完成；目录保持 resident/不可释放，RES 不据此关闭。
 
 2026-11-04 MB-07 进程请求续核：统一当前 `ISystemPerformanceWorkLeaseSource`，查询（含缓存命中）和有效终止请求已接入同一协调器工作保护；Host owner 关闭准入并等待请求完成后清理两套快照与 CPU 基线。Windows/Linux 各 19 项新增检查、原专项及 Windows 默认模块全量回归通过，原请求取消与终止回执规则保留。当前范围见[边界设计 §28](RelaxKonOS.ServerModuleBoundaries.Design.md#28-进程查询终止工作保护与快照-owner-排空2026-11-04mb-07-部分)；采样/Hub、实机中断、整个模块释放和生产收益仍未验收，目录仍 resident。
+
+2026-11-04 MB-07 采样续核：实际 source 读取至同步事件分发已取得真实工作租约，需求代次隔离旧读取，多连接注册不再被短路遗漏，循环实际结束后清理状态。Windows 新增 18 项与原性能专项通过；本轮 Linux 上传/执行被自动审批拒绝，尚未运行。当前范围与证据见[边界设计 §29](RelaxKonOS.ServerModuleBoundaries.Design.md#29-实际采样工作租约与需求代次2026-11-04mb-07-部分)。静态信息读取、REST 等待者完整寿命、连续 Hub/网络发送及整个模块释放仍未覆盖，目录保持 resident，不宣称生产内存收益。

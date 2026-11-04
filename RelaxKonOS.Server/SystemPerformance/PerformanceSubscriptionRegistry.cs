@@ -13,6 +13,10 @@ public sealed class PerformanceSubscriptionRegistry
     private readonly object _gate = new();
     private readonly HashSet<string> _connections = new(StringComparer.Ordinal);
     private int _demands;
+    private long _revision;
+
+    internal (bool Needed, long Revision) CollectionState
+    { get { lock (_gate) return (NeedsCollectionLocked(), _revision); } }
 
     /// <summary>是否仍有消费者需要样本：存在订阅连接，或存在未释放的 demand 租约。</summary>
     public bool NeedsCollection
@@ -28,7 +32,9 @@ public sealed class PerformanceSubscriptionRegistry
         bool becameNeeded;
         lock (_gate)
         {
-            becameNeeded = !NeedsCollectionLocked() && _connections.Add(connectionId);
+            var needed = NeedsCollectionLocked();
+            becameNeeded = _connections.Add(connectionId) && !needed;
+            if (becameNeeded) _revision++;
         }
         if (becameNeeded) CollectionNeededChanged?.Invoke(true);
     }
@@ -39,6 +45,7 @@ public sealed class PerformanceSubscriptionRegistry
         lock (_gate)
         {
             becameIdle = _connections.Remove(connectionId) && !NeedsCollectionLocked();
+            if (becameIdle) _revision++;
         }
         if (becameIdle) CollectionNeededChanged?.Invoke(false);
     }
@@ -49,14 +56,21 @@ public sealed class PerformanceSubscriptionRegistry
     /// </summary>
     public IDisposable RequestCollection(TimeSpan window)
     {
+        if (window < TimeSpan.Zero || window.TotalMilliseconds > uint.MaxValue - 1)
+            throw new ArgumentOutOfRangeException(nameof(window));
         bool becameNeeded;
         lock (_gate)
         {
             var needed = NeedsCollectionLocked();
             becameNeeded = ++_demands == 1 && !needed;
+            if (becameNeeded) _revision++;
         }
-        if (becameNeeded) CollectionNeededChanged?.Invoke(true);
-        return new DemandLease(this, window);
+        try
+        {
+            if (becameNeeded) CollectionNeededChanged?.Invoke(true);
+            return new DemandLease(this, window);
+        }
+        catch { ReleaseDemand(); throw; }
     }
 
     private bool NeedsCollectionLocked() => _connections.Count != 0 || _demands != 0;
@@ -68,6 +82,7 @@ public sealed class PerformanceSubscriptionRegistry
         {
             if (_demands == 0) return;
             becameIdle = --_demands == 0 && !NeedsCollectionLocked();
+            if (becameIdle) _revision++;
         }
         if (becameIdle) CollectionNeededChanged?.Invoke(false);
     }

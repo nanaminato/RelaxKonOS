@@ -11,7 +11,8 @@ namespace RelaxKonOS.Server.SystemPerformance;
 public sealed class PerformanceSampler(
     ISystemPerformanceSource source,
     PerformanceHistory history,
-    PerformanceSubscriptionRegistry subscriptions) : BackgroundService, IPerformanceSampler
+    PerformanceSubscriptionRegistry subscriptions,
+    ISystemPerformanceWorkLeaseSource workLeases) : BackgroundService, IPerformanceSampler
 {
     private readonly object _stateGate = new();
     private readonly SemaphoreSlim _subscriberSignal = new(0, 1);
@@ -19,15 +20,16 @@ public sealed class PerformanceSampler(
     private long _sequence;
     private DateTimeOffset? _lastSuccess;
     private string? _lastError;
+    private long _collectionRevision = -1;
 
     public event Action<PerformanceRealtimeSnapshotDto>? SnapshotAvailable;
 
     public ValueTask<PerformanceInfoDto> GetInfoAsync(CancellationToken cancellationToken = default)
         => source.GetInfoAsync(cancellationToken);
 
-    public PerformanceRealtimeSnapshotDto? GetLatest() => history.Latest();
+    public PerformanceRealtimeSnapshotDto? GetLatest() { ReconcileCollectionState(); return history.Latest(); }
 
-    public IReadOnlyList<PerformanceRealtimeSnapshotDto> GetHistory(int seconds) => history.GetRecent(seconds);
+    public IReadOnlyList<PerformanceRealtimeSnapshotDto> GetHistory(int seconds) { ReconcileCollectionState(); return history.GetRecent(seconds); }
 
     /// <summary>
     /// 一次性读取：有有效快照就直接给；没有就为本请求申请一段有界 demand，等它产出第一份有效样本。
@@ -35,7 +37,7 @@ public sealed class PerformanceSampler(
     /// </summary>
     public async ValueTask<PerformanceRealtimeSnapshotDto?> ReadSnapshotAsync(TimeSpan wait, CancellationToken cancellationToken = default)
     {
-        if (history.Latest() is { } ready) return ready;
+        if (GetLatest() is { } ready) return ready;
 
         using var demand = subscriptions.RequestCollection(wait);
         var published = new TaskCompletionSource<PerformanceRealtimeSnapshotDto>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -49,7 +51,7 @@ public sealed class PerformanceSampler(
             if (await Task.WhenAny(published.Task, expired).ConfigureAwait(false) != published.Task)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                return history.Latest();
+                return GetLatest();
             }
             timeout.Cancel();
             return await published.Task.ConfigureAwait(false);
@@ -74,48 +76,57 @@ public sealed class PerformanceSampler(
                 // Rates are meaningful only relative to a sample taken in this collection period.
                 lock (_stateGate) _previous = null;
                 using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
-                await SampleOnceAsync(stoppingToken);
+                if (!await SampleOnceAsync(stoppingToken)) return;
                 while (subscriptions.NeedsCollection && await timer.WaitForNextTickAsync(stoppingToken))
-                    await SampleOnceAsync(stoppingToken);
+                    if (!await SampleOnceAsync(stoppingToken)) return;
             }
         }
         finally
         {
             subscriptions.CollectionNeededChanged -= OnCollectionNeededChanged;
+            lock (_stateGate) { _previous = null; _lastSuccess = null; _lastError = null; history.Clear(); }
         }
     }
 
-    private async Task SampleOnceAsync(CancellationToken cancellationToken)
+    private async Task<bool> SampleOnceAsync(CancellationToken cancellationToken)
     {
-        if (!subscriptions.NeedsCollection) return;
+        var collection = subscriptions.CollectionState;
+        if (!collection.Needed) return true;
+        CancellationToken moduleStopping = default;
         try
         {
-            var current = await source.ReadAsync(cancellationToken);
-            if (!subscriptions.NeedsCollection) return;
-            RawPerformanceSample? previous;
+            using var work = await workLeases.AcquireAsync(cancellationToken);
+            moduleStopping = work.Stopping;
+            using var stopping = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, moduleStopping);
+            var current = await source.ReadAsync(stopping.Token);
+            stopping.Token.ThrowIfCancellationRequested();
+            PerformanceRealtimeSnapshotDto? snapshot = null;
             lock (_stateGate)
             {
-                previous = _previous;
+                if (subscriptions.CollectionState != collection) return true;
+                if (_collectionRevision != collection.Revision)
+                { _previous = null; history.Clear(); _collectionRevision = collection.Revision; }
+                var previous = _previous;
                 _previous = current;
                 _lastSuccess = current.Timestamp;
                 _lastError = null;
+                // 第一份原始读只建立当前需求代次的基线。
+                if (previous is not null) { snapshot = BuildSnapshot(previous, current); history.Add(snapshot); }
             }
-
-            // 第一份数据只建基线；不能把“尚未计算”伪装成 0% 或 0 B/s。
-            if (previous is null) return;
-            var snapshot = BuildSnapshot(previous, current);
-            history.Add(snapshot);
-            Publish(snapshot);
+            if (snapshot is not null) Publish(snapshot, collection.Revision, stopping.Token);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
+        catch (OperationCanceledException) when (moduleStopping.IsCancellationRequested) { return false; }
+        catch (RelaxKonOS.Server.Residency.ModuleUnavailableException error) when (error.Code == "module-host-stopping") { return false; }
         catch
         {
             // 不向 API 暴露异常细节或宿主路径；下一周期继续尝试采集。
-            lock (_stateGate) _lastError = "Sampling is temporarily unavailable.";
+            lock (_stateGate) if (subscriptions.CollectionState == collection) _lastError = "Sampling is temporarily unavailable.";
         }
+        return true;
     }
 
     private PerformanceRealtimeSnapshotDto BuildSnapshot(RawPerformanceSample previous, RawPerformanceSample current)
@@ -216,25 +227,32 @@ public sealed class PerformanceSampler(
 
     private static long Delta(long current, long previous) => current >= previous ? current - previous : 0;
 
-    private void Publish(PerformanceRealtimeSnapshotDto snapshot)
+    private void Publish(PerformanceRealtimeSnapshotDto snapshot, long revision, CancellationToken stopping)
     {
         var handlers = SnapshotAvailable;
         if (handlers is null) return;
         foreach (Action<PerformanceRealtimeSnapshotDto> handler in handlers.GetInvocationList())
         {
+            if (stopping.IsCancellationRequested || subscriptions.CollectionState != (true, revision)) return;
             try { handler(snapshot); }
             catch { /* 订阅者不能影响采样循环。 */ }
         }
     }
 
+    private void ReconcileCollectionState()
+    {
+        var collection = subscriptions.CollectionState;
+        lock (_stateGate)
+        {
+            if (_collectionRevision >= collection.Revision) return;
+            _previous = null; history.Clear(); _collectionRevision = collection.Revision;
+        }
+    }
+
     private void OnCollectionNeededChanged(bool needed)
     {
-        if (!needed)
-        {
-            lock (_stateGate) _previous = null;
-            history.Clear();
-            return;
-        }
+        ReconcileCollectionState();
+        if (!subscriptions.NeedsCollection) return;
         try { _subscriberSignal.Release(); }
         catch (SemaphoreFullException) { }
     }

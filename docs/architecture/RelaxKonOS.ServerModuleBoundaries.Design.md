@@ -658,3 +658,15 @@ Server.Tests、ServerModules.Tests、Helper Release 构建和 Server.Tests/Helpe
 原图标协调器各 **14**、图标工作各 **19**、desktop **11/12**、图像输入 **17/18**、缓存各 **15**、进程 **37/12**、两平台性能采样及 Linux Proxy 驻留 **28** 项通过；Windows 默认模块全量回归通过。Server.Tests/ServerModules.Tests Release 构建及 Server.Tests linux-x64 发布通过，既有告警保留。初次新增夹具的类型/成员重名编译错误已修正，失败日志不计作通过。证据保存在 `.artifacts/process-request-residency-20261104/`，包含最终构建、平台专项、默认模块回归、SSH 身份核对后的隔离目录、环境与上传 SHA256 记录。
 
 SystemPerformance 仍 resident/不可释放。采样和 Hub 长连接的完整租约、整个组件资源清单、并发压力、真实终止/传输中断与未知结果恢复、程序集回收及生产进程树内存/延迟仍待验收；MB-07、RES-01/03/04/07 保持开放。全部既有未提交实现保留，未提交、推送或部署，也未改动生产配置或服务。
+
+## 29. 实际采样工作租约与需求代次（2026-11-04，MB-07 部分）
+
+`PerformanceSampler` 直接要求当前 `ISystemPerformanceWorkLeaseSource`，每次实际原始读取前取得同一协调器的工作租约，覆盖 source Task、差分/历史提交与同步事件分发。没有消费者时不取得租约、不读取 OS；协调器关闭拒绝读取并结束循环，没有失败后绕过保护的路径。源读取同时观察宿主和协调器停止令牌；不合作的 source Task 未结束时继续保留租约，Stop 等待预算耗尽不能提前清理资源。实际循环结束才清空原始基线、历史与健康状态。
+
+修复订阅集合的短路错误：此前已有消费者时，后续连接没有执行 Add；现在每个连接都加入集合，最后一个连接或 REST demand 离开才进入空闲。无效 demand 窗口在增加计数前拒绝，创建 demand 失败会归还计数。注册表为需求从无到有/从有到无维护内部代次，不新增公开协议。旧代次读取晚到时不提交为新代次基线；首次新读取仅建立基线，随后才发布差分。状态事件按当前注册表状态协调，迟到事件不能回退已观察的代次；同步事件调用前再次核对代次与停止状态，外部回调在采样状态锁外执行。
+
+新增 `PerformanceResidencyChecks`，使用真实模块注册、协调器与生产租约源，受控 source 只替换外部采集。Windows 新增 **18 项**通过，覆盖多连接、重复订阅、demand 交接、并发成员、失败 demand 计数归还、空闲零读取/租约、旧读取晚到、新基线、同步发布期间保护、非合作读取的关闭及等待超时、关闭拒绝、读取失败归还与后续新租约。原 Windows 性能专项通过。Server.Tests Release 构建与 linux-x64 发布通过，既有告警保留；证据位于 `.artifacts/performance-sampling-residency-20261104/`。本轮远程上传与执行被自动审批拒绝，Linux 测试尚未运行，不能沿用上一轮结果声称本轮跨平台通过。
+
+Windows 默认模块全量回归通过，ServerModules.Tests Release 构建通过；`git diff --check` 通过，本地测试机配置仍在 Git 追踪之外。
+
+本轮保护实际采样 tick，不包含 `GetInfoAsync` 的独立读取、REST 等待者整个寿命、连续 Hub 订阅或广播服务后续网络发送；已进入的同步回调也不能通过代次核验撤销。持续订阅的两次 tick 之间不连续持有工作租约。SystemPerformance 继续 resident/KeepLoaded/不可释放，MB-07、RES-01/03/04/07 保持开放，未证明完整模块回收或生产进程树内存/延迟收益。此前成果已提交为 `49faa84a`，本节后续实现尚未提交，未推送或部署。

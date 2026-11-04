@@ -8,6 +8,8 @@
 
 `ISystemPerformanceSource` 隔离 Windows 原生 API 与 Linux `/proc`、`/sys` 原始读取。`PerformanceSampler` 统一使用相邻计数器和实际单调时间间隔计算速率，每秒采样，保存最多 60 点内存历史；不接入数据库。至少一个订阅者存在或 REST 申请有界 demand 时才采样，无订阅者后清除基线与历史。首次原始读取只建立基线，不把差分未就绪显示为 0%。
 
+2026-11-04：实际采样读取至同步事件分发使用驻留协调器工作租约，停机等待超时不提前释放未完成的源读取。每个连接独立登记，需求代次阻止旧读取晚到后污染新基线/历史。Windows 新增 18 项检查通过，本轮 Linux 尚未运行；静态信息读取、REST 等待者与 Hub 网络发送的完整寿命仍待接入，模块继续 resident，范围见[边界设计 §29](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#29-实际采样工作租约与需求代次2026-11-04mb-07-部分)。
+
 `PerformanceInfoDto` 包含低频 CPU、内存、文件系统、磁盘、网络身份及显式能力位；`PerformanceRealtimeSnapshotDto` 包含递增 sequence、UTC timestamp、CPU、内存、文件系统容量、磁盘 I/O、网络计数与速率、uptimeSeconds、health。文件系统容量和块设备 I/O 分开显示。未知增强指标保留 null；能力 false 时不显示伪造的数值。当前性能契约没有 GPU 实时数据，GPU/传感器为后续扩展。
 
 ## 当前 REST 与 Hub

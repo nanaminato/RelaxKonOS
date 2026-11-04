@@ -1496,7 +1496,7 @@ internal static async Task VerifyPerformanceSamplerAsync()
     var source = new FakePerformanceSource();
     var history = new PerformanceHistory();
     var subscriptions = new PerformanceSubscriptionRegistry();
-    var sampler = new PerformanceSampler(source, history, subscriptions);
+    var sampler = new PerformanceSampler(source, history, subscriptions, new TestSystemPerformanceWorkLeases());
     await sampler.StartAsync(CancellationToken.None);
     try
     {
