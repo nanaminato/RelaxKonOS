@@ -316,3 +316,5 @@ Git 命令端口保留结构化文件名、参数、环境与超时规则，取�
 2026-11-04 MB-07 连续连接续核：PerformanceHubConnections 取得从 OnConnected 到真实组清理结束的连续工作租约，未订阅和已退订连接也受保护；组操作串行，断线/停止不让晚到 Add 复活需求，未知 Remove 失败保留故障与租约且 Stop 可见。Windows/Linux 最终连接各 25 项、原广播15/性能驻留42及专项通过，Windows 默认模块回归、Linux Proxy28 通过。详见[边界设计 §33](RelaxKonOS.ServerModuleBoundaries.Design.md#33-连续-hub-连接与组成员-owner2026-11-04mb-07-部分)；同步历史读取、整体资源清单、连接压力、真实传输/未知结果恢复和生产内存收益仍开放，SystemPerformance 仍 resident。
 
 2026-11-04 MB-07 只读接口续核：GetLatestAsync/GetHistoryAsync 直接替换原同步接口，空缓存与命中均经真实工作准入；HTTP 历史传递请求取消，公开读取在物化前后核验停止，返回结果不持续持租约。Windows/Linux 性能驻留各 53 项、连接25/广播15与原专项通过，Linux Proxy28 通过；行为和证据见[边界设计 §34](RelaxKonOS.ServerModuleBoundaries.Design.md#34-历史与最新快照的异步读取保护2026-11-04mb-07-部分)。后续 HTTP 序列化/传输、整体资源清单、压力与生产收益仍未验收，目录仍 resident。
+
+2026-11-04 MB-07 HTTP 响应续核：已授权性能/进程响应在实际 IResult.ExecuteAsync 取得独立工作租约，linked RequestAborted 通知请求或协调器取消但不脱离真实执行，finally 恢复原令牌；响应失败不重放业务。Windows/Linux 新增 HTTP 各 15 项、原性能驻留53/连接25/广播15及专项通过，Windows 默认模块和 Linux Proxy28 通过，详见[边界设计 §35](RelaxKonOS.ServerModuleBoundaries.Design.md#35-http-性能响应执行保护2026-11-04mb-07-部分)。不等同连续整个 HTTP 管线或物理送达；整体资源清单、压力、未知结果恢复和生产收益仍开放，SystemPerformance 仍 resident。

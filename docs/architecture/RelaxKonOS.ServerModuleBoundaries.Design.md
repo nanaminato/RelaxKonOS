@@ -731,4 +731,16 @@ Windows `PerformanceResidencyChecks` 从 28 项扩至 **42 项**，覆盖缓存�
 
 ServerModules.Tests Release 构建及 Windows 默认模块全量回归通过。
 
-此处保护方法执行至物化结束，不覆盖随后 HTTP JSON 序列化、响应发送或调用方持有结果的整个寿命；没有新增生产 GC、历史 TTL、采样频率或并发数量预算。整体资源清单、连接压力、真实传输和未知结果恢复、程序集释放及生产进程树内存/延迟仍待验收。SystemPerformance 保持 resident/KeepLoaded/不可释放，MB-07、RES-01/03/04/07 不关闭，本节实现尚未提交、推送或部署。
+此处保护方法执行至物化结束，不覆盖随后 HTTP JSON 序列化、响应发送或调用方持有结果的整个寿命；没有新增生产 GC、历史 TTL、采样频率或并发数量预算。整体资源清单、连接压力、真实传输和未知结果恢复、程序集释放及生产进程树内存/延迟仍待验收。SystemPerformance 保持 resident/KeepLoaded/不可释放，MB-07、RES-01/03/04/07 不关闭，本节实现随后提交并推送为 `6ff45a08`，未部署。
+
+## 35. HTTP 性能响应执行保护（2026-11-04，MB-07 部分）
+
+Host 内部新增 `SystemPerformanceResult`，在 `IResult.ExecuteAsync` 真正执行前通过当前必需租约源取得同一协调器工作租约，覆盖 JSON 序列化、文件字节写入以及错误结果执行的真实 Task。性能 info/snapshot/history、进程查询/图标/终止的已授权结果均使用包装；未认证仍由认证中间件提前拒绝，管理员能力不足的 `ElevationRequired` 继续在包装和业务调用前返回。info/history 显式声明原成功响应类型，避免返回类型变为 `IResult` 后丢失原推断的响应元数据；路由、JSON、状态码与终止协议不变。
+
+响应执行暂时将 `HttpContext.RequestAborted` 扩展为原请求断连与协调器停止的 linked token，在执行前后核验停止，并在 finally 恢复原令牌。通知取消不代表底层传输已被强制中止；忽略取消的结果必须等待其真实 Task 结束才归还租约，没有 `WaitAsync` 分离、后台重放或将租约挂到可能不执行的 OnCompleted 回调。序列化/写入异常按原管线传播并归还已完成的工作保护，协调器拒绝时不执行结果，也不重放已经完成的查询/终止；终止可能已有副作用但响应不可用仍是原未知响应语义。
+
+新增 `PerformanceHttpResidencyChecks` 接入默认与性能专项，Windows/Ubuntu 26.04 各 **15 项**通过：真实 Results.Ok JSON 与 Results.File 字节写入期间真实租约、成功/异常/取消恢复原请求令牌、请求和协调器取消不脱离非合作结果 Task、关闭及预取消不执行结果、实际 DELETE 端点能力不足时不执行业务/不取得响应租约、终止业务已执行而响应准入失败不重放，以及 info/history 原成功响应类型元数据保留。只有响应传输/进程业务的外部动作被受控夹具替换，终止测试不操作用户进程；非合作 IResult 不是实机网络阻塞证明。
+
+原 Windows/Linux 连接各 **25 项**、广播各 **15 项**、性能驻留各 **53 项**、进程/图标/性能专项及 Linux Proxy 驻留 **28 项**通过；Windows 默认模块全量回归通过。Server/Server.Tests/ServerModules.Tests Release 构建与 Server.Tests linux-x64 发布通过，既有告警保留。证据位于 `.artifacts/performance-http-residency-20261104/`，包括平台日志、默认模块回归、环境、远端路径与上传 SHA256 核验；用户授权后直接复用 `/home/nanami/relaxkonos-tests`。子 agent 实现测试，另一子 agent 只读审查 linked token/恢复和真实任务所有权后未发现实质问题；`git diff --check` 通过，测试机凭据保持本地忽略文件。
+
+服务方法的业务租约与响应执行租约各有独立寿命，两者之间返回的是共享 DTO 或 byte[]，不执行模块代码；本轮不声称连续保护整个 HTTP 管线、下游中间件收尾或物理网络送达。返回方法后的调用方引用不转移到模块 runtime。SystemPerformance 仍 resident/KeepLoaded/不可释放，整体资源清单、压力与总内存预算、真实网络/未知结果恢复、代码释放与生产进程树内存/延迟继续开放；本节实现尚未提交、推送或部署。

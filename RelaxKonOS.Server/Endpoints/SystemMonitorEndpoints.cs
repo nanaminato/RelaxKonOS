@@ -23,23 +23,25 @@ public static class SystemMonitorEndpoints
     {
         // 新性能链路：静态信息、有效快照和 60 秒内存历史分离；客户端通过 PerformanceHub 获取实时更新。
         app.MapGet(SystemMonitorApiRoutes.PerformanceInfo,
-            async (IPerformanceSampler sampler, CancellationToken ct) => Results.Ok(await sampler.GetInfoAsync(ct)))
+            async (IPerformanceSampler sampler, CancellationToken ct) => Protect(Results.Ok(await sampler.GetInfoAsync(ct))))
            .RequireAuthorization()
+           .Produces<PerformanceInfoDto>()
            .WithTags("System Performance");
 
         // 快照是首进、重连与无实时订阅客户端的降级路径，因此读取本身构成 demand：取不到样本才 503。
         app.MapGet(SystemMonitorApiRoutes.PerformanceSnapshot,
             async (IPerformanceSampler sampler, CancellationToken ct) =>
                 await sampler.ReadSnapshotAsync(SnapshotWait, ct) is { } snapshot
-                    ? Results.Ok(snapshot)
-                    : Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable,
-                        title: "Performance sample is not ready.", type: ProblemBase + "performance-not-ready"))
+                    ? Protect(Results.Ok(snapshot))
+                    : Protect(Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable,
+                        title: "Performance sample is not ready.", type: ProblemBase + "performance-not-ready")))
            .RequireAuthorization()
            .WithTags("System Performance");
 
         app.MapGet(SystemMonitorApiRoutes.PerformanceHistory,
-            async (int? seconds, IPerformanceSampler sampler, CancellationToken ct) => Results.Ok(await sampler.GetHistoryAsync(seconds ?? 60, ct)))
+            async (int? seconds, IPerformanceSampler sampler, CancellationToken ct) => Protect(Results.Ok(await sampler.GetHistoryAsync(seconds ?? 60, ct))))
            .RequireAuthorization()
+           .Produces<IReadOnlyList<PerformanceRealtimeSnapshotDto>>()
            .WithTags("System Performance");
 
         app.MapGet(SystemMonitorApiRoutes.ProcessQuery,
@@ -50,14 +52,14 @@ public static class SystemMonitorEndpoints
                     return ElevationRequired();
                 try
                 {
-                    return Results.Ok(await processes.QueryAsync(page ?? 1, pageSize ?? 100,
-                        filter, sort, !string.Equals(direction, "asc", StringComparison.OrdinalIgnoreCase), elevated == true, ct));
+                    return Protect(Results.Ok(await processes.QueryAsync(page ?? 1, pageSize ?? 100,
+                        filter, sort, !string.Equals(direction, "asc", StringComparison.OrdinalIgnoreCase), elevated == true, ct)));
                 }
                 catch (ProcessSnapshotUnavailableException error)
                 {
-                    return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable,
+                    return Protect(Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable,
                         title: "Process snapshot is unavailable.", detail: error.Message,
-                        type: ProblemBase + "process-snapshot-unavailable");
+                        type: ProblemBase + "process-snapshot-unavailable"));
                 }
             })
            .RequireAuthorization()
@@ -70,7 +72,7 @@ public static class SystemMonitorEndpoints
                 if (elevated == true && !grants.IsGranted(http.User, HostElevationCapability.ProcessManage, "host/processes"))
                     return ElevationRequired();
                 return await processes.GetIconAsync(id, startTime, elevated == true, ct) is { Data.Length: > 0 } icon
-                    ? Results.File(icon.Data, icon.ContentType) : Results.NotFound();
+                    ? Protect(Results.File(icon.Data, icon.ContentType)) : Protect(Results.NotFound());
             })
            .RequireAuthorization()
            .WithTags("System Performance");
@@ -82,13 +84,15 @@ public static class SystemMonitorEndpoints
             {
                 if (request.Elevated && !grants.IsGranted(http.User, HostElevationCapability.ProcessManage, "host/processes"))
                     return ElevationRequired();
-                return Results.Ok(await processes.KillAsync(id, request.ExpectedStartTime, request.Elevated, ct));
+                return Protect(Results.Ok(await processes.KillAsync(id, request.ExpectedStartTime, request.Elevated, ct)));
             })
            .RequireAuthorization()
            .WithTags("System");
 
         return app;
     }
+
+    private static IResult Protect(IResult result) => new SystemPerformanceResult(result);
 
     private static IResult ElevationRequired() => Results.Problem(statusCode: StatusCodes.Status403Forbidden,
         title: "Process administrator mode requires elevation.", type: ProblemBase + "elevation-required",
