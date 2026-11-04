@@ -7,8 +7,10 @@ namespace RelaxKonOS.Server.Hubs;
 /// <summary>Owns connected clients, serialized group operations and their actual cleanup tasks.</summary>
 public sealed class PerformanceHubConnections : IHostedService, IDisposable
 {
+    internal const int ConnectionCapacity = 128;
     private readonly object _gate = new();
     private readonly Dictionary<string, Connection> _connections = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _admitted = new(StringComparer.Ordinal);
     private readonly CancellationTokenSource _shutdown = new();
     private readonly CancellationToken _shutdownToken;
     private readonly SystemPerformanceRequestLifetime _requests;
@@ -29,24 +31,36 @@ public sealed class PerformanceHubConnections : IHostedService, IDisposable
         var request = _requests.Enter(ct);
         IModuleWorkLease? work = null;
         CancellationTokenSource? stopping = null;
+        var reserved = false;
         try
         {
-            ThrowIfStopping();
+            lock (_gate)
+            {
+                ThrowIfStopping();
+                if (_admitted.Contains(id)) throw new HubException("Performance connection already exists.");
+                if (_admitted.Count >= ConnectionCapacity) throw new HubException("Performance connection capacity is full.");
+                _admitted.Add(id); reserved = true;
+            }
             stopping = CancellationTokenSource.CreateLinkedTokenSource(ct, _shutdownToken);
             work = await _leases.AcquireAsync(stopping.Token);
             Connection connection;
             lock (_gate)
             {
                 ThrowIfStopping();
-                if (_connections.ContainsKey(id)) throw new HubException("Performance connection already exists.");
+                stopping.Token.ThrowIfCancellationRequested();
                 connection = new Connection(this, id, groups, abort, request, work, ct, _shutdownToken);
                 _connections.Add(id, connection);
             }
-            request = null!; work = null;
+            request = null!; work = null; reserved = false;
             connection.Start();
             connection.ThrowIfClosed();
         }
-        finally { stopping?.Dispose(); work?.Dispose(); request?.Dispose(); }
+        finally
+        {
+            stopping?.Dispose(); work?.Dispose();
+            if (reserved) lock (_gate) _admitted.Remove(id);
+            request?.Dispose();
+        }
     }
 
     internal Task SubscribeAsync(string id) => Find(id).SubscribeAsync();
@@ -179,7 +193,8 @@ public sealed class PerformanceHubConnections : IHostedService, IDisposable
                 if (abortFailure is not null) throw abortFailure;
                 _stopping.Dispose();
                 _work.Dispose(); _request.Dispose();
-                lock (_owner._gate) _owner._connections.Remove(_id);
+                lock (_owner._gate)
+                { _owner._connections.Remove(_id); _owner._admitted.Remove(_id); }
                 _done.TrySetResult();
             }
             catch (Exception error)

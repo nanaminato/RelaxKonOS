@@ -743,4 +743,16 @@ Host 内部新增 `SystemPerformanceResult`，在 `IResult.ExecuteAsync` 真正�
 
 原 Windows/Linux 连接各 **25 项**、广播各 **15 项**、性能驻留各 **53 项**、进程/图标/性能专项及 Linux Proxy 驻留 **28 项**通过；Windows 默认模块全量回归通过。Server/Server.Tests/ServerModules.Tests Release 构建与 Server.Tests linux-x64 发布通过，既有告警保留。证据位于 `.artifacts/performance-http-residency-20261104/`，包括平台日志、默认模块回归、环境、远端路径与上传 SHA256 核验；用户授权后直接复用 `/home/nanami/relaxkonos-tests`。子 agent 实现测试，另一子 agent 只读审查 linked token/恢复和真实任务所有权后未发现实质问题；`git diff --check` 通过，测试机凭据保持本地忽略文件。
 
-服务方法的业务租约与响应执行租约各有独立寿命，两者之间返回的是共享 DTO 或 byte[]，不执行模块代码；本轮不声称连续保护整个 HTTP 管线、下游中间件收尾或物理网络送达。返回方法后的调用方引用不转移到模块 runtime。SystemPerformance 仍 resident/KeepLoaded/不可释放，整体资源清单、压力与总内存预算、真实网络/未知结果恢复、代码释放与生产进程树内存/延迟继续开放；本节实现尚未提交、推送或部署。
+服务方法的业务租约与响应执行租约各有独立寿命，两者之间返回的是共享 DTO 或 byte[]，不执行模块代码；本轮不声称连续保护整个 HTTP 管线、下游中间件收尾或物理网络送达。返回方法后的调用方引用不转移到模块 runtime。SystemPerformance 仍 resident/KeepLoaded/不可释放，整体资源清单、压力与总内存预算、真实网络/未知结果恢复、代码释放与生产进程树内存/延迟继续开放；本节实现随后提交并推送为 `c7b03794`，未部署。
+
+## 36. 连续 Hub 连接的准入数量预算（2026-11-04，MB-07 部分）
+
+§33 的连接 owner 原先没有数量上限。现增加每个 `PerformanceHubConnections` owner **128 个名额**，合计覆盖尚在协调器准入的连接、已连接/退订但未断开的连接，以及清理故障条目。名额和连接 ID 在同一 owner 锁内预留，重复 ID 或预算已满时立即通过现有 Hub 异常路径拒绝，不建立等待队列、不取得新工作租约、不创建连接条目或组操作。SignalR 按其现有 OnConnected 失败规则结束拒绝连接，原认证仍先于该入口。
+
+取得真实工作租约后再次核验停止状态，取消或准入失败在实际 Task 收尾后归还名额；取消通知和 Stop 等待预算耗尽不能提前归还仍在准入的名额。连接发布后所有权一并转移给唯一连接关闭任务，只有组清理和工作租约释放成功才同锁移除连接及名额。未知退组/Abort 故障继续占用预算并使 Stop 可见，预算耗尽不通过丢弃旧故障或重放清理恢复准入。正常断线成功后可以立即补位。
+
+新增 `PerformanceHubBudgetChecks` 接入默认和性能专项，Windows/Ubuntu 26.04 各 **13 项**通过：128 个存活或并发 pending 名额饱和、超限及 pending 重复 ID 不取得新租约、成功断线补位、非合作准入取消不提前归还、晚到取消不发布连接、预取消/准入异常归还、Stop 等待超时保留 pending、未知 Remove 故障占名额及健康名额独立回收、Stop 故障不重放。正常路径使用真实模块/协调器/生产租约源，暂停返回只由测试包装端口提供；未知清理夹具使用计数租约，不伪造真实协调器故障恢复。
+
+原 Windows/Linux HTTP 各 **15 项**、连续连接各 **25 项**、广播各 **15 项**、性能驻留各 **53 项**、进程/图标/性能专项与 Linux Proxy 驻留 **28 项**通过；Windows 默认模块全量回归通过。Server/Server.Tests/ServerModules.Tests Release 构建及 Server.Tests linux-x64 发布通过，既有告警保留。证据位于 `.artifacts/performance-connection-budget-20261104/`，含平台日志、默认模块、环境与上传 SHA256 核验；用户授权后直接复用测试机 `/home/nanami/relaxkonos-tests`。子 agent 实现测试，另一子 agent 只读复核预留转移、取消和 Stop 竞态后未发现实质问题；`git diff --check` 通过，测试机凭据仍在本地忽略文件中。
+
+128 是 owner 持有的连接数量上限，不是整个 SignalR/Kestrel 连接上限、每个连接的组操作等待数量、载荷字节预算或整个 Server 的内存峰值；超限拒绝本身也不代表握手传输已完成物理关闭。故障恢复、整体资源清单、真实压力/网络矩阵、程序集释放与生产进程树内存/延迟继续开放。SystemPerformance 仍 resident/KeepLoaded/不可释放，MB-07、RES-01/03/04/07 不关闭；本节实现尚未提交、推送或部署。

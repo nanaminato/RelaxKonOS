@@ -318,3 +318,5 @@ Git 命令端口保留结构化文件名、参数、环境与超时规则，取�
 2026-11-04 MB-07 只读接口续核：GetLatestAsync/GetHistoryAsync 直接替换原同步接口，空缓存与命中均经真实工作准入；HTTP 历史传递请求取消，公开读取在物化前后核验停止，返回结果不持续持租约。Windows/Linux 性能驻留各 53 项、连接25/广播15与原专项通过，Linux Proxy28 通过；行为和证据见[边界设计 §34](RelaxKonOS.ServerModuleBoundaries.Design.md#34-历史与最新快照的异步读取保护2026-11-04mb-07-部分)。后续 HTTP 序列化/传输、整体资源清单、压力与生产收益仍未验收，目录仍 resident。
 
 2026-11-04 MB-07 HTTP 响应续核：已授权性能/进程响应在实际 IResult.ExecuteAsync 取得独立工作租约，linked RequestAborted 通知请求或协调器取消但不脱离真实执行，finally 恢复原令牌；响应失败不重放业务。Windows/Linux 新增 HTTP 各 15 项、原性能驻留53/连接25/广播15及专项通过，Windows 默认模块和 Linux Proxy28 通过，详见[边界设计 §35](RelaxKonOS.ServerModuleBoundaries.Design.md#35-http-性能响应执行保护2026-11-04mb-07-部分)。不等同连续整个 HTTP 管线或物理送达；整体资源清单、压力、未知结果恢复和生产收益仍开放，SystemPerformance 仍 resident。
+
+2026-11-04 MB-07 连接预算续核：连接 owner 使用 128 个合计名额覆盖 pending、live 和故障责任，超限不排队/不取得租约；取消和 Stop 超时不提前归还，真实清理成功才补位，未知故障继续占用。Windows/Linux 新增预算各 13 项、原专项与 Windows 默认模块回归、Linux Proxy28 均通过，详见[边界设计 §36](RelaxKonOS.ServerModuleBoundaries.Design.md#36-连续-hub-连接的准入数量预算2026-11-04mb-07-部分)。这是 owner 数量预算，不是总内存或整个 SignalR 连接上限；真实压力、故障恢复与生产收益仍开放，目录仍 resident。

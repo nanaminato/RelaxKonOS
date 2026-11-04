@@ -22,6 +22,8 @@ Hub 广播后续：实际发送 Task 已受工作租约保护，保持 4 条 Dro
 
 HTTP 响应后续：已授权结果的实际 JSON 序列化、图标写入等执行另持工作租约，取消不提前释放未完成的响应 Task，结束后恢复原请求令牌。响应不可用不重放已执行的终止操作。Windows/Linux 新增 HTTP 各 15 项及原专项通过，详见[边界设计 §35](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#35-http-性能响应执行保护2026-11-04mb-07-部分)；不宣称物理网络送达或整体模块回收，模块仍 resident。
 
+连接预算后续：性能 Hub owner 最多持有 128 个准入中、存活或故障连接，超限直接拒绝；正常清理可补位，取消通知不提前释放名额，未知故障继续占用。Windows/Linux 新增预算各 13 项及原专项通过，范围见[边界设计 §36](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#36-连续-hub-连接的准入数量预算2026-11-04mb-07-部分)；不是整个 Server 的内存上限，模块仍 resident。
+
 `PerformanceInfoDto` 包含低频 CPU、内存、文件系统、磁盘、网络身份及显式能力位；`PerformanceRealtimeSnapshotDto` 包含递增 sequence、UTC timestamp、CPU、内存、文件系统容量、磁盘 I/O、网络计数与速率、uptimeSeconds、health。文件系统容量和块设备 I/O 分开显示。未知增强指标保留 null；能力 false 时不显示伪造的数值。当前性能契约没有 GPU 实时数据，GPU/传感器为后续扩展。
 
 ## 当前 REST 与 Hub
