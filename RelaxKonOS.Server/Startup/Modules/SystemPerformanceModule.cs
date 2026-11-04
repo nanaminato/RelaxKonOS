@@ -16,9 +16,10 @@ namespace RelaxKonOS.Server.Startup.Modules;
 /// Host network addresses are deliberately *not* here: they answer a Core question (which addresses
 /// can a client reach this host on) and are also used by applications that never read metrics.
 /// </summary>
-internal sealed class SystemPerformanceModule : IServerModule
+internal sealed class SystemPerformanceModule : IServerModule, IServerModuleWorkResidency
 {
     public string Id => ServerModules.SystemPerformanceId;
+    public RelaxKonOS.Server.Residency.IServerModuleRuntimeFactory RuntimeFactory { get; } = new SystemPerformanceWorkRuntimeFactory();
     public IReadOnlyList<string> Capabilities => [ServerCapabilities.Metrics, ServerCapabilities.Processes];
     public IReadOnlyList<string> Requires => [];
 
@@ -42,7 +43,9 @@ internal sealed class SystemPerformanceModule : IServerModule
         builder.Services.AddSingleton<IPerformanceSampler>(services => services.GetRequiredService<PerformanceSampler>());
         builder.Services.AddHostedService(services => services.GetRequiredService<PerformanceSampler>());
         builder.Services.AddSingleton<ProcessSampler>();
+        builder.Services.AddSingleton<ISystemPerformanceWorkLeaseSource, SystemPerformanceWorkLeaseSource>();
         builder.Services.AddSingleton<IProcessService>(services => services.GetRequiredService<ProcessSampler>());
+        builder.Services.AddHostedService(services => services.GetRequiredService<ProcessSampler>());
         // 订阅推送只服务本模块映射的 Hub；禁用时随模块一起消失。
         builder.Services.AddHostedService<PerformanceBroadcastService>();
     }

@@ -321,11 +321,23 @@ if (args.Contains("--installed-personal-processes-only"))
 }
 if (args.Contains("--process-termination-only"))
 {
+    await ProcessRequestResidencyChecks.RunAsync();
+    await ProcessIconResidencyChecks.RunAsync();
+    await ProcessIconWorkChecks.RunAsync();
+    ProcessDesktopIndexChecks.Run();
+    ProcessIconInputChecks.Run();
+    await ProcessIconCacheChecks.RunAsync();
     await ProcessTerminationChecks.RunAsync();
     return;
 }
 if (args.Contains("--performance-only"))
 {
+    await ProcessRequestResidencyChecks.RunAsync();
+    await ProcessIconResidencyChecks.RunAsync();
+    await ProcessIconWorkChecks.RunAsync();
+    ProcessDesktopIndexChecks.Run();
+    ProcessIconInputChecks.Run();
+    await ProcessIconCacheChecks.RunAsync();
     await ServerCoreChecks.VerifyPerformanceSamplerAsync();
     Console.WriteLine("Performance sampler checks passed.");
     return;
@@ -708,6 +720,12 @@ await NetworkProxyTunnelChecks.VerifyFrpRuntimeInstallAndRollbackAsync(root);
     HostOperatingSystemChecks.Run();
     await ServerCoreChecks.VerifyTrackedWorkspaceWallpaperUpdateAsync(root);
     await ServerCoreChecks.VerifyRegistryRuntimeCacheAsync(root);
+    await ProcessRequestResidencyChecks.RunAsync();
+    await ProcessIconResidencyChecks.RunAsync();
+    await ProcessIconWorkChecks.RunAsync();
+    ProcessDesktopIndexChecks.Run();
+    ProcessIconInputChecks.Run();
+    await ProcessIconCacheChecks.RunAsync();
     await ServerCoreChecks.VerifyPerformanceSamplerAsync();
     ServerCoreChecks.VerifyFileElevationSessionScope(root);
     FileReadElevationChecks.Run(root);

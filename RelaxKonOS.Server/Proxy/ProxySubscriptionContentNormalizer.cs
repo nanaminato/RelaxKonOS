@@ -7,17 +7,38 @@ namespace RelaxKonOS.Server.Proxy;
 /// <summary>Host call gate. Only text crosses the independently loaded subscription implementation boundary.</summary>
 internal static class ProxySubscriptionContentNormalizer
 {
-    internal static string Normalize(string content) => Normalize(content, out _);
+    private static readonly ProxySubscriptionExecutionGate Gate = new();
+
+    internal static string Normalize(string content) => Gate.Normalize(content, out _);
+
+    internal static string Normalize(string content, out WeakReference code) => Gate.Normalize(content, out code);
+}
+
+/// <summary>Bounds active and not-yet-collected conversion contexts without forcing GC.</summary>
+internal sealed class ProxySubscriptionExecutionGate
+{
+    internal const int MaxOutstandingContexts = 16;
+    private readonly object _gate = new();
+    private readonly List<WeakReference> _code = [];
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static string Normalize(string content, out WeakReference code)
+    internal string Normalize(string content, out WeakReference code)
     {
         var directory = Path.Combine(AppContext.BaseDirectory, "Modules", "Proxy");
         var path = Path.Combine(directory, "RelaxKonOS.ServerModule.Proxy.dll");
         if (!File.Exists(path) || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0
             || (File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
             throw new InvalidDataException("Bundled Proxy subscription assembly is missing or linked.");
-        var context = new ExecutionContext(); code = new WeakReference(context);
+        ExecutionContext context;
+        lock (_gate)
+        {
+            _code.RemoveAll(reference => !reference.IsAlive);
+            if (_code.Count >= MaxOutstandingContexts)
+                throw new InvalidDataException("Proxy subscription code collection is pending; retry after collection or arrange host recovery.");
+            context = new ExecutionContext();
+            code = new WeakReference(context);
+            _code.Add(code);
+        }
         try { return Convert(context, path, content); }
         finally { context.Unload(); }
     }

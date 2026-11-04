@@ -9,6 +9,8 @@ using RelaxKonOS.PrivilegedHelper;
 /// </summary>
 public static partial class PrivilegedOperationExecutor
 {
+    // Helper has its own bounded process-lifetime owner, separate from the Server's ordinary cache.
+    private static readonly RelaxKonOS.Server.SystemPerformance.ProcessIconProvider ProcessIcons = new();
     private static readonly AsyncLocal<Func<PrivilegedOperationFrame, Task>?> Progress = new();
 
     public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, PrivilegedOperationPolicy policy,
@@ -174,7 +176,7 @@ public static partial class PrivilegedOperationExecutor
                     return Fail(64, PrivilegedProblemCode.InvalidRequest, "process id and expected start time are required");
                 if (request.Operation == PrivilegedOperationKind.ProcessIcon)
                 {
-                    var icon = await new RelaxKonOS.Server.SystemPerformance.ProcessIconProvider().GetIconAsync(
+                    var icon = await ProcessIcons.GetIconAsync(
                         request.ProcessId.Value, expectedStartTime, CancellationToken.None);
                     return new(true, OutputBase64: icon is null ? null : Convert.ToBase64String(icon.Data),
                         ProcessIconContentType: icon?.ContentType);

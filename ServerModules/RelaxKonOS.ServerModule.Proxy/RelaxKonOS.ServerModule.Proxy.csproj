@@ -1,4 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
   <ItemGroup><ProjectReference Include="../../Shared/RelaxKonOS.ServerModule.Proxy.Contracts/RelaxKonOS.ServerModule.Proxy.Contracts.csproj" /></ItemGroup>
+  <Target Name="ValidateProxyModuleBoundary" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <ProxyContractProjectPath>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../Shared/RelaxKonOS.ServerModule.Proxy.Contracts/RelaxKonOS.ServerModule.Proxy.Contracts.csproj'))</ProxyContractProjectPath>
+    </PropertyGroup>
+    <ItemGroup>
+      <InvalidProxyImplementationProject Include="@(ProjectReference)" Condition="'%(ProjectReference.FullPath)' != '$(ProxyContractProjectPath)'" />
+      <InvalidProxyFramework Include="@(FrameworkReference)" Condition="'%(FrameworkReference.Identity)' != 'Microsoft.NETCore.App' or '%(FrameworkReference.IsImplicitlyDefined)' != 'true'" />
+    </ItemGroup>
+    <Error Condition="'@(InvalidProxyImplementationProject)' != '' or '@(Reference)' != '' or '@(PackageReference)' != '' or '@(InvalidProxyFramework)' != '' or '@(COMReference)' != ''"
+           Text="Proxy subscription execution may reference only its shared contract project and the implicit .NET framework; Server, other implementations and private dependencies require an explicit boundary redesign." />
+  </Target>
 </Project>

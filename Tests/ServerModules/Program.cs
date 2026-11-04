@@ -633,6 +633,8 @@ foreach (var enabled in new[] { true, false })
     builder.Services.AddAuthorization();
     // Core-owned service the module routes resolve; the module itself must not register it.
     builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IHostElevationSessionStore, NoElevation>();
+    var processOperations = new NoProcessOperations();
+    builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport>(processOperations);
     builder.Services.AddDataProtection();
     // Core-owned observability the Docker stack coordinator publishes through.
     builder.Services.AddSingleton<RelaxKonOS.Server.EventAlerts.IOperationalEventPublisher, NoOperationalEvents>();
@@ -710,6 +712,7 @@ foreach (var enabled in new[] { true, false })
         $"deployment image build port stays resolvable enabled={enabled}");
 
     var mode = new ServerModeResolver(builder.Configuration, RelaxKonOS.Server.UserExecution.UserExecutionBackend.Helper);
+    builder.Services.AddSingleton<IServerModeResolver>(mode);
     var host = ServerDescriptorFactory.Create(HostPlatformKind.Windows, mode, new EventAlertsOptions(),
         new ConfigurationBackupRecoveryKeyProvider(new BackupRecoveryOptions()), modules.Capabilities);
     Check(host.Capabilities.Contains(ServerCapabilities.Terminal) == enabled && host.Host!.Capabilities.Terminal == enabled,
@@ -777,6 +780,7 @@ foreach (var enabled in new[] { true, false })
     Check(await GetAsync(client, "/api/v1.0/certificates") == (enabled ? HttpStatusCode.Unauthorized : HttpStatusCode.NotFound),
         $"real certificate route and authorization enabled={enabled}");
     await app.StopAsync();
+    Check(processOperations.Calls == 0, $"module startup, unauthenticated routes and shutdown perform no Helper process reads enabled={enabled}");
 }
 
 // Residency: the default rule, the state machine and the Git pilot lease gates
@@ -1259,4 +1263,12 @@ sealed class NoUserExecutionTransport : RelaxKonOS.Server.UserExecution.IUserExe
     public Task<RelaxKonOS.Protocol.UserExecution.UserExecutionResult> ExecuteAsync(
         RelaxKonOS.Protocol.UserExecution.UserExecutionRequest request, CancellationToken cancellationToken = default)
         => throw new InvalidOperationException("user execution is not available in this test host");
+}
+
+sealed class NoProcessOperations : RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport
+{
+    public int Calls;
+    public Task<RelaxKonOS.Protocol.Privileged.PrivilegedOperationResult> ExecuteAsync(
+        RelaxKonOS.Protocol.Privileged.PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
+    { Interlocked.Increment(ref Calls); throw new InvalidOperationException("Helper operations are not available in the module routing fixture"); }
 }

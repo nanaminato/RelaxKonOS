@@ -20,6 +20,9 @@
     <Compile Include="../RelaxKonOS.Server/SystemMonitor/ProcessInstanceTermination.cs" Link="SystemMonitor/ProcessInstanceTermination.cs" />
     <Compile Include="../RelaxKonOS.Server/SystemPerformance/ProcessTreeMetadata.cs" Link="SystemPerformance/ProcessTreeMetadata.cs" />
     <Compile Include="../RelaxKonOS.Server/SystemPerformance/ProcessIconProvider.cs" Link="SystemPerformance/ProcessIconProvider.cs" />
+    <Compile Include="../RelaxKonOS.Server/SystemPerformance/ProcessIconProvider.Desktop.cs" Link="SystemPerformance/ProcessIconProvider.Desktop.cs" />
+    <Compile Include="../RelaxKonOS.Server/SystemPerformance/ProcessIconCache.cs" Link="SystemPerformance/ProcessIconCache.cs" />
+    <Compile Include="../RelaxKonOS.Server/SystemPerformance/ProcessIconWorkQueue.cs" Link="SystemPerformance/ProcessIconWorkQueue.cs" />
     <Compile Include="../RelaxKonOS.Server/SystemPerformance/IProcessService.cs" Link="SystemPerformance/IProcessService.cs" />
     <Compile Include="../RelaxKonOS.Server/SystemPerformance/HostProcessSnapshotCollector.cs" Link="SystemPerformance/HostProcessSnapshotCollector.cs" />
     <Compile Include="../RelaxKonOS.Server/SystemMonitor/LinuxProcessMetadata.cs" Link="SystemMonitor/LinuxProcessMetadata.cs" />

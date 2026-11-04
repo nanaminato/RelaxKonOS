@@ -288,3 +288,19 @@ Git 命令端口保留结构化文件名、参数、环境与超时规则，取�
 2026-11-03 Proxy 常驻边界收尾：管理排队工作统一独立 async scope；Core 唯一持有 guard、代次绑定 TUN 恢复、sing-box 到期与持续发布扫描，根操作台账只保留活动/故障 owner，历史按需读取。只读禁用检查覆盖上述持久责任。当前实现与验证限制以[边界设计 §19](RelaxKonOS.ServerModuleBoundaries.Design.md#19-proxy-常驻责任与完整执行寿命收尾2026-11-03)为准。Proxy 继续 resident；未新增驻留工作租约、collectible ALC 或生产内存收益证据，RES-05 不关闭。
 
 2026-11-04 MB-04：Proxy 使用同一 coordinator 的 resident work owner，后台租约覆盖 queued 前准入到业务/审计/scope 清理/终态确认，失败隔离同一 owner。目录继续 resident/不可释放。订阅转换已在独立程序集执行并做 ALC 回收检查，这不等于全模块回收；当前事实与验证环境见[边界设计 §20](RelaxKonOS.ServerModuleBoundaries.Design.md#20-linux-modulehost-目标修复proxy-工作租约与订阅独立代码2026-11-04)。
+
+2026-11-04 代码预算续核：订阅转换的活动及待回收 ALC 采用弱引用合计上限，达到上限时拒绝新转换，自然回收后重新准入，生产不调用 GC。具体行为与限制由[边界设计 §21](RelaxKonOS.ServerModuleBoundaries.Design.md#21-订阅转换待回收代码预算2026-11-04mb-04-部分)拥有；Proxy 仍 resident，不能据此宣布 RES-05 或生产内存验收完成。
+
+2026-11-04 测试机续核：Windows/Ubuntu 26.04 最终驻留专项各 28 项通过，补齐预算与 100 轮回收的 Linux 验证，并新增保留 Host 异常时的失败代码回收检查；契约及实现项目依赖守卫已反向验证。环境、证据与验收限制见[边界设计 §22](RelaxKonOS.ServerModuleBoundaries.Design.md#22-proxy-依赖守卫与测试机回收续核2026-11-04mb-0204-部分)。未进行生产内存测量或真实网络故障验收，RES-05/07 继续开放。
+
+2026-11-04 MB-07：进程图标缓存改为 provider 实例所有，Server 与 Helper 各自有界；每个缓存最多 512 条/8 MiB 完成载荷，销毁及淘汰竞争不允许旧加载重新写回。Windows/Linux 各 15 项缓存检查与原进程/性能专项通过，范围见[边界设计 §23](RelaxKonOS.ServerModuleBoundaries.Design.md#23-进程图标缓存实例所有权与载荷预算2026-11-04mb-07-部分)。SystemPerformance 仍 resident，未接入闲时释放、完整 Hub/采样租约或代码回收，不以缓存预算声称进程树内存收益。
+
+2026-11-04 MB-07 输入续核：desktop 图像实际读取限额及 PNG 目标位图分配前的编码/尺寸门禁已落地，Windows/Linux 新增输入检查各 17/18 项通过，原缓存、进程与采样回归保留。当前事实由[边界设计 §24](RelaxKonOS.ServerModuleBoundaries.Design.md#24-desktop-图像输入与目标位图分配预算2026-11-04mb-07-部分)拥有；目录/主题扫描、索引、原生峰值和整个模块休眠仍未验收。
+
+2026-11-04 MB-07 索引续核：desktop 遍历、文件/总读取、映射/文本及整轮主题/路径探测已增加有界预算，Windows/Linux 新增索引专项 **11/12 项**通过，原输入、缓存、进程、性能和 Linux Proxy 驻留专项通过。详细上限与证据由[边界设计 §25](RelaxKonOS.ServerModuleBoundaries.Design.md#25-desktop-流式扫描与索引工作预算2026-11-04mb-07-部分)拥有；逻辑预算不保证慢 I/O 的时间上限，SystemPerformance 仍未接入完整工作租约、排空和闲时回收，不能据此宣称模块休眠或生产内存收益。
+
+2026-11-04 MB-07 图标工作续核：普通/管理员图标共享有界准入，provider 另有独立执行预算；请求取消及 owner Stop/Dispose 不再让已开始的同步工作脱离资源所有者。Windows/Linux 最终各 19 项工作检查通过，完整行为与关闭范围由[边界设计 §26](RelaxKonOS.ServerModuleBoundaries.Design.md#26-图标并发准入取消与-owner-停机排空2026-11-04mb-07-部分)拥有。此队列未接驻留协调器租约，也不涵盖采样/Hub/整个 Helper 进程树；SystemPerformance 仍 resident，完整闲时释放和生产收益验收继续开放。
+
+2026-11-04 MB-07 租约续核：SystemPerformance 已注册同一协调器的常驻工作 owner；完成准入的图标等待项和在途读取取得真实工作租约，协调器停止能撤销等待但不提前释放已开始的读取。Windows/Linux 各 14 项真实协调器检查、原专项及 Windows 默认模块全量回归最终通过，详见[边界设计 §27](RelaxKonOS.ServerModuleBoundaries.Design.md#27-图标工作接入常驻协调器租约2026-11-04mb-07-部分)。缓存仍归 Host owner，采样/Hub/查询/终止的完整租约和模块释放未完成；目录保持 resident/不可释放，RES 不据此关闭。
+
+2026-11-04 MB-07 进程请求续核：统一当前 `ISystemPerformanceWorkLeaseSource`，查询（含缓存命中）和有效终止请求已接入同一协调器工作保护；Host owner 关闭准入并等待请求完成后清理两套快照与 CPU 基线。Windows/Linux 各 19 项新增检查、原专项及 Windows 默认模块全量回归通过，原请求取消与终止回执规则保留。当前范围见[边界设计 §28](RelaxKonOS.ServerModuleBoundaries.Design.md#28-进程查询终止工作保护与快照-owner-排空2026-11-04mb-07-部分)；采样/Hub、实机中断、整个模块释放和生产收益仍未验收，目录仍 resident。

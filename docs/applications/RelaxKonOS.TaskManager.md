@@ -32,6 +32,18 @@
 
 进程图标单独按 `(PID, StartTime)` 请求，避免进程列表轮询反复传输图像。客户端仅在虚拟化列表需要显示该行时请求；Server 验证当前实例并按可执行文件缓存图标。Windows 在选定执行上下文中核对同一进程句柄的创建时间，并使用 QueryFullProcessImageName 读取可执行文件路径、提取 PNG；Ubuntu 从匹配的 `.desktop` 项查找 PNG/SVG 图标。图标缺失、权限不足或不支持的图像格式返回 404，客户端使用类别图标回退。
 
+2026-11-04：普通图标缓存归 Server `ProcessSampler` 的 provider 实例，管理员图标归 Helper 独立 owner；每个缓存最多 512 条（含缺失结果）及 8 MiB 已完成图像载荷，按 FIFO 淘汰。文件路径、长度或修改时间变化产生新键。销毁 sampler 时清理图标及 desktop 索引引用，在途加载完成不能重新写回。授权与 PID/启动时间验证仍逐请求执行，不因缓存命中省略。当前没有闲时缓存清理或整个性能模块休眠，预算不涵盖 desktop 索引、在途解码峰值及调用者持有的数据；验证范围见[Server 边界设计 §23](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#23-进程图标缓存实例所有权与载荷预算2026-11-04mb-07-部分)。
+
+desktop 图像读取另有限额：SVG 原文最多 256 KiB；PNG 编码最多 1 MiB，且源图每边最多 1024px，在分配目标像素前检查。正常 PNG 仍输出有透明边距的 32×32 图标；超限、损坏或编码不符时使用原缺失图标回退。此预算不等于整个解码过程、目录索引或服务进程的内存上限，验证见[Server 边界设计 §24](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#24-desktop-图像输入与目标位图分配预算2026-11-04mb-07-部分)。
+
+desktop 索引现按有限根目录、深度和条目流式扫描：每文件 64 KiB、总读取 8 MiB，最多保留 2048 项及 512 KiB 键值文本；主题发现和路径探测也有整轮预算。超限时保留已找到的图标，其余使用默认图标，不影响已授权进程列表。目录符号链接不递归，desktop 文件链接仍经过有界读取；当前未增加定时刷新或模块休眠。具体工作预算与验收见[Server 边界设计 §25](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#25-desktop-流式扫描与索引工作预算2026-11-04mb-07-部分)。
+
+普通和管理员图标读取现在共享每个 Server owner 的 4 个执行名额及 32 个额外等待名额，provider/Helper 各自另有限额。排队取消不启动读取，超载或停机使用原默认图标回退；已开始的读取不会因客户端取消而提前释放资源，实际完成后才报告取消。ProcessSampler 的 Host Stop 阶段关闭图标准入并等待在途读取，超时仅取消等待，资源在真实工作结束后清理。进程终止行为、权限、PID/启动时间核验及图标缓存预算不变；这尚不是整个性能模块休眠，验证范围见[Server 边界设计 §26](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#26-图标并发准入取消与-owner-停机排空2026-11-04mb-07-部分)。
+
+图标等待/执行已进一步接入同一驻留协调器的真实工作租约；排队保护也会计入模块目录的 activeLeases，不等于同时执行的 OS 读取数。协调器关闭能撤销等待，实际读取结束前仍保留在途保护；准入失败不会继续调用 Helper 或原生读取。SystemPerformance 仍 resident，不支持闲时释放配置；采样和 Hub 等整体生命周期尚未全部接入，详见[Server 边界设计 §27](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#27-图标工作接入常驻协调器租约2026-11-04mb-07-部分)。
+
+进程查询（包括缓存命中）和有效终止请求也已取得同一协调器的工作保护；停止 owner 后拒绝新调用，等待已准入调用完成后清理普通/管理员快照与 CPU 差分缓存。原查询/终止请求令牌、PID/完整启动时间核验、权限失败及未确认回执不变，不增加自动提升或终止重放。已返回的物化结果不因缓存清理而失效；这仍不表示整个性能模块可休眠。范围与验证见[Server 边界设计 §28](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#28-进程查询终止工作保护与快照-owner-排空2026-11-04mb-07-部分)。
+
 请求只接受当前实例契约：
 
 ```http

@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -8,21 +7,29 @@ using SkiaSharp;
 namespace RelaxKonOS.Server.SystemPerformance;
 
 /// <summary>Resolves an icon for a confirmed process instance and caches the small PNG by executable.</summary>
-internal sealed class ProcessIconProvider
+internal sealed partial class ProcessIconProvider : IDisposable
 {
     private const int IconSize = 32;
-    private const int MaxCachedIcons = 512;
+    internal const int MaximumSvgBytes = 256 * 1024;
+    internal const int MaximumPngBytes = 1024 * 1024;
+    internal const int MaximumIconDimension = 1024;
     private static readonly ProcessIconContent EmptyIcon = new([], "image/png");
-    private static readonly ConcurrentDictionary<string, Lazy<ProcessIconContent>> IconCache = new(
-        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
-    private static readonly ConcurrentQueue<string> CacheOrder = new();
-    private static readonly Lazy<IReadOnlyDictionary<string, string>> DesktopIcons = new(ReadDesktopIcons,
+    private readonly ProcessIconCache _cache = new();
+    private Lazy<IReadOnlyDictionary<string, string>>? _desktopIcons = new(ReadDesktopIcons,
         LazyThreadSafetyMode.ExecutionAndPublication);
+    private readonly ProcessIconWorkQueue _work;
+
+    internal ProcessIconProvider() => _work = new(() =>
+    { _cache.Dispose(); Interlocked.Exchange(ref _desktopIcons, null); });
+
+    internal (int Entries, int Bytes, int OrderEntries) CacheSnapshot => _cache.Describe();
 
     public Task<ProcessIconContent?> GetIconAsync(int processId, DateTimeOffset expectedStartTime, CancellationToken cancellationToken)
-        => Task.Run(() => Resolve(processId, expectedStartTime), cancellationToken);
+        => _work.RunAsync(() => Task.Run(() => Resolve(processId, expectedStartTime), CancellationToken.None), cancellationToken);
 
-    private static ProcessIconContent? Resolve(int processId, DateTimeOffset expectedStartTime)
+    internal Task StopAsync(CancellationToken ct) => _work.StopAsync(ct);
+
+    private ProcessIconContent? Resolve(int processId, DateTimeOffset expectedStartTime)
     {
         try
         {
@@ -48,13 +55,7 @@ internal sealed class ProcessIconProvider
             if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return null;
             var file = new FileInfo(path);
             var key = $"{file.FullName}|{file.Length}|{file.LastWriteTimeUtc.Ticks}";
-            var lazy = IconCache.GetOrAdd(key, cacheKey =>
-            {
-                CacheOrder.Enqueue(cacheKey);
-                return new Lazy<ProcessIconContent>(() => LoadIcon(file.FullName), LazyThreadSafetyMode.ExecutionAndPublication);
-            });
-            TrimCache();
-            var icon = lazy.Value;
+            var icon = _cache.GetOrAdd(key, () => LoadIcon(file.FullName));
             return icon.Data.Length == 0 ? null : icon;
         }
         catch { return null; }
@@ -72,7 +73,7 @@ internal sealed class ProcessIconProvider
         catch { return null; }
     }
 
-    private static ProcessIconContent LoadIcon(string executablePath)
+    private ProcessIconContent LoadIcon(string executablePath)
     {
         try
         {
@@ -83,20 +84,59 @@ internal sealed class ProcessIconProvider
         return EmptyIcon;
     }
 
-    private static ProcessIconContent ReadLinuxDesktopIcon(string executablePath)
+    private ProcessIconContent ReadLinuxDesktopIcon(string executablePath)
     {
         var binaryName = Path.GetFileName(executablePath);
-        if (!DesktopIcons.Value.TryGetValue(binaryName, out var iconPath)) return EmptyIcon;
-        if (Path.GetExtension(iconPath).Equals(".svg", StringComparison.OrdinalIgnoreCase))
+        var desktopIcons = Volatile.Read(ref _desktopIcons);
+        if (desktopIcons is null || !desktopIcons.Value.TryGetValue(binaryName, out var iconPath)) return EmptyIcon;
+        return ReadDesktopIconFile(iconPath);
+    }
+
+    /// <summary>Read a bounded snapshot before invoking the decoder, then budget pixels before allocating them.</summary>
+    internal static ProcessIconContent ReadDesktopIconFile(string iconPath)
+    {
+        try
         {
-            var file = new FileInfo(iconPath);
-            if (file.Length is <= 0 or > 262_144) return EmptyIcon;
-            return new ProcessIconContent(File.ReadAllBytes(iconPath), "image/svg+xml");
+            var svg = Path.GetExtension(iconPath).Equals(".svg", StringComparison.OrdinalIgnoreCase);
+            if (!svg && !Path.GetExtension(iconPath).Equals(".png", StringComparison.OrdinalIgnoreCase)) return EmptyIcon;
+            using var file = new FileStream(iconPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            var bytes = ReadIconBytes(file, svg ? MaximumSvgBytes : MaximumPngBytes);
+            if (bytes is null) return EmptyIcon;
+            if (svg) return new(bytes, "image/svg+xml");
+            using var encoded = new MemoryStream(bytes, writable: false);
+            using var codec = SKCodec.Create(encoded);
+            if (codec is null || codec.EncodedFormat != SKEncodedImageFormat.Png
+                || codec.Info.Width is <= 0 or > MaximumIconDimension || codec.Info.Height is <= 0 or > MaximumIconDimension)
+                return EmptyIcon;
+            // Force 4 bytes per pixel; source formats must not select a larger destination allocation.
+            var info = new SKImageInfo(codec.Info.Width, codec.Info.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
+            using var icon = new SKBitmap(info);
+            if (icon.GetPixels() == IntPtr.Zero || codec.GetPixels(info, icon.GetPixels()) != SKCodecResult.Success) return EmptyIcon;
+            var png = FitOnSquarePng(icon, IconSize);
+            return png.Length == 0 ? EmptyIcon : new ProcessIconContent(png, "image/png");
         }
-        using var icon = SKBitmap.Decode(iconPath);
-        if (icon is null) return EmptyIcon;
-        var png = FitOnSquarePng(icon, IconSize);
-        return png.Length == 0 ? EmptyIcon : new ProcessIconContent(png, "image/png");
+        catch { return EmptyIcon; } // Optional icon failure keeps the existing generic-client fallback.
+    }
+
+    internal static byte[]? ReadIconBytes(Stream input, int maximum)
+    {
+        if (maximum is <= 0 or > MaximumPngBytes) throw new ArgumentOutOfRangeException(nameof(maximum));
+        var length = input.CanSeek ? input.Length : 0;
+        if (input.CanSeek && (length <= 0 || length > maximum)) return null;
+        // Small icons should not allocate the entire maximum input budget. Growth remains bounded.
+        var bytes = new byte[(int)Math.Min(Math.Max(length, 4096L), maximum) + 1];
+        var total = 0;
+        while (true)
+        {
+            if (total == bytes.Length) Array.Resize(ref bytes, Math.Min(bytes.Length * 2, maximum + 1));
+            var read = input.Read(bytes, total, bytes.Length - total);
+            if (read == 0) break;
+            total += read;
+            if (total > maximum) return null;
+        }
+        if (total == 0) return null;
+        Array.Resize(ref bytes, total);
+        return bytes;
     }
 
     /// <summary>
@@ -133,128 +173,8 @@ internal sealed class ProcessIconProvider
         return data?.ToArray() ?? [];
     }
 
-    private static IReadOnlyDictionary<string, string> ReadDesktopIcons()
-    {
-        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var directory in GetDesktopDirectories())
-        {
-            IEnumerable<string> files;
-            try { files = Directory.EnumerateFiles(directory, "*.desktop", SearchOption.AllDirectories).ToArray(); }
-            catch { continue; }
-            foreach (var file in files)
-            {
-                try
-                {
-                    string? command = null;
-                    string? icon = null;
-                    var hidden = false;
-                    foreach (var line in File.ReadLines(file))
-                    {
-                        if (line.StartsWith("Exec=", StringComparison.Ordinal)) command = FirstDesktopCommand(line[5..]);
-                        else if (line.StartsWith("Icon=", StringComparison.Ordinal)) icon = line[5..].Trim();
-                        else if (line.Equals("NoDisplay=true", StringComparison.OrdinalIgnoreCase) || line.Equals("Hidden=true", StringComparison.OrdinalIgnoreCase)) hidden = true;
-                    }
-                    if (hidden || string.IsNullOrWhiteSpace(command) || string.IsNullOrWhiteSpace(icon)) continue;
-                    var binary = Path.GetFileName(command);
-                    var resolvedIcon = ResolveIconPath(icon);
-                    if (!string.IsNullOrWhiteSpace(binary) && resolvedIcon is not null) result.TryAdd(binary, resolvedIcon);
-                }
-                catch { /* One malformed desktop file must not hide other application icons. */ }
-            }
-        }
-        return result;
-    }
-
-    private static IEnumerable<string> GetDesktopDirectories()
-    {
-        var roots = new HashSet<string>(StringComparer.Ordinal)
-        {
-            "/usr/share/applications", "/usr/local/share/applications", "/var/lib/snapd/desktop/applications",
-            "/root/.local/share/applications",
-        };
-        foreach (var root in (Environment.GetEnvironmentVariable("XDG_DATA_DIRS") ?? "/usr/local/share:/usr/share").Split(':'))
-            roots.Add(Path.Combine(root, "applications"));
-        try
-        {
-            foreach (var home in Directory.EnumerateDirectories("/home")) roots.Add(Path.Combine(home, ".local/share/applications"));
-        }
-        catch { }
-        return roots.Where(Directory.Exists);
-    }
-
-    private static string? FirstDesktopCommand(string exec)
-    {
-        var token = ReadToken(exec.AsSpan().TrimStart(), out var rest);
-        if (string.IsNullOrWhiteSpace(token)) return null;
-        if (!Path.GetFileName(token).Equals("env", StringComparison.Ordinal)) return token;
-        while (rest.TrimStart() is { } remaining && remaining.Length > 0)
-        {
-            token = ReadToken(remaining, out rest);
-            if (token is null) break;
-            if (token.Contains('=')) continue;
-            return token;
-        }
-        return null;
-    }
-
-    private static string? ReadToken(ReadOnlySpan<char> input, out ReadOnlySpan<char> rest)
-    {
-        input = input.TrimStart();
-        if (input.IsEmpty) { rest = []; return null; }
-        if (input[0] is '"' or '\'')
-        {
-            var quote = input[0];
-            var end = input[1..].IndexOf(quote);
-            if (end < 0) { rest = []; return null; }
-            var token = input.Slice(1, end).ToString();
-            rest = input[(end + 2)..];
-            return token;
-        }
-        var separator = input.IndexOfAny(' ', '\t');
-        if (separator < 0) { rest = []; return input.ToString(); }
-        rest = input[(separator + 1)..];
-        return input[..separator].ToString();
-    }
-
-    private static string? ResolveIconPath(string icon)
-    {
-        if (Path.IsPathRooted(icon)) return File.Exists(icon) && IsSupportedIcon(icon) ? icon : null;
-        var names = Path.HasExtension(icon) ? [icon] : new[] { icon + ".png", icon + ".svg" };
-        var roots = new[] { "/usr/share/icons", "/usr/local/share/icons", "/usr/share/pixmaps", "/usr/local/share/pixmaps" };
-        var sizes = new[] { "128x128", "96x96", "64x64", "48x48", "32x32", "256x256", "scalable" };
-        foreach (var root in roots)
-        {
-            foreach (var name in names)
-            {
-                if (root.EndsWith("pixmaps", StringComparison.Ordinal))
-                {
-                    var direct = Path.Combine(root, name);
-                    if (File.Exists(direct) && IsSupportedIcon(direct)) return direct;
-                    continue;
-                }
-                var themes = new List<string> { "hicolor" };
-                try { themes.AddRange(Directory.EnumerateDirectories(root).Select(Path.GetFileName)
-                    .Where(name => !string.IsNullOrWhiteSpace(name) && !name.Equals("hicolor", StringComparison.OrdinalIgnoreCase))!); }
-                catch { }
-                foreach (var theme in themes)
-                foreach (var size in sizes)
-                {
-                    var candidate = Path.Combine(root, theme, size, "apps", name);
-                    if (File.Exists(candidate) && IsSupportedIcon(candidate)) return candidate;
-                }
-            }
-        }
-        return null;
-    }
-
-    private static bool IsSupportedIcon(string path)
-        => Path.GetExtension(path) is { } extension && (extension.Equals(".png", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".svg", StringComparison.OrdinalIgnoreCase));
-
-    private static void TrimCache()
-    {
-        while (IconCache.Count > MaxCachedIcons && CacheOrder.TryDequeue(out var oldest)) IconCache.TryRemove(oldest, out _);
-    }
+    public void Dispose()
+        => _work.BeginStop();
 
     private static byte[] ReadWindowsExecutableIcon(string executablePath)
     {

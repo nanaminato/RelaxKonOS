@@ -8,19 +8,51 @@ namespace RelaxKonOS.Server.SystemPerformance;
 
 /// <summary>Ordinary and privileged snapshots have separate caches and CPU baselines.
 /// Request authorization is checked before this singleton is called, including cached reads.</summary>
-public sealed class ProcessSampler(
-    RelaxKonOS.Server.SystemMonitor.ISystemMetricsProvider legacyControl,
-    IServerModeResolver mode,
-    IPrivilegedOperationTransport privilegedOperations) : IProcessService
+public sealed class ProcessSampler : IProcessService, IDisposable, IHostedService
 {
+    private readonly RelaxKonOS.Server.SystemMonitor.ISystemMetricsProvider legacyControl;
+    private readonly IServerModeResolver mode;
+    private readonly IPrivilegedOperationTransport privilegedOperations;
+    private readonly ISystemPerformanceWorkLeaseSource workLeases;
     private static readonly TimeSpan SamplingInterval = TimeSpan.FromSeconds(5);
     private readonly SampleCache _ordinary = new();
     private readonly SampleCache _elevated = new();
     private readonly ProcessIconProvider _icons = new();
+    private readonly ProcessIconWorkQueue _iconWork;
+    private readonly ProcessRequestLifetime _requests;
+
+    public ProcessSampler(RelaxKonOS.Server.SystemMonitor.ISystemMetricsProvider legacyControl,
+        IServerModeResolver mode, IPrivilegedOperationTransport privilegedOperations, ISystemPerformanceWorkLeaseSource workLeases)
+    {
+        this.legacyControl = legacyControl; this.mode = mode; this.privilegedOperations = privilegedOperations;
+        this.workLeases = workLeases;
+        _iconWork = new(_icons.Dispose);
+        _requests = new(ClearSnapshots);
+    }
+
+    public Task StartAsync(CancellationToken ct) => Task.CompletedTask;
+    public async Task StopAsync(CancellationToken ct)
+    {
+        _requests.BeginStop(); _iconWork.BeginStop();
+        await Task.WhenAll(_requests.StopAsync(ct), _iconWork.StopAsync(ct));
+        await _icons.StopAsync(ct);
+    }
+    public void Dispose() { _requests.BeginStop(); _iconWork.BeginStop(); }
+
+    private void ClearSnapshots()
+    {
+        lock (_ordinary.Gate) { _ordinary.Previous = []; _ordinary.Latest = new([], 0, DateTimeOffset.MinValue); }
+        lock (_elevated.Gate) { _elevated.Previous = []; _elevated.Latest = new([], 0, DateTimeOffset.MinValue); }
+    }
+
+    internal (int Ordinary, int Elevated) CachedProcessCounts
+    { get { lock (_ordinary.Gate) lock (_elevated.Gate) return (_ordinary.Latest.Items.Count, _elevated.Latest.Items.Count); } }
 
     public async Task<ProcessPageDto> QueryAsync(int page, int pageSize, string? filter, string? sort, bool descending,
         bool elevated = false, CancellationToken cancellationToken = default)
     {
+        using var request = _requests.Enter(cancellationToken);
+        using var work = await workLeases.AcquireAsync(cancellationToken);
         var cache = elevated ? _elevated : _ordinary;
         await EnsureFreshAsync(cache, elevated, cancellationToken);
         ProcessPageDto snapshot;
@@ -51,6 +83,8 @@ public sealed class ProcessSampler(
         bool elevated = false, CancellationToken cancellationToken = default)
     {
         if (processId <= 0 || expectedStartTime == default) return new(false, false, "process.invalid_instance", null);
+        using var request = _requests.Enter(cancellationToken);
+        using var work = await workLeases.AcquireAsync(cancellationToken);
         KillProcessResultDto result;
         if (elevated)
         {
@@ -69,14 +103,23 @@ public sealed class ProcessSampler(
         return result;
     }
 
-    public async Task<ProcessIconContent?> GetIconAsync(int processId, DateTimeOffset expectedStartTime,
+    public Task<ProcessIconContent?> GetIconAsync(int processId, DateTimeOffset expectedStartTime,
         bool elevated = false, CancellationToken cancellationToken = default)
+        => _iconWork.RunAsync(() => GetIconCoreAsync(processId, expectedStartTime, elevated), cancellationToken, AcquireIconProtectionAsync);
+
+    private async ValueTask<ProcessIconWorkProtection> AcquireIconProtectionAsync(CancellationToken ct)
+    {
+        var lease = await workLeases.AcquireAsync(ct);
+        return new(lease, lease.Stopping);
+    }
+
+    private async Task<ProcessIconContent?> GetIconCoreAsync(int processId, DateTimeOffset expectedStartTime, bool elevated)
     {
         if (processId <= 0 || expectedStartTime == default) return null;
         if (!elevated)
-            return IsVisibleOrdinarily(processId) ? await _icons.GetIconAsync(processId, expectedStartTime, cancellationToken) : null;
+            return IsVisibleOrdinarily(processId) ? await _icons.GetIconAsync(processId, expectedStartTime, CancellationToken.None) : null;
         var result = await privilegedOperations.ExecuteAsync(new(PrivilegedOperationKind.ProcessIcon,
-            ProcessId: processId, ProcessExpectedStartTime: expectedStartTime), cancellationToken);
+            ProcessId: processId, ProcessExpectedStartTime: expectedStartTime), CancellationToken.None);
         if (!result.Success || result.OutputBase64 is not { Length: > 0 } encoded
             || result.ProcessIconContentType is not ("image/png" or "image/svg+xml")) return null;
         try

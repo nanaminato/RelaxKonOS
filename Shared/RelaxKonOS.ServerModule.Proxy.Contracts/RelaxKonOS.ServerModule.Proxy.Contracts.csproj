@@ -1,1 +1,10 @@
-<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup></Project>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <Target Name="ValidateProxyContractBoundary" BeforeTargets="PrepareForBuild">
+    <ItemGroup>
+      <InvalidProxyContractFramework Include="@(FrameworkReference)" Condition="'%(FrameworkReference.Identity)' != 'Microsoft.NETCore.App' or '%(FrameworkReference.IsImplicitlyDefined)' != 'true'" />
+    </ItemGroup>
+    <Error Condition="'@(ProjectReference)' != '' or '@(Reference)' != '' or '@(PackageReference)' != '' or '@(InvalidProxyContractFramework)' != '' or '@(COMReference)' != ''"
+           Text="Proxy shared text contracts must depend only on the implicit .NET framework, never Host or implementation projects or private dependencies." />
+  </Target>
+</Project>

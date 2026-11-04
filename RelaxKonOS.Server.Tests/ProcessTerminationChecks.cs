@@ -29,7 +29,7 @@ public static class ProcessTerminationChecks
         };
         var helper = new WindowsNamedPipePrivilegedOperationTransport(options,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<WindowsNamedPipePrivilegedOperationTransport>.Instance);
-        var sampler = new RelaxKonOS.Server.SystemPerformance.ProcessSampler(new OrdinaryControl(), mode, helper);
+        var sampler = new RelaxKonOS.Server.SystemPerformance.ProcessSampler(new OrdinaryControl(), mode, helper, new TestSystemPerformanceWorkLeases());
         var ordinary = await sampler.QueryAsync(1, 500, null, null, true);
         var elevated = await sampler.QueryAsync(1, 500, null, null, true, elevated: true);
         if (ordinary.TotalCount <= 0 || elevated.TotalCount <= 0) throw new InvalidOperationException("Installed context returned no processes.");
@@ -72,16 +72,21 @@ public static class ProcessTerminationChecks
             try { RelaxKonOS.Server.SystemPerformance.HostProcessSnapshotCollector.Capture(_ => throw new InvalidOperationException("test visibility failure")); }
             catch (InvalidOperationException error) { rejected = error.InnerException?.Message == "test visibility failure"; }
             Check(rejected, "An entirely failed enumeration reports its cause instead of an empty successful snapshot");
-            var icons = new RelaxKonOS.Server.SystemPerformance.ProcessIconProvider();
+            using var icons = new RelaxKonOS.Server.SystemPerformance.ProcessIconProvider();
             Check(await icons.GetIconAsync(current.Id, identity.AddMinutes(-1), default) is null,
                 "Windows icon lookup rejects a different process instance");
             Check(await icons.GetIconAsync(current.Id, identity, default) is { Data.Length: > 0, ContentType: "image/png" },
                 "Windows confirmed instance icon is encoded as PNG");
+            Check(icons.CacheSnapshot.Entries == 1 && icons.CacheSnapshot.Bytes > 0,
+                "Real Windows icon payload belongs to this provider's instance cache");
+            icons.Dispose();
+            Check(icons.CacheSnapshot == (0, 0, 0) && await icons.GetIconAsync(current.Id, identity, default) is null,
+                "Disposed real icon provider clears retained payload and does not resume caching");
             foreach (var mode in new[] { RelaxKonOS.Protocol.Common.ServerMode.User, RelaxKonOS.Protocol.Common.ServerMode.System })
             {
                 var transport = new ProcessTransport(snapshot);
                 var ordinaryControl = new OrdinaryControl();
-                var sampler = new RelaxKonOS.Server.SystemPerformance.ProcessSampler(ordinaryControl, new ProcessMode(mode), transport);
+                var sampler = new RelaxKonOS.Server.SystemPerformance.ProcessSampler(ordinaryControl, new ProcessMode(mode), transport, new TestSystemPerformanceWorkLeases());
                 Check((await sampler.QueryAsync(1, 500, null, null, true)).Items.Any(item => item.Id == current.Id)
                     && transport.Operations.Count == 0, $"Windows {mode} ordinary list works without the helper");
                 await sampler.GetIconAsync(current.Id, identity);
@@ -146,7 +151,7 @@ public static class ProcessTerminationChecks
     {
         var mode = new ProcessMode(RelaxKonOS.Protocol.Common.ServerMode.User);
         var transport = new ProcessTransport(snapshot);
-        var sampler = new RelaxKonOS.Server.SystemPerformance.ProcessSampler(new OrdinaryControl(), mode, transport);
+        var sampler = new RelaxKonOS.Server.SystemPerformance.ProcessSampler(new OrdinaryControl(), mode, transport, new TestSystemPerformanceWorkLeases());
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders(); builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddAuthorization();

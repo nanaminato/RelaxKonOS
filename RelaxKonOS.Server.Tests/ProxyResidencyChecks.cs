@@ -79,7 +79,73 @@ internal static class ProxyResidencyChecks
         try { await rejectedStore.EnqueueAsync("refused", "test", (_, _) => throw new Exception("Refused executed"), default); throw new Exception("Refused accepted"); }
         catch (ProxyOperationValidationException) { Check(!Directory.Exists(rejectedRoot) && refused.Active == 0, "Lease admission failure precedes durable queued acceptance and never starts work"); }
         await CheckParserAsync(Check);
+        await CheckCollectionBudgetAsync(Check);
         Console.WriteLine($"Proxy residency and independent assembly checks passed: {count}");
+    }
+
+    private static async Task CheckCollectionBudgetAsync(Action<bool, string> check)
+    {
+        var gate = new ProxySubscriptionExecutionGate();
+        var pending = FillCollectionBudget(gate, check);
+        for (var i = 0; pending.Any(code => code.IsAlive) && i < 30; i++)
+        {
+            GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect(); await Task.Delay(10);
+        }
+        check(pending.All(code => !code.IsAlive), "Collection budget holds only weak references even after concurrent admission rejection");
+        var generations = new List<WeakReference>();
+        for (var generation = 0; generation < 100; generation++)
+        {
+            var output = gate.Normalize("vless://test-id@example.com:443#cycle", out var code);
+            if (!output.Contains("example.com")) throw new Exception("Conversion changed after reopening budget");
+            generations.Add(code);
+            for (var i = 0; code.IsAlive && i < 30; i++)
+            {
+                GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect(); await Task.Delay(10);
+            }
+            if (code.IsAlive) throw new Exception("Conversion context survived bounded collection observation");
+        }
+        check(generations.All(code => !code.IsAlive), "100 real conversion generations collect and reuse admission after budget saturation without retaining old code");
+        var failure = CaptureConversionFailure(gate);
+        check(failure.Error.InnerException is null && failure.Error.Message == "Proxy subscription conversion failed.",
+            "Private conversion failure crosses the Host boundary only as a neutral exception without an inner implementation error");
+        for (var i = 0; failure.Code.IsAlive && i < 30; i++)
+        {
+            GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect(); await Task.Delay(10);
+        }
+        check(!failure.Code.IsAlive, "Retaining the completed Host failure and its stack does not retain failed conversion code");
+        GC.KeepAlive(failure.Error);
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static (WeakReference Code, InvalidDataException Error) CaptureConversionFailure(ProxySubscriptionExecutionGate gate)
+    {
+        WeakReference code = null!;
+        try { gate.Normalize(null!, out code); }
+        catch (InvalidDataException error) { return (code, error); }
+        throw new Exception("Invalid private conversion unexpectedly succeeded");
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static WeakReference[] FillCollectionBudget(ProxySubscriptionExecutionGate gate, Action<bool, string> check)
+    {
+        var retained = new List<object>();
+        var pending = new List<WeakReference>();
+        for (var i = 0; i < ProxySubscriptionExecutionGate.MaxOutstandingContexts; i++)
+        {
+            gate.Normalize("vless://test-id@example.com:443#retained", out var code);
+            retained.Add(code.Target ?? throw new Exception("Context collected before test retention"));
+            pending.Add(code);
+        }
+        var rejected = 0;
+        Parallel.For(0, 32, _ =>
+        {
+            try { gate.Normalize("vless://test-id@example.com:443#overflow", out var ignored); }
+            catch (InvalidDataException error) when (error.Message.Contains("collection is pending") && error.InnerException is null)
+            { Interlocked.Increment(ref rejected); }
+        });
+        check(rejected == 32, "Retained conversion contexts cap concurrent admission with neutral Host errors and no forced collection");
+        GC.KeepAlive(retained);
+        return pending.ToArray();
     }
 
     private static async Task CheckParserAsync(Action<bool,string> check)
