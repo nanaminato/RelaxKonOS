@@ -24,6 +24,8 @@ HTTP 响应后续：已授权结果的实际 JSON 序列化、图标写入等执
 
 连接预算后续：性能 Hub owner 最多持有 128 个准入中、存活或故障连接，超限直接拒绝；正常清理可补位，取消通知不提前释放名额，未知故障继续占用。Windows/Linux 新增预算各 13 项及原专项通过，范围见[边界设计 §36](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#36-连续-hub-连接的准入数量预算2026-11-04mb-07-部分)；不是整个 Server 的内存上限，模块仍 resident。
 
+管理员图标后续：Helper 编码图标先检查 349528 字符预算，再解码并保留 256 KiB 输出检查，避免超大输入先分配解码数组；超预算仍按原缺失图标回退，不重放 Helper。Windows/Linux 各14项及原专项通过，范围见[边界设计 §37](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#37-管理员图标-base64-解码前预算2026-11-04mb-07-部分)。本轮不改变权限/进程实例核验，也不声称整个传输或进程树内存已受此预算限制。
+
 `PerformanceInfoDto` 包含低频 CPU、内存、文件系统、磁盘、网络身份及显式能力位；`PerformanceRealtimeSnapshotDto` 包含递增 sequence、UTC timestamp、CPU、内存、文件系统容量、磁盘 I/O、网络计数与速率、uptimeSeconds、health。文件系统容量和块设备 I/O 分开显示。未知增强指标保留 null；能力 false 时不显示伪造的数值。当前性能契约没有 GPU 实时数据，GPU/传感器为后续扩展。
 
 ## 当前 REST 与 Hub

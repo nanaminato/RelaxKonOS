@@ -10,6 +10,8 @@ namespace RelaxKonOS.Server.SystemPerformance;
 /// Request authorization is checked before this singleton is called, including cached reads.</summary>
 public sealed class ProcessSampler : IProcessService, IDisposable, IHostedService
 {
+    internal const int MaximumPrivilegedIconBytes = 256 * 1024;
+    internal const int MaximumPrivilegedIconBase64Chars = ((MaximumPrivilegedIconBytes + 2) / 3) * 4;
     private readonly RelaxKonOS.Server.SystemMonitor.ISystemMetricsProvider legacyControl;
     private readonly IServerModeResolver mode;
     private readonly IPrivilegedOperationTransport privilegedOperations;
@@ -120,12 +122,12 @@ public sealed class ProcessSampler : IProcessService, IDisposable, IHostedServic
             return IsVisibleOrdinarily(processId) ? await _icons.GetIconAsync(processId, expectedStartTime, CancellationToken.None) : null;
         var result = await privilegedOperations.ExecuteAsync(new(PrivilegedOperationKind.ProcessIcon,
             ProcessId: processId, ProcessExpectedStartTime: expectedStartTime), CancellationToken.None);
-        if (!result.Success || result.OutputBase64 is not { Length: > 0 } encoded
+        if (!result.Success || result.OutputBase64 is not { Length: > 0 and <= MaximumPrivilegedIconBase64Chars } encoded
             || result.ProcessIconContentType is not ("image/png" or "image/svg+xml")) return null;
         try
         {
             var bytes = Convert.FromBase64String(encoded);
-            return bytes.Length is > 0 and <= 262_144 ? new(bytes, result.ProcessIconContentType) : null;
+            return bytes.Length is > 0 and <= MaximumPrivilegedIconBytes ? new(bytes, result.ProcessIconContentType) : null;
         }
         catch (FormatException) { return null; }
     }

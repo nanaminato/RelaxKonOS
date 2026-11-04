@@ -321,6 +321,7 @@ if (args.Contains("--installed-personal-processes-only"))
 }
 if (args.Contains("--process-termination-only"))
 {
+    await ProcessPrivilegedIconBudgetChecks.RunAsync();
     await ProcessRequestResidencyChecks.RunAsync();
     await ProcessIconResidencyChecks.RunAsync();
     await ProcessIconWorkChecks.RunAsync();
@@ -332,6 +333,7 @@ if (args.Contains("--process-termination-only"))
 }
 if (args.Contains("--performance-only"))
 {
+    await ProcessPrivilegedIconBudgetChecks.RunAsync();
     await PerformanceHttpResidencyChecks.RunAsync();
     await PerformanceHubBudgetChecks.RunAsync();
     await PerformanceHubConnectionChecks.RunAsync();
@@ -725,6 +727,7 @@ await NetworkProxyTunnelChecks.VerifyFrpRuntimeInstallAndRollbackAsync(root);
     HostOperatingSystemChecks.Run();
     await ServerCoreChecks.VerifyTrackedWorkspaceWallpaperUpdateAsync(root);
     await ServerCoreChecks.VerifyRegistryRuntimeCacheAsync(root);
+    await ProcessPrivilegedIconBudgetChecks.RunAsync();
     await PerformanceHttpResidencyChecks.RunAsync();
     await PerformanceHubBudgetChecks.RunAsync();
     await PerformanceHubConnectionChecks.RunAsync();

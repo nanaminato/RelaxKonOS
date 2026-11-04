@@ -755,4 +755,18 @@ Host 内部新增 `SystemPerformanceResult`，在 `IResult.ExecuteAsync` 真正�
 
 原 Windows/Linux HTTP 各 **15 项**、连续连接各 **25 项**、广播各 **15 项**、性能驻留各 **53 项**、进程/图标/性能专项与 Linux Proxy 驻留 **28 项**通过；Windows 默认模块全量回归通过。Server/Server.Tests/ServerModules.Tests Release 构建及 Server.Tests linux-x64 发布通过，既有告警保留。证据位于 `.artifacts/performance-connection-budget-20261104/`，含平台日志、默认模块、环境与上传 SHA256 核验；用户授权后直接复用测试机 `/home/nanami/relaxkonos-tests`。子 agent 实现测试，另一子 agent 只读复核预留转移、取消和 Stop 竞态后未发现实质问题；`git diff --check` 通过，测试机凭据仍在本地忽略文件中。
 
-128 是 owner 持有的连接数量上限，不是整个 SignalR/Kestrel 连接上限、每个连接的组操作等待数量、载荷字节预算或整个 Server 的内存峰值；超限拒绝本身也不代表握手传输已完成物理关闭。故障恢复、整体资源清单、真实压力/网络矩阵、程序集释放与生产进程树内存/延迟继续开放。SystemPerformance 仍 resident/KeepLoaded/不可释放，MB-07、RES-01/03/04/07 不关闭；本节实现尚未提交、推送或部署。
+128 是 owner 持有的连接数量上限，不是整个 SignalR/Kestrel 连接上限、每个连接的组操作等待数量、载荷字节预算或整个 Server 的内存峰值；超限拒绝本身也不代表握手传输已完成物理关闭。故障恢复、整体资源清单、真实压力/网络矩阵、程序集释放与生产进程树内存/延迟继续开放。SystemPerformance 仍 resident/KeepLoaded/不可释放，MB-07、RES-01/03/04/07 不关闭；本节实现随后本地提交为 `c3a38243`，尚未推送或部署。
+
+## 37. 管理员图标 Base64 解码前预算（2026-11-04，MB-07 部分）
+
+资源核对发现 `ProcessSampler.GetIconCoreAsync` 的管理员路径原先在 `Convert.FromBase64String` 分配完成后才检查 256 KiB 输出上限，超大 Helper 响应可以先分配不需要的解码数组。现在先检查原始编码字符串最多 **349528 个字符**（256 KiB 数据的 Base64 长度上界），再进入原解码器；空白也计入输入预算，不先扫描/复制以规避预算。保留原解码后 **256 KiB** 检查，因为同一最大编码长度也能表示多 1～2 字节的载荷。
+
+失败响应、非 PNG/SVG 类型、无效/空编码和超预算仍返回原可选图标空结果，不重放 Helper，不放宽权限或 PID/时间核验。现有 4+32 队列、协调器工作租约、请求取消及实际 Task 排空不变。预算约束此 facade 的解码输入和解码数组，最多还会为同长度的超限编码分配两字节额外空间后拒绝；它不约束已经在传输层构造的字符串/JSON、Helper 进程树峰值、图像原生解码或全请求内存。
+
+新增 `ProcessPrivilegedIconBudgetChecks` 接入默认、进程和性能专项，Windows/Ubuntu 26.04 各 **14 项**通过：实际 facade 与真实协调器下 PNG/SVG 精确输出边界、同编码长度的多 1～2 字节输出拒绝、超长/空白膨胀输入拒绝、预算内既有空白处理、格式错误/空输出/不支持类型/失败响应回退、每次只执行一次并归还租约、owner/协调器关闭拒绝。测试仅替换 Helper 外部传输，不访问真实管理员进程图标。
+
+新增分配回归预先构造 **4194304 字符**有效 Base64 并热身真实准入；实际同步完成的 facade 调用拒绝输入，调用线程新增分配 **小于 256 KiB**，不创建其 3 MiB 解码数组。输入构造在测量窗口之外，不把 UTF-16 输入字符串或其他线程内存当成零成本，不使用全局 GC/工作集裁剪。这是受控解码分配回归，不是生产 RSS 或整个进程树收益测量。
+
+原 Windows/Linux HTTP15、连接预算13、连续连接25、广播15、性能驻留53、请求19、图标租约14/工作19、desktop11/12、图像输入17/18、缓存各15及性能采样通过；Linux 原进程与 Proxy 驻留28通过。Server/Server.Tests Release 构建及 Server.Tests linux-x64 发布通过，既有告警保留。本轮没有修改默认模块注册或公开端点，未重复默认模块全量回归，不沿用上一轮结果冒充本轮执行。证据位于 `.artifacts/process-privileged-icon-budget-20261104/`，包括平台日志、环境、远端路径及上传 SHA256 核验；用户授权后直接复用 `/home/nanami/relaxkonos-tests`。子 agent 实现测试，另一子 agent 只读核对 padding、空白与分配边界后未发现实质问题；`git diff --check` 通过，凭据仍为本地忽略文件。
+
+SystemPerformance 仍 resident/KeepLoaded/不可释放，整体资源清单、真实压力/网络故障、程序集释放与生产进程树内存/延迟继续开放，MB-07、RES-01/03/04/07 不关闭。本节实现尚未提交、推送或部署，全部既有成果保留。
