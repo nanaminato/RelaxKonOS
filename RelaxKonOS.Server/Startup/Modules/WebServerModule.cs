@@ -15,9 +15,10 @@ namespace RelaxKonOS.Server.Startup.Modules;
 /// time, so disabling certificates without disabling this module stops startup with a clear message
 /// rather than leaving a half-working publication path.
 /// </summary>
-internal sealed class WebServerModule : IServerModule, IServerModuleDeactivationGuard
+internal sealed class WebServerModule : IServerModule, IServerModuleDeactivationGuard, IServerModuleWorkResidency
 {
     public string Id => ServerModules.WebServerId;
+    public RelaxKonOS.Server.Residency.IServerModuleRuntimeFactory RuntimeFactory { get; } = new RelaxKonOS.Server.Residency.ResidentModuleWorkRuntimeFactory(ServerModules.WebServerId);
     public IReadOnlyList<string> Capabilities => [ServerCapabilities.WebServer];
     public IReadOnlyList<string> Requires => [ServerModules.CertificatesId];
 
@@ -42,6 +43,8 @@ internal sealed class WebServerModule : IServerModule, IServerModuleDeactivation
         IServiceProvider services, ServerModuleContext context, CancellationToken cancellationToken)
     {
         IReadOnlyList<RelaxKonOS.Protocol.WebsitePublishing.WebsitePublicationOperationDto> pending;
+        if (services.GetService<RelaxKonOS.Server.Residency.ModuleResidencyCoordinator>()?.HasBackgroundWork(Id) == true)
+            return ValueTask.FromResult<IReadOnlyList<ServerModuleOrphanedWork>>([new(Id, "Website publication execution or cleanup remains owned in this process.")]);
         try
         {
             // The module's own registration is absent while it is disabled, so the ledger is opened

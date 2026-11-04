@@ -5,16 +5,21 @@ using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Protocol.Hubs;
 using RoyalTerminal.Terminal;
 using RelaxKonOS.Server.Hubs;
+using RelaxKonOS.Server.Residency;
+using RelaxKonOS.Server.Startup;
 
 namespace RelaxKonOS.Server.Terminal;
 
 /// <summary>
 /// 持久终端会话注册表（Singleton）。按 <see cref="TerminalSession.SessionId"/> 索引、按 UserId 归属。
-/// PTY 由本管理器持有，独立于 Hub 连接生命周期：连接断开不会移除会话，只有显式 <see cref="Remove"/>
+/// PTY 由本管理器持有，独立于 Hub 连接生命周期：连接断开不会移除会话，只有显式 <see cref="RemoveAsync"/>
 /// （客户端 Close / 关闭终端窗口）或子进程退出才清理。
 /// </summary>
-public sealed class TerminalSessionManager
+public sealed class TerminalSessionManager : IHostedService, IDisposable
 {
+    private readonly SemaphoreSlim _creation = new(1, 1);
+    private volatile bool _stopping;
+    private readonly IResidentModuleWorkLeaseSource _leases;
     private readonly ConcurrentDictionary<string, TerminalSession> _sessions = new();
     private readonly IPtyFactory _ptyFactory;
     private readonly IHubContext<TerminalHub, ITerminalHubClient> _hub;
@@ -24,42 +29,54 @@ public sealed class TerminalSessionManager
     public TerminalSessionManager(
         IPtyFactory ptyFactory,
         IHubContext<TerminalHub, ITerminalHubClient> hub,
-        Settings.WorkspaceEnvironmentService environment, IServiceScopeFactory scopeFactory)
+        Settings.WorkspaceEnvironmentService environment, IServiceScopeFactory scopeFactory, IResidentModuleWorkLeaseSource leases)
     {
         _ptyFactory = ptyFactory;
         _hub = hub;
         _environment = environment;
         _scopeFactory = scopeFactory;
+        _leases = leases;
     }
 
     /// <summary>
     /// 附加到既有会话（sessionId 命中、归属当前用户、未退出），否则新建。返回会话与是否新建。
     /// </summary>
-    public (TerminalSession Session, bool Created) GetOrCreate(
-        string userId, string? sessionId, StartTerminalRequest req, bool administrator = false)
+    public async Task<(TerminalSession Session, bool Created)> GetOrCreateAsync(
+        string userId, string? sessionId, StartTerminalRequest req, bool administrator = false, CancellationToken ct = default)
     {
+        await _creation.WaitAsync(ct);
+        try
+        {
+        if (_stopping) throw new InvalidOperationException("terminal.host_stopping");
         // 1) 尝试附加既有会话
         if (!string.IsNullOrWhiteSpace(sessionId)
             && _sessions.TryGetValue(sessionId, out var existing)
             && existing.UserId == userId
             && !existing.HasExited)
         {
+            existing.ThrowIfClosing();
             return (existing, false);
         }
 
         // 2) 新建：spawn PTY
         var id = Guid.NewGuid().ToString("N");
-        var pty = administrator && _ptyFactory is PlatformPtyFactory platform ? platform.CreateAdministrator() : _ptyFactory.Create();
+        var lease = await _leases.AcquireAsync(ServerModules.TerminalId, ct);
+        IPty pty;
+        try { ct.ThrowIfCancellationRequested(); lease.Stopping.ThrowIfCancellationRequested();
+            if (_stopping) throw new InvalidOperationException("terminal.host_stopping");
+            pty = administrator && _ptyFactory is PlatformPtyFactory platform ? platform.CreateAdministrator() : _ptyFactory.Create(); }
+        catch { lease.Dispose(); throw; }
         if (administrator)
         {
             if (pty is not WindowsUserTerminalPty administratorPty)
             {
                 (pty as IDisposable)?.Dispose();
+                lease.Dispose();
                 throw new PlatformNotSupportedException("Administrator terminals require Windows System Mode with the Helper backend.");
             }
             administratorPty.IsAdministrator = true;
         }
-        var session = new TerminalSession(id, userId, pty, _hub, onExited: Remove) { IsAdministrator = administrator };
+        var session = new TerminalSession(id, userId, pty, _hub, onClosed: Remove, lease) { IsAdministrator = administrator };
         _sessions[id] = session;
 
         var shell = string.IsNullOrWhiteSpace(req.Shell) ? DefaultShell() : req.Shell!;
@@ -87,17 +104,23 @@ public sealed class TerminalSessionManager
                 configurable.WorkspaceEnvironment = new(snapshot.Variables.Select(value => new RelaxKonOS.Protocol.Settings.EnvironmentMutation(value.Name,
                     RelaxKonOS.Protocol.Settings.EnvironmentMutationKind.Set, value.RawValue, value.ValueKind)).ToArray(), snapshot.PathMode);
             }
+            ct.ThrowIfCancellationRequested(); lease.Stopping.ThrowIfCancellationRequested();
+            if (_stopping) throw new InvalidOperationException("terminal.host_stopping");
             pty.Start(shell, req.Columns, req.Rows, workingDirectory, null, null);
+            ct.ThrowIfCancellationRequested(); lease.Stopping.ThrowIfCancellationRequested();
         }
         catch
         {
             // 启动失败：回滚，不留半启动会话
-            _sessions.TryRemove(id, out _);
-            session.Kill();
+            session.FinishStart();
+            await session.CloseAsync();
             throw;
         }
 
+        session.FinishStart();
         return (session, true);
+        }
+        finally { _creation.Release(); }
     }
 
     public bool TryGet(string sessionId, out TerminalSession? session) =>
@@ -111,14 +134,29 @@ public sealed class TerminalSessionManager
             .ToList();
 
     /// <summary>手动终止并移除会话（杀 PTY）。</summary>
-    public void Remove(string sessionId)
+    public Task RemoveAsync(string sessionId)
     {
-        if (_sessions.TryRemove(sessionId, out var session))
-            session.Kill();
+        return _sessions.TryGetValue(sessionId, out var session) ? session.CloseAsync() : Task.CompletedTask;
     }
 
     /// <summary>ProcessExited 回调路径：从字典移除（PTY 已自行退出，无需再 Kill）。</summary>
     private void Remove(TerminalSession session) => _sessions.TryRemove(session.SessionId, out _);
+
+    public Task StartAsync(CancellationToken ct) => Task.CompletedTask;
+    public async Task StopAsync(CancellationToken ct)
+    {
+        _stopping = true;
+        await _creation.WaitAsync(ct);
+        Task[] close;
+        try { close = _sessions.Values.Select(session => session.CloseAsync()).ToArray(); }
+        finally { _creation.Release(); }
+        await Task.WhenAll(close).WaitAsync(ct);
+    }
+    public void Dispose()
+    {
+        _stopping = true;
+        foreach (var session in _sessions.Values) _ = session.CloseAsync();
+    }
 
     private static string DefaultShell() =>
         RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "powershell" : "bash";

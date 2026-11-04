@@ -2,6 +2,14 @@
 
 Server 的 Terminal 已接入官方模块注册试点，默认启用。可在受控 Server 配置设置 `Modules:Terminal:Enabled=false` 并重启以禁用其 PTY 服务与 Hub；桌面端在 Server 未公布 `server.terminal` 时阻止启动和自动恢复。该开关不移除发布包中的代码或依赖，也不支持在线切换；部署和会话生命周期的验收边界见[模块设计实施记录](../architecture/RelaxKonOS.ModulesAndExtensions.Design.md#首个注册框架与-terminal-试点2026-10-27)。
 
+2026-11-04 Terminal-T1 实现：Terminal 以 resident 工作 owner 接入同一模块协调器，保持 KeepLoaded/不可释放。每个服务端会话从创建到 PTY 清理与输出发送实际完成持续持有工作租约，Hub 断连只 detach，继续保留 PTY 和 1 MiB 恢复环形缓冲。新建/关闭直接采用 `GetOrCreateAsync` / `RemoveAsync` 当前接口，没有同步兼容入口；Host Stop 关闭新建准入并等待真实清理，等待预算取消不把在途工作清零。
+
+输出、恢复回放和退出通知使用同一串行发送 owner，不再丢弃发送 Task；待发及在途输出合计限制为 1 MiB、128 项，另最多一条零载荷退出控制项。超出预算会 detach 并中断慢连接，保留 PTY 和恢复环形缓冲，不能静默丢弃 VT 后仍将连接显示为正常。已经开始的发送没有取消等待捷径，关闭要等待它的真实 Task 结束。已确认关闭后退订 PTY 事件并清空 owner 的缓冲引用；失败/未知清理调用租约的 RequireRecovery 隔离同一 runtime，保留会话条目和租约并阻止新准入，不自动重试或报告成功。
+
+用户执行协议直接升级为 **1.10**：Windows/Linux Helper 输出均使用有界 Output 帧，并只在自身 PTY 根进程、读写线程及输出清理完成后发送 Exited 确认。Server 等待确认而非将 pipe/stdout EOF 或 Helper 进程退出视作成功；旧 raw 输出不再兼容，Server/Helper 必须同时更新。Linux 路径同时跟踪 stdout/stderr/Helper 退出 Task。本地 Unix 后端在实际 spawn 后取得 pidfd，核对该实例仍为当前进程的直接子进程并验证启动身份，Stop 等库的读写线程 join 后再用绑定描述符确认退出和 waitid(P_PIDFD) 回收；不依赖可能被库 Stop 抑制的退出事件，不以裸 PID 缺失判成功，也不新增 PID kill 回退。Windows 自有 ConPTY 等待根进程和自有线程完成。此处仍不证明所有原生后端及逃逸子孙进程的完整树回收，也未实现 Terminal 程序集卸载或生产内存收益。当前冻结构建的验证结果由模块边界里程碑文档记录。
+
+Terminal-T1 联合候选的 Windows 验证已通过：受控会话/发送/失败隔离及实际自有 ConPTY 停止共 15 项，Output/Exited 帧 5 项，既有 Hub 合同和管理员权限检查通过；记录位于 `.artifacts/module-milestones-20261104/milestones-windows-2.log`。该记录不等于真实已安装 Helper/S4U 部署或完整子孙进程树验收；最终候选构建摘要、Linux 结果及残余阻塞由架构总里程碑统一记录，不能将较早日志冒充后续改动的复验。
+
 > **当前 UI 行为（优先于下文早期工具条描述）**：一个服务端 PTY 对应一个桌面终端窗口；不提供会话切换、新建、断开、Restart 或 Clear 按钮。进入已认证桌面时会自动恢复所有存活会话；再次手动打开 Terminal 时也会恢复存活会话，若不存在会话则新建一个。只有关闭某个终端窗口才会显式终止对应的服务端进程。字体、字号、配色为 Workspace 级设置（桌面渲染引擎固定为 RoyalTerminal，见 §2.4），经 `GET`/`PUT /api/v1.0/workspaces/{id}/terminal-settings` 保存在服务器端。
 
 > 内置终端应用：基于 [RoyalTerminal](https://github.com/royalapplications/RoyalTerminal) NuGet 包引入终端能力，支持 **Remote Mode**（SignalR 远端 PTY）与 **Local Mode**（本地 PTY 回退）。

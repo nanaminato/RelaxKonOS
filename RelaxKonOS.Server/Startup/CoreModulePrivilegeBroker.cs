@@ -15,7 +15,7 @@ namespace RelaxKonOS.Server.Startup;
 internal sealed class CoreModulePrivilegeBroker(IHostEnvironment environment, IConfiguration configuration,
     ServerModules modules, ModuleManagementStore management, IServiceProvider services) : IHostedService
 {
-    private sealed record RequestContext(string ModuleId, ClaimsPrincipal User, DateTimeOffset ExpiresAt);
+    private sealed record RequestContext(string ModuleId, Guid GenerationId, ClaimsPrincipal User, DateTimeOffset ExpiresAt);
     private readonly ConcurrentDictionary<string, RequestContext> _contexts = new(StringComparer.Ordinal);
     private WebApplication? _application;
     internal ModulePrivilegePlanStore Plans { get; private set; } = null!;
@@ -34,11 +34,12 @@ internal sealed class CoreModulePrivilegeBroker(IHostEnvironment environment, IC
         _application = builder.Build();
         _application.MapPost("/background", async (ModulePrivilegeBackgroundRequest request, HttpContext http) => await Respond(async () =>
         {
-            var moduleId = services.GetRequiredService<ModuleHostSupervisor>()
-                .Authenticate(http.Request.Headers[ModuleHostProtocol.ServiceTokenHeader].ToString())
+            using var connection = services.GetRequiredService<ModuleHostSupervisor>()
+                .AcquireAuthenticated(http.Request.Headers[ModuleHostProtocol.ServiceTokenHeader].ToString())
                 ?? throw new ModulePrivilegeException("module.privilege_denied", 403);
+            var moduleId = connection.ModuleId;
             if (request.Operation is null) throw new ModulePrivilegeException("module.privilege_target_invalid", 400);
-            return Results.Ok(await Consents.ExecuteAsync(request.ConsentId, moduleId, request.Operation, async authority =>
+            var status = await Consents.ExecuteAsync(request.ConsentId, moduleId, request.Operation, async authority =>
             {
                 var session = "consent:" + authority.Id.ToString("N");
                 var prepared = await Plans.PrepareAsync(moduleId, session, request.Operation, authority.Actor,
@@ -58,15 +59,18 @@ internal sealed class CoreModulePrivilegeBroker(IHostEnvironment environment, IC
                         using var actor = PrivilegedAuditActorScope.Enter(authority.Actor);
                         return await ExecuteCapabilityAsync(scope.ServiceProvider.GetRequiredService<IPrivilegedOperationTransport>(), operationId, execution);
                     });
-            }));
+            });
+            await Results.Ok(status).ExecuteAsync(http);
+            return Results.Empty;
         }));
         _application.MapPost("/prepare", async (ModulePrivilegeRequest request, HttpContext http) => await Respond(async () =>
         {
             var hosts = services.GetRequiredService<ModuleHostSupervisor>();
-            var moduleId = hosts.Authenticate(http.Request.Headers[ModuleHostProtocol.ServiceTokenHeader].ToString())
+            using var connection = hosts.AcquireAuthenticated(http.Request.Headers[ModuleHostProtocol.ServiceTokenHeader].ToString())
                 ?? throw new ModulePrivilegeException("module.privilege_denied", 403);
+            var moduleId = connection.ModuleId;
             var key = http.Request.Headers[ModulePrivilegeProtocol.RequestContextHeader].ToString();
-            if (!_contexts.TryGetValue(key, out var context) || context.ModuleId != moduleId || context.ExpiresAt <= DateTimeOffset.UtcNow
+            if (!_contexts.TryGetValue(key, out var context) || context.ModuleId != moduleId || context.GenerationId != connection.GenerationId || context.ExpiresAt <= DateTimeOffset.UtcNow
                 || !hosts.CanAccess(moduleId, context.User))
                 throw new ModulePrivilegeException("module.privilege_background_denied", 403);
             using var scope = services.CreateScope();
@@ -74,18 +78,21 @@ internal sealed class CoreModulePrivilegeBroker(IHostEnvironment environment, IC
                 throw new ModulePrivilegeException("module.privilege_denied", 403);
             var actor = context.User.FindFirstValue("sub") ?? context.User.FindFirstValue(ClaimTypes.NameIdentifier)
                 ?? throw new ModulePrivilegeException("module.privilege_denied", 403);
-            return Results.Ok(await Plans.PrepareAsync(moduleId, Session(context.User), request, actor,
+            var prepared = await Plans.PrepareAsync(moduleId, Session(context.User), request, actor,
                 query => QueryPackageAsync(services, actor, query),
                 query => QueryFileAsync(services, actor, query),
                 query => QueryDataAsync(services, actor, query),
-                query => QueryApplicationAsync(services, actor, query)));
+                query => QueryApplicationAsync(services, actor, query));
+            await Results.Ok(prepared).ExecuteAsync(http);
+            return Results.Empty;
         }));
         _application.MapGet("/plans/{id:guid}", async (Guid id, HttpContext http) => await Respond(async () =>
         {
-            var module = services.GetRequiredService<ModuleHostSupervisor>()
-                .Authenticate(http.Request.Headers[ModuleHostProtocol.ServiceTokenHeader].ToString())
+            using var connection = services.GetRequiredService<ModuleHostSupervisor>()
+                .AcquireAuthenticated(http.Request.Headers[ModuleHostProtocol.ServiceTokenHeader].ToString())
                 ?? throw new ModulePrivilegeException("module.privilege_denied", 403);
-            return Results.Ok(await Plans.GetForModuleAsync(id, module));
+            await Results.Ok(await Plans.GetForModuleAsync(id, connection.ModuleId)).ExecuteAsync(http);
+            return Results.Empty;
         }));
         await _application.StartAsync(cancellationToken);
         Url = _application.Urls.Single();
@@ -244,13 +251,13 @@ internal sealed class CoreModulePrivilegeBroker(IHostEnvironment environment, IC
             ?? throw new ModulePrivilegeException("module.privilege_unsupported", 400);
         return new(action, package.SourceRef, package.Resolution);
     }
-    internal string IssueRequestContext(string moduleId, ClaimsPrincipal principal)
+    internal string IssueRequestContext(string moduleId, Guid generationId, ClaimsPrincipal principal)
     {
         foreach (var item in _contexts.Where(p => p.Value.ExpiresAt <= DateTimeOffset.UtcNow)) _contexts.TryRemove(item.Key, out _);
         if (_contexts.Count >= 4096) throw new ModulePrivilegeException("module.privilege_capacity", 503);
         _ = Session(principal);
         var key = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
-        _contexts[key] = new(moduleId, new ClaimsPrincipal(principal), DateTimeOffset.UtcNow.AddMinutes(2));
+        _contexts[key] = new(moduleId, generationId, new ClaimsPrincipal(principal), DateTimeOffset.UtcNow.AddMinutes(2));
         return key;
     }
     internal void ReleaseRequestContext(string key) => _contexts.TryRemove(key, out _);

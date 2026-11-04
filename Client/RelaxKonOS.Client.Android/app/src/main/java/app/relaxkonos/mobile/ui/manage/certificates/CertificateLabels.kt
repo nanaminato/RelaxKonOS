@@ -42,6 +42,7 @@ import app.relaxkonos.mobile.core.net.*
     "succeeded" -> R.string.certificates_state_succeeded
     "failed" -> R.string.certificates_state_failed
     "cancelled" -> R.string.certificates_state_cancelled
+    "cancel-requested" -> R.string.certificates_stage_cancel_requested
     "interrupted" -> R.string.certificates_stage_interrupted
     "validation" -> R.string.certificates_stage_validation
     else -> R.string.certificates_stage_unknown

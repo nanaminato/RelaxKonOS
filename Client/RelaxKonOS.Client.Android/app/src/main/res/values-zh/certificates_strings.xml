@@ -120,6 +120,7 @@
     <string name="certificates_stage_unknown">阶段未核实</string>
     <string name="certificates_stage_validation">输入校验</string>
     <string name="certificates_state_cancelled">已取消</string>
+    <string name="certificates_stage_cancel_requested">已请求取消，等待实际工作结束</string>
     <string name="certificates_state_failed">已失败</string>
     <string name="certificates_state_queued">排队中</string>
     <string name="certificates_state_running">执行中</string>

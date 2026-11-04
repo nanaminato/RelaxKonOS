@@ -170,6 +170,7 @@ internal sealed class ModuleResidencyCoordinator : IAsyncDisposable
                     {
                         case ModuleResidencyState.Active:
                             if (entry.Runtime is null) throw Stopping(moduleId);
+                            if (FailedDependencyLocked(entry) is { } failedDependency) throw Unavailable(failedDependency);
                             entry.Leases++;
                             entry.IdleSince = null;
                             entry.ReleaseRequested = false;
@@ -265,6 +266,7 @@ internal sealed class ModuleResidencyCoordinator : IAsyncDisposable
             var entry = EntryFor(runtime.ModuleId);
             if (entry.State != ModuleResidencyState.Active || !ReferenceEquals(entry.Runtime, runtime))
                 throw new ModuleUnavailableException("module-runtime-generation-mismatch", 30, "The work owner is not the active module generation.");
+            if (FailedDependencyLocked(entry) is { } failedDependency) throw Unavailable(failedDependency);
             entry.Leases++; entry.IdleSince = null; entry.ReleaseRequested = false;
             if (entry.WorkLeases++ == 0) entry.WorkDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
             return new ModuleLease(this, runtime, backgroundWork: true);
@@ -282,6 +284,20 @@ internal sealed class ModuleResidencyCoordinator : IAsyncDisposable
             entry.RetryAfter = DateTimeOffset.MaxValue;
             SetStateLocked(entry, ModuleResidencyState.Faulted);
         }
+    }
+
+    private Entry? FailedDependencyLocked(Entry entry, HashSet<string>? visited = null)
+    {
+        if (entry.Dependencies.Length == 0) return null;
+        visited ??= new(StringComparer.Ordinal);
+        foreach (var id in entry.Dependencies)
+        {
+            if (!visited.Add(id)) continue;
+            var dependency = _entries[id];
+            if (dependency.State == ModuleResidencyState.Faulted) return dependency;
+            if (FailedDependencyLocked(dependency, visited) is { } failed) return failed;
+        }
+        return null;
     }
 
     /// <summary>

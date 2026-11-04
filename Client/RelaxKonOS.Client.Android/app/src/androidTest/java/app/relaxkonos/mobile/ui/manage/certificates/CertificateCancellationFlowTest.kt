@@ -36,6 +36,7 @@ class CertificateCancellationFlowTest {
     private var failList = false
     private val visible = mutableStateOf(true)
     private var identicalPolling = false
+    private var cancellationPending = false
     private val operationReads = java.util.concurrent.atomic.AtomicInteger()
     private val tasks = mutableMapOf<String, CertificateOperation>()
     private val cancellations = mutableListOf<String>()
@@ -68,7 +69,12 @@ class CertificateCancellationFlowTest {
             }
             override suspend fun cancelCertificateOperation(serverUrl: String, accessToken: String, id: String): ApiResult<CertificateOperation> {
                 cancellations += id
-                return tasks[id]?.let { ApiResult.Success(it.copy(state = CertificateOperationState.Cancelled)) } ?: ApiResult.Transport(null)
+                return tasks[id]?.let {
+                    val receipt = if (cancellationPending) it.copy(stage = "cancel-requested")
+                        else it.copy(state = CertificateOperationState.Cancelled)
+                    tasks[id] = receipt
+                    ApiResult.Success(receipt)
+                } ?: ApiResult.Transport(null)
             }
             override suspend fun certificateMutation(serverUrl: String, accessToken: String, action: CertificateAction,
                 id: String?, body: JsonBody, idempotencyKey: String): ApiResult<CertificateOperation> {
@@ -390,6 +396,31 @@ class CertificateCancellationFlowTest {
         rule.onAllNodesWithText(text(R.string.certificates_confirm)).filter(hasClickAction()).onFirst().performClick()
         rule.waitUntil(5_000) { !model.state.busy && model.state.uncertain }
         rule.runOnIdle { assertEquals(1, writes) }
+    }
+    @Test fun cancellationRequestRemainsActiveUntilTheServerConfirmsActualCompletion() {
+        cancellationPending = true
+        show()
+        val running = receipt.copy(state = CertificateOperationState.Running, stage = "running")
+        rule.runOnIdle { tasks[running.operationId] = running; model.recover(running.operationId) }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.operationVerified }
+        rule.onNodeWithText(text(R.string.workspace_operations)).performClick()
+        rule.onNodeWithText(text(R.string.common_cancel)).performScrollTo().performClick()
+        rule.onAllNodesWithText(text(R.string.certificates_confirm)).filter(hasClickAction()).onFirst().performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.operation?.stage == "cancel-requested" }
+        rule.runOnIdle {
+            assertEquals(CertificateOperationState.Running, model.state.operation?.state)
+            assertTrue(model.state.operationVerified)
+            assertEquals(listOf(running.operationId), cancellations)
+        }
+        rule.onNodeWithText(text(R.string.certificates_stage_cancel_requested)).assertIsDisplayed()
+        val reads = recoveredIds.size
+        rule.waitUntil(5_000) { recoveredIds.size > reads }
+        rule.runOnIdle {
+            assertEquals(CertificateOperationState.Running, model.state.operation?.state)
+            tasks[running.operationId] = running.copy(state = CertificateOperationState.Cancelled, stage = "cancelled")
+        }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.operation?.state == CertificateOperationState.Cancelled }
+        rule.runOnIdle { assertEquals(listOf(running.operationId), cancellations) }
     }
     @Test fun cancelConfirmationKeepsOriginalTargetWhenCurrentTaskChanges() {
         show()

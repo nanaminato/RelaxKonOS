@@ -1,12 +1,14 @@
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Server.Residency;
 
 namespace RelaxKonOS.Server.Startup;
 
 /// <summary>Metadata only. Package code is never loaded into the Server for this runtime.</summary>
 internal sealed class InstalledIsolatedModule(InstalledModuleRecord record, string contentRoot)
-    : IServerModule, IInstalledModuleInfo, IServerModuleHealthProbe
+    : IServerModule, IInstalledModuleInfo, IServerModuleHealthProbe, IServerModuleWorkResidency
 {
     private ModuleHostSupervisor? _supervisor;
+    public IServerModuleRuntimeFactory RuntimeFactory { get; } = new ResidentModuleWorkRuntimeFactory(record.ModuleId);
     public string Id => record.ModuleId;
     public IReadOnlyList<string> Capabilities => [];
     public IReadOnlyList<string> Requires => record.Requires;

@@ -18,6 +18,11 @@ internal sealed class ModuleHostProcessClient(string packageRoot, string moduleI
     private WindowsModuleHostClient? _windows;
     private Task? _stderr;
     private ModuleHostReady? _ready;
+    private readonly object _closeGate = new();
+    private Task? _shutdown;
+    private Task? _dispose;
+    private Task? _exit;
+    private bool _treeExitConfirmed;
     private readonly string _serviceToken = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
 
     internal ModuleHostReady Ready => _ready ?? throw new ModulePackageException("module-host-not-started");
@@ -25,6 +30,9 @@ internal sealed class ModuleHostProcessClient(string packageRoot, string moduleI
 
     internal async Task<ModuleHostReady> StartAsync(CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_closeGate)
+            if (_shutdown is not null || _dispose is not null) throw new ModulePackageException("module-host-already-closed");
         if (_process is not null || _windows is not null) return Ready;
         if (isolated && OperatingSystem.IsWindows())
         {
@@ -122,42 +130,50 @@ internal sealed class ModuleHostProcessClient(string packageRoot, string moduleI
             root.TryGetProperty("problemCode", out var code) ? code.GetString() : null);
     }
 
-    internal async Task ShutdownAsync(CancellationToken cancellationToken = default)
+    internal Task ShutdownAsync(CancellationToken cancellationToken = default)
     {
-        if (_windows is not null)
-        {
-            await _windows.ShutdownAsync(cancellationToken);
-            return;
-        }
-        if (_process is null) return;
-        try
-        {
-            await SendAsync(new ModuleHostCommand(ModuleHostProtocol.Shutdown), cancellationToken);
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(CommandTimeout);
-            await _process.WaitForExitAsync(timeout.Token);
-        }
-        catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException) { }
-        finally
-        {
-            if (_process is { HasExited: false }) { try { _process.Kill(true); } catch (InvalidOperationException) { } }
-        }
+        Task shutdown;
+        lock (_closeGate) shutdown = _shutdown ??= ShutdownCoreAsync();
+        return shutdown.WaitAsync(cancellationToken);
     }
 
-    internal async Task AbortAsync()
+    private async Task ShutdownCoreAsync()
     {
         if (_windows is not null)
         {
-            await _windows.DisposeAsync();
-            _windows = null;
-            _ready = null;
+            await _windows.ShutdownAsync(CancellationToken.None);
             return;
         }
         if (_process is null) return;
-        _process.StandardInput.Close();
-        try { await _process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15)); }
-        catch (TimeoutException) { if (!_process.HasExited) _process.Kill(true); }
-        _process.Dispose(); _process = null; _ready = null;
+        if (_process.HasExited)
+        {
+            if (_process.ExitCode != 0 || isolated && OperatingSystem.IsLinux() && !_treeExitConfirmed)
+                throw new ModulePackageException("module-host-exit-unconfirmed");
+            return;
+        }
+        try
+        {
+            await SendAsync(new ModuleHostCommand(ModuleHostProtocol.Shutdown), CancellationToken.None);
+            if (isolated && OperatingSystem.IsLinux())
+            {
+                using var stopped = JsonDocument.Parse(await ReadLineAsync(CommandTimeout, CancellationToken.None));
+                using var tree = JsonDocument.Parse(await ReadLineAsync(CommandTimeout, CancellationToken.None));
+                if (stopped.RootElement.GetProperty("type").GetString() != "stopped"
+                    || stopped.RootElement.GetProperty("moduleId").GetString() != moduleId
+                    || tree.RootElement.GetProperty("type").GetString() != "tree-stopped"
+                    || tree.RootElement.GetProperty("moduleId").GetString() != moduleId)
+                    throw new ModulePackageException("module-host-exit-unconfirmed");
+                _treeExitConfirmed = true;
+            }
+            _exit = _process.WaitForExitAsync();
+            await _exit.WaitAsync(CommandTimeout);
+            if (_process.ExitCode != 0) throw new ModulePackageException("module-host-exit-unconfirmed");
+        }
+        catch (Exception error) when (error is TimeoutException or IOException or InvalidOperationException)
+        {
+            if (!_process.HasExited || _process.ExitCode != 0 || isolated && OperatingSystem.IsLinux() && !_treeExitConfirmed)
+                throw new ModulePackageException("module-host-exit-unconfirmed");
+        }
     }
 
     // Drain in bounded chunks: a module can emit unlimited stderr without a newline.
@@ -216,11 +232,15 @@ internal sealed class ModuleHostProcessClient(string packageRoot, string moduleI
         throw new ModulePackageException("module-host-executable-missing");
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
+    {
+        lock (_closeGate) return new(_dispose ??= DisposeCoreAsync());
+    }
+    private async Task DisposeCoreAsync()
     {
         await ShutdownAsync();
         if (_stderr is not null)
-            try { await _stderr; } catch (Exception) { }
+            await _stderr;
         if (_windows is not null) await _windows.DisposeAsync();
         _windows = null;
         _process?.Dispose();

@@ -1,5 +1,7 @@
 # RelaxKonOS DockerManager 设计
 
+> MB-05A（2026-11-04）：Compose 栈协调器已采用同一驻留协调器的 resident 工作 owner。异步准入在持久 queued 之前取得真实租约，任务先登记再启动，覆盖 Compose、观察和终态持久化；Stop 关闭准入并等待真实 Task，等待超时不清除保护。未知终态写入失败隔离该代 owner 并阻止新副作用，不自动重放 Compose。Core Engine/安装/代理端口和外部容器不随管理生命周期停止。此阶段不是动态休眠、程序集卸载或生产内存收益验收，真实 Engine 的部署/观察/修复/幂等/卷生命周期和工作排空已验收，重启与故障联合矩阵仍开放；整体进展由[模块边界设计](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md)拥有。
+
 > 内置 Docker 管理器。它管理 **RelaxKonOS.Server 所在宿主机** 的本地 Docker Engine；客户端只负责本地 UI 渲染，不直连 Docker socket、不保存 Docker 凭据，也不将守护进程 API 暴露到网络。
 
 > **模块归属（2026-10-28）**：容器/镜像/网络/卷编辑、Compose、栈操作协调器、引擎生命周期与 Docker 代理界面归官方模块 `relaxkonos.docker`，默认启用；设置 `Modules:Docker:Enabled=false` 并重启后，`/api/v1.0/docker/*` 与 `server.docker` 能力消失，桌面 Docker Manager 因缺少该能力在启动前被拒绝。**引擎传输本身留在 Core**：应用部署、Docker 运行时安装、Nginx/Mihomo/FRP 与受管运行时下载都直接使用 `IDockerEngineService`、`IDockerRuntimeInstaller`、`IDockerProxyResolver` 与 `IOutboundHttpClientFactory`，禁用管理界面既不会卸载 Docker，也不会让这些下载意外走直连。详见[模块设计实施记录](../architecture/RelaxKonOS.ModulesAndExtensions.Design.md#docker-模块与引擎传输边界2026-10-28)。

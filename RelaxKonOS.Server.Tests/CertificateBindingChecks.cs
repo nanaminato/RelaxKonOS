@@ -39,7 +39,8 @@ internal static class CertificateBindingChecks
         TestAssert.Assert(registry.Snapshot(id).FingerprintSha256 == exact.GetCertHashString(HashAlgorithmName.SHA256), "Snapshot did not report actual runtime material.");
         var server = new BindingServer();
         var ledger = new CertificateOperationStore(environment, new HostOperationJournal(environment, configuration), certificates,
-            new CertificateRenewalAttemptRepository(environment, configuration, options), NullLogger<CertificateOperationStore>.Instance);
+            new CertificateRenewalAttemptRepository(environment, configuration, options), NullLogger<CertificateOperationStore>.Instance, new TestResidentBackgroundLeases());
+        await ledger.StartAsync(CancellationToken.None);
         var manager = new CertificateManager(certificates, null!, null!, ledger, registry,
             new CertificateDeploymentRepository(environment, configuration), server, new BindingPrivileges(), new TestApplicationLifetime(), NullLogger<CertificateManager>.Instance);
         var unprivilegedManager = new CertificateManager(certificates, null!, null!, ledger, registry,
@@ -66,14 +67,14 @@ internal static class CertificateBindingChecks
             "Self-signed certificate was shown as automatically renewable.");
         await VerifyReplacementEndpointAsync(unprivilegedManager, ledger, id, created.CertificateId!.Value, environment);
         var automaticRenewal = await ledger.StartAsync("renewal-history-failure", id, "renew", "renewal-worker",
-            _ => Task.FromResult("certificate.validation_failed"), CancellationToken.None);
+            _ => Task.FromResult("certificate.validation_failed"), CancellationToken.None, CancellationToken.None);
         await TestOperations.WaitForCertificateOperationAsync(ledger, automaticRenewal.OperationId);
         var renewal = (await manager.GetAsync(id, CancellationToken.None))!.Renewal!;
         TestAssert.Assert(renewal.AutomaticEnabled && renewal.Attempts.Single().Automatic && renewal.Attempts.Single().Operation.State == CertificateOperationState.Failed
             && renewal.Attempts.Single().Operation.CompletedAt is not null && renewal.ConsecutiveFailures == 1 && renewal.RetryAfter is not null,
             "Renewal details omitted automatic failure time or retry schedule.");
         var releaseRenewal = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var manualRenewal = await ledger.StartAsync("renewal-history-success", id, "renew", "alice", _ => releaseRenewal.Task, CancellationToken.None);
+        var manualRenewal = await ledger.StartAsync("renewal-history-success", id, "renew", "alice", _ => releaseRenewal.Task, CancellationToken.None, CancellationToken.None);
         renewal = (await manager.GetAsync(id, CancellationToken.None))!.Renewal!;
         TestAssert.Assert(!renewal.Attempts[0].Automatic && renewal.Attempts[0].Operation.OperationId == manualRenewal.OperationId
             && renewal.Attempts[0].Operation.State is CertificateOperationState.Queued or CertificateOperationState.Running,
@@ -84,14 +85,15 @@ internal static class CertificateBindingChecks
         TestAssert.Assert(renewal.Attempts.Count == 2 && renewal.Attempts[0].Operation.State == CertificateOperationState.Succeeded
             && renewal.ConsecutiveFailures == 0 && renewal.RetryAfter is null, "Success did not retain failure history and reset retry state.");
         var reopenedLedger = new CertificateOperationStore(environment, new HostOperationJournal(environment, configuration), certificates,
-            new CertificateRenewalAttemptRepository(environment, configuration, options), NullLogger<CertificateOperationStore>.Instance);
+            new CertificateRenewalAttemptRepository(environment, configuration, options), NullLogger<CertificateOperationStore>.Instance, new TestResidentBackgroundLeases());
+        await reopenedLedger.StartAsync(CancellationToken.None);
         TestAssert.Assert((await reopenedLedger.GetRenewalInfoAsync(id, true, CancellationToken.None)).Attempts.Count == 2,
             "Renewal execution history was lost after reopening the ledger.");
         for (var index = 0; index < 5; index++) {
-            var entry = await ledger.StartAsync($"renewal-history-{index}", id, "renew", "alice", _ => Task.FromResult(""), CancellationToken.None);
+            var entry = await ledger.StartAsync($"renewal-history-{index}", id, "renew", "alice", _ => Task.FromResult(""), CancellationToken.None, CancellationToken.None);
             await TestOperations.WaitForCertificateOperationAsync(ledger, entry.OperationId);
         }
-        var foreignRenewal = await ledger.StartAsync("foreign-renewal-history", Guid.NewGuid(), "renew", "alice", _ => Task.FromResult(""), CancellationToken.None);
+        var foreignRenewal = await ledger.StartAsync("foreign-renewal-history", Guid.NewGuid(), "renew", "alice", _ => Task.FromResult(""), CancellationToken.None, CancellationToken.None);
         await TestOperations.WaitForCertificateOperationAsync(ledger, foreignRenewal.OperationId);
         renewal = (await manager.GetAsync(id, CancellationToken.None))!.Renewal!;
         TestAssert.Assert(renewal.Attempts.Count == 5 && renewal.Attempts.All(attempt => attempt.Operation.CertificateId == id)

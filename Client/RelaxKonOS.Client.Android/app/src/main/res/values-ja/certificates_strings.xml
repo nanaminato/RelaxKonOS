@@ -120,6 +120,7 @@
     <string name="certificates_stage_unknown">段階は未確認</string>
     <string name="certificates_stage_validation">入力検証</string>
     <string name="certificates_state_cancelled">キャンセル済み</string>
+    <string name="certificates_stage_cancel_requested">キャンセル要求済み・処理の終了を待機中</string>
     <string name="certificates_state_failed">失敗</string>
     <string name="certificates_state_queued">待機中</string>
     <string name="certificates_state_running">実行中</string>

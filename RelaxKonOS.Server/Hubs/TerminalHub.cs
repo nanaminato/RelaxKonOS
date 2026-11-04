@@ -58,7 +58,7 @@ public sealed class TerminalHub : Hub<ITerminalHubClient>
             if (existing.IsAdministrator != administrator)
                 throw new HubException("terminal.session_mode_mismatch");
         }
-        try { (session, created) = _manager.GetOrCreate(userId, sessionId, req, administrator); }
+        try { (session, created) = await _manager.GetOrCreateAsync(userId, sessionId, req, administrator, Context.ConnectionAborted); }
         catch (UserExecutionException exception)
         {
             throw new HubException($"terminal.start_failed: {exception.ProblemCode}: {exception.Message}");
@@ -69,13 +69,13 @@ public sealed class TerminalHub : Hub<ITerminalHubClient>
         {
             // Report the operational reason without enabling SignalR detailed errors globally.
             throw new HubException(exception is OperationCanceledException
-                ? "terminal.start_failed: Windows user terminal Helper timed out."
+                ? "terminal.start_failed: Terminal request was cancelled or the module is stopping."
                 : $"terminal.start_failed: {exception.Message}");
         }
 
         // 附加当前连接并回放缓冲快照（恢复历史输出）。失败则不留下半附加状态。
         GetCurrentSession()?.Detach(Context.ConnectionId);
-        await session.AttachAsync(Context.ConnectionId).ConfigureAwait(false);
+        await session.AttachAsync(Context.ConnectionId, Context.Abort).ConfigureAwait(false);
         Context.Items[SidKey] = session.SessionId;
 
         return new AttachTerminalResponse(session.SessionId, created);
@@ -89,7 +89,7 @@ public sealed class TerminalHub : Hub<ITerminalHubClient>
             throw new HubException("terminal.session_not_found");
         if (session.IsAdministrator) RequireAdministrator();
         GetCurrentSession()?.Detach(Context.ConnectionId);
-        await session.AttachAsync(Context.ConnectionId).ConfigureAwait(false);
+        await session.AttachAsync(Context.ConnectionId, Context.Abort).ConfigureAwait(false);
         Context.Items[SidKey] = session.SessionId;
         return new AttachTerminalResponse(session.SessionId, false);
     }
@@ -99,7 +99,7 @@ public sealed class TerminalHub : Hub<ITerminalHubClient>
     {
         if (GetCurrentSession()?.IsAdministrator == true) RequireAdministrator();
         if (GetCurrentSession() is { } session && data.Length > 0)
-            session.Pty.Write(data, 0, data.Length);
+            session.Write(data);
         return Task.CompletedTask;
     }
 
@@ -108,7 +108,7 @@ public sealed class TerminalHub : Hub<ITerminalHubClient>
     {
         if (GetCurrentSession()?.IsAdministrator == true) RequireAdministrator();
         if (GetCurrentSession() is { } session)
-            session.Pty.Resize(columns, rows, widthPixels, heightPixels);
+            session.Resize(columns, rows, widthPixels, heightPixels);
         return Task.CompletedTask;
     }
 
@@ -116,11 +116,11 @@ public sealed class TerminalHub : Hub<ITerminalHubClient>
     /// 终止指定会话：杀 PTY 并从注册表移除。对应客户端的「关闭会话」——一个会话一个按钮，
     /// 不要求在关闭前先附加到它上面（否则关掉一个后台会话就得先切过去、丢失当前视图）。
     /// </summary>
-    public Task CloseSession(string sessionId)
+    public async Task CloseSession(string sessionId)
     {
         var userId = Context.UserIdentifier;
         if (userId is null || string.IsNullOrWhiteSpace(sessionId))
-            return Task.CompletedTask;
+            return;
 
         // 会话 ID 来自客户端，所以归属必须在这里核对：只按 ID 删除会让任何已认证用户靠猜 ID 杀掉别人的 PTY。
         if (!_manager.TryGet(sessionId, out var session) || session is null || session.UserId != userId)
@@ -129,8 +129,7 @@ public sealed class TerminalHub : Hub<ITerminalHubClient>
         if (Context.Items.TryGetValue(SidKey, out var sid) && sid is string current && current == sessionId)
             Context.Items.Remove(SidKey);
 
-        _manager.Remove(sessionId);
-        return Task.CompletedTask;
+        await _manager.RemoveAsync(sessionId);
     }
 
     /// <summary>拉取当前用户的全部终端会话摘要。</summary>

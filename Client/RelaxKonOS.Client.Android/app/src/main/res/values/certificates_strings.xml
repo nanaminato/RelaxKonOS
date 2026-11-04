@@ -120,6 +120,7 @@
     <string name="certificates_stage_unknown">Stage not verified</string>
     <string name="certificates_stage_validation">Validation</string>
     <string name="certificates_state_cancelled">Cancelled</string>
+    <string name="certificates_stage_cancel_requested">Cancellation requested; waiting for work to finish</string>
     <string name="certificates_state_failed">Failed</string>
     <string name="certificates_state_queued">Queued</string>
     <string name="certificates_state_running">Running</string>

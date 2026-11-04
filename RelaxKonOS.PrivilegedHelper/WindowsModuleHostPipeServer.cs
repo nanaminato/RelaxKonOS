@@ -106,9 +106,12 @@ internal sealed class WindowsModuleHostPipeServer(WindowsHelperPipeConfiguration
         var launch = ModuleHostPipeProtocol.Read<ModuleHostLaunchRequest>(Encoding.UTF8.GetBytes(frame.Payload));
         ValidateLaunch(launch);
         if (!_active.TryAdd(launch.ModuleId, 0)) throw new InvalidOperationException("ModuleHost is already active.");
+        var processResponsibility = false;
+        var treeConfirmed = false;
         try
         {
             var prepared = Prepare(pipe, launch, setup.Token);
+            processResponsibility = true;
             using var child = new WindowsModuleHostProcess(prepared.Identity, configuration.ModuleHosts!.ExecutablePath,
                 prepared.PackageRoot, prepared.DataPath, launch.ServiceToken, launch.BrokerUrl);
             var errors = Task.Run(async () =>
@@ -146,8 +149,12 @@ internal sealed class WindowsModuleHostPipeServer(WindowsHelperPipeConfiguration
                     await Relay(TimeSpan.FromSeconds(12));
                     if (control.Type == ModuleHostProtocol.Shutdown)
                     {
-                        await child.WaitForExitAsync(stopping.Token).WaitAsync(TimeSpan.FromSeconds(12), stopping.Token);
-                        await Send("exit", child.ExitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                        using var exitDeadline = CancellationTokenSource.CreateLinkedTokenSource(stopping.Token);
+                        exitDeadline.CancelAfter(TimeSpan.FromSeconds(12));
+                        await child.WaitForExitAsync(exitDeadline.Token);
+                        await child.ConfirmTreeExitAsync(exitDeadline.Token);
+                        treeConfirmed = true;
+                        await Send("tree-exit", child.ExitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
                         break;
                     }
                 }
@@ -155,6 +162,13 @@ internal sealed class WindowsModuleHostPipeServer(WindowsHelperPipeConfiguration
             finally
             {
                 stopping.Cancel();
+                if (!treeConfirmed)
+                    try
+                    {
+                        await child.ConfirmTreeExitAsync(CancellationToken.None);
+                        treeConfirmed = true;
+                    }
+                    catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception or OperationCanceledException or InvalidOperationException) { }
                 // Kill the complete job before draining: detached children cannot retain handles or outlive the channel.
                 child.Dispose();
                 try { await errors; } catch (Exception error) when (error is IOException or OperationCanceledException or ObjectDisposedException) { }
@@ -167,7 +181,7 @@ internal sealed class WindowsModuleHostPipeServer(WindowsHelperPipeConfiguration
         }
         finally
         {
-            _active.TryRemove(launch.ModuleId, out _);
+            if (!processResponsibility || treeConfirmed) _active.TryRemove(launch.ModuleId, out _);
             CryptographicOperations.ZeroMemory(secret);
         }
     }

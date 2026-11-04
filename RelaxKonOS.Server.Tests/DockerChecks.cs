@@ -1,5 +1,9 @@
 using System.Collections.Concurrent;
 using RelaxKonOS.Server.EventAlerts;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
+using RelaxKonOS.Server.Residency;
+using RelaxKonOS.Server.Startup;
 
 internal static class DockerChecks
 {
@@ -616,22 +620,22 @@ internal static async Task VerifyStackOperationsAsync(string root)
 
     // Nothing is admitted before startup reconciliation has finished: an operation that is accepted
     // and then never run is worse than a refusal.
-    var notReady = CaptureStackFailure(() => coordinator.Deploy(Deploy("shop", shopYaml), actor, deployKey),
+    var notReady = await CaptureStackFailureAsync(async () => (await coordinator.DeployAsync(Deploy("shop", shopYaml), actor, deployKey)),
         "An operation was admitted before the coordinator was ready.");
     TestAssert.Assert(notReady.ProblemCode == DockerStackProblem.StoreUnavailable,
         "A coordinator that had not reconciled yet did not refuse the submission.");
 
     // An approval is bound to one exact document.
-    var edited = CaptureStackFailure(() => coordinator.Deploy(
+    var edited = await CaptureStackFailureAsync(async () => (await coordinator.DeployAsync(
         new DockerStackDeployRequest(new DockerStackDefinitionDto("shop", shopYaml),
-            DockerStackValidation.DefinitionVersion("shop", shopYaml + "  # edited\n")), actor, Guid.NewGuid().ToString("N")),
+            DockerStackValidation.DefinitionVersion("shop", shopYaml + "  # edited\n")), actor, Guid.NewGuid().ToString("N"))),
         "A deployment whose source changed after the preview was accepted.");
     TestAssert.Assert(edited.ProblemCode == DockerStackProblem.DefinitionChanged,
         "A submission that no longer matched its approved definition was not refused.");
 
     // The import subset is enforced before anything is recorded, and nothing is silently rewritten.
     const string buildYaml = "services:\n  web:\n    build: .\n";
-    var unsupported = CaptureStackFailure(() => coordinator.Deploy(Deploy("shop", buildYaml), actor, Guid.NewGuid().ToString("N")),
+    var unsupported = await CaptureStackFailureAsync(async () => (await coordinator.DeployAsync(Deploy("shop", buildYaml), actor, Guid.NewGuid().ToString("N"))),
         "An unsupported Compose document was queued.");
     TestAssert.Assert(unsupported.ProblemCode == DockerStackProblem.FeatureUnsupported,
         "An unsupported Compose feature was not refused with the shared feature code.");
@@ -641,7 +645,7 @@ internal static async Task VerifyStackOperationsAsync(string root)
     // A mutation without a usable idempotency key can never be replayed, so it is refused outright.
     foreach (var badKey in new[] { string.Empty, "   ", new string('k', 129), "key\nwith-newline" })
     {
-        var missingKey = CaptureStackFailure(() => coordinator.Deploy(Deploy("shop", shopYaml), actor, badKey),
+        var missingKey = await CaptureStackFailureAsync(async () => (await coordinator.DeployAsync(Deploy("shop", shopYaml), actor, badKey)),
             "A submission without a usable idempotency key was admitted.");
         TestAssert.Assert(missingKey.ProblemCode == DockerStackProblem.IdempotencyRequired,
             "A missing or malformed idempotency key did not report the idempotency requirement.");
@@ -650,7 +654,7 @@ internal static async Task VerifyStackOperationsAsync(string root)
     compose.PreviewServices = ["web", "db"];
     compose.Observed = [RunningService("web"), RunningService("db")];
     compose.NextResult = new DockerStackMutationResult(true, string.Empty, ["Container shop-web-1 Started"]);
-    var submitted = coordinator.Deploy(Deploy("shop", shopYaml), actor, deployKey);
+    var submitted = (await coordinator.DeployAsync(Deploy("shop", shopYaml), actor, deployKey));
     TestAssert.Assert(submitted.State == DockerStackOperationState.Queued && submitted.Stage == DockerStackOperationStage.Queued,
         "A submitted deployment was not answered with its queued record.");
     var deployed = await AwaitTerminalOperationAsync(coordinator, submitted.OperationId);
@@ -659,7 +663,7 @@ internal static async Task VerifyStackOperationsAsync(string root)
         && deployed.Services.Select(service => service.Service).OrderBy(name => name, StringComparer.Ordinal).SequenceEqual(["db", "web"]),
         "A successful deployment was not classified over the services actually observed.");
 
-    var replayedDeployment = coordinator.Deploy(Deploy("shop", shopYaml), actor, deployKey);
+    var replayedDeployment = (await coordinator.DeployAsync(Deploy("shop", shopYaml), actor, deployKey));
     TestAssert.Assert(replayedDeployment.OperationId == submitted.OperationId,
         "Replaying an idempotency key started a second deployment of the same project.");
 
@@ -670,7 +674,7 @@ internal static async Task VerifyStackOperationsAsync(string root)
     compose.Observed = [RunningService("web"), StoppedService("cache")];
     compose.NextResult = new DockerStackMutationResult(true, string.Empty, ["cache failed to start"]);
     var partial = await AwaitTerminalOperationAsync(coordinator,
-        coordinator.Deploy(Deploy("portal", portalYaml), actor, Guid.NewGuid().ToString("N")).OperationId);
+        (await coordinator.DeployAsync(Deploy("portal", portalYaml), actor, Guid.NewGuid().ToString("N"))).OperationId);
     TestAssert.Assert(partial.State == DockerStackOperationState.PartialFailed
         && partial.ProblemCode == DockerStackProblem.PartialFailure
         && partial.RecoveryProblemCode is null
@@ -684,7 +688,7 @@ internal static async Task VerifyStackOperationsAsync(string root)
     compose.Observed = [];
     compose.NextResult = new DockerStackMutationResult(false, DockerStackProblem.ComposeFailed, ["no such image"]);
     var broken = await AwaitTerminalOperationAsync(coordinator,
-        coordinator.Deploy(Deploy("broken", brokenYaml), actor, Guid.NewGuid().ToString("N")).OperationId);
+        (await coordinator.DeployAsync(Deploy("broken", brokenYaml), actor, Guid.NewGuid().ToString("N"))).OperationId);
     TestAssert.Assert(broken.State == DockerStackOperationState.Failed
         && broken.ProblemCode == DockerStackProblem.ComposeFailed && broken.RecoveryProblemCode is null
         && broken.Services.Count == 0,
@@ -692,15 +696,15 @@ internal static async Task VerifyStackOperationsAsync(string root)
 
     compose.Observed = [RunningService("web")];
     var halfApplied = await AwaitTerminalOperationAsync(coordinator,
-        coordinator.Deploy(Deploy("half", brokenYaml), actor, Guid.NewGuid().ToString("N")).OperationId);
+        (await coordinator.DeployAsync(Deploy("half", brokenYaml), actor, Guid.NewGuid().ToString("N"))).OperationId);
     TestAssert.Assert(halfApplied.State == DockerStackOperationState.PartialFailed
         && halfApplied.ProblemCode == DockerStackProblem.ComposeFailed
         && halfApplied.RecoveryProblemCode == DockerStackProblem.PartialFailure,
         "A failed deployment that left containers running did not report a partial failure with a recovery code.");
 
     // Removing a project needs an explicit confirmation, and the flag is part of the request identity.
-    var unconfirmedDelete = CaptureStackFailure(() =>
-        coordinator.ApplyAction("shop", DockerStackOperationKind.Delete, confirmed: false, actor, Guid.NewGuid().ToString("N")),
+    var unconfirmedDelete = await CaptureStackFailureAsync(async () =>
+        (await coordinator.ApplyActionAsync("shop", DockerStackOperationKind.Delete, confirmed: false, actor, Guid.NewGuid().ToString("N"))),
         "A project removal without confirmation was queued.");
     TestAssert.Assert(unconfirmedDelete.ProblemCode == DockerStackProblem.ConfirmationRequired,
         "An unconfirmed project removal did not report the confirmation requirement.");
@@ -708,7 +712,7 @@ internal static async Task VerifyStackOperationsAsync(string root)
     compose.Observed = [];
     compose.NextResult = new DockerStackMutationResult(true, string.Empty, ["removed"]);
     var removed = await AwaitTerminalOperationAsync(coordinator,
-        coordinator.ApplyAction("shop", DockerStackOperationKind.Delete, confirmed: true, actor, Guid.NewGuid().ToString("N")).OperationId);
+        (await coordinator.ApplyActionAsync("shop", DockerStackOperationKind.Delete, confirmed: true, actor, Guid.NewGuid().ToString("N"))).OperationId);
     TestAssert.Assert(removed.State == DockerStackOperationState.Succeeded && removed.Kind == DockerStackOperationKind.Delete
         && compose.AppliedActions.Contains(DockerStackOperationKind.Delete),
         "A confirmed project removal was not executed, or was not classified as a success.");
@@ -717,14 +721,14 @@ internal static async Task VerifyStackOperationsAsync(string root)
     compose.Observed = [RunningService("web"), StoppedService("db")];
     compose.NextResult = new DockerStackMutationResult(true, string.Empty, ["stopped"]);
     var stoppedLoudly = await AwaitTerminalOperationAsync(coordinator,
-        coordinator.ApplyAction("legacy", DockerStackOperationKind.Stop, confirmed: false, actor, Guid.NewGuid().ToString("N")).OperationId);
+        (await coordinator.ApplyActionAsync("legacy", DockerStackOperationKind.Stop, confirmed: false, actor, Guid.NewGuid().ToString("N"))).OperationId);
     TestAssert.Assert(stoppedLoudly.State == DockerStackOperationState.PartialFailed
         && stoppedLoudly.ProblemCode == DockerStackProblem.PartialFailure && stoppedLoudly.RecoveryProblemCode is null,
         "A stop that left a service running was reported as a success.");
 
     compose.Observed = [StoppedService("web")];
     var stoppedQuietly = await AwaitTerminalOperationAsync(coordinator,
-        coordinator.ApplyAction("legacy", DockerStackOperationKind.Stop, confirmed: false, actor, Guid.NewGuid().ToString("N")).OperationId);
+        (await coordinator.ApplyActionAsync("legacy", DockerStackOperationKind.Stop, confirmed: false, actor, Guid.NewGuid().ToString("N"))).OperationId);
     TestAssert.Assert(stoppedQuietly.State == DockerStackOperationState.Succeeded,
         "A stop that left nothing running was not reported as a success.");
     await events.WaitForAsync(stoppedQuietly.OperationId);
@@ -767,7 +771,7 @@ internal static async Task VerifyStackOperationsAsync(string root)
     compose.PreviewServices = ["web"];
     compose.Observed = [StoppedService("web")];
     compose.BlockOnDeploy = true;
-    var cancellable = coordinator.Deploy(Deploy("cancelme", cancelYaml), actor, Guid.NewGuid().ToString("N"));
+    var cancellable = (await coordinator.DeployAsync(Deploy("cancelme", cancelYaml), actor, Guid.NewGuid().ToString("N")));
     await AwaitRunningOperationAsync(coordinator, cancellable.OperationId);
     var cancellation = coordinator.Cancel(cancellable.OperationId, Guid.NewGuid().ToString("N"));
     TestAssert.Assert(!cancellation.Cancellable && DockerStackOperationStore.Active(cancellation),
@@ -828,8 +832,8 @@ internal static async Task VerifyStackOperationsAsync(string root)
 /// AD04-T1/T3/T5 on a real Compose host. <see cref="VerifyStackOperationsAsync" /> proves what the
 /// coordinator decides once the Engine's answers are chosen for it; this proves that the commands those
 /// decisions rest on behave that way — that <c>config --format json</c> really has the shape the parser
-/// reads, that a service which exits is observed as not running while <c>up</c> still exits 0, and that
-/// taking a project down leaves its named volume in place.
+/// reads, that the recorded operation matches its instantaneous Engine observation, that a deliberately
+/// exiting service is later observable as stopped, and that taking a project down leaves its named volume in place.
 ///
 /// It is opt-in (<c>--stack-live</c>) and skips unless an Engine answers and its image is already on the
 /// host, because a live check that quietly passes without Docker would be worse than no check at all.
@@ -838,8 +842,11 @@ internal static async Task VerifyStackOperationsLiveAsync(string root)
 {
     // One small image that can both idle and exit, so a single document can produce a service that
     // reaches its target state and one that does not.
-    const string image = "alpine:3.20";
-    const string variableDocument = "services:\n  web:\n    image: alpine:3.20\n    environment:\n      TOKEN: ${AD04_UNSET}\n";
+    var image = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_STACK_IMAGE") ?? "alpine:3.20";
+    if (image != "alpine:3.20" && !(image.StartsWith("sha256:", StringComparison.Ordinal) && image.Length == 71
+        && image.AsSpan(7).ToString().All(Uri.IsHexDigit)))
+        throw new InvalidOperationException("A selected live fixture must be an immutable cached image ID.");
+    var variableDocument = "services:\n  web:\n    image: " + image + "\n    environment:\n      TOKEN: ${AD04_UNSET}\n";
     var dataDirectory = Path.Combine(root, "docker-stack-live", "compose");
     var ledgerDirectory = Path.Combine(root, "docker-stack-live", "ledger");
     Directory.CreateDirectory(dataDirectory);
@@ -853,28 +860,38 @@ internal static async Task VerifyStackOperationsLiveAsync(string root)
         return;
     }
     var images = await engine.ListImagesAsync();
-    if (!images.Any(item => item.Repository == "alpine" && item.Tag.StartsWith("3.20", StringComparison.Ordinal)))
+    if (!images.Any(item => item.Id == image || image == "alpine:3.20" && item.Repository == "alpine" && item.Tag == "3.20"))
     {
-        Console.WriteLine($"SKIP DOCKER STACK LIVE: {image} is not on this host; pull it first.");
+        Console.WriteLine($"SKIP DOCKER STACK LIVE: {image} is not cached; select an existing fixture ID with RELAXKONOS_TEST_STACK_IMAGE.");
         return;
     }
 
     var project = "ad04live" + Guid.NewGuid().ToString("N")[..8];
+    Console.WriteLine($"LIVE DOCKER FIXTURE project={project} image={image}");
     var volume = $"{project}_data";
     var compose = new DockerComposeService(new TestHostEnvironment(dataDirectory),
         Options.Create(new DockerComposeOptions { DataDirectory = dataDirectory }));
-    var coordinator = NewStackCoordinator(ledgerDirectory, compose, new TestApplicationLifetime(), 4);
+    var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        { ContentRootPath = root, EnvironmentName = Microsoft.Extensions.Hosting.Environments.Production });
+    builder.Logging.ClearProviders();
+    var modules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.DockerId });
+    modules.ConfigureServices(builder, ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory"));
+    await using var ownerHost = builder.Build();
+    var residency = ownerHost.Services.GetRequiredService<ModuleResidencyCoordinator>();
+    var events = new LiveWorkEvents(residency);
+    var coordinator = NewStackCoordinator(ledgerDirectory, compose, new TestApplicationLifetime(), 4, events,
+        ownerHost.Services.GetRequiredService<IResidentModuleWorkLeaseSource>());
     await coordinator.StartAsync(CancellationToken.None);
 
-    static string Document(string workerCommand) => $$"""
+    string Document(string workerCommand) => $$"""
 services:
   web:
-    image: alpine:3.20
+    image: {{image}}
     command: ["sh", "-c", "sleep 600"]
     volumes:
       - data:/data
   worker:
-    image: alpine:3.20
+    image: {{image}}
     command: ["sh", "-c", "{{workerCommand}}"]
     volumes:
       - data:/work
@@ -900,15 +917,15 @@ volumes:
         // AD04-T2 — this server exposes no way to supply a variable, and `docker compose config`
         // substitutes an empty string and still exits 0. Refusing has to happen before the Engine runs.
         var variableVersion = DockerStackValidation.DefinitionVersion(project, variableDocument);
-        var refusal = CaptureStackFailure(() => coordinator.Deploy(
+        var refusal = await CaptureStackFailureAsync(async () => (await coordinator.DeployAsync(
             new DockerStackDeployRequest(new DockerStackDefinitionDto(project, variableDocument), variableVersion),
-            "live-actor", "live-key-variable"),
+            "live-actor", "live-key-variable")),
             "A definition with an unset variable was queued instead of refused.");
         TestAssert.Assert(refusal.ProblemCode == DockerStackProblem.VariableUnresolved && refusal.StatusCode == 400,
             $"An unresolved variable was not refused before execution: {refusal.ProblemCode}/{refusal.StatusCode}.");
 
-        // AD04-T1/T3 — two services, one of which exits immediately. `up` still exits 0, so the outcome
-        // can only come from observing the Engine.
+        // AD04-T1/T3 — two services, one of which exits immediately. Compose can acknowledge startup
+        // before exit 7 has happened. The operation records that instant; it is not a stable-running guarantee.
         var failing = Document("exit 7");
         var preview = await compose.PreviewAsync(new DockerStackDefinitionDto(project, failing));
         TestAssert.Assert(preview.Services.Select(service => service.Service).SequenceEqual(["web", "worker"])
@@ -917,18 +934,37 @@ volumes:
             + $"{string.Join(", ", preview.Services.Select(service => $"{service.Service}/{service.Image}/[{string.Join(",", service.Ports)}]"))}; "
             + $"volumes {string.Join(",", preview.Volumes)}; networks {string.Join(",", preview.Networks)}");
 
-        var submitted = coordinator.Deploy(
+        var submitted = (await coordinator.DeployAsync(
             new DockerStackDeployRequest(new DockerStackDefinitionDto(project, failing), preview.DefinitionVersion),
-            "live-actor", "live-key-failing");
+            "live-actor", "live-key-failing"));
         var classified = await WaitAsync(coordinator, submitted.OperationId, 180);
-        TestAssert.Assert(classified.State == DockerStackOperationState.PartialFailed
-            && classified.ProblemCode == DockerStackProblem.PartialFailure,
-            $"A live deployment that left one service down was classified as {classified.State}/{classified.ProblemCode}.");
-        // What is recorded is the Engine's answer, not the document's intent.
+        var recordedServices = string.Join(", ", classified.Services.Select(service => $"{service.Service}={service.State} ({service.Status})"));
+        var recordedWorker = classified.Services.SingleOrDefault(service => service.Service == "worker");
         TestAssert.Assert(classified.Services.Any(service => service.Service == "web" && service.State.Equals("running", StringComparison.OrdinalIgnoreCase))
-            && classified.Services.Any(service => service.Service == "worker" && !service.State.Equals("running", StringComparison.OrdinalIgnoreCase)),
-            "The live observation did not record one running and one stopped service: "
-            + string.Join(", ", classified.Services.Select(service => $"{service.Service}={service.State}")));
+            && recordedWorker is not null, "The immediate live observation omitted an expected service: " + recordedServices);
+        var workerWasRunning = recordedWorker!.State.Equals("running", StringComparison.OrdinalIgnoreCase);
+        TestAssert.Assert(workerWasRunning
+                ? classified.State == DockerStackOperationState.Succeeded && classified.ProblemCode is null
+                : classified.State == DockerStackOperationState.PartialFailed && classified.ProblemCode == DockerStackProblem.PartialFailure,
+            $"Live operation {classified.State}/{classified.ProblemCode} disagreed with its immediate Engine snapshot: {recordedServices}.");
+        Console.WriteLine($"LIVE DOCKER INITIAL operation={classified.State} services={recordedServices}");
+
+        IReadOnlyList<DockerStackServiceDto> laterServices = [];
+        var exitDeadline = DateTimeOffset.UtcNow.AddSeconds(30);
+        while (DateTimeOffset.UtcNow < exitDeadline)
+        {
+            laterServices = await compose.ListServicesAsync(project);
+            if (laterServices.Any(service => service.Service == "worker" && service.State.Equals("exited", StringComparison.OrdinalIgnoreCase))) break;
+            await Task.Delay(200);
+        }
+        TestAssert.Assert(laterServices.Any(service => service.Service == "web" && service.State.Equals("running", StringComparison.OrdinalIgnoreCase))
+                && laterServices.Any(service => service.Service == "worker" && service.State.Equals("exited", StringComparison.OrdinalIgnoreCase)
+                    && service.Status.Contains("(7)", StringComparison.Ordinal)),
+            "The independent later observation did not confirm the fixture's exit 7 while web stayed running: "
+                + string.Join(", ", laterServices.Select(service => $"{service.Service}={service.State} ({service.Status})")));
+        Console.WriteLine("LIVE DOCKER LATER services=" + string.Join(", ", laterServices.Select(service => $"{service.Service}={service.State} ({service.Status})")));
+        TestAssert.Assert(coordinator.Get(submitted.OperationId)!.State == classified.State,
+            "A later fixture observation rewrote the immutable operation outcome instead of remaining a separate observation.");
 
         // The repair is the same project and the same volume, which is what makes it an update rather
         // than a second project.
@@ -936,17 +972,17 @@ volumes:
         var repairedPreview = await compose.PreviewAsync(new DockerStackDefinitionDto(project, repaired));
         TestAssert.Assert(repairedPreview.DefinitionVersion != preview.DefinitionVersion,
             "A changed document produced the same definition version, so an old approval would still be valid.");
-        var repair = coordinator.Deploy(
+        var repair = (await coordinator.DeployAsync(
             new DockerStackDeployRequest(new DockerStackDefinitionDto(project, repaired), repairedPreview.DefinitionVersion),
-            "live-actor", "live-key-repair");
+            "live-actor", "live-key-repair"));
         var recovered = await WaitAsync(coordinator, repair.OperationId, 180);
         TestAssert.Assert(recovered.State == DockerStackOperationState.Succeeded,
             $"A repaired project was not reported as succeeded: {recovered.State}/{recovered.ProblemCode}.");
 
         // Same key and same document: the ledger answers with the operation it already ran.
-        var replay = coordinator.Deploy(
+        var replay = (await coordinator.DeployAsync(
             new DockerStackDeployRequest(new DockerStackDefinitionDto(project, repaired), repairedPreview.DefinitionVersion),
-            "live-actor", "live-key-repair");
+            "live-actor", "live-key-repair"));
         TestAssert.Assert(replay.OperationId == repair.OperationId,
             "A repeated submission created a second live deployment instead of replaying the recorded operation.");
 
@@ -960,7 +996,7 @@ volumes:
 
         // A stopped project still reserves its volume: the containers exist, so their mounts are held.
         var stopped = await WaitAsync(coordinator,
-            coordinator.ApplyAction(project, DockerStackOperationKind.Stop, confirmed: true, "live-actor", "live-key-stop").OperationId, 180);
+            (await coordinator.ApplyActionAsync(project, DockerStackOperationKind.Stop, confirmed: true, "live-actor", "live-key-stop")).OperationId, 180);
         TestAssert.Assert(stopped.State == DockerStackOperationState.Succeeded,
             $"Stopping a live project was not reported as succeeded: {stopped.State}/{stopped.ProblemCode}.");
         var afterStop = await engine.GetVolumeAsync(volume);
@@ -972,7 +1008,7 @@ volumes:
 
         // Taking the project down removes the containers and the project network, never the named volume.
         var removed = await WaitAsync(coordinator,
-            coordinator.ApplyAction(project, DockerStackOperationKind.Delete, confirmed: true, "live-actor", "live-key-delete").OperationId, 180);
+            (await coordinator.ApplyActionAsync(project, DockerStackOperationKind.Delete, confirmed: true, "live-actor", "live-key-delete")).OperationId, 180);
         TestAssert.Assert(removed.State == DockerStackOperationState.Succeeded,
             $"Removing a live project was not reported as succeeded: {removed.State}/{removed.ProblemCode}.");
         var survivor = await engine.GetVolumeAsync(volume);
@@ -981,15 +1017,23 @@ volumes:
         var released = await engine.DeleteVolumeAsync(volume, confirmed: true);
         TestAssert.Assert(released.Success, $"A volume with no references could not be released: {released.ProblemCode}.");
 
-        Console.WriteLine("PASS DOCKER STACK LIVE: a real Compose host parsed, deployed, partly failed, "
-            + "recovered, replayed idempotently, and released the project's volume only after removal.");
+        await coordinator.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(30));
+        TestAssert.Assert(events.Calls >= 4 && !events.Unprotected && !residency.HasBackgroundWork(ServerModules.DockerId),
+            "Real Compose execution and terminal publication must remain protected until actual owner drain.");
+        Console.WriteLine("PASS DOCKER STACK LIVE: real Compose parsed and deployed; its recorded outcome matched the immediate Engine snapshot; "
+            + "independent later observation confirmed worker exit 7, repair succeeded, replay stayed idempotent, and the named volume was released only after removal; "
+            + "real resident work protection drained after terminal publication. Instant success is not stable-running or partial-failure proof.");
     }
     finally
     {
-        // The check must not leave containers, networks, volumes or files behind.
-        try { await compose.ApplyActionAsync(project, DockerStackOperationKind.Delete, confirmed: true); } catch { /* best-effort cleanup */ }
-        try { await engine.DeleteVolumeAsync(volume, confirmed: true); } catch { /* best-effort cleanup */ }
-        try { Directory.Delete(Path.Combine(root, "docker-stack-live"), recursive: true); } catch { /* best-effort cleanup */ }
+        try { await coordinator.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(30)); }
+        finally
+        {
+            // Cleanup addresses only this random test project and its own named volume.
+            try { await compose.ApplyActionAsync(project, DockerStackOperationKind.Delete, confirmed: true); } catch { /* best-effort cleanup */ }
+            try { await engine.DeleteVolumeAsync(volume, confirmed: true); } catch { /* best-effort cleanup */ }
+            try { Directory.Delete(Path.Combine(root, "docker-stack-live"), recursive: true); } catch { /* best-effort cleanup */ }
+        }
     }
 }
 
@@ -1003,10 +1047,23 @@ internal static DockerStackOperationStore NewStackStore(string dataDirectory, in
 }
 
 internal static DockerStackOperationCoordinator NewStackCoordinator(string dataDirectory, IDockerComposeService compose,
-    IHostApplicationLifetime lifetime, int maximumConcurrent, IOperationalEventPublisher? eventPublisher = null) =>
+    IHostApplicationLifetime lifetime, int maximumConcurrent, IOperationalEventPublisher? eventPublisher = null,
+    IResidentModuleWorkLeaseSource? leases = null) =>
     new(NewStackStore(dataDirectory, maximumConcurrent), compose,
         Options.Create(new DockerComposeOptions { DataDirectory = dataDirectory, MaximumConcurrentOperations = maximumConcurrent }),
-        lifetime, eventPublisher ?? new CaptureOperationalEvents(), NullLogger<DockerStackOperationCoordinator>.Instance);
+        lifetime, eventPublisher ?? new CaptureOperationalEvents(), NullLogger<DockerStackOperationCoordinator>.Instance, leases ?? new TestResidentBackgroundLeases());
+
+private sealed class LiveWorkEvents(ModuleResidencyCoordinator residency) : IOperationalEventPublisher
+{
+    internal int Calls;
+    internal bool Unprotected;
+    public Task PublishAsync(OperationalEventSignal signal, CancellationToken cancellationToken = default)
+    {
+        Calls++;
+        Unprotected |= !residency.HasBackgroundWork(ServerModules.DockerId);
+        return Task.CompletedTask;
+    }
+}
 
 internal sealed class CaptureOperationalEvents : IOperationalEventPublisher
 {
@@ -1061,6 +1118,13 @@ internal static async Task AwaitRunningOperationAsync(DockerStackOperationCoordi
 }
 
 /// <summary>Runs a synchronous admission check and returns the domain refusal it raised.</summary>
+internal static async Task<DockerStackException> CaptureStackFailureAsync(Func<Task<DockerStackOperationDto>> action, string message)
+{
+    try { await action(); }
+    catch (DockerStackException error) { return error; }
+    throw new InvalidOperationException(message);
+}
+
 internal static DockerStackException CaptureStackFailure(Action action, string message)
 {
     try { action(); }

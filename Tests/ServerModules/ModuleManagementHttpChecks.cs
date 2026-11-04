@@ -9,9 +9,15 @@ using Microsoft.Extensions.Options;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Startup;
+using RelaxKonOS.Server.Residency;
 
 internal static class ModuleManagementHttpChecks
 {
+    private sealed class UnusedHostWorkSource : IResidentModuleWorkLeaseSource
+    {
+        public ValueTask<IModuleWorkLease> AcquireAsync(string moduleId, CancellationToken ct = default) =>
+            throw new InvalidOperationException("This HTTP management fixture has no configured ModuleHost.");
+    }
     internal static async Task RunAsync(Action<bool, string> check)
     {
         check(!ServerModuleManagementEndpoints.CanManage(new ClaimsPrincipal(new ClaimsIdentity(
@@ -39,7 +45,7 @@ internal static class ModuleManagementHttpChecks
             builder.Services.AddSingleton(modules);
             builder.Services.AddSingleton(ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory"));
             builder.Services.AddSingleton(new ModuleHostSupervisor(builder.Environment, builder.Configuration,
-                Microsoft.Extensions.Logging.Abstractions.NullLogger<ModuleHostSupervisor>.Instance));
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<ModuleHostSupervisor>.Instance, new UnusedHostWorkSource()));
             builder.Services.AddAuthentication("module-test").AddScheme<AuthenticationSchemeOptions, ModuleTestAuthentication>("module-test", _ => { });
             builder.Services.AddAuthorization(options => options.AddPolicy(ServerModuleManagementEndpoints.ManagePolicy,
                 policy => policy.RequireAuthenticatedUser().RequireAssertion(context => ServerModuleManagementEndpoints.CanManage(context.User))));

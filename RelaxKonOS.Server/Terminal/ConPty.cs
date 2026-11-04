@@ -11,7 +11,7 @@ namespace RelaxKonOS.Server.Terminal;
 /// Windows ConPTY-based <see cref="IPty"/> implementation. Shared with the Windows Helper,
 /// which launches the shell with a verified user's primary token rather than the service identity.
 /// </summary>
-public sealed class ConPty : IPty, IDisposable
+public sealed class ConPty : IPty, IDisposable, ITerminalPtyLifetime
 {
     private const uint ProcThreadAttributePseudoConsole = 0x20016;
     private const uint ExtendedStartupInfoPresent = 0x00080000;
@@ -32,6 +32,9 @@ public sealed class ConPty : IPty, IDisposable
     private int _childPid;
     private bool _disposed;
     private int _disposeSignaled;
+    private bool _started, _exitVerified;
+    private readonly object _asyncStopGate = new();
+    private Task? _asyncStop;
 
     public bool IsRunning { get; set; }
 
@@ -88,6 +91,7 @@ public sealed class ConPty : IPty, IDisposable
 
             _inputStream = new FileStream(_inputHandle, FileAccess.Write, 0, isAsync: false);
             LaunchProcess(shell, workingDirectory, environment, arguments, token);
+            _started = true;
 
             IsRunning = true;
             _cts = new CancellationTokenSource();
@@ -100,6 +104,7 @@ public sealed class ConPty : IPty, IDisposable
             {
                 if (Native.WaitForSingleObject(processHandle, uint.MaxValue) == 0)
                 {
+                    _exitVerified = true;
                     // A retained HPCON keeps its output pipe open even after the shell exits.
                     // Closing it here lets the independent reader drain output and observe EOF.
                     var console = Interlocked.Exchange(ref _ptyHandle, IntPtr.Zero);
@@ -181,12 +186,25 @@ public sealed class ConPty : IPty, IDisposable
             Native.CloseHandle(_processHandle);
             _processHandle = IntPtr.Zero;
         }
-        _cts?.Dispose();
-        _cts = null;
+        if (_readThread?.IsAlive != true && _writeThread?.IsAlive != true)
+        { _cts?.Dispose(); _cts = null; }
         _disposed = true;
     }
 
     public void Dispose() => Stop();
+
+    public Task StopAsync()
+    {
+        lock (_asyncStopGate) return _asyncStop ??= Task.Run(() =>
+        {
+            Stop();
+            _writeThread?.Join(); _readThread?.Join(); _exitThread?.Join();
+            _cts?.Dispose(); _cts = null;
+            try { while (_pendingWrites.TryTake(out _)) { } _pendingWrites.Dispose(); }
+            catch (ObjectDisposedException) { }
+            if (_started && !_exitVerified) throw new IOException("terminal.process_exit_unverified");
+        });
+    }
 
     private void LaunchProcess(string? shell, string? workingDirectory,
         Dictionary<string, string>? environment, IReadOnlyList<string>? arguments, SafeAccessTokenHandle? token)

@@ -91,17 +91,19 @@ internal static class ServerModuleManagementEndpoints
             if (!hosts.Exists(moduleId)) return Results.NotFound();
             if (!hosts.CanAccess(moduleId, http.User))
                 return Results.StatusCode(StatusCodes.Status403Forbidden);
-            if (!hosts.TryGetConnection(moduleId, out var endpoint, out var serviceToken)) return Results.NotFound();
             if (path is not null && path.Split('/').Any(part => part is ".." or ".")) return Results.BadRequest();
-            var target = new Uri(endpoint, (path ?? "") + http.Request.QueryString);
+            using var connection = hosts.AcquireConnection(moduleId);
+            if (connection is null) return Results.NotFound();
+            var target = new Uri(connection.Endpoint, (path ?? "") + http.Request.QueryString);
             using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
             { Timeout = TimeSpan.FromSeconds(100) };
             var broker = http.RequestServices.GetService<CoreModulePrivilegeBroker>();
-            var requestContext = broker?.IssueRequestContext(moduleId, http.User);
+            var requestContext = broker?.IssueRequestContext(moduleId, connection.GenerationId, http.User);
+            using var stopping = CancellationTokenSource.CreateLinkedTokenSource(http.RequestAborted, connection.Stopping);
             try
             {
             using var request = new HttpRequestMessage(new HttpMethod(http.Request.Method), target);
-            request.Headers.TryAddWithoutValidation(ModuleHostProtocol.ServiceTokenHeader, serviceToken);
+            request.Headers.TryAddWithoutValidation(ModuleHostProtocol.ServiceTokenHeader, connection.ServiceToken);
             if (requestContext is not null)
                 request.Headers.TryAddWithoutValidation(ModulePrivilegeProtocol.RequestContextHeader, requestContext);
             if (http.Request.ContentLength is > 0 || http.Request.Headers.ContainsKey("Transfer-Encoding"))
@@ -119,7 +121,7 @@ internal static class ServerModuleManagementEndpoints
                 CanManage(http.User) ? "admin" : "user");
             request.Headers.TryAddWithoutValidation("X-RelaxKonOS-Module-Request-Id", http.TraceIdentifier);
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead,
-                http.RequestAborted);
+                stopping.Token);
             http.Response.StatusCode = (int)response.StatusCode;
             foreach (var header in response.Headers)
                 if (!HopByHop(header.Key))
@@ -128,7 +130,7 @@ internal static class ServerModuleManagementEndpoints
                 if (!HopByHop(header.Key))
                     http.Response.Headers[header.Key] = header.Value.ToArray();
             http.Response.Headers.ContentLength = null;
-            await response.Content.CopyToAsync(http.Response.Body, http.RequestAborted);
+            await response.Content.CopyToAsync(http.Response.Body, stopping.Token);
             return Results.Empty;
             }
             finally { if (requestContext is not null) broker!.ReleaseRequestContext(requestContext); }

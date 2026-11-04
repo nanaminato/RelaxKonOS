@@ -13,14 +13,30 @@ public interface IWorkspaceTerminalPty
 }
 
 /// <summary>Local identity backend, with a freshly constructed target-user environment at each spawn.</summary>
-public sealed class LocalUserTerminalPty(IPty inner, UserExecutionContext context) : IPty, IWorkspaceTerminalPty, IDisposable
+public sealed class LocalUserTerminalPty : IPty, IWorkspaceTerminalPty, IDisposable, ITerminalPtyLifetime
 {
+    private readonly IPty inner;
+    private readonly UserExecutionContext context;
+    private readonly TaskCompletionSource<int> _exited = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly object _stopGate = new();
+    private Task? _stop;
+    private bool _started;
+    private LinuxTerminalProcessExit? _linuxExit;
+    private Exception? _linuxObservationFailure;
+    private int _exitSignaled;
+    public LocalUserTerminalPty(IPty inner, UserExecutionContext context)
+    {
+        this.inner = inner; this.context = context;
+        inner.ProcessExited += OnInnerExited;
+    }
+    private void OnInnerExited(int code)
+    { _exited.TrySetResult(code); if (Interlocked.Exchange(ref _exitSignaled, 1) == 0) ProcessExited?.Invoke(code); }
     public TerminalEnvironmentOverrides? WorkspaceEnvironment { get; set; }
     public string DefaultWorkingDirectory => context.Identity.HomeDirectory;
     public bool IsRunning => inner.IsRunning;
     public int ChildPid => inner.ChildPid;
     public event Action<byte[], int>? DataReceived { add => inner.DataReceived += value; remove => inner.DataReceived -= value; }
-    public event Action<int>? ProcessExited { add => inner.ProcessExited += value; remove => inner.ProcessExited -= value; }
+    public event Action<int>? ProcessExited;
     public void Start(string? shell, int columns, int rows, string? workingDirectory, Dictionary<string, string>? environment, IReadOnlyList<string>? arguments)
     {
         if (environment is not null) throw new InvalidOperationException("terminal.environment_must_be_resolved");
@@ -42,7 +58,13 @@ public sealed class LocalUserTerminalPty(IPty inner, UserExecutionContext contex
         }
         else throw new PlatformNotSupportedException();
         var overrides = WorkspaceEnvironment ?? new([], EnvironmentPathMode.Append);
+        _started = true;
         inner.Start(shell, columns, rows, workingDirectory ?? DefaultWorkingDirectory, overrides.Apply(baseline, OperatingSystem.IsWindows()), arguments);
+        if (OperatingSystem.IsLinux() && inner is UnixPty)
+        {
+            try { _linuxExit = LinuxTerminalProcessExit.Capture(inner.ChildPid); }
+            catch (Exception error) { _linuxObservationFailure = error; }
+        }
         WorkspaceEnvironment = null;
     }
     public void Write(byte[] data, int offset, int count) => inner.Write(data, offset, count);
@@ -51,5 +73,20 @@ public sealed class LocalUserTerminalPty(IPty inner, UserExecutionContext contex
     public void Resize(int columns, int rows, int widthPixels, int heightPixels) => inner.Resize(columns, rows, widthPixels, heightPixels);
     public void Stop() { WorkspaceEnvironment = null; inner.Stop(); }
     public void Dispose() { Stop(); (inner as IDisposable)?.Dispose(); }
+    public Task StopAsync()
+    {
+        lock (_stopGate) return _stop ??= Task.Run(async () =>
+        {
+            Stop();
+            if (inner is ITerminalPtyLifetime lifetime) await lifetime.StopAsync();
+            else if (_linuxExit is { } observed) { await observed.WaitForExitAsync(); observed.Dispose(); }
+            else if (_linuxObservationFailure is not null && !(_exited.Task.IsCompletedSuccessfully && _exited.Task.Result >= 0))
+                throw new IOException("terminal.process_exit_unverified", _linuxObservationFailure);
+            else if (_started) await _exited.Task;
+            (inner as IDisposable)?.Dispose();
+            if (_started) OnInnerExited(_exited.Task.IsCompletedSuccessfully ? _exited.Task.Result : -1);
+            inner.ProcessExited -= OnInnerExited;
+        });
+    }
     [DllImport("libc")] private static extern uint geteuid();
 }

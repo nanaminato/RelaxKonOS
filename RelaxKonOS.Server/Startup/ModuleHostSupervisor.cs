@@ -2,6 +2,7 @@ using System.Security.Claims;
 using RelaxKonOS.ModulePackaging;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Server.Endpoints;
+using RelaxKonOS.Server.Residency;
 
 namespace RelaxKonOS.Server.Startup;
 
@@ -11,10 +12,11 @@ namespace RelaxKonOS.Server.Startup;
 /// Connections are exposed only while the module is healthy.
 /// </summary>
 internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfiguration configuration,
-    ILogger<ModuleHostSupervisor> logger, ServerModules? modules = null, CoreModulePrivilegeBroker? broker = null, RelaxKonOS.Server.Privileged.PrivilegedHelperOptions? helperOptions = null) : BackgroundService
+    ILogger<ModuleHostSupervisor> logger, IResidentModuleWorkLeaseSource workLeases, ServerModules? modules = null, CoreModulePrivilegeBroker? broker = null, RelaxKonOS.Server.Privileged.PrivilegedHelperOptions? helperOptions = null) : BackgroundService
 {
     private readonly object _gate = new();
     private readonly List<Entry> _entries = [];
+    private bool _stopping;
 
     internal IReadOnlyList<ServerModuleHostStatusDto> Snapshot()
     {
@@ -23,34 +25,24 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
                 entry.Version, entry.HostApiVersion, entry.ProblemCode)).ToArray();
     }
 
-    internal bool TryGetEndpoint(string moduleId, out Uri endpoint) => TryGetConnection(moduleId, out endpoint, out _);
-
-    internal bool TryGetConnection(string moduleId, out Uri endpoint, out string serviceToken)
+    internal ModuleHostConnection? AcquireConnection(string moduleId)
     {
         lock (_gate)
         {
             var entry = _entries.FirstOrDefault(entry => entry.ModuleId == moduleId);
-            if (entry is { Status: "running", Client: not null } && IsTrusted(entry)
-                && Uri.TryCreate(entry.Client.Ready.Url, UriKind.Absolute, out var parsed)
-                && parsed.Scheme == "http" && parsed.IsLoopback)
-            {
-                endpoint = parsed;
-                serviceToken = entry.Client.ServiceToken;
-                return true;
-            }
+            if (!_stopping && entry is { Status: "running", Generation: not null } && IsTrusted(entry))
+                return entry.Generation.TryAcquire();
         }
-        endpoint = null!;
-        serviceToken = "";
-        return false;
+        return null;
     }
 
-    internal string? Authenticate(string token)
+    internal ModuleHostConnection? AcquireAuthenticated(string token)
     {
         if (token is not { Length: 64 }) return null;
         lock (_gate)
-            return _entries.FirstOrDefault(entry => entry.Status == "running" && entry.Client is not null
+            return _stopping ? null : _entries.FirstOrDefault(entry => entry.Status == "running" && entry.Generation is not null && IsTrusted(entry)
                 && System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
-                    System.Text.Encoding.ASCII.GetBytes(entry.Client.ServiceToken), System.Text.Encoding.ASCII.GetBytes(token)))?.ModuleId;
+                    System.Text.Encoding.ASCII.GetBytes(entry.Generation.ServiceToken), System.Text.Encoding.ASCII.GetBytes(token)))?.Generation?.TryAcquire();
     }
 
     internal bool Exists(string moduleId)
@@ -73,129 +65,168 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var section = configuration.GetSection("ModuleHosts");
+        try
+        {
+            var section = configuration.GetSection("ModuleHosts");
 
-        var probeInterval = TimeSpan.FromSeconds(Math.Clamp(section.GetValue<int?>("ProbeIntervalSeconds") ?? 10, 1, 3600));
-        var entries = new List<ModuleHostEntryOptions>();
-        if (section.GetValue<bool>("Enabled") && environment.IsDevelopment())
-            entries.AddRange(section.GetSection("Entries").Get<ModuleHostEntryOptions[]>() ?? []);
-        foreach (var record in InstalledModuleStore.Read(environment.ContentRootPath))
-        {
-            if (record.Runtime != "module-host" || record.Quarantined || modules?.IsEnabled(record.ModuleId) != true) continue;
-            if (ModuleTrustStore.Read(environment.ContentRootPath, record)?.Trusted != true)
+            var probeInterval = TimeSpan.FromSeconds(Math.Clamp(section.GetValue<int?>("ProbeIntervalSeconds") ?? 10, 1, 3600));
+            var entries = new List<ModuleHostEntryOptions>();
+            if (section.GetValue<bool>("Enabled") && environment.IsDevelopment())
+                entries.AddRange(section.GetSection("Entries").Get<ModuleHostEntryOptions[]>() ?? []);
+            foreach (var record in InstalledModuleStore.Read(environment.ContentRootPath))
             {
-                logger.LogWarning("ModuleHost {ModuleId} has no exact-version code trust consent.", record.ModuleId);
-                continue;
-            }
-            InstalledModuleStore.VerifyPackage(environment.ContentRootPath, record);
-            entries.Add(new ModuleHostEntryOptions
-            {
-                ModuleId = record.ModuleId, Installed = record,
-                PackageRoot = InstalledModuleStore.ResolvePackageRoot(environment.ContentRootPath, record.PackagePath),
-                AllowedUsers = section.GetSection("Access:" + record.ModuleId + ":AllowedUsers").Get<string[]>() ?? [],
-            });
-        }
-        foreach (var option in entries)
-        {
-            if (option is null || !ModulePackageHostConfiguration.Identifier(option.ModuleId)
-                || string.IsNullOrWhiteSpace(option.PackageRoot) || !Path.IsPathFullyQualified(option.PackageRoot)
-                || !Directory.Exists(option.PackageRoot))
-            {
-                logger.LogWarning("Ignoring invalid ModuleHost entry.");
-                continue;
-            }
-            var configuredUsers = option.AllowedUsers ?? [];
-            if (configuredUsers.Any(user => !Guid.TryParse(user, out _)))
-            {
-                logger.LogWarning("Ignoring ModuleHost {ModuleId} with an invalid AllowedUsers entry.", option.ModuleId);
-                continue;
-            }
-            if (Exists(option.ModuleId))
-            {
-                logger.LogWarning("Ignoring duplicate ModuleHost {ModuleId}.", option.ModuleId);
-                continue;
-            }
-            var allowedUsers = configuredUsers.ToHashSet(StringComparer.Ordinal);
-            var dataPath = string.IsNullOrWhiteSpace(option.DataPath)
-                ? Path.Combine(environment.ContentRootPath, "data", "module-data", option.ModuleId)
-                : Path.GetFullPath(option.DataPath);
-            var entry = new Entry(option.ModuleId, allowedUsers, option.Installed);
-            lock (_gate) _entries.Add(entry);
-            ModuleHostProcessClient? client = null;
-            try
-            {
-                client = new ModuleHostProcessClient(option.PackageRoot, option.ModuleId, dataPath,
-                    logError: message => logger.LogInformation("ModuleHost {ModuleId} stderr: {Message}", option.ModuleId, message),
-                    isolated: !environment.IsDevelopment() || section.GetValue<bool>("Isolation:Enabled"), brokerUrl: broker?.Url, helperOptions: helperOptions);
-                var ready = await client.StartAsync(stoppingToken);
-                var health = await client.HealthAsync(stoppingToken);
-                lock (_gate)
+                if (record.Runtime != "module-host" || record.Quarantined || modules?.IsEnabled(record.ModuleId) != true) continue;
+                if (ModuleTrustStore.Read(environment.ContentRootPath, record)?.Trusted != true)
                 {
-                    entry.Client = client;
-                    entry.Version = ready.Version;
-                    entry.HostApiVersion = ready.HostApiVersion;
-                    entry.Status = health.Healthy ? "running" : "faulted";
-                    entry.ProblemCode = health.Healthy ? null : health.ProblemCode ?? "module-host-unhealthy";
+                    logger.LogWarning("ModuleHost {ModuleId} has no exact-version code trust consent.", record.ModuleId);
+                    continue;
                 }
-                if (!health.Healthy)
+                InstalledModuleStore.VerifyPackage(environment.ContentRootPath, record);
+                entries.Add(new ModuleHostEntryOptions
                 {
-                    await client.DisposeAsync();
-                    lock (_gate) entry.Client = null;
-                }
-                logger.LogInformation("ModuleHost {ModuleId} is {Status}.", option.ModuleId, entry.Status);
+                    ModuleId = record.ModuleId, Installed = record,
+                    PackageRoot = InstalledModuleStore.ResolvePackageRoot(environment.ContentRootPath, record.PackagePath),
+                    AllowedUsers = section.GetSection("Access:" + record.ModuleId + ":AllowedUsers").Get<string[]>() ?? [],
+                });
             }
-            catch (Exception error) when (error is ModulePackageException or IOException or UnauthorizedAccessException or System.Text.Json.JsonException or InvalidOperationException or KeyNotFoundException)
+            foreach (var option in entries)
             {
-                if (client is not null) await client.DisposeAsync();
-                lock (_gate)
+                if (option is null || !ModulePackageHostConfiguration.Identifier(option.ModuleId)
+                    || string.IsNullOrWhiteSpace(option.PackageRoot) || !Path.IsPathFullyQualified(option.PackageRoot)
+                    || !Directory.Exists(option.PackageRoot))
                 {
-                    entry.Status = "faulted";
-                    entry.ProblemCode = error is ModulePackageException package ? package.ProblemCode : "module-host-start-failed";
+                    logger.LogWarning("Ignoring invalid ModuleHost entry.");
+                    continue;
                 }
-                logger.LogWarning(error, "ModuleHost {ModuleId} failed to start.", option.ModuleId);
-            }
-        }
-        using var timer = new PeriodicTimer(probeInterval);
-        while (await timer.WaitForNextTickAsync(stoppingToken))
-        {
-            Entry[] active;
-            lock (_gate) active = _entries.Where(entry => entry.Status == "running" && entry.Client is not null).ToArray();
-            foreach (var entry in active)
-            {
-                string? problem = null;
+                if (option.Installed is null && modules?.KnownModuleIds.Contains(option.ModuleId) == true)
+                {
+                    logger.LogWarning("Ignoring development ModuleHost {ModuleId} that conflicts with a catalog module.", option.ModuleId);
+                    continue;
+                }
+                var configuredUsers = option.AllowedUsers ?? [];
+                if (configuredUsers.Any(user => !Guid.TryParse(user, out _)))
+                {
+                    logger.LogWarning("Ignoring ModuleHost {ModuleId} with an invalid AllowedUsers entry.", option.ModuleId);
+                    continue;
+                }
+                if (Exists(option.ModuleId))
+                {
+                    logger.LogWarning("Ignoring duplicate ModuleHost {ModuleId}.", option.ModuleId);
+                    continue;
+                }
+                var allowedUsers = configuredUsers.ToHashSet(StringComparer.Ordinal);
+                var dataPath = string.IsNullOrWhiteSpace(option.DataPath)
+                    ? Path.Combine(environment.ContentRootPath, "data", "module-data", option.ModuleId)
+                    : Path.GetFullPath(option.DataPath);
+                var entry = new Entry(option.ModuleId, allowedUsers, option.Installed);
+                lock (_gate) { if (_stopping) break; _entries.Add(entry); }
+                ModuleHostGeneration? generation = null;
+                IModuleWorkLease? work = null;
                 try
                 {
-                    if (!IsTrusted(entry)) throw new ModulePackageException("module-host-trust-revoked");
-                    var health = await entry.Client!.HealthAsync(stoppingToken);
-                    if (!health.Healthy) problem = health.ProblemCode ?? "module-host-unhealthy";
+                    work = await workLeases.AcquireAsync(option.ModuleId, stoppingToken);
+                    var client = new ModuleHostProcessClient(option.PackageRoot, option.ModuleId, dataPath,
+                        logError: message => logger.LogInformation("ModuleHost {ModuleId} stderr: {Message}", option.ModuleId, message),
+                        isolated: !environment.IsDevelopment() || section.GetValue<bool>("Isolation:Enabled"), brokerUrl: broker?.Url, helperOptions: helperOptions);
+                    generation = new(option.ModuleId, client.ServiceToken, work, () => client.DisposeAsync().AsTask(),
+                        () => { lock (_gate) if (entry.Status != "faulted") entry.Status = "draining"; },
+                        error =>
+                        {
+                            lock (_gate)
+                            {
+                                if (error is not null) { entry.Status = "faulted"; entry.ProblemCode = "module-host-cleanup-unconfirmed"; }
+                                else { if (entry.Status != "faulted") entry.Status = "stopped"; entry.Generation = null; entry.Client = null; }
+                            }
+                        });
+                    lock (_gate) { entry.Client = client; entry.Generation = generation; }
+                    work = null;
+                    generation.Start();
+                    using var startup = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, generation.Stopping);
+                    var ready = await client.StartAsync(startup.Token);
+                    var health = await client.HealthAsync(startup.Token);
+                    lock (_gate)
+                    {
+                        entry.Version = ready.Version;
+                        entry.HostApiVersion = ready.HostApiVersion;
+                        entry.Status = !health.Healthy ? "faulted" : generation.PublishReady(new Uri(ready.Url)) ? "running" : "draining";
+                        entry.ProblemCode = health.Healthy ? null : health.ProblemCode ?? "module-host-unhealthy";
+                    }
+                    if (!health.Healthy)
+                    {
+                        generation.RequestClose();
+                    }
+                    logger.LogInformation("ModuleHost {ModuleId} is {Status}.", option.ModuleId, entry.Status);
                 }
-                catch (Exception error) when (error is ModulePackageException or IOException or InvalidOperationException
-                    or System.Text.Json.JsonException or KeyNotFoundException)
+                catch (Exception error) when (error is ModulePackageException or IOException or UnauthorizedAccessException or System.Text.Json.JsonException or InvalidOperationException or KeyNotFoundException or OperationCanceledException or ModuleUnavailableException)
                 {
-                    problem = error is ModulePackageException package ? package.ProblemCode : "module-host-health-failed";
+                    lock (_gate)
+                    {
+                        entry.Status = "faulted";
+                        entry.ProblemCode = error is ModulePackageException package ? package.ProblemCode : "module-host-start-failed";
+                    }
+                    logger.LogWarning(error, "ModuleHost {ModuleId} failed to start.", option.ModuleId);
+                    generation?.RequestClose();
                 }
-                if (problem is null) continue;
-                lock (_gate)
-                {
-                    entry.Status = "faulted";
-                    entry.ProblemCode = problem;
-                }
-                logger.LogWarning("ModuleHost {ModuleId} faulted: {ProblemCode}.", entry.ModuleId, problem);
-                await entry.Client!.AbortAsync();
-                await entry.Client.DisposeAsync();
-                lock (_gate) entry.Client = null;
+                finally { generation?.StartupFinished(); work?.Dispose(); }
             }
+            using var timer = new PeriodicTimer(probeInterval);
+            while (await timer.WaitForNextTickAsync(stoppingToken))
+            {
+                Entry[] active;
+                lock (_gate) active = _entries.Where(entry => entry.Status == "running" && entry.Client is not null).ToArray();
+                foreach (var entry in active)
+                {
+                    string? problem = null;
+                    try
+                    {
+                        if (!IsTrusted(entry)) throw new ModulePackageException("module-host-trust-revoked");
+                        using var connection = AcquireConnection(entry.ModuleId);
+                        if (connection is null) continue;
+                        using var probe = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, connection.Stopping);
+                        var health = await entry.Client!.HealthAsync(probe.Token);
+                        if (!health.Healthy) problem = health.ProblemCode ?? "module-host-unhealthy";
+                    }
+                    catch (Exception error) when (error is ModulePackageException or IOException or InvalidOperationException
+                        or System.Text.Json.JsonException or KeyNotFoundException)
+                    {
+                        problem = error is ModulePackageException package ? package.ProblemCode : "module-host-health-failed";
+                    }
+                    if (problem is null) continue;
+                    lock (_gate)
+                    {
+                        entry.Status = "faulted";
+                        entry.ProblemCode = problem;
+                    }
+                    logger.LogWarning("ModuleHost {ModuleId} faulted: {ProblemCode}.", entry.ModuleId, problem);
+                    entry.Generation?.RequestClose();
+                }
+            }
+        }
+        finally
+        {
+            BeginStop();
+            Task[] cleanup;
+            lock (_gate) cleanup = _entries.Where(entry => entry.Generation is not null).Select(entry => entry.Generation!.Completion).ToArray();
+            await Task.WhenAll(cleanup);
         }
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
+        BeginStop();
         await base.StopAsync(cancellationToken);
-        Entry[] entries;
-        lock (_gate) entries = _entries.ToArray();
-        foreach (var entry in entries)
-            if (entry.Client is not null) await entry.Client.DisposeAsync();
+        cancellationToken.ThrowIfCancellationRequested();
+        if (ExecuteTask is { } execution)
+            try { await execution; } catch (OperationCanceledException) when (_stopping) { }
     }
+
+    private void BeginStop()
+    {
+        ModuleHostGeneration[] generations;
+        lock (_gate) { _stopping = true; generations = _entries.Where(entry => entry.Generation is not null).Select(entry => entry.Generation!).ToArray(); }
+        foreach (var generation in generations) generation.RequestClose();
+    }
+    public override void Dispose() { BeginStop(); base.Dispose(); }
 
     private bool IsTrusted(Entry entry)
     {
@@ -214,6 +245,7 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
         internal string? HostApiVersion { get; set; }
         internal string? ProblemCode { get; set; }
         internal ModuleHostProcessClient? Client { get; set; }
+        internal ModuleHostGeneration? Generation { get; set; }
     }
 
     private sealed class ModuleHostEntryOptions

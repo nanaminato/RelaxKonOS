@@ -17,11 +17,11 @@ public static class WebsitePublicationEndpoints
             .RequireHostFeature(ServerHostFeature.WebServer);
 
         group.MapPost(WebsitePublicationApiRoutes.CollectionPattern, (PublishWebsiteRequest request, HttpContext context,
-            IHostElevationSessionStore elevations, WebsitePublicationCoordinator coordinator) => Handle(() =>
+            IHostElevationSessionStore elevations, WebsitePublicationCoordinator coordinator, CancellationToken ct) => HandleAsync(async () =>
         {
             if (!elevations.IsGranted(context.User, HostElevationCapability.NginxConfigurationWrite, request.WebServerId))
                 return ElevationRequired();
-            var operation = coordinator.Start(request, Actor(context.User), Key(context));
+            var operation = await coordinator.StartAsync(request, Actor(context.User), Key(context), ct);
             return Results.Accepted(WebsitePublicationApiRoutes.Operation.Replace("{operationId}", operation.OperationId.ToString("D")), operation);
         })).RequireAuthorization(ApplicationDeploymentEndpoints.ManagePolicy);
 
@@ -47,6 +47,14 @@ public static class WebsitePublicationEndpoints
             return Results.Problem(statusCode: error.StatusCode, title: error.ProblemCode,
                 type: "https://relaxkonos.app/problems/" + error.ProblemCode, extensions: new Dictionary<string, object?> { ["problemCode"] = error.ProblemCode });
         }
+        catch (UnauthorizedAccessException) { return Results.Unauthorized(); }
+    }
+    private static async Task<IResult> HandleAsync(Func<Task<IResult>> action)
+    {
+        try { return await action(); }
+        catch (WebsitePublicationException error)
+        { return Results.Problem(statusCode: error.StatusCode, title: error.ProblemCode, type: "https://relaxkonos.app/problems/" + error.ProblemCode,
+            extensions: new Dictionary<string, object?> { ["problemCode"] = error.ProblemCode }); }
         catch (UnauthorizedAccessException) { return Results.Unauthorized(); }
     }
 }

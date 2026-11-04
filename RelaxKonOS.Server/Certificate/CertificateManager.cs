@@ -114,7 +114,7 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
             await certificates.SaveAsync(material, ct);
             logger.LogInformation("Certificate issuance material saved. CertificateId={CertificateId}", certificateId);
             return "";
-        }, lifetime.ApplicationStopping);
+        }, lifetime.ApplicationStopping, cancellationToken);
     }
 
     public async Task<CertificateOperationDto> CreateSelfSignedAsync(string idempotencyKey, CreateSelfSignedCertificateRequest request, string? actor, CancellationToken cancellationToken)
@@ -132,7 +132,7 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
             var material = CreateSelfSignedMaterial(certificateId, domains, request.KeyAlgorithm, request.ValidityDays);
             await certificates.SaveAsync(material, ct);
             return "";
-        }, lifetime.ApplicationStopping);
+        }, lifetime.ApplicationStopping, cancellationToken);
     }
 
     public async Task<KestrelCertificateDeploymentDto> GetKestrelDeploymentAsync(Guid certificateId, CancellationToken cancellationToken)
@@ -168,7 +168,7 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
             }
             await deployments.RecordKestrelAsync(current!, true, null, ct, makeDefault: true);
             return "";
-        }, lifetime.ApplicationStopping);
+        }, lifetime.ApplicationStopping, cancellationToken);
     }
 
     public async Task<CertificateOperationDto> RenewAsync(Guid certificateId, string idempotencyKey, string? actor, CancellationToken cancellationToken)
@@ -200,7 +200,7 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
                 await deployments.RecordKestrelAsync(replacementRecord, true, null, ct);
             }
             return "";
-        }, lifetime.ApplicationStopping);
+        }, lifetime.ApplicationStopping, cancellationToken);
     }
 
     public async Task<CertificateOperationDto> DeleteAsync(Guid certificateId, string idempotencyKey, DeleteCertificateRequest request, string? actor, CancellationToken cancellationToken)
@@ -215,7 +215,7 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
             await deployments.RemoveKestrelAsync(certificateId, ct);
             await certificates.DeleteAsync(certificateId, ct);
             return "";
-        }, lifetime.ApplicationStopping);
+        }, lifetime.ApplicationStopping, cancellationToken);
     }
 
     public async Task<CertificateOperationDto> RevokeAsync(Guid certificateId, string idempotencyKey, RevokeCertificateRequest request, string? actor, CancellationToken cancellationToken)
@@ -235,7 +235,7 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
             await deployments.RemoveKestrelAsync(certificateId, ct);
             await certificates.UpdateStatusAsync(certificateId, CertificateStatus.Revoked, ct);
             return "";
-        }, lifetime.ApplicationStopping);
+        }, lifetime.ApplicationStopping, cancellationToken);
     }
 
     private static CertificateOperationDto Failure(string kind, string problem)

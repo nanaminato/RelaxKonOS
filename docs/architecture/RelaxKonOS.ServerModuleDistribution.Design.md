@@ -651,3 +651,13 @@ v2 的 `IModuleContext` 只提供：
 ### v2 继续实施（2026-10-31）
 
 MD-01 唯一 v2 安装清单、MD-05 Linux/Windows 专用身份与私有数据边界、MD-06 精确代码信任、MD-07 服务动作 Broker 已实现。两平台签名包安装与 Core→ModuleHost→Broker→真实 Helper 正常 HTTP 闭环、批准审计已有实机证据；Linux Helper 不可用/成功响应丢失及 Windows SessionValid/owner-device 也已实测。Windows 原生夹具已使用生产 ModuleHost 安装函数，其快照按复制前冻结的完整清单校验，拒绝额外文件、链接与内容漂移。两平台执行中断、System 完整发行服务安装/跨版本升级已于 2026-11-01 验收；Personal 完整发行与后续 Broker 操作仍待实现/验收，具体结果和限制统一由 [v2 实施记录](RelaxKonOS.ServerModuleV2.Progress.md) 跟踪。
+
+### MB-06 A：常驻进程代次与真实工作排空（2026-11-04）
+
+已安装的 ModuleHost 元数据声明同一驻留协调器的常驻工作边界，目录仍为 resident/KeepLoaded/不可闲时释放。监督器在启动进程前取得连续工作租约，初始化任务、代理 HTTP 请求/响应流、Broker 回调及其响应序列化归入唯一 `ModuleHostGeneration`；不再向调用方返回无保护的裸连接或认证模块 ID。正式包继续沿原启用、精确版本信任、摘要与身份核验路径，不能因为唤醒而自动安装、授信或改变版本。Development 配置项只注册合法、不与正式目录冲突的元数据身份；准入失败不绕过协调器。
+
+关闭和健康故障先撤回代次令牌并停止新 scope，通知在途传输取消，然后等待初始化、实际代理/Broker Task 和 request-context 释放结束，最后执行唯一进程清理任务。等待预算耗尽不能提前释放进程保护；未知清理保留代次/进程/工作租约和 faulted 原因，不重放 Shutdown 或领域动作。原持久计划、常设许可和未知结果恢复权威不变，业务 context 另绑定进程代次，旧 context 不能与新进程令牌配对。
+
+Server、ModuleHost 和 Helper 必须同时采用本仓当前 IPC 契约。Windows 的 `tree-exit` 仅在专用 Job 活动进程归零后发送，旧 parent-only `exit` 帧不再接受。Linux 隔离监视器保留原专用 UID 的 Host 关闭清理责任，并在该 UID 无进程、stderr 排空后发送 `tree-stopped`；Server 同时要求模块停止与监视器树退出证明，不接受仅父进程退出作为成功。普通 Server 关闭超时不默认强杀并伪装完成；Development 非隔离探针仅证明其实际进程/流收尾，不构成专用身份树退出验收。
+
+本阶段不提供闲时休眠、自动重启或任务申报调度协议。第三方模块仍可有自身持续任务，完整进程寿命因此保持保护；合作排空/后台任务申报、唤醒时重新核验的多代循环、真实专用身份的崩溃/回调和进程树故障矩阵仍是 MB-06 后续验收条件。`ModuleHostLifetimeChecks` 覆盖真实协调器下 scope/初始化/停止预算和故障责任。`ModuleHostChecks` 包含真实开发进程启动/健康，以及生产代理和 Broker callback RequestDelegate 的响应阻塞：真实 ModuleHost 上游复制未完成时仍保留 context/scope，断连通知和 Stop 不提前释放，代理结束清理 context 后仍须等待另一 callback 写入完成。callback 测试读取合法持久计划，不派发 Helper 副作用；受控响应流不是实际网络故障矩阵。运行结果由本轮整体里程碑记录拥有，不能沿用历史隔离实机证据冒充新树确认路径已实测。

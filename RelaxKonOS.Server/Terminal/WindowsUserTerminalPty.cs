@@ -9,12 +9,15 @@ namespace RelaxKonOS.Server.Terminal;
 
 /// <summary>Persistent connection to a Helper-owned ConPTY running as the authenticated OS user.</summary>
 public sealed class WindowsUserTerminalPty(UserExecutionContext context,
-    WindowsNamedPipeUserExecutionTransport transport) : IPty, IWorkspaceTerminalPty, IDisposable
+    WindowsNamedPipeUserExecutionTransport transport) : IPty, IWorkspaceTerminalPty, IDisposable, ITerminalPtyLifetime
 {
     public RelaxKonOS.Protocol.Settings.TerminalEnvironmentOverrides? WorkspaceEnvironment { get; set; }
     private readonly object _writeLock = new();
     private NamedPipeClientStream? _pipe;
     private int _exitSignaled;
+    private Task _reader = Task.CompletedTask;
+    private Task? _stop;
+    private bool _startupUnknown;
     public string DefaultWorkingDirectory => context.Identity.HomeDirectory;
     public bool IsAdministrator { get; set; }
     public bool IsRunning { get; private set; }
@@ -35,28 +38,24 @@ public sealed class WindowsUserTerminalPty(UserExecutionContext context,
             TerminalShell: shell, TerminalColumns: columns, TerminalRows: rows,
             TerminalWidthPixels: 0, TerminalHeightPixels: 0, OperationId: operationId,
             Correlation: CorrelationContext.Create(operationId, "user.execution"));
-        var pipe = transport.OpenTerminalAsync(request).GetAwaiter().GetResult();
+        NamedPipeClientStream pipe;
+        try { pipe = transport.OpenTerminalAsync(request).GetAwaiter().GetResult(); }
+        catch (TerminalStartOutcomeUnknownException) { _startupUnknown = true; throw; }
         WorkspaceEnvironment = null;
         _pipe = pipe;
         IsRunning = true;
-        _ = Task.Run(async () =>
+        _reader = Task.Run(async () =>
         {
-            var buffer = new byte[65536];
+            var exitCode = -1;
             try
             {
-                while (true)
-                {
-                    var read = await pipe.ReadAsync(buffer).ConfigureAwait(false);
-                    if (read == 0) break;
-                    DataReceived?.Invoke(buffer[..read], read);
-                }
+                exitCode = await TerminalOutputStream.ReadAsync(pipe, (bytes, count) => DataReceived?.Invoke(bytes, count));
             }
-            catch (Exception exception) when (exception is IOException or ObjectDisposedException) { }
             finally
             {
                 IsRunning = false;
                 pipe.Dispose();
-                if (Interlocked.Exchange(ref _exitSignaled, 1) == 0) ProcessExited?.Invoke(-1);
+                if (Interlocked.Exchange(ref _exitSignaled, 1) == 0) ProcessExited?.Invoke(exitCode);
             }
         });
     }
@@ -89,9 +88,18 @@ public sealed class WindowsUserTerminalPty(UserExecutionContext context,
     }
     public void Stop()
     {
-        WorkspaceEnvironment = null;
-        IsRunning = false;
-        Interlocked.Exchange(ref _pipe, null)?.Dispose();
+        _ = StopAsync();
     }
     public void Dispose() => Stop();
+    public Task StopAsync()
+    {
+        lock (_writeLock) return _stop ??= Task.Run(async () =>
+        {
+            if (_startupUnknown) throw new IOException("terminal.start_outcome_unverified");
+            WorkspaceEnvironment = null;
+            lock (_writeLock) if (IsRunning && _pipe is { } pipe) UserTerminalStreamProtocol.WriteClose(pipe);
+            await _reader;
+            _pipe = null; IsRunning = false;
+        });
+    }
 }

@@ -4,6 +4,8 @@ using System.Text;
 using Microsoft.Extensions.Options;
 using RelaxKonOS.Protocol.Docker;
 using RelaxKonOS.Server.EventAlerts;
+using RelaxKonOS.Server.Residency;
+using RelaxKonOS.Server.Startup;
 
 namespace RelaxKonOS.Server.Docker;
 
@@ -24,8 +26,10 @@ internal sealed class DockerStackOperationCoordinator(
     IOptions<DockerComposeOptions> options,
     IHostApplicationLifetime lifetime,
     IOperationalEventPublisher eventPublisher,
-    ILogger<DockerStackOperationCoordinator> logger) : IHostedService
+    ILogger<DockerStackOperationCoordinator> logger, IResidentModuleWorkLeaseSource leases) : IHostedService, IDisposable
 {
+    private readonly ResidentBackgroundWorkOwner workOwner = new(leases, ServerModules.DockerId);
+    internal bool HasResponsibility => workOwner.HasResponsibility;
     private readonly object gate = new();
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> cancellations = new();
     private readonly ConcurrentDictionary<Guid, Task> running = new();
@@ -33,7 +37,7 @@ internal sealed class DockerStackOperationCoordinator(
 
     /// <summary>Queues a deployment (or an update, which is the same Compose call), or returns the
     /// operation already bound to this idempotency key.</summary>
-    public DockerStackOperationDto Deploy(DockerStackDeployRequest request, string actor, string key)
+    public async Task<DockerStackOperationDto> DeployAsync(DockerStackDeployRequest request, string actor, string key, CancellationToken ct = default)
     {
         var definition = request.Definition;
         Preflight(definition);
@@ -42,12 +46,12 @@ internal sealed class DockerStackOperationCoordinator(
         if (!string.Equals(request.DefinitionVersion, DockerStackValidation.DefinitionVersion(definition.Name, definition.ComposeYaml), StringComparison.Ordinal))
             throw new DockerStackException(DockerStackProblem.DefinitionChanged, 409);
 
-        return Start(DockerStackOperationKind.Deploy, definition.Name, definition, actor, key,
-            DockerStackValidation.Reference($"{DockerStackOperationKind.Deploy}|{definition.Name}|{request.DefinitionVersion}"));
+        return await StartOperationAsync(DockerStackOperationKind.Deploy, definition.Name, definition, actor, key,
+            DockerStackValidation.Reference($"{DockerStackOperationKind.Deploy}|{definition.Name}|{request.DefinitionVersion}"), ct);
     }
 
     /// <summary>Queues a whole-project lifecycle action.</summary>
-    public DockerStackOperationDto ApplyAction(string name, DockerStackOperationKind kind, bool confirmed, string actor, string key)
+    public async Task<DockerStackOperationDto> ApplyActionAsync(string name, DockerStackOperationKind kind, bool confirmed, string actor, string key, CancellationToken ct = default)
     {
         if (!DockerStackValidation.IsValidProjectName(name))
             throw new DockerStackException(DockerStackProblem.InvalidName, 400);
@@ -55,7 +59,7 @@ internal sealed class DockerStackOperationCoordinator(
             throw new DockerStackException(DockerStackProblem.ConfirmationRequired, 400);
         // The confirmation flag is part of the request identity: a key that was first used for an
         // unconfirmed attempt can never be replayed as if the operator had approved a delete.
-        return Start(kind, name, null, actor, key, DockerStackValidation.Reference($"{kind}|{name}|{confirmed}"));
+        return await StartOperationAsync(kind, name, null, actor, key, DockerStackValidation.Reference($"{kind}|{name}|{confirmed}"), ct);
     }
 
     public DockerStackOperationDto? Get(Guid operationId) => operations.Get(operationId)?.Operation;
@@ -95,15 +99,17 @@ internal sealed class DockerStackOperationCoordinator(
         }
     }
 
-    private DockerStackOperationDto Start(DockerStackOperationKind kind, string project, DockerStackDefinitionDto? definition,
-        string actor, string key, string requestReference)
+    private async Task<DockerStackOperationDto> StartOperationAsync(DockerStackOperationKind kind, string project, DockerStackDefinitionDto? definition,
+        string actor, string key, string requestReference, CancellationToken ct)
     {
         ValidateKey(key);
+        using var work = await workOwner.AdmitAsync(ct);
 
         lock (gate)
         {
             if (!ready || lifetime.ApplicationStopping.IsCancellationRequested)
                 throw new DockerStackException(DockerStackProblem.StoreUnavailable, 503);
+            work.Token.ThrowIfCancellationRequested();
             var replay = operations.FindIdempotent(kind, actor, key, requestReference);
             if (replay is not null) return replay.Operation;
             // The ceiling is decided before the record is written, so a rejected request never leaves a
@@ -111,20 +117,24 @@ internal sealed class DockerStackOperationCoordinator(
             if (running.Count >= Math.Max(1, options.Value.MaximumConcurrentOperations))
                 throw new DockerStackException(DockerStackProblem.OperationConflict);
 
-            var entry = operations.Create(project, kind, actor, key, requestReference, out var created);
+            StackOperationEntry entry;
+            bool created;
+            try { entry = operations.Create(project, kind, actor, key, requestReference, out created); }
+            catch (Exception error) when (error is not DockerStackException rejected || rejected.ProblemCode == DockerStackProblem.StoreUnavailable)
+            { work.Fail(error); throw; }
             if (created)
             {
-                var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopping);
+                var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopping, work.Token);
                 cancellations[entry.Operation.OperationId] = cancellation;
-                running[entry.Operation.OperationId] = Task.Run(
-                    () => RunAsync(entry.Operation, kind, project, definition, cancellation), CancellationToken.None);
+                running[entry.Operation.OperationId] = work.Completion;
+                work.Run(stopping => RunAsync(entry.Operation, kind, project, definition, cancellation, stopping));
             }
             return entry.Operation;
         }
     }
 
     private async Task RunAsync(DockerStackOperationDto operation, DockerStackOperationKind kind, string project,
-        DockerStackDefinitionDto? definition, CancellationTokenSource cancellation)
+        DockerStackDefinitionDto? definition, CancellationTokenSource cancellation, CancellationToken workStopping)
     {
         var id = operation.OperationId;
         var messages = new List<string>();
@@ -148,6 +158,7 @@ internal sealed class DockerStackOperationCoordinator(
             }
 
             operations.Update(id, current => current with { Stage = DockerStackOperationStage.Applying }, "stage");
+            cancellation.Token.ThrowIfCancellationRequested();
             var result = kind == DockerStackOperationKind.Deploy
                 ? await compose.DeployAsync(definition!, cancellation.Token)
                 : await compose.ApplyActionAsync(project, kind, confirmed: true, cancellation.Token);
@@ -166,7 +177,7 @@ internal sealed class DockerStackOperationCoordinator(
         {
             // A process that is stopping has not failed: it leaves the operation active so the next
             // startup reconciles it against the Engine instead of reporting a phantom outcome.
-            var stopping = lifetime.ApplicationStopping.IsCancellationRequested;
+            var stopping = lifetime.ApplicationStopping.IsCancellationRequested || workStopping.IsCancellationRequested;
             if (stopping) return;
             var observed = await SafeObserveAsync(project);
             Complete(id, DockerStackOperationState.Cancelled, DockerStackProblem.Cancelled, null, messages, observed);
@@ -177,7 +188,7 @@ internal sealed class DockerStackOperationCoordinator(
             var state = observed.Count > 0 ? DockerStackOperationState.PartialFailed : DockerStackOperationState.Failed;
             Complete(id, state, failure.ProblemCode, state == DockerStackOperationState.PartialFailed ? DockerStackProblem.PartialFailure : null, messages, observed);
         }
-        catch (Exception exception)
+        catch (Exception exception) when (exception is not ResidentWorkCompletionException)
         {
             logger.LogWarning("Stack operation {OperationId} for project {Project} failed before an outcome could be classified. {ExceptionType}",
                 id, project, exception.GetType().Name);
@@ -261,11 +272,7 @@ internal sealed class DockerStackOperationCoordinator(
             }, "completed", messages);
             PublishTerminalSignal(terminal);
         }
-        catch (Exception exception) when (exception is DockerStackException or InvalidOperationException)
-        {
-            // The ledger has failed closed. The durable Running record is what the next startup
-            // reconciles, so the operation is not lost by failing to write its outcome now.
-        }
+        catch (Exception exception) { throw new ResidentWorkCompletionException(exception); }
     }
 
     private void PublishTerminalSignal(DockerStackOperationDto terminal)
@@ -312,9 +319,15 @@ internal sealed class DockerStackOperationCoordinator(
     /// </summary>
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        using var recoveryWork = await workOwner.AdmitAsync(cancellationToken);
         StackOperationEntry[] entries;
         try { entries = operations.Read(); }
-        catch (DockerStackException) { return; }
+        catch (DockerStackException error)
+        {
+            recoveryWork.Fail(error);
+            logger.LogError(error, "Compose startup ledger is unavailable; its work remains quarantined.");
+            return;
+        }
 
         foreach (var entry in entries.Where(x => DockerStackOperationStore.Active(x.Operation)))
         {
@@ -322,9 +335,19 @@ internal sealed class DockerStackOperationCoordinator(
                 ? await SafeObserveAsync(entry.Operation.ProjectName)
                 : [];
             var recovery = RecoveryCode(entry.Operation.Kind, observed);
-            Complete(entry.Operation.OperationId, DockerStackOperationState.Interrupted, DockerStackProblem.Interrupted, recovery,
-                ["the server restarted while this operation was active; the project was observed, not replayed"], observed);
+            try
+            {
+                Complete(entry.Operation.OperationId, DockerStackOperationState.Interrupted, DockerStackProblem.Interrupted, recovery,
+                    ["the server restarted while this operation was active; the project was observed, not replayed"], observed);
+            }
+            catch (Exception error)
+            {
+                recoveryWork.Fail(error);
+                logger.LogError(error, "Compose startup recovery could not persist its result; its work remains quarantined.");
+                return;
+            }
         }
+        recoveryWork.Token.ThrowIfCancellationRequested();
         lock (gate) ready = true;
     }
 
@@ -342,7 +365,7 @@ internal sealed class DockerStackOperationCoordinator(
     public async Task StopAsync(CancellationToken cancellationToken)
     {
         lock (gate) ready = false;
-        try { await Task.WhenAll(running.Values).WaitAsync(cancellationToken); }
-        catch (OperationCanceledException) { }
+        await workOwner.StopAsync(cancellationToken);
     }
+    public void Dispose() => workOwner.Dispose();
 }

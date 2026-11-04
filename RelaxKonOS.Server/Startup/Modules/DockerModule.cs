@@ -15,9 +15,10 @@ namespace RelaxKonOS.Server.Startup.Modules;
 /// <c>IDockerRuntimeInstaller</c>, <c>IDockerProxyResolver</c> and
 /// <c>IOutboundProxyHttpClientFactory</c>; this module only adds the management layer on top.
 /// </summary>
-internal sealed class DockerModule : IServerModule, IServerModuleDeactivationGuard
+internal sealed class DockerModule : IServerModule, IServerModuleDeactivationGuard, IServerModuleWorkResidency
 {
     public string Id => ServerModules.DockerId;
+    public RelaxKonOS.Server.Residency.IServerModuleRuntimeFactory RuntimeFactory { get; } = new RelaxKonOS.Server.Residency.ResidentModuleWorkRuntimeFactory(ServerModules.DockerId);
     public IReadOnlyList<string> Capabilities => [ServerCapabilities.Docker];
     public IReadOnlyList<string> Requires => [];
 
@@ -58,6 +59,8 @@ internal sealed class DockerModule : IServerModule, IServerModuleDeactivationGua
         IServiceProvider services, ServerModuleContext context, CancellationToken cancellationToken)
     {
         RelaxKonOS.Server.Docker.StackOperationEntry[] entries;
+        if (services.GetService<RelaxKonOS.Server.Residency.ModuleResidencyCoordinator>()?.HasBackgroundWork(Id) == true)
+            return ValueTask.FromResult<IReadOnlyList<ServerModuleOrphanedWork>>([new(Id, "Compose execution or cleanup remains owned in this process.")]);
         try
         {
             entries = services.GetRequiredService<RelaxKonOS.Server.Docker.DockerStackOperationStore>().Read();

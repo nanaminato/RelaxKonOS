@@ -253,10 +253,11 @@ internal static async Task VerifyOperationIdempotencyAsync(string root)
     var certificates = new FileCertificateStore(environment, options, new CertificateMetadataRepository(environment, configuration));
     var retries = new CertificateRenewalAttemptRepository(environment, configuration, options);
     var journal = new HostOperationJournal(environment, configuration);
-    var certificateOperations = new CertificateOperationStore(environment, journal, certificates, retries, NullLogger<CertificateOperationStore>.Instance);
+    var certificateOperations = new CertificateOperationStore(environment, journal, certificates, retries, NullLogger<CertificateOperationStore>.Instance, new TestResidentBackgroundLeases());
+    await certificateOperations.StartAsync(CancellationToken.None);
     var certificateId = Guid.NewGuid();
-    var first = await certificateOperations.StartAsync("same-key", certificateId, "issue", "test", _ => Task.FromResult(""), CancellationToken.None);
-    var duplicate = await certificateOperations.StartAsync("same-key", certificateId, "issue", "test", _ => Task.FromResult("certificate.should_not_run"), CancellationToken.None);
+    var first = await certificateOperations.StartAsync("same-key", certificateId, "issue", "test", _ => Task.FromResult(""), CancellationToken.None, CancellationToken.None);
+    var duplicate = await certificateOperations.StartAsync("same-key", certificateId, "issue", "test", _ => Task.FromResult("certificate.should_not_run"), CancellationToken.None, CancellationToken.None);
     TestAssert.Assert(first.OperationId == duplicate.OperationId, "Certificate idempotency key created duplicate work.");
     TestAssert.Assert((await TestOperations.WaitForCertificateOperationAsync(certificateOperations, first.OperationId)).State == CertificateOperationState.Succeeded, "Certificate operation did not complete.");
 

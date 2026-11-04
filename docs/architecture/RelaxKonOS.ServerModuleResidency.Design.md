@@ -322,3 +322,8 @@ Git 命令端口保留结构化文件名、参数、环境与超时规则，取�
 2026-11-04 MB-07 连接预算续核：连接 owner 使用 128 个合计名额覆盖 pending、live 和故障责任，超限不排队/不取得租约；取消和 Stop 超时不提前归还，真实清理成功才补位，未知故障继续占用。Windows/Linux 新增预算各 13 项、原专项与 Windows 默认模块回归、Linux Proxy28 均通过，详见[边界设计 §36](RelaxKonOS.ServerModuleBoundaries.Design.md#36-连续-hub-连接的准入数量预算2026-11-04mb-07-部分)。这是 owner 数量预算，不是总内存或整个 SignalR 连接上限；真实压力、故障恢复与生产收益仍开放，目录仍 resident。
 
 2026-11-04 MB-07 管理员图标续核：Helper 返回的 Base64 在解码分配前受 349528 原始字符预算约束，保留 256 KiB 解码后门禁；Windows/Linux 各14项和原专项通过，预建4194304字符输入的实际 facade 拒绝路径线程分配小于256 KiB，避免3 MiB解码数组。行为、证据和测量边界由[边界设计 §37](RelaxKonOS.ServerModuleBoundaries.Design.md#37-管理员图标-base64-解码前预算2026-11-04mb-07-部分)拥有；不包含上游字符串/传输缓冲或生产进程树收益，目录仍 resident。
+
+
+## 14. 当前模块阶段验收入口（2026-11-04）
+
+MB-01～08 的实际状态、剩余阻塞和整项门槛统一由[模块边界设计 §8/38/39](RelaxKonOS.ServerModuleBoundaries.Design.md#8-实施顺序与跟踪项)维护。MB-05A 后台责任、MB-06A 进程代次和 Terminal-T1 会话/PTY 排空已完成该文所列阶段验收；均保持 resident。SystemPerformance S1 已冻结，仅修阻塞问题。上述结果不代表新增模块动态休眠、完整后代树矩阵或生产内存收益已通过。

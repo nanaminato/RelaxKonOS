@@ -151,7 +151,7 @@ class ProxyViewModelTest {
         model.recoverOperation(operation.operationId); advanceUntilIdle()
         return owner
     }
-    private val runtimeWire = """{"installation":{"installationId":"00112233-4455-6677-8899-aabbccddeeff","hostId":"host","runtimeId":"mihomo","ownership":"managed","stateRevision":3,"activeReleaseId":"release-a","recoveryRequired":false},"pendingOperationId":null,"measuredVersion":"1.19.10","problemCode":null}"""
+    private val runtimeWire = """{"commitWitness":null,"installation":{"installationId":"00112233-4455-6677-8899-aabbccddeeff","hostId":"host","runtimeId":"mihomo","ownership":"managed","stateRevision":3,"activeReleaseId":"release-a","recoveryRequired":false},"pendingOperationId":null,"measuredVersion":"1.19.10","problemCode":null}"""
     private val sourceWire = """[{"runtimeId":"mihomo","baseUri":"https://release.invalid/","confirmationFingerprint":"key","identity":{"sourceId":"official","publisher":"Publisher","enabled":true,"trust":"confirmed","trustRevision":5}}]"""
     private val catalogWire = org.json.JSONObject("""{"source":{"identity":{"sourceId":"official"}},"fresh":true,"problemCode":null,"catalog":{"revision":4,"trustRevision":5,"signatureVerified":true,"releases":[{"runtimeId":"mihomo","releaseId":"release-b","originalVersion":"1.19.30","trust":"confirmed","configurationSupported":true,"channel":"stable","target":{"os":"linux","architecture":"amd64","serviceHost":"systemd"},"evidence":"nativeConfiguration"}]}}""").apply {
         put("source", org.json.JSONArray(sourceWire).getJSONObject(0))

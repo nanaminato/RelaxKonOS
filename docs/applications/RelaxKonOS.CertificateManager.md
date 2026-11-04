@@ -1,5 +1,11 @@
 # RelaxKonOS 证书管理器设计
 
+> MB-05A（2026-11-04）：证书后台操作已有实际 Task owner、真实 resident 工作租约与 Host 排空，续期扫描也持有自己的执行保护。取消 API 只记录 `cancel-requested` 并通知动作，动作与终态持久化实际结束后才报告 Cancelled；未知挑战清理或终态写入失败保留租约、隔离该代并阻止新副作用。Anvil 不支持取消的调用直接等待真实 Task 后核验取消，不以 `WaitAsync` 丢弃网络工作；挑战发布前即登记清理责任，清理失败不能当作成功签发。Core TLS 存储、Kestrel 选择器与已部署 HTTPS 仍独立存续。此阶段不等于管理域休眠、真实 CA 未知结果恢复或生产内存收益，整体状态由[模块边界设计](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md)拥有。
+
+> 此阶段的启动恢复由显式 HostedService StartAsync 在工作租约内执行；构造与禁用检查不改写操作账本。HTTP 准入取消和后台动作停止分开，断开已受理请求不会丢失动作。桌面点击取消后继续观察原 OperationId 的实际终态，停止本地观察只表示结果未知，不显示为服务端 Cancelled。Android 交互与验收由 [Android 文档](../../Client/RelaxKonOS.Client.Android/docs/README.md) 拥有，不在本文件复制。
+
+> 证书账本恢复失败会记录并隔离证书工作，保持未就绪，相关业务与依赖的网站发布拒绝新任务；不会为了管理域恢复失败而关闭 Core TLS 或其他独立管理面。停机仍会报告未解决责任，不清坏文件、不自动重放。
+
 > **模块归属（2026-10-28）**：ACME 签发、ARI 续期循环、操作账本与 `/api/v1.0/certificates` 归官方模块 `relaxkonos.certificates`，默认启用。**Kestrel 启动证书不随模块走**：`ICertificateStore`、`CertificateDeploymentRepository`、`KestrelCertificateRegistry`、`KestrelCertificateStartupService` 与 HTTP-01 WebRoot 存储留在 Core，禁用模块不会让 HTTPS 监听起不来，已部署到 Kestrel 的证书继续生效。网站发布模块硬依赖本模块，因此单独设置 `Modules:Certificates:Enabled=false` 会让启动失败并给出「requires enabled module」诊断；需两者一起关闭。详见[模块设计实施记录](../architecture/RelaxKonOS.ModulesAndExtensions.Design.md#certificate-与-webserver-模块2026-10-28)。
 
 > 状态：**后端核心 V1 与基础管理界面已实现，待目标平台验收**。已提供 ACME v2、HTTP-01（Direct/WebRoot）、受保护的 PEM 存储、RSA/ECDSA、Kestrel 部署、ARI 优先的自动续期、HostGlobal SQLite 元数据，以及包含概览/证书列表和申请对话框的客户端界面。DNS-01、Wildcard、IIS/Nginx/Apache 部署仍属后续阶段；Ubuntu 24.04 与 Windows Server 的真实 CA/监听/ACL 验收仍须在目标主机执行。

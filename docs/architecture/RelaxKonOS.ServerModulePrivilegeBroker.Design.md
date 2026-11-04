@@ -422,3 +422,5 @@ SDK `ExecuteBackgroundAsync` 通过进程令牌认证模块身份，不复用业
 `privilege-consents.json` 独立使用 schemaVersion=2，严格读取当前结构，检查冻结身份/请求/组合摘要与审批/撤销证据；DC-05 新增可选 `contentSha256`（仅 file write），旧的服务许可记录保持可读；活进程发现文件丢失或被外部改写时拒绝使用，不用内存缓存掩盖磁盘未知。模块安装清单为 schemaVersion=3，原单次操作审计为内部 schemaVersion=8。
 
 两平台真实 PAM/LogonUser、服务后台 Helper 动作、撤销/实际到期、重启幂等与操作者审计已验证；DC-05 新增的 package/file/data/app 常设范围与内容摘要绑定通过 106 项定向检查，完整 ServerModules 回归 769 项通过，证据统一链接到 [v2 实施记录](RelaxKonOS.ServerModuleV2.Progress.md)。后台计划由模块自己调度；本次没有新增主机任务调度器，也没有开放包移除、文件删除、数据备份/删除、凭据轮换或任意进程动作的常设许可。
+
+2026-11-04 MB-06 A 后续：Core Broker 认证当前进程令牌时取得该代次的工作 scope，覆盖已接受的完整 Helper/持久计划 Task 及回调响应写入，HTTP 断连不推导领域动作已取消。前台 opaque context 同时绑定模块 ID 和进程代次；关闭撤回新 scope 准入，但不重放已派发动作或丢弃待核实计划。整个 ModuleHost 进程保持常驻工作租约，未提供 idle-release 或后台调度能力；实现与验收范围见[分发设计 MB-06 A](RelaxKonOS.ServerModuleDistribution.Design.md#mb-06-a常驻进程代次与真实工作排空2026-11-04)。

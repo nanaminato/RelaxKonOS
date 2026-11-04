@@ -146,9 +146,16 @@ internal sealed partial class ServerModules
 
     /// <summary>Every module in the compiled catalog, enabled or not. Used to validate configuration.</summary>
     internal IReadOnlySet<string> KnownModuleIds { get; }
-    internal IReadOnlyDictionary<string, IReadOnlyList<string>> RuntimeDependencies => _enabled.Where(module => module is IServerModuleResidency)
-        .ToDictionary(module => module.Id, module => (IReadOnlyList<string>)module.Requires.Where(ReleasableModuleIds.Contains)
-            .Order(StringComparer.Ordinal).ToArray(), StringComparer.Ordinal);
+    internal IReadOnlyDictionary<string, IReadOnlyList<string>> RuntimeDependencies
+    {
+        get
+        {
+            var runtimeIds = RuntimeFactories.Select(factory => factory.ModuleId).ToHashSet(StringComparer.Ordinal);
+            return _enabled.Where(module => runtimeIds.Contains(module.Id))
+                .ToDictionary(module => module.Id, module => (IReadOnlyList<string>)module.Requires.Where(runtimeIds.Contains)
+                    .Order(StringComparer.Ordinal).ToArray(), StringComparer.Ordinal);
+        }
+    }
     internal IReadOnlySet<string> ResidentRequiredModuleIds
     {
         get
@@ -250,22 +257,37 @@ internal sealed partial class ServerModules
     internal void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context,
         IReadOnlyDictionary<string, ServerModuleResidencyPolicyDto>? policies = null)
     {
+        // Development-only process entries also require explicit metadata identities. This does not
+        // enable/install a module, grant code trust or replace any known/installed module identity.
+        var developmentWorkIds = builder.Environment.IsDevelopment() && builder.Configuration.GetValue<bool>("ModuleHosts:Enabled")
+            ? builder.Configuration.GetSection("ModuleHosts:Entries").GetChildren()
+                .Where(entry => ModulePackageHostConfiguration.Identifier(entry["ModuleId"] ?? "")
+                    && !KnownModuleIds.Contains(entry["ModuleId"]!)
+                    && !string.IsNullOrWhiteSpace(entry["PackageRoot"])
+                    && Path.IsPathFullyQualified(entry["PackageRoot"]!) && Directory.Exists(entry["PackageRoot"]!)
+                    && entry.GetSection("AllowedUsers").GetChildren().All(user => Guid.TryParse(user.Value, out _)))
+                .Select(entry => entry["ModuleId"]!).Distinct(StringComparer.Ordinal).ToArray()
+            : [];
+        var factories = RuntimeFactories.Concat(developmentWorkIds.Select(id => new ResidentModuleWorkRuntimeFactory(id))).ToArray();
         // Residency registration belongs to the module framework, not to Program: any host that runs
         // this snapshot (the real Server or a test host) gets the same coordinator, and configuration is
         // validated here, before Build, so a bad rule stops startup instead of a half-configured sweep.
-        if (RuntimeFactories.Count > 0)
+        // Keep a valid empty coordinator when all optional modules are disabled: the Core ModuleHost
+        // supervisor still requires the same admission service, which must fail closed for unknown IDs.
         {
             var residency = ModuleResidencyOptions.Parse(builder.Configuration, KnownModuleIds, KnownReleasableModuleIds);
             if (policies is not null) residency = residency.WithPolicies(policies, KnownReleasableModuleIds);
             builder.Services.AddSingleton(residency);
+            builder.Services.AddSingleton<IResidentModuleWorkLeaseSource, ResidentModuleWorkLeaseSource>();
             builder.Services.AddSingleton(services => new ModuleResidencyCoordinator(
-                RuntimeFactories,
+                factories,
                 residency,
                 services,
                 context,
                 services.GetRequiredService<ILogger<ModuleResidencyCoordinator>>(),
                 dependencies: RuntimeDependencies, residentRequiredModuleIds: ResidentRequiredModuleIds,
-                residentWorkModuleIds: _enabled.OfType<IServerModuleWorkResidency>().Select(module => module.RuntimeFactory.ModuleId).ToHashSet(StringComparer.Ordinal)));
+                residentWorkModuleIds: _enabled.OfType<IServerModuleWorkResidency>().Select(module => module.RuntimeFactory.ModuleId)
+                    .Concat(developmentWorkIds).ToHashSet(StringComparer.Ordinal)));
         }
 
         foreach (var module in _enabled) module.ConfigureServices(builder, context);

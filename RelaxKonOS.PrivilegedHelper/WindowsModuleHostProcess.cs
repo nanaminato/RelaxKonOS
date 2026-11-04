@@ -111,6 +111,20 @@ internal sealed class WindowsModuleHostProcess : IDisposable
             await Task.Delay(100, cancellationToken);
         }
     }
+    internal async Task ConfirmTreeExitAsync(CancellationToken cancellationToken)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(12));
+        // The job is the existing ownership boundary; a parent exit alone cannot confirm detached descendants.
+        if (!TerminateJobObject(_job, 0)) throw new Win32Exception(Marshal.GetLastWin32Error());
+        while (true)
+        {
+            if (!QueryInformationJobObject(_job, 1, out var accounting, Marshal.SizeOf<JobAccounting>(), out _))
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            if (accounting.ActiveProcesses == 0) return;
+            await Task.Delay(50, deadline.Token);
+        }
+    }
     internal int ExitCode
     {
         get { if (!GetExitCodeProcess(_process, out var code)) throw new Win32Exception(Marshal.GetLastWin32Error()); return unchecked((int)code); }
@@ -153,6 +167,11 @@ internal sealed class WindowsModuleHostProcess : IDisposable
         public void Dispose() { Child.Dispose(); Parent.Dispose(); }
     }
     [StructLayout(LayoutKind.Sequential)] private struct SecurityAttributes { public int Size; public IntPtr Descriptor; [MarshalAs(UnmanagedType.Bool)] public bool Inherit; }
+    [StructLayout(LayoutKind.Sequential)] private struct JobAccounting
+    {
+        public long TotalUserTime, TotalKernelTime, ThisPeriodTotalUserTime, ThisPeriodTotalKernelTime;
+        public uint TotalPageFaultCount, TotalProcesses, ActiveProcesses, TotalTerminatedProcesses;
+    }
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] private struct StartupInfo
     {
         public int Size; public string? Reserved, Desktop, Title;
@@ -175,4 +194,7 @@ internal sealed class WindowsModuleHostProcess : IDisposable
     [DllImport("kernel32.dll", SetLastError = true)] private static extern uint WaitForSingleObject(SafeFileHandle process, uint milliseconds);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool GetExitCodeProcess(SafeFileHandle process, out uint code);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool TerminateProcess(SafeFileHandle process, uint code);
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool TerminateJobObject(SafeFileHandle job, uint code);
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool QueryInformationJobObject(SafeFileHandle job, int informationClass,
+        out JobAccounting information, int length, out int returnedLength);
 }

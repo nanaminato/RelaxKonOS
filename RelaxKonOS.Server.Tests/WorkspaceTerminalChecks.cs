@@ -33,16 +33,16 @@ internal static class WorkspaceTerminalChecks
         serviceCollection.AddScoped<IWorkspaceRepository>(_ => workspaces);
         using var services = serviceCollection.BuildServiceProvider();
         var factory = new CapturingFactory();
-        var manager = new TerminalSessionManager(factory, services.GetRequiredService<IHubContext<TerminalHub, ITerminalHubClient>>(), environment, services.GetRequiredService<IServiceScopeFactory>());
+        var manager = new TerminalSessionManager(factory, services.GetRequiredService<IHubContext<TerminalHub, ITerminalHubClient>>(), environment, services.GetRequiredService<IServiceScopeFactory>(), new TerminalTestLeases());
         var request = new StartTerminalRequest(80, 24, 0, 0, null, null);
-        var first = manager.GetOrCreate(workspace.UserId.ToString("D"), null, request);
+        var first = await manager.GetOrCreateAsync(workspace.UserId.ToString("D"), null, request);
         Check(first.Created && factory.Last!.WorkspaceEnvironment!.Values.Single().Value == "first", "New terminals read Workspace overrides.");
         environment.Save(workspace, new("1", new([new("TERMINAL_VALUE", EnvironmentMutationKind.Set, "second")]), EnvironmentPathMode.Append));
-        var restored = manager.GetOrCreate(workspace.UserId.ToString("D"), first.Session.SessionId, request);
+        var restored = await manager.GetOrCreateAsync(workspace.UserId.ToString("D"), first.Session.SessionId, request);
         Check(!restored.Created && factory.Calls == 1 && factory.Last!.WorkspaceEnvironment!.Values.Single().Value == "first", "Restoring an existing terminal does not restart or replace its environment.");
-        var second = manager.GetOrCreate(workspace.UserId.ToString("D"), null, request);
+        var second = await manager.GetOrCreateAsync(workspace.UserId.ToString("D"), null, request);
         Check(second.Created && factory.Last!.WorkspaceEnvironment!.Values.Single().Value == "second", "A new terminal uses the latest saved revision.");
-        manager.Remove(first.Session.SessionId); manager.Remove(second.Session.SessionId);
+        await manager.RemoveAsync(first.Session.SessionId); await manager.RemoveAsync(second.Session.SessionId);
 
         var identity = new UserExecutionIdentity(HostPlatformKind.Windows, "test", "test", "C:/test");
         var overrides = new TerminalEnvironmentOverrides([new("TEST", EnvironmentMutationKind.Set, "data")], EnvironmentPathMode.Append);
@@ -142,7 +142,7 @@ internal static class WorkspaceTerminalChecks
         public CapturingPty? Last;
         public IPty Create() { Calls++; return Last = new CapturingPty(); }
     }
-    private sealed class CapturingPty : IPty, IWorkspaceTerminalPty
+    private sealed class CapturingPty : IPty, IWorkspaceTerminalPty, ITerminalPtyLifetime
     {
         public TerminalEnvironmentOverrides? WorkspaceEnvironment { get; set; }
         public string DefaultWorkingDirectory => "test-home";
@@ -157,6 +157,7 @@ internal static class WorkspaceTerminalChecks
         public void Resize(int columns, int rows) { }
         public void Resize(int columns, int rows, int widthPixels, int heightPixels) { }
         public void Stop() => IsRunning = false;
+        public Task StopAsync() { Stop(); return Task.CompletedTask; }
         public void Dispose() => Stop();
     }
     private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }

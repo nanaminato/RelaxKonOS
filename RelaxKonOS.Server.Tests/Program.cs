@@ -1,4 +1,49 @@
 using RelaxKonOS.Protocol.Proxy;
+if (args.Contains("--module-boundary-milestones-only"))
+{
+    var milestoneRoot = Path.Combine(Path.GetTempPath(), "relaxkonos-module-milestones-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(milestoneRoot);
+    try
+    {
+        await ResidentModuleCatalogChecks.RunAsync();
+        await DirectHttpChallengeLifetimeChecks.RunAsync();
+        await ModuleBackgroundOwnershipChecks.RunAsync(milestoneRoot);
+        await TerminalStreamFramesChecks.RunAsync();
+        await TerminalResidencyChecks.RunAsync();
+        TerminalHubContractChecks.Run();
+        await TerminalAdministratorAuthorizationChecks.RunAsync();
+        var docker = Path.Combine(milestoneRoot, "docker-regression"); Directory.CreateDirectory(docker);
+        var tls = Path.Combine(milestoneRoot, "tls-regression"); Directory.CreateDirectory(tls);
+        await DockerChecks.VerifyStackOperationsAsync(docker);
+        await CertificateChecks.VerifyCertificateStoreAndSniAsync(tls);
+        var replay = Path.Combine(milestoneRoot, "certificate-replay"); Directory.CreateDirectory(replay);
+        var binding = Path.Combine(milestoneRoot, "certificate-binding"); Directory.CreateDirectory(binding);
+        await CertificateOperationReplayChecks.RunAsync(replay);
+        await CertificateBindingChecks.RunAsync(binding);
+        Console.WriteLine("Module boundary milestone checks passed.");
+    }
+    finally
+    {
+        var parent = Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        if (!Path.GetFullPath(milestoneRoot).StartsWith(parent, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Unexpected milestone test directory.");
+        Directory.Delete(milestoneRoot, recursive: true);
+    }
+    return;
+}
+if (args.Contains("--terminal-lifecycle-only"))
+{
+    await TerminalStreamFramesChecks.RunAsync();
+    await TerminalResidencyChecks.RunAsync();
+    TerminalHubContractChecks.Run();
+    await TerminalAdministratorAuthorizationChecks.RunAsync();
+    return;
+}
+if (args.Contains("--resident-module-catalog-only"))
+{
+    await ResidentModuleCatalogChecks.RunAsync();
+    await DirectHttpChallengeLifetimeChecks.RunAsync();
+    return;
+}
 if (args.Contains("--proxy-residency-only"))
 {
     await ProxyResidencyChecks.RunAsync();
@@ -589,6 +634,10 @@ try
         await SettingsSystemVerification.RunAsync(root);
         return;
     }
+    await ResidentModuleCatalogChecks.RunAsync();
+    await ModuleBackgroundOwnershipChecks.RunAsync(Path.Combine(root, "module-background-ownership"));
+    await TerminalStreamFramesChecks.RunAsync();
+    await TerminalResidencyChecks.RunAsync();
     // TestHostEnvironment 会在构造时对 contentRoot 立刻建立 PhysicalFileProvider，目录不存在就直接抛
     // DirectoryNotFoundException，因此这两个子目录必须先建出来（专用开关的分支各自建过，完整套件路径此前漏了）。
     var certificateReplayRoot = Path.Combine(root, "certificate-replay");

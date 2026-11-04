@@ -32,6 +32,7 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
     private string _lastOperationLogText = string.Empty;
     private CancellationTokenSource? _operationCts;
     private Guid? _activeOperationId;
+    private bool _cancelRequested;
 
     public CertificateManagerViewModel(IRemoteCertificateClient client, IAuthSession session, IAppPermissionScope permissions)
     {
@@ -303,19 +304,27 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
     [RelayCommand(CanExecute = nameof(CanCancelOperation))]
     private async Task CancelOperationAsync() => await CancelActiveOperationAsync();
 
-    /// <summary>Requests cancellation from the server before stopping this window's wait loop.</summary>
+    /// <summary>Requests cancellation while continuing to observe the same server operation until its real terminal state.</summary>
     public async Task CancelActiveOperationAsync()
     {
-        if (_operationCts is null) return;
+        if (_operationCts is not { } observation || _activeOperationId is not { } operationId || _cancelRequested) return;
+        _cancelRequested = true;
+        CancelOperationCommand.NotifyCanExecuteChanged();
         try
         {
-            if (_activeOperationId is { } operationId)
-                await _client.CancelOperationAsync(operationId);
-            await _operationCts.CancelAsync();
+            var operation = await _client.CancelOperationAsync(operationId, observation.Token);
+            if (operation is null) throw new InvalidOperationException("Cancellation receipt is unavailable.");
+            if (ReferenceEquals(_operationCts, observation) && _activeOperationId == operationId && operation is not null)
+                OperationText = LocalizedText.Ref("certificates.operation.progress", OperationName(operation.Kind), OperationStage(operation.Stage));
         }
         catch (Exception)
         {
-            // Cancellation is best-effort: the poll loop and server operation both observe it.
+            if (ReferenceEquals(_operationCts, observation) && _activeOperationId == operationId && !observation.IsCancellationRequested)
+            {
+                _cancelRequested = false;
+                StatusText = LocalizedText.Ref("certificates.operation.cancel_request_failed");
+                CancelOperationCommand.NotifyCanExecuteChanged();
+            }
         }
     }
 
@@ -340,6 +349,7 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
 
         _operationCts?.Dispose();
         _operationCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _cancelRequested = false;
         var token = _operationCts.Token;
         OperationLog = string.Empty;
         _lastOperationLogText = string.Empty;
@@ -359,6 +369,7 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
                 return false;
             }
             _activeOperationId = operation.OperationId;
+            CancelOperationCommand.NotifyCanExecuteChanged();
             operation = await PollOperationAsync(operation, token);
             if (operation.State == CertificateOperationState.Succeeded)
             {
@@ -375,7 +386,7 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
         }
         catch (OperationCanceledException)
         {
-            OperationText = LocalizedText.Ref("certificates.operation.cancelled");
+            OperationText = LocalizedText.Ref("certificates.operation.observation_stopped", _activeOperationId?.ToString("D") ?? "—");
             return false;
         }
         catch (CertificateApiException exception)
@@ -468,7 +479,7 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
     private bool CanRequest => CanManage;
     private bool CanActOnSelected => CanManage && SelectedCertificate is not null;
     private bool CanRenewOrRevokeSelected => CanActOnSelected && SelectedCertificate is { Kind: CertificateKind.Acme } certificate && certificate.Status != CertificateStatus.Revoked;
-    private bool CanCancelOperation => IsOperationRunning;
+    private bool CanCancelOperation => IsOperationRunning && _activeOperationId is not null && !_cancelRequested;
 
     private static string OperationName(string? kind) => kind switch
     {
@@ -492,6 +503,7 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
         "revoke" => LocalizedText.Get("certificates.operation.stage.revoking"),
         "delete" => LocalizedText.Get("certificates.operation.stage.deleting"),
         "cancelled" => LocalizedText.Get("certificates.operation.stage.cancelled"),
+        "cancel-requested" => LocalizedText.Get("certificates.operation.stage.cancel_requested"),
         "interrupted" => LocalizedText.Get("certificates.operation.stage.interrupted"),
         _ => LocalizedText.Get("certificates.operation.stage.unknown"),
     };

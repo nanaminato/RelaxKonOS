@@ -50,8 +50,8 @@ public static class DockerEndpoints
             HandleAsync(async () => Results.Ok(await service.PreviewAsync(definition, ct))));
         // Every mutation is a durable operation. The 202 answers with the record that will still be
         // readable after the phone that asked for it is gone or the server has restarted.
-        group.MapPost("/stacks/deploy", (DockerStackDeployRequest request, HttpContext http, RelaxKonOS.Server.Docker.DockerStackOperationCoordinator coordinator) =>
-            Handle(() => Accepted(coordinator.Deploy(request, Actor(http.User), Key(http)))));
+        group.MapPost("/stacks/deploy", (DockerStackDeployRequest request, HttpContext http, RelaxKonOS.Server.Docker.DockerStackOperationCoordinator coordinator, CancellationToken ct) =>
+            HandleAsync(async () => Accepted(await coordinator.DeployAsync(request, Actor(http.User), Key(http), ct))));
         group.MapGet("/stacks/{name}/operations", (string name, int? limit, RelaxKonOS.Server.Docker.DockerStackOperationCoordinator coordinator) =>
             Handle(() => Results.Ok(coordinator.History(name, limit ?? 20))));
         group.MapGet("/stacks/{name}/operations/active", (string name, RelaxKonOS.Server.Docker.DockerStackOperationCoordinator coordinator) =>
@@ -68,9 +68,9 @@ public static class DockerEndpoints
             Handle(() => Results.Ok(coordinator.Cancel(operationId, Key(http)))));
         group.MapGet("/stacks/{name}/definition", async (string name, RelaxKonOS.Server.Docker.IDockerComposeService service, CancellationToken ct) => await service.GetDefinitionAsync(name, ct) is { } definition ? Results.Ok(definition) : Results.NotFound());
         group.MapGet("/stacks/{name}/services", (string name, RelaxKonOS.Server.Docker.IDockerComposeService service, CancellationToken ct) => service.ListServicesAsync(name, ct));
-        group.MapPost("/stacks/{name}/{action}", (string name, string action, DockerStackActionRequest request, HttpContext http, RelaxKonOS.Server.Docker.DockerStackOperationCoordinator coordinator) =>
-            Handle(() => DockerStackActionRoutes.TryParseAction(action, out var kind)
-                ? Accepted(coordinator.ApplyAction(name, kind, request.Confirmed, Actor(http.User), Key(http)))
+        group.MapPost("/stacks/{name}/{action}", (string name, string action, DockerStackActionRequest request, HttpContext http, RelaxKonOS.Server.Docker.DockerStackOperationCoordinator coordinator, CancellationToken ct) =>
+            HandleAsync(async () => DockerStackActionRoutes.TryParseAction(action, out var kind)
+                ? Accepted(await coordinator.ApplyActionAsync(name, kind, request.Confirmed, Actor(http.User), Key(http), ct))
                 : Problem(RelaxKonOS.Server.Docker.DockerStackProblem.ValidationFailed, 400)));
         return app;
     }

@@ -17,11 +17,12 @@ internal static class WindowsUserTerminal
         // Bounded output prevents a stalled Server from consuming unbounded Helper memory.
         var output = Channel.CreateBounded<byte[]>(256);
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var exitCode = -1;
         pty.DataReceived += (bytes, count) =>
         {
             if (!output.Writer.TryWrite(bytes[..count])) lifetime.Cancel();
         };
-        pty.ProcessExited += _ => output.Writer.TryComplete();
+        pty.ProcessExited += code => { exitCode = code; output.Writer.TryComplete(); lifetime.Cancel(); };
         try
         {
             using var current = WindowsIdentity.GetCurrent();
@@ -75,6 +76,7 @@ internal static class WindowsUserTerminal
         }
         catch (Exception exception)
         {
+            await pty.StopAsync();
             await acknowledge(new(false, Error: exception is Win32Exception win32
                 ? $"Windows terminal startup failed (Win32 {win32.NativeErrorCode})."
                 : exception.Message, ProblemCode: exception is UnauthorizedAccessException
@@ -85,12 +87,8 @@ internal static class WindowsUserTerminal
         await acknowledge(new(true));
         var writer = Task.Run(async () =>
         {
-            try
-            {
-                await foreach (var bytes in output.Reader.ReadAllAsync(lifetime.Token))
-                    await pipe.WriteAsync(bytes, lifetime.Token);
-            }
-            finally { lifetime.Cancel(); }
+            await foreach (var bytes in output.Reader.ReadAllAsync())
+                UserTerminalStreamProtocol.WriteOutput(pipe, bytes);
         });
         try
         {
@@ -99,17 +97,18 @@ internal static class WindowsUserTerminal
                 if (frame.Kind == UserTerminalFrameKind.Close) break;
                 if (frame.Kind == UserTerminalFrameKind.Input)
                     pty.Write(frame.Input!, 0, frame.Input!.Length);
-                else pty.Resize(frame.Columns, frame.Rows, frame.WidthPixels, frame.HeightPixels);
+                else if (frame.Kind == UserTerminalFrameKind.Resize) pty.Resize(frame.Columns, frame.Rows, frame.WidthPixels, frame.HeightPixels);
+                else throw new InvalidDataException("Unexpected terminal control frame.");
             }
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         finally
         {
-            lifetime.Cancel();
-            pty.Stop();
+            await pty.StopAsync();
             output.Writer.TryComplete();
-            try { await writer; }
-            catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+            await writer;
+            UserTerminalStreamProtocol.WriteExited(pipe, exitCode);
+            lifetime.Cancel();
         }
     }
 }

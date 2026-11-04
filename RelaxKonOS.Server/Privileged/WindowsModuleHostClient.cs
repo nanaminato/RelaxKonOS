@@ -18,6 +18,7 @@ internal sealed class WindowsModuleHostClient(PrivilegedHelperOptions options, A
     private readonly SemaphoreSlim _write = new(1, 1);
     private readonly CancellationTokenSource _stopping = new();
     private readonly Channel<string> _stdout = Channel.CreateBounded<string>(8);
+    private bool _exitConfirmed;
 
     internal async Task StartAsync(ModuleHostLaunchRequest request, CancellationToken cancellationToken)
     {
@@ -60,7 +61,7 @@ internal sealed class WindowsModuleHostClient(PrivilegedHelperOptions options, A
                         if (frame.Payload.Length > 2048) throw new InvalidDataException("module-host-output-overflow");
                         log?.Invoke(frame.Payload);
                         break;
-                    case "exit": return;
+                    case "tree-exit": _exitConfirmed = true; return;
                     case "faulted":
                         _stdout.Writer.TryWrite(JsonSerializer.Serialize(new ModuleHostFaulted("faulted", "module-host-isolation-failed"), ModuleHostProtocol.Json));
                         return;
@@ -95,13 +96,10 @@ internal sealed class WindowsModuleHostClient(PrivilegedHelperOptions options, A
     internal async Task ShutdownAsync(CancellationToken cancellationToken)
     {
         if (_pipe is null) return;
-        try
-        {
-            await SendAsync(JsonSerializer.Serialize(new ModuleHostCommand(ModuleHostProtocol.Shutdown), ModuleHostProtocol.Json), cancellationToken);
-            if (_reader is not null) await _reader.WaitAsync(TimeSpan.FromSeconds(15), cancellationToken);
-        }
-        catch (Exception error) when (error is IOException or OperationCanceledException or TimeoutException or ObjectDisposedException) { }
-        finally { _pipe.Dispose(); }
+        if (_exitConfirmed) return;
+        await SendAsync(JsonSerializer.Serialize(new ModuleHostCommand(ModuleHostProtocol.Shutdown), ModuleHostProtocol.Json), cancellationToken);
+        if (_reader is not null) await _reader.WaitAsync(TimeSpan.FromSeconds(15), cancellationToken);
+        if (!_exitConfirmed) throw new ModulePackageException("module-host-exit-unconfirmed");
     }
     public async ValueTask DisposeAsync()
     {

@@ -37,6 +37,7 @@ internal static class LinuxModuleHostIsolation
         info.Environment["HOME"] = prepared.Arguments[^1];
         info.Environment[ModuleHostProtocol.ServiceTokenEnvironment] = prepared.Token;
         if (prepared.BrokerUrl is not null) info.Environment[ModulePrivilegeProtocol.BrokerEnvironment] = prepared.BrokerUrl;
+        if (HasIdentityProcess(prepared.Uid)) throw new IOException("module-host-existing-process-responsibility");
         using var child = Process.Start(info) ?? throw new IOException();
         // The root monitor owns only process termination, never module code. It can reliably kill a
         // hung dedicated-UID child even though the Server account cannot signal that UID directly.
@@ -69,8 +70,36 @@ internal static class LinuxModuleHostIsolation
             // Detached grandchildren are still owned by this exclusive module UID.
             try { await RunAsync("/usr/bin/pkill", "--signal", "KILL", "--uid", prepared.Uid.ToString()); }
             catch (IOException) { }
+            await ConfirmIdentityExitAsync(prepared.Uid);
             await stderr;
+            await Console.Out.WriteLineAsync(System.Text.Json.JsonSerializer.Serialize(new { type = "tree-stopped", moduleId = prepared.Arguments[3] }, ModuleHostProtocol.Json));
+            await Console.Out.FlushAsync();
         }
+    }
+    private static async Task ConfirmIdentityExitAsync(uint uid)
+    {
+        // This UID is the pre-existing exclusive module identity, not a Server/user process filter.
+        for (var attempt = 0; attempt < 120; attempt++)
+        {
+            if (!HasIdentityProcess(uid)) return;
+            await Task.Delay(100);
+        }
+        throw new IOException("module-host-process-tree-exit-unconfirmed");
+    }
+    private static bool HasIdentityProcess(uint uid)
+    {
+        foreach (var directory in Directory.EnumerateDirectories("/proc"))
+        {
+            if (!int.TryParse(Path.GetFileName(directory), out _)) continue;
+            try
+            {
+                var identity = File.ReadLines(Path.Combine(directory, "status")).FirstOrDefault(line => line.StartsWith("Uid:", StringComparison.Ordinal));
+                if (identity is not null && uint.TryParse(identity.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).ElementAtOrDefault(1), out var actual)
+                    && actual == uid) return true;
+            }
+            catch (IOException) when (!Directory.Exists(directory)) { }
+        }
+        return false;
     }
     private static async Task RelayResponseAsync(Process child, TimeSpan timeout, CancellationToken cancellationToken)
     {

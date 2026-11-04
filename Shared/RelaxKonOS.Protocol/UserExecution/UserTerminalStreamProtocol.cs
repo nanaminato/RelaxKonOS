@@ -12,6 +12,23 @@ public static class UserTerminalStreamProtocol
     private const byte InputKind = 1;
     private const byte ResizeKind = 2;
     private const byte CloseKind = 3;
+    private const byte OutputKind = 4;
+    private const byte ExitedKind = 5;
+
+    public static void WriteOutput(Stream stream, ReadOnlySpan<byte> output)
+    {
+        if (output.Length is <= 0 or > 65536) throw new ArgumentOutOfRangeException(nameof(output));
+        Span<byte> header = stackalloc byte[5]; header[0] = OutputKind;
+        BinaryPrimitives.WriteInt32BigEndian(header[1..], output.Length);
+        stream.Write(header); stream.Write(output); stream.Flush();
+    }
+
+    public static void WriteExited(Stream stream, int exitCode)
+    {
+        Span<byte> frame = stackalloc byte[5]; frame[0] = ExitedKind;
+        BinaryPrimitives.WriteInt32BigEndian(frame[1..], exitCode);
+        stream.Write(frame); stream.Flush();
+    }
 
     public static void WriteInput(Stream stream, ReadOnlySpan<byte> input)
     {
@@ -78,6 +95,19 @@ public static class UserTerminalStreamProtocol
             }
             case CloseKind:
                 return new(UserTerminalFrameKind.Close);
+            case OutputKind:
+            {
+                var lengthBytes = new byte[4]; await stream.ReadExactlyAsync(lengthBytes, cancellationToken);
+                var length = BinaryPrimitives.ReadInt32BigEndian(lengthBytes);
+                if (length is <= 0 or > 65536) throw new InvalidDataException("Invalid terminal output frame length.");
+                var output = new byte[length]; await stream.ReadExactlyAsync(output, cancellationToken);
+                return new(UserTerminalFrameKind.Output, output);
+            }
+            case ExitedKind:
+            {
+                var code = new byte[4]; await stream.ReadExactlyAsync(code, cancellationToken);
+                return new(UserTerminalFrameKind.Exited, ExitCode: BinaryPrimitives.ReadInt32BigEndian(code));
+            }
             default:
                 throw new InvalidDataException("Unknown terminal control frame.");
         }
@@ -96,6 +126,8 @@ public enum UserTerminalFrameKind
     Input,
     Resize,
     Close,
+    Output,
+    Exited,
 }
 
 public sealed record UserTerminalFrame(
@@ -104,4 +136,5 @@ public sealed record UserTerminalFrame(
     int Columns = 0,
     int Rows = 0,
     int WidthPixels = 0,
-    int HeightPixels = 0);
+    int HeightPixels = 0,
+    int ExitCode = 0);

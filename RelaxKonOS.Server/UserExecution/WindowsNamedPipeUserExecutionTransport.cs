@@ -27,12 +27,14 @@ public sealed class WindowsNamedPipeUserExecutionTransport(PrivilegedHelperOptio
         var pipe = new NamedPipeClientStream(".", UserExecutionProtocol.WindowsPipeName(options.PipeName),
             PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.WriteThrough);
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Clamp(options.TimeoutSeconds, 1, 120)));
+        var mayHaveStarted = false;
         try
         {
             await pipe.ConnectAsync(deadline.Token).ConfigureAwait(false);
             var json = JsonSerializer.SerializeToUtf8Bytes(request, RelaxKonOSJsonOptions.Default);
             if (json.Length > UserExecutionProtocol.MaximumRequestBytes)
                 throw new InvalidDataException("Terminal request is too large.");
+            mayHaveStarted = true;
             await WriteFrameAsync(pipe, JsonSerializer.SerializeToUtf8Bytes(new PipeEnvelope(
                 Convert.ToBase64String(json), Sign(secret, json))), deadline.Token).ConfigureAwait(false);
             var response = JsonSerializer.Deserialize<PipeEnvelope>(await ReadFrameAsync(pipe, deadline.Token).ConfigureAwait(false));
@@ -53,6 +55,8 @@ public sealed class WindowsNamedPipeUserExecutionTransport(PrivilegedHelperOptio
                 Complete(request, new(false, Error: "Terminal Helper connection failed.",
                     ProblemCode: exception is OperationCanceledException ? UserExecutionProblemCode.TimedOut
                         : UserExecutionProblemCode.HelperUnavailable));
+            if (mayHaveStarted && exception is not UserExecutionException)
+                throw new TerminalStartOutcomeUnknownException(exception);
             throw;
         }
     }
@@ -243,3 +247,5 @@ public sealed class WindowsNamedPipeUserExecutionTransport(PrivilegedHelperOptio
         => new(false, Error: "invalid user-execution Helper response", ProblemCode: UserExecutionProblemCode.InvalidProtocol);
     private sealed record PipeEnvelope(string PayloadBase64, string SignatureBase64);
 }
+
+internal sealed class TerminalStartOutcomeUnknownException(Exception cause) : IOException("Terminal Helper startup outcome is unverified.", cause);

@@ -19,7 +19,8 @@ internal static class TerminalAdministratorAuthorizationChecks
         using var provider = services.BuildServiceProvider();
         var factory = new PassiveFactory();
         var context = provider.GetRequiredService<IHubContext<TerminalHub, ITerminalHubClient>>();
-        var manager = new TerminalSessionManager(factory, context, null!, provider.GetRequiredService<IServiceScopeFactory>());
+        var leases = new TerminalTestLeases();
+        var manager = new TerminalSessionManager(factory, context, null!, provider.GetRequiredService<IServiceScopeFactory>(), leases);
         var privileges = new TestHostAccountPrivilegeService { Level = HostAccountPrivilege.StandardUser };
         var caller = new Caller();
         var hub = new TerminalHub(manager, privileges) { Context = caller };
@@ -32,7 +33,8 @@ internal static class TerminalAdministratorAuthorizationChecks
         TestAssert.Assert(factory.Calls == 0, "An alias password authorized an administrator terminal.");
 
         var pty = new PassivePty();
-        var session = new TerminalSession("elevated", "test-user", pty, context, _ => { }) { IsAdministrator = true };
+        var session = new TerminalSession("elevated", "test-user", pty, context, _ => { }, await leases.AcquireAsync("relaxkonos.terminal")) { IsAdministrator = true };
+        session.FinishStart();
         // Seed a real persistent session without starting a privileged OS process in the test runner.
         var sessions = (ConcurrentDictionary<string, TerminalSession>)typeof(TerminalSessionManager)
             .GetField("_sessions", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
@@ -49,6 +51,7 @@ internal static class TerminalAdministratorAuthorizationChecks
         await Denied(() => hub.Resize(100, 30, 0, 0));
         await Denied(() => hub.AttachExisting(session.SessionId));
         TestAssert.Assert(pty.Writes == 1, "Revoked administrator privileges reached the existing shell.");
+        await manager.StopAsync(default);
         Console.WriteLine("Administrator terminal ordinary/alias denial and permission revocation checks passed.");
     }
     private static async Task Denied(Func<Task> operation)
@@ -75,7 +78,7 @@ internal static class TerminalAdministratorAuthorizationChecks
         public int Calls;
         public IPty Create() { Calls++; return new PassivePty(); }
     }
-    private sealed class PassivePty : IPty
+    private sealed class PassivePty : IPty, ITerminalPtyLifetime
     {
         public int Writes;
         public bool IsRunning { get; set; } = true;
@@ -89,6 +92,7 @@ internal static class TerminalAdministratorAuthorizationChecks
         public void Resize(int columns, int rows) { }
         public void Resize(int columns, int rows, int widthPixels, int heightPixels) { }
         public void Stop() { IsRunning = false; }
+        public Task StopAsync() { Stop(); return Task.CompletedTask; }
         public void Dispose() => Stop();
     }
 }

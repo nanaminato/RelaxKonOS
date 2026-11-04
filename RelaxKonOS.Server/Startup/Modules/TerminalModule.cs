@@ -10,8 +10,9 @@ namespace RelaxKonOS.Server.Startup.Modules;
 /// disabled module leaves no PTY code reachable. The shared SignalR user identity provider stays in
 /// Core because every Hub depends on it.
 /// </summary>
-internal sealed class TerminalModule : IServerModule
+internal sealed class TerminalModule : IServerModule, IServerModuleWorkResidency
 {
+    public RelaxKonOS.Server.Residency.IServerModuleRuntimeFactory RuntimeFactory { get; } = new RelaxKonOS.Server.Residency.ResidentModuleWorkRuntimeFactory(ServerModules.TerminalId);
     public string Id => ServerModules.TerminalId;
     public IReadOnlyList<string> Capabilities => [ServerCapabilities.Terminal];
     public IReadOnlyList<string> Requires => [];
@@ -20,6 +21,7 @@ internal sealed class TerminalModule : IServerModule
     {
         builder.Services.AddSingleton<IPtyFactory, PlatformPtyFactory>();
         builder.Services.AddSingleton<TerminalSessionManager>();
+        builder.Services.AddHostedService(services => services.GetRequiredService<TerminalSessionManager>());
     }
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context) =>

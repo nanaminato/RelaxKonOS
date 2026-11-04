@@ -5,7 +5,8 @@ namespace RelaxKonOS.Server.Certificate;
 /// <summary>Host-local renewal scheduler. Each run uses a day-scoped idempotency key so a restart
 /// cannot start duplicate renewal orders; ACME Retry-After remains handled by the ACME adapter/CA.</summary>
 internal sealed class CertificateRenewalWorker(ICertificateStore certificates, ICertificateManager manager, IAcmeRenewalInfoProvider renewalInfo,
-    CertificateRenewalAttemptRepository renewalAttempts, CertificateRenewalRunRepository runs, CertificateOptions options, ILogger<CertificateRenewalWorker> logger) : BackgroundService
+    CertificateRenewalAttemptRepository renewalAttempts, CertificateRenewalRunRepository runs, CertificateOptions options, ILogger<CertificateRenewalWorker> logger,
+    RelaxKonOS.Server.Residency.IResidentModuleWorkLeaseSource leases) : BackgroundService
 {
     private readonly ConcurrentDictionary<Guid, DateTimeOffset> _nextAriRefresh = new();
     private readonly ConcurrentDictionary<Guid, byte> _reportedExhaustion = new();
@@ -27,6 +28,10 @@ internal sealed class CertificateRenewalWorker(ICertificateStore certificates, I
 
     private async Task RenewDueCertificatesAsync(CancellationToken cancellationToken)
     {
+        using var work = await leases.AcquireAsync(RelaxKonOS.Server.Startup.ServerModules.CertificatesId, cancellationToken);
+        using var stopping = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, work.Stopping);
+        cancellationToken = stopping.Token;
+        cancellationToken.ThrowIfCancellationRequested();
         var runId = await runs.BeginAsync(cancellationToken);
         try
         {

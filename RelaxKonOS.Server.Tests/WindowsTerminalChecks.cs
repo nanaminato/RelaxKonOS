@@ -77,6 +77,7 @@ internal static class WindowsTerminalChecks
             services.AddSingleton<RelaxKonOS.Server.Settings.WorkspaceEnvironmentService>();
             services.AddSingleton<IPtyFactory>(new PlatformPtyFactory(null!, null!, null!, null!, null!));
             services.AddSingleton<TerminalSessionManager>();
+            services.AddSingleton<RelaxKonOS.Server.Residency.IResidentModuleWorkLeaseSource>(new TerminalTestLeases());
             services.AddSingleton<RelaxKonOS.Server.Privileged.IHostAccountPrivilegeService>(new TestHostAccountPrivilegeService());
             using var provider = services.BuildServiceProvider();
             using var scope = provider.CreateScope();

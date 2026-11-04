@@ -51,11 +51,13 @@ if (args is ["--module-authorization-checks"])
 
 if (args is ["--module-host-checks"])
 {
-    await ModuleHostChecks.RunAsync((passed, message) =>
+    void VerifyHost(bool passed, string message)
     {
         Console.WriteLine($"{(passed ? "PASS" : "FAIL")}: {message}");
         if (!passed) throw new InvalidOperationException(message);
-    });
+    }
+    await ModuleHostChecks.RunAsync(VerifyHost);
+    await ModuleHostLifetimeChecks.RunAsync(VerifyHost);
     return;
 }
 
@@ -266,6 +268,7 @@ await GitDeactivationChecks.RunAsync(Check);
 await ModulePackageChecks.RunAsync(Check);
 await ModulePackageBuilderChecks.RunAsync(Check);
 await ModuleHostChecks.RunAsync(Check);
+await ModuleHostLifetimeChecks.RunAsync(Check);
 await ModulePrivilegeChecks.RunAsync(Check);
 await ModuleResourceTransactionChecks.RunAsync(Check);
 await ModuleApplicationTransactionChecks.RunAsync(Check);
@@ -607,7 +610,9 @@ Check(defaults.Capabilities.SetEquals([ServerCapabilities.Terminal, ServerCapabi
 
 foreach (var enabled in new[] { true, false })
 {
-    var builder = WebApplication.CreateBuilder();
+    var routeHostRoot = Path.Combine(Path.GetTempPath(), "relaxkonos-module-route-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(routeHostRoot);
+    var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = routeHostRoot });
     builder.Logging.ClearProviders();
     builder.WebHost.UseUrls("http://127.0.0.1:0");
     builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
@@ -713,6 +718,12 @@ foreach (var enabled in new[] { true, false })
 
     var mode = new ServerModeResolver(builder.Configuration, RelaxKonOS.Server.UserExecution.UserExecutionBackend.Helper);
     builder.Services.AddSingleton<IServerModeResolver>(mode);
+    if (enabled)
+    {
+        // Starting the real session owner must not give this unauthenticated routing fixture a PTY.
+        builder.Services.AddSingleton<IPtyFactory, NoTerminalPtyFactory>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Settings.WorkspaceEnvironmentService>();
+    }
     var host = ServerDescriptorFactory.Create(HostPlatformKind.Windows, mode, new EventAlertsOptions(),
         new ConfigurationBackupRecoveryKeyProvider(new BackupRecoveryOptions()), modules.Capabilities);
     Check(host.Capabilities.Contains(ServerCapabilities.Terminal) == enabled && host.Host!.Capabilities.Terminal == enabled,
@@ -1263,6 +1274,11 @@ sealed class NoUserExecutionTransport : RelaxKonOS.Server.UserExecution.IUserExe
     public Task<RelaxKonOS.Protocol.UserExecution.UserExecutionResult> ExecuteAsync(
         RelaxKonOS.Protocol.UserExecution.UserExecutionRequest request, CancellationToken cancellationToken = default)
         => throw new InvalidOperationException("user execution is not available in this test host");
+}
+
+sealed class NoTerminalPtyFactory : IPtyFactory
+{
+    public IPty Create() => throw new InvalidOperationException("PTY creation is forbidden in the unauthenticated module routing fixture.");
 }
 
 sealed class NoProcessOperations : RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport

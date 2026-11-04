@@ -55,7 +55,7 @@ public static class ModuleHostPipeProtocol
         if (!CryptographicOperations.FixedTimeEquals(Sign(payload, secret, nonce, direction), signature))
             throw new InvalidDataException("module-host-frame-authentication");
         var frame = Read<ModuleHostPipeFrame>(payload);
-        if (frame.Sequence != sequence || frame.Type is not ("hello" or "launch" or "command" or "stdout" or "stderr" or "exit" or "faulted"))
+        if (frame.Sequence != sequence || frame.Type is not ("hello" or "launch" or "command" or "stdout" or "stderr" or "tree-exit" or "faulted"))
             throw new InvalidDataException("module-host-frame-order");
         return frame;
     }

@@ -10,12 +10,18 @@ using RoyalTerminal.Terminal;
 namespace RelaxKonOS.Server.Terminal;
 
 /// <summary>Bridges the dedicated Helper-owned user shell PTY to the existing Terminal session.</summary>
-public sealed class LinuxUserTerminalPty(UserExecutionContext context, PrivilegedHelperOptions options) : IPty, IWorkspaceTerminalPty, IDisposable
+public sealed class LinuxUserTerminalPty(UserExecutionContext context, PrivilegedHelperOptions options) : IPty, IWorkspaceTerminalPty, IDisposable, ITerminalPtyLifetime
 {
     public RelaxKonOS.Protocol.Settings.TerminalEnvironmentOverrides? WorkspaceEnvironment { get; set; }
     private readonly object _inputLock = new();
     private Process? _process;
+    private Process? _ownedProcess;
     private int _exitSignaled;
+    private Task _reader = Task.CompletedTask, _errors = Task.CompletedTask, _exit = Task.CompletedTask;
+    private readonly object _stopGate = new();
+    private Task? _stop;
+    private bool _terminalExitConfirmed;
+    private int _terminalExitCode = -1;
     /// <summary>Default directory for a terminal whose authenticated identity owns this PTY.</summary>
     public string DefaultWorkingDirectory => context.Identity.HomeDirectory;
     public bool IsRunning { get; private set; }
@@ -30,7 +36,7 @@ public sealed class LinuxUserTerminalPty(UserExecutionContext context, Privilege
         var p = new Process { StartInfo = new ProcessStartInfo(options.SudoPath) { UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true } };
         p.StartInfo.ArgumentList.Add("-n"); p.StartInfo.ArgumentList.Add(options.HelperPath); p.StartInfo.ArgumentList.Add("--user-terminal");
         TrustedProcessEnvironment.Apply(p.StartInfo);
-        p.Start(); _process = p; IsRunning = true; ChildPid = p.Id;
+        p.Start(); _process = p; _ownedProcess = p; IsRunning = true; ChildPid = p.Id;
         var operationId = Guid.NewGuid();
         var request = new UserExecutionRequest(context.Identity, UserExecutionOperationKind.TerminalStart,
             TerminalEnvironment: WorkspaceEnvironment,
@@ -41,17 +47,26 @@ public sealed class LinuxUserTerminalPty(UserExecutionContext context, Privilege
         var line = System.Text.Json.JsonSerializer.Serialize(request, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default) + "\n";
         p.StandardInput.Write(line); p.StandardInput.Flush();
         WorkspaceEnvironment = null;
-        _ = Task.Run(async () => { var buffer = new byte[65536]; try { while (true) { var read = await p.StandardOutput.BaseStream.ReadAsync(buffer); if (read == 0) break; DataReceived?.Invoke(buffer[..read], read); } } catch { } });
-        _ = Task.Run(async () => { try { await p.StandardError.ReadToEndAsync(); } catch { } });
-        _ = Task.Run(async () =>
+        _reader = Task.Run(async () =>
+        {
+            _terminalExitCode = await TerminalOutputStream.ReadAsync(p.StandardOutput.BaseStream, (bytes, count) => DataReceived?.Invoke(bytes, count));
+            _terminalExitConfirmed = true;
+        });
+        _errors = Task.Run(async () => { await p.StandardError.BaseStream.CopyToAsync(Stream.Null); });
+        _exit = Task.Run(async () =>
         {
             var exitCode = -1;
-            try { await p.WaitForExitAsync(); exitCode = p.ExitCode; } catch { }
+            try
+            {
+                await p.WaitForExitAsync();
+                await Task.WhenAll(_reader, _errors);
+                if (!_terminalExitConfirmed) throw new IOException("terminal.exit_confirmation_missing");
+                exitCode = _terminalExitCode;
+            }
             finally
             {
                 IsRunning = false;
                 if (Interlocked.Exchange(ref _exitSignaled, 1) == 0) ProcessExited?.Invoke(exitCode);
-                p.Dispose();
             }
         });
     }
@@ -101,4 +116,22 @@ public sealed class LinuxUserTerminalPty(UserExecutionContext context, Privilege
         IsRunning = false;
     }
     public void Dispose() => Stop();
+    public Task StopAsync()
+    {
+        lock (_stopGate) return _stop ??= Task.Run(async () =>
+        {
+            var process = _ownedProcess;
+            // Cooperative close lets the Helper reap its PTY before the Helper process exits.
+            if (process is not null && !process.HasExited)
+                lock (_inputLock)
+                {
+                    UserTerminalStreamProtocol.WriteClose(process.StandardInput.BaseStream);
+                    process.StandardInput.Close();
+                }
+            // Startup can fail before the normal exit-reader tasks have been published.
+            if (process is not null) await process.WaitForExitAsync();
+            await Task.WhenAll(_reader, _errors, _exit);
+            process?.Dispose(); _process = null; _ownedProcess = null; IsRunning = false;
+        });
+    }
 }

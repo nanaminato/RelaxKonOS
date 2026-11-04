@@ -73,7 +73,52 @@ internal static class CertificateEditorChecks
             Check(result.IsCompleted, "Confirmed certificate discard closes the editor.");
             manager.Close(owner);
         }
+        VerifyCancellationObservation();
         Console.WriteLine("Certificate editor checks passed.");
+    }
+    private static void VerifyCancellationObservation()
+    {
+        foreach (var terminal in new[] { CertificateOperationState.Cancelled, CertificateOperationState.Succeeded })
+        {
+            var client = DispatchProxy.Create<IRemoteCertificateClient, CertificateCancellationClient>();
+            var stub = (CertificateCancellationClient)(object)client;
+            var vm = new CertificateManagerViewModel(client, DispatchProxy.Create<IAuthSession, SiteEditorSession>(), new FirewallTestPermissions())
+            { SelfSignedDomains = "example.test" };
+            var submitted = vm.TryCreateSelfSignedCertificateAsync();
+            Check(vm.IsOperationRunning && vm.CancelOperationCommand.CanExecute(null), "Only a server operation with a known ID can request cancellation.");
+            vm.CancelActiveOperationAsync().GetAwaiter().GetResult();
+            vm.CancelActiveOperationAsync().GetAwaiter().GetResult();
+            Check(stub.CancelCalls == 1 && stub.CancelledId == stub.Operation.OperationId && vm.IsOperationRunning && !submitted.IsCompleted && !vm.CanEditCertificateDraft,
+                "Accepted cancel-requested keeps the original task observed and the editor locked instead of declaring local cancellation.");
+            Check(vm.OperationText.Resolve().Contains(LocalizedText.Get("certificates.operation.stage.cancel_requested")),
+                "The active cancellation receipt displays that real work is still finishing.");
+            PumpCancellationUntil(() => stub.ReadCalls > 0);
+            Check(!stub.ObservationToken.IsCancellationRequested && vm.IsOperationRunning && !vm.CancelOperationCommand.CanExecute(null),
+                "Cancellation does not cancel the poll token or resubmit the request while the original operation remains active.");
+            stub.Read.SetResult(stub.Operation with { State = terminal, Stage = terminal.ToString().ToLowerInvariant() });
+            PumpCancellationUntil(() => submitted.IsCompleted);
+            Check(submitted.GetAwaiter().GetResult() == (terminal == CertificateOperationState.Succeeded) && !vm.IsOperationRunning,
+                "Only the server's terminal receipt unlocks the editor and determines whether cancellation actually won.");
+            if (terminal == CertificateOperationState.Cancelled)
+                Check(vm.OperationText.Resolve() == LocalizedText.Get("certificates.operation.cancelled"), "Confirmed server cancellation uses the terminal cancelled message.");
+        }
+        var disconnectedClient = DispatchProxy.Create<IRemoteCertificateClient, CertificateCancellationClient>();
+        var disconnected = (CertificateCancellationClient)(object)disconnectedClient;
+        var disconnectedVm = new CertificateManagerViewModel(disconnectedClient, DispatchProxy.Create<IAuthSession, SiteEditorSession>(), new FirewallTestPermissions())
+        { SelfSignedDomains = "example.test" };
+        var observation = disconnectedVm.TryCreateSelfSignedCertificateAsync();
+        PumpCancellationUntil(() => disconnected.ReadCalls > 0);
+        disconnected.Read.SetCanceled();
+        PumpCancellationUntil(() => observation.IsCompleted);
+        Check(!observation.GetAwaiter().GetResult() && disconnected.CancelCalls == 0
+            && disconnectedVm.OperationText.Resolve().Contains(disconnected.Operation.OperationId.ToString("D"))
+            && disconnectedVm.OperationText.Resolve() != LocalizedText.Get("certificates.operation.cancelled"),
+            "A cancelled observation retains the original operation identity and never claims that the server cancelled it.");
+    }
+    private static void PumpCancellationUntil(Func<bool> condition)
+    {
+        if (!SpinWait.SpinUntil(() => { Dispatcher.UIThread.RunJobs(); return condition(); }, 7000))
+            throw new Exception("Certificate cancellation observation did not complete.");
     }
     private static ConfirmDialogViewModel Confirmation(WindowManagerService manager)
         => (ConfirmDialogViewModel)((Control)manager.Windows.Last().View.Content!).DataContext!;
@@ -101,4 +146,25 @@ public class CertificateEditorClient : DispatchProxy
         Calls++;
         return Pending.Task;
     }
+}
+
+public class CertificateCancellationClient : DispatchProxy
+{
+    public CertificateOperationDto Operation = new(Guid.NewGuid(), null, "create-self-signed", CertificateOperationState.Running, "running", null, null, null);
+    public TaskCompletionSource<CertificateOperationDto?> Read = new();
+    public int CancelCalls, ReadCalls;
+    public Guid CancelledId;
+    public CancellationToken ObservationToken;
+    protected override object? Invoke(MethodInfo? method, object?[]? args) => method!.Name switch
+    {
+        "CreateSelfSignedAsync" => Task.FromResult(Operation),
+        "CancelOperationAsync" => Cancel(args!),
+        "GetOperationAsync" => Observe(args!),
+        "ListAsync" => Task.FromResult<IReadOnlyList<CertificateDto>>([]),
+        _ => throw new NotSupportedException(method.Name),
+    };
+    private Task<CertificateOperationDto?> Cancel(object?[] args)
+    { CancelCalls++; CancelledId = (Guid)args[0]!; return Task.FromResult<CertificateOperationDto?>(Operation with { Stage = "cancel-requested" }); }
+    private Task<CertificateOperationDto?> Observe(object?[] args)
+    { ReadCalls++; ObservationToken = (CancellationToken)args[1]!; return Read.Task; }
 }

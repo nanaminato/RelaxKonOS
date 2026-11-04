@@ -14,9 +14,10 @@ namespace RelaxKonOS.Server.Startup.Modules;
 /// The module owns only the ACME account workflow, the renewal loop, the operation ledger it serves,
 /// and the management routes.
 /// </summary>
-internal sealed class CertificateModule : IServerModule
+internal sealed class CertificateModule : IServerModule, IServerModuleDeactivationGuard, IServerModuleWorkResidency
 {
     public string Id => ServerModules.CertificatesId;
+    public RelaxKonOS.Server.Residency.IServerModuleRuntimeFactory RuntimeFactory { get; } = new RelaxKonOS.Server.Residency.ResidentModuleWorkRuntimeFactory(ServerModules.CertificatesId);
     public IReadOnlyList<string> Capabilities => [ServerCapabilities.Certificates];
     public IReadOnlyList<string> Requires => [];
 
@@ -29,6 +30,7 @@ internal sealed class CertificateModule : IServerModule
         builder.Services.AddSingleton<IAcmeRenewalInfoProvider>(services => (AnvilAcmeService)services.GetRequiredService<IAcmeService>());
         builder.Services.AddSingleton<CertificateRenewalAttemptRepository>();
         builder.Services.AddSingleton<CertificateOperationStore>();
+        builder.Services.AddHostedService(services => services.GetRequiredService<CertificateOperationStore>());
         builder.Services.AddSingleton<CertificateRenewalRunRepository>();
         builder.Services.AddSingleton<ICertificateManager, CertificateManager>();
         builder.Services.AddHostedService<CertificateRenewalWorker>();
@@ -36,4 +38,17 @@ internal sealed class CertificateModule : IServerModule
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context) =>
         endpoints.MapCertificateEndpoints();
+
+    public ValueTask<IReadOnlyList<ServerModuleOrphanedWork>> InspectOrphanedWorkAsync(IServiceProvider services, ServerModuleContext context, CancellationToken ct)
+    {
+        if (services.GetService<RelaxKonOS.Server.Residency.ModuleResidencyCoordinator>()?.HasBackgroundWork(Id) == true)
+            return ValueTask.FromResult<IReadOnlyList<ServerModuleOrphanedWork>>([new(Id, "Certificate execution or cleanup remains owned in this process.")]);
+        try
+        {
+            return ValueTask.FromResult<IReadOnlyList<ServerModuleOrphanedWork>>(CertificateOperationStore.ReadPending(context.Environment)
+                .Select(id => new ServerModuleOrphanedWork(Id, $"Certificate operation {id} still requires startup recovery.")).ToArray());
+        }
+        catch (Exception error)
+        { return ValueTask.FromResult<IReadOnlyList<ServerModuleOrphanedWork>>([new(Id, $"Certificate operation ledger cannot be read ({error.GetType().Name}).")]); }
+    }
 }

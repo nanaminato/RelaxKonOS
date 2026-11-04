@@ -8,6 +8,8 @@ using RelaxKonOS.Protocol.WebsitePublishing;
 using RelaxKonOS.Server.ApplicationDeployments;
 using RelaxKonOS.Server.Certificate;
 using RelaxKonOS.Server.WebServer;
+using RelaxKonOS.Server.Residency;
+using RelaxKonOS.Server.Startup;
 
 namespace RelaxKonOS.Server.WebsitePublishing;
 
@@ -26,13 +28,14 @@ internal sealed class WebsitePublicationCoordinator(
     CertificateOperationStore certificateOperations,
     IHttpClientFactory httpClients,
     IHostApplicationLifetime lifetime,
-    ILogger<WebsitePublicationCoordinator> logger) : IHostedService
+    ILogger<WebsitePublicationCoordinator> logger, IResidentModuleWorkLeaseSource leases) : IHostedService, IDisposable
 {
-    private readonly ConcurrentDictionary<Guid, (PublishWebsiteRequest Request, string Actor)> pending = new();
-    private readonly ConcurrentDictionary<Guid, Task> running = new();
-    private volatile bool ready;
+    private readonly object gate = new();
+    private readonly ResidentBackgroundWorkOwner workOwner = new(leases, ServerModules.WebServerId);
+    private bool ready;
+    internal bool HasResponsibility => workOwner.HasResponsibility;
 
-    public WebsitePublicationOperationDto Start(PublishWebsiteRequest request, string actor, string idempotencyKey)
+    public async Task<WebsitePublicationOperationDto> StartAsync(PublishWebsiteRequest request, string actor, string idempotencyKey, CancellationToken ct = default)
     {
         if (request is null) throw new WebsitePublicationException("website.request_invalid", 400);
         request = request with
@@ -42,43 +45,62 @@ internal sealed class WebsitePublicationCoordinator(
             WebServerId = request.WebServerId?.Trim() ?? "",
         };
         Validate(request, idempotencyKey);
-        if (!ready || lifetime.ApplicationStopping.IsCancellationRequested)
-            throw new WebsitePublicationException("website.operation_store_unavailable", 503);
+        lock (gate)
+            if (!ready || lifetime.ApplicationStopping.IsCancellationRequested)
+                throw new WebsitePublicationException("website.operation_store_unavailable", 503);
         _ = applications.Require(request.ApplicationId);
-        var operation = store.Start(request, actor, idempotencyKey, out var created);
-        if (created)
+        using var work = await workOwner.AdmitAsync(ct);
+        lock (gate)
         {
-            pending[operation.OperationId] = (request, actor);
-            running[operation.OperationId] = RunAsync(operation.OperationId, request, actor);
+            if (!ready || lifetime.ApplicationStopping.IsCancellationRequested)
+                throw new WebsitePublicationException("website.operation_store_unavailable", 503);
+            work.Token.ThrowIfCancellationRequested();
+            WebsitePublicationOperationDto operation;
+            bool created;
+            try { operation = store.Start(request, actor, idempotencyKey, out created); }
+            catch (Exception error) when (error is not WebsitePublicationException rejected || rejected.ProblemCode == "website.operation_store_unavailable")
+            { work.Fail(error); throw; }
+            if (created) work.Run(stopping => RunAsync(operation.OperationId, request, actor, stopping));
+            return operation;
         }
-        return operation;
     }
 
     public WebsitePublicationOperationDto? Get(Guid operationId) => store.Get(operationId);
     public IReadOnlyList<WebsitePublicationOperationDto> History(Guid applicationId, int limit) => store.History(applicationId, limit);
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
-        try { _ = store.InterruptActive(); ready = true; }
-        catch (WebsitePublicationException error) { logger.LogError(error, "Website publication ledger is unavailable at startup."); }
-        return Task.CompletedTask;
+        ResidentBackgroundWorkOwner.Work? recovery = null;
+        try
+        {
+            recovery = await workOwner.AdmitAsync(cancellationToken);
+            _ = store.InterruptActive(); recovery.Token.ThrowIfCancellationRequested(); lock (gate) ready = true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception error)
+        { recovery?.Fail(error); logger.LogError(error, "Website publication startup is unavailable; its work remains blocked."); }
+        finally { recovery?.Dispose(); }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        ready = false;
-        try { await Task.WhenAll(running.Values).WaitAsync(cancellationToken); }
-        catch (OperationCanceledException) { }
+        lock (gate) ready = false;
+        await workOwner.StopAsync(cancellationToken);
     }
+    public void Dispose() => workOwner.Dispose();
 
-    private async Task RunAsync(Guid operationId, PublishWebsiteRequest request, string actor)
+    private async Task RunAsync(Guid operationId, PublishWebsiteRequest request, string actor, CancellationToken workStopping)
     {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(workStopping, lifetime.ApplicationStopping);
+        var stopping = linked.Token;
         var checks = new List<WebsitePublicationCheckDto>();
         try
         {
+            stopping.ThrowIfCancellationRequested();
             StartRunning(operationId, WebsitePublicationStage.Preflight);
             var application = applications.Require(request.ApplicationId);
-            var observed = await applications.SnapshotAsync(request.ApplicationId, lifetime.ApplicationStopping);
+            var observed = await applications.SnapshotAsync(request.ApplicationId, stopping);
+            stopping.ThrowIfCancellationRequested();
             if (observed.Application.ActualState != ApplicationActualState.Running || application.HostPort is not { } hostPort)
             {
                 checks.Add(new("upstream", "host", WebsitePublicationCheckState.Failed, "website.application_not_ready", DateTimeOffset.UtcNow));
@@ -91,8 +113,9 @@ internal sealed class WebsitePublicationCoordinator(
             }
             checks.Add(new("upstream", "host", WebsitePublicationCheckState.Passed, "", DateTimeOffset.UtcNow));
 
-            var server = (await webServers.ListAsync(lifetime.ApplicationStopping)).SingleOrDefault(item => item.Id == request.WebServerId)
+            var server = (await webServers.ListAsync(stopping)).SingleOrDefault(item => item.Id == request.WebServerId)
                 ?? throw new WebsitePublicationException("website.webserver_not_found", 404);
+            stopping.ThrowIfCancellationRequested();
             if (!server.Capabilities.CanRead || !server.Capabilities.CanTestConfiguration)
                 throw new WebsitePublicationException("website.webserver_not_manageable", 409);
 
@@ -100,14 +123,15 @@ internal sealed class WebsitePublicationCoordinator(
                 throw new WebsitePublicationException("website.application_site_server_conflict");
             if (application.SiteId is not null && catalog.ReadApplications().Any(candidate => candidate.Id != application.Id && candidate.SiteId == application.SiteId))
                 throw new WebsitePublicationException("website.site_in_use");
-            var existingSites = await webServers.ListSitesAsync(server.Id, lifetime.ApplicationStopping) ?? [];
+            var existingSites = await webServers.ListSitesAsync(server.Id, stopping) ?? [];
+            stopping.ThrowIfCancellationRequested();
             var existingByDomain = existingSites.FirstOrDefault(site => site.Bindings.Any(binding => string.Equals(binding.Domain, request.Domain, StringComparison.OrdinalIgnoreCase)));
             var existingSite = application.SiteId is null ? null : existingSites.FirstOrDefault(site => site.Id == application.SiteId);
             if (existingByDomain is not null && !string.Equals(existingByDomain.Id, application.SiteId, StringComparison.Ordinal))
                 throw new WebsitePublicationException("website.domain_conflict");
 
             var siteId = application.SiteId ?? $"app{application.Id:N}";
-            var certificateId = await ResolveCertificateAsync(operationId, request, actor);
+            var certificateId = await ResolveCertificateAsync(operationId, request, actor, stopping);
             SetStage(operationId, WebsitePublicationStage.Configuring, siteId: siteId, certificateId: certificateId);
 
             var previousSite = existingSite;
@@ -116,7 +140,7 @@ internal sealed class WebsitePublicationCoordinator(
             {
                 site = await webServers.UpsertSiteAsync(server.Id, new UpsertWebServerSiteRequest(
                     siteId, application.Name, [new WebServerSiteBindingDto(request.Domain, 80)], null, false, false,
-                    [new WebServerProxyRouteDto("/", $"http://127.0.0.1:{hostPort}")], certificateId, true, true, false, ExpectedUpdatedAt: existingSite?.UpdatedAt), lifetime.ApplicationStopping)
+                    [new WebServerProxyRouteDto("/", $"http://127.0.0.1:{hostPort}")], certificateId, true, true, false, ExpectedUpdatedAt: existingSite?.UpdatedAt), stopping)
                     ?? throw new WebsitePublicationException("website.site_apply_failed");
             }
             catch (NginxWebServerManager.WebServerSiteValidationException error) { throw new WebsitePublicationException(error.ProblemCode, 400); }
@@ -125,6 +149,7 @@ internal sealed class WebsitePublicationCoordinator(
 
             try
             {
+                stopping.ThrowIfCancellationRequested();
                 SetStage(operationId, WebsitePublicationStage.Associating, siteId: site.Id, certificateId: certificateId);
                 catalog.BindSite(application.Id, server.Id, site.Id, site.DomainsDisplay);
             }
@@ -135,10 +160,11 @@ internal sealed class WebsitePublicationCoordinator(
             }
 
             SetStage(operationId, WebsitePublicationStage.Verifying, siteId: site.Id, certificateId: certificateId);
-            checks.AddRange(await VerifyAsync(request.Domain, lifetime.ApplicationStopping));
+            checks.AddRange(await VerifyAsync(request.Domain, stopping));
+            stopping.ThrowIfCancellationRequested();
             Complete(operationId, WebsitePublicationState.Succeeded, "", null, checks);
         }
-        catch (OperationCanceledException) when (lifetime.ApplicationStopping.IsCancellationRequested)
+        catch (OperationCanceledException) when (stopping.IsCancellationRequested)
         {
             // Leave the durable operation active. Startup will mark it interrupted; no side effect is replayed.
         }
@@ -146,23 +172,18 @@ internal sealed class WebsitePublicationCoordinator(
         {
             Complete(operationId, WebsitePublicationState.Failed, error.ProblemCode, null, checks);
         }
-        catch (Exception error)
+        catch (Exception error) when (error is not ResidentWorkCompletionException)
         {
             logger.LogError(error, "Website publication failed. OperationId={OperationId}", operationId);
             Complete(operationId, WebsitePublicationState.Failed, "website.operation_failed", null, checks);
         }
-        finally
-        {
-            pending.TryRemove(operationId, out _);
-            running.TryRemove(operationId, out _);
-        }
     }
 
-    private async Task<Guid> ResolveCertificateAsync(Guid operationId, PublishWebsiteRequest request, string actor)
+    private async Task<Guid> ResolveCertificateAsync(Guid operationId, PublishWebsiteRequest request, string actor, CancellationToken stopping)
     {
         if (request.CertificateId is { } existing)
         {
-            var certificate = await certificates.GetAsync(existing, lifetime.ApplicationStopping);
+            var certificate = await certificates.GetAsync(existing, stopping);
             if (certificate is null) throw new WebsitePublicationException("website.certificate_not_found", 404);
             if (certificate.Status is not (CertificateStatus.Issued or CertificateStatus.Active) || certificate.NotBefore is null || certificate.NotAfter is null
                 || certificate.NotBefore > DateTimeOffset.UtcNow || certificate.NotAfter <= DateTimeOffset.UtcNow)
@@ -176,19 +197,19 @@ internal sealed class WebsitePublicationCoordinator(
         SetStage(operationId, WebsitePublicationStage.Certificate);
         var issued = await certificates.RequestAsync($"website-{operationId:N}", new RequestCertificateRequest([request.Domain],
             CertificateChallengeType.DirectHttp01, request.ContactEmail!, request.AcceptedTerms, CertificateKeyAlgorithm.EcdsaP256,
-            request.PublicReachabilityConfirmed), actor, lifetime.ApplicationStopping);
+            request.PublicReachabilityConfirmed), actor, stopping);
         if (issued.OperationId == Guid.Empty) throw new WebsitePublicationException(issued.ProblemCode, 409);
         SetStage(operationId, WebsitePublicationStage.Certificate, certificateId: issued.CertificateId, certificateOperationId: issued.OperationId);
 
         while (true)
         {
-            lifetime.ApplicationStopping.ThrowIfCancellationRequested();
-            var current = await certificateOperations.GetAsync(issued.OperationId, lifetime.ApplicationStopping)
+            stopping.ThrowIfCancellationRequested();
+            var current = await certificateOperations.GetAsync(issued.OperationId, stopping)
                 ?? throw new WebsitePublicationException("website.certificate_operation_missing", 503);
             if (current.State == CertificateOperationState.Succeeded && current.CertificateId is { } certificateId) return certificateId;
             if (current.State is CertificateOperationState.Failed or CertificateOperationState.Cancelled)
                 throw new WebsitePublicationException(current.ProblemCode is { Length: > 0 } problem ? problem : "website.certificate_failed", 409);
-            await Task.Delay(TimeSpan.FromSeconds(1), lifetime.ApplicationStopping);
+            await Task.Delay(TimeSpan.FromSeconds(1), stopping);
         }
     }
 
@@ -263,7 +284,7 @@ internal sealed class WebsitePublicationCoordinator(
                 ProblemCode = problem, RecoveryProblemCode = recovery, Checks = checks, CompletedAt = DateTimeOffset.UtcNow,
             });
         }
-        catch (WebsitePublicationException) { }
+        catch (Exception error) { throw new ResidentWorkCompletionException(error); }
     }
 
     private static void Validate(PublishWebsiteRequest request, string key)

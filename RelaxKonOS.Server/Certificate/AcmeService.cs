@@ -33,7 +33,7 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
         try
         {
             var context = await LoadContextAsync(ValidateDirectoryUrl(options.DirectoryUrl), contactEmail, cancellationToken);
-            await context.RevokeCertificate(certificate.RawData, Certify.ACME.Anvil.Acme.Resource.RevocationReason.Unspecified, context.AccountKey).WaitAsync(cancellationToken);
+            await AcmeCallLifetime.AwaitAsync(() => context.RevokeCertificate(certificate.RawData, Certify.ACME.Anvil.Acme.Resource.RevocationReason.Unspecified, context.AccountKey), cancellationToken);
         }
         catch (OperationCanceledException) { throw; }
         catch (CertificateOperationException) { throw; }
@@ -46,7 +46,7 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
             var certificateId = CreateAriCertificateId(certificate);
             if (certificateId is null) return;
             var context = await LoadContextAsync(ValidateDirectoryUrl(options.DirectoryUrl), contactEmail, cancellationToken);
-            await context.UpdateRenewalInfo(certificateId, true).WaitAsync(cancellationToken);
+            await AcmeCallLifetime.AwaitAsync(() => context.UpdateRenewalInfo(certificateId, true), cancellationToken);
         }
         catch (OperationCanceledException) { throw; }
         catch { /* ARI update is advisory and must not roll back a successfully deployed replacement. */ }
@@ -58,7 +58,7 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
             var certificateId = CreateAriCertificateId(certificate);
             if (certificateId is null) return null;
             var context = await LoadContextAsync(ValidateDirectoryUrl(options.DirectoryUrl), contactEmail, cancellationToken);
-            var info = await context.GetRenewalInfo(certificateId).WaitAsync(cancellationToken);
+            var info = await AcmeCallLifetime.AwaitAsync(() => context.GetRenewalInfo(certificateId), cancellationToken);
             return info?.SuggestedWindow is { Start: { } start, End: { } end }
                 ? new AcmeRenewalWindow(start, end)
                 : null;
@@ -77,25 +77,26 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
             certificateId, directoryUri, challengeType, keyAlgorithm, string.Join(',', domains));
         var acme = await LoadContextAsync(directoryUri, contactEmail, cancellationToken);
         logger.LogInformation("ACME account context loaded. CertificateId={CertificateId}", certificateId);
-        var order = await acme.NewOrder(domains.ToList()).WaitAsync(cancellationToken);
+        var order = await AcmeCallLifetime.AwaitAsync(() => acme.NewOrder(domains.ToList()), cancellationToken);
         logger.LogInformation("ACME order created. CertificateId={CertificateId}", certificateId);
         var challenges = new List<IChallengeContext>();
+        Exception? issuanceFailure = null;
         try
         {
-            var authorizations = (await order.Authorizations().WaitAsync(cancellationToken)).ToArray();
+            var authorizations = (await AcmeCallLifetime.AwaitAsync(() => order.Authorizations(), cancellationToken)).ToArray();
             logger.LogInformation("ACME order authorizations retrieved. CertificateId={CertificateId} AuthorizationCount={AuthorizationCount}",
                 certificateId, authorizations.Length);
             foreach (var authorization in authorizations)
             {
-                var challenge = await authorization.Http().WaitAsync(cancellationToken);
+                var challenge = await AcmeCallLifetime.AwaitAsync(() => authorization.Http(), cancellationToken);
                 if (challenge is null) throw new CertificateOperationException("certificate.http01_not_offered");
-                await challengesStore.PutAsync(challenge.Token, challenge.KeyAuthz, cancellationToken);
                 challenges.Add(challenge);
+                await challengesStore.PutAsync(challenge.Token, challenge.KeyAuthz, cancellationToken);
                 logger.LogInformation("ACME HTTP-01 challenge published. CertificateId={CertificateId} TokenLength={TokenLength}", certificateId, challenge.Token.Length);
             }
             foreach (var challenge in challenges)
             {
-                await challenge.Validate().WaitAsync(cancellationToken);
+                await AcmeCallLifetime.AwaitAsync(() => challenge.Validate(), cancellationToken);
                 logger.LogInformation("ACME HTTP-01 validation requested. CertificateId={CertificateId} TokenLength={TokenLength}", certificateId, challenge.Token.Length);
             }
 
@@ -104,7 +105,7 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
             var ready = false;
             for (var attempt = 0; attempt < 24; attempt++)
             {
-                var resource = await order.Resource().WaitAsync(cancellationToken);
+                var resource = await AcmeCallLifetime.AwaitAsync(() => order.Resource(), cancellationToken);
                 logger.LogInformation("ACME order validation status. CertificateId={CertificateId} Attempt={Attempt} Status={Status}", certificateId, attempt + 1, resource.Status);
                 if (resource.Status == Certify.ACME.Anvil.Acme.Resource.OrderStatus.Ready) { ready = true; break; }
                 if (resource.Status == Certify.ACME.Anvil.Acme.Resource.OrderStatus.Invalid) throw new CertificateOperationException("certificate.validation_failed");
@@ -120,14 +121,15 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
                 ? KeyFactory.NewKey(KeyAlgorithm.RS256, 2048)
                 : KeyFactory.NewKey(KeyAlgorithm.ES256);
             logger.LogInformation("ACME certificate key created. CertificateId={CertificateId} KeyAlgorithm={KeyAlgorithm}", certificateId, keyAlgorithm);
-            var certificate = await order.Generate(new CsrInfo { CommonName = domains[0] }, certificateKey).WaitAsync(cancellationToken);
+            var certificate = await AcmeCallLifetime.AwaitAsync(() => order.Generate(new CsrInfo { CommonName = domains[0] }, certificateKey), cancellationToken);
             logger.LogInformation("ACME certificate issued. CertificateId={CertificateId}", certificateId);
             return new CertificateMaterial(certificateId, domains, challengeType, keyAlgorithm, contactEmail, certificate.ToPem(), certificateKey.ToPem(), DateTimeOffset.UtcNow);
         }
-        catch (CertificateOperationException) { throw; }
-        catch (OperationCanceledException) { throw; }
+        catch (CertificateOperationException error) { issuanceFailure = error; throw; }
+        catch (OperationCanceledException error) { issuanceFailure = error; throw; }
         catch (NullReferenceException exception)
         {
+            issuanceFailure = exception;
             // Anvil 3.x can surface an incomplete account/directory response as a null reference.
             // Keep the implementation detail out of the API, but retain the stack for diagnosis.
             logger.LogError(exception, "The ACME client returned an incomplete response while issuing certificate {CertificateId} for {Domains}.",
@@ -136,12 +138,14 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
         }
         catch (Exception exception)
         {
+            issuanceFailure = exception;
             logger.LogError(exception, "ACME certificate issuance failed for certificate {CertificateId} and domains {Domains}.",
                 certificateId, string.Join(",", domains));
             throw new CertificateOperationException("certificate.acme_request_failed");
         }
         finally
         {
+            var cleanupFailures = new List<Exception>();
             foreach (var challenge in challenges)
             {
                 try
@@ -151,9 +155,14 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
                 }
                 catch (Exception error)
                 {
-                    // A cleanup failure must not mask the actual issuance result. The token has no secret value.
+                    cleanupFailures.Add(error);
                     logger.LogError(error, "Unable to remove ACME HTTP-01 challenge. CertificateId={CertificateId} TokenLength={TokenLength}", certificateId, challenge.Token.Length);
                 }
+            }
+            if (cleanupFailures.Count != 0)
+            {
+                if (issuanceFailure is not null) cleanupFailures.Insert(0, issuanceFailure);
+                throw new CertificateChallengeCleanupException(cleanupFailures);
             }
         }
     }
@@ -175,8 +184,8 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
             logger.LogInformation("Loading existing ACME account key. Directory={Directory}", directoryUri);
             var key = KeyFactory.FromPem(await File.ReadAllTextAsync(accountKeyPath, cancellationToken));
             var existing = new AcmeContext(directoryUri, key);
-            await existing.Account().WaitAsync(cancellationToken);
-            var accountUri = await existing.GetAccountUri().WaitAsync(cancellationToken);
+            await AcmeCallLifetime.AwaitAsync(() => existing.Account(), cancellationToken);
+            var accountUri = await AcmeCallLifetime.AwaitAsync(() => existing.GetAccountUri(), cancellationToken);
             await metadata.UpsertAcmeAccountAsync(directoryUri, contactEmail, accountKeyPath, accountUri?.AbsoluteUri, cancellationToken);
             return existing;
         }
@@ -184,7 +193,7 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
         var accountKey = KeyFactory.NewKey(KeyAlgorithm.ES256);
         var created = new AcmeContext(directoryUri, accountKey);
         logger.LogInformation("Creating ACME account. Directory={Directory}", directoryUri);
-        await created.NewAccount(contactEmail, true).WaitAsync(cancellationToken);
+        await AcmeCallLifetime.AwaitAsync(() => created.NewAccount(contactEmail, true), cancellationToken);
         var temporary = accountKeyPath + ".tmp";
         try
         {
@@ -193,7 +202,7 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
             File.Move(temporary, accountKeyPath, false);
         }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
-        var createdAccountUri = await created.GetAccountUri().WaitAsync(cancellationToken);
+        var createdAccountUri = await AcmeCallLifetime.AwaitAsync(() => created.GetAccountUri(), cancellationToken);
         await metadata.UpsertAcmeAccountAsync(directoryUri, contactEmail, accountKeyPath, createdAccountUri?.AbsoluteUri, cancellationToken);
         logger.LogInformation("ACME account created and stored. Directory={Directory} AccountUri={AccountUri}", directoryUri, createdAccountUri);
         return created;
