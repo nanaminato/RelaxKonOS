@@ -308,3 +308,7 @@ Git 命令端口保留结构化文件名、参数、环境与超时规则，取�
 2026-11-04 MB-07 采样续核：实际 source 读取至同步事件分发已取得真实工作租约，需求代次隔离旧读取，多连接注册不再被短路遗漏，循环实际结束后清理状态。Windows 新增 18 项与原性能专项通过；本轮 Linux 上传/执行被自动审批拒绝，尚未运行。当前范围与证据见[边界设计 §29](RelaxKonOS.ServerModuleBoundaries.Design.md#29-实际采样工作租约与需求代次2026-11-04mb-07-部分)。静态信息读取、REST 等待者完整寿命、连续 Hub/网络发送及整个模块释放仍未覆盖，目录保持 resident，不宣称生产内存收益。
 
 2026-11-04 MB-07 静态信息续核：GetInfoAsync 已取得真实工作租约，独立请求 owner 关闭准入并等待实际源 Task；取消及 Stop 超时不提前释放保护。Windows 驻留检查累计 28 项与原性能专项通过，Linux 本轮未执行。完整行为、证据和限制见[边界设计 §30](RelaxKonOS.ServerModuleBoundaries.Design.md#30-性能静态信息读取的工作保护2026-11-04mb-07-部分)。REST 等待者、Hub 网络发送及整个模块回收继续开放，SystemPerformance 仍 resident。
+
+2026-11-04 MB-07 REST 续核：ReadSnapshotAsync 的缓存命中与等待者均取得真实工作租约，owner 关闭能唤醒纯等待并清理需求/订阅；等待者结束不提前释放仍在采集的独立 tick。Windows/Linux 驻留检查累计各 42 项与原性能专项通过，Windows 默认模块回归通过，详见[边界设计 §31](RelaxKonOS.ServerModuleBoundaries.Design.md#31-rest-快照等待者的完整调用保护2026-11-04mb-07-部分)。Hub 订阅/网络发送、同步历史读取与整个模块释放仍开放，不以调用保护声称生产内存收益。
+
+2026-11-04 MB-07 广播续核：实际 typed Hub 发送已取得真实工作租约，Stop/Dispose 不提前释放非合作发送 Task；最多 4 条排队快照在循环实际结束时清空，不持连续工作租约。Windows/Linux 新增广播各 15 项、性能驻留各 42 项及原专项通过，Windows 默认模块回归与 Linux Proxy28 通过，用户授权后直接复用测试机固定工作目录。行为和验收限制见[边界设计 §32](RelaxKonOS.ServerModuleBoundaries.Design.md#32-hub-广播实际发送的工作寿命2026-11-04mb-07-部分)。连续连接/组成员、同步历史读取、模块释放及生产收益继续开放，目录仍 resident。

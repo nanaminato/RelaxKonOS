@@ -21,13 +21,14 @@ public sealed class PerformanceSampler(
     private DateTimeOffset? _lastSuccess;
     private string? _lastError;
     private long _collectionRevision = -1;
-    private readonly SystemPerformanceRequestLifetime _infoRequests = new(() => { });
+    private readonly SystemPerformanceRequestLifetime _requests = new(() => { });
+    private readonly TaskCompletionSource _snapshotStopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public event Action<PerformanceRealtimeSnapshotDto>? SnapshotAvailable;
 
     public async ValueTask<PerformanceInfoDto> GetInfoAsync(CancellationToken cancellationToken = default)
     {
-        using var request = _infoRequests.Enter(cancellationToken);
+        using var request = _requests.Enter(cancellationToken);
         using var work = await workLeases.AcquireAsync(cancellationToken);
         using var stopping = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, work.Stopping);
         stopping.Token.ThrowIfCancellationRequested();
@@ -38,13 +39,15 @@ public sealed class PerformanceSampler(
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        _infoRequests.BeginStop();
-        await Task.WhenAll(base.StopAsync(cancellationToken), _infoRequests.StopAsync(cancellationToken));
+        _requests.BeginStop();
+        _snapshotStopped.TrySetResult();
+        await Task.WhenAll(base.StopAsync(cancellationToken), _requests.StopAsync(cancellationToken));
     }
 
     public override void Dispose()
     {
-        _infoRequests.BeginStop();
+        _requests.BeginStop();
+        _snapshotStopped.TrySetResult();
         base.Dispose();
     }
 
@@ -58,28 +61,45 @@ public sealed class PerformanceSampler(
     /// </summary>
     public async ValueTask<PerformanceRealtimeSnapshotDto?> ReadSnapshotAsync(TimeSpan wait, CancellationToken cancellationToken = default)
     {
-        if (GetLatest() is { } ready) return ready;
+        if (wait < TimeSpan.Zero || wait.TotalMilliseconds > uint.MaxValue - 1)
+            throw new ArgumentOutOfRangeException(nameof(wait));
+        using var request = _requests.Enter(cancellationToken);
+        using var work = await workLeases.AcquireAsync(cancellationToken);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, work.Stopping);
+        void ThrowIfStopping()
+        {
+            timeout.Token.ThrowIfCancellationRequested();
+            if (_snapshotStopped.Task.IsCompleted)
+                throw new RelaxKonOS.Server.Residency.ModuleUnavailableException("module-host-stopping", 30, "Performance snapshot admission is closed.");
+        }
+        ThrowIfStopping();
+        if (GetLatest() is { } ready) { ThrowIfStopping(); return ready; }
 
-        using var demand = subscriptions.RequestCollection(wait);
         var published = new TaskCompletionSource<PerformanceRealtimeSnapshotDto>(TaskCreationOptions.RunContinuationsAsynchronously);
         void OnSnapshot(PerformanceRealtimeSnapshotDto snapshot) => published.TrySetResult(snapshot);
         SnapshotAvailable += OnSnapshot;
         try
         {
+            using var demand = subscriptions.RequestCollection(wait);
+            ThrowIfStopping();
+            // Close the publication gap between the initial cache read and handler registration.
+            if (GetLatest() is { } available) { ThrowIfStopping(); return available; }
             // 第一份原始读只建立差分基线，所以有效样本要等下一个周期；窗口必须覆盖这一点，而不只是读本身。
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             var expired = Task.Delay(wait, timeout.Token);
-            if (await Task.WhenAny(published.Task, expired).ConfigureAwait(false) != published.Task)
+            var completed = await Task.WhenAny(published.Task, expired, _snapshotStopped.Task).ConfigureAwait(false);
+            ThrowIfStopping();
+            if (completed != published.Task)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                return GetLatest();
+                var latest = GetLatest();
+                ThrowIfStopping();
+                return latest;
             }
-            timeout.Cancel();
             return await published.Task.ConfigureAwait(false);
         }
         finally
         {
             SnapshotAvailable -= OnSnapshot;
+            timeout.Cancel();
         }
     }
 

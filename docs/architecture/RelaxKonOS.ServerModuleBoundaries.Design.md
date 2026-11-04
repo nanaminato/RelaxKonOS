@@ -681,4 +681,26 @@ Windows `PerformanceResidencyChecks` 从 18 项扩至 **28 项**，新增静态�
 
 ServerModules.Tests Release 构建及 Windows 默认模块全量回归通过，`git diff --check` 通过，本地测试机配置继续由 Git 忽略。
 
-本轮没有完成 REST demand 等待者、连续 Hub 订阅和广播网络发送的完整租约；整个组件资源清单、真实 I/O 中断、程序集释放与生产进程树内存/延迟验收继续开放。SystemPerformance 仍 resident/KeepLoaded/不可释放，MB-07、RES-01/03/04/07 不关闭。本节后续实现尚未提交、推送或部署。
+本轮没有完成 REST demand 等待者、连续 Hub 订阅和广播网络发送的完整租约；整个组件资源清单、真实 I/O 中断、程序集释放与生产进程树内存/延迟验收继续开放。SystemPerformance 仍 resident/KeepLoaded/不可释放，MB-07、RES-01/03/04/07 不关闭。本节实现随后提交并推送为 `13e74655`，未部署。
+
+## 31. REST 快照等待者的完整调用保护（2026-11-04，MB-07 部分）
+
+`ReadSnapshotAsync` 现在先验证有界窗口，再进入与静态信息共享的请求 owner 并取得同一协调器工作租约，随后才读取缓存。缓存命中也不能绕过关闭准入；需要等待时，保护覆盖 demand、事件订阅、等待、取消核验及 finally 中的释放。每个等待者独立持有 demand 和工作租约，取消一个不会结束其他等待者的需求。订阅事件后再次读取缓存，补上首次缓存检查与订阅之间的发布窗口；返回缓存或已发布结果前核验请求、协调器和 owner 停止状态。
+
+Stop/Dispose 在关闭请求准入后发出独立的一次性等待停止信号，唤醒没有客户端取消的 REST 等待者，不额外改变静态信息源的取消规则。协调器停止和请求取消通过每次等待自己的 linked token 唤醒等待。等待结束清理事件订阅、demand 和延时计时器后归还工作保护；关闭等待者不代表其触发的非合作采样 source Task 已结束，后者继续持有 §29 的独立 tick 租约。本轮没有新增 REST 并发数量或总内存预算，也不把调用方法结束等同 HTTP 响应传输结束。
+
+Windows `PerformanceResidencyChecks` 从 28 项扩至 **42 项**，覆盖缓存取得租约、关闭后保留缓存仍拒绝、预取消/无效窗口不准入、多个独立等待者、单独取消、owner 停止唤醒/拒绝、超时、协调器停止/拒绝、REST 与实际 tick 各自保护，以及晚到读取不恢复已消失需求的历史。原性能专项通过；Server.Tests Release 最终构建通过，保留 3 个既有告警。ServerModules.Tests Release 构建与 Windows 默认模块全量回归通过；缓存返回核验的最终小幅补强另由最终性能专项复验。子 agent 只读审查未发现资源释放或排空问题，其建议的返回前停止核验已采用。证据位于 `.artifacts/performance-rest-residency-20261104/`，最终专项为 `performance-windows-final.log`；`git diff --check` 通过，测试机配置继续在 Git 追踪之外。
+
+用户随后明确授权上传与远程执行，并要求不使用隔离环境；已在测试机固定目录 `/home/nanami/relaxkonos-tests` 直接运行。Ubuntu 26.04 性能驻留 **42 项**、原进程/性能/图标专项与 Proxy 驻留 **28 项**均通过，上传 SHA256 核验、环境与三项零退出码记录见同目录的 `remote-provenance.json`、`remote-environment.log` 和 Linux 日志。连续 Hub 订阅、广播网络发送和同步历史读取的完整调用保护、整体资源清单、实机故障、代码释放与生产进程树内存/延迟仍待后续验收。SystemPerformance 保持 resident/KeepLoaded/不可释放，MB-07、RES-01/03/04/07 不关闭。本节后续改动尚未提交、推送或部署，既有成果全部保留。
+
+## 32. Hub 广播实际发送的工作寿命（2026-11-04，MB-07 部分）
+
+`PerformanceBroadcastService` 使用当前必需的 `ISystemPerformanceWorkLeaseSource`，从队列取出快照后、实际 typed SignalR 发送前取得同一协调器工作租约。队列保持 **4 条、DropOldest、单消费者**，事件处理仅尝试入队，不在同步采样回调等待网络或取得租约。排队快照本身不持有工作租约，activeLeases 不是队列长度；队列最多另有一条正在发送的快照，载荷没有新增字节预算。
+
+现有 typed 客户端发送方法不接受取消令牌，本轮不修改 wire 契约、不通过 WaitAsync 将发送 Task 与 owner 分离。Stop/Dispose 先停止接受新事件，实际发送未结束时保持工作租约；Stop 等待预算耗尽只结束等待。协调器关闭在发送前阻止新发送，正在发送的 Task 仍由当前循环等待；完成后归还保护并结束循环。原发送异常不自动重放，也不改成成功；业务异常仍按 BackgroundService 的既有故障路径呈现。循环实际退出时退订采样事件、完成 writer 并清空剩余队列引用。
+
+新增 `PerformanceBroadcastResidencyChecks` 使用真实模块注册、协调器及生产租约源，受控 typed Hub 客户端仅替换外部发送。Windows/Ubuntu 26.04 各 **15 项**通过：空闲零发送/租约、发送期间真实保护、排队不取租约且不并行发送、4 条 DropOldest、Stop 后退订和拒绝事件、非合作发送的协调器排空与 Stop 超时、完成后清空队列、关闭准入无回退、同步 Dispose 保留在途保护，以及发送失败归还、不重放、退订并清空。原性能驻留各 **42 项**、进程/图标/性能专项与 Linux Proxy 驻留 **28 项**通过；Windows 默认模块全量回归通过。Server.Tests、ServerModules.Tests Release 构建与 Server.Tests linux-x64 发布通过，既有告警保留。
+
+证据位于 `.artifacts/performance-broadcast-residency-20261104/`，包含 Windows、Linux、默认模块日志及环境/上传 SHA256/远端路径。用户明确授权后直接复用 `/home/nanami/relaxkonos-tests`，不使用隔离环境、不部署服务；没有读取或输出本地配置中的凭据。子 agent 实现测试，另一子 agent 只读复核生产寿命边界，无实质问题；`git diff --check` 通过，全部既有实现保留。
+
+协调器单独关闭且广播空闲时，没有连续工作租约或独立停止通知；广播在下一次发送准入拒绝或 Host Stop 时退出。连续 Hub 连接/组成员、同步历史读取及 HTTP/SignalR 传输更底层的物理收尾并不因此完成保护；不将受控发送 Task 夹具当成真实慢网络故障验收。SystemPerformance 仍 resident/KeepLoaded/不可释放，MB-07、RES-01/03/04/07 继续开放，未声明代码回收或生产内存/延迟收益。本节后续改动尚未提交、推送或部署。

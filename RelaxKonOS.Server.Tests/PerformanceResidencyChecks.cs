@@ -60,6 +60,10 @@ internal static class PerformanceResidencyChecks
             var leasesDuringPublication = await published.Task.WaitAsync(TimeSpan.FromSeconds(5));
             Check(f.Sampler.GetLatest() is { Sequence: 1, Cpu.TotalPercent: 80 } && leasesDuringPublication == 1,
                 "Valid adjacent-period counters publish once while synchronous event dispatch is still protected");
+            var acquisitions = f.Leases.Acquisitions;
+            Check(ReferenceEquals(await f.Sampler.ReadSnapshotAsync(TimeSpan.FromSeconds(5)), f.History.Latest())
+                && f.Leases.Acquisitions == acquisitions + 1,
+                "REST cache hits acquire real work protection without starting a separate source read");
             var inFlight = await f.Source.NextAsync();
             using var budget = new CancellationTokenSource();
             var ownerStop = f.Sampler.StopAsync(budget.Token);
@@ -70,6 +74,10 @@ internal static class PerformanceResidencyChecks
             try { await ownerStop; } catch (OperationCanceledException) { }
             Check(f.Sampler.ExecuteTask is { IsCompleted: false } && f.Coordinator.Describe(ServerModules.SystemPerformanceId)!.ActiveLeases == 1
                 && f.History.Latest() is not null, "Stop wait budget cannot clear a live read's protection or claim final state cleanup");
+            try { await f.Sampler.ReadSnapshotAsync(TimeSpan.Zero); throw new Exception("Stopped owner served cached REST snapshot"); }
+            catch (ModuleUnavailableException) { }
+            Check(f.History.Latest() is not null && f.Coordinator.Describe(ServerModules.SystemPerformanceId)!.ActiveLeases == 1,
+                "Retained cached snapshot cannot bypass closed REST owner admission");
             inFlight.Result.TrySetResult(Sample(3));
             await f.Sampler.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(5));
             await coordinatorStop.WaitAsync(TimeSpan.FromSeconds(5));
@@ -137,6 +145,59 @@ internal static class PerformanceResidencyChecks
             catch (ModuleUnavailableException) { }
             Check(f.Source.InfoReads == 1 && !f.Coordinator.HasBackgroundWork(ServerModules.SystemPerformanceId), "Closed coordinator rejects static reads without fallback");
         }
+        await using (var f = new Fixture())
+        {
+            using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+            try { await f.Sampler.ReadSnapshotAsync(TimeSpan.FromSeconds(5), cancelled.Token); throw new Exception("Cancelled snapshot accepted"); }
+            catch (OperationCanceledException) { }
+            Check(f.Leases.Acquisitions == 0 && !f.Subscriptions.NeedsCollection, "Pre-cancelled REST snapshot creates neither demand nor work protection");
+            try { await f.Sampler.ReadSnapshotAsync(TimeSpan.FromMilliseconds(-2)); throw new Exception("Invalid wait accepted"); }
+            catch (ArgumentOutOfRangeException) { }
+            Check(f.Leases.Acquisitions == 0 && !f.Subscriptions.NeedsCollection, "Invalid REST windows fail before admission");
+            using var cancellation = new CancellationTokenSource();
+            var first = f.Sampler.ReadSnapshotAsync(TimeSpan.FromSeconds(30), cancellation.Token).AsTask();
+            var second = f.Sampler.ReadSnapshotAsync(TimeSpan.FromSeconds(30)).AsTask();
+            await UntilAsync(() => f.Coordinator.Describe(ServerModules.SystemPerformanceId)!.ActiveLeases == 2);
+            Check(f.Subscriptions.NeedsCollection && f.Source.Reads == 0, "Two REST waiters independently hold real leases and demand without directly reading the source");
+            cancellation.Cancel();
+            try { await first; throw new Exception("Cancelled waiter returned"); } catch (OperationCanceledException) { }
+            Check(f.Coordinator.Describe(ServerModules.SystemPerformanceId)!.ActiveLeases == 1 && f.Subscriptions.NeedsCollection && !second.IsCompleted,
+                "Cancelling one REST waiter releases only its own demand and lease");
+            await f.Sampler.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(5));
+            try { await second; throw new Exception("Stopped waiter returned"); } catch (ModuleUnavailableException) { }
+            Check(!f.Subscriptions.NeedsCollection && !f.Coordinator.HasBackgroundWork(ServerModules.SystemPerformanceId), "Owner stop wakes REST waiters and drains demand plus protection");
+            try { await f.Sampler.ReadSnapshotAsync(TimeSpan.Zero); throw new Exception("Stopped REST owner accepted"); }
+            catch (ModuleUnavailableException) { }
+            Check(f.Leases.Acquisitions == 2, "Stopped owner rejects REST admission before acquiring another lease");
+        }
+        await using (var f = new Fixture())
+        {
+            Check(await f.Sampler.ReadSnapshotAsync(TimeSpan.Zero) is null && !f.Subscriptions.NeedsCollection
+                && !f.Coordinator.HasBackgroundWork(ServerModules.SystemPerformanceId), "REST timeout returns null and releases demand and work protection");
+            var pending = f.Sampler.ReadSnapshotAsync(TimeSpan.FromSeconds(30)).AsTask();
+            await UntilAsync(() => f.Subscriptions.NeedsCollection);
+            await f.Coordinator.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+            try { await pending; throw new Exception("Coordinator-stopped waiter returned"); } catch (OperationCanceledException) { }
+            Check(!f.Subscriptions.NeedsCollection, "Coordinator stop wakes REST waiting and returns its demand before drain completes");
+            try { await f.Sampler.ReadSnapshotAsync(TimeSpan.Zero); throw new Exception("Closed coordinator accepted REST"); }
+            catch (ModuleUnavailableException) { }
+            Check(!f.Coordinator.HasBackgroundWork(ServerModules.SystemPerformanceId), "Closed coordinator refuses REST without unprotected fallback");
+        }
+        await using (var f = new Fixture())
+        {
+            await f.Sampler.StartAsync(default);
+            using var cancellation = new CancellationTokenSource();
+            var pending = f.Sampler.ReadSnapshotAsync(TimeSpan.FromSeconds(30), cancellation.Token).AsTask();
+            var read = await f.Source.NextAsync();
+            Check(f.Coordinator.Describe(ServerModules.SystemPerformanceId)!.ActiveLeases == 2, "REST waiter and its actual sampler tick have separate work protection");
+            cancellation.Cancel();
+            try { await pending; throw new Exception("Cancelled REST read returned"); } catch (OperationCanceledException) { }
+            Check(!f.Subscriptions.NeedsCollection && f.Coordinator.Describe(ServerModules.SystemPerformanceId)!.ActiveLeases == 1,
+                "REST cancellation does not detach the unfinished non-cooperative sampler read");
+            read.Result.TrySetResult(Sample(1));
+            await UntilAsync(() => !f.Coordinator.HasBackgroundWork(ServerModules.SystemPerformanceId));
+            Check(f.History.Latest() is null, "Late read cannot restore a cancelled REST demand's history");
+        }
         Console.WriteLine($"Performance residency checks passed: {count}");
     }
 
@@ -192,6 +253,7 @@ internal static class PerformanceResidencyChecks
         internal readonly PerformanceHistory History = new();
         internal readonly PerformanceSubscriptionRegistry Subscriptions = new();
         internal PerformanceSampler Sampler { get; }
+        internal LeaseSource Leases { get; }
         internal ModuleResidencyCoordinator Coordinator => _app.Services.GetRequiredService<ModuleResidencyCoordinator>();
         internal Fixture()
         {
@@ -199,12 +261,19 @@ internal static class PerformanceResidencyChecks
             var modules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.SystemPerformanceId });
             modules.ConfigureServices(builder, ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory"));
             _app = builder.Build();
-            Sampler = new(Source, History, Subscriptions, _app.Services.GetRequiredService<ISystemPerformanceWorkLeaseSource>());
+            Leases = new(_app.Services.GetRequiredService<ISystemPerformanceWorkLeaseSource>());
+            Sampler = new(Source, History, Subscriptions, Leases);
         }
         public async ValueTask DisposeAsync()
         {
             var stopped = Sampler.StopAsync(default); Source.Complete();
             await stopped.WaitAsync(TimeSpan.FromSeconds(5)); Sampler.Dispose(); await _app.DisposeAsync();
         }
+    }
+    private sealed class LeaseSource(ISystemPerformanceWorkLeaseSource inner) : ISystemPerformanceWorkLeaseSource
+    {
+        internal int Acquisitions;
+        public ValueTask<IModuleWorkLease> AcquireAsync(CancellationToken ct)
+        { Interlocked.Increment(ref Acquisitions); return inner.AcquireAsync(ct); }
     }
 }

@@ -12,6 +12,10 @@
 
 后续静态信息读取也已接入工作租约与独立请求 owner：关闭准入后拒绝新读取，实际源 Task 完成前保留保护，不创建实时采样 demand。Windows 驻留检查累计 28 项通过，Linux 本轮未执行；REST 等待者和 Hub 网络发送仍待接入，详见[边界设计 §30](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#30-性能静态信息读取的工作保护2026-11-04mb-07-部分)。
 
+REST 快照后续：缓存命中和等待均接入工作租约，取消/超时释放本请求需求，关闭能唤醒等待；底层未完成的采样读取继续独立受保护。Windows/Linux 驻留检查累计各 42 项与原性能专项通过，Windows 默认模块回归通过。Hub 连续订阅与网络发送仍待接入，模块保持 resident，范围见[边界设计 §31](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#31-rest-快照等待者的完整调用保护2026-11-04mb-07-部分)。
+
+Hub 广播后续：实际发送 Task 已受工作租约保护，保持 4 条 DropOldest 队列，慢网络不阻塞采样；停机等待超时不提前释放在途发送。Windows/Linux 新增广播各 15 项通过，原性能驻留各 42 项及专项通过；连续连接/组成员仍待接入，详见[边界设计 §32](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#32-hub-广播实际发送的工作寿命2026-11-04mb-07-部分)。
+
 `PerformanceInfoDto` 包含低频 CPU、内存、文件系统、磁盘、网络身份及显式能力位；`PerformanceRealtimeSnapshotDto` 包含递增 sequence、UTC timestamp、CPU、内存、文件系统容量、磁盘 I/O、网络计数与速率、uptimeSeconds、health。文件系统容量和块设备 I/O 分开显示。未知增强指标保留 null；能力 false 时不显示伪造的数值。当前性能契约没有 GPU 实时数据，GPU/传感器为后续扩展。
 
 ## 当前 REST 与 Hub
