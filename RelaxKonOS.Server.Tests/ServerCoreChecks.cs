@@ -1504,17 +1504,17 @@ internal static async Task VerifyPerformanceSamplerAsync()
         TestAssert.Assert(source.SampleCount == 0, "Performance sampler read system data without a subscriber.");
         subscriptions.Subscribe("test-connection");
         await Task.Delay(TimeSpan.FromMilliseconds(1200));
-        var latest = sampler.GetLatest() ?? throw new InvalidOperationException("Performance sampler did not publish its second sample.");
+        var latest = await sampler.GetLatestAsync() ?? throw new InvalidOperationException("Performance sampler did not publish its second sample.");
         TestAssert.Assert(latest.Sequence == 1, "Performance sampler did not begin its sequence at the first valid sample.");
         TestAssert.Assert(latest.Cpu.TotalPercent == 30, "CPU utilization did not use adjacent raw counters.");
         TestAssert.Assert(latest.Disks.Single().ReadBytesPerSecond == 5120, "Disk byte rate did not use sector deltas.");
         TestAssert.Assert(latest.Networks.Single().ReceiveBytesPerSecond == 500, "Network rate did not use adjacent counters.");
-        TestAssert.Assert(sampler.GetHistory(60).Count == 1, "Performance history did not retain the valid sample.");
+        TestAssert.Assert((await sampler.GetHistoryAsync(60)).Count == 1, "Performance history did not retain the valid sample.");
         subscriptions.Unsubscribe("test-connection");
         var readsBeforeIdle = source.SampleCount;
         await Task.Delay(TimeSpan.FromMilliseconds(1200));
         TestAssert.Assert(source.SampleCount == readsBeforeIdle, "Performance sampler continued reading system data without subscribers.");
-        TestAssert.Assert(sampler.GetHistory(60).Count == 0, "Performance history was retained after the last subscriber left.");
+        TestAssert.Assert((await sampler.GetHistoryAsync(60)).Count == 0, "Performance history was retained after the last subscriber left.");
 
         // 一次性 REST 读取本身也是 demand：没有订阅者时它仍必须取到样本，拿到答案后采样立即回到空闲。
         var demanded = await sampler.ReadSnapshotAsync(TimeSpan.FromSeconds(3), CancellationToken.None);
@@ -1523,7 +1523,7 @@ internal static async Task VerifyPerformanceSamplerAsync()
         var readsAfterDemand = source.SampleCount;
         await Task.Delay(TimeSpan.FromMilliseconds(1200));
         TestAssert.Assert(source.SampleCount == readsAfterDemand, "Performance sampler kept reading system data after the demand lease was released.");
-        TestAssert.Assert(sampler.GetHistory(60).Count == 0, "Performance history was retained after the demand lease was released.");
+        TestAssert.Assert((await sampler.GetHistoryAsync(60)).Count == 0, "Performance history was retained after the demand lease was released.");
     }
     finally
     {

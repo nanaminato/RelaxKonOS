@@ -18,6 +18,8 @@ Hub 广播后续：实际发送 Task 已受工作租约保护，保持 4 条 Dro
 
 连续连接后续：Hub 连接从 OnConnected 到组清理实际结束持有工作租约；仅连接不触发采样，退订后连接仍受保护。重复订阅不重复入组，断线/停机的晚到入组不会恢复采样需求；未知退组失败保留责任，不自动重放。Windows/Linux 最终连接各 25 项及原专项通过，详见[边界设计 §33](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#33-连续-hub-连接与组成员-owner2026-11-04mb-07-部分)。模块仍 resident，真实网络故障及生产内存收益尚未验收。
 
+只读接口后续：最新快照和历史采用可取消的 `GetLatestAsync` / `GetHistoryAsync`，包括空缓存和命中均先取得工作保护，HTTP 历史路由与 JSON 不变，不触发额外采样。Windows/Linux 性能驻留各 53 项及原专项通过，详见[边界设计 §34](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#34-历史与最新快照的异步读取保护2026-11-04mb-07-部分)。保护至物化返回，不包含后续响应传输，模块仍 resident。
+
 `PerformanceInfoDto` 包含低频 CPU、内存、文件系统、磁盘、网络身份及显式能力位；`PerformanceRealtimeSnapshotDto` 包含递增 sequence、UTC timestamp、CPU、内存、文件系统容量、磁盘 I/O、网络计数与速率、uptimeSeconds、health。文件系统容量和块设备 I/O 分开显示。未知增强指标保留 null；能力 false 时不显示伪造的数值。当前性能契约没有 GPU 实时数据，GPU/传感器为后续扩展。
 
 ## 当前 REST 与 Hub

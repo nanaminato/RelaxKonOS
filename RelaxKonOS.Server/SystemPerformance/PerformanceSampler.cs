@@ -51,9 +51,37 @@ public sealed class PerformanceSampler(
         base.Dispose();
     }
 
-    public PerformanceRealtimeSnapshotDto? GetLatest() { ReconcileCollectionState(); return history.Latest(); }
+    public async ValueTask<PerformanceRealtimeSnapshotDto?> GetLatestAsync(CancellationToken cancellationToken = default)
+    {
+        using var request = _requests.Enter(cancellationToken);
+        using var work = await workLeases.AcquireAsync(cancellationToken);
+        using var stopping = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, work.Stopping);
+        ThrowIfReadStopping(stopping.Token);
+        var latest = ReadLatest();
+        ThrowIfReadStopping(stopping.Token);
+        return latest;
+    }
 
-    public IReadOnlyList<PerformanceRealtimeSnapshotDto> GetHistory(int seconds) { ReconcileCollectionState(); return history.GetRecent(seconds); }
+    public async ValueTask<IReadOnlyList<PerformanceRealtimeSnapshotDto>> GetHistoryAsync(int seconds, CancellationToken cancellationToken = default)
+    {
+        using var request = _requests.Enter(cancellationToken);
+        using var work = await workLeases.AcquireAsync(cancellationToken);
+        using var stopping = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, work.Stopping);
+        ThrowIfReadStopping(stopping.Token);
+        ReconcileCollectionState();
+        var snapshots = history.GetRecent(seconds);
+        ThrowIfReadStopping(stopping.Token);
+        return snapshots;
+    }
+
+    private PerformanceRealtimeSnapshotDto? ReadLatest() { ReconcileCollectionState(); return history.Latest(); }
+
+    private void ThrowIfReadStopping(CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (_snapshotStopped.Task.IsCompleted)
+            throw new RelaxKonOS.Server.Residency.ModuleUnavailableException("module-host-stopping", 30, "Performance read admission is closed.");
+    }
 
     /// <summary>
     /// 一次性读取：有有效快照就直接给；没有就为本请求申请一段有界 demand，等它产出第一份有效样本。
@@ -73,7 +101,7 @@ public sealed class PerformanceSampler(
                 throw new RelaxKonOS.Server.Residency.ModuleUnavailableException("module-host-stopping", 30, "Performance snapshot admission is closed.");
         }
         ThrowIfStopping();
-        if (GetLatest() is { } ready) { ThrowIfStopping(); return ready; }
+        if (ReadLatest() is { } ready) { ThrowIfStopping(); return ready; }
 
         var published = new TaskCompletionSource<PerformanceRealtimeSnapshotDto>(TaskCreationOptions.RunContinuationsAsynchronously);
         void OnSnapshot(PerformanceRealtimeSnapshotDto snapshot) => published.TrySetResult(snapshot);
@@ -83,14 +111,14 @@ public sealed class PerformanceSampler(
             using var demand = subscriptions.RequestCollection(wait);
             ThrowIfStopping();
             // Close the publication gap between the initial cache read and handler registration.
-            if (GetLatest() is { } available) { ThrowIfStopping(); return available; }
+            if (ReadLatest() is { } available) { ThrowIfStopping(); return available; }
             // 第一份原始读只建立差分基线，所以有效样本要等下一个周期；窗口必须覆盖这一点，而不只是读本身。
             var expired = Task.Delay(wait, timeout.Token);
             var completed = await Task.WhenAny(published.Task, expired, _snapshotStopped.Task).ConfigureAwait(false);
             ThrowIfStopping();
             if (completed != published.Task)
             {
-                var latest = GetLatest();
+                var latest = ReadLatest();
                 ThrowIfStopping();
                 return latest;
             }

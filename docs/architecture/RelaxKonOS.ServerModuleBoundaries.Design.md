@@ -717,4 +717,18 @@ Windows `PerformanceResidencyChecks` 从 28 项扩至 **42 项**，覆盖缓存�
 
 原 Windows/Linux 广播各 **15 项**、性能驻留各 **42 项**、进程/图标/性能专项及 Linux Proxy 驻留 **28 项**通过；Windows 默认模块全量回归通过。Server/Server.Tests/ServerModules.Tests Release 构建与 Server.Tests linux-x64 发布通过，既有告警保留。首轮连接 21 项和最终补强 25 项均保留证据，最终测试仅补强夹具，生产代码未再变化。目录为 `.artifacts/performance-connections-residency-20261104/`，最终平台日志是 `performance-windows-final.log`、`performance-linux-final.log`；Linux 用户授权后直接复用 `/home/nanami/relaxkonos-tests`，环境、整包及最终测试程序集上传 SHA256 核验均记录。子 agent 实现测试，另一子 agent 只读审查并促成在途 Remove 与 Abort 异常两项修复；最终未发现进一步实质问题。`git diff --check` 通过，测试机配置仍在 Git 追踪之外。
 
-目录 activeLeases 现在包含所有连续 Hub 连接（不只订阅者）、实际采样/广播/REST/进程工作，不等于 OS 并发读取数。此处不证明真实 SignalR 传输故障、远端组存储或 HTTP/网络底层物理清理；组任务失败的保留责任需要后续显式恢复设计，不能以 Abort 当作清理已确认。同步历史读取的完整保护、整体资源清单、连接压力及数量预算、程序集释放及生产进程树内存/延迟仍开放。SystemPerformance 保持 resident/KeepLoaded/不可释放，MB-07、RES-01/03/04/07 不关闭；本节实现尚未提交、推送或部署，全部既有成果保留。
+目录 activeLeases 现在包含所有连续 Hub 连接（不只订阅者）、实际采样/广播/REST/进程工作，不等于 OS 并发读取数。此处不证明真实 SignalR 传输故障、远端组存储或 HTTP/网络底层物理清理；组任务失败的保留责任需要后续显式恢复设计，不能以 Abort 当作清理已确认。同步历史读取的完整保护、整体资源清单、连接压力及数量预算、程序集释放及生产进程树内存/延迟仍开放。SystemPerformance 保持 resident/KeepLoaded/不可释放，MB-07、RES-01/03/04/07 不关闭；本节实现随后提交并推送为 `b48f2f4b`，未部署，全部既有成果保留。
+
+## 34. 历史与最新快照的异步读取保护（2026-11-04，MB-07 部分）
+
+`IPerformanceSampler` 直接采用 `GetLatestAsync` / `GetHistoryAsync` 当前接口，均可传入取消令牌；不保留原同步方法或阻塞异步适配。生产实现、HTTP 历史端点、内仓调用与测试夹具同步更新；路由、JSON 与 60 点历史容量不变。历史 HTTP 端点传递请求取消令牌，不创建额外采样 demand 或 OS 读取。
+
+公开读取在访问空缓存或非空缓存前进入现有请求 owner 并取得同一协调器工作租约，链接请求与协调器停止令牌，在状态协调/历史物化前后核验取消和 owner 关闭。已准入但尚未返回的读取由 owner Stop 跟踪；关闭后拒绝公开读缓存，不能以空结果或旧快照绕过准入。返回的 DTO/数组归调用者引用所有，不在返回后继续持有工作租约，owner 释放自身历史也不修改已物化结果。`ReadSnapshotAsync` 使用私有读取核心，复用它已持有的租约，避免额外嵌套准入。
+
+`PerformanceResidencyChecks` 从 42 项扩至 **53 项**，Windows/Ubuntu 26.04 均通过。新增覆盖预取消不准入、历史/最新缓存命中均取得真实保护、读取不产生 demand/source 调用、原 1～60 秒窗口界限、已物化历史不持租约且不受 owner 缓存变化影响、关闭 owner/协调器拒绝旧缓存，以及取得真实租约后暂停准入返回的读取在 Stop 超时/请求取消时仍保留保护。暂停仅在测试包装端口，生产没有额外等待队列。旧停止后空缓存检查改为观察 owner 存储，公开方法则明确验证关闭拒绝。
+
+原 Windows/Linux 连接各 **25 项**、广播各 **15 项**、进程/图标/性能专项及 Linux Proxy 驻留 **28 项**通过。Server/Server.Tests Release 构建与 Server.Tests linux-x64 发布通过，既有告警保留。证据位于 `.artifacts/performance-history-residency-20261104/`，包含平台日志、环境、上传摘要核验及远端固定目录；用户授权后直接复用 `/home/nanami/relaxkonos-tests`。子 agent 更新测试，另一子 agent 只读审查生产实现未发现实质问题；全仓旧同步调用已清除，`git diff --check` 通过，凭据继续由本地忽略文件持有。
+
+ServerModules.Tests Release 构建及 Windows 默认模块全量回归通过。
+
+此处保护方法执行至物化结束，不覆盖随后 HTTP JSON 序列化、响应发送或调用方持有结果的整个寿命；没有新增生产 GC、历史 TTL、采样频率或并发数量预算。整体资源清单、连接压力、真实传输和未知结果恢复、程序集释放及生产进程树内存/延迟仍待验收。SystemPerformance 保持 resident/KeepLoaded/不可释放，MB-07、RES-01/03/04/07 不关闭，本节实现尚未提交、推送或部署。

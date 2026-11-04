@@ -9,9 +9,9 @@ public interface IPerformanceSampler
 
     ValueTask<PerformanceInfoDto> GetInfoAsync(CancellationToken cancellationToken = default);
 
-    PerformanceRealtimeSnapshotDto? GetLatest();
+    ValueTask<PerformanceRealtimeSnapshotDto?> GetLatestAsync(CancellationToken cancellationToken = default);
 
-    IReadOnlyList<PerformanceRealtimeSnapshotDto> GetHistory(int seconds);
+    ValueTask<IReadOnlyList<PerformanceRealtimeSnapshotDto>> GetHistoryAsync(int seconds, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// 最新有效快照；当前无人需要采样时，先申请一段有界 demand 再取样本，使一次性 REST 读取在没有

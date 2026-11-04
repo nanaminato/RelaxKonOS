@@ -109,8 +109,8 @@ internal static class PerformanceBroadcastResidencyChecks
         public event Action<PerformanceRealtimeSnapshotDto>? SnapshotAvailable { add => _handlers += value; remove => _handlers -= value; }
         internal void Publish(PerformanceRealtimeSnapshotDto snapshot) => _handlers?.Invoke(snapshot);
         public ValueTask<PerformanceInfoDto> GetInfoAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public PerformanceRealtimeSnapshotDto? GetLatest() => throw new NotSupportedException();
-        public IReadOnlyList<PerformanceRealtimeSnapshotDto> GetHistory(int seconds) => throw new NotSupportedException();
+        public ValueTask<PerformanceRealtimeSnapshotDto?> GetLatestAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<IReadOnlyList<PerformanceRealtimeSnapshotDto>> GetHistoryAsync(int seconds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public ValueTask<PerformanceRealtimeSnapshotDto?> ReadSnapshotAsync(TimeSpan wait, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
     private sealed class Send(PerformanceRealtimeSnapshotDto snapshot)

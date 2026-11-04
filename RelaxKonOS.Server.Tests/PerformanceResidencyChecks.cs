@@ -50,15 +50,15 @@ internal static class PerformanceResidencyChecks
             f.Subscriptions.Unsubscribe("old"); f.Subscriptions.Subscribe("new");
             old.Result.TrySetResult(Sample(100));
             var baseline = await f.Source.NextAsync();
-            Check(f.Sampler.GetLatest() is null && f.History.GetRecent(60).Count == 0, "Late old-period source result cannot populate the new period's baseline or history");
+            Check(await f.Sampler.GetLatestAsync() is null && f.History.GetRecent(60).Count == 0, "Late old-period source result cannot populate the new period's baseline or history");
             baseline.Result.TrySetResult(Sample(1));
             var next = await f.Source.NextAsync();
-            Check(f.Sampler.GetLatest() is null, "The first source result in the new period establishes a baseline rather than publishing a cross-period delta");
+            Check(await f.Sampler.GetLatestAsync() is null, "The first source result in the new period establishes a baseline rather than publishing a cross-period delta");
             var published = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
             f.Sampler.SnapshotAvailable += _ => published.TrySetResult(f.Coordinator.Describe(ServerModules.SystemPerformanceId)!.ActiveLeases);
             next.Result.TrySetResult(Sample(2));
             var leasesDuringPublication = await published.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            Check(f.Sampler.GetLatest() is { Sequence: 1, Cpu.TotalPercent: 80 } && leasesDuringPublication == 1,
+            Check(await f.Sampler.GetLatestAsync() is { Sequence: 1, Cpu.TotalPercent: 80 } && leasesDuringPublication == 1,
                 "Valid adjacent-period counters publish once while synchronous event dispatch is still protected");
             var acquisitions = f.Leases.Acquisitions;
             Check(ReferenceEquals(await f.Sampler.ReadSnapshotAsync(TimeSpan.FromSeconds(5)), f.History.Latest())
@@ -81,7 +81,7 @@ internal static class PerformanceResidencyChecks
             inFlight.Result.TrySetResult(Sample(3));
             await f.Sampler.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(5));
             await coordinatorStop.WaitAsync(TimeSpan.FromSeconds(5));
-            Check(f.History.Latest() is null && f.Sampler.GetLatest() is null && !f.Coordinator.HasBackgroundWork(ServerModules.SystemPerformanceId),
+            Check(f.History.Latest() is null && !f.Coordinator.HasBackgroundWork(ServerModules.SystemPerformanceId),
                 "Actual loop completion precedes final baseline/history cleanup and zero coordinator work");
         }
         await using (var f = new Fixture())
@@ -198,9 +198,77 @@ internal static class PerformanceResidencyChecks
             await UntilAsync(() => !f.Coordinator.HasBackgroundWork(ServerModules.SystemPerformanceId));
             Check(f.History.Latest() is null, "Late read cannot restore a cancelled REST demand's history");
         }
+        await using (var f = new Fixture())
+        {
+            using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+            try { await f.Sampler.GetLatestAsync(cancelled.Token); throw new Exception("Cancelled latest read accepted"); }
+            catch (OperationCanceledException) { }
+            try { await f.Sampler.GetHistoryAsync(60, cancelled.Token); throw new Exception("Cancelled history read accepted"); }
+            catch (OperationCanceledException) { }
+            Check(f.Leases.Acquisitions == 0 && !f.Subscriptions.NeedsCollection, "Pre-cancelled latest and history reads acquire neither work nor collection demand");
+            await f.Sampler.GetLatestAsync(); // Establish the current empty demand revision before seeding retained DTOs.
+            var oldest = Snapshot(1, DateTimeOffset.UtcNow.AddSeconds(-30));
+            var middle = Snapshot(2, DateTimeOffset.UtcNow.AddSeconds(-5));
+            var newest = Snapshot(3, DateTimeOffset.UtcNow);
+            f.History.Add(oldest); f.History.Add(middle); f.History.Add(newest);
+            var acquisitions = f.Leases.Acquisitions;
+            var latest = await f.Sampler.GetLatestAsync(); var history = await f.Sampler.GetHistoryAsync(60);
+            Check(ReferenceEquals(latest, newest) && history.SequenceEqual([oldest, middle, newest]) && f.Leases.Acquisitions == acquisitions + 2,
+                "Latest and materialized history each acquire real work protection even when all data is cached");
+            Check(f.Source.Reads == 0 && f.Source.InfoReads == 0 && !f.Subscriptions.NeedsCollection && !f.Coordinator.HasBackgroundWork(ServerModules.SystemPerformanceId),
+                "Completed cached reads return all protection without starting demand or either source read");
+            Check((await f.Sampler.GetHistoryAsync(-1)).SequenceEqual([newest]) && (await f.Sampler.GetHistoryAsync(100)).Count == 3,
+                "Async history retains the existing one-to-sixty-second window bounds");
+            f.History.Clear();
+            Check(history.SequenceEqual([oldest, middle, newest]) && !f.Coordinator.HasBackgroundWork(ServerModules.SystemPerformanceId),
+                "Returned materialized history remains valid after owner storage changes without retaining a work lease");
+            f.History.Add(newest); await f.Sampler.StopAsync(default);
+            try { await f.Sampler.GetLatestAsync(); throw new Exception("Stopped owner served latest"); } catch (ModuleUnavailableException) { }
+            try { await f.Sampler.GetHistoryAsync(60); throw new Exception("Stopped owner served history"); } catch (ModuleUnavailableException) { }
+            Check(f.History.Latest() is not null && !f.Coordinator.HasBackgroundWork(ServerModules.SystemPerformanceId),
+                "Retained cached data cannot bypass closed latest or history owner admission");
+        }
+        await using (var f = new Fixture())
+        {
+            await f.Sampler.GetLatestAsync(); f.History.Add(Snapshot(1, DateTimeOffset.UtcNow));
+            await f.Coordinator.DisposeAsync();
+            try { await f.Sampler.GetLatestAsync(); throw new Exception("Closed coordinator served latest"); } catch (ModuleUnavailableException) { }
+            try { await f.Sampler.GetHistoryAsync(60); throw new Exception("Closed coordinator served history"); } catch (ModuleUnavailableException) { }
+            Check(f.History.Latest() is not null && !f.Subscriptions.NeedsCollection && f.Source.Reads == 0,
+                "Closed coordinator rejects retained latest and history without unprotected fallback or sampling demand");
+        }
+        await using (var f = new Fixture())
+        {
+            var release = f.Leases.BlockReturn();
+            var read = f.Sampler.GetHistoryAsync(60).AsTask();
+            await UntilAsync(() => f.Coordinator.HasBackgroundWork(ServerModules.SystemPerformanceId));
+            using var budget = new CancellationTokenSource(); var stop = f.Sampler.StopAsync(budget.Token); budget.Cancel();
+            try { await stop; } catch (OperationCanceledException) { }
+            Check(!read.IsCompleted && f.Coordinator.Describe(ServerModules.SystemPerformanceId)!.ActiveLeases == 1,
+                "Stop wait timeout cannot detach an admitted cached read or discard its real lease");
+            release.TrySetResult();
+            try { await read; throw new Exception("Stopped delayed history returned"); } catch (ModuleUnavailableException) { }
+            await f.Sampler.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(5));
+            Check(!f.Coordinator.HasBackgroundWork(ServerModules.SystemPerformanceId),
+                "A delayed read observes owner closure before materializing and drains its work protection");
+        }
+        await using (var f = new Fixture())
+        {
+            var release = f.Leases.BlockReturn(); using var cancellation = new CancellationTokenSource();
+            var read = f.Sampler.GetLatestAsync(cancellation.Token).AsTask();
+            await UntilAsync(() => f.Coordinator.HasBackgroundWork(ServerModules.SystemPerformanceId)); cancellation.Cancel();
+            Check(!read.IsCompleted && f.Coordinator.HasBackgroundWork(ServerModules.SystemPerformanceId),
+                "Request cancellation preserves ownership until the actual delayed latest admission finishes");
+            release.TrySetResult();
+            try { await read; throw new Exception("Cancelled delayed latest returned"); } catch (OperationCanceledException) { }
+            Check(!f.Coordinator.HasBackgroundWork(ServerModules.SystemPerformanceId), "Cancelled delayed latest returns protection without publishing a result");
+        }
         Console.WriteLine($"Performance residency checks passed: {count}");
     }
 
+    private static PerformanceRealtimeSnapshotDto Snapshot(long sequence, DateTimeOffset timestamp) => new(sequence, timestamp,
+        new(0, null, null, null, null, [], null, null, null, null), new(1024, 512, 512, null, null, null, null),
+        [], [], [], 0, new(false, null, null));
     private static PerformanceInfoDto Info() => new(new("test", 1, 2, null, null), new(1024, null), [], [], [],
         new(false, false, false, false, false, false, false, false));
     private static RawPerformanceSample Sample(int n) => new(DateTimeOffset.UtcNow, n * Stopwatch.Frequency,
@@ -266,14 +334,22 @@ internal static class PerformanceResidencyChecks
         }
         public async ValueTask DisposeAsync()
         {
-            var stopped = Sampler.StopAsync(default); Source.Complete();
+            var stopped = Sampler.StopAsync(default); Source.Complete(); Leases.Complete();
             await stopped.WaitAsync(TimeSpan.FromSeconds(5)); Sampler.Dispose(); await _app.DisposeAsync();
         }
     }
     private sealed class LeaseSource(ISystemPerformanceWorkLeaseSource inner) : ISystemPerformanceWorkLeaseSource
     {
         internal int Acquisitions;
-        public ValueTask<IModuleWorkLease> AcquireAsync(CancellationToken ct)
-        { Interlocked.Increment(ref Acquisitions); return inner.AcquireAsync(ct); }
+        private TaskCompletionSource? _return;
+        internal TaskCompletionSource BlockReturn() => _return = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal void Complete() => _return?.TrySetResult();
+        public async ValueTask<IModuleWorkLease> AcquireAsync(CancellationToken ct)
+        {
+            Interlocked.Increment(ref Acquisitions);
+            var lease = await inner.AcquireAsync(ct);
+            if (_return is { } paused) await paused.Task;
+            return lease;
+        }
     }
 }

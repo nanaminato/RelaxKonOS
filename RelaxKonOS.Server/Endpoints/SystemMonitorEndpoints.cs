@@ -38,7 +38,7 @@ public static class SystemMonitorEndpoints
            .WithTags("System Performance");
 
         app.MapGet(SystemMonitorApiRoutes.PerformanceHistory,
-            (int? seconds, IPerformanceSampler sampler) => Results.Ok(sampler.GetHistory(seconds ?? 60)))
+            async (int? seconds, IPerformanceSampler sampler, CancellationToken ct) => Results.Ok(await sampler.GetHistoryAsync(seconds ?? 60, ct)))
            .RequireAuthorization()
            .WithTags("System Performance");
 
