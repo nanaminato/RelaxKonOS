@@ -6,6 +6,7 @@ Android 的设计、功能、支持范围和发布要求统一维护在 [Android
 
 专题补充：
 
+- [应用候选与规划总览（60 个候选、重点方案与后续提案模板，尚未立项）](./application-ideas/README.md)
 - [内置 Git → IDEA 风格项目编辑器（首版已实现，含后续设计）](./applications/RelaxKonOS.GitEditor.Design.md)
 - [项目编辑器实施与验证记录](./applications/RelaxKonOS.GitEditor.Progress.md)
 - [桌面界面与流程优化审查](./desktop/UiReview.md)
