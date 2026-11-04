@@ -21,11 +21,32 @@ public sealed class PerformanceSampler(
     private DateTimeOffset? _lastSuccess;
     private string? _lastError;
     private long _collectionRevision = -1;
+    private readonly SystemPerformanceRequestLifetime _infoRequests = new(() => { });
 
     public event Action<PerformanceRealtimeSnapshotDto>? SnapshotAvailable;
 
-    public ValueTask<PerformanceInfoDto> GetInfoAsync(CancellationToken cancellationToken = default)
-        => source.GetInfoAsync(cancellationToken);
+    public async ValueTask<PerformanceInfoDto> GetInfoAsync(CancellationToken cancellationToken = default)
+    {
+        using var request = _infoRequests.Enter(cancellationToken);
+        using var work = await workLeases.AcquireAsync(cancellationToken);
+        using var stopping = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, work.Stopping);
+        stopping.Token.ThrowIfCancellationRequested();
+        var info = await source.GetInfoAsync(stopping.Token);
+        stopping.Token.ThrowIfCancellationRequested();
+        return info;
+    }
+
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        _infoRequests.BeginStop();
+        await Task.WhenAll(base.StopAsync(cancellationToken), _infoRequests.StopAsync(cancellationToken));
+    }
+
+    public override void Dispose()
+    {
+        _infoRequests.BeginStop();
+        base.Dispose();
+    }
 
     public PerformanceRealtimeSnapshotDto? GetLatest() { ReconcileCollectionState(); return history.Latest(); }
 

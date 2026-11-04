@@ -19,7 +19,7 @@ public sealed class ProcessSampler : IProcessService, IDisposable, IHostedServic
     private readonly SampleCache _elevated = new();
     private readonly ProcessIconProvider _icons = new();
     private readonly ProcessIconWorkQueue _iconWork;
-    private readonly ProcessRequestLifetime _requests;
+    private readonly SystemPerformanceRequestLifetime _requests;
 
     public ProcessSampler(RelaxKonOS.Server.SystemMonitor.ISystemMetricsProvider legacyControl,
         IServerModeResolver mode, IPrivilegedOperationTransport privilegedOperations, ISystemPerformanceWorkLeaseSource workLeases)

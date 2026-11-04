@@ -669,4 +669,16 @@ SystemPerformance 仍 resident/不可释放。采样和 Hub 长连接的完整�
 
 Windows 默认模块全量回归通过，ServerModules.Tests Release 构建通过；`git diff --check` 通过，本地测试机配置仍在 Git 追踪之外。
 
-本轮保护实际采样 tick，不包含 `GetInfoAsync` 的独立读取、REST 等待者整个寿命、连续 Hub 订阅或广播服务后续网络发送；已进入的同步回调也不能通过代次核验撤销。持续订阅的两次 tick 之间不连续持有工作租约。SystemPerformance 继续 resident/KeepLoaded/不可释放，MB-07、RES-01/03/04/07 保持开放，未证明完整模块回收或生产进程树内存/延迟收益。此前成果已提交为 `49faa84a`，本节后续实现尚未提交，未推送或部署。
+本轮保护实际采样 tick，不包含 `GetInfoAsync` 的独立读取、REST 等待者整个寿命、连续 Hub 订阅或广播服务后续网络发送；已进入的同步回调也不能通过代次核验撤销。持续订阅的两次 tick 之间不连续持有工作租约。SystemPerformance 继续 resident/KeepLoaded/不可释放，MB-07、RES-01/03/04/07 保持开放，未证明完整模块回收或生产进程树内存/延迟收益。此前成果已提交为 `49faa84a`，本节实现随后提交并推送为 `f469c08a`，未部署。
+
+## 30. 性能静态信息读取的工作保护（2026-11-04，MB-07 部分）
+
+`PerformanceSampler.GetInfoAsync` 现在在实际 source 调用前取得同一协调器工作租约，覆盖完整源 Task 和取消后的结果核验。预取消、owner 关闭或协调器拒绝时不访问 source；请求与协调器停止令牌传入源读取。源忽略取消时仍等待实际 Task，完成后取消不能返回成功 DTO，异常按原调用路径传播，不重放、不缓存静态信息、不创建 realtime demand。
+
+原请求寿命跟踪器直接更名为 `SystemPerformanceRequestLifetime`，进程查询/终止和静态信息分别持有自己的实例；没有旧类型别名或第二套协调器。PerformanceSampler.Stop/Dispose 关闭静态信息准入，Stop 同时等待原采样循环与已准入静态读取。owner Stop 不额外改变静态源的请求取消规则，协调器关闭仍会通知源；等待预算只结束等待，实际调用未完成时工作租约和 owner 跟踪继续保留。同步 Dispose 发起关闭，不将它等同于异步排空。静态信息没有新增执行/等待数量上限或总内存预算。
+
+Windows `PerformanceResidencyChecks` 从 18 项扩至 **28 项**，新增静态信息预取消、真实租约且无采样 demand、返回原 DTO、异常归还、非合作读取取消、停机等待超时、关闭准入、实际完成后排空、协调器停止与拒绝回退检查；原性能专项通过。Server.Tests Release 构建通过，既有告警保留；证据位于 `.artifacts/performance-info-residency-20261104/`。本轮未执行 Linux 测试，先前的远程上传/执行审批拒绝仍未解除。
+
+ServerModules.Tests Release 构建及 Windows 默认模块全量回归通过，`git diff --check` 通过，本地测试机配置继续由 Git 忽略。
+
+本轮没有完成 REST demand 等待者、连续 Hub 订阅和广播网络发送的完整租约；整个组件资源清单、真实 I/O 中断、程序集释放与生产进程树内存/延迟验收继续开放。SystemPerformance 仍 resident/KeepLoaded/不可释放，MB-07、RES-01/03/04/07 不关闭。本节后续实现尚未提交、推送或部署。

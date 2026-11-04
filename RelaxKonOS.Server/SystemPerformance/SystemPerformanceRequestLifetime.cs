@@ -2,8 +2,8 @@ using RelaxKonOS.Server.Residency;
 
 namespace RelaxKonOS.Server.SystemPerformance;
 
-/// <summary>Tracks query/termination completion, including cache use; does not queue or replay operations.</summary>
-internal sealed class ProcessRequestLifetime(Action release)
+/// <summary>Tracks request completion, including cache use; does not queue or replay operations.</summary>
+internal sealed class SystemPerformanceRequestLifetime(Action release)
 {
     private readonly object _gate = new();
     private readonly TaskCompletionSource _drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -16,7 +16,7 @@ internal sealed class ProcessRequestLifetime(Action release)
         lock (_gate)
         {
             ct.ThrowIfCancellationRequested();
-            if (_stopping) throw new ModuleUnavailableException("module-host-stopping", 30, "Process request admission is closed.");
+            if (_stopping) throw new ModuleUnavailableException("module-host-stopping", 30, "Performance request admission is closed.");
             _pending++; return new Request(this);
         }
     }
@@ -50,9 +50,9 @@ internal sealed class ProcessRequestLifetime(Action release)
         catch (Exception error) { _drained.TrySetException(error); _ = _drained.Task.Exception; }
     }
 
-    private sealed class Request(ProcessRequestLifetime owner) : IDisposable
+    private sealed class Request(SystemPerformanceRequestLifetime owner) : IDisposable
     {
-        private ProcessRequestLifetime? _owner = owner;
+        private SystemPerformanceRequestLifetime? _owner = owner;
         public void Dispose() => Interlocked.Exchange(ref _owner, null)?.Exit();
     }
 }

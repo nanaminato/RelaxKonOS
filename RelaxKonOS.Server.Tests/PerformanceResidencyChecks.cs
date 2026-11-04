@@ -94,9 +94,54 @@ internal static class PerformanceResidencyChecks
             await UntilAsync(() => !f.Coordinator.HasBackgroundWork(ServerModules.SystemPerformanceId));
             Check(f.History.Latest() is null, "A read finishing after demand disappears cannot restore idle history");
         }
+        await using (var f = new Fixture())
+        {
+            using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+            try { await f.Sampler.GetInfoAsync(cancelled.Token); throw new Exception("Cancelled info accepted"); }
+            catch (OperationCanceledException) { }
+            Check(f.Source.InfoReads == 0 && !f.Coordinator.HasBackgroundWork(ServerModules.SystemPerformanceId), "Pre-cancelled static info does not read or take a work lease");
+            var read = f.Sampler.GetInfoAsync().AsTask(); var call = await f.Source.NextInfoAsync();
+            Check(f.Coordinator.Describe(ServerModules.SystemPerformanceId)!.ActiveLeases == 1 && f.Source.Reads == 0,
+                "Static info owns real work protection without creating realtime demand");
+            var info = Info(); call.Result.TrySetResult(info);
+            Check(ReferenceEquals(await read, info) && !f.Coordinator.HasBackgroundWork(ServerModules.SystemPerformanceId), "Completed static info returns the source DTO and releases protection");
+            var failure = f.Sampler.GetInfoAsync().AsTask(); var failed = await f.Source.NextInfoAsync();
+            failed.Result.TrySetException(new IOException("test static read"));
+            try { await failure; throw new Exception("Info failure hidden"); } catch (IOException) { }
+            Check(!f.Coordinator.HasBackgroundWork(ServerModules.SystemPerformanceId), "Static info failure propagates without leaking or replaying work");
+            using var requestCancellation = new CancellationTokenSource();
+            var pending = f.Sampler.GetInfoAsync(requestCancellation.Token).AsTask(); var live = await f.Source.NextInfoAsync();
+            requestCancellation.Cancel();
+            Check(live.Token.IsCancellationRequested && !pending.IsCompleted && f.Coordinator.HasBackgroundWork(ServerModules.SystemPerformanceId),
+                "Request cancellation signals static source but cannot detach a non-cooperative Task");
+            using var budget = new CancellationTokenSource(); var stop = f.Sampler.StopAsync(budget.Token); budget.Cancel();
+            try { await stop; } catch (OperationCanceledException) { }
+            Check(!pending.IsCompleted && f.Coordinator.HasBackgroundWork(ServerModules.SystemPerformanceId), "Owner stop budget preserves unfinished static info protection");
+            try { await f.Sampler.GetInfoAsync(); throw new Exception("Stopped owner accepted info"); }
+            catch (ModuleUnavailableException) { }
+            Check(f.Source.InfoReads == 3, "Closed owner refuses new static reads before source access");
+            live.Result.TrySetResult(Info());
+            try { await pending; throw new Exception("Cancelled info returned"); } catch (OperationCanceledException) { }
+            await f.Sampler.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(5));
+            Check(!f.Coordinator.HasBackgroundWork(ServerModules.SystemPerformanceId), "Actual static read completion drains owner and does not return a cancelled result");
+        }
+        await using (var f = new Fixture())
+        {
+            var pending = f.Sampler.GetInfoAsync().AsTask(); var live = await f.Source.NextInfoAsync();
+            var stop = f.Coordinator.DisposeAsync().AsTask();
+            Check(live.Token.IsCancellationRequested && !stop.IsCompleted, "Coordinator stopping signals static source and waits for its real completion");
+            live.Result.TrySetResult(Info());
+            try { await pending; throw new Exception("Stopped info returned"); } catch (OperationCanceledException) { }
+            await stop.WaitAsync(TimeSpan.FromSeconds(5));
+            try { await f.Sampler.GetInfoAsync(); throw new Exception("Closed coordinator accepted info"); }
+            catch (ModuleUnavailableException) { }
+            Check(f.Source.InfoReads == 1 && !f.Coordinator.HasBackgroundWork(ServerModules.SystemPerformanceId), "Closed coordinator rejects static reads without fallback");
+        }
         Console.WriteLine($"Performance residency checks passed: {count}");
     }
 
+    private static PerformanceInfoDto Info() => new(new("test", 1, 2, null, null), new(1024, null), [], [], [],
+        new(false, false, false, false, false, false, false, false));
     private static RawPerformanceSample Sample(int n) => new(DateTimeOffset.UtcNow, n * Stopwatch.Frequency,
         new(n * 100, n * 20, null, null, null, [], null), new(1024, 512, null, null, null, null), [], [], [], n);
     private static async Task UntilAsync(Func<bool> done)
@@ -111,17 +156,34 @@ internal static class PerformanceResidencyChecks
     }
     private sealed class Source : ISystemPerformanceSource
     {
+        private readonly Channel<InfoCall> _info = Channel.CreateUnbounded<InfoCall>();
+        private readonly System.Collections.Concurrent.ConcurrentBag<InfoCall> _allInfo = new();
         private readonly Channel<Call> _calls = Channel.CreateUnbounded<Call>();
         private readonly System.Collections.Concurrent.ConcurrentBag<Call> _all = new();
         internal int Reads;
-        public ValueTask<PerformanceInfoDto> GetInfoAsync(CancellationToken ct = default) => throw new NotSupportedException();
+        internal int InfoReads;
+        public ValueTask<PerformanceInfoDto> GetInfoAsync(CancellationToken ct = default)
+        {
+            var call = new InfoCall(ct); _allInfo.Add(call); Interlocked.Increment(ref InfoReads); _info.Writer.TryWrite(call);
+            return new(call.Result.Task);
+        }
+        internal Task<InfoCall> NextInfoAsync() => _info.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
         public ValueTask<RawPerformanceSample> ReadAsync(CancellationToken ct = default)
         {
             var call = new Call(ct); _all.Add(call); Interlocked.Increment(ref Reads); _calls.Writer.TryWrite(call);
             return new(call.Result.Task);
         }
         internal Task<Call> NextAsync() => _calls.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
-        internal void Complete() { foreach (var call in _all) call.Result.TrySetResult(Sample(1)); }
+        internal void Complete()
+        {
+            foreach (var call in _all) call.Result.TrySetResult(Sample(1));
+            foreach (var call in _allInfo) call.Result.TrySetResult(Info());
+        }
+    }
+    private sealed class InfoCall(CancellationToken token)
+    {
+        internal CancellationToken Token => token;
+        internal readonly TaskCompletionSource<PerformanceInfoDto> Result = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
     private sealed class Fixture : IAsyncDisposable
     {
