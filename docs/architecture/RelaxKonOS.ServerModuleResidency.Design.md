@@ -335,3 +335,9 @@ MB-01～08 的实际状态、剩余阻塞和整项门槛统一由[模块边界�
 ## 15. Firewall 独立代码与 Tailscale 对象代次（2026-11-05）
 
 [边界设计 §41](RelaxKonOS.ServerModuleBoundaries.Design.md#41-firewall-f1-独立代码与-tailscale-ts-01-对象代次2026-11-05)拥有本轮验收台账。Firewall 独立 Contracts/执行代码和窄 Core 端口、保留完成/失败 Task 的真实 ALC 回收已验证；Tailscale 当前三代理真实对象图及原持久操作跨代不重放已验证，失败初始化连接即时释放。Tailscale 仍无独立执行程序集。测试不修改外部防火墙或 tailnet，也不代表生产 RSS、真实写入中断、daemon/Helper 联合故障或整体正式包 ABI 已通过。
+
+## 16. MB-01A当前基线入口（2026-11-05）
+
+[当前基线报告](RelaxKonOS.ServerModuleBaseline.20261105.md)与[测量方案](RelaxKonOS.ServerModuleBaseline.Protocol.md)拥有本次固定产品源码、跨平台原始指标/缺失和复现方法；[资源清单](RelaxKonOS.ServerModuleResources.Inventory.md)拥有逐模块根引用及恢复权威。完整宿主启动/闲时与局部Git/Terminal真实生产服务夹具分开验收，不替换§7历史记录，也不以对象/代码回收解释生产内存收益。Linux静态全关因Proxy责任不可验证被拒绝，原门禁保留。
+
+RES-01/03及MB-01整项仍开放：完整宿主真实授权业务、Firewall Helper只读、原300秒自然释放/再唤醒、TerminalHub重连、启动峰值和外部共享树成本未补齐。当前策略、300秒宽限期及SystemPerformance S1冻结不变；下一阶段与验收门槛以边界设计§42及本批报告为准。

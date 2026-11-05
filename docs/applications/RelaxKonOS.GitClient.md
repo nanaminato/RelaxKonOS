@@ -643,3 +643,8 @@ SSH 继续使用宿主 SSH 配置，HTTP 和本地传输不附带 HTTPS 令牌�
 2026-10-29：Project Editor 没有设置页，依赖区从“工具 → 组件依赖”以对话框打开；“Git 引擎不可用”对话框不再有安装按钮，只保留重新检测与退出，并说明安装只在组件中心进行。进入应用时通用启动门禁读取 `GET /components/git/state`：缺失时提示并可跳转，未知/无权限不跳转。Windows 仍只观测已有 Git 程序，组件中心不声明可安装版本。
 
 构建运行时重新打开未收尾或 interrupted 台账时会保留恢复阻止，允许读取原记录，但不接受新的构建；不会以改写为 interrupted 作为已完成恢复的证据。当前没有自动关闭未知 BuildKit 执行责任的流程，需后续受控恢复验证后才可解除，不提供忽略台账的停用开关。
+
+
+### Server资源基线（2026-11-05）
+
+当前Git资源所有权、真实本地CLI/手动休眠与再唤醒测量见[MB-01A报告](../architecture/RelaxKonOS.ServerModuleBaseline.20261105.md)与[全模块资源清单](../architecture/RelaxKonOS.ServerModuleResources.Inventory.md)。完整宿主启动/闲时与局部业务夹具分开记录；MB-01整体仍开放，不据对象释放、进程关闭或ALC检查声称生产内存下降。

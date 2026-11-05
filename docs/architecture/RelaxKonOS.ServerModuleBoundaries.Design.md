@@ -140,7 +140,7 @@ IPC 请求、响应流、模块回调、批准中的 Broker 操作和持久后�
 
 | 编号 | 实际完成与证据 | 剩余阻塞 | 整项验收条件 |
 | --- | --- | --- | --- |
-| MB-01 | **未完成**。已有 2026-10-28 Windows 静态开关基线（驻留设计 §7）、Git/Proxy/SystemPerformance 的局部引用与预算审计 | 旧基线早于当前实现；缺当前同构建双平台真实业务/进程树基线与全模块根引用清单 | 固定提交/RID/数据/连接集合，列全根引用、后台职责、缓存与私有依赖；交错至少3次运行并保留原始指标，关联 RES-01/03 |
+| MB-01 | **部分完成，整项开放**。MB-01A 已建立当前提交的全模块资源清单、跨平台采样工具及分层基线，见 §42 | 完整宿主认证业务/真实Firewall Helper、300秒自然释放、Hub重连、启动峰值与外部共享服务归属未完成；局部夹具不能替代完整宿主业务基线 | 按当前测量方案补同构建双平台默认集合真实业务/进程树三轮配对，保留缺失和原始指标，关联 RES-01/03 |
 | MB-02 | **部分交付**。Git Contracts/独立实现和窄 Host 端口，Proxy 订阅转换契约/私有实现，Firewall-F1 独立契约/执行代码及构建门禁；回收验证见 §10/11/20～22/41 | 全官方包仍非唯一 collectible ABI；其他模块尚有根服务和实现依赖 | 全契约不引用 Server/实现；Host/模块互引构建门禁；发布包与私有依赖按唯一当前 ABI 验证 |
 | MB-03 | **Git 有限切片交付**。真实仓库/CLI/凭据/控制台与构建执行项目，100轮 ALC 和保留完成请求验证（§10/11） | 真实 Docker/BuildKit 执行中取消、清理、恢复与 ALC 联合矩阵未完成；生产内存/冷启动缺失 | 真实任务/流/持久故障责任结束才回收；两平台循环不累积句柄/代码代次；实际引擎恢复与资源目标达到门槛 |
 | MB-04 | **常驻边界阶段交付**。共享读取、guard/TUN、到期与发布恢复单一 owner，后台工作租约、订阅转换预算及独立代码（§12～22） | Proxy 整体仍 resident；安全职责持久调度交接、真实网络故障和动态休眠未完成 | 系统代理/TUN/到期责任在重启及休眠后连续可靠；未知结果不重放；正式包/代码释放与生产收益分别验证 |
@@ -889,3 +889,11 @@ Tailscale 仍在 Server 程序集中，本阶段只证明对象边界和持久�
 证据统一为本地 Git 忽略目录 `.artifacts/firewall-tailscale-20261105/`：`domain-windows.log` / `domain-linux.log`、两平台 `modules-*.log`、`tailscale-windows.log`、`firewall-build-guards.log`、`publish-layout.json`、构建/发布日志与 `remote-provenance.json`。首次编译中测试 nullable operationId 的10个错误已修正并保留原日志，不作为通过证据。SSH 固定主机密钥与归档 SHA256 核验，普通 UID 1000 直接复用 `/home/nanami/relaxkonos-tests/firewall-tailscale-20261105`；未替换运行中的 Server/Helper、未修改系统网络或账号。
 
 Firewall 真实 UFW/Windows 写入中断、并发外部规则漂移/Helper 恢复矩阵，以及当前正式官方包整体 ABI/多平台业务负载下内存与冷启动收益仍开放。Tailscale 独立代码是否值得拆分须由基线决定，本批不为改而改；其真实 daemon/Helper/浏览器断连联合恢复也未验收。默认模块对象/代码回收测试不是生产 RSS 下降证据，MB-01/02/07/08 不因此整体关闭。
+
+## 42. MB-01A：当前资源清单与分层测量（2026-11-05）
+
+本阶段以 `443b0b7e1143fca826a51239afd19ea17022ca6a` 为产品源码基线，开始时master工作区干净；本次不修改产品模块行为、默认宽限期或SystemPerformance S1。[资源清单](RelaxKonOS.ServerModuleResources.Inventory.md)覆盖9个内置模块、官方安装包和第三方ModuleHost的根引用、后台责任、缓存/私有依赖、外部进程、持久恢复权威与释放层级。[测量方案](RelaxKonOS.ServerModuleBaseline.Protocol.md)固定完整矩阵及工具限制，[本批报告](RelaxKonOS.ServerModuleBaseline.20261105.md)拥有逐轮数值、环境、证据、阻塞与下一阶段门槛。
+
+当前验收严格区分完整宿主启动/闲时控制与Git/Terminal局部生产服务业务夹具。后者核验真实CLI、Dormant/新代唤醒和真实PTY输出/关闭，但没有完整Host/认证/Hub/Helper，手动TrySleep与5秒窗口不等于原300秒自然闲时与长期稳态。Linux静态全关因无法核实固定主机路径Proxy恢复责任被原门禁拒绝；未清账、改权限、改防火墙/Tailscale或移除必要责任。
+
+MB-01A不关闭MB-01/RES-01：真实Firewall只读及回收前后指标、完整宿主认证业务、自然释放/再唤醒、Hub重连、启动峰值、外部共享服务归属和退出后全树核验仍缺。对象释放、ALC仍待自然回收、会话树关闭或静态配置差额均不解释为生产内存下降。下一步先补MB-01B正式宿主矩阵，再按证据评估Terminal容量/worker、Git/Firewall收益与常驻领域责任迁移；SystemPerformance S1继续冻结。

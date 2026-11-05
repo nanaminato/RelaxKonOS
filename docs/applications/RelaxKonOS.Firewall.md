@@ -71,3 +71,8 @@ Windows 后端只管理 `RelaxKonOS Firewall` 分组及 `RelaxKonOS.Firewall.<�
 允许／阻止、入／出站、TCP／UDP／任意协议、IP/CIDR、单端口与范围均在 Server 和 Helper 校验；Windows 不支持 reject/limit，任意协议只能使用任意端口。入站端口是本地端口，出站端口是远程端口。Helper 使用原生 COM 接口，不运行 PowerShell 或用户命令。变更通过统一 `FirewallChange` + `host/firewall` 精确授权。
 
 Helper 串行执行操作；规则替换在添加失败时尝试恢复旧规则，配置变更失败时尝试恢复原值。此过程不是操作系统事务，失败后必须重新读取事实。组策略限制或 Helper 不可用时返回失败。原生读检查已在 Windows 执行；真实主机启停、默认策略和规则变更仍需在隔离测试主机验收。
+
+
+### Server资源基线（2026-11-05）
+
+当前Firewall对象/代码释放层级、真实Helper只读测量缺口与验收门槛见[MB-01A报告](../architecture/RelaxKonOS.ServerModuleBaseline.20261105.md)与[全模块资源清单](../architecture/RelaxKonOS.ServerModuleResources.Inventory.md)。完整宿主启动/闲时与局部业务夹具分开记录；MB-01整体仍开放，不据对象释放、进程关闭或ALC检查声称生产内存下降。
