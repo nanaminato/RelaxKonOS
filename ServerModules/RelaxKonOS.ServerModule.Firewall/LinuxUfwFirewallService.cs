@@ -2,20 +2,19 @@ using System.Net;
 using System.Text.RegularExpressions;
 using RelaxKonOS.Protocol.Firewall;
 using RelaxKonOS.Protocol.Privileged;
-using RelaxKonOS.Server.Privileged;
 
 namespace RelaxKonOS.Server.Firewall;
 
 /// <summary>Linux-only, injection-safe facade over the root-owned UFW helper.</summary>
-public sealed class LinuxUfwFirewallService : IHostFirewallService
+internal sealed class LinuxUfwFirewallService : IHostFirewallService
 {
     private static readonly Regex NumberedRule = new(
         @"^\[\s*(?<number>\d+)\]\s+(?<target>.+?)\s+(?<action>ALLOW|DENY|REJECT|LIMIT)\s+(?<direction>IN|OUT)\s+(?<source>.+?)(?:\s+#.*)?$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
-    private readonly ILogger<LinuxUfwFirewallService> _logger;
-    private readonly IPrivilegedOperationTransport _transport;
+    private readonly IFirewallExecutionLog _logger;
+    private readonly IFirewallHostOperations _transport;
 
-    public LinuxUfwFirewallService(IPrivilegedOperationTransport transport, ILogger<LinuxUfwFirewallService> logger)
+    public LinuxUfwFirewallService(IFirewallHostOperations transport, IFirewallExecutionLog logger)
     {
         _logger = logger;
         _transport = transport;
@@ -23,7 +22,7 @@ public sealed class LinuxUfwFirewallService : IHostFirewallService
 
     public async Task<FirewallStatusDto> GetStatusAsync(CancellationToken cancellationToken)
     {
-        var status = await ExecuteAsync(new(PrivilegedOperationKind.FirewallUfwStatus), cancellationToken);
+        var status = await ExecuteAsync(new(FirewallHostOperation.UfwStatus), cancellationToken);
         if (!status.Success) return new(false, false, "ufw", null, null, null, status.ProblemCode);
 
         var enabled = status.Output.Contains("Status: active", StringComparison.OrdinalIgnoreCase);
@@ -53,19 +52,19 @@ public sealed class LinuxUfwFirewallService : IHostFirewallService
     }
 
     public Task<FirewallOperationResult> SetEnabledAsync(bool enabled, CancellationToken cancellationToken) =>
-        ExecuteOperationAsync(new(PrivilegedOperationKind.FirewallUfwSetEnabled, FirewallEnabled: enabled), cancellationToken);
+        ExecuteOperationAsync(new(FirewallHostOperation.UfwSetEnabled, FirewallEnabled: enabled), cancellationToken);
 
     public async Task<FirewallOperationResult> SetDefaultsAsync(string incomingPolicy, string outgoingPolicy, CancellationToken cancellationToken)
     {
         if (!IsPolicy(incomingPolicy) || !IsPolicy(outgoingPolicy)) return new(false, "firewall.invalid_default_policy");
-        return await ExecuteOperationAsync(new(PrivilegedOperationKind.FirewallUfwSetDefaults,
+        return await ExecuteOperationAsync(new(FirewallHostOperation.UfwSetDefaults,
             FirewallIncomingPolicy: ToDefaultPolicy(incomingPolicy), FirewallOutgoingPolicy: ToDefaultPolicy(outgoingPolicy)), cancellationToken);
     }
 
     public Task<FirewallOperationResult> CreateRuleAsync(CreateFirewallRuleRequest request, CancellationToken cancellationToken)
     {
         if (!TryValidateRule(request.Action, request.Direction, request.Protocol, request.Source, request.Destination, request.Port, out var args, out var problem)) return Task.FromResult(new FirewallOperationResult(false, problem));
-        return ExecuteOperationAsync(ToRuleRequest(PrivilegedOperationKind.FirewallUfwCreateRule, args), cancellationToken);
+        return ExecuteOperationAsync(ToRuleRequest(FirewallHostOperation.UfwCreateRule, args), cancellationToken);
     }
 
     public async Task<FirewallOperationResult> UpdateRuleAsync(int number, UpdateFirewallRuleRequest request, CancellationToken cancellationToken)
@@ -74,7 +73,7 @@ public sealed class LinuxUfwFirewallService : IHostFirewallService
         if (!TryValidateRule(request.Action, request.Direction, request.Protocol, request.Source, request.Destination, request.Port, out var args, out var problem)) return new(false, problem);
         var numbers = await GetRuleNumbersAsync(number, cancellationToken);
         if (!numbers.Success) return new(false, numbers.ProblemCode);
-        return await ExecuteOperationAsync(ToRuleRequest(PrivilegedOperationKind.FirewallUfwReplaceRule, args, numbers), cancellationToken);
+        return await ExecuteOperationAsync(ToRuleRequest(FirewallHostOperation.UfwReplaceRule, args, numbers), cancellationToken);
     }
 
     public async Task<FirewallOperationResult> DeleteRuleAsync(int number, CancellationToken cancellationToken)
@@ -83,14 +82,14 @@ public sealed class LinuxUfwFirewallService : IHostFirewallService
         var numbers = await GetRuleNumbersAsync(number, cancellationToken);
         return !numbers.Success
             ? new(false, numbers.ProblemCode)
-            : await ExecuteOperationAsync(new(PrivilegedOperationKind.FirewallUfwDeleteRule,
+            : await ExecuteOperationAsync(new(FirewallHostOperation.UfwDeleteRule,
                 FirewallRuleNumber: int.Parse(numbers.Numbers[0], System.Globalization.CultureInfo.InvariantCulture),
                 FirewallCompanionRuleNumber: numbers.Numbers[1] == "none" ? null : int.Parse(numbers.Numbers[1], System.Globalization.CultureInfo.InvariantCulture)), cancellationToken);
     }
 
     private async Task<ParsedRuleList> ReadRulesAsync(CancellationToken cancellationToken)
     {
-        var result = await ExecuteAsync(new(PrivilegedOperationKind.FirewallUfwStatus, FirewallNumberedStatus: true), cancellationToken);
+        var result = await ExecuteAsync(new(FirewallHostOperation.UfwStatus, FirewallNumberedStatus: true), cancellationToken);
         if (!result.Success) return new([], result.ProblemCode);
 
         var rules = new List<ParsedFirewallRule>();
@@ -141,17 +140,17 @@ public sealed class LinuxUfwFirewallService : IHostFirewallService
         && string.Equals(left.Destination, right.Destination, StringComparison.OrdinalIgnoreCase)
         && string.Equals(left.Port, right.Port, StringComparison.OrdinalIgnoreCase);
 
-    private async Task<CommandResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken)
+    private async Task<CommandResult> ExecuteAsync(FirewallHostRequest request, CancellationToken cancellationToken)
     {
         var result = await _transport.ExecuteAsync(request, cancellationToken);
         var output = result.OutputBase64 is null ? string.Empty : System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(result.OutputBase64));
         return new(result.Success, output, ToProblemCode(result.ProblemCode));
     }
 
-    private async Task<FirewallOperationResult> ExecuteOperationAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken)
+    private async Task<FirewallOperationResult> ExecuteOperationAsync(FirewallHostRequest request, CancellationToken cancellationToken)
     {
         var result = await _transport.ExecuteAsync(request, cancellationToken);
-        if (!result.Success) _logger.LogWarning("Structured Firewall Helper operation failed. Operation={Operation}, Problem={Problem}", request.Operation, result.ProblemCode);
+        if (!result.Success) _logger.OperationFailed(request.Operation, result.ProblemCode);
         return new(result.Success, ToProblemCode(result.ProblemCode));
     }
 
@@ -171,7 +170,7 @@ public sealed class LinuxUfwFirewallService : IHostFirewallService
         _ => FirewallDefaultPolicy.Reject,
     };
 
-    private static PrivilegedOperationRequest ToRuleRequest(PrivilegedOperationKind operation, IReadOnlyList<string> args, RuleNumbersResult? numbers = null) => new(operation,
+    private static FirewallHostRequest ToRuleRequest(FirewallHostOperation operation, IReadOnlyList<string> args, RuleNumbersResult? numbers = null) => new(operation,
         FirewallRuleAction: Enum.Parse<FirewallRuleAction>(args[0], true),
         FirewallRuleDirection: Enum.Parse<FirewallRuleDirection>(args[1], true),
         FirewallRuleProtocol: Enum.Parse<FirewallRuleProtocol>(args[2], true),

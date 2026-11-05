@@ -5,7 +5,9 @@ internal static class FirewallReadChecks
     internal static async Task RunAsync()
     {
         var transport = new Transport();
-        var firewall = new LinuxUfwFirewallService(transport, NullLogger<LinuxUfwFirewallService>.Instance);
+        await using var firewallExecution = new CollectibleFirewallExecution(new(HostPlatformKind.Linux,
+            new FirewallHostOperations(transport), new FirewallExecutionLog(NullLogger.Instance)));
+        var firewall = firewallExecution.Module.Firewall;
         var unavailable = false;
         try { await firewall.ListRulesAsync(CancellationToken.None); }
         catch (FirewallRulesUnavailableException error) { unavailable = error.ProblemCode == "firewall.privileged_proxy_required"; }

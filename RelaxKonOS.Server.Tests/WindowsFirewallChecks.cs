@@ -7,7 +7,9 @@ internal static class WindowsFirewallChecks
     internal static async Task RunAsync()
     {
         var transport = new Transport();
-        var service = new WindowsFirewallService(transport);
+        await using var firewallExecution = new CollectibleFirewallExecution(new(HostPlatformKind.Windows,
+            new FirewallHostOperations(transport), new FirewallExecutionLog(NullLogger.Instance)));
+        var service = firewallExecution.Module.Firewall;
         foreach (var request in new[] {
             new CreateFirewallRuleRequest("limit", "in", "tcp", "any", "any", "443"),
             new("allow", "in", "tcp", "any;reboot", "any", "443"),

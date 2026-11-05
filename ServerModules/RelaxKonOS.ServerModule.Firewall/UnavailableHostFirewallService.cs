@@ -3,7 +3,7 @@ using RelaxKonOS.Protocol.Firewall;
 namespace RelaxKonOS.Server.Firewall;
 
 /// <summary>Unsupported hosts have no firewall implementation.</summary>
-public sealed class UnavailableHostFirewallService : IHostFirewallService
+internal sealed class UnavailableHostFirewallService : IHostFirewallService
 {
     private static readonly FirewallStatusDto Status = new(false, false, "", null, null, null, "firewall.unsupported_platform");
     private static readonly FirewallOperationResult Unavailable = new(false, "firewall.unsupported_platform");

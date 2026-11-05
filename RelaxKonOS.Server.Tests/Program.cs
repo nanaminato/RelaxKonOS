@@ -1,4 +1,22 @@
 using RelaxKonOS.Protocol.Proxy;
+if (args is ["--firewall-boundary-only"])
+{
+    await FirewallBoundaryChecks.RunAsync();
+    return;
+}
+if (args is ["--module-domain-boundaries-only"])
+{
+    await FirewallBoundaryChecks.RunAsync();
+    await TailscaleBoundaryChecks.RunAsync();
+    await FirewallReadChecks.RunAsync();
+    if (OperatingSystem.IsWindows()) await WindowsFirewallChecks.RunAsync();
+    return;
+}
+if (args is ["--tailscale-boundary-only"])
+{
+    await TailscaleBoundaryChecks.RunAsync();
+    return;
+}
 if (args is ["--terminal-control-input-only"])
 {
     await TerminalControlInputChecks.RunAsync();
@@ -670,6 +688,8 @@ try
         await SettingsSystemVerification.RunAsync(root);
         return;
     }
+    await FirewallBoundaryChecks.RunAsync();
+    await TailscaleBoundaryChecks.RunAsync();
     await ResidentModuleCatalogChecks.RunAsync();
     await ModuleBackgroundOwnershipChecks.RunAsync(Path.Combine(root, "module-background-ownership"));
     await TerminalStreamFramesChecks.RunAsync();

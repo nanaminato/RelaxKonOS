@@ -68,11 +68,21 @@ public sealed class TailscaleOperationJournal
     private SqliteConnection Open()
     {
         var connection = new SqliteConnection(_connectionString);
-        connection.Open();
-        using var command = connection.CreateCommand();
-        command.CommandText = "PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;";
-        command.ExecuteNonQuery();
-        return connection;
+        try
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;";
+            command.ExecuteNonQuery();
+            return connection;
+        }
+        catch
+        {
+            // No caller owns a connection until this method returns successfully. In particular,
+            // a corrupt database may fail during PRAGMA after native Open already acquired a file.
+            connection.Dispose();
+            throw;
+        }
     }
 }
 

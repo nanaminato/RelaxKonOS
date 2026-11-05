@@ -1253,7 +1253,9 @@ internal static async Task VerifyPrivilegedOperationProtocolAsync()
         && transport.LastRequest.ServiceId == "relaxkonos-server.service" && transport.LastRequest.ServiceAction == PrivilegedServiceAction.Restart,
         "Native-service facade did not preserve its allowlisted structured request.");
 
-    var firewall = new LinuxUfwFirewallService(transport, NullLogger<LinuxUfwFirewallService>.Instance);
+    await using var firewallExecution = new CollectibleFirewallExecution(new(HostPlatformKind.Linux,
+            new FirewallHostOperations(transport), new FirewallExecutionLog(NullLogger.Instance)));
+        var firewall = firewallExecution.Module.Firewall;
     TestAssert.Assert((await firewall.SetEnabledAsync(true, CancellationToken.None)).Success,
         "Firewall operation was not accepted by the transport facade.");
     TestAssert.Assert(transport.LastRequest?.Operation == PrivilegedOperationKind.FirewallUfwSetEnabled

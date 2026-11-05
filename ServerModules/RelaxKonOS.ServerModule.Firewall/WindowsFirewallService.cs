@@ -1,64 +1,68 @@
 using System.Text.Json;
 using RelaxKonOS.Protocol.Firewall;
 using RelaxKonOS.Protocol.Privileged;
-using RelaxKonOS.Server.Privileged;
 
 namespace RelaxKonOS.Server.Firewall;
 
 /// <summary>All Windows host changes go through the authenticated privileged Helper.</summary>
-public sealed class WindowsFirewallService(IPrivilegedOperationTransport transport) : IHostFirewallService
+internal sealed class WindowsFirewallService(IFirewallHostOperations transport) : IHostFirewallService
 {
     public async Task<FirewallStatusDto> GetStatusAsync(CancellationToken ct)
     {
-        var result = await transport.ExecuteAsync(new(PrivilegedOperationKind.FirewallWindowsStatus), ct);
+        var result = await transport.ExecuteAsync(new(FirewallHostOperation.WindowsStatus), ct);
         return result.Success ? Read<FirewallStatusDto>(result)
             : new(false, false, "windows-defender", null, null, null, Problem(result));
     }
 
     public async Task<IReadOnlyList<FirewallRuleDto>> ListRulesAsync(CancellationToken ct)
     {
-        var result = await transport.ExecuteAsync(new(PrivilegedOperationKind.FirewallWindowsRules), ct);
+        var result = await transport.ExecuteAsync(new(FirewallHostOperation.WindowsRules), ct);
         if (!result.Success) throw new FirewallRulesUnavailableException(Problem(result));
         return Read<FirewallRuleDto[]>(result);
     }
 
     public Task<FirewallOperationResult> SetEnabledAsync(bool enabled, CancellationToken ct) =>
-        Run(new(PrivilegedOperationKind.FirewallWindowsSetEnabled, FirewallEnabled: enabled), ct);
+        Run(new(FirewallHostOperation.WindowsSetEnabled, FirewallEnabled: enabled), ct);
 
     public Task<FirewallOperationResult> SetDefaultsAsync(string incomingPolicy, string outgoingPolicy, CancellationToken ct) =>
         Policy(incomingPolicy, out var incoming) && Policy(outgoingPolicy, out var outgoing)
-            ? Run(new(PrivilegedOperationKind.FirewallWindowsSetDefaults, FirewallIncomingPolicy: incoming, FirewallOutgoingPolicy: outgoing), ct)
+            ? Run(new(FirewallHostOperation.WindowsSetDefaults, FirewallIncomingPolicy: incoming, FirewallOutgoingPolicy: outgoing), ct)
             : Task.FromResult(new FirewallOperationResult(false, "firewall.invalid_default_policy"));
 
     public Task<FirewallOperationResult> CreateRuleAsync(CreateFirewallRuleRequest request, CancellationToken ct) =>
-        Rule(PrivilegedOperationKind.FirewallWindowsCreateRule, null, request.Action, request.Direction, request.Protocol, request.Source, request.Destination, request.Port, ct);
+        Rule(FirewallHostOperation.WindowsCreateRule, null, request.Action, request.Direction, request.Protocol, request.Source, request.Destination, request.Port, ct);
     public Task<FirewallOperationResult> UpdateRuleAsync(int number, UpdateFirewallRuleRequest request, CancellationToken ct) =>
-        Rule(PrivilegedOperationKind.FirewallWindowsReplaceRule, number, request.Action, request.Direction, request.Protocol, request.Source, request.Destination, request.Port, ct);
+        Rule(FirewallHostOperation.WindowsReplaceRule, number, request.Action, request.Direction, request.Protocol, request.Source, request.Destination, request.Port, ct);
     public Task<FirewallOperationResult> DeleteRuleAsync(int number, CancellationToken ct) => number is > 0 and <= 10_000
-        ? Run(new(PrivilegedOperationKind.FirewallWindowsDeleteRule, FirewallRuleNumber: number), ct)
+        ? Run(new(FirewallHostOperation.WindowsDeleteRule, FirewallRuleNumber: number), ct)
         : Task.FromResult(new FirewallOperationResult(false, "firewall.invalid_rule_number"));
 
-    private Task<FirewallOperationResult> Rule(PrivilegedOperationKind operation, int? number, string action, string direction, string protocol, string source, string destination, string port, CancellationToken ct)
+    private Task<FirewallOperationResult> Rule(FirewallHostOperation operation, int? number, string action, string direction, string protocol, string source, string destination, string port, CancellationToken ct)
     {
         if (!Enum.TryParse<FirewallRuleAction>(action, true, out var a)
             || !Enum.TryParse<FirewallRuleDirection>(direction, true, out var d)
             || !Enum.TryParse<FirewallRuleProtocol>(protocol, true, out var p) || number is <= 0 or > 10_000)
             return Task.FromResult(new FirewallOperationResult(false, "firewall.invalid_rule"));
-        var request = new PrivilegedOperationRequest(operation, FirewallRuleAction: a, FirewallRuleDirection: d, FirewallRuleProtocol: p,
+        var request = new FirewallHostRequest(operation, FirewallRuleAction: a, FirewallRuleDirection: d, FirewallRuleProtocol: p,
             FirewallSource: Normalize(source), FirewallDestination: Normalize(destination), FirewallPort: Normalize(port), FirewallRuleNumber: number);
-        return WindowsFirewallValidation.IsRule(request) ? Run(request, ct)
+        return request.FirewallRuleAction is FirewallRuleAction.Allow or FirewallRuleAction.Deny
+            && request.FirewallRuleDirection is FirewallRuleDirection.In or FirewallRuleDirection.Out
+            && request.FirewallRuleProtocol is FirewallRuleProtocol.Tcp or FirewallRuleProtocol.Udp or FirewallRuleProtocol.Any
+            && WindowsFirewallValidation.IsAddress(request.FirewallSource) && WindowsFirewallValidation.IsAddress(request.FirewallDestination)
+            && WindowsFirewallValidation.IsPort(request.FirewallPort)
+            && (request.FirewallRuleProtocol != FirewallRuleProtocol.Any || request.FirewallPort == "any") ? Run(request, ct)
             : Task.FromResult(new FirewallOperationResult(false, "firewall.invalid_rule"));
     }
     private static string Normalize(string value) => string.IsNullOrWhiteSpace(value) ? "any" : value.Trim().ToLowerInvariant();
     private static bool Policy(string value, out FirewallDefaultPolicy policy) => Enum.TryParse(value, true, out policy) && WindowsFirewallValidation.IsPolicy(policy);
-    private async Task<FirewallOperationResult> Run(PrivilegedOperationRequest request, CancellationToken ct)
+    private async Task<FirewallOperationResult> Run(FirewallHostRequest request, CancellationToken ct)
     {
         var result = await transport.ExecuteAsync(request, ct);
         return new(result.Success, result.Success ? "" : Problem(result));
     }
-    private static T Read<T>(PrivilegedOperationResult result) => JsonSerializer.Deserialize<T>(Convert.FromBase64String(result.OutputBase64 ?? ""))
+    private static T Read<T>(FirewallHostResult result) => JsonSerializer.Deserialize<T>(Convert.FromBase64String(result.OutputBase64 ?? ""))
         ?? throw new FirewallRulesUnavailableException("firewall.operation_failed");
-    private static string Problem(PrivilegedOperationResult result) => result.ProblemCode switch
+    private static string Problem(FirewallHostResult result) => result.ProblemCode switch
     {
         PrivilegedProblemCode.HelperUnavailable or PrivilegedProblemCode.AccessDenied => "firewall.privileged_proxy_required",
         PrivilegedProblemCode.InvalidRequest => "firewall.invalid_rule",

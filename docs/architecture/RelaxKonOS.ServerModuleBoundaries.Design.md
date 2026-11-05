@@ -1,6 +1,6 @@
 # Server 模块边界与内存回收设计
 
-> 状态：分阶段实施，2026-11-04。已落地 MB-02/03 的 Git 仓库、CLI 与构建实现独立程序集及真实 ALC 回收，初始执行切片见 §10，仓库后续见 §11；MB-04 的 Proxy 共享读取、到期实例、guard/TUN 与发布恢复作用域边界已拆出，见 §12～22（含订阅代码预算、依赖守卫与 Linux 续核）。SystemPerformance S1 已冻结；MB-05A 三域后台工作、MB-06A 代次 owner 与 Terminal-T1 会话/PTY 排空阶段验收见 §38/39，后续 MB-06B/Terminal-T2 原生树实机验收见 §40，MB-01～08 实际状态见 §8。完整安装包 ABI、动态休眠、其余领域代码拆分与第三方 ModuleHost 闲时退出仍未实现。当前对象回收修复与测试证据由[驻留设计 §13](RelaxKonOS.ServerModuleResidency.Design.md#13-休眠内存引用审计与首批修复2026-11-03)拥有，不能作为本文整体完成的证明。
+> 状态：分阶段实施，2026-11-05。已落地 MB-02/03 的 Git 仓库、CLI 与构建实现独立程序集及真实 ALC 回收，初始执行切片见 §10，仓库后续见 §11；MB-04 的 Proxy 共享读取、到期实例、guard/TUN 与发布恢复作用域边界已拆出，见 §12～22（含订阅代码预算、依赖守卫与 Linux 续核）。SystemPerformance S1 已冻结；MB-05A 三域后台工作、MB-06A 代次 owner 与 Terminal-T1 会话/PTY 排空阶段验收见 §38/39，后续 MB-06B/Terminal-T2 原生树实机验收见 §40，Firewall-F1 独立代码与 Tailscale TS-01 对象/持久责任验收见 §41；MB-01～08 实际状态见 §8。完整安装包 ABI、动态休眠、其余领域代码拆分与第三方 ModuleHost 闲时退出仍未实现。当前对象回收修复与测试证据由[驻留设计 §13](RelaxKonOS.ServerModuleResidency.Design.md#13-休眠内存引用审计与首批修复2026-11-03)拥有，不能作为本文整体完成的证明。
 >
 > 本文拥有为内存回收调整模块边界的目标、程序集依赖、资源所有权和迁移验收。[模块总设计](RelaxKonOS.ModulesAndExtensions.Design.md)拥有总体架构；[驻留设计](RelaxKonOS.ServerModuleResidency.Design.md)拥有状态机、租约与测量证据；[分发设计](RelaxKonOS.ServerModuleDistribution.Design.md)拥有安装和版本事务；[模块管理设计](RelaxKonOS.ServerModuleManagement.Design.md)拥有跨端产品和操作协议。Android 细节只在 Android 工程文档维护。
 
@@ -136,17 +136,17 @@ IPC 请求、响应流、模块回调、批准中的 Broker 操作和持久后�
 
 ## 8. 实施顺序与跟踪项
 
-以下为 2026-11-04 的实际状态，区分阶段性交付和整个 MB 完成。历史实施证据见后续章节；通过小项测试不自动关闭整个 MB。当前推进以模块里程碑为单位，执行台账见 §38。
+以下为 2026-11-05 的实际状态，区分阶段性交付和整个 MB 完成。历史实施证据见后续章节；通过小项测试不自动关闭整个 MB。当前推进以模块里程碑为单位，执行台账见 §38。
 
 | 编号 | 实际完成与证据 | 剩余阻塞 | 整项验收条件 |
 | --- | --- | --- | --- |
 | MB-01 | **未完成**。已有 2026-10-28 Windows 静态开关基线（驻留设计 §7）、Git/Proxy/SystemPerformance 的局部引用与预算审计 | 旧基线早于当前实现；缺当前同构建双平台真实业务/进程树基线与全模块根引用清单 | 固定提交/RID/数据/连接集合，列全根引用、后台职责、缓存与私有依赖；交错至少3次运行并保留原始指标，关联 RES-01/03 |
-| MB-02 | **部分交付**。Git Contracts/独立实现和窄 Host 端口，Proxy 订阅转换契约/私有实现；依赖守卫与回收验证（§10/11/20～22） | 全官方包仍非唯一 collectible ABI；其他模块尚有根服务和实现依赖 | 全契约不引用 Server/实现；Host/模块互引构建门禁；发布包与私有依赖按唯一当前 ABI 验证 |
+| MB-02 | **部分交付**。Git Contracts/独立实现和窄 Host 端口，Proxy 订阅转换契约/私有实现，Firewall-F1 独立契约/执行代码及构建门禁；回收验证见 §10/11/20～22/41 | 全官方包仍非唯一 collectible ABI；其他模块尚有根服务和实现依赖 | 全契约不引用 Server/实现；Host/模块互引构建门禁；发布包与私有依赖按唯一当前 ABI 验证 |
 | MB-03 | **Git 有限切片交付**。真实仓库/CLI/凭据/控制台与构建执行项目，100轮 ALC 和保留完成请求验证（§10/11） | 真实 Docker/BuildKit 执行中取消、清理、恢复与 ALC 联合矩阵未完成；生产内存/冷启动缺失 | 真实任务/流/持久故障责任结束才回收；两平台循环不累积句柄/代码代次；实际引擎恢复与资源目标达到门槛 |
 | MB-04 | **常驻边界阶段交付**。共享读取、guard/TUN、到期与发布恢复单一 owner，后台工作租约、订阅转换预算及独立代码（§12～22） | Proxy 整体仍 resident；安全职责持久调度交接、真实网络故障和动态休眠未完成 | 系统代理/TUN/到期责任在重启及休眠后连续可靠；未知结果不重放；正式包/代码释放与生产收益分别验证 |
 | MB-05 | **MB-05A 常驻后台责任阶段交付**（§39）。三域真实工作租约、准入/Stop 同锁、实际任务及清理排空；证书取消只记录请求，真实任务决定终态 | 三域仍根执行图；持久轻调度、CA/Nginx 中断联合矩阵与独立执行器未交付；跨文件事务和远端 CA 未知状态仍须恢复规则 | MB-05A 后台 owner/终态/禁用门槛已通过，保持 resident；整项还须验证持久调度、独立执行器、真实 Engine/CA/Nginx 重启连续性与休眠 |
 | MB-06 | **MB-06A/06B 阶段交付**（§39/40）。代理/Broker 代次范围、关闭排空；Linux 专用身份真实 Prepare/后代 reap 与 Windows 当前账号原生 Job 树实测通过 | Windows LocalSystem/S4U 安装矩阵、完整崩溃/信任撤销仍未验收；缺 SDK 合作 drain/后台任务申报，不启用闲时退出 | MB-06A/B 代次/原生树阶段门槛已通过；整项仍须合作 drain/后台申报、正式安装多代信任/撤销/崩溃矩阵与旧回调隔离，验收后才启用闲时退出/重启 |
-| MB-07 | **SystemPerformance S1 已交付并冻结范围**（§23～37）；Firewall/Tailscale 现有对象释放边界仍保留；Terminal-T1/T2 阶段交付（§39/40） | SystemPerformance 与 Terminal 仍 resident，生产收益/完整原生压力未测；Terminal 当前账号 Windows 树与 Linux 本地/永久降权 Helper 树已实测，Windows 安装 Helper/S4U、宿主崩溃/孤儿恢复矩阵仍开放；其余模块代码边界未验证 | Terminal-T1/T2 会话/当前原生树阶段已验收，断线不杀会话；整项还须安装/崩溃/压力矩阵及收益证据，再决定独立程序集，不能将 S1/T2 当作整项关闭 |
+| MB-07 | **SystemPerformance S1 已交付并冻结范围**（§23～37）；Firewall-F1 代码回收与 Tailscale TS-01 持久责任跨对象代次验收交付（§41）；Terminal-T1/T2 阶段交付（§39/40） | SystemPerformance 与 Terminal 仍 resident，生产收益/完整原生压力未测；Terminal 当前账号 Windows 树与 Linux 本地/永久降权 Helper 树已实测，Windows 安装 Helper/S4U、宿主崩溃/孤儿恢复矩阵仍开放；其余模块代码边界未验证 | Terminal-T1/T2 会话/当前原生树阶段已验收，断线不杀会话；整项还须安装/崩溃/压力矩阵及收益证据，再决定独立程序集，不能将 S1/T2 当作整项关闭 |
 | MB-08 | **未完成**。已有当前诊断 DTO/跨端管理契约及局部打包/ModuleHost 验证 | 安装包非完整目标 ABI；真实业务同构建内存/冷启动门槛、完整平台故障矩阵未有 | 发布包/私有依赖/各端调用一致；Windows/Linux 整个进程树与冷启动 p50/p95、错误率达到预先记录门槛，关联 RES-06/07 |
 
 首个官方代码卸载试点采用 Git，不直接从 Proxy 全量拆分开始。MB-04 的依赖审计可与 MB-01 期间推进，但安全执行器迁移必须依赖已验证的持久调度与租约；不能先删旧 worker 再补恢复。MB-06 可在官方 ALC 试点之外独立推进，其结果不改变官方宿主选择。
@@ -856,3 +856,36 @@ Linux 自然退出场景另发现生产阻塞：内核快照已显示根为 Z、
 证据位于本地 Git 忽略目录 `.artifacts/process-tree-20261105/`：最终 `remote-run-complete.log`、`remote-provenance.json` 的7条远端命令均0；三条 Terminal 树/权限故障、`milestones-linux.log`、模块全量、`modulehost-root-provenance.json` 与4条实际隔离路径日志保留。Windows `windows-job-tree-final.log`、`terminal-tree-windows-frozen.log`、`milestones-windows-frozen.log`、`modules-windows.log` 及构建日志拥有相应最终结果。首次失败、内核现场 `terminal-live-kernel-diagnostic.json` 和修复前 Linux 发布归档保留，不把它们算作通过。
 
 SSH 固定核验主机密钥，归档上传校验 SHA256。用户授权测试机继续复用 `/home/nanami/relaxkonos-tests`；root-owned 当前测试产物仅放在 `/opt/relaxkonos/acceptance/process-tree-20261105`，未替换运行中的 Server/Helper、sudoers 或固定配置，未新增系统账号/服务。应用候选等既有成果保留；凭据仍在 Git 追踪之外。
+
+
+## 41. Firewall-F1 独立代码与 Tailscale TS-01 对象代次（2026-11-05）
+
+本批继续更多模块，不重做已交付 ModuleHost/Terminal，也不扩展 SystemPerformance S1。两个阶段分别验证代码所有权和对象/持久责任边界，不能相互替代；MB-02/07 的剩余整项条件见 §8。
+
+### Firewall-F1：独立契约、执行代码与窄 Host 端口
+
+`IHostFirewallService`、共享错误及 `IFirewallHostOperations` 当前 ABI 位于独立 `RelaxKonOS.ServerModule.Firewall.Contracts`。Linux UFW、Windows facade 和不可用后端的唯一源码迁到 `RelaxKonOS.ServerModule.Firewall`；Server 不再编译这些实现，也不静态引用实现程序集。正式构建/发布把共享契约放在根目录，实现仅放 `Modules/Firewall/RelaxKonOS.ServerModule.Firewall.dll`，无旧根 DI 实现或兼容入口。项目与所有仓内直接构造测试调用同批更新。
+
+Core 保留原认证/HostFeature/FirewallChange grant、特权传输和 Helper 业务权威。新端口只能表达 **13 类 Firewall 操作**及 Firewall 专有字段；不能接受任意 PrivilegedOperationRequest、路径、服务/安装请求或 shell。Core 映射前拒绝未知 enum 和属于其他操作的字段。模块日志只传共享 enum，不向 Root ILogger<T> 缓存交付私有 Type/Exception。Helper 的未确认结果仍按原结果返回，不因代码释放推成功或自动重放；其外部责任没有转移到管理代码。
+
+Host 每代创建 collectible ALC。现有唯一协调器/方法租约继续覆盖实际业务 Task，包括不合作的外部等待；取消等待不脱离原任务，也不重复增加后台 owner。实际任务结束才可对象释放/请求 ALC 卸载；Root 边界重新创建已知共享错误、取消或有界未知错误，不保留原私有堆栈/Inner。激活失败也在创建 ALC 时登记弱引用并重建 Root 错误。最多 **4 个**尚未自然回收的上下文，超过时拒绝第五代，不强制生产 GC，也不回退常驻实现。
+
+Windows 与 Ubuntu 26.04/.NET 10.0.14 各 **31 项**通过：每个进程分别运行 Linux/Windows 两套 facade 各 **100 个真实 ALC**循环，调用方保留成功/失败/取消 Task、规则 DTO 和异常后仍观察回收；覆盖真正异步 Helper 失败、构造失败、真实协调器非合作 mutation 取消保护、未知结果不重放、借用 Core transport 不销毁及4代预算。两平台 facade 的外部 Helper 结果为受控端口，未写宿主规则。测试 GC 仅为弱引用 oracle，不属于产品内存控制策略。
+
+独立构建门禁 **18 项**通过：规范项目依赖正例及 Host/其他执行项目、伪同名路径、二进制 Reference、包、额外框架和 COM 注入拒绝。两套 linux-x64 publish 实测实现只在 Modules/Firewall、根目录无实现 DLL、Host/test deps 无静态实现依赖，契约在共享上下文。正式打包脚本原本递归收录 publish，未增加第二套发布路径。旧 Firewall HTTP/释放与读/配对规则/结构化校验回归、Windows 原生只读回归和默认模块全量通过。
+
+### Tailscale TS-01：本地实际工作结束与外部持久责任分开
+
+当前三代理共享同一生产 runtime/coordinator，已具备方法租约及原持久控制/登录流程，无需新设 resident actor。新增验收使用真实注册、runtime、journal、授权作用域及生产 Helper 桥，仅替换最外层 IPC transport，验证唤醒/执行/对象释放的完整服务图。Prepared/Unknown/Issued/Closure 留在原加密账本；Applying 后等待原实际任务，HTTP 取消不能提前归还租约。浏览器后续、daemon 和 Helper 原始 intent/receipt 仍由原权威负责，管理对象休眠不清账、不执行退出登录、不以后来 Running 状态推导成功。
+
+修复两 journal 的实际资源缺口：在 `SqliteConnection.Open` 或初始化 PRAGMA 失败时，尚未发布给调用方的连接现在立即 Dispose。正常路径仍 Pooling=false、按调用作用域关闭；损坏文件报错且保留原字节，不自动重建或重放操作。
+
+Windows/Linux 各 **27 项**通过：16轮真实 runtime/协调器/journal/Helper 桥对象图回收，保留已完成调用 Task/挑战也不根住旧图；非合作 IPC 与已受理修改取消期间拒绝释放；控制和首次登录的 Unknown 跨代只凭原回执恢复，原 session 单次挑战隔离、关闭意图跨代不重提交、授权拒绝不达 Helper。两 journal 各16次损坏数据库 Open 后，未强制 GC 即核验连接/原生文件句柄释放并保留原损坏页；Linux 另检查 `/proc/self/fd`，不以 .NET FileShare 锁替代原生 SQLite 证据。
+
+Tailscale 仍在 Server 程序集中，本阶段只证明对象边界和持久责任连续性，不声称其 ALC 回收或真实 daemon/Helper 崩溃验收。原 Tailscale 控制、登录、回执恢复、权限及 HTTP 全专项在 Windows 通过；未运行安装或改变测试机 tailnet/防火墙配置。
+
+### 交付证据与仍开放条件
+
+证据统一为本地 Git 忽略目录 `.artifacts/firewall-tailscale-20261105/`：`domain-windows.log` / `domain-linux.log`、两平台 `modules-*.log`、`tailscale-windows.log`、`firewall-build-guards.log`、`publish-layout.json`、构建/发布日志与 `remote-provenance.json`。首次编译中测试 nullable operationId 的10个错误已修正并保留原日志，不作为通过证据。SSH 固定主机密钥与归档 SHA256 核验，普通 UID 1000 直接复用 `/home/nanami/relaxkonos-tests/firewall-tailscale-20261105`；未替换运行中的 Server/Helper、未修改系统网络或账号。
+
+Firewall 真实 UFW/Windows 写入中断、并发外部规则漂移/Helper 恢复矩阵，以及当前正式官方包整体 ABI/多平台业务负载下内存与冷启动收益仍开放。Tailscale 独立代码是否值得拆分须由基线决定，本批不为改而改；其真实 daemon/Helper/浏览器断连联合恢复也未验收。默认模块对象/代码回收测试不是生产 RSS 下降证据，MB-01/02/07/08 不因此整体关闭。

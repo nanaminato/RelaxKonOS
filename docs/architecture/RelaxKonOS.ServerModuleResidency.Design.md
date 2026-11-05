@@ -1,6 +1,6 @@
 # Server 模块闲时卸载与按需加载
 
-> 状态：协调器、三种策略、会话退出触发、驻留契约、Git 与 Firewall 对象边界和运行时依赖租约已落地。Git 历史试点见 §8，Firewall 当前边界见 §9，依赖机制见 §10；跨端管理现状由[服务端模块管理设计](RelaxKonOS.ServerModuleManagement.Design.md) §12 拥有。Git 仓库/CLI/构建实现已具备真实程序集回收（见边界设计 §10/11），其他模块的代码回收、Terminal/Hub 完整租约、Proxy 拆分、第三方宿主闲时退出和完整多平台故障矩阵仍未交付。本文补充[模块与扩展设计](RelaxKonOS.ModulesAndExtensions.Design.md)，不表示已有内存收益：§7 的测量早于驻留代码，尚未证明真实业务休眠/唤醒循环的内存收益；2026-11-03 的引用回收修复及合成循环验证见 §13。
+> 状态：协调器、三种策略、会话退出触发、驻留契约与运行时依赖租约已落地。Git 与 Firewall 的有限执行程序集已具备真实 ALC 回收，Tailscale 对象图/持久责任跨代验收见 §15；当前模块实况统一见[边界设计 §8/38～41](RelaxKonOS.ServerModuleBoundaries.Design.md#8-实施顺序与跟踪项)。SystemPerformance S1 冻结，Terminal/ModuleHost 阶段验收已交付；完整安装 ABI、Proxy 动态休眠、第三方宿主合作闲时退出和完整多平台故障矩阵仍开放。§7 测量早于当前实现，不能证明生产内存收益；引用回收修复证据见 §13。
 
 已采纳的决策：采用内存休眠与请求唤醒，提供保持加载、闲时延迟释放和退出后立即尝试释放三种策略，以租约保护多用户、长连接、任务及恢复职责；按窄职责拆分 Proxy 共享能力，先以 Git 只读操作验证动态生命周期，再推进 Proxy 拆分。默认采用闲时延迟释放，具体宽限期通过实测确定。模块边界与宿主选择已在[边界调整设计](RelaxKonOS.ServerModuleBoundaries.Design.md)细化，具体契约与项目通过试点冻结；采纳方向不表示已经实施。
 
@@ -205,11 +205,11 @@ RES-01 要求「测量相同构建下冷启动、闲时内存与 CPU 基线」�
 
 ## 9. Firewall 请求对象边界
 
-Firewall 根容器仅保存租约代理，平台服务在模块私有容器内创建，所有业务 Task 的完整执行期间持有租约。认证、部署能力及变更提权检查先于平台服务调用；管理目录不加载平台服务。原实现没有领域后台任务、长连接、计时器或持久恢复责任，跨域不存在裸服务引用。完整职责审计见 [Firewall 应用文档](../applications/RelaxKonOS.Firewall.md#架构边界)。
+Firewall 根容器仅保存租约代理，当前平台服务在独立 collectible 执行程序集的代次中创建，所有业务 Task 的完整执行期间持有租约。认证、部署能力及变更提权检查先于平台服务调用；管理目录不加载平台服务。原实现没有领域后台任务、长连接、计时器或持久恢复责任，跨域不存在裸服务引用。完整职责审计见 [Firewall 应用文档](../applications/RelaxKonOS.Firewall.md#架构边界)。
 
-释放只销毁平台 facade 的对象图；Core 特权传输、系统 UFW/Windows Firewall 和所有规则保留。静态解析正则与程序集不卸载。这是轻量请求对象的可释放边界，不能据此声称工作集或私有内存下降；默认宽限期仍须随资源循环测量评估。
+释放销毁平台 facade 的对象图并请求本代 ALC 卸载，Linux 静态解析正则随执行程序集进入可回收上下文；Core 特权传输、系统 UFW/Windows Firewall 和所有规则保留。2026-11-05 Firewall-F1 的真实回收、失败异常快照及4代预算证据由边界设计 §41 拥有，不能据此声称工作集或私有内存下降；默认宽限期仍须随资源循环测量评估。
 
-模块容器的释放失败会汇总传给协调器，并保留失败对象。其余独立资源继续清理，但原代次进入 recovery-blocked 隔离；不能显示 Dormant、重新加载第二个执行者，或再次自动执行已部分完成的 Dispose。此规则同时适用于 Git 和 Firewall，不能只以伪造运行时的 Dispose 失败测试代替真实容器传播检查。
+模块运行时的释放失败会传给协调器，并保留失败对象。其余独立资源继续清理，但原代次进入 recovery-blocked 隔离；不能显示 Dormant、重新加载第二个执行者，或再次自动执行已部分完成的 Dispose。此规则同时适用于 Git 和 Firewall，不能只以伪造运行时的 Dispose 失败测试代替真实容器传播检查。
 
 ## 10. 运行时依赖保护
 
@@ -330,3 +330,8 @@ MB-01～08 的实际状态、剩余阻塞和整项门槛统一由[模块边界�
 
 
 2026-11-05：MB-06B 与 Terminal-T2 当前进程树阶段验收见[边界设计 §40](RelaxKonOS.ServerModuleBoundaries.Design.md#40-mb-06b-与-terminal-t2原生进程树验收2026-11-05)。Windows 原生 Job/ConPTY、Linux 专用 ModuleHost 身份、本地/永久降权 Helper 树及 EPERM 未知责任已实测；新增身份仍 resident，不启用闲时 kill/重启。Windows 安装 S4U、宿主崩溃和正式内存收益继续开放；本地 Terminal 单会话 .NET worker 的额外成本与点样亦由该节拥有。
+
+
+## 15. Firewall 独立代码与 Tailscale 对象代次（2026-11-05）
+
+[边界设计 §41](RelaxKonOS.ServerModuleBoundaries.Design.md#41-firewall-f1-独立代码与-tailscale-ts-01-对象代次2026-11-05)拥有本轮验收台账。Firewall 独立 Contracts/执行代码和窄 Core 端口、保留完成/失败 Task 的真实 ALC 回收已验证；Tailscale 当前三代理真实对象图及原持久操作跨代不重放已验证，失败初始化连接即时释放。Tailscale 仍无独立执行程序集。测试不修改外部防火墙或 tailnet，也不代表生产 RSS、真实写入中断、daemon/Helper 联合故障或整体正式包 ABI 已通过。

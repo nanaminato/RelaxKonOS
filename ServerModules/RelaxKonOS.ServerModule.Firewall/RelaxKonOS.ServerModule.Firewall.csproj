@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../Shared/RelaxKonOS.ServerModule.Firewall.Contracts/RelaxKonOS.ServerModule.Firewall.Contracts.csproj" /></ItemGroup>
+  <Target Name="ValidateFirewallExecutionBoundary" BeforeTargets="PrepareForBuild">
+    <PropertyGroup><FirewallContractProjectPath>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../Shared/RelaxKonOS.ServerModule.Firewall.Contracts/RelaxKonOS.ServerModule.Firewall.Contracts.csproj'))</FirewallContractProjectPath></PropertyGroup>
+    <ItemGroup>
+      <InvalidFirewallImplementationProject Include="@(ProjectReference)" Condition="'%(ProjectReference.FullPath)' != '$(FirewallContractProjectPath)'" />
+      <InvalidFirewallImplementationFramework Include="@(FrameworkReference)" Condition="'%(FrameworkReference.Identity)' != 'Microsoft.NETCore.App' or '%(FrameworkReference.IsImplicitlyDefined)' != 'true'" />
+    </ItemGroup>
+    <Error Condition="'@(InvalidFirewallImplementationProject)' != '' or '@(Reference)' != '' or '@(PackageReference)' != '' or '@(InvalidFirewallImplementationFramework)' != '' or '@(COMReference)' != ''"
+           Text="Firewall execution may reference only its canonical shared contract project and implicit .NET framework; Host, private packages and other implementations are forbidden." />
+  </Target>
+</Project>

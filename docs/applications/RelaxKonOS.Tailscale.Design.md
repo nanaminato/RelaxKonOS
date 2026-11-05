@@ -1,5 +1,15 @@
 # Tailscale 管理器
 
+## TS-01：对象代次与持久操作边界（2026-11-05）
+
+状态、控制与首次登录三个 Host 代理共用同一 Tailscale 对象 runtime；代理覆盖真实方法/IPC Task 完成，排空前不释放该代图。控制 Applying 与登录 Applying/ClosingRequest 已耐久提交后，原 Helper 调用独立于 HTTP 取消并等待实际调用结束；不另建后台 actor，也不让浏览器交接或模块休眠重放原生命令。
+
+运行时释放只销毁 Server 管理对象，不停止外部 tailscaled、退出登录、删除持久账本或代替 Helper 认定原操作成功。Prepared、Unknown、Issued 与 Closure 留在原加密数据库，重新调用时唤醒新对象图，并仍向 Helper 查询原 operationId/intent 的持久证据；后来匹配的配置或 Running 状态不能推导原操作成功。首次登录挑战仍仅由原 session 单次领取，新 session 只能按原权威观察/恢复。上述对象释放不表示未决领域责任已清除。
+
+两个 journal 的连接初始化现在在 Open 或 PRAGMA 失败时立即 Dispose 尚未交给调用方的 SqliteConnection，避免损坏数据库产生的原生连接/文件句柄等到 GC 才收尾。损坏文件保留并报错，不自动重建、清账或重放。正常查询继续 Pooling=false、每次独立作用域持有连接。
+
+`TailscaleBoundaryChecks` 使用实际模块注册、协调器、生产 runtime/代理/journal/Helper 桥，仅控制最外层外部 Helper transport，验证非合作调用、16 轮对象图释放、持久操作跨代及损坏数据库失败句柄清理；未改变宿主的 Tailscale 连接或配置。统一构建与各平台验收结果由[模块边界设计](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md)拥有，不把受控外部端口称为真实 daemon/Helper 进程故障验收。本实现仍在 Server 程序集中，不宣称 Tailscale 代码 ALC 回收、生产 RSS 下降或完整安装生命周期已经验证。
+
 ## 官方菜单对齐、扩展偏好与退出登录（2026-10-31）
 
 桌面管理器的信息面和可执行范围继续向官方 Windows 客户端对齐，但仍只执行闭集原生命令。

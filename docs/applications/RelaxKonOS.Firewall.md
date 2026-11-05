@@ -20,16 +20,16 @@ Firewall 是 RelaxKonOS 的内置宿主防火墙编辑器。它读取并修改�
 
 ## 架构边界
 
-`IHostFirewallService` 的根注册是租约代理，首次获准的业务调用才创建平台服务对象；任务完成或取消后归还租约。目录、能力读取及被认证、部署能力或提权检查拒绝的请求不加载平台服务。无活动租约时允许按策略或管理员显式尝试释放对象，下次调用创建新代次。
+`IHostFirewallService` 的根注册是租约代理，首次获准的业务调用才创建平台服务对象；只有真实 Task 完成后归还租约；取消请求本身不提前结束非合作执行。目录、能力读取及被认证、部署能力或提权检查拒绝的请求不加载平台服务。无活动租约时允许按策略或管理员显式尝试释放对象，下次调用创建新代次。
 
-该边界没有模块自有后台任务、Hub、流式结果、计时器或恢复台账，7 个方法都返回已完成物化的 DTO；唯一调用方为静态 Firewall 端点。对象仅借用 Core 的 `IPrivilegedOperationTransport` 和日志服务，释放不会销毁这些共享服务。Helper 的串行操作和操作系统规则继续由原所有者负责；休眠不卸载 UFW、不停止 Windows Firewall、不变更规则，也不重放已提交的特权请求。Linux 的静态解析正则及程序集仍驻留；目前没有证据证明此轻量对象边界带来可测内存收益。
+该边界没有模块自有后台任务、Hub、流式结果、计时器或恢复台账，7 个方法都返回已完成物化的 DTO；唯一调用方为静态 Firewall 端点。当前 `IHostFirewallService`、共享错误与 Firewall 专有 Host 端口位于 `RelaxKonOS.ServerModule.Firewall.Contracts`，Linux/Windows 平台 facade 位于独立 `RelaxKonOS.ServerModule.Firewall` 程序集。Host 每代使用 collectible ALC 加载当前唯一 ABI，根容器不引用实现 Type；模块只借用 `IFirewallHostOperations` 和字符串/枚举日志端口。Core 适配器仅把封闭 Firewall enum/字段映射到原特权传输，不向模块开放通用特权操作。释放不会销毁这些共享服务。Helper 的串行操作和操作系统规则继续由原所有者负责；休眠不卸载 UFW、不停止 Windows Firewall、不变更规则，也不重放已提交的特权请求。Linux 静态解析正则随执行程序集代次进入可回收上下文；释放请求与 GC 已观察回收分开。生产仅保留弱引用并限制最多4个尚未回收的旧上下文，不强制全局 GC；超限拒绝新代次，不切回根 DI。Host 重新创建已知共享异常、取消异常和有界未知失败，不跨边界携带原异常/Inner/私有栈到调用方或日志缓存。当前验证由模块边界里程碑记录拥有；仍没有生产内存收益、冷启动或真实宿主写操作中断矩阵的证明。
 
 | 层 | 职责 |
 | --- | --- |
 | Protocol | `Firewall*` DTO 与 `/api/v1.0/firewall/*` 路由，传输结构化策略和规则，不传 shell 命令。 |
 | Client | Avalonia 本地窗口、状态和操作确认；`IRemoteFirewallClient` 经统一 `IHostElevationBroker` 授权并带 JWT 调用服务端。 |
 | Server | `IHostElevationSessionStore` 统一检查动态管理员资格或精确临时授权；`IHostFirewallService` 为宿主防火墙边界。 |
-| Linux Provider | `LinuxUfwFirewallService` 经 `IPrivilegedOperationTransport` 发送封闭的 `FirewallUfw*` 请求；Helper 使用固定 UFW 路径，规则的动作、方向、协议、端口和 IP/CIDR 均经过白名单/范围校验。 |
+| Linux Provider | `LinuxUfwFirewallService` 经 `IFirewallHostOperations` 请求封闭 Firewall 操作，由 Host 适配器发送原 `FirewallUfw*` 请求；Helper 使用固定 UFW 路径，规则的动作、方向、协议、端口和 IP/CIDR 均经过白名单/范围校验。 |
 
 ## 平台与权限
 
