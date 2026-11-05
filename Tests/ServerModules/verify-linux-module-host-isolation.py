@@ -2,9 +2,10 @@
 """Run as the configured Server caller after provisioning the fixed Linux ModuleHost launcher.
 
 Arguments: executable, source-root, isolation-root, fixture-dll, helper-socket, protected-file,
-optional peer-file, close mode (shutdown or disconnect), and descendant mode (plain or detached).
+optional peer-file, close mode (shutdown or disconnect), and descendant mode (plain or detached), and launcher mode (sudo or explicit direct-root).
 Does not print file contents, tokens, credentials or Server configuration.
 """
+import os
 import hashlib
 import json
 import pathlib
@@ -23,13 +24,17 @@ mode = sys.argv[8] if len(sys.argv) > 8 else 'shutdown'
 assert mode in ('shutdown', 'disconnect')
 descendant = sys.argv[9] if len(sys.argv) > 9 else 'plain'
 assert descendant in ('plain', 'detached')
+launcher = sys.argv[10] if len(sys.argv) > 10 else 'sudo'
+assert launcher in ('sudo', 'direct-root')
+if launcher == 'direct-root':
+    assert os.geteuid() == 0 and int(os.environ.get('SUDO_UID', '0')) > 0, 'Explicit root fixture needs configured nonroot caller UID'
 source = pathlib.Path(source)
 content = pathlib.Path(fixture).read_bytes()
 relative = "server/linux-x64/HostFixture.dll"
 package = source / "fixture-host" / "1.0.0"
 (package / relative).parent.mkdir(parents=True, exist_ok=True)
 (package / relative).write_bytes(content)
-manifest = dict(schemaVersion=2, packageKind="server-module", runtime="module-host", moduleId="fixture-host",
+manifest = dict(schemaVersion=3, packageKind="server-module", runtime="module-host", moduleId="fixture-host",
     releaseId="fixture-release", version="1.0.0", publisherId="fixture", purpose="third-party", rid="linux-x64",
     hostApiMinimum="2.0.0", hostApiMaximumExclusive="3.0.0", entryAssembly=relative,
     entryType="HostFixture.FixtureHostEntry", buildId="fixture-build", sourceCommit="a" * 40,
@@ -39,20 +44,30 @@ raw = json.dumps(manifest).encode()
 (package / "manifest.json").write_bytes(raw)
 digest = hashlib.sha256(raw).hexdigest()
 token = secrets.token_hex(32)
-process = subprocess.Popen(["sudo", "-n", "--", executable, "--isolated"], stdin=subprocess.PIPE,
-    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+command = (["sudo", "-n", "--"] if launcher == "sudo" else []) + [executable, "--isolated"]
+process = subprocess.Popen(command, stdin=subprocess.PIPE,
+    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=False)
 def drain_errors():
     for line in process.stderr:
-        if line.startswith("module-host-isolation error="):
-            print(line.strip())
+        if line.startswith(b"module-host-isolation error="):
+            print(line.decode().strip())
 threading.Thread(target=drain_errors, daemon=True).start()
+response_buffer = b''
 def receive():
-    assert select.select([process.stdout], [], [], 30)[0], "ModuleHost response timeout"
-    value = json.loads(process.stdout.readline())
+    global response_buffer
+    deadline = time.monotonic() + 30
+    while b'\n' not in response_buffer:
+        assert select.select([process.stdout], [], [], max(0, deadline - time.monotonic()))[0], "ModuleHost response timeout"
+        part = os.read(process.stdout.fileno(), 16384)
+        assert part, "ModuleHost response EOF before owned-tree acknowledgement"
+        response_buffer += part
+        assert len(response_buffer) <= 32768, "ModuleHost response budget exceeded"
+    raw, response_buffer = response_buffer.split(b'\n', 1)
+    value = json.loads(raw)
     assert value["type"] != "faulted", value
     return value
 try:
-    process.stdin.write(json.dumps(dict(moduleId="fixture-host", version="1.0.0", manifestSha256=digest, serviceToken=token, brokerUrl=None)) + "\n")
+    process.stdin.write(json.dumps(dict(moduleId="fixture-host", version="1.0.0", manifestSha256=digest, serviceToken=token, brokerUrl=None)).encode() + b"\n")
     process.stdin.flush()
     ready = receive()
     assert ready["type"] == "ready", ready
@@ -74,7 +89,7 @@ try:
     with urllib.request.urlopen(urllib.request.Request(ready["url"] + "/storage", headers={"X-RelaxKonOS-Module-Token": token})) as response:
         assert response.read() == b"hello from module storage"
     print("PASS private data remains writable through module Storage")
-    process.stdin.write('{"type":"health"}\n')
+    process.stdin.write(b'{"type":"health"}\n')
     process.stdin.flush()
     assert receive()["healthy"] is True
     request = urllib.request.Request(ready["url"] + "/spawn-child?detached=" + str(descendant == 'detached').lower(), method="POST", data=b"",
@@ -96,24 +111,33 @@ try:
         print("PASS the actual descendant has its own session and ignores SIGTERM")
     print("PASS a real module descendant exists before lifecycle cleanup")
     if mode == 'shutdown':
-        process.stdin.write('{"type":"shutdown"}\n')
+        process.stdin.write(b'{"type":"shutdown"}\n')
         process.stdin.flush()
         assert receive()["type"] == "stopped"
     else:
         process.stdin.close()
+    tree = receive()
+    assert tree["type"] == "tree-stopped" and tree["moduleId"] == "fixture-host", tree
     assert process.wait(timeout=15) == 0
     for _ in range(100):
         try:
-            # Zombies have exited; their adoption/reaping belongs to the host init process.
-            running = child_stat.read_text().rsplit(')', 1)[1].split()[0] != 'Z'
+            # The dedicated subreaper owns reaping too; an adopted zombie is not a completed tree.
+            running = child_stat.exists()
         except FileNotFoundError:
             running = False
         if not running:
             break
         time.sleep(.1)
     assert not running, 'A module descendant outlived its launch channel'
-    print("PASS isolated lifecycle and descendant cleanup via " + mode)
+    print("PASS explicit tree-stopped acknowledgement, isolated lifecycle and descendant reaping via " + mode)
 finally:
     if process.poll() is None:
-        process.kill()
-        process.wait()
+        # Keep the privileged monitor alive long enough to execute its owned-tree finally.
+        # Killing the monitor itself would abandon the very descendants this check owns.
+        if not process.stdin.closed:
+            process.stdin.close()
+        try:
+            process.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            process.terminate()
+            process.wait(timeout=30)

@@ -13,6 +13,8 @@ namespace RelaxKonOS.Server.Terminal;
 public sealed class LinuxUserTerminalPty(UserExecutionContext context, PrivilegedHelperOptions options) : IPty, IWorkspaceTerminalPty, IDisposable, ITerminalPtyLifetime
 {
     public RelaxKonOS.Protocol.Settings.TerminalEnvironmentOverrides? WorkspaceEnvironment { get; set; }
+    private bool _localWorker;
+    internal static LinuxUserTerminalPty CreateLocal(UserExecutionContext context) => new(context, new()) { _localWorker = true };
     private readonly object _inputLock = new();
     private Process? _process;
     private Process? _ownedProcess;
@@ -31,10 +33,12 @@ public sealed class LinuxUserTerminalPty(UserExecutionContext context, Privilege
     public void Start(string? shell, int columns, int rows, string? workingDirectory, Dictionary<string, string>? environment, IReadOnlyList<string>? arguments)
     {
         if (environment is not null) throw new InvalidOperationException("terminal.environment_must_be_resolved");
-        if (!OperatingSystem.IsLinux() || string.IsNullOrWhiteSpace(options.HelperPath) || !File.Exists(options.HelperPath)) throw new InvalidOperationException("User terminal Helper is unavailable.");
+        if (!OperatingSystem.IsLinux() || !_localWorker && (string.IsNullOrWhiteSpace(options.HelperPath) || !File.Exists(options.HelperPath))) throw new InvalidOperationException("User terminal Helper is unavailable.");
         UserTerminalStreamProtocol.ValidateDimensions(columns, rows, 0, 0);
-        var p = new Process { StartInfo = new ProcessStartInfo(options.SudoPath) { UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true } };
-        p.StartInfo.ArgumentList.Add("-n"); p.StartInfo.ArgumentList.Add(options.HelperPath); p.StartInfo.ArgumentList.Add("--user-terminal");
+        var worker = Path.Combine(Path.GetDirectoryName(typeof(LinuxUserTerminalPty).Assembly.Location)!, "RelaxKonOS.Server");
+        var p = new Process { StartInfo = new ProcessStartInfo(_localWorker ? worker : options.SudoPath) { UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true } };
+        if (_localWorker) p.StartInfo.ArgumentList.Add("terminal-worker");
+        else { p.StartInfo.ArgumentList.Add("-n"); p.StartInfo.ArgumentList.Add(options.HelperPath); p.StartInfo.ArgumentList.Add("--user-terminal"); }
         TrustedProcessEnvironment.Apply(p.StartInfo);
         p.Start(); _process = p; _ownedProcess = p; IsRunning = true; ChildPid = p.Id;
         var operationId = Guid.NewGuid();
@@ -44,13 +48,24 @@ public sealed class LinuxUserTerminalPty(UserExecutionContext context, Privilege
             TerminalShell: shell, TerminalColumns: columns, TerminalRows: rows,
             TerminalWidthPixels: 0, TerminalHeightPixels: 0, OperationId: operationId,
             Correlation: CorrelationContext.Create(operationId, "user.execution"));
-        var line = System.Text.Json.JsonSerializer.Serialize(request, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default) + "\n";
+        var line = (_localWorker
+            ? System.Text.Json.JsonSerializer.Serialize(new LinuxTerminalWorker.LocalRequest(request, arguments), RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default)
+            : System.Text.Json.JsonSerializer.Serialize(request, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default)) + "\n";
         p.StandardInput.Write(line); p.StandardInput.Flush();
         WorkspaceEnvironment = null;
         _reader = Task.Run(async () =>
         {
-            _terminalExitCode = await TerminalOutputStream.ReadAsync(p.StandardOutput.BaseStream, (bytes, count) => DataReceived?.Invoke(bytes, count));
-            _terminalExitConfirmed = true;
+            try
+            {
+                _terminalExitCode = await TerminalOutputStream.ReadAsync(p.StandardOutput.BaseStream, (bytes, count) => DataReceived?.Invoke(bytes, count));
+                _terminalExitConfirmed = true;
+            }
+            catch
+            {
+                IsRunning = false;
+                if (Interlocked.Exchange(ref _exitSignaled, 1) == 0) ProcessExited?.Invoke(-1);
+                throw;
+            }
         });
         _errors = Task.Run(async () => { await p.StandardError.BaseStream.CopyToAsync(Stream.Null); });
         _exit = Task.Run(async () =>
@@ -60,7 +75,7 @@ public sealed class LinuxUserTerminalPty(UserExecutionContext context, Privilege
             {
                 await p.WaitForExitAsync();
                 await Task.WhenAll(_reader, _errors);
-                if (!_terminalExitConfirmed) throw new IOException("terminal.exit_confirmation_missing");
+                if (!_terminalExitConfirmed || p.ExitCode != 0) throw new IOException("terminal.exit_confirmation_missing");
                 exitCode = _terminalExitCode;
             }
             finally
@@ -101,26 +116,14 @@ public sealed class LinuxUserTerminalPty(UserExecutionContext context, Privilege
             catch (ObjectDisposedException) { }
         }
     }
-    public void Stop()
-    {
-        WorkspaceEnvironment = null;
-        if (_process is { } p)
-        {
-            lock (_inputLock)
-            {
-                try { UserTerminalStreamProtocol.WriteClose(p.StandardInput.BaseStream); } catch { }
-            }
-            try { p.Kill(entireProcessTree: true); } catch { }
-            _process = null;
-        }
-        IsRunning = false;
-    }
+    public void Stop() { WorkspaceEnvironment = null; _ = StopAsync(); }
     public void Dispose() => Stop();
     public Task StopAsync()
     {
         lock (_stopGate) return _stop ??= Task.Run(async () =>
         {
             var process = _ownedProcess;
+            IsRunning = false;
             // Cooperative close lets the Helper reap its PTY before the Helper process exits.
             if (process is not null && !process.HasExited)
                 lock (_inputLock)
@@ -129,7 +132,13 @@ public sealed class LinuxUserTerminalPty(UserExecutionContext context, Privilege
                     process.StandardInput.Close();
                 }
             // Startup can fail before the normal exit-reader tasks have been published.
-            if (process is not null) await process.WaitForExitAsync();
+            if (process is not null)
+            {
+                var processExit = process.WaitForExitAsync();
+                if (await Task.WhenAny(processExit, _reader) == _reader && _reader.IsFaulted)
+                    await _reader; // Faulted worker remains owned; never dispose or kill it here.
+                await processExit;
+            }
             await Task.WhenAll(_reader, _errors, _exit);
             process?.Dispose(); _process = null; _ownedProcess = null; IsRunning = false;
         });

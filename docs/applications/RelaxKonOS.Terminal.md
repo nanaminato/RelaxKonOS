@@ -6,7 +6,7 @@ Server 的 Terminal 已接入官方模块注册试点，默认启用。可在受
 
 输出、恢复回放和退出通知使用同一串行发送 owner，不再丢弃发送 Task；待发及在途输出合计限制为 1 MiB、128 项，另最多一条零载荷退出控制项。超出预算会 detach 并中断慢连接，保留 PTY 和恢复环形缓冲，不能静默丢弃 VT 后仍将连接显示为正常。已经开始的发送没有取消等待捷径，关闭要等待它的真实 Task 结束。已确认关闭后退订 PTY 事件并清空 owner 的缓冲引用；失败/未知清理调用租约的 RequireRecovery 隔离同一 runtime，保留会话条目和租约并阻止新准入，不自动重试或报告成功。
 
-用户执行协议直接升级为 **1.10**：Windows/Linux Helper 输出均使用有界 Output 帧，并只在自身 PTY 根进程、读写线程及输出清理完成后发送 Exited 确认。Server 等待确认而非将 pipe/stdout EOF 或 Helper 进程退出视作成功；旧 raw 输出不再兼容，Server/Helper 必须同时更新。Linux 路径同时跟踪 stdout/stderr/Helper 退出 Task。本地 Unix 后端在实际 spawn 后取得 pidfd，核对该实例仍为当前进程的直接子进程并验证启动身份，Stop 等库的读写线程 join 后再用绑定描述符确认退出和 waitid(P_PIDFD) 回收；不依赖可能被库 Stop 抑制的退出事件，不以裸 PID 缺失判成功，也不新增 PID kill 回退。Windows 自有 ConPTY 等待根进程和自有线程完成。此处仍不证明所有原生后端及逃逸子孙进程的完整树回收，也未实现 Terminal 程序集卸载或生产内存收益。当前冻结构建的验证结果由模块边界里程碑文档记录。
+用户执行协议直接升级为 **1.11**：Windows/Linux 均使用有界 Output/Exited 帧，新 `TreeFaulted` 明确表示进程树清理未知，绝不代表退出成功。Server/Helper 必须同步更新，不保留旧协议解析。Windows ConPTY 在挂起创建后先加入不可 breakaway Job，再恢复根进程；停止和根先退出路径共享同一 Job 成员句柄捕获、终止、活动数归零和已绑定句柄终态确认任务。Linux 每个终端使用独占 worker/subreaper：本地普通用户启动同 UID 的 Server `terminal-worker` 入口，系统 Helper 永久降权后进入同源 worker；不会在共享 Server 上启用 subreaper。PTY 线程结束后，以 pidfd 定向处理/reap 直接及被收养子孙，覆盖 setsid/double-fork，最终以内核 ECHILD 确认空树，不扫描/清场整个用户 UID。若 sudo 等使后代权限超出 worker，清理失败只发送一次 TreeFaulted，保留原 worker/subreaper 与故障租约，不自动重试、不提权或创建第二个执行者；须显式外部恢复。此阶段不表示 Terminal 程序集卸载、生产内存收益、全部安装身份/S4U 和任意崩溃恢复矩阵均已验收。实际验收范围由模块边界里程碑文档维护。
 
 Terminal-T1 联合候选的 Windows 验证已通过：受控会话/发送/失败隔离及实际自有 ConPTY 停止共 15 项，Output/Exited 帧 5 项，既有 Hub 合同和管理员权限检查通过；记录位于 `.artifacts/module-milestones-20261104/milestones-windows-2.log`。该记录不等于真实已安装 Helper/S4U 部署或完整子孙进程树验收；最终候选构建摘要、Linux 结果及残余阻塞由架构总里程碑统一记录，不能将较早日志冒充后续改动的复验。
 
@@ -53,6 +53,8 @@ sudo bash deployment/linux/install-relaxkonos-privileged-helper-development.sh "
 > - 登录与身份认证见 [`RelaxKonOS.Login.md`](../platform/RelaxKonOS.Login.md)（终端 Remote Mode 复用 `IAuthSession` JWT）
 
 ---
+
+2026-11-05 Terminal-T2 阶段验收：Windows 当前账号、Linux 本地同 UID 与当前 Helper 永久降权三条真实树路径各17项通过，含根先退出0/7、脱组后代、无关同身份进程保留和真实工作租约排空；真实 EPERM 失败保留路径与打开管道部分帧取消亦通过。Linux 本地每会话新增 .NET worker 有额外内存成本，不称作内存下降；完整证据、点样和仍开放的安装/崩溃矩阵由[模块边界设计 §40](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#40-mb-06b-与-terminal-t2原生进程树验收2026-11-05)拥有。
 
 ## 1. 定位
 

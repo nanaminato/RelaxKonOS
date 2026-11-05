@@ -327,3 +327,6 @@ Git 命令端口保留结构化文件名、参数、环境与超时规则，取�
 ## 14. 当前模块阶段验收入口（2026-11-04）
 
 MB-01～08 的实际状态、剩余阻塞和整项门槛统一由[模块边界设计 §8/38/39](RelaxKonOS.ServerModuleBoundaries.Design.md#8-实施顺序与跟踪项)维护。MB-05A 后台责任、MB-06A 进程代次和 Terminal-T1 会话/PTY 排空已完成该文所列阶段验收；均保持 resident。SystemPerformance S1 已冻结，仅修阻塞问题。上述结果不代表新增模块动态休眠、完整后代树矩阵或生产内存收益已通过。
+
+
+2026-11-05：MB-06B 与 Terminal-T2 当前进程树阶段验收见[边界设计 §40](RelaxKonOS.ServerModuleBoundaries.Design.md#40-mb-06b-与-terminal-t2原生进程树验收2026-11-05)。Windows 原生 Job/ConPTY、Linux 专用 ModuleHost 身份、本地/永久降权 Helper 树及 EPERM 未知责任已实测；新增身份仍 resident，不启用闲时 kill/重启。Windows 安装 S4U、宿主崩溃和正式内存收益继续开放；本地 Terminal 单会话 .NET worker 的额外成本与点样亦由该节拥有。

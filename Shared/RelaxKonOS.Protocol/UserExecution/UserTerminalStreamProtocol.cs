@@ -14,6 +14,9 @@ public static class UserTerminalStreamProtocol
     private const byte CloseKind = 3;
     private const byte OutputKind = 4;
     private const byte ExitedKind = 5;
+    private const byte TreeFaultedKind = 6;
+
+    public static void WriteTreeFaulted(Stream stream) { stream.WriteByte(TreeFaultedKind); stream.Flush(); }
 
     public static void WriteOutput(Stream stream, ReadOnlySpan<byte> output)
     {
@@ -93,6 +96,8 @@ public static class UserTerminalStreamProtocol
                 return new(UserTerminalFrameKind.Resize, Columns: columns, Rows: rows,
                     WidthPixels: widthPixels, HeightPixels: heightPixels);
             }
+            case TreeFaultedKind:
+                return new(UserTerminalFrameKind.TreeFaulted);
             case CloseKind:
                 return new(UserTerminalFrameKind.Close);
             case OutputKind:
@@ -128,6 +133,7 @@ public enum UserTerminalFrameKind
     Close,
     Output,
     Exited,
+    TreeFaulted,
 }
 
 public sealed record UserTerminalFrame(

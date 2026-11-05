@@ -17,7 +17,7 @@ internal static class TerminalStreamFramesChecks
         Check(true, "Truncated framed output cannot be mistaken for successful process completion");
         using var raw = new MemoryStream("legacy raw output"u8.ToArray());
         try { await UserTerminalStreamProtocol.ReadAsync(raw); throw new Exception("Legacy raw output accepted"); } catch (InvalidDataException) { }
-        Check(UserExecutionProtocol.Version == "1.10", "Current 1.10 protocol rejects old unframed output without dual-format parsing");
+        Check(UserExecutionProtocol.Version == "1.11", "Current 1.11 protocol rejects old unframed output without dual-format parsing");
         stream.Position = 0; byte[]? forwarded = null;
         var code = await RelaxKonOS.Server.Terminal.TerminalOutputStream.ReadAsync(stream, (payload, _) => forwarded = payload);
         Check(code == -17 && forwarded!.SequenceEqual(bytes), "The actual Helper response reader forwards output before accepting explicit cleanup confirmation");
@@ -27,6 +27,10 @@ internal static class TerminalStreamFramesChecks
         using var wrongDirection = new MemoryStream(); UserTerminalStreamProtocol.WriteClose(wrongDirection); wrongDirection.Position = 0;
         try { await RelaxKonOS.Server.Terminal.TerminalOutputStream.ReadAsync(wrongDirection, (_, _) => { }); throw new Exception("Control frame accepted as output"); } catch (InvalidDataException) { }
         Check(true, "The actual response reader refuses input-direction control frames");
+        using var fault = new MemoryStream(); UserTerminalStreamProtocol.WriteTreeFaulted(fault); fault.Position = 0;
+        try { await RelaxKonOS.Server.Terminal.TerminalOutputStream.ReadAsync(fault, (_, _) => { }); throw new Exception("Tree fault accepted as exit"); }
+        catch (IOException error) when (error.Message == "terminal.process_tree_cleanup_unknown") { }
+        Check(true, "Explicit tree failure reports unknown cleanup and cannot confirm exit");
         Console.WriteLine($"Terminal frame checks passed: {count}");
     }
 }

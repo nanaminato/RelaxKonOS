@@ -20,6 +20,17 @@ using RoyalTerminal.Terminal;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 
+if (args is ["--module-host-tree-checks"])
+{
+    await ModuleHostTreeChecks.RunAsync();
+    return;
+}
+if (args is ["--module-host-tree-worker", var treeMode])
+{
+    await ModuleHostTreeChecks.RunWorkerAsync(treeMode);
+    return;
+}
+
 if (args is ["--module-residency-checks"])
 {
     void VerifyResidency(bool passed, string message)

@@ -21,13 +21,11 @@ public sealed class LocalUserTerminalPty : IPty, IWorkspaceTerminalPty, IDisposa
     private readonly object _stopGate = new();
     private Task? _stop;
     private bool _started;
-    private LinuxTerminalProcessExit? _linuxExit;
-    private Exception? _linuxObservationFailure;
     private int _exitSignaled;
     public LocalUserTerminalPty(IPty inner, UserExecutionContext context)
     {
-        this.inner = inner; this.context = context;
-        inner.ProcessExited += OnInnerExited;
+        this.inner = OperatingSystem.IsLinux() && inner is UnixPty ? LinuxUserTerminalPty.CreateLocal(context) : inner; this.context = context;
+        this.inner.ProcessExited += OnInnerExited;
     }
     private void OnInnerExited(int code)
     { _exited.TrySetResult(code); if (Interlocked.Exchange(ref _exitSignaled, 1) == 0) ProcessExited?.Invoke(code); }
@@ -59,12 +57,12 @@ public sealed class LocalUserTerminalPty : IPty, IWorkspaceTerminalPty, IDisposa
         else throw new PlatformNotSupportedException();
         var overrides = WorkspaceEnvironment ?? new([], EnvironmentPathMode.Append);
         _started = true;
-        inner.Start(shell, columns, rows, workingDirectory ?? DefaultWorkingDirectory, overrides.Apply(baseline, OperatingSystem.IsWindows()), arguments);
-        if (OperatingSystem.IsLinux() && inner is UnixPty)
+        if (inner is LinuxUserTerminalPty worker)
         {
-            try { _linuxExit = LinuxTerminalProcessExit.Capture(inner.ChildPid); }
-            catch (Exception error) { _linuxObservationFailure = error; }
+            worker.WorkspaceEnvironment = overrides;
+            worker.Start(shell, columns, rows, workingDirectory ?? DefaultWorkingDirectory, null, arguments);
         }
+        else inner.Start(shell, columns, rows, workingDirectory ?? DefaultWorkingDirectory, overrides.Apply(baseline, OperatingSystem.IsWindows()), arguments);
         WorkspaceEnvironment = null;
     }
     public void Write(byte[] data, int offset, int count) => inner.Write(data, offset, count);
@@ -79,9 +77,6 @@ public sealed class LocalUserTerminalPty : IPty, IWorkspaceTerminalPty, IDisposa
         {
             Stop();
             if (inner is ITerminalPtyLifetime lifetime) await lifetime.StopAsync();
-            else if (_linuxExit is { } observed) { await observed.WaitForExitAsync(); observed.Dispose(); }
-            else if (_linuxObservationFailure is not null && !(_exited.Task.IsCompletedSuccessfully && _exited.Task.Result >= 0))
-                throw new IOException("terminal.process_exit_unverified", _linuxObservationFailure);
             else if (_started) await _exited.Task;
             (inner as IDisposable)?.Dispose();
             if (_started) OnInnerExited(_exited.Task.IsCompletedSuccessfully ? _exited.Task.Result : -1);

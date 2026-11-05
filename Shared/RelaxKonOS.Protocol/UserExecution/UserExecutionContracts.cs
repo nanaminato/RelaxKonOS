@@ -7,7 +7,7 @@ namespace RelaxKonOS.Protocol.UserExecution;
 /// <summary>Protocol constants for the dedicated, local-only user-execution channel.</summary>
 public static class UserExecutionProtocol
 {
-    public const string Version = "1.10";
+    public const string Version = "1.11";
     // A 12 MiB payload expands to 16 MiB in base64; leave bounded room for the JSON envelope.
     public const int MaximumRequestBytes = 17 * 1024 * 1024;
     public const int MaximumFileContentBytes = 12 * 1024 * 1024;

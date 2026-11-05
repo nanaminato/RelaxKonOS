@@ -332,7 +332,7 @@ Linux 上用 root（或任何 UID < 1000 的账户、nobody）登录时，认证
 
 ## 有界文件下载协议
 
-当前用户执行协议为 `1.10`，提权协议为 `1.5`；Server 与 Helper 必须一起更新。`1.10` 为 Windows 终端输出采用有界 Output/Exited 确认帧，Server 与 Helper 不再接受旧原始输出；`1.9` 曾新增仅对 `GitExecute` 有效的 `gitCredentials` 字段（用户名/口令成对、有界、不落盘、不进日志）。`FileRead` 不再返回整个文件：用户执行请求必须携带非负的 `offset` 和 `expectedBytes`，提权请求必须携带 `offset` 和 `readCount`，读取长度均为 0 至 1 MiB。
+当前用户执行协议为 `1.11`，提权协议为 `1.5`；Server 与 Helper 必须一起更新。`1.11` 增加进程树清理未知的 `TreeFaulted` 控制帧，失败 worker 保留树所有权且 Server 保留故障责任；`1.10` 曾为 Windows 终端输出采用有界 Output/Exited 确认帧，Server 与 Helper 不再接受旧原始输出；`1.9` 曾新增仅对 `GitExecute` 有效的 `gitCredentials` 字段（用户名/口令成对、有界、不落盘、不进日志）。`FileRead` 不再返回整个文件：用户执行请求必须携带非负的 `offset` 和 `expectedBytes`，提权请求必须携带 `offset` 和 `readCount`，读取长度均为 0 至 1 MiB。
 
 - [x] 普通身份归档解压使用一次 `FileExtractArchive` worker，在身份转换后直接处理本机源/暂存目录，250 ms 抽样传回累计进度，Server 负责发布与失败清理；密码只经请求内存传递。实现与本地测试已完成，真实 sudo/S4U 部署及 Linux 性能仍待验收。详细约束见 [Explorer 归档设计](../applications/RelaxKonOS.Explorer.Archives.md)。
 

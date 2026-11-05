@@ -81,73 +81,7 @@ public static class UserExecutionExecutor
         // the flag is inherited by the PTY shell and cannot be cleared once set.
         if (!TryAssumeIdentity(account, preventPrivilegeGain: false)) return 77;
 
-        // The package creates the PTY only after the irreversible UID/GID transition. The control
-        // stream carries framed input and resize messages; it never accepts an executable or
-        // arbitrary process environment supplied by the HTTP caller. Workspace overrides
-        // are validated data applied only after the UID/GID transition.
-        var pty = new DefaultPtyFactory().Create();
-        var exited = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var output = Console.OpenStandardOutput();
-        var outputLock = new object();
-        RelaxKonOS.Server.Terminal.LinuxTerminalProcessExit? terminalProcess = null;
-        pty.DataReceived += (buffer, count) =>
-        {
-            try
-            {
-                lock (outputLock)
-                {
-                    var offset = 0;
-                    while (offset < count)
-                    {
-                        var length = Math.Min(65536, count - offset);
-                        UserTerminalStreamProtocol.WriteOutput(output, buffer.AsSpan(offset, length));
-                        offset += length;
-                    }
-                }
-            }
-            catch (Exception exception) when (exception is IOException or ObjectDisposedException)
-            { try { pty.Stop(); } catch { } }
-        };
-        pty.ProcessExited += exitCode => exited.TrySetResult(exitCode);
-        using var inputCancellation = new CancellationTokenSource();
-        _ = exited.Task.ContinueWith(_ => inputCancellation.Cancel(), TaskScheduler.Default);
-        try
-        {
-            var baseline = RelaxKonOS.Server.Terminal.TerminalUserEnvironment.Linux(account.Home, account.Name, shell);
-            var environment = (request.TerminalEnvironment ?? new RelaxKonOS.Protocol.Settings.TerminalEnvironmentOverrides([], RelaxKonOS.Protocol.Settings.EnvironmentPathMode.Append))
-                .Apply(baseline, windows: false);
-            pty.Start(shell, columns, rows, directory, environment, null);
-            try { terminalProcess = RelaxKonOS.Server.Terminal.LinuxTerminalProcessExit.Capture(pty.ChildPid); }
-            catch when (exited.Task.IsCompletedSuccessfully && exited.Task.Result >= 0) { }
-            if (widthPixels > 0 || heightPixels > 0)
-                pty.Resize(columns, rows, widthPixels, heightPixels);
-            while (pty.IsRunning)
-            {
-                UserTerminalFrame? frame;
-                try { frame = await UserTerminalStreamProtocol.ReadAsync(input, inputCancellation.Token); }
-                catch (OperationCanceledException) { break; }
-                catch (IOException) { return 64; }
-                if (frame is null || frame.Kind == UserTerminalFrameKind.Close) break;
-                if (frame.Kind == UserTerminalFrameKind.Input && frame.Input is { Length: > 0 } bytes)
-                    pty.Write(bytes, 0, bytes.Length);
-                else if (frame.Kind == UserTerminalFrameKind.Resize)
-                    pty.Resize(frame.Columns, frame.Rows, frame.WidthPixels, frame.HeightPixels);
-                else return 64;
-            }
-            pty.Stop();
-            if (terminalProcess is not null) await terminalProcess.WaitForExitAsync();
-            else if (!exited.Task.IsCompletedSuccessfully || exited.Task.Result < 0)
-                throw new IOException("terminal.process_exit_unverified");
-            var exitCode = exited.Task.IsCompletedSuccessfully ? exited.Task.Result : -1;
-            lock (outputLock) UserTerminalStreamProtocol.WriteExited(output, exitCode);
-            return exitCode;
-        }
-        finally
-        {
-            try { pty.Stop(); } catch { }
-            (pty as IDisposable)?.Dispose();
-            terminalProcess?.Dispose();
-        }
+        return await RelaxKonOS.Server.Terminal.LinuxTerminalWorker.RunAsync(request, shell, account.Home, account.Name);
     }
 
     private static async Task<int> WriteAsync(UserExecutionResult result)

@@ -29,7 +29,7 @@ GitClient 是项目编辑器的 Git 领域模块；项目壳与共享文件编�
 
 - **架构归属**：§6.2 Remote Service Application —— UI 完全在 Client 本地渲染；仓库状态、提交历史、分支列表与变更结果**数据来源在 Server 端通过 `git` 实时采集**（不持久化运行时状态，每次请求都是当下快照）。
 - **复用宿主 OS 权限**：Server 的 Git 操作使用有效身份执行；System/Helper 模式以登录账号绑定的宿主身份执行，User 模式使用当前进程身份。SSH 使用宿主 Git/SSH agent；HTTPS 的交互与保存范围见下述凭据说明。
-- **凭据边界**：不管理 SSH 私钥。现有 HTTPS 推送与本轮克隆可由用户输入凭据，经短期 askpass 传给子进程；只有用户选择保存时，才按用户和远程主机通过 Data Protection 加密存储。System Mode 下凭据随 `GitExecute` 请求的 `gitCredentials` 交给 Helper，由其在完成身份降权后生成一次性 askpass 脚本（用户执行协议 `1.10`，Server 与 Helper 必须同版本部署）；Windows Helper 使用受限 S4U primary token 和 `CreateProcessAsUserW` 执行同一 `GitExecute` 合约。
+- **凭据边界**：不管理 SSH 私钥。现有 HTTPS 推送与本轮克隆可由用户输入凭据，经短期 askpass 传给子进程；只有用户选择保存时，才按用户和远程主机通过 Data Protection 加密存储。System Mode 下凭据随 `GitExecute` 请求的 `gitCredentials` 交给 Helper，由其在完成身份降权后生成一次性 askpass 脚本（用户执行协议 `1.11`，Server 与 Helper 必须同版本部署）；Windows Helper 使用受限 S4U primary token 和 `CreateProcessAsUserW` 执行同一 `GitExecute` 合约。
 - **跨平台抽象**：与 `IIdentityProvider` / `ISystemMetricsProvider` 同模式——`IGitRepositoryService` 接口 + 平台无关的 `LocalGitRepositoryService`（`git` CLI 在 Windows/Linux 行为一致），仅在探测 `git` 可执行文件路径与 shell 启动环境时按宿主 OS 处理。平台差异封装在服务之后，Server 端单一代码库跨 Ubuntu + Windows Server。
 
 **核心功能（MVP 范围）**：

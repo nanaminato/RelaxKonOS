@@ -661,3 +661,6 @@ MD-01 唯一 v2 安装清单、MD-05 Linux/Windows 专用身份与私有数据�
 Server、ModuleHost 和 Helper 必须同时采用本仓当前 IPC 契约。Windows 的 `tree-exit` 仅在专用 Job 活动进程归零后发送，旧 parent-only `exit` 帧不再接受。Linux 隔离监视器保留原专用 UID 的 Host 关闭清理责任，并在该 UID 无进程、stderr 排空后发送 `tree-stopped`；Server 同时要求模块停止与监视器树退出证明，不接受仅父进程退出作为成功。普通 Server 关闭超时不默认强杀并伪装完成；Development 非隔离探针仅证明其实际进程/流收尾，不构成专用身份树退出验收。
 
 本阶段不提供闲时休眠、自动重启或任务申报调度协议。第三方模块仍可有自身持续任务，完整进程寿命因此保持保护；合作排空/后台任务申报、唤醒时重新核验的多代循环、真实专用身份的崩溃/回调和进程树故障矩阵仍是 MB-06 后续验收条件。`ModuleHostLifetimeChecks` 覆盖真实协调器下 scope/初始化/停止预算和故障责任。`ModuleHostChecks` 包含真实开发进程启动/健康，以及生产代理和 Broker callback RequestDelegate 的响应阻塞：真实 ModuleHost 上游复制未完成时仍保留 context/scope，断连通知和 Stop 不提前释放，代理结束清理 context 后仍须等待另一 callback 写入完成。callback 测试读取合法持久计划，不派发 Helper 副作用；受控响应流不是实际网络故障矩阵。运行结果由本轮整体里程碑记录拥有，不能沿用历史隔离实机证据冒充新树确认路径已实测。
+
+
+2026-11-05 MB-06B 续核：当前同源 Windows Job 树证明、Linux 专用 launcher subreaper/reap 已通过原生和既有 Linux 隔离身份实机验收，详见[边界设计 §40](RelaxKonOS.ServerModuleBoundaries.Design.md#40-mb-06b-与-terminal-t2原生进程树验收2026-11-05)。Linux 使用独立 root-owned 当前测试产物及显式配置 caller 的 root 夹具，未替换固定 sudo launcher；Windows 当前账号 Job 验证不代替 LocalSystem/S4U 安装路径。SDK 责任申报、合作 drain、闲时退出与完整信任/崩溃矩阵仍开放。

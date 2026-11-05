@@ -16,6 +16,16 @@ using RelaxKonOS.Protocol.Privileged;
 using Microsoft.Extensions.Logging.Abstractions;
 
 if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Windows native acceptance requires Windows.");
+if (args is ["--job-tree-only"])
+{
+    await WindowsJobTreeChecks.RunAsync();
+    return;
+}
+if (args is ["--job-tree-child", var treeDirectory, var treeRole])
+{
+    await WindowsJobTreeChecks.ChildAsync(treeDirectory, treeRole);
+    return;
+}
 if (args is ["--cleanup", var cleanupPath])
 {
     var cleanup = NativeConfiguration.Read(cleanupPath);
@@ -194,12 +204,12 @@ try
     spawned.EnsureSuccessStatusCode();
     var childPid = (await spawned.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("pid").GetInt32();
     Check(Process.GetProcesses().Any(process => { using (process) return process.Id == childPid; }), "a real descendant process is created inside the module job");
-    // Abrupt client disposal closes the privileged launch channel. The job must reclaim descendants.
-    await first.AbortAsync();
+    // The current close contract waits for the Helper's actual tree-exit proof, including descendants.
+    await first.ShutdownAsync();
     for (var attempt = 0; attempt < 100 && Process.GetProcesses().Any(process => { using (process) return process.Id == childPid; }); attempt++)
         await Task.Delay(50);
     Check(!Process.GetProcesses().Any(process => { using (process) return process.Id == childPid; }),
-        "closing the launch channel reclaims the complete native process tree");
+        "cooperative shutdown confirms the complete native process tree, including the real descendant");
     await second.ShutdownAsync();
     Check(true, "the second dedicated ModuleHost shuts down independently");
     await File.WriteAllTextAsync(config.ClientReport, JsonSerializer.Serialize(new { succeeded = true, checks }, ModuleHostPipeProtocol.Json));

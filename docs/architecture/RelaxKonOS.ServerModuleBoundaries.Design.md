@@ -1,6 +1,6 @@
 # Server 模块边界与内存回收设计
 
-> 状态：分阶段实施，2026-11-04。已落地 MB-02/03 的 Git 仓库、CLI 与构建实现独立程序集及真实 ALC 回收，初始执行切片见 §10，仓库后续见 §11；MB-04 的 Proxy 共享读取、到期实例、guard/TUN 与发布恢复作用域边界已拆出，见 §12～22（含订阅代码预算、依赖守卫与 Linux 续核）。SystemPerformance S1 已冻结；MB-05A 三域后台工作、MB-06A 代次 owner 与 Terminal-T1 会话/PTY 排空阶段验收见 §38/39，MB-01～08 实际状态见 §8。完整安装包 ABI、动态休眠、其余领域代码拆分与第三方 ModuleHost 闲时退出仍未实现。当前对象回收修复与测试证据由[驻留设计 §13](RelaxKonOS.ServerModuleResidency.Design.md#13-休眠内存引用审计与首批修复2026-11-03)拥有，不能作为本文整体完成的证明。
+> 状态：分阶段实施，2026-11-04。已落地 MB-02/03 的 Git 仓库、CLI 与构建实现独立程序集及真实 ALC 回收，初始执行切片见 §10，仓库后续见 §11；MB-04 的 Proxy 共享读取、到期实例、guard/TUN 与发布恢复作用域边界已拆出，见 §12～22（含订阅代码预算、依赖守卫与 Linux 续核）。SystemPerformance S1 已冻结；MB-05A 三域后台工作、MB-06A 代次 owner 与 Terminal-T1 会话/PTY 排空阶段验收见 §38/39，后续 MB-06B/Terminal-T2 原生树实机验收见 §40，MB-01～08 实际状态见 §8。完整安装包 ABI、动态休眠、其余领域代码拆分与第三方 ModuleHost 闲时退出仍未实现。当前对象回收修复与测试证据由[驻留设计 §13](RelaxKonOS.ServerModuleResidency.Design.md#13-休眠内存引用审计与首批修复2026-11-03)拥有，不能作为本文整体完成的证明。
 >
 > 本文拥有为内存回收调整模块边界的目标、程序集依赖、资源所有权和迁移验收。[模块总设计](RelaxKonOS.ModulesAndExtensions.Design.md)拥有总体架构；[驻留设计](RelaxKonOS.ServerModuleResidency.Design.md)拥有状态机、租约与测量证据；[分发设计](RelaxKonOS.ServerModuleDistribution.Design.md)拥有安装和版本事务；[模块管理设计](RelaxKonOS.ServerModuleManagement.Design.md)拥有跨端产品和操作协议。Android 细节只在 Android 工程文档维护。
 
@@ -144,9 +144,9 @@ IPC 请求、响应流、模块回调、批准中的 Broker 操作和持久后�
 | MB-02 | **部分交付**。Git Contracts/独立实现和窄 Host 端口，Proxy 订阅转换契约/私有实现；依赖守卫与回收验证（§10/11/20～22） | 全官方包仍非唯一 collectible ABI；其他模块尚有根服务和实现依赖 | 全契约不引用 Server/实现；Host/模块互引构建门禁；发布包与私有依赖按唯一当前 ABI 验证 |
 | MB-03 | **Git 有限切片交付**。真实仓库/CLI/凭据/控制台与构建执行项目，100轮 ALC 和保留完成请求验证（§10/11） | 真实 Docker/BuildKit 执行中取消、清理、恢复与 ALC 联合矩阵未完成；生产内存/冷启动缺失 | 真实任务/流/持久故障责任结束才回收；两平台循环不累积句柄/代码代次；实际引擎恢复与资源目标达到门槛 |
 | MB-04 | **常驻边界阶段交付**。共享读取、guard/TUN、到期与发布恢复单一 owner，后台工作租约、订阅转换预算及独立代码（§12～22） | Proxy 整体仍 resident；安全职责持久调度交接、真实网络故障和动态休眠未完成 | 系统代理/TUN/到期责任在重启及休眠后连续可靠；未知结果不重放；正式包/代码释放与生产收益分别验证 |
-| MB-05 | **MB-05A 常驻后台责任阶段交付**（§39）。三域真实工作租约、准入/Stop 同锁、实际任务及清理排空；证书取消只记录请求，真实任务决定终态 | 三域仍根执行图；持久轻调度、CA/Nginx 中断联合矩阵与独立执行器未交付；跨文件事务和远端 CA 未知状态仍须恢复规则 | 先交付 MB-05A 三域完整后台 owner/终态/禁用门禁，保持 resident；再验证持久调度、独立执行器、真实 Engine/CA/Nginx 重启连续性与休眠 |
-| MB-06 | **MB-06A 代次 owner 阶段交付**（§39）。代理/Broker 实际执行范围、关闭撤回 token 后排空、退出证明和未知责任保留 | 正式专用身份/Windows Job 完整实机矩阵未验收；缺 SDK 合作 drain/后台任务申报，不启用闲时退出 | 先交付 MB-06A 代次工作 owner 与真实排空；后续才启用合作闲时退出/重启、每代信任重验、树退出及旧回调隔离的双平台验收 |
-| MB-07 | **SystemPerformance S1 已交付并冻结范围**（§23～37）；Firewall/Tailscale 现有对象释放边界仍保留；Terminal-T1 阶段交付（§39） | SystemPerformance 与 Terminal 仍 resident，生产收益/完整原生压力未测；Terminal 完整后代树及安装 Helper/S4U 矩阵未验收；其余模块代码边界未验证 | 本阶段先验收 Terminal-T1 会话与 PTY 排空，断线不杀会话；后续再以收益证据决定其他模块独立程序集，不能将 S1 当作整项关闭 |
+| MB-05 | **MB-05A 常驻后台责任阶段交付**（§39）。三域真实工作租约、准入/Stop 同锁、实际任务及清理排空；证书取消只记录请求，真实任务决定终态 | 三域仍根执行图；持久轻调度、CA/Nginx 中断联合矩阵与独立执行器未交付；跨文件事务和远端 CA 未知状态仍须恢复规则 | MB-05A 后台 owner/终态/禁用门槛已通过，保持 resident；整项还须验证持久调度、独立执行器、真实 Engine/CA/Nginx 重启连续性与休眠 |
+| MB-06 | **MB-06A/06B 阶段交付**（§39/40）。代理/Broker 代次范围、关闭排空；Linux 专用身份真实 Prepare/后代 reap 与 Windows 当前账号原生 Job 树实测通过 | Windows LocalSystem/S4U 安装矩阵、完整崩溃/信任撤销仍未验收；缺 SDK 合作 drain/后台任务申报，不启用闲时退出 | MB-06A/B 代次/原生树阶段门槛已通过；整项仍须合作 drain/后台申报、正式安装多代信任/撤销/崩溃矩阵与旧回调隔离，验收后才启用闲时退出/重启 |
+| MB-07 | **SystemPerformance S1 已交付并冻结范围**（§23～37）；Firewall/Tailscale 现有对象释放边界仍保留；Terminal-T1/T2 阶段交付（§39/40） | SystemPerformance 与 Terminal 仍 resident，生产收益/完整原生压力未测；Terminal 当前账号 Windows 树与 Linux 本地/永久降权 Helper 树已实测，Windows 安装 Helper/S4U、宿主崩溃/孤儿恢复矩阵仍开放；其余模块代码边界未验证 | Terminal-T1/T2 会话/当前原生树阶段已验收，断线不杀会话；整项还须安装/崩溃/压力矩阵及收益证据，再决定独立程序集，不能将 S1/T2 当作整项关闭 |
 | MB-08 | **未完成**。已有当前诊断 DTO/跨端管理契约及局部打包/ModuleHost 验证 | 安装包非完整目标 ABI；真实业务同构建内存/冷启动门槛、完整平台故障矩阵未有 | 发布包/私有依赖/各端调用一致；Windows/Linux 整个进程树与冷启动 p50/p95、错误率达到预先记录门槛，关联 RES-06/07 |
 
 首个官方代码卸载试点采用 Git，不直接从 Proxy 全量拆分开始。MB-04 的依赖审计可与 MB-01 期间推进，但安全执行器迁移必须依赖已验证的持久调度与租约；不能先删旧 worker 再补恢复。MB-06 可在官方 ALC 试点之外独立推进，其结果不改变官方宿主选择。
@@ -815,3 +815,44 @@ ModuleHost Linux 专用 UID 清场/树退出证明、Windows Job 树退出回执
 三域持久轻调度、CA/Nginx 联合中断恢复、跨文件证书台账事务、SDK 后台责任/drain 申报与合作闲时退出仍开放。所有新增身份保持 resident，未启用自动闲时 kill 或新可释放模块。Terminal 会话总数/Helper 字节预算、完整树压力、独立实现程序集，以及 MB-01/08 同构建业务基线、生产进程树内存和冷启动收益必须另行验收。
 
 证据统一保留在本地忽略目录 `.artifacts/module-milestones-20261104/`：`milestones-windows-delivery.log`、`milestones-linux.log`、`modules-windows-final.log`、`modules-linux.log`、`modulehost-linux.log`、`remote-provenance.json`、`docker-live-linux.log`、`docker-live-provenance.json`、客户端日志与 Android 最终结果。Linux 直接复用 `/home/nanami/relaxkonos-tests`，上传校验 SHA256；未替换生产 Server/Helper。凭据仅在 Git 追踪之外的本地文件中。
+
+
+## 40. MB-06B 与 Terminal-T2：原生进程树验收（2026-11-05）
+
+本轮继续 §39 的进程树缺口，不扩大 SystemPerformance S1 范围。MB-06B 交付专用 ModuleHost 树退出和同源原生证明；Terminal-T2 交付会话独占树 owner，普通关闭与根先退出均必须结束后代、原生输出和工作租约后才成功。此处记录树生命周期门槛，不等于 SDK 合作闲时退出、完整安装矩阵或内存收益通过。
+
+### ModuleHost 原生树
+
+Linux 专用 launcher 在加载模块前启用 subreaper。原来的专用 UID 清理会把已退出僵尸仍算责任，却未负责领养/reap，因而依赖宿主 PID 1 的行为；现在在独占 launcher 内按既有专用 UID 终止，领养该 UID 的直接僵尸并真实 reap，要求该 UID 在 `/proc` 中彻底为空后才发送 `tree-stopped`。不把此 UID 清理机制应用于共享 Server 或 Terminal 用户身份。根退出码与树清理分别核验，成功清树不能把根 exit 7 改写成成功。
+
+Windows ModuleHost 与 Terminal 使用同源 `WindowsProcessTreeJob`。根进程挂起创建，加入不允许 breakaway 的 Job 后才 resume。真实验收发现 `ActiveProcesses=0` 可能早于已知成员进程对象 signaled；新证明在终止前捕获有界成员列表、打开原生句柄并以 IsProcessInJob 再绑定，随后等待 Job 归零及已绑定句柄终态。无效句柄、权限不足和超时不伪报成功，未按裸 PID 终止复用进程。
+
+已通过的真实验收：Windows 当前账号 Job **11 项**；Linux 独立数字 UID 原生树 **4 场景**（正常、根先被杀、根 exit 7、控制输入断开），每场景有真实 root/child/setsid/嵌套后代，忽略 TERM 的子孙结束并 reap，无关进程存活。数字 UID 仅用于该次子进程，未新增系统账号。
+
+Linux 同时复用既有固定 `/etc/relaxkonos/module-host.json`、Server UID 999 与已有 `fixture-host` 专用账号，使用本轮 root-owned 测试产物执行真实 Prepare/包校验/永久降权，再验收 shutdown/disconnect × plain/detached **4 路径**：受保护宿主文件、不可变包、真实 Helper socket/环境隔离、私有存储、健康检查及显式树退出/reap 均通过。此夹具由 root 显式设置配置所要求的 SUDO_UID，**没有**更换生产 launcher 或 sudoers；它验证当前 Prepare 与树实现，不声称现有 sudo 固定路径已部署当前二进制。原 fixture 数据恢复，临时包和其隔离副本移除，固定配置未修改。
+
+### Terminal 独占树与失败责任
+
+Linux 本地终端改用同 UID 的单会话 Server `terminal-worker` 入口；Helper 仍先永久切换到既有目标 UID/GID，再进入同源 worker。每个 worker 独占 subreaper，按直接子进程前沿取得绑定实例的 pidfd、终止并 reap，重复直到内核 ECHILD；覆盖脱离 session/process group 的后代，不扫描或清场共享用户 UID，也不在共享 Server 安装全局 subreaper。Windows ConPTY 与 ModuleHost 共用上述 Job 证明。
+
+协议直接更新至 **1.11**，新增 `TreeFaulted` 控制帧；清理未知只通知一次，父端保留同一 worker/会话故障和工作租约，worker 保持 subreaper/残存子孙所有权，不自动退出、重试或提权。正常确认仍需 Exited、worker 成功退出和实际读写排空。Server/Helper 必须同步构建更新，不提供旧版本双解析。
+
+Windows 当前账号 ConPTY、Linux 同 UID 本地 worker、Linux 当前 Helper 永久降权路径各 **17 项**通过：显式关闭、根先退出 0/7、detach 不结束树、真实 root/child/setsid grandchild、无关同身份进程存活、完整树结束/reap 后真实协调器租约归零及重复关闭不重执行。Windows 使用真实已绑定进程句柄；Linux 在启动时绑定真实 pidfd，结束时核验退出信号与原实例已从 `/proc` 回收。首轮 `.NET Process.HasExited` 缓存与 `/proc` 消失不一致是夹具观察缺陷，替换为内核证明，未用 Refresh 或增加等待掩盖。
+
+Linux 自然退出场景另发现生产阻塞：内核快照已显示根为 Z、pidfd signaled，但 worker 线程仍停在 `anon_pipe_read`，标准输入 ReadAsync 的取消没有排空实际同步读取。现使用独占 worker 的 O_NONBLOCK stdin + native poll/read，循环检查取消；调用方等待原生读取实际结束后才归还清零的池缓冲并恢复标志，不用 WhenAny 遗弃读 Task。真实打开管道的空头部与部分载荷取消 **2 项**通过，均保持管道未 EOF，核验实际 ReadTask 完成和 ActiveNativeReads=0。运行期独立 pidfd 只读观察根状态，WNOWAIT 保留真实退出 0/7，最终清理阶段才 reap。
+
+真实权限故障专项通过：独占 root 夹具创建 root 后代后永久降权，实际 pidfd 信号收到 EPERM；同源生产失败保留方法发出 `TreeFaulted`，原 worker 仍活且保持树责任。随后由独立特权测试 owner 显式通过绑定句柄结束该 worker，领养并精确终止/reap 自有 root 后代，`/proc` 消失。此人工测试收尾不是生产自动恢复，也不表示普通 UID 可以清理 sudo 升权后的所有后代。
+
+原里程碑聚合两平台通过：resident 目录8、HTTP-01 真实 listener16、三域后台 owner32、终端帧9、终端驻留15及 Docker/证书/身份回归；Linux 加上述输入2项。默认模块全量两平台、Linux ModuleHost 实际端点/生命周期通过。Helper 与 Server 同源构建、linux-x64 两套发布通过；未新增 SystemPerformance 实现，未借本轮关闭 MB-01/08。
+
+### 保留的后续边界
+
+当前 Windows 机器为普通 Medium token，未置备 LocalSystem/S4U 的专用账号验收服务；当前账号 Job/ConPTY 实测不代替该安装矩阵。完整信任撤销/宿主崩溃/多代重新核验、SDK 后台责任申报与合作 drain、闲时退出/唤醒仍开放。Linux 遇到由 sudo 等改变身份、当前 owner 无权信号的后代时必须保留未知责任，不能为成功清场扩大权限。
+
+本地同 UID Terminal 新增独占 .NET worker 有额外进程/内存成本；本轮优先确立可确认树边界，不据此宣称内存节省。最终 Linux 三个本地点样中，该 worker RSS 54356～54508 KiB、PSS 30245～30407 KiB（约53 MiB RSS/29.5～29.7 MiB PSS），不含父 Server 和整棵树；它不是峰值、稳定态、前后差值或净新增成本测量。Helper 运输进程与其子进程另行逐个记录，不能把 sudo 的较小 RSS 当作 Helper 成本或重复相加成树峰值。Terminal 会话数量/进程预算、长期压力、轻量 worker 打包及真实同构建内存/冷启动收益继续由 MB-01/07/08 跟踪。
+
+### 证据及部署边界
+
+证据位于本地 Git 忽略目录 `.artifacts/process-tree-20261105/`：最终 `remote-run-complete.log`、`remote-provenance.json` 的7条远端命令均0；三条 Terminal 树/权限故障、`milestones-linux.log`、模块全量、`modulehost-root-provenance.json` 与4条实际隔离路径日志保留。Windows `windows-job-tree-final.log`、`terminal-tree-windows-frozen.log`、`milestones-windows-frozen.log`、`modules-windows.log` 及构建日志拥有相应最终结果。首次失败、内核现场 `terminal-live-kernel-diagnostic.json` 和修复前 Linux 发布归档保留，不把它们算作通过。
+
+SSH 固定核验主机密钥，归档上传校验 SHA256。用户授权测试机继续复用 `/home/nanami/relaxkonos-tests`；root-owned 当前测试产物仅放在 `/opt/relaxkonos/acceptance/process-tree-20261105`，未替换运行中的 Server/Helper、sudoers 或固定配置，未新增系统账号/服务。应用候选等既有成果保留；凭据仍在 Git 追踪之外。

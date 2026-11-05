@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="RelaxKonOS.ServerModules.Tests" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="../Shared/RelaxKonOS.ModuleHost.Sdk/RelaxKonOS.ModuleHost.Sdk.csproj" />
     <ProjectReference Include="../Shared/RelaxKonOS.ServerModules.Packaging/RelaxKonOS.ServerModules.Packaging.csproj" />

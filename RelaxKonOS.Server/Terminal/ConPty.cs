@@ -32,7 +32,10 @@ public sealed class ConPty : IPty, IDisposable, ITerminalPtyLifetime
     private int _childPid;
     private bool _disposed;
     private int _disposeSignaled;
-    private bool _started, _exitVerified;
+    private bool _exitVerified, _rootCreated;
+    private Exception? _startupCleanupFailure;
+    private WindowsTerminalProcessTree? _tree;
+    private Exception? _treeStopFailure;
     private readonly object _asyncStopGate = new();
     private Task? _asyncStop;
 
@@ -91,7 +94,6 @@ public sealed class ConPty : IPty, IDisposable, ITerminalPtyLifetime
 
             _inputStream = new FileStream(_inputHandle, FileAccess.Write, 0, isAsync: false);
             LaunchProcess(shell, workingDirectory, environment, arguments, token);
-            _started = true;
 
             IsRunning = true;
             _cts = new CancellationTokenSource();
@@ -105,6 +107,8 @@ public sealed class ConPty : IPty, IDisposable, ITerminalPtyLifetime
                 if (Native.WaitForSingleObject(processHandle, uint.MaxValue) == 0)
                 {
                     _exitVerified = true;
+                    // Capture remaining Job members before console teardown can terminate them.
+                    _tree?.Terminate();
                     // A retained HPCON keeps its output pipe open even after the shell exits.
                     // Closing it here lets the independent reader drain output and observe EOF.
                     var console = Interlocked.Exchange(ref _ptyHandle, IntPtr.Zero);
@@ -155,12 +159,14 @@ public sealed class ConPty : IPty, IDisposable, ITerminalPtyLifetime
 
     public void Stop()
     {
+        if (_startupCleanupFailure is not null) throw new IOException("terminal.startup_cleanup_unverified", _startupCleanupFailure);
         if (Interlocked.Exchange(ref _disposeSignaled, 1) != 0)
             return;
         IsRunning = false;
         _cts?.Cancel();
         try { _pendingWrites.CompleteAdding(); } catch { /* already completed */ }
 
+        try { _tree?.Terminate(); } catch (Exception error) { _treeStopFailure = error; }
         if (_processHandle != IntPtr.Zero)
         {
             try { Native.TerminateProcess(_processHandle, 1); } catch { /* best effort */ }
@@ -189,9 +195,18 @@ public sealed class ConPty : IPty, IDisposable, ITerminalPtyLifetime
         if (_readThread?.IsAlive != true && _writeThread?.IsAlive != true)
         { _cts?.Dispose(); _cts = null; }
         _disposed = true;
+        // Synchronous IPty.Stop requests teardown; the cached owner still confirms and closes
+        // the Job even when a direct caller never separately invokes the async lifetime port.
+        _ = StopAsync();
     }
 
-    public void Dispose() => Stop();
+    public void Dispose()
+    {
+        var stop = StopAsync();
+        // A PTY callback must return before the owner can join that same native thread.
+        if (Thread.CurrentThread == _readThread || Thread.CurrentThread == _writeThread || Thread.CurrentThread == _exitThread) return;
+        stop.GetAwaiter().GetResult();
+    }
 
     public Task StopAsync()
     {
@@ -202,7 +217,10 @@ public sealed class ConPty : IPty, IDisposable, ITerminalPtyLifetime
             _cts?.Dispose(); _cts = null;
             try { while (_pendingWrites.TryTake(out _)) { } _pendingWrites.Dispose(); }
             catch (ObjectDisposedException) { }
-            if (_started && !_exitVerified) throw new IOException("terminal.process_exit_unverified");
+            if (_rootCreated && !_exitVerified) throw new IOException("terminal.process_exit_unverified");
+            if (_treeStopFailure is not null) throw new IOException("terminal.process_tree_unverified", _treeStopFailure);
+            _tree?.WaitUntilEmpty();
+            _tree?.Dispose(); _tree = null;
         });
     }
 
@@ -236,15 +254,23 @@ public sealed class ConPty : IPty, IDisposable, ITerminalPtyLifetime
             ProcessInformation pi;
             var started = token is null
                 ? Native.CreateProcessW(null, new StringBuilder(commandLine), IntPtr.Zero, IntPtr.Zero,
-                    false, ExtendedStartupInfoPresent | CreateUnicodeEnvironment, envBlock, cwd, ref si, out pi)
+                    false, ExtendedStartupInfoPresent | CreateUnicodeEnvironment | 0x4, envBlock, cwd, ref si, out pi)
                 : Native.CreateProcessAsUserW(token, null, new StringBuilder(commandLine), IntPtr.Zero, IntPtr.Zero,
-                    false, ExtendedStartupInfoPresent | CreateUnicodeEnvironment, envBlock, cwd, ref si, out pi);
+                    false, ExtendedStartupInfoPresent | CreateUnicodeEnvironment | 0x4, envBlock, cwd, ref si, out pi);
             if (!started)
                 throw new Win32Exception(Marshal.GetLastWin32Error());
 
-            Native.CloseHandle(pi.Thread);
             _processHandle = pi.Process;
             _childPid = pi.ProcessId;
+            _rootCreated = true;
+            try
+            {
+                _tree = new WindowsTerminalProcessTree();
+                _tree.Attach(pi.Process);
+                if (ResumeThread(pi.Thread) == uint.MaxValue) throw new Win32Exception(Marshal.GetLastWin32Error());
+            }
+            catch { Native.TerminateProcess(pi.Process, 1); throw; }
+            finally { Native.CloseHandle(pi.Thread); }
         }
         finally
         {
@@ -332,6 +358,17 @@ public sealed class ConPty : IPty, IDisposable, ITerminalPtyLifetime
         if (_processHandle != IntPtr.Zero)
         {
             Native.TerminateProcess(_processHandle, 1);
+            var result = Native.WaitForSingleObject(_processHandle, 12000);
+            if (result != 0)
+            {
+                _startupCleanupFailure = result == 258 ? new TimeoutException("Terminal startup root did not confirm exit.")
+                    : new Win32Exception(Marshal.GetLastWin32Error());
+                _disposed = true;
+                // Retain the unverified root/Job/PTY handles. Async cleanup reports this same
+                // unknown result without re-executing termination or closing away ownership.
+                return;
+            }
+            _exitVerified = true;
             Native.CloseHandle(_processHandle);
             _processHandle = IntPtr.Zero;
         }
@@ -349,6 +386,8 @@ public sealed class ConPty : IPty, IDisposable, ITerminalPtyLifetime
         _pendingWrites.Dispose();
         _disposed = true;
     }
+
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern uint ResumeThread(IntPtr thread);
 
     private static string BuildCommandLine(string shell, IReadOnlyList<string>? arguments)
     {

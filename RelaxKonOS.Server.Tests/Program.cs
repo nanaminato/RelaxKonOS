@@ -1,4 +1,39 @@
 using RelaxKonOS.Protocol.Proxy;
+if (args is ["--terminal-control-input-only"])
+{
+    await TerminalControlInputChecks.RunAsync();
+    return;
+}
+if (args is ["--terminal-control-input-worker", var controlInputMode])
+{
+    if (controlInputMode is not ("empty" or "partial")) throw new ArgumentException("Unknown input fixture mode.");
+    await TerminalControlInputChecks.RunWorkerAsync(controlInputMode == "partial");
+    return;
+}
+if (args is ["--terminal-helper-tree-only", var treeHelperPath, var treeUid, var treeAccount, var treeHome])
+{
+    if (!uint.TryParse(treeUid, out var parsedTreeUid) || parsedTreeUid == 0
+        || !Path.IsPathFullyQualified(treeHelperPath) || !Path.IsPathFullyQualified(treeHome))
+        throw new ArgumentException("Expected current Helper path and canonical nonroot identity.");
+    await TerminalTreeChecks.RunAsync(new RelaxKonOS.Server.UserExecution.UserExecutionContext(Guid.NewGuid(),
+        new(RelaxKonOS.Protocol.Common.HostPlatformKind.Linux, treeUid, treeAccount, treeHome)), treeHelperPath);
+    return;
+}
+if (args is ["--terminal-tree-privilege-checks"])
+{
+    await TerminalTreePrivilegeChecks.RunAsync();
+    return;
+}
+if (args is ["--terminal-tree-privilege-worker"])
+{
+    await TerminalTreePrivilegeChecks.RunWorkerAsync();
+    return;
+}
+if (args.Contains("--terminal-tree-only"))
+{
+    await TerminalTreeChecks.RunAsync();
+    return;
+}
 if (args.Contains("--module-boundary-milestones-only"))
 {
     var milestoneRoot = Path.Combine(Path.GetTempPath(), "relaxkonos-module-milestones-" + Guid.NewGuid().ToString("N"));
@@ -9,6 +44,7 @@ if (args.Contains("--module-boundary-milestones-only"))
         await DirectHttpChallengeLifetimeChecks.RunAsync();
         await ModuleBackgroundOwnershipChecks.RunAsync(milestoneRoot);
         await TerminalStreamFramesChecks.RunAsync();
+        if (OperatingSystem.IsLinux()) await TerminalControlInputChecks.RunAsync();
         await TerminalResidencyChecks.RunAsync();
         TerminalHubContractChecks.Run();
         await TerminalAdministratorAuthorizationChecks.RunAsync();
