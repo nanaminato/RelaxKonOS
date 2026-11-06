@@ -1,15 +1,17 @@
 using System.Diagnostics;
+using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Server.Privileged;
 
 internal static class NginxProcessRecoveryChecks
 {
-    private const string Instance = "isolated-nginx";
+    private const string PackageExecutable = "/usr/sbin/nginx";
     private const string Key = "reload-crash";
     private const string Actor = "nginx-live-fixture";
     private static readonly TimeSpan Budget = TimeSpan.FromSeconds(30);
 
     internal static async Task RunAsync(string executable)
     {
-        if (!OperatingSystem.IsLinux() || !Path.IsPathFullyQualified(executable) || !File.Exists(executable))
+        if (!OperatingSystem.IsLinux() || executable != PackageExecutable || !File.Exists(executable))
             throw new ArgumentException("Expected an installed Linux Nginx executable.");
 
         var directory = Directory.CreateTempSubdirectory("relaxkonos-nginx-crash-");
@@ -21,6 +23,7 @@ internal static class NginxProcessRecoveryChecks
             var port = ((IPEndPoint)portProbe.LocalEndpoint).Port;
             portProbe.Stop();
 
+            await File.WriteAllTextAsync(NginxManagedPaths.MarkerPath(new() { InstallationRoot = root }), NginxManagedPaths.MarkerContent);
             WriteConfig(root, port, "before");
             using var nginx = StartNginx(executable, root);
             try
@@ -58,13 +61,20 @@ internal static class NginxProcessRecoveryChecks
 
                 using var store = await OpenStoreAsync(root);
                 var restored = await store.GetAsync(operationId, default);
-                var replay = await store.StartAsync(Key, Instance, "reload", Actor,
-                    _ => throw new InvalidOperationException("Recovered reload was executed again."), default);
+                var transport = new IsolatedReloadTransport(executable, root, allowReload: false);
+                var provider = CreateProvider(root, store, transport);
+                File.Delete(NginxManagedPaths.MarkerPath(new() { InstallationRoot = root }));
+                TestAssert.Assert(restored is not null, "Original operation was absent after startup recovery.");
+                TestAssert.Assert(!(await provider.DiscoverAsync(default)).Any(instance => instance.Id == restored!.InstanceId),
+                    "The original instance must be absent from discovery when retrying.");
+                var manager = new WebServerManager([provider]);
+                var replay = await manager.ApplyLifecycleAsync(restored!.InstanceId, WebServerLifecycleAction.Reload, Key, Actor, default);
+                var reloadReplay = await manager.ReloadAsync(restored.InstanceId, Key, Actor, default);
                 using var reopenedStore = await OpenStoreAsync(root);
                 var reopened = await reopenedStore.GetAsync(operationId, default);
                 TestAssert.Assert(restored is { State: WebServerOperationState.Failed, Stage: "interrupted",
                         ProblemCode: "webserver.operation_interrupted" }
-                    && replay == restored && reopened == restored && CountReloads(root) == 1,
+                    && replay == restored && reloadReplay == restored && reopened == restored && CountReloads(root) == 1 && transport.Calls == 0,
                     "The original interrupted receipt must persist and the retry must preserve the single reload.");
                 await ObserveAsync(client, address, "after", nginx);
                 Console.WriteLine($"PASS NGINX LIVE CRASH RECOVERY: operation={operationId}; interrupted receipt persisted, reloads=1, original Nginx still serving");
@@ -96,26 +106,57 @@ internal static class NginxProcessRecoveryChecks
     internal static async Task RunWorkerAsync(string executable, string root)
     {
         using var store = await OpenStoreAsync(root);
-        var accepted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var receipt = await store.StartAsync(Key, Instance, "reload", Actor, async ct =>
-        {
-            using var command = StartNginx(executable, root, "-s", "reload");
-            await command.WaitForExitAsync(ct);
-            if (command.ExitCode != 0) throw new InvalidOperationException("Isolated Nginx reload failed.");
-            accepted.SetResult();
-            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
-            return WebServerOperationResult.Success;
-        }, default);
-        await accepted.Task.WaitAsync(Budget);
+        var transport = new IsolatedReloadTransport(executable, root, allowReload: true);
+        var provider = CreateProvider(root, store, transport);
+        var instance = await FindManagedInstanceAsync(provider);
+        var receipt = await new WebServerManager([provider]).ApplyLifecycleAsync(instance.Id, WebServerLifecycleAction.Reload, Key, Actor, default)
+            ?? throw new InvalidOperationException("The production provider refused the isolated reload.");
+        await transport.Accepted.Task.WaitAsync(Budget);
         Console.WriteLine(receipt.OperationId);
         await Task.Delay(Timeout.InfiniteTimeSpan);
     }
 
+    private static async Task<WebServerDto> FindManagedInstanceAsync(NginxWebServerManager provider) =>
+        (await provider.DiscoverAsync(default)).Single(instance => instance.ManagementMode == WebServerManagementMode.Managed
+            && instance.ExecutablePath == PackageExecutable);
+
+    private static NginxWebServerManager CreateProvider(string root, WebServerOperationStore store, IsolatedReloadTransport transport)
+    {
+        var environment = new TestHostEnvironment(root);
+        var configuration = TestConfiguration();
+        return new(new PrivilegedNginxOperations(transport), store, new WebServerMetadataRepository(environment, configuration),
+            new TestApplicationLifetime(), new NginxManagedOptions { InstallationRoot = root },
+            null!, null!, null!, null!, NullLogger<NginxWebServerManager>.Instance);
+    }
+
+    // Intercept only the closed reload request. No Helper connection or systemd call is available to this fixture.
+    private sealed class IsolatedReloadTransport(string executable, string root, bool allowReload) : IPrivilegedOperationTransport
+    {
+        internal int Calls;
+        internal readonly TaskCompletionSource Accepted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref Calls);
+            if (!allowReload || request.Operation != PrivilegedOperationKind.NginxSystemServiceAction
+                || request.NginxServiceAction != NginxSystemServiceAction.Reload)
+                throw new InvalidOperationException("Unexpected privileged request in isolated Nginx fixture.");
+            using var command = StartNginx(executable, root, "-s", "reload");
+            await command.WaitForExitAsync(cancellationToken);
+            if (command.ExitCode != 0) throw new InvalidOperationException("Isolated Nginx reload failed.");
+            Accepted.SetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            throw new InvalidOperationException("Crash barrier exited without cancellation.");
+        }
+    }
+
+    private static IConfiguration TestConfiguration() => new ConfigurationBuilder()
+        .AddInMemoryCollection(new Dictionary<string, string?> { ["Storage:Provider"] = "memory" }).Build();
+
     private static async Task<WebServerOperationStore> OpenStoreAsync(string root)
     {
         var environment = new TestHostEnvironment(root);
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { ["Storage:Provider"] = "memory" }).Build();
+        var configuration = TestConfiguration();
         var store = new WebServerOperationStore(environment, new HostOperationJournal(environment, configuration),
             NullLogger<WebServerOperationStore>.Instance, new TestResidentBackgroundLeases());
         await store.StartAsync(default);

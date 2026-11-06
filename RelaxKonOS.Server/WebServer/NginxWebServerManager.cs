@@ -210,6 +210,8 @@ internal sealed partial class NginxWebServerManager(
 
     public async Task<WebServerOperationDto?> ReloadAsync(string instanceId, string idempotencyKey, string? actor, CancellationToken cancellationToken)
     {
+        var original = await operations.FindRequestAsync(idempotencyKey, instanceId, "reload", actor, cancellationToken);
+        if (original is not null) return original;
         var detected = (await DiscoverAsync(cancellationToken)).FirstOrDefault(candidate => candidate.Id == instanceId);
         if (detected is null || detected.Id != instanceId) return null;
         if (detected.ManagementMode != WebServerManagementMode.Integrated)
@@ -264,6 +266,9 @@ internal sealed partial class NginxWebServerManager(
 
     public async Task<WebServerOperationDto?> ApplyLifecycleAsync(string instanceId, WebServerLifecycleAction action, string idempotencyKey, string? actor, CancellationToken cancellationToken)
     {
+        var kind = action == WebServerLifecycleAction.EnableAcmeHttp01 ? "enable-acme-http01" : action.ToString().ToLowerInvariant();
+        var original = await operations.FindRequestAsync(idempotencyKey, instanceId, kind, actor, cancellationToken);
+        if (original is not null) return original;
         var instance = (await DiscoverAsync(cancellationToken)).FirstOrDefault(candidate => candidate.Id == instanceId);
         if (instance is null) return null;
         // System-package lifecycle and configuration operations use the closed privileged
@@ -292,10 +297,10 @@ internal sealed partial class NginxWebServerManager(
                 ct => EnableAcmeHttp01CoreAsync(instance, ct), lifetime.ApplicationStopping);
         }
         if (instance.ManagementMode != WebServerManagementMode.Managed)
-            return Rejected(instanceId, action.ToString().ToLowerInvariant(), "webserver.managed_required");
+            return Rejected(instanceId, kind, "webserver.managed_required");
 
         var layout = GetManagedLayout();
-        return await operations.StartAsync(idempotencyKey, instanceId, action.ToString().ToLowerInvariant(), actor,
+        return await operations.StartAsync(idempotencyKey, instanceId, kind, actor,
             ct => ApplyManagedLifecycleCoreAsync(layout, action, ct), lifetime.ApplicationStopping);
     }
 

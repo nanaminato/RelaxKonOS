@@ -1033,3 +1033,11 @@ Windows Release 聚合回归通过。新增受控取消测试确认实际动作�
 Windows Release 聚合回归通过。新增损坏台账路径确认保留原文件、持有一份待恢复租约且拒绝新动作。此路径未清除台账或重放副作用。生产 provider 及网站发布的完整实机故障矩阵继续开放。
 
 既有 Linux 测试机的真实 Nginx 重载与崩溃夹具以显式启动恢复复测通过。原 operationId `fa2bbf90-cb26-4280-819e-0cefc9635442` 持久化 interrupted，重载仍为一次。归档 SHA-256 为 `958d06c78edddaa53751c6a28de1924c1e6363522e282f145bb0e618d46f6378`，日志见 `.artifacts/mb05-web-startup-nginx.log`。
+
+### MB-05 Nginx provider 和门面的原回执恢复
+
+WebServer 门面将生命周期及重载请求交给生产 provider 核对原回执。Nginx provider 按原 actor、操作类型、实例 ID 和幂等键查询台账，再执行实例发现。实例不再被发现时，两条重载入口仍可返回原回执。
+
+既有 Linux 测试机通过生产 WebServerManager、NginxWebServerManager、PrivilegedNginxOperations 和 WebServerOperationStore 的联合测试。夹具替换 Helper 传输，只接受封闭的 Reload 请求并重载独立回环 Nginx；没有连接共享 Helper 或调用 systemd。真实重载生效且原操作持久化为 Running 后终止工作进程。恢复后移除专属发现 marker，确认实例不在发现结果中。生命周期及独立重载入口以原键取得 `bb3cc3d1-e9dd-40e0-9c75-83b85eb50593` 的同一 interrupted 回执，传输调用为零，实际重载仍为一次。专属 Nginx 正常退出，临时目录已清理。Windows Release `--webserver-only` 通过。
+
+日志见 `.artifacts/mb05-provider-final.log`，归档 SHA-256 为 `d38b7b36458e78889f24a64a5aa5298ec41d36383c3e73ab8a97b9732e810a1d`。真实 Helper 响应中断、完整 HTTP、网站发布及 TLS/ACME 联合验收继续开放。

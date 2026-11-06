@@ -46,23 +46,27 @@ internal sealed class WebServerManager(IEnumerable<IWebServerProvider> providers
     public async Task<WebServerConfigTestResultDto?> TestConfigurationAsync(string instanceId, CancellationToken cancellationToken)
         => await WithProviderAsync(instanceId, (provider, ct) => provider.TestConfigurationAsync(instanceId, ct), cancellationToken);
 
-    public async Task<WebServerOperationDto?> IntegrateCandidateAsync(string candidateId, string idempotencyKey, IntegrateWebServerRequest request, string? actor, CancellationToken cancellationToken)
+    public Task<WebServerOperationDto?> IntegrateCandidateAsync(string candidateId, string idempotencyKey, IntegrateWebServerRequest request, string? actor, CancellationToken cancellationToken)
+        => WithOperationProviderAsync((provider, ct) => provider.IntegrateCandidateAsync(candidateId, idempotencyKey, request, actor, ct), cancellationToken);
+
+    public Task<WebServerOperationDto?> ApplyLifecycleAsync(string instanceId, WebServerLifecycleAction action, string idempotencyKey, string? actor, CancellationToken cancellationToken)
+        => WithOperationProviderAsync((provider, ct) => provider.ApplyLifecycleAsync(instanceId, action, idempotencyKey, actor, ct), cancellationToken);
+
+    public Task<WebServerOperationDto?> ReloadAsync(string instanceId, string idempotencyKey, string? actor, CancellationToken cancellationToken)
+        => WithOperationProviderAsync((provider, ct) => provider.ReloadAsync(instanceId, idempotencyKey, actor, ct), cancellationToken);
+
+    private async Task<WebServerOperationDto?> WithOperationProviderAsync(
+        Func<IWebServerProvider, CancellationToken, Task<WebServerOperationDto?>> operation, CancellationToken cancellationToken)
     {
         foreach (var provider in _providers)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            // Providers also own recovery after integration removes a candidate from discovery.
-            var operation = await provider.IntegrateCandidateAsync(candidateId, idempotencyKey, request, actor, cancellationToken);
-            if (operation is not null) return operation;
+            // Providers can recover an original receipt even after its target disappears from discovery.
+            var receipt = await operation(provider, cancellationToken);
+            if (receipt is not null) return receipt;
         }
         return null;
     }
-
-    public async Task<WebServerOperationDto?> ApplyLifecycleAsync(string instanceId, WebServerLifecycleAction action, string idempotencyKey, string? actor, CancellationToken cancellationToken)
-        => await WithProviderAsync(instanceId, (provider, ct) => provider.ApplyLifecycleAsync(instanceId, action, idempotencyKey, actor, ct), cancellationToken);
-
-    public async Task<WebServerOperationDto?> ReloadAsync(string instanceId, string idempotencyKey, string? actor, CancellationToken cancellationToken)
-        => await WithProviderAsync(instanceId, (provider, ct) => provider.ReloadAsync(instanceId, idempotencyKey, actor, ct), cancellationToken);
 
     public async Task<IReadOnlyList<WebServerSiteDto>?> ListSitesAsync(string instanceId, CancellationToken cancellationToken)
         => await WithProviderAsync(instanceId, (provider, ct) => provider.ListSitesAsync(instanceId, ct), cancellationToken);
