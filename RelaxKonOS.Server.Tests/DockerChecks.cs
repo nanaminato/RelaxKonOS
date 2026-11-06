@@ -1020,6 +1020,8 @@ volumes:
         await coordinator.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(30));
         TestAssert.Assert(events.Calls >= 4 && !events.Unprotected && !residency.HasBackgroundWork(ServerModules.DockerId),
             "Real Compose execution and terminal publication must remain protected until actual owner drain.");
+        if (OperatingSystem.IsLinux())
+            await VerifyLiveStopRecoveryAsync(project, image, ledgerDirectory, compose, ownerHost.Services, residency, events);
         Console.WriteLine("PASS DOCKER STACK LIVE: real Compose parsed and deployed; its recorded outcome matched the immediate Engine snapshot; "
             + "independent later observation confirmed worker exit 7, repair succeeded, replay stayed idempotent, and the named volume was released only after removal; "
             + "real resident work protection drained after terminal publication. Instant success is not stable-running or partial-failure proof.");
@@ -1035,6 +1037,79 @@ volumes:
             try { Directory.Delete(Path.Combine(root, "docker-stack-live"), recursive: true); } catch { /* best-effort cleanup */ }
         }
     }
+}
+
+private static async Task VerifyLiveStopRecoveryAsync(string project, string image, string ledgerDirectory,
+    DockerComposeService compose, IServiceProvider services, ModuleResidencyCoordinator residency, LiveWorkEvents events)
+{
+    var definition = new DockerStackDefinitionDto(project, $$"""
+services:
+  witness:
+    image: {{image}}
+    command: ["sh", "-c", "trap 'echo stopping; sleep 7; exit 0' TERM; echo ready; while true; do sleep 1; done"]
+""");
+    var request = new DockerStackDeployRequest(definition, DockerStackValidation.DefinitionVersion(project, definition.ComposeYaml));
+    var leases = services.GetRequiredService<IResidentModuleWorkLeaseSource>();
+    using var original = NewStackCoordinator(ledgerDirectory, compose, new TestApplicationLifetime(), 4, events, leases);
+    await original.StartAsync(default);
+    var deploy = await original.DeployAsync(request, "live-actor", "live-key-stop-witness");
+    await UntilAsync(() => Task.FromResult(original.Get(deploy.OperationId)?.State == DockerStackOperationState.Succeeded));
+    var container = (await DockerAsync("ps", "--quiet", "--filter", $"label=com.docker.compose.project={project}")).Trim();
+    TestAssert.Assert(container.Length == 12 && container.All(Uri.IsHexDigit), "Expected exactly one isolated witness container.");
+    await UntilAsync(async () => (await DockerAsync("logs", container)).Contains("ready", StringComparison.Ordinal));
+
+    var receipt = await original.ApplyActionAsync(project, DockerStackOperationKind.Stop, true, "live-actor", "live-key-interrupted-stop");
+    await UntilAsync(async () => (await DockerAsync("logs", container)).Contains("stopping", StringComparison.Ordinal));
+    var stopArguments = $"docker\0stop\0{container}\0";
+    var cliPid = Directory.EnumerateDirectories("/proc").Where(path => int.TryParse(Path.GetFileName(path), out _))
+        .Single(path =>
+        {
+            try { return File.ReadAllText(Path.Combine(path, "cmdline")) == stopArguments; }
+            catch (IOException) { return false; }
+            catch (UnauthorizedAccessException) { return false; }
+        });
+    TestAssert.Assert(residency.HasBackgroundWork(ServerModules.DockerId)
+        && original.Get(receipt.OperationId)?.State == DockerStackOperationState.Running,
+        "The real Docker stop must retain the original operation and work lease while the CLI is in flight.");
+    await original.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(20));
+    TestAssert.Assert(!Directory.Exists(cliPid) && !residency.HasBackgroundWork(ServerModules.DockerId)
+        && original.Get(receipt.OperationId)?.State == DockerStackOperationState.Running,
+        "Host shutdown must drain the actual Docker CLI before releasing work, leaving the receipt for reconciliation.");
+
+    using var restarted = NewStackCoordinator(ledgerDirectory, compose, new TestApplicationLifetime(), 4, events, leases);
+    await restarted.StartAsync(default);
+    var recovered = restarted.Get(receipt.OperationId);
+    TestAssert.Assert(recovered is { State: DockerStackOperationState.Interrupted, ProblemCode: DockerStackProblem.Interrupted }
+        && recovered.OperationId == receipt.OperationId && recovered.Services.Any(service => service.Service == "witness")
+        && !events.Unprotected, "Startup must observe the real Engine under a work lease and persist the original interrupted receipt.");
+    // The Engine can finish a stop it accepted before the CLI disconnected.
+    await UntilAsync(async () => (await DockerAsync("inspect", "--format", "{{.State.Status}}", container)).Trim() == "exited");
+    var start = await restarted.ApplyActionAsync(project, DockerStackOperationKind.Start, true, "live-actor", "live-key-witness-start");
+    await UntilAsync(() => Task.FromResult(restarted.Get(start.OperationId)?.State == DockerStackOperationState.Succeeded));
+    var replay = await restarted.ApplyActionAsync(project, DockerStackOperationKind.Stop, true, "live-actor", "live-key-interrupted-stop");
+    TestAssert.Assert(replay.OperationId == receipt.OperationId && replay.State == DockerStackOperationState.Interrupted
+        && (await DockerAsync("inspect", "--format", "{{.State.Status}}", container)).Trim() == "running"
+        && (await DockerAsync("logs", container)).Split('\n').Count(line => line == "stopping") == 1,
+        "Repeating the original key must return the persisted receipt without stopping the restarted container.");
+    await restarted.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(20));
+    Console.WriteLine($"PASS DOCKER LIVE RECOVERY: operation={receipt.OperationId} state={replay.State}; real CLI drained, original receipt restored, no second stop");
+}
+
+private static async Task UntilAsync(Func<Task<bool>> condition)
+{
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+    while (!await condition()) await Task.Delay(50, timeout.Token);
+}
+
+private static async Task<string> DockerAsync(params string[] arguments)
+{
+    var info = new System.Diagnostics.ProcessStartInfo("docker") { RedirectStandardOutput = true, UseShellExecute = false };
+    foreach (var argument in arguments) info.ArgumentList.Add(argument);
+    using var process = System.Diagnostics.Process.Start(info) ?? throw new InvalidOperationException("Could not start Docker.");
+    var output = process.StandardOutput.ReadToEndAsync();
+    await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15));
+    TestAssert.Assert(process.ExitCode == 0, $"Docker fixture observation failed: {arguments[0]}.");
+    return await output;
 }
 
 /// <summary>A store over a fixed directory, with a ceiling high enough that exclusion rules under test

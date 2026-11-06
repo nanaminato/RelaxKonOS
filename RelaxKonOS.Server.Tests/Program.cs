@@ -688,6 +688,10 @@ try
         await SettingsSystemVerification.RunAsync(root);
         return;
     }
+    if (args.Contains("--stack-operations-only")) { await DockerChecks.VerifyStackOperationsAsync(root); return; }
+    // The only check that needs a Docker host. It is never part of the default sequence: a suite that
+    // silently depends on a local Engine fails for reasons that are not about this repository.
+    if (args.Contains("--stack-live-only")) { await DockerChecks.VerifyStackOperationsLiveAsync(root); return; }
     await FirewallBoundaryChecks.RunAsync();
     await TailscaleBoundaryChecks.RunAsync();
     await ResidentModuleCatalogChecks.RunAsync();
@@ -752,10 +756,6 @@ if (args.Contains("--privileged-helper-socket-only")) { await PrivilegedHelperSo
     if (args.Contains("--host-os-only")) { HostOperatingSystemChecks.Run(); return; }
     if (args.Contains("--thumbnails-only")) { ImageThumbnailChecks.Run(root); Console.WriteLine("Thumbnail checks passed."); return; }
     if (args.Contains("--uploads-only")) { await UploadSessionChecks.RunAsync(root); Console.WriteLine("File upload session checks passed."); return; }
-    if (args.Contains("--stack-operations-only")) { await DockerChecks.VerifyStackOperationsAsync(root); return; }
-    // The only check that needs a Docker host. It is never part of the default sequence: a suite that
-    // silently depends on a local Engine fails for reasons that are not about this repository.
-    if (args.Contains("--stack-live-only")) { await DockerChecks.VerifyStackOperationsLiveAsync(root); return; }
     // This verifies the in-memory authorization decision only. Keep it ahead of the Alias HTTP
     // suite so a routing regression can run in constrained environments where opening a loopback
     // listener is deliberately disallowed.

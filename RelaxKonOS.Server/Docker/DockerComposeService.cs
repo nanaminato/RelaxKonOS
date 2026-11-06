@@ -6,6 +6,9 @@ using RelaxKonOS.Protocol.Docker;
 
 namespace RelaxKonOS.Server.Docker;
 
+internal sealed class DockerComposeCleanupException(Exception inner)
+    : InvalidOperationException("Docker Compose process cleanup could not be confirmed.", inner);
+
 /// <summary>Runs only a small allow-list of Docker Compose operations from server-owned files.</summary>
 public sealed class DockerComposeService : IDockerComposeService
 {
@@ -271,6 +274,7 @@ public sealed class DockerComposeService : IDockerComposeService
 
     private async Task<CommandResult> RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         try
         {
             using var process = new Process { StartInfo = new ProcessStartInfo("docker") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true } };
@@ -284,11 +288,29 @@ public sealed class DockerComposeService : IDockerComposeService
             foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
             if (!process.Start()) return new CommandResult(false, string.Empty, "start_failed");
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); timeout.CancelAfter(TimeSpan.FromMinutes(2));
-            var outputTask = process.StandardOutput.ReadToEndAsync(timeout.Token); var errorTask = process.StandardError.ReadToEndAsync(timeout.Token);
-            await process.WaitForExitAsync(timeout.Token);
-            return new CommandResult(process.ExitCode == 0, await outputTask, await errorTask);
+            var outputTask = process.StandardOutput.ReadToEndAsync();
+            var errorTask = process.StandardError.ReadToEndAsync();
+            var completion = Task.WhenAll(process.WaitForExitAsync(), outputTask, errorTask);
+            try
+            {
+                await completion.WaitAsync(timeout.Token);
+                return new CommandResult(process.ExitCode == 0, await outputTask, await errorTask);
+            }
+            catch (OperationCanceledException)
+            {
+                try
+                {
+                    if (!process.HasExited) process.Kill(entireProcessTree: true);
+                    await completion.WaitAsync(TimeSpan.FromSeconds(10));
+                }
+                catch (Exception cleanup)
+                {
+                    throw new DockerComposeCleanupException(cleanup);
+                }
+                cancellationToken.ThrowIfCancellationRequested();
+                return new CommandResult(false, string.Empty, "timeout");
+            }
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return new CommandResult(false, string.Empty, "timeout"); }
         catch (Exception exception) when (exception is Win32Exception or FileNotFoundException) { return new CommandResult(false, string.Empty, "not_found"); }
     }
 

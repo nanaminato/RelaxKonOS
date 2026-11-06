@@ -188,7 +188,7 @@ internal sealed class DockerStackOperationCoordinator(
             var state = observed.Count > 0 ? DockerStackOperationState.PartialFailed : DockerStackOperationState.Failed;
             Complete(id, state, failure.ProblemCode, state == DockerStackOperationState.PartialFailed ? DockerStackProblem.PartialFailure : null, messages, observed);
         }
-        catch (Exception exception) when (exception is not ResidentWorkCompletionException)
+        catch (Exception exception) when (exception is not (ResidentWorkCompletionException or DockerComposeCleanupException))
         {
             logger.LogWarning("Stack operation {OperationId} for project {Project} failed before an outcome could be classified. {ExceptionType}",
                 id, project, exception.GetType().Name);
@@ -242,7 +242,7 @@ internal sealed class DockerStackOperationCoordinator(
     private async Task<IReadOnlyList<DockerStackServiceDto>> SafeObserveAsync(string project)
     {
         try { return await compose.ListServicesAsync(project, CancellationToken.None); }
-        catch { return []; }
+        catch (Exception error) when (error is not DockerComposeCleanupException) { return []; }
     }
 
     private void Observe(Guid id, IReadOnlyList<DockerStackServiceDto> observed) =>
@@ -331,19 +331,19 @@ internal sealed class DockerStackOperationCoordinator(
 
         foreach (var entry in entries.Where(x => DockerStackOperationStore.Active(x.Operation)))
         {
-            var observed = entry.Operation.State == DockerStackOperationState.Running
-                ? await SafeObserveAsync(entry.Operation.ProjectName)
-                : [];
-            var recovery = RecoveryCode(entry.Operation.Kind, observed);
             try
             {
+                var observed = entry.Operation.State == DockerStackOperationState.Running
+                    ? await SafeObserveAsync(entry.Operation.ProjectName)
+                    : [];
+                var recovery = RecoveryCode(entry.Operation.Kind, observed);
                 Complete(entry.Operation.OperationId, DockerStackOperationState.Interrupted, DockerStackProblem.Interrupted, recovery,
                     ["the server restarted while this operation was active; the project was observed, not replayed"], observed);
             }
             catch (Exception error)
             {
                 recoveryWork.Fail(error);
-                logger.LogError(error, "Compose startup recovery could not persist its result; its work remains quarantined.");
+                logger.LogError(error, "Compose startup recovery did not complete; its work remains quarantined.");
                 return;
             }
         }

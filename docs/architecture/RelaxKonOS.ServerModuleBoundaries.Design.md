@@ -144,7 +144,7 @@ IPC 请求、响应流、模块回调、批准中的 Broker 操作和持久后�
 | MB-02 | **部分交付**。Git Contracts/独立实现和窄 Host 端口，Proxy 订阅转换契约/私有实现，Firewall-F1 独立契约/执行代码及构建门禁；回收验证见 §10/11/20～22/41 | 全官方包仍非唯一 collectible ABI；其他模块尚有根服务和实现依赖 | 全契约不引用 Server/实现；Host/模块互引构建门禁；发布包与私有依赖按唯一当前 ABI 验证 |
 | MB-03 | **Git 有限切片交付**。真实仓库/CLI/凭据/控制台与构建执行项目，100轮 ALC 和保留完成请求验证（§10/11）；镜像清理责任修复与真实 Engine 标签检查见 §43，离线 BuildKit 续核见 §44 | 真实 Docker/BuildKit 执行中取消、清理、恢复与 ALC 联合矩阵未完成；生产内存/冷启动缺失 | 真实任务/流/持久故障责任结束才回收；两平台循环不累积句柄/代码代次；实际引擎恢复与资源目标达到门槛 |
 | MB-04 | **常驻边界阶段交付**。共享读取、guard/TUN、到期与发布恢复单一 owner，后台工作租约、订阅转换预算及独立代码（§12～22） | Proxy 整体仍 resident；安全职责持久调度交接、真实网络故障和动态休眠未完成 | 系统代理/TUN/到期责任在重启及休眠后连续可靠；未知结果不重放；正式包/代码释放与生产收益分别验证 |
-| MB-05 | **MB-05A 常驻后台责任阶段交付**（§39）。三域真实工作租约、准入/Stop 同锁、实际任务及清理排空；证书取消只记录请求，真实任务决定终态。实机资源与隔离设施预检见 §43/44 | 三域仍根执行图；持久轻调度、CA/Nginx 中断联合矩阵与独立执行器未交付；跨文件事务和远端 CA 未知状态仍须恢复规则 | MB-05A 后台 owner/终态/禁用门槛已通过，保持 resident；整项还须验证持久调度、独立执行器、真实 Engine/CA/Nginx 重启连续性与休眠 |
+| MB-05 | **MB-05A 常驻后台责任阶段交付**（§39）。三域真实工作租约、准入/Stop 同锁、实际任务及清理排空；证书取消只记录请求，真实任务决定终态。实机资源与隔离设施预检见 §43/44，Docker 在途停止与原回执恢复见 §45 | 三域仍根执行图；持久轻调度、CA/Nginx 中断联合矩阵与独立执行器未交付；跨文件事务和远端 CA 未知状态仍须恢复规则 | MB-05A 后台 owner/终态/禁用门槛已通过，保持 resident；整项还须验证持久调度、独立执行器、真实 Engine/CA/Nginx 重启连续性与休眠 |
 | MB-06 | **MB-06A/06B 阶段交付**（§39/40）。代理/Broker 代次范围、关闭排空；Linux 专用身份真实 Prepare/后代 reap 与 Windows 当前账号原生 Job 树实测通过 | Windows LocalSystem/S4U 安装矩阵、完整崩溃/信任撤销仍未验收；缺 SDK 合作 drain/后台任务申报，不启用闲时退出 | MB-06A/B 代次/原生树阶段门槛已通过；整项仍须合作 drain/后台申报、正式安装多代信任/撤销/崩溃矩阵与旧回调隔离，验收后才启用闲时退出/重启 |
 | MB-07 | **SystemPerformance S1 已交付并冻结范围**（§23～37）；Firewall-F1 代码回收与 Tailscale TS-01 持久责任跨对象代次验收交付（§41）；Terminal-T1/T2 阶段交付（§39/40） | SystemPerformance 与 Terminal 仍 resident，生产收益/完整原生压力未测；Terminal 当前账号 Windows 树与 Linux 本地/永久降权 Helper 树已实测，Windows 安装 Helper/S4U、宿主崩溃/孤儿恢复矩阵仍开放；其余模块代码边界未验证 | Terminal-T1/T2 会话/当前原生树阶段已验收，断线不杀会话；整项还须安装/崩溃/压力矩阵及收益证据，再决定独立程序集，不能将 S1/T2 当作整项关闭 |
 | MB-08 | **未完成**。已有当前诊断 DTO/跨端管理契约及局部打包/ModuleHost 验证 | 安装包非完整目标 ABI；真实业务同构建内存/冷启动门槛、完整平台故障矩阵未有 | 发布包/私有依赖/各端调用一致；Windows/Linux 整个进程树与冷启动 p50/p95、错误率达到预先记录门槛，关联 RES-06/07 |
@@ -923,3 +923,13 @@ MB-05 预检发现同一 Engine 有其他运行中的容器，且测试机存在
 - 两项均直接调用外部设施。RelaxKonOS 的真实管理 Task、响应及原 operationId 持久化恢复、Engine daemon 重启、真实 ACME CA 订单和挑战连续性尚未覆盖。测试证书由 OpenSSL 本地生成。下一阶段以独立 Engine 实例、独立 Nginx 执行配置、可控 CA 和专用挑战域运行应用级故障矩阵。
 
 本机原始探测日志保存在 .artifacts/mb03-buildkit/。
+
+## 45. MB-05 Docker 应用层在途中断与回执恢复（2026-11-06）
+
+Compose 命令取消或超时时，生产执行器终止尚在运行的 CLI 进程树，并等待 CLI 退出和输出流排空后返回。无法核实清理时，栈协调器把异常交给工作 owner 隔离，保留原活动台账。启动对账的只读观察若无法核实 CLI 清理，同样保留责任。关闭时已取消且本地清理完成的操作保留原 Running 回执，供下次启动观察 Engine 后记录 Interrupted。
+
+Ubuntu 测试机使用固定 SSH 主机密钥、现有 sudo 凭据、缓存 Alpine 镜像 ID 和随机专属 Compose 项目。Linux Release 的 --stack-live-only 通过真实 DockerStackOperationCoordinator、DockerComposeService、持久台账和 resident 工作租约执行。容器的 TERM 日志证明 Engine 已接受停止请求，且当时实查 Docker CLI 仍在运行、回执为 Running、代次有工作租约。调用协调器 StopAsync 后，实查原 CLI 已退出，工作租约已归还，原操作仍留待对账。新协调器重新打开同一台账，在工作租约保护下观察真实服务并以原 operationId 记录 Interrupted / docker.stack_interrupted。最终项目为 ad04live93e97f1b，恢复操作为 de667356-ceb6-4b4b-a3f6-7bae6bc610b9。
+
+测试等待 Engine 已接受的停止动作自行结束，再用独立新操作显式启动原容器。以原停止请求的幂等键重试，返回同一 Interrupted 回执，容器继续运行且 TERM 记录只有一次。按项目标签确认容器、网络和卷已清理。共享 Engine 未重启，宿主 AppArmor 未变更。本机 --stack-operations-only 台账专项通过。
+
+此切片验收了真实 CLI 在途保护、协调器停机排空与启动恢复。协调器在同一测试进程内重建，未注入整个 Server 进程崩溃或 Engine daemon 重启。Engine 已接受的动作可在 CLI 断开后继续完成，恢复快照不保证 Engine 已稳定。CLI 清理无法核实的保护路径已实现，未做真实进程清理失败注入。HTTP 响应排空、真实 CA/Nginx 应用层联合矩阵及生产内存仍开放。实机原始日志与制品哈希见 .artifacts/mb05-docker-live.log 和 .artifacts/mb05-docker-provenance.json。
