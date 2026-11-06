@@ -151,8 +151,8 @@ internal static class WindowsInstalledTerminalChecks
             lock (output)
             {
                 output.Append(Encoding.UTF8.GetString(bytes));
-                var match = System.Text.RegularExpressions.Regex.Match(output.ToString(), marker + @":(\d+):(\d+):END");
-                if (match.Success) observation.TrySetResult(match.Groups[1].Value + " " + match.Groups[2].Value);
+                var match = System.Text.RegularExpressions.Regex.Match(output.ToString(), marker + @":(\d+):(\d+):(\d+):END");
+                if (match.Success) observation.TrySetResult($"{match.Groups[1].Value} {match.Groups[2].Value} {match.Groups[3].Value}");
             }
         });
         hub.On<int>("OnProcessExited", _ => disconnected.TrySetResult());
@@ -161,10 +161,13 @@ internal static class WindowsInstalledTerminalChecks
             new StartTerminalRequest(80, 24, 0, 0, null, null), null);
         try
         {
-            var split = marker.Length / 2;
-            // Bounded independent workload, with its native PID obtained from the actual PTY output.
-            var script = "$child=Start-Process -FilePath ($PSHOME+'\\powershell.exe') -ArgumentList '-NoProfile -NonInteractive -Command Start-Sleep -Seconds 90' -NoNewWindow -PassThru; "
-                + $"Write-Output ('{marker[..split]}'+'{marker[split..]}'+':'+$PID+':'+$child.Id+':END'); Start-Sleep -Seconds 90; exit\r";
+            static string Launch(string body) =>
+                "Start-Process -FilePath ($PSHOME+'\\powershell.exe') -NoNewWindow -ArgumentList '-NoProfile -NonInteractive -EncodedCommand "
+                + Convert.ToBase64String(Encoding.Unicode.GetBytes(body)) + "'; ";
+            // The grandchild writes directly to the PTY, so the returned identity proves it ran.
+            var grandchild = $"Write-Output ('{marker}:'+$env:RK_TERMINAL_ROOT+':'+$env:RK_TERMINAL_CHILD+':'+$PID+':END'); Start-Sleep -Seconds 90";
+            var child = "$env:RK_TERMINAL_CHILD=$PID; " + Launch(grandchild) + "Start-Sleep -Seconds 90";
+            var script = "$env:RK_TERMINAL_ROOT=$PID; " + Launch(child) + "Start-Sleep -Seconds 90; exit\r";
             await hub.InvokeAsync("Input", Encoding.UTF8.GetBytes(script));
             Console.WriteLine("INSTALLED_TERMINAL_TREE " + await observation.Task.WaitAsync(TimeSpan.FromSeconds(20)));
             await disconnected.Task.WaitAsync(TimeSpan.FromSeconds(45));

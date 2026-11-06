@@ -1,3 +1,4 @@
+#Requires -Version 7.0
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string] $FirstBundle,
@@ -10,6 +11,8 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 if (-not $ConfirmMachineChanges) { throw 'Real Windows service installation requires -ConfirmMachineChanges.' }
+$principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+$isAdministrator = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $ElevatedRequest) {
     $id = [guid]::NewGuid().ToString('N')
     $evidence = Join-Path ([IO.Path]::GetFullPath('artifacts/windows-release-install')) $id
@@ -19,7 +22,14 @@ if (-not $ElevatedRequest) {
     $arguments = @('-NoProfile', '-File', ('"' + $PSCommandPath + '"'), '-FirstBundle', ('"' + [IO.Path]::GetFullPath($FirstBundle) + '"'),
         '-SecondBundle', ('"' + [IO.Path]::GetFullPath($SecondBundle) + '"'), '-CleanupRunner', ('"' + [IO.Path]::GetFullPath($CleanupRunner) + '"'),
         '-FixtureAssembly', ('"' + [IO.Path]::GetFullPath($FixtureAssembly) + '"'), '-PythonExecutable', ('"' + (Get-Command $PythonExecutable).Source + '"'), '-ConfirmMachineChanges', '-ElevatedRequest', ('"' + $request + '"'))
-    $child = Start-Process -FilePath (Get-Process -Id $PID).Path -ArgumentList $arguments -Verb RunAs -WindowStyle Hidden -PassThru
+    $start = @{
+        FilePath = (Get-Process -Id $PID).Path
+        ArgumentList = $arguments
+        WindowStyle = 'Hidden'
+        PassThru = $true
+    }
+    if (-not $isAdministrator) { $start.Verb = 'RunAs' }
+    $child = Start-Process @start
     $child.WaitForExit()
     if (-not (Test-Path -LiteralPath (Join-Path $evidence 'result.json'))) { throw 'Elevated acceptance did not produce a report.' }
     $result = Get-Content -LiteralPath (Join-Path $evidence 'result.json') -Raw | ConvertFrom-Json
@@ -27,8 +37,7 @@ if (-not $ElevatedRequest) {
     if (-not $result.succeeded -or -not $result.cleaned) { throw 'Windows formal release acceptance failed; root-only evidence retained.' }
     return
 }
-$principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
-if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Administrator required.' }
+if (-not $isAdministrator) { throw 'Administrator required.' }
 $request = Get-Content -LiteralPath $ElevatedRequest -Raw | ConvertFrom-Json
 if ($request.id -notmatch '^[0-9a-f]{32}$') { throw 'Invalid acceptance identity.' }
 $root = Join-Path (Join-Path $env:ProgramFiles 'RelaxKonOS-Release-Acceptance') $request.id

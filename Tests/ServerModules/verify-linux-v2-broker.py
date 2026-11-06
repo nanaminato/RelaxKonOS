@@ -24,9 +24,10 @@ login()
 package_result = json.loads((fixtures/'package-result.json').read_text())
 upload = api('POST','/api/v1.0/server/module-packages/upload',binary=pathlib.Path(package_result['archivePath']).read_bytes())
 plan = api('POST','/api/v1.0/server/module-packages/plans',dict(sourceId='v2-test',releaseId='fixture-http-1',uploadId=upload['uploadId']))
-assert plan['runtime'] == 'module-host' and plan['privileges'][0]['target'] == 'relaxkonos-module-broker-fixture.service'
+assert plan['runtime'] == 'module-host'
+assert plan['privileges'][0]['resources'] == ['service:relaxkonos-module-broker-fixture.service:restart']
 api('POST','/api/v1.0/server/module-packages/plans/'+plan['planId']+'/apply')
-print('PASS signed schemaVersion=2 upload, explicit privilege preview, confirmed install and exact code trust')
+print('PASS signed upload, explicit privilege resource preview, confirmed install and exact code trust')
 restart()
 login()
 inventory = api('GET','/api/v1.0/server/modules')

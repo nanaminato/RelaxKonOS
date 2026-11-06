@@ -235,6 +235,12 @@ Windows 原生夹具已增加真实 SCM StopPending 期间终止独立 Core 的�
 
 报告 `artifacts/modulehost-windows-native/42f7b031848c409c81740de3b66af994/`；独立核对 succeeded=true/checks=61、cleaned=true、临时管理员数量 0、无两类临时服务。前述审批限制已解除，Windows Core 崩溃验收不再列为未验证；Windows Helper 执行中终止及完整发行服务安装/更新仍有剩余。
 
+### Windows 当前正式发行包预检（2026-11-06）
+
+使用生产打包入口生成 Windows x64 自包含 Server 正式包。升级起点为 `b41f91ef` 的 0.2.7，目标为 `f7ec74a5` 的 0.2.8。两个包分别通过当前生产清单校验，Server DLL 内容不同。0.2.7 归档 SHA-256 为 `d06ec471d7ee77dbbe1ee31fc2588c3481ce83d8ec771c2c8b2b59f5c831c421`，0.2.8 为 `2048e00a64fd6aa26fb7b32672901edbdf6360b55ed9d753cbf4228e2cc1d9ee`。制品位于本地验收目录 `.artifacts/current-formal-windows/`。本地清单回归 9 项、Windows 服务载荷 28 项、ModuleHost 快照 4 项、配置 3 项通过。
+
+正式安装及跨版本实机验收仍开放。现有 Windows 测试机已注册 `RelaxKonOSServer` 和 `RelaxKonOSPrivilegedHelper`，现有安装占用正式服务名。该 VMware 客体没有可用的本机 Hyper-V、QEMU 或 VirtualBox 工具。使用空白 Windows x64 隔离实例，以 PowerShell 7 和 Python 3 运行 `Tests/ServerModules/Verify-WindowsReleaseInstallation.ps1`，传入解包后的两版制品、自包含 Windows ModuleHost 测试 runner、对应的 `HostFixture.dll` 和 `-ConfirmMachineChanges`。SSH 已提升令牌可直接启动夹具，交互普通账户仍可经 UAC。正式脚本继续拒绝接管已有同名服务。
+
 ### Linux 正式发行包安装实测（2026-11-01）
 
 PowerShell 正式打包入口新增与 Bash 对等的 `-PackageKind all|client|server`，清理旧输出前校验最终绝对路径仍在选定输出目录内。本轮用 `-Version 0.2.2-v2-acceptance -Runtime linux-x64 -PackageKind server` 生成完整服务端包；文件清单验证通过，传输 SHA-256 为 `a0b4813a0fde8c0bed8d3c832ed171129c5034b8befc4f8930574bf34c9ed0b5`。发行包自身的 schemaVersion=1 与模块安装清单 schemaVersion=2 是不同契约。

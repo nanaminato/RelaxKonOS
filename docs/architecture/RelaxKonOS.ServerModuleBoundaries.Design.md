@@ -967,3 +967,15 @@ ModuleHost 夹具改用当前安装计划的资源声明和审计台账格式，
 当前 ModuleHost Windows 安装夹具最终 **78 项**通过。生产运行时安装函数复用不可变快照并拒绝额外文件及损坏制品。实际 LocalSystem Helper 通过 S4U 启动不同的普通模块 SID，验证私有读写、跨模块和 Helper 管道拒绝。通过已签名包、实际 Core 及真实 Broker 执行，覆盖仅终止 Core、仅终止 LocalSystem Helper、信任撤销三组。每组先读到真实后代 stdout，再观察原根及后代离场。持久回执在中断后保留 RecoveryRequired，重复查询及旧确认未重放 SCM 动作，恢复动作需新明确确认。清理报告为 true，独立查询确认临时 SCM 服务、临时管理员和 Terminal 账号无残留。原服务状态已还原。Windows 当前账户原生 Job 另通过 11 项。
 
 本轮 Core 由提升的测试调用者运行，ModuleHost 使用隔离测试服务和生产运行时安装函数。整套正式发行安装服务、Windows 工作站 owner-device 分支和 ModuleHost 根单独崩溃的 Windows 带内回执未在本机验收。Linux §47 的跨代矩阵仍待独立安装环境。实机证据保存在 `.artifacts/mb06-windows-native-remote/remote-rerun3.log`、`.artifacts/windows-terminal-Server-crash.log` 和 `.artifacts/windows-terminal-helper-crash-retry.log`。
+
+## 49. 三层 Terminal 树、正式制品与 Linux 固定启动器（2026-11-06）
+
+**Windows Terminal 实机通过。** 在已有正式安装 `1.0.0+c58de8e9` 上分别只终止 Server 和 Helper。实际孙进程写入 PTY 标记，故障前核对两级父子关系及根、子、孙三个进程的启动时刻，故障后确认三个原实例均消失，并分别观察传输结束。Helper 组完整通过恢复。Server 组恢复检查在最终关闭会话时遇到 SSH 转发断开，独立复测完整通过。恢复包括无效目录拒绝、普通和管理员执行、真实读写、并发及重连。独立复查确认原 Server 停止、Helper 运行，临时账号为零。当前制品的正式 Terminal 安装待验收。[应用文档](../applications/RelaxKonOS.Terminal.md)
+
+**Windows 正式制品已核验，正式发行服务链待执行。** 生产打包生成不同源码的 Windows x64 自包含 0.2.7 和 0.2.8，两个包均通过生产清单核验，相关本地回归 44 项通过。测试机已有正式服务名，验收入口按设计拒绝接管。该 VMware 客体没有可用的嵌套虚拟机工具。需在正式服务名未占用的隔离 Windows 实例运行安装、升级、恢复与清理。[正式制品及执行条件](RelaxKonOS.ServerModuleV2.Progress.md)
+
+**Linux 固定启动器两代实机通过。** 在私有挂载命名空间中使用生产安装脚本生成策略和精确 sudo 规则，以正式 Server 账号通过实际 `sudo -n --` 启动当前 launcher。两个代次都完成实际后代读写，分别以合作关闭和控制断开结束。独立 session 的后代忽略 SIGTERM，仍获得明确树证明并核实专用 UID 无残留进程。宿主正式策略哈希保持一致。原始证据见 `.artifacts/mb06-linux-fixed-namespace.log`。
+
+**Linux 固定启动器跨代回执实机通过。** 私有命名空间中使用当前 Core 与实际 Helper、PAM、签名包和固定 sudo 启动。待原回执为 Executing、独立 systemd 测试服务正在停止后，仅 SIGKILL 原 Core，确认原根和独立 session 后代已回收且专用 UID 无残留。重启 Core 后读到同一 RecoveryRequired 回执，旧批准与重复读取没有重复服务动作。新代次完成真实读写，新明确批准只执行一次新动作。最后确认新代树回收、宿主正式策略哈希保持一致。夹具运行记录见 `.artifacts/mb06-linux-fixed-core-recovery.log`，现场标识 `core-BNBKVP3J`。此结论覆盖本次隔离固定启动器及真实持久回执路径，宿主共享发行服务未参与故障注入。
+
+缺少实际退出证明时保留未知清理责任。ModuleHost SDK 后台申报及合作 drain 仍开放，未启用闲时 kill、退出或重启。SystemPerformance S1 保持冻结。本轮未测量生产内存变化。
