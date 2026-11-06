@@ -57,4 +57,4 @@ helper_pid=
 other_uid=65534
 [ "$server_uid" != "$other_uid" ] || other_uid=65533
 grep -Eq "event=caller-rejected uid=$other_uid gid=$server_gid .*reason=caller uid is not authorized" "$fixture/helper.log"
-grep -Eq "operation=LinuxSystemProxyApply .*uid=$server_uid success=True" "$fixture/helper.log"
+[ "$(grep -Ec "operation=LinuxSystemProxyApply .*uid=$server_uid success=True" "$fixture/helper.log")" -eq 5 ]

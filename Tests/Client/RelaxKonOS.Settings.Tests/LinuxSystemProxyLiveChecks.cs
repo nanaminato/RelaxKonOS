@@ -26,6 +26,12 @@ internal static class LinuxSystemProxyLiveChecks
     internal static async Task RunAsync(string hostMountNamespace, string hostNetworkNamespace, string mode, uint serverUid, uint socketGid)
     {
         RequireIsolation(hostMountNamespace, hostNetworkNamespace);
+        if (mode == "--linux-system-proxy-live-guard")
+        {
+            RequireServerUid(serverUid);
+            await RunGuardAsync();
+            return;
+        }
         if (mode == "--linux-system-proxy-live-denied")
         {
             var denied = await CreateTransport().ExecuteAsync(new(PrivilegedOperationKind.LinuxSystemProxyApply, LinuxSystemProxy: Desired));
@@ -37,7 +43,7 @@ internal static class LinuxSystemProxyLiveChecks
         }
         if (mode == "--linux-system-proxy-live-worker")
         {
-            if (EffectiveUid() != serverUid || serverUid == 0) throw new InvalidOperationException("Expected the non-root Server UID.");
+            RequireServerUid(serverUid);
             await ApplyAsync(Desired);
             Console.WriteLine("PROXY_APPLIED");
             await Task.Delay(Timeout.InfiniteTimeSpan);
@@ -91,16 +97,21 @@ internal static class LinuxSystemProxyLiveChecks
         await ApplyAsync(Desired with { Enabled = false });
         if (File.ReadAllText(EnvironmentFile) != restored || File.Exists(Journal))
             throw new InvalidOperationException("Repeated recovery changed the environment again.");
-        await VerifyGuardAsync();
-        Console.WriteLine("PASS LINUX SYSTEM PROXY LIVE: process killed, original journal restored once, external edit preserved, non-root Server UID authorized, unlisted UID rejected, guard no-op verified over independent Helper IPC");
+        await VerifyGuardAsync(serverUid, socketGid, hostMountNamespace, hostNetworkNamespace);
+        Console.WriteLine("PASS LINUX SYSTEM PROXY LIVE: process killed, original journal restored once, external edit preserved, non-root Server UID authorized, unlisted UID rejected, non-root guard no-op verified over independent Helper IPC");
     }
 
     [System.Runtime.InteropServices.DllImport("libc", EntryPoint = "geteuid")]
     private static extern uint EffectiveUid();
 
+    private static void RequireServerUid(uint serverUid)
+    {
+        if (EffectiveUid() != serverUid || serverUid == 0) throw new InvalidOperationException("Expected the non-root Server UID.");
+    }
+
     private static Process StartPeer(string mode, uint uid, uint gid, string hostMountNamespace, string hostNetworkNamespace, uint serverUid)
     {
-        var start = new ProcessStartInfo("/usr/bin/setpriv") { UseShellExecute = false, RedirectStandardOutput = true };
+        var start = new ProcessStartInfo("/usr/bin/setpriv") { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardInput = true };
         foreach (var argument in new[] { $"--reuid={uid}", $"--regid={gid}", "--clear-groups", "--no-new-privs", "--",
             "/usr/bin/dotnet", Assembly.GetExecutingAssembly().Location, mode, hostMountNamespace, hostNetworkNamespace,
             serverUid.ToString(System.Globalization.CultureInfo.InvariantCulture), gid.ToString(System.Globalization.CultureInfo.InvariantCulture) })
@@ -108,7 +119,47 @@ internal static class LinuxSystemProxyLiveChecks
         return Process.Start(start) ?? throw new InvalidOperationException("Unable to start isolated proxy IPC peer.");
     }
 
-    private static async Task VerifyGuardAsync()
+    private static async Task VerifyGuardAsync(uint serverUid, uint socketGid, string hostMountNamespace, string hostNetworkNamespace)
+    {
+        using var peer = StartPeer("--linux-system-proxy-live-guard", serverUid, socketGid, hostMountNamespace, hostNetworkNamespace, serverUid);
+        async Task ExpectAsync(string expected)
+        {
+            var observed = await peer.StandardOutput.ReadLineAsync().WaitAsync(Budget);
+            if (observed != expected) throw new InvalidOperationException($"Expected guard phase {expected}; got {observed}.");
+        }
+
+        try
+        {
+            await ExpectAsync("GUARD_APPLIED");
+            var firstWrite = File.GetLastWriteTimeUtc(Journal);
+            var original = File.ReadAllBytes(Journal);
+            await ExpectAsync("GUARD_STABLE");
+            if (File.GetLastWriteTimeUtc(Journal) != firstWrite || !File.ReadAllBytes(Journal).SequenceEqual(original))
+                throw new InvalidOperationException("An unchanged guard pass rewrote its ownership journal.");
+
+            WriteExternalProxy("http://127.0.0.1:3456");
+            await ExpectAsync("GUARD_STOPPED");
+            var guarded = LinuxEnvironmentDocument.Parse(File.ReadAllText(EnvironmentFile)).Values;
+            if (guarded.GetValueOrDefault("http_proxy") != "http://127.0.0.1:17890")
+                throw new InvalidOperationException("The enabled guard did not restore its configured proxy.");
+
+            WriteExternalProxy("http://127.0.0.1:4567");
+            await peer.StandardInput.WriteLineAsync("RESTORE");
+            await peer.StandardInput.FlushAsync();
+            await ExpectAsync("GUARD_RESTORED");
+            await peer.WaitForExitAsync().WaitAsync(Budget);
+            if (peer.ExitCode != 0 || File.Exists(Journal) || LinuxEnvironmentDocument.Parse(File.ReadAllText(EnvironmentFile))
+                .Values.GetValueOrDefault("http_proxy") != "http://127.0.0.1:4567")
+                throw new InvalidOperationException("Startup teardown must retain the newer external proxy setting.");
+        }
+        finally
+        {
+            if (!peer.HasExited) peer.Kill();
+            await peer.WaitForExitAsync().WaitAsync(Budget);
+        }
+    }
+
+    private static async Task RunGuardAsync()
     {
         var paths = new FixturePaths();
         var reader = new GuardSettings();
@@ -126,27 +177,20 @@ internal static class LinuxSystemProxyLiveChecks
         try
         {
             await transport.Applied.Reader.ReadAsync().AsTask().WaitAsync(Budget);
-            var firstWrite = File.GetLastWriteTimeUtc(Journal);
-            var original = File.ReadAllBytes(Journal);
+            Console.WriteLine("GUARD_APPLIED");
             await transport.Applied.Reader.ReadAsync().AsTask().WaitAsync(Budget);
-            if (File.GetLastWriteTimeUtc(Journal) != firstWrite || !File.ReadAllBytes(Journal).SequenceEqual(original))
-                throw new InvalidOperationException("An unchanged guard pass rewrote its ownership journal.");
-
-            const string competing = "http://127.0.0.1:3456";
-            WriteExternalProxy(competing);
+            Console.WriteLine("GUARD_STABLE");
             await transport.Applied.Reader.ReadAsync().AsTask().WaitAsync(Budget);
-            var guarded = LinuxEnvironmentDocument.Parse(File.ReadAllText(EnvironmentFile)).Values;
-            if (guarded.GetValueOrDefault("http_proxy") != "http://127.0.0.1:17890")
-                throw new InvalidOperationException("The enabled guard did not restore its configured proxy.");
         }
         finally { await guard.StopAsync(default).WaitAsync(Budget); }
 
-        WriteExternalProxy("http://127.0.0.1:4567");
+        Console.WriteLine("GUARD_STOPPED");
+        if (await Console.In.ReadLineAsync().WaitAsync(Budget) != "RESTORE")
+            throw new InvalidOperationException("Missing isolated restore signal.");
         reader.Enabled = false;
-        if (await reconciler.ReconcileSystemProxyAsync(startup: true, default) is not null
-            || File.Exists(Journal) || LinuxEnvironmentDocument.Parse(File.ReadAllText(EnvironmentFile)).Values.GetValueOrDefault("http_proxy")
-                != "http://127.0.0.1:4567")
-            throw new InvalidOperationException("Startup teardown must retain the newer external proxy setting.");
+        if (await reconciler.ReconcileSystemProxyAsync(startup: true, default) is not null)
+            throw new InvalidOperationException("Non-root startup teardown failed.");
+        Console.WriteLine("GUARD_RESTORED");
     }
 
     private static void WriteExternalProxy(string value)
@@ -190,7 +234,7 @@ internal static class LinuxSystemProxyLiveChecks
 
     private sealed class FixturePaths : IProxyPlatformPaths
     {
-        public string GetStateDirectory() => "/var/lib/relaxkonos-system-proxy/guard-state";
+        public string GetStateDirectory() => "/run/rk-proxy-guard-state";
         public string GetEngineVersionsDirectory(string engineId) => throw new NotSupportedException();
         public string GetEngineDataDirectory(string engineId) => throw new NotSupportedException();
         public string GetProtectedConfigurationDirectory() => throw new NotSupportedException();

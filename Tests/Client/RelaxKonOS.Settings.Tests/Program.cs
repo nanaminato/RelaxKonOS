@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.Globalization;
 using RelaxKonOS.Protocol.Workspace;
 if (args is [var mode, var hostMount, var hostNetwork, var serverUid, var socketGid]
-    && mode is "--linux-system-proxy-live-only" or "--linux-system-proxy-live-worker" or "--linux-system-proxy-live-denied")
+    && mode is "--linux-system-proxy-live-only" or "--linux-system-proxy-live-worker" or "--linux-system-proxy-live-denied" or "--linux-system-proxy-live-guard")
 {
     await LinuxSystemProxyLiveChecks.RunAsync(hostMount, hostNetwork, mode,
         uint.Parse(serverUid, CultureInfo.InvariantCulture), uint.Parse(socketGid, CultureInfo.InvariantCulture));
