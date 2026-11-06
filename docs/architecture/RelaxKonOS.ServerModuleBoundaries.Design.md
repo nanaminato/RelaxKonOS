@@ -1225,3 +1225,9 @@ Linux x64 Release 实机使用生产 FileCertificateStore 保存第二张自签�
 PASS NGINX LIVE SITE TLS: local and managed certificate bindings applied, certificate=00ffc68b-f14d-4959-bbad-6ce61d6d8dd3; reloads=2
 
 日志为 .artifacts/mb05-nginx-managed-live.log，归档 SHA-256 为 c38990ce7d3e5f6f0be35307e66d3b230ccd599c3353499b81d64befafcf9b3d。暂存配置检查期间出现重复 server_name 警告，最终配置检查和实际 TLS 均通过。网站发布协调器跨进程恢复仍待验收。
+
+### 网站发布协调器进程崩溃
+
+Linux x64 Release 在私有网络及挂载命名空间运行生产发布协调器、证书仓库、站点 provider 和独立 Nginx。应用运行状态由 Docker 观察夹具提供，上游为真实回环 HTTP 服务。发布进入 Verifying 后，工作租约仍在，原台账和应用关联已落盘。父进程使用 SNI 及指定证书指纹验证 Nginx 已代理实际流量，再强制终止发布工作进程。
+
+启动恢复将原操作 61f0e452-39ff-4e1c-b144-bfcc5a1a62b6 持久化为 Interrupted。同键返回原操作和问题码。原 master 在恢复后继续通过 HTTPS 代理同一上游，应用关联保留，发布只触发一次重载。日志为 .artifacts/mb05-nginx-publication-live-san.log，制品 SHA-256 为 f9c77392701e801a355058bf3e8a4c9937cc22d9e6b22f7e7b4a1823b5cf7c78。初次测试的 PEM 读取及 TLS 探测失败在夹具中修正，最终实机通过。发布协调器的证书查询 DTO 和验证阻断使用夹具，独立 CA 签发见 §52。

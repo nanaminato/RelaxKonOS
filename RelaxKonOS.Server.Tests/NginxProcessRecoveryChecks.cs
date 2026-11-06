@@ -1,3 +1,9 @@
+using System.Reflection;
+using Microsoft.AspNetCore.DataProtection;
+using RelaxKonOS.Protocol.ApplicationDeployments;
+using RelaxKonOS.Protocol.WebsitePublishing;
+using RelaxKonOS.Server.ApplicationDeployments;
+using RelaxKonOS.Server.WebsitePublishing;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -184,12 +190,156 @@ internal static class NginxProcessRecoveryChecks
             using var managedClient = CreatePinnedClient(managedCertificate);
             await ObserveAsync(managedClient, new Uri("https://127.0.0.1/"), "production TLS site", nginx);
             TestAssert.Assert(CountReloads(root) == 2, "The managed certificate binding must add exactly one reload.");
-            Console.WriteLine($"PASS NGINX LIVE SITE TLS: local and managed certificate bindings applied, certificate={certificateId}; reloads=2");
+            await VerifyPublicationCrashAsync(root, nginx, budget.Token);
+            Console.WriteLine($"PASS NGINX LIVE SITE TLS: local and managed certificate bindings applied, certificate={certificateId}; binding reloads=2");
         }
         finally
         {
             if (!nginx.HasExited) nginx.Kill(entireProcessTree: true);
             await nginx.WaitForExitAsync().WaitAsync(Budget);
+        }
+    }
+
+    private const string PublicationKey = "publish-crash";
+    private const string PublicationDomain = "localhost";
+    private const int UpstreamPort = 18080;
+
+    private static async Task VerifyPublicationCrashAsync(string root, Process nginx, CancellationToken cancellationToken)
+    {
+        // Give the new publication a separate SNI name and a real loopback upstream.
+        using var upstream = new HttpListener();
+        upstream.Prefixes.Add($"http://localhost:{UpstreamPort}/");
+        upstream.Start();
+        var responseTask = ReplyOnceAsync();
+        using var worker = DockerProcessRecoveryChecks.StartWorker("--nginx-publication-worker", root, nginx.Id.ToString());
+        try
+        {
+            var line = await worker.StandardOutput.ReadLineAsync(cancellationToken);
+            TestAssert.Assert(Guid.TryParse(line, out var operationId), $"Missing publication receipt: {line}");
+            TestAssert.Assert(await worker.StandardOutput.ReadLineAsync(cancellationToken) == "verifying",
+                "The publication must finish site application and association before interruption.");
+            var environment = new TestHostEnvironment(root);
+            var options = new ApplicationDeploymentOptions();
+            var catalog = new ApplicationDeploymentCatalogStore(environment, options);
+            var app = catalog.ReadApplications().Single();
+            var store = new WebsitePublicationStore(environment);
+            var running = store.Get(operationId);
+            TestAssert.Assert(running is { Stage: WebsitePublicationStage.Verifying } && WebsitePublicationStore.Active(running)
+                && app.SiteId == running.SiteId && running.CertificateId is not null,
+                "The original Verifying receipt and committed association must be durable.");
+
+            using var certificate = X509Certificate2.CreateFromPem(await File.ReadAllTextAsync(Path.Combine(root, "publication.pem"), cancellationToken));
+            using var client = CreatePinnedClient(certificate);
+            var address = new Uri($"https://{PublicationDomain}/");
+            await ObserveAsync(client, address, "published upstream", nginx);
+            var before = CountReloads(root);
+            TestAssert.Assert(before == 3,
+                "The published site must proxy actual TLS traffic after a single publication reload.");
+            await responseTask;
+
+            worker.Kill();
+            await worker.WaitForExitAsync(cancellationToken);
+            TestAssert.Assert(worker.ExitCode != 0, "The publication worker must exit abnormally.");
+
+            var recoveredStore = new WebsitePublicationStore(environment);
+            using var restarted = new WebsitePublicationCoordinator(recoveredStore, null!, catalog, null!, null!, null!, null!,
+                new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, new TestResidentBackgroundLeases());
+            await restarted.StartAsync(cancellationToken);
+            var restored = restarted.Get(operationId);
+            var replay = await restarted.StartAsync(new(app.Id, running!.WebServerId, PublicationDomain, running.CertificateId, Confirmed: true),
+                Actor, PublicationKey, cancellationToken);
+            TestAssert.Assert(restored is { State: WebsitePublicationState.Interrupted }
+                && replay.OperationId == operationId && replay.State == restored.State && replay.ProblemCode == restored.ProblemCode
+                && new WebsitePublicationStore(environment).Get(operationId)?.State == restored.State,
+                "Startup and same-key retry must preserve the original interrupted publication.");
+
+            responseTask = ReplyOnceAsync();
+            using var afterClient = CreatePinnedClient(certificate);
+            TestAssert.Assert(await afterClient.GetStringAsync(address, cancellationToken) == "published upstream"
+                && CountReloads(root) == before && !nginx.HasExited
+                && catalog.ReadApplications().Single().SiteId == running.SiteId,
+                "Publication recovery must preserve live TLS, the association and the original reload count.");
+            await responseTask;
+            await restarted.StopAsync(cancellationToken);
+            Console.WriteLine($"PASS NGINX LIVE PUBLICATION CRASH: operation={operationId}; original interrupted receipt; publication reloads=1");
+        }
+        finally
+        {
+            await DockerProcessRecoveryChecks.StopWorkerAsync(worker);
+            upstream.Stop();
+            try { await responseTask; }
+            catch (HttpListenerException) { }
+            catch (ObjectDisposedException) { }
+        }
+
+        async Task ReplyOnceAsync()
+        {
+            var context = await upstream.GetContextAsync();
+            using var response = context.Response;
+            var bytes = "published upstream"u8.ToArray();
+            response.ContentLength64 = bytes.Length;
+            await response.OutputStream.WriteAsync(bytes, cancellationToken);
+        }
+    }
+
+    internal static async Task RunPublicationWorkerAsync(string root, int nginxPid)
+    {
+        using var nginx = Process.GetProcessById(nginxPid);
+        using var store = await OpenStoreAsync(root);
+        var environment = new TestHostEnvironment(root);
+        var options = new ApplicationDeploymentOptions();
+        var catalog = new ApplicationDeploymentCatalogStore(environment, options);
+        var secrets = new ApplicationDeploymentSecretStore(environment, options, new EphemeralDataProtectionProvider(), catalog);
+        var engine = DispatchProxy.Create<IDockerEngineService, BackgroundWebsiteEngine>();
+        var verification = new PublicationCrashVerification();
+        var clients = new FixtureHttpClientFactory([]);
+        var runtime = new ApplicationDeploymentRuntime(engine, options, clients, NullLogger<ApplicationDeploymentRuntime>.Instance);
+        var applications = new ApplicationDeploymentManager(catalog, secrets, new ApplicationDeploymentOperationStore(environment, options),
+            runtime, options, new ApplicationDeploymentImageTagCatalog(clients, NullLogger<ApplicationDeploymentImageTagCatalog>.Instance));
+        var app = await applications.CreateAsync(new CreateApplicationRequest("live-publication", ApplicationSourceKind.Image,
+            HostPort: UpstreamPort), Actor, default);
+        ((BackgroundWebsiteEngine)(object)engine).SetRunning(app.Id);
+
+        var certificateId = Guid.NewGuid();
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var certificateRequest = new CertificateRequest($"CN={PublicationDomain}", key, HashAlgorithmName.SHA256);
+        var names = new SubjectAlternativeNameBuilder();
+        names.AddDnsName(PublicationDomain);
+        certificateRequest.CertificateExtensions.Add(names.Build());
+        using var certificate = certificateRequest.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddHours(1));
+        var material = new CertificateMaterial(certificateId, [PublicationDomain], CertificateChallengeType.WebRootHttp01,
+            CertificateKeyAlgorithm.EcdsaP256, null, certificate.ExportCertificatePem(), key.ExportPkcs8PrivateKeyPem(),
+            DateTimeOffset.UtcNow, Kind: CertificateKind.SelfSigned);
+        var certificates = new FileCertificateStore(environment, new CertificateOptions { StorageRoot = Path.Combine(root, "certificates") },
+            new CertificateMetadataRepository(environment, TestConfiguration()));
+        await certificates.SaveAsync(material, default);
+        await File.WriteAllTextAsync(Path.Combine(root, "publication.pem"), material.CertificatePem);
+        var provider = CreateProvider(root, store, new IsolatedSiteTransport(root, nginx), certificates);
+        var instance = await FindManagedInstanceAsync(provider);
+        var certificateManager = DispatchProxy.Create<ICertificateManager, BackgroundWebsiteCertificate>();
+        ((BackgroundWebsiteCertificate)(object)certificateManager).Domain = PublicationDomain;
+        using var coordinator = new WebsitePublicationCoordinator(new WebsitePublicationStore(environment), applications, catalog,
+            new WebServerManager([provider]), certificateManager, null!, verification, new TestApplicationLifetime(),
+            NullLogger<WebsitePublicationCoordinator>.Instance, new TestResidentBackgroundLeases());
+        await coordinator.StartAsync(default);
+        var receipt = await coordinator.StartAsync(new(app.Id, instance.Id, PublicationDomain, certificateId, Confirmed: true), Actor, PublicationKey);
+        Console.WriteLine(receipt.OperationId);
+        await verification.Entered.Task.WaitAsync(Budget);
+        TestAssert.Assert(coordinator.HasResponsibility, "The live publication must hold its lease while verifying.");
+        Console.WriteLine("verifying");
+        await Task.Delay(Timeout.InfiniteTimeSpan);
+    }
+
+    private sealed class PublicationCrashVerification : HttpMessageHandler, IHttpClientFactory
+    {
+        internal readonly TaskCompletionSource Entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public HttpClient CreateClient(string name) => new(this, disposeHandler: false);
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Entered.SetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            throw new InvalidOperationException("Publication crash barrier ended.");
         }
     }
 

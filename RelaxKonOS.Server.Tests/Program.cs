@@ -72,6 +72,11 @@ if (args is ["--nginx-recovery-worker", var nginxWorkerExecutable, var nginxWork
     await NginxProcessRecoveryChecks.RunWorkerAsync(nginxWorkerExecutable, nginxWorkerRoot);
     return;
 }
+if (args is ["--nginx-publication-worker", var publicationRoot, var publicationNginxPid])
+{
+    await NginxProcessRecoveryChecks.RunPublicationWorkerAsync(publicationRoot, int.Parse(publicationNginxPid));
+    return;
+}
 if (args is ["--nginx-live-site-only", var nginxSiteRoot])
 {
     await NginxProcessRecoveryChecks.RunSiteAsync(nginxSiteRoot);
