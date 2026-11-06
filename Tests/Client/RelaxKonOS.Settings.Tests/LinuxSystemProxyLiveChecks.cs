@@ -23,11 +23,21 @@ internal static class LinuxSystemProxyLiveChecks
     private static readonly TimeSpan Budget = TimeSpan.FromSeconds(15);
     private static readonly LinuxSystemProxyConfiguration Desired = new(true, "127.0.0.1", 17890, true, "");
 
-    internal static async Task RunAsync(string hostMountNamespace, string hostNetworkNamespace, bool worker)
+    internal static async Task RunAsync(string hostMountNamespace, string hostNetworkNamespace, string mode, uint serverUid, uint socketGid)
     {
         RequireIsolation(hostMountNamespace, hostNetworkNamespace);
-        if (worker)
+        if (mode == "--linux-system-proxy-live-denied")
         {
+            var denied = await CreateTransport().ExecuteAsync(new(PrivilegedOperationKind.LinuxSystemProxyApply, LinuxSystemProxy: Desired));
+            // Closing a rejected socket before reading Hello can surface as a reset to this client.
+            // The launcher independently requires the server's peer-rejection event.
+            if (denied.Success || denied.ProblemCode is not (PrivilegedProblemCode.AccessDenied or PrivilegedProblemCode.HelperUnavailable))
+                throw new InvalidOperationException($"Unexpected rejected peer result: {denied.ProblemCode}.");
+            return;
+        }
+        if (mode == "--linux-system-proxy-live-worker")
+        {
+            if (EffectiveUid() != serverUid || serverUid == 0) throw new InvalidOperationException("Expected the non-root Server UID.");
             await ApplyAsync(Desired);
             Console.WriteLine("PROXY_APPLIED");
             await Task.Delay(Timeout.InfiniteTimeSpan);
@@ -36,12 +46,14 @@ internal static class LinuxSystemProxyLiveChecks
 
         if (File.ReadAllText(EnvironmentFile) != Original || File.Exists(Journal))
             throw new InvalidOperationException("Expected a fresh isolated proxy environment.");
-        var start = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false, RedirectStandardOutput = true };
-        if (Path.GetFileNameWithoutExtension(start.FileName) == "dotnet")
-            start.ArgumentList.Add(Assembly.GetExecutingAssembly().Location);
-        foreach (var argument in new[] { "--linux-system-proxy-live-worker", hostMountNamespace, hostNetworkNamespace })
-            start.ArgumentList.Add(argument);
-        using (var original = Process.Start(start) ?? throw new InvalidOperationException("Unable to start proxy worker."))
+        var otherUid = serverUid == 65534 ? 65533u : 65534u;
+        using (var rejected = StartPeer("--linux-system-proxy-live-denied", otherUid, socketGid, hostMountNamespace, hostNetworkNamespace, serverUid))
+        {
+            await rejected.WaitForExitAsync().WaitAsync(Budget);
+            if (rejected.ExitCode != 0 || File.ReadAllText(EnvironmentFile) != Original || File.Exists(Journal))
+                throw new InvalidOperationException("An unlisted UID reached the proxy writer.");
+        }
+        using (var original = StartPeer("--linux-system-proxy-live-worker", serverUid, socketGid, hostMountNamespace, hostNetworkNamespace, serverUid))
         {
             try
             {
@@ -80,7 +92,20 @@ internal static class LinuxSystemProxyLiveChecks
         if (File.ReadAllText(EnvironmentFile) != restored || File.Exists(Journal))
             throw new InvalidOperationException("Repeated recovery changed the environment again.");
         await VerifyGuardAsync();
-        Console.WriteLine("PASS LINUX SYSTEM PROXY LIVE: process killed, original journal restored once, external edit preserved, guard no-op verified over independent Helper IPC");
+        Console.WriteLine("PASS LINUX SYSTEM PROXY LIVE: process killed, original journal restored once, external edit preserved, non-root Server UID authorized, unlisted UID rejected, guard no-op verified over independent Helper IPC");
+    }
+
+    [System.Runtime.InteropServices.DllImport("libc", EntryPoint = "geteuid")]
+    private static extern uint EffectiveUid();
+
+    private static Process StartPeer(string mode, uint uid, uint gid, string hostMountNamespace, string hostNetworkNamespace, uint serverUid)
+    {
+        var start = new ProcessStartInfo("/usr/bin/setpriv") { UseShellExecute = false, RedirectStandardOutput = true };
+        foreach (var argument in new[] { $"--reuid={uid}", $"--regid={gid}", "--clear-groups", "--no-new-privs", "--",
+            "/usr/bin/dotnet", Assembly.GetExecutingAssembly().Location, mode, hostMountNamespace, hostNetworkNamespace,
+            serverUid.ToString(System.Globalization.CultureInfo.InvariantCulture), gid.ToString(System.Globalization.CultureInfo.InvariantCulture) })
+            start.ArgumentList.Add(argument);
+        return Process.Start(start) ?? throw new InvalidOperationException("Unable to start isolated proxy IPC peer.");
     }
 
     private static async Task VerifyGuardAsync()

@@ -2,10 +2,11 @@ using RelaxKonOS.Client.Services;
 using System.Diagnostics;
 using System.Globalization;
 using RelaxKonOS.Protocol.Workspace;
-if (args is [var mode, var hostMount, var hostNetwork]
-    && mode is "--linux-system-proxy-live-only" or "--linux-system-proxy-live-worker")
+if (args is [var mode, var hostMount, var hostNetwork, var serverUid, var socketGid]
+    && mode is "--linux-system-proxy-live-only" or "--linux-system-proxy-live-worker" or "--linux-system-proxy-live-denied")
 {
-    await LinuxSystemProxyLiveChecks.RunAsync(hostMount, hostNetwork, worker: mode == "--linux-system-proxy-live-worker");
+    await LinuxSystemProxyLiveChecks.RunAsync(hostMount, hostNetwork, mode,
+        uint.Parse(serverUid, CultureInfo.InvariantCulture), uint.Parse(socketGid, CultureInfo.InvariantCulture));
     return;
 }
 LinuxSystemProxyChecks.Run();
