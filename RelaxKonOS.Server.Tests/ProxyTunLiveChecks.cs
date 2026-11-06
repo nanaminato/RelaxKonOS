@@ -14,11 +14,12 @@ internal static class ProxyTunLiveChecks
         try
         {
             await RunIpAsync("address", "add", "192.0.2.2/24", "dev", "rk-egress");
-            await RunIpAsync("address", "add", "192.0.2.1/24", "dev", "rk-peer");
+            await RunIpAsync("address", "add", "192.0.2.3/24", "dev", "rk-peer");
             await RunIpAsync("link", "set", "rk-egress", "up");
             await RunIpAsync("link", "set", "rk-peer", "up");
             await AddDefaultRouteAsync();
             await RunIpAsync("link", "set", "lo", "up");
+            var baselineRules = await ReadRulesAsync();
             var directory = Directory.CreateTempSubdirectory("relaxkonos-tun-crash-");
             try
             {
@@ -40,6 +41,15 @@ internal static class ProxyTunLiveChecks
                                 "The original worker must own a real TUN transition before termination.");
                             TestAssert.Assert((await safety.GetStatusAsync(default)) is { RecoveryRequired: true, HasRecoveryMarker: true },
                                 "The original incomplete marker must be durable before the crash.");
+                            if (mihomo is not null)
+                            {
+                                var tunneled = await RunIpAsync("route", "get", "198.51.100.10");
+                                var management = await RunIpAsync("route", "get", "192.0.2.1");
+                                TestAssert.Assert(tunneled.Contains($" dev {Device} ", StringComparison.Ordinal)
+                                    && management.Contains(" dev rk-egress ", StringComparison.Ordinal)
+                                    && await ReadRulesAsync() != baselineRules,
+                                    $"Automatic routing must select TUN while excluding the management gateway. Probe={tunneled}; gateway={management}");
+                            }
                             worker.Kill();
                             await worker.WaitForExitAsync().WaitAsync(Budget);
                             TestAssert.Assert(worker.ExitCode != 0 && await DeviceExistsAsync(),
@@ -64,6 +74,13 @@ internal static class ProxyTunLiveChecks
                         && await safety.CaptureRecoveryAsync(default) is null && runtime.Removals == 1
                         && calls.Reloads == disableRequests,
                         "Verified route recovery must clear the original marker without a second TUN removal.");
+                    if (mihomo is not null)
+                    {
+                        var restoredRoute = await RunIpAsync("route", "get", "198.51.100.10");
+                        TestAssert.Assert(await ReadRulesAsync() == baselineRules
+                            && restoredRoute.Contains(" via 192.0.2.1 dev rk-egress ", StringComparison.Ordinal),
+                            $"Recovery must remove TUN policy rules and restore the baseline route. Probe={restoredRoute}");
+                    }
 
                     TestAssert.Assert(await safety.EnableAsync(Guid.NewGuid(), null, default) is null,
                         "A fresh activation should succeed after the original route is verified.");
@@ -77,7 +94,7 @@ internal static class ProxyTunLiveChecks
                     if (mihomo is not null)
                         TestAssert.Assert(!mihomo.HasExited && (await runtime.IsEnabledAsync(default)) is { Succeeded: true, Enabled: false },
                             "The original Mihomo process must remain reachable with TUN disabled.");
-                    Console.WriteLine($"PASS TUN LIVE RECOVERY: operation={original.OperationId}; real device removed once, route verified, stale recovery rejected; initial recovery reloads={disableRequests}; mihomo={mihomo is not null}");
+                    Console.WriteLine($"PASS TUN LIVE RECOVERY: operation={original.OperationId}; real device removed once, route verified, stale recovery rejected; initial recovery reloads={disableRequests}; auto-route={mihomo is not null}; mihomo={mihomo is not null}");
                 }
                 finally { if (mihomo is not null) await DockerProcessRecoveryChecks.StopWorkerAsync(mihomo); }
             }
@@ -168,7 +185,7 @@ internal static class ProxyTunLiveChecks
     {
         public Task<ProxySettingsDto> GetAsync(CancellationToken cancellationToken) =>
             Task.FromResult(new ProxySettingsDto(false, false, false, false, false, "error", 0,
-                Tun: ProxyTunSettingsDto.Default with { DeviceName = Device, AutoRoute = false, AutoDetectInterface = false }));
+                Tun: ProxyTunSettingsDto.Default with { DeviceName = Device, AutoRoute = true, AutoDetectInterface = false }));
     }
 
     private static async Task RequirePrivateNamespaceAsync(string originalNamespace)
@@ -185,10 +202,14 @@ internal static class ProxyTunLiveChecks
     private static async Task<bool> DeviceExistsAsync() =>
         (await RunToolAsync("/usr/sbin/ip", "link", "show", "dev", Device)).Code == 0;
 
-    private static async Task RunIpAsync(params string[] args)
+    private static async Task<string> ReadRulesAsync() =>
+        await RunIpAsync("-4", "rule", "show") + await RunIpAsync("-6", "rule", "show");
+
+    private static async Task<string> RunIpAsync(params string[] args)
     {
         var (code, output) = await RunToolAsync("/usr/sbin/ip", args);
         if (code != 0) throw new InvalidOperationException($"Isolated ip {string.Join(' ', args)} failed: {output}");
+        return output;
     }
 
     private static async Task<(int Code, string Output)> RunToolAsync(string executable, params string[] args)
