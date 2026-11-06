@@ -62,7 +62,11 @@ internal static class ProxyExpiryLiveChecks
                 NullLogger<ProxyServerExpiryService>.Instance);
             await expiry.ReconcileAsync(default);
             TestAssert.Assert(transport.ApplyCalls == 0, "Idle expiry must leave the live instance alone.");
-            await AssertAuthorizedAsync(origin, inboundPort, fingerprint, expiring);
+            using var initialBudget = new CancellationTokenSource(Budget);
+            using var expiringConnection = await ConnectAsync(inboundPort, fingerprint, initialBudget.Token);
+            using var expiringOrigin = await ForwardAsync(origin, expiringConnection, expiring, initialBudget.Token);
+            using var retainedConnection = await ConnectAsync(inboundPort, fingerprint, initialBudget.Token);
+            using var retainedOrigin = await ForwardAsync(origin, retainedConnection, retained, initialBudget.Token);
 
             var expiresAt = DateTimeOffset.UtcNow.AddSeconds(2);
             await store.WriteAsync(ProxyServerState.Empty with
@@ -80,14 +84,19 @@ internal static class ProxyExpiryLiveChecks
             TestAssert.Assert((await store.ReadAsync(default)).PendingPublication is not null,
                 "Response loss must retain the original pending publication.");
 
-            await AssertAuthorizedAsync(origin, inboundPort, fingerprint, retained);
+            using var closureBudget = new CancellationTokenSource(Budget);
+            await AssertClosedAsync(expiringConnection, closureBudget.Token);
+            await AssertClosedAsync(expiringOrigin.GetStream(), closureBudget.Token);
+            await AssertClosedAsync(retainedConnection, closureBudget.Token);
+            await AssertClosedAsync(retainedOrigin.GetStream(), closureBudget.Token);
+
+            using var retainedProbe = await ConnectAsync(inboundPort, fingerprint, closureBudget.Token);
+            using var retainedProbeOrigin = await ForwardAsync(origin, retainedProbe, retained, closureBudget.Token);
             using (var deadline = new CancellationTokenSource(Budget))
             using (var denied = await ConnectAsync(inboundPort, fingerprint, deadline.Token))
             {
                 await SendAsync(denied, originPort, expiring, deadline.Token);
-                var received = new byte[1];
-                try { TestAssert.Assert(await denied.ReadAsync(received, deadline.Token) == 0, "Expired UUID received a VLESS response."); }
-                catch (IOException) { /* The real peer can reset the rejected connection. */ }
+                await AssertClosedAsync(denied, deadline.Token);
             }
 
             TestAssert.Assert(!origin.Pending(), "The expired UUID reached the origin.");
@@ -96,24 +105,33 @@ internal static class ProxyExpiryLiveChecks
             var confirmed = await reopened.ReadAsync(default);
             TestAssert.Assert(confirmed.PendingPublication is null && confirmed.Published!.Credentials.Single().Id == retainedId
                 && transport.ApplyCalls == 1, "Recovery must confirm the applied material without a second mutation.");
-            Console.WriteLine("PASS SING-BOX LIVE EXPIRY: pre-expiry forwarded, expired rejected, retained forwarded, lost reply recovered; apply=1");
+            Console.WriteLine("PASS SING-BOX LIVE EXPIRY: pre-expiry forwarded, old streams closed, expired rejected, retained reconnected, lost reply recovered; apply=1");
         }
         finally { directory.Delete(recursive: true); }
     }
 
-    private static async Task AssertAuthorizedAsync(TcpListener origin, int inboundPort, string fingerprint, Guid uuid)
+    private static async Task<TcpClient> ForwardAsync(TcpListener origin, Stream stream, Guid uuid, CancellationToken ct)
     {
-        using var deadline = new CancellationTokenSource(Budget);
-        using var stream = await ConnectAsync(inboundPort, fingerprint, deadline.Token);
-        await SendAsync(stream, ((IPEndPoint)origin.LocalEndpoint).Port, uuid, deadline.Token);
-        using var accepted = await origin.AcceptTcpClientAsync(deadline.Token);
-        var data = new byte[1];
-        await accepted.GetStream().ReadExactlyAsync(data, deadline.Token);
-        TestAssert.Assert(data[0] == 42, "The authorized VLESS request did not reach its origin.");
-        await accepted.GetStream().WriteAsync(data, deadline.Token);
-        var response = new byte[3];
-        await stream.ReadExactlyAsync(response, deadline.Token);
-        TestAssert.Assert(response.AsSpan().SequenceEqual(new byte[] { 0, 0, 42 }), "The authorized VLESS response was not forwarded.");
+        await SendAsync(stream, ((IPEndPoint)origin.LocalEndpoint).Port, uuid, ct);
+        var accepted = await origin.AcceptTcpClientAsync(ct);
+        try
+        {
+            var data = new byte[1];
+            await accepted.GetStream().ReadExactlyAsync(data, ct);
+            TestAssert.Assert(data[0] == 42, "The authorized VLESS request did not reach its origin.");
+            await accepted.GetStream().WriteAsync(data, ct);
+            var response = new byte[3];
+            await stream.ReadExactlyAsync(response, ct);
+            TestAssert.Assert(response.AsSpan().SequenceEqual(new byte[] { 0, 0, 42 }), "The authorized VLESS response was not forwarded.");
+            return accepted;
+        }
+        catch { accepted.Dispose(); throw; }
+    }
+
+    private static async Task AssertClosedAsync(Stream stream, CancellationToken ct)
+    {
+        try { TestAssert.Assert(await stream.ReadAsync(new byte[1], ct) == 0, "Expected the peer to close without forwarding another byte."); }
+        catch (IOException) when (!ct.IsCancellationRequested) { /* A peer reset also terminates the stream. */ }
     }
 
     private static async Task<SslStream> ConnectAsync(int port, string fingerprint, CancellationToken ct)
