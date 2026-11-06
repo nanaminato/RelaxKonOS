@@ -149,8 +149,8 @@ internal sealed class WebsitePublicationCoordinator(
 
             try
             {
-                stopping.ThrowIfCancellationRequested();
-                SetStage(operationId, WebsitePublicationStage.Associating, siteId: site.Id, certificateId: certificateId);
+                // Site application has already committed. Finish the association or its compensation
+                // before honoring shutdown, so the live site and catalog cannot diverge.
                 catalog.BindSite(application.Id, server.Id, site.Id, site.DomainsDisplay);
             }
             catch (Exception error) when (error is ApplicationDeploymentException or IOException)
@@ -159,6 +159,8 @@ internal sealed class WebsitePublicationCoordinator(
                 throw new WebsitePublicationException(rollback ? "website.application_association_failed" : "website.application_association_recovery_failed", 503);
             }
 
+            SetStage(operationId, WebsitePublicationStage.Associating, siteId: site.Id, certificateId: certificateId);
+            stopping.ThrowIfCancellationRequested();
             SetStage(operationId, WebsitePublicationStage.Verifying, siteId: site.Id, certificateId: certificateId);
             checks.AddRange(await VerifyAsync(request.Domain, stopping));
             stopping.ThrowIfCancellationRequested();
@@ -229,7 +231,7 @@ internal sealed class WebsitePublicationCoordinator(
         }
         try
         {
-            var client = httpClients.CreateClient("WebsitePublicationVerification");
+            using var client = httpClients.CreateClient("WebsitePublicationVerification");
             using var response = await client.GetAsync($"https://{domain}/", HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             checks.Add(new("tls", "host", WebsitePublicationCheckState.Passed, "", DateTimeOffset.UtcNow));
             var httpPassed = response.IsSuccessStatusCode || (int)response.StatusCode is >= 300 and < 400;

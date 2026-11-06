@@ -606,3 +606,5 @@ relaxkonos.role={workload|candidate}
 - 2026-09-20：修正集合路由重复前缀：`ApplicationDeploymentEndpoints` 的集合读/写端点改用相对常量 `ApplicationsPattern`（新增于 `ApplicationDeploymentApiRoutes`），消除 `MapGroup` 前缀重复导致的恒 404；在 `RelaxKonOS.Protocol.md` §5 与设计文档 §3.1 补充"绝对常量仅客户端、`MapGroup` 内只用 `*Pattern`"的约定与本次实例；记录验证 B05。运行期行为与 Docker 验收仍未验证。
 
 配置读取与修订详情直接返回已保存的普通和秘密值，编辑器回填并显示。秘密值仍加密保存，持久保存回执只含秘密版本引用，回放时从加密秘密存储回填原值，日志、审计和定义备份不记录秘密正文；提交相同值和相同秘密版本保留该版本，修改值才轮换。
+
+网站发布在站点应用成功后，停机仍等待应用目录关联或原有补偿完成。恢复按原 operationId 记录 Interrupted，同键请求返回原回执。验收范围见边界设计 §50。

@@ -1041,3 +1041,11 @@ WebServer 门面将生命周期及重载请求交给生产 provider 核对原回
 既有 Linux 测试机通过生产 WebServerManager、NginxWebServerManager、PrivilegedNginxOperations 和 WebServerOperationStore 的联合测试。夹具替换 Helper 传输，只接受封闭的 Reload 请求并重载独立回环 Nginx；没有连接共享 Helper 或调用 systemd。真实重载生效且原操作持久化为 Running 后终止工作进程。恢复后移除专属发现 marker，确认实例不在发现结果中。生命周期及独立重载入口以原键取得 `bb3cc3d1-e9dd-40e0-9c75-83b85eb50593` 的同一 interrupted 回执，传输调用为零，实际重载仍为一次。专属 Nginx 正常退出，临时目录已清理。Windows Release `--webserver-only` 通过。
 
 日志见 `.artifacts/mb05-provider-final.log`，归档 SHA-256 为 `d38b7b36458e78889f24a64a5aa5298ec41d36383c3e73ab8a97b9732e810a1d`。真实 Helper 响应中断、完整 HTTP、网站发布及 TLS/ACME 联合验收继续开放。
+
+### MB-05 网站发布站点应用后的停机责任
+
+生产 WebsitePublicationCoordinator 在站点应用已返回成功后，先完成应用目录关联，或等待原有的关联失败补偿，再响应停机取消。目录关联先于关联阶段日志和后续外部验证。停机取消仍保留原活动回执供恢复，恢复只记录 Interrupted。同键请求继续取原回执。
+
+Windows Release 聚合新增验证覆盖停机等待尚未返回的站点动作、原工作租约、原台账跨实例重开，以及只执行一次站点应用。站点 provider 与证书为受控边界。完整生产 provider 的网站发布、真实 HTTPS 响应中断和补偿失败仍待实机联合验证。
+
+既有 Linux 测试机也通过 Release 聚合回归，新增检查为后台 owner 第 33 至 35 项。首次 Linux 执行通过新增项，随后因 Windows 打包未保留测试 apphost 执行位而在 Terminal 停止。补专属临时目录中的执行位后，整组复测通过。证据见 `.artifacts/mb05-publication.log` 和 `.artifacts/mb05-publication-linux-final.log`，Linux 制品归档 SHA-256 为 `cd32c94a1e4fb6a69f95d0230c367902f6771213de873d8be9f19a6fae68382f`。

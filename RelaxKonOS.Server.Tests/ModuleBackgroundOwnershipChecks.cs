@@ -217,6 +217,35 @@ internal static class ModuleBackgroundOwnershipChecks
             Check(store.Get(operation.OperationId)!.State == WebsitePublicationState.Interrupted && controlled.Calls == 2,
                 "Website restart marks the original publication interrupted without replaying its observation or side effects");
             await restarted.StopAsync(default);
+
+            controlled.SetRunning(app.Id);
+            var web = DispatchProxy.Create<IWebServerManager, BackgroundWebsiteProvider>();
+            var applied = (BackgroundWebsiteProvider)(object)web;
+            var cert = DispatchProxy.Create<ICertificateManager, BackgroundWebsiteCertificate>();
+            using var associating = new WebsitePublicationCoordinator(store, applications, catalog, web, cert, f.Certificates, clients,
+                new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, f.Source);
+            await associating.StartAsync(default);
+            var association = await associating.StartAsync(request, "actor", "association");
+            await applied.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var draining = associating.StopAsync(default);
+            try
+            {
+                Check(!draining.IsCompleted && f.Active(ServerModules.WebServerId) == 1,
+                    "Website stop retains work while the site provider returns its committed result");
+            }
+            finally { applied.Release.TrySetResult(); }
+            await draining.WaitAsync(TimeSpan.FromSeconds(5));
+            Check(catalog.ReadApplications().Single().SiteId == $"app{app.Id:N}"
+                && WebsitePublicationStore.Active(store.Get(association.OperationId)!) && f.Active(ServerModules.WebServerId) == 0,
+                "Website shutdown finishes catalog association for the already applied site before releasing its lease");
+            var reopened = new WebsitePublicationStore(f.Environment);
+            using var afterAssociation = new WebsitePublicationCoordinator(reopened, applications, catalog, web, cert, f.Certificates, clients,
+                new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, f.Source);
+            await afterAssociation.StartAsync(default);
+            var original = await afterAssociation.StartAsync(request, "actor", "association");
+            Check(original.OperationId == association.OperationId && original.State == WebsitePublicationState.Interrupted && applied.Calls == 1,
+                "Website startup and same-key retry preserve the associated site and never repeat its application");
+            await afterAssociation.StopAsync(default);
         }
         Console.WriteLine($"Module background ownership checks passed: {count}");
 
@@ -295,13 +324,66 @@ public class BackgroundWebsiteEngine : DispatchProxy
     private TaskCompletionSource<IReadOnlyList<DockerContainerDto>> _response = Ready();
     internal TaskCompletionSource Entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal int Calls;
+    private DockerContainerDetailsDto? _details;
+    internal void SetRunning(Guid applicationId)
+    {
+        var name = ApplicationDeploymentValidation.ContainerName(applicationId);
+        _details = new("fixture", name, "fixture", "", "running", "", "", "", "", [], [], [], [],
+            new Dictionary<string, string>
+            {
+                [ApplicationDeploymentValidation.ManagedLabel] = "true",
+                [ApplicationDeploymentValidation.OwnerLabel] = ApplicationDeploymentValidation.OwnerValue,
+                [ApplicationDeploymentValidation.ApplicationIdLabel] = applicationId.ToString("D")
+            });
+        _response = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        _response.SetResult([new("fixture", name, "fixture", "running", "")]);
+    }
     internal void Pause() { _response = new(TaskCreationOptions.RunContinuationsAsynchronously); Entered = new(TaskCreationOptions.RunContinuationsAsynchronously); }
     internal void Complete() => _response.TrySetResult([]);
     protected override object? Invoke(MethodInfo? method, object?[]? args)
     {
-        if (method!.Name != nameof(IDockerEngineService.ListContainersAsync)) throw new InvalidOperationException("Unexpected Docker mutation");
+        if (method!.Name == nameof(IDockerEngineService.GetContainerAsync)) return Task.FromResult(_details);
+        if (method.Name != nameof(IDockerEngineService.ListContainersAsync)) throw new InvalidOperationException("Unexpected Docker mutation");
         Calls++; Entered.TrySetResult(); return _response.Task;
     }
     private static TaskCompletionSource<IReadOnlyList<DockerContainerDto>> Ready()
     { var response = new TaskCompletionSource<IReadOnlyList<DockerContainerDto>>(TaskCreationOptions.RunContinuationsAsynchronously); response.SetResult([]); return response; }
+}
+
+public class BackgroundWebsiteProvider : DispatchProxy
+{
+    internal readonly TaskCompletionSource Entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal readonly TaskCompletionSource Release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal int Calls;
+
+    protected override object Invoke(MethodInfo? method, object?[]? args) => method!.Name switch
+    {
+        nameof(IWebServerManager.ListAsync) => Task.FromResult<IReadOnlyList<WebServerDto>>(
+            [new("nginx", "nginx", WebServerType.Nginx, WebServerManagementMode.Managed, "nginx", null, "fixture", DateTimeOffset.UtcNow, new(true, true, true))]),
+        nameof(IWebServerManager.ListSitesAsync) => Task.FromResult<IReadOnlyList<WebServerSiteDto>?>([]),
+        nameof(IWebServerManager.UpsertSiteAsync) => ApplyAsync((UpsertWebServerSiteRequest)args![1]!),
+        _ => throw new InvalidOperationException("Unexpected website provider call.")
+    };
+
+    private async Task<WebServerSiteDto?> ApplyAsync(UpsertWebServerSiteRequest request)
+    {
+        Interlocked.Increment(ref Calls);
+        Entered.TrySetResult();
+        await Release.Task;
+        return new(request.Id!, "nginx", request.Name, request.Bindings, null, false, request.Routes!,
+            request.CertificateId, true, true, false, DateTimeOffset.UtcNow);
+    }
+}
+
+public class BackgroundWebsiteCertificate : DispatchProxy
+{
+    protected override object Invoke(MethodInfo? method, object?[]? args)
+    {
+        if (method!.Name != nameof(ICertificateManager.GetAsync))
+            throw new InvalidOperationException("Unexpected website certificate call.");
+        var now = DateTimeOffset.UtcNow;
+        return Task.FromResult<CertificateDto?>(new((Guid)args![0]!, "example.test", ["example.test"], null, null, null,
+            now.AddDays(-1), now.AddDays(1), CertificateStatus.Active, CertificateChallengeType.DirectHttp01,
+            CertificateKeyAlgorithm.EcdsaP256, null, null, null, null, now, now));
+    }
 }
