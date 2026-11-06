@@ -17,11 +17,13 @@
 | 身份/连接 | 同一授权角色和执行身份；预定会话一名用户、一条HTTP顺序请求通道、一条Terminal会话（80×24、相同shell/工作目录）；无性能订阅、无额外Hub；连接创建/关闭时间和回执另记 |
 | 外部责任 | 现有 daemon/受管软件与原有连接保持运行；记录其 PID/启动身份、责任归属和采样权限。无法采到的独立服务标缺，不能假定成本为零 |
 
-当前 `Measure-ServerModuleBaseline.ps1` 复现的是2026-10-28的静态开关口径：仅父进程、八模块集合、未认证healthz、无真实业务及动态释放。它保留为历史工具，不能直接作为本批验收器，也不能把旧全关差值当作当前可回收成本。当前集合以 `ServerModules.Catalog.cs` 与运行中的只读目录交叉核对。
+当前 `Measure-ServerModuleBaseline.ps1` 复现 2026-10-28 的静态开关口径，覆盖父进程、八模块集合和未认证 healthz。当前集合以 `ServerModules.Catalog.cs` 与运行中的只读目录交叉核对。
 
 当前工具分工：`run_server_baseline.py --publish <publish> --output <new-dir> --commit <full-sha> --rid <rid>` 测完整宿主新进程启动与就绪后闲时，默认仅开启集合；显式 `--cases on-off` 才增加静态全关对照。Core 仍读取固定主机路径，独立 content root 不等于文件系统/服务隔离，恢复责任核实失败不得绕过。`run_module_workload.py --workload <publish>/RelaxKonOS.ServerModules.Tests.dll --output <new-dir>` 每轮交错 git-first/terminal-first 共六次，仅测局部生产服务夹具；它不启动完整 Server、不连接真实 Hub、不覆盖真实 Firewall。其 `passed` 只表示业务断言和 CLI 阶段通过，不能作为指标完整性或 MB-01 整项通过。
 
-`summarize_module_baseline.py <run-root> --output <summary.json>` 保留每轮结果与指标，不跨轮相减。宿主取首次达到 ready+5s/35s 的点；夹具每阶段取最后三点的中位数，缺失传播为 null。汇总者仍须检查每轮退出/业务结果、阶段样本数与完整指标，排除失败或不足采样的单元。当前宿主工具只在就绪后采树，启动峰值缺失；结束时只处理本次父进程，Windows 是强制终止，未另做退出后全树核验，不能作为正常停机或进程树释放证明。正式方案其余矩阵仍按下表补齐。
+MB-01B 增加 `--cases on-idle`，交错同一启用集合的认证业务与纯闲时进程。宿主在就绪前开始采树。`HostProbe` 输出带时间戳的真实业务回执，启动前固定认证方式、Helper 边界和持久路径。共享 Helper 的写操作由 Helper 所在命名空间决定。Linux 的独立内容根与私有 Server 挂载无法隔离其宿主恢复事务，本批正式 Linux 补测使用无特权 User Mode。[MB-01B 实测与边界](RelaxKonOS.ServerModuleBaseline.20261106.md)
+
+`summarize_module_baseline.py <run-root> --output <summary.json>` 保留每轮结果与指标。启动期观测最大值、首次达到 ready+5s/35s 的点、阶段最后三点的中位数分别记录，缺失传播为 null。汇总时检查每轮退出与逐项业务回执、阶段样本数和指标完整性。结束时只处理本次父进程，Windows 为强制终止。停机后全树另行核验。
 
 ## 场景与交错顺序
 

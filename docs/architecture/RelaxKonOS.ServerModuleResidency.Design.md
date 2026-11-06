@@ -342,6 +342,8 @@ MB-01～08 的实际状态、剩余阻塞和整项门槛统一由[模块边界�
 
 RES-01/03及MB-01整项仍开放：完整宿主真实授权业务、Firewall Helper只读、原300秒自然释放/再唤醒、TerminalHub重连、启动峰值和外部共享树成本未补齐。当前策略、300秒宽限期及SystemPerformance S1冻结不变；下一阶段与验收门槛以边界设计§42及本批报告为准。
 
+2026-11-06 [MB-01B](RelaxKonOS.ServerModuleBaseline.20261106.md) 补齐两平台启动期观察、认证 Git 的 300 秒自然 Dormant 和第二代唤醒，并验证真实 WebSocket 终端断线重连与回放。Windows Personal 模式三轮通过 Defender Helper 自然释放和再次读取。Linux User Mode 的 Firewall 能力受限，隔离 System 模式联合失败与恢复证据见报告。MB-01 与 RES-01/03 继续开放。
+
 ## 17. Git 构建清理责任（2026-11-06）
 
 Git 失败或取消后的镜像清理与终态写入均属于原代次工作租约。清理不可确认时保留原持久回执与恢复门禁。真实 Engine 标签删除验证、专用 BuildKit 就绪缺口及 MB-05 实机故障范围见[边界设计 §43](RelaxKonOS.ServerModuleBoundaries.Design.md#43-mb-03-构建清理责任与测试机预检2026-11-06)。生产内存和完整外部故障矩阵继续开放。

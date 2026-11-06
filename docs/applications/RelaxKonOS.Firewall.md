@@ -76,3 +76,7 @@ Helper 串行执行操作；规则替换在添加失败时尝试恢复旧规则�
 ### Server资源基线（2026-11-05）
 
 当前Firewall对象/代码释放层级、真实Helper只读测量缺口与验收门槛见[MB-01A报告](../architecture/RelaxKonOS.ServerModuleBaseline.20261105.md)与[全模块资源清单](../architecture/RelaxKonOS.ServerModuleResources.Inventory.md)。完整宿主启动/闲时与局部业务夹具分开记录；MB-01整体仍开放，不据对象释放、进程关闭或ALC检查声称生产内存下降。
+
+### 完整宿主基线（2026-11-06）
+
+Windows Personal 模式通过真实 Defender Helper 只读状态和规则查询，并在自然休眠后重读。Linux 真实 UFW 只读和 System 模式联合失败各自保留。User Mode 中的 Firewall 门禁和整项缺口见[MB-01B 报告](../architecture/RelaxKonOS.ServerModuleBaseline.20261106.md)。

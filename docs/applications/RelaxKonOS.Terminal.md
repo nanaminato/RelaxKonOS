@@ -453,6 +453,8 @@ else
 
 当前Terminal会话/PTY、Linux独占worker及shell的分项成本与限制见[MB-01A报告](../architecture/RelaxKonOS.ServerModuleBaseline.20261105.md)与[全模块资源清单](../architecture/RelaxKonOS.ServerModuleResources.Inventory.md)。完整宿主启动/闲时与局部业务夹具分开记录；MB-01整体仍开放，不据对象释放、进程关闭或ALC检查声称生产内存下降。
 
+2026-11-06 完整宿主使用 WebSocket 实测同一 Terminal 会话在断开后通过新连接附回、回放输出并关闭。Windows Personal 与 Linux User Mode 的结果，以及 Linux System 模式失败的退出回执见[MB-01B 报告](../architecture/RelaxKonOS.ServerModuleBaseline.20261106.md)。
+
 ### 宿主异常与安装 Helper 验收（2026-11-06）
 
 - Windows 安装 Helper 在启动应答写入失败时仍等待 ConPTY 完整清理。输出故障唤醒控制读取，控制断开、输出积压超限或服务取消会取消实际管道输出，清理会等待输出任务结束。PTY 排空后给仍在读取的对端最多 10 秒接收剩余输出和退出帧。取消或超时不会生成成功确认，Server 收不到退出确认时保留未知责任。

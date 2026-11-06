@@ -648,3 +648,7 @@ SSH 继续使用宿主 SSH 配置，HTTP 和本地传输不附带 HTTPS 令牌�
 ### Server资源基线（2026-11-05）
 
 当前Git资源所有权、真实本地CLI/手动休眠与再唤醒测量见[MB-01A报告](../architecture/RelaxKonOS.ServerModuleBaseline.20261105.md)与[全模块资源清单](../architecture/RelaxKonOS.ServerModuleResources.Inventory.md)。完整宿主启动/闲时与局部业务夹具分开记录；MB-01整体仍开放，不据对象释放、进程关闭或ALC检查声称生产内存下降。
+
+### 完整宿主基线（2026-11-06）
+
+Windows 与 Linux 完整宿主均实测了认证后的仓库列表、300 秒自然 Dormant 和第二代唤醒。本轮使用空仓库列表，非空工作树与真实构建属于独立验收。[MB-01B 报告](../architecture/RelaxKonOS.ServerModuleBaseline.20261106.md)
