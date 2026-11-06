@@ -162,7 +162,10 @@ internal sealed class WebsitePublicationCoordinator(
             catch (Exception error) when (error is ApplicationDeploymentException or IOException)
             {
                 var rollback = await RestoreSiteAsync(server.Id, previousSite, site);
-                throw new WebsitePublicationException(rollback ? "website.application_association_failed" : "website.application_association_recovery_failed", 503);
+                Complete(operationId, WebsitePublicationState.Failed,
+                    rollback ? "website.application_association_failed" : WebsitePublicationStore.AssociationRecoveryFailed,
+                    rollback ? null : "website.recheck_required", checks);
+                return;
             }
 
             SetStage(operationId, WebsitePublicationStage.Associating, siteId: site.Id, certificateId: certificateId);

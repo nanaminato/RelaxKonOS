@@ -1063,3 +1063,11 @@ Windows 与既有 Linux 测试机的 Release 聚合回归均通过，新增及�
 站点应用、证书目录和 Docker 工作负载观察仍由受控边界提供。本项覆盖发布协调器的真实出站验证请求，完整管理 API 的响应写入、生产 Nginx 网站发布、真实 CA 和未知补偿仍待验收。首轮证书未完成握手，修正夹具证书加载并通过独立 TLS 探针后复测。
 
 Windows 与既有 Linux 测试机的 Release 聚合回归通过，新增为后台 owner 第 37 至 39 项。日志见 `.artifacts/mb05-https-win-final.log` 与 `.artifacts/mb05-https-linux.log`。Linux 制品归档 SHA-256 为 `92a435a95330e215516aeae6e696377249929c34fdd656e017dbda0539fafec5`。
+
+### MB-05 网站发布补偿结果未知
+
+站点已应用且应用目录关联失败时，原发布工作租约一直持有到补偿返回。补偿结果无法确认时，原回执持久化为 Failed / website.application_association_recovery_failed，并带 website.recheck_required。原台账保留这份责任，常规历史裁剪不会移除它。停用检查可见该责任，同一应用或同一 WebServer 与域名组合的新发布被拒绝。同键仍返回原回执，启动及重试均不重放站点应用或补偿。
+
+本项使用生产协调器、目录和台账，站点补偿使用受控 provider。操作员确认并解除门禁的正式入口、补偿执行过程中被强制终止的故障矩阵及实际 Nginx 补偿仍待验证。
+
+Windows 与既有 Linux 测试机的 Release 聚合回归通过，新增为后台 owner 第 40 至 42 项。首轮并发删除触发目录通用异常并绕过补偿，目录改用明确的应用不存在错误后复测通过。日志见 `.artifacts/mb05-compensation-win-final.log` 与 `.artifacts/mb05-compensation-linux.log`。

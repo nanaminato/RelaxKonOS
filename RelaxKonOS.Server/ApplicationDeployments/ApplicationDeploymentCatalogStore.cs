@@ -107,7 +107,8 @@ internal sealed class ApplicationDeploymentCatalogStore
         lock (gate)
         {
             EnsureAvailable();
-            var before = ledger.Applications.Single(x => x.Id == applicationId);
+            var before = ledger.Applications.FirstOrDefault(x => x.Id == applicationId)
+                ?? throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ApplicationNotFound, 404);
             var after = update(before);
             if (!Valid(after)) throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.InvalidRequest, 500);
             if (before == after) return before;

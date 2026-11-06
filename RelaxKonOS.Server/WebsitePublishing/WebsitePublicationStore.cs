@@ -15,6 +15,7 @@ internal sealed class WebsitePublicationException(string problemCode, int status
 internal sealed class WebsitePublicationStore
 {
     private const int RetainedOperations = 200;
+    internal const string AssociationRecoveryFailed = "website.application_association_recovery_failed";
     private readonly object gate = new();
     private readonly string path;
     private readonly Dictionary<Guid, Entry> entries = [];
@@ -58,6 +59,10 @@ internal sealed class WebsitePublicationStore
                 created = false;
                 return existing.Operation;
             }
+            if (entries.Values.Any(entry => entry.Operation.ProblemCode == AssociationRecoveryFailed
+                && (entry.Operation.ApplicationId == request.ApplicationId
+                    || (entry.Operation.WebServerId == request.WebServerId && entry.Operation.Domain == request.Domain))))
+                throw new WebsitePublicationException("website.recheck_required");
             if (entries.Values.Any(entry => Active(entry.Operation) && entry.Operation.ApplicationId == request.ApplicationId))
                 throw new WebsitePublicationException("website.operation_conflict");
 
@@ -103,16 +108,15 @@ internal sealed class WebsitePublicationStore
     }
 
     /// <summary>
-    /// Read-only view for the deactivation gate: whatever is still queued or running. It deliberately
-    /// interrupts nothing — turning an unresolved publication into "interrupted" is the coordinator's
-    /// reconciliation, never a side effect of asking whether the module may be disabled.
+    /// Read-only view of publications with ongoing work or unconfirmed compensation.
+    /// Only the coordinator can reconcile active operations.
     /// </summary>
     public IReadOnlyList<WebsitePublicationOperationDto> Pending()
     {
         lock (gate)
         {
             EnsureAvailable();
-            return entries.Values.Select(entry => entry.Operation).Where(Active).ToArray();
+            return entries.Values.Select(entry => entry.Operation).Where(RequiresOwner).ToArray();
         }
     }
 
@@ -137,14 +141,17 @@ internal sealed class WebsitePublicationStore
         }
     }
 
+    private static bool RequiresOwner(WebsitePublicationOperationDto operation) =>
+        Active(operation) || operation.ProblemCode == AssociationRecoveryFailed;
+
     private void Commit()
     {
         try
         {
-            var retained = entries.Values.OrderByDescending(entry => entry.Operation.CreatedAt)
-                .Where(entry => Active(entry.Operation)).Concat(entries.Values.Where(entry => !Active(entry.Operation)).OrderByDescending(entry => entry.Operation.CreatedAt)
-                    .Take(Math.Max(0, RetainedOperations - entries.Values.Count(another => Active(another.Operation)))))
-                .DistinctBy(entry => entry.Operation.OperationId).OrderBy(entry => entry.Operation.CreatedAt).ToArray();
+            var obligations = entries.Values.Where(entry => RequiresOwner(entry.Operation)).ToArray();
+            var history = entries.Values.Where(entry => !RequiresOwner(entry.Operation))
+                .OrderByDescending(entry => entry.Operation.CreatedAt).Take(Math.Max(0, RetainedOperations - obligations.Length));
+            var retained = obligations.Concat(history).OrderBy(entry => entry.Operation.CreatedAt).ToArray();
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             var temporary = path + ".tmp";
             File.WriteAllText(temporary, JsonSerializer.Serialize(retained, Json));

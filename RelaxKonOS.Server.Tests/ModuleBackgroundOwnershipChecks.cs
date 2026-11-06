@@ -320,6 +320,48 @@ internal static class ModuleBackgroundOwnershipChecks
                 "Website recovery does not repeat real HTTPS verification or the site application");
             await recoveredHttps.StopAsync(default);
             await endpoint.StopAsync();
+
+            var failedApp = await applications.CreateAsync(new CreateApplicationRequest("unverified-rollback", ApplicationSourceKind.Image, HostPort: 9082), "actor", default);
+            controlled.SetRunning(failedApp.Id);
+            ((BackgroundWebsiteCertificate)(object)cert).Domain = "example.test";
+            var failedRequest = request with { ApplicationId = failedApp.Id };
+            var failingWeb = DispatchProxy.Create<IWebServerManager, BackgroundWebsiteProvider>();
+            var failedApply = (BackgroundWebsiteProvider)(object)failingWeb;
+            using var failing = new WebsitePublicationCoordinator(httpsRecovery, applications, catalog, failingWeb, cert, f.Certificates, clients,
+                new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, f.Source);
+            await failing.StartAsync(default);
+            var failedReceipt = await failing.StartAsync(failedRequest, "actor", "unknown-rollback");
+            await failedApply.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            catalog.Delete(failedApp.Id);
+            failedApply.Release.TrySetResult();
+            await failedApply.Compensating.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var failedDrain = failing.StopAsync(default);
+            Check(!failedDrain.IsCompleted && f.Active(ServerModules.WebServerId) == 1,
+                "Website association failure keeps its lease while compensation is still running");
+            failedApply.CompensationResult.TrySetResult(false);
+            await failedDrain.WaitAsync(TimeSpan.FromSeconds(5));
+
+            var unknownStore = new WebsitePublicationStore(f.Environment);
+            using var unknownRecovery = new WebsitePublicationCoordinator(unknownStore, applications, catalog, failingWeb, cert, f.Certificates, clients,
+                new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, f.Source);
+            await unknownRecovery.StartAsync(default);
+            var unknownReplay = await unknownRecovery.StartAsync(failedRequest, "actor", "unknown-rollback");
+            Check(unknownReplay.OperationId == failedReceipt.OperationId && unknownReplay.State == WebsitePublicationState.Failed
+                && unknownReplay.ProblemCode == WebsitePublicationStore.AssociationRecoveryFailed
+                && unknownReplay.RecoveryProblemCode == "website.recheck_required"
+                && unknownStore.Pending().Single().OperationId == failedReceipt.OperationId,
+                "Unknown website compensation survives restart and remains visible to the disable guard");
+            var contender = await applications.CreateAsync(new CreateApplicationRequest("rollback-conflict", ApplicationSourceKind.Image, HostPort: 9083), "actor", default);
+            try
+            {
+                await unknownRecovery.StartAsync(failedRequest with { ApplicationId = contender.Id }, "actor", "competing-publication");
+                throw new InvalidOperationException("Unconfirmed compensation admitted another publication on the same target.");
+            }
+            catch (WebsitePublicationException error) when (error.ProblemCode == "website.recheck_required") { }
+            Check(failedApply.Calls == 1 && failedApply.CompensationCalls == 1,
+                "Unknown website compensation blocks a conflicting publication without replaying the original effect");
+            await unknownRecovery.StopAsync(default);
+
         }
         Console.WriteLine($"Module background ownership checks passed: {count}");
 
@@ -429,6 +471,9 @@ public class BackgroundWebsiteProvider : DispatchProxy
     internal readonly TaskCompletionSource Entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal readonly TaskCompletionSource Release = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal int Calls;
+    internal int CompensationCalls;
+    internal readonly TaskCompletionSource Compensating = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal readonly TaskCompletionSource<bool?> CompensationResult = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     protected override object Invoke(MethodInfo? method, object?[]? args) => method!.Name switch
     {
@@ -436,8 +481,16 @@ public class BackgroundWebsiteProvider : DispatchProxy
             [new("nginx", "nginx", WebServerType.Nginx, WebServerManagementMode.Managed, "nginx", null, "fixture", DateTimeOffset.UtcNow, new(true, true, true))]),
         nameof(IWebServerManager.ListSitesAsync) => Task.FromResult<IReadOnlyList<WebServerSiteDto>?>([]),
         nameof(IWebServerManager.UpsertSiteAsync) => ApplyAsync((UpsertWebServerSiteRequest)args![1]!),
+        nameof(IWebServerManager.DeleteSiteAsync) => CompensateAsync(),
         _ => throw new InvalidOperationException("Unexpected website provider call.")
     };
+
+    private Task<bool?> CompensateAsync()
+    {
+        Interlocked.Increment(ref CompensationCalls);
+        Compensating.TrySetResult();
+        return CompensationResult.Task;
+    }
 
     private async Task<WebServerSiteDto?> ApplyAsync(UpsertWebServerSiteRequest request)
     {
