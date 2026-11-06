@@ -365,9 +365,14 @@ if (args is ["--proxy-tun-live-only", var hostNetworkNamespace])
     await ProxyTunLiveChecks.RunAsync(hostNetworkNamespace);
     return;
 }
-if (args is ["--proxy-tun-live-worker", var workerNetworkNamespace, var tunRoot])
+if (args is ["--proxy-mihomo-tun-live-only", var mihomoHostNamespace, var mihomoExecutable])
 {
-    await ProxyTunLiveChecks.RunWorkerAsync(workerNetworkNamespace, tunRoot);
+    await ProxyTunLiveChecks.RunAsync(mihomoHostNamespace, mihomoExecutable);
+    return;
+}
+if (args is ["--proxy-tun-live-worker", var workerNetworkNamespace, var tunRoot, var controllerPort])
+{
+    await ProxyTunLiveChecks.RunWorkerAsync(workerNetworkNamespace, tunRoot, int.Parse(controllerPort, System.Globalization.CultureInfo.InvariantCulture));
     return;
 }
 if (args is ["--proxy-expiry-live-only", var singBoxExecutable])
