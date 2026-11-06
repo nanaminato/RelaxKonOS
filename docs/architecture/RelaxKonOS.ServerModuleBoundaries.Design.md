@@ -979,3 +979,20 @@ ModuleHost 夹具改用当前安装计划的资源声明和审计台账格式，
 **Linux 固定启动器跨代回执实机通过。** 私有命名空间中使用当前 Core 与实际 Helper、PAM、签名包和固定 sudo 启动。待原回执为 Executing、独立 systemd 测试服务正在停止后，仅 SIGKILL 原 Core，确认原根和独立 session 后代已回收且专用 UID 无残留。重启 Core 后读到同一 RecoveryRequired 回执，旧批准与重复读取没有重复服务动作。新代次完成真实读写，新明确批准只执行一次新动作。最后确认新代树回收、宿主正式策略哈希保持一致。夹具运行记录见 `.artifacts/mb06-linux-fixed-core-recovery.log`，现场标识 `core-BNBKVP3J`。此结论覆盖本次隔离固定启动器及真实持久回执路径，宿主共享发行服务未参与故障注入。
 
 缺少实际退出证明时保留未知清理责任。ModuleHost SDK 后台申报及合作 drain 仍开放，未启用闲时 kill、退出或重启。SystemPerformance S1 保持冻结。本轮未测量生产内存变化。
+
+## 50. MB-03/05 隔离测试设施复核（2026-11-06）
+
+从 `8ed2cc74` 继续，选 MB-05 跨进程连续性作为下一项。以既有固定 SSH 主机密钥连接 Ubuntu 测试机，完成只读预检。共享 Docker 与 Nginx 服务均处于 active。测试账户无法访问共享 Docker socket，未发现其用户级 Docker socket。宿主有 dockerd、Nginx 与 .NET，PATH 中未找到 RootlessKit、slirp4netns、Pebble 或 step-ca。AppArmor 的非特权 user namespace 限制为 1，普通测试账户执行 `unshare -Ur true` 失败。没有启动第二个 daemon、修改安全策略或注入共享设施故障。
+
+**已实现且已验证**：沿用 §45 的真实 Engine 在途 CLI 排空与同进程协调器重建证据，以及 §44 的独立 Nginx TLS 连续性证据。本次新增证据仅为上述只读资源检查。
+
+**已实现但实机未验证**：§39 的 WebServer 与证书后台责任测试仍使用受控外部动作。实际 CA 请求或 Nginx 发布中断时的完整 Task、响应、终态持久化及清理责任仍待观察。
+
+**仍有阻塞**：MB-05 需要可独立重启的 Engine 和专属工作负载，以及可控 ACME 目录、受信 CA 和仅用于验收的挑战名称及解析。可用隔离 Linux 实例同时解决 Engine 和 MB-03 的 RootlessKit 前提。MB-03 还需要 Git CLI 与 builder 均可达且信任其证书的专属 HTTPS 443 仓库。后续只对专属测试实例注入故障，以原 operationId 核对回执与副作用次数。MB-04 的安全 owner 交接与真实网络故障验收仍开放，Proxy 保持 resident。此次没有生产内存测量。
+
+
+### MB-05 Docker 本地跨进程回执续核
+
+从 `d255af3e` 继续。Windows Release 聚合入口 `--module-boundary-milestones-only` 通过，包含新增 `--docker-process-recovery-only` 夹具。夹具在独立进程使用生产栈协调器与持久台账，替身 Compose 在工作租约内向临时文件记录一次部署后阻塞。父进程确认原回执为 Running 且副作用见证已落盘，再强制终止原进程并确认异常退出。新进程读取同一台账，执行一次只读观察，以原 operationId 记录 Interrupted。相同请求键返回与恢复查询一致的回执，部署执行次数为零。父进程再次打开台账，确认终态与观察结果持久化，副作用见证仍只有一次。
+
+本轮日志 `.artifacts/mb05-release-final.log` 中的 operationId 为 `ac1cda96-23e8-453a-8b5c-b69cf8d919d1`。沙箱令牌下的既有聚合回归在证书恢复断言处失败，普通 Windows 令牌下完整 Release 重新构建和回归通过。该夹具覆盖跨进程持久责任与幂等回执，外部动作由文件见证替身提供。真实 Engine daemon/Server 联合故障、HTTP 响应排空、CA 与 Nginx 应用层中断仍开放。

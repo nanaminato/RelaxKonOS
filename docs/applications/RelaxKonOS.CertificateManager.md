@@ -1461,3 +1461,6 @@ Linux 服务部署在 `server.env` 中设置 `Certificate__StorageRoot=$DATA_ROO
 Windows 服务与个人模式均在 `appsettings.host.json` 设置 `Certificate.StorageRoot=$DataRoot\server\managed-certificates`。服务模式 ACL 仅授予 SYSTEM、Administrators 和 Server 服务 SID（修改权限）；个人模式授予安装用户、SYSTEM 与 Administrators。管理证书与部署时生成的 `certificates\bootstrap.pfx` 分开存储。
 
 桌面端服务器换证入口位于“设置 → 系统 → 服务器 HTTPS”，证书管理器列表仅提供证书申请、创建、续期、吊销和删除。换证界面展示域名、到期时间和 SHA-256 指纹，提示重连或重新信任证书；只有用户点击“更换服务器 HTTPS 证书”才提交。成功换证同时更新 SNI 绑定与无 SNI 连接使用的默认证书，默认选择独立持久化并在重启时恢复；普通续期保持原默认选择。该操作不会修改部署用启动 PFX，也不会把 HTTP 监听自动改为 HTTPS。
+
+
+2026-11-06 MB-05 隔离预检：当前共享测试机 PATH 中未发现 Pebble 或 step-ca。真实 ACME 中断恢复需提供可控 ACME 目录、受信 CA 及专属挑战名称和解析。 [验收台账 §50](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#50-mb-0305-隔离测试设施复核2026-11-06)

@@ -62,6 +62,16 @@ if (args is ["--terminal-crash-worker", var terminalCrashDirectory])
     await TerminalTreeChecks.RunCrashWorkerAsync(terminalCrashDirectory);
     return;
 }
+if (args is ["--docker-recovery-worker", var recoveryRoot, var recoveryPhase])
+{
+    await DockerProcessRecoveryChecks.RunWorkerAsync(recoveryRoot, recoveryPhase);
+    return;
+}
+if (args is ["--docker-process-recovery-only"])
+{
+    await DockerProcessRecoveryChecks.RunAsync();
+    return;
+}
 if (args.Contains("--module-boundary-milestones-only"))
 {
     var milestoneRoot = Path.Combine(Path.GetTempPath(), "relaxkonos-module-milestones-" + Guid.NewGuid().ToString("N"));
@@ -79,6 +89,7 @@ if (args.Contains("--module-boundary-milestones-only"))
         var docker = Path.Combine(milestoneRoot, "docker-regression"); Directory.CreateDirectory(docker);
         var tls = Path.Combine(milestoneRoot, "tls-regression"); Directory.CreateDirectory(tls);
         await DockerChecks.VerifyStackOperationsAsync(docker);
+        await DockerProcessRecoveryChecks.RunAsync();
         await CertificateChecks.VerifyCertificateStoreAndSniAsync(tls);
         var replay = Path.Combine(milestoneRoot, "certificate-replay"); Directory.CreateDirectory(replay);
         var binding = Path.Combine(milestoneRoot, "certificate-binding"); Directory.CreateDirectory(binding);

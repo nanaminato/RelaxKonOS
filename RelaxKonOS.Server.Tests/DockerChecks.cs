@@ -1222,6 +1222,7 @@ internal sealed class FakeComposeService : IDockerComposeService
     public int ListServicesCalls { get; private set; }
     /// <summary>Holds a deployment inside the Engine call so a test can cancel it while it is active.</summary>
     public bool BlockOnDeploy { get; set; }
+    internal Action? OnDeploy { get; init; }
     private readonly TaskCompletionSource gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public void ReleaseDeploy() => gate.TrySetResult();
 
@@ -1245,6 +1246,7 @@ internal sealed class FakeComposeService : IDockerComposeService
     public async Task<DockerStackMutationResult> DeployAsync(DockerStackDefinitionDto definition, CancellationToken cancellationToken = default)
     {
         DeployCalls++;
+        OnDeploy?.Invoke();
         if (BlockOnDeploy) await gate.Task;
         return NextResult;
     }

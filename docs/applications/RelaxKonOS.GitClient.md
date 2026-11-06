@@ -652,3 +652,6 @@ SSH 继续使用宿主 SSH 配置，HTTP 和本地传输不附带 HTTPS 令牌�
 ### 完整宿主基线（2026-11-06）
 
 Windows 与 Linux 完整宿主均实测了认证后的仓库列表、300 秒自然 Dormant 和第二代唤醒。本轮使用空仓库列表，非空工作树与真实构建属于独立验收。[MB-01B 报告](../architecture/RelaxKonOS.ServerModuleBaseline.20261106.md)
+
+
+2026-11-06 MB-03 预检复核：测试账户创建非特权 user namespace 仍失败。真实构建中的取消、断连、原回执恢复及 ALC 联合验收等待专属 rootless builder 和受信 HTTPS 仓库。 [验收台账 §50](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#50-mb-0305-隔离测试设施复核2026-11-06)
