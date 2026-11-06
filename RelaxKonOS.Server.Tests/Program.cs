@@ -62,6 +62,16 @@ if (args is ["--terminal-crash-worker", var terminalCrashDirectory])
     await TerminalTreeChecks.RunCrashWorkerAsync(terminalCrashDirectory);
     return;
 }
+if (args is ["--nginx-recovery-worker", var nginxWorkerExecutable, var nginxWorkerRoot])
+{
+    await NginxProcessRecoveryChecks.RunWorkerAsync(nginxWorkerExecutable, nginxWorkerRoot);
+    return;
+}
+if (args is ["--nginx-live-recovery-only", var nginxExecutable])
+{
+    await NginxProcessRecoveryChecks.RunAsync(nginxExecutable);
+    return;
+}
 if (args is ["--docker-live-crash-worker", var crashLedger, var crashCompose, var crashProject])
 {
     await DockerChecks.RunLiveCrashWorkerAsync(crashLedger, crashCompose, crashProject);

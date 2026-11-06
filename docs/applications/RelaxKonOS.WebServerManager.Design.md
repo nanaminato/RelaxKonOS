@@ -1684,3 +1684,5 @@ Linux 桌面 Web 服务器管理器隐藏实例选择、发现、集成、安装
 
 
 2026-11-06 MB-05 隔离预检：测试机有共享 Nginx 实例。应用层中断验收须另用专属配置、PID、回环端口及测试证书，检查原发布回执与实际 HTTPS 服务连续性。 [验收台账 §50](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#50-mb-0305-隔离测试设施复核2026-11-06)
+
+既有 Linux 测试机已通过专属 Nginx 的真实重载及操作工作进程崩溃恢复。生产操作台账以原 operationId 持久化 interrupted，重试后原实例持续服务，实际重载仍为一次。完整 provider、网站发布与 CA 连续性继续开放，见边界设计 §50。
