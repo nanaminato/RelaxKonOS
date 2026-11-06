@@ -262,6 +262,7 @@ internal static async Task VerifyOperationIdempotencyAsync(string root)
     TestAssert.Assert((await TestOperations.WaitForCertificateOperationAsync(certificateOperations, first.OperationId)).State == CertificateOperationState.Succeeded, "Certificate operation did not complete.");
 
     var webOperations = new WebServerOperationStore(environment, journal, Microsoft.Extensions.Logging.Abstractions.NullLogger<WebServerOperationStore>.Instance, new TestResidentBackgroundLeases());
+    await webOperations.StartAsync(default);
     var webFirst = await webOperations.StartAsync("same-key", "nginx-test", "reload", "test", _ => Task.FromResult(WebServerOperationResult.Success), CancellationToken.None);
     var webDuplicate = await webOperations.StartAsync("same-key", "nginx-test", "reload", "test", _ => Task.FromResult(new WebServerOperationResult("webserver.should_not_run")), CancellationToken.None);
     TestAssert.Assert(webFirst.OperationId == webDuplicate.OperationId, "WebServer idempotency key created duplicate work.");
@@ -283,6 +284,7 @@ internal static async Task VerifyOperationCancellationDrainAsync(string root)
     var leases = new TestResidentBackgroundLeases();
     using var store = new WebServerOperationStore(environment, new HostOperationJournal(environment, configuration),
         NullLogger<WebServerOperationStore>.Instance, leases);
+    await store.StartAsync(default);
     var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     var released = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -310,6 +312,22 @@ internal static async Task VerifyOperationCancellationDrainAsync(string root)
     TestAssert.Assert(completed.State == WebServerOperationState.Cancelled && leases.Active == 0
         && WebServerOperationStore.ReadPending(environment).Count == 0,
         "Actual action completion must precede a durable Cancelled receipt and lease release.");
+    var path = Path.Combine(root, "data", "webserver-operations.json");
+    await File.WriteAllTextAsync(path, "{broken");
+    var failedLeases = new TestResidentBackgroundLeases();
+    using var failedStore = new WebServerOperationStore(environment, new HostOperationJournal(environment, configuration),
+        NullLogger<WebServerOperationStore>.Instance, failedLeases);
+    await failedStore.StartAsync(default);
+    try
+    {
+        await failedStore.StartAsync("unsafe", "nginx", "reload", "test",
+            _ => throw new InvalidOperationException("Corrupt ledger admitted a side effect."), default);
+        throw new InvalidOperationException("Corrupt ledger admitted a new operation.");
+    }
+    catch (RelaxKonOS.Server.Residency.ModuleUnavailableException) { }
+    TestAssert.Assert(failedLeases.Active == 1 && failedLeases.RecoveryRequired == 1
+        && await File.ReadAllTextAsync(path) == "{broken",
+        "Unreadable startup state must retain recovery responsibility and preserve the original ledger.");
     Console.WriteLine("Web-server operation cancellation drain checks passed.");
 }
 

@@ -56,11 +56,12 @@ internal static class NginxProcessRecoveryChecks
                     }
                 }
 
-                var store = OpenStore(root);
+                using var store = await OpenStoreAsync(root);
                 var restored = await store.GetAsync(operationId, default);
                 var replay = await store.StartAsync(Key, Instance, "reload", Actor,
                     _ => throw new InvalidOperationException("Recovered reload was executed again."), default);
-                var reopened = await OpenStore(root).GetAsync(operationId, default);
+                using var reopenedStore = await OpenStoreAsync(root);
+                var reopened = await reopenedStore.GetAsync(operationId, default);
                 TestAssert.Assert(restored is { State: WebServerOperationState.Failed, Stage: "interrupted",
                         ProblemCode: "webserver.operation_interrupted" }
                     && replay == restored && reopened == restored && CountReloads(root) == 1,
@@ -94,7 +95,7 @@ internal static class NginxProcessRecoveryChecks
 
     internal static async Task RunWorkerAsync(string executable, string root)
     {
-        var store = OpenStore(root);
+        using var store = await OpenStoreAsync(root);
         var accepted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var receipt = await store.StartAsync(Key, Instance, "reload", Actor, async ct =>
         {
@@ -110,12 +111,15 @@ internal static class NginxProcessRecoveryChecks
         await Task.Delay(Timeout.InfiniteTimeSpan);
     }
 
-    private static WebServerOperationStore OpenStore(string root)
+    private static async Task<WebServerOperationStore> OpenStoreAsync(string root)
     {
         var environment = new TestHostEnvironment(root);
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["Storage:Provider"] = "memory" }).Build();
-        return new(environment, new HostOperationJournal(environment, configuration), NullLogger<WebServerOperationStore>.Instance, new TestResidentBackgroundLeases());
+        var store = new WebServerOperationStore(environment, new HostOperationJournal(environment, configuration),
+            NullLogger<WebServerOperationStore>.Instance, new TestResidentBackgroundLeases());
+        await store.StartAsync(default);
+        return store;
     }
 
     private static Process StartNginx(string executable, string root, params string[] extra)

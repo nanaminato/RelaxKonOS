@@ -1025,3 +1025,11 @@ Linux x64 Release 在既有测试机的专属项目 `ad04live4722012f` 通过。
 直接 Nginx 操作沿用原 WebServer 操作台账，并在写入 Queued 前取得 WebServer 常驻工作租约。取消请求返回当前回执并发出取消信号，实际动作结束后才写入 Cancelled。桌面端继续轮询已提交的操作。停机等待实际后台工作，停机取消保留原活动回执供启动恢复；终态保存或 CLI 清理无法确认时，工作 owner 保留故障责任。停用检查同时读取直接操作和网站发布的未终结台账。Linux 本地 Nginx 命令取消后等待 CLI 退出及输出排空。
 
 Windows Release 聚合回归通过。新增受控取消测试确认实际动作仍在运行时，原回执保持 Running，租约仍在，台账仍列为未终结；放行动作后才持久化 Cancelled 并释放租约。证据见 `.artifacts/mb05-web-drain.log`。实际 provider 取消、真实 CLI 清理无法核实的故障路径及网站发布联合验收继续开放。
+
+### MB-05 WebServer 启动恢复准入
+
+直接操作台账从构造时读取和改写迁到显式 hosted 启动恢复，复用同一 WebServer 常驻工作 owner。恢复完成前拒绝直接操作准入和回执读取。原 Queued/Running 按原 operationId 写成 interrupted；解析、读取或持久化失败时保持恢复责任并拒绝新操作。停用检查使用同一只读解析路径，损坏文件、目录占位及权限错误按不可核实处理。
+
+Windows Release 聚合回归通过。新增损坏台账路径确认保留原文件、持有一份待恢复租约且拒绝新动作。此路径未清除台账或重放副作用。生产 provider 及网站发布的完整实机故障矩阵继续开放。
+
+既有 Linux 测试机的真实 Nginx 重载与崩溃夹具以显式启动恢复复测通过。原 operationId `fa2bbf90-cb26-4280-819e-0cefc9635442` 持久化 interrupted，重载仍为一次。归档 SHA-256 为 `958d06c78edddaa53751c6a28de1924c1e6363522e282f145bb0e618d46f6378`，日志见 `.artifacts/mb05-web-startup-nginx.log`。

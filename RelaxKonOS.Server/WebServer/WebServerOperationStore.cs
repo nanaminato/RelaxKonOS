@@ -32,6 +32,7 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _instanceGates = new(StringComparer.Ordinal);
     private readonly HostOperationJournal _journal;
     private readonly ResidentBackgroundWorkOwner _workOwner;
+    private bool _ready;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) } };
 
     private readonly ILogger<WebServerOperationStore> _logger;
@@ -42,10 +43,38 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
         _journal = journal;
         _logger = logger;
         _workOwner = new(leases, ServerModules.WebServerId);
-        LoadAndRecover();
     }
 
-    public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        using var recovery = await _workOwner.AdmitAsync(cancellationToken);
+        using var stopping = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, recovery.Token);
+        await _gate.WaitAsync(stopping.Token);
+        try
+        {
+            if (_ready) return;
+            try
+            {
+                await LoadAndRecoverAsync(stopping.Token);
+                stopping.Token.ThrowIfCancellationRequested();
+                _ready = true;
+            }
+            catch (Exception error)
+            {
+                recovery.Fail(error);
+                if (error is OperationCanceledException && cancellationToken.IsCancellationRequested) throw;
+                _logger.LogError(error, "Web-server operation startup recovery failed; operation admission remains closed.");
+            }
+        }
+        finally { _gate.Release(); }
+    }
+
+    private void RequireReady()
+    {
+        if (!_ready)
+            throw new ModuleUnavailableException("module-load-failed", 30, "Web-server operation startup recovery is not complete.");
+    }
+
     public Task StopAsync(CancellationToken cancellationToken) => _workOwner.StopAsync(cancellationToken);
     public void Dispose() => _workOwner.Dispose();
 
@@ -61,6 +90,7 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
         await _gate.WaitAsync(applicationStopping);
         try
         {
+            RequireReady();
             if (_byIdempotency.TryGetValue(key, out var existingId))
                 return _operations[existingId].ToDto();
 
@@ -86,6 +116,7 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
         await _gate.WaitAsync(cancellationToken);
         try
         {
+            RequireReady();
             if (!_byIdempotency.TryGetValue($"{kind}:{instanceId}:{idempotencyKey}", out var id)) return null;
             var operation = _operations[id];
             return string.Equals(operation.Actor, actor, StringComparison.Ordinal) ? operation.ToDto() : null;
@@ -96,7 +127,7 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
     public async Task<WebServerOperationDto?> GetAsync(Guid operationId, CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken);
-        try { return _operations.GetValueOrDefault(operationId)?.ToDto(); }
+        try { RequireReady(); return _operations.GetValueOrDefault(operationId)?.ToDto(); }
         finally { _gate.Release(); }
     }
 
@@ -105,6 +136,7 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
         await _gate.WaitAsync(cancellationToken);
         try
         {
+            RequireReady();
             if (!_operations.TryGetValue(operationId, out var operation)) return null;
             if (_cancellations.TryGetValue(operationId, out var source))
                 _ = source.CancelAsync();
@@ -199,32 +231,37 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
     private static string LedgerPath(IHostEnvironment environment) =>
         Path.Combine(environment.ContentRootPath, "data", "webserver-operations.json");
 
-    internal static IReadOnlyList<WebServerOperationDto> ReadPending(IHostEnvironment environment)
-    {
-        var path = LedgerPath(environment);
-        if (!File.Exists(path)) return [];
-        var operations = JsonSerializer.Deserialize<PersistedOperation[]>(File.ReadAllText(path), Json)
-            ?? throw new InvalidDataException("The web-server ledger is empty.");
-        return operations.Where(operation => operation.State is WebServerOperationState.Queued or WebServerOperationState.Running)
+    internal static IReadOnlyList<WebServerOperationDto> ReadPending(IHostEnvironment environment) =>
+        ReadLedger(LedgerPath(environment))
+            .Where(operation => operation.State is WebServerOperationState.Queued or WebServerOperationState.Running)
             .Select(operation => operation.ToDto()).ToArray();
-    }
 
-    private void LoadAndRecover()
+    private static PersistedOperation[] ReadLedger(string path)
     {
-        if (!File.Exists(_path)) return;
         try
         {
-            foreach (var item in JsonSerializer.Deserialize<PersistedOperation[]>(File.ReadAllText(_path), Json) ?? [])
-            {
-                var recovered = item.State is WebServerOperationState.Queued or WebServerOperationState.Running
-                    ? item with { State = WebServerOperationState.Failed, Stage = "interrupted", ProblemCode = "webserver.operation_interrupted", CompletedAt = DateTimeOffset.UtcNow }
-                    : item;
-                _operations[recovered.OperationId] = recovered;
-                _byIdempotency[recovered.IdempotencyKey] = recovered.OperationId;
-            }
-            SaveAsync(CancellationToken.None).GetAwaiter().GetResult();
+            return JsonSerializer.Deserialize<PersistedOperation[]>(File.ReadAllText(path), Json)
+                ?? throw new InvalidDataException("The web-server ledger must contain an operation array.");
         }
-        catch (JsonException) { /* A corrupt non-secret ledger must not prevent read-only discovery. */ }
+        catch (FileNotFoundException) { return []; }
+        catch (DirectoryNotFoundException) { return []; }
+    }
+
+    private async Task LoadAndRecoverAsync(CancellationToken ct)
+    {
+        var items = ReadLedger(_path);
+        if (items.Length == 0) return;
+        _operations.Clear();
+        _byIdempotency.Clear();
+        foreach (var item in items)
+        {
+            var recovered = item.State is WebServerOperationState.Queued or WebServerOperationState.Running
+                ? item with { State = WebServerOperationState.Failed, Stage = "interrupted", ProblemCode = "webserver.operation_interrupted", CompletedAt = DateTimeOffset.UtcNow }
+                : item;
+            _operations.Add(recovered.OperationId, recovered);
+            _byIdempotency.Add(recovered.IdempotencyKey, recovered.OperationId);
+        }
+        await SaveAsync(ct);
     }
 
     private async Task SaveAsync(CancellationToken ct)
