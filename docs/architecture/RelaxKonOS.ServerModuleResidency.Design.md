@@ -345,3 +345,5 @@ RES-01/03及MB-01整项仍开放：完整宿主真实授权业务、Firewall Hel
 ## 17. Git 构建清理责任（2026-11-06）
 
 Git 失败或取消后的镜像清理与终态写入均属于原代次工作租约。清理不可确认时保留原持久回执与恢复门禁。真实 Engine 标签删除验证、专用 BuildKit 就绪缺口及 MB-05 实机故障范围见[边界设计 §43](RelaxKonOS.ServerModuleBoundaries.Design.md#43-mb-03-构建清理责任与测试机预检2026-11-06)。生产内存和完整外部故障矩阵继续开放。
+
+2026-11-06 续核见[边界设计 §44](RelaxKonOS.ServerModuleBoundaries.Design.md#44-mb-03-离线-buildkit-与-mb-05-隔离设施续核2026-11-06)。已验证官方 rootless 制品的离线导入和专用 builder 的实际启动阻塞，并实测隔离容器和 Nginx 的中断与恢复。应用操作责任、BuildKit 与 ALC 联合验收、真实 CA 和生产内存测量仍开放。
