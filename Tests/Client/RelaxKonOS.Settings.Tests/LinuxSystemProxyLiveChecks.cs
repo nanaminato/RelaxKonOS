@@ -17,6 +17,7 @@ using RelaxKonOS.Protocol.Settings;
 internal static class LinuxSystemProxyLiveChecks
 {
     private const string EnvironmentFile = "/etc/environment";
+    private const string SocketPath = "/run/rk-proxy-fixture/helper.sock";
     private const string Journal = "/var/lib/relaxkonos-system-proxy/recovery.json";
     private const string Original = "RELAXKONOS_PROXY_FIXTURE=isolated\nhttp_proxy=http://127.0.0.1:1234\n";
     private static readonly TimeSpan Budget = TimeSpan.FromSeconds(15);
@@ -27,7 +28,7 @@ internal static class LinuxSystemProxyLiveChecks
         RequireIsolation(hostMountNamespace, hostNetworkNamespace);
         if (worker)
         {
-            Apply(Desired);
+            await ApplyAsync(Desired);
             Console.WriteLine("PROXY_APPLIED");
             await Task.Delay(Timeout.InfiniteTimeSpan);
             return;
@@ -69,24 +70,24 @@ internal static class LinuxSystemProxyLiveChecks
             EnvironmentChange: new([new("http_proxy", EnvironmentMutationKind.Set, external),
                 new("RELAXKONOS_EXTERNAL_EDIT", EnvironmentMutationKind.Set, "kept")], ConfirmHighImpact: true)));
         if (!baseline.Success || !edit.Success) throw new InvalidOperationException("Could not apply the competing environment edit.");
-        Apply(Desired with { Enabled = false });
+        await ApplyAsync(Desired with { Enabled = false });
         var restored = File.ReadAllText(EnvironmentFile);
         var values = LinuxEnvironmentDocument.Parse(restored).Values;
         if (values.GetValueOrDefault("http_proxy") != external || values.ContainsKey("https_proxy")
             || values.GetValueOrDefault("RELAXKONOS_EXTERNAL_EDIT") != "kept" || File.Exists(Journal))
             throw new InvalidOperationException("Recovery must restore owned proxy keys while preserving external edits.");
-        Apply(Desired with { Enabled = false });
+        await ApplyAsync(Desired with { Enabled = false });
         if (File.ReadAllText(EnvironmentFile) != restored || File.Exists(Journal))
             throw new InvalidOperationException("Repeated recovery changed the environment again.");
         await VerifyGuardAsync();
-        Console.WriteLine("PASS LINUX SYSTEM PROXY LIVE: process killed, original journal restored once, external edit preserved, guard no-op verified");
+        Console.WriteLine("PASS LINUX SYSTEM PROXY LIVE: process killed, original journal restored once, external edit preserved, guard no-op verified over independent Helper IPC");
     }
 
     private static async Task VerifyGuardAsync()
     {
         var paths = new FixturePaths();
         var reader = new GuardSettings();
-        var transport = new LocalTransport();
+        var transport = new CountingTransport(CreateTransport());
         var host = new HostSystemProxyService(transport);
         var reconciler = new MihomoSystemProxyReconciler(paths, reader, new UnusedControllerSecret(), host,
             new MihomoPublicationStore(paths, new EphemeralDataProtectionProvider()));
@@ -141,19 +142,18 @@ internal static class LinuxSystemProxyLiveChecks
                 SystemProxy: new(GuardEnabled: true, GuardIntervalSeconds: 5)));
     }
 
-    private sealed class LocalTransport : IPrivilegedOperationTransport
+    private sealed class CountingTransport(IPrivilegedOperationTransport inner) : IPrivilegedOperationTransport
     {
         internal readonly System.Threading.Channels.Channel<bool> Applied = System.Threading.Channels.Channel.CreateUnbounded<bool>();
 
-        public Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
+        public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
         {
-            cancellationToken.ThrowIfCancellationRequested();
             if (request.Operation != PrivilegedOperationKind.LinuxSystemProxyApply)
                 throw new InvalidOperationException("Unexpected isolated guard operation.");
-            var result = LinuxSystemProxyOperations.Execute(request);
+            var result = await inner.ExecuteAsync(request, cancellationToken);
             if (!result.Success) throw new InvalidOperationException($"Isolated guard apply failed: {result.ProblemCode}");
             Applied.Writer.TryWrite(true);
-            return Task.FromResult(result);
+            return result;
         }
     }
 
@@ -189,9 +189,13 @@ internal static class LinuxSystemProxyLiveChecks
         return current is not null && current.StartsWith(prefix, StringComparison.Ordinal) && current != original;
     }
 
-    private static void Apply(LinuxSystemProxyConfiguration configuration)
+    private static UnixSocketPrivilegedOperationTransport CreateTransport() =>
+        new(new PrivilegedHelperOptions { SocketPath = SocketPath, TimeoutSeconds = 5 },
+            NullLogger<UnixSocketPrivilegedOperationTransport>.Instance);
+
+    private static async Task ApplyAsync(LinuxSystemProxyConfiguration configuration)
     {
-        var result = LinuxSystemProxyOperations.Execute(new(PrivilegedOperationKind.LinuxSystemProxyApply, LinuxSystemProxy: configuration));
+        var result = await CreateTransport().ExecuteAsync(new(PrivilegedOperationKind.LinuxSystemProxyApply, LinuxSystemProxy: configuration));
         if (!result.Success) throw new InvalidOperationException($"Isolated Linux system proxy operation failed: {result.ProblemCode}");
     }
 }
