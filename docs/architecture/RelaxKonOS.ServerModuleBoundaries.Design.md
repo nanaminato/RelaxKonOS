@@ -1249,3 +1249,9 @@ Linux x64 Release 实机日志为 .artifacts/mb05-nginx-configuring-live.log，�
 独立 Engine 上真实停止请求进入容器 TERM handler 后，终止专属 daemon 和管理进程。新进程在原 ledger 读取 Running，daemon 重启且 witness 恢复运行后，通过生产协调器观察原项目，按原 operationId 1f3aa469-0012-4b43-86e6-f51e2ef68bf1 持久化 Interrupted。同键重试返回原回执。停止日志在恢复前后均为两条，容器持续运行。首轮按一次停止信号断言失败，最终以 daemon 中断完成后的实际计数为恢复基线。专属项目容器和卷已清理。
 
 Linux x64 Release 日志为 .artifacts/mb05-daemon-operation-final.log，归档 SHA-256 为 e044cb4bcfc2563a67ce2eac59bc413a8a2c4eb253b4789326286a074e973746。此次联合验收使用 daemon 正常终止信号和管理进程强制终止，完整 Server HTTP 传输仍待验证。
+
+### dockerd 强制终止
+
+同一实机增加私有 PID 命名空间和 cgroupfs。真实停止请求进入容器后，专属 dockerd 收到 SIGKILL 并以 137 退出，管理工作进程也被终止。新 daemon 和协调器从原数据目录及台账恢复，原操作 f053458d-6456-421a-8deb-978119d2894e 持久化 Interrupted。同键重试返回原回执，容器持续运行，恢复前后的停止日志均为两条。测试移除专属容器和卷，卸载残留数据挂载并删除临时目录。
+
+Linux x64 Release 实机日志为 .artifacts/mb05-daemon-kill-final.log，归档 SHA-256 为 273f8a3dde8229c9a1884fa5965032b0db1b07fc2d26e5760c889eba714f9d87。首次私有 PID 运行遇到 systemd cgroup 的 PID 映射问题。切换 cgroupfs 后通过业务断言，修复残留挂载清理后整套通过，早期遗留目录已清除。完整 Server HTTP 响应排空仍开放。

@@ -13,6 +13,7 @@ cleanup() {
     if [[ -n $worker ]]; then kill "$worker" 2>/dev/null || :; wait "$worker" || :; fi
     if [[ -n $pid ]]; then kill "$pid" 2>/dev/null || :; wait "$pid" || :; fi
     tail -n 35 "$root/daemon.log" || :
+    if mountpoint -q "$root/data"; then umount --recursive "$root/data"; fi
     rm -rf -- "$root"
 }
 trap cleanup EXIT
@@ -23,7 +24,7 @@ export DOCKER_CONFIG="$root/client"
 mkdir "$DOCKER_CONFIG"
 start() {
     dockerd --config-file "$root/daemon.json" --host "$DOCKER_HOST" --pidfile "$root/docker.pid" \
-        --data-root "$root/data" --exec-root "$root/exec" --storage-driver vfs \
+        --data-root "$root/data" --exec-root "$root/exec" --storage-driver vfs --exec-opt native.cgroupdriver=cgroupfs \
         --bridge none --iptables=false --ip6tables=false --ip-forward=false --ip-masq=false \
         >> "$root/daemon.log" 2>&1 &
     pid=$!
@@ -58,6 +59,10 @@ echo "PASS ISOLATED ENGINE RESTART: same container $id and persistent volume; re
 
 if [[ $# -lt 3 ]]; then exit 0; fi
 tests=$3
+daemon_signal=${4:-TERM}
+[[ $daemon_signal == TERM || $daemon_signal == KILL ]]
+# A PID namespace ensures the private containerd and shims cannot outlive this fixture.
+if [[ $daemon_signal == KILL ]]; then [[ $$ -eq 1 ]]; fi
 project=ad04live$(printf '%08x' "$$")
 compose="$root/compose"
 ledger="$root/ledger"
@@ -88,12 +93,19 @@ observe_log stopping
 operation=$(head -n 1 "$root/worker.log")
 [[ $operation =~ ^[a-f0-9-]{36}$ ]]
 kill -0 "$worker"
-kill "$pid"
+kill -s "$daemon_signal" "$pid"
 kill -KILL "$worker"
 wait "$worker" || :
 worker=
-wait "$pid"
+daemon_exit=0
+wait "$pid" || daemon_exit=$?
 pid=
+if [[ $daemon_signal == KILL ]]; then
+    [[ $daemon_exit -eq 137 ]]
+else
+    [[ $daemon_exit -eq 0 ]]
+fi
+echo "PASS DOCKER DAEMON EXIT: signal=$daemon_signal status=$daemon_exit"
 [[ ! -S "$root/docker.sock" ]] || ! docker version --format '{{.Server.Version}}'
 start
 "${stack[@]}" start witness

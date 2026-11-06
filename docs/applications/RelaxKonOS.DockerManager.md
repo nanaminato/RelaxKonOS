@@ -354,3 +354,5 @@ Windows Release 已通过 Docker 跨进程回执夹具。真实测试进程在�
 MB-05 已在既有 Linux 测试机验证专属 Engine 重启后的容器与命名卷连续性。专属 daemon 和 containerd 使用独立 socket 与数据目录。原容器按 restart policy 重新运行并读取原卷内容，测试资源随后清理。原操作回执与 daemon 中断的联合验收仍开放。见边界设计 §54。
 
 MB-05 也验证了独立 Engine 在真实停止操作期间中断。daemon 重启后，协调器按原 operationId 持久化 Interrupted，同键重试未增加停止日志。见边界设计 §54。
+
+专属 dockerd 的 SIGKILL 路径也已通过实机恢复。daemon 以 137 退出，重启后按原 operationId 取回 Interrupted 回执，恢复前后的停止次数一致。见边界设计 §54。
