@@ -1005,3 +1005,9 @@ ModuleHost 夹具改用当前安装计划的资源声明和审计台账格式，
 - 真实 Engine 使用专属 Compose 项目 `ad04live870f40d4`。Engine 接受停止后，实际 CLI 在租约保护下排空。同一进程内重建的协调器以原 operationId `da1fc630-653a-41f0-8524-b93b3ce07ce1` 恢复 Interrupted。显式启动容器后，同键请求返回原回执，容器保持运行且停止见证仅一次。部署的即时快照为 Succeeded，独立后续观察确认 worker 退出码 7，原回执未改写。按项目标签核对容器、网络及卷清理完毕，上传目录已删除。
 
 证据见 `.artifacts/mb05-linux-current-run.log`、`.artifacts/mb05-linux-process-current.log` 和 `.artifacts/mb05-linux-engine-current.log`。两项分别覆盖跨进程台账和真实外部动作，真实 Engine 下的整个 Server 崩溃仍待联合验收。共享 Engine 和 Nginx 未重启。CA 与 Nginx 应用层中断、独立 Engine daemon 重启及 MB-03 RootlessKit 阻塞继续开放。
+
+### MB-05 真实 Engine 与工作进程崩溃联合验收
+
+Linux x64 Release 在既有测试机的专属项目 `ad04live4722012f` 通过。独立测试进程使用生产 Docker 栈协调器、Compose 服务及常驻工作租约，提交真实停止请求。父测试进程观察容器收到 TERM，确认对应 Docker CLI 仍在运行、原回执已持久化为 Running，再仅终止该测试进程。确认工作进程异常退出、原 CLI PID 消失且 Engine 报告容器 exited 后，新协调器才读取原台账并观察 Engine。原 operationId `a73b18b4-f9c3-40cf-a18e-c017fc08efb5` 持久化为 Interrupted。显式启动原容器后，同键请求返回与持久回执一致的结果，容器继续运行，崩溃组只产生一次停止见证。
+
+同一轮通过原正常停机排空、受控跨进程台账回归和专属项目资源清理。Windows Release 聚合回归通过。Linux 制品归档 SHA-256 为 `c48dc98798a2f998469c59946887b0d15408f2e23fa2b45d521b0bf21dd70323`，原始证据见 `.artifacts/mb05-linux-crash-run.log` 和 `.artifacts/mb05-crash-windows.log`。共享服务持续运行。测试进程承载生产 Docker 协调器，完整 Server HTTP 传输、Engine daemon 重启、CLI 无法核实退出、CA 与 Nginx 应用层中断仍开放。

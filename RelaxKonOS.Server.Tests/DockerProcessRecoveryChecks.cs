@@ -17,7 +17,7 @@ internal static class DockerProcessRecoveryChecks
         {
             var root = directory.FullName;
             Guid operationId;
-            using (var original = StartWorker(root, "execute"))
+            using (var original = StartWorker("--docker-recovery-worker", root, "execute"))
             {
                 try
                 {
@@ -38,7 +38,7 @@ internal static class DockerProcessRecoveryChecks
                 }
             }
 
-            using var recovery = StartWorker(root, "recover");
+            using var recovery = StartWorker("--docker-recovery-worker", root, "recover");
             try
             {
                 var output = await recovery.StandardOutput.ReadToEndAsync().WaitAsync(Budget);
@@ -104,7 +104,7 @@ internal static class DockerProcessRecoveryChecks
 
     private static string Witness(string root) => Path.Combine(root, "compose-effects.log");
 
-    private static Process StartWorker(string root, string phase)
+    internal static Process StartWorker(params string[] arguments)
     {
         var start = new ProcessStartInfo(Environment.ProcessPath!)
         {
@@ -114,13 +114,11 @@ internal static class DockerProcessRecoveryChecks
         };
         if (Path.GetFileNameWithoutExtension(start.FileName).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
             start.ArgumentList.Add(Assembly.GetExecutingAssembly().Location);
-        start.ArgumentList.Add("--docker-recovery-worker");
-        start.ArgumentList.Add(root);
-        start.ArgumentList.Add(phase);
+        foreach (var argument in arguments) start.ArgumentList.Add(argument);
         return Process.Start(start) ?? throw new InvalidOperationException("Unable to start Docker recovery worker.");
     }
 
-    private static async Task StopWorkerAsync(Process worker)
+    internal static async Task StopWorkerAsync(Process worker)
     {
         if (!worker.HasExited) worker.Kill();
         await worker.WaitForExitAsync().WaitAsync(Budget);

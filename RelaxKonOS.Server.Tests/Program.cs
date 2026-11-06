@@ -62,6 +62,11 @@ if (args is ["--terminal-crash-worker", var terminalCrashDirectory])
     await TerminalTreeChecks.RunCrashWorkerAsync(terminalCrashDirectory);
     return;
 }
+if (args is ["--docker-live-crash-worker", var crashLedger, var crashCompose, var crashProject])
+{
+    await DockerChecks.RunLiveCrashWorkerAsync(crashLedger, crashCompose, crashProject);
+    return;
+}
 if (args is ["--docker-recovery-worker", var recoveryRoot, var recoveryPhase])
 {
     await DockerProcessRecoveryChecks.RunWorkerAsync(recoveryRoot, recoveryPhase);

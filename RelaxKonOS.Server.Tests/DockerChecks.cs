@@ -1021,7 +1021,7 @@ volumes:
         TestAssert.Assert(events.Calls >= 4 && !events.Unprotected && !residency.HasBackgroundWork(ServerModules.DockerId),
             "Real Compose execution and terminal publication must remain protected until actual owner drain.");
         if (OperatingSystem.IsLinux())
-            await VerifyLiveStopRecoveryAsync(project, image, ledgerDirectory, compose, ownerHost.Services, residency, events);
+            await VerifyLiveStopRecoveryAsync(project, image, ledgerDirectory, dataDirectory, compose, ownerHost.Services, residency, events);
         Console.WriteLine("PASS DOCKER STACK LIVE: real Compose parsed and deployed; its recorded outcome matched the immediate Engine snapshot; "
             + "independent later observation confirmed worker exit 7, repair succeeded, replay stayed idempotent, and the named volume was released only after removal; "
             + "real resident work protection drained after terminal publication. Instant success is not stable-running or partial-failure proof.");
@@ -1039,7 +1039,7 @@ volumes:
     }
 }
 
-private static async Task VerifyLiveStopRecoveryAsync(string project, string image, string ledgerDirectory,
+private static async Task VerifyLiveStopRecoveryAsync(string project, string image, string ledgerDirectory, string dataDirectory,
     DockerComposeService compose, IServiceProvider services, ModuleResidencyCoordinator residency, LiveWorkEvents events)
 {
     var definition = new DockerStackDefinitionDto(project, $$"""
@@ -1060,14 +1060,7 @@ services:
 
     var receipt = await original.ApplyActionAsync(project, DockerStackOperationKind.Stop, true, "live-actor", "live-key-interrupted-stop");
     await UntilAsync(async () => (await DockerAsync("logs", container)).Contains("stopping", StringComparison.Ordinal));
-    var stopArguments = $"docker\0stop\0{container}\0";
-    var cliPid = Directory.EnumerateDirectories("/proc").Where(path => int.TryParse(Path.GetFileName(path), out _))
-        .Single(path =>
-        {
-            try { return File.ReadAllText(Path.Combine(path, "cmdline")) == stopArguments; }
-            catch (IOException) { return false; }
-            catch (UnauthorizedAccessException) { return false; }
-        });
+    var cliPid = FindLiveStopCli(container);
     TestAssert.Assert(residency.HasBackgroundWork(ServerModules.DockerId)
         && original.Get(receipt.OperationId)?.State == DockerStackOperationState.Running,
         "The real Docker stop must retain the original operation and work lease while the CLI is in flight.");
@@ -1093,6 +1086,87 @@ services:
         "Repeating the original key must return the persisted receipt without stopping the restarted container.");
     await restarted.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(20));
     Console.WriteLine($"PASS DOCKER LIVE RECOVERY: operation={receipt.OperationId} state={replay.State}; real CLI drained, original receipt restored, no second stop");
+    await VerifyLiveCrashRecoveryAsync(project, container, ledgerDirectory, dataDirectory, compose, leases, events);
+
+}
+
+private const string LiveCrashKey = "live-key-crashed-stop";
+
+internal static async Task RunLiveCrashWorkerAsync(string ledgerDirectory, string dataDirectory, string project)
+{
+    if (!OperatingSystem.IsLinux() || !System.Text.RegularExpressions.Regex.IsMatch(project, "^ad04live[a-f0-9]{8}$"))
+        throw new ArgumentException("Expected a dedicated Linux live test project.");
+
+    var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        { ContentRootPath = dataDirectory, EnvironmentName = Microsoft.Extensions.Hosting.Environments.Production });
+    builder.Logging.ClearProviders();
+    var modules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.DockerId });
+    modules.ConfigureServices(builder, ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory"));
+    await using var host = builder.Build();
+    var compose = new DockerComposeService(new TestHostEnvironment(dataDirectory),
+        Options.Create(new DockerComposeOptions { DataDirectory = dataDirectory }));
+    var leases = host.Services.GetRequiredService<IResidentModuleWorkLeaseSource>();
+    using var coordinator = NewStackCoordinator(ledgerDirectory, compose, new TestApplicationLifetime(), 4, leases: leases);
+    await coordinator.StartAsync(default);
+    var receipt = await coordinator.ApplyActionAsync(project, DockerStackOperationKind.Stop, true, "live-actor", LiveCrashKey);
+    Console.WriteLine(receipt.OperationId);
+    await Task.Delay(Timeout.InfiniteTimeSpan);
+}
+
+private static async Task VerifyLiveCrashRecoveryAsync(string project, string container, string ledgerDirectory,
+    string dataDirectory, DockerComposeService compose, IResidentModuleWorkLeaseSource leases, LiveWorkEvents events)
+{
+    async Task<int> StopCountAsync() =>
+        (await DockerAsync("logs", container)).Split('\n').Count(line => line == "stopping");
+
+    using var worker = DockerProcessRecoveryChecks.StartWorker("--docker-live-crash-worker", ledgerDirectory, dataDirectory, project);
+    Guid operationId;
+    try
+    {
+        var response = await worker.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(30));
+        TestAssert.Assert(Guid.TryParse(response, out operationId), $"Missing live worker receipt: {response}");
+        await UntilAsync(async () => await StopCountAsync() == 2);
+        var cli = FindLiveStopCli(container);
+        TestAssert.Assert(!worker.HasExited
+            && NewStackStore(ledgerDirectory, 4).Get(operationId)?.Operation.State == DockerStackOperationState.Running,
+            "Crash injection requires a live worker, an in-flight CLI and a durable Running receipt.");
+        worker.Kill();
+        await worker.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(30));
+        TestAssert.Assert(worker.ExitCode != 0, "The live worker must exit abnormally.");
+        await UntilAsync(async () => !Directory.Exists(cli)
+            && (await DockerAsync("inspect", "--format", "{{.State.Status}}", container)).Trim() == "exited");
+    }
+    finally
+    {
+        await DockerProcessRecoveryChecks.StopWorkerAsync(worker);
+    }
+
+    using var recovery = NewStackCoordinator(ledgerDirectory, compose, new TestApplicationLifetime(), 4, events, leases);
+    await recovery.StartAsync(default);
+    var persisted = NewStackStore(ledgerDirectory, 4).Get(operationId)?.Operation;
+    TestAssert.Assert(persisted is { State: DockerStackOperationState.Interrupted, ProblemCode: DockerStackProblem.Interrupted }
+        && persisted.Services.Any(service => service.Service == "witness" && service.State == "exited")
+        && !events.Unprotected, "The replacement must persist an observation of the original Engine operation.");
+    var start = await recovery.ApplyActionAsync(project, DockerStackOperationKind.Start, true, "live-actor", "live-key-crash-witness-start");
+    await UntilAsync(() => Task.FromResult(recovery.Get(start.OperationId)?.State == DockerStackOperationState.Succeeded));
+    var replay = await recovery.ApplyActionAsync(project, DockerStackOperationKind.Stop, true, "live-actor", LiveCrashKey);
+    TestAssert.Assert(replay.OperationId == operationId && JsonSerializer.Serialize(replay) == JsonSerializer.Serialize(persisted)
+        && (await DockerAsync("inspect", "--format", "{{.State.Status}}", container)).Trim() == "running"
+        && await StopCountAsync() == 2, "Retry must return the original crash receipt without a second stop.");
+    await recovery.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(20));
+    Console.WriteLine($"PASS DOCKER LIVE CRASH RECOVERY: operation={operationId} state={replay.State}; worker killed, original CLI exited, no repeated stop");
+}
+
+private static string FindLiveStopCli(string container)
+{
+    var stopArguments = $"docker\0stop\0{container}\0";
+    return Directory.EnumerateDirectories("/proc").Where(path => int.TryParse(Path.GetFileName(path), out _))
+        .Single(path =>
+        {
+            try { return File.ReadAllText(Path.Combine(path, "cmdline")) == stopArguments; }
+            catch (IOException) { return false; }
+            catch (UnauthorizedAccessException) { return false; }
+        });
 }
 
 private static async Task UntilAsync(Func<Task<bool>> condition)
