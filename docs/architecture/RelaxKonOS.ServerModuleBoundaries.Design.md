@@ -1261,3 +1261,5 @@ Linux x64 Release 实机日志为 .artifacts/mb05-daemon-kill-final.log，归档
 专属 Engine 与回环 Kestrel 使用生产 Docker 路由、协调器和 CLI。夹具身份及响应头屏障用于在 HTTP 202 写出前触发真实客户端断开。容器已收到 TERM，原回执为 Running，工作租约仍在。Kestrel 观察到 RequestAborted 后，真实停止操作继续执行，终态落盘后释放工作租约。原操作 e563f5a7-2316-4269-84e5-6bf8741c5b68 持久化为 Succeeded，HTTP 同键重试返回同一回执。相对恢复后的停止计数仅增加一次。
 
 Linux x64 Release 日志为 .artifacts/mb05-docker-http-live.log，归档 SHA-256 为 dfe0b1fa60f8a4d3db103639cb5a784c5f490ed17501dd9e9db10000f76f3233。本轮由 Kestrel 测试宿主承载生产路由，使用观测租约和夹具身份。完整 Server 启动、认证和模块响应排空仍开放。
+
+HTTP 断开使用生产 Docker resident 工作租约复测通过。客户端断开时 ModuleResidencyCoordinator 仍报告活动工作，终态事件发生在租约保护下，持久回执落盘后排空。原操作 f7503653-b5ce-4cbc-b07e-da09b4874237 同键重试成功，停止次数未增加。Linux x64 Release 日志为 .artifacts/mb05-docker-http-lease-live.log，归档 SHA-256 为 d271d7731579b3c16fea1c546b8c4b14306a932e21f2860d28d8a50df7e1d87e。Kestrel 测试宿主仍提供身份和响应屏障，尚未验收完整 Server 启动及认证链。

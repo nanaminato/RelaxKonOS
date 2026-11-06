@@ -358,3 +358,5 @@ MB-05 也验证了独立 Engine 在真实停止操作期间中断。daemon 重�
 专属 dockerd 的 SIGKILL 路径也已通过实机恢复。daemon 以 137 退出，重启后按原 operationId 取回 Interrupted 回执，恢复前后的停止次数一致。见边界设计 §54。
 
 MB-05 在隔离 Engine 上通过了 Docker HTTP 客户端断开验收。响应头写出前断开连接，已接受的真实停止操作继续到终态持久化，同一 HTTP 幂等键重试返回原 operationId，未再次停止容器。见边界设计 §54。
+
+HTTP 断开场景已使用生产 Docker resident 工作租约复测。终态事件仍在租约保护下，持久化后排空。见边界设计 §54。

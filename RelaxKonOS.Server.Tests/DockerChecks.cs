@@ -1126,8 +1126,16 @@ internal static async Task VerifyLiveHttpDisconnectAsync(string ledgerDirectory,
     var ct = budget.Token;
     var compose = new DockerComposeService(new TestHostEnvironment(dataDirectory),
         Options.Create(new DockerComposeOptions { DataDirectory = dataDirectory }));
-    var leases = new TestResidentBackgroundLeases();
-    using var coordinator = NewStackCoordinator(ledgerDirectory, compose, new TestApplicationLifetime(), 4, leases: leases);
+    var ownerBuilder = WebApplication.CreateBuilder(new WebApplicationOptions
+        { ContentRootPath = dataDirectory, EnvironmentName = Microsoft.Extensions.Hosting.Environments.Production });
+    ownerBuilder.Logging.ClearProviders();
+    var modules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.DockerId });
+    modules.ConfigureServices(ownerBuilder, ServerModuleContext.Create(ownerBuilder.Configuration, ownerBuilder.Environment, "memory"));
+    await using var owner = ownerBuilder.Build();
+    var residency = owner.Services.GetRequiredService<ModuleResidencyCoordinator>();
+    var events = new LiveWorkEvents(residency);
+    using var coordinator = NewStackCoordinator(ledgerDirectory, compose, new TestApplicationLifetime(), 4, events,
+        owner.Services.GetRequiredService<IResidentModuleWorkLeaseSource>());
     await coordinator.StartAsync(ct);
     var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     var disconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1177,26 +1185,26 @@ internal static async Task VerifyLiveHttpDisconnectAsync(string ledgerDirectory,
         await entered.Task.WaitAsync(ct);
         await UntilAsync(async () => (await DockerAsync("logs", container)).Split('\n').Count(line => line == "stopping") == initialStops + 1);
         var running = coordinator.GetByRequest("live-actor", key);
-        TestAssert.Assert(running is { State: DockerStackOperationState.Running } && leases.Active == 1,
+        TestAssert.Assert(running is { State: DockerStackOperationState.Running } && residency.HasBackgroundWork(ServerModules.DockerId),
             "The real stop must hold its work lease while the HTTP response is pending.");
         cancel.Cancel();
         await disconnected.Task.WaitAsync(ct);
         try { using var unexpected = await send; throw new InvalidOperationException("Expected the client to disconnect."); }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested) { }
-        TestAssert.Assert(leases.Active == 1 && coordinator.Get(running!.OperationId)?.State == DockerStackOperationState.Running,
+        TestAssert.Assert(residency.HasBackgroundWork(ServerModules.DockerId) && coordinator.Get(running!.OperationId)?.State == DockerStackOperationState.Running,
             "Client disconnect must leave the actual work and original Running receipt intact.");
         release.SetResult();
         await responseExited.Task.WaitAsync(ct);
-        await UntilAsync(() => Task.FromResult(leases.Active == 0));
+        await UntilAsync(() => Task.FromResult(!residency.HasBackgroundWork(ServerModules.DockerId)));
         var durable = NewStackStore(ledgerDirectory, 4).Get(running.OperationId)?.Operation;
-        TestAssert.Assert(durable is { State: DockerStackOperationState.Succeeded },
+        TestAssert.Assert(durable is { State: DockerStackOperationState.Succeeded } && !events.Unprotected,
             "The operation must persist its terminal receipt before releasing work.");
         using var replayRequest = StopRequest();
         using var replayResponse = await client.SendAsync(replayRequest, ct);
         var replay = await replayResponse.Content.ReadFromJsonAsync<DockerStackOperationDto>(RelaxKonOSJsonOptions.Default, ct);
         TestAssert.Assert(replayResponse.StatusCode == HttpStatusCode.Accepted && replay?.OperationId == running.OperationId
-            && replay.State == durable.State, "HTTP retry must return the original terminal receipt.");
-        Console.WriteLine($"PASS DOCKER LIVE HTTP DISCONNECT: operation={running.OperationId}; state={durable.State}");
+            && replay.State == durable!.State, "HTTP retry must return the original terminal receipt.");
+        Console.WriteLine($"PASS DOCKER LIVE HTTP DISCONNECT: operation={running.OperationId}; state={durable!.State}; production work lease drained");
     }
     finally
     {
