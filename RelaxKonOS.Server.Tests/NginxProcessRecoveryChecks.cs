@@ -31,17 +31,7 @@ internal static class NginxProcessRecoveryChecks
             using var nginx = StartNginx(executable, root);
             try
             {
-                using var client = new HttpClient(new SocketsHttpHandler
-                {
-                    UseProxy = false,
-                    SslOptions = new()
-                    {
-                        RemoteCertificateValidationCallback = (_, peer, _, errors) =>
-                            peer is not null && peer.GetCertHashString() == certificate.Thumbprint
-                            && errors == System.Net.Security.SslPolicyErrors.RemoteCertificateChainErrors
-                    }
-                })
-                    { Timeout = TimeSpan.FromSeconds(2) };
+                using var client = CreatePinnedClient(certificate);
                 var address = new Uri($"https://127.0.0.1:{port}/");
                 await ObserveAsync(client, address, "before", nginx);
                 WriteConfig(root, port, "after");
@@ -115,6 +105,111 @@ internal static class NginxProcessRecoveryChecks
         }
     }
 
+    internal static async Task RunSiteAsync(string root)
+    {
+        const string configRoot = "/etc/nginx";
+        if (!OperatingSystem.IsLinux() || !File.ReadLines("/proc/self/mountinfo").Any(line =>
+                line.Split(' ')[4] == configRoot && line.Contains(" - tmpfs ", StringComparison.Ordinal))
+            || Directory.EnumerateFileSystemEntries(configRoot).Any())
+            throw new InvalidOperationException("An empty private Nginx configuration mount is required.");
+
+        Directory.CreateDirectory(Path.Combine(configRoot, "conf.d", "relaxkonos.d"));
+        var documentRoot = Directory.CreateDirectory(Path.Combine(root, "site")).FullName;
+        await File.WriteAllTextAsync(Path.Combine(documentRoot, "index.html"), "production TLS site");
+        await File.WriteAllTextAsync(NginxManagedPaths.MarkerPath(new() { InstallationRoot = root }), NginxManagedPaths.MarkerContent);
+        using var certificate = CreateCertificate(root);
+        File.WriteAllText(Path.Combine(configRoot, "nginx.conf"), """
+            user root;
+            daemon off;
+            worker_processes 1;
+            pid nginx.pid;
+            error_log nginx.log notice;
+            events { worker_connections 16; }
+            http {
+                client_body_temp_path client-body;
+                proxy_temp_path proxy;
+                fastcgi_temp_path fastcgi;
+                uwsgi_temp_path uwsgi;
+                scgi_temp_path scgi;
+                access_log off;
+                include /etc/nginx/conf.d/*.conf;
+            }
+            """);
+
+        using var nginx = StartNginx(PackageExecutable, root, [], Path.Combine(configRoot, "nginx.conf"));
+        try
+        {
+            using var budget = new CancellationTokenSource(Budget);
+            while (!File.Exists(Path.Combine(root, "nginx.pid")))
+            {
+                if (nginx.HasExited) throw new InvalidOperationException("Isolated site Nginx exited at startup.");
+                await Task.Delay(50, budget.Token);
+            }
+            using var store = await OpenStoreAsync(root);
+            var provider = CreateProvider(root, store, new IsolatedSiteTransport(root, nginx));
+            var instance = await FindManagedInstanceAsync(provider);
+            var manager = new WebServerManager([provider]);
+            var site = await manager.UpsertSiteAsync(instance.Id, new("tls-site", "TLS site",
+                [new("127.0.0.1", 443)], RootPath: documentRoot, HttpsEnabled: true,
+                CertificatePath: Path.Combine(root, "fixture.pem"), PrivateKeyPath: Path.Combine(root, "fixture.key")), budget.Token);
+            TestAssert.Assert(site is { HttpsEnabled: true } &&
+                (await manager.ListSitesAsync(instance.Id, budget.Token))?.Single() is { HttpsEnabled: true } saved
+                && saved.Id == site.Id && saved.CertificatePath == site.CertificatePath,
+                "Production Nginx site metadata was not persisted.");
+            using var client = CreatePinnedClient(certificate);
+            await ObserveAsync(client, new Uri("https://127.0.0.1/"), "production TLS site", nginx);
+            TestAssert.Assert(CountReloads(root) == 1, "The production site must reload exactly once.");
+            Console.WriteLine("PASS NGINX LIVE SITE TLS: production configuration and site metadata applied, reloads=1");
+        }
+        finally
+        {
+            if (!nginx.HasExited) nginx.Kill(entireProcessTree: true);
+            await nginx.WaitForExitAsync().WaitAsync(Budget);
+        }
+    }
+
+    private sealed class IsolatedSiteTransport(string root, Process nginx) : IPrivilegedOperationTransport
+    {
+        public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken)
+        {
+            switch (request.Operation)
+            {
+                case PrivilegedOperationKind.NginxRuntimeStatus:
+                    return new(true, NginxRunning: !nginx.HasExited);
+                case PrivilegedOperationKind.NginxWriteManagedFile:
+                    await File.WriteAllBytesAsync(OwnedPath(request.Path), Convert.FromBase64String(request.ContentBase64!), cancellationToken);
+                    return new(true);
+                case PrivilegedOperationKind.NginxMoveManagedFile:
+                    File.Move(OwnedPath(request.Path), OwnedPath(request.DestinationPath), request.Overwrite);
+                    return new(true);
+                case PrivilegedOperationKind.NginxDeleteManagedFile:
+                    File.Delete(OwnedPath(request.Path));
+                    return new(true);
+                case PrivilegedOperationKind.NginxConfigurationTest:
+                    return await RunAsync(["-t"], cancellationToken);
+                case PrivilegedOperationKind.NginxSystemServiceAction when request.NginxServiceAction == NginxSystemServiceAction.Reload:
+                    return await RunAsync(["-s", "reload"], cancellationToken);
+                default:
+                    throw new InvalidOperationException($"Unexpected isolated Nginx operation: {request.Operation}.");
+            }
+        }
+
+        private async Task<PrivilegedOperationResult> RunAsync(string[] arguments, CancellationToken cancellationToken)
+        {
+            using var command = StartNginx(PackageExecutable, root, arguments, "/etc/nginx/nginx.conf");
+            await command.WaitForExitAsync(cancellationToken);
+            return new(command.ExitCode == 0, command.ExitCode);
+        }
+
+        private static string OwnedPath(string? path)
+        {
+            var fullPath = Path.GetFullPath(path ?? throw new InvalidOperationException("Missing Nginx fixture path."));
+            if (!fullPath.StartsWith("/etc/nginx/conf.d/", StringComparison.Ordinal))
+                throw new InvalidOperationException($"Unexpected Nginx fixture path: {fullPath}.");
+            return fullPath;
+        }
+    }
+
     internal static async Task RunWorkerAsync(string executable, string root)
     {
         using var store = await OpenStoreAsync(root);
@@ -132,7 +227,7 @@ internal static class NginxProcessRecoveryChecks
         (await provider.DiscoverAsync(default)).Single(instance => instance.ManagementMode == WebServerManagementMode.Managed
             && instance.ExecutablePath == PackageExecutable);
 
-    private static NginxWebServerManager CreateProvider(string root, WebServerOperationStore store, IsolatedReloadTransport transport)
+    private static NginxWebServerManager CreateProvider(string root, WebServerOperationStore store, IPrivilegedOperationTransport transport)
     {
         var environment = new TestHostEnvironment(root);
         var configuration = TestConfiguration();
@@ -175,13 +270,27 @@ internal static class NginxProcessRecoveryChecks
         return store;
     }
 
-    private static Process StartNginx(string executable, string root, params string[] extra)
+    private static Process StartNginx(string executable, string root, params string[] extra) =>
+        StartNginx(executable, root, extra, Path.Combine(root, "nginx.conf"));
+
+    private static Process StartNginx(string executable, string root, string[] extra, string config)
     {
         var start = new ProcessStartInfo(executable) { UseShellExecute = false };
-        foreach (var argument in new[] { "-p", root + "/", "-c", Path.Combine(root, "nginx.conf") }.Concat(extra))
+        foreach (var argument in new[] { "-p", root + "/", "-c", config }.Concat(extra))
             start.ArgumentList.Add(argument);
         return Process.Start(start) ?? throw new InvalidOperationException("Unable to start isolated Nginx.");
     }
+
+    private static HttpClient CreatePinnedClient(X509Certificate2 certificate) => new(new SocketsHttpHandler
+    {
+        UseProxy = false,
+        SslOptions = new()
+        {
+            RemoteCertificateValidationCallback = (_, peer, _, errors) =>
+                peer is not null && peer.GetCertHashString() == certificate.Thumbprint
+                && errors == System.Net.Security.SslPolicyErrors.RemoteCertificateChainErrors
+        }
+    }) { Timeout = TimeSpan.FromSeconds(2) };
 
     private static X509Certificate2 CreateCertificate(string root)
     {

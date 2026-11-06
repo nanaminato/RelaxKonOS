@@ -1211,3 +1211,9 @@ Linux x64 Release 实机日志为 `.artifacts/mb05-acme-response-live.log`，归
 既有 Linux 测试机运行独立的 Nginx master、回环端口、配置和临时证书。客户端校验对端证书指纹和回环地址。生产 WebServer 重载入口提交操作后，隔离 transport 对专属 master 执行真实 reload，等 HTTPS 返回新内容且原回执仍为 Running 再终止管理工作进程。原 master 继续提供 HTTPS，新 owner 持久化原操作 `dbe8c470-e6c2-4050-84de-4ccf2490603c` 为 Failed / interrupted。两条重载入口使用相同幂等键均返回原回执，master 日志仅有一次重载。仅清理专属 master 和临时目录。
 
 Windows Release 构建和 Linux x64 Release 实机验收通过。实机日志为 `.artifacts/mb05-nginx-tls-live.log`，制品归档 SHA-256 为 `d6530f4e0fdaca000a963ad8dfa62acc9259a13b485b13e7706e061e6437f01b`。本轮的 TLS 配置由夹具提供，生产站点绑定和网站发布协调器的实机恢复仍待验收。
+
+### 生产站点绑定
+
+既有 Linux 测试机在私有网络和挂载命名空间运行独立 Nginx，使用私有 `/etc/nginx` 和 443 端口。生产 WebServerManager 与 Nginx provider 通过站点保存入口验证本地证书文件、渲染配置并持久化站点元数据。测试 transport 限定在私有配置树，执行真实配置检查和重载。HTTPS 客户端校验证书指纹并读取生产站点配置指定的静态内容，原 master 日志确认一次 reload。
+
+Windows Release 构建和 Linux x64 Release 实机验收通过。日志为 `.artifacts/mb05-nginx-site-live.log`，归档 SHA-256 为 `f914d7871113188fbe605eed44ca1c77fe503425a19152f989d1a4a0f42a4f78`。Nginx 报告现有 listen http2 写法弃用警告，配置检查通过。本轮覆盖本地证书文件绑定，证书仓库 ID 绑定及网站发布协调器崩溃恢复仍开放。
