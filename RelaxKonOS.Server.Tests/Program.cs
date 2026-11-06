@@ -87,6 +87,11 @@ if (args is ["--nginx-live-recovery-only", var nginxExecutable])
     await NginxProcessRecoveryChecks.RunAsync(nginxExecutable);
     return;
 }
+if (args is ["--docker-live-http-disconnect", var httpLedger, var httpCompose, var httpProject, var httpContainer])
+{
+    await DockerChecks.VerifyLiveHttpDisconnectAsync(httpLedger, httpCompose, httpProject, httpContainer);
+    return;
+}
 if (args is ["--docker-daemon-recovery-only", var daemonLedger, var daemonCompose, var daemonProject, var daemonOperation])
 {
     await DockerChecks.RecoverAfterDaemonRestartAsync(daemonLedger, daemonCompose, daemonProject, Guid.Parse(daemonOperation));

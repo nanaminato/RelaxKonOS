@@ -1255,3 +1255,9 @@ Linux x64 Release 日志为 .artifacts/mb05-daemon-operation-final.log，归档 
 同一实机增加私有 PID 命名空间和 cgroupfs。真实停止请求进入容器后，专属 dockerd 收到 SIGKILL 并以 137 退出，管理工作进程也被终止。新 daemon 和协调器从原数据目录及台账恢复，原操作 f053458d-6456-421a-8deb-978119d2894e 持久化 Interrupted。同键重试返回原回执，容器持续运行，恢复前后的停止日志均为两条。测试移除专属容器和卷，卸载残留数据挂载并删除临时目录。
 
 Linux x64 Release 实机日志为 .artifacts/mb05-daemon-kill-final.log，归档 SHA-256 为 273f8a3dde8229c9a1884fa5965032b0db1b07fc2d26e5760c889eba714f9d87。首次私有 PID 运行遇到 systemd cgroup 的 PID 映射问题。切换 cgroupfs 后通过业务断言，修复残留挂载清理后整套通过，早期遗留目录已清除。完整 Server HTTP 响应排空仍开放。
+
+### Docker HTTP 客户端断开
+
+专属 Engine 与回环 Kestrel 使用生产 Docker 路由、协调器和 CLI。夹具身份及响应头屏障用于在 HTTP 202 写出前触发真实客户端断开。容器已收到 TERM，原回执为 Running，工作租约仍在。Kestrel 观察到 RequestAborted 后，真实停止操作继续执行，终态落盘后释放工作租约。原操作 e563f5a7-2316-4269-84e5-6bf8741c5b68 持久化为 Succeeded，HTTP 同键重试返回同一回执。相对恢复后的停止计数仅增加一次。
+
+Linux x64 Release 日志为 .artifacts/mb05-docker-http-live.log，归档 SHA-256 为 dfe0b1fa60f8a4d3db103639cb5a784c5f490ed17501dd9e9db10000f76f3233。本轮由 Kestrel 测试宿主承载生产路由，使用观测租约和夹具身份。完整 Server 启动、认证和模块响应排空仍开放。

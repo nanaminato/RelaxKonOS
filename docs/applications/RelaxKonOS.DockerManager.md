@@ -356,3 +356,5 @@ MB-05 已在既有 Linux 测试机验证专属 Engine 重启后的容器与命�
 MB-05 也验证了独立 Engine 在真实停止操作期间中断。daemon 重启后，协调器按原 operationId 持久化 Interrupted，同键重试未增加停止日志。见边界设计 §54。
 
 专属 dockerd 的 SIGKILL 路径也已通过实机恢复。daemon 以 137 退出，重启后按原 operationId 取回 Interrupted 回执，恢复前后的停止次数一致。见边界设计 §54。
+
+MB-05 在隔离 Engine 上通过了 Docker HTTP 客户端断开验收。响应头写出前断开连接，已接受的真实停止操作继续到终态持久化，同一 HTTP 幂等键重试返回原 operationId，未再次停止容器。见边界设计 §54。

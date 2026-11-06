@@ -1,3 +1,9 @@
+using System.Net.Http.Json;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using RelaxKonOS.Server.Endpoints;
 using System.Collections.Concurrent;
 using RelaxKonOS.Server.EventAlerts;
 using Microsoft.AspNetCore.Builder;
@@ -1111,6 +1117,101 @@ internal static async Task RunLiveCrashWorkerAsync(string ledgerDirectory, strin
     var receipt = await coordinator.ApplyActionAsync(project, DockerStackOperationKind.Stop, true, "live-actor", LiveCrashKey);
     Console.WriteLine(receipt.OperationId);
     await Task.Delay(Timeout.InfiniteTimeSpan);
+}
+
+internal static async Task VerifyLiveHttpDisconnectAsync(string ledgerDirectory, string dataDirectory, string project, string container)
+{
+    const string key = "live-http-disconnect";
+    using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+    var ct = budget.Token;
+    var compose = new DockerComposeService(new TestHostEnvironment(dataDirectory),
+        Options.Create(new DockerComposeOptions { DataDirectory = dataDirectory }));
+    var leases = new TestResidentBackgroundLeases();
+    using var coordinator = NewStackCoordinator(ledgerDirectory, compose, new TestApplicationLifetime(), 4, leases: leases);
+    await coordinator.StartAsync(ct);
+    var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var disconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var responseExited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var builder = WebApplication.CreateBuilder();
+    builder.Logging.ClearProviders();
+    builder.WebHost.UseUrls("http://127.0.0.1:0");
+    builder.Services.AddSingleton(coordinator);
+    builder.Services.AddSingleton<IDockerComposeService>(compose);
+    builder.Services.AddSingleton<IDockerEngineService>(_ => throw new NotSupportedException());
+    builder.Services.AddSingleton<IDockerEngineControlService>(_ => throw new NotSupportedException());
+    builder.Services.AddSingleton<RelaxKonOS.Server.ImageMirrors.IDockerImageMirrorResolver>(_ => throw new NotSupportedException());
+    builder.Services.AddSingleton<RelaxKonOS.Server.HostMode.IServerModeResolver, ProgressTestMode>();
+    builder.Services.AddAuthentication();
+    builder.Services.AddAuthorization();
+    await using var app = builder.Build();
+    app.UseRouting();
+    app.Use(async (context, next) =>
+    {
+        context.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, "live-actor")], "Fixture"));
+        if (context.Request.Headers.ContainsKey("X-Hold-Response"))
+        {
+            using var registration = context.RequestAborted.Register(() => disconnected.TrySetResult());
+            context.Response.OnStarting(async () =>
+            {
+                entered.TrySetResult();
+                await release.Task.WaitAsync(ct);
+            });
+            try { await next(context); }
+            finally { responseExited.TrySetResult(); }
+        }
+        else await next(context);
+    });
+    app.UseAuthorization();
+    app.MapDockerEndpoints();
+    await app.StartAsync(ct);
+    var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+    using var client = new HttpClient(new SocketsHttpHandler { UseProxy = false }) { BaseAddress = new Uri(address) };
+    using var cancel = CancellationTokenSource.CreateLinkedTokenSource(ct);
+    using var first = StopRequest();
+    first.Headers.Add("X-Hold-Response", "1");
+    var initialStops = (await DockerAsync("logs", container)).Split('\n').Count(line => line == "stopping");
+    var send = client.SendAsync(first, cancel.Token);
+    try
+    {
+        await entered.Task.WaitAsync(ct);
+        await UntilAsync(async () => (await DockerAsync("logs", container)).Split('\n').Count(line => line == "stopping") == initialStops + 1);
+        var running = coordinator.GetByRequest("live-actor", key);
+        TestAssert.Assert(running is { State: DockerStackOperationState.Running } && leases.Active == 1,
+            "The real stop must hold its work lease while the HTTP response is pending.");
+        cancel.Cancel();
+        await disconnected.Task.WaitAsync(ct);
+        try { using var unexpected = await send; throw new InvalidOperationException("Expected the client to disconnect."); }
+        catch (OperationCanceledException) when (cancel.IsCancellationRequested) { }
+        TestAssert.Assert(leases.Active == 1 && coordinator.Get(running!.OperationId)?.State == DockerStackOperationState.Running,
+            "Client disconnect must leave the actual work and original Running receipt intact.");
+        release.SetResult();
+        await responseExited.Task.WaitAsync(ct);
+        await UntilAsync(() => Task.FromResult(leases.Active == 0));
+        var durable = NewStackStore(ledgerDirectory, 4).Get(running.OperationId)?.Operation;
+        TestAssert.Assert(durable is { State: DockerStackOperationState.Succeeded },
+            "The operation must persist its terminal receipt before releasing work.");
+        using var replayRequest = StopRequest();
+        using var replayResponse = await client.SendAsync(replayRequest, ct);
+        var replay = await replayResponse.Content.ReadFromJsonAsync<DockerStackOperationDto>(RelaxKonOSJsonOptions.Default, ct);
+        TestAssert.Assert(replayResponse.StatusCode == HttpStatusCode.Accepted && replay?.OperationId == running.OperationId
+            && replay.State == durable.State, "HTTP retry must return the original terminal receipt.");
+        Console.WriteLine($"PASS DOCKER LIVE HTTP DISCONNECT: operation={running.OperationId}; state={durable.State}");
+    }
+    finally
+    {
+        release.TrySetResult();
+        await app.StopAsync(CancellationToken.None);
+        await coordinator.StopAsync(CancellationToken.None);
+    }
+
+    HttpRequestMessage StopRequest()
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/v1.0/docker/stacks/{project}/stop")
+            { Content = JsonContent.Create(new DockerStackActionRequest(true)) };
+        request.Headers.Add("Idempotency-Key", key);
+        return request;
+    }
 }
 
 internal static async Task RecoverAfterDaemonRestartAsync(string ledgerDirectory, string dataDirectory, string project, Guid operationId)
