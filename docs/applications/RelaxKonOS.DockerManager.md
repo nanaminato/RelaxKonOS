@@ -346,3 +346,5 @@ Compose 操作轮询持久操作记录与诊断快照，阶段变化记入日志
 
 
 Windows Release 已通过 Docker 跨进程回执夹具。真实测试进程在持久 Running 回执和受控部署见证写入后被终止，新进程保留原 operationId 并记录 Interrupted，同键请求返回相同回执且没有新增部署见证。真实 Engine 故障验收仍见边界设计 §45/50。
+
+同一 Release 源码在既有 Linux 测试机分别通过跨进程回执夹具和真实 Engine 专属项目中断续核。操作 ID、制品摘要和清理结果见边界设计 §50。

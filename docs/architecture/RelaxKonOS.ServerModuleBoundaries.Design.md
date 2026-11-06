@@ -996,3 +996,12 @@ ModuleHost 夹具改用当前安装计划的资源声明和审计台账格式，
 从 `d255af3e` 继续。Windows Release 聚合入口 `--module-boundary-milestones-only` 通过，包含新增 `--docker-process-recovery-only` 夹具。夹具在独立进程使用生产栈协调器与持久台账，替身 Compose 在工作租约内向临时文件记录一次部署后阻塞。父进程确认原回执为 Running 且副作用见证已落盘，再强制终止原进程并确认异常退出。新进程读取同一台账，执行一次只读观察，以原 operationId 记录 Interrupted。相同请求键返回与恢复查询一致的回执，部署执行次数为零。父进程再次打开台账，确认终态与观察结果持久化，副作用见证仍只有一次。
 
 本轮日志 `.artifacts/mb05-release-final.log` 中的 operationId 为 `ac1cda96-23e8-453a-8b5c-b69cf8d919d1`。沙箱令牌下的既有聚合回归在证书恢复断言处失败，普通 Windows 令牌下完整 Release 重新构建和回归通过。该夹具覆盖跨进程持久责任与幂等回执，外部动作由文件见证替身提供。真实 Engine daemon/Server 联合故障、HTTP 响应排空、CA 与 Nginx 应用层中断仍开放。
+
+### MB-05 既有 Linux 测试机续核
+
+以 `37fe327b` 发布 Linux x64 Release 制品。沿用固定 SSH 主机密钥，在随机临时目录核对归档 SHA-256 `dd06f7c1561084a63c295bbadbc4f0ff01f54f0656f874212e39ef267fbc9d3c` 后执行两项测试。
+
+- 普通账户跨进程夹具通过。原 operationId `e8a6ae83-63c0-4bda-83bf-0f26ba3592b3` 恢复为 Interrupted，文件副作用见证为一次。
+- 真实 Engine 使用专属 Compose 项目 `ad04live870f40d4`。Engine 接受停止后，实际 CLI 在租约保护下排空。同一进程内重建的协调器以原 operationId `da1fc630-653a-41f0-8524-b93b3ce07ce1` 恢复 Interrupted。显式启动容器后，同键请求返回原回执，容器保持运行且停止见证仅一次。部署的即时快照为 Succeeded，独立后续观察确认 worker 退出码 7，原回执未改写。按项目标签核对容器、网络及卷清理完毕，上传目录已删除。
+
+证据见 `.artifacts/mb05-linux-current-run.log`、`.artifacts/mb05-linux-process-current.log` 和 `.artifacts/mb05-linux-engine-current.log`。两项分别覆盖跨进程台账和真实外部动作，真实 Engine 下的整个 Server 崩溃仍待联合验收。共享 Engine 和 Nginx 未重启。CA 与 Nginx 应用层中断、独立 Engine daemon 重启及 MB-03 RootlessKit 阻塞继续开放。
