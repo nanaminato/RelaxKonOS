@@ -43,12 +43,13 @@ internal static class ProxyTunLiveChecks
                                 "The original incomplete marker must be durable before the crash.");
                             if (mihomo is not null)
                             {
-                                var tunneled = await RunIpAsync("route", "get", "198.51.100.10");
+                                var tunneled = await RunIpAsync("route", "get", "198.51.100.53");
                                 var management = await RunIpAsync("route", "get", "192.0.2.1");
                                 TestAssert.Assert(tunneled.Contains($" dev {Device} ", StringComparison.Ordinal)
                                     && management.Contains(" dev rk-egress ", StringComparison.Ordinal)
                                     && await ReadRulesAsync() != baselineRules,
                                     $"Automatic routing must select TUN while excluding the management gateway. Probe={tunneled}; gateway={management}");
+                                await VerifyDnsHijackAsync();
                             }
                             worker.Kill();
                             await worker.WaitForExitAsync().WaitAsync(Budget);
@@ -76,7 +77,7 @@ internal static class ProxyTunLiveChecks
                         "Verified route recovery must clear the original marker without a second TUN removal.");
                     if (mihomo is not null)
                     {
-                        var restoredRoute = await RunIpAsync("route", "get", "198.51.100.10");
+                        var restoredRoute = await RunIpAsync("route", "get", "198.51.100.53");
                         TestAssert.Assert(await ReadRulesAsync() == baselineRules
                             && restoredRoute.Contains(" via 192.0.2.1 dev rk-egress ", StringComparison.Ordinal),
                             $"Recovery must remove TUN policy rules and restore the baseline route. Probe={restoredRoute}");
@@ -94,7 +95,7 @@ internal static class ProxyTunLiveChecks
                     if (mihomo is not null)
                         TestAssert.Assert(!mihomo.HasExited && (await runtime.IsEnabledAsync(default)) is { Succeeded: true, Enabled: false },
                             "The original Mihomo process must remain reachable with TUN disabled.");
-                    Console.WriteLine($"PASS TUN LIVE RECOVERY: operation={original.OperationId}; real device removed once, route verified, stale recovery rejected; initial recovery reloads={disableRequests}; auto-route={mihomo is not null}; mihomo={mihomo is not null}");
+                    Console.WriteLine($"PASS TUN LIVE RECOVERY: operation={original.OperationId}; real device removed once, route verified, stale recovery rejected; initial recovery reloads={disableRequests}; auto-route={mihomo is not null}; dns={mihomo is not null}; mihomo={mihomo is not null}");
                 }
                 finally { if (mihomo is not null) await DockerProcessRecoveryChecks.StopWorkerAsync(mihomo); }
             }
@@ -116,6 +117,23 @@ internal static class ProxyTunLiveChecks
         var safety = new ProxyTunSafetyService(paths, new HostProxyNetworkSafetyPlatform(), runtime);
         await safety.EnableAsync(Guid.NewGuid(), null, default);
         throw new InvalidOperationException("The TUN activation crash barrier was bypassed.");
+    }
+
+    private static async Task VerifyDnsHijackAsync()
+    {
+        using var budget = new CancellationTokenSource(Budget);
+        using var socket = new UdpClient(AddressFamily.InterNetwork);
+        socket.Connect(IPAddress.Parse("198.51.100.53"), 53);
+        // DNS query ID 0x4d04, one recursive question for mb04.test IN A.
+        byte[] query = [0x4d, 4, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0,
+            4, (byte)'m', (byte)'b', (byte)'0', (byte)'4',
+            4, (byte)'t', (byte)'e', (byte)'s', (byte)'t', 0, 0, 1, 0, 1];
+        await socket.SendAsync(query.AsMemory(), budget.Token);
+        var answer = (await socket.ReceiveAsync(budget.Token)).Buffer;
+        TestAssert.Assert(answer.Length >= query.Length + 16 && answer[0] == query[0] && answer[1] == query[1]
+            && (answer[2] & 0x80) != 0 && (answer[3] & 0x0f) == 0 && answer[6] == 0 && answer[7] == 1
+            && answer.AsSpan(answer.Length - 4).SequenceEqual(new byte[] { 203, 0, 113, 42 }),
+            "Mihomo TUN must return the configured A answer for the isolated DNS query.");
     }
 
     private static int ReservePort()
@@ -144,6 +162,14 @@ internal static class ProxyTunLiveChecks
             secret: controller-secret
             mode: direct
             log-level: error
+            hosts:
+              "mb04.test": 203.0.113.42
+            dns:
+              enable: true
+              enhanced-mode: redir-host
+              use-hosts: true
+              nameserver:
+                - udp://127.0.0.1:65534
             tun:
               enable: false
             """);
