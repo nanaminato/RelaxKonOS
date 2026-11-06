@@ -1113,6 +1113,27 @@ internal static async Task RunLiveCrashWorkerAsync(string ledgerDirectory, strin
     await Task.Delay(Timeout.InfiniteTimeSpan);
 }
 
+internal static async Task RecoverAfterDaemonRestartAsync(string ledgerDirectory, string dataDirectory, string project, Guid operationId)
+{
+    var compose = new DockerComposeService(new TestHostEnvironment(dataDirectory),
+        Options.Create(new DockerComposeOptions { DataDirectory = dataDirectory }));
+    var original = NewStackStore(ledgerDirectory, 4).Get(operationId)?.Operation;
+    TestAssert.Assert(original?.State == DockerStackOperationState.Running, "The interrupted worker must leave its original Running receipt.");
+    using var recovery = NewStackCoordinator(ledgerDirectory, compose, new TestApplicationLifetime(), 4,
+        leases: new TestResidentBackgroundLeases());
+    await recovery.StartAsync(default);
+    var restored = recovery.Get(operationId);
+    var replay = await recovery.ApplyActionAsync(project, DockerStackOperationKind.Stop, true, "live-actor", LiveCrashKey);
+    var durable = NewStackStore(ledgerDirectory, 4).Get(operationId)?.Operation;
+    TestAssert.Assert(restored is { State: DockerStackOperationState.Interrupted, ProblemCode: DockerStackProblem.Interrupted }
+        && restored.Services.Any(service => service.Service == "witness")
+        && replay.OperationId == operationId && replay.State == restored.State && replay.ProblemCode == restored.ProblemCode
+        && durable?.State == restored.State && durable.ProblemCode == restored.ProblemCode,
+        "Daemon recovery must observe the real project and preserve the original interrupted receipt.");
+    await recovery.StopAsync(default);
+    Console.WriteLine($"PASS DOCKER DAEMON OPERATION RECOVERY: operation={operationId}; state={restored!.State}");
+}
+
 private static async Task VerifyLiveCrashRecoveryAsync(string project, string container, string ledgerDirectory,
     string dataDirectory, DockerComposeService compose, IResidentModuleWorkLeaseSource leases, LiveWorkEvents events)
 {

@@ -1243,3 +1243,9 @@ Linux x64 Release 实机日志为 .artifacts/mb05-nginx-configuring-live.log，�
 既有 Linux 测试机的私有挂载和网络命名空间运行 Docker Engine 29.8.2。私有挂载隐藏宿主 containerd socket，日志确认 daemon 连接专属 exec-root 下的 containerd。Docker socket、客户端配置和 vfs 数据目录均专属。镜像从共享 Engine 已缓存的 Alpine 标签只读导出，并导入专属 Engine。首轮日志发现 daemon 默认尝试使用共享 containerd，独立验收改为隐藏宿主 socket。离线导入后使用导出的标签处理两种镜像存储返回的 ID 差异。
 
 专属 daemon 正常停止后通过原数据目录重启。同一容器 27703da4ed8b0466ea8952768a22b1ace3ea9673df0ef256d8ceace762925a48 按 restart policy 重新运行，启动时间更新，命名卷中的原内容仍可读取。容器与卷随后清理。证据为 .artifacts/mb05-private-engine-workload-verified.log。此轮验证了外部运行设施，原操作回执与真实 daemon 中断的联合验收仍开放。
+
+### 执行中 Engine 与操作进程中断
+
+独立 Engine 上真实停止请求进入容器 TERM handler 后，终止专属 daemon 和管理进程。新进程在原 ledger 读取 Running，daemon 重启且 witness 恢复运行后，通过生产协调器观察原项目，按原 operationId 1f3aa469-0012-4b43-86e6-f51e2ef68bf1 持久化 Interrupted。同键重试返回原回执。停止日志在恢复前后均为两条，容器持续运行。首轮按一次停止信号断言失败，最终以 daemon 中断完成后的实际计数为恢复基线。专属项目容器和卷已清理。
+
+Linux x64 Release 日志为 .artifacts/mb05-daemon-operation-final.log，归档 SHA-256 为 e044cb4bcfc2563a67ce2eac59bc413a8a2c4eb253b4789326286a074e973746。此次联合验收使用 daemon 正常终止信号和管理进程强制终止，完整 Server HTTP 传输仍待验证。

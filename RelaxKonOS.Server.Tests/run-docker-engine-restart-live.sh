@@ -8,7 +8,9 @@ mount -t tmpfs -o mode=0755,size=8m tmpfs /run/containerd
 ip link set lo up
 root=$(mktemp -d /tmp/relaxkonos-engine.XXXXXXXX)
 pid=
+worker=
 cleanup() {
+    if [[ -n $worker ]]; then kill "$worker" 2>/dev/null || :; wait "$worker" || :; fi
     if [[ -n $pid ]]; then kill "$pid" 2>/dev/null || :; wait "$pid" || :; fi
     tail -n 35 "$root/daemon.log" || :
     rm -rf -- "$root"
@@ -53,3 +55,53 @@ docker rm -f "$id"
 docker volume rm witness
 [[ -z $(docker ps -aq) && -z $(docker volume ls -q) ]]
 echo "PASS ISOLATED ENGINE RESTART: same container $id and persistent volume; resources cleaned"
+
+if [[ $# -lt 3 ]]; then exit 0; fi
+tests=$3
+project=ad04live$(printf '%08x' "$$")
+compose="$root/compose"
+ledger="$root/ledger"
+mkdir -p "$compose/$project" "$ledger"
+cat > "$compose/$project/compose.yaml" <<'EOF'
+services:
+  witness:
+    image: alpine:3.22
+    pull_policy: never
+    network_mode: none
+    stop_grace_period: 25s
+    command: ["sh", "-c", "trap 'echo stopping; sleep 10; exit 0' TERM; echo ready; while true; do sleep 1; done"]
+EOF
+stack=(docker compose -p "$project" -f "$compose/$project/compose.yaml")
+"${stack[@]}" up -d
+id=$("${stack[@]}" ps -q witness)
+observe_log() {
+    for i in $(seq 1 100); do
+        if docker logs "$id" | grep -Fx "$1"; then return; fi
+        sleep .1
+    done
+    return 1
+}
+observe_log ready
+dotnet "$tests" --docker-live-crash-worker "$ledger" "$compose" "$project" > "$root/worker.log" &
+worker=$!
+observe_log stopping
+operation=$(head -n 1 "$root/worker.log")
+[[ $operation =~ ^[a-f0-9-]{36}$ ]]
+kill -0 "$worker"
+kill "$pid"
+kill -KILL "$worker"
+wait "$worker" || :
+worker=
+wait "$pid"
+pid=
+[[ ! -S "$root/docker.sock" ]] || ! docker version --format '{{.Server.Version}}'
+start
+"${stack[@]}" start witness
+stops_before=$(docker logs "$id" | grep -Fxc stopping)
+[[ $stops_before -ge 1 ]]
+dotnet "$tests" --docker-daemon-recovery-only "$ledger" "$compose" "$project" "$operation"
+[[ $(docker inspect --format '{{.State.Status}}' "$id") == running ]]
+[[ $(docker logs "$id" | grep -Fxc stopping) == "$stops_before" ]]
+echo "PASS DOCKER DAEMON NO REPLAY: stop count before and after recovery=$stops_before"
+"${stack[@]}" down -v
+[[ -z $(docker ps -aq) && -z $(docker volume ls -q) ]]
