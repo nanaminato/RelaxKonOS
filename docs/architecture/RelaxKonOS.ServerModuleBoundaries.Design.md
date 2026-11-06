@@ -1071,3 +1071,11 @@ Windows 与既有 Linux 测试机的 Release 聚合回归通过，新增为后�
 本项使用生产协调器、目录和台账，站点补偿使用受控 provider。操作员确认并解除门禁的正式入口、补偿执行过程中被强制终止的故障矩阵及实际 Nginx 补偿仍待验证。
 
 Windows 与既有 Linux 测试机的 Release 聚合回归通过，新增为后台 owner 第 40 至 42 项。首轮并发删除触发目录通用异常并绕过补偿，目录改用明确的应用不存在错误后复测通过。日志见 `.artifacts/mb05-compensation-win-final.log` 与 `.artifacts/mb05-compensation-linux.log`。
+
+### MB-05 站点配置阶段中断的持久责任
+
+恢复读取原活动回执时，若最后持久阶段为 Configuring，仍以原 operationId 写入 Interrupted，并记录 website.site_application_unverified。此阶段可能已经改变 Nginx，恢复保留原站点 ID 和证书引用，禁止同一应用或同一 WebServer 与域名的新发布，停用检查和历史保留规则继续承担责任。同键请求读取原回执，恢复不执行站点写入或补偿。关联已提交后的阶段和单纯验证阶段沿用各自的恢复语义。
+
+测试使用生产发布协调器和持久台账，受控 provider 在 Configuring 阶段接收停机信号并返回取消。真实 Nginx 写入中被强制终止及人工核实后的解除入口仍开放。
+
+Windows 与既有 Linux 测试机 Release 聚合回归通过，新增为后台 owner 第 43 至 45 项。日志见 `.artifacts/mb05-configure-win.log` 与 `.artifacts/mb05-configure-linux.log`。

@@ -362,6 +362,44 @@ internal static class ModuleBackgroundOwnershipChecks
                 "Unknown website compensation blocks a conflicting publication without replaying the original effect");
             await unknownRecovery.StopAsync(default);
 
+            var interruptedApp = await applications.CreateAsync(new CreateApplicationRequest("interrupted-site", ApplicationSourceKind.Image, HostPort: 9084), "actor", default);
+            controlled.SetRunning(interruptedApp.Id);
+            ((BackgroundWebsiteCertificate)(object)cert).Domain = "interrupted.example.test";
+            var interruptedRequest = request with { ApplicationId = interruptedApp.Id, Domain = "interrupted.example.test" };
+            var interruptedWeb = DispatchProxy.Create<IWebServerManager, BackgroundWebsiteProvider>();
+            var interruptedApply = (BackgroundWebsiteProvider)(object)interruptedWeb;
+            interruptedApply.HonorCancellationAfterRelease = true;
+            using var configuring = new WebsitePublicationCoordinator(unknownStore, applications, catalog, interruptedWeb, cert, f.Certificates, clients,
+                new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, f.Source);
+            await configuring.StartAsync(default);
+            var configuringReceipt = await configuring.StartAsync(interruptedRequest, "actor", "interrupted-configure");
+            await interruptedApply.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var configureDrain = configuring.StopAsync(default);
+            interruptedApply.Release.TrySetResult();
+            await configureDrain.WaitAsync(TimeSpan.FromSeconds(5));
+            Check(unknownStore.Get(configuringReceipt.OperationId) is
+                { State: WebsitePublicationState.Running, Stage: WebsitePublicationStage.Configuring },
+                "Website cancellation during site application preserves the last durable configuring stage");
+
+            var configureRecovery = new WebsitePublicationStore(f.Environment);
+            using var recoveredConfigure = new WebsitePublicationCoordinator(configureRecovery, applications, catalog, interruptedWeb, cert, f.Certificates, clients,
+                new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, f.Source);
+            await recoveredConfigure.StartAsync(default);
+            var configureReplay = await recoveredConfigure.StartAsync(interruptedRequest, "actor", "interrupted-configure");
+            Check(configureReplay.OperationId == configuringReceipt.OperationId && configureReplay.State == WebsitePublicationState.Interrupted
+                && configureReplay.RecoveryProblemCode == WebsitePublicationStore.SiteApplicationUnverified
+                && configureRecovery.Pending().Any(operation => operation.OperationId == configuringReceipt.OperationId),
+                "Website recovery keeps an interrupted configuring receipt visible to the disable guard");
+            try
+            {
+                await recoveredConfigure.StartAsync(interruptedRequest, "actor", "conflicting-configure");
+                throw new InvalidOperationException("An unverified site application admitted a conflicting operation.");
+            }
+            catch (WebsitePublicationException error) when (error.ProblemCode == "website.recheck_required") { }
+            Check(interruptedApply.Calls == 1 && interruptedApply.CompensationCalls == 0,
+                "Website recovery blocks conflicts without replaying or compensating an unverified site application");
+            await recoveredConfigure.StopAsync(default);
+
         }
         Console.WriteLine($"Module background ownership checks passed: {count}");
 
@@ -472,6 +510,7 @@ public class BackgroundWebsiteProvider : DispatchProxy
     internal readonly TaskCompletionSource Release = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal int Calls;
     internal int CompensationCalls;
+    internal bool HonorCancellationAfterRelease;
     internal readonly TaskCompletionSource Compensating = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal readonly TaskCompletionSource<bool?> CompensationResult = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -480,7 +519,7 @@ public class BackgroundWebsiteProvider : DispatchProxy
         nameof(IWebServerManager.ListAsync) => Task.FromResult<IReadOnlyList<WebServerDto>>(
             [new("nginx", "nginx", WebServerType.Nginx, WebServerManagementMode.Managed, "nginx", null, "fixture", DateTimeOffset.UtcNow, new(true, true, true))]),
         nameof(IWebServerManager.ListSitesAsync) => Task.FromResult<IReadOnlyList<WebServerSiteDto>?>([]),
-        nameof(IWebServerManager.UpsertSiteAsync) => ApplyAsync((UpsertWebServerSiteRequest)args![1]!),
+        nameof(IWebServerManager.UpsertSiteAsync) => ApplyAsync((UpsertWebServerSiteRequest)args![1]!, (CancellationToken)args[2]!),
         nameof(IWebServerManager.DeleteSiteAsync) => CompensateAsync(),
         _ => throw new InvalidOperationException("Unexpected website provider call.")
     };
@@ -492,11 +531,12 @@ public class BackgroundWebsiteProvider : DispatchProxy
         return CompensationResult.Task;
     }
 
-    private async Task<WebServerSiteDto?> ApplyAsync(UpsertWebServerSiteRequest request)
+    private async Task<WebServerSiteDto?> ApplyAsync(UpsertWebServerSiteRequest request, CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref Calls);
         Entered.TrySetResult();
         await Release.Task;
+        if (HonorCancellationAfterRelease) cancellationToken.ThrowIfCancellationRequested();
         return new(request.Id!, "nginx", request.Name, request.Bindings, null, false, request.Routes!,
             request.CertificateId, true, true, false, DateTimeOffset.UtcNow);
     }

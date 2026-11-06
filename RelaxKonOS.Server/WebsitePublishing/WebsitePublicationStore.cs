@@ -15,6 +15,7 @@ internal sealed class WebsitePublicationException(string problemCode, int status
 internal sealed class WebsitePublicationStore
 {
     private const int RetainedOperations = 200;
+    internal const string SiteApplicationUnverified = "website.site_application_unverified";
     internal const string AssociationRecoveryFailed = "website.application_association_recovery_failed";
     private readonly object gate = new();
     private readonly string path;
@@ -59,7 +60,7 @@ internal sealed class WebsitePublicationStore
                 created = false;
                 return existing.Operation;
             }
-            if (entries.Values.Any(entry => entry.Operation.ProblemCode == AssociationRecoveryFailed
+            if (entries.Values.Any(entry => HasUnverifiedSite(entry.Operation)
                 && (entry.Operation.ApplicationId == request.ApplicationId
                     || (entry.Operation.WebServerId == request.WebServerId && entry.Operation.Domain == request.Domain))))
                 throw new WebsitePublicationException("website.recheck_required");
@@ -133,7 +134,10 @@ internal sealed class WebsitePublicationStore
                 entries[operation.OperationId] = entries[operation.OperationId] with { Operation = operation with
                 {
                     State = WebsitePublicationState.Interrupted, Stage = WebsitePublicationStage.Interrupted,
-                    ProblemCode = "website.operation_interrupted", RecoveryProblemCode = "website.recheck_required", CompletedAt = now,
+                    ProblemCode = "website.operation_interrupted",
+                    RecoveryProblemCode = operation.Stage == WebsitePublicationStage.Configuring
+                        ? SiteApplicationUnverified : "website.recheck_required",
+                    CompletedAt = now,
                 } };
             }
             Commit();
@@ -142,7 +146,10 @@ internal sealed class WebsitePublicationStore
     }
 
     private static bool RequiresOwner(WebsitePublicationOperationDto operation) =>
-        Active(operation) || operation.ProblemCode == AssociationRecoveryFailed;
+        Active(operation) || HasUnverifiedSite(operation);
+
+    private static bool HasUnverifiedSite(WebsitePublicationOperationDto operation) =>
+        operation.ProblemCode == AssociationRecoveryFailed || operation.RecoveryProblemCode == SiteApplicationUnverified;
 
     private void Commit()
     {
