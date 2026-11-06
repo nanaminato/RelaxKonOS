@@ -140,7 +140,9 @@ internal static class WindowsCoreAcceptance
             await Start(); await Login();
             var upload = await Api(HttpMethod.Post, "/api/v1.0/server/module-packages/upload", binary: await File.ReadAllBytesAsync(package.ArchivePath));
             var installation = await Api(HttpMethod.Post, "/api/v1.0/server/module-packages/plans", new { sourceId = "native-test", releaseId = "fixture-broker-1", uploadId = upload["uploadId"]!.GetValue<string>() });
-            check(installation["runtime"]!.GetValue<string>() == "module-host" && installation["privileges"]![0]!["target"]!.GetValue<string>() == native.ActionServiceName,
+            check(installation["runtime"]!.GetValue<string>() == "module-host"
+                && installation["privileges"]![0]!["resources"]!.AsArray().Single()!.GetValue<string>()
+                    == $"service:{native.ActionServiceName}:restart",
                 "Windows Core v2 install plan exposes the exact isolated runtime and declared service target");
             await Api(HttpMethod.Post, "/api/v1.0/server/module-packages/plans/" + installation["planId"]!.GetValue<string>() + "/apply");
             await Stop(); await Start(); await Login();
@@ -297,62 +299,70 @@ internal static class WindowsCoreAcceptance
             check(expiredBackground["state"]!.GetValue<string>() == "Rejected" && await File.ReadAllTextAsync(pidPath) == afterStanding,
                 "the real Windows standing consent deadline rejects later work without another SCM action");
             await Api(HttpMethod.Post, expiryPath + "/revoke");
-            using var ownerKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-            const string ownerRoot = "/api/v1.0/auth/owner-devices";
-            var enrollment = await Api(HttpMethod.Post, ownerRoot + "/bootstrap", new
+            string? ownerDevice = null;
+            var auditPlanId = plan["planId"]!.GetValue<string>();
+            if (RelaxKonOS.Server.Identity.WindowsWorkstationPlatform.IsWindows10Or11Workstation())
             {
-                deviceName = "Native v2 Core acceptance", platform = "windows", clientVersion = "0.2.2",
-                publicKeySpki = Convert.ToBase64String(ownerKey.ExportSubjectPublicKeyInfo()),
-            }, HttpStatusCode.Created);
-            var ownerDevice = enrollment["id"]!.GetValue<string>();
-            static byte[] Nonce(JsonNode challenge)
-            {
-                var value = challenge["nonce"]!.GetValue<string>().Replace('-', '+').Replace('_', '/');
-                return Convert.FromBase64String(value.PadRight((value.Length + 3) / 4 * 4, '='));
-            }
-            var badChallenge = await Api(HttpMethod.Post, ownerRoot + "/challenge", new { deviceId = ownerDevice });
-            using (var wrongKey = ECDsa.Create(ECCurve.NamedCurves.nistP256))
-                await Api(HttpMethod.Post, ownerRoot + "/sign-in", new
+                using var ownerKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+                const string ownerRoot = "/api/v1.0/auth/owner-devices";
+                var enrollment = await Api(HttpMethod.Post, ownerRoot + "/bootstrap", new
                 {
-                    challengeId = badChallenge["challengeId"]!.GetValue<string>(), deviceId = ownerDevice,
-                    signature = Convert.ToBase64String(wrongKey.SignData(Nonce(badChallenge), HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence)),
-                }, HttpStatusCode.Unauthorized);
-            check(true, "owner-device HTTP sign-in rejects proof made by a different actual P-256 key");
-            var challenge = await Api(HttpMethod.Post, ownerRoot + "/challenge", new { deviceId = ownerDevice });
-            var proof = new
-            {
-                challengeId = challenge["challengeId"]!.GetValue<string>(), deviceId = ownerDevice,
-                signature = Convert.ToBase64String(ownerKey.SignData(Nonce(challenge), HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence)),
-            };
-            var ownerLogin = await Api(HttpMethod.Post, ownerRoot + "/sign-in", proof);
-            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", ownerLogin["tokens"]!["accessToken"]!.GetValue<string>());
-            check(true, "a real owner-device nonce signature obtains a controller session through the Windows Core HTTP endpoint");
-            await Api(HttpMethod.Post, ownerRoot + "/sign-in", proof, HttpStatusCode.Unauthorized);
-            check(true, "a consumed owner-device proof cannot be replayed for another login");
-            var ownerBefore = await File.ReadAllTextAsync(pidPath);
-            var ownerPlan = await FreshPlan();
-            check(await File.ReadAllTextAsync(pidPath) == ownerBefore, "owner-device authority cannot execute a prepared Broker plan without explicit confirmation");
-            var ownerResult = await Api(HttpMethod.Post, ownerPlan.Path + "/approve", Consent(ownerPlan.Plan));
-            check(ownerResult["state"]!.GetValue<string>() == "Succeeded" && await File.ReadAllTextAsync(pidPath) != ownerBefore,
-                "verified owner-device confirmation executes the real Helper action without a password even when SessionValid memory is disabled");
+                    deviceName = "Native v2 Core acceptance", platform = "windows", clientVersion = "0.2.2",
+                    publicKeySpki = Convert.ToBase64String(ownerKey.ExportSubjectPublicKeyInfo()),
+                }, HttpStatusCode.Created);
+                ownerDevice = enrollment["id"]!.GetValue<string>();
+                static byte[] Nonce(JsonNode challenge)
+                {
+                    var value = challenge["nonce"]!.GetValue<string>().Replace('-', '+').Replace('_', '/');
+                    return Convert.FromBase64String(value.PadRight((value.Length + 3) / 4 * 4, '='));
+                }
+                var badChallenge = await Api(HttpMethod.Post, ownerRoot + "/challenge", new { deviceId = ownerDevice });
+                using (var wrongKey = ECDsa.Create(ECCurve.NamedCurves.nistP256))
+                    await Api(HttpMethod.Post, ownerRoot + "/sign-in", new
+                    {
+                        challengeId = badChallenge["challengeId"]!.GetValue<string>(), deviceId = ownerDevice,
+                        signature = Convert.ToBase64String(wrongKey.SignData(Nonce(badChallenge), HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence)),
+                    }, HttpStatusCode.Unauthorized);
+                check(true, "owner-device HTTP sign-in rejects proof made by a different actual P-256 key");
+                var challenge = await Api(HttpMethod.Post, ownerRoot + "/challenge", new { deviceId = ownerDevice });
+                var proof = new
+                {
+                    challengeId = challenge["challengeId"]!.GetValue<string>(), deviceId = ownerDevice,
+                    signature = Convert.ToBase64String(ownerKey.SignData(Nonce(challenge), HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence)),
+                };
+                var ownerLogin = await Api(HttpMethod.Post, ownerRoot + "/sign-in", proof);
+                http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", ownerLogin["tokens"]!["accessToken"]!.GetValue<string>());
+                check(true, "a real owner-device nonce signature obtains a controller session through the Windows Core HTTP endpoint");
+                await Api(HttpMethod.Post, ownerRoot + "/sign-in", proof, HttpStatusCode.Unauthorized);
+                check(true, "a consumed owner-device proof cannot be replayed for another login");
+                var ownerBefore = await File.ReadAllTextAsync(pidPath);
+                var ownerPlan = await FreshPlan();
+                check(await File.ReadAllTextAsync(pidPath) == ownerBefore, "owner-device authority cannot execute a prepared Broker plan without explicit confirmation");
+                var ownerResult = await Api(HttpMethod.Post, ownerPlan.Path + "/approve", Consent(ownerPlan.Plan));
+                check(ownerResult["state"]!.GetValue<string>() == "Succeeded" && await File.ReadAllTextAsync(pidPath) != ownerBefore,
+                    "verified owner-device confirmation executes the real Helper action without a password even when SessionValid memory is disabled");
+                auditPlanId = ownerPlan.Plan["planId"]!.GetValue<string>();
+            }
+            else
+                Console.WriteLine("SKIP WINDOWS MODULEHOST owner-device authentication requires Windows 10/11 workstation.");
             var persistedText = await File.ReadAllTextAsync(Path.Combine(root, "data", "module-management", "privilege-plans.json"));
             var persisted = JsonNode.Parse(persistedText)!;
             var completed = persisted["plans"]!.AsArray().Where(item => item!["state"]!.GetValue<string>() == "Succeeded").ToArray();
             var administratorSid = ((SecurityIdentifier)new NTAccount(Environment.MachineName, native.AdministratorName).Translate(typeof(SecurityIdentifier))).Value;
-            check(persisted["schemaVersion"]!.GetValue<int>() == 5 && completed.Length >= 4
+            check(persisted["schemaVersion"]!.GetValue<int>() == 8 && completed.Length >= 4
                 && completed.All(item => item!["audit"]!["initiatingUser"]!.GetValue<string>() == userId
                     && item["audit"]!["approvingUser"]!.GetValue<string>() == userId
                     && item["audit"]!["confirmedAt"] is not null && item["audit"]!["attemptCompletedAt"] is not null)
                 && completed.Any(item => item!["audit"]!["administrator"]!["identity"]!.GetValue<string>() == "windows:" + administratorSid)
-                && completed.Any(item => item!["audit"]!["administrator"]!["identity"]!.GetValue<string>() == "owner-device:" + ownerDevice)
+                && (ownerDevice is null || completed.Any(item => item!["audit"]!["administrator"]!["identity"]!.GetValue<string>() == "owner-device:" + ownerDevice))
                 && !persistedText.Contains(password, StringComparison.Ordinal),
-                "real Core durable audit records native administrator and owner-device identities, users and timestamps without credentials");
+                "real Core durable audit records applicable administrator identities, users and timestamps without credentials");
             await using (var auditDatabase = new SqliteConnection("Data Source=" + Path.Combine(root, "data", "audit.db") + ";Mode=ReadOnly"))
             {
                 await auditDatabase.OpenAsync();
                 await using var query = auditDatabase.CreateCommand();
                 query.CommandText = "SELECT COUNT(*) FROM security_audit_entries WHERE operation_id=$operation AND actor_reference IS NOT NULL AND actor_reference<>''";
-                query.Parameters.AddWithValue("$operation", ownerPlan.Plan["planId"]!.GetValue<string>());
+                query.Parameters.AddWithValue("$operation", auditPlanId);
                 check(Convert.ToInt64(await query.ExecuteScalarAsync()) >= 2,
                     "real Windows audit database durably attributes Helper accepted and completed records to the initiating actor");
             }
@@ -387,7 +397,7 @@ internal static class WindowsCoreAcceptance
             await File.WriteAllTextAsync(delayMarker, "fixed test-only SCM stop delay");
             try
             {
-                var inFlight = Api(HttpMethod.Post, interrupted.Path + "/approve", Consent(interrupted.Plan));
+                var inFlight = Api(HttpMethod.Post, interrupted.Path + "/approve", Consent(interrupted.Plan, ownerDevice is null ? password : null));
                 using var fixture = new ServiceController(native.ActionServiceName);
                 for (var attempt = 0; attempt < 100; attempt++)
                 {
@@ -434,7 +444,7 @@ internal static class WindowsCoreAcceptance
             var recoveredAudit = recoveredDocument["plans"]!.AsArray().Single(item => item!["id"]!.GetValue<string>() == interrupted.Plan["planId"]!.GetValue<string>())!["audit"]!;
             check(recoveredAudit["initiatingUser"]!.GetValue<string>() == userId
                 && recoveredAudit["approvingUser"]!.GetValue<string>() == userId
-                && recoveredAudit["administrator"]!["identity"]!.GetValue<string>() == "owner-device:" + ownerDevice
+                && recoveredAudit["administrator"]!["identity"]!.GetValue<string>() == (ownerDevice is null ? "windows:" + administratorSid : "owner-device:" + ownerDevice)
                 && recoveredAudit["confirmedAt"] is not null && recoveredAudit["attemptCompletedAt"] is null,
                 "Windows crash recovery preserves the actual approver evidence without inventing an observed completion timestamp");
             await using (var crashAudit = new SqliteConnection("Data Source=" + Path.Combine(root, "data", "audit.db") + ";Mode=ReadOnly"))

@@ -83,7 +83,7 @@ Helper 的 `moduleHosts` 策略固定运行时、源包根及隔离根；Server 
 
 ### MB-06 安装与崩溃续核（2026-11-06）
 
-使用同一提交发布三个 Windows Release 制品，分别来自 `Tests/Server/RelaxKonOS.ModuleHost.Windows.Tests`、`RelaxKonOS.ServerModuleHost` 和 `RelaxKonOS.Server`。在装有 .NET 10 与 ASP.NET Core 10 运行时的同架构测试机可使用框架依赖产物。自包含发布使用测试机对应的 `win-x64` 或 `win-arm64` RID 和 `--self-contained true`。将产物发布到上面命令指定的三个独立目录，或将对应目录传给脚本。执行账户须能通过 UAC 使用同一账户的管理员令牌。测试需要 SCM、LocalSystem 服务和本地 S4U 账户。用专用 Windows 测试机执行，脚本使用随机服务名和独立隔离根。
+使用同一提交发布三个 Windows Release 制品，分别来自 `Tests/Server/RelaxKonOS.ModuleHost.Windows.Tests`、`RelaxKonOS.ServerModuleHost` 和 `RelaxKonOS.Server`。在装有 .NET 10 与 ASP.NET Core 10 运行时的同架构测试机可使用框架依赖产物。自包含发布使用测试机对应的 `win-x64` 或 `win-arm64` RID 和 `--self-contained true`。将产物发布到上面命令指定的三个独立目录，或将对应目录传给脚本。通过 SSH 执行时使用已提升的同一管理员账户，脚本直接沿用当前令牌。交互执行可用 UAC 提升同一账户。测试需要 SCM、LocalSystem 服务和本地 S4U 账户。用专用 Windows 测试机执行，脚本使用随机服务名和独立隔离根。Windows Server 使用原生管理员确认运行崩溃矩阵，Windows 10/11 工作站另覆盖 owner-device 确认。
 
 客户端先通过已签名的实际安装包启动 ModuleHost，验证根进程读到后代的实时 stdout。分别只终止测试 Core、触发测试 LocalSystem Helper 自身崩溃、撤销包信任，然后核对原根和原后代 PID 均离场。SCM 及 Broker 操作另外按原回执核对恢复，重复查询不应产生新的服务重启。保留 `installation-report.json`、`client-report.json`、`worker-report.json` 和 `cleanup.json` 作为验收证据。
 

@@ -461,3 +461,5 @@ else
 - Linux 本地执行在启动传输进程前拒绝缺失的 shell。启动请求写入前先登记响应读取、错误流读取与进程等待任务。控制管道写入失败仍由原响应任务检查退出证明，EOF 单独不能解除责任。
 - `RelaxKonOS.Server.Tests --terminal-crash-only` 使用非提权本地夹具，先完成真实 PTY 输入输出，再仅终止持有 PTY 的父进程，独立验证已捕获的根、子与孙进程。Windows 本地和 Ubuntu 测试机均通过。Linux 还观察到独占 worker 退出与树内后代被回收。独占 worker 自身被强制终止仍待验收。
 - 安装验收使用隔离 Windows 测试宿主上的当前 Server/Helper，由管理员按正式安装流程配置服务，使用正常账户运行 `RelaxKonOS.Server.Tests --installed-windows-terminal <https-url> <account>`，密码由隐藏交互或标准输入读取。验证缺失目录的启动拒绝、会话列表、随后成功启动，以及既有身份、输入输出、并发、退出与重连检查。崩溃矩阵需要在同一隔离环境分别中断 Server 与 Helper，先捕获本轮树的确切进程实例，再核对全部后代、恢复服务并重测。若无法确认清理，保留当轮故障证据，仅清理可核验属于夹具的实例。
+- `--installed-windows-terminal-crash <url> <account>` 通过实际 Hub 和 PTY 往返取得测试 shell 与其子进程的 PID，并报告传输结束。外部管理员须先核对父子关系和启动时刻，然后仅故障注入目标服务进程，独立核对原进程实例全部离场。仅收到传输结束或退出事件时仍缺少树证明。夹具的子进程有自然退出上限，观测超时保留未知责任。
+- 在 Windows 测试机的既有正式安装上，Server 以 LocalService、Helper 以 LocalSystem 执行，两者版本均为 `1.0.0+c58de8e9`。分别仅终止 Server 和仅终止 Helper，两组均观察到实际 PTY 输入输出、原 shell 与子进程退出及传输结束。恢复后重新通过缺失目录启动拒绝、真实输入输出、普通和管理员身份、并发、退出及重连检查。服务还原为 Server 停止、Helper 运行。使用了本轮测试制品，未替换测试机的安装程序。此夹具只生成一层后代，未覆盖任意拓扑或证明当前制品的正式安装崩溃矩阵。

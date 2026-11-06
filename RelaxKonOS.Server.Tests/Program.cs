@@ -277,9 +277,10 @@ if (args.Contains("--windows-owner-bootstrap-only"))
     WindowsOwnerBootstrapChecks.Run();
     return;
 }
-if (args.Length == 3 && args[0] == "--installed-windows-terminal")
+if (args.Length == 3 && args[0] is "--installed-windows-terminal" or "--installed-windows-terminal-crash")
 {
-    await WindowsInstalledTerminalChecks.RunAsync(args[1], args[2], WindowsInstalledTerminalChecks.ReadPassword());
+    await WindowsInstalledTerminalChecks.RunAsync(args[1], args[2], WindowsInstalledTerminalChecks.ReadPassword(),
+        observeCrash: args[0] == "--installed-windows-terminal-crash");
     return;
 }
 if (args.Contains("--terminal-contract-only"))

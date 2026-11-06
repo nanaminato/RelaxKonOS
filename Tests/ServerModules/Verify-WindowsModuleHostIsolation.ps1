@@ -196,7 +196,15 @@ $requestPath = Join-Path $workRoot 'request.json'
 $script:nativeProvisioningStarted = $false
 function Invoke-NativeElevation([string] $Action) {
     $arguments = @('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File', ('"' + $PSCommandPath + '"'), '-ElevatedAction', $Action, '-RequestPath', ('"' + $requestPath + '"'))
-    $process = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -ArgumentList $arguments -Verb RunAs -WindowStyle Hidden -PassThru
+    $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+    $start = @{
+        FilePath = (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe')
+        ArgumentList = $arguments
+        WindowStyle = 'Hidden'
+        PassThru = $true
+    }
+    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { $start.Verb = 'RunAs' }
+    $process = Start-Process @start
     # A cancelled UAC prompt did not launch provisioning and needs no second prompt.
     # Once launched, even a failed installation must run cleanup for partial changes.
     if ($Action -eq 'install') { $script:nativeProvisioningStarted = $true }

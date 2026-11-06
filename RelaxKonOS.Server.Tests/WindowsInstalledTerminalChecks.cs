@@ -18,7 +18,7 @@ internal static class WindowsInstalledTerminalChecks
             else if (!char.IsControl(key.KeyChar)) password.Append(key.KeyChar);
         }
     }
-    internal static async Task RunAsync(string url, string username, string password)
+    internal static async Task RunAsync(string url, string username, string password, bool observeCrash = false)
     {
         // The installed test host uses a self-signed TLS certificate. Credentials stay in memory.
         using var http = new HttpClient(new HttpClientHandler
@@ -38,6 +38,11 @@ internal static class WindowsInstalledTerminalChecks
             { ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
             options.WebSocketConfiguration = socket => socket.RemoteCertificateValidationCallback = (_, _, _, _) => true;
         }).Build();
+        if (observeCrash)
+        {
+            await ObserveCrashAsync(Connect);
+            return;
+        }
         await using var hub = Connect();
         var marker = "terminal_" + Guid.NewGuid().ToString("N");
         var output = new StringBuilder();
@@ -129,5 +134,48 @@ internal static class WindowsInstalledTerminalChecks
             finally { await administrator.InvokeAsync("CloseSession", elevated.SessionId); }
         }
         finally { await hub.InvokeAsync("CloseSession", started.SessionId); }
+    }
+
+    // The external administrator faults only the captured service process after recording
+    // the fixture identities. The client reports transport loss without claiming cleanup.
+    private static async Task ObserveCrashAsync(Func<HubConnection> connect)
+    {
+        await using var hub = connect();
+        var marker = "RK_TREE_" + Guid.NewGuid().ToString("N");
+        var observation = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var disconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var output = new StringBuilder();
+        hub.Closed += _ => { disconnected.TrySetResult(); return Task.CompletedTask; };
+        hub.On<byte[]>("OnOutput", bytes =>
+        {
+            lock (output)
+            {
+                output.Append(Encoding.UTF8.GetString(bytes));
+                var match = System.Text.RegularExpressions.Regex.Match(output.ToString(), marker + @":(\d+):(\d+):END");
+                if (match.Success) observation.TrySetResult(match.Groups[1].Value + " " + match.Groups[2].Value);
+            }
+        });
+        hub.On<int>("OnProcessExited", _ => disconnected.TrySetResult());
+        await hub.StartAsync();
+        var session = await hub.InvokeAsync<AttachTerminalResponse>("Start",
+            new StartTerminalRequest(80, 24, 0, 0, null, null), null);
+        try
+        {
+            var split = marker.Length / 2;
+            // Bounded independent workload, with its native PID obtained from the actual PTY output.
+            var script = "$child=Start-Process -FilePath ($PSHOME+'\\powershell.exe') -ArgumentList '-NoProfile -NonInteractive -Command Start-Sleep -Seconds 90' -NoNewWindow -PassThru; "
+                + $"Write-Output ('{marker[..split]}'+'{marker[split..]}'+':'+$PID+':'+$child.Id+':END'); Start-Sleep -Seconds 90; exit\r";
+            await hub.InvokeAsync("Input", Encoding.UTF8.GetBytes(script));
+            Console.WriteLine("INSTALLED_TERMINAL_TREE " + await observation.Task.WaitAsync(TimeSpan.FromSeconds(20)));
+            await disconnected.Task.WaitAsync(TimeSpan.FromSeconds(45));
+            Console.WriteLine("INSTALLED_TERMINAL_TRANSPORT_ENDED");
+        }
+        finally
+        {
+            // A connected client is still responsible for closing its own session if fault
+            // injection did not occur. A broken transport cannot provide an exit proof.
+            if (!disconnected.Task.IsCompleted && hub.State == HubConnectionState.Connected)
+                await hub.InvokeAsync("CloseSession", session.SessionId);
+        }
     }
 }
