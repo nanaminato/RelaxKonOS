@@ -24,7 +24,8 @@ internal static class ProxyTunLiveChecks
             {
                 var paths = new TestProxyPaths(directory.FullName);
                 var port = mihomoExecutable is null ? 0 : ReservePort();
-                using var http = new HttpClient(new SocketsHttpHandler { UseProxy = false });
+                var calls = new ControllerRequestCounter();
+                using var http = new HttpClient(calls);
                 using var mihomo = mihomoExecutable is null ? null : await StartMihomoAsync(mihomoExecutable, directory.FullName, paths, port);
                 try
                 {
@@ -56,9 +57,12 @@ internal static class ProxyTunLiveChecks
                     TestAssert.Assert(await safety.EnableAsync(Guid.NewGuid(), null, default) == ProxyProblemCodes.RecoveryRequired,
                         "An unresolved marker must block a new TUN activation.");
 
+                    var disableRequests = calls.Reloads;
+                    if (mihomo is not null) TestAssert.Assert(disableRequests == 1, "Initial recovery must issue exactly one real disable reload.");
                     await AddDefaultRouteAsync();
                     TestAssert.Assert(await safety.RecoverAsync(original, default) is null
-                        && await safety.CaptureRecoveryAsync(default) is null && runtime.Removals == 1,
+                        && await safety.CaptureRecoveryAsync(default) is null && runtime.Removals == 1
+                        && calls.Reloads == disableRequests,
                         "Verified route recovery must clear the original marker without a second TUN removal.");
 
                     TestAssert.Assert(await safety.EnableAsync(Guid.NewGuid(), null, default) is null,
@@ -73,7 +77,7 @@ internal static class ProxyTunLiveChecks
                     if (mihomo is not null)
                         TestAssert.Assert(!mihomo.HasExited && (await runtime.IsEnabledAsync(default)) is { Succeeded: true, Enabled: false },
                             "The original Mihomo process must remain reachable with TUN disabled.");
-                    Console.WriteLine($"PASS TUN LIVE RECOVERY: operation={original.OperationId}; real device removed once, route verified, stale recovery rejected; mihomo={mihomo is not null}");
+                    Console.WriteLine($"PASS TUN LIVE RECOVERY: operation={original.OperationId}; real device removed once, route verified, stale recovery rejected; initial recovery reloads={disableRequests}; mihomo={mihomo is not null}");
                 }
                 finally { if (mihomo is not null) await DockerProcessRecoveryChecks.StopWorkerAsync(mihomo); }
             }
@@ -147,6 +151,16 @@ internal static class ProxyTunLiveChecks
             await DockerProcessRecoveryChecks.StopWorkerAsync(process);
             process.Dispose();
             throw;
+        }
+    }
+
+    private sealed class ControllerRequestCounter() : DelegatingHandler(new SocketsHttpHandler { UseProxy = false })
+    {
+        internal int Reloads;
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.Method == HttpMethod.Put) Interlocked.Increment(ref Reloads);
+            return base.SendAsync(request, cancellationToken);
         }
     }
 

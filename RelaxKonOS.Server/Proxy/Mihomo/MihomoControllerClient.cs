@@ -238,8 +238,14 @@ public sealed class MihomoControllerClient : IMihomoControllerClient
         {
             // Mihomo omits the block when TUN was never configured, and reporting that as an
             // unreadable response would turn a disabled TUN into a controller failure.
-            var tun = result.Value!.RootElement.TryGetProperty("tun", out var value) ? value : default;
-            return ControllerResult<bool>.Success(tun.ValueKind == JsonValueKind.Object && GetBool(tun, "enable"));
+            var root = result.Value!.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+                return ControllerResult<bool>.Failure(ProxyProblemCodes.ControllerResponseInvalid);
+            if (!root.TryGetProperty("tun", out var tun)) return ControllerResult<bool>.Success(false);
+            if (tun.ValueKind != JsonValueKind.Object || !tun.TryGetProperty("enable", out var enabled)
+                || enabled.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                return ControllerResult<bool>.Failure(ProxyProblemCodes.ControllerResponseInvalid);
+            return ControllerResult<bool>.Success(enabled.GetBoolean());
         }
         finally { result.Value?.Dispose(); }
     }

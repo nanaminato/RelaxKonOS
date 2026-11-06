@@ -43,6 +43,7 @@ internal static async Task VerifyMihomoControllerSafetyAsync()
     TestAssert.Assert(publicBindingRejected, "Public controller binding was accepted.");
 
     string? authorization = null;
+    var tunPayload = "{}";
     var handler = new DelegateHandler(async request =>
     {
         authorization = request.Headers.Authorization?.ToString();
@@ -52,6 +53,7 @@ internal static async Task VerifyMihomoControllerSafetyAsync()
             "/traffic" => "{\"up\":12,\"down\":34,\"upTotal\":56,\"downTotal\":78}",
             "/memory" => "{\"inuse\":90,\"oslimit\":0}",
             "/connections" => "{\"connections\":null}",
+            "/configs" => tunPayload,
             _ when request.RequestUri.PathAndQuery.StartsWith("/logs", StringComparison.Ordinal) => "{\"type\":\"info\",\"payload\":\"Authorization: Bearer controller-secret token=private-value\"}\n",
             _ => "{}",
         };
@@ -59,6 +61,14 @@ internal static async Task VerifyMihomoControllerSafetyAsync()
         return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(payload, Encoding.UTF8, "application/json") };
     });
     var client = new MihomoControllerClient(new HttpClient(handler), new StaticProxySecretStore(), new MihomoControllerOptions { Endpoint = new Uri("http://127.0.0.1:9090/") });
+    TestAssert.Assert(await client.GetTunEnabledAsync(default) is { Succeeded: true, Value: false },
+        "An omitted TUN block represents an unconfigured adapter.");
+    foreach (var malformed in new[] { "[]", "{\"tun\":false}", "{\"tun\":{\"enable\":\"false\"}}" })
+    {
+        tunPayload = malformed;
+        TestAssert.Assert((await client.GetTunEnabledAsync(default)).ProblemCode == ProxyProblemCodes.ControllerResponseInvalid,
+            "An invalid TUN response must not become proof of a disabled adapter.");
+    }
     var groups = await client.GetGroupsAsync(CancellationToken.None);
     TestAssert.Assert(groups.Succeeded && groups.Value!.Single().Selected == "node-a", "Mihomo groups were not mapped to neutral contracts.");
     var traffic = await client.GetTrafficAsync(CancellationToken.None);

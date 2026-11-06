@@ -21,7 +21,16 @@ public sealed class MihomoTunRuntimeController(
             var active = Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml");
             if (!File.Exists(active)) return ProxyProblemCodes.RuntimeNotInstalled;
             var settings = await settingsReader.GetAsync(cancellationToken);
+            var deviceName = (settings.Tun ?? ProxyTunSettingsDto.Default).DeviceName;
             var original = await File.ReadAllTextAsync(active, cancellationToken);
+            if (!enabled && !MihomoManagedConfiguration.ReadTunActivation(original).Enabled)
+            {
+                var observed = await controller.GetTunEnabledAsync(cancellationToken);
+                if (!observed.Succeeded) return observed.ProblemCode;
+                if (!observed.Value)
+                    return await devices.WaitForInactiveAsync(deviceName, cancellationToken) ? null : ProxyProblemCodes.RecoveryRequired;
+            }
+
             var exclusions = enabled ? BuildTunRouteExclusions(snapshot) : [];
             var updated = MihomoManagedConfiguration.WithManagedTunSettings(original, settings, enabled, exclusions);
             var temporary = active + ".tun-" + Guid.NewGuid().ToString("N");
@@ -49,13 +58,14 @@ public sealed class MihomoTunRuntimeController(
                     // adapter is necessarily created.  On Windows, accepting that acknowledgement
                     // alone used to report a successful activation even after Wintun logged
                     // "Access is denied".  Require the configured adapter to become active.
-                    var tunDeviceName = (settings.Tun ?? ProxyTunSettingsDto.Default).DeviceName;
-                    if (enabled && !await devices.WaitForActiveAsync(tunDeviceName, cancellationToken))
+                    if (!enabled && !await devices.WaitForInactiveAsync(deviceName, cancellationToken))
+                        return ProxyProblemCodes.RecoveryRequired;
+                    if (enabled && !await devices.WaitForActiveAsync(deviceName, cancellationToken))
                     {
                         await File.WriteAllTextAsync(active, original, cancellationToken);
                         SetPrivateFile(active);
                         await controller.ReloadAsync(CancellationToken.None);
-                        logger?.LogWarning("Mihomo TUN configuration transition was rolled back because the Windows TUN adapter did not become active. DeviceName={DeviceName}", tunDeviceName);
+                        logger?.LogWarning("Mihomo TUN configuration transition was rolled back because the Windows TUN adapter did not become active. DeviceName={DeviceName}", deviceName);
                         return ProxyProblemCodes.TunActivationFailed;
                     }
                     logger?.LogInformation("Mihomo TUN configuration transition completed. Enabled={Enabled} EgressInterface={EgressInterface} ExclusionCount={ExclusionCount}",

@@ -79,9 +79,18 @@ internal static class ProxyTunBoundaryChecks
             f.Platform.RestoreSucceeds = false;
             Check(await f.Safety.EnableAsync(Guid.NewGuid(), null, default) == ProxyProblemCodes.RecoveryRequired
                 && File.Exists(f.Marker), "Failed route compensation retains the durable recovery marker");
+            var reloads = f.Reloads;
             f.Platform.RestoreSucceeds = true;
-            Check(await f.RecoverAsync() is null && !File.Exists(f.Marker),
-                "A reopened safety owner completes the previously failed platform compensation");
+            f.ObservationFails = true;
+            Check(await f.RecoverAsync() == ProxyProblemCodes.RecoveryRequired && File.Exists(f.Marker) && f.Reloads == reloads,
+                "A persisted off flag cannot substitute for an unknown live state or trigger another reload");
+            f.ObservationFails = false;
+            f.Devices.Inactive = false;
+            Check(await f.RecoverAsync() == ProxyProblemCodes.RecoveryRequired && File.Exists(f.Marker) && f.Reloads == reloads,
+                "A live adapter prevents clearing recovery even when the controller reports disabled");
+            f.Devices.Inactive = true;
+            Check(await f.RecoverAsync() is null && !File.Exists(f.Marker) && f.Reloads == reloads,
+                "A reopened safety owner completes route compensation without reloading an already disabled TUN");
         }
         using (var f = new Fixture())
         {
@@ -189,7 +198,7 @@ internal static class ProxyTunBoundaryChecks
             {
                 "IsReachableAsync" => Reachability(),
                 "ReloadAsync" => ReloadAsync((CancellationToken)args![0]!),
-                "GetTunEnabledAsync" => Task.FromResult(ObservationFails
+                "GetTunEnabledAsync" => Task.FromResult(ObservationFails || !Reachable
                     ? ControllerResult<bool>.Failure(ProxyProblemCodes.ControllerUnavailable)
                     : ControllerResult<bool>.Success(MihomoManagedConfiguration.ReadTunActivation(File.ReadAllText(Active)).Enabled)),
                 _ => throw new Exception("Unexpected controller method: " + name)
@@ -229,9 +238,10 @@ internal static class ProxyTunBoundaryChecks
     }
     private sealed class Devices : IProxyTunDeviceObserver
     {
-        public bool Active = true;
+        public bool Active = true, Inactive = true;
         public int Calls;
         public Task<bool> WaitForActiveAsync(string name, CancellationToken ct) { Calls++; return Task.FromResult(Active); }
+        public Task<bool> WaitForInactiveAsync(string name, CancellationToken ct) => Task.FromResult(Inactive);
     }
     private sealed class Host : IHostSystemProxyService
     {

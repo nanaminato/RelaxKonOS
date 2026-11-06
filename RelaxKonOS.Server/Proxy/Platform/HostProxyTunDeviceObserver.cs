@@ -7,6 +7,7 @@ namespace RelaxKonOS.Server.Proxy.Platform;
 public interface IProxyTunDeviceObserver
 {
     Task<bool> WaitForActiveAsync(string deviceName, CancellationToken ct);
+    Task<bool> WaitForInactiveAsync(string deviceName, CancellationToken ct);
 }
 
 public sealed class HostProxyTunDeviceObserver : IProxyTunDeviceObserver
@@ -22,6 +23,25 @@ public sealed class HostProxyTunDeviceObserver : IProxyTunDeviceObserver
                 if (NetworkInterface.GetAllNetworkInterfaces().Any(network =>
                     string.Equals(network.Name, deviceName, StringComparison.OrdinalIgnoreCase)
                     && network.OperationalStatus == OperationalStatus.Up))
+                    return true;
+            }
+            catch (NetworkInformationException) { return false; }
+            await Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken);
+        }
+        return false;
+    }
+    public async Task<bool> WaitForInactiveAsync(string deviceName, CancellationToken cancellationToken)
+    {
+        var deadline = Stopwatch.GetTimestamp() + Stopwatch.Frequency * 10;
+        while (Stopwatch.GetTimestamp() < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                var device = NetworkInterface.GetAllNetworkInterfaces().FirstOrDefault(network =>
+                    string.Equals(network.Name, deviceName, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal));
+                if (device is null || OperatingSystem.IsWindows() && device.OperationalStatus is
+                    OperationalStatus.Down or OperationalStatus.NotPresent or OperationalStatus.LowerLayerDown)
                     return true;
             }
             catch (NetworkInformationException) { return false; }
