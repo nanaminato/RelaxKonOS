@@ -1205,3 +1205,9 @@ Linux x64 Release 日志见 `.artifacts/mb05-acme-verified.log`，归档 SHA-256
 在同一隔离 Linux 环境中，第四个订单通过真实 HTTP-01。Pebble 签发证书后，夹具在真实证书下载响应交给 Anvil 前暂停，验证返回的 PEM 与测试主机名匹配。工作进程仍持有 Running 回执。终止该进程后，挑战端口可重新绑定。新进程将原操作 `034517e3-15aa-48df-bad2-381590d26bdb` 持久化为 Failed / interrupted，同键查询返回原回执。证书存储只包含正常签发组的活动证书，Pebble 日志恰有四个订单。
 
 Linux x64 Release 实机日志为 `.artifacts/mb05-acme-response-live.log`，归档 SHA-256 为 `c887deec74b97eebdb3ca21f3d13ca051e9d3046295dc5b4d481fbefd8e02db4`。外部 CA 已签发，本地未激活证书。该路径验证中断恢复与防重放，未验证从原 CA 订单补取并部署证书。
+
+## 53. MB-05 Nginx 重载中断后的 TLS 连续性
+
+既有 Linux 测试机运行独立的 Nginx master、回环端口、配置和临时证书。客户端校验对端证书指纹和回环地址。生产 WebServer 重载入口提交操作后，隔离 transport 对专属 master 执行真实 reload，等 HTTPS 返回新内容且原回执仍为 Running 再终止管理工作进程。原 master 继续提供 HTTPS，新 owner 持久化原操作 `dbe8c470-e6c2-4050-84de-4ccf2490603c` 为 Failed / interrupted。两条重载入口使用相同幂等键均返回原回执，master 日志仅有一次重载。仅清理专属 master 和临时目录。
+
+Windows Release 构建和 Linux x64 Release 实机验收通过。实机日志为 `.artifacts/mb05-nginx-tls-live.log`，制品归档 SHA-256 为 `d6530f4e0fdaca000a963ad8dfa62acc9259a13b485b13e7706e061e6437f01b`。本轮的 TLS 配置由夹具提供，生产站点绑定和网站发布协调器的实机恢复仍待验收。

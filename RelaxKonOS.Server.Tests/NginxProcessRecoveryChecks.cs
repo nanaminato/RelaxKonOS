@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.Privileged;
 
@@ -24,13 +26,23 @@ internal static class NginxProcessRecoveryChecks
             portProbe.Stop();
 
             await File.WriteAllTextAsync(NginxManagedPaths.MarkerPath(new() { InstallationRoot = root }), NginxManagedPaths.MarkerContent);
+            using var certificate = CreateCertificate(root);
             WriteConfig(root, port, "before");
             using var nginx = StartNginx(executable, root);
             try
             {
-                using var client = new HttpClient(new SocketsHttpHandler { UseProxy = false })
+                using var client = new HttpClient(new SocketsHttpHandler
+                {
+                    UseProxy = false,
+                    SslOptions = new()
+                    {
+                        RemoteCertificateValidationCallback = (_, peer, _, errors) =>
+                            peer is not null && peer.GetCertHashString() == certificate.Thumbprint
+                            && errors == System.Net.Security.SslPolicyErrors.RemoteCertificateChainErrors
+                    }
+                })
                     { Timeout = TimeSpan.FromSeconds(2) };
-                var address = new Uri($"http://127.0.0.1:{port}/");
+                var address = new Uri($"https://127.0.0.1:{port}/");
                 await ObserveAsync(client, address, "before", nginx);
                 WriteConfig(root, port, "after");
 
@@ -171,6 +183,19 @@ internal static class NginxProcessRecoveryChecks
         return Process.Start(start) ?? throw new InvalidOperationException("Unable to start isolated Nginx.");
     }
 
+    private static X509Certificate2 CreateCertificate(string root)
+    {
+        using var key = RSA.Create(2048);
+        var request = new CertificateRequest("CN=127.0.0.1", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        var names = new SubjectAlternativeNameBuilder();
+        names.AddIpAddress(IPAddress.Loopback);
+        request.CertificateExtensions.Add(names.Build());
+        var certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddHours(1));
+        File.WriteAllText(Path.Combine(root, "fixture.pem"), certificate.ExportCertificatePem());
+        File.WriteAllText(Path.Combine(root, "fixture.key"), key.ExportPkcs8PrivateKeyPem());
+        return certificate;
+    }
+
     private static void WriteConfig(string root, int port, string body) =>
         File.WriteAllText(Path.Combine(root, "nginx.conf"), $$"""
             daemon off;
@@ -186,7 +211,9 @@ internal static class NginxProcessRecoveryChecks
                 scgi_temp_path scgi;
                 access_log off;
                 server {
-                    listen 127.0.0.1:{{port}};
+                    listen 127.0.0.1:{{port}} ssl;
+                    ssl_certificate fixture.pem;
+                    ssl_certificate_key fixture.key;
                     location / { return 200 "{{body}}"; }
                 }
             }
