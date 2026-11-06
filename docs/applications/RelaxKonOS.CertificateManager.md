@@ -1464,3 +1464,5 @@ Windows 服务与个人模式均在 `appsettings.host.json` 设置 `Certificate.
 
 
 2026-11-06 MB-05 隔离预检：当前共享测试机 PATH 中未发现 Pebble 或 step-ca。真实 ACME 中断恢复需提供可控 ACME 目录、受信 CA 及专属挑战名称和解析。 [验收台账 §50](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#50-mb-0305-隔离测试设施复核2026-11-06)
+
+既有 Linux 测试机通过隔离 Pebble 的真实 HTTP-01 签发和取消。取消持有原工作租约直至实际响应排空，复开台账后同键返回原回执，CA 未收到新增订单。见边界设计 §52。

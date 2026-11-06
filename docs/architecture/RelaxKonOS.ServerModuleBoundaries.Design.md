@@ -1183,3 +1183,11 @@ Windows Release 事务专项通过，Linux 实机核对宿主环境文件和台�
 共享 systemd 服务、桌面会话和 Proxy 管理模块动态休眠继续开放。
 
 Linux Release 验收通过，Helper 日志确认五次 UID 999 成功请求并拒绝未授权 UID。专属 Helper 正常退出，宿主环境和台账摘要不变。日志见 `.artifacts/mb04-guard-nonroot-live.log`，归档 SHA-256 为 `7e47efcf9290814db088268c43b1ffd501b80792eaee596d78cbf2c622565f58`。
+
+## 52. MB-05 真实 ACME CA 签发与取消
+
+既有 Linux 测试机在无外网接口的私有网络命名空间运行 [Pebble 2.10.1 与挑战 DNS 官方制品](https://github.com/letsencrypt/pebble/releases/tag/v2.10.1)。两份下载归档通过官方发布 SHA-256 校验。临时 HTTPS 证书仅由本次进程信任，签发根仅用于链校验。保留真实 HTTP-01 验证，未开启跳过挑战验证。生产 Anvil 适配器、HTTP-01 listener、证书存储和操作台账参与执行。
+
+签发操作 `2871c43c-2d29-4543-bc3e-bada02becc84` 保存活动证书，部署链通过专属 CA 根与主机名校验。第二个订单的真实 HTTP-01 GET 到达后，夹具暂停响应。取消时工作租约和 Running 回执保留，直到实际响应任务结束才记录 Cancelled。复开台账后，同键返回原操作 `95543702-fb76-4d31-a964-cdd867c1ed6e` 的回执，未签发取消订单。Pebble 确认总计两个订单。共享服务和宿主信任库持续原状。
+
+Linux x64 Release 日志见 `.artifacts/mb05-acme-verified.log`，归档 SHA-256 为 `0a07730143f476e9e5de19cdec8d02abf046ebb166b602184996aa93026e3aab`。首轮两份二进制缺执行位，后续仅在专属解包目录修正后通过。整进程崩溃后的 CA 未知结果、实际 Nginx 绑定及网站发布联合矩阵仍开放。
