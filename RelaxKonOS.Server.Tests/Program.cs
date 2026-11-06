@@ -360,6 +360,16 @@ if (args.Contains("--proxy-subscription-boundary-only"))
     await ProxySubscriptionBoundaryChecks.RunAsync();
     return;
 }
+if (args is ["--proxy-tun-live-only", var hostNetworkNamespace])
+{
+    await ProxyTunLiveChecks.RunAsync(hostNetworkNamespace);
+    return;
+}
+if (args is ["--proxy-tun-live-worker", var workerNetworkNamespace, var tunRoot])
+{
+    await ProxyTunLiveChecks.RunWorkerAsync(workerNetworkNamespace, tunRoot);
+    return;
+}
 if (args is ["--proxy-expiry-live-only", var singBoxExecutable])
 {
     await ProxyExpiryLiveChecks.RunAsync(singBoxExecutable);
