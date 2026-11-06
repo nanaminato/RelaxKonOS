@@ -52,6 +52,16 @@ if (args.Contains("--terminal-tree-only"))
     await TerminalTreeChecks.RunAsync();
     return;
 }
+if (args is ["--terminal-crash-only"])
+{
+    await TerminalTreeChecks.RunCrashAsync();
+    return;
+}
+if (args is ["--terminal-crash-worker", var terminalCrashDirectory])
+{
+    await TerminalTreeChecks.RunCrashWorkerAsync(terminalCrashDirectory);
+    return;
+}
 if (args.Contains("--module-boundary-milestones-only"))
 {
     var milestoneRoot = Path.Combine(Path.GetTempPath(), "relaxkonos-module-milestones-" + Guid.NewGuid().ToString("N"));

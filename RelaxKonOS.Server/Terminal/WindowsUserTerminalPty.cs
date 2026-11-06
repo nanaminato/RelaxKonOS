@@ -97,7 +97,12 @@ public sealed class WindowsUserTerminalPty(UserExecutionContext context,
         {
             if (_startupUnknown) throw new IOException("terminal.start_outcome_unverified");
             WorkspaceEnvironment = null;
-            lock (_writeLock) if (IsRunning && _pipe is { } pipe) UserTerminalStreamProtocol.WriteClose(pipe);
+            lock (_writeLock)
+            {
+                try { if (IsRunning && _pipe is { } pipe) UserTerminalStreamProtocol.WriteClose(pipe); }
+                catch (IOException) { /* The response reader still owns exit confirmation. */ }
+                catch (ObjectDisposedException) { /* Reader already closed the pipe. */ }
+            }
             await _reader;
             _pipe = null; IsRunning = false;
         });

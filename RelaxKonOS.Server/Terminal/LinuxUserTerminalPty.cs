@@ -35,12 +35,14 @@ public sealed class LinuxUserTerminalPty(UserExecutionContext context, Privilege
         if (environment is not null) throw new InvalidOperationException("terminal.environment_must_be_resolved");
         if (!OperatingSystem.IsLinux() || !_localWorker && (string.IsNullOrWhiteSpace(options.HelperPath) || !File.Exists(options.HelperPath))) throw new InvalidOperationException("User terminal Helper is unavailable.");
         UserTerminalStreamProtocol.ValidateDimensions(columns, rows, 0, 0);
+        if (_localWorker && !string.IsNullOrWhiteSpace(shell) && shell != "bash"
+            && (!Path.IsPathFullyQualified(shell) || !File.Exists(shell)))
+            throw new FileNotFoundException("Terminal shell executable is unavailable.", shell);
         var worker = Path.Combine(Path.GetDirectoryName(typeof(LinuxUserTerminalPty).Assembly.Location)!, "RelaxKonOS.Server");
         var p = new Process { StartInfo = new ProcessStartInfo(_localWorker ? worker : options.SudoPath) { UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true } };
         if (_localWorker) p.StartInfo.ArgumentList.Add("terminal-worker");
         else { p.StartInfo.ArgumentList.Add("-n"); p.StartInfo.ArgumentList.Add(options.HelperPath); p.StartInfo.ArgumentList.Add("--user-terminal"); }
         TrustedProcessEnvironment.Apply(p.StartInfo);
-        p.Start(); _process = p; _ownedProcess = p; IsRunning = true; ChildPid = p.Id;
         var operationId = Guid.NewGuid();
         var request = new UserExecutionRequest(context.Identity, UserExecutionOperationKind.TerminalStart,
             TerminalEnvironment: WorkspaceEnvironment,
@@ -51,7 +53,9 @@ public sealed class LinuxUserTerminalPty(UserExecutionContext context, Privilege
         var line = (_localWorker
             ? System.Text.Json.JsonSerializer.Serialize(new LinuxTerminalWorker.LocalRequest(request, arguments), RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default)
             : System.Text.Json.JsonSerializer.Serialize(request, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default)) + "\n";
-        p.StandardInput.Write(line); p.StandardInput.Flush();
+        try { p.Start(); }
+        catch { p.Dispose(); throw; }
+        _process = p; _ownedProcess = p; IsRunning = true; ChildPid = p.Id;
         WorkspaceEnvironment = null;
         _reader = Task.Run(async () =>
         {
@@ -84,6 +88,10 @@ public sealed class LinuxUserTerminalPty(UserExecutionContext context, Privilege
                 if (Interlocked.Exchange(ref _exitSignaled, 1) == 0) ProcessExited?.Invoke(exitCode);
             }
         });
+        // Publish ownership of the response pumps before sending startup. A pipe failure can
+        // happen after the worker accepted the request, so the exit proof must still be read.
+        p.StandardInput.Write(line);
+        p.StandardInput.Flush();
     }
     public void Write(byte[] data, int offset, int count)
     {
@@ -125,11 +133,19 @@ public sealed class LinuxUserTerminalPty(UserExecutionContext context, Privilege
             var process = _ownedProcess;
             IsRunning = false;
             // Cooperative close lets the Helper reap its PTY before the Helper process exits.
-            if (process is not null && !process.HasExited)
+            if (process is not null)
                 lock (_inputLock)
                 {
-                    UserTerminalStreamProtocol.WriteClose(process.StandardInput.BaseStream);
-                    process.StandardInput.Close();
+                    try
+                    {
+                        if (!process.HasExited) UserTerminalStreamProtocol.WriteClose(process.StandardInput.BaseStream);
+                    }
+                    catch (IOException) { /* The response pump still owns exit confirmation. */ }
+                    finally
+                    {
+                        try { process.StandardInput.Close(); }
+                        catch (IOException) { }
+                    }
                 }
             // Startup can fail before the normal exit-reader tasks have been published.
             if (process is not null)

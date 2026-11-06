@@ -173,7 +173,7 @@ foreach ($module in @('fixture-host','fixture-http')) {
     New-Item -ItemType Directory -Path (Join-Path $root ('server\' + $rid)) -Force | Out-Null
     Copy-Item -LiteralPath $fixture -Destination (Join-Path $root $entry) -Force
     $manifest = [ordered]@{
-        schemaVersion = 2; packageKind = 'server-module'; runtime = 'module-host'; moduleId = $module; releaseId = ($module + '-release'); version = '1.0.0'
+        schemaVersion = 3; packageKind = 'server-module'; runtime = 'module-host'; moduleId = $module; releaseId = ($module + '-release'); version = '1.0.0'
         publisherId = 'fixture'; purpose = 'third-party'; rid = $rid; hostApiMinimum = '2.0.0'; hostApiMaximumExclusive = '3.0.0'
         entryAssembly = $entry; entryType = $(if ($module -eq 'fixture-host') { 'HostFixture.FixtureHostEntry' } else { 'HostFixture.FixtureHttpHostEntry' })
         buildId = 'fixture-build'; sourceCommit = ('a' * 40); dependencies = @(); capabilities = @(); privileges = @()

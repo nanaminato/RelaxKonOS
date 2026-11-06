@@ -71,7 +71,7 @@ internal static class WindowsCoreAcceptance
         async Task Stop()
         {
             if (server is null) return;
-            if (!server.HasExited) server.Kill(entireProcessTree: true);
+            if (!server.HasExited) server.Kill();
             await server.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15));
             server.Dispose(); server = null;
             http.DefaultRequestHeaders.Authorization = null;
@@ -356,6 +356,30 @@ internal static class WindowsCoreAcceptance
                 check(Convert.ToInt64(await query.ExecuteScalarAsync()) >= 2,
                     "real Windows audit database durably attributes Helper accepted and completed records to the initiating actor");
             }
+            async Task<(int Host, int Child)> StartTree()
+            {
+                var tree = await Api(HttpMethod.Post, "/api/v1.0/server/module-hosts/fixture-broker/spawn-child");
+                check(tree["outputObserved"]!.GetValue<bool>(),
+                    "installed ModuleHost reads real stdout from a live descendant");
+                var host = tree["hostPid"]!.GetValue<int>();
+                var child = tree["pid"]!.GetValue<int>();
+                check(host != child && Present(host) && Present(child),
+                    "the installed ModuleHost and its descendant are both live before fault injection");
+                return (host, child);
+            }
+            static bool Present(int pid)
+            {
+                var processes = Process.GetProcesses();
+                try { return processes.Any(candidate => candidate.Id == pid); }
+                finally { foreach (var candidate in processes) candidate.Dispose(); }
+            }
+            async Task CheckTreeExit((int Host, int Child) tree, string cause)
+            {
+                for (var attempt = 0; attempt < 150 && (Present(tree.Host) || Present(tree.Child)); attempt++)
+                    await Task.Delay(100);
+                check(!Present(tree.Host) && !Present(tree.Child), cause + " removes the observed ModuleHost and its stdout-writing descendant");
+            }
+            var coreTree = await StartTree();
             var interrupted = await FreshPlan();
             var originalAuthorization = http.DefaultRequestHeaders.Authorization;
             var delayMarker = Path.Combine(work, "service-stop-delay.flag");
@@ -377,6 +401,7 @@ internal static class WindowsCoreAcceptance
                 check(durable["state"]!.GetValue<string>() == "Executing",
                     "Windows Core durably records Executing while the actual SCM service is StopPending");
                 await Stop();
+                await CheckTreeExit(coreTree, "real Core termination");
                 var connectionLost = false;
                 try { await inFlight.WaitAsync(TimeSpan.FromSeconds(10)); }
                 catch (Exception error) when (error is HttpRequestException or IOException or TaskCanceledException) { connectionLost = true; }
@@ -433,6 +458,7 @@ internal static class WindowsCoreAcceptance
             var recoveredResult = await Api(HttpMethod.Post, afterRecovery.Path + "/approve", Consent(afterRecovery.Plan, password));
             check(recoveredResult["state"]!.GetValue<string>() == "Succeeded" && await File.ReadAllTextAsync(pidPath) != afterCrash,
                 "fresh native login and new explicit confirmation permit a new real Windows action after Core crash recovery");
+            var helperTree = await StartTree();
             var helperPlan = await FreshPlan();
             var helperPid = JsonNode.Parse(await File.ReadAllTextAsync(native.WorkerReport))!["processId"]!.GetValue<int>();
             var beforeHelperCrash = await File.ReadAllTextAsync(pidPath);
@@ -444,6 +470,7 @@ internal static class WindowsCoreAcceptance
                 var unknown = await Api(HttpMethod.Post, helperPlan.Path + "/approve", Consent(helperPlan.Plan, password));
                 check(unknown["state"]!.GetValue<string>() == "RecoveryRequired",
                     "terminating the actual LocalSystem Helper during SCM stop leaves Core with an unknown result");
+                await CheckTreeExit(helperTree, "real LocalSystem Helper termination");
                 using var target = new ServiceController(native.ActionServiceName);
                 using var helperService = new ServiceController(native.ServiceName);
                 for (var attempt = 0; attempt < 150; attempt++)
@@ -484,9 +511,11 @@ internal static class WindowsCoreAcceptance
             var helperRecoveredResult = await Api(HttpMethod.Post, afterHelperRecovery.Path + "/approve", Consent(afterHelperRecovery.Plan, password));
             check(helperRecoveredResult["state"]!.GetValue<string>() == "Succeeded" && await File.ReadAllTextAsync(pidPath) != beforeHelperCrash,
                 "a new explicit confirmation restores the stopped fixture through the recovered real Windows Helper");
+            var revokedTree = await StartTree();
             await Api(HttpMethod.Post, "/api/v1.0/server/module-trust/fixture-broker", new { artifactSha256 = package.ArchiveSha256, manifestSha256 = package.ManifestSha256, trusted = false });
             await Api(HttpMethod.Get, "/api/v1.0/server/module-hosts/fixture-broker/hello", expected: HttpStatusCode.Forbidden);
             check(true, "Windows Core trust revocation immediately denies the installed module proxy");
+            await CheckTreeExit(revokedTree, "installed code trust revocation");
         }
         finally { await Stop(); }
     }

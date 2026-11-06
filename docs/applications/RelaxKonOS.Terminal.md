@@ -452,3 +452,10 @@ else
 ### Server资源基线（2026-11-05）
 
 当前Terminal会话/PTY、Linux独占worker及shell的分项成本与限制见[MB-01A报告](../architecture/RelaxKonOS.ServerModuleBaseline.20261105.md)与[全模块资源清单](../architecture/RelaxKonOS.ServerModuleResources.Inventory.md)。完整宿主启动/闲时与局部业务夹具分开记录；MB-01整体仍开放，不据对象释放、进程关闭或ALC检查声称生产内存下降。
+
+### 宿主异常与安装 Helper 验收（2026-11-06）
+
+- Windows 安装 Helper 在启动应答写入失败时仍等待 ConPTY 完整清理。输出故障唤醒控制读取，控制断开、输出积压超限或服务取消会取消实际管道输出，清理会等待输出任务结束。PTY 排空后给仍在读取的对端最多 10 秒接收剩余输出和退出帧。取消或超时不会生成成功确认，Server 收不到退出确认时保留未知责任。
+- Linux 本地执行在启动传输进程前拒绝缺失的 shell。启动请求写入前先登记响应读取、错误流读取与进程等待任务。控制管道写入失败仍由原响应任务检查退出证明，EOF 单独不能解除责任。
+- `RelaxKonOS.Server.Tests --terminal-crash-only` 使用非提权本地夹具，先完成真实 PTY 输入输出，再仅终止持有 PTY 的父进程，独立验证已捕获的根、子与孙进程。Windows 本地和 Ubuntu 测试机均通过。Linux 还观察到独占 worker 退出与树内后代被回收。独占 worker 自身被强制终止仍待验收。
+- 安装验收使用隔离 Windows 测试宿主上的当前 Server/Helper，由管理员按正式安装流程配置服务，使用正常账户运行 `RelaxKonOS.Server.Tests --installed-windows-terminal <https-url> <account>`，密码由隐藏交互或标准输入读取。验证缺失目录的启动拒绝、会话列表、随后成功启动，以及既有身份、输入输出、并发、退出与重连检查。崩溃矩阵需要在同一隔离环境分别中断 Server 与 Helper，先捕获本轮树的确切进程实例，再核对全部后代、恢复服务并重测。若无法确认清理，保留当轮故障证据，仅清理可核验属于夹具的实例。

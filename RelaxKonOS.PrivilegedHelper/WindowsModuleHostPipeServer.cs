@@ -120,6 +120,13 @@ internal sealed class WindowsModuleHostPipeServer(WindowsHelperPipeConfiguration
                 while (await child.Error.ReadAsync(buffer, stopping.Token) is var read && read > 0)
                     await Send("stderr", new string(buffer, 0, read));
             });
+            async Task ConfirmAndReportTreeExitAsync(CancellationToken cancellationToken)
+            {
+                await child.ConfirmTreeExitAsync(cancellationToken);
+                treeConfirmed = true;
+                await errors.WaitAsync(TimeSpan.FromSeconds(12), cancellationToken);
+                await Send("tree-exit", child.ExitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
             async Task Relay(TimeSpan timeout)
             {
                 using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stopping.Token);
@@ -152,12 +159,20 @@ internal sealed class WindowsModuleHostPipeServer(WindowsHelperPipeConfiguration
                         using var exitDeadline = CancellationTokenSource.CreateLinkedTokenSource(stopping.Token);
                         exitDeadline.CancelAfter(TimeSpan.FromSeconds(12));
                         await child.WaitForExitAsync(exitDeadline.Token);
-                        await child.ConfirmTreeExitAsync(exitDeadline.Token);
-                        treeConfirmed = true;
-                        await Send("tree-exit", child.ExitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                        await ConfirmAndReportTreeExitAsync(exitDeadline.Token);
                         break;
                     }
                 }
+            }
+            catch (Exception error) when (error is IOException or InvalidOperationException or OperationCanceledException)
+            {
+                // An abruptly exited child can break stdin/stdout before the shutdown response.
+                // Keep the transport open long enough to acknowledge independently verified job cleanup.
+                if (!stopping.IsCancellationRequested && !treeConfirmed)
+                {
+                    await ConfirmAndReportTreeExitAsync(CancellationToken.None);
+                }
+                throw;
             }
             finally
             {

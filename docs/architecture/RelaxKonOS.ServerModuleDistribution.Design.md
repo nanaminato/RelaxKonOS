@@ -664,3 +664,9 @@ Server、ModuleHost 和 Helper 必须同时采用本仓当前 IPC 契约。Windo
 
 
 2026-11-05 MB-06B 续核：当前同源 Windows Job 树证明、Linux 专用 launcher subreaper/reap 已通过原生和既有 Linux 隔离身份实机验收，详见[边界设计 §40](RelaxKonOS.ServerModuleBoundaries.Design.md#40-mb-06b-与-terminal-t2原生进程树验收2026-11-05)。Linux 使用独立 root-owned 当前测试产物及显式配置 caller 的 root 夹具，未替换固定 sudo launcher；Windows 当前账号 Job 验证不代替 LocalSystem/S4U 安装路径。SDK 责任申报、合作 drain、闲时退出与完整信任/崩溃矩阵仍开放。
+
+### MB-06 正式启动与崩溃后清理（2026-11-06）
+
+已安装包始终经平台隔离入口启动。每次 Server 监督器启动重新读取已启用包的精确信任同意并校验文件；传给特权 launcher 的版本和清单摘要固定为该安装记录的值，launcher 仍校验入口实际字节。代次的代理和 Broker 准入绑定本次同意修订与新服务令牌。撤销后重新授信也无法重新开放旧代，且旧令牌不能用于新代。已接纳的工作仍须实际完成，原领域回执保留。
+
+ModuleHost 根进程崩溃时，故障状态与整树清理证据分别记录。Windows Helper 在控制 I/O 失败后仍可核对专用 Job 并返回经认证的 `tree-exit`。Linux root monitor 在专用 UID 树停止、回收且 stderr 排空后发送 `tree-stopped`，仅允许子进程转发普通生命周期响应。Server 收到匹配的清理证明并确认 Linux monitor 已退出后可归还树责任，崩溃仍由原启动或健康故障报告。监视器崩溃、通道中断或超时导致证明缺失时，Server 保留未确认责任。当前仍使用常驻模型，未启用闲时退出或自动重启。各平台的实机验收范围由模块边界设计台账维护。

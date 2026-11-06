@@ -71,7 +71,7 @@ Linux 尚未验证：模块无限阻塞的超时清理、完整发布包升级�
 
 ### Windows 实现与验收入口
 
-Helper 的 `moduleHosts` 策略固定运行时、源包根及隔离根；Server 不向 Helper 提供可执行文件或任意命令。独立管道使用机器密钥 HMAC、每连接随机挑战、方向与递增序号绑定；机器密钥不传入模块。Helper 在 Server 调用者身份下读取源包，再验证 v2 清单和文件摘要，复制为受保护快照。
+Helper 的 `moduleHosts` 策略固定运行时、源包根及隔离根；Server 不向 Helper 提供可执行文件或任意命令。独立管道使用机器密钥 HMAC、每连接随机挑战、方向与递增序号绑定；机器密钥不传入模块。Helper 在 Server 调用者身份下读取源包，按当前 schema 3 校验清单和文件摘要，再复制为受保护快照。
 
 每模块账户名称由隔离根与模块 ID 派生；记录 SID，拒绝接管同名未知账户。账户禁止交互登录，模块只获得自身快照读取/执行与私有数据修改权限，不获得 ACL/所有权修改权限。进程以专用账户启动并在恢复执行前进入 Job；断管关闭进程树。以上是代码实现说明，不能代替原生系统验收。
 
@@ -80,6 +80,14 @@ Helper 的 `moduleHosts` 策略固定运行时、源包根及隔离根；Server 
 ```powershell
 ./Tests/ServerModules/Verify-WindowsModuleHostIsolation.ps1 -RunnerDirectory ./artifacts/windows-module-host-runner -RuntimeDirectory ./artifacts/windows-module-host-runtime -ServerDirectory ./artifacts/windows-v2-server -ConfirmMachineChanges -ConfirmTestAdministrator
 ```
+
+### MB-06 安装与崩溃续核（2026-11-06）
+
+使用同一提交发布三个 Windows Release 制品，分别来自 `Tests/Server/RelaxKonOS.ModuleHost.Windows.Tests`、`RelaxKonOS.ServerModuleHost` 和 `RelaxKonOS.Server`。在装有 .NET 10 与 ASP.NET Core 10 运行时的同架构测试机可使用框架依赖产物。自包含发布使用测试机对应的 `win-x64` 或 `win-arm64` RID 和 `--self-contained true`。将产物发布到上面命令指定的三个独立目录，或将对应目录传给脚本。执行账户须能通过 UAC 使用同一账户的管理员令牌。测试需要 SCM、LocalSystem 服务和本地 S4U 账户。用专用 Windows 测试机执行，脚本使用随机服务名和独立隔离根。
+
+客户端先通过已签名的实际安装包启动 ModuleHost，验证根进程读到后代的实时 stdout。分别只终止测试 Core、触发测试 LocalSystem Helper 自身崩溃、撤销包信任，然后核对原根和原后代 PID 均离场。SCM 及 Broker 操作另外按原回执核对恢复，重复查询不应产生新的服务重启。保留 `installation-report.json`、`client-report.json`、`worker-report.json` 和 `cleanup.json` 作为验收证据。
+
+若安装或测试失败，由脚本进入清理。若执行进程被外部打断而未写出 `cleanup.json`，在同一测试机上检查该轮目录和报告，并使用管理员 PowerShell 执行同一脚本的 `-ElevatedAction cleanup -RequestPath <该轮 request.json 路径>`。只使用该轮原始请求，脚本按其唯一服务名停止服务、按记录 SID 移除专用账号并限制文件清理范围。若身份记录不匹配，保留现场核实。请求文件包含临时管道密钥，应保存在该轮受保护目录中。
 
 本轮原生测试 UAC 被取消，未取得客户端成功报告。取消启动时不再额外请求清理 UAC；一旦提权进程已启动，即使安装失败也仍执行清理。随后自动审批因额度限制未执行提权检查，当前不能证明是否存在部分测试残留，恢复验收前必须先检查唯一测试服务和记录。
 

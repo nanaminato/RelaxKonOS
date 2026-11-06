@@ -94,6 +94,8 @@ internal static class ModuleHostLifetimeChecks
         {
             await VerifyExitedLauncherAsync(check, 0, isolated: true, failDuringWrite: false);
             await VerifyExitedLauncherAsync(check, 0, isolated: true, failDuringWrite: true);
+            await VerifyExitedLauncherAsync(check, 7, isolated: true, failDuringWrite: false, acknowledgeTree: true);
+            await VerifyExitedLauncherAsync(check, 7, isolated: true, failDuringWrite: true, acknowledgeTree: true);
         }
 
         var builder = WebApplication.CreateBuilder(); builder.Logging.ClearProviders();
@@ -108,14 +110,16 @@ internal static class ModuleHostLifetimeChecks
             "an all-disabled host still resolves and stops the mandatory ModuleHost work boundary with an empty catalog");
     }
 
-    private static async Task VerifyExitedLauncherAsync(Action<bool, string> check, int exitCode, bool isolated, bool failDuringWrite)
+    private static async Task VerifyExitedLauncherAsync(Action<bool, string> check, int exitCode, bool isolated, bool failDuringWrite, bool acknowledgeTree = false)
     {
         var info = new ProcessStartInfo(OperatingSystem.IsWindows()
             ? Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe") : "/bin/sh")
         { UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
         foreach (var argument in OperatingSystem.IsWindows()
             ? new[] { "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "$null=[Console]::ReadLine(); exit " + exitCode }
-            : new[] { "-c", "read ignored; exit " + exitCode }) info.ArgumentList.Add(argument);
+            : new[] { "-c", "read ignored; "
+                + (acknowledgeTree ? "printf '%s\\n' '{\"type\":\"tree-stopped\",\"moduleId\":\"fixture-host\"}'; " : "")
+                + "exit " + exitCode }) info.ArgumentList.Add(argument);
         using var process = Process.Start(info) ?? throw new IOException("Fixture launcher did not start.");
         var input = process.StandardInput;
         var client = new ModuleHostProcessClient("unused-fixture-path", "fixture-host", "unused-fixture-data", isolated: isolated);
@@ -139,7 +143,12 @@ internal static class ModuleHostLifetimeChecks
             var refused = false;
             try { await client.ShutdownAsync().WaitAsync(TimeSpan.FromSeconds(10)); }
             catch (ModulePackageException error) when (error.ProblemCode == "module-host-exit-unconfirmed") { refused = true; }
-            if (exitCode != 0 || isolated)
+            if (acknowledgeTree)
+            {
+                check(!refused && process.ExitCode == exitCode,
+                    "a Linux monitor tree acknowledgement can settle cleanup after a crash without rewriting its nonzero exit");
+            }
+            else if (exitCode != 0 || isolated)
             {
                 check(refused && ReferenceEquals(clientProcess.GetValue(client), process) && process.HasExited,
                     failDuringWrite

@@ -18,7 +18,8 @@ internal sealed class WindowsModuleHostClient(PrivilegedHelperOptions options, A
     private readonly SemaphoreSlim _write = new(1, 1);
     private readonly CancellationTokenSource _stopping = new();
     private readonly Channel<string> _stdout = Channel.CreateBounded<string>(8);
-    private bool _exitConfirmed;
+    private bool _launchMayHaveStarted;
+    private volatile bool _exitConfirmed;
 
     internal async Task StartAsync(ModuleHostLaunchRequest request, CancellationToken cancellationToken)
     {
@@ -36,6 +37,7 @@ internal sealed class WindowsModuleHostClient(PrivilegedHelperOptions options, A
         if (hello.Type != "hello" || hello.Payload is not { Length: 64 } || !hello.Payload.All(char.IsAsciiHexDigitLower))
             throw new ModulePackageException("module-host-response-invalid");
         _nonce = hello.Payload;
+        _launchMayHaveStarted = true;
         await ModuleHostPipeProtocol.WriteAsync(_pipe, new(0, "launch", JsonSerializer.Serialize(request, ModuleHostPipeProtocol.Json)),
             _secret, _nonce, ModuleHostPipeProtocol.ClientDirection, setup.Token);
         _sequence = 1;
@@ -95,9 +97,17 @@ internal sealed class WindowsModuleHostClient(PrivilegedHelperOptions options, A
     }
     internal async Task ShutdownAsync(CancellationToken cancellationToken)
     {
-        if (_pipe is null) return;
+        if (!_launchMayHaveStarted) return;
         if (_exitConfirmed) return;
-        await SendAsync(JsonSerializer.Serialize(new ModuleHostCommand(ModuleHostProtocol.Shutdown), ModuleHostProtocol.Json), cancellationToken);
+        try
+        {
+            await SendAsync(JsonSerializer.Serialize(new ModuleHostCommand(ModuleHostProtocol.Shutdown), ModuleHostProtocol.Json), cancellationToken);
+        }
+        catch (Exception error) when (_reader is not null && error is IOException or InvalidOperationException)
+        {
+            // The helper can complete the verified job and close its pipe concurrently with this write.
+            // Only the authenticated reader's tree-exit frame can resolve the race.
+        }
         if (_reader is not null) await _reader.WaitAsync(TimeSpan.FromSeconds(15), cancellationToken);
         if (!_exitConfirmed) throw new ModulePackageException("module-host-exit-unconfirmed");
     }

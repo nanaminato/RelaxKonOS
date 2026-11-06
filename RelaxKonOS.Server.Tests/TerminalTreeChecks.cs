@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Text;
@@ -18,6 +19,108 @@ using RoyalTerminal.Terminal;
 
 internal static class TerminalTreeChecks
 {
+    internal static async Task RunCrashAsync()
+    {
+        if (!OperatingSystem.IsWindows() && (!OperatingSystem.IsLinux() || geteuid() == 0))
+            throw new PlatformNotSupportedException("Run the terminal crash fixture as an ordinary user.");
+        var directory = Directory.CreateTempSubdirectory("rk-terminal-crash-");
+        var handles = new List<TerminalProcessProbe>();
+        try
+        {
+            WriteScripts(directory.FullName);
+            if (OperatingSystem.IsWindows())
+            {
+                using var failed = new ConPty();
+                try
+                {
+                    failed.Start(Path.Combine(directory.FullName, "absent.exe"), 80, 24, directory.FullName, null, null);
+                    throw new IOException("The absent terminal executable unexpectedly launched.");
+                }
+                catch (System.ComponentModel.Win32Exception error) when (error.NativeErrorCode == 2) { }
+                await failed.StopAsync().WaitAsync(TimeSpan.FromSeconds(10));
+                Console.WriteLine("PASS TERMINAL START FAILURE: absent executable rejected and native cleanup confirmed.");
+            }
+            else
+            {
+                using var failed = LinuxUserTerminalPty.CreateLocal(CreateLocalLinuxContext());
+                try
+                {
+                    failed.Start(Path.Combine(directory.FullName, "absent-shell"), 80, 24, directory.FullName, null, null);
+                    throw new IOException("The absent terminal executable unexpectedly launched.");
+                }
+                catch (FileNotFoundException) { }
+                await failed.StopAsync().WaitAsync(TimeSpan.FromSeconds(10));
+                if (failed.ChildPid != 0) throw new IOException("Rejected local shell launched a transport worker.");
+                Console.WriteLine("PASS TERMINAL START FAILURE: absent local shell rejected before any worker started.");
+            }
+            var start = new ProcessStartInfo(Environment.ProcessPath!)
+            {
+                UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true,
+                RedirectStandardOutput = true, RedirectStandardError = true
+            };
+            if (Path.GetFileNameWithoutExtension(start.FileName).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+                start.ArgumentList.Add(Assembly.GetExecutingAssembly().Location);
+            start.ArgumentList.Add("--terminal-crash-worker");
+            start.ArgumentList.Add(directory.FullName);
+            using var owner = Process.Start(start)!;
+            var errors = owner.StandardError.ReadToEndAsync();
+            try
+            {
+                var handshake = await owner.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(30));
+                if (handshake is null || !handshake.StartsWith("PTY_READY ", StringComparison.Ordinal)
+                    || !int.TryParse(handshake.AsSpan("PTY_READY ".Length), out var ptyOwnerPid))
+                    throw new IOException("PTY did not complete the real input/output handshake: " + await errors.WaitAsync(TimeSpan.FromSeconds(5)));
+                using var worker = OperatingSystem.IsLinux() ? new TerminalProcessProbe(Process.GetProcessById(ptyOwnerPid)) : null;
+                foreach (var name in new[] { "root", "child", "leaf" })
+                    handles.Add(new TerminalProcessProbe(Process.GetProcessById(ReadPid(Path.Combine(directory.FullName, name)))));
+                if (handles.Any(process => process.HasExited)) throw new IOException("The fixture tree was not live before the crash.");
+                // Kill only the exact parent. No managed disposal or recursive test cleanup contributes to the assertion.
+                owner.Kill();
+                await owner.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+                await UntilAsync(() => handles.All(process => process.HasExited && process.IsReaped) && worker?.HasExited != false);
+                Console.WriteLine("PASS TERMINAL CRASH: real PTY input/output completed; killing only the owning parent drained the root, child and grandchild.");
+            }
+            finally
+            {
+                if (!owner.HasExited) { owner.Kill(); await owner.WaitForExitAsync(); }
+            }
+        }
+        finally
+        {
+            foreach (var process in handles)
+            {
+                using (process) if (!process.HasExited) process.Kill();
+            }
+            directory.Delete(recursive: true);
+        }
+    }
+
+    internal static async Task RunCrashWorkerAsync(string directory)
+    {
+        var windows = OperatingSystem.IsWindows();
+        IPty pty = windows ? new ConPty() : LinuxUserTerminalPty.CreateLocal(CreateLocalLinuxContext());
+        var output = new StringBuilder();
+        var echoed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var marker = Guid.NewGuid().ToString("N");
+        pty.DataReceived += (bytes, count) =>
+        {
+            output.Append(Encoding.UTF8.GetString(bytes, 0, count));
+            if (output.ToString().Contains("RX_" + marker, StringComparison.Ordinal)) echoed.TrySetResult();
+        };
+        pty.Start(windows ? "powershell" : "/bin/sh", 80, 24, directory, null, windows
+            ? ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", Path.Combine(directory, "root.ps1"), directory, "crash"]
+            : [Path.Combine(directory, "root.sh"), directory, "crash"]);
+        await UntilAsync(() => File.Exists(Path.Combine(directory, "ready")));
+        pty.Write(marker + (windows ? "\r" : "\n"));
+        await echoed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Console.WriteLine($"PTY_READY {pty.ChildPid}");
+        await Task.Delay(Timeout.InfiniteTimeSpan);
+    }
+
+    private static UserExecutionContext CreateLocalLinuxContext() => new(Guid.NewGuid(),
+        new(HostPlatformKind.Linux, geteuid().ToString(System.Globalization.CultureInfo.InvariantCulture),
+            Environment.UserName, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)));
+
     internal static async Task RunAsync(UserExecutionContext? helperContext = null, string? helperPath = null)
     {
         if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux()) throw new PlatformNotSupportedException();
@@ -152,6 +255,7 @@ internal static class TerminalTreeChecks
                 while (!(Test-Path (Join-Path $dir leaf))) { Start-Sleep -Milliseconds 20 }
                 Set-Content -Path (Join-Path $dir ready) -Value ready
                 if ($mode -like 'natural*') { while (!(Test-Path (Join-Path $dir release))) { Start-Sleep -Milliseconds 20 }; exit ([int]$mode.Substring(7)) }
+                if ($mode -eq 'crash') { $value = Read-Host; Write-Output ('RX_' + $value) }
                 Start-Sleep 600
                 """, new UTF8Encoding(false));
             File.WriteAllText(Path.Combine(directory, "child.ps1"), """
@@ -170,6 +274,7 @@ internal static class TerminalTreeChecks
                 setsid /bin/sh "$dir/child.sh" "$dir" &
                 while [ ! -f "$dir/leaf" ]; do sleep .02; done
                 echo ready > "$dir/ready"
+                if [ "$mode" = crash ]; then read -r value; printf 'RX_%s\n' "$value"; read -r value; exit; fi
                 if [ "$mode" != wait ]; then while [ ! -f "$dir/release" ]; do sleep .02; done; exit "${mode#natural}"; fi
                 read value
                 """.Replace("\r", ""));

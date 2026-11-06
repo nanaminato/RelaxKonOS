@@ -81,7 +81,6 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
                     logger.LogWarning("ModuleHost {ModuleId} has no exact-version code trust consent.", record.ModuleId);
                     continue;
                 }
-                InstalledModuleStore.VerifyPackage(environment.ContentRootPath, record);
                 entries.Add(new ModuleHostEntryOptions
                 {
                     ModuleId = record.ModuleId, Installed = record,
@@ -125,9 +124,17 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
                 try
                 {
                     work = await workLeases.AcquireAsync(option.ModuleId, stoppingToken);
+                    if (option.Installed is { } installed)
+                    {
+                        var consent = ModuleTrustStore.Read(environment.ContentRootPath, installed);
+                        if (consent?.Trusted != true) throw new ModulePackageException("module-host-trust-revoked");
+                        entry.TrustRevision = consent.Revision;
+                        InstalledModuleStore.VerifyPackage(environment.ContentRootPath, installed);
+                    }
                     var client = new ModuleHostProcessClient(option.PackageRoot, option.ModuleId, dataPath,
                         logError: message => logger.LogInformation("ModuleHost {ModuleId} stderr: {Message}", option.ModuleId, message),
-                        isolated: !environment.IsDevelopment() || section.GetValue<bool>("Isolation:Enabled"), brokerUrl: broker?.Url, helperOptions: helperOptions);
+                        isolated: option.Installed is not null || !environment.IsDevelopment() || section.GetValue<bool>("Isolation:Enabled"),
+                        brokerUrl: broker?.Url, helperOptions: helperOptions, installed: option.Installed);
                     generation = new(option.ModuleId, client.ServiceToken, work, () => client.DisposeAsync().AsTask(),
                         () => { lock (_gate) if (entry.Status != "faulted") entry.Status = "draining"; },
                         error =>
@@ -144,6 +151,7 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
                     using var startup = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, generation.Stopping);
                     var ready = await client.StartAsync(startup.Token);
                     var health = await client.HealthAsync(startup.Token);
+                    if (!IsTrusted(entry)) throw new ModulePackageException("module-host-trust-revoked");
                     lock (_gate)
                     {
                         entry.Version = ready.Version;
@@ -231,14 +239,19 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
     private bool IsTrusted(Entry entry)
     {
         if (entry.Installed is null) return environment.IsDevelopment();
-        try { return ModuleTrustStore.Read(environment.ContentRootPath, entry.Installed)?.Trusted == true; }
-        catch (Exception error) when (error is ModulePackageException or IOException or UnauthorizedAccessException) { return false; }
+        try
+        {
+            var consent = ModuleTrustStore.Read(environment.ContentRootPath, entry.Installed);
+            return consent?.Trusted == true && consent.Revision == entry.TrustRevision;
+        }
+        catch (Exception error) when (error is ModulePackageException or IOException or UnauthorizedAccessException or System.Text.Json.JsonException) { return false; }
     }
 
     private sealed class Entry(string moduleId, HashSet<string> allowedUsers, InstalledModuleRecord? installed)
     {
         internal string ModuleId { get; } = moduleId;
         internal InstalledModuleRecord? Installed { get; } = installed;
+        internal string? TrustRevision { get; set; }
         internal HashSet<string> AllowedUsers { get; } = allowedUsers;
         internal string Status { get; set; } = "starting";
         internal string? Version { get; set; }

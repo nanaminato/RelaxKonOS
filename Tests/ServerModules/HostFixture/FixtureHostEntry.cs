@@ -66,20 +66,25 @@ public class FixtureHostEntry : IModuleHostEntry, IModuleHostHealth, IModuleHost
             return Results.Json(new { user = Environment.UserName, sid, administrator, readable, writable, helper,
                 serverEnvironmentLeaked = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SERVER_SECRET") is not null });
         });
-        endpoints.MapPost("/spawn-child", (bool? detached) =>
+        endpoints.MapPost("/spawn-child", async (bool? detached, CancellationToken cancellationToken) =>
         {
             var detach = detached == true && OperatingSystem.IsLinux();
             var executable = OperatingSystem.IsWindows() ? Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe")
-                : detach ? "/usr/bin/setsid" : "/usr/bin/sleep";
+                : detach ? "/usr/bin/setsid" : "/bin/sh";
+            const string linuxWork = "trap '' PIPE; remaining=1200; while [ \"$remaining\" -gt 0 ] && IFS= read -r process </proc/self/comm; "
+                + "do printf 'fixture-output\\n' 2>/dev/null; sleep .1; remaining=$((remaining-1)); done";
             var info = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true,
                 RedirectStandardOutput = true, RedirectStandardError = true };
-            foreach (var argument in OperatingSystem.IsWindows() ? new[] { "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 120" }
-                : detach ? new[] { "/bin/sh", "-c", "trap '' TERM; exec /usr/bin/sleep 120" } : new[] { "120" }) info.ArgumentList.Add(argument);
+            foreach (var argument in OperatingSystem.IsWindows() ? new[] { "-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
+                "for ($i = 0; $i -lt 1200; $i++) { [Console]::WriteLine('fixture-output'); Start-Sleep -Milliseconds 100 }" }
+                : detach ? new[] { "/bin/sh", "-c", "trap '' TERM; " + linuxWork } : new[] { "-c", linuxWork }) info.ArgumentList.Add(argument);
             var process = Process.Start(info) ?? throw new IOException();
             lock (_spawned) _spawned.Add(process);
-            _ = process.StandardOutput.BaseStream.CopyToAsync(Stream.Null);
             _ = process.StandardError.BaseStream.CopyToAsync(Stream.Null);
-            return Results.Json(new { pid = process.Id });
+            var outputObserved = await process.StandardOutput.ReadLineAsync(cancellationToken).AsTask()
+                .WaitAsync(TimeSpan.FromSeconds(10), cancellationToken) == "fixture-output";
+            _ = process.StandardOutput.BaseStream.CopyToAsync(Stream.Null);
+            return Results.Json(new { pid = process.Id, hostPid = Environment.ProcessId, outputObserved });
         });
         endpoints.MapPost("/unhealthy", () => { _healthy = false; return Results.Ok(); });
         endpoints.MapPost("/privilege", async (RelaxKonOS.ModuleHost.Protocol.ModulePrivilegeRequest request) =>

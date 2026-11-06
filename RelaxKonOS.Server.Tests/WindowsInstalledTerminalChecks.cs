@@ -52,6 +52,19 @@ internal static class WindowsInstalledTerminalChecks
             }
         });
         await hub.StartAsync();
+        var beforeRejectedStart = await hub.InvokeAsync<List<TerminalSessionInfo>>("ListSessions");
+        var nonexistentDirectory = Path.Combine(Path.GetPathRoot(Environment.SystemDirectory)!, "rk-terminal-absent-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var unexpected = await hub.InvokeAsync<AttachTerminalResponse>("Start",
+                new StartTerminalRequest(80, 24, 0, 0, null, nonexistentDirectory), null);
+            await hub.InvokeAsync("CloseSession", unexpected.SessionId);
+            throw new InvalidOperationException("The installed Helper accepted an absent working directory.");
+        }
+        catch (Microsoft.AspNetCore.SignalR.HubException) { }
+        var afterRejectedStart = await hub.InvokeAsync<List<TerminalSessionInfo>>("ListSessions");
+        if (!beforeRejectedStart.Select(session => session.SessionId).ToHashSet().SetEquals(afterRejectedStart.Select(session => session.SessionId)))
+            throw new InvalidOperationException("Installed terminal startup failure retained an unexpected session.");
         var started = await hub.InvokeAsync<AttachTerminalResponse>("Start", new StartTerminalRequest(80, 24, 0, 0, null, null), null);
         try
         {
@@ -79,7 +92,7 @@ internal static class WindowsInstalledTerminalChecks
             await hub.StartAsync();
             var attached = await hub.InvokeAsync<AttachTerminalResponse>("AttachExisting", started.SessionId);
             if (attached.SessionId != started.SessionId) throw new Exception("Terminal restoration failed.");
-            Console.WriteLine("Installed Windows terminal authenticated identity, restricted privileges, input/output, resize, natural exit, concurrent sessions and reconnect passed.");
+            Console.WriteLine("Installed Windows terminal rejected an absent directory, then verified authenticated identity, restricted privileges, input/output, resize, natural exit, concurrent sessions and reconnect.");
             await using var administrator = Connect();
             var verified = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var adminOutput = new StringBuilder();

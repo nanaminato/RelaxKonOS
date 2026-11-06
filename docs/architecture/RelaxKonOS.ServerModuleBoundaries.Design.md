@@ -145,7 +145,7 @@ IPC 请求、响应流、模块回调、批准中的 Broker 操作和持久后�
 | MB-03 | **Git 有限切片交付**。真实仓库/CLI/凭据/控制台与构建执行项目，100轮 ALC 和保留完成请求验证（§10/11）；镜像清理责任修复与真实 Engine 标签检查见 §43，离线 BuildKit 续核见 §44 | 真实 Docker/BuildKit 执行中取消、清理、恢复与 ALC 联合矩阵未完成；生产内存/冷启动缺失 | 真实任务/流/持久故障责任结束才回收；两平台循环不累积句柄/代码代次；实际引擎恢复与资源目标达到门槛 |
 | MB-04 | **常驻边界阶段交付**。共享读取、guard/TUN、到期与发布恢复单一 owner，后台工作租约、订阅转换预算及独立代码（§12～22） | Proxy 整体仍 resident；安全职责持久调度交接、真实网络故障和动态休眠未完成 | 系统代理/TUN/到期责任在重启及休眠后连续可靠；未知结果不重放；正式包/代码释放与生产收益分别验证 |
 | MB-05 | **MB-05A 常驻后台责任阶段交付**（§39）。三域真实工作租约、准入/Stop 同锁、实际任务及清理排空；证书取消只记录请求，真实任务决定终态。实机资源与隔离设施预检见 §43/44，Docker 在途停止与原回执恢复见 §45 | 三域仍根执行图；持久轻调度、CA/Nginx 中断联合矩阵与独立执行器未交付；跨文件事务和远端 CA 未知状态仍须恢复规则 | MB-05A 后台 owner/终态/禁用门槛已通过，保持 resident；整项还须验证持久调度、独立执行器、真实 Engine/CA/Nginx 重启连续性与休眠 |
-| MB-06 | **MB-06A/06B 阶段交付**（§39/40）。代理/Broker 代次范围、关闭排空；Linux 专用身份真实 Prepare/后代 reap 与 Windows 当前账号原生 Job 树实测通过 | Windows LocalSystem/S4U 安装矩阵、完整崩溃/信任撤销仍未验收；缺 SDK 合作 drain/后台任务申报，不启用闲时退出 | MB-06A/B 代次/原生树阶段门槛已通过；整项仍须合作 drain/后台申报、正式安装多代信任/撤销/崩溃矩阵与旧回调隔离，验收后才启用闲时退出/重启 |
+| MB-06 | **MB-06A/06B 阶段交付**（§39/40），安装身份、信任代次与崩溃续核见 §46 | Windows LocalSystem/S4U 完整安装矩阵及正式安装全链多代故障仍开放；缺 SDK 合作 drain/后台任务申报 | 整项仍须合作 drain/后台申报、正式安装多代信任/撤销/崩溃矩阵与旧回调隔离，验收后才启用闲时退出/重启 |
 | MB-07 | **SystemPerformance S1 已交付并冻结范围**（§23～37）；Firewall-F1 代码回收与 Tailscale TS-01 持久责任跨对象代次验收交付（§41）；Terminal-T1/T2 阶段交付（§39/40） | SystemPerformance 与 Terminal 仍 resident，生产收益/完整原生压力未测；Terminal 当前账号 Windows 树与 Linux 本地/永久降权 Helper 树已实测，Windows 安装 Helper/S4U、宿主崩溃/孤儿恢复矩阵仍开放；其余模块代码边界未验证 | Terminal-T1/T2 会话/当前原生树阶段已验收，断线不杀会话；整项还须安装/崩溃/压力矩阵及收益证据，再决定独立程序集，不能将 S1/T2 当作整项关闭 |
 | MB-08 | **未完成**。已有当前诊断 DTO/跨端管理契约及局部打包/ModuleHost 验证 | 安装包非完整目标 ABI；真实业务同构建内存/冷启动门槛、完整平台故障矩阵未有 | 发布包/私有依赖/各端调用一致；Windows/Linux 整个进程树与冷启动 p50/p95、错误率达到预先记录门槛，关联 RES-06/07 |
 
@@ -933,3 +933,17 @@ Ubuntu 测试机使用固定 SSH 主机密钥、现有 sudo 凭据、缓存 Alpi
 测试等待 Engine 已接受的停止动作自行结束，再用独立新操作显式启动原容器。以原停止请求的幂等键重试，返回同一 Interrupted 回执，容器继续运行且 TERM 记录只有一次。按项目标签确认容器、网络和卷已清理。共享 Engine 未重启，宿主 AppArmor 未变更。本机 --stack-operations-only 台账专项通过。
 
 此切片验收了真实 CLI 在途保护、协调器停机排空与启动恢复。协调器在同一测试进程内重建，未注入整个 Server 进程崩溃或 Engine daemon 重启。Engine 已接受的动作可在 CLI 断开后继续完成，恢复快照不保证 Engine 已稳定。CLI 清理无法核实的保护路径已实现，未做真实进程清理失败注入。HTTP 响应排空、真实 CA/Nginx 应用层联合矩阵及生产内存仍开放。实机原始日志与制品哈希见 .artifacts/mb05-docker-live.log 和 .artifacts/mb05-docker-provenance.json。
+
+## 46. MB-06 与 Terminal 安装、崩溃和恢复续核（2026-11-06）
+
+当前阶段从 `b41f91ef` 继续，保留 §40 的已有实机进程树证据。安装 ModuleHost 在每次启动重新读取信任同意和验证包，并将同意绑定的版本及摘要交给隔离启动器。在途和后续准入按当前同意修订核对，撤销后重新授权也不能恢复旧令牌。Linux 由有权限的监控进程在真实树清理后发退出证明；Windows Helper 只在 Job 原生确认后发送认证树退出回执。控制断开、超时或单个父 PID 退出均不能替代该证明。
+
+**已实现且已验证。** Windows 当前账户 Job 11 项通过，覆盖根先退、脱离后代、禁止 Job breakaway、原生活动数归零、Job 句柄关闭与同账户无关进程存续。Windows、Ubuntu 本地 Terminal 父端终止测试先执行真实 PTY 输入输出，只终止拥有 PTY 的父进程，再核对根、子、孙退出；Ubuntu 还核对 worker 退出、后代已 reap。Ubuntu 的本地树 17 项、真实控制输入取消 2 项通过。测试机沿用原有 SSH 主机密钥核验。原始日志见 `.artifacts/terminal-recovery-20261106`。
+
+Windows 本地 Terminal 树 17 项、生命周期帧 11 项、驻留 15 项通过。帧测试覆盖实际阻塞的命名管道输出写入取消。沙箱内跨模块套件停在 MB-05 Certificate 恢复断言，普通 Windows 令牌下重跑完整 `--module-boundary-milestones-only` 通过。
+
+Windows ModuleHost 专项 36 项通过。Ubuntu ModuleHost 专项 40 项和原生树专项 4 项通过。使用独立 root-owned 当前启动器、现有机器策略和专用模块 UID，完成合作关闭、控制断开和 SIGKILL 模块根进程各两组（普通后代及独立 session 后代）。注入前观察后代读写，注入后检查监控器树证明、根与后代 reap 以及该 UID 无存活进程。崩溃组保留实际非零监控器退出。旧代回调和信任修订检查由真实 Broker 端点及受控代次测试覆盖。正式固定 sudo 启动器未替换，临时源包已移除，原数据已还原。证据见 `.artifacts/mb06-linux-crash-20261106`。
+
+**已实现、安装环境未实测。** Windows 安装夹具更新到 schema 3，覆盖正式运行时快照置备、已签名包启动、LocalSystem/S4U、已观测的实际后代输出、Core 崩溃、Helper 崩溃与信任撤销后树核对，以及原 Broker 回执和副作用不重放。Windows Terminal Helper 增加启动应答和输出/控制通道异常的清理保护，安装入口补启动拒绝后的复测。当前 Windows 执行令牌未提升，未置备 SCM 测试服务、S4U 账户或正式 Terminal Helper。管理员执行条件、独立制品和清理恢复见[模块安装验收](RelaxKonOS.ServerModuleV2.Progress.md)和[Terminal 应用文档](../applications/RelaxKonOS.Terminal.md)。
+
+**仍开放。** Windows 安装后的全树崩溃和恢复矩阵、Linux 完整安装和监督器本身的故障恢复、未知责任的正式运维恢复以及跨代应用副作用矩阵。Linux Terminal 的 EPERM 实机证据沿用 §40。自动审批拒绝本轮特权复测，理由是清理失败可能留下 root 所有的测试后代。需管理员在隔离宿主运行 `--terminal-tree-privilege-checks` 并接管该夹具的清理。保留无权终止后代的未知责任，不扩大权限。SDK 后台责任申报和合作 drain 尚未验收，ModuleHost 保持 resident，未启用闲时 kill、退出或重启。Terminal 保持当前驻留策略，SystemPerformance S1 保持冻结。进程树证明、对象释放与 ALC 回收均不计为生产内存下降。

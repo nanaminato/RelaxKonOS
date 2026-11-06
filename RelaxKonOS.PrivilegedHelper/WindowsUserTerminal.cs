@@ -10,6 +10,8 @@ namespace RelaxKonOS.PrivilegedHelper;
 [SupportedOSPlatform("windows")]
 internal static class WindowsUserTerminal
 {
+    private static readonly TimeSpan OutputDrainTimeout = TimeSpan.FromSeconds(10);
+
     internal static async Task RunAsync(UserExecutionRequest request, Stream pipe,
         Func<UserExecutionResult, Task> acknowledge, CancellationToken cancellationToken, string? personalOwnerSid = null)
     {
@@ -17,10 +19,15 @@ internal static class WindowsUserTerminal
         // Bounded output prevents a stalled Server from consuming unbounded Helper memory.
         var output = Channel.CreateBounded<byte[]>(256);
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using var outputAbort = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var exitCode = -1;
         pty.DataReceived += (bytes, count) =>
         {
-            if (!output.Writer.TryWrite(bytes[..count])) lifetime.Cancel();
+            if (!output.Writer.TryWrite(bytes[..count]))
+            {
+                outputAbort.Cancel();
+                lifetime.Cancel();
+            }
         };
         pty.ProcessExited += code => { exitCode = code; output.Writer.TryComplete(); lifetime.Cancel(); };
         try
@@ -84,16 +91,29 @@ internal static class WindowsUserTerminal
             return;
         }
 
-        await acknowledge(new(true));
-        var writer = Task.Run(async () =>
-        {
-            await foreach (var bytes in output.Reader.ReadAllAsync())
-                UserTerminalStreamProtocol.WriteOutput(pipe, bytes);
-        });
+        var writer = Task.CompletedTask;
         try
         {
-            while (await UserTerminalStreamProtocol.ReadAsync(pipe, lifetime.Token) is { } frame)
+            // A broken response pipe during acknowledgement still owns a live PTY.
+            await acknowledge(new(true));
+            writer = Task.Run(async () =>
             {
+                try
+                {
+                    await foreach (var bytes in output.Reader.ReadAllAsync(outputAbort.Token))
+                        await UserTerminalStreamProtocol.WriteOutputAsync(pipe, bytes, outputAbort.Token);
+                }
+                catch
+                {
+                    // A failed output pump must wake a read on the other half of the pipe.
+                    lifetime.Cancel();
+                    throw;
+                }
+            });
+            while (true)
+            {
+                var frame = await UserTerminalStreamProtocol.ReadAsync(pipe, lifetime.Token);
+                if (frame is null) { outputAbort.Cancel(); break; }
                 if (frame.Kind == UserTerminalFrameKind.Close) break;
                 if (frame.Kind == UserTerminalFrameKind.Input)
                     pty.Write(frame.Input!, 0, frame.Input!.Length);
@@ -102,13 +122,20 @@ internal static class WindowsUserTerminal
             }
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch { outputAbort.Cancel(); throw; }
         finally
         {
-            await pty.StopAsync();
-            output.Writer.TryComplete();
-            await writer;
-            UserTerminalStreamProtocol.WriteExited(pipe, exitCode);
-            lifetime.Cancel();
+            try { await pty.StopAsync(); }
+            finally
+            {
+                output.Writer.TryComplete();
+                lifetime.Cancel();
+                // Preserve trailing output for a reading peer. A stalled peer cannot keep
+                // this transport alive forever, and cancellation is not an exit confirmation.
+                outputAbort.CancelAfter(OutputDrainTimeout);
+                await writer;
+            }
         }
+        await UserTerminalStreamProtocol.WriteExitedAsync(pipe, exitCode, outputAbort.Token);
     }
 }

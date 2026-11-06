@@ -349,3 +349,7 @@ Git 失败或取消后的镜像清理与终态写入均属于原代次工作租�
 2026-11-06 续核见[边界设计 §44](RelaxKonOS.ServerModuleBoundaries.Design.md#44-mb-03-离线-buildkit-与-mb-05-隔离设施续核2026-11-06)。已验证官方 rootless 制品的离线导入和专用 builder 的实际启动阻塞，并实测隔离容器和 Nginx 的中断与恢复。应用操作责任、BuildKit 与 ALC 联合验收、真实 CA 和生产内存测量仍开放。
 
 2026-11-06 Docker 应用层续核见[边界设计 §45](RelaxKonOS.ServerModuleBoundaries.Design.md#45-mb-05-docker-应用层在途中断与回执恢复2026-11-06)。真实 Engine 已接受停止后，工作 owner 排空原 CLI，重建的协调器按原 operationId 观察和恢复 Interrupted 回执，重复请求不会再次停止已显式启动的容器。Docker 仍为常驻管理模块，Engine 已接受的请求可继续执行。
+
+## 18. ModuleHost 与 Terminal 崩溃续核（2026-11-06）
+
+[边界设计 §46](RelaxKonOS.ServerModuleBoundaries.Design.md#46-mb-06-与-terminal-安装崩溃和恢复续核2026-11-06)记录每个平台的本地树证据、正式身份和崩溃矩阵缺口。信任修订、完整树证明和传输任务排空属于代次责任。没有证明的退出保留未知，SDK 后台责任与合作 drain 尚未验收，ModuleHost 闲时退出仍关闭。当前没有生产内存下降证据。

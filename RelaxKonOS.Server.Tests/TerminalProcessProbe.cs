@@ -40,7 +40,7 @@ internal sealed class TerminalProcessProbe : IDisposable
     internal bool IsReaped => _pidfd is null || !Directory.Exists($"/proc/{Id}") || Instance(Id) is { } current && current != _started;
     internal void Kill()
     {
-        if (_pidfd is null) { if (!_process.HasExited) _process.Kill(true); return; }
+        if (_pidfd is null) { if (!_process.HasExited) _process.Kill(); return; }
         if (PidfdSendSignal(424, checked((int)_pidfd.DangerousGetHandle()), 9, IntPtr.Zero, 0) != 0 && Marshal.GetLastPInvokeError() != 3)
             throw new IOException("Fixture pidfd cleanup failed.", new Win32Exception(Marshal.GetLastPInvokeError()));
     }

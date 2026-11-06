@@ -89,7 +89,14 @@ internal static class LinuxModuleHostIsolation
         {
             if (character[0] == '\n')
             {
-                await Console.Out.WriteLineAsync(response.ToString());
+                var line = response.ToString();
+                // Only the root monitor can issue an owned-tree acknowledgement.
+                using var frame = System.Text.Json.JsonDocument.Parse(line);
+                if (frame.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object
+                    || !frame.RootElement.TryGetProperty("type", out var type) || type.ValueKind != System.Text.Json.JsonValueKind.String
+                    || type.GetString() is not ("ready" or "health" or "stopped" or "faulted"))
+                    throw new InvalidDataException();
+                await Console.Out.WriteLineAsync(line);
                 await Console.Out.FlushAsync();
                 return;
             }

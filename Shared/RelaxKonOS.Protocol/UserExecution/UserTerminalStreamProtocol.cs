@@ -26,11 +26,36 @@ public static class UserTerminalStreamProtocol
         stream.Write(header); stream.Write(output); stream.Flush();
     }
 
+    public static async ValueTask WriteOutputAsync(Stream stream, ReadOnlyMemory<byte> output, CancellationToken cancellationToken)
+    {
+        if (output.Length is <= 0 or > 65536) throw new ArgumentOutOfRangeException(nameof(output));
+        var header = new byte[5];
+        header[0] = OutputKind;
+        BinaryPrimitives.WriteInt32BigEndian(header.AsSpan(1), output.Length);
+        await stream.WriteAsync(header, cancellationToken);
+        await stream.WriteAsync(output, cancellationToken);
+        await stream.FlushAsync(cancellationToken);
+    }
+
     public static void WriteExited(Stream stream, int exitCode)
     {
-        Span<byte> frame = stackalloc byte[5]; frame[0] = ExitedKind;
-        BinaryPrimitives.WriteInt32BigEndian(frame[1..], exitCode);
+        Span<byte> frame = stackalloc byte[5];
+        EncodeExit(frame, exitCode);
         stream.Write(frame); stream.Flush();
+    }
+
+    public static async ValueTask WriteExitedAsync(Stream stream, int exitCode, CancellationToken cancellationToken)
+    {
+        var frame = new byte[5];
+        EncodeExit(frame, exitCode);
+        await stream.WriteAsync(frame, cancellationToken);
+        await stream.FlushAsync(cancellationToken);
+    }
+
+    private static void EncodeExit(Span<byte> frame, int exitCode)
+    {
+        frame[0] = ExitedKind;
+        BinaryPrimitives.WriteInt32BigEndian(frame[1..], exitCode);
     }
 
     public static void WriteInput(Stream stream, ReadOnlySpan<byte> input)

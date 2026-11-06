@@ -147,7 +147,7 @@ internal static class ModuleHostChecks
                 "ModuleHost supervisor detects unhealthy modules and withdraws their proxy connection");
             connection.Dispose();
             await supervisor.StopAsync(CancellationToken.None);
-            await VerifyProductionScopesAsync(root, configuration, check);
+            await VerifyProductionScopesAsync(root, configuration, connection.ServiceToken, connection.GenerationId, check);
         }
         finally
         {
@@ -156,7 +156,7 @@ internal static class ModuleHostChecks
         }
     }
 
-    private static async Task VerifyProductionScopesAsync(string root, IConfiguration configuration, Action<bool, string> check)
+    private static async Task VerifyProductionScopesAsync(string root, IConfiguration configuration, string oldToken, Guid oldGeneration, Action<bool, string> check)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root, EnvironmentName = Environments.Development });
         builder.Logging.ClearProviders(); builder.Configuration.Sources.Clear(); builder.Configuration.AddConfiguration(configuration);
@@ -186,13 +186,26 @@ internal static class ModuleHostChecks
         {
             await WaitForAsync(() => supervisor.Snapshot().SingleOrDefault()?.Status == "running");
             string token;
-            using (var connection = supervisor.AcquireConnection("fixture-host")) token = connection!.ServiceToken;
+            using (var connection = supervisor.AcquireConnection("fixture-host"))
+            {
+                token = connection!.ServiceToken;
+                using var stale = supervisor.AcquireAuthenticated(oldToken);
+                using var current = supervisor.AcquireAuthenticated(token);
+                check(stale is null && current?.GenerationId == connection.GenerationId && connection.GenerationId != oldGeneration,
+                    "a fresh real ModuleHost process authenticates only its own generation's callbacks");
+            }
             var proxyEndpoint = ((IEndpointRouteBuilder)application).DataSources.SelectMany(source => source.Endpoints).OfType<RouteEndpoint>()
                 .Single(endpoint => endpoint.RoutePattern.RawText == ServerModuleManagementRoutes.ModuleHostProxy);
             var brokerApplication = (WebApplication)typeof(CoreModulePrivilegeBroker)
                 .GetField("_application", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(broker)!;
             var callbackEndpoint = ((IEndpointRouteBuilder)brokerApplication).DataSources.SelectMany(source => source.Endpoints).OfType<RouteEndpoint>()
                 .Single(endpoint => endpoint.RoutePattern.RawText == "/plans/{id:guid}");
+            var staleCallback = new DefaultHttpContext { RequestServices = brokerApplication.Services };
+            staleCallback.Request.Method = "GET"; staleCallback.Request.RouteValues["id"] = prepared.PlanId.ToString();
+            staleCallback.Request.Headers[ModuleHostProtocol.ServiceTokenHeader] = oldToken;
+            await callbackEndpoint.RequestDelegate!(staleCallback);
+            check(staleCallback.Response.StatusCode == StatusCodes.Status403Forbidden,
+                "the actual Broker callback endpoint rejects a token from the prior real process");
             var principal = new ClaimsPrincipal(new ClaimsIdentity([
                 new Claim("sub", Guid.NewGuid().ToString()), new Claim("sid", Guid.NewGuid().ToString()),
                 new Claim("jti", Guid.NewGuid().ToString()), new Claim(ClaimTypes.Role, "controller")], "test"));
