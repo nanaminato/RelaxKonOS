@@ -360,6 +360,11 @@ if (args.Contains("--proxy-subscription-boundary-only"))
     await ProxySubscriptionBoundaryChecks.RunAsync();
     return;
 }
+if (args is ["--proxy-expiry-live-only", var singBoxExecutable])
+{
+    await ProxyExpiryLiveChecks.RunAsync(singBoxExecutable);
+    return;
+}
 if (args.Contains("--proxy-core-safety-only"))
 {
     await ProxyCoreSafetyChecks.RunAsync();

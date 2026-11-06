@@ -316,3 +316,5 @@ Core 唯一到期 worker 每轮独立 scope 使用 `ProxyServerPublicationServic
 2026-11-04：入站排队操作经共用 `ProxyOperationStore` 取得 coordinator 后台工作租约，直到业务、审计、异步 scope 清理与终态确认完成；清理/落盘失败隔离原 owner。Core 到期及 protected publication 恢复仍按原 gate 和摘要证明执行，管理租约不代替其常驻责任。Proxy 继续 resident；详见[边界设计 §20](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#20-linux-modulehost-目标修复proxy-工作租约与订阅独立代码2026-11-04)。
 
 授权到期由 Core 的唯一 worker 从原加密状态读取截止时间及待恢复标志。未到期且没有待恢复发布时不会构造发布执行器。待恢复和失效凭据仍由原发布协调路径处理。
+
+既有 Linux 测试机的专属 sing-box 验证了 VLESS/TLS 授权到期前可转发、到期后新连接被拒绝、其他授权持续可用。夹具在实际配置切换后丢弃回执，原加密台账复开并恢复且只应用一次。验收范围见边界设计 §51。
