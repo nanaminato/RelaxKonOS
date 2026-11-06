@@ -25,7 +25,8 @@ internal interface IAcmeRenewalInfoProvider
 
 /// <summary>ACME v2 adapter. Anvil types are confined here so the manager and API remain SDK-independent.</summary>
 internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenges, DirectHttp01ChallengeStore directChallenges, CertificateOptions options,
-    CertificateMetadataRepository metadata, ILogger<AnvilAcmeService> logger) : IAcmeService, IAcmeRenewalInfoProvider
+    CertificateMetadataRepository metadata, ILogger<AnvilAcmeService> logger,
+    Func<Uri, IAcmeHttpClient>? createHttpClient = null) : IAcmeService, IAcmeRenewalInfoProvider
 {
     private readonly SemaphoreSlim _accountGate = new(1, 1);
     public async Task RevokeAsync(X509Certificate2 certificate, string contactEmail, CancellationToken cancellationToken)
@@ -183,7 +184,7 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
         {
             logger.LogInformation("Loading existing ACME account key. Directory={Directory}", directoryUri);
             var key = KeyFactory.FromPem(await File.ReadAllTextAsync(accountKeyPath, cancellationToken));
-            var existing = new AcmeContext(directoryUri, key);
+            var existing = new AcmeContext(directoryUri, key, createHttpClient?.Invoke(directoryUri));
             await AcmeCallLifetime.AwaitAsync(() => existing.Account(), cancellationToken);
             var accountUri = await AcmeCallLifetime.AwaitAsync(() => existing.GetAccountUri(), cancellationToken);
             await metadata.UpsertAcmeAccountAsync(directoryUri, contactEmail, accountKeyPath, accountUri?.AbsoluteUri, cancellationToken);
@@ -191,7 +192,7 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
         }
 
         var accountKey = KeyFactory.NewKey(KeyAlgorithm.ES256);
-        var created = new AcmeContext(directoryUri, accountKey);
+        var created = new AcmeContext(directoryUri, accountKey, createHttpClient?.Invoke(directoryUri));
         logger.LogInformation("Creating ACME account. Directory={Directory}", directoryUri);
         await AcmeCallLifetime.AwaitAsync(() => created.NewAccount(contactEmail, true), cancellationToken);
         var temporary = accountKeyPath + ".tmp";

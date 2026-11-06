@@ -1,9 +1,11 @@
+using Certify.ACME.Anvil.Acme;
+
 internal static class AcmeLiveChecks
 {
     private static readonly TimeSpan Budget = TimeSpan.FromSeconds(45);
     private const string Prefix = "http://+:5002/.well-known/acme-challenge/";
 
-    internal static async Task RunAsync(string root, bool crashWorker = false)
+    internal static async Task RunAsync(string root, string mode)
     {
         if (!OperatingSystem.IsLinux() || !Path.IsPathFullyQualified(root) || !Directory.Exists(root))
             throw new ArgumentException("Expected an isolated Linux ACME fixture directory.");
@@ -23,9 +25,9 @@ internal static class AcmeLiveChecks
             new CertificateRenewalAttemptRepository(environment, configuration, options), NullLogger<CertificateOperationStore>.Instance, leases);
         using var store = OpenStore();
         await store.StartAsync(default);
-        if (crashWorker)
+        if (mode != "--acme-live-only")
         {
-            await RunCrashWorkerAsync(store, options, metadata);
+            await RunCrashWorkerAsync(store, options, metadata, loseIssuedResponse: mode == "--acme-live-response-worker");
             return;
         }
         var certificateId = Guid.NewGuid();
@@ -107,66 +109,104 @@ internal static class AcmeLiveChecks
         await reopened.StopAsync(default).WaitAsync(Budget);
         Console.WriteLine($"PASS ACME LIVE CANCEL: operation={operationId}; CA response drained and original receipt recovered");
 
-        Guid crashOperationId;
-        using (var worker = DockerProcessRecoveryChecks.StartWorker("--acme-live-crash-worker", root))
-        {
-            try
-            {
-                var observed = await worker.StandardOutput.ReadLineAsync().WaitAsync(Budget);
-                TestAssert.Assert(Guid.TryParse(observed, out crashOperationId) && !worker.HasExited
-                    && CertificateOperationStore.ReadPending(environment).SequenceEqual([crashOperationId]),
-                    $"The live CA challenge must precede the crash with an active original receipt: {observed}");
-                worker.Kill();
-                await worker.WaitForExitAsync().WaitAsync(Budget);
-                TestAssert.Assert(worker.ExitCode != 0, "The ACME worker must exit abnormally.");
-            }
-            finally { await DockerProcessRecoveryChecks.StopWorkerAsync(worker); }
-        }
-        using (var probe = new TcpListener(IPAddress.Any, 5002))
-        {
-            probe.Start();
-            probe.Stop();
-        }
+        await VerifyCrashAsync("--acme-live-crash-worker", "real-crash", "PASS ACME LIVE CRASH");
+        await VerifyCrashAsync("--acme-live-response-worker", "real-response-loss", "PASS ACME LIVE RESPONSE LOSS");
 
-        using var crashRecovery = OpenStore();
-        await crashRecovery.StartAsync(default);
-        var recovered = await crashRecovery.GetAsync(crashOperationId, default);
-        var crashReplay = await crashRecovery.StartAsync("real-crash", Guid.NewGuid(), "issue", "fixture",
-            _ => throw new InvalidOperationException("The interrupted ACME order was replayed."), default, default);
-        TestAssert.Assert(recovered is { State: CertificateOperationState.Failed, Stage: "interrupted",
-                ProblemCode: "certificate.operation_interrupted" }
-            && JsonSerializer.Serialize(crashReplay) == JsonSerializer.Serialize(recovered)
-            && (await certificates.ListAsync(default)).Single().Id == certificateId
-            && leases.Active == 0 && CertificateOperationStore.ReadPending(environment).Count == 0,
-            "The replacement must persist the original interrupted receipt without replaying the ACME request.");
-        await crashRecovery.StopAsync(default).WaitAsync(Budget);
-        Console.WriteLine($"PASS ACME LIVE CRASH: operation={crashOperationId}; listener released, original interrupted receipt recovered");
+        async Task VerifyCrashAsync(string workerMode, string key, string marker)
+        {
+            Guid crashOperationId;
+            using (var worker = DockerProcessRecoveryChecks.StartWorker(workerMode, root))
+            {
+                try
+                {
+                    var observed = await worker.StandardOutput.ReadLineAsync().WaitAsync(Budget);
+                    TestAssert.Assert(Guid.TryParse(observed, out crashOperationId) && !worker.HasExited
+                        && CertificateOperationStore.ReadPending(environment).SequenceEqual([crashOperationId]),
+                        $"The live CA barrier must precede the crash with an active original receipt: {observed}");
+                    worker.Kill();
+                    await worker.WaitForExitAsync().WaitAsync(Budget);
+                    TestAssert.Assert(worker.ExitCode != 0, "The ACME worker must exit abnormally.");
+                }
+                finally { await DockerProcessRecoveryChecks.StopWorkerAsync(worker); }
+            }
+            using (var probe = new TcpListener(IPAddress.Any, 5002))
+            {
+                probe.Start();
+                probe.Stop();
+            }
+
+            using var crashRecovery = OpenStore();
+            await crashRecovery.StartAsync(default);
+            var recovered = await crashRecovery.GetAsync(crashOperationId, default);
+            var crashReplay = await crashRecovery.StartAsync(key, Guid.NewGuid(), "issue", "fixture",
+                _ => throw new InvalidOperationException("The interrupted ACME order was replayed."), default, default);
+            TestAssert.Assert(recovered is { State: CertificateOperationState.Failed, Stage: "interrupted",
+                    ProblemCode: "certificate.operation_interrupted" }
+                && JsonSerializer.Serialize(crashReplay) == JsonSerializer.Serialize(recovered)
+                && (await certificates.ListAsync(default)).Single().Id == certificateId
+                && leases.Active == 0 && CertificateOperationStore.ReadPending(environment).Count == 0,
+                "The replacement must persist the original interrupted receipt without replaying the ACME request.");
+            await crashRecovery.StopAsync(default).WaitAsync(Budget);
+            Console.WriteLine($"{marker}: operation={crashOperationId}; listener released, original interrupted receipt recovered");
+        }
 
         AnvilAcmeService CreateAcme(DirectHttp01ChallengeStore direct) =>
             new(new FileHttp01ChallengeStore(options), direct, options, metadata, NullLogger<AnvilAcmeService>.Instance);
     }
 
-    private static async Task RunCrashWorkerAsync(CertificateOperationStore store, CertificateOptions options, CertificateMetadataRepository metadata)
+    private static async Task RunCrashWorkerAsync(CertificateOperationStore store, CertificateOptions options,
+        CertificateMetadataRepository metadata, bool loseIssuedResponse)
     {
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var direct = new DirectHttp01ChallengeStore(Prefix, async (context, stopping) =>
+        Func<HttpListenerContext, CancellationToken, Task>? pauseChallenge = null;
+        if (!loseIssuedResponse)
         {
-            TestAssert.Assert(context.Request.HttpMethod == "GET", "Expected the real CA validation request.");
-            entered.TrySetResult();
-            await Task.Delay(Timeout.InfiniteTimeSpan, stopping);
-        });
+            pauseChallenge = async (context, stopping) =>
+            {
+                TestAssert.Assert(context.Request.HttpMethod == "GET", "Expected the real CA validation request.");
+                entered.TrySetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, stopping);
+            };
+        }
+
+        await using var direct = new DirectHttp01ChallengeStore(Prefix, pauseChallenge);
+        using var http = new HttpClient(new IssuedResponseBarrier(entered));
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("RelaxKonOS-AcmeAcceptance/1.0");
         var acme = new AnvilAcmeService(new FileHttp01ChallengeStore(options), direct, options, metadata,
-            NullLogger<AnvilAcmeService>.Instance);
+            NullLogger<AnvilAcmeService>.Instance, loseIssuedResponse ? uri => new AcmeHttpClient(uri, http) : null);
         var id = Guid.NewGuid();
-        var operation = await store.StartAsync("real-crash", id, "issue", "fixture", async ct =>
+        var key = loseIssuedResponse ? "real-response-loss" : "real-crash";
+        var domain = loseIssuedResponse ? "response.mb05.test" : "crash.mb05.test";
+        var operation = await store.StartAsync(key, id, "issue", "fixture", async ct =>
         {
-            _ = await acme.IssueAsync(id, ["crash.mb05.test"], CertificateChallengeType.DirectHttp01,
+            _ = await acme.IssueAsync(id, [domain], CertificateChallengeType.DirectHttp01,
                 CertificateKeyAlgorithm.EcdsaP256, "acceptance@example.test", ct);
-            throw new InvalidOperationException("The crash barrier unexpectedly permitted issuance.");
+            throw new InvalidOperationException("The crash barrier unexpectedly permitted local issuance.");
         }, default, default);
         await entered.Task.WaitAsync(Budget);
         Console.WriteLine(operation.OperationId);
         await Task.Delay(Timeout.InfiniteTimeSpan);
+    }
+
+    private sealed class IssuedResponseBarrier(TaskCompletionSource entered) : DelegatingHandler(new SocketsHttpHandler { UseProxy = false })
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var response = await base.SendAsync(request, cancellationToken);
+            if (!request.RequestUri!.AbsolutePath.StartsWith("/certZ/", StringComparison.Ordinal))
+                return response;
+
+            using (response)
+            {
+                response.EnsureSuccessStatusCode();
+                var pem = await response.Content.ReadAsStringAsync(cancellationToken);
+                using var issued = X509Certificate2.CreateFromPem(pem);
+                TestAssert.Assert(issued.MatchesHostname("response.mb05.test"), "The CA must already have issued the expected certificate.");
+                entered.TrySetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                throw new InvalidOperationException("The certificate response barrier was bypassed.");
+            }
+        }
     }
 
     private static async Task<CertificateOperationDto> TerminalAsync(CertificateOperationStore store, Guid operationId)

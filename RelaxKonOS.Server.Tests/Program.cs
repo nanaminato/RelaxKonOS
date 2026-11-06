@@ -62,9 +62,9 @@ if (args is ["--terminal-crash-worker", var terminalCrashDirectory])
     await TerminalTreeChecks.RunCrashWorkerAsync(terminalCrashDirectory);
     return;
 }
-if (args is [var acmeMode, var acmeFixtureRoot] && acmeMode is "--acme-live-only" or "--acme-live-crash-worker")
+if (args is [var acmeMode, var acmeFixtureRoot] && acmeMode is "--acme-live-only" or "--acme-live-crash-worker" or "--acme-live-response-worker")
 {
-    await AcmeLiveChecks.RunAsync(acmeFixtureRoot, crashWorker: acmeMode == "--acme-live-crash-worker");
+    await AcmeLiveChecks.RunAsync(acmeFixtureRoot, acmeMode);
     return;
 }
 if (args is ["--nginx-recovery-worker", var nginxWorkerExecutable, var nginxWorkerRoot])
