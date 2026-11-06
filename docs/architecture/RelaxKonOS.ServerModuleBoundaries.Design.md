@@ -1155,3 +1155,11 @@ Windows Release TUN 边界 32 项及关联专项通过。真实 Linux Mihomo 复
 既有 Linux 测试机在私有挂载及网络命名空间使用生产 LinuxSystemProxyOperations、原事务和环境文件后端。独立挂载的 `/etc` 和 `/var/lib` 提供专属环境文件和恢复台账，独立 `/run` 隔离宿主桌面会话。测试在原进程确认写入代理键且恢复台账存在后强制终止它。在恢复前，用生产环境接口写入一个竞争代理值和无关键。恢复只撤销原操作仍拥有的值，保留竞争编辑；重复停用后环境文件字节一致，台账已清理。
 
 Windows Release 事务专项及 Linux 实机均通过。实机前后核对宿主环境文件和恢复台账摘要一致。日志见 `.artifacts/mb04-system-proxy-live-final.log`，制品归档 SHA-256 为 `8d5413332ae0441ece4279fd092b7958571a1f66e209952a48eab0b33b4c5f03`。本轮使用真实文件后端，未连接共享 Helper 服务或桌面会话；guard 与动态休眠的联合验收仍开放。
+
+### MB-04 Linux 系统代理 guard 与真实文件后端
+
+生产 Core guard、MihomoSystemProxyReconciler、HostSystemProxyService 和 Linux Helper 文件后端在私有挂载中联合执行。测试未加载 Proxy 管理门面。启用 guard 后，已确认且未变更的环境键不再改写环境或所有权台账。仅对环境文件优化，桌面会话通知路径仍保持原行为。竞争编辑触发 guard 回到配置值；停止 guard 后，启动恢复只还原仍由原台账拥有的键，保留更新的竞争值。
+
+系统代理文件后端和 Core guard 使用生产实现。Helper 传输由同进程专属适配器转接，正式独立 Helper、桌面会话和动态休眠联合验收仍开放。
+
+Windows Release 事务专项通过，Linux 实机核对宿主环境文件和台账摘要前后一致。日志见 `.artifacts/mb04-guard-final-win.log` 与 `.artifacts/mb04-guard-final-live.log`。Linux 制品归档 SHA-256 为 `34e49e11f7f8c85c8319aafe857f92451811d174900a333ca5f3357fbd1c9664`。

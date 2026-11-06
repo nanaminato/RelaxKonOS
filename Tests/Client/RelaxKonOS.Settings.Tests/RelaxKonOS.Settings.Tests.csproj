@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../../Shared/RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj" />
+    <ProjectReference Include="../../../RelaxKonOS.Server/RelaxKonOS.Server.csproj" Aliases="Server" />
     <Compile Include="../../../RelaxKonOS.PrivilegedHelper/LinuxEnvironmentDocument.cs" Link="LinuxEnvironmentDocument.cs" />
     <Compile Include="../../../RelaxKonOS.PrivilegedHelper/LinuxEnvironmentOperations.cs" Link="LinuxEnvironmentOperations.cs" />
     <Compile Include="../../../RelaxKonOS.PrivilegedHelper/LinuxSystemProxyOperations.cs" Link="LinuxSystemProxyOperations.cs" />

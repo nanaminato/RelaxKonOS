@@ -1,3 +1,13 @@
+extern alias Server;
+
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using RelaxKonOS.Protocol.Proxy;
+using Server::RelaxKonOS.Server.Privileged;
+using Server::RelaxKonOS.Server.Proxy;
+using Server::RelaxKonOS.Server.Proxy.Mihomo;
+using Server::RelaxKonOS.Server.Proxy.Platform;
 using System.Diagnostics;
 using System.Reflection;
 using RelaxKonOS.PrivilegedHelper;
@@ -68,7 +78,98 @@ internal static class LinuxSystemProxyLiveChecks
         Apply(Desired with { Enabled = false });
         if (File.ReadAllText(EnvironmentFile) != restored || File.Exists(Journal))
             throw new InvalidOperationException("Repeated recovery changed the environment again.");
-        Console.WriteLine("PASS LINUX SYSTEM PROXY LIVE: process killed, original journal restored once, external edit preserved");
+        await VerifyGuardAsync();
+        Console.WriteLine("PASS LINUX SYSTEM PROXY LIVE: process killed, original journal restored once, external edit preserved, guard no-op verified");
+    }
+
+    private static async Task VerifyGuardAsync()
+    {
+        var paths = new FixturePaths();
+        var reader = new GuardSettings();
+        var transport = new LocalTransport();
+        var host = new HostSystemProxyService(transport);
+        var reconciler = new MihomoSystemProxyReconciler(paths, reader, new UnusedControllerSecret(), host,
+            new MihomoPublicationStore(paths, new EphemeralDataProtectionProvider()));
+        var registrations = new ServiceCollection();
+        registrations.AddSingleton<IProxySystemProxyReconciler>(reconciler);
+        await using var services = registrations.BuildServiceProvider();
+        using var guard = new SystemProxyGuardHostedService(reader, services.GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<SystemProxyGuardHostedService>.Instance);
+
+        await guard.StartAsync(default);
+        try
+        {
+            await transport.Applied.Reader.ReadAsync().AsTask().WaitAsync(Budget);
+            var firstWrite = File.GetLastWriteTimeUtc(Journal);
+            var original = File.ReadAllBytes(Journal);
+            await transport.Applied.Reader.ReadAsync().AsTask().WaitAsync(Budget);
+            if (File.GetLastWriteTimeUtc(Journal) != firstWrite || !File.ReadAllBytes(Journal).SequenceEqual(original))
+                throw new InvalidOperationException("An unchanged guard pass rewrote its ownership journal.");
+
+            const string competing = "http://127.0.0.1:3456";
+            WriteExternalProxy(competing);
+            await transport.Applied.Reader.ReadAsync().AsTask().WaitAsync(Budget);
+            var guarded = LinuxEnvironmentDocument.Parse(File.ReadAllText(EnvironmentFile)).Values;
+            if (guarded.GetValueOrDefault("http_proxy") != "http://127.0.0.1:17890")
+                throw new InvalidOperationException("The enabled guard did not restore its configured proxy.");
+        }
+        finally { await guard.StopAsync(default).WaitAsync(Budget); }
+
+        WriteExternalProxy("http://127.0.0.1:4567");
+        reader.Enabled = false;
+        if (await reconciler.ReconcileSystemProxyAsync(startup: true, default) is not null
+            || File.Exists(Journal) || LinuxEnvironmentDocument.Parse(File.ReadAllText(EnvironmentFile)).Values.GetValueOrDefault("http_proxy")
+                != "http://127.0.0.1:4567")
+            throw new InvalidOperationException("Startup teardown must retain the newer external proxy setting.");
+    }
+
+    private static void WriteExternalProxy(string value)
+    {
+        var target = LinuxSystemProxyOperations.EnvironmentTarget;
+        var read = LinuxEnvironmentOperations.Execute(new(PrivilegedOperationKind.HostEnvironmentRead, EnvironmentTarget: target));
+        var edit = LinuxEnvironmentOperations.Execute(new(PrivilegedOperationKind.HostEnvironmentApply,
+            EnvironmentTarget: target, ExpectedRevision: read.HostEnvironment?.Revision,
+            EnvironmentChange: new([new("http_proxy", EnvironmentMutationKind.Set, value)], ConfirmHighImpact: true)));
+        if (!read.Success || !edit.Success) throw new InvalidOperationException("Could not write the competing proxy.");
+    }
+
+    private sealed class GuardSettings : IProxySettingsReader
+    {
+        internal bool Enabled = true;
+        public Task<ProxySettingsDto> GetAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(new ProxySettingsDto(Enabled, false, false, false, false, "error", 17890,
+                SystemProxy: new(GuardEnabled: true, GuardIntervalSeconds: 5)));
+    }
+
+    private sealed class LocalTransport : IPrivilegedOperationTransport
+    {
+        internal readonly System.Threading.Channels.Channel<bool> Applied = System.Threading.Channels.Channel.CreateUnbounded<bool>();
+
+        public Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (request.Operation != PrivilegedOperationKind.LinuxSystemProxyApply)
+                throw new InvalidOperationException("Unexpected isolated guard operation.");
+            var result = LinuxSystemProxyOperations.Execute(request);
+            if (!result.Success) throw new InvalidOperationException($"Isolated guard apply failed: {result.ProblemCode}");
+            Applied.Writer.TryWrite(true);
+            return Task.FromResult(result);
+        }
+    }
+
+    private sealed class UnusedControllerSecret : IProxyControllerSecretStore
+    {
+        public Task<string> GetOrCreateAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<string?> ReadExistingAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    private sealed class FixturePaths : IProxyPlatformPaths
+    {
+        public string GetStateDirectory() => "/var/lib/relaxkonos-system-proxy/guard-state";
+        public string GetEngineVersionsDirectory(string engineId) => throw new NotSupportedException();
+        public string GetEngineDataDirectory(string engineId) => throw new NotSupportedException();
+        public string GetProtectedConfigurationDirectory() => throw new NotSupportedException();
+        public string GetSanitizedLogDirectory() => throw new NotSupportedException();
     }
 
     private static void RequireIsolation(string hostMountNamespace, string hostNetworkNamespace)

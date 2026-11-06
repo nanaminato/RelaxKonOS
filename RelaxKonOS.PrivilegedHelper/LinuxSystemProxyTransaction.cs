@@ -41,6 +41,9 @@ internal sealed class LinuxSystemProxyTransaction(string journalPath, ILinuxSyst
                     var entry = index < 0 ? new Entry(target, current, current) : journal[index];
                     if (!configuration.Enforce && current.Any(pair => !Owned(entry, pair.Key, pair.Value)))
                         throw new InvalidDataException("System proxy settings changed outside RelaxKonOS.");
+                    if (target.Provider == "environment" && index >= 0 && entry.Pending is null
+                        && desired.All(pair => Equivalent(pair.Value, current[pair.Key]) && Owned(entry, pair.Key, current[pair.Key])))
+                        continue;
                     if (index < 0) { index = journal.Count; journal.Add(entry); }
                     journal[index] = entry with { Pending = desired };
                     SaveJournal(journal); // Persist intent before any OS mutation, including the first enable.
