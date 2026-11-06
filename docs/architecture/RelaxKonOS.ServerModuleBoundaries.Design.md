@@ -1055,3 +1055,11 @@ Windows Release 聚合新增验证覆盖停机等待尚未返回的站点动作�
 网站发布在同一台账准入区间先按原 actor、幂等键和请求身份查找回执。只有新操作需要核对应用仍存在。原应用记录已删除时，原请求仍返回 Interrupted 回执，新请求返回 404 且不创建台账记录或再次应用站点。验证使用生产协调器、应用目录和发布台账，站点动作由受控 provider 记录。
 
 Windows 与既有 Linux 测试机的 Release 聚合回归均通过，新增及更新的断言为后台 owner 第 35、36 项。日志见 `.artifacts/mb05-publication-replay-win.log` 与 `.artifacts/mb05-publication-replay-linux.log`。
+
+### MB-05 网站发布真实 HTTPS 验证响应中断
+
+生产发布协调器使用真实回环 HTTPS 请求执行网站验证。夹具在随机端口使用专属证书，客户端核对指纹和主机名，系统信任库保持原状。先通过 TLS 探针，再让服务收到验证请求后挂起响应头。原操作进入 Verifying 并持有 WebServer 工作租约。触发停机后，测试等待协调器排空，并由服务端独立观察 RequestAborted。原台账仍活动，重新打开后以原 operationId 记录 Interrupted，同键重试既不发起第二次验证，也不再次应用站点。
+
+站点应用、证书目录和 Docker 工作负载观察仍由受控边界提供。本项覆盖发布协调器的真实出站验证请求，完整管理 API 的响应写入、生产 Nginx 网站发布、真实 CA 和未知补偿仍待验收。首轮证书未完成握手，修正夹具证书加载并通过独立 TLS 探针后复测。
+
+Windows 与既有 Linux 测试机的 Release 聚合回归通过，新增为后台 owner 第 37 至 39 项。日志见 `.artifacts/mb05-https-win-final.log` 与 `.artifacts/mb05-https-linux.log`。Linux 制品归档 SHA-256 为 `92a435a95330e215516aeae6e696377249929c34fdd656e017dbda0539fafec5`。

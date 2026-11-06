@@ -1,3 +1,7 @@
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Builder;
 using RelaxKonOS.Protocol.ApplicationDeployments;
 using RelaxKonOS.Protocol.WebsitePublishing;
@@ -255,6 +259,67 @@ internal static class ModuleBackgroundOwnershipChecks
             Check(reopened.History(app.Id, 20).Count == 2 && applied.Calls == 1,
                 "A fresh request for the missing application creates neither a receipt nor a site action");
             await afterAssociation.StopAsync(default);
+
+            var httpsApp = await applications.CreateAsync(new CreateApplicationRequest("https-drain", ApplicationSourceKind.Image, HostPort: 9081), "actor", default);
+            controlled.SetRunning(httpsApp.Id);
+            ((BackgroundWebsiteCertificate)(object)cert).Domain = "localhost";
+            var httpsRequest = request with { ApplicationId = httpsApp.Id, Domain = "localhost" };
+            using var key = RSA.Create(2048);
+            var certificateRequest = new CertificateRequest("CN=localhost", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+            var san = new SubjectAlternativeNameBuilder();
+            san.AddDnsName("localhost");
+            certificateRequest.CertificateExtensions.Add(san.Build());
+            using var issuedTls = certificateRequest.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
+            using var tls = X509CertificateLoader.LoadPkcs12(issuedTls.Export(X509ContentType.Pfx), null);
+            var tlsBuilder = WebApplication.CreateBuilder();
+            tlsBuilder.Logging.ClearProviders();
+            tlsBuilder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0, listener => listener.UseHttps(tls)));
+            await using var endpoint = tlsBuilder.Build();
+            var enteredHttps = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var abortedHttps = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            endpoint.MapGet("/", async (HttpContext context) =>
+            {
+                enteredHttps.TrySetResult();
+                try { await Task.Delay(Timeout.InfiniteTimeSpan, context.RequestAborted); }
+                catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+                { abortedHttps.TrySetResult(); }
+            });
+            endpoint.MapGet("/probe", () => "ready");
+            await endpoint.StartAsync();
+            var port = new Uri(endpoint.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single()).Port;
+            var fingerprint = tls.GetCertHashString(HashAlgorithmName.SHA256);
+            using (var probe = new LoopbackWebsiteVerification(port, fingerprint).CreateClient("WebsitePublicationVerification"))
+                TestAssert.Assert(await probe.GetStringAsync("https://localhost/probe").WaitAsync(TimeSpan.FromSeconds(10)) == "ready",
+                    "The TLS fixture must authenticate the loopback service before running the cancellation check.");
+            var verification = new LoopbackWebsiteVerification(port, fingerprint);
+            using var verifying = new WebsitePublicationCoordinator(reopened, applications, catalog, web, cert, f.Certificates, verification,
+                new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, f.Source);
+            await verifying.StartAsync(default);
+            var verifyingReceipt = await verifying.StartAsync(httpsRequest, "actor", "https-drain");
+            try { await enteredHttps.Task.WaitAsync(TimeSpan.FromSeconds(10)); }
+            catch (TimeoutException error)
+            {
+                throw new InvalidOperationException("Website did not reach its TLS endpoint. Receipt: "
+                    + JsonSerializer.Serialize(reopened.Get(verifyingReceipt.OperationId))
+                    + $"; client calls: {verification.Calls}; TLS: {verification.TlsObservation}", error);
+            }
+            Check(f.Active(ServerModules.WebServerId) == 1
+                && reopened.Get(verifyingReceipt.OperationId)?.Stage == WebsitePublicationStage.Verifying,
+                "Website HTTPS verification owns its lease while real TLS response headers are pending");
+            await verifying.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(10));
+            await abortedHttps.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Check(f.Active(ServerModules.WebServerId) == 0 && WebsitePublicationStore.Active(reopened.Get(verifyingReceipt.OperationId)!),
+                "Stopping drains the real HTTPS request and leaves the original active receipt for recovery");
+            var httpsRecovery = new WebsitePublicationStore(f.Environment);
+            using var recoveredHttps = new WebsitePublicationCoordinator(httpsRecovery, applications, catalog, web, cert, f.Certificates, verification,
+                new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, f.Source);
+            await recoveredHttps.StartAsync(default);
+            var httpsReplay = await recoveredHttps.StartAsync(httpsRequest, "actor", "https-drain");
+            Check(httpsReplay.OperationId == verifyingReceipt.OperationId && httpsReplay.State == WebsitePublicationState.Interrupted
+                && verification.Calls == 1 && applied.Calls == 2,
+                "Website recovery does not repeat real HTTPS verification or the site application");
+            await recoveredHttps.StopAsync(default);
+            await endpoint.StopAsync();
         }
         Console.WriteLine($"Module background ownership checks passed: {count}");
 
@@ -386,13 +451,51 @@ public class BackgroundWebsiteProvider : DispatchProxy
 
 public class BackgroundWebsiteCertificate : DispatchProxy
 {
+    internal string Domain = "example.test";
     protected override object Invoke(MethodInfo? method, object?[]? args)
     {
         if (method!.Name != nameof(ICertificateManager.GetAsync))
             throw new InvalidOperationException("Unexpected website certificate call.");
         var now = DateTimeOffset.UtcNow;
-        return Task.FromResult<CertificateDto?>(new((Guid)args![0]!, "example.test", ["example.test"], null, null, null,
+        return Task.FromResult<CertificateDto?>(new((Guid)args![0]!, Domain, [Domain], null, null, null,
             now.AddDays(-1), now.AddDays(1), CertificateStatus.Active, CertificateChallengeType.DirectHttp01,
             CertificateKeyAlgorithm.EcdsaP256, null, null, null, null, now, now));
+    }
+}
+
+internal sealed class LoopbackWebsiteVerification(int port, string fingerprint) : IHttpClientFactory
+{
+    internal int Calls;
+    internal string? TlsObservation;
+
+    public HttpClient CreateClient(string name)
+    {
+        if (name != "WebsitePublicationVerification") throw new ArgumentException("Unexpected verification client.");
+        Interlocked.Increment(ref Calls);
+        return new(new SocketsHttpHandler
+        {
+            UseProxy = false,
+            SslOptions = new()
+            {
+                RemoteCertificateValidationCallback = (_, certificate, _, errors) =>
+                {
+                    var matched = certificate?.GetCertHashString(HashAlgorithmName.SHA256) == fingerprint;
+                    TlsObservation = $"errors={errors}; matched={matched}";
+                    return matched && (errors & ~System.Net.Security.SslPolicyErrors.RemoteCertificateChainErrors) == 0;
+                }
+            },
+            ConnectCallback = async (context, cancellationToken) =>
+            {
+                if (context.DnsEndPoint.Host != "localhost" || context.DnsEndPoint.Port != 443)
+                    throw new InvalidOperationException("Unexpected website verification destination.");
+                var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                try
+                {
+                    await socket.ConnectAsync(IPAddress.Loopback, port, cancellationToken);
+                    return new NetworkStream(socket, ownsSocket: true);
+                }
+                catch { socket.Dispose(); throw; }
+            }
+        });
     }
 }
