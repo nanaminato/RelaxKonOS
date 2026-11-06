@@ -235,11 +235,15 @@ Windows 原生夹具已增加真实 SCM StopPending 期间终止独立 Core 的�
 
 报告 `artifacts/modulehost-windows-native/42f7b031848c409c81740de3b66af994/`；独立核对 succeeded=true/checks=61、cleaned=true、临时管理员数量 0、无两类临时服务。前述审批限制已解除，Windows Core 崩溃验收不再列为未验证；Windows Helper 执行中终止及完整发行服务安装/更新仍有剩余。
 
-### Windows 当前正式发行包预检（2026-11-06）
+### Windows 当前正式发行安装、升级与崩溃恢复（2026-11-06）
 
 使用生产打包入口生成 Windows x64 自包含 Server 正式包。升级起点为 `b41f91ef` 的 0.2.7，目标为 `f7ec74a5` 的 0.2.8。两个包分别通过当前生产清单校验，Server DLL 内容不同。0.2.7 归档 SHA-256 为 `d06ec471d7ee77dbbe1ee31fc2588c3481ce83d8ec771c2c8b2b59f5c831c421`，0.2.8 为 `2048e00a64fd6aa26fb7b32672901edbdf6360b55ed9d753cbf4228e2cc1d9ee`。制品位于本地验收目录 `.artifacts/current-formal-windows/`。本地清单回归 9 项、Windows 服务载荷 28 项、ModuleHost 快照 4 项、配置 3 项通过。
 
-正式安装及跨版本实机验收仍开放。现有 Windows 测试机已注册 `RelaxKonOSServer` 和 `RelaxKonOSPrivilegedHelper`，现有安装占用正式服务名。该 VMware 客体没有可用的本机 Hyper-V、QEMU 或 VirtualBox 工具。使用空白 Windows x64 隔离实例，以 PowerShell 7 和 Python 3 运行 `Tests/ServerModules/Verify-WindowsReleaseInstallation.ps1`，传入解包后的两版制品、自包含 Windows ModuleHost 测试 runner、对应的 `HostFixture.dll` 和 `-ConfirmMachineChanges`。SSH 已提升令牌可直接启动夹具，交互普通账户仍可经 UAC。正式脚本继续拒绝接管已有同名服务。
+Windows Server 2022 实机完成 **8 项**。通过正式安装器启动 0.2.7 的 Server、Guardian 和 LocalSystem Helper，经原生管理员登录安装签名模块并验证 S4U 代理。正式升级到 0.2.8 后，Server 二进制已切换，签名包、来源与 Broker 策略、模块 SID 及代理保留。撤销信任后代理返回 403。
+
+升级后分别只终止 Core 和只终止 Helper。两轮均先观测实际 PTY 与 ModuleHost 后代读写，再核对原 Terminal 根、子、孙和 ModuleHost 根、子五个进程实例已退出。Helper 故障缺少可信退出帧，仍存活的 Core 拒绝关闭并保留原会话的未知清理责任。独立确认两棵树退出后才显式结束该夹具 Core，启动新实例并验证代理、Terminal 新会话及重连。最终报告为成功且已清理，原文件、ACL、联接点、SCM 注册和服务状态已核对恢复。证据见 `.artifacts/current-formal-windows/formal-remote-run-explicit-core-recovery.log`。
+
+使用 PowerShell 7 和 Python 3 运行 `Tests/ServerModules/Verify-WindowsReleaseInstallation.ps1`，传入解包后的两版制品、自包含 Windows ModuleHost 测试 runner、对应的 `HostFixture.dll`、自包含 Server.Tests（`-TerminalRunner`）和 `-ConfirmMachineChanges`。SSH 已提升令牌可直接启动夹具，交互普通账户仍可经 UAC。正式脚本继续拒绝接管已有同名服务。复用测试机须在外层先备份原安装并核对服务恢复，再释放同名服务。升级后分别终止测试 Server 和 Helper，每轮独立检查 Terminal 三层和 ModuleHost 观察到的后代实例、恢复代理和新终端会话。缺少退出证明时保留相关进程身份、夹具注册和账号。
 
 ### Linux 正式发行包安装实测（2026-11-01）
 

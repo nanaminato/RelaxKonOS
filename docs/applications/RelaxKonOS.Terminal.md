@@ -465,3 +465,5 @@ else
 - 在 Windows 测试机的既有正式安装上，Server 以 LocalService、Helper 以 LocalSystem 执行，两者版本均为 `1.0.0+c58de8e9`。分别仅终止 Server 和仅终止 Helper，两组均观察到实际 PTY 输入输出、原 shell 与子进程退出及传输结束。恢复后重新通过缺失目录启动拒绝、真实输入输出、普通和管理员身份、并发、退出及重连检查。服务还原为 Server 停止、Helper 运行。使用了本轮测试制品，未替换测试机的安装程序。此夹具只生成一层后代，未覆盖任意拓扑或证明当前制品的正式安装崩溃矩阵。
 
 三层拓扑续核使用同一已有正式安装。分别仅终止 Server 和 Helper，两组均从实际 PTY 输出取得根 shell、子和孙进程，故障前经系统查询核对两级父子关系及启动时刻，故障后独立确认三个原进程实例消失。Helper 组随后完整通过恢复检查。Server 组首次恢复检查在最终关闭会话时遇到 SSH 转发断开，独立恢复复测完整通过。原 Server 停止、Helper 运行的状态已恢复。证据分别保存在 `.artifacts/windows-terminal-deep-RelaxKonOSServer.log`、`.artifacts/windows-terminal-deep-RelaxKonOSPrivilegedHelper.log` 和 `.artifacts/windows-terminal-deep-recovery.log`。
+
+正式 0.2.7 → 0.2.8 安装链实机续核通过。升级后的正式服务分别注入 Server 与 Helper 单进程崩溃，两轮都从真实 PTY 读取孙进程标记并确认三个原进程实例退出。Helper 崩溃后，Core 仍拒绝关闭旧会话并保留未知清理责任。外部进程树观察不替代 Helper 退出帧。核对原树退出后，明确终止并启动测试 Core，两轮都验证了新会话的启动、读写、身份、并发及重连。原测试机安装的文件、ACL、SCM 注册和服务状态在验收后已恢复。[正式发行实机台账](../architecture/RelaxKonOS.ServerModuleV2.Progress.md)

@@ -5,6 +5,7 @@ param(
     [Parameter(Mandatory)][string] $SecondBundle,
     [Parameter(Mandatory)][string] $CleanupRunner,
     [Parameter(Mandatory)][string] $FixtureAssembly,
+    [Parameter(Mandatory)][string] $TerminalRunner,
     [string] $PythonExecutable = 'python',
     [switch] $ConfirmMachineChanges,
     [string] $ElevatedRequest
@@ -21,7 +22,8 @@ if (-not $ElevatedRequest) {
     @{ id = $id; report = (Join-Path $evidence 'result.json') } | ConvertTo-Json | Set-Content -LiteralPath $request
     $arguments = @('-NoProfile', '-File', ('"' + $PSCommandPath + '"'), '-FirstBundle', ('"' + [IO.Path]::GetFullPath($FirstBundle) + '"'),
         '-SecondBundle', ('"' + [IO.Path]::GetFullPath($SecondBundle) + '"'), '-CleanupRunner', ('"' + [IO.Path]::GetFullPath($CleanupRunner) + '"'),
-        '-FixtureAssembly', ('"' + [IO.Path]::GetFullPath($FixtureAssembly) + '"'), '-PythonExecutable', ('"' + (Get-Command $PythonExecutable).Source + '"'), '-ConfirmMachineChanges', '-ElevatedRequest', ('"' + $request + '"'))
+        '-FixtureAssembly', ('"' + [IO.Path]::GetFullPath($FixtureAssembly) + '"'), '-TerminalRunner', ('"' + [IO.Path]::GetFullPath($TerminalRunner) + '"'),
+        '-PythonExecutable', ('"' + (Get-Command $PythonExecutable).Source + '"'), '-ConfirmMachineChanges', '-ElevatedRequest', ('"' + $request + '"'))
     $start = @{
         FilePath = (Get-Process -Id $PID).Path
         ArgumentList = $arguments
@@ -56,8 +58,8 @@ if ($LASTEXITCODE) { throw 'Cannot prepare readable service code directory.' }
 $proxy = Join-Path $env:ProgramData 'RelaxKonOS\Proxy'
 if ((Get-Item -LiteralPath $proxy -Force -ErrorAction SilentlyContinue).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Existing proxy must not be a link.' }
 $proxyAcl = if (Test-Path -LiteralPath $proxy) { Get-Acl -LiteralPath $proxy } else { $null }
-$administrator = $null; $token = $null; $checks = [Collections.Generic.List[string]]::new()
-$report = [ordered]@{ succeeded = $false; cleaned = $false; checks = @(); failureType = $null; failureLocation = $null; inventoryFailure = $null; evidence = $root }
+$administrator = $null; $profilePath = $null; $token = $null; $checks = [Collections.Generic.List[string]]::new()
+$report = [ordered]@{ succeeded = $false; cleaned = $false; checks = @(); failureType = $null; failureLocation = $null; inventoryFailure = $null; evidence = $root; unknownProcesses = @() }
 $base = 'http://127.0.0.1:16593'
 function Api([string] $Method, [string] $Path, $Body = $null, [byte[]] $Binary = $null) {
     $arguments = @{ Method = $Method; Uri = ($base + $Path); TimeoutSec = 45; Headers = @{} }
@@ -97,6 +99,105 @@ function Assert-Proxy {
     }
     throw 'Production isolated module did not respond.'
 }
+function Get-FixtureServiceProcess([string] $ServiceName) {
+    $service = Get-CimInstance Win32_Service -Filter "Name='$ServiceName'"
+    if ($service.State -ne 'Running' -or $service.ProcessId -lt 2) { throw 'Expected fault target is not running.' }
+    $process = Get-Process -Id $service.ProcessId
+    if (-not $process.Path.StartsWith($program.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Fault target is outside the fixture installation.'
+    }
+    return $process
+}
+function Recover-CoreAfterHelperLoss {
+    # The caller independently proved both fixture trees gone and verified that Core
+    # retained the missing Helper acknowledgement. End only that fixture Core instance.
+    Stop-Service RelaxKonOSGuardian -Force
+    (Get-Service RelaxKonOSGuardian).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30))
+    $core = Get-FixtureServiceProcess 'RelaxKonOSServer'
+    try {
+        Stop-Process -InputObject $core -Force
+        if (-not $core.WaitForExit(15000)) { throw 'Old fixture Core did not exit during explicit recovery.' }
+    } finally { $core.Dispose() }
+    (Get-Service RelaxKonOSServer).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30))
+    Start-Service RelaxKonOSServer
+    Wait-Ready
+    Start-Service RelaxKonOSGuardian
+}
+function Assert-TerminalCrash([string] $ServiceName) {
+    $checkUnknown = $ServiceName -eq 'RelaxKonOSPrivilegedHelper'
+    $info = [Diagnostics.ProcessStartInfo]::new([IO.Path]::GetFullPath($TerminalRunner))
+    $info.UseShellExecute = $false
+    $info.CreateNoWindow = $true
+    $info.RedirectStandardInput = $true
+    $info.RedirectStandardOutput = $true
+    $probe = if ($checkUnknown) { '--installed-windows-terminal-helper-crash' } else { '--installed-windows-terminal-crash' }
+    foreach ($argument in @($probe, $base, $administrator.Name)) { $info.ArgumentList.Add($argument) }
+    $observer = [Diagnostics.Process]::Start($info)
+    try {
+        $observer.StandardInput.WriteLine($password)
+        $observer.StandardInput.Flush()
+        if (-not $checkUnknown) { $observer.StandardInput.Close() }
+        $marker = $observer.StandardOutput.ReadLineAsync().WaitAsync([TimeSpan]::FromSeconds(30)).GetAwaiter().GetResult()
+        if ($marker -notmatch '^INSTALLED_TERMINAL_TREE (\d+) (\d+) (\d+)$') { throw 'PTY descendant output was not observed.' }
+        $tree = @([int]$Matches[1], [int]$Matches[2], [int]$Matches[3])
+        if (@($tree | Sort-Object -Unique).Count -ne 3 -or ($tree | Measure-Object -Minimum).Minimum -lt 2) { throw 'Invalid PTY process identity.' }
+        for ($index = 1; $index -lt $tree.Count; $index++) {
+            $child = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $tree[$index])
+            if ($child.ParentProcessId -ne $tree[$index - 1]) { throw 'Unexpected PTY parent process.' }
+        }
+        $moduleTree = Api POST '/api/v1.0/server/module-hosts/fixture-http/spawn-child'
+        if (-not $moduleTree.outputObserved -or $moduleTree.hostPid -lt 2 -or $moduleTree.pid -lt 2) { throw 'ModuleHost descendant output was not observed.' }
+        $tree += @([int]$moduleTree.hostPid, [int]$moduleTree.pid)
+        $instances = @(Get-Process -Id $tree | ForEach-Object { [pscustomobject]@{ Id = $_.Id; Started = $_.StartTime } })
+        if ($instances.Count -ne 5) { throw 'Both fixture trees must be live before fault injection.' }
+        $process = Get-FixtureServiceProcess $ServiceName
+        $report.unknownProcesses = @($instances | ForEach-Object { "$($_.Id)@$($_.Started.ToUniversalTime().ToString('o'))" })
+        try { Stop-Process -InputObject $process -Force }
+        finally { $process.Dispose() }
+        $limit = [Diagnostics.Stopwatch]::StartNew()
+        do {
+            $remaining = @($instances | Where-Object {
+                $candidate = Get-Process -Id $_.Id -ErrorAction SilentlyContinue
+                $candidate -and $candidate.StartTime -eq $_.Started
+            })
+            if ($remaining.Count -eq 0) { break }
+            Start-Sleep -Milliseconds 100
+        } while ($limit.Elapsed.TotalSeconds -lt 15)
+        if ($remaining.Count) {
+            $report.unknownProcesses = @($remaining | ForEach-Object { "$($_.Id)@$($_.Started.ToUniversalTime().ToString('o'))" })
+            throw 'Process tree cleanup remains unknown after service crash.'
+        }
+        $report.unknownProcesses = @()
+        if ($checkUnknown) {
+            $observer.StandardInput.WriteLine('CHECK_UNKNOWN')
+            $observer.StandardInput.Close()
+        }
+        $end = $observer.StandardOutput.ReadLineAsync().WaitAsync([TimeSpan]::FromSeconds(45)).GetAwaiter().GetResult()
+        $expected = if ($checkUnknown) { 'INSTALLED_TERMINAL_CLEANUP_UNKNOWN' } else { 'INSTALLED_TERMINAL_TRANSPORT_ENDED' }
+        if ($end -ne $expected -or -not $observer.WaitForExit(10000) -or $observer.ExitCode) {
+            throw 'Expected PTY transport or unknown-cleanup proof was not observed.'
+        }
+        if ($checkUnknown) {
+            $checks.Add("$ServiceName crash removed all five observed processes while Core rejected close and retained unknown PTY cleanup")
+        } else {
+            $checks.Add("$ServiceName crash ended real Terminal and ModuleHost I/O and all five observed process instances")
+        }
+    } finally {
+        if (-not $observer.HasExited) { $observer.Kill(); $observer.WaitForExit() }
+        $observer.Dispose()
+    }
+    if ((Get-Service RelaxKonOSPrivilegedHelper).Status -ne 'Running') { Start-Service RelaxKonOSPrivilegedHelper }
+    if ($checkUnknown) { Recover-CoreAfterHelperLoss }
+    else {
+        if ((Get-Service RelaxKonOSServer).Status -ne 'Running') { Start-Service RelaxKonOSServer }
+        Wait-Ready
+    }
+    $null = Login
+    Assert-Proxy
+    $password | & $TerminalRunner --installed-windows-terminal $base $administrator.Name *> (Join-Path $root "$ServiceName-terminal-recovery.log")
+    if ($LASTEXITCODE) { throw 'Terminal recovery checks failed.' }
+    $checks.Add("$ServiceName recovery restored isolated ModuleHost proxy and Terminal behavior")
+}
 try {
     foreach ($bundle in @($FirstBundle, $SecondBundle)) {
         $inventoryOutput = @(& $PythonExecutable (Join-Path $PSScriptRoot '../../deployment/verify-release-inventory.py') $bundle server win-x64 2>&1)
@@ -112,8 +213,20 @@ try {
     Wait-Ready
     $checks.Add('formal Windows System install and health')
     $password = 'Aa1!' + [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(48))
-    $administrator = New-LocalUser -Name ('rkrelease-' + $request.id.Substring(0, 10)) -Password (ConvertTo-SecureString $password -AsPlainText -Force) -AccountNeverExpires
+    $securePassword = ConvertTo-SecureString $password -AsPlainText -Force
+    $administrator = New-LocalUser -Name ('rkrelease-' + $request.id.Substring(0, 10)) -Password $securePassword -AccountNeverExpires
     Add-LocalGroupMember -SID 'S-1-5-32-544' -Member $administrator
+    $profileCredential = [pscredential]::new($administrator.Name, $securePassword)
+    $profileProcess = Start-Process -FilePath "$env:SystemRoot/System32/cmd.exe" -ArgumentList '/d','/c','exit 0' `
+        -Credential $profileCredential -LoadUserProfile -WorkingDirectory $env:SystemRoot -WindowStyle Hidden -Wait -PassThru
+    $profile = Get-CimInstance Win32_UserProfile -Filter "SID='$($administrator.SID.Value)'"
+    $profilePath = $profile.LocalPath
+    # In a headless SSH session the alternate console can fail to initialize after the
+    # Windows profile service has registered the profile. Require that native registration.
+    if ($profileProcess.ExitCode -notin @(0, -1073741502) -or -not $profile -or $profile.Special) {
+        throw "Fixture profile login failed (exit $($profileProcess.ExitCode))."
+    }
+    if (-not (Test-Path -LiteralPath $profilePath -PathType Container)) { throw 'Fixture profile was not created.' }
     $userId = Login
     $server = Join-Path $program ('versions\' + $first.version + '\server')
     $hostPath = Join-Path $server 'appsettings.host.json'
@@ -169,6 +282,9 @@ try {
         if (($newSettings.$section | ConvertTo-Json -Depth 32 -Compress) -ne ($settings.$section | ConvertTo-Json -Depth 32 -Compress)) { throw 'Module policy lost during upgrade.' }
     }
     $checks.Add('distinct formal upgrade retains administrator/source/Broker policy, installed package and isolated proxy')
+    Assert-TerminalCrash RelaxKonOSServer
+    Assert-TerminalCrash RelaxKonOSPrivilegedHelper
+    $null = Login
     $installed = (Api GET '/api/v1.0/server/module-packages/installed').items | Where-Object moduleId -eq fixture-http
     $null = Api POST '/api/v1.0/server/module-trust/fixture-http' @{ artifactSha256 = $installed.artifactSha256; manifestSha256 = $installed.manifestSha256; trusted = $false }
     $denied = Invoke-WebRequest -Uri ($base + '/api/v1.0/server/module-hosts/fixture-http/hello') -Headers @{ Authorization = ('Bearer ' + $token) } -SkipHttpErrorCheck
@@ -179,7 +295,9 @@ try {
 finally {
     try {
         foreach ($name in $services) { if (Get-Service $name -ErrorAction SilentlyContinue) { Set-Service $name -StartupType Disabled } }
-        foreach ($name in $services) { if (Get-Service $name -ErrorAction SilentlyContinue) { Stop-Service $name -Force -ErrorAction SilentlyContinue; (Get-Service $name).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30)); & sc.exe delete $name | Out-Null; if ($LASTEXITCODE) { throw 'Service cleanup failed.' } } }
+        foreach ($name in $services) { if (Get-Service $name -ErrorAction SilentlyContinue) { Stop-Service $name -Force -ErrorAction SilentlyContinue; (Get-Service $name).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30)) } }
+        if ($report.unknownProcesses.Count) { throw 'Retaining fixture registration and account evidence for unconfirmed process cleanup.' }
+        foreach ($name in $services) { if (Get-Service $name -ErrorAction SilentlyContinue) { & sc.exe delete $name | Out-Null; if ($LASTEXITCODE) { throw 'Service cleanup failed.' } } }
         $helperConfig = Join-Path $data 'privileged-helper/helper.json'
         if (Test-Path -LiteralPath $helperConfig) {
             $helperSettings = Get-Content -LiteralPath $helperConfig -Raw | ConvertFrom-Json
@@ -195,8 +313,21 @@ finally {
         $report.cleaned = $true
     } catch { $report.failureType = 'CleanupFailed' }
     try {
-        if ($administrator) {
-            $actual = Get-LocalUser -SID $administrator.SID; if ($actual.Name -ne $administrator.Name) { throw 'Administrator identity changed.' }; Remove-LocalUser -SID $administrator.SID
+        if ($administrator -and $report.unknownProcesses.Count -eq 0) {
+            $actual = Get-LocalUser -SID $administrator.SID
+            if ($actual.Name -ne $administrator.Name) { throw 'Administrator identity changed.' }
+            $profileKey = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\' + $administrator.SID.Value
+            $profile = Get-CimInstance Win32_UserProfile -Filter "SID='$($administrator.SID.Value)'"
+            if ($profile) {
+                $recorded = [Environment]::ExpandEnvironmentVariables((Get-ItemPropertyValue -LiteralPath $profileKey -Name ProfileImagePath))
+                if ($profile.Special -or $profile.Loaded -or $profile.LocalPath -ne $recorded -or ($profilePath -and $profilePath -ne $recorded)) {
+                    throw 'Temporary administrator profile is unavailable for confirmed cleanup.'
+                }
+                $profile | Remove-CimInstance
+                if (Test-Path -LiteralPath $recorded) { throw 'Temporary administrator profile directory remains.' }
+            }
+            if (Test-Path -LiteralPath $profileKey) { throw 'Temporary administrator profile remains registered.' }
+            Remove-LocalUser -SID $administrator.SID
             if (Get-LocalUser -Name $administrator.Name -ErrorAction SilentlyContinue) { throw 'Temporary administrator remains.' }
         }
     } catch { $report.cleaned = $false; $report.failureType = 'AdministratorCleanupFailed' }

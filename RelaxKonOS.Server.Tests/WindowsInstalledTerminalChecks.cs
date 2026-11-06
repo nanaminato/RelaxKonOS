@@ -6,6 +6,8 @@ using RelaxKonOS.Protocol.Hubs;
 
 internal static class WindowsInstalledTerminalChecks
 {
+    internal enum CrashMode { None, Core, Helper }
+
     internal static string ReadPassword()
     {
         if (Console.IsInputRedirected) return Console.ReadLine() ?? "";
@@ -18,7 +20,7 @@ internal static class WindowsInstalledTerminalChecks
             else if (!char.IsControl(key.KeyChar)) password.Append(key.KeyChar);
         }
     }
-    internal static async Task RunAsync(string url, string username, string password, bool observeCrash = false)
+    internal static async Task RunAsync(string url, string username, string password, CrashMode crashMode)
     {
         // The installed test host uses a self-signed TLS certificate. Credentials stay in memory.
         using var http = new HttpClient(new HttpClientHandler
@@ -38,9 +40,9 @@ internal static class WindowsInstalledTerminalChecks
             { ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
             options.WebSocketConfiguration = socket => socket.RemoteCertificateValidationCallback = (_, _, _, _) => true;
         }).Build();
-        if (observeCrash)
+        if (crashMode != CrashMode.None)
         {
-            await ObserveCrashAsync(Connect);
+            await ObserveCrashAsync(Connect, crashMode);
             return;
         }
         await using var hub = Connect();
@@ -138,7 +140,7 @@ internal static class WindowsInstalledTerminalChecks
 
     // The external administrator faults only the captured service process after recording
     // the fixture identities. The client reports transport loss without claiming cleanup.
-    private static async Task ObserveCrashAsync(Func<HubConnection> connect)
+    private static async Task ObserveCrashAsync(Func<HubConnection> connect, CrashMode crashMode)
     {
         await using var hub = connect();
         var marker = "RK_TREE_" + Guid.NewGuid().ToString("N");
@@ -159,6 +161,7 @@ internal static class WindowsInstalledTerminalChecks
         await hub.StartAsync();
         var session = await hub.InvokeAsync<AttachTerminalResponse>("Start",
             new StartTerminalRequest(80, 24, 0, 0, null, null), null);
+        var closeAttempted = false;
         try
         {
             static string Launch(string body) =>
@@ -170,6 +173,25 @@ internal static class WindowsInstalledTerminalChecks
             var script = "$env:RK_TERMINAL_ROOT=$PID; " + Launch(child) + "Start-Sleep -Seconds 90; exit\r";
             await hub.InvokeAsync("Input", Encoding.UTF8.GetBytes(script));
             Console.WriteLine("INSTALLED_TERMINAL_TREE " + await observation.Task.WaitAsync(TimeSpan.FromSeconds(20)));
+            if (crashMode == CrashMode.Helper)
+            {
+                if (await Console.In.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(45)) != "CHECK_UNKNOWN")
+                    throw new InvalidOperationException("Missing external Helper fault and tree observation.");
+                closeAttempted = true;
+                try
+                {
+                    await hub.InvokeAsync("CloseSession", session.SessionId).WaitAsync(TimeSpan.FromSeconds(15));
+                }
+                catch (Microsoft.AspNetCore.SignalR.HubException)
+                {
+                    var sessions = await hub.InvokeAsync<List<TerminalSessionInfo>>("ListSessions").WaitAsync(TimeSpan.FromSeconds(10));
+                    if (disconnected.Task.IsCompleted || !sessions.Any(item => item.SessionId == session.SessionId && item.HasExited))
+                        throw new InvalidOperationException("Unknown Helper cleanup did not retain the exited session.");
+                    Console.WriteLine("INSTALLED_TERMINAL_CLEANUP_UNKNOWN");
+                    return;
+                }
+                throw new InvalidOperationException("Helper crash returned successful cleanup without an exit frame.");
+            }
             await disconnected.Task.WaitAsync(TimeSpan.FromSeconds(45));
             Console.WriteLine("INSTALLED_TERMINAL_TRANSPORT_ENDED");
         }
@@ -177,7 +199,7 @@ internal static class WindowsInstalledTerminalChecks
         {
             // A connected client is still responsible for closing its own session if fault
             // injection did not occur. A broken transport cannot provide an exit proof.
-            if (!disconnected.Task.IsCompleted && hub.State == HubConnectionState.Connected)
+            if (!closeAttempted && !disconnected.Task.IsCompleted && hub.State == HubConnectionState.Connected)
                 await hub.InvokeAsync("CloseSession", session.SessionId);
         }
     }

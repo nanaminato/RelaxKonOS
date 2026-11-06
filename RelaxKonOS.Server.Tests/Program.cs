@@ -277,10 +277,15 @@ if (args.Contains("--windows-owner-bootstrap-only"))
     WindowsOwnerBootstrapChecks.Run();
     return;
 }
-if (args.Length == 3 && args[0] is "--installed-windows-terminal" or "--installed-windows-terminal-crash")
+if (args.Length == 3 && args[0] is "--installed-windows-terminal" or "--installed-windows-terminal-crash" or "--installed-windows-terminal-helper-crash")
 {
     await WindowsInstalledTerminalChecks.RunAsync(args[1], args[2], WindowsInstalledTerminalChecks.ReadPassword(),
-        observeCrash: args[0] == "--installed-windows-terminal-crash");
+        args[0] switch
+        {
+            "--installed-windows-terminal-crash" => WindowsInstalledTerminalChecks.CrashMode.Core,
+            "--installed-windows-terminal-helper-crash" => WindowsInstalledTerminalChecks.CrashMode.Helper,
+            _ => WindowsInstalledTerminalChecks.CrashMode.None,
+        });
     return;
 }
 if (args.Contains("--terminal-contract-only"))
