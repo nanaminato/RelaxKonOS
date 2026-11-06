@@ -111,7 +111,7 @@ internal static class NginxProcessRecoveryChecks
         }
     }
 
-    internal static async Task RunSiteAsync(string root)
+    internal static async Task RunSiteAsync(string root, bool configuring)
     {
         const string configRoot = "/etc/nginx";
         if (!OperatingSystem.IsLinux() || !File.ReadLines("/proc/self/mountinfo").Any(line =>
@@ -190,7 +190,7 @@ internal static class NginxProcessRecoveryChecks
             using var managedClient = CreatePinnedClient(managedCertificate);
             await ObserveAsync(managedClient, new Uri("https://127.0.0.1/"), "production TLS site", nginx);
             TestAssert.Assert(CountReloads(root) == 2, "The managed certificate binding must add exactly one reload.");
-            await VerifyPublicationCrashAsync(root, nginx, budget.Token);
+            await VerifyPublicationCrashAsync(root, nginx, configuring, budget.Token);
             Console.WriteLine($"PASS NGINX LIVE SITE TLS: local and managed certificate bindings applied, certificate={certificateId}; binding reloads=2");
         }
         finally
@@ -204,19 +204,20 @@ internal static class NginxProcessRecoveryChecks
     private const string PublicationDomain = "localhost";
     private const int UpstreamPort = 18080;
 
-    private static async Task VerifyPublicationCrashAsync(string root, Process nginx, CancellationToken cancellationToken)
+    private static async Task VerifyPublicationCrashAsync(string root, Process nginx, bool configuring, CancellationToken cancellationToken)
     {
         // Give the new publication a separate SNI name and a real loopback upstream.
         using var upstream = new HttpListener();
         upstream.Prefixes.Add($"http://localhost:{UpstreamPort}/");
         upstream.Start();
         var responseTask = ReplyOnceAsync();
-        using var worker = DockerProcessRecoveryChecks.StartWorker("--nginx-publication-worker", root, nginx.Id.ToString());
+        using var worker = DockerProcessRecoveryChecks.StartWorker("--nginx-publication-worker", root, nginx.Id.ToString(), configuring.ToString());
         try
         {
             var line = await worker.StandardOutput.ReadLineAsync(cancellationToken);
             TestAssert.Assert(Guid.TryParse(line, out var operationId), $"Missing publication receipt: {line}");
-            TestAssert.Assert(await worker.StandardOutput.ReadLineAsync(cancellationToken) == "verifying",
+            var stage = configuring ? WebsitePublicationStage.Configuring : WebsitePublicationStage.Verifying;
+            TestAssert.Assert(await worker.StandardOutput.ReadLineAsync(cancellationToken) == stage.ToString(),
                 "The publication must finish site application and association before interruption.");
             var environment = new TestHostEnvironment(root);
             var options = new ApplicationDeploymentOptions();
@@ -224,10 +225,14 @@ internal static class NginxProcessRecoveryChecks
             var app = catalog.ReadApplications().Single();
             var store = new WebsitePublicationStore(environment);
             var running = store.Get(operationId);
-            TestAssert.Assert(running is { Stage: WebsitePublicationStage.Verifying } && WebsitePublicationStore.Active(running)
-                && app.SiteId == running.SiteId && running.CertificateId is not null,
+            TestAssert.Assert(running is not null && running.Stage == stage && WebsitePublicationStore.Active(running)
+                && app.SiteId == (configuring ? null : running.SiteId) && running.CertificateId is not null,
                 "The original Verifying receipt and committed association must be durable.");
 
+            const string metadataPath = "/etc/nginx/conf.d/relaxkonos.d/sites.json";
+            var siteMetadata = await File.ReadAllTextAsync(metadataPath, cancellationToken);
+            TestAssert.Assert(siteMetadata.Contains(running!.SiteId!, StringComparison.Ordinal) != configuring,
+                "Site metadata must match the selected crash boundary.");
             using var certificate = X509Certificate2.CreateFromPem(await File.ReadAllTextAsync(Path.Combine(root, "publication.pem"), cancellationToken));
             using var client = CreatePinnedClient(certificate);
             var address = new Uri($"https://{PublicationDomain}/");
@@ -249,7 +254,8 @@ internal static class NginxProcessRecoveryChecks
             var replay = await restarted.StartAsync(new(app.Id, running!.WebServerId, PublicationDomain, running.CertificateId, Confirmed: true),
                 Actor, PublicationKey, cancellationToken);
             TestAssert.Assert(restored is { State: WebsitePublicationState.Interrupted }
-                && replay.OperationId == operationId && replay.State == restored.State && replay.ProblemCode == restored.ProblemCode
+                && restored.RecoveryProblemCode == (configuring ? WebsitePublicationStore.SiteApplicationUnverified : "website.recheck_required")
+                && replay.RecoveryProblemCode == restored.RecoveryProblemCode && replay.OperationId == operationId && replay.State == restored.State && replay.ProblemCode == restored.ProblemCode
                 && new WebsitePublicationStore(environment).Get(operationId)?.State == restored.State,
                 "Startup and same-key retry must preserve the original interrupted publication.");
 
@@ -257,11 +263,12 @@ internal static class NginxProcessRecoveryChecks
             using var afterClient = CreatePinnedClient(certificate);
             TestAssert.Assert(await afterClient.GetStringAsync(address, cancellationToken) == "published upstream"
                 && CountReloads(root) == before && !nginx.HasExited
-                && catalog.ReadApplications().Single().SiteId == running.SiteId,
+                && catalog.ReadApplications().Single().SiteId == app.SiteId
+                && await File.ReadAllTextAsync(metadataPath, cancellationToken) == siteMetadata,
                 "Publication recovery must preserve live TLS, the association and the original reload count.");
             await responseTask;
             await restarted.StopAsync(cancellationToken);
-            Console.WriteLine($"PASS NGINX LIVE PUBLICATION CRASH: operation={operationId}; original interrupted receipt; publication reloads=1");
+            Console.WriteLine($"PASS NGINX LIVE PUBLICATION CRASH: operation={operationId}; stage={stage}; recovery={restored!.RecoveryProblemCode}; publication reloads=1");
         }
         finally
         {
@@ -282,7 +289,7 @@ internal static class NginxProcessRecoveryChecks
         }
     }
 
-    internal static async Task RunPublicationWorkerAsync(string root, int nginxPid)
+    internal static async Task RunPublicationWorkerAsync(string root, int nginxPid, bool configuring)
     {
         using var nginx = Process.GetProcessById(nginxPid);
         using var store = await OpenStoreAsync(root);
@@ -314,7 +321,8 @@ internal static class NginxProcessRecoveryChecks
             new CertificateMetadataRepository(environment, TestConfiguration()));
         await certificates.SaveAsync(material, default);
         await File.WriteAllTextAsync(Path.Combine(root, "publication.pem"), material.CertificatePem);
-        var provider = CreateProvider(root, store, new IsolatedSiteTransport(root, nginx), certificates);
+        var transport = new IsolatedSiteTransport(root, nginx, configuring);
+        var provider = CreateProvider(root, store, transport, certificates);
         var instance = await FindManagedInstanceAsync(provider);
         var certificateManager = DispatchProxy.Create<ICertificateManager, BackgroundWebsiteCertificate>();
         ((BackgroundWebsiteCertificate)(object)certificateManager).Domain = PublicationDomain;
@@ -324,9 +332,9 @@ internal static class NginxProcessRecoveryChecks
         await coordinator.StartAsync(default);
         var receipt = await coordinator.StartAsync(new(app.Id, instance.Id, PublicationDomain, certificateId, Confirmed: true), Actor, PublicationKey);
         Console.WriteLine(receipt.OperationId);
-        await verification.Entered.Task.WaitAsync(Budget);
+        await (configuring ? transport.Reloaded.Task : verification.Entered.Task).WaitAsync(Budget);
         TestAssert.Assert(coordinator.HasResponsibility, "The live publication must hold its lease while verifying.");
-        Console.WriteLine("verifying");
+        Console.WriteLine(configuring ? WebsitePublicationStage.Configuring : WebsitePublicationStage.Verifying);
         await Task.Delay(Timeout.InfiniteTimeSpan);
     }
 
@@ -343,8 +351,10 @@ internal static class NginxProcessRecoveryChecks
         }
     }
 
-    private sealed class IsolatedSiteTransport(string root, Process nginx) : IPrivilegedOperationTransport
+    private sealed class IsolatedSiteTransport(string root, Process nginx, bool pauseAfterReload = false) : IPrivilegedOperationTransport
     {
+        internal readonly TaskCompletionSource Reloaded = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken)
         {
             switch (request.Operation)
@@ -363,7 +373,13 @@ internal static class NginxProcessRecoveryChecks
                 case PrivilegedOperationKind.NginxConfigurationTest:
                     return await RunAsync(["-t"], cancellationToken);
                 case PrivilegedOperationKind.NginxSystemServiceAction when request.NginxServiceAction == NginxSystemServiceAction.Reload:
-                    return await RunAsync(["-s", "reload"], cancellationToken);
+                    var result = await RunAsync(["-s", "reload"], cancellationToken);
+                    if (result.Success && pauseAfterReload)
+                    {
+                        Reloaded.SetResult();
+                        await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                    }
+                    return result;
                 default:
                     throw new InvalidOperationException($"Unexpected isolated Nginx operation: {request.Operation}.");
             }

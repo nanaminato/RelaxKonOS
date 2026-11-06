@@ -1231,3 +1231,9 @@ PASS NGINX LIVE SITE TLS: local and managed certificate bindings applied, certif
 Linux x64 Release 在私有网络及挂载命名空间运行生产发布协调器、证书仓库、站点 provider 和独立 Nginx。应用运行状态由 Docker 观察夹具提供，上游为真实回环 HTTP 服务。发布进入 Verifying 后，工作租约仍在，原台账和应用关联已落盘。父进程使用 SNI 及指定证书指纹验证 Nginx 已代理实际流量，再强制终止发布工作进程。
 
 启动恢复将原操作 61f0e452-39ff-4e1c-b144-bfcc5a1a62b6 持久化为 Interrupted。同键返回原操作和问题码。原 master 在恢复后继续通过 HTTPS 代理同一上游，应用关联保留，发布只触发一次重载。日志为 .artifacts/mb05-nginx-publication-live-san.log，制品 SHA-256 为 f9c77392701e801a355058bf3e8a4c9937cc22d9e6b22f7e7b4a1823b5cf7c78。初次测试的 PEM 读取及 TLS 探测失败在夹具中修正，最终实机通过。发布协调器的证书查询 DTO 和验证阻断使用夹具，独立 CA 签发见 §52。
+
+### Nginx 已重载、发布元数据未提交
+
+在同一隔离 Linux 环境，真实 Nginx reload 成功后暂停 transport 响应。实际 HTTPS 已代理回环上游，站点元数据中尚无新站点，应用关联尚未写入，原发布回执仍为 Configuring 且工作租约在位。终止发布进程后，启动恢复按原 operationId 11415427-0caf-4545-9018-2a201877ab83 持久化 Interrupted 和 website.site_application_unverified。同键重试取回相同回执。站点元数据内容和应用关联保持中断时的状态，原 master 继续代理 HTTPS，发布只触发一次重载。
+
+Linux x64 Release 实机日志为 .artifacts/mb05-nginx-configuring-live.log，制品 SHA-256 为 2d1f70095edd08bf32ac0db5cbd042d7358da80a2920e00997a9577b53463503。该路径保留未知结果供复核。

@@ -72,14 +72,14 @@ if (args is ["--nginx-recovery-worker", var nginxWorkerExecutable, var nginxWork
     await NginxProcessRecoveryChecks.RunWorkerAsync(nginxWorkerExecutable, nginxWorkerRoot);
     return;
 }
-if (args is ["--nginx-publication-worker", var publicationRoot, var publicationNginxPid])
+if (args is ["--nginx-publication-worker", var publicationRoot, var publicationNginxPid, var publicationConfiguring])
 {
-    await NginxProcessRecoveryChecks.RunPublicationWorkerAsync(publicationRoot, int.Parse(publicationNginxPid));
+    await NginxProcessRecoveryChecks.RunPublicationWorkerAsync(publicationRoot, int.Parse(publicationNginxPid), bool.Parse(publicationConfiguring));
     return;
 }
-if (args is ["--nginx-live-site-only", var nginxSiteRoot])
+if (args is ["--nginx-live-site-only", var nginxSiteRoot, var nginxSiteStage])
 {
-    await NginxProcessRecoveryChecks.RunSiteAsync(nginxSiteRoot);
+    await NginxProcessRecoveryChecks.RunSiteAsync(nginxSiteRoot, nginxSiteStage == "configuring");
     return;
 }
 if (args is ["--nginx-live-recovery-only", var nginxExecutable])

@@ -11,4 +11,4 @@ root=$(mktemp -d /tmp/relaxkonos-nginx-sites.XXXXXXXX)
 trap 'umount /etc/nginx; rm -rf -- "$root"' EXIT
 mount -t tmpfs -o mode=0755,size=8m tmpfs /etc/nginx
 ip link set lo up
-dotnet "$1" --nginx-live-site-only "$root"
+dotnet "$1" --nginx-live-site-only "$root" "${2:-verifying}"
