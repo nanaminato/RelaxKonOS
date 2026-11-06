@@ -1049,3 +1049,9 @@ WebServer 门面将生命周期及重载请求交给生产 provider 核对原回
 Windows Release 聚合新增验证覆盖停机等待尚未返回的站点动作、原工作租约、原台账跨实例重开，以及只执行一次站点应用。站点 provider 与证书为受控边界。完整生产 provider 的网站发布、真实 HTTPS 响应中断和补偿失败仍待实机联合验证。
 
 既有 Linux 测试机也通过 Release 聚合回归，新增检查为后台 owner 第 33 至 35 项。首次 Linux 执行通过新增项，随后因 Windows 打包未保留测试 apphost 执行位而在 Terminal 停止。补专属临时目录中的执行位后，整组复测通过。证据见 `.artifacts/mb05-publication.log` 和 `.artifacts/mb05-publication-linux-final.log`，Linux 制品归档 SHA-256 为 `cd32c94a1e4fb6a69f95d0230c367902f6771213de873d8be9f19a6fae68382f`。
+
+### MB-05 应用记录消失后的发布回执
+
+网站发布在同一台账准入区间先按原 actor、幂等键和请求身份查找回执。只有新操作需要核对应用仍存在。原应用记录已删除时，原请求仍返回 Interrupted 回执，新请求返回 404 且不创建台账记录或再次应用站点。验证使用生产协调器、应用目录和发布台账，站点动作由受控 provider 记录。
+
+Windows 与既有 Linux 测试机的 Release 聚合回归均通过，新增及更新的断言为后台 owner 第 35、36 项。日志见 `.artifacts/mb05-publication-replay-win.log` 与 `.artifacts/mb05-publication-replay-linux.log`。

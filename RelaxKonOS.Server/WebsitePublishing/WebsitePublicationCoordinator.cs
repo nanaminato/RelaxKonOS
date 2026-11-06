@@ -48,7 +48,6 @@ internal sealed class WebsitePublicationCoordinator(
         lock (gate)
             if (!ready || lifetime.ApplicationStopping.IsCancellationRequested)
                 throw new WebsitePublicationException("website.operation_store_unavailable", 503);
-        _ = applications.Require(request.ApplicationId);
         using var work = await workOwner.AdmitAsync(ct);
         lock (gate)
         {
@@ -57,7 +56,14 @@ internal sealed class WebsitePublicationCoordinator(
             work.Token.ThrowIfCancellationRequested();
             WebsitePublicationOperationDto operation;
             bool created;
-            try { operation = store.Start(request, actor, idempotencyKey, out created); }
+            try
+            {
+                operation = store.Start(request, actor, idempotencyKey, () =>
+                {
+                    if (catalog.Find(request.ApplicationId) is null)
+                        throw new WebsitePublicationException(ApplicationDeploymentProblemCodes.ApplicationNotFound, 404);
+                }, out created);
+            }
             catch (Exception error) when (error is not WebsitePublicationException rejected || rejected.ProblemCode == "website.operation_store_unavailable")
             { work.Fail(error); throw; }
             if (created) work.Run(stopping => RunAsync(operation.OperationId, request, actor, stopping));

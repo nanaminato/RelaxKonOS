@@ -242,9 +242,18 @@ internal static class ModuleBackgroundOwnershipChecks
             using var afterAssociation = new WebsitePublicationCoordinator(reopened, applications, catalog, web, cert, f.Certificates, clients,
                 new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, f.Source);
             await afterAssociation.StartAsync(default);
+            catalog.Delete(app.Id);
             var original = await afterAssociation.StartAsync(request, "actor", "association");
             Check(original.OperationId == association.OperationId && original.State == WebsitePublicationState.Interrupted && applied.Calls == 1,
-                "Website startup and same-key retry preserve the associated site and never repeat its application");
+                "Website startup and same-key retry preserve the original receipt after the application record disappears");
+            try
+            {
+                await afterAssociation.StartAsync(request, "actor", "new-missing-app");
+                throw new InvalidOperationException("A fresh publication admitted a missing application.");
+            }
+            catch (WebsitePublicationException error) when (error.StatusCode == 404) { }
+            Check(reopened.History(app.Id, 20).Count == 2 && applied.Calls == 1,
+                "A fresh request for the missing application creates neither a receipt nor a site action");
             await afterAssociation.StopAsync(default);
         }
         Console.WriteLine($"Module background ownership checks passed: {count}");

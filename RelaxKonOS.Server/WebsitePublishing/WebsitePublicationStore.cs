@@ -43,7 +43,7 @@ internal sealed class WebsitePublicationStore
 
     public static bool Active(WebsitePublicationOperationDto operation) => operation.State is WebsitePublicationState.Queued or WebsitePublicationState.Running;
 
-    public WebsitePublicationOperationDto Start(PublishWebsiteRequest request, string actor, string idempotencyKey, out bool created)
+    public WebsitePublicationOperationDto Start(PublishWebsiteRequest request, string actor, string idempotencyKey, Action validateNew, out bool created)
     {
         lock (gate)
         {
@@ -61,6 +61,7 @@ internal sealed class WebsitePublicationStore
             if (entries.Values.Any(entry => Active(entry.Operation) && entry.Operation.ApplicationId == request.ApplicationId))
                 throw new WebsitePublicationException("website.operation_conflict");
 
+            validateNew();
             var now = DateTimeOffset.UtcNow;
             var operation = new WebsitePublicationOperationDto(Guid.NewGuid(), request.ApplicationId, request.WebServerId, request.Domain,
                 null, request.CertificateId, null, WebsitePublicationState.Queued, WebsitePublicationStage.Queued, "", null, [], now, null, null);
