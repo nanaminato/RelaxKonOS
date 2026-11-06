@@ -121,6 +121,25 @@ internal static async Task VerifyMihomoTunActivationPreservationAsync(string roo
         new TestProxyNetworkSafetyPlatform { SnapshotSafe = true }, new TestProxyTunRuntimeController());
     TestAssert.Assert(await unfinishedService.EnableAsync(Guid.NewGuid(), null, CancellationToken.None) == ProxyProblemCodes.RecoveryRequired,
         "An unfinished TUN marker was treated as stale instead of requiring recovery.");
+
+    var markerPath = Path.Combine(unfinishedPaths.GetStateDirectory(), "proxy-tun-recovery.json");
+    var unknownRuntime = new TestProxyTunRuntimeController();
+    var unknownPlatform = new TestProxyNetworkSafetyPlatform { SnapshotSafe = true };
+    var unknownSafety = new ProxyTunSafetyService(unfinishedPaths, unknownPlatform, unknownRuntime);
+    foreach (var invalid in new[] { "{broken", JsonSerializer.Serialize(new
+    {
+        OperationId = Guid.NewGuid(), ProfileId = Guid.NewGuid(), CreatedAt = DateTimeOffset.UtcNow,
+        Snapshot = snapshot with { DefaultGateway = "" }, ActivationCompleted = true
+    }) })
+    {
+        await File.WriteAllTextAsync(markerPath, invalid);
+        var reference = await unknownSafety.CaptureRecoveryAsync(default);
+        TestAssert.Assert(reference is not null && await unknownSafety.RecoverAsync(reference, default) == ProxyProblemCodes.RecoveryRequired
+            && await unknownSafety.EmergencyDisableAsync(default) == ProxyProblemCodes.RecoveryRequired
+            && unknownRuntime.DisableCount == 0 && unknownPlatform.RestoreCount == 0
+            && await File.ReadAllTextAsync(markerPath) == invalid,
+            "Unknown TUN recovery must preserve evidence without invoking runtime or route mutations.");
+    }
 }
 
 internal static async Task VerifyHostNetworkSafetyDiscoveryAsync()

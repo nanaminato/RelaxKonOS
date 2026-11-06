@@ -111,6 +111,8 @@ public sealed class ProxyTunSafetyService(
     }
     private async Task<string?> RestoreAndReportAsync(RecoveryMarker marker, CancellationToken cancellationToken, string failedCode)
     {
+        if (marker.OperationId == Guid.Empty) return ProxyProblemCodes.RecoveryRequired;
+
         // Disable Mihomo's TUN first; this is the component that owns routes and DNS.  We still
         // call the platform restore hook so it can verify that the original management path won.
         var runtimeProblem = await _runtime.SetEnabledAsync(marker.Snapshot, false, CancellationToken.None);
@@ -134,7 +136,9 @@ public sealed class ProxyTunSafetyService(
             await using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
             if (input.Length is 0 or > 65536) return UnknownMarker();
             var marker = await JsonSerializer.DeserializeAsync<RecoveryMarker>(input, cancellationToken: cancellationToken);
-            return marker is not null && marker.OperationId != Guid.Empty && marker.CreatedAt != default && marker.Snapshot is not null
+            return marker is not null && marker.OperationId != Guid.Empty && marker.CreatedAt != default && marker.ProfileId != Guid.Empty
+                && marker.Snapshot is { ManagementPathSafe: true } snapshot
+                && !string.IsNullOrWhiteSpace(snapshot.EgressInterface) && System.Net.IPAddress.TryParse(snapshot.DefaultGateway, out _)
                 && marker.Snapshot.SystemBypass is not null && marker.Snapshot.ManagementAddresses is not null ? marker : UnknownMarker();
         }
         catch (FileNotFoundException) { return null; }
@@ -149,9 +153,24 @@ public sealed class ProxyTunSafetyService(
     private static RecoveryMarker UnknownMarker() => new(Guid.Empty, Guid.Empty, new("corrupt", default, false, "", "", [], []), default, false);
     private async Task WriteMarkerAsync(RecoveryMarker marker, CancellationToken cancellationToken)
     {
-        var dir = paths.GetStateDirectory(); Directory.CreateDirectory(dir); if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(dir, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        var temporary = MarkerPath() + ".new"; await using (var output = File.Create(temporary)) await JsonSerializer.SerializeAsync(output, marker, cancellationToken: cancellationToken);
-        if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(temporary, UnixFileMode.UserRead | UnixFileMode.UserWrite); File.Move(temporary, MarkerPath(), overwrite: true);
+        var directory = paths.GetStateDirectory();
+        Directory.CreateDirectory(directory);
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var temporary = MarkerPath() + ".new";
+        try
+        {
+            var options = new FileStreamOptions { Mode = FileMode.Create, Access = FileAccess.Write };
+            if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+            await using (var output = new FileStream(temporary, options))
+            {
+                await JsonSerializer.SerializeAsync(output, marker, cancellationToken: cancellationToken);
+                output.Flush(flushToDisk: true);
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            File.Move(temporary, MarkerPath(), overwrite: true);
+        }
+        finally { File.Delete(temporary); }
     }
     private void DeleteMarker() { if (File.Exists(MarkerPath())) File.Delete(MarkerPath()); }
     private string MarkerPath() => Path.Combine(paths.GetStateDirectory(), "proxy-tun-recovery.json");
