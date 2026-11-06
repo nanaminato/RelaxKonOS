@@ -9,6 +9,7 @@
     <ProjectReference Include="../../../Shared/RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj" />
     <Compile Include="../../../RelaxKonOS.PrivilegedHelper/LinuxEnvironmentDocument.cs" Link="LinuxEnvironmentDocument.cs" />
     <Compile Include="../../../RelaxKonOS.PrivilegedHelper/LinuxEnvironmentOperations.cs" Link="LinuxEnvironmentOperations.cs" />
+    <Compile Include="../../../RelaxKonOS.PrivilegedHelper/LinuxSystemProxyOperations.cs" Link="LinuxSystemProxyOperations.cs" />
     <Compile Include="../../../RelaxKonOS.PrivilegedHelper/LinuxSystemProxyTransaction.cs" Link="LinuxSystemProxyTransaction.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Services/SettingsNavigationHistory.cs" Link="SettingsNavigationHistory.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Services/SettingsSearchIndex.cs" Link="SettingsSearchIndex.cs" />

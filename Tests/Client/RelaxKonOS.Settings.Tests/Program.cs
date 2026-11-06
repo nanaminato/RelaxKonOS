@@ -2,6 +2,12 @@ using RelaxKonOS.Client.Services;
 using System.Diagnostics;
 using System.Globalization;
 using RelaxKonOS.Protocol.Workspace;
+if (args is [var mode, var hostMount, var hostNetwork]
+    && mode is "--linux-system-proxy-live-only" or "--linux-system-proxy-live-worker")
+{
+    await LinuxSystemProxyLiveChecks.RunAsync(hostMount, hostNetwork, worker: mode == "--linux-system-proxy-live-worker");
+    return;
+}
 LinuxSystemProxyChecks.Run();
 if (args.Contains("--linux-system-proxy-only")) return;
 if (SystemLanguageResolver.Resolve(CultureInfo.GetCultureInfo("zh-TW")) != "zh-CN"

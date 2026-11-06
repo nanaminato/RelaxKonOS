@@ -1,0 +1,96 @@
+using System.Diagnostics;
+using System.Reflection;
+using RelaxKonOS.PrivilegedHelper;
+using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Protocol.Settings;
+
+internal static class LinuxSystemProxyLiveChecks
+{
+    private const string EnvironmentFile = "/etc/environment";
+    private const string Journal = "/var/lib/relaxkonos-system-proxy/recovery.json";
+    private const string Original = "RELAXKONOS_PROXY_FIXTURE=isolated\nhttp_proxy=http://127.0.0.1:1234\n";
+    private static readonly TimeSpan Budget = TimeSpan.FromSeconds(15);
+    private static readonly LinuxSystemProxyConfiguration Desired = new(true, "127.0.0.1", 17890, true, "");
+
+    internal static async Task RunAsync(string hostMountNamespace, string hostNetworkNamespace, bool worker)
+    {
+        RequireIsolation(hostMountNamespace, hostNetworkNamespace);
+        if (worker)
+        {
+            Apply(Desired);
+            Console.WriteLine("PROXY_APPLIED");
+            await Task.Delay(Timeout.InfiniteTimeSpan);
+            return;
+        }
+
+        if (File.ReadAllText(EnvironmentFile) != Original || File.Exists(Journal))
+            throw new InvalidOperationException("Expected a fresh isolated proxy environment.");
+        var start = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false, RedirectStandardOutput = true };
+        if (Path.GetFileNameWithoutExtension(start.FileName) == "dotnet")
+            start.ArgumentList.Add(Assembly.GetExecutingAssembly().Location);
+        foreach (var argument in new[] { "--linux-system-proxy-live-worker", hostMountNamespace, hostNetworkNamespace })
+            start.ArgumentList.Add(argument);
+        using (var original = Process.Start(start) ?? throw new InvalidOperationException("Unable to start proxy worker."))
+        {
+            try
+            {
+                var ready = await original.StandardOutput.ReadLineAsync().WaitAsync(Budget);
+                var applied = LinuxEnvironmentDocument.Parse(File.ReadAllText(EnvironmentFile)).Values;
+                if (ready != "PROXY_APPLIED" || original.HasExited || !File.Exists(Journal)
+                    || applied.GetValueOrDefault("http_proxy") != "http://127.0.0.1:17890"
+                    || applied.GetValueOrDefault("https_proxy") != "http://127.0.0.1:17890")
+                    throw new InvalidOperationException("Real proxy keys and journal must precede crash injection.");
+                original.Kill();
+                await original.WaitForExitAsync().WaitAsync(Budget);
+                if (original.ExitCode == 0) throw new InvalidOperationException("Expected abnormal worker exit.");
+            }
+            finally
+            {
+                if (!original.HasExited) original.Kill();
+                await original.WaitForExitAsync().WaitAsync(Budget);
+            }
+        }
+
+        const string external = "http://127.0.0.1:2345";
+        var target = LinuxSystemProxyOperations.EnvironmentTarget;
+        var baseline = LinuxEnvironmentOperations.Execute(new(PrivilegedOperationKind.HostEnvironmentRead, EnvironmentTarget: target));
+        var edit = LinuxEnvironmentOperations.Execute(new(PrivilegedOperationKind.HostEnvironmentApply,
+            EnvironmentTarget: target, ExpectedRevision: baseline.HostEnvironment?.Revision,
+            EnvironmentChange: new([new("http_proxy", EnvironmentMutationKind.Set, external),
+                new("RELAXKONOS_EXTERNAL_EDIT", EnvironmentMutationKind.Set, "kept")], ConfirmHighImpact: true)));
+        if (!baseline.Success || !edit.Success) throw new InvalidOperationException("Could not apply the competing environment edit.");
+        Apply(Desired with { Enabled = false });
+        var restored = File.ReadAllText(EnvironmentFile);
+        var values = LinuxEnvironmentDocument.Parse(restored).Values;
+        if (values.GetValueOrDefault("http_proxy") != external || values.ContainsKey("https_proxy")
+            || values.GetValueOrDefault("RELAXKONOS_EXTERNAL_EDIT") != "kept" || File.Exists(Journal))
+            throw new InvalidOperationException("Recovery must restore owned proxy keys while preserving external edits.");
+        Apply(Desired with { Enabled = false });
+        if (File.ReadAllText(EnvironmentFile) != restored || File.Exists(Journal))
+            throw new InvalidOperationException("Repeated recovery changed the environment again.");
+        Console.WriteLine("PASS LINUX SYSTEM PROXY LIVE: process killed, original journal restored once, external edit preserved");
+    }
+
+    private static void RequireIsolation(string hostMountNamespace, string hostNetworkNamespace)
+    {
+        if (!OperatingSystem.IsLinux()
+            || !IsDistinctNamespace("mnt", hostMountNamespace) || !IsDistinctNamespace("net", hostNetworkNamespace)
+            || !File.Exists("/etc/relaxkonos-proxy-fixture") || !File.Exists("/var/lib/relaxkonos-proxy-fixture")
+            || new LinuxSystemProxyBackend().DesktopTargets().Count != 0)
+            throw new InvalidOperationException("The live system proxy test requires fresh private mount and network namespaces.");
+    }
+
+    private static bool IsDistinctNamespace(string name, string original)
+    {
+        var prefix = name + ":[";
+        if (!original.StartsWith(prefix, StringComparison.Ordinal) || !original.EndsWith(']')) return false;
+        var current = new FileInfo("/proc/self/ns/" + name).LinkTarget;
+        return current is not null && current.StartsWith(prefix, StringComparison.Ordinal) && current != original;
+    }
+
+    private static void Apply(LinuxSystemProxyConfiguration configuration)
+    {
+        var result = LinuxSystemProxyOperations.Execute(new(PrivilegedOperationKind.LinuxSystemProxyApply, LinuxSystemProxy: configuration));
+        if (!result.Success) throw new InvalidOperationException($"Isolated Linux system proxy operation failed: {result.ProblemCode}");
+    }
+}
