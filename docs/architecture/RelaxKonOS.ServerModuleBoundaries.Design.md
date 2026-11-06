@@ -947,3 +947,11 @@ Windows ModuleHost 专项 36 项通过。Ubuntu ModuleHost 专项 40 项和原�
 **已实现、安装环境未实测。** Windows 安装夹具更新到 schema 3，覆盖正式运行时快照置备、已签名包启动、LocalSystem/S4U、已观测的实际后代输出、Core 崩溃、Helper 崩溃与信任撤销后树核对，以及原 Broker 回执和副作用不重放。Windows Terminal Helper 增加启动应答和输出/控制通道异常的清理保护，安装入口补启动拒绝后的复测。当前 Windows 执行令牌未提升，未置备 SCM 测试服务、S4U 账户或正式 Terminal Helper。管理员执行条件、独立制品和清理恢复见[模块安装验收](RelaxKonOS.ServerModuleV2.Progress.md)和[Terminal 应用文档](../applications/RelaxKonOS.Terminal.md)。
 
 **仍开放。** Windows 安装后的全树崩溃和恢复矩阵、Linux 完整安装和监督器本身的故障恢复、未知责任的正式运维恢复以及跨代应用副作用矩阵。Linux Terminal 的 EPERM 实机证据沿用 §40。自动审批拒绝本轮特权复测，理由是清理失败可能留下 root 所有的测试后代。需管理员在隔离宿主运行 `--terminal-tree-privilege-checks` 并接管该夹具的清理。保留无权终止后代的未知责任，不扩大权限。SDK 后台责任申报和合作 drain 尚未验收，ModuleHost 保持 resident，未启用闲时 kill、退出或重启。Terminal 保持当前驻留策略，SystemPerformance S1 保持冻结。进程树证明、对象释放与 ALC 回收均不计为生产内存下降。
+
+## 47. 固定启动器与跨代故障验收预检（2026-11-06）
+
+**已验证。** 在 Ubuntu 测试机使用既有固定 SSH 主机密钥，确认正式 `relaxkonos-server` 用户的无密码 sudo 授权绑定已安装的 ModuleHost 路径和 `--isolated` 参数。以该用户通过原规则启动 0.2.7 的固定启动器，空请求返回 `module-host-isolation-failed`，退出码 77。只验证了真实安装入口与拒绝路径。共享服务和机器级策略未变更。另以普通用户创建、观察并回收实际子进程，验证新夹具在进程处于僵尸状态时保留未知责任，待原 PID/starttime 消失后才接受回收。
+
+**夹具已实现，完整故障矩阵待执行。** `Tests/ServerModules/verify-linux-v2-response-loss.py --core-tree-crash` 在原真实 Broker 回执矩阵上加入故障前的实际后代输出、仅终止 Core 后的原 ModuleHost 树回收，以及新代次的真实输出。以原计划核对 RecoveryRequired 和禁止重放，最后用新明确批准产生一次新动作。预检要求机器级源包根和 sudo 路径都指向专用测试安装。当前 Ubuntu 的独立服务处于停止状态，机器级启动器绑定共享安装。需要已用当前制品和签名夹具置备的隔离 Linux 主机，不能在共享主机上重跑会改写固定配置的置备脚本。清理无法确认时保留证据并停止重启夹具 Core。
+
+**Windows 待执行。** 新的按需测试机未能连接 SSH，本地 Windows 令牌未提升。LocalSystem/S4U 与正式 Terminal Helper 矩阵仍需启动测试机、核验主机密钥，并取得管理员执行条件。沿用 §46 产物和清理入口。SDK 后台申报与合作 drain 仍开放。

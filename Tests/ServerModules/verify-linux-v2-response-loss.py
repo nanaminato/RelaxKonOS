@@ -96,8 +96,9 @@ if sys.argv[1:] == ['--proxy']:
 
 from linux_v2_acceptance_support import api, login, password, pid, privileged, restart, wait_ready
 import uuid
-assert sys.argv[1:] in ([], ['--core-crash'], ['--helper-crash'])
-core_crash = sys.argv[1:] == ['--core-crash']
+assert sys.argv[1:] in ([], ['--core-crash'], ['--core-tree-crash'], ['--helper-crash'])
+tree_crash = sys.argv[1:] == ['--core-tree-crash']
+core_crash = tree_crash or sys.argv[1:] == ['--core-crash']
 helper_crash = sys.argv[1:] == ['--helper-crash']
 
 unit = 'relaxkonos-v2-loss-proxy.service'
@@ -128,6 +129,47 @@ def approve(plan, expected=200):
         dict(planHash=plan['planHash'], confirmationToken=plan['confirmationToken'],
              administratorUsername='nanami', password=password), expected=expected)
 
+def process_identity(process_id):
+    try:
+        # /proc stat's command is parenthesized and may contain spaces or parentheses.
+        fields = pathlib.Path(f'/proc/{process_id}/stat').read_text().rsplit(')', 1)[1].split()
+        return fields[19]  # starttime; a zombie still has an identity until reaped.
+    except (FileNotFoundError, ProcessLookupError):
+        return None
+
+def start_tree():
+    tree = api('POST', '/api/v1.0/server/module-hosts/fixture-http/spawn-child?detached=true')
+    assert tree['outputObserved'], 'ModuleHost did not observe real descendant output'
+    host, child = tree['hostPid'], tree['pid']
+    assert type(host) is int and type(child) is int and min(host, child) > 1 and host != child
+    identities = {process_id: process_identity(process_id) for process_id in (host, child)}
+    assert all(identities.values()), 'The fixture tree must be live before fault injection'
+    return identities
+
+def wait_reaped(tree):
+    for _ in range(150):
+        if all(process_identity(process_id) != start for process_id, start in tree.items()):
+            return
+        time.sleep(.1)
+    raise AssertionError('An observed ModuleHost process remains; tree cleanup is unknown')
+
+def wait_module_ready():
+    for _ in range(30):
+        hosts = api('GET', '/api/v1.0/server/module-hosts')['hosts']
+        if any(host['moduleId'] == 'fixture-http' and host['status'] == 'running' for host in hosts):
+            return
+        time.sleep(1)
+    raise AssertionError('ModuleHost did not become ready')
+
+if tree_crash:
+    # The installer configures machine-wide paths. Never repoint a shared install from this probe.
+    privileged('python3', '-c',
+        'import json,pathlib,pwd; p=json.loads(pathlib.Path("/etc/relaxkonos/module-host.json").read_text()); '
+        'assert p["serverUid"]==pwd.getpwnam("relaxkonos-server").pw_uid; '
+        'assert pathlib.Path(p["sourceRoot"]).resolve()==pathlib.Path("/opt/relaxkonos-v2-test/data/module-management/packages").resolve()')
+    privileged('sudo', '-n', '-u', 'relaxkonos-server', '/usr/bin/sudo', '-n', '-l', '--',
+        '/opt/relaxkonos-v2-test/module-host/RelaxKonOS.ServerModuleHost', '--isolated')
+
 wait_ready()
 login()
 installed = next(item for item in api('GET', '/api/v1.0/server/module-packages/installed')['items'] if item['moduleId'] == 'fixture-http')
@@ -137,6 +179,8 @@ privileged('systemd-run', '--unit=relaxkonos-v2-loss-proxy', '--uid=relaxkonos-s
     '--', '/usr/bin/python3', installed_script, '--proxy')
 changed = False
 dropin_installed = False
+recovered_tree = None
+original_tree = None
 try:
     if core_crash or helper_crash:
         privileged('python3', '-c',
@@ -151,13 +195,8 @@ try:
     trust(True)
     restart()
     login()
-    for _ in range(30):
-        hosts = api('GET', '/api/v1.0/server/module-hosts')['hosts']
-        if any(host['moduleId'] == 'fixture-http' and host['status'] == 'running' for host in hosts):
-            break
-        time.sleep(1)
-    else:
-        raise AssertionError('ModuleHost did not become ready')
+    wait_module_ready()
+    original_tree = start_tree() if tree_crash else None
     pending = prepare()
     before = pid()
     if core_crash or helper_crash:
@@ -199,6 +238,9 @@ try:
         else:
             assert background_errors
             print('PASS the real Core was killed while its durable plan was Executing and the real Helper was stopping the target service')
+            if original_tree is not None:
+                wait_reaped(original_tree)
+                print('PASS Core crash reaps the observed ModuleHost root and detached I/O descendant')
     if core_crash:
         for _ in range(100):
             if receipt()['droppedSuccess']:
@@ -226,6 +268,11 @@ try:
     print('PASS repeated queries and old confirmation never forward or execute the lost-response action again')
     if core_crash:
         login()  # A restarted Core may require a fresh live native-login session before mutation.
+    if tree_crash:
+        wait_module_ready()
+        recovered_tree = start_tree()
+        assert recovered_tree.items().isdisjoint(original_tree.items())
+        print('PASS a distinct ModuleHost generation performs real I/O after receipt recovery')
     fresh = prepare()
     assert approve(fresh)['state'] == 'Succeeded' and pid() != after
     assert receipt() == dict(restartRequests=2, droppedSuccess=not helper_crash)
@@ -237,6 +284,11 @@ finally:
             time.sleep(.5)
         if changed:
             configure(LISTENER, UPSTREAM)
+            if tree_crash:
+                privileged('systemctl', 'stop', 'relaxkonos-v2-test.service')
+                for observed in (original_tree, recovered_tree):
+                    if observed is not None:
+                        wait_reaped(observed)
             restart()
             login()
             trust(False)
