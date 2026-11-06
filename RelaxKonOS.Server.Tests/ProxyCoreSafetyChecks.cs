@@ -24,7 +24,8 @@ internal static class ProxyCoreSafetyChecks
                 && builder.Services.Single(item => item.ServiceType == typeof(IProxyLifecycleService)).Lifetime == ServiceLifetime.Scoped,
                 "Engine registry and lifecycle facades belong to execution scopes");
             builder.Services.AddSingleton<IProxyPlatformPaths>(paths);
-            builder.Services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
+            var protection = new CountingProtection();
+            builder.Services.AddSingleton<IDataProtectionProvider>(protection);
             builder.Services.AddSingleton<IServerModeResolver>(new SystemMode());
             var helper = new Helper(); builder.Services.AddSingleton<IPrivilegedOperationTransport>(helper);
             builder.Services.AddSingleton<IRuntimeDownloadProxyProvider>(new Downloads());
@@ -60,18 +61,36 @@ internal static class ProxyCoreSafetyChecks
                 var saved = ProxyServerState.Empty with { Published = published,
                     Credentials = [new(id, Guid.NewGuid(), "expiring", [inboundId], secret, true, future)] };
                 await store.WriteAsync(saved, default);
-                var schedule = await store.ReadExpiryScheduleAsync(default);
+                var expiryIndex = Path.Combine(paths.GetStateDirectory(), "proxy-server.protected.expiry");
+                var staleIndex = await File.ReadAllBytesAsync(expiryIndex);
+                var reopened = new ProxyServerStore(paths, services.GetRequiredService<IDataProtectionProvider>());
+                var reads = protection.StateReads;
+                var schedule = await reopened.ReadExpiryScheduleAsync(default);
+                Check(protection.StateReads == reads, "A matching protected index avoids decrypting the original state");
                 Check(!schedule.RequiresPass(future.AddTicks(-1)) && schedule.RequiresPass(future),
                     "Expiry schedule is derived from the persisted grant and uses its exact expiry boundary");
                 using (var idle = ActivatorUtilities.CreateInstance<ProxyServerExpiryService>(services))
                     await idle.ReconcileAsync(default);
                 Check(expiryActivations == 0, "An idle expiry scan does not construct the publication executor");
                 await store.WriteAsync(saved with { PendingPublication = published }, default);
-                Check((await store.ReadExpiryScheduleAsync(default)).PendingPublication,
-                    "Persisted pending publication remains due even before credential expiry");
-                await store.WriteAsync(saved with { Credentials = [saved.Credentials.Single() with { Enabled = false }] }, default);
-                Check((await store.ReadExpiryScheduleAsync(default)).RequiresPass(DateTimeOffset.UtcNow),
-                    "A disabled published grant is due without waiting for its expiry date");
+                await File.WriteAllBytesAsync(expiryIndex, staleIndex);
+                reads = protection.StateReads;
+                Check((await reopened.ReadExpiryScheduleAsync(default)).PendingPublication && protection.StateReads == reads + 1,
+                    "An authenticated but stale index cannot hide the original pending publication");
+                await File.WriteAllTextAsync(expiryIndex, "damaged");
+                Check((await reopened.ReadExpiryScheduleAsync(default)).PendingPublication,
+                    "A damaged index falls back to the authoritative pending publication");
+                File.Delete(expiryIndex);
+                Check((await reopened.ReadExpiryScheduleAsync(default)).PendingPublication,
+                    "A missing index preserves expiry recovery for existing ledgers");
+                Directory.CreateDirectory(expiryIndex);
+                try
+                {
+                    await store.WriteAsync(saved with { Credentials = [saved.Credentials.Single() with { Enabled = false }] }, default);
+                    Check((await store.ReadExpiryScheduleAsync(default)).RequiresPass(DateTimeOffset.UtcNow),
+                        "An unavailable index cannot prevent committing or detecting a disabled published grant");
+                }
+                finally { Directory.Delete(expiryIndex); }
                 await store.WriteAsync(saved with { Credentials = [saved.Credentials.Single() with { ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1) }] }, default);
                 helper.Hash = ProxyServerPublicationService.Hash(SingBoxConfiguration.Render(published, false));
                 var recovery = ActivatorUtilities.CreateInstance<ProxyRecoveryHostedService>(services);
@@ -106,6 +125,29 @@ internal static class ProxyCoreSafetyChecks
         }
         Console.WriteLine($"Core Proxy safety ownership checks passed: {count}");
     }
+    private sealed class CountingProtection : IDataProtectionProvider
+    {
+        private readonly EphemeralDataProtectionProvider _inner = new();
+        internal int StateReads;
+
+        public IDataProtector CreateProtector(string purpose)
+        {
+            var protector = _inner.CreateProtector(purpose);
+            return purpose == "RelaxKonOS.ProxyServer.State.v1" ? new StateProtector(protector, this) : protector;
+        }
+
+        private sealed class StateProtector(IDataProtector inner, CountingProtection owner) : IDataProtector
+        {
+            public IDataProtector CreateProtector(string purpose) => inner.CreateProtector(purpose);
+            public byte[] Protect(byte[] plaintext) => inner.Protect(plaintext);
+            public byte[] Unprotect(byte[] protectedData)
+            {
+                Interlocked.Increment(ref owner.StateReads);
+                return inner.Unprotect(protectedData);
+            }
+        }
+    }
+
     private sealed class Downloads : IRuntimeDownloadProxyProvider
     { public Task<RelaxKonOS.Protocol.ManagedRuntimes.RuntimeDownloadProxy?> ResolveAsync(CancellationToken ct) => throw new Exception("Safety downloaded software"); }
     private sealed class SystemMode : IServerModeResolver
