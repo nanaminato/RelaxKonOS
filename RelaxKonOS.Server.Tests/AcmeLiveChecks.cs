@@ -3,7 +3,7 @@ internal static class AcmeLiveChecks
     private static readonly TimeSpan Budget = TimeSpan.FromSeconds(45);
     private const string Prefix = "http://+:5002/.well-known/acme-challenge/";
 
-    internal static async Task RunAsync(string root)
+    internal static async Task RunAsync(string root, bool crashWorker = false)
     {
         if (!OperatingSystem.IsLinux() || !Path.IsPathFullyQualified(root) || !Directory.Exists(root))
             throw new ArgumentException("Expected an isolated Linux ACME fixture directory.");
@@ -23,6 +23,11 @@ internal static class AcmeLiveChecks
             new CertificateRenewalAttemptRepository(environment, configuration, options), NullLogger<CertificateOperationStore>.Instance, leases);
         using var store = OpenStore();
         await store.StartAsync(default);
+        if (crashWorker)
+        {
+            await RunCrashWorkerAsync(store, options, metadata);
+            return;
+        }
         var certificateId = Guid.NewGuid();
         await using (var direct = new DirectHttp01ChallengeStore(Prefix))
         {
@@ -102,8 +107,66 @@ internal static class AcmeLiveChecks
         await reopened.StopAsync(default).WaitAsync(Budget);
         Console.WriteLine($"PASS ACME LIVE CANCEL: operation={operationId}; CA response drained and original receipt recovered");
 
+        Guid crashOperationId;
+        using (var worker = DockerProcessRecoveryChecks.StartWorker("--acme-live-crash-worker", root))
+        {
+            try
+            {
+                var observed = await worker.StandardOutput.ReadLineAsync().WaitAsync(Budget);
+                TestAssert.Assert(Guid.TryParse(observed, out crashOperationId) && !worker.HasExited
+                    && CertificateOperationStore.ReadPending(environment).SequenceEqual([crashOperationId]),
+                    $"The live CA challenge must precede the crash with an active original receipt: {observed}");
+                worker.Kill();
+                await worker.WaitForExitAsync().WaitAsync(Budget);
+                TestAssert.Assert(worker.ExitCode != 0, "The ACME worker must exit abnormally.");
+            }
+            finally { await DockerProcessRecoveryChecks.StopWorkerAsync(worker); }
+        }
+        using (var probe = new TcpListener(IPAddress.Any, 5002))
+        {
+            probe.Start();
+            probe.Stop();
+        }
+
+        using var crashRecovery = OpenStore();
+        await crashRecovery.StartAsync(default);
+        var recovered = await crashRecovery.GetAsync(crashOperationId, default);
+        var crashReplay = await crashRecovery.StartAsync("real-crash", Guid.NewGuid(), "issue", "fixture",
+            _ => throw new InvalidOperationException("The interrupted ACME order was replayed."), default, default);
+        TestAssert.Assert(recovered is { State: CertificateOperationState.Failed, Stage: "interrupted",
+                ProblemCode: "certificate.operation_interrupted" }
+            && JsonSerializer.Serialize(crashReplay) == JsonSerializer.Serialize(recovered)
+            && (await certificates.ListAsync(default)).Single().Id == certificateId
+            && leases.Active == 0 && CertificateOperationStore.ReadPending(environment).Count == 0,
+            "The replacement must persist the original interrupted receipt without replaying the ACME request.");
+        await crashRecovery.StopAsync(default).WaitAsync(Budget);
+        Console.WriteLine($"PASS ACME LIVE CRASH: operation={crashOperationId}; listener released, original interrupted receipt recovered");
+
         AnvilAcmeService CreateAcme(DirectHttp01ChallengeStore direct) =>
             new(new FileHttp01ChallengeStore(options), direct, options, metadata, NullLogger<AnvilAcmeService>.Instance);
+    }
+
+    private static async Task RunCrashWorkerAsync(CertificateOperationStore store, CertificateOptions options, CertificateMetadataRepository metadata)
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var direct = new DirectHttp01ChallengeStore(Prefix, async (context, stopping) =>
+        {
+            TestAssert.Assert(context.Request.HttpMethod == "GET", "Expected the real CA validation request.");
+            entered.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, stopping);
+        });
+        var acme = new AnvilAcmeService(new FileHttp01ChallengeStore(options), direct, options, metadata,
+            NullLogger<AnvilAcmeService>.Instance);
+        var id = Guid.NewGuid();
+        var operation = await store.StartAsync("real-crash", id, "issue", "fixture", async ct =>
+        {
+            _ = await acme.IssueAsync(id, ["crash.mb05.test"], CertificateChallengeType.DirectHttp01,
+                CertificateKeyAlgorithm.EcdsaP256, "acceptance@example.test", ct);
+            throw new InvalidOperationException("The crash barrier unexpectedly permitted issuance.");
+        }, default, default);
+        await entered.Task.WaitAsync(Budget);
+        Console.WriteLine(operation.OperationId);
+        await Task.Delay(Timeout.InfiniteTimeSpan);
     }
 
     private static async Task<CertificateOperationDto> TerminalAsync(CertificateOperationStore store, Guid operationId)

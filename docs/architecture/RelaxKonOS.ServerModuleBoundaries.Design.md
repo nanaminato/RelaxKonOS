@@ -1191,3 +1191,11 @@ Linux Release 验收通过，Helper 日志确认五次 UID 999 成功请求并�
 签发操作 `2871c43c-2d29-4543-bc3e-bada02becc84` 保存活动证书，部署链通过专属 CA 根与主机名校验。第二个订单的真实 HTTP-01 GET 到达后，夹具暂停响应。取消时工作租约和 Running 回执保留，直到实际响应任务结束才记录 Cancelled。复开台账后，同键返回原操作 `95543702-fb76-4d31-a964-cdd867c1ed6e` 的回执，未签发取消订单。Pebble 确认总计两个订单。共享服务和宿主信任库持续原状。
 
 Linux x64 Release 日志见 `.artifacts/mb05-acme-verified.log`，归档 SHA-256 为 `0a07730143f476e9e5de19cdec8d02abf046ebb166b602184996aa93026e3aab`。首轮两份二进制缺执行位，后续仅在专属解包目录修正后通过。整进程崩溃后的 CA 未知结果、实际 Nginx 绑定及网站发布联合矩阵仍开放。
+
+### MB-05 真实 CA 挑战中的操作进程崩溃
+
+同一私有网络中的 Pebble 发起第三个订单的真实 HTTP-01 请求。专属操作进程在等待响应时保留 Running 回执。父进程读取原持久台账确认该操作是唯一活动项，再强制终止工作进程并确认异常退出。HTTP-01 端口随后能重新绑定。新工作 owner 读取原台账，将原 operationId 持久化为 Failed / interrupted。相同幂等键返回同一回执，CA 日志要求恰有三个订单，恢复不提交新订单。
+
+本项故障发生在真实 HTTP-01 验证期间，仍需验证 CA 已签发但客户端丢失最终响应，以及生产 Nginx 绑定和网站发布联合恢复。
+
+最终 Linux x64 Release 回归通过。崩溃组原操作为 `65cf6873-5791-4866-bf8c-acfb1deaea3b`，原证书目录只有正常签发组证书。Pebble 最终记录该崩溃订单验证失败，未收到第四个订单。日志见 `.artifacts/mb05-acme-crash-final.log`，制品归档 SHA-256 为 `4994febeae9afca1a58c114466289a67a7a55a3ea13e80439c96459da6a9af3e`。

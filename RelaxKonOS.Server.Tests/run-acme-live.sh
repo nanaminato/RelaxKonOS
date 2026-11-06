@@ -46,4 +46,4 @@ curl --noproxy '*' --cacert "$fixture/https.pem" -fsS https://localhost:14000/di
 curl --noproxy '*' --cacert "$fixture/https.pem" -fsS https://localhost:15000/roots/0 > "$fixture/issuance-root.pem"
 unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
 SSL_CERT_FILE="$fixture/https.pem" dotnet "$assembly" --acme-live-only "$fixture"
-[ "$(grep -c 'Added order' "$fixture/ca.log")" -eq 2 ]
+[ "$(grep -c 'Added order' "$fixture/ca.log")" -eq 3 ]
