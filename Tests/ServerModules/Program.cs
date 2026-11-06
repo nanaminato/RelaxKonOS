@@ -37,19 +37,22 @@ if (args is ["--module-host-tree-worker", var treeMode])
     return;
 }
 
-if (args is ["--module-residency-checks"])
+if (args is ["--module-residency-checks"] or ["--module-background-work-checks"])
 {
     void VerifyResidency(bool passed, string message)
     {
         Console.WriteLine($"{(passed ? "PASS" : "FAIL")}: {message}");
         if (!passed) throw new InvalidOperationException(message);
     }
-    await GitRepositoryAssemblyChecks.RunAsync(VerifyResidency);
-    await GitAssemblyResidencyChecks.RunAsync(VerifyResidency);
-    await ModuleMemoryRetentionChecks.RunAsync(VerifyResidency);
-    await FirewallResidencyChecks.RunAsync(VerifyResidency);
-    await ModuleDependencyResidencyChecks.RunAsync(VerifyResidency);
-    await ModuleStreamingChecks.RunAsync(VerifyResidency);
+    if (args is ["--module-residency-checks"])
+    {
+        await GitRepositoryAssemblyChecks.RunAsync(VerifyResidency);
+        await GitAssemblyResidencyChecks.RunAsync(VerifyResidency);
+        await ModuleMemoryRetentionChecks.RunAsync(VerifyResidency);
+        await FirewallResidencyChecks.RunAsync(VerifyResidency);
+        await ModuleDependencyResidencyChecks.RunAsync(VerifyResidency);
+        await ModuleStreamingChecks.RunAsync(VerifyResidency);
+    }
     await ModuleBackgroundWorkChecks.RunAsync(VerifyResidency);
     return;
 }

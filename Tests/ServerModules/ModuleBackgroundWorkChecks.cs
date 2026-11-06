@@ -68,6 +68,25 @@ internal static class ModuleBackgroundWorkChecks
         }
         await using (var fixture = new Fixture())
         {
+            fixture.Runner.CleanupExitCode = 1;
+            var operation = await fixture.Proxy.StartAsync(owner, requestBody, "work-cleanup-unknown", default);
+            await fixture.Runner.BuildEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            fixture.Proxy.Cancel(owner, operation.Id);
+            await fixture.Runner.CleanupEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            check(fixture.Proxy.Get(owner, operation.Id)?.State == "running",
+                "Git build keeps its nonterminal receipt while cleanup is in progress");
+            fixture.Runner.Cleanup.TrySetResult();
+            await fixture.Idle();
+            var replay = await fixture.Proxy.StartAsync(owner, requestBody, "work-cleanup-unknown", default);
+            check(replay.Id == operation.Id && replay.State == "interrupted"
+                && replay.ProblemCode == "git-build.image-cleanup-unverified" && fixture.Runner.Builds == 1
+                && GitBuildLedger.InspectLedger(Path.GetDirectoryName(Path.GetDirectoryName(fixture.Ledger))!,
+                    new GitBuildOptions { RootDirectory = "builds" }).Single().RecoveryRequired
+                && await fixture.Coordinator.TrySleepAsync(ServerModules.GitId, default) == "module-release-blocked",
+                "unverified image cleanup persists the original receipt and blocks release without replaying the build");
+        }
+        await using (var fixture = new Fixture())
+        {
             fixture.Runner.Cleanup.TrySetResult();
             await fixture.Proxy.StartAsync(owner, requestBody, "work-host-stop", default);
             await fixture.Runner.BuildEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -191,7 +210,8 @@ internal static class ModuleBackgroundWorkChecks
         }
         public string ModuleId => ServerModules.GitId;
         public object Resolve(Type type) => Service;
-        public ValueTask<ModuleUnloadBlocker?> CanUnloadAsync(CancellationToken ct) => ValueTask.FromResult<ModuleUnloadBlocker?>(null);
+        public ValueTask<ModuleUnloadBlocker?> CanUnloadAsync(CancellationToken ct) =>
+            ValueTask.FromResult<ModuleUnloadBlocker?>(Service.RequiresRecovery ? new("module-recovery-blocked") : null);
         public ValueTask DisposeAsync() { Disposals++; Service.Dispose(); return ValueTask.CompletedTask; }
     }
     private sealed class Runner : IGitBuildCommandRunner
@@ -200,7 +220,7 @@ internal static class ModuleBackgroundWorkChecks
         internal readonly TaskCompletionSource Cleanup = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal readonly TaskCompletionSource BuildEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal readonly TaskCompletionSource CleanupEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        internal CancellationToken BuildToken; internal int Builds; internal int Cleanups;
+        internal CancellationToken BuildToken; internal int Builds; internal int Cleanups; internal int CleanupExitCode;
         public async Task<(int ExitCode, List<string> Lines)> RunAsync(string file, IReadOnlyList<string> args, IReadOnlyDictionary<string, string> environment,
             TimeSpan timeout, CancellationToken ct, Action<IReadOnlyList<string>>? onOutput = null)
         {
@@ -208,7 +228,8 @@ internal static class ModuleBackgroundWorkChecks
             if (args.Take(2).SequenceEqual(["buildx", "build"]))
             { Builds++; BuildToken = ct; BuildEntered.TrySetResult(); await Build.Task.WaitAsync(ct); return (0, []); }
             if (args.Take(2).SequenceEqual(["image", "rm"]))
-            { Cleanups++; CleanupEntered.TrySetResult(); await Cleanup.Task; return (0, []); }
+            { Cleanups++; CleanupEntered.TrySetResult(); await Cleanup.Task; return (CleanupExitCode, []); }
+            if (args.Take(2).SequenceEqual(["image", "ls"])) return (CleanupExitCode, []);
             if (args.Take(2).SequenceEqual(["image", "inspect"])) return (0, ["sha256:" + new string('b', 64)]);
             if (args.Take(2).SequenceEqual(["buildx", "inspect"])) return (0, ["Driver: remote", "docker-container://test-container"]);
             if (args.Contains("{{.Config.User}}")) return (0, ["1000"]);

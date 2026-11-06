@@ -341,3 +341,7 @@ MB-01～08 的实际状态、剩余阻塞和整项门槛统一由[模块边界�
 [当前基线报告](RelaxKonOS.ServerModuleBaseline.20261105.md)与[测量方案](RelaxKonOS.ServerModuleBaseline.Protocol.md)拥有本次固定产品源码、跨平台原始指标/缺失和复现方法；[资源清单](RelaxKonOS.ServerModuleResources.Inventory.md)拥有逐模块根引用及恢复权威。完整宿主启动/闲时与局部Git/Terminal真实生产服务夹具分开验收，不替换§7历史记录，也不以对象/代码回收解释生产内存收益。Linux静态全关因Proxy责任不可验证被拒绝，原门禁保留。
 
 RES-01/03及MB-01整项仍开放：完整宿主真实授权业务、Firewall Helper只读、原300秒自然释放/再唤醒、TerminalHub重连、启动峰值和外部共享树成本未补齐。当前策略、300秒宽限期及SystemPerformance S1冻结不变；下一阶段与验收门槛以边界设计§42及本批报告为准。
+
+## 17. Git 构建清理责任（2026-11-06）
+
+Git 失败或取消后的镜像清理与终态写入均属于原代次工作租约。清理不可确认时保留原持久回执与恢复门禁。真实 Engine 标签删除验证、专用 BuildKit 就绪缺口及 MB-05 实机故障范围见[边界设计 §43](RelaxKonOS.ServerModuleBoundaries.Design.md#43-mb-03-构建清理责任与测试机预检2026-11-06)。生产内存和完整外部故障矩阵继续开放。

@@ -197,7 +197,11 @@ public sealed class GitBuildService : IGitBuildService, IDisposable
             }
             finally
             {
-                if (RequiresRecovery) workLease.RequireRecovery();
+                // A durable recovery receipt must remain readable through the current generation.
+                lock (gate)
+                {
+                    if (unavailable) workLease.RequireRecovery();
+                }
                 workLease.Dispose();
             }
         }, CancellationToken.None);
@@ -219,7 +223,10 @@ public sealed class GitBuildService : IGitBuildService, IDisposable
     private async Task ExecuteAsync(Guid owner, GitBuildRequest request, Guid id, CancellationToken hostStopping)
     {
         var image = $"relaxkonos-git:build-{id:N}";
-        var succeeded = false;
+        var state = "failed";
+        var buildDispatched = false;
+        string? problemCode = null;
+        string? imageId = null;
         try
         {
             Update(id, operation => operation with { State = "running" });
@@ -240,37 +247,65 @@ public sealed class GitBuildService : IGitBuildService, IDisposable
                 env["GIT_AUTH_TOKEN"] = token;
             }
             args.Add(uri);
+            buildDispatched = true;
             var output = await RunAsync("docker", args, env, TimeSpan.FromMinutes(Math.Clamp(options.TimeoutMinutes, 1, 120)), ct,
                 batch => Append(id, batch, token));
             if (output.ExitCode != 0) throw new GitBuildProblem("git-build.build-failed");
             var inspect = await RunAsync("docker", ["image", "inspect", "--format", "{{.Id}}", image], new Dictionary<string, string>(), TimeSpan.FromSeconds(20), ct);
-            var imageId = inspect.Lines.FirstOrDefault()?.Trim();
+            imageId = inspect.Lines.FirstOrDefault()?.Trim();
             if (inspect.ExitCode != 0 || imageId is null || !Regex.IsMatch(imageId, "^sha256:[a-f0-9]{64}$"))
                 throw new GitBuildProblem("git-build.image-unavailable");
-            Update(id, operation => operation with { State = "succeeded", ImageReference = image, ImageId = imageId, FinishedAt = DateTimeOffset.UtcNow });
-            succeeded = true;
+            state = "succeeded";
         }
         catch (OperationCanceledException)
         {
             var cancelled = active.TryGetValue(id, out var source) && source.IsCancellationRequested;
-            Update(id, operation => operation with { State = hostStopping.IsCancellationRequested ? "interrupted" : cancelled ? "cancelled" : "failed",
-                ProblemCode = hostStopping.IsCancellationRequested ? "git-build.interrupted" : cancelled ? "git-build.cancelled" : "git-build.timeout", FinishedAt = DateTimeOffset.UtcNow });
+            state = hostStopping.IsCancellationRequested ? "interrupted" : cancelled ? "cancelled" : "failed";
+            problemCode = "git-build." + (state == "failed" ? "timeout" : state);
         }
         catch (GitBuildProblem error)
         {
-            Update(id, operation => operation with { State = "failed", ProblemCode = error.Code, FinishedAt = DateTimeOffset.UtcNow });
+            problemCode = error.Code;
         }
         catch (Exception)
         {
-            Update(id, operation => operation with { State = "failed", ProblemCode = "git-build.execution-failed", FinishedAt = DateTimeOffset.UtcNow });
+            problemCode = "git-build.execution-failed";
+        }
+        try
+        {
+            if (buildDispatched && state != "succeeded" && problemCode != "git-build.process-cleanup-failed")
+            {
+                try
+                {
+                    var removed = await RunAsync("docker", ["image", "rm", image], new Dictionary<string, string>(),
+                        TimeSpan.FromSeconds(15), CancellationToken.None);
+                    if (removed.ExitCode != 0)
+                    {
+                        var remaining = await RunAsync("docker", ["image", "ls", "--quiet", "--filter", $"reference={image}"],
+                            new Dictionary<string, string>(), TimeSpan.FromSeconds(15), CancellationToken.None);
+                        if (remaining.ExitCode != 0 || remaining.Lines.Count != 0)
+                            throw new GitBuildProblem("git-build.image-cleanup-unverified");
+                    }
+                }
+                catch (Exception error)
+                {
+                    lock (gate) recoveryRequired = true;
+                    state = "interrupted";
+                    problemCode = error is GitBuildProblem { Code: "git-build.process-cleanup-failed" }
+                        ? "git-build.process-cleanup-failed" : "git-build.image-cleanup-unverified";
+                }
+            }
+            Update(id, operation => operation with
+            {
+                State = state,
+                ProblemCode = problemCode,
+                ImageReference = state == "succeeded" ? image : null,
+                ImageId = state == "succeeded" ? imageId : null,
+                FinishedAt = DateTimeOffset.UtcNow
+            });
         }
         finally
         {
-            if (!succeeded)
-            {
-                try { await RunAsync("docker", ["image", "rm", image], new Dictionary<string, string>(), TimeSpan.FromSeconds(15), CancellationToken.None); }
-                catch (Exception) { /* Only this operation's unique tag may be removed. */ }
-            }
             lock (gate) { if (active.Remove(id, out var source)) source.Dispose(); }
         }
     }
