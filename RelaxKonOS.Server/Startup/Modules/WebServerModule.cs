@@ -24,6 +24,7 @@ internal sealed class WebServerModule : IServerModule, IServerModuleDeactivation
 
     public void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
     {
+        builder.Services.AddHostedService(services => services.GetRequiredService<RelaxKonOS.Server.WebServer.WebServerOperationStore>());
         builder.Services.AddSingleton<WebsitePublicationStore>();
         builder.Services.AddSingleton<WebsitePublicationCoordinator>();
         builder.Services.AddHostedService(services => services.GetRequiredService<WebsitePublicationCoordinator>());
@@ -43,6 +44,7 @@ internal sealed class WebServerModule : IServerModule, IServerModuleDeactivation
         IServiceProvider services, ServerModuleContext context, CancellationToken cancellationToken)
     {
         IReadOnlyList<RelaxKonOS.Protocol.WebsitePublishing.WebsitePublicationOperationDto> pending;
+        IReadOnlyList<RelaxKonOS.Protocol.WebServers.WebServerOperationDto> operations;
         if (services.GetService<RelaxKonOS.Server.Residency.ModuleResidencyCoordinator>()?.HasBackgroundWork(Id) == true)
             return ValueTask.FromResult<IReadOnlyList<ServerModuleOrphanedWork>>([new(Id, "Website publication execution or cleanup remains owned in this process.")]);
         try
@@ -50,6 +52,7 @@ internal sealed class WebServerModule : IServerModule, IServerModuleDeactivation
             // The module's own registration is absent while it is disabled, so the ledger is opened
             // directly at the same path the coordinator uses.
             pending = new WebsitePublicationStore(context.Environment).Pending();
+            operations = RelaxKonOS.Server.WebServer.WebServerOperationStore.ReadPending(context.Environment);
         }
         catch (Exception exception)
         {
@@ -64,6 +67,8 @@ internal sealed class WebServerModule : IServerModule, IServerModuleDeactivation
             pending.Select(operation => new ServerModuleOrphanedWork(Id,
                 $"website publication {operation.OperationId} for domain \"{operation.Domain}\" is still {operation.State} "
                 + $"({operation.Stage})."))
+                .Concat(operations.Select(operation => new ServerModuleOrphanedWork(Id,
+                    $"Web server operation {operation.OperationId} for instance {operation.InstanceId} is still {operation.State}.")))
                 .ToArray());
     }
 

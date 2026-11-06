@@ -261,7 +261,7 @@ internal static async Task VerifyOperationIdempotencyAsync(string root)
     TestAssert.Assert(first.OperationId == duplicate.OperationId, "Certificate idempotency key created duplicate work.");
     TestAssert.Assert((await TestOperations.WaitForCertificateOperationAsync(certificateOperations, first.OperationId)).State == CertificateOperationState.Succeeded, "Certificate operation did not complete.");
 
-    var webOperations = new WebServerOperationStore(environment, journal, Microsoft.Extensions.Logging.Abstractions.NullLogger<WebServerOperationStore>.Instance);
+    var webOperations = new WebServerOperationStore(environment, journal, Microsoft.Extensions.Logging.Abstractions.NullLogger<WebServerOperationStore>.Instance, new TestResidentBackgroundLeases());
     var webFirst = await webOperations.StartAsync("same-key", "nginx-test", "reload", "test", _ => Task.FromResult(WebServerOperationResult.Success), CancellationToken.None);
     var webDuplicate = await webOperations.StartAsync("same-key", "nginx-test", "reload", "test", _ => Task.FromResult(new WebServerOperationResult("webserver.should_not_run")), CancellationToken.None);
     TestAssert.Assert(webFirst.OperationId == webDuplicate.OperationId, "WebServer idempotency key created duplicate work.");
@@ -272,6 +272,45 @@ internal static async Task VerifyOperationIdempotencyAsync(string root)
     TestAssert.Assert(await webOperations.FindRequestAsync("different-key", "nginx-test", "reload", "test", CancellationToken.None) is null,
         "Web-server request recovery matched a different key.");
     TestAssert.Assert((await TestOperations.WaitForWebOperationAsync(webOperations, webFirst.OperationId)).State == WebServerOperationState.Succeeded, "WebServer operation did not complete.");
+}
+
+internal static async Task VerifyOperationCancellationDrainAsync(string root)
+{
+    Directory.CreateDirectory(root);
+    var environment = new TestHostEnvironment(root);
+    var configuration = new ConfigurationBuilder()
+        .AddInMemoryCollection(new Dictionary<string, string?> { ["Storage:Provider"] = "memory" }).Build();
+    var leases = new TestResidentBackgroundLeases();
+    using var store = new WebServerOperationStore(environment, new HostOperationJournal(environment, configuration),
+        NullLogger<WebServerOperationStore>.Instance, leases);
+    var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var released = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var budget = TimeSpan.FromSeconds(10);
+    var receipt = await store.StartAsync("drain", "nginx", "reload", "test", async ct =>
+    {
+        using var notification = ct.Register(() => cancelled.TrySetResult());
+        entered.TrySetResult();
+        await released.Task;
+        return WebServerOperationResult.Success;
+    }, default);
+    try
+    {
+        await entered.Task.WaitAsync(budget);
+        var result = await store.CancelAsync(receipt.OperationId, default);
+        await cancelled.Task.WaitAsync(budget);
+        TestAssert.Assert(result?.State == WebServerOperationState.Running
+            && Volatile.Read(ref leases.Active) == 1
+            && WebServerOperationStore.ReadPending(environment).Single().OperationId == receipt.OperationId,
+            "Cancellation must leave the original active receipt and lease until the action drains.");
+    }
+    finally { released.TrySetResult(); }
+    var completed = await TestOperations.WaitForWebOperationAsync(store, receipt.OperationId);
+    await store.StopAsync(default).WaitAsync(budget);
+    TestAssert.Assert(completed.State == WebServerOperationState.Cancelled && leases.Active == 0
+        && WebServerOperationStore.ReadPending(environment).Count == 0,
+        "Actual action completion must precede a durable Cancelled receipt and lease release.");
+    Console.WriteLine("Web-server operation cancellation drain checks passed.");
 }
 
 internal static async Task VerifyWebServerProviderRoutingAsync()

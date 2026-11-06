@@ -105,6 +105,7 @@ if (args.Contains("--module-boundary-milestones-only"))
         var tls = Path.Combine(milestoneRoot, "tls-regression"); Directory.CreateDirectory(tls);
         await DockerChecks.VerifyStackOperationsAsync(docker);
         await DockerProcessRecoveryChecks.RunAsync();
+        await WebServerChecks.VerifyOperationCancellationDrainAsync(Path.Combine(milestoneRoot, "webserver-drain"));
         await CertificateChecks.VerifyCertificateStoreAndSniAsync(tls);
         var replay = Path.Combine(milestoneRoot, "certificate-replay"); Directory.CreateDirectory(replay);
         var binding = Path.Combine(milestoneRoot, "certificate-binding"); Directory.CreateDirectory(binding);

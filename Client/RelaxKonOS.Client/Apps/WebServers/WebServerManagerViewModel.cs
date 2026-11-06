@@ -605,7 +605,10 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         try
         {
             if (_currentOperationId is { } operationId)
+            {
                 await _client.CancelOperationAsync(operationId);
+                return;
+            }
             await _operationCts.CancelAsync();
         }
         catch (Exception) { /* cancellation is best-effort; the poll loop observes the token */ }

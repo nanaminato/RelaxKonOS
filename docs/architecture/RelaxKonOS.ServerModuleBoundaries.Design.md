@@ -1019,3 +1019,9 @@ Linux x64 Release 在既有测试机的专属项目 `ad04live4722012f` 通过。
 恢复进程读取原台账，将操作 `94c83391-b03f-4dad-870f-3a627f5a0705` 持久化为 Failed / interrupted / webserver.operation_interrupted。同键重试与重新打开台账均返回同一回执，原 Nginx 继续提供新内容，重载事件仍为一次。专属实例正常退出，临时目录清理完毕。制品 SHA-256 为 `1a83a7e8f646edbab6bb568bf763c2b2dc2f6ef82646d84ef1cf8b6c3df7ba42`，日志见 `.artifacts/mb05-nginx-final.log`。首轮日志事件计数断言失败，修正后复测通过。
 
 本项覆盖生产 WebServer 操作台账和真实 Nginx 动作，重载命令由专属夹具调用。完整 Nginx provider、网站发布、TLS/ACME 及 HTTP 响应排空仍待联合验收。共享 Nginx 持续运行。
+
+### MB-05 直接 WebServer 操作取消与排空
+
+直接 Nginx 操作沿用原 WebServer 操作台账，并在写入 Queued 前取得 WebServer 常驻工作租约。取消请求返回当前回执并发出取消信号，实际动作结束后才写入 Cancelled。桌面端继续轮询已提交的操作。停机等待实际后台工作，停机取消保留原活动回执供启动恢复；终态保存或 CLI 清理无法确认时，工作 owner 保留故障责任。停用检查同时读取直接操作和网站发布的未终结台账。Linux 本地 Nginx 命令取消后等待 CLI 退出及输出排空。
+
+Windows Release 聚合回归通过。新增受控取消测试确认实际动作仍在运行时，原回执保持 Running，租约仍在，台账仍列为未终结；放行动作后才持久化 Cancelled 并释放租约。证据见 `.artifacts/mb05-web-drain.log`。实际 provider 取消、真实 CLI 清理无法核实的故障路径及网站发布联合验收继续开放。

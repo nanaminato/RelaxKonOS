@@ -115,7 +115,7 @@ internal static class NginxProcessRecoveryChecks
         var environment = new TestHostEnvironment(root);
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["Storage:Provider"] = "memory" }).Build();
-        return new(environment, new HostOperationJournal(environment, configuration), NullLogger<WebServerOperationStore>.Instance);
+        return new(environment, new HostOperationJournal(environment, configuration), NullLogger<WebServerOperationStore>.Instance, new TestResidentBackgroundLeases());
     }
 
     private static Process StartNginx(string executable, string root, params string[] extra)

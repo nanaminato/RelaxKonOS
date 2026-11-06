@@ -163,11 +163,22 @@ internal sealed partial class NginxWebServerManager
         try
         {
             logger.LogDebug("Running Nginx command. Executable={Executable}, Arguments={Arguments}", executable, string.Join(' ', arguments));
-            process.Start();
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!process.Start()) return new(false, "");
             var output = process.StandardOutput.ReadToEndAsync();
             var error = process.StandardError.ReadToEndAsync();
-            using var registration = cancellationToken.Register(() => { try { if (!process.HasExited) process.Kill(true); } catch { } });
-            await process.WaitForExitAsync(cancellationToken);
+            var completion = Task.WhenAll(process.WaitForExitAsync(), output, error);
+            try { await completion.WaitAsync(cancellationToken); }
+            catch (OperationCanceledException)
+            {
+                try
+                {
+                    if (!process.HasExited) process.Kill(entireProcessTree: true);
+                    await completion.WaitAsync(TimeSpan.FromSeconds(10));
+                }
+                catch (Exception cleanup) { throw new NginxProcessCleanupException(cleanup); }
+                throw;
+            }
             var text = (await output) + (await error);
             if (process.ExitCode == 0)
                 logger.LogDebug("Nginx command completed. Executable={Executable}, Arguments={Arguments}", executable, string.Join(' ', arguments));
@@ -175,8 +186,7 @@ internal sealed partial class NginxWebServerManager
                 logger.LogWarning("Nginx command failed. Executable={Executable}, Arguments={Arguments}, ExitCode={ExitCode}, Output={Output}", executable, string.Join(' ', arguments), process.ExitCode, CommandOutputForLog(text));
             return new CommandResult(process.ExitCode == 0, text);
         }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception exception)
+        catch (Exception exception) when (exception is not (OperationCanceledException or NginxProcessCleanupException))
         {
             logger.LogWarning(exception, "Unable to start Nginx command. Executable={Executable}", executable);
             return new CommandResult(false, "");
@@ -230,3 +240,6 @@ internal sealed partial class NginxWebServerManager
 
     private sealed record CommandResult(bool Success, string Output);
 }
+
+internal sealed class NginxProcessCleanupException(Exception inner)
+    : InvalidOperationException("Nginx command cleanup could not be confirmed.", inner);

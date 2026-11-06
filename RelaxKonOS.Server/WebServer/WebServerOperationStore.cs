@@ -4,6 +4,8 @@ using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using RelaxKonOS.Protocol.WebServers;
 using RelaxKonOS.Server.Certificate;
+using RelaxKonOS.Server.Residency;
+using RelaxKonOS.Server.Startup;
 
 namespace RelaxKonOS.Server.WebServer;
 
@@ -20,7 +22,7 @@ internal interface IWebServerOperationProgress
 
 /// <summary>Durable idempotency ledger for host-global web-server changes.
 /// It contains only operation metadata and stable problem codes, never config content or command output.</summary>
-internal sealed class WebServerOperationStore
+internal sealed class WebServerOperationStore : IHostedService, IDisposable
 {
     private readonly string _path;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -29,17 +31,23 @@ internal sealed class WebServerOperationStore
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _cancellations = new();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _instanceGates = new(StringComparer.Ordinal);
     private readonly HostOperationJournal _journal;
+    private readonly ResidentBackgroundWorkOwner _workOwner;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) } };
 
     private readonly ILogger<WebServerOperationStore> _logger;
 
-    public WebServerOperationStore(IHostEnvironment environment, HostOperationJournal journal, ILogger<WebServerOperationStore> logger)
+    public WebServerOperationStore(IHostEnvironment environment, HostOperationJournal journal, ILogger<WebServerOperationStore> logger, IResidentModuleWorkLeaseSource leases)
     {
-        _path = Path.Combine(environment.ContentRootPath, "data", "webserver-operations.json");
+        _path = LedgerPath(environment);
         _journal = journal;
         _logger = logger;
+        _workOwner = new(leases, ServerModules.WebServerId);
         LoadAndRecover();
     }
+
+    public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task StopAsync(CancellationToken cancellationToken) => _workOwner.StopAsync(cancellationToken);
+    public void Dispose() => _workOwner.Dispose();
 
     public async Task<WebServerOperationDto> StartAsync(string idempotencyKey, string instanceId, string kind, string? actor,
         Func<CancellationToken, Task<WebServerOperationResult>> action, CancellationToken applicationStopping)
@@ -49,24 +57,27 @@ internal sealed class WebServerOperationStore
         Func<IWebServerOperationProgress, CancellationToken, Task<WebServerOperationResult>> action, CancellationToken applicationStopping)
     {
         var key = $"{kind}:{instanceId}:{idempotencyKey}";
-        PersistedOperation operation;
+        using var work = await _workOwner.AdmitAsync(applicationStopping);
         await _gate.WaitAsync(applicationStopping);
         try
         {
             if (_byIdempotency.TryGetValue(key, out var existingId))
                 return _operations[existingId].ToDto();
 
-            operation = new PersistedOperation(Guid.NewGuid(), key, instanceId, kind, actor, WebServerOperationState.Queued,
+            work.Token.ThrowIfCancellationRequested();
+            var operation = new PersistedOperation(Guid.NewGuid(), key, instanceId, kind, actor, WebServerOperationState.Queued,
                 "queued", "", null, null, null);
             _operations.Add(operation.OperationId, operation);
             _byIdempotency.Add(key, operation.OperationId);
-            await SaveAsync(applicationStopping);
+            try { await SaveAsync(CancellationToken.None); }
+            catch (Exception error) { work.Fail(error); throw; }
+            var cancellation = new CancellationTokenSource();
+            _cancellations[operation.OperationId] = cancellation;
+            work.Run(stopping => RunAsync(operation.OperationId, instanceId, action, applicationStopping, stopping, cancellation));
             _logger.LogInformation("Web-server operation queued. OperationId={OperationId}, Kind={Kind}, InstanceId={InstanceId}, Actor={Actor}", operation.OperationId, kind, instanceId, actor ?? "<anonymous>");
+            return operation.ToDto();
         }
         finally { _gate.Release(); }
-
-        _ = RunAsync(operation.OperationId, operation.InstanceId, action, applicationStopping);
-        return operation.ToDto();
     }
 
     public async Task<WebServerOperationDto?> FindRequestAsync(string idempotencyKey, string instanceId, string kind,
@@ -95,48 +106,51 @@ internal sealed class WebServerOperationStore
         try
         {
             if (!_operations.TryGetValue(operationId, out var operation)) return null;
-            if (operation.State is WebServerOperationState.Succeeded or WebServerOperationState.Failed or WebServerOperationState.Cancelled)
-                return operation.ToDto();
-            _cancellations.TryGetValue(operationId, out var source);
-            source?.Cancel();
-            operation = operation with { State = WebServerOperationState.Cancelled, Stage = "cancelled", ProblemCode = "webserver.operation_cancelled", CompletedAt = DateTimeOffset.UtcNow };
-            _operations[operationId] = operation;
-            await SaveAsync(cancellationToken);
+            if (_cancellations.TryGetValue(operationId, out var source))
+                _ = source.CancelAsync();
             return operation.ToDto();
         }
         finally { _gate.Release(); }
     }
 
-    private async Task RunAsync(Guid operationId, string instanceId, Func<IWebServerOperationProgress, CancellationToken, Task<WebServerOperationResult>> action, CancellationToken applicationStopping)
+    private async Task RunAsync(Guid operationId, string instanceId, Func<IWebServerOperationProgress, CancellationToken, Task<WebServerOperationResult>> action,
+        CancellationToken applicationStopping, CancellationToken workStopping, CancellationTokenSource cancellation)
     {
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(applicationStopping);
-        _cancellations[operationId] = linked;
         try
         {
-            if (!await SetRunningAsync(operationId, applicationStopping)) return;
-            var instanceGate = _instanceGates.GetOrAdd(instanceId, static _ => new SemaphoreSlim(1, 1));
-            await instanceGate.WaitAsync(linked.Token);
-            WebServerOperationResult result;
-            try { result = await action(new OperationProgress(this, operationId), linked.Token); }
-            finally { instanceGate.Release(); }
-            if (string.IsNullOrEmpty(result.ProblemCode))
-                _logger.LogInformation("Web-server operation completed successfully. OperationId={OperationId}, InstanceId={InstanceId}", operationId, instanceId);
-            else
-                _logger.LogWarning("Web-server operation completed with a failure. OperationId={OperationId}, InstanceId={InstanceId}, Problem={Problem}, SnapshotId={SnapshotId}", operationId, instanceId, result.ProblemCode, result.SnapshotId);
-            await CompleteAsync(operationId, linked.IsCancellationRequested ? WebServerOperationState.Cancelled : string.IsNullOrEmpty(result.ProblemCode) ? WebServerOperationState.Succeeded : WebServerOperationState.Failed,
-                linked.IsCancellationRequested ? "webserver.operation_cancelled" : result.ProblemCode, result.SnapshotId, applicationStopping);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(applicationStopping, workStopping, cancellation.Token);
+            var state = WebServerOperationState.Failed;
+            var result = new WebServerOperationResult("webserver.operation_failed");
+            if (!linked.IsCancellationRequested && !await SetRunningAsync(operationId, CancellationToken.None)) return;
+            try
+            {
+                linked.Token.ThrowIfCancellationRequested();
+                var instanceGate = _instanceGates.GetOrAdd(instanceId, static _ => new SemaphoreSlim(1, 1));
+                await instanceGate.WaitAsync(linked.Token);
+                try { result = await action(new OperationProgress(this, operationId), linked.Token); }
+                finally { instanceGate.Release(); }
+                state = string.IsNullOrEmpty(result.ProblemCode) ? WebServerOperationState.Succeeded : WebServerOperationState.Failed;
+            }
+            catch (OperationCanceledException) when (linked.IsCancellationRequested) { }
+            catch (Exception exception) when (exception is not NginxProcessCleanupException)
+            {
+                _logger.LogError(exception, "Web-server operation failed unexpectedly. OperationId={OperationId}, InstanceId={InstanceId}", operationId, instanceId);
+            }
+            if (linked.IsCancellationRequested)
+            {
+                // Shutdown leaves the original active receipt for startup reconciliation.
+                if (applicationStopping.IsCancellationRequested || workStopping.IsCancellationRequested) return;
+                state = WebServerOperationState.Cancelled;
+                result = new("webserver.operation_cancelled", result.SnapshotId);
+            }
+            await CompleteAsync(operationId, state, result.ProblemCode, result.SnapshotId, CancellationToken.None);
         }
-        catch (OperationCanceledException)
+        finally
         {
-            _logger.LogWarning("Web-server operation was cancelled. OperationId={OperationId}, InstanceId={InstanceId}", operationId, instanceId);
-            await CompleteAsync(operationId, WebServerOperationState.Cancelled, "webserver.operation_cancelled", null, CancellationToken.None);
+            await _gate.WaitAsync();
+            try { _cancellations.TryRemove(operationId, out _); cancellation.Dispose(); }
+            finally { _gate.Release(); }
         }
-        catch (Exception exception)
-        {
-            _logger.LogError(exception, "Web-server operation failed unexpectedly. OperationId={OperationId}, InstanceId={InstanceId}", operationId, instanceId);
-            await CompleteAsync(operationId, WebServerOperationState.Failed, "webserver.operation_failed", null, CancellationToken.None);
-        }
-        finally { _cancellations.TryRemove(operationId, out _); }
     }
 
     private async Task<bool> SetRunningAsync(Guid id, CancellationToken ct)
@@ -180,6 +194,19 @@ internal sealed class WebServerOperationStore
             await SaveAsync(ct);
         }
         finally { _gate.Release(); }
+    }
+
+    private static string LedgerPath(IHostEnvironment environment) =>
+        Path.Combine(environment.ContentRootPath, "data", "webserver-operations.json");
+
+    internal static IReadOnlyList<WebServerOperationDto> ReadPending(IHostEnvironment environment)
+    {
+        var path = LedgerPath(environment);
+        if (!File.Exists(path)) return [];
+        var operations = JsonSerializer.Deserialize<PersistedOperation[]>(File.ReadAllText(path), Json)
+            ?? throw new InvalidDataException("The web-server ledger is empty.");
+        return operations.Where(operation => operation.State is WebServerOperationState.Queued or WebServerOperationState.Running)
+            .Select(operation => operation.ToDto()).ToArray();
     }
 
     private void LoadAndRecover()
