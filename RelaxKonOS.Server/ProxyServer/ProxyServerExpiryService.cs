@@ -9,6 +9,7 @@ public interface IProxyServerExpiryExecutor
 /// <summary>Retains scheduling authority without retaining an inbound management instance.</summary>
 public sealed class ProxyServerExpiryService(
     IServiceScopeFactory scopes,
+    ProxyServerStore store,
     ILogger<ProxyServerExpiryService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -31,8 +32,10 @@ public sealed class ProxyServerExpiryService(
     }
 
     // Keep scope/implementation locals off the long-lived timer state machine.
-    private async Task ReconcileAsync(CancellationToken ct)
+    internal async Task ReconcileAsync(CancellationToken ct)
     {
+        var schedule = await store.ReadExpiryScheduleAsync(ct);
+        if (!schedule.RequiresPass(DateTimeOffset.UtcNow)) return;
         await using var scope = scopes.CreateAsyncScope();
         await scope.ServiceProvider.GetRequiredService<IProxyServerExpiryExecutor>().ReconcileExpiryAsync(ct);
     }

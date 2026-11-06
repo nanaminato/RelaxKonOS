@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.AspNetCore.Builder;
 using RelaxKonOS.Protocol.ProxyServer;
 using RelaxKonOS.Server.ProxyServer;
@@ -33,6 +34,13 @@ internal static class ProxyCoreSafetyChecks
             builder.Services.AddSingleton<IProxyEngineRegistry>(_ => throw new Exception("Safety constructed management engines"));
             builder.Services.AddSingleton<ProxyServerService>(_ => throw new Exception("Expiry constructed the inbound management facade"));
             builder.Services.AddSingleton<MihomoSettingsService>(_ => throw new Exception("Safety constructed the settings writer"));
+            var expiryActivations = 0;
+            builder.Services.RemoveAll<IProxyServerExpiryExecutor>();
+            builder.Services.AddTransient<IProxyServerExpiryExecutor>(services =>
+            {
+                Interlocked.Increment(ref expiryActivations);
+                return ActivatorUtilities.CreateInstance<ProxyServerPublicationService>(services);
+            });
             await using var services = builder.Services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
             try
             {
@@ -48,8 +56,23 @@ internal static class ProxyCoreSafetyChecks
                     "proxy.example.com", 24443, "proxy.example.com", HandshakeHost: "www.example.com");
                 var published = new ProxyServerMaterial(new(1, [inbound]), [new(id, [inboundId], secret)],
                     [new(inboundId, new string('a', 43), new string('a', 43), "0123456789abcdef")]);
-                await store.WriteAsync(ProxyServerState.Empty with { Published = published,
-                    Credentials = [new(id, Guid.NewGuid(), "expired", [inboundId], secret, true, DateTimeOffset.UtcNow.AddMinutes(-1))] }, default);
+                var future = DateTimeOffset.UtcNow.AddHours(1);
+                var saved = ProxyServerState.Empty with { Published = published,
+                    Credentials = [new(id, Guid.NewGuid(), "expiring", [inboundId], secret, true, future)] };
+                await store.WriteAsync(saved, default);
+                var schedule = await store.ReadExpiryScheduleAsync(default);
+                Check(!schedule.RequiresPass(future.AddTicks(-1)) && schedule.RequiresPass(future),
+                    "Expiry schedule is derived from the persisted grant and uses its exact expiry boundary");
+                using (var idle = ActivatorUtilities.CreateInstance<ProxyServerExpiryService>(services))
+                    await idle.ReconcileAsync(default);
+                Check(expiryActivations == 0, "An idle expiry scan does not construct the publication executor");
+                await store.WriteAsync(saved with { PendingPublication = published }, default);
+                Check((await store.ReadExpiryScheduleAsync(default)).PendingPublication,
+                    "Persisted pending publication remains due even before credential expiry");
+                await store.WriteAsync(saved with { Credentials = [saved.Credentials.Single() with { Enabled = false }] }, default);
+                Check((await store.ReadExpiryScheduleAsync(default)).RequiresPass(DateTimeOffset.UtcNow),
+                    "A disabled published grant is due without waiting for its expiry date");
+                await store.WriteAsync(saved with { Credentials = [saved.Credentials.Single() with { ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1) }] }, default);
                 helper.Hash = ProxyServerPublicationService.Hash(SingBoxConfiguration.Render(published, false));
                 var recovery = ActivatorUtilities.CreateInstance<ProxyRecoveryHostedService>(services);
                 var guard = ActivatorUtilities.CreateInstance<SystemProxyGuardHostedService>(services);

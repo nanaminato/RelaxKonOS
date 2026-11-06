@@ -38,8 +38,9 @@ public sealed class ProxyServerPublicationService(ProxyServerStore store,
     {
         if (state.Published is null) return null;
         var now = DateTimeOffset.UtcNow;
-        var live = state.Published.Credentials.Where(s => state.Credentials.Any(c => c.Id == s.Id && c.Enabled && c.Value == s.Value
-            && (c.ExpiresAt is null || c.ExpiresAt > now))).ToArray();
+        var live = state.Published.Credentials.Where(grant =>
+            ProxyServerStore.FindEnabledCredential(state, grant) is { } credential
+            && (credential.ExpiresAt is null || credential.ExpiresAt > now)).ToArray();
         if (live.Length == state.Published.Credentials.Count) return null;
         // Expiry must never publish unrelated, saved-but-unpublished inbound edits or newly created credentials.
         return await PublishAsync(state, state.Published with { Credentials = live }, ct);

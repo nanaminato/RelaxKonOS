@@ -34,6 +34,11 @@ public sealed record ProxyServerState(
     public static ProxyServerState Empty => new(new(0, []), [], [], [], null, null, [], new(StringComparer.Ordinal));
 }
 
+internal readonly record struct ProxyServerExpirySchedule(bool PendingPublication, DateTimeOffset? DueAt)
+{
+    internal bool RequiresPass(DateTimeOffset now) => PendingPublication || DueAt <= now;
+}
+
 public sealed class ProxyServerStore(IProxyPlatformPaths paths, IDataProtectionProvider protection)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -47,10 +52,37 @@ public sealed class ProxyServerStore(IProxyPlatformPaths paths, IDataProtectionP
 
     public async Task<ProxyServerState> ReadAsync(CancellationToken ct)
     {
-        if (!File.Exists(PathName)) return ProxyServerState.Empty;
-        return JsonSerializer.Deserialize<ProxyServerState>(_protector.Unprotect(await File.ReadAllTextAsync(PathName, ct)), Json)
+        string protectedState;
+        try { protectedState = await File.ReadAllTextAsync(PathName, ct); }
+        catch (FileNotFoundException) { return ProxyServerState.Empty; }
+        catch (DirectoryNotFoundException) { return ProxyServerState.Empty; }
+        return JsonSerializer.Deserialize<ProxyServerState>(_protector.Unprotect(protectedState), Json)
             ?? throw new InvalidDataException("proxy_server.state_invalid");
     }
+
+    internal async Task<ProxyServerExpirySchedule> ReadExpiryScheduleAsync(CancellationToken ct)
+    {
+        await Gate.WaitAsync(ct);
+        try
+        {
+            var state = await ReadAsync(ct);
+            if (state.PendingPublication is not null) return new(true, null);
+            DateTimeOffset? earliest = null;
+            if (state.Published is not { } published) return default;
+            foreach (var grant in published.Credentials)
+            {
+                var credential = FindEnabledCredential(state, grant);
+                if (credential is null) return new(false, DateTimeOffset.MinValue);
+                if (credential.ExpiresAt is { } expiry && (earliest is null || expiry < earliest))
+                    earliest = expiry;
+            }
+            return new(false, earliest);
+        }
+        finally { Gate.Release(); }
+    }
+
+    internal static StoredCredential? FindEnabledCredential(ProxyServerState state, ProxyServerSecret grant) =>
+        state.Credentials.FirstOrDefault(credential => credential.Id == grant.Id && credential.Enabled && credential.Value == grant.Value);
 
     public async Task WriteAsync(ProxyServerState state, CancellationToken ct)
     {

@@ -1079,3 +1079,11 @@ Windows 与既有 Linux 测试机的 Release 聚合回归通过，新增为后�
 测试使用生产发布协调器和持久台账，受控 provider 在 Configuring 阶段接收停机信号并返回取消。真实 Nginx 写入中被强制终止及人工核实后的解除入口仍开放。
 
 Windows 与既有 Linux 测试机 Release 聚合回归通过，新增为后台 owner 第 43 至 45 项。日志见 `.artifacts/mb05-configure-win.log` 与 `.artifacts/mb05-configure-linux.log`。
+
+## 51. MB-04 sing-box 授权到期执行边界
+
+Core 唯一到期 worker 先在原加密领域台账和原 gate 下读取最早到期时间、失效凭据及 pending publication 信号。扫描只向调度循环返回截止时间和待恢复标志，未到期时不构造发布执行器。已到期、已禁用或已经替换的发布凭据，以及 pending publication，仍进入原单一发布执行器。执行器重新读取领域状态并按原规则核对 Helper。共享服务及原事务恢复语义不变。
+
+这是原持久台账的调度投影，仍在每轮反序列化台账，完整持久调度索引、运行时安全责任交接、真实网络故障和动态休眠继续开放。未停用既有 worker，未改变 30 秒扫描节奏，也未测量生产内存。
+
+Windows 与既有 Linux 测试机的 Release Proxy Core 安全 25 项及关联驻留和作用域专项通过。验证了截止边界、空闲不构造执行器、待确认发布和禁用凭据仍需要执行，以及受控 Helper 回执丢失后只有一次发布。日志见 `.artifacts/mb04-expiry-win.log`、`.artifacts/mb04-expiry-linux.log`。同机只读检查发现 `/usr/bin/sing-box` 和 `/dev/net/tun`，未启动实例或变更网络。
