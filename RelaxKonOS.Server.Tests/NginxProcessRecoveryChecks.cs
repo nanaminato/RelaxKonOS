@@ -146,7 +146,11 @@ internal static class NginxProcessRecoveryChecks
                 await Task.Delay(50, budget.Token);
             }
             using var store = await OpenStoreAsync(root);
-            var provider = CreateProvider(root, store, new IsolatedSiteTransport(root, nginx));
+            var environment = new TestHostEnvironment(root);
+            var certificates = new FileCertificateStore(environment,
+                new CertificateOptions { StorageRoot = Path.Combine(root, "certificates") },
+                new CertificateMetadataRepository(environment, TestConfiguration()));
+            var provider = CreateProvider(root, store, new IsolatedSiteTransport(root, nginx), certificates);
             var instance = await FindManagedInstanceAsync(provider);
             var manager = new WebServerManager([provider]);
             var site = await manager.UpsertSiteAsync(instance.Id, new("tls-site", "TLS site",
@@ -159,7 +163,28 @@ internal static class NginxProcessRecoveryChecks
             using var client = CreatePinnedClient(certificate);
             await ObserveAsync(client, new Uri("https://127.0.0.1/"), "production TLS site", nginx);
             TestAssert.Assert(CountReloads(root) == 1, "The production site must reload exactly once.");
-            Console.WriteLine("PASS NGINX LIVE SITE TLS: production configuration and site metadata applied, reloads=1");
+            using var managedCertificate = CreateCertificate(root);
+            var certificateId = Guid.NewGuid();
+            await certificates.SaveAsync(new(certificateId, ["127.0.0.1"], CertificateChallengeType.WebRootHttp01,
+                CertificateKeyAlgorithm.Rsa2048, null, managedCertificate.ExportCertificatePem(),
+                await File.ReadAllTextAsync(Path.Combine(root, "fixture.key"), budget.Token), DateTimeOffset.UtcNow,
+                Kind: CertificateKind.SelfSigned), budget.Token);
+            var bound = await manager.UpsertSiteAsync(instance.Id, new("tls-site", "TLS site",
+                [new("127.0.0.1", 443)], RootPath: documentRoot, HttpsEnabled: true, CertificateId: certificateId,
+                ExpectedUpdatedAt: site!.UpdatedAt), budget.Token);
+            TestAssert.Assert(bound?.CertificateId == certificateId &&
+                (await manager.ListSitesAsync(instance.Id, budget.Token))?.Single().CertificateId == certificateId,
+                "The managed certificate binding must persist by ID.");
+            var paths = await certificates.GetNginxPathsAsync(certificateId, budget.Token)
+                ?? throw new InvalidOperationException("The managed certificate has no Nginx material.");
+            var rendered = await File.ReadAllTextAsync("/etc/nginx/conf.d/relaxkonos.d/tls-site.conf", budget.Token);
+            TestAssert.Assert(rendered.Contains(paths.FullChainPath, StringComparison.Ordinal)
+                && rendered.Contains(paths.PrivateKeyPath, StringComparison.Ordinal),
+                "The managed site must use the stable certificate store paths.");
+            using var managedClient = CreatePinnedClient(managedCertificate);
+            await ObserveAsync(managedClient, new Uri("https://127.0.0.1/"), "production TLS site", nginx);
+            TestAssert.Assert(CountReloads(root) == 2, "The managed certificate binding must add exactly one reload.");
+            Console.WriteLine($"PASS NGINX LIVE SITE TLS: local and managed certificate bindings applied, certificate={certificateId}; reloads=2");
         }
         finally
         {
@@ -227,13 +252,13 @@ internal static class NginxProcessRecoveryChecks
         (await provider.DiscoverAsync(default)).Single(instance => instance.ManagementMode == WebServerManagementMode.Managed
             && instance.ExecutablePath == PackageExecutable);
 
-    private static NginxWebServerManager CreateProvider(string root, WebServerOperationStore store, IPrivilegedOperationTransport transport)
+    private static NginxWebServerManager CreateProvider(string root, WebServerOperationStore store, IPrivilegedOperationTransport transport, ICertificateStore? certificates = null)
     {
         var environment = new TestHostEnvironment(root);
         var configuration = TestConfiguration();
         return new(new PrivilegedNginxOperations(transport), store, new WebServerMetadataRepository(environment, configuration),
             new TestApplicationLifetime(), new NginxManagedOptions { InstallationRoot = root },
-            null!, null!, null!, null!, NullLogger<NginxWebServerManager>.Instance);
+            null!, certificates!, null!, null!, NullLogger<NginxWebServerManager>.Instance);
     }
 
     // Intercept only the closed reload request. No Helper connection or systemd call is available to this fixture.
