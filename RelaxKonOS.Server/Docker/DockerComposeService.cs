@@ -129,7 +129,7 @@ public sealed class DockerComposeService : IDockerComposeService
         // the process argument list, and a backslash-escaped quote makes Docker fail with "unexpected \\ in
         // operand", which would leave every observation empty and misreport a working project as partial.
         var result = await RunAsync(["ps", "--all", "--filter", $"label=com.docker.compose.project={name}", "--format", "{{.Label \"com.docker.compose.service\"}}\\t{{.Names}}\\t{{.Image}}\\t{{.State}}\\t{{.Status}}"], cancellationToken);
-        if (!result.Success) return [];
+        if (!result.Success) throw new DockerStackException(DockerStackProblem.EngineUnavailable, 503);
         return result.Output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(line => line.Split('\t'))
             .Select(row => new DockerStackServiceDto(Value(row, 0), Value(row, 1), Value(row, 2), Value(row, 3), Value(row, 4)))

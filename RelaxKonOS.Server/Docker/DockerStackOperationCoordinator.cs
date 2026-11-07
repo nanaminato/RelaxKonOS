@@ -33,6 +33,7 @@ internal sealed class DockerStackOperationCoordinator(
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> cancellations = new();
     private readonly ConcurrentDictionary<Guid, Task> running = new();
     private bool ready;
+    private bool stopping;
 
     /// <summary>Queues a deployment (or an update, which is the same Compose call), or returns the
     /// operation already bound to this idempotency key.</summary>
@@ -338,41 +339,73 @@ internal sealed class DockerStackOperationCoordinator(
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         using var recoveryWork = await workOwner.AdmitAsync(cancellationToken);
-        StackOperationEntry[] entries;
-        try { entries = operations.Read(); }
-        catch (DockerStackException error)
+        using var startup = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, recoveryWork.Token);
+        List<StackOperationEntry> awaitingEngine;
+        try
+        {
+            awaitingEngine = await ReconcileAsync(operations.Read().Where(entry => DockerStackOperationStore.Active(entry.Operation)), startup.Token);
+        }
+        catch (OperationCanceledException) when (startup.IsCancellationRequested) { throw; }
+        catch (Exception error)
         {
             recoveryWork.Fail(error);
-            logger.LogError(error, "Compose startup ledger is unavailable; its work remains quarantined.");
+            logger.LogError(error, "Compose startup recovery did not complete; its work remains quarantined.");
             return;
         }
-
-        foreach (var entry in entries.Where(x => DockerStackOperationStore.Active(x.Operation)))
+        lock (gate)
         {
-            try
-            {
-                var observed = entry.Operation.State == DockerStackOperationState.Running
-                    ? await ObserveOnStartupAsync(entry.Operation.ProjectName)
-                    : [];
-                var recovery = RecoveryCode(entry.Operation.Kind, observed);
-                Complete(entry.Operation.OperationId, DockerStackOperationState.Interrupted, DockerStackProblem.Interrupted, recovery,
-                    ["the server restarted while this operation was active; the project was observed, not replayed"], observed);
-            }
-            catch (Exception error)
-            {
-                recoveryWork.Fail(error);
-                logger.LogError(error, "Compose startup recovery did not complete; its work remains quarantined.");
-                return;
-            }
+            if (stopping) return;
+            startup.Token.ThrowIfCancellationRequested();
+            if (awaitingEngine.Count != 0) recoveryWork.Run(ct => RetryRecoveryAsync(awaitingEngine, ct));
+            ready = true;
         }
-        recoveryWork.Token.ThrowIfCancellationRequested();
-        lock (gate) ready = true;
     }
 
-    private async Task<IReadOnlyList<DockerStackServiceDto>> ObserveOnStartupAsync(string project)
+    private async Task RetryRecoveryAsync(List<StackOperationEntry> awaitingEngine, CancellationToken ct)
     {
-        await using var scope = scopes.CreateAsyncScope();
-        return await SafeObserveAsync(scope.ServiceProvider.GetRequiredService<IDockerComposeService>(), project);
+        try
+        {
+            while (awaitingEngine.Count != 0)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), ct);
+                awaitingEngine = await ReconcileAsync(awaitingEngine, ct);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (Exception error)
+        {
+            logger.LogError(error, "Compose recovery could not continue; its work remains quarantined.");
+            throw;
+        }
+    }
+
+    private async Task<List<StackOperationEntry>> ReconcileAsync(IEnumerable<StackOperationEntry> entries, CancellationToken ct)
+    {
+        List<StackOperationEntry> awaitingEngine = [];
+        foreach (var entry in entries)
+        {
+            ct.ThrowIfCancellationRequested();
+            var operation = entry.Operation;
+            IReadOnlyList<DockerStackServiceDto> observed = [];
+            if (operation.State == DockerStackOperationState.Running)
+            {
+                await using var scope = scopes.CreateAsyncScope();
+                var compose = scope.ServiceProvider.GetRequiredService<IDockerComposeService>();
+                try { observed = await compose.ListServicesAsync(operation.ProjectName, ct); }
+                catch (DockerStackException error) when (error.ProblemCode == DockerStackProblem.EngineUnavailable)
+                {
+                    awaitingEngine.Add(entry);
+                    continue;
+                }
+            }
+            ct.ThrowIfCancellationRequested();
+            var message = operation.State == DockerStackOperationState.Running
+                ? "the server restarted while this operation was active; the project was observed, not replayed"
+                : "the server restarted before this operation started; it was not replayed";
+            Complete(operation.OperationId, DockerStackOperationState.Interrupted, DockerStackProblem.Interrupted,
+                RecoveryCode(operation.Kind, observed), [message], observed);
+        }
+        return awaitingEngine;
     }
 
     /// <summary>Which follow-up the operator most likely needs after an unverified operation. A project
@@ -388,7 +421,11 @@ internal sealed class DockerStackOperationCoordinator(
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        lock (gate) ready = false;
+        lock (gate)
+        {
+            stopping = true;
+            ready = false;
+        }
         await workOwner.StopAsync(cancellationToken);
     }
     public void Dispose() => workOwner.Dispose();

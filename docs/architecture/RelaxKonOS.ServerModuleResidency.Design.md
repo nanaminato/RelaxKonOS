@@ -494,3 +494,5 @@ Mihomo 流量的累计量及内存读取使用现有有界连接快照的统计�
 Mihomo 连接详情保留既有可回收投影。按需 token 解码候选降低了受控解析分配，Linux 配对实测未达到峰值 PSS 目标。见[连接详情按需解码评估](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-连接详情按需解码评估)。
 
 Mihomo 流量轮询在 512 条真实连接的隔离负载下有可测的 Server PSS 和 CPU 成本。原发布回执及转发连续，Proxy 整体保持 resident。见[高连接数流量轮询基线](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-高连接数流量轮询基线)。
+
+Docker Engine 离线时，启动对账继续持有原 resident 工作租约和项目互斥。Engine 恢复后的只读观察、作用域清理及原终态持久化完成后才归还工作责任。见[Engine 离线启动对账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-docker-engine-离线时的原启动对账)。

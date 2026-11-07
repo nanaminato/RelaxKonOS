@@ -15,6 +15,8 @@ import urllib.request
 
 def run(server, project, helper):
     credentials = json.loads(sys.stdin.readline())
+    outage = os.environ.get("RELAXKONOS_TEST_DOCKER_OUTAGE_GATE")
+    outage_gate = Path(outage).resolve(strict=True) if outage else None
 
     with tempfile.TemporaryDirectory(prefix="relaxkonos-auth-docker-") as directory:
         root = Path(directory)
@@ -46,8 +48,8 @@ def run(server, project, helper):
         route = f"/api/v1.0/docker/stacks/{project}/stop"
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
-        def request(path, payload=None, token=None, expected=200):
-            headers = {"Idempotency-Key": key}
+        def request(path, payload=None, token=None, expected=200, request_key=None):
+            headers = {"Idempotency-Key": request_key or key}
             if payload is not None:
                 headers["Content-Type"] = "application/json"
             if token:
@@ -106,6 +108,14 @@ def run(server, project, helper):
         def login():
             return request("/api/v1.0/auth/login", {**credentials, "clientPlatform": 1,
                 "deviceName": "Isolated Docker acceptance", "clientVersion": "0.2.2"})["tokens"]["accessToken"]
+
+        def set_engine_state(state):
+            (outage_gate / f"request-{state}").touch(exist_ok=False)
+            deadline = time.monotonic() + 30
+            while not (outage_gate / state).exists():
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(f"Dedicated Engine did not acknowledge {state}")
+                time.sleep(0.05)
 
         helper_config = root / "helper.json"
         helper_config.write_text(json.dumps({"socketPath": env["PrivilegedHelper__SocketPath"],
@@ -173,10 +183,31 @@ def run(server, project, helper):
                 time.sleep(0.1)
             else:
                 raise RuntimeError("The original Engine stop did not complete")
-            subprocess.run(["docker", "start", container], check=True, stdout=subprocess.DEVNULL)
+            if outage_gate is not None:
+                set_engine_state("offline")
+            else:
+                subprocess.run(["docker", "start", container], check=True, stdout=subprocess.DEVNULL)
             process = start()
             try:
                 token = login()
+                if outage_gate is not None:
+                    pending = request(route, {"confirmed": True}, token, expected=202)
+                    if pending["operationId"] != operation or str(pending["state"]).lower() != "running":
+                        raise RuntimeError("An unavailable Engine ended the original active operation")
+                    request(f"/api/v1.0/docker/stacks/{project}/services", token=token, expected=503)
+                    request(route, {"confirmed": True}, token, expected=409, request_key=secrets.token_hex(16))
+                    set_engine_state("online")
+                    subprocess.run(["docker", "start", container], check=True, stdout=subprocess.DEVNULL)
+                    deadline = time.monotonic() + 25
+                    while True:
+                        observed = request(f"/api/v1.0/docker/stack-operations/{operation}", token=token)
+                        if str(observed["state"]).lower() != "running":
+                            break
+                        if time.monotonic() >= deadline:
+                            raise TimeoutError("The original Docker operation stayed pending after Engine recovery")
+                        time.sleep(0.1)
+                    if len(observed["services"]) != 1 or process.poll() is not None:
+                        raise RuntimeError("The original Server did not persist a real Engine observation")
                 replay = request(route, {"confirmed": True}, token, expected=202)
                 if replay["operationId"] != operation or str(replay["state"]).lower() != "interrupted":
                     raise RuntimeError("Server restart did not preserve the original Docker receipt")
@@ -188,6 +219,8 @@ def run(server, project, helper):
                 if state != "running" or stops != initial_stops + 1:
                     raise RuntimeError("The original key repeated a stop after the witness was restarted")
                 print(f"PASS AUTHENTICATED SERVER DOCKER RECEIPT: operation={operation}; original response discarded; server killed while stop was running; recovered Interrupted")
+                if outage_gate is not None:
+                    print(f"PASS AUTHENTICATED DOCKER ENGINE OUTAGE: operation={operation}; unavailable observation, original project blocked, same Server reconciled, stop count unchanged")
             finally:
                 stop(process)
         finally:

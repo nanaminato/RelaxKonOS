@@ -372,3 +372,5 @@ Linux 隔离 Engine 已通过完整 System Mode Server 的认证回执验收。�
 完整 Server 重启前重新启动同一专属容器后，已验证原键重试仍返回原中断回执，且容器保持运行。按原 operationId 的查询也返回同一回执。
 
 MB-05 Compose 的执行图在原协调器持久化准入后按操作创建，异步清理结束后才写终态。Linux 私有 Engine 强制中断与完整 Server 经认证停止请求中断均通过原回执恢复验收。恢复只观察容器状态，同键重试未再次停止容器。Docker 管理模块保持 resident。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-docker-compose-准入与执行作用域)。
+
+Docker Engine 离线时，服务列表返回 `503 / docker.unavailable`。Server 启动后保留等待核验的原栈操作，原键仍返回原回执，同一项目的新变更返回 HTTP 409。Engine 恢复后，原协调器读取项目状态并以原 operationId 写入 Interrupted。完整认证 Server 与私有 Engine 联验通过。见[Engine 离线启动对账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-docker-engine-离线时的原启动对账)。

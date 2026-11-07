@@ -795,8 +795,9 @@ internal static async Task VerifyStackOperationsAsync(string root)
     // --- Startup reconciliation: observed, never replayed ----------------------------------------
     var recoveryRoot = Path.Combine(root, "stack-recovery");
     var recoveryStore = NewStackStore(recoveryRoot, 16);
+    var originalRequest = Deploy("leftover", shopYaml);
     var interrupted = recoveryStore.Create("leftover", DockerStackOperationKind.Deploy, actor, "key-r1",
-        DockerStackValidation.Reference("deploy|leftover|v1"), out _).Operation;
+        DockerStackValidation.Reference($"{DockerStackOperationKind.Deploy}|leftover|{originalRequest.DefinitionVersion}"), out _).Operation;
     recoveryStore.Update(interrupted.OperationId, operation => operation with
     {
         State = DockerStackOperationState.Running,
@@ -807,19 +808,36 @@ internal static async Task VerifyStackOperationsAsync(string root)
     var neverStarted = recoveryStore.Create("waiting", DockerStackOperationKind.Deploy, actor, "key-r2",
         DockerStackValidation.Reference("deploy|waiting|v1"), out _).Operation;
 
-    var recoveryCompose = new FakeComposeService { Observed = [RunningService("web")] };
-    var recoveryCoordinator = NewStackCoordinator(recoveryRoot, recoveryCompose, new TestApplicationLifetime(), 16);
+    var recoveryCompose = new FakeComposeService { Observed = [RunningService("web")], ObservationUnavailable = true };
+    using var recoveryCoordinator = NewStackCoordinator(recoveryRoot, recoveryCompose, new TestApplicationLifetime(), 16);
     await recoveryCoordinator.StartAsync(CancellationToken.None);
 
-    var reconciled = recoveryCoordinator.Get(interrupted.OperationId)!;
+    TestAssert.Assert(recoveryCoordinator.HasResponsibility
+        && recoveryStore.Get(interrupted.OperationId)?.Operation.State == DockerStackOperationState.Running
+        && (await recoveryCoordinator.DeployAsync(originalRequest, actor, "key-r1")).OperationId == interrupted.OperationId,
+        "An unavailable Engine must preserve the original active receipt and recovery work lease.");
+    var recoveryConflict = await CaptureStackFailureAsync(() => recoveryCoordinator.DeployAsync(originalRequest, actor, "key-r3"),
+        "A new operation was admitted for a project with an unobserved outcome.");
+    TestAssert.Assert(recoveryConflict.ProblemCode == DockerStackProblem.OperationConflict,
+        "Startup reconciliation did not protect the affected project during an outage.");
+    await recoveryCoordinator.StopAsync(CancellationToken.None);
+    TestAssert.Assert(!recoveryCoordinator.HasResponsibility
+        && recoveryStore.Get(interrupted.OperationId)?.Operation.State == DockerStackOperationState.Running,
+        "Stopping the recovery worker must leave the original receipt for the next owner.");
+    using var retryCoordinator = NewStackCoordinator(recoveryRoot, recoveryCompose, new TestApplicationLifetime(), 16);
+    await retryCoordinator.StartAsync(CancellationToken.None);
+    TestAssert.Assert(retryCoordinator.HasResponsibility, "The new owner did not take responsibility for the original pending receipt.");
+    recoveryCompose.ObservationUnavailable = false;
+    var reconciled = await AwaitTerminalOperationAsync(retryCoordinator, interrupted.OperationId);
+    await retryCoordinator.StopAsync(CancellationToken.None);
     TestAssert.Assert(reconciled.State == DockerStackOperationState.Interrupted
         && reconciled.ProblemCode == DockerStackProblem.Interrupted
         && !reconciled.Cancellable
         && reconciled.Services.Any(service => service.Service == "web")
-        && reconciled.RecoveryProblemCode is null,
+        && reconciled.RecoveryProblemCode is null && !retryCoordinator.HasResponsibility,
         "A deployment interrupted by a restart was not reported as unverified over the services actually observed.");
 
-    var reconciledNeverStarted = recoveryCoordinator.Get(neverStarted.OperationId)!;
+    var reconciledNeverStarted = retryCoordinator.Get(neverStarted.OperationId)!;
     TestAssert.Assert(reconciledNeverStarted.State == DockerStackOperationState.Interrupted
         && reconciledNeverStarted.Services.Count == 0
         && reconciledNeverStarted.RecoveryProblemCode == DockerStackProblem.PartialFailure,
@@ -827,7 +845,7 @@ internal static async Task VerifyStackOperationsAsync(string root)
 
     // The whole point of reconciliation: nothing was replayed, and the only call was an observation.
     TestAssert.Assert(recoveryCompose.DeployCalls == 0 && recoveryCompose.AppliedActions.Count == 0
-        && recoveryCompose.ListServicesCalls == 1,
+        && recoveryCompose.ListServicesCalls >= 3,
         "A restart replayed an interrupted operation instead of only observing the project.");
 
     Console.WriteLine("PASS DOCKER STACK: durable ledger, idempotent replay, per-project exclusion, "
@@ -1436,6 +1454,7 @@ internal sealed class FakeComposeService : IDockerComposeService
     public List<DockerStackOperationKind> AppliedActions { get; } = [];
     public int DeployCalls { get; private set; }
     public int ListServicesCalls { get; private set; }
+    public volatile bool ObservationUnavailable;
     /// <summary>Holds a deployment inside the Engine call so a test can cancel it while it is active.</summary>
     public bool BlockOnDeploy { get; set; }
     internal Action? OnDeploy { get; init; }
@@ -1456,6 +1475,7 @@ internal sealed class FakeComposeService : IDockerComposeService
     public Task<IReadOnlyList<DockerStackServiceDto>> ListServicesAsync(string name, CancellationToken cancellationToken = default)
     {
         ListServicesCalls++;
+        if (ObservationUnavailable) throw new DockerStackException(DockerStackProblem.EngineUnavailable, 503);
         return Task.FromResult(Observed);
     }
 

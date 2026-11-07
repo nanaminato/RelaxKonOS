@@ -68,7 +68,8 @@ public static class DockerEndpoints
         group.MapPost("/stack-operations/{operationId:guid}/cancel", (Guid operationId, HttpContext http, RelaxKonOS.Server.Docker.DockerStackOperationCoordinator coordinator) =>
             Handle(() => Results.Ok(coordinator.Cancel(operationId, Key(http)))));
         group.MapGet("/stacks/{name}/definition", async (string name, RelaxKonOS.Server.Docker.IDockerComposeService service, CancellationToken ct) => await service.GetDefinitionAsync(name, ct) is { } definition ? Results.Ok(definition) : Results.NotFound());
-        group.MapGet("/stacks/{name}/services", (string name, RelaxKonOS.Server.Docker.IDockerComposeService service, CancellationToken ct) => service.ListServicesAsync(name, ct));
+        group.MapGet("/stacks/{name}/services", (string name, RelaxKonOS.Server.Docker.IDockerComposeService service, CancellationToken ct) =>
+            ReadAsync(() => service.ListServicesAsync(name, ct)));
         group.MapPost("/stacks/{name}/{action}", (string name, string action, DockerStackActionRequest request, HttpContext http, RelaxKonOS.Server.Docker.DockerStackOperationCoordinator coordinator, CancellationToken ct) =>
             HandleAsync(async () => DockerStackActionRoutes.TryParseAction(action, out var kind)
                 ? Accepted(await coordinator.ApplyActionAsync(name, kind, request.Confirmed, Actor(http.User), Key(http), ct))

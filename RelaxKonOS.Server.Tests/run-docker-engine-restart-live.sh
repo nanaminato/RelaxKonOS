@@ -9,14 +9,20 @@ ip link set lo up
 root=$(mktemp -d /tmp/relaxkonos-engine.XXXXXXXX)
 pid=
 worker=
+private_etc=
 cleanup() {
     if [[ -n $worker ]]; then kill "$worker" 2>/dev/null || :; wait "$worker" || :; fi
     if [[ -n $pid ]]; then kill "$pid" 2>/dev/null || :; wait "$pid" || :; fi
     tail -n 35 "$root/daemon.log" || :
     if mountpoint -q "$root/data"; then umount --recursive "$root/data"; fi
+    if [[ -n $private_etc ]]; then umount /etc; fi
     rm -rf -- "$root"
 }
 trap cleanup EXIT
+mount -t tmpfs -o mode=0755 tmpfs /var/lib
+mkdir "$root/etc-upper" "$root/etc-work"
+mount -t overlay overlay -o "lowerdir=/etc,upperdir=$root/etc-upper,workdir=$root/etc-work" /etc
+private_etc=1
 printf '{}\n' > "$root/daemon.json"
 export DOCKER_HOST="unix://$root/docker.sock"
 unset DOCKER_CONTEXT
@@ -116,7 +122,32 @@ dotnet "$tests" --docker-daemon-recovery-only "$ledger" "$compose" "$project" "$
 [[ $(docker logs "$id" | grep -Fxc stopping) == "$stops_before" ]]
 echo "PASS DOCKER DAEMON NO REPLAY: stop count before and after recovery=$stops_before"
 if [[ $# -ge 5 ]]; then
-    python3 "$5" "$(dirname "$tests")/RelaxKonOS.Server.dll" "$project" "$tests"
+    [[ $# -eq 6 && -f $6 ]]
+    gate="$root/engine-outage"
+    mkdir "$gate"
+    wait_for_gate() {
+        for i in $(seq 1 300); do
+            [[ ! -f "$gate/request-$1" ]] || return 0
+            kill -0 "$worker" 2>/dev/null || return 1
+            sleep .1
+        done
+        return 1
+    }
+    exec 3<&0
+    RELAXKONOS_TEST_DOCKER_OUTAGE_GATE="$gate" python3 "$5" "$6" "$project" "$tests" <&3 &
+    worker=$!
+    exec 3<&-
+    wait_for_gate offline
+    kill -TERM "$pid"
+    wait "$pid"
+    pid=
+    if docker version --format '{{.Server.Version}}' 2>/dev/null; then exit 1; fi
+    touch "$gate/offline"
+    wait_for_gate online
+    start
+    touch "$gate/online"
+    wait "$worker"
+    worker=
 else
     dotnet "$tests" --docker-live-http-disconnect "$ledger" "$compose" "$project" "$id"
 fi

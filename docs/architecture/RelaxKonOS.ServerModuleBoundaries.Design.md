@@ -2098,3 +2098,11 @@ Linux 私有 systemd 用同一 Host 制品，只替换 Proxy 解析程序集。�
 512 条原连接均收到源站响应。原发布回执 `9ef35a38-4eef-46c7-b4cc-88163dd482e1`、原生 PID 和发布修订一致，期间配置和补偿派发均为零。Linux 原生套件通过 178 项，同批按原 `2e9495ee-558b-4b60-9962-d8d6e4e1195b` 验证解析代次切换和 SIGTERM 排空。专属 cgroup 已清理，宿主 sing-box 与代理文件指纹一致。Windows Release 注册及模块边界回归通过，MB-05 跨进程原 `1cc6e310-b3f8-421c-bd16-36c6783ae271` 为 Interrupted，受控副作用计数为一。
 
 复验通过私有 systemd 内设置 `RELAXKONOS_TEST_MIHOMO_TRAFFIC_POLLING=1` 选择轮询负载。原始采样和摘要在 `.artifacts/mb04-traffic-polling/`，Linux 归档 SHA-256 为 `be3aa7ae91f1e1c6720b19fae0e96a1dfbbc6f74d8d1c355500de16bba2bffee`。结果限单认证客户端和隔离负载。多客户端、慢控制器导致的重叠轮询、生产资源及整模块动态休眠继续开放。Proxy 保持 resident。
+
+### MB-05 Docker Engine 离线时的原启动对账
+
+`docker ps` 非零退出时，栈服务读取返回 `503 / docker.unavailable`。启动对账仅在实际观察完成后结束原 Running 操作。Engine 不可达时，由原协调器持有恢复租约和项目互斥，保持原 operationId 与原键可查。原 owner 在独立观察作用域内重试只读查询，异步清理和终态持久化完成后才归还租约。停机等待实际观察结束，仍待核验的操作由原台账交给下一次启动。原 Queued 操作按未派发中断处理。
+
+Linux 私有 Engine 中，完整 Server 经 PAM 登录提交专属容器的真实停止请求。在原操作为 Running 且容器已接到停止信号时终止 Server。原停止结束后关闭专属 daemon，再启动 Server。Engine 离线时服务查询返回 HTTP 503，同键返回原 `3810f922-ce3f-499a-a42e-1e6f54dbf3e8` Running，新键对同项目返回 HTTP 409。启动原 daemon 后，同一 Server 取得实际容器观察并将原操作持久化为 Interrupted。同键与按 ID 查询一致，专属容器保持运行，停止计数未增加。原 daemon 重启和命名卷、专属容器清理同批通过，宿主服务 PID、容器清单及代理文件指纹一致。
+
+首轮夹具缺少私有持久状态目录，完整 Server 在 Proxy 安全启动门禁处终止。复验使用私有 `/var/lib`、`/etc` 覆盖层和独立发布的完整 Server。Windows Release 模块边界回归通过，受控用例验证恢复 worker 在 Engine 离线时停止，下一任 owner 接续同一记录。原 `5be1e27c-7be8-4cf8-a990-c5ea69065f90` 跨进程返回 Interrupted，受控副作用计数为一。日志在 `.artifacts/mb05-engine-offline-recovery/`，归档 SHA-256 为 `c38ed10257a4d99545b0b0292d61686872c0e1c4e03547aa848d8e5782610257`。Docker 保持 resident。存活 Server 在原变更完成后丢失 Engine 观察的连续性、整机掉电与独立执行程序集继续开放。
