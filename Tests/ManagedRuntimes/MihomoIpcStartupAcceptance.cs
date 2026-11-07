@@ -210,21 +210,25 @@ internal static class MihomoIpcStartupAcceptance
         Console.WriteLine($"PASS MIHOMO CONFIRMED TUN GATE: original compensation {interrupted}, native PID preserved, no marker or controller request");
 
         var baseline = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_OVERVIEW_BASELINE");
+        var trafficPolling = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_TRAFFIC_POLLING") == "1";
         var subscriptionsEnabled = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_SUBSCRIPTION") == "1";
-        var login = subscriptionsEnabled || !string.IsNullOrEmpty(baseline)
+        var login = subscriptionsEnabled || trafficPolling || !string.IsNullOrEmpty(baseline)
             ? ProxyAuthenticatedPublicationChecks.ReadLogin() : null;
-        if (baseline is { Length: > 0 })
+        if (trafficPolling || baseline is { Length: > 0 })
         {
             start.Environment["Modules__Proxy__Enabled"] = "true";
             start.Environment["Identity__LinuxPamTransport"] = "helper";
             await using var helper = await StartHelperAsync(helperAssembly, config, transport);
-            await ProxyConnectionBenchmark.RunAsync(baseline, serverAssembly, "baseline", "candidate",
-                login!, new Uri($"http://127.0.0.1:{port}/"), PrepareAsync, VerifyAsync, requireManaged: true);
+            await ProxyConnectionBenchmark.RunAsync(trafficPolling ? serverAssembly : baseline!, serverAssembly,
+                trafficPolling ? "no-polling" : "baseline", trafficPolling ? "traffic-polling" : "candidate",
+                login!, new Uri($"http://127.0.0.1:{port}/"), PrepareAsync, VerifyAsync, requireManaged: true,
+                pollingRuntimePid: trafficPolling ? runtimePid : null);
             var log = await helper.StopAsync(drainCompletedRequests: true);
             if (log.Contains("operation=MihomoRuntimeConfigure ", StringComparison.Ordinal)
                 || log.Contains("operation=MihomoRuntimeRecover ", StringComparison.Ordinal))
                 throw new InvalidOperationException("The read workload dispatched a native publication action.");
-            Console.WriteLine($"PASS MANAGED MIHOMO OVERVIEW BENCHMARK: native PID {runtimePid}, original receipt {interrupted}, no configure or recover");
+            var measurement = trafficPolling ? "TRAFFIC POLLING" : "OVERVIEW";
+            Console.WriteLine($"PASS MANAGED MIHOMO {measurement} BENCHMARK: native PID {runtimePid}, original receipt {interrupted}, no configure or recover");
 
             Task<ProcessStartInfo> PrepareAsync(string assembly)
             {

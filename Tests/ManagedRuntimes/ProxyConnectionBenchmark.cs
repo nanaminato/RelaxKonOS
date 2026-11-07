@@ -13,6 +13,7 @@ internal static class ProxyConnectionBenchmark
 {
     private const int ConnectionCount = 512;
     private const int RequestsPerRoute = 24;
+    private const int TrafficPolls = 10;
 
     internal static async Task RunAsync(string root, string socket, string baseline, string streaming, LoginRequest login,
         ProxySystemdGuardProbe guard, Func<RuntimeArchiveState> nativeState)
@@ -40,10 +41,11 @@ internal static class ProxyConnectionBenchmark
 
     internal static async Task RunAsync(string baseline, string candidate, string baselineMode, string candidateMode,
         LoginRequest login, Uri runtimeProxy, Func<string, Task<ProcessStartInfo>> prepare, Func<Task> verify,
-        bool requireManaged)
+        bool requireManaged, int? pollingRuntimePid = null)
     {
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(requireManaged ? 420 : 85));
         var ct = budget.Token;
+        using var runtime = pollingRuntimePid is { } pid ? Process.GetProcessById(pid) : null;
         using var origin = new TcpListener(IPAddress.Parse("93.184.216.34"), 0);
         origin.Start(ConnectionCount);
         var destination = ((IPEndPoint)origin.LocalEndpoint).ToString();
@@ -84,13 +86,17 @@ internal static class ProxyConnectionBenchmark
                         var idle = ReadMemory(process.Id);
                         var samples = new List<MemoryPoint> { idle };
                         var timings = new List<double>();
-                        var load = ObserveRepeatedlyAsync();
+                        var serverCpuStart = ReadCpu(process);
+                        var runtimeCpuStart = runtime is null ? TimeSpan.Zero : ReadCpu(runtime);
+                        var load = runtime is null ? ObserveRepeatedlyAsync() : MeasureTrafficPollingAsync();
                         while (!load.IsCompleted)
                         {
                             await Task.Delay(25, ct);
                             samples.Add(ReadMemory(process.Id));
                         }
                         await load;
+                        var serverCpuMs = (ReadCpu(process) - serverCpuStart).TotalMilliseconds;
+                        var runtimeCpuMs = runtime is null ? 0 : (ReadCpu(runtime) - runtimeCpuStart).TotalMilliseconds;
                         var cooldown = new List<MemoryPoint>();
                         if (requireManaged)
                         {
@@ -105,8 +111,32 @@ internal static class ProxyConnectionBenchmark
                         }
                         Console.WriteLine("PROXY BENCHMARK RUN " + JsonSerializer.Serialize(new
                         {
-                            Pair = pair, input.Mode, ConnectionCount, RequestsPerRoute, Idle = idle, Samples = samples, Cooldown = cooldown, PairRequestMs = timings
+                            Pair = pair, input.Mode, ConnectionCount, RequestsPerRoute = runtime is null ? RequestsPerRoute : 0,
+                            Idle = idle, Samples = samples, Cooldown = cooldown,
+                            PairRequestMs = runtime is null ? timings : null, TrafficPollMs = runtime is null ? null : timings,
+                            ServerCpuMs = serverCpuMs, RuntimeCpuMs = runtimeCpuMs
                         }));
+
+                        async Task MeasureTrafficPollingAsync()
+                        {
+                            using var cadence = new PeriodicTimer(TimeSpan.FromSeconds(2));
+                            long uploaded = 0, downloaded = 0;
+                            for (var i = 0; i < TrafficPolls; i++)
+                            {
+                                if (input.Mode == candidateMode)
+                                {
+                                    var watch = Stopwatch.StartNew();
+                                    var traffic = await client.GetFromJsonAsync<ProxyTrafficDto>(ProxyApiRoutes.Traffic, RelaxKonOSJsonOptions.Default, ct);
+                                    timings.Add(watch.Elapsed.TotalMilliseconds);
+                                    if (traffic is not { ProblemCode: "", MemoryBytes: >= 0, UploadTotalBytes: > 0 }
+                                        || traffic.UploadTotalBytes < uploaded || traffic.DownloadTotalBytes < downloaded)
+                                        throw new InvalidOperationException("The polling run did not return monotonic native traffic totals.");
+                                    uploaded = traffic.UploadTotalBytes;
+                                    downloaded = traffic.DownloadTotalBytes;
+                                }
+                                await cadence.WaitForNextTickAsync(ct);
+                            }
+                        }
 
                         async Task ObserveRepeatedlyAsync()
                         {
@@ -167,6 +197,12 @@ internal static class ProxyConnectionBenchmark
             .Select(line => line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
             .ToDictionary(fields => fields[0], fields => long.Parse(fields[1], System.Globalization.CultureInfo.InvariantCulture));
         return new(fields["Rss:"], fields["Pss:"], fields["Private_Clean:"] + fields["Private_Dirty:"]);
+    }
+
+    private static TimeSpan ReadCpu(Process process)
+    {
+        process.Refresh();
+        return process.TotalProcessorTime;
     }
 
     private sealed record MemoryPoint(long RssKiB, long PssKiB, long PrivateKiB);
