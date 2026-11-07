@@ -12,6 +12,7 @@ namespace RelaxKonOS.Server.Proxy;
 public interface IProxyProfileRepository
 {
     Task<IReadOnlyList<ProxyProfileDto>> ListAsync(CancellationToken cancellationToken);
+    Task<ProxyProfileDto?> GetActiveAsync(CancellationToken cancellationToken);
     Task<ProxyProfileDto?> GetAsync(Guid id, CancellationToken cancellationToken);
     Task<ProxyProfileDto> UpsertAsync(Guid? id, string name, string engineId, long? expectedRevision, CancellationToken cancellationToken);
     Task<ProxyProfileDto?> SetActiveAsync(Guid id, CancellationToken cancellationToken);
@@ -37,6 +38,14 @@ public sealed class SqliteProxyProfileRepository(IHostEnvironment environment, I
         await using var connection = await OpenAsync(cancellationToken); await using var command = connection.CreateCommand();
         command.CommandText = "SELECT profile_id,name,engine_id,is_active,revision,created_at,updated_at FROM proxy_profiles WHERE profile_id=$id;";
         command.Parameters.AddWithValue("$id", id.ToString("D")); await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? Read(reader) : null;
+    }
+    public async Task<ProxyProfileDto?> GetActiveAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT profile_id,name,engine_id,is_active,revision,created_at,updated_at FROM proxy_profiles WHERE is_active=1 ORDER BY name COLLATE NOCASE LIMIT 1;";
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? Read(reader) : null;
     }
     public async Task<ProxyProfileDto> UpsertAsync(Guid? id, string name, string engineId, long? expectedRevision, CancellationToken cancellationToken)

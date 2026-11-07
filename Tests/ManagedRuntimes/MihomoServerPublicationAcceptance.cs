@@ -23,7 +23,7 @@ using RelaxKonOS.Server.Proxy.Platform;
 internal static class MihomoServerPublicationAcceptance
 {
     internal static async Task<int> RunAsync(MihomoRuntimeLifecycle lifecycle, MihomoPublishedRuntime original,
-        int originalPort, Func<int, Task<bool>> probe)
+        int originalPort, Func<int, Task<bool>> probe, Func<int, Func<Task>, Task<bool>> probeWithConnection)
     {
         var count = 0;
         void Check(bool ok, string name) { if (!ok) throw new Exception(name); count++; }
@@ -185,6 +185,21 @@ internal static class MihomoServerPublicationAcceptance
                     && transport.ConfigureCalls == beforeProfileRecovery && await probe(originalPort + 2),
                     "Scoped runtime status probes the real authenticated controller and leaves forwarding and publication intact.");
                 Console.WriteLine("PASS MIHOMO SCOPED RUNTIME STATUS: real controller and forwarding; no configuration mutation");
+                await using var overviewScope = controllers.CreateAsyncScope();
+                var controller = overviewScope.ServiceProvider.GetRequiredService<IMihomoControllerClient>();
+                var safety = new ProxyTunSafetyService(paths, new HostProxyNetworkSafetyPlatform());
+                var observer = new MihomoEngine(controller, new UnavailableMihomoConfigurationValidator(), paths, tunSafety: safety);
+                var overview = new ProxyOverviewService(manager, new ProxyEngineRegistry([observer]), new ProxyPlatformService(systemProxy), publicationProfiles, safety);
+                Check(await probeWithConnection(originalPort + 2, async () =>
+                {
+                    var observation = await overview.GetAsync(default);
+                    var connections = await observer.GetConnectionsAsync(default);
+                    if (observation.ActiveProfile?.Id != nextProfile.Id || observation.ActiveConnections < 1
+                        || observation.ActiveConnections != connections.Count || observation.Health.State != ProxyHealthState.Healthy)
+                        throw new InvalidOperationException("Overview must read the original active profile and count the real held proxy connection.");
+                }) && transport.ConfigureCalls == beforeProfileRecovery,
+                    "Overview observes real forwarding without invoking publication.");
+                Console.WriteLine("PASS MIHOMO SCOPED OVERVIEW: real held connection counted and original profile observed");
             }
             var noOpApplication = new ProxyConfigurationTransactionService(paths, new ProxyEngineRegistry([engine]), publicationProfiles, paths,
                 new MihomoControllerOptions { Endpoint = new("http://127.0.0.1:" + original.ControllerPort + "/") }, store,

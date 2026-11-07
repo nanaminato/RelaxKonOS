@@ -116,7 +116,7 @@ internal static class MihomoSystemdAcceptance
             await host.SetBootAsync(true, default);
             Check((await host.ObserveAsync(default)) is { Running: true, BootEnabled: true }, "Boot enablement does not stop a running service");
 
-            count += await MihomoServerPublicationAcceptance.RunAsync(lifecycle, published, mixedPort, ProbeAsync);
+            count += await MihomoServerPublicationAcceptance.RunAsync(lifecycle, published, mixedPort, ProbeAsync, ProbeWithActiveConnectionAsync);
             if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_HELPER") is { } helper
                 && Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_SERVER") is { } server)
                 await MihomoIpcStartupAcceptance.RunAsync(lifecycle, published, ProbeAsync, mixedPort, helper, server);
@@ -357,7 +357,9 @@ internal static class MihomoSystemdAcceptance
         return false;
     }
 
-    private static async Task<bool> ProbeAsync(int mixedPort)
+    private static Task<bool> ProbeAsync(int mixedPort) => ProbeWithActiveConnectionAsync(mixedPort, null);
+
+    private static async Task<bool> ProbeWithActiveConnectionAsync(int mixedPort, Func<Task>? observe)
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
@@ -371,6 +373,7 @@ internal static class MihomoSystemdAcceptance
             var length = 0;
             while (await reader.ReadLineAsync(timeout.Token) is { Length: > 0 } line)
                 if ((length += line.Length) > 8192) throw new IOException("Acceptance request headers too large");
+            if (observe is not null) await observe();
             await stream.WriteAsync("HTTP/1.1 200 OK\r\nContent-Length: 15\r\nConnection: close\r\n\r\nmihomo-evidence"u8.ToArray(), timeout.Token);
         }, timeout.Token);
         using var client = new HttpClient(new SocketsHttpHandler { Proxy = new WebProxy($"http://127.0.0.1:{mixedPort}"),

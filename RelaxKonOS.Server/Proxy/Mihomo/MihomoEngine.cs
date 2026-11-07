@@ -68,6 +68,12 @@ public sealed class MihomoEngine(
         if (!result.Succeeded) throw new ProxyObservationException(result.ProblemCode);
         return result.Value!;
     }
+    public async Task<int> GetConnectionCountAsync(CancellationToken cancellationToken)
+    {
+        var result = await controller.GetConnectionCountAsync(cancellationToken);
+        if (!result.Succeeded) throw new ProxyObservationException(result.ProblemCode);
+        return result.Value;
+    }
     public Task<ProxyTrafficDto> GetTrafficAsync(CancellationToken cancellationToken) => controller.GetTrafficAsync(cancellationToken);
     public Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken) => controller.CloseConnectionAsync(connectionId, cancellationToken);
     public async Task<IReadOnlyList<ProxyLogEntryDto>> GetLogsAsync(int limit, CancellationToken cancellationToken)

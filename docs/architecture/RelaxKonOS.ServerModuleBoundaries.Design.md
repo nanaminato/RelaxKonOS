@@ -1674,3 +1674,11 @@ Linux 私有 systemd 172 项通过。连续状态读取使用真实认证控制�
 概览与运行时组在三轮中增量最大，下一项优先拆开概览组合读取、控制器健康查询和运行时观测，定位各自的执行依赖。固定顺序会累积 JIT、路由、SQLite 和 HTTP 缓存，现有数据只能定位请求组。此轮使用空私有状态，未启动 Mihomo，未涵盖活动连接、非空档案或订阅转换。专属 Helper 未计入 Server 树。静态启停差用于候选比较，Proxy 继续 resident，动态释放及生产内存收益尚未测量。
 
 复现和口径见[测量方案](RelaxKonOS.ServerModuleBaseline.Protocol.md#固定输入与运行清单)。日志为 `.artifacts/mb04-proxy-measure-final-live.log`。产品与采样包 SHA-256 为 `1033667d69d1bd0a5dc55b8adc83d97d7c4823979245764367e0e7557fedd854`，原始样本包 `.artifacts/mb04-proxy-measure-raw.tar.gz` 的 SHA-256 为 `8c546a81f2340cb28f8da0540d560414e98750258f512c7b572634998fc72c02`，配对摘要 `.artifacts/mb04-proxy-measure-summary.json` 的 SHA-256 为 `33776e04b576ce3fc4c40984b657e366b72dfcb00d1280b2b9d257eb655353b6`。首轮因测试包目录缺少 Python 导入所需的读取权限在采样前退出，修正后完整复跑。
+
+### MB-04 Proxy 概览与启停执行边界
+
+概览与启停分成独立请求和后台执行图。启停协调器只依赖运行时状态和固定特权动作。概览通过 SQLite 直接查询一个活动档案，连接数复用详情的解析与记录筛选，最多统计前 2,000 条记录中的有效连接 ID。读取仍使用原请求取消、控制器认证和 Core 恢复状态。Mihomo 的连接响应仍需完整缓冲和 JSON 解析。
+
+Linux Release 私有 systemd 173 项通过。生产概览服务在真实 Mihomo HTTP 代理连接等待源站响应期间读取同一活动档案，计数与连接详情一致。源站交付响应后，真实转发完成，配置派发次数未增加。停机排空原操作 `fdb15096-a0b8-495a-9c18-8b2b6a078a9b`、完整 Server 的独立 Helper 原失败回执 `8f271099-5dde-4e9e-a2c3-1f40acbc98a0` 和原中断补偿 `a9dc3553-2757-47ed-8d8c-f660add07521` 同批通过。宿主服务和代理文件指纹一致。日志为 `.artifacts/mb04-mihomo-overview-live.log`，归档 SHA-256 为 `105f4018620b9a1b3f70e66a43109aef2ba115d5a78460658613d7a0492cd654`。
+
+Windows Release 控制器、宿主档案库、配置、Core Proxy 安全和模块边界回归通过。旧档案库夹具仍预期迁移 16，已对齐现有迁移 17。活动连接专项直接调用生产概览服务，完整认证 HTTP 联验与改动后同口径驻留复测仍开放。Proxy 保持 resident。

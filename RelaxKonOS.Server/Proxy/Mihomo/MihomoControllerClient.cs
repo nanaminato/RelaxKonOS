@@ -20,6 +20,7 @@ public interface IMihomoControllerClient
     Task<string?> SetRoutingModeAsync(ProxyRoutingMode mode, CancellationToken cancellationToken);
     Task<ProxyDelayDto> TestProxyDelayAsync(string proxyName, string url, int timeoutMilliseconds, CancellationToken cancellationToken);
     Task<ControllerResult<IReadOnlyList<ProxyConnectionDto>>> GetConnectionsAsync(CancellationToken cancellationToken);
+    Task<ControllerResult<int>> GetConnectionCountAsync(CancellationToken cancellationToken);
     Task<ProxyTrafficDto> GetTrafficAsync(CancellationToken cancellationToken);
     Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken);
     Task<ControllerResult<IReadOnlyList<ProxyLogEntryDto>>> GetLogsAsync(int limit, CancellationToken cancellationToken);
@@ -135,30 +136,43 @@ public sealed class MihomoControllerClient : IMihomoControllerClient, IDisposabl
         finally { result.Value?.Dispose(); }
     }
 
-    public async Task<ControllerResult<IReadOnlyList<ProxyConnectionDto>>> GetConnectionsAsync(CancellationToken cancellationToken)
+    public Task<ControllerResult<IReadOnlyList<ProxyConnectionDto>>> GetConnectionsAsync(CancellationToken cancellationToken) =>
+        ReadConnectionsAsync<IReadOnlyList<ProxyConnectionDto>>(items => items.Select(connection =>
+        {
+            var (item, id) = connection;
+            return new ProxyConnectionDto(id, GetString(item, "metadata", "network") ?? "unknown", ConnectionEndpoint(item, false),
+                ConnectionEndpoint(item, true), GetString(item, "rule") ?? "", GetString(item, "chains") ?? "",
+                GetDateTime(item, "start") ?? DateTimeOffset.MinValue);
+        }).ToArray(), [], cancellationToken);
+
+    public Task<ControllerResult<int>> GetConnectionCountAsync(CancellationToken cancellationToken) =>
+        ReadConnectionsAsync(items => items.Count(), 0, cancellationToken);
+
+    private async Task<ControllerResult<T>> ReadConnectionsAsync<T>(Func<IEnumerable<(JsonElement Item, string Id)>, T> project,
+        T empty, CancellationToken cancellationToken)
     {
         var result = await GetJsonAsync("connections", cancellationToken);
-        if (!result.Succeeded) return ControllerResult<IReadOnlyList<ProxyConnectionDto>>.Failure(result.ProblemCode);
+        if (!result.Succeeded) return ControllerResult<T>.Failure(result.ProblemCode);
         try
         {
             if (!result.Value!.RootElement.TryGetProperty("connections", out var connections))
-                return ControllerResult<IReadOnlyList<ProxyConnectionDto>>.Failure(ProxyProblemCodes.ControllerResponseInvalid);
+                return ControllerResult<T>.Failure(ProxyProblemCodes.ControllerResponseInvalid);
             // Mihomo serializes its nil slice as null when no trackers are active.
-            if (connections.ValueKind == JsonValueKind.Null) return ControllerResult<IReadOnlyList<ProxyConnectionDto>>.Success([]);
+            if (connections.ValueKind == JsonValueKind.Null) return ControllerResult<T>.Success(empty);
             if (connections.ValueKind != JsonValueKind.Array)
-                return ControllerResult<IReadOnlyList<ProxyConnectionDto>>.Failure(ProxyProblemCodes.ControllerResponseInvalid);
-            var mapped = new List<ProxyConnectionDto>();
-            foreach (var item in connections.EnumerateArray().Take(2_000))
-            {
-                var id = GetString(item, "id");
-                if (string.IsNullOrWhiteSpace(id)) continue;
-                mapped.Add(new ProxyConnectionDto(id, GetString(item, "metadata", "network") ?? "unknown", ConnectionEndpoint(item, false),
-                    ConnectionEndpoint(item, true), GetString(item, "rule") ?? "", GetString(item, "chains") ?? "",
-                    GetDateTime(item, "start") ?? DateTimeOffset.MinValue));
-            }
-            return ControllerResult<IReadOnlyList<ProxyConnectionDto>>.Success(mapped);
+                return ControllerResult<T>.Failure(ProxyProblemCodes.ControllerResponseInvalid);
+            return ControllerResult<T>.Success(project(EnumerateConnections(connections)));
         }
         finally { result.Value?.Dispose(); }
+    }
+
+    private static IEnumerable<(JsonElement Item, string Id)> EnumerateConnections(JsonElement connections)
+    {
+        foreach (var item in connections.EnumerateArray().Take(2_000))
+        {
+            var id = GetString(item, "id");
+            if (!string.IsNullOrWhiteSpace(id)) yield return (item, id);
+        }
     }
 
     public async Task<ProxyTrafficDto> GetTrafficAsync(CancellationToken cancellationToken)

@@ -11,7 +11,7 @@ public static class ProxyEndpoints
 {
     public static IEndpointRouteBuilder MapProxyEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet(ProxyApiRoutes.Overview, (IProxyLifecycleService service, CancellationToken ct) => service.GetOverviewAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
+        app.MapGet(ProxyApiRoutes.Overview, (ProxyOverviewService service, CancellationToken ct) => service.GetAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
         app.MapGet(ProxyApiRoutes.Runtime, (IProxyRuntimeManager runtime, CancellationToken ct) => runtime.GetAsync("mihomo", ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
         app.MapGet(ProxyApiRoutes.Settings, (IProxySettingsReader settings, CancellationToken ct) => settings.GetAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
         app.MapPut(ProxyApiRoutes.Settings, async (UpdateProxySettingsRequest request, IProxySettingsWriter settings, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>

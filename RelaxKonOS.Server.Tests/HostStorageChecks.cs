@@ -24,7 +24,7 @@ internal static async Task VerifyHostGlobalMigrationAsync(string root)
     await connection.OpenAsync();
     await using var command = connection.CreateCommand();
     command.CommandText = "SELECT MAX(version) FROM relaxkonos_host_schema_migrations;";
-    TestAssert.Assert(Convert.ToInt32(await command.ExecuteScalarAsync()) == 16, "HostGlobal migrations did not reach the expected version.");
+    TestAssert.Assert(Convert.ToInt32(await command.ExecuteScalarAsync()) == 17, "HostGlobal migrations did not reach the expected version.");
     command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='docker_proxy_settings');";
     TestAssert.Assert(Convert.ToInt64(await command.ExecuteScalarAsync()) == 1, "Host-global Docker proxy settings table was not migrated.");
     command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='proxy_profile_publication');";
@@ -48,11 +48,14 @@ internal static async Task VerifyProxyHostProfileRepositoryAsync(string root)
     var repository = new SqliteProxyProfileRepository(new TestHostEnvironment(root), Options.Create(new StorageOptions { DatabasePath = databasePath }));
     var first = await repository.UpsertAsync(null, "Primary", MihomoEngine.Id, null, CancellationToken.None);
     var second = await repository.UpsertAsync(null, "Fallback", MihomoEngine.Id, null, CancellationToken.None);
+    TestAssert.Assert(await repository.GetActiveAsync(default) is null, "Draft profiles must not appear as active.");
     var active = await repository.SetActiveAsync(first.Id, CancellationToken.None);
     TestAssert.Assert(active?.IsActive == true && (await repository.ListAsync(CancellationToken.None)).Count == 2, "Host-global Proxy profiles were not persisted.");
     TestAssert.Assert(!await repository.DeleteAsync(first.Id, CancellationToken.None), "The active Proxy profile was deleted without an explicit switch.");
     TestAssert.Assert(await repository.SetActiveAsync(second.Id, CancellationToken.None) is { IsActive: true } && await repository.DeleteAsync(first.Id, CancellationToken.None),
         "Switching the active Proxy profile did not allow the previous profile to be deleted.");
+    TestAssert.Assert(await repository.GetActiveAsync(default) is { } selected && selected.Id == second.Id,
+        "Overview must read the newly selected profile directly from the same repository.");
 }
 
 internal static async Task VerifyProxySubscriptionRepositoryAsync(string root)

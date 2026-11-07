@@ -4500,3 +4500,5 @@ Mihomo 发布恢复调度器停机时等待已开始的原回执核验、应用�
 Mihomo 状态读取按调用使用独立控制器，启动就绪检查在一次检查期间复用同一个控制器。安装与移除的执行作用域由原安装台账适配器按需创建。状态刷新不会触发配置发布或服务启停，原发布锁、系统代理、TUN 与恢复责任仍由 Core 持续负责。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-运行时与安装执行作用域)。
 
 隔离 Linux 的空状态配对测量将概览与运行时读取列为下一项执行图审计对象。该证据覆盖认证请求后的 Server 驻留窗口。见[配对数据与限制](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-管理面的配对驻留基线)。
+
+Proxy 概览使用单独的请求作用域，从原档案库读取当前选中项，并按连接详情的记录规则统计活动连接。只有连接详情请求才映射地址、规则、链路和时间。概览沿用原控制器认证、健康状态和 TUN 恢复状态。

@@ -76,6 +76,8 @@ internal static async Task VerifyMihomoControllerSafetyAsync()
         "Mihomo traffic was not mapped to neutral counters.");
     var emptyConnections = await client.GetConnectionsAsync(CancellationToken.None);
     TestAssert.Assert(emptyConnections.Succeeded && emptyConnections.Value!.Count == 0, "Mihomo null tracker slice must represent an empty connection list.");
+    TestAssert.Assert(await client.GetConnectionCountAsync(default) is { Succeeded: true, Value: 0 },
+        "Mihomo null tracker slice must also represent a zero overview count.");
     var logs = await client.GetLogsAsync(10, CancellationToken.None);
     var log = logs.Value?.Single();
     TestAssert.Assert(logs.Succeeded && log is not null && !log.Message.Contains("controller-secret", StringComparison.Ordinal)
@@ -134,6 +136,8 @@ internal static async Task VerifyMihomoLiveStreamsAsync()
     var connections = await client.GetConnectionsAsync(CancellationToken.None);
     TestAssert.Assert(connections.Value?.Single() is { Network: "tcp", Source: "[::1]:1234", Destination: "example.test:443", Chains: "DIRECT" },
         "Connection metadata, host and endpoint ports were not mapped.");
+    TestAssert.Assert(await client.GetConnectionCountAsync(default) is { Succeeded: true, Value: 1 },
+        "Overview counts the same bounded connection records as the detailed view.");
     var logs = await client.GetLogsAsync(1, CancellationToken.None);
     TestAssert.Assert(logs.Succeeded && logs.Value!.Count == 1 && !logs.Value[0].Message.Contains("private-value"),
         "A live NDJSON log must be sampled and sanitized without EOF.");
