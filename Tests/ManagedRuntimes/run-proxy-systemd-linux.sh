@@ -10,6 +10,8 @@ server=$(realpath -e -- "$3")
 proxy_tests=
 if [ "$#" -ge 4 ]; then proxy_tests=$(realpath -e -- "$4"); fi
 authenticated=${5:-}
+run_seconds=150
+if [[ $authenticated == --authenticated ]]; then run_seconds=210; fi
 baseline=
 if [[ $# -eq 6 ]]; then baseline=$(realpath -e -- "$6"); fi
 case "$fixture$helper$server$proxy_tests$baseline" in *[!a-zA-Z0-9_./-]*) echo "Test paths must contain only unit-safe characters" >&2; exit 2;; esac
@@ -164,11 +166,11 @@ export SYSTEMD_GENERATOR_PATH=/dev/null
 export SYSTEMD_UNIT_PATH=/etc/systemd/system
 exec /usr/lib/systemd/systemd --system --unit=relaxkonos-test.target --log-target=console --log-level=info > "$work/manager.log" 2>&1
 MANAGER
-systemd-run --unit="$unit" --property=Delegate=yes --property=RuntimeMaxSec=180s --property=LimitNOFILE=4096 \
+systemd-run --unit="$unit" --property=Delegate=yes --property=RuntimeMaxSec="$((run_seconds + 30))s" --property=LimitNOFILE=4096 \
     --property=TimeoutStopSec=5s --property=KillMode=control-group --collect \
     unshare --mount --cgroup --net --pid --fork --kill-child --mount-proc --propagation private \
     bash "$work/manager.sh" "$work" "$host_pidns" "$host_netns" "$authenticated" "$host_mntns"
-for attempt in $(seq 1 150); do
+for attempt in $(seq 1 "$run_seconds"); do
     test ! -f "$work/result" || break
     state=$(systemctl show "$unit" --property=ActiveState --value 2>/dev/null || true)
     case "$state" in active|activating) :;; *) break;; esac

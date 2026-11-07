@@ -27,7 +27,8 @@ internal static class ProxyAuthenticatedPublicationChecks
 {
     internal static async Task RunAsync(string root, string assembly, string socket, ISingBoxArchiveHost host,
         ProxyFullServerTrafficProbe traffic, ProxyServerSecret retained, Func<RuntimeArchiveState> nativeState,
-        Func<Task> stopHelper, Func<Task> restartHelper, ProxySystemdGuardProbe guard)
+        Func<Task> stopHelper, Func<Task> restartHelper, ProxySystemdGuardProbe guard,
+        Func<Guid, Task<ProxyServerPublicationReceipt>> readReceipt)
     {
         var login = ReadLogin();
         var store = ManagedServiceChecks.OpenFullServerStore(root);
@@ -113,8 +114,100 @@ internal static class ProxyAuthenticatedPublicationChecks
         await VerifyMihomoObservationCancellationAsync(root, assembly, socket, login, nativeState, guard);
         await VerifySystemProxyShutdownAsync(root, assembly, socket, login, nativeState, guard);
         await VerifyTunShutdownAsync(root, assembly, socket, login, nativeState, guard);
+        await VerifyExpiryShutdownAsync(root, assembly, socket, login, nativeState, traffic, retained, added, readReceipt);
         if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_PROXY_BENCHMARK_BASELINE") is { Length: > 0 } baseline)
             await ProxyConnectionBenchmark.RunAsync(root, socket, baseline, assembly, login, guard, nativeState);
+    }
+
+    private static async Task VerifyExpiryShutdownAsync(string root, string assembly, string socket, LoginRequest login,
+        Func<RuntimeArchiveState> nativeState, ProxyFullServerTrafficProbe traffic, ProxyServerSecret retained,
+        StoredCredential expiring, Func<Guid, Task<ProxyServerPublicationReceipt>> readReceipt)
+    {
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(65));
+        var ct = budget.Token;
+        var store = ManagedServiceChecks.OpenFullServerStore(root);
+        var before = await store.ReadAsync(ct);
+        if (before.PendingPublication is not null || before.Published?.Credentials.Any(item => item.Id == expiring.Id) != true)
+            throw new InvalidOperationException("The expiry test requires the original live grant and a settled publication.");
+        using var oldConnection = await traffic.ForwardAsync(expiring.Value, ct);
+        var baseline = nativeState();
+        var expires = DateTimeOffset.UtcNow.AddSeconds(8);
+        await store.WriteAsync(before with { Credentials = before.Credentials.Select(item =>
+            item.Id == expiring.Id ? item with { ExpiresAt = expires } : item).ToArray() }, ct);
+        var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly, socket, root, reuse: true);
+        start.Environment["Identity__LinuxPamTransport"] = "helper";
+        start.Environment["Logging__LogLevel__Microsoft.Hosting.Lifetime"] = "Information";
+        var applies = 0;
+        await using var relay = new ReplyRelay("/run/relaxkonos-expiry-drain.sock", socket, ct, (kind, _) =>
+        {
+            if (kind != "ProxyServerApply") return false;
+            Interlocked.Increment(ref applies);
+            return true;
+        });
+        start.Environment["PrivilegedHelper__SocketPath"] = relay.Path;
+        var stopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var process = Start(start, onOutput: line =>
+        {
+            if (line.Contains("Application is shutting down", StringComparison.Ordinal)) stopping.TrySetResult();
+        });
+        try
+        {
+            using var client = await ConnectAsync(process, login, ct);
+            var operation = await relay.Committed.Task.WaitAsync(ct);
+            var pending = await store.ReadAsync(ct);
+            var committed = nativeState();
+            var receipt = await readReceipt(operation).WaitAsync(ct);
+            var nativePid = await ReadNativePidAsync();
+            if (DateTimeOffset.UtcNow < expires || pending.PendingPublicationOperationId != operation
+                || pending.PendingQueuedPublication || pending.PendingPublication is not { } candidate
+                || candidate.Credentials.Any(item => item.Id == expiring.Id)
+                || pending.Published?.Credentials.Any(item => item.Id == expiring.Id) != true
+                || receipt.OperationId != operation || receipt.Outcome != ProxyServerPublicationOutcome.Committed
+                || receipt.PreviousHash != baseline.ConfigurationIdentity || receipt.CandidateHash != committed.ConfigurationIdentity
+                || committed.Installation.StateRevision != baseline.Installation.StateRevision + 1)
+                throw new InvalidOperationException("The natural expiry did not leave one original committed native receipt and pending application state.");
+            await ProxyFullServerTrafficProbe.ClosedAsync(oldConnection, ct);
+            await traffic.DeniedAsync(expiring.Value, ct);
+            using (await traffic.ForwardAsync(retained.Value, ct)) { }
+            await SignalShutdownAsync(process, client, stopping.Task, ct);
+            if (process.HasExited || (await store.ReadAsync(ct)).PendingPublicationOperationId != operation
+                || await ReadNativePidAsync() != nativePid || Volatile.Read(ref applies) != 1)
+                throw new InvalidOperationException("SIGTERM lost the original in-flight expiry or repeated its apply.");
+            using (await traffic.ForwardAsync(retained.Value, ct)) { }
+            relay.ReleaseHeldResponse();
+            await process.WaitForExitAsync(ct);
+            if (process.ExitCode != 0) throw new InvalidOperationException("The Server failed to exit after expiry drain.");
+            await VerifyTerminalAsync();
+
+            using var restart = Start(start);
+            try
+            {
+                using var restarted = await ConnectAsync(restart, login, ct);
+                await VerifyTerminalAsync();
+                await traffic.DeniedAsync(expiring.Value, ct);
+                using var forwarded = await traffic.ForwardAsync(retained.Value, ct);
+                Console.WriteLine($"PASS FULL SERVER EXPIRY SIGTERM DRAIN: original committed receipt {operation}, one apply, expired grant rejected after restart");
+            }
+            finally { await StopAsync(restart); }
+
+            async Task VerifyTerminalAsync()
+            {
+                var final = await store.ReadAsync(ct);
+                var schedule = await store.ReadExpiryScheduleAsync(ct);
+                if (final.PendingPublication is not null || final.PendingPublicationOperationId is not null
+                    || final.Published?.Credentials.Any(item => item.Id == expiring.Id) != false
+                    || final.Published.Credentials.Any(item => item.Id == retained.Id) != true
+                    || schedule.RequiresPass(DateTimeOffset.UtcNow) || await readReceipt(operation).WaitAsync(ct) != receipt
+                    || nativeState().Installation.StateRevision != committed.Installation.StateRevision
+                    || await ReadNativePidAsync() != nativePid || Volatile.Read(ref applies) != 1)
+                    throw new InvalidOperationException("Expiry cleanup did not preserve the original receipt and live runtime.");
+            }
+        }
+        finally
+        {
+            relay.ReleaseHeldResponse();
+            await StopAsync(process);
+        }
     }
 
     private static async Task VerifyTunShutdownAsync(string root, string assembly, string socket, LoginRequest login,

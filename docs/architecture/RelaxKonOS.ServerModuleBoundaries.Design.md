@@ -1922,3 +1922,15 @@ Windows Release TUN 边界 34 项及模块边界通过。MB-05 跨进程夹具�
 原 TUN 操作 `44a0b476-2e7f-4dd5-98f8-3a55504a7ab9` 在设备已撤销、管理路由及策略规则恢复后仍保留标记。SIGTERM 关闭监听，Server 持续等待原禁用确认。放行响应后，Core 记录原操作，完成标记清理，Server 正常退出。重启后确认没有第二次 reload，Mihomo PID、原入站修订及已到达源站的代理连接保持，原连接收到响应。
 
 同批系统代理 guard 排空原 `06219350-801c-44e7-a8ba-c0d5f084b691`、入站发布恢复 `9f5c1791-a665-448f-9c74-b76ef2fc8cad` 及补偿 `a3adbc1e-2a5e-47d1-a08d-a7a6c56cc4b9` 通过。专属 cgroup 清理完成，宿主服务和代理文件指纹一致。日志为 `.artifacts/mb04-tun-sigterm-live.log`，归档 SHA-256 为 `7735b1b31fdda665e473272707268afc25eee1fdbae60c59869eee79da9d48aa`。本次验收使用独立直连 Mihomo 配置。已确认受管发布的 TUN 事务、Windows 原生停机及整模块休眠仍开放。下一项用完整 Server 联验入站授权到期在真实 Helper 提交后、原回执仍在途时的 SIGTERM。
+
+### MB-04 完整 Server 的入站授权到期停机排空
+
+私有 Linux systemd 中，先使用已发布授权建立真实 VLESS TLS 连接，再为该授权设置临近的到期时间。停用 Proxy 管理面的完整非 root Server 通过原 Core 持久索引发现到期，真实 Helper 提交撤销。回环中继截留原成功响应，夹具从 Helper 另行读取同一 operationId 的原生回执，同时核对原应用候选和修订。撤销后检查原连接关闭、到期授权被拒绝、保留授权可转发。
+
+Windows Release Core 安全与模块边界回归通过。MB-05 跨进程夹具按原 `7f407d28-1991-4966-89de-df88ce2ea2e3` 读回 Interrupted，副作用计数为一。日志为 `.artifacts/mb04-expiry-sigterm-core-win.log` 与 `.artifacts/mb04-expiry-sigterm-boundaries-win.log`。
+
+真实原回执 `b2e22e1a-55e5-45cc-b859-5a38168a0644` 为 Committed。SIGTERM 后 Server 停止监听，仍持有同一待处理操作；保留授权继续转发，原生 PID 仍是撤销提交后的进程。放行原响应后，Server 持久化已发布结果并正常退出。重启核对索引无待处理或到期工作，仍从原 Helper 按 ID 读到完全一致的回执。到期授权继续被拒绝，保留授权可重连，原生修订仅增加一次，Helper 日志确认这一阶段仅一次 apply。
+
+同批系统代理 guard 和 TUN 停机、入站发布原恢复及补偿路径通过。专属 cgroup 清理完成，宿主服务和代理文件指纹一致。首轮认证 runner 在 150 秒上限到达后未产生终态；延长认证窗口至 210 秒后全套通过，仍要求实际结果与全部标记。失败日志为 `.artifacts/mb04-expiry-sigterm-live.log`，通过日志为 `.artifacts/mb04-expiry-sigterm-final-live.log`，归档 SHA-256 为 `ede13aa743ab9f232db9f10d08c3bb4c005b499a6509d4cfd1b97ca0e6637a67`。
+
+四条 Core 安全路径已有 Linux 完整 Server 停机证据。Proxy 仍 resident，Windows 原生与动态休眠保持开放。下一项核对管理队列的准入、真实收尾和停机期限之间的所有权，保证已受理工作能在原台账完成终态。
