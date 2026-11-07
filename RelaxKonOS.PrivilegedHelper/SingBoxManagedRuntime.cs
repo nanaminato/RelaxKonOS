@@ -186,7 +186,7 @@ internal static class SingBoxManagedRuntime
             }
             catch (Exception)
             {
-                if (!await CompensateAsync(root, state, host, wasRunning, bootEnabled, ct)) return Failure(Recovery);
+                if (!await CompensateAsync(root, state, host, wasRunning, bootEnabled, CancellationToken.None)) return Failure(Recovery);
                 return Failure(ApplyFailed);
             }
             var updated = Commit(session, state, identity);
@@ -274,7 +274,7 @@ internal static class SingBoxManagedRuntime
         {
             var bytes = await ReadAsync(Previous(root), ct);
             if (!Convert.ToHexString(SHA256.HashData(bytes)).Equals(recorded, StringComparison.OrdinalIgnoreCase)) return false;
-            var candidate = Candidate(root);
+            var candidate = configuration + "." + Guid.NewGuid().ToString("N") + ".restore";
             try
             {
                 await WriteNewAsync(candidate, bytes, ct);
@@ -285,7 +285,9 @@ internal static class SingBoxManagedRuntime
             }
             finally { File.Delete(candidate); }
             var after = await host.ObserveAsync(ct);
-            return after.Owned && after.Running == wasRunning
+            return after.Exists && after.Owned && after.Running == wasRunning && after.BootEnabled == bootEnabled
+                && SamePath(after.Executable, Binary(root, state.Active!))
+                && recorded.Equals(await DigestAsync(configuration, ct), StringComparison.OrdinalIgnoreCase)
                 && (!wasRunning || recorded.Equals(after.AppliedConfigurationIdentity, StringComparison.OrdinalIgnoreCase));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException

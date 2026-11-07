@@ -151,6 +151,17 @@ internal static class ManagedServiceChecks
                 && (await host.ObserveAsync(default)).Running,
                 "Failed publication compensates to the recorded configuration and restores the running service");
 
+            // A failed stop leaves the publication candidate on disk. Compensation needs its own staging file.
+            host.FailNextStop = true;
+            var interrupted = await Send(PrivilegedOperationKind.ProxyServerApply, new(Action: null, Material: materialA), root, states, host, natives);
+            var afterStopFailure = await host.ObserveAsync(default);
+            Check(!interrupted.Success && interrupted.Error == "proxy_server.config_apply_failed"
+                && states.Read()!.ConfigurationIdentity == identityB
+                && afterStopFailure.Running && afterStopFailure.AppliedConfigurationIdentity == identityB
+                && !File.Exists(Path.Combine(root, "config.json.candidate"))
+                && !Directory.EnumerateFiles(root, "*.restore").Any(),
+                "A stop failure must restore the old service without colliding with the unpublished candidate");
+
             // Start can return before the service exits. The old run state still needs compensation.
             host.ExitOnNextStart = true;
             var revisionBeforeExit = states.Read()!.Installation.StateRevision;
@@ -235,6 +246,7 @@ internal static class ManagedServiceChecks
         internal int Stops;
         internal int Starts;
         internal bool FailNextConfigure;
+        internal bool FailNextStop;
         internal bool ExitOnNextStart;
         private Process? process;
         private string? configuration;
@@ -245,6 +257,11 @@ internal static class ManagedServiceChecks
         public async Task StopAsync(CancellationToken ct)
         {
             Stops++;
+            if (FailNextStop)
+            {
+                FailNextStop = false;
+                throw new IOException("Fixture stop failure");
+            }
             await DisposeAsync();
             Observation = Observation with { Running = false, AppliedConfigurationIdentity = null };
         }
