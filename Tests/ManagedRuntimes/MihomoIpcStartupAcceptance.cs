@@ -212,6 +212,9 @@ internal static class MihomoIpcStartupAcceptance
         var baseline = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_OVERVIEW_BASELINE");
         var trafficPolling = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_TRAFFIC_POLLING") == "1";
         var controlReads = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_CONTROL_READS") == "1";
+        var compareSplitConfiguration = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_COMPARE_SPLIT_CONFIG") == "1";
+        if (compareSplitConfiguration && (!controlReads || trafficPolling || string.IsNullOrEmpty(baseline)))
+            throw new InvalidOperationException("The split-configuration measurement requires a control-read baseline.");
         var subscriptionsEnabled = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_SUBSCRIPTION") == "1";
         var login = subscriptionsEnabled || trafficPolling || !string.IsNullOrEmpty(baseline)
             ? ProxyAuthenticatedPublicationChecks.ReadLogin() : null;
@@ -223,7 +226,7 @@ internal static class MihomoIpcStartupAcceptance
             await ProxyConnectionBenchmark.RunAsync(trafficPolling ? serverAssembly : baseline!, serverAssembly,
                 trafficPolling ? "no-polling" : "baseline", trafficPolling ? "traffic-polling" : "candidate",
                 login!, new Uri($"http://127.0.0.1:{port}/"), PrepareAsync, VerifyAsync, requireManaged: true,
-                pollingRuntimePid: trafficPolling ? runtimePid : null, controlReads: controlReads);
+                pollingRuntimePid: trafficPolling ? runtimePid : null, controlReads: controlReads, compareSplitConfiguration: compareSplitConfiguration);
             var log = await helper.StopAsync(drainCompletedRequests: true);
             if (log.Contains("operation=MihomoRuntimeConfigure ", StringComparison.Ordinal)
                 || log.Contains("operation=MihomoRuntimeRecover ", StringComparison.Ordinal))

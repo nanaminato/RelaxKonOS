@@ -2172,3 +2172,19 @@ Linux 私有 systemd 通过完整认证 Server 和真实 Mihomo 核对请求计�
 Windows Release 模块边界、控制器和桌面布局回归通过。Kestrel 夹具覆盖一次采样、认证失败及无效路由字段下的独立 DNS 投影。MB-05 跨进程原 `289f23ad-2b74-410a-bf43-684ddace71f5` 返回 Interrupted，受控副作用计数为一。Android 代理 HTTP、仓储和 ViewModel 共 46 项通过，设备测试源码已编译。Android 首轮编译发现未决路由写入的核对仍调用旧读取，更新后复验确认 DNS 成功不能解除未知路由标记。Android 工作流见[应用文档](../../Client/RelaxKonOS.Client.Android/docs/features/Proxy.md)。
 
 此项验证实际请求数从两次降为一次。Proxy 保持 resident，配对内存及整模块动态休眠仍开放。
+
+### MB-04 Mihomo 配置合并读取配对测量
+
+基线 `5981a0e0` 的桌面负载并发读取路由与 DNS，候选 `0fdbb4ca` 从合并接口读取。两份完整 Linux Release 制品在私有 systemd 中完成三对交错运行，每轮 24 批读取运行时、代理组、路由和 DNS。每批配置 HTTP 请求由两次降为一次，四项 JSON 语义逐批相等。使用 `RELAXKONOS_TEST_MIHOMO_CONTROL_READS=1`、`RELAXKONOS_TEST_MIHOMO_COMPARE_SPLIT_CONFIG=1` 和 `RELAXKONOS_TEST_MIHOMO_OVERVIEW_BASELINE` 选取旧制品负载。
+
+| 轮次 | 读取期间峰值 PSS 差（MiB） | 35 秒 PSS 差（MiB） | 批次中位延迟差（ms） | Server CPU 差（ms） |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | +0.39 | −5.61 | −0.83 | +570 |
+| 2 | −0.34 | −2.43 | +4.15 | +90 |
+| 3 | +1.37 | −1.13 | +12.12 | +300 |
+
+差值为候选减基线。三轮 35 秒 PSS 均较低，读取期间的峰值方向不一，Server CPU 三轮均增加。结果限本次隔离负载，Proxy 整体继续 resident，生产内存和动态休眠开放。原生 PID 9830 与原回执 `ea2bf217-a5a4-4d2a-a045-7f3285587632` 保持，配置及补偿派发均为零，512 条原连接均收到源站响应。
+
+同制品复验 `/configs` 单次请求、取消排空及原发布 `a06ae54c-70b0-4c64-b066-566b702a3e1e` 的 SIGTERM 与重启恢复。Linux 原生套件通过 178 项，专属 cgroup 已清理，宿主 sing-box 和代理文件指纹一致。归档 SHA-256 为 `9ef3033da678a4a40977d5c82f413d9831e62e00bafda5d5eadac8c22d3bebbe`，原始样本与两份制品摘要见 `.artifacts/mb04-single-config-paired/`。
+
+Windows Release 模块边界与 Mihomo 注册专项通过。MB-05 跨进程按原 `23bf6ea0-6b10-4486-a7f0-393c53236d0a` 返回 Interrupted，受控副作用计数为一。ManagedRuntimes 广跑停在伪造制品布局断言，父提交发布制品的 `runtime-lifecycle-only` 复现同一失败。

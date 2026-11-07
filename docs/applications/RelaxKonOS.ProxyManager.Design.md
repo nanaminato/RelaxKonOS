@@ -4556,3 +4556,5 @@ Mihomo 连接详情从有界快照返回连接 ID、端点、规则、代理链�
 四条控制面接口已用相同的 512 条真实连接和配对请求复测。各轮返回结果一致，Server 峰值 PSS 和延迟变化未形成稳定改善。见[控制面读取配对测量](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-控制面读取配对测量)。
 
 桌面路由和 DNS 状态通过 `GET /api/v1.0/proxy/controller-config` 一次读取。两项结果来自同一份 Mihomo 配置样本，分别携带问题码。路由设置仍通过原 PUT 保存。见[路由和 DNS 单次采样](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-路由和-dns-单次采样)。
+
+合并前后对比了同一批 512 条真实连接上的认证请求，路由与 DNS 结果一致。合并后配置请求减半，隔离负载的 35 秒 PSS 较低，Server CPU 增加。见[配置合并读取配对测量](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-配置合并读取配对测量)。

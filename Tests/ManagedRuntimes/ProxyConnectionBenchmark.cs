@@ -41,7 +41,7 @@ internal static class ProxyConnectionBenchmark
 
     internal static async Task RunAsync(string baseline, string candidate, string baselineMode, string candidateMode,
         LoginRequest login, Uri runtimeProxy, Func<string, Task<ProcessStartInfo>> prepare, Func<Task> verify,
-        bool requireManaged, int? pollingRuntimePid = null, bool controlReads = false)
+        bool requireManaged, int? pollingRuntimePid = null, bool controlReads = false, bool compareSplitConfiguration = false)
     {
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(requireManaged ? 420 : 85));
         var ct = budget.Token;
@@ -74,6 +74,7 @@ internal static class ProxyConnectionBenchmark
             {
                 foreach (var input in pair == 2 ? inputs.Reverse() : inputs)
                 {
+                    var splitConfiguration = compareSplitConfiguration && input.Mode == baselineMode;
                     var start = await prepare(input.Assembly);
                     using var process = ProxyAuthenticatedPublicationChecks.Start(start);
                     try
@@ -114,6 +115,7 @@ internal static class ProxyConnectionBenchmark
                         Console.WriteLine("PROXY BENCHMARK RUN " + JsonSerializer.Serialize(new
                         {
                             Pair = pair, input.Mode, ConnectionCount, ControlReads = controlReads, RequestsPerRoute = runtime is null ? RequestsPerRoute : 0,
+                            ConfigurationRequestsPerBatch = controlReads ? (splitConfiguration ? 2 : 1) : 0,
                             Idle = idle, Samples = samples, Cooldown = cooldown,
                             PairRequestMs = runtime is null ? timings : null, TrafficPollMs = runtime is null ? null : timings,
                             ServerCpuMs = serverCpuMs, RuntimeCpuMs = runtimeCpuMs
@@ -157,7 +159,7 @@ internal static class ProxyConnectionBenchmark
                             JsonElement[] values =
                             [
                                 await ReadAsync(ProxyApiRoutes.Runtime), await ReadAsync(ProxyApiRoutes.Groups),
-                                await ReadAsync(ProxyApiRoutes.ControllerConfiguration),
+                                await ReadConfigurationAsync(),
                             ];
                             if (values[0].Deserialize<ProxyRuntimeDto>(RelaxKonOSJsonOptions.Default)
                                     is not { Mode: ProxyRuntimeMode.Managed, State: ProxyRuntimeState.Running, IntegrityVerified: true, ProblemCode: "" }
@@ -170,6 +172,18 @@ internal static class ProxyConnectionBenchmark
                                 throw new InvalidOperationException("The paired read workload returned different control observations.");
 
                             Task<JsonElement> ReadAsync(string route) => client.GetFromJsonAsync<JsonElement>(route, RelaxKonOSJsonOptions.Default, ct);
+
+                            async Task<JsonElement> ReadConfigurationAsync()
+                            {
+                                if (!splitConfiguration) return await ReadAsync(ProxyApiRoutes.ControllerConfiguration);
+                                // This workload intentionally drives the previous Release's two reads in parallel.
+                                var routing = client.GetFromJsonAsync<ProxyRoutingModeDto>(ProxyApiRoutes.Routing, RelaxKonOSJsonOptions.Default, ct);
+                                var dns = client.GetFromJsonAsync<ProxyDnsStatusDto>(ProxyApiRoutes.Proxy + "/dns", RelaxKonOSJsonOptions.Default, ct);
+                                await Task.WhenAll(routing, dns);
+                                return JsonSerializer.SerializeToElement(new ProxyControllerConfigurationDto(
+                                    await routing ?? throw new InvalidOperationException("The baseline returned no routing result."),
+                                    await dns ?? throw new InvalidOperationException("The baseline returned no DNS result.")), RelaxKonOSJsonOptions.Default);
+                            }
                         }
                     }
                     finally { await ProxyAuthenticatedPublicationChecks.StopAsync(process); }

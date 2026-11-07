@@ -508,3 +508,5 @@ Proxy 的运行时、代理组、路由及 DNS 读取使用现有 resident 工�
 四条控制面读取的隔离配对实测未显示稳定 PSS 改善。Proxy 继续保持 resident，原读任务和响应由现有租约保护。见[控制面读取配对测量](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-控制面读取配对测量)。
 
 桌面路由与 DNS 共用一次 Mihomo 配置读取，其控制器任务、响应和异步清理由同一个原工作租约保护。见[路由和 DNS 单次采样](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-路由和-dns-单次采样)。
+
+512 条真实连接的隔离配对复测显示，配置读取合并后 35 秒 PSS 较低，读取期间峰值方向不一，Server CPU 增加。Proxy 保持 resident，生产内存未测。见[配置合并读取配对测量](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-配置合并读取配对测量)。
