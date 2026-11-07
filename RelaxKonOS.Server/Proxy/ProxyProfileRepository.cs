@@ -15,7 +15,7 @@ public interface IProxyProfileRepository
     Task<ProxyProfileDto?> GetActiveAsync(CancellationToken cancellationToken);
     Task<ProxyProfileDto?> GetAsync(Guid id, CancellationToken cancellationToken);
     Task<ProxyProfileDto> UpsertAsync(Guid? id, string name, string engineId, long? expectedRevision, CancellationToken cancellationToken);
-    Task<ProxyProfileDto?> SetActiveAsync(Guid id, CancellationToken cancellationToken);
+    Task<ProxyProfileDto?> SetActiveAsync(Guid id, CancellationToken cancellationToken, MihomoSubscriptionRefresh? refresh = null);
     Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken);
     Task ValidatePublicationAsync(MihomoProfilePublication selection, CancellationToken cancellationToken);
     Task CommitPublicationAsync(Guid operationId, MihomoProfilePublication selection, string configurationIdentity, CancellationToken cancellationToken);
@@ -75,11 +75,12 @@ public sealed class SqliteProxyProfileRepository(IHostEnvironment environment, I
         command.CommandText = "DELETE FROM proxy_profiles WHERE profile_id=$id AND is_active=0;"; command.Parameters.AddWithValue("$id", id.ToString("D"));
         return await command.ExecuteNonQueryAsync(cancellationToken) != 0;
     }
-    public async Task<ProxyProfileDto?> SetActiveAsync(Guid id, CancellationToken cancellationToken)
+    public async Task<ProxyProfileDto?> SetActiveAsync(Guid id, CancellationToken cancellationToken, MihomoSubscriptionRefresh? refresh = null)
     {
         await using var connection = await OpenAsync(cancellationToken); await using var transaction = connection.BeginTransaction();
         await using (var clear = connection.CreateCommand()) { clear.Transaction = transaction; clear.CommandText = "UPDATE proxy_profiles SET is_active=0 WHERE is_active=1;"; await clear.ExecuteNonQueryAsync(cancellationToken); }
         await using (var activate = connection.CreateCommand()) { activate.Transaction = transaction; activate.CommandText = "UPDATE proxy_profiles SET is_active=1,revision=revision+1,updated_at=$updated WHERE profile_id=$id;"; activate.Parameters.AddWithValue("$id", id.ToString("D")); activate.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToString("O")); if (await activate.ExecuteNonQueryAsync(cancellationToken) == 0) { transaction.Rollback(); return null; } }
+        if (refresh is not null) await CommitRefreshAsync(connection, transaction, id, refresh, cancellationToken);
         transaction.Commit(); return await GetAsync(id, cancellationToken);
     }
     public async Task ValidatePublicationAsync(MihomoProfilePublication selection, CancellationToken cancellationToken)
@@ -146,6 +147,8 @@ public sealed class SqliteProxyProfileRepository(IHostEnvironment environment, I
             activate.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
             if (await activate.ExecuteNonQueryAsync(cancellationToken) != 1) throw new RuntimePolicyException("runtime.profile_selection_conflict");
         }
+        if (selection.Refresh is { } refresh)
+            await CommitRefreshAsync(connection, transaction, selection.ProfileId, refresh, cancellationToken);
         await using (var marker = connection.CreateCommand())
         {
             marker.Transaction = transaction;
@@ -165,6 +168,21 @@ public sealed class SqliteProxyProfileRepository(IHostEnvironment environment, I
             await marker.ExecuteNonQueryAsync(cancellationToken);
         }
         transaction.Commit();
+    }
+
+    private static async Task CommitRefreshAsync(SqliteConnection connection, SqliteTransaction transaction,
+        Guid profileId, MihomoSubscriptionRefresh refresh, CancellationToken ct)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            UPDATE proxy_subscriptions SET last_updated_at=$updated,updated_at=$updated
+            WHERE subscription_id=$subscription AND profile_id=$profile;
+            """;
+        command.Parameters.AddWithValue("$updated", refresh.RetrievedAt.ToString("O"));
+        command.Parameters.AddWithValue("$subscription", refresh.SubscriptionId.ToString("D"));
+        command.Parameters.AddWithValue("$profile", profileId.ToString("D"));
+        if (await command.ExecuteNonQueryAsync(ct) != 1) throw new RuntimePolicyException("runtime.profile_selection_conflict");
     }
 
     private static async Task RequireSelectionAsync(SqliteConnection connection, SqliteTransaction transaction,

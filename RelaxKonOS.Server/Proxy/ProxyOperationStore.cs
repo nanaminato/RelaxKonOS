@@ -1,5 +1,6 @@
 using System.Text.Json;
 using RelaxKonOS.Protocol.Proxy;
+using RelaxKonOS.Server.Proxy.Mihomo;
 
 namespace RelaxKonOS.Server.Proxy;
 
@@ -9,7 +10,8 @@ public delegate Task ProxyOperationStageReporter(string stage);
 /// Durable, host-global operation ledger for typed Proxy mutations.  It queues delegates supplied
 /// by domain services only; it is deliberately not a generic command executor.
 /// </summary>
-public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<ProxyOperationStore> logger, IProxyWorkLeaseSource workLeases) : IHostedService
+public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<ProxyOperationStore> logger,
+    IProxyWorkLeaseSource workLeases, MihomoPublicationStore? publication = null) : IHostedService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private static readonly JsonSerializerOptions Json = new()
@@ -77,6 +79,8 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
         try
         {
             var entries = await ReadEntriesAsync(paths, cancellationToken);
+            if (entries.Any(entry => IsInterruptedRefresh(entry.Operation)))
+                await ConfirmRefreshesAsync(entries, null, cancellationToken);
             var prior = entries.FirstOrDefault(entry => entry.IdempotencyKey == idempotencyKey);
             if (prior is not null) return Visible(prior.Operation);
             if (Volatile.Read(ref _stopping) || _recoveryBlocked || entries.Any(entry => IsUnresolved(entry.Operation) && !_running.ContainsKey(entry.Operation.OperationId)))
@@ -90,7 +94,7 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
         finally { _gate.Release(); }
 
         logger.LogInformation("Proxy operation {OperationId} queued: {OperationKind}.", item.OperationId, kind);
-        _ = ExecuteTrackedAsync(item.OperationId, (stage, token) => operation(item.OperationId, stage, token), work!);
+        _ = ExecuteTrackedAsync(item, (stage, token) => operation(item.OperationId, stage, token), work!);
         return item;
     }
 
@@ -122,14 +126,15 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
         }
         catch { work?.Dispose(); throw; }
         finally { _gate.Release(); }
-        _ = ExecuteTrackedAsync(original.OperationId, (_, token) => recover(original.OperationId, token), work!);
+        _ = ExecuteTrackedAsync(original, (_, token) => recover(original.OperationId, token), work!);
         return original;
     }
 
-    private async Task ExecuteTrackedAsync(Guid id, Func<ProxyOperationStageReporter, CancellationToken, Task<string?>> operation, RelaxKonOS.Server.Residency.IModuleWorkLease work)
+    private async Task ExecuteTrackedAsync(ProxyOperationDto original, Func<ProxyOperationStageReporter, CancellationToken, Task<string?>> operation, RelaxKonOS.Server.Residency.IModuleWorkLease work)
     {
+        var id = original.OperationId;
         Exception? failure = null;
-        try { await ExecuteAsync(id, operation); }
+        try { await ExecuteAsync(original, operation); }
         catch (Exception exception)
         {
             failure = exception;
@@ -155,10 +160,48 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
         try
         {
             entries = await ReadEntriesAsync(paths, cancellationToken);
-            var found = Array.Find(entries, entry => entry.Operation.OperationId == id);
-            return found is null ? null : Visible(found.Operation);
+            var index = Array.FindIndex(entries, entry => entry.Operation.OperationId == id);
+            if (index < 0) return null;
+            if (IsInterruptedRefresh(entries[index].Operation)) await ConfirmRefreshesAsync(entries, id, cancellationToken);
+            return Visible(entries[index].Operation);
         }
         finally { entries = null; _gate.Release(); }
+    }
+
+    private bool IsInterruptedRefresh(ProxyOperationDto operation) =>
+        operation.Kind == "subscription.refresh" && !_running.ContainsKey(operation.OperationId)
+        && (operation.State == ProxyOperationState.Running
+            || operation.State == ProxyOperationState.Interrupted && operation.Stage == "publication_pending"
+                && operation.ProblemCode == ProxyProblemCodes.OperationInterrupted);
+
+    // The caller holds the queue gate. Read the atomically published proof without taking the publication gate.
+    private async Task ConfirmRefreshesAsync(Entry[] entries, Guid? requested, CancellationToken ct)
+    {
+        if (publication is null || Volatile.Read(ref _stopping)) return;
+        MihomoPublicationState state;
+        try { state = await publication.ReadAsync(ct); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or RelaxKonOS.ManagedRuntimes.RuntimePolicyException)
+        { return; }
+        if (state.SubscriptionRefreshCompletions is not { } proofs) return;
+        var matches = Enumerable.Range(0, entries.Length).Where(index =>
+            IsInterruptedRefresh(entries[index].Operation)
+            && (requested is null || requested == entries[index].Operation.OperationId)
+            && proofs.ContainsKey(entries[index].Operation.OperationId)).ToArray();
+        if (matches.Length == 0) return;
+        using var work = await workLeases.AcquireAsync(ct);
+        foreach (var index in matches)
+        {
+            var entry = entries[index];
+            var proof = proofs[entry.Operation.OperationId];
+            entries[index] = entry with { Operation = entry.Operation with
+            {
+                State = proof.Confirmed ? ProxyOperationState.Succeeded : ProxyOperationState.Failed,
+                Stage = proof.Confirmed ? "completed" : "failed",
+                ProblemCode = proof.Confirmed ? "" : ProxyProblemCodes.ConfigApplyFailed,
+                CompletedAt = proof.CompletedAt
+            } };
+        }
+        await SaveAsync(entries, CancellationToken.None);
     }
 
     private ProxyOperationDto Visible(ProxyOperationDto operation) =>
@@ -166,8 +209,9 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
             ? operation with { State = ProxyOperationState.Interrupted, Stage = "interrupted", ProblemCode = ProxyProblemCodes.OperationInterrupted, CompletedAt = DateTimeOffset.UtcNow }
             : operation;
 
-    private async Task ExecuteAsync(Guid id, Func<ProxyOperationStageReporter, CancellationToken, Task<string?>> operation)
+    private async Task ExecuteAsync(ProxyOperationDto original, Func<ProxyOperationStageReporter, CancellationToken, Task<string?>> operation)
     {
+        var id = original.OperationId;
         try
         {
             await UpdateAsync(id, item => item with { State = ProxyOperationState.Running, Stage = "running",
@@ -177,15 +221,29 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
                 logger.LogDebug("Proxy operation {OperationId} entered stage {Stage}.", id, stage);
                 await UpdateAsync(id, item => item with { Stage = stage });
             }, CancellationToken.None);
+            var publicationPending = false;
+            if (original.Kind == "subscription.refresh" && problem == ProxyProblemCodes.RecoveryRequired && publication is not null)
+            {
+                try
+                {
+                    var state = await publication.ReadAsync(CancellationToken.None);
+                    publicationPending = (state.Pending?.OperationId == id && state.Pending.Profile?.Refresh is not null)
+                        || state.SubscriptionRefreshCompletions?.ContainsKey(id) == true;
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException or RelaxKonOS.ManagedRuntimes.RuntimePolicyException)
+                { publicationPending = true; }
+                if (publicationPending) problem = ProxyProblemCodes.OperationInterrupted;
+            }
             if (!string.IsNullOrEmpty(problem))
                 logger.LogWarning("Proxy operation {OperationId} failed with {ProblemCode}.", id, problem);
             else
                 logger.LogInformation("Proxy operation {OperationId} completed.", id);
             await UpdateAsync(id, item => item with
             {
-                State = string.IsNullOrEmpty(problem) ? ProxyOperationState.Succeeded : ProxyOperationState.Failed,
-                Stage = string.IsNullOrEmpty(problem) ? "completed" : "failed",
-                ProblemCode = problem ?? "", CompletedAt = DateTimeOffset.UtcNow,
+                State = publicationPending ? ProxyOperationState.Interrupted
+                    : string.IsNullOrEmpty(problem) ? ProxyOperationState.Succeeded : ProxyOperationState.Failed,
+                Stage = publicationPending ? "publication_pending" : string.IsNullOrEmpty(problem) ? "completed" : "failed",
+                ProblemCode = problem ?? "", CompletedAt = publicationPending ? null : DateTimeOffset.UtcNow,
             });
         }
         catch (Exception exception)

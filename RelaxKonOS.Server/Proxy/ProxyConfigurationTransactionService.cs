@@ -6,12 +6,15 @@ using RelaxKonOS.Server.Proxy.Mihomo;
 
 namespace RelaxKonOS.Server.Proxy;
 
+public sealed record ProxyQueuedSubscriptionRefresh(Guid OperationId, MihomoSubscriptionRefresh Metadata, string Draft);
+
 /// <summary>Serializes raw-YAML application. Raw configuration is never returned through public contracts.</summary>
 public interface IProxyConfigurationTransactionService
 {
     Task<string?> StoreAsync(Guid profileId, string yaml, CancellationToken cancellationToken);
     Task<string?> ReadStoredAsync(Guid profileId, CancellationToken cancellationToken);
-    Task<string?> ActivateStoredAsync(Guid profileId, CancellationToken cancellationToken);
+    Task<string?> ActivateStoredAsync(Guid profileId, CancellationToken cancellationToken,
+        ProxyQueuedSubscriptionRefresh? refresh = null);
     Task<string?> ApplyAsync(Guid profileId, string yaml, CancellationToken cancellationToken);
 }
 
@@ -56,9 +59,7 @@ public sealed class ProxyConfigurationTransactionService(
                 // download data even though the managed -d directory has already been staged.
                 // Keep the original profile for later activation, but never let its download
                 // settings influence the validation process.
-                var validationYaml = engine.EngineId == MihomoEngine.Id
-                    ? MihomoManagedConfiguration.WithServerGeoDataSettings(yaml)
-                    : yaml;
+                var validationYaml = PrepareStoredConfiguration(engine, yaml);
                 await File.WriteAllTextAsync(temporary, validationYaml, cancellationToken); SetPrivateFile(temporary);
                 // Drafts are structurally bounded here. The installed target validates natively only
                 // inside the protected configuration transaction, never against live runtime data.
@@ -95,7 +96,8 @@ public sealed class ProxyConfigurationTransactionService(
         catch (UnauthorizedAccessException) { return null; }
     }
 
-    public async Task<string?> ActivateStoredAsync(Guid profileId, CancellationToken cancellationToken)
+    public async Task<string?> ActivateStoredAsync(Guid profileId, CancellationToken cancellationToken,
+        ProxyQueuedSubscriptionRefresh? refresh = null)
     {
         var profile = await profiles.GetAsync(profileId, cancellationToken);
         var engine = profile is null ? null : engines.Find(profile.EngineId);
@@ -106,10 +108,13 @@ public sealed class ProxyConfigurationTransactionService(
         {
             var state = await publication.ReadAsync(cancellationToken);
             if (state.Pending is not null) return ProxyProblemCodes.RecoveryRequired;
-            if (engine.EngineId == MihomoEngine.Id && state.Published is not null)
-                return await ActivateManagedUnderGateAsync(profileId, storedPath, state, cancellationToken);
-            if (await publication.UncoordinatedWriteProblemAsync(cancellationToken) is { } publicationProblem) return publicationProblem;
+            var managed = engine.EngineId == MihomoEngine.Id && state.Published is not null;
+            if (!managed && await publication.UncoordinatedWriteProblemAsync(cancellationToken) is { } publicationProblem) return publicationProblem;
             var yaml = await File.ReadAllTextAsync(storedPath, cancellationToken);
+            if (refresh is not null && yaml != PrepareStoredConfiguration(engine, refresh.Draft))
+                return ProxyProblemCodes.ConfigApplyFailed;
+            if (managed)
+                return await ActivateManagedUnderGateAsync(profileId, yaml, state, cancellationToken, refresh);
             var directory = paths.GetProtectedConfigurationDirectory(); Directory.CreateDirectory(directory); SetPrivateDirectory(directory);
             var active = Path.Combine(directory, "active.yaml");
             // Activating a profile rewrites the whole file, but TUN activation is session state
@@ -146,7 +151,7 @@ public sealed class ProxyConfigurationTransactionService(
                 var health = string.IsNullOrEmpty(reload) ? await engine.GetHealthAsync(cancellationToken) : null;
                 if (string.IsNullOrEmpty(reload) && health?.State == ProxyHealthState.Healthy)
                 {
-                    if (await profiles.SetActiveAsync(profileId, cancellationToken) is null)
+                    if (await profiles.SetActiveAsync(profileId, cancellationToken, refresh?.Metadata) is null)
                         return ProxyProblemCodes.RecoveryRequired;
                     logger?.LogInformation("Proxy configuration activated. ProfileId={ProfileId} EngineId={EngineId} BackupCreated={BackupCreated}", profileId, engine.EngineId, File.Exists(backup));
                     return null;
@@ -175,6 +180,9 @@ public sealed class ProxyConfigurationTransactionService(
         finally { _gate.Release(); }
     }
 
+    private static string PrepareStoredConfiguration(IProxyEngine engine, string yaml) =>
+        engine.EngineId == MihomoEngine.Id ? MihomoManagedConfiguration.WithServerGeoDataSettings(yaml) : yaml;
+
     private async Task<string?> ValidateManagedDraftAsync(string yaml, MihomoPublishedRuntime previous, CancellationToken ct)
     {
         if (settingsService is null) return ProxyProblemCodes.NotSupported;
@@ -187,8 +195,8 @@ public sealed class ProxyConfigurationTransactionService(
             ? ProxyProblemCodes.NotSupported : null;
     }
 
-    private async Task<string?> ActivateManagedUnderGateAsync(Guid profileId, string storedPath,
-        MihomoPublicationState state, CancellationToken ct)
+    private async Task<string?> ActivateManagedUnderGateAsync(Guid profileId, string yaml,
+        MihomoPublicationState state, CancellationToken ct, ProxyQueuedSubscriptionRefresh? refresh)
     {
         if (managedPublication is null || managedRuntime is null) return ProxyProblemCodes.NotSupported;
         try
@@ -198,7 +206,6 @@ public sealed class ProxyConfigurationTransactionService(
             if (secret is null || secret != previous.ControllerSecret) return ProxyProblemCodes.RecoveryRequired;
             var settings = settingsService is null ? null : await settingsService.GetAsync(ct);
             if (settings is null) return ProxyProblemCodes.NotSupported;
-            var yaml = await File.ReadAllTextAsync(storedPath, ct);
             var activation = MihomoManagedConfiguration.ReadTunActivation(previous.Yaml);
             yaml = MihomoManagedConfiguration.WithServerControllerSettings(
                 MihomoManagedConfiguration.WithRuntimeSettings(
@@ -213,14 +220,14 @@ public sealed class ProxyConfigurationTransactionService(
             if (observed.Installation.Ownership != RuntimeOwnership.Managed || observed.ActiveRevisionId is null
                 || observed.ConfigurationIdentity != state.Identity || observed.PendingOperationId is not null
                 || observed.Installation.RecoveryRequired) return ProxyProblemCodes.RecoveryRequired;
-            var operationId = Guid.NewGuid();
+            var operationId = refresh?.OperationId ?? Guid.NewGuid();
             var plan = new RuntimeConfigurationPlan(observed.Installation.InstallationId, observed.Installation.HostId,
                 "mihomo", observed.Installation.StateRevision, observed.ActiveRevisionId.Value, state.Identity!,
                 MihomoPublicationStore.Identity(yaml), operationId.ToString("N"));
             var profile = await profiles.GetAsync(profileId, ct);
             if (profile is null || profile.EngineId != MihomoEngine.Id) return ProxyProblemCodes.ConfigInvalid;
             var active = (await profiles.ListAsync(ct)).SingleOrDefault(item => item.IsActive);
-            var selection = new MihomoProfilePublication(profile.Id, profile.Revision, active?.Id, active?.Revision, profile.CreatedAt, active?.CreatedAt);
+            var selection = new MihomoProfilePublication(profile.Id, profile.Revision, active?.Id, active?.Revision, profile.CreatedAt, active?.CreatedAt, refresh?.Metadata);
             var result = await managedPublication.PublishUnderGateAsync(operationId, state.Revision, plan, description.Material, ct, profile: selection);
             if (result.Outcome != MihomoPublicationOutcome.Confirmed)
                 return result.Outcome == MihomoPublicationOutcome.RecoveryRequired

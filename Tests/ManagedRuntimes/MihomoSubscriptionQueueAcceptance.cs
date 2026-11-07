@@ -23,7 +23,7 @@ internal static class MihomoSubscriptionQueueAcceptance
         MihomoPublicationStore publication, MihomoRuntimeLifecycle lifecycle, Func<int, Task<bool>> probe,
         Func<CancellationToken, Task> verifyNative)
     {
-        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(65));
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(105));
         var ct = budget.Token;
         var login = ProxyAuthenticatedPublicationChecks.ReadLogin();
         var settingsFile = Path.Combine(paths.GetStateDirectory(), "mihomo-settings.json");
@@ -147,6 +147,7 @@ internal static class MihomoSubscriptionQueueAcceptance
             }
             finally { await ProxyAuthenticatedPublicationChecks.StopAsync(restarted); }
             await VerifyActiveRefreshAsync();
+            await VerifyActiveRefreshResponseLossAsync();
 
             async Task VerifyActiveRefreshAsync()
             {
@@ -168,6 +169,7 @@ internal static class MihomoSubscriptionQueueAcceptance
                 var activeKey = Guid.NewGuid().ToString("N");
                 Guid refreshId;
                 Guid nativeId;
+                DateTimeOffset refreshTime;
                 RuntimeInstallationSnapshot committed;
                 await using (var relay = new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/relaxkonos-subscription-refresh.sock",
                     socket, ct, static (kind, _) => kind == "MihomoRuntimeConfigure"))
@@ -178,18 +180,21 @@ internal static class MihomoSubscriptionQueueAcceptance
                     {
                         using var client = await ProxyAuthenticatedPublicationChecks.ConnectAsync(active, login, ct);
                         refreshId = await SubmitAsync(client, refreshRoute, activeKey);
-                        nativeId = await relay.Committed.Task.WaitAsync(ct);
+                        nativeId = await WaitForNativeCommitAsync(client, refreshId, relay);
                         committed = await lifecycle.QueryAsync(ct, nativeId);
                         var pending = await publication.ReadAsync(ct);
                         if (committed.Receipt is not { Outcome: RuntimeSwitchOutcome.Succeeded } || committed.Receipt.OperationId != nativeId)
                             throw new InvalidOperationException($"The Helper did not commit the active refresh: {committed.Receipt?.Outcome}/{committed.Receipt?.ProblemCode}.");
-                        if (nativeId == Guid.Empty || pending.Pending?.OperationId != nativeId
+                        if (nativeId != refreshId || pending.Pending?.OperationId != nativeId
+                            || pending.Pending.Profile?.Refresh is not { } refresh || refresh.SubscriptionId != subscriptionId
                             || committed.ConfigurationIdentity != pending.Pending.Identity
                             || committed.ConfigurationIdentity == oldPublication.Identity
                             || committed.Installation.StateRevision <= before.Installation.StateRevision
                             || (await ReadOperationAsync(client, refreshId)).State != ProxyOperationState.Running
+                            || (await ReadSubscriptionAsync(client)).LastUpdatedAt != updated.RetrievedAt
                             || Volatile.Read(ref requests) != 3 || !await probe(port))
                             throw new InvalidOperationException("The active refresh did not reach the original native commit with a pending queue receipt.");
+                        refreshTime = refresh.RetrievedAt;
                         active.Kill();
                         await active.WaitForExitAsync(ct);
                         if (active.ExitCode == 0) throw new InvalidOperationException("The active refresh host did not terminate at the reply boundary.");
@@ -208,28 +213,95 @@ internal static class MihomoSubscriptionQueueAcceptance
                         if (recovered.Pending is null) break;
                         await Task.Delay(50, ct);
                     } while (true);
+                    if (await SubmitAsync(client, refreshRoute, activeKey) != refreshId)
+                        throw new InvalidOperationException("Recovery rebound the original refresh idempotency key.");
                     var original = await ReadOperationAsync(client, refreshId);
                     var observed = await lifecycle.QueryAsync(ct, nativeId);
                     var draft = await client.GetFromJsonAsync<ProxySubscriptionContentDto>(contentRoute, RelaxKonOSJsonOptions.Default, ct);
+                    var subscription = await ReadSubscriptionAsync(client);
                     if (recovered.Identity != committed.ConfigurationIdentity || recovered.LastConfiguration?.OperationId != nativeId
                         || recovered.LastConfiguration.Confirmed != true || observed.Receipt != committed.Receipt
                         || observed.Installation.StateRevision != committed.Installation.StateRevision
-                        || original.State != ProxyOperationState.Interrupted
-                        || await SubmitAsync(client, refreshRoute, activeKey) != refreshId
+                        || original.State != ProxyOperationState.Succeeded || original.CompletedAt is null
+                        || draft?.RetrievedAt != refreshTime || subscription.LastUpdatedAt != refreshTime
+                        || subscription.UpdatedAt != refreshTime || !subscription.IsActive
                         || draft?.Content.Contains("origin-3.example.test", StringComparison.Ordinal) != true
                         || Volatile.Read(ref requests) != 3 || !await probe(port))
-                        throw new InvalidOperationException("Restart did not reconcile the original publication without replay or preserve the unknown queue result.");
-                    using var newRequest = new HttpRequestMessage(HttpMethod.Post, refreshRoute);
-                    newRequest.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("N"));
-                    using var denied = await client.SendAsync(newRequest, ct);
-                    if (denied.StatusCode != HttpStatusCode.BadRequest
-                        || !(await denied.Content.ReadAsStringAsync(ct)).Contains(ProxyProblemCodes.OperationInterrupted, StringComparison.Ordinal)
-                        || Volatile.Read(ref requests) != 3)
-                        throw new InvalidOperationException("Unresolved original queue ownership did not block new work.");
-                    Console.WriteLine($"PASS MANAGED MIHOMO ACTIVE SUBSCRIPTION CRASH: original queue {refreshId} interrupted, native receipt {nativeId} reconciled, no replay");
+                        throw new InvalidOperationException("Restart did not complete the original queue and native receipts with the frozen refresh time.");
+                    if (await SubmitAsync(client, refreshRoute, activeKey) != refreshId || await ReadOperationAsync(client, refreshId) != original
+                        || Volatile.Read(ref requests) != 3 || await ReadLeasesAsync(client) != 0)
+                        throw new InvalidOperationException("A repeated observation changed the terminal receipt or started new work.");
+                    Console.WriteLine($"PASS MANAGED MIHOMO ACTIVE SUBSCRIPTION CRASH: original queue and native receipt {refreshId} reconciled, frozen timestamp, no replay");
                 }
                 finally { await ProxyAuthenticatedPublicationChecks.StopAsync(recovery); }
+
             }
+
+            async Task VerifyActiveRefreshResponseLossAsync()
+            {
+                var socket = start.Environment["PrivilegedHelper__SocketPath"]!;
+                var key = Guid.NewGuid().ToString("N");
+                await using var relay = new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/relaxkonos-subscription-loss.sock",
+                    socket, ct, static (kind, _) => kind == "MihomoRuntimeConfigure");
+                start.Environment["PrivilegedHelper__SocketPath"] = relay.Path;
+                using var server = ProxyAuthenticatedPublicationChecks.Start(start, OnError);
+                try
+                {
+                    using var client = await ProxyAuthenticatedPublicationChecks.ConnectAsync(server, login, ct);
+                    var previous = await ReadSubscriptionAsync(client);
+                    var id = await SubmitAsync(client, refreshRoute, key);
+                    var nativeId = await WaitForNativeCommitAsync(client, id, relay);
+                    var receipt = await lifecycle.QueryAsync(ct, id);
+                    var state = await publication.ReadAsync(ct);
+                    if (nativeId != id || receipt.Receipt is not { Outcome: RuntimeSwitchOutcome.Succeeded }
+                        || state.Pending?.OperationId != id || state.Pending.Profile?.Refresh is not { } refresh
+                        || (await ReadOperationAsync(client, id)).State != ProxyOperationState.Running
+                        || await ReadLeasesAsync(client) != 1 || Volatile.Read(ref requests) != 4)
+                        throw new InvalidOperationException("The active refresh did not own the original native response before disconnect.");
+
+                    relay.DropHeldResponse();
+                    var unknown = await WaitForTerminalAsync(client, id);
+                    if (unknown.State != ProxyOperationState.Interrupted || unknown.Stage != "publication_pending"
+                        || unknown.CompletedAt is not null || server.HasExited
+                        || (await ReadSubscriptionAsync(client)).LastUpdatedAt != previous.LastUpdatedAt
+                        || await SubmitAsync(client, refreshRoute, key) != id)
+                        throw new InvalidOperationException("Socket loss did not leave an unresolved original receipt in the live Server.");
+                    using var request = new HttpRequestMessage(HttpMethod.Post, refreshRoute);
+                    request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("N"));
+                    using var denied = await client.SendAsync(request, ct);
+                    if (denied.StatusCode != HttpStatusCode.BadRequest
+                        || !(await denied.Content.ReadAsStringAsync(ct)).Contains(ProxyProblemCodes.OperationInterrupted, StringComparison.Ordinal)
+                        || Volatile.Read(ref requests) != 4)
+                        throw new InvalidOperationException("Unresolved response loss admitted another refresh.");
+
+                    ProxyOperationDto final;
+                    do
+                    {
+                        final = await ReadOperationAsync(client, id);
+                        if (final.State != ProxyOperationState.Interrupted) break;
+                        await Task.Delay(50, ct);
+                    } while (true);
+                    var observed = await lifecycle.QueryAsync(ct, id);
+                    var refreshed = await ReadSubscriptionAsync(client);
+                    if (final.State != ProxyOperationState.Succeeded || final.CompletedAt is null || server.HasExited
+                        || refreshed.LastUpdatedAt != refresh.RetrievedAt || refreshed.UpdatedAt != refresh.RetrievedAt
+                        || observed.Receipt != receipt.Receipt || observed.ConfigurationIdentity != receipt.ConfigurationIdentity
+                        || observed.Installation.StateRevision != receipt.Installation.StateRevision
+                        || await SubmitAsync(client, refreshRoute, key) != id || await ReadOperationAsync(client, id) != final
+                        || Volatile.Read(ref requests) != 4 || await ReadLeasesAsync(client) != 0 || !await probe(port))
+                        throw new InvalidOperationException("The running Server did not recover the original response without replay.");
+                    Console.WriteLine($"PASS MANAGED MIHOMO ACTIVE SUBSCRIPTION RESPONSE LOSS: original {id}, unresolved before proof, succeeded in the same Server, no replay");
+                }
+                finally
+                {
+                    await ProxyAuthenticatedPublicationChecks.StopAsync(server);
+                    start.Environment["PrivilegedHelper__SocketPath"] = socket;
+                }
+            }
+
+            async Task<ProxySubscriptionDto> ReadSubscriptionAsync(HttpClient client) =>
+                (await client.GetFromJsonAsync<ProxySubscriptionDto[]>(ProxyApiRoutes.Subscriptions, RelaxKonOSJsonOptions.Default, ct))!
+                    .Single(item => item.Id == subscriptionId);
 
             void OnError(string line)
             {
@@ -267,6 +339,19 @@ internal static class MihomoSubscriptionQueueAcceptance
                     if (operation.State is not (ProxyOperationState.Queued or ProxyOperationState.Running)) return operation;
                     await Task.Delay(25, ct);
                 }
+            }
+
+            async Task<Guid> WaitForNativeCommitAsync(HttpClient client, Guid id,
+                ProxyAuthenticatedPublicationChecks.ReplyRelay relay)
+            {
+                while (!relay.Committed.Task.IsCompleted)
+                {
+                    var operation = await ReadOperationAsync(client, id);
+                    if (operation.State is not (ProxyOperationState.Queued or ProxyOperationState.Running))
+                        throw new InvalidOperationException($"Refresh {id} left execution before the native reply: {operation.State}/{operation.ProblemCode}.");
+                    await Task.WhenAny(relay.Committed.Task, Task.Delay(100, ct)).WaitAsync(ct);
+                }
+                return await relay.Committed.Task;
             }
 
             async Task<int> ReadLeasesAsync(HttpClient client) =>

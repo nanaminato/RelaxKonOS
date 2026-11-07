@@ -11,7 +11,7 @@ public interface IProxySubscriptionService
 {
     Task<IReadOnlyList<ProxySubscriptionDto>> ListAsync(CancellationToken cancellationToken);
     Task<ProxySubscriptionDto> ImportAsync(ImportProxySubscriptionRequest request, CancellationToken cancellationToken);
-    Task<string?> RefreshAsync(Guid subscriptionId, CancellationToken cancellationToken);
+    Task<string?> RefreshAsync(Guid subscriptionId, Guid? operationId, CancellationToken cancellationToken);
     Task<string?> RefreshAllAsync(CancellationToken cancellationToken);
     Task<string?> ActivateAsync(Guid subscriptionId, CancellationToken cancellationToken);
     Task<ProxySubscriptionContentDto?> GetContentAsync(Guid subscriptionId, CancellationToken cancellationToken);
@@ -45,7 +45,7 @@ public sealed class ProxySubscriptionService(
         }
     }
 
-    public async Task<string?> RefreshAsync(Guid subscriptionId, CancellationToken cancellationToken)
+    public async Task<string?> RefreshAsync(Guid subscriptionId, Guid? operationId, CancellationToken cancellationToken)
     {
         var record = await subscriptions.GetAsync(subscriptionId, cancellationToken);
         if (record is null) return ProxyProblemCodes.SubscriptionInvalid;
@@ -54,6 +54,9 @@ public sealed class ProxySubscriptionService(
         if (!string.IsNullOrEmpty(problem)) return problem;
         if (record.Subscription.IsActive)
         {
+            if (operationId is not null)
+                return await configurations.ActivateStoredAsync(record.Subscription.ProfileId, cancellationToken,
+                    new(operationId.Value, new(subscriptionId, DateTimeOffset.UtcNow), source.Content));
             problem = await configurations.ActivateStoredAsync(record.Subscription.ProfileId, cancellationToken);
             if (!string.IsNullOrEmpty(problem)) return problem;
         }
@@ -65,7 +68,7 @@ public sealed class ProxySubscriptionService(
     {
         foreach (var subscription in await subscriptions.ListAsync(cancellationToken))
         {
-            var problem = await RefreshAsync(subscription.Id, cancellationToken);
+            var problem = await RefreshAsync(subscription.Id, null, cancellationToken);
             if (!string.IsNullOrEmpty(problem)) return problem;
         }
         return null;

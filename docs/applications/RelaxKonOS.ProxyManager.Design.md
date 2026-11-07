@@ -4535,4 +4535,4 @@ Linux 隔离环境以真实受管 Mihomo 验证探测次数及控制器 401。�
 
 完整认证 Server 的未激活订阅刷新已验证真实分段响应、转换代次释放、原档案更新和持久回执。重启同键返回原成功回执，未再次下载或派发配置。见[完整认证订阅队列](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-真实受管-mihomo-的完整认证订阅队列)。
 
-活动订阅的真实配置提交后若 Server 在回执返回前中断，Core 可按原 Helper 回执确认配置。隔离 Linux 已验证同键保持原刷新 ID 和 Interrupted，下载与配置未重放。队列终态对账仍待实现。见[活动订阅中断边界](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-活动订阅刷新原生提交后的中断边界)。
+单条活动订阅刷新在受管 Mihomo 中使用同一队列和 Helper 操作 ID。Core 对账确认配置和原回执，原刷新时间随档案一起提交。查询原操作或重试原键可在原证据存在时读到持久终态，缺少证据时保留中断责任。隔离 Linux 已验证 Server 重启和只丢失原生回执两条路径，均未再次下载或派发配置。见[活动订阅终态恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-活动订阅刷新恢复原队列终态)。

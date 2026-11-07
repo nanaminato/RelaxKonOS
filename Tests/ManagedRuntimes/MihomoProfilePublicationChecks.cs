@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -100,6 +101,30 @@ internal static class MihomoProfilePublicationChecks
                 && recreated.CreatedAt != recycled.CreatedAt, "Recreated profile may reuse ID and revision but has a distinct creation identity");
             await Denied("profile_selection_conflict", () => repository.CommitPublicationAsync(recycleOperation, recycleSelection, identity, default));
 
+            var subscriptions = new SqliteProxySubscriptionRepository(new Environment(root),
+                Options.Create(new StorageOptions { DatabasePath = Path.Combine(root, "profiles.db") }), new EphemeralDataProtectionProvider());
+            var subscription = await subscriptions.CreateAsync("test feed", recreated.Id, "https://feed.example.test",
+                RelaxKonOS.Protocol.Proxy.ProxySubscriptionDownloadRoute.Direct, default);
+            var beforeRefresh = (await subscriptions.GetAsync(subscription.Id, default))!.Subscription;
+            var active = (await repository.GetAsync(recreated.Id, default))!;
+            var refresh = new MihomoSubscriptionRefresh(subscription.Id, DateTimeOffset.UtcNow);
+            var refreshSelection = new MihomoProfilePublication(active.Id, active.Revision, active.Id, active.Revision,
+                active.CreatedAt, active.CreatedAt, refresh);
+            var refreshOperation = Guid.NewGuid();
+            await Sql("CREATE TRIGGER reject_marker BEFORE UPDATE ON proxy_profile_publication BEGIN SELECT RAISE(ABORT, 'injected marker write failure'); END;");
+            await Denied("profile_store_unavailable", () => repository.CommitPublicationAsync(refreshOperation, refreshSelection, identity, default));
+            Check((await subscriptions.GetAsync(subscription.Id, default))!.Subscription == beforeRefresh
+                && await repository.GetAsync(active.Id, default) == active,
+                "Failed refresh marker atomically rolls back subscription timestamp and profile revision");
+            await Sql("DROP TRIGGER reject_marker;");
+            await repository.CommitPublicationAsync(refreshOperation, refreshSelection, identity, default);
+            await repository.CommitPublicationAsync(refreshOperation, refreshSelection, identity, default);
+            var refreshed = (await subscriptions.GetAsync(subscription.Id, default))!.Subscription;
+            Check(refreshed.LastUpdatedAt == refresh.RetrievedAt && refreshed.UpdatedAt == refresh.RetrievedAt
+                && (await repository.GetAsync(active.Id, default))!.Revision == active.Revision + 1,
+                "Exact refresh commits the original timestamp and profile revision once");
+            await Denied("idempotency_conflict", () => repository.CommitPublicationAsync(refreshOperation,
+                refreshSelection with { Refresh = refresh with { RetrievedAt = refresh.RetrievedAt.AddSeconds(1) } }, identity, default));
         }
         finally { SqliteConnection.ClearAllPools(); Directory.Delete(root, true); }
         return count;

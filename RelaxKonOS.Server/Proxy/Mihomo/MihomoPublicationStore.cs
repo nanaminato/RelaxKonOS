@@ -15,6 +15,7 @@ public sealed record MihomoPendingPublication(Guid OperationId, MihomoPublishedR
     [property: JsonRequired] MihomoSettingsPublication? Settings,
     [property: JsonRequired] MihomoProfilePublication? Profile);
 public sealed record MihomoPublicationCompletion(Guid OperationId, string RequestHash, bool Confirmed, bool NotStarted);
+public sealed record MihomoSubscriptionRefreshCompletion(bool Confirmed, DateTimeOffset CompletedAt);
 
 /// <summary>Server-private encrypted state, never returned by ordinary management reads.</summary>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
@@ -22,7 +23,9 @@ public sealed record MihomoPublicationState(int SchemaVersion, long Revision, Mi
     string? Identity, Guid? LastOperationId, MihomoPendingPublication? Pending,
     [property: JsonRequired] MihomoPublicationCompletion? LastConfiguration,
     [property: JsonRequired] MihomoPublicationCompletion? LastInstallation,
-    [property: JsonRequired] MihomoPublicationCompletion? LastRemoval)
+    [property: JsonRequired] MihomoPublicationCompletion? LastRemoval,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    Dictionary<Guid, MihomoSubscriptionRefreshCompletion>? SubscriptionRefreshCompletions = null)
 {
     public static MihomoPublicationState Empty => new(1, 0, null, null, null, null, null, null, null);
 }
@@ -192,6 +195,7 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
         if (pending.RemovalPlan is not null) throw new RuntimePolicyException("runtime.publication_unconfirmed");
         var next = current with { Revision = checked(current.Revision + 1), Published = pending.Candidate,
             Identity = pending.Identity, LastOperationId = operationId, Pending = null,
+            SubscriptionRefreshCompletions = CompleteSubscriptionRefresh(current, pending, true),
             LastConfiguration = pending.ConfigurationPlan is null ? null : new(operationId, ConfigurationRequestHash(pending.ConfigurationPlan, pending.Candidate, pending.Settings, pending.Profile), true, false),
             LastInstallation = pending.InstallationPlan is null ? current.LastInstallation
                 : new(operationId, InstallationRequestHash(pending.InstallationPlan, pending.Candidate), true, false) };
@@ -206,6 +210,7 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
         if (current.Pending?.OperationId != operationId || restoredIdentity != current.Identity)
             throw new RuntimePolicyException("runtime.publication_unconfirmed");
         var next = current with { Revision = checked(current.Revision + 1), Pending = null,
+            SubscriptionRefreshCompletions = CompleteSubscriptionRefresh(current, current.Pending, false),
             LastConfiguration = current.Pending.ConfigurationPlan is null ? current.LastConfiguration
                 : new(operationId, ConfigurationRequestHash(current.Pending.ConfigurationPlan, current.Pending.Candidate, current.Pending.Settings, current.Pending.Profile), false, notStarted),
             LastInstallation = current.Pending.InstallationPlan is null ? current.LastInstallation
@@ -214,6 +219,16 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
                 : new(operationId, RemovalRequestHash(current.Pending.RemovalPlan), false, notStarted) };
         await SaveAsync(next, ct);
         return next;
+    }
+
+    private static Dictionary<Guid, MihomoSubscriptionRefreshCompletion>? CompleteSubscriptionRefresh(
+        MihomoPublicationState current, MihomoPendingPublication pending, bool confirmed)
+    {
+        if (pending.Profile?.Refresh is null) return current.SubscriptionRefreshCompletions;
+        var completions = current.SubscriptionRefreshCompletions is { } prior
+            ? new Dictionary<Guid, MihomoSubscriptionRefreshCompletion>(prior) : [];
+        completions.Add(pending.OperationId, new(confirmed, DateTimeOffset.UtcNow));
+        return completions;
     }
 
     /// <summary>Called only after the exact successful removal receipt, absence and retained/deleted identity are measured.</summary>
@@ -285,6 +300,9 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
         if (state.LastConfiguration is { } completed && (completed.OperationId == Guid.Empty
             || completed.RequestHash is not { Length: 64 } || !completed.RequestHash.All(Uri.IsHexDigit) || state.Published is null
             || completed.Confirmed && completed.NotStarted))
+            throw new RuntimePolicyException("runtime.publication_state_invalid");
+        if (state.SubscriptionRefreshCompletions?.Any(entry => entry.Key == Guid.Empty || entry.Value is null
+            || entry.Value.CompletedAt == default) == true)
             throw new RuntimePolicyException("runtime.publication_state_invalid");
         if (state.LastInstallation is { } installed && (installed.OperationId == Guid.Empty
             || installed.RequestHash is not { Length: 64 } || !installed.RequestHash.All(Uri.IsHexDigit)

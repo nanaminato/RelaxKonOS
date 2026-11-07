@@ -17,17 +17,18 @@ public sealed class ProxySubscriptionOperations(ProxyOperationStore operations, 
             ProxySubscriptionOperation.Activate => "subscription.activate",
             _ => throw new ArgumentOutOfRangeException(nameof(operation))
         };
-        return operations.EnqueueAsync(key, kind, (_, token) => ExecuteAsync(operation, subscriptionId, actor, kind, token), ct);
+        return operations.EnqueueIdentifiedAsync(key, kind, (operationId, _, token) =>
+            ExecuteAsync(operation, subscriptionId, operationId, actor, kind, token), ct);
     }
 
-    private Task<string?> ExecuteAsync(ProxySubscriptionOperation operation, Guid id, string actor, string kind, CancellationToken ct) =>
+    private Task<string?> ExecuteAsync(ProxySubscriptionOperation operation, Guid id, Guid operationId, string actor, string kind, CancellationToken ct) =>
         ProxyOperationScope.RunAsync(scopes, actor, kind, (services, token) =>
         {
             var service = services.GetRequiredService<IProxySubscriptionService>();
             return operation switch
             {
                 ProxySubscriptionOperation.RefreshAll => service.RefreshAllAsync(token),
-                ProxySubscriptionOperation.Refresh => service.RefreshAsync(id, token),
+                ProxySubscriptionOperation.Refresh => service.RefreshAsync(id, operationId, token),
                 ProxySubscriptionOperation.Activate => service.ActivateAsync(id, token),
                 _ => throw new ArgumentOutOfRangeException(nameof(operation))
             };

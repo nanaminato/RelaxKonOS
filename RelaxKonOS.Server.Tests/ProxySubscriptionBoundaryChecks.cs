@@ -223,7 +223,7 @@ internal static class ProxySubscriptionBoundaryChecks
             return state.Failure == "domain" ? ProxyProblemCodes.SubscriptionInvalid : null;
         }
         public Task<string?> RefreshAllAsync(CancellationToken ct) => Run(ProxySubscriptionOperation.RefreshAll, Guid.Empty, ct);
-        public Task<string?> RefreshAsync(Guid id, CancellationToken ct) => Run(ProxySubscriptionOperation.Refresh, id, ct);
+        public Task<string?> RefreshAsync(Guid id, Guid? operationId, CancellationToken ct) => Run(ProxySubscriptionOperation.Refresh, id, ct);
         public Task<string?> ActivateAsync(Guid id, CancellationToken ct) => Run(ProxySubscriptionOperation.Activate, id, ct);
         public Task<IReadOnlyList<ProxySubscriptionDto>> ListAsync(CancellationToken ct) => throw new NotSupportedException();
         public Task<ProxySubscriptionDto> ImportAsync(ImportProxySubscriptionRequest request, CancellationToken ct) => throw new NotSupportedException();

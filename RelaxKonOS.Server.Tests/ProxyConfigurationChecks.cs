@@ -44,7 +44,21 @@ internal static async Task VerifyProxyConfigurationTransactionAsync(string root)
         && (await profiles.GetAsync(second.Id, CancellationToken.None))!.IsActive
         && !(await profiles.GetAsync(profile.Id, CancellationToken.None))!.IsActive,
         "Stored profile activation did not switch both runtime YAML and active metadata.");
+    var subscriptions = new SqliteProxySubscriptionRepository(new TestHostEnvironment(root),
+        Options.Create(new StorageOptions { DatabasePath = databasePath }),
+        new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider());
+    var subscription = await subscriptions.CreateAsync("second-feed", second.Id, "https://feed.example.test",
+        ProxySubscriptionDownloadRoute.Direct, default);
+    var refreshedAt = DateTimeOffset.UtcNow;
+    var refresh = new ProxyQueuedSubscriptionRefresh(Guid.NewGuid(), new(subscription.Id, refreshedAt), "mode: global\n");
+    TestAssert.Assert(await service.ActivateStoredAsync(second.Id, default, refresh) is null
+        && (await subscriptions.GetAsync(subscription.Id, default))!.Subscription.LastUpdatedAt == refreshedAt,
+        "A queued refresh recognizes its own stored GEO-normalized draft and commits its timestamp.");
     var beforePending = await File.ReadAllTextAsync(Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml"));
+    var staleRefresh = new ProxyQueuedSubscriptionRefresh(Guid.NewGuid(), new(Guid.NewGuid(), DateTimeOffset.UtcNow), "mode: direct\n");
+    TestAssert.Assert(await service.ActivateStoredAsync(second.Id, default, staleRefresh) == ProxyProblemCodes.ConfigApplyFailed
+        && await File.ReadAllTextAsync(Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml")) == beforePending,
+        "A queued refresh cannot activate a different draft under its original identity.");
     var pendingMaterial = new RelaxKonOS.Protocol.ManagedRuntimes.MihomoPublishedRuntime("# pending publication\n", [], 9090,
         "pending-controller-secret", [new("127.0.0.1", 7890)]);
     await publication.BeginAsync(Guid.NewGuid(), 0, pendingMaterial, default);

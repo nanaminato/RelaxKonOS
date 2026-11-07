@@ -361,7 +361,8 @@ internal static class MihomoPublicationTransactionChecks
         public Task<ProxyProfileDto?> GetActiveAsync(CancellationToken ct) => inner.GetActiveAsync(ct);
         public Task<ProxyProfileDto?> GetAsync(Guid id, CancellationToken ct) => inner.GetAsync(id, ct);
         public Task<ProxyProfileDto> UpsertAsync(Guid? id, string name, string engine, long? revision, CancellationToken ct) => inner.UpsertAsync(id, name, engine, revision, ct);
-        public Task<ProxyProfileDto?> SetActiveAsync(Guid id, CancellationToken ct) => throw new Exception("Managed publication used unjournaled activation");
+        public Task<ProxyProfileDto?> SetActiveAsync(Guid id, CancellationToken ct, MihomoSubscriptionRefresh? refresh = null) =>
+            throw new Exception("Managed publication used unjournaled activation");
         public Task<bool> DeleteAsync(Guid id, CancellationToken ct) => inner.DeleteAsync(id, ct);
         public Task ValidatePublicationAsync(MihomoProfilePublication selection, CancellationToken ct) => inner.ValidatePublicationAsync(selection, ct);
         public async Task CommitPublicationAsync(Guid operation, MihomoProfilePublication selection, string identity, CancellationToken ct)

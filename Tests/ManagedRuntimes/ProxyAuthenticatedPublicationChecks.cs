@@ -876,7 +876,7 @@ internal static class ProxyAuthenticatedPublicationChecks
         private readonly Task run;
         private readonly string upstream;
         private readonly Func<string?, Guid, bool> hold;
-        private readonly TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<bool> release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal string Path { get; }
         internal TaskCompletionSource<Guid> Committed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -891,7 +891,8 @@ internal static class ProxyAuthenticatedPublicationChecks
             run = RunAsync();
         }
 
-        internal void ReleaseHeldResponse() => release.TrySetResult();
+        internal void ReleaseHeldResponse() => release.TrySetResult(true);
+        internal void DropHeldResponse() => release.TrySetResult(false);
 
         private async Task RunAsync()
         {
@@ -929,7 +930,7 @@ internal static class ProxyAuthenticatedPublicationChecks
                         if (held && terminal && frame.RootElement.GetProperty("Result").GetProperty("success").GetBoolean())
                         {
                             Committed.TrySetResult(command.RootElement.GetProperty("operationId").GetGuid());
-                            await release.Task.WaitAsync(ct);
+                            if (!await release.Task.WaitAsync(ct)) return;
                         }
                         await PrivilegedHelperSocketFraming.WriteAsync(client, response, ct);
                         if (terminal) return;
