@@ -1371,3 +1371,5 @@ Linux 隔离宿主显式停用 Proxy 管理模块，运行生产停用门禁并�
 Linux 隔离 sing-box 到期验收通过生产停用门禁，确认 Proxy 管理引擎注册表缺席。Core 到期路径仍在既有凭据到期后执行。真实网络观察到过期凭据拒绝、保留凭据重连，发布进程退出后按原台账确认候选，apply 为一次。日志为 .artifacts/mb04-expiry-disabled-live.log，归档 SHA-256 为 8c08d76a3c9082a56a41039df6af666fdddb87a67035b31c72cbb88299658177。隔离宿主未启动全部 Core worker，运行时切换仍由专属 transport 承载。动态休眠仍开放。
 
 Linux 私有挂载和网络中的非 root Core guard 通过 Proxy 管理停用门禁，确认管理注册表缺席。停用检查与 guard 共用原 Mihomo 发布台账实例。专属 Helper IPC 实测启用、稳定无写入、竞争值修正、原 journal 恢复及拒绝未授权 UID。日志为 .artifacts/mb04-guard-disabled-final.log，归档 SHA-256 为 549cf67a48a67781c2986056ef3926f4a8a5d26e6a58517cd1b8288950a453f5。TUN、授权到期、系统代理现均有各自停用后的隔离证据，完整宿主联合交接与运行中动态休眠仍开放。
+
+Linux 隔离 sing-box 验收确认停用启动门禁在原待处理发布仍存在时阻止启动，即使真实流量已使用候选配置。原台账经运行时摘要确认后，门禁允许启动，apply 仍为一次。当前完整 Server 在 Core worker 启动前运行该门禁，因此管理已停用的 Server 若在到期发布中崩溃，仍需先让原发布完成核验才能以停用配置启动。日志为 .artifacts/mb04-expiry-gate-live.log，归档 SHA-256 为 74440c2833c410db329d819ca79f0b928848cab959b26aef900d11d27f8125d7。下一边界是明确只读启动恢复与未知结果阻塞之间的交接，不跳过权威检查。

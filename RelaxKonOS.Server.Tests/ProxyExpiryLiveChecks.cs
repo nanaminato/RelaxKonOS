@@ -108,6 +108,19 @@ internal static class ProxyExpiryLiveChecks
                 finally { await DockerProcessRecoveryChecks.StopWorkerAsync(worker); }
             }
 
+            // A fresh disabled host must distinguish a known runtime effect from an unconfirmed
+            // Server publication. The gate cannot infer completion from the live listener.
+            try
+            {
+                await modules.ValidateDeactivationAsync(owner.Services, context, default);
+                throw new InvalidOperationException("An unresolved inbound publication passed the disabled startup gate.");
+            }
+            catch (InvalidOperationException error) when (error.Message.Contains("Inbound publication remains unconfirmed", StringComparison.Ordinal))
+            {
+                TestAssert.Assert(transport.ApplyCalls == 1 && (await store.ReadAsync(default)).PendingPublication is not null,
+                    "The startup gate must preserve the original candidate and avoid another apply.");
+            }
+
             using var closureBudget = new CancellationTokenSource(Budget);
             await AssertClosedAsync(expiringConnection, closureBudget.Token);
             await AssertClosedAsync(expiringOrigin.GetStream(), closureBudget.Token);
@@ -132,6 +145,8 @@ internal static class ProxyExpiryLiveChecks
             var confirmed = await reopened.ReadAsync(default);
             TestAssert.Assert(confirmed.PendingPublication is null && confirmed.Published!.Credentials.Single().Id == retainedId
                 && transport.ApplyCalls == 1, "Recovery must confirm the applied material without a second mutation.");
+            await modules.ValidateDeactivationAsync(owner.Services, context, default);
+            Console.WriteLine("PASS SING-BOX LIVE DISABLED STARTUP GATE: pending publication blocked; original candidate reconciled; startup permitted");
             Console.WriteLine("PASS SING-BOX LIVE EXPIRY: management disabled; pre-expiry forwarded, old streams closed, expired rejected, retained reconnected, worker crashed before reply; original pending publication recovered; apply=1");
         }
         finally { directory.Delete(recursive: true); }
