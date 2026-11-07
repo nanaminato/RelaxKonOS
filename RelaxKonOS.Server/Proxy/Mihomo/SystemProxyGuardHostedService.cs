@@ -19,7 +19,7 @@ public sealed class SystemProxyGuardHostedService(IProxySettingsReader settings,
                 var current = await settings.GetAsync(stoppingToken);
                 var options = current.SystemProxy ?? ProxySystemProxyOptionsDto.Default;
                 delay = TimeSpan.FromSeconds(Math.Clamp(options.GuardIntervalSeconds, 5, 3_600));
-                var problem = await ReconcileAsync(startup, stoppingToken);
+                var problem = await ReconcileAsync(startup, current, stoppingToken);
                 if (problem is null) startup = false;
                 if (problem is not null) logger.LogWarning("System proxy reconciliation failed. ProblemCode={ProblemCode}", problem);
             }
@@ -31,8 +31,9 @@ public sealed class SystemProxyGuardHostedService(IProxySettingsReader settings,
         }
     }
 
-    private async Task<string?> ReconcileAsync(bool startup, CancellationToken ct)
+    internal async Task<string?> ReconcileAsync(bool startup, ProxySettingsDto current, CancellationToken ct)
     {
+        if (!startup && !(current.SystemProxyEnabled && current.SystemProxy?.GuardEnabled == true)) return null;
         await using var scope = scopes.CreateAsyncScope();
         return await scope.ServiceProvider.GetRequiredService<IProxySystemProxyReconciler>().ReconcileSystemProxyAsync(startup, ct);
     }

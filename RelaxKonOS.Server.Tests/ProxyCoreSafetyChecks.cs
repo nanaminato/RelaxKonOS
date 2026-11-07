@@ -42,6 +42,13 @@ internal static class ProxyCoreSafetyChecks
                 Interlocked.Increment(ref expiryActivations);
                 return ActivatorUtilities.CreateInstance<ProxyServerPublicationService>(services);
             });
+            var guardActivations = 0;
+            builder.Services.RemoveAll<IProxySystemProxyReconciler>();
+            builder.Services.AddTransient<IProxySystemProxyReconciler>(services =>
+            {
+                Interlocked.Increment(ref guardActivations);
+                return ActivatorUtilities.CreateInstance<MihomoSystemProxyReconciler>(services);
+            });
             await using var services = builder.Services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
             try
             {
@@ -111,6 +118,9 @@ internal static class ProxyCoreSafetyChecks
                 var recovery = ActivatorUtilities.CreateInstance<ProxyRecoveryHostedService>(services);
                 var guard = ActivatorUtilities.CreateInstance<SystemProxyGuardHostedService>(services);
                 var expiry = ActivatorUtilities.CreateInstance<ProxyServerExpiryService>(services);
+                var idleSettings = (await services.GetRequiredService<IProxySettingsReader>().GetAsync(default)) with { SystemProxyEnabled = false };
+                Check(await guard.ReconcileAsync(false, idleSettings, default) is null && guardActivations == 0,
+                    "An idle system proxy guard does not construct the reconciliation graph after startup");
                 using (recovery) using (guard) using (expiry)
                 {
                     if (!enabled) { network.RestoreSucceeds = false; helper.LoseReply = true; host.Failures = 1; }
