@@ -25,6 +25,9 @@ internal static class ProxySystemdRecoveryChecks
             .Where(line => line.Contains(" - tmpfs ", StringComparison.Ordinal)).Select(line => line.Split(' ')[4]).ToHashSet();
         if (!mounts.IsSupersetOf(["/var/lib", "/run", "/etc/systemd/system", "/etc/relaxkonos"]))
             throw new InvalidOperationException("The systemd fixture requires private state, units and sockets.");
+        if (!File.ReadLines("/proc/self/mountinfo").Any(line =>
+            line.Split(' ')[4] == "/etc" && line.Contains(" - overlay ", StringComparison.Ordinal)))
+            throw new InvalidOperationException("The guard test requires a private writable /etc overlay.");
         const string runtimeRoot = LinuxSingBoxArchiveHost.Root;
         if (Directory.Exists(runtimeRoot)) throw new InvalidOperationException("The private runtime must be absent.");
         var work = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SYSTEMD_WORK");
@@ -34,6 +37,7 @@ internal static class ProxySystemdRecoveryChecks
         var root = Directory.CreateDirectory(Path.Combine(work, "fixture")).FullName;
         var states = new RuntimeArchiveStateStore(runtimeRoot + "/state", RuntimeSourceProtection.Protect);
         using var traffic = new ProxyFullServerTrafficProbe();
+        await using var guard = await ProxySystemdGuardProbe.StartAsync(work, root);
         using var port = new TcpListener(IPAddress.Loopback, 0);
         port.Start();
         var inboundPort = ((IPEndPoint)port.LocalEndpoint).Port;
@@ -90,6 +94,10 @@ internal static class ProxySystemdRecoveryChecks
             await File.WriteAllTextAsync(configPath, JsonSerializer.Serialize(new LinuxPrivilegedHelperConfiguration(socket, gid, [0, uid])));
             File.SetUnixFileMode(configPath, (UnixFileMode)384);
             helper = await StartHelper();
+            var transport = new UnixSocketPrivilegedOperationTransport(new() { SocketPath = socket },
+                NullLogger<UnixSocketPrivilegedOperationTransport>.Instance);
+            await guard.ApplyAsync(transport, enabled: true);
+            await guard.VerifyTrafficAsync();
             var store = ManagedServiceChecks.OpenServerStore(root);
             var expiry = DateTimeOffset.UtcNow.AddSeconds(25);
             await store.WriteAsync(ProxyServerState.Empty with
@@ -138,15 +146,20 @@ internal static class ProxySystemdRecoveryChecks
             using (var forwarded = await traffic.ForwardAsync(retained.Value, outage.Token))
                 Console.WriteLine("PASS HELPER OUTAGE TRAFFIC: runtime accepted authenticated traffic with Helper stopped");
 
+            await guard.VerifyTrafficAsync();
+            guard.SetCompetingValue();
             var recovered = await ManagedServiceChecks.RunFullServerAsync(serverAssembly, socket, root, next, retained, traffic, expiry,
                 () => states.Read()!.Installation.StateRevision == before + 1
                     && states.Read()!.ConfigurationIdentity == expectedHash,
-                async () => helper = await StartHelper());
+                async () => helper = await StartHelper(), guard.VerifyRecoveryAsync);
             var final = states.Read()!;
             var finalHash = Digest(Encoding.UTF8.GetBytes(SingBoxConfiguration.Render(material with { Credentials = [retained] })));
             if (!recovered || final.Installation.StateRevision != before + 2 || final.ConfigurationIdentity != finalHash
                 || !(await host.ObserveAsync(default)).Running)
                 throw new InvalidOperationException("The full Server replayed or lost a real systemd publication.");
+            await guard.VerifyTrafficAsync();
+            await guard.ApplyAsync(transport, enabled: false);
+            guard.VerifyOriginalRestored();
             var secondHelper = await StopHelperAsync();
             if (ApplyCount(secondHelper.Log) != 1) throw new InvalidOperationException("Restarted Helper must receive only the later expiry apply.");
             Console.WriteLine("PASS PRODUCTION HELPER SYSTEMD: independent Helper crashed and restarted, runtime PID survived, original candidate confirmed, subsequent expiry and real traffic passed");

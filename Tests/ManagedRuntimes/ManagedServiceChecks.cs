@@ -413,7 +413,7 @@ internal static class ManagedServiceChecks
 
     internal static async Task<bool> RunFullServerAsync(string assembly, string socketPath, string root,
         ProxyServerSecret nextGrant, ProxyServerSecret retainedGrant, ProxyFullServerTrafficProbe traffic,
-        DateTimeOffset nextExpiry, Func<bool> originalAppliedOnce, Func<Task>? restoreHelper = null)
+        DateTimeOffset nextExpiry, Func<bool> originalAppliedOnce, Func<Task>? restoreHelper = null, Func<Task>? verifyReady = null)
     {
         if (!File.ReadLines("/proc/self/mountinfo").Any(line =>
             line.Split(' ')[4] == "/var/lib" && line.Contains(" - tmpfs ", StringComparison.Ordinal)))
@@ -485,13 +485,13 @@ internal static class ManagedServiceChecks
             Console.WriteLine($"PASS FULL SERVER HELPER AUTHORIZATION: unlisted uid={deniedUid} rejected");
         }
         start.Environment["PrivilegedHelper__SocketPath"] = socketPath;
-        await CheckFullServerAsync(start, root, url, expectReady: true, nextGrant, retainedGrant, traffic, nextExpiry, originalAppliedOnce);
+        await CheckFullServerAsync(start, root, url, expectReady: true, nextGrant, retainedGrant, traffic, nextExpiry, originalAppliedOnce, verifyReady);
         return true;
     }
 
     private static async Task CheckFullServerAsync(ProcessStartInfo start, string root, string url, bool expectReady,
         ProxyServerSecret nextGrant, ProxyServerSecret retainedGrant, ProxyFullServerTrafficProbe traffic,
-        DateTimeOffset nextExpiry, Func<bool> originalAppliedOnce)
+        DateTimeOffset nextExpiry, Func<bool> originalAppliedOnce, Func<Task>? verifyReady = null)
     {
         using var server = Process.Start(start) ?? throw new InvalidOperationException("Unable to start the full Server.");
         var output = server.StandardOutput.ReadToEndAsync();
@@ -523,6 +523,7 @@ internal static class ManagedServiceChecks
                             throw new InvalidOperationException("Full Server must confirm the original candidate once before the next grant expires.");
                         Console.WriteLine("PASS FULL SERVER DISABLED STARTUP: ready with original candidate confirmed over Helper IPC");
                         using var activeConnection = await traffic.ForwardAsync(nextGrant.Value, deadline.Token);
+                        if (verifyReady is not null) await verifyReady();
                         using var retainedConnection = await traffic.ForwardAsync(retainedGrant.Value, deadline.Token);
                         while (!server.HasExited)
                         {

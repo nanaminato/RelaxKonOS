@@ -46,6 +46,8 @@ cleanup() {
     echo "PASS HOST SYSTEMD CLEANUP: dedicated cgroup removed, host sing-box and proxy files unchanged"
 }
 trap cleanup EXIT
+cp -- /var/lib/relaxkonos/proxy/engines/mihomo/versions/v1.19.33-linux-x64/mihomo "$work/mihomo"
+chmod 0755 "$work/mihomo"
 cat > "$work/inside.sh" <<EOF
 #!/bin/bash
 set -uo pipefail
@@ -66,12 +68,12 @@ test "$(readlink /proc/1/ns/pid)" != "$host_pidns"
 mount -t tmpfs -o mode=0755 tmpfs /run
 mount -t tmpfs -o mode=0755 tmpfs /var/lib
 mount -t tmpfs -o mode=0755 tmpfs /var/log
+mkdir /var/lib/etc-upper /var/lib/etc-work
+mount -t overlay overlay -o lowerdir=/etc,upperdir=/var/lib/etc-upper,workdir=/var/lib/etc-work /etc
 mount -t tmpfs -o mode=0755 tmpfs /etc/systemd/system
 mount -t tmpfs -o mode=0755 tmpfs /etc/relaxkonos
-test -f /etc/environment
-: > "$work/private-environment"
-mount --bind "$work/private-environment" /etc/environment
-mount -o remount,bind,ro /etc/environment
+printf 'RELAXKONOS_PROXY_FIXTURE=isolated\nhttp_proxy=http://127.0.0.1:1234\n' > /etc/environment
+printf 'session required pam_env.so readenv=1\n' > /etc/pam.d/relaxkonos-fixture
 mount --bind /sys /sys
 mount -o remount,bind,ro /sys
 mount -t cgroup2 none /sys/fs/cgroup
