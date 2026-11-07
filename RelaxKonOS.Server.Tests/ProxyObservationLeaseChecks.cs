@@ -41,7 +41,10 @@ internal static class ProxyObservationLeaseChecks
         var paths = new TestProxyPaths(root);
         builder.Services.AddSingleton<IProxyPlatformPaths>(paths);
         builder.Services.AddSingleton<ProxyAuditStore>();
-        builder.Services.AddScoped<IProxySettingsWriter>(_ => new FixtureSettings(scenario));
+        var profile = new ProxyProfileDto(Guid.NewGuid(), "fixture", MihomoEngine.Id, true, 2, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        builder.Services.AddSingleton<IProxyProfileRepository>(new FixtureProfiles(profile));
+        builder.Services.AddScoped<IProxySettingsWriter>(_ => new FixtureWrite(scenario));
+        builder.Services.AddScoped<IProxyConfigurationTransactionService>(_ => new FixtureWrite(scenario));
         builder.Services.AddScoped(_ => new ControllerScope(scenario));
         builder.Services.AddScoped<IMihomoControllerClient>(services => services.GetRequiredService<ControllerScope>().CreateClient());
         builder.Services.AddScoped<IProxyRuntimeManager, FixtureRuntime>();
@@ -66,6 +69,7 @@ internal static class ProxyObservationLeaseChecks
         app.UseAuthorization();
         app.MapProxyObservationEndpoints();
         app.MapProxySettingsUpdateEndpoint();
+        app.MapProxyProfilePublicationEndpoints();
         await app.StartAsync(ct);
         using var http = new HttpClient { BaseAddress = new Uri(app.Services.GetRequiredService<IServer>()
             .Features.Get<IServerAddressesFeature>()!.Addresses.Single()) };
@@ -155,7 +159,12 @@ internal static class ProxyObservationLeaseChecks
             await scenario.RequestExited.Task.WaitAsync(ct);
             TestAssert.Assert(!HasLease(), "A fully drained read must return its work lease.");
         }
-        await VerifySettingsAsync();
+        var settingsPayload = new UpdateProxySettingsRequest(false, false, false, true, false, "warning", 7890);
+        var profileRoute = ProxyApiRoutes.Proxy + ProxyApiRoutes.ProfilePattern.Replace("{profileId:guid}", profile.Id.ToString("D"), StringComparison.Ordinal);
+        await VerifyWriteAsync("settings", token => http.PutAsJsonAsync(ProxyApiRoutes.Settings, settingsPayload, token), HttpStatusCode.NoContent);
+        await VerifyWriteAsync("profile apply", token => http.PostAsJsonAsync(profileRoute + "/configuration/apply",
+            new ApplyProxyConfigurationRequest("mode: direct\n"), token), HttpStatusCode.NoContent);
+        await VerifyWriteAsync("profile activation", token => http.PostAsync(profileRoute + "/activate", null, token), HttpStatusCode.OK);
         scenario = new Scenario(holdController: false) { FailCleanup = true };
         scenario.ReleaseResponse.TrySetResult();
         scenario.ReleaseCleanup.TrySetResult();
@@ -174,13 +183,12 @@ internal static class ProxyObservationLeaseChecks
 
         bool HasLease() => coordinator.HasBackgroundWork(ServerModules.ProxyId);
 
-        async Task VerifySettingsAsync()
+        async Task VerifyWriteAsync(string workload, Func<CancellationToken, Task<HttpResponseMessage>> send, HttpStatusCode success)
         {
-            var payload = new UpdateProxySettingsRequest(false, false, false, true, false, "warning", 7890);
             scenario = new Scenario(holdController: true);
-            using (var forbidden = await http.PutAsJsonAsync(ProxyApiRoutes.Settings, payload, ct))
+            using (var forbidden = await send(ct))
                 TestAssert.Assert(forbidden.StatusCode == HttpStatusCode.Forbidden && !HasLease()
-                    && !scenario.ControllerEntered.Task.IsCompleted, "A reader cannot acquire settings execution.");
+                    && !scenario.ControllerEntered.Task.IsCompleted, $"A reader cannot acquire {workload} execution.");
             http.DefaultRequestHeaders.Remove("X-Test-Role");
             http.DefaultRequestHeaders.Add("X-Test-Role", "manager");
             var audit = Path.Combine(paths.GetStateDirectory(), "proxy-audit.jsonl");
@@ -191,18 +199,18 @@ internal static class ProxyObservationLeaseChecks
                     scenario = new Scenario(holdWriter);
                     if (!holdWriter) scenario.ReleaseController.TrySetResult();
                     using var caller = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                    var request = http.PutAsJsonAsync(ProxyApiRoutes.Settings, payload, caller.Token);
+                    var request = send(caller.Token);
                     try
                     {
                         await (holdWriter ? scenario.ControllerEntered : scenario.ResponseEntered).Task.WaitAsync(ct);
-                        TestAssert.Assert(HasLease(), "The settings task and response require a Proxy work lease.");
+                        TestAssert.Assert(HasLease(), $"The {workload} task and response require a Proxy work lease.");
                         caller.Cancel();
                         await scenario.Disconnected.Task.WaitAsync(ct);
                         if (holdWriter) await scenario.ControllerCancelled.Task.WaitAsync(ct);
-                        try { using var unexpected = await request; throw new Exception("Expected settings client cancellation."); }
+                        try { using var unexpected = await request; throw new Exception($"Expected {workload} client cancellation."); }
                         catch (OperationCanceledException) when (caller.IsCancellationRequested) { }
                         TestAssert.Assert(HasLease() && !scenario.RequestExited.Task.IsCompleted,
-                            "A disconnected settings caller must leave the accepted work owned.");
+                            $"A disconnected {workload} caller must leave the accepted work owned.");
                         scenario.ReleaseController.TrySetResult();
                         scenario.ReleaseResponse.TrySetResult();
                         await scenario.CleanupEntered.Task.WaitAsync(ct);
@@ -216,19 +224,22 @@ internal static class ProxyObservationLeaseChecks
                         scenario.ReleaseCleanup.TrySetResult();
                     }
                     await scenario.RequestExited.Task.WaitAsync(ct);
-                    TestAssert.Assert(!HasLease(), "Settings must return the work lease after asynchronous cleanup.");
+                    TestAssert.Assert(!HasLease(), $"{workload} must return the work lease after asynchronous cleanup.");
                 }
                 foreach (var problem in new[] { null, ProxyProblemCodes.ConfigInvalid })
                 {
-                    scenario = new Scenario(holdController: false) { SettingsProblem = problem };
+                    scenario = new Scenario(holdController: false) { WriteProblem = problem };
                     scenario.ReleaseController.TrySetResult();
                     scenario.ReleaseResponse.TrySetResult();
                     scenario.ReleaseCleanup.TrySetResult();
-                    using var reply = await http.PutAsJsonAsync(ProxyApiRoutes.Settings, payload, ct);
+                    using var reply = await send(ct);
                     await scenario.RequestExited.Task.WaitAsync(ct);
-                    TestAssert.Assert(!HasLease() && reply.StatusCode == (problem is null ? HttpStatusCode.NoContent : HttpStatusCode.BadRequest)
+                    TestAssert.Assert(!HasLease() && reply.StatusCode == (problem is null ? success : HttpStatusCode.BadRequest)
                         && (problem is null || (await reply.Content.ReadAsStringAsync(ct)).Contains(problem, StringComparison.Ordinal)),
-                        "The scoped settings route must preserve the original success and validation responses.");
+                        $"The scoped {workload} route must preserve the original success and validation responses.");
+                    if (problem is null && success == HttpStatusCode.OK)
+                        TestAssert.Assert(await reply.Content.ReadFromJsonAsync<ProxyProfileDto>(RelaxKonOSJsonOptions.Default, ct) == profile,
+                            "Profile activation must return the original active profile response.");
                 }
             }
             finally
@@ -239,18 +250,24 @@ internal static class ProxyObservationLeaseChecks
                 if (Directory.Exists(paths.GetStateDirectory())) Directory.Delete(paths.GetStateDirectory());
                 if (Directory.Exists(root)) Directory.Delete(root);
             }
-            Console.WriteLine("PASS PROXY SETTINGS HTTP DRAIN: authorization, accepted task, audit, actual response and asynchronous cleanup");
+            Console.WriteLine($"PASS PROXY WRITE HTTP DRAIN: {workload}, authorization, accepted task, audit, actual response and asynchronous cleanup");
         }
     }
 
-    private sealed class FixtureSettings(Scenario scenario) : IProxySettingsWriter, IAsyncDisposable
+    private sealed class FixtureWrite(Scenario scenario) : IProxySettingsWriter, IProxyConfigurationTransactionService, IAsyncDisposable
     {
-        public async Task<string?> UpdateAsync(UpdateProxySettingsRequest request, CancellationToken ct)
+        public Task<string?> UpdateAsync(UpdateProxySettingsRequest request, CancellationToken ct) => RunAsync(ct);
+        public Task<string?> ApplyAsync(Guid profileId, string yaml, CancellationToken ct) => RunAsync(ct);
+        public Task<string?> ActivateStoredAsync(Guid profileId, CancellationToken ct, ProxyQueuedSubscriptionRefresh? refresh = null) => RunAsync(ct);
+        public Task<string?> StoreAsync(Guid profileId, string yaml, CancellationToken ct) => throw new NotSupportedException();
+        public Task<string?> ReadStoredAsync(Guid profileId, CancellationToken ct) => throw new NotSupportedException();
+
+        private async Task<string?> RunAsync(CancellationToken ct)
         {
             using var cancellation = ct.Register(() => scenario.ControllerCancelled.TrySetResult());
             scenario.ControllerEntered.TrySetResult();
             await scenario.ReleaseController.Task;
-            return scenario.SettingsProblem;
+            return scenario.WriteProblem;
         }
 
         public async ValueTask DisposeAsync()
@@ -260,11 +277,23 @@ internal static class ProxyObservationLeaseChecks
         }
     }
 
+    private sealed class FixtureProfiles(ProxyProfileDto profile) : IProxyProfileRepository
+    {
+        public Task<ProxyProfileDto?> GetAsync(Guid id, CancellationToken ct) => Task.FromResult(id == profile.Id ? profile : null);
+        public Task<IReadOnlyList<ProxyProfileDto>> ListAsync(CancellationToken ct) => throw new NotSupportedException();
+        public Task<ProxyProfileDto?> GetActiveAsync(CancellationToken ct) => throw new NotSupportedException();
+        public Task<ProxyProfileDto> UpsertAsync(Guid? id, string name, string engineId, long? expectedRevision, CancellationToken ct) => throw new NotSupportedException();
+        public Task<ProxyProfileDto?> SetActiveAsync(Guid id, CancellationToken ct, MihomoSubscriptionRefresh? refresh = null) => throw new NotSupportedException();
+        public Task<bool> DeleteAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
+        public Task ValidatePublicationAsync(MihomoProfilePublication selection, CancellationToken ct) => throw new NotSupportedException();
+        public Task CommitPublicationAsync(Guid operationId, MihomoProfilePublication selection, string identity, CancellationToken ct) => throw new NotSupportedException();
+    }
+
     private sealed class Scenario(bool holdController)
     {
         internal bool HoldController { get; } = holdController;
         internal bool FailCleanup { get; init; }
-        internal string? SettingsProblem { get; init; }
+        internal string? WriteProblem { get; init; }
         internal HttpStatusCode Status { get; init; } = HttpStatusCode.OK;
         internal string RoutingMode { get; init; } = "direct";
         internal int ControllerCalls;

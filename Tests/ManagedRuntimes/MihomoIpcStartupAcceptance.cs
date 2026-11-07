@@ -217,7 +217,8 @@ internal static class MihomoIpcStartupAcceptance
             throw new InvalidOperationException("The split-configuration measurement requires a control-read baseline.");
         var subscriptionsEnabled = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_SUBSCRIPTION") == "1";
         var settingsEnabled = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_SETTINGS_DISCONNECT") == "1";
-        var login = subscriptionsEnabled || settingsEnabled || trafficPolling || !string.IsNullOrEmpty(baseline)
+        var profileEnabled = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_PROFILE_DISCONNECT") == "1";
+        var login = subscriptionsEnabled || settingsEnabled || profileEnabled || trafficPolling || !string.IsNullOrEmpty(baseline)
             ? ProxyAuthenticatedPublicationChecks.ReadLogin() : null;
         if (trafficPolling || baseline is { Length: > 0 })
         {
@@ -275,8 +276,9 @@ internal static class MihomoIpcStartupAcceptance
                 || log.Contains("operation=MihomoRuntimeRecover ", StringComparison.Ordinal))
                 throw new InvalidOperationException("Subscription activation and each refresh must configure once without native replay.");
         }
-        if (settingsEnabled) await VerifySettingsDisconnectAsync(login!);
-        if (subscriptionsEnabled || settingsEnabled)
+        if (settingsEnabled) await VerifyWriteDisconnectAsync(login!, profileWrite: false);
+        if (profileEnabled) await VerifyWriteDisconnectAsync(login!, profileWrite: true);
+        if (subscriptionsEnabled || settingsEnabled || profileEnabled)
         {
 
             // The remaining archive checks reuse this private fixture's original published configuration.
@@ -295,19 +297,20 @@ internal static class MihomoIpcStartupAcceptance
                 throw new InvalidOperationException("Could not restore the dedicated fixture for the remaining archive checks.");
         }
 
-        async Task VerifySettingsDisconnectAsync(LoginRequest credentials)
+        async Task VerifyWriteDisconnectAsync(LoginRequest credentials, bool profileWrite)
         {
             using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(65));
             var ct = budget.Token;
             var before = await startupStore.ReadAsync(ct);
             var nativeBefore = await lifecycle.QueryAsync(ct);
             var previous = await new ProxySettingsReader(tunPaths).GetAsync(ct);
-            var desired = previous with { LogLevel = previous.LogLevel == "error" ? "warning" : "error", MixedPort = port };
+            var desired = profileWrite ? previous : previous with { LogLevel = previous.LogLevel == "error" ? "warning" : "error", MixedPort = port };
             var payload = new UpdateProxySettingsRequest(desired.SystemProxyEnabled, desired.AllowLan, desired.DnsEnabled,
                 desired.Ipv6Enabled, desired.UnifiedDelay, desired.LogLevel, desired.MixedPort, desired.AllowInsecureSubscriptionSources,
                 desired.SystemProxyHost, desired.Tun, desired.SystemProxy);
             await using var helper = await StartHelperAsync(helperAssembly, config, transport);
-            await using var relay = new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/relaxkonos-mihomo-settings.sock", socket, ct,
+            var workload = profileWrite ? "PROFILE" : "SETTINGS";
+            await using var relay = new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/relaxkonos-mihomo-write.sock", socket, ct,
                 static (kind, _) => kind == "MihomoRuntimeConfigure");
             start.Environment["PrivilegedHelper__SocketPath"] = relay.Path;
             start.Environment["Modules__Proxy__Enabled"] = "true";
@@ -316,43 +319,60 @@ internal static class MihomoIpcStartupAcceptance
             RuntimeSwitchResult originalReceipt;
             long nativeRevision;
             string nativePid;
+            ProxyProfileDto? profile = null;
+            string? profileRoute = null;
             using (var process = ProxyAuthenticatedPublicationChecks.Start(start))
             {
                 try
                 {
                     using var client = await ProxyAuthenticatedPublicationChecks.ConnectAsync(process, credentials, ct);
+                    if (profileWrite)
+                    {
+                        using var created = await client.PostAsJsonAsync(ProxyApiRoutes.Profiles,
+                            new UpsertProxyProfileRequest("Profile publication fixture", MihomoEngine.Id), RelaxKonOSJsonOptions.Default, ct);
+                        created.EnsureSuccessStatusCode();
+                        profile = await created.Content.ReadFromJsonAsync<ProxyProfileDto>(RelaxKonOSJsonOptions.Default, ct)
+                            ?? throw new InvalidOperationException("The production profile route did not create the fixture.");
+                        profileRoute = ProxyApiRoutes.Proxy + ProxyApiRoutes.ProfilePattern.Replace("{profileId:guid}", profile.Id.ToString("D"), StringComparison.Ordinal);
+                    }
                     using var caller = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                    var write = client.PutAsJsonAsync(ProxyApiRoutes.Settings, payload, RelaxKonOSJsonOptions.Default, caller.Token);
+                    var write = profileRoute is null
+                        ? client.PutAsJsonAsync(ProxyApiRoutes.Settings, payload, RelaxKonOSJsonOptions.Default, caller.Token)
+                        : client.PostAsJsonAsync(profileRoute + "/configuration/apply",
+                            new ApplyProxyConfigurationRequest("mode: direct\nrules:\n  - MATCH,DIRECT\n"), RelaxKonOSJsonOptions.Default, caller.Token);
                     if (await Task.WhenAny(relay.Committed.Task, write).WaitAsync(ct) == write)
                     {
                         using var early = await write;
-                        throw new InvalidOperationException($"Settings returned {early.StatusCode} before the original configure reply.");
+                        throw new InvalidOperationException($"{workload} returned {early.StatusCode} before the original configure reply.");
                     }
                     operation = await relay.Committed.Task.WaitAsync(ct);
                     var pending = await startupStore.ReadAsync(ct);
                     var applied = await lifecycle.QueryAsync(ct, operation);
-                    var forwarded = await probe(port);
-                    if (pending.Pending is not { Settings: not null } intent || intent.OperationId != operation
-                        || intent.Settings.Candidate != desired || applied.Receipt is not { Outcome: RuntimeSwitchOutcome.Succeeded } receipt
-                        || receipt.OperationId != operation || applied.ConfigurationIdentity != intent.ConfigurationPlan?.CandidateIdentity
+                    var forwarded = await probe(desired.MixedPort);
+                    var intent = pending.Pending;
+                    var matches = profile is null ? intent?.Settings?.Candidate == desired
+                        : intent?.Profile is { } selection && selection.ProfileId == profile.Id && selection.ExpectedRevision == profile.Revision;
+                    if (intent?.OperationId != operation || !matches || applied.Receipt is not { Outcome: RuntimeSwitchOutcome.Succeeded } receipt
+                        || receipt.OperationId != operation || applied.ConfigurationIdentity != intent?.ConfigurationPlan?.CandidateIdentity
                         || applied.Installation.StateRevision <= nativeBefore.Installation.StateRevision || !forwarded)
-                        throw new InvalidOperationException($"Settings {operation}: pending={pending.Pending?.OperationId}, settingsMatch={pending.Pending?.Settings?.Candidate == desired}, "
+                        throw new InvalidOperationException($"{workload} {operation}: pending={pending.Pending?.OperationId}, intentMatch={matches}, "
                             + $"outcome={applied.Receipt?.Outcome}, problem={applied.Receipt?.ProblemCode}, identityMatch={applied.ConfigurationIdentity == pending.Pending?.ConfigurationPlan?.CandidateIdentity}, "
                             + $"revision={nativeBefore.Installation.StateRevision}->{applied.Installation.StateRevision}, forwarded={forwarded}.");
                     originalReceipt = receipt;
                     nativeRevision = applied.Installation.StateRevision;
                     nativePid = await ReadRuntimePidAsync();
                     caller.Cancel();
-                    try { using var unexpected = await write; throw new InvalidOperationException("Expected settings caller disconnect."); }
+                    try { using var unexpected = await write; throw new InvalidOperationException("Expected the original caller to disconnect."); }
                     catch (OperationCanceledException) when (caller.IsCancellationRequested) { }
                     var module = await client.GetFromJsonAsync<ServerModuleDto>(ServerApiRoutes.Modules + "/relaxkonos.proxy", RelaxKonOSJsonOptions.Default, ct);
                     if (module?.Residency?.ActiveLeases != 1 || (await startupStore.ReadAsync(ct)).Pending?.OperationId != operation
-                        || await new ProxySettingsReader(tunPaths).GetAsync(ct) != previous)
-                        throw new InvalidOperationException("HTTP disconnect released the settings lease or changed the pending application state.");
+                        || await new ProxySettingsReader(tunPaths).GetAsync(ct) != previous
+                        || (profileRoute is not null && await ReadProfileAsync(client) != profile))
+                        throw new InvalidOperationException("HTTP disconnect released the write lease or changed the pending application state.");
                     process.Kill();
                     await process.WaitForExitAsync(ct);
-                    if (process.ExitCode == 0 || await ReadRuntimePidAsync() != nativePid || !await probe(port))
-                        throw new InvalidOperationException("The original native settings publication did not survive the Server interruption.");
+                    if (process.ExitCode == 0 || await ReadRuntimePidAsync() != nativePid || !await probe(desired.MixedPort))
+                        throw new InvalidOperationException("The original native publication did not survive the Server interruption.");
                 }
                 finally
                 {
@@ -372,17 +392,25 @@ internal static class MihomoIpcStartupAcceptance
                 if (state.LastConfiguration?.OperationId != operation || state.LastConfiguration.Confirmed != true
                     || state.Revision != before.Revision + 2 || observed.Receipt != originalReceipt
                     || observed.Installation.StateRevision != nativeRevision
-                    || state.Identity != observed.ConfigurationIdentity || await ReadRuntimePidAsync() != nativePid || !await probe(port)
+                    || state.Identity != observed.ConfigurationIdentity || await ReadRuntimePidAsync() != nativePid || !await probe(desired.MixedPort)
                     || await client.GetFromJsonAsync<ProxySettingsDto>(ProxyApiRoutes.Settings, RelaxKonOSJsonOptions.Default, ct) != desired)
-                    throw new InvalidOperationException("Restart lost the original settings receipt, terminal state or runtime.");
+                    throw new InvalidOperationException("Restart lost the original write receipt, terminal state or runtime.");
+                if (profile is not null && (await ReadProfileAsync(client) is not { IsActive: true } activeProfile
+                    || activeProfile.Id != profile.Id || activeProfile.Revision != profile.Revision + 1
+                    || await client.GetFromJsonAsync<ProxyControllerConfigurationDto>(ProxyApiRoutes.ControllerConfiguration,
+                        RelaxKonOSJsonOptions.Default, ct) is not { Routing: { Mode: ProxyRoutingMode.Direct, ProblemCode: "" } }))
+                    throw new InvalidOperationException("Restart did not commit the original profile selection exactly once or lost the actual routing mode.");
             }
             finally { await ProxyAuthenticatedPublicationChecks.StopAsync(restart); }
             var log = await helper.StopAsync(drainCompletedRequests: true);
             if (log.Split('\n').Count(line => line.Contains($"operation=MihomoRuntimeConfigure id={operation} ", StringComparison.OrdinalIgnoreCase)) != 1
                 || log.Contains("operation=MihomoRuntimeRecover ", StringComparison.Ordinal)
                 || !log.Contains($"operation=MihomoRuntimeQuery id={operation} uid={uid} success=True", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("The restarted settings owner did not query the original native result without replay.");
-            Console.WriteLine($"PASS MIHOMO SETTINGS DISCONNECT RECOVERY: {operation}; real settings lease held, one native configure, original receipt and live traffic");
+                throw new InvalidOperationException("The restarted owner did not query the original native result without replay.");
+            Console.WriteLine($"PASS MIHOMO {workload} DISCONNECT RECOVERY: {operation}; lease held, one native configure, original receipt and live traffic");
+
+            Task<ProxyProfileDto?> ReadProfileAsync(HttpClient client) =>
+                client.GetFromJsonAsync<ProxyProfileDto>(profileRoute!, RelaxKonOSJsonOptions.Default, ct);
         }
 
         async Task VerifyPublicationShutdownAsync()

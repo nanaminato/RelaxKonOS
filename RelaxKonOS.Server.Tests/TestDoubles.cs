@@ -204,6 +204,8 @@ sealed class TransactionTestEngine : IProxyEngine
 {
     public string EngineId => MihomoEngine.Id;
     public bool FailNextReload { get; set; }
+    public Action? BeforeNextReload { get; set; }
+    public int ReloadCalls { get; private set; }
     public string? LastValidatedConfiguration { get; private set; }
     public List<string> ValidatedConfigurations { get; } = [];
     public Task<ProxyEngineCapabilities> GetCapabilitiesAsync(CancellationToken cancellationToken) => Task.FromResult(new ProxyEngineCapabilities(true, true, false, false, false, false));
@@ -216,6 +218,9 @@ sealed class TransactionTestEngine : IProxyEngine
     }
     public Task<string?> ReloadAsync(CancellationToken cancellationToken)
     {
+        ReloadCalls++;
+        var before = BeforeNextReload; BeforeNextReload = null; before?.Invoke();
+        cancellationToken.ThrowIfCancellationRequested();
         var failed = FailNextReload; FailNextReload = false;
         return Task.FromResult<string?>(failed ? ProxyProblemCodes.ControllerUnavailable : null);
     }

@@ -70,6 +70,7 @@ public sealed class ProxyConfigurationTransactionService(
                     logger?.LogWarning("Proxy profile storage was rejected by configuration validation. ProfileId={ProfileId} EngineId={EngineId} ProblemCode={ProblemCode}", profileId, engine.EngineId, validation);
                     File.Delete(temporary); return validation;
                 }
+                cancellationToken.ThrowIfCancellationRequested();
                 File.Move(temporary, ProfilePath(profileId), overwrite: true); SetPrivateFile(ProfilePath(profileId));
                 logger?.LogInformation("Proxy profile configuration stored. ProfileId={ProfileId} EngineId={EngineId} Characters={Characters}", profileId, engine.EngineId, yaml.Length);
                 return null;
@@ -145,13 +146,16 @@ public sealed class ProxyConfigurationTransactionService(
                     logger?.LogWarning("Proxy configuration activation was rejected by validation. ProfileId={ProfileId} EngineId={EngineId} ProblemCode={ProblemCode}", profileId, engine.EngineId, validation);
                     return validation;
                 }
+                cancellationToken.ThrowIfCancellationRequested();
                 if (File.Exists(active)) File.Copy(active, backup, overwrite: false);
                 File.Move(temporary, active, overwrite: true); SetPrivateFile(active);
-                var reload = await engine.ReloadAsync(cancellationToken);
-                var health = string.IsNullOrEmpty(reload) ? await engine.GetHealthAsync(cancellationToken) : null;
+                // Once the active file is visible, finish activation or compensation under the same gate.
+                var completionToken = CancellationToken.None;
+                var reload = await engine.ReloadAsync(completionToken);
+                var health = string.IsNullOrEmpty(reload) ? await engine.GetHealthAsync(completionToken) : null;
                 if (string.IsNullOrEmpty(reload) && health?.State == ProxyHealthState.Healthy)
                 {
-                    if (await profiles.SetActiveAsync(profileId, cancellationToken, refresh?.Metadata) is null)
+                    if (await profiles.SetActiveAsync(profileId, completionToken, refresh?.Metadata) is null)
                         return ProxyProblemCodes.RecoveryRequired;
                     logger?.LogInformation("Proxy configuration activated. ProfileId={ProfileId} EngineId={EngineId} BackupCreated={BackupCreated}", profileId, engine.EngineId, File.Exists(backup));
                     return null;
@@ -159,8 +163,8 @@ public sealed class ProxyConfigurationTransactionService(
                 if (File.Exists(backup))
                 {
                     File.Copy(backup, active, overwrite: true); SetPrivateFile(active);
-                    var rollback = await engine.ReloadAsync(cancellationToken);
-                    var rollbackHealth = string.IsNullOrEmpty(rollback) ? await engine.GetHealthAsync(cancellationToken) : null;
+                    var rollback = await engine.ReloadAsync(completionToken);
+                    var rollbackHealth = string.IsNullOrEmpty(rollback) ? await engine.GetHealthAsync(completionToken) : null;
                     var outcome = rollbackHealth?.State == ProxyHealthState.Healthy ? ProxyProblemCodes.ConfigApplyFailed : ProxyProblemCodes.RecoveryRequired;
                     logger?.LogWarning("Proxy configuration activation failed and rollback was attempted. ProfileId={ProfileId} EngineId={EngineId} Outcome={Outcome}", profileId, engine.EngineId, outcome);
                     return outcome;

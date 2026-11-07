@@ -86,17 +86,7 @@ public static class ProxyEndpoints
             var deleted = await profiles.DeleteAsync(profileId, ct); await audit.RecordAsync(Actor(context.User), "profile.delete", deleted ? "succeeded" : "failed", deleted ? null : ProxyProblemCodes.ConfigApplyFailed, ct);
             return deleted ? Results.NoContent() : Results.Conflict();
         }).RequireAuthorization("ProxyManage").WithTags("Proxy");
-        app.MapPost(Route(ProxyApiRoutes.ProfileActivatePattern), async (Guid profileId, IProxyProfileRepository profiles, IProxyConfigurationTransactionService configuration, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
-        {
-            var problem = await configuration.ActivateStoredAsync(profileId, ct);
-            await audit.RecordAsync(Actor(context.User), "profile.activate", string.IsNullOrEmpty(problem) ? "succeeded" : "failed", problem, ct);
-            return string.IsNullOrEmpty(problem) ? Results.Ok(await profiles.GetAsync(profileId, ct)) : Problem(problem, StatusCodes.Status400BadRequest);
-        }).RequireAuthorization("ProxyManage").WithTags("Proxy");
-        app.MapPost(Route(ProxyApiRoutes.ProfileConfigurationApplyPattern), async (Guid profileId, ApplyProxyConfigurationRequest request, IProxyConfigurationTransactionService configuration, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
-        {
-            var problem = await configuration.ApplyAsync(profileId, request.Yaml, ct); await audit.RecordAsync(Actor(context.User), "profile.configuration.apply", string.IsNullOrEmpty(problem) ? "succeeded" : "failed", problem, ct);
-            return string.IsNullOrEmpty(problem) ? Results.NoContent() : Problem(problem, StatusCodes.Status400BadRequest);
-        }).RequireAuthorization("ProxyManage").WithTags("Proxy");
+        app.MapProxyProfilePublicationEndpoints();
 
         app.MapPut(Route(ProxyApiRoutes.GroupSelectionPattern), async (string groupName, SelectProxyGroupRequest request, IProxyEngineRegistry engines, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
         {
@@ -131,6 +121,27 @@ public static class ProxyEndpoints
             {
                 var problem = await services.GetRequiredService<IProxySettingsWriter>().UpdateAsync(request, ct);
                 await services.GetRequiredService<ProxyAuditStore>().RecordAsync(Actor(context.User), "settings.update",
+                    string.IsNullOrEmpty(problem) ? "succeeded" : "failed", problem, CancellationToken.None);
+                return string.IsNullOrEmpty(problem) ? Results.NoContent() : Problem(problem, StatusCodes.Status400BadRequest);
+            })).RequireAuthorization("ProxyManage").WithTags("Proxy");
+    }
+
+    internal static void MapProxyProfilePublicationEndpoints(this IEndpointRouteBuilder app)
+    {
+        app.MapPost(Route(ProxyApiRoutes.ProfileActivatePattern), (Guid profileId, HttpContext context, IResidentModuleWorkLeaseSource leases) =>
+            ExecuteScopedAsync(context, leases, async (services, ct) =>
+            {
+                var problem = await services.GetRequiredService<IProxyConfigurationTransactionService>().ActivateStoredAsync(profileId, ct);
+                await services.GetRequiredService<ProxyAuditStore>().RecordAsync(Actor(context.User), "profile.activate",
+                    string.IsNullOrEmpty(problem) ? "succeeded" : "failed", problem, CancellationToken.None);
+                return string.IsNullOrEmpty(problem) ? Results.Ok(await services.GetRequiredService<IProxyProfileRepository>().GetAsync(profileId, ct))
+                    : Problem(problem, StatusCodes.Status400BadRequest);
+            })).RequireAuthorization("ProxyManage").WithTags("Proxy");
+        app.MapPost(Route(ProxyApiRoutes.ProfileConfigurationApplyPattern), (Guid profileId, ApplyProxyConfigurationRequest request,
+            HttpContext context, IResidentModuleWorkLeaseSource leases) => ExecuteScopedAsync(context, leases, async (services, ct) =>
+            {
+                var problem = await services.GetRequiredService<IProxyConfigurationTransactionService>().ApplyAsync(profileId, request.Yaml, ct);
+                await services.GetRequiredService<ProxyAuditStore>().RecordAsync(Actor(context.User), "profile.configuration.apply",
                     string.IsNullOrEmpty(problem) ? "succeeded" : "failed", problem, CancellationToken.None);
                 return string.IsNullOrEmpty(problem) ? Results.NoContent() : Problem(problem, StatusCodes.Status400BadRequest);
             })).RequireAuthorization("ProxyManage").WithTags("Proxy");

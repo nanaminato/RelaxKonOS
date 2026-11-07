@@ -24,10 +24,16 @@ internal static async Task VerifyProxyConfigurationTransactionAsync(string root)
     TestAssert.Assert(await service.StoreAsync(second.Id, "mode: global\n", CancellationToken.None) is null,
         "Second profile configuration was not stored.");
     engine.FailNextReload = true;
-    TestAssert.Assert(await service.ActivateStoredAsync(second.Id, CancellationToken.None) == ProxyProblemCodes.ConfigApplyFailed,
-        "Failed reload did not report a transactional apply failure.");
-    TestAssert.Assert((await profiles.GetAsync(profile.Id, CancellationToken.None))!.IsActive
-        && !(await profiles.GetAsync(second.Id, CancellationToken.None))!.IsActive,
+    using (var caller = new CancellationTokenSource())
+    {
+        var reloads = engine.ReloadCalls;
+        engine.BeforeNextReload = caller.Cancel;
+        TestAssert.Assert(await service.ActivateStoredAsync(second.Id, caller.Token) == ProxyProblemCodes.ConfigApplyFailed
+            && caller.IsCancellationRequested && engine.ReloadCalls == reloads + 2,
+            "The accepted failed activation must complete one candidate reload and one compensation despite caller cancellation.");
+    }
+    TestAssert.Assert(await profiles.GetAsync(profile.Id, CancellationToken.None) == appliedProfile
+        && await profiles.GetAsync(second.Id, CancellationToken.None) == second,
         "Failed profile activation changed the active profile despite rolling back its YAML.");
     var active = await File.ReadAllTextAsync(Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml"));
     var normalizedActive = active.Replace("\r\n", "\n", StringComparison.Ordinal);
@@ -40,10 +46,17 @@ internal static async Task VerifyProxyConfigurationTransactionAsync(string root)
         && !normalizedActive.Contains("stale-secret", StringComparison.Ordinal)
         && !normalizedActive.Contains("untrusted.example", StringComparison.Ordinal),
         "Managed Proxy configuration did not preserve its server-owned controller and GEO settings.");
-    TestAssert.Assert(await service.ActivateStoredAsync(second.Id, CancellationToken.None) is null
-        && (await profiles.GetAsync(second.Id, CancellationToken.None))!.IsActive
-        && !(await profiles.GetAsync(profile.Id, CancellationToken.None))!.IsActive,
-        "Stored profile activation did not switch both runtime YAML and active metadata.");
+    using (var caller = new CancellationTokenSource())
+    {
+        var reloads = engine.ReloadCalls;
+        engine.BeforeNextReload = caller.Cancel;
+        TestAssert.Assert(await service.ActivateStoredAsync(second.Id, caller.Token) is null
+            && caller.IsCancellationRequested && engine.ReloadCalls == reloads + 1
+            && await profiles.GetAsync(second.Id, CancellationToken.None) is { IsActive: true } activeSecond
+            && activeSecond.Revision == second.Revision + 1
+            && !(await profiles.GetAsync(profile.Id, CancellationToken.None))!.IsActive,
+            "Accepted profile activation must commit the active metadata exactly once despite caller cancellation.");
+    }
     var subscriptions = new SqliteProxySubscriptionRepository(new TestHostEnvironment(root),
         Options.Create(new StorageOptions { DatabasePath = databasePath }),
         new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider());
