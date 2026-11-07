@@ -131,6 +131,11 @@ if (args is ["runtime-proxy-systemd-expiry-worker", var nativeSocket, var native
     await ProxySystemdRecoveryChecks.RunExpiryWorkerAsync(nativeSocket, nativeRoot);
     return;
 }
+if (args is ["runtime-proxy-systemd-interrupt-publication", var publicationRoot])
+{
+    await ProxySystemdRecoveryChecks.RunInterruptedPublicationAsync(publicationRoot);
+    return;
+}
 if (args is ["runtime-proxy-systemd-tun-worker", var tunRoot, var tunAddress])
 {
     await ProxySystemdGuardProbe.RunTunWorkerAsync(tunRoot, System.Net.IPAddress.Parse(tunAddress));

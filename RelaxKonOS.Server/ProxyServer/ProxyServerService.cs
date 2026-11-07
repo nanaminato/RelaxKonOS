@@ -271,6 +271,11 @@ public sealed class ProxyServerService(
         await store.Gate.WaitAsync(ct);
         try
         {
+            if ((await store.ReadAsync(ct)).PendingPublication is not null)
+            {
+                await publication.ReadStateAsync(ct, recoverPublication: true);
+                return null;
+            }
             var status = await CallAsync<ProxyServerStatus>(PrivilegedOperationKind.ProxyServerAction,
                 new(Action: ProxyServerAction.Recover), ct);
             if (!status.RecoveryRequired) await publication.ReadStateAsync(ct);

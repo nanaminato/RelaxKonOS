@@ -14,11 +14,12 @@ using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.ProxyServer;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Privileged;
+using RelaxKonOS.Server.Proxy;
 using RelaxKonOS.Server.ProxyServer;
 
 internal static class ProxySystemdRecoveryChecks
 {
-    internal static async Task RunAsync(string helperAssembly, string serverAssembly, string executable)
+    private static string RequirePrivateWork()
     {
         if (!OperatingSystem.IsLinux() || !Environment.IsPrivilegedProcess)
             throw new InvalidOperationException("The systemd fixture requires Linux root inside its private namespace.");
@@ -29,12 +30,18 @@ internal static class ProxySystemdRecoveryChecks
         if (!File.ReadLines("/proc/self/mountinfo").Any(line =>
             line.Split(' ')[4] == "/etc" && line.Contains(" - overlay ", StringComparison.Ordinal)))
             throw new InvalidOperationException("The guard test requires a private writable /etc overlay.");
-        const string runtimeRoot = LinuxSingBoxArchiveHost.Root;
-        if (Directory.Exists(runtimeRoot)) throw new InvalidOperationException("The private runtime must be absent.");
         var work = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SYSTEMD_WORK");
         if (work is null || Path.GetDirectoryName(work) != "/tmp"
             || !Path.GetFileName(work).StartsWith("relaxkonos-mb04-systemd.", StringComparison.Ordinal))
             throw new InvalidOperationException("The systemd fixture requires the runner's dedicated work directory.");
+        return work;
+    }
+
+    internal static async Task RunAsync(string helperAssembly, string serverAssembly, string executable)
+    {
+        var work = RequirePrivateWork();
+        const string runtimeRoot = LinuxSingBoxArchiveHost.Root;
+        if (Directory.Exists(runtimeRoot)) throw new InvalidOperationException("The private runtime must be absent.");
         var root = Directory.CreateDirectory(Path.Combine(work, "fixture")).FullName;
         var states = new RuntimeArchiveStateStore(runtimeRoot + "/state", RuntimeSourceProtection.Protect);
         using var traffic = new ProxyFullServerTrafficProbe();
@@ -105,9 +112,15 @@ internal static class ProxySystemdRecoveryChecks
             {
                 Published = material,
                 Credentials = material.Credentials.Select(grant => new StoredCredential(grant.Id, Guid.NewGuid(), "fixture",
-                    grant.InboundIds.ToArray(), grant.Value, true,
-                    grant.Id == draining.Id ? DateTimeOffset.UtcNow.AddMinutes(-1) : null)).ToArray()
+                    grant.InboundIds.ToArray(), grant.Value, true, null)).ToArray()
             }, default);
+            await VerifyInterruptedPublicationAsync(root, host, store, transport, hash, () => states.Read()!.Installation.StateRevision);
+            using (var live = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+            using (var forwarded = await traffic.ForwardAsync(retained.Value, live.Token))
+                Console.WriteLine("PASS PUBLICATION COMPENSATION TRAFFIC: authorized start restored the original listener");
+            var restoredState = await store.ReadAsync(default);
+            await store.WriteAsync(restoredState with { Credentials = [.. restoredState.Credentials.Select(credential =>
+                credential.Id == draining.Id ? credential with { ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1) } : credential)] }, default);
             var drainRevision = states.Read()!.Installation.StateRevision;
             material = material with { Credentials = [expired, next, retained] };
             var drainHash = Digest(Encoding.UTF8.GetBytes(SingBoxConfiguration.Render(material)));
@@ -260,6 +273,101 @@ internal static class ProxySystemdRecoveryChecks
 
     private static int ApplyCount(string log) => log.Split('\n').Count(line =>
         line.Contains("event=request-completed operation=ProxyServerApply ", StringComparison.Ordinal));
+
+    private static async Task VerifyInterruptedPublicationAsync(string root, ISingBoxArchiveHost host, ProxyServerStore store,
+        IPrivilegedOperationTransport transport, string previousHash, Func<long> revision)
+    {
+        var before = revision();
+        await host.SetBootAsync(true, default);
+        var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, RedirectStandardOutput = true };
+        foreach (var arg in new[] { typeof(ProxySystemdRecoveryChecks).Assembly.Location, "runtime-proxy-systemd-interrupt-publication", root })
+            start.ArgumentList.Add(arg);
+        using (var worker = Process.Start(start) ?? throw new InvalidOperationException("Unable to start interrupted publication worker."))
+        {
+            try
+            {
+                var marker = await worker.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(20));
+                if (marker != "native-candidate-registered" || worker.HasExited)
+                    throw new InvalidOperationException("Publication did not reach the native registration checkpoint.");
+            }
+            finally
+            {
+                if (!worker.HasExited) worker.Kill();
+                await worker.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            }
+        }
+        var pending = await store.ReadAsync(default);
+        var observed = await host.ObserveAsync(default);
+        if (pending.PendingPublicationOperationId is not { } operationId || observed.Running || observed.BootEnabled != true
+            || observed.RegisteredConfigurationIdentity == previousHash || observed.RegisteredConfigurationIdentity is null)
+            throw new InvalidOperationException("The interrupted native registration or its original identity was not retained.");
+        var wrong = await transport.ExecuteAsync(new(PrivilegedOperationKind.ProxyServerRecoverPublication, OperationId: Guid.NewGuid()));
+        if (wrong.Success || await host.ObserveAsync(default) != observed || revision() != before)
+            throw new InvalidOperationException("A different ID altered the interrupted publication.");
+        var publication = new ProxyServerPublicationService(store, transport, new SystemMode());
+        try
+        {
+            await publication.ReconcileExpiryAsync(default);
+            throw new InvalidOperationException("Background reconciliation closed the unknown original publication.");
+        }
+        catch (ProxyServerException error) when (error.Message == "proxy_server.recovery_required") { }
+        var management = new ProxyServerService(store, transport, new SystemMode(), new ProxyEngineRegistry([]));
+        if (await management.RecoverAsync(default) is not null) throw new InvalidOperationException("Original publication compensation failed.");
+        var restored = await host.ObserveAsync(default);
+        if (restored.Running || restored.BootEnabled != false || restored.RegisteredConfigurationIdentity != previousHash
+            || revision() != before || (await store.ReadAsync(default)).PendingPublication is not null)
+            throw new InvalidOperationException("Compensation must restore old bytes while preserving the stopped security state.");
+        var replay = await transport.ExecuteAsync(new(PrivilegedOperationKind.ProxyServerRecoverPublication, OperationId: operationId));
+        if (!replay.Success || replay.OutputBase64 is null || JsonSerializer.Deserialize<ProxyServerPublicationReceipt>(
+                Convert.FromBase64String(replay.OutputBase64), RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default) is not
+                { Outcome: ProxyServerPublicationOutcome.Compensated } original || original.OperationId != operationId
+            || (await host.ObserveAsync(default)).Running || revision() != before)
+            throw new InvalidOperationException("Repeating recovery must return the original receipt without starting the runtime.");
+        if (await management.ActionAsync(ProxyServerAction.Start, default) is not null)
+            throw new InvalidOperationException("Authorized start failed after compensation.");
+        Console.WriteLine($"PASS PRODUCTION PUBLICATION COMPENSATION: {operationId}; original receipt, no apply replay or implicit start");
+    }
+
+    internal static async Task RunInterruptedPublicationAsync(string root)
+    {
+        if (Path.GetFullPath(root) != Path.Combine(RequirePrivateWork(), "fixture"))
+            throw new InvalidOperationException("Interrupted publication requires the private fixture root.");
+        var store = ManagedServiceChecks.OpenServerStore(root);
+        var state = await store.ReadAsync(default);
+        var published = state.Published ?? throw new InvalidOperationException("Missing fixture publication.");
+        var candidate = published with { Credentials = [.. published.Credentials.Skip(1)] };
+        var service = new ProxyServerPublicationService(store, new InterruptNativeTransport(), new SystemMode());
+        await store.Gate.WaitAsync();
+        try { await service.PublishAsync(state, candidate, default); }
+        finally { store.Gate.Release(); }
+        throw new InvalidOperationException("Interrupted native publication returned unexpectedly.");
+    }
+
+    private sealed class InterruptNativeTransport : IPrivilegedOperationTransport
+    {
+        public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken ct = default)
+        {
+            var root = LinuxSingBoxArchiveHost.Root;
+            using var session = new RuntimeArchiveStateStore(root + "/state", RuntimeSourceProtection.Protect).Acquire();
+            return await SingBoxManagedRuntime.ExecuteAsync(request, root, session, new InterruptNativeHost(new LinuxSingBoxArchiveHost()), ct);
+        }
+    }
+
+    private sealed class InterruptNativeHost(ISingBoxArchiveHost host) : ISingBoxArchiveHost
+    {
+        public Task<SingBoxServiceObservation> ObserveAsync(CancellationToken ct) => host.ObserveAsync(ct);
+        public Task StopAsync(CancellationToken ct) => host.StopAsync(ct);
+        public Task StartAsync(CancellationToken ct) => host.StartAsync(ct);
+        public Task SetBootAsync(bool enabled, CancellationToken ct) => host.SetBootAsync(enabled, ct);
+        public Task RemoveOwnedRegistrationAsync(CancellationToken ct) => host.RemoveOwnedRegistrationAsync(ct);
+        public Task<bool> ListenersHealthyAsync(ProxyServerConfiguration published, CancellationToken ct) => host.ListenersHealthyAsync(published, ct);
+        public async Task ConfigureAsync(string binary, string configuration, string identity, bool bootEnabled, CancellationToken ct)
+        {
+            await host.ConfigureAsync(binary, configuration, identity, bootEnabled, ct);
+            Console.WriteLine("native-candidate-registered");
+            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+        }
+    }
 
     private static async Task VerifyExpiryDrainAsync(ProxyServerStore store, IPrivilegedOperationTransport transport,
         string expectedHash, Func<bool> committed)

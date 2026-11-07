@@ -69,6 +69,8 @@ internal static class SingBoxManagedRuntime
                 var expected = receipt.Outcome == ProxyServerPublicationOutcome.Committed ? receipt.CandidateHash : receipt.PreviousHash;
                 return status.ProblemCode is null && !status.RecoveryRequired && status.ConfigurationHash == expected
                     ? Json(receipt) : Failure("proxy_server.publication_unconfirmed");
+            case PrivilegedOperationKind.ProxyServerRecoverPublication:
+                return await RecoverPublicationAsync(request.OperationId, root, state, session, host, ct);
             // Recovering a runtime switch needs the lifecycle's fresh authorization; never clear it here.
             case PrivilegedOperationKind.ProxyServerAction when request.ProxyServer is { Action: ProxyServerAction.Recover }:
                 return Json(await StatusAsync(root, state, host, ct));
@@ -197,7 +199,7 @@ internal static class SingBoxManagedRuntime
                 state.ConfigurationIdentity!, ProxyServerPublicationOutcome.InFlight);
             var wasRunning = observed.Exists && observed.Running;
             var bootEnabled = observed.Exists && observed.BootEnabled == true;
-            session.RecordProxyPublication(publication);
+            session.RecordProxyPublication(publication, new(observed.Exists, wasRunning));
             await BackupAsync(root, ct);
             try
             {
@@ -221,11 +223,65 @@ internal static class SingBoxManagedRuntime
             }
             var updated = Commit(session, state with
             {
-                ProxyPublication = publication with { Outcome = ProxyServerPublicationOutcome.Committed }
+                ProxyPublication = publication with { Outcome = ProxyServerPublicationOutcome.Committed },
+                ProxyPublicationBaseline = null
             }, identity);
             return Json(await StatusAsync(root, updated, host, ct));
         }
         finally { File.Delete(candidate); }
+    }
+
+    private static async Task<PrivilegedOperationResult> RecoverPublicationAsync(Guid? operationId, string root,
+        RuntimeArchiveState state, RuntimeArchiveStateStore.Session session, ISingBoxArchiveHost host, CancellationToken ct)
+    {
+        if (state.ProxyPublication is not { } receipt || receipt.OperationId != operationId
+            || state.Active is not { } active || state.Pending is not null || state.Removal is not null
+            || state.Configuration is not null || state.Installation.RecoveryRequired)
+            return Failure(Recovery);
+        if (receipt.Outcome != ProxyServerPublicationOutcome.InFlight) return Json(receipt);
+        if (state.ProxyPublicationBaseline is not { } baseline || state.ConfigurationIdentity != receipt.PreviousHash
+            || !await VerifyFilesAsync(root, active, ct)) return Failure(Recovery);
+
+        var configuration = Configuration(root);
+        var current = await DigestAsync(configuration, ct);
+        if (current != receipt.PreviousHash && current != receipt.CandidateHash) return Failure(Recovery);
+        var binary = Binary(root, active);
+        var observed = await host.ObserveAsync(ct);
+        if (observed.Exists && (!observed.Owned || observed.BootEnabled is null || !SamePath(observed.Executable, binary)
+            || observed.RegisteredConfigurationIdentity != receipt.PreviousHash && observed.RegisteredConfigurationIdentity != receipt.CandidateHash
+            || observed.Running && observed.AppliedConfigurationIdentity != observed.RegisteredConfigurationIdentity))
+            return Failure(Recovery);
+
+        var preserveRunning = baseline.Running && observed.Running && current == receipt.PreviousHash
+            && observed.AppliedConfigurationIdentity == receipt.PreviousHash;
+        if (!preserveRunning)
+        {
+            var previous = Previous(root);
+            if (current != receipt.PreviousHash && await DigestAsync(previous, ct) != receipt.PreviousHash) return Failure(Recovery);
+            // A restart can re-enable a revoked or expired grant. Keep a changed service stopped
+            // and disarm boot until the normal Server start path revalidates its authorization.
+            if (observed.BootEnabled == true) await host.SetBootAsync(false, ct);
+            if (observed.Running) await host.StopAsync(ct);
+            if (current != receipt.PreviousHash) await ReplaceAsync(configuration, previous, ct, keepSource: true);
+            if (baseline.Existed)
+            {
+                if (!observed.Exists || observed.RegisteredConfigurationIdentity != receipt.PreviousHash)
+                    await host.ConfigureAsync(binary, configuration, receipt.PreviousHash, false, ct);
+            }
+            else if (observed.Exists) await host.RemoveOwnedRegistrationAsync(ct);
+        }
+
+        var after = await host.ObserveAsync(ct);
+        if (after.Exists != baseline.Existed || after.Running != preserveRunning
+            || after.Exists && (!after.Owned || !SamePath(after.Executable, binary)
+                || after.RegisteredConfigurationIdentity != receipt.PreviousHash || !preserveRunning && after.BootEnabled != false)
+            || preserveRunning && after.AppliedConfigurationIdentity != receipt.PreviousHash
+            || await DigestAsync(configuration, ct) != receipt.PreviousHash)
+            return Failure(Recovery);
+        File.Delete(Candidate(root));
+        var compensated = receipt with { Outcome = ProxyServerPublicationOutcome.Compensated };
+        session.RecordProxyPublication(compensated);
+        return Json(compensated);
     }
 
     /// <summary>Restores the configuration this publication replaced; the Server owns the revision it maps to.</summary>

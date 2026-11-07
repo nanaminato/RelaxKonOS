@@ -398,3 +398,5 @@ MB-05 完整认证网站发布通过 Linux 私有 systemd 的 Configuring 和 Ve
 MB-04 Core 到期 worker 按原索引创建执行作用域。原候选落盘后，Helper 响应、原终态提交和异步释放都纳入停机排空。Proxy 保持 resident。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-入站授权到期的停机排空)。
 
 MB-04 入站发布将原 Helper 操作 ID 保存在现有入站台账，恢复只读核对同一回执及配置摘要。在途或证据缺失保留原责任。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-入站发布按原-helper-回执恢复)。
+
+MB-04 已为原在途入站发布接入显式补偿。补偿使用原实例锁、原回执和已验证的旧配置。需要还原时保持服务停止，正常启动重新核验授权。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-在途入站发布的原-id-补偿)。

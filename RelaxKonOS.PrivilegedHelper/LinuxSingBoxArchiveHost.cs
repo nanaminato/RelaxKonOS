@@ -115,7 +115,7 @@ internal sealed class LinuxSingBoxArchiveHost : ISingBoxArchiveHost
         var state = await StateAsync(ct);
         bool? boot = state.GetValueOrDefault("UnitFileState") switch { "enabled" => true, "disabled" => false, _ => null };
         var process = await VerifyProcessAsync(registration, state, ct);
-        return new(true, true, process is not null, boot, registration.Binary, process?.Identity);
+        return new(true, true, process is not null, boot, registration.Binary, process?.Identity, registration.ConfigurationHash);
     }
 
     public async Task ConfigureAsync(string verifiedBinary, string protectedConfiguration, string configurationIdentity, bool bootEnabled, CancellationToken ct)

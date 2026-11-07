@@ -122,6 +122,8 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
             || state.ProxyPublication is { } publication && (installation.RuntimeId != "sing-box"
                 || publication.OperationId == Guid.Empty || !Digest(publication.CandidateHash)
                 || !Digest(publication.PreviousHash) || !Enum.IsDefined(publication.Outcome))
+            || state.ProxyPublicationBaseline is { } baseline
+                && (!state.ProxyPublicationUnresolved || baseline.Running && !baseline.Existed)
             || (state.Pending is null ? 0 : 1) + (state.Removal is null ? 0 : 1) + (state.Configuration is null ? 0 : 1) > 1)
             throw new RuntimePolicyException("runtime.transaction_state_invalid");
         if (state.Pending is { } pending)
@@ -232,7 +234,7 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
         }
         // Intent and failed-attempt evidence do not change the observed installation revision.
         // A successful native configuration commit still advances the revision through Save.
-        public void RecordProxyPublication(ProxyServerPublicationReceipt receipt)
+        public void RecordProxyPublication(ProxyServerPublicationReceipt receipt, ProxyPublicationServiceBaseline? baseline = null)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
             var current = State ?? throw new RuntimePolicyException("runtime.state_unknown");
@@ -241,9 +243,10 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
                 ? receipt.Outcome == ProxyServerPublicationOutcome.Compensated && receipt == (previous with { Outcome = receipt.Outcome })
                 : (receipt.Outcome is ProxyServerPublicationOutcome.InFlight or ProxyServerPublicationOutcome.Rejected)
                   && receipt.OperationId != previous?.OperationId;
-            if (!valid || receipt.PreviousHash != current.ConfigurationIdentity)
+            if (!valid || receipt.PreviousHash != current.ConfigurationIdentity
+                || (receipt.Outcome == ProxyServerPublicationOutcome.InFlight) != (baseline is not null))
                 throw new RuntimePolicyException("runtime.publication_receipt_conflict");
-            var updated = current with { ProxyPublication = receipt };
+            var updated = current with { ProxyPublication = receipt, ProxyPublicationBaseline = baseline };
             store.WriteCore(updated);
             State = updated;
         }

@@ -237,3 +237,5 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 2026-11-07（MR-03 / MB-04）已确认受管发布后的直接 TUN 拒绝路径通过 Linux 私有 systemd 验收。原具名配置补偿回执和真实流量持续，拒绝未生成新恢复标记或控制器请求。受管 TUN 网络事务仍开放。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-已确认受管发布的真实-tun-门禁)。
 
 2026-11-07（MR-02 / MB-04）受管 sing-box 入站发布将最近一次原生发布回执保存在原归档及实例锁中。入站台账按原 ID 恢复。原生结果仍在途时，归档切换和移除门禁保留责任。证据及待实现的在途补偿入口见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-入站发布按原-helper-回执恢复)。
+
+2026-11-07（MR-02 / MB-04）在途入站发布可通过原 ID 显式补偿。原归档实例锁、程序核验和配置备份共同限定恢复范围。还原时保持停止，后续启动重新核验授权。此项属于入站配置事务恢复。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-在途入站发布的原-id-补偿)。

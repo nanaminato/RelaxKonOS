@@ -71,7 +71,7 @@ public sealed class ProxyServerPublicationService(ProxyServerStore store,
 
     // Called with the domain gate held. Reconcile only a confirmed committed or compensated
     // Helper transaction; uncertain state remains blocked until explicit recovery succeeds.
-    internal async Task<ProxyServerState> ReadStateAsync(CancellationToken ct)
+    internal async Task<ProxyServerState> ReadStateAsync(CancellationToken ct, bool recoverPublication = false)
     {
         var state = await store.ReadAsync(ct);
         if (state.PendingPublication is not { } candidate) return state;
@@ -83,6 +83,16 @@ public sealed class ProxyServerPublicationService(ProxyServerStore store,
         var candidateHash = Hash(SingBoxConfiguration.Render(candidate, false));
         if (receipt.OperationId != operationId || receipt.CandidateHash != candidateHash || receipt.PreviousHash != state.PendingPreviousHash)
             throw new ProxyServerException("proxy_server.recovery_required");
+        if (recoverPublication && receipt.Outcome == ProxyServerPublicationOutcome.InFlight)
+        {
+            ct.ThrowIfCancellationRequested();
+            var compensated = await CallAsync<ProxyServerPublicationReceipt>(PrivilegedOperationKind.ProxyServerRecoverPublication,
+                null, CancellationToken.None, operationId);
+            if (compensated != (receipt with { Outcome = ProxyServerPublicationOutcome.Compensated }))
+                throw new ProxyServerException("proxy_server.recovery_required");
+            receipt = compensated;
+            ct = CancellationToken.None;
+        }
         var status = await StatusAsync(ct);
         if (!status.Installed || status.RecoveryRequired || status.ProblemCode is not null)
             throw new ProxyServerException("proxy_server.recovery_required");

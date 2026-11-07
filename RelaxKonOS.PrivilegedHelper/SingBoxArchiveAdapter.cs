@@ -9,7 +9,7 @@ using RelaxKonOS.Protocol.Installations;
 namespace RelaxKonOS.PrivilegedHelper;
 
 internal sealed record SingBoxServiceObservation(bool Exists, bool Owned, bool Running, bool? BootEnabled,
-    string? Executable, string? AppliedConfigurationIdentity);
+    string? Executable, string? AppliedConfigurationIdentity, string? RegisteredConfigurationIdentity = null);
 
 /// <summary>Fixed, runtime-specific service implementation. Never bound to a client-provided executable or command.</summary>
 internal interface ISingBoxArchiveHost

@@ -32,7 +32,7 @@ internal sealed class WindowsSingBoxArchiveHost(string protectedRoot) : ISingBox
             using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\" + registration.Name);
             bool? boot = key?.GetValue("Start") switch { 2 => true, 3 or 4 => false, _ => null };
             return Task.FromResult(new SingBoxServiceObservation(true, true, process is not null, boot,
-                registration.Executable, process?.AppliedIdentity));
+                registration.Executable, process?.AppliedIdentity, registration.AppliedIdentity));
         }
         catch (UnauthorizedAccessException) { return Task.FromResult(new SingBoxServiceObservation(true, false, false, null, null, null)); }
     }

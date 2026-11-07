@@ -35,8 +35,9 @@ internal static class SingBoxOperations
     {
         var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
             Correlation: request.Correlation, Version: request.Version, ProxyServer: request.ProxyServer);
-        if (clean != request || request.Operation is PrivilegedOperationKind.ProxyServerStatus or PrivilegedOperationKind.ProxyServerGenerateKeys
-            or PrivilegedOperationKind.ProxyServerPublicationReceipt && request.ProxyServer is not null)
+        var publicationEvidence = request.Operation is PrivilegedOperationKind.ProxyServerPublicationReceipt or PrivilegedOperationKind.ProxyServerRecoverPublication;
+        if (clean != request || (publicationEvidence || request.Operation is PrivilegedOperationKind.ProxyServerStatus
+            or PrivilegedOperationKind.ProxyServerGenerateKeys) && request.ProxyServer is not null)
             return Failure("proxy_server.request_invalid");
         if (SingBoxManifest.Current is null) return request.Operation == PrivilegedOperationKind.ProxyServerStatus
             ? Json(new ProxyServerStatus(false, false, false, false, null, null, false, "proxy_server.platform_unsupported"))
@@ -46,7 +47,7 @@ internal static class SingBoxOperations
         {
             if (request.Operation == PrivilegedOperationKind.ProxyServerStatus && !Directory.Exists(Root))
                 return Json(new ProxyServerStatus(true, false, false, false, null, null, false, null));
-            if (request.Operation == PrivilegedOperationKind.ProxyServerPublicationReceipt && !Directory.Exists(Root))
+            if (publicationEvidence && !Directory.Exists(Root))
                 return Failure("proxy_server.publication_unconfirmed");
             PrepareRoot();
             // Configuration, service control and archive lifecycle all share the same cross-process instance lock.
@@ -60,7 +61,7 @@ internal static class SingBoxOperations
                 return await SingBoxManagedRuntime.ExecuteAsync(request, Root, gate, host, default);
             }
             if (request.Operation == PrivilegedOperationKind.ProxyServerStatus) return Json(await StatusAsync());
-            if (request.Operation == PrivilegedOperationKind.ProxyServerPublicationReceipt) return Failure("proxy_server.publication_unconfirmed");
+            if (publicationEvidence) return Failure("proxy_server.publication_unconfirmed");
             if (request.Operation == PrivilegedOperationKind.ProxyServerAction)
             {
                 if (request.ProxyServer is not { Action: { } action, Material: null } || !Enum.IsDefined(action))

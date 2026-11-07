@@ -1575,3 +1575,11 @@ Linux 日志为 `.artifacts/mb04-expiry-drain-live.log`，归档 SHA-256 为 `9a
 Linux x64 Release 使用生产 Helper、完整非 root Server 和私有 systemd 的真实 sing-box。原到期 `2fc60685-3fb8-4b15-a60b-6540abfa401e` 在 Helper 提交后、Server 写回前中断。重启前后原 ID 返回相同回执。Helper 停止期间有效授权仍可转发。恢复接通后完整 Server 确认原候选，Helper 只接收之后自然到期的新 apply，未重发原发布。TUN、系统代理、真实流量及专属 cgroup 清理回归通过，宿主服务与代理文件指纹一致。日志为 `.artifacts/mb04-proxy-receipt-final-live.log`，归档 SHA-256 为 `3289e4001a0a2edb2fec28985313160d703dc7885322b0e7def93aa550e366ec`。
 
 Windows Release 独立 Proxy Server、Proxy Core、模块边界及受管服务分组通过。受控原生适配器的明确补偿按原 ID 返回两个配置摘要，未将该夹具计作 Linux 外部故障。首轮 Linux 暴露通用保存强制推进安装修订，改用原归档锁内的回执专用保存后通过。成功配置提交仍推进一次安装修订。
+
+### MB-04 在途入站发布的原 ID 补偿
+
+原归档在原生变更前记录服务是否已注册及是否运行。显式恢复走原 Proxy Server 恢复入口，以原 ID 读取待处理发布和 Helper 证据。在原实例锁内核对原程序、现有注册、候选或旧配置摘要及旧配置备份。若原进程仍在运行且能证实已加载旧配置，则保留进程。需要还原时先解除开机启动，恢复原配置和注册状态并保持停止。后续由正常启动路径重新校验授权。补偿校验和临时文件清理完成后按原 ID 保存 Compensated，原生配置修订不前进。再次恢复返回同一回执。后台扫描、停用门禁与诊断仍不能派发补偿。
+
+旧在途记录缺少服务基线、配置或注册发生不可核实漂移时保留责任。管理请求原排队记录本身中断后，通用 Proxy 队列仍保留原准入门禁。该情况下原用户回执的人工关账及完整认证 HTTP 恢复仍需单独验收。Proxy 保持 resident。
+
+Linux x64 Release 最终复验在私有 systemd 上使用实际 sing-box。隔离进程执行生产发布逻辑和实际原生配置写入，候选由 systemd 注册后、启动前强制终止进程。独立生产 Helper 拒绝错误 ID，后台扫描保留原候选。生产 Server 恢复服务使用原 ID `893ead6b-4252-400e-8836-eb421c8ec565` 恢复旧配置和注册，关闭专属服务原已启用的开机启动，并保持停止。重试返回同一补偿回执，未重发 apply 或推进修订。通过正常启动入口后原监听器恢复真实认证转发。原到期、Helper 重启、TUN、系统代理和专属清理回归均通过，宿主指纹一致。故障屏障在隔离发布进程内，补偿经生产 Helper Unix IPC 执行。日志为 `.artifacts/mb04-proxy-native-compensation-final-live.log`，归档 SHA-256 为 `7eeae813c532824adc37b9321f63f6df4c44c75cfafd6fba51c5be72c4b1e2f7`。Windows Release 受管服务 16 项、独立 Proxy Server 与模块边界回归通过。Windows SCM 原生中断和旧进程仍在运行的恢复分支待实测。

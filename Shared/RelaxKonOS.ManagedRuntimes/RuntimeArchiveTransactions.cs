@@ -33,9 +33,12 @@ public sealed record RuntimeArchiveState(RuntimeInstallation Installation, Runti
     RuntimePendingRemoval? Removal = null, [property: JsonRequired] RuntimePendingConfiguration? Configuration = null)
 {
     public Protocol.ProxyServer.ProxyServerPublicationReceipt? ProxyPublication { get; init; }
+    public ProxyPublicationServiceBaseline? ProxyPublicationBaseline { get; init; }
     [JsonIgnore] public bool ProxyPublicationUnresolved =>
         ProxyPublication?.Outcome == Protocol.ProxyServer.ProxyServerPublicationOutcome.InFlight;
 }
+
+public sealed record ProxyPublicationServiceBaseline(bool Existed, bool Running);
 
 /// <summary>
 /// Closed runtime-specific implementation, never supplied by a client. Backups and preparation must be
