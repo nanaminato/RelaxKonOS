@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.DataProtection;
 using RelaxKonOS.Server.Proxy;
 using RelaxKonOS.Server.ProxyServer;
@@ -225,10 +226,13 @@ internal static class ManagedServiceChecks
                         }, root);
                 }
                 finally { releaseResponse.TrySetResult(); }
+                var indexPath = Path.Combine(root, "server", "proxy-server.protected.expiry");
+                File.Delete(indexPath);
+                var recovery = await SendAcrossProcessAsync(socket.SocketPath, null, expiryRoot: root);
                 var reopened = OpenServerStore(root);
-                await new ProxyServerPublicationService(reopened, CreateTransport(socket.SocketPath), new FixtureMode()).ReconcileExpiryAsync(default);
                 var recoveredState = await reopened.ReadAsync(default);
-                Check(recoveredState.PendingPublication is null && recoveredState.Published?.Credentials.Count == 0,
+                Check(recovery.Success && File.Exists(indexPath) && recoveredState.PendingPublication is null
+                    && recoveredState.Published?.Credentials.Count == 0,
                     "Server recovery must confirm and clear the original pending publication.");
                 var recovered = Read<ProxyServerStatus>(await RequestAsync(PrivilegedOperationKind.ProxyServerStatus, null));
                 Check(recovered is { Running: true, Applied: true } && recovered.ConfigurationHash == expectedHash
@@ -317,8 +321,17 @@ internal static class ManagedServiceChecks
     private static UnixSocketPrivilegedOperationTransport CreateTransport(string socketPath) =>
         new(new PrivilegedHelperOptions { SocketPath = socketPath }, NullLogger<UnixSocketPrivilegedOperationTransport>.Instance);
 
-    internal static Task RunExpiryClientAsync(string socketPath, string root) =>
-        new ProxyServerPublicationService(OpenServerStore(root), CreateTransport(socketPath), new FixtureMode()).ReconcileExpiryAsync(default);
+    internal static async Task RunExpiryClientAsync(string socketPath, string root)
+    {
+        var store = OpenServerStore(root);
+        var services = new ServiceCollection();
+        services.AddScoped<IProxyServerExpiryExecutor>(_ => new ProxyServerPublicationService(store, CreateTransport(socketPath), new FixtureMode()));
+        await using var provider = services.BuildServiceProvider();
+        using var worker = new ProxyServerExpiryService(provider.GetRequiredService<IServiceScopeFactory>(), store,
+            NullLogger<ProxyServerExpiryService>.Instance);
+        await worker.ReconcileAsync(default);
+        Console.WriteLine(JsonSerializer.Serialize(new PrivilegedOperationResult(true)));
+    }
 
     private static ProxyServerStore OpenServerStore(string root) => new(new FixturePaths(Path.Combine(root, "server")),
         DataProtectionProvider.Create(Directory.CreateDirectory(Path.Combine(root, "fixture-keys"))));

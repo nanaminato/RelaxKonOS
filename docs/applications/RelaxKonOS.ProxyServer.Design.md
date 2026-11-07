@@ -342,3 +342,5 @@ Helper 发布配置时会核对原运行状态。原先运行的 sing-box 若启
 专属 Helper 已验证提交后、响应前客户端退出。新连接读取同一持久配置结果，Helper 台账版本和 sing-box 启动次数均只增加一次。Server 原发布台账与该 IPC 故障的联合验收仍开放。
 
 Linux 已联合验证原 Server 加密发布台账和 Helper Unix socket。授权到期候选经 Helper 提交后，客户端在响应前退出。恢复从原候选和 Helper 摘要确认已生效结果，未重复启动 sing-box。
+
+到期发布中断后，新调度进程已在 Linux 隔离验收中从原台账重建缺失索引，通过 Helper 确认已应用候选。恢复没有再次启动 sing-box。
