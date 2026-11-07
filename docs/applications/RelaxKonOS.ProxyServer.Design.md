@@ -370,3 +370,5 @@ Linux 完整 Server 启动实测覆盖两条路径。Helper 不可达时，Serve
 Linux 实测使用独立生产 Helper、非 root 完整 Server 和私有 systemd 管理的专属 sing-box。Helper 进程中断期间，sing-box 保持原 PID 并继续转发认证流量。完整 Server 在 Helper 不可达时保留原候选并拒绝启动，重启 Helper 后确认候选并继续处理后续到期。两个到期发布各执行一次。测试清理后，宿主 sing-box 和系统代理状态通过前后核验。
 
 Linux 私有 systemd 的联合验收同时启用系统代理。独立 Helper 中断期间，专属 Mihomo 继续转发。非 root Server 重启后，Core 修正私有代理环境中的竞争值并继续处理入站授权到期，原发布没有重放。测试清理恢复原代理环境，宿主代理文件和恢复记录通过前后核验。
+
+同一 Linux 隔离宿主已联合验证 TUN 恢复、系统代理与授权到期。Helper 中断期间保留 TUN 标记，非 root 完整 Server 重启后由 Core 移除设备并恢复原路由规则。Mihomo 继续转发，入站原候选按台账确认，后续到期各自提交一次。

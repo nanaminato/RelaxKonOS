@@ -17,6 +17,7 @@ work=$(mktemp -d /tmp/relaxkonos-mb04-systemd.XXXXXXXX)
 chmod o+x -- "$work"
 unit=relaxkonos-mb04-systemd-$(cat /proc/sys/kernel/random/uuid).service
 host_pidns=$(readlink /proc/1/ns/pid)
+host_netns=$(readlink /proc/self/ns/net)
 before=$(systemctl show relaxkonos-sing-box.service --property=LoadState,ActiveState,MainPID)
 proxy_fingerprint() {
     for file in /etc/environment /var/lib/relaxkonos-system-proxy/recovery.json; do
@@ -65,6 +66,7 @@ set -euo pipefail
 work=$1
 host_pidns=$2
 test "$(readlink /proc/1/ns/pid)" != "$host_pidns"
+test "$(readlink /proc/self/ns/net)" != "$3"
 mount -t tmpfs -o mode=0755 tmpfs /run
 mount -t tmpfs -o mode=0755 tmpfs /var/lib
 mount -t tmpfs -o mode=0755 tmpfs /var/log
@@ -81,6 +83,12 @@ mount --bind /proc/sys /proc/sys
 mount -o remount,bind,ro /proc/sys
 ip link set lo up
 ip address add 93.184.216.34/32 dev lo
+ip link add rk-egress type veth peer name rk-peer
+ip address add 192.0.2.2/24 dev rk-egress
+ip address add 192.0.2.3/24 dev rk-peer
+ip link set rk-egress up
+ip link set rk-peer up
+ip route add default via 192.0.2.1 dev rk-egress
 cat > /etc/systemd/system/relaxkonos-test.target <<EOF
 [Unit]
 DefaultDependencies=no
@@ -104,7 +112,7 @@ MANAGER
 systemd-run --unit="$unit" --property=Delegate=yes --property=RuntimeMaxSec=180s \
     --property=TimeoutStopSec=5s --property=KillMode=control-group --collect \
     unshare --mount --cgroup --net --pid --fork --kill-child --mount-proc --propagation private \
-    bash "$work/manager.sh" "$work" "$host_pidns"
+    bash "$work/manager.sh" "$work" "$host_pidns" "$host_netns"
 for attempt in $(seq 1 150); do
     test ! -f "$work/result" || break
     state=$(systemctl show "$unit" --property=ActiveState --value 2>/dev/null || true)

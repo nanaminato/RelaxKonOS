@@ -566,7 +566,7 @@ internal static class ManagedServiceChecks
     internal static ProxyServerStore OpenServerStore(string root) => new(new FixturePaths(Path.Combine(root, "server")),
         OpenProtection(root));
 
-    private static IDataProtectionProvider OpenProtection(string root) =>
+    internal static IDataProtectionProvider OpenProtection(string root) =>
         DataProtectionProvider.Create(Directory.CreateDirectory(Path.Combine(root, "fixture-keys")),
             options => options.SetApplicationName(RelaxKonOS.Server.Secrets.HostDataProtection.ApplicationName));
 

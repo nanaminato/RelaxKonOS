@@ -147,6 +147,7 @@ internal static class ProxySystemdRecoveryChecks
                 Console.WriteLine("PASS HELPER OUTAGE TRAFFIC: runtime accepted authenticated traffic with Helper stopped");
 
             await guard.VerifyTrafficAsync();
+            await guard.VerifyPendingTunAsync();
             guard.SetCompetingValue();
             var recovered = await ManagedServiceChecks.RunFullServerAsync(serverAssembly, socket, root, next, retained, traffic, expiry,
                 () => states.Read()!.Installation.StateRevision == before + 1
