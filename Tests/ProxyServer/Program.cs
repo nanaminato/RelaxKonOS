@@ -13,6 +13,17 @@ using RelaxKonOS.Server.Privileged;
 using RelaxKonOS.Server.Proxy;
 using RelaxKonOS.Server.ProxyServer;
 
+if (args is ["--queue-recovery-worker", var recoveryRoot, var recoveryStage])
+{
+    await QueueRecoveryChecks.RunWorkerAsync(recoveryRoot, recoveryStage);
+    return;
+}
+if (args is ["--queue-recovery-only"])
+{
+    await QueueRecoveryChecks.RunAsync();
+    return;
+}
+
 var root = Path.Combine(Path.GetTempPath(), "relaxkonos-proxy-server-check-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
 try
@@ -267,6 +278,7 @@ try
     Check(wiped.Credentials.Count == 0 && wiped.Configuration.Revision == 0, "Discarding data wipes every record");
     await ExpiryBoundaryChecks.RunAsync(root);
     await QueueBoundaryChecks.RunAsync();
+    await QueueRecoveryChecks.RunAsync();
     Console.WriteLine("Proxy server configuration, principals, credentials, subscriptions, encryption, publication, rollback, expiry, export and idempotency checks passed.");
 }
 finally { Directory.Delete(root, true); }

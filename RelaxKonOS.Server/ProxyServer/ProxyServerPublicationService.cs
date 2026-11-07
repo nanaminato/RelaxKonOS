@@ -46,7 +46,8 @@ public sealed class ProxyServerPublicationService(ProxyServerStore store,
         return await PublishAsync(state, state.Published with { Credentials = live }, ct);
     }
 
-    internal async Task<string?> PublishAsync(ProxyServerState state, ProxyServerMaterial material, CancellationToken ct, bool rollback = false)
+    internal async Task<string?> PublishAsync(ProxyServerState state, ProxyServerMaterial material, CancellationToken ct, bool rollback = false,
+        Guid? queuedOperationId = null)
     {
         var status = await StatusAsync(ct);
         if (!status.Supported) return "proxy_server.platform_unsupported";
@@ -54,18 +55,28 @@ public sealed class ProxyServerPublicationService(ProxyServerStore store,
         if (status.RecoveryRequired) return "proxy_server.recovery_required";
         if (status.ProblemCode == "proxy_server.configuration_drift") return status.ProblemCode;
         var rendered = SingBoxConfiguration.Render(material);
-        var operationId = Guid.NewGuid();
+        var operationId = queuedOperationId ?? Guid.NewGuid();
         // Persist the candidate before the Helper can commit it. A Server crash after the Helper
         // completes must not leave its applied revision permanently detached from the domain state.
         await store.WriteAsync(state with { PendingPublication = material, PendingRollback = rollback,
-            PendingPublicationOperationId = operationId, PendingPreviousHash = status.ConfigurationHash }, ct);
+            PendingPublicationOperationId = operationId, PendingPreviousHash = status.ConfigurationHash,
+            PendingQueuedPublication = queuedOperationId is not null }, ct);
         // A durable candidate is accepted work. Finish the original Helper call and commit its
         // result even when the expiry worker or the management caller is stopping.
-        var updated = await CallAsync<ProxyServerStatus>(PrivilegedOperationKind.ProxyServerApply, new(Material: material),
-            CancellationToken.None, operationId);
-        if (updated.ConfigurationHash != Hash(rendered) || updated.RecoveryRequired) return "proxy_server.publication_unconfirmed";
+        ProxyServerStatus updated;
+        try
+        {
+            updated = await CallAsync<ProxyServerStatus>(PrivilegedOperationKind.ProxyServerApply, new(Material: material),
+                CancellationToken.None, operationId);
+        }
+        catch (ProxyServerException) when (queuedOperationId is not null) { return ProxyProblemCodes.OperationInterrupted; }
+        if (updated.ConfigurationHash != Hash(rendered) || updated.RecoveryRequired || updated.ProblemCode is not null)
+            return queuedOperationId is not null ? ProxyProblemCodes.OperationInterrupted : "proxy_server.publication_unconfirmed";
         await store.WriteAsync(state with { PreviousPublished = rollback ? null : state.Published, Published = material,
-            PendingPublication = null, PendingRollback = false, PendingPublicationOperationId = null, PendingPreviousHash = null }, CancellationToken.None);
+            PendingPublication = null, PendingRollback = false, PendingPublicationOperationId = null, PendingPreviousHash = null,
+            PendingQueuedPublication = false, QueuedPublicationCompletions = queuedOperationId is not null
+                ? new(state.QueuedPublicationCompletions) { [operationId] = ProxyServerPublicationOutcome.Committed }
+                : state.QueuedPublicationCompletions }, CancellationToken.None);
         return null;
     }
 
@@ -102,7 +113,9 @@ public sealed class ProxyServerPublicationService(ProxyServerStore store,
             || status.ConfigurationHash != receipt.PreviousHash)
             throw new ProxyServerException("proxy_server.recovery_required");
         var completed = state with { PendingPublication = null, PendingRollback = false,
-            PendingPublicationOperationId = null, PendingPreviousHash = null };
+            PendingPublicationOperationId = null, PendingPreviousHash = null, PendingQueuedPublication = false,
+            QueuedPublicationCompletions = state.PendingQueuedPublication
+                ? new(state.QueuedPublicationCompletions) { [operationId] = receipt.Outcome } : state.QueuedPublicationCompletions };
         await store.WriteAsync(completed, CancellationToken.None);
         return completed;
     }

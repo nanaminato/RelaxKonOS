@@ -400,3 +400,5 @@ MB-04 Core 到期 worker 按原索引创建执行作用域。原候选落盘后�
 MB-04 入站发布将原 Helper 操作 ID 保存在现有入站台账，恢复只读核对同一回执及配置摘要。在途或证据缺失保留原责任。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-入站发布按原-helper-回执恢复)。
 
 MB-04 已为原在途入站发布接入显式补偿。补偿使用原实例锁、原回执和已验证的旧配置。需要还原时保持服务停止，正常启动重新核验授权。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-在途入站发布的原-id-补偿)。
+
+MB-04 原管理发布队列可在进程中断后按原 ID 接续已验证的领域结果或显式补偿。原队列工作租约覆盖恢复、审计、异步清理和终态持久化。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-原管理发布队列的恢复)。

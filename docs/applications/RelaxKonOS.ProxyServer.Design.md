@@ -378,3 +378,5 @@ Linux 私有 systemd 的联合验收同时启用系统代理。独立 Helper 中
 受管 sing-box 的入站发布按原 Helper 操作 ID 和候选、旧配置摘要恢复。已提交候选按原回执确认。已补偿或明确拒绝还需核实旧配置。单凭旧配置仍存在，恢复会保留原候选并显示待核验。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-入站发布按原-helper-回执恢复)。
 
 存在可核实的在途证据时，显式恢复可以按原 ID 补偿。已核实仍在运行的原配置继续服务。需要还原的服务保持停止并解除开机启动，后续通过正常启动入口重新校验授权。同一原 ID 重试返回原补偿回执。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-在途入站发布的原-id-补偿)。
+
+管理发布或回滚中断后，若原操作有匹配的入站证据，恢复请求返回原操作 ID。原发布键和恢复键可查询同一回执。已补偿的发布以 `proxy_server.config_apply_failed` 结案，已提交的发布返回成功。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-原管理发布队列的恢复)。

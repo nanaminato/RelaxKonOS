@@ -10,8 +10,13 @@ namespace RelaxKonOS.Server.ProxyServer;
 public sealed class ProxyServerOperationQueue(ProxyServerStore store)
 {
     private static readonly TimeSpan ReceiptLifetime = TimeSpan.FromDays(7);
-    public async Task<ProxyOperationDto> EnqueueAsync(string actor, string key, string kind, object request,
-        ProxyOperationStore operations, Func<CancellationToken, Task<string?>> action, CancellationToken ct)
+    public Task<ProxyOperationDto> EnqueueAsync(string actor, string key, string kind, object request,
+        ProxyOperationStore operations, Func<CancellationToken, Task<string?>> action, CancellationToken ct) =>
+        EnqueueIdentifiedAsync(actor, key, kind, request, operations, (_, token) => action(token), null, ct);
+
+    internal async Task<ProxyOperationDto> EnqueueIdentifiedAsync(string actor, string key, string kind, object request,
+        ProxyOperationStore operations, Func<Guid, CancellationToken, Task<string?>> action,
+        Func<Guid, CancellationToken, Task<string?>>? recoverPublication, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(key) || key.Length > 128) throw new ProxyServerException("proxy_server.idempotency_key_required");
         var scope = Hash(actor + "\n" + key);
@@ -33,9 +38,21 @@ public sealed class ProxyServerOperationQueue(ProxyServerStore store)
                 state.Receipts.Add(scope, new(fingerprint, Guid.Empty, DateTimeOffset.UtcNow));
                 await store.WriteAsync(state, CancellationToken.None);
             }
-            var item = await operations.EnqueueAsync("proxy-server:" + scope, "proxy_server." + kind, async (_, token) =>
+            ProxyOperationDto? item = null;
+            if (recoverPublication is not null)
             {
-                try { return await action(token); }
+                var accepted = state.Receipts.Values.Select(entry => entry.OperationId).ToHashSet();
+                var pending = state.PendingQueuedPublication ? state.PendingPublicationOperationId : null;
+                if (state.PendingQueuedPublication && (pending is not { } id || !accepted.Contains(id)))
+                    throw new ProxyServerException("proxy_server.recovery_required");
+                var known = state.QueuedPublicationCompletions.Keys.Where(accepted.Contains).ToHashSet();
+                item = await operations.ResumeInboundPublicationAsync(pending, known, recoverPublication, ct);
+                if (pending is not null && item is null)
+                    throw new ProxyServerException("proxy_server.recovery_required");
+            }
+            item ??= await operations.EnqueueIdentifiedAsync("proxy-server:" + scope, "proxy_server." + kind, async (id, _, token) =>
+            {
+                try { return await action(id, token); }
                 catch (ProxyServerException ex) { return ex.Message; }
             }, ct);
             // Re-read under the same gate: the queued action may already have committed a newer revision.

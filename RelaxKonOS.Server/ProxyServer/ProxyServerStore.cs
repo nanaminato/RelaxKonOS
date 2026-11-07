@@ -36,6 +36,8 @@ public sealed record ProxyServerState(
     public Guid? PendingPublicationOperationId { get; init; }
     public string? PendingPreviousHash { get; init; }
     public bool PendingRollback { get; init; }
+    public bool PendingQueuedPublication { get; init; }
+    public Dictionary<Guid, ProxyServerPublicationOutcome> QueuedPublicationCompletions { get; init; } = [];
     public static ProxyServerState Empty => new(new(0, []), [], [], [], null, null, [], new(StringComparer.Ordinal));
 }
 

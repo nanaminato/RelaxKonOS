@@ -1,13 +1,15 @@
 #!/bin/bash
 set -euo pipefail
-if [ "$#" -ne 3 ]; then
-    echo "Usage: sudo bash $0 /path/to/tests.dll /path/to/Helper.dll /path/to/Server.dll" >&2
+if [ "$#" -ne 3 ] && [ "$#" -ne 4 ]; then
+    echo "Usage: sudo bash $0 /path/to/tests.dll /path/to/Helper.dll /path/to/Server.dll [path/to/proxy-tests.dll]" >&2
     exit 2
 fi
 fixture=$(realpath -e -- "$1")
 helper=$(realpath -e -- "$2")
 server=$(realpath -e -- "$3")
-case "$fixture$helper$server" in *[!a-zA-Z0-9_./-]*) echo "Test paths must contain only unit-safe characters" >&2; exit 2;; esac
+proxy_tests=
+if [ "$#" -eq 4 ]; then proxy_tests=$(realpath -e -- "$4"); fi
+case "$fixture$helper$server$proxy_tests" in *[!a-zA-Z0-9_./-]*) echo "Test paths must contain only unit-safe characters" >&2; exit 2;; esac
 test "$(id -u)" -eq 0
 server_uid=$(id -u nobody)
 server_gid=$(id -g nobody)
@@ -58,7 +60,13 @@ set -uo pipefail
 export RELAXKONOS_TEST_SERVER_UID=$server_uid
 export RELAXKONOS_TEST_SERVER_GID=$server_gid
 export RELAXKONOS_TEST_SYSTEMD_WORK=$work
-dotnet "$fixture" runtime-proxy-systemd "$helper" "$server" /usr/bin/sing-box > "$work/tests.log" 2>&1
+run_checks() {
+    if [[ -n "$proxy_tests" ]]; then
+        dotnet "$proxy_tests" --queue-recovery-only || return \$?
+    fi
+    dotnet "$fixture" runtime-proxy-systemd "$helper" "$server" /usr/bin/sing-box
+}
+run_checks > "$work/tests.log" 2>&1
 code=\$?
 echo "\$code" > "$work/result"
 exit "\$code"

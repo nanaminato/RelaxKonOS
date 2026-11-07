@@ -1583,3 +1583,9 @@ Windows Release 独立 Proxy Server、Proxy Core、模块边界及受管服务�
 旧在途记录缺少服务基线、配置或注册发生不可核实漂移时保留责任。管理请求原排队记录本身中断后，通用 Proxy 队列仍保留原准入门禁。该情况下原用户回执的人工关账及完整认证 HTTP 恢复仍需单独验收。Proxy 保持 resident。
 
 Linux x64 Release 最终复验在私有 systemd 上使用实际 sing-box。隔离进程执行生产发布逻辑和实际原生配置写入，候选由 systemd 注册后、启动前强制终止进程。独立生产 Helper 拒绝错误 ID，后台扫描保留原候选。生产 Server 恢复服务使用原 ID `893ead6b-4252-400e-8836-eb421c8ec565` 恢复旧配置和注册，关闭专属服务原已启用的开机启动，并保持停止。重试返回同一补偿回执，未重发 apply 或推进修订。通过正常启动入口后原监听器恢复真实认证转发。原到期、Helper 重启、TUN、系统代理和专属清理回归均通过，宿主指纹一致。故障屏障在隔离发布进程内，补偿经生产 Helper Unix IPC 执行。日志为 `.artifacts/mb04-proxy-native-compensation-final-live.log`，归档 SHA-256 为 `7eeae813c532824adc37b9321f63f6df4c44c75cfafd6fba51c5be72c4b1e2f7`。Windows Release 受管服务 16 项、独立 Proxy Server 与模块边界回归通过。Windows SCM 原生中断和旧进程仍在运行的恢复分支待实测。
+
+### MB-04 原管理发布队列的恢复
+
+管理发布和回滚共用 HTTP 队列的原操作 ID 与 Helper 操作 ID。加密入站台账保留同 ID 的已确认结果，覆盖领域已经写回、队列尚未完成异步清理和终态写入的间隔。显式恢复仅认领有对应入站证据的原发布队列条目，继续使用原工作租约、审计与清理。无法核实的结果保持中断责任。不同领域的未知条目仍保留原准入门禁。原发布键和显式恢复键均指向同一个用户回执。补偿完成后原发布为 Failed，已提交的原发布为 Succeeded。
+
+Linux x64 Release 在私有 systemd 中通过两条跨进程生产路由验收。Kestrel 首进程受理后在原生在途 `77cd82df-64c6-4d29-b621-c5e7c0e41b60` 或领域已提交 `6a8c29a4-e52a-492d-9412-fc87c25c01ca` 的屏障被强制终止。新进程拒绝未认证的恢复请求，认证恢复返回原 ID 和对应 Failed 或 Succeeded，原 apply 各一次，补偿只在前一路径执行一次。原发布键与恢复键返回同一持久终态。HTTP 组使用测试认证方案与受控 Helper。另以同一 Release 复验生产 Helper、真实 sing-box 原生补偿、授权到期和 TUN/系统代理，专属 cgroup 清理且宿主指纹一致。首轮远端包装器漏传 HTTP 组程序集，原生回归完成，补齐参数后两组同批通过。日志为 `.artifacts/mb04-queued-recovery-final-live.log`，归档 SHA-256 为 `460f7814b2766fd3e6a4a079b35f399f9d6b7004fc20ab6a4ad6dbe5f8d0f6f5`。Windows Release 独立 Proxy Server 和模块边界回归通过。完整 Server 经生产认证、队列和生产 Helper 的同一次跨进程事务仍待实测。未有候选或领域终态证明的队列记录保持原准入门禁。

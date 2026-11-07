@@ -64,18 +64,18 @@ public static class ProxyServerEndpoints
 
         app.MapPost(ProxyServerRoutes.Apply, (HttpContext context, ProxyServerOperationQueue queue,
                 ProxyOperationStore operations, CancellationToken ct) =>
-                QueueAsync(context, queue, operations, "configuration.apply", new { },
-                    (execution, token) => execution.ApplyAsync(token), ct))
+                QueueIdentifiedAsync(context, queue, operations, "configuration.apply", new { },
+                    (execution, id, token) => execution.ApplyAsync(token, id), ct))
             .RequireAuthorization(ManagePolicy).WithTags("Proxy Server");
         app.MapPost(ProxyServerRoutes.Rollback, (HttpContext context, ProxyServerOperationQueue queue,
                 ProxyOperationStore operations, CancellationToken ct) =>
-                QueueAsync(context, queue, operations, "configuration.rollback", new { },
-                    (execution, token) => execution.RollbackAsync(token), ct))
+                QueueIdentifiedAsync(context, queue, operations, "configuration.rollback", new { },
+                    (execution, id, token) => execution.RollbackAsync(token, id), ct))
             .RequireAuthorization(ManagePolicy).WithTags("Proxy Server");
         app.MapPost(ProxyServerRoutes.Recovery, (HttpContext context, ProxyServerOperationQueue queue,
                 ProxyOperationStore operations, CancellationToken ct) =>
-                QueueAsync(context, queue, operations, "recovery", new { },
-                    (execution, token) => execution.RecoverAsync(token), ct))
+                QueueIdentifiedAsync(context, queue, operations, "recovery", new { },
+                    (execution, _, token) => execution.RecoverAsync(token), ct, recoverPublication: true))
             .RequireAuthorization(ManagePolicy).WithTags("Proxy Server");
 
         app.MapPost(ProxyServerRoutes.RuntimeInstall, (HttpContext context, ProxyServerOperationQueue queue,
@@ -225,18 +225,27 @@ public static class ProxyServerEndpoints
         return app;
     }
 
-    private static async Task<IResult> QueueAsync(HttpContext context, ProxyServerOperationQueue queue, ProxyOperationStore operations, string kind, object request, Func<ProxyServerService, CancellationToken, Task<string?>> action, CancellationToken ct)
+    private static Task<IResult> QueueAsync(HttpContext context, ProxyServerOperationQueue queue, ProxyOperationStore operations,
+        string kind, object request, Func<ProxyServerService, CancellationToken, Task<string?>> action, CancellationToken ct) =>
+        QueueIdentifiedAsync(context, queue, operations, kind, request, (execution, _, token) => action(execution, token), ct);
+
+    private static async Task<IResult> QueueIdentifiedAsync(HttpContext context, ProxyServerOperationQueue queue, ProxyOperationStore operations,
+        string kind, object request, Func<ProxyServerService, Guid, CancellationToken, Task<string?>> action, CancellationToken ct,
+        bool recoverPublication = false)
     {
         var actor = Actor(context);
         var scopes = context.RequestServices.GetRequiredService<IServiceScopeFactory>();
         try
         {
-            var item = await queue.EnqueueAsync(actor, context.Request.Headers["Idempotency-Key"].ToString(), kind, request, operations,
-                token => ProxyOperationScope.RunAsync(scopes, actor, "proxy_server." + kind, async (services, executionToken) =>
+            Task<string?> Run(Guid id, CancellationToken token) =>
+                ProxyOperationScope.RunAsync(scopes, actor, "proxy_server." + kind, async (services, executionToken) =>
                 {
-                    try { return await action(services.GetRequiredService<ProxyServerService>(), executionToken); }
+                    try { return await action(services.GetRequiredService<ProxyServerService>(), id, executionToken); }
                     catch (ProxyServerException ex) { return ex.Message; }
-                }, token), ct);
+                }, token);
+            var item = await queue.EnqueueIdentifiedAsync(actor, context.Request.Headers["Idempotency-Key"].ToString(), kind, request, operations,
+                Run, recoverPublication ? (id, token) => ProxyOperationScope.RunAsync(scopes, actor, "proxy_server.recovery",
+                    (services, executionToken) => services.GetRequiredService<ProxyServerService>().RecoverQueuedPublicationAsync(id, executionToken), token) : null, ct);
             return new ResidentOperationResult(ServerModules.ProxyId, Results.Accepted(ProxyServerRoutes.Root + "/operations/" + item.OperationId, new ProxyOperationAcceptedDto(item.OperationId)));
         }
         catch (ProxyServerException ex) { return Problem(ex.Message); }

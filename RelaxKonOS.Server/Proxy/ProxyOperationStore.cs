@@ -58,7 +58,11 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
         await Task.WhenAll(pending).WaitAsync(ct);
     }
 
-    public async Task<ProxyOperationDto> EnqueueAsync(string idempotencyKey, string kind, Func<ProxyOperationStageReporter, CancellationToken, Task<string?>> operation, CancellationToken cancellationToken)
+    public Task<ProxyOperationDto> EnqueueAsync(string idempotencyKey, string kind, Func<ProxyOperationStageReporter, CancellationToken, Task<string?>> operation, CancellationToken cancellationToken) =>
+        EnqueueIdentifiedAsync(idempotencyKey, kind, (_, stage, token) => operation(stage, token), cancellationToken);
+
+    internal async Task<ProxyOperationDto> EnqueueIdentifiedAsync(string idempotencyKey, string kind,
+        Func<Guid, ProxyOperationStageReporter, CancellationToken, Task<string?>> operation, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(idempotencyKey) || idempotencyKey.Length > 200)
             throw new ProxyOperationValidationException(ProxyProblemCodes.IdempotencyKeyRequired);
@@ -81,8 +85,40 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
         finally { _gate.Release(); }
 
         logger.LogInformation("Proxy operation {OperationId} queued: {OperationKind}.", item.OperationId, kind);
-        _ = ExecuteTrackedAsync(item.OperationId, operation, work!);
+        _ = ExecuteTrackedAsync(item.OperationId, (stage, token) => operation(item.OperationId, stage, token), work!);
         return item;
+    }
+
+    internal async Task<ProxyOperationDto?> ResumeInboundPublicationAsync(Guid? pending, IReadOnlySet<Guid> known,
+        Func<Guid, CancellationToken, Task<string?>> recover, CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct);
+        RelaxKonOS.Server.Residency.IModuleWorkLease? work = null;
+        ProxyOperationDto original;
+        try
+        {
+            var entries = await ReadEntriesAsync(paths, ct);
+            var item = entries.Select(entry => entry.Operation).FirstOrDefault(candidate =>
+                (candidate.OperationId == pending || known.Contains(candidate.OperationId))
+                && (IsUnresolved(candidate) || candidate.OperationId == pending && candidate.State == ProxyOperationState.Failed));
+            if (item is null) return null;
+            if (item.Kind is not ("proxy_server.configuration.apply" or "proxy_server.configuration.rollback"))
+                throw new ProxyOperationValidationException(ProxyProblemCodes.OperationInterrupted);
+            original = item;
+            var id = original.OperationId;
+            if (_running.ContainsKey(id)) return original;
+            if (Volatile.Read(ref _stopping) || _recoveryBlocked
+                || entries.Any(entry => entry.Operation.OperationId != id && IsUnresolved(entry.Operation)
+                    && !_running.ContainsKey(entry.Operation.OperationId) && entry.Operation.OperationId != pending
+                    && !known.Contains(entry.Operation.OperationId)))
+                throw new ProxyOperationValidationException(ProxyProblemCodes.OperationInterrupted);
+            work = await workLeases.AcquireAsync(ct);
+            _running.Add(id, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+        }
+        catch { work?.Dispose(); throw; }
+        finally { _gate.Release(); }
+        _ = ExecuteTrackedAsync(original.OperationId, (_, token) => recover(original.OperationId, token), work!);
+        return original;
     }
 
     private async Task ExecuteTrackedAsync(Guid id, Func<ProxyOperationStageReporter, CancellationToken, Task<string?>> operation, RelaxKonOS.Server.Residency.IModuleWorkLease work)
@@ -129,7 +165,8 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
     {
         try
         {
-            await UpdateAsync(id, item => item with { State = ProxyOperationState.Running, Stage = "running", StartedAt = DateTimeOffset.UtcNow });
+            await UpdateAsync(id, item => item with { State = ProxyOperationState.Running, Stage = "running",
+                StartedAt = item.StartedAt ?? DateTimeOffset.UtcNow, CompletedAt = null });
             var problem = await operation(async stage =>
             {
                 logger.LogDebug("Proxy operation {OperationId} entered stage {Stage}.", id, stage);

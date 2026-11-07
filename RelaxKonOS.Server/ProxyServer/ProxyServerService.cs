@@ -234,19 +234,19 @@ public sealed class ProxyServerService(
         finally { store.Gate.Release(); }
     }
 
-    public async Task<string?> ApplyAsync(CancellationToken ct)
+    public async Task<string?> ApplyAsync(CancellationToken ct, Guid? queuedOperationId = null)
     {
         await store.Gate.WaitAsync(ct);
         try
         {
             var state = await publication.ReadStateAsync(ct);
             await CheckNetworkAsync(ct);
-            return await publication.PublishAsync(state, await MaterialAsync(state, ct), ct);
+            return await publication.PublishAsync(state, await MaterialAsync(state, ct), ct, queuedOperationId: queuedOperationId);
         }
         finally { store.Gate.Release(); }
     }
 
-    public async Task<string?> RollbackAsync(CancellationToken ct)
+    public async Task<string?> RollbackAsync(CancellationToken ct, Guid? queuedOperationId = null)
     {
         await store.Gate.WaitAsync(ct);
         try
@@ -261,7 +261,7 @@ public sealed class ProxyServerService(
                     && secret.InboundIds.All(c.InboundIds.Contains))))
                 return "proxy_server.credential_unavailable";
             await CheckNetworkAsync(ct);
-            return await publication.PublishAsync(state, state.PreviousPublished, ct, rollback: true);
+            return await publication.PublishAsync(state, state.PreviousPublished, ct, rollback: true, queuedOperationId: queuedOperationId);
         }
         finally { store.Gate.Release(); }
     }
@@ -281,6 +281,27 @@ public sealed class ProxyServerService(
             if (!status.RecoveryRequired) await publication.ReadStateAsync(ct);
             return status.RecoveryRequired ? "proxy_server.recovery_required" : null;
         }
+        finally { store.Gate.Release(); }
+    }
+
+    internal async Task<string?> RecoverQueuedPublicationAsync(Guid id, CancellationToken ct)
+    {
+        await store.Gate.WaitAsync(ct);
+        try
+        {
+            var state = await store.ReadAsync(ct);
+            if (state.PendingQueuedPublication && state.PendingPublicationOperationId == id)
+                state = await publication.ReadStateAsync(ct, recoverPublication: true);
+            if (!state.QueuedPublicationCompletions.TryGetValue(id, out var outcome))
+                return ProxyProblemCodes.OperationInterrupted;
+            return outcome switch
+            {
+                ProxyServerPublicationOutcome.Committed => null,
+                ProxyServerPublicationOutcome.Compensated or ProxyServerPublicationOutcome.Rejected => "proxy_server.config_apply_failed",
+                _ => ProxyProblemCodes.OperationInterrupted
+            };
+        }
+        catch (ProxyServerException) { return ProxyProblemCodes.OperationInterrupted; }
         finally { store.Gate.Release(); }
     }
 
