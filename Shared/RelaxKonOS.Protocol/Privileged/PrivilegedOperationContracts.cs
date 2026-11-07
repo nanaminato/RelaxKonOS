@@ -215,6 +215,8 @@ public enum PrivilegedOperationKind
     SquidAccountMutate,
     ProxyServerPublicationReceipt,
     ProxyServerRecoverPublication,
+    LinuxSystemProxyApplyTracked,
+    LinuxSystemProxyReceipt,
 }
 
 /// <summary>
@@ -495,10 +497,15 @@ public sealed record PrivilegedOperationResult(
     [property: JsonPropertyName("processSnapshot")] HostProcessSnapshotDto? ProcessSnapshot = null,
     [property: JsonPropertyName("processTermination")] KillProcessResultDto? ProcessTermination = null,
     [property: JsonPropertyName("processIconContentType")] string? ProcessIconContentType = null,
-    [property: JsonPropertyName("version")] string Version = PrivilegedOperationProtocol.Version);
+    [property: JsonPropertyName("version")] string Version = PrivilegedOperationProtocol.Version,
+    [property: JsonPropertyName("linuxSystemProxyReceipt")] LinuxSystemProxyReceipt? LinuxSystemProxyReceipt = null);
 
 /// <summary>Root-owned terminal evidence for a fixed Nginx reload.</summary>
 public sealed record NginxNativeReloadReceipt(Guid OperationId, [property: JsonRequired] bool Succeeded);
 
 /// <summary>Fixed Linux proxy writers; no executable, arbitrary variable, path, or target user can be supplied.</summary>
 public sealed record LinuxSystemProxyConfiguration(bool Enabled, string Host, int Port, bool UseDefaultBypass, string BypassList, bool Enforce = false);
+
+/// <summary>Historical Helper acknowledgement and a separate readback of the original effect.</summary>
+public sealed record LinuxSystemProxyReceipt(Guid OperationId,
+    [property: JsonRequired] bool Applied, [property: JsonRequired] bool Current);

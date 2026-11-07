@@ -12,8 +12,11 @@ using Server::RelaxKonOS.Server.Proxy;
 using Server::RelaxKonOS.Server.Proxy.Mihomo;
 using Server::RelaxKonOS.Server.Proxy.Platform;
 using System.Diagnostics;
+using System.Net.Sockets;
 using System.Reflection;
+using System.Text.Json;
 using RelaxKonOS.PrivilegedHelper;
+using RelaxKonOS.Protocol.Observability;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Settings;
 
@@ -25,10 +28,23 @@ internal static class LinuxSystemProxyLiveChecks
     private const string Original = "RELAXKONOS_PROXY_FIXTURE=isolated\nhttp_proxy=http://127.0.0.1:1234\n";
     private static readonly TimeSpan Budget = TimeSpan.FromSeconds(15);
     private static readonly LinuxSystemProxyConfiguration Desired = new(true, "127.0.0.1", 17890, true, "");
+    private static readonly LinuxSystemProxyConfiguration TrackedDesired = Desired with { Port = 17891 };
+    private static readonly Guid TrackedOperation = Guid.Parse("630a7065-c07e-4f8b-97c3-464c047397c8");
 
     internal static async Task RunAsync(string hostMountNamespace, string hostNetworkNamespace, string mode, uint serverUid, uint socketGid)
     {
         RequireIsolation(hostMountNamespace, hostNetworkNamespace);
+        if (mode == "--linux-system-proxy-live-tracked-write")
+        {
+            RequireServerUid(serverUid);
+            await DropTrackedResponseAsync();
+            return;
+        }
+        if (mode == "--linux-system-proxy-live-tracked-read")
+        {
+            await VerifyTrackedReceiptAsync();
+            return;
+        }
         if (mode == "--linux-system-proxy-live-guard")
         {
             RequireServerUid(serverUid);
@@ -103,6 +119,83 @@ internal static class LinuxSystemProxyLiveChecks
         await VerifyGuardAsync(serverUid, socketGid, hostMountNamespace, hostNetworkNamespace);
         Console.WriteLine("PASS LINUX SYSTEM PROXY LIVE: process killed, original journal restored once, external edit preserved, non-root Server UID authorized, unlisted UID rejected, non-root guard no-op verified over independent Helper IPC");
     }
+
+    private static async Task DropTrackedResponseAsync()
+    {
+        using var budget = new CancellationTokenSource(Budget);
+        var ct = budget.Token;
+        using (var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified))
+        {
+            await socket.ConnectAsync(new UnixDomainSocketEndPoint(SocketPath), ct);
+            await using var stream = new NetworkStream(socket, ownsSocket: false);
+            var hello = PrivilegedHelperHandshake.Hello();
+            await PrivilegedHelperSocketFraming.WriteAsync(stream, JsonSerializer.SerializeToUtf8Bytes(hello), ct);
+            var reply = await PrivilegedHelperSocketFraming.ReadAsync(stream, PrivilegedHelperTransportProtocol.MaximumFrameBytes, ct);
+            var welcome = JsonSerializer.Deserialize<PrivilegedHelperHandshake>(reply ?? throw new IOException("Missing Helper welcome."));
+            if (welcome is null || !welcome.IsValid(hello) || welcome.Type != PrivilegedHelperHandshake.WelcomeType)
+                throw new InvalidOperationException("Could not open the private Helper connection.");
+            await PrivilegedHelperSocketFraming.WriteAsync(stream, JsonSerializer.SerializeToUtf8Bytes(
+                new PrivilegedOperationRequest(PrivilegedOperationKind.LinuxSystemProxyApplyTracked,
+                    LinuxSystemProxy: TrackedDesired, OperationId: TrackedOperation,
+                    Correlation: CorrelationContext.Create(TrackedOperation, "privileged.operation"))), ct);
+            socket.Shutdown(SocketShutdown.Both); // The caller never reads the terminal response.
+        }
+        while (true)
+        {
+            var observed = await TrackedAsync(PrivilegedOperationKind.LinuxSystemProxyReceipt, TrackedOperation, TrackedDesired, ct);
+            if (observed is { Success: true, LinuxSystemProxyReceipt: { Applied: true, Current: true } receipt }
+                && receipt.OperationId == TrackedOperation)
+                break;
+            if (observed.ProblemCode == PrivilegedProblemCode.Conflict || observed.LinuxSystemProxyReceipt?.Applied == true)
+                throw new InvalidOperationException("The original tracked receipt or its current effect did not match.");
+            await Task.Delay(40, ct);
+        }
+        if (LinuxEnvironmentDocument.Parse(File.ReadAllText(EnvironmentFile)).Values.GetValueOrDefault("http_proxy") != "http://127.0.0.1:17891")
+            throw new InvalidOperationException("The tracked operation did not change the real proxy endpoint.");
+    }
+
+    private static async Task VerifyTrackedReceiptAsync()
+    {
+        using var budget = new CancellationTokenSource(Budget);
+        var ct = budget.Token;
+        var before = File.ReadAllBytes(EnvironmentFile);
+        var timestamp = File.GetLastWriteTimeUtc(EnvironmentFile);
+        var journal = File.ReadAllBytes(Journal);
+        var terminal = new LinuxSystemProxyReceipt(TrackedOperation, Applied: true, Current: true);
+        var observed = await TrackedAsync(PrivilegedOperationKind.LinuxSystemProxyReceipt, TrackedOperation, TrackedDesired, ct);
+        var duplicate = await TrackedAsync(PrivilegedOperationKind.LinuxSystemProxyApplyTracked, TrackedOperation, TrackedDesired, ct);
+        var mismatch = await TrackedAsync(PrivilegedOperationKind.LinuxSystemProxyApplyTracked, TrackedOperation, Desired, ct);
+        var missing = await TrackedAsync(PrivilegedOperationKind.LinuxSystemProxyReceipt, Guid.NewGuid(), TrackedDesired, ct);
+        if (!observed.Success || observed.LinuxSystemProxyReceipt != terminal || !duplicate.Success || duplicate.LinuxSystemProxyReceipt != terminal
+            || mismatch.Success || mismatch.ProblemCode != PrivilegedProblemCode.Conflict || !missing.Success || missing.LinuxSystemProxyReceipt is not null
+            || !File.ReadAllBytes(EnvironmentFile).SequenceEqual(before) || File.GetLastWriteTimeUtc(EnvironmentFile) != timestamp
+            || !File.ReadAllBytes(Journal).SequenceEqual(journal))
+            throw new InvalidOperationException("The restarted Helper failed original receipt, duplicate, or mismatch checks.");
+
+        const string external = "http://127.0.0.1:2345";
+        var target = LinuxSystemProxyOperations.EnvironmentTarget;
+        var state = LinuxEnvironmentOperations.Execute(new(PrivilegedOperationKind.HostEnvironmentRead, EnvironmentTarget: target));
+        var edit = LinuxEnvironmentOperations.Execute(new(PrivilegedOperationKind.HostEnvironmentApply,
+            EnvironmentTarget: target, ExpectedRevision: state.HostEnvironment?.Revision,
+            EnvironmentChange: new([new("http_proxy", EnvironmentMutationKind.Set, external)], ConfirmHighImpact: true)));
+        var drift = await TrackedAsync(PrivilegedOperationKind.LinuxSystemProxyReceipt, TrackedOperation, TrackedDesired, ct);
+        var driftedDuplicate = await TrackedAsync(PrivilegedOperationKind.LinuxSystemProxyApplyTracked, TrackedOperation, TrackedDesired, ct);
+        if (!state.Success || !edit.Success || !drift.Success || drift.LinuxSystemProxyReceipt != terminal with { Current = false }
+            || !driftedDuplicate.Success || driftedDuplicate.LinuxSystemProxyReceipt != drift.LinuxSystemProxyReceipt
+            || LinuxEnvironmentDocument.Parse(File.ReadAllText(EnvironmentFile)).Values.GetValueOrDefault("http_proxy") != external)
+            throw new InvalidOperationException("Host drift was hidden or overwritten by original receipt recovery.");
+        var disableId = Guid.NewGuid();
+        var disabled = TrackedDesired with { Enabled = false };
+        var disable = await TrackedAsync(PrivilegedOperationKind.LinuxSystemProxyApplyTracked, disableId, disabled, ct);
+        var restored = await TrackedAsync(PrivilegedOperationKind.LinuxSystemProxyReceipt, disableId, disabled, ct);
+        if (!disable.Success || !restored.Success || restored.LinuxSystemProxyReceipt != new LinuxSystemProxyReceipt(disableId, true, true)
+            || File.Exists(Journal) || LinuxEnvironmentDocument.Parse(File.ReadAllText(EnvironmentFile)).Values.GetValueOrDefault("http_proxy") != external)
+            throw new InvalidOperationException("Tracked disable did not preserve the external value or its original receipt.");
+        Console.WriteLine($"PASS LINUX TRACKED SYSTEM PROXY: original {TrackedOperation}, response abandoned, Helper restarted, repeat observed without writes, external drift kept; disable {disableId}");
+    }
+
+    private static Task<PrivilegedOperationResult> TrackedAsync(PrivilegedOperationKind kind, Guid operation, LinuxSystemProxyConfiguration configuration,
+        CancellationToken ct) => CreateTransport().ExecuteAsync(new(kind, LinuxSystemProxy: configuration, OperationId: operation), ct);
 
     [System.Runtime.InteropServices.DllImport("libc", EntryPoint = "geteuid")]
     private static extern uint EffectiveUid();

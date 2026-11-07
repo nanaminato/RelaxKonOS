@@ -147,13 +147,14 @@ internal static class PrivilegedHelperSocketChecks
                 PrivilegedOperationKind.TailscaleInstallerExecute, PrivilegedOperationKind.TailscaleInstallerQuery,
                 PrivilegedOperationKind.TailscaleInstallerRecover, PrivilegedOperationKind.ComponentPackageInstall,
                 PrivilegedOperationKind.ComponentPackageQuery, PrivilegedOperationKind.ComponentPackageChange,
-                PrivilegedOperationKind.ComponentPackageRecover })
+                PrivilegedOperationKind.ComponentPackageRecover, PrivilegedOperationKind.LinuxSystemProxyApplyTracked,
+                PrivilegedOperationKind.LinuxSystemProxyReceipt })
             {
                 foreach (var attempt in new[] { 1, 2 })
                 {
                     var observed = await ExchangeAsync(path, durable with { Operation = verb });
                     TestAssert.Assert(observed.Last().Result is { Success: true },
-                        "Durable Tailscale verbs must reach their identity-bound ledger on repeat: " + verb);
+                        "Durable verbs must reach their identity-bound ledger on repeat: " + verb);
                 }
             }
 

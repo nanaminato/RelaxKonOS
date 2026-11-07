@@ -19,5 +19,6 @@ internal static class PrivilegedOperationReplayPolicy
         or PrivilegedOperationKind.MihomoRuntimeQuery or PrivilegedOperationKind.ProxyServerPublicationReceipt
         or PrivilegedOperationKind.ProxyServerRecoverPublication
         or PrivilegedOperationKind.NginxTrackedReload or PrivilegedOperationKind.NginxReloadReceipt
-        or PrivilegedOperationKind.NginxRetireReloadReceipt;
+        or PrivilegedOperationKind.NginxRetireReloadReceipt
+        or PrivilegedOperationKind.LinuxSystemProxyApplyTracked or PrivilegedOperationKind.LinuxSystemProxyReceipt;
 }

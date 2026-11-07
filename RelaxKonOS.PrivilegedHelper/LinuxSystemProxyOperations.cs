@@ -16,7 +16,10 @@ internal static class LinuxSystemProxyOperations
         var clean = new PrivilegedOperationRequest(request.Operation, LinuxSystemProxy: request.LinuxSystemProxy,
             OperationId: request.OperationId, Correlation: request.Correlation);
         var read = request.Operation == PrivilegedOperationKind.LinuxSystemProxyRead;
+        var tracked = request.Operation is PrivilegedOperationKind.LinuxSystemProxyApplyTracked or PrivilegedOperationKind.LinuxSystemProxyReceipt;
         if (clean != request || read && request.LinuxSystemProxy is not null || !read && request.LinuxSystemProxy is null)
+            return Failure(PrivilegedProblemCode.InvalidRequest);
+        if (tracked && (request.OperationId is not { } operationId || operationId == Guid.Empty || request.LinuxSystemProxy!.Enforce))
             return Failure(PrivilegedProblemCode.InvalidRequest);
         // Share the environment provider's mutex across the entire synchronous transaction.
         using var mutex = new Mutex(false, "RelaxKonOS.Environment." + SettingsRevisions.Hash(EnvironmentTarget.ResourceId));
@@ -27,6 +30,9 @@ internal static class LinuxSystemProxyOperations
             catch (AbandonedMutexException) { held = true; }
             if (!held) return Failure(PrivilegedProblemCode.TimedOut);
             var backend = new LinuxSystemProxyBackend();
+            var transaction = new LinuxSystemProxyTransaction(Journal, backend);
+            if (request.Operation == PrivilegedOperationKind.LinuxSystemProxyReceipt)
+                return new(true, LinuxSystemProxyReceipt: transaction.ReadReceipt(request.OperationId!.Value, request.LinuxSystemProxy!));
             if (read || request.LinuxSystemProxy!.Enabled)
             {
                 var environment = LinuxEnvironmentOperations.Execute(new(PrivilegedOperationKind.HostEnvironmentRead, EnvironmentTarget: EnvironmentTarget));
@@ -36,7 +42,9 @@ internal static class LinuxSystemProxyOperations
                 if (read) return new(true, SystemProxyCapabilities: capabilities);
                 if (!supported) return Failure(PrivilegedProblemCode.UnsupportedOperation);
             }
-            new LinuxSystemProxyTransaction(Journal, backend).Apply(request.LinuxSystemProxy!);
+            if (tracked)
+                return new(true, LinuxSystemProxyReceipt: transaction.ApplyTracked(request.OperationId!.Value, request.LinuxSystemProxy!));
+            transaction.Apply(request.LinuxSystemProxy!);
             return new(true);
         }
         catch (ArgumentException) { return Failure(PrivilegedProblemCode.InvalidRequest); }

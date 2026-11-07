@@ -13,6 +13,43 @@ internal static class LinuxSystemProxyChecks
     {
         using (var fixture = new Fixture())
         {
+            var operation = Guid.NewGuid();
+            var request = Enabled with { Port = 8888 };
+            var receipt = fixture.Transaction.ApplyTracked(operation, request);
+            var writes = fixture.Backend.WriteCount;
+            Check(receipt == new LinuxSystemProxyReceipt(operation, Applied: true, Current: true)
+                && fixture.Restart().ReadReceipt(operation, request) == receipt
+                && fixture.Restart().ApplyTracked(operation, request) == receipt
+                && fixture.Backend.WriteCount == writes, "Original proxy receipt must survive duplicate requests without writes.");
+            ExpectFailure(() => fixture.Restart().ApplyTracked(operation, Enabled));
+            fixture.External(Gnome, "mode", "'none'");
+            writes = fixture.Backend.WriteCount;
+            Check(fixture.Restart().ReadReceipt(operation, request) == receipt with { Current = false }
+                && fixture.Restart().ApplyTracked(operation, request) == receipt with { Current = false }
+                && fixture.Backend.WriteCount == writes, "Historical confirmation must not hide a competing proxy change.");
+            var disableId = Guid.NewGuid();
+            var disable = request with { Enabled = false };
+            var restored = fixture.Restart().ApplyTracked(disableId, disable);
+            writes = fixture.Backend.WriteCount;
+            Check(restored == new LinuxSystemProxyReceipt(disableId, Applied: true, Current: true)
+                && !File.Exists(fixture.Journal) && fixture.Restart().ApplyTracked(disableId, disable) == restored
+                && fixture.Backend.WriteCount == writes && fixture.Value(Gnome, "mode") == "'none'",
+                "Tracked disable must retain evidence after ownership restoration without erasing external changes.");
+        }
+        using (var fixture = new Fixture())
+        {
+            var operation = Guid.NewGuid();
+            fixture.Backend.OnWrite = (_, _, _) => throw new IOException("Interrupted host write");
+            ExpectFailure(() => fixture.Transaction.ApplyTracked(operation, Enabled));
+            var writes = fixture.Backend.WriteCount;
+            fixture.Backend.OnWrite = null;
+            Check(fixture.Restart().ReadReceipt(operation, Enabled) == new LinuxSystemProxyReceipt(operation, Applied: false, Current: false)
+                && fixture.Restart().ApplyTracked(operation, Enabled) == new LinuxSystemProxyReceipt(operation, Applied: false, Current: false)
+                && fixture.Backend.WriteCount == writes && File.Exists(fixture.Journal),
+                "An interrupted tracked effect must stay unresolved without redispatch and preserve ownership.");
+        }
+        using (var fixture = new Fixture())
+        {
             var originals = fixture.Snapshot();
             fixture.Transaction.Apply(Enabled);
             Check(fixture.Value(EnvironmentTarget, "HTTPS_PROXY") == "http://127.0.0.1:7890", "HTTPS must use the HTTP CONNECT endpoint.");
@@ -141,6 +178,7 @@ internal static class LinuxSystemProxyChecks
         public readonly Dictionary<LinuxProxyTarget, Dictionary<string, string?>> Values = new();
         public Action<int, LinuxProxyTarget, int>? OnWrite;
         private int writes;
+        public int WriteCount => writes;
         public void ResetWriteCount() => writes = 0;
         public IReadOnlyList<LinuxProxyTarget> DesktopTargets() => Targets;
         public Dictionary<string, string?> Read(LinuxProxyTarget target, IEnumerable<string> keys)

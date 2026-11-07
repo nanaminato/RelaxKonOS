@@ -41,15 +41,25 @@ mount --bind "$fixture/run" /run
 cat > /etc/relaxkonos-proxy-helper.json <<JSON
 {"socketPath":"/run/rk-proxy-fixture/helper.sock","socketGroupId":$server_gid,"allowedUids":[0,$server_uid],"maximumConcurrentRequests":1}
 JSON
-dotnet "$helper" --linux-service --config /etc/relaxkonos-proxy-helper.json 2>"$fixture/helper.log" &
-helper_pid=$!
-for attempt in $(seq 1 100); do
-    [ ! -S /run/rk-proxy-fixture/helper.sock ] || break
-    kill -0 "$helper_pid"
-    sleep .05
-done
-[ -S /run/rk-proxy-fixture/helper.sock ]
+start_helper() {
+    dotnet "$helper" --linux-service --config /etc/relaxkonos-proxy-helper.json 2>>"$fixture/helper.log" &
+    helper_pid=$!
+    for attempt in $(seq 1 100); do
+        [ ! -S /run/rk-proxy-fixture/helper.sock ] || break
+        kill -0 "$helper_pid"
+        sleep .05
+    done
+    [ -S /run/rk-proxy-fixture/helper.sock ]
+}
+start_helper
 dotnet "$assembly" --linux-system-proxy-live-only "$host_mount" "$host_network" "$server_uid" "$server_gid"
+setpriv --reuid="$server_uid" --regid="$server_gid" --clear-groups --no-new-privs -- dotnet "$assembly" --linux-system-proxy-live-tracked-write "$host_mount" "$host_network" "$server_uid" "$server_gid"
+kill -KILL "$helper_pid"
+wait "$helper_pid" || true
+helper_pid=
+rm -f -- /run/rk-proxy-fixture/helper.sock
+start_helper
+dotnet "$assembly" --linux-system-proxy-live-tracked-read "$host_mount" "$host_network" "$server_uid" "$server_gid"
 kill -TERM "$helper_pid"
 wait "$helper_pid"
 helper_pid=

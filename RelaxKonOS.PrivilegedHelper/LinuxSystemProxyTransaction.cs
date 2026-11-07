@@ -15,7 +15,7 @@ internal interface ILinuxSystemProxyBackend
 }
 
 /// <summary>Durable ownership of only proxy keys. Unrelated settings and later external edits survive disabling.</summary>
-internal sealed class LinuxSystemProxyTransaction(string journalPath, ILinuxSystemProxyBackend backend)
+internal sealed partial class LinuxSystemProxyTransaction(string journalPath, ILinuxSystemProxyBackend backend)
 {
     internal sealed record Entry(LinuxProxyTarget Target, Dictionary<string, string?> Original,
         Dictionary<string, string?> Applied, Dictionary<string, string?>? Pending = null);

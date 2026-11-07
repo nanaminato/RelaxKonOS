@@ -12,6 +12,7 @@
     <Compile Include="../../../RelaxKonOS.PrivilegedHelper/LinuxEnvironmentOperations.cs" Link="LinuxEnvironmentOperations.cs" />
     <Compile Include="../../../RelaxKonOS.PrivilegedHelper/LinuxSystemProxyOperations.cs" Link="LinuxSystemProxyOperations.cs" />
     <Compile Include="../../../RelaxKonOS.PrivilegedHelper/LinuxSystemProxyTransaction.cs" Link="LinuxSystemProxyTransaction.cs" />
+    <Compile Include="../../../RelaxKonOS.PrivilegedHelper/LinuxSystemProxyTransaction.Receipts.cs" Link="LinuxSystemProxyTransaction.Receipts.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Services/SettingsNavigationHistory.cs" Link="SettingsNavigationHistory.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Services/SettingsSearchIndex.cs" Link="SettingsSearchIndex.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Services/SystemLanguageResolver.cs" Link="SystemLanguageResolver.cs" />
