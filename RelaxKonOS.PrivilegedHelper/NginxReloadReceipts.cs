@@ -20,6 +20,7 @@ public static partial class PrivilegedOperationExecutor
             RuntimeSourceStore.RequireNoLinks(NginxReloadReceiptDirectory);
             Directory.CreateDirectory(NginxReloadReceiptDirectory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             RequireProtectedReloadPath(NginxReloadReceiptDirectory);
+            LinuxDirectorySync.Flush(Path.GetDirectoryName(NginxReloadReceiptDirectory)!);
             try { WriteReloadRecord(path, new(id, false), overwrite: false); }
             catch (IOException) when (File.Exists(path))
             {
@@ -62,6 +63,33 @@ public static partial class PrivilegedOperationExecutor
         }
     }
 
+    private static PrivilegedOperationResult RetireNginxReloadReceipt(Guid? operationId)
+    {
+        if (!OperatingSystem.IsLinux()) return Fail(69, PrivilegedProblemCode.UnsupportedOperation, "Linux is required");
+        if (operationId is not Guid id || id == Guid.Empty) return Fail(65, PrivilegedProblemCode.InvalidRequest, "A reload operation ID is required");
+        try
+        {
+            var path = ReloadReceiptPath(id);
+            RequireProtectedReloadPath(NginxReloadReceiptDirectory);
+            RequireProtectedReloadPath(path);
+            // The existing path is the permanent admission marker. Retiring the outcome must
+            // never create a window where the same ID can be admitted again.
+            if (new FileInfo(path).Length != 0)
+            {
+                if (QueryNginxReloadReceipt(id).Success)
+                    WriteReloadRecord(path, null, overwrite: true);
+                else if (new FileInfo(path).Length != 0)
+                    return UnknownReload();
+            }
+            LinuxDirectorySync.Flush(NginxReloadReceiptDirectory);
+            return new(true);
+        }
+        catch (Exception error) when (ReloadRecordError(error))
+        {
+            return UnknownReload();
+        }
+    }
+
     private static string ReloadReceiptPath(Guid id) =>
         Path.Combine(NginxReloadReceiptDirectory, id.ToString("N") + ".json");
 
@@ -95,7 +123,7 @@ public static partial class PrivilegedOperationExecutor
     }
 
     [SupportedOSPlatform("linux")]
-    private static void WriteReloadRecord(string path, NginxReloadRecord record, bool overwrite)
+    private static void WriteReloadRecord(string path, NginxReloadRecord? record, bool overwrite)
     {
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
@@ -107,10 +135,11 @@ public static partial class PrivilegedOperationExecutor
             };
             using (var output = new FileStream(temporary, options))
             {
-                JsonSerializer.Serialize(output, record);
+                if (record is not null) JsonSerializer.Serialize(output, record);
                 output.Flush(flushToDisk: true);
             }
             File.Move(temporary, path, overwrite);
+            LinuxDirectorySync.Flush(NginxReloadReceiptDirectory);
         }
         finally { File.Delete(temporary); }
     }

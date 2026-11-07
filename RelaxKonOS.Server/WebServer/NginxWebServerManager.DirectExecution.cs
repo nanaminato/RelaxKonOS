@@ -34,7 +34,7 @@ internal sealed partial class NginxWebServerManager
                     || helper.Success && receipt is null
                     || receipt is not null && (receipt.OperationId != progress.OperationId || receipt.Succeeded != helper.Success))
                     return new(WebServerOperationStore.NativeRecoveryRequired);
-                await progress.ReportAsync("running", CancellationToken.None);
+                await progress.ReportAsync(receipt is null ? "running" : WebServerOperationStore.NativeReloadConfirmedStage, CancellationToken.None);
                 return new(helper.Success ? "" : ToWebServerProblem(helper.ProblemCode, "webserver.reload_failed"));
             }
             var reload = await nginx.RunNginxAsync(instance.ExecutablePath,

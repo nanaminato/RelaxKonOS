@@ -1728,3 +1728,5 @@ Linux 系统包直接重载在派发前持久化原检查点。生产 Helper 超
 Linux 系统包直接重载现在可以在重启后按原 ID 对账。生产 Helper 持久化原 systemctl 成功证据后，Server 只读核验并完成原回执，同键不会重载。缺少匹配证据时继续显示待核验。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-原-helper-回执对账)。
 
 Linux 系统包重载的原回执对账覆盖明确成功及原生作业明确失败。响应丢失后读取原 ID，原 HTTPS 持续，原作业只尝试一次。Helper 无原作业终态证据时仍显示待核验。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-存活进程响应丢失和失败回执)。
+
+Linux 系统包重载的原回执保存在 Server。原终态持久化后，Helper 压缩原详情并保留防重放标记。Linux 实测旧 ID 在 Helper 重启后仍不能重载，清理确认丢失后只重试清理。待核验记录保留详情。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-终态回执保留与防重放)。

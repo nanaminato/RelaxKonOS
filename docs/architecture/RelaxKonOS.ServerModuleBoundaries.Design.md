@@ -1529,3 +1529,11 @@ Helper 原 ID 回执支持实际成功及可确认的失败。仅接受固定 `s
 Linux 私有 systemd 上，Unix socket 中继仅截断实际生产 Helper 的首个终态响应，并短暂阻止只读查询，以核对原操作进入待核验、新键被拒绝。释放查询后，完整 Server 和原 Helper 保持存活，成功操作 `1a3516f4-6709-486f-99ef-76f9b478a2bd` 按原 ID 落盘，实际 reload 一次。真实 Nginx 配置检查拒绝 `bdd59a66-2a3a-453c-9488-8f4f0d348ba0`，作业尝试一次，未发重载信号，原 HTTPS 和 master 持续。按原 ID 只读确认失败后，新键才通过并完成下一次真实 reload。两次均核验同键和共享服务指纹，专属 cgroup 清理完成。首轮中继把终态字段名大小写读错，修正后通过。
 
 日志为 .artifacts/mb05-nginx-live-loss-attempts-response-loss.log 和 .artifacts/mb05-nginx-live-loss-attempts-rejected.log，归档 SHA-256 为 7587cfe65e52aa7bf83feaee98548d2eafad09831c9f0dbba1a75fd0effabff5。Windows Release 模块里程碑通过。Linux 本批取消和 SIGTERM 排空复测通过，真实 30 秒超时操作仍保持原待核验回执。日志为 .artifacts/mb05-nginx-live-loss-final-drain.log 和 .artifacts/mb05-nginx-live-loss-final-timeout.log。Helper 未观察到明确原作业终态时保留待核验。Helper 回执保留策略、主机重启及其他 WebServer 直接动作仍待验收。
+
+### MB-05 Nginx 终态回执保留与防重放
+
+Server 在原后台 owner 内同步持久化终态及清理待确认标记后，才以原 ID 通知 Helper。Helper 仅处理有明确终态的原记录，用原子替换将详情压缩为同路径的零字节防重放标记，继续拒绝派发该 ID。未确认记录保持原样。标记已存在时重复确认成功，丢失清理响应时由 Server 启动按原 ID 重试清理。Linux 同步回执文件和目录，Server 的整账替换也同步，避免后续写入削弱已通知 Helper 的原终态持久性。自然停机时若已收到确切原生响应，重启可按 Helper 证据完成原终态。显式取消仍按原取消语义结案。
+
+Linux 私有 systemd 实测原 `04f1f463-a0cb-4197-a271-8ad1afb93c9d` 在 Server 退出时由 Helper 保留完整证据，Server 重启按原 ID 完成后才压缩。Helper IPC 重发该 ID 在本代及 Helper 重启后均被拒绝，原 HTTPS 持续，同键读取 Server 原成功回执。另截断原 `469bb500-0257-4560-a8dd-cb27ccced484` 的真实清理确认。Server 已有原成功回执和待确认标记，Helper 已压缩。两进程重启后只重试原清理，完成原标记，无额外 reload。真实 30 秒超时的原待核验回执拒绝清理。自然停机与取消排空复测通过，自然停机重启后核实原成功。日志为 .artifacts/mb05-nginx-retire-timeout-live.log 和 .artifacts/mb05-nginx-retire-drain-live.log。Windows Release 模块里程碑通过，专属 cgroup 清理与共享服务指纹通过。
+
+日志为 .artifacts/mb05-nginx-retire-receipt-live.log 和 .artifacts/mb05-nginx-retire-ack-retry-live.log，归档 SHA-256 为 fb3aeac412206f5e0771a5b11795534f3345974871ee00907bf2587fc9857ef8。每个已清理 ID 仍占一个防重放目录项，目录项总量、旧终态详情的迁移清理及整机掉电恢复未验收。WebServer 保持 resident，本阶段未测量生产内存。

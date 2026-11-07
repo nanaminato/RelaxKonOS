@@ -7,6 +7,7 @@ public interface IPrivilegedNginxOperations
 {
     Task<PrivilegedOperationResult> ApplyWindowsRuntimeAsync(ManagedRuntimeAction action, string? version = null, string? archivePath = null, CancellationToken cancellationToken = default);
     Task<PrivilegedOperationResult> RunTrackedReloadAsync(Guid operationId, CancellationToken cancellationToken);
+    Task<PrivilegedOperationResult> RetireReloadReceiptAsync(Guid operationId, CancellationToken cancellationToken);
     Task<PrivilegedOperationResult> QueryReloadReceiptAsync(Guid operationId, CancellationToken cancellationToken);
     Task<PrivilegedOperationResult> ApplySystemServiceActionAsync(NginxSystemServiceAction action, CancellationToken cancellationToken = default);
     Task<PrivilegedOperationResult> InstallPackageAsync(string? version, CancellationToken cancellationToken = default);
@@ -34,6 +35,9 @@ public sealed class PrivilegedNginxOperations(RelaxKonOS.Server.Privileged.IPriv
             ManagedRuntime: new(ManagedRuntime.Nginx, action, version, ArchivePath: archivePath)), cancellationToken);
     public Task<PrivilegedOperationResult> RunTrackedReloadAsync(Guid operationId, CancellationToken cancellationToken) =>
         ExecuteAsync(new(PrivilegedOperationKind.NginxTrackedReload, OperationId: operationId), cancellationToken);
+
+    public Task<PrivilegedOperationResult> RetireReloadReceiptAsync(Guid operationId, CancellationToken cancellationToken) =>
+        ExecuteAsync(new(PrivilegedOperationKind.NginxRetireReloadReceipt, OperationId: operationId), cancellationToken);
 
     public Task<PrivilegedOperationResult> QueryReloadReceiptAsync(Guid operationId, CancellationToken cancellationToken) =>
         ExecuteAsync(new(PrivilegedOperationKind.NginxReloadReceipt, OperationId: operationId), cancellationToken);

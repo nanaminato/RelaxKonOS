@@ -15,11 +15,13 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import uuid
 
 
 def run(root, server, helper_binary, mode):
     production_helper = mode is not None
-    relay_mode = mode in ("--systemd-response-loss", "--systemd-rejected")
+    retire_retry = mode == "--systemd-retire-retry"
+    relay_mode = retire_retry or mode in ("--systemd-response-loss", "--systemd-rejected")
     rejected = mode == "--systemd-rejected"
     expect_unknown = mode in ("--systemd-unknown", "--systemd-timeout")
     credentials = json.loads(sys.stdin.readline())
@@ -125,6 +127,32 @@ def run(root, server, helper_binary, mode):
     if relay_mode:
         env["PrivilegedHelper__SocketPath"] = str(root / "relay.sock")
 
+    def frame(stream):
+        header = stream.read(4)
+        assert len(header) == 4
+        length = int.from_bytes(header, "little")
+        assert 0 < length <= 16 * 1024 * 1024
+        payload = stream.read(length)
+        assert len(payload) == length
+        return header + payload, json.loads(payload)
+
+    def direct_helper_request(kind, operation):
+        def send(connection, payload):
+            data = json.dumps(payload).encode()
+            connection.sendall(len(data).to_bytes(4, "little") + data)
+
+        with socket.socket(socket.AF_UNIX) as connection:
+            connection.settimeout(5)
+            connection.connect(str(socket_path))
+            with connection.makefile("rb") as source:
+                send(connection, {"Type": "hello", "Version": "1.0", "Capabilities": ["progress"]})
+                assert frame(source)[1]["Type"] == "welcome"
+                send(connection, {"operation": kind, "operationId": operation, "version": "1.1",
+                                  "correlation": {"correlationId": str(uuid.uuid4()), "operationId": operation}})
+                response = frame(source)[1]
+                assert response["Type"] == "result"
+                return response["Result"]
+
     @contextmanager
     def helper_connection():
         if not relay_mode:
@@ -132,15 +160,6 @@ def run(root, server, helper_binary, mode):
             return
         dropped = threading.Event()
         permit_query = threading.Event()
-
-        def frame(stream):
-            header = stream.read(4)
-            assert len(header) == 4
-            length = int.from_bytes(header, "little")
-            assert 0 < length <= 16 * 1024 * 1024
-            payload = stream.read(length)
-            assert len(payload) == length
-            return header + payload, json.loads(payload)
 
         class Relay(socketserver.StreamRequestHandler):
             def handle(self):
@@ -158,8 +177,12 @@ def run(root, server, helper_binary, mode):
                         while True:
                             response_bytes, response = frame(source)
                             terminal = response["Type"] == "result"
-                            if terminal and kind == "NginxTrackedReload" and not dropped.is_set():
-                                assert response["Result"]["nginxReloadReceipt"]["OperationId"] == request["operationId"]
+                            drop_kind = "NginxRetireReloadReceipt" if retire_retry else "NginxTrackedReload"
+                            if terminal and kind == drop_kind and not dropped.is_set():
+                                if retire_retry:
+                                    assert response["Result"]["success"]
+                                else:
+                                    assert response["Result"]["nginxReloadReceipt"]["OperationId"] == request["operationId"]
                                 dropped.set()
                                 return
                             self.connection.sendall(response_bytes)
@@ -254,8 +277,10 @@ def run(root, server, helper_binary, mode):
             with process([server], "drain-restarted-server") as restarted:
                 wait_for(restarted, healthy, "drain-restarted-server")
                 token = login()
+                wait_for(restarted, lambda: request(receipt_route, token=token)["state"].lower() == "succeeded",
+                         "original native success after graceful shutdown")
                 replay = request(route, token=token, expected=202, method="POST", key=key)
-                assert replay["operationId"] == operation and replay["problemCode"] == "webserver.operation_interrupted"
+                assert replay["operationId"] == operation and replay["state"].lower() == "succeeded"
                 assert_served(b"stopped")
                 assert int(nginx_pid_file.read_text()) == pid
                 assert witness.read_text().splitlines() == ["reload", "reload"]
@@ -285,7 +310,7 @@ def run(root, server, helper_binary, mode):
             operation = accepted["operationId"]
             operation_route = f"{web}/operations/{operation}"
             witness = root / "nginx" / "reloads"
-            if relay_mode:
+            if relay_mode and not retire_retry:
                 if not rejected:
                     wait_for(initial, witness.is_file, "reload witness")
                     assert_served(b"updated")
@@ -322,7 +347,19 @@ def run(root, server, helper_binary, mode):
             assert_served(b"updated")
             active = request(operation_route, token=token)
             assert str(active["state"]).lower() == "running"
-            if expect_unknown:
+            if retire_retry:
+                (root / "nginx" / "release").touch()
+                assert dropped.wait(12), "The Helper retirement response was not dropped"
+                ledger_path = root / "data" / "webserver-operations.json"
+                receipt_file = Path("/var/lib/relaxkonos-nginx-reloads") / (operation.replace("-", "") + ".json")
+
+                def retirement_pending():
+                    entries = json.loads(ledger_path.read_text())
+                    return next(item["nativeReceiptRetirementPending"] for item in entries if item["operationId"] == operation)
+
+                assert request(operation_route, token=token)["state"].lower() == "succeeded"
+                assert retirement_pending() and receipt_file.stat().st_size == 0
+            elif expect_unknown:
                 if mode == "--systemd-unknown":
                     helper.kill()
                     assert helper.wait(timeout=10) < 0 and not helper_ready()
@@ -339,6 +376,8 @@ def run(root, server, helper_binary, mode):
                 (root / "nginx" / "release").touch()
                 wait_for(initial, (root / "nginx" / "reload-finished").is_file, "native reload completion")
                 assert original_is_unconfirmed()
+                if mode == "--systemd-timeout":
+                    assert not direct_helper_request("NginxRetireReloadReceipt", operation)["success"]
             else:
                 initial.kill()
                 assert initial.wait(timeout=10) < 0
@@ -354,6 +393,8 @@ def run(root, server, helper_binary, mode):
                              and json.loads(receipt_file.read_text()).get("Completed") is True,
                              "durable original Helper receipt")
 
+    if retire_retry:
+        env["PrivilegedHelper__SocketPath"] = str(socket_path)
     with process([*helper_args, helper_config], "restarted-helper") as helper:
         wait_for(helper, helper_ready, "restarted-helper")
         with process([server], "restarted-server") as restarted:
@@ -362,9 +403,16 @@ def run(root, server, helper_binary, mode):
             if mode == "--systemd-receipt":
                 wait_for(restarted, lambda: request(operation_route, token=token)["state"].lower() == "succeeded",
                          "original receipt reconciliation")
+                wait_for(restarted, lambda: receipt_file.is_file() and receipt_file.stat().st_size == 0,
+                         "terminal Helper receipt retirement")
+                assert not direct_helper_request("NginxReloadReceipt", operation)["success"]
+                assert direct_helper_request("NginxRetireReloadReceipt", operation)["success"]
+                assert not direct_helper_request("NginxTrackedReload", operation)["success"]
+                assert receipt_file.stat().st_size == 0 and witness.read_text().splitlines() == ["reload"]
+                print(f"PASS NGINX RECEIPT RETIREMENT: operation={operation}; durable API result; old Helper ID rejected")
             replay = request(reload_route, token=token, expected=202, method="POST", key=key)
             observed = request(operation_route, token=token)
-            if mode == "--systemd-receipt":
+            if mode == "--systemd-receipt" or retire_retry:
                 expected = ("succeeded", "")
             elif production_helper:
                 expected = ("running", "webserver.native_recovery_required")
@@ -373,7 +421,7 @@ def run(root, server, helper_binary, mode):
             for receipt in (replay, observed):
                 assert receipt["operationId"] == operation
                 assert (receipt["state"].lower(), receipt["problemCode"]) == expected
-            if production_helper and mode != "--systemd-receipt":
+            if production_helper and mode != "--systemd-receipt" and not retire_retry:
                 request(reload_route, token=token, expected=409, method="POST", key=secrets.token_hex(16))
             assert_served(b"updated")
             assert int(nginx_pid_file.read_text()) == nginx_pid
@@ -382,6 +430,11 @@ def run(root, server, helper_binary, mode):
                 wait_for(restarted, (root / "nginx" / "reload-finished").is_file, "native reload completion")
                 print(f"PASS PRODUCTION NGINX SYSTEMD: {mode}, native master {nginx_pid} served HTTPS")
             print(f"PASS AUTHENTICATED SERVER NGINX RECEIPT: operation={operation}, {expected[0]} / {expected[1]}, one reload")
+            if retire_retry:
+                wait_for(restarted, lambda: not retirement_pending(), "retry of the original retirement")
+                assert not direct_helper_request("NginxTrackedReload", operation)["success"]
+                assert receipt_file.stat().st_size == 0 and witness.read_text().splitlines() == ["reload"]
+                print(f"PASS NGINX RETIREMENT ACK RETRY: operation={operation}; original terminal result kept; no reload")
             if mode == "--systemd-receipt":
                 (root / "nginx" / "reload-finished").unlink()
                 new_key = secrets.token_hex(16)
@@ -393,11 +446,19 @@ def run(root, server, helper_binary, mode):
                 assert witness.read_text().splitlines() == ["reload", "reload"]
                 print("PASS NGINX ORIGINAL RECEIPT RECONCILIATION: exact Helper evidence reopened admission")
 
+    if mode == "--systemd-receipt":
+        with process([*helper_args, helper_config], "retired-helper") as helper:
+            wait_for(helper, helper_ready, "retired-helper")
+            assert not direct_helper_request("NginxTrackedReload", operation)["success"]
+            assert receipt_file.stat().st_size == 0
+            assert witness.read_text().splitlines() == ["reload", "reload"]
+            print("PASS NGINX RETIRED ID AFTER HELPER RESTART: no extra native reload")
+
 
 if __name__ == "__main__":
     arguments = sys.argv[1:]
     mode = arguments.pop() if arguments and arguments[-1] in ("--systemd", "--systemd-drain", "--systemd-unknown", "--systemd-timeout", "--systemd-receipt",
-                                                            "--systemd-response-loss", "--systemd-rejected") else None
+                                                            "--systemd-response-loss", "--systemd-rejected", "--systemd-retire-retry") else None
     if len(arguments) != 3:
         raise SystemExit("Usage: run-authenticated-nginx-live.py ROOT SERVER HELPER [SYSTEMD_MODE]")
     run(*(Path(arg).resolve(strict=True) for arg in arguments), mode=mode)

@@ -17,5 +17,6 @@ internal static class PrivilegedOperationReplayPolicy
         or PrivilegedOperationKind.TailscaleLoginRecoveryReceipt
         // Receipt observations reuse the publication ID before and after the mutation.
         or PrivilegedOperationKind.MihomoRuntimeQuery
-        or PrivilegedOperationKind.NginxTrackedReload or PrivilegedOperationKind.NginxReloadReceipt;
+        or PrivilegedOperationKind.NginxTrackedReload or PrivilegedOperationKind.NginxReloadReceipt
+        or PrivilegedOperationKind.NginxRetireReloadReceipt;
 }

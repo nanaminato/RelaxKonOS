@@ -390,3 +390,5 @@ MB-05 Linux 系统包直接重载以原检查点保护未知原生作业。实�
 MB-05 已为系统包 Nginx 直接重载接入生产 Helper 原 ID 成功回执。原工作 owner 只读对账，确认证据后写入原终态。Linux 实机确认重启后原 reload 未重放，证据缺失时继续保留责任。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-原-helper-回执对账)。
 
 MB-05 系统包 Nginx 的成功及可确认失败回执在 Server 与 Helper 均存活时通过响应丢失实测。原任务保持到只读证据核验和原终态写入，之后才开放新后台操作。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-存活进程响应丢失和失败回执)。
+
+MB-05 系统包 Nginx 在 Server 原终态持久化后压缩 Helper 回执详情。原防重放标记和未确认回执保持。Linux 实测已压缩 ID 跨 Helper 重启拒绝重载，清理确认丢失仅重试原清理。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-终态回执保留与防重放)。

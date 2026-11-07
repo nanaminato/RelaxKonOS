@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
+using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.WebServers;
 using RelaxKonOS.Server.Certificate;
 using RelaxKonOS.Server.Residency;
@@ -26,6 +27,7 @@ internal interface IWebServerOperationProgress
 internal sealed class WebServerOperationStore : IHostedService, IDisposable
 {
     internal const string NativeReloadDispatchStage = "native-reload-dispatch";
+    internal const string NativeReloadConfirmedStage = "native-reload-confirmed";
     internal const string NativeRecoveryRequired = "webserver.native_recovery_required";
     private readonly string _path;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -66,6 +68,17 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
                 {
                     using var continuation = await _workOwner.AdmitAsync(stopping.Token);
                     continuation.Run(token => ReconcileNativeReloadAsync(operation.OperationId, token));
+                }
+                var pendingRetirements = _operations.Values.Where(item => item.NativeReceiptRetirementPending)
+                    .Select(item => item.OperationId).ToArray();
+                if (pendingRetirements.Length != 0)
+                {
+                    using var retirement = await _workOwner.AdmitAsync(stopping.Token);
+                    retirement.Run(async token =>
+                    {
+                        foreach (var id in pendingRetirements)
+                            await RetireNativeReceiptAsync(id, token);
+                    });
                 }
                 stopping.Token.ThrowIfCancellationRequested();
                 _ready = true;
@@ -220,7 +233,8 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
                 state = WebServerOperationState.Cancelled;
                 result = new("webserver.operation_cancelled", result.SnapshotId);
             }
-            await CompleteAsync(operationId, state, result.ProblemCode, result.SnapshotId, CancellationToken.None);
+            if (await CompleteAsync(operationId, state, result.ProblemCode, result.SnapshotId))
+                await RetireNativeReceiptAsync(operationId, workStopping);
         }
         finally
         {
@@ -241,8 +255,8 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
                 if (result is { Success: true, NginxReloadReceipt: { } receipt } && receipt.OperationId == operationId)
                 {
                     var state = receipt.Succeeded ? WebServerOperationState.Succeeded : WebServerOperationState.Failed;
-                    try { await CompleteAsync(operationId, state, receipt.Succeeded ? "" : "webserver.reload_failed", null, CancellationToken.None); }
-                    catch (Exception error) { throw new ResidentWorkCompletionException(error); }
+                    if (await CompleteAsync(operationId, state, receipt.Succeeded ? "" : "webserver.reload_failed", null, nativeEvidence: true))
+                        await RetireNativeReceiptAsync(operationId, stoppingToken);
                     return;
                 }
                 await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
@@ -278,16 +292,41 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
         finally { _gate.Release(); }
     }
 
-    private async Task CompleteAsync(Guid id, WebServerOperationState state, string problemCode, string? snapshotId, CancellationToken ct)
+    private async Task<bool> CompleteAsync(Guid id, WebServerOperationState state, string problemCode, string? snapshotId,
+        bool nativeEvidence = false)
     {
-        await _gate.WaitAsync(ct);
+        await _gate.WaitAsync();
         try
         {
             var operation = _operations[id];
-            if (operation.State == WebServerOperationState.Cancelled && state != WebServerOperationState.Cancelled) return;
-            _operations[id] = operation with { State = state, Stage = state.ToString().ToLowerInvariant(), ProblemCode = problemCode, SnapshotId = snapshotId ?? operation.SnapshotId, CompletedAt = DateTimeOffset.UtcNow };
-            await SaveAsync(ct);
+            if (operation.State == WebServerOperationState.Cancelled && state != WebServerOperationState.Cancelled) return false;
+            var retireReceipt = nativeEvidence || operation.Stage == NativeReloadConfirmedStage;
+            _operations[id] = operation with
+            {
+                State = state, Stage = state.ToString().ToLowerInvariant(), ProblemCode = problemCode,
+                SnapshotId = snapshotId ?? operation.SnapshotId, CompletedAt = DateTimeOffset.UtcNow,
+                NativeReceiptRetirementPending = retireReceipt,
+            };
+            try { await SaveAsync(CancellationToken.None); }
+            catch (Exception error) { throw new ResidentWorkCompletionException(error); }
             _logger.LogInformation("Web-server operation state persisted. OperationId={OperationId}, State={State}, Problem={Problem}, SnapshotId={SnapshotId}", id, state, problemCode, snapshotId ?? operation.SnapshotId);
+            return retireReceipt;
+        }
+        finally { _gate.Release(); }
+    }
+
+    private async Task RetireNativeReceiptAsync(Guid id, CancellationToken stoppingToken)
+    {
+        if (_nativeOperations is null || stoppingToken.IsCancellationRequested) return;
+        var result = await _nativeOperations.RetireReloadReceiptAsync(id, stoppingToken);
+        if (!result.Success) return;
+
+        await _gate.WaitAsync();
+        try
+        {
+            _operations[id] = _operations[id] with { NativeReceiptRetirementPending = false };
+            try { await SaveAsync(CancellationToken.None); }
+            catch (Exception error) { throw new ResidentWorkCompletionException(error); }
         }
         finally { _gate.Release(); }
     }
@@ -335,10 +374,14 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
         {
             var recovered = item switch
             {
-                { State: WebServerOperationState.Running, Stage: NativeReloadDispatchStage } => MarkNativeUnconfirmed(item),
+                { State: WebServerOperationState.Running, Stage: NativeReloadDispatchStage or NativeReloadConfirmedStage } => MarkNativeUnconfirmed(item),
                 { ProblemCode: NativeRecoveryRequired } => item,
                 { State: WebServerOperationState.Queued or WebServerOperationState.Running } =>
-                    item with { State = WebServerOperationState.Failed, Stage = "interrupted", ProblemCode = "webserver.operation_interrupted", CompletedAt = DateTimeOffset.UtcNow },
+                    item with
+                    {
+                        State = WebServerOperationState.Failed, Stage = "interrupted", ProblemCode = "webserver.operation_interrupted",
+                        CompletedAt = DateTimeOffset.UtcNow,
+                    },
                 _ => item,
             };
             _operations.Add(recovered.OperationId, recovered);
@@ -352,15 +395,26 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
 
     private async Task SaveAsync(CancellationToken ct)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+        var directory = Path.GetDirectoryName(_path)!;
+        Directory.CreateDirectory(directory);
         var temp = _path + ".tmp";
-        await File.WriteAllTextAsync(temp, JsonSerializer.Serialize(_operations.Values, Json), ct);
+        await using (var output = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            await JsonSerializer.SerializeAsync(output, _operations.Values, Json, ct);
+            if (OperatingSystem.IsLinux()) output.Flush(flushToDisk: true);
+        }
         File.Move(temp, _path, true);
+        if (OperatingSystem.IsLinux())
+        {
+            LinuxDirectorySync.Flush(directory);
+            LinuxDirectorySync.Flush(Path.GetDirectoryName(directory)!);
+        }
         await _journal.UpsertWebAsync(_operations.Values.Select(operation => new WebServerOperationJournalEntry(operation.ToDto(), operation.IdempotencyKey, operation.Actor)), ct);
     }
 
     private sealed record PersistedOperation(Guid OperationId, string IdempotencyKey, string InstanceId, string Kind, string? Actor,
-        WebServerOperationState State, string Stage, string ProblemCode, string? SnapshotId, DateTimeOffset? StartedAt, DateTimeOffset? CompletedAt)
+        WebServerOperationState State, string Stage, string ProblemCode, string? SnapshotId, DateTimeOffset? StartedAt, DateTimeOffset? CompletedAt,
+        bool NativeReceiptRetirementPending = false)
     {
         public WebServerOperationDto ToDto() => new(OperationId, InstanceId, Kind, State, Stage, ProblemCode, SnapshotId, StartedAt, CompletedAt);
     }
