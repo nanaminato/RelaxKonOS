@@ -12,6 +12,7 @@ public sealed class ProxyTunSafetyService(
     ILogger<ProxyTunSafetyService>? logger = null) : IProxyTunSafetyService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private Guid? currentSession;
     private readonly IProxyTunRuntimeController _runtime = runtime ?? new UnavailableProxyTunRuntimeController();
     public async Task<string?> EnableAsync(Guid profileId, System.Net.IPAddress? managementAddress, CancellationToken cancellationToken)
     {
@@ -47,6 +48,7 @@ public sealed class ProxyTunSafetyService(
             // that must be torn down if the Server restarts.  Keeping those two meanings
             // distinct lets the overview report the active mode without masking recovery.
             await WriteMarkerAsync(marker with { ActivationCompleted = true }, cancellationToken);
+            currentSession = marker.OperationId;
             logger?.LogInformation("TUN activation completed and the protected management route is reachable. OperationId={OperationId} ProfileId={ProfileId}", marker.OperationId, profileId);
             return null;
         }
@@ -64,13 +66,14 @@ public sealed class ProxyTunSafetyService(
         }
         finally { _gate.Release(); }
     }
-    public async Task<ProxyTunRecoveryReference?> CaptureRecoveryAsync(CancellationToken cancellationToken)
+    public async Task<ProxyTunRecoveryReference?> CaptureRecoveryAsync(bool includeCurrentSession, CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken);
         try
         {
             var marker = await ReadMarkerAsync(paths, cancellationToken);
-            return marker is null ? null : new(marker.OperationId, marker.CreatedAt);
+            return marker is null || marker.ActivationCompleted && marker.OperationId == currentSession && !includeCurrentSession
+                ? null : new(marker.OperationId, marker.CreatedAt);
         }
         finally { _gate.Release(); }
     }
@@ -118,6 +121,10 @@ public sealed class ProxyTunSafetyService(
     {
         if (marker.OperationId == Guid.Empty) return ProxyProblemCodes.RecoveryRequired;
 
+        // A live session becomes unfinished before teardown can touch the runtime or routes.
+        if (marker.ActivationCompleted)
+            await WriteMarkerAsync(marker with { ActivationCompleted = false }, cancellationToken);
+
         // Disable Mihomo's TUN first; this is the component that owns routes and DNS.  We still
         // call the platform restore hook so it can verify that the original management path won.
         var runtimeProblem = await _runtime.SetEnabledAsync(marker.Snapshot, false, null, CancellationToken.None);
@@ -129,6 +136,7 @@ public sealed class ProxyTunSafetyService(
             return ProxyProblemCodes.RecoveryRequired;
         }
         DeleteMarker();
+        currentSession = null;
         logger?.LogWarning("TUN was disabled and the protected management route was restored. OperationId={OperationId} Cause={Cause}", marker.OperationId, failedCode);
         return failedCode == ProxyProblemCodes.RecoveryFailed ? null : failedCode;
     }

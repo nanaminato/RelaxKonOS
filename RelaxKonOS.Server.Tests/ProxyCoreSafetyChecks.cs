@@ -72,9 +72,11 @@ internal static class ProxyCoreSafetyChecks
                 foreach (var type in new[] { typeof(ProxyRecoveryHostedService), typeof(SystemProxyGuardHostedService), typeof(ProxyServerExpiryService) })
                     Check(builder.Services.Count(d => d.ServiceType == typeof(IHostedService) && d.ImplementationType == type) == 1,
                         "Exactly one Core owner regardless of management enablement: " + type.Name + "/" + enabled);
+                var previousSafety = new ProxyTunSafetyService(paths, network, runtime);
+                await previousSafety.EnableAsync(Guid.NewGuid(), null, default);
                 var safety = services.GetRequiredService<IProxyTunSafetyService>();
-                await safety.EnableAsync(Guid.NewGuid(), null, default);
-                Check((await safety.GetStatusAsync(default)).HasRecoveryMarker, "A durable TUN session exists before simulated restart");
+                Check(await safety.CaptureRecoveryAsync(includeCurrentSession: false, default) is not null,
+                    "The new safety owner can recover a completed session from the previous owner");
                 var store = services.GetRequiredService<ProxyServerStore>();
                 var id = Guid.NewGuid(); var inboundId = Guid.NewGuid(); var secret = Guid.NewGuid().ToString("D");
                 var inbound = new ProxyServerInbound(inboundId, "expired", ProxyServerProtocol.VlessReality, "127.0.0.1", 24443,
@@ -149,7 +151,12 @@ internal static class ProxyCoreSafetyChecks
                             "A failed Core restore retains its durable marker and scheduled recovery without management");
                         network.RestoreSucceeds = true;
                     }
-                    await recovery.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(40));
+                    using (var recoveryBudget = new CancellationTokenSource(TimeSpan.FromSeconds(40)))
+                    {
+                        while ((await safety.GetStatusAsync(recoveryBudget.Token)).HasRecoveryMarker)
+                            await Task.Delay(20, recoveryBudget.Token);
+                    }
+                    await recovery.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(5));
                     await host.Applied.Task.WaitAsync(TimeSpan.FromSeconds(5));
                     await helper.Applied.Task.WaitAsync(TimeSpan.FromSeconds(5));
                     var deadline = DateTimeOffset.UtcNow.AddSeconds(5);

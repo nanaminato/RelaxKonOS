@@ -62,7 +62,7 @@ internal static class ProxyTunLiveChecks
                         finally { await DockerProcessRecoveryChecks.StopWorkerAsync(worker); }
                     }
 
-                    var original = await safety.CaptureRecoveryAsync(default)
+                    var original = await safety.CaptureRecoveryAsync(includeCurrentSession: true, default)
                         ?? throw new InvalidOperationException("The original TUN marker was lost.");
                     if (mihomo is not null)
                     {
@@ -81,7 +81,7 @@ internal static class ProxyTunLiveChecks
                         TestAssert.Assert(await safety.RecoverAsync(original, default) == ProxyProblemCodes.RecoveryRequired
                             && await DeviceExistsAsync() && calls.Reloads == 0
                             && await File.ReadAllTextAsync(activePath) == yaml
-                            && await safety.CaptureRecoveryAsync(default) == original,
+                            && await safety.CaptureRecoveryAsync(includeCurrentSession: true, default) == original,
                             "Pending publication must block a competing live TUN reload and preserve both authorities.");
                         await publication.Gate.WaitAsync();
                         try { await publication.AbortAsync(publicationId, null, notStarted: true, default); }
@@ -95,7 +95,7 @@ internal static class ProxyTunLiveChecks
                         calls.BlockNextReload = true;
                         TestAssert.Assert(await safety.RecoverAsync(original, default) == ProxyProblemCodes.RecoveryRequired
                             && await DeviceExistsAsync() && calls.Reloads == 0 && calls.BlockedReloads == 1
-                            && await safety.CaptureRecoveryAsync(default) == original
+                            && await safety.CaptureRecoveryAsync(includeCurrentSession: true, default) == original
                             && (await runtime.IsEnabledAsync(default)) is { Succeeded: true, Enabled: true },
                             "A controller that reconnects but still reports TUN enabled cannot close the original recovery.");
                         Console.WriteLine($"PASS MIHOMO LIVE UNAPPLIED RELOAD: operation={original.OperationId}; marker retained; native reloads=0");
@@ -103,7 +103,7 @@ internal static class ProxyTunLiveChecks
                     calls.DropNextReloadResponse = mihomo is not null;
                     await RunIpAsync("route", "del", "default", "via", "192.0.2.1", "dev", "rk-egress");
                     TestAssert.Assert(await safety.RecoverAsync(original, default) == ProxyProblemCodes.RecoveryRequired
-                        && !await DeviceExistsAsync() && await safety.CaptureRecoveryAsync(default) == original,
+                        && !await DeviceExistsAsync() && await safety.CaptureRecoveryAsync(includeCurrentSession: true, default) == original,
                         "Unknown management route must preserve the original recovery marker after real TUN removal.");
                     TestAssert.Assert(await safety.EnableAsync(Guid.NewGuid(), null, default) == ProxyProblemCodes.RecoveryRequired,
                         "An unresolved marker must block a new TUN activation.");
@@ -139,7 +139,7 @@ internal static class ProxyTunLiveChecks
                         {
                             await recoveryLog.Pending.Task.WaitAsync(Budget);
                             TestAssert.Assert(!recovery.ExecuteTask!.IsCompleted
-                                && await safety.CaptureRecoveryAsync(default) == original
+                                && await safety.CaptureRecoveryAsync(includeCurrentSession: true, default) == original
                                 && calls.Reloads == disableRequests,
                                 "The same Core worker must retain the original marker while the route is missing.");
                             var markerPath = Path.Combine(paths.GetStateDirectory(), "proxy-tun-recovery.json");
@@ -158,13 +158,37 @@ internal static class ProxyTunLiveChecks
                                 File.Move(savedMarker, markerPath);
                             }
                             await AddDefaultRouteAsync();
-                            await recovery.ExecuteTask.WaitAsync(TimeSpan.FromSeconds(45));
+                            await WaitForMarkerRemovalAsync(safety);
+                            TestAssert.Assert(runtime.Removals == 1 && calls.Reloads == disableRequests,
+                                "The Core worker must close the startup marker without another native disable.");
+
+                            TestAssert.Assert(await safety.EnableAsync(Guid.NewGuid(), null, default) is null,
+                                "A live session can start after Core restores the startup marker.");
+                            var activeSession = await safety.CaptureRecoveryAsync(includeCurrentSession: true, default);
+                            var beforeDisable = calls.Reloads;
+                            await Task.Delay(TimeSpan.FromSeconds(31));
+                            TestAssert.Assert(activeSession is not null && await DeviceExistsAsync()
+                                && await safety.CaptureRecoveryAsync(includeCurrentSession: true, default) == activeSession
+                                && calls.Reloads == beforeDisable,
+                                "The running Core scanner must leave a completed session and its native configuration intact.");
+
+                            await RunIpAsync("route", "del", "default", "via", "192.0.2.1", "dev", "rk-egress");
+                            TestAssert.Assert(await safety.DisableAsync(default) == ProxyProblemCodes.RecoveryRequired
+                                && !await DeviceExistsAsync()
+                                && await safety.CaptureRecoveryAsync(includeCurrentSession: false, default) == activeSession,
+                                "An interrupted teardown must retain the original session ID as unfinished work.");
+                            var afterDisable = calls.Reloads;
+                            await AddDefaultRouteAsync();
+                            await WaitForMarkerRemovalAsync(safety);
+                            TestAssert.Assert(!await DeviceExistsAsync() && calls.Reloads == afterDisable
+                                && runtime.Removals == 2 && await ReadRulesAsync() == baselineRules,
+                                "The same Core worker must close the post-start teardown after route repair without another disable.");
+                            Console.WriteLine($"PASS TUN LIVE SAME-HOST RECOVERY: operation={activeSession!.OperationId}; completed session survived scan; recovered without a second disable");
                         }
                         finally { await recovery.StopAsync(default).WaitAsync(Budget); }
                     }
-                    TestAssert.Assert(await safety.CaptureRecoveryAsync(default) is null && runtime.Removals == 1
-                        && calls.Reloads == disableRequests,
-                        "Core startup recovery must clear the original marker without a second TUN removal.");
+                    TestAssert.Assert(await safety.CaptureRecoveryAsync(includeCurrentSession: true, default) is null && runtime.Removals == 2,
+                        "Both original markers must be resolved by the same Core worker.");
                     if (mihomo is not null)
                     {
                         var restoredRoute = await RunIpAsync("route", "get", "198.51.100.53");
@@ -175,10 +199,10 @@ internal static class ProxyTunLiveChecks
 
                     TestAssert.Assert(await safety.EnableAsync(Guid.NewGuid(), null, default) is null,
                         "A fresh activation should succeed after the original route is verified.");
-                    var replacement = await safety.CaptureRecoveryAsync(default);
+                    var replacement = await safety.CaptureRecoveryAsync(includeCurrentSession: true, default);
                     TestAssert.Assert(replacement is not null && replacement != original
                         && await safety.RecoverAsync(original, default) is null
-                        && await safety.CaptureRecoveryAsync(default) == replacement && await DeviceExistsAsync(),
+                        && await safety.CaptureRecoveryAsync(includeCurrentSession: true, default) == replacement && await DeviceExistsAsync(),
                         "A stale recovery reference must leave a newer TUN session intact.");
                     TestAssert.Assert(await safety.DisableAsync(default) is null && !await DeviceExistsAsync(),
                         "The replacement TUN session must drain and remove its own device.");
@@ -201,7 +225,7 @@ internal static class ProxyTunLiveChecks
                         var reloads = calls.Reloads;
                         TestAssert.Assert(await safety.EnableAsync(Guid.NewGuid(), null, default) == ProxyProblemCodes.RecoveryRequired
                             && await publication.ReadPendingIdentityAsync(default) == publicationId
-                            && await safety.CaptureRecoveryAsync(default) is null && !await DeviceExistsAsync()
+                            && await safety.CaptureRecoveryAsync(includeCurrentSession: true, default) is null && !await DeviceExistsAsync()
                             && calls.Reloads == reloads && await File.ReadAllTextAsync(activePath) == yaml && await ReadRulesAsync() == baselineRules,
                             "A publication gate rejection must leave neither a new TUN marker nor a native mutation.");
                         Console.WriteLine($"PASS MIHOMO LIVE TUN ADMISSION: publication={publicationId}; new TUN markers and reloads=0");
@@ -217,6 +241,13 @@ internal static class ProxyTunLiveChecks
             }
         }
         finally { await RunIpAsync("link", "del", "rk-egress"); }
+    }
+
+    private static async Task WaitForMarkerRemovalAsync(IProxyTunSafetyService safety)
+    {
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+        while ((await safety.GetStatusAsync(budget.Token)).HasRecoveryMarker)
+            await Task.Delay(100, budget.Token);
     }
 
     internal static async Task RunWorkerAsync(string originalNamespace, string root, int port)

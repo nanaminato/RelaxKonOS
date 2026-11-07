@@ -143,7 +143,7 @@ IPC 请求、响应流、模块回调、批准中的 Broker 操作和持久后�
 | MB-01 | **部分完成，整项开放**。MB-01A 资源清单与分层基线见 §42。[MB-01B](RelaxKonOS.ServerModuleBaseline.20261106.md) 验证双平台启动期采树、交错认证 Git、自然释放和 Terminal Hub，Windows 另完成真实 Firewall 三轮 | Linux 同制品的真实 Helper 联合矩阵仍缺，System 模式探索中终端退出证明缺失且共享 Helper 触发宿主代理恢复。外部共享服务归属、长时间与非空仓库负载继续开放 | 隔离 Helper 和宿主持久恢复责任后补 Linux 全量联合矩阵，保留缺失与原始证据，关联 RES-01/03 |
 | MB-02 | **部分交付**。Git Contracts/独立实现和窄 Host 端口，Proxy 订阅转换契约/私有实现，Firewall-F1 独立契约/执行代码及构建门禁；回收验证见 §10/11/20～22/41 | 全官方包仍非唯一 collectible ABI；其他模块尚有根服务和实现依赖 | 全契约不引用 Server/实现；Host/模块互引构建门禁；发布包与私有依赖按唯一当前 ABI 验证 |
 | MB-03 | **Git 有限切片交付**。真实仓库/CLI/凭据/控制台与构建执行项目，100轮 ALC 和保留完成请求验证（§10/11）；镜像清理责任修复与真实 Engine 标签检查见 §43，离线 BuildKit 续核见 §44 | 真实 Docker/BuildKit 执行中取消、清理、恢复与 ALC 联合矩阵未完成；生产内存/冷启动缺失 | 真实任务/流/持久故障责任结束才回收；两平台循环不累积句柄/代码代次；实际引擎恢复与资源目标达到门槛 |
-| MB-04 | **常驻边界阶段交付**。共享读取、guard/TUN、到期与发布恢复单一 owner，后台工作租约、订阅转换预算及独立代码（§12～22） | Proxy 整体仍 resident；安全职责持久调度交接、真实网络故障和动态休眠未完成 | 系统代理/TUN/到期责任在重启及休眠后连续可靠；未知结果不重放；正式包/代码释放与生产收益分别验证 |
+| MB-04 | **常驻边界阶段交付**。共享读取、guard/TUN、到期与发布恢复单一 owner，后台工作租约、订阅转换预算及独立代码（§12～22），Core 接续运行期 TUN 恢复见文末 | Proxy 整体仍 resident；安全职责持久调度交接、真实网络故障和动态休眠未完成 | 系统代理/TUN/到期责任在重启及休眠后连续可靠；未知结果不重放；正式包/代码释放与生产收益分别验证 |
 | MB-05 | **MB-05A 常驻后台责任阶段交付**（§39）。三域真实工作租约、准入/Stop 同锁、实际任务及清理排空；证书取消只记录请求，真实任务决定终态。Docker 在途停止与原回执恢复见 §45，独立 Pebble、Nginx、Engine 实测见 §52～54，证书续期持久调度、网站发布、直接 WebServer 和 Docker Compose 执行作用域见文末 | 三域仍 resident；独立执行程序集和完整联合矩阵开放；跨文件事务和远端 CA 未知状态仍须恢复规则 | MB-05A 后台 owner/终态/禁用门槛已通过，保持 resident；整项还须验证持久调度、独立执行器、真实 Engine/CA/Nginx 重启连续性与休眠 |
 | MB-06 | **MB-06A/06B 阶段交付**（§39/40），Windows LocalSystem/S4U 安装夹具及 Core／Helper 崩溃恢复实测通过（§48） | 正式发行服务全链、Linux 固定启动器跨代故障、SDK 合作 drain/后台任务申报仍开放 | 整项仍须合作 drain/后台申报、正式安装多代信任/撤销/崩溃矩阵与旧回调隔离，验收后才启用闲时退出/重启 |
 | MB-07 | **SystemPerformance S1 已交付并冻结范围**（§23～37）；Firewall-F1 代码回收与 Tailscale TS-01 持久责任跨对象代次验收交付（§41）；Terminal-T1/T2 阶段交付（§39/40） | SystemPerformance 与 Terminal 仍 resident，生产收益/完整原生压力未测；Terminal 当前账号 Windows 树与 Linux 本地/永久降权 Helper 树已实测，Windows 安装 Helper/S4U、宿主崩溃/孤儿恢复矩阵仍开放；其余模块代码边界未验证 | Terminal-T1/T2 会话/当前原生树阶段已验收，断线不杀会话；整项还须安装/崩溃/压力矩阵及收益证据，再决定独立程序集，不能将 S1/T2 当作整项关闭 |
@@ -1477,3 +1477,11 @@ Windows Release 模块边界与本地跨进程回归通过，覆盖原工作租�
 仓内 `RelaxKonOS.Server.Tests/run-authenticated-nginx-live.sh` 和同名 Python 驱动在独立挂载、网络和 PID 命名空间运行。私有状态、发现入口、配置和证书只供专属 Nginx。完整 Linux x64 Release Server 使用生产 PAM 登录和管理员授权路径，未认证重载被拒绝。专属命令实际向 Nginx 提交一次 reload，客户端验证原证书和新站点响应。命令返回前保留测试屏障，通过生产 API 确认操作仍 Running 后终止整个 Server。重启重新认证，同键和原 ID 查询均返回 `3eb76997-4b04-4849-ad72-a34423de592a` Failed / webserver.operation_interrupted。相同 Nginx master 持续提供 HTTPS，reload 计数保持一次。宿主 Docker 和 Nginx PID 及 Nginx 配置指纹一致。
 
 日志为 .artifacts/mb05-auth-nginx-admin-live.log，Release 归档 SHA-256 为 e0666d40f74d1058d6ca6d940a33903c9eff280cdef33b06a72c6bb9ecfba6b8。前几轮暴露私有状态挂载、专属 Nginx 初始化和测试身份选择问题，修正后通过。测试命令包装器仅限专属集成实例，生产提供者、授权、台账及重启入口均参与。其他直接动作、系统包 Nginx 的 Helper/systemd 故障及完整认证的网站发布仍待验收，WebServer 保持 resident。
+
+### MB-04 Core 接续运行期 TUN 恢复
+
+原 Core TUN worker 在启动后持续扫描原持久标记。同一安全服务在原 gate 内识别当前进程已完成的会话，扫描不会拆除该会话。主动关闭在首次运行时或路由变更前将原标记置为未完成，保留原标记 ID 和路由快照。旧进程遗留或当前未完成的标记由原安全服务恢复。控制器或路由结果不可核实时继续持有原标记，只有控制器、设备和管理路由都核实后才清理。空闲扫描不解析控制器或管理执行图。
+
+Windows Release TUN 边界 34 项、Core 安全所有权 37 项、工作作用域 31 项及模块边界回归通过。Linux x64 Release 在私有网络、挂载和 PID 命名空间用实际 Mihomo 验证。原崩溃操作 `5c9f30ec-7db1-4cee-a8ee-0777fc08b82a` 恢复时经历真实路由缺失、控制器响应丢失与不安全标记路径，原禁用 reload 一次。随后同一 Core worker 保留已完成的新会话。删除专属默认路由后显式关闭会话，原 `bb1ba90e-4e66-4237-ac4b-bf527f374067` 仍以未完成标记存在。路由恢复后，同一 worker 关闭原标记，设备和策略规则回到基线，未追加禁用 reload。宿主 Mihomo、sing-box PID 与代理文件指纹一致。日志为 .artifacts/mb04-tun-rescan-live-final.log，归档 SHA-256 为 befc69710c42c3a2d6844a2037396bb8bae39ab1a59dd646faf78d6caad3eeed。首轮本地重启夹具误用原 owner，已用两个 owner 复测。首轮远端包装器引号错误，在连接前退出，修正后通过。受管发布仍保留网络事务门禁，Proxy 保持 resident。
+
+Linux 完整非 root Server、独立 Helper 与私有 systemd 联合回归也通过。完整 Server 恢复在途激活 `b5a3586c-3afb-4f92-9e67-2e86a5e75518` 的原标记和路由，Mihomo 继续运行，系统代理纠偏、sing-box 授权到期及真实转发接续，专属 cgroup 清理且宿主指纹一致。日志为 .artifacts/mb04-tun-rescan-systemd-live.log，归档 SHA-256 为 1e837ca6a8a4fa02c1b967d37906ee05e183f5cac44a47dfcb102f714e091a19。

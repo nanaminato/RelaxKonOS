@@ -81,7 +81,7 @@ public interface IProxyTunSafetyService : IProxyRecoveryService
     Task<string?> EnableAsync(Guid profileId, System.Net.IPAddress? managementAddress, CancellationToken cancellationToken);
     Task<string?> DisableAsync(CancellationToken cancellationToken);
     Task<string?> EmergencyDisableAsync(CancellationToken cancellationToken);
-    Task<ProxyTunRecoveryReference?> CaptureRecoveryAsync(CancellationToken cancellationToken);
+    Task<ProxyTunRecoveryReference?> CaptureRecoveryAsync(bool includeCurrentSession, CancellationToken cancellationToken);
     Task<string?> RecoverAsync(ProxyTunRecoveryReference reference, CancellationToken cancellationToken);
 }
 

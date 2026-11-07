@@ -4486,3 +4486,5 @@ Linux 隔离实测覆盖 TUN 激活重载已应用、持久标记尚未完成时
 直接 TUN 激活先在原发布锁内通过发布准入，再持久化安全标记并开始配置变更。拒绝准入不产生待恢复的 TUN 操作。已经持久化的原标记继续由 Core 核验和补偿，Linux 真实设备及完整 Server 回归均通过。证据见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-tun-发布准入与恢复标记)。
 
 已确认的受管 Mihomo 发布在 Linux 私有 systemd 实测中拒绝直接 TUN 激活。原 Helper 补偿回执、Mihomo PID、真实转发和管理路由保持可核验，门禁未生成恢复标记或发送控制器请求。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-已确认受管发布的真实-tun-门禁)。
+
+Core TUN worker 可在同一 Server 进程内接手未完成关闭。关闭前持久化原标记，管理路由故障时保留同一 ID。Linux 私有网络实测确认路由恢复后只核验并结清原标记，不重复禁用，已经完成的当前会话继续运行。受管发布下的 TUN 网络事务仍由现有门禁阻止。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-core-接续运行期-tun-恢复)。

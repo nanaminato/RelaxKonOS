@@ -194,7 +194,7 @@ internal static class MihomoIpcStartupAcceptance
         var after = await lifecycle.QueryAsync(default, interrupted);
         var publicationAfter = await startupStore.ReadAsync(default);
         var activeAfter = await File.ReadAllBytesAsync(active);
-        if (rejected != ProxyProblemCodes.NotSupported || await safety.CaptureRecoveryAsync(default) is not null
+        if (rejected != ProxyProblemCodes.NotSupported || await safety.CaptureRecoveryAsync(includeCurrentSession: true, default) is not null
             || requests.Count != 0 || !activeBefore.SequenceEqual(activeAfter)
             || after.Receipt != final.Receipt || after.Installation.StateRevision != final.Installation.StateRevision
             || after.ConfigurationIdentity != final.ConfigurationIdentity

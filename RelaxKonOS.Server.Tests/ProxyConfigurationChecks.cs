@@ -133,7 +133,7 @@ internal static async Task VerifyMihomoTunActivationPreservationAsync(string roo
     }) })
     {
         await File.WriteAllTextAsync(markerPath, invalid);
-        var reference = await unknownSafety.CaptureRecoveryAsync(default);
+        var reference = await unknownSafety.CaptureRecoveryAsync(includeCurrentSession: true, default);
         TestAssert.Assert(reference is not null && await unknownSafety.RecoverAsync(reference, default) == ProxyProblemCodes.RecoveryRequired
             && await unknownSafety.EmergencyDisableAsync(default) == ProxyProblemCodes.RecoveryRequired
             && unknownRuntime.DisableCount == 0 && unknownPlatform.RestoreCount == 0
