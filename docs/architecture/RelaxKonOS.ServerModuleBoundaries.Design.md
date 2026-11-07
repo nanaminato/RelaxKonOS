@@ -142,7 +142,7 @@ IPC 请求、响应流、模块回调、批准中的 Broker 操作和持久后�
 | --- | --- | --- | --- |
 | MB-01 | **部分完成，整项开放**。MB-01A 资源清单与分层基线见 §42。[MB-01B](RelaxKonOS.ServerModuleBaseline.20261106.md) 验证双平台启动期采树、交错认证 Git、自然释放和 Terminal Hub，Windows 另完成真实 Firewall 三轮 | Linux 同制品的真实 Helper 联合矩阵仍缺，System 模式探索中终端退出证明缺失且共享 Helper 触发宿主代理恢复。外部共享服务归属、长时间与非空仓库负载继续开放 | 隔离 Helper 和宿主持久恢复责任后补 Linux 全量联合矩阵，保留缺失与原始证据，关联 RES-01/03 |
 | MB-02 | **部分交付**。Git Contracts/独立实现和窄 Host 端口，Proxy 订阅转换契约/私有实现，Firewall-F1 独立契约/执行代码及构建门禁；回收验证见 §10/11/20～22/41 | 全官方包仍非唯一 collectible ABI；其他模块尚有根服务和实现依赖 | 全契约不引用 Server/实现；Host/模块互引构建门禁；发布包与私有依赖按唯一当前 ABI 验证 |
-| MB-03 | **Git 有限切片交付**。真实仓库/CLI/凭据/控制台与构建执行项目，100轮 ALC 和保留完成请求验证（§10/11）；镜像清理责任与真实 Engine 标签检查见 §43；派发检查点和跨进程恢复见[构建派发对账](#mb-03-git-构建派发检查点与重启对账) | 真实 Docker/BuildKit 执行中取消、清理、恢复与 ALC 联合矩阵未完成；生产内存/冷启动缺失 | 真实任务/流/持久故障责任结束才回收；两平台循环不累积句柄/代码代次；实际引擎恢复与资源目标达到门槛 |
+| MB-03 | **Git 有限切片交付**。真实仓库/CLI/凭据/控制台与构建执行项目，100轮 ALC 和保留完成请求验证（§10/11）；镜像清理责任与真实 Engine 标签检查见 §43；派发检查点和跨进程恢复见[构建派发对账](#mb-03-git-构建派发检查点与重启对账)，专属仓库见[HTTPS 源仓库夹具](#mb-03-专属-https-源仓库夹具) | 真实 Docker/BuildKit 执行中取消、清理、恢复与 ALC 联合矩阵仍受 RootlessKit 启动限制；生产内存/冷启动缺失 | 真实任务/流/持久故障责任结束才回收；两平台循环不累积句柄/代码代次；实际引擎恢复与资源目标达到门槛 |
 | MB-04 | **常驻边界阶段交付**。共享读取、guard/TUN、到期与发布恢复单一 owner，后台工作租约、订阅转换预算及独立代码（§12～22）。Core 接续运行期 TUN，完整认证入站发布恢复与补偿见文末 | Proxy 整体仍 resident；安全职责持久调度交接、真实网络故障矩阵和动态休眠未完成 | 系统代理/TUN/到期责任在重启及休眠后连续可靠；未知结果不重放；正式包/代码释放与生产收益分别验证 |
 | MB-05 | **MB-05A 常驻后台责任阶段交付**（§39）。三域真实工作租约、准入/Stop 同锁、实际任务及清理排空。Docker 在途停止与原回执恢复见 §45，独立 Pebble、Nginx、Engine 实测见 §52～54。完整认证网站 WebRoot 签发、崩溃恢复、取消与 SIGTERM 联验通过，见本文对应小节 | 三域仍 resident。独立执行程序集、完整故障矩阵、缺失身份的 CA 订单核实与整机掉电开放 | 后台 owner、终态与禁用门槛通过。按真实工作与安全责任边界推进独立执行器和动态休眠 |
 | MB-06 | **MB-06A/06B 阶段交付**（§39/40），Windows LocalSystem/S4U 安装夹具及 Core／Helper 崩溃恢复实测通过（§48） | 正式发行服务全链、Linux 固定启动器跨代故障、SDK 合作 drain/后台任务申报仍开放 | 整项仍须合作 drain/后台申报、正式安装多代信任/撤销/崩溃矩阵与旧回调隔离，验收后才启用闲时退出/重启 |
@@ -2188,3 +2188,11 @@ Windows Release 模块边界、控制器和桌面布局回归通过。Kestrel �
 同制品复验 `/configs` 单次请求、取消排空及原发布 `a06ae54c-70b0-4c64-b066-566b702a3e1e` 的 SIGTERM 与重启恢复。Linux 原生套件通过 178 项，专属 cgroup 已清理，宿主 sing-box 和代理文件指纹一致。归档 SHA-256 为 `9ef3033da678a4a40977d5c82f413d9831e62e00bafda5d5eadac8c22d3bebbe`，原始样本与两份制品摘要见 `.artifacts/mb04-single-config-paired/`。
 
 Windows Release 模块边界与 Mihomo 注册专项通过。MB-05 跨进程按原 `23bf6ea0-6b10-4486-a7f0-393c53236d0a` 返回 Interrupted，受控副作用计数为一。ManagedRuntimes 广跑停在伪造制品布局断言，父提交发布制品的 `runtime-lifecycle-only` 复现同一失败。
+
+### MB-03 专属 HTTPS 源仓库夹具
+
+既有 Linux 测试机在私有 PID、网络与挂载命名空间内启动独立 Engine。只读 Git smart HTTP 后端在私有桥接地址监听 443，使用专用名称 `repo.mb03.test`、本轮临时 CA 和可离线构建的 `scratch` 上下文。名称解析只写入私有 `/etc/hosts` 挂载和专属容器，信任仅通过 Git 进程的 CA 文件提供。夹具从已核验的本地归档导入原 rootless BuildKit 镜像，无需公网或共享 Docker socket。
+
+宿主 Git 与镜像内非 root Git 都在缺少专属 CA 时拒绝连接，分别报告证书签发者不受信和找不到签发证书。配置 CA 后，两端均通过真实 TLS 浅克隆同一个 `8f29460479e3cc33108fa645c89c671eb7bdc684` 提交，容器中确认构建上下文标记。独立 Engine 中已核对删除专属容器和网络。执行前后共享 Docker、Nginx 的状态及 PID、宿主 hosts 与 AppArmor 设置指纹一致。执行脚本为 `Tests/ManagedRuntimes/run-git-build-https-linux.sh`，在隔离命名空间内传入宿主网络与挂载命名空间 ID、本地镜像归档与镜像标签。原始日志见 `.artifacts/mb03-https-live.log`，镜像归档 SHA-256 为 `3b931425a738347c19895990381c4aa102a8e94d9caaa9fa2d167f4b30529f78`。
+
+专属仓库、名称解析及 Git 客户端信任已在现有机器验证。BuildKit daemon 未参与本次传输。联合验收仍需要允许专属 RootlessKit 创建用户命名空间的隔离执行环境，以验证实际 builder 的证书接入及在途取消、断连、构建清理、原回执和 ALC。共享 AppArmor 策略维持现有配置。

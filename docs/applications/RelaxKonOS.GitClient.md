@@ -657,3 +657,5 @@ Windows 与 Linux 完整宿主均实测了认证后的仓库列表、300 秒自�
 2026-11-06 MB-03 预检复核：测试账户创建非特权 user namespace 仍失败。真实构建中的取消、断连、原回执恢复及 ALC 联合验收等待专属 rootless builder 和受信 HTTPS 仓库。 [验收台账 §50](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#50-mb-0305-隔离测试设施复核2026-11-06)
 
 Git 构建只接受报告单一指定容器端点的专用 remote builder。Linux Release 已验证相似容器名和附加节点在准入前被拒绝。独立 Engine 上的 RootlessKit 仍受宿主用户命名空间限制，实际构建取消与恢复尚待实机联合验收。
+
+已在同一 Linux 测试机建立隔离的 HTTPS 443 源仓库。宿主 Git 与 rootless BuildKit 镜像内的 Git 都验证了专属 CA 信任及浅克隆。实际 BuildKit 取源、取消和恢复仍待专属 RootlessKit 启动后验收。见[HTTPS 源仓库夹具](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-03-专属-https-源仓库夹具)。
