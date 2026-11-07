@@ -160,11 +160,27 @@ def run(server, project, helper):
                     raise RuntimeError("Server did not terminate abnormally")
             finally:
                 stop(process)
+            for _ in range(200):
+                state = subprocess.check_output(["docker", "inspect", "--format", "{{.State.Status}}", container], text=True).strip()
+                if state == "exited":
+                    break
+                time.sleep(0.1)
+            else:
+                raise RuntimeError("The original Engine stop did not complete")
+            subprocess.run(["docker", "start", container], check=True, stdout=subprocess.DEVNULL)
             process = start()
             try:
-                replay = request(route, {"confirmed": True}, login(), expected=202)
+                token = login()
+                replay = request(route, {"confirmed": True}, token, expected=202)
                 if replay["operationId"] != operation or str(replay["state"]).lower() != "interrupted":
                     raise RuntimeError("Server restart did not preserve the original Docker receipt")
+                observed = request(f"/api/v1.0/docker/stack-operations/{operation}", token=token)
+                if observed["operationId"] != operation or str(observed["state"]).lower() != "interrupted":
+                    raise RuntimeError("The recovered receipt was not readable by original operation ID")
+                state = subprocess.check_output(["docker", "inspect", "--format", "{{.State.Status}}", container], text=True).strip()
+                stops = subprocess.check_output(["docker", "logs", container], text=True).splitlines().count("stopping")
+                if state != "running" or stops != initial_stops + 1:
+                    raise RuntimeError("The original key repeated a stop after the witness was restarted")
                 print(f"PASS AUTHENTICATED SERVER DOCKER RECEIPT: operation={operation}; original response discarded; server killed while stop was running; recovered Interrupted")
             finally:
                 stop(process)

@@ -368,3 +368,5 @@ Linux 隔离 Engine 已通过完整 System Mode Server 的认证回执验收。�
 完整 Server 实机复测覆盖了客户端未读取原停止响应。按原幂等键确认受理后关闭连接，重启并重新认证仍取回原 Succeeded 回执，停止未重放。
 
 完整 Server 已通过停止仍在执行时的强制中断验收。Engine 已接受停止且原回执仍为 Running 时终止 Server，重启并重新认证后同键取回原 Interrupted 回执，停止未重放。
+
+完整 Server 重启前重新启动同一专属容器后，已验证原键重试仍返回原中断回执，且容器保持运行。按原 operationId 的查询也返回同一回执。

@@ -1333,3 +1333,5 @@ Linux x64 Release 在私有 Engine 和回环网络中启动完整 System Mode Se
 Linux 完整认证 Server 复测中，独立 TCP 连接发送真实停止请求，另一连接按原幂等键确认受理后，客户端关闭原连接且不读取响应。原操作 751cc66c-faad-4626-8c6e-e0f974db740d 完成并落盘，Server 重启和重新认证后返回原 Succeeded 回执。专属容器停止日志仅增加一次。日志为 .artifacts/mb05-auth-response-loss-live.log，归档 SHA-256 为 c518fb25902d0060a3a196c9d694da8ee1e97c8656d785a15fa9b7a7253bdec4。本项验证客户端丢失响应，不提供完整 Server 写出任务阻塞期间的租约观测。
 
 Linux 完整认证 Server 的运行中崩溃路径通过。客户端未读取受理响应，通过原幂等键取到 operationId，确认专属容器的 TERM handler 已执行且原回执仍为 Running 后强制终止 Server。重启并重新认证后，同键返回原操作 39baf3ad-13d6-4333-9649-0310e61778b4 的 Interrupted 回执，停止日志只增加一次。日志为 .artifacts/mb05-auth-server-crash-live.log，归档 SHA-256 为 40c4adf9834c82b3d30cb6e3f50e4530b2ec5ac5b53430b23fa619e075e88416。
+
+完整 Server 去重续核在原 Engine 停止完成后显式重新启动同一专属容器，再启动 Server。登录后同键提交及按 ID 查询均返回原 Interrupted 操作 495e7459-98db-4e69-9d34-cf534fb9cace。容器仍在运行，停止日志只增加一次。Linux 实机日志为 .artifacts/mb05-auth-restarted-witness-live.log，归档 SHA-256 为 930f32b0ab2a0ebeae16a0a272a9b6b7cb45863693a3770e9d42314d4aaa7572。
