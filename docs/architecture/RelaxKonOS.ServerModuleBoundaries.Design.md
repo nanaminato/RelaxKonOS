@@ -1464,10 +1464,16 @@ Windows Release 模块边界回归通过。测试确认原协调器启动不构�
 
 直接 Nginx 集成、重载、HTTP-01 启用及受管实例启动、停止、重启使用同一 WebServer 操作台账。只有新准入的操作在原实例锁和原工作租约内解析执行器。执行器在既有 Core Nginx 提供者上调用封闭命令，执行任务和异步作用域清理完成后才提交终态。清理不可确认时保持原活跃回执及故障租约。原子准入同时核验原操作者，其他操作者的同键碰撞返回冲突且不暴露原回执。共享提供者及同步站点接口仍归原 Core 服务。
 
-Windows Release WebServer 和模块边界专项通过，覆盖取消期间的真实任务、异步作用域清理、清理失败保留原责任和操作者同键冲突。Linux x64 Release 在私有网络、挂载和 PID 命名空间用实际 Nginx 验证直接重载。专属重载命令退出成功后，传输返回前终止原工作进程，原 `eb74e92c-f9de-4351-9322-85f424d51a0d` 恢复为 Failed / interrupted。原实例不再可发现时，生命周期入口和直接重载 HTTP 同键入口仍返回原回执。客户端断线后响应排空，恢复作用域为零，原 Nginx 继续提供 HTTPS，实际重载一次。宿主 Nginx PID 和配置指纹一致。日志为 .artifacts/mb05-web-direct-scope-live.log，归档 SHA-256 为 b72228bb83eb26db12eda0aecbc5b93fa313c4942db3be2e297eb6740ea47b8e。本轮 Linux 使用生产提供者、原台账和实际 Nginx，封闭重载命令经隔离传输发往专属进程。其他直接动作的实机中断和完整 Server 认证联合验收仍开放。WebServer 保持 resident。
+Windows Release WebServer 和模块边界专项通过，覆盖取消期间的真实任务、异步作用域清理、清理失败保留原责任和操作者同键冲突。Linux x64 Release 在私有网络、挂载和 PID 命名空间用实际 Nginx 验证直接重载。专属重载命令退出成功后，传输返回前终止原工作进程，原 `eb74e92c-f9de-4351-9322-85f424d51a0d` 恢复为 Failed / interrupted。原实例不再可发现时，生命周期入口和直接重载 HTTP 同键入口仍返回原回执。客户端断线后响应排空，恢复作用域为零，原 Nginx 继续提供 HTTPS，实际重载一次。宿主 Nginx PID 和配置指纹一致。日志为 .artifacts/mb05-web-direct-scope-live.log，归档 SHA-256 为 b72228bb83eb26db12eda0aecbc5b93fa313c4942db3be2e297eb6740ea47b8e。本轮 Linux 使用生产提供者、原台账和实际 Nginx，封闭重载命令经隔离传输发往专属进程。完整 Server 认证重载见下文，其他直接动作的实机中断仍开放。WebServer 保持 resident。
 
 ### MB-05 Docker Compose 准入与执行作用域
 
 原常驻协调器独占准入、项目互斥、回执和恢复。新操作持久化 queued 后才解析 Compose 执行图，异步清理结束后才写终态。清理失败保留原活跃回执和故障责任。启动仅为原 Running 项创建只读观察作用域，已知键重试不创建执行作用域。Core Engine、外部容器及卷由原设施持有。
 
 Windows Release 模块边界与本地跨进程回归通过，覆盖原工作租约与回执跨异步清理、原 operationId 恢复和副作用计数。Linux x64 Release 在独立挂载、网络、PID 命名空间和私有 Docker socket 上通过真实 Engine 与完整 Server 验收。停止期间强制终止 daemon 和工作进程后，原操作 `ac82fe2d-9996-4012-a68d-5381c630801b` 恢复为 Interrupted，观察作用域一次、重放作用域零，见证容器的停止计数前后同为 2。完整 Server 经认证提交停止请求并丢弃原响应，在真实停止过程中强制终止 Server；重启后同键返回原 `2408d31c-3dfd-4ee8-9650-a08246796f28` Interrupted，停止计数只增加一次。私有 Engine 重启也保留原容器和命名卷，夹具清理专属资源，宿主共享服务 PID、容器和环境指纹保持一致。首轮包装器因 CRLF 在启动 Engine 前退出，转为 LF 后通过。证据为 .artifacts/mb05-docker-scope-live.log，归档 SHA-256 为 e0666d40f74d1058d6ca6d940a33903c9eff280cdef33b06a72c6bb9ecfba6b8。Docker 模块保持 resident。独立执行程序集、完整故障矩阵和生产内存测量仍开放。
+
+### MB-05 完整认证 Server 的 Nginx 重载与重启
+
+仓内 `RelaxKonOS.Server.Tests/run-authenticated-nginx-live.sh` 和同名 Python 驱动在独立挂载、网络和 PID 命名空间运行。私有状态、发现入口、配置和证书只供专属 Nginx。完整 Linux x64 Release Server 使用生产 PAM 登录和管理员授权路径，未认证重载被拒绝。专属命令实际向 Nginx 提交一次 reload，客户端验证原证书和新站点响应。命令返回前保留测试屏障，通过生产 API 确认操作仍 Running 后终止整个 Server。重启重新认证，同键和原 ID 查询均返回 `3eb76997-4b04-4849-ad72-a34423de592a` Failed / webserver.operation_interrupted。相同 Nginx master 持续提供 HTTPS，reload 计数保持一次。宿主 Docker 和 Nginx PID 及 Nginx 配置指纹一致。
+
+日志为 .artifacts/mb05-auth-nginx-admin-live.log，Release 归档 SHA-256 为 e0666d40f74d1058d6ca6d940a33903c9eff280cdef33b06a72c6bb9ecfba6b8。前几轮暴露私有状态挂载、专属 Nginx 初始化和测试身份选择问题，修正后通过。测试命令包装器仅限专属集成实例，生产提供者、授权、台账及重启入口均参与。其他直接动作、系统包 Nginx 的 Helper/systemd 故障及完整认证的网站发布仍待验收，WebServer 保持 resident。
