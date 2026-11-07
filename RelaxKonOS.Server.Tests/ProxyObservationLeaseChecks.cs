@@ -34,6 +34,7 @@ internal static class ProxyObservationLeaseChecks
             ModuleResidencyOptions.Parse(builder.Configuration, ids, ids), services, module,
             services.GetRequiredService<ILogger<ModuleResidencyCoordinator>>(), residentWorkModuleIds: ids));
         builder.Services.AddSingleton<IResidentModuleWorkLeaseSource, CapturingLeaseSource>();
+        builder.Services.AddSingleton<MihomoTrafficSampler>();
         var scenario = new Scenario(holdController: false);
         builder.Services.AddScoped<IProxyEngineRegistry>(_ => throw new InvalidOperationException("Observation reads must not create the management engine graph."));
         builder.Services.AddSingleton<IProxyDiagnosticLogStore, FixtureDiagnostics>();
@@ -130,6 +131,8 @@ internal static class ProxyObservationLeaseChecks
         foreach (var (route, holdController) in routes.SelectMany(route => new[] { (route, true), (route, false) }))
         {
             scenario = new Scenario(holdController);
+            var cleanupBeforeResponse = route == ProxyApiRoutes.Traffic && !holdController;
+            if (cleanupBeforeResponse) scenario.ReleaseCleanup.TrySetResult();
             using var caller = CancellationTokenSource.CreateLinkedTokenSource(ct);
             var request = http.GetAsync(route, caller.Token);
             try
@@ -147,8 +150,9 @@ internal static class ProxyObservationLeaseChecks
                 scenario.ReleaseController.TrySetResult();
                 scenario.ReleaseResponse.TrySetResult();
                 await scenario.CleanupEntered.Task.WaitAsync(ct);
-                TestAssert.Assert(HasLease() && !scenario.RequestExited.Task.IsCompleted,
-                    "A scope awaiting asynchronous disposal must retain the Proxy work lease.");
+                if (!cleanupBeforeResponse)
+                    TestAssert.Assert(HasLease() && !scenario.RequestExited.Task.IsCompleted,
+                        "A scope awaiting asynchronous disposal must retain the Proxy work lease.");
             }
             finally
             {
@@ -159,6 +163,58 @@ internal static class ProxyObservationLeaseChecks
             await scenario.RequestExited.Task.WaitAsync(ct);
             TestAssert.Assert(!HasLease(), "A fully drained read must return its work lease.");
         }
+        scenario = new Scenario(holdController: true);
+        using (var firstCaller = CancellationTokenSource.CreateLinkedTokenSource(ct))
+        {
+            var first = http.GetAsync(ProxyApiRoutes.Traffic, firstCaller.Token);
+            await scenario.ControllerEntered.Task.WaitAsync(ct);
+            var second = http.GetFromJsonAsync<ProxyTrafficDto>(ProxyApiRoutes.Traffic, RelaxKonOSJsonOptions.Default, ct);
+            try
+            {
+                while (coordinator.Describe(ServerModules.ProxyId)?.ActiveLeases != 3) await Task.Delay(10, ct);
+                await firstCaller.CancelAsync();
+                await scenario.Disconnected.Task.WaitAsync(ct);
+                try { using var unexpected = await first; throw new Exception("Expected traffic client cancellation."); }
+                catch (OperationCanceledException) when (firstCaller.IsCancellationRequested) { }
+                scenario.ReleaseController.TrySetResult();
+                await scenario.CleanupEntered.Task.WaitAsync(ct);
+                TestAssert.Assert(!scenario.ControllerCancelled.Task.IsCompleted && scenario.ControllerCalls == 2
+                    && !second.IsCompleted && coordinator.Describe(ServerModules.ProxyId)?.ActiveLeases == 3,
+                    "The remaining traffic reader must share one native sample and keep its work through scope cleanup.");
+            }
+            finally
+            {
+                scenario.ReleaseController.TrySetResult();
+                scenario.ReleaseCleanup.TrySetResult();
+            }
+            TestAssert.Assert(await second is { ProblemCode: "", UploadBytesPerSecond: 1, UploadTotalBytes: 3 },
+                "The remaining traffic reader must receive the shared sample.");
+            while (HasLease()) await Task.Delay(10, ct);
+        }
+        scenario = new Scenario(holdController: true);
+        using (var lastCaller = CancellationTokenSource.CreateLinkedTokenSource(ct))
+        {
+            var last = http.GetAsync(ProxyApiRoutes.Traffic, lastCaller.Token);
+            await scenario.ControllerEntered.Task.WaitAsync(ct);
+            await lastCaller.CancelAsync();
+            await scenario.ControllerCancelled.Task.WaitAsync(ct);
+            try { using var unexpected = await last; throw new Exception("Expected last traffic client cancellation."); }
+            catch (OperationCanceledException) when (lastCaller.IsCancellationRequested) { }
+            scenario.ReleaseController.TrySetResult();
+            await scenario.CleanupEntered.Task.WaitAsync(ct);
+            var next = http.GetFromJsonAsync<ProxyTrafficDto>(ProxyApiRoutes.Traffic, RelaxKonOSJsonOptions.Default, ct);
+            try
+            {
+                while (coordinator.Describe(ServerModules.ProxyId)?.ActiveLeases != 3) await Task.Delay(10, ct);
+                TestAssert.Assert(scenario.ControllerCalls == 1 && !next.IsCompleted,
+                    "A new reader must wait for the abandoned sample's controller scope to drain.");
+            }
+            finally { scenario.ReleaseCleanup.TrySetResult(); }
+            TestAssert.Assert(await next is { ProblemCode: "", UploadTotalBytes: 3 } && scenario.ControllerCalls == 3,
+                "The next reader must receive a fresh native sample after cancellation drains.");
+            while (HasLease()) await Task.Delay(10, ct);
+        }
+        Console.WriteLine("PASS PROXY SHARED TRAFFIC: one sample for overlapping readers, last cancellation drains before a fresh read");
         var settingsPayload = new UpdateProxySettingsRequest(false, false, false, true, false, "warning", 7890);
         var profileRoute = ProxyApiRoutes.Proxy + ProxyApiRoutes.ProfilePattern.Replace("{profileId:guid}", profile.Id.ToString("D"), StringComparison.Ordinal);
         await VerifyWriteAsync("settings", token => http.PutAsJsonAsync(ProxyApiRoutes.Settings, settingsPayload, token), HttpStatusCode.NoContent);

@@ -41,7 +41,8 @@ internal static class ProxyConnectionBenchmark
 
     internal static async Task RunAsync(string baseline, string candidate, string baselineMode, string candidateMode,
         LoginRequest login, Uri runtimeProxy, Func<string, Task<ProcessStartInfo>> prepare, Func<Task> verify,
-        bool requireManaged, int? pollingRuntimePid = null, bool controlReads = false, bool compareSplitConfiguration = false)
+        bool requireManaged, int? pollingRuntimePid = null, bool controlReads = false, bool compareSplitConfiguration = false,
+        MihomoObservationCancellationRelay? sharedTrafficRelay = null)
     {
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(requireManaged ? 420 : 85));
         var ct = budget.Token;
@@ -89,6 +90,9 @@ internal static class ProxyConnectionBenchmark
                         var idle = ReadMemory(process.Id);
                         var samples = new List<MemoryPoint> { idle };
                         var timings = new List<double>();
+                        var readers = sharedTrafficRelay is null ? 1 : 4;
+                        var trafficBefore = sharedTrafficRelay?.TrafficRequests;
+                        var connectionsBefore = sharedTrafficRelay?.ConnectionRequests;
                         var serverCpuStart = ReadCpu(process);
                         var runtimeCpuStart = runtime is null ? TimeSpan.Zero : ReadCpu(runtime);
                         var load = runtime is null ? ObserveRepeatedlyAsync() : MeasureTrafficPollingAsync();
@@ -98,6 +102,11 @@ internal static class ProxyConnectionBenchmark
                             samples.Add(ReadMemory(process.Id));
                         }
                         await load;
+                        var trafficRequests = sharedTrafficRelay?.TrafficRequests - trafficBefore;
+                        var connectionRequests = sharedTrafficRelay?.ConnectionRequests - connectionsBefore;
+                        var expectedSamples = input.Mode == baselineMode ? readers * TrafficPolls : TrafficPolls;
+                        if (sharedTrafficRelay is not null && (trafficRequests != expectedSamples || connectionRequests != expectedSamples))
+                            throw new InvalidOperationException($"Expected {expectedSamples} native traffic and connection samples, got {trafficRequests} and {connectionRequests}.");
                         var serverCpuMs = (ReadCpu(process) - serverCpuStart).TotalMilliseconds;
                         var runtimeCpuMs = runtime is null ? 0 : (ReadCpu(runtime) - runtimeCpuStart).TotalMilliseconds;
                         var cooldown = new List<MemoryPoint>();
@@ -118,6 +127,7 @@ internal static class ProxyConnectionBenchmark
                             ConfigurationRequestsPerBatch = controlReads ? (splitConfiguration ? 2 : 1) : 0,
                             Idle = idle, Samples = samples, Cooldown = cooldown,
                             PairRequestMs = runtime is null ? timings : null, TrafficPollMs = runtime is null ? null : timings,
+                            TrafficReaders = runtime is null ? 0 : readers, TrafficRequests = trafficRequests, ConnectionRequests = connectionRequests,
                             ServerCpuMs = serverCpuMs, RuntimeCpuMs = runtimeCpuMs
                         }));
 
@@ -127,16 +137,18 @@ internal static class ProxyConnectionBenchmark
                             long uploaded = 0, downloaded = 0;
                             for (var i = 0; i < TrafficPolls; i++)
                             {
-                                if (input.Mode == candidateMode)
+                                if (input.Mode == candidateMode || sharedTrafficRelay is not null)
                                 {
                                     var watch = Stopwatch.StartNew();
-                                    var traffic = await client.GetFromJsonAsync<ProxyTrafficDto>(ProxyApiRoutes.Traffic, RelaxKonOSJsonOptions.Default, ct);
+                                    var responses = await Task.WhenAll(Enumerable.Range(0, readers).Select(_ =>
+                                        client.GetFromJsonAsync<ProxyTrafficDto>(ProxyApiRoutes.Traffic, RelaxKonOSJsonOptions.Default, ct)));
                                     timings.Add(watch.Elapsed.TotalMilliseconds);
-                                    if (traffic is not { ProblemCode: "", MemoryBytes: >= 0, UploadTotalBytes: > 0 }
-                                        || traffic.UploadTotalBytes < uploaded || traffic.DownloadTotalBytes < downloaded)
+                                    if (responses.Any(traffic => traffic is not { ProblemCode: "", MemoryBytes: >= 0, UploadTotalBytes: > 0 }
+                                            || traffic.UploadTotalBytes < uploaded || traffic.DownloadTotalBytes < downloaded)
+                                        || (sharedTrafficRelay is not null && input.Mode == candidateMode && responses.Any(traffic => traffic != responses[0])))
                                         throw new InvalidOperationException("The polling run did not return monotonic native traffic totals.");
-                                    uploaded = traffic.UploadTotalBytes;
-                                    downloaded = traffic.DownloadTotalBytes;
+                                    uploaded = responses.Max(traffic => traffic!.UploadTotalBytes);
+                                    downloaded = responses.Max(traffic => traffic!.DownloadTotalBytes);
                                 }
                                 await cadence.WaitForNextTickAsync(ct);
                             }

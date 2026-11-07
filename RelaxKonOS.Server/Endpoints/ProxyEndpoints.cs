@@ -169,7 +169,7 @@ public static class ProxyEndpoints
         })).RequireAuthorization("ProxyRead").WithTags("Proxy");
         app.MapGet(ProxyApiRoutes.Traffic, (HttpContext context, IResidentModuleWorkLeaseSource leases) =>
             ExecuteScopedAsync(context, leases, static async (services, ct) =>
-                Results.Ok(await services.GetRequiredService<IMihomoControllerClient>().GetTrafficAsync(ct))))
+                Results.Ok(await services.GetRequiredService<MihomoTrafficSampler>().ReadAsync(ct))))
             .RequireAuthorization("ProxyRead").WithTags("Proxy").Produces<ProxyTrafficDto>();
         app.MapGet(ProxyApiRoutes.Logs, (int? limit, HttpContext context, IResidentModuleWorkLeaseSource leases) =>
             ExecuteScopedAsync(context, leases, async (services, ct) =>

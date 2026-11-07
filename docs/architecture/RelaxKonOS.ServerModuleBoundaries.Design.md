@@ -2420,3 +2420,21 @@ Windows Release 配置、订阅边界 40 项、ManagedRuntimes 和模块边界�
 直连激活 `8db17423-7d06-4def-a445-d4c7eec3268a` 在 Server 已替换配置、真实控制器尚未读取时损坏隔离候选 YAML。真实 Mihomo 返回 HTTP 400，原事务重载旧配置一次。认证控制器读到旧节点，原档案修订和草稿时间保持，原失败回执跨进程读取一致。另一原激活 `de7c6260-9a03-4ccb-91c3-3993c31aa063` 实际加载候选后暂扣应答并强制终止 Server。重启恢复旧磁盘配置，真实进程仍报告候选节点，原激活保持 `publication_pending`、无完成时间，目标档案仍未激活，新键被拒绝。两条路径均无重复下载或重载，原进程跨中断 HTTP 转发通过。
 
 直连首轮在并行运行期间触及 250 秒运行窗口，未产生终态。最终轮在同一运行窗口内通过，两轮专属 cgroup 均已清理，宿主运行时与代理文件指纹一致。最终日志为 `.artifacts/mb04-activation-failure/live-final.log`，归档 SHA-256 为 `e2030e4f66464a7157124c511301c80e603797f8f9269b6b2e6c96690a10c973`。受管激活切换后的故障补偿尚未联合实测。Proxy 保持 resident，动态休眠和生产内存未验收。
+
+### MB-04 Mihomo 重叠流量采样
+
+依据 512 连接轮询基线，同一 Server 内通过认证的重叠流量请求共享一次 `/traffic` 样本、一次连接快照读取和一个控制器作用域。采样拥有独立工作租约，清理失败沿原驻留协调器保留恢复责任。各请求分别持有响应租约。单个客户端取消后其余读者仍可接收结果，最后一个客户端取消后，中止采样并等待实际任务和清理。新请求等待该采样排空后读取新样本。共享范围为在途请求，完成后无样本缓存和后台轮询。
+
+Windows Release 模块边界回归验证 Kestrel 的匿名拒绝、重叠请求、最后一个客户端取消、异步清理期间的新读者等待及响应排空。MB-05 跨进程按原 `bb848743-bdbb-4130-8aa7-2344c239620f` 读回 Interrupted，受控副作用计数为一。首轮 Windows 沙箱拒绝 loopback 连接，使用允许本地监听的执行权限复验通过。
+
+隔离 Linux 由完整 PAM/JWT Server 通过真实 Mihomo 验证。首个客户端取消时，另一客户端取得原采样，实际 `/traffic` 与 `/connections` 各调用一次。最后一个客户端取消时，控制器请求断开，工作租约归零后新请求成功。原发布 `ee01ad12-71b0-468d-93ed-86101d4c8fd9` 跨 SIGTERM 按原 ID 读取 Failed，原连接 `30cef037-cfed-4cfb-a0f2-dbaef93a37f7` 跨解析代次完成真实转发。原生套件 178 项通过，专属 cgroup 已清理，宿主运行时和代理文件指纹一致。日志在 `.artifacts/mb04-shared-traffic/`，原生验收归档 SHA-256 为 `0c3d4663bbb13d439f2aac0a1feff3ab96baacbbd4321d34864b7e0e1028b3a5`。
+
+同机配对保持 Mihomo PID 9855 和同一批 512 条真实连接，基线与候选各运行三次，第二对反转顺序。每轮四个重叠认证请求组成一批，按两秒节拍执行十批。真实控制器中继在三对均记录每轮 `/traffic` 和 `/connections` 各由 40 次降为 10 次，候选每批四个回执相等。512 条原连接均收到源站响应。原回执 `a21dbf06-6f4e-4195-ae66-ccdb9d9c64e3`、原生修订和发布身份一致，测量期间没有配置或补偿派发。
+
+| 轮次 | Server 峰值 PSS 差（MiB） | Server 35 秒 PSS 差（MiB） | 批次中位延迟差（ms） | Server CPU 差（ms） | Mihomo CPU 差（ms） |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | −6.72 | −5.88 | −10.75 | −1230 | −110 |
+| 2 | −3.85 | −4.56 | −5.81 | −530 | −60 |
+| 3 | −4.88 | −4.21 | −7.17 | −950 | −90 |
+
+差值为候选减基线。基线为 `2837ebcd`，两份发布树仅替换 Server DLL，使用同一个 Proxy 解析 DLL 和 Helper。以 `RELAXKONOS_TEST_MIHOMO_SHARED_TRAFFIC=1` 和 `RELAXKONOS_TEST_MIHOMO_OVERVIEW_BASELINE` 选择该测试。隔离归档 SHA-256 为 `925b64534f3a9c2f9d5879dc502dace107ce850ebbbe907dacda8e1f1f59f154`。六轮数据、制品摘要和复核结果见 `.artifacts/mb04-shared-traffic/{paired.log,summary.json}`。本轮测量限重叠请求和隔离负载，生产资源、Windows 原生控制器断线与 Proxy 整体动态休眠继续开放。

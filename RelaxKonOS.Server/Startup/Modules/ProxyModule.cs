@@ -64,6 +64,7 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
         builder.Services.AddSingleton<ProxyAuditStore>();
         builder.Services.AddScoped<IProxyLifecycleService, ProxyLifecycleService>();
         builder.Services.AddScoped<ProxyOverviewService>();
+        builder.Services.AddSingleton<MihomoTrafficSampler>();
 
         // Core provides the one shared TUN safety owner to both routes and engine recovery hooks.
 
