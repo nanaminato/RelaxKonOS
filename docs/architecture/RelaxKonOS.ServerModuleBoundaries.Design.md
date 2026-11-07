@@ -1658,3 +1658,19 @@ Windows 与 Linux Release 的注册检查各 23 项通过。空闲解析两个�
 Linux 私有 systemd 172 项通过。连续状态读取使用真实认证控制器，持续验证真实 HTTP 转发，Helper 原配置修订与派发次数一致。原配置/profile 恢复排空 `bfe20c26-8db8-4c9d-9671-c2d149604702`、独立 Helper 原失败回执 `a2b6710c-746b-4033-a683-f2b6ed970226` 与真实中断补偿 `32bd2440-6fc3-4f31-97c0-3d5ee95ca8dc` 均复验。已有受管安装、移除回执沿用原台账。首轮 Linux 状态夹具注入的凭据替身拒绝控制器读取，改由生产凭据存储读取夹具预置的加密凭据。专属 cgroup 清理，宿主服务及代理文件指纹一致。日志为 `.artifacts/mb04-mihomo-graph-final-live.log`，归档 SHA-256 为 `26e3a6df41adfc20eeeda8f6d6147fef4c612eeb5382395b7ef770b18e2f83f4`。
 
 原生 Windows 启动就绪循环、整体管理图的动态休眠与生产内存测量仍待验收。Proxy 保持 resident。
+
+### MB-04 Proxy 管理面的配对驻留基线
+
+冻结产品提交 `b3ceadcd5f0c9ed3249ce0a454c6de543fea06a9`，在同一 Linux 测试机的私有挂载、网络及 PID 命名空间运行完整 Release Server。非 root Server 使用独立生产 Helper 和 PAM。每轮先启用、再停用 Proxy 管理面，其他管理模块关闭。每次启动使用新内容根，Core 保留原安全门禁。六个测量进程均正常退出，宿主 Nginx、Docker、Mihomo、sing-box PID 及代理环境/日志指纹一致。
+
+下表为 Server 进程树 PSS，单位 MiB。35 秒闲时列为启用减停用。读取列为相对前一阶段的变化，再扣除同轮停用对照的变化。每组认证阶段采五点中位数。
+
+| 轮次 | 35 秒闲时差 | 设置增量 | 概览与运行时增量 | 档案与订阅增量 |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 4.58 | 1.88 | 6.79 | 0.84 |
+| 2 | 3.10 | 1.64 | 7.62 | 0.66 |
+| 3 | 5.79 | 0.21 | 7.49 | 0.81 |
+
+概览与运行时组在三轮中增量最大，下一项优先拆开概览组合读取、控制器健康查询和运行时观测，定位各自的执行依赖。固定顺序会累积 JIT、路由、SQLite 和 HTTP 缓存，现有数据只能定位请求组。此轮使用空私有状态，未启动 Mihomo，未涵盖活动连接、非空档案或订阅转换。专属 Helper 未计入 Server 树。静态启停差用于候选比较，Proxy 继续 resident，动态释放及生产内存收益尚未测量。
+
+复现和口径见[测量方案](RelaxKonOS.ServerModuleBaseline.Protocol.md#固定输入与运行清单)。日志为 `.artifacts/mb04-proxy-measure-final-live.log`。产品与采样包 SHA-256 为 `1033667d69d1bd0a5dc55b8adc83d97d7c4823979245764367e0e7557fedd854`，原始样本包 `.artifacts/mb04-proxy-measure-raw.tar.gz` 的 SHA-256 为 `8c546a81f2340cb28f8da0540d560414e98750258f512c7b572634998fc72c02`，配对摘要 `.artifacts/mb04-proxy-measure-summary.json` 的 SHA-256 为 `33776e04b576ce3fc4c40984b657e366b72dfcb00d1280b2b9d257eb655353b6`。首轮因测试包目录缺少 Python 导入所需的读取权限在采样前退出，修正后完整复跑。

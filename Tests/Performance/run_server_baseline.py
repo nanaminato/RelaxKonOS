@@ -16,11 +16,58 @@ import subprocess
 import sys
 import time
 import urllib.request
+import urllib.error
 
 from sample_process_tree import sample
 
 MODULES = ['Terminal', 'Firewall', 'SystemPerformance', 'Git', 'Tailscale',
            'Docker', 'Certificates', 'WebServer', 'Proxy']
+
+PROXY_READS = (
+    ('proxy-settings', ('/proxy/settings',)),
+    ('proxy-overview', ('/proxy', '/proxy/runtime')),
+    ('proxy-catalog', ('/proxy/profiles', '/proxy/subscriptions')),
+)
+
+
+def measure_proxy(origin, credentials, enabled, capture):
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    token = None
+
+    def request(path, body=None, status=200):
+        headers = {'Content-Type': 'application/json'}
+        if token:
+            headers['Authorization'] = 'Bearer ' + token
+        req = urllib.request.Request(origin + '/api/v1.0' + path,
+                                     json.dumps(body).encode() if body is not None else None, headers)
+        try:
+            with opener.open(req, timeout=15) as response:
+                if response.status != status:
+                    raise RuntimeError(f'Unexpected response for {path}: {response.status}')
+                return json.load(response)
+        except urllib.error.HTTPError as error:
+            if error.code != status:
+                raise RuntimeError(f'Unexpected response for {path}: {error.code}') from None
+
+    def window(phase):
+        for _ in range(5):
+            capture(phase)
+            time.sleep(1)
+
+    token = request('/auth/login', {**credentials, 'clientPlatform': 1,
+                                    'deviceName': 'MB-04 proxy baseline', 'clientVersion': '1.0.0'})['tokens']['accessToken']
+    modules = request('/server/modules')
+    proxy = next(module for module in modules if module['id'] == 'relaxkonos.proxy')
+    if proxy['effectiveEnabled'] != enabled:
+        raise RuntimeError('The authenticated module catalog does not match the intended control')
+    window('proxy-auth-control')
+    if not enabled:
+        request('/proxy/settings', status=404)
+    for phase, paths in PROXY_READS:
+        if enabled:
+            for path in paths:
+                request(path)
+        window(phase)
 
 
 def measure_git(origin, credentials, capture):
@@ -75,12 +122,23 @@ def main():
     parser.add_argument('--windows-owner-probe', type=pathlib.Path, help='Published HostProbe.dll')
     parser.add_argument('--linux-user-probe', type=pathlib.Path,
                         help='Published HostProbe.dll for Linux User Mode without privileged transport')
-    parser.add_argument('--cases', choices=('on-off', 'on-only', 'on-idle'), default='on-only',
+    parser.add_argument('--cases', choices=('on-off', 'on-only', 'on-idle', 'proxy-management'), default='on-only',
                         help='on-idle interleaves workload and idle with all modules enabled')
+    parser.add_argument('--private-proxy-helper', help='Dedicated Helper Unix socket in the Linux proxy baseline namespace')
     args = parser.parse_args()
     if args.repetitions < 3:
         parser.error('at least three interleaved repetitions required')
-    credentials = json.load(sys.stdin) if args.authenticated_git else None
+    proxy_measurement = args.cases == 'proxy-management'
+    if proxy_measurement and (not sys.platform.startswith('linux') or not args.private_proxy_helper
+                              or not pathlib.Path('/etc/relaxkonos/mb04-proxy-baseline').is_file()
+                              or not pathlib.Path('/var/lib/mb04-proxy-baseline').is_file()):
+        parser.error('proxy-management requires the private Linux launcher and its Helper')
+    if args.private_proxy_helper and not proxy_measurement:
+        parser.error('the private proxy Helper is exclusive to proxy-management')
+    if proxy_measurement and (args.authenticated_git or args.windows_personal_config
+                              or args.windows_owner_probe or args.linux_user_probe):
+        parser.error('proxy-management uses its own authenticated workload')
+    credentials = json.load(sys.stdin) if args.authenticated_git or proxy_measurement else None
     personal = None
     if args.windows_personal_config or args.windows_owner_probe:
         if sys.platform != 'win32' or not (args.windows_personal_config and args.windows_owner_probe) or credentials:
@@ -104,7 +162,8 @@ def main():
         'runtime': subprocess.check_output(['dotnet', '--list-runtimes'], text=True),
         'commit': args.commit, 'rid': args.rid, 'configuration': 'Release',
         'publish_sha256': manifest, 'data': 'new empty isolated content root per run',
-        'connections': ('one authenticated session and two sequential Terminal Hub connections' if personal or args.linux_user_probe else
+        'connections': ('one authenticated session per Proxy control and workload run' if proxy_measurement else
+                        'one authenticated session and two sequential Terminal Hub connections' if personal or args.linux_user_probe else
                         'one Git session per enabled measured run' if credentials else 'healthz only; zero authenticated sessions'),
         'scope': 'full Server startup and idle, with authenticated workload when enabled',
         'cold_definition': 'new process; filesystem/runtime caches not flushed',
@@ -112,12 +171,14 @@ def main():
         'order': 'warmup discarded; ' + args.cases + ' repeated in order',
         'config': {'environment': 'Production', 'server_mode': 'user' if personal or args.linux_user_probe else 'system',
                    'privileges': ('existing Personal Helper connection' if personal else
-                                  'disabled' if args.linux_user_probe else 'default helper configuration'),
+                                  'disabled' if args.linux_user_probe else
+                                  'dedicated private Unix Helper' if proxy_measurement else 'default helper configuration'),
                    'residency': 'default IdleDelayed, grace 300s',
-                   'module_names': MODULES}}, indent=2), encoding='utf-8')
+                   'module_names': ['Proxy'] if proxy_measurement else MODULES}}, indent=2), encoding='utf-8')
     results = []
     health_client = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    modes = {'on-off': ('on', 'off'), 'on-only': ('on',), 'on-idle': ('on', 'idle')}[args.cases]
+    modes = {'on-off': ('on', 'off'), 'on-only': ('on',), 'on-idle': ('on', 'idle'),
+             'proxy-management': ('on', 'off')}[args.cases]
     order = [('warmup', False)] + [(f'{mode}-{i}', mode == 'off')
              for i in range(1, args.repetitions + 1) for mode in modes]
     for name, disabled in order:
@@ -138,9 +199,13 @@ def main():
                     'Jwt__Secret': 'baseline-only-secret-0123456789abcdef0123456789abcdef',
                     'Jwt__Issuer': 'RelaxKonOS.Server', 'Jwt__Audience': 'RelaxKonOS.Client'})
         for module in MODULES:
-            env[f'Modules__{module}__Enabled'] = str(not disabled).lower()
+            env[f'Modules__{module}__Enabled'] = str(not disabled and (not proxy_measurement or module == 'Proxy')).lower()
         if credentials and sys.platform.startswith('linux'):
             env['Identity__LinuxPamTransport'] = 'in-process'
+        if proxy_measurement:
+            env.update({'Identity__LinuxPamTransport': 'helper', 'Privileges__Backend': 'helper',
+                        'PrivilegedHelper__SocketPath': args.private_proxy_helper,
+                        'PrivilegedHelper__UserExecutionBackend': 'disabled', 'Guardian__Enabled': 'false'})
         if args.linux_user_probe:
             env.update({'Server__Mode': 'user', 'Privileges__Backend': 'disabled',
                         'UserMode__ControlSocketPath': str(run / 'control.sock'),
@@ -189,7 +254,7 @@ def main():
                     raw.write(json.dumps(row) + '\n')
                     raw.flush()
                     time.sleep(1)
-                if (credentials or personal) and name.startswith('on-'):
+                if (proxy_measurement and name != 'warmup') or ((credentials or personal) and name.startswith('on-')):
                     def capture(phase):
                         row = sample([proc.pid], known)
                         row.update(phase=phase, spawn_elapsed_seconds=time.monotonic() - started)
@@ -197,7 +262,10 @@ def main():
                         raw.flush()
 
                     origin = f'http://127.0.0.1:{port}'
-                    if personal or args.linux_user_probe:
+                    if proxy_measurement:
+                        measure_proxy(origin, credentials, not disabled, capture)
+                        record['business'] = 'authenticated_proxy_reads' if not disabled else 'authenticated_proxy_disabled_control'
+                    elif personal or args.linux_user_probe:
                         command = ['dotnet', str(args.windows_owner_probe or args.linux_user_probe), origin,
                                    '--git-natural']
                         if personal:

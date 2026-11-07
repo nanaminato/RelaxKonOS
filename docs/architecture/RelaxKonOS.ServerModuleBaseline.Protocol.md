@@ -23,6 +23,10 @@
 
 MB-01B 增加 `--cases on-idle`，交错同一启用集合的认证业务与纯闲时进程。宿主在就绪前开始采树。`HostProbe` 输出带时间戳的真实业务回执，启动前固定认证方式、Helper 边界和持久路径。共享 Helper 的写操作由 Helper 所在命名空间决定。Linux 的独立内容根与私有 Server 挂载无法隔离其宿主恢复事务，本批正式 Linux 补测使用无特权 User Mode。[MB-01B 实测与边界](RelaxKonOS.ServerModuleBaseline.20261106.md)
 
+MB-04 的 `proxy-management` 场景由 `Tests/Performance/run-linux-proxy-baseline.sh` 启动。通过外层 `unshare --mount --net --pid --fork --kill-child --mount-proc --propagation private` 运行，传入宿主挂载、网络、PID 命名空间身份，冻结的 Server 发布目录、Helper DLL、专属空输出目录和产品提交号。使用非 root Server 身份、独立 Helper 与 PAM，认证输入仅走 stdin。每轮只切换 Proxy 管理面，其他管理模块关闭，Core 原安全门禁继续运行。
+
+每个进程使用新的内容根。先按原方法采启动和 35 秒闲时，再进行同样的认证与模块目录读取。启用组依次读取设置、概览及运行时、档案及订阅。停用组验证路由 404，并在相同阶段采样。每个认证阶段采五点，表示已完成请求后的驻留窗口。用 `summarize_module_baseline.py --proxy-pairs` 输出逐轮数据、35 秒启停差及各阶段扣除对照漂移的增量。阶段顺序固定，共用已加载的代码及缓存，因此增量只用于选择后续工作负载。Helper 单独运行，未计入 Server 进程树。空私有状态的结果无法覆盖活跃 Mihomo、非空档案或订阅转换。
+
 `summarize_module_baseline.py <run-root> --output <summary.json>` 保留每轮结果与指标。启动期观测最大值、首次达到 ready+5s/35s 的点、阶段最后三点的中位数分别记录，缺失传播为 null。汇总时检查每轮退出与逐项业务回执、阶段样本数和指标完整性。结束时只处理本次父进程，Windows 为强制终止。停机后全树另行核验。
 
 ## 场景与交错顺序

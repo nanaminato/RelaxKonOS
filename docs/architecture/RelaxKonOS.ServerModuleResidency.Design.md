@@ -418,3 +418,5 @@ MB-04 Core 系统代理 guard 保留已派发的原对账任务和共享发布�
 MB-04 Core Mihomo 发布恢复调度器停机时等待原回执、终态持久化与异步释放。原持久索引及领域台账继续负责调度与恢复。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-core-mihomo-发布恢复的停机排空)。
 
 MB-04 缩短了 Mihomo 运行时管理器的控制器和安装台账适配器的发布执行图寿命。原锁、回执和安全 worker 仍由 Core 负责。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-运行时与安装执行作用域)。
+
+MB-04 隔离 Linux 的 Proxy 管理面静态配对基线已完成。三组管理读取中，概览与运行时组的 Server PSS 增量最大，下一阶段优先拆分该请求组的执行依赖。见[配对数据与限制](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-管理面的配对驻留基线)。
