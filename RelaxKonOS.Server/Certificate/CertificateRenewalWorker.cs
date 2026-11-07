@@ -20,7 +20,10 @@ internal sealed class CertificateRenewalWorker(CertificateRenewalRunRepository r
                 var next = await runs.NextScanAsync(stoppingToken);
                 var delay = next - DateTimeOffset.UtcNow ?? TimeSpan.Zero;
                 if (delay > TimeSpan.Zero)
+                {
+                    logger.LogDebug("Certificate renewal scan deferred until {DueAt}.", next);
                     await Task.Delay(delay > TimeSpan.FromDays(1) ? TimeSpan.FromDays(1) : delay, stoppingToken);
+                }
                 else
                     await RunDueScanAsync(stoppingToken);
             }

@@ -366,3 +366,5 @@ Git 失败或取消后的镜像清理与终态写入均属于原代次工作租�
 Linux 完整非 root Server 已从同一持久状态目录恢复在途 TUN 激活。真实设备创建后、写入完成标记前终止激活进程，原标记在 Helper 中断及首次启动失败后仍由 Core 接续。联合验收和边界见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整-server-接续在途-tun-激活)。
 
 MB-05 证书续期已接入原持久扫描台账。到期执行作用域由原模块租约保护，跨进程实测补回原操作关联，远端订单无重放。证书模块保持 resident。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-证书续期持久扫描与执行作用域)。
+
+完整 Server 已通过 MB-05 自然续期、停机排空与重启调度验收。宿主收到停止信号后等待原 CA 任务和挑战清理，再持久化原回执并退出。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-完整-server-自然续期与停机排空)。

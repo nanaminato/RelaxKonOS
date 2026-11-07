@@ -1488,3 +1488,5 @@ CA 已接单或签发后遇到无法确认结果的传输失败，证书操作�
 Linux 完整认证 Server 已通过真实 CA 断流与重启验收。专属 Nginx 承载 HTTP-01，重启后须重新登录查询原订单。同键重试返回原回执，原活动证书指纹保持，CA 无新增订单或签发提交。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-完整认证-server-的-ca-断流与重启)。
 
 Linux 私有 Pebble 实测覆盖自动续期已准入、扫描尚未关联原回执时的进程中断。恢复完成原扫描并持久化下次到期，未提交新订单。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-证书续期持久扫描与执行作用域)。
+
+完整 Server 的自然续期停机路径已在 Linux 私有 Pebble 和 Nginx 上通过验收。收到 SIGTERM 后，Server 等待原 CA 挑战响应和清理完成，再提交原取消回执。重启后读取原下次到期时间，保留当前证书和原回执。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-完整-server-自然续期与停机排空)。

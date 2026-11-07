@@ -1447,3 +1447,9 @@ Linux x64 Release 以私有网络、挂载及 PID 命名空间启动完整 Syste
 等待期间 HostedService 不解析续期扫描执行图。到期先取得原模块工作租约，再创建执行作用域。扫描取消或失败时保留原扫描，作用域清理完成后才持久化完成和下次到期时间。Core TLS 选择器、证书材料与 Nginx WebRoot 职责仍由原服务持有。
 
 Linux x64 Release 私有 Pebble 中，原续期进程在 CA 已签发、原操作已准入但尚未关联扫描时被终止。生产续期执行作用域接续扫描 `4ca2be2e-39ad-4840-8043-4f6e4fc865d3`，从原台账补回 `ef1056c8-1579-495f-b342-0b1a70cbe815` 并持久化下次到期时间。测试作用域在清理时验证扫描仍开放、工作租约仍有效。原 CA 订单只读返回 valid，原本地中断回执保持。整组七张订单、四次签发提交，恢复零新增。日志为 .artifacts/mb05-cert-schedule-live.log，归档 SHA-256 为 370623bf9106342f41dfa7d2d70a2d88ed73c974b424b1bf0f02dd1aab287d0b。Windows Release 模块边界通过，覆盖跨日原扫描、原准入键、重复关联与拒绝去重、重启后的下次到期。完整 Server 自然计时触发和宿主停机联合实测仍开放。证书模块继续 resident，独立执行程序集及生产内存测量仍开放。
+
+### MB-05 完整 Server 自然续期与停机排空
+
+Linux x64 Release 在既有测试机的私有网络、挂载和 PID 命名空间复用完整认证 Server、独立 Nginx WebRoot 和 Pebble。专属 CA 签发短期证书并关闭可选 ARI 响应与授权复用，以覆盖正常到期兜底和真实 HTTP-01。未改机器时钟、生产启动延迟或扫描台账。生产 Worker 自然计时后持久化扫描 `ce78914f-c226-4a2c-9eb2-5a21640301a5` 和原续期 `370b24cb-72ce-4778-9ed3-78871a4477ca`。
+
+TLS 中继收到实际 CA 挑战响应 200 后保留响应。Server 接收 SIGTERM 后监听退出，原续期仍为 Running，挑战文件仍在，进程持续等待。释放实际响应后，原操作写入 Cancelled，挑战文件清理，Server 正常退出。重启重新认证后，生产 Worker 在原启动周期内记录原下次到期时间并推迟扫描，台账字节和原证书指纹一致，按 ID 读取原回执。CA 共两张预期订单、一次签发提交，停机排空和重启零新增。宿主 Nginx、Docker、Mihomo PID 与主机文件指纹前后一致。日志为 .artifacts/mb05-natural-renewal-live.log，归档 SHA-256 为 c10e20014eef2acc821c11e609450002a8efa8531b28bbf1c73318ea08c78be1。Windows Release 模块边界及 Linux 独立 Pebble 回归通过，后者归档 SHA-256 为 d6e58f4bda1f2aeed11b7226d1157cf582f97a4a3551a9b9f0529825b59d08ef。证书继续 resident，独立程序集和生产内存测量仍开放。
