@@ -60,11 +60,9 @@ internal sealed class WebsitePublicationStore
                 created = false;
                 return existing.Operation;
             }
-            if (entries.Values.Any(entry => HasUnverifiedSite(entry.Operation)
-                && (entry.Operation.ApplicationId == request.ApplicationId
-                    || (entry.Operation.WebServerId == request.WebServerId && entry.Operation.Domain == request.Domain))))
+            if (entries.Values.Any(entry => HasUnverifiedSite(entry.Operation) && ConflictsWith(entry.Operation, request)))
                 throw new WebsitePublicationException("website.recheck_required");
-            if (entries.Values.Any(entry => Active(entry.Operation) && entry.Operation.ApplicationId == request.ApplicationId))
+            if (entries.Values.Any(entry => Active(entry.Operation) && ConflictsWith(entry.Operation, request)))
                 throw new WebsitePublicationException("website.operation_conflict");
 
             validateNew();
@@ -147,6 +145,10 @@ internal sealed class WebsitePublicationStore
 
     private static bool RequiresOwner(WebsitePublicationOperationDto operation) =>
         Active(operation) || HasUnverifiedSite(operation);
+
+    private static bool ConflictsWith(WebsitePublicationOperationDto operation, PublishWebsiteRequest request) =>
+        operation.ApplicationId == request.ApplicationId
+        || (operation.WebServerId == request.WebServerId && operation.Domain == request.Domain);
 
     private static bool HasUnverifiedSite(WebsitePublicationOperationDto operation) =>
         operation.ProblemCode == AssociationRecoveryFailed || operation.RecoveryProblemCode == SiteApplicationUnverified;

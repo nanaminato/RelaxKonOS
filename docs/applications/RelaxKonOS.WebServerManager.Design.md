@@ -1735,6 +1735,8 @@ Linux 系统包重载的原回执保存在 Server。原终态持久化后，Help
 
 未指定证书 ID 时，自动签发通过所选 Nginx 的现有 WebRoot HTTP-01 集成。发起者须同时具备所选实例的 `NginxConfigurationWrite` 与 `CertificateIssue`（目标 `certificates/issue`）。发布前须确认 CA 能用申请域名和 TCP 80 读取同一个挑战目录。首站和新域名需要预先配置可达的 HTTP-01 路由。缺少集成时，发布在创建 CA 订单前以 `website.acme_webroot_required` 结束。
 
+发布进行期间，同一应用或同一 Nginx 实例内的同一域名只允许一个发布操作。不同应用尝试同时发布到该域名会收到 `409 / website.operation_conflict`。原请求使用同一个幂等键仍可读取原回执。
+
 首个独立 Nginx 站点可先保存 HTTP 配置，再执行实例的 `EnableAcmeHttp01` 操作。空实例会返回 `webserver.acme_no_managed_sites`。若启用操作在原生重载期间中断，同键查询返回原操作回执。后续签发需先独立核验该域名的 HTTP-01 路由，再发起新的证书请求，签发成功后可将证书绑定到原站点。
 
 Linux 系统包 Nginx 的 WebRoot 启用中断后，后续授权的 TLS 绑定可核验站点备份并继续。Nginx 原生作业仍在执行，或者当前配置与备份无法按站点记录确认时，绑定返回 `webserver.site_save_failed` 并保留备份。原启用回执继续显示中断。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-首站-webroot-备份核验与授权-tls-绑定)。

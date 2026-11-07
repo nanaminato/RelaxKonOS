@@ -241,6 +241,7 @@ internal static class ModuleBackgroundOwnershipChecks
             var applications = new ApplicationDeploymentManager(catalog, secrets, new ApplicationDeploymentOperationStore(f.Environment, options), runtime, options,
                 new ApplicationDeploymentImageTagCatalog(clients, NullLogger<ApplicationDeploymentImageTagCatalog>.Instance));
             var app = await applications.CreateAsync(new CreateApplicationRequest("owned-site", ApplicationSourceKind.Image, HostPort: 9080), "actor", default);
+            var competingApp = await applications.CreateAsync(new CreateApplicationRequest("competing-site", ApplicationSourceKind.Image, HostPort: 9085), "actor", default);
             var store = new WebsitePublicationStore(f.Environment);
             var executions = 0;
             var cleanupEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -254,7 +255,17 @@ internal static class ModuleBackgroundOwnershipChecks
             var request = new PublishWebsiteRequest(app.Id, "nginx", "example.test", Guid.NewGuid(), Confirmed: true);
             var operation = await coordinator.StartAsync(request, "actor", "once");
             await controlled.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var observationCalls = controlled.Calls;
             Check(f.Active(ServerModules.WebServerId) == 1, "Website publication retains a real lease during application observation");
+            try
+            {
+                await coordinator.StartAsync(request with { ApplicationId = competingApp.Id, Domain = "EXAMPLE.TEST." }, "actor", "competing-domain");
+                throw new InvalidOperationException("An active website publication admitted another application on its domain.");
+            }
+            catch (WebsitePublicationException error) when (error.ProblemCode == "website.operation_conflict") { }
+            Check(await coordinator.StartAsync(request, "actor", "once") == store.Get(operation.OperationId)
+                && store.History(competingApp.Id, 10).Count == 0 && executions == 1 && f.Active(ServerModules.WebServerId) == 1,
+                "Same-domain admission rejects competing applications before opening another execution and preserves the original receipt");
             using var budget = new CancellationTokenSource(); var stop = coordinator.StopAsync(budget.Token); budget.Cancel();
             try { await stop; throw new Exception("Website stop detached"); } catch (OperationCanceledException) { }
             Check(f.Active(ServerModules.WebServerId) == 1, "Website Stop timeout retains its actual observation task");
@@ -273,7 +284,7 @@ internal static class ModuleBackgroundOwnershipChecks
             using var restarted = WebsitePublicationTestScopes.Create(store, applications, catalog, null!, null!, f.Certificates, clients,
                 new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, f.Source);
             await restarted.StartAsync(default);
-            Check(store.Get(operation.OperationId)!.State == WebsitePublicationState.Interrupted && controlled.Calls == 2,
+            Check(store.Get(operation.OperationId)!.State == WebsitePublicationState.Interrupted && controlled.Calls == observationCalls,
                 "Website restart marks the original publication interrupted without replaying its observation or side effects");
             await restarted.StopAsync(default);
 
@@ -294,7 +305,7 @@ internal static class ModuleBackgroundOwnershipChecks
             }
             finally { applied.Release.TrySetResult(); }
             await draining.WaitAsync(TimeSpan.FromSeconds(5));
-            Check(catalog.ReadApplications().Single().SiteId == $"app{app.Id:N}"
+            Check(catalog.Find(app.Id)?.SiteId == $"app{app.Id:N}"
                 && WebsitePublicationStore.Active(store.Get(association.OperationId)!) && f.Active(ServerModules.WebServerId) == 0,
                 "Website shutdown finishes catalog association for the already applied site before releasing its lease");
             var reopened = new WebsitePublicationStore(f.Environment);

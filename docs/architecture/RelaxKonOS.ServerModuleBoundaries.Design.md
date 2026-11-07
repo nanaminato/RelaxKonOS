@@ -1466,6 +1466,12 @@ TLS 中继收到实际 CA 挑战响应 200 后保留响应。Server 接收 SIGTE
 
 原网站发布协调器继续独占准入、台账恢复与停机排空。只有持久化 queued 的新发布创建执行作用域，执行器在原工作租约内处理上游观察、证书选择、Nginx 配置、应用关联、HTTPS 验证及原补偿。工作 owner 等待终态提交和异步作用域释放。启动恢复、已知键回执和准入拒绝不解析执行器。Core Nginx 管理、TLS 材料与应用关联仍由原服务持有。
 
+同一台账锁同时为活跃发布保留应用及 Nginx 实例内的规范域名。同键先查原回执。不同键命中活跃发布返回 `website.operation_conflict`，命中已有未核验配置继续返回 `website.recheck_required`。域名占用在应用观察、CA 签发及配置执行前生效。
+
+Linux Release 在私有 systemd、Docker、Nginx、Pebble 和 DNS 上启动两个独立应用。原发布 `69f61255-1f9c-407f-b946-25e24e7297fc` 的实际 CA 证书响应被暂扣时，另一运行应用提交带大写和末尾点的同域名请求，收到认证 HTTP 409，历史为空。原键返回原回执，CA 一张订单、一次签发提交。随后终止 Server，重启仍以原发布和原证书操作 `553bf539-e7e7-4321-bcb1-9e44e65047f2` 查询原有效订单。挑战已清理，旧 TLS 和原上游继续，零新增 Nginx 重载。专属 cgroup 清理，宿主服务与配置指纹一致。日志为 `.artifacts/mb05-publication-domain-live.log`，归档 SHA-256 为 `b76242814db9faa538ee0f8281ee5963ba612da11be18458509d294a02eb23b6`。首站自动建路由的文件所有权与恢复仍开放。
+
+同制品正常发布 `fef71822-3ea7-4f02-b996-fc99a7870c7b` 通过真实 HTTPS 和一次重载，日志为 `.artifacts/mb05-publication-domain-success.log`。Windows Release 模块里程碑回归通过，验证并发拒绝没有创建执行作用域或新回执，Docker 跨进程原 `e8d5d6b4-bf59-41b3-bea3-8a7f2252860d` 返回 Interrupted，副作用计数为一。Windows 首轮夹具的应用创建与观察共用屏障，第二轮站点关联检查沿用单应用假设。修正后日志为 `.artifacts/mb05-publication-domain-win-confirmed.log`。
+
 Windows Release 模块边界回归通过。测试确认原协调器启动不构造执行图，停止时等待真实观察任务和异步作用域清理，工作租约持续到清理结束。Linux x64 Release 在两套专属网络、挂载和 PID 命名空间用实际 Nginx 验证。配置提交崩溃 `8caf607a-1400-4dfe-96e8-ad67dbb518a9` 返回原 Interrupted / website.site_application_unverified，HTTPS 验证崩溃 `2d7f8936-648f-474f-8101-5ffe131a3d27` 返回原 Interrupted / website.recheck_required。两条路径的同键 HTTP 响应断线后均完成排空，恢复执行作用域为零，各只重载一次发布配置，真实 HTTPS 转发保持。宿主 Nginx PID 和配置指纹前后一致。首轮远端包装器在进入命名空间前失败，修正后通过。证据为 .artifacts/mb05-website-scope-live.log，归档 SHA-256 为 30c32dd3867bccc7b16ca16664b4d54c179df48e0563584a2afc510ae049968c。该联合验收使用生产执行器与真实 Nginx，HTTP 认证和响应屏障由隔离夹具提供。完整 Server 认证与直接 WebServer 后续验收见文末，网站发布模块保持 resident。
 
 ### MB-05 直接 WebServer 操作执行作用域

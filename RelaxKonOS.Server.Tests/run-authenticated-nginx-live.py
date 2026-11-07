@@ -69,7 +69,7 @@ def run(root, server, helper_binary, mode):
     env["Modules__WebServer__Enabled"] = "true"
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
-    def request(path, token=None, payload=None, key=None, expected=200, method=None):
+    def request(path, token=None, payload=None, key=None, expected=200, method=None, expected_problem=None):
         headers = {}
         if token:
             headers["Authorization"] = "Bearer " + token
@@ -83,7 +83,7 @@ def run(root, server, helper_binary, mode):
                 assert response.status == expected, f"Unexpected HTTP {response.status} at {path}"
                 return json.load(response)
         except urllib.error.HTTPError as error:
-            if error.code == expected:
+            if error.code == expected and expected_problem is None:
                 return None
             try:
                 problem = json.load(error).get("problemCode", "")
@@ -91,6 +91,8 @@ def run(root, server, helper_binary, mode):
                 problem = ""
             if not isinstance(problem, str) or not re.fullmatch(r"[a-zA-Z0-9._-]{1,100}", problem):
                 problem = "unspecified"
+            if error.code == expected and problem == expected_problem:
+                return None
             raise RuntimeError(f"Unexpected HTTP {error.code} at {path} ({problem})") from None
 
     def login():
@@ -338,27 +340,35 @@ def run(root, server, helper_binary, mode):
             assert ca_log.count("Added order") == ca_log.count("POST /finalize-order/") == 1
             access = (root / "nginx" / "acme-access.log").read_text()
             assert re.search(r'GET /\.well-known/acme-challenge/[^ ]+ HTTP/1\.1" 200 ', access)
+
+        def start_upstream(token, name, port):
+            app = request(applications, token=token, key=secrets.token_hex(16), payload={
+                "name": name, "sourceKind": "Image", "hostPort": port, "containerPort": port,
+            })
+            app_id = app["id"]
+            container = subprocess.check_output([
+                "docker", "run", "-d", "--pull", "never", "--network", "host",
+                "--name", "relaxkonos-ad-" + app_id.replace("-", "")[:12],
+                "--label", "relaxkonos.managed=true", "--label", "relaxkonos.owner=application-deployment",
+                "--label", "relaxkonos.application-id=" + app_id, "-v", f"{upstream}:/witness",
+                "alpine:3.22", "busybox", "nc", "-ll", "-p", str(port), "-e", "/witness/reply",
+            ], text=True).strip()
+            app_route = f"{applications}/{app_id}"
+            container_state = subprocess.check_output(["docker", "inspect", "--format", "{{.State.Status}}", container], text=True).strip()
+            assert container_state == "running", subprocess.check_output(["docker", "logs", container], stderr=subprocess.STDOUT, text=True)
+            observed = request(app_route, token=token)["application"]
+            assert observed["actualState"].lower() == "running" and not observed["siteId"], observed["actualState"]
+            return app_id, app_route, container
+
         with process([*helper_args, helper_config], "website-helper") as helper:
             wait_for(helper, helper_ready, "website-helper")
             with process([server], "website-server") as initial:
                 wait_for(initial, healthy, "website-server")
                 token = login()
-                app = request(applications, token=token, key=secrets.token_hex(16), payload={
-                    "name": "mb05-publication", "sourceKind": "Image", "hostPort": 18080, "containerPort": 18080,
-                })
-                app_id = app["id"]
-                container = subprocess.check_output([
-                    "docker", "run", "-d", "--pull", "never", "--network", "host",
-                    "--name", "relaxkonos-ad-" + app_id.replace("-", "")[:12],
-                    "--label", "relaxkonos.managed=true", "--label", "relaxkonos.owner=application-deployment",
-                    "--label", "relaxkonos.application-id=" + app_id, "-v", f"{upstream}:/witness",
-                    "alpine:3.22", "busybox", "nc", "-ll", "-p", "18080", "-e", "/witness/reply",
-                ], text=True).strip()
-                app_route = f"{applications}/{app_id}"
-                container_state = subprocess.check_output(["docker", "inspect", "--format", "{{.State.Status}}", container], text=True).strip()
-                assert container_state == "running", subprocess.check_output(["docker", "logs", container], stderr=subprocess.STDOUT, text=True)
-                observed = request(app_route, token=token)["application"]
-                assert observed["actualState"].lower() == "running" and not observed["siteId"], observed["actualState"]
+                app_id, app_route, container = start_upstream(token, "mb05-publication", 18080)
+                contender_id = None
+                if mode == "--systemd-website-acme":
+                    contender_id, _, _ = start_upstream(token, "mb05-competing-publication", 18081)
                 certificate_options = {"contactEmail": "fixture@example.test", "acceptedTerms": True,
                                        "publicReachabilityConfirmed": True}
                 if not acme_website:
@@ -405,6 +415,15 @@ def run(root, server, helper_binary, mode):
                     assert original_certificate
                     certificate_route = f"{certificates}/operations/{original_certificate}"
                     assert_ca_once()
+                    if contender_id is not None:
+                        original_receipt = request(operation_route, token=token)
+                        request(publications, token=token, payload={
+                            **payload, "applicationId": contender_id, "domain": domain.upper() + ".",
+                        }, key=secrets.token_hex(16), expected=409, expected_problem="website.operation_conflict")
+                        assert request(f"{publications}/applications/{contender_id}", token=token) == []
+                        assert request(publications, token=token, payload=payload, key=key, expected=202) == original_receipt
+                        assert_ca_once()
+                        print(f"PASS WEBSITE DOMAIN ADMISSION: operation={operation_id}; running competitor rejected before a receipt or second CA order")
                     if acme_success:
                         wait_for(initial, published_body, "CA-issued HTTPS and real Docker upstream")
                         assert request(certificate_route, token=token)["state"].lower() == "succeeded"
