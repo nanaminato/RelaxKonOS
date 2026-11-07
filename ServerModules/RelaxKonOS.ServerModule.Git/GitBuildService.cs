@@ -319,15 +319,13 @@ public sealed class GitBuildService : IGitBuildService, IDisposable
             || options.BuilderNetwork is "host" or "bridge" or "none" or "default")
             throw new GitBuildProblem("git-build.builder-unconfigured", 503);
         var details = await RunAsync("docker", ["buildx", "inspect", options.BuilderName], new Dictionary<string, string>(), TimeSpan.FromSeconds(15), ct);
-        if (details.ExitCode != 0 || !details.Lines.Any(line => line.TrimStart().StartsWith("Driver:", StringComparison.Ordinal)
-            && line.Contains("remote", StringComparison.Ordinal))
-            || !details.Lines.Any(line => line.Contains("docker-container://" + options.BuilderContainer, StringComparison.Ordinal)))
+        if (details.ExitCode != 0 || !HasExpectedBuilderEndpoint(details.Lines, options.BuilderContainer))
             throw new GitBuildProblem("git-build.builder-unavailable", 503);
         var inspect = await RunAsync("docker", ["inspect", "--format", "{{json .HostConfig}}", options.BuilderContainer], new Dictionary<string, string>(), TimeSpan.FromSeconds(15), ct);
         if (inspect.ExitCode != 0 || inspect.Lines.Count != 1) throw new GitBuildProblem("git-build.builder-unavailable", 503);
         var identity = await RunAsync("docker", ["inspect", "--format", "{{.Config.User}}", options.BuilderContainer], new Dictionary<string, string>(), TimeSpan.FromSeconds(15), ct);
         var user = identity.Lines.FirstOrDefault()?.Trim();
-        if (identity.ExitCode != 0 || string.IsNullOrWhiteSpace(user) || user is "0" or "root" || user.StartsWith("0:", StringComparison.Ordinal))
+        if (identity.ExitCode != 0 || string.IsNullOrWhiteSpace(user) || user.Split(':', 2)[0] is "0" or "root")
             throw new GitBuildProblem("git-build.builder-unrestricted", 503);
         var running = await RunAsync("docker", ["inspect", "--format", "{{.State.Running}}", options.BuilderContainer], new Dictionary<string, string>(), TimeSpan.FromSeconds(15), ct);
         if (running.ExitCode != 0 || running.Lines.FirstOrDefault()?.Trim() != "true")
@@ -355,6 +353,17 @@ public sealed class GitBuildService : IGitBuildService, IDisposable
         {
             throw new GitBuildProblem("git-build.builder-unavailable", 503);
         }
+    }
+
+    private static bool HasExpectedBuilderEndpoint(IEnumerable<string> lines, string container)
+    {
+        var fields = lines.Select(line => line.Trim()).ToArray();
+        var drivers = fields.Where(line => line.StartsWith("Driver:", StringComparison.Ordinal))
+            .Select(line => line["Driver:".Length..].Trim());
+        var endpoints = fields.Where(line => line.StartsWith("Endpoint:", StringComparison.Ordinal))
+            .Select(line => line["Endpoint:".Length..].Trim());
+        return drivers.SequenceEqual(["remote"], StringComparer.Ordinal)
+            && endpoints.SequenceEqual(["docker-container://" + container], StringComparer.Ordinal);
     }
 
     private string ValidUrl(string value)

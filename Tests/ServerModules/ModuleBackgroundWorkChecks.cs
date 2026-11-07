@@ -46,6 +46,27 @@ internal static class ModuleBackgroundWorkChecks
         var requestBody = new GitBuildRequest("https://github.com/example/project.git", "refs/heads/main", new string('a', 40), ".", "Dockerfile");
         await using (var fixture = new Fixture())
         {
+            foreach (var endpoint in new[]
+            {
+                new[] { "Endpoint: docker-container://test-container-other" },
+                new[] { "Endpoint: docker-container://test-container", "Endpoint: tcp://other:1234" }
+            })
+            {
+                fixture.Runner.BuilderDetails = ["Driver: remote", .. endpoint];
+                try
+                {
+                    await fixture.Proxy.StartAsync(owner, requestBody, "wrong-builder", default);
+                    throw new InvalidOperationException("Unexpected builder accepted.");
+                }
+                catch (GitBuildProblem error) when (error.Message == "git-build.builder-unavailable")
+                {
+                    check(fixture.Runner.Builds == 0 && fixture.Leases == 0,
+                        "a different or additional builder endpoint is rejected before work admission");
+                }
+            }
+        }
+        await using (var fixture = new Fixture())
+        {
             using var http = new CancellationTokenSource();
             var operation = await fixture.Proxy.StartAsync(owner, requestBody, "work-request-one", http.Token);
             await fixture.Runner.BuildEntered.Task.WaitAsync(TimeSpan.FromSeconds(5)); http.Cancel();
@@ -220,6 +241,7 @@ internal static class ModuleBackgroundWorkChecks
         internal readonly TaskCompletionSource Cleanup = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal readonly TaskCompletionSource BuildEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal readonly TaskCompletionSource CleanupEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal string[] BuilderDetails = ["Driver: remote", "Endpoint: docker-container://test-container"];
         internal CancellationToken BuildToken; internal int Builds; internal int Cleanups; internal int CleanupExitCode;
         public async Task<(int ExitCode, List<string> Lines)> RunAsync(string file, IReadOnlyList<string> args, IReadOnlyDictionary<string, string> environment,
             TimeSpan timeout, CancellationToken ct, Action<IReadOnlyList<string>>? onOutput = null)
@@ -231,7 +253,7 @@ internal static class ModuleBackgroundWorkChecks
             { Cleanups++; CleanupEntered.TrySetResult(); await Cleanup.Task; return (CleanupExitCode, []); }
             if (args.Take(2).SequenceEqual(["image", "ls"])) return (CleanupExitCode, []);
             if (args.Take(2).SequenceEqual(["image", "inspect"])) return (0, ["sha256:" + new string('b', 64)]);
-            if (args.Take(2).SequenceEqual(["buildx", "inspect"])) return (0, ["Driver: remote", "docker-container://test-container"]);
+            if (args.Take(2).SequenceEqual(["buildx", "inspect"])) return (0, [.. BuilderDetails]);
             if (args.Contains("{{.Config.User}}")) return (0, ["1000"]);
             if (args.Contains("{{.State.Running}}")) return (0, ["true"]);
             return (0, ["{\"Privileged\":false,\"Memory\":1048576,\"PidsLimit\":64,\"NanoCpus\":1000000000,\"NetworkMode\":\"test-network\",\"Binds\":[],\"CapAdd\":[]}"]);

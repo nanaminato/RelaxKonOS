@@ -581,7 +581,7 @@ Check(defaults.Capabilities.SetEquals([ServerCapabilities.Terminal, ServerCapabi
         var store = new RelaxKonOS.Server.WebsitePublishing.WebsitePublicationStore(hostBuilder.Environment);
         store.Start(new RelaxKonOS.Protocol.WebsitePublishing.PublishWebsiteRequest(Guid.NewGuid(),
                 "nginx-1", "example.test", null, null, true, true, true),
-            "actor", "gate-key", out _);
+            "actor", "gate-key", static () => { }, out _);
 
         var guard = new RelaxKonOS.Server.Startup.Modules.WebServerModule();
         using var services = new ServiceCollection().BuildServiceProvider();
