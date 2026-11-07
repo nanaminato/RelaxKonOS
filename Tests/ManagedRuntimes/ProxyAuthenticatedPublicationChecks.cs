@@ -112,8 +112,105 @@ internal static class ProxyAuthenticatedPublicationChecks
         await VerifyMihomoOverviewRestartAsync(root, assembly, socket, login, nativeState, guard);
         await VerifyMihomoObservationCancellationAsync(root, assembly, socket, login, nativeState, guard);
         await VerifySystemProxyShutdownAsync(root, assembly, socket, login, nativeState, guard);
+        await VerifyTunShutdownAsync(root, assembly, socket, login, nativeState, guard);
         if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_PROXY_BENCHMARK_BASELINE") is { Length: > 0 } baseline)
             await ProxyConnectionBenchmark.RunAsync(root, socket, baseline, assembly, login, guard, nativeState);
+    }
+
+    private static async Task VerifyTunShutdownAsync(string root, string assembly, string socket, LoginRequest login,
+        Func<RuntimeArchiveState> nativeState, ProxySystemdGuardProbe guard)
+    {
+        var operation = await guard.PrepareTunShutdownAsync(root);
+        var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly, socket, root, reuse: true);
+        start.Environment["Identity__LinuxPamTransport"] = "helper";
+        start.Environment["Logging__LogLevel__Microsoft.Hosting.Lifetime"] = "Information";
+        start.Environment["Proxy__Mihomo__Controller__TimeoutSeconds"] = "20";
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reloads = 0;
+        var builder = WebApplication.CreateBuilder();
+        builder.Logging.ClearProviders();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        await using var relay = builder.Build();
+        using var upstream = new HttpClient(new SocketsHttpHandler { UseProxy = false })
+            { BaseAddress = new Uri("http://127.0.0.1:9090/") };
+        relay.Run(async context =>
+        {
+            var reload = HttpMethods.IsPut(context.Request.Method) && context.Request.Path == "/configs";
+            using var request = new HttpRequestMessage(new HttpMethod(context.Request.Method), context.Request.Path + context.Request.QueryString);
+            request.Headers.TryAddWithoutValidation("Authorization", context.Request.Headers.Authorization.ToArray());
+            if (reload)
+            {
+                Interlocked.Increment(ref reloads);
+                request.Content = new StreamContent(context.Request.Body);
+                request.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(context.Request.ContentType!);
+            }
+            try
+            {
+                using var response = await upstream.SendAsync(request, context.RequestAborted);
+                var body = await response.Content.ReadAsByteArrayAsync(context.RequestAborted);
+                if (HttpMethods.IsGet(context.Request.Method) && context.Request.Path == "/configs"
+                    && response.IsSuccessStatusCode && Volatile.Read(ref reloads) != 0 && !ready.Task.IsCompleted)
+                {
+                    using var observed = JsonDocument.Parse(body);
+                    if (!observed.RootElement.TryGetProperty("tun", out var tun) || tun.GetProperty("enable").ValueKind == JsonValueKind.False)
+                    {
+                        ready.TrySetResult();
+                        await release.Task.WaitAsync(context.RequestAborted);
+                    }
+                }
+                context.Response.StatusCode = (int)response.StatusCode;
+                if (response.Content.Headers.ContentType is { } contentType) context.Response.ContentType = contentType.ToString();
+                await context.Response.Body.WriteAsync(body, context.RequestAborted);
+            }
+            catch (HttpRequestException) when (reload) { context.Abort(); }
+        });
+        await relay.StartAsync();
+        start.Environment["Proxy__Mihomo__Controller__Endpoint"] =
+            relay.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single() + "/";
+        var revision = nativeState().Installation.StateRevision;
+        var pid = guard.RuntimePid;
+        await guard.VerifyTrafficAsync(async (_, ct) =>
+        {
+            var stopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var restored = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var server = Start(start, onOutput: line =>
+            {
+                if (line.Contains("Application is shutting down", StringComparison.Ordinal)) stopping.TrySetResult();
+                if (line.Contains("TUN was disabled", StringComparison.Ordinal) && line.Contains(operation.ToString(), StringComparison.OrdinalIgnoreCase))
+                    restored.TrySetResult();
+            });
+            try
+            {
+                using var client = await ConnectAsync(server, login, ct);
+                await ready.Task.WaitAsync(ct);
+                await guard.VerifyTunShutdownBoundaryAsync(operation, waitingForReply: true, ct);
+                await SignalShutdownAsync(server, client, stopping.Task, ct);
+                if (server.HasExited || restored.Task.IsCompleted || Volatile.Read(ref reloads) != 1)
+                    throw new InvalidOperationException("SIGTERM released the original TUN recovery before its controller response.");
+                await guard.VerifyTunShutdownBoundaryAsync(operation, waitingForReply: true, ct);
+                release.TrySetResult();
+                await server.WaitForExitAsync(ct);
+                if (server.ExitCode != 0 || !restored.Task.IsCompleted)
+                    throw new InvalidOperationException("The Server did not confirm and drain the original TUN recovery.");
+                await guard.VerifyTunShutdownBoundaryAsync(operation, waitingForReply: false, ct);
+                using var restart = Start(start);
+                try
+                {
+                    using var restarted = await ConnectAsync(restart, login, ct);
+                    await guard.VerifyTunShutdownBoundaryAsync(operation, waitingForReply: false, ct);
+                    if (Volatile.Read(ref reloads) != 1 || guard.RuntimePid != pid || nativeState().Installation.StateRevision != revision)
+                        throw new InvalidOperationException("Restart repeated TUN teardown or changed the live runtime or publication.");
+                    Console.WriteLine($"PASS FULL SERVER TUN SIGTERM DRAIN: original operation {operation}, one native reload, marker drained and no replay");
+                }
+                finally { await StopAsync(restart); }
+            }
+            finally
+            {
+                release.TrySetResult();
+                await StopAsync(server);
+            }
+        }, TimeSpan.FromSeconds(45));
     }
 
     private static async Task VerifySystemProxyShutdownAsync(string root, string assembly, string socket, LoginRequest login,

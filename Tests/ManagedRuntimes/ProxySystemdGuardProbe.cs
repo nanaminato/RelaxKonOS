@@ -159,6 +159,26 @@ internal sealed class ProxySystemdGuardProbe(Process mihomo, int proxyPort, Prox
             throw new InvalidOperationException("The Helper outage lost the TUN device or recovery marker.");
     }
 
+    internal async Task<Guid> PrepareTunShutdownAsync(string root)
+    {
+        var address = IPAddress.Parse("192.0.2.3");
+        await InterruptActivationAsync(root, address);
+        var uid = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SERVER_UID");
+        var gid = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SERVER_GID");
+        await SingBoxOperations.RunAsync("/usr/bin/chown", ["-R", uid + ":" + gid, "--",
+            new FixturePaths(ManagedServiceChecks.FullServerState).GetProtectedConfigurationDirectory(),
+            ManagedServiceChecks.FullServerState]);
+        return operationId;
+    }
+
+    internal async Task VerifyTunShutdownBoundaryAsync(Guid original, bool waitingForReply, CancellationToken ct)
+    {
+        if (mihomo.HasExited || TunActive() || await ReadRulesAsync() != rules
+            || !await new HostProxyNetworkSafetyPlatform().VerifyManagementRouteAsync(route, ct)
+            || (waitingForReply ? ReadUnfinishedOperation() != original : File.Exists(MarkerPath)))
+            throw new InvalidOperationException("The native TUN restore, management path or original marker did not match the shutdown boundary.");
+    }
+
     internal async Task VerifyRecoveryAsync()
     {
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(12));

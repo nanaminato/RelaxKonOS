@@ -1912,3 +1912,13 @@ Windows Release 系统代理和模块边界回归通过。MB-05 跨进程夹具�
 真实 Helper 原操作 `8b4ae9fc-604f-45c0-b75a-9c8241e5bcd5` 在回复前已修正漂移，保留原归属。SIGTERM 后 Server 关闭监听并继续等待；放行原回执后正常退出。重启的启动核对使用新 ID `8af1379b-3f50-4508-a4b5-abb9f7192626`，原代理文件和归属日志内容、写入时间一致。Mihomo PID、原入站修订均保持，源站响应通过最初的连接交付。测试退出显式恢复私有环境，专属 cgroup 清理完成，宿主服务和代理文件指纹一致。日志为 `.artifacts/mb04-guard-sigterm-auth-live.log`，归档 SHA-256 为 `cce50caac87aae2084f223915f708fa8ff7b003d65d97fcd5b8c382eace6bce1`。
 
 共用停机测试工具的受管 Mihomo 套件复验通过 177 项，原发布排空回执为 `1fabc0ea-f689-452f-885e-97b6534241fd`。日志为 `.artifacts/mb04-guard-sigterm-native-live.log`，归档 SHA-256 为 `027cb2e33dd22efb95086a6e6a69874a836f40a24594e23ad4ba56deb966318e`。本轮证据限 Linux 原 guard 与发布恢复。Windows 原生停机及整模块休眠仍开放。下一项验证真实 TUN 已撤销但原控制器响应尚未返回时，完整 Server 是否保留原恢复标记直至排空。
+
+### MB-04 完整 Server 的真实 TUN 停机排空
+
+私有 Linux systemd 和网络内，测试工作进程在真实激活后、完成标记提交前终止。停用 Proxy 管理面的完整非 root Server 使用原 Core worker 读取同一标记。回环中继将真实 reload 和后续读取转发至原 Mihomo，截留显示 TUN 已禁用的真实控制器响应。夹具在发送 SIGTERM 前核验设备、IPv4/IPv6 规则、管理路由和原标记。
+
+Windows Release TUN 边界 34 项及模块边界通过。MB-05 跨进程夹具按原 `41612b18-54ab-412e-a743-3f7c0ba8ef09` 读回 Interrupted，副作用计数为一。日志为 `.artifacts/mb04-tun-sigterm-win.log` 与 `.artifacts/mb04-tun-sigterm-boundaries-win.log`。
+
+原 TUN 操作 `44a0b476-2e7f-4dd5-98f8-3a55504a7ab9` 在设备已撤销、管理路由及策略规则恢复后仍保留标记。SIGTERM 关闭监听，Server 持续等待原禁用确认。放行响应后，Core 记录原操作，完成标记清理，Server 正常退出。重启后确认没有第二次 reload，Mihomo PID、原入站修订及已到达源站的代理连接保持，原连接收到响应。
+
+同批系统代理 guard 排空原 `06219350-801c-44e7-a8ba-c0d5f084b691`、入站发布恢复 `9f5c1791-a665-448f-9c74-b76ef2fc8cad` 及补偿 `a3adbc1e-2a5e-47d1-a08d-a7a6c56cc4b9` 通过。专属 cgroup 清理完成，宿主服务和代理文件指纹一致。日志为 `.artifacts/mb04-tun-sigterm-live.log`，归档 SHA-256 为 `7735b1b31fdda665e473272707268afc25eee1fdbae60c59869eee79da9d48aa`。本次验收使用独立直连 Mihomo 配置。已确认受管发布的 TUN 事务、Windows 原生停机及整模块休眠仍开放。下一项用完整 Server 联验入站授权到期在真实 Helper 提交后、原回执仍在途时的 SIGTERM。
