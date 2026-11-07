@@ -414,7 +414,7 @@ internal static class ManagedServiceChecks
 
     internal const string FullServerState = "/var/lib/relaxkonos/proxy/state";
 
-    private static ProxyServerStore OpenFullServerStore(string root) => new(new FixturePaths(FullServerState), OpenProtection(root));
+    internal static ProxyServerStore OpenFullServerStore(string root) => new(new FixturePaths(FullServerState), OpenProtection(root));
 
     internal static async Task<bool> RunFullServerAsync(string assembly, string socketPath, string root,
         ProxyServerSecret nextGrant, ProxyServerSecret retainedGrant, ProxyFullServerTrafficProbe traffic,
@@ -442,22 +442,25 @@ internal static class ManagedServiceChecks
 
     internal const string FullServerUrl = "http://127.0.0.1:18763";
 
-    internal static async Task<ProcessStartInfo> PrepareFullServerAsync(string assembly, string socketPath, string root)
+    internal static async Task<ProcessStartInfo> PrepareFullServerAsync(string assembly, string socketPath, string root, bool reuse = false)
     {
         if (!File.ReadLines("/proc/self/mountinfo").Any(line =>
             line.Split(' ')[4] == "/var/lib" && line.Contains(" - tmpfs ", StringComparison.Ordinal)))
             throw new InvalidOperationException("The full Server fixture requires a private /var/lib tmpfs.");
         var statePath = FullServerState;
-        if (File.Exists(Path.Combine(statePath, "proxy-server.protected")))
+        if (File.Exists(Path.Combine(statePath, "proxy-server.protected")) != reuse)
             throw new InvalidOperationException("The full Server fixture requires an empty private Proxy state mount.");
         Directory.CreateDirectory(statePath);
         var contentRoot = Directory.CreateDirectory(Path.Combine(root, "full-server")).FullName;
         var home = Directory.CreateDirectory(Path.Combine(root, "full-home")).FullName;
         var keyRing = Directory.CreateDirectory(Path.Combine(home, ".aspnet", "DataProtection-Keys")).FullName;
-        foreach (var key in Directory.EnumerateFiles(Path.Combine(root, "fixture-keys"), "*.xml"))
-            File.Copy(key, Path.Combine(keyRing, Path.GetFileName(key)));
-        foreach (var file in Directory.EnumerateFiles(Path.Combine(root, "server")))
-            File.Copy(file, Path.Combine(statePath, Path.GetFileName(file)));
+        if (!reuse)
+        {
+            foreach (var key in Directory.EnumerateFiles(Path.Combine(root, "fixture-keys"), "*.xml"))
+                File.Copy(key, Path.Combine(keyRing, Path.GetFileName(key)));
+            foreach (var file in Directory.EnumerateFiles(Path.Combine(root, "server")))
+                File.Copy(file, Path.Combine(statePath, Path.GetFileName(file)));
+        }
 
         var start = new ProcessStartInfo("dotnet")
         {

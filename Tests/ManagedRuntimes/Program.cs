@@ -126,6 +126,11 @@ if (args is ["runtime-proxy-systemd", var nativeHelper, var nativeServer, var na
     await ProxySystemdRecoveryChecks.RunAsync(nativeHelper, nativeServer, nativeSingBox);
     return;
 }
+if (args is ["runtime-proxy-systemd", var authHelper, var authServer, var authSingBox, "--authenticated"])
+{
+    await ProxySystemdRecoveryChecks.RunAsync(authHelper, authServer, authSingBox, authenticated: true);
+    return;
+}
 if (args is ["runtime-proxy-systemd-expiry-worker", var nativeSocket, var nativeRoot])
 {
     await ProxySystemdRecoveryChecks.RunExpiryWorkerAsync(nativeSocket, nativeRoot);

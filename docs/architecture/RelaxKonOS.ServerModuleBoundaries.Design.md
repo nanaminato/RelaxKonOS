@@ -1589,3 +1589,11 @@ Linux x64 Release 最终复验在私有 systemd 上使用实际 sing-box。隔�
 管理发布和回滚共用 HTTP 队列的原操作 ID 与 Helper 操作 ID。加密入站台账保留同 ID 的已确认结果，覆盖领域已经写回、队列尚未完成异步清理和终态写入的间隔。显式恢复仅认领有对应入站证据的原发布队列条目，继续使用原工作租约、审计与清理。无法核实的结果保持中断责任。不同领域的未知条目仍保留原准入门禁。原发布键和显式恢复键均指向同一个用户回执。补偿完成后原发布为 Failed，已提交的原发布为 Succeeded。
 
 Linux x64 Release 在私有 systemd 中通过两条跨进程生产路由验收。Kestrel 首进程受理后在原生在途 `77cd82df-64c6-4d29-b621-c5e7c0e41b60` 或领域已提交 `6a8c29a4-e52a-492d-9412-fc87c25c01ca` 的屏障被强制终止。新进程拒绝未认证的恢复请求，认证恢复返回原 ID 和对应 Failed 或 Succeeded，原 apply 各一次，补偿只在前一路径执行一次。原发布键与恢复键返回同一持久终态。HTTP 组使用测试认证方案与受控 Helper。另以同一 Release 复验生产 Helper、真实 sing-box 原生补偿、授权到期和 TUN/系统代理，专属 cgroup 清理且宿主指纹一致。首轮远端包装器漏传 HTTP 组程序集，原生回归完成，补齐参数后两组同批通过。日志为 `.artifacts/mb04-queued-recovery-final-live.log`，归档 SHA-256 为 `460f7814b2766fd3e6a4a079b35f399f9d6b7004fc20ab6a4ad6dbe5f8d0f6f5`。Windows Release 独立 Proxy Server 和模块边界回归通过。完整 Server 经生产认证、队列和生产 Helper 的同一次跨进程事务仍待实测。未有候选或领域终态证明的队列记录保持原准入门禁。
+
+### MB-04 完整认证 Server 的原入站发布回执
+
+Linux 私有 systemd 在同一次事务中运行非 root 完整 Server、生产 PAM/JWT、生产 Proxy HTTP 队列、独立生产 Helper 和真实 sing-box。隔离夹具使用预置专属证书和原有测试机账户。私有 Unix 中继按原字节转发请求，仅暂扣本次真实 apply 的成功响应。生产 Helper 已提交新配置，新增授权已验证真实流量，Server 的入站候选仍处于原 ID 的待确认状态，此时终止 Server。首次连接由隔离中继代发，重启后的 Server 以非 root UID 直接连接生产 Helper。
+
+Server 重启后重新通过 PAM 登录。匿名恢复返回 401，原发布键返回原 Interrupted，显式恢复及原恢复键返回同一 ID，持久化终态为 Succeeded。真实 apply 一次，原配置修订只推进一次，管理进程重启期间 sing-box 继续运行。保留和新增授权均完成真实双向转发。此次联合验收针对原生已经提交、Server 尚未收到结果的路径。原生仍在途时的显式补偿已独立实测，完整 PAM HTTP 与该分支的同事务联验仍待执行。
+
+最终 Linux x64 Release 的原操作为 `467fad21-7888-4888-8234-7583f4175db7`。中继使用私有 `/run`，实测 Server 重启前后的原 sing-box PID 相同。Linux 证据为 `.artifacts/mb04-full-auth-proxy-final-live.log`，归档 SHA-256 为 `a76e44b9c9d066c84c7588fd691e3c2a06586ade32742d7aede61e704d62c63b`。同批 TUN、系统代理、后续授权到期和原生补偿回归通过，宿主服务与代理文件指纹一致，专属 cgroup 已清理。Windows Release 受管服务 16 项、独立 HTTP 队列和模块边界回归通过。

@@ -1,14 +1,15 @@
 #!/bin/bash
 set -euo pipefail
-if [ "$#" -ne 3 ] && [ "$#" -ne 4 ]; then
-    echo "Usage: sudo bash $0 /path/to/tests.dll /path/to/Helper.dll /path/to/Server.dll [path/to/proxy-tests.dll]" >&2
+if [[ $# -lt 3 || $# -gt 5 || ( $# -eq 5 && $5 != --authenticated ) ]]; then
+    echo "Usage: sudo bash $0 tests.dll Helper.dll Server.dll [proxy-tests.dll [--authenticated]]" >&2
     exit 2
 fi
 fixture=$(realpath -e -- "$1")
 helper=$(realpath -e -- "$2")
 server=$(realpath -e -- "$3")
 proxy_tests=
-if [ "$#" -eq 4 ]; then proxy_tests=$(realpath -e -- "$4"); fi
+if [ "$#" -ge 4 ]; then proxy_tests=$(realpath -e -- "$4"); fi
+authenticated=${5:-}
 case "$fixture$helper$server$proxy_tests" in *[!a-zA-Z0-9_./-]*) echo "Test paths must contain only unit-safe characters" >&2; exit 2;; esac
 test "$(id -u)" -eq 0
 server_uid=$(id -u nobody)
@@ -35,7 +36,12 @@ proxy_fingerprint() {
     done
 }
 proxy_before=$(proxy_fingerprint)
+credential_writer=
 cleanup() {
+    if [[ -n $credential_writer ]]; then
+        kill "$credential_writer" 2>/dev/null || :
+        wait "$credential_writer" 2>/dev/null || :
+    fi
     systemctl kill --kill-whom=all --signal=KILL "$unit" 2>/dev/null || true
     systemctl stop --no-block "$unit" 2>/dev/null || true
     for attempt in $(seq 1 15); do
@@ -52,6 +58,13 @@ cleanup() {
     echo "PASS HOST SYSTEMD CLEANUP: dedicated cgroup removed, host runtime services and proxy files unchanged"
 }
 trap cleanup EXIT
+if [[ $authenticated == --authenticated ]]; then
+    mkfifo -m 0600 "$work/credentials"
+    exec 3<&0
+    cat <&3 > "$work/credentials" &
+    credential_writer=$!
+    exec 3<&-
+fi
 cp -- /var/lib/relaxkonos/proxy/engines/mihomo/versions/v1.19.33-linux-x64/mihomo "$work/mihomo"
 chmod 0755 "$work/mihomo"
 cat > "$work/inside.sh" <<EOF
@@ -64,7 +77,11 @@ run_checks() {
     if [[ -n "$proxy_tests" ]]; then
         dotnet "$proxy_tests" --queue-recovery-only || return \$?
     fi
-    dotnet "$fixture" runtime-proxy-systemd "$helper" "$server" /usr/bin/sing-box
+    if [[ "$authenticated" == --authenticated ]]; then
+        dotnet "$fixture" runtime-proxy-systemd "$helper" "$server" /usr/bin/sing-box --authenticated < "$work/credentials"
+    else
+        dotnet "$fixture" runtime-proxy-systemd "$helper" "$server" /usr/bin/sing-box
+    fi
 }
 run_checks > "$work/tests.log" 2>&1
 code=\$?
@@ -87,6 +104,7 @@ mount -t tmpfs -o mode=0755 tmpfs /etc/systemd/system
 mount -t tmpfs -o mode=0755 tmpfs /etc/relaxkonos
 printf 'RELAXKONOS_PROXY_FIXTURE=isolated\nhttp_proxy=http://127.0.0.1:1234\n' > /etc/environment
 printf 'session required pam_env.so readenv=1\n' > /etc/pam.d/relaxkonos-fixture
+printf 'auth include common-auth\naccount include common-account\n' > /etc/pam.d/relaxkonos
 mount --bind /sys /sys
 mount -o remount,bind,ro /sys
 mount -t cgroup2 none /sys/fs/cgroup

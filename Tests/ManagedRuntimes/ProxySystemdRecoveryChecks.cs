@@ -37,7 +37,7 @@ internal static class ProxySystemdRecoveryChecks
         return work;
     }
 
-    internal static async Task RunAsync(string helperAssembly, string serverAssembly, string executable)
+    internal static async Task RunAsync(string helperAssembly, string serverAssembly, string executable, bool authenticated = false)
     {
         var work = RequirePrivateWork();
         const string runtimeRoot = LinuxSingBoxArchiveHost.Root;
@@ -200,11 +200,15 @@ internal static class ProxySystemdRecoveryChecks
             if (!recovered || final.Installation.StateRevision != before + 2 || final.ConfigurationIdentity != finalHash
                 || !(await host.ObserveAsync(default)).Running)
                 throw new InvalidOperationException("The full Server replayed or lost a real systemd publication.");
+            if (authenticated)
+                await ProxyAuthenticatedPublicationChecks.RunAsync(root, serverAssembly, socket, host, traffic, retained,
+                    () => states.Read()!.Installation.StateRevision);
             await guard.VerifyTrafficAsync();
             await guard.ApplyAsync(transport, enabled: false);
             guard.VerifyOriginalRestored();
             var secondHelper = await StopHelperAsync();
-            if (ApplyCount(secondHelper.Log) != 1) throw new InvalidOperationException("Restarted Helper must receive only the later expiry apply.");
+            if (ApplyCount(secondHelper.Log) != (authenticated ? 2 : 1))
+                throw new InvalidOperationException("Restarted Helper received an unexpected publication apply.");
             Console.WriteLine("PASS PRODUCTION HELPER SYSTEMD: independent Helper crashed and restarted, runtime PID survived, original candidate confirmed, subsequent expiry and real traffic passed");
 
             async Task<ProxyServerPublicationReceipt> ReadReceiptAsync(Guid operationId)
