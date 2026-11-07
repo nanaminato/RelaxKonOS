@@ -1267,3 +1267,7 @@ HTTP 断开使用生产 Docker resident 工作租约复测通过。客户端断�
 ### MB-04 Proxy Server 授权到期回归
 
 Windows Release 的独立 Proxy Server 测试已接入现行持久调度索引。使用原台账中的待处理发布触发生产 30 秒调度器，验证失败释放作用域、下一轮新建执行器、取消时等待异步清理，以及 HTTP 队列原回执。日志为 .artifacts/mb04-proxy-server-release-final.log。此轮为本地回归，Proxy 安全责任交接和动态休眠仍开放。
+
+### MB-04 到期索引从原台账重建
+
+到期扫描在原状态 gate 内从权威密文重建失配、损坏或缺失的索引，后续匹配扫描跳过台账解密。索引不可写时继续按原台账判断，未引入新的发布执行者。Windows Release Proxy Core 安全与生命周期作用域专项通过，日志为 .artifacts/mb04-index-repair-win.log。Linux 实机复测、安全责任交接和动态休眠仍开放。

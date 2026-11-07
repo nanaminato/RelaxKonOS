@@ -80,14 +80,14 @@ public sealed class ProxyServerStore(IProxyPlatformPaths paths, IDataProtectionP
             await using (stream)
             {
                 var index = await ReadIndexAsync(ct);
-                if (index is not null)
-                {
-                    var digest = Convert.ToHexString(await SHA256.HashDataAsync(stream, ct));
-                    if (index.StateDigest == digest) return index.Schedule;
-                    stream.Position = 0;
-                }
+                var digest = Convert.ToHexString(await SHA256.HashDataAsync(stream, ct));
+                if (index?.StateDigest == digest) return index.Schedule;
+
+                stream.Position = 0;
                 using var reader = new StreamReader(stream, Encoding.UTF8);
-                return BuildExpirySchedule(Decode(await reader.ReadToEndAsync(ct)));
+                var schedule = BuildExpirySchedule(Decode(await reader.ReadToEndAsync(ct)));
+                await TryWriteIndexAsync(new(digest, schedule), ct);
+                return schedule;
             }
         }
         finally { Gate.Release(); }
@@ -135,16 +135,20 @@ public sealed class ProxyServerStore(IProxyPlatformPaths paths, IDataProtectionP
     {
         var protectedState = Encoding.UTF8.GetBytes(_protector.Protect(JsonSerializer.Serialize(state, Json)));
         Directory.CreateDirectory(Path.GetDirectoryName(PathName)!);
+        // Publish the derived index first. An interrupted commit can leave a mismatched index,
+        // which never overrides the digest of the authoritative file.
+        await TryWriteIndexAsync(new(Digest(protectedState), BuildExpirySchedule(state)), ct);
+        await WriteAtomicAsync(PathName, protectedState, ct);
+    }
+
+    private async Task TryWriteIndexAsync(ExpiryIndex index, CancellationToken ct)
+    {
         try
         {
-            // Publish the derived index first. An interrupted commit can leave a mismatched index,
-            // which never overrides the digest of the authoritative file.
-            var index = new ExpiryIndex(Digest(protectedState), BuildExpirySchedule(state));
             var protectedIndex = Encoding.UTF8.GetBytes(_expiryProtector.Protect(JsonSerializer.Serialize(index, Json)));
             await WriteAtomicAsync(ExpiryPath, protectedIndex, ct);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or CryptographicException) { }
-        await WriteAtomicAsync(PathName, protectedState, ct);
     }
 
     private static async Task WriteAtomicAsync(string path, byte[] bytes, CancellationToken ct)

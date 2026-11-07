@@ -77,12 +77,15 @@ internal static class ProxyCoreSafetyChecks
                 reads = protection.StateReads;
                 Check((await reopened.ReadExpiryScheduleAsync(default)).PendingPublication && protection.StateReads == reads + 1,
                     "An authenticated but stale index cannot hide the original pending publication");
+                Check((await reopened.ReadExpiryScheduleAsync(default)).PendingPublication && protection.StateReads == reads + 1,
+                    "A recovered index preserves pending work without another ledger decryption");
                 await File.WriteAllTextAsync(expiryIndex, "damaged");
                 Check((await reopened.ReadExpiryScheduleAsync(default)).PendingPublication,
                     "A damaged index falls back to the authoritative pending publication");
                 File.Delete(expiryIndex);
                 Check((await reopened.ReadExpiryScheduleAsync(default)).PendingPublication,
                     "A missing index preserves expiry recovery for existing ledgers");
+                File.Delete(expiryIndex);
                 Directory.CreateDirectory(expiryIndex);
                 try
                 {
