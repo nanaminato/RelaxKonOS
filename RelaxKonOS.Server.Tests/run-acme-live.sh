@@ -57,7 +57,7 @@ if [ -n "$server" ]; then
     backend=127.0.0.2
     relay_port=14000
     relay_mode=full-server
-    if [ "$schedule" = schedule ]; then
+    if [ "$schedule" = schedule ] || [ "$schedule" = schedule-cancel ]; then
         relay_mode=schedule
         authorization_reuse=0
         profiles=',"profiles":{"default":{"description":"Private renewal scheduling fixture","validityPeriod":86400}}'
@@ -113,8 +113,8 @@ done
 curl --noproxy '*' --cacert "$fixture/https.pem" -fsS "https://localhost:$relay_port/dir" >/dev/null
 unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
 if [ -n "$server" ]; then
-    SSL_CERT_FILE="$fixture/https.pem" python3 "$(dirname "$0")/run-authenticated-acme-live.py" "$fixture" "$server" "$assembly" "$relay_mode"
-    if [ "$schedule" = schedule ]; then
+    SSL_CERT_FILE="$fixture/https.pem" python3 "$(dirname "$0")/run-authenticated-acme-live.py" "$fixture" "$server" "$assembly" "${schedule:-$relay_mode}"
+    if [ "$relay_mode" = schedule ]; then
         [ "$(grep -c 'Added order' "$fixture/ca.log")" -eq 2 ]
         [ "$(grep -c 'POST /finalize-order/' "$fixture/ca.log")" -eq 1 ]
     else

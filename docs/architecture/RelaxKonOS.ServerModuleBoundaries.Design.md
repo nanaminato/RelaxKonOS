@@ -1454,6 +1454,14 @@ Linux x64 Release 在既有测试机的私有网络、挂载和 PID 命名空间
 
 TLS 中继收到实际 CA 挑战响应 200 后保留响应。Server 接收 SIGTERM 后监听退出，原续期仍为 Running，挑战文件仍在，进程持续等待。释放实际响应后，原操作写入 Cancelled，挑战文件清理，Server 正常退出。重启重新认证后，生产 Worker 在原启动周期内记录原下次到期时间并推迟扫描，台账字节和原证书指纹一致，按 ID 读取原回执。CA 共两张预期订单、一次签发提交，停机排空和重启零新增。宿主 Nginx、Docker、Mihomo PID 与主机文件指纹前后一致。日志为 .artifacts/mb05-natural-renewal-live.log，归档 SHA-256 为 c10e20014eef2acc821c11e609450002a8efa8531b28bbf1c73318ea08c78be1。Windows Release 模块边界及 Linux 独立 Pebble 回归通过，后者归档 SHA-256 为 d6e58f4bda1f2aeed11b7226d1157cf582f97a4a3551a9b9f0529825b59d08ef。证书继续 resident，独立程序集和生产内存测量仍开放。
 
+### MB-05 完整 Server 自然续期的认证取消
+
+沿用短期证书、生产自动扫描和独立 Nginx/Pebble 的 Linux Release 夹具。真实 CA 挑战响应 200 被中继暂缓时，匿名取消返回 401，认证取消返回原 `Running / cancel-requested`，重新读取原回执与磁盘均确认操作仍在途，挑战文件仍保留。释放响应后写入原 Cancelled，挑战清理，重复取消返回相同终态。重启重新登录后，读取及重复取消仍返回相同回执，原 CA 订单只读返回 `ready`，生产 Worker 延用原下次到期时间，扫描台账字节和活动证书指纹一致。未跨越下一次实际日扫描。
+
+取消扫描 `126f084a-6176-40ef-9233-168d17f519a0` 的原续期为 `6db6e593-48c5-4ea6-9dfe-6d139b157f9e`。SIGTERM 对照扫描 `da76552f-4183-43f0-9eee-74add6eb5a2e` 的原续期为 `e5256887-2dd9-483f-94b8-098c4c493323`。两轮各两张预期订单、一次签发提交，取消、查询与重启零新增。宿主 Nginx、Docker PID 及代理环境和 Nginx 配置指纹一致。
+
+日志为 `.artifacts/mb05-natural-renewal-cancel-final-schedule-cancel.log` 和 `.artifacts/mb05-natural-renewal-cancel-final-schedule.log`。归档 SHA-256 分别为 `e9f821a67256fde1807d26807b509f4ba6ee4649ad915cd1a5a7cbea5733c3c1` 和 `58af974738dcc21117bdec6b127811d88eeaef83e6f245c1d2659c132f8314d7`。首轮旧 Server 制品未通过取消后查询原 CA 订单，最终使用含 `9b8764db` 的制品通过。证书保持 resident。
+
 ### MB-05 网站发布准入与执行作用域
 
 原网站发布协调器继续独占准入、台账恢复与停机排空。只有持久化 queued 的新发布创建执行作用域，执行器在原工作租约内处理上游观察、证书选择、Nginx 配置、应用关联、HTTPS 验证及原补偿。工作 owner 等待终态提交和异步作用域释放。启动恢复、已知键回执和准入拒绝不解析执行器。Core Nginx 管理、TLS 材料与应用关联仍由原服务持有。
@@ -1572,7 +1580,7 @@ Linux x64 Release 使用完整 PAM/JWT Server、生产 Helper、私有 systemd�
 
 同一 Linux 私有 systemd 设施中，Pebble 已实际签发，中继暂扣真实证书响应。认证取消返回原 Running / cancel-requested，挑战文件仍在。释放响应后，证书原回执为 Cancelled，网站发布原回执为 Failed / certificate.operation_cancelled。另一轮向完整 Server 发 SIGTERM，Server 先停止接收 HTTP，继续等待原 CA 响应且保留挑战文件。交付响应后，挑战清理与原证书回执落盘，Server 正常退出。重启后原网站发布标记 Interrupted。两轮均按原证书 operationId 查询 CA valid，原挑战清理，未新增订单、重载 Nginx 或提交新应用关联，旧 TLS 和真实 Docker 上游持续运行。
 
-取消发布为 `aa53d0b9-acc2-42cd-9347-f74b67e7a2e9`，证书操作为 `9222c5ac-cd33-4477-b8a1-129fdef81146`。SIGTERM 发布为 `d9257bbe-d069-4461-ab3e-835a206a586c`，证书操作为 `e446e203-0669-4b79-a358-a2b4c654c792`。日志为 `.artifacts/mb05-acme-drain--systemd-website-acme-cancel.log` 和 `.artifacts/mb05-acme-drain--systemd-website-acme-drain.log`，归档 SHA-256 为 `00bd22b753e8caa35ff9bfe68de0572bc7c305223c96a5ee9833edc25d4f20c0`。Windows Release 模块边界回归覆盖重开台账后下一次自动扫描保留原取消回执。自动续期取消的 CA 联合验证与主机掉电仍开放。
+取消发布为 `aa53d0b9-acc2-42cd-9347-f74b67e7a2e9`，证书操作为 `9222c5ac-cd33-4477-b8a1-129fdef81146`。SIGTERM 发布为 `d9257bbe-d069-4461-ab3e-835a206a586c`，证书操作为 `e446e203-0669-4b79-a358-a2b4c654c792`。日志为 `.artifacts/mb05-acme-drain--systemd-website-acme-cancel.log` 和 `.artifacts/mb05-acme-drain--systemd-website-acme-drain.log`，归档 SHA-256 为 `00bd22b753e8caa35ff9bfe68de0572bc7c305223c96a5ee9833edc25d4f20c0`。Windows Release 模块边界回归覆盖重开台账后下一次自动扫描保留原取消回执。自然续期取消的 CA 实测见上文，主机掉电仍开放。
 
 ### MB-04 入站授权到期的停机排空
 

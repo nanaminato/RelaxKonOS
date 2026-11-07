@@ -38,7 +38,8 @@ def run(root, server, tests, mode):
         "Certificate__DirectoryUrl": "https://localhost:14000/dir",
         "Certificate__StorageRoot": str(root / "material"), "Certificate__ChallengeRoot": str(root / "challenge"),
     })
-    if mode == "schedule":
+    scheduled = mode in ("schedule", "schedule-cancel")
+    if scheduled:
         env["Logging__LogLevel__RelaxKonOS.Server.Certificate.CertificateRenewalWorker"] = "Debug"
     for module in ("Terminal", "Firewall", "SystemPerformance", "Git", "Tailscale", "Docker", "WebServer", "Proxy"):
         env[f"Modules__{module}__Enabled"] = "false"
@@ -126,7 +127,7 @@ def run(root, server, tests, mode):
         return {"domains": [domain], "challengeType": "webRootHttp01", "contactEmail": "fixture@example.test",
                 "acceptedTerms": True, "publicReachabilityConfirmed": True}
 
-    def verify_scheduled_shutdown(initial):
+    def verify_scheduled_drain(initial, token):
         marker = root / "challenge-response-held"
         release = root / "release-challenge-response"
         ledger = root / "data" / "certificate-operations.json"
@@ -148,20 +149,34 @@ def run(root, server, tests, mode):
                     break
                 assert time.monotonic() < deadline, "Natural scan did not persist the original renewal association"
                 time.sleep(0.05)
-            initial.terminate()
-            deadline = time.monotonic() + 8
-            while healthy():
-                assert initial.poll() is None and time.monotonic() < deadline, "The listener did not enter shutdown"
-                time.sleep(0.05)
+            route = f"{certificates}/operations/{operation}"
+            if mode == "schedule-cancel":
+                request(route + "/cancel", payload={}, expected=401)
+                pending = request(route + "/cancel", token, {})
+                assert pending["operationId"] == operation and pending["state"] == "running"
+                assert pending["stage"] == "cancel-requested" and request(route, token) == pending
+            else:
+                initial.terminate()
+                deadline = time.monotonic() + 8
+                while healthy():
+                    assert initial.poll() is None and time.monotonic() < deadline, "The listener did not enter shutdown"
+                    time.sleep(0.05)
             current, = (item for item in json.loads(ledger.read_bytes()) if item["operationId"] == operation)
-            assert initial.poll() is None and current["state"] == "running" and list((root / "challenge").iterdir()), +                "Server released the renewal before the actual CA response and challenge cleanup"
+            assert initial.poll() is None and current["state"] == "running" and list((root / "challenge").iterdir()), (
+                "Server released the renewal before the actual CA response and challenge cleanup")
         finally:
             release.touch()
+        receipt = None
+        if mode == "schedule-cancel":
+            receipt = terminal(token, pending, "cancelled")
+            assert receipt["operationId"] == operation and request(route + "/cancel", token, {}) == receipt
+            initial.terminate()
         assert initial.wait(timeout=15) == 0, "Server did not complete graceful shutdown"
         finished, = (item for item in json.loads(ledger.read_bytes()) if item["operationId"] == operation)
         assert finished["state"] == "cancelled" and finished["completedAt"] and not list((root / "challenge").iterdir())
-        print(f"PASS NATURAL RENEWAL SHUTDOWN: scan={scan['Id']}; operation={operation}; drained before Server exit", flush=True)
-        return operation, schedule
+        action = "CANCEL" if receipt is not None else "SHUTDOWN"
+        print(f"PASS NATURAL RENEWAL {action}: scan={scan['Id']}; operation={operation}; drained before Server exit", flush=True)
+        return operation, schedule, receipt
 
     helper_config = root / "helper.json"
     helper_config.write_text(json.dumps({"socketPath": env["PrivilegedHelper__SocketPath"],
@@ -175,18 +190,24 @@ def run(root, server, tests, mode):
             certificate = f"{certificates}/{original['certificateId']}"
             fingerprint = request(certificate, token)["fingerprintSha256"]
             assert fingerprint
-            if mode == "schedule":
-                operation, schedule = verify_scheduled_shutdown(initial)
+            if scheduled:
+                operation, schedule, original_cancelled = verify_scheduled_drain(initial, token)
+                persisted = schedule.read_bytes()
                 with process([server], "restarted-server") as restarted:
                     wait_for(restarted, healthy, "restarted-server")
                     token = login()
-                    persisted = schedule.read_bytes()
                     deadline = time.monotonic() + 80
                     while "Certificate renewal scan deferred until" not in (root / "restarted-server.stdout").read_text():
                         assert restarted.poll() is None and time.monotonic() < deadline, "Restarted worker did not read the persisted schedule"
                         time.sleep(0.25)
                     receipt = request(f"{certificates}/operations/{operation}", token)
                     assert schedule.read_bytes() == persisted and receipt["state"] == "cancelled"
+                    if original_cancelled is not None:
+                        route = f"{certificates}/operations/{operation}"
+                        assert receipt == original_cancelled == request(route + "/cancel", token, {})
+                        order = request(route + "/acme-order", token)
+                        assert order["operation"] == receipt and order["remoteStatus"] in ("pending", "ready")
+                        print(f"PASS NATURAL RENEWAL ORIGINAL ORDER: operation={operation}; CA {order['remoteStatus']}", flush=True)
                     assert request(certificate, token)["fingerprintSha256"] == fingerprint
                     print(f"PASS NATURAL RENEWAL RESTART: operation={operation}; original receipt and next scan preserved", flush=True)
                 return

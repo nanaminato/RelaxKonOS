@@ -1495,4 +1495,6 @@ Linux 私有 Pebble 实测覆盖自动续期已准入、扫描尚未关联原回
 
 完整 Server 的自然续期停机路径已在 Linux 私有 Pebble 和 Nginx 上通过验收。收到 SIGTERM 后，Server 等待原 CA 挑战响应和清理完成，再提交原取消回执。重启后读取原下次到期时间，保留当前证书和原回执。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-完整-server-自然续期与停机排空)。
 
-网站发布的自动签发采用 Direct HTTP-01，当前缺少经能力授权的生产监听入口。私有 Pebble 实测发布原回执为 `certificate.port80_elevation_required`，未创建证书操作或 CA 订单。以上 WebRoot HTTP-01 路径已独立通过实机验收。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布自动-acme-的权限阻塞)。
+认证用户取消正在进行的自然续期时，原回执先进入 `Running / cancel-requested`，待挑战清理后成为 Cancelled。Linux 实测中，重启后重复取消返回相同终态，按原 operationId 只读查询原订单返回 `ready`，活动证书与下次扫描时间保持，CA 未创建新订单。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-完整-server-自然续期的认证取消)。
+
+网站发布的自动签发采用所选 Nginx 的 WebRoot HTTP-01 集成。旧 Direct HTTP-01 发布路径曾因缺少经能力授权的生产监听入口而返回 `certificate.port80_elevation_required`。当前路径的签发、挑战清理及中断恢复已通过私有 Pebble 实测。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布-webroot-签发与中断恢复)。
