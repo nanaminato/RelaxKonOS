@@ -1,3 +1,4 @@
+using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.WebServers;
 
 namespace RelaxKonOS.Server.WebServer;
@@ -22,11 +23,15 @@ internal sealed partial class NginxWebServerManager
             return result;
         }
 
-        internal async Task<WebServerOperationResult> ReloadAsync(WebServerDto instance, CancellationToken ct)
+        internal async Task<WebServerOperationResult> ReloadAsync(WebServerDto instance, IWebServerOperationProgress progress, CancellationToken ct)
         {
             if (nginx.UsesSystemPackageNginx(instance))
             {
+                await progress.ReportAsync(WebServerOperationStore.NativeReloadDispatchStage, ct);
                 var helper = await nginx.RunSystemdNginxOperationAsync("reload", ct);
+                if (helper.ProblemCode == PrivilegedProblemCode.RecoveryRequired)
+                    return new(WebServerOperationStore.NativeRecoveryRequired);
+                await progress.ReportAsync("running", CancellationToken.None);
                 return new(helper.Success ? "" : ToWebServerProblem(helper.ProblemCode, "webserver.reload_failed"));
             }
             var reload = await nginx.RunNginxAsync(instance.ExecutablePath,

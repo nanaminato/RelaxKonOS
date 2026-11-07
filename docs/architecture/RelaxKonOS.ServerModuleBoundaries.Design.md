@@ -1504,4 +1504,12 @@ Linux Unix socket 在 Nginx 固定服务动作提交前仍接受取消。帧提�
 
 修复后，真实 reload 更新 HTTPS 后，客户端取消原 `45e7671c-86c1-4146-904c-11bca1078c13`，直到原 systemd 重载结束，回执仍 Running。释放原重载后，同键返回原 Cancelled。该回执记录管理操作取消，已生效的 Nginx 配置继续提供服务。第二次真实 reload `b6c2d4fd-6f01-45b0-97a5-caab66fecd0e` 期间发送 SIGTERM，监听关闭后 Server 仍等原作业结束才正常退出。重启同键返回原中断回执。两条路径合计两次实际 reload，原 master 和 HTTPS 持续，宿主服务指纹一致。Windows Release 模块里程碑通过。
 
-失败和修复日志分别为 .artifacts/mb05-auth-nginx-drain-before.log 和 .artifacts/mb05-auth-nginx-drain-final.log，修复归档 SHA-256 为 39b27952467315dc201df33627780b3ddf79bc9a316ae2ef52be5b9ba497251e。Helper 自身命令超时、传输丢失但 Server 仍存活时的原 systemd 作业对账保持开放。
+失败和修复日志分别为 .artifacts/mb05-auth-nginx-drain-before.log 和 .artifacts/mb05-auth-nginx-drain-final.log，修复归档 SHA-256 为 39b27952467315dc201df33627780b3ddf79bc9a316ae2ef52be5b9ba497251e。Helper 自身命令超时及传输丢失后的原回执保留见下文，原生终态查询和关账仍开放。
+
+### MB-05 Nginx 原生重载结果待核验
+
+直接系统包 Nginx 重载在派发前持久化原操作检查点。生产 Unix socket 在派发后发现连接丢失、帧不完整或 Helper 自身超时，报告原生结果未核实。存活 Server 保持原 Running / native-recovery-required 回执、工作租约和实例锁。启动遇到未获终态的派发检查点也保留原 ID 和待核验回执，已知键和原 ID 可读，同实例新的后台操作返回 409。收到明确的 Helper 响应时沿原终态与停机规则处理。当前没有 Helper 原作业终态的持久查询入口，待核验回执不会因系统服务仍健康、看不到作业或等待超时而自动关账。桌面和 Android 显示待核验提示。
+
+最终 Linux x64 Release 私有 systemd 实测三条路径。仅终止 Helper 时，存活 Server 保留 `5560ad28-8aef-4374-9b19-1e392586351b`。Helper 自身 30 秒超时且真实 reload 作业仍在时，保留 `fc4e4ac4-993f-474c-b426-f655af7fcf69`。双进程强制终止时，重启从派发检查点保留 `7c6f143f-8e6f-4b61-b45c-5c890f108af8`。每条路径均核对原 ID、同键、不同键拒绝、HTTPS 持续、同一 master 和仅一次实际重载。Windows Release 模块边界通过。Linux 同批取消与 SIGTERM 排空复测通过，收到原 Helper 终态后仍按原规则持久化。专属 cgroup 清理完成，宿主共享服务和配置指纹一致。
+
+日志为 .artifacts/mb05-auth-nginx-checkpoint-unknown.log、.artifacts/mb05-auth-nginx-checkpoint-timeout.log、.artifacts/mb05-auth-nginx-checkpoint-crash.log 及 .artifacts/mb05-auth-nginx-checkpoint-drain.log，归档 SHA-256 为 c663b4d80d62f9d41e313064a74be4105cd7ed3de0e951bc3e88a22a9e1b456b。下一步需让 Helper 提供原 operationId 的持久原生终态证据，核验后方可解除待核验门禁。WebServer 保持 resident。

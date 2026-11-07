@@ -384,3 +384,5 @@ MB-04 Linux 专属 Mihomo 实测覆盖实际激活副作用发生后取消。原
 MB-05 系统包 Nginx 经生产 Helper 和专属 systemd 的实机中断恢复通过。原 master 在两进程中断期间持续提供 HTTPS，重启恢复原回执，实际重载一次。自然停机和取消排空见下文。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-系统包-nginx-经生产-helper-中断与恢复)。
 
 MB-05 Linux Nginx 固定服务动作提交后，原 WebServer 工作任务等待 Helper 返回，实例锁和执行作用域持有到响应与清理结束。实机验证取消和 SIGTERM 均排空实际 systemd reload，重启未重放。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-已提交-nginx-systemd-作业的取消与停机排空)。
+
+MB-05 Linux 系统包直接重载以原检查点保护未知原生作业。实机覆盖 Helper 超时、Helper 丢失和双进程中断，均保留原 ID 并拒绝同实例新后台操作。终态证据缺失时保持 resident 和恢复责任。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-原生重载结果待核验)。

@@ -24,6 +24,8 @@ internal interface IWebServerOperationProgress
 /// It contains only operation metadata and stable problem codes, never config content or command output.</summary>
 internal sealed class WebServerOperationStore : IHostedService, IDisposable
 {
+    internal const string NativeReloadDispatchStage = "native-reload-dispatch";
+    internal const string NativeRecoveryRequired = "webserver.native_recovery_required";
     private readonly string _path;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Dictionary<Guid, PersistedOperation> _operations = [];
@@ -83,12 +85,12 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
         => await StartAsync(idempotencyKey, instanceId, kind, actor, (_, cancellationToken) => action(cancellationToken), applicationStopping);
 
     internal Task<WebServerOperationDto> StartScopedAsync<TExecution>(string idempotencyKey, string instanceId, string kind, string? actor,
-        IServiceScopeFactory scopes, Func<TExecution, CancellationToken, Task<WebServerOperationResult>> action, CancellationToken applicationStopping)
+        IServiceScopeFactory scopes, Func<TExecution, IWebServerOperationProgress, CancellationToken, Task<WebServerOperationResult>> action, CancellationToken applicationStopping)
         where TExecution : notnull =>
-        StartAsync(idempotencyKey, instanceId, kind, actor, async ct =>
+        StartAsync(idempotencyKey, instanceId, kind, actor, async (progress, ct) =>
         {
             var scope = scopes.CreateAsyncScope();
-            try { return await action(scope.ServiceProvider.GetRequiredService<TExecution>(), ct); }
+            try { return await action(scope.ServiceProvider.GetRequiredService<TExecution>(), progress, ct); }
             finally
             {
                 try { await scope.DisposeAsync(); }
@@ -112,6 +114,11 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
                     : new(Guid.Empty, instanceId, kind, WebServerOperationState.Failed, "validation",
                         "webserver.idempotency_conflict", null, null, DateTimeOffset.UtcNow);
             }
+
+            if (_operations.Values.Any(operation => operation.InstanceId == instanceId
+                && operation.ProblemCode == NativeRecoveryRequired))
+                return new(Guid.Empty, instanceId, kind, WebServerOperationState.Failed, "validation",
+                    NativeRecoveryRequired, null, null, DateTimeOffset.UtcNow);
 
             work.Token.ThrowIfCancellationRequested();
             var operation = new PersistedOperation(Guid.NewGuid(), key, instanceId, kind, actor, WebServerOperationState.Queued,
@@ -178,12 +185,21 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
                 linked.Token.ThrowIfCancellationRequested();
                 var instanceGate = _instanceGates.GetOrAdd(instanceId, static _ => new SemaphoreSlim(1, 1));
                 await instanceGate.WaitAsync(linked.Token);
-                try { result = await action(new OperationProgress(this, operationId), linked.Token); }
+                try
+                {
+                    result = await action(new OperationProgress(this, operationId), linked.Token);
+                    if (result.ProblemCode == NativeRecoveryRequired)
+                    {
+                        await PreserveUnknownNativeOperationAsync(operationId);
+                        using var shutdown = CancellationTokenSource.CreateLinkedTokenSource(applicationStopping, workStopping);
+                        await Task.Delay(Timeout.InfiniteTimeSpan, shutdown.Token);
+                    }
+                }
                 finally { instanceGate.Release(); }
                 state = string.IsNullOrEmpty(result.ProblemCode) ? WebServerOperationState.Succeeded : WebServerOperationState.Failed;
             }
             catch (OperationCanceledException) when (linked.IsCancellationRequested) { }
-            catch (Exception exception) when (exception is not (NginxProcessCleanupException or ExecutionCleanupException))
+            catch (Exception exception) when (exception is not (NginxProcessCleanupException or ExecutionCleanupException or ResidentWorkCompletionException))
             {
                 _logger.LogError(exception, "Web-server operation failed unexpectedly. OperationId={OperationId}, InstanceId={InstanceId}", operationId, instanceId);
             }
@@ -202,6 +218,18 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
             try { _cancellations.TryRemove(operationId, out _); cancellation.Dispose(); }
             finally { _gate.Release(); }
         }
+    }
+
+    private async Task PreserveUnknownNativeOperationAsync(Guid id)
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            _operations[id] = MarkNativeUnconfirmed(_operations[id]);
+            try { await SaveAsync(CancellationToken.None); }
+            catch (Exception error) { throw new ResidentWorkCompletionException(error); }
+        }
+        finally { _gate.Release(); }
     }
 
     private async Task<bool> SetRunningAsync(Guid id, CancellationToken ct)
@@ -274,14 +302,22 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
         _byIdempotency.Clear();
         foreach (var item in items)
         {
-            var recovered = item.State is WebServerOperationState.Queued or WebServerOperationState.Running
-                ? item with { State = WebServerOperationState.Failed, Stage = "interrupted", ProblemCode = "webserver.operation_interrupted", CompletedAt = DateTimeOffset.UtcNow }
-                : item;
+            var recovered = item switch
+            {
+                { State: WebServerOperationState.Running, Stage: NativeReloadDispatchStage } => MarkNativeUnconfirmed(item),
+                { ProblemCode: NativeRecoveryRequired } => item,
+                { State: WebServerOperationState.Queued or WebServerOperationState.Running } =>
+                    item with { State = WebServerOperationState.Failed, Stage = "interrupted", ProblemCode = "webserver.operation_interrupted", CompletedAt = DateTimeOffset.UtcNow },
+                _ => item,
+            };
             _operations.Add(recovered.OperationId, recovered);
             _byIdempotency.Add(recovered.IdempotencyKey, recovered.OperationId);
         }
         await SaveAsync(ct);
     }
+
+    private static PersistedOperation MarkNativeUnconfirmed(PersistedOperation operation) =>
+        operation with { Stage = "native-recovery-required", ProblemCode = NativeRecoveryRequired };
 
     private async Task SaveAsync(CancellationToken ct)
     {

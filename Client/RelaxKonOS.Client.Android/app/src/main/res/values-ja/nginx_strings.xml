@@ -53,6 +53,7 @@
     <!-- BP03 Nginx management -->
     <string name="nginx_title">Nginx 管理</string>
     <string name="nginx_linux_install">Debian/Ubuntu 系では APT で Nginx をインストールします。パッケージのインストールと設定にはサーバーの管理者権限が必要です。</string>
+    <string name="nginx_native_recovery_required">元の Nginx 再読み込みの結果を確認できていません。このインスタンスの新規操作は保留されます。</string>
     <string name="nginx_uncertain">結果を確認できませんでした。再試行する前にサーバーの状態を更新してください。画面を閉じてもサーバーの処理は中止されません。</string>
     <string name="nginx_uninstall">Nginx をアンインストール</string>
     <string name="nginx_uninstall_confirm">選択した Nginx を停止してアンインストールしますか？公開サイトが利用できなくなります。Debian/Ubuntu 系ではシステムの Nginx パッケージとその設定、Windows では RelaxKonOS がインストールした Nginx を削除します。</string>

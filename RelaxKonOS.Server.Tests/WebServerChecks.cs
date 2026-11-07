@@ -297,7 +297,7 @@ internal static async Task VerifyOperationCancellationDrainAsync(string root)
     var scopes = new OperationTestScopeFactory<object>(() => new object(),
         async () => { cleanupEntered.SetResult(); await cleanupReleased.Task; });
     var budget = TimeSpan.FromSeconds(10);
-    var receipt = await store.StartScopedAsync<object>("drain", "nginx", "reload", "test", scopes, async (_, ct) =>
+    var receipt = await store.StartScopedAsync<object>("drain", "nginx", "reload", "test", scopes, async (_, _, ct) =>
     {
         using var notification = ct.Register(() => cancelled.TrySetResult());
         entered.TrySetResult();
@@ -308,7 +308,7 @@ internal static async Task VerifyOperationCancellationDrainAsync(string root)
     {
         await entered.Task.WaitAsync(budget);
         var conflict = await store.StartScopedAsync<object>("drain", "nginx", "reload", "other-actor", scopes,
-            (_, _) => throw new InvalidOperationException("Another actor ran a conflicting operation."), default);
+            (_, _, _) => throw new InvalidOperationException("Another actor ran a conflicting operation."), default);
         TestAssert.Assert(conflict.OperationId == Guid.Empty && conflict.ProblemCode == "webserver.idempotency_conflict",
             "Concurrent admission must preserve the original actor's receipt.");
         var result = await store.CancelAsync(receipt.OperationId, default);
@@ -343,7 +343,7 @@ internal static async Task VerifyOperationCancellationDrainAsync(string root)
         });
         await unresolved.StartAsync(default);
         var uncertain = await unresolved.StartScopedAsync<object>("unknown-cleanup", "nginx", "reload", "test", failedScope,
-            (_, _) => Task.FromResult(WebServerOperationResult.Success), default);
+            (_, _, _) => Task.FromResult(WebServerOperationResult.Success), default);
         await cleanupFailed.Task.WaitAsync(budget);
         try
         {

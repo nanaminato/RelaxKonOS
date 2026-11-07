@@ -1722,3 +1722,5 @@ Linux 完整 Server 实机复测通过管理员登录、真实集成 Nginx reloa
 系统包 Nginx 通过完整 Server、生产 Helper 和私有 systemd 的真实重载中断验收。Server 与 Helper 被终止期间，原 master 持续提供已更新的 HTTPS。重启后按原 ID 和同键返回原中断回执，实际重载一次。自然停机和取消排空见下文。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-系统包-nginx-经生产-helper-中断与恢复)。
 
 Linux 系统包 Nginx 的重载请求提交给生产 Helper 后，取消或自然停机等待原响应。实机验证取消回执在原 reload 完成后才落盘，SIGTERM 后原作业结束才退出，重启未追加 reload。Helper 自身超时后的作业对账仍开放。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-已提交-nginx-systemd-作业的取消与停机排空)。
+
+Linux 系统包直接重载在派发前持久化原检查点。生产 Helper 超时、连接丢失或 Server 在原响应前退出时，原 ID 和同键可查询待核验回执，同实例新后台操作暂缓。Linux 专属 systemd 已验证三条路径及一次实际重载。原生终态查询和解除待核验门禁仍开放。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-原生重载结果待核验)。

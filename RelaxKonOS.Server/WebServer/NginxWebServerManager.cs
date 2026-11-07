@@ -196,7 +196,7 @@ internal sealed partial class NginxWebServerManager(
         logger.LogInformation("Nginx integration was requested. CandidateId={CandidateId}, Executable={Executable}, Configuration={Configuration}, Actor={Actor}",
             candidateId, candidate.ExecutablePath, candidate.ConfigurationPath, actor ?? "<anonymous>");
         return await operations.StartScopedAsync<DirectExecution>(idempotencyKey, candidateId, "integrate", actor, scopes,
-            (execution, ct) => execution.IntegrateAsync(instance, ct), lifetime.ApplicationStopping);
+            (execution, _, ct) => execution.IntegrateAsync(instance, ct), lifetime.ApplicationStopping);
     }
 
     public async Task<WebServerOperationDto?> ReloadAsync(string instanceId, string idempotencyKey, string? actor, CancellationToken cancellationToken)
@@ -208,7 +208,7 @@ internal sealed partial class NginxWebServerManager(
         if (detected.ManagementMode != WebServerManagementMode.Integrated)
             return new WebServerOperationDto(Guid.Empty, instanceId, "reload", WebServerOperationState.Failed, "authorization", "webserver.reload_not_permitted", null, null, DateTimeOffset.UtcNow);
         return await operations.StartScopedAsync<DirectExecution>(idempotencyKey, instanceId, "reload", actor, scopes,
-            (execution, ct) => execution.ReloadAsync(detected, ct), lifetime.ApplicationStopping);
+            (execution, progress, ct) => execution.ReloadAsync(detected, progress, ct), lifetime.ApplicationStopping);
     }
 
     internal async Task<string?> ExecuteInstallationAsync(InstallationOperationKind kind, NginxInstallationRequest request,
@@ -264,21 +264,21 @@ internal sealed partial class NginxWebServerManager(
             if (instance.ManagementMode is not (WebServerManagementMode.Integrated or WebServerManagementMode.Managed))
                 return Rejected(instanceId, "reload", "webserver.reload_not_permitted");
             return await operations.StartScopedAsync<DirectExecution>(idempotencyKey, instanceId, "reload", actor, scopes,
-                (execution, ct) => execution.ReloadAsync(instance, ct), lifetime.ApplicationStopping);
+                (execution, progress, ct) => execution.ReloadAsync(instance, progress, ct), lifetime.ApplicationStopping);
         }
         if (action == WebServerLifecycleAction.EnableAcmeHttp01)
         {
             if (instance.ManagementMode is not (WebServerManagementMode.Integrated or WebServerManagementMode.Managed))
                 return Rejected(instanceId, "enable-acme-http01", "webserver.acme_integration_required");
             return await operations.StartScopedAsync<DirectExecution>(idempotencyKey, instanceId, "enable-acme-http01", actor, scopes,
-                (execution, ct) => execution.EnableAcmeHttp01Async(instance, ct), lifetime.ApplicationStopping);
+                (execution, _, ct) => execution.EnableAcmeHttp01Async(instance, ct), lifetime.ApplicationStopping);
         }
         if (instance.ManagementMode != WebServerManagementMode.Managed)
             return Rejected(instanceId, kind, "webserver.managed_required");
 
         var layout = GetManagedLayout();
         return await operations.StartScopedAsync<DirectExecution>(idempotencyKey, instanceId, kind, actor, scopes,
-            (execution, ct) => execution.ApplyManagedLifecycleAsync(layout, action, ct), lifetime.ApplicationStopping);
+            (execution, _, ct) => execution.ApplyManagedLifecycleAsync(layout, action, ct), lifetime.ApplicationStopping);
     }
 
 }

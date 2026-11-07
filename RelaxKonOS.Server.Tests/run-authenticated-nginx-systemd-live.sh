@@ -3,7 +3,7 @@
 set -euo pipefail
 [[ ( $# == 2 || $# == 3 ) && $EUID == 0 ]]
 mode=${3:---systemd}
-[[ $mode == --systemd || $mode == --systemd-drain ]]
+[[ $mode == --systemd || $mode == --systemd-drain || $mode == --systemd-unknown || $mode == --systemd-timeout ]]
 server=$(realpath -e -- "$1")
 helper=$(realpath -e -- "$2")
 script=$(realpath -e -- "$(dirname -- "$0")/run-authenticated-nginx-live.py")
@@ -102,7 +102,7 @@ cat > "$work/reload.sh" <<EOF
 set -euo pipefail
 /usr/sbin/nginx -s reload
 echo reload >> "$work/nginx/reloads"
-for ((i=0; i<200; i++)); do
+for ((i=0; i<450; i++)); do
     if [[ -f "$work/nginx/release" ]]; then
         touch "$work/nginx/reload-finished"
         exit 0

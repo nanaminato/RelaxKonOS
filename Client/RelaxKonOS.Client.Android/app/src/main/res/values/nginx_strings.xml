@@ -53,6 +53,7 @@
     <!-- BP03 Nginx management -->
     <string name="nginx_title">Nginx management</string>
     <string name="nginx_linux_install">Debian/Ubuntu install Nginx through APT. Package installation and configuration require host administrator authorization.</string>
+    <string name="nginx_native_recovery_required">The original Nginx reload result is unverified. New operations on this instance are blocked.</string>
     <string name="nginx_uncertain">The result could not be verified. Refresh host facts before retrying. Leaving this page does not cancel a server task.</string>
     <string name="nginx_uninstall">Uninstall Nginx</string>
     <string name="nginx_uninstall_confirm">Stop and uninstall the selected Nginx? Hosted websites will become unavailable. On Debian/Ubuntu the system Nginx package and its package configuration are removed; on Windows the installation installed by RelaxKonOS is removed.</string>

@@ -43,6 +43,8 @@ public sealed class UnixSocketPrivilegedOperationTransport(PrivilegedHelperOptio
         // Cancellation stays meaningful while connecting and handshaking. Once the request frame is
         // sent, the Helper owns the authoritative operation deadline; disconnecting cannot roll back
         // an already-started privileged mutation.
+        var drainServiceAction = request.Operation == PrivilegedOperationKind.NginxSystemServiceAction;
+        var reloadDispatched = false;
         using var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         connectTimeout.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(options.TimeoutSeconds, 1, 120)));
         try
@@ -63,8 +65,9 @@ public sealed class UnixSocketPrivilegedOperationTransport(PrivilegedHelperOptio
 
             // A fixed Nginx service job can continue under systemd after the caller cancels.
             // Once dispatched, its terminal frame must drain before the WebServer owner can finish.
-            var drainServiceAction = request.Operation == PrivilegedOperationKind.NginxSystemServiceAction;
             if (drainServiceAction) cancellationToken.ThrowIfCancellationRequested();
+            reloadDispatched = request.Operation == PrivilegedOperationKind.NginxSystemServiceAction
+                && request.NginxServiceAction == NginxSystemServiceAction.Reload;
             await PrivilegedHelperSocketFraming.WriteAsync(stream, JsonSerializer.SerializeToUtf8Bytes(request), CancellationToken.None);
             using var responseTimeout = drainServiceAction
                 ? new CancellationTokenSource()
@@ -74,19 +77,20 @@ public sealed class UnixSocketPrivilegedOperationTransport(PrivilegedHelperOptio
             {
                 var payload = await PrivilegedHelperSocketFraming.ReadAsync(stream,
                     PrivilegedHelperTransportProtocol.MaximumFrameBytes, responseTimeout.Token);
-                if (payload is null) return Complete(request, new(false, 65, ProblemCode: PrivilegedProblemCode.InvalidProtocol));
+                if (payload is null) return Complete(request, MissingResponse(new(false, 65, ProblemCode: PrivilegedProblemCode.InvalidProtocol)));
                 var frame = JsonSerializer.Deserialize<PrivilegedOperationFrame>(payload);
                 if (frame is null || !frame.IsValid() || frame.Type == "progress" && payload.Length > PrivilegedOperationFrame.MaximumProgressFrameBytes)
-                    return Complete(request, new(false, 65, ProblemCode: PrivilegedProblemCode.InvalidProtocol));
-                if (frame.Result is { } result) return Complete(request, result);
+                    return Complete(request, MissingResponse(new(false, 65, ProblemCode: PrivilegedProblemCode.InvalidProtocol)));
+                if (frame.Result is { } result)
+                    return Complete(request, result.ProblemCode == PrivilegedProblemCode.TimedOut ? MissingResponse(result) : result);
                 await PrivilegedFrameReader.ReportAsync(frame);
             }
-            return Complete(request, new(false, 65, ProblemCode: PrivilegedProblemCode.InvalidProtocol));
+            return Complete(request, MissingResponse(new(false, 65, ProblemCode: PrivilegedProblemCode.InvalidProtocol)));
         }
         catch (OperationCanceledException)
         {
-            return Complete(request, new(false, 124, Error: "privileged helper service timed out",
-                ProblemCode: PrivilegedProblemCode.TimedOut));
+            return Complete(request, MissingResponse(new(false, 124, Error: "privileged helper service timed out",
+                ProblemCode: PrivilegedProblemCode.TimedOut)));
         }
         catch (Exception exception) when (exception is IOException or SocketException or UnauthorizedAccessException
             or JsonException or InvalidDataException or ArgumentException)
@@ -95,8 +99,13 @@ public sealed class UnixSocketPrivilegedOperationTransport(PrivilegedHelperOptio
             // Keep the failure class visible without logging a payload.
             logger.LogWarning("Could not communicate with the local privileged Helper socket. FailureType={FailureType}",
                 exception.GetType().Name);
-            return Complete(request, Unavailable("privileged helper service is unavailable"));
+            return Complete(request, MissingResponse(Unavailable("privileged helper service is unavailable")));
         }
+
+        PrivilegedOperationResult MissingResponse(PrivilegedOperationResult fallback) => reloadDispatched
+            ? new(false, fallback.ExitCode, Error: "Nginx reload completion could not be verified",
+                ProblemCode: PrivilegedProblemCode.RecoveryRequired)
+            : fallback;
     }
 
     /// <summary>

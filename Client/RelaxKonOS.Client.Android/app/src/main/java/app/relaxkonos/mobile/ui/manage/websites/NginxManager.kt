@@ -302,6 +302,7 @@ internal fun nginxProblemLabel(code: String): String = when {
         "webserver.privileged_helper_unavailable" -> R.string.nginx_helper_failed
         "webserver.install_failed", "webserver.uninstall_failed" -> R.string.installation_problem_failed
         "webserver.operation_cancelled" -> R.string.operations_cancelled
+        "webserver.native_recovery_required" -> R.string.nginx_native_recovery_required
         "webserver.acme_no_managed_sites" -> R.string.nginx_acme_no_sites
         else -> R.string.error_generic
     })

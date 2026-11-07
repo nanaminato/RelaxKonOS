@@ -17,6 +17,7 @@ import urllib.request
 
 def run(root, server, helper_binary, mode):
     production_helper = mode is not None
+    expect_unknown = mode in ("--systemd-unknown", "--systemd-timeout")
     credentials = json.loads(sys.stdin.readline())
     with socket.socket() as reservation:
         reservation.bind(("127.0.0.1", 0))
@@ -92,8 +93,8 @@ def run(root, server, helper_binary, mode):
                     raise
             child.stdin.close()
 
-    def wait_for(child, check, name):
-        for _ in range(150):
+    def wait_for(child, check, name, attempts=150):
+        for _ in range(attempts):
             if child.poll() is not None:
                 error = next((line for line in (root / f"{name}.stderr").read_text().splitlines()
                               if line.startswith("Unhandled exception.")), "no startup exception")
@@ -230,14 +231,32 @@ def run(root, server, helper_binary, mode):
             assert_served(b"updated")
             active = request(operation_route, token=token)
             assert str(active["state"]).lower() == "running"
-            initial.kill()
-            assert initial.wait(timeout=10) < 0
-            if production_helper:
-                helper.kill()
-                assert helper.wait(timeout=10) < 0
-                assert not helper_ready(), "The original production Helper is still reachable"
+            if expect_unknown:
+                if mode == "--systemd-unknown":
+                    helper.kill()
+                    assert helper.wait(timeout=10) < 0 and not helper_ready()
+
+                def original_is_unconfirmed():
+                    receipt = request(operation_route, token=token)
+                    return (receipt["operationId"] == operation and receipt["state"].lower() == "running"
+                            and receipt["problemCode"] == "webserver.native_recovery_required")
+                wait_for(initial, original_is_unconfirmed, "original unconfirmed native receipt", attempts=450)
+                if mode == "--systemd-timeout":
+                    assert helper.poll() is None and helper_ready()
+                assert healthy() and not (root / "nginx" / "reload-finished").exists()
                 assert_served(b"updated")
-            (root / "nginx" / "release").touch()
+                (root / "nginx" / "release").touch()
+                wait_for(initial, (root / "nginx" / "reload-finished").is_file, "native reload completion")
+                assert original_is_unconfirmed()
+            else:
+                initial.kill()
+                assert initial.wait(timeout=10) < 0
+                if production_helper:
+                    helper.kill()
+                    assert helper.wait(timeout=10) < 0
+                    assert not helper_ready(), "The original production Helper is still reachable"
+                    assert_served(b"updated")
+                (root / "nginx" / "release").touch()
 
     with process([*helper_args, helper_config], "restarted-helper") as helper:
         wait_for(helper, helper_ready, "restarted-helper")
@@ -246,22 +265,25 @@ def run(root, server, helper_binary, mode):
             token = login()
             replay = request(reload_route, token=token, expected=202, method="POST", key=key)
             observed = request(operation_route, token=token)
+            expected = (("running", "webserver.native_recovery_required") if production_helper
+                        else ("failed", "webserver.operation_interrupted"))
             for receipt in (replay, observed):
                 assert receipt["operationId"] == operation
-                assert str(receipt["state"]).lower() == "failed"
-                assert receipt["problemCode"] == "webserver.operation_interrupted"
+                assert (receipt["state"].lower(), receipt["problemCode"]) == expected
+            if production_helper:
+                request(reload_route, token=token, expected=409, method="POST", key=secrets.token_hex(16))
             assert_served(b"updated")
             assert int(nginx_pid_file.read_text()) == nginx_pid
             assert witness.read_text().splitlines() == ["reload"]
             if production_helper:
                 wait_for(restarted, (root / "nginx" / "reload-finished").is_file, "native reload completion")
-                print(f"PASS PRODUCTION NGINX SYSTEMD: original Helper killed, native master {nginx_pid} served HTTPS")
-            print(f"PASS AUTHENTICATED SERVER NGINX RECEIPT: operation={operation}, Failed / webserver.operation_interrupted, one reload")
+                print(f"PASS PRODUCTION NGINX SYSTEMD: {mode}, native master {nginx_pid} served HTTPS")
+            print(f"PASS AUTHENTICATED SERVER NGINX RECEIPT: operation={operation}, {expected[0]} / {expected[1]}, one reload")
 
 
 if __name__ == "__main__":
     arguments = sys.argv[1:]
-    mode = arguments.pop() if arguments and arguments[-1] in ("--systemd", "--systemd-drain") else None
+    mode = arguments.pop() if arguments and arguments[-1] in ("--systemd", "--systemd-drain", "--systemd-unknown", "--systemd-timeout") else None
     if len(arguments) != 3:
-        raise SystemExit("Usage: run-authenticated-nginx-live.py ROOT SERVER HELPER [--systemd|--systemd-drain]")
+        raise SystemExit("Usage: run-authenticated-nginx-live.py ROOT SERVER HELPER [--systemd|--systemd-drain|--systemd-unknown|--systemd-timeout]")
     run(*(Path(arg).resolve(strict=True) for arg in arguments), mode=mode)

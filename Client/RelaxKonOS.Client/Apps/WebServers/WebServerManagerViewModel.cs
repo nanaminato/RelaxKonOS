@@ -957,7 +957,8 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     private static string OperationStage(string kind, string stage) => (kind, stage) switch
     {
         (_, "queued") => LocalizedText.Get("webservers.operation.stage.queued"),
-        (_, "running") => LocalizedText.Get("webservers.operation.stage.running"),
+        (_, "running" or "native-reload-dispatch") => LocalizedText.Get("webservers.operation.stage.running"),
+        (_, "native-recovery-required") => ProblemText("webserver.native_recovery_required"),
         ("install", "installer_running") => LocalizedText.Get("webservers.operation.stage.installer_running"),
         ("install", "installing_package") => LocalizedText.Get("webservers.operation.stage.installing_package"),
         ("install", "downloading") => LocalizedText.Get("webservers.operation.stage.downloading"),

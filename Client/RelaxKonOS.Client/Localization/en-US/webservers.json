@@ -52,6 +52,7 @@
     "webservers.operation.stage.verifying_layout": "Verifying the installation layout",
     "webservers.operation.stage.validating_configuration": "Validating the Nginx configuration",
     "webservers.operation.stage.finalizing": "Finalizing the installation",
+    "webservers.problem.native_recovery_required": "The original Nginx reload result is unverified. New operations on this instance are blocked.",
     "webservers.problem.install_elevation_required": "Installation requires RelaxKonOS Server to run with administrator privileges. Ask the server administrator to adjust the service permissions and try again.",
     "webservers.problem.elevation_required": "Verify the server administrator password before integrating Nginx.",
     "webservers.problem.config_elevation_required": "This configuration action requires RelaxKonOS Server to run with administrator privileges.",
