@@ -470,3 +470,5 @@ Proxy 管理队列保留原工作租约至实际清理和终态落盘。调用�
 已授权的订阅响应体由独立可回收代次读入、解码和转换，流清理完成后卸载。真实分段响应与 Mihomo 转发在隔离 Linux 联验，弱引用回收由本地 Release 验证。Proxy 整体仍 resident。见[订阅响应体执行边界](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-订阅响应体的可回收执行边界)。
 
 完整认证 Server 的未激活订阅刷新已在真实受管 Mihomo 环境联验。下载在途持有工作租约，转换代次卸载后原档案与成功回执落盘。重启同键读取原结果，不重复下载。见[完整认证订阅队列](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-真实受管-mihomo-的完整认证订阅队列)。
+
+活动订阅在原生配置已提交而 Server 未收到回执时中断。隔离 Linux 重启按原 Helper 回执确认配置，下载及配置未重放。原订阅队列仍为 Interrupted，等待应用级持久对账。见[活动订阅中断边界](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-活动订阅刷新原生提交后的中断边界)。

@@ -244,7 +244,7 @@ internal static class MihomoIpcStartupAcceptance
             var native = await lifecycle.QueryAsync(default, interrupted);
             var application = await startupStore.ReadAsync(default);
             var pid = await ReadRuntimePidAsync();
-            await MihomoSubscriptionQueueAcceptance.RunAsync(start, tunPaths, async ct =>
+            await MihomoSubscriptionQueueAcceptance.RunAsync(start, tunPaths, port, startupStore, lifecycle, probe, async ct =>
             {
                 var observed = await lifecycle.QueryAsync(ct, interrupted);
                 var published = await startupStore.ReadAsync(ct);
@@ -255,9 +255,24 @@ internal static class MihomoIpcStartupAcceptance
                     throw new InvalidOperationException("The subscription queue changed the original native publication or traffic.");
             });
             var log = await helper.StopAsync(drainCompletedRequests: true);
-            if (log.Contains("operation=MihomoRuntimeConfigure ", StringComparison.Ordinal)
+            if (log.Split('\n').Count(line => line.Contains("operation=MihomoRuntimeConfigure ", StringComparison.Ordinal)) != 2
                 || log.Contains("operation=MihomoRuntimeRecover ", StringComparison.Ordinal))
-                throw new InvalidOperationException("Refreshing an inactive profile dispatched a native publication.");
+                throw new InvalidOperationException("Subscription activation and refresh must each configure once without native replay.");
+
+            // The remaining archive checks reuse this private fixture's original published configuration.
+            await using var cleanupHelper = await StartHelperAsync(helperAssembly, config, transport);
+            var current = await lifecycle.QueryAsync(default);
+            var currentPublication = await startupStore.ReadAsync(default);
+            var cleanupId = Guid.NewGuid();
+            var cleanupPlan = new RuntimeConfigurationPlan(current.Installation.InstallationId, current.Installation.HostId,
+                "mihomo", current.Installation.StateRevision, current.ActiveRevisionId!.Value, currentPublication.Identity!, identity,
+                cleanupId.ToString("N"));
+            var cleanupAuthorization = new MihomoRuntimeAuthorizationProvider(startupStore, tunPaths, secrets);
+            var cleanup = new MihomoConfigurationPublicationService(startupStore, cleanupAuthorization,
+                new(transport, startupStore, cleanupAuthorization, new SystemMode(), new DirectDownloads()), tunPaths);
+            if ((await cleanup.PublishAsync(cleanupId, currentPublication.Revision, cleanupPlan, original, default)).Outcome
+                != MihomoPublicationOutcome.Confirmed || !await probe(port))
+                throw new InvalidOperationException("Could not restore the dedicated fixture for the remaining archive checks.");
         }
 
         async Task VerifyPublicationShutdownAsync()

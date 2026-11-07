@@ -1968,3 +1968,15 @@ Windows Release 订阅边界 39 项与模块边界回归通过。MB-05 跨进程
 真实受管套件通过 177 项，原发布身份、修订、进程 PID 与转发通过前后核对，订阅刷新期间 Helper 未收到配置或补偿命令。原中断补偿 `ce2dc5ca-f98d-4002-a1f4-20d70d680725` 与完整 Server 发布排空 `9f4c9eff-e4d8-478d-8882-902e7b0bb01a` 同批复验。专属 cgroup 已清理，宿主服务和代理文件指纹一致。日志为 `.artifacts/mb04-sub-queue-live.log`，归档 SHA-256 为 `015e6681a03a89d8e87c5e7789d3fb1c807214b2ba13c4ac0023ec6f802792b6`。
 
 该路径限未激活档案刷新，Proxy 整体继续 resident。下一步验证活动订阅刷新在真实配置已提交、原回执仍在途时的重启对账，保留原队列 ID 并区分下载与配置副作用。
+
+### MB-04 活动订阅刷新原生提交后的中断边界
+
+活动刷新在原队列中下载并更新档案，受管发布另生成配置操作 ID，订阅更新时间在发布返回后写入。当前两个操作 ID 缺少持久关联，Core 确认原生配置和档案选择后无法据此结束原订阅队列。验收分别观察两个原 ID，区分配置确认和仍未知的队列终态。
+
+Windows Release 订阅边界 39 项及模块边界回归通过。MB-05 跨进程按原 `f3c5e5e5-be97-4df5-90fc-29740233709f` 读回 Interrupted，副作用计数为一。日志为 `.artifacts/mb04-active-sub-crash-win.log` 与 `.artifacts/mb04-active-sub-crash-boundaries-win.log`。
+
+Linux 私有 systemd 上先通过完整 PAM/JWT Server 激活测试订阅，再触发活动刷新。真实 Helper 原回执 `36aee130-c235-4269-8df2-630b546e7979` 为 Succeeded 时，中继截留响应并强制终止 Server，原队列 `0e3870d2-dc66-4277-bff9-2c4a7938864e` 仍为 Running。重启由 Core 按原 Helper ID 对账确认配置和原档案，已提交修订保持。原队列用同键返回原 ID 和 Interrupted，新键被拒绝。源站请求数始终为三次，Helper 日志确认激活和刷新各一次配置调用，无补偿或重放。真实转发通过，验收随后用独立操作恢复专属测试配置。
+
+首轮夹具把一次配置误计为原生修订只推进 1，原生事务在多个持久化阶段推进修订。复跑以原命令计数、已提交回执和重启后修订一致为准。真实受管 177 项通过，宿主共享服务及代理文件指纹一致，专属 cgroup 清理完成。日志为 `.artifacts/mb04-active-sub-crash-final-live.log`，归档 SHA-256 为 `5f03ee6a89c9a6402f29f1bc361b89a6c62e5d97e1e20e377da22fad453f2bea`。
+
+配置确认与避免重放已验证。订阅队列缺少能证明整个刷新完成的原生和应用证据，仍保持 Interrupted。下一步把队列身份及订阅更新时间纳入原发布意图，并在原档案提交后按原 ID 对账，缺失证据时继续保留责任。Proxy 整体继续 resident。

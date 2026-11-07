@@ -12,14 +12,18 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using RelaxKonOS.PrivilegedHelper;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.Proxy;
+using RelaxKonOS.Server.Proxy.Mihomo;
 
 internal static class MihomoSubscriptionQueueAcceptance
 {
-    internal static async Task RunAsync(ProcessStartInfo start, IProxyPlatformPaths paths, Func<CancellationToken, Task> verifyNative)
+    internal static async Task RunAsync(ProcessStartInfo start, IProxyPlatformPaths paths, int port,
+        MihomoPublicationStore publication, MihomoRuntimeLifecycle lifecycle, Func<int, Task<bool>> probe,
+        Func<CancellationToken, Task> verifyNative)
     {
-        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(40));
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(65));
         var ct = budget.Token;
         var login = ProxyAuthenticatedPublicationChecks.ReadLogin();
         var settingsFile = Path.Combine(paths.GetStateDirectory(), "mihomo-settings.json");
@@ -27,7 +31,7 @@ internal static class MihomoSubscriptionQueueAcceptance
         var settings = await new ProxySettingsReader(paths).GetAsync(ct);
         var owner = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SERVER_UID") + ":"
             + Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SERVER_GID");
-        await File.WriteAllTextAsync(settingsFile, JsonSerializer.Serialize(settings with { AllowInsecureSubscriptionSources = true }), ct);
+        await File.WriteAllTextAsync(settingsFile, JsonSerializer.Serialize(settings with { AllowInsecureSubscriptionSources = true, MixedPort = port }), ct);
         try
         {
             await NativeRuntimeProcess.RunAsync("/usr/bin/chown", [owner, "--", settingsFile], 256);
@@ -69,6 +73,7 @@ internal static class MihomoSubscriptionQueueAcceptance
             var key = Guid.NewGuid().ToString("N");
             string refreshRoute;
             string contentRoute;
+            Guid subscriptionId;
             Guid operation;
             ProxyOperationDto terminal;
             ProxySubscriptionContentDto updated;
@@ -87,6 +92,7 @@ internal static class MihomoSubscriptionQueueAcceptance
                     var subscription = await imported.Content.ReadFromJsonAsync<ProxySubscriptionDto>(RelaxKonOSJsonOptions.Default, ct);
                     if (subscription is null || subscription.IsActive)
                         throw new InvalidOperationException("The imported subscription was not stored as an inactive draft.");
+                    subscriptionId = subscription.Id;
                     var first = await events.Reader.ReadAsync(ct);
                     await VerifyUnloadedAsync(first);
                     refreshRoute = SubscriptionRoute(ProxyApiRoutes.SubscriptionRefreshPattern, subscription.Id);
@@ -140,6 +146,90 @@ internal static class MihomoSubscriptionQueueAcceptance
                 Console.WriteLine($"PASS MANAGED MIHOMO SUBSCRIPTION QUEUE: original refresh {operation}, fresh execution generation, durable draft and no replay");
             }
             finally { await ProxyAuthenticatedPublicationChecks.StopAsync(restarted); }
+            await VerifyActiveRefreshAsync();
+
+            async Task VerifyActiveRefreshAsync()
+            {
+                var socket = start.Environment["PrivilegedHelper__SocketPath"]!;
+                using (var activation = ProxyAuthenticatedPublicationChecks.Start(start))
+                {
+                    try
+                    {
+                        using var client = await ProxyAuthenticatedPublicationChecks.ConnectAsync(activation, login, ct);
+                        var id = await SubmitAsync(client, SubscriptionRoute(ProxyApiRoutes.SubscriptionActivatePattern, subscriptionId),
+                            Guid.NewGuid().ToString("N"));
+                        if ((await WaitForTerminalAsync(client, id)).State != ProxyOperationState.Succeeded || !await probe(port))
+                            throw new InvalidOperationException("The real managed subscription could not be activated.");
+                    }
+                    finally { await ProxyAuthenticatedPublicationChecks.StopAsync(activation); }
+                }
+                var before = await lifecycle.QueryAsync(ct);
+                var oldPublication = await publication.ReadAsync(ct);
+                var activeKey = Guid.NewGuid().ToString("N");
+                Guid refreshId;
+                Guid nativeId;
+                RuntimeInstallationSnapshot committed;
+                await using (var relay = new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/relaxkonos-subscription-refresh.sock",
+                    socket, ct, static (kind, _) => kind == "MihomoRuntimeConfigure"))
+                {
+                    start.Environment["PrivilegedHelper__SocketPath"] = relay.Path;
+                    using var active = ProxyAuthenticatedPublicationChecks.Start(start, OnError);
+                    try
+                    {
+                        using var client = await ProxyAuthenticatedPublicationChecks.ConnectAsync(active, login, ct);
+                        refreshId = await SubmitAsync(client, refreshRoute, activeKey);
+                        nativeId = await relay.Committed.Task.WaitAsync(ct);
+                        committed = await lifecycle.QueryAsync(ct, nativeId);
+                        var pending = await publication.ReadAsync(ct);
+                        if (committed.Receipt is not { Outcome: RuntimeSwitchOutcome.Succeeded } || committed.Receipt.OperationId != nativeId)
+                            throw new InvalidOperationException($"The Helper did not commit the active refresh: {committed.Receipt?.Outcome}/{committed.Receipt?.ProblemCode}.");
+                        if (nativeId == Guid.Empty || pending.Pending?.OperationId != nativeId
+                            || committed.ConfigurationIdentity != pending.Pending.Identity
+                            || committed.ConfigurationIdentity == oldPublication.Identity
+                            || committed.Installation.StateRevision <= before.Installation.StateRevision
+                            || (await ReadOperationAsync(client, refreshId)).State != ProxyOperationState.Running
+                            || Volatile.Read(ref requests) != 3 || !await probe(port))
+                            throw new InvalidOperationException("The active refresh did not reach the original native commit with a pending queue receipt.");
+                        active.Kill();
+                        await active.WaitForExitAsync(ct);
+                        if (active.ExitCode == 0) throw new InvalidOperationException("The active refresh host did not terminate at the reply boundary.");
+                    }
+                    finally { await ProxyAuthenticatedPublicationChecks.StopAsync(active); }
+                }
+                start.Environment["PrivilegedHelper__SocketPath"] = socket;
+                using var recovery = ProxyAuthenticatedPublicationChecks.Start(start);
+                try
+                {
+                    using var client = await ProxyAuthenticatedPublicationChecks.ConnectAsync(recovery, login, ct);
+                    MihomoPublicationState recovered;
+                    do
+                    {
+                        recovered = await publication.ReadAsync(ct);
+                        if (recovered.Pending is null) break;
+                        await Task.Delay(50, ct);
+                    } while (true);
+                    var original = await ReadOperationAsync(client, refreshId);
+                    var observed = await lifecycle.QueryAsync(ct, nativeId);
+                    var draft = await client.GetFromJsonAsync<ProxySubscriptionContentDto>(contentRoute, RelaxKonOSJsonOptions.Default, ct);
+                    if (recovered.Identity != committed.ConfigurationIdentity || recovered.LastConfiguration?.OperationId != nativeId
+                        || recovered.LastConfiguration.Confirmed != true || observed.Receipt != committed.Receipt
+                        || observed.Installation.StateRevision != committed.Installation.StateRevision
+                        || original.State != ProxyOperationState.Interrupted
+                        || await SubmitAsync(client, refreshRoute, activeKey) != refreshId
+                        || draft?.Content.Contains("origin-3.example.test", StringComparison.Ordinal) != true
+                        || Volatile.Read(ref requests) != 3 || !await probe(port))
+                        throw new InvalidOperationException("Restart did not reconcile the original publication without replay or preserve the unknown queue result.");
+                    using var newRequest = new HttpRequestMessage(HttpMethod.Post, refreshRoute);
+                    newRequest.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("N"));
+                    using var denied = await client.SendAsync(newRequest, ct);
+                    if (denied.StatusCode != HttpStatusCode.BadRequest
+                        || !(await denied.Content.ReadAsStringAsync(ct)).Contains(ProxyProblemCodes.OperationInterrupted, StringComparison.Ordinal)
+                        || Volatile.Read(ref requests) != 3)
+                        throw new InvalidOperationException("Unresolved original queue ownership did not block new work.");
+                    Console.WriteLine($"PASS MANAGED MIHOMO ACTIVE SUBSCRIPTION CRASH: original queue {refreshId} interrupted, native receipt {nativeId} reconciled, no replay");
+                }
+                finally { await ProxyAuthenticatedPublicationChecks.StopAsync(recovery); }
+            }
 
             void OnError(string line)
             {
@@ -168,6 +258,16 @@ internal static class MihomoSubscriptionQueueAcceptance
                 await client.GetFromJsonAsync<ProxyOperationDto>(ProxyApiRoutes.Proxy
                     + ProxyApiRoutes.OperationsPattern.Replace("{operationId:guid}", id.ToString("D"), StringComparison.Ordinal),
                     RelaxKonOSJsonOptions.Default, ct) ?? throw new InvalidOperationException("Missing original subscription operation.");
+
+            async Task<ProxyOperationDto> WaitForTerminalAsync(HttpClient client, Guid id)
+            {
+                while (true)
+                {
+                    var operation = await ReadOperationAsync(client, id);
+                    if (operation.State is not (ProxyOperationState.Queued or ProxyOperationState.Running)) return operation;
+                    await Task.Delay(25, ct);
+                }
+            }
 
             async Task<int> ReadLeasesAsync(HttpClient client) =>
                 (await client.GetFromJsonAsync<ServerModuleDto>(

@@ -4534,3 +4534,5 @@ Linux 隔离环境以真实受管 Mihomo 验证探测次数及控制器 401。�
 订阅下载仍由 Host 校验地址、路由与 TLS。已授权响应流由可回收代次限长读取、严格解码和转换，流清理后卸载。隔离 Linux 验证了真实分段下载和下一次读取加载新代次。见[订阅响应体执行边界](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-订阅响应体的可回收执行边界)。
 
 完整认证 Server 的未激活订阅刷新已验证真实分段响应、转换代次释放、原档案更新和持久回执。重启同键返回原成功回执，未再次下载或派发配置。见[完整认证订阅队列](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-真实受管-mihomo-的完整认证订阅队列)。
+
+活动订阅的真实配置提交后若 Server 在回执返回前中断，Core 可按原 Helper 回执确认配置。隔离 Linux 已验证同键保持原刷新 ID 和 Interrupted，下载与配置未重放。队列终态对账仍待实现。见[活动订阅中断边界](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-活动订阅刷新原生提交后的中断边界)。
