@@ -150,6 +150,16 @@ internal static async Task VerifyMihomoLiveStreamsAsync()
             && (await fragmented.GetConnectionsAsync(default)).Value?.Select(item => item.Id).SequenceEqual(["first", "second"]) == true,
             "Split JSON tokens and records must preserve count and detail order.");
     }
+    using (var ids = Snapshot("""
+        {"connections":[{"id":"lost","id":null},{"metadata":{"id":"nested"}},{"id":"\u2003"},
+          {"id":["",null," "]},{"id":["",["nested"],9]},{"id":42,"\u0069d":"last"},{"id":["one",{},["nested"]]}]}
+        """, chunkSize: 5))
+    {
+        var detail = await ids.GetConnectionsAsync(default);
+        TestAssert.Assert(await ids.GetConnectionCountAsync(default) is { Succeeded: true, Value: 3 }
+            && detail.Value?.Select(item => item.Id).SequenceEqual([", ", "last", "one"]) == true,
+            "Token-only counting must preserve detail semantics for duplicate, escaped, nested and array IDs.");
+    }
     var capped = string.Join(",", Enumerable.Repeat("""{"id":"one"}""", 2_001));
     using (var large = Snapshot("{\"connections\":[" + capped + "]}"))
     using (var truncated = Snapshot("{\"connections\":[" + capped + "]"))

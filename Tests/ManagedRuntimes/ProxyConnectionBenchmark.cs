@@ -62,7 +62,9 @@ internal static class ProxyConnectionBenchmark
                 Console.WriteLine("PROXY BENCHMARK INPUT " + JsonSerializer.Serialize(new
                 {
                     input.Mode,
-                    Sha256 = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(input.Assembly, ct)))
+                    Sha256 = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(input.Assembly, ct))),
+                    ProxyModuleSha256 = requireManaged ? Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(
+                        Path.Combine(Path.GetDirectoryName(input.Assembly)!, "Modules", "Proxy", "RelaxKonOS.ServerModule.Proxy.dll"), ct))) : null
                 }));
             string[]? original = null;
             for (var pair = 1; pair <= 3; pair++)

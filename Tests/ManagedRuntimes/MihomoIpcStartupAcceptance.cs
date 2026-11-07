@@ -211,7 +211,7 @@ internal static class MihomoIpcStartupAcceptance
             start.Environment["Modules__Proxy__Enabled"] = "true";
             start.Environment["Identity__LinuxPamTransport"] = "helper";
             await using var helper = await StartHelperAsync(helperAssembly, config, transport);
-            await ProxyConnectionBenchmark.RunAsync(baseline, serverAssembly, "separate-observations", "shared-observation",
+            await ProxyConnectionBenchmark.RunAsync(baseline, serverAssembly, "baseline", "candidate",
                 login, new Uri($"http://127.0.0.1:{port}/"), PrepareAsync, VerifyAsync, requireManaged: true);
             var log = await helper.StopAsync(drainCompletedRequests: true);
             if (log.Contains("operation=MihomoRuntimeConfigure ", StringComparison.Ordinal)
