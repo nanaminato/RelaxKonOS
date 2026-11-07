@@ -372,3 +372,5 @@ MB-05 证书续期已接入原持久扫描台账。到期执行作用域由原�
 MB-05 网站发布的原常驻协调器只在新发布受理后创建执行作用域。原工作租约保护发布、补偿、终态和异步清理。Linux 实测原回执恢复不构造执行作用域，Nginx 持续转发。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布准入与执行作用域)。
 
 MB-05 直接 WebServer 的异步执行作用域由原实例锁和工作租约保护。清理失败保留原活跃回执和故障责任。Linux 实测实际重载一次、恢复作用域零。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-直接-webserver-操作执行作用域)。
+
+MB-05 Docker Compose 执行图由原工作租约保护，异步作用域清理结束后才提交终态。Linux 实测私有 Engine 与完整 Server 重启均恢复原回执，恢复只观察，不重新执行停止操作。Docker 保持 resident。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-docker-compose-准入与执行作用域)。

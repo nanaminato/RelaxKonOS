@@ -181,9 +181,18 @@ internal static class ModuleBackgroundOwnershipChecks
             var compose = new FakeComposeService { BlockOnDeploy = true, PreviewServices = ["web"] };
             var options = Options.Create(new DockerComposeOptions { DataDirectory = Path.Combine(root, "docker-ledger"), MaximumConcurrentOperations = 1 });
             var store = new DockerStackOperationStore(f.Environment, options);
-            using var coordinator = new DockerStackOperationCoordinator(store, compose, options, new TestApplicationLifetime(),
+            var executions = 0;
+            var cleanupEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var cleanupReleased = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var executionScopes = new OperationTestScopeFactory<IDockerComposeService>(() =>
+            {
+                Interlocked.Increment(ref executions);
+                return compose;
+            }, async () => { cleanupEntered.SetResult(); await cleanupReleased.Task; });
+            using var coordinator = new DockerStackOperationCoordinator(store, executionScopes, options, new TestApplicationLifetime(),
                 new DockerChecks.CaptureOperationalEvents(), NullLogger<DockerStackOperationCoordinator>.Instance, f.Source);
             await coordinator.StartAsync(default);
+            Check(executions == 0, "Clean Docker startup opens the original ledger without resolving Compose");
             const string yaml = "services:\n  web:\n    image: nginx:alpine\n";
             var definition = new DockerStackDefinitionDto("owned", yaml);
             var operation = await coordinator.DeployAsync(new(definition, DockerStackValidation.DefinitionVersion("owned", yaml)), "actor", "once");
@@ -192,13 +201,31 @@ internal static class ModuleBackgroundOwnershipChecks
             using var budget = new CancellationTokenSource(); var stop = coordinator.StopAsync(budget.Token); budget.Cancel();
             try { await stop; throw new Exception("Docker Stop detached"); } catch (OperationCanceledException) { }
             Check(f.Active(ServerModules.DockerId) == 1, "Docker Stop timeout preserves a non-cooperative Compose task");
-            compose.ReleaseDeploy(); await coordinator.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(5));
+            compose.ReleaseDeploy();
+            var drain = coordinator.StopAsync(default);
+            try
+            {
+                await cleanupEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                Check(executions == 1 && !drain.IsCompleted && f.Active(ServerModules.DockerId) == 1
+                    && DockerStackOperationStore.Active(store.Get(operation.OperationId)!.Operation),
+                    "Docker shutdown keeps the original receipt and lease through asynchronous scope cleanup");
+            }
+            finally { cleanupReleased.TrySetResult(); }
+            await drain.WaitAsync(TimeSpan.FromSeconds(5));
             Check(f.Active(ServerModules.DockerId) == 0 && DockerStackOperationStore.Active(store.Get(operation.OperationId)!.Operation),
                 "Docker actual shutdown completion preserves its durable active record for original restart observation");
-            using var restarted = new DockerStackOperationCoordinator(store, compose, options, new TestApplicationLifetime(),
+            var observations = 0;
+            var recoveryScopes = new OperationTestScopeFactory<IDockerComposeService>(() =>
+            {
+                Interlocked.Increment(ref observations);
+                return compose;
+            });
+            using var restarted = new DockerStackOperationCoordinator(store, recoveryScopes, options, new TestApplicationLifetime(),
                 new DockerChecks.CaptureOperationalEvents(), NullLogger<DockerStackOperationCoordinator>.Instance, f.Source);
             await restarted.StartAsync(default);
-            Check(store.Get(operation.OperationId)!.Operation.State == DockerStackOperationState.Interrupted && compose.DeployCalls == 1,
+            var replay = await restarted.DeployAsync(new(definition, DockerStackValidation.DefinitionVersion("owned", yaml)), "actor", "once");
+            Check(replay.OperationId == operation.OperationId && replay.State == DockerStackOperationState.Interrupted
+                && compose.DeployCalls == 1 && observations == 1,
                 "Docker restart observes the original operation and never replays Compose");
             await restarted.StopAsync(default);
         }

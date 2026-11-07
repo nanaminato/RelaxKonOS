@@ -1108,11 +1108,12 @@ internal static async Task RunLiveCrashWorkerAsync(string ledgerDirectory, strin
     builder.Logging.ClearProviders();
     var modules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.DockerId });
     modules.ConfigureServices(builder, ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory"));
+    builder.Services.Configure<DockerComposeOptions>(options => options.DataDirectory = dataDirectory);
     await using var host = builder.Build();
-    var compose = new DockerComposeService(new TestHostEnvironment(dataDirectory),
-        Options.Create(new DockerComposeOptions { DataDirectory = dataDirectory }));
     var leases = host.Services.GetRequiredService<IResidentModuleWorkLeaseSource>();
-    using var coordinator = NewStackCoordinator(ledgerDirectory, compose, new TestApplicationLifetime(), 4, leases: leases);
+    using var coordinator = new DockerStackOperationCoordinator(NewStackStore(ledgerDirectory, 4),
+        host.Services.GetRequiredService<IServiceScopeFactory>(), Options.Create(new DockerComposeOptions { MaximumConcurrentOperations = 4 }),
+        new TestApplicationLifetime(), new CaptureOperationalEvents(), NullLogger<DockerStackOperationCoordinator>.Instance, leases);
     await coordinator.StartAsync(default);
     var receipt = await coordinator.ApplyActionAsync(project, DockerStackOperationKind.Stop, true, "live-actor", LiveCrashKey);
     Console.WriteLine(receipt.OperationId);
@@ -1228,12 +1229,19 @@ internal static async Task VerifyLiveHttpDisconnectAsync(string ledgerDirectory,
 
 internal static async Task RecoverAfterDaemonRestartAsync(string ledgerDirectory, string dataDirectory, string project, Guid operationId)
 {
-    var compose = new DockerComposeService(new TestHostEnvironment(dataDirectory),
-        Options.Create(new DockerComposeOptions { DataDirectory = dataDirectory }));
+    var observedScopes = 0;
+    var composeEnvironment = new TestHostEnvironment(dataDirectory);
+    var composeOptions = Options.Create(new DockerComposeOptions { DataDirectory = dataDirectory, MaximumConcurrentOperations = 4 });
+    var scopes = new OperationTestScopeFactory<IDockerComposeService>(() =>
+    {
+        Interlocked.Increment(ref observedScopes);
+        return new DockerComposeService(composeEnvironment, composeOptions);
+    });
     var original = NewStackStore(ledgerDirectory, 4).Get(operationId)?.Operation;
     TestAssert.Assert(original?.State == DockerStackOperationState.Running, "The interrupted worker must leave its original Running receipt.");
-    using var recovery = NewStackCoordinator(ledgerDirectory, compose, new TestApplicationLifetime(), 4,
-        leases: new TestResidentBackgroundLeases());
+    using var recovery = new DockerStackOperationCoordinator(NewStackStore(ledgerDirectory, 4), scopes, composeOptions,
+        new TestApplicationLifetime(), new CaptureOperationalEvents(), NullLogger<DockerStackOperationCoordinator>.Instance,
+        new TestResidentBackgroundLeases());
     await recovery.StartAsync(default);
     var restored = recovery.Get(operationId);
     var replay = await recovery.ApplyActionAsync(project, DockerStackOperationKind.Stop, true, "live-actor", LiveCrashKey);
@@ -1241,10 +1249,10 @@ internal static async Task RecoverAfterDaemonRestartAsync(string ledgerDirectory
     TestAssert.Assert(restored is { State: DockerStackOperationState.Interrupted, ProblemCode: DockerStackProblem.Interrupted }
         && restored.Services.Any(service => service.Service == "witness")
         && replay.OperationId == operationId && replay.State == restored.State && replay.ProblemCode == restored.ProblemCode
-        && durable?.State == restored.State && durable.ProblemCode == restored.ProblemCode,
+        && durable?.State == restored.State && durable.ProblemCode == restored.ProblemCode && observedScopes == 1,
         "Daemon recovery must observe the real project and preserve the original interrupted receipt.");
     await recovery.StopAsync(default);
-    Console.WriteLine($"PASS DOCKER DAEMON OPERATION RECOVERY: operation={operationId}; state={restored!.State}");
+    Console.WriteLine($"PASS DOCKER DAEMON OPERATION RECOVERY: operation={operationId}; state={restored!.State}; observation scopes=1; replay scopes=0");
 }
 
 private static async Task VerifyLiveCrashRecoveryAsync(string project, string container, string ledgerDirectory,
@@ -1332,7 +1340,7 @@ internal static DockerStackOperationStore NewStackStore(string dataDirectory, in
 internal static DockerStackOperationCoordinator NewStackCoordinator(string dataDirectory, IDockerComposeService compose,
     IHostApplicationLifetime lifetime, int maximumConcurrent, IOperationalEventPublisher? eventPublisher = null,
     IResidentModuleWorkLeaseSource? leases = null) =>
-    new(NewStackStore(dataDirectory, maximumConcurrent), compose,
+    new(NewStackStore(dataDirectory, maximumConcurrent), new OperationTestScopeFactory<IDockerComposeService>(() => compose),
         Options.Create(new DockerComposeOptions { DataDirectory = dataDirectory, MaximumConcurrentOperations = maximumConcurrent }),
         lifetime, eventPublisher ?? new CaptureOperationalEvents(), NullLogger<DockerStackOperationCoordinator>.Instance, leases ?? new TestResidentBackgroundLeases());
 

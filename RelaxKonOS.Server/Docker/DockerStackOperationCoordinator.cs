@@ -10,8 +10,7 @@ using RelaxKonOS.Server.Startup;
 namespace RelaxKonOS.Server.Docker;
 
 /// <summary>
-/// Owns the lifecycle of every durable Compose stack operation. It is the only caller of
-/// <see cref="IDockerComposeService" />, it is what makes an operation survive the HTTP request and the
+/// Owns the lifecycle of every durable Compose stack operation. It lets an operation survive the HTTP request and the
 /// phone that started it, and it is the single authority for idempotency and for serializing changes to
 /// one project while other projects keep working.
 ///
@@ -22,7 +21,7 @@ namespace RelaxKonOS.Server.Docker;
 /// </summary>
 internal sealed class DockerStackOperationCoordinator(
     DockerStackOperationStore operations,
-    IDockerComposeService compose,
+    IServiceScopeFactory scopes,
     IOptions<DockerComposeOptions> options,
     IHostApplicationLifetime lifetime,
     IOperationalEventPublisher eventPublisher,
@@ -137,6 +136,30 @@ internal sealed class DockerStackOperationCoordinator(
         DockerStackDefinitionDto? definition, CancellationTokenSource cancellation, CancellationToken workStopping)
     {
         var id = operation.OperationId;
+        try
+        {
+            Outcome? outcome;
+            await using (var scope = scopes.CreateAsyncScope())
+            {
+                var compose = scope.ServiceProvider.GetRequiredService<IDockerComposeService>();
+                outcome = await ExecuteAsync(compose, id, kind, project, definition, cancellation, workStopping);
+            }
+            if (outcome is not null)
+                Complete(id, outcome.State, outcome.Problem, outcome.Recovery, outcome.Messages, outcome.Observed);
+        }
+        finally
+        {
+            lock (gate) { cancellations.TryRemove(id, out _); cancellation.Dispose(); }
+            running.TryRemove(id, out _);
+        }
+    }
+
+    private sealed record Outcome(DockerStackOperationState State, string? Problem, string? Recovery,
+        IReadOnlyList<string> Messages, IReadOnlyList<DockerStackServiceDto>? Observed = null);
+
+    private async Task<Outcome?> ExecuteAsync(IDockerComposeService compose, Guid id, DockerStackOperationKind kind, string project,
+        DockerStackDefinitionDto? definition, CancellationTokenSource cancellation, CancellationToken workStopping)
+    {
         var messages = new List<string>();
         try
         {
@@ -171,35 +194,30 @@ internal sealed class DockerStackOperationCoordinator(
 
             var (state, problem, recovery) = Classify(kind, result, desired, observed);
             if (state == DockerStackOperationState.PartialFailed) messages.Add("some services are not in their desired state; the project was left as observed");
-            Complete(id, state, problem, recovery, messages);
+            return new(state, problem, recovery, messages);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
             // A process that is stopping has not failed: it leaves the operation active so the next
             // startup reconciles it against the Engine instead of reporting a phantom outcome.
             var stopping = lifetime.ApplicationStopping.IsCancellationRequested || workStopping.IsCancellationRequested;
-            if (stopping) return;
-            var observed = await SafeObserveAsync(project);
-            Complete(id, DockerStackOperationState.Cancelled, DockerStackProblem.Cancelled, null, messages, observed);
+            if (stopping) return null;
+            var observed = await SafeObserveAsync(compose, project);
+            return new(DockerStackOperationState.Cancelled, DockerStackProblem.Cancelled, null, messages, observed);
         }
         catch (DockerStackException failure)
         {
-            var observed = await SafeObserveAsync(project);
+            var observed = await SafeObserveAsync(compose, project);
             var state = observed.Count > 0 ? DockerStackOperationState.PartialFailed : DockerStackOperationState.Failed;
-            Complete(id, state, failure.ProblemCode, state == DockerStackOperationState.PartialFailed ? DockerStackProblem.PartialFailure : null, messages, observed);
+            return new(state, failure.ProblemCode, state == DockerStackOperationState.PartialFailed ? DockerStackProblem.PartialFailure : null, messages, observed);
         }
         catch (Exception exception) when (exception is not (ResidentWorkCompletionException or DockerComposeCleanupException))
         {
             logger.LogWarning("Stack operation {OperationId} for project {Project} failed before an outcome could be classified. {ExceptionType}",
                 id, project, exception.GetType().Name);
-            var observed = await SafeObserveAsync(project);
+            var observed = await SafeObserveAsync(compose, project);
             var state = observed.Count > 0 ? DockerStackOperationState.PartialFailed : DockerStackOperationState.Failed;
-            Complete(id, state, DockerStackProblem.ComposeFailed, state == DockerStackOperationState.PartialFailed ? DockerStackProblem.PartialFailure : null, messages, observed);
-        }
-        finally
-        {
-            lock (gate) { cancellations.TryRemove(id, out _); cancellation.Dispose(); }
-            running.TryRemove(id, out _);
+            return new(state, DockerStackProblem.ComposeFailed, state == DockerStackOperationState.PartialFailed ? DockerStackProblem.PartialFailure : null, messages, observed);
         }
     }
 
@@ -239,7 +257,7 @@ internal sealed class DockerStackOperationCoordinator(
 
     private static bool IsRunning(string state) => state.Equals("running", StringComparison.OrdinalIgnoreCase);
 
-    private async Task<IReadOnlyList<DockerStackServiceDto>> SafeObserveAsync(string project)
+    private static async Task<IReadOnlyList<DockerStackServiceDto>> SafeObserveAsync(IDockerComposeService compose, string project)
     {
         try { return await compose.ListServicesAsync(project, CancellationToken.None); }
         catch (Exception error) when (error is not DockerComposeCleanupException) { return []; }
@@ -334,7 +352,7 @@ internal sealed class DockerStackOperationCoordinator(
             try
             {
                 var observed = entry.Operation.State == DockerStackOperationState.Running
-                    ? await SafeObserveAsync(entry.Operation.ProjectName)
+                    ? await ObserveOnStartupAsync(entry.Operation.ProjectName)
                     : [];
                 var recovery = RecoveryCode(entry.Operation.Kind, observed);
                 Complete(entry.Operation.OperationId, DockerStackOperationState.Interrupted, DockerStackProblem.Interrupted, recovery,
@@ -349,6 +367,12 @@ internal sealed class DockerStackOperationCoordinator(
         }
         recoveryWork.Token.ThrowIfCancellationRequested();
         lock (gate) ready = true;
+    }
+
+    private async Task<IReadOnlyList<DockerStackServiceDto>> ObserveOnStartupAsync(string project)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        return await SafeObserveAsync(scope.ServiceProvider.GetRequiredService<IDockerComposeService>(), project);
     }
 
     /// <summary>Which follow-up the operator most likely needs after an unverified operation. A project

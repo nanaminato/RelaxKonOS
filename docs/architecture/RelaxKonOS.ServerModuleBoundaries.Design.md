@@ -144,7 +144,7 @@ IPC 请求、响应流、模块回调、批准中的 Broker 操作和持久后�
 | MB-02 | **部分交付**。Git Contracts/独立实现和窄 Host 端口，Proxy 订阅转换契约/私有实现，Firewall-F1 独立契约/执行代码及构建门禁；回收验证见 §10/11/20～22/41 | 全官方包仍非唯一 collectible ABI；其他模块尚有根服务和实现依赖 | 全契约不引用 Server/实现；Host/模块互引构建门禁；发布包与私有依赖按唯一当前 ABI 验证 |
 | MB-03 | **Git 有限切片交付**。真实仓库/CLI/凭据/控制台与构建执行项目，100轮 ALC 和保留完成请求验证（§10/11）；镜像清理责任修复与真实 Engine 标签检查见 §43，离线 BuildKit 续核见 §44 | 真实 Docker/BuildKit 执行中取消、清理、恢复与 ALC 联合矩阵未完成；生产内存/冷启动缺失 | 真实任务/流/持久故障责任结束才回收；两平台循环不累积句柄/代码代次；实际引擎恢复与资源目标达到门槛 |
 | MB-04 | **常驻边界阶段交付**。共享读取、guard/TUN、到期与发布恢复单一 owner，后台工作租约、订阅转换预算及独立代码（§12～22） | Proxy 整体仍 resident；安全职责持久调度交接、真实网络故障和动态休眠未完成 | 系统代理/TUN/到期责任在重启及休眠后连续可靠；未知结果不重放；正式包/代码释放与生产收益分别验证 |
-| MB-05 | **MB-05A 常驻后台责任阶段交付**（§39）。三域真实工作租约、准入/Stop 同锁、实际任务及清理排空；证书取消只记录请求，真实任务决定终态。Docker 在途停止与原回执恢复见 §45，独立 Pebble、Nginx、Engine 实测见 §52～54，证书续期持久调度、网站发布和直接 WebServer 执行作用域见文末 | 三域仍 resident；Docker 执行边界、独立执行程序集和完整联合矩阵开放；跨文件事务和远端 CA 未知状态仍须恢复规则 | MB-05A 后台 owner/终态/禁用门槛已通过，保持 resident；整项还须验证持久调度、独立执行器、真实 Engine/CA/Nginx 重启连续性与休眠 |
+| MB-05 | **MB-05A 常驻后台责任阶段交付**（§39）。三域真实工作租约、准入/Stop 同锁、实际任务及清理排空；证书取消只记录请求，真实任务决定终态。Docker 在途停止与原回执恢复见 §45，独立 Pebble、Nginx、Engine 实测见 §52～54，证书续期持久调度、网站发布、直接 WebServer 和 Docker Compose 执行作用域见文末 | 三域仍 resident；独立执行程序集和完整联合矩阵开放；跨文件事务和远端 CA 未知状态仍须恢复规则 | MB-05A 后台 owner/终态/禁用门槛已通过，保持 resident；整项还须验证持久调度、独立执行器、真实 Engine/CA/Nginx 重启连续性与休眠 |
 | MB-06 | **MB-06A/06B 阶段交付**（§39/40），Windows LocalSystem/S4U 安装夹具及 Core／Helper 崩溃恢复实测通过（§48） | 正式发行服务全链、Linux 固定启动器跨代故障、SDK 合作 drain/后台任务申报仍开放 | 整项仍须合作 drain/后台申报、正式安装多代信任/撤销/崩溃矩阵与旧回调隔离，验收后才启用闲时退出/重启 |
 | MB-07 | **SystemPerformance S1 已交付并冻结范围**（§23～37）；Firewall-F1 代码回收与 Tailscale TS-01 持久责任跨对象代次验收交付（§41）；Terminal-T1/T2 阶段交付（§39/40） | SystemPerformance 与 Terminal 仍 resident，生产收益/完整原生压力未测；Terminal 当前账号 Windows 树与 Linux 本地/永久降权 Helper 树已实测，Windows 安装 Helper/S4U、宿主崩溃/孤儿恢复矩阵仍开放；其余模块代码边界未验证 | Terminal-T1/T2 会话/当前原生树阶段已验收，断线不杀会话；整项还须安装/崩溃/压力矩阵及收益证据，再决定独立程序集，不能将 S1/T2 当作整项关闭 |
 | MB-08 | **未完成**。已有当前诊断 DTO/跨端管理契约及局部打包/ModuleHost 验证 | 安装包非完整目标 ABI；真实业务同构建内存/冷启动门槛、完整平台故障矩阵未有 | 发布包/私有依赖/各端调用一致；Windows/Linux 整个进程树与冷启动 p50/p95、错误率达到预先记录门槛，关联 RES-06/07 |
@@ -1465,3 +1465,9 @@ Windows Release 模块边界回归通过。测试确认原协调器启动不构�
 直接 Nginx 集成、重载、HTTP-01 启用及受管实例启动、停止、重启使用同一 WebServer 操作台账。只有新准入的操作在原实例锁和原工作租约内解析执行器。执行器在既有 Core Nginx 提供者上调用封闭命令，执行任务和异步作用域清理完成后才提交终态。清理不可确认时保持原活跃回执及故障租约。原子准入同时核验原操作者，其他操作者的同键碰撞返回冲突且不暴露原回执。共享提供者及同步站点接口仍归原 Core 服务。
 
 Windows Release WebServer 和模块边界专项通过，覆盖取消期间的真实任务、异步作用域清理、清理失败保留原责任和操作者同键冲突。Linux x64 Release 在私有网络、挂载和 PID 命名空间用实际 Nginx 验证直接重载。专属重载命令退出成功后，传输返回前终止原工作进程，原 `eb74e92c-f9de-4351-9322-85f424d51a0d` 恢复为 Failed / interrupted。原实例不再可发现时，生命周期入口和直接重载 HTTP 同键入口仍返回原回执。客户端断线后响应排空，恢复作用域为零，原 Nginx 继续提供 HTTPS，实际重载一次。宿主 Nginx PID 和配置指纹一致。日志为 .artifacts/mb05-web-direct-scope-live.log，归档 SHA-256 为 b72228bb83eb26db12eda0aecbc5b93fa313c4942db3be2e297eb6740ea47b8e。本轮 Linux 使用生产提供者、原台账和实际 Nginx，封闭重载命令经隔离传输发往专属进程。其他直接动作的实机中断和完整 Server 认证联合验收仍开放。WebServer 保持 resident。
+
+### MB-05 Docker Compose 准入与执行作用域
+
+原常驻协调器独占准入、项目互斥、回执和恢复。新操作持久化 queued 后才解析 Compose 执行图，异步清理结束后才写终态。清理失败保留原活跃回执和故障责任。启动仅为原 Running 项创建只读观察作用域，已知键重试不创建执行作用域。Core Engine、外部容器及卷由原设施持有。
+
+Windows Release 模块边界与本地跨进程回归通过，覆盖原工作租约与回执跨异步清理、原 operationId 恢复和副作用计数。Linux x64 Release 在独立挂载、网络、PID 命名空间和私有 Docker socket 上通过真实 Engine 与完整 Server 验收。停止期间强制终止 daemon 和工作进程后，原操作 `ac82fe2d-9996-4012-a68d-5381c630801b` 恢复为 Interrupted，观察作用域一次、重放作用域零，见证容器的停止计数前后同为 2。完整 Server 经认证提交停止请求并丢弃原响应，在真实停止过程中强制终止 Server；重启后同键返回原 `2408d31c-3dfd-4ee8-9650-a08246796f28` Interrupted，停止计数只增加一次。私有 Engine 重启也保留原容器和命名卷，夹具清理专属资源，宿主共享服务 PID、容器和环境指纹保持一致。首轮包装器因 CRLF 在启动 Engine 前退出，转为 LF 后通过。证据为 .artifacts/mb05-docker-scope-live.log，归档 SHA-256 为 e0666d40f74d1058d6ca6d940a33903c9eff280cdef33b06a72c6bb9ecfba6b8。Docker 模块保持 resident。独立执行程序集、完整故障矩阵和生产内存测量仍开放。

@@ -26,7 +26,7 @@ internal sealed class DockerModule : IServerModule, IServerModuleDeactivationGua
     {
         builder.Services.AddScoped<RelaxKonOS.Server.ImageMirrors.IDockerImageMirrorResolver,
             RelaxKonOS.Server.ImageMirrors.DockerImageMirrorResolver>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerComposeService, RelaxKonOS.Server.Docker.DockerComposeService>();
+        builder.Services.AddScoped<RelaxKonOS.Server.Docker.IDockerComposeService, RelaxKonOS.Server.Docker.DockerComposeService>();
         // Compose stack operations are durable: the ledger outlives the HTTP request, the phone that
         // started it, and this process. The ledger itself is Core-owned (the deactivation gate reads it
         // while this module is disabled); the coordinator below is its only writer and reconciles an

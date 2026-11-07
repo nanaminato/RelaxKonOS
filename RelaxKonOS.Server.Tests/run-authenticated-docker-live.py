@@ -23,7 +23,10 @@ def run(server, project, helper):
             port = reservation.getsockname()[1]
         base = f"http://127.0.0.1:{port}"
         env = {key: value for key, value in os.environ.items() if "__" not in key}
+        private_home = root / "home"
+        private_home.mkdir(mode=0o700)
         env.update({
+            "HOME": str(private_home), "DOTNET_CLI_HOME": str(private_home),
             "DOTNET_ENVIRONMENT": "Production", "ASPNETCORE_URLS": base,
             "Server__Mode": "system", "Identity__LinuxPamTransport": "helper",
             "Privileges__Backend": "helper", "PrivilegedHelper__UserExecutionBackend": "disabled",
@@ -36,6 +39,9 @@ def run(server, project, helper):
             "Observability__AuditHmacKey": "YmFzZWxpbmUtb25seS1rZXktMDEyMzQ1Njc4OWFiY2RlZg==",
             "PrivilegedHelper__SocketPath": str(root / "ipc" / "helper.sock"),
         })
+        for module in ("Terminal", "Firewall", "SystemPerformance", "Git", "Tailscale", "Certificates", "WebServer", "Proxy"):
+            env[f"Modules__{module}__Enabled"] = "false"
+        env["Modules__Docker__Enabled"] = "true"
         key = secrets.token_hex(16)
         route = f"/api/v1.0/docker/stacks/{project}/stop"
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
