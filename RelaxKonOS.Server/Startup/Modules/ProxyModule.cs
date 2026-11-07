@@ -157,6 +157,8 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
     public async ValueTask<IReadOnlyList<ServerModuleOrphanedWork>> InspectOrphanedWorkAsync(
         IServiceProvider services, ServerModuleContext context, CancellationToken cancellationToken)
     {
+        if (services.GetService<RelaxKonOS.Server.Residency.ModuleResidencyCoordinator>()?.HasBackgroundWork(Id) == true)
+            return [new(Id, "Proxy execution, cleanup or response remains owned in this process.")];
         var operations = services.GetService<ProxyOperationStore>();
         var facts = operations is null
             ? await ProxyOperationStore.InspectPersistedResponsibilitiesAsync(services.GetRequiredService<IProxyPlatformPaths>(), cancellationToken)

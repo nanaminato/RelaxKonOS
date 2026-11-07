@@ -12,6 +12,23 @@ internal static class ProxyCoreSafetyChecks
     {
         var count = 0;
         void Check(bool ok, string label) { if (!ok) throw new Exception(label); Console.WriteLine($"PASS CORE PROXY {++count}: {label}"); }
+        var responseHost = WebApplication.CreateBuilder();
+        responseHost.Logging.ClearProviders();
+        var context = ServerModuleContext.Create(responseHost.Configuration, responseHost.Environment, "memory");
+        ServerModules.CreateManaged(new HashSet<string> { ServerModules.ProxyId }).ConfigureServices(responseHost, context);
+        await using (var app = responseHost.Build())
+        {
+            var coordinator = app.Services.GetRequiredService<RelaxKonOS.Server.Residency.ModuleResidencyCoordinator>();
+            var leases = app.Services.GetRequiredService<RelaxKonOS.Server.Residency.IResidentModuleWorkLeaseSource>();
+            using (await leases.AcquireAsync(ServerModules.ProxyId, default))
+            {
+                var reasons = await new ProxyModule().InspectOrphanedWorkAsync(app.Services, context, default);
+                Check(reasons.Count == 1 && reasons[0].ToString()!.Contains("response", StringComparison.Ordinal),
+                    "Proxy deactivation sees a real resident response lease without consulting idle business ledgers");
+            }
+            Check(!coordinator.HasBackgroundWork(ServerModules.ProxyId),
+                "The original Proxy coordinator observes response lease release");
+        }
         foreach (var enabled in new[] { false, true })
         {
             var root = Path.Combine(Path.GetTempPath(), "proxy-core-safety-" + Guid.NewGuid().ToString("N"));

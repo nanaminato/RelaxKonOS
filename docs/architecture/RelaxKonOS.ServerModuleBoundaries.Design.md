@@ -1363,3 +1363,5 @@ MB-04 Proxy 订阅、生命周期、入站与网关队列的 HTTP 202 响应接�
 Linux x64 Release 通过 Proxy Server 入站队列生产路由的 TCP 断线验收。同键响应在响应头屏障等待时客户端断开，响应租约持续到实际退出。后续重试返回原 operationId f74d189c-acf2-4701-8ef4-9fd4a2a2c750，业务执行图只构造一次，原队列停机仍等待异步清理。日志为 .artifacts/mb04-proxy-drain-live.log，归档 SHA-256 为 1c976cf0cd3de2ad2be736132a90514c9565cc5c17212327835a4fca163924a8。租约及响应屏障由 Kestrel 夹具观测，动态休眠仍开放。
 
 Core TUN worker 已捕获原恢复标记后，如果后续读取遇到不安全路径，继续保留原代次并按生产周期重试。Linux 隔离实测在 worker 等待路由时临时将标记路径换成符号链接，确认 worker 拒绝读取且继续运行。恢复原文件和管理路由后，同一 worker 关闭原操作 57e96be8-49a4-494e-8d8b-c0e5375262e5，真实禁用重载仍为一次。日志为 .artifacts/mb04-tun-marker-retry-live.log，归档 SHA-256 为 0a24dc0cb2bf30b7a586962a2b2bffed6f5366b978ccfce367777f1f6e9cb2cd。首次启动即无法确认代次仍需人工核验。
+
+Proxy 停用检查先核对原驻留协调器的活动工作租约，覆盖业务清理及独立响应寿命。租约存在时拒绝停用；后续检查继续按原持久台账和 Core 安全责任判断。Linux Release 使用生产协调器验证响应租约持有与归还，同批隔离 sing-box 网络恢复通过。日志为 .artifacts/mb04-proxy-deactivation-live.log，归档 SHA-256 为 26910a3c15986c20acf467630cc17e0d170ba17910db5390dfa83ec709dfedb6。此检查是当前责任快照，完整动态休眠仍开放。
