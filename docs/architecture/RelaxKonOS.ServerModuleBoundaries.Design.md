@@ -2345,4 +2345,16 @@ Windows Release ManagedRuntimes 广跑、Mihomo HTTP 57 项、系统代理、TUN
 
 首轮因私有档案目录未交给非 root Server，在导入时返回 400，未进入恢复场景。调整夹具属主后复验通过。Linux 日志在 `.artifacts/mb04-direct-subscription/live.log`，归档 SHA-256 为 `04fdebe69500ee6e7a5dc76081a9100d455e9e370df4fab2b3b592f422cefdf7`。Windows Release 模块边界与 ManagedRuntimes 回归通过。MB-05 跨进程原 `c8883f12-13fa-47c0-919a-f6e91695ec8c` 返回 Interrupted，受控副作用计数为一。
 
-本项实测覆盖已收到原控制器确认、SQLite 尚未提交的活动订阅刷新。原控制器结果未知时，待恢复记录继续承担写入门禁。该断线与直连队列原回执的联合实测仍开放，批量刷新也未纳入本轮。Proxy 保持 resident，动态休眠与生产内存未验收。
+本项实测覆盖已收到原控制器确认、SQLite 尚未提交的活动订阅刷新。原控制器结果未知的实测见下节。批量刷新未纳入本轮。Proxy 保持 resident，动态休眠与生产内存未验收。
+
+### MB-04 直连活动订阅重载应答未知
+
+队列在查询或受理请求时对账原发布状态。匹配同一刷新 ID 的持久发布检查点、且当前进程已无该操作时，原队列使用真实工作租约保存 `Interrupted / publication_pending`，完成时间留空。持久终态证据仍可结清原记录。无关的检查点不会替换历史回执。
+
+同一私有 Linux systemd 环境中，真实 Mihomo 成功加载候选订阅后，中继暂扣应答并强制终止完整认证 Server。原 `7d58f819-5b2e-4d5f-bf2c-50f676b5e86e` 在终止前仍为 Running 并持有一个工作租约。重启恢复旧磁盘 YAML，实际控制器仍报告候选节点。原 SQLite 档案修订和订阅时间保持，原 ID 与原键返回同一条待恢复记录，新的刷新键被拒绝，恢复没有重新下载或重载。原运行时 PID、跨中断 HTTP 转发及系统代理归属保持。
+
+同批已确认刷新 `86f6c8fb-7bac-4252-ae71-61143db47cdb` 仍完成原档案事务。隔离资源清理完成，宿主运行时服务和代理文件指纹一致。Linux 日志在 `.artifacts/mb04-direct-subscription-unknown/live.log`，归档 SHA-256 为 `8667bdcb02dd64eb85f5c9fe0855826bdfe39dbe614d8aea436b5592710cdcd5`。Windows Release 原回执责任 47 项、订阅后台边界 39 项、ManagedRuntimes 与模块边界回归通过。MB-05 跨进程原 `f74bef20-409e-4e9e-8f35-07acee5cee3a` 返回 Interrupted，受控副作用计数为一。
+
+独立的受管 Mihomo 私有 systemd 套件通过 178 项。崩溃恢复 `193de4f5-a85c-40f3-870f-0d693315dfa9`、存活进程应答丢失 `61ddc11b-5fcb-445e-8739-a6ef3d0e172c` 和真实失败补偿 `aac22140-70ac-46bf-9f23-687c815ee387` 均读取原回执，恢复无重放。专属 cgroup 已清理，宿主服务和代理文件指纹一致。日志在 `.artifacts/mb04-direct-subscription-unknown/managed-live.log`，归档 SHA-256 为 `d05974cdac5200de23c4f7f0660cdd87ebc21eabca0343bba43978ad7a0fc545`。
+
+原控制器缺少可查询的完整 reload 回执，未知路径继续占用写入与停用门禁。批量刷新尚无同等的分项恢复证据。Proxy 保持 resident，动态休眠和生产内存未验收。

@@ -80,7 +80,7 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
         {
             var entries = await ReadEntriesAsync(paths, cancellationToken);
             if (entries.Any(entry => IsInterruptedRefresh(entry.Operation)))
-                await ConfirmRefreshesAsync(entries, null, cancellationToken);
+                await ReconcileRefreshesAsync(entries, null, cancellationToken);
             var prior = entries.FirstOrDefault(entry => entry.IdempotencyKey == idempotencyKey);
             if (prior is not null) return Visible(prior.Operation);
             if (Volatile.Read(ref _stopping) || _recoveryBlocked || entries.Any(entry => IsUnresolved(entry.Operation) && !_running.ContainsKey(entry.Operation.OperationId)))
@@ -162,7 +162,7 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
             entries = await ReadEntriesAsync(paths, cancellationToken);
             var index = Array.FindIndex(entries, entry => entry.Operation.OperationId == id);
             if (index < 0) return null;
-            if (IsInterruptedRefresh(entries[index].Operation)) await ConfirmRefreshesAsync(entries, id, cancellationToken);
+            if (IsInterruptedRefresh(entries[index].Operation)) await ReconcileRefreshesAsync(entries, id, cancellationToken);
             return Visible(entries[index].Operation);
         }
         finally { entries = null; _gate.Release(); }
@@ -174,35 +174,51 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
             || operation.State == ProxyOperationState.Interrupted && operation.Stage == "publication_pending"
                 && operation.ProblemCode == ProxyProblemCodes.OperationInterrupted);
 
-    // The caller holds the queue gate. Read the atomically published proof without taking the publication gate.
-    private async Task ConfirmRefreshesAsync(Entry[] entries, Guid? requested, CancellationToken ct)
+    // The caller holds the queue gate. Read the atomic publication snapshot without taking the publication gate.
+    private async Task ReconcileRefreshesAsync(Entry[] entries, Guid? requested, CancellationToken ct)
     {
         if (publication is null || Volatile.Read(ref _stopping)) return;
         MihomoPublicationState state;
         try { state = await publication.ReadAsync(ct); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or RelaxKonOS.ManagedRuntimes.RuntimePolicyException)
         { return; }
-        if (state.SubscriptionRefreshCompletions is not { } proofs) return;
-        var matches = Enumerable.Range(0, entries.Length).Where(index =>
-            IsInterruptedRefresh(entries[index].Operation)
-            && (requested is null || requested == entries[index].Operation.OperationId)
-            && proofs.ContainsKey(entries[index].Operation.OperationId)).ToArray();
-        if (matches.Length == 0) return;
-        using var work = await workLeases.AcquireAsync(ct);
-        foreach (var index in matches)
+        var changed = false;
+        for (var index = 0; index < entries.Length; index++)
         {
             var entry = entries[index];
-            var proof = proofs[entry.Operation.OperationId];
-            entries[index] = entry with { Operation = entry.Operation with
-            {
-                State = proof.Confirmed ? ProxyOperationState.Succeeded : ProxyOperationState.Failed,
-                Stage = proof.Confirmed ? "completed" : "failed",
-                ProblemCode = proof.Confirmed ? "" : ProxyProblemCodes.ConfigApplyFailed,
-                CompletedAt = proof.CompletedAt
-            } };
+            var operation = entry.Operation;
+            if (!IsInterruptedRefresh(operation) || requested is not null && requested != operation.OperationId)
+                continue;
+
+            if (state.SubscriptionRefreshCompletions?.GetValueOrDefault(operation.OperationId) is { } proof)
+                operation = operation with
+                {
+                    State = proof.Confirmed ? ProxyOperationState.Succeeded : ProxyOperationState.Failed,
+                    Stage = proof.Confirmed ? "completed" : "failed",
+                    ProblemCode = proof.Confirmed ? "" : ProxyProblemCodes.ConfigApplyFailed,
+                    CompletedAt = proof.CompletedAt
+                };
+            else if (HasPendingRefresh(state, operation.OperationId))
+                operation = operation with
+                {
+                    State = ProxyOperationState.Interrupted,
+                    Stage = "publication_pending",
+                    ProblemCode = ProxyProblemCodes.OperationInterrupted,
+                    CompletedAt = null
+                };
+
+            if (operation == entry.Operation) continue;
+            entries[index] = entry with { Operation = operation };
+            changed = true;
         }
+        if (!changed) return;
+        using var work = await workLeases.AcquireAsync(ct);
         await SaveAsync(entries, CancellationToken.None);
     }
+
+    private static bool HasPendingRefresh(MihomoPublicationState state, Guid id) =>
+        (state.Pending?.OperationId == id && state.Pending.Profile?.Refresh is not null)
+        || (state.DirectReload?.OperationId == id && state.DirectReload.Profile?.Refresh is not null);
 
     private ProxyOperationDto Visible(ProxyOperationDto operation) =>
         operation.State is ProxyOperationState.Queued or ProxyOperationState.Running && !_running.ContainsKey(operation.OperationId)
@@ -227,8 +243,7 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
                 try
                 {
                     var state = await publication.ReadAsync(CancellationToken.None);
-                    publicationPending = (state.Pending?.OperationId == id && state.Pending.Profile?.Refresh is not null)
-                        || (state.DirectReload?.OperationId == id && state.DirectReload.Profile?.Refresh is not null)
+                    publicationPending = HasPendingRefresh(state, id)
                         || state.SubscriptionRefreshCompletions?.ContainsKey(id) == true;
                 }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException or RelaxKonOS.ManagedRuntimes.RuntimePolicyException)

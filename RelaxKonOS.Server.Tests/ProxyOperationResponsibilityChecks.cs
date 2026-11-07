@@ -114,6 +114,23 @@ internal static class ProxyOperationResponsibilityChecks
             Check(!historical.IsAlive,
                 "Root ledger and a retained completed lookup do not retain previously returned history objects");
             GC.KeepAlive(retainedStore); GC.KeepAlive(retainedRead);
+
+            var operationId = Guid.NewGuid();
+            var profile = Guid.NewGuid();
+            var now = DateTimeOffset.UtcNow;
+            var refresh = new MihomoProfilePublication(profile, 1, profile, 1, now, now, new(Guid.NewGuid(), now));
+            var publication = provider.GetRequiredService<MihomoPublicationStore>();
+            await publication.BeginDirectReloadAsync("previous", "candidate", default, refresh, operationId);
+            var running = new ProxyOperationDto(operationId, "subscription.refresh", ProxyOperationState.Running, "running", "", now, null);
+            await File.WriteAllTextAsync(file, JsonSerializer.Serialize(new[] { new { IdempotencyKey = "refresh", Operation = running } }));
+            var resumed = new ProxyOperationStore(paths, NullLogger<ProxyOperationStore>.Instance, new TestProxyWorkLeases(), publication);
+            var pending = await resumed.EnqueueAsync("refresh", running.Kind, (_, _) => throw new Exception("Replayed unknown refresh"), default);
+            Check(pending == (running with { State = ProxyOperationState.Interrupted, Stage = "publication_pending",
+                ProblemCode = ProxyProblemCodes.OperationInterrupted }), "The original key persists a pending refresh without a completion time");
+            var persisted = await File.ReadAllTextAsync(file);
+            var nextProcess = new ProxyOperationStore(paths, NullLogger<ProxyOperationStore>.Instance, new TestProxyWorkLeases(), publication);
+            Check(await nextProcess.GetAsync(operationId, default) == pending && await File.ReadAllTextAsync(file) == persisted && await Blocked(),
+                "A reopened queue returns the stable original receipt and retains deactivation responsibility");
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
         Console.WriteLine($"Proxy task responsibility checks passed: {count}");

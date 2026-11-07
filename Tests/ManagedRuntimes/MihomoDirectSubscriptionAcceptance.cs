@@ -12,6 +12,7 @@ using Microsoft.Extensions.Logging;
 using RelaxKonOS.PrivilegedHelper;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Identity;
+using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.Proxy;
 using RelaxKonOS.Server.Proxy.Mihomo;
@@ -59,7 +60,11 @@ internal static class MihomoDirectSubscriptionAcceptance
         originBuilder.Logging.ClearProviders();
         originBuilder.WebHost.UseUrls("http://93.184.216.34:0");
         await using var origin = originBuilder.Build();
-        origin.MapGet("/feed", () => $"vless://550e8400-e29b-41d4-a716-446655440000@origin-{Interlocked.Increment(ref feeds)}.example.test:443#fixture");
+        origin.MapGet("/feed", () =>
+        {
+            var revision = Interlocked.Increment(ref feeds);
+            return $"vless://550e8400-e29b-41d4-a716-446655440000@origin-{revision}.example.test:443#fixture-{revision}";
+        });
         await origin.StartAsync(ct);
 
         using var native = new HttpClient(new SocketsHttpHandler { UseProxy = false }) { BaseAddress = new("http://127.0.0.1:9090/") };
@@ -70,6 +75,7 @@ internal static class MihomoDirectSubscriptionAcceptance
         var reloadAttempts = 0;
         var reloads = 0;
         var committed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var unacknowledged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         relay.Run(async context =>
         {
@@ -83,10 +89,19 @@ internal static class MihomoDirectSubscriptionAcceptance
                 request.Content.Headers.TryAddWithoutValidation("Content-Type", context.Request.ContentType);
             }
             using var response = await native.SendAsync(request, context.RequestAborted);
-            if (reload && response.IsSuccessStatusCode && Interlocked.Increment(ref reloads) == 2)
+            if (reload && response.IsSuccessStatusCode)
             {
-                committed.TrySetResult();
-                await release.Task.WaitAsync(context.RequestAborted);
+                var count = Interlocked.Increment(ref reloads);
+                if (count == 2)
+                {
+                    committed.TrySetResult();
+                    await release.Task.WaitAsync(context.RequestAborted);
+                }
+                if (count == 3)
+                {
+                    unacknowledged.TrySetResult();
+                    await Task.Delay(Timeout.InfiniteTimeSpan, context.RequestAborted);
+                }
             }
             context.Response.StatusCode = (int)response.StatusCode;
             if (response.Content.Headers.ContentType is { } contentType) context.Response.ContentType = contentType.ToString();
@@ -95,6 +110,9 @@ internal static class MihomoDirectSubscriptionAcceptance
         await relay.StartAsync(ct);
 
         var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly, socket, root, reuse: true);
+        var secrets = new DataProtectionProxyControllerSecretStore(
+            new Microsoft.Extensions.Hosting.Internal.HostingEnvironment { ContentRootPath = start.WorkingDirectory },
+            ManagedServiceChecks.OpenProtection(root));
         start.Environment["Modules__Proxy__Enabled"] = "true";
         start.Environment["Identity__LinuxPamTransport"] = "helper";
         start.Environment["Proxy__Mihomo__Controller__Endpoint"] = Address(relay) + "/";
@@ -112,6 +130,10 @@ internal static class MihomoDirectSubscriptionAcceptance
                 ProxySubscriptionDto subscription;
                 MihomoDirectReload checkpoint;
                 long revision;
+                var unknownKey = Guid.NewGuid().ToString("N");
+                Guid unknown;
+                byte[] acknowledgedYaml;
+                MihomoDirectReload unknownCheckpoint;
                 using (var server = ProxyAuthenticatedPublicationChecks.Start(start, Console.WriteLine))
                 {
                     try
@@ -143,12 +165,9 @@ internal static class MihomoDirectSubscriptionAcceptance
                         while ((await store.ReadAsync(trafficCt)).DirectReload is not { ProfileReloadConfirmed: true })
                             await Task.Delay(25, trafficCt);
                         checkpoint = (await store.ReadAsync(trafficCt)).DirectReload!;
-                        var leaseCount = (await client.GetFromJsonAsync<ServerModuleDto>(
-                            ServerModuleManagementRoutes.Detail.Replace("{moduleId}", "relaxkonos.proxy", StringComparison.Ordinal),
-                            RelaxKonOSJsonOptions.Default, trafficCt))?.Residency?.ActiveLeases;
                         if (checkpoint.OperationId != operation || checkpoint.Profile?.Refresh?.SubscriptionId != subscription.Id
                             || (await ReadOperationAsync(client, operation, trafficCt)).State != ProxyOperationState.Running
-                            || checkpoint.Profile.ExpectedRevision != revision || leaseCount != 1
+                            || checkpoint.Profile.ExpectedRevision != revision || await ReadLeasesAsync(client, trafficCt) != 1
                             || Volatile.Read(ref feeds) != 2 || Volatile.Read(ref reloads) != 2 || Volatile.Read(ref reloadAttempts) != 2)
                             throw new InvalidOperationException("The refresh lost its original lease or identity before the SQLite commit.");
                         server.Kill();
@@ -182,8 +201,67 @@ internal static class MihomoDirectSubscriptionAcceptance
                         || guard.RuntimePid != pid)
                         throw new InvalidOperationException("Restart did not commit the original direct subscription without replay.");
                     Console.WriteLine($"PASS AUTHENTICATED DIRECT SUBSCRIPTION RECOVERY: original {operation}; one refresh download, reload and SQLite commit");
+
+                    acknowledgedYaml = await File.ReadAllBytesAsync(activePath, trafficCt);
+                    unknown = await SubmitAsync(client, route, unknownKey, trafficCt);
+                    await unacknowledged.Task.WaitAsync(trafficCt);
+                    unknownCheckpoint = (await store.ReadAsync(trafficCt)).DirectReload
+                        ?? throw new InvalidOperationException("Missing unacknowledged direct refresh checkpoint.");
+                    if (unknownCheckpoint.OperationId != unknown || unknownCheckpoint.ProfileReloadConfirmed
+                        || unknownCheckpoint.Profile?.Refresh?.SubscriptionId != subscription.Id
+                        || (await ReadOperationAsync(client, unknown, trafficCt)).State != ProxyOperationState.Running
+                        || await ReadLeasesAsync(client, trafficCt) != 1
+                        || await ReadRevisionAsync(subscription.ProfileId, trafficCt) != revision + 1
+                        || Volatile.Read(ref feeds) != 3 || Volatile.Read(ref reloads) != 3 || Volatile.Read(ref reloadAttempts) != 3)
+                        throw new InvalidOperationException("The refresh lost its original work or committed without the reload response.");
+                    restarted.Kill();
+                    await restarted.WaitForExitAsync(trafficCt);
+                    if (restarted.ExitCode == 0) throw new InvalidOperationException("The unacknowledged Server did not crash.");
                 }
                 finally { await ProxyAuthenticatedPublicationChecks.StopAsync(restarted); }
+
+                using var recovery = ProxyAuthenticatedPublicationChecks.Start(start, Console.WriteLine);
+                try
+                {
+                    using var client = await ProxyAuthenticatedPublicationChecks.ConnectAsync(recovery, login, trafficCt);
+                    while (!(await File.ReadAllBytesAsync(activePath, trafficCt)).SequenceEqual(acknowledgedYaml))
+                        await Task.Delay(25, trafficCt);
+                    var pending = await ReadOperationAsync(client, unknown, trafficCt);
+                    var durableLedger = Path.Combine(directory, "proxy-operations.json");
+                    var persisted = await File.ReadAllTextAsync(durableLedger, trafficCt);
+                    using var ledger = JsonDocument.Parse(persisted);
+                    var saved = ledger.RootElement.EnumerateArray().Select(entry => entry.GetProperty("Operation"))
+                        .Single(entry => entry.GetProperty(nameof(ProxyOperationDto.OperationId)).GetGuid() == unknown);
+                    using var fresh = new HttpRequestMessage(HttpMethod.Post, route);
+                    fresh.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("N"));
+                    using var denied = await client.SendAsync(fresh, trafficCt);
+                    var status = await client.GetFromJsonAsync<RuntimeRecoverySnapshot>(RuntimeRoutes.MihomoRecovery, RelaxKonOSJsonOptions.Default, trafficCt);
+                    var state = await store.ReadAsync(trafficCt);
+                    var content = await client.GetFromJsonAsync<ProxySubscriptionContentDto>(
+                        SubscriptionRoute(ProxyApiRoutes.SubscriptionContentPattern, subscription.Id), RelaxKonOSJsonOptions.Default, trafficCt);
+                    if (pending.State != ProxyOperationState.Interrupted || pending.Stage != "publication_pending"
+                        || pending.CompletedAt is not null || pending.ProblemCode != ProxyProblemCodes.OperationInterrupted
+                        || saved.GetProperty(nameof(ProxyOperationDto.Stage)).GetString() != pending.Stage
+                        || await SubmitAsync(client, route, unknownKey, trafficCt) != unknown
+                        || await ReadOperationAsync(client, unknown, trafficCt) != pending
+                        || await File.ReadAllTextAsync(durableLedger, trafficCt) != persisted
+                        || denied.StatusCode != HttpStatusCode.BadRequest
+                        || !(await denied.Content.ReadAsStringAsync(trafficCt)).Contains(ProxyProblemCodes.OperationInterrupted, StringComparison.Ordinal)
+                        || status is not { Required: true } || status.OperationId != unknown
+                        || state.DirectReload != unknownCheckpoint || state.SubscriptionRefreshCompletions?.ContainsKey(unknown) == true
+                        || content?.RetrievedAt != checkpoint.Profile!.Refresh!.RetrievedAt
+                        || await ReadRevisionAsync(subscription.ProfileId, trafficCt) != revision + 1
+                        || await ReadLeasesAsync(client, trafficCt) != 0
+                        || Volatile.Read(ref feeds) != 3 || Volatile.Read(ref reloads) != 3 || Volatile.Read(ref reloadAttempts) != 3
+                        || guard.RuntimePid != pid)
+                        throw new InvalidOperationException("Restart lost the pending direct subscription receipt, replayed work, or committed an unknown result.");
+                    using var readNative = new HttpRequestMessage(HttpMethod.Get, "proxies/fixture-3");
+                    readNative.Headers.Authorization = new("Bearer", await secrets.GetOrCreateAsync(trafficCt));
+                    using var liveCandidate = await native.SendAsync(readNative, trafficCt);
+                    liveCandidate.EnsureSuccessStatusCode();
+                    Console.WriteLine($"PASS AUTHENTICATED DIRECT SUBSCRIPTION UNKNOWN: original {unknown}; restored disk, stable pending receipt, no replay");
+                }
+                finally { await ProxyAuthenticatedPublicationChecks.StopAsync(recovery); }
             }, TimeSpan.FromSeconds(55));
         }
         finally
@@ -192,9 +270,6 @@ internal static class MihomoDirectSubscriptionAcceptance
             await File.WriteAllBytesAsync(settingsPath, originalSettings);
             File.Delete(runtimePath);
             await File.WriteAllBytesAsync(activePath, originalYaml);
-            var secrets = new DataProtectionProxyControllerSecretStore(
-                new Microsoft.Extensions.Hosting.Internal.HostingEnvironment { ContentRootPath = start.WorkingDirectory },
-                ManagedServiceChecks.OpenProtection(root));
             using var controller = new MihomoControllerClient(new HttpClient(new SocketsHttpHandler { UseProxy = false }), secrets, new());
             if (await controller.ReloadAsync(default) is not null)
                 throw new InvalidOperationException("Could not restore the private direct proxy configuration.");
@@ -217,6 +292,12 @@ internal static class MihomoDirectSubscriptionAcceptance
 
     private static string SubscriptionRoute(string pattern, Guid id) =>
         ProxyApiRoutes.Proxy + pattern.Replace("{subscriptionId:guid}", id.ToString("D"), StringComparison.Ordinal);
+
+    private static async Task<int> ReadLeasesAsync(HttpClient client, CancellationToken ct) =>
+        (await client.GetFromJsonAsync<ServerModuleDto>(
+            ServerModuleManagementRoutes.Detail.Replace("{moduleId}", "relaxkonos.proxy", StringComparison.Ordinal),
+            RelaxKonOSJsonOptions.Default, ct))?.Residency?.ActiveLeases
+        ?? throw new InvalidOperationException("Missing Proxy work lease count.");
 
     private static async Task<Guid> SubmitAsync(HttpClient client, string route, string key, CancellationToken ct)
     {
