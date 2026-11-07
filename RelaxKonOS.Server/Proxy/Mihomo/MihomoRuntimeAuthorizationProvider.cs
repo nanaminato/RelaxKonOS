@@ -12,7 +12,7 @@ public sealed class MihomoRuntimeAuthorizationProvider(MihomoPublicationStore st
     public async Task<MihomoCurrentAuthorization> ReadAsync(CancellationToken ct)
     {
         var state = await store.ReadAsync(ct);
-        if (state.Pending is not null)
+        if (state.Pending is not null || state.DirectReload is not null)
             throw new RuntimePolicyException("runtime.publication_unconfirmed");
         return await ReadConfirmedAsync(state, ct);
     }

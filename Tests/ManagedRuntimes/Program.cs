@@ -1,6 +1,12 @@
 using System.Text.Json;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 
+if (args is ["runtime-proxy-direct-reload-crash", var directRoot, var directState, var directRelay])
+{
+    var result = await ProxyAuthenticatedPublicationChecks.ExecuteDirectReloadFixtureAsync(directRoot, directState, directRelay, default);
+    throw new InvalidOperationException($"The private direct writer unexpectedly returned {result}.");
+}
+
 if (args is ["docker-service-override-only"])
 {
     Console.WriteLine($"Docker service override checks passed: {DockerServiceOverrideChecks.Run()}");

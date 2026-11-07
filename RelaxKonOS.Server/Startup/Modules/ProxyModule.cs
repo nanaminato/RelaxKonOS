@@ -184,6 +184,9 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
         try
         {
             var state = await store.ReadAsync(cancellationToken);
+            if (state.DirectReload is { } direct)
+                // Core must still start its disk reconciliation, guard and TUN safety workers.
+                return recoverConfiguration ? [] : [new(Id, $"Mihomo direct reload {direct.OperationId} requires verification before deactivation.")];
             if (recoverConfiguration && state.Pending is { ConfigurationPlan: not null } accepted)
             {
                 try

@@ -91,6 +91,23 @@ internal static class ProxyTunBoundaryChecks
         }
         using (var f = new Fixture())
         {
+            Check(await f.Safety.EnableAsync(Guid.NewGuid(), null, default) is null, "TUN is live before a direct reload interruption");
+            var original = await File.ReadAllTextAsync(f.Active);
+            var candidate = original.Replace("mode: rule", "mode: direct", StringComparison.Ordinal);
+            var checkpoint = await f.Publication.BeginDirectReloadAsync(original, candidate, default);
+            await File.WriteAllTextAsync(f.Active, candidate);
+            var reloads = f.Reloads;
+            Check(await f.Tun.SetEnabledAsync(f.Snapshot, true, _ => throw new Exception("Blocked activation persisted a marker"), default)
+                == ProxyProblemCodes.RecoveryRequired && f.Reloads == reloads,
+                "A direct checkpoint blocks TUN activation without dispatch");
+            Check(await f.Safety.EmergencyDisableAsync(default) is null && f.Reloads == reloads + 1 && !File.Exists(f.Marker)
+                && (await f.Publication.ReadAsync(default)).DirectReload == checkpoint
+                && (await File.ReadAllTextAsync(f.Active)).Contains("mode: rule", StringComparison.Ordinal)
+                && !MihomoManagedConfiguration.ReadTunActivation(await File.ReadAllTextAsync(f.Active)).Enabled,
+                "Emergency disable uses the original YAML and leaves the independent direct checkpoint pending");
+        }
+        using (var f = new Fixture())
+        {
             f.Platform.ManagementRouteVerifies = false;
             f.Platform.RestoreSucceeds = false;
             Check(await f.Safety.EnableAsync(Guid.NewGuid(), null, default) == ProxyProblemCodes.RecoveryRequired

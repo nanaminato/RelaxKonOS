@@ -42,6 +42,7 @@ public sealed class MihomoSettingsService(
         var settings = new ProxySettingsDto(request.SystemProxyEnabled, request.AllowLan, request.DnsEnabled, request.Ipv6Enabled,
             request.UnifiedDelay, request.LogLevel.ToLowerInvariant(), request.MixedPort, request.AllowInsecureSubscriptionSources, systemProxyHost, tun, systemProxy);
         await _gate.WaitAsync(cancellationToken);
+        MihomoDirectReload? checkpoint = null;
         try
         {
             var state = await publication.ReadAsync(cancellationToken);
@@ -85,6 +86,7 @@ public sealed class MihomoSettingsService(
                 await File.WriteAllTextAsync(temporary, updated, cancellationToken);
                 if (!OperatingSystem.IsWindows() && originalMode is { } mode) File.SetUnixFileMode(temporary, mode);
                 cancellationToken.ThrowIfCancellationRequested();
+                checkpoint = await publication.BeginDirectReloadAsync(original, updated, cancellationToken);
                 File.Move(temporary, active, overwrite: true);
                 // The active file is already visible. Finish the update or compensation even if the client leaves.
                 var completionToken = CancellationToken.None;
@@ -95,6 +97,7 @@ public sealed class MihomoSettingsService(
                     await RestoreConfigurationAsync();
                     if (reload == ProxyProblemCodes.RecoveryRequired) return reload;
                     if (!string.IsNullOrEmpty(await controller.ReloadAsync(completionToken))) return ProxyProblemCodes.RecoveryRequired;
+                    await publication.CompleteDirectReloadAsync(checkpoint.OperationId);
                     return ProxyProblemCodes.ConfigApplyFailed;
                 }
                 var proxyProblem = await systemProxyService.ApplyAsync(settings, previous, enforce: false, completionToken);
@@ -108,6 +111,8 @@ public sealed class MihomoSettingsService(
                     await RestoreConfigurationAsync();
                     if (controllerAvailable && !string.IsNullOrEmpty(await controller.ReloadAsync(completionToken)))
                         return ProxyProblemCodes.RecoveryRequired;
+                    if (proxyProblem != ProxyProblemCodes.SystemProxyConflict) return ProxyProblemCodes.RecoveryRequired;
+                    await publication.CompleteDirectReloadAsync(checkpoint.OperationId);
                     return proxyProblem;
                 }
                 try { await WriteAsync(settings, completionToken); }
@@ -117,8 +122,10 @@ public sealed class MihomoSettingsService(
                     await RestoreConfigurationAsync();
                     if (controllerAvailable && !string.IsNullOrEmpty(await controller.ReloadAsync(CancellationToken.None)))
                         return ProxyProblemCodes.RecoveryRequired;
-                    return rollback ?? ProxyProblemCodes.ConfigApplyFailed;
+                    if (rollback is null) await publication.CompleteDirectReloadAsync(checkpoint.OperationId);
+                    return rollback is null ? ProxyProblemCodes.ConfigApplyFailed : ProxyProblemCodes.RecoveryRequired;
                 }
+                await publication.CompleteDirectReloadAsync(checkpoint.OperationId);
                 logger?.LogInformation("Proxy settings updated. SystemProxyEnabled={SystemProxyEnabled} AllowLan={AllowLan} DnsEnabled={DnsEnabled} MixedPort={MixedPort} TunEnabled={TunEnabled}",
                     settings.SystemProxyEnabled, settings.AllowLan, settings.DnsEnabled, settings.MixedPort, tunActivation.Enabled);
                 return null;
@@ -132,6 +139,8 @@ public sealed class MihomoSettingsService(
                 File.Move(temporary, active, overwrite: true);
             }
         }
+        catch (Exception error) when (checkpoint is not null && error is (IOException or UnauthorizedAccessException or ArgumentException))
+        { return ProxyProblemCodes.RecoveryRequired; }
         catch (RuntimePolicyException) { return ProxyProblemCodes.RecoveryRequired; }
         catch (InvalidDataException) { return ProxyProblemCodes.RecoveryRequired; }
         catch (IOException) { return ProxyProblemCodes.ConfigApplyFailed; }

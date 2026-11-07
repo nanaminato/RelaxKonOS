@@ -137,6 +137,7 @@ public sealed class ProxyConfigurationTransactionService(
                 : yaml;
             var temporary = Path.Combine(directory, ".apply-" + Guid.NewGuid().ToString("N"));
             var backup = Path.Combine(directory, "backup-" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString(System.Globalization.CultureInfo.InvariantCulture) + ".yaml");
+            MihomoDirectReload? checkpoint = null;
             try
             {
                 await File.WriteAllTextAsync(temporary, managedYaml, cancellationToken); SetPrivateFile(temporary);
@@ -147,7 +148,9 @@ public sealed class ProxyConfigurationTransactionService(
                     return validation;
                 }
                 cancellationToken.ThrowIfCancellationRequested();
-                if (File.Exists(active)) File.Copy(active, backup, overwrite: false);
+                var previous = File.Exists(active) ? await File.ReadAllTextAsync(active, cancellationToken) : null;
+                if (previous is not null) File.Copy(active, backup, overwrite: false);
+                checkpoint = await publication.BeginDirectReloadAsync(previous, managedYaml, cancellationToken);
                 File.Move(temporary, active, overwrite: true); SetPrivateFile(active);
                 // Once the active file is visible, finish activation or compensation under the same gate.
                 var completionToken = CancellationToken.None;
@@ -169,6 +172,7 @@ public sealed class ProxyConfigurationTransactionService(
                 {
                     if (await profiles.SetActiveAsync(profileId, completionToken, refresh?.Metadata) is null)
                         return ProxyProblemCodes.RecoveryRequired;
+                    await publication.CompleteDirectReloadAsync(checkpoint.OperationId);
                     logger?.LogInformation("Proxy configuration activated. ProfileId={ProfileId} EngineId={EngineId} BackupCreated={BackupCreated}", profileId, engine.EngineId, File.Exists(backup));
                     return null;
                 }
@@ -178,11 +182,21 @@ public sealed class ProxyConfigurationTransactionService(
                     var rollback = await engine.ReloadAsync(completionToken);
                     var rollbackHealth = string.IsNullOrEmpty(rollback) ? await engine.GetHealthAsync(completionToken) : null;
                     var outcome = rollbackHealth?.State == ProxyHealthState.Healthy ? ProxyProblemCodes.ConfigApplyFailed : ProxyProblemCodes.RecoveryRequired;
+                    if (outcome == ProxyProblemCodes.ConfigApplyFailed) await publication.CompleteDirectReloadAsync(checkpoint.OperationId);
                     logger?.LogWarning("Proxy configuration activation failed and rollback was attempted. ProfileId={ProfileId} EngineId={EngineId} Outcome={Outcome}", profileId, engine.EngineId, outcome);
                     return outcome;
                 }
-                return ProxyProblemCodes.ConfigApplyFailed;
+                // A definite rejection on first activation leaves no acknowledged configuration to reload.
+                if (!string.IsNullOrEmpty(reload))
+                {
+                    File.Delete(active);
+                    await publication.CompleteDirectReloadAsync(checkpoint.OperationId);
+                    return ProxyProblemCodes.ConfigApplyFailed;
+                }
+                return ProxyProblemCodes.RecoveryRequired;
             }
+            catch (Exception error) when (checkpoint is not null && error is (IOException or UnauthorizedAccessException or ArgumentException))
+            { return ProxyProblemCodes.RecoveryRequired; }
             catch (IOException) { return ProxyProblemCodes.ConfigApplyFailed; }
             catch (UnauthorizedAccessException) { return ProxyProblemCodes.PrivilegedOperationUnavailable; }
             catch (ProxyControllerSecretException) { return ProxyProblemCodes.ConfigApplyFailed; }

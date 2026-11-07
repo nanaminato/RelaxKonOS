@@ -68,6 +68,19 @@ internal static async Task VerifyProxyConfigurationTransactionAsync(string root)
         && (await subscriptions.GetAsync(subscription.Id, default))!.Subscription.LastUpdatedAt == refreshedAt,
         "A queued refresh recognizes its own stored GEO-normalized draft and commits its timestamp.");
     var beforePending = await File.ReadAllTextAsync(Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml"));
+    var staleRefresh = new ProxyQueuedSubscriptionRefresh(Guid.NewGuid(), new(Guid.NewGuid(), DateTimeOffset.UtcNow), "mode: direct\n");
+    TestAssert.Assert(await service.ActivateStoredAsync(second.Id, default, staleRefresh) == ProxyProblemCodes.ConfigApplyFailed
+        && await File.ReadAllTextAsync(Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml")) == beforePending,
+        "A queued refresh cannot activate a different draft under its original identity.");
+    var pendingMaterial = new RelaxKonOS.Protocol.ManagedRuntimes.MihomoPublishedRuntime("# pending publication\n", [], 9090,
+        "pending-controller-secret", [new("127.0.0.1", 7890)]);
+    var managed = Guid.NewGuid();
+    await publication.BeginAsync(managed, (await publication.ReadAsync(default)).Revision, pendingMaterial, default);
+    TestAssert.Assert(await service.StoreAsync(second.Id, "mode: direct\n", default) == ProxyProblemCodes.RecoveryRequired
+        && await service.ActivateStoredAsync(profile.Id, default) == ProxyProblemCodes.RecoveryRequired
+        && await File.ReadAllTextAsync(Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml")) == beforePending,
+        "Direct profile writes bypassed a pending managed publication.");
+    await publication.AbortAsync(managed, null, notStarted: true, default);
     var beforeUnknown = await profiles.GetAsync(second.Id, default);
     var reloadsBeforeUnknown = engine.ReloadCalls;
     engine.NextReloadProblem = ProxyProblemCodes.RecoveryRequired;
@@ -75,17 +88,16 @@ internal static async Task VerifyProxyConfigurationTransactionAsync(string root)
         && engine.ReloadCalls == reloadsBeforeUnknown + 1 && await profiles.GetAsync(second.Id, default) == beforeUnknown
         && await File.ReadAllTextAsync(Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml")) == beforePending,
         "Unknown profile reload must preserve the prior file and metadata without another controller mutation.");
-    var staleRefresh = new ProxyQueuedSubscriptionRefresh(Guid.NewGuid(), new(Guid.NewGuid(), DateTimeOffset.UtcNow), "mode: direct\n");
-    TestAssert.Assert(await service.ActivateStoredAsync(second.Id, default, staleRefresh) == ProxyProblemCodes.ConfigApplyFailed
-        && await File.ReadAllTextAsync(Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml")) == beforePending,
-        "A queued refresh cannot activate a different draft under its original identity.");
-    var pendingMaterial = new RelaxKonOS.Protocol.ManagedRuntimes.MihomoPublishedRuntime("# pending publication\n", [], 9090,
-        "pending-controller-secret", [new("127.0.0.1", 7890)]);
-    await publication.BeginAsync(Guid.NewGuid(), 0, pendingMaterial, default);
-    TestAssert.Assert(await service.StoreAsync(second.Id, "mode: direct\n", default) == ProxyProblemCodes.RecoveryRequired
-        && await service.ActivateStoredAsync(profile.Id, default) == ProxyProblemCodes.RecoveryRequired
-        && await File.ReadAllTextAsync(Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml")) == beforePending,
-        "Direct profile writes bypassed a pending managed publication.");
+    var checkpoint = (await publication.ReadAsync(default)).DirectReload;
+    TestAssert.Assert(checkpoint is not null && await service.ActivateStoredAsync(profile.Id, default) == ProxyProblemCodes.RecoveryRequired
+        && engine.ReloadCalls == reloadsBeforeUnknown + 1 && (await publication.ReadAsync(default)).DirectReload == checkpoint,
+        "The original direct checkpoint must block a subsequent activation without dispatching.");
+    var activePath = Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml");
+    await File.WriteAllTextAsync(activePath, "# independently changed configuration\n");
+    await publication.RestoreDirectConfigurationAsync(checkpoint!.OperationId, default);
+    TestAssert.Assert(await File.ReadAllTextAsync(activePath) == "# independently changed configuration\n"
+        && await publication.ReadPendingIdentityAsync(default) == checkpoint.OperationId,
+        "Direct recovery must preserve independently changed disk content and the original schedule identity.");
 }
 
 internal static async Task VerifyProxyTunSafetyAsync(string root)

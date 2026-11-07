@@ -520,3 +520,5 @@ Proxy 设置写入的 resident 租约覆盖执行、审计、响应与异步作�
 档案激活和配置应用也由原 Proxy 工作租约覆盖执行、审计、响应与清理。受管恢复使用原发布和档案选择标记。见[档案发布工作租约](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-档案发布的工作租约)。
 
 直连配置 reload 的未知结果保留原磁盘配置与元数据。TUN 从原标记接续实际状态观察。见[直连 reload 回执丢失](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-直连-reload-回执丢失)。
+
+直连 reload 检查点使用原加密发布台账和调度索引。恢复只处理匹配的磁盘候选，TUN 紧急禁用和系统代理 guard 继续由 Core 原执行者接续。见[直连 reload 持久检查点](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-直连-reload-持久检查点)。

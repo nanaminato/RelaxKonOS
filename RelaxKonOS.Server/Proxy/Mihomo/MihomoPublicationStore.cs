@@ -16,6 +16,7 @@ public sealed record MihomoPendingPublication(Guid OperationId, MihomoPublishedR
     [property: JsonRequired] MihomoProfilePublication? Profile);
 public sealed record MihomoPublicationCompletion(Guid OperationId, string RequestHash, bool Confirmed, bool NotStarted);
 public sealed record MihomoSubscriptionRefreshCompletion(bool Confirmed, DateTimeOffset CompletedAt);
+public sealed record MihomoDirectReload(Guid OperationId, string? PreviousYaml, string CandidateIdentity);
 
 /// <summary>Server-private encrypted state, never returned by ordinary management reads.</summary>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
@@ -25,7 +26,8 @@ public sealed record MihomoPublicationState(int SchemaVersion, long Revision, Mi
     [property: JsonRequired] MihomoPublicationCompletion? LastInstallation,
     [property: JsonRequired] MihomoPublicationCompletion? LastRemoval,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    Dictionary<Guid, MihomoSubscriptionRefreshCompletion>? SubscriptionRefreshCompletions = null)
+    Dictionary<Guid, MihomoSubscriptionRefreshCompletion>? SubscriptionRefreshCompletions = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MihomoDirectReload? DirectReload = null)
 {
     public static MihomoPublicationState Empty => new(1, 0, null, null, null, null, null, null, null);
 }
@@ -49,11 +51,45 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
         try
         {
             var state = await ReadAsync(ct);
-            return state.Pending is not null ? RelaxKonOS.Protocol.Proxy.ProxyProblemCodes.RecoveryRequired
+            return state.Pending is not null || state.DirectReload is not null ? RelaxKonOS.Protocol.Proxy.ProxyProblemCodes.RecoveryRequired
                 : state.Published is not null ? RelaxKonOS.Protocol.Proxy.ProxyProblemCodes.NotSupported : null;
         }
         catch (Exception ex) when (ex is RuntimePolicyException or IOException or UnauthorizedAccessException)
         { return RelaxKonOS.Protocol.Proxy.ProxyProblemCodes.RecoveryRequired; }
+    }
+
+    // Direct callers hold Gate through checkpoint, dispatch, application commit and cleanup.
+    internal async Task<MihomoDirectReload> BeginDirectReloadAsync(string? previous, string candidate, CancellationToken ct)
+    {
+        var state = await ReadAsync(ct);
+        if (state.Published is not null || state.Pending is not null || state.DirectReload is not null)
+            throw new RuntimePolicyException("runtime.publication_unconfirmed");
+        var checkpoint = new MihomoDirectReload(Guid.NewGuid(), previous, Identity(candidate));
+        await SaveAsync(state with { Revision = checked(state.Revision + 1), DirectReload = checkpoint }, ct);
+        return checkpoint;
+    }
+
+    internal async Task CompleteDirectReloadAsync(Guid operationId)
+    {
+        var state = await ReadAsync(CancellationToken.None);
+        if (state.DirectReload?.OperationId != operationId) throw new RuntimePolicyException("runtime.publication_unconfirmed");
+        await SaveAsync(state with { Revision = checked(state.Revision + 1), DirectReload = null }, CancellationToken.None);
+    }
+
+    internal async Task RestoreDirectConfigurationAsync(Guid operationId, CancellationToken ct)
+    {
+        await Gate.WaitAsync(ct);
+        try
+        {
+            if ((await ReadAsync(ct)).DirectReload is not { } checkpoint || checkpoint.OperationId != operationId) return;
+            var active = Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml");
+            RuntimeSourceStore.RequireNoLinks(active);
+            if (!File.Exists(active) || Identity(await File.ReadAllTextAsync(active, ct)) != checkpoint.CandidateIdentity) return;
+            // This is disk-only recovery. The live result and the original checkpoint remain unknown.
+            if (checkpoint.PreviousYaml is { } previous) await SaveAtomicAsync(active, Encoding.UTF8.GetBytes(previous), ct);
+            else File.Delete(active);
+        }
+        finally { Gate.Release(); }
     }
 
     public async Task<MihomoPublicationState> ReadAsync(CancellationToken ct)
@@ -118,7 +154,8 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or CryptographicException or RuntimePolicyException) { }
 
             input.Position = 0;
-            var pending = (await DecodeAsync(input, ct)).Pending?.OperationId;
+            var state = await DecodeAsync(input, ct);
+            var pending = state.Pending?.OperationId ?? state.DirectReload?.OperationId;
             await TrySaveScheduleAsync(digest, pending, ct);
             return pending;
         }
@@ -165,6 +202,7 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
         MihomoRuntimeMaterial.Validate(candidate);
         var current = await ReadAsync(ct);
         var identity = Identity(candidate.Yaml);
+        if (current.DirectReload is not null) throw new RuntimePolicyException("runtime.publication_unconfirmed");
         if (current.Pending is { } pending)
         {
             if (pending.OperationId == operationId && RuntimeJson.Serialize(pending.Candidate).AsSpan().SequenceEqual(RuntimeJson.Serialize(candidate))
@@ -264,7 +302,7 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
         {
             var bytes = protector.Protect(plain);
             if (bytes.Length > MaximumBytes) throw new RuntimePolicyException("runtime.publication_state_invalid");
-            await TrySaveScheduleAsync(SHA256.HashData(bytes), state.Pending?.OperationId, ct);
+            await TrySaveScheduleAsync(SHA256.HashData(bytes), state.Pending?.OperationId ?? state.DirectReload?.OperationId, ct);
             await SaveAtomicAsync(StatePath, bytes, ct);
         }
         finally { CryptographicOperations.ZeroMemory(plain); }
@@ -296,6 +334,10 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
     {
         if (state.SchemaVersion != 1 || state.Revision < 0 || (state.Published is null) != (state.Identity is null)
             || (state.Published is null) != (state.LastOperationId is null) || state.LastOperationId == Guid.Empty)
+            throw new RuntimePolicyException("runtime.publication_state_invalid");
+        if (state.DirectReload is { } direct && (state.Pending is not null || state.Published is not null || direct.OperationId == Guid.Empty
+            || direct.CandidateIdentity is not { Length: 64 } || !direct.CandidateIdentity.All(Uri.IsHexDigit)
+            || direct.PreviousYaml is { } previous && Encoding.UTF8.GetByteCount(previous) > 2 * 1024 * 1024))
             throw new RuntimePolicyException("runtime.publication_state_invalid");
         if (state.LastConfiguration is { } completed && (completed.OperationId == Guid.Empty
             || completed.RequestHash is not { Length: 64 } || !completed.RequestHash.All(Uri.IsHexDigit) || state.Published is null

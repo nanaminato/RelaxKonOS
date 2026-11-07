@@ -23,7 +23,7 @@ public sealed class MihomoSystemProxyReconciler(
             var state = await publication.ReadAsync(cancellationToken);
             if (state.Pending is not null) return ProxyProblemCodes.RecoveryRequired;
             if (state.Published is not null) await MihomoManagedPublicationVerification.VerifyAsync(paths, controllerSecrets, managedRuntime, state, cancellationToken);
-            else if (await publication.UncoordinatedWriteProblemAsync(cancellationToken) is { } publicationProblem) return publicationProblem;
+            // Direct reload recovery retains the prior settings. Guard still owns that host intent.
             var settings = await settingsReader.GetAsync(cancellationToken);
             if (state.Published is not null && settingsFiles is not null)
                 await settingsFiles.CaptureAsync(settings, settings, cancellationToken);

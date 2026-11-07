@@ -233,6 +233,33 @@ internal static class ProxyTunLiveChecks
                             && calls.Reloads == reloads && await File.ReadAllTextAsync(activePath) == yaml && await ReadRulesAsync() == baselineRules,
                             "A publication gate rejection must leave neither a new TUN marker nor a native mutation.");
                         Console.WriteLine($"PASS MIHOMO LIVE TUN ADMISSION: publication={publicationId}; new TUN markers and reloads=0");
+
+                        // The admission case only seeded an intent and proved no dispatch. Close that fixture before testing direct recovery.
+                        await publication.Gate.WaitAsync();
+                        try { await publication.AbortAsync(publicationId, null, notStarted: true, default); }
+                        finally { publication.Gate.Release(); }
+                        TestAssert.Assert(await safety.EnableAsync(Guid.NewGuid(), null, default) is null && await DeviceExistsAsync(),
+                            "The direct checkpoint case requires a live TUN and verified original route.");
+                        var tun = await safety.CaptureRecoveryAsync(includeCurrentSession: true, default);
+                        var previous = await File.ReadAllTextAsync(activePath);
+                        const string unconfirmed = "# private unconfirmed direct candidate";
+                        var directCandidate = previous + "\n" + unconfirmed + "\n";
+                        MihomoDirectReload direct;
+                        await publication.Gate.WaitAsync();
+                        try
+                        {
+                            direct = await publication.BeginDirectReloadAsync(previous, directCandidate, default);
+                            await File.WriteAllTextAsync(activePath, directCandidate);
+                        }
+                        finally { publication.Gate.Release(); }
+                        reloads = calls.Reloads;
+                        TestAssert.Assert(tun is not null && await safety.EmergencyDisableAsync(default) is null
+                            && calls.Reloads == reloads + 1 && !await DeviceExistsAsync() && await ReadRulesAsync() == baselineRules
+                            && await safety.CaptureRecoveryAsync(includeCurrentSession: true, default) is null
+                            && (await publication.ReadAsync(default)).DirectReload == direct && !mihomo.HasExited
+                            && !(await File.ReadAllTextAsync(activePath)).Contains(unconfirmed, StringComparison.Ordinal),
+                            "Emergency teardown must use the original configuration and retain the independent direct checkpoint.");
+                        Console.WriteLine($"PASS MIHOMO LIVE DIRECT CHECKPOINT TUN SAFETY: direct={direct.OperationId}; TUN={tun!.OperationId}; one teardown from original YAML");
                     }
                     Console.WriteLine($"PASS TUN LIVE RECOVERY: operation={original.OperationId}; real device removed once, management disabled, same Core worker retried unsafe marker and verified route, stale recovery rejected; initial recovery reloads={disableRequests}; auto-route={mihomo is not null}; dns={mihomo is not null}; mihomo={mihomo is not null}");
                 }

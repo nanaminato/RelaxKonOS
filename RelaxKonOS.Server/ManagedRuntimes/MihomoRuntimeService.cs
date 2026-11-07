@@ -22,12 +22,12 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
         try
         {
             var state = await store.ReadAsync(ct);
-            if (state.Pending is not { } pending) return observed;
-            var conflict = observed.PendingOperationId is { } rootOperation && rootOperation != pending.OperationId;
+            if ((state.Pending?.OperationId ?? state.DirectReload?.OperationId) is not { } operation) return observed;
+            var conflict = observed.PendingOperationId is { } rootOperation && rootOperation != operation;
             return observed with
             {
                 Installation = observed.Installation with { RecoveryRequired = true },
-                PendingOperationId = observed.PendingOperationId ?? pending.OperationId,
+                PendingOperationId = observed.PendingOperationId ?? operation,
                 PendingStage = observed.PendingStage,
                 ProblemCode = conflict ? "runtime.recovery_target_conflict" : "runtime.publication_unconfirmed"
             };
@@ -54,7 +54,8 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
         await store.Gate.WaitAsync(ct);
         try
         {
-            if ((await store.ReadAsync(ct)).Pending is not null) return new(null, ["runtime.publication_unconfirmed"]);
+            var state = await store.ReadAsync(ct);
+            if (state.Pending is not null || state.DirectReload is not null) return new(null, ["runtime.publication_unconfirmed"]);
             return await CallAsync<RuntimePlanResult>(new(PrivilegedOperationKind.MihomoRuntimePlan,
                 RuntimeLifecycle: new(SourceId: id, Plan: request)), ct);
         }
@@ -76,6 +77,7 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
         await store.Gate.WaitAsync(ct);
         try
         {
+            if ((await store.ReadAsync(ct)).DirectReload is not null) throw new RuntimeLifecycleException("runtime.publication_unconfirmed");
             await using var callback = new RuntimeAuthorizationServer<MihomoCurrentAuthorization>(operationId, authorization.ReadAsync);
             var result = await CallAsync<RuntimeSwitchResult>(new(PrivilegedOperationKind.MihomoRuntimeExecute,
                 OperationId: operationId, RuntimeLifecycle: new(Authorization: callback.Channel, FrozenPlan: plan),
@@ -179,15 +181,15 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
         try
         {
             var state = await store.ReadAsync(ct);
-            if (state.Pending is not { } pending) return observed;
-            if (observed.OperationId is { } actual && actual != pending.OperationId)
+            if ((state.Pending?.OperationId ?? state.DirectReload?.OperationId) is not { } operation) return observed;
+            if (observed.OperationId is { } actual && actual != operation)
                 return observed with { Required = true, ProblemCode = "runtime.recovery_target_conflict" };
             // Server commit work is still recoverable after the native transaction has finished.
             // Do not invent a failed compensation or a native stage from this publication intent.
             return observed with
             {
-                Required = true, OperationId = pending.OperationId,
-                Change = pending.InstallationPlan?.Request.Change ?? pending.RemovalPlan?.Request.Change ?? observed.Change,
+                Required = true, OperationId = operation,
+                Change = state.Pending?.InstallationPlan?.Request.Change ?? state.Pending?.RemovalPlan?.Request.Change ?? observed.Change,
                 ProblemCode = "runtime.publication_unconfirmed"
             };
         }

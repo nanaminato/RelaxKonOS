@@ -169,6 +169,22 @@ internal static class ProxyCoreSafetyChecks
                     if (!enabled) Check(host.Calls >= 2 && helper.ApplyCalls == 1,
                         "Disabled management retains guard retry and reconciles a lost expiry response without a second publication");
                 }
+                var mihomo = services.GetRequiredService<MihomoPublicationStore>();
+                var direct = await mihomo.BeginDirectReloadAsync("mode: rule\n", "mode: direct\n", default);
+                if (!enabled)
+                {
+                    var module = new ProxyModule();
+                    var moduleContext = ServerModuleContext.Create(builder.Configuration, builder.Environment, "sqlite");
+                    Check((await module.InspectOrphanedWorkAsync(services, moduleContext, default))
+                        .Any(item => item.ToString()!.Contains(direct.OperationId.ToString(), StringComparison.Ordinal))
+                        && (await module.InspectDisabledStartupAsync(services, moduleContext, default)).Count == 0,
+                        "Direct uncertainty is visible to deactivation inspection while disabled startup can run Core safety");
+                }
+                var hostCalls = host.Calls;
+                await using var guardScope = services.CreateAsyncScope();
+                Check(await guardScope.ServiceProvider.GetRequiredService<IProxySystemProxyReconciler>().ReconcileSystemProxyAsync(true, default) is null
+                    && host.Calls == hostCalls + 1 && (await mihomo.ReadAsync(default)).DirectReload == direct,
+                    "Core guard can still reconcile the prior settings without settling the direct checkpoint");
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
         }

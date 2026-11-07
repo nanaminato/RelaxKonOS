@@ -18,17 +18,31 @@ public sealed class MihomoTunRuntimeController(
         await publication.Gate.WaitAsync(cancellationToken);
         try
         {
-            if (await publication.UncoordinatedWriteProblemAsync(cancellationToken) is { } publicationProblem) return publicationProblem;
+            var authority = await publication.ReadAsync(cancellationToken);
+            if (authority.Pending is not null || enabled && authority.DirectReload is not null) return ProxyProblemCodes.RecoveryRequired;
+            if (authority.Published is not null) return ProxyProblemCodes.NotSupported;
             var active = Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml");
             if (!File.Exists(active)) return ProxyProblemCodes.RuntimeNotInstalled;
             var settings = await settingsReader.GetAsync(cancellationToken);
             var deviceName = (settings.Tun ?? ProxyTunSettingsDto.Default).DeviceName;
             var original = await File.ReadAllTextAsync(active, cancellationToken);
-            if (!enabled && !MihomoManagedConfiguration.ReadTunActivation(original).Enabled)
+            var replaceUnconfirmed = false;
+            if (authority.DirectReload is { } direct)
+            {
+                // TUN teardown may remove the safety state, but must never reload the unknown candidate.
+                if (direct.PreviousYaml is not { } previous) return ProxyProblemCodes.RecoveryRequired;
+                var disabled = MihomoManagedConfiguration.WithManagedTunSettings(previous, settings, false, []);
+                replaceUnconfirmed = MihomoPublicationStore.Identity(original) == direct.CandidateIdentity;
+                if (replaceUnconfirmed) original = previous;
+                else if (original != previous && original != disabled) return ProxyProblemCodes.RecoveryRequired;
+            }
+            var alreadyDisabled = false;
+            if (!enabled && (authority.DirectReload is not null || !MihomoManagedConfiguration.ReadTunActivation(original).Enabled))
             {
                 var observed = await controller.GetTunEnabledAsync(cancellationToken);
                 if (!observed.Succeeded) return observed.ProblemCode;
-                if (!observed.Value)
+                alreadyDisabled = !observed.Value;
+                if (alreadyDisabled && !replaceUnconfirmed && !MihomoManagedConfiguration.ReadTunActivation(original).Enabled)
                     return await devices.WaitForInactiveAsync(deviceName, cancellationToken) ? null : ProxyProblemCodes.RecoveryRequired;
             }
 
@@ -45,6 +59,8 @@ public sealed class MihomoTunRuntimeController(
                 await File.WriteAllTextAsync(temporary, updated, cancellationToken);
                 SetPrivateFile(temporary);
                 File.Move(temporary, active, overwrite: true);
+                if (alreadyDisabled)
+                    return await devices.WaitForInactiveAsync(deviceName, cancellationToken) ? null : ProxyProblemCodes.RecoveryRequired;
                 // A recovery transition can run while Mihomo is intentionally stopped (for
                 // example after the Windows Server process was restarted). Do not send a reload
                 // to a controller that was already unavailable.
@@ -104,6 +120,7 @@ public sealed class MihomoTunRuntimeController(
             return ProxyProblemCodes.PrivilegedOperationUnavailable;
         }
         catch (ArgumentException) { return ProxyProblemCodes.ConfigInvalid; }
+        catch (RelaxKonOS.ManagedRuntimes.RuntimePolicyException) { return ProxyProblemCodes.RecoveryRequired; }
         finally { publication.Gate.Release(); }
     }
 

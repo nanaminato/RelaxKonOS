@@ -30,6 +30,13 @@ public sealed class MihomoPublicationRecoveryService(IServiceScopeFactory scopes
         try
         {
             var state = await store.ReadAsync(stoppingToken);
+            if (state.DirectReload is { } direct)
+            {
+                operation = direct.OperationId;
+                await store.RestoreDirectConfigurationAsync(direct.OperationId, stoppingToken);
+                logger.LogWarning("Mihomo direct reload outcome requires verification. OperationId={OperationId}", direct.OperationId);
+                return (false, operation);
+            }
             if (state.Pending is not { } pending) return (false, null);
             if (pending.ConfigurationPlan is null && pending.InstallationPlan is null && pending.RemovalPlan is null)
             {

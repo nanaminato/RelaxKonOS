@@ -11,7 +11,7 @@ proxy_tests=
 if [ "$#" -ge 4 ]; then proxy_tests=$(realpath -e -- "$4"); fi
 authenticated=${5:-}
 run_seconds=150
-if [[ $authenticated == --authenticated ]]; then run_seconds=210; fi
+if [[ $authenticated == --authenticated ]]; then run_seconds=250; fi
 baseline=
 if [[ $# -eq 6 ]]; then baseline=$(realpath -e -- "$6"); fi
 case "$fixture$helper$server$proxy_tests$baseline" in *[!a-zA-Z0-9_./-]*) echo "Test paths must contain only unit-safe characters" >&2; exit 2;; esac
