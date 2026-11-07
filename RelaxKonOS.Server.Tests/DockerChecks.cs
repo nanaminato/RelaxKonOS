@@ -1145,6 +1145,7 @@ internal static async Task VerifyLiveHttpDisconnectAsync(string ledgerDirectory,
     builder.Logging.ClearProviders();
     builder.WebHost.UseUrls("http://127.0.0.1:0");
     builder.Services.AddSingleton(coordinator);
+    builder.Services.AddSingleton(owner.Services.GetRequiredService<IResidentModuleWorkLeaseSource>());
     builder.Services.AddSingleton<IDockerComposeService>(compose);
     builder.Services.AddSingleton<IDockerEngineService>(_ => throw new NotSupportedException());
     builder.Services.AddSingleton<IDockerEngineControlService>(_ => throw new NotSupportedException());
@@ -1193,6 +1194,9 @@ internal static async Task VerifyLiveHttpDisconnectAsync(string ledgerDirectory,
         catch (OperationCanceledException) when (cancel.IsCancellationRequested) { }
         TestAssert.Assert(residency.HasBackgroundWork(ServerModules.DockerId) && coordinator.Get(running!.OperationId)?.State == DockerStackOperationState.Running,
             "Client disconnect must leave the actual work and original Running receipt intact.");
+        await UntilAsync(() => Task.FromResult(!coordinator.HasResponsibility));
+        TestAssert.Assert(residency.HasBackgroundWork(ServerModules.DockerId) && !responseExited.Task.IsCompleted,
+            "A disconnected response must retain its independent lease after durable operation work ends.");
         release.SetResult();
         await responseExited.Task.WaitAsync(ct);
         await UntilAsync(() => Task.FromResult(!residency.HasBackgroundWork(ServerModules.DockerId)));
@@ -1204,7 +1208,7 @@ internal static async Task VerifyLiveHttpDisconnectAsync(string ledgerDirectory,
         var replay = await replayResponse.Content.ReadFromJsonAsync<DockerStackOperationDto>(RelaxKonOSJsonOptions.Default, ct);
         TestAssert.Assert(replayResponse.StatusCode == HttpStatusCode.Accepted && replay?.OperationId == running.OperationId
             && replay.State == durable!.State, "HTTP retry must return the original terminal receipt.");
-        Console.WriteLine($"PASS DOCKER LIVE HTTP DISCONNECT: operation={running.OperationId}; state={durable!.State}; production work lease drained");
+        Console.WriteLine($"PASS DOCKER LIVE HTTP DISCONNECT: operation={running.OperationId}; state={durable!.State}; production work and response leases drained");
     }
     finally
     {

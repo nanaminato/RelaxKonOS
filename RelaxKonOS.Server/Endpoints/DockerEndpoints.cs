@@ -1,3 +1,5 @@
+using RelaxKonOS.Server.Residency;
+using RelaxKonOS.Server.Startup;
 using RelaxKonOS.Protocol.Docker;
 using System.Security.Claims;
 using RelaxKonOS.Server.HostMode;
@@ -82,7 +84,22 @@ public static class DockerEndpoints
     private static string Actor(ClaimsPrincipal user) => user.FindFirstValue(ClaimTypes.NameIdentifier) ?? user.FindFirstValue("sub") ?? throw new UnauthorizedAccessException();
 
     private static IResult Accepted(DockerStackOperationDto operation) =>
-        Results.Accepted(DockerApiRoutes.StackOperation(operation.OperationId), operation);
+        new StackReceiptResult(Results.Accepted(DockerApiRoutes.StackOperation(operation.OperationId), operation));
+
+    private sealed class StackReceiptResult(IResult result) : IResult
+    {
+        public async Task ExecuteAsync(HttpContext context)
+        {
+            var request = context.RequestAborted;
+            using var lease = await context.RequestServices.GetRequiredService<IResidentModuleWorkLeaseSource>()
+                .AcquireAsync(ServerModules.DockerId, request);
+            using var stopping = CancellationTokenSource.CreateLinkedTokenSource(request, lease.Stopping);
+            stopping.Token.ThrowIfCancellationRequested();
+            context.RequestAborted = stopping.Token;
+            try { await result.ExecuteAsync(context); }
+            finally { context.RequestAborted = request; }
+        }
+    }
 
     private static IResult Handle(Func<IResult> action)
     {

@@ -1309,3 +1309,7 @@ Linux Release 验证到期索引路径为符号链接时，调度读取原台账
 私有 PID、网络及挂载命名空间内，独立 Engine 导入此前核验的 rootless BuildKit，专属容器使用内部网络、1 GiB、1 CPU、128 PID 限制。RootlessKit 创建子进程仍收到 permission denied，Buildx 未建立连接，探测退出 124。容器和网络已删除，宿主 AppArmor 未修改。日志为 .artifacts/mb03-private-builder.log。需允许专属 RootlessKit 创建用户命名空间的隔离 Linux 环境，以及 Git CLI 和 builder 共同可达且可信的 HTTPS 443 测试仓库。
 
 构建准入现在要求 Buildx inspect 精确报告唯一 remote driver 和唯一指定容器端点，拒绝前缀相似或多节点配置。Linux Release 后台工作回归通过，含两类错误端点、原回执、取消和清理。日志为 .artifacts/mb03-builder-gate-live.log，归档 SHA-256 为 cf7f35e4666c61abd6e669d79b4f17059b20e1339962ce400ca6d9b36d45267f。真实 BuildKit 执行中取消及 ALC 联合验收仍受前述条件阻塞。
+
+### MB-05 Docker 202 响应排空
+
+生产 Docker stack 受理回执在实际执行 HTTP 202 结果时取得独立 resident 租约，直到序列化与写出任务返回才释放。Linux x64 Release 专属 Engine 实测客户端先断开，原停止任务落盘并释放业务责任时，响应屏障仍持有独立租约。释放屏障后响应退出，租约归还。同键重试返回原操作 7b2f20e6-a12e-407c-b6b0-e9bd1d6971e6，未重放停止。日志为 .artifacts/mb05-docker-response-live.log，归档 SHA-256 为 8996424ff81e7112007f0997ad5f96cdebcd2762144c1bb511bfbe308d39b0f3。生产路由和租约运行在 Kestrel 夹具中，完整 Server 认证启动仍开放。
