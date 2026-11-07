@@ -1474,3 +1474,5 @@ Windows 服务与个人模式均在 `appsettings.host.json` 设置 `Certificate.
 证书操作的 HTTP 202 在响应执行期间持有证书模块租约。Windows Release 证书绑定与回执专项已通过。
 
 Linux Release 证书 HTTP 绑定与原回执回归已通过。证书响应在真实断线时的排空仍待联合验收。
+
+Linux Release 证书绑定 HTTP 回执已通过真实客户端断线验收。原操作成功后，同键响应在断线后仍持有租约，实际响应退出后归还，重试取回原终态。

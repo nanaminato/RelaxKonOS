@@ -129,17 +129,39 @@ internal static class CertificateBindingChecks
         var responseLeases = new TestResidentBackgroundLeases();
         builder.Services.AddSingleton<RelaxKonOS.Server.Residency.IResidentModuleWorkLeaseSource>(responseLeases);
         builder.Services.AddSingleton<IServerModeResolver>(mode);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var disconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         await using var app = builder.Build();
-        app.Use((context, next) => { context.User = principal; return next(context); });
+        app.Use(async (context, next) =>
+        {
+            context.User = principal;
+            if (!context.Request.Headers.ContainsKey("X-Hold-Receipt"))
+            {
+                await next(context);
+                return;
+            }
+            using var registration = context.RequestAborted.Register(() => disconnected.TrySetResult());
+            context.Response.OnStarting(async () =>
+            {
+                entered.TrySetResult();
+                await release.Task.WaitAsync(deadline.Token);
+            });
+            try { await next(context); }
+            finally { exited.TrySetResult(); }
+        });
         app.UseAuthorization();
         app.MapCertificateEndpoints();
         await app.StartAsync();
         using var http = new HttpClient { BaseAddress = new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single()) };
-        async Task<HttpResponseMessage> Submit()
+        async Task<HttpResponseMessage> Submit(bool hold = false, CancellationToken ct = default)
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, CertificateApiRoutes.Deploy.Replace("{id}", id.ToString("D")));
             request.Headers.Add("Idempotency-Key", "https-endpoint-test");
-            return await http.SendAsync(request);
+            if (hold) request.Headers.Add("X-Hold-Receipt", "1");
+            return await http.SendAsync(request, ct);
         }
         using (var denied = await Submit())
             TestAssert.Assert(denied.StatusCode == HttpStatusCode.Forbidden && (await denied.Content.ReadAsStringAsync()).Contains("elevation-required"), "HTTPS replacement bypassed administrator authorization.");
@@ -153,6 +175,35 @@ internal static class CertificateBindingChecks
         var operation = JsonSerializer.Deserialize<CertificateOperationDto>(await accepted.Content.ReadAsStringAsync(), RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default)!;
         TestAssert.Assert((await TestOperations.WaitForCertificateOperationAsync(ledger, operation.OperationId)).State == CertificateOperationState.Succeeded,
             "Authorized HTTPS replacement did not complete.");
+        elevations.Grant(principal, HostElevationCapability.CertificateReplaceServerHttps, $"certificates/{id:D}/server-https", false, "test");
+        using (var clientCancellation = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token))
+        {
+            var response = Submit(hold: true, ct: clientCancellation.Token);
+            try
+            {
+                await entered.Task.WaitAsync(deadline.Token);
+                TestAssert.Assert(responseLeases.Active == 1, "The replay response must hold a lease after the original operation is terminal.");
+                clientCancellation.Cancel();
+                await disconnected.Task.WaitAsync(deadline.Token);
+                try { using var unexpected = await response; throw new InvalidOperationException("Expected the HTTP client to disconnect."); }
+                catch (OperationCanceledException) when (clientCancellation.IsCancellationRequested) { }
+                TestAssert.Assert(responseLeases.Active == 1 && !exited.Task.IsCompleted,
+                    "Client disconnect must retain the lease until actual response execution exits.");
+            }
+            finally { release.TrySetResult(); }
+            await exited.Task.WaitAsync(deadline.Token);
+            TestAssert.Assert(responseLeases.Active == 0, "Response execution must return its lease after draining.");
+        }
+        elevations.Grant(principal, HostElevationCapability.CertificateReplaceServerHttps, $"certificates/{id:D}/server-https", false, "test");
+        using (var retry = await Submit())
+        {
+            var replay = JsonSerializer.Deserialize<CertificateOperationDto>(await retry.Content.ReadAsStringAsync(),
+                RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default);
+            TestAssert.Assert(retry.StatusCode == HttpStatusCode.Accepted && replay?.OperationId == operation.OperationId
+                && replay.State == CertificateOperationState.Succeeded, "Retry must return the original terminal certificate operation.");
+        }
+        Console.WriteLine($"PASS CERTIFICATE HTTP RECEIPT DRAIN: operation={operation.OperationId}");
+
         foreach (var (capability, action, method, body, problem) in new[] {
             (HostElevationCapability.CertificateIssue, "issue", HttpMethod.Post, "{\"domains\":[\"example.test\"],\"challengeType\":\"directHttp01\",\"contactEmail\":\"a@example.test\",\"acceptedTerms\":false}", "certificate.terms_not_accepted"),
             (HostElevationCapability.CertificateRenew, "renew", HttpMethod.Post, "{}", "certificate.self_signed_not_renewable"),
