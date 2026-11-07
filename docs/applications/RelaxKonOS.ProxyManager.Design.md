@@ -4526,3 +4526,5 @@ Linux 隔离环境以真实受管 Mihomo 验证探测次数及控制器 401。�
 概览直接扫描连接 ID 所需的 JSON token，完整快照校验和详情协议保持原规则。隔离 Linux 两版共用同一受管 Mihomo 和 512 条原连接，全部完成转发。Proxy 管理模块继续常驻。见[计数配对测量](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-概览按-json-token-计数)。
 
 完整 Server 停机时，Core 会等已受理的 Mihomo 发布恢复读完原 Helper 回执并持久化清理。隔离 Linux 已验证 SIGTERM、重启及原 Mihomo 持续转发。见[完整 Server 排空](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整-server-在真实-mihomo-回执等待时排空)。
+
+系统代理 guard 即使在 Proxy 管理面停用时仍由 Core 运行。隔离 Linux 已验证真实 Helper 写入后遇到 SIGTERM，Server 等待原响应，重启核对保留代理值和归属记录，原连接持续转发。见[系统代理 guard 排空](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整-server-的系统代理-guard-停机排空)。

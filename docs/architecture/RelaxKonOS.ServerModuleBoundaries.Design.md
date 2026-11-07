@@ -1902,3 +1902,13 @@ Windows Release 发布事务 112 项及模块边界回归通过。MB-05 跨进�
 真实受管套件通过 177 项。完整 Server 排空原 `0630dd48-c886-4e22-820a-acc46fed1786` Failed 回执，原中断补偿 `f17e3bcb-15a0-44df-8813-2bf8e8e87b61` 同批复验通过。专属 cgroup 清理完成，宿主服务与代理文件指纹一致。日志为 `.artifacts/mb04-sigterm-drain-native-live.log`，归档 SHA-256 为 `f5eee4a33cdc36302ab92add7254d866a57a289c0106003e5d209599f4796f47`。
 
 复用响应中继的完整认证回归通过，入站发布原 `70b314f0-daca-47fa-b8f0-68950f0ff6b4` 及补偿 `69188c47-0bbc-43d3-8874-503e82dec4bb` 未重放。概览重启、闲时唤醒和真实控制器取消通过，宿主指纹一致。日志为 `.artifacts/mb04-sigterm-drain-auth-live.log`，归档 SHA-256 为 `a99bb9167238760ae1b54a763b5c173f05fca1c6d906a286b3f2c0bf67b157e5`。本次验收限配置发布，其他 Core worker 的完整 Server 停机边界及整模块休眠仍开放。下一项验收系统代理 guard 在真实 Helper 已写入代理环境、响应尚未返回时的停机排空。
+
+### MB-04 完整 Server 的系统代理 guard 停机排空
+
+验收使用私有 Linux systemd、网络和可写 `/etc` 覆盖层。将专属代理环境改为竞争值，再启动停用 Proxy 管理面的非 root Server，由 Core guard 调用原 Helper 修正漂移。响应中继截留真实成功回执。夹具同时保持一条已到源站的真实代理连接，并以代理文件与原归属日志的内容、写入时间区分重启核对与再次写入。
+
+Windows Release 系统代理和模块边界回归通过。MB-05 跨进程夹具按原 `06a4b7dc-2bdd-43bd-9dc8-74a766317f17` 读回 Interrupted，副作用计数为一。日志为 `.artifacts/mb04-guard-sigterm-proxy-win.log` 和 `.artifacts/mb04-guard-sigterm-boundaries-win.log`。
+
+真实 Helper 原操作 `8b4ae9fc-604f-45c0-b75a-9c8241e5bcd5` 在回复前已修正漂移，保留原归属。SIGTERM 后 Server 关闭监听并继续等待；放行原回执后正常退出。重启的启动核对使用新 ID `8af1379b-3f50-4508-a4b5-abb9f7192626`，原代理文件和归属日志内容、写入时间一致。Mihomo PID、原入站修订均保持，源站响应通过最初的连接交付。测试退出显式恢复私有环境，专属 cgroup 清理完成，宿主服务和代理文件指纹一致。日志为 `.artifacts/mb04-guard-sigterm-auth-live.log`，归档 SHA-256 为 `cce50caac87aae2084f223915f708fa8ff7b003d65d97fcd5b8c382eace6bce1`。
+
+共用停机测试工具的受管 Mihomo 套件复验通过 177 项，原发布排空回执为 `1fabc0ea-f689-452f-885e-97b6534241fd`。日志为 `.artifacts/mb04-guard-sigterm-native-live.log`，归档 SHA-256 为 `027cb2e33dd22efb95086a6e6a69874a836f40a24594e23ad4ba56deb966318e`。本轮证据限 Linux 原 guard 与发布恢复。Windows 原生停机及整模块休眠仍开放。下一项验证真实 TUN 已撤销但原控制器响应尚未返回时，完整 Server 是否保留原恢复标记直至排空。

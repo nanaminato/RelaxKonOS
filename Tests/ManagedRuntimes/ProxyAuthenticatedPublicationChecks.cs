@@ -111,8 +111,78 @@ internal static class ProxyAuthenticatedPublicationChecks
         await VerifyInFlightAsync(root, assembly, socket, host, traffic, retained, added, login, nativeState, stopHelper, restartHelper);
         await VerifyMihomoOverviewRestartAsync(root, assembly, socket, login, nativeState, guard);
         await VerifyMihomoObservationCancellationAsync(root, assembly, socket, login, nativeState, guard);
+        await VerifySystemProxyShutdownAsync(root, assembly, socket, login, nativeState, guard);
         if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_PROXY_BENCHMARK_BASELINE") is { Length: > 0 } baseline)
             await ProxyConnectionBenchmark.RunAsync(root, socket, baseline, assembly, login, guard, nativeState);
+    }
+
+    private static async Task VerifySystemProxyShutdownAsync(string root, string assembly, string socket, LoginRequest login,
+        Func<RuntimeArchiveState> nativeState, ProxySystemdGuardProbe guard)
+    {
+        var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly, socket, root, reuse: true);
+        start.Environment["Identity__LinuxPamTransport"] = "helper";
+        start.Environment["Logging__LogLevel__Microsoft.Hosting.Lifetime"] = "Information";
+        var nativeBefore = nativeState();
+        var runtimePid = guard.RuntimePid;
+        await guard.VerifyTrafficAsync(async (_, ct) =>
+        {
+            var original = guard.ReadOwnershipWitness();
+            guard.SetCompetingValue();
+            await using var relay = new ReplyRelay("/run/relaxkonos-system-proxy-drain.sock", socket, ct,
+                static (kind, _) => kind == "LinuxSystemProxyApply");
+            start.Environment["PrivilegedHelper__SocketPath"] = relay.Path;
+            var stopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var process = Start(start, onOutput: line =>
+            {
+                if (line.Contains("Application is shutting down", StringComparison.Ordinal)) stopping.TrySetResult();
+            });
+            try
+            {
+                var operation = await relay.Committed.Task.WaitAsync(ct);
+                using var client = await ConnectAsync(process, login, ct);
+                var committed = guard.ReadOwnershipWitness();
+                if (committed.Environment != original.Environment || committed.Journal != original.Journal
+                    || committed.EnvironmentWrite == original.EnvironmentWrite || guard.RuntimePid != runtimePid)
+                    throw new InvalidOperationException("The original guard operation did not restore the owned environment before replying.");
+                await SignalShutdownAsync(process, client, stopping.Task, ct);
+                if (process.HasExited || guard.ReadOwnershipWitness() != committed)
+                    throw new InvalidOperationException("SIGTERM released the guard before its real Helper reply.");
+                relay.ReleaseHeldResponse();
+                await process.WaitForExitAsync(ct);
+                if (process.ExitCode != 0 || guard.ReadOwnershipWitness() != committed)
+                    throw new InvalidOperationException("The Server did not drain the accepted system proxy write.");
+
+                // Startup is allowed a fresh reconciliation. The Helper must find the existing
+                // environment already owned and leave both durable files untouched.
+                await using var restartRelay = new ReplyRelay("/run/relaxkonos-system-proxy-restart.sock", socket, ct,
+                    static (kind, _) => kind == "LinuxSystemProxyApply");
+                start.Environment["PrivilegedHelper__SocketPath"] = restartRelay.Path;
+                using var restart = Start(start);
+                try
+                {
+                    var next = await restartRelay.Committed.Task.WaitAsync(ct);
+                    if (next == operation || guard.ReadOwnershipWitness() != committed)
+                        throw new InvalidOperationException("Restart replayed the original system proxy side effect.");
+                    restartRelay.ReleaseHeldResponse();
+                    using var restarted = await ConnectAsync(restart, login, ct);
+                    if (guard.ReadOwnershipWitness() != committed || guard.RuntimePid != runtimePid
+                        || nativeState().Installation.StateRevision != nativeBefore.Installation.StateRevision
+                        || nativeState().ConfigurationIdentity != nativeBefore.ConfigurationIdentity)
+                        throw new InvalidOperationException("Restart changed proxy ownership, the runtime or the inbound publication.");
+                    Console.WriteLine($"PASS FULL SERVER SYSTEM PROXY SIGTERM DRAIN: original apply {operation}, restart observation {next}, no replayed write");
+                }
+                finally
+                {
+                    restartRelay.ReleaseHeldResponse();
+                    await StopAsync(restart);
+                }
+            }
+            finally
+            {
+                relay.ReleaseHeldResponse();
+                await StopAsync(process);
+            }
+        }, TimeSpan.FromSeconds(40));
     }
 
     private static async Task VerifyMihomoObservationCancellationAsync(string root, string assembly, string socket, LoginRequest login,
@@ -401,7 +471,7 @@ internal static class ProxyAuthenticatedPublicationChecks
         await File.WriteAllTextAsync(Path.Combine(path, "current.json"), JsonSerializer.Serialize(metadata, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
     }
 
-    internal static Process Start(ProcessStartInfo start, Action<string>? onError = null)
+    internal static Process Start(ProcessStartInfo start, Action<string>? onError = null, Action<string>? onOutput = null)
     {
         var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start the authenticated Server.");
         if (onError is not null)
@@ -409,8 +479,26 @@ internal static class ProxyAuthenticatedPublicationChecks
             {
                 if (args.Data is { } line) onError(line);
             };
+        if (onOutput is not null)
+            process.OutputDataReceived += (_, args) =>
+            {
+                if (args.Data is { } line) onOutput(line);
+            };
         process.BeginOutputReadLine(); process.BeginErrorReadLine();
         return process;
+    }
+
+    internal static async Task SignalShutdownAsync(Process process, HttpClient http, Task stopping, CancellationToken ct)
+    {
+        await NativeRuntimeProcess.RunAsync("/usr/bin/kill",
+            ["-TERM", process.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)], 256);
+        await stopping.WaitAsync(ct);
+        while (!process.HasExited)
+        {
+            try { using var health = await http.GetAsync(ManagedServiceChecks.FullServerUrl + "/healthz", ct); }
+            catch (HttpRequestException) { return; }
+            await Task.Delay(50, ct);
+        }
     }
 
     internal static async Task StopAsync(Process process)

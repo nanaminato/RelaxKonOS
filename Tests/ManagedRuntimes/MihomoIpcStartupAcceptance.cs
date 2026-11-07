@@ -282,14 +282,11 @@ internal static class MihomoIpcStartupAcceptance
             start.Environment["Logging__LogLevel__Microsoft.Hosting.Lifetime"] = "Information";
             start.Environment["PrivilegedHelper__SocketPath"] = relay.Path;
             var shuttingDown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start Server for SIGTERM.");
-            process.OutputDataReceived += (_, args) =>
+            using var process = ProxyAuthenticatedPublicationChecks.Start(start, onOutput: line =>
             {
-                if (args.Data?.Contains("Application is shutting down", StringComparison.Ordinal) == true)
+                if (line.Contains("Application is shutting down", StringComparison.Ordinal))
                     shuttingDown.TrySetResult();
-            };
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
+            });
             using var http = new HttpClient(new SocketsHttpHandler { UseProxy = false });
             try
             {
@@ -303,14 +300,7 @@ internal static class MihomoIpcStartupAcceptance
                     await Task.Delay(50, ct);
                 }
                 if (process.HasExited) throw new InvalidOperationException("Server exited before SIGTERM.");
-                await NativeRuntimeProcess.RunAsync("/usr/bin/kill", ["-TERM", process.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)], 256);
-                await shuttingDown.Task.WaitAsync(ct);
-                while (!process.HasExited)
-                {
-                    try { using var health = await http.GetAsync(healthUrl, ct); }
-                    catch (HttpRequestException) { break; }
-                    await Task.Delay(50, ct);
-                }
+                await ProxyAuthenticatedPublicationChecks.SignalShutdownAsync(process, http, shuttingDown.Task, ct);
                 if (process.HasExited || (await startupStore.ReadAsync(ct)).Pending?.OperationId != drainId
                     || await ReadRuntimePidAsync() != nativePid || !await probe(port))
                     throw new InvalidOperationException("SIGTERM dropped a pending recovery or its original native traffic.");

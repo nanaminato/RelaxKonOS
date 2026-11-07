@@ -203,6 +203,14 @@ internal sealed class ProxySystemdGuardProbe(Process mihomo, int proxyPort, Prox
     internal int RuntimePid => mihomo.Id;
     internal Uri RuntimeProxy => new(ProxyUrl);
 
+    internal (string Environment, DateTime EnvironmentWrite, string Journal, DateTime JournalWrite) ReadOwnershipWitness()
+    {
+        if (mihomo.HasExited || ReadProxy() != ProxyUrl || !File.Exists(JournalPath))
+            throw new InvalidOperationException("The owned system proxy was not committed.");
+        return (File.ReadAllText(EnvironmentPath), File.GetLastWriteTimeUtc(EnvironmentPath),
+            File.ReadAllText(JournalPath), File.GetLastWriteTimeUtc(JournalPath));
+    }
+
     internal void VerifyOriginalRestored()
     {
         if (ReadProxy() != Original || File.Exists(JournalPath) || mihomo.HasExited)
