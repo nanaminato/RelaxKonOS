@@ -360,3 +360,5 @@ Linux 隔离实测已覆盖 Proxy 管理模块停用后授权到期。Core 继�
 Linux 隔离实测已将停用启动门禁接到 Helper Unix socket。原到期客户端在提交后中断，新进程在 Helper 不可达时保留候选，恢复连接后确认候选且未重发 apply。模块清单诊断保持只读。
 
 Linux 完整 Server 启动实测覆盖两条路径。Helper 不可达时，Server 在监听前退出并保留候选。恢复连接后，以同一台账启动并返回健康响应，Helper 未收到第二次 apply。测试使用专属 sing-box 及私有运行环境。
+
+完整 Server 停用 Proxy 管理模块后，Core 到期 worker 已实测接续处理启动之后的下一条到期授权。Helper 和 sing-box 对每条到期各提交一次配置，原候选确认过程未重复发布。实测覆盖运行时配置切换，后续授权的真实认证流量仍待联合验证。
