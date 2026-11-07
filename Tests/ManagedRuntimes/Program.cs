@@ -106,6 +106,11 @@ if (args is ["runtime-lifecycle-only"])
     return;
 }
 
+if (args is ["runtime-managed-service-expiry-client", var expirySocket, var expiryRoot])
+{
+    await ManagedServiceChecks.RunExpiryClientAsync(expirySocket, expiryRoot);
+    return;
+}
 if (args is ["runtime-managed-service-client", var singBoxSocket])
 {
     await ManagedServiceChecks.RunSocketClientAsync(singBoxSocket);

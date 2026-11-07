@@ -1297,3 +1297,5 @@ Linux x64 Release 在私有网络中通过生产 Unix socket 服务端、客户�
 Linux x64 Release 同一套 13 项已通过独立客户端进程复测。每次调用由新进程经专属 Unix socket 进入生产 transport 和 peer 校验。日志为 .artifacts/mb04-helper-peer-live.log，制品 SHA-256 为 7974f603d96672ade098f0dcbc834f0457bfc60500a1fb2ee3ce5f52880a39e0。Helper 服务端由父测试进程承载。本次验证进程隔离下的正常请求及服务故障补偿，客户端在途退出后按原台账恢复仍开放。
 
 Linux x64 Release 增加 Helper 已提交、socket 响应尚未发送时的客户端强制终止，16 项通过。新进程通过原 socket 查询确认候选摘要和运行状态。原 Helper 台账版本只增一次，sing-box 只新增一次启动。日志为 .artifacts/mb04-helper-loss-live.log，归档 SHA-256 为 662af074f9ee23b313d1daf5801a5432d72fead0a345f8e4015ce904948a83e4。该验收覆盖 Helper 持久状态，Server 加密发布台账与 IPC 中断的联合恢复仍开放。
+
+Linux x64 Release 联合验收通过 17 项。独立客户端运行生产到期发布执行器，将候选持久化到 Server 原加密台账，再经专属 Unix socket 提交到 Helper。确认 Helper 摘要与原待处理候选一致后，在响应前终止客户端。恢复重新打开 Server 台账，通过同一 Helper 观察确认原候选并清除待处理记录。Helper 版本及实际 sing-box 启动次数各增加一次。日志为 .artifacts/mb04-helper-ledger-live.log，归档 SHA-256 为 834f9c78bf26b8209f2c267cd8d664591df3f51f6a6fcf948826045e8280706a。服务控制为专属进程夹具，生产 systemd、动态休眠与内存验收仍开放。

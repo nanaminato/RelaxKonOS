@@ -1,3 +1,7 @@
+using Microsoft.AspNetCore.DataProtection;
+using RelaxKonOS.Server.Proxy;
+using RelaxKonOS.Server.ProxyServer;
+using RelaxKonOS.Server.HostMode;
 using Microsoft.Extensions.Logging.Abstractions;
 using RelaxKonOS.Server.Privileged;
 using System.Diagnostics;
@@ -194,23 +198,40 @@ internal static class ManagedServiceChecks
             {
                 var before = states.Read()!.Installation.StateRevision;
                 var starts = host.Starts;
+                var serverStore = OpenServerStore(root);
+                var originalGrant = materialB.Credentials.Single();
+                await serverStore.WriteAsync(ProxyServerState.Empty with
+                {
+                    Published = materialB,
+                    Credentials = [new(originalGrant.Id, Guid.NewGuid(), "expired", originalGrant.InboundIds.ToArray(),
+                        originalGrant.Value, true, DateTimeOffset.UtcNow.AddMinutes(-1))]
+                }, default);
+                var expected = materialB with { Credentials = [] };
+                var expectedHash = Digest(Encoding.UTF8.GetBytes(SingBoxConfiguration.Render(expected)));
                 dropResponse = true;
                 try
                 {
                     await SendAcrossProcessAsync(socket.SocketPath,
-                        new(PrivilegedOperationKind.ProxyServerApply, ProxyServer: new(Material: materialA)), async child =>
+                        null, async child =>
                         {
                             await committed.Task.WaitAsync(TimeSpan.FromSeconds(10));
-                            Check(!child.HasExited && states.Read()!.ConfigurationIdentity == identityA,
+                            var pending = (await serverStore.ReadAsync(default)).PendingPublication;
+                            Check(!child.HasExited && states.Read()!.ConfigurationIdentity == expectedHash
+                                && pending is not null && Digest(Encoding.UTF8.GetBytes(SingBoxConfiguration.Render(pending))) == expectedHash,
                                 "The Helper must commit the candidate before the client is terminated.");
                             child.Kill();
                             await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
                             Check(child.ExitCode != 0, "The original client must terminate without a response.");
-                        });
+                        }, root);
                 }
                 finally { releaseResponse.TrySetResult(); }
+                var reopened = OpenServerStore(root);
+                await new ProxyServerPublicationService(reopened, CreateTransport(socket.SocketPath), new FixtureMode()).ReconcileExpiryAsync(default);
+                var recoveredState = await reopened.ReadAsync(default);
+                Check(recoveredState.PendingPublication is null && recoveredState.Published?.Credentials.Count == 0,
+                    "Server recovery must confirm and clear the original pending publication.");
                 var recovered = Read<ProxyServerStatus>(await RequestAsync(PrivilegedOperationKind.ProxyServerStatus, null));
-                Check(recovered is { Running: true, Applied: true } && recovered.ConfigurationHash == identityA
+                Check(recovered is { Running: true, Applied: true } && recovered.ConfigurationHash == expectedHash
                     && states.Read()!.Installation.StateRevision == before + 1 && host.Starts == starts + 1,
                     "A new client must observe the committed state without another publication.");
                 return count;
@@ -255,7 +276,7 @@ internal static class ManagedServiceChecks
     private static string Key() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
         .Replace('+', '-').Replace('/', '_')[..43];
 
-    private static async Task<PrivilegedOperationResult> SendAcrossProcessAsync(string socketPath, PrivilegedOperationRequest request, Func<Process, Task>? interrupt = null)
+    private static async Task<PrivilegedOperationResult> SendAcrossProcessAsync(string socketPath, PrivilegedOperationRequest? request, Func<Process, Task>? interrupt = null, string? expiryRoot = null)
     {
         var start = new ProcessStartInfo(Environment.ProcessPath!)
         {
@@ -265,13 +286,15 @@ internal static class ManagedServiceChecks
         };
         if (Path.GetFileNameWithoutExtension(start.FileName) == "dotnet")
             start.ArgumentList.Add(typeof(ManagedServiceChecks).Assembly.Location);
-        start.ArgumentList.Add("runtime-managed-service-client");
+        start.ArgumentList.Add(expiryRoot is null ? "runtime-managed-service-client" : "runtime-managed-service-expiry-client");
         start.ArgumentList.Add(socketPath);
+        if (expiryRoot is not null) start.ArgumentList.Add(expiryRoot);
         using var child = Process.Start(start) ?? throw new InvalidOperationException("Unable to start isolated Helper client.");
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         try
         {
-            await child.StandardInput.WriteLineAsync(JsonSerializer.Serialize(request).AsMemory(), deadline.Token);
+            if (request is not null)
+                await child.StandardInput.WriteLineAsync(JsonSerializer.Serialize(request).AsMemory(), deadline.Token);
             child.StandardInput.Close();
             if (interrupt is not null)
             {
@@ -289,6 +312,31 @@ internal static class ManagedServiceChecks
             if (!child.HasExited) child.Kill();
             await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
         }
+    }
+
+    private static UnixSocketPrivilegedOperationTransport CreateTransport(string socketPath) =>
+        new(new PrivilegedHelperOptions { SocketPath = socketPath }, NullLogger<UnixSocketPrivilegedOperationTransport>.Instance);
+
+    internal static Task RunExpiryClientAsync(string socketPath, string root) =>
+        new ProxyServerPublicationService(OpenServerStore(root), CreateTransport(socketPath), new FixtureMode()).ReconcileExpiryAsync(default);
+
+    private static ProxyServerStore OpenServerStore(string root) => new(new FixturePaths(Path.Combine(root, "server")),
+        DataProtectionProvider.Create(Directory.CreateDirectory(Path.Combine(root, "fixture-keys"))));
+
+    private sealed class FixturePaths(string root) : IProxyPlatformPaths
+    {
+        public string GetStateDirectory() => root;
+        public string GetEngineVersionsDirectory(string engineId) => root;
+        public string GetEngineDataDirectory(string engineId) => root;
+        public string GetProtectedConfigurationDirectory() => root;
+        public string GetSanitizedLogDirectory() => root;
+    }
+
+    private sealed class FixtureMode : IServerModeResolver
+    {
+        public RelaxKonOS.Protocol.Common.ServerMode Mode => RelaxKonOS.Protocol.Common.ServerMode.System;
+        public bool Supports(ServerHostFeature feature) => feature == ServerHostFeature.Proxy;
+        public RelaxKonOS.Protocol.Common.ServerCapabilitiesDto Describe() => throw new NotSupportedException();
     }
 
     internal static async Task RunSocketClientAsync(string socketPath)
