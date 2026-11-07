@@ -65,8 +65,9 @@ internal static class LifecycleChecks
                 Check((File.GetUnixFileMode(root + "/sources/registry.lock") & (UnixFileMode.GroupWrite | UnixFileMode.OtherWrite)) == 0,
                     "Source ledger lock creation has private permissions independent of caller umask");
             }
-            var artifact = new RuntimeArtifact("fixture-binary", new string('a', 64), 1024, "zip", "sing-box", "key",
-                new(1024, 8, [new("sing-box", 4, new string('b', 64), true)]));
+            var entryPoint = OperatingSystem.IsWindows() ? "sing-box.exe" : "sing-box";
+            var artifact = new RuntimeArtifact("fixture-binary", new string('a', 64), 1024, "zip", entryPoint, "key",
+                new(1024, 8, [new(entryPoint, 4, new string('b', 64), true)]));
             var release = new ManifestRelease("fixture-release", "sing-box", "v1.14.3", RuntimeChannel.Stable,
                 snapshot.Installation.Target, artifact, "https://example.com/artifacts/binary.zip", now);
             var manifest = new RuntimeManifest(1, source.SourceId, 1, now, now.AddMinutes(30), [release], []);
@@ -121,7 +122,8 @@ internal static class LifecycleChecks
             var content = SingBoxConfiguration.Render(new(new(0, []), [], []));
             var identity = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(content)));
             await File.WriteAllTextAsync(operationDirectory + "/candidate.json", content);
-            await File.WriteAllTextAsync(revisionDirectory + "/sing-box", "test");
+            var binary = Path.Combine(revisionDirectory, entryPoint);
+            await File.WriteAllTextAsync(binary, "test");
             var authority = new ActivationAuthorization();
             var activationHost = new ActivationHost(() => authority.Unavailable = true);
             var activationAdapter = new SingBoxArchiveAdapter(activationRoot,
@@ -138,7 +140,7 @@ internal static class LifecycleChecks
             }
             authority.Unavailable = false;
             await File.WriteAllTextAsync(operationDirectory + "/previous.json", content);
-            await File.WriteAllTextAsync(operationDirectory + "/service.json", JsonSerializer.Serialize(new SingBoxServiceObservation(true, true, true, false, revisionDirectory + "/sing-box", identity)));
+            await File.WriteAllTextAsync(operationDirectory + "/service.json", JsonSerializer.Serialize(new SingBoxServiceObservation(true, true, true, false, binary, identity)));
             try { await activationAdapter.RestoreAsync(pending, default); throw new Exception("Revoked authority restarted previous program"); }
             catch (RuntimePolicyException ex)
             {
@@ -147,22 +149,22 @@ internal static class LifecycleChecks
             }
             var stopState = originalState with { Active = revision, Revisions = [revision], Pending = pending,
                 ConfigurationIdentity = identity };
-            var stopHost = new StopHost(new(true, true, true, true, revisionDirectory + "/sing-box", identity));
+            var stopHost = new StopHost(new(true, true, true, true, binary, identity));
             var stopped = await SingBoxManagedStop.ExecuteAsync(activationRoot, stopState, stopHost, default);
             Check(!stopped.Running && stopped.RecoveryRequired && !stopped.Applied && stopped.BootEnabled == true
                 && stopHost.Stops == 1, "Emergency stop works during recovery without reading authorization or changing autostart");
             Check(stopState.Pending == pending && stopState.Active == revision && stopState.Receipts.Length == 0,
                 "Stopping cannot erase recovery checkpoints or manufacture a switch receipt");
             foreach (var stopObservation in new[] {
-                new SingBoxServiceObservation(true, false, true, false, revisionDirectory + "/sing-box", identity),
-                new SingBoxServiceObservation(true, true, true, false, activationRoot + "/other/sing-box", identity) })
+                new SingBoxServiceObservation(true, false, true, false, binary, identity),
+                new SingBoxServiceObservation(true, true, true, false, Path.Combine(activationRoot, "other", entryPoint), identity) })
             {
                 var external = new StopHost(stopObservation);
                 try { await SingBoxManagedStop.ExecuteAsync(activationRoot, stopState, external, default); throw new Exception("External process stopped"); }
                 catch (RuntimePolicyException ex) { Check(ex.ProblemCode == "runtime.external_installation" && external.Stops == 0,
                     "Emergency stop cannot take ownership of an external service or unknown program revision"); }
             }
-            var stuck = new StopHost(new(true, true, true, false, revisionDirectory + "/sing-box", identity)) { IgnoreStop = true };
+            var stuck = new StopHost(new(true, true, true, false, binary, identity)) { IgnoreStop = true };
             try { await SingBoxManagedStop.ExecuteAsync(activationRoot, stopState, stuck, default); throw new Exception("Unverified stop accepted"); }
             catch (RuntimePolicyException ex) { Check(ex.ProblemCode == "runtime.stop_not_verified", "Stop command success does not prove process termination"); }
         }

@@ -243,3 +243,5 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 2026-11-07（MR-02 / MB-04）受管 sing-box 入站发布将最近一次原生发布回执保存在原归档及实例锁中。入站台账按原 ID 恢复。原生结果仍在途时，归档切换和移除门禁保留责任。证据及待实现的在途补偿入口见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-入站发布按原-helper-回执恢复)。
 
 2026-11-07（MR-02 / MB-04）在途入站发布可通过原 ID 显式补偿。原归档实例锁、程序核验和配置备份共同限定恢复范围。还原时保持停止，后续启动重新核验授权。此项属于入站配置事务恢复。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-在途入站发布的原-id-补偿)。
+
+2026-11-08（MR-02 回归）Windows Release 生命周期夹具使用 `sing-box.exe` 作为签名制品入口，使伪造归档布局和证据信任用例通过平台预检并到达 Helper 独立信任复核。专项 28 项通过，使用 Windows apphost 的 ManagedRuntimes 广跑也通过。可信下载传输探针因该主机缺少进程级 CA 覆盖而跳过。此次验证范围为本地回归夹具。

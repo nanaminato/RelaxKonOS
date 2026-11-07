@@ -388,3 +388,5 @@ Linux 私有 systemd 的联合验收同时启用系统代理。独立 Helper 中
 Linux 联合验收也覆盖候选已注册、尚未启动时 Server 和 Helper 中断。恢复原配置并结案原发布后，服务保持停止。经认证的正常启动恢复已有授权的转发，未提交的候选授权被拒绝。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整认证-server-的在途入站发布补偿)。
 
 Host 停机关闭管理队列准入，并等待已受理任务写入原终态。隔离 Linux 已验证真实 Helper 响应在途时的 SIGTERM，重启后同键返回原成功回执，保留和新增授权继续转发。见[管理队列停机所有权](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-管理队列的-host-停机所有权)。
+
+Windows Release 的生命周期回归使用符合平台的 `sing-box.exe` 测试制品入口，验证 Helper 拒绝与签名清单不符的归档布局和验证证据。见[受管运行时回归记录](../platform/RelaxKonOS.ManagedRuntimes.Design.md#2026-11-03-proxy-发布恢复所有权收尾)。
