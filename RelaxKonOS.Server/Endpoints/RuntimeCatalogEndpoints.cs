@@ -61,6 +61,13 @@ public static class RuntimeCatalogEndpoints
             if (request.OperationId == Guid.Empty) return Results.BadRequest();
             return await RespondAsync(async () => Results.Ok(await service.RetryAsync(request.OperationId, ct)));
         }).RequireAuthorization(ManagePolicy);
+        group.MapPost(RuntimeRoutes.MihomoRecoveryCompensate, async (RuntimeRecoveryActionRequest request, HttpContext http,
+            [FromServices] RelaxKonOS.Server.Proxy.Mihomo.MihomoDirectSettingsCompensationService service,
+            [FromServices] IHostElevationSessionStore elevations, CancellationToken ct) =>
+        {
+            if (!MihomoHostTarget(http, elevations)) return ElevationRequired();
+            return await RespondAsync(async () => Results.Ok(await service.CompensateAsync(request.OperationId, request.Confirmed, ct)));
+        }).RequireAuthorization(ManagePolicy);
         group.MapPost(RuntimeRoutes.MihomoRecoveryStop, async (RuntimeRecoveryActionRequest request, HttpContext http,
             [FromServices] MihomoRuntimeService service, [FromServices] IHostElevationSessionStore elevations, CancellationToken ct) =>
         {
@@ -157,6 +164,7 @@ public static class RuntimeCatalogEndpoints
                     or "runtime.publication_unconfirmed" or "runtime.publication_state_invalid" or "runtime.direct_reload_unverified"
                     or "runtime.direct_profile_commit_pending" or "runtime.profile_selection_conflict"
                     or "runtime.direct_settings_commit_pending" or "runtime.direct_tracked_host_pending" or "runtime.settings_drift"
+                    or "runtime.direct_compensation_unavailable" or "runtime.configuration_drift"
                     or "runtime.installation_absent"
                     or "runtime.external_installation" or "runtime.state_unknown" => 409,
                 "runtime.platform_unsupported" => 403,

@@ -57,6 +57,33 @@ static void Check(bool condition, string label)
     if (!condition) throw new Exception(label);
     Console.WriteLine("PASS: " + label);
 }
+if (args.Contains("--direct-compensation-wire-only"))
+{
+    var original = Guid.NewGuid();
+    var compensation = Guid.NewGuid();
+    var calls = 0;
+    using var http = new HttpClient(new Handler(request =>
+    {
+        calls++;
+        var body = request.Content?.ReadFromJsonAsync<RuntimeRecoveryActionRequest>().GetAwaiter().GetResult();
+        Check(request.Method == HttpMethod.Post && request.RequestUri?.AbsolutePath == RuntimeRoutes.MihomoRecoveryCompensate
+            && body == new RuntimeRecoveryActionRequest(original, Confirmed: true),
+            "Mihomo sends explicit confirmation for the original recovery ID to the compensation route");
+        return Json(HttpStatusCode.OK, new RuntimeSwitchResult(original, RuntimeSwitchOutcome.Interrupted,
+            "runtime.direct_settings_compensated", compensation));
+    }));
+    var result = await new MihomoRuntimeCatalogClient(http, session).CompensateRecoveryAsync(original, default);
+    Check(result.OperationId == original && result.CompensationOperationId == compensation && result.Outcome == RuntimeSwitchOutcome.Interrupted,
+        "The desktop client preserves both recovery identities and the original interrupted outcome");
+    try
+    {
+        await new SingBoxRuntimeCatalogClient(http, session).CompensateRecoveryAsync(original, default);
+        throw new Exception("A sing-box client reached Mihomo's compensation route.");
+    }
+    catch (InvalidOperationException ex) when (ex.Message == "runtime.direct_compensation_unavailable") { }
+    Check(calls == 1, "Sing-box cannot send a request to the Mihomo compensation route");
+    return;
+}
 var componentLink = ComponentCenterNavigation.Component("https://host.example/", "relaxkonos.proxy-server", "sing-box");
 Check(ComponentCenterNavigation.TryParse(componentLink, out var linkTarget)
     && linkTarget is { HostId: "https://host.example/", AppId: "relaxkonos.proxy-server", ComponentId: "sing-box" },

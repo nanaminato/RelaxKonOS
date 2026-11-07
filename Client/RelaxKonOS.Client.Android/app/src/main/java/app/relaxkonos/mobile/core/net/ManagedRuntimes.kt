@@ -56,6 +56,7 @@ data class ManagedRuntimeCatalog(val source: ManagedRuntimeSource, val revision:
     val trusted get() = source.trusted && trustRevision == source.trustRevision
     val usable get() = fresh && problem == null && trusted
 }
+data class ManagedRuntimeCompensation(val operationId: String, val compensationOperationId: String, val completed: Boolean)
 class ManagedRuntimeInstallation(val wire: String) {
     private val value get() = JSONObject(wire)
     init {
@@ -98,6 +99,17 @@ class ManagedRuntimeInstallation(val wire: String) {
 }
 
 object ManagedRuntimeWire {
+    fun compensation(payload: String, expectedOperationId: String): ManagedRuntimeCompensation {
+        val value = JSONObject(payload)
+        val original = InstallationRoutes.canonicalId(value.getString("operationId"))
+        val compensation = InstallationRoutes.canonicalId(value.getString("compensationOperationId"))
+        val outcome = value.getString("outcome")
+        require(original == InstallationRoutes.canonicalId(expectedOperationId) && compensation != original &&
+            original != "00000000-0000-0000-0000-000000000000" && compensation != "00000000-0000-0000-0000-000000000000")
+        require(outcome in setOf("interrupted", "recoveryRequired"))
+        return ManagedRuntimeCompensation(original, compensation, outcome == "interrupted")
+    }
+
     private fun source(value: JSONObject, runtime: String): ManagedRuntimeSource {
         require(value.getString("runtimeId") == runtime)
         val identity = value.getJSONObject("identity")

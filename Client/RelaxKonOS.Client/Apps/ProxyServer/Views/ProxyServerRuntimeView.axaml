@@ -127,6 +127,8 @@
         <WrapPanel>
           <Button Content="{loc:Loc proxy_server.runtime.recovery_retry}" Command="{Binding RetryRecoveryCommand}"
                   IsEnabled="{Binding CanRetryRecovery}" Margin="0,0,8,0" />
+          <Button Content="{loc:Loc proxy_server.runtime.recovery_compensate}" Command="{Binding CompensateRecoveryCommand}"
+                  IsVisible="{Binding CanCompensateRecovery}" Margin="0,0,8,0" />
           <Button Content="{loc:Loc proxy_server.runtime.recovery_stop}" Command="{Binding EmergencyStopCommand}"
                   IsEnabled="{Binding CanEmergencyStop}" Margin="0,0,8,0" />
           <Button Content="{loc:Loc proxy_server.runtime.recovery_close}" Command="{Binding CloseRecoveryCommand}"

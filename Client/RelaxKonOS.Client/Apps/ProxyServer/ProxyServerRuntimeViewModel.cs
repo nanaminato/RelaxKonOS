@@ -59,7 +59,7 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
         nameof(ReleaseCountText), nameof(HasRuntimeProblem), nameof(CanUninstall), nameof(NeedsRecovery), nameof(RecoveryText),
         nameof(RecoveryOperationText), nameof(RecoveryChangeText), nameof(RecoveryStageText), nameof(RecoveryOriginalProblem),
         nameof(RecoveryProblem), nameof(RecoveryServiceText), nameof(HasRecoveryServiceProblem),
-        nameof(CanRetryRecovery), nameof(CanEmergencyStop), nameof(CanCloseRecovery), nameof(CanCancelDownload),
+        nameof(CanRetryRecovery), nameof(CanCompensateRecovery), nameof(CanEmergencyStop), nameof(CanCloseRecovery), nameof(CanCancelDownload),
         nameof(HasEnvironment), nameof(EnvironmentPlatformText), nameof(EnvironmentServiceHostText),
         nameof(EnvironmentDiskSpaceText), nameof(EnvironmentFileSystemText), nameof(EnvironmentKernelText),
         nameof(HasEnvironmentWarning), nameof(EnvironmentWarning), nameof(DependencyText), nameof(HasDependencyBlock),
@@ -155,6 +155,7 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
             : "proxy_server.runtime.recovery_service.Absent");
     public bool HasRecoveryServiceProblem => _recovery?.ServiceProblem is not null;
     public bool CanRetryRecovery => CanRead && CanManage && !IsBusy && !_invalidated && _recovery is { Required: true };
+    public bool CanCompensateRecovery => CanRetryRecovery && _recovery?.CanCompensateDirectSettings == true;
     public bool CanEmergencyStop => CanRetryRecovery && client.SupportsRecoveryStopAndClose && _recovery?.Service is { Running: true };
     /// <summary>Closing is only offered once the Host proves nothing runs and its own compensation already failed.</summary>
     public bool CanCloseRecovery => CanRetryRecovery && client.SupportsRecoveryStopAndClose && _recovery is { NeedsOperatorDecision: true, Service.Running: false };
@@ -348,6 +349,22 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
         RequireManage();
         await client.CloseRecoveryAsync(id, _lifetime.Token);
         OutcomeText = LocalizedStatus.Key("proxy_server.runtime.recovery_closed");
+        await ReloadStateAsync();
+    }));
+
+    [RelayCommand] private Task CompensateRecoveryAsync() => RunAsync(() => RunElevatedAsync(async () =>
+    {
+        RequireManage();
+        if (_recovery is not { CanCompensateDirectSettings: true, OperationId: { } id } || ConfirmAsync is not { } confirm
+            || !await confirm(LocalizedStatus.Key("proxy_server.runtime.recovery_compensate"),
+                LocalizedStatus.Key("proxy_server.runtime.recovery_compensate_warning"))) return;
+        RequireManage();
+        if (_recovery is not { CanCompensateDirectSettings: true } current || current.OperationId != id) return;
+        var receipt = await client.CompensateRecoveryAsync(id, _lifetime.Token);
+        if (receipt.OperationId != id || receipt.CompensationOperationId is not { } compensation || compensation == Guid.Empty || compensation == id)
+            throw new InvalidDataException("runtime.operation_id_conflict");
+        OutcomeText = LocalizedStatus.Format(receipt.Outcome == RuntimeSwitchOutcome.Interrupted
+            ? "proxy_server.runtime.recovery_compensated" : "proxy_server.runtime.recovery_compensate_pending", compensation);
         await ReloadStateAsync();
     }));
 

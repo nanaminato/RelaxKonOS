@@ -12,6 +12,10 @@
     <string name="managed_runtime_plan">%1$s · 現在：%2$s · 対象：%3$s</string>
     <string name="managed_runtime_restart">ホストは公開済み構成を検証します。サービスが再起動する場合があります。</string>
     <string name="managed_runtime_recovery">未完了のトランザクションを復旧してください。</string>
+    <string name="managed_runtime_compensate">保存済みプロキシポリシーを復元</string>
+    <string name="managed_runtime_compensate_confirm">保存済みリスナーとホストプロキシポリシーの復元を確認</string>
+    <string name="managed_runtime_compensation_completed">保存済みポリシーを復元しました。復旧 ID %1$s。</string>
+    <string name="managed_runtime_compensation_pending">復旧は確認待ちです。復旧 ID %1$s。</string>
     <string name="managed_runtime_stop">サービスを緊急停止</string>
     <string name="managed_runtime_close_confirm">このトランザクションを復元せずに終了することを確認します。</string>
     <string name="managed_runtime_close">トランザクションを終了</string>

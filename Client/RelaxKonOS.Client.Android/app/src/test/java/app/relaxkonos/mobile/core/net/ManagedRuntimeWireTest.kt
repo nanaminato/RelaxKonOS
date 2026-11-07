@@ -7,6 +7,19 @@ import org.junit.Test
 internal const val RUNTIME_KEY = "frozen-plan-key"
 internal const val RUNTIME_PLAN = """{"runtimeId":"mihomo","request":{"installationId":"00112233-4455-6677-8899-aabbccddeeff","hostId":"host","change":"update","expectedStateRevision":3,"expectedCatalogRevision":4,"expectedTrustRevision":5,"releaseId":"release-b","idempotencyKey":"frozen-plan-key","allowPrerelease":false,"keepData":true},"release":{"runtimeId":"mihomo","releaseId":"release-b","artifact":{"sha256":"digest","layout":{"files":[{"path":"mihomo","length":42}]}}},"previousReleaseId":"release-a"}"""
 class ManagedRuntimeWireTest {
+    @Test fun `direct compensation accepts only the original ID and a separate compensation identity`() {
+        val original = "00112233-4455-6677-8899-aabbccddeeff"
+        val compensation = "630a7065-c07e-4f8b-97c3-464c047397c8"
+        val receipt = JSONObject().put("operationId", original).put("compensationOperationId", compensation)
+            .put("outcome", "interrupted")
+        assertEquals(ManagedRuntimeCompensation(original, compensation, true),
+            ManagedRuntimeWire.compensation(receipt.toString(), original))
+        assertFalse(ManagedRuntimeWire.compensation(receipt.put("outcome", "recoveryRequired").toString(), original).completed)
+        assertTrue(runCatching { ManagedRuntimeWire.compensation(receipt.toString(), compensation) }.isFailure)
+        assertTrue(runCatching { ManagedRuntimeWire.compensation(receipt.put("compensationOperationId", original).toString(), original) }.isFailure)
+        assertTrue(runCatching { ManagedRuntimeWire.compensation(
+            receipt.put("compensationOperationId", "00000000-0000-0000-0000-000000000000").toString(), original) }.isFailure)
+    }
     @Test fun `current snapshot explicitly reports unavailable or preserved commit evidence`() {
         assertTrue(runCatching { ManagedRuntimeInstallation("""{"installation":{}}""") }.isFailure)
         assertTrue(runCatching { ManagedRuntimeInstallation("""{"installation":{},"commitWitness":7}""") }.isFailure)

@@ -12,6 +12,10 @@
     <string name="managed_runtime_plan">%1$s · Current: %2$s · Target: %3$s</string>
     <string name="managed_runtime_restart">The host validates current published configuration; this action may restart the service.</string>
     <string name="managed_runtime_recovery">An unfinished transaction requires recovery.</string>
+    <string name="managed_runtime_compensate">Restore saved proxy policy</string>
+    <string name="managed_runtime_compensate_confirm">Confirm restoration of the saved listener and host proxy policy</string>
+    <string name="managed_runtime_compensation_completed">Saved policy restored. Recovery ID %1$s.</string>
+    <string name="managed_runtime_compensation_pending">Restoration is pending. Recovery ID %1$s.</string>
     <string name="managed_runtime_stop">Emergency stop service</string>
     <string name="managed_runtime_close_confirm">I confirm closing this transaction without restoring it.</string>
     <string name="managed_runtime_close">Close transaction</string>

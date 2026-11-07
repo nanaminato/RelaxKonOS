@@ -37,6 +37,23 @@ class InstallationHttpTest {
         }
     }
 
+    @Test fun `Mihomo compensation sends only the original ID and explicit confirmation`() = runTest {
+        val compensation = "630a7065-c07e-4f8b-97c3-464c047397c8"
+        serve(200, """{"operationId":"$id","compensationOperationId":"$compensation","outcome":"interrupted"}""") { url, requests ->
+            val api = RelaxKonApi("test", "test")
+            val route = "${ManagedRuntimeRoutes.RECOVERY}/compensate"
+            val body = JsonBody().string("operationId", id).bool("confirmed", true)
+            val result = api.managedRuntime(url, "token", "POST", route, body, "compensate-original") as ApiResult.Success
+            assertEquals(compensation, ManagedRuntimeWire.compensation(result.value, id).compensationOperationId)
+            val request = requests.single()
+            assertEquals(Request("POST", route, "Bearer token", "compensate-original", body.toByteArray().decodeToString()), request)
+            assertTrue(runCatching {
+                api.managedRuntime(url, "token", "POST", "${ManagedRuntimeRoutes.recovery("sing-box")}/compensate", body, "wrong-runtime")
+            }.isFailure)
+            assertEquals(1, requests.size)
+        }
+    }
+
     @Test fun `empty active task differs from missing operation and coded refusal`() = runTest {
         serve(404, null) { url, _ ->
             val api = RelaxKonApi("test", "test")

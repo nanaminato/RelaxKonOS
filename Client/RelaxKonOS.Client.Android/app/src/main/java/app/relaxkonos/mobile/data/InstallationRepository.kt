@@ -94,7 +94,7 @@ class InstallationRepository(
 
     suspend fun runtimeRecovery(owner: SessionState.Active, action: String, body: JsonBody,
         provider: ElevationAnswerProvider): ApiResult<String> {
-        require(action in setOf("retry", "stop", "close"))
+        require(action in setOf("retry", "stop", "close", "compensate"))
         return runtimeWrite(owner, "${ManagedRuntimeRoutes.RECOVERY}/$action", body, provider)
     }
     suspend fun singBoxRecovery(owner: SessionState.Active, action: String, body: JsonBody, provider: ElevationAnswerProvider): ApiResult<String> {

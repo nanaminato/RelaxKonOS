@@ -12,6 +12,10 @@
     <string name="managed_runtime_plan">%1$s · 当前：%2$s · 目标：%3$s</string>
     <string name="managed_runtime_restart">宿主将校验当前已发布配置，此操作可能重启服务。</string>
     <string name="managed_runtime_recovery">存在未完成事务，需要恢复。</string>
+    <string name="managed_runtime_compensate">恢复已保存代理策略</string>
+    <string name="managed_runtime_compensate_confirm">确认还原已保存的监听和宿主代理策略</string>
+    <string name="managed_runtime_compensation_completed">已恢复保存的代理策略。恢复 ID 为 %1$s。</string>
+    <string name="managed_runtime_compensation_pending">恢复仍待核对。恢复 ID 为 %1$s。</string>
     <string name="managed_runtime_stop">紧急停止服务</string>
     <string name="managed_runtime_close_confirm">我确认关账，不再恢复此事务。</string>
     <string name="managed_runtime_close">事务关账</string>

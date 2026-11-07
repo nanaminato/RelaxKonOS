@@ -534,3 +534,5 @@ Linux Helper 可按原 ID 只读核对系统代理效果和原归属。持续 gu
 Linux 直连设置按原 ID 核对宿主策略变更。guard 可完成已证实的本地提交，独立接管前在同一加密台账保留待核对责任。见[Linux 直连宿主策略变更恢复](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-linux-直连宿主策略变更恢复)。
 
 真实端口漂移回退已复现旧监听关闭后的新连接缺口。该路径保留原待恢复责任和 resident 门槛。见[Linux 宿主代理切换验收矩阵](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-linux-宿主代理切换验收矩阵)。
+
+旧监听与宿主策略的显式补偿通过同一发布锁和独立 ID 接续。原终态保留补偿 ID，结果未知时继续占用原恢复责任。见[Linux 直连监听显式补偿](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-linux-直连监听显式补偿)。

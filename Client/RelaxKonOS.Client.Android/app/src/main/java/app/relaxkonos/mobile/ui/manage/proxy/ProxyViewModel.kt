@@ -18,6 +18,7 @@ internal data class ProxyState(
     val runtime: ManagedRuntimeInstallation? = null, val runtimeSources: List<ManagedRuntimeSource> = emptyList(),
     val runtimeCatalog: ManagedRuntimeCatalog? = null, val runtimePlan: ManagedRuntimeInstallationRequest? = null,
     val runtimeProblems: List<String> = emptyList(), val runtimeDependencies: String? = null, val runtimeRecovery: String? = null,
+    val runtimeCompensation: ManagedRuntimeCompensation? = null,
     val requestVersion: Long = 0, val busy: Boolean = false, val overview: ApiResult<ProxyOverview>? = null,
 
     val profiles: ApiResult<List<ProxyProfile>>? = null, val subscriptions: ApiResult<List<ProxySubscription>>? = null,
@@ -368,7 +369,8 @@ internal class ProxyViewModel(private val session: AuthSession, private val repo
         if (result !is ApiResult.Success) failure(result)
     }
     fun loadRuntime() = work { active ->
-        state = state.copy(runtime = null, runtimeCatalog = null, runtimePlan = intent?.request as? ManagedRuntimeInstallationRequest, runtimeProblems = emptyList(), runtimeDependencies = null, runtimeRecovery = null)
+        state = state.copy(runtime = null, runtimeCatalog = null, runtimePlan = intent?.request as? ManagedRuntimeInstallationRequest,
+            runtimeProblems = emptyList(), runtimeDependencies = null, runtimeRecovery = null, runtimeCompensation = null)
         val installation = repository.runtime(active, "GET", ManagedRuntimeRoutes.INSTALLATION); verify(active); failure(installation)
         if (installation is ApiResult.Success) {
             val json = org.json.JSONObject(installation.value)
@@ -436,18 +438,22 @@ internal class ProxyViewModel(private val session: AuthSession, private val repo
     }
     fun retryInstall() { if (intent != null) installRuntime() }
     fun recoverRuntime(action: String, operationId: String, confirmed: Boolean) = work { active ->
-        require(action in setOf("retry", "stop", "close"))
-        require(action != "close" || confirmed)
+        require(action in setOf("retry", "stop", "close", "compensate"))
+        val confirmationRequired = action == "close" || action == "compensate"
+        require(!confirmationRequired || confirmed)
         val observedRecovery = org.json.JSONObject(requireNotNull(state.runtimeRecovery))
         require(observedRecovery.getBoolean("required") && observedRecovery.getString("operationId") == operationId)
         if (action == "close") {
             val service = observedRecovery.getJSONObject("service")
             require(!observedRecovery.isNull("recoveryProblemCode") && !service.getBoolean("running") && observedRecovery.isNull("serviceProblem"))
         }
-        val body = JsonBody().string("operationId", InstallationRoutes.canonicalId(operationId)).bool("confirmed", action == "close")
+        if (action == "compensate") require(observedRecovery.getBoolean("canCompensateDirectSettings"))
+        val body = JsonBody().string("operationId", InstallationRoutes.canonicalId(operationId)).bool("confirmed", confirmationRequired)
         val result = installations.runtimeRecovery(active, action, body, elevationAnswers)
         verify(active); failure(result)
-        state = state.copy(runtime = null, runtimePlan = null, runtimeRecovery = null)
+        state = state.copy(runtime = null, runtimePlan = null, runtimeRecovery = null,
+            runtimeCompensation = if (action == "compensate" && result is ApiResult.Success)
+                ManagedRuntimeWire.compensation(result.value, operationId) else null)
         val recovery = repository.runtime(active, "GET", ManagedRuntimeRoutes.RECOVERY); verify(active); failure(recovery)
         if (recovery is ApiResult.Success) state = state.copy(runtimeRecovery = recovery.value)
     }

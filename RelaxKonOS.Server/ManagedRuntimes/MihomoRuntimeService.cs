@@ -189,7 +189,9 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
             return unknown with { Required = true, ProblemCode = "runtime.publication_state_invalid" };
         }
         if (state.DirectReload is { } direct)
-            return new(true, direct.OperationId, null, null, false, direct.ProblemCode, null, null, null);
+            return new(true, direct.OperationId, null, null, false, direct.ProblemCode, null, null, null,
+                CanCompensateDirectSettings: OperatingSystem.IsLinux() && direct.CanCompensate,
+                CompensationOperationId: direct.Compensation?.Id);
 
         var observed = await CallAsync<RuntimeRecoverySnapshot>(new(PrivilegedOperationKind.MihomoRuntimeRecoveryQuery), ct);
         if (state.Pending is not { } pending) return observed;

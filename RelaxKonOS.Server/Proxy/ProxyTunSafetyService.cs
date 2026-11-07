@@ -165,6 +165,8 @@ public sealed class ProxyTunSafetyService(
         var marker = await ReadMarkerAsync(paths, ct);
         return marker is not null && marker.OperationId == Guid.Empty;
     }
+    internal static async Task<bool> HasRecoveryMarkerAsync(IProxyPlatformPaths paths, CancellationToken ct) =>
+        await ReadMarkerAsync(paths, ct) is not null;
     private static RecoveryMarker UnknownMarker() => new(Guid.Empty, Guid.Empty, new("corrupt", default, false, "", "", [], []), default, false);
     private async Task WriteMarkerAsync(RecoveryMarker marker, CancellationToken cancellationToken)
     {

@@ -139,6 +139,19 @@ internal static class SystemProxyChecks
                 && (await recovery.RetryAsync(pending.OperationId, default)).Outcome == RelaxKonOS.Protocol.ManagedRuntimes.RuntimeSwitchOutcome.RecoveryRequired
                 && fixture.Host.Queries == 1 && !(await fixture.Reader.GetAsync(default)).SystemProxyEnabled,
                 "A later apparently matching receipt cannot claim an intervening guard action.");
+            var marker = Path.Combine(fixture.Paths.GetStateDirectory(), "proxy-tun-recovery.json");
+            await File.WriteAllTextAsync(marker, "{");
+            var compensation = new MihomoDirectSettingsCompensationService(fixture.Paths, fixture.Publication,
+                new(fixture.Paths, fixture.Host), new HealthyMihomoController(), new StaticProxySecretStore());
+            try
+            {
+                await compensation.CompensateAsync(pending.OperationId, true, default);
+                throw new Exception("Compensation accepted an unresolved TUN marker.");
+            }
+            catch (RelaxKonOS.Server.ManagedRuntimes.RuntimeLifecycleException ex) when (ex.ProblemCode == "runtime.direct_compensation_unavailable") { }
+            TestAssert.Assert((await fixture.Publication.ReadAsync(default)).DirectReload == pending
+                && fixture.Host.Calls.Count == 1 && await File.ReadAllTextAsync(marker) == "{",
+                "The compensation gate must preserve the TUN marker and original authority.");
         }
         using (var fixture = new Fixture())
         {

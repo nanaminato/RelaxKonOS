@@ -18,6 +18,7 @@ public sealed class MihomoRuntimeRecoveryService(MihomoPublicationStore store, M
         try
         {
             var state = await store.ReadAsync(ct);
+            if (state.DirectCompensationReceipt(operationId) is { } compensated) return compensated;
             if (state.HasDirectCompletion(operationId))
                 return new(operationId, RuntimeSwitchOutcome.Succeeded, null);
             if (state.DirectReload is { } direct)

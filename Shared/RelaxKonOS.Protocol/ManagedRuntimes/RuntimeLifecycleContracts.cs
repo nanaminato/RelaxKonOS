@@ -25,7 +25,8 @@ public sealed record RuntimeInstallationSnapshot(RuntimeInstallation Installatio
 
 [JsonConverter(typeof(JsonStringEnumConverter<RuntimeSwitchOutcome>))]
 public enum RuntimeSwitchOutcome { Succeeded, Failed, Cancelled, Interrupted, RecoveryRequired }
-public sealed record RuntimeSwitchResult(Guid OperationId, RuntimeSwitchOutcome Outcome, string? ProblemCode);
+public sealed record RuntimeSwitchResult(Guid OperationId, RuntimeSwitchOutcome Outcome, string? ProblemCode,
+    Guid? CompensationOperationId = null);
 
 /// <summary>Helper-local request. The ephemeral authorization channel never belongs in public options or receipts.</summary>
 /// <param name="Confirmed">Operator acknowledgement of an irreversible close; no other lifecycle verb sets it.</param>
@@ -60,7 +61,7 @@ public sealed record RuntimeServiceObservation(bool Exists, bool Running, bool? 
 public sealed record RuntimeRecoverySnapshot(bool Required, Guid? OperationId, RuntimeChange? Change,
     InstallationStage? Stage, bool SwitchStarted, string? ProblemCode, string? RecoveryProblemCode,
     string? TargetReleaseId, string? PreviousReleaseId, RuntimeServiceObservation? Service = null,
-    string? ServiceProblem = null)
+    string? ServiceProblem = null, bool CanCompensateDirectSettings = false, Guid? CompensationOperationId = null)
 {
     /// <summary>True only when the Host has recorded a failed compensation, not merely an unfinished stage.</summary>
     public bool NeedsOperatorDecision => Required && RecoveryProblemCode is not null;

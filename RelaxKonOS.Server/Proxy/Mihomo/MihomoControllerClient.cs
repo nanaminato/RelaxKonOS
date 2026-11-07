@@ -24,6 +24,7 @@ public interface IMihomoControllerClient
     Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken);
     Task<ControllerResult<IReadOnlyList<ProxyLogEntryDto>>> GetLogsAsync(int limit, CancellationToken cancellationToken);
     Task<ControllerResult<bool>> GetTunEnabledAsync(CancellationToken cancellationToken);
+    Task<ControllerResult<int>> GetMixedPortAsync(CancellationToken cancellationToken);
     Task<string?> ReloadAsync(CancellationToken cancellationToken);
 }
 
@@ -115,6 +116,18 @@ public sealed class MihomoControllerClient : IMihomoControllerClient, IDisposabl
                 : new(false, false, null));
         }
         finally { result.Value?.Dispose(); }
+    }
+
+    public async Task<ControllerResult<int>> GetMixedPortAsync(CancellationToken cancellationToken)
+    {
+        var result = await GetJsonAsync("configs", cancellationToken);
+        if (!result.Succeeded) return ControllerResult<int>.Failure(result.ProblemCode);
+        using var document = result.Value!;
+        var root = document.RootElement;
+        return root.ValueKind == JsonValueKind.Object && root.TryGetProperty("mixed-port", out var port)
+            && port.ValueKind == JsonValueKind.Number && port.TryGetInt32(out var value) && value is > 0 and <= 65535
+            ? ControllerResult<int>.Success(value)
+            : ControllerResult<int>.Failure(ProxyProblemCodes.ControllerResponseInvalid);
     }
 
     public Task<string?> SetRoutingModeAsync(ProxyRoutingMode mode, CancellationToken cancellationToken)

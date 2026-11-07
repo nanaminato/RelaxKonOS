@@ -29,6 +29,7 @@ public interface IRuntimeCatalogClient
     Task<InstallationOperationDto?> CancelAsync(Guid id, string key, CancellationToken ct);
     Task<RuntimeRecoverySnapshot> RecoveryAsync(CancellationToken ct);
     Task<RuntimeSwitchResult> RetryRecoveryAsync(Guid operationId, CancellationToken ct);
+    Task<RuntimeSwitchResult> CompensateRecoveryAsync(Guid operationId, CancellationToken ct);
     Task<RuntimeRecoverySnapshot> StopRecoveryAsync(Guid operationId, CancellationToken ct);
     Task<RuntimeSwitchResult> CloseRecoveryAsync(Guid operationId, CancellationToken ct);
     Task<bool> ElevateAsync(string password, CancellationToken ct);
@@ -88,6 +89,12 @@ public class RemoteRuntimeCatalogClient(HttpClient http, IAuthSession session, I
     public Task<RuntimeSwitchResult> RetryRecoveryAsync(Guid operationId, CancellationToken ct) =>
         SendAsync<RuntimeSwitchResult>(HttpMethod.Post, RecoveryRetryRoute,
             new RuntimeRecoveryActionRequest(operationId), Guid.NewGuid().ToString("N"), ct);
+
+    public Task<RuntimeSwitchResult> CompensateRecoveryAsync(Guid operationId, CancellationToken ct) =>
+        _service == InstallationServiceId.Mihomo
+            ? SendAsync<RuntimeSwitchResult>(HttpMethod.Post, RuntimeRoutes.MihomoRecoveryCompensate,
+                new RuntimeRecoveryActionRequest(operationId, Confirmed: true), Guid.NewGuid().ToString("N"), ct)
+            : throw new InvalidOperationException("runtime.direct_compensation_unavailable");
 
     public Task<RuntimeRecoverySnapshot> StopRecoveryAsync(Guid operationId, CancellationToken ct) =>
         SendAsync<RuntimeRecoverySnapshot>(HttpMethod.Post, RecoveryStopRoute,

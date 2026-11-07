@@ -104,7 +104,7 @@ internal static class RuntimeIntegrationChecks
             await using var app = builder.Build();
             app.MapRuntimeCatalogEndpoints();
             var endpoints = ((IEndpointRouteBuilder)app).DataSources.SelectMany(s => s.Endpoints).OfType<RouteEndpoint>().ToArray();
-            Check(endpoints.Length == 17 && endpoints.Count(e => e.RoutePattern.RawText == RuntimeRoutes.MihomoResources) == 2
+            Check(endpoints.Length == 18 && endpoints.Count(e => e.RoutePattern.RawText == RuntimeRoutes.MihomoResources) == 2
                 && endpoints.Any(e => e.RoutePattern.RawText == RuntimeRoutes.SingBoxInstallation)
                 && endpoints.Any(e => e.RoutePattern.RawText == RuntimeRoutes.SingBoxPlan)
                 && endpoints.Any(e => e.RoutePattern.RawText == RuntimeRoutes.MihomoInstallation)
@@ -113,7 +113,8 @@ internal static class RuntimeIntegrationChecks
             foreach (var route in new[] { RuntimeRoutes.SingBoxInstallation, RuntimeRoutes.SingBoxRecovery, RuntimeRoutes.MihomoRecovery })
                 Check(endpoints.Count(e => e.RoutePattern.RawText == route) == 1, "Recovery observation route is readable exactly once: " + route);
             foreach (var route in new[] { RuntimeRoutes.SingBoxRecoveryRetry, RuntimeRoutes.SingBoxRecoveryStop, RuntimeRoutes.SingBoxRecoveryClose,
-                         RuntimeRoutes.MihomoRecoveryRetry, RuntimeRoutes.MihomoRecoveryStop, RuntimeRoutes.MihomoRecoveryClose })
+                         RuntimeRoutes.MihomoRecoveryRetry, RuntimeRoutes.MihomoRecoveryStop, RuntimeRoutes.MihomoRecoveryClose,
+                         RuntimeRoutes.MihomoRecoveryCompensate })
                 Check(endpoints.Count(e => e.RoutePattern.RawText == route) == 1
                     && endpoints.Single(e => e.RoutePattern.RawText == route).Metadata.GetMetadata<IHttpMethodMetadata>()!
                         .HttpMethods.SequenceEqual(["POST"]),

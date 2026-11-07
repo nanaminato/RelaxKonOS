@@ -121,7 +121,7 @@ class ProxyTaskFlowTest {
                         ManagedRuntimeRoutes.INSTALLATION -> """{"installation":{"installationId":"00112233-4455-6677-8899-aabbccddeeff","hostId":"review-host","runtimeId":"mihomo","ownership":"managed","stateRevision":1,"activeReleaseId":"review-current","recoveryRequired":${runtimeRecoveryId != null}},"pendingOperationId":null,"measuredVersion":"1.19.10","problemCode":null}"""
                         ManagedRuntimeRoutes.SOURCES -> "[]"
                         ManagedRuntimeRoutes.RECOVERY -> runtimeRecoveryId?.let { id ->
-                            """{"required":true,"operationId":"$id","problemCode":"runtime.recovery_required","recoveryProblemCode":"runtime.compensation_failed","service":{"running":false},"serviceProblem":null}"""
+                            """{"required":true,"operationId":"$id","problemCode":"runtime.recovery_required","recoveryProblemCode":"runtime.compensation_failed","service":{"running":false},"serviceProblem":null,"canCompensateDirectSettings":false,"compensationOperationId":null}"""
                         } ?: """{"required":false}"""
                         else -> error("Unexpected runtime read: $route")
                     })

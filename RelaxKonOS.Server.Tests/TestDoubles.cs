@@ -121,6 +121,7 @@ sealed class HealthyMihomoController : IMihomoControllerClient
     public Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
     public Task<ControllerResult<IReadOnlyList<ProxyLogEntryDto>>> GetLogsAsync(int limit, CancellationToken cancellationToken) => Task.FromResult(ControllerResult<IReadOnlyList<ProxyLogEntryDto>>.Success([]));
     public Task<ControllerResult<bool>> GetTunEnabledAsync(CancellationToken cancellationToken) => Task.FromResult(ControllerResult<bool>.Success(false));
+    public Task<ControllerResult<int>> GetMixedPortAsync(CancellationToken cancellationToken) => Task.FromResult(ControllerResult<int>.Success(7890));
     public Task<string?> ReloadAsync(CancellationToken cancellationToken) => Task.FromResult<string?>(null);
 }
 
@@ -139,6 +140,7 @@ sealed class StaticGroupMihomoController(IReadOnlyList<ProxyGroupDto> groups) : 
     public Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
     public Task<ControllerResult<IReadOnlyList<ProxyLogEntryDto>>> GetLogsAsync(int limit, CancellationToken cancellationToken) => Task.FromResult(ControllerResult<IReadOnlyList<ProxyLogEntryDto>>.Success([]));
     public Task<ControllerResult<bool>> GetTunEnabledAsync(CancellationToken cancellationToken) => Task.FromResult(ControllerResult<bool>.Success(false));
+    public Task<ControllerResult<int>> GetMixedPortAsync(CancellationToken cancellationToken) => Task.FromResult(ControllerResult<int>.Success(7890));
     public Task<string?> ReloadAsync(CancellationToken cancellationToken) => Task.FromResult<string?>(null);
 }
 
@@ -167,6 +169,7 @@ sealed class DelayedHealthyMihomoController(int unavailableResponses) : IMihomoC
     public Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken) => _healthy.CloseConnectionAsync(connectionId, cancellationToken);
     public Task<ControllerResult<IReadOnlyList<ProxyLogEntryDto>>> GetLogsAsync(int limit, CancellationToken cancellationToken) => _healthy.GetLogsAsync(limit, cancellationToken);
     public Task<ControllerResult<bool>> GetTunEnabledAsync(CancellationToken cancellationToken) => _healthy.GetTunEnabledAsync(cancellationToken);
+    public Task<ControllerResult<int>> GetMixedPortAsync(CancellationToken cancellationToken) => _healthy.GetMixedPortAsync(cancellationToken);
     public Task<string?> ReloadAsync(CancellationToken cancellationToken) => _healthy.ReloadAsync(cancellationToken);
 }
 

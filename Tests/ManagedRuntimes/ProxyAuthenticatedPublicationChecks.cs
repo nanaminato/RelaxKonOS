@@ -145,6 +145,7 @@ internal static class ProxyAuthenticatedPublicationChecks
         await using var relay = builder.Build();
         var dropAfterDispatch = false;
         var holdResponse = true;
+        var dropAppliedReloadReply = false;
         var relayWrites = 0;
         var nativeWrites = 0;
         var committed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -168,6 +169,7 @@ internal static class ProxyAuthenticatedPublicationChecks
             {
                 Interlocked.Increment(ref nativeWrites);
                 committed.TrySetResult();
+                if (Volatile.Read(ref dropAppliedReloadReply)) { context.Abort(); return; }
                 if (Volatile.Read(ref holdResponse))
                 {
                     await Task.Delay(Timeout.InfiniteTimeSpan, context.RequestAborted);
@@ -385,18 +387,20 @@ internal static class ProxyAuthenticatedPublicationChecks
         }
 
         var newPort = ReserveProxyPort();
-        foreach (var (name, drift) in new[]
+        foreach (var (name, drift, fault) in new[]
         {
-            ("tracked-host-reply", false), ("tracked-host-drift", true),
-            ("tracked-host-disable", false), ("tracked-host-enable", false),
-            ($"tracked-host-port-{newPort}", false), ($"tracked-host-port-{newPort}", true)
+            ("tracked-host-reply", false, ""), ("tracked-host-drift", true, ""),
+            ("tracked-host-disable", false, ""), ("tracked-host-enable", false, ""),
+            ($"tracked-host-port-{newPort}", false, ""), ($"tracked-host-port-{newPort}", true, ""),
+            ($"tracked-host-port-{newPort}", true, "-reload-loss"), ($"tracked-host-port-{newPort}", true, "-helper-loss")
         })
         {
             await guard.VerifyTrafficAsync(async (_, ct) =>
             {
                 const string environment = "/etc/environment";
                 const string journal = "/var/lib/relaxkonos-system-proxy/recovery.json";
-                var caseName = drift && name.StartsWith("tracked-host-port-", StringComparison.Ordinal) ? name + "-drift" : name;
+                var portDrift = drift && name.StartsWith("tracked-host-port-", StringComparison.Ordinal);
+                var caseName = portDrift ? name + "-drift" + fault : name;
                 var settingsPaths = await CreatePathsAsync(caseName, ct);
                 var stateDir = settingsPaths.GetStateDirectory();
                 var store = new MihomoPublicationStore(settingsPaths, protection);
@@ -488,9 +492,54 @@ internal static class ProxyAuthenticatedPublicationChecks
                 else if (name is "tracked-host-enable" or "tracked-host-disable")
                     await VerifyProxyListenerAsync(candidate.MixedPort, ct);
                 Console.WriteLine($"PASS MIHOMO TRACKED HOST SETTINGS: {caseName}, original {id}, {receipt.Outcome}, one original Helper mutation, {transport.GuardWrites} separate guard calls");
-                await File.WriteAllBytesAsync(active, original, ct);
-                if (await native.ReloadAsync(ct) is not null) throw new InvalidOperationException("Could not restore the private runtime.");
-                if ((!drift || candidate.MixedPort != prior.MixedPort)
+                if (portDrift)
+                {
+                    await using var compensationRelay = new ReplyRelay("/run/rk-settings-compensate.sock", socket, ct,
+                        (kind, _) => fault == "-helper-loss" && kind == "LinuxSystemProxyApplyTracked");
+                    var compensationTransport = new CompensationTransport(new UnixSocketPrivilegedOperationTransport(
+                        new() { SocketPath = compensationRelay.Path }, NullLogger<UnixSocketPrivilegedOperationTransport>.Instance), id);
+                    var compensationFiles = new MihomoSettingsPublicationFiles(settingsPaths, new HostSystemProxyService(compensationTransport));
+                    using var controller = new MihomoControllerClient(new HttpClient(new SocketsHttpHandler { UseProxy = false }), secrets,
+                        new() { Endpoint = new(address + "/") });
+                    var service = new MihomoDirectSettingsCompensationService(settingsPaths, reopened, compensationFiles, controller, secrets);
+                    var attemptsBefore = Volatile.Read(ref relayWrites);
+                    RuntimeSwitchResult restored;
+                    Volatile.Write(ref dropAppliedReloadReply, fault == "-reload-loss");
+                    try
+                    {
+                        var compensate = service.CompensateAsync(id, true, ct);
+                        if (fault == "-helper-loss")
+                        {
+                            if (await Task.WhenAny(compensate, compensationRelay.Committed.Task).WaitAsync(ct) != compensationRelay.Committed.Task)
+                                throw new InvalidOperationException("Compensation ended before the Helper reply barrier.");
+                            compensationRelay.DropHeldResponse();
+                        }
+                        restored = await compensate;
+                    }
+                    finally { Volatile.Write(ref dropAppliedReloadReply, false); }
+                    if (restored.CompensationOperationId is not { } compensationId || compensationId == id
+                        || restored.OperationId != id || restored.Outcome != (fault == "" ? RuntimeSwitchOutcome.Interrupted : RuntimeSwitchOutcome.RecoveryRequired))
+                        throw new InvalidOperationException("Compensation did not return a separate operation identity and the expected original state.");
+                    var reopenedCompensation = new MihomoDirectSettingsCompensationService(settingsPaths,
+                        new MihomoPublicationStore(settingsPaths, protection), compensationFiles, controller, secrets);
+                    var replay = await reopenedCompensation.CompensateAsync(id, true, ct);
+                    var originalReceipt = await named.RetryAsync(id, ct);
+                    if (replay != originalReceipt || replay.CompensationOperationId != compensationId
+                        || replay.Outcome != (fault == "-reload-loss" ? RuntimeSwitchOutcome.RecoveryRequired : RuntimeSwitchOutcome.Interrupted)
+                        || Volatile.Read(ref relayWrites) != attemptsBefore + 1 || Volatile.Read(ref nativeWrites) != priorWrites + 2
+                        || compensationTransport.Applies != (fault == "-reload-loss" ? 0 : 1) || guard.RuntimePid != pid
+                        || compensationTransport.Applies > 0 && compensationTransport.AppliedId != compensationId
+                        || !(await File.ReadAllBytesAsync(active, ct)).SequenceEqual(original))
+                        throw new InvalidOperationException("Compensation replayed a side effect or lost the original durable outcome.");
+                    await VerifyProxyListenerAsync(prior.MixedPort, ct);
+                    Console.WriteLine($"PASS MIHOMO EXPLICIT PORT COMPENSATION: {caseName}, original {id}, compensation {compensationId}, {replay.Outcome}, reload once");
+                }
+                else
+                {
+                    await File.WriteAllBytesAsync(active, original, ct);
+                    if (await native.ReloadAsync(ct) is not null) throw new InvalidOperationException("Could not restore the private runtime.");
+                }
+                if (!drift
                     && await cleanupHost.ApplyAsync(originalSettings, candidate, enforce: false, ct) is not null)
                     throw new InvalidOperationException("Could not restore the private proxy fixture.");
                 if (ReadEnvironment("no_proxy") != originalBypass || ReadEnvironment("http_proxy") != originalEndpoint)
@@ -620,6 +669,21 @@ internal static class ProxyAuthenticatedPublicationChecks
             if (request.Operation == PrivilegedOperationKind.LinuxSystemProxyReceipt && request.OperationId == original) Observations++;
             else if (request.Operation == PrivilegedOperationKind.LinuxSystemProxyApply && request.OperationId != original) GuardWrites++;
             else throw new InvalidOperationException("Recovery attempted a new tracked effect or queried a different ID.");
+            return inner.ExecuteAsync(request, ct);
+        }
+    }
+
+    private sealed class CompensationTransport(IPrivilegedOperationTransport inner, Guid original) : IPrivilegedOperationTransport
+    {
+        internal Guid? AppliedId { get; private set; }
+        internal int Applies { get; private set; }
+        public Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken ct)
+        {
+            if (request.OperationId is not { } id || id == original)
+                throw new InvalidOperationException("Compensation reused the original ID.");
+            if (request.Operation == PrivilegedOperationKind.LinuxSystemProxyApplyTracked) { Applies++; AppliedId = id; }
+            else if (request.Operation != PrivilegedOperationKind.LinuxSystemProxyReceipt || id != AppliedId)
+                throw new InvalidOperationException("Compensation used an unrelated Helper operation.");
             return inner.ExecuteAsync(request, ct);
         }
     }

@@ -46,6 +46,8 @@ internal static class MihomoRuntimeHttpChecks
         var authorization = new MihomoRuntimeAuthorizationProvider(store, fixture, fixture);
         var runtimeService = new MihomoRuntimeService(fixture, store, authorization, fixture, new DirectDownloads());
         builder.Services.AddSingleton(runtimeService);
+        builder.Services.AddSingleton(new MihomoDirectSettingsCompensationService(fixture, store, MihomoRemovalHostFixture.Files(fixture),
+            MihomoPublicationTransactionChecks.Stub<IMihomoControllerClient>(_ => throw new InvalidOperationException("Compensation touched the controller.")), fixture));
         builder.Services.AddSingleton(new MihomoRuntimeRecoveryService(store, runtimeService,
             new(store, authorization, runtimeService, fixture), new(store, authorization, runtimeService, fixture),
             new(store, runtimeService, fixture, MihomoRemovalHostFixture.Files(fixture))));
@@ -280,7 +282,17 @@ internal static class MihomoRuntimeHttpChecks
         using (var noElevation = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryRetry, new RuntimeRecoveryActionRequest(checkpoint.OperationId)))
             Check(noElevation.StatusCode == HttpStatusCode.Forbidden && await File.ReadAllTextAsync(active) == candidate,
                 "Direct disk recovery still requires elevation");
+        using (var noElevation = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryCompensate,
+            new RuntimeRecoveryActionRequest(checkpoint.OperationId, Confirmed: true)))
+            Check(noElevation.StatusCode == HttpStatusCode.Forbidden, "Direct settings compensation requires host elevation");
         client.DefaultRequestHeaders.Authorization = new("Bearer", "elevated-installer");
+        using (var noConfirmation = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryCompensate,
+            new RuntimeRecoveryActionRequest(checkpoint.OperationId)))
+            Check(noConfirmation.StatusCode == HttpStatusCode.BadRequest, "Direct settings compensation requires explicit confirmation");
+        using (var unavailable = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryCompensate,
+            new RuntimeRecoveryActionRequest(checkpoint.OperationId, Confirmed: true)))
+            Check(unavailable.StatusCode == HttpStatusCode.Conflict && await File.ReadAllTextAsync(active) == candidate,
+                "An unconfirmed ordinary reload cannot use tracked host compensation");
         using (var wrongTarget = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryRetry, new RuntimeRecoveryActionRequest(Guid.NewGuid())))
             Check(wrongTarget.StatusCode == HttpStatusCode.Conflict && await File.ReadAllTextAsync(active) == candidate,
                 "Wrong recovery identity cannot restore the candidate or dispatch Helper");

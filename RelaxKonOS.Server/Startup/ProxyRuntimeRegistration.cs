@@ -81,6 +81,7 @@ internal static class ProxyRuntimeRegistration
         // switch mihomo/sing-box releases through these services.
         builder.Services.AddSingleton<RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeService>();
         builder.Services.AddTransient<RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeRecoveryService>();
+        builder.Services.AddTransient<RelaxKonOS.Server.Proxy.Mihomo.MihomoDirectSettingsCompensationService>();
 
         // --------------------------------------------------------------------- sing-box (proxy server)
         // Task orchestration's sing-box observer, reconciliation and recovery domains, plus the

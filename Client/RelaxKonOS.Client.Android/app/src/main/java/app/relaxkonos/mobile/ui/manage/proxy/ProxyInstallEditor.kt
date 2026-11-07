@@ -27,6 +27,7 @@ import org.json.JSONObject
     var keepData by remember { mutableStateOf(true) }
     var confirmedPlan by remember { mutableStateOf<ManagedRuntimeInstallationRequest?>(null) }
     var closeConfirmed by remember(state.runtimeRecovery) { mutableStateOf(false) }
+    var compensateConfirmed by remember(state.runtimeRecovery) { mutableStateOf(false) }
     var finished by remember { mutableStateOf(false) }
     var discard by remember { mutableStateOf<Any?>(null) }
     var consumed by remember { mutableStateOf<Any?>(null) }
@@ -44,6 +45,7 @@ import org.json.JSONObject
     }
     DisposableEffect(Unit) { onDispose { finished = true } }
     LaunchedEffect(actionKey, state.requestVersion) { discard = null }
+    LaunchedEffect(lifecycleState) { if (!lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) compensateConfirmed = false }
     val enabled = !state.busy && !finished && discard == null && lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
     val locked = !enabled || model.hasIntent
     val runtime = state.runtime
@@ -186,19 +188,32 @@ import org.json.JSONObject
                 fun recover(action: String, id: String, confirmation: Boolean) {
                     if (eligible() && discard == null && !model.hasIntent && model.state.runtimeRecovery == payload &&
                         model.state.requestVersion == state.requestVersion && consumed !== recoveryTicket &&
-                        (action != "close" || confirmation && closeConfirmed)) {
-                        consumed = recoveryTicket; closeConfirmed = false; model.recoverRuntime(action, id, confirmation)
+                        (action != "close" || confirmation && closeConfirmed) &&
+                        (action != "compensate" || confirmation && compensateConfirmed)) {
+                        consumed = recoveryTicket; closeConfirmed = false; compensateConfirmed = false
+                        model.recoverRuntime(action, id, confirmation)
                     }
                 }
                 if (recovery.getBoolean("required")) {
                     Text(stringResource(R.string.managed_runtime_recovery), color = MaterialTheme.colorScheme.error)
                     val id = recovery.optNullableString("operationId")
                     id?.let { Text(it) }
+                    if (state.runtimeCompensation == null)
+                        recovery.optNullableString("compensationOperationId")?.let { Text(stringResource(R.string.managed_runtime_compensation_pending, it)) }
                     recovery.optNullableString("problemCode")?.let { Text(it) }
                     recovery.optNullableString("recoveryProblemCode")?.let { Text(it) }
                     if (id != null) {
                         TextButton(enabled = !locked, onClick = { recover("retry", id, false) }) { Text(stringResource(R.string.common_retry)) }
                         TextButton(enabled = !locked, onClick = { recover("stop", id, false) }) { Text(stringResource(R.string.managed_runtime_stop)) }
+                        if (recovery.getBoolean("canCompensateDirectSettings")) {
+                            ProxyCheck(compensateConfirmed, !locked, R.string.managed_runtime_compensate_confirm) {
+                                if (eligible() && discard == null && !model.hasIntent && model.state.runtimeRecovery == payload &&
+                                    model.state.requestVersion == state.requestVersion) compensateConfirmed = it
+                            }
+                            TextButton(enabled = !locked && compensateConfirmed, onClick = { recover("compensate", id, true) }) {
+                                Text(stringResource(R.string.managed_runtime_compensate))
+                            }
+                        }
                         val service = if (recovery.isNull("service")) null else recovery.getJSONObject("service")
                         if (!recovery.isNull("recoveryProblemCode") && service != null && !service.getBoolean("running") && recovery.isNull("serviceProblem")) {
                             ProxyCheck(closeConfirmed, !locked, R.string.managed_runtime_close_confirm) {
@@ -210,6 +225,10 @@ import org.json.JSONObject
                     }
                 }
             }
+            }
+            state.runtimeCompensation?.let { receipt ->
+                Text(stringResource(if (receipt.completed) R.string.managed_runtime_compensation_completed
+                    else R.string.managed_runtime_compensation_pending, receipt.compensationOperationId))
             }
             if (model.hasIntent) Text(stringResource(R.string.managed_runtime_pending_intent), color = MaterialTheme.colorScheme.error)
             ProxyEditorFeedback(state)

@@ -327,7 +327,7 @@ class RelaxKonApi(
         body: JsonBody?, key: String?): ApiResult<String> {
         require(route in listOf("installation", "plan", "recovery", "recovery/retry", "recovery/stop", "recovery/close").map { "${ManagedRuntimeRoutes.ROOT}/sing-box/$it" } || route == ManagedRuntimeRoutes.SOURCES || route == ManagedRuntimeRoutes.INSTALLATION ||
             route == ManagedRuntimeRoutes.PLAN || route == ManagedRuntimeRoutes.RECOVERY || route == ManagedRuntimeRoutes.RESOURCES ||
-            route in listOf("retry", "stop", "close").map { "${ManagedRuntimeRoutes.RECOVERY}/$it" } ||
+            route in listOf("retry", "stop", "close", "compensate").map { "${ManagedRuntimeRoutes.RECOVERY}/$it" } ||
             route.matches(Regex("/api/v1.0/managed-runtimes/sources/[A-Za-z0-9_.-]{1,128}/(catalog|refresh)\\?includePrerelease=(true|false)")))
         return installationCall(method, serverUrl, route, accessToken, body, key) { it }
     }
