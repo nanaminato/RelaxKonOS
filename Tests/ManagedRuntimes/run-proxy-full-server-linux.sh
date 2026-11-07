@@ -16,6 +16,7 @@ exec unshare --mount --net --pid --fork --mount-proc --propagation private sh -e
         mount -t tmpfs tmpfs /etc/relaxkonos
     fi
     ip link set lo up
+    ip address add 93.184.216.34/32 dev lo
     export RELAXKONOS_TEST_FULL_SERVER="$2"
     exec dotnet "$1" runtime-managed-service-live /usr/bin/sing-box
 ' sh "$fixture" "$server"

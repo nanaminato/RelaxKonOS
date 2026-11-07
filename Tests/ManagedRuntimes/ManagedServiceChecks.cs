@@ -204,11 +204,14 @@ internal static class ManagedServiceChecks
                 var fullServer = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_FULL_SERVER");
                 var originalGrant = materialB.Credentials.Single();
                 var nextGrant = originalGrant with { Id = Guid.NewGuid(), Value = Guid.NewGuid().ToString("D") };
-                var published = fullServer is null ? materialB : materialB with { Credentials = [originalGrant, nextGrant] };
+                var retainedGrant = originalGrant with { Id = Guid.NewGuid(), Value = Guid.NewGuid().ToString("D") };
+                using var traffic = fullServer is null ? null : new ProxyFullServerTrafficProbe();
+                var published = fullServer is null ? materialB : traffic!.CreateMaterial(
+                    materialB with { Credentials = [originalGrant, nextGrant, retainedGrant] });
                 if (fullServer is not null)
                 {
                     var seeded = await RequestAsync(PrivilegedOperationKind.ProxyServerApply, new(Material: published));
-                    Check(seeded.Success, "The isolated runtime must start with both grants.");
+                    Check(seeded.Success, "The isolated runtime must start with all three grants.");
                 }
                 var before = states.Read()!.Installation.StateRevision;
                 var starts = host.Starts;
@@ -220,9 +223,10 @@ internal static class ManagedServiceChecks
                     Published = published,
                     Credentials = published.Credentials.Select(grant => new StoredCredential(
                         grant.Id, Guid.NewGuid(), "fixture", grant.InboundIds.ToArray(), grant.Value, true,
-                        grant.Id == originalGrant.Id ? DateTimeOffset.UtcNow.AddMinutes(-1) : nextExpiry)).ToArray()
+                        grant.Id == originalGrant.Id ? DateTimeOffset.UtcNow.AddMinutes(-1)
+                            : grant.Id == nextGrant.Id ? nextExpiry : null)).ToArray()
                 }, default);
-                var expected = materialB with { Credentials = fullServer is null ? [] : [nextGrant] };
+                var expected = published with { Credentials = fullServer is null ? [] : [nextGrant, retainedGrant] };
                 var expectedHash = Digest(Encoding.UTF8.GetBytes(SingBoxConfiguration.Render(expected)));
                 dropResponse = true;
                 try
@@ -248,18 +252,19 @@ internal static class ManagedServiceChecks
                     "Disabled startup must preserve the original candidate while Helper status is unavailable.");
                 var recovery = fullServer is null
                     ? await SendAcrossProcessAsync(socket.SocketPath, null, expiryRoot: root, startup: true)
-                    : new PrivilegedOperationResult(await RunFullServerAsync(fullServer, socket.SocketPath, root, nextGrant.Id, nextExpiry, () =>
+                    : new PrivilegedOperationResult(await RunFullServerAsync(fullServer, socket.SocketPath, root, nextGrant, retainedGrant, traffic!, nextExpiry, () =>
                         Volatile.Read(ref applyRequests) == applies + 1 && host.Starts == starts + 1
                         && states.Read()!.Installation.StateRevision == before + 1));
                 var reopened = fullServer is null ? OpenServerStore(root) : OpenFullServerStore(root);
                 if (fullServer is not null) indexPath = Path.Combine(FullServerState, "proxy-server.protected.expiry");
                 var recoveredState = await reopened.ReadAsync(default);
                 Check(recovery.Success && File.Exists(indexPath) && recoveredState.PendingPublication is null
-                    && recoveredState.Published?.Credentials.Count == 0,
+                    && recoveredState.Published?.Credentials.Count == (fullServer is null ? 0 : 1),
                     "Server recovery must confirm and clear the original pending publication.");
                 var recovered = Read<ProxyServerStatus>(await RequestAsync(PrivilegedOperationKind.ProxyServerStatus, null));
                 var expectedApplies = fullServer is null ? 1 : 2;
-                var finalHash = Digest(Encoding.UTF8.GetBytes(SingBoxConfiguration.Render(materialB with { Credentials = [] })));
+                var finalMaterial = published with { Credentials = fullServer is null ? [] : [retainedGrant] };
+                var finalHash = Digest(Encoding.UTF8.GetBytes(SingBoxConfiguration.Render(finalMaterial)));
                 Check(recovered is { Running: true, Applied: true } && recovered.ConfigurationHash == finalHash
                     && states.Read()!.Installation.StateRevision == before + expectedApplies && host.Starts == starts + expectedApplies
                     && Volatile.Read(ref applyRequests) == applies + expectedApplies,
@@ -398,7 +403,9 @@ internal static class ManagedServiceChecks
 
     private static ProxyServerStore OpenFullServerStore(string root) => new(new FixturePaths(FullServerState), OpenProtection(root));
 
-    private static async Task<bool> RunFullServerAsync(string assembly, string socketPath, string root, Guid nextGrantId, DateTimeOffset nextExpiry, Func<bool> originalAppliedOnce)
+    private static async Task<bool> RunFullServerAsync(string assembly, string socketPath, string root,
+        ProxyServerSecret nextGrant, ProxyServerSecret retainedGrant, ProxyFullServerTrafficProbe traffic,
+        DateTimeOffset nextExpiry, Func<bool> originalAppliedOnce)
     {
         if (!File.ReadLines("/proc/self/mountinfo").Any(line =>
             line.Split(' ')[4] == "/var/lib" && line.Contains(" - tmpfs ", StringComparison.Ordinal)))
@@ -439,14 +446,15 @@ internal static class ManagedServiceChecks
         start.Environment["Observability__AuditHmacKey"] = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
 
         start.Environment["PrivilegedHelper__SocketPath"] = socketPath + ".absent";
-        await CheckFullServerAsync(start, root, url, expectReady: false, nextGrantId, nextExpiry, originalAppliedOnce);
+        await CheckFullServerAsync(start, root, url, expectReady: false, nextGrant, retainedGrant, traffic, nextExpiry, originalAppliedOnce);
         start.Environment["PrivilegedHelper__SocketPath"] = socketPath;
-        await CheckFullServerAsync(start, root, url, expectReady: true, nextGrantId, nextExpiry, originalAppliedOnce);
+        await CheckFullServerAsync(start, root, url, expectReady: true, nextGrant, retainedGrant, traffic, nextExpiry, originalAppliedOnce);
         return true;
     }
 
     private static async Task CheckFullServerAsync(ProcessStartInfo start, string root, string url, bool expectReady,
-        Guid nextGrantId, DateTimeOffset nextExpiry, Func<bool> originalAppliedOnce)
+        ProxyServerSecret nextGrant, ProxyServerSecret retainedGrant, ProxyFullServerTrafficProbe traffic,
+        DateTimeOffset nextExpiry, Func<bool> originalAppliedOnce)
     {
         using var server = Process.Start(start) ?? throw new InvalidOperationException("Unable to start the full Server.");
         var output = server.StandardOutput.ReadToEndAsync();
@@ -465,18 +473,26 @@ internal static class ManagedServiceChecks
                         if (!expectReady) throw new InvalidOperationException("Full Server listened with an unknown Helper outcome.");
                         var fullStore = OpenFullServerStore(root);
                         var recovered = await fullStore.ReadAsync(deadline.Token);
-                        if (recovered.PendingPublication is not null || recovered.Published?.Credentials.SingleOrDefault()?.Id != nextGrantId
+                        if (recovered.PendingPublication is not null || recovered.Published?.Credentials.Count != 2
+                            || !recovered.Published.Credentials.Any(grant => grant.Id == nextGrant.Id)
                             || DateTimeOffset.UtcNow >= nextExpiry || !originalAppliedOnce())
                             throw new InvalidOperationException("Full Server must confirm the original candidate once before the next grant expires.");
                         Console.WriteLine("PASS FULL SERVER DISABLED STARTUP: ready with original candidate confirmed over Helper IPC");
+                        using var activeConnection = await traffic.ForwardAsync(nextGrant.Value, deadline.Token);
+                        using var retainedConnection = await traffic.ForwardAsync(retainedGrant.Value, deadline.Token);
                         while (!server.HasExited)
                         {
                             var state = await fullStore.ReadAsync(deadline.Token);
-                            if (state.PendingPublication is null && state.Published?.Credentials.Count == 0)
+                            if (state.PendingPublication is null && state.Published?.Credentials.Count == 1
+                                && state.Published.Credentials[0].Id == retainedGrant.Id)
                             {
                                 if (DateTimeOffset.UtcNow < nextExpiry)
                                     throw new InvalidOperationException("The hosted worker revoked the next grant before expiry.");
-                                Console.WriteLine("PASS FULL SERVER HOSTED EXPIRY: next grant revoked by Core after readiness");
+                                await ProxyFullServerTrafficProbe.ClosedAsync(activeConnection, deadline.Token);
+                                await ProxyFullServerTrafficProbe.ClosedAsync(retainedConnection, deadline.Token);
+                                await traffic.DeniedAsync(nextGrant.Value, deadline.Token);
+                                using var reconnected = await traffic.ForwardAsync(retainedGrant.Value, deadline.Token);
+                                Console.WriteLine("PASS FULL SERVER HOSTED EXPIRY: authenticated before expiry, old streams closed, expired rejected, retained reconnected");
                                 return;
                             }
                             await Task.Delay(100, deadline.Token);

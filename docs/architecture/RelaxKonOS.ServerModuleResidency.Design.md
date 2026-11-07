@@ -358,3 +358,5 @@ Git 失败或取消后的镜像清理与终态写入均属于原代次工作租�
 
 
 2026-11-06 MB-03/05 的只读测试设施复核见[边界设计 §50](RelaxKonOS.ServerModuleBoundaries.Design.md#50-mb-0305-隔离测试设施复核2026-11-06)。现有工作租约与实机证据范围沿用 §17，应用层跨进程故障及生产内存测量仍开放。
+
+2026-11-07 MB-04 完整 Server 在管理停用后确认原入站发布候选，并由 Core 接续撤销下一条自然到期授权。真实 VLESS TLS 转发、过期拒绝与保留授权重连的证据由[边界设计台账](RelaxKonOS.ServerModuleBoundaries.Design.md)拥有。当前验证使用私有运行环境和测试进程承载的 Helper socket，Proxy 仍为 resident，完整安全交接与动态休眠继续开放。
