@@ -4474,3 +4474,5 @@ Proxy 停用检查会核对原驻留协调器的活动租约。业务或 HTTP �
 Linux 隔离宿主已验证通过停用门禁且 Proxy 管理图缺席时，Core TUN worker 仍可接续原标记，等待安全路径恢复并完成收尾。动态休眠仍待验收。
 
 Proxy 管理停用后，Linux 非 root Core guard 仍通过专属 Helper 对账并从原 journal 恢复。隔离测试确认管理注册表缺席，停用检查与 guard 共用发布台账。
+
+Proxy 停用启动时，Server 对原台账中已受理的 Mihomo 配置发布执行一次恢复。原回执和运行时状态核对成功后启动继续。Helper 忙或结果仍未知时，启动保留原待处理记录并拒绝继续。Linux 私有 systemd 已验证真实提交和原生拒绝补偿后的响应丢失，不重发候选配置。独立 Helper IPC 与完整非 root Server 的该组合仍待联合验收。

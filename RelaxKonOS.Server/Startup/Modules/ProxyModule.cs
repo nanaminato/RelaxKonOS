@@ -171,17 +171,33 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
         var facts = operations is null
             ? await ProxyOperationStore.InspectPersistedResponsibilitiesAsync(services.GetRequiredService<IProxyPlatformPaths>(), cancellationToken)
             : await operations.InspectResponsibilitiesAsync(cancellationToken);
-        var publication = await InspectPublicationAsync(services, cancellationToken);
+        var publication = await InspectPublicationAsync(services, confirmPublication, cancellationToken);
         var safety = await ProxySafetyResponsibilities.InspectAsync(services, services.GetRequiredService<IProxyPlatformPaths>(), confirmPublication, cancellationToken);
         return [.. facts.Concat(safety).Select(fact => new ServerModuleOrphanedWork(Id, fact)), .. publication];
     }
 
-    private async Task<IReadOnlyList<ServerModuleOrphanedWork>> InspectPublicationAsync(IServiceProvider services, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<ServerModuleOrphanedWork>> InspectPublicationAsync(IServiceProvider services,
+        bool recoverConfiguration, CancellationToken cancellationToken)
     {
         var store = services.GetRequiredService<MihomoPublicationStore>();
         try
         {
             var state = await store.ReadAsync(cancellationToken);
+            if (recoverConfiguration && state.Pending is { ConfigurationPlan: not null } accepted)
+            {
+                try
+                {
+                    await using var scope = services.CreateAsyncScope();
+                    await scope.ServiceProvider.GetRequiredService<MihomoConfigurationPublicationService>()
+                        .RecoverAsync(accepted.OperationId, cancellationToken);
+                }
+                catch (Exception error) when (error is RelaxKonOS.ManagedRuntimes.RuntimePolicyException
+                    or RelaxKonOS.Server.ManagedRuntimes.RuntimeLifecycleException or IOException or UnauthorizedAccessException)
+                {
+                    return [new(Id, $"the mihomo runtime publication for operation {accepted.OperationId} could not be reconciled ({error.Message.TrimEnd('.')}).")];
+                }
+                state = await store.ReadAsync(cancellationToken);
+            }
             return state.Pending is { } pending
                 ?
                 [

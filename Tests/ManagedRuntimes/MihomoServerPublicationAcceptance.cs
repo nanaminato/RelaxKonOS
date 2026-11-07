@@ -1,3 +1,7 @@
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
+using RelaxKonOS.Server.Startup;
+using RelaxKonOS.Server.Startup.Modules;
 using System.Text;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -50,6 +54,18 @@ internal static class MihomoServerPublicationAcceptance
                 observed.Installation.StateRevision, observed.ActiveRevisionId!.Value, publication.Identity!,
                 MihomoPublicationStore.Identity(target.Yaml), "server-real-" + Guid.NewGuid().ToString("N")), publication.Revision);
         }
+        async Task RecoverAtDisabledStartupAsync()
+        {
+            var builder = WebApplication.CreateBuilder();
+            builder.Services.AddSingleton(store);
+            builder.Services.AddSingleton<IProxyPlatformPaths>(paths);
+            builder.Services.AddSingleton<IDataProtectionProvider>(protection);
+            builder.Services.AddTransient(_ => Service(store));
+            var context = ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory");
+            await using var app = builder.Build();
+            Check((await new ProxyModule().InspectDisabledStartupAsync(app.Services, context, default)).Count == 0,
+                "The production disabled startup guard clears only an authoritatively reconciled publication");
+        }
         var active = Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml");
         try
         {
@@ -85,11 +101,7 @@ internal static class MihomoServerPublicationAcceptance
             Check((await store.ReadAsync(default)).Pending?.OperationId == second.Operation && await probe(originalPort),
                 "Real Helper commits while the lost Server response leaves publication pending");
             store = new(paths, DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(root, "keys"))));
-            using var recoveryServices1 = new PublicationRecoveryServices(store, () => Service(store), () => new(store, new(store, paths, paths), Runtime(store), paths), () => new(store, Runtime(store), paths, new(paths, systemProxy)));
-            {
-                var startup = new MihomoPublicationRecoveryService(recoveryServices1.Scopes, NullLogger<MihomoPublicationRecoveryService>.Instance);
-                await startup.ReconcileAsync(default).WaitAsync(TimeSpan.FromSeconds(15));
-            }
+            await RecoverAtDisabledStartupAsync();
             Check((await store.ReadAsync(default)) is { Pending: null } recovered && recovered.Identity == second.Plan.CandidateIdentity
                 && transport.ConfigureCalls == 2 && transport.RecoverCalls == 0
                 && await File.ReadAllTextAsync(active) == original.Yaml,
@@ -97,10 +109,19 @@ internal static class MihomoServerPublicationAcceptance
 
             var invalid = MihomoConfigurationPolicy.Describe(original.Yaml.Replace("MATCH,DIRECT", "UNSUPPORTED-RULE,DIRECT", StringComparison.Ordinal)).Material;
             var rejected = await PlanAsync(invalid);
-            var failed = await Service(store).PublishAsync(rejected.Operation, rejected.Revision, rejected.Plan, invalid, default);
-            Check(failed.Outcome == MihomoPublicationOutcome.Compensated && await probe(originalPort)
-                && (await store.ReadAsync(default)).Pending is null && await File.ReadAllTextAsync(active) == original.Yaml,
-                "Actual native configuration refusal is reconciled as compensation, never publication success");
+            transport.LoseNextConfigurationResponse = true;
+            try
+            {
+                await Service(store).PublishAsync(rejected.Operation, rejected.Revision, rejected.Plan, invalid, default);
+                throw new Exception("Lost native compensation response was not simulated");
+            }
+            catch (IOException) { count++; }
+            Check((await store.ReadAsync(default)).Pending?.OperationId == rejected.Operation && await probe(originalPort),
+                "Native refusal and a lost response retain the original publication for startup reconciliation");
+            await RecoverAtDisabledStartupAsync();
+            Check(await probe(originalPort) && (await store.ReadAsync(default)).Pending is null
+                && await File.ReadAllTextAsync(active) == original.Yaml && transport.RecoverCalls == 0,
+                "Disabled startup reconciles actual native compensation without another Helper mutation");
             Check((await Service(store).PublishAsync(rejected.Operation, rejected.Revision, rejected.Plan, invalid, default)).Outcome == MihomoPublicationOutcome.Compensated
                 && transport.ConfigureCalls == 3, "Real failed publication replays its measured failure without another transaction");
 

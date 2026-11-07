@@ -229,3 +229,5 @@ Linux nginx 首次冻结安装从组件中心经产品提权进入统一安装�
 ## 2026-11-03 Proxy 发布恢复所有权收尾
 
 Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending，按类型在独立 async scope 中执行配置/安装/移除恢复；busy/Helper 不可用仍重试同一意图，operator-required 身份保留并不自动重放，新操作身份可再次扫描。原冻结计划、共享 publication gate、摘要/回执核实、补偿和原生生命周期 authority 不变；不重复 prepare/install 或以当前健康认定原任务成功。sing-box 到期的 Core 窄执行器也沿用原 protected state 与 Helper 证明。MR-02/03/04 及真实 OS 服务验收不因 scope/注册检查而关闭；当前 Proxy 仍 resident，完整证据与限制见[边界设计 §19](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#19-proxy-常驻责任与完整执行寿命收尾2026-11-03)。
+
+2026-11-07（MB-04 / MR-03 配置恢复）：Proxy 停用启动门禁复用原配置发布恢复入口，核对同一 operationId 的 Helper 回执和配置权威。原生发布及补偿验证见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md)。本阶段范围为已受理配置发布恢复，MR-03 安装和版本生命周期沿用各自验收记录。

@@ -1,3 +1,6 @@
+using Microsoft.AspNetCore.Builder;
+using RelaxKonOS.Server.Startup;
+using RelaxKonOS.Server.Startup.Modules;
 using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -64,9 +67,25 @@ internal static class MihomoPublicationTransactionChecks
             f.Mode = "recovery";
             Check((await f.PublishAsync()).Outcome == MihomoPublicationOutcome.RecoveryRequired
                 && (await f.Store.ReadAsync(default)).Pending is not null, "Failed Helper compensation remains pending on both sides");
-            Check((await f.RecreateService().RecoverAsync(f.Operation, default)).Outcome == MihomoPublicationOutcome.Compensated
-                && f.RecoverCalls == 1 && (await f.Store.ReadAsync(default)).Pending is null,
-                "Named recovery uses a fresh typed callback and verifies the restored identity");
+            var recovery = f.RecreateService();
+            var builder = WebApplication.CreateBuilder();
+            var context = ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory");
+            builder.Services.AddSingleton(f.Store);
+            builder.Services.AddSingleton<IProxyPlatformPaths>(f);
+            builder.Services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
+            builder.Services.AddTransient(_ => recovery);
+            await using var app = builder.Build();
+            var guard = new ProxyModule();
+            Check((await guard.InspectOrphanedWorkAsync(app.Services, context, default)).Count == 1 && f.RecoverCalls == 0,
+                "Read-only deactivation inspection keeps the pending publication and does not contact Helper");
+            f.TransientRecoveryFailures = 1;
+            Check((await guard.InspectDisabledStartupAsync(app.Services, context, default)).Single().Description.Contains(f.Operation.ToString())
+                && (await f.Store.ReadAsync(default)).Pending?.OperationId == f.Operation,
+                "A busy Helper blocks disabled startup and preserves the original operation");
+            Check((await guard.InspectDisabledStartupAsync(app.Services, context, default)).Count == 0
+                && f.RecoverCalls == 2 && f.ConfigureCalls == 1 && (await f.Store.ReadAsync(default)).Pending is null
+                && f.Snapshot.Receipt is { Outcome: RuntimeSwitchOutcome.Interrupted } receipt && receipt.OperationId == f.Operation,
+                "Disabled startup compensates the original publication without replaying the candidate");
         }
         using (var f = await Fixture.CreateAsync())
         {
