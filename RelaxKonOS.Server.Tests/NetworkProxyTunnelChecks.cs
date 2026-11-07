@@ -183,6 +183,22 @@ internal static async Task VerifyMihomoLiveStreamsAsync()
             && detail.Value?.Select(item => item.Id).SequenceEqual([", ", "last", "one"]) == true,
             "Token-only counting must preserve detail semantics for duplicate, escaped, nested and array IDs.");
     }
+    using (var projected = Snapshot("""
+        {"connections":[{"id":"projected","metadata":null,"start":42,"start":"invalid-date",
+          "\u006detadata":{"network":"tcp","network":"udp","host":" ","sourceIP":"192.0.2.1",
+            "sourcePort":"22","destinationIP":"2001:db8::1","destinationPort":"443"},
+          "unknown":{"metadata":{"network":"ignored"}},"rule":["Domain",null,"Exact"],
+          "chains":["PROXY",["ignored"],"DIRECT"]},{"id":" ","metadata":null}]}
+        """, chunkSize: 7))
+    using (var badMetadata = Snapshot("""{"connections":[{"id":"invalid","metadata":{},"metadata":null}]}"""))
+    {
+        TestAssert.Assert((await projected.GetConnectionsAsync(default)).Value?.Single() is
+            { Id: "projected", Network: "udp", Source: "192.0.2.1:22", Destination: "[2001:db8::1]:443",
+                Rule: "Domain,Exact", Chains: "PROXY,DIRECT" } projection && projection.StartedAt == DateTimeOffset.MinValue,
+            "Fragmented projection must decode only the final matching fields and keep the existing endpoint and array semantics.");
+        TestAssert.Assert((await badMetadata.GetConnectionsAsync(default)).ProblemCode == ProxyProblemCodes.ControllerResponseInvalid,
+            "A non-object final metadata value must still invalidate the detail response for a projected connection.");
+    }
     var capped = string.Join(",", Enumerable.Repeat("""{"id":"one"}""", 2_001));
     using (var large = Snapshot("{\"connections\":[" + capped + "]}"))
     using (var truncated = Snapshot("{\"connections\":[" + capped + "]"))

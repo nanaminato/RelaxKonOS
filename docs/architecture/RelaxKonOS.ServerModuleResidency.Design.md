@@ -490,3 +490,5 @@ Mihomo 连接详情作用域直接构造控制器，工作租约继续覆盖真�
 Mihomo 流量与日志读取现在共享原工作租约、独立作用域和 HTTP 响应排空逻辑。Core 发布恢复继续由原 owner 承担。见[流量与日志读取租约](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-流量与日志读取租约)。
 
 Mihomo 流量的累计量及内存读取使用现有有界连接快照的统计分支。该分支与详情共享可回收代次，实际控制器流和 HTTP 响应仍由原工作租约保护。见[流量累计量读取](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-流量累计量使用有界连接快照)。
+
+Mihomo 连接详情保留既有可回收投影。按需 token 解码候选降低了受控解析分配，Linux 配对实测未达到峰值 PSS 目标。见[连接详情按需解码评估](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-连接详情按需解码评估)。
