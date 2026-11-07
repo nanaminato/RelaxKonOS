@@ -77,8 +77,14 @@ internal static class ProxySubscriptionBoundaryChecks
             try { await stop; throw new Exception("Cancelled shutdown wait succeeded"); } catch (OperationCanceledException) { }
             Check(f.State.Disposed == 0 && !f.State.Token.IsCancellationRequested,
                 "A cancelled shutdown wait does not cancel or dispose an active subscription operation");
-            f.State.Release.TrySetResult(); f.State.ReleaseDisposal.TrySetResult();
-            await f.Store.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(5));
+            var hostedStop = ((Microsoft.Extensions.Hosting.IHostedService)f.Store).StopAsync(timeout.Token);
+            Check(!hostedStop.IsCompleted, "Host shutdown continues draining after its deadline expires");
+            f.State.Release.TrySetResult();
+            await f.State.Disposing.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Check(!hostedStop.IsCompleted && (await f.Store.GetAsync(accepted.OperationId, default))!.State == ProxyOperationState.Running,
+                "Host shutdown cannot finish during asynchronous cleanup or report a premature terminal result");
+            f.State.ReleaseDisposal.TrySetResult();
+            await hostedStop.WaitAsync(TimeSpan.FromSeconds(5));
             Check((await f.Store.GetAsync(accepted.OperationId, default))!.State == ProxyOperationState.Succeeded,
                 "The accepted operation can finish after a shutdown waiter gives up");
         }
@@ -114,6 +120,7 @@ internal static class ProxySubscriptionBoundaryChecks
         builder.Services.AddAuthorization(options => options.AddPolicy("ProxyManage", policy => policy.RequireAuthenticatedUser()));
         builder.Services.AddSingleton<IProxyPlatformPaths>(new TestProxyPaths(root));
         builder.Services.AddSingleton<IProxyWorkLeaseSource, TestProxyWorkLeases>(); builder.Services.AddSingleton<ProxyOperationStore>(); builder.Services.AddSingleton<ProxyAuditStore>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Residency.IResidentModuleWorkLeaseSource, TestResidentBackgroundLeases>();
         builder.Services.AddSingleton<ProxySubscriptionOperations>();
         builder.Services.AddHostedService(services => services.GetRequiredService<ProxyOperationStore>());
         builder.Services.AddScoped<IProxySubscriptionService>(_ => new Subscription(state));

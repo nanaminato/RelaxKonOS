@@ -48,6 +48,11 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
     }
 
     public Task StartAsync(CancellationToken ct) => Task.CompletedTask;
+
+    // The Host owns the service graph. A caller may stop waiting, but Host shutdown must
+    // keep the graph alive until admitted work has finished cleanup and terminal persistence.
+    Task IHostedService.StopAsync(CancellationToken ct) => StopAsync(CancellationToken.None);
+
     public async Task StopAsync(CancellationToken ct)
     {
         Volatile.Write(ref _stopping, true);

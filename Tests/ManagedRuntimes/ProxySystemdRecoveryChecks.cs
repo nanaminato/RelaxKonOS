@@ -212,7 +212,7 @@ internal static class ProxySystemdRecoveryChecks
             await guard.ApplyAsync(transport, enabled: false);
             guard.VerifyOriginalRestored();
             var secondHelper = await StopHelperAsync();
-            if (ApplyCount(secondHelper.Log) != 1)
+            if (ApplyCount(secondHelper.Log) != (authenticated ? 2 : 1))
                 throw new InvalidOperationException("Restarted Helper received an unexpected publication apply.");
             Console.WriteLine("PASS PRODUCTION HELPER SYSTEMD: independent Helper crashed and restarted, runtime PID survived, original candidate confirmed, subsequent expiry and real traffic passed");
 

@@ -464,3 +464,5 @@ Mihomo 概览按 token 计数，继续校验完整快照。固定快照解析分
 隔离 Linux 上，原 Core TUN worker 经完整 Server 的 SIGTERM 等待真实控制器禁用确认，之后核验路由并清理原标记。重启未再次派发 reload，Mihomo 继续转发。Proxy 仍 resident。见[真实 TUN 停机排空](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整-server-的真实-tun-停机排空)。
 
 停用 Proxy 管理面时，Core 的入站授权到期经真实 Helper 撤销并生成原回执。Linux 完整 Server 在 SIGTERM 后等到原响应并持久化完成，重启按原 ID 读到同一回执，未重放撤销。见[授权到期停机排空](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整-server-的入站授权到期停机排空)。
+
+Proxy 管理队列保留原工作租约至实际清理和终态落盘。调用方可取消等待，Host 停机仍排空已受理任务。见[管理队列停机所有权](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-管理队列的-host-停机所有权)。

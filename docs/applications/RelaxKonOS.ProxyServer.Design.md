@@ -386,3 +386,5 @@ Linux 私有 systemd 的联合验收同时启用系统代理。独立 Helper 中
 完整 Server 的生产 PAM 登录、管理队列和生产 Helper 已在 Linux 联合验证原生发布完成后的响应丢失。Server 重启后恢复原操作回执，真实 sing-box 持续服务，保留和新增授权可转发。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整认证-server-的原入站发布回执)。
 
 Linux 联合验收也覆盖候选已注册、尚未启动时 Server 和 Helper 中断。恢复原配置并结案原发布后，服务保持停止。经认证的正常启动恢复已有授权的转发，未提交的候选授权被拒绝。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整认证-server-的在途入站发布补偿)。
+
+Host 停机关闭管理队列准入，并等待已受理任务写入原终态。隔离 Linux 已验证真实 Helper 响应在途时的 SIGTERM，重启后同键返回原成功回执，保留和新增授权继续转发。见[管理队列停机所有权](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-管理队列的-host-停机所有权)。

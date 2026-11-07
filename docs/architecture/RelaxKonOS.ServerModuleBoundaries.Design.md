@@ -1934,3 +1934,15 @@ Windows Release Core 安全与模块边界回归通过。MB-05 跨进程夹具�
 同批系统代理 guard 和 TUN 停机、入站发布原恢复及补偿路径通过。专属 cgroup 清理完成，宿主服务和代理文件指纹一致。首轮认证 runner 在 150 秒上限到达后未产生终态；延长认证窗口至 210 秒后全套通过，仍要求实际结果与全部标记。失败日志为 `.artifacts/mb04-expiry-sigterm-live.log`，通过日志为 `.artifacts/mb04-expiry-sigterm-final-live.log`，归档 SHA-256 为 `ede13aa743ab9f232db9f10d08c3bb4c005b499a6509d4cfd1b97ca0e6637a67`。
 
 四条 Core 安全路径已有 Linux 完整 Server 停机证据。Proxy 仍 resident，Windows 原生与动态休眠保持开放。下一项核对管理队列的准入、真实收尾和停机期限之间的所有权，保证已受理工作能在原台账完成终态。
+
+### MB-04 Proxy 管理队列的 Host 停机所有权
+
+原 `ProxyOperationStore` 仍是唯一管理队列和工作租约持有者。直接等待可由调用方取消，Host 通过 `IHostedService` 停机时关闭准入并等待原任务，包括业务执行、异步作用域清理和终态持久化。Host 等待期限到期时已受理任务仍由原队列排空。已有失败隔离与原台账恢复逻辑继续适用。
+
+Windows Release 中，调用方先取消自己的等待，再用同一已取消令牌启动 Host 停机。任务在异步清理期间保持 Running，清理后 Host 等待原终态。订阅边界 39 项、责任及模块边界回归通过。原 HTTP 夹具补齐现有响应租约注册后通过。MB-05 跨进程按原 `bd57fd89-6c13-4f44-a811-c0aeba8fecd1` 读回 Interrupted，副作用计数为一。日志为 `.artifacts/mb04-queue-drain-final-win.log` 与 `.artifacts/mb04-queue-drain-boundaries-win.log`。
+
+隔离 Linux 的完整 PAM/JWT Server 受理入站管理发布 `77bd3fa5-9aef-4653-9d62-734d3361ff46`。真实 Helper 完成后，中继截留响应。HTTP 读取仍显示 Running，SIGTERM 关闭监听后原候选仍待处理，新授权已可真实转发。放行后 Server 持久化终态并正常退出。重启后同键返回原 ID，HTTP Succeeded 回执及原生 Committed 回执一致，原生修订只增加一次，保留及新增授权可转发。真实 SIGTERM 覆盖原响应在途，已过期的停机等待令牌由 Windows 专项单独验证。
+
+首轮 Linux 夹具在阻塞原发布回执时，同键 POST 还需要取得原领域锁，导致该测试调用超时。复跑把同键检查放在重启后并通过。同批原入站恢复、补偿、系统代理 guard、TUN 与自然到期排空均通过。专属 cgroup 清理完成，宿主服务和代理文件指纹一致。失败日志为 `.artifacts/mb04-queue-drain-live.log`，通过日志为 `.artifacts/mb04-queue-drain-final-live.log`，归档 SHA-256 为 `44e15d1454cd3cfdb15ba24637ff1b3c41bdad3ccf1da9ea9ccdf7b9e8f28e9d`。
+
+Proxy 继续 resident。下一阶段沿原工作租约和台账拆出可释放的管理执行图，再独立验收卸载、唤醒和 Core 安全职责连续性。

@@ -115,8 +115,80 @@ internal static class ProxyAuthenticatedPublicationChecks
         await VerifySystemProxyShutdownAsync(root, assembly, socket, login, nativeState, guard);
         await VerifyTunShutdownAsync(root, assembly, socket, login, nativeState, guard);
         await VerifyExpiryShutdownAsync(root, assembly, socket, login, nativeState, traffic, retained, added, readReceipt);
+        await VerifyManagedPublicationShutdownAsync(root, assembly, socket, login, nativeState, traffic, retained, added, readReceipt);
         if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_PROXY_BENCHMARK_BASELINE") is { Length: > 0 } baseline)
             await ProxyConnectionBenchmark.RunAsync(root, socket, baseline, assembly, login, guard, nativeState);
+    }
+
+    private static async Task VerifyManagedPublicationShutdownAsync(string root, string assembly, string socket, LoginRequest login,
+        Func<RuntimeArchiveState> nativeState, ProxyFullServerTrafficProbe traffic, ProxyServerSecret retained,
+        StoredCredential previous, Func<Guid, Task<ProxyServerPublicationReceipt>> readReceipt)
+    {
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(35));
+        var ct = budget.Token;
+        var store = ManagedServiceChecks.OpenFullServerStore(root);
+        var state = await store.ReadAsync(ct);
+        var next = previous with { Id = Guid.NewGuid(), Name = "shutdown-fixture", Value = Guid.NewGuid().ToString("D"), ExpiresAt = null };
+        await store.WriteAsync(state with { Configuration = state.Configuration with { Revision = state.Configuration.Revision + 1 },
+            Credentials = [.. state.Credentials, next] }, ct);
+        var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly, socket, root, reuse: true);
+        start.Environment["Modules__Proxy__Enabled"] = "true";
+        start.Environment["Identity__LinuxPamTransport"] = "helper";
+        start.Environment["Certificate__StorageRoot"] = Path.Combine(start.WorkingDirectory, "certificate-fixture");
+        start.Environment["Logging__LogLevel__Microsoft.Hosting.Lifetime"] = "Information";
+        var key = Guid.NewGuid().ToString("N");
+        var revision = nativeState().Installation.StateRevision;
+        await using var relay = new ReplyRelay("/run/relaxkonos-proxy-queue-drain.sock", socket, ct);
+        start.Environment["PrivilegedHelper__SocketPath"] = relay.Path;
+        var stopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var server = Start(start, onOutput: line =>
+        {
+            if (line.Contains("Application is shutting down", StringComparison.Ordinal)) stopping.TrySetResult();
+        });
+        try
+        {
+            using var client = await ConnectAsync(server, login, ct);
+            var original = await SubmitAsync(client, ProxyServerRoutes.Apply, key, ct);
+            if (await relay.Committed.Task.WaitAsync(ct) != original || (await ReadAsync(client, original, ct)).State != ProxyOperationState.Running
+                || (await store.ReadAsync(ct)).PendingPublicationOperationId != original)
+                throw new InvalidOperationException("Accepted management work did not retain its original HTTP receipt at the Helper barrier.");
+            var receipt = await readReceipt(original).WaitAsync(ct);
+            var pid = await ReadNativePidAsync();
+            if (receipt.Outcome != ProxyServerPublicationOutcome.Committed || receipt.OperationId != original
+                || nativeState().Installation.StateRevision != revision + 1)
+                throw new InvalidOperationException("Missing the original committed management publication.");
+            await SignalShutdownAsync(server, client, stopping.Task, ct);
+            if (server.HasExited || (await store.ReadAsync(ct)).PendingPublicationOperationId != original)
+                throw new InvalidOperationException("Host stop did not retain admitted management work.");
+            using (await traffic.ForwardAsync(next.Value, ct)) { }
+            relay.ReleaseHeldResponse();
+            await server.WaitForExitAsync(ct);
+            var final = await store.ReadAsync(ct);
+            if (server.ExitCode != 0 || final.PendingPublication is not null
+                || final.QueuedPublicationCompletions.GetValueOrDefault(original) != ProxyServerPublicationOutcome.Committed)
+                throw new InvalidOperationException("The Host exited before completing the original queued publication.");
+
+            using var restart = Start(start);
+            try
+            {
+                using var restarted = await ConnectAsync(restart, login, ct);
+                var operation = await ReadAsync(restarted, original, ct);
+                if (operation.State != ProxyOperationState.Succeeded || operation.CompletedAt is null
+                    || await SubmitAsync(restarted, ProxyServerRoutes.Apply, key, ct) != original
+                    || await ReadAsync(restarted, original, ct) != operation || await readReceipt(original).WaitAsync(ct) != receipt
+                    || nativeState().Installation.StateRevision != revision + 1 || await ReadNativePidAsync() != pid)
+                    throw new InvalidOperationException("Restart changed or replayed the original management operation.");
+                using var keptTraffic = await traffic.ForwardAsync(retained.Value, ct);
+                using var newTraffic = await traffic.ForwardAsync(next.Value, ct);
+                Console.WriteLine($"PASS FULL SERVER PROXY QUEUE SIGTERM DRAIN: original operation {original}, durable HTTP receipt and one native apply");
+            }
+            finally { await StopAsync(restart); }
+        }
+        finally
+        {
+            relay.ReleaseHeldResponse();
+            await StopAsync(server);
+        }
     }
 
     private static async Task VerifyExpiryShutdownAsync(string root, string assembly, string socket, LoginRequest login,
