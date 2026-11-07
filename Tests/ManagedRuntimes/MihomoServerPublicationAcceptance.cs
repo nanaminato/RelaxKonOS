@@ -170,6 +170,9 @@ internal static class MihomoServerPublicationAcceptance
             var controllerServices = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
             controllerServices.Configuration["Proxy:Mihomo:Controller:Endpoint"] = $"http://127.0.0.1:{original.ControllerPort}/";
             controllerServices.AddProxyRuntimeServices();
+            var versionRequests = 0;
+            controllerServices.Services.AddHttpClient<IMihomoControllerClient, MihomoControllerClient>()
+                .AddHttpMessageHandler(() => new VersionCountingHandler(() => Interlocked.Increment(ref versionRequests)));
             controllerServices.Services.AddSingleton<IDataProtectionProvider>(protection);
             var controllerSecret = Path.Combine(Directory.CreateDirectory(Path.Combine(root, "data")).FullName, "proxy-controller.secret");
             await File.WriteAllTextAsync(controllerSecret, protection.CreateProtector("RelaxKonOS.Proxy.ControllerSecret.v1").Protect(original.ControllerSecret));
@@ -180,7 +183,7 @@ internal static class MihomoServerPublicationAcceptance
                 var beforeStatus = await lifecycle.QueryAsync(default);
                 var firstStatus = await manager.GetAsync(MihomoEngine.Id, default);
                 var nextStatus = await manager.GetAsync(MihomoEngine.Id, default);
-                Check(firstStatus is { State: ProxyRuntimeState.Running, IntegrityVerified: true } && firstStatus == nextStatus
+                Check(firstStatus is { State: ProxyRuntimeState.Running, IntegrityVerified: true } && firstStatus == nextStatus && versionRequests == 2
                     && (await lifecycle.QueryAsync(default)).Installation.StateRevision == beforeStatus.Installation.StateRevision
                     && transport.ConfigureCalls == beforeProfileRecovery && await probe(originalPort + 2),
                     "Scoped runtime status probes the real authenticated controller and leaves forwarding and publication intact.");
@@ -189,17 +192,20 @@ internal static class MihomoServerPublicationAcceptance
                 var controller = overviewScope.ServiceProvider.GetRequiredService<IMihomoControllerClient>();
                 var safety = new ProxyTunSafetyService(paths, new HostProxyNetworkSafetyPlatform());
                 var observer = new MihomoEngine(controller, new UnavailableMihomoConfigurationValidator(), paths, tunSafety: safety);
-                var overview = new ProxyOverviewService(manager, new ProxyEngineRegistry([observer]), new ProxyPlatformService(systemProxy), publicationProfiles, safety);
+                var recovery = new CountingRecoveryReader(safety);
+                var overview = new ProxyOverviewService(manager, controller, new ProxyPlatformService(systemProxy), publicationProfiles, recovery);
                 Check(await probeWithConnection(originalPort + 2, async () =>
                 {
                     var observation = await overview.GetAsync(default);
                     var connections = await observer.GetConnectionsAsync(default);
                     if (observation.ActiveProfile?.Id != nextProfile.Id || observation.ActiveConnections < 1
+                        || observation.Runtime.State != ProxyRuntimeState.Running || versionRequests != 3 || recovery.Reads != 1
                         || observation.ActiveConnections != connections.Count || observation.Health.State != ProxyHealthState.Healthy)
                         throw new InvalidOperationException("Overview must read the original active profile and count the real held proxy connection.");
                 }) && transport.ConfigureCalls == beforeProfileRecovery,
                     "Overview observes real forwarding without invoking publication.");
                 Console.WriteLine("PASS MIHOMO SCOPED OVERVIEW: real held connection counted and original profile observed");
+                Console.WriteLine("PASS MIHOMO SINGLE OVERVIEW OBSERVATION: one real /version and one safety read; standalone status observes on every call");
                 var originalParser = ProxyConnectionExecutionGate.Shared.CurrentCode
                     ?? throw new InvalidOperationException("The actual overview must load its parser generation.");
                 using var parserBudget = new CancellationTokenSource(TimeSpan.FromSeconds(45));
@@ -217,12 +223,28 @@ internal static class MihomoServerPublicationAcceptance
                 Check(await probeWithConnection(originalPort + 2, async () =>
                 {
                     var observation = await overview.GetAsync(parserBudget.Token);
-                    if (observation.ActiveConnections < 1 || ProxyConnectionExecutionGate.Shared.CurrentCode is not { } next
+                    if (observation.ActiveConnections < 1 || versionRequests != 4 || recovery.Reads != 2
+                        || ProxyConnectionExecutionGate.Shared.CurrentCode is not { } next
                         || ReferenceEquals(originalParser, next))
                         throw new InvalidOperationException("A real connection must wake a new parser generation.");
                 }) && transport.ConfigureCalls == beforeProfileRecovery,
                     "New parser generation must observe the actual connection without replaying configuration.");
                 Console.WriteLine("PASS MIHOMO CONNECTION PARSER IDLE: natural idle release, collected code, live traffic and fresh parser generation");
+                var originalCredential = await File.ReadAllBytesAsync(controllerSecret);
+                try
+                {
+                    var protector = protection.CreateProtector("RelaxKonOS.Proxy.ControllerSecret.v1");
+                    await File.WriteAllTextAsync(controllerSecret, protector.Protect(Guid.NewGuid().ToString("N")));
+                    var unauthorized = await overview.GetAsync(default);
+                    Check(unauthorized.Runtime.State == ProxyRuntimeState.Running
+                        && unauthorized.Health is { ControllerReachable: false, ProblemCode: ProxyProblemCodes.ControllerAuthenticationFailed }
+                        && unauthorized.ActiveConnections == 0 && versionRequests == 5 && recovery.Reads == 3,
+                        "One real unauthorized observation distinguishes the listening runtime from degraded management health.");
+                }
+                finally { await File.WriteAllBytesAsync(controllerSecret, originalCredential); }
+                Check(await probe(originalPort + 2) && transport.ConfigureCalls == beforeProfileRecovery,
+                    "Controller authentication failure does not alter live proxy traffic or publication.");
+                Console.WriteLine("PASS MIHOMO SINGLE OVERVIEW AUTH FAILURE: one real 401, live forwarding and unchanged publication");
             }
             var noOpApplication = new ProxyConfigurationTransactionService(paths, new ProxyEngineRegistry([engine]), publicationProfiles, paths,
                 new MihomoControllerOptions { Endpoint = new("http://127.0.0.1:" + original.ControllerPort + "/") }, store,
@@ -350,6 +372,25 @@ internal static class MihomoServerPublicationAcceptance
             return result;
         }
     }
+    private sealed class VersionCountingHandler(Action observed) : DelegatingHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            if (request.RequestUri?.AbsolutePath == "/version") observed();
+            return base.SendAsync(request, ct);
+        }
+    }
+
+    private sealed class CountingRecoveryReader(IProxyRecoveryService recovery) : IProxyRecoveryService
+    {
+        internal int Reads { get; private set; }
+        public Task<ProxyRecoveryStatusDto> GetStatusAsync(CancellationToken ct)
+        {
+            Reads++;
+            return recovery.GetStatusAsync(ct);
+        }
+    }
+
     private sealed class Paths(string root, string secret) : IProxyPlatformPaths, IProxyControllerSecretStore, IServerModeResolver
     {
         public string GetEngineVersionsDirectory(string engineId) => Path.Combine(root, "versions");

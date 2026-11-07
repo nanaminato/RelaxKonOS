@@ -446,3 +446,5 @@ MB-04 512 条真实连接的前后配对测量验证了流式快照在隔离负�
 MB-04 Mihomo 快照解析代码使用独立可回收代次。并发读取和异步清理结束后才开始闲时计时。Core 网络安全与持久恢复仍由原所有者负责。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-快照解析代码的闲时释放)。
 
 Linux 完整认证 Server 已验证同一进程中的解析代次闲时卸载与再加载，原 Mihomo 连接与系统代理所有权连续。此轮观察的是卸载事件，弱引用回收由独立专项验证。Proxy 整体继续 resident，生产内存验收保持开放。
+
+Mihomo 概览直接使用请求作用域内的控制器。隔离 Linux 实测确认一次概览只探测一次 `/version`、读取一次 Core 恢复状态，独立运行时读取继续在原门禁内即时探测。完整认证 HTTP 联验通过，Proxy 整体继续 resident，生产 PSS 尚未测量。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-概览的单次观测)。

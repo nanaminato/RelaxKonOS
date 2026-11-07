@@ -1822,3 +1822,15 @@ Windows Release 控制器专项验证并发读共享代次、实际异步清理�
 完整 PAM/JWT Server 随后在 Linux 私有 systemd 复验。杀掉并重启 Server 后，通过认证 HTTP 读取同一条真实 Mihomo 连接的概览和详情，匿名请求仍返回 401。在重启后的同一 Server 进程中停止读取，测试启动钩子观察原解析代次的卸载事件。再次读取时观察不同代次加载，原连接 ID、Mihomo PID、发布修订和系统代理所有权日志均保持一致，原 HTTP 转发成功收到上游正文。启动钩子只记录加载与卸载事件，该路径不强制 GC。弱引用回收由上一轮专项验证。整个管理面休眠和生产内存仍待验收。
 
 Linux 同批复验原发布 `c3736273-43a5-46a1-bab1-edba453528e4`、原补偿 `f7b20917-f4d9-4071-ac9c-6e38fa48ac79`、到期回执 `037a4904-8444-4f44-970b-5caac8a71fe8` 及 TUN 原操作 `3ea56d53-b983-4ca8-90a0-5a5f456319ec`。专属 cgroup 已清理，宿主共享服务与代理文件指纹一致。日志为 `.artifacts/mb04-auth-parser-idle-live.log`，归档 SHA-256 为 `6cb6959dc0a705a85afabfd1150f75408bd9970883d949bf11977326e869536c`。Windows Release 注册 23 项和模块里程碑回归在沙箱外通过。Docker 跨进程恢复读回原 `cf59a730-2f4d-448e-826c-e52e9e155ea6` 的 Interrupted 回执，副作用计数为一。首次沙箱运行遇到 TUN 测试控制器等待超时及证书台账恢复断言失败。
+
+### MB-04 Mihomo 概览的单次观测
+
+概览直接使用当前请求的控制器，省去完整管理引擎注册表。运行时在原所有权门禁内读取安装事实，若需确认监听状态，就复用同一请求的控制器观测。健康与概览使用同一份 Core TUN 恢复状态。观测只在当前调用有效，独立运行时接口继续即时探测。真实 401 保留原本的监听与认证区分，未核验的受管状态仍沿用原未知状态。该改动只调整读取执行图，Proxy 继续 resident。
+
+Linux 私有 systemd 中的完整认证 Server Release 验证了概览与独立运行时接口一致。Server 重启及随后解析器闲时卸载与重载期间，同一 Mihomo 连接继续转发。原发布 `f6bd88d6-a0a8-40ca-9389-c361f09b391b`、原补偿 `368512f1-2501-4618-a8c5-0c9686a6d838`、到期回执 `d7176156-bcad-4029-88da-366a7034159e` 和原 TUN 操作 `58bdc3eb-86cb-4ec2-a484-d679f6adc742` 保持各自原回执及安全责任。专属 cgroup 已清理，宿主共享运行服务及系统代理文件保持原状态。日志为 `.artifacts/mb04-overview-observation-auth-final-live.log`，归档 SHA-256 为 `c04d37752f1a6e1d8b8ac1335190b8d7a9a3083463a1b0e4ef5faba27fe58cbb`。
+
+Windows Release 的控制器、Core 安全、运行时注册 24 项及模块边界专项通过。MB-05 跨进程回归从原 operationId `b5e6d001-d454-451e-8271-e09a51e74db6` 读回 Interrupted，受控副作用计数为一。证书 HTTP 原回执排空 `adc9d7ff-3e0c-41a7-a91c-8a4899999282` 通过。
+
+Linux 真实受管 Mihomo 在私有 systemd 中通过 177 项。连续两次独立状态查询发出两次 `/version`。有活动连接的概览只发出一次 `/version`、读取一次 Core 恢复状态，解析器唤醒后的请求重新采样。给夹具内控制器客户端使用临时错误凭据时，真实 Mihomo 返回一次 401，运行时仍为 Running，管理健康报告认证失败，代理转发及发布保持原状态。原发布排空 `13da3374-a827-4bc4-953b-810a43e3b68b`、原失败回执 `f0d32f11-fbca-4501-b13e-7cd0c563c2d8` 及原中断补偿 `57c17fd1-15ad-47b8-8fff-b05598a01e0b` 同批通过。日志为 `.artifacts/mb04-overview-observation-native-disk.log`，归档 SHA-256 为 `f93fb8366b7f432c047c045a186d8dd0249efb63bf0c3a8c9f2e70b0d20c13a7`。
+
+首轮外层脚本混用了两套验收的通过标记。拆开后，受管专项先遇到临时文件系统上的归档前置检查失败，随后遇到长临时路径超过 Unix 套接字限制。只在私有挂载命名空间内为 `/tmp` 绑定独立磁盘目录后复测通过。本阶段只确认请求执行图及网络安全连续性。下一轮驻留复测应使用已核验的受管 Mihomo 和相同活跃连接负载。Proxy 整体动态休眠与生产 PSS 验收继续开放。

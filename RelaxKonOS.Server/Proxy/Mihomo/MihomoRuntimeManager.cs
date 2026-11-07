@@ -94,7 +94,14 @@ public sealed class MihomoRuntimeManager(
         finally { _gate.Release(); }
     }
 
-    public async Task<ProxyRuntimeDto> GetAsync(string engineId, CancellationToken cancellationToken)
+    public Task<ProxyRuntimeDto> GetAsync(string engineId, CancellationToken cancellationToken) =>
+        GetCoreAsync(engineId, ObserveControllerAsync, cancellationToken);
+
+    internal Task<ProxyRuntimeDto> GetObservedAsync(Func<CancellationToken, Task<ControllerResult<bool>>> observeController,
+        CancellationToken cancellationToken) => GetCoreAsync(MihomoEngine.Id, observeController, cancellationToken);
+
+    private async Task<ProxyRuntimeDto> GetCoreAsync(string engineId,
+        Func<CancellationToken, Task<ControllerResult<bool>>> observeController, CancellationToken cancellationToken)
     {
         if (engineId != MihomoEngine.Id) return Unsupported(engineId);
         await _gate.WaitAsync(cancellationToken);
@@ -108,7 +115,7 @@ public sealed class MihomoRuntimeManager(
             if (OperatingSystem.IsWindows() && state?.ActiveVersion is not { Length: > 0 })
                 return new(MihomoEngine.Id, ProxyRuntimeMode.Managed, ProxyRuntimeState.NotInstalled, null, null, false, false, ProxyProblemCodes.RuntimeNotInstalled);
             if (state?.ActiveVersion is not { Length: > 0 })
-                return await ManagedProjectionAsync(state, cancellationToken);
+                return await ManagedProjectionAsync(state, observeController, cancellationToken);
             if (!File.Exists(ExecutablePath(state.ActiveVersion)))
                 return new(MihomoEngine.Id, ProxyRuntimeMode.Managed, ProxyRuntimeState.NotInstalled, state.ActiveVersion, state.PreviousVersion, false, false, ProxyProblemCodes.RuntimeNotInstalled);
 
@@ -117,14 +124,15 @@ public sealed class MihomoRuntimeManager(
             // restart can make provider-backed subscriptions fetch again. Managed
             // controller/GEO settings are applied by explicit configuration and subscription
             // refresh operations instead.
-            var runtimeState = await RunningStateAsync(cancellationToken);
+            var runtimeState = RunningState(await observeController(cancellationToken));
             return new(MihomoEngine.Id, ProxyRuntimeMode.Managed, runtimeState, state.ActiveVersion, state.PreviousVersion, true, false);
         }
         finally { _gate.Release(); }
     }
 
     /// <summary>Maps the managed ledger's own installation facts onto the legacy proxy projection.</summary>
-    private async Task<ProxyRuntimeDto> ManagedProjectionAsync(RuntimeState? state, CancellationToken cancellationToken)
+    private async Task<ProxyRuntimeDto> ManagedProjectionAsync(RuntimeState? state,
+        Func<CancellationToken, Task<ControllerResult<bool>>> observeController, CancellationToken cancellationToken)
     {
         if (managedRuntime is null)
             return new(MihomoEngine.Id, ProxyRuntimeMode.Managed, ProxyRuntimeState.NotInstalled, null, null, false, false, ProxyProblemCodes.RuntimeNotInstalled);
@@ -142,7 +150,7 @@ public sealed class MihomoRuntimeManager(
         return installation.Ownership switch
         {
             RuntimeOwnership.Managed => new(MihomoEngine.Id, ProxyRuntimeMode.Managed,
-                snapshot.ProblemCode is null ? await RunningStateAsync(cancellationToken) : ProxyRuntimeState.Failed,
+                snapshot.ProblemCode is null ? RunningState(await observeController(cancellationToken)) : ProxyRuntimeState.Failed,
                 version, state?.PreviousVersion, snapshot.ProblemCode is null, false, ProblemCode(snapshot.ProblemCode)),
             RuntimeOwnership.External => new(MihomoEngine.Id, ProxyRuntimeMode.External, ProxyRuntimeState.Stopped, version,
                 null, false, true, ProblemCode(snapshot.ProblemCode)),
@@ -155,16 +163,18 @@ public sealed class MihomoRuntimeManager(
         };
     }
 
-    private async Task<ProxyRuntimeState> RunningStateAsync(CancellationToken cancellationToken)
+    private async Task<ControllerResult<bool>> ObserveControllerAsync(CancellationToken cancellationToken)
     {
         await using var scope = scopes.CreateAsyncScope();
         var controller = scope.ServiceProvider.GetRequiredService<IMihomoControllerClient>();
         // An HTTP 401 proves Mihomo is listening even though its credential is wrong; the health
         // projection reports that mismatch separately.
-        var controllerHealth = await controller.IsReachableAsync(cancellationToken);
-        return controllerHealth.Succeeded || controllerHealth.ProblemCode == ProxyProblemCodes.ControllerAuthenticationFailed
-            ? ProxyRuntimeState.Running : ProxyRuntimeState.Stopped;
+        return await controller.IsReachableAsync(cancellationToken);
     }
+
+    private static ProxyRuntimeState RunningState(ControllerResult<bool> controllerHealth) =>
+        controllerHealth.Succeeded || controllerHealth.ProblemCode == ProxyProblemCodes.ControllerAuthenticationFailed
+            ? ProxyRuntimeState.Running : ProxyRuntimeState.Stopped;
 
     /// <summary>Keeps the public code in the proxy namespace the clients already localize.</summary>
     private static string ProblemCode(string? code) => string.IsNullOrEmpty(code) ? "" : ProxyProblemCodes.RuntimeStateUnknown;

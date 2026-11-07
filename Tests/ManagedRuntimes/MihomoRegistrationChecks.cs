@@ -150,6 +150,12 @@ internal static class MihomoRegistrationChecks
             statusHandler.Reply.SetResult(new(System.Net.HttpStatusCode.Unauthorized) { Content = new StringContent("") });
             Check((await status.WaitAsync(TimeSpan.FromSeconds(5))).State == ProxyRuntimeState.Running && statusHandler.Disposed,
                 "A listening controller still counts as running on HTTP 401, and its scope is released.");
+            var unauthorized = ControllerResult<bool>.Failure(ProxyProblemCodes.ControllerAuthenticationFailed);
+            var runtimeFromObservation = await ((MihomoRuntimeManager)manager).GetObservedAsync(_ => Task.FromResult(unauthorized), default);
+            var recoveryHealth = await MihomoEngine.ProjectHealthAsync(null!, unauthorized, new(true, true, null), default);
+            Check(runtimeFromObservation.State == ProxyRuntimeState.Running && handlerCount == 3
+                && recoveryHealth is { ControllerReachable: false, State: ProxyHealthState.RecoveryRequired, TunState: ProxyTunState.Recovering },
+                "A shared unauthorized observation reports a listening runtime without constructing a second client or masking Core recovery.");
             using var cancelled = new CancellationTokenSource();
             status = manager.GetAsync(MihomoEngine.Id, cancelled.Token);
             var cancelledHandler = await NextHandlerAsync();

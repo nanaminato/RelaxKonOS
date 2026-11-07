@@ -126,9 +126,11 @@ internal static class ProxyAuthenticatedPublicationChecks
                 if (rejected.StatusCode != HttpStatusCode.Unauthorized || rejectedConnections.StatusCode != HttpStatusCode.Unauthorized)
                     throw new InvalidOperationException("Anonymous clients must not see the Mihomo overview or connection details.");
                 var overview = await client.GetFromJsonAsync<ProxyOverviewDto>(ProxyApiRoutes.Overview, RelaxKonOSJsonOptions.Default, ct);
+                var runtime = await client.GetFromJsonAsync<ProxyRuntimeDto>(ProxyApiRoutes.Runtime, RelaxKonOSJsonOptions.Default, ct);
                 var connections = await client.GetFromJsonAsync<ProxyConnectionDto[]>(ProxyApiRoutes.Connections, RelaxKonOSJsonOptions.Default, ct);
                 var target = connections?.SingleOrDefault(item => item.Destination == $"93.184.216.34:{port}");
                 if (overview is null || !overview.Health.ControllerReachable || overview.Recovery.RecoveryRequired
+                    || runtime != overview.Runtime
                     || target is null || overview.ActiveConnections != connections!.Length)
                     throw new InvalidOperationException("Production HTTP did not report the held Mihomo connection and current Core safety state.");
                 return target.Id;

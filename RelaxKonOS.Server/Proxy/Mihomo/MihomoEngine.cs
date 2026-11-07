@@ -11,16 +11,23 @@ public sealed class MihomoEngine(
     IProxyRecoveryService? tunSafety = null) : IProxyEngine
 {
     public const string Id = "mihomo";
+    internal static readonly ProxyEngineCapabilities Capabilities = new(true, true, true, true, true, true);
     public string EngineId => Id;
 
     public Task<ProxyEngineCapabilities> GetCapabilitiesAsync(CancellationToken cancellationToken) =>
-        Task.FromResult(new ProxyEngineCapabilities(true, true, true, true, true, true));
+        Task.FromResult(Capabilities);
 
     public async Task<ProxyHealthDto> GetHealthAsync(CancellationToken cancellationToken)
     {
         var reachable = await controller.IsReachableAsync(cancellationToken);
         var recovery = tunSafety is null ? new ProxyRecoveryStatusDto(false, false, null) : await tunSafety.GetStatusAsync(cancellationToken);
-        var tunState = await ObserveTunStateAsync(reachable.Succeeded, recovery, cancellationToken);
+        return await ProjectHealthAsync(controller, reachable, recovery, cancellationToken);
+    }
+
+    internal static async Task<ProxyHealthDto> ProjectHealthAsync(IMihomoControllerClient controller,
+        ControllerResult<bool> reachable, ProxyRecoveryStatusDto recovery, CancellationToken cancellationToken)
+    {
+        var tunState = await ObserveTunStateAsync(controller, reachable.Succeeded, recovery, cancellationToken);
         if (recovery.RecoveryRequired)
             return new(reachable.Succeeded ? ProxyRuntimeState.Running : ProxyRuntimeState.Degraded, tunState,
                 ProxyHealthState.RecoveryRequired, reachable.Succeeded, reachable.Succeeded, false, ProxyProblemCodes.RecoveryRequired);
@@ -36,7 +43,7 @@ public sealed class MihomoEngine(
     /// through the TUN transaction).  The one exception is an unfinished transaction: that is a
     /// state the operator must resolve, and there the marker is the authority rather than a report.
     /// </summary>
-    private async Task<ProxyTunState> ObserveTunStateAsync(bool controllerReachable, ProxyRecoveryStatusDto recovery,
+    private static async Task<ProxyTunState> ObserveTunStateAsync(IMihomoControllerClient controller, bool controllerReachable, ProxyRecoveryStatusDto recovery,
         CancellationToken cancellationToken)
     {
         if (recovery.RecoveryRequired) return ProxyTunState.Recovering;
@@ -67,12 +74,6 @@ public sealed class MihomoEngine(
         var result = await controller.GetConnectionsAsync(cancellationToken);
         if (!result.Succeeded) throw new ProxyObservationException(result.ProblemCode);
         return result.Value!;
-    }
-    public async Task<int> GetConnectionCountAsync(CancellationToken cancellationToken)
-    {
-        var result = await controller.GetConnectionCountAsync(cancellationToken);
-        if (!result.Succeeded) throw new ProxyObservationException(result.ProblemCode);
-        return result.Value;
     }
     public Task<ProxyTrafficDto> GetTrafficAsync(CancellationToken cancellationToken) => controller.GetTrafficAsync(cancellationToken);
     public Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken) => controller.CloseConnectionAsync(connectionId, cancellationToken);
