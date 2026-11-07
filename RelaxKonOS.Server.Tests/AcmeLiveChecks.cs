@@ -116,7 +116,10 @@ internal static class AcmeLiveChecks
 
         await VerifyCrashAsync("--acme-live-crash-worker", "real-crash", "PASS ACME LIVE CRASH");
         await VerifyCrashAsync("--acme-live-response-worker", "real-response-loss", "PASS ACME LIVE RESPONSE LOSS");
-        await VerifyCrashAsync("--acme-live-renewal-worker", "real-renewal", "PASS ACME LIVE RENEWAL ACROSS DAILY KEYS", certificateId);
+        var schedule = new CertificateRenewalRunRepository(environment);
+        var slot = await schedule.BeginDueAsync(DateTimeOffset.UtcNow, default)
+            ?? throw new InvalidOperationException("Expected a due renewal slot.");
+        await VerifyCrashAsync("--acme-live-renewal-worker", slot.RequestKey, "PASS ACME LIVE RENEWAL ACROSS DAILY KEYS", certificateId, slot.Id);
         await VerifyLiveResponseLossAsync("order", "201");
         await VerifyLiveResponseLossAsync("certificate", "200");
 
@@ -179,7 +182,7 @@ internal static class AcmeLiveChecks
             Console.WriteLine($"PASS ACME LIVE TRANSPORT LOSS: response={response}; operation={original.OperationId}; observed={expectedStatus}; original interrupted receipt retained");
         }
 
-        async Task VerifyCrashAsync(string workerMode, string key, string marker, Guid? renewal = null)
+        async Task VerifyCrashAsync(string workerMode, string key, string marker, Guid? renewal = null, Guid? scanId = null)
         {
             var oldFingerprint = (await certificates.GetAsync(certificateId, default))?.FingerprintSha256;
             TestAssert.Assert(!string.IsNullOrEmpty(oldFingerprint), "The existing certificate must have a persisted fingerprint.");
@@ -220,6 +223,28 @@ internal static class AcmeLiveChecks
                 var observation = await crashRecovery.ObserveOrderAsync(crashOperationId, service, default);
                 TestAssert.Assert(observation == new CertificateOrderObservationDto(original, "valid"),
                     $"The checkpoint must survive an actual worker crash: observed {observation?.RemoteStatus}.");
+                var reopenedSchedule = new CertificateRenewalRunRepository(environment);
+                TestAssert.Assert((await reopenedSchedule.BeginDueAsync(DateTimeOffset.UtcNow, default)) is { } pending
+                    && pending.Id == scanId && pending.Operations.Count == 0,
+                    "The crashed worker must leave the original scan open with an unlinked receipt.");
+                var scanServices = new ServiceCollection()
+                    .AddScoped(_ => new ScanScopeProbe(leases, reopenedSchedule))
+                    .AddScoped(scope =>
+                    {
+                        _ = scope.GetRequiredService<ScanScopeProbe>();
+                        return new CertificateRenewalScan(certificates, manager, service,
+                            new CertificateRenewalAttemptRepository(environment, configuration, options), reopenedSchedule, crashRecovery,
+                            options, NullLogger<CertificateRenewalScan>.Instance);
+                    });
+                await using var provider = scanServices.BuildServiceProvider();
+                using var worker = new CertificateRenewalWorker(reopenedSchedule, provider.GetRequiredService<IServiceScopeFactory>(),
+                    leases, NullLogger<CertificateRenewalWorker>.Instance);
+                await worker.RunDueScanAsync(default);
+                var run = (await reopenedSchedule.ListAsync(crashRecovery, default)).Single(item => item.Automatic);
+                TestAssert.Assert(run.RunId == scanId && run.Failed == 1 && run.CompletedAt is not null
+                    && await reopenedSchedule.BeginDueAsync(DateTimeOffset.UtcNow, default) is null,
+                    "The production scan must link the original receipt and persist its next due time.");
+                Console.WriteLine($"PASS ACME SCHEDULE RECOVERY: run={run.RunId}; original operation={crashOperationId}; next scan persisted");
                 crashReplay = await manager.RenewAsync(renewable, "next-day-key", actor, default, automatic: true);
             }
             else
@@ -264,10 +289,16 @@ internal static class AcmeLiveChecks
         var id = Guid.NewGuid();
         var key = loseIssuedResponse ? "real-response-loss" : "real-crash";
         var domain = loseIssuedResponse ? "response.mb05.test" : "crash.mb05.test";
-        var operation = renewalId is { } renewable
-            ? await CreateManager(certificates, acme, store, environment, configuration)
-                .RenewAsync(renewable, "real-renewal", CertificateOperationStore.AutomaticRenewalActor, default, automatic: true)
-            : await store.StartAsync(key, id, "issue", "fixture", async ct =>
+        CertificateOperationDto operation;
+        if (renewalId is { } renewable)
+        {
+            var slot = await new CertificateRenewalRunRepository(environment).BeginDueAsync(DateTimeOffset.UtcNow, default)
+                ?? throw new InvalidOperationException("Expected the original pending renewal scan.");
+            operation = await CreateManager(certificates, acme, store, environment, configuration)
+                .RenewAsync(renewable, slot.RequestKey, CertificateOperationStore.AutomaticRenewalActor, default, automatic: true);
+        }
+        else
+            operation = await store.StartAsync(key, id, "issue", "fixture", async ct =>
             {
                 _ = await acme.IssueAsync(id, [domain], CertificateChallengeType.DirectHttp01,
                     CertificateKeyAlgorithm.EcdsaP256, "acceptance@example.test", ct);
@@ -287,6 +318,15 @@ internal static class AcmeLiveChecks
         CertificateOperationStore store, IHostEnvironment environment, IConfiguration configuration) =>
         new(certificates, service, service, store, new KestrelCertificateRegistry(), new CertificateDeploymentRepository(environment, configuration),
             null!, null!, new TestApplicationLifetime(), NullLogger<CertificateManager>.Instance);
+
+    private sealed class ScanScopeProbe(TestResidentBackgroundLeases leases, CertificateRenewalRunRepository runs) : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync()
+        {
+            TestAssert.Assert(leases.Active == 1 && await runs.NextScanAsync(default) is null,
+                "The scan must keep its real work lease and open slot until scoped cleanup ends.");
+        }
+    }
 
     private sealed class IssuedResponseBarrier(TaskCompletionSource entered, string domain) : DelegatingHandler(new SocketsHttpHandler { UseProxy = false })
     {

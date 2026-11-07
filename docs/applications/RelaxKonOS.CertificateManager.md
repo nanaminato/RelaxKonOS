@@ -956,7 +956,9 @@ NotAfter
 
 ## 24. 重试策略
 
-续期 Worker 在服务启动约一分钟后执行首次扫描，随后每天扫描一次。重试的最小间隔也应为一天；否则分钟级退避不会在每日扫描模型中真正生效。
+续期 Worker 在服务启动约一分钟后读取持久扫描台账。到期时才创建续期执行作用域，已完成扫描的下一次计划为完成后一天。重启时未完成的扫描继续使用原扫描 ID 和固定准入键，按原操作台账找回已经准入但尚未关联的回执。扫描和作用域清理完成后才落盘完成时间。
+
+扫描本身发生错误时保留原扫描，稍后从原状态继续。已准入的续期继续受原操作回执、退避和未知结果门禁约束。分钟级退避会在下一次每日扫描时重新核对。
 
 ACME 请求失败时，应支持：
 
@@ -1484,3 +1486,5 @@ CA 已接单或签发后遇到无法确认结果的传输失败，证书操作�
 已有中断回执可用认证的 `GET /api/v1.0/certificates/operations/{operationId}/acme-order` 查询。响应包含原 `operation` 和 `remoteStatus`。状态为 `pending`、`ready`、`processing`、`valid`、`invalid`、`identity-unavailable` 或 `unavailable`。查询使用相同 CA 和原账户密钥，只读取已记录的原订单。订单创建响应丢失且无身份时返回 `identity-unavailable`。远端状态单独呈现，原中断回执与当前证书保持，自动续期继续遵守原门禁。实测见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-原-ca-订单的只读对账)。
 
 Linux 完整认证 Server 已通过真实 CA 断流与重启验收。专属 Nginx 承载 HTTP-01，重启后须重新登录查询原订单。同键重试返回原回执，原活动证书指纹保持，CA 无新增订单或签发提交。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-完整认证-server-的-ca-断流与重启)。
+
+Linux 私有 Pebble 实测覆盖自动续期已准入、扫描尚未关联原回执时的进程中断。恢复完成原扫描并持久化下次到期，未提交新订单。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-证书续期持久扫描与执行作用域)。

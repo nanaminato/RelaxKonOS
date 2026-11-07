@@ -138,7 +138,7 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
         if (_byIdempotency.TryGetValue(key, out var id)) return _operations[id];
         if (!automaticRenewal) return null;
 
-        // The daily key can change while a renewal is in flight or its CA outcome is still unknown.
+        // A later scan can use a new key while a renewal is in flight or its CA outcome is still unknown.
         var renewals = _operations.Values.Where(operation => operation.Kind == "renew" && operation.CertificateId == certificateId);
         if (renewals.FirstOrDefault(operation => operation.State is CertificateOperationState.Queued or CertificateOperationState.Running) is { } active)
             return active;
@@ -151,6 +151,22 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
     {
         await _gate.WaitAsync(cancellationToken);
         try { RequireReady(); return _operations.GetValueOrDefault(id)?.ToDto(); }
+        finally { _gate.Release(); }
+    }
+
+    internal async Task<IReadOnlyList<CertificateOperationDto>> GetRenewalsForScanAsync(
+        string requestKey, IReadOnlyList<Guid> attached, CancellationToken ct)
+    {
+        var attachedIds = attached.ToHashSet();
+        await _gate.WaitAsync(ct);
+        try
+        {
+            RequireReady();
+            return _operations.Values.Where(operation => operation.Kind == "renew"
+                && (attachedIds.Contains(operation.OperationId) || operation.Actor == AutomaticRenewalActor
+                    && operation.IdempotencyKey == RequestScope(requestKey, operation.CertificateId, "renew", AutomaticRenewalActor)))
+                .Select(operation => operation.ToDto()).ToArray();
+        }
         finally { _gate.Release(); }
     }
 

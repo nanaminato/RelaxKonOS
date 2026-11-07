@@ -33,6 +33,7 @@ internal sealed class CertificateModule : IServerModule, IServerModuleDeactivati
         builder.Services.AddHostedService(services => services.GetRequiredService<CertificateOperationStore>());
         builder.Services.AddSingleton<CertificateRenewalRunRepository>();
         builder.Services.AddSingleton<ICertificateManager, CertificateManager>();
+        builder.Services.AddScoped<CertificateRenewalScan>();
         builder.Services.AddHostedService<CertificateRenewalWorker>();
     }
 

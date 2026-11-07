@@ -37,22 +37,31 @@ internal static class CertificateOperationReplayChecks
         var recovered = await afterRestart.StartAsync("same-key", Guid.NewGuid(), "issue", "alice", Action, CancellationToken.None, CancellationToken.None);
         TestAssert.Assert(recovered.OperationId == first.OperationId && recovered.CertificateId == firstId && executions == 5, "Durable creation replay lost request identity after reopening the ledger.");
 
-        var runs = new CertificateRenewalRunRepository(environment, store);
-        var runId = await runs.BeginAsync(CancellationToken.None);
+        var runs = new CertificateRenewalRunRepository(environment);
+        var now = DateTimeOffset.UtcNow;
+        var slot = (await runs.BeginDueAsync(now, default))!;
+        var runId = slot.Id;
+        var resumed = await new CertificateRenewalRunRepository(environment).BeginDueAsync(now.AddDays(2), default);
+        TestAssert.Assert(resumed is not null && resumed.Id == runId && resumed.RequestKey == slot.RequestKey,
+            "A scan interrupted across a date change must reopen the same persisted slot and admission key.");
         var release = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         var renewalId = Guid.NewGuid();
-        var pending = await store.StartAsync("renew-test", renewalId, "renew", "renewal-worker", _ => release.Task, CancellationToken.None, CancellationToken.None);
-        await runs.AddAsync(runId, pending.OperationId, CancellationToken.None);
-        await runs.AddAsync(runId, pending.OperationId, CancellationToken.None);
-        await runs.AddAsync(runId, Guid.Empty, CancellationToken.None);
-        await runs.EndAsync(runId, CancellationToken.None);
-        var running = (await runs.ListAsync(CancellationToken.None)).Single(r => r.RunId == runId);
+        var pending = await store.StartAsync(slot.RequestKey, renewalId, "renew", "renewal-worker", _ => release.Task, CancellationToken.None, CancellationToken.None);
+        TestAssert.Assert((await store.GetRenewalsForScanAsync(slot.RequestKey, [], default)).Single().OperationId == pending.OperationId,
+            "The original operation must be discoverable before the scan links it.");
+        var rejectedId = Guid.NewGuid();
+        await runs.AddAsync(runId, renewalId, pending.OperationId, CancellationToken.None);
+        await runs.AddAsync(runId, renewalId, pending.OperationId, CancellationToken.None);
+        await runs.AddAsync(runId, rejectedId, Guid.Empty, CancellationToken.None);
+        await runs.AddAsync(runId, rejectedId, Guid.Empty, CancellationToken.None);
+        await runs.EndAsync(runId, now, CancellationToken.None);
+        var running = (await runs.ListAsync(store, CancellationToken.None)).Single(r => r.RunId == runId);
         TestAssert.Assert(running.Pending == 1 && running.Succeeded == 0 && running.Failed == 1 && running.CompletedAt is null,
             "Renewal scans must deduplicate operations and keep pending tasks separate from outcomes.");
         release.SetResult("");
         await TestOperations.WaitForCertificateOperationAsync(store, pending.OperationId);
-        var reopenedRuns = new CertificateRenewalRunRepository(environment, await CreateAsync());
-        var completed = (await reopenedRuns.ListAsync(CancellationToken.None)).Single(r => r.RunId == runId);
+        var reopenedRuns = new CertificateRenewalRunRepository(environment);
+        var completed = (await reopenedRuns.ListAsync(await CreateAsync(), CancellationToken.None)).Single(r => r.RunId == runId);
         TestAssert.Assert(completed.Succeeded == 1 && completed.Failed == 1 && completed.Pending == 0 && completed.CompletedAt is not null,
             "Renewal run boundaries and final counts must survive reopening both ledgers.");
         for (var index = 0; index < 6; index++)
@@ -62,7 +71,11 @@ internal static class CertificateOperationReplayChecks
         }
         TestAssert.Assert((await store.GetRenewalHistoryAsync(renewalId, CancellationToken.None)).Count == 7,
             "The certificate history window must read all attempts rather than the recent-five summary.");
-        TestAssert.Assert((await runs.ListAsync(CancellationToken.None)).Count(r => !r.Automatic) == 6,
+        TestAssert.Assert((await runs.ListAsync(store, CancellationToken.None)).Count(r => !r.Automatic) == 6,
             "Manual renewals must appear as individual execution records.");
+        TestAssert.Assert(await reopenedRuns.NextScanAsync(default) == now.AddDays(1)
+            && await reopenedRuns.BeginDueAsync(now.AddHours(23), default) is null
+            && (await reopenedRuns.BeginDueAsync(now.AddDays(1), default)) is { } next && next.Id != runId,
+            "A completed scan must retain its next due boundary across reopening.");
     }
 }

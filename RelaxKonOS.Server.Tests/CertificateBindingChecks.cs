@@ -125,7 +125,7 @@ internal static class CertificateBindingChecks
         // MapCertificateEndpoints 的续期扫描端点取 CertificateRenewalRunRepository。这个类型没有注册时
         // ASP.NET Core 会把该复杂类型参数按「请求体」推断，而 MapGet 不允许推断请求体，
         // 于是 AuthorizationPolicyCache 在枚举端点元数据时就抛 InvalidOperationException。生产的 DI 里注册过。
-        builder.Services.AddSingleton(new RelaxKonOS.Server.Certificate.CertificateRenewalRunRepository(environment, ledger));
+        builder.Services.AddSingleton(new RelaxKonOS.Server.Certificate.CertificateRenewalRunRepository(environment));
         builder.Services.AddSingleton<IHostElevationSessionStore>(elevations);
         var responseLeases = new TestResidentBackgroundLeases();
         builder.Services.AddSingleton<RelaxKonOS.Server.Residency.IResidentModuleWorkLeaseSource>(responseLeases);
