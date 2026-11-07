@@ -255,9 +255,9 @@ internal static class MihomoIpcStartupAcceptance
                     throw new InvalidOperationException("The subscription queue changed the original native publication or traffic.");
             });
             var log = await helper.StopAsync(drainCompletedRequests: true);
-            if (log.Split('\n').Count(line => line.Contains("operation=MihomoRuntimeConfigure ", StringComparison.Ordinal)) != 3
+            if (log.Split('\n').Count(line => line.Contains("operation=MihomoRuntimeConfigure ", StringComparison.Ordinal)) != 4
                 || log.Contains("operation=MihomoRuntimeRecover ", StringComparison.Ordinal))
-                throw new InvalidOperationException("Subscription activation and both refreshes must each configure once without native replay.");
+                throw new InvalidOperationException("Subscription activation and each refresh must configure once without native replay.");
 
             // The remaining archive checks reuse this private fixture's original published configuration.
             await using var cleanupHelper = await StartHelperAsync(helperAssembly, config, transport);

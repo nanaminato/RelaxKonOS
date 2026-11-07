@@ -1994,3 +1994,9 @@ Windows Release 通过 45 项 Proxy 责任检查、39 项订阅边界、配置�
 最终 Linux Release 使用私有 systemd、真实 Mihomo、生产 Helper 与完整 PAM/JWT Server。原刷新 `71b30f5e-cf5a-4339-ae5c-bf4f60931cc5` 在真实 Helper 已提交、响应在途时强制终止 Server。重启从原键读回同一 ID 和 Succeeded，订阅时间与原发布意图一致，Helper 回执和原生修订保持。原刷新 `3d8e2702-188f-43a9-a79c-7f5dbaba5928` 只截断真实 Unix socket 的回执，Server 继续运行。待核验阶段原回执为 Interrupted，完成时间为空，新键被拒绝。同一个 Server 随后用原证据补写 Succeeded，重复查询及原键均返回原回执。源站共四次请求，Helper 对激活和两次刷新各派发一次配置，恢复无额外配置或补偿命令，真实转发通过。
 
 同批真实 Mihomo systemd 套件通过 177 项，专属 cgroup 已清理，宿主服务与代理文件指纹一致。日志为 `.artifacts/mb04-active-sub-loss/live.log`，归档 SHA-256 为 `0d2aaca11a6df1c9a5454b5fcfb0d084a653655afd003d35a399eae3dbb95fd6`。活动刷新补偿的原队列终态映射已实现，该组合尚无独立真实故障验收。Proxy 整体继续 resident，整模块休眠和生产 PSS 保持开放。下一项用真实原生失败验证活动刷新保持原转发、按原回执补写失败且不重放。
+
+### MB-04 活动订阅原生失败与补偿回执
+
+Linux Release 在同一专属设施通过完整 PAM/JWT Server 下载一份含 Mihomo 不支持规则的测试订阅。生产 Helper 返回真实 Failed 回执 `a9eee171-6755-4e44-991a-cc5c2fe529f7` 后，专属 Unix 中继暂扣结果。原队列仍为 Running 并持有工作租约，原配置身份和实际转发已恢复。强制终止 Server 后重启，Core 按原 Helper ID 对账，原队列持久化 Failed / `proxy.config_apply_failed`。原键和原 ID 均返回同一回执，原订阅时间、配置身份、Helper 回执和原生修订保持。
+
+同批复验成功重启与存活 Server 断线。测试源共五次请求，Helper 对激活和三次刷新各派发一次配置，恢复无额外配置或补偿命令。Mihomo systemd 套件通过 177 项，专属 cgroup 清理完成，宿主服务和代理文件指纹一致。日志为 `.artifacts/mb04-active-sub-compensation/live.log`，归档 SHA-256 为 `2c95db44e293ac3fb4e5e459624199eec6c54ce742a1ee22323ae5426ea7ccb0`。Windows Release 模块边界复跑通过，MB-05 原 `b1ff571b-7191-45ba-a05e-fe17a52bc41f` 的跨进程回执为 Interrupted，受控副作用计数为一。下一步联合验收可回收代次的闲时释放和唤醒、真实转发及 Core 恢复责任。Proxy 整体继续 resident，生产驻留未测。
