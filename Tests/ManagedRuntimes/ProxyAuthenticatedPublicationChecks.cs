@@ -113,8 +113,7 @@ internal static class ProxyAuthenticatedPublicationChecks
         await VerifyMihomoOverviewRestartAsync(root, assembly, socket, login, nativeState, guard);
         await VerifyMihomoObservationCancellationAsync(root, assembly, socket, login, nativeState, guard);
         await VerifySystemProxyShutdownAsync(root, assembly, socket, login, nativeState, guard);
-        await VerifyTunShutdownAsync(root, assembly, socket, login, nativeState, guard);
-        await VerifyExpiryShutdownAsync(root, assembly, socket, login, nativeState, traffic, retained, added, readReceipt);
+        await VerifySafetyShutdownAsync(root, assembly, socket, login, nativeState, guard, traffic, retained, added, readReceipt);
         await VerifyManagedPublicationShutdownAsync(root, assembly, socket, login, nativeState, traffic, retained, added, readReceipt);
         await VerifySubscriptionBodyResidencyAsync(guard);
         if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_PROXY_BENCHMARK_BASELINE") is { Length: > 0 } baseline)
@@ -258,105 +257,16 @@ internal static class ProxyAuthenticatedPublicationChecks
         }
     }
 
-    private static async Task VerifyExpiryShutdownAsync(string root, string assembly, string socket, LoginRequest login,
-        Func<RuntimeArchiveState> nativeState, ProxyFullServerTrafficProbe traffic, ProxyServerSecret retained,
-        StoredCredential expiring, Func<Guid, Task<ProxyServerPublicationReceipt>> readReceipt)
+    private static async Task VerifySafetyShutdownAsync(string root, string assembly, string socket, LoginRequest login,
+        Func<RuntimeArchiveState> nativeState, ProxySystemdGuardProbe guard, ProxyFullServerTrafficProbe traffic,
+        ProxyServerSecret retained, StoredCredential expiring, Func<Guid, Task<ProxyServerPublicationReceipt>> readReceipt)
     {
-        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(65));
-        var ct = budget.Token;
         var store = ManagedServiceChecks.OpenFullServerStore(root);
-        var before = await store.ReadAsync(ct);
+        var before = await store.ReadAsync(default);
         if (before.PendingPublication is not null || before.Published?.Credentials.Any(item => item.Id == expiring.Id) != true)
-            throw new InvalidOperationException("The expiry test requires the original live grant and a settled publication.");
-        using var oldConnection = await traffic.ForwardAsync(expiring.Value, ct);
+            throw new InvalidOperationException("The joint shutdown requires the original live grant and a settled publication.");
+        using var oldConnection = await traffic.ForwardAsync(expiring.Value, default);
         var baseline = nativeState();
-        var expires = DateTimeOffset.UtcNow.AddSeconds(8);
-        await store.WriteAsync(before with { Credentials = before.Credentials.Select(item =>
-            item.Id == expiring.Id ? item with { ExpiresAt = expires } : item).ToArray() }, ct);
-        var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly, socket, root, reuse: true);
-        start.Environment["Identity__LinuxPamTransport"] = "helper";
-        start.Environment["Logging__LogLevel__Microsoft.Hosting.Lifetime"] = "Information";
-        var applies = 0;
-        await using var relay = new ReplyRelay("/run/relaxkonos-expiry-drain.sock", socket, ct, (kind, _) =>
-        {
-            if (kind != "ProxyServerApply") return false;
-            Interlocked.Increment(ref applies);
-            return true;
-        });
-        start.Environment["PrivilegedHelper__SocketPath"] = relay.Path;
-        var stopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var process = Start(start, onOutput: line =>
-        {
-            if (line.Contains("Application is shutting down", StringComparison.Ordinal)) stopping.TrySetResult();
-        });
-        try
-        {
-            using var client = await ConnectAsync(process, login, ct);
-            var operation = await relay.Committed.Task.WaitAsync(ct);
-            var pending = await store.ReadAsync(ct);
-            var committed = nativeState();
-            var receipt = await readReceipt(operation).WaitAsync(ct);
-            var nativePid = await ReadNativePidAsync();
-            if (DateTimeOffset.UtcNow < expires || pending.PendingPublicationOperationId != operation
-                || pending.PendingQueuedPublication || pending.PendingPublication is not { } candidate
-                || candidate.Credentials.Any(item => item.Id == expiring.Id)
-                || pending.Published?.Credentials.Any(item => item.Id == expiring.Id) != true
-                || receipt.OperationId != operation || receipt.Outcome != ProxyServerPublicationOutcome.Committed
-                || receipt.PreviousHash != baseline.ConfigurationIdentity || receipt.CandidateHash != committed.ConfigurationIdentity
-                || committed.Installation.StateRevision != baseline.Installation.StateRevision + 1)
-                throw new InvalidOperationException("The natural expiry did not leave one original committed native receipt and pending application state.");
-            await ProxyFullServerTrafficProbe.ClosedAsync(oldConnection, ct);
-            await traffic.DeniedAsync(expiring.Value, ct);
-            using (await traffic.ForwardAsync(retained.Value, ct)) { }
-            await SignalShutdownAsync(process, client, stopping.Task, ct);
-            if (process.HasExited || (await store.ReadAsync(ct)).PendingPublicationOperationId != operation
-                || await ReadNativePidAsync() != nativePid || Volatile.Read(ref applies) != 1)
-                throw new InvalidOperationException("SIGTERM lost the original in-flight expiry or repeated its apply.");
-            using (await traffic.ForwardAsync(retained.Value, ct)) { }
-            relay.ReleaseHeldResponse();
-            await process.WaitForExitAsync(ct);
-            if (process.ExitCode != 0) throw new InvalidOperationException("The Server failed to exit after expiry drain.");
-            await VerifyTerminalAsync();
-
-            using var restart = Start(start);
-            try
-            {
-                using var restarted = await ConnectAsync(restart, login, ct);
-                await VerifyTerminalAsync();
-                await traffic.DeniedAsync(expiring.Value, ct);
-                using var forwarded = await traffic.ForwardAsync(retained.Value, ct);
-                Console.WriteLine($"PASS FULL SERVER EXPIRY SIGTERM DRAIN: original committed receipt {operation}, one apply, expired grant rejected after restart");
-            }
-            finally { await StopAsync(restart); }
-
-            async Task VerifyTerminalAsync()
-            {
-                var final = await store.ReadAsync(ct);
-                var schedule = await store.ReadExpiryScheduleAsync(ct);
-                if (final.PendingPublication is not null || final.PendingPublicationOperationId is not null
-                    || final.Published?.Credentials.Any(item => item.Id == expiring.Id) != false
-                    || final.Published.Credentials.Any(item => item.Id == retained.Id) != true
-                    || schedule.RequiresPass(DateTimeOffset.UtcNow) || await readReceipt(operation).WaitAsync(ct) != receipt
-                    || nativeState().Installation.StateRevision != committed.Installation.StateRevision
-                    || await ReadNativePidAsync() != nativePid || Volatile.Read(ref applies) != 1)
-                    throw new InvalidOperationException("Expiry cleanup did not preserve the original receipt and live runtime.");
-            }
-        }
-        finally
-        {
-            relay.ReleaseHeldResponse();
-            await StopAsync(process);
-        }
-    }
-
-    private static async Task VerifyTunShutdownAsync(string root, string assembly, string socket, LoginRequest login,
-        Func<RuntimeArchiveState> nativeState, ProxySystemdGuardProbe guard)
-    {
-        var operation = await guard.PrepareTunShutdownAsync(root);
-        var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly, socket, root, reuse: true);
-        start.Environment["Identity__LinuxPamTransport"] = "helper";
-        start.Environment["Logging__LogLevel__Microsoft.Hosting.Lifetime"] = "Information";
-        start.Environment["Proxy__Mihomo__Controller__TimeoutSeconds"] = "20";
         var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var reloads = 0;
@@ -398,51 +308,141 @@ internal static class ProxyAuthenticatedPublicationChecks
             catch (HttpRequestException) when (reload) { context.Abort(); }
         });
         await relay.StartAsync();
-        start.Environment["Proxy__Mihomo__Controller__Endpoint"] =
+        var endpoint =
             relay.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single() + "/";
-        var revision = nativeState().Installation.StateRevision;
-        var pid = guard.RuntimePid;
+        var mihomoPid = guard.RuntimePid;
         await guard.VerifyTrafficAsync(async (_, ct) =>
         {
+            var originalProxy = guard.ReadOwnershipWitness();
+            var tunOperation = await guard.PrepareTunShutdownAsync(root);
+            // The original connection was established under a live grant. Make it due before the
+            // initial scheduler pass so both real responses can be held within the controller deadline.
+            await store.WriteAsync(before with { Credentials = before.Credentials.Select(item =>
+                item.Id == expiring.Id ? item with { ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(-1) } : item).ToArray() }, ct);
+            var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly, socket, root, reuse: true);
+            start.Environment["Identity__LinuxPamTransport"] = "helper";
+            start.Environment["Logging__LogLevel__Microsoft.Hosting.Lifetime"] = "Information";
+            start.Environment["Proxy__Mihomo__Controller__TimeoutSeconds"] = "30";
+            start.Environment["Proxy__Mihomo__Controller__Endpoint"] = endpoint;
+
+            var applies = 0;
+            await using var expiryRelay = new ReplyRelay("/run/relaxkonos-expiry-drain.sock", socket, ct, (kind, _) =>
+            {
+                if (kind != "ProxyServerApply") return false;
+                Interlocked.Increment(ref applies);
+                return true;
+            });
+            start.Environment["PrivilegedHelper__SocketPath"] = expiryRelay.Path;
             var stopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var restored = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            using var server = Start(start, onOutput: line =>
+            using var process = Start(start, onError: line => Console.WriteLine($"Joint Proxy Server stderr: {line}"), onOutput: line =>
             {
                 if (line.Contains("Application is shutting down", StringComparison.Ordinal)) stopping.TrySetResult();
-                if (line.Contains("TUN was disabled", StringComparison.Ordinal) && line.Contains(operation.ToString(), StringComparison.OrdinalIgnoreCase))
+                if (line.Contains("TUN was disabled", StringComparison.Ordinal) && line.Contains(tunOperation.ToString(), StringComparison.OrdinalIgnoreCase))
                     restored.TrySetResult();
             });
             try
             {
-                using var client = await ConnectAsync(server, login, ct);
+                using var client = await ConnectAsync(process, login, ct);
                 await ready.Task.WaitAsync(ct);
-                await guard.VerifyTunShutdownBoundaryAsync(operation, waitingForReply: true, ct);
-                await SignalShutdownAsync(server, client, stopping.Task, ct);
-                if (server.HasExited || restored.Task.IsCompleted || Volatile.Read(ref reloads) != 1)
-                    throw new InvalidOperationException("SIGTERM released the original TUN recovery before its controller response.");
-                await guard.VerifyTunShutdownBoundaryAsync(operation, waitingForReply: true, ct);
+                var expiryOperation = await expiryRelay.Committed.Task.WaitAsync(ct);
+                var pending = await store.ReadAsync(ct);
+                var committed = nativeState();
+                var receipt = await readReceipt(expiryOperation).WaitAsync(ct);
+                var singBoxPid = await ReadNativePidAsync();
+                if (pending.PendingPublicationOperationId != expiryOperation || pending.PendingQueuedPublication
+                    || pending.PendingPublication is not { } candidate || candidate.Credentials.Any(item => item.Id == expiring.Id)
+                    || pending.Published?.Credentials.Any(item => item.Id == expiring.Id) != true
+                    || receipt.OperationId != expiryOperation || receipt.Outcome != ProxyServerPublicationOutcome.Committed
+                    || receipt.PreviousHash != baseline.ConfigurationIdentity || receipt.CandidateHash != committed.ConfigurationIdentity
+                    || committed.Installation.StateRevision != baseline.Installation.StateRevision + 1)
+                    throw new InvalidOperationException("The natural expiry did not leave its original committed receipt and pending application state.");
+                await guard.VerifyTunShutdownBoundaryAsync(tunOperation, waitingForReply: true, ct);
+                await ProxyFullServerTrafficProbe.ClosedAsync(oldConnection, ct);
+                await traffic.DeniedAsync(expiring.Value, ct);
+                using (await traffic.ForwardAsync(retained.Value, ct)) { }
+                guard.SetCompetingValue();
+                await SignalShutdownAsync(process, client, stopping.Task, ct);
+                if (process.HasExited || restored.Task.IsCompleted || (await store.ReadAsync(ct)).PendingPublicationOperationId != expiryOperation
+                    || Volatile.Read(ref reloads) != 1 || Volatile.Read(ref applies) != 1)
+                    throw new InvalidOperationException("SIGTERM lost one of the two in-flight safety operations.");
+                await guard.VerifyTunShutdownBoundaryAsync(tunOperation, waitingForReply: true, ct);
+
+                expiryRelay.ReleaseHeldResponse();
+                while ((await store.ReadAsync(ct)).PendingPublicationOperationId == expiryOperation)
+                {
+                    if (process.HasExited) throw new InvalidOperationException("The Server exited before expiry persisted.");
+                    await Task.Delay(40, ct);
+                }
+                await VerifyExpiryTerminalAsync();
+                if (process.HasExited || restored.Task.IsCompleted)
+                    throw new InvalidOperationException("Completing expiry released the independent TUN responsibility.");
+                await guard.VerifyTunShutdownBoundaryAsync(tunOperation, waitingForReply: true, ct);
+                if (!guard.HasCompetingValue())
+                    throw new InvalidOperationException("The guard wrote while TUN owned the shared publication gate.");
+
                 release.TrySetResult();
-                await server.WaitForExitAsync(ct);
-                if (server.ExitCode != 0 || !restored.Task.IsCompleted)
+                await process.WaitForExitAsync(ct);
+                if (process.ExitCode != 0 || !restored.Task.IsCompleted)
                     throw new InvalidOperationException("The Server did not confirm and drain the original TUN recovery.");
-                await guard.VerifyTunShutdownBoundaryAsync(operation, waitingForReply: false, ct);
+                await guard.VerifyTunShutdownBoundaryAsync(tunOperation, waitingForReply: false, ct);
+                // If the original guard was already admitted when TUN released the gate, its
+                // completed repair is authoritative. Restart must observe it without writing again.
+                var repairedBeforeRestart = !guard.HasCompetingValue();
+                var proxyBeforeRestart = repairedBeforeRestart ? guard.ReadOwnershipWitness() : originalProxy;
+
+                await using var restartRelay = new ReplyRelay("/run/relaxkonos-joint-safety-restart.sock", socket, ct, (kind, _) =>
+                {
+                    if (kind == "ProxyServerApply") Interlocked.Increment(ref applies);
+                    return kind == "LinuxSystemProxyApply";
+                });
+                start.Environment["PrivilegedHelper__SocketPath"] = restartRelay.Path;
                 using var restart = Start(start);
                 try
                 {
+                    var guardOperation = await restartRelay.Committed.Task.WaitAsync(ct);
+                    var proxy = guard.ReadOwnershipWitness();
+                    if (proxy.Environment != originalProxy.Environment || proxy.Journal != originalProxy.Journal
+                        || proxy.EnvironmentWrite == originalProxy.EnvironmentWrite
+                        || (repairedBeforeRestart && proxy != proxyBeforeRestart))
+                        throw new InvalidOperationException("Guard recovery lost the original ownership or repeated an already committed repair.");
+                    restartRelay.ReleaseHeldResponse();
                     using var restarted = await ConnectAsync(restart, login, ct);
-                    await guard.VerifyTunShutdownBoundaryAsync(operation, waitingForReply: false, ct);
-                    if (Volatile.Read(ref reloads) != 1 || guard.RuntimePid != pid || nativeState().Installation.StateRevision != revision)
-                        throw new InvalidOperationException("Restart repeated TUN teardown or changed the live runtime or publication.");
-                    Console.WriteLine($"PASS FULL SERVER TUN SIGTERM DRAIN: original operation {operation}, one native reload, marker drained and no replay");
+                    await VerifyExpiryTerminalAsync();
+                    await guard.VerifyTunShutdownBoundaryAsync(tunOperation, waitingForReply: false, ct);
+                    if (Volatile.Read(ref reloads) != 1 || guard.RuntimePid != mihomoPid || guard.ReadOwnershipWitness() != proxy)
+                        throw new InvalidOperationException("Restart changed the native proxy or repeated TUN teardown.");
+                    await traffic.DeniedAsync(expiring.Value, ct);
+                    using var forwarded = await traffic.ForwardAsync(retained.Value, ct);
+                    var guardRepair = repairedBeforeRestart ? "drained before restart" : "completed on restart";
+                    Console.WriteLine($"PASS FULL SERVER JOINT PROXY SAFETY: expiry {expiryOperation}, TUN {tunOperation}, guard {guardOperation} ({guardRepair}); one apply, one reload, original receipt and traffic");
                 }
-                finally { await StopAsync(restart); }
+                finally
+                {
+                    restartRelay.ReleaseHeldResponse();
+                    await StopAsync(restart);
+                }
+
+                async Task VerifyExpiryTerminalAsync()
+                {
+                    var final = await store.ReadAsync(ct);
+                    var schedule = await store.ReadExpiryScheduleAsync(ct);
+                    if (final.PendingPublication is not null || final.PendingPublicationOperationId is not null
+                        || final.Published?.Credentials.Any(item => item.Id == expiring.Id) != false
+                        || final.Published.Credentials.Any(item => item.Id == retained.Id) != true
+                        || schedule.RequiresPass(DateTimeOffset.UtcNow) || await readReceipt(expiryOperation).WaitAsync(ct) != receipt
+                        || nativeState().Installation.StateRevision != committed.Installation.StateRevision
+                        || await ReadNativePidAsync() != singBoxPid || Volatile.Read(ref applies) != 1)
+                        throw new InvalidOperationException("Expiry did not retain its original receipt, terminal state and live runtime.");
+                }
             }
             finally
             {
+                expiryRelay.ReleaseHeldResponse();
                 release.TrySetResult();
-                await StopAsync(server);
+                await StopAsync(process);
             }
-        }, TimeSpan.FromSeconds(45));
+        }, TimeSpan.FromSeconds(65));
     }
 
     private static async Task VerifySystemProxyShutdownAsync(string root, string assembly, string socket, LoginRequest login,

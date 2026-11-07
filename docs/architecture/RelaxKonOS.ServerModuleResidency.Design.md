@@ -512,3 +512,5 @@ Proxy 的运行时、代理组、路由及 DNS 读取使用现有 resident 工�
 512 条真实连接的隔离配对复测显示，配置读取合并后 35 秒 PSS 较低，读取期间峰值方向不一，Server CPU 增加。Proxy 保持 resident，生产内存未测。见[配置合并读取配对测量](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-配置合并读取配对测量)。
 
 MB-03 在私有 Linux Engine 网络上验证了宿主和 builder 镜像内 Git 的专属 HTTPS 传输与信任拒绝路径。真实 BuildKit 执行与 ALC 联合验收仍等待可运行专属 RootlessKit 的环境。见[HTTPS 源仓库夹具](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-03-专属-https-源仓库夹具)。
+
+Proxy 同次停机联合验收中，原入站到期回执落盘后，Server 仍持有独立 TUN 清理责任。系统代理 guard 与 TUN 复用共享发布锁及原归属记录，已有网络转发继续。见[Proxy 联合安全责任](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-同次停机的-proxy-安全责任与恢复)。

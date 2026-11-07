@@ -390,3 +390,5 @@ Linux 联合验收也覆盖候选已注册、尚未启动时 Server 和 Helper �
 Host 停机关闭管理队列准入，并等待已受理任务写入原终态。隔离 Linux 已验证真实 Helper 响应在途时的 SIGTERM，重启后同键返回原成功回执，保留和新增授权继续转发。见[管理队列停机所有权](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-管理队列的-host-停机所有权)。
 
 Windows Release 的生命周期回归使用符合平台的 `sing-box.exe` 测试制品入口，验证 Helper 拒绝与签名清单不符的归档布局和验证证据。见[受管运行时回归记录](../platform/RelaxKonOS.ManagedRuntimes.Design.md#2026-11-03-proxy-发布恢复所有权收尾)。
+
+隔离 Linux 联合停机中，真实撤销的原回执先完成入站终态，Server 仍等待独立的 TUN 恢复。重启后按原 ID 核对 Helper 回执，过期授权继续被拒绝，保留授权仍可转发。见[Proxy 联合安全责任](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-同次停机的-proxy-安全责任与恢复)。

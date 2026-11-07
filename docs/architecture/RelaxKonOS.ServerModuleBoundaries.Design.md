@@ -143,7 +143,7 @@ IPC 请求、响应流、模块回调、批准中的 Broker 操作和持久后�
 | MB-01 | **部分完成，整项开放**。MB-01A 资源清单与分层基线见 §42。[MB-01B](RelaxKonOS.ServerModuleBaseline.20261106.md) 验证双平台启动期采树、交错认证 Git、自然释放和 Terminal Hub，Windows 另完成真实 Firewall 三轮 | Linux 同制品的真实 Helper 联合矩阵仍缺，System 模式探索中终端退出证明缺失且共享 Helper 触发宿主代理恢复。外部共享服务归属、长时间与非空仓库负载继续开放 | 隔离 Helper 和宿主持久恢复责任后补 Linux 全量联合矩阵，保留缺失与原始证据，关联 RES-01/03 |
 | MB-02 | **部分交付**。Git Contracts/独立实现和窄 Host 端口，Proxy 订阅转换契约/私有实现，Firewall-F1 独立契约/执行代码及构建门禁；回收验证见 §10/11/20～22/41 | 全官方包仍非唯一 collectible ABI；其他模块尚有根服务和实现依赖 | 全契约不引用 Server/实现；Host/模块互引构建门禁；发布包与私有依赖按唯一当前 ABI 验证 |
 | MB-03 | **Git 有限切片交付**。真实仓库/CLI/凭据/控制台与构建执行项目，100轮 ALC 和保留完成请求验证（§10/11）；镜像清理责任与真实 Engine 标签检查见 §43；派发检查点和跨进程恢复见[构建派发对账](#mb-03-git-构建派发检查点与重启对账)，专属仓库见[HTTPS 源仓库夹具](#mb-03-专属-https-源仓库夹具) | 真实 Docker/BuildKit 执行中取消、清理、恢复与 ALC 联合矩阵仍受 RootlessKit 启动限制；生产内存/冷启动缺失 | 真实任务/流/持久故障责任结束才回收；两平台循环不累积句柄/代码代次；实际引擎恢复与资源目标达到门槛 |
-| MB-04 | **常驻边界阶段交付**。共享读取、guard/TUN、到期与发布恢复单一 owner，后台工作租约、订阅转换预算及独立代码（§12～22）。Core 接续运行期 TUN，完整认证入站发布恢复与补偿见文末 | Proxy 整体仍 resident；安全职责持久调度交接、真实网络故障矩阵和动态休眠未完成 | 系统代理/TUN/到期责任在重启及休眠后连续可靠；未知结果不重放；正式包/代码释放与生产收益分别验证 |
+| MB-04 | **常驻边界阶段交付**。共享读取、guard/TUN、到期与发布恢复单一 owner，后台工作租约、订阅转换预算及独立代码（§12～22）。完整认证入站发布恢复、补偿和 [Core 同次停机排空](#mb-04-同次停机的-proxy-安全责任与恢复)已有 Linux 实机证据 | Proxy 整体仍 resident；管理执行图接入休眠的交接、真实网络故障矩阵和动态休眠未完成 | 系统代理/TUN/到期责任在重启及休眠后连续可靠；未知结果不重放；正式包/代码释放与生产收益分别验证 |
 | MB-05 | **MB-05A 常驻后台责任阶段交付**（§39）。三域真实工作租约、准入/Stop 同锁、实际任务及清理排空。Docker 在途停止与原回执恢复见 §45，独立 Pebble、Nginx、Engine 实测见 §52～54。完整认证网站 WebRoot 签发、崩溃恢复、取消与 SIGTERM 联验通过，见本文对应小节 | 三域仍 resident。独立执行程序集、完整故障矩阵、缺失身份的 CA 订单核实与整机掉电开放 | 后台 owner、终态与禁用门槛通过。按真实工作与安全责任边界推进独立执行器和动态休眠 |
 | MB-06 | **MB-06A/06B 阶段交付**（§39/40），Windows LocalSystem/S4U 安装夹具及 Core／Helper 崩溃恢复实测通过（§48） | 正式发行服务全链、Linux 固定启动器跨代故障、SDK 合作 drain/后台任务申报仍开放 | 整项仍须合作 drain/后台申报、正式安装多代信任/撤销/崩溃矩阵与旧回调隔离，验收后才启用闲时退出/重启 |
 | MB-07 | **SystemPerformance S1 已交付并冻结范围**（§23～37）；Firewall-F1 代码回收与 Tailscale TS-01 持久责任跨对象代次验收交付（§41）；Terminal-T1/T2 阶段交付（§39/40） | SystemPerformance 与 Terminal 仍 resident，生产收益/完整原生压力未测；Terminal 当前账号 Windows 树与 Linux 本地/永久降权 Helper 树已实测，Windows 安装 Helper/S4U、宿主崩溃/孤儿恢复矩阵仍开放；其余模块代码边界未验证 | Terminal-T1/T2 会话/当前原生树阶段已验收，断线不杀会话；整项还须安装/崩溃/压力矩阵及收益证据，再决定独立程序集，不能将 S1/T2 当作整项关闭 |
@@ -2196,3 +2196,15 @@ Windows Release 模块边界与 Mihomo 注册专项通过。MB-05 跨进程按�
 宿主 Git 与镜像内非 root Git 都在缺少专属 CA 时拒绝连接，分别报告证书签发者不受信和找不到签发证书。配置 CA 后，两端均通过真实 TLS 浅克隆同一个 `8f29460479e3cc33108fa645c89c671eb7bdc684` 提交，容器中确认构建上下文标记。独立 Engine 中已核对删除专属容器和网络。执行前后共享 Docker、Nginx 的状态及 PID、宿主 hosts 与 AppArmor 设置指纹一致。执行脚本为 `Tests/ManagedRuntimes/run-git-build-https-linux.sh`，在隔离命名空间内传入宿主网络与挂载命名空间 ID、本地镜像归档与镜像标签。原始日志见 `.artifacts/mb03-https-live.log`，镜像归档 SHA-256 为 `3b931425a738347c19895990381c4aa102a8e94d9caaa9fa2d167f4b30529f78`。
 
 专属仓库、名称解析及 Git 客户端信任已在现有机器验证。BuildKit daemon 未参与本次传输。联合验收仍需要允许专属 RootlessKit 创建用户命名空间的隔离执行环境，以验证实际 builder 的证书接入及在途取消、断连、构建清理、原回执和 ALC。共享 AppArmor 策略维持现有配置。
+
+### MB-04 同次停机的 Proxy 安全责任与恢复
+
+完整非 root Server 停用 Proxy 管理面，在私有 Linux systemd、网络及宿主代理文件覆盖层中运行。原 Core TUN worker 恢复真实未完成标记，控制器已禁用 TUN 并恢复管理路由和策略规则，真实确认响应暂扣。原到期 worker 同时经 Helper 提交 sing-box 撤销，原回执另按 operationId 读取，主响应暂扣。撤销关闭到期连接并拒绝该凭据，保留授权仍可通过真实 TLS 转发。
+
+在 TUN 持有共享发布锁时写入专属系统代理的竞争值，再发送 SIGTERM。Server 停止监听。先放行到期响应并核对原应用终态、原生回执和调度索引，Server 仍存活并保留原 TUN 标记，guard 未覆盖竞争值。随后放行真实 TUN 确认，原 worker 完成清理。重启使用原系统代理归属记录。若原 guard 已在释放发布锁后提交修复，重启仅核对文件和日志指纹；若竞争值仍在，由启动 guard 修复。到期撤销和 TUN reload 各一次，原 Mihomo 连接贯穿停机与重启。
+
+最终实机复验的到期原回执为 `06a3af0b-905c-4976-a586-881df5da8272`，TUN 原标记为 `5712993f-0771-459e-8eb6-92dc4b41e35f`。guard 在重启后以 `714b8016-a916-4562-a85f-f93957e09900` 修正测试漂移，原归属保留。最终制品未观测到 guard 在重启前提交的交错顺序。同批原入站恢复 `d4f8e6b3-01a1-4146-910e-2941865f5424`、原补偿 `60285cab-6dc6-4aa9-90f3-884fe5a68612` 与管理队列停机 `b359ee89-caf5-4b80-a565-28b77504e09c` 通过，均核对原回执与派发次数。专属 runtime 注册及 cgroup 已清理，宿主 runtime 服务和代理文件指纹一致。
+
+首轮联合夹具在准备非 root Server 后又写入私有台账，Server 启动退出。调整为先写台账再赋予专属状态目录和文件的非 root 所有权，随后两轮实机通过。日志在 `.artifacts/mb04-joint-safety/`，最终 Linux 归档 SHA-256 为 `b81cedb11c2a4ca891da7a80b9c175572954d44fe2ae1d511b6d95c46598c4fc`。Windows Release Core 安全 37 项、TUN 边界 34 项、Proxy Server 和模块边界回归通过，MB-05 跨进程原 `b091593e-78b6-4316-a626-632defedf9e0` 返回 Interrupted，受控副作用计数为一。
+
+联合实测使用独立直连 Mihomo 的 TUN，受管发布下的 TUN 网络事务、整个 Proxy 的动态休眠和生产内存继续开放。下一项核对设置写入的工作租约、真实响应和清理边界，以及现有原发布回执在 HTTP 断线后的恢复。

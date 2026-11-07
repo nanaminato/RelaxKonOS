@@ -4558,3 +4558,5 @@ Mihomo 连接详情从有界快照返回连接 ID、端点、规则、代理链�
 桌面路由和 DNS 状态通过 `GET /api/v1.0/proxy/controller-config` 一次读取。两项结果来自同一份 Mihomo 配置样本，分别携带问题码。路由设置仍通过原 PUT 保存。见[路由和 DNS 单次采样](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-路由和-dns-单次采样)。
 
 合并前后对比了同一批 512 条真实连接上的认证请求，路由与 DNS 结果一致。合并后配置请求减半，隔离负载的 35 秒 PSS 较低，Server CPU 增加。见[配置合并读取配对测量](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-配置合并读取配对测量)。
+
+停用管理面时，TUN 的真实禁用确认与入站到期回执可同时在途。到期终态完成后，原 TUN 标记仍保留至路由验证和清理结束。重启由原 guard 核对系统代理归属，Mihomo 原连接继续转发。见[Proxy 联合安全责任](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-同次停机的-proxy-安全责任与恢复)。

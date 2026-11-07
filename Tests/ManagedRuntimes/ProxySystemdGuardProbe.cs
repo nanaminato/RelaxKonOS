@@ -18,6 +18,7 @@ internal sealed class ProxySystemdGuardProbe(Process mihomo, int proxyPort, Prox
     private const string JournalPath = "/var/lib/relaxkonos-system-proxy/recovery.json";
     private const string Device = "rk-mb04-tun";
     private const string Original = "http://127.0.0.1:1234";
+    private const string Competing = "http://127.0.0.1:4321";
     private const string ActivationBarrier = "native-tun-active-before-marker-commit";
     private const string MarkerPath = ManagedServiceChecks.FullServerState + "/proxy-tun-recovery.json";
     private Guid operationId;
@@ -142,8 +143,10 @@ internal sealed class ProxySystemdGuardProbe(Process mihomo, int proxyPort, Prox
     internal void SetCompetingValue()
     {
         if (!File.Exists(JournalPath)) throw new InvalidOperationException("The Helper lost its original proxy journal.");
-        File.WriteAllText(EnvironmentPath, "RELAXKONOS_PROXY_FIXTURE=isolated\nhttp_proxy=http://127.0.0.1:4321\n");
+        File.WriteAllText(EnvironmentPath, $"RELAXKONOS_PROXY_FIXTURE=isolated\nhttp_proxy={Competing}\n");
     }
+
+    internal bool HasCompetingValue() => ReadProxy() == Competing && File.Exists(JournalPath);
 
     private Guid ReadUnfinishedOperation()
     {
