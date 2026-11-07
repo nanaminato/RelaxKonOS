@@ -8,6 +8,6 @@ If profile publication recorded the controller acknowledgement, startup recovery
 
 If a direct settings update recorded successful replies from both the runtime and the host, and the host proxy policy stays the same, recovery verifies the candidate configuration and settings file and finishes the local commit. An unknown result or an independent file edit leaves the original operation pending.
 
-The Linux Helper can check a named host proxy operation's historical receipt separately from its current effect. The direct settings workflow still keeps operations pending if the reply goes missing during a host policy change. The system proxy guard continues to follow the persisted policy and ownership record.
+After the runtime acknowledges a direct host policy change on Linux, recovery can check the Helper receipt and current proxy values by the original operation ID. When both checks pass and the candidate file still matches, recovery finishes the local settings commit. If the guard must independently maintain the persisted policy, it leaves the original operation pending so the two effects remain distinguishable.
 
 Use a second management connection on a disposable VM for the first platform validation. See the skipped-test register before attempting Windows or Ubuntu recovery drills.

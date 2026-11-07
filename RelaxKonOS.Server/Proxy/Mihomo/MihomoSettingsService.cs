@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.ManagedRuntimes;
+using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.ManagedRuntimes;
 
 namespace RelaxKonOS.Server.Proxy.Mihomo;
@@ -80,7 +81,11 @@ public sealed class MihomoSettingsService(
             catch (ProxyControllerSecretException) { return ProxyProblemCodes.ConfigApplyFailed; }
             catch (ArgumentException) { return ProxyProblemCodes.ConfigInvalid; }
 
-            var localCommit = MihomoSettingsPublicationFiles.HasSameHostProxyPolicy(previous, settings)
+            var sameHostPolicy = MihomoSettingsPublicationFiles.HasSameHostProxyPolicy(previous, settings);
+            var trackedHostPolicy = !sameHostPolicy && settingsFiles.SupportsTrackedHostPolicy;
+            if (trackedHostPolicy && settings.SystemProxyEnabled && !LinuxSystemProxyConfiguration.IsValidBypassList(systemProxy.BypassList))
+                return ProxyProblemCodes.ConfigInvalid;
+            var localCommit = sameHostPolicy || trackedHostPolicy
                 ? await settingsFiles.CaptureAsync(previous, settings, cancellationToken) : null;
             var temporary = Path.Combine(directory, ".settings-" + Guid.NewGuid().ToString("N"));
             try
@@ -101,6 +106,20 @@ public sealed class MihomoSettingsService(
                     if (!string.IsNullOrEmpty(await controller.ReloadAsync(completionToken))) return ProxyProblemCodes.RecoveryRequired;
                     await publication.CompleteDirectReloadAsync(checkpoint.OperationId);
                     return ProxyProblemCodes.ConfigApplyFailed;
+                }
+                if (trackedHostPolicy)
+                {
+                    if (!controllerAvailable)
+                    {
+                        await RestoreConfigurationAsync();
+                        await publication.CompleteDirectReloadAsync(checkpoint.OperationId);
+                        return ProxyProblemCodes.ControllerUnavailable;
+                    }
+                    var confirmed = await publication.ConfirmDirectSettingsAsync(checkpoint.OperationId, localCommit!, trackedHostPolicy: true);
+                    if (!await settingsFiles.ApplyTrackedAsync(checkpoint.OperationId, localCommit!, completionToken))
+                        return ProxyProblemCodes.RecoveryRequired;
+                    var result = await publication.RecoverDirectReloadUnderGateAsync(confirmed, null, completionToken, settingsFiles);
+                    return result.Outcome == RuntimeSwitchOutcome.Succeeded ? null : ProxyProblemCodes.RecoveryRequired;
                 }
                 var proxyProblem = await systemProxyService.ApplyAsync(settings, previous, enforce: false, completionToken);
                 if (controllerAvailable && proxyProblem is null && localCommit is not null)

@@ -18,10 +18,12 @@ public sealed record MihomoPublicationCompletion(Guid OperationId, string Reques
 public sealed record MihomoSubscriptionRefreshCompletion(bool Confirmed, DateTimeOffset CompletedAt);
 public sealed record MihomoDirectReload(Guid OperationId, string? PreviousYaml, string CandidateIdentity,
     MihomoProfilePublication? Profile = null, bool ProfileReloadConfirmed = false,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MihomoSettingsPublication? ConfirmedSettings = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MihomoSettingsPublication? ConfirmedSettings = null,
+    bool TrackedHostPolicy = false, bool HostGuardSuperseded = false)
 {
     [JsonIgnore]
-    internal string ProblemCode => ConfirmedSettings is not null ? MihomoPublicationStore.DirectSettingsCommitPending
+    internal string ProblemCode => TrackedHostPolicy ? MihomoPublicationStore.DirectTrackedHostPending
+        : ConfirmedSettings is not null ? MihomoPublicationStore.DirectSettingsCommitPending
         : ProfileReloadConfirmed ? MihomoPublicationStore.DirectProfileCommitPending : MihomoPublicationStore.DirectReloadUnverified;
 }
 
@@ -53,6 +55,7 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
     internal const string DirectReloadUnverified = "runtime.direct_reload_unverified";
     internal const string DirectProfileCommitPending = "runtime.direct_profile_commit_pending";
     internal const string DirectSettingsCommitPending = "runtime.direct_settings_commit_pending";
+    internal const string DirectTrackedHostPending = "runtime.direct_tracked_host_pending";
     public SemaphoreSlim Gate { get; } = new(1, 1);
     private readonly IDataProtector protector = protection.CreateProtector("RelaxKonOS.Mihomo.Publication.v1");
     private readonly IDataProtector scheduleProtector = protection.CreateProtector("RelaxKonOS.Mihomo.PublicationSchedule.v1");
@@ -108,19 +111,31 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
         }, CancellationToken.None);
     }
 
-    internal async Task<MihomoPublicationState> ConfirmDirectSettingsAsync(Guid operationId, MihomoSettingsPublication intent)
+    internal async Task<MihomoPublicationState> ConfirmDirectSettingsAsync(Guid operationId, MihomoSettingsPublication intent,
+        bool trackedHostPolicy = false)
     {
         var state = await ReadAsync(CancellationToken.None);
         if (state.DirectReload is not { Profile: null, ConfirmedSettings: null } direct || direct.OperationId != operationId
-            || !MihomoSettingsPublicationFiles.HasSameHostProxyPolicy(intent.Previous, intent.Candidate))
+            || trackedHostPolicy == MihomoSettingsPublicationFiles.HasSameHostProxyPolicy(intent.Previous, intent.Candidate))
             throw new RuntimePolicyException("runtime.publication_unconfirmed");
         var confirmed = state with
         {
             Revision = checked(state.Revision + 1),
-            DirectReload = direct with { ConfirmedSettings = intent }
+            DirectReload = direct with { ConfirmedSettings = intent, TrackedHostPolicy = trackedHostPolicy }
         };
         await SaveAsync(confirmed, CancellationToken.None);
         return confirmed;
+    }
+
+    internal Task SupersedeTrackedHostPolicyUnderGateAsync(MihomoPublicationState state)
+    {
+        if (state.DirectReload is not { TrackedHostPolicy: true, HostGuardSuperseded: false } direct)
+            throw new RuntimePolicyException("runtime.publication_unconfirmed");
+        return SaveAsync(state with
+        {
+            Revision = checked(state.Revision + 1),
+            DirectReload = direct with { HostGuardSuperseded = true }
+        }, CancellationToken.None);
     }
 
     internal async Task<RuntimeSwitchResult> RecoverDirectReloadUnderGateAsync(MihomoPublicationState state,
@@ -143,6 +158,8 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
         if (checkpoint.ConfirmedSettings is { } settings)
         {
             if (settingsFiles is null) return Pending();
+            if (checkpoint.TrackedHostPolicy && (checkpoint.HostGuardSuperseded
+                || !await settingsFiles.MatchesTrackedEffectAsync(checkpoint.OperationId, settings, ct))) return Pending();
             await settingsFiles.CommitFileAsync(settings, CancellationToken.None);
             settingsReceipts = settingsReceipts is { } prior ? new HashSet<Guid>(prior) : [];
             settingsReceipts.Add(checkpoint.OperationId);
@@ -437,9 +454,11 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
             if (direct.ConfirmedSettings is { } settings)
             {
                 MihomoSettingsPublicationFiles.Validate(settings);
-                if (direct.Profile is not null || !MihomoSettingsPublicationFiles.HasSameHostProxyPolicy(settings.Previous, settings.Candidate))
+                if (direct.Profile is not null || direct.TrackedHostPolicy == MihomoSettingsPublicationFiles.HasSameHostProxyPolicy(settings.Previous, settings.Candidate))
                     throw new RuntimePolicyException("runtime.publication_state_invalid");
             }
+            if (direct.TrackedHostPolicy && direct.ConfirmedSettings is null || direct.HostGuardSuperseded && !direct.TrackedHostPolicy)
+                throw new RuntimePolicyException("runtime.publication_state_invalid");
         }
         if (state.LastConfiguration is { } completed && (completed.OperationId == Guid.Empty
             || completed.RequestHash is not { Length: 64 } || !completed.RequestHash.All(Uri.IsHexDigit) || state.Published is null

@@ -253,3 +253,5 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 2026-11-08（MR-03 / MB-04 配置恢复）直连档案发布已持久记录原生确认时，按原 ID 接续已有 SQLite 档案提交，完成后可读回原成功回执。未记录确认的原 reload 继续待恢复。见[直连档案提交恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-直连档案提交恢复)。
 
 2026-11-08（MR-03 / MB-04 配置恢复）宿主代理策略一致，且已收到运行时与宿主成功应答的直连设置，可按原 ID 完成本地提交及回执。见[直连设置提交恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-直连设置提交恢复)。
+
+2026-11-08（MR-03 / MB-04 配置恢复）Linux 直连宿主代理策略变更在原运行时确认后冻结意图，按原 ID 核对 Helper 回执及实际代理效果。guard 独立接管时保留待处理结果。见[Linux 直连宿主策略变更恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-linux-直连宿主策略变更恢复)。

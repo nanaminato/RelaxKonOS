@@ -504,7 +504,13 @@ public sealed record PrivilegedOperationResult(
 public sealed record NginxNativeReloadReceipt(Guid OperationId, [property: JsonRequired] bool Succeeded);
 
 /// <summary>Fixed Linux proxy writers; no executable, arbitrary variable, path, or target user can be supplied.</summary>
-public sealed record LinuxSystemProxyConfiguration(bool Enabled, string Host, int Port, bool UseDefaultBypass, string BypassList, bool Enforce = false);
+public sealed record LinuxSystemProxyConfiguration(bool Enabled, string Host, int Port, bool UseDefaultBypass, string BypassList, bool Enforce = false)
+{
+    public static bool IsValidBypassList(string? value) => value is { Length: <= 4096 } && !value.Any(char.IsControl)
+        && value.Split([',', ';'], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .All(token => token.Length <= 256 && token.All(character =>
+                char.IsAsciiLetterOrDigit(character) || character is '.' or ':' or '/' or '-' or '_'));
+}
 
 /// <summary>Historical Helper acknowledgement and a separate readback of the original effect.</summary>
 public sealed record LinuxSystemProxyReceipt(Guid OperationId,

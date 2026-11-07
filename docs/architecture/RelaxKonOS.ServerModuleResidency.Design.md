@@ -530,3 +530,5 @@ Proxy 设置写入的 resident 租约覆盖执行、审计、响应与异步作�
 宿主代理策略一致且原生应答齐备时，Core 可接续直连设置的本地提交，保留原系统代理 guard 和 TUN 所有者。见[直连设置提交恢复](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-直连设置提交恢复)。
 
 Linux Helper 可按原 ID 只读核对系统代理效果和原归属。持续 guard 仍使用原代理归属事务。见[Linux 系统代理原生回执](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-linux-系统代理原生回执)。
+
+Linux 直连设置按原 ID 核对宿主策略变更。guard 可完成已证实的本地提交，独立接管前在同一加密台账保留待核对责任。见[Linux 直连宿主策略变更恢复](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-linux-直连宿主策略变更恢复)。

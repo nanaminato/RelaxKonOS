@@ -22,6 +22,7 @@ using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Protocol.ProxyServer;
+using RelaxKonOS.Protocol.Settings;
 using RelaxKonOS.Server.Certificate;
 using RelaxKonOS.Server.ManagedRuntimes;
 using RelaxKonOS.Server.Privileged;
@@ -383,6 +384,94 @@ internal static class ProxyAuthenticatedPublicationChecks
             });
         }
 
+        foreach (var drift in new[] { false, true })
+        {
+            await guard.VerifyTrafficAsync(async (_, ct) =>
+            {
+                const string environment = "/etc/environment";
+                var name = drift ? "tracked-host-drift" : "tracked-host-reply";
+                var settingsPaths = await CreatePathsAsync(name, ct);
+                var stateDir = settingsPaths.GetStateDirectory();
+                var store = new MihomoPublicationStore(settingsPaths, protection);
+                var reader = new ProxySettingsReader(settingsPaths);
+                var prior = await reader.GetAsync(ct);
+                var candidate = prior with { LogLevel = "warning", SystemProxy = TrackedOptions(prior) };
+                var priorWrites = Volatile.Read(ref nativeWrites);
+                var originalBypass = ReadNoProxy();
+                await using var hostRelay = new ReplyRelay("/run/rk-tracked-settings.sock", socket, ct,
+                    static (kind, _) => kind == "LinuxSystemProxyApplyTracked");
+                var start = new ProcessStartInfo("dotnet") { UseShellExecute = false };
+                foreach (var argument in new[] { typeof(ProxyAuthenticatedPublicationChecks).Assembly.Location,
+                    "runtime-proxy-direct-settings-crash", root, stateDir, address, hostRelay.Path, name })
+                    start.ArgumentList.Add(argument);
+                using var child = Process.Start(start) ?? throw new InvalidOperationException("Could not start the tracked settings writer.");
+                Guid id;
+                try
+                {
+                    if (await Task.WhenAny(hostRelay.Committed.Task, child.WaitForExitAsync(ct)).WaitAsync(ct) != hostRelay.Committed.Task)
+                        throw new InvalidOperationException($"Tracked settings writer exited before the real Helper reply. Exit={child.ExitCode}.");
+                    id = await hostRelay.Committed.Task;
+                    var pending = (await store.ReadAsync(ct)).DirectReload;
+                    if (pending is not { TrackedHostPolicy: true } || pending.OperationId != id
+                        || ReadNoProxy()?.Contains("tracked-fixture.invalid", StringComparison.Ordinal) != true
+                        || await reader.GetAsync(ct) != prior || Volatile.Read(ref nativeWrites) != priorWrites + 1)
+                        throw new InvalidOperationException("The actual Helper mutation did not precede the lost response and local commit.");
+                    child.Kill();
+                    await child.WaitForExitAsync(ct);
+                    hostRelay.DropHeldResponse();
+                }
+                finally { await StopAsync(child); }
+
+                if (drift)
+                {
+                    var target = LinuxSystemProxyOperations.EnvironmentTarget;
+                    var read = LinuxEnvironmentOperations.Execute(new(PrivilegedOperationKind.HostEnvironmentRead, EnvironmentTarget: target));
+                    var edit = LinuxEnvironmentOperations.Execute(new(PrivilegedOperationKind.HostEnvironmentApply,
+                        EnvironmentTarget: target, ExpectedRevision: read.HostEnvironment?.Revision,
+                        EnvironmentChange: new([new("no_proxy", EnvironmentMutationKind.Set, "independent-fixture.invalid")], ConfirmHighImpact: true)));
+                    if (!edit.Success) throw new InvalidOperationException("Could not introduce isolated host drift.");
+                }
+                var transport = new TrackedSettingsRecoveryTransport(new UnixSocketPrivilegedOperationTransport(new() { SocketPath = socket },
+                    NullLogger<UnixSocketPrivilegedOperationTransport>.Instance), id);
+                var host = new HostSystemProxyService(transport);
+                var files = new MihomoSettingsPublicationFiles(settingsPaths, host);
+                var reopened = new MihomoPublicationStore(settingsPaths, protection);
+                var guardPass = new MihomoSystemProxyReconciler(settingsPaths, reader, secrets, host, reopened, settingsFiles: files);
+                var named = new MihomoRuntimeRecoveryService(reopened, null!, null!, null!, null!, settingsFiles: files);
+                var afterEffect = await File.ReadAllBytesAsync(environment, ct);
+                var afterEffectTime = File.GetLastWriteTimeUtc(environment);
+                if (await guardPass.ReconcileSystemProxyAsync(true, ct) is not null)
+                    throw new InvalidOperationException("The restarted guard did not maintain the persisted host policy.");
+                var receipt = await named.RetryAsync(id, ct);
+                var state = await reopened.ReadAsync(ct);
+                if (receipt.OperationId != id || transport.Observations != 1 || transport.GuardWrites != (drift ? 1 : 0)
+                    || Volatile.Read(ref nativeWrites) != priorWrites + 1 || guard.RuntimePid != pid
+                    || (drift
+                        ? receipt.Outcome != RuntimeSwitchOutcome.RecoveryRequired || state.DirectReload?.HostGuardSuperseded != true
+                            || await reader.GetAsync(ct) != prior
+                        : receipt.Outcome != RuntimeSwitchOutcome.Succeeded || state.DirectReload is not null
+                            || await reader.GetAsync(ct) != candidate || !(await File.ReadAllBytesAsync(environment, ct)).SequenceEqual(afterEffect)
+                            || File.GetLastWriteTimeUtc(environment) != afterEffectTime))
+                    throw new InvalidOperationException("Guard attributed a new host effect to the original operation or failed to commit the original.");
+                Console.WriteLine($"PASS MIHOMO TRACKED HOST SETTINGS: {name}, original {id}, {receipt.Outcome}, one original Helper mutation, {transport.GuardWrites} separate guard calls");
+                var cleanupHost = new HostSystemProxyService(new UnixSocketPrivilegedOperationTransport(new() { SocketPath = socket },
+                    NullLogger<UnixSocketPrivilegedOperationTransport>.Instance));
+                if (!drift && await cleanupHost.ApplyAsync(prior, candidate, enforce: false, ct) is not null)
+                    throw new InvalidOperationException("Could not restore the private proxy fixture.");
+                if (ReadNoProxy() != originalBypass)
+                    throw new InvalidOperationException("The original system proxy bypass policy was not restored.");
+                await File.WriteAllBytesAsync(active, original, ct);
+                if (await native.ReloadAsync(ct) is not null) throw new InvalidOperationException("Could not restore the private runtime.");
+            });
+        }
+
+        static string? ReadNoProxy()
+        {
+            var observed = LinuxEnvironmentOperations.Execute(new(PrivilegedOperationKind.HostEnvironmentRead,
+                EnvironmentTarget: LinuxSystemProxyOperations.EnvironmentTarget));
+            return observed.HostEnvironment?.Values.SingleOrDefault(value => value.Name == "no_proxy")?.Value;
+        }
+
         async Task<DirectReloadFixturePaths> CreatePathsAsync(string name, CancellationToken ct)
         {
             var state = Directory.CreateDirectory(Path.Combine(root, "direct-reload", name)).FullName;
@@ -435,14 +524,34 @@ internal static class ProxyAuthenticatedPublicationChecks
         var writer = new MihomoSettingsService(paths, controller, secrets, new() { Endpoint = new("http://127.0.0.1:9090/") },
             host, publication, files);
         var prior = await new ProxySettingsReader(paths).GetAsync(ct);
+        var options = barrier.StartsWith("tracked-host-", StringComparison.Ordinal) ? TrackedOptions(prior) : prior.SystemProxy;
         var problem = await writer.UpdateAsync(new(prior.SystemProxyEnabled, prior.AllowLan, prior.DnsEnabled, prior.Ipv6Enabled,
-            prior.UnifiedDelay, "warning", prior.MixedPort, prior.AllowInsecureSubscriptionSources, prior.SystemProxyHost, prior.Tun, prior.SystemProxy), ct);
+            prior.UnifiedDelay, "warning", prior.MixedPort, prior.AllowInsecureSubscriptionSources, prior.SystemProxyHost, prior.Tun, options), ct);
         throw new InvalidOperationException($"The direct settings writer returned before the barrier. Problem={problem}.");
 
         void Block()
         {
             using (File.Create(Path.Combine(state, "settings-commit-barrier"))) { }
             Thread.Sleep(Timeout.Infinite);
+        }
+    }
+
+    private static ProxySystemProxyOptionsDto TrackedOptions(ProxySettingsDto previous)
+    {
+        var options = previous.SystemProxy ?? ProxySystemProxyOptionsDto.Default;
+        return options with { BypassList = options.BypassList.TrimEnd(',', ';') + ",tracked-fixture.invalid" };
+    }
+
+    private sealed class TrackedSettingsRecoveryTransport(IPrivilegedOperationTransport inner, Guid original) : IPrivilegedOperationTransport
+    {
+        internal int Observations { get; private set; }
+        internal int GuardWrites { get; private set; }
+        public Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken ct)
+        {
+            if (request.Operation == PrivilegedOperationKind.LinuxSystemProxyReceipt && request.OperationId == original) Observations++;
+            else if (request.Operation == PrivilegedOperationKind.LinuxSystemProxyApply && request.OperationId != original) GuardWrites++;
+            else throw new InvalidOperationException("Recovery attempted a new tracked effect or queried a different ID.");
+            return inner.ExecuteAsync(request, ct);
         }
     }
 

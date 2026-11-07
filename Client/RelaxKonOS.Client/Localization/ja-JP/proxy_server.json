@@ -362,6 +362,7 @@
     "proxy_server.runtime_problem.direct_reload_unverified": "直接再読み込みの実行結果は不明です。候補ファイルが一致する場合、再試行でディスク上の元の構成を復元できます。復旧記録は保留のままです。",
     "proxy_server.runtime_problem.direct_profile_commit_pending": "ランタイムは再読み込みを確認済みです。再試行では候補の構成を検証し、再読み込みを行わずにプロファイルの選択を完了します。",
     "proxy_server.runtime_problem.direct_settings_commit_pending": "ランタイムとホストは更新を確認済みです。再試行ではどちらの操作も繰り返さずに、ローカル設定を検証して保存します。",
+    "proxy_server.runtime_problem.direct_tracked_host_pending": "元のホストプロキシ変更は確認待ちです。復旧には元の操作の結果を使用します。",
     "proxy_server.runtime_problem.settings_drift": "保存済みのプロキシ設定が別途変更されました。復旧記録は保留のままです。",
     "proxy_server.runtime_problem.request_invalid": "要求が無効です。",
     "proxy_server.runtime_problem.request_failed": "要求に失敗しました。",

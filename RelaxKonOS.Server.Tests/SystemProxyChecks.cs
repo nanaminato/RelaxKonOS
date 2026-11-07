@@ -105,6 +105,43 @@ internal static class SystemProxyChecks
         }
         using (var fixture = new Fixture())
         {
+            fixture.Host.Supported = true;
+            var current = await fixture.Reader.GetAsync(default);
+            var candidate = current with { SystemProxyEnabled = true };
+            TestAssert.Assert(await fixture.Service.UpdateAsync(Request(candidate with
+                { SystemProxy = ProxySystemProxyOptionsDto.Default with { BypassList = "<local>" } }), default) == ProxyProblemCodes.ConfigInvalid
+                && (await fixture.Publication.ReadAsync(default)).DirectReload is null && fixture.Host.TrackedId is null,
+                "Invalid Linux proxy policy must fail before the original checkpoint or native mutation.");
+            TestAssert.Assert(await fixture.Service.UpdateAsync(Request(candidate), default) == ProxyProblemCodes.RecoveryRequired,
+                "The original host acknowledgement was intentionally lost.");
+            var pending = (await fixture.Publication.ReadAsync(default)).DirectReload!;
+            TestAssert.Assert(pending.TrackedHostPolicy && fixture.Host.TrackedId == pending.OperationId && fixture.Host.Calls.Count == 0,
+                "Only the original tracked mutation may run before recovery.");
+            fixture.Host.EffectMatches = true;
+            TestAssert.Assert(await fixture.Reconciler.ReconcileSystemProxyAsync(true, default) is null
+                && (await fixture.Reader.GetAsync(default)).SystemProxyEnabled
+                && (await fixture.Publication.ReadAsync(default)).HasDirectCompletion(pending.OperationId)
+                && fixture.Host.Calls.Count == 0 && fixture.Host.Queries == 1,
+                "Guard should settle a proved original operation without a host write.");
+        }
+        using (var fixture = new Fixture())
+        {
+            fixture.Host.Supported = true;
+            var current = await fixture.Reader.GetAsync(default);
+            TestAssert.Assert(await fixture.Service.UpdateAsync(Request(current with { SystemProxyEnabled = true }), default) == ProxyProblemCodes.RecoveryRequired
+                && await fixture.Reconciler.ReconcileSystemProxyAsync(true, default) is null,
+                "The original guard authority must continue when the receipt is unavailable.");
+            var pending = (await fixture.Publication.ReadAsync(default)).DirectReload!;
+            fixture.Host.EffectMatches = true;
+            var recovery = new RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeRecoveryService(fixture.Publication,
+                null!, null!, null!, null!, settingsFiles: new(fixture.Paths, fixture.Host));
+            TestAssert.Assert(pending.HostGuardSuperseded && fixture.Host.Calls is [{ Settings.SystemProxyEnabled: false }]
+                && (await recovery.RetryAsync(pending.OperationId, default)).Outcome == RelaxKonOS.Protocol.ManagedRuntimes.RuntimeSwitchOutcome.RecoveryRequired
+                && fixture.Host.Queries == 1 && !(await fixture.Reader.GetAsync(default)).SystemProxyEnabled,
+                "A later apparently matching receipt cannot claim an intervening guard action.");
+        }
+        using (var fixture = new Fixture())
+        {
             await fixture.Publication.Gate.WaitAsync();
             using var cancelled = new CancellationTokenSource();
             var guard = fixture.Reconciler.ReconcileSystemProxyAsync(true, cancelled.Token);
@@ -126,7 +163,8 @@ internal static class SystemProxyChecks
         public TestProxyPaths Paths { get; }
         public HostWriter Host { get; } = new();
         public MihomoSettingsService Service { get; }
-        public IProxySystemProxyReconciler Reconciler => new MihomoSystemProxyReconciler(Paths, Reader, new StaticProxySecretStore(), Host, Publication);
+        public IProxySystemProxyReconciler Reconciler => new MihomoSystemProxyReconciler(Paths, Reader, new StaticProxySecretStore(), Host, Publication,
+            settingsFiles: new(Paths, Host));
         public IProxySettingsReader Reader => new ProxySettingsReader(Paths);
         public MihomoPublicationStore Publication { get; }
         public string Active => Path.Combine(Paths.GetProtectedConfigurationDirectory(), "active.yaml");
@@ -141,8 +179,23 @@ internal static class SystemProxyChecks
         }
         public void Dispose() => Directory.Delete(root, recursive: true);
     }
-    private sealed class HostWriter : IHostSystemProxyService
+    private sealed class HostWriter : IHostSystemProxyService, ITrackedHostSystemProxy
     {
+        public bool Supported { get; set; }
+        public bool EffectMatches;
+        public Guid? TrackedId;
+        public int Queries;
+        public Task<bool> ApplyTrackedAsync(Guid id, ProxySettingsDto settings, CancellationToken ct)
+        {
+            if (TrackedId is not null) throw new Exception("Tracked host operation was replayed.");
+            TrackedId = id;
+            return Task.FromResult(false);
+        }
+        public Task<bool> MatchesTrackedEffectAsync(Guid id, ProxySettingsDto settings, CancellationToken ct)
+        {
+            Queries++;
+            return Task.FromResult(id == TrackedId && EffectMatches);
+        }
         public ProxySystemProxyCapabilities Capabilities = new(true, false, true, true);
         public readonly List<(ProxySettingsDto Settings, bool Enforce)> Calls = [];
         public string? Problem;

@@ -127,11 +127,8 @@ internal sealed partial class LinuxSystemProxyTransaction(string journalPath, IL
         if (configuration.Port is < 1 or > 65535 || !IPAddress.TryParse(configuration.Host, out var address)
             || !(IPAddress.IsLoopback(address) || NetworkInterface.GetAllNetworkInterfaces().Any(network =>
                 network.GetIPProperties().UnicastAddresses.Any(local => local.Address.Equals(address))))
-            || configuration.BypassList.Length > 4096 || configuration.BypassList.Any(char.IsControl))
+            || !LinuxSystemProxyConfiguration.IsValidBypassList(configuration.BypassList))
             throw new ArgumentException("Invalid Linux proxy configuration.");
-        foreach (var token in Tokens(configuration))
-            if (token.Length > 256 || token.Any(character => !(char.IsAsciiLetterOrDigit(character) || character is '.' or ':' or '/' or '-' or '_')))
-                throw new ArgumentException("Linux bypass entries must be hosts, domains or network addresses.");
     }
 
     private static string[] Tokens(LinuxSystemProxyConfiguration configuration) =>

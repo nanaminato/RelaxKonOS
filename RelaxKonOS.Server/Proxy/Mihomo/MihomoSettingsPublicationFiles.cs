@@ -100,6 +100,16 @@ public sealed class MihomoSettingsPublicationFiles(IProxyPlatformPaths paths, IH
 
     internal Task CommitAsync(MihomoSettingsPublication intent, CancellationToken ct) => CommitCoreAsync(intent, requireHostProof: false, ct);
 
+    internal bool SupportsTrackedHostPolicy => systemProxy is ITrackedHostSystemProxy { Supported: true };
+
+    internal Task<bool> ApplyTrackedAsync(Guid id, MihomoSettingsPublication intent, CancellationToken ct) =>
+        systemProxy is ITrackedHostSystemProxy { Supported: true } tracked
+            ? tracked.ApplyTrackedAsync(id, intent.Candidate, ct) : Task.FromResult(false);
+
+    internal Task<bool> MatchesTrackedEffectAsync(Guid id, MihomoSettingsPublication intent, CancellationToken ct) =>
+        systemProxy is ITrackedHostSystemProxy { Supported: true } tracked
+            ? tracked.MatchesTrackedEffectAsync(id, intent.Candidate, ct) : Task.FromResult(false);
+
     internal static bool HasSameHostProxyPolicy(ProxySettingsDto previous, ProxySettingsDto candidate) =>
         !previous.SystemProxyEnabled && !candidate.SystemProxyEnabled
         || previous.SystemProxyEnabled && candidate.SystemProxyEnabled

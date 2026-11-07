@@ -12,8 +12,34 @@ public interface IHostSystemProxyService
     Task<string?> ApplyAsync(ProxySettingsDto settings, ProxySettingsDto previous, bool enforce, CancellationToken cancellationToken);
 }
 
-public sealed class HostSystemProxyService(IPrivilegedOperationTransport transport) : IHostSystemProxyService
+internal interface ITrackedHostSystemProxy
 {
+    bool Supported { get; }
+    Task<bool> ApplyTrackedAsync(Guid operationId, ProxySettingsDto settings, CancellationToken ct);
+    Task<bool> MatchesTrackedEffectAsync(Guid operationId, ProxySettingsDto settings, CancellationToken ct);
+}
+
+public sealed class HostSystemProxyService(IPrivilegedOperationTransport transport) : IHostSystemProxyService, ITrackedHostSystemProxy
+{
+    bool ITrackedHostSystemProxy.Supported => OperatingSystem.IsLinux();
+
+    Task<bool> ITrackedHostSystemProxy.ApplyTrackedAsync(Guid operationId, ProxySettingsDto settings, CancellationToken ct) =>
+        TrackedAsync(PrivilegedOperationKind.LinuxSystemProxyApplyTracked, operationId, settings, ct);
+
+    Task<bool> ITrackedHostSystemProxy.MatchesTrackedEffectAsync(Guid operationId, ProxySettingsDto settings, CancellationToken ct) =>
+        TrackedAsync(PrivilegedOperationKind.LinuxSystemProxyReceipt, operationId, settings, ct);
+
+    private async Task<bool> TrackedAsync(PrivilegedOperationKind kind, Guid operationId, ProxySettingsDto settings, CancellationToken ct)
+    {
+        var options = settings.SystemProxy ?? ProxySystemProxyOptionsDto.Default;
+        if (!OperatingSystem.IsLinux() || settings.SystemProxyEnabled && options.UsePac) return false;
+        var result = await transport.ExecuteAsync(new(kind, OperationId: operationId,
+            LinuxSystemProxy: new(settings.SystemProxyEnabled, settings.SystemProxyHost, settings.MixedPort,
+                options.UseDefaultBypass, options.BypassList)), ct);
+        return result is { Success: true, LinuxSystemProxyReceipt: { Applied: true, Current: true } receipt }
+            && receipt.OperationId == operationId;
+    }
+
     public async Task<ProxySystemProxyCapabilities> GetCapabilitiesAsync(CancellationToken cancellationToken)
     {
         if (OperatingSystem.IsWindows()) return new(Environment.UserInteractive, Environment.UserInteractive, false, Environment.UserInteractive);
