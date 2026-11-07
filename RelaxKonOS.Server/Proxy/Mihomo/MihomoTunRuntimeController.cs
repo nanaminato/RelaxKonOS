@@ -54,6 +54,9 @@ public sealed class MihomoTunRuntimeController(
                 var reload = await controller.ReloadAsync(cancellationToken);
                 if (string.IsNullOrEmpty(reload))
                 {
+                    var applied = await controller.GetTunEnabledAsync(cancellationToken);
+                    if (!applied.Succeeded || applied.Value != enabled)
+                        return ProxyProblemCodes.RecoveryRequired;
                     // Mihomo's reload endpoint acknowledges the configuration before the TUN
                     // adapter is necessarily created.  On Windows, accepting that acknowledgement
                     // alone used to report a successful activation even after Wintun logged
@@ -72,6 +75,10 @@ public sealed class MihomoTunRuntimeController(
                         enabled, snapshot.EgressInterface, exclusions.Count);
                     return null;
                 }
+
+                // A lost response is not evidence that the candidate failed. Preserve it and
+                // let the durable TUN marker drive recovery against observed controller state.
+                if (reload == ProxyProblemCodes.ControllerUnavailable) return ProxyProblemCodes.RecoveryRequired;
 
                 await File.WriteAllTextAsync(active, original, cancellationToken);
                 SetPrivateFile(active);

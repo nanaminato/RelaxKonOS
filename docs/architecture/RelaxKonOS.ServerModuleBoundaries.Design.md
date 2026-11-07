@@ -1345,3 +1345,5 @@ Linux x64 Release 的 Mihomo 发布事务专项通过 110 项，含损坏索引�
 Mihomo 原发布台账打开时只将文件或父目录确实缺失视为空；目录占用、权限或其他读取故障保留未知责任。Linux Release 事务专项 111 项通过，验证目录占用时不重放原发布，恢复原文件后继续原操作。隔离 sing-box 17 项同批通过。日志为 .artifacts/mb04-mihomo-authority-live.log，归档 SHA-256 为 7d6c047770d274e1a0ba6322f719aca8f362261780e95d80325dfc2ca8acbb95。Mihomo 权威异常通过受控事务夹具验收，真实网络联合故障仍开放。
 
 Linux x64 Release 在私有网络使用真实 Mihomo TUN、自动路由和 DNS 劫持，验证发布与 TUN 恢复共用的写入门禁。TUN 工作进程退出后，夹具建立待处理但确认未执行的发布 8f0dfd98-7736-4178-9e76-38438a7007cf 并删除派生索引。重建索引得到原发布 ID，原 TUN 恢复 27014fc4-38de-4b46-a797-7264396afc57 保留 marker、设备和原配置，竞争 reload 为零。夹具按未执行证明关闭待处理发布后，原 TUN 恢复仅执行一次真实禁用重载。日志为 .artifacts/mb04-mihomo-tun-gate-live.log，归档 SHA-256 为 1fcb943d66196812d3041de4984b8ca9d3f08798cf328a071d635179750a5b27。此项覆盖真实 TUN 与持久发布门禁竞争，生产发布事务实机恢复和动态休眠仍开放。
+
+Mihomo TUN 重载后核对控制器实际 TUN 标志，连接恢复本身不足以清除原 marker。未知传输结果保留候选及恢复责任。Linux 实机在真实禁用 PUT 成功后丢弃响应，控制器重新连接并确认禁用；管理路由未核实时保留原 marker，随后恢复路由并清除 marker，全程只发一次禁用 PUT。原操作 f3bad259-e1f3-4e1a-9a37-a2fd7a79bbed。日志为 .artifacts/mb04-tun-loss-live.log，归档 SHA-256 为 2ba1951a27246645b4a3aadd31a103dbbd95e5ff5c707cc87c2a62a2e452d43a。Windows Release 专项也验证后续观察确认已禁用时不再重载。

@@ -56,8 +56,12 @@ internal static class ProxyTunBoundaryChecks
             f.ObservationFails = true;
             Check(await f.Safety.EnableAsync(Guid.NewGuid(), null, default) == ProxyProblemCodes.RecoveryRequired && File.Exists(f.Marker),
                 "An unobserved engine cannot invalidate the active durable marker");
-            Check(await f.RecoverAsync() is null && !File.Exists(f.Marker),
-                "Restart recovery tears down an active session even when live observation fails");
+            Check(await f.RecoverAsync() == ProxyProblemCodes.RecoveryRequired && File.Exists(f.Marker),
+                "Restart recovery retains the marker when the disable result cannot be observed");
+            var reloads = f.Reloads;
+            f.ObservationFails = false;
+            Check(await f.RecoverAsync() is null && !File.Exists(f.Marker) && f.Reloads == reloads,
+                "A later observation confirms the original teardown without reloading again");
         }
         foreach (var published in new[] { false, true })
         {

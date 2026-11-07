@@ -88,6 +88,7 @@ internal static class ProxyTunLiveChecks
                             "The schedule must observe the exact not-started publication closure.");
                         Console.WriteLine($"PASS MIHOMO LIVE PUBLICATION GATE: publication={publicationId}; TUN recovery={original.OperationId}; competing reloads=0");
                     }
+                    calls.DropNextReloadResponse = mihomo is not null;
                     await RunIpAsync("route", "del", "default", "via", "192.0.2.1", "dev", "rk-egress");
                     TestAssert.Assert(await safety.RecoverAsync(original, default) == ProxyProblemCodes.RecoveryRequired
                         && !await DeviceExistsAsync() && await safety.CaptureRecoveryAsync(default) == original,
@@ -96,7 +97,7 @@ internal static class ProxyTunLiveChecks
                         "An unresolved marker must block a new TUN activation.");
 
                     var disableRequests = calls.Reloads;
-                    if (mihomo is not null) TestAssert.Assert(disableRequests == 1, "Initial recovery must issue exactly one real disable reload.");
+                    if (mihomo is not null) TestAssert.Assert(disableRequests == 1 && calls.DroppedResponses == 1, "Initial recovery must issue exactly one real disable reload.");
                     await AddDefaultRouteAsync();
                     TestAssert.Assert(await safety.RecoverAsync(original, default) is null
                         && await safety.CaptureRecoveryAsync(default) is null && runtime.Removals == 1
@@ -227,10 +228,21 @@ internal static class ProxyTunLiveChecks
     private sealed class ControllerRequestCounter() : DelegatingHandler(new SocketsHttpHandler { UseProxy = false })
     {
         internal int Reloads;
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        internal int DroppedResponses;
+        internal bool DropNextReloadResponse;
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             if (request.Method == HttpMethod.Put) Interlocked.Increment(ref Reloads);
-            return base.SendAsync(request, cancellationToken);
+            var response = await base.SendAsync(request, cancellationToken);
+            if (request.Method == HttpMethod.Put && DropNextReloadResponse && response.IsSuccessStatusCode)
+            {
+                DropNextReloadResponse = false;
+                Interlocked.Increment(ref DroppedResponses);
+                response.Dispose();
+                throw new HttpRequestException("Isolated fixture dropped the real reload response.");
+            }
+            return response;
         }
     }
 
