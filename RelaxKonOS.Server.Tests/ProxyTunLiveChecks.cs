@@ -184,11 +184,14 @@ internal static class ProxyTunLiveChecks
                                 && runtime.Removals == 2 && await ReadRulesAsync() == baselineRules,
                                 "The same Core worker must close the post-start teardown after route repair without another disable.");
                             Console.WriteLine($"PASS TUN LIVE SAME-HOST RECOVERY: operation={activeSession!.OperationId}; completed session survived scan; recovered without a second disable");
+                            if (mihomo is not null)
+                                await VerifyCancelledActivationAsync(safety, calls, baselineRules);
                         }
                         finally { await recovery.StopAsync(default).WaitAsync(Budget); }
                     }
-                    TestAssert.Assert(await safety.CaptureRecoveryAsync(includeCurrentSession: true, default) is null && runtime.Removals == 2,
-                        "Both original markers must be resolved by the same Core worker.");
+                    TestAssert.Assert(await safety.CaptureRecoveryAsync(includeCurrentSession: true, default) is null
+                        && runtime.Removals == (mihomo is null ? 2 : 3),
+                        "Every original marker must be resolved by the same Core worker.");
                     if (mihomo is not null)
                     {
                         var restoredRoute = await RunIpAsync("route", "get", "198.51.100.53");
@@ -241,6 +244,41 @@ internal static class ProxyTunLiveChecks
             }
         }
         finally { await RunIpAsync("link", "del", "rk-egress"); }
+    }
+
+    private static async Task VerifyCancelledActivationAsync(ProxyTunSafetyService safety,
+        ControllerRequestCounter calls, string baselineRules)
+    {
+        var initialReloads = calls.Reloads;
+        var dispatched = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        calls.HoldNextReloadResponse = dispatched;
+        using var cancellation = new CancellationTokenSource();
+        var activation = safety.EnableAsync(Guid.NewGuid(), null, cancellation.Token);
+        try
+        {
+            await dispatched.Task.WaitAsync(Budget);
+            using var deviceBudget = new CancellationTokenSource(Budget);
+            while (!await DeviceExistsAsync()) await Task.Delay(50, deviceBudget.Token);
+            TestAssert.Assert(!activation.IsCompleted && (await safety.GetStatusAsync(default)).RecoveryRequired
+                && await ReadRulesAsync() != baselineRules,
+                "The actual reload must install a device and leave the original task and safety marker active.");
+            await RunIpAsync("route", "del", "default", "via", "192.0.2.1", "dev", "rk-egress");
+        }
+        finally
+        {
+            cancellation.Cancel();
+            try { await activation.WaitAsync(Budget); }
+            catch (OperationCanceledException) when (activation.IsCanceled) { }
+        }
+        TestAssert.Assert(activation.IsCanceled, "The caller must observe cancellation after the real activation.");
+        var original = await safety.CaptureRecoveryAsync(includeCurrentSession: false, default)
+            ?? throw new InvalidOperationException("Cancelled activation lost its durable marker.");
+        await AddDefaultRouteAsync();
+        await WaitForMarkerRemovalAsync(safety);
+        TestAssert.Assert(!await DeviceExistsAsync() && await ReadRulesAsync() == baselineRules
+            && calls.Reloads == initialReloads + 2,
+            "Recovery must compensate once and must not replay activation after cancellation.");
+        Console.WriteLine($"PASS MIHOMO LIVE CANCELLED ACTIVATION: operation={original.OperationId}; actual activation and compensation each reloaded once");
     }
 
     private static async Task WaitForMarkerRemovalAsync(IProxyTunSafetyService safety)
@@ -362,6 +400,7 @@ internal static class ProxyTunLiveChecks
         internal int Reloads;
         internal int DroppedResponses;
         internal bool DropNextReloadResponse;
+        internal TaskCompletionSource? HoldNextReloadResponse;
         internal bool BlockNextReload;
         internal int BlockedReloads;
 
@@ -375,6 +414,15 @@ internal static class ProxyTunLiveChecks
             }
             if (request.Method == HttpMethod.Put) Interlocked.Increment(ref Reloads);
             var response = await base.SendAsync(request, cancellationToken);
+            if (request.Method == HttpMethod.Put && response.IsSuccessStatusCode && HoldNextReloadResponse is { } dispatched)
+            {
+                HoldNextReloadResponse = null;
+                using (response)
+                {
+                    dispatched.SetResult();
+                    await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                }
+            }
             if (request.Method == HttpMethod.Put && DropNextReloadResponse && response.IsSuccessStatusCode)
             {
                 DropNextReloadResponse = false;

@@ -378,3 +378,5 @@ MB-05 Docker Compose 执行图由原工作租约保护，异步作用域清理�
 MB-05 完整认证 Server 的 Linux 重启验收补齐直接 Nginx 重载路径。管理进程退出后，专属 Nginx 保持 TLS 和已重载的配置。重启按原操作 ID 和同键返回原回执，实际 reload 一次。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-完整认证-server-的-nginx-重载与重启)。
 
 MB-04 原 Core TUN worker 持续扫描原标记。已完成的当前会话保持运行，未完成的关闭保留原标记 ID，直至运行时及管理路由核实。空闲扫描不解析控制器。Linux 实测通过同进程接续和禁用不重放。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-core-接续运行期-tun-恢复)。
+
+MB-04 Linux 专属 Mihomo 实测覆盖实际激活副作用发生后取消。原 TUN 安全任务保留原标记，同一 Core worker 补偿，激活和禁用各一次。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-实际-tun-激活期间取消与同进程补偿)。

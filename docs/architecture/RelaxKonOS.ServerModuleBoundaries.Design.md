@@ -1485,3 +1485,9 @@ Windows Release 模块边界与本地跨进程回归通过，覆盖原工作租�
 Windows Release TUN 边界 34 项、Core 安全所有权 37 项、工作作用域 31 项及模块边界回归通过。Linux x64 Release 在私有网络、挂载和 PID 命名空间用实际 Mihomo 验证。原崩溃操作 `5c9f30ec-7db1-4cee-a8ee-0777fc08b82a` 恢复时经历真实路由缺失、控制器响应丢失与不安全标记路径，原禁用 reload 一次。随后同一 Core worker 保留已完成的新会话。删除专属默认路由后显式关闭会话，原 `bb1ba90e-4e66-4237-ac4b-bf527f374067` 仍以未完成标记存在。路由恢复后，同一 worker 关闭原标记，设备和策略规则回到基线，未追加禁用 reload。宿主 Mihomo、sing-box PID 与代理文件指纹一致。日志为 .artifacts/mb04-tun-rescan-live-final.log，归档 SHA-256 为 befc69710c42c3a2d6844a2037396bb8bae39ab1a59dd646faf78d6caad3eeed。首轮本地重启夹具误用原 owner，已用两个 owner 复测。首轮远端包装器引号错误，在连接前退出，修正后通过。受管发布仍保留网络事务门禁，Proxy 保持 resident。
 
 Linux 完整非 root Server、独立 Helper 与私有 systemd 联合回归也通过。完整 Server 恢复在途激活 `b5a3586c-3afb-4f92-9e67-2e86a5e75518` 的原标记和路由，Mihomo 继续运行，系统代理纠偏、sing-box 授权到期及真实转发接续，专属 cgroup 清理且宿主指纹一致。日志为 .artifacts/mb04-tun-rescan-systemd-live.log，归档 SHA-256 为 1e837ca6a8a4fa02c1b967d37906ee05e183f5cac44a47dfcb102f714e091a19。
+
+### MB-04 实际 TUN 激活期间取消与同进程补偿
+
+Linux x64 Release 在私有网络、挂载和 PID 命名空间中等待实际 Mihomo 接受 reload。设备及策略规则已经创建，生产 TUN 安全任务仍等待响应。测试驱动在响应交付处触发取消，并暂时移除专属默认路由，原任务以取消退出，保留标记 `777a7afa-2958-421d-81cf-c98dadc34745`。管理路由恢复后，原 Core worker 在 Proxy 管理图缺席时接手，同一 Mihomo 的激活和禁用各 reload 一次，设备和规则回到基线。测试屏障仅用于控制取消时点。Windows Release 模块里程碑回归通过，Docker 跨进程原回执保持 Interrupted，副作用一次。Linux 宿主共享服务 PID 和代理文件指纹一致。日志为 .artifacts/mb04-tun-cancel-live.log，归档 SHA-256 为 15ab51cafa0b3fdd7ce9efc1e24118636dc5dc2e350a1aba3417477ded3c5589。
+
+此项验证现有直接 TUN 安全任务取消及 Core 接续。完整 HTTP 已受理任务仍由原队列持有，不随 HTTP 断开取消。受管 TUN 继续开放。当前 Linux Mihomo 受管单元隔离设备且能力集仅含 CAP_NET_BIND_SERVICE，控制器配置入口本身不提供受管的设备、路由和补偿权威。
