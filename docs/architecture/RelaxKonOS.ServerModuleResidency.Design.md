@@ -414,3 +414,5 @@ MB-04 完整认证 Server 已联合验证真实候选已注册、启动前的中
 MB-04 Core TUN worker 停机时排空已发出的原禁用和路由核验，未能确认的恢复继续由原标记负责。Proxy 保持 resident。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-core-tun-恢复的停机排空)。
 
 MB-04 Core 系统代理 guard 保留已派发的原对账任务和共享发布锁，直到 Helper 响应和执行作用域结束。系统代理环境与原恢复日志由现有 Helper 事务负责。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-core-系统代理-guard-的停机排空)。
+
+MB-04 Core Mihomo 发布恢复调度器停机时等待原回执、终态持久化与异步释放。原持久索引及领域台账继续负责调度与恢复。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-core-mihomo-发布恢复的停机排空)。

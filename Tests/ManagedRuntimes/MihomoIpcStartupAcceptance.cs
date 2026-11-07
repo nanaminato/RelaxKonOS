@@ -86,7 +86,7 @@ internal static class MihomoIpcStartupAcceptance
                 throw new InvalidOperationException("The response-loss barrier was not reached.");
             }
             catch (IOException error) when (error.Message == LoseConfigureReply.Message) { }
-            firstLog = await helper.StopAsync();
+            firstLog = await helper.StopAsync(drainCompletedRequests: true);
         }
         var receipt = (await lifecycle.QueryAsync(default, operation)).Receipt;
         if (receipt is not { Outcome: RuntimeSwitchOutcome.Failed } || receipt.OperationId != operation
@@ -103,7 +103,7 @@ internal static class MihomoIpcStartupAcceptance
         await using (var restarted = await StartHelperAsync(helperAssembly, config, transport))
         {
             await CheckStartupAsync(start, operation, uid, ready: true);
-            var log = await restarted.StopAsync();
+            var log = await restarted.StopAsync(drainCompletedRequests: true);
             if (log.Contains("operation=MihomoRuntimeConfigure ", StringComparison.Ordinal)
                 || log.Contains("operation=MihomoRuntimeRecover ", StringComparison.Ordinal)
                 || !log.Contains($"operation=MihomoRuntimeQuery id={operation} uid={uid} success=True", StringComparison.OrdinalIgnoreCase))
@@ -159,7 +159,7 @@ internal static class MihomoIpcStartupAcceptance
         await using (var helper = await StartHelperAsync(helperAssembly, config, transport))
         {
             await CheckStartupAsync(start, interrupted, uid, ready: true);
-            var log = await helper.StopAsync();
+            var log = await helper.StopAsync(drainCompletedRequests: true);
             if (log.Contains("operation=MihomoRuntimeConfigure ", StringComparison.Ordinal)
                 || log.Split('\n').Count(line => line.Contains("event=request-completed operation=MihomoRuntimeRecover ", StringComparison.Ordinal)
                     && line.Contains($"uid={uid} success=True", StringComparison.Ordinal)) != 1)
@@ -287,9 +287,16 @@ internal static class MihomoIpcStartupAcceptance
 
     private sealed class HelperProcess(Process process, Task<string> stderr) : IAsyncDisposable
     {
-        public async Task<string> StopAsync()
+        public async Task<string> StopAsync(bool drainCompletedRequests = false)
         {
-            if (!process.HasExited) process.Kill();
+            if (!process.HasExited)
+            {
+                // The Helper writes the completion event after the wire response. A forced
+                // stop in a completed-request case can kill it in that gap.
+                if (drainCompletedRequests)
+                    await NativeRuntimeProcess.RunAsync("/usr/bin/kill", ["-TERM", process.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)], 256);
+                else process.Kill();
+            }
             await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
             return await stderr;
         }

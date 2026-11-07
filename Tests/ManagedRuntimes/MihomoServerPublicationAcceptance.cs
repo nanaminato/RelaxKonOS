@@ -159,13 +159,10 @@ internal static class MihomoServerPublicationAcceptance
                 await trigger.ExecuteNonQueryAsync();
             }
             var beforeProfileRecovery = transport.ConfigureCalls;
+            var originalProfileOperation = (await store.ReadAsync(default)).Pending!.OperationId;
             store = new(paths, DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(root, "keys"))));
             publicationProfiles = await MihomoProfilePublicationChecks.CreateAsync(root);
-            using var recoveryServices2 = new PublicationRecoveryServices(store, () => Service(store), () => new(store, new(store, paths, paths), Runtime(store), paths), () => new(store, Runtime(store), paths, new(paths, systemProxy)));
-            {
-                var startup = new MihomoPublicationRecoveryService(recoveryServices2.Scopes, NullLogger<MihomoPublicationRecoveryService>.Instance);
-                await startup.ReconcileAsync(default).WaitAsync(TimeSpan.FromSeconds(15));
-            }
+            await VerifySchedulerDrainAsync(store, () => Service(store), transport, originalProfileOperation, () => probe(originalPort + 2));
             Check((await store.ReadAsync(default)).Pending is null && transport.ConfigureCalls == beforeProfileRecovery
                 && (await profiles.GetAsync(nextProfile.Id, default)) is { IsActive: true, Revision: 2 }
                 && !(await profiles.GetAsync(profileId, default))!.IsActive && await probe(originalPort + 2),
@@ -221,16 +218,73 @@ internal static class MihomoServerPublicationAcceptance
         return count;
     }
 
+    private static async Task VerifySchedulerDrainAsync(MihomoPublicationStore store, Func<MihomoConfigurationPublicationService> service,
+        Transport transport, Guid operation, Func<Task<bool>> probe)
+    {
+        var budget = TimeSpan.FromSeconds(15);
+        var cleanup = new ScopeBarrier();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton(store);
+        services.AddScoped(_ => cleanup);
+        services.AddTransient<MihomoPublicationRecoveryService>();
+        services.AddTransient(scope => { _ = scope.GetRequiredService<ScopeBarrier>(); return service(); });
+        await using var provider = services.BuildServiceProvider();
+        using var scheduler = new MihomoPublicationRecoveryScheduler(provider.GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<MihomoPublicationRecoveryScheduler>.Instance);
+        transport.HoldQueryFor = operation;
+        await scheduler.StartAsync(default);
+        try
+        {
+            await transport.QueryObserved.Task.WaitAsync(budget);
+            using var deadline = new CancellationTokenSource();
+            deadline.Cancel();
+            var stopping = scheduler.StopAsync(deadline.Token);
+            if (stopping.IsCompleted || store.Gate.CurrentCount != 0
+                || (await store.ReadAsync(default)).Pending?.OperationId != operation || !await probe())
+                throw new InvalidOperationException("The original response, pending publication and working listener must survive the stop deadline.");
+            transport.DeliverQuery.SetResult();
+            await cleanup.Entered.Task.WaitAsync(budget);
+            if (stopping.IsCompleted || (await store.ReadAsync(default)).Pending is not null)
+                throw new InvalidOperationException("Stop must wait for scope cleanup after the original publication commits.");
+            cleanup.Release.SetResult();
+            await stopping.WaitAsync(budget);
+            Console.WriteLine($"PASS MIHOMO PUBLICATION RECOVERY DRAIN: operation={operation}; original Helper receipt and scope drained");
+        }
+        finally
+        {
+            transport.DeliverQuery.TrySetResult();
+            cleanup.Release.TrySetResult();
+            await scheduler.StopAsync(default).WaitAsync(budget);
+        }
+    }
+
+    private sealed class ScopeBarrier : IAsyncDisposable
+    {
+        internal readonly TaskCompletionSource Entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly TaskCompletionSource Release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async ValueTask DisposeAsync() { Entered.SetResult(); await Release.Task; }
+    }
+
     private sealed class Transport(MihomoRuntimeLifecycle lifecycle) : IPrivilegedOperationTransport
     {
         internal bool LoseNextConfigurationResponse;
         internal int ConfigureCalls, RecoverCalls;
+        internal Guid? HoldQueryFor;
+        internal readonly TaskCompletionSource QueryObserved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly TaskCompletionSource DeliverQuery = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken ct = default)
         {
             request = request with { OperationId = request.OperationId ?? Guid.NewGuid() };
             if (request.Operation == PrivilegedOperationKind.MihomoRuntimeConfigure) ConfigureCalls++;
             if (request.Operation == PrivilegedOperationKind.MihomoRuntimeRecover) RecoverCalls++;
             var result = await MihomoRuntimeOperations.ExecuteAsync(request, () => lifecycle);
+            if (request.Operation == PrivilegedOperationKind.MihomoRuntimeQuery && request.OperationId == HoldQueryFor)
+            {
+                HoldQueryFor = null;
+                QueryObserved.SetResult();
+                await DeliverQuery.Task.WaitAsync(ct);
+            }
             if (request.Operation == PrivilegedOperationKind.MihomoRuntimeConfigure && LoseNextConfigurationResponse)
             {
                 LoseNextConfigurationResponse = false;

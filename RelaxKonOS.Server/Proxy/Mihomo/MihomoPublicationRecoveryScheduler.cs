@@ -4,6 +4,9 @@ namespace RelaxKonOS.Server.Proxy.Mihomo;
 public sealed class MihomoPublicationRecoveryScheduler(IServiceScopeFactory scopes,
     ILogger<MihomoPublicationRecoveryScheduler> logger) : BackgroundService
 {
+    // Once the domain has accepted recovery, let its original response, ledger write and scope drain.
+    public override Task StopAsync(CancellationToken cancellationToken) => base.StopAsync(CancellationToken.None);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         Guid? blocked = null;

@@ -1638,3 +1638,13 @@ Core guard 停止调度后等待实际对账任务与执行作用域。对账取
 Linux x64 Release 在私有挂载和网络命名空间使用非 root Server 身份与独立生产 Helper Unix socket。先核验未变化的 guard 扫描不改写所有权日志，再注入专属环境值冲突。Helper 实际纠正冲突后，测试传输暂扣交付给 guard 的结果。用已取消的等待令牌调用生产 guard 的 Stop，任务与原发布锁保持活跃，私有环境和原恢复日志可核验。交付结果后同一任务释放锁，未追加 apply。随后停用恢复保留了更新的外部设置。真实 Helper 纠正请求为 `72564240-2c8f-468c-9a99-b17447eabfbc`，日志为 `.artifacts/mb04-system-proxy-drain-live.log`，归档 SHA-256 为 `b78e7956222ade99b316dd85aab1f067cf2f52b149b542a5c4a58ffa9467a83b`。宿主环境和恢复日志指纹一致。
 
 Windows Release 系统代理、Core Proxy 安全与模块边界回归均通过。此次故障屏障在 guard 的传输边界，覆盖停机等待取消。完整 Server 的 SIGTERM、真实 IPC 断流时的联合排空、Windows 原生代理环境和 Proxy 动态休眠仍待验收。
+
+### MB-04 Core Mihomo 发布恢复的停机排空
+
+原调度器从持久索引发现原操作，继续使用同一领域锁和 Helper 回执。停止扫描可取消等待准入和后续重试。已经取得领域恢复锁并接受的实际恢复，连同原回执核验、应用台账持久化及异步作用域释放，在停机期限后仍由同一调度器任务排空。
+
+Linux x64 Release 私有 systemd 与真实 Mihomo 用原配置操作 `d3397e41-3413-43f5-b9df-8a339b52b75b` 验证。原生配置已生效，SQLite 选择记录首次提交失败。新调度器从持久索引发现原 ID，读取真实 Helper 回执，响应暂扣期间实际监听器仍能转发，已取消的 Stop 等待令牌未结束任务或释放原锁。交付结果后原 profile 选择落盘，Stop 继续等待异步作用域清理。实际 configure 未增加。该路径直接驱动生产调度器，在测试进程内调用生产 Helper 领域入口。
+
+同一归档复验完整非 root Server 与独立生产 Helper 的启动回执查询及中断补偿，原操作分别为 `fea2da8c-c881-4e87-823e-1b82ba5ad97f` 和 `133314fd-b76a-448a-8ad1-b03fddb4e75a`。Linux 原生 171 项、Windows 发布事务 112 项通过。已完成请求的旧夹具改用 SIGTERM 排空 Helper 日志，实际中断仍强制终止。专属 cgroup 已清理，宿主共享服务及代理文件指纹一致。日志为 `.artifacts/mb04-mihomo-publication-drain-verified.log`，归档 SHA-256 为 `ada60f63cd5a884270d7b3391e16354efb078d441db97d2abc07fe74e0f7469e`。
+
+完整 Server 的 SIGTERM 与此排空屏障的联合实测仍开放。安装和移除使用同一调度器停机契约，各自的在途停机尚未纳入本轮。Proxy 保持 resident。

@@ -4494,3 +4494,5 @@ Linux 私有网络通过真实 Mihomo 激活后的取消验收。设备和规则
 Core TUN worker 停止接收新扫描后，等待已发出的禁用请求、实际路由核验和原标记清理。停机等待方的期限不会打断已开始的恢复。如果控制器或管理路由仍无法核实，保留原标记供后续核验。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-core-tun-恢复的停机排空)。
 
 系统代理 guard 停机时排空已派发的对账任务，Helper 响应返回前保留原发布锁。停机本身不会撤销系统代理设置。Linux 已验证真实环境改写、原日志恢复及外部修改保留。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-core-系统代理-guard-的停机排空)。
+
+Mihomo 发布恢复调度器停机时等待已开始的原回执核验、应用台账写入和异步作用域清理。恢复仍按原 operationId 与 Helper 证据执行。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-core-mihomo-发布恢复的停机排空)。
