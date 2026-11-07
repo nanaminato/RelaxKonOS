@@ -200,6 +200,29 @@ internal static class MihomoServerPublicationAcceptance
                 }) && transport.ConfigureCalls == beforeProfileRecovery,
                     "Overview observes real forwarding without invoking publication.");
                 Console.WriteLine("PASS MIHOMO SCOPED OVERVIEW: real held connection counted and original profile observed");
+                var originalParser = ProxyConnectionExecutionGate.Shared.CurrentCode
+                    ?? throw new InvalidOperationException("The actual overview must load its parser generation.");
+                using var parserBudget = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+                while (ProxyConnectionExecutionGate.Shared.CurrentCode is not null)
+                    await Task.Delay(250, parserBudget.Token);
+                for (var i = 0; originalParser.IsAlive && i < 20; i++)
+                {
+                    GC.Collect();
+                    GC.WaitForPendingFinalizers();
+                    GC.Collect();
+                    await Task.Delay(20, parserBudget.Token);
+                }
+                Check(!originalParser.IsAlive && await probe(originalPort + 2),
+                    "Idle parser code must collect while native proxy forwarding continues.");
+                Check(await probeWithConnection(originalPort + 2, async () =>
+                {
+                    var observation = await overview.GetAsync(parserBudget.Token);
+                    if (observation.ActiveConnections < 1 || ProxyConnectionExecutionGate.Shared.CurrentCode is not { } next
+                        || ReferenceEquals(originalParser, next))
+                        throw new InvalidOperationException("A real connection must wake a new parser generation.");
+                }) && transport.ConfigureCalls == beforeProfileRecovery,
+                    "New parser generation must observe the actual connection without replaying configuration.");
+                Console.WriteLine("PASS MIHOMO CONNECTION PARSER IDLE: natural idle release, collected code, live traffic and fresh parser generation");
             }
             var noOpApplication = new ProxyConfigurationTransactionService(paths, new ProxyEngineRegistry([engine]), publicationProfiles, paths,
                 new MihomoControllerOptions { Endpoint = new("http://127.0.0.1:" + original.ControllerPort + "/") }, store,

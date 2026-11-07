@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 
@@ -24,18 +23,14 @@ internal sealed class ProxySubscriptionExecutionGate
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal string Normalize(string content, out WeakReference code)
     {
-        var directory = Path.Combine(AppContext.BaseDirectory, "Modules", "Proxy");
-        var path = Path.Combine(directory, "RelaxKonOS.ServerModule.Proxy.dll");
-        if (!File.Exists(path) || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0
-            || (File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
-            throw new InvalidDataException("Bundled Proxy subscription assembly is missing or linked.");
-        ExecutionContext context;
+        var path = ProxyExecutionLoadContext.BundledAssemblyPath();
+        ProxyExecutionLoadContext context;
         lock (_gate)
         {
             _code.RemoveAll(reference => !reference.IsAlive);
             if (_code.Count >= MaxOutstandingContexts)
                 throw new InvalidDataException("Proxy subscription code collection is pending; retry after collection or arrange host recovery.");
-            context = new ExecutionContext();
+            context = new ProxyExecutionLoadContext("subscription");
             code = new WeakReference(context);
             _code.Add(code);
         }
@@ -58,12 +53,4 @@ internal sealed class ProxySubscriptionExecutionGate
         }
     }
 
-    private sealed class ExecutionContext() : AssemblyLoadContext("proxy-subscription:" + Guid.NewGuid().ToString("N"), true)
-    {
-        protected override Assembly? Load(AssemblyName name)
-        {
-            if (name.Name == "RelaxKonOS.Server") throw new InvalidDataException("Proxy execution cannot reference Server implementation.");
-            return null;
-        }
-    }
 }

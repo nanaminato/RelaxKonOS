@@ -193,6 +193,68 @@ internal static async Task VerifyMihomoLiveStreamsAsync()
     try { await engine.GetConnectionsAsync(CancellationToken.None); }
     catch (ProxyObservationException error) { failedRead = error.ProblemCode == ProxyProblemCodes.ControllerAuthenticationFailed; }
     TestAssert.Assert(failedRead, "A failed connection read must not become a successful empty list.");
+    var gate = new ProxyConnectionExecutionGate(TimeSpan.FromMilliseconds(50));
+    var code = await VerifyConnectionParserDrainAsync(gate);
+    for (var i = 0; code.IsAlive && i < 50; i++)
+    {
+        GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+        await Task.Delay(20);
+    }
+    TestAssert.Assert(!code.IsAlive, "The idle connection parser must release its private assembly while the Host remains alive.");
+    var awake = 0;
+    await gate.ReadAsync(new MemoryStream("""{"connections":[{}]}"""u8.ToArray()), _ => awake++, default);
+    TestAssert.Assert(awake == 1 && gate.CurrentCode is { } next && !ReferenceEquals(next, code),
+        "A subsequent connection snapshot must wake fresh parser code.");
+    await VerifyConnectionParserBudgetAsync();
+}
+
+private static async Task VerifyConnectionParserBudgetAsync()
+{
+    var gate = new ProxyConnectionExecutionGate(TimeSpan.FromMilliseconds(100));
+    using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+    var retained = new List<object>();
+    for (var i = 0; i < ProxyConnectionExecutionGate.MaximumOutstandingGenerations; i++)
+    {
+        var reference = await VerifyConnectionParserDrainAsync(gate);
+        retained.Add(reference.Target ?? throw new InvalidOperationException("Expected the current parser generation."));
+        if (i + 1 < ProxyConnectionExecutionGate.MaximumOutstandingGenerations)
+            while (gate.CurrentCode is not null) await Task.Delay(10, budget.Token);
+    }
+    var current = gate.CurrentCode;
+    await Task.Delay(250, budget.Token);
+    await gate.ReadAsync(new MemoryStream("""{"connections":null}"""u8.ToArray()), _ => { }, budget.Token);
+    TestAssert.Assert(current is not null && ReferenceEquals(current, gate.CurrentCode),
+        "A full pending-collection budget must retain the current parser and continue serving reads.");
+    GC.KeepAlive(retained);
+}
+
+private static async Task<WeakReference> VerifyConnectionParserDrainAsync(ProxyConnectionExecutionGate gate)
+{
+    var stream = new CleanupSnapshotStream();
+    var pending = gate.ReadAsync(stream, _ => { }, default);
+    try
+    {
+        await stream.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var original = gate.CurrentCode ?? throw new InvalidOperationException("The parser generation was not admitted.");
+        await Task.Delay(150);
+        await gate.ReadAsync(new MemoryStream("""{"connections":null}"""u8.ToArray()), _ => { }, default);
+        TestAssert.Assert(!pending.IsCompleted && ReferenceEquals(original, gate.CurrentCode),
+            "A pending stream cleanup must hold the same parser generation for overlapping reads.");
+        return original;
+    }
+    finally { stream.Release.TrySetResult(); await pending.WaitAsync(TimeSpan.FromSeconds(5)); }
+}
+
+private sealed class CleanupSnapshotStream() : MemoryStream("""{"connections":[{}]}"""u8.ToArray())
+{
+    internal readonly TaskCompletionSource Entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal readonly TaskCompletionSource Release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public override async ValueTask DisposeAsync()
+    {
+        Entered.TrySetResult();
+        await Release.Task;
+        await base.DisposeAsync();
+    }
 }
 
 internal static async Task VerifyMihomoProxyGroupOrderingAsync(string root)

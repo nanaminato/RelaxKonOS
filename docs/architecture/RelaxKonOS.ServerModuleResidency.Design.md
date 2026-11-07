@@ -428,3 +428,5 @@ MB-04 Mihomo 连接快照使用共用流式读取器。连接概览不保留详�
 MB-04 完整认证 Server 的概览和连接详情使用原 Mihomo 控制器。管理进程重启后的连接与系统代理责任由[联合验收](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整认证-server-的-mihomo-活动连接)追踪。
 
 MB-04 512 条真实连接的前后配对测量验证了流式快照在隔离负载下的 Server PSS 增量。Proxy 保持 resident。逐轮结果见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-512-条真实连接的配对测量)。
+
+MB-04 Mihomo 快照解析代码使用独立可回收代次。并发读取和异步清理结束后才开始闲时计时。Core 网络安全与持久恢复仍由原所有者负责。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-快照解析代码的闲时释放)。

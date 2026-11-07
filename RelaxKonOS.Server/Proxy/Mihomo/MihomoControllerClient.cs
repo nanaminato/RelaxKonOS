@@ -159,9 +159,9 @@ public sealed class MihomoControllerClient : IMihomoControllerClient, IDisposabl
             if (!response.IsSuccessStatusCode)
                 return ControllerResult<int>.Failure(response.StatusCode == HttpStatusCode.Unauthorized
                     ? ProxyProblemCodes.ControllerAuthenticationFailed : ProxyProblemCodes.ControllerUnavailable);
-            await using var stream = await response.Content.ReadAsStreamAsync(deadline.Token);
+            var stream = await response.Content.ReadAsStreamAsync(deadline.Token);
             var count = 0;
-            await new MihomoConnectionSnapshotReader(item =>
+            await ProxyConnectionExecutionGate.Shared.ReadAsync(stream, item =>
             {
                 var id = GetString(item, "id");
                 if (string.IsNullOrWhiteSpace(id)) return;
@@ -169,7 +169,7 @@ public sealed class MihomoControllerClient : IMihomoControllerClient, IDisposabl
                 details?.Add(new ProxyConnectionDto(id, GetString(item, "metadata", "network") ?? "unknown", ConnectionEndpoint(item, false),
                     ConnectionEndpoint(item, true), GetString(item, "rule") ?? "", GetString(item, "chains") ?? "",
                     GetDateTime(item, "start") ?? DateTimeOffset.MinValue));
-            }).ReadAsync(stream, deadline.Token);
+            }, deadline.Token);
             return ControllerResult<int>.Success(count);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)

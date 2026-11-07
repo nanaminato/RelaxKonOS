@@ -37,7 +37,7 @@ foreach ($project in @($implementation, $contract)) {
         $output = & dotnet msbuild $project "-t:$target" "-p:CustomBeforeMicrosoftCommonTargets=$fixture" -nologo 2>&1
         $exitCode = $LASTEXITCODE
         $output | Set-Content (Join-Path $evidence "$prefix-rejected-$index.log")
-        $expected = if ($project -eq $implementation) { 'Proxy subscription execution may reference only' } else { 'Proxy shared text contracts must depend only' }
+        $expected = if ($project -eq $implementation) { 'Proxy execution may reference only' } else { 'Proxy shared contracts must depend only' }
         if ($exitCode -eq 0 -or ($output -join "`n") -notmatch [regex]::Escape($expected)) {
             throw "Forbidden $prefix dependency $index did not fail at its boundary: $output"
         }

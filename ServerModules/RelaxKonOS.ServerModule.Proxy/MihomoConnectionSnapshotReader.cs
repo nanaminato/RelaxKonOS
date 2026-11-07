@@ -1,14 +1,12 @@
 using System.Buffers;
-using System.IO.Pipelines;
 using System.Text.Json;
 
 namespace RelaxKonOS.Server.Proxy.Mihomo;
 
 /// <summary>Validates one finite controller snapshot and projects at most its first 2,000 records.</summary>
-internal sealed class MihomoConnectionSnapshotReader(Action<JsonElement> project)
+public sealed class MihomoConnectionSnapshotReader(Action<JsonElement> project) : IProxyConnectionSnapshotReader
 {
     private const int MaximumRecordBytes = 256 * 1024;
-    private const int MaximumSnapshotBytes = 32 * 1024 * 1024;
     private JsonReaderState state;
     private bool rootClosed;
     private bool foundConnections;
@@ -16,29 +14,7 @@ internal sealed class MihomoConnectionSnapshotReader(Action<JsonElement> project
     private bool inConnections;
     private int records;
 
-    internal async Task ReadAsync(Stream stream, CancellationToken ct)
-    {
-        var pipe = PipeReader.Create(stream, new StreamPipeReaderOptions(leaveOpen: true));
-        long consumed = 0;
-        try
-        {
-            while (true)
-            {
-                var read = await pipe.ReadAsync(ct);
-                var buffer = read.Buffer;
-                if (consumed + buffer.Length > MaximumSnapshotBytes) throw new JsonException();
-                var parsed = Parse(buffer, read.IsCompleted, ct);
-                consumed += parsed;
-                if (buffer.Length - parsed > MaximumRecordBytes) throw new JsonException();
-                pipe.AdvanceTo(buffer.GetPosition(parsed), buffer.End);
-                if (read.IsCompleted) break;
-            }
-            if (!rootClosed || !foundConnections) throw new JsonException();
-        }
-        finally { await pipe.CompleteAsync(); }
-    }
-
-    private long Parse(ReadOnlySequence<byte> buffer, bool final, CancellationToken ct)
+    public long Parse(ReadOnlySequence<byte> buffer, bool final, CancellationToken ct)
     {
         var reader = new Utf8JsonReader(buffer, final, state);
         while (true)
@@ -83,6 +59,7 @@ internal sealed class MihomoConnectionSnapshotReader(Action<JsonElement> project
             }
         }
         state = reader.CurrentState;
+        if (final && (!rootClosed || !foundConnections)) throw new JsonException();
         return reader.BytesConsumed;
     }
 }
