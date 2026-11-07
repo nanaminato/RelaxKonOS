@@ -506,6 +506,27 @@ internal static class MihomoPublicationTransactionChecks
                 "An unwritable schedule index cannot suppress the original pending identity");
         }
         finally { Directory.Delete(indexPath); }
+        var statePath = Path.Combine(blocked.GetStateDirectory(), "mihomo-publication.protected");
+        var savedState = await File.ReadAllBytesAsync(statePath);
+        File.Delete(statePath);
+        Directory.CreateDirectory(statePath);
+        try
+        {
+            try
+            {
+                await blockedScheduler.ScanAsync(null, default);
+                throw new InvalidOperationException("A directory at the authority path was treated as an empty ledger.");
+            }
+            catch (RuntimePolicyException error) when (error.ProblemCode == "runtime.publication_state_invalid")
+            {
+                check(blocked.RecoverCalls == 0, "An invalid authority blocks scheduling without replaying publication");
+            }
+        }
+        finally
+        {
+            Directory.Delete(statePath);
+            await File.WriteAllBytesAsync(statePath, savedState);
+        }
         var identity = await blockedScheduler.ScanAsync(null, default);
         check(identity == (await blocked.Store.ReadAsync(default)).Pending!.OperationId && blocked.RecoverCalls == 1,
             "An operator-required transaction remains a durable blocked identity");

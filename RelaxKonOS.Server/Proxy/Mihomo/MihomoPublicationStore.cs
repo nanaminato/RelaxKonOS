@@ -55,10 +55,17 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
 
     public async Task<MihomoPublicationState> ReadAsync(CancellationToken ct)
     {
+        await using var input = OpenState();
+        return input is null ? MihomoPublicationState.Empty : await DecodeAsync(input, ct);
+    }
+
+    private FileStream? OpenState()
+    {
         RuntimeSourceStore.RequireNoLinks(StatePath);
-        if (!File.Exists(StatePath)) return MihomoPublicationState.Empty;
-        await using var input = new FileStream(StatePath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
-        return await DecodeAsync(input, ct);
+        if (Directory.Exists(StatePath)) throw new RuntimePolicyException("runtime.publication_state_invalid");
+        try { return new FileStream(StatePath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete); }
+        catch (FileNotFoundException) { return null; }
+        catch (DirectoryNotFoundException) { return null; }
     }
 
     private async Task<MihomoPublicationState> DecodeAsync(FileStream input, CancellationToken ct)
@@ -84,9 +91,8 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
         await Gate.WaitAsync(ct);
         try
         {
-            RuntimeSourceStore.RequireNoLinks(StatePath);
-            if (!File.Exists(StatePath)) return (await ReadAsync(ct)).Pending?.OperationId;
-            await using var input = new FileStream(StatePath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+            await using var input = OpenState();
+            if (input is null) return null;
             if (input.Length is 0 or > MaximumBytes) throw new RuntimePolicyException("runtime.publication_state_invalid");
             var digest = await SHA256.HashDataAsync(input, ct);
             var indexPath = StatePath + ".schedule";
